@@ -419,6 +419,18 @@ import {
 } from './vault.js';
 import { readOrderMap, writeOrderMap, rewriteOrderOnMove } from './vaultOrder.js';
 import { readIconMap, writeIconMap, setIcon, rewriteIconsOnMove, removeIconsUnderPath } from './vaultIcons.js';
+// SKY-11183 (Notes Board 1/9): board metadata store — see notesBoard.ts.
+import {
+  getBoard as getNotesBoard,
+  patchLayout as patchNotesBoardLayout,
+  patchColors as patchNotesBoardColors,
+  furnitureCreate as notesBoardFurnitureCreate,
+  furnitureUpdate as notesBoardFurnitureUpdate,
+  furnitureDelete as notesBoardFurnitureDelete,
+  itemRenameNotify as notesBoardItemRenameNotify,
+  itemDeleteStub as notesBoardItemDeleteStub,
+  flushPendingNotesBoardWrites,
+} from './notesBoard.js';
 import {
   ensureVaultSeeded,
   STORY_VAULT_SEED_LAYOUT,
@@ -474,6 +486,22 @@ import type {
   StoryVaultRegistryRenameResponse,
   StoryVaultRegistryPairPayload,
   StoryVaultRegistryPairResponse,
+  NotesBoardGetPayload,
+  NotesBoardGetResponse,
+  NotesBoardPatchLayoutPayload,
+  NotesBoardPatchLayoutResponse,
+  NotesBoardPatchColorsPayload,
+  NotesBoardPatchColorsResponse,
+  NotesBoardFurnitureCreatePayload,
+  NotesBoardFurnitureCreateResponse,
+  NotesBoardFurnitureUpdatePayload,
+  NotesBoardFurnitureUpdateResponse,
+  NotesBoardFurnitureDeletePayload,
+  NotesBoardFurnitureDeleteResponse,
+  NotesBoardItemRenamePayload,
+  NotesBoardItemRenameResponse,
+  NotesBoardItemDeletePayload,
+  NotesBoardItemDeleteResponse,
 } from './ipc.js';
 // Beta 4 M29 — Welcome wizard genre starter notes.
 import { isGenreSeedGenre, writeGenreStarterNotes } from './mythosFormat/genreSeed.js';
@@ -5896,6 +5924,22 @@ const handlers: IpcHandlers = {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
     safeVaultEntryIpcJoin(root, payload.path);
+    // SKY-11183: best-effort drop of this item's OWN Store B layout/colors
+    // entry from its PARENT folder's board file — MUST run BEFORE the real
+    // fs delete below, since itemDeleteStub needs to read the item's id
+    // (frontmatter for a note, sidecar for a folder) while it still exists
+    // on disk. Not required for correctness: gcBoardEntries (notesBoard.ts)
+    // prunes the same dangling entry the next time anything reads that
+    // parent board regardless — this just keeps the sidecar tidy sooner and
+    // never blocks the real delete on Store B upkeep.
+    try {
+      const slash = payload.path.lastIndexOf('/');
+      const parentRelPath = slash === -1 ? '' : payload.path.slice(0, slash);
+      const itemName = slash === -1 ? payload.path : payload.path.slice(slash + 1);
+      notesBoardItemDeleteStub(root, parentRelPath, itemName);
+    } catch {
+      // best-effort only.
+    }
     const result = deleteVaultFile(root, payload.path);
     // SKY-9310: drop any icon assignment(s) for the deleted path so
     // .mythos/icons.json never accumulates entries for things that no
@@ -6667,6 +6711,91 @@ const handlers: IpcHandlers = {
     safeVaultEntryIpcJoin(root, payload.path);
     setIcon(root, payload.path, payload.icon);
     return { path: payload.path, icon: payload.icon };
+  },
+
+  // ─── SKY-11183 (Notes Board 1/9): board metadata store IPC ──────────────
+  // Thin bodies — path sandboxing here, all real logic in notesBoard.ts.
+  // folderPath sandboxing uses safeVaultDirIpcJoin (no extension allow-list —
+  // a board's own folder has none); itemPath is validated as the FULL
+  // vault-relative path (folderPath + itemPath) via safeVaultEntryIpcJoin
+  // (files or folders, matching NOTES_VAULT_DELETE/MOVE's own boundary
+  // check), since notesBoard.ts's functions take itemPath relative to
+  // folderPath and don't sandbox on their own (pure-Node, no Electron).
+  [IPC_CHANNELS.NOTES_BOARD_GET]: (payload: NotesBoardGetPayload): NotesBoardGetResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    return getNotesBoard(root, folderPath);
+  },
+  [IPC_CHANNELS.NOTES_BOARD_PATCH_LAYOUT]: (
+    payload: NotesBoardPatchLayoutPayload
+  ): NotesBoardPatchLayoutResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    safeVaultEntryIpcJoin(root, folderPath ? `${folderPath}/${payload.itemPath}` : payload.itemPath);
+    return patchNotesBoardLayout(root, folderPath, payload.itemPath, payload.patch ?? {});
+  },
+  [IPC_CHANNELS.NOTES_BOARD_PATCH_COLORS]: (
+    payload: NotesBoardPatchColorsPayload
+  ): NotesBoardPatchColorsResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    safeVaultEntryIpcJoin(root, folderPath ? `${folderPath}/${payload.itemPath}` : payload.itemPath);
+    return patchNotesBoardColors(root, folderPath, payload.itemPath, payload.color ?? null);
+  },
+  [IPC_CHANNELS.NOTES_BOARD_FURNITURE_CREATE]: (
+    payload: NotesBoardFurnitureCreatePayload
+  ): NotesBoardFurnitureCreateResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    return { item: notesBoardFurnitureCreate(root, folderPath, payload.item) };
+  },
+  [IPC_CHANNELS.NOTES_BOARD_FURNITURE_UPDATE]: (
+    payload: NotesBoardFurnitureUpdatePayload
+  ): NotesBoardFurnitureUpdateResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    return { item: notesBoardFurnitureUpdate(root, folderPath, payload.furnitureId, payload.patch ?? {}) };
+  },
+  [IPC_CHANNELS.NOTES_BOARD_FURNITURE_DELETE]: (
+    payload: NotesBoardFurnitureDeletePayload
+  ): NotesBoardFurnitureDeleteResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    return notesBoardFurnitureDelete(root, folderPath, payload.furnitureId);
+  },
+  // SKY-11183 §2/§5: rename is a Store-B no-op by construction — see
+  // itemRenameNotify's doc comment in notesBoard.ts. Ticket 4 owns actually
+  // calling notesVault:move; this channel exists only for IPC-surface
+  // symmetry, so no path sandboxing/fs touch belongs here either.
+  [IPC_CHANNELS.NOTES_BOARD_ITEM_RENAME]: (
+    payload: NotesBoardItemRenamePayload
+  ): NotesBoardItemRenameResponse => {
+    const folderPath = payload.folderPath ?? '';
+    return notesBoardItemRenameNotify(getNotesVaultRoot(), folderPath, payload.fromPath, payload.toPath);
+  },
+  // SKY-11183 §6 stub: best-effort Store-B cleanup only — does not touch the
+  // real note/folder on disk (full trash/undo semantics = ticket 6).
+  [IPC_CHANNELS.NOTES_BOARD_ITEM_DELETE]: (
+    payload: NotesBoardItemDeletePayload
+  ): NotesBoardItemDeleteResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    safeVaultEntryIpcJoin(root, folderPath ? `${folderPath}/${payload.itemPath}` : payload.itemPath);
+    return notesBoardItemDeleteStub(root, folderPath, payload.itemPath);
   },
 
   // ─── SKY-11058: Notes vault registry ────────────────────────────────────
@@ -7951,6 +8080,12 @@ function createWindow() {
       height: bounds.height,
       isMaximized,
     });
+
+    // SKY-11183: drain any pending debounced Notes Board layout/colors
+    // writes synchronously before quitting — same flush-before-quit spirit
+    // as the SKY-9973 manifest flush below, but this one is main-process-
+    // only (no renderer round trip needed) so a single sync call suffices.
+    flushPendingNotesBoardWrites();
 
     // SKY-9973: flush-before-quit. First close attempt is intercepted so the
     // renderer can flush a pending debounced manifest save; once that
