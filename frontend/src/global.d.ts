@@ -769,7 +769,7 @@ interface AppSettings {
 }
 
 /** SKY-2094 (Phase 2 #1): Top-level app sections. SKY-9019 M5: vault-graph added as standalone destination. */
-type AppTab = 'story' | 'notes' | 'brainstorm' | 'vault-graph';
+type AppTab = 'story' | 'notes' | 'brainstorm' | 'vault-graph' | 'boards';
 
 /** SKY-2094: Sub-view within the Story tab. */
 type StorySubView = 'editor' | 'coach' | 'kanban' | 'structure' | 'timeline' | 'book';
@@ -1579,6 +1579,27 @@ interface Window {
     getNotesVaultOrder: () => Promise<Record<string, string[]>>;
     reorderNotesVault: (parentPath: string, orderedPaths: string[]) => Promise<{ parentPath: string; orderedPaths: string[] } | { error: string }>;
     chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
+
+    // SKY-11183: Notes Board metadata store IPC (data layer — notesBoard.ts).
+    notesBoardGet: (folderPath: string) => Promise<{
+      id: string | null;
+      children: Array<{ path: string; kind: 'note' | 'folder'; id: string | null }>;
+      layout: Record<string, { x: number; y: number; w?: number; h?: number }>;
+      colors: Record<string, string>;
+      furniture: Array<Record<string, unknown> & { id: string; k: string; x: number; y: number }>;
+      view: { zoom: number; panX: number; panY: number };
+    }>;
+    notesBoardPatchLayout: (
+      folderPath: string,
+      itemPath: string,
+      patch: { x?: number; y?: number; w?: number; h?: number },
+    ) => Promise<{ key: string; id: string }>;
+    notesBoardPatchColors: (folderPath: string, itemPath: string, color: string | null) => Promise<{ key: string; id: string }>;
+    notesBoardFurnitureCreate: (folderPath: string, item: Record<string, unknown>) => Promise<{ item: Record<string, unknown> & { id: string } }>;
+    notesBoardFurnitureUpdate: (folderPath: string, furnitureId: string, patch: Record<string, unknown>) => Promise<{ item: (Record<string, unknown> & { id: string }) | null }>;
+    notesBoardFurnitureDelete: (folderPath: string, furnitureId: string) => Promise<{ ok: true }>;
+    notesBoardItemRename: (folderPath: string, fromPath: string, toPath: string) => Promise<{ ok: true }>;
+    notesBoardItemDelete: (folderPath: string, itemPath: string) => Promise<{ key: string | null }>;
 
     // Per-chapter/per-scene file layout (MYT-609)
     vaultCreateChapter: (projectPath: string, chapterName: string) => Promise<unknown>;

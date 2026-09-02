@@ -1,0 +1,196 @@
+.board-canvas__root {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-canvas, #111318);
+  user-select: none;
+}
+
+/* ── Zoom controls ── */
+.board-canvas__zoom-controls {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface-overlay, rgba(30, 32, 40, 0.88));
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.09));
+  border-radius: 8px;
+  padding: 3px 4px;
+  backdrop-filter: blur(8px);
+}
+
+.board-canvas__zoom-btn {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary, #e4e4e7);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.board-canvas__zoom-btn:hover {
+  background: var(--surface-hover, rgba(255,255,255,0.08));
+}
+
+.board-canvas__zoom-reset {
+  min-width: 44px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #a1a1aa);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  border-radius: 5px;
+  padding: 0 4px;
+}
+
+.board-canvas__zoom-reset:hover {
+  background: var(--surface-hover, rgba(255,255,255,0.08));
+  color: var(--text-primary, #e4e4e7);
+}
+
+/* ── Scroll area ── */
+.board-canvas__scroll-area {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.board-canvas__world {
+  position: relative;
+  overflow: visible;
+}
+
+/* ── Align guides ── */
+.board-canvas__guide {
+  position: absolute;
+  background: var(--accent-guide, #6366f1);
+  opacity: 0.7;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.board-canvas__guide--v {
+  width: 1px;
+  top: 0;
+  bottom: 0;
+}
+
+.board-canvas__guide--h {
+  height: 1px;
+  left: 0;
+  right: 0;
+}
+
+/* ── Items ── */
+.board-canvas__item {
+  position: absolute;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-item, rgba(255,255,255,0.1));
+  background: var(--surface-item, #1c1f28);
+  cursor: grab;
+  transition: box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  outline: none;
+}
+
+.board-canvas__item:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent-focus, #6366f1);
+}
+
+.board-canvas__item:hover {
+  border-color: var(--border-item-hover, rgba(255,255,255,0.2));
+  box-shadow: 0 4px 24px rgba(0,0,0,0.35);
+}
+
+.board-canvas__item--dragging {
+  cursor: grabbing;
+  opacity: 0.88;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+  z-index: 50;
+}
+
+.board-canvas__item--folder {
+  background: var(--surface-board-tile, #1a1d27);
+}
+
+.board-canvas__item--note {
+  background: var(--surface-card, #1e2130);
+}
+
+.board-canvas__item-header {
+  padding: 10px 12px 6px;
+  flex-shrink: 0;
+}
+
+.board-canvas__item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #e4e4e7);
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.board-canvas__item-meta {
+  padding: 0 12px 8px;
+  font-size: 11px;
+  color: var(--text-tertiary, #71717a);
+  flex-shrink: 0;
+}
+
+.board-canvas__item-excerpt {
+  padding: 0 12px 8px;
+  font-size: 11.5px;
+  color: var(--text-secondary, #a1a1aa);
+  line-height: 1.5;
+  overflow: hidden;
+  flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
+}
+
+/* ── Resize handle ── */
+.board-canvas__resize-handle {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  cursor: se-resize;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.board-canvas__resize-handle::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-tertiary, #71717a);
+  border-bottom: 2px solid var(--text-tertiary, #71717a);
+  border-radius: 1px;
+}
+
+.board-canvas__item:hover .board-canvas__resize-handle {
+  opacity: 1;
+}
