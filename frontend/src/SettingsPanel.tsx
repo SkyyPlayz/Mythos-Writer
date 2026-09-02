@@ -329,7 +329,12 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     }).catch(() => {
       setLoading(false);
     });
-  }, [fetchModels]);
+    // SKY-11237: activeVaultRoot is read above to overlay per-vault appearance
+    // onto the loaded settings, so a change in the active vault must re-run the
+    // load. In practice the panel opens per-vault and this prop is stable for
+    // the dialog's lifetime, so this is a no-op at runtime — but including it
+    // keeps the overlay honest if the active vault ever changes while mounted.
+  }, [fetchModels, activeVaultRoot]);
 
   // SKY-1902: Move focus into the dialog once content has loaded. The mount-time
   // effect above runs while `loading` is still true and the dialog body hasn't
