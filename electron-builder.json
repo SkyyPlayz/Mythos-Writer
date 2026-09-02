@@ -19,6 +19,10 @@
     {
       "from": "electron-main/resources/samples",
       "to": "samples"
+    },
+    {
+      "from": "electron-main/resources/kokoro",
+      "to": "kokoro"
     }
   ],
   "afterSign": "build/notarize.js",

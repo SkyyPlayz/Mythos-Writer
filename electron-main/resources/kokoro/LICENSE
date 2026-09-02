@@ -1,0 +1,32 @@
+Kokoro-82M offline text-to-speech — bundled model assets
+=========================================================
+
+The model weights, voice packs, and tokenizer shipped in this directory are
+downloaded at build time from:
+
+    onnx-community/Kokoro-82M-v1.0-ONNX   (Apache-2.0)
+    https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX
+
+which is the ONNX export of the upstream model:
+
+    hexgrad/Kokoro-82M                    (Apache-2.0)
+    https://huggingface.co/hexgrad/Kokoro-82M
+
+Both the code and the model WEIGHTS are licensed under Apache-2.0 — the upstream
+model card states: "With Apache-licensed weights, Kokoro can be deployed
+anywhere." This permits commercial redistribution inside the Mythos Writer
+installer.
+
+Training-data attribution
+-------------------------
+A small portion (~a few hours) of Kokoro's training data derives from CC-BY
+corpora (e.g. Koniwa / SIWIS). This imposes an ATTRIBUTION requirement only —
+there is no non-commercial restriction on the resulting weights. Attribution is
+satisfied by this notice and the upstream model card.
+
+Runtime dependencies (not bundled here, installed via npm)
+----------------------------------------------------------
+    onnxruntime-web   MIT        — WASM inference runtime
+    phonemizer        Apache-2.0 — grapheme-to-phoneme
+
+Full Apache-2.0 text: https://www.apache.org/licenses/LICENSE-2.0

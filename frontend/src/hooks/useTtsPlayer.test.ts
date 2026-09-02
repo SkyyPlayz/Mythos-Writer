@@ -571,6 +571,32 @@ describe('useTtsPlayer — OS speechSynthesis path (no engine configured)', () =
     expect(mockVoiceSpeak).not.toHaveBeenCalled();
   });
 
+  it('speakCard: routes a bundled kokoro voice through voiceSpeak even with no engine configured (SKY-11243)', () => {
+    // No ttsSettings at all — but the selected voice is a bundled Kokoro engine
+    // voice, so playback must use the main-process synthesis IPC, not OS speech.
+    const { result } = renderHook(() =>
+      useTtsPlayer(undefined, { ttsVoiceId: 'kokoro:nicole' }),
+    );
+    const announce = vi.fn();
+
+    act(() => { result.current.speakCard('Hear Nicole', 'card-1', announce); });
+
+    expect(mockVoiceSpeak).toHaveBeenCalledWith('Hear Nicole', 'kokoro:nicole');
+    expect(mockSpeechSynthesisSpeak).not.toHaveBeenCalled();
+  });
+
+  it('speakCard: a plain voice with no engine still uses OS speech (kokoro routing is scoped)', () => {
+    const { result } = renderHook(() =>
+      useTtsPlayer(undefined, { ttsVoiceId: 'Aria' }),
+    );
+    const announce = vi.fn();
+
+    act(() => { result.current.speakCard('Hello OS', 'card-1', announce); });
+
+    expect(mockSpeechSynthesisSpeak).toHaveBeenCalledTimes(1);
+    expect(mockVoiceSpeak).not.toHaveBeenCalled();
+  });
+
   it('speakCard (OS): onend resets playingCardId', async () => {
     let capturedUtterance!: SpeechSynthesisUtterance;
     mockSpeechSynthesisSpeak.mockImplementation((u: SpeechSynthesisUtterance) => {

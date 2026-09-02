@@ -38,10 +38,16 @@ describe('listReaderVoices', () => {
       'kokoro:nicole',
       'kokoro:sky',
     ]);
-    // SKY-11242: every catalog entry is flagged unavailable and carries a hint.
+    // SKY-11242/11243: Edge & Piper catalog entries are unavailable + carry a
+    // hint; Kokoro now ships bundled, so its entries are available (no hint).
     for (const o of options.slice(1)) {
-      expect(o.available).toBe(false);
-      expect(o.setupHint).toBeTruthy();
+      if (o.value.startsWith('kokoro:')) {
+        expect(o.available).toBe(true);
+        expect(o.setupHint).toBeUndefined();
+      } else {
+        expect(o.available).toBe(false);
+        expect(o.setupHint).toBeTruthy();
+      }
     }
   });
 
@@ -98,15 +104,25 @@ describe('listReaderVoices', () => {
     expect(aria?.setupHint).toContain('Windows');
   });
 
-  it('always offers Piper/Kokoro catalog entries as unavailable that explain their setup', () => {
+  it('offers Piper catalog entries as unavailable that explain their setup', () => {
     stubVoices([{ name: 'Aria', lang: 'en-US' }]);
     const options = listReaderVoices();
     const amy = options.find((o) => o.value === 'piper:amy');
-    const sky = options.find((o) => o.value === 'kokoro:sky');
     expect(amy).toMatchObject({ label: 'Amy — Piper (offline)', engine: 'piper', available: false });
     expect(amy?.setupHint).toContain('Settings → Voice');
-    expect(sky).toMatchObject({ label: 'Sky — Kokoro (offline)', engine: 'kokoro', available: false });
-    expect(sky?.setupHint).toContain('Settings → Voice');
+  });
+
+  it('offers bundled Kokoro catalog entries as available and playable (SKY-11243)', () => {
+    stubVoices([{ name: 'Aria', lang: 'en-US' }]);
+    const options = listReaderVoices();
+    const nicole = options.find((o) => o.value === 'kokoro:nicole');
+    const sky = options.find((o) => o.value === 'kokoro:sky');
+    expect(nicole).toMatchObject({ label: 'Nicole — Kokoro (offline)', engine: 'kokoro', available: true });
+    expect(nicole?.setupHint).toBeUndefined();
+    expect(sky).toMatchObject({ label: 'Sky — Kokoro (offline)', engine: 'kokoro', available: true });
+    expect(sky?.setupHint).toBeUndefined();
+    // Resolves through to the engine (not stripped to default like an unwired pick).
+    expect(resolveReaderVoiceId('kokoro:sky')).toBe('kokoro:sky');
   });
 
   it('appends the configured Piper engine voice as an available Piper entry', () => {
@@ -189,10 +205,12 @@ describe('catalog voice resolution (SKY-11242 — no silent wrong-voice playback
     expect(isCatalogReaderVoice('')).toBe(false);
   });
 
-  it('marks catalog voices unavailable and everything else available', () => {
+  it('marks unwired catalog voices unavailable; bundled Kokoro + everything else available', () => {
     expect(isReaderVoiceAvailable('edge:aria')).toBe(false);
     expect(isReaderVoiceAvailable('piper:amy')).toBe(false);
-    expect(isReaderVoiceAvailable('kokoro:sky')).toBe(false);
+    // SKY-11243: Kokoro ships bundled and is playable.
+    expect(isReaderVoiceAvailable('kokoro:sky')).toBe(true);
+    expect(isReaderVoiceAvailable('kokoro:nicole')).toBe(true);
     expect(isReaderVoiceAvailable('Aria')).toBe(true);
     expect(isReaderVoiceAvailable('en_US/vctk_low')).toBe(true);
     expect(isReaderVoiceAvailable('')).toBe(true);

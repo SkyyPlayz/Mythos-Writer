@@ -69,6 +69,15 @@ export function hasTtsEngine(settings?: TtsEngineSettings): boolean {
   return !!(localBinaryPath || cloudApiKey);
 }
 
+/**
+ * True for a bundled, in-process engine voice (Kokoro, SKY-11243) that must use
+ * the IPC synthesis path even when no local binary / cloud key is configured —
+ * the engine ships in the installer, so it needs no user setup.
+ */
+export function isBundledEngineVoice(voiceId?: string): boolean {
+  return typeof voiceId === 'string' && voiceId.startsWith('kokoro:');
+}
+
 /** Clamp stored volume to the valid 0–1 range; non-numeric → default 1. */
 function clampVolume(volume: number | undefined): number {
   if (typeof volume !== 'number' || Number.isNaN(volume)) return 1;
@@ -308,7 +317,13 @@ export function useTtsPlayer(
 
     const prefs = voicePrefsRef.current;
 
-    if (!hasTtsEngine(ttsSettingsRef.current)) {
+    // Route through the main-process synthesis IPC when a Piper/cloud engine is
+    // configured OR when a bundled built-in engine voice (Kokoro) is selected —
+    // the latter needs no user config. Everything else uses OS speechSynthesis.
+    const useIpcEngine =
+      hasTtsEngine(ttsSettingsRef.current) || isBundledEngineVoice(prefs?.ttsVoiceId);
+
+    if (!useIpcEngine) {
       // OS speechSynthesis fallback — works in Electron, offline, zero setup.
       if (typeof window.speechSynthesis === 'undefined') {
         setPlayingCardId(null);

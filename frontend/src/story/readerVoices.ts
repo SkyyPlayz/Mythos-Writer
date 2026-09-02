@@ -6,11 +6,13 @@
 //   · the OS speechSynthesis voices that actually exist (Windows surfaces its
 //     Edge natural voices here — they're detected and labeled as such),
 //   · the configured Piper/cloud engine voice when one is set up,
-//   · catalog entries for Edge naturals and offline Piper/Kokoro voices whose
-//     engines are NOT wired yet (SKY-11230 Part 2) — each is flagged
-//     `available: false` and carries a setupHint. The picker marks these
-//     unavailable and refuses to switch playback to them, so a natural voice
-//     never silently plays the system voice instead (SKY-11242).
+//   · the bundled offline Kokoro voices (Nicole/Sky), which ship in the
+//     installer and play in-process (SKY-11243) — flagged `available: true`,
+//   · catalog entries for Edge naturals and offline Piper voices whose engines
+//     are NOT wired yet — each is flagged `available: false` and carries a
+//     setupHint. The picker marks these unavailable and refuses to switch
+//     playback to them, so a natural voice never silently plays the system
+//     voice instead (SKY-11242).
 //   · whatever voice id the user stored in Settings → Voice.
 // Degrades to a Default entry + catalog when nothing is enumerable.
 
@@ -26,10 +28,11 @@ export interface ReaderVoiceOption {
   /** The engine this voice belongs to; the picker groups options by it. */
   engine: ReaderVoiceEngine;
   /**
-   * False when picking this entry can't drive its engine yet (Part 1: every
-   * Edge/Piper/Kokoro catalog voice). The picker marks it visibly unavailable
-   * and does NOT switch playback to it — so it never plays a different voice
-   * than the label promises (SKY-11242 AC1/AC5).
+   * False when picking this entry can't drive its engine yet (the unwired
+   * Edge/Piper catalog voices). The picker marks it visibly unavailable and does
+   * NOT switch playback to it — so it never plays a different voice than the
+   * label promises (SKY-11242 AC1/AC5). Bundled Kokoro voices are `true`
+   * (SKY-11243).
    */
   available: boolean;
   /**
@@ -76,13 +79,14 @@ export function isCatalogReaderVoice(value: string): boolean {
 /**
  * Whether picking `value` can actually drive its engine right now.
  *
- * Part 1 scope (SKY-11242): the Edge/Piper/Kokoro catalog engines are not
- * wired yet (SKY-11230 Part 2), so every catalog voice is unavailable. OS
- * speechSynthesis voices, the configured engine voice, and the default ('')
- * are available. The picker uses this to mark entries and to refuse a switch
- * to an unavailable voice.
+ * SKY-11243 (Part 2): Kokoro now ships bundled and in-process, so `kokoro:*`
+ * catalog voices are playable. The Edge/Piper catalog engines are still not
+ * wired, so they stay unavailable — the picker keeps the no-silent-fallback
+ * honesty (SKY-11242) for those. OS speechSynthesis voices, the configured
+ * engine voice, and the default ('') are always available.
  */
 export function isReaderVoiceAvailable(value: string): boolean {
+  if (value.startsWith('kokoro:')) return true;
   return !isCatalogReaderVoice(value);
 }
 
@@ -184,8 +188,9 @@ export function listReaderVoices(
     push(ttsSettings.voiceId, `${ttsSettings.voiceId} — ${isCloud ? 'cloud' : 'Piper (local)'}`, isCloud ? 'cloud' : 'piper');
   }
 
-  // Offline Piper/Kokoro catalog — unavailable in Part 1: the picker marks them
-  // and, on pick, toasts the setup hint instead of playing the wrong voice.
+  // Offline catalog: bundled Kokoro voices are available and playable
+  // (SKY-11243); the unwired Piper voices stay unavailable — the picker marks
+  // them and, on pick, toasts the setup hint instead of playing the wrong voice.
   for (const [value, label, engine, hint] of OFFLINE_CATALOG) push(value, label, engine, hint);
 
   // Whatever is currently selected must stay selectable, even if the OS list
