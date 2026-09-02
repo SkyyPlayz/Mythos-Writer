@@ -42,6 +42,19 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-12.3: copy the bundled sample project into a two-vault layout.
   loadSampleTwoVault: (parentPath: string) =>
     ipcRenderer.invoke('vault:load-sample-twovault', { parentPath }),
+  // SKY-11151: THE shared vault-creation primitive. One call for all three
+  // callers (first run / New Mythos vault… / Settings Add vault…); the option
+  // set (template / blank / import) is identical, only the caller's chrome
+  // differs. `activate` opts into making the new vault the open one.
+  createVaultFromOptions: (payload: {
+    mode: 'template' | 'blank' | 'import';
+    destinationParent?: string;
+    name?: string;
+    exactName?: boolean;
+    defaultTheme?: string;
+    importSources?: { kind: 'notes' | 'story'; srcPath: string }[];
+    activate?: boolean;
+  }) => ipcRenderer.invoke('vault:create-from-options', payload),
   // SKY-627: extended onboarding orchestration — creates vault + first scene.
   onboardingComplete: (payload?: { startMode: string; storyTitle?: string; authorName?: string; vaultParentPath?: string; templateId?: string; vaultName?: string; sampleGenre?: string; customTemplate?: 'recommended' | 'blank'; genre?: string; themeKey?: string }) =>
     ipcRenderer.invoke('onboarding:complete', payload ?? {}),
