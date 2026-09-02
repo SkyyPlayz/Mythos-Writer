@@ -1060,8 +1060,10 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // SKY-1684: Archive Agent v1 — continuity scan
-  archiveScanContinuity: (sceneId: string, text: string, scope?: string) =>
-    ipcRenderer.invoke('archive:scan-continuity', { sceneId, text, scope }),
+  // M12.B3 (SKY-10738): checkType selects Check 1 (story_internal) vs
+  // Check 2 (story_vault, default) — the panel's "Continuity pass ▾".
+  archiveScanContinuity: (sceneId: string, text: string, scope?: string, checkType?: string) =>
+    ipcRenderer.invoke('archive:scan-continuity', { sceneId, text, scope, checkType }),
 
   archiveResolveContinuity: (itemId: string, action: string, note?: string) =>
     ipcRenderer.invoke('archive:resolve-continuity', { itemId, action, note }),

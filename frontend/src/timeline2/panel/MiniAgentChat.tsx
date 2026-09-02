@@ -5,6 +5,10 @@
 import { useEffect, useRef, useState } from 'react';
 import AgentSessionPicker from '../../components/AgentSessionPicker';
 import type { MiniAgentChat as MiniAgentChatState } from './useMiniAgentChat';
+// M12.B3 (SKY-10738): self-import — this component is now also mounted
+// outside Timeline2 (AgentHubPanel's Archive chat view), which doesn't load
+// TimelineRightPanel.css itself.
+import './TimelineRightPanel.css';
 
 export interface MiniAgentChatProps {
   chat: MiniAgentChatState;

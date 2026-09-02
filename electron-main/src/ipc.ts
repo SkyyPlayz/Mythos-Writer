@@ -4447,10 +4447,14 @@ export type ResolutionAction = 'match_archive_to_story' | 'suggest_story_change'
 
 /** M9d (SKY-9825): which two sources a flag says disagree — rendered as the
  *  card's scope tag (`Story ↔ Vault` / `Vault internal` / `Timeline`).
- *  M12.B1 (SKY-10736): `story_internal` added — the Archive agent's Check 1
- *  (manuscript vs itself), distinct from `vault_internal` (unused/reserved,
- *  two vault notes disagreeing with each other). */
+ *  M12.B1 (SKY-10736) / M12.B3 (SKY-10738): `story_internal` — the Archive
+ *  agent's Check 1 (manuscript vs itself), distinct from `vault_internal`
+ *  (unused/reserved, two vault notes disagreeing with each other). */
 export type ContinuityScope = 'story_internal' | 'story_vault' | 'vault_internal' | 'timeline';
+
+/** M12.B3 (SKY-10738): which of the Archive Agent's two checks a continuity
+ *  scan runs — selected by the panel's "Continuity pass ▾" control. */
+export type ArchiveContinuityCheckType = 'story_internal' | 'story_vault';
 
 export interface InconsistencyItem {
   id: string;
@@ -4485,6 +4489,10 @@ export interface ArchiveScanContinuityPayload {
   /** M12.B1 (SKY-10736): which continuity check(s) to run — 'story_internal'
    *  (Check 1) and/or 'story_vault' (Check 2). Omitted = run both. */
   checks?: Array<'story_internal' | 'story_vault'>;
+  /** M12.B3 (SKY-10738): single-check convenience form the panel's
+   *  "Continuity pass ▾" selector sends. Defaults to 'story_vault' (today's
+   *  LLM scan) when omitted. */
+  checkType?: ArchiveContinuityCheckType;
 }
 
 export interface ArchiveResolveContinuityPayload {
@@ -4517,6 +4525,12 @@ export interface ArchiveContScanResultEvent {
   items: InconsistencyItem[];
   tokenUsed: number;
   partial: boolean;
+  /** M12.B3 (SKY-10738): scan-status line data — "Last scan — Xm ago. N
+   *  scenes and M notes checked; K flags are open." Session-only, same
+   *  convention as `tokenUsed` (not persisted/restored on panel reload). */
+  scannedAt: string;
+  scenesChecked: number;
+  notesChecked: number;
 }
 
 export interface ArchiveContScanErrorEvent {

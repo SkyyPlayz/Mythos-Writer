@@ -30,6 +30,12 @@ import {
 import { showLnToast } from './theme/lnToast';
 import SceneNotesPanel from './SceneNotesPanel';
 import type { SceneNoteDragPayload } from './sceneNotes';
+import type { InconsistencyItem } from './InconsistencyCard';
+import { useMiniAgentChat } from './timeline2/panel/useMiniAgentChat';
+import MiniAgentChat from './timeline2/panel/MiniAgentChat';
+import { invokeArchive } from './timeline2/panel/ArchiveTab';
+import ComposerQuickActions from './components/ComposerQuickActions';
+import { generateQuickActionChips, type QuickActionChip } from './archive/composerQuickActions';
 import SuggestionReview from './SuggestionReview';
 import './AgentHubPanel.css';
 
@@ -175,6 +181,10 @@ interface Props {
   gettingStartedCard?: import('react').ReactNode;
   /** M6: Rendered after SceneAnalysisCard — the Continuity section. */
   continuityPanel?: import('react').ReactNode;
+  /** M12.B3 (SKY-10738): the Archive agent's current continuity flags, fed by
+   *  ContinuityPanel's onItemsChange via DesktopShell — drives the Archive
+   *  chat view's composer quick-action chips (dynamic, not static). */
+  continuityItems?: InconsistencyItem[];
   /** M9a (SKY-9822): Rendered inside the References tab — wiki-link auto-collection. */
   referencesPanel?: import('react').ReactNode;
 }
@@ -210,6 +220,7 @@ export default function AgentHubPanel({
   continuityCount = 0,
   gettingStartedCard,
   continuityPanel,
+  continuityItems = [],
   referencesPanel,
 }: Props) {
   // R11/M11a/M11b: master AI toggle off removes the Assistant tab (AGENTS,
@@ -315,6 +326,8 @@ export default function AgentHubPanel({
                 autoApply={autoApply}
                 autoApplyCategories={autoApplyCategories}
                 onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
+                continuityPanel={continuityPanel}
+                continuityItems={continuityItems}
               />
             : <AgentHubView
                 agentDefs={AGENT_DEFS}
@@ -718,6 +731,10 @@ interface AgentChatViewProps {
   autoApply: boolean;
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
+  /** M12.B3 (SKY-10738): Archive agent's chat panel — the redesigned
+   *  Continuity panel + composer quick-action chips + mini chat. */
+  continuityPanel?: import('react').ReactNode;
+  continuityItems?: InconsistencyItem[];
 }
 
 function AgentChatView({
@@ -742,6 +759,8 @@ function AgentChatView({
   autoApply,
   autoApplyCategories,
   onAutoApplyCategoriesChange,
+  continuityPanel,
+  continuityItems,
 }: AgentChatViewProps) {
   const displayName = resolveAgentDisplayName(agentDef.agentKey, agentNames);
   // SKY-7076: mirror WritingAssistantPanel's generation state so this
@@ -767,7 +786,12 @@ function AgentChatView({
           <AgentIcon agentId={agentId} />
         </span>
         <span className="ahp-chat-agent-name">{displayName}</span>
-        <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" busy={agentId === 'writing-assistant' && coachBusy} />
+        {/* M12.B3: Archive owns its own session pill inside MiniAgentChat
+            (its own agent session, not Coach's) — this header pill is
+            Writing Coach-only. */}
+        {agentId === 'writing-assistant' && (
+          <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" busy={coachBusy} />
+        )}
       </div>
 
       {/* Writing Coach uses the existing panel; M12 wires it onto the SHARED
@@ -797,11 +821,56 @@ function AgentChatView({
         />
       )}
 
-      {agentId !== 'writing-assistant' && (
+      {/* M12.B3 (SKY-10738): the Archive Agent's redesigned panel lives here —
+          the agent's chat panel in the right sidebar (owner's placement). */}
+      {agentId === 'archive' && (
+        <ArchiveChatBody scene={scene} continuityPanel={continuityPanel} continuityItems={continuityItems ?? []} />
+      )}
+
+      {agentId !== 'writing-assistant' && agentId !== 'archive' && (
         <div className="ahp-chat-placeholder">
           <p className="ahp-chat-coming-soon">{displayName} chat coming soon.</p>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Archive Agent chat body (SKY-10738/M12.B3) ──────────────────────────────
+// Redesigned Continuity panel + composer quick-action chips (generated from
+// the CURRENT flag set — same affordance as Brainstorm's refine chips) + a
+// mini chat on the shared Archive agent session (reuses MiniAgentChat, the
+// same building block Timeline2's ArchiveTab already uses for this agent).
+
+function ArchiveChatBody({
+  scene,
+  continuityPanel,
+  continuityItems,
+}: {
+  scene: Scene | null;
+  continuityPanel?: import('react').ReactNode;
+  continuityItems: InconsistencyItem[];
+}) {
+  const chat = useMiniAgentChat('archive', invokeArchive);
+  const chips = useMemo(() => generateQuickActionChips(continuityItems), [continuityItems]);
+  const [scanning, setScanning] = useState(false);
+
+  const handleChipSelect = useCallback((chip: QuickActionChip) => {
+    if (chip.kind === 'scan') {
+      if (!scene) return;
+      const prose = scene.blocks.map((b) => b.content).join('\n\n');
+      setScanning(true);
+      void window.api.archiveScanContinuity(scene.id, prose, 'full_manuscript').finally(() => setScanning(false));
+      return;
+    }
+    if (chip.prompt) void chat.send(chip.prompt);
+  }, [scene, chat]);
+
+  return (
+    <div className="ahp-archive-chat">
+      {continuityPanel}
+      <ComposerQuickActions chips={chips} onSelect={handleChipSelect} disabled={scanning || chat.busy} />
+      <MiniAgentChat chat={chat} accent="archive" placeholder="Talk to the Archive Agent…" testidPrefix="ahp-archive" />
     </div>
   );
 }

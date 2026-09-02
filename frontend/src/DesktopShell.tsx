@@ -139,6 +139,7 @@ import ProgressDashboard from './ProgressDashboard';
 import AgentHubPanel from './AgentHubPanel';
 import CoachPage from './coach/CoachPage';
 import ContinuityPanel from './ContinuityPanel';
+import type { InconsistencyItem } from './ContinuityPanel';
 import ContinuityPeekPanel from './components/ContinuityPanel/ContinuityPanel';
 import ScenePreviewPanel from './ScenePreviewPanel';
 import SceneNotesPanel from './SceneNotesPanel';
@@ -826,6 +827,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [grsWidth, setGrsWidth] = useState(300);
   const [grsPanels, setGrsPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
   const [continuityCount, setContinuityCount] = useState(0);
+  // M12.B3 (SKY-10738): full flag list — feeds the Archive chat view's
+  // composer quick-action chips (generated from the current flag set).
+  const [continuityItems, setContinuityItems] = useState<InconsistencyItem[]>([]);
   const [proposedCount, setProposedCount] = useState(0);
 
   // Poll proposed suggestion count every 30 s for nav badge
@@ -6998,9 +7002,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               archiveStoryEditConsentGiven={appSettings?.archiveStoryEditConsentGiven ?? false}
               onConsentGranted={handleContinuityConsentGranted}
               onCountChange={setContinuityCount}
+              onItemsChange={setContinuityItems}
               onOpenSettings={() => setSettingsOpen(true)}
             />
           }
+          continuityItems={continuityItems}
           referencesPanel={
             <ReferencesPanel
               story={selectedStory}

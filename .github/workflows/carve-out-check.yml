@@ -1,0 +1,111 @@
+name: carve-out-check
+
+# SKY-11204: the merge pipeline had no mechanical signal for carve-out paths
+# (.github/workflows/**, db/vault migrations, auth, secrets, release config)
+# bundled into an otherwise-ordinary feature/fix PR. Detection relied entirely
+# on a human/agent manually re-reading the full diff at merge-gate time, which
+# repeatedly missed bundled carve-outs when the file list was skimmed or
+# shrunk (see SKY-10569, SKY-10702, SKY-10974). This check makes the signal
+# structural: it labels and comments on the PR itself, so it survives even if
+# nobody re-diffs by hand. It never fails the build — carve-out paths are not
+# forbidden, they just require Ivy/human sign-off instead of a routine
+# CI-green auto-merge (see .github/copilot-instructions.md "Merge model").
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  carve-out-check:
+    name: carve-out-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Flag carve-out paths for human/Ivy review
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            const files = await github.paginate(
+              github.rest.pulls.listFiles,
+              { owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number }
+            );
+            const paths = files.map((f) => f.filename);
+
+            // Carve-out paths per .github/copilot-instructions.md "Your lane" §4:
+            // .github/workflows, db/vault migrations, auth, secrets, release config.
+            const carveOutPatterns = [
+              { label: 'ci-workflow', re: /^\.github\/workflows\// },
+              { label: 'ci-workflow', re: /^\.github\/actions\// },
+              { label: 'db-migration', re: /^electron-main\/src\/db\.ts$/ },
+              { label: 'auth', re: /(^|\/)auth[A-Za-z0-9._-]*\.(ts|tsx|js)$/i },
+              { label: 'secrets', re: /(^|\/)\.env(\..+)?$|secrets?\.(ts|js|json|yml|yaml)$/i },
+              { label: 'release-config', re: /^\.github\/workflows\/release\.yml$|^electron-builder\.[jc]son5?$|^electron-builder\.ya?ml$/i },
+            ];
+
+            const hits = files
+              .map((f) => ({ filename: f.filename, match: carveOutPatterns.find((p) => p.re.test(f.filename)) }))
+              .filter((h) => h.match);
+
+            const marker = '<!-- carve-out-check -->';
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+
+            if (hits.length === 0) {
+              core.info('No carve-out paths touched.');
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id,
+                  body: `${marker}\nNo carve-out paths touched as of the latest push — this note is stale.`,
+                });
+              }
+              try {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, name: 'carve-out',
+                });
+              } catch (e) {
+                // label wasn't present — fine.
+              }
+              return;
+            }
+
+            const grouped = [...new Set(hits.map((h) => h.match.label))].join(', ');
+            const list = hits.map((h) => `- \`${h.filename}\` (${h.match.label})`).join('\n');
+            const body = [
+              marker,
+              '## ⚠️ Carve-out review required',
+              '',
+              `This PR touches carve-out path(s) — **${grouped}** — per \`.github/copilot-instructions.md\`.`,
+              '',
+              list,
+              '',
+              'Per the merge model, this does not auto-merge on green CI + a routine',
+              'merge-gate decision alone. Escalate to Ivy before merging.',
+            ].join('\n');
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, body,
+              });
+            }
+
+            try {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number, labels: ['carve-out'],
+              });
+            } catch (e) {
+              core.warning(`Could not add "carve-out" label (may not exist in this repo): ${e.message}`);
+            }
+
+            core.info(`Carve-out paths flagged: ${grouped}`);

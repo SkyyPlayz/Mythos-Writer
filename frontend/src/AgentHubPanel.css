@@ -500,6 +500,17 @@
   text-align: center;
 }
 
+/* ── M12.B3 (SKY-10738): Archive Agent chat body ──
+   Continuity panel + composer quick-action chips + mini chat, stacked. ── */
+.ahp-archive-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+}
+
 /* ── Stub tabs ────────────────────────────────────── */
 
 .ahp-stub-tab {

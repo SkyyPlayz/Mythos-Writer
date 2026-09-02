@@ -14,10 +14,12 @@ import {
   applyExcerptPatch,
   dbRowToItem,
   itemToDbRow,
+  internalSuggestionToInconsistencyItem,
   DEFAULT_SCAN_BUDGET_TOKENS,
 } from './archiveContinuityEngine.js';
 import type { DbContinuityIssue } from './db.js';
-import type { ArchiveIndex } from './archiveAgent.js';
+import type { ArchiveIndex, ManuscriptScene } from './archiveAgent.js';
+import { detectInternalContinuity } from './archiveAgent.js';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -803,5 +805,72 @@ describe('M12.B1 acceptance: Check 1 / Check 2 split — lantern & tide fixtures
     // Check 2 runs with zero manuscript history (no priorScenes concept at all in its signature)
     // and still finds the tide contradiction from the vault property alone.
     expect(runEntityPrePass(chapter2Text, index).map((c) => c.entityId)).toContain('ent-gate');
+  });
+});
+
+// ─── M12.B3 (SKY-10738): Check 1 suggestion → InconsistencyItem mapper ────
+
+describe('internalSuggestionToInconsistencyItem', () => {
+  const createdAt = '2026-08-26T00:00:00.000Z';
+
+  function pathMap(scenes: ManuscriptScene[]): Map<string, string> {
+    return new Map(scenes.map((s, i) => [s.path, `sc-${i + 1}`]));
+  }
+
+  it('maps a character-drift suggestion to scope story_internal, category character_attribute_drift', () => {
+    const index: ArchiveIndex = {
+      entities: [{ id: 'ent-1', name: 'Mira', type: 'character', aliases: [], path: 'entities/mira.md', properties: {}, prose: '' }],
+      builtAt: createdAt,
+    };
+    const scenes: ManuscriptScene[] = [
+      { path: 'scenes/ch1.md', text: 'Mira tossed her blonde hair back and laughed.' },
+      { path: 'scenes/ch2.md', text: 'Mira brushed a strand of dark hair from her face.' },
+    ];
+    const [suggestion] = detectInternalContinuity(scenes, index);
+    const item = internalSuggestionToInconsistencyItem(suggestion, pathMap(scenes), scenes, createdAt);
+
+    expect(item.scope).toBe('story_internal');
+    expect(item.category).toBe('character_attribute_drift');
+    expect(item.severity).toBe('medium');
+    expect(item.manuscriptAnchor.sceneId).toBe('sc-2'); // the LATER scene, where the drift shows
+    expect(item.manuscriptAnchor.excerpt).toContain('dark hair');
+    // vaultAnchor is repurposed to carry the EARLIER scene's excerpt — there
+    // is no vault side to a Check 1 flag (SKY-10738).
+    expect(item.vaultAnchor.notePath).toBe('scenes/ch1.md');
+    expect(item.vaultAnchor.excerpt).toContain('blonde hair');
+    expect(item.proposedResolution.matchArchiveToStory).toBe('');
+    expect(item.proposedResolution.suggestStoryChange).toContain('blonde');
+    expect(item.status).toBe('open');
+    expect(item.createdAt).toBe(createdAt);
+  });
+
+  it('maps a world-rule-drift suggestion to category factual_contradiction, severity high', () => {
+    const index: ArchiveIndex = { entities: [], builtAt: createdAt };
+    const scenes: ManuscriptScene[] = [
+      { path: 'scenes/ch1.md', text: 'The oil-lit lantern flickered in her hand.' },
+      { path: 'scenes/ch3.md', text: 'She held the crystal-lit lantern aloft.' },
+    ];
+    const [suggestion] = detectInternalContinuity(scenes, index);
+    const item = internalSuggestionToInconsistencyItem(suggestion, pathMap(scenes), scenes, createdAt);
+
+    expect(item.scope).toBe('story_internal');
+    expect(item.category).toBe('factual_contradiction');
+    expect(item.severity).toBe('high');
+    expect(item.manuscriptAnchor.sceneId).toBe('sc-2');
+  });
+
+  it('never lands on match_archive_to_story — resolveContinuityItemById refuses it for this scope', () => {
+    // Regression guard for the main.ts safety check: a story_internal row's
+    // vaultAnchor.notePath is a manuscript scene path, not a real vault note,
+    // so proposedResolution.matchArchiveToStory must stay empty (never
+    // presented as an actionable vault-side fix).
+    const index: ArchiveIndex = { entities: [], builtAt: createdAt };
+    const scenes: ManuscriptScene[] = [
+      { path: 'scenes/ch1.md', text: 'The oil-lit lantern flickered.' },
+      { path: 'scenes/ch2.md', text: 'The crystal-lit lantern glowed.' },
+    ];
+    const [suggestion] = detectInternalContinuity(scenes, index);
+    const item = internalSuggestionToInconsistencyItem(suggestion, pathMap(scenes), scenes, createdAt);
+    expect(item.proposedResolution.matchArchiveToStory).toBe('');
   });
 });

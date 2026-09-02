@@ -469,10 +469,10 @@ test('TC-AA-04: seeded SQLite issue appears as InconsistencyCard with severity b
     // Vault excerpt anchor
     await expect(card.locator('.ic-anchor--vault')).toContainText('Hair: blonde');
 
-    // Three action buttons present
-    await expect(card.getByRole('button', { name: /match archive/i })).toBeVisible();
-    await expect(card.getByRole('button', { name: /suggest story change/i })).toBeVisible();
-    await expect(card.getByRole('button', { name: /ignore/i })).toBeVisible();
+    // M12.B3 (SKY-10738): two action-row buttons + header dismiss.
+    await expect(card.getByRole('button', { name: /suggest fix/i })).toBeVisible();
+    await expect(card.getByRole('button', { name: /open sources/i })).toBeVisible();
+    await expect(card.getByRole('button', { name: /^dismiss/i })).toBeVisible();
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);
@@ -495,8 +495,10 @@ test('TC-AA-05: clicking Ignore removes card from open group and persists ignore
     const card = cpSection.locator('.ic-card').first();
     await expect(card).toBeVisible({ timeout: 10_000 });
 
-    // Click the Ignore button
-    await card.getByRole('button', { name: /ignore/i }).click();
+    // Click the header's Dismiss button (M12.B3: the action row's "Ignore"
+    // button was replaced by "Suggest fix"/"Open sources" — dismiss/ignore
+    // now lives on the header's × button only).
+    await card.getByRole('button', { name: /^dismiss/i }).click();
 
     // Card should leave the open issue list; "All consistent" OR Ignored group appears
     await expect.poll(() => readIssueStatus(fixture.vaultDir, 'inc-aa-05'), { timeout: 8_000 }).toBe('ignored');
@@ -531,8 +533,9 @@ test('TC-AA-06: Match Archive flow shows expand area and resolves issue on Apply
     const card = cpSection.locator('.ic-card').first();
     await expect(card).toBeVisible({ timeout: 10_000 });
 
-    // Click Match Archive button → expand area opens
-    await card.getByRole('button', { name: /match archive/i }).click();
+    // M12.B3: "Suggest fix" opens the choice between the two fix directions.
+    await card.getByRole('button', { name: /suggest fix/i }).click();
+    await card.getByRole('button', { name: /update your notes/i }).click();
 
     const expandArea = card.locator('.ic-expand-area--open');
     await expect(expandArea).toBeVisible({ timeout: 5_000 });
