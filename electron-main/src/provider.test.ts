@@ -22,6 +22,9 @@ import {
   getVoiceProvider,
   listModels,
   DEFAULT_BASE_URLS,
+  createThinkStripper,
+  stripThinkBlocks,
+  EmptyProviderResponseError,
   type ProviderConfig,
   type StreamRequest,
   type Provider,
@@ -379,6 +382,130 @@ describe('OpenAI-compatible routing (§2)', () => {
       } finally {
         await new Promise<void>((r) => server.close(() => r()));
         vi.stubGlobal('fetch', vi.fn()); // restore the suite's fetch mock
+      }
+    });
+  });
+
+  // SKY-11240: three follow-up guarantees on top of the SKY-11220 fallback —
+  // inline <think> stripping, and a zero-usable-token stream that raises a
+  // specific error naming provider + address instead of ending silently.
+  describe('inline <think> stripping + empty-response error (SKY-11240)', () => {
+    it('strips a complete <think> block emitted inline in content', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+        makeRawSseResponse([
+          { content: '<think>plotting…</think>' },
+          { content: 'The dragon' },
+          { content: ' woke.' },
+        ]),
+      );
+      const tokens = await collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq()));
+      expect(tokens.join('')).toBe('The dragon woke.');
+    });
+
+    it('strips a <think> block that straddles SSE chunk boundaries', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+        makeRawSseResponse([
+          { content: 'Hello <thi' },
+          { content: 'nk>secret rea' },
+          { content: 'soning</thi' },
+          { content: 'nk> world' },
+        ]),
+      );
+      const tokens = await collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq()));
+      expect(tokens.join('')).toBe('Hello  world');
+    });
+
+    it('throws EmptyProviderResponseError naming provider + address on a zero-token stream', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeRawSseResponse([]));
+      const err = await streamFromProvider(makeLmStudioConfig(), makeReq())
+        [Symbol.asyncIterator]()
+        .next()
+        .then(() => null, (e: unknown) => e);
+      expect(err).toBeInstanceOf(EmptyProviderResponseError);
+      expect((err as EmptyProviderResponseError).message).toContain('LM Studio');
+      expect((err as EmptyProviderResponseError).message).toContain(DEFAULT_BASE_URLS.lmstudio);
+      expect((err as EmptyProviderResponseError).kind).toBe('lmstudio');
+    });
+
+    it('throws EmptyProviderResponseError when content is nothing but a <think> block', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+        makeRawSseResponse([{ content: '<think>only thinking, no answer</think>' }]),
+      );
+      await expect(
+        collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq())),
+      ).rejects.toBeInstanceOf(EmptyProviderResponseError);
+    });
+
+    it('strips <think> blocks out of the reasoning-content fallback too', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+        makeRawSseResponse([
+          { reasoning_content: '<think>meta</think>The answer' },
+          { reasoning_content: ' is 42.' },
+        ]),
+      );
+      const tokens = await collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq()));
+      expect(tokens.join('')).toBe('The answer is 42.');
+    });
+
+    it('surfaces a zero-token stream error against a real loopback HTTP server', async () => {
+      // AC4: verified against a real OpenAI-compatible server, not a mock — an
+      // empty (0-token) stream must raise the specific, address-naming error.
+      vi.unstubAllGlobals();
+      const http = await import('node:http');
+      const server = http.createServer((req, res) => {
+        if (req.url === '/v1/chat/completions') {
+          res.writeHead(200, { 'content-type': 'text/event-stream' });
+          res.write('data: [DONE]\n\n'); // model loaded but produced nothing
+          res.end();
+          return;
+        }
+        res.writeHead(404).end();
+      });
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+      const port = (server.address() as import('node:net').AddressInfo).port;
+      const baseUrl = `http://127.0.0.1:${port}/v1`;
+      try {
+        const err = await collectTokens(
+          streamFromProvider(makeCustomConfig({ baseUrl }), makeReq()),
+        ).then(() => null, (e: unknown) => e);
+        expect(err).toBeInstanceOf(EmptyProviderResponseError);
+        expect((err as EmptyProviderResponseError).message).toContain(baseUrl);
+      } finally {
+        await new Promise<void>((r) => server.close(() => r()));
+        vi.stubGlobal('fetch', vi.fn());
+      }
+    });
+
+    it('strips inline <think> against a real loopback HTTP server', async () => {
+      // AC4 + Ivy pt 2: a real server streaming CoT as inline <think> in content
+      // must never leak that reasoning into the emitted answer.
+      vi.unstubAllGlobals();
+      const http = await import('node:http');
+      const server = http.createServer((req, res) => {
+        if (req.url === '/v1/chat/completions') {
+          res.writeHead(200, { 'content-type': 'text/event-stream' });
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: '<think>I should ' } }] })}\n\n`);
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'be terse</think>Hi ' } }] })}\n\n`);
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'there.' } }] })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+        res.writeHead(404).end();
+      });
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+      const port = (server.address() as import('node:net').AddressInfo).port;
+      try {
+        const tokens = await collectTokens(
+          streamFromProvider(makeCustomConfig({ baseUrl: `http://127.0.0.1:${port}/v1` }), makeReq()),
+        );
+        const joined = tokens.join('');
+        expect(joined).toBe('Hi there.');
+        expect(joined).not.toContain('<think>');
+        expect(joined).not.toContain('terse');
+      } finally {
+        await new Promise<void>((r) => server.close(() => r()));
+        vi.stubGlobal('fetch', vi.fn());
       }
     });
   });
@@ -1000,12 +1127,16 @@ describe('listModels (§6)', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('returns { ok: false } with timeout copy on AbortError', async () => {
+  it('returns { ok: false } with timeout copy naming provider + address on AbortError', async () => {
     const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
     (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(abortErr);
     const result = await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
     expect(result.ok).toBe(false);
-    expect((result as { ok: false; error: string }).error).toMatch(/timed out/i);
+    const msg = (result as { ok: false; error: string }).error;
+    // SKY-11240: names the provider + the address it tried, and hints at warmup.
+    expect(msg).toMatch(/did not respond/i);
+    expect(msg).toContain('Ollama');
+    expect(msg).toContain('http://localhost:11434');
   });
 
   it('parses Ollama /api/tags response (models[].name)', async () => {
@@ -1186,12 +1317,16 @@ describe('listModels (§6)', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it('returns { ok: false } with timeout copy on AbortError', async () => {
+  it('returns { ok: false } with timeout copy naming provider + address on AbortError', async () => {
     const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
     (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(abortErr);
     const result = await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
     expect(result.ok).toBe(false);
-    expect((result as { ok: false; error: string }).error).toMatch(/timed out/i);
+    const msg = (result as { ok: false; error: string }).error;
+    // SKY-11240: names the provider + the address it tried, and hints at warmup.
+    expect(msg).toMatch(/did not respond/i);
+    expect(msg).toContain('Ollama');
+    expect(msg).toContain('http://localhost:11434');
   });
 
   it('parses Ollama /api/tags response (models[].name)', async () => {
@@ -1270,5 +1405,46 @@ describe('listModels (§6)', () => {
     await listModels({ kind: 'ollama' });
     const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
     expect(url).toContain('127.0.0.1:11434');
+  });
+});
+
+// ─── <think> stripper (SKY-11240) ────────────────────────────────────────────
+
+describe('createThinkStripper / stripThinkBlocks (SKY-11240)', () => {
+  it('passes through text with no think blocks', () => {
+    expect(stripThinkBlocks('just an answer')).toBe('just an answer');
+  });
+
+  it('removes a single complete block', () => {
+    expect(stripThinkBlocks('a<think>b</think>c')).toBe('ac');
+  });
+
+  it('removes multiple blocks', () => {
+    expect(stripThinkBlocks('<think>x</think>keep<think>y</think>me')).toBe('keepme');
+  });
+
+  it('drops an unterminated block (private reasoning that never closed)', () => {
+    expect(stripThinkBlocks('answer <think>never closed')).toBe('answer ');
+  });
+
+  it('keeps a lone < that is not the start of a think tag on flush', () => {
+    expect(stripThinkBlocks('2 < 3 is true')).toBe('2 < 3 is true');
+  });
+
+  it('reassembles across arbitrary chunk boundaries identically to the one-shot form', () => {
+    const full = 'pre<think>hidden</think>mid<think>more</think>post';
+    const stripper = createThinkStripper();
+    let streamed = '';
+    for (const ch of full) streamed += stripper.push(ch);
+    streamed += stripper.flush();
+    expect(streamed).toBe(stripThinkBlocks(full));
+    expect(streamed).toBe('premidpost');
+  });
+
+  it('holds back a partial tag until the stream ends, then drops the unterminated block', () => {
+    const stripper = createThinkStripper();
+    expect(stripper.push('<think>abc</thin')).toBe('');
+    expect(stripper.push('king is hard')).toBe('');
+    expect(stripper.flush()).toBe('');
   });
 });

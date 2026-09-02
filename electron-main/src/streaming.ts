@@ -2,7 +2,7 @@
 import { ipcMain, WebContents } from 'electron';
 import crypto from 'crypto';
 import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
-import { streamFromProvider, isModelValid, ANTHROPIC_MODEL_ALLOWLIST, type ProviderConfig } from './provider.js';
+import { streamFromProvider, isModelValid, ANTHROPIC_MODEL_ALLOWLIST, EmptyProviderResponseError, type ProviderConfig } from './provider.js';
 
 export const STREAM_CHANNELS = {
   STREAM_START: 'stream:start',
@@ -40,6 +40,9 @@ export const STREAM_ERROR_CATEGORIES = {
   AUTH: 'auth',
   NETWORK: 'network',
   INVALID_REQUEST: 'invalid_request',
+  // SKY-11240: the provider streamed zero usable tokens (no content, no
+  // reasoning). Its message is user-vetted and names the provider + address.
+  EMPTY_RESPONSE: 'empty_response',
   UNKNOWN: 'unknown',
 } as const;
 
@@ -48,6 +51,9 @@ export type StreamErrorCategory = (typeof STREAM_ERROR_CATEGORIES)[keyof typeof 
 // Maps an error to a typed category for IPC.
 // Uses HTTP status code when available, then err.name / err.message patterns.
 export function categorizeStreamError(err: unknown): StreamErrorCategory {
+  // SKY-11240: a zero-token stream is its own category so its specific,
+  // already-vetted message (provider + address) can be forwarded verbatim.
+  if (err instanceof EmptyProviderResponseError) return STREAM_ERROR_CATEGORIES.EMPTY_RESPONSE;
   const status = (err as { status?: number }).status;
   if (status !== undefined) {
     if (status === 429) return STREAM_ERROR_CATEGORIES.RATE_LIMITED;
@@ -74,9 +80,13 @@ export function categorizeStreamError(err: unknown): StreamErrorCategory {
   return STREAM_ERROR_CATEGORIES.UNKNOWN;
 }
 
-// Returns a generic, user-facing error message for a given category.
-// Never includes raw SDK details (URLs, trace IDs, retry counts, etc.).
-export function streamErrorUserMessage(category: StreamErrorCategory): string {
+// Returns a user-facing error message for a given category.
+// Never includes raw SDK details (URLs, trace IDs, retry counts, etc.) — with
+// one deliberate exception: the EMPTY_RESPONSE category forwards the vetted
+// message of an EmptyProviderResponseError (which names the provider + the
+// user-configured endpoint address, not a secret or filesystem path) so the
+// user gets an actionable message instead of a generic one (SKY-11240 AC3).
+export function streamErrorUserMessage(category: StreamErrorCategory, err?: unknown): string {
   switch (category) {
     case STREAM_ERROR_CATEGORIES.RATE_LIMITED:
       return 'Rate limit reached — try again shortly.';
@@ -86,6 +96,10 @@ export function streamErrorUserMessage(category: StreamErrorCategory): string {
       return 'Network error — check your connection and try again.';
     case STREAM_ERROR_CATEGORIES.INVALID_REQUEST:
       return 'Invalid request — check the model and input parameters.';
+    case STREAM_ERROR_CATEGORIES.EMPTY_RESPONSE:
+      return err instanceof EmptyProviderResponseError
+        ? err.message
+        : 'The model returned an empty response — make sure a model is loaded and try again.';
     case STREAM_ERROR_CATEGORIES.UNKNOWN:
       return 'An unexpected error occurred — check the logs for details.';
   }
@@ -268,7 +282,7 @@ async function runStream(
         sender.send(STREAM_CHANNELS.STREAM_ERROR, {
           streamId,
           category,
-          message: streamErrorUserMessage(category),
+          message: streamErrorUserMessage(category, err),
         });
       }
     }

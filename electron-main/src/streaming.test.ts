@@ -14,6 +14,26 @@ vi.mock('electron', () => ({
 // isModelValid uses real logic so model-validation tests remain meaningful.
 vi.mock('./provider.js', () => {
   const allowlist = new Set(['claude-haiku-4-5-20251001', 'claude-sonnet-4-6', 'claude-opus-4-7']);
+  const labels: Record<string, string> = {
+    anthropic: 'Anthropic', openai: 'OpenAI', ollama: 'Ollama',
+    lmstudio: 'LM Studio', llamacpp: 'llama.cpp', custom: 'Custom endpoint',
+  };
+  // Minimal stand-in mirroring the real EmptyProviderResponseError message so
+  // categorizeStreamError's `instanceof` check and message-passthrough work
+  // without loading the @anthropic-ai/sdk-backed real module (SKY-11240).
+  class EmptyProviderResponseError extends Error {
+    kind: string;
+    address: string;
+    constructor(kind: string, address: string) {
+      super(
+        `${labels[kind]} at ${address} returned an empty response — ` +
+          `no content and no reasoning. Make sure a model is loaded on the server and try again.`,
+      );
+      this.name = 'EmptyProviderResponseError';
+      this.kind = kind;
+      this.address = address;
+    }
+  }
   return {
     streamFromProvider: vi.fn(),
     isModelValid: (model: string, kind: string) => {
@@ -22,11 +42,12 @@ vi.mock('./provider.js', () => {
       return model.length <= 128;
     },
     ANTHROPIC_MODEL_ALLOWLIST: allowlist,
+    EmptyProviderResponseError,
   };
 });
 
 import { ipcMain } from 'electron';
-import { streamFromProvider } from './provider.js';
+import { streamFromProvider, EmptyProviderResponseError } from './provider.js';
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
 import {
   StreamRegistry,
@@ -951,6 +972,27 @@ describe('categorizeStreamError', () => {
     expect(streamErrorUserMessage(STREAM_ERROR_CATEGORIES.UNKNOWN)).toBe(
       'An unexpected error occurred — check the logs for details.',
     );
+  });
+
+  // ─── EMPTY_RESPONSE category (SKY-11240) ───
+
+  it('categorizes EmptyProviderResponseError as EMPTY_RESPONSE', () => {
+    const err = new EmptyProviderResponseError('lmstudio', 'http://127.0.0.1:1234/v1');
+    expect(categorizeStreamError(err)).toBe(STREAM_ERROR_CATEGORIES.EMPTY_RESPONSE);
+  });
+
+  it('forwards the EmptyProviderResponseError message (provider + address) verbatim', () => {
+    const err = new EmptyProviderResponseError('lmstudio', 'http://127.0.0.1:1234/v1');
+    const msg = streamErrorUserMessage(STREAM_ERROR_CATEGORIES.EMPTY_RESPONSE, err);
+    expect(msg).toContain('LM Studio');
+    expect(msg).toContain('http://127.0.0.1:1234/v1');
+    expect(msg).toBe(err.message);
+  });
+
+  it('falls back to a generic empty-response message when no error is supplied', () => {
+    const msg = streamErrorUserMessage(STREAM_ERROR_CATEGORIES.EMPTY_RESPONSE);
+    expect(msg).toMatch(/empty response/i);
+    expect(msg).not.toContain('http');
   });
 });
 

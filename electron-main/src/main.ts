@@ -3962,7 +3962,7 @@ const handlers: IpcHandlers = {
         return { ok: true, latencyMs: Date.now() - t0 };
       }
       const category = categorizeStreamError(e);
-      return { ok: false, latencyMs: Date.now() - t0, error: streamErrorUserMessage(category) };
+      return { ok: false, latencyMs: Date.now() - t0, error: streamErrorUserMessage(category, e) };
     }
   },
 
@@ -8844,11 +8844,13 @@ function registerBrainstormHandler() {
       if ((err as Error)?.name !== 'AbortError') {
         genError = (err as Error).message ?? 'unknown error';
         const category = categorizeStreamError(err);
-        const userMessage = streamErrorUserMessage(category);
+        const userMessage = streamErrorUserMessage(category, err);
         if (!event.sender.isDestroyed()) {
           event.sender.send('agent:brainstorm:error', { requestId, category, message: userMessage });
         }
-        throw new Error(userMessage);
+        // SafeIpcError so a URL-bearing EMPTY_RESPONSE message survives the IPC
+        // sanitizer (userMessage is already the vetted user-facing string).
+        throw new SafeIpcError(userMessage);
       }
     } finally {
       agentControllers.delete(requestId);
@@ -8968,11 +8970,13 @@ function registerArchiveChatHandler() {
       if ((err as Error)?.name !== 'AbortError') {
         genError = (err as Error).message ?? 'unknown error';
         const category = categorizeStreamError(err);
-        const userMessage = streamErrorUserMessage(category);
+        const userMessage = streamErrorUserMessage(category, err);
         if (!event.sender.isDestroyed()) {
           event.sender.send('agent:archive:error', { requestId, category, message: userMessage });
         }
-        throw new Error(userMessage);
+        // SafeIpcError so a URL-bearing EMPTY_RESPONSE message survives the IPC
+        // sanitizer (userMessage is already the vetted user-facing string).
+        throw new SafeIpcError(userMessage);
       }
     } finally {
       agentControllers.delete(requestId);
@@ -9200,11 +9204,13 @@ function registerWritingAssistantHandler() {
       if ((err as Error)?.name !== 'AbortError') {
         genError = (err as Error).message ?? 'unknown error';
         const category = categorizeStreamError(err);
-        const userMessage = streamErrorUserMessage(category);
+        const userMessage = streamErrorUserMessage(category, err);
         if (!event.sender.isDestroyed()) {
           event.sender.send('agent:writing-assistant:error', { requestId, category, message: userMessage });
         }
-        throw new Error(userMessage);
+        // SafeIpcError so a URL-bearing EMPTY_RESPONSE message survives the IPC
+        // sanitizer (userMessage is already the vetted user-facing string).
+        throw new SafeIpcError(userMessage);
       }
     } finally {
       agentControllers.delete(requestId);
@@ -9362,11 +9368,13 @@ Then write a short summary paragraph. If no issues are found, say so and output 
       if ((err as Error)?.name !== 'AbortError') {
         vaultGenError = (err as Error).message ?? 'unknown error';
         const category = categorizeStreamError(err);
-        const userMessage = streamErrorUserMessage(category);
+        const userMessage = streamErrorUserMessage(category, err);
         if (!event.sender.isDestroyed()) {
           event.sender.send('agent:vault-check:error', { requestId, category, message: userMessage });
         }
-        throw new Error(userMessage);
+        // SafeIpcError so a URL-bearing EMPTY_RESPONSE message survives the IPC
+        // sanitizer (userMessage is already the vetted user-facing string).
+        throw new SafeIpcError(userMessage);
       }
     } finally {
       agentControllers.delete(requestId);
@@ -10007,7 +10015,7 @@ async function runOneArchiveContinuityCheck(
     }
   } catch (err: unknown) {
     llmError = (err as Error)?.message ?? 'unknown error';
-    const userMsg = streamErrorUserMessage(categorizeStreamError(err));
+    const userMsg = streamErrorUserMessage(categorizeStreamError(err), err);
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
         win.webContents.send(IPC_CHANNELS.ARCHIVE_CONT_SCAN_ERROR, {
