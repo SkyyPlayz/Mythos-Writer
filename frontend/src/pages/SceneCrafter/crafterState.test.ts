@@ -12,6 +12,7 @@ import {
   castCardsFromSuggested,
   composeDraftBoard,
   composeDraftPassCard,
+  craftedSceneNote,
   defaultCrafterSetup,
   filterSuggested,
   groupSuggested,
@@ -369,6 +370,38 @@ describe('buildDraftPrompt (Beta 4/M19 §7.1 — Coach-framed generation)', () =
   it('omits every empty field instead of emitting blank lines', () => {
     const prompt = buildDraftPrompt(defaultCrafterSetup(), [], '');
     expect(prompt).toBe('Title: Untitled scene\n\nLength: Medium');
+  });
+});
+
+describe('craftedSceneNote (SKY-11279 — Create Scene must not drop setup fields)', () => {
+  it('includes goal/conflict/beats/tone/length but not title or POV', () => {
+    const setup: CrafterSetup = {
+      ...defaultCrafterSetup(),
+      title: 'The Broken Gate',
+      pov: 'Mira Veynn',
+      goal: 'Reach the unmapped door.',
+      conflict: 'The Broker wants a memory.',
+      beats: ['Cold open on the sealed door', 'The hum answers her blood'],
+      tones: { Tense: true },
+    };
+    const note = craftedSceneNote(setup);
+    expect(note).toContain('Goal: Reach the unmapped door.');
+    expect(note).toContain('Conflict: The Broker wants a memory.');
+    expect(note).toContain('1. Cold open on the sealed door');
+    expect(note).toContain('2. The hum answers her blood');
+    expect(note).toContain('Tone: Tense');
+    expect(note).toContain('Length: Medium');
+    expect(note).not.toContain('The Broken Gate');
+    expect(note).not.toContain('Mira Veynn');
+  });
+
+  it('uses the custom length text when len is Custom', () => {
+    const setup = { ...defaultCrafterSetup(), len: 'Custom' as const, customLen: '900 words' };
+    expect(craftedSceneNote(setup)).toContain('Length: 900 words');
+  });
+
+  it('still reports the default length when every other field is empty', () => {
+    expect(craftedSceneNote(defaultCrafterSetup())).toBe('Length: Medium');
   });
 });
 

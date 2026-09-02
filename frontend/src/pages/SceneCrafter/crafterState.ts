@@ -585,6 +585,28 @@ export const CRAFTER_GENERATE_COPY =
   'Set the shape — the Writing Coach drafts a first-pass scaffold from YOUR ' +
   'beats, then annotates why it made each choice, so the rewrite teaches you.';
 
+/**
+ * Content for the leading `note` block a scene is seeded with on **Create
+ * Scene** (SKY-11279): goal/conflict/beats/tone/length, the setup fields
+ * `Generate ✦` reads but that a bypass-AI scene creation would otherwise
+ * drop entirely. `pov` is not included here — it has its own `Scene.pov`
+ * field and is wired through separately.
+ */
+export function craftedSceneNote(setup: CrafterSetup): string {
+  const tones = CRAFTER_TONES.filter((tone) => setup.tones[tone]);
+  const length = setup.len === 'Custom' ? (setup.customLen.trim() || 'Custom') : setup.len;
+  const goal = setup.goal.trim();
+  const conflict = setup.conflict.trim();
+  const lines = [
+    goal ? `Goal: ${goal}` : '',
+    conflict ? `Conflict: ${conflict}` : '',
+    setup.beats.length > 0 ? `Beats:\n${setup.beats.map((beat, i) => `${i + 1}. ${beat}`).join('\n')}` : '',
+    tones.length > 0 ? `Tone: ${tones.join(', ')}` : '',
+    `Length: ${length}`,
+  ].filter(Boolean);
+  return lines.join('\n\n');
+}
+
 /** Build the user-turn message sent alongside CRAFTER_COACH_SYSTEM_PROMPT. */
 export function buildDraftPrompt(setup: CrafterSetup, chosen: ChosenCard[], summary: string): string {
   const tones = CRAFTER_TONES.filter((tone) => setup.tones[tone]);

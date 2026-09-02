@@ -1172,4 +1172,43 @@ test.describe('SKY-11213 — Create Scene from Setup (no AI draft)', () => {
     });
     expect(sceneFile, `A scene file containing "The Reckoning" must exist on disk in ${localVaultDir}`).toBeTruthy();
   });
+
+  // SKY-11279: follow-up to SKY-11213 — Create Scene shipped the button and
+  // the disk write, but silently dropped every Setup field but the title.
+  test('SKY-11279: "Create Scene" carries POV/goal/conflict/beats/tone into the created scene', async () => {
+    await openBoardView(localPage);
+
+    await localPage.locator('input[placeholder="The next scene…"]').fill('The Vigil');
+    await localPage.locator('input[aria-label="POV"]').fill('Corvin Ashe');
+    await localPage.locator('textarea[placeholder="What must this scene reach?"]').fill('Slip past the watch unseen.');
+    await localPage.locator('textarea[placeholder="What stands in the way?"]').fill('The gate guard knows his face.');
+
+    const beatInput = localPage.locator('input[aria-label="Add a beat"]');
+    await beatInput.fill('He counts the guard rotation.');
+    await beatInput.press('Enter');
+    await beatInput.fill('The lantern gutters at the worst moment.');
+    await beatInput.press('Enter');
+    await expect(localPage.getByTestId('sc-beat-1')).toBeVisible({ timeout: 5_000 });
+
+    await localPage.locator('button.sc-tone', { hasText: 'Dread' }).click();
+
+    const createBtn = localPage.getByTestId('sc-create-scene-btn');
+    await createBtn.click();
+    await expect(localPage.locator('.block-editor')).toBeVisible({ timeout: 10_000 });
+
+    const manuscriptDir = path.join(localVaultDir, 'Manuscript');
+    const sceneFiles = fs.existsSync(manuscriptDir)
+      ? findFilesRecursive(manuscriptDir, '.md')
+      : findFilesRecursive(localVaultDir, '.md');
+    const sceneFile = sceneFiles.find((f) => fs.readFileSync(f, 'utf-8').includes('The Vigil'));
+    expect(sceneFile, `A scene file containing "The Vigil" must exist on disk in ${localVaultDir}`).toBeTruthy();
+
+    const content = fs.readFileSync(sceneFile as string, 'utf-8');
+    expect(content).toContain('pov: "Corvin Ashe"');
+    expect(content).toContain('Slip past the watch unseen.');
+    expect(content).toContain('The gate guard knows his face.');
+    expect(content).toContain('He counts the guard rotation.');
+    expect(content).toContain('The lantern gutters at the worst moment.');
+    expect(content).toContain('Dread');
+  });
 });
