@@ -513,7 +513,7 @@ jobs:
 
   e2e-shard-2:
     # Shard 2: writing-assistant-tips, two-vault, notes-vault-registry (SKY-11058), story-vault-registry (SKY-11150), versioned-drafts, entity, title-bar-undo-redo, mythos-migration
-    # two-vault-firstrun, notes-tab, archive-agent-mvp, onboarding, editor-page-chrome, coach-page (SKY-6933 sweep)
+    # two-vault-firstrun, notes-tab, archive-agent-mvp, editor-page-chrome, coach-page (SKY-6933 sweep)
     # agent-hub-session-picker (SKY-8537, #1130 — added by SKY-8749 audit, was never wired into CI)
     # notes-split-pane-tab-strips (SKY-9784, rebalanced in from shard-4 by SKY-11045)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
@@ -657,9 +657,6 @@ jobs:
       - name: E2E — Brainstorm scene-append writes real content to disk (SKY-8007, SKY-8447)
         run: xvfb-run --auto-servernum npm run test:e2e:brainstorm-scene-append
 
-      - name: E2E — Custom template lifecycle (SKY-6933 sweep, skip-guarded — test setup bug)
-        run: xvfb-run --auto-servernum npm run test:e2e:custom-template-lifecycle
-
       - name: "E2E — TemplatePicker onCreated wiring (SKY-10926)"
         run: xvfb-run --auto-servernum npm run test:e2e:note-template-picker-oncreated
 
@@ -668,9 +665,6 @@ jobs:
 
       - name: E2E — Keyboard shortcuts dialog (SKY-6933 sweep, skip-guarded — stale selectors)
         run: xvfb-run --auto-servernum npm run test:e2e:keyboard-shortcuts
-
-      - name: E2E — Onboarding three first-run paths (SKY-6933 sweep)
-        run: xvfb-run --auto-servernum npm run test:e2e:onboarding
 
       - name: E2E — Story page chrome presets (SKY-6933 sweep, 1 test skip-guarded — stale selector)
         run: xvfb-run --auto-servernum npm run test:e2e:editor-page-chrome
@@ -717,7 +711,6 @@ jobs:
     # onboarding-four-paths, panel-system-wave2f, proposal-card-hover, provider-settings (SKY-6933 sweep)
     # scene-save-perf (SKY-6198), timeline-archive-quickadd (SKY-8266/SKY-8286)
     # paragraph-editing (SKY-8564), jobs-responsiveness (SKY-10768)
-    # onboarding-v2 (SKY-2009, rebalanced in from shard-4 by SKY-11045)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -878,11 +871,6 @@ jobs:
 
       - name: E2E — Background job-queue responsiveness + negative control (SKY-10768)
         run: xvfb-run --auto-servernum npm run test:e2e:jobs-responsiveness
-
-      - name: E2E — Onboarding v2 AC-OB-01..16 (SKY-2009)
-        # SKY-11045: rebalanced off shard-4 (was ~2x shards 1-3 in step count
-        # and wall-clock — see PR description for measurements)
-        run: xvfb-run --auto-servernum npm run test:e2e:onboarding-v2
 
       - name: Upload E2E report on failure
         if: failure()

@@ -144,7 +144,7 @@ test('screenshot: onboarding wizard (step 1 — path picker)', async () => {
     await page.setViewportSize(DESKTOP_VP);
 
     // Wait for onboarding screen to appear
-    const step1 = page.locator('[data-testid="screen-step1"], .onboarding-wizard, .wizard-root, .onboarding-step');
+    const step1 = page.locator('[data-testid="screen-welcome"], .onboarding-wizard, .wizard-root, .onboarding-step');
     await expect(step1.first()).toBeVisible({ timeout: 15_000 });
     await page.waitForTimeout(800);
     await applyTheme(page);

@@ -1,8 +1,19 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { ReactElement } from 'react';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+// SKY-11152 (parent spec SKY-11141 §3b) — unit coverage for the rewritten
+// 3-screen first-run wizard (Welcome → Import [import mode only] → Name your
+// vault). Replaces the pre-SKY-11152 OnboardingWizard.test.tsx /
+// OnboardingWizardV2.test.tsx, both of which covered the OLD 4-card /
+// title-author-form / genre-theme-picker / AI-provider-step flow that this
+// ticket removed wholesale (screen-step1/step1b/step1c/step2/step3,
+// custom-location/custom-template/custom-genre/custom-theme, wiz-provider —
+// none of those screens exist anymore; frontend/src/OnboardingWizard.tsx no
+// longer has a WizardStep matching any of their testids). There is no
+// meaningful adaptation for that coverage — it tested UI that was deleted, so
+// the files were deleted rather than patched. E2E coverage for the new flow
+// (including the AC-OB3-02/04 pinned SKY-11132 "import never adopts the
+// source" regression) lives in e2e/onboarding-four-paths.spec.ts and
+// e2e/tests/sky-11152-onboarding-add-vault-dialog.spec.ts.
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import OnboardingWizard from './OnboardingWizard';
 
 const BASE_SETTINGS: AppSettings = {
@@ -44,2354 +55,235 @@ const BASE_SETTINGS: AppSettings = {
   theme: 'dark',
 };
 
-const BUNDLED_TEMPLATES = [
-  { id: 'bundled:novel-3act', name: 'Novel (3-Act)', description: 'Three-act structure with chapter folders and scene notes.', story: [], notes: [], isUserTemplate: false },
-  { id: 'bundled:short-story', name: 'Short Story', description: 'Focused single-arc with one POV, clean scene list.', story: [], notes: [], isUserTemplate: false },
-  { id: 'bundled:worldbuilding-bible', name: 'World-building Bible', description: 'Lore, maps, factions, and character sheets.', story: [], notes: [], isUserTemplate: false },
-  { id: 'bundled:series-bible', name: 'Series Bible', description: 'Multi-book structure with shared canon notes.', story: [], notes: [], isUserTemplate: false },
-];
-
-// SKY-2993: canonical dry-run preview returned by the mocked dryRunObsidianImport
-const OBS_PREVIEW = {
-  markdownCount: 12,
-  attachmentCount: 3,
-  totalFiles: 15,
-  topLevelFolders: ['Notes', 'Attachments'],
-  sampleFiles: ['Notes/idea.md', 'Notes/plot.md'],
-};
-
-function resolvedInEffect<T>(value: T): Promise<T> {
-  return {
-    then(onFulfilled?: (resolvedValue: T) => unknown) {
-      onFulfilled?.(value);
-      return { catch: () => undefined };
-    },
-  } as unknown as Promise<T>;
-}
-
-function makeApi(overrides: Partial<{
-  onboardingComplete: ReturnType<typeof vi.fn>;
-  validatePath: ReturnType<typeof vi.fn>;
-  chooseVaultFolder: ReturnType<typeof vi.fn>;
-  templateList: ReturnType<typeof vi.fn>;
-  templateRename: ReturnType<typeof vi.fn>;
-  templateDelete: ReturnType<typeof vi.fn>;
-  templateDuplicate: ReturnType<typeof vi.fn>;
-  vaultGetPaths: ReturnType<typeof vi.fn>;
-  vaultGetSystemPaths: ReturnType<typeof vi.fn>;
-  settingsSet: ReturnType<typeof vi.fn>;
-  importDocxToStoryVault: ReturnType<typeof vi.fn>;
-  dryRunObsidianImport: ReturnType<typeof vi.fn>;
-  importObsidianVault: ReturnType<typeof vi.fn>;
-  onObsidianImportProgress: ReturnType<typeof vi.fn>;
-}> = {}) {
-  return {
-    onboardingComplete: overrides.onboardingComplete ?? vi.fn().mockResolvedValue({ ok: true, firstSceneId: 'scene-1', firstScenePath: 'Manuscript/Chapter 1/chapter-1-scene-1.md' }),
-    validatePath: overrides.validatePath ?? vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true }),
-    chooseVaultFolder: overrides.chooseVaultFolder ?? vi.fn().mockResolvedValue({ path: '/home/user/Stories', cancelled: false }),
-    templateList: overrides.templateList ?? vi.fn().mockResolvedValue({ templates: BUNDLED_TEMPLATES }),
-    templateRename: overrides.templateRename ?? vi.fn().mockResolvedValue({ ok: true }),
-    templateDelete: overrides.templateDelete ?? vi.fn().mockResolvedValue({ ok: true }),
-    templateDuplicate: overrides.templateDuplicate ?? vi.fn().mockResolvedValue({ ok: true, id: 'user:copy' }),
-    vaultGetPaths: overrides.vaultGetPaths ?? vi.fn(() => resolvedInEffect({ homeDir: '/home/user', pathSeparator: '/', defaultVaultsParentPath: '/home/user/MythosVaults' })),
-    vaultGetSystemPaths: overrides.vaultGetSystemPaths ?? vi.fn(() => resolvedInEffect({
-      homeDir: '/home/user',
-      documentsDir: '/home/user/Documents',
-      desktopDir: '/home/user/Desktop',
-      oneDriveDir: null,
-      iCloudDir: null,
-    })),
-    settingsSet: overrides.settingsSet ?? vi.fn().mockResolvedValue({ saved: true }),
-    importDocxToStoryVault: overrides.importDocxToStoryVault ?? vi.fn().mockResolvedValue({ ok: true, importedStories: [], errors: [] }),
-    // SKY-2993: Obsidian vault importer (onboarding Path 3)
-    dryRunObsidianImport: overrides.dryRunObsidianImport ?? vi.fn().mockResolvedValue({ preview: OBS_PREVIEW }),
-    importObsidianVault: overrides.importObsidianVault ?? vi.fn().mockResolvedValue({ ok: true, mythosVaultRoot: '/home/user/MythosVaults/notes' }),
-    onObsidianImportProgress: overrides.onObsidianImportProgress ?? vi.fn().mockReturnValue(() => {}),
-  };
-}
-
-let mockApi: ReturnType<typeof makeApi>;
-let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
-
-const BUNDLED_TEMPLATE = { id: 'bundled:novel-3act', name: 'Novel (3-Act)', description: 'Three-act novel', story: [{ name: 'Manuscript' }], notes: [{ name: 'Characters' }] };
-const USER_TEMPLATE    = { id: 'user:my-template',  name: 'My Template',   description: 'My saved template', story: [], notes: [], isUserTemplate: true, savedAt: '2026-06-01' };
+const mockChooseVaultFolder = vi.fn();
+const mockVaultGetPaths = vi.fn();
+const mockCreateVaultFromOptions = vi.fn();
+const mockDryRunObsidianImport = vi.fn();
 
 beforeEach(() => {
-  mockApi = makeApi();
-  (window as unknown as { api: unknown }).api = mockApi;
-  vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { fn(0); return 0; });
-  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.clearAllMocks();
+  mockVaultGetPaths.mockResolvedValue({ defaultVaultsParentPath: '/home/writer/Mythos Vaults', pathSeparator: '/' });
+  mockCreateVaultFromOptions.mockResolvedValue({
+    ok: true,
+    mode: 'template',
+    mythosRoot: '/home/writer/Mythos Vaults/My Vault',
+    storyVaultPath: '/home/writer/Mythos Vaults/My Vault/Story Vault',
+    notesVaultPath: '/home/writer/Mythos Vaults/My Vault/Notes Vault',
+    vaultName: 'My Vault',
+  });
+  Object.defineProperty(window, 'api', {
+    value: {
+      chooseVaultFolder: mockChooseVaultFolder,
+      vaultGetPaths: mockVaultGetPaths,
+      createVaultFromOptions: mockCreateVaultFromOptions,
+      dryRunObsidianImport: mockDryRunObsidianImport,
+    },
+    writable: true,
+    configurable: true,
+  });
 });
 
-afterEach(() => {
-  const actWarnings = consoleErrorSpy.mock.calls.filter((call: unknown[]) => {
-    const [message] = call;
-    return typeof message === 'string' && message.includes('not wrapped in act');
-  });
-  try {
-    expect(actWarnings).toEqual([]);
-  } finally {
-    consoleErrorSpy.mockRestore();
-    vi.unstubAllGlobals();
-  }
-});
-
-async function flushAsyncEffects() {
-  await act(async () => {
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
-  });
+function renderWizard(onComplete = vi.fn(), onCancel = vi.fn()) {
+  render(
+    <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} onCancel={onCancel} />,
+  );
+  return { onComplete, onCancel };
 }
 
-async function renderWizard(ui: ReactElement) {
-  const result = render(ui);
-  await flushAsyncEffects();
-  return result;
-}
+describe('OnboardingWizard — Welcome screen (3 path cards)', () => {
+  it('renders exactly the 3 supported cards, template flagged RECOMMENDED', async () => {
+    renderWizard();
+    await waitFor(() => expect(screen.getByTestId('screen-welcome')).toBeTruthy());
 
-// SKY-7593: "Start fresh" is renamed "Start blank" per design-handoff v2 §1.1.
-async function openStartFresh() {
-  fireEvent.click(screen.getByTestId('card-start-blank'));
-  await flushAsyncEffects();
-}
-
-// SKY-7593: "Open sample project" is now a top-level step1 card (design-handoff
-// v2 §1.1 promotes it out of the footer, matching the CTO ruling in SKY-7590).
-async function openSampleFlow() {
-  fireEvent.click(screen.getByTestId('card-sample'));
-  await flushAsyncEffects();
-}
-
-// SKY-7593: "Use a template" moved off step1 onto the custom-location screen
-// as a secondary link (design-handoff v2 §2.2) — reach it via Start Blank first.
-async function openTemplateGallery() {
-  await openStartFresh();
-  fireEvent.click(screen.getByTestId('custom-location-use-template-link'));
-  await flushAsyncEffects();
-}
-
-// M29: Step 2 is only reachable via the template gallery now. Picks the first
-// bundled template and advances to Step 2 with an optional title pre-filled.
-async function openStep2ViaTemplate(title?: string) {
-  await openTemplateGallery();
-  await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-  fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-  await waitFor(() => screen.getByTestId('template-use-btn'));
-  fireEvent.click(screen.getByTestId('template-use-btn'));
-  await flushAsyncEffects();
-  if (title !== undefined) {
-    fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: title } });
-  }
-}
-
-// M29 / SKY-7649: Step 2's CTA now navigates into the shared genre → theme →
-// provider pages instead of creating the vault directly; the actual
-// onboardingComplete() call only fires after "Open my vault ✦" on the
-// provider step (Skip, since these tests don't care about provider config).
-// Drives Step 2 → genre → theme → provider → finish with default genre/theme
-// picks (Epic Fantasy / Neon Classic).
-async function finishViaTemplateFlow(title = 'My Novel') {
-  await openStep2ViaTemplate(title);
-  fireEvent.click(screen.getByTestId('gs-create-story'));
-  await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
-  fireEvent.click(screen.getByTestId('custom-genre-continue'));
-  await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-  fireEvent.click(screen.getByTestId('custom-theme-continue'));
-  await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
-  fireEvent.click(screen.getByTestId('wiz-provider-skip'));
-  await flushAsyncEffects();
-}
-
-// ─── Step 1 ───────────────────────────────────────────────────────────────────
-
-function readOnboardingCss() {
-  return readFileSync(resolve(process.cwd(), 'src/OnboardingWizard.css'), 'utf-8');
-}
-
-function cssRule(css: string, selector: string) {
-  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const match = css.match(new RegExp(`${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, 'm'));
-  return match?.groups?.body ?? '';
-}
-
-function assertNoLiteralColorFallbacks(css: string) {
-  expect(css).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-  expect(css).not.toMatch(/rgba?\(/i);
-  expect(css).not.toMatch(/hsla?\(/i);
-}
-
-describe('OnboardingWizard — Step 1', () => {
-  it('keeps starting point cards on Liquid Neon tokens without literal color fallbacks', () => {
-    const css = readOnboardingCss();
-    const cardRule = cssRule(css, '.gs-card');
-    const hoverRule = cssRule(css, '.gs-card:hover');
-    const focusRule = cssRule(css, '.gs-card:focus-visible');
-    const titleRule = cssRule(css, '.gs-card__title');
-    const descRule = cssRule(css, '.gs-card__desc');
-    const ctaRule = cssRule(css, '.gs-card__cta');
-    const cardStyles = [cardRule, hoverRule, focusRule, titleRule, descRule, ctaRule].join('\n');
-
-    // Base card: elevated surface + subtle border + body text
-    expect(cardRule).toContain('var(--bg-elevated)');
-    expect(cardRule).toContain('var(--border-subtle)');
-    expect(cardRule).toContain('var(--text-body)');
-    // Hover: neon glow frame
-    expect(hoverRule).toContain('var(--accent)');
-    expect(hoverRule).toContain('var(--glow-md)');
-    // Focus: focus-ring token
-    expect(focusRule).toContain('var(--focus-ring)');
-    // Typography hierarchy
-    expect(titleRule).toContain('var(--text-header)');
-    expect(descRule).toContain('var(--text-muted)');
-    expect(ctaRule).toContain('var(--accent)');
-    // No raw hex / rgba / hsl in any card rule
-    assertNoLiteralColorFallbacks(cardStyles);
+    expect(screen.getByTestId('card-template')).toBeTruthy();
+    expect(screen.getByTestId('card-start-blank')).toBeTruthy();
+    expect(screen.getByTestId('card-import-obsidian')).toBeTruthy();
+    expect(screen.getByTestId('card-template').textContent).toContain('RECOMMENDED');
+    expect(screen.getByTestId('card-start-blank').textContent).not.toContain('RECOMMENDED');
+    expect(screen.getByTestId('card-import-obsidian').textContent).not.toContain('RECOMMENDED');
   });
 
-  it('turns off card transitions and press transforms for reduced motion users', () => {
-    const css = readOnboardingCss();
-
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.gs-card\s*\{[\s\S]*transition:\s*none/);
-    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*\.gs-card:active\s*\{[\s\S]*transform:\s*none/);
+  it('does NOT render the removed sample/open-existing/restore cards', async () => {
+    renderWizard();
+    await waitFor(() => expect(screen.getByTestId('screen-welcome')).toBeTruthy());
+    expect(screen.queryByTestId('card-sample')).toBeNull();
+    expect(screen.queryByTestId('card-open-existing')).toBeNull();
+    expect(screen.queryByTestId('card-restore')).toBeNull();
   });
 
-  it('renders Step 1 with correct heading and subtitle', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
-    expect(screen.getByText('Welcome to Mythos Writer')).toBeInTheDocument();
-    expect(screen.getByText('How would you like to begin?')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('shows step indicator "Step 1 of 3"', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByText('Step 1 of 3')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  // SKY-7593 (design-handoff v2 §1.1, CTO ruling SKY-7590): entry-path cards
-  // supersede the earlier SKY-6983 set (Start Fresh / Template / Import / Quick
-  // Start) — Open sample project promotes to top-level, Template + Quick Start
-  // fold into secondary links under Start Blank (see openTemplateGallery /
-  // custom-location-quick-start-link tests below).
-  it('shows four top-level starting-point cards (Sample / Start Blank / Import Obsidian / Open Existing)', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('card-sample')).toBeInTheDocument();
-    expect(screen.getByTestId('card-start-blank')).toBeInTheDocument();
-    expect(screen.getByTestId('card-import-obsidian')).toBeInTheDocument();
-    expect(screen.getByTestId('card-open-existing')).toBeInTheDocument();
-    expect(screen.queryByTestId('card-template')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('card-quick-start')).not.toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('card labels match the spec §1.1 4-card design copy', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('card-sample')).toHaveTextContent('Open sample project');
-    expect(screen.getByTestId('card-start-blank')).toHaveTextContent('Start blank');
-    expect(screen.getByTestId('card-import-obsidian')).toHaveTextContent('Import Obsidian vault');
-    expect(screen.getByTestId('card-open-existing')).toHaveTextContent('Open existing vault');
-    await act(async () => {});
-  });
-
-  it('AC-L-05: first card (Open sample project) receives focus when Step 1 mounts', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(document.activeElement).toBe(screen.getByTestId('card-sample'));
-    await act(async () => {});
-  });
-
-  it('AC-L-08: "Learn more" link is present on Step 1', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('gs-learn-more')).toBeInTheDocument();
-    expect(screen.getByTestId('gs-learn-more').textContent).toMatch(/Learn more/);
-    await act(async () => {});
-  });
-
-  // SKY-7593: Quick Start now launches from the custom-location screen's
-  // "One-click setup" link (spec §2.2), not a step1 card.
-  it('clicking "One-click setup" navigates to the shared genre step (2-step flow)', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openStartFresh();
-    fireEvent.click(screen.getByTestId('custom-location-quick-start-link'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
-    expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
-    // SKY-7649: the tail grew a 3rd "AI helpers" step.
-    expect(screen.getByText('Quick Start · 1 of 3')).toBeInTheDocument();
-    expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
-    await act(async () => {});
-  });
-
-  it('shows scaffold error UI when vault creation fails via One-click setup', async () => {
-    mockApi = makeApi({
-      onboardingComplete: vi.fn().mockResolvedValue({ ok: false, error: 'Disk full' }),
-    });
-    (window as unknown as { api: unknown }).api = mockApi;
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    await openStartFresh();
-    fireEvent.click(screen.getByTestId('custom-location-quick-start-link'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('custom-genre-continue'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('custom-theme-continue'));
-    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
-    await waitFor(() => expect(screen.getByTestId('gs-scaffold-error')).toBeInTheDocument());
-    expect(screen.getByTestId('gs-scaffold-error').textContent).toContain('Disk full');
-    expect(onComplete).not.toHaveBeenCalled();
-    // The retry affordances surface so the user isn't stranded on step3.
-    expect(screen.getByTestId('gs-try-again')).toBeInTheDocument();
-  });
-
-  it('Import Obsidian vault card navigates to the import / open screen (SKY-2990)', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-import-obsidian'));
-    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
-    expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
-    expect(mockApi.chooseVaultFolder).not.toHaveBeenCalled();
-    await act(async () => {});
-  });
-
-  it('Open existing vault card browses for a folder and completes onboarding', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-open-existing'));
-    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalled());
-    await act(async () => {});
-  });
-
-  it('Skip link is removed from Step 1 (replaced by card set + Learn more — SKY-2987)', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.queryByTestId('gs-skip')).not.toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('card-start-blank advances to the custom-location screen', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openStartFresh();
-    expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('card-sample advances to Step 1c (genre picker)', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openSampleFlow();
-    expect(screen.getByTestId('screen-step1c')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('"Use a template instead" link (custom-location) advances to the template gallery', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
-    // Flush the async templateList() call that fires when step1b mounts
-    await act(async () => {});
-  });
-
-  /* Skip button removed from landing screen in SKY-2987 — AC-L-07/L-08 replace it */
-
-  it('Escape on Step 1 shows cancel confirm dialog', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
+  it('Escape shows the cancel-setup confirmation; Keep Going dismisses it', async () => {
+    renderWizard();
+    await waitFor(() => expect(screen.getByTestId('screen-welcome')).toBeTruthy());
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
-    expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('close button on Step 1 shows cancel confirm dialog', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('gs-close-btn-step1'));
-    expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
-    await act(async () => {});
-  });
-});
-
-// ─── Cancel confirm dialog ────────────────────────────────────────────────────
-
-describe('OnboardingWizard — Cancel confirm dialog', () => {
-  it('"Keep Going" dismisses dialog and returns to wizard', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
-    expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
+    expect(screen.getByTestId('gs-cancel-confirm')).toBeTruthy();
     fireEvent.click(screen.getByTestId('gs-keep-going'));
-    expect(screen.queryByTestId('gs-cancel-confirm')).not.toBeInTheDocument();
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
-    await act(async () => {});
+    expect(screen.queryByTestId('gs-cancel-confirm')).toBeNull();
   });
 
-  it('"Cancel Setup" calls onCancel without calling onboardingComplete', async () => {
-    const onCancel = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} onCancel={onCancel} />);
+  it('Escape → Cancel Setup calls onCancel without touching the creation IPC', async () => {
+    const { onCancel } = renderWizard();
+    await waitFor(() => expect(screen.getByTestId('screen-welcome')).toBeTruthy());
     fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
     fireEvent.click(screen.getByTestId('gs-cancel-setup'));
     expect(onCancel).toHaveBeenCalledTimes(1);
-    expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
-    await act(async () => {});
-  });
-
-  it('dialog copy matches spec exactly', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
-    expect(screen.getByText('Cancel setup?')).toBeInTheDocument();
-    expect(screen.getByText(/Your story hasn't been created yet/)).toBeInTheDocument();
-    expect(screen.getByText(/If you close now, you'll start fresh next time/)).toBeInTheDocument();
-    expect(screen.getByTestId('gs-keep-going')).toHaveTextContent('Keep Going');
-    expect(screen.getByTestId('gs-cancel-setup')).toHaveTextContent('Cancel Setup');
-    await act(async () => {});
+    expect(mockCreateVaultFromOptions).not.toHaveBeenCalled();
   });
 });
 
-// ─── Step 1b: Template sub-picker ─────────────────────────────────────────────
-
-describe('OnboardingWizard — Step 1b (template picker)', () => {
-  it('shows "Choose a template" heading', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getByText('Choose a template')).toBeInTheDocument());
+describe('OnboardingWizard — Name your vault (every non-import path)', () => {
+  it('"Start blank" lands directly on the name step (no import screen in between)', async () => {
+    renderWizard();
+    await waitFor(() => expect(screen.getByTestId('screen-welcome')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('card-start-blank'));
+    await waitFor(() => expect(screen.getByTestId('screen-name')).toBeTruthy());
+    expect(screen.queryByTestId('screen-import')).toBeNull();
   });
 
-  it('loads and displays bundled template cards', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getByText('Novel (3-Act)')).toBeInTheDocument());
-    expect(screen.getByText('Short Story')).toBeInTheDocument();
-    expect(screen.getByText('World-building Bible')).toBeInTheDocument();
-    expect(screen.getByText('Series Bible')).toBeInTheDocument();
-  });
+  it('shows a live "WILL BE CREATED AT" full-path preview that updates as the user types', async () => {
+    renderWizard();
+    fireEvent.click(await screen.findByTestId('card-template'));
+    await waitFor(() => expect(screen.getByTestId('screen-name')).toBeTruthy());
+    await waitFor(() => expect(mockVaultGetPaths).toHaveBeenCalled());
 
-  it('shows "Use this →" CTA on each template card', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getAllByText(/Use this/)).toHaveLength(4));
-  });
-
-  it('Back button returns to custom-location (SKY-7593: template link now lives there)', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByTestId('gs-back-step1b'));
-    fireEvent.click(screen.getByTestId('gs-back-step1b'));
-    expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
-  });
-
-  it('selecting a template card shows preview without navigating', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
-    expect(screen.getByTestId('template-preview')).toBeInTheDocument();
-  });
-
-  it('sr-only live region announces selected template name (F-13)', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    expect(screen.getByTestId('template-announcement')).toHaveTextContent(
-      'Preview for Novel (3-Act) is ready below.'
-    );
-  });
-
-  it('selected card has aria-checked=true, others false', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    expect(screen.getByTestId('template-card-bundled:novel-3act')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('template-card-bundled:short-story')).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('switching selection updates live region and aria-checked', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:short-story'));
-    expect(screen.getByTestId('template-announcement')).toHaveTextContent(
-      'Preview for Short Story is ready below.'
-    );
-    expect(screen.getByTestId('template-card-bundled:short-story')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('template-card-bundled:novel-3act')).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('confirming preview advances to Step 2', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    await waitFor(() => screen.getByTestId('template-use-btn'));
-    fireEvent.click(screen.getByTestId('template-use-btn'));
-    await flushAsyncEffects();
-    expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
-  });
-
-  it('shows user templates under "Your Templates" section when present', async () => {
-    const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getByText('Your Templates')).toBeInTheDocument());
-    expect(screen.getByText('My Template')).toBeInTheDocument();
-  });
-
-  it('shows empty hint under "Your Templates" when no custom templates saved', async () => {
-    // mockApi returns BUNDLED_TEMPLATES only — no isUserTemplate entries
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getByText('Your Templates')).toBeInTheDocument());
-    const hint = screen.getByTestId('template-empty-hint');
-    expect(hint).toBeInTheDocument();
-    expect(hint).toHaveTextContent('No saved templates yet.');
-    expect(hint).not.toHaveStyle('font-style: italic');
-    const sub = screen.getByTestId('template-empty-hint-sub');
-    expect(sub).toHaveTextContent('Settings');
-    expect(sub).toHaveTextContent('Templates');
-  });
-
-  it('renders exactly one Import template button (SKY-3710)', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId('template-import-btn')).toBeInTheDocument());
-    expect(screen.getByTestId('template-import-btn')).toBeInTheDocument();
-  });
-
-  // SKY-1358: ARIA radiogroup/radio pattern — axe aria-allowed-role + aria-allowed-attr
-  it('template grid has role="radiogroup" labelled by the heading', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    const heading = screen.getByRole('heading', { name: 'Choose a template' });
-    expect(heading).toHaveAttribute('id', 'template-picker-heading');
-    const group = screen.getByRole('radiogroup', { name: 'Choose a template' });
-    expect(group).toBeInTheDocument();
-  });
-
-  it('each template card has role="radio" with aria-checked=false before selection', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    const radios = screen.getAllByRole('radio');
-    expect(radios.length).toBe(4);
-    radios.forEach((radio) => {
-      expect(radio).toHaveAttribute('aria-checked', 'false');
-    });
-  });
-
-  it('hides empty hint once a user template is present', async () => {
-    const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId('template-card-user:my-template')).toBeInTheDocument());
-    expect(screen.queryByTestId('template-empty-hint')).not.toBeInTheDocument();
-  });
-
-  // SKY-1358: user-template grid gets its own radiogroup role
-  it('user-template radiogroup is labelled by "Your Templates" heading', async () => {
-    const userTemplate = { id: 'user:my-template', name: 'My Template', description: 'Custom', story: [], notes: [], isUserTemplate: true };
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [...BUNDLED_TEMPLATES, userTemplate] });
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByText('Your Templates'));
-    const groups = screen.getAllByRole('radiogroup');
-    expect(groups.length).toBe(2);
-    expect(groups[1]).toHaveAttribute('aria-labelledby', 'template-picker-user-heading');
-  });
-
-  // SKY-1360: F-06 — loading indicator with aria-live while templateList() is in flight
-  it('shows loading status with role=status and aria-live=polite while fetching', async () => {
-    let resolveList!: (v: { templates: typeof BUNDLED_TEMPLATES }) => void;
-    mockApi.templateList = vi.fn().mockReturnValue(new Promise((res) => { resolveList = res; }));
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    const status = await waitFor(() => screen.getByRole('status'));
-    expect(status).toHaveAttribute('aria-live', 'polite');
-    expect(status.textContent).toMatch(/Loading templates/);
-    // resolve the fetch so the test cleans up without act() warnings
-    await act(async () => { resolveList({ templates: BUNDLED_TEMPLATES }); });
-  });
-
-  // SKY-1360: F-05 — empty-state message with role=status when list resolves to 0 items
-  it('shows empty-state status with role=status and aria-live=polite when list is empty', async () => {
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [] });
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    const status = await waitFor(() => {
-      const el = screen.getByRole('status');
-      expect(el.textContent).toMatch(/No templates available/);
-      return el;
-    });
-    expect(status).toHaveAttribute('aria-live', 'polite');
-    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
-  });
-
-  // SKY-1360: no empty-grid flash — grid is not shown before fetch completes
-  it('does not render the radiogroup while loading is in progress', async () => {
-    let resolveList!: (v: { templates: typeof BUNDLED_TEMPLATES }) => void;
-    mockApi.templateList = vi.fn().mockReturnValue(new Promise((res) => { resolveList = res; }));
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByRole('status'));
-    expect(screen.queryByRole('radiogroup')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('template-card-bundled:novel-3act')).not.toBeInTheDocument();
-    await act(async () => { resolveList({ templates: BUNDLED_TEMPLATES }); });
-  });
-
-  // SKY-1362: F-12 — Back arrow on step1b wrapped in aria-hidden so SR hears "Back, button"
-  it('step1b Back button arrow glyph is wrapped in aria-hidden span', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByTestId('gs-back-step1b'));
-    const backBtn = screen.getByTestId('gs-back-step1b');
-    const arrowSpan = backBtn.querySelector('span[aria-hidden="true"]');
-    expect(arrowSpan).toBeInTheDocument();
-    expect(arrowSpan!.textContent).toBe('\u2190');
-  });
-
-  // SKY-1412 AC-6: Esc with a selection clears it; a second Esc shows the cancel confirm
-  it('Escape with a template selected clears the selection and stays on step1b', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    expect(screen.getByTestId('template-card-bundled:novel-3act')).toHaveAttribute('aria-checked', 'true');
-    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
-    expect(screen.getByTestId('template-card-bundled:novel-3act')).toHaveAttribute('aria-checked', 'false');
-    expect(screen.queryByTestId('gs-cancel-confirm')).not.toBeInTheDocument();
-    expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
-  });
-
-  it('Escape with no template selected shows cancel confirm on step1b', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    // no card selected — Escape should show cancel confirm
-    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
-    expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
-  });
-
-  // SKY-1362/SKY-7593: F-14 — Back from template-picker restores focus to the
-  // "Use a template instead" link on custom-location (its trigger now lives
-  // there, not on step1, per design-handoff v2 §2.2).
-  it('Back from template-picker restores focus to the link that triggered navigation', async () => {
-    // Capture the rAF callback; fire it after React commits the custom-location DOM
-    // so the trigger exists. React unmounts/remounts custom-location on transition,
-    // so the implementation does a querySelector on data-testid to find the fresh
-    // element rather than using a stale captured ref.
-    const rafRef = { current: null as ((time: number) => void) | null };
-    vi.stubGlobal('requestAnimationFrame', (fn: (time: number) => void) => { rafRef.current = fn; return 0; });
-    try {
-      await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-      await openStartFresh();
-      const templateLink = screen.getByTestId('custom-location-use-template-link');
-      templateLink.focus();
-      fireEvent.click(templateLink);
-      await waitFor(() => screen.getByTestId('gs-back-step1b'));
-      await act(async () => { fireEvent.click(screen.getByTestId('gs-back-step1b')); });
-      // React committed custom-location; fire rAF — implementation finds the fresh link
-      expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
-      rafRef.current?.(0);
-      // Check focus on the freshly-mounted link (NOT the stale pre-nav ref)
-      expect(document.activeElement).toBe(screen.getByTestId('custom-location-use-template-link'));
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-});
-
-// ─── Step 1c: Genre picker (SKY-2008) ─────────────────────────────────────────
-
-describe('OnboardingWizard — Step 1c (genre picker)', () => {
-  async function renderAtStep1c() {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openSampleFlow();
-  }
-
-  it('shows genre picker screen on Sample Novel click', async () => {
-    await renderAtStep1c();
-    expect(screen.getByTestId('screen-step1c')).toBeInTheDocument();
-    expect(screen.getByText('Pick a sample world')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('renders all three genre cards in a radiogroup', async () => {
-    await renderAtStep1c();
-    expect(screen.getByTestId('genre-radiogroup')).toBeInTheDocument();
-    expect(screen.getByTestId('genre-card-cozy-fantasy')).toBeInTheDocument();
-    expect(screen.getByTestId('genre-card-sci-fi-noir')).toBeInTheDocument();
-    expect(screen.getByTestId('genre-card-mystery')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('Start button is disabled until a genre is selected', async () => {
-    await renderAtStep1c();
-    expect(screen.getByTestId('genre-start-btn')).toBeDisabled();
-    await act(async () => {});
-  });
-
-  it('selecting a genre enables Start button with genre title', async () => {
-    await renderAtStep1c();
-    fireEvent.click(screen.getByTestId('genre-card-mystery'));
-    const startBtn = screen.getByTestId('genre-start-btn');
-    expect(startBtn).not.toBeDisabled();
-    expect(startBtn).toHaveTextContent('The Last Wednesday Club');
-    await act(async () => {});
-  });
-
-  it('genre card shows aria-checked=true when selected', async () => {
-    await renderAtStep1c();
-    fireEvent.click(screen.getByTestId('genre-card-cozy-fantasy'));
-    expect(screen.getByTestId('genre-card-cozy-fantasy')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('genre-card-sci-fi-noir')).toHaveAttribute('aria-checked', 'false');
-    await act(async () => {});
-  });
-
-  it('accordion expands on toggle and collapses others', async () => {
-    await renderAtStep1c();
-    const cozyBtn = screen.getByTestId('genre-accordion-btn-cozy-fantasy');
-    fireEvent.click(cozyBtn);
-    expect(cozyBtn).toHaveAttribute('aria-expanded', 'true');
-    // Opening sci-fi accordion should close cozy one
-    fireEvent.click(screen.getByTestId('genre-accordion-btn-sci-fi-noir'));
-    expect(cozyBtn).toHaveAttribute('aria-expanded', 'false');
-    await act(async () => {});
-  });
-
-  it('Back button returns to step1 and resets genre selection', async () => {
-    await renderAtStep1c();
-    fireEvent.click(screen.getByTestId('genre-card-sci-fi-noir'));
-    fireEvent.click(screen.getByTestId('gs-back-step1c'));
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
-    // Re-entering step1c should have no selection
-    await openSampleFlow();
-    expect(screen.getByTestId('genre-start-btn')).toBeDisabled();
-    await act(async () => {});
-  });
-
-  // SKY-7649: sample now passes through the shared Theme → Provider tail
-  // (spec §1.1) before finishing, instead of finishing straight off step1c.
-  async function finishSampleFlow() {
-    fireEvent.click(screen.getByTestId('genre-start-btn'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('custom-theme-continue'));
-    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
-    await flushAsyncEffects();
-  }
-
-  it('Start funnels into the shared Theme + Provider tail before step3', async () => {
-    await renderAtStep1c();
-    fireEvent.click(screen.getByTestId('genre-card-cozy-fantasy'));
-    await finishSampleFlow();
-    await waitFor(() => expect(screen.getByTestId('screen-step3')).toBeInTheDocument());
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ startMode: 'sample', sampleGenre: 'cozy-fantasy' })
-    ));
-  });
-
-  it('error on onboardingComplete shows error card on step3, same as every other flow', async () => {
-    mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: false, error: 'Bundle not found' });
-    await renderAtStep1c();
-    fireEvent.click(screen.getByTestId('genre-card-mystery'));
-    await finishSampleFlow();
-    await waitFor(() => expect(screen.getByTestId('gs-scaffold-error')).toBeInTheDocument());
-    expect(screen.getByTestId('gs-scaffold-error')).toHaveTextContent('Bundle not found');
-    expect(screen.getByTestId('gs-try-again')).toBeInTheDocument();
-  });
-});
-
-// ─── Step 2: Name your story ──────────────────────────────────────────────────
-
-describe('OnboardingWizard — Step 2', () => {
-  // M29: screen-step2 is only reachable via the template gallery now, so
-  // mount directly at that step for tests that just need the generic form UI.
-  async function renderAtStep2() {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step2" />);
-    return screen.getByTestId('screen-step2');
-  }
-
-  it('shows "What\'s your story called?" heading', async () => {
-    await renderAtStep2();
-    expect(screen.getByText("What's your story called?")).toBeInTheDocument();
-  });
-
-  it('shows step indicator "Use a Template · 2 of 5"', async () => {
-    await renderAtStep2();
-    // SKY-7649: the tail grew a 3rd "AI helpers" step.
-    expect(screen.getByText('Use a Template · 2 of 5')).toBeInTheDocument();
-  });
-
-  // SKY-1362: F-12 — step2 Back button arrow also wrapped in aria-hidden
-  it('step2 Back button arrow glyph is wrapped in aria-hidden span', async () => {
-    await renderAtStep2();
-    const backBtn = screen.getByTestId('gs-back-step2');
-    const arrowSpan = backBtn.querySelector('span[aria-hidden="true"]');
-    expect(arrowSpan).toBeInTheDocument();
-    expect(arrowSpan!.textContent).toBe('\u2190');
-  });
-
-  it('shows Story title field as required', async () => {
-    await renderAtStep2();
-    expect(screen.getByTestId('gs-title-input')).toBeInTheDocument();
-    expect(screen.getByTestId('gs-title-input')).toHaveAttribute('aria-required', 'true');
-  });
-
-  it('shows Author name field (optional)', async () => {
-    await renderAtStep2();
-    expect(screen.getByTestId('gs-author-input')).toBeInTheDocument();
-    expect(screen.getByText(/optional/i)).toBeInTheDocument();
-  });
-
-  it('shows default save path ~/Documents/MythosWriter', async () => {
-    await renderAtStep2();
-    expect(screen.getByTestId('gs-save-path')).toHaveValue('~/Documents/MythosWriter');
-  });
-
-  it('shows "Browse…" button for save location', async () => {
-    await renderAtStep2();
-    expect(screen.getByTestId('gs-change-location')).toBeInTheDocument();
-    expect(screen.getByTestId('gs-change-location').textContent).toMatch(/Browse/);
-  });
-
-  it('"Create Story →" button is present', async () => {
-    await renderAtStep2();
-    expect(screen.getByTestId('gs-create-story')).toBeInTheDocument();
-  });
-
-  it('Back button returns to the template gallery', async () => {
-    await renderAtStep2();
-    fireEvent.click(screen.getByTestId('gs-back-step2'));
-    await flushAsyncEffects();
-    expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
-  });
-
-  it('Back from Step 2 (template path) returns to Step 1b', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    await waitFor(() => screen.getByTestId('template-use-btn'));
-    fireEvent.click(screen.getByTestId('template-use-btn'));
-    await flushAsyncEffects();
-    expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('gs-back-step2'));
-    expect(screen.getByTestId('screen-step1b')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('title value is preserved when going back from Step 2 and re-selecting the template', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openStep2ViaTemplate('My Saga');
-    fireEvent.click(screen.getByTestId('gs-back-step2'));
-    await flushAsyncEffects();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    await waitFor(() => screen.getByTestId('template-use-btn'));
-    fireEvent.click(screen.getByTestId('template-use-btn'));
-    await flushAsyncEffects();
-    expect(screen.getByTestId('gs-title-input')).toHaveValue('My Saga');
-  });
-});
-
-// ─── Step 2 validation ────────────────────────────────────────────────────────
-
-describe('OnboardingWizard — Step 2 validation', () => {
-  async function renderAtStep2() {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step2" />);
-  }
-
-  it('empty title on submit shows exact error copy', async () => {
-    await renderAtStep2();
-    fireEvent.click(screen.getByTestId('gs-create-story'));
-    await flushAsyncEffects();
-    await waitFor(() => expect(screen.getByTestId('gs-title-error')).toBeInTheDocument());
-    expect(screen.getByTestId('gs-title-error').textContent).toBe(
-      'Please give your story a title before continuing.'
-    );
-  });
-
-  it('empty title on blur shows error', async () => {
-    await renderAtStep2();
-    const input = screen.getByTestId('gs-title-input');
-    fireEvent.change(input, { target: { value: '' } });
-    fireEvent.blur(input);
-    await waitFor(() => expect(screen.getByTestId('gs-title-error')).toBeInTheDocument());
-  });
-
-  it.each(['/', '\\', ':', '*', '?', '"', '<', '>', '|'])(
-    'invalid char "%s" in title shows exact error copy',
-    async (char) => {
-      await renderAtStep2();
-      const input = screen.getByTestId('gs-title-input');
-      fireEvent.change(input, { target: { value: `My${char}Story` } });
-      fireEvent.blur(input);
-      await waitFor(() => expect(screen.getByTestId('gs-title-error')).toBeInTheDocument());
-      expect(screen.getByTestId('gs-title-error').textContent).toContain(
-        "Story titles can't contain these characters:"
-      );
-    }
-  );
-
-  it('title conflict shows conflict error and blocks advancement', async () => {
-    mockApi.validatePath = vi.fn()
-      .mockResolvedValueOnce({ exists: true, isEmpty: true, writable: true }) // save path check
-      .mockResolvedValueOnce({ exists: true, isEmpty: false, writable: true }); // story dir conflict
-    await renderAtStep2();
-    fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'Existing Story' } });
-    fireEvent.click(screen.getByTestId('gs-create-story'));
-    await flushAsyncEffects();
-    await waitFor(() => expect(screen.getByTestId('gs-title-error')).toBeInTheDocument());
-    expect(screen.getByTestId('gs-title-error').textContent).toContain('already exists in that folder');
-    expect(screen.queryByTestId('screen-step3')).not.toBeInTheDocument();
-  });
-
-  it('uses backslash separator when constructing storyDir on Windows (sep=\\\\)', async () => {
-    // Simulate Windows: vaultGetPaths returns pathSeparator='\\'
-    mockApi.vaultGetPaths = vi.fn(() =>
-      resolvedInEffect({ homeDir: 'C:\\Users\\user', pathSeparator: '\\' as const })
-    );
-    const capturedPaths: string[] = [];
-    // Track all validatePath calls; allow all to succeed (no conflict)
-    mockApi.validatePath = vi.fn().mockImplementation((path: string) => {
-      capturedPaths.push(path);
-      return Promise.resolve({ exists: false, isEmpty: true, writable: true });
-    });
-    await renderAtStep2();
-    // Do not change save-path: default '~/Documents/MythosWriter' avoids the
-    // 500ms debounce that would disable the Create button mid-test.
-    fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Story' } });
-    fireEvent.click(screen.getByTestId('gs-create-story'));
-    await flushAsyncEffects();
-    // M29: Create Story now validates then navigates into the shared genre step
-    // instead of calling onboardingComplete directly.
-    await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
-    // storyDir is the second validatePath call; it must use '\\' not '/'
-    const storyDirCall = capturedPaths.find((p) => p.includes('My Story'));
-    expect(storyDirCall).toBe('~/Documents/MythosWriter\\My Story');
-  });
-
-  it('unwritable path shows path error', async () => {
-    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: false });
-    await renderAtStep2();
-    fireEvent.change(screen.getByTestId('gs-title-input'), { target: { value: 'My Story' } });
-    fireEvent.click(screen.getByTestId('gs-create-story'));
-    await waitFor(() => expect(screen.getByTestId('gs-path-error')).toBeInTheDocument());
-    expect(screen.getByTestId('gs-path-error').textContent).toBe(
-      "Can't save to that folder. Please choose a different location."
-    );
-  });
-
-  it('"Browse…" updates save path display with tilde-prefixed value', async () => {
-    await renderAtStep2();
-    fireEvent.click(screen.getByTestId('gs-change-location'));
-    await waitFor(() => expect(screen.getByTestId('gs-save-path')).toHaveValue('~/Stories'));
-  });
-
-  it('"Browse…" shows full tilde path in input (no truncation)', async () => {
-    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({
-      path: '/home/user/Mythos/Vaults/Long Fantasy Saga With Many Books/Story Vault',
-      cancelled: false,
-    });
-
-    await renderAtStep2();
-    fireEvent.click(screen.getByTestId('gs-change-location'));
-
+    fireEvent.change(screen.getByTestId('step3-vault-name'), { target: { value: 'Aetherfall' } });
     await waitFor(() =>
-      expect(screen.getByTestId('gs-save-path')).toHaveValue(
-        '~/Mythos/Vaults/Long Fantasy Saga With Many Books/Story Vault',
-      )
+      expect(screen.getByTestId('step3-full-path').textContent).toBe('/home/writer/Mythos Vaults/Aetherfall'),
     );
   });
 
-  it('"Browse…" cancelled keeps previous path', async () => {
-    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: null, cancelled: true });
-    await renderAtStep2();
-    const pathBefore = (screen.getByTestId('gs-save-path') as HTMLInputElement).value;
-    fireEvent.click(screen.getByTestId('gs-change-location'));
-    await waitFor(() => {}); // wait for async
-    expect(screen.getByTestId('gs-save-path')).toHaveValue(pathBefore);
-  });
-});
-
-// ─── Step 2 → Step 3 submission ───────────────────────────────────────────────
-
-describe('OnboardingWizard — Step 2 → Step 3', () => {
-  // M29: Create Story on Step 2 now validates then navigates into the shared
-  // genre/theme pages instead of finishing immediately.
-  it('Create Story on Step 2 navigates to the shared genre step instead of finishing immediately', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openStep2ViaTemplate('My Novel');
-    fireEvent.click(screen.getByTestId('gs-create-story'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
-    // SKY-7649: the tail grew a 3rd "AI helpers" step.
-    expect(screen.getByText('Use a Template · 3 of 5')).toBeInTheDocument();
-    expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
-  });
-
-  it('valid submission through genre + theme advances to Step 3 (spinner shown)', async () => {
-    mockApi.onboardingComplete = vi.fn().mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 100))
-    );
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await finishViaTemplateFlow('My Novel');
-    await waitFor(() => expect(screen.getByTestId('screen-step3')).toBeInTheDocument());
-    expect(screen.getByTestId('gs-spinner')).toBeInTheDocument();
-  });
-
-  it('Step 3 close button is disabled during scaffolding (Escape does nothing)', async () => {
-    mockApi.onboardingComplete = vi.fn().mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve({ ok: true }), 500))
-    );
-    const onCancel = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} onCancel={onCancel} />);
-    await finishViaTemplateFlow('My Novel');
-    await waitFor(() => screen.getByTestId('screen-step3'));
-    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
-    expect(onCancel).not.toHaveBeenCalled();
-    expect(screen.queryByTestId('gs-cancel-confirm')).not.toBeInTheDocument();
-  });
-
-  it('successful scaffold calls onComplete with onboardingComplete=true', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    await finishViaTemplateFlow('My Novel');
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ onboardingComplete: true })
-    ));
-  });
-
-  // M29: the template-path finish call fires from the theme step and carries
-  // the selected genre + themeKey alongside the step-2 form fields.
-  it('calls onboardingComplete with correct template payload including genre + themeKey', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openStep2ViaTemplate('Epic Saga');
-    fireEvent.change(screen.getByTestId('gs-author-input'), { target: { value: 'Alex Rivera' } });
-    fireEvent.click(screen.getByTestId('gs-create-story'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('wiz-genre-sci-fi'));
-    fireEvent.click(screen.getByTestId('custom-genre-continue'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('wiz-theme-aurora'));
-    fireEvent.click(screen.getByTestId('custom-theme-continue'));
-    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
-      expect.objectContaining({
-        startMode: 'template',
-        templateId: 'bundled:novel-3act',
-        storyTitle: 'Epic Saga',
-        authorName: 'Alex Rivera',
-        genre: 'Sci-Fi',
-        themeKey: 'aurora',
-      })
-    ));
-  });
-
-  it('author name trimmed whitespace — empty string becomes undefined', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openStep2ViaTemplate('My Story');
-    fireEvent.change(screen.getByTestId('gs-author-input'), { target: { value: '   ' } });
-    fireEvent.click(screen.getByTestId('gs-create-story'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('custom-genre-continue'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('custom-theme-continue'));
-    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ authorName: undefined })
-    ));
-  });
-
-  // SKY-7649: sample now passes through the shared Theme → Provider tail
-  // (spec §1.1) before finishing.
-  it('calls onboardingComplete with correct sample payload', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openSampleFlow();
-    // Step1c: select Sci-Fi Noir genre card
-    fireEvent.click(screen.getByTestId('genre-card-sci-fi-noir'));
-    fireEvent.click(screen.getByTestId('genre-start-btn'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('custom-theme-continue'));
-    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ startMode: 'sample', sampleGenre: 'sci-fi-noir' })
-    ));
-  });
-
-  it('author name persisted to returned settings', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    await openStep2ViaTemplate('My Novel');
-    fireEvent.change(screen.getByTestId('gs-author-input'), { target: { value: 'Jane Doe' } });
-    fireEvent.click(screen.getByTestId('gs-create-story'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-genre')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('custom-genre-continue'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('custom-theme-continue'));
-    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ authorName: 'Jane Doe' })
-    ));
-  });
-
-  it('firstScene from response stored in lastOpenedScene', async () => {
-    const onComplete = vi.fn();
-    mockApi.onboardingComplete = vi.fn().mockResolvedValue({
-      ok: true,
-      firstSceneId: 'abc-123',
-      firstScenePath: 'Manuscript/Chapter 1/chapter-1-scene-1.md',
-    });
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    await finishViaTemplateFlow('My Novel');
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({
-        lastOpenedScene: expect.objectContaining({ sceneId: 'abc-123', scenePath: 'Manuscript/Chapter 1/chapter-1-scene-1.md' }),
-      })
-    ));
-  });
-});
-
-// ─── Step 3 error handling ────────────────────────────────────────────────────
-
-describe('OnboardingWizard — Step 3 error state', () => {
-  it('shows error state when onboardingComplete returns error', async () => {
-    mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: false, error: 'Disk full' });
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await finishViaTemplateFlow('My Novel');
-    await waitFor(() => expect(screen.getByTestId('gs-scaffold-error')).toBeInTheDocument());
-    expect(screen.getByText('Something went wrong creating your story.')).toBeInTheDocument();
-    expect(screen.getByTestId('gs-try-again')).toBeInTheDocument();
-    expect(screen.getByTestId('gs-open-existing')).toBeInTheDocument();
-  });
-
-  it('shows error state when onboardingComplete throws', async () => {
-    mockApi.onboardingComplete = vi.fn().mockRejectedValue(new Error('Network error'));
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await finishViaTemplateFlow('My Novel');
-    await waitFor(() => expect(screen.getByTestId('gs-scaffold-error')).toBeInTheDocument());
-  });
-
-  it('"Try Again" retries onboardingComplete', async () => {
-    mockApi.onboardingComplete = vi.fn()
-      .mockResolvedValueOnce({ ok: false, error: 'Disk full' })
-      .mockResolvedValueOnce({ ok: true });
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    await finishViaTemplateFlow('My Novel');
-    await waitFor(() => screen.getByTestId('gs-try-again'));
-    fireEvent.click(screen.getByTestId('gs-try-again'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ onboardingComplete: true })
-    ));
-  });
-
-  it('"Open Existing Story" calls onboardingComplete with skip and fires onComplete', async () => {
-    mockApi.onboardingComplete = vi.fn()
-      .mockResolvedValueOnce({ ok: false, error: 'Failed' })
-      .mockResolvedValueOnce({ ok: true });
-    const onComplete = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} />);
-    await finishViaTemplateFlow('My Novel');
-    await waitFor(() => screen.getByTestId('gs-open-existing'));
-    fireEvent.click(screen.getByTestId('gs-open-existing'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenLastCalledWith({ startMode: 'skip' }));
-    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true }));
-  });
-});
-
-// ─── SKY-1353: bundled-template fetch fallback ────────────────────────────────
-
-describe('OnboardingWizard — SKY-1353 template fetch fallback', () => {
-  it('shows inline error when templateList rejects', async () => {
-    mockApi.templateList = vi.fn().mockRejectedValue(new Error('ENOENT: no such file'));
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId('template-load-error')).toBeInTheDocument());
-    expect(screen.getByTestId('template-load-error').textContent).toContain(
-      "Bundled templates couldn't be loaded. You can still create a blank story."
+  it('template mode createNote copy describes the template folder shape', async () => {
+    renderWizard();
+    fireEvent.click(await screen.findByTestId('card-template'));
+    await waitFor(() =>
+      expect(screen.getByTestId('step3-create-note').textContent).toMatch(/Characters, Locations, Stories, Plot, Worldbuilding, Research/),
     );
   });
 
-  it('error is announced as an alert for screen readers', async () => {
-    mockApi.templateList = vi.fn().mockRejectedValue(new Error('ENOENT: no such file'));
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
-  });
-
-  it('"Create blank story" CTA navigates to Step 2', async () => {
-    mockApi.templateList = vi.fn().mockRejectedValue(new Error('ENOENT: no such file'));
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId('template-error-blank-cta')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('template-error-blank-cta'));
-    await flushAsyncEffects();
-    expect(screen.getByTestId('screen-step2')).toBeInTheDocument();
-  });
-});
-
-// ─── AC coverage ──────────────────────────────────────────────────────────────
-
-describe('OnboardingWizard — AC coverage', () => {
-  it('AC1: wizard shown on first launch (onboardingComplete falsy)', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('AC2: Step 1 shows four top-level starting-point cards', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getAllByRole('button').filter((b) => b.dataset.testid?.startsWith('card-'))).toHaveLength(4);
-    await act(async () => {});
-  });
-
-  it('AC3: From Template shows template sub-picker before Step 2', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId('screen-step1b')).toBeInTheDocument());
-    expect(screen.queryByTestId('screen-step2')).not.toBeInTheDocument();
-  });
-
-  /* AC16: Skip button removed from landing screen in SKY-2987; Restart link replaced it */
-
-  it('AC17: Back on Step 2 preserves title and template selection', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openStep2ViaTemplate('Preserved Title');
-    fireEvent.click(screen.getByTestId('gs-back-step2'));
-    await flushAsyncEffects();
-    await waitFor(() => screen.getByTestId('template-card-bundled:novel-3act'));
-    fireEvent.click(screen.getByTestId('template-card-bundled:novel-3act'));
-    await waitFor(() => screen.getByTestId('template-use-btn'));
-    fireEvent.click(screen.getByTestId('template-use-btn'));
-    await flushAsyncEffects();
-    expect(screen.getByTestId('gs-title-input')).toHaveValue('Preserved Title');
-  });
-
-  it('AC18: Escape on Step 2 shows cancel confirm', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step2" />);
-    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
-    expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('AC19: Cancel Setup does not call onboardingComplete', async () => {
-    const onCancel = vi.fn();
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} onCancel={onCancel} />);
-    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
-    fireEvent.click(screen.getByTestId('gs-cancel-setup'));
-    expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
-    await act(async () => {});
-  });
-
-  it('AC22: all user-facing strings match spec copy', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    // Step 1 copy
-    expect(screen.getByText('Welcome to Mythos Writer')).toBeInTheDocument();
-    expect(screen.getByText('How would you like to begin?')).toBeInTheDocument();
-    expect(screen.getByTestId('card-sample')).toHaveTextContent('Open sample project');
-    expect(screen.getByTestId('card-start-blank')).toHaveTextContent('Start blank');
-    expect(screen.getByTestId('card-open-existing')).toHaveTextContent('Open existing vault');
-    // Advance to Step 2 (via the template gallery) for step 2 copy
-    await openStep2ViaTemplate();
-    expect(screen.getByText("What's your story called?")).toBeInTheDocument();
-    expect(screen.getByText('Create Story →', { exact: false })).toBeInTheDocument();
-    await act(async () => {});
-  });
-});
-
-// ─── SKY-1397: template counter ───────────────────────────────────────────────
-
-describe('OnboardingWizard — Template counter (SKY-1397)', () => {
-  async function goToTemplatePicker() {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId('screen-step1b')).toBeInTheDocument());
-  }
-
-  it('reloads templateList every time step1b is shown', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    // First visit
-    await openTemplateGallery();
-    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(1));
-    // Navigate back and visit again
-    fireEvent.click(screen.getByTestId('gs-back-step1b'));
-    fireEvent.click(screen.getByTestId('custom-location-use-template-link'));
-    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
-  });
-
-  it('shows "No saved templates yet" empty state when no user templates exist', async () => {
-    await goToTemplatePicker();
-    await waitFor(() => expect(screen.getByTestId('template-empty-hint')).toBeInTheDocument());
-    expect(screen.getByTestId('template-empty-hint').textContent).toMatch(/No saved templates yet/);
-    expect(screen.getByTestId('template-empty-hint-sub').textContent).toMatch(/Settings/);
-  });
-
-  it('does not show count badge when there are no user templates', async () => {
-    await goToTemplatePicker();
-    await waitFor(() => screen.getByTestId('user-templates-heading'));
-    expect(screen.queryByTestId('user-template-count')).not.toBeInTheDocument();
-  });
-
-  it('shows count "(1)" in heading when one user template is present', async () => {
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE] });
-    await goToTemplatePicker();
-    await waitFor(() => expect(screen.getByTestId('user-template-count')).toBeInTheDocument());
-    expect(screen.getByTestId('user-template-count').textContent).toContain('1');
-  });
-
-  it('shows count "(2)" and excludes bundled templates from count', async () => {
-    const user2 = { ...USER_TEMPLATE, id: 'user:second', name: 'Second Template' };
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE, user2] });
-    await goToTemplatePicker();
-    await waitFor(() => expect(screen.getByTestId('user-template-count')).toBeInTheDocument());
-    expect(screen.getByTestId('user-template-count').textContent).toContain('2');
-  });
-
-  it('user template cards appear in the Your Templates section', async () => {
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE] });
-    await goToTemplatePicker();
-    await waitFor(() => expect(screen.getByTestId(`template-card-${USER_TEMPLATE.id}`)).toBeInTheDocument());
-    expect(screen.getByTestId(`template-card-${BUNDLED_TEMPLATE.id}`)).toBeInTheDocument();
-    expect(screen.getByTestId('user-templates-heading').textContent).toContain('Your Templates');
-  });
-});
-
-// ─── SKY-1399: rename / delete / duplicate ────────────────────────────────────
-
-describe('OnboardingWizard — Template management (SKY-1399)', () => {
-  async function goToPickerWithUserTemplate() {
-    mockApi.templateList = vi.fn().mockResolvedValue({ templates: [BUNDLED_TEMPLATE, USER_TEMPLATE] });
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    await openTemplateGallery();
-    await waitFor(() => expect(screen.getByTestId(`template-card-${USER_TEMPLATE.id}`)).toBeInTheDocument());
-  }
-
-  it('shows rename/delete/duplicate action buttons for user templates', async () => {
-    await goToPickerWithUserTemplate();
-    expect(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`template-duplicate-btn-${USER_TEMPLATE.id}`)).toBeInTheDocument();
-    expect(screen.getByTestId(`template-delete-btn-${USER_TEMPLATE.id}`)).toBeInTheDocument();
-  });
-
-  it('clicking rename shows inline input pre-filled with current name', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));
-    const input = screen.getByTestId(`template-rename-input-${USER_TEMPLATE.id}`);
-    expect(input).toBeInTheDocument();
-    expect((input as HTMLInputElement).value).toBe(USER_TEMPLATE.name);
-  });
-
-  it('confirms rename on Enter and reloads templates', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));
-    const input = screen.getByTestId(`template-rename-input-${USER_TEMPLATE.id}`);
-    fireEvent.change(input, { target: { value: 'Renamed Template' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(mockApi.templateRename).toHaveBeenCalledWith(USER_TEMPLATE.id, 'Renamed Template'));
-    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
-  });
-
-  it('Enter rename does not call templateRename a second time when input blurs on unmount', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));
-    const input = screen.getByTestId(`template-rename-input-${USER_TEMPLATE.id}`);
-    fireEvent.change(input, { target: { value: 'Renamed Template' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-    fireEvent.blur(input);
-    await waitFor(() => expect(mockApi.templateRename).toHaveBeenCalledTimes(1));
-  });
-
-  it('cancels rename on Escape', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-rename-btn-${USER_TEMPLATE.id}`));
-    const input = screen.getByTestId(`template-rename-input-${USER_TEMPLATE.id}`);
-    fireEvent.keyDown(input, { key: 'Escape' });
-    expect(screen.queryByTestId(`template-rename-input-${USER_TEMPLATE.id}`)).not.toBeInTheDocument();
-    expect(mockApi.templateRename).not.toHaveBeenCalled();
-  });
-
-  it('clicking duplicate calls templateDuplicate and reloads', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-duplicate-btn-${USER_TEMPLATE.id}`));
-    await waitFor(() => expect(mockApi.templateDuplicate).toHaveBeenCalledWith(USER_TEMPLATE.id));
-    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
-  });
-
-  it('clicking delete shows confirm dialog', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-delete-btn-${USER_TEMPLATE.id}`));
-    expect(screen.getByTestId('template-delete-confirm-dialog')).toBeInTheDocument();
-  });
-
-  it('confirming delete calls templateDelete and reloads', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-delete-btn-${USER_TEMPLATE.id}`));
-    fireEvent.click(screen.getByTestId('template-delete-confirm'));
-    await waitFor(() => expect(mockApi.templateDelete).toHaveBeenCalledWith(USER_TEMPLATE.id));
-    await waitFor(() => expect(mockApi.templateList).toHaveBeenCalledTimes(2));
-  });
-
-  it('cancelling delete does not call templateDelete', async () => {
-    await goToPickerWithUserTemplate();
-    fireEvent.click(screen.getByTestId(`template-delete-btn-${USER_TEMPLATE.id}`));
-    fireEvent.click(screen.getByTestId('template-delete-cancel'));
-    expect(screen.queryByTestId('template-delete-confirm-dialog')).not.toBeInTheDocument();
-    expect(mockApi.templateDelete).not.toHaveBeenCalled();
-  });
-});
-
-describe('OnboardingWizard — Migration dialog (AC-OB-18–21)', () => {
-  const LEGACY_SETTINGS: AppSettings = {
-    ...BASE_SETTINGS,
-    legacyVaultDetected: true,
-    legacyVaultDismissed: false,
-    legacyVaultPath: '/home/user/Mythos',
-  };
-
-  it('shows migration dialog when legacyVaultDetected=true and legacyVaultDismissed=false', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
-    expect(screen.getByTestId('gs-migration-dialog')).toBeInTheDocument();
-  });
-
-  it('does not show migration dialog when legacyVaultDismissed=true', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={{ ...LEGACY_SETTINGS, legacyVaultDismissed: true }} onComplete={vi.fn()} />);
-    expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
-  });
-
-  it('does not show migration dialog when legacyVaultDetected=false', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={{ ...BASE_SETTINGS, legacyVaultDetected: false }} onComplete={vi.fn()} />);
-    expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
-  });
-
-  // SKY-7649: opening an existing vault (including via the legacy-migration
-  // "Use them" path) now skips straight to Theme + Provider (spec §1.1) — the
-  // actual open() IPC call is deferred to the provider step's finish.
-  it('"Use them" dismisses dialog and funnels into Theme + Provider before opening the legacy vault path', async () => {
-    mockApi = makeApi({ chooseVaultFolder: vi.fn().mockResolvedValue({ path: null, cancelled: true }) });
-    (window as unknown as { api: unknown }).api = mockApi;
-    await renderWizard(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('gs-migration-use'));
-    expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-    expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
-    // Theme is the first tail screen for open-existing — Back is hidden.
-    expect(screen.queryByTestId('custom-theme-back')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('custom-theme-continue'));
-    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
-      startMode: 'open-existing',
-      vaultParentPath: '/home/user/Mythos',
-    }));
-  });
-
-  it('"Start fresh" dismisses dialog and leaves wizard on step1', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('gs-migration-start-fresh'));
-    expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
-  });
-
-  it('"Never show again" dismisses dialog, calls settingsSet with legacyVaultDismissed=true', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={LEGACY_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('gs-migration-never'));
-    expect(screen.queryByTestId('gs-migration-dialog')).not.toBeInTheDocument();
-    await waitFor(() => expect(mockApi.settingsSet).toHaveBeenCalledWith(
-      expect.objectContaining({ legacyVaultDismissed: true }),
-    ));
-  });
-});
-
-// ─── Import / Open screen (SKY-2990) ───────────────────────────────────────────
-
-// SKY-7649: every step-import completion path now funnels into the shared
-// Theme → Provider tail (spec §1.1) instead of finishing immediately — the
-// import/open work already happened by the time this runs, so Skip is enough.
-async function finishImportTail() {
-  await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-  fireEvent.click(screen.getByTestId('custom-theme-continue'));
-  await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
-  fireEvent.click(screen.getByTestId('wiz-provider-skip'));
-  await flushAsyncEffects();
-}
-
-describe('OnboardingWizard — Import / Open screen (SKY-2990)', () => {
-  it('AC-I-01: card-import-obsidian navigates to import screen', async () => {
-    await renderWizard(<OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} />);
-    fireEvent.click(screen.getByTestId('card-import-obsidian'));
-    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
-    expect(screen.queryByTestId('screen-step1')).not.toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('AC-I-02: import screen has all three sections', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+  it('blank mode createNote copy says the vault starts empty', async () => {
+    renderWizard();
+    fireEvent.click(await screen.findByTestId('card-start-blank'));
+    await waitFor(() =>
+      expect(screen.getByTestId('step3-create-note').textContent).toMatch(/Starts empty/),
     );
-    expect(screen.getByTestId('import-section-mw')).toBeInTheDocument();
-    expect(screen.getByTestId('import-section-obs')).toBeInTheDocument();
-    expect(screen.getByTestId('import-section-docx')).toBeInTheDocument();
-    await act(async () => {});
   });
 
-  it('AC-I-03: Import/Open button disabled until a field is filled', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+  it('submitting calls createVaultFromOptions with mode/name/activate:true and finishes onboarding', async () => {
+    const { onComplete } = renderWizard();
+    fireEvent.click(await screen.findByTestId('card-template'));
+    await waitFor(() => expect(screen.getByTestId('screen-name')).toBeTruthy());
+
+    fireEvent.change(screen.getByTestId('step3-vault-name'), { target: { value: 'Aetherfall' } });
+    fireEvent.click(screen.getByTestId('step3-open-vault'));
+
+    await waitFor(() => expect(mockCreateVaultFromOptions).toHaveBeenCalledTimes(1));
+    expect(mockCreateVaultFromOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'template', name: 'Aetherfall', activate: true }),
     );
-    expect(screen.getByTestId('import-action-btn')).toBeDisabled();
-    await act(async () => {});
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+    const updated = onComplete.mock.calls[0][0] as AppSettings;
+    expect(updated.onboardingComplete).toBe(true);
   });
 
-  it('AC-I-04: Import/Open button enabled after MW path is typed', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/MyVault' } });
-    expect(screen.getByTestId('import-action-btn')).not.toBeDisabled();
-    await act(async () => {});
-  });
+  it('surfaces a scaffold error inline and does not call onComplete when creation fails', async () => {
+    mockCreateVaultFromOptions.mockResolvedValueOnce({ ok: false, error: 'Destination is not writable.' });
+    const { onComplete } = renderWizard();
+    fireEvent.click(await screen.findByTestId('card-start-blank'));
+    await waitFor(() => expect(screen.getByTestId('screen-name')).toBeTruthy());
 
-  it('AC-I-05: MW Browse button calls chooseVaultFolder and fills in path', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    fireEvent.click(screen.getByTestId('import-mw-browse'));
-    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Open existing Mythos vault'));
-    await waitFor(() => expect(screen.getByTestId('import-mw-path')).toHaveValue('/home/user/Stories'));
-    expect(screen.getByTestId('import-action-btn')).not.toBeDisabled();
-    await act(async () => {});
-  });
-
-  it('AC-I-06: Obsidian notes Browse sets the notes path display', async () => {
-    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/ObsNotes', cancelled: false });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    fireEvent.click(screen.getByTestId('import-obs-notes-browse'));
-    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Select Obsidian notes folder'));
-    await waitFor(() => expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('/home/user/ObsNotes'));
-    await act(async () => {});
-  });
-
-  it('AC-I-07: Obsidian story Browse sets the story path display', async () => {
-    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/ObsStory', cancelled: false });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    fireEvent.click(screen.getByTestId('import-obs-story-browse'));
-    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Select Obsidian story folder'));
-    await waitFor(() => expect(screen.getByTestId('import-obs-story-path')).toHaveValue('/home/user/ObsStory'));
-    await act(async () => {});
-  });
-
-  it('AC-I-08: tip text is shown', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    expect(screen.getByTestId('import-tip')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('AC-I-09: MW Browse cancelled leaves path empty and button disabled', async () => {
-    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: null, cancelled: true });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    fireEvent.click(screen.getByTestId('import-mw-browse'));
-    await act(async () => {});
-    expect(screen.getByTestId('import-mw-path')).toHaveValue('');
-    expect(screen.getByTestId('import-action-btn')).toBeDisabled();
-  });
-
-  it('AC-I-10: Import MW vault calls onboardingComplete with open-existing startMode', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
-    );
-    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/MyVault' } });
-    fireEvent.click(screen.getByTestId('import-action-btn'));
-    await waitFor(() => expect(mockApi.onboardingComplete).toHaveBeenCalledWith({
-      startMode: 'open-existing',
-      vaultParentPath: '/home/user/MyVault',
-    }));
-    await finishImportTail();
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
-  });
-
-  it('AC-I-11: MW import failure shows error modal, does not call onComplete', async () => {
-    const onComplete = vi.fn();
-    mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: false, error: 'Not a Mythos vault' });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
-    );
-    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/Bad' } });
-    fireEvent.click(screen.getByTestId('import-action-btn'));
-    await waitFor(() => expect(screen.getByTestId('import-error-modal')).toBeInTheDocument());
-    expect(screen.getByTestId('import-error-modal')).toHaveTextContent('Not a Mythos vault');
+    fireEvent.click(screen.getByTestId('step3-open-vault'));
+    await waitFor(() => expect(screen.getByTestId('gs-scaffold-error').textContent).toContain('Destination is not writable.'));
     expect(onComplete).not.toHaveBeenCalled();
   });
 
-  it('AC-E-01: error modal dismiss hides the modal', async () => {
-    mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: false, error: 'Fail' });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
+  it('"Default folder" chip resets the path to the default vaults parent', async () => {
+    renderWizard();
+    fireEvent.click(await screen.findByTestId('card-start-blank'));
+    await waitFor(() => expect(mockVaultGetPaths).toHaveBeenCalled());
+
+    fireEvent.change(screen.getByTestId('step3-path-path'), { target: { value: '/custom/spot' } });
+    fireEvent.click(screen.getByTestId('step3-path-reset'));
+    await waitFor(() =>
+      expect(screen.getByTestId('step3-full-path').textContent).toContain('/home/writer/Mythos Vaults'),
     );
-    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/bad' } });
-    fireEvent.click(screen.getByTestId('import-action-btn'));
-    await waitFor(() => expect(screen.getByTestId('import-error-modal')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('import-error-dismiss'));
-    expect(screen.queryByTestId('import-error-modal')).not.toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  // ─── SKY-2993: Obsidian import flow (dry-run → report → confirm) ──────────
-
-  // Helper: fill the Obsidian slot(s) via Browse, submit, and wait for the
-  // dry-run report view to appear.
-  async function openObsReport(notesPath = '/obs/notes', storyPath?: string) {
-    mockApi.chooseVaultFolder = vi.fn((title: string) => Promise.resolve(
-      title === 'Select Obsidian notes folder'
-        ? { path: notesPath, cancelled: false }
-        : { path: storyPath ?? null, cancelled: !storyPath },
-    ));
-    fireEvent.click(screen.getByTestId('import-obs-notes-browse'));
-    await waitFor(() => expect(screen.getByTestId('import-obs-notes-path')).toHaveValue(notesPath));
-    if (storyPath) {
-      fireEvent.click(screen.getByTestId('import-obs-story-browse'));
-      await waitFor(() => expect(screen.getByTestId('import-obs-story-path')).toHaveValue(storyPath));
-    }
-    fireEvent.click(screen.getByTestId('import-action-btn'));
-    await waitFor(() => expect(screen.getByTestId('obs-dryrun-report')).toBeInTheDocument());
-  }
-
-  it('AC-E-02: Obsidian submit runs dry-run and renders the report', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    await openObsReport('/obs/notes');
-    expect(mockApi.dryRunObsidianImport).toHaveBeenCalledWith('/obs/notes', 'notes');
-    const report = screen.getByTestId('obs-report-notes');
-    expect(report).toHaveTextContent('/obs/notes');
-    expect(report).toHaveTextContent('12 markdown notes');
-    expect(report).toHaveTextContent('3 attachments');
-    expect(report).toHaveTextContent('15 files total');
-    expect(report).toHaveTextContent('Notes, Attachments');
-    expect(report).toHaveTextContent('Notes/idea.md');
-    await act(async () => {});
-  });
-
-  it('AC-E-02b: Confirm import calls importObsidianVault and fires onComplete', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
-    );
-    await openObsReport('/obs/notes');
-    fireEvent.click(screen.getByTestId('obs-report-confirm'));
-    // SKY-10388: one call, one NEW vault — destination prefilled from
-    // vaultGetPaths, vault named after the source folder.
-    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledWith({
-      targets: [{ kind: 'notes', srcPath: '/obs/notes' }],
-      destParentPath: '/home/user/MythosVaults',
-      destVaultName: 'notes',
-    }));
-    await finishImportTail();
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
-  });
-
-  it('AC-E-02c: both notes and story targets are scanned and imported', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
-    );
-    await openObsReport('/obs/notes', '/obs/story');
-    expect(mockApi.dryRunObsidianImport).toHaveBeenCalledWith('/obs/notes', 'notes');
-    expect(mockApi.dryRunObsidianImport).toHaveBeenCalledWith('/obs/story', 'story');
-    expect(screen.getByTestId('obs-report-notes')).toBeInTheDocument();
-    expect(screen.getByTestId('obs-report-story')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('obs-report-confirm'));
-    // SKY-10388: both sides land in the SAME new vault via a single call.
-    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledWith({
-      targets: [
-        { kind: 'notes', srcPath: '/obs/notes' },
-        { kind: 'story', srcPath: '/obs/story' },
-      ],
-      destParentPath: '/home/user/MythosVaults',
-      destVaultName: 'notes',
-    }));
-    await finishImportTail();
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
-    expect(mockApi.importObsidianVault).toHaveBeenCalledTimes(1);
-  });
-
-  it('AC-E-02d: report Back returns to the form without importing', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    await openObsReport('/obs/notes');
-    fireEvent.click(screen.getByTestId('obs-report-back'));
-    await waitFor(() => expect(screen.getByTestId('import-section-obs')).toBeInTheDocument());
-    expect(screen.queryByTestId('obs-dryrun-report')).not.toBeInTheDocument();
-    expect(mockApi.importObsidianVault).not.toHaveBeenCalled();
-    // the chosen path is preserved so the user can adjust and resubmit
-    expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('/obs/notes');
-    await act(async () => {});
-  });
-
-  it('AC-E-02e: progress events render while the import runs', async () => {
-    let progressCb: ((d: { current: number; total: number; lastAction: string }) => void) | undefined;
-    const unsubscribe = vi.fn();
-    mockApi.onObsidianImportProgress = vi.fn(
-      (cb: (d: { current: number; total: number; lastAction: string }) => void) => {
-        progressCb = cb;
-        return unsubscribe;
-      },
-    );
-    let resolveImport!: (v: { ok: boolean; targetPath?: string }) => void;
-    mockApi.importObsidianVault = vi.fn(() => new Promise((res) => { resolveImport = res; }));
-    const onComplete = vi.fn();
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
-    );
-    await openObsReport('/obs/notes');
-    fireEvent.click(screen.getByTestId('obs-report-confirm'));
-    await waitFor(() => expect(screen.getByTestId('obs-import-progress')).toBeInTheDocument());
-    expect(screen.getByTestId('obs-report-confirm')).toBeDisabled();
-    expect(screen.getByTestId('obs-report-back')).toBeDisabled();
-    await act(async () => { progressCb?.({ current: 3, total: 15, lastAction: 'Copied Notes/idea.md' }); });
-    expect(screen.getByTestId('obs-import-progress')).toHaveTextContent('Importing 3 of 15');
-    expect(screen.getByTestId('obs-import-progress')).toHaveTextContent('Copied Notes/idea.md');
-    await act(async () => { resolveImport({ ok: true }); });
-    await finishImportTail();
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
-    expect(unsubscribe).toHaveBeenCalled();
-  });
-
-  it('AC-E-02f: dry-run failure shows inline error and retry succeeds', async () => {
-    mockApi.dryRunObsidianImport = vi.fn()
-      .mockResolvedValueOnce({ error: 'Path does not exist: /obs/notes' })
-      .mockResolvedValue({ preview: OBS_PREVIEW });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/obs/notes', cancelled: false });
-    fireEvent.click(screen.getByTestId('import-obs-notes-browse'));
-    await waitFor(() => expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('/obs/notes'));
-    fireEvent.click(screen.getByTestId('import-action-btn'));
-    await waitFor(() => expect(screen.getByTestId('obs-dryrun-error')).toBeInTheDocument());
-    expect(screen.getByTestId('obs-dryrun-error')).toHaveTextContent('Path does not exist');
-    expect(screen.queryByTestId('obs-dryrun-report')).not.toBeInTheDocument();
-    // retry: same inputs, second scan succeeds
-    fireEvent.click(screen.getByTestId('import-action-btn'));
-    await waitFor(() => expect(screen.getByTestId('obs-dryrun-report')).toBeInTheDocument());
-    expect(screen.queryByTestId('obs-dryrun-error')).not.toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('AC-E-02g: import failure shows inline error in the report and Confirm retries', async () => {
-    const onComplete = vi.fn();
-    mockApi.importObsidianVault = vi.fn()
-      .mockResolvedValueOnce({ ok: false, error: 'Disk full' })
-      .mockResolvedValue({ ok: true, targetPath: '/home/user/Vault' });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
-    );
-    await openObsReport('/obs/notes');
-    fireEvent.click(screen.getByTestId('obs-report-confirm'));
-    await waitFor(() => expect(screen.getByTestId('obs-import-error')).toBeInTheDocument());
-    expect(screen.getByTestId('obs-import-error')).toHaveTextContent('Disk full');
-    expect(onComplete).not.toHaveBeenCalled();
-    expect(screen.getByTestId('obs-report-confirm')).not.toBeDisabled();
-    fireEvent.click(screen.getByTestId('obs-report-confirm'));
-    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledTimes(2));
-    await finishImportTail();
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
-  });
-
-  it('SKY-8157: a dropWarning is non-fatal — onComplete still fires and no blocking error shows', async () => {
-    const onComplete = vi.fn();
-    mockApi.importObsidianVault = vi.fn().mockResolvedValue({
-      ok: true,
-      targetPath: '/home/user/Vault',
-      dropWarning: '2 file(s) from the Obsidian vault were not imported and not reported as errors — check for unsupported file types or permission issues in the source vault',
-    });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
-    );
-    await openObsReport('/obs/notes');
-    fireEvent.click(screen.getByTestId('obs-report-confirm'));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-    expect(screen.queryByTestId('obs-import-error')).not.toBeInTheDocument();
-    await finishImportTail();
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
-  });
-
-  // ─── SKY-10388: new-vault destination + multi-section submit block ────────
-
-  it('SKY-10388: destination is prefilled with the default vaults parent and browsable', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    await waitFor(() => expect(screen.getByTestId('import-obs-dest-path')).toHaveValue('/home/user/MythosVaults'));
-    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/Elsewhere', cancelled: false });
-    fireEvent.click(screen.getByTestId('import-obs-dest-browse'));
-    await waitFor(() => expect(mockApi.chooseVaultFolder).toHaveBeenCalledWith('Choose where to create the new vault', '/home/user/MythosVaults'));
-    await waitFor(() => expect(screen.getByTestId('import-obs-dest-path')).toHaveValue('/home/user/Elsewhere'));
-    await act(async () => {});
-  });
-
-  it('SKY-10388: an edited destination is sent as destParentPath on confirm', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    fireEvent.change(screen.getByTestId('import-obs-dest-path'), { target: { value: '/home/user/Custom' } });
-    await openObsReport('/obs/notes');
-    fireEvent.click(screen.getByTestId('obs-report-confirm'));
-    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledWith(
-      expect.objectContaining({ destParentPath: '/home/user/Custom' }),
-    ));
-    await finishImportTail();
-  });
-
-  it('SKY-10388: filling more than one section blocks submit and names the winning section', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/obs/notes', cancelled: false });
-    fireEvent.click(screen.getByTestId('import-obs-notes-browse'));
-    await waitFor(() => expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('/obs/notes'));
-    expect(screen.getByTestId('import-action-btn')).not.toBeDisabled();
-    expect(screen.queryByTestId('import-multi-section-msg')).not.toBeInTheDocument();
-    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/MyVault' } });
-    expect(screen.getByTestId('import-action-btn')).toBeDisabled();
-    expect(screen.getByTestId('import-multi-section-msg')).toHaveTextContent('Open Mythos Writer vault');
-    // Clearing the extra section unblocks submit again.
-    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '' } });
-    expect(screen.getByTestId('import-action-btn')).not.toBeDisabled();
-    expect(screen.queryByTestId('import-multi-section-msg')).not.toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('SKY-10388: MW validator rejects a writable folder without Story Vault/manifest.json', async () => {
-    mockApi.validatePath = vi.fn((path: string) => Promise.resolve(
-      path.endsWith('/Story Vault/manifest.json')
-        ? { exists: false, isEmpty: true, writable: false }
-        : { exists: true, isEmpty: false, writable: true },
-    ));
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/ObsFolder' } });
-    // 400ms debounce → validation resolves → invalid message (never "Folder looks good.")
-    await waitFor(
-      () => expect(screen.getByTestId('import-mw-msg')).toHaveTextContent("This doesn't look like a Mythos Writer vault"),
-      { timeout: 3000 },
-    );
-    await act(async () => {});
-  });
-
-  it('SKY-10388: MW validator accepts a folder with Story Vault/manifest.json', async () => {
-    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: true });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/RealVault' } });
-    await waitFor(
-      () => expect(screen.getByTestId('import-mw-msg')).toHaveTextContent('Folder looks good.'),
-      { timeout: 3000 },
-    );
-    expect(mockApi.validatePath).toHaveBeenCalledWith('/home/user/RealVault/Story Vault/manifest.json');
-    await act(async () => {});
-  });
-
-  it('AC-E-03: Word import calls importDocxToStoryVault and fires onComplete', async () => {
-    const onComplete = vi.fn();
-    const importDocxMock = vi.fn().mockResolvedValue({
-      ok: true,
-      importedStories: [{ filePath: '/docs/story.docx', storyId: 's1', storyTitle: 'Story', sceneCount: 2, warnings: [] }],
-      errors: [],
-    });
-    (window as unknown as { api: unknown }).api = { ...mockApi, importDocxToStoryVault: importDocxMock };
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
-    );
-    const fileInput = screen.getByTestId('import-docx-input');
-    const file = new File(['content'], 'story.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
-    fireEvent.change(fileInput);
-    await waitFor(() => expect(screen.getByText('story.docx')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('import-action-btn'));
-    await waitFor(() => expect(importDocxMock).toHaveBeenCalled());
-    await finishImportTail();
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({ onboardingComplete: true })));
-  });
-
-  // SKY-7649 regression: the import already committed by the time the tail
-  // reaches Theme (finishImportViaTail) — navigating back to step-import must
-  // not resurrect a re-triggerable "Import / Open" / "Confirm import" control
-  // with the same input still queued, or a second click re-runs the mutation.
-  it('SKY-7649 regression: Back from Theme after a completed DOCX import resets step-import (no re-triggerable Import button)', async () => {
-    const importDocxMock = vi.fn().mockResolvedValue({
-      ok: true,
-      importedStories: [{ filePath: '/docs/story.docx', storyId: 's1', storyTitle: 'Story', sceneCount: 2, warnings: [] }],
-      errors: [],
-    });
-    (window as unknown as { api: unknown }).api = { ...mockApi, importDocxToStoryVault: importDocxMock };
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    const fileInput = screen.getByTestId('import-docx-input');
-    const file = new File(['content'], 'story.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-    Object.defineProperty(fileInput, 'files', { value: [file], configurable: true });
-    fireEvent.change(fileInput);
-    await waitFor(() => expect(screen.getByText('story.docx')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('import-action-btn'));
-    await waitFor(() => expect(importDocxMock).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByTestId('custom-theme-back'));
-    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
-    expect(screen.queryByText('story.docx')).not.toBeInTheDocument();
-    expect(screen.getByTestId('import-action-btn')).toBeDisabled();
-    expect(importDocxMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('SKY-7649 regression: Back from Theme after a completed Obsidian import resets step-import (no re-triggerable Confirm button)', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    await openObsReport('/obs/notes');
-    fireEvent.click(screen.getByTestId('obs-report-confirm'));
-    await waitFor(() => expect(mockApi.importObsidianVault).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByTestId('custom-theme-back'));
-    await waitFor(() => expect(screen.getByTestId('screen-step-import')).toBeInTheDocument());
-    // Back to the empty picker form, not the stale dry-run report.
-    expect(screen.queryByTestId('obs-dryrun-report')).not.toBeInTheDocument();
-    expect(screen.getByTestId('import-obs-notes-path')).toHaveValue('');
-    expect(mockApi.importObsidianVault).toHaveBeenCalledTimes(1);
-  });
-
-  it('AC-E-04: Back button on import screen returns to step1', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    fireEvent.click(screen.getByTestId('gs-back-step-import'));
-    await waitFor(() => expect(screen.getByTestId('screen-step1')).toBeInTheDocument());
-    await act(async () => {});
-  });
-
-  it('AC-E-05: Escape on import screen shows cancel confirm', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="step-import" />,
-    );
-    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
-    await waitFor(() => expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument());
-    await act(async () => {});
   });
 });
 
+describe('OnboardingWizard — Import screen (import mode only)', () => {
+  it('Continue is disabled until at least one of the two rows has a path', async () => {
+    renderWizard();
+    fireEvent.click(await screen.findByTestId('card-import-obsidian'));
+    await waitFor(() => expect(screen.getByTestId('screen-import')).toBeTruthy());
+    expect(screen.getByTestId('step2-continue')).toBeDisabled();
 
+    fireEvent.change(screen.getByTestId('step2-notes-path'), { target: { value: '/obsidian/notes' } });
+    expect(screen.getByTestId('step2-continue')).toBeEnabled();
+  });
 
-// ─── Custom Setup path (SKY-2988) ────────────────────────────────────────────
-
-describe('OnboardingWizard — Custom Setup Screen 1: location picker (SKY-2988)', () => {
-  // Safety net: always restore real timers even if a test times out
-  afterEach(() => { vi.useRealTimers(); });
-
-  it('AC-C-01: renders custom-location screen with all required elements', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
+  it('shows the "one is enough" copy', async () => {
+    renderWizard();
+    fireEvent.click(await screen.findByTestId('card-import-obsidian'));
+    await waitFor(() =>
+      expect(screen.getByTestId('screen-import').textContent).toMatch(/One is enough/),
     );
-    expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
-    expect(screen.getByTestId('custom-vault-path-input')).toBeInTheDocument();
-    expect(screen.getByTestId('custom-vault-browse')).toBeInTheDocument();
-    expect(screen.getByTestId('custom-vault-name-input')).toBeInTheDocument();
-    expect(screen.getByTestId('custom-location-next')).toBeInTheDocument();
-    // Beta 3 M25: guided setup grew to 4 steps (location → template → genre → theme)
-    // M29: relabeled "Custom Setup" → "Start Fresh"
-    // SKY-7649: the tail grew a 3rd "AI helpers" step.
-    expect(screen.getByText('Start Fresh · 1 of 5')).toBeInTheDocument();
-    await act(async () => {});
   });
 
-  it('AC-C-01: Next button is initially disabled (default path not yet validated)', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-    );
-    expect(screen.getByTestId('custom-location-next')).toBeDisabled();
-    await act(async () => {});
-  });
-
-  it('AC-C-03: vault name is auto-derived from the default path', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-    );
-    expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('MythosWriter');
-    await act(async () => {});
-  });
-
-  it('AC-C-03: typing in the path field auto-updates vault name', async () => {
-    vi.useFakeTimers();
-    try {
-      await renderWizard(
-        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-      );
-      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
-        target: { value: '/home/user/Projects/MyNovel' },
-      });
-      expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('MyNovel');
-    } finally {
-      vi.useRealTimers();
-      await act(async () => {});
-    }
-  });
-
-  it('AC-C-03: manual vault name edit prevents auto-update on subsequent path changes', async () => {
-    vi.useFakeTimers();
-    try {
-      await renderWizard(
-        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-      );
-      fireEvent.change(screen.getByTestId('custom-vault-name-input'), { target: { value: 'My Custom Name' } });
-      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
-        target: { value: '/home/user/SomethingElse' },
-      });
-      expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('My Custom Name');
-    } finally {
-      vi.useRealTimers();
-      await act(async () => {});
-    }
-  });
-
-  it('AC-C-02: valid path (existing+writable) enables Next button after debounce', async () => {
-    mockApi.validatePath = vi.fn((path: string) => Promise.resolve(
-      path.endsWith('/Story Vault/manifest.json')
-        ? { exists: false, isEmpty: true, writable: true }
-        : { exists: true, isEmpty: false, writable: true },
-    ));
-    vi.useFakeTimers();
-    try {
-      await renderWizard(
-        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-      );
-      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
-        target: { value: '/home/user/MyVault' },
-      });
-      // Fire the 500ms debounce, then settle the two-stage Promise.all validation
-      // (base dir + Story Vault manifest) that validateCustomPathNow awaits before
-      // it calls setCustomPathValidation('valid'). A FIXED drain count is racy under
-      // CI load — SKY-5215 already bumped 5→8 and it still flaked — because the exact
-      // number of microtask ticks to resolve Promise.all([p1,p2]) + flush React's
-      // batched render is not constant. Instead, pump one microtask per iteration and
-      // re-flush React each act() boundary, checking the settled DOM BETWEEN act()s
-      // so the loop exits as soon as the button enables. Bounded so a genuine
-      // regression still fails instead of hanging.
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500);
-      });
-      for (
-        let i = 0;
-        i < 50 && screen.getByTestId('custom-location-next').hasAttribute('disabled');
-        i++
-      ) {
-        await act(async () => { await Promise.resolve(); });
-      }
-      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
-    } finally {
-      vi.useRealTimers();
-      await act(async () => {});
-    }
-  });
-
-  it('AC-C-02: new-path (non-existent but valid parent) enables Next button', async () => {
-    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true });
-    vi.useFakeTimers();
-    try {
-      await renderWizard(
-        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-      );
-      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
-        target: { value: '/home/user/NewVault' },
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500);
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-      expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
-    } finally {
-      vi.useRealTimers();
-      await act(async () => {});
-    }
-  });
-
-  it('AC-C-02: not-writable path keeps Next disabled and shows validation hint', async () => {
-    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: false });
-    vi.useFakeTimers();
-    try {
-      await renderWizard(
-        <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-      );
-      fireEvent.change(screen.getByTestId('custom-vault-path-input'), {
-        target: { value: '/root/protected' },
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500);
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-      expect(screen.getByTestId('custom-path-validation-hint')).toBeInTheDocument();
-      expect(screen.getByTestId('custom-location-next')).toBeDisabled();
-    } finally {
-      vi.useRealTimers();
-      await act(async () => {});
-    }
-  });
-
-  it('AC-C-04: Browse button opens folder picker and updates path + vault name', async () => {
-    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/WritingVault', cancelled: false });
-    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-    );
-    fireEvent.click(screen.getByTestId('custom-vault-browse'));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
+  it('Continue triggers a real dry-run scan and shows the report before anything is created', async () => {
+    mockDryRunObsidianImport.mockResolvedValue({
+      preview: { markdownCount: 12, attachmentCount: 2, totalFiles: 14, topLevelFolders: ['Characters'], sampleFiles: [] },
     });
-    expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe('~/WritingVault');
-    expect((screen.getByTestId('custom-vault-name-input') as HTMLInputElement).value).toBe('WritingVault');
+    renderWizard();
+    fireEvent.click(await screen.findByTestId('card-import-obsidian'));
+    fireEvent.change(screen.getByTestId('step2-notes-path'), { target: { value: '/obsidian/notes' } });
+    fireEvent.click(screen.getByTestId('step2-continue'));
+
+    await waitFor(() => expect(mockDryRunObsidianImport).toHaveBeenCalledWith('/obsidian/notes', 'notes'));
+    await waitFor(() => expect(screen.getByTestId('screen-import-report')).toBeTruthy());
+    expect(screen.getByTestId('step2-report-notes').textContent).toContain('12');
+    expect(mockCreateVaultFromOptions).not.toHaveBeenCalled();
   });
 
-  it('AC-C-04: Browse cancelled keeps existing path', async () => {
-    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: null, cancelled: true });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-    );
-    const pathBefore = (screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value;
-    fireEvent.click(screen.getByTestId('custom-vault-browse'));
-    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
-    expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe(pathBefore);
+  it('a dry-run error stays inline and Continue stays enabled for retry (no report shown)', async () => {
+    mockDryRunObsidianImport.mockResolvedValue({ error: "This doesn't look like an Obsidian vault." });
+    renderWizard();
+    fireEvent.click(await screen.findByTestId('card-import-obsidian'));
+    fireEvent.change(screen.getByTestId('step2-notes-path'), { target: { value: '/not/obsidian' } });
+    fireEvent.click(screen.getByTestId('step2-continue'));
+
+    await waitFor(() => expect(screen.getByTestId('step2-dryrun-error').textContent).toContain("doesn't look like an Obsidian vault"));
+    expect(screen.queryByTestId('screen-import-report')).toBeNull();
+    expect(screen.getByTestId('step2-continue')).toBeEnabled();
   });
 
-  it('AC-C-05: suggestion pill updates path and triggers immediate validation', async () => {
-    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true });
-    mockApi.vaultGetSystemPaths = vi.fn(() => resolvedInEffect({
-      homeDir: '/home/user',
-      documentsDir: '/home/user/Documents',
-      desktopDir: '/home/user/Desktop',
-      oneDriveDir: null,
-      iCloudDir: null,
-    }));
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-    );
-    const pills = await screen.findAllByTestId('custom-suggestion-pill');
-    fireEvent.click(pills[0]);
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
+  it('confirming the dry-run report lands on the shared Name-your-vault step, not a separate finish path', async () => {
+    mockDryRunObsidianImport.mockResolvedValue({
+      preview: { markdownCount: 1, attachmentCount: 0, totalFiles: 1, topLevelFolders: [], sampleFiles: [] },
     });
-    expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
+    renderWizard();
+    fireEvent.click(await screen.findByTestId('card-import-obsidian'));
+    fireEvent.change(screen.getByTestId('step2-notes-path'), { target: { value: '/obsidian/notes' } });
+    fireEvent.click(screen.getByTestId('step2-continue'));
+    fireEvent.click(await screen.findByTestId('step2-report-confirm'));
+
+    await waitFor(() => expect(screen.getByTestId('screen-name')).toBeTruthy());
+    expect(mockCreateVaultFromOptions).not.toHaveBeenCalled();
   });
 
-  it('AC-C-06: Back button returns to step1', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-    );
-    fireEvent.click(screen.getByTestId('custom-location-back'));
-    await act(async () => {});
-    expect(screen.getByTestId('screen-step1')).toBeInTheDocument();
-  });
-
-  it('AC-C-06: Next advances to custom-template when path is valid', async () => {
-    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: true });
-    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/MyVault', cancelled: false });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-location" />,
-    );
-    // Use Browse to get a valid path (immediate validation, no debounce)
-    fireEvent.click(screen.getByTestId('custom-vault-browse'));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
+  it('submitting the name step after import confirm calls createVaultFromOptions with mode:import + importSources (SKY-11132: never the source path itself as destination)', async () => {
+    mockDryRunObsidianImport.mockResolvedValue({
+      preview: { markdownCount: 1, attachmentCount: 0, totalFiles: 1, topLevelFolders: [], sampleFiles: [] },
     });
-    expect(screen.getByTestId('custom-location-next')).not.toBeDisabled();
-    fireEvent.click(screen.getByTestId('custom-location-next'));
-    await act(async () => {});
-    expect(screen.getByTestId('screen-custom-template')).toBeInTheDocument();
-  });
-});
+    renderWizard();
+    fireEvent.click(await screen.findByTestId('card-import-obsidian'));
+    fireEvent.change(screen.getByTestId('step2-notes-path'), { target: { value: '/obsidian/notes' } });
+    fireEvent.click(screen.getByTestId('step2-continue'));
+    fireEvent.click(await screen.findByTestId('step2-report-confirm'));
+    await waitFor(() => expect(screen.getByTestId('screen-name')).toBeTruthy());
 
-describe('OnboardingWizard — Custom Setup Screen 2: template picker (SKY-2988)', () => {
-  afterEach(() => { vi.useRealTimers(); });
-
-  it('AC-C-07: renders custom-template screen with both radio cards', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
-    );
-    expect(screen.getByTestId('screen-custom-template')).toBeInTheDocument();
-    expect(screen.getByTestId('custom-template-recommended')).toBeInTheDocument();
-    expect(screen.getByTestId('custom-template-blank')).toBeInTheDocument();
-    expect(screen.getByTestId('custom-template-finish')).toBeInTheDocument();
-    // Beta 3 M25: guided setup grew to 4 steps (location → template → genre → theme)
-    // M29: relabeled "Custom Setup" → "Start Fresh"
-    // SKY-7649: the tail grew a 3rd "AI helpers" step.
-    expect(screen.getByText('Start Fresh · 2 of 5')).toBeInTheDocument();
-    await act(async () => {});
-  });
-
-  it('AC-C-07: Recommended card is selected by default', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
-    );
-    expect(screen.getByTestId('custom-template-recommended')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('custom-template-blank')).toHaveAttribute('aria-checked', 'false');
-    await act(async () => {});
-  });
-
-  it('AC-C-08: clicking Start Blank card selects it and deselects Recommended', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
-    );
-    fireEvent.click(screen.getByTestId('custom-template-blank'));
-    await act(async () => {});
-    expect(screen.getByTestId('custom-template-blank')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('custom-template-recommended')).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('AC-C-10: Finish sends customTemplate: recommended by default', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
-    );
-    fireEvent.click(screen.getByTestId('custom-template-finish'));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ startMode: 'start-fresh', customTemplate: 'recommended' }),
-    );
-  });
-
-  it('AC-C-10b: Finish sends customTemplate: blank when Start Blank is selected', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
-    );
-    fireEvent.click(screen.getByTestId('custom-template-blank'));
-    fireEvent.click(screen.getByTestId('custom-template-finish'));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(mockApi.onboardingComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ startMode: 'start-fresh', customTemplate: 'blank' }),
-    );
-  });
-
-  it('AC-C-12: Try Again re-sends customTemplate from state (retry path)', async () => {
-    mockApi.onboardingComplete = vi.fn()
-      .mockResolvedValueOnce({ ok: false, error: 'Disk full' })
-      .mockResolvedValueOnce({ ok: true, firstSceneId: 'scene-1', firstScenePath: 'Manuscript/s1.md' });
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
-    );
-    fireEvent.click(screen.getByTestId('custom-template-blank'));
-    fireEvent.click(screen.getByTestId('custom-template-finish'));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(screen.getByTestId('gs-try-again')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('gs-try-again'));
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(mockApi.onboardingComplete).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ startMode: 'start-fresh', customTemplate: 'blank' }),
-    );
-  });
-
-  it('AC-C-11: Back returns to custom-location preserving vault path state', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
-    );
-    fireEvent.click(screen.getByTestId('custom-template-back'));
-    await act(async () => {});
-    expect(screen.getByTestId('screen-custom-location')).toBeInTheDocument();
-    expect((screen.getByTestId('custom-vault-path-input') as HTMLInputElement).value).toBe(
-      '~/Documents/MythosWriter',
-    );
-  });
-
-  it('AC-C-11: Escape on custom-template shows cancel confirm', async () => {
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={vi.fn()} _testInitialStep="custom-template" />,
-    );
-    fireEvent.keyDown(screen.getByTestId('gs-overlay'), { key: 'Escape' });
-    await act(async () => {});
-    expect(screen.getByTestId('gs-cancel-confirm')).toBeInTheDocument();
-  });
-});
-
-// ─── SKY-3713: onboardingStartMode on conflict/import paths ──────────────────
-
-describe('OnboardingWizard — SKY-3713: onboardingStartMode on conflict and import paths', () => {
-  it('conflict "Open existing vault" sets onboardingStartMode: open-existing on onComplete', async () => {
-    // Both validatePath calls return exists+writable to trigger conflict-mythos state
-    mockApi.validatePath = vi.fn().mockResolvedValue({ exists: true, isEmpty: false, writable: true });
-    mockApi.chooseVaultFolder = vi.fn().mockResolvedValue({ path: '/home/user/ExistingVault', cancelled: false });
-    mockApi.onboardingComplete = vi.fn().mockResolvedValue({ ok: true, firstSceneId: 'scene-1', firstScenePath: 'Manuscript/s1.md' });
-    const onComplete = vi.fn();
-
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step2" />,
-    );
-    // Browse triggers immediate (non-debounced) validatePath → conflict-mythos
-    fireEvent.click(screen.getByTestId('gs-change-location'));
-    await waitFor(() => expect(screen.getByTestId('gs-conflict-see-options')).toBeInTheDocument());
-    // Open conflict dialog and choose "Open existing vault"
-    fireEvent.click(screen.getByTestId('gs-conflict-see-options'));
-    expect(screen.getByTestId('gs-conflict-dialog')).toBeInTheDocument();
-    fireEvent.click(screen.getByTestId('gs-conflict-open-existing'));
-    // SKY-7649: defers to Theme + Provider before actually opening the vault.
-    await waitFor(() => expect(screen.getByTestId('screen-custom-theme')).toBeInTheDocument());
-    expect(mockApi.onboardingComplete).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByTestId('custom-theme-continue'));
-    await waitFor(() => expect(screen.getByTestId('screen-wiz-provider')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('wiz-provider-skip'));
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ onboardingStartMode: 'open-existing' }),
-    ));
-  });
-
-  it('import MW open-existing path sets onboardingStartMode: open-existing on onComplete', async () => {
-    const onComplete = vi.fn();
-    await renderWizard(
-      <OnboardingWizard initialSettings={BASE_SETTINGS} onComplete={onComplete} _testInitialStep="step-import" />,
-    );
-    fireEvent.change(screen.getByTestId('import-mw-path'), { target: { value: '/home/user/MyVault' } });
-    fireEvent.click(screen.getByTestId('import-action-btn'));
-    await finishImportTail();
-    await waitFor(() => expect(onComplete).toHaveBeenCalledWith(
-      expect.objectContaining({ onboardingStartMode: 'open-existing' }),
-    ));
+    fireEvent.click(screen.getByTestId('step3-open-vault'));
+    await waitFor(() => expect(mockCreateVaultFromOptions).toHaveBeenCalledTimes(1));
+    const payload = mockCreateVaultFromOptions.mock.calls[0][0];
+    expect(payload.mode).toBe('import');
+    expect(payload.importSources).toEqual([{ kind: 'notes', srcPath: '/obsidian/notes' }]);
+    expect(payload.destinationParent).not.toBe('/obsidian/notes');
   });
 });

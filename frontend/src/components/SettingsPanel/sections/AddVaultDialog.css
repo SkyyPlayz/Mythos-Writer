@@ -1,0 +1,229 @@
+/* SKY-11152 — Settings "Add a Notes/Story Vault" dialog. Rides the shared
+   ln-dialog chrome (Dialog.tsx/.css); everything below is this dialog's own
+   body content, styled to match the design mockup
+   (owner-reports/2026-08-27-add-notes-vault-dialog-mockup.png). */
+
+.avd-title {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text-header, #f0f3fc);
+}
+
+.avd-subtitle {
+  font-size: 11px;
+  color: var(--text-muted, #8e9db8);
+  margin-top: 3px;
+  line-height: 1.55;
+}
+
+.avd-field {
+  margin-bottom: 15px;
+}
+
+.avd-field-label,
+.avd-section-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  color: var(--text-subtle, #7686a2);
+  margin-bottom: 7px;
+  display: block;
+}
+
+.avd-section-label {
+  margin-top: 4px;
+}
+
+.avd-input {
+  width: 100%;
+  height: 33px;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
+  border-radius: 10px;
+  color: #eef2fb;
+  font-size: 12.5px;
+  padding: 0 11px;
+}
+
+.avd-input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 13px -3px var(--g1, rgba(0, 240, 255, 0.45));
+}
+
+.avd-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 13px;
+}
+
+.avd-mode {
+  appearance: none;
+  text-align: left;
+  padding: 11px 13px;
+  border-radius: 13px;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  display: block;
+  width: 100%;
+}
+
+.avd-mode:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--b1, rgba(0, 240, 255, 0.4));
+}
+
+.avd-mode--on {
+  background: var(--gs1, rgba(0, 240, 255, 0.1));
+  border-color: var(--b1, rgba(0, 240, 255, 0.65));
+  box-shadow: 0 0 18px -7px var(--g1, rgba(0, 240, 255, 0.5));
+}
+
+.avd-mode:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.avd-mode__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.avd-mode__dot {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  flex: none;
+  display: inline-block;
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  position: relative;
+}
+
+.avd-mode--on .avd-mode__dot {
+  border-color: var(--n1, #00f0ff);
+}
+
+.avd-mode--on .avd-mode__dot::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--n1, #00f0ff);
+  box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, 0.6));
+}
+
+.avd-mode__label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #cdd8ea;
+}
+
+.avd-mode--on .avd-mode__label {
+  color: #f0f3fc;
+}
+
+.avd-mode__tag {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #0b0d17;
+  background: var(--n1, #00f0ff);
+  border-radius: 5px;
+  padding: 2px 6px;
+  flex: none;
+}
+
+.avd-mode__desc {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-muted, #8e9db8);
+  line-height: 1.55;
+  margin: 5px 0 0 24px;
+}
+
+.avd-preview {
+  margin-top: 13px;
+  padding: 12px 13px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.avd-preview__label {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  color: var(--text-subtle, #7686a2);
+  margin-bottom: 9px;
+}
+
+.avd-preview__tree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.avd-preview__folder-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.avd-preview__folder-icon {
+  flex: none;
+  font-size: 12px;
+}
+
+.avd-preview__folder-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #dbe4f5;
+}
+
+.avd-preview__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 5px 0 0 21px;
+}
+
+.avd-preview__chip {
+  font-size: 9.5px;
+  color: var(--text-muted, #8e9db8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 2px 7px;
+}
+
+.avd-import {
+  margin-top: 13px;
+}
+
+.avd-hint {
+  font-size: 10.5px;
+  color: var(--text-muted, #8e9db8);
+  line-height: 1.55;
+  margin-top: 9px;
+}
+
+.avd-blank-hint {
+  margin-top: 13px;
+  padding: 11px 13px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  font-size: 10.5px;
+  color: var(--text-muted, #8e9db8);
+  line-height: 1.55;
+}
+
+.avd-error {
+  margin-top: 13px;
+  font-size: 11px;
+  color: var(--state-danger, #ff5c85);
+}

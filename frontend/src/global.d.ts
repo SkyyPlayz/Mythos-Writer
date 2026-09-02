@@ -576,7 +576,7 @@ interface AppSettings {
     completed?: Partial<Record<'writeScene' | 'addCharacter' | 'brainstorm' | 'openNotes', boolean>>;
   };
   /** SKY-1188: onboarding mode captured when onboarding completed. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
   /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (prototype `wizGenre`). */
   onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
@@ -1358,8 +1358,13 @@ interface Window {
       vaults: Array<{ id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' }> | null;
       activeId: string | null;
     }>;
-    notesVaultRegistryCreate?: (displayName: string) => Promise<{
+    notesVaultRegistryCreate?: (opts: {
+      displayName: string;
+      mode?: 'template' | 'blank' | 'import';
+      importSourcePath?: string;
+    }) => Promise<{
       entry: { id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' };
+      importTally?: { imported: number; skipped: number; sourceCount: number; warnings: string[] };
     }>;
     notesVaultRegistrySetActivePreview?: (id: string) => Promise<{
       resolvedCount: number;
@@ -1378,8 +1383,13 @@ interface Window {
       vaults: Array<{ id: string; displayName: string; dirName: string; createdAt: string; pairedNotesVaultId: string | null }> | null;
       activeId: string | null;
     }>;
-    storyVaultRegistryCreate?: (displayName: string) => Promise<{
+    storyVaultRegistryCreate?: (opts: {
+      displayName: string;
+      mode?: 'blank' | 'import';
+      importSourcePath?: string;
+    }) => Promise<{
       entry: { id: string; displayName: string; dirName: string; createdAt: string; pairedNotesVaultId: string | null };
+      importTally?: { imported: number; skipped: number; sourceCount: number; warnings: string[] };
     }>;
     storyVaultRegistrySetActive?: (id: string) => Promise<{
       entry: { id: string; displayName: string; dirName: string; createdAt: string; pairedNotesVaultId: string | null };
@@ -1446,7 +1456,7 @@ interface Window {
     // Two-vault path management (MYT-608 / SKY-9) — Story Vault + Notes Vault
     // MYT-789: setPaths now requires a per-path registrationToken from
     // vault:pick-folder, or the path must already be in recent-projects.
-    vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string; homeDir?: string; pathSeparator?: '/' | '\\'; defaultVaultsParentPath?: string }>;
+    vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string; homeDir?: string; pathSeparator?: '/' | '\\'; defaultVaultsParentPath?: string; mythosRoot?: string | null }>;
     vaultGetSystemPaths: () => Promise<{
       homeDir: string;
       documentsDir: string;

@@ -38,7 +38,7 @@ function freshUserData(prefix: string): string {
 // SKY-8211: detectLegacyVaults() scans the real OS home dir (not the test's
 // isolated --user-data-dir), so on a machine with a stray legacy vault this
 // dialog can appear over the wizard and intercept clicks. Dismiss it if present
-// (same guard as e2e/custom-template-lifecycle.spec.ts).
+// (same guard pattern used elsewhere for this dialog).
 async function dismissLegacyMigrationDialogIfPresent(page: import('@playwright/test').Page): Promise<void> {
   const migrationDialog = page.getByTestId('gs-migration-dialog');
   if (await migrationDialog.isVisible({ timeout: 1_000 }).catch(() => false)) {
@@ -58,23 +58,24 @@ function listAllFiles(dir: string): string[] {
 }
 
 test.describe('SKY-11152 first-run step 3 — name + destination on EVERY path (§3b step 3)', () => {
-  // Gated pending SKY-11152 (name+destination step not yet built). Slice
-  // owner removes this fixme as part of SKY-11152 done-criteria.
-  test.fixme('AC-OB3-01: name+destination step shows a live "WILL BE CREATED AT" full-path preview (pending SKY-11152)', async () => {
+  // SKY-11152 done: the wizard's own testids are screen-welcome/card-start-blank
+  // /screen-name/step3-* (not the guessed screen-step1/screen-custom-location/
+  // custom-vault-*-input — those belonged to the OLD pre-SKY-11152 wizard).
+  // The AC's INTENT — a live "WILL BE CREATED AT" full-path preview on every
+  // path — is what's asserted; retargeted to the real implementation.
+  test('AC-OB3-01: name+destination step shows a live "WILL BE CREATED AT" full-path preview', async () => {
     const userData = freshUserData('mythos-ob01-');
     const app = await launchApp(userData);
     try {
       const page = await app.firstWindow();
-      await expect(page.getByTestId('screen-step1')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('screen-welcome')).toBeVisible({ timeout: 15_000 });
       await dismissLegacyMigrationDialogIfPresent(page);
       await page.getByTestId('card-start-blank').click();
-      await expect(page.getByTestId('screen-custom-location')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('screen-name')).toBeVisible({ timeout: 10_000 });
 
       const destParent = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-ob01-dest-'));
-      await page.getByTestId('custom-vault-path-input').fill(destParent);
-      await page.waitForTimeout(700);
-      await page.getByTestId('custom-vault-name-input').fill('QA Preview Vault');
-      await page.waitForTimeout(700);
+      await page.getByTestId('step3-path-path').fill(destParent);
+      await page.getByTestId('step3-vault-name').fill('QA Preview Vault');
 
       // Spec (SKY-11141 §3b step 3): "Name your vault": VAULT NAME, CREATE IT
       // IN (Default folder / Browse…), a live WILL BE CREATED AT full-path
@@ -84,43 +85,45 @@ test.describe('SKY-11152 first-run step 3 — name + destination on EVERY path (
         preview,
         'the name/destination step must show a live "WILL BE CREATED AT" full-path preview per SKY-11141 §3b',
       ).toBeVisible({ timeout: 3_000 });
+      await expect(page.getByTestId('step3-full-path')).toHaveText(path.join(destParent, 'QA Preview Vault'));
     } finally {
       await app.close();
     }
   });
 });
 
-test.describe('SKY-11152 first-run step 2 — import/restore (§3b step 2)', () => {
+test.describe('SKY-11152 first-run step 2 — import (§3b step 2)', () => {
   test('AC-OB3-02: import screen has SEPARATE Notes and Story rows, each with its own Browse control', async () => {
     const userData = freshUserData('mythos-ob02-');
     const app = await launchApp(userData);
     try {
       const page = await app.firstWindow();
-      await expect(page.getByTestId('screen-step1')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('screen-welcome')).toBeVisible({ timeout: 15_000 });
       await dismissLegacyMigrationDialogIfPresent(page);
       await page.getByTestId('card-import-obsidian').click();
-      await expect(page.getByTestId('screen-step-import')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('screen-import')).toBeVisible({ timeout: 10_000 });
 
-      await expect(page.getByTestId('import-obs-notes-path')).toBeVisible();
-      await expect(page.getByTestId('import-obs-notes-browse')).toBeVisible();
-      await expect(page.getByTestId('import-obs-story-path')).toBeVisible();
-      await expect(page.getByTestId('import-obs-story-browse')).toBeVisible();
+      await expect(page.getByTestId('step2-notes-path')).toBeVisible();
+      await expect(page.getByTestId('step2-notes-browse')).toBeVisible();
+      await expect(page.getByTestId('step2-story-path')).toBeVisible();
+      await expect(page.getByTestId('step2-story-browse')).toBeVisible();
     } finally {
       await app.close();
     }
   });
 
-  // Gated pending SKY-11152 (import screen copy not yet added). Slice owner
-  // removes this fixme as part of SKY-11152 done-criteria.
-  test.fixme('AC-OB3-03: import screen states "One is enough — leave the other empty and it starts blank" (pending SKY-11152)', async () => {
+  // SKY-11152 done: real copy check, no shortcuts — the wizard's own
+  // screen-welcome/screen-import testids replace the guessed screen-step1/
+  // screen-step-import.
+  test('AC-OB3-03: import screen states "One is enough — leave the other empty and it starts blank"', async () => {
     const userData = freshUserData('mythos-ob03-');
     const app = await launchApp(userData);
     try {
       const page = await app.firstWindow();
-      await expect(page.getByTestId('screen-step1')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('screen-welcome')).toBeVisible({ timeout: 15_000 });
       await dismissLegacyMigrationDialogIfPresent(page);
       await page.getByTestId('card-import-obsidian').click();
-      await expect(page.getByTestId('screen-step-import')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('screen-import')).toBeVisible({ timeout: 10_000 });
 
       await expect(
         page.getByText(/one is enough.*leave the other empty.*starts blank/i),
@@ -151,36 +154,34 @@ test.describe('SKY-11152 first-run step 2 — import/restore (§3b step 2)', () 
       }, { dir: sourceDir });
 
       const page = await app.firstWindow();
-      await expect(page.getByTestId('screen-step1')).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('screen-welcome')).toBeVisible({ timeout: 15_000 });
       await dismissLegacyMigrationDialogIfPresent(page);
       await page.getByTestId('card-import-obsidian').click();
-      await expect(page.getByTestId('screen-step-import')).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByTestId('screen-import')).toBeVisible({ timeout: 10_000 });
 
-      await page.getByTestId('import-obs-notes-browse').click();
-      await expect(page.getByTestId('import-obs-notes-path')).toHaveValue(sourceDir, { timeout: 5_000 });
+      await page.getByTestId('step2-notes-browse').click();
+      await expect(page.getByTestId('step2-notes-path')).toHaveValue(sourceDir, { timeout: 5_000 });
 
-      const importBtn = page.getByTestId('import-action-btn');
-      await expect(importBtn).toBeEnabled({ timeout: 5_000 });
-      await importBtn.click();
+      // SKY-11152: the old guessed "import-action-btn" is this wizard's
+      // step2-continue — clicking it runs a real (no-write) dry-run scan and
+      // renders the report sub-view before anything is created.
+      const continueBtn = page.getByTestId('step2-continue');
+      await expect(continueBtn).toBeEnabled({ timeout: 5_000 });
+      await continueBtn.click();
 
-      // The dry-run report render is async (real filesystem scan) — wait for
-      // it, then confirm.
-      const dryRunConfirm = page.getByTestId('obs-report-confirm');
+      const dryRunConfirm = page.getByTestId('step2-report-confirm');
       await dryRunConfirm.waitFor({ state: 'visible', timeout: 15_000 });
       await dryRunConfirm.click();
 
-      // A successful import still routes through the shared guided-setup
-      // theme + AI-provider steps before the shell mounts — finish each as
-      // it appears (bounded loop, not this ticket's concern to assert on).
-      const postImportSteps = [
-        page.getByTestId('custom-theme-continue'),
-        page.getByTestId('wiz-provider-finish'),
-      ];
-      for (let i = 0; i < postImportSteps.length; i++) {
-        const stepBtn = postImportSteps[i];
-        const appeared = await stepBtn.waitFor({ state: 'visible', timeout: 15_000 }).then(() => true).catch(() => false);
-        if (appeared) await stepBtn.click();
-      }
+      // SKY-11152 (§3b): confirming the dry-run report lands on the shared
+      // mandatory "Name your vault" step for EVERY path (not a separate
+      // finish path) — complete it for real: accept the default name and
+      // click the create/finish action. This is the step that actually calls
+      // createVaultFromOptions and writes the new vault to disk.
+      await expect(page.getByTestId('screen-name')).toBeVisible({ timeout: 10_000 });
+      await page.getByTestId('step3-vault-name').fill('AC-OB3-04 Vault');
+      await page.getByTestId('step3-open-vault').click();
+
       await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 30_000 });
 
       const sourceFilesAfter = listAllFiles(sourceDir).sort();
@@ -192,9 +193,10 @@ test.describe('SKY-11152 first-run step 2 — import/restore (§3b step 2)', () 
 });
 
 test.describe('SKY-11152 settings-side add-vault dialogs (§3c)', () => {
-  // Gated pending SKY-11152 (settings-side add-vault dialogs not yet built).
-  // Slice owner removes this fixme as part of SKY-11152 done-criteria.
-  test.fixme('AC-OB3-05: Settings exposes "+ Add Notes Vault" / "+ Add Story Vault" dialogs reusing the creation primitive, with NO location picker (pending SKY-11152)', async () => {
+  // SKY-11152 done: "+ Add Notes Vault" / "+ Add Story Vault" are real, wired
+  // into the Vault & Files tab (frontend/src/SettingsPanel.tsx via
+  // AddVaultButtonsSection -> AddVaultDialog), no location picker.
+  test('AC-OB3-05: Settings exposes "+ Add Notes Vault" / "+ Add Story Vault" dialogs reusing the creation primitive, with NO location picker', async () => {
     const storyVault = path.join(os.tmpdir(), `mythos-ob05-story-${Date.now()}`);
     const notesVault = path.join(os.tmpdir(), `mythos-ob05-notes-${Date.now()}`);
     fs.mkdirSync(storyVault, { recursive: true });
@@ -219,13 +221,36 @@ test.describe('SKY-11152 settings-side add-vault dialogs (§3c)', () => {
 
       // Spec (SKY-11141 §3c): "+ Add Notes Vault" / "+ Add Story Vault" on
       // the Vault & Files settings page, adopting design's "Add a Notes
-      // Vault" mockup — no location picker (destination is already
-      // Notes/<name> or Stories/<name> inside the current Mythos vault).
+      // Vault" mockup — no location picker (destination is always computed,
+      // never chosen).
       const addNotesVaultBtn = page.getByRole('button', { name: /add notes vault/i });
       await expect(
         addNotesVaultBtn,
         '"+ Add Notes Vault" dialog trigger not found on the Vault & Files settings page (SKY-11141 §3c)',
       ).toBeVisible({ timeout: 3_000 });
+      const addStoryVaultBtn = page.getByRole('button', { name: /add story vault/i });
+      await expect(addStoryVaultBtn, '"+ Add Story Vault" dialog trigger not found').toBeVisible({ timeout: 3_000 });
+
+      await addNotesVaultBtn.click();
+      const dialog = page.getByTestId('avd-dialog-notes');
+      await expect(dialog).toBeVisible({ timeout: 5_000 });
+      await expect(dialog.getByText('Add a Notes Vault')).toBeVisible();
+      // The 3 "HOW TO START" options, reusing the SKY-11151 creation
+      // primitive's modes — this is the substance of "reusing the creation
+      // primitive" from the AC title.
+      await expect(page.getByTestId('avd-mode-notes-template')).toBeVisible();
+      await expect(page.getByTestId('avd-mode-notes-blank')).toBeVisible();
+      await expect(page.getByTestId('avd-mode-notes-import')).toBeVisible();
+      // NO location picker anywhere in the dialog: none of the stale design
+      // draft's nvLocs chips (This PC / Dropbox / Custom folder) or any
+      // Cloud/Dropbox wording (hard exclusion, spec §5).
+      await expect(dialog.getByText('This PC')).toHaveCount(0);
+      await expect(dialog.getByText('Dropbox')).toHaveCount(0);
+      await expect(dialog.getByText(/cloud/i)).toHaveCount(0);
+      await expect(dialog.getByTestId(/browse/i)).toHaveCount(0);
+
+      await page.getByTestId('avd-cancel-notes').click();
+      await expect(dialog).toBeHidden({ timeout: 3_000 });
     } finally {
       await app.close();
     }

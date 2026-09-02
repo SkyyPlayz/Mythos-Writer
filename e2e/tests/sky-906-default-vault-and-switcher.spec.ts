@@ -1,16 +1,19 @@
 /**
  * sky-906-default-vault-and-switcher.spec.ts — SKY-906
  *
- * End-to-end coverage for the Quick Start vault setup and the
+ * End-to-end coverage for the first-run "Start blank" vault setup and the
  * vault-switcher Add/Switch flow. Boots Electron with no prior vault config
- * (so the onboarding wizard appears), clicks the "Quick Start" card on step 1,
+ * (so the onboarding wizard appears), clicks the "Start blank" card on step 1,
  * and asserts:
  *
- *   - the wizard advances through the shared genre/theme/provider mini-flow
- *     (Beta 4 M29: screen-custom-genre → screen-custom-theme; SKY-7649:
- *     screen-wiz-provider, skipped here) then the scaffolding step, then closes
- *   - main creates `<userData>/vaults/My First Vault/Story Vault`
- *     and `…/Notes Vault` with the expected SKY-15 seed layout
+ *   - SKY-11152/SKY-11151: the wizard is now three cards — template (RECOMMENDED)
+ *     / blank / import — with no Quick Start entry point and no genre/theme/
+ *     provider mini-flow. "Start blank" goes straight from screen-welcome to
+ *     screen-name (accepting the default "My Vault" name), then closes.
+ *   - main creates `<userData>/vaults/My Vault/Story Vault` and `…/Notes Vault`
+ *     as an Obsidian-parity EMPTY vault — no demo seed content (SKY-11141 §3
+ *     removed the generated Veynn sample-story path from every first-run
+ *     option; see createVaultFromOptions.ts)
  *     (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults)
  *   - vault-settings.json is rewired to the new pair (Story + Notes)
  *
@@ -24,8 +27,8 @@
  *
  * Acceptance criteria mapping:
  *   AC1  Clean first-run user can create a default vault with one action
- *   AC2  Manual custom path remains available (sanity: the "Start fresh"
- *        card is still on Step 1; not exercised here — covered by
+ *   AC2  Manual custom path remains available (sanity: the "template" and
+ *        "import" cards are still on Step 1; not exercised here — covered by
  *        existing onboarding.spec.ts)
  *   AC3  User can switch between ≥2 vaults without losing settings or state
  *   AC4  Regression coverage for default-vault creation AND vault switching
@@ -132,62 +135,18 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-// SKY-7593: Quick Start moved off step1 onto the custom-location screen as
-// the "One-click setup" link (design-handoff v2 §2.2), reached via the Start
-// Blank card — see e2e/onboarding-v2.spec.ts's clickStep1Card for the same move.
-async function selectQuickStartCard(pg: Page): Promise<void> {
-  await expect(pg.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 30_000 });
-
-  const quickStartLinkCandidates = [
-    'custom-location-quick-start-link',
-    'card-quick-start',
-    'card-default-mythos-vault',
-    'card-path-default',
-  ];
-
-  const startBlank = pg.locator('[data-testid="card-start-blank"]');
-  if (await startBlank.isVisible().catch(() => false)) {
-    await startBlank.click();
-    await pg.locator('[data-testid="screen-custom-location"]').waitFor({ state: 'visible', timeout: 8_000 }).catch(() => {});
-  }
-
-  for (const testId of quickStartLinkCandidates) {
-    const card = pg.locator(`[data-testid="${testId}"]`);
-    if (await card.isVisible().catch(() => false)) {
-      await card.click();
-      return;
-    }
-  }
-
-  const byTitle = pg.locator('button[aria-label="Quick Start: One click — we set everything up for you."]');
-  if (await byTitle.isVisible().catch(() => false)) {
-    await byTitle.click();
-    return;
-  }
-
-  const byText = pg.locator('.gs-card__title', { hasText: 'Quick Start' }).locator('..');
-  if (await byText.isVisible().catch(() => false)) {
-    await byText.click();
-    return;
-  }
-
-  throw new Error('Could not find Quick Start entry point (custom-location-quick-start-link)');
-}
-
-// Beta 4 M29: Quick Start no longer creates the vault immediately — it now
-// funnels into the shared genre → theme mini-flow (screen-custom-genre →
-// screen-custom-theme) before the vault-creation IPC call fires on
-// "Open my vault ✦". SKY-7649: the tail grew a 3rd, optional AI-provider
-// step (screen-wiz-provider) — Skip it, defaults (first genre chip, first
-// theme card) are fine for this switcher-focused test.
-async function completeQuickStart(pg: Page): Promise<void> {
-  await selectQuickStartCard(pg);
-  await expect(pg.locator('[data-testid="screen-custom-genre"]')).toBeVisible({ timeout: 30_000 });
-  await pg.locator('[data-testid="custom-genre-continue"]').click();
-  await expect(pg.locator('[data-testid="screen-custom-theme"]')).toBeVisible({ timeout: 8_000 });
-  await pg.locator('[data-testid="custom-theme-continue"]').click();
-  await expect(pg.locator('[data-testid="screen-wiz-provider"]')).toBeVisible({ timeout: 8_000 });
-  await pg.locator('[data-testid="wiz-provider-skip"]').click();
+// SKY-11152/SKY-11151: the first-run wizard is now three cards on
+// screen-welcome — template (RECOMMENDED) / blank / import. "Start blank"
+// (card-start-blank) goes straight to screen-name with no intermediate
+// genre/theme/provider steps (those, and the old Quick Start one-click link,
+// were retired by the rewrite — see OnboardingWizard.tsx's `pickMode`).
+// Accepting the default name (the "My Vault" placeholder) and default
+// location exercises the same "one action, sane defaults" path AC1 covers.
+async function completeBlankVaultCreation(pg: Page): Promise<void> {
+  await expect(pg.locator('[data-testid="screen-welcome"]')).toBeVisible({ timeout: 30_000 });
+  await pg.locator('[data-testid="card-start-blank"]').click();
+  await expect(pg.locator('[data-testid="screen-name"]')).toBeVisible({ timeout: 8_000 });
+  await pg.locator('[data-testid="step3-open-vault"]').click();
   await Promise.race([
     pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 }),
     pg.locator('.app-menu-bar').waitFor({ state: 'visible', timeout: 30_000 }),
@@ -207,47 +166,37 @@ test.afterEach(() => {
   fs.rmSync(homeOverride, { recursive: true, force: true });
 });
 
-test('TC-SKY-906-01: default layout creates a story/notes vault pair and lands on the editor', async () => {
+test('TC-SKY-906-01: default layout creates an empty story/notes vault pair and lands on the shell', async () => {
   const saveParent = path.join(userData, 'vaults');
   fs.mkdirSync(saveParent, { recursive: true });
   seedAppSettingsNoOnboarding(userData);
   const app = await launchApp(userData, homeOverride);
   try {
     const pg = await firstWindow(app);
-    await completeQuickStart(pg);
+    await completeBlankVaultCreation(pg);
 
     const vaultPair = await waitForPersistedVaultPair(userData);
     expect(fs.existsSync(vaultPair.vaultRoot)).toBe(true);
     expect(fs.existsSync(vaultPair.notesVaultRoot)).toBe(true);
+    expect(vaultPair.vaultRoot).toBe(path.join(saveParent, 'My Vault', 'Story Vault'));
 
-    // Quick Start seeds a first scene file so the editor lands on something
-    // writable. Beta 4 M29: Quick Start creates a MythosVault v2 with the
-    // Veynn demo seed ("The Last City of Veynn") — v2 manuscripts live at
-    // <Story Vault>/<Story>/Part N/Chapter NN/Scene NN.md, with no
-    // "Manuscript/" wrapper folder (that's the legacy v0.4 layout).
-    expect(
-      fs.existsSync(path.join(vaultPair.vaultRoot, 'The Last City of Veynn', 'Part 1', 'Chapter 01', 'Scene 01.md')),
-    ).toBe(true);
+    // SKY-11141 §3 / SKY-11151: "blank" is Obsidian-parity EMPTY — no demo
+    // seed content, unlike the old Quick Start flow. There is no scene file
+    // to assert on; the vault pair existing on disk is the whole contract.
 
     // vault-settings.json is rewired to the new pair and onboardingComplete=true.
     const vaultSettings = readVaultSettings(userData);
     expect(vaultSettings.vaultRoot).toBe(vaultPair.vaultRoot);
     expect(vaultSettings.notesVaultRoot).toBe(vaultPair.notesVaultRoot);
 
-    // SKY-9262 (P0.5): the header/switcher labels this fresh single-story
-    // vault by its story title, never the raw vault directory name. Guard the
-    // assertion's meaning first: the two must actually differ on disk.
-    const vaultDirName = path.basename(path.dirname(vaultPair.vaultRoot));
-    expect(vaultDirName).not.toBe('The Last City of Veynn');
+    // SKY-9262 (P0.5): with no story yet, the switcher has no single-story
+    // title to fall back to, so it labels the vault by its project name (the
+    // vault directory name) instead — ProjectSwitcher's `deriveVaultDisplayName`.
     await pg.locator('.project-switcher-btn').click();
     const activeRow = pg
       .locator('[data-testid="wc-project-menu"] .project-switcher-item')
       .filter({ has: pg.locator('.wc-active-dot') });
-    // The story title lands once the renderer's manifest load resolves —
-    // toHaveText retries until it does.
-    await expect(activeRow.locator('.wc-pop-row-title')).toHaveText('The Last City of Veynn', { timeout: 15_000 });
-    // The directory path stays available on the row's subline for
-    // disambiguation; only the *title* stops being the directory name.
+    await expect(activeRow.locator('.wc-pop-row-title')).toHaveText('My Vault', { timeout: 15_000 });
     await expect(activeRow.locator('.wc-pop-row-sub')).toHaveText(vaultPair.vaultRoot);
     await pg.keyboard.press('Escape');
   } finally {
@@ -255,33 +204,35 @@ test('TC-SKY-906-01: default layout creates a story/notes vault pair and lands o
   }
 });
 
-test('TC-SKY-906-02: Quick Start avoids clobbering an existing default vault bundle', async () => {
+test('TC-SKY-906-02: Start blank avoids clobbering an existing same-named vault bundle', async () => {
   const saveParent = path.join(userData, 'vaults');
-  // Pre-create both historical default names with content to force the
-  // collision-avoidance path without coupling this E2E test to naming churn.
-  const preexistingRoots = ['Mythos Vault', 'My First Vault'].map((name) => path.join(saveParent, name));
-  for (const preexistingRoot of preexistingRoots) {
-    fs.mkdirSync(preexistingRoot, { recursive: true });
-    fs.writeFileSync(path.join(preexistingRoot, 'user-data.md'), '# do not clobber\n', 'utf-8');
-  }
+  // Pre-create a vault already named "My Vault" — the literal default name
+  // OnboardingWizard's handleFinish sends when the name field is left at its
+  // placeholder — to force the collision-avoidance path in
+  // pickUniqueMythosVaultName (createVault.ts).
+  const preexistingRoot = path.join(saveParent, 'My Vault');
+  fs.mkdirSync(preexistingRoot, { recursive: true });
+  fs.writeFileSync(path.join(preexistingRoot, 'user-data.md'), '# do not clobber\n', 'utf-8');
 
   seedAppSettingsNoOnboarding(userData);
   const app = await launchApp(userData, homeOverride);
   try {
     const pg = await firstWindow(app);
-    await completeQuickStart(pg);
+    await completeBlankVaultCreation(pg);
 
-    for (const preexistingRoot of preexistingRoots) {
-      expect(fs.readFileSync(path.join(preexistingRoot, 'user-data.md'), 'utf-8')).toBe('# do not clobber\n');
-    }
+    expect(fs.readFileSync(path.join(preexistingRoot, 'user-data.md'), 'utf-8')).toBe('# do not clobber\n');
 
     const vaultSettings = readVaultSettings(userData);
     expect(vaultSettings.vaultRoot).toBeTruthy();
     expect(vaultSettings.notesVaultRoot).toBeTruthy();
     expect(fs.existsSync(vaultSettings.vaultRoot!)).toBe(true);
     expect(fs.existsSync(vaultSettings.notesVaultRoot!)).toBe(true);
-    expect(preexistingRoots.some((root) => vaultSettings.vaultRoot === path.join(root, 'Story Vault'))).toBe(false);
-    expect(preexistingRoots.some((root) => vaultSettings.notesVaultRoot === path.join(root, 'Notes Vault'))).toBe(false);
+    expect(vaultSettings.vaultRoot).not.toBe(path.join(preexistingRoot, 'Story Vault'));
+    expect(vaultSettings.notesVaultRoot).not.toBe(path.join(preexistingRoot, 'Notes Vault'));
+    // pickUniqueMythosVaultName suffixes on collision — the new vault lands
+    // in a sibling folder, not inside the pre-existing "My Vault".
+    expect(path.dirname(path.dirname(vaultSettings.vaultRoot!))).toBe(saveParent);
+    expect(path.basename(path.dirname(vaultSettings.vaultRoot!))).not.toBe('My Vault');
   } finally {
     await app.close().catch(() => {});
   }

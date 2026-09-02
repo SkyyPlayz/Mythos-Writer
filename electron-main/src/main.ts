@@ -465,7 +465,7 @@ import { createVaultFromOptions } from './mythosFormat/createVaultFromOptions.js
 // SKY-11058: notes vault registry
 import {
   ensureNotesVaultRegistry,
-  createBlankNotesVault,
+  createNotesVaultFromOptions,
   registerImportedNotesVault,
   setActiveNotesVault,
   renameNotesVault,
@@ -475,7 +475,7 @@ import {
 } from './mythosFormat/notesVaultRegistry.js';
 import {
   ensureStoryVaultRegistry,
-  createBlankStoryVault,
+  createStoryVaultFromOptions,
   setActiveStoryVault,
   renameStoryVault,
   pairStoryVaultToNotesVault,
@@ -5994,6 +5994,7 @@ const handlers: IpcHandlers = {
       homeDir: app.getPath('home'),
       pathSeparator: path.sep as '/' | '\\',
       defaultVaultsParentPath: defaultMythosVaultsParent(),
+      mythosRoot: mythosRootForStoryVault(getVaultRoot()),
     };
   },
 
@@ -6989,9 +6990,15 @@ const handlers: IpcHandlers = {
   ): NotesVaultRegistryCreateResponse => {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
     if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
-    const { entry } = createBlankNotesVault(mythosRoot, payload.displayName ?? 'Notes');
+    const mode = payload.mode ?? 'blank';
+    const { entry, importTally } = createNotesVaultFromOptions(
+      mythosRoot,
+      payload.displayName ?? 'Notes',
+      mode,
+      payload.importSourcePath,
+    );
     mainWindow?.webContents.send('notesVaultRegistry:changed');
-    return { entry };
+    return { entry, ...(importTally ? { importTally } : {}) };
   },
 
   [IPC_CHANNELS.NOTES_VAULT_REGISTRY_SET_ACTIVE_PREVIEW]: (
@@ -7051,9 +7058,15 @@ const handlers: IpcHandlers = {
   ): StoryVaultRegistryCreateResponse => {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
     if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
-    const { entry } = createBlankStoryVault(mythosRoot, payload.displayName ?? 'Story');
+    const mode = payload.mode ?? 'blank';
+    const { entry, importTally } = createStoryVaultFromOptions(
+      mythosRoot,
+      payload.displayName ?? 'Story',
+      mode,
+      payload.importSourcePath,
+    );
     mainWindow?.webContents.send('storyVaultRegistry:changed');
-    return { entry };
+    return { entry, ...(importTally ? { importTally } : {}) };
   },
 
   [IPC_CHANNELS.STORY_VAULT_REGISTRY_SET_ACTIVE]: (

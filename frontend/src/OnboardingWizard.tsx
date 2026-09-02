@@ -1,28 +1,11 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { type TruncatePathOptions } from './utils/truncatePath';
-import { useToast } from './hooks/useToast';
-import { Toast } from './components/Toast/Toast';
+import { useState, useEffect, useRef } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { LayoutTemplate, FilePlus2, FolderInput } from 'lucide-react';
 import { Button } from './components/ui/Button';
-// Beta 3 M25 (welcome wizard v2): brand header assets + real preset engine for
-// the guided-setup genre/theme steps (prototype welcome wizard, HTML 2779–2855).
-import logoUrl from './assets/logo.png';
-import cosmicBgUrl from './assets/cosmic-bg.webp';
-import {
-  applyLiquidNeonV2Tokens,
-  normalizeLiquidNeonV2,
-  hexA,
-  type LiquidNeonV2Settings,
-} from './theme/liquidNeonEngine';
-import { LIQUID_NEON_PRESETS, LIQUID_NEON_SLOT_ROLES, type LiquidNeonPresetKey } from './theme/presets';
-import { showLnToast } from './theme/lnToast';
-import ProviderSection from './components/SettingsPanel/sections/ProviderSection';
 import VaultDestinationPicker from './components/SettingsPanel/sections/VaultDestinationPicker';
-import {
-  PROVIDER_OPTIONS,
-  type ProviderKind,
-  type TestConnectionStatus,
-  type ModelListStatus,
-} from './components/SettingsPanel/settingsPanelTypes';
+// Beta 3 M25 (welcome wizard v2): brand header assets (prototype welcome
+// wizard, HTML 4580–4685).
+import logoUrl from './assets/logo.png';
 import './OnboardingWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -33,114 +16,15 @@ import './OnboardingWizard.css';
 // directly on the Import screen.
 export const WIZARD_OPEN_IMPORT_STEP_KEY = 'mythos.wizard.openImportStep';
 
-// SKY-2988: custom-location + custom-template are the Start Fresh location/template screens
-// SKY-2990: step-import is the 3-section Import/Open picker screen
-// Beta 3 M25 / Beta 4 M29: custom-genre + custom-theme are the shared genre and
-// theme pages every creating path funnels through before finishing.
-// SKY-7649 (design-handoff v2 §4): wiz-provider is the new optional AI-provider
-// step — the last tail screen, between custom-theme and Done, on every path.
-type WizardStep = 'step1' | 'step1b-inner' | 'step1c' | 'step2' | 'step3' | 'custom-location' | 'custom-template' | 'custom-genre' | 'custom-theme' | 'wiz-provider' | 'step-import';
-// M29: 'start-fresh' creates a MythosVault v2 (demo-seeded unless Start Blank)
-// at a chosen location; 'quick-start' does the same at the default location.
-// 'default-mythos-vault' is kept as a legacy backend alias.
-// SKY-2007: 'open-existing' opens a pre-existing Mythos vault parent dir.
-type StartMode = 'blank' | 'sample' | 'template' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+// SKY-11152 (parent spec SKY-11141 §3b): the whole wizard is now exactly 3
+// screens — Welcome (pick a mode) → Import (mode='import' only) → Name your
+// vault (every mode lands here). Deliberately NOT named 'step2'/'step3' —
+// those identifiers belonged to the deleted title/author story-creation form
+// and would collide in meaning with the screens below.
+type WizardStep = 'welcome' | 'import' | 'name';
 
-// M29: which entry path is driving the shared genre → theme → provider tail,
-// so the tail's finish knows which completion call to dispatch and each
-// screen's Back knows where it came from.
-// SKY-7649: 'sample' / 'import' / 'open-existing' route through the same
-// tail (spec §1.1) even though they skip the genre step (step1c already
-// picked a genre for 'sample'; 'import'/'open-existing' have none).
-type WizardFlow = 'start-fresh' | 'template' | 'quick-start' | 'sample' | 'import' | 'open-existing';
-
-// SKY-2007: 7 inline validation states for the save-location path field.
-type PathValidationState =
-  | 'idle'             // no input yet / cleared
-  | 'validating'       // debounce pending or IPC in-flight
-  | 'valid'            // writable, no conflicts
-  | 'new-path'         // path doesn't exist yet but parent is writable
-  | 'not-writable'     // path exists but not writable
-  | 'conflict-mythos'  // Story Vault/manifest.json found at this parent
-  | 'path-too-long'    // > 200 chars on Windows
-  | 'error';           // IPC threw or other failure
-
-type SystemPaths = {
-  homeDir: string;
-  documentsDir: string;
-  desktopDir: string;
-  oneDriveDir: string | null;
-  iCloudDir: string | null;
-  suggestedSaveLocations?: string[];
-};
-
-// SKY-2008: genre IDs for the step1c sample picker
-type SampleGenreId = 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
-
-interface GenreOption {
-  id: SampleGenreId;
-  emoji: string;
-  title: string;
-  description: string;
-  /** Displayed inside the "What's Inside" accordion */
-  contents: string;
-}
-
-const GENRE_OPTIONS: GenreOption[] = [
-  {
-    id: 'cozy-fantasy',
-    emoji: '🏰',
-    title: 'The Hearthstone Witch',
-    description: 'Whimsical magic in small towns and forests. Perfect for intimate stories of discovery.',
-    contents:
-      'Story Vault/\n└── The Hearthstone Witch\n    ├── Manuscript/ (3 chapters, 8 scenes)\n    └── (Outline, Synopsis sketched)\n\nNotes Vault/\n└── Universes/\n    ├── Characters/ (12 entries)\n    └── Systems/ (1 magic system)',
-  },
-  {
-    id: 'sci-fi-noir',
-    emoji: '🌃',
-    title: 'Neon Rust',
-    description: 'Neon-soaked cyberpunk. Dangerous, gritty, and chrome enough to cut yourself. For the rebels.',
-    contents:
-      'Story Vault/\n└── Neon Rust\n    ├── Manuscript/ (4 chapters, 10 scenes)\n    └── (Outline, Synopsis sketched)\n\nNotes Vault/\n└── Universes/\n    ├── Characters/ (6 entries)\n    └── Factions/ (1 faction map)',
-  },
-  {
-    id: 'mystery',
-    emoji: '🔍',
-    title: 'The Last Wednesday Club',
-    description: 'Secrets, clues, and code-breakers. A classic whodunit framework ready for your twists.',
-    contents:
-      'Story Vault/\n└── The Last Wednesday Club\n    ├── Manuscript/ (2 chapters, 6 scenes)\n    └── (Outline, Timeline sketched)\n\nNotes Vault/\n└── Universes/\n    ├── Characters/ (5 suspects)\n    └── Research/ (1 timeline)',
-  },
-];
-
-// ─── Beta 3 M25: guided-setup genre + theme steps (prototype welcome wizard) ──
-
-/** Prototype genre preset list (`this.genres`, prototype HTML 3118). */
-const WIZARD_GENRES = [
-  'Epic Fantasy', 'Dark Fantasy', 'Sci-Fi', 'Urban Fantasy',
-  'Thriller', 'Romance', 'Literary', 'Historical',
-] as const;
-type WizardGenre = (typeof WIZARD_GENRES)[number];
-
-/** M29 spec §3.1 (SKY-7593): all 10 Liquid Neon presets, 5×2 grid —
- *  `theme/presets.ts` insertion order is already the single source of truth
- *  (Classic → Winter), so no re-derivation needed. */
-const WIZARD_THEME_KEYS = Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[];
-
-/** Stable testid slug for a genre chip ("Epic Fantasy" → wiz-genre-epic-fantasy). */
-function genreTestId(genre: string): string {
-  return `wiz-genre-${genre.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
-}
-
-interface TemplateItem {
-  id: string;
-  name: string;
-  description: string;
-  story: Array<{ name: string; children?: Array<unknown>; starterNote?: string }>;
-  notes: Array<{ name: string; children?: Array<unknown>; starterNote?: string }>;
-  isUserTemplate?: boolean;
-  savedAt?: string;
-}
+// The 3 modes createVaultFromOptions understands (SKY-11151).
+type VaultMode = 'template' | 'blank' | 'import';
 
 interface OnboardingWizardProps {
   initialSettings: AppSettings;
@@ -152,352 +36,103 @@ interface OnboardingWizardProps {
 
 // ─── Typed window.api access ──────────────────────────────────────────────────
 
-type Api = {
-  pickFolder: () => Promise<{ vaultRoot: string | null; cancelled: boolean; registrationToken: string | null; error?: string }>;
-  chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
-  validatePath: (path: string) => Promise<{ exists: boolean; isEmpty: boolean; writable: boolean }>;
-  onboardingComplete: (payload?: {
-    startMode: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
-    storyTitle?: string;
-    authorName?: string;
-    vaultParentPath?: string;
-    templateId?: string;
-    vaultName?: string;
-    /** SKY-2008: genre selected on step1c; required for startMode=sample */
-    sampleGenre?: SampleGenreId;
-    customTemplate?: 'recommended' | 'blank';
-    /** M29 wizard genre step — seeds the genre starter notes main-side. */
-    genre?: string;
-    /** M29 wizard theme step — recorded as the vault's default theme. */
-    themeKey?: string;
-  }) => Promise<{ ok: boolean; firstSceneId?: string; firstScenePath?: string; error?: string }>;
-  templateList: () => Promise<{ templates: TemplateItem[] }>;
-  templateRename: (id: string, name: string) => Promise<{ ok: true } | { error: string }>;
-  templateDelete: (id: string) => Promise<{ ok: true } | { error: string }>;
-  templateDuplicate: (id: string) => Promise<{ ok: true; id: string } | { error: string }>;
-  vaultGetPaths?: () => Promise<{ homeDir?: string; pathSeparator?: '/' | '\\'; defaultVaultsParentPath?: string }>;
-  /** SKY-2005: returns OS-level directory paths for suggested vault locations. */
-  vaultGetSystemPaths?: () => Promise<SystemPaths>;
-  settingsSet?: (settings: AppSettings) => Promise<{ saved: boolean; error?: string }>;
-  importDocxToStoryVault?: (filePaths: string[]) => Promise<{
-    ok: boolean;
-    importedStories: Array<{ filePath: string; storyId: string; storyTitle: string; sceneCount: number; firstScenePath?: string; firstSceneId?: string; warnings: string[] }>;
-    errors: Array<{ filePath: string; error: string }>;
-  }>;
-  /** SKY-2993: Obsidian vault importer — dry-run scan + commit (onboarding Path 3) */
-  dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: ObsidianImportPreview; error?: string }>;
-  /** SKY-10388: all selected sources go into ONE new Mythos vault at destParentPath.
-   *  SKY-11058: destMode 'extra-notes-vault' instead registers the (notes-kind
-   *  only) source as an additional notes vault inside the current vault. */
-  importObsidianVault: (payload: { targets: Array<{ kind: 'notes' | 'story'; srcPath: string }>; destParentPath?: string; destVaultName?: string; destMode?: 'new-mythos-vault' | 'extra-notes-vault' }) => Promise<{ ok: boolean; mythosVaultRoot?: string; notesVaultId?: string; notesVaultDisplayName?: string; error?: string; dropWarning?: string }>;
-  onObsidianImportProgress?: (cb: (data: ObsidianImportProgress) => void) => () => void;
-  /** SKY-11058: non-null vaults ⇔ a v2 Mythos vault is currently open. */
-  notesVaultRegistryList?: () => Promise<{ vaults: Array<{ id: string; displayName: string }> | null; activeId: string | null }>;
-};
-
-// SKY-2993: dry-run summary returned by dryRunObsidianImport
-type ObsidianImportPreview = {
+/** SKY-2993 dry-run summary — carried forward from the pre-rewrite wizard's
+ *  Obsidian import (see git history: onboarding:dryRunObsidianImport). */
+interface ObsidianImportPreview {
   markdownCount: number;
   attachmentCount: number;
   totalFiles: number;
   topLevelFolders: string[];
   sampleFiles: string[];
+}
+
+type Api = {
+  chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
+  vaultGetPaths?: () => Promise<{ homeDir?: string; pathSeparator?: '/' | '\\'; defaultVaultsParentPath?: string }>;
+  /** SKY-2993: real (no-write) scan of a source folder — carried forward from
+   *  the pre-SKY-11152 wizard so the new Import screen still shows a dry-run
+   *  report before committing anything to disk. */
+  dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: ObsidianImportPreview; error?: string }>;
+  /** SKY-11151: THE shared vault-creation primitive — one surface for first
+   *  run, "New Mythos vault…", and Settings "Add vault…" (template/blank/import). */
+  createVaultFromOptions: (payload: {
+    mode: VaultMode;
+    destinationParent?: string;
+    name?: string;
+    exactName?: boolean;
+    defaultTheme?: string;
+    importSources?: { kind: 'notes' | 'story'; srcPath: string }[];
+    activate?: boolean;
+  }) => Promise<{
+    ok: boolean;
+    mode?: VaultMode;
+    mythosRoot?: string;
+    storyVaultPath?: string;
+    notesVaultPath?: string;
+    vaultName?: string;
+    importTally?: { imported: number; skipped: number; sourceCount: number; warnings: string[] };
+    error?: string;
+  }>;
 };
-
-// SKY-2993: progress payload pushed by the main process during import
-type ObsidianImportProgress = { current: number; total: number; lastAction: string };
-
-// SKY-2993: one Obsidian folder scanned for import, keyed to its target vault
-type ObsidianImportTarget = { kind: 'notes' | 'story'; path: string; preview: ObsidianImportPreview };
 
 function api(): Api {
   return (window as unknown as { api: Api }).api;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const DEFAULT_SAVE_PATH = '~/Documents/MythosWriter';
-
-// SKY-2988: extract last path segment as a vault display name
-function deriveVaultName(path: string): string {
-  const trimmed = path.trim().replace(/[/\\]+$/, '');
-  const parts = trimmed.split(/[/\\]/).filter(Boolean);
-  const last = parts[parts.length - 1] ?? '';
-  return last === '~' ? '' : last;
-}
-const INVALID_TITLE_RE = /[/\\:*?"<>|]/;
-const TITLE_MAX = 120;
-const AUTHOR_MAX = 80;
-
-// Exact error copy from spec
-const ERR_EMPTY_TITLE = 'Please give your story a title before continuing.';
-const ERR_INVALID_CHARS = 'Story titles can\'t contain these characters: / \\ : * ? " < > |';
-const ERR_TITLE_EXISTS = (title: string) =>
-  `A story called "${title}" already exists in that folder. Choose a different title or save location.`;
-const ERR_UNWRITABLE_PATH = 'Can\'t save to that folder. Please choose a different location.';
-
-// ─── Vault picker helpers (SKY-2007) ─────────────────────────────────────────
-
-/** Substitute the home directory prefix with ~ for cleaner display. */
-function tildeify(absPath: string, homeDir?: string): string {
-  if (!homeDir || !absPath.startsWith(homeDir)) return absPath;
-  return '~' + absPath.slice(homeDir.length);
+/** Mirrors the prototype's `wFullPath` (HTML 9424–9426): strip trailing
+ *  separators off the base, infer the separator from whatever's already in
+ *  the base path, fall back to 'My Vault' for an empty name. */
+function computeFullPath(basePath: string, name: string): string {
+  const base = (basePath || '').replace(/[\\/]+$/, '');
+  const sep = base.indexOf('/') >= 0 ? '/' : '\\';
+  const trimmedName = (name || '').trim() || 'My Vault';
+  return base ? `${base}${sep}${trimmedName}` : trimmedName;
 }
 
-/** Build up to 3 suggested save-location paths from OS paths, deduping against recents. */
-function buildSuggestedLocations(
-  sys: SystemPaths,
-  sep: '/' | '\\',
-  recents: readonly string[],
-): string[] {
-  const candidates: string[] = [];
-  if (sep === '\\') {
-    // Windows
-    candidates.push(`${sys.documentsDir}${sep}MythosWriter`);
-    candidates.push(`${sys.desktopDir}${sep}MythosWriter`);
-    if (sys.oneDriveDir) candidates.push(`${sys.oneDriveDir}${sep}MythosWriter`);
-  } else if (sys.iCloudDir) {
-    // macOS (iCloud present)
-    candidates.push(`${sys.documentsDir}${sep}MythosWriter`);
-    candidates.push(`${sys.desktopDir}${sep}MythosWriter`);
-    candidates.push(`${sys.iCloudDir}${sep}MythosWriter`);
-  } else {
-    // Linux
-    candidates.push(`${sys.documentsDir}${sep}MythosWriter`);
-    candidates.push(`${sys.homeDir}${sep}MythosWriter`);
+/** Mirrors the prototype's `wCreateNote` (HTML 9427–9439) for the 3 modes
+ *  this build actually supports (template / blank / import). */
+function computeCreateNote(mode: VaultMode, notesFilled: boolean, storyFilled: boolean): string {
+  if (mode === 'import') {
+    const notesPart = notesFilled ? 'an imported Notes Vault' : 'a blank Notes Vault';
+    const storyPart = storyFilled ? 'an imported Story Vault' : 'a blank Story Vault';
+    return `Contains ${notesPart} and ${storyPart}.`;
   }
-  const recentSet = new Set(recents.map((r) => r.trim()));
-  return candidates.filter((c) => !recentSet.has(c.trim())).slice(0, 3);
-}
-
-// ─── ConflictDialog (SKY-2007 §3.3.4) ────────────────────────────────────────
-
-interface ConflictDialogProps {
-  savePath: string;
-  onOpenExisting: () => void;
-  onNewFolder: () => void;
-  onCreateAlongside: (newPath: string) => void;
-  onDismiss: () => void;
-}
-
-function ConflictDialog({ savePath, onOpenExisting, onNewFolder, onCreateAlongside, onDismiss }: ConflictDialogProps) {
-  // Strip trailing number suffix so re-clicking "create alongside" increments cleanly
-  const base = savePath.replace(/\s+\d+$/, '');
-  const alongsidePath = `${base} 2`;
-
-  return (
-    <div
-      className="gs-confirm-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="gs-conflict-title"
-      data-testid="gs-conflict-dialog"
-    >
-      <div className="gs-confirm">
-        <h3 className="gs-confirm__title" id="gs-conflict-title">Vault already exists here</h3>
-        <p className="gs-confirm__body">
-          A Mythos vault already exists at this location. Choose how to proceed:
-        </p>
-        <div className="gs-conflict-actions">
-          <button
-            className="btn-secondary gs-conflict-actions__btn"
-            type="button"
-            onClick={onOpenExisting}
-            data-testid="gs-conflict-open-existing"
-          >
-            Open existing vault
-          </button>
-          <button
-            className="btn-secondary gs-conflict-actions__btn"
-            type="button"
-            onClick={onNewFolder}
-            data-testid="gs-conflict-new-folder"
-          >
-            Choose a different folder
-          </button>
-          <button
-            className="btn-secondary gs-conflict-actions__btn"
-            type="button"
-            onClick={() => onCreateAlongside(alongsidePath)}
-            data-testid="gs-conflict-create-alongside"
-          >
-            Create alongside <span className="gs-conflict-alongside-path">({alongsidePath.split(/[/\\]/).pop()})</span>
-          </button>
-        </div>
-        <button
-          className="btn-ghost"
-          type="button"
-          onClick={onDismiss}
-          data-testid="gs-conflict-dismiss"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
+  if (mode === 'template') {
+    return 'Contains a Notes Vault with the template folders — Characters, Locations, Stories, Plot, Worldbuilding, Research.';
+  }
+  return 'Starts empty — add a Notes or Story Vault whenever you like.';
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-/** Beta 3 M25: prototype wizard progress dots (HTML 4446) — filled up to `current`.
- *  SKY-7593 (design-handoff v2 §6): optional `labels` names each step so the
- *  dyslexic-friendly progress indicator doesn't rely on working memory alone.
- *  The dots stay aria-hidden — the adjacent `gs-step-label` text already gives
- *  screen readers the equivalent "X of Y" position, so labelling here too
- *  would double-announce it. */
-function WizardDots({ total, current, labels }: { total: number; current: number; labels?: string[] }) {
+/** Beta 3 M25: prototype wizard progress dots (HTML 4664) — filled up to
+ *  `current`. Stays aria-hidden — the adjacent step content already gives
+ *  screen readers the equivalent position. */
+function WizardDots({ total, current }: { total: number; current: number }) {
   return (
     <div className="wiz-dots" data-testid="wiz-dots" aria-hidden="true">
       {Array.from({ length: total }, (_, i) => (
-        <span key={i} className="wiz-dot-group">
-          <span className={`wiz-dot${current >= i + 1 ? ' wiz-dot--on' : ''}`} />
-          {labels?.[i] && <span className="wiz-dot__label">{labels[i]}</span>}
-        </span>
+        <span key={i} className={`wiz-dot${current >= i + 1 ? ' wiz-dot--on' : ''}`} />
       ))}
     </div>
   );
 }
 
-// ─── WizardProviderStep (SKY-7649, design-handoff v2 §4) ──────────────────────
-
-/** Every piece of controlled state `ProviderSection` needs, minus `hideModelField`
- *  (the wizard always sets it) — mirrors SettingsPanel's own provider state 1:1
- *  so the same component can be reused verbatim (spec §4.1 engineering note). */
-interface WizardProviderStepProps {
-  providerKind: ProviderKind;
-  setProviderKind: (kind: ProviderKind) => void;
-  providerApiKey: string;
-  setProviderApiKey: (key: string) => void;
-  providerApiKeyDirty: boolean;
-  setProviderApiKeyDirty: (dirty: boolean) => void;
-  providerBaseUrl: string;
-  setProviderBaseUrl: (url: string) => void;
-  providerModel: string;
-  setProviderModel: (model: string) => void;
-  savedProviderApiKey: string;
-  testStatus: TestConnectionStatus;
-  testMsg: string;
-  onTest: () => void;
-  modelList: string[];
-  modelListStatus: ModelListStatus;
-  modelListError: string | null;
-  useCustomInput: boolean;
-  setUseCustomInput: (v: boolean) => void;
-  onFetchModels: (kind: ProviderKind, baseUrl: string) => void;
-  setSavedOk: (ok: boolean) => void;
-  activeProviderSupportsVoice: boolean;
-  setTestConnectionStatus: (status: TestConnectionStatus) => void;
-  setModelList: (list: string[]) => void;
-  setModelListStatus: (status: ModelListStatus) => void;
-  setModelListError: (error: string | null) => void;
-  /** Chrome the tail screens share (back / close / dots / step label). */
-  onBack: () => void;
-  showBack: boolean;
-  onClose: () => void;
-  stepLabel: string;
-  dotsTotal: number;
-  dotsCurrent: number;
-  dotLabels: string[];
-  /** Primary CTA — persists the entered config, then finishes the wizard. */
-  onContinue: () => void;
-  /** "Skip for now" link — finishes the wizard without touching provider config. */
-  onSkip: () => void;
-}
-
-/** SKY-7649 (design-handoff v2 §4): the optional AI-provider step. Sits
- *  between Theme and Done on every entry path's tail. Composes the existing
- *  `ProviderSection` (OAuth button / API-key field / TestConnectionStatus,
- *  reused verbatim) with `hideModelField` — model selection stays in
- *  Settings → AI Agents, this is progressive disclosure, not a missing
- *  feature (spec §4.1). Never blocks or de-emphasizes Skip — no dark pattern. */
-function WizardProviderStep({
-  onBack,
-  showBack,
-  onClose,
-  stepLabel,
-  dotsTotal,
-  dotsCurrent,
-  dotLabels,
-  onContinue,
-  onSkip,
-  ...providerProps
-}: WizardProviderStepProps) {
-  return (
-    <div className="gs-modal" data-testid="screen-wiz-provider">
-      <div className="gs-modal__header">
-        {showBack && (
-          <button
-            className="btn-ghost btn-back"
-            type="button"
-            onClick={onBack}
-            data-testid="wiz-provider-back"
-          >
-            <span aria-hidden="true">&#x2190;</span> Back
-          </button>
-        )}
-        <span className="gs-step-label">{stepLabel}</span>
-        <button
-          className="gs-close-btn"
-          type="button"
-          aria-label="Close setup"
-          onClick={onClose}
-          data-testid="wiz-provider-close"
-        >
-          &#x2715;
-        </button>
-      </div>
-      <WizardDots total={dotsTotal} current={dotsCurrent} labels={dotLabels} />
-      <h2 className="gs-modal__title">Want writing help from an AI agent?</h2>
-      <p className="gs-modal__subtitle">
-        This is optional. Skip it and set it up later — nothing here is required to start writing.
-      </p>
-
-      <div className="wiz-provider-card" data-testid="wiz-provider-card">
-        <ProviderSection {...providerProps} hideModelField />
-      </div>
-
-      <p className="wiz-provider-reassurance" data-testid="wiz-provider-reassurance">
-        You can write, take notes, and build your timeline with zero AI set up.
-      </p>
-
-      {/* Spec §4.3: Skip sits below the primary CTA, same visual weight as any
-          other link — never disabled or de-emphasized (no dark pattern). */}
-      <div className="gs-actions gs-actions--wiz-provider">
-        <button
-          className="btn-primary gs-actions__cta"
-          type="button"
-          onClick={onContinue}
-          data-testid="wiz-provider-finish"
-        >
-          Open my vault &#x2726;
-        </button>
-        <button
-          className="btn-ghost gs-wiz-skip"
-          type="button"
-          onClick={onSkip}
-          data-testid="wiz-provider-skip"
-        >
-          Skip for now — I&apos;ll set this up later
-        </button>
-      </div>
-    </div>
-  );
-}
-
 interface StartingPointCardProps {
-  icon: string;
+  icon: LucideIcon;
   title: string;
   description: string;
   ctaLabel: string;
   onActivate: () => void;
   testId: string;
-  isSecondary?: boolean;
   cardRef?: React.RefObject<HTMLButtonElement>;
-  /** Beta 3 M25: prototype corner chip (e.g. "Recommended", HTML 2790). */
+  /** Beta 3 M25: prototype corner chip (e.g. "RECOMMENDED", HTML 4591). */
   chip?: string;
 }
 
-function StartingPointCard({ icon, title, description, ctaLabel, onActivate, testId, isSecondary, cardRef, chip }: StartingPointCardProps) {
+function StartingPointCard({ icon: Icon, title, description, ctaLabel, onActivate, testId, cardRef, chip }: StartingPointCardProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -507,7 +142,7 @@ function StartingPointCard({ icon, title, description, ctaLabel, onActivate, tes
   return (
     <button
       ref={cardRef}
-      className={`gs-card${isSecondary ? ' gs-card--secondary' : ''}`}
+      className="gs-card"
       onClick={() => onActivate()}
       onKeyDown={handleKeyDown}
       data-testid={testId}
@@ -515,37 +150,13 @@ function StartingPointCard({ icon, title, description, ctaLabel, onActivate, tes
       type="button"
     >
       {chip && <span className="gs-card__chip" aria-hidden="true">{chip}</span>}
-      <span className="gs-card__icon" aria-hidden="true">{icon}</span>
+      <span className="gs-card__icon" aria-hidden="true"><Icon size={28} strokeWidth={1.75} /></span>
       <span className="gs-card__title">{title}</span>
       <span className="gs-card__desc">{description}</span>
-      <span className="gs-card__cta" aria-hidden="true">{ctaLabel}</span>
-    </button>
-  );
-}
-
-interface TemplateCardProps {
-  template: TemplateItem;
-  onSelect: () => void;
-  testId: string;
-  isChecked: boolean;
-  tabIndex: number;
-}
-
-function TemplateCard({ template, onSelect, testId, isChecked, tabIndex }: TemplateCardProps) {
-  return (
-    <button
-      role="radio"
-      aria-checked={isChecked}
-      className="gs-template-card"
-      onClick={onSelect}
-      data-testid={testId}
-      type="button"
-      tabIndex={tabIndex}
-    >
-      {template.isUserTemplate && <span className="gs-template-card__badge">Saved</span>}
-      <span className="gs-template-card__name">{template.name}</span>
-      <span className="gs-template-card__desc">{template.description}</span>
-      <span className="gs-template-card__cta" aria-hidden="true">Use this &#x2192;</span>
+      {/* Visual affordance only — the whole card is the interactive button,
+          so this can't itself be a nested <Button> (invalid HTML, would
+          double-fire onActivate). Same .btn classes as the real Button. */}
+      <span className="gs-card__cta btn btn--primary btn--sm" aria-hidden="true">{ctaLabel}</span>
     </button>
   );
 }
@@ -567,7 +178,7 @@ function ConfirmDialog({ onKeepGoing, onCancelSetup }: ConfirmDialogProps) {
       <div className="gs-confirm">
         <h3 className="gs-confirm__title" id="gs-confirm-title">Cancel setup?</h3>
         <p className="gs-confirm__body">
-          Your story hasn&apos;t been created yet.<br />
+          Your vault hasn&apos;t been created yet.<br />
           If you close now, you&apos;ll start fresh next time.
         </p>
         <div className="gs-confirm__actions">
@@ -591,1432 +202,201 @@ function ConfirmDialog({ onKeepGoing, onCancelSetup }: ConfirmDialogProps) {
   );
 }
 
-// ─── GenreCard (step1c) ──────────────────────────────────────────────────────
-
-interface GenreCardProps {
-  genre: GenreOption;
-  isSelected: boolean;
-  isAccordionOpen: boolean;
-  tabIndex: number;
-  onSelect: () => void;
-  onToggleAccordion: (e: React.MouseEvent | React.KeyboardEvent) => void;
-}
-
-function GenreCard({ genre, isSelected, isAccordionOpen, tabIndex, onSelect, onToggleAccordion }: GenreCardProps) {
-  const panelId = `gp-panel-${genre.id}`;
-  const accordionBtnId = `gp-accordion-btn-${genre.id}`;
-
-  function handleCardKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onSelect();
-    }
-  }
-
-  function handleAccordionKeyDown(e: React.KeyboardEvent<HTMLButtonElement>) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      onToggleAccordion(e);
-    }
-    if (e.key === 'Escape' && isAccordionOpen) {
-      e.stopPropagation();
-      onToggleAccordion(e);
-    }
-  }
-
-  return (
-    <div
-      role="radio"
-      aria-checked={isSelected}
-      className="gp-card"
-      onClick={onSelect}
-      onKeyDown={handleCardKeyDown}
-      tabIndex={tabIndex}
-      data-testid={`genre-card-${genre.id}`}
-    >
-      <div className="gp-card-header">
-        <span className="gp-card-emoji" aria-hidden="true">{genre.emoji}</span>
-        <span className="gp-card-title">{genre.title}</span>
-        <span className="gp-radio" aria-hidden="true" />
-      </div>
-      <p className="gp-card-description">{genre.description}</p>
-      <button
-        id={accordionBtnId}
-        type="button"
-        className="gp-card-accordion"
-        aria-expanded={isAccordionOpen}
-        aria-controls={panelId}
-        onClick={(e) => { e.stopPropagation(); onToggleAccordion(e); }}
-        onKeyDown={(e) => { e.stopPropagation(); handleAccordionKeyDown(e); }}
-        data-testid={`genre-accordion-btn-${genre.id}`}
-      >
-        <span className={`gp-card-accordion-icon${isAccordionOpen ? ' gp-card-accordion-icon--open' : ''}`} aria-hidden="true">▼</span>
-        {isAccordionOpen ? 'Hide contents' : 'What\'s inside ›'}
-      </button>
-      <div
-        id={panelId}
-        role="region"
-        aria-labelledby={accordionBtnId}
-        aria-hidden={!isAccordionOpen}
-        className="gp-card-accordion-panel"
-        data-testid={`genre-accordion-panel-${genre.id}`}
-      >
-        <div className="gp-card-accordion-inner">
-          <pre>{genre.contents}</pre>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Main wizard ──────────────────────────────────────────────────────────────
 
 export default function OnboardingWizard({ initialSettings, onComplete, onCancel, _testInitialStep }: OnboardingWizardProps) {
-  const [step, setStep] = useState<WizardStep>(_testInitialStep ?? 'step1');
+  const [step, setStep] = useState<WizardStep>(_testInitialStep ?? 'welcome');
+  const [mode, setMode] = useState<VaultMode | null>(null);
+
   // SKY-11058: NotesVaultPicker's "Import a vault…" replays the wizard with
-  // this flag set — consume it exactly once and land on the Import screen.
+  // this flag set — consume it exactly once and land on the (new) Import
+  // screen, in import mode.
   useEffect(() => {
     try {
       if (sessionStorage.getItem(WIZARD_OPEN_IMPORT_STEP_KEY)) {
         sessionStorage.removeItem(WIZARD_OPEN_IMPORT_STEP_KEY);
-        setStep('step-import');
+        setMode('import');
+        setStep('import');
       }
-    } catch { /* sessionStorage unavailable — start on step1 as usual */ }
+    } catch { /* sessionStorage unavailable — start on welcome as usual */ }
   }, []);
-  const [startMode, setStartMode] = useState<StartMode | null>(null);
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-  // SKY-2008: step1c genre picker state
-  const [selectedSampleGenre, setSelectedSampleGenre] = useState<SampleGenreId | null>(null);
-  const [openAccordionGenre, setOpenAccordionGenre] = useState<SampleGenreId | null>(null);
-  const [templates, setTemplates] = useState<TemplateItem[]>([]);
-  const [templateLoadError, setTemplateLoadError] = useState('');
-  const [loadingTemplates, setLoadingTemplates] = useState(true);
-  // SKY-1399: template management state
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  // Guard: prevents onBlur from calling templateRename a second time after Enter already committed it
-  const templateRenamedRef = useRef(false);
-  // SKY-1403: export / import toast feedback
-  const { toast: templateToastState, showToast: showTemplateToast } = useToast(3000);
-  // SKY-1405: drag-drop visual feedback state
-  const [isDragOver, setIsDragOver] = useState(false);
 
-  // Step 2 form state
-  const [storyTitle, setStoryTitle] = useState('');
-  const [authorName, setAuthorName] = useState('');
-  const [savePath, setSavePath] = useState(DEFAULT_SAVE_PATH);
-  const [pathOptions, setPathOptions] = useState<TruncatePathOptions>({});
+  // ─── Step 2 (import) state ──────────────────────────────────────────────────
+  const [notesPath, setNotesPath] = useState('');
+  const [storyPath, setStoryPath] = useState('');
+  // SKY-2993/SKY-11152: 'form' is the two browse rows; 'report' is the
+  // dry-run (no-write) preview shown before the user commits. Carried
+  // forward from the pre-rewrite wizard's Obsidian import — Continue now
+  // triggers a real scan instead of jumping straight to the name step.
+  const [importPhase, setImportPhase] = useState<'form' | 'report'>('form');
+  const [obsDryRun, setObsDryRun] = useState<
+    { kind: 'notes' | 'story'; path: string; preview: ObsidianImportPreview }[] | null
+  >(null);
+  const [obsDryRunError, setObsDryRunError] = useState('');
+  const [obsDryRunRunning, setObsDryRunRunning] = useState(false);
 
-  useEffect(() => {
-    api().vaultGetPaths?.().then((paths) => {
-      const opts = { homeDir: paths.homeDir, sep: paths.pathSeparator };
-      // Update the ref immediately so async handlers see the latest homeDir
-      // before the next render flushes (pathOptionsRef.current = pathOptions runs on render).
-      pathOptionsRef.current = opts;
-      setPathOptions(opts);
-    }).catch(() => { /* non-fatal */ });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // ─── Step 3 (name) state ────────────────────────────────────────────────────
+  const [vaultName, setVaultName] = useState('');
+  const [vaultPath, setVaultPath] = useState('');
+  const [defaultVaultsParentPath, setDefaultVaultsParentPath] = useState('');
 
-  // Error state
-  const [titleError, setTitleError] = useState('');
-  const [savePathError, setSavePathError] = useState('');
-  const [scaffoldError, setScaffoldError] = useState('');
-
-  // UI state
-  const [scaffolding, setScaffolding] = useState(false);
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [showMigrationDialog, setShowMigrationDialog] = useState(
-    Boolean(initialSettings.legacyVaultDetected && !initialSettings.legacyVaultDismissed),
-  );
-
-  // SKY-2007: vault picker polish state
-  const [pathValidationState, setPathValidationState] = useState<PathValidationState>('idle');
-  const [pathValidationMsg, setPathValidationMsg] = useState('');
-  const [systemPaths, setSystemPaths] = useState<SystemPaths | null>(null);
-  const [showRecents, setShowRecents] = useState(false);
-  const [showConflictDialog, setShowConflictDialog] = useState(false);
-  const pathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pathInputRef = useRef<HTMLInputElement>(null);
-
-  // ─── SKY-2988: Custom Setup v0.3 state ─────────────────────────────────────
-  const [customVaultPath, setCustomVaultPath] = useState(DEFAULT_SAVE_PATH);
-  const [customVaultName, setCustomVaultName] = useState(() => deriveVaultName(DEFAULT_SAVE_PATH));
-  const [customTemplate, setCustomTemplate] = useState<'recommended' | 'blank'>('recommended');
-  const [customPathValidation, setCustomPathValidation] = useState<PathValidationState>('idle');
-  const [customPathMsg, setCustomPathMsg] = useState('');
-  const [fromCustomSetup, setFromCustomSetup] = useState(false);
-  const customPathDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const customPathInputRef = useRef<HTMLInputElement>(null);
-  const customVaultNameInputRef = useRef<HTMLInputElement>(null);
-  const vaultNameManuallyEditedRef = useRef(false);
-
-  // ─── Beta 3 M25 / Beta 4 M29: shared genre + theme pages ───────────────────
-  const [wizardFlow, setWizardFlow] = useState<WizardFlow>('start-fresh');
-  const [wizGenre, setWizGenre] = useState<WizardGenre>('Epic Fantasy');
-  // M29 spec §3.1 (SKY-7593): default to Winterlight so Continue is never
-  // blocked by an unmade choice. NOTE: the spec claims this "matches the
-  // existing app-wide default" — it doesn't (LIQUID_NEON_V2_DEFAULTS.setKey
-  // is 'classic'); the explicit instruction still stands, the justification
-  // is just wrong.
-  const [wizTheme, setWizTheme] = useState<LiquidNeonPresetKey>('winter');
-  // Non-null once the theme step's Continue ran, so Try Again keeps the
-  // personalization. `genre` is omitted for the sample/import/open-existing
-  // flows (SKY-7649) — they never visit the 8-genre custom-genre grid.
-  const guidedPersonalizationRef = useRef<{ genre?: WizardGenre; theme: LiquidNeonPresetKey } | null>(null);
-  // SKY-7649: non-null once the provider step's primary CTA ran (Skip leaves
-  // this null) — the config to persist onto AppSettings on finish.
-  const guidedProviderRef = useRef<AppSettings['provider'] | null>(null);
-  // SKY-7649: the folder picked on "Open existing vault" — the IPC call that
-  // actually opens it is deferred to the provider step's finish (spec §1.1:
-  // "Skips straight to Theme + Provider"), so the path needs to outlive the
-  // Welcome screen. Also backs the ConflictDialog "Open existing vault" action.
-  const [openExistingPath, setOpenExistingPath] = useState('');
-  // SKY-7649: the already-completed settings object for the Import path —
-  // step-import's own IPC calls (Obsidian confirm / mythos-path open / docx)
-  // already do the real work on that screen; the tail after it only merges
-  // theme/provider personalization, no further mutation.
-  const pendingImportSettingsRef = useRef<AppSettings | null>(null);
-
-  // ─── SKY-7649: AI-provider step (design-handoff v2 §4) ─────────────────────
-  // Deliberately separate from SettingsPanel's own provider state — this is
-  // the wizard's own controlled instance of the same ~15 props ProviderSection
-  // needs, seeded from any already-saved provider (e.g. a wizard replay).
-  const [providerKind, setProviderKind] = useState<ProviderKind>(initialSettings.provider?.kind ?? 'anthropic');
-  const [providerApiKey, setProviderApiKey] = useState('');
-  const [providerApiKeyDirty, setProviderApiKeyDirty] = useState(false);
-  const [providerBaseUrl, setProviderBaseUrl] = useState(initialSettings.provider?.baseUrl ?? '');
-  const [providerModel, setProviderModel] = useState(initialSettings.provider?.model ?? '');
-  const [providerTestStatus, setProviderTestStatus] = useState<TestConnectionStatus>('idle');
-  const [providerTestMsg, setProviderTestMsg] = useState('');
-  // hideModelField keeps these three inert (no UI reads them) — kept as real
-  // state rather than no-ops only to satisfy ProviderSection's prop contract.
-  const [providerModelList, setProviderModelList] = useState<string[]>([]);
-  const [providerModelListStatus, setProviderModelListStatus] = useState<ModelListStatus>('idle');
-  const [providerModelListError, setProviderModelListError] = useState<string | null>(null);
-  const [providerUseCustomInput, setProviderUseCustomInput] = useState(false);
-
-  const handleProviderTest = useCallback(async () => {
-    setProviderTestStatus('testing');
-    setProviderTestMsg('');
-    try {
-      const result = await window.api.settingsTestConnection({
-        kind: providerKind,
-        apiKey: providerApiKeyDirty ? providerApiKey : (initialSettings.provider?.apiKey ?? ''),
-        baseUrl: providerBaseUrl || undefined,
-        model: providerModel,
-      });
-      if (result?.ok) {
-        setProviderTestStatus('ok');
-        setProviderTestMsg('Connection successful');
-      } else {
-        setProviderTestStatus('error');
-        setProviderTestMsg(result?.error ?? 'Connection failed');
-      }
-    } catch (e) {
-      setProviderTestStatus('error');
-      setProviderTestMsg(e instanceof Error ? e.message : 'Connection failed');
-    }
-  }, [providerKind, providerApiKey, providerApiKeyDirty, providerBaseUrl, providerModel]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // hideModelField means nothing renders the fetched list — skip the network
-  // call entirely rather than fetch models the wizard never shows.
-  const handleProviderFetchModels = useCallback(() => {}, []);
-
-  // ─── SKY-2990: Import / Open screen state ──────────────────────────────────
-  const [importMwPath, setImportMwPath] = useState('');
-  const [importMwValidation, setImportMwValidation] = useState<'idle' | 'validating' | 'valid' | 'invalid'>('idle');
-  const [importMwMsg, setImportMwMsg] = useState('');
-  const [importObsNotesPath, setImportObsNotesPath] = useState('');
-  const [importObsStoryPath, setImportObsStoryPath] = useState('');
-  // SKY-10388: where the NEW Mythos vault is created (owner ruling R2/R3).
-  const [importObsDestPath, setImportObsDestPath] = useState('');
-
-  // SKY-10388 (owner ruling R3): prefill the destination with the default
-  // vaults parent; the user can still edit/browse it before importing.
+  // SKY-10388-style default prefill: the destination starts at the default
+  // vaults parent; the user can still edit/browse it before creating.
   useEffect(() => {
     api().vaultGetPaths?.().then((paths) => {
       if (paths.defaultVaultsParentPath) {
-        setImportObsDestPath((prev) => prev || paths.defaultVaultsParentPath!);
+        setDefaultVaultsParentPath(paths.defaultVaultsParentPath);
+        setVaultPath((prev) => prev || paths.defaultVaultsParentPath!);
       }
     }).catch(() => { /* non-fatal */ });
   }, []);
-  const [importDocxFiles, setImportDocxFiles] = useState<File[]>([]);
-  // SKY-10388: the three sections are separate, mutually exclusive imports.
-  // More than one filled blocks submit (with an inline explanation) instead of
-  // the old priority chain silently dropping everything but section 1.
-  const filledImportSections = [
-    importMwPath.trim() ? 'Open Mythos Writer vault' : null,
-    (importObsNotesPath || importObsStoryPath) ? 'Import from Obsidian' : null,
-    importDocxFiles.length > 0 ? 'Import Word documents' : null,
-  ].filter((s): s is string => s !== null);
-  const [importRunning, setImportRunning] = useState(false);
-  const [importErrorModal, setImportErrorModal] = useState<{ title: string; message: string } | null>(null);
-  const docxFileInputRef = useRef<HTMLInputElement>(null);
-  const importMwDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ─── SKY-2993: Obsidian import flow state ──────────────────────────────────
-  // Non-null obsDryRun switches the Import/Open screen from the path form to
-  // the dry-run report view (Confirm import / Back).
-  const [obsDryRun, setObsDryRun] = useState<ObsidianImportTarget[] | null>(null);
-  const [obsImporting, setObsImporting] = useState(false);
-  const [obsProgress, setObsProgress] = useState<ObsidianImportProgress | null>(null);
-  const [obsError, setObsError] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [scaffoldError, setScaffoldError] = useState('');
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
-  // ─── SKY-11058 item 4: import as an ADDITIONAL notes vault ─────────────────
-  // Only offered on a wizard REPLAY with a currently-open v2 Mythos vault
-  // (notesVaultRegistryList returns non-null vaults). First-run onboarding has
-  // no open vault, the list call returns null, and no radios render — the
-  // default new-Mythos-vault copy stays byte-for-byte as today.
-  const [obsDestMode, setObsDestMode] = useState<'new-mythos-vault' | 'extra-notes-vault'>('new-mythos-vault');
-  const [extraNotesVaultAvailable, setExtraNotesVaultAvailable] = useState(false);
+  // AC-L-05: first card gets initial focus when the welcome screen mounts.
+  const firstCardRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    api().notesVaultRegistryList?.().then((res) => {
-      if (res && res.vaults !== null) setExtraNotesVaultAvailable(true);
-    }).catch(() => { /* non-fatal — radios stay hidden */ });
-  }, []);
-  // A story-kind source can never become a notes vault — option (b) is
-  // disabled (with a hint) while the story slot is filled, and the effective
-  // mode falls back to the default so a stale radio choice can't leak through.
-  const obsExtraDisabled = Boolean(importObsStoryPath);
-  const obsEffectiveDestMode: 'new-mythos-vault' | 'extra-notes-vault' =
-    extraNotesVaultAvailable && !obsExtraDisabled ? obsDestMode : 'new-mythos-vault';
-
-  // SKY-2007: load system path suggestions when the save-location step opens
-  // SKY-2988: also load for the Custom Setup location picker
-  useEffect(() => {
-    if (step !== 'step2' && step !== 'custom-location') return;
-    api().vaultGetSystemPaths?.().then((sys) => {
-      setSystemPaths(sys);
-    }).catch(() => { /* non-fatal — suggestions stay hidden */ });
-  }, [step]);
-
-  // SKY-2007: derive up to 3 suggested paths, deduped against recents
-  const suggestedLocations = useMemo<string[]>(() => {
-    if (!systemPaths) return [];
-    const sep = (pathOptions.sep as '/' | '\\') ?? '/';
-    const recents = initialSettings.recentVaultParentPaths ?? [];
-    return buildSuggestedLocations(systemPaths, sep, recents);
-  }, [systemPaths, pathOptions.sep, initialSettings.recentVaultParentPaths]);
-
-  // Always-fresh ref so async handlers see the latest pathOptions without closure staleness
-  const pathOptionsRef = useRef(pathOptions);
-  pathOptionsRef.current = pathOptions;
-
-  const titleInputRef = useRef<HTMLInputElement>(null);
-  const templateCardTriggerRef = useRef<HTMLElement | null>(null);
-
-  // ─── SKY-2988: Custom Setup path validators ─────────────────────────────────
-
-  const validateCustomPathNow = useCallback(async (rawPath: string) => {
-    const opts = pathOptionsRef.current;
-    const expanded = rawPath.startsWith('~/')
-      ? (opts.homeDir ?? '') + rawPath.slice(1)
-      : rawPath.startsWith('~\\')
-      ? (opts.homeDir ?? '') + rawPath.slice(1)
-      : rawPath;
-
-    setCustomPathValidation('validating');
-    setCustomPathMsg('');
-    try {
-      const sep = opts.sep ?? '/';
-      const [base, mythosCheck] = await Promise.all([
-        api().validatePath(expanded),
-        api().validatePath(`${expanded}${sep}Story Vault${sep}manifest.json`),
-      ]);
-
-      if (!base.writable) {
-        setCustomPathValidation('not-writable');
-        setCustomPathMsg('This location is not writable. Choose a different folder.');
-        return;
-      }
-      if (mythosCheck.exists) {
-        setCustomPathValidation('conflict-mythos');
-        setCustomPathMsg('A Mythos vault already exists here.');
-        return;
-      }
-      setCustomPathValidation(base.exists ? 'valid' : 'new-path');
-      setCustomPathMsg('');
-    } catch {
-      setCustomPathValidation('error');
-      setCustomPathMsg('Could not validate this path. Check the folder and try again.');
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleCustomPathChange = useCallback((value: string) => {
-    setCustomVaultPath(value);
-    if (!vaultNameManuallyEditedRef.current) {
-      setCustomVaultName(deriveVaultName(value));
-    }
-
-    if (customPathDebounceRef.current) clearTimeout(customPathDebounceRef.current);
-
-    const isWindows = pathOptionsRef.current.sep === '\\';
-    if (isWindows && value.length > 200) {
-      setCustomPathValidation('path-too-long');
-      setCustomPathMsg('Path must be 200 characters or fewer on Windows.');
-      return;
-    }
-
-    if (!value.trim()) {
-      setCustomPathValidation('idle');
-      setCustomPathMsg('');
-      return;
-    }
-
-    setCustomPathValidation('validating');
-    customPathDebounceRef.current = setTimeout(() => {
-      validateCustomPathNow(value);
-    }, 500);
-  }, [validateCustomPathNow]);
-
-  function handleCustomUsePath(path: string) {
-    const display = tildeify(path, pathOptionsRef.current.homeDir);
-    setCustomVaultPath(display);
-    if (!vaultNameManuallyEditedRef.current) {
-      setCustomVaultName(deriveVaultName(display));
-    }
-    validateCustomPathNow(path);
-  }
-
-  async function handleCustomBrowse() {
-    try {
-      const res = await api().chooseVaultFolder('Choose vault location');
-      if (!res.cancelled && res.path) {
-        const display = tildeify(res.path, pathOptionsRef.current.homeDir);
-        setCustomVaultPath(display);
-        if (!vaultNameManuallyEditedRef.current) {
-          setCustomVaultName(deriveVaultName(display));
-        }
-        validateCustomPathNow(res.path);
-      }
-    } catch { /* picker cancelled or failed */ }
-  }
-
-  function handleCustomNext() {
-    if (customVaultName.trim() === '') {
-      customVaultNameInputRef.current?.focus();
-      return;
-    }
-    if (customPathValidation !== 'valid' && customPathValidation !== 'new-path') return;
-    setStep('custom-template');
-  }
-
-  // ─── Beta 3 M25 / SKY-7649: guided-setup finish (genre + theme + provider) ──
-
-  /**
-   * Fold the guided-setup personalization (genre + neon preset, SKY-7649: plus
-   * the provider step's config) into the completed settings. No-op unless the
-   * theme step's Continue ran. Applies the preset tokens immediately (same
-   * live-apply path as the Appearance settings page), persists via settingsSet
-   * (non-fatal — the shell re-saves settings on any later change), and fires
-   * the prototype's "Vault ready" toast (prototype `wizFinish`, HTML 4447).
-   */
-  async function withGuidedPersonalization(updated: AppSettings): Promise<AppSettings> {
-    const guided = guidedPersonalizationRef.current;
-    const provider = guidedProviderRef.current;
-    if (!guided && !provider) return updated;
-    let merged = updated;
-    let liquidNeonV2: LiquidNeonV2Settings | undefined;
-    if (guided) {
-      const preset = LIQUID_NEON_PRESETS[guided.theme];
-      liquidNeonV2 = {
-        ...normalizeLiquidNeonV2(initialSettings.liquidNeonV2),
-        setKey: guided.theme,
-        slots: [...preset.c] as LiquidNeonV2Settings['slots'],
-        wp: 'match',
-      };
-      merged = { ...merged, liquidNeonV2, ...(guided.genre ? { onboardingGenre: guided.genre } : {}) };
-      applyLiquidNeonV2Tokens(liquidNeonV2, cosmicBgUrl);
-    }
-    if (provider) {
-      merged = { ...merged, provider };
-    }
-    // SKY-7649: awaited (not fire-and-forget) — DesktopShell mounts its own
-    // settings state independently once onComplete() fires, and its later
-    // unrelated saves (layout, tabs, …) echo back whatever it had at mount
-    // time. If this patch were still in flight when that happened, an
-    // apiKey the user just typed here could be reconciled away as a
-    // "cleared" key (masking only protects values the renderer has actually
-    // seen). Awaiting guarantees this write lands before DesktopShell exists.
-    try {
-      const fresh = await window.api.settingsGet();
-      await window.api.settingsSet({
-        ...fresh,
-        ...(liquidNeonV2 ? { liquidNeonV2 } : {}),
-        ...(guided?.genre ? { onboardingGenre: guided.genre } : {}),
-        ...(provider ? { provider } : {}),
-      });
-    } catch { /* non-fatal — shell re-saves settings on any later change */ }
-    if (guided) showLnToast('Vault ready — welcome to Mythos Writer');
-    return merged;
-  }
-
-  /** SKY-7649: dispatch the completion call for whichever entry path funneled
-   *  into the shared theme → provider tail. Called from the provider step's
-   *  primary CTA / Skip link — the last screen on every path. */
-  function dispatchWizardFinish() {
-    if (wizardFlow === 'quick-start') void handleQuickStartFinish();
-    else if (wizardFlow === 'template') void submitCreateStory();
-    else if (wizardFlow === 'start-fresh') void handleCustomFinish();
-    else if (wizardFlow === 'sample') void handleSampleFinish();
-    else if (wizardFlow === 'import') void handleImportFinish();
-    else void handleOpenExistingFinish(); // wizardFlow === 'open-existing'
-  }
-
-  /** M29 / SKY-7649: the shared theme → provider tail renders/back-navigates
-   *  differently depending on which entry path funneled into it — Quick Start
-   *  skips location+template so it's a shorter mini-flow; sample/import/
-   *  open-existing skip the 8-genre grid entirely (SKY-7649: they never visit
-   *  custom-genre — sample already picked a genre on step1c, import/open-
-   *  existing have none). `themeBack` is where the theme step's Back goes
-   *  (distinct from `genreBack`, which is custom-genre's own Back target).
-   *  Every flow's tail now ends with a 3rd "AI helpers" dot for the new
-   *  provider step (spec §6). */
-  function wizFlowMeta(): { label: string; totalSteps: number; genreBack: WizardStep; themeBack: WizardStep; dotLabels: string[] } {
-    if (wizardFlow === 'quick-start') {
-      return { label: 'Quick Start', totalSteps: 3, genreBack: 'custom-location', themeBack: 'custom-genre', dotLabels: ['Genre', 'Theme', 'AI helpers'] };
-    }
-    if (wizardFlow === 'template') {
-      return { label: 'Use a Template', totalSteps: 5, genreBack: 'step2', themeBack: 'custom-genre', dotLabels: ['Template', 'Details', 'Genre', 'Theme', 'AI helpers'] };
-    }
-    if (wizardFlow === 'start-fresh') {
-      return { label: 'Start Fresh', totalSteps: 5, genreBack: 'custom-template', themeBack: 'custom-genre', dotLabels: ['Location', 'Template', 'Genre', 'Theme', 'AI helpers'] };
-    }
-    if (wizardFlow === 'sample') {
-      return { label: 'Open Sample Project', totalSteps: 2, genreBack: 'step1', themeBack: 'step1c', dotLabels: ['Theme', 'AI helpers'] };
-    }
-    if (wizardFlow === 'import') {
-      return { label: 'Import Obsidian Vault', totalSteps: 2, genreBack: 'step1', themeBack: 'step-import', dotLabels: ['Theme', 'AI helpers'] };
-    }
-    // wizardFlow === 'open-existing': Theme is the first tail screen (Vault is
-    // skipped entirely, spec §1.1) — its Back is hidden, see the render site.
-    return { label: 'Open Existing Vault', totalSteps: 2, genreBack: 'step1', themeBack: 'step1', dotLabels: ['Theme', 'AI helpers'] };
-  }
-
-  /** M29: genre + theme sent with every creating completion call
-   *  (start-fresh/template/quick-start only — main doesn't consume either
-   *  field for sample/import/open-existing, SKY-7649 applies theme to those
-   *  purely client-side via withGuidedPersonalization). */
-  function personalizationPayload(): { genre?: string; themeKey?: string } {
-    const guided = guidedPersonalizationRef.current;
-    if (!guided) return {};
-    return { genre: guided.genre, themeKey: guided.theme };
-  }
-
-  async function handleCustomFinish() {
-    setScaffoldError('');
-    setFromCustomSetup(true);
-    setStartMode('start-fresh');
-    setStep('step3');
-    setScaffolding(true);
-    try {
-      const expanded = customVaultPath.startsWith('~/')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath.startsWith('~\\')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath;
-      const res = await api().onboardingComplete({
-        startMode: 'start-fresh',
-        customTemplate,
-        vaultParentPath: expanded,
-        vaultName: customVaultName.trim() || deriveVaultName(expanded),
-        ...personalizationPayload(),
-      });
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? 'Something went wrong creating your vault.');
-        setScaffolding(false);
-        return;
-      }
-      const updated: AppSettings = {
-        ...initialSettings,
-        onboardingComplete: true,
-        onboardingStartMode: 'start-fresh',
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
-      };
-      // Beta 3 M25: merge guided-setup genre + theme when that path was used.
-      onComplete(await withGuidedPersonalization(updated));
-    } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your vault.');
-      setScaffolding(false);
-    }
-  }
-
-  // AC-L-05: first card gets initial focus when step1 mounts or returns
-  const quickStartRef = useRef<HTMLButtonElement>(null);
-
-  // AC-L-05: auto-focus first card when landing screen mounts or returns
-  useEffect(() => {
-    if (step === 'step1') {
-      quickStartRef.current?.focus();
+    if (step === 'welcome') {
+      firstCardRef.current?.focus();
     }
   }, [step]);
 
-  // Auto-focus title input on step 2
-  useEffect(() => {
-    if (step === 'step2') {
-      titleInputRef.current?.focus();
-    }
-    // SKY-2988: auto-focus path input on custom-location screen
-    if (step === 'custom-location') {
-      customPathInputRef.current?.focus();
-    }
-  }, [step]);
+  // ─── Step 1 (welcome) actions ───────────────────────────────────────────────
 
-  // SKY-1397: reload templates every time step1b is shown (not just first visit)
-  const reloadTemplates = useCallback(() => {
-    setLoadingTemplates(true);
-    api().templateList().then((res) => {
-      if ('templates' in res) {
-        setTemplates(res.templates);
-        // Keep selection stable if the selected template still exists
-        setSelectedTemplateId((prev) =>
-          prev && res.templates.some((t) => t.id === prev) ? prev : null,
-        );
-      }
-    }).catch(() => {
-      setTemplateLoadError("Bundled templates couldn't be loaded. You can still create a blank story.");
-    }).finally(() => setLoadingTemplates(false));
-  }, []);
-
-  // Load templates when the template gallery mounts
-  useEffect(() => {
-    if (step === 'step1b-inner') reloadTemplates();
-  }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // SKY-1405: drag-drop handlers for .mythostemplate import
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-      setIsDragOver(false);
-    }
-  }, []);
-
-  const handleDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
-    if (!file.name.endsWith('.mythostemplate')) {
-      showTemplateToast('Drop a .mythostemplate file to import.');
-      return;
-    }
-    const filePath = (file as File & { path?: string }).path;
-    if (!filePath) return;
-    const res = await window.api.templateImportFromPath(filePath);
-    if (res && 'error' in res) {
-      showTemplateToast("This file doesn't appear to be a valid Mythos template.");
-    } else if (res && !res.cancelled) {
-      reloadTemplates();
-      showTemplateToast(`Template imported: ${res.template?.name ?? 'Unknown'}`);
-    }
-  }, [showTemplateToast, reloadTemplates]);
-
-  // ─── Keyboard helpers ───────────────────────────────────────────────────────
-
-  function handleGridArrowKeys(e: React.KeyboardEvent<HTMLDivElement>) {
-    const cards = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
-    const idx = cards.indexOf(document.activeElement as HTMLElement);
-    if (idx === -1) return;
-    let next = -1;
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (idx + 1) % cards.length;
-    if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')   next = (idx - 1 + cards.length) % cards.length;
-    if (next !== -1) { e.preventDefault(); cards[next].focus(); }
-  }
-
-  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
-
-  // ─── Validation helpers ─────────────────────────────────────────────────────
-
-  function validateTitle(raw: string): string {
-    const t = raw.trim();
-    if (!t) return ERR_EMPTY_TITLE;
-    if (INVALID_TITLE_RE.test(t)) return ERR_INVALID_CHARS;
-    if (t.length > TITLE_MAX) return ERR_INVALID_CHARS;
-    return '';
-  }
-
-  // ─── Navigation ────────────────────────────────────────────────────────────
-
-  function goToStep2FromMode(mode: StartMode, templateId?: string) {
-    setStartMode(mode);
-    setWizardFlow('template');
-    if (templateId) setSelectedTemplateId(templateId);
-    setTitleError('');
-    setSavePathError('');
+  function pickMode(m: VaultMode) {
+    setMode(m);
     setScaffoldError('');
-    setStep('step2');
-  }
-
-  function goBackFromStep2() {
-    setTitleError('');
-    setSavePathError('');
-    setStep('step1b-inner');
-  }
-
-  function handleGenreToggleAccordion(genreId: SampleGenreId) {
-    setOpenAccordionGenre((prev) => prev === genreId ? null : genreId);
-  }
-
-  function handleGenreArrowKeys(e: React.KeyboardEvent<HTMLDivElement>) {
-    const cards = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
-    const idx = cards.indexOf(document.activeElement as HTMLElement);
-    if (idx === -1) return;
-    let next = -1;
-    if (e.key === 'ArrowDown') next = (idx + 1) % cards.length;
-    if (e.key === 'ArrowUp')   next = (idx - 1 + cards.length) % cards.length;
-    if (next !== -1) { e.preventDefault(); cards[next].focus(); }
-  }
-
-  // ─── Step 1 actions ─────────────────────────────────────────────────────────
-
-  // SKY-2220 / M29: Quick Start. Skips the location + template screens —
-  // only the shared genre and theme pages stand between the card and the
-  // editor. Main creates the default MythosVault v2 with the Veynn demo seed.
-  function handleQuickStart() {
-    setStartMode('quick-start');
-    setWizardFlow('quick-start');
-    setScaffoldError('');
-    guidedPersonalizationRef.current = null;
-    setStep('custom-genre');
-  }
-
-  async function handleQuickStartFinish() {
-    setScaffoldError('');
-    setStep('step3');
-    setScaffolding(true);
-    try {
-      const res = await api().onboardingComplete({ startMode: 'quick-start', ...personalizationPayload() });
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? 'Something went wrong creating your default vault.');
-        setScaffolding(false);
-        return;
-      }
-      const updated: AppSettings = {
-        ...initialSettings,
-        onboardingComplete: true,
-        onboardingStartMode: 'quick-start',
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
-      };
-      onComplete(await withGuidedPersonalization(updated));
-    } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your default vault.');
-      setScaffolding(false);
+    if (m === 'import') {
+      setImportPhase('form');
+      setObsDryRun(null);
+      setObsDryRunError('');
     }
+    setStep(m === 'import' ? 'import' : 'name');
   }
 
-  // M29: "Start fresh" — location → template → genre → theme, the prototype's
-  // welcome-wizard flow. Creates a demo-seeded MythosVault v2 (or blank).
-  function handleStartFresh() {
-    setStartMode('start-fresh');
-    setWizardFlow('start-fresh');
-    setScaffoldError('');
-    guidedPersonalizationRef.current = null;
-    setStep('custom-location');
-  }
+  // ─── Step 2 (import) actions ────────────────────────────────────────────────
 
-  /** SKY-7649 (design-handoff v2 §1.1): "Open existing vault" now skips
-   *  straight to Theme + Provider — the actual open (and its step3
-   *  spinner/error handling) is deferred to `handleOpenExistingFinish`,
-   *  dispatched from the provider step. Picking a folder here just records
-   *  it; nothing is touched about the existing vault yet. */
-  async function handleOpenExistingVault(vaultPath?: string) {
-    setStartMode('open-existing');
-    setScaffoldError('');
-    try {
-      const picked = vaultPath?.trim()
-        ? { cancelled: false, path: vaultPath.trim() }
-        : await api().chooseVaultFolder('Open existing Mythos vault');
-      if (picked.cancelled || !picked.path) return;
-      setOpenExistingPath(picked.path);
-      setWizardFlow('open-existing');
-      setStep('custom-theme');
-    } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : "This folder doesn't look like a Mythos Writer vault…");
-    }
-  }
-
-  /** SKY-7649: the provider step's finish for the open-existing flow — does
-   *  the real open (was the tail of the old `handleOpenExistingVault`). */
-  async function handleOpenExistingFinish() {
-    setScaffoldError('');
-    setStep('step3');
-    setScaffolding(true);
-    try {
-      const res = await api().onboardingComplete({ startMode: 'open-existing', vaultParentPath: openExistingPath });
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? "This folder doesn't look like a Mythos Writer vault…");
-        setScaffolding(false);
-        return;
-      }
-      const updated: AppSettings = {
-        ...initialSettings,
-        onboardingComplete: true,
-        onboardingStartMode: 'open-existing',
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
-      };
-      onComplete(await withGuidedPersonalization(updated));
-    } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : "This folder doesn't look like a Mythos Writer vault…");
-      setScaffolding(false);
-    }
-  }
-
-  // ─── SKY-2990: Import / Open screen handlers ────────────────────────────────
-
-  function resetImportState() {
-    setImportMwPath('');
-    setImportMwValidation('idle');
-    setImportMwMsg('');
-    setImportObsNotesPath('');
-    setImportObsStoryPath('');
-    setImportDocxFiles([]);
-    setImportErrorModal(null);
-    setObsDryRun(null);
-    setObsImporting(false);
-    setObsProgress(null);
-    setObsError('');
-    if (importMwDebounceRef.current) clearTimeout(importMwDebounceRef.current);
-  }
-
-  // SKY-10388: mirrors validateCustomPathNow's manifest check — a folder that
-  // merely exists+is writable is not a Mythos vault; "Folder looks good."
-  // must never be shown for a folder that would then fail to open.
-  async function validateImportMwPath(raw: string) {
-    const opts = pathOptionsRef.current;
-    const expanded = raw.startsWith('~/')
-      ? (opts.homeDir ?? '') + raw.slice(1)
-      : raw.startsWith('~\\')
-      ? (opts.homeDir ?? '') + raw.slice(1)
-      : raw;
-    try {
-      const sep = opts.sep ?? '/';
-      const [base, mythosCheck] = await Promise.all([
-        api().validatePath(expanded),
-        api().validatePath(`${expanded}${sep}Story Vault${sep}manifest.json`),
-      ]);
-      if (!base.exists) {
-        setImportMwValidation('invalid');
-        setImportMwMsg('Folder not found.');
-      } else if (!base.writable) {
-        setImportMwValidation('invalid');
-        setImportMwMsg('Folder is not accessible.');
-      } else if (!mythosCheck.exists) {
-        setImportMwValidation('invalid');
-        setImportMwMsg("This doesn't look like a Mythos Writer vault (no Story Vault/manifest.json found).");
-      } else {
-        setImportMwValidation('valid');
-        setImportMwMsg('Folder looks good.');
-      }
-    } catch {
-      setImportMwValidation('invalid');
-      setImportMwMsg('Could not check this path.');
-    }
-  }
-
-  function handleImportMwPathChange(value: string) {
-    setImportMwPath(value);
-    if (!value.trim()) {
-      setImportMwValidation('idle');
-      setImportMwMsg('');
-      return;
-    }
-    setImportMwValidation('validating');
-    setImportMwMsg('Checking…');
-    if (importMwDebounceRef.current) clearTimeout(importMwDebounceRef.current);
-    importMwDebounceRef.current = setTimeout(() => { void validateImportMwPath(value); }, 400);
-  }
-
-  async function handleImportMwBrowse() {
-    const picked = await api().chooseVaultFolder('Open existing Mythos vault');
-    if (picked.cancelled || !picked.path) return;
-    setImportMwPath(picked.path);
-    void validateImportMwPath(picked.path);
-  }
-
-  async function handleImportObsBrowse(slot: 'notes' | 'story') {
-    const title = slot === 'notes' ? 'Select Obsidian notes folder' : 'Select Obsidian story folder';
+  async function browseImportPath(slot: 'notes' | 'story') {
+    const title = slot === 'notes' ? 'Select an Obsidian or Markdown notes folder' : 'Select an Obsidian or Markdown story folder';
     const picked = await api().chooseVaultFolder(title);
     if (picked.cancelled || !picked.path) return;
-    if (slot === 'notes') setImportObsNotesPath(picked.path);
-    else setImportObsStoryPath(picked.path);
+    if (slot === 'notes') setNotesPath(picked.path);
+    else setStoryPath(picked.path);
   }
 
-  // SKY-10388: pick the parent folder the new Mythos vault is created in.
-  async function handleImportObsDestBrowse() {
-    const picked = await api().chooseVaultFolder('Choose where to create the new vault', importObsDestPath || undefined);
-    if (picked.cancelled || !picked.path) return;
-    setImportObsDestPath(picked.path);
-  }
+  const importHasInput = Boolean(notesPath.trim() || storyPath.trim());
 
-  function handleDocxFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const files = Array.from(e.target.files ?? []);
-    if (!files.length) return;
-    setImportDocxFiles((prev) => {
-      const existing = new Set(prev.map((f) => f.name));
-      return [...prev, ...files.filter((f) => !existing.has(f.name))];
-    });
-    e.target.value = '';
-  }
-
-  function handleRemoveDocxFile(index: number) {
-    setImportDocxFiles((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  async function handleImportOrOpen() {
-    // SKY-10388: the sections are mutually exclusive imports — never let one
-    // silently win over another (the button is disabled too; this is a guard).
-    if (filledImportSections.length > 1) return;
-    setImportRunning(true);
-    try {
-      if (importMwPath.trim()) {
-        const res = await api().onboardingComplete({ startMode: 'open-existing', vaultParentPath: importMwPath.trim() });
-        if (!res.ok || res.error) {
-          setImportErrorModal({
-            title: "Can't open vault",
-            message: res.error ?? "This folder doesn't look like a Mythos Writer vault. Check the path and try again.",
-          });
-          return;
-        }
-        const updated: AppSettings = {
-          ...initialSettings,
-          onboardingComplete: true,
-          onboardingStartMode: 'open-existing',
-          ...(res.firstSceneId && res.firstScenePath
-            ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-            : {}),
-        };
-        finishImportViaTail(updated);
-        return;
-      }
-      // SKY-2993: Obsidian path — dry-run scan first, then report → confirm.
-      if (importObsNotesPath || importObsStoryPath) {
-        await runObsidianDryRun();
-        return;
-      }
-      if (importDocxFiles.length > 0) {
-        const filePaths = importDocxFiles.map((f) => (f as File & { path?: string }).path ?? f.name);
-        const res = await api().importDocxToStoryVault?.(filePaths);
-        if (!res || !res.ok || res.errors?.length) {
-          const detail = res?.errors?.map((e) => `${e.filePath}: ${e.error}`).join('\n') ?? '';
-          setImportErrorModal({
-            title: 'Import failed',
-            message: detail || 'Some files could not be imported.',
-          });
-          return;
-        }
-        finishImportViaTail({ ...initialSettings, onboardingComplete: true });
-        return;
-      }
-    } catch (e) {
-      setImportErrorModal({
-        title: 'Something went wrong',
-        message: e instanceof Error ? e.message : 'An unexpected error occurred.',
-      });
-    } finally {
-      setImportRunning(false);
-    }
-  }
-
-  /** SKY-7649 (design-handoff v2 §1.1): the "Import Obsidian vault" card's
-   *  screen (step-import — shared by all 3 of its sections) still passes
-   *  through Theme + Provider before Done. The real import/open work already
-   *  happened on this screen by the time any of its 3 completion paths call
-   *  this — the tail after it only merges theme/provider personalization. */
-  function finishImportViaTail(updated: AppSettings) {
-    pendingImportSettingsRef.current = updated;
-    setWizardFlow('import');
-    setStep('custom-theme');
-  }
-
-  /** SKY-7649: the provider step's finish for the import flow — no further
-   *  IPC calls (the import already committed), just the settings merge. */
-  async function handleImportFinish() {
-    const updated = pendingImportSettingsRef.current;
-    if (!updated) return;
-    onComplete(await withGuidedPersonalization(updated));
-  }
-
-  // ─── SKY-2993: Obsidian import flow (dry-run → report → confirm) ───────────
-
-  // Filled Obsidian slots in a stable order: notes first, then story.
-  function obsidianTargets(): Array<{ kind: 'notes' | 'story'; path: string }> {
-    const targets: Array<{ kind: 'notes' | 'story'; path: string }> = [];
-    if (importObsNotesPath) targets.push({ kind: 'notes', path: importObsNotesPath });
-    if (importObsStoryPath) targets.push({ kind: 'story', path: importObsStoryPath });
+  /** Filled Obsidian slots in a stable order: notes first, then story. */
+  function obsidianTargets(): { kind: 'notes' | 'story'; path: string }[] {
+    const targets: { kind: 'notes' | 'story'; path: string }[] = [];
+    if (notesPath.trim()) targets.push({ kind: 'notes', path: notesPath.trim() });
+    if (storyPath.trim()) targets.push({ kind: 'story', path: storyPath.trim() });
     return targets;
   }
 
-  // Scan each selected folder without writing anything. On success, switch the
-  // screen to the dry-run report; on failure, show an inline error under the
-  // Obsidian section (the submit button stays enabled so the user can retry).
+  /** SKY-2993: scan each selected folder without writing anything, then show
+   *  the dry-run report. On failure, the error stays inline on the form so
+   *  the user can retry without re-picking folders (Continue stays enabled). */
   async function runObsidianDryRun() {
-    setObsError('');
+    if (obsDryRunRunning) return;
+    setObsDryRunError('');
+    setObsDryRunRunning(true);
     try {
-      const scanned: ObsidianImportTarget[] = [];
+      const scanned: { kind: 'notes' | 'story'; path: string; preview: ObsidianImportPreview }[] = [];
       for (const target of obsidianTargets()) {
         const res = await api().dryRunObsidianImport(target.path, target.kind);
         if (res.error || !res.preview) {
-          setObsError(res.error ?? 'Could not scan this folder. Check the path and try again.');
+          setObsDryRunError(res.error ?? 'Could not scan this folder. Check the path and try again.');
           return;
         }
         scanned.push({ ...target, preview: res.preview });
       }
       setObsDryRun(scanned);
+      setImportPhase('report');
     } catch (e) {
-      setObsError(e instanceof Error ? e.message : 'Could not scan this folder. Check the path and try again.');
-    }
-  }
-
-  // SKY-10388: name the new vault after the first selected source folder —
-  // falls back to the creator's default when the basename is unusable.
-  function obsidianDestVaultName(): string | undefined {
-    const first = obsDryRun?.[0]?.path ?? '';
-    const trimmed = first.replace(/[\\/]+$/, '');
-    const idx = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
-    const base = idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
-    return base && base !== '.' && base !== '..' ? base : undefined;
-  }
-
-  // Commit the import: ONE new Mythos vault at the chosen destination, every
-  // scanned target copied into its side of it (SKY-10388, owner ruling R2).
-  // Errors stay inline in the report so Confirm can be retried.
-  async function handleObsidianConfirm() {
-    if (!obsDryRun || obsImporting) return;
-    setObsError('');
-    setObsImporting(true);
-    setObsProgress(null);
-    const unsubscribe = api().onObsidianImportProgress?.((data) => setObsProgress(data));
-    try {
-      // SKY-11058 item 4 (owner ruling): option (b) — the source becomes an
-      // ADDITIONAL notes vault inside the currently-open Mythos vault. The
-      // app stays on its current vaults (no finishImportViaTail, no
-      // vault-settings repoint); the picker's notesVaultRegistry:changed push
-      // surfaces the new entry without activating it.
-      if (obsEffectiveDestMode === 'extra-notes-vault') {
-        const res = await api().importObsidianVault({
-          targets: obsDryRun.map((target) => ({ kind: target.kind, srcPath: target.path })),
-          destMode: 'extra-notes-vault',
-        });
-        if (!res.ok || res.error) {
-          setObsError(res.error ?? 'Import failed. Check the folder and try again.');
-          return;
-        }
-        if (res.dropWarning) showLnToast(res.dropWarning);
-        showLnToast(`Imported as notes vault "${res.notesVaultDisplayName ?? 'Notes'}"`);
-        // Re-arm the onboarding gate the replay disarmed, then close the
-        // wizard back to the untouched shell (best-effort persist — same
-        // non-fatal policy as withGuidedPersonalization).
-        try {
-          const fresh = await window.api.settingsGet();
-          await window.api.settingsSet({ ...fresh, onboardingComplete: true });
-        } catch { /* non-fatal — shell re-saves settings on any later change */ }
-        onComplete({ ...initialSettings, onboardingComplete: true });
-        return;
-      }
-      const res = await api().importObsidianVault({
-        targets: obsDryRun.map((target) => ({ kind: target.kind, srcPath: target.path })),
-        destParentPath: importObsDestPath.trim() || undefined,
-        destVaultName: obsidianDestVaultName(),
-      });
-      if (!res.ok || res.error) {
-        setObsError(res.error ?? 'Import failed. Check the folder and try again.');
-        return;
-      }
-      // Drop warnings are non-fatal (import still succeeded) — surface them
-      // as a toast alongside the success path instead of blocking the finish.
-      if (res.dropWarning) showLnToast(res.dropWarning);
-      finishImportViaTail({ ...initialSettings, onboardingComplete: true });
-    } catch (e) {
-      setObsError(e instanceof Error ? e.message : 'Import failed. Check the folder and try again.');
+      setObsDryRunError(e instanceof Error ? e.message : 'Could not scan this folder. Check the path and try again.');
     } finally {
-      unsubscribe?.();
-      setObsImporting(false);
-      setObsProgress(null);
+      setObsDryRunRunning(false);
     }
   }
 
+  // ─── Step 3 (name) actions ──────────────────────────────────────────────────
 
-  function handleSelectSample() {
-    // SKY-2008: go to genre picker (step1c) instead of form (step2)
-    setStartMode('sample');
-    setSelectedSampleGenre(null);
-    setOpenAccordionGenre(null);
-    setStep('step1c');
+  async function browseVaultPath() {
+    const picked = await api().chooseVaultFolder('Choose where to create your vault', vaultPath || undefined);
+    if (picked.cancelled || !picked.path) return;
+    setVaultPath(picked.path);
   }
 
-  /** SKY-7649: step1c's "Start with X →" — the sample genre is already
-   *  chosen, so this just funnels into the shared theme → provider tail
-   *  (spec §1.1: "still passes through Theme + Provider") instead of
-   *  finishing immediately. */
-  function handleSampleGenreContinue() {
-    if (!selectedSampleGenre) return;
+  const fullPath = computeFullPath(vaultPath, vaultName);
+  const createNote = mode ? computeCreateNote(mode, Boolean(notesPath.trim()), Boolean(storyPath.trim())) : '';
+
+  async function handleFinish() {
+    if (!mode) return;
     setScaffoldError('');
-    setWizardFlow('sample');
-    setStep('custom-theme');
-  }
-
-  /** SKY-7649: the provider step's finish for the sample flow — does the real
-   *  work (was step1c's old immediate finish). Errors surface on step3's
-   *  standard scaffoldError/Try Again/Open Existing Story UI, same as every
-   *  other flow, rather than a sample-specific inline error. */
-  async function handleSampleFinish() {
-    if (!selectedSampleGenre) return;
-    setScaffoldError('');
-    setStep('step3');
-    setScaffolding(true);
+    setCreating(true);
     try {
-      const res = await api().onboardingComplete({ startMode: 'sample', sampleGenre: selectedSampleGenre });
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? 'Sample content couldn\'t be loaded. Try starting blank instead.');
-        setScaffolding(false);
-        return;
-      }
-      const updated: AppSettings = {
-        ...initialSettings,
-        onboardingComplete: true,
-        onboardingStartMode: 'sample',
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
-      };
-      onComplete(await withGuidedPersonalization(updated));
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Sample content couldn\'t be loaded. Try starting blank instead.';
-      setScaffoldError(msg);
-      setScaffolding(false);
-    }
-  }
-
-  function handleSelectTemplate() {
-    templateCardTriggerRef.current = document.activeElement as HTMLElement;
-    setStep('step1b-inner');
-  }
-
-
-  // ─── Step 2 actions ─────────────────────────────────────────────────────────
-
-  // SKY-2007: validate a fully-resolved path via IPC and set pathValidationState
-  const validatePathNow = useCallback(async (rawPath: string) => {
-    const opts = pathOptionsRef.current;
-    const expanded = rawPath.startsWith('~/')
-      ? (opts.homeDir ?? '') + rawPath.slice(1)
-      : rawPath.startsWith('~\\')
-      ? (opts.homeDir ?? '') + rawPath.slice(1)
-      : rawPath;
-
-    setPathValidationState('validating');
-    setPathValidationMsg('');
-    try {
-      // Check for an existing Mythos vault. Obsidian import is deferred and is no longer surfaced here.
-      const sep = opts.sep ?? '/';
-      const [base, mythosCheck] = await Promise.all([
-        api().validatePath(expanded),
-        api().validatePath(`${expanded}${sep}Story Vault${sep}manifest.json`),
-      ]);
-
-      if (!base.writable) {
-        setPathValidationState('not-writable');
-        setPathValidationMsg('This location is not writable. Choose a different folder.');
-        return;
-      }
-      if (mythosCheck.exists) {
-        setPathValidationState('conflict-mythos');
-        setPathValidationMsg('A Mythos vault already exists here.');
-        return;
-      }
-      if (base.exists && !base.isEmpty) {
-        setPathValidationState('new-path');
-        setPathValidationMsg('');
-      } else if (!base.exists) {
-        setPathValidationState('new-path');
-        setPathValidationMsg('');
-      } else {
-        setPathValidationState('valid');
-        setPathValidationMsg('');
-      }
-    } catch {
-      setPathValidationState('error');
-      setPathValidationMsg('Could not validate this path. Check the folder and try again.');
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // SKY-2007: debounced path change handler — synchronous path-too-long check, then debounce IPC
-  const handleSavePathChange = useCallback((value: string) => {
-    setSavePath(value);
-    setSavePathError('');
-    if (pathDebounceRef.current) clearTimeout(pathDebounceRef.current);
-
-    // Windows path-too-long: synchronous, no IPC needed
-    const isWindows = pathOptionsRef.current.sep === '\\';
-    if (isWindows && value.length > 200) {
-      setPathValidationState('path-too-long');
-      setPathValidationMsg('Path must be 200 characters or fewer on Windows.');
-      return;
-    }
-
-    if (!value.trim()) {
-      setPathValidationState('idle');
-      setPathValidationMsg('');
-      return;
-    }
-
-    setPathValidationState('validating');
-    pathDebounceRef.current = setTimeout(() => {
-      validatePathNow(value);
-    }, 500);
-  }, [validatePathNow]); // pathOptionsRef.current.sep is always fresh via the ref
-
-  // SKY-2007: fill input from a suggestion or recent, then immediately validate
-  function handleUsePath(path: string) {
-    const display = tildeify(path, pathOptionsRef.current.homeDir);
-    setSavePath(display);
-    setSavePathError('');
-    setShowRecents(false);
-    validatePathNow(path);
-  }
-
-  async function handleChangeSaveLocation() {
-    try {
-      const res = await api().chooseVaultFolder('Choose save location');
-      if (!res.cancelled && res.path) {
-        const display = tildeify(res.path, pathOptionsRef.current.homeDir);
-        setSavePath(display);
-        setSavePathError('');
-        validatePathNow(res.path);
-      }
-    } catch {
-      // folder picker cancelled or failed — keep current path
-    }
-  }
-
-  // SKY-2007: conflict dialog actions
-  /** SKY-7649: the conflict dialog's "Open existing vault" resolves to the
-   *  same outcome as the top-level card — defer to the shared open-existing
-   *  finish, dispatched from the provider step, same as `handleOpenExistingVault`. */
-  function handleConflictOpenExisting() {
-    const expanded = savePath.startsWith('~')
-      ? (pathOptionsRef.current.homeDir ?? '') + savePath.slice(1)
-      : savePath;
-    setShowConflictDialog(false);
-    setScaffoldError('');
-    setStartMode('open-existing');
-    setOpenExistingPath(expanded);
-    setWizardFlow('open-existing');
-    setStep('custom-theme');
-  }
-
-  function handleConflictNewFolder() {
-    setShowConflictDialog(false);
-    setTimeout(() => pathInputRef.current?.focus(), 50);
-  }
-
-  function handleConflictCreateAlongside(newPath: string) {
-    setShowConflictDialog(false);
-    const display = tildeify(newPath, pathOptionsRef.current.homeDir);
-    setSavePath(display);
-    setSavePathError('');
-    validatePathNow(newPath);
-  }
-
-  /** Step-2 validation (title + save path + conflict). True when clear to proceed. */
-  async function validateStoryDetails(): Promise<boolean> {
-    const trimmedTitle = storyTitle.trim();
-    const err = validateTitle(storyTitle);
-    if (err) {
-      setTitleError(err);
-      titleInputRef.current?.focus();
-      return false;
-    }
-
-    // Check writable path first
-    let pathValidation: { exists: boolean; isEmpty: boolean; writable: boolean } | null = null;
-    try {
-      pathValidation = await api().validatePath(savePath);
-    } catch {
-      setSavePathError(ERR_UNWRITABLE_PATH);
-      return false;
-    }
-
-    if (pathValidation && !pathValidation.writable) {
-      setSavePathError(ERR_UNWRITABLE_PATH);
-      return false;
-    }
-
-    // Check for title conflict — does vaultParentPath/storyTitle/ already exist?
-    const sep = pathOptionsRef.current.sep ?? '/';
-    const storyDir = savePath.replace(sep === '\\' ? /\\+$/ : /\/+$/, '') + sep + trimmedTitle;
-    try {
-      const conflict = await api().validatePath(storyDir);
-      if (conflict.exists && !conflict.isEmpty) {
-        setTitleError(ERR_TITLE_EXISTS(trimmedTitle));
-        titleInputRef.current?.focus();
-        return false;
-      }
-    } catch {
-      // can't check — allow to proceed; main process will error if conflict
-    }
-
-    setTitleError('');
-    setSavePathError('');
-    return true;
-  }
-
-  /** M29: step-2 CTA — validate, then funnel into the shared genre page. */
-  async function handleStoryDetailsNext() {
-    if (!(await validateStoryDetails())) return;
-    setScaffoldError('');
-    setStep('custom-genre');
-  }
-
-  /** Fire the template-path completion call (after the theme step). */
-  async function submitCreateStory() {
-    setScaffoldError('');
-    setStep('step3');
-    setScaffolding(true);
-
-    try {
-      const res = await api().onboardingComplete({
-        startMode: startMode!,
-        storyTitle: storyTitle.trim(),
-        authorName: authorName.trim() || undefined,
-        vaultParentPath: savePath,
-        templateId: selectedTemplateId || undefined,
-        ...personalizationPayload(),
+      const importSources = mode === 'import'
+        ? [
+            ...(notesPath.trim() ? [{ kind: 'notes' as const, srcPath: notesPath.trim() }] : []),
+            ...(storyPath.trim() ? [{ kind: 'story' as const, srcPath: storyPath.trim() }] : []),
+          ]
+        : undefined;
+      const res = await api().createVaultFromOptions({
+        mode,
+        destinationParent: vaultPath.trim() || undefined,
+        name: vaultName.trim() || 'My Vault',
+        importSources,
+        activate: true,
       });
-
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? 'Something went wrong creating your story.');
-        setScaffolding(false);
+      if (!res.ok) {
+        setScaffoldError(res.error ?? 'Something went wrong creating your vault.');
+        setCreating(false);
         return;
       }
-
+      // NOTE: createVaultFromOptions doesn't return firstSceneId/firstScenePath
+      // (unlike the old onboardingComplete IPC) — a first-run vault created
+      // this way just opens to an empty shell, no lastOpenedScene to seed.
       const updated: AppSettings = {
         ...initialSettings,
         onboardingComplete: true,
-        ...(authorName.trim() ? { authorName: authorName.trim() } : {}),
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
+        onboardingStartMode: mode,
       };
-      onComplete(await withGuidedPersonalization(updated));
+      onComplete(updated);
     } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your story.');
-      setScaffolding(false);
+      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your vault.');
+      setCreating(false);
     }
   }
 
-  // Step 3 error recovery
-  async function handleTryAgain() {
-    setScaffoldError('');
-    setScaffolding(true);
-
-    try {
-      // SKY-906: the one-click flow never collected a title/save path, so
-      // retry must not echo those fields — re-issuing with empty strings
-      // would be rejected by the main-side validator.
-      // SKY-2008: sample mode also skips the form — pass sampleGenre instead.
-      // SKY-2007 / SKY-7649: open-existing retries with the folder actually
-      // picked (openExistingPath), not the unrelated step2 savePath field.
-      const customExpanded = customVaultPath.startsWith('~/')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath.startsWith('~\\')
-        ? (pathOptionsRef.current.homeDir ?? '') + customVaultPath.slice(1)
-        : customVaultPath;
-      const payload = fromCustomSetup
-        ? {
-            startMode: 'start-fresh' as const,
-            customTemplate,
-            vaultParentPath: customExpanded,
-            vaultName: customVaultName.trim() || deriveVaultName(customExpanded),
-            ...personalizationPayload(),
-          }
-        : startMode === 'quick-start' || startMode === 'default-mythos-vault'
-        ? { startMode: 'quick-start' as const, ...personalizationPayload() }
-        : startMode === 'sample'
-        ? { startMode: 'sample' as const, sampleGenre: selectedSampleGenre ?? undefined }
-        : startMode === 'open-existing'
-        ? { startMode: 'open-existing' as const, vaultParentPath: openExistingPath }
-        : {
-            startMode: startMode!,
-            storyTitle: storyTitle.trim(),
-            authorName: authorName.trim() || undefined,
-            vaultParentPath: savePath,
-            templateId: selectedTemplateId || undefined,
-            ...personalizationPayload(),
-          };
-      const res = await api().onboardingComplete(payload);
-
-      if (!res.ok || res.error) {
-        setScaffoldError(res.error ?? 'Something went wrong creating your story.');
-        setScaffolding(false);
-        return;
-      }
-
-      const updated: AppSettings = {
-        ...initialSettings,
-        onboardingComplete: true,
-        ...(authorName.trim() ? { authorName: authorName.trim() } : {}),
-        ...(res.firstSceneId && res.firstScenePath
-          ? { lastOpenedScene: { sceneId: res.firstSceneId, scenePath: res.firstScenePath, scrollTop: 0, cursorLine: 0 } }
-          : {}),
-      };
-      // Beta 3 M25: a guided-setup retry keeps the picked genre + theme.
-      onComplete(await withGuidedPersonalization(updated));
-    } catch (e) {
-      setScaffoldError(e instanceof Error ? e.message : 'Something went wrong creating your story.');
-      setScaffolding(false);
+  function goBackFromName() {
+    if (mode === 'import') {
+      // The dry-run report is still valid (nothing on disk has changed) —
+      // land back on it rather than re-scanning.
+      setImportPhase(obsDryRun ? 'report' : 'form');
+      setStep('import');
+      return;
     }
-  }
-
-  function handleOpenExistingStory() {
-    api().onboardingComplete({ startMode: 'skip' }).catch(() => {});
-    const updated: AppSettings = { ...initialSettings, onboardingComplete: true };
-    onComplete(updated);
+    setStep('welcome');
   }
 
   // ─── Keyboard / escape handling ─────────────────────────────────────────────
+  // No close (X) affordance anywhere in the new 3-step flow (matches the
+  // design's welcome/vault/theme panels, HTML 4580–4685 — none of them render
+  // a close button, only Back / dots / Continue). Escape remains the only
+  // way to reach the cancel-setup confirmation before a vault is created.
 
   function handleOverlayKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Escape') {
-      if (step === 'step3') return; // close disabled during scaffolding
-      if (showConflictDialog) {
-        setShowConflictDialog(false);
-        return;
-      }
-      if (showCancelConfirm) {
-        setShowCancelConfirm(false);
-        return;
-      }
-      // AC-6: first Esc on the template picker clears the selection; a second Esc shows cancel confirm.
-      if (step === 'step1b-inner' && selectedTemplateId !== null) {
-        setSelectedTemplateId(null);
-        return;
-      }
-      if (step === 'step1' || step === 'step1b-inner' || step === 'step1c' || step === 'step2' || step === 'custom-location' || step === 'custom-template' || step === 'custom-genre' || step === 'custom-theme' || step === 'wiz-provider' || step === 'step-import') {
-        setShowCancelConfirm(true);
-      }
+    if (e.key !== 'Escape') return;
+    if (creating) return; // close disabled while a vault is being created
+    if (showCancelConfirm) {
+      setShowCancelConfirm(false);
+      return;
     }
+    setShowCancelConfirm(true);
   }
-
-  const bundledTemplates = templates.filter((t) => !t.isUserTemplate);
-  const userTemplates = templates.filter((t) => t.isUserTemplate);
-  const hasBundledSelection = bundledTemplates.some((t) => t.id === selectedTemplateId);
-  const hasUserSelection = userTemplates.some((t) => t.id === selectedTemplateId);
-
-  const importHasInput = Boolean(
-    importMwPath.trim() || importObsNotesPath || importObsStoryPath || importDocxFiles.length > 0,
-  );
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
@@ -2029,16 +409,13 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       onKeyDown={handleOverlayKeyDown}
       data-testid="gs-overlay"
     >
-      <Toast message={templateToastState?.message ?? null} level={templateToastState?.level} />
-
-      {/* Beta 3 M25: prototype brand header (HTML 2783–2785) */}
+      {/* Beta 3 M25: prototype brand header (HTML 4584–4586) */}
       <div className="gs-brand" data-testid="gs-brand">
         <img className="gs-brand__logo" src={logoUrl} alt="" />
         <div className="gs-brand__name">Mythos Writer</div>
         <div className="gs-brand__tagline">Write the world before you write the book.</div>
       </div>
 
-      {/* Confirm dialog */}
       {showCancelConfirm && (
         <ConfirmDialog
           onKeepGoing={() => setShowCancelConfirm(false)}
@@ -2049,1621 +426,264 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
         />
       )}
 
-      {showMigrationDialog && (
-        <div
-          className="gs-confirm-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="gs-migration-title"
-          data-testid="gs-migration-dialog"
-        >
-          <div className="gs-confirm">
-            <h3 className="gs-confirm__title" id="gs-migration-title">We found an older Mythos vault</h3>
-            <p className="gs-confirm__body">
-              Use your existing ~/Mythos vaults, start fresh, or hide this migration prompt permanently.
-            </p>
-            <div className="gs-confirm__actions">
-              <Button
-                variant="primary"
-                onClick={() => { setShowMigrationDialog(false); handleOpenExistingVault(initialSettings.legacyVaultPath); }}
-                data-testid="gs-migration-use"
-              >
-                Use them
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => setShowMigrationDialog(false)}
-                data-testid="gs-migration-start-fresh"
-              >
-                Start fresh
-              </Button>
-              <Button
-                variant="tertiary"
-                onClick={() => {
-                  const updated = { ...initialSettings, legacyVaultDismissed: true };
-                  api().settingsSet?.(updated).catch(() => {});
-                  setShowMigrationDialog(false);
-                }}
-                data-testid="gs-migration-never"
-              >
-                Never show again
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SKY-1399: Delete template confirm */}
-      {deletingId && (() => {
-        const tmpl = templates.find((t) => t.id === deletingId);
-        return (
-          <div
-            className="gs-confirm-overlay"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="gs-template-delete-title"
-            data-testid="template-delete-confirm-dialog"
-          >
-            <div className="gs-confirm">
-              <h3 className="gs-confirm__title" id="gs-template-delete-title">Delete template?</h3>
-              <p className="gs-confirm__body">
-                &ldquo;{tmpl?.name ?? 'This template'}&rdquo; will be permanently removed. This cannot be undone.
-              </p>
-              <div className="gs-confirm__actions">
-                <Button
-                  variant="primary"
-                  onClick={() => setDeletingId(null)}
-                  data-testid="template-delete-cancel"
-                >
-                  Keep it
-                </Button>
-                <Button
-                  variant="destructive"
-                  data-testid="template-delete-confirm"
-                  onClick={async () => {
-                    await api().templateDelete(deletingId);
-                    if (selectedTemplateId === deletingId) setSelectedTemplateId(null);
-                    setDeletingId(null);
-                    reloadTemplates();
-                  }}
-                >
-                  Delete
-                </Button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ── Step 1: Choose your starting point ── */}
-      {step === 'step1' && (
-        <div className="gs-modal" data-testid="screen-step1">
-          <div className="gs-modal__header">
-            <span className="gs-step-label">Step 1 of 3</span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="gs-close-btn-step1"
-            >
-              &#x2715;
-            </button>
-          </div>
+      {/* ── Step 1: Welcome — pick a starting point ── */}
+      {step === 'welcome' && (
+        <div className="gs-modal" data-testid="screen-welcome">
           <h1 className="gs-modal__title">Welcome to Mythos Writer</h1>
           <p className="gs-modal__subtitle">How would you like to begin?</p>
 
-          {/* SKY-7593: entry paths per design-handoff v2 §1.1 (SKY-7255) — supersedes
-              the SKY-6983 card set per CTO ruling (SKY-7590). "Restore from backup"
-              (prototype's 4th path) is substituted with "Open existing vault" since
-              Sync & Backup hasn't shipped yet — see spec §1.1 deviation note. */}
-          <div className="gs-cards gs-cards--four" role="group" aria-label="Choose how to get started">
+          <div className="gs-cards" role="group" aria-label="Choose how to get started">
             <StartingPointCard
-              icon="&#x2728;"
-              title="Open sample project"
-              description="See how it works with a small demo: characters, lore, and one drafted chapter."
-              ctaLabel="Open sample &#x2192;"
-              onActivate={handleSelectSample}
-              testId="card-sample"
-              cardRef={quickStartRef}
-              chip="Recommended"
+              icon={LayoutTemplate}
+              title="Start from a template"
+              description="A ready structure — empty folders for Characters, Locations, Stories, Plot, Worldbuilding and Research. No notes, just the shape."
+              ctaLabel="Use template &#x2192;"
+              onActivate={() => pickMode('template')}
+              testId="card-template"
+              cardRef={firstCardRef}
+              chip="RECOMMENDED"
             />
             <StartingPointCard
-              icon="&#x1F4DD;"
+              icon={FilePlus2}
               title="Start blank"
-              description="Create an empty vault. Choose where to save it on the next screen."
-              ctaLabel="Choose location &#x2192;"
-              onActivate={handleStartFresh}
+              description="One empty vault. You build the structure yourself as you go."
+              ctaLabel="Choose path &#x2192;"
+              onActivate={() => pickMode('blank')}
               testId="card-start-blank"
             />
             <StartingPointCard
-              icon="&#x1F4E5;"
-              title="Import Obsidian vault"
-              description="Point at an existing vault. You'll see every change before anything is saved."
+              icon={FolderInput}
+              title="Import vault"
+              description="Point at an existing vault. A dry-run report shows every change before anything is written."
               ctaLabel="Pick folder &#x2192;"
-              onActivate={() => { resetImportState(); setStep('step-import'); }}
+              onActivate={() => pickMode('import')}
               testId="card-import-obsidian"
             />
-            <StartingPointCard
-              icon="&#x1F4C1;"
-              title="Open existing vault"
-              description="Already have a Mythos vault on this computer? Open it here."
-              ctaLabel="Browse &#x2192;"
-              onActivate={() => { void handleOpenExistingVault(); }}
-              testId="card-open-existing"
-            />
-          </div>
-
-          {/* SKY-7593: "Explore a sample world?" and "Restart an existing project?"
-              are now redundant with the Open sample project / Import Obsidian vault
-              cards above and have been removed. */}
-          <div className="gs-landing-footer">
-            <a
-              className="gs-footer-link"
-              href="https://mythoswriter.com/help"
-              target="_blank"
-              rel="noopener noreferrer"
-              data-testid="gs-learn-more"
-            >
-              Learn more
-            </a>
           </div>
         </div>
       )}
 
-      {/* ── Step 1b-inner: Template sub-picker ── */}
-      {step === 'step1b-inner' && (
-        <div
-          className={`gs-modal gs-modal--wide${isDragOver ? ' gs-modal--drag-over' : ''}`}
-          data-testid="screen-step1b"
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              onClick={() => {
-                setStep('custom-location');
-                requestAnimationFrame(() => {
-                  const el = document.querySelector('[data-testid="custom-location-use-template-link"]') as HTMLElement | null;
-                  el?.focus();
-                });
-              }}
-              data-testid="gs-back-step1b"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
-            <span className="gs-step-label">Use a Template &#xB7; 1 of 5</span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="gs-close-btn-step1b"
-            >
-              &#x2715;
-            </button>
-          </div>
-          <h2 id="template-picker-heading" className="gs-modal__title">Choose a template</h2>
-
-          {/* sr-only live region — announces selection to screen readers (F-13) */}
-          <p className="sr-only" aria-live="polite" aria-atomic="true" data-testid="template-announcement">
-            {selectedTemplate ? `Preview for ${selectedTemplate.name} is ready below.` : ''}
+      {/* ── Step 2: Import — what should we import? (mode='import' only) ── */}
+      {step === 'import' && importPhase === 'form' && (
+        <div className="gs-modal" data-testid="screen-import">
+          <h2 className="gs-modal__title">What should we import?</h2>
+          <p className="gs-modal__subtitle">
+            We create a new Mythos vault and fill it with what you point at. One is enough — leave the other empty and it starts blank.
           </p>
 
-          {loadingTemplates ? (
-            <p className="gs-loading" role="status" aria-live="polite">Loading templates&#x2026;</p>
-          ) : templateLoadError ? (
-            <div className="gs-template-load-error" role="alert" data-testid="template-load-error">
-              <p>{templateLoadError}</p>
-              <button
-                className="btn-secondary"
-                type="button"
-                onClick={() => goToStep2FromMode('blank')}
-                data-testid="template-error-blank-cta"
-              >
-                Create blank story
-              </button>
+          <div className="wiz-import-row" data-testid="step2-notes-row">
+            <div className="wiz-import-row__head">
+              <span className="wiz-import-row__label">Import Notes Vault</span>
+              <span className="wiz-import-row__tag">{notesPath.trim() ? 'WILL IMPORT' : 'OPTIONAL'}</span>
             </div>
-          ) : templates.length === 0 ? (
-            <p className="gs-loading" role="status" aria-live="polite">
-              No templates available. You can start blank or import a vault instead.
-            </p>
-          ) : (
-            <>
-              <div role="radiogroup" aria-labelledby="template-picker-heading" className="gs-template-grid" onKeyDown={handleGridArrowKeys}>
-                {bundledTemplates.map((tmpl, i) => (
-                  <TemplateCard
-                    key={tmpl.id}
-                    template={tmpl}
-                    onSelect={() => setSelectedTemplateId(tmpl.id)}
-                    testId={`template-card-${tmpl.id}`}
-                    isChecked={selectedTemplateId === tmpl.id}
-                    tabIndex={selectedTemplateId === tmpl.id || (!hasBundledSelection && i === 0) ? 0 : -1}
-                  />
-                ))}
-              </div>
-              <>
-                <p id="template-picker-user-heading" className="gs-section-divider" data-testid="user-templates-heading">
-                  Your Templates
-                  {userTemplates.length > 0 && (
-                    <span className="gs-section-divider__count" data-testid="user-template-count">
-                      {' '}({userTemplates.length})
-                    </span>
-                  )}
-                </p>
-                {userTemplates.length > 0 ? (
-                  <div role="radiogroup" aria-labelledby="template-picker-user-heading" className="gs-template-grid" onKeyDown={handleGridArrowKeys}>
-                    {userTemplates.map((tmpl, i) => (
-                      <div
-                        key={tmpl.id}
-                        role="radio"
-                        tabIndex={selectedTemplateId === tmpl.id || (!hasUserSelection && i === 0) ? 0 : -1}
-                        className={`gs-template-card gs-template-card--user${selectedTemplateId === tmpl.id ? ' gs-template-card--selected' : ''}`}
-                        onClick={() => { if (renamingId !== tmpl.id) setSelectedTemplateId(tmpl.id); }}
-                        onKeyDown={(e) => {
-                          if ((e.key === 'Enter' || e.key === ' ') && renamingId !== tmpl.id) {
-                            e.preventDefault();
-                            setSelectedTemplateId(tmpl.id);
-                          }
-                        }}
-                        aria-checked={selectedTemplateId === tmpl.id}
-                        data-testid={`template-card-${tmpl.id}`}
-                      >
-                        {renamingId === tmpl.id ? (
-                          <input
-                            autoFocus
-                            className="gs-template-card__rename-input"
-                            value={renameValue}
-                            maxLength={80}
-                            onClick={(e) => e.stopPropagation()}
-                            onChange={(e) => setRenameValue(e.target.value)}
-                            onKeyDown={async (e) => {
-                              if (e.key === 'Escape') { setRenamingId(null); return; }
-                              if (e.key === 'Enter') {
-                                const v = renameValue.trim();
-                                if (!v) { setRenamingId(null); return; }
-                                templateRenamedRef.current = true;
-                                await api().templateRename(tmpl.id, v);
-                                setRenamingId(null);
-                                reloadTemplates();
-                              }
-                            }}
-                            onBlur={async () => {
-                              if (templateRenamedRef.current) { templateRenamedRef.current = false; return; }
-                              const v = renameValue.trim();
-                              if (v && v !== tmpl.name) await api().templateRename(tmpl.id, v);
-                              setRenamingId(null);
-                              reloadTemplates();
-                            }}
-                            data-testid={`template-rename-input-${tmpl.id}`}
-                            aria-label={`Rename template ${tmpl.name}`}
-                          />
-                        ) : (
-                          <span className="gs-template-card__name">{tmpl.name}</span>
-                        )}
-                        <span className="gs-template-card__desc">{tmpl.description}</span>
-                        <div className="gs-template-card__actions" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            className="gs-template-card__action-btn"
-                            title="Rename"
-                            aria-label={`Rename ${tmpl.name}`}
-                            data-testid={`template-rename-btn-${tmpl.id}`}
-                            onClick={() => { setRenamingId(tmpl.id); setRenameValue(tmpl.name); }}
-                          >&#x270E;</button>
-                          <button
-                            type="button"
-                            className="gs-template-card__action-btn"
-                            title="Export"
-                            aria-label={`Export ${tmpl.name}`}
-                            data-testid={`template-export-btn-${tmpl.id}`}
-                            onClick={async () => {
-                              const res = await window.api.templateExport(tmpl.id);
-                              if (res && 'error' in res) {
-                                showTemplateToast(res.error);
-                              } else if (res && !res.cancelled) {
-                                showTemplateToast(`Exported "${tmpl.name}"`);
-                              }
-                            }}
-                          >&#x2B07;</button>
-                          <button
-                            type="button"
-                            className="gs-template-card__action-btn"
-                            title="Duplicate"
-                            aria-label={`Duplicate ${tmpl.name}`}
-                            data-testid={`template-duplicate-btn-${tmpl.id}`}
-                            onClick={async () => {
-                              await api().templateDuplicate(tmpl.id);
-                              reloadTemplates();
-                            }}
-                          >&#x29C9;</button>
-                          <button
-                            type="button"
-                            className="gs-template-card__action-btn gs-template-card__action-btn--destructive"
-                            title="Delete"
-                            aria-label={`Delete ${tmpl.name}`}
-                            data-testid={`template-delete-btn-${tmpl.id}`}
-                            onClick={() => setDeletingId(tmpl.id)}
-                          >&#x1F5D1;</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <>
-                    <p className="gs-template-empty-hint" data-testid="template-empty-hint">
-                      No saved templates yet.
-                    </p>
-                    <p className="gs-template-empty-hint-sub" data-testid="template-empty-hint-sub">
-                      Save your vault structure from Settings &rarr; Templates after you create a story.
-                    </p>
-                  </>
-                )}
-                <div className="gs-template-import-row">
-                  <button
-                    type="button"
-                    className="btn-secondary gs-template-import-btn"
-                    data-testid="template-import-btn"
-                    onClick={async () => {
-                      const res = await window.api.templateImport();
-                      if (res && 'error' in res) {
-                        showTemplateToast("This file doesn't appear to be a valid Mythos template.");
-                      } else if (res && !res.cancelled) {
-                        reloadTemplates();
-                        showTemplateToast(`Template imported: ${res.template?.name ?? 'Unknown'}`);
-                      }
-                    }}
-                  >
-                    &#x2B06; Import template
-                  </button>
-                </div>
-              </>
-
-              {selectedTemplate && (
-                <div className="template-preview" data-testid="template-preview">
-                  <p className="template-preview__desc">{selectedTemplate.description}</p>
-                  <button
-                    className="btn-primary template-preview__cta"
-                    type="button"
-                    data-testid="template-use-btn"
-                    onClick={() => goToStep2FromMode('template', selectedTemplate.id)}
-                  >
-                    Use this template &#x2192;
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* ── Step 1c: Genre picker (sample projects) ── */}
-      {step === 'step1c' && (
-        <div className="gs-modal" data-testid="screen-step1c">
-          <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              aria-label="Back to mode selection"
-              onClick={() => {
-                setSelectedSampleGenre(null);
-                setOpenAccordionGenre(null);
-                setStep('step1');
-              }}
-              data-testid="gs-back-step1c"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
-            <span className="gs-step-label">Step 1 of 3</span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="gs-close-btn-step1c"
-            >
-              &#x2715;
-            </button>
-          </div>
-
-          <div className="genre-picker">
-            <h2 className="gp-title">Pick a sample world</h2>
-            <p className="gp-subtitle">You can explore any of these — they won&apos;t affect your own files.</p>
-
-            {/* sr-only live region for genre selection announcement */}
-            <p className="sr-only" aria-live="polite" aria-atomic="true" data-testid="genre-announcement">
-              {selectedSampleGenre
-                ? `${GENRE_OPTIONS.find((g) => g.id === selectedSampleGenre)?.title ?? ''} selected.`
-                : ''}
-            </p>
-
-            <div
-              role="radiogroup"
-              aria-label="Choose a sample genre"
-              className="gp-radiogroup"
-              onKeyDown={handleGenreArrowKeys}
-              data-testid="genre-radiogroup"
-            >
-              {GENRE_OPTIONS.map((genre, i) => (
-                <GenreCard
-                  key={genre.id}
-                  genre={genre}
-                  isSelected={selectedSampleGenre === genre.id}
-                  isAccordionOpen={openAccordionGenre === genre.id}
-                  tabIndex={selectedSampleGenre === genre.id || (selectedSampleGenre === null && i === 0) ? 0 : -1}
-                  onSelect={() => setSelectedSampleGenre(genre.id)}
-                  onToggleAccordion={() => handleGenreToggleAccordion(genre.id)}
-                />
-              ))}
-            </div>
-
-            <div className="gp-footer">
-              <button
-                type="button"
-                className="btn-primary gp-start-button"
-                disabled={!selectedSampleGenre}
-                onClick={handleSampleGenreContinue}
-                data-testid="genre-start-btn"
-              >
-                {selectedSampleGenre
-                  ? `Start with ${GENRE_OPTIONS.find((g) => g.id === selectedSampleGenre)?.title ?? ''} →`
-                  : 'Start with… →'}
-              </button>
-              <p className="gp-note">Sampling won&apos;t affect your own files.</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Step 2: Name your story ── */}
-      {step === 'step2' && (
-        <div className="gs-modal" data-testid="screen-step2">
-          <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              onClick={goBackFromStep2}
-              data-testid="gs-back-step2"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
-            <span className="gs-step-label">Use a Template &#xB7; 2 of 5</span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="gs-close-btn-step2"
-            >
-              &#x2715;
-            </button>
-          </div>
-          <h2 className="gs-modal__title">What&apos;s your story called?</h2>
-
-          <div className="gs-form">
-            {/* Story title */}
-            <div className="gs-form__field">
-              <label className="gs-form__label" htmlFor="gs-story-title">
-                Story title <span aria-hidden="true">*</span>
-              </label>
-              <input
-                id="gs-story-title"
-                ref={titleInputRef}
-                className={`gs-form__input${titleError ? ' gs-form__input--error' : ''}`}
-                type="text"
-                value={storyTitle}
-                maxLength={TITLE_MAX}
-                placeholder='e.g., "The Iron Garden"'
-                aria-required="true"
-                aria-describedby={titleError ? 'gs-title-error' : undefined}
-                onChange={(e) => { setStoryTitle(e.target.value); setTitleError(''); }}
-                onBlur={() => setTitleError(validateTitle(storyTitle))}
-                onKeyDown={(e) => { if (e.key === 'Enter') void handleStoryDetailsNext(); }}
-                data-testid="gs-title-input"
-              />
-              {titleError && (
-                <p className="gs-form__error" id="gs-title-error" role="alert" data-testid="gs-title-error">
-                  {titleError}
-                </p>
-              )}
-            </div>
-
-            {/* Author name */}
-            <div className="gs-form__field">
-              <label className="gs-form__label" htmlFor="gs-author-name">
-                Author name <span className="gs-form__label--optional">(optional)</span>
-              </label>
-              <input
-                id="gs-author-name"
-                className="gs-form__input"
-                type="text"
-                value={authorName}
-                maxLength={AUTHOR_MAX}
-                placeholder='e.g., "Alex Rivera"'
-                onChange={(e) => setAuthorName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') void handleStoryDetailsNext(); }}
-                data-testid="gs-author-input"
-              />
-            </div>
-
-            {/* Save location — SKY-2007 vault picker polish */}
-            <div className="gs-form__field">
-              <label className="gs-form__label" htmlFor="gs-save-path-input">Save location</label>
-              <div className="gs-path-row">
-                <input
-                  id="gs-save-path-input"
-                  ref={pathInputRef}
-                  className={`gs-form__input gs-path-input${
-                    pathValidationState === 'not-writable' || pathValidationState === 'path-too-long' || pathValidationState === 'error' || savePathError
-                      ? ' gs-form__input--error'
-                      : pathValidationState === 'valid' ? ' gs-form__input--valid'
-                      : ''
-                  }`}
-                  type="text"
-                  value={savePath}
-                  onChange={(e) => handleSavePathChange(e.target.value)}
-                  data-testid="gs-save-path"
-                  aria-label="Save location path"
-                  aria-describedby="gs-path-hint"
-                  spellCheck={false}
-                  autoComplete="off"
-                />
-                <button
-                  className="btn-secondary gs-path-row__browse"
-                  type="button"
-                  onClick={handleChangeSaveLocation}
-                  data-testid="gs-change-location"
-                >
-                  Browse&#x2026;
-                </button>
-              </div>
-
-              {/* Validation hint */}
-              {savePathError ? (
-                <p className="gs-form__error" role="alert" id="gs-path-hint" data-testid="gs-path-error">{savePathError}</p>
-              ) : pathValidationMsg ? (
-                <p
-                  className={`gs-path-hint gs-path-hint--${
-                    pathValidationState === 'conflict-mythos' ? 'warn'
-                    : pathValidationState === 'error' || pathValidationState === 'not-writable' || pathValidationState === 'path-too-long' ? 'error'
-                    : 'info'
-                  }`}
-                  id="gs-path-hint"
-                  role="alert"
-                  data-testid="gs-path-validation-hint"
-                >
-                  {pathValidationMsg}
-                  {pathValidationState === 'conflict-mythos' && (
-                    <button
-                      className="btn-link gs-path-hint__action"
-                      type="button"
-                      onClick={() => setShowConflictDialog(true)}
-                      data-testid="gs-conflict-see-options"
-                    >
-                      {' '}See options &rsaquo;
-                    </button>
-                  )}
-                </p>
-              ) : (
-                <p className="gs-form__hint" id="gs-path-hint">
-                  Your story files will be created here. You can move them later from File &gt; Move Story.
-                </p>
-              )}
-
-              {/* Suggested locations */}
-              {suggestedLocations.length > 0 && (
-                <div className="gs-suggestions" data-testid="gs-suggestions">
-                  <span className="gs-suggestions__label">Suggested:</span>
-                  {suggestedLocations.map((loc) => (
-                    <button
-                      key={loc}
-                      type="button"
-                      className="gs-suggestion-pill"
-                      onClick={() => handleUsePath(loc)}
-                      data-testid="gs-suggestion-pill"
-                      title={loc}
-                    >
-                      {tildeify(loc, pathOptions.homeDir)}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Recents */}
-              {(initialSettings.recentVaultParentPaths ?? []).length > 0 && (
-                <div className="gs-recents">
-                  <button
-                    type="button"
-                    className="gs-recents__toggle"
-                    aria-expanded={showRecents}
-                    onClick={() => setShowRecents((v) => !v)}
-                    data-testid="gs-recents-toggle"
-                  >
-                    {showRecents ? '▾' : '▸'} Recent locations
-                  </button>
-                  {showRecents && (
-                    <ul className="gs-recents__list" data-testid="gs-recents-list">
-                      {[...(initialSettings.recentVaultParentPaths ?? [])].reverse().map((p) => (
-                        <li key={p} className="gs-recents__item">
-                          <span className="gs-recents__path" title={p}>{tildeify(p, pathOptions.homeDir)}</span>
-                          <button
-                            type="button"
-                            className="btn-link gs-recents__use"
-                            onClick={() => handleUsePath(p)}
-                            data-testid="gs-recent-use"
-                          >
-                            Use this
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Conflict dialog (non-blocking, renders inside overlay) */}
-          {showConflictDialog && (
-            <ConflictDialog
-              savePath={savePath.startsWith('~') ? (pathOptions.homeDir ?? '') + savePath.slice(1) : savePath}
-              onOpenExisting={handleConflictOpenExisting}
-              onNewFolder={handleConflictNewFolder}
-              onCreateAlongside={handleConflictCreateAlongside}
-              onDismiss={() => setShowConflictDialog(false)}
+            <VaultDestinationPicker
+              variant="onboarding"
+              path={notesPath}
+              placeholder="Pick an Obsidian, Notion or Markdown folder…"
+              onChange={setNotesPath}
+              onBrowse={() => browseImportPath('notes')}
+              disabled={obsDryRunRunning}
+              ariaLabel="Notes vault import folder"
+              testIdPrefix="step2-notes"
             />
+            {/* SKY-11152 correctness note: the prototype claims Notion support
+                too (HTML 9356) — the real importer (importObsidianToVaultDir)
+                only does a byte-for-byte Obsidian/Markdown folder copy. */}
+            <p className="wiz-import-row__hint">
+              Folders, note bodies and [[wiki-links]] come across as-is. Nothing at the source is modified.
+            </p>
+          </div>
+
+          <div className="wiz-import-row" data-testid="step2-story-row">
+            <div className="wiz-import-row__head">
+              <span className="wiz-import-row__label">Import Story Vault</span>
+              <span className="wiz-import-row__tag">{storyPath.trim() ? 'WILL IMPORT' : 'OPTIONAL'}</span>
+            </div>
+            <VaultDestinationPicker
+              variant="onboarding"
+              path={storyPath}
+              placeholder="Pick a Scrivener project, .docx or Markdown folder…"
+              onChange={setStoryPath}
+              onBrowse={() => browseImportPath('story')}
+              disabled={obsDryRunRunning}
+              ariaLabel="Story vault import folder"
+              testIdPrefix="step2-story"
+            />
+            {/* SKY-11152 correctness note: the prototype claims Scrivener/.docx
+                support with headings mapped into chapters (HTML 9360–9361) —
+                the real importer does the same plain folder copy as the notes
+                row, no manuscript parsing at first run. */}
+            <p className="wiz-import-row__hint">
+              Folders and files come across as-is — headings aren&apos;t parsed into chapters yet. Nothing at the source is modified.
+            </p>
+          </div>
+
+          {obsDryRunError && (
+            <p className="import-validation import-validation--invalid" role="alert" data-testid="step2-dryrun-error">
+              {obsDryRunError}
+            </p>
           )}
 
-          <div className="gs-actions">
+          <div className="wiz-footer">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              onClick={() => setStep('welcome')}
+              disabled={obsDryRunRunning}
+              data-testid="step2-back"
+            >
+              <span aria-hidden="true">&#x2039;</span> Back
+            </button>
+            <WizardDots total={2} current={1} />
             <button
               className="btn-primary gs-actions__cta"
               type="button"
-              onClick={() => void handleStoryDetailsNext()}
-              disabled={
-                pathValidationState === 'validating' ||
-                pathValidationState === 'not-writable' ||
-                pathValidationState === 'path-too-long' ||
-                pathValidationState === 'error'
-              }
-              data-testid="gs-create-story"
+              disabled={!importHasInput || obsDryRunRunning}
+              onClick={() => void runObsidianDryRun()}
+              data-testid="step2-continue"
             >
-              Create Story &#x2192;
+              {obsDryRunRunning ? 'Scanning…' : 'Continue'}
             </button>
           </div>
         </div>
       )}
 
-      {/* ── Custom Setup: Screen 1 — Install Location (SKY-2988) ── */}
-      {step === 'custom-location' && (
-        <div className="gs-modal" data-testid="screen-custom-location">
-          <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              onClick={() => setStep('step1')}
-              data-testid="custom-location-back"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
-            <span className="gs-step-label">Start Fresh · 1 of 5</span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="custom-location-close"
-            >
-              &#x2715;
-            </button>
-          </div>
-          <WizardDots total={4} current={1} labels={['Location', 'Template', 'Genre', 'Theme']} />
-          <h2 className="gs-modal__title">Where should your vault live?</h2>
-          <p className="gs-modal__subtitle">Plain text files on your computer. Yours to keep, no lock-in.</p>
+      {/* ── Step 2b: dry-run report (mode='import' only) — SKY-2993, carried
+          forward from the pre-rewrite wizard: a no-write scan report the user
+          confirms before anything is created. Confirming lands on the shared
+          Name-your-vault step, same as every other path — the actual create
+          + copy only happens there, through createVaultFromOptions. ── */}
+      {step === 'import' && importPhase === 'report' && obsDryRun && (
+        <div className="gs-modal" data-testid="screen-import-report">
+          <h2 className="gs-modal__title">Ready to import</h2>
+          <p className="gs-modal__subtitle">Review what will be imported, then confirm. Nothing is written yet.</p>
 
-          {/* SKY-7593: two-vault promise (design-handoff v2 §2.1) */}
-          <div className="gs-two-vault-promise" data-testid="two-vault-promise">
-            <h3 className="gs-two-vault-promise__heading">Your world needs two homes.</h3>
-            <p className="gs-two-vault-promise__subhead">
-              We&rsquo;ll set up two vaults together. You&rsquo;ll never have to think about this again.
-            </p>
-            <div className="gs-two-vault-promise__cards">
-              <div className="gs-two-vault-promise__card" data-testid="two-vault-promise-story">
-                <span className="gs-two-vault-promise__icon" aria-hidden="true">&#x1F4D6;</span>
-                <span className="gs-two-vault-promise__title">Story Vault</span>
-                <span className="gs-two-vault-promise__desc">Your manuscript. Chapters and scenes.</span>
-              </div>
-              <div className="gs-two-vault-promise__card" data-testid="two-vault-promise-notes">
-                <span className="gs-two-vault-promise__icon" aria-hidden="true">&#x1F5C2;</span>
-                <span className="gs-two-vault-promise__title">Notes Vault</span>
-                <span className="gs-two-vault-promise__desc">Characters, places, and research.</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="gs-form">
-            <div className="gs-form__field">
-              <label className="gs-form__label" htmlFor="custom-vault-path-input">
-                Vault location <span aria-hidden="true">*</span>
-              </label>
-              <div className="gs-path-row">
-                <input
-                  id="custom-vault-path-input"
-                  ref={customPathInputRef}
-                  className={`gs-form__input gs-path-input${
-                    customPathValidation === 'not-writable' || customPathValidation === 'path-too-long' || customPathValidation === 'error'
-                      ? ' gs-form__input--error'
-                      : customPathValidation === 'valid' || customPathValidation === 'new-path'
-                      ? ' gs-form__input--valid'
-                      : ''
-                  }`}
-                  type="text"
-                  value={customVaultPath}
-                  onChange={(e) => handleCustomPathChange(e.target.value)}
-                  data-testid="custom-vault-path-input"
-                  aria-label="Vault location path"
-                  aria-describedby="custom-path-hint"
-                  spellCheck={false}
-                  autoComplete="off"
-                />
-                <button
-                  className="btn-secondary gs-path-row__browse"
-                  type="button"
-                  onClick={handleCustomBrowse}
-                  data-testid="custom-vault-browse"
-                >
-                  Browse…
-                </button>
-              </div>
-
-              {customPathMsg ? (
-                <p
-                  className={`gs-path-hint gs-path-hint--${
-                    customPathValidation === 'conflict-mythos' ? 'warn'
-                    : customPathValidation === 'error' || customPathValidation === 'not-writable' || customPathValidation === 'path-too-long' ? 'error'
-                    : 'info'
-                  }`}
-                  id="custom-path-hint"
-                  role="alert"
-                  data-testid="custom-path-validation-hint"
-                >
-                  {customPathMsg}
-                </p>
-              ) : (
-                <p className="gs-form__hint" id="custom-path-hint">
-                  Your vault files will be created here. You can move them later.
-                </p>
-              )}
-
-              {suggestedLocations.length > 0 && (
-                <div className="gs-suggestions" data-testid="custom-location-suggestions">
-                  <span className="gs-suggestions__label">Suggested:</span>
-                  {suggestedLocations.map((loc) => (
-                    <button
-                      key={loc}
-                      type="button"
-                      className="gs-suggestion-pill"
-                      onClick={() => handleCustomUsePath(loc)}
-                      data-testid="custom-suggestion-pill"
-                      title={loc}
-                    >
-                      {tildeify(loc, pathOptions.homeDir)}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="gs-form__field">
-              <label className="gs-form__label" htmlFor="custom-vault-name-input">
-                Vault name <span aria-hidden="true">*</span>
-              </label>
-              <input
-                id="custom-vault-name-input"
-                ref={customVaultNameInputRef}
-                className="gs-form__input"
-                type="text"
-                value={customVaultName}
-                maxLength={TITLE_MAX}
-                placeholder="e.g., My Writing Vault"
-                aria-required="true"
-                onChange={(e) => {
-                  vaultNameManuallyEditedRef.current = true;
-                  setCustomVaultName(e.target.value);
-                }}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleCustomNext(); }}
-                data-testid="custom-vault-name-input"
-              />
-              <p className="gs-form__hint">Auto-filled from your path — edit freely.</p>
-            </div>
-          </div>
-
-          <div className="gs-actions">
-            <button
-              className="btn-primary gs-actions__cta"
-              type="button"
-              onClick={handleCustomNext}
-              disabled={
-                customPathValidation === 'idle' ||
-                customPathValidation === 'validating' ||
-                customPathValidation === 'not-writable' ||
-                customPathValidation === 'path-too-long' ||
-                customPathValidation === 'error' ||
-                customPathValidation === 'conflict-mythos' ||
-                !customVaultName.trim()
-              }
-              data-testid="custom-location-next"
-            >
-              Next &#x2192;
-            </button>
-          </div>
-
-          {/* SKY-7593: Use a Template + Quick Start moved here from step1 (spec §2.2) —
-              secondary, low-emphasis links, not top-level cards. */}
-          <div className="gs-landing-footer gs-landing-footer--secondary">
-            <button
-              className="gs-footer-link"
-              type="button"
-              onClick={handleSelectTemplate}
-              data-testid="custom-location-use-template-link"
-            >
-              Use a template instead &#x2192;
-            </button>
-            <span className="gs-footer-link-sep" aria-hidden="true">&#xB7;</span>
-            <button
-              className="gs-footer-link"
-              type="button"
-              onClick={handleQuickStart}
-              data-testid="custom-location-quick-start-link"
-            >
-              One-click setup &#x2192;
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Custom Setup: Screen 2 — Template Picker (SKY-2988) ── */}
-      {step === 'custom-template' && (
-        <div className="gs-modal" data-testid="screen-custom-template">
-          <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              onClick={() => setStep('custom-location')}
-              data-testid="custom-template-back"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
-            <span className="gs-step-label">Start Fresh · 2 of 5</span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="custom-template-close"
-            >
-              &#x2715;
-            </button>
-          </div>
-          <WizardDots total={4} current={2} labels={['Location', 'Template', 'Genre', 'Theme']} />
-          <h2 className="gs-modal__title">Choose a starting template</h2>
-          <p className="gs-modal__subtitle">You can always change this later.</p>
-
-          <div
-            role="radiogroup"
-            aria-label="Starting template"
-            className="custom-template-options"
-            onKeyDown={handleGridArrowKeys}
-          >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={customTemplate === 'recommended'}
-              className={`custom-template-card${customTemplate === 'recommended' ? ' custom-template-card--selected' : ''}`}
-              onClick={() => setCustomTemplate('recommended')}
-              data-testid="custom-template-recommended"
-            >
-              <span className="custom-template-card__icon" aria-hidden="true">&#x2728;</span>
-              <div className="custom-template-card__body">
-                <span className="custom-template-card__title">
-                  Recommended
-                  <span className="custom-template-card__badge">Default</span>
-                </span>
-                <span className="custom-template-card__desc">
-                  A ready-made structure with example scenes and notes to get you started.
-                </span>
-              </div>
-              <span className="custom-template-card__radio" aria-hidden="true" />
-            </button>
-
-            <button
-              type="button"
-              role="radio"
-              aria-checked={customTemplate === 'blank'}
-              className={`custom-template-card${customTemplate === 'blank' ? ' custom-template-card--selected' : ''}`}
-              onClick={() => setCustomTemplate('blank')}
-              data-testid="custom-template-blank"
-            >
-              <span className="custom-template-card__icon" aria-hidden="true">&#x1F4DD;</span>
-              <div className="custom-template-card__body">
-                <span className="custom-template-card__title">Start Blank</span>
-                <span className="custom-template-card__desc">
-                  An empty vault — pure canvas, no sample content.
-                </span>
-              </div>
-              <span className="custom-template-card__radio" aria-hidden="true" />
-            </button>
-          </div>
-
-          <div className="gs-actions gs-actions--wiz">
-            <button
-              className="btn-ghost gs-wiz-skip"
-              type="button"
-              onClick={handleCustomFinish}
-              data-testid="custom-template-finish"
-            >
-              Skip this — create my vault
-            </button>
-            <button
-              className="btn-primary gs-actions__cta"
-              type="button"
-              onClick={() => setStep('custom-genre')}
-              data-testid="custom-template-continue"
-            >
-              Continue &#x2192;
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Custom Setup: Screen 3 — Genre preset (Beta 3 M25, prototype 2807–2818) ── */}
-      {step === 'custom-genre' && (
-        <div className="gs-modal" data-testid="screen-custom-genre">
-          <div className="gs-modal__header">
-            <button
-              className="btn-ghost btn-back"
-              type="button"
-              onClick={() => setStep(wizFlowMeta().genreBack)}
-              data-testid="custom-genre-back"
-            >
-              <span aria-hidden="true">&#x2190;</span> Back
-            </button>
-            <span className="gs-step-label">
-              {wizFlowMeta().label} &#xB7; {wizFlowMeta().totalSteps - 2} of {wizFlowMeta().totalSteps}
-            </span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="custom-genre-close"
-            >
-              &#x2715;
-            </button>
-          </div>
-          <WizardDots
-            total={wizFlowMeta().totalSteps}
-            current={wizFlowMeta().totalSteps - 2}
-            labels={wizFlowMeta().dotLabels}
-          />
-          <h2 className="gs-modal__title">Pick a genre preset</h2>
-          <p className="gs-modal__subtitle">This sets your starter templates and story tools. Change it anytime.</p>
-
-          <div
-            role="radiogroup"
-            aria-label="Genre preset"
-            className="wiz-genre-grid"
-            onKeyDown={handleGridArrowKeys}
-            data-testid="wiz-genre-grid"
-          >
-            {WIZARD_GENRES.map((g) => (
-              <button
-                key={g}
-                type="button"
-                role="radio"
-                aria-checked={wizGenre === g}
-                className={`wiz-genre-chip${wizGenre === g ? ' wiz-genre-chip--selected' : ''}`}
-                onClick={() => setWizGenre(g)}
-                data-testid={genreTestId(g)}
+          <div data-testid="step2-report">
+            {obsDryRun.map((target) => (
+              <section
+                key={target.kind}
+                className="import-section"
+                aria-label={target.kind === 'notes' ? 'Notes vault import preview' : 'Story vault import preview'}
+                data-testid={`step2-report-${target.kind}`}
               >
-                {g}
-              </button>
+                <h3 className="import-section__title">{target.kind === 'notes' ? 'Notes vault' : 'Story vault'}</h3>
+                <p className="obs-report__path">{target.path}</p>
+                <ul className="obs-report__stats" aria-label="Import summary">
+                  <li>{target.preview.markdownCount} markdown {target.preview.markdownCount === 1 ? 'note' : 'notes'}</li>
+                  <li>{target.preview.attachmentCount} {target.preview.attachmentCount === 1 ? 'attachment' : 'attachments'}</li>
+                  <li>{target.preview.totalFiles} {target.preview.totalFiles === 1 ? 'file' : 'files'} total</li>
+                </ul>
+                {target.preview.topLevelFolders.length > 0 && (
+                  <p className="obs-report__meta">Top-level folders: {target.preview.topLevelFolders.join(', ')}</p>
+                )}
+              </section>
             ))}
           </div>
 
-          <div className="gs-actions">
-            <button
-              className="btn-primary gs-actions__cta"
-              type="button"
-              onClick={() => setStep('custom-theme')}
-              data-testid="custom-genre-continue"
-            >
-              Continue &#x2192;
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── Custom Setup: Screen 4 — Neon theme (Beta 3 M25, prototype 2820–2829) ── */}
-      {step === 'custom-theme' && (
-        <div className="gs-modal" data-testid="screen-custom-theme">
-          <div className="gs-modal__header">
-            {/* SKY-7649 (spec §6): Back is hidden on Theme only when it's the
-                flow's first tail screen — true for open-existing, which skips
-                the Vault step entirely. */}
-            {wizardFlow !== 'open-existing' && (
-              <button
-                className="btn-ghost btn-back"
-                type="button"
-                onClick={() => {
-                  // SKY-7649: the import flow's real import/open IPC call has
-                  // already committed by the time this screen is reached
-                  // (finishImportViaTail) — step-import's own dry-run report
-                  // and file selections are stale leftovers, not resumable
-                  // state. Without a reset, Back would resurrect an enabled
-                  // "Confirm import"/"Import / Open" button that re-runs the
-                  // already-completed import a second time (duplicate notes/
-                  // scenes). Reset it the same way every other entry into
-                  // step-import does (gs-back-step-import, card-import-obsidian).
-                  if (wizardFlow === 'import') resetImportState();
-                  setStep(wizFlowMeta().themeBack);
-                }}
-                data-testid="custom-theme-back"
-              >
-                <span aria-hidden="true">&#x2190;</span> Back
-              </button>
-            )}
-            <span className="gs-step-label">
-              {wizFlowMeta().label} &#xB7; {wizFlowMeta().totalSteps - 1} of {wizFlowMeta().totalSteps}
-            </span>
-            <button
-              className="gs-close-btn"
-              type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="custom-theme-close"
-            >
-              &#x2715;
-            </button>
-          </div>
-          <WizardDots
-            total={wizFlowMeta().totalSteps}
-            current={wizFlowMeta().totalSteps - 1}
-            labels={wizFlowMeta().dotLabels}
-          />
-          <h2 className="gs-modal__title">Choose your neon.</h2>
-          <p className="gs-modal__subtitle">Every border in the app glows with these colours. You can change this later in Settings.</p>
-
-          {/* M29 spec §3 (SKY-7593): all 10 presets, 5×2 grid, 6-slot colour
-              strip + name. No paragraph copy per card — Chunking/Prägnanz
-              stays intact at 10 cards by keeping each card minimal, not by
-              capping the count. */}
-          <div
-            role="radiogroup"
-            aria-label="Neon theme preset"
-            className="wiz-theme-grid"
-            onKeyDown={handleGridArrowKeys}
-            data-testid="wiz-theme-grid"
-          >
-            {WIZARD_THEME_KEYS.map((k) => {
-              const preset = LIQUID_NEON_PRESETS[k];
-              const selected = wizTheme === k;
-              return (
-                <button
-                  key={k}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  className={`wiz-theme-card${selected ? ' wiz-theme-card--selected' : ''}`}
-                  style={selected
-                    ? { borderColor: hexA(preset.c[0], 0.7), boxShadow: `0 0 18px -5px ${hexA(preset.c[0], 0.5)}` }
-                    : undefined}
-                  onClick={() => setWizTheme(k)}
-                  data-testid={`wiz-theme-${k}`}
-                >
-                  <span className="wiz-theme-card__strip" aria-hidden="true">
-                    {preset.c.map((hex, i) => (
-                      <span key={i} className="wiz-theme-card__slot" style={{ background: hex }} />
-                    ))}
-                  </span>
-                  <span className="wiz-theme-card__name">
-                    {preset.name}
-                    {/* Redundant with the border/glow for colour-blind users — never rely on colour alone (WCAG). */}
-                    {selected && <span className="wiz-theme-card__check" aria-hidden="true">&#x2713;</span>}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {/* M29 spec §3.1 (SKY-7593): plain-reading-order legend — the strip
-              isn't a decorative abstraction, FULL-SPEC §3 slot-role list verbatim. */}
-          <p className="wiz-theme-legend">
-            {['A', 'B', 'C', 'D', 'E', 'F'].map((letter, i) => (
-              <span key={letter} className="wiz-theme-legend__item">
-                {letter} &#xB7; {LIQUID_NEON_SLOT_ROLES[i]}
-              </span>
-            ))}
-          </p>
-
-          <div className="gs-actions">
-            <button
-              className="btn-primary gs-actions__cta"
-              type="button"
-              onClick={() => {
-                // SKY-7649: the genre grid only applies to start-fresh/
-                // template/quick-start — sample/import/open-existing never
-                // visit custom-genre, so `genre` stays unset for them.
-                guidedPersonalizationRef.current = {
-                  theme: wizTheme,
-                  ...(wizardFlow === 'start-fresh' || wizardFlow === 'template' || wizardFlow === 'quick-start'
-                    ? { genre: wizGenre }
-                    : {}),
-                };
-                setStep('wiz-provider');
-              }}
-              data-testid="custom-theme-continue"
-            >
-              Continue &#x2192;
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── AI provider (optional) — new step (SKY-7649, design-handoff v2 §4) ── */}
-      {step === 'wiz-provider' && (
-        <WizardProviderStep
-          providerKind={providerKind}
-          setProviderKind={setProviderKind}
-          providerApiKey={providerApiKey}
-          setProviderApiKey={setProviderApiKey}
-          providerApiKeyDirty={providerApiKeyDirty}
-          setProviderApiKeyDirty={setProviderApiKeyDirty}
-          providerBaseUrl={providerBaseUrl}
-          setProviderBaseUrl={setProviderBaseUrl}
-          providerModel={providerModel}
-          setProviderModel={setProviderModel}
-          savedProviderApiKey={initialSettings.provider?.apiKey ?? ''}
-          testStatus={providerTestStatus}
-          testMsg={providerTestMsg}
-          onTest={() => { void handleProviderTest(); }}
-          modelList={providerModelList}
-          modelListStatus={providerModelListStatus}
-          modelListError={providerModelListError}
-          useCustomInput={providerUseCustomInput}
-          setUseCustomInput={setProviderUseCustomInput}
-          onFetchModels={handleProviderFetchModels}
-          setSavedOk={() => {}}
-          activeProviderSupportsVoice={false}
-          setTestConnectionStatus={setProviderTestStatus}
-          setModelList={setProviderModelList}
-          setModelListStatus={setProviderModelListStatus}
-          setModelListError={setProviderModelListError}
-          onBack={() => setStep('custom-theme')}
-          showBack
-          onClose={() => setShowCancelConfirm(true)}
-          stepLabel={`${wizFlowMeta().label} · ${wizFlowMeta().totalSteps} of ${wizFlowMeta().totalSteps}`}
-          dotsTotal={wizFlowMeta().totalSteps}
-          dotsCurrent={wizFlowMeta().totalSteps}
-          dotLabels={wizFlowMeta().dotLabels}
-          onContinue={() => {
-            const providerDef = PROVIDER_OPTIONS.find((p) => p.value === providerKind)!;
-            guidedProviderRef.current = {
-              kind: providerKind,
-              model: providerModel,
-              ...(providerDef.needsKey
-                ? { apiKey: providerApiKeyDirty ? providerApiKey : (initialSettings.provider?.apiKey ?? '') }
-                : {}),
-              ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
-              ...(initialSettings.provider?.kind === providerKind && initialSettings.provider.capabilities
-                ? { capabilities: initialSettings.provider.capabilities }
-                : {}),
-            };
-            dispatchWizardFinish();
-          }}
-          onSkip={() => {
-            guidedProviderRef.current = null;
-            dispatchWizardFinish();
-          }}
-        />
-      )}
-
-      {/* ── Step 3: Creating your story ── */}
-      {step === 'step3' && (
-        <div className="gs-modal" data-testid="screen-step3">
-          {scaffolding && !scaffoldError ? (
-            <>
-              <h2 className="gs-modal__title">
-                {startMode === 'sample' && selectedSampleGenre
-                  ? `Loading ${GENRE_OPTIONS.find((g) => g.id === selectedSampleGenre)?.title ?? 'sample'}…`
-                  : startMode === 'quick-start' || startMode === 'default-mythos-vault'
-                  ? 'Setting up your vault…'
-                  : startMode === 'open-existing'
-                  ? 'Opening your vault…'
-                  : fromCustomSetup
-                  ? 'Setting up your vault…'
-                  : 'Setting up your story…'}
-              </h2>
-              <div className="gs-spinner" aria-label="Creating story" role="status" data-testid="gs-spinner" />
-              <p className="gs-modal__subtitle">
-                {startMode === 'sample'
-                  ? 'Copying sample files…'
-                  : startMode === 'quick-start' || startMode === 'default-mythos-vault'
-                  ? 'Setting up your vault…'
-                  : startMode === 'open-existing'
-                  ? 'Validating the selected folder…'
-                  : fromCustomSetup
-                  ? 'Creating your vault structure…'
-                  : 'Creating your folders and first scene…'}
-              </p>
-            </>
-          ) : scaffoldError ? (
-            <div className="gs-scaffold-error" data-testid="gs-scaffold-error">
-              <p className="gs-scaffold-error__msg">Something went wrong creating your story.</p>
-              {scaffoldError && scaffoldError !== 'Something went wrong creating your story.' && (
-                <p className="gs-scaffold-error__detail">{scaffoldError}</p>
-              )}
-              <div className="gs-actions gs-actions--center">
-                <button
-                  className="btn-primary"
-                  type="button"
-                  onClick={handleTryAgain}
-                  data-testid="gs-try-again"
-                >
-                  Try Again
-                </button>
-                <button
-                  className="btn-secondary"
-                  type="button"
-                  onClick={handleOpenExistingStory}
-                  data-testid="gs-open-existing"
-                >
-                  Open Existing Story
-                </button>
-              </div>
-            </div>
-          ) : null}
-        </div>
-      )}
-
-      {/* ── Import / Open ── */}
-      {step === 'step-import' && (
-        <div className="gs-modal gs-modal--import" data-testid="screen-step-import">
-          <div className="gs-modal__header">
+          <div className="wiz-footer">
             <button
               className="btn-ghost btn-back"
               type="button"
-              onClick={() => { resetImportState(); setStep('step1'); }}
-              data-testid="gs-back-step-import"
+              onClick={() => setImportPhase('form')}
+              data-testid="step2-report-back"
             >
-              <span aria-hidden="true">&#x2190;</span> Back
+              <span aria-hidden="true">&#x2039;</span> Back
             </button>
+            <WizardDots total={2} current={1} />
             <button
-              className="gs-close-btn"
+              className="btn-primary gs-actions__cta"
               type="button"
-              aria-label="Close setup"
-              onClick={() => setShowCancelConfirm(true)}
-              data-testid="gs-close-btn-step-import"
+              onClick={() => setStep('name')}
+              data-testid="step2-report-confirm"
             >
-              &#x2715;
+              Confirm import &#x2192;
             </button>
           </div>
-          {obsDryRun ? (
-            /* ── SKY-2993: Obsidian dry-run report (Confirm / Back) ── */
-            <>
-              <h2 className="gs-modal__title">Ready to import from Obsidian</h2>
-              <p className="gs-modal__subtitle">Review what will be imported, then confirm.</p>
-              <div data-testid="obs-dryrun-report">
-                {obsDryRun.map((target) => (
-                  <section
-                    key={target.kind}
-                    className="import-section"
-                    aria-label={target.kind === 'notes' ? 'Notes vault import preview' : 'Story vault import preview'}
-                    data-testid={`obs-report-${target.kind}`}
-                  >
-                    <h3 className="import-section__title">
-                      {target.kind === 'notes' ? 'Notes vault' : 'Story vault'}
-                    </h3>
-                    <p className="obs-report__path">{target.path}</p>
-                    <ul className="obs-report__stats" aria-label="Import summary">
-                      <li>{target.preview.markdownCount} markdown {target.preview.markdownCount === 1 ? 'note' : 'notes'}</li>
-                      <li>{target.preview.attachmentCount} {target.preview.attachmentCount === 1 ? 'attachment' : 'attachments'}</li>
-                      <li>{target.preview.totalFiles} {target.preview.totalFiles === 1 ? 'file' : 'files'} total</li>
-                    </ul>
-                    {target.preview.topLevelFolders.length > 0 && (
-                      <p className="obs-report__meta">
-                        Top-level folders: {target.preview.topLevelFolders.join(', ')}
-                      </p>
-                    )}
-                    {target.preview.sampleFiles.length > 0 && (
-                      <p className="obs-report__meta">
-                        Sample files: {target.preview.sampleFiles.join(', ')}
-                      </p>
-                    )}
-                  </section>
-                ))}
-              </div>
-              {/* SKY-11058: say where the confirm will land when the replay
-                  offered a destination choice. */}
-              {extraNotesVaultAvailable && (
-                <p className="obs-report__meta" data-testid="obs-report-dest-mode">
-                  {obsEffectiveDestMode === 'extra-notes-vault'
-                    ? 'Destination: a new notes vault inside the current Mythos vault.'
-                    : 'Destination: a new Mythos vault copy.'}
-                </p>
-              )}
-              {obsImporting && (
-                <p className="obs-report__progress" role="status" data-testid="obs-import-progress">
-                  {obsProgress
-                    ? `Importing ${obsProgress.current} of ${obsProgress.total}… ${obsProgress.lastAction}`
-                    : 'Importing…'}
-                </p>
-              )}
-              {obsError && (
-                <p className="import-validation import-validation--invalid" role="alert" data-testid="obs-import-error">
-                  {obsError}
-                </p>
-              )}
-              <div className="import-actions import-actions--split">
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => { setObsDryRun(null); setObsError(''); }}
-                  disabled={obsImporting}
-                  data-testid="obs-report-back"
-                >
-                  <span aria-hidden="true">&#x2190;</span> Back
-                </button>
-                <button
-                  type="button"
-                  className="btn-primary import-actions__submit"
-                  onClick={() => { void handleObsidianConfirm(); }}
-                  disabled={obsImporting}
-                  data-testid="obs-report-confirm"
-                >
-                  {obsImporting ? 'Importing…' : 'Confirm import →'}
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-          <h2 className="gs-modal__title">Import / Open</h2>
-          <p className="gs-modal__subtitle">Fill in exactly one section, then click Import / Open.</p>
+        </div>
+      )}
 
-          {/* Section 1: Open MW vault */}
-          <section className="import-section" aria-label="Open Mythos Writer vault" data-testid="import-section-mw">
-            <h3 className="import-section__title">Open Mythos Writer vault</h3>
-            <div className="import-field-row">
-              <input
-                type="text"
-                className="import-field-row__input"
-                placeholder="Path to vault folder…"
-                value={importMwPath}
-                onChange={(e) => handleImportMwPathChange(e.target.value)}
-                aria-label="Vault folder path"
-                data-testid="import-mw-path"
-              />
-              <button
-                type="button"
-                className="btn-secondary import-field-row__browse"
-                onClick={() => { void handleImportMwBrowse(); }}
-                data-testid="import-mw-browse"
-              >
-                Browse…
-              </button>
-            </div>
-            {importMwMsg && (
-              <p
-                className={`import-validation import-validation--${importMwValidation}`}
-                data-testid="import-mw-msg"
-                role="status"
-              >
-                {importMwMsg}
-              </p>
-            )}
-          </section>
+      {/* ── Step 3: Name your vault — every mode lands here ── */}
+      {step === 'name' && mode && (
+        <div className="gs-modal" data-testid="screen-name">
+          <h2 className="gs-modal__title">Name your vault</h2>
+          <p className="gs-modal__subtitle">A Mythos vault is one folder on disk. Plain Markdown inside — yours, portable, no lock-in.</p>
 
-          {/* Section 2: Import Obsidian */}
-          <section className="import-section" aria-label="Import from Obsidian" data-testid="import-section-obs">
-            <h3 className="import-section__title">Import from Obsidian</h3>
-            <div className="import-slot">
-              <span className="import-slot__label">Notes vault</span>
-              <div className="import-field-row">
-                <input
-                  type="text"
-                  className="import-field-row__input"
-                  placeholder="Obsidian notes folder…"
-                  value={importObsNotesPath}
-                  readOnly
-                  aria-label="Obsidian notes vault folder"
-                  data-testid="import-obs-notes-path"
-                />
-                <button
-                  type="button"
-                  className="btn-secondary import-field-row__browse"
-                  onClick={() => { void handleImportObsBrowse('notes'); }}
-                  data-testid="import-obs-notes-browse"
-                >
-                  Browse…
-                </button>
-              </div>
-            </div>
-            <div className="import-slot">
-              <span className="import-slot__label">Story vault</span>
-              <div className="import-field-row">
-                <input
-                  type="text"
-                  className="import-field-row__input"
-                  placeholder="Obsidian story folder…"
-                  value={importObsStoryPath}
-                  readOnly
-                  aria-label="Obsidian story vault folder"
-                  data-testid="import-obs-story-path"
-                />
-                <button
-                  type="button"
-                  className="btn-secondary import-field-row__browse"
-                  onClick={() => { void handleImportObsBrowse('story'); }}
-                  data-testid="import-obs-story-browse"
-                >
-                  Browse…
-                </button>
-              </div>
-            </div>
-            {/* SKY-11058 item 4: replay-only destination choice — (a) the
-                default new-Mythos-vault copy, (b) an additional notes vault
-                inside the currently-open Mythos vault. Hidden entirely on
-                first-run onboarding (no open v2 vault). */}
-            {extraNotesVaultAvailable && (
-              <fieldset className="import-dest-mode" data-testid="import-obs-dest-mode">
-                <legend className="import-slot__label">Import destination</legend>
-                <label className="import-dest-mode__option">
-                  <input
-                    type="radio"
-                    name="obs-dest-mode"
-                    checked={obsEffectiveDestMode === 'new-mythos-vault'}
-                    onChange={() => setObsDestMode('new-mythos-vault')}
-                    data-testid="import-obs-mode-new-vault"
-                  />
-                  <span>Create a new Mythos vault copy</span>
-                </label>
-                <label className={`import-dest-mode__option${obsExtraDisabled ? ' import-dest-mode__option--disabled' : ''}`}>
-                  <input
-                    type="radio"
-                    name="obs-dest-mode"
-                    checked={obsEffectiveDestMode === 'extra-notes-vault'}
-                    disabled={obsExtraDisabled}
-                    onChange={() => setObsDestMode('extra-notes-vault')}
-                    data-testid="import-obs-mode-extra-notes"
-                  />
-                  <span>Add as a notes vault in this Mythos vault</span>
-                </label>
-                {obsExtraDisabled && (
-                  <p className="import-dest-mode__hint" data-testid="import-obs-mode-hint">
-                    Story folders always create a new Mythos vault — clear the story slot to add a notes vault here.
-                  </p>
-                )}
-              </fieldset>
-            )}
-            {/* SKY-10388 (owner rulings R2/R3): the import creates a NEW Mythos
-                vault here — prefilled with the default location, editable.
-                SKY-11058: irrelevant (and hidden) for the notes-vault option. */}
-            {obsEffectiveDestMode === 'new-mythos-vault' && (
-            <div className="import-slot">
-              <span className="import-slot__label">New vault location</span>
-              <VaultDestinationPicker
-                variant="onboarding"
-                path={importObsDestPath}
-                placeholder="Where to create the new Mythos vault…"
-                onChange={setImportObsDestPath}
-                onBrowse={handleImportObsDestBrowse}
-                ariaLabel="New Mythos vault location"
-                testIdPrefix="import-obs-dest"
-              />
-            </div>
-            )}
-            {/* SKY-2993: inline, retryable dry-run error — the submit button stays enabled */}
-            {obsError && (
-              <p className="import-validation import-validation--invalid" role="alert" data-testid="obs-dryrun-error">
-                {obsError}
-              </p>
-            )}
-          </section>
-
-          {/* Section 3: Word docs */}
-          <section className="import-section" aria-label="Import Word documents" data-testid="import-section-docx">
-            <h3 className="import-section__title">Import Word documents (.docx)</h3>
-            <button
-              type="button"
-              className="btn-secondary import-section__file-btn"
-              onClick={() => docxFileInputRef.current?.click()}
-              data-testid="import-docx-browse"
-            >
-              Add .docx files…
-            </button>
+          <div className="gs-form__field">
+            <label className="gs-form__label" htmlFor="wiz-vault-name">VAULT NAME</label>
             <input
-              ref={docxFileInputRef}
-              type="file"
-              multiple
-              accept=".docx"
-              style={{ display: 'none' }}
-              onChange={handleDocxFileChange}
-              data-testid="import-docx-input"
-              aria-label="Select Word documents to import"
+              id="wiz-vault-name"
+              className="gs-form__input"
+              type="text"
+              value={vaultName}
+              placeholder="My Vault"
+              onChange={(e) => setVaultName(e.target.value)}
+              disabled={creating}
+              data-testid="step3-vault-name"
             />
-            {importDocxFiles.length > 0 && (
-              <ul className="import-docx-list" aria-label="Selected Word documents">
-                {importDocxFiles.map((f, i) => (
-                  <li key={`${f.name}-${i}`} className="import-docx-list__item">
-                    <span className="import-docx-list__name">{f.name}</span>
-                    <button
-                      type="button"
-                      className="btn-ghost import-docx-list__remove"
-                      aria-label={`Remove ${f.name}`}
-                      onClick={() => handleRemoveDocxFile(i)}
-                      data-testid={`import-docx-remove-${i}`}
-                    >
-                      &#x2715;
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <p className="import-tip" data-testid="import-tip">
-            Tip: fill in exactly one section above, then click Import / Open.
-          </p>
-          {/* SKY-10388: block submit instead of silently importing only the
-              highest-priority section — say which one would win and why. */}
-          {filledImportSections.length > 1 && (
-            <p className="import-validation import-validation--invalid" role="alert" data-testid="import-multi-section-msg">
-              {`More than one section is filled — only "${filledImportSections[0]}" would be imported and the rest ignored. Clear the other section${filledImportSections.length > 2 ? 's' : ''} to continue.`}
-            </p>
-          )}
-          <div className="import-actions">
-            <button
-              type="button"
-              className="btn-primary import-actions__submit"
-              disabled={!importHasInput || importRunning || filledImportSections.length > 1}
-              onClick={() => { void handleImportOrOpen(); }}
-              data-testid="import-action-btn"
-            >
-              {importRunning ? 'Importing…' : 'Import / Open →'}
-            </button>
           </div>
-            </>
-          )}
-        </div>
-      )}
 
-      {/* Import error modal */}
-      {importErrorModal && (
-        <div
-          className="gs-confirm-overlay"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="import-error-title"
-          data-testid="import-error-modal"
-        >
-          <div className="gs-confirm">
-            <h3 className="gs-confirm__title" id="import-error-title">{importErrorModal.title}</h3>
-            <p className="gs-confirm__body">{importErrorModal.message}</p>
-            <div className="gs-confirm__actions">
+          <div className="gs-form__field">
+            <div className="wiz-field-header">
+              <span className="gs-form__label">CREATE IT IN</span>
               <button
-                className="btn-primary"
                 type="button"
-                onClick={() => setImportErrorModal(null)}
-                data-testid="import-error-dismiss"
+                className="wiz-default-folder-btn"
+                title="Use the default vaults folder"
+                onClick={() => setVaultPath(defaultVaultsParentPath)}
+                disabled={creating || !defaultVaultsParentPath}
+                data-testid="step3-path-reset"
               >
-                OK
+                Default folder
               </button>
             </div>
+            <VaultDestinationPicker
+              variant="onboarding"
+              path={vaultPath}
+              placeholder="Vault folder location…"
+              onChange={setVaultPath}
+              onBrowse={browseVaultPath}
+              disabled={creating}
+              ariaLabel="Vault location"
+              testIdPrefix="step3-path"
+            />
           </div>
+
+          <div className="wiz-preview-box">
+            <div className="wiz-preview-box__label">WILL BE CREATED AT</div>
+            <div className="wiz-preview-box__path" data-testid="step3-full-path">{fullPath}</div>
+            <div className="wiz-preview-box__note" data-testid="step3-create-note">{createNote}</div>
+          </div>
+
+          {scaffoldError && (
+            <div className="gs-scaffold-error" data-testid="gs-scaffold-error" role="alert">
+              <p className="gs-scaffold-error__msg">{scaffoldError}</p>
+            </div>
+          )}
+
+          <div className="wiz-footer">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              onClick={goBackFromName}
+              disabled={creating}
+              data-testid="step3-back"
+            >
+              <span aria-hidden="true">&#x2039;</span> Back
+            </button>
+            <WizardDots total={mode === 'import' ? 2 : 1} current={mode === 'import' ? 2 : 1} />
+            <button
+              className="btn-primary gs-actions__cta"
+              type="button"
+              onClick={() => void handleFinish()}
+              disabled={creating}
+              data-testid="step3-open-vault"
+            >
+              {creating ? 'Creating…' : 'Open my vault ✦'}
+            </button>
+          </div>
+          {creating && <div className="gs-spinner" aria-label="Creating your vault" role="status" data-testid="gs-spinner" />}
         </div>
       )}
-
     </div>
   );
 }
