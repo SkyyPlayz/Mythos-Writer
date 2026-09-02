@@ -893,7 +893,12 @@ describe('M8 — inline heading renames', () => {
 
 describe('M8 — drop cap on the first scene paragraph', () => {
   it('marks only the first paragraph of a scene at scene/chapter zoom', () => {
-    const { rerender, props } = renderView({ cursor: cur('scene', 0, 0) });
+    // SKY-11239: the setting defaults OFF — enable it explicitly so this
+    // test keeps covering the zoom-based gating logic on its own.
+    const { rerender, props } = renderView({
+      cursor: cur('scene', 0, 0),
+      pagePrefs: { dropCapEnabled: true },
+    });
     expect(screen.getByTestId('msv-para-s1-b0').className).toContain('msv-para-text--dropcap');
     expect(screen.getByTestId('msv-para-s1-b1').className).not.toContain(
       'msv-para-text--dropcap'
@@ -905,6 +910,25 @@ describe('M8 — drop cap on the first scene paragraph', () => {
 
     // Prototype: no drop caps at book zoom.
     rerender(<ManuscriptView {...props} cursor={cur('book')} />);
+    expect(screen.getByTestId('msv-para-s1-b0').className).not.toContain(
+      'msv-para-text--dropcap'
+    );
+  });
+
+  it('SKY-11239: gates the drop cap on pagePrefs.dropCapEnabled (true/false/undefined)', () => {
+    const { rerender, props } = renderView({
+      cursor: cur('scene', 0, 0),
+      pagePrefs: { dropCapEnabled: true },
+    });
+    expect(screen.getByTestId('msv-para-s1-b0').className).toContain('msv-para-text--dropcap');
+
+    rerender(<ManuscriptView {...props} pagePrefs={{ dropCapEnabled: false }} />);
+    expect(screen.getByTestId('msv-para-s1-b0').className).not.toContain(
+      'msv-para-text--dropcap'
+    );
+
+    // Default (field absent) is off — matches STORY_PAGE_DEFAULTS.dropCapEnabled.
+    rerender(<ManuscriptView {...props} pagePrefs={{}} />);
     expect(screen.getByTestId('msv-para-s1-b0').className).not.toContain(
       'msv-para-text--dropcap'
     );

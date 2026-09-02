@@ -394,6 +394,8 @@ interface StoryPagePrefs {
   fontFamily: 'serif' | 'sans' | 'mono';
   fontSizePx: number;
   lineHeight: number;
+  /** SKY-11239: manuscript drop cap on the first paragraph. Default false. */
+  dropCapEnabled?: boolean;
 }
 
 /** SKY-2097: Writing-surface panel appearance preset. */

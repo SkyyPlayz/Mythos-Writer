@@ -127,6 +127,29 @@
   text-align: right;
 }
 
+.page-setup-popover__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: var(--color-text, #444);
+}
+
+.page-setup-popover__toggle input[type="checkbox"] {
+  accent-color: var(--color-accent, #6c63ff);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.page-setup-popover__toggle:focus-within {
+  outline: 2px solid var(--focus-ring, #6c63ff);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 .page-setup-popover__number-input {
   width: 72px;
   padding: 2px 6px;

@@ -138,4 +138,32 @@ describe('PageSetupPopover', () => {
     fireEvent.change(size, { target: { value: '14' } });
     expect(onPrefsChange).toHaveBeenCalledWith(expect.objectContaining({ fontSizeStep: 14 }));
   });
+
+  // ── SKY-11239: drop cap on/off toggle ─────────────────────────────────────
+
+  it('renders the drop cap toggle with an aria-label, defaulting to unchecked', () => {
+    render(<PageSetupPopover {...defaultProps} />);
+    const toggle = screen.getByLabelText('Drop cap') as HTMLInputElement;
+    expect(toggle).toBeInTheDocument();
+    expect(toggle.type).toBe('checkbox');
+    expect(toggle.checked).toBe(false);
+  });
+
+  it('reflects prefs.dropCapEnabled when true', () => {
+    render(<PageSetupPopover {...defaultProps} prefs={{ ...STORY_PAGE_DEFAULTS, dropCapEnabled: true }} />);
+    expect((screen.getByLabelText('Drop cap') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('fires onPrefsChange with the flipped dropCapEnabled value', () => {
+    const onPrefsChange = vi.fn();
+    render(
+      <PageSetupPopover
+        {...defaultProps}
+        prefs={{ ...STORY_PAGE_DEFAULTS, dropCapEnabled: false }}
+        onPrefsChange={onPrefsChange}
+      />
+    );
+    fireEvent.click(screen.getByLabelText('Drop cap'));
+    expect(onPrefsChange).toHaveBeenCalledWith(expect.objectContaining({ dropCapEnabled: true }));
+  });
 });
