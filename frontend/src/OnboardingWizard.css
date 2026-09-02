@@ -263,6 +263,9 @@ a.gs-footer-link:focus-visible {
   background: var(--glass, var(--bg-elevated));
   border: var(--frame-width-rest) solid var(--border-subtle);
   border-radius: 16px; /* prototype 2789 */
+  /* SKY-11267: ambient glow at rest (was hover-only) so step 1 matches the
+     .gs-modal / step 2-3 / Add-Vault dialog baseline treatment. */
+  box-shadow: var(--glow-sm) var(--accent);
   cursor: pointer;
   text-align: left;
   color: var(--text-body);
@@ -306,7 +309,8 @@ a.gs-footer-link:focus-visible {
 }
 
 .gs-card__icon {
-  font-size: 1.75rem;
+  display: flex;
+  color: var(--accent);
   line-height: 1;
 }
 
@@ -324,10 +328,11 @@ a.gs-footer-link:focus-visible {
 }
 
 .gs-card__cta {
-  font-size: 0.8125rem;
-  font-weight: var(--weight-heading);
-  color: var(--accent);
+  /* SKY-11267: sizing/color/chrome now come from the shared .btn/.btn--primary
+     classes (matches step 2-3 and the Add-Vault dialogs) — only the card-local
+     bottom-alignment stays here. */
   margin-top: auto;
+  pointer-events: none;
 }
 
 .gs-card--recommended {

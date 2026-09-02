@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import type { LucideIcon } from 'lucide-react';
+import { LayoutTemplate, FilePlus2, FolderInput } from 'lucide-react';
 import { Button } from './components/ui/Button';
 import VaultDestinationPicker from './components/SettingsPanel/sections/VaultDestinationPicker';
 // Beta 3 M25 (welcome wizard v2): brand header assets (prototype welcome
@@ -119,7 +121,7 @@ function WizardDots({ total, current }: { total: number; current: number }) {
 }
 
 interface StartingPointCardProps {
-  icon: string;
+  icon: LucideIcon;
   title: string;
   description: string;
   ctaLabel: string;
@@ -130,7 +132,7 @@ interface StartingPointCardProps {
   chip?: string;
 }
 
-function StartingPointCard({ icon, title, description, ctaLabel, onActivate, testId, cardRef, chip }: StartingPointCardProps) {
+function StartingPointCard({ icon: Icon, title, description, ctaLabel, onActivate, testId, cardRef, chip }: StartingPointCardProps) {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -148,10 +150,13 @@ function StartingPointCard({ icon, title, description, ctaLabel, onActivate, tes
       type="button"
     >
       {chip && <span className="gs-card__chip" aria-hidden="true">{chip}</span>}
-      <span className="gs-card__icon" aria-hidden="true">{icon}</span>
+      <span className="gs-card__icon" aria-hidden="true"><Icon size={28} strokeWidth={1.75} /></span>
       <span className="gs-card__title">{title}</span>
       <span className="gs-card__desc">{description}</span>
-      <span className="gs-card__cta" aria-hidden="true">{ctaLabel}</span>
+      {/* Visual affordance only — the whole card is the interactive button,
+          so this can't itself be a nested <Button> (invalid HTML, would
+          double-fire onActivate). Same .btn classes as the real Button. */}
+      <span className="gs-card__cta btn btn--primary btn--sm" aria-hidden="true">{ctaLabel}</span>
     </button>
   );
 }
@@ -429,7 +434,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
 
           <div className="gs-cards" role="group" aria-label="Choose how to get started">
             <StartingPointCard
-              icon="&#x1F5C2;&#xFE0F;"
+              icon={LayoutTemplate}
               title="Start from a template"
               description="A ready structure — empty folders for Characters, Locations, Stories, Plot, Worldbuilding and Research. No notes, just the shape."
               ctaLabel="Use template &#x2192;"
@@ -439,7 +444,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               chip="RECOMMENDED"
             />
             <StartingPointCard
-              icon="&#x1F4DD;"
+              icon={FilePlus2}
               title="Start blank"
               description="One empty vault. You build the structure yourself as you go."
               ctaLabel="Choose path &#x2192;"
@@ -447,7 +452,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
               testId="card-start-blank"
             />
             <StartingPointCard
-              icon="&#x1F4E5;"
+              icon={FolderInput}
               title="Import vault"
               description="Point at an existing vault. A dry-run report shows every change before anything is written."
               ctaLabel="Pick folder &#x2192;"
