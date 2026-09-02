@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   ensureStoryVaultRegistry,
   createBlankStoryVault,
+  createStoryVaultFromOptions,
   setActiveStoryVault,
   renameStoryVault,
   pairStoryVaultToNotesVault,
@@ -61,6 +62,45 @@ describe('createBlankStoryVault', () => {
     const { entry: a } = createBlankStoryVault(tmpDir, 'Worlds');
     const { entry: b } = createBlankStoryVault(tmpDir, 'Worlds');
     expect(a.dirName).not.toBe(b.dirName);
+  });
+});
+
+describe('createStoryVaultFromOptions', () => {
+  it('blank mode leaves the directory empty, unpaired', () => {
+    ensureStoryVaultRegistry(tmpDir);
+    const { entry } = createStoryVaultFromOptions(tmpDir, 'Empty', 'blank');
+    expect(entry.pairedNotesVaultId).toBeNull();
+    const absDir = storyVaultAbsPath(tmpDir, entry);
+    expect(fs.readdirSync(absDir)).toHaveLength(0);
+  });
+
+  it('import mode copies files in and returns a tally', () => {
+    ensureStoryVaultRegistry(tmpDir);
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'svr-import-src-'));
+    fs.writeFileSync(path.join(src, 'scene.md'), '# Scene\n');
+    const { entry, importTally } = createStoryVaultFromOptions(
+      tmpDir,
+      'Imported',
+      'import',
+      src,
+    );
+    const absDir = storyVaultAbsPath(tmpDir, entry);
+    expect(fs.existsSync(path.join(absDir, 'scene.md'))).toBe(true);
+    expect(importTally?.imported).toBe(1);
+    expect(importTally?.sourceCount).toBe(1);
+    fs.rmSync(src, { recursive: true, force: true });
+  });
+
+  it('import mode throws when importSourcePath is missing', () => {
+    ensureStoryVaultRegistry(tmpDir);
+    expect(() => createStoryVaultFromOptions(tmpDir, 'Bad', 'import')).toThrow();
+  });
+
+  it('import mode throws when the source path does not exist', () => {
+    ensureStoryVaultRegistry(tmpDir);
+    expect(() =>
+      createStoryVaultFromOptions(tmpDir, 'Bad', 'import', path.join(tmpDir, 'does-not-exist')),
+    ).toThrow();
   });
 });
 

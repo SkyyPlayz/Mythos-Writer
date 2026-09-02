@@ -553,7 +553,7 @@ interface AppSettings {
     completed?: Partial<Record<'writeScene' | 'addCharacter' | 'brainstorm' | 'openNotes', boolean>>;
   };
   /** SKY-1188: onboarding mode captured when onboarding completed. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
   /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (prototype `wizGenre`). */
   onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
@@ -1335,8 +1335,13 @@ interface Window {
       vaults: Array<{ id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' }> | null;
       activeId: string | null;
     }>;
-    notesVaultRegistryCreate?: (displayName: string) => Promise<{
+    notesVaultRegistryCreate?: (opts: {
+      displayName: string;
+      mode?: 'template' | 'blank' | 'import';
+      importSourcePath?: string;
+    }) => Promise<{
       entry: { id: string; displayName: string; dirName: string; createdAt: string; origin: 'created' | 'imported' };
+      importTally?: { imported: number; skipped: number; sourceCount: number; warnings: string[] };
     }>;
     notesVaultRegistrySetActivePreview?: (id: string) => Promise<{
       resolvedCount: number;
@@ -1355,8 +1360,13 @@ interface Window {
       vaults: Array<{ id: string; displayName: string; dirName: string; createdAt: string; pairedNotesVaultId: string | null }> | null;
       activeId: string | null;
     }>;
-    storyVaultRegistryCreate?: (displayName: string) => Promise<{
+    storyVaultRegistryCreate?: (opts: {
+      displayName: string;
+      mode?: 'blank' | 'import';
+      importSourcePath?: string;
+    }) => Promise<{
       entry: { id: string; displayName: string; dirName: string; createdAt: string; pairedNotesVaultId: string | null };
+      importTally?: { imported: number; skipped: number; sourceCount: number; warnings: string[] };
     }>;
     storyVaultRegistrySetActive?: (id: string) => Promise<{
       entry: { id: string; displayName: string; dirName: string; createdAt: string; pairedNotesVaultId: string | null };

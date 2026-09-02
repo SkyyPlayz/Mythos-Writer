@@ -13,8 +13,10 @@
 //
 // Pure Node — no Electron imports — so unit tests drive it with tmpdirs.
 
+import fs from 'node:fs';
 import path from 'node:path';
 import { listVaultFiles, readVaultFile } from '../vault.js';
+import { importObsidianToVaultDir } from '../obsidianImporter.js';
 import {
   VaultEntry,
   VaultRegistryConfig,
@@ -31,6 +33,7 @@ import {
   setActiveVault,
   renameVaultEntry,
 } from './vaultRegistry.js';
+import { TEMPLATE_NOTES_SKELETON } from './createVaultFromOptions.js';
 
 export const NOTES_VAULT_REGISTRY_FILENAME = 'notes-vaults.json';
 export const NOTES_VAULT_REGISTRY_VERSION = 1 as const;
@@ -114,6 +117,69 @@ export function createBlankNotesVault(
   return createBlankVaultEntry(mythosRoot, NOTES_CONFIG, displayName, (base) =>
     makeNotesEntry(base, 'created'),
   );
+}
+
+/** The three creation options for an inner (per-Mythos-vault) notes vault. */
+export type NotesVaultCreationMode = 'template' | 'blank' | 'import';
+
+export interface CreateNotesVaultFromOptionsResult {
+  registry: NotesVaultRegistry;
+  entry: NotesVaultEntry;
+  /** Present for `import` mode only. */
+  importTally?: { imported: number; skipped: number; sourceCount: number; warnings: string[] };
+}
+
+/**
+ * Create a new notes vault registry entry using one of the three creation
+ * modes shared with the top-level vault-creation primitive
+ * (createVaultFromOptions.ts, SKY-11151): template / blank / import.
+ *
+ * Reuses createBlankVaultEntry to create+register the directory, then
+ * post-processes the resulting (empty) directory for template/import modes.
+ */
+export function createNotesVaultFromOptions(
+  mythosRoot: string,
+  displayName: string,
+  mode: NotesVaultCreationMode,
+  importSourcePath?: string,
+): CreateNotesVaultFromOptionsResult {
+  if (mode === 'import' && !importSourcePath?.trim()) {
+    throw new Error('import mode requires an importSourcePath');
+  }
+
+  const { registry, entry } = createBlankVaultEntry(mythosRoot, NOTES_CONFIG, displayName, (base) =>
+    makeNotesEntry(base, mode === 'import' ? 'imported' : 'created'),
+  );
+
+  const absDir = notesVaultAbsPath(mythosRoot, entry);
+
+  if (mode === 'template') {
+    for (const dir of TEMPLATE_NOTES_SKELETON) {
+      fs.mkdirSync(path.join(absDir, dir), { recursive: true });
+    }
+    return { registry, entry };
+  }
+
+  if (mode === 'import') {
+    const result = importObsidianToVaultDir(importSourcePath as string, absDir);
+    if (!result.ok) {
+      throw new Error(result.errors.join('; '));
+    }
+    const warnings = result.dropWarning ? [result.dropWarning] : [];
+    return {
+      registry,
+      entry,
+      importTally: {
+        imported: result.imported,
+        skipped: result.skipped,
+        sourceCount: result.sourceCount,
+        warnings,
+      },
+    };
+  }
+
+  // mode === 'blank': no-op, dir already created empty by createBlankVaultEntry.
+  return { registry, entry };
 }
 
 /**

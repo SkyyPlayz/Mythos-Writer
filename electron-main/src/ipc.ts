@@ -1324,10 +1324,21 @@ export interface NotesVaultRegistryListResponse {
 
 export interface NotesVaultRegistryCreatePayload {
   displayName: string;
+  /** Creation mode — defaults to 'blank' when omitted (back-compat). */
+  mode?: 'template' | 'blank' | 'import';
+  /** Required when mode is 'import'. */
+  importSourcePath?: string;
 }
 
 export interface NotesVaultRegistryCreateResponse {
   entry: NotesVaultRegistryEntry;
+  /** Present for `import` mode only. */
+  importTally?: {
+    imported: number;
+    skipped: number;
+    sourceCount: number;
+    warnings: string[];
+  };
 }
 
 export interface NotesVaultRegistrySetActivePreviewPayload {
@@ -1374,10 +1385,21 @@ export interface StoryVaultRegistryListResponse {
 
 export interface StoryVaultRegistryCreatePayload {
   displayName: string;
+  /** Creation mode — defaults to 'blank' when omitted (back-compat). No 'template' for story vaults. */
+  mode?: 'blank' | 'import';
+  /** Required when mode is 'import'. */
+  importSourcePath?: string;
 }
 
 export interface StoryVaultRegistryCreateResponse {
   entry: StoryVaultRegistryEntry;
+  /** Present for `import` mode only. */
+  importTally?: {
+    imported: number;
+    skipped: number;
+    sourceCount: number;
+    warnings: string[];
+  };
 }
 
 export interface StoryVaultRegistrySetActivePayload {

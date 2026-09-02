@@ -669,8 +669,11 @@ contextBridge.exposeInMainWorld('api', {
 
   // SKY-11058: per-Mythos-vault notes vault registry
   notesVaultRegistryList: () => ipcRenderer.invoke('notesVaultRegistry:list', undefined),
-  notesVaultRegistryCreate: (displayName: string) =>
-    ipcRenderer.invoke('notesVaultRegistry:create', { displayName }),
+  notesVaultRegistryCreate: (opts: {
+    displayName: string;
+    mode?: 'template' | 'blank' | 'import';
+    importSourcePath?: string;
+  }) => ipcRenderer.invoke('notesVaultRegistry:create', opts),
   notesVaultRegistrySetActivePreview: (id: string) =>
     ipcRenderer.invoke('notesVaultRegistry:setActivePreview', { id }),
   notesVaultRegistrySetActive: (id: string) =>
@@ -685,8 +688,11 @@ contextBridge.exposeInMainWorld('api', {
 
   // SKY-11150: Story vault registry
   storyVaultRegistryList: () => ipcRenderer.invoke('storyVaultRegistry:list', undefined),
-  storyVaultRegistryCreate: (displayName: string) =>
-    ipcRenderer.invoke('storyVaultRegistry:create', { displayName }),
+  storyVaultRegistryCreate: (opts: {
+    displayName: string;
+    mode?: 'blank' | 'import';
+    importSourcePath?: string;
+  }) => ipcRenderer.invoke('storyVaultRegistry:create', opts),
   storyVaultRegistrySetActive: (id: string) =>
     ipcRenderer.invoke('storyVaultRegistry:setActive', { id }),
   storyVaultRegistryRename: (id: string, displayName: string) =>

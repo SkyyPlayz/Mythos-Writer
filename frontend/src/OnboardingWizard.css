@@ -1994,3 +1994,134 @@ a.gs-footer-link:focus-visible {
 .gs-actions--wiz-provider .gs-actions__cta {
   align-self: stretch;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SKY-11152 — 3-step first-run flow (Welcome → Import → Name your vault),
+   replacing the old multi-flow wizard (prototype welcome/onboarding,
+   HTML 4580–4685, wImpRows/wCreateNote/wFullPath data logic HTML 9340–9439).
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Step 2: import source rows (prototype wImpRows, HTML 4608–4628) ── */
+
+.wiz-import-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem 0.875rem;
+  border-radius: 13px;
+  background: rgb(255 255 255 / 0.03);
+  border: var(--bw, 1px) solid var(--color-border);
+}
+
+.wiz-import-row__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wiz-import-row__label {
+  flex: 1;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.wiz-import-row__tag {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  flex: none;
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-border);
+}
+
+.wiz-import-row__hint {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* ── Step 3: name/location field header + "Default folder" reset ── */
+
+.wiz-field-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 0.4rem;
+}
+
+.wiz-field-header .gs-form__label {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.wiz-default-folder-btn {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  background: none;
+  cursor: pointer;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-family: inherit;
+}
+
+.wiz-default-folder-btn:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--b1, var(--accent));
+}
+
+.wiz-default-folder-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── Step 3: "WILL BE CREATED AT" preview box (prototype wFullPath/wCreateNote) ── */
+
+.wiz-preview-box {
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: var(--gs1, rgb(255 255 255 / 0.05));
+  border: var(--bw, 1px) solid var(--b1, var(--accent));
+}
+
+.wiz-preview-box__label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 5px;
+}
+
+.wiz-preview-box__path {
+  font-size: 0.75rem;
+  color: var(--color-text);
+  font-family: ui-monospace, monospace;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+.wiz-preview-box__note {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  margin-top: 7px;
+  line-height: 1.5;
+}
+
+/* ── Shared Back / dots / primary-CTA footer (prototype wizBack/wizDots/wizNext, HTML 4661–4667) ── */
+
+.wiz-footer {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.wiz-footer .wiz-dots {
+  flex: 1;
+}

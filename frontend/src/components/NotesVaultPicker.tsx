@@ -84,7 +84,7 @@ export default function NotesVaultPicker({ onImportVault }: NotesVaultPickerProp
       if (!name?.trim()) return;
       // Deliberately no setActive here — a freshly created vault becomes
       // active only when the user explicitly switches to it (SKY-11058).
-      await window.api?.notesVaultRegistryCreate?.(name.trim());
+      await window.api?.notesVaultRegistryCreate?.({ displayName: name.trim() });
       return;
     }
 

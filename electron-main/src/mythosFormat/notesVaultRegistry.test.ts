@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   ensureNotesVaultRegistry,
   createBlankNotesVault,
+  createNotesVaultFromOptions,
   setActiveNotesVault,
   renameNotesVault,
   registerImportedNotesVault,
@@ -15,6 +16,7 @@ import {
   NOTES_VAULT_REGISTRY_FILENAME,
   DEFAULT_NOTES_VAULT_DIRNAME,
 } from './notesVaultRegistry.js';
+import { TEMPLATE_NOTES_SKELETON } from './createVaultFromOptions.js';
 
 let tmpDir: string;
 
@@ -71,6 +73,57 @@ describe('createBlankNotesVault', () => {
     const initial = ensureNotesVaultRegistry(tmpDir);
     const { registry } = createBlankNotesVault(tmpDir, 'Another');
     expect(registry.activeId).toBe(initial.activeId);
+  });
+});
+
+describe('createNotesVaultFromOptions', () => {
+  it('template mode creates the 6 skeleton folders, empty', () => {
+    ensureNotesVaultRegistry(tmpDir);
+    const { entry } = createNotesVaultFromOptions(tmpDir, 'Shaped', 'template');
+    expect(entry.origin).toBe('created');
+    const absDir = notesVaultAbsPath(tmpDir, entry);
+    for (const dir of TEMPLATE_NOTES_SKELETON) {
+      expect(fs.existsSync(path.join(absDir, dir))).toBe(true);
+      expect(fs.statSync(path.join(absDir, dir)).isDirectory()).toBe(true);
+      expect(fs.readdirSync(path.join(absDir, dir))).toHaveLength(0);
+    }
+  });
+
+  it('blank mode leaves the directory empty', () => {
+    ensureNotesVaultRegistry(tmpDir);
+    const { entry } = createNotesVaultFromOptions(tmpDir, 'Empty', 'blank');
+    const absDir = notesVaultAbsPath(tmpDir, entry);
+    expect(fs.readdirSync(absDir)).toHaveLength(0);
+  });
+
+  it('import mode copies files in and returns a tally, origin=imported', () => {
+    ensureNotesVaultRegistry(tmpDir);
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'nvr-import-src-'));
+    fs.writeFileSync(path.join(src, 'note.md'), '# Note\n');
+    const { entry, importTally } = createNotesVaultFromOptions(
+      tmpDir,
+      'Imported',
+      'import',
+      src,
+    );
+    expect(entry.origin).toBe('imported');
+    const absDir = notesVaultAbsPath(tmpDir, entry);
+    expect(fs.existsSync(path.join(absDir, 'note.md'))).toBe(true);
+    expect(importTally?.imported).toBe(1);
+    expect(importTally?.sourceCount).toBe(1);
+    fs.rmSync(src, { recursive: true, force: true });
+  });
+
+  it('import mode throws when importSourcePath is missing', () => {
+    ensureNotesVaultRegistry(tmpDir);
+    expect(() => createNotesVaultFromOptions(tmpDir, 'Bad', 'import')).toThrow();
+  });
+
+  it('import mode throws when the source path does not exist', () => {
+    ensureNotesVaultRegistry(tmpDir);
+    expect(() =>
+      createNotesVaultFromOptions(tmpDir, 'Bad', 'import', path.join(tmpDir, 'does-not-exist')),
+    ).toThrow();
   });
 });
 

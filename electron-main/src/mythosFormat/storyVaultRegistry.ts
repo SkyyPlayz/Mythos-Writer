@@ -13,6 +13,7 @@
 //
 // Pure Node — no Electron imports — so unit tests drive it with tmpdirs.
 
+import { importObsidianToVaultDir } from '../obsidianImporter.js';
 import {
   VaultEntry,
   VaultRegistryConfig,
@@ -127,6 +128,62 @@ export function createBlankStoryVault(
   return createBlankVaultEntry(mythosRoot, STORY_CONFIG, displayName, (base) =>
     makeStoryEntry(base, null),
   );
+}
+
+/**
+ * The creation options for an inner (per-Mythos-vault) story vault. No
+ * 'template' option — createVaultFromOptions.ts's template mode only seeds
+ * the Notes side; there is no story-vault skeleton anywhere in the codebase.
+ */
+export type StoryVaultCreationMode = 'blank' | 'import';
+
+export interface CreateStoryVaultFromOptionsResult {
+  registry: StoryVaultRegistry;
+  entry: StoryVaultEntry;
+  /** Present for `import` mode only. */
+  importTally?: { imported: number; skipped: number; sourceCount: number; warnings: string[] };
+}
+
+/**
+ * Create a new story vault registry entry using one of the two creation
+ * modes available for story vaults: blank / import. Mirrors
+ * createNotesVaultFromOptions in notesVaultRegistry.ts.
+ */
+export function createStoryVaultFromOptions(
+  mythosRoot: string,
+  displayName: string,
+  mode: StoryVaultCreationMode,
+  importSourcePath?: string,
+): CreateStoryVaultFromOptionsResult {
+  if (mode === 'import' && !importSourcePath?.trim()) {
+    throw new Error('import mode requires an importSourcePath');
+  }
+
+  const { registry, entry } = createBlankVaultEntry(mythosRoot, STORY_CONFIG, displayName, (base) =>
+    makeStoryEntry(base, null),
+  );
+
+  if (mode === 'import') {
+    const absDir = storyVaultAbsPath(mythosRoot, entry);
+    const result = importObsidianToVaultDir(importSourcePath as string, absDir);
+    if (!result.ok) {
+      throw new Error(result.errors.join('; '));
+    }
+    const warnings = result.dropWarning ? [result.dropWarning] : [];
+    return {
+      registry,
+      entry,
+      importTally: {
+        imported: result.imported,
+        skipped: result.skipped,
+        sourceCount: result.sourceCount,
+        warnings,
+      },
+    };
+  }
+
+  // mode === 'blank': no-op, dir already created empty by createBlankVaultEntry.
+  return { registry, entry };
 }
 
 /** Change the active story vault. Returns the updated registry. */

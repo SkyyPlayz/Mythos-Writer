@@ -550,7 +550,7 @@ export default function AppNavRail({
               className="nav-rail__vault-add"
               onClick={onNewVault}
               aria-label="New Mythos vault"
-              title="New Mythos vault — local folder, Dropbox, network drive…"
+              title="New Mythos vault — a folder on disk"
               data-testid="nav-rail-vault-add"
             >
               <svg width="11" height="11" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none" aria-hidden="true">
