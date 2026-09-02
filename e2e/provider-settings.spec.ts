@@ -313,3 +313,76 @@ test('TC-PROV-06: Save persists global provider config to app-settings.json on d
   expect(stored.provider?.baseUrl).toBe('http://127.0.0.1:9999/v1');
   expect(stored.provider?.model).toBe('e2e-persisted-model');
 });
+
+// ─── TC-PROV-07/08: SKY-11219 provider-adaptive settings ──────────────────────
+//
+// Each test below explicitly selects its starting provider rather than
+// relying on whatever a prior test left selected, matching TC-PROV-01's
+// pattern of asserting the exact starting state.
+
+test('TC-PROV-07: legacy API Key section only renders for providers that need one', async () => {
+  await page.locator('.app-menu-gear-btn').click();
+  await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
+
+  const providerSelect = page.getByLabel('AI provider');
+
+  // Ollama is keyless — the legacy top-level API Key field must not render
+  // at all, not just be hidden/disabled.
+  await providerSelect.selectOption('ollama');
+  await expect(page.locator('#api-key-input')).toHaveCount(0);
+
+  // Switch to OpenAI (needsKey) — field reappears with provider-specific copy.
+  await providerSelect.selectOption('openai');
+  await expect(page.locator('#api-key-input')).toBeVisible();
+  await expect(page.locator('label[for="api-key-input"]')).toHaveText('OpenAI API Key');
+  await expect(page.locator('#api-key-input')).toHaveAttribute('placeholder', 'Paste API key…');
+
+  // Switch to Ollama (keyless) again — hides.
+  await providerSelect.selectOption('ollama');
+  await expect(page.locator('#api-key-input')).toHaveCount(0);
+
+  // Switch to Anthropic (needsKey) — field reappears with the original copy.
+  await providerSelect.selectOption('anthropic');
+  await expect(page.locator('#api-key-input')).toBeVisible();
+  await expect(page.locator('label[for="api-key-input"]')).toHaveText('Anthropic API Key');
+
+  await page.click('.settings-close');
+});
+
+test('TC-PROV-08: no-override agent Model field inherits & live-tracks the provider Default model', async () => {
+  await page.locator('.app-menu-gear-btn').click();
+  await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
+
+  const providerSelect = page.getByLabel('AI provider');
+  await providerSelect.selectOption('ollama');
+
+  const providerModelInput = page.getByLabel('Default model for this provider');
+  const waModel = page.getByLabel('Writing Coach model');
+
+  // Simulate a no-override agent that's never had a value typed for it —
+  // blank, not carrying over whatever a prior test left in place.
+  await waModel.fill('');
+  await expect(waModel).toHaveValue('');
+
+  // The field must reflect the provider's Default model instead of sitting
+  // blank/stale (SKY-11219 AC-3).
+  await providerModelInput.fill('llama3-70b-instruct');
+  await expect(waModel).toHaveValue('llama3-70b-instruct');
+
+  // Live-tracks: editing the provider default again updates the agent field,
+  // since no override was ever typed into it.
+  await providerModelInput.fill('mixtral-8x7b');
+  await expect(waModel).toHaveValue('mixtral-8x7b');
+
+  // Once the user types their own value into the agent field, it wins over
+  // the provider default and stops tracking further edits.
+  await waModel.fill('custom-agent-only-model');
+  await providerModelInput.fill('yet-another-provider-default');
+  await expect(waModel).toHaveValue('custom-agent-only-model');
+
+  await page.click('.settings-close');
+});
