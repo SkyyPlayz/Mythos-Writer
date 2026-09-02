@@ -1,7 +1,10 @@
 export const CHECKLIST_ITEM_IDS = ['write-scene', 'add-character', 'brainstorm', 'notes-vault'] as const;
 
 export type GettingStartedItemId = (typeof CHECKLIST_ITEM_IDS)[number];
-export type OnboardingStartMode = 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+// SKY-11152: 'import' added — the new 3-path first-run wizard's import mode
+// (createVaultFromOptions). Not 'skip', so the checklist behaves like any
+// other non-skip start mode (shown normally).
+export type OnboardingStartMode = 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
 
 export interface GettingStartedProgress {
   completedItems: GettingStartedItemId[];

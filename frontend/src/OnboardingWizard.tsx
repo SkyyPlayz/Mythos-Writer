@@ -34,9 +34,23 @@ interface OnboardingWizardProps {
 
 // ─── Typed window.api access ──────────────────────────────────────────────────
 
+/** SKY-2993 dry-run summary — carried forward from the pre-rewrite wizard's
+ *  Obsidian import (see git history: onboarding:dryRunObsidianImport). */
+interface ObsidianImportPreview {
+  markdownCount: number;
+  attachmentCount: number;
+  totalFiles: number;
+  topLevelFolders: string[];
+  sampleFiles: string[];
+}
+
 type Api = {
   chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
   vaultGetPaths?: () => Promise<{ homeDir?: string; pathSeparator?: '/' | '\\'; defaultVaultsParentPath?: string }>;
+  /** SKY-2993: real (no-write) scan of a source folder — carried forward from
+   *  the pre-SKY-11152 wizard so the new Import screen still shows a dry-run
+   *  report before committing anything to disk. */
+  dryRunObsidianImport: (srcPath: string, targetVaultKind: 'notes' | 'story') => Promise<{ preview?: ObsidianImportPreview; error?: string }>;
   /** SKY-11151: THE shared vault-creation primitive — one surface for first
    *  run, "New Mythos vault…", and Settings "Add vault…" (template/blank/import). */
   createVaultFromOptions: (payload: {
@@ -205,6 +219,16 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   // ─── Step 2 (import) state ──────────────────────────────────────────────────
   const [notesPath, setNotesPath] = useState('');
   const [storyPath, setStoryPath] = useState('');
+  // SKY-2993/SKY-11152: 'form' is the two browse rows; 'report' is the
+  // dry-run (no-write) preview shown before the user commits. Carried
+  // forward from the pre-rewrite wizard's Obsidian import — Continue now
+  // triggers a real scan instead of jumping straight to the name step.
+  const [importPhase, setImportPhase] = useState<'form' | 'report'>('form');
+  const [obsDryRun, setObsDryRun] = useState<
+    { kind: 'notes' | 'story'; path: string; preview: ObsidianImportPreview }[] | null
+  >(null);
+  const [obsDryRunError, setObsDryRunError] = useState('');
+  const [obsDryRunRunning, setObsDryRunRunning] = useState(false);
 
   // ─── Step 3 (name) state ────────────────────────────────────────────────────
   const [vaultName, setVaultName] = useState('');
@@ -239,6 +263,11 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   function pickMode(m: VaultMode) {
     setMode(m);
     setScaffoldError('');
+    if (m === 'import') {
+      setImportPhase('form');
+      setObsDryRun(null);
+      setObsDryRunError('');
+    }
     setStep(m === 'import' ? 'import' : 'name');
   }
 
@@ -253,6 +282,40 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   }
 
   const importHasInput = Boolean(notesPath.trim() || storyPath.trim());
+
+  /** Filled Obsidian slots in a stable order: notes first, then story. */
+  function obsidianTargets(): { kind: 'notes' | 'story'; path: string }[] {
+    const targets: { kind: 'notes' | 'story'; path: string }[] = [];
+    if (notesPath.trim()) targets.push({ kind: 'notes', path: notesPath.trim() });
+    if (storyPath.trim()) targets.push({ kind: 'story', path: storyPath.trim() });
+    return targets;
+  }
+
+  /** SKY-2993: scan each selected folder without writing anything, then show
+   *  the dry-run report. On failure, the error stays inline on the form so
+   *  the user can retry without re-picking folders (Continue stays enabled). */
+  async function runObsidianDryRun() {
+    if (obsDryRunRunning) return;
+    setObsDryRunError('');
+    setObsDryRunRunning(true);
+    try {
+      const scanned: { kind: 'notes' | 'story'; path: string; preview: ObsidianImportPreview }[] = [];
+      for (const target of obsidianTargets()) {
+        const res = await api().dryRunObsidianImport(target.path, target.kind);
+        if (res.error || !res.preview) {
+          setObsDryRunError(res.error ?? 'Could not scan this folder. Check the path and try again.');
+          return;
+        }
+        scanned.push({ ...target, preview: res.preview });
+      }
+      setObsDryRun(scanned);
+      setImportPhase('report');
+    } catch (e) {
+      setObsDryRunError(e instanceof Error ? e.message : 'Could not scan this folder. Check the path and try again.');
+    } finally {
+      setObsDryRunRunning(false);
+    }
+  }
 
   // ─── Step 3 (name) actions ──────────────────────────────────────────────────
 
@@ -304,7 +367,14 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
   }
 
   function goBackFromName() {
-    setStep(mode === 'import' ? 'import' : 'welcome');
+    if (mode === 'import') {
+      // The dry-run report is still valid (nothing on disk has changed) —
+      // land back on it rather than re-scanning.
+      setImportPhase(obsDryRun ? 'report' : 'form');
+      setStep('import');
+      return;
+    }
+    setStep('welcome');
   }
 
   // ─── Keyboard / escape handling ─────────────────────────────────────────────
@@ -389,7 +459,7 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
       )}
 
       {/* ── Step 2: Import — what should we import? (mode='import' only) ── */}
-      {step === 'import' && (
+      {step === 'import' && importPhase === 'form' && (
         <div className="gs-modal" data-testid="screen-import">
           <h2 className="gs-modal__title">What should we import?</h2>
           <p className="gs-modal__subtitle">
@@ -404,9 +474,10 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <VaultDestinationPicker
               variant="onboarding"
               path={notesPath}
-              placeholder="Pick an Obsidian or Markdown folder…"
+              placeholder="Pick an Obsidian, Notion or Markdown folder…"
               onChange={setNotesPath}
               onBrowse={() => browseImportPath('notes')}
+              disabled={obsDryRunRunning}
               ariaLabel="Notes vault import folder"
               testIdPrefix="step2-notes"
             />
@@ -426,9 +497,10 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <VaultDestinationPicker
               variant="onboarding"
               path={storyPath}
-              placeholder="Pick an Obsidian or Markdown folder…"
+              placeholder="Pick a Scrivener project, .docx or Markdown folder…"
               onChange={setStoryPath}
               onBrowse={() => browseImportPath('story')}
+              disabled={obsDryRunRunning}
               ariaLabel="Story vault import folder"
               testIdPrefix="step2-story"
             />
@@ -441,11 +513,18 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             </p>
           </div>
 
+          {obsDryRunError && (
+            <p className="import-validation import-validation--invalid" role="alert" data-testid="step2-dryrun-error">
+              {obsDryRunError}
+            </p>
+          )}
+
           <div className="wiz-footer">
             <button
               className="btn-ghost btn-back"
               type="button"
               onClick={() => setStep('welcome')}
+              disabled={obsDryRunRunning}
               data-testid="step2-back"
             >
               <span aria-hidden="true">&#x2039;</span> Back
@@ -454,11 +533,65 @@ export default function OnboardingWizard({ initialSettings, onComplete, onCancel
             <button
               className="btn-primary gs-actions__cta"
               type="button"
-              disabled={!importHasInput}
-              onClick={() => setStep('name')}
+              disabled={!importHasInput || obsDryRunRunning}
+              onClick={() => void runObsidianDryRun()}
               data-testid="step2-continue"
             >
-              Continue
+              {obsDryRunRunning ? 'Scanning…' : 'Continue'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 2b: dry-run report (mode='import' only) — SKY-2993, carried
+          forward from the pre-rewrite wizard: a no-write scan report the user
+          confirms before anything is created. Confirming lands on the shared
+          Name-your-vault step, same as every other path — the actual create
+          + copy only happens there, through createVaultFromOptions. ── */}
+      {step === 'import' && importPhase === 'report' && obsDryRun && (
+        <div className="gs-modal" data-testid="screen-import-report">
+          <h2 className="gs-modal__title">Ready to import</h2>
+          <p className="gs-modal__subtitle">Review what will be imported, then confirm. Nothing is written yet.</p>
+
+          <div data-testid="step2-report">
+            {obsDryRun.map((target) => (
+              <section
+                key={target.kind}
+                className="import-section"
+                aria-label={target.kind === 'notes' ? 'Notes vault import preview' : 'Story vault import preview'}
+                data-testid={`step2-report-${target.kind}`}
+              >
+                <h3 className="import-section__title">{target.kind === 'notes' ? 'Notes vault' : 'Story vault'}</h3>
+                <p className="obs-report__path">{target.path}</p>
+                <ul className="obs-report__stats" aria-label="Import summary">
+                  <li>{target.preview.markdownCount} markdown {target.preview.markdownCount === 1 ? 'note' : 'notes'}</li>
+                  <li>{target.preview.attachmentCount} {target.preview.attachmentCount === 1 ? 'attachment' : 'attachments'}</li>
+                  <li>{target.preview.totalFiles} {target.preview.totalFiles === 1 ? 'file' : 'files'} total</li>
+                </ul>
+                {target.preview.topLevelFolders.length > 0 && (
+                  <p className="obs-report__meta">Top-level folders: {target.preview.topLevelFolders.join(', ')}</p>
+                )}
+              </section>
+            ))}
+          </div>
+
+          <div className="wiz-footer">
+            <button
+              className="btn-ghost btn-back"
+              type="button"
+              onClick={() => setImportPhase('form')}
+              data-testid="step2-report-back"
+            >
+              <span aria-hidden="true">&#x2039;</span> Back
+            </button>
+            <WizardDots total={2} current={1} />
+            <button
+              className="btn-primary gs-actions__cta"
+              type="button"
+              onClick={() => setStep('name')}
+              data-testid="step2-report-confirm"
+            >
+              Confirm import &#x2192;
             </button>
           </div>
         </div>
