@@ -25,6 +25,10 @@ import {
   createThinkStripper,
   stripThinkBlocks,
   EmptyProviderResponseError,
+  TokenBudgetExhaustedError,
+  effectiveMaxTokens,
+  REASONING_TOKEN_RESERVE,
+  DEFAULT_ANSWER_MAX_TOKENS,
   type ProviderConfig,
   type StreamRequest,
   type Provider,
@@ -113,6 +117,44 @@ function makeRawSseResponse(deltas: Array<Record<string, unknown>>) {
     },
   });
   return Promise.resolve({ ok: true, status: 200, body } as unknown as Response);
+}
+
+// Like makeRawSseResponse, but the final streamed chunk carries a real
+// finish_reason (e.g. 'length' when a reasoning model exhausts max_tokens while
+// thinking, or 'stop' when it finishes normally) — the wire shape LM Studio &
+// friends send (SKY-11276).
+function makeRawSseResponseWithFinish(
+  deltas: Array<Record<string, unknown>>,
+  finishReason: string,
+) {
+  const chunks: string[] = [
+    ...deltas.map(
+      (delta, i) =>
+        `data: ${JSON.stringify({ choices: [{ delta, index: i, finish_reason: null }] })}\n\n`,
+    ),
+    // Terminal chunk: empty delta + the finish_reason, exactly as servers emit it.
+    `data: ${JSON.stringify({ choices: [{ delta: {}, index: deltas.length, finish_reason: finishReason }] })}\n\n`,
+    'data: [DONE]\n\n',
+  ];
+  let idx = 0;
+  const body = new ReadableStream({
+    pull(controller) {
+      if (idx < chunks.length) {
+        controller.enqueue(new TextEncoder().encode(chunks[idx++]));
+      } else {
+        controller.close();
+      }
+    },
+  });
+  return Promise.resolve({ ok: true, status: 200, body } as unknown as Response);
+}
+
+// Capture the request body sent to fetch, replying with the given delta stream.
+function captureBodyResponse(store: { body?: string }, deltas: Array<Record<string, unknown>> = []) {
+  return (_url: string, opts: RequestInit) => {
+    store.body = opts.body as string;
+    return makeRawSseResponse(deltas);
+  };
 }
 
 // ─── Anthropic routing (§1) ───────────────────────────────────────────────────
@@ -445,6 +487,134 @@ describe('OpenAI-compatible routing (§2)', () => {
       );
       const tokens = await collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq()));
       expect(tokens.join('')).toBe('The answer is 42.');
+    });
+
+    // ─── Reasoning-token headroom & budget exhaustion (SKY-11276) ───
+
+    it('adds the reasoning reserve to max_tokens for local (LM Studio) providers', async () => {
+      const store: { body?: string } = {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(captureBodyResponse(store, [{ content: 'ok' }]));
+      await collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq({ maxTokens: 1024 })));
+      const parsed = JSON.parse(store.body ?? '{}') as { max_tokens: number };
+      expect(parsed.max_tokens).toBe(1024 + REASONING_TOKEN_RESERVE);
+    });
+
+    it('adds the reserve on top of the default answer budget when maxTokens is omitted', async () => {
+      const store: { body?: string } = {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(captureBodyResponse(store, [{ content: 'ok' }]));
+      await collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq()));
+      const parsed = JSON.parse(store.body ?? '{}') as { max_tokens: number };
+      expect(parsed.max_tokens).toBe(DEFAULT_ANSWER_MAX_TOKENS + REASONING_TOKEN_RESERVE);
+    });
+
+    it('does NOT add the reserve for cloud (OpenAI) providers — bill stays predictable', async () => {
+      const store: { body?: string } = {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(captureBodyResponse(store, [{ content: 'ok' }]));
+      await collectTokens(streamFromProvider(makeOpenAIConfig(), makeReq({ maxTokens: 512 })));
+      const parsed = JSON.parse(store.body ?? '{}') as { max_tokens: number };
+      expect(parsed.max_tokens).toBe(512);
+    });
+
+    it('does NOT add the reserve for a REMOTE custom endpoint (paid aggregator)', async () => {
+      const store: { body?: string } = {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(captureBodyResponse(store, [{ content: 'ok' }]));
+      await collectTokens(
+        streamFromProvider(makeCustomConfig({ baseUrl: 'https://openrouter.ai/api/v1' }), makeReq({ maxTokens: 900 })),
+      );
+      const parsed = JSON.parse(store.body ?? '{}') as { max_tokens: number };
+      expect(parsed.max_tokens).toBe(900);
+    });
+
+    it('adds the reserve for a LOOPBACK custom endpoint (self-hosted, free)', async () => {
+      const store: { body?: string } = {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(captureBodyResponse(store, [{ content: 'ok' }]));
+      await collectTokens(
+        streamFromProvider(makeCustomConfig({ baseUrl: 'http://127.0.0.1:8080/v1' }), makeReq({ maxTokens: 900 })),
+      );
+      const parsed = JSON.parse(store.body ?? '{}') as { max_tokens: number };
+      expect(parsed.max_tokens).toBe(900 + REASONING_TOKEN_RESERVE);
+    });
+
+    it('suppresses the reserve when reserveThinkingTokens is false (probe opt-out)', async () => {
+      const store: { body?: string } = {};
+      (fetch as ReturnType<typeof vi.fn>).mockImplementation(captureBodyResponse(store, [{ content: 'ok' }]));
+      await collectTokens(
+        streamFromProvider(makeLmStudioConfig(), makeReq({ maxTokens: 1, reserveThinkingTokens: false })),
+      );
+      const parsed = JSON.parse(store.body ?? '{}') as { max_tokens: number };
+      expect(parsed.max_tokens).toBe(1);
+    });
+
+    it('throws TokenBudgetExhaustedError when a reasoning model exhausts the budget mid-thinking', async () => {
+      // The exact real-model failure: reasoning streamed, zero content, and the
+      // stream ends with finish_reason "length" (verified live against
+      // DeepSeek-R1-8B on LM Studio at max_tokens 1024).
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+        makeRawSseResponseWithFinish(
+          [{ reasoning_content: 'Let me think about this at length' }],
+          'length',
+        ),
+      );
+      const err = await collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq({ maxTokens: 1024 })))
+        .then(() => null, (e: unknown) => e);
+      expect(err).toBeInstanceOf(TokenBudgetExhaustedError);
+      expect((err as TokenBudgetExhaustedError).kind).toBe('lmstudio');
+      // Reports the EFFECTIVE budget actually sent (answer + reserve), not 1024.
+      expect((err as TokenBudgetExhaustedError).maxTokens).toBe(1024 + REASONING_TOKEN_RESERVE);
+      expect((err as TokenBudgetExhaustedError).message).toContain('LM Studio');
+      expect((err as TokenBudgetExhaustedError).message).toContain('thinking');
+    });
+
+    it('does NOT throw budget error when finish_reason is length but content WAS produced (truncated answer is still an answer)', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+        makeRawSseResponseWithFinish([{ content: 'The answer is 4' }], 'length'),
+      );
+      const tokens = await collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq()));
+      expect(tokens.join('')).toBe('The answer is 4');
+    });
+
+    it('preserves the SKY-11220 reasoning fallback when the model finished normally (finish_reason stop)', async () => {
+      // Model put its whole answer in reasoning_content and stopped cleanly — the
+      // length-guard must NOT fire; the reasoning is surfaced as the answer.
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+        makeRawSseResponseWithFinish(
+          [{ reasoning_content: 'The answer is 42.' }],
+          'stop',
+        ),
+      );
+      const tokens = await collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq()));
+      expect(tokens.join('')).toBe('The answer is 42.');
+    });
+
+    it('throws TokenBudgetExhaustedError against a real loopback server (reasoning + finish_reason length)', async () => {
+      // AC3: exercised across a real HTTP/SSE boundary, replaying the exact wire
+      // shape a reasoning model emits when it runs out of budget while thinking.
+      vi.unstubAllGlobals();
+      const http = await import('node:http');
+      const server = http.createServer((req, res) => {
+        if (req.url === '/v1/chat/completions') {
+          res.writeHead(200, { 'content-type': 'text/event-stream' });
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'Hmm, let me reason' }, finish_reason: null }] })}\n\n`);
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'length' }] })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+        res.writeHead(404).end();
+      });
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+      const port = (server.address() as import('node:net').AddressInfo).port;
+      const baseUrl = `http://127.0.0.1:${port}/v1`;
+      try {
+        const err = await collectTokens(
+          streamFromProvider(makeCustomConfig({ baseUrl }), makeReq({ maxTokens: 1024 })),
+        ).then(() => null, (e: unknown) => e);
+        expect(err).toBeInstanceOf(TokenBudgetExhaustedError);
+        expect((err as TokenBudgetExhaustedError).message).toContain(baseUrl);
+      } finally {
+        await new Promise<void>((r) => server.close(() => r()));
+        vi.stubGlobal('fetch', vi.fn());
+      }
     });
 
     it('surfaces a zero-token stream error against a real loopback HTTP server', async () => {
@@ -1446,5 +1616,32 @@ describe('createThinkStripper / stripThinkBlocks (SKY-11240)', () => {
     expect(stripper.push('<think>abc</thin')).toBe('');
     expect(stripper.push('king is hard')).toBe('');
     expect(stripper.flush()).toBe('');
+  });
+});
+
+// ─── effectiveMaxTokens — reasoning headroom split (SKY-11276) ────────────────
+
+describe('effectiveMaxTokens (SKY-11276)', () => {
+  it('adds REASONING_TOKEN_RESERVE for unconditionally-local runtimes', () => {
+    for (const kind of ['ollama', 'lmstudio', 'llamacpp'] as const) {
+      expect(effectiveMaxTokens(kind, 1024, undefined)).toBe(1024 + REASONING_TOKEN_RESERVE);
+    }
+  });
+
+  it('adds the reserve for a custom endpoint ONLY when its baseUrl is loopback', () => {
+    expect(effectiveMaxTokens('custom', 1024, 'http://127.0.0.1:9999/v1')).toBe(1024 + REASONING_TOKEN_RESERVE);
+    expect(effectiveMaxTokens('custom', 1024, 'http://localhost:9999/v1')).toBe(1024 + REASONING_TOKEN_RESERVE);
+    // Remote custom endpoint (a paid aggregator) must NOT get silent headroom.
+    expect(effectiveMaxTokens('custom', 1024, 'https://openrouter.ai/api/v1')).toBe(1024);
+  });
+
+  it('leaves the answer budget unchanged for cloud providers', () => {
+    expect(effectiveMaxTokens('anthropic', 1024, undefined)).toBe(1024);
+    expect(effectiveMaxTokens('openai', 2048, undefined)).toBe(2048);
+  });
+
+  it('suppresses the reserve when applyReserve is false (probe opt-out)', () => {
+    expect(effectiveMaxTokens('lmstudio', 1, undefined, false)).toBe(1);
+    expect(effectiveMaxTokens('ollama', 512, undefined, false)).toBe(512);
   });
 });

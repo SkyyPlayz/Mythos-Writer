@@ -34,6 +34,26 @@ vi.mock('./provider.js', () => {
       this.address = address;
     }
   }
+  // Minimal stand-in mirroring the real TokenBudgetExhaustedError so
+  // categorizeStreamError's `instanceof` check and message-passthrough work
+  // without loading the @anthropic-ai/sdk-backed real module (SKY-11276).
+  class TokenBudgetExhaustedError extends Error {
+    kind: string;
+    address: string;
+    maxTokens: number;
+    constructor(kind: string, address: string, maxTokens: number) {
+      super(
+        `${labels[kind]} at ${address} hit its ${maxTokens}-token response ` +
+          `limit while the model was still thinking, so no answer was produced. This ` +
+          `model spends tokens reasoning before it answers — raise the response token ` +
+          `limit or choose a model that thinks less, then try again.`,
+      );
+      this.name = 'TokenBudgetExhaustedError';
+      this.kind = kind;
+      this.address = address;
+      this.maxTokens = maxTokens;
+    }
+  }
   return {
     streamFromProvider: vi.fn(),
     isModelValid: (model: string, kind: string) => {
@@ -43,11 +63,12 @@ vi.mock('./provider.js', () => {
     },
     ANTHROPIC_MODEL_ALLOWLIST: allowlist,
     EmptyProviderResponseError,
+    TokenBudgetExhaustedError,
   };
 });
 
 import { ipcMain } from 'electron';
-import { streamFromProvider, EmptyProviderResponseError } from './provider.js';
+import { streamFromProvider, EmptyProviderResponseError, TokenBudgetExhaustedError } from './provider.js';
 import type { IpcMainInvokeEvent, IpcMainEvent } from 'electron';
 import {
   StreamRegistry,
@@ -992,6 +1013,32 @@ describe('categorizeStreamError', () => {
   it('falls back to a generic empty-response message when no error is supplied', () => {
     const msg = streamErrorUserMessage(STREAM_ERROR_CATEGORIES.EMPTY_RESPONSE);
     expect(msg).toMatch(/empty response/i);
+    expect(msg).not.toContain('http');
+  });
+
+  // ─── BUDGET_EXHAUSTED category (SKY-11276) ───
+
+  it('categorizes TokenBudgetExhaustedError as BUDGET_EXHAUSTED, not RATE_LIMITED', () => {
+    const err = new TokenBudgetExhaustedError('lmstudio', 'http://127.0.0.1:1234/v1', 9216);
+    // The message contains the word "limit" — guard that it is NOT swept into
+    // the rate-limit bucket by the message-pattern fallback.
+    expect(categorizeStreamError(err)).toBe(STREAM_ERROR_CATEGORIES.BUDGET_EXHAUSTED);
+    expect(categorizeStreamError(err)).not.toBe(STREAM_ERROR_CATEGORIES.RATE_LIMITED);
+  });
+
+  it('forwards the TokenBudgetExhaustedError message (provider + address + limit) verbatim', () => {
+    const err = new TokenBudgetExhaustedError('lmstudio', 'http://127.0.0.1:1234/v1', 9216);
+    const msg = streamErrorUserMessage(STREAM_ERROR_CATEGORIES.BUDGET_EXHAUSTED, err);
+    expect(msg).toContain('LM Studio');
+    expect(msg).toContain('http://127.0.0.1:1234/v1');
+    expect(msg).toContain('9216');
+    expect(msg).toContain('thinking');
+    expect(msg).toBe(err.message);
+  });
+
+  it('falls back to a generic budget-exhausted message when no error is supplied', () => {
+    const msg = streamErrorUserMessage(STREAM_ERROR_CATEGORIES.BUDGET_EXHAUSTED);
+    expect(msg).toMatch(/token budget|token limit/i);
     expect(msg).not.toContain('http');
   });
 });

@@ -2,7 +2,7 @@
 import { ipcMain, WebContents } from 'electron';
 import crypto from 'crypto';
 import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
-import { streamFromProvider, isModelValid, ANTHROPIC_MODEL_ALLOWLIST, EmptyProviderResponseError, type ProviderConfig } from './provider.js';
+import { streamFromProvider, isModelValid, ANTHROPIC_MODEL_ALLOWLIST, EmptyProviderResponseError, TokenBudgetExhaustedError, type ProviderConfig } from './provider.js';
 
 export const STREAM_CHANNELS = {
   STREAM_START: 'stream:start',
@@ -43,6 +43,10 @@ export const STREAM_ERROR_CATEGORIES = {
   // SKY-11240: the provider streamed zero usable tokens (no content, no
   // reasoning). Its message is user-vetted and names the provider + address.
   EMPTY_RESPONSE: 'empty_response',
+  // SKY-11276: a reasoning model exhausted its max_tokens budget while thinking
+  // and never produced an answer. Distinct from EMPTY_RESPONSE so the specific,
+  // actionable message ("raise the token limit") is forwarded verbatim.
+  BUDGET_EXHAUSTED: 'budget_exhausted',
   UNKNOWN: 'unknown',
 } as const;
 
@@ -54,6 +58,10 @@ export function categorizeStreamError(err: unknown): StreamErrorCategory {
   // SKY-11240: a zero-token stream is its own category so its specific,
   // already-vetted message (provider + address) can be forwarded verbatim.
   if (err instanceof EmptyProviderResponseError) return STREAM_ERROR_CATEGORIES.EMPTY_RESPONSE;
+  // SKY-11276: budget-exhausted-while-thinking. Checked before the message
+  // pattern matching below — its message contains "limit", which would
+  // otherwise be miscategorized as RATE_LIMITED.
+  if (err instanceof TokenBudgetExhaustedError) return STREAM_ERROR_CATEGORIES.BUDGET_EXHAUSTED;
   const status = (err as { status?: number }).status;
   if (status !== undefined) {
     if (status === 429) return STREAM_ERROR_CATEGORIES.RATE_LIMITED;
@@ -100,6 +108,12 @@ export function streamErrorUserMessage(category: StreamErrorCategory, err?: unkn
       return err instanceof EmptyProviderResponseError
         ? err.message
         : 'The model returned an empty response — make sure a model is loaded and try again.';
+    case STREAM_ERROR_CATEGORIES.BUDGET_EXHAUSTED:
+      // Vetted message: names the provider + user-configured address and the
+      // token limit that was hit — no secrets or filesystem paths (SKY-11276).
+      return err instanceof TokenBudgetExhaustedError
+        ? err.message
+        : 'The model ran out of its token budget while thinking — raise the response token limit and try again.';
     case STREAM_ERROR_CATEGORIES.UNKNOWN:
       return 'An unexpected error occurred — check the logs for details.';
   }

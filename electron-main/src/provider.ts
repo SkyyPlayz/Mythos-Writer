@@ -43,6 +43,95 @@ export const DEFAULT_BASE_URLS: Record<ProviderKind, string | undefined> = {
   custom: undefined,
 };
 
+// ─── Token budget & reasoning headroom (SKY-11276) ───────────────────────────
+
+/**
+ * Answer-budget default when a caller doesn't specify `maxTokens`. This is the
+ * budget for the *answer* only — reasoning headroom (below) is added on top for
+ * models that think before they answer.
+ */
+export const DEFAULT_ANSWER_MAX_TOKENS = 1024;
+
+/**
+ * Extra `max_tokens` granted to local runtimes on top of the answer budget so a
+ * reasoning model can spend tokens *thinking* without eating the answer.
+ *
+ * SKY-11276 (follow-up to SKY-11220): reasoning models (qwen3, DeepSeek-R1,
+ * gpt-oss on LM Studio) emit a long chain-of-thought before their first answer
+ * token. Sending the caller's small answer budget verbatim as the server's
+ * `max_tokens` meant the model exhausted the budget mid-thought and returned
+ * `finish_reason: "length"` with zero content — an empty answer. Verified live:
+ * DeepSeek-R1-8B on LM Studio at `max_tokens: 1024` produced 0 content tokens
+ * and ~680 reasoning tokens before being cut off. Adding this reserve gives
+ * thinking its own room so the answer budget is preserved for the answer.
+ *
+ * This is a heuristic ceiling, not a target: a non-reasoning model stops at its
+ * natural stop token and is unaffected. If a model's thinking still overruns
+ * even this reserve, the stream surfaces TokenBudgetExhaustedError so the user
+ * gets a specific, actionable message rather than silence.
+ */
+export const REASONING_TOKEN_RESERVE = 8192;
+
+/**
+ * Provider kinds that are unconditionally a local runtime on the user's own
+ * machine. Tokens are free there and reasoning models are common, so they get
+ * the thinking reserve by default. `custom` is deliberately NOT here — it is
+ * handled separately because a custom OpenAI-compatible endpoint is often a
+ * paid cloud aggregator (OpenRouter / Together / Groq), not localhost.
+ */
+const ALWAYS_LOCAL_PROVIDER_KINDS = new Set<ProviderKind>(['ollama', 'lmstudio', 'llamacpp']);
+
+/** True when the URL targets loopback (127.0.0.0/8, ::1, localhost). */
+export function isLoopbackUrl(url: string | undefined): boolean {
+  if (!url) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  const raw = parsed.hostname.toLowerCase();
+  const host = raw.startsWith('[') && raw.endsWith(']') ? raw.slice(1, -1) : raw;
+  return host === 'localhost' || host === '::1' || /^127\./.test(host);
+}
+
+/**
+ * Whether a request to this provider should receive the reasoning-token reserve.
+ *
+ * lmstudio / ollama / llamacpp are always local. `custom` qualifies ONLY when
+ * its baseUrl is loopback — a remote custom endpoint may be a paid aggregator,
+ * and silently raising its token ceiling by REASONING_TOKEN_RESERVE could
+ * inflate a bill for a verbose/runaway model (SKY-11276 review). Cloud kinds
+ * (anthropic / openai) never qualify: their tokens are billed and the caller
+ * sizes `maxTokens` deliberately.
+ */
+export function isLocalReserveEligible(kind: ProviderKind, baseUrl: string | undefined): boolean {
+  if (ALWAYS_LOCAL_PROVIDER_KINDS.has(kind)) return true;
+  if (kind === 'custom') return isLoopbackUrl(baseUrl ?? DEFAULT_BASE_URLS.custom);
+  return false;
+}
+
+/**
+ * Effective `max_tokens` to send to the server for a given answer budget.
+ *
+ * Eligible local runtimes (see isLocalReserveEligible) get
+ * `answerBudget + REASONING_TOKEN_RESERVE` so thinking tokens don't consume the
+ * answer budget (SKY-11276). `applyReserve=false` opts out entirely — used by
+ * liveness probes (the connection test) that deliberately request a 1-token
+ * budget and abort on the first token, where the reserve would turn a quick
+ * ping into a multi-thousand-token thinking session.
+ */
+export function effectiveMaxTokens(
+  kind: ProviderKind,
+  answerBudget: number,
+  baseUrl: string | undefined,
+  applyReserve = true,
+): number {
+  return applyReserve && isLocalReserveEligible(kind, baseUrl)
+    ? answerBudget + REASONING_TOKEN_RESERVE
+    : answerBudget;
+}
+
 // ─── SSRF guard (SKY-739) ─────────────────────────────────────────────────────
 
 /**
@@ -241,6 +330,14 @@ export interface StreamRequest {
    *   tokens can't eat the output budget.
    */
   thinking?: 'adaptive';
+  /**
+   * When `false`, suppress the local reasoning-token reserve (SKY-11276) so the
+   * server receives exactly `maxTokens`. Used by liveness probes (the Settings
+   * connection test) that send a 1-token budget and abort on the first token —
+   * there the reserve would turn a quick ping into a long thinking session.
+   * Defaults to applying the reserve for eligible local runtimes.
+   */
+  reserveThinkingTokens?: boolean;
 }
 
 export interface StreamResult {
@@ -363,20 +460,41 @@ async function* runAnthropicStream(
 ): AsyncIterable<string> {
   if (!config.apiKey) throw new Error('Anthropic provider requires an API key.');
   const client = new Anthropic({ apiKey: config.apiKey });
+  const maxTokens = req.maxTokens ?? DEFAULT_ANSWER_MAX_TOKENS;
   const sdkStream = client.messages.stream(
     {
       model: config.model,
-      max_tokens: req.maxTokens ?? 1024,
+      max_tokens: maxTokens,
       ...anthropicThinkingParam(config.model, req.thinking),
       ...(req.system !== undefined ? { system: req.system } : {}),
       messages: req.messages,
     },
     { signal: req.signal },
   );
+  let yieldedText = false;
+  let stopReason: string | null = null;
   for await (const chunk of sdkStream) {
     if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+      yieldedText = true;
       yield chunk.delta.text;
+    } else if (chunk.type === 'message_delta') {
+      stopReason = chunk.delta.stop_reason ?? stopReason;
     }
+  }
+
+  // Adaptive thinking counts against max_tokens on Anthropic. If the budget ran
+  // out while the model was thinking, it ends with stop_reason 'max_tokens' and
+  // no text — same failure class as the local reasoning path (SKY-11276). Guard
+  // on whether adaptive thinking was ACTUALLY applied (the request asked for it
+  // AND the model supports it) — otherwise a max_tokens truncation on a model
+  // where thinking is off (e.g. Haiku 4.5) would throw a misleading "still
+  // thinking" error. Scan-style calls (thinking off / disabled) keep their
+  // existing empty-output handling untouched.
+  const adaptiveThinkingApplied =
+    req.thinking === 'adaptive' && ANTHROPIC_ADAPTIVE_THINKING_MODELS.has(config.model);
+  if (!yieldedText && stopReason === 'max_tokens' && adaptiveThinkingApplied) {
+    const address = (client as { baseURL?: string }).baseURL ?? 'https://api.anthropic.com';
+    throw new TokenBudgetExhaustedError('anthropic', address, maxTokens);
   }
 }
 
@@ -419,6 +537,41 @@ export class EmptyProviderResponseError extends SafeIpcError {
     this.name = 'EmptyProviderResponseError';
     this.kind = kind;
     this.address = address;
+  }
+}
+
+/**
+ * Raised when a stream ends because the model hit its `max_tokens` ceiling
+ * (`finish_reason: "length"` / `stop_reason: "max_tokens"`) *before emitting a
+ * single answer token* — i.e. a reasoning model spent the whole budget thinking
+ * (SKY-11276, follow-up to SKY-11220).
+ *
+ * This is deliberately distinct from EmptyProviderResponseError: "nothing came
+ * back at all" (model not loaded, dead endpoint) is a different failure from
+ * "the model was mid-thought when the budget ran out." Surfacing it specifically
+ * lets the user fix the real cause — raise the response token limit, or pick a
+ * model that thinks less — instead of seeing a generic empty-response message or
+ * having truncated chain-of-thought dumped in place of an answer.
+ *
+ * Extends SafeIpcError for the same reason as EmptyProviderResponseError: the
+ * message names a user-configured endpoint URL, which must pass the IPC
+ * sanitizer verbatim rather than being flattened to "Internal error."
+ */
+export class TokenBudgetExhaustedError extends SafeIpcError {
+  readonly kind: ProviderKind;
+  readonly address: string;
+  readonly maxTokens: number;
+  constructor(kind: ProviderKind, address: string, maxTokens: number) {
+    super(
+      `${PROVIDER_LABELS[kind]} at ${address} hit its ${maxTokens}-token response ` +
+        `limit while the model was still thinking, so no answer was produced. This ` +
+        `model spends tokens reasoning before it answers — raise the response token ` +
+        `limit or choose a model that thinks less, then try again.`,
+    );
+    this.name = 'TokenBudgetExhaustedError';
+    this.kind = kind;
+    this.address = address;
+    this.maxTokens = maxTokens;
   }
 }
 
@@ -540,10 +693,22 @@ async function* runOpenAICompatibleStream(
     messages.push({ role: m.role, content: m.content });
   }
 
+  // The caller's maxTokens is the ANSWER budget. Eligible local runtimes get a
+  // thinking reserve added on top so a reasoning model can't exhaust the budget
+  // mid-thought and return nothing (SKY-11276). Probes opt out via
+  // reserveThinkingTokens:false. See effectiveMaxTokens.
+  const answerBudget = req.maxTokens ?? DEFAULT_ANSWER_MAX_TOKENS;
+  const maxTokensToSend = effectiveMaxTokens(
+    config.kind,
+    answerBudget,
+    baseUrl,
+    req.reserveThinkingTokens !== false,
+  );
+
   const body = JSON.stringify({
     model: config.model,
     messages,
-    max_tokens: req.maxTokens ?? 1024,
+    max_tokens: maxTokensToSend,
     stream: true,
   });
 
@@ -584,6 +749,10 @@ async function* runOpenAICompatibleStream(
   const thinkStripper = createThinkStripper();
   let yieldedText = false;
   let reasoningBuffer = '';
+  // Last non-null finish_reason seen. 'length' means the server stopped at the
+  // max_tokens ceiling — the signal we use to distinguish "budget exhausted
+  // mid-thinking" from "nothing came back at all" (SKY-11276).
+  let finishReason: string | null = null;
 
   try {
     while (true) {
@@ -607,9 +776,16 @@ async function* runOpenAICompatibleStream(
           continue;
         }
 
-        const delta = (parsed as {
-          choices?: Array<{ delta?: { content?: string; reasoning_content?: string; reasoning?: string } }>;
-        })?.choices?.[0]?.delta;
+        const choice = (parsed as {
+          choices?: Array<{
+            delta?: { content?: string; reasoning_content?: string; reasoning?: string };
+            finish_reason?: string | null;
+          }>;
+        })?.choices?.[0];
+        const delta = choice?.delta;
+        if (typeof choice?.finish_reason === 'string') {
+          finishReason = choice.finish_reason;
+        }
 
         const content = delta?.content;
         if (typeof content === 'string' && content.length > 0) {
@@ -639,9 +815,20 @@ async function* runOpenAICompatibleStream(
       yield tail;
     }
 
-    // The model streamed reasoning but never emitted usable content — surface
-    // the reasoning text (with any `<think>` blocks stripped) so the answer
-    // isn't silently dropped (SKY-11220).
+    // Budget exhausted mid-thinking (SKY-11276): the server stopped at the
+    // max_tokens ceiling (`finish_reason: "length"`) before emitting any answer
+    // token. A reasoning buffer here is TRUNCATED thinking, not an answer, so we
+    // do NOT surface it as the reasoning fallback would — that would dump partial
+    // chain-of-thought in place of an answer. Throw the specific, actionable
+    // error instead, distinct from "nothing came back at all" below.
+    if (!yieldedText && finishReason === 'length') {
+      throw new TokenBudgetExhaustedError(config.kind, baseUrl, maxTokensToSend);
+    }
+
+    // The model streamed reasoning but never emitted usable content AND finished
+    // normally — it answered entirely in the reasoning field. Surface that text
+    // (with any `<think>` blocks stripped) so the answer isn't silently dropped
+    // (SKY-11220).
     if (!yieldedText && reasoningBuffer.length > 0) {
       const cleanedReasoning = stripThinkBlocks(reasoningBuffer);
       if (cleanedReasoning.length > 0) {

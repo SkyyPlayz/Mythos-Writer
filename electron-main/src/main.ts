@@ -636,7 +636,7 @@ import {
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { collectProjectStats } from './projectStats.js';
 import { collectProjectIcons, setProjectIcon } from './projectIcons.js';
-import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, anthropicThinkingParam, setAiMasterGate, type ProviderConfig } from './provider.js';
+import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, anthropicThinkingParam, setAiMasterGate, TokenBudgetExhaustedError, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -3998,9 +3998,12 @@ const handlers: IpcHandlers = {
     const t0 = Date.now();
     try {
       const ac = new AbortController();
+      // Liveness probe: opt out of the reasoning-token reserve (SKY-11276) so a
+      // local reasoning model gets a 1-token budget and returns immediately,
+      // instead of a multi-thousand-token thinking session for a quick ping.
       for await (const _ of streamFromProvider(
         { kind: payload.provider.kind, apiKey: payload.provider.apiKey, baseUrl: payload.provider.baseUrl, model: payload.provider.model },
-        { messages: [{ role: 'user', content: 'Hi' }], maxTokens: 1, signal: ac.signal },
+        { messages: [{ role: 'user', content: 'Hi' }], maxTokens: 1, signal: ac.signal, reserveThinkingTokens: false },
       )) {
         ac.abort();
         break;
@@ -4008,6 +4011,12 @@ const handlers: IpcHandlers = {
       return { ok: true, latencyMs: Date.now() - t0 };
     } catch (e: unknown) {
       if (e instanceof Error && e.name === 'AbortError') {
+        return { ok: true, latencyMs: Date.now() - t0 };
+      }
+      // A budget-exhausted error means the server was reachable and a model
+      // responded — it just ran out of the 1-token probe budget while thinking.
+      // That is a *successful* connection for the purposes of the test (SKY-11276).
+      if (e instanceof TokenBudgetExhaustedError) {
         return { ok: true, latencyMs: Date.now() - t0 };
       }
       const category = categorizeStreamError(e);
