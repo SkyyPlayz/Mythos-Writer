@@ -111,7 +111,15 @@ async function patchOpenDialog(app: ElectronApplication, srcDir: string): Promis
   }, { dir: srcDir });
 }
 
-test('SKY-8005: Obsidian vault imported via Settings -> Import another vault matches fixture on disk (real IPC, no stub)', async () => {
+// SKY-11154: ImportVaultSection.tsx (the "Import another vault" UI this spec
+// drove) was deleted — the Vault & Files page's "Add a Notes/Story Vault"
+// dialog (AddVaultDialog.tsx, mode='import') is the only import entry point
+// now, and it does not surface a pre-commit dry-run diff report the way this
+// spec asserts. Skipped rather than rewritten; the underlying
+// importObsidianToVaultDir pipeline is still covered by
+// electron-main/src/mythosFormat/*.test.ts. A follow-up ticket owns either
+// adding a dry-run preview to AddVaultDialog or retiring this coverage.
+test.skip('SKY-8005: Obsidian vault imported via Settings -> Import another vault matches fixture on disk (real IPC, no stub)', async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-obsidian-import-'));
   const userData = path.join(tempRoot, 'userData');
   const storyVault = path.join(tempRoot, 'Story Vault');

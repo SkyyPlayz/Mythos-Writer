@@ -107,7 +107,6 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
   const [mode, setMode] = useState<CreateMode>('template');
   const [importSrcPath, setImportSrcPath] = useState('');
   const [mythosRoot, setMythosRoot] = useState<string | null>(null);
-  const [pathSep, setPathSep] = useState<'/' | '\\'>('/');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -122,7 +121,6 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
     setBusy(false);
     window.api?.vaultGetPaths?.().then((paths) => {
       setMythosRoot(paths.mythosRoot ?? null);
-      if (paths.pathSeparator) setPathSep(paths.pathSeparator);
     }).catch(() => { /* leave mythosRoot null — submit surfaces the error */ });
   }, [open, kind]);
 
@@ -163,21 +161,32 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
     setBusy(true);
     setError('');
     try {
-      const destinationParent =
-        `${mythosRoot.replace(/[\\/]+$/, '')}${pathSep}${kind === 'notes' ? 'Notes' : 'Stories'}`;
-      const res = await window.api.createVaultFromOptions({
-        mode,
-        destinationParent,
-        name: name.trim() || (kind === 'notes' ? 'Notes' : 'Story'),
-        importSources: mode === 'import' ? [{ kind, srcPath: importSrcPath.trim() }] : undefined,
-        activate: false,
-      });
-      if (!res.ok) {
-        setError(res.error ?? 'Could not create the vault. Check the name and try again.');
-        setBusy(false);
-        return;
+      // SKY-11154: create through the notes/story REGISTRY (SKY-11058/11150),
+      // never through createVaultFromOptions — that primitive always
+      // scaffolds a whole new self-contained Mythos vault bundle, which is
+      // wrong here and also never writes to notes-vaults.json/
+      // story-vaults.json, so the result would not show up in this ticket's
+      // Settings columns. Story vaults have no backend 'template' mode — a
+      // UI 'template' selection becomes an empty blank story vault.
+      const displayName = name.trim() || (kind === 'notes' ? 'Notes' : 'Story');
+      const importSourcePath = mode === 'import' ? importSrcPath.trim() : undefined;
+      if (kind === 'notes') {
+        const res = await window.api?.notesVaultRegistryCreate?.({
+          mode,
+          displayName,
+          importSourcePath,
+        });
+        if (!res) throw new Error('Could not create the notes vault.');
+        showLnToast(`Notes vault "${res.entry.displayName}" added`);
+      } else {
+        const res = await window.api?.storyVaultRegistryCreate?.({
+          mode: mode === 'template' ? 'blank' : mode,
+          displayName,
+          importSourcePath,
+        });
+        if (!res) throw new Error('Could not create the story vault.');
+        showLnToast(`Story vault "${res.entry.displayName}" added`);
       }
-      showLnToast(`${kindLabel} vault "${res.vaultName ?? name.trim()}" added`);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create the vault.');

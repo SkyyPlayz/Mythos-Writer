@@ -21,12 +21,34 @@ import VaultDestinationPicker from './VaultDestinationPicker';
 import { useVaultIcons } from '../../../hooks/useVaultIcons';
 import { VaultIconAvatar } from '../../ui/VaultIconAvatar';
 import { VaultIconEditMenu } from '../../ui/VaultIconEditMenu';
+import VaultOverflowMenu from './VaultOverflowMenu';
 import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
 
 interface VaultEntry {
   vaultRoot: string;
   notesVaultRoot?: string;
   name: string;
+}
+
+interface VaultStatEntry {
+  storyFileCount: number;
+  noteCount: number | null;
+  notesVaultCount: number;
+  storyVaultCount: number;
+}
+
+/** SKY-11154: the enclosing Mythos-vault root for the "..." Hide/Delete menu
+ *  and for cross-referencing the hidden-paths list — vaults live FLAT
+ *  directly under it (path.join(mythosRoot, 'Story Vault')), so strip that
+ *  one known segment when present; a legacy (pre-v2) vaultRoot has no such
+ *  enclosing folder, so it stands in for itself. */
+function mythosPathFor(vaultRoot: string): string {
+  const m = vaultRoot.match(/^(.*)[\\/]Story Vault$/);
+  return m ? m[1] : vaultRoot;
+}
+
+function pluralize(n: number, noun: string): string {
+  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
 interface CreatedVault {
@@ -64,20 +86,53 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   const { icons: vaultIcons, loadIcons, setVaultIcon, pickIconImage } = useVaultIcons();
   const [iconEditFor, setIconEditFor] = useState<string | null>(null);
   const iconEditTriggerRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+  // SKY-11154: inner notes/story vault counts per card (§4).
+  const [statsByRoot, setStatsByRoot] = useState<Record<string, VaultStatEntry>>({});
+  // SKY-11154: inline rename (double-click a vault name) — Enter commits,
+  // Escape cancels, blur commits.
+  const [renameFor, setRenameFor] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  // SKY-11154: Hide/Delete + "Show hidden" (§4a) — hidden state is a flat
+  // list of absolute vault-root paths, cross-referenced against each card's
+  // computed Mythos-root path.
+  const [hiddenPaths, setHiddenPaths] = useState<string[]>([]);
+  const [showHidden, setShowHidden] = useState(false);
 
   const refreshVaults = useCallback(() => {
     window.api?.projectList?.()
       .then((res) => { if (res?.projects) setVaults(res.projects); })
       .catch(() => { /* non-fatal — section renders empty */ });
+    window.api?.projectStats?.()
+      .then((res) => {
+        if (!res?.stats) return;
+        const next: Record<string, VaultStatEntry> = {};
+        for (const s of res.stats) {
+          next[s.vaultRoot] = {
+            storyFileCount: s.storyFileCount,
+            noteCount: s.noteCount,
+            notesVaultCount: s.notesVaultCount,
+            storyVaultCount: s.storyVaultCount,
+          };
+        }
+        setStatsByRoot(next);
+      })
+      .catch(() => { /* non-fatal — counts just don't render */ });
+  }, []);
+
+  const refreshHidden = useCallback(() => {
+    window.api?.vaultSurfaceListHidden?.()
+      .then((res) => { if (res?.hiddenVaultRoots) setHiddenPaths(res.hiddenVaultRoots); })
+      .catch(() => { /* non-fatal */ });
   }, []);
 
   useEffect(() => {
     refreshVaults();
+    refreshHidden();
     loadIcons();
     window.api?.getVaultRoot?.()
       .then((res) => { if (res?.vaultRoot) setActiveRoot(res.vaultRoot); })
       .catch(() => { /* non-fatal */ });
-  }, [refreshVaults, loadIcons]);
+  }, [refreshVaults, refreshHidden, loadIcons]);
 
   useEffect(() => {
     if (createOpen) createNameRef.current?.focus();
@@ -225,19 +280,68 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     setCreateError(null);
   }, []);
 
+  /** SKY-11154: matches DesktopShell.tsx's existing precedence (line ~1762)
+   *  — settings.vaultDisplayNames override wins, then the derived name, then
+   *  the raw project name. This component previously ignored the override
+   *  entirely; that was a bug fixed as part of wiring up the rename UI. */
+  const displayNameFor = useCallback((v: VaultEntry): string => (
+    settings.vaultDisplayNames?.[v.vaultRoot] ?? (deriveVaultDisplayName(v) || v.name)
+  ), [settings.vaultDisplayNames]);
+
+  const startRename = useCallback((v: VaultEntry) => {
+    setRenameFor(v.vaultRoot);
+    setRenameValue(displayNameFor(v));
+  }, [displayNameFor]);
+
+  const cancelRename = useCallback(() => {
+    setRenameFor(null);
+    setRenameValue('');
+  }, []);
+
+  /** Persisted the SAME way onThemeChange (above) persists vaultThemes — a
+   *  plain settings write, non-fatal on failure. Empty submissions are
+   *  ignored (revert to the previous name, no override written). */
+  const commitRename = useCallback((v: VaultEntry) => {
+    const trimmed = renameValue.trim();
+    setRenameFor(null);
+    if (!trimmed) return;
+    const vaultDisplayNames = { ...(settings.vaultDisplayNames ?? {}), [v.vaultRoot]: trimmed };
+    const next: AppSettings = { ...settings, vaultDisplayNames };
+    setSettings(next);
+    setSavedOk(false);
+    window.api?.settingsSet?.(next).catch(() => { /* panel Save still persists */ });
+  }, [renameValue, settings, setSettings, setSavedOk]);
+
+  const onUnhide = useCallback((vaultRoot: string) => {
+    window.api?.vaultSurfaceUnhide?.(vaultRoot)
+      .then(() => refreshHidden())
+      .catch(() => { /* non-fatal */ });
+  }, [refreshHidden]);
+
   return (
     <section className="settings-section" aria-labelledby="section-mythos-vaults" data-settings-cat="vaults">
       <div className="settings-section-header-row" style={{ justifyContent: 'space-between' }}>
         <h3 className="settings-section-title" id="section-mythos-vaults">Mythos vaults</h3>
-        <button
-          type="button"
-          className="m24-btn m24-btn--primary"
-          data-testid="mvs-new-vault"
-          onClick={() => { void onOpenCreate(); }}
-          disabled={createBusy}
-        >
-          New vault…
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            type="button"
+            className="m24-btn"
+            data-testid="mvs-show-hidden-btn"
+            aria-expanded={showHidden}
+            onClick={() => setShowHidden((s) => !s)}
+          >
+            Show hidden{hiddenPaths.length > 0 ? ` (${hiddenPaths.length})` : ''}
+          </button>
+          <button
+            type="button"
+            className="m24-btn m24-btn--primary"
+            data-testid="mvs-new-vault"
+            onClick={() => { void onOpenCreate(); }}
+            disabled={createBusy}
+          >
+            New vault…
+          </button>
+        </div>
       </div>
       <p className="settings-hint">
         Each Mythos vault is a folder holding its own Story Vault + Notes Vault. Give each vault its
@@ -326,19 +430,23 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {vaults.map((v) => {
+        {vaults.filter((v) => !hiddenPaths.includes(mythosPathFor(v.vaultRoot))).map((v) => {
           const current = v.vaultRoot === activeRoot;
           const themeKey = settings.vaultThemes?.[v.vaultRoot] ?? '';
+          const displayName = displayNameFor(v);
+          const stats = statsByRoot[v.vaultRoot];
+          const renaming = renameFor === v.vaultRoot;
           return (
             <div
               key={v.vaultRoot}
               role="button"
               tabIndex={0}
-              aria-label={current ? `Current vault: ${deriveVaultDisplayName(v)}` : `Switch to vault ${deriveVaultDisplayName(v)}`}
+              aria-label={current ? `Current vault: ${displayName}` : `Switch to vault ${displayName}`}
               data-testid={`mvs-card-${v.vaultRoot}`}
               title={current ? undefined : 'Click to switch to this vault'}
               style={cardSt(current)}
               onClick={() => { void onCardClick(v); }}
+              onDoubleClick={() => { if (!renaming) startRename(v); }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
@@ -350,12 +458,12 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
                 type="button"
                 className="mvs-card-icon-edit"
                 ref={(el) => { if (el) iconEditTriggerRefs.current.set(v.vaultRoot, el); else iconEditTriggerRefs.current.delete(v.vaultRoot); }}
-                aria-label={`Set icon for ${deriveVaultDisplayName(v) || v.name}`}
+                aria-label={`Set icon for ${displayName}`}
                 data-testid={`mvs-icon-edit-${v.vaultRoot}`}
                 style={{ flex: 'none', background: 'none', border: 'none', padding: 0, margin: 0, cursor: 'pointer', borderRadius: 8 }}
                 onClick={(e) => { e.stopPropagation(); setIconEditFor((cur) => (cur === v.vaultRoot ? null : v.vaultRoot)); }}
               >
-                <VaultIconAvatar icon={vaultIcons[v.vaultRoot]} label={deriveVaultDisplayName(v) || v.name} size="md" />
+                <VaultIconAvatar icon={vaultIcons[v.vaultRoot]} label={displayName} size="md" />
               </button>
               {iconEditFor === v.vaultRoot && (
                 <VaultIconEditMenu
@@ -372,18 +480,45 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
                   onSetIcon={(icon) => { setVaultIcon(v.vaultRoot, icon); setIconEditFor(null); }}
                 />
               )}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#e6ecf9' }}>{deriveVaultDisplayName(v) || v.name}</div>
+              <div
+                style={{ flex: 1, minWidth: 0 }}
+                onDoubleClick={(e) => { e.stopPropagation(); if (!renaming) startRename(v); }}
+              >
+                {renaming ? (
+                  <input
+                    className="settings-input"
+                    autoFocus
+                    aria-label={`Rename vault ${displayName}`}
+                    data-testid={`mvs-rename-input-${v.vaultRoot}`}
+                    value={renameValue}
+                    style={{ fontSize: 12, height: 24, padding: '0 6px' }}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onBlur={() => commitRename(v)}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') { e.preventDefault(); commitRename(v); }
+                      else if (e.key === 'Escape') { e.preventDefault(); cancelRename(); }
+                    }}
+                  />
+                ) : (
+                  <div style={{ fontSize: 12, fontWeight: 600, color: '#e6ecf9' }}>{displayName}</div>
+                )}
                 <div style={{ fontSize: 10, color: '#8e9db8', marginTop: 2, fontFamily: 'ui-monospace,monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {v.vaultRoot}
                 </div>
+                {stats && (
+                  <div style={{ fontSize: 10, color: '#7686a2', marginTop: 2 }}>
+                    {pluralize(stats.notesVaultCount, 'notes vault')} · {pluralize(stats.storyVaultCount, 'story vault')}
+                  </div>
+                )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 'none', alignItems: 'flex-end' }}>
                 <span style={{ fontSize: 8.5, fontWeight: 700, letterSpacing: '.1em', color: '#586a88' }}>VAULT THEME</span>
                 <select
                   value={themeKey}
                   data-testid={`mvs-theme-${v.vaultRoot}`}
-                  aria-label={`Default theme for vault ${deriveVaultDisplayName(v)}`}
+                  aria-label={`Default theme for vault ${displayName}`}
                   title="Default theme for this vault — makes it obvious which vault you're in"
                   onClick={(e) => e.stopPropagation()}
                   onKeyDown={(e) => e.stopPropagation()}
@@ -404,6 +539,16 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
               ) : (
                 <span style={{ fontSize: 10.5, color: '#7686a2', flex: 'none' }}>Click to switch ›</span>
               )}
+              <div onClick={(e) => e.stopPropagation()}>
+                <VaultOverflowMenu
+                  level="mythos"
+                  vaultPath={mythosPathFor(v.vaultRoot)}
+                  vaultName={displayName}
+                  testIdSuffix={v.vaultRoot}
+                  onHidden={refreshHidden}
+                  onDeleted={refreshVaults}
+                />
+              </div>
             </div>
           );
         })}
@@ -413,6 +558,30 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
           </p>
         )}
       </div>
+
+      {showHidden && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }} data-testid="mvs-hidden-list">
+          {vaults.filter((v) => hiddenPaths.includes(mythosPathFor(v.vaultRoot))).map((v) => (
+            <div
+              key={`hidden-${v.vaultRoot}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 10, background: 'rgba(255,255,255,.02)', border: '1px dashed rgba(255,255,255,.1)' }}
+            >
+              <span style={{ flex: 1, fontSize: 11.5, color: '#8e9db8' }}>{displayNameFor(v)}</span>
+              <button
+                type="button"
+                className="m24-btn"
+                data-testid={`mvs-unhide-${v.vaultRoot}`}
+                onClick={() => onUnhide(mythosPathFor(v.vaultRoot))}
+              >
+                Unhide
+              </button>
+            </div>
+          ))}
+          {vaults.filter((v) => hiddenPaths.includes(mythosPathFor(v.vaultRoot))).length === 0 && (
+            <p className="settings-hint">No hidden Mythos vaults.</p>
+          )}
+        </div>
+      )}
     </section>
   );
 }

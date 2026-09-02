@@ -4,8 +4,6 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import AccountProfileSection from './AccountProfileSection';
 import EditorSettingsSection, { EDITOR_PREFS_DEFAULTS } from './EditorSettingsSection';
-import ImportVaultSection from './ImportVaultSection';
-import ImportStorySection from './ImportStorySection';
 import SyncBackupSection from './SyncBackupSection';
 import ShortcutsSection from './ShortcutsSection';
 import AboutSection from './AboutSection';
@@ -110,134 +108,10 @@ describe('EditorSettingsSection', () => {
   });
 });
 
-// ── Import another vault ──────────────────────────────────────────────────────
-
-describe('ImportVaultSection', () => {
-  it('runs the Beta-2 wizard shape: browse → dry-run report → confirm → import', async () => {
-    render(<ImportVaultSection notesVaultPath="/notes" />);
-
-    fireEvent.click(screen.getByTestId('import-vault-browse'));
-    await flush();
-    expect(screen.getByTestId('import-vault-src').textContent).toBe('/tmp/source-vault');
-
-    fireEvent.click(screen.getByTestId('import-vault-dry-run'));
-    await flush();
-    expect(mockVaultImportScan).toHaveBeenCalledWith('obsidian', '/tmp/source-vault');
-    expect(screen.getByTestId('import-vault-report').textContent).toContain('87 notes');
-
-    fireEvent.click(screen.getByTestId('import-vault-confirm'));
-    await flush();
-    expect(mockVaultImportRun).toHaveBeenCalledWith({ kind: 'obsidian', srcPath: '/tmp/source-vault', into: 'second' });
-    expect(screen.getByTestId('import-vault-done').textContent).toContain('90 files imported');
-  });
-
-  it('passes the picked kind and surfaces scan errors', async () => {
-    mockVaultImportScan.mockResolvedValue({ ok: false, error: 'No .scrivx file found' });
-    render(<ImportVaultSection notesVaultPath="/notes" />);
-    fireEvent.click(screen.getByTestId('import-vault-kind-scriv'));
-    fireEvent.click(screen.getByTestId('import-vault-browse'));
-    await flush();
-    fireEvent.click(screen.getByTestId('import-vault-dry-run'));
-    await flush();
-    expect(mockVaultImportScan).toHaveBeenCalledWith('scriv', '/tmp/source-vault');
-    expect(screen.getByTestId('import-vault-error').textContent).toContain('No .scrivx file found');
-  });
-
-  it('requires a destination folder before dry-running into a new vault', async () => {
-    mockChooseVaultFolder.mockResolvedValueOnce({ path: '/tmp/source-vault', cancelled: false });
-    render(<ImportVaultSection notesVaultPath="/notes" />);
-    fireEvent.click(screen.getByTestId('import-vault-browse'));
-    await flush();
-    fireEvent.click(screen.getByTestId('import-vault-into-new'));
-    expect((screen.getByTestId('import-vault-dry-run') as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it('opens the new-vault browse dialog at the default vaults parent without committing it (SKY-10433)', async () => {
-    render(<ImportVaultSection notesVaultPath="/notes" />);
-    fireEvent.click(screen.getByTestId('import-vault-into-new'));
-    mockChooseVaultFolder.mockResolvedValueOnce({ path: null, cancelled: true });
-    fireEvent.click(screen.getByTestId('import-vault-new-browse'));
-    await flush();
-    expect(mockChooseVaultFolder).toHaveBeenCalledWith('Pick a folder for the new vault', '/home/skyy/MythosVaults');
-    // The parent is only the dialog's starting point — a cancelled browse must
-    // leave the destination empty (an import into the parent itself would dump
-    // the source's notes next to the existing vaults).
-    expect(screen.getByTestId('import-vault-new-path').textContent).toBe('Pick a destination folder for the new vault');
-    expect((screen.getByTestId('import-vault-dry-run') as HTMLButtonElement).disabled).toBe(true);
-  });
-
-  it('reopens the browse dialog at the already-picked destination, not the default parent', async () => {
-    render(<ImportVaultSection notesVaultPath="/notes" />);
-    fireEvent.click(screen.getByTestId('import-vault-into-new'));
-    mockChooseVaultFolder.mockResolvedValueOnce({ path: '/home/skyy/MythosVaults/Imported Vault', cancelled: false });
-    fireEvent.click(screen.getByTestId('import-vault-new-browse'));
-    await flush();
-    fireEvent.click(screen.getByTestId('import-vault-new-browse'));
-    await flush();
-    expect(mockVaultGetPaths).toHaveBeenCalledTimes(1);
-    expect(mockChooseVaultFolder).toHaveBeenLastCalledWith('Pick a folder for the new vault', '/home/skyy/MythosVaults/Imported Vault');
-  });
-
-  it('surfaces a silent-drop warning from vaultImportRun even on a successful import (SKY-8151/SKY-8157)', async () => {
-    mockVaultImportRun.mockResolvedValue({
-      ok: true,
-      targetPath: '/notes/Imported/source-vault',
-      imported: 88,
-      skipped: 0,
-      errors: [],
-      sourceCount: 90,
-      dropWarning: '2 file(s) from the Obsidian vault were not imported and not reported as errors — check for unsupported file types or permission issues in the source vault',
-    });
-    render(<ImportVaultSection notesVaultPath="/notes" />);
-    fireEvent.click(screen.getByTestId('import-vault-browse'));
-    await flush();
-    fireEvent.click(screen.getByTestId('import-vault-dry-run'));
-    await flush();
-    fireEvent.click(screen.getByTestId('import-vault-confirm'));
-    await flush();
-    // Import still reports success — dropWarning is informational, not blocking.
-    expect(screen.getByTestId('import-vault-done').textContent).toContain('88 files imported');
-    expect(screen.queryByTestId('import-vault-error')).not.toBeInTheDocument();
-    expect(screen.getByTestId('import-vault-drop-warning').textContent).toContain('2 file(s)');
-    expect(screen.getByTestId('import-vault-drop-warning').textContent).toContain('not imported');
-  });
-});
-
-// ── Import a story ────────────────────────────────────────────────────────────
-
-describe('ImportStorySection', () => {
-  it('picks a file, runs the import, and reports parts/chapters/scenes + plan note', async () => {
-    render(<ImportStorySection />);
-    fireEvent.click(screen.getByTestId('import-story-run'));
-    await flush();
-    expect(mockStoryImportPickFile).toHaveBeenCalledWith('docx');
-    expect(mockStoryImportRun).toHaveBeenCalledWith('docx', '/tmp/The Last City.docx');
-    const done = screen.getByTestId('import-story-done').textContent ?? '';
-    expect(done).toContain('The Last City');
-    expect(done).toContain('2 parts');
-    expect(done).toContain('12 chapters');
-    expect(done).toContain('34 scenes');
-    expect(done).toContain('Plans/Plan — The Last City.md');
-  });
-
-  it('does nothing when the picker is cancelled', async () => {
-    mockStoryImportPickFile.mockResolvedValue({ filePath: null, cancelled: true });
-    render(<ImportStorySection />);
-    fireEvent.click(screen.getByTestId('import-story-run'));
-    await flush();
-    expect(mockStoryImportRun).not.toHaveBeenCalled();
-  });
-
-  it('sends the selected format and surfaces errors', async () => {
-    mockStoryImportRun.mockResolvedValue({ ok: false, error: 'ePub spine contained no readable documents' });
-    render(<ImportStorySection />);
-    fireEvent.click(screen.getByTestId('import-story-format-epub'));
-    fireEvent.click(screen.getByTestId('import-story-run'));
-    await flush();
-    expect(mockStoryImportPickFile).toHaveBeenCalledWith('epub');
-    expect(screen.getByTestId('import-story-error').textContent).toContain('spine');
-  });
-});
+// ── Import another vault / Import a story ─────────────────────────────────────
+// SKY-11154: ImportVaultSection.tsx and ImportStorySection.tsx were deleted —
+// "Add a Notes/Story Vault" (AddVaultDialog.tsx, mode='import') is the only
+// import entry point now, covered by AddVaultDialog.test.tsx.
 
 // ── Sync & Backup ─────────────────────────────────────────────────────────────
 
