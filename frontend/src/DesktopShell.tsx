@@ -76,6 +76,7 @@ import NoteViewer from './NoteViewer';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
 import SceneCrafterPage from './pages/SceneCrafter/SceneCrafterPage';
+import type { CrafterSetup } from './pages/SceneCrafter/crafterState';
 import VaultGraphView from './VaultGraphView';
 import ManuscriptStructureView from './ManuscriptStructureView';
 import BookPreview from './story/BookPreview';
@@ -3454,6 +3455,40 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
   }, [stories, updateManifest, requestText, handleSelectScene, setViewDepth]);
 
+  // SKY-11213: Scene Crafter "Create Scene" — creates a scene directly from
+  // Setup fields without an AI draft. Uses the active story/chapter context.
+  // If no chapter exists, creates one named "Chapter 1" first.
+  const createSceneFromSetup = useCallback(async (setup: CrafterSetup) => {
+    if (!selectedStory) throw new Error('No story selected.');
+    const rawTitle = setup.title.trim() || 'Untitled Scene';
+    const latestStory = stories.find((s) => s.id === selectedStory.id) ?? selectedStory;
+    const allChapters = latestStory.chapters;
+    let chapterId: string;
+    let resolvedStory = latestStory;
+    if (allChapters.length === 0) {
+      // No chapters — create one via IPC (writes manifest to disk + returns the chapter).
+      const created = await window.api.chapterCreate({ storyId: latestStory.id, title: 'Chapter 1' });
+      chapterId = created.id;
+      resolvedStory = { ...latestStory, chapters: [created] };
+      updateManifest(stories.map((s) => s.id === resolvedStory.id ? resolvedStory : s));
+    } else {
+      const preferred = selectedChapter && allChapters.find((c) => c.id === selectedChapter.id);
+      chapterId = preferred ? preferred.id : allChapters[0].id;
+    }
+    const chapter = resolvedStory.chapters.find((c) => c.id === chapterId)!;
+    const scene = await window.api.sceneCreate({ storyId: resolvedStory.id, chapterId, title: rawTitle });
+    // Sync IPC-created scene into local React state so the manifest + tabs stay live.
+    updateManifest(
+      stories.map((s) =>
+        s.id !== resolvedStory.id ? s : updateChapterOwner(s, chapterId, (chapters) =>
+          chapters.map((ch) => (ch.id !== chapterId ? ch : { ...ch, scenes: [...ch.scenes, scene] }))
+        )
+      )
+    );
+    handleSelectScene(scene, chapter, resolvedStory);
+    setViewDepth('scene');
+  }, [stories, selectedStory, selectedChapter, updateManifest, handleSelectScene, setViewDepth]);
+
   // SKY-10917: Story Navigator right-click "Delete scene…" — the tree had no
   // remove path at all before this. Scoped to story.chapters like
   // createScene/createChapter above; a Part-grouped story's chapters live
@@ -6155,6 +6190,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               story={selectedStory}
               onOpenNote={handleOpenSceneByPath}
               onOpenScene={handleOpenSceneById}
+              onCreateSceneFromSetup={createSceneFromSetup}
               // SKY-11069: the active board tab decides which canvas shows
               // full-screen; the Setup tab (activeId null) shows the gallery.
               openBoardId={boardDocTabs.find((t) => t.id === activeBoardDocTabId && t.storyId === selectedStory.id)?.docId ?? null}
@@ -7135,6 +7171,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   story={selectedStory}
                   onOpenNote={handleOpenSceneByPath}
                   onOpenScene={handleOpenSceneById}
+                  onCreateSceneFromSetup={createSceneFromSetup}
                   // SKY-11069: the legacy split pane stays on the Setup view —
                   // board clicks open tabs in the main Scene Crafter strip
                   // (one navigation model, no second canvas mount).

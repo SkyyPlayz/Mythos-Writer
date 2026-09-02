@@ -736,6 +736,44 @@
   margin-top: 1px;
 }
 
+/* SKY-11213: Create Scene button — primary path, no AI draft needed */
+.sc-create-scene-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.scene-crafter-page button.sc-create-scene-btn {
+  display: block;
+  width: 100%;
+  text-align: center;
+  padding: 8px;
+  border: 1.5px solid var(--accent, #9b5fff);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--accent, #9b5fff);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.scene-crafter-page button.sc-create-scene-btn:hover:not(:disabled) {
+  background: var(--accent, #9b5fff);
+  color: #fff;
+}
+
+.scene-crafter-page button.sc-create-scene-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.sc-create-scene-error {
+  font-size: 11px;
+  color: #ff4d4d;
+}
+
 .scene-crafter-page button.sc-draft-btn {
   display: block;
   width: 100%;

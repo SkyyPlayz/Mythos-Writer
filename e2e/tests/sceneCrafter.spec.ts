@@ -176,6 +176,18 @@ function boardPath(notesVaultDir: string, storySlug: string): string {
   return path.join(notesVaultDir, 'scenes', storySlug, 'board.md');
 }
 
+/** Recursively find all files with the given extension under a directory. */
+function findFilesRecursive(dir: string, ext: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  const results: string[] = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) results.push(...findFilesRecursive(full, ext));
+    else if (entry.name.endsWith(ext)) results.push(full);
+  }
+  return results;
+}
+
 type SceneCrafterCard = { wikilink: string; title: string; done: boolean; tags: string[] };
 type SceneCrafterBoardShape = { lanes: Array<{ name: string; cards: SceneCrafterCard[] }> };
 
@@ -1093,5 +1105,71 @@ test.describe('SKY-11072 — Scene Crafter vault-reference columns (fresh profil
 
     // The full cycle never touched the file: the note is still on disk.
     expect(fs.readFileSync(notePath, 'utf-8')).toContain('#Character');
+  });
+});
+
+// ─── SKY-11213: Create Scene from Setup (no AI draft required) ───────────────
+//
+// AC1: clicking "Create Scene" with a title filled creates a real scene on disk
+// via the IPC path and opens it in the editor, without any AI draft.
+// AC5 (real-UI E2E): the button is present and its click produces a scene file.
+test.describe('SKY-11213 — Create Scene from Setup (no AI draft)', () => {
+  let localApp: ElectronApplication;
+  let localPage: Page;
+  let localUserData: string;
+  let localVaultDir: string;
+  let localNotesVaultDir: string;
+
+  test.beforeAll(async () => {
+    localUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11213-'));
+    localVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11213-story-'));
+    localNotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11213-notes-'));
+
+    seedUserData(localUserData, localVaultDir, localNotesVaultDir);
+    localApp = await launchApp(localUserData);
+    localPage = await firstWindow(localApp);
+
+    await expect(localPage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+    const idx = await createStory(localPage);
+    await selectStory(localPage, idx);
+    await openBoardView(localPage);
+  });
+
+  test.afterAll(async () => {
+    await localApp?.close().catch(() => {});
+    fs.rmSync(localUserData, { recursive: true, force: true });
+    fs.rmSync(localVaultDir, { recursive: true, force: true });
+    fs.rmSync(localNotesVaultDir, { recursive: true, force: true });
+  });
+
+  test('AC-SC-18 (SKY-11213): "Create Scene" button creates a scene on disk without a draft', async () => {
+    await openBoardView(localPage);
+
+    // Fill in a scene title in the Setup column.
+    const titleInput = localPage.locator('input[placeholder="The next scene…"]');
+    await expect(titleInput).toBeVisible({ timeout: 5_000 });
+    await titleInput.fill('The Reckoning');
+
+    // The button must be present without having generated any AI draft.
+    const createBtn = localPage.getByTestId('sc-create-scene-btn');
+    await expect(createBtn).toBeVisible({ timeout: 5_000 });
+    expect(await localPage.locator('[data-testid="sc-draft-card"]').count()).toBe(0);
+
+    // Click Create Scene — must navigate to the editor view (scene open).
+    await createBtn.click();
+
+    // The shell navigates to the scene editor on success.
+    await expect(localPage.locator('.block-editor')).toBeVisible({ timeout: 10_000 });
+
+    // The scene file must exist on disk in the manuscript vault.
+    const manuscriptDir = path.join(localVaultDir, 'Manuscript');
+    const sceneFiles = fs.existsSync(manuscriptDir)
+      ? findFilesRecursive(manuscriptDir, '.md')
+      : findFilesRecursive(localVaultDir, '.md');
+    const sceneFile = sceneFiles.find((f) => {
+      const content = fs.readFileSync(f, 'utf-8');
+      return content.includes('The Reckoning');
+    });
+    expect(sceneFile, `A scene file containing "The Reckoning" must exist on disk in ${localVaultDir}`).toBeTruthy();
   });
 });
