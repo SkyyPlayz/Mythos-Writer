@@ -262,3 +262,49 @@ export function flowScopeKey(story: Story, cursor: ManuscriptCursor): string {
       return `${story.id}|scene|${cursor.chapter}|${cursor.scene}`;
   }
 }
+
+// ── SKY-11244 — note-shaped flow (single linear block, no scenes/chapters) ──
+
+/**
+ * Drop the handful of markdown decorations that would otherwise get spoken
+ * literally ("pound", "asterisk", …) — headings, list/quote markers, and
+ * emphasis/code delimiters. Deliberately shallow: it only strips markers a
+ * TTS engine would mispronounce, never rewrites prose.
+ */
+export function stripMarkdownForSpeech(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/^\s{0,3}(#{1,6}\s+|[-*+]\s+|>\s?|\d+\.\s+)/, ''))
+    .join('\n')
+    .replace(/`{1,3}([^`]*)`{1,3}/g, '$1')
+    .replace(/\*\*([^*]+)\*\*|__([^_]+)__/g, (_m, a, b) => a ?? b)
+    .replace(/(?<![\w*])\*([^*]+)\*(?![\w*])|(?<![\w_])_([^_]+)_(?![\w_])/g, (_m, a, b) => a ?? b);
+}
+
+/**
+ * Linearize a flat note into utterances (buildReaderFlow's note-shaped
+ * sibling): one item per sentence, paragraphs separated by blank lines, no
+ * heading announcements and no scene/chapter skip (a note is one flat
+ * "scene" — sceneOrdinal 0 throughout). `key` is the paragraph index so a
+ * future per-paragraph highlight has something to key off; `start`/`end` are
+ * offsets into that paragraph's own (post-strip) text, not the whole note.
+ */
+export function buildNoteReaderFlow(text: string): ReaderFlowItem[] {
+  const flow: ReaderFlowItem[] = [];
+  const paragraphs = stripMarkdownForSpeech(text).split(/\n{2,}/);
+  paragraphs.forEach((raw, pi) => {
+    const para = raw.trim();
+    if (!para) return;
+    for (const span of splitSentences(para)) {
+      flow.push({
+        text: span.text,
+        key: `p${pi}`,
+        sceneId: null,
+        sceneOrdinal: 0,
+        start: span.start,
+        end: span.end,
+      });
+    }
+  });
+  return flow;
+}

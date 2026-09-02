@@ -18,6 +18,9 @@ import RichTextEditor from './RichTextEditor';
 import type { FormatToolbarActions } from './FormatToolbar';
 import { showLnToast } from './theme/lnToast';
 import type { AnyExtension } from '@tiptap/core';
+import { useNoteReader } from './story/useNoteReader';
+import ReaderBar from './story/ReaderBar';
+import type { TtsEngineSettings, TtsVoicePrefs } from './hooks/useTtsPlayer';
 import './NoteViewer.css';
 
 export type NoteViewerMode = 'source' | 'rich' | 'markdown' | 'preview';
@@ -52,8 +55,16 @@ interface Props {
   /** @deprecated Use `mode` + `onModeChange`. */
   onPreviewModeChange?: (previewMode: boolean) => void;
   /** M8d: Read/Dictate toolbar buttons (prototype toolbar 1532-1538) — reuses
-   * the app's existing TTS/voice pipeline (R11: utility, not AI). */
+   * the app's existing TTS/voice pipeline (R11: utility, not AI). `onRead` is
+   * ignored if present — NoteViewer supplies its own, wired to this note's
+   * real reader (SKY-11244); callers only need to pass onDictate/dictating. */
   toolbarActions?: FormatToolbarActions;
+  /** SKY-11244: TTS engine config (AppSettings.tts) for this note's reader —
+   * same stack as the Story Editor's useManuscriptReader. */
+  ttsSettings?: TtsEngineSettings;
+  /** SKY-11244: stored voice prefs (AppSettings.voice) seed the reader's
+   * speed/voice. */
+  voicePrefs?: TtsVoicePrefs;
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +374,8 @@ export default function NoteViewer({
   previewMode,
   onPreviewModeChange,
   toolbarActions,
+  ttsSettings,
+  voicePrefs,
 }: Props) {
   const [defaultRich, setDefaultRich] = useState(readDefaultRichPref);
   // SKY-10929: this note's own remembered mode, if it was ever explicitly
@@ -679,6 +692,22 @@ export default function NoteViewer({
     });
   }, []);
 
+  // SKY-11244: this note's own reader — same engine as the Story Editor
+  // (readerEngine.ts), fed this note's visible body (frontmatter / hidden
+  // trailers stripped, same text Rich mode renders). The toolbar Read icon
+  // toggles the dock open/closed; playback itself starts from the dock's
+  // From cursor/From start (mirrors ManuscriptView's own Read button).
+  const readableText = useMemo(() => stripHiddenBlocks(content), [content]);
+  const reader = useNoteReader(readableText, path, ttsSettings, voicePrefs);
+  const handleReaderToggle = useCallback(() => {
+    if (reader.open) reader.close();
+    else reader.openReader();
+  }, [reader]);
+  const richEditorToolbarActions = useMemo<FormatToolbarActions>(
+    () => ({ ...toolbarActions, onRead: handleReaderToggle }),
+    [toolbarActions, handleReaderToggle]
+  );
+
   if (loading) {
     return (
       <div className="note-viewer" aria-live="polite">
@@ -951,8 +980,12 @@ export default function NoteViewer({
           sceneWikiLinkTitles={sceneWikiLinkTitles}
           wikiLinkCandidates={wikiLinkCandidates}
           fileName={fileName}
-          toolbarActions={toolbarActions}
+          toolbarActions={richEditorToolbarActions}
         />
+      )}
+
+      {reader.open && (
+        <ReaderBar reader={reader} ttsSettings={ttsSettings} />
       )}
 
       {mode === 'preview' && (

@@ -5541,13 +5541,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       .catch(() => {});
   }, [patchManuscriptPageCfg]);
 
-  // Beta 3 M10 toolbar actions (prototype 766-777). Read is scripted until the
-  // M13 TTS Reader lands; Dictate reuses the existing voice pipeline; Assist
-  // surfaces the Writing Assistant panel in the left sidebar (GH #633 home).
-  const handleToolbarRead = useCallback(() => {
-    showLnToast('Read aloud arrives with the TTS Reader milestone (M13)');
-  }, []);
-
+  // Beta 3 M10 toolbar actions (prototype 766-777). Dictate reuses the
+  // existing voice pipeline; Assist surfaces the Writing Assistant panel in
+  // the left sidebar (GH #633 home). SKY-11244: Read is no longer wired here
+  // — ManuscriptView owns the Story Editor's one real Read control (its own
+  // toolbar button + reader dock, GAP P0#4), and NoteViewer now supplies its
+  // own working Read handler directly (see richEditorToolbarActions there).
   const handleToolbarDictate = useCallback(() => {
     if (!appSettings?.voice?.enabled) {
       showLnToast('Enable Voice in Settings to dictate');
@@ -5575,19 +5574,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (!aiEnabled && view === 'coach') handleSetView('editor');
   }, [aiEnabled, view, handleSetView]);
   const manuscriptToolbarActions = useMemo(() => ({
-    onRead: handleToolbarRead,
     onDictate: handleToolbarDictate,
     dictating: voiceActive,
     onAssist: aiEnabled ? handleToolbarAssist : undefined,
-  }), [handleToolbarRead, handleToolbarDictate, voiceActive, handleToolbarAssist, aiEnabled]);
+  }), [handleToolbarDictate, voiceActive, handleToolbarAssist, aiEnabled]);
 
-  // M8d: Notes editor toolbar (prototype 1532-1538) reuses the same Read/
-  // Dictate handlers as the manuscript — no Assist button in the Notes surface.
+  // M8d: Notes editor toolbar (prototype 1532-1538) reuses the same Dictate
+  // handler as the manuscript — no Assist button in the Notes surface. Read
+  // is supplied per-instance by NoteViewer itself (SKY-11244).
   const noteToolbarActions = useMemo(() => ({
-    onRead: handleToolbarRead,
     onDictate: handleToolbarDictate,
     dictating: voiceActive,
-  }), [handleToolbarRead, handleToolbarDictate, voiceActive]);
+  }), [handleToolbarDictate, voiceActive]);
 
   // Beta 3 M6 → Beta 4 M4: context-menu "Pop out into new window". Document
   // tabs have no dedicated window host yet, so they explain themselves (§1.2
@@ -6679,6 +6677,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 onWordCountChange={setOpenedNoteWordCount}
                 onClose={() => setOpenedNotePath(null)}
                 toolbarActions={noteToolbarActions}
+                ttsSettings={appSettings?.tts}
+                voicePrefs={appSettings?.voice}
               />
             ) : (
               <div className="shell-editor-empty">
