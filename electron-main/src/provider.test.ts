@@ -88,6 +88,30 @@ function makeOkFetchResponse(tokens: string[]) {
   } as unknown as Response);
 }
 
+// Build an SSE ReadableStream from arbitrary delta objects, so tests can emit
+// the reasoning_content / reasoning shapes that local reasoning models stream
+// (qwen3, DeepSeek-R1, gpt-oss on LM Studio) — not just plain `content`.
+function makeRawSseResponse(deltas: Array<Record<string, unknown>>) {
+  const chunks: string[] = [
+    ...deltas.map(
+      (delta, i) =>
+        `data: ${JSON.stringify({ choices: [{ delta, index: i, finish_reason: null }] })}\n\n`,
+    ),
+    'data: [DONE]\n\n',
+  ];
+  let idx = 0;
+  const body = new ReadableStream({
+    pull(controller) {
+      if (idx < chunks.length) {
+        controller.enqueue(new TextEncoder().encode(chunks[idx++]));
+      } else {
+        controller.close();
+      }
+    },
+  });
+  return Promise.resolve({ ok: true, status: 200, body } as unknown as Response);
+}
+
 // ─── Anthropic routing (§1) ───────────────────────────────────────────────────
 
 describe('Anthropic routing (§1)', () => {
@@ -288,6 +312,75 @@ describe('OpenAI-compatible routing (§2)', () => {
     (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeOkFetchResponse(['Hello', ' World', '!']));
     const tokens = await collectTokens(streamFromProvider(makeOpenAIConfig(), makeReq()));
     expect(tokens).toEqual(['Hello', ' World', '!']);
+  });
+
+  // SKY-11220: reasoning models (qwen3 / DeepSeek-R1 / gpt-oss on LM Studio) stream
+  // their answer in delta.reasoning_content (or delta.reasoning) and leave
+  // delta.content empty. A content-only parser emits nothing — every AI surface
+  // goes silent. These lock in the reasoning fallback.
+  describe('reasoning-model fallback (SKY-11220)', () => {
+    it('falls back to reasoning_content when the model never emits content', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+        makeRawSseResponse([
+          { reasoning_content: 'The ' },
+          { reasoning_content: 'answer ' },
+          { reasoning_content: 'is 42.' },
+        ]),
+      );
+      const tokens = await collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq()));
+      expect(tokens.join('')).toBe('The answer is 42.');
+    });
+
+    it('falls back to the `reasoning` field (gpt-oss shape) too', async () => {
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+        makeRawSseResponse([{ reasoning: 'hello ' }, { reasoning: 'world' }]),
+      );
+      const tokens = await collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq()));
+      expect(tokens.join('')).toBe('hello world');
+    });
+
+    it('streams content and discards reasoning when the model emits real content', async () => {
+      // Well-behaved reasoning model: thinking first, then the answer as content.
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+        makeRawSseResponse([
+          { reasoning_content: 'let me think…' },
+          { content: 'Final' },
+          { content: ' answer' },
+        ]),
+      );
+      const tokens = await collectTokens(streamFromProvider(makeLmStudioConfig(), makeReq()));
+      // Chain-of-thought stays hidden; only the answer surfaces.
+      expect(tokens).toEqual(['Final', ' answer']);
+    });
+
+    it('reproduces the qwen3-on-LM-Studio bug against a real loopback HTTP server', async () => {
+      // Not a mock: a real OpenAI-compatible server on 127.0.0.1 that streams the
+      // documented qwen3 shape (answer in reasoning_content, empty content).
+      vi.unstubAllGlobals(); // use the real fetch/undici transport for this test
+      const http = await import('node:http');
+      const server = http.createServer((req, res) => {
+        if (req.url === '/v1/chat/completions') {
+          res.writeHead(200, { 'content-type': 'text/event-stream' });
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'Once upon ' } }] })}\n\n`);
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: 'a time.' } }] })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+        res.writeHead(404).end();
+      });
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+      const port = (server.address() as import('node:net').AddressInfo).port;
+      try {
+        const tokens = await collectTokens(
+          streamFromProvider(makeCustomConfig({ baseUrl: `http://127.0.0.1:${port}/v1` }), makeReq()),
+        );
+        expect(tokens.join('')).toBe('Once upon a time.');
+      } finally {
+        await new Promise<void>((r) => server.close(() => r()));
+        vi.stubGlobal('fetch', vi.fn()); // restore the suite's fetch mock
+      }
+    });
   });
 
   it('prepends system message when system is provided', async () => {
