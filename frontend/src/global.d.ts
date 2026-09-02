@@ -667,6 +667,16 @@ interface AppSettings {
   autoLinkerSettings?: AutoLinkerSettings;
   /** SKY-10772 M12.5: background auto-scan toggle. Absent = true (on by default). */
   agentIndexAutoScan?: boolean;
+  /**
+   * SKY-10878 M12.B5b: wiki self-building autonomy. Tri-state.
+   *  - 'ask'  (default) — never writes to the vault; each auto-stub candidate
+   *            becomes a Brainstorm question the author answers (SKY-10737).
+   *  - 'auto' — auto-stubs entities that pass the M12.B5a hygiene contract
+   *            (SKY-10877); junk / duplicates are suppressed, never written.
+   *  - 'off'  — the self-building wiki proposes nothing: no questions, no stubs.
+   * Absent = 'ask' (the safe default; never writes without author approval).
+   */
+  wikiAutonomy?: 'off' | 'ask' | 'auto';
   /** SKY-152: per-pane contextual tip dismissal. Keys are tip IDs; true = dismissed. */
   seenTips?: Record<string, boolean>;
   /** SKY-204: opt-in daily notes / journal mode. */

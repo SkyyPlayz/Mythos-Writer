@@ -8479,6 +8479,9 @@ const SETTINGS_DEFAULTS: AppSettings = {
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
   updateChannel: 'stable',
+  // SKY-10878 M12.B5b: default the self-building wiki to "always ask" so it
+  // never writes to the vault without author approval.
+  wikiAutonomy: 'ask',
   archiveContinuityEnabled: true,
   archiveScanOnSave: true,
   archiveScanScope: 'active_scene',

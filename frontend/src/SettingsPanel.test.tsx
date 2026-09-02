@@ -527,6 +527,28 @@ describe('SettingsPanel', () => {
     expect(document.querySelector('[data-testid="wa-category-toggles"]')).toBeInTheDocument();
   });
 
+  // ── SKY-10878 M12.B5b: wiki-autonomy tri-state control ──
+  it('wiki-autonomy control is tri-state and defaults to "always ask"', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    const select = (await screen.findByTestId('wiki-autonomy-select')) as HTMLSelectElement;
+    // Default (setting absent from defaultSettings) resolves to "ask".
+    expect(select.value).toBe('ask');
+    const optionValues = Array.from(select.options).map((o) => o.value);
+    expect(optionValues).toEqual(['ask', 'auto', 'off']);
+  });
+
+  it('changing the wiki-autonomy control saves the new mode via IPC', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    const select = await screen.findByTestId('wiki-autonomy-select');
+
+    await changeAndFlush(select, 'auto');
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.wikiAutonomy).toBe('auto');
+  });
+
   it('toggling a per-category switch saves the updated autoApplyCategories via IPC', async () => {
     const settingsWithAutoApply = {
       ...defaultSettings,
