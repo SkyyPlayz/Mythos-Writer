@@ -1,5 +1,6 @@
 import { useCallback, useRef, type ReactNode } from 'react';
 import './GlobalRightSidebar.css';
+import { RightSidebarSlotTarget, useRightSidebarSlotOccupied } from './RightSidebarSlot';
 
 const SIDEBAR_MIN_WIDTH = 200;
 const SIDEBAR_MAX_WIDTH = 600;
@@ -44,6 +45,12 @@ export default function GlobalRightSidebar({
 }: Props) {
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
+  // SKY-11211: a page (e.g. Brainstorm) can claim the sidebar via
+  // <RightSidebarSlot> from anywhere in the tree — when it has, its content
+  // replaces `children` (the default Assistant panel) instead of stacking a
+  // second column next to it. Falls back to `children` the instant nothing
+  // has claimed it (route left / never claimed).
+  const routeSlotOccupied = useRightSidebarSlotOccupied();
 
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -111,7 +118,12 @@ export default function GlobalRightSidebar({
       {/* headerContent: legacy slot, rendered for backward compat during M6 transition */}
       {headerContent}
       <div className="grs-content">
-        {children}
+        {/* SKY-11211: always mount the route-slot target so a page claiming
+            it mid-render has somewhere to portal into immediately; hide it
+            (rather than unmount) when nothing's claimed so the DOM node —
+            and any active claim's portal — survives a claim flicker. */}
+        <RightSidebarSlotTarget className={routeSlotOccupied ? 'grs-route-slot' : 'grs-route-slot grs-route-slot--empty'} />
+        {!routeSlotOccupied && children}
       </div>
     </aside>
   );
