@@ -37,6 +37,7 @@ import UpdatesSection from './components/SettingsPanel/sections/UpdatesSection';
 import AppearanceSection from './components/SettingsPanel/sections/AppearanceSection';
 import LiquidNeonAppearanceSection from './components/SettingsPanel/sections/LiquidNeonAppearanceSection';
 import MythosVaultsSection from './components/SettingsPanel/sections/MythosVaultsSection';
+import AddVaultButtonsSection from './components/SettingsPanel/sections/AddVaultButtonsSection';
 import PageAppearanceSection from './components/SettingsPanel/sections/PageAppearanceSection';
 import NavConfigSection from './components/SettingsPanel/sections/NavConfigSection';
 import FocusModeSection from './components/SettingsPanel/sections/FocusModeSection';
@@ -954,6 +955,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
               {/* Beta 4 M1: Mythos vaults cards — per-vault default theme (§3). */}
               <MythosVaultsSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
+
+              {/* SKY-11152 (parent spec SKY-11141 §3c): "+ Add Notes Vault" /
+                  "+ Add Story Vault" dialogs — reuses the SKY-11151 creation
+                  primitive, no location picker. */}
+              <AddVaultButtonsSection />
 
               <VaultPathsSection
                 vaults={vaults}
