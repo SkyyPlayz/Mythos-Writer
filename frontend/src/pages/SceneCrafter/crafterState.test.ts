@@ -32,7 +32,14 @@ import {
   type VaultListItem,
 } from './crafterState';
 
-function item(path: string, isDirectory = false, excerpt?: string, characterTag?: boolean): VaultListItem {
+function item(
+  path: string,
+  isDirectory = false,
+  excerpt?: string,
+  characterTag?: boolean,
+  locationTag?: boolean,
+  itemTag?: boolean,
+): VaultListItem {
   return {
     path,
     name: path.split('/').pop() ?? path,
@@ -40,6 +47,8 @@ function item(path: string, isDirectory = false, excerpt?: string, characterTag?
     modifiedAt: '2026-06-30T12:00:00.000Z',
     excerpt,
     characterTag,
+    locationTag,
+    itemTag,
   };
 }
 
@@ -167,18 +176,58 @@ describe('suggested cards from the vault listing', () => {
     expect(castCardsFromSuggested(cards).map((c) => c.t)).toEqual(['Mira Veynn']);
   });
 
-  it('prefers the Characters folder over the tag fallback when both exist', () => {
+  // SKY-11212 (owner ruling): tag wins over folder — a tagged note joins its
+  // tag's category even when a same-named folder already exists elsewhere.
+  it('a tagged note joins its category alongside folder-classified notes, not instead of them', () => {
     const mixedItems = [
       item('Characters/Liora Ashen.md'),
       item('Notes/Side Character.md', false, undefined, true),
     ];
     const cards = suggestedFromVault(mixedItems);
-    expect(castCardsFromSuggested(cards).map((c) => c.t)).toEqual(['Liora Ashen']);
+    expect(castCardsFromSuggested(cards).map((c) => c.t)).toEqual(['Liora Ashen', 'Side Character']);
   });
 
   it('resolves to no cast at all when neither a Characters folder nor any tag exists', () => {
     const cards = suggestedFromVault([item('Locations/Ward Violet.md')]);
     expect(castCardsFromSuggested(cards)).toEqual([]);
+  });
+
+  // SKY-11212 AC5 — owner's screenshot bug: LOCATIONS listed Kael Thorne,
+  // Mira Veynn, The Broker (character-folder notes) plus Project Bible, The
+  // Council (misc notes), none of them locations. This fixture deliberately
+  // disagrees tags vs. folders — a fixture where they agree would pass even
+  // with the bug present.
+  it('AC5 regression: character/misc notes from the owner screenshot never classify as LOCATIONS', () => {
+    const mixed = suggestedFromVault([
+      item('Characters/Kael Thorne.md'),
+      item('Characters/Mira Veynn.md'),
+      item('Characters/The Broker.md'),
+      item('Notes/Project Bible.md'),
+      item('Notes/The Council.md'),
+      // Tag disagrees with folder in both directions — tag must win either way.
+      item('Characters/Hidden Harbor.md', false, undefined, false, true),
+      item('Locations/Ashfall Docks.md', false, undefined, true), // character-tagged despite the Locations folder
+    ]);
+
+    const locations = placesFromSuggested(mixed).map((c) => c.t);
+    expect(locations).toEqual(['Hidden Harbor']);
+    expect(locations).not.toContain('Kael Thorne');
+    expect(locations).not.toContain('Mira Veynn');
+    expect(locations).not.toContain('The Broker');
+    expect(locations).not.toContain('Project Bible');
+    expect(locations).not.toContain('The Council');
+    expect(locations).not.toContain('Ashfall Docks');
+
+    // Ashfall Docks' character tag wins over its Locations folder.
+    expect(castCardsFromSuggested(mixed).map((c) => c.t)).toEqual(['Kael Thorne', 'Mira Veynn', 'The Broker', 'Ashfall Docks']);
+  });
+
+  it('an item/system tag resolves ITEMS & SYSTEMS the same way as character/location tags', () => {
+    const cards = suggestedFromVault([
+      item('Notes/Drownlight.md', false, undefined, false, false, true),
+      item('Notes/Loose Idea.md'),
+    ]);
+    expect(itemsFromSuggested(cards).map((c) => c.t)).toEqual(['Drownlight']);
   });
 });
 
@@ -377,7 +426,7 @@ describe('vault-reference columns (SKY-11072 — owner ruling, prototype crafter
     item('Characters/Mira Veynn.md'),
     item('Locations/The Undercity.md'),
     item('Items & Systems/Drownlight.md'),
-    item('Loose Note.md', false, undefined, true), // #Character-tagged, outside any folder
+    item('Loose Note.md'), // untagged, outside any folder — group NOTES
     item('Plans/Plan Act One.md'),
   ]);
 
@@ -421,19 +470,40 @@ describe('vault-reference columns (SKY-11072 — owner ruling, prototype crafter
     expect(refCardsForColumn('items', cards, setup).map((c) => c.nid)).toEqual(['Items & Systems/Drownlight']);
   });
 
-  it('refPickerCards offers notes not visible in the column, filtered like the rail', () => {
+  it('refPickerCards offers same-category notes not visible in the column, filtered like the rail', () => {
     const setup = defaultCrafterSetup();
+    // Loose Note is untagged/unfoldered (group NOTES) — not a CHARACTERS candidate.
     const offered = refPickerCards('characters', cards, setup, '');
     expect(offered.map((c) => c.nid)).not.toContain('Characters/Mira Veynn');
-    expect(offered.map((c) => c.nid)).toContain('Loose Note');
+    expect(offered.map((c) => c.nid)).not.toContain('Loose Note');
+    expect(offered).toEqual([]);
     // Removed notes ARE offered — picking one is the un-remove path.
     const removed = removeRef(setup, 'characters', 'Characters/Mira Veynn');
     expect(refPickerCards('characters', cards, removed, 'mira').map((c) => c.nid)).toEqual(['Characters/Mira Veynn']);
   });
 
-  it('a #Character-tagged loose note only reaches CHARACTERS when no Characters folder exists', () => {
-    const tagOnly = suggestedFromVault([item('Kael Thorne.md', false, undefined, true)]);
-    expect(refCardsForColumn('characters', tagOnly, defaultCrafterSetup()).map((c) => c.nid)).toEqual(['Kael Thorne']);
+  // SKY-11212: the reported bug — the `+` picker offered every vault note,
+  // not just notes in the column's own category.
+  it('refPickerCards never offers a note from a different category', () => {
+    const setup = defaultCrafterSetup();
+    const locationsOffered = refPickerCards('locations', cards, setup, '').map((c) => c.nid);
+    expect(locationsOffered).not.toContain('Characters/Mira Veynn');
+    expect(locationsOffered).not.toContain('Loose Note');
+    expect(locationsOffered).not.toContain('Plans/Plan Act One');
+    expect(locationsOffered).not.toContain('Items & Systems/Drownlight');
+  });
+
+  // SKY-11212 (owner ruling): tag wins over folder, so a #Character-tagged
+  // note reaches CHARACTERS even when the vault also has a Characters folder.
+  it('a #Character-tagged note reaches CHARACTERS via tag priority, folder or not', () => {
+    const tagPriority = suggestedFromVault([
+      item('Characters/Liora Ashen.md'),
+      item('Notes/Kael Thorne.md', false, undefined, true),
+    ]);
+    expect(refCardsForColumn('characters', tagPriority, defaultCrafterSetup()).map((c) => c.nid)).toEqual([
+      'Characters/Liora Ashen',
+      'Notes/Kael Thorne',
+    ]);
   });
 });
 

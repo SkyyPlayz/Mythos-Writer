@@ -559,27 +559,51 @@ export function excerptFromMarkdown(raw: string): string {
 }
 
 /**
- * SKY-11049 item 7: does this note look like a character note, for the Scene
- * Crafter POV picker's fallback when the vault has no top-level `Characters`
- * folder? Three signals, matching how Obsidian users actually tag notes:
- * frontmatter `type: character` (same convention as entityFrontmatterParser's
- * `type` field), a frontmatter `tags:` entry of `character`, or an inline
- * `#character` hashtag in the body (optionally nested, `#character/pov`).
+ * SKY-11049 item 7 / SKY-11212: does this note carry a given category signal
+ * — for the Scene Crafter POV picker's fallback and, as of SKY-11212, the
+ * tag-priority category the LOCATIONS/CHARACTERS/ITEMS & SYSTEMS board
+ * columns now classify by? Three signals, matching how Obsidian users
+ * actually tag notes: frontmatter `type: <kind>` (same convention as
+ * entityFrontmatterParser's `type` field), a frontmatter `tags:` entry of
+ * `<kind>`, or an inline `#<kind>` hashtag in the body (optionally nested,
+ * `#character/pov`).
  */
-export function noteHasCharacterSignal(raw: string): boolean {
+function noteHasTagSignal(raw: string, kind: string): boolean {
   const { frontmatter, prose } = parseFrontmatter(raw);
   const type = frontmatter['type'];
-  if (typeof type === 'string' && type.trim().toLowerCase() === 'character') return true;
+  if (typeof type === 'string' && type.trim().toLowerCase() === kind) return true;
   const tagsRaw = frontmatter['tags'];
   const tagList = Array.isArray(tagsRaw) ? tagsRaw : typeof tagsRaw === 'string' ? [tagsRaw] : [];
-  if (tagList.some((tag) => String(tag).trim().toLowerCase().replace(/^#/, '') === 'character')) return true;
-  return /(^|\s)#character(?:\/[\w-]+)?\b/i.test(prose);
+  if (tagList.some((tag) => String(tag).trim().toLowerCase().replace(/^#/, '') === kind)) return true;
+  return new RegExp(`(^|\\s)#${kind}(?:/[\\w-]+)?\\b`, 'i').test(prose);
+}
+
+/** Does this note look like a character note (frontmatter/tag/hashtag `character`)? */
+export function noteHasCharacterSignal(raw: string): boolean {
+  return noteHasTagSignal(raw, 'character');
+}
+
+/** SKY-11212: does this note look like a location note (frontmatter/tag/hashtag `location`)? */
+export function noteHasLocationSignal(raw: string): boolean {
+  return noteHasTagSignal(raw, 'location');
+}
+
+/**
+ * SKY-11212: does this note look like an item/system note? The Scene Crafter
+ * board column is titled "ITEMS & SYSTEMS", so either tag counts.
+ */
+export function noteHasItemSignal(raw: string): boolean {
+  return noteHasTagSignal(raw, 'item') || noteHasTagSignal(raw, 'system');
 }
 
 export interface NoteListingMeta {
   excerpt: string;
   /** SKY-11049: vault-wide character signal, independent of folder placement. */
   characterTag: boolean;
+  /** SKY-11212: vault-wide location signal, independent of folder placement. */
+  locationTag: boolean;
+  /** SKY-11212: vault-wide item/system signal, independent of folder placement. */
+  itemTag: boolean;
 }
 
 /**
@@ -594,9 +618,14 @@ export function readNoteListingMeta(absPath: string): NoteListingMeta {
     const buf = Buffer.alloc(EXCERPT_READ_BYTES);
     const bytesRead = fs.readSync(fd, buf, 0, EXCERPT_READ_BYTES, 0);
     const raw = buf.toString('utf-8', 0, bytesRead);
-    return { excerpt: excerptFromMarkdown(raw), characterTag: noteHasCharacterSignal(raw) };
+    return {
+      excerpt: excerptFromMarkdown(raw),
+      characterTag: noteHasCharacterSignal(raw),
+      locationTag: noteHasLocationSignal(raw),
+      itemTag: noteHasItemSignal(raw),
+    };
   } catch {
-    return { excerpt: '', characterTag: false };
+    return { excerpt: '', characterTag: false, locationTag: false, itemTag: false };
   } finally {
     if (fd !== null) {
       try { fs.closeSync(fd); } catch { /* ignore close errors */ }

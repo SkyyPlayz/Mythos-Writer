@@ -5972,16 +5972,17 @@ const handlers: IpcHandlers = {
     const listedRoot = payload.root ? path.join(root, payload.root) : root;
     const filtered = filterNotesListing(items, storyVaultRelPrefix(listedRoot, getVaultRoot()));
     // SKY-10511: Scene Crafter's suggested cards show each note's hook line.
-    // SKY-11049: same bounded read also surfaces a character signal for the
-    // POV picker's vault-wide fallback. Compute both here — one bounded read
-    // per note during the listing, after filtering so story internals are
-    // never opened — instead of per-card IPC round-trips from the renderer
-    // (an N+1 over the vault).
+    // SKY-11049 / SKY-11212: same bounded read also surfaces character/
+    // location/item tag signals for the POV picker's vault-wide fallback and
+    // the board columns' tag-priority categorization. Compute all of it
+    // here — one bounded read per note during the listing, after filtering
+    // so story internals are never opened — instead of per-card IPC
+    // round-trips from the renderer (an N+1 over the vault).
     return {
       items: filtered.map((item) => {
         if (item.isDirectory || !/\.md$/i.test(item.path)) return item;
-        const { excerpt, characterTag } = readNoteListingMeta(path.join(listedRoot, item.path));
-        return { ...item, excerpt, characterTag };
+        const { excerpt, characterTag, locationTag, itemTag } = readNoteListingMeta(path.join(listedRoot, item.path));
+        return { ...item, excerpt, characterTag, locationTag, itemTag };
       }),
     };
   },

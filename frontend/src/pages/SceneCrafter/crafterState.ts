@@ -105,6 +105,10 @@ export interface VaultListItem {
   excerpt?: string;
   /** SKY-11049: vault-wide character signal (frontmatter/tag), main-side. */
   characterTag?: boolean;
+  /** SKY-11212: vault-wide location signal (frontmatter/tag), main-side. */
+  locationTag?: boolean;
+  /** SKY-11212: vault-wide item/system signal (frontmatter/tag), main-side. */
+  itemTag?: boolean;
 }
 
 export interface SuggestedCard {
@@ -120,6 +124,10 @@ export interface SuggestedCard {
   nid: string;
   /** SKY-11049: vault-wide character signal, independent of `group`. */
   characterTag: boolean;
+  /** SKY-11212: vault-wide location signal, independent of `group`. */
+  locationTag: boolean;
+  /** SKY-11212: vault-wide item/system signal, independent of `group`. */
+  itemTag: boolean;
 }
 
 export interface SuggestedGroup {
@@ -147,9 +155,26 @@ function titleCaseWords(text: string): string {
 }
 
 /**
+ * SKY-11212 (owner ruling): a note's category is its tag signal
+ * (character/location/item) when it has one, regardless of which folder it
+ * lives in — folder only decides the category for a note with no relevant
+ * tag. A note with more than one signal resolves in this priority order;
+ * that's an edge case (contradictory tags), not the common path.
+ */
+function tagCategory(item: VaultListItem): string | null {
+  if (item.characterTag) return 'CHARACTERS';
+  if (item.locationTag) return 'LOCATIONS';
+  if (item.itemTag) return 'ITEMS & SYSTEMS';
+  return null;
+}
+
+/**
  * Turn a notes-vault listing into suggested cards. In the prototype the list
  * is stocked by the Brainstorm Agent; here every vault markdown note becomes
- * a card, grouped by its top-level folder (`CHARACTERS`, `LOCATIONS`, …).
+ * a card. A card's group (`CHARACTERS`, `LOCATIONS`, …) is its tag signal
+ * when it has one (SKY-11212), falling back to its top-level folder for
+ * notes with no relevant tag — so folder-organized vaults keep working, and
+ * a tagged note is never miscategorized just because of where it lives.
  */
 export function suggestedFromVault(items: VaultListItem[]): SuggestedCard[] {
   const cards: SuggestedCard[] = [];
@@ -163,15 +188,18 @@ export function suggestedFromVault(items: VaultListItem[]): SuggestedCard[] {
     if (EXCLUDED_TOP_FOLDERS.has(top.toLowerCase())) continue;
     const base = segments[segments.length - 1].replace(/\.md$/i, '');
     const title = titleCaseWords(base.replace(/[-_]+/g, ' '));
+    const folderGroup = top ? top.replace(/[-_]+/g, ' ').toUpperCase() : 'NOTES';
     cards.push({
       t: title,
       // SKY-10511: the hook line is the card body; folder path only for notes
       // with no usable body yet (empty note) — preserves the old look there.
       d: item.excerpt || (segments.slice(0, -1).join(' / ') || 'Vault root'),
       av: avatarForTitle(title),
-      group: top ? top.replace(/[-_]+/g, ' ').toUpperCase() : 'NOTES',
+      group: tagCategory(item) ?? folderGroup,
       nid: path.replace(/\.md$/i, ''),
       characterTag: item.characterTag ?? false,
+      locationTag: item.locationTag ?? false,
+      itemTag: item.itemTag ?? false,
     });
   }
   return cards;
@@ -179,25 +207,20 @@ export function suggestedFromVault(items: VaultListItem[]): SuggestedCard[] {
 
 /**
  * Cards for the CHARACTERS vault-reference column and the POV picker
- * (SKY-11072 / SKY-11049 item 7): prefer a top-level `Characters` folder when
- * the vault has one —
- * otherwise fall back to any note carrying a character signal anywhere in the
- * vault (frontmatter `type`/`tags`, or an inline `#character` hashtag), so a
- * vault organized as `Main Characters/` + `#Character` tags still resolves.
- * Never both at once — an explicit `Characters` folder is the stronger signal.
+ * (SKY-11072 / SKY-11049 item 7 / SKY-11212): `group` already resolved the
+ * tag-priority-then-folder-fallback category in `suggestedFromVault`, so this
+ * is a straight filter.
  */
 export function castCardsFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
-  const byFolder = cards.filter((card) => card.group === 'CHARACTERS');
-  if (byFolder.length > 0) return byFolder;
-  return cards.filter((card) => card.characterTag);
+  return cards.filter((card) => card.group === 'CHARACTERS');
 }
 
-/** Cards for the LOCATIONS vault-reference column (SKY-11072). */
+/** Cards for the LOCATIONS vault-reference column (SKY-11072 / SKY-11212). */
 export function placesFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
   return cards.filter((card) => card.group === 'LOCATIONS');
 }
 
-/** Cards for the ITEMS & SYSTEMS vault-reference column (SKY-11072). */
+/** Cards for the ITEMS & SYSTEMS vault-reference column (SKY-11072 / SKY-11212). */
 export function itemsFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
   return cards.filter((card) => card.group === 'ITEMS & SYSTEMS');
 }
@@ -262,9 +285,11 @@ export function refCardsForColumn(
 }
 
 /**
- * Candidates for a column's `+` picker: every vault note not already visible
- * in that column, run through the same substring filter the suggested rail
- * uses. Removed notes ARE offered — picking one is the un-remove path.
+ * Candidates for a column's `+` picker: every vault note **in that column's
+ * category** (SKY-11212 — the picker must never offer notes from other
+ * categories, e.g. characters in the LOCATIONS picker) not already visible in
+ * the column, run through the same substring filter the suggested rail uses.
+ * Removed notes ARE offered — picking one is the un-remove path.
  */
 export function refPickerCards(
   key: VaultRefColumnKey,
@@ -272,8 +297,9 @@ export function refPickerCards(
   setup: CrafterSetup,
   query: string,
 ): SuggestedCard[] {
+  const candidates = baseRefCards(key, cards);
   const visible = new Set(refCardsForColumn(key, cards, setup).map((card) => card.nid));
-  return filterSuggested(cards, query).filter((card) => !visible.has(card.nid));
+  return filterSuggested(candidates, query).filter((card) => !visible.has(card.nid));
 }
 
 /** Remove a note from THIS scene's column — never deletes or edits the note. */

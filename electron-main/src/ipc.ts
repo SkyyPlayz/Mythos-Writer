@@ -1226,6 +1226,20 @@ export interface VaultListItem {
    * top-level `Characters` folder. Same availability as `excerpt`.
    */
   characterTag?: boolean;
+  /**
+   * SKY-11212: true when the note carries a location signal (frontmatter
+   * `type: location`, a `location` tag, or an inline `#location` hashtag) —
+   * lets Scene Crafter's LOCATIONS column classify a note by tag even when
+   * it isn't in a top-level `Locations` folder. Same availability as `excerpt`.
+   */
+  locationTag?: boolean;
+  /**
+   * SKY-11212: true when the note carries an item/system signal (frontmatter
+   * `type: item`/`system`, an `item`/`system` tag, or an inline
+   * `#item`/`#system` hashtag) — same role as `locationTag` for the
+   * ITEMS & SYSTEMS column.
+   */
+  itemTag?: boolean;
 }
 
 export interface VaultListResponse {
