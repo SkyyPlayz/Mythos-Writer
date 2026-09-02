@@ -1,0 +1,95 @@
+name: zero-diff-check
+
+# SKY-11203: PR #1354 merged with additions:0, deletions:0, files:[] — a
+# zero-net-diff duplicate of already-merged/closed work (SKY-10839, delivered
+# by #1348). The PR's own bot comment stated "no net diff against main"
+# before it was merged; nothing in the pipeline surfaced that fact where a
+# reviewer would see it. This check makes the signal visible on the PR itself
+# (label + comment) so a zero-diff PR is never mistaken for real delivered
+# work at merge-gate time. Advisory only — a zero diff is not always wrong
+# (e.g. a deliberate no-op after a rebase), so this never fails the build;
+# it exists to make the human/CEO sign-off well-informed, not to block.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  pull-requests: write
+  contents: read
+
+jobs:
+  zero-diff-check:
+    name: zero-diff-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Flag PRs with no net diff against the base branch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- zero-diff-check -->';
+
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+            }).then((r) => r.data);
+
+            const isZeroDiff = pr.changed_files === 0
+              && pr.additions === 0
+              && pr.deletions === 0;
+
+            const label = 'zero-diff';
+            const hasLabel = pr.labels.some((l) => l.name === label);
+
+            if (!isZeroDiff) {
+              if (hasLabel) {
+                await github.rest.issues.removeLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  name: label,
+                }).catch(() => {});
+              }
+              core.info('PR has a non-empty diff against the base branch — no action.');
+              return;
+            }
+
+            core.info(`PR #${pr.number} has changed_files:0 additions:0 deletions:0 — flagging.`);
+
+            if (!hasLabel) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                labels: [label],
+              }).catch(() => {});
+            }
+
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              { owner: context.repo.owner, repo: context.repo.repo, issue_number: pr.number }
+            );
+            if (comments.some((c) => c.body && c.body.includes(marker))) {
+              core.info('Zero-diff comment already posted on this PR — not re-posting.');
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              body: `${marker}\n` +
+                '**Zero net diff against the base branch.** ' +
+                `This PR resolves to \`additions:0 deletions:0 files:[]\` against \`${pr.base.ref}\`.\n\n` +
+                'This usually means the work it describes was already delivered by another ' +
+                'merged PR and this branch predates that merge. Before approving:\n' +
+                '- Confirm any "Closes #N" / ticket this PR claims was not already closed by a ' +
+                'different PR.\n' +
+                '- If the work is already on the base branch, close this PR as superseded ' +
+                'instead of merging it — merging adds a misleading commit-history entry with no ' +
+                'code effect.\n\n' +
+                'If this zero diff is intentional (e.g. a deliberate no-op after a rebase), ' +
+                'proceed and disregard this notice — this check is advisory and does not block merge.',
+            });
