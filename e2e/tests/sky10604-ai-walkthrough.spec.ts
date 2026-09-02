@@ -67,7 +67,15 @@ const WORKSPACES: WorkspaceCase[] = [
   },
   {
     name: 'notes-editor',
-    go: goNotesEditor,
+    // SKY-11228: Flags moved to its own sibling tab (no longer stacked above
+    // the chat on Agent), so reach it explicitly to assert it still renders.
+    go: async (page) => {
+      await goNotesEditor(page);
+      const flagsTab = page.locator('[data-testid="notes-right-tab-flags"]');
+      if (await flagsTab.isVisible().catch(() => false)) {
+        await flagsTab.click();
+      }
+    },
     core: (page) => [
       page.locator('[data-testid="notes-tab-center"]'),
       page.locator('[data-testid="notes-brainstorm-panel"]'),

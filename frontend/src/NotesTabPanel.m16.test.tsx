@@ -237,13 +237,16 @@ describe('NotesTabPanel — M16 right-panel tabs', () => {
     expect(screen.queryByTestId('note-properties-mock')).not.toBeInTheDocument();
   });
 
-  it('switches to Properties: renders NoteProperties + Backlinks for the active note', () => {
+  it('switches to Properties: renders NoteProperties + Backlinks, keeps the chat mounted but hidden', () => {
     render(<NotesTabPanel {...BASE_PROPS} />);
     fireEvent.click(screen.getByTestId('notes-right-tab-props'));
     expect(screen.getByTestId('notes-right-tab-props')).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByTestId('note-properties-mock')).toHaveAttribute('data-path', 'Locations/The Sunken Gate.md');
     expect(screen.getByTestId('backlinks-mock')).toHaveAttribute('data-path', 'Locations/The Sunken Gate.md');
-    expect(screen.queryByTestId('brainstorm-page-mock')).not.toBeInTheDocument();
+    // SKY-11228: the chat stays mounted (display:none) across tab switches so
+    // draft text and the transcript survive — it is never remounted.
+    expect(screen.getByTestId('brainstorm-page-mock')).toBeInTheDocument();
+    expect(screen.getByTestId('notes-agent-chat')).not.toBeVisible();
   });
 
   it('shows an empty state on the Properties tab when no note is open', () => {
@@ -252,13 +255,35 @@ describe('NotesTabPanel — M16 right-panel tabs', () => {
     expect(screen.getByTestId('notes-right-props-empty')).toBeInTheDocument();
   });
 
-  it('docks the continuity flags above the chat when archive continuity is enabled', () => {
+  // SKY-11228: Flags and the chat are sibling tabs, never stacked in one
+  // column — selecting Flags gives it (and, back on Agent, the chat) the
+  // full column instead of splitting it.
+  it('renders continuity flags on their own tab, not stacked above the chat', () => {
     const { rerender } = render(<NotesTabPanel {...BASE_PROPS} archiveContinuityEnabled />);
+    expect(screen.getByTestId('notes-right-tab-flags')).toBeInTheDocument();
+    expect(screen.getByTestId('brainstorm-page-mock')).toBeInTheDocument();
+    expect(screen.queryByTestId('notes-continuity-flags')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('notes-right-tab-flags'));
+    expect(screen.getByTestId('notes-right-tab-flags')).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByTestId('notes-continuity-flags')).toBeInTheDocument();
     expect(screen.getByTestId('continuity-panel-mock')).toBeInTheDocument();
-    expect(screen.getByTestId('brainstorm-page-mock')).toBeInTheDocument();
+    // The chat is hidden while Flags is active, not removed.
+    expect(screen.getByTestId('notes-agent-chat')).not.toBeVisible();
+
     rerender(<NotesTabPanel {...BASE_PROPS} archiveContinuityEnabled={false} />);
+    expect(screen.queryByTestId('notes-right-tab-flags')).not.toBeInTheDocument();
     expect(screen.queryByTestId('notes-continuity-flags')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the Agent tab if archive continuity turns off while Flags is active', () => {
+    const { rerender } = render(<NotesTabPanel {...BASE_PROPS} archiveContinuityEnabled />);
+    fireEvent.click(screen.getByTestId('notes-right-tab-flags'));
+    expect(screen.getByTestId('notes-continuity-flags')).toBeInTheDocument();
+
+    rerender(<NotesTabPanel {...BASE_PROPS} archiveContinuityEnabled={false} />);
+    expect(screen.getByTestId('notes-right-tab-agent')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('notes-agent-chat')).toBeVisible();
   });
 
   // SKY-6978 (Beta4/M18): Agent tab wires the Curator greeting + CONTINUITY
@@ -266,6 +291,7 @@ describe('NotesTabPanel — M16 right-panel tabs', () => {
   it('passes curatorGreeting to the chat widget and flagsHeader to the continuity panel', () => {
     render(<NotesTabPanel {...BASE_PROPS} archiveContinuityEnabled />);
     expect(screen.getByTestId('brainstorm-page-mock')).toHaveAttribute('data-curator-greeting', 'true');
+    fireEvent.click(screen.getByTestId('notes-right-tab-flags'));
     expect(screen.getByTestId('continuity-panel-mock')).toHaveAttribute('data-flags-header', 'true');
   });
 
@@ -295,6 +321,7 @@ describe('NotesTabPanel — M9e agent chat input + R11 master-AI gating', () => 
     // Prototype manual mode drops the whole strip — no lone Properties tab.
     expect(screen.queryByRole('tablist', { name: 'Notes side panel' })).not.toBeInTheDocument();
     expect(screen.queryByTestId('notes-right-tab-agent')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('notes-right-tab-flags')).not.toBeInTheDocument();
     expect(screen.queryByTestId('notes-right-tab-props')).not.toBeInTheDocument();
     expect(screen.queryByTestId('brainstorm-page-mock')).not.toBeInTheDocument();
     expect(screen.queryByTestId('notes-continuity-flags')).not.toBeInTheDocument();

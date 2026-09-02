@@ -212,12 +212,20 @@ export default function NotesTabPanel({
   const [noteSplitTabs, setNoteSplitTabs] = useState<WorkspaceTab[]>([]);
   const [activeNoteSplitTabId, setActiveNoteSplitTabId] = useState<string | null>(null);
   const [noteSplitRatio, setNoteSplitRatio] = useState(0.5);
-  const [rightTab, setRightTab] = useState<'agent' | 'props'>('agent');
+  const [rightTab, setRightTab] = useState<'agent' | 'flags' | 'props'>('agent');
   // R11 (SKY-9826/M9e): master AI switch — with AI off the M11b contract says
   // the notes-side agent panel (flags + chat) is gone entirely, so the right
   // sidebar falls back to Properties without losing the user's tab choice.
   const aiEnabled = useAiEnabled();
-  const effectiveRightTab = aiEnabled ? rightTab : 'props';
+  // SKY-11228: Flags is its own tab, gated the same as before on
+  // archiveContinuityEnabled — if the feature toggles off while it's the
+  // active tab, fall back to Agent rather than stranding the user on a tab
+  // that no longer renders in the strip.
+  const effectiveRightTab = !aiEnabled
+    ? 'props'
+    : rightTab === 'flags' && !archiveContinuityEnabled
+      ? 'agent'
+      : rightTab;
   // SKY-9784: drag-in-flight between the two Notes panes' own strips (mirrors
   // the shell's tabDragPayload/tabDragSourcePane for the Story split editor).
   const [noteTabDragPayload, setNoteTabDragPayload] = useState<WorkspaceTab | null>(null);
@@ -759,6 +767,21 @@ export default function NotesTabPanel({
                     >
                       Agent
                     </button>
+                    {/* SKY-11228: Flags is its own sibling tab (was stacked
+                        above the chat in Agent, crushing it into leftover
+                        space) — same archiveContinuityEnabled gate as before. */}
+                    {archiveContinuityEnabled && (
+                      <button
+                        role="tab"
+                        aria-selected={effectiveRightTab === 'flags'}
+                        className={`notes-right-tab${effectiveRightTab === 'flags' ? ' notes-right-tab--active' : ''}`}
+                        data-testid="notes-right-tab-flags"
+                        onClick={() => setRightTab('flags')}
+                        type="button"
+                      >
+                        Flags
+                      </button>
+                    )}
                     <button
                       role="tab"
                       aria-selected={effectiveRightTab === 'props'}
@@ -781,52 +804,58 @@ export default function NotesTabPanel({
                 </button>
               </div>
               <div className="notes-right-sidebar-content">
-                {effectiveRightTab === 'agent' ? (
-                  <div className="notes-agent-col">
-                    {/* M16: continuity flags (3 actions) above the chat —
-                        prototype "CONTINUITY FLAGS" then "CHAT" (HTML 2400+).
-                        Compact BrainstormPage hides its own facts column, so
-                        the flags dock here instead. */}
-                    {archiveContinuityEnabled && (
-                      <div className="notes-agent-continuity" data-testid="notes-continuity-flags">
-                        <ContinuityPanel scene={activeScene ?? null} enabled flagsHeader />
-                      </div>
-                    )}
-                    <div className="notes-agent-chat">
-                      <BrainstormPage
-                        onClose={() => onBrainstormCollapsedChange(true)}
-                        enabled={brainstormEnabled ?? true}
-                        onOpenSettings={onOpenSettings}
-                        voiceEnabled={voiceEnabled}
-                        ttsSettings={ttsSettings}
-                        voicePrefs={voicePrefs}
-                        onFirstSubmit={onFirstSubmit}
-                        onNavigateToEntity={onNavigateToEntity}
-                        onNavigateToScene={onNavigateToScene}
-                        activeStorySlug={activeStorySlug}
-                        archiveContinuityEnabled={archiveContinuityEnabled}
-                        activeScene={activeScene}
-                        compact
-                        curatorGreeting
-                        inputPlaceholder="Tell me about your world — I'll file it…"
-                      />
-                    </div>
-                  </div>
-                ) : activeNotePath ? (
-                  <div className="notes-right-props-scroll" data-testid="notes-right-props">
-                    <NoteProperties key={activeNotePath} path={activeNotePath} />
-                    <Backlinks
-                      notePath={activeNotePath}
-                      stories={stories}
-                      onOpenNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
-                      onOpenScene={onSelectScene}
+                {/* SKY-11228: Flags and Agent are now sibling tabs (were
+                    stacked in one column, crushing the chat into whatever
+                    space the flags list left over). The chat stays mounted
+                    across tab switches (hidden, not unmounted) so draft text
+                    and the transcript survive — only Flags/Properties, which
+                    carry no unsaved user input, are swapped in and out. */}
+                {aiEnabled && (
+                  <div
+                    className="notes-agent-chat"
+                    data-testid="notes-agent-chat"
+                    style={effectiveRightTab === 'agent' ? undefined : { display: 'none' }}
+                  >
+                    <BrainstormPage
+                      onClose={() => onBrainstormCollapsedChange(true)}
+                      enabled={brainstormEnabled ?? true}
+                      onOpenSettings={onOpenSettings}
+                      voiceEnabled={voiceEnabled}
+                      ttsSettings={ttsSettings}
+                      voicePrefs={voicePrefs}
+                      onFirstSubmit={onFirstSubmit}
+                      onNavigateToEntity={onNavigateToEntity}
+                      onNavigateToScene={onNavigateToScene}
+                      activeStorySlug={activeStorySlug}
+                      archiveContinuityEnabled={archiveContinuityEnabled}
+                      activeScene={activeScene}
+                      compact
+                      curatorGreeting
+                      inputPlaceholder="Tell me about your world — I'll file it…"
                     />
                   </div>
-                ) : (
-                  <div className="notes-right-props-empty" data-testid="notes-right-props-empty">
-                    Open a note to see its properties, backlinks, and tags.
-                  </div>
                 )}
+                {effectiveRightTab === 'flags' ? (
+                  <div className="notes-agent-flags" data-testid="notes-continuity-flags">
+                    <ContinuityPanel scene={activeScene ?? null} enabled flagsHeader />
+                  </div>
+                ) : effectiveRightTab === 'props' ? (
+                  activeNotePath ? (
+                    <div className="notes-right-props-scroll" data-testid="notes-right-props">
+                      <NoteProperties key={activeNotePath} path={activeNotePath} />
+                      <Backlinks
+                        notePath={activeNotePath}
+                        stories={stories}
+                        onOpenNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
+                        onOpenScene={onSelectScene}
+                      />
+                    </div>
+                  ) : (
+                    <div className="notes-right-props-empty" data-testid="notes-right-props-empty">
+                      Open a note to see its properties, backlinks, and tags.
+                    </div>
+                  )
+                ) : null}
               </div>
             </div>
           </>

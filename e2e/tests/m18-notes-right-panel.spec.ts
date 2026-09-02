@@ -310,7 +310,7 @@ async function openNote(page: Page, noteBaseName: string): Promise<void> {
 
 // ─── AC-M18-01 / AC-M18-02: Agent tab hosts Brainstorm chat + flag cards ─────
 
-test('AC-M18-01/02: Agent tab shows Brainstorm chat and a CONTINUITY FLAGS card with title, source pairing, body, and 3 actions', async () => {
+test('AC-M18-01/02: Agent tab shows a full-height Brainstorm chat; Flags is its own tab with a CONTINUITY FLAGS card (title, source pairing, body, 3 actions)', async () => {
   const fixture = createFixture(true);
   let app: ElectronApplication | undefined;
   try {
@@ -320,22 +320,41 @@ test('AC-M18-01/02: Agent tab shows Brainstorm chat and a CONTINUITY FLAGS card 
 
     await openNotesWithScene(page);
 
-    // Agent tab is the default rightTab.
+    // Agent tab is the default rightTab, and it's the chat alone —
+    // SKY-11228: Flags no longer stacks above it, so the chat gets the
+    // full column instead of whatever space Flags left over.
     await expect(page.locator('[data-testid="notes-right-tab-agent"]')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('[data-testid="notes-continuity-flags"]')).not.toBeVisible();
+
+    // Same brainstorm chat surface — the panel that renders the Curator greeting
+    // (spec §6: "Curator of this vault — tell it your world").
+    const chat = page.locator('.notes-agent-chat');
+    await expect(chat).toBeVisible();
+    await expect(page.getByText(/Curator of this vault/i)).toBeVisible({ timeout: 8_000 });
+
+    // The chat fills the sidebar content column — composer anchored at the
+    // bottom, no dead space left by a sibling panel.
+    const sidebarContent = page.locator('.notes-right-sidebar-content');
+    const [sidebarBox, chatBox] = await Promise.all([sidebarContent.boundingBox(), chat.boundingBox()]);
+    expect(sidebarBox).not.toBeNull();
+    expect(chatBox).not.toBeNull();
+    expect(chatBox!.height).toBeGreaterThanOrEqual(sidebarBox!.height - 1);
+
+    // Flags lives on its own sibling tab now.
+    await page.locator('[data-testid="notes-right-tab-flags"]').click();
+    await expect(page.locator('[data-testid="notes-right-tab-flags"]')).toHaveAttribute('aria-selected', 'true');
+    await expect(chat).not.toBeVisible();
 
     const flagsSection = page.locator('[data-testid="notes-continuity-flags"]');
     await expect(flagsSection).toBeVisible({ timeout: 8_000 });
 
-    // Same brainstorm chat surface — the panel that renders the Curator greeting
-    // (spec §6: "Curator of this vault — tell it your world").
-    await expect(page.locator('.notes-agent-chat')).toBeVisible();
-    await expect(page.getByText(/Curator of this vault/i)).toBeVisible({ timeout: 8_000 });
-
     const card = flagsSection.locator('.ic-card').first();
     await expect(card).toBeVisible({ timeout: 8_000 });
-    await expect(card.getByRole('button', { name: /match archive/i })).toBeVisible();
-    await expect(card.getByRole('button', { name: /suggest story change/i })).toBeVisible();
-    await expect(card.getByRole('button', { name: /ignore/i })).toBeVisible();
+    // SKY-10738 replaced the old two top-level buttons with "Suggest fix" /
+    // "Open sources"; dismiss/ignore stays reachable via the × control.
+    await expect(card.getByRole('button', { name: /suggest fix/i })).toBeVisible();
+    await expect(card.getByRole('button', { name: /open sources/i })).toBeVisible();
+    await expect(card.getByRole('button', { name: /dismiss/i })).toBeVisible();
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);
@@ -354,12 +373,14 @@ test('AC-M18-03: Ignore from the Notes right panel persists the same continuity_
 
     await openNotesWithScene(page);
 
+    // SKY-11228: Flags is a sibling tab now, not stacked above the chat.
+    await page.locator('[data-testid="notes-right-tab-flags"]').click();
     const flagsSection = page.locator('[data-testid="notes-continuity-flags"]');
     await expect(flagsSection).toBeVisible({ timeout: 8_000 });
     const card = flagsSection.locator('.ic-card').first();
     await expect(card).toBeVisible({ timeout: 8_000 });
 
-    await card.getByRole('button', { name: /ignore/i }).click();
+    await card.getByRole('button', { name: /dismiss/i }).click();
 
     // The card leaves the OPEN list — same UI contract as the manuscript
     // ContinuityPanel (TC-AA-05 in archive-agent-mvp.spec.ts).
