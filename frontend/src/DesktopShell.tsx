@@ -1586,10 +1586,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             s.gettingStartedProgress,
           ),
         );
-        applyTheme(s.theme);
+        // SKY-11237: resolve per-vault appearance for the active vault on load/switch.
+        const appearanceVaultRoot = switchedVaultRoot || storyPath;
+        const initVaultApp = appearanceVaultRoot ? s.vaultAppearance?.[appearanceVaultRoot] : undefined;
+        applyTheme(initVaultApp?.theme ?? s.theme);
         applyPageBackgroundTokens(s.pageBackground);
         // Load background image data URL if a custom path is stored
-        const lg = s.liquidNeon;
+        const lg = initVaultApp?.liquidNeon ?? s.liquidNeon;
         if (lg?.background && lg.background !== 'default') {
           window.api.loadBgImage?.(lg.background)
             .then((res: { dataUrl: string | null }) => applyLiquidNeonTokens(lg, res?.dataUrl))
@@ -1608,7 +1611,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           cachedSettings = themed;
           setAppSettings(themed);
           window.api.settingsSet(themed).catch(() => {});
-          void applyLiquidNeonV2Theme(vaultPatch.liquidNeonV2);
+          // SKY-11237: per-vault appearance overrides the preset's liquidNeonV2.
+          const switchedVaultApp = s.vaultAppearance?.[switchedVaultRoot];
+          void applyLiquidNeonV2Theme(switchedVaultApp?.liquidNeonV2 ?? vaultPatch.liquidNeonV2);
           // SKY-9262 (P0.5): name the vault by its single story's title when it
           // has one — the raw directory name is only the fallback.
           showLnToast(
@@ -1620,7 +1625,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         } else {
           // Beta 3 Liquid Neon (M1): v2 slot-engine tokens layer on after the
           // v1 axis tokens so v2 values win where both define a property.
-          void applyLiquidNeonV2Theme(s.liquidNeonV2);
+          void applyLiquidNeonV2Theme(initVaultApp?.liquidNeonV2 ?? s.liquidNeonV2);
         }
       }
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
@@ -6031,15 +6036,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         <SettingsPanel
           key={settingsOpenToken}
           initialCategory={settingsInitialCategory}
+          activeVaultRoot={activeVaultRoot}
           onClose={() => { setSettingsOpen(false); setSettingsInitialCategory('appearance'); }}
           onSaved={(s) => {
             setAppSettings(s);
-            applyTheme(s.theme);
+            // SKY-11237: apply the saved vault's per-vault appearance, falling back to global.
+            const savedVaultApp = activeVaultRoot ? s.vaultAppearance?.[activeVaultRoot] : undefined;
+            applyTheme(savedVaultApp?.theme ?? s.theme);
             applyPageBackgroundTokens(s.pageBackground);
             // SKY-2963: must load the background data URL before applying tokens,
             // otherwise applyLiquidNeonTokens receives no bgDataUrl and resets the
             // background to the default gradient (same pattern as initial load above).
-            const lg = s.liquidNeon;
+            const lg = savedVaultApp?.liquidNeon ?? s.liquidNeon;
             if (lg?.background && lg.background !== 'default') {
               window.api.loadBgImage?.(lg.background)
                 .then((res: { dataUrl: string | null }) => applyLiquidNeonTokens(lg, res?.dataUrl))
@@ -6048,7 +6056,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               applyLiquidNeonTokens(lg);
             }
             // Beta 3 Liquid Neon (M1): re-apply v2 slot-engine tokens on save.
-            void applyLiquidNeonV2Theme(s.liquidNeonV2);
+            void applyLiquidNeonV2Theme(savedVaultApp?.liquidNeonV2 ?? s.liquidNeonV2);
           }}
           focusPrefs={focusPrefs}
           onFocusPrefsChange={(prefs) => persistLayout({ ...layout, focusPrefs: prefs })}

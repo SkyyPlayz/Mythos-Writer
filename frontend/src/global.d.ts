@@ -495,6 +495,13 @@ interface EditorPrefs {
 type SettingsVaultImportKind = 'obsidian' | 'notion' | 'scriv' | 'markdown';
 type SettingsStoryImportFormat = 'docx' | 'gdoc' | 'md' | 'scriv' | 'epub';
 
+/** SKY-11237: per-vault appearance overrides. Key = Story Vault root path. */
+interface VaultAppearanceSettings {
+  theme?: 'dark' | 'high-contrast';
+  liquidNeon?: LiquidNeonPrefs;
+  liquidNeonV2?: import('./theme/liquidNeonEngine').LiquidNeonV2Settings;
+}
+
 interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
@@ -577,6 +584,9 @@ interface AppSettings {
   /** Beta 4 M1: per-vault default theme — Story Vault root path → preset key.
    *  Applied (setKey + slots + wp 'match') when switching to that vault. */
   vaultThemes?: Record<string, string>;
+  /** SKY-11237: per-vault appearance overrides (theme + Liquid Neon). Key = Story Vault root path.
+   *  Absent key = use global defaults. Written by SettingsPanel when activeVaultRoot is provided. */
+  vaultAppearance?: Record<string, VaultAppearanceSettings>;
   /** SKY-11048: nav-rail vault-tile display-name override — Story Vault root
    *  path → user-chosen label. A local rename only (the on-disk vault + its
    *  registry entry are untouched); absent → derive from the project entry. */

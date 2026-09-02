@@ -82,12 +82,14 @@ interface Props {
   /** SKY-11048: open directly to a category — e.g. a nav-rail vault tile's
    *  "Settings → this vault" context-menu action jumps to 'vaults'. */
   initialCategory?: SettingsCategoryId;
+  /** SKY-11237: active vault root path — used to scope appearance settings per-vault. */
+  activeVaultRoot?: string;
 }
 
 const SETTINGS_CATS: readonly SettingsCategoryId[] = SETTINGS_CATEGORIES.map((c) => c.id);
 type SettingsCat = SettingsCategoryId;
 
-export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange, initialCategory }: Props) {
+export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange, initialCategory, activeVaultRoot }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -235,12 +237,44 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     window.api.settingsGet().then((rawSettings) => {
       // Beta 3 M22: betaReader is optional in the AppSettings type (pre-M22
       // files); normalize once at load so the panel can index it directly.
-      const s: AppSettings = rawSettings.agents.betaReader
+      let s: AppSettings = rawSettings.agents.betaReader
         ? rawSettings
         : { ...rawSettings, agents: { ...rawSettings.agents, betaReader: { ...BETA_READER_DEFAULTS } } };
-      setSettings(s);
-      if (s.liquidNeon) {
-        const raw = s.liquidNeon;
+
+      // SKY-11237: Migration — if vaultAppearance is absent, seed it from the
+      // global values so every known vault starts with what the user already had.
+      if (!s.vaultAppearance && activeVaultRoot) {
+        const knownRoots = Object.keys(s.vaultThemes ?? {});
+        if (!knownRoots.includes(activeVaultRoot)) knownRoots.push(activeVaultRoot);
+        const seeded: Record<string, VaultAppearanceSettings> = {};
+        for (const root of knownRoots) {
+          seeded[root] = {
+            ...(s.theme ? { theme: s.theme } : {}),
+            ...(s.liquidNeon ? { liquidNeon: s.liquidNeon } : {}),
+            ...(s.liquidNeonV2 ? { liquidNeonV2: s.liquidNeonV2 } : {}),
+          };
+        }
+        s = { ...s, vaultAppearance: seeded };
+      }
+
+      // SKY-11237: per-vault appearance — use the vault-specific override if
+      // activeVaultRoot is provided, falling back to global values.
+      const vaultApp: VaultAppearanceSettings | undefined =
+        activeVaultRoot ? s.vaultAppearance?.[activeVaultRoot] : undefined;
+
+      // Overlay vault-specific appearance onto the settings state so the
+      // Appearance section shows values for the current vault, not globals.
+      const effectiveTheme = vaultApp?.theme ?? s.theme;
+      const effectiveLiquidNeonV2 = vaultApp?.liquidNeonV2 ?? s.liquidNeonV2;
+      setSettings({
+        ...s,
+        theme: effectiveTheme,
+        ...(effectiveLiquidNeonV2 !== undefined ? { liquidNeonV2: effectiveLiquidNeonV2 } : {}),
+      });
+
+      const effectiveLiquidNeon = vaultApp?.liquidNeon ?? s.liquidNeon;
+      if (effectiveLiquidNeon) {
+        const raw = effectiveLiquidNeon;
         // SKY-3219 / GH#612: infer bgMode:'image' for legacy settings with a
         // stored file path but no explicit bgMode field.
         const bgModeOverride: Partial<LiquidNeonPrefs> =
@@ -496,6 +530,20 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
         ...(settings.provider?.kind === providerKind && settings.provider.capabilities ? { capabilities: settings.provider.capabilities } : {}),
       };
+      // SKY-11237: build the updated per-vault appearance entry for the active
+      // vault and merge it into the existing vaultAppearance map.
+      const vaultAppearanceUpdate: AppSettings['vaultAppearance'] = activeVaultRoot
+        ? {
+            ...(settings.vaultAppearance ?? {}),
+            [activeVaultRoot]: {
+              ...(settings.vaultAppearance?.[activeVaultRoot] ?? {}),
+              theme: settings.theme,
+              liquidNeon: lg,
+              ...(settings.liquidNeonV2 !== undefined ? { liquidNeonV2: settings.liquidNeonV2 } : {}),
+            },
+          }
+        : settings.vaultAppearance;
+
       const payload: AppSettings = {
         ...settings,
         apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
@@ -504,6 +552,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         pageBackground: pageBg,
         navConfig,
         telemetry: { enabled: telemetryEnabled, sessionId: settings.telemetry?.sessionId ?? '' },
+        ...(vaultAppearanceUpdate !== undefined ? { vaultAppearance: vaultAppearanceUpdate } : {}),
         agents: {
           ...settings.agents,
           writingAssistant: { ...settings.agents.writingAssistant, provider: buildAgentProviderConfig('writingAssistant') },
@@ -532,7 +581,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, pageBg, navConfig, onSaved, buildAgentProviderConfig, sttBinaryToken, sttModelToken]);
+  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, pageBg, navConfig, onSaved, buildAgentProviderConfig, sttBinaryToken, sttModelToken, activeVaultRoot]);
 
   // SKY-9: persist vault paths in a separate round-trip from settingsSet so
   // a misconfigured path can't block API-key edits, and so the main side can
