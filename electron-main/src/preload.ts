@@ -678,6 +678,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('vault:surface:unhide', { vaultRoot }),
   vaultSurfaceListHidden: () =>
     ipcRenderer.invoke('vault:surface:listHidden', undefined),
+  // SKY-11154 — "Vaults folder" row: reveal/move the parent folder holding
+  // every Mythos vault.
+  vaultSurfaceRevealVaultsParent: () =>
+    ipcRenderer.invoke('vault:surface:revealVaultsParent', undefined),
+  vaultSurfaceMoveVaultsParent: (newParentPath: string) =>
+    ipcRenderer.invoke('vault:surface:moveVaultsParent', { newParentPath }),
   onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {
     const handler = (_: unknown, data: { vaultRoot: string; notesVaultRoot?: string }) => cb(data);
     ipcRenderer.on('project:switched', handler);

@@ -146,7 +146,9 @@ test.afterAll(async () => {
   fs.rmSync(notesVaultDir, { recursive: true, force: true });
 });
 
-test('Import a story (.epub) writes real scene/chapter files to the vault on disk', async () => {
+// SKY-11154: ImportStorySection.tsx (the "#section-import-story" UI this
+// spec drove) was deleted — see the matching note in e2e/story-import.spec.ts.
+test.skip('Import a story (.epub) writes real scene/chapter files to the vault on disk', async () => {
   expect(fs.existsSync(FIXTURE_EPUB), `missing fixture: ${FIXTURE_EPUB}`).toBe(true);
   expect(app, 'app failed to launch').toBeTruthy();
 

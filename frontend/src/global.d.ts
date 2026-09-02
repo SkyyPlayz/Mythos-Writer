@@ -1402,7 +1402,7 @@ interface Window {
     }>;
     onStoryVaultRegistryChanged?: (cb: () => void) => () => void;
     // Beta 4 M2 — per-vault stats for the vault-switcher popover (§4)
-    projectStats?: () => Promise<{ stats: Array<{ vaultRoot: string; storyFileCount: number; noteCount: number | null }> }>;
+    projectStats?: () => Promise<{ stats: Array<{ vaultRoot: string; storyFileCount: number; noteCount: number | null; notesVaultCount: number; storyVaultCount: number }> }>;
     // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos vaults
     projectIcons?: () => Promise<{ icons: VaultIconRef[] }>;
     projectIconSet?: (payload:
@@ -1420,6 +1420,10 @@ interface Window {
     vaultSurfaceHide: (payload: { vaultRoot: string; level: 'mythos' | 'notes' | 'story' }) => Promise<{ hidden: boolean; pairedStoryVaultName?: string }>;
     vaultSurfaceUnhide: (vaultRoot: string) => Promise<{ ok: true }>;
     vaultSurfaceListHidden: () => Promise<{ hiddenVaultRoots: string[] }>;
+    // SKY-11154 — "Vaults folder" row: reveal/move the parent folder holding
+    // every Mythos vault.
+    vaultSurfaceRevealVaultsParent: () => Promise<{ opened: boolean }>;
+    vaultSurfaceMoveVaultsParent: (newParentPath: string) => Promise<{ moved: boolean; newPath?: string; error?: string }>;
 
     // One-click Mythos Vault create (SKY-320). Omitting parentPath puts the
     // new bundle under ~/Mythos/Vaults/<auto-name>/; the renderer can supply
@@ -1456,7 +1460,7 @@ interface Window {
     // Two-vault path management (MYT-608 / SKY-9) — Story Vault + Notes Vault
     // MYT-789: setPaths now requires a per-path registrationToken from
     // vault:pick-folder, or the path must already be in recent-projects.
-    vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string; homeDir?: string; pathSeparator?: '/' | '\\'; defaultVaultsParentPath?: string; mythosRoot?: string | null }>;
+    vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string; homeDir?: string; pathSeparator?: '/' | '\\'; defaultVaultsParentPath?: string; mythosRoot?: string | null; vaultsParentPath?: string }>;
     vaultGetSystemPaths: () => Promise<{
       homeDir: string;
       documentsDir: string;

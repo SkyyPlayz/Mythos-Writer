@@ -465,21 +465,27 @@ import { createVaultFromOptions } from './mythosFormat/createVaultFromOptions.js
 // SKY-11058: notes vault registry
 import {
   ensureNotesVaultRegistry,
+  readNotesVaultRegistry,
   createNotesVaultFromOptions,
   registerImportedNotesVault,
   setActiveNotesVault,
   renameNotesVault,
+  removeNotesVault,
   getActiveNotesVaultPath,
   notesVaultAbsPath,
   buildLinkResolutionReport,
 } from './mythosFormat/notesVaultRegistry.js';
 import {
   ensureStoryVaultRegistry,
+  readStoryVaultRegistry,
   createStoryVaultFromOptions,
   setActiveStoryVault,
   renameStoryVault,
+  removeStoryVault,
   pairStoryVaultToNotesVault,
+  storyVaultAbsPath,
 } from './mythosFormat/storyVaultRegistry.js';
+import { remapVaultSettingsPaths } from './vaultPathRemap.js';
 import type {
   NotesVaultRegistryListResponse,
   NotesVaultRegistryCreatePayload,
@@ -865,6 +871,10 @@ interface VaultSettings {
   // touches disk — this is purely a UI visibility flag. Keyed by resolved
   // absolute vaultRoot so the match is stable across restarts.
   hiddenVaultRoots?: string[];
+  // SKY-11154: the parent folder holding every Mythos vault, set once the
+  // user runs the Vault & Files "Move…" flow. Absent (the common case) falls
+  // back to defaultMythosVaultsParent().
+  vaultsParentPath?: string;
 }
 
 // SKY-11238: order-stable registration — the persisted list order IS the
@@ -955,6 +965,13 @@ function resolveKokoroAssets(): KokoroAssets | null {
 // data dir contains all vault bundles and ~/Mythos is not touched by default.
 function defaultMythosVaultsParent(): string {
   return defaultMythosVaultsParentPath(app.getPath('userData'));
+}
+
+// SKY-11154: the CURRENT parent folder holding every Mythos vault — the
+// default unless the user has run the Vault & Files "Move…" flow, which
+// persists the relocated parent in vault-settings.json.
+function getVaultsParentPath(): string {
+  return loadVaultSettings().vaultsParentPath ?? defaultMythosVaultsParent();
 }
 
 // SKY-9: layoutMode resolution. 'imported' (set by the Obsidian importer) is
@@ -5748,6 +5765,43 @@ const handlers: IpcHandlers = {
       saveVaultSettings({ recentProjects: remaining });
     }
 
+    // SKY-11154: inner notes/story vaults also live in notes-vaults.json /
+    // story-vaults.json (SKY-11058/11150) alongside recentProjects — remove
+    // the matching entry there too so a trashed card does not stay listed
+    // pointing at a now-gone folder. Scoped to the currently active Mythos
+    // vault, matching how the Notes/Story columns list their entries.
+    if (level === 'notes' || level === 'story') {
+      const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+      if (mythosRoot !== null) {
+        if (level === 'notes') {
+          const registry = readNotesVaultRegistry(mythosRoot);
+          const entry = registry?.vaults.find((v) => path.resolve(notesVaultAbsPath(mythosRoot, v)) === vaultPath);
+          if (entry) {
+            removeNotesVault(mythosRoot, entry.id);
+            // A story vault paired to the now-removed notes vault must not
+            // keep pointing at a dangling id.
+            const storyRegistry = readStoryVaultRegistry(mythosRoot);
+            let storyChanged = false;
+            for (const sv of storyRegistry?.vaults ?? []) {
+              if (sv.pairedNotesVaultId === entry.id) {
+                pairStoryVaultToNotesVault(mythosRoot, sv.id, null);
+                storyChanged = true;
+              }
+            }
+            mainWindow?.webContents.send('notesVaultRegistry:changed');
+            if (storyChanged) mainWindow?.webContents.send('storyVaultRegistry:changed');
+          }
+        } else {
+          const registry = readStoryVaultRegistry(mythosRoot);
+          const entry = registry?.vaults.find((v) => path.resolve(storyVaultAbsPath(mythosRoot, v)) === vaultPath);
+          if (entry) {
+            removeStoryVault(mythosRoot, entry.id);
+            mainWindow?.webContents.send('storyVaultRegistry:changed');
+          }
+        }
+      }
+    }
+
     // Trash via shell.trashItem ONLY — never fs.rm, no fallback.
     return trashVaultFolder(vaultPath);
   },
@@ -5784,6 +5838,81 @@ const handlers: IpcHandlers = {
 
   [IPC_CHANNELS.VAULT_SURFACE_LIST_HIDDEN]: () => {
     return { hiddenVaultRoots: loadVaultSettings().hiddenVaultRoots ?? [] };
+  },
+
+  // SKY-11154 — "Vaults folder" row: reveal the parent folder holding every
+  // Mythos vault (distinct from VAULT_REVEAL_FOLDER, which reveals the
+  // active Story Vault).
+  [IPC_CHANNELS.VAULT_SURFACE_REVEAL_VAULTS_PARENT]: async () => {
+    const err = await shell.openPath(getVaultsParentPath());
+    return { opened: err === '' };
+  },
+
+  // SKY-11154 — move the Vaults-folder parent to a new location. Stops the
+  // same watchers/db the 'mythos' level VAULT_SURFACE_TRASH handler stops
+  // (this can be moving the folder containing the currently active vault),
+  // renames the folder, then remaps every persisted absolute path that lived
+  // under the old parent. On any failure the settings are left untouched and
+  // the folder is left exactly where it was.
+  [IPC_CHANNELS.VAULT_SURFACE_MOVE_VAULTS_PARENT]: async (
+    payload: import('./ipc.js').VaultSurfaceMoveVaultsParentPayload,
+  ) => {
+    const oldParent = path.resolve(getVaultsParentPath());
+    const newParentPath = payload?.newParentPath;
+    if (!newParentPath || typeof newParentPath !== 'string' || !path.isAbsolute(newParentPath)) {
+      return { moved: false, error: 'A valid destination folder is required.' };
+    }
+    const destination = path.join(path.resolve(newParentPath), path.basename(oldParent));
+    const resolvedDestination = path.resolve(destination);
+
+    if (resolvedDestination === oldParent) {
+      return { moved: false, error: 'That is already the current Vaults folder.' };
+    }
+    if (fs.existsSync(resolvedDestination)) {
+      return { moved: false, error: 'A folder with that name already exists at the destination.' };
+    }
+    // Refuse a destination inside (or equal to) the folder being moved.
+    if (resolvedDestination === oldParent || resolvedDestination.startsWith(oldParent + path.sep)) {
+      return { moved: false, error: 'The destination cannot be inside the folder being moved.' };
+    }
+    if (!fs.existsSync(oldParent)) {
+      return { moved: false, error: 'The current Vaults folder could not be found.' };
+    }
+
+    stopWritingScanScheduler();
+    await stopBoardWatcher();
+    await stopVaultWatcher();
+    await stopNotesVaultWatcher();
+    closeDb();
+
+    try {
+      fs.mkdirSync(path.resolve(newParentPath), { recursive: true });
+      fs.renameSync(oldParent, resolvedDestination);
+    } catch (err) {
+      // Leave the folder alone on failure (mirrors trashVaultFolder's
+      // discipline) — restart the watchers we stopped and bail without
+      // touching settings.
+      const activeRoot = getVaultRoot();
+      const activeNotesRoot = getNotesVaultRoot();
+      await startVaultWatcher(activeRoot, notifyVaultChanged);
+      await startNotesVaultWatcher(activeNotesRoot, notifyNotesVaultChanged);
+      startWritingScanScheduler();
+      return { moved: false, error: err instanceof Error ? err.message : String(err) };
+    }
+
+    const current = loadVaultSettings();
+    const remapped = remapVaultSettingsPaths(current, oldParent, resolvedDestination);
+    saveVaultSettings(remapped);
+
+    const newActiveRoot = remapped.vaultRoot ?? getVaultRoot();
+    const newActiveNotesRoot = remapped.notesVaultRoot ?? getNotesVaultRoot();
+    ensureVaultDir();
+    ensureNotesVaultDir();
+    await startVaultWatcher(newActiveRoot, notifyVaultChanged);
+    await startNotesVaultWatcher(newActiveNotesRoot, notifyNotesVaultChanged);
+    startWritingScanScheduler();
+
+    return { moved: true, newPath: resolvedDestination };
   },
 
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {
@@ -5995,6 +6124,7 @@ const handlers: IpcHandlers = {
       pathSeparator: path.sep as '/' | '\\',
       defaultVaultsParentPath: defaultMythosVaultsParent(),
       mythosRoot: mythosRootForStoryVault(getVaultRoot()),
+      vaultsParentPath: getVaultsParentPath(),
     };
   },
 

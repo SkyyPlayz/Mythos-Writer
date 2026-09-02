@@ -317,6 +317,10 @@ export const IPC_CHANNELS = {
   VAULT_SURFACE_HIDE: 'vault:surface:hide',
   VAULT_SURFACE_UNHIDE: 'vault:surface:unhide',
   VAULT_SURFACE_LIST_HIDDEN: 'vault:surface:listHidden',
+  // SKY-11154: "Vaults folder" reveal/move — the parent folder holding every
+  // Mythos vault, distinct from VAULT_REVEAL_FOLDER (the active Story Vault).
+  VAULT_SURFACE_REVEAL_VAULTS_PARENT: 'vault:surface:revealVaultsParent',
+  VAULT_SURFACE_MOVE_VAULTS_PARENT: 'vault:surface:moveVaultsParent',
 
   // Archive confirmation dialog (MYT-376) — three-verb resolution for inconsistencies
   ARCHIVE_CONFIRM: 'archive:confirm',
@@ -919,6 +923,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_SURFACE_HIDE]: (payload: VaultSurfaceHidePayload) => VaultSurfaceHideResponse;
   [IPC_CHANNELS.VAULT_SURFACE_UNHIDE]: (payload: VaultSurfaceUnhidePayload) => { ok: true };
   [IPC_CHANNELS.VAULT_SURFACE_LIST_HIDDEN]: (payload: never) => VaultSurfaceListHiddenResponse;
+  [IPC_CHANNELS.VAULT_SURFACE_REVEAL_VAULTS_PARENT]: (payload: never) => Promise<VaultSurfaceRevealVaultsParentResponse>;
+  [IPC_CHANNELS.VAULT_SURFACE_MOVE_VAULTS_PARENT]: (payload: VaultSurfaceMoveVaultsParentPayload) => Promise<VaultSurfaceMoveVaultsParentResponse>;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
   [IPC_CHANNELS.ARCHIVE_SCAN_LINKS]: (payload: ArchiveScanLinksPayload) => ArchiveScanLinksResponse;
@@ -3082,6 +3088,10 @@ export interface ProjectStatsResponse {
     storyFileCount: number;
     /** `.md` files under the paired Notes Vault root; null when unpaired. */
     noteCount: number | null;
+    /** SKY-11154: inner notes-vault count for the owning Mythos vault (1 for legacy). */
+    notesVaultCount: number;
+    /** SKY-11154: inner story-vault count for the owning Mythos vault (1 for legacy). */
+    storyVaultCount: number;
   }>;
 }
 
@@ -3160,6 +3170,22 @@ export interface VaultSurfaceUnhidePayload {
 
 export interface VaultSurfaceListHiddenResponse {
   hiddenVaultRoots: string[];
+}
+
+// SKY-11154 — "Vaults folder" reveal/move flow (§2).
+
+export interface VaultSurfaceRevealVaultsParentResponse {
+  opened: boolean;
+}
+
+export interface VaultSurfaceMoveVaultsParentPayload {
+  newParentPath: string;
+}
+
+export interface VaultSurfaceMoveVaultsParentResponse {
+  moved: boolean;
+  newPath?: string;
+  error?: string;
 }
 
 // ─── One-click Mythos Vault (SKY-320) ──────────────────────────────────────
@@ -4635,6 +4661,11 @@ export interface VaultGetPathsResponse {
    *  "Add a Notes/Story Vault…" compute a destination without re-deriving
    *  the v2 naming convention in the renderer. */
   mythosRoot: string | null;
+  /** SKY-11154: the parent folder holding every Mythos vault — lets the
+   *  Vault & Files "Vaults folder" row show the current value without a
+   *  separate round trip. Falls back to the default (userData-relative)
+   *  parent when unset. */
+  vaultsParentPath: string;
 }
 
 export interface VaultGetSystemPathsResponse {

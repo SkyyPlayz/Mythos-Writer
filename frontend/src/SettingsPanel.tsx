@@ -37,7 +37,8 @@ import UpdatesSection from './components/SettingsPanel/sections/UpdatesSection';
 import AppearanceSection from './components/SettingsPanel/sections/AppearanceSection';
 import LiquidNeonAppearanceSection from './components/SettingsPanel/sections/LiquidNeonAppearanceSection';
 import MythosVaultsSection from './components/SettingsPanel/sections/MythosVaultsSection';
-import AddVaultButtonsSection from './components/SettingsPanel/sections/AddVaultButtonsSection';
+import VaultsFolderSection from './components/SettingsPanel/sections/VaultsFolderSection';
+import VaultLinkingColumns from './components/SettingsPanel/sections/VaultLinkingColumns';
 import PageAppearanceSection from './components/SettingsPanel/sections/PageAppearanceSection';
 import NavConfigSection from './components/SettingsPanel/sections/NavConfigSection';
 import FocusModeSection from './components/SettingsPanel/sections/FocusModeSection';
@@ -48,8 +49,6 @@ import AccountProfileSection from './components/SettingsPanel/sections/AccountPr
 import EditorSettingsSection from './components/SettingsPanel/sections/EditorSettingsSection';
 // Beta 4 M28: manuscript-only appearance cards live on the Editor page (§13)
 import EditorManuscriptSection from './components/SettingsPanel/sections/EditorManuscriptSection';
-import ImportVaultSection from './components/SettingsPanel/sections/ImportVaultSection';
-import ImportStorySection from './components/SettingsPanel/sections/ImportStorySection';
 import SyncBackupSection from './components/SettingsPanel/sections/SyncBackupSection';
 import ShortcutsSection from './components/SettingsPanel/sections/ShortcutsSection';
 import AboutSection from './components/SettingsPanel/sections/AboutSection';
@@ -954,13 +953,20 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
               <AccountSection vaults={vaults} vaultProvider={vaultProvider} onMoveVault={handleMoveVault} />
 
+              {/* SKY-11154 (parent spec SKY-11141 §2): "Vaults folder" row —
+                  the parent folder holding every Mythos vault, with an
+                  Open-folder + Move… flow (distinct from the per-vault
+                  AccountSection move above). */}
+              <VaultsFolderSection />
+
               {/* Beta 4 M1: Mythos vaults cards — per-vault default theme (§3). */}
               <MythosVaultsSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
 
-              {/* SKY-11152 (parent spec SKY-11141 §3c): "+ Add Notes Vault" /
-                  "+ Add Story Vault" dialogs — reuses the SKY-11151 creation
-                  primitive, no location picker. */}
-              <AddVaultButtonsSection />
+              {/* SKY-11154 (parent spec SKY-11141 §4): Notes/Story columns for
+                  the active Mythos vault, with dot-linking pairing — grew out
+                  of SKY-11152's "+ Add Notes Vault"/"+ Add Story Vault"
+                  dialogs (still reused here, kind='notes'/'story'). */}
+              <VaultLinkingColumns />
 
               <VaultPathsSection
                 vaults={vaults}
@@ -976,11 +982,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
               {/* Beta 4 M5: vault format card + MythosVault upgrade entry */}
               <MythosFormatSection />
-
-              {/* Beta 3 M24: vault + story import (prototype Vault & Files page) */}
-              <ImportVaultSection notesVaultPath={vaults.notesVaultPath} />
-
-              <ImportStorySection />
 
               <VaultHealthSection />
 
