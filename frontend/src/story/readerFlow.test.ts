@@ -5,11 +5,13 @@ import { describe, it, expect } from 'vitest';
 import type { Block, Chapter, Scene, Story } from '../types';
 import type { ManuscriptCursor } from './manuscriptModel';
 import {
+  buildNoteReaderFlow,
   buildReaderFlow,
   flowScopeKey,
   flowStartIndex,
   sceneSkipIndex,
   splitSentences,
+  stripMarkdownForSpeech,
   timeSkipIndex,
   type ReaderFlowItem,
 } from './readerFlow';
@@ -275,5 +277,71 @@ describe('flowScopeKey', () => {
     expect(flowScopeKey(story, at('chapter', 0))).not.toBe(flowScopeKey(story, at('chapter', 1)));
     expect(flowScopeKey(story, at('scene', 0, 0))).not.toBe(flowScopeKey(story, at('scene', 0, 1)));
     expect(flowScopeKey(story, at('book'))).not.toBe(flowScopeKey(story, at('chapter', 0)));
+  });
+});
+
+// ── SKY-11244: note-shaped flow (single linear block, no scenes/chapters) ──
+
+describe('stripMarkdownForSpeech', () => {
+  it('drops heading/list/quote markers at line starts', () => {
+    expect(stripMarkdownForSpeech('# Title')).toBe('Title');
+    expect(stripMarkdownForSpeech('## Sub')).toBe('Sub');
+    expect(stripMarkdownForSpeech('- one item')).toBe('one item');
+    expect(stripMarkdownForSpeech('* one item')).toBe('one item');
+    expect(stripMarkdownForSpeech('1. first')).toBe('first');
+    expect(stripMarkdownForSpeech('> quoted')).toBe('quoted');
+  });
+
+  it('drops inline emphasis and code delimiters without eating the text', () => {
+    expect(stripMarkdownForSpeech('This is **bold** and __also bold__.')).toBe(
+      'This is bold and also bold.'
+    );
+    expect(stripMarkdownForSpeech('This is *italic* and _also italic_.')).toBe(
+      'This is italic and also italic.'
+    );
+    expect(stripMarkdownForSpeech('Run `npm test` first.')).toBe('Run npm test first.');
+  });
+
+  it('leaves a mid-word asterisk/underscore alone (not emphasis)', () => {
+    expect(stripMarkdownForSpeech('5 * 3 = 15 and snake_case_name')).toBe(
+      '5 * 3 = 15 and snake_case_name'
+    );
+  });
+});
+
+describe('buildNoteReaderFlow', () => {
+  it('splits paragraphs (blank-line separated) into per-sentence items with no heading', () => {
+    const flow = buildNoteReaderFlow(
+      'First sentence here. Second sentence follows.\n\nA new paragraph starts.'
+    );
+    expect(flow.map((f) => f.text)).toEqual([
+      'First sentence here.',
+      'Second sentence follows.',
+      'A new paragraph starts.',
+    ]);
+    // No headings (unlike buildReaderFlow) — every item carries a key.
+    expect(flow.every((f) => f.key !== null)).toBe(true);
+  });
+
+  it('keys sentences by paragraph index so siblings within a paragraph share a key', () => {
+    const flow = buildNoteReaderFlow('One. Two.\n\nThree.');
+    expect(flow.map((f) => f.key)).toEqual(['p0', 'p0', 'p1']);
+  });
+
+  it('every item shares sceneOrdinal 0 — a note is one flat scope (no scene skip)', () => {
+    const flow = buildNoteReaderFlow('One.\n\nTwo.\n\nThree.');
+    expect(flow.every((f) => f.sceneOrdinal === 0)).toBe(true);
+    expect(sceneSkipIndex(flow, 0, 1)).toBe(1); // no other ordinal — falls back to +1
+  });
+
+  it('drops empty paragraphs and blank content entirely', () => {
+    expect(buildNoteReaderFlow('')).toEqual([]);
+    expect(buildNoteReaderFlow('   \n\n  ')).toEqual([]);
+    expect(buildNoteReaderFlow('One.\n\n\n\nTwo.').map((f) => f.text)).toEqual(['One.', 'Two.']);
+  });
+
+  it('strips markdown decoration before splitting into sentences', () => {
+    const flow = buildNoteReaderFlow('# Heading\n\nThis is **bold** text. It continues.');
+    expect(flow.map((f) => f.text)).toEqual(['Heading', 'This is bold text.', 'It continues.']);
   });
 });

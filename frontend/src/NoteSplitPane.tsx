@@ -13,6 +13,8 @@ import WorkspaceTabBar from './WorkspaceTabBar';
 import EntityBrowser from './EntityBrowser';
 import type { EntityEntry } from './types';
 import type { WikiLinkCandidate } from './crossTabLinkResolver';
+import type { FormatToolbarActions } from './FormatToolbar';
+import type { TtsEngineSettings, TtsVoicePrefs } from './hooks/useTtsPlayer';
 import './NoteSplitPane.css';
 
 export interface NotesPaneTabStripProps {
@@ -154,6 +156,11 @@ export interface NoteSplitPaneProps {
   resolvedWikiLinkTitles?: ReadonlySet<string>;
   sceneWikiLinkTitles?: ReadonlySet<string>;
   wikiLinkCandidates?: WikiLinkCandidate[];
+  /** SKY-11244: Read/Dictate toolbar actions — same object the primary pane
+   * gets, so this pane's note has a working Read button too. */
+  toolbarActions?: FormatToolbarActions;
+  ttsSettings?: TtsEngineSettings;
+  voicePrefs?: TtsVoicePrefs;
   style?: CSSProperties;
 
   // ─── SKY-9920 (M5 item 5): Entity Browser as an openable document tab ───
@@ -181,6 +188,9 @@ export default function NoteSplitPane({
   resolvedWikiLinkTitles,
   sceneWikiLinkTitles,
   wikiLinkCandidates,
+  toolbarActions,
+  ttsSettings,
+  voicePrefs,
   style,
   activeTabIsEntityBrowser = false,
   onSelectEntity,
@@ -217,6 +227,9 @@ export default function NoteSplitPane({
             resolvedWikiLinkTitles={resolvedWikiLinkTitles}
             sceneWikiLinkTitles={sceneWikiLinkTitles}
             wikiLinkCandidates={wikiLinkCandidates}
+            toolbarActions={toolbarActions}
+            ttsSettings={ttsSettings}
+            voicePrefs={voicePrefs}
           />
         )}
       </div>

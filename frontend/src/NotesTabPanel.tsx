@@ -568,6 +568,8 @@ export default function NotesTabPanel({
               wikiLinkCandidates={wikiLinkCandidates}
               onClose={onCloseActiveNote}
               toolbarActions={noteToolbarActions}
+              ttsSettings={ttsSettings}
+              voicePrefs={voicePrefs}
             />
           )}
           {/* M16 / SKY-9784: note split — active note + a second note side by
@@ -615,6 +617,8 @@ export default function NotesTabPanel({
                     wikiLinkCandidates={wikiLinkCandidates}
                     onClose={onCloseActiveNote}
                     toolbarActions={noteToolbarActions}
+                    ttsSettings={ttsSettings}
+                    voicePrefs={voicePrefs}
                   />
                 )}
               </div>
@@ -645,6 +649,9 @@ export default function NotesTabPanel({
                 resolvedWikiLinkTitles={resolvedWikiLinkTitles}
                 sceneWikiLinkTitles={sceneWikiLinkTitles}
                 wikiLinkCandidates={wikiLinkCandidates}
+                toolbarActions={noteToolbarActions}
+                ttsSettings={ttsSettings}
+                voicePrefs={voicePrefs}
                 activeTabIsEntityBrowser={noteSplitIsEntityBrowser}
                 onSelectEntity={onSelectEntity}
                 selectedEntityId={selectedEntityId}
