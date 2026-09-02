@@ -885,6 +885,10 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
   const hasLoadedGraphRef = useRef(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
+  // SKY-11210: scope the toggle widened FROM (null = not toggle-widened).
+  // Cleared when the user picks a scope explicitly via the selector.
+  const [scopeBeforeStoryCluster, setScopeBeforeStoryCluster] = useState<VaultGraphScope | null>(null);
+
   // ─── M21: live force sim, per-category colors, filters + inspector ─────────
   // Bumped after every sim tick so render snapshots the latest positions.
   const [, setSimVersion] = useState(0);
@@ -1445,19 +1449,35 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
 
   // GH #650: persist only user-driven scope changes so an explicit
   // initialVaultScope override never clobbers the stored preference.
+  // SKY-11210: explicit selector selection takes full control — clear any
+  // toggle-widened scope so the toggle reflects the new explicit state.
   const handleScopeSelect = useCallback((scope: VaultGraphScope) => {
+    setScopeBeforeStoryCluster(null);
     setVaultScope(scope);
     persistVaultScope(scope);
   }, []);
 
-  // M21: the Story-cluster switch drives the same visibility set as the Scenes
-  // chip (prototype offCats[5] / storyToggle, 4388–4389). Unlike the prototype
-  // (hidden by default, 3259) the app keeps story nodes visible by default —
-  // existing scope behavior and tests depend on it.
-  const storyClusterOn = activeCategories.has('scenes');
+  // SKY-11210: "Show story cluster" actually fetches manuscript data.
+  // ON  → if scope is notes-only, widen to both (remember prior scope to restore).
+  //       If scope already includes story, it's a no-op (already ON).
+  // OFF → restore the scope that was active before the toggle widened it.
+  // `storyClusterOn` reflects whether story nodes can appear in the current fetch
+  // (i.e. scope includes the story vault), not a filter over what is already loaded.
+  const storyClusterOn = vaultScope === 'both' || vaultScope === 'story';
   const handleStoryClusterToggle = useCallback(() => {
-    handleToggleCategory('scenes');
-  }, [handleToggleCategory]);
+    if (!storyClusterOn) {
+      // Widen scope to bring in manuscript nodes.
+      setScopeBeforeStoryCluster(vaultScope);
+      setVaultScope('both');
+    } else if (scopeBeforeStoryCluster !== null) {
+      // Restore the scope the toggle widened from.
+      setVaultScope(scopeBeforeStoryCluster);
+      setScopeBeforeStoryCluster(null);
+    } else {
+      // User had story/both explicitly (no toggle-widening to undo); narrow to notes.
+      setVaultScope('notes');
+    }
+  }, [storyClusterOn, vaultScope, scopeBeforeStoryCluster]);
 
   const categoryCounts = useMemo(() => {
     const counts = new Map<GraphCategory, number>();

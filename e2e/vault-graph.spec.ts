@@ -384,3 +384,83 @@ test('TC-G-05: adding a [[wikilink]] to an open graph\'s note live-updates the e
   );
   await expect(newEdge.first()).toBeVisible({ timeout: 4_000 });
 });
+
+// ─── TC-G-06: Show story cluster toggle — SKY-11210 ─────────────────────────
+//
+// Acceptance criteria:
+//   AC1  Starting at scope=Notes, clicking the toggle widened scope to Both
+//        and at least one gold manuscript node appears in the graph.
+//   AC2  Clicking the toggle again restores scope=Notes and story nodes leave.
+//   AC3  The reachability path: click the REAL toggle, assert nodes; do NOT
+//        pre-seed the graph with story nodes and check rendering only.
+//
+// Seeding: a minimal manifest.json in the Story Vault with one story / chapter
+// / scene so buildScopedVaultGraph() has something to return at scope=both.
+
+const SCENE_ID = 'scene-g06';
+const CHAPTER_ID = 'ch-g06';
+const STORY_ID = 'story-g06';
+const SCENE_TITLE = 'G06 Scene';
+
+/** Write a minimal story vault with one scene so TC-G-06 can find a gold node. */
+function seedStoryVault(vaultDir: string): void {
+  const scenePath = 'Part1/Chapter1/scene-g06.md';
+  const sceneDir = path.join(vaultDir, 'Part1', 'Chapter1');
+  fs.mkdirSync(sceneDir, { recursive: true });
+  fs.writeFileSync(path.join(vaultDir, scenePath), `# ${SCENE_TITLE}\n\nHello world.`, 'utf-8');
+
+  const manifest = {
+    stories: [
+      {
+        id: STORY_ID,
+        title: 'G06 Story',
+        chapters: [
+          {
+            id: CHAPTER_ID,
+            title: 'Chapter 1',
+            scenes: [{ id: SCENE_ID, title: SCENE_TITLE, path: scenePath }],
+          },
+        ],
+      },
+    ],
+  };
+  fs.writeFileSync(path.join(vaultDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf-8');
+}
+
+test('TC-G-06: Show story cluster toggle widens scope to Both and makes manuscript nodes appear', async () => {
+  // Seed story vault BEFORE the app is running (beforeAll already launched it,
+  // but the story vault wasn't seeded then). Write the manifest now — the IPC
+  // handler reads it fresh on each call so no restart is needed.
+  seedStoryVault(vaultDir);
+
+  await openGraphView();
+
+  // Verify we start at scope=Notes (the default).
+  const notesScopeBtn = page.locator('[data-testid="vault-graph-scope-notes"]');
+  await expect(notesScopeBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 6_000 });
+
+  // The toggle must start OFF (aria-checked=false) at scope=Notes.
+  const toggle = page.locator('[data-testid="vault-graph-story-toggle"]');
+  await expect(toggle).toHaveAttribute('aria-checked', 'false', { timeout: 4_000 });
+
+  // AC1: click the real toggle — scope widens to Both and story nodes appear.
+  await toggle.click();
+
+  // Scope selector must now show Both as active.
+  const bothScopeBtn = page.locator('[data-testid="vault-graph-scope-both"]');
+  await expect(bothScopeBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 6_000 });
+
+  // Toggle must now read checked.
+  await expect(toggle).toHaveAttribute('aria-checked', 'true', { timeout: 4_000 });
+
+  // The seeded scene node must appear (proves nodes were fetched, not just filtered).
+  const sceneNodeId = `story:${STORY_ID}/${CHAPTER_ID}/${SCENE_ID}`;
+  const sceneNode = page.locator(`[data-testid="vault-node-${sceneNodeId}"]`);
+  await expect(sceneNode).toBeVisible({ timeout: 10_000 });
+
+  // AC2: toggling OFF restores scope=Notes and story nodes leave.
+  await toggle.click();
+  await expect(notesScopeBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 6_000 });
+  await expect(toggle).toHaveAttribute('aria-checked', 'false', { timeout: 4_000 });
+  await expect(sceneNode).not.toBeVisible({ timeout: 6_000 });
+});

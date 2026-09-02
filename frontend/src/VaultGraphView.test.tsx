@@ -850,7 +850,48 @@ describe('VaultGraphView M21 vault graph v2', () => {
     expect(screen.queryByTestId('vault-graph-inspector')).not.toBeInTheDocument();
   });
 
-  it('Story cluster toggle hides and restores story (scenes) nodes', async () => {
+  // SKY-11210: the toggle now drives scope (fetch), not a category filter.
+  // — ON at scope=notes → scope widens to both, story nodes appear.
+  // — OFF → scope narrows back to notes, story nodes disappear.
+  // — Starting at scope=both → toggle reads ON; clicking OFF narrows to notes.
+  it('Story cluster toggle (SKY-11210): widens scope to both and brings story nodes in', async () => {
+    // Scope-aware mock: both/story returns mixed data; notes returns notes-only.
+    const nodesMock = vi.fn().mockImplementation((scope: string) =>
+      Promise.resolve({ nodes: scope === 'notes' ? [MIXED_VAULT_DATA.nodes[0]] : MIXED_VAULT_DATA.nodes }),
+    );
+    const edgesMock = vi.fn().mockImplementation((scope: string) =>
+      Promise.resolve({ edges: scope === 'notes' ? [] : MIXED_VAULT_DATA.edges }),
+    );
+    (window as any).api = { vaultGraphNodes: nodesMock, vaultGraphEdges: edgesMock };
+
+    // Start at scope=notes (the default / owner's config).
+    render(<VaultGraphView />);
+
+    await screen.findByTestId('vault-graph-view');
+    const toggle = screen.getByTestId('vault-graph-story-toggle');
+    const cardToggle = screen.getByTestId('vault-graph-story-card-toggle');
+    // Toggle starts OFF at scope=notes.
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(cardToggle).toHaveAttribute('aria-checked', 'false');
+    expect(screen.queryByRole('button', { name: /select scene Scene One/i })).not.toBeInTheDocument();
+
+    // ON: scope widens to both, story nodes appear.
+    await act(async () => { fireEvent.click(toggle); });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(cardToggle).toHaveAttribute('aria-checked', 'true');
+    expect(await screen.findByRole('button', { name: /select scene Scene One/i })).toBeInTheDocument();
+    expect(nodesMock).toHaveBeenLastCalledWith('both');
+
+    // OFF: scope restores to notes, story nodes leave.
+    await act(async () => { fireEvent.click(cardToggle); });
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /select scene Scene One/i })).not.toBeInTheDocument(),
+    );
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    expect(nodesMock).toHaveBeenLastCalledWith('notes');
+  });
+
+  it('Story cluster toggle: starting at scope=both reads as ON; clicking OFF narrows to notes', async () => {
     (window as any).api = {
       vaultGraphNodes: vi.fn().mockResolvedValue({ nodes: MIXED_VAULT_DATA.nodes }),
       vaultGraphEdges: vi.fn().mockResolvedValue({ edges: MIXED_VAULT_DATA.edges }),
@@ -859,22 +900,18 @@ describe('VaultGraphView M21 vault graph v2', () => {
     render(<VaultGraphView initialVaultScope="both" />);
 
     await screen.findByRole('button', { name: /select scene Scene One/i });
-    // M26: the toolbar switch and the left-panel gold card drive one state.
     const toggle = screen.getByTestId('vault-graph-story-toggle');
-    const cardToggle = screen.getByTestId('vault-graph-story-card-toggle');
     expect(toggle).toHaveAttribute('aria-checked', 'true');
-    expect(cardToggle).toHaveAttribute('aria-checked', 'true');
+
+    // Switch mock so scope=notes returns notes-only.
+    (window as any).api.vaultGraphNodes = vi.fn().mockResolvedValue({ nodes: [MIXED_VAULT_DATA.nodes[0]] });
+    (window as any).api.vaultGraphEdges = vi.fn().mockResolvedValue({ edges: [] });
 
     await act(async () => { fireEvent.click(toggle); });
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /select scene Scene One/i })).not.toBeInTheDocument(),
+    );
     expect(toggle).toHaveAttribute('aria-checked', 'false');
-    expect(cardToggle).toHaveAttribute('aria-checked', 'false');
-    expect(screen.queryByRole('button', { name: /select scene Scene One/i })).not.toBeInTheDocument();
-    // The switch mirrors the Scenes chip (single visibility source)
-    expect(screen.getByRole('button', { name: /scenes filter/i })).toHaveAttribute('aria-pressed', 'false');
-
-    await act(async () => { fireEvent.click(cardToggle); });
-    expect(await screen.findByRole('button', { name: /select scene Scene One/i })).toBeInTheDocument();
-    expect(toggle).toHaveAttribute('aria-checked', 'true');
   });
 
   it('zoom buttons use multiplicative prototype steps and Fit resets to 100%', async () => {
