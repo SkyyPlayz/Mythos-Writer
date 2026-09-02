@@ -306,8 +306,8 @@ jobs:
             TOTAL_COMMITS=$(echo "$CHANGELOG" | wc -l)
             TRUNCATED=$(echo "$CHANGELOG" | head -c $MAX_CHARS)
             REMAINING=$((TOTAL_COMMITS - $(echo "$TRUNCATED" | wc -l)))
-            CHANGELOG="${TRUNCATED}
-…and $REMAINING more commits"
+            CHANGELOG="${TRUNCATED}"$'
+            '"…and $REMAINING more commits"
           fi
 
           echo "notes<<EOF" >> $GITHUB_OUTPUT
