@@ -996,6 +996,34 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 33');
   }
+
+  if (currentVersion < 34) {
+    // SKY-11318 (M12.4b): reveal_point field on entity alias frontmatter.
+    // Added as a nullable column so DBs at v30–33 self-upgrade without a full
+    // rebuild. vault_index_cache is DERIVED data — the column is always
+    // backfilled on the next loadEntityIndex() call that hits a changed file;
+    // rows for unchanged files get reveal_point=NULL until their content next
+    // changes (safe: NULL = always-visible per AC5).
+    // Column may already exist (e.g. a DB stuck below v34 via a manually
+    // reset PRAGMA while vault_index_cache itself was never rebuilt) — SQLite
+    // has no ADD COLUMN IF NOT EXISTS, so catch and ignore the duplicate.
+    try {
+      db.exec('ALTER TABLE vault_index_cache ADD COLUMN reveal_point TEXT');
+    } catch {
+      // column already present — OK
+    }
+    db.exec('PRAGMA user_version = 34');
+  }
+
+  // SKY-11318 self-heal: DBs that were created at v30–v33 and already had
+  // vault_index_cache but missed the v34 ALTER TABLE (e.g. DB opened at v31
+  // via the existing self-heal and then not upgraded). SQLite returns an error
+  // when the column already exists; catch and ignore.
+  try {
+    db.exec('ALTER TABLE vault_index_cache ADD COLUMN reveal_point TEXT');
+  } catch {
+    // column already present — OK
+  }
 }
 
 // ─── Retention pruning (perf audit P2) ───
@@ -2578,6 +2606,7 @@ export interface DbVaultIndexCacheRow {
   type: string | null;
   needs_rescan: number;
   indexed_at: string;
+  reveal_point: string | null;
 }
 
 /** Tables a full index rebuild is allowed to wipe. fact_decisions is
@@ -2672,8 +2701,8 @@ export function upsertVaultIndexCacheRow(row: DbVaultIndexCacheRow): void {
   getDb()
     .prepare(
       `INSERT OR REPLACE INTO vault_index_cache
-         (file_path, content_hash, name, aliases_json, type, needs_rescan, indexed_at)
-       VALUES (@file_path, @content_hash, @name, @aliases_json, @type, @needs_rescan, @indexed_at)`
+         (file_path, content_hash, name, aliases_json, type, needs_rescan, indexed_at, reveal_point)
+       VALUES (@file_path, @content_hash, @name, @aliases_json, @type, @needs_rescan, @indexed_at, @reveal_point)`
     )
     .run(row as unknown as Record<string, SQLInputValue>);
 }
