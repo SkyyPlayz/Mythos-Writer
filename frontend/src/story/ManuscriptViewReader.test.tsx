@@ -83,11 +83,25 @@ const cancelMock = vi.fn();
 const ariaVoice = { name: 'Aria (Natural)', lang: 'en-US', voiceURI: 'aria' };
 const getVoicesMock = vi.fn(() => [ariaVoice, { name: 'Hans', lang: 'de-DE', voiceURI: 'hans' }]);
 
+// Handlers registered for the `voiceschanged` event, so a test can simulate
+// Chromium's startup burst and assert the picker's debounce (SKY-11230).
+let voicesChangedHandlers: Array<() => void> = [];
+function fireVoicesChanged() {
+  for (const h of [...voicesChangedHandlers]) h();
+}
+
 function stubSpeech() {
+  voicesChangedHandlers = [];
   (window as unknown as { speechSynthesis: unknown }).speechSynthesis = {
     speak: speakMock,
     cancel: cancelMock,
     getVoices: getVoicesMock,
+    addEventListener: (type: string, cb: () => void) => {
+      if (type === 'voiceschanged') voicesChangedHandlers.push(cb);
+    },
+    removeEventListener: (type: string, cb: () => void) => {
+      if (type === 'voiceschanged') voicesChangedHandlers = voicesChangedHandlers.filter((h) => h !== cb);
+    },
   };
   (window as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = MockUtterance;
   (globalThis as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = MockUtterance;
@@ -427,6 +441,30 @@ describe('speed + voice controls', () => {
         (o) => o.value === 'en_US/vctk_low'
       )
     ).toBe(true);
+  });
+
+  it('debounces the voiceschanged startup burst into one re-enumeration (SKY-11230)', () => {
+    renderView();
+    openCard();
+    vi.useFakeTimers();
+    try {
+      getVoicesMock.mockClear();
+      // Chromium fires voiceschanged several times as the OS list loads. Each
+      // fire must NOT re-enumerate immediately — that is what flickers the picker.
+      act(() => {
+        fireVoicesChanged();
+        fireVoicesChanged();
+        fireVoicesChanged();
+      });
+      expect(getVoicesMock).not.toHaveBeenCalled();
+      // After the 300 ms trailing window the burst collapses to a single re-render.
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(getVoicesMock).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

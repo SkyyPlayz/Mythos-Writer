@@ -113,9 +113,19 @@ function useReaderControls(reader: ManuscriptReader, ttsSettings?: ReaderTtsSett
   useEffect(() => {
     const synth = (window as { speechSynthesis?: SpeechSynthesis }).speechSynthesis;
     if (!synth?.addEventListener) return;
-    const bump = () => setVoicesVersion((v) => v + 1);
+    // Chromium fires voiceschanged several times in a burst as the OS list
+    // loads at startup. Re-enumerating on each fire flickers the picker, so
+    // collapse a burst into one re-render with a 300 ms trailing debounce.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const bump = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => setVoicesVersion((v) => v + 1), 300);
+    };
     synth.addEventListener('voiceschanged', bump);
-    return () => synth.removeEventListener('voiceschanged', bump);
+    return () => {
+      clearTimeout(timer);
+      synth.removeEventListener('voiceschanged', bump);
+    };
   }, []);
 
   const voiceOptions = useMemo(() => {
