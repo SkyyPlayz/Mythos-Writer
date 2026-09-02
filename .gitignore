@@ -22,3 +22,10 @@ daily_bug_hunt_*.json
 
 # Fidelity harness captures (SKY-9257) — regenerated per run, never source
 e2e/fidelity/output/
+
+# SKY-11243 — bundled Kokoro TTS weights are fetched at build time
+# (scripts/fetch-kokoro-assets.mjs), never committed. Keep the LICENSE.
+electron-main/resources/kokoro/model_*.onnx
+electron-main/resources/kokoro/tokenizer.json
+electron-main/resources/kokoro/voices/
+electron-main/resources/kokoro/wasm/

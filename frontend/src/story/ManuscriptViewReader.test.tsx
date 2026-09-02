@@ -394,15 +394,20 @@ describe('speed + voice controls', () => {
     const labels = Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
     expect(labels[0]).toBe('Default voice');
     expect(labels[1]).toBe('Aria — Edge natural'); // 'Aria (Natural)' detected
-    // SKY-11242: unavailable catalog voices are marked in the label…
+    // SKY-11242: unwired catalog voices are marked in the label…
     expect(labels).toContain('Amy — Piper (offline) · needs setup');
-    expect(labels).toContain('Nicole — Kokoro (offline) · needs setup');
+    // SKY-11243: Kokoro ships bundled, so it's available — no "needs setup" marker.
+    expect(labels).toContain('Nicole — Kokoro (offline)');
+    expect(labels).not.toContain('Nicole — Kokoro (offline) · needs setup');
     // …and grouped under their engine's <optgroup>.
     const groups = Array.from(select.querySelectorAll('optgroup')).map((g) => g.label);
     expect(groups).toEqual(expect.arrayContaining(['Edge natural', 'Piper (offline)', 'Kokoro (offline)']));
-    // The unavailable options carry the disabled semantics for assistive tech.
+    // The unwired Piper option carries disabled semantics for assistive tech;
+    // the bundled Kokoro option does not (it's selectable).
     const amy = Array.from(select.querySelectorAll('option')).find((o) => o.value === 'piper:amy');
     expect(amy?.getAttribute('aria-disabled')).toBe('true');
+    const sky = Array.from(select.querySelectorAll('option')).find((o) => o.value === 'kokoro:sky');
+    expect(sky?.getAttribute('aria-disabled')).not.toBe('true');
   });
 
   it('applies a real OS voice selection to the next utterance', () => {

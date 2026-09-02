@@ -22,6 +22,13 @@ import { isFromTopFrame, UNTRUSTED_FRAME_REJECTION } from './ipc.js';
 import { checkSpawnPath, MAX_STT_AUDIO_BYTES, MAX_TTS_TEXT_BYTES } from './voiceGate.js';
 import { getVoiceProvider, validateBaseUrl, isAiMasterOn, AI_DISABLED_MESSAGE } from './provider.js';
 import type { ProviderConfig } from './provider.js';
+import {
+  isKokoroVoice,
+  kokoroVoiceKey,
+  synthesizeKokoro,
+  KOKORO_SAMPLE_RATE,
+  type KokoroAssets,
+} from './kokoro.js';
 
 // ─── Channel names ──────────────────────────────────────────────────────────
 
@@ -153,6 +160,9 @@ export class InvalidVoiceInputError extends Error {
 export function categorizeVoiceError(err: unknown): VoiceErrorCategory {
   const name = (err as Error)?.name;
   if (name === 'LocalBinaryError') return VOICE_ERROR_CATEGORIES.LOCAL_BINARY;
+  // Bundled Kokoro engine failures (missing model asset, load/inference error)
+  // are local-engine failures — never a network or cloud-provider condition.
+  if (name === 'KokoroEngineError') return VOICE_ERROR_CATEGORIES.LOCAL_BINARY;
   if (name === 'CloudProviderError') return VOICE_ERROR_CATEGORIES.CLOUD_PROVIDER;
   if (name === 'InvalidVoiceInputError') return VOICE_ERROR_CATEGORIES.INVALID_INPUT;
   if (name === 'AbortError') return VOICE_ERROR_CATEGORIES.NETWORK;
@@ -251,11 +261,14 @@ export class VoiceRegistry {
 
 export type GetSender = () => { send(channel: string, data: unknown): void; isDestroyed(): boolean } | null;
 export type GetSettings = () => AppSettings;
+/** Resolves the bundled Kokoro model assets, or null when they aren't present. */
+export type GetKokoroAssets = () => KokoroAssets | null;
 
 export function registerVoiceHandlers(
   getSender: GetSender,
   getSettings: GetSettings,
   registry?: VoiceRegistry,
+  getKokoroAssets?: GetKokoroAssets,
 ): void {
   const reg = registry ?? new VoiceRegistry();
 
@@ -369,7 +382,13 @@ export function registerVoiceHandlers(
   ipcMain.handle(VOICE_SPEAK, (event, payload: VoiceSpeakPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
     const ttsSettings = getSettings().tts;
-    if (!ttsSettings?.enabled) {
+    const voiceId = payload?.voiceId ?? ttsSettings?.voiceId;
+
+    // Kokoro is a bundled, always-offline built-in engine selected purely by a
+    // `kokoro:` voice id — it does not require tts.enabled or any configured
+    // binary/key (SKY-11243). Every other path still gates on tts.enabled.
+    const kokoro = isKokoroVoice(voiceId);
+    if (!kokoro && !ttsSettings?.enabled) {
       return { error: 'TTS is not enabled in settings (tts.enabled = false)' };
     }
 
@@ -387,8 +406,8 @@ export function registerVoiceHandlers(
     const abortController = new AbortController();
     activeSpeakSessions.set(speakId, abortController);
 
-    const voiceId = payload?.voiceId ?? ttsSettings.voiceId;
-    speakAsync(speakId, text, voiceId, ttsSettings, getSender, abortController.signal, getSettings())
+    const effectiveTts: TtsSettings = ttsSettings ?? { enabled: true, provider: 'auto' };
+    speakAsync(speakId, text, voiceId, effectiveTts, getSender, abortController.signal, getSettings(), getKokoroAssets)
       .finally(() => activeSpeakSessions.delete(speakId));
 
     return { speakId } satisfies VoiceSpeakResponse;
@@ -622,6 +641,7 @@ async function speakAsync(
   getSender: GetSender,
   signal: AbortSignal,
   appSettings?: { provider?: ProviderConfig },
+  getKokoroAssets?: GetKokoroAssets,
 ): Promise<void> {
   const sendChunk = (chunk: Buffer) => {
     const sender = getSender();
@@ -631,6 +651,22 @@ async function speakAsync(
   };
 
   try {
+    // Bundled Kokoro offline engine — chosen by a `kokoro:` voice id alone,
+    // ahead of (and independent of) the provider-based local/cloud paths. Runs
+    // fully in-process via onnxruntime-web WASM: no child process, no network.
+    if (isKokoroVoice(voiceId)) {
+      const assets = getKokoroAssets?.() ?? null;
+      if (!assets) {
+        throw new InvalidVoiceInputError(
+          'Kokoro voice is unavailable — bundled model assets were not found.',
+        );
+      }
+      const key = kokoroVoiceKey(voiceId);
+      await synthesizeKokoro(text, key as string, assets, signal, sendChunk);
+      pushSpeakDone(getSender, speakId, 'pcm', KOKORO_SAMPLE_RATE);
+      return;
+    }
+
     const provider = settings.provider ?? 'auto';
 
     if (provider === 'local' || provider === 'auto') {

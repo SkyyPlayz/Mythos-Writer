@@ -656,6 +656,54 @@ describe('voice:speak handler', () => {
     expect(result.error).toMatch(/not enabled/i);
   });
 
+  // ─── SKY-11243: bundled Kokoro engine ────────────────────────────────────
+
+  it('kokoro voice bypasses the tts.enabled gate and returns a speakId', async () => {
+    // tts disabled + no configured engine, but a bundled kokoro: voice is picked:
+    // the built-in offline engine needs no setup, so playback must still start.
+    registerVoiceHandlers(
+      () => null,
+      () => makeSettings(undefined, undefined, { enabled: false }),
+      undefined,
+      () => null,
+    );
+    const result = (await invokeHandle('voice:speak', {
+      text: 'hello',
+      voiceId: 'kokoro:nicole',
+    })) as { speakId?: string; error?: string };
+    expect(result.error).toBeUndefined();
+    expect(typeof result.speakId).toBe('string');
+    expect(result.speakId!.length).toBeGreaterThan(0);
+  });
+
+  it('kokoro voice with missing bundled assets emits a clean error, not a crash', async () => {
+    const errors: Array<{ speakId: string; category: VoiceErrorCategory; error: string }> = [];
+    const mockSender = {
+      send: (ch: string, data: unknown) => {
+        if (ch === 'voice:speak:error') errors.push(data as { speakId: string; category: VoiceErrorCategory; error: string });
+      },
+      isDestroyed: () => false,
+    };
+    registerVoiceHandlers(
+      () => mockSender,
+      () => makeSettings(undefined, undefined, { enabled: false }),
+      undefined,
+      () => null, // assets unavailable (e.g. build-time fetch skipped)
+    );
+    const { speakId } = (await invokeHandle('voice:speak', {
+      text: 'hello',
+      voiceId: 'kokoro:sky',
+    })) as { speakId: string };
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(typeof speakId).toBe('string');
+    expect(errors).toHaveLength(1);
+    expect(errors[0].speakId).toBe(speakId);
+    expect(errors[0].category).toBe(VOICE_ERROR_CATEGORIES.INVALID_INPUT);
+    // Never leaks a host path or raw detail — fixed, user-facing string only.
+    expect(errors[0].error).toMatch(/invalid|check/i);
+  });
+
   it('returns a speakId string immediately', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,

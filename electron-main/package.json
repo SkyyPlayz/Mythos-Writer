@@ -21,7 +21,9 @@
     "docx": "^9.7.1",
     "electron-updater": "^6.8.9",
     "jszip": "^3.10.1",
-    "mammoth": "^1.9.0"
+    "mammoth": "^1.9.0",
+    "onnxruntime-web": "^1.29.0",
+    "phonemizer": "^1.2.1"
   },
   "devDependencies": {
     "@jazzer.js/core": "^4.0.0",

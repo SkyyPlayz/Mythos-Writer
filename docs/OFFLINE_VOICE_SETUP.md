@@ -2,6 +2,39 @@
 
 **Mythos Writer** supports local speech-to-text (STT) and text-to-speech (TTS) when configured with offline engines. This guide documents how to set up **whisper.cpp** (STT) and **Piper** (TTS) on Linux, macOS, and Windows.
 
+## Kokoro — built-in offline neural voice (no setup, SKY-11243)
+
+As of Beta 4, Mythos Writer **bundles the Kokoro-82M neural TTS engine** in the
+installer. Two voices ship ready to use:
+
+- **Nicole** — `kokoro:nicole`
+- **Sky** — `kokoro:sky`
+
+Pick either from any reader's voice menu (Story Editor reader bar, Notes reader,
+"Hear" buttons). They synthesize **fully offline, in-process**, at 24 kHz — no
+binary to download, no API key, no network. Nothing to configure.
+
+**How it works (for maintainers):**
+
+- The weights (`onnx-community/Kokoro-82M-v1.0-ONNX`, **Apache-2.0**) are fetched
+  at build time by `scripts/fetch-kokoro-assets.mjs` into
+  `electron-main/resources/kokoro/` and bundled via electron-builder
+  `extraResources`. They are **not committed to git** (~86 MB).
+- Inference runs through [`onnxruntime-web`](https://www.npmjs.com/package/onnxruntime-web)
+  (MIT) WASM + [`phonemizer`](https://www.npmjs.com/package/phonemizer)
+  (Apache-2.0) — deliberately **not** `kokoro-js`/`@huggingface/transformers`,
+  which drag in `sharp` (high-severity CVEs) and a native runtime. No
+  child process is spawned; the engine is `electron-main/src/kokoro.ts`.
+- The renderer decodes the streamed 16-bit PCM exactly like Piper's `--output-raw`
+  (see `useTtsPlayer`), so no playback changes were needed.
+
+To refresh the assets locally: `npm run kokoro:fetch`. A real, in-app synthesis
+check lives in `e2e/kokoro-tts.spec.ts` (`npm run test:e2e:kokoro`); it skips
+when the weights are absent.
+
+The **Piper** (TTS) and **whisper.cpp** (STT) instructions below remain the path
+for power users who want additional/custom voices or local dictation.
+
 ## Prerequisites
 
 - Mythos Writer v0.3.0 or later

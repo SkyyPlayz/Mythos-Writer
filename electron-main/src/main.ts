@@ -605,6 +605,7 @@ import {
   type AutoLinkerSettings,
 } from './autoLinker/index.js';
 import { registerVoiceHandlers } from './voice.js';
+import type { KokoroAssets } from './kokoro.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
 import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
 import { resolveVaultImportCollisions } from './vaultImportConflict.js';
@@ -914,6 +915,39 @@ function defaultVaultRoot(): string {
 
 function defaultNotesVaultRoot(): string {
   return defaultNotesVaultRootPath(app.getPath('userData'));
+}
+
+// SKY-11243: locate the bundled Kokoro model assets. Packaged builds ship them
+// under process.resourcesPath/kokoro (electron-builder extraResources); dev/E2E
+// read them from electron-main/resources/kokoro. Returns null when the model is
+// absent (e.g. a checkout that skipped the build-time fetch) so the voice path
+// surfaces a clean "unavailable" error instead of throwing on a missing file.
+// MYTHOS_KOKORO_DIR overrides everything (used by the gated real-synthesis E2E).
+function resolveKokoroAssets(): KokoroAssets | null {
+  const candidates: string[] = [];
+  if (process.env.MYTHOS_KOKORO_DIR) candidates.push(process.env.MYTHOS_KOKORO_DIR);
+  if (app.isPackaged) {
+    candidates.push(path.join(process.resourcesPath, 'kokoro'));
+  } else {
+    candidates.push(path.join(app.getAppPath(), 'electron-main', 'resources', 'kokoro'));
+    candidates.push(path.join(app.getAppPath(), 'resources', 'kokoro'));
+  }
+  for (const dir of candidates) {
+    const modelPath = path.join(dir, 'model_q8f16.onnx');
+    if (fs.existsSync(modelPath)) {
+      const wasmDir = path.join(dir, 'wasm');
+      return {
+        modelPath,
+        voicesDir: path.join(dir, 'voices'),
+        tokenizerPath: path.join(dir, 'tokenizer.json'),
+        // onnxruntime-web's default (node_modules-relative) wasm resolution works
+        // unpackaged; a packaged build can't load .wasm from the asar, so point at
+        // the bundled copy when present.
+        wasmDir: fs.existsSync(wasmDir) ? wasmDir : undefined,
+      };
+    }
+  }
+  return null;
 }
 
 // SKY-320 / SKY-2157: Obsidian-style multi-vault root anchored under userData.
@@ -10799,6 +10833,8 @@ app.whenReady().then(async () => {
   registerVoiceHandlers(
     () => mainWindow?.webContents ?? null,
     loadAppSettings,
+    undefined,
+    resolveKokoroAssets,
   );
   performance.mark('app:ipc-ready');
   createWindow();
