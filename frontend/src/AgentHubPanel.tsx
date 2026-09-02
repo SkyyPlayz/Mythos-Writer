@@ -876,11 +876,19 @@ function BrainstormChatBody() {
   );
 }
 
-// ── Archive Agent chat body (SKY-10738/M12.B3) ──────────────────────────────
+// ── Archive Agent chat body (SKY-10738/M12.B3; split SKY-11228) ────────────
 // Redesigned Continuity panel + composer quick-action chips (generated from
 // the CURRENT flag set — same affordance as Brainstorm's refine chips) + a
 // mini chat on the shared Archive agent session (reuses MiniAgentChat, the
 // same building block Timeline2's ArchiveTab already uses for this agent).
+//
+// SKY-11228: the Continuity panel and the chat used to share one scrolling
+// column, so a non-trivial flags list pushed the chat down and it never got
+// the full available height (standing rule: a chat surface gets the full
+// height available to it, no panel stacked above it). Mirrors the
+// NotesTabPanel "Agent" / "Flags" split — own sub-tabs, each its own
+// full-height flex column; both stay mounted so switching tabs never drops
+// the chat draft/transcript.
 
 function ArchiveChatBody({
   scene,
@@ -894,6 +902,7 @@ function ArchiveChatBody({
   const chat = useMiniAgentChat('archive', invokeArchive);
   const chips = useMemo(() => generateQuickActionChips(continuityItems), [continuityItems]);
   const [scanning, setScanning] = useState(false);
+  const [archiveSubTab, setArchiveSubTab] = useState<'chat' | 'flags'>('chat');
 
   const handleChipSelect = useCallback((chip: QuickActionChip) => {
     if (chip.kind === 'scan') {
@@ -908,9 +917,35 @@ function ArchiveChatBody({
 
   return (
     <div className="ahp-archive-chat">
-      {continuityPanel}
-      <ComposerQuickActions chips={chips} onSelect={handleChipSelect} disabled={scanning || chat.busy} />
-      <MiniAgentChat chat={chat} accent="archive" placeholder="Talk to the Archive Agent…" testidPrefix="ahp-archive" />
+      <div className="ahp-archive-subtabs" role="tablist" aria-label="Archive Agent panel">
+        <button
+          role="tab"
+          aria-selected={archiveSubTab === 'chat'}
+          className={`ahp-archive-subtab${archiveSubTab === 'chat' ? ' ahp-archive-subtab--active' : ''}`}
+          data-testid="ahp-archive-subtab-chat"
+          onClick={() => setArchiveSubTab('chat')}
+          type="button"
+        >
+          Chat
+        </button>
+        <button
+          role="tab"
+          aria-selected={archiveSubTab === 'flags'}
+          className={`ahp-archive-subtab${archiveSubTab === 'flags' ? ' ahp-archive-subtab--active' : ''}`}
+          data-testid="ahp-archive-subtab-flags"
+          onClick={() => setArchiveSubTab('flags')}
+          type="button"
+        >
+          Flags
+        </button>
+      </div>
+      <div className="ahp-archive-chat-section" style={archiveSubTab === 'chat' ? undefined : { display: 'none' }}>
+        <ComposerQuickActions chips={chips} onSelect={handleChipSelect} disabled={scanning || chat.busy} />
+        <MiniAgentChat chat={chat} accent="archive" placeholder="Talk to the Archive Agent…" testidPrefix="ahp-archive" />
+      </div>
+      <div className="ahp-archive-flags-section" style={archiveSubTab === 'flags' ? undefined : { display: 'none' }}>
+        {continuityPanel}
+      </div>
     </div>
   );
 }
