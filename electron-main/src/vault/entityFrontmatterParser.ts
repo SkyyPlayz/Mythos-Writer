@@ -5,6 +5,7 @@ import { parseFrontmatter } from '../vault.js';
 export interface EntityFrontmatterResult {
   aliases: string[];
   type: string | null;
+  reveal_point: string | null;
 }
 
 export function parseEntityFrontmatter(content: string): EntityFrontmatterResult {
@@ -20,5 +21,8 @@ export function parseEntityFrontmatter(content: string): EntityFrontmatterResult
   const typeRaw = frontmatter['type'];
   const type = typeof typeRaw === 'string' && typeRaw.trim() ? typeRaw.trim() : null;
 
-  return { aliases, type };
+  const rpRaw = frontmatter['reveal_point'];
+  const reveal_point = typeof rpRaw === 'string' && rpRaw.trim() ? rpRaw.trim() : null;
+
+  return { aliases, type, reveal_point };
 }

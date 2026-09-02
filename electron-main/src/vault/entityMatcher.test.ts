@@ -3,11 +3,11 @@ import { findBestMatch, searchEntities } from './entityMatcher.js';
 import type { EntityIndexEntry } from './entityIndex.js';
 
 const ENTRIES: EntityIndexEntry[] = [
-  { name: 'Lyra', aliases: ['The Starchild', 'StarChild'], type: 'Character', path: '/v/Lyra.md' },
-  { name: 'Erebus', aliases: ['Dark Tower', 'The Keep'], type: 'Location', path: '/v/Erebus.md' },
-  { name: 'Ironspike', aliases: [], type: 'Item', path: '/v/Ironspike.md' },
-  { name: 'House Thorne', aliases: ['Thorne', 'The Thornes'], type: 'Faction', path: '/v/HouseThorne.md' },
-  { name: 'Magic', aliases: [], type: 'Other', path: '/v/Magic.md' },
+  { name: 'Lyra', aliases: ['The Starchild', 'StarChild'], type: 'Character', path: '/v/Lyra.md', reveal_point: null },
+  { name: 'Erebus', aliases: ['Dark Tower', 'The Keep'], type: 'Location', path: '/v/Erebus.md', reveal_point: null },
+  { name: 'Ironspike', aliases: [], type: 'Item', path: '/v/Ironspike.md', reveal_point: null },
+  { name: 'House Thorne', aliases: ['Thorne', 'The Thornes'], type: 'Faction', path: '/v/HouseThorne.md', reveal_point: null },
+  { name: 'Magic', aliases: [], type: 'Other', path: '/v/Magic.md', reveal_point: null },
 ];
 
 describe('findBestMatch', () => {
@@ -38,8 +38,8 @@ describe('findBestMatch', () => {
   it('prefers exact over prefix over contains', () => {
     // 'Magic' exact > 'Magic' as substring of something else
     const entries: EntityIndexEntry[] = [
-      { name: 'Magic', aliases: [], type: null, path: '/a.md' },
-      { name: 'Magical Realm', aliases: [], type: null, path: '/b.md' },
+      { name: 'Magic', aliases: [], type: null, path: '/a.md', reveal_point: null },
+      { name: 'Magical Realm', aliases: [], type: null, path: '/b.md', reveal_point: null },
     ];
     expect(findBestMatch('Magic', entries)?.name).toBe('Magic');
   });
@@ -50,8 +50,9 @@ describe('findBestMatch', () => {
       aliases: [`Alias${i}A`, `Alias${i}B`],
       type: null,
       path: `/vault/entity${i}.md`,
+      reveal_point: null,
     }));
-    large.push({ name: 'Unique', aliases: [], type: null, path: '/vault/unique.md' });
+    large.push({ name: 'Unique', aliases: [], type: null, path: '/vault/unique.md', reveal_point: null });
     const start = Date.now();
     const result = findBestMatch('Unique', large);
     const elapsed = Date.now() - start;
@@ -76,6 +77,7 @@ describe('searchEntities', () => {
       aliases: [],
       type: null,
       path: `/v/${i}.md`,
+      reveal_point: null,
     }));
     const results = searchEntities('ABC', large);
     expect(results.length).toBeLessThanOrEqual(10);
@@ -83,8 +85,8 @@ describe('searchEntities', () => {
 
   it('returns prefix matches before contains matches', () => {
     const entries: EntityIndexEntry[] = [
-      { name: 'Erebus Cave', aliases: [], type: null, path: '/a.md' },
-      { name: 'Erebus', aliases: [], type: null, path: '/b.md' },
+      { name: 'Erebus Cave', aliases: [], type: null, path: '/a.md', reveal_point: null },
+      { name: 'Erebus', aliases: [], type: null, path: '/b.md', reveal_point: null },
     ];
     const results = searchEntities('Ere', entries);
     expect(results[0].name).toBe('Erebus');

@@ -20,6 +20,8 @@ export interface EntityIndexEntry {
   aliases: string[];
   type: string | null;
   path: string;
+  /** Author-set scene/chapter reference at which this entity becomes visible to the reader. Null = always visible (AC5). */
+  reveal_point: string | null;
 }
 
 function stemOf(filePath: string): string {
@@ -63,12 +65,13 @@ export function buildEntityIndex(notesVaultRoot: string): EntityIndexEntry[] {
       } catch {
         continue;
       }
-      const { aliases, type } = parseEntityFrontmatter(content);
+      const { aliases, type, reveal_point } = parseEntityFrontmatter(content);
       entries.push({
         name: stemOf(filePath),
         aliases,
         type,
         path: filePath,
+        reveal_point,
       });
     }
   }
@@ -107,12 +110,13 @@ export function loadEntityIndex(notesVaultRoot: string): EntityIndexEntry[] {
           aliases: JSON.parse(row.aliases_json) as string[],
           type: row.type,
           path: filePath,
+          reveal_point: row.reveal_point ?? null,
         });
         continue;
       }
 
-      const { aliases, type } = parseEntityFrontmatter(content);
-      const entry: EntityIndexEntry = { name: stemOf(filePath), aliases, type, path: filePath };
+      const { aliases, type, reveal_point } = parseEntityFrontmatter(content);
+      const entry: EntityIndexEntry = { name: stemOf(filePath), aliases, type, path: filePath, reveal_point };
       entries.push(entry);
       upsertVaultIndexCacheRow({
         file_path: filePath,
@@ -122,6 +126,7 @@ export function loadEntityIndex(notesVaultRoot: string): EntityIndexEntry[] {
         type,
         needs_rescan: 1,
         indexed_at: new Date().toISOString(),
+        reveal_point,
       });
     }
   }
@@ -146,4 +151,38 @@ export function loadEntityIndex(notesVaultRoot: string): EntityIndexEntry[] {
 export function resolveEntityKeyForFact(mention: string, index: EntityIndexEntry[]): string | null {
   const match = findBestMatch(mention, index);
   return match ? match.path : null;
+}
+
+/**
+ * Parses a scene/chapter position string into a comparable {major, minor} pair.
+ * Accepts any string containing one or two integers, e.g. "Chapter 3", "Scene 12",
+ * "3.2", "Act 1 Scene 4". The first integer is major; the second (if present) minor.
+ * Exported so consumers can use the same ordering logic.
+ */
+export function parseScenePosition(pos: string): { major: number; minor: number } {
+  const nums = pos.match(/\d+/g) ?? [];
+  return { major: parseInt(nums[0] ?? '0', 10), minor: parseInt(nums[1] ?? '0', 10) };
+}
+
+function positionReached(revealPoint: string, currentPosition: string): boolean {
+  const rp = parseScenePosition(revealPoint);
+  const cur = parseScenePosition(currentPosition);
+  return rp.major < cur.major || (rp.major === cur.major && rp.minor <= cur.minor);
+}
+
+/**
+ * Reader-perspective filter (AC2, SKY-11318): returns only entries whose reveal_point
+ * has been reached at or before currentPosition. Entries with no reveal_point are
+ * always included (AC5 — backward compatible).
+ *
+ * currentPosition format: same as reveal_point values, e.g. "Chapter 5", "Scene 12".
+ * Comparison is numeric (first two integers found in the string).
+ */
+export function aliasesVisibleBefore(
+  entries: EntityIndexEntry[],
+  currentPosition: string,
+): EntityIndexEntry[] {
+  return entries.filter(
+    (e) => e.reveal_point === null || positionReached(e.reveal_point, currentPosition),
+  );
 }
