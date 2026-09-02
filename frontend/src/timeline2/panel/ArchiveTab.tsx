@@ -23,6 +23,10 @@ export interface ArchiveTabProps {
   onFlagResolved: (flag: TimelineFlag) => void;
   busy: boolean;
   showToast: (message: string, level?: 'info' | 'warn' | 'error') => void;
+  /** SKY-10876 M12.B4b: the "Rebuild my timeline" command — a separately
+   *  invokable, manuscript-driven wholesale rebuild (distinct from the
+   *  quick-add above). Optional so surfaces that don't wire it keep working. */
+  onRebuildTimeline?: () => void;
 }
 
 // M12.B3 (SKY-10738): exported so the Archive Agent's right-sidebar chat
@@ -47,7 +51,7 @@ const FLAG_KIND_LABEL: Record<TimelineFlag['kind'], string> = {
 };
 
 export default function ArchiveTab(props: ArchiveTabProps) {
-  const { flags, recentAutoAdds, onQuickAdd, onUndoAutoAdd, onJumpTo, onFlagResolved, busy, showToast } = props;
+  const { flags, recentAutoAdds, onQuickAdd, onUndoAutoAdd, onJumpTo, onFlagResolved, busy, showToast, onRebuildTimeline } = props;
   const chat = useMiniAgentChat('archive', invokeArchive);
   const [quickAdd, setQuickAdd] = useState('');
   const [resolving, setResolving] = useState<TimelineFlag | null>(null);
@@ -87,6 +91,19 @@ export default function ArchiveTab(props: ArchiveTabProps) {
             {busy ? 'Adding…' : 'Add'}
           </button>
         </div>
+        {onRebuildTimeline && (
+          // SKY-10876 M12.B4b: the "Rebuild my timeline" command — a wholesale
+          // rebuild from the manuscript, distinct from the per-event quick-add.
+          <button
+            type="button"
+            className="trp-rebuild-btn"
+            onClick={onRebuildTimeline}
+            disabled={busy}
+            data-testid="trp-rebuild-timeline-btn"
+          >
+            {busy ? 'Rebuilding…' : 'Rebuild my timeline'}
+          </button>
+        )}
       </div>
 
       <div className="trp-card">

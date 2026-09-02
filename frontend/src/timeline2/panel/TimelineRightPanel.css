@@ -931,6 +931,30 @@
   cursor: default;
 }
 
+/* SKY-10876 M12.B4b: "Rebuild my timeline" command — full-width, secondary to
+   the quick-add so the wholesale rebuild reads as the deliberate action. */
+.trp-rebuild-btn {
+  margin-top: 9px;
+  width: 100%;
+  height: 28px;
+  border-radius: 9px;
+  background: rgba(255, 211, 25, 0.08);
+  border: 1px solid rgba(255, 211, 25, 0.35);
+  color: #ffe680;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trp-rebuild-btn:hover {
+  background: rgba(255, 211, 25, 0.16);
+}
+
+.trp-rebuild-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
 /* ── Inspector empty state ── */
 .trp-empty {
   padding: 22px 8px;

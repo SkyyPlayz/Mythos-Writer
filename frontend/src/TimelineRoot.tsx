@@ -939,6 +939,39 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
     notify('Archive Agent is rebuilding this timeline from your notes…');
   }, [notify]);
 
+  // SKY-10876 M12.B4b: the "Rebuild my timeline" command — a separately
+  // invokable, manuscript-driven wholesale rebuild (distinct from handleQuickAdd
+  // and the notes-driven handleRunArchiveNow above). One IPC round-trip reads
+  // the manuscript via the shared primitive, rewrites the active timeline's
+  // scene events, and returns the fresh store.
+  const handleRebuildTimeline = useCallback(async () => {
+    if (typeof api.timelineRebuild !== 'function' || archiveBusy) return;
+    setArchiveBusy(true);
+    try {
+      const res = await api.timelineRebuild();
+      if (!res.ok) {
+        notify(res.reason ?? 'Could not rebuild the timeline.', 'warn');
+        return;
+      }
+      if (res.store) setTimelinesStore(res.store);
+      const r = res.report;
+      if (r) {
+        const changed = r.eventsAdded + r.eventsUpdated + r.eventsRemoved;
+        notify(
+          changed === 0
+            ? `Timeline already up to date — read ${r.scenesRead} scene${r.scenesRead === 1 ? '' : 's'}.`
+            : `Rebuilt your timeline: +${r.eventsAdded} · ~${r.eventsUpdated} · −${r.eventsRemoved} from ${r.scenesRead} scene${r.scenesRead === 1 ? '' : 's'}.`,
+        );
+      } else {
+        notify('Rebuilt your timeline from the manuscript.');
+      }
+    } catch {
+      notify('Could not rebuild the timeline.', 'error');
+    } finally {
+      setArchiveBusy(false);
+    }
+  }, [api, archiveBusy, notify]);
+
   const handleStartEmpty = useCallback(() => {
     setEmptyDismissed((prev) => new Set(prev).add(activeId));
   }, [activeId]);
@@ -1423,6 +1456,7 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
             onUndoAutoAdd={handleUndoAutoAdd}
             onFlagResolved={handleFlagResolved}
             archiveBusy={archiveBusy}
+            onRebuildTimeline={handleRebuildTimeline}
           />
         )}
       </div>
