@@ -8,7 +8,10 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: var(--bg-base);
+  /* SKY-11209: was an opaque --bg-base fill sitting directly behind
+     .vgv-canvas — a transparent canvas alone still showed this parent's
+     own paint, not the shell wallpaper. Root has to drop the fill too. */
+  background: transparent;
   color: var(--text-body);
 }
 
@@ -104,7 +107,13 @@
   min-height: 0;
   overflow: hidden;
   cursor: grab;
-  background: var(--bg-base);
+  /* SKY-11209: was an opaque --bg-base fill, occluding the shell wallpaper.
+     This is a live pan/zoom/drag surface (SKY-1760 perf work targets 60fps
+     here), so a backdrop-filter blur is the wrong tool — same per-frame
+     compositor tax PERFORMANCE.md §2 flags for BackgroundStack. Use the
+     canvas's own translucent veil instead, verbatim from the design
+     prototype's gcanvas fill (HTML data-ln="gcanvas"). */
+  background: radial-gradient(90% 90% at 50% 40%, rgba(20, 26, 48, .35), rgba(6, 8, 15, .55));
 }
 
 .vgv-canvas:active {
@@ -218,6 +227,10 @@
   dominant-baseline: hanging;
   pointer-events: none;
   user-select: none;
+  /* SKY-11209: the canvas veil now lets a bright/busy wallpaper show through;
+     the prototype's label halo (HTML gNodesR labelSt) keeps text legible
+     against it without a per-label background chip. */
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .9);
 }
 
 .vgv-graph-controls {
@@ -316,7 +329,10 @@
   height: 100%;
   padding: 24px;
   color: var(--text-muted);
-  background: var(--bg-base);
+  /* SKY-11209: loading/error/empty states occupy the same area as
+     .vgv-canvas — match its veil so switching between them doesn't flash
+     between wallpaper-visible and opaque. */
+  background: radial-gradient(90% 90% at 50% 40%, rgba(20, 26, 48, .35), rgba(6, 8, 15, .55));
   text-align: center;
   font-family: var(--font-sans);
   font-size: 14px;
