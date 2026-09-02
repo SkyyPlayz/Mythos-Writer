@@ -6,6 +6,7 @@ import { vi, afterEach, beforeEach, describe, it, expect } from 'vitest';
 import AgentHubPanel from './AgentHubPanel';
 import ContinuityPanel from './ContinuityPanel';
 import { __resetAgentSessionStores } from './lib/useAgentSessions';
+import { resetAiActivityForTests } from './agents/aiActivity';
 import { buildAnalysisCard, parseCoachRead } from './coach/sceneAnalysis';
 import { decodeCoachCard, encodeCoachCard } from './coach/coachMessages';
 import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
@@ -155,14 +156,26 @@ describe('AgentHubPanel — Suggestions card', () => {
 // ── SKY-9022/M6 GAP-1: AGENTS rich cards — live statuses ────────────────────
 
 describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () => {
+  let aiActivityUpdateListener: (entries: AiActivityEntry[]) => void = () => {};
+
   beforeEach(() => {
     __resetAgentSessionStores();
+    resetAiActivityForTests();
     (window as any).api = {
       suggestionsUnifiedList: vi.fn().mockResolvedValue({ items: [], totalCount: 0 }),
+      // SKY-11223: AgentHubPanel status now reads the shared AiActivityRegistry.
+      getAiActivitySnapshot: vi.fn().mockResolvedValue([]),
+      onAiActivityUpdate: (cb: (entries: AiActivityEntry[]) => void) => {
+        aiActivityUpdateListener = cb;
+        return () => {};
+      },
+      onAiActivityTerminal: () => () => {},
+      cancelAiActivity: vi.fn(),
     };
   });
   afterEach(() => {
     delete (window as any).api;
+    resetAiActivityForTests();
   });
 
   it('renders all four agents as two-line cards with a status line and a trailing chevron', async () => {
@@ -182,21 +195,40 @@ describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () 
     render(<AgentHubPanel scene={null} />);
     await screen.findByText(/No suggestions right now/i);
 
+    // SKY-11223: Brainstorm no longer claims to be "Watching session" just
+    // because it's enabled — that was hardcoded (SKY-11214) and wired to no
+    // real activity. All four agents now share the same honest idle text,
+    // driven by the shared AiActivityRegistry instead of a per-agent guess.
     expect(within(screen.getByTestId('ahp-agent-row-writing-assistant')).getByText('Ready')).toBeInTheDocument();
-    expect(within(screen.getByTestId('ahp-agent-row-brainstorm')).getByText('Watching session')).toBeInTheDocument();
+    expect(within(screen.getByTestId('ahp-agent-row-brainstorm')).getByText('Ready')).toBeInTheDocument();
     expect(within(screen.getByTestId('ahp-agent-row-archive')).getByText('Ready')).toBeInTheDocument();
     expect(within(screen.getByTestId('ahp-agent-row-beta-reader')).getByText('Ready')).toBeInTheDocument();
   });
 
-  it("brainstorm's watching dot pulses only while the agent is enabled", async () => {
-    const { rerender } = render(<AgentHubPanel scene={null} />);
+  it("an agent's status dot pulses only while it has a real in-flight request in the shared registry", async () => {
+    render(<AgentHubPanel scene={null} />);
     await screen.findByText(/No suggestions right now/i);
 
     const dot = () => screen.getByTestId('ahp-agent-row-brainstorm').querySelector('.ahp-status-dot');
-    expect(dot()?.className).toContain('ahp-status-dot--pulse');
+    // Enabled but idle — no hardcoded pulse (this is the actual SKY-11214 bug).
+    expect(dot()?.className).not.toContain('ahp-status-dot--pulse');
+    expect(within(screen.getByTestId('ahp-agent-row-brainstorm')).getByText('Ready')).toBeInTheDocument();
 
-    rerender(<AgentHubPanel scene={null} agentEnablement={{ brainstorm: false }} />);
-    expect(within(screen.getByTestId('ahp-agent-row-brainstorm')).getByText('Disabled')).toBeInTheDocument();
+    act(() => {
+      aiActivityUpdateListener([{
+        requestId: 'req-1',
+        agent: 'brainstorm',
+        agentLabel: 'Brainstorm Agent',
+        surface: 'brainstorm-chat',
+        surfaceLabel: 'Brainstorm chat',
+        provider: { kind: 'lmstudio', model: 'qwen3.6-35b-a3b' },
+        startedAt: Date.now(),
+      }]);
+    });
+    expect(dot()?.className).toContain('ahp-status-dot--pulse');
+    expect(within(screen.getByTestId('ahp-agent-row-brainstorm')).getByText('Working — Brainstorm chat')).toBeInTheDocument();
+
+    act(() => { aiActivityUpdateListener([]); });
     expect(dot()?.className).not.toContain('ahp-status-dot--pulse');
   });
 

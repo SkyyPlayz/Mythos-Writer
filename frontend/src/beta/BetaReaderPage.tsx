@@ -232,6 +232,10 @@ export default function BetaReaderPage({ story, chapter, scene, agentNames, onCl
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      // SKY-11223: a deliberate stop via the shared activity indicator's Stop
+      // button surfaces here as a rejection too — it is not a failure, so it
+      // gets no error toast (the indicator already showed "Stopped").
+      if (msg === 'cancelled') return;
       showToast(msg || `${agentLabel} failed — try again.`, 'error');
     } finally {
       setRunning(false);

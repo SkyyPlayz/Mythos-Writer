@@ -25,6 +25,29 @@ interface RenameCascadeUndoResponse {
   restoredStoryPaths: string[];
 }
 
+// SKY-11223: shared AI activity registry types (mirrors electron-main/src/aiActivityRegistry.ts)
+type AiActivityAgent = 'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader';
+interface AiActivityEntry {
+  requestId: string;
+  agent: AiActivityAgent;
+  agentLabel: string;
+  surface: string;
+  surfaceLabel: string;
+  provider: { kind: string; model: string };
+  startedAt: number;
+}
+type AiActivityTerminalStatus = 'done' | 'empty' | 'error' | 'cancelled';
+interface AiActivityTerminalEvent {
+  requestId: string;
+  agent: AiActivityAgent;
+  agentLabel: string;
+  surface: string;
+  surfaceLabel: string;
+  status: AiActivityTerminalStatus;
+  reason: string | null;
+  endedAt: number;
+}
+
 // SKY-6228: M15 — agent chat session types (mirrors electron-main/mythosFormat/agentSessions.ts)
 interface AgentSessionTurn {
   role: 'user' | 'agent';
@@ -1559,6 +1582,13 @@ interface Window {
     cancelWritingAssistant: (requestId: string) => void;
     cancelBrainstorm: (requestId: string) => void;
     cancelVaultCheck: (requestId: string) => void;
+
+    // SKY-11223: shared AI activity registry — single source of truth for
+    // every in-flight provider call across all four agents/surfaces.
+    getAiActivitySnapshot: () => Promise<AiActivityEntry[]>;
+    onAiActivityUpdate: (cb: (entries: AiActivityEntry[]) => void) => () => void;
+    onAiActivityTerminal: (cb: (event: AiActivityTerminalEvent) => void) => () => void;
+    cancelAiActivity: (requestId: string) => void;
 
     // Voice IO (MYT-205)
     voiceStart: (micDeviceId?: string) => Promise<unknown>;

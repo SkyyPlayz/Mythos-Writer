@@ -1,6 +1,13 @@
 // Main process entry — Electron app lifecycle + IPC handlers
 import { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, screen, Menu } from 'electron';
 import { secureWebPreferences, createWindowOpenHandler, installCspHeaders } from './security.js';
+import {
+  registerAiActivityIpcHandlers,
+  registerAiActivity,
+  endAiActivity,
+  AI_ACTIVITY_SURFACE_LABELS,
+  type AiActivitySurface,
+} from './aiActivityRegistry.js';
 import { loadWindowState, saveWindowState, isBoundsOnScreen } from './windowState.js';
 import { readBgImageAsDataUrl } from './bgLoad.js';
 import { isAutoUpdateEnabled } from './updater.js';
@@ -274,6 +281,7 @@ import {
   buildAgentSystemPrompt,
   loadAgentPersona,
   resolveAgentDisplayName,
+  type AgentPersonaName,
 } from './agentPersona.js';
 import { registerAgentPersonaHandlers } from './agentPersonaIpc.js';
 import { registerPresetHandlers } from './presetIpc.js';
@@ -767,6 +775,39 @@ function flushRendererManifestSave(win: BrowserWindow): Promise<void> {
 // Populated on invoke, cleaned up in finally block or on cancel.
 const agentControllers = new Map<string, AbortController>();
 
+// SKY-11223: registers a request with the shared AiActivityRegistry the
+// instant its AbortController exists, so the always-visible indicator and
+// AgentHubPanel's status line see it before the first token arrives —
+// exactly the window where a slow/hung local model previously looked idle.
+function beginTrackedAiActivity(
+  requestId: string,
+  agent: AgentPersonaName,
+  surface: AiActivitySurface,
+  providerConfig: ProviderConfig,
+  startedAt: number,
+): void {
+  registerAiActivity({
+    requestId,
+    agent,
+    agentLabel: resolveAgentDisplayName(agent, loadAppSettings().agentNames),
+    surface,
+    surfaceLabel: AI_ACTIVITY_SURFACE_LABELS[surface],
+    provider: { kind: providerConfig.kind, model: providerConfig.model },
+    startedAt,
+  });
+}
+
+/** Derives the terminal outcome a `finally` block reports from what the try/catch observed. */
+function endTrackedAiActivity(
+  requestId: string,
+  opts: { aborted: boolean; error: string | null; empty: boolean },
+): void {
+  if (opts.aborted) return endAiActivity(requestId, 'cancelled');
+  if (opts.error) return endAiActivity(requestId, 'error', opts.error);
+  if (opts.empty) return endAiActivity(requestId, 'empty');
+  return endAiActivity(requestId, 'done');
+}
+
 // SKY-1483: in-session rejection log for extraction dedup.
 // Cleared when the vault changes or the app restarts.
 // Stores entity titles that the user rejected in the current session.
@@ -785,6 +826,13 @@ function registerAgentCancelHandlers(): void {
       agentControllers.delete(requestId);
     });
   }
+  // SKY-11223: one generic cancel path, reused by every registry-tracked
+  // call site (including the ones above, which keep their original specific
+  // channel too — BrainstormPage already calls it directly).
+  registerAiActivityIpcHandlers((requestId) => {
+    agentControllers.get(requestId)?.abort();
+    agentControllers.delete(requestId);
+  });
 }
 
 // ─── Vault root ───
@@ -8815,6 +8863,7 @@ function registerBrainstormHandler() {
     if (!event.sender.isDestroyed()) {
       event.sender.send('agent:brainstorm:stream-start', { requestId });
     }
+    beginTrackedAiActivity(requestId, 'brainstorm', 'brainstorm-chat', providerConfig, startedAt);
 
     try {
       // Thinking stays off here: the brainstorm UI's stall/hard-timeout timers
@@ -8842,6 +8891,7 @@ function registerBrainstormHandler() {
         throw new Error(userMessage);
       }
     } finally {
+      endTrackedAiActivity(requestId, { aborted: controller.signal.aborted, error: genError, empty: fullText.length === 0 });
       agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const promptText = cappedPrompt;
@@ -8942,6 +8992,7 @@ function registerArchiveChatHandler() {
     if (!event.sender.isDestroyed()) {
       event.sender.send('agent:archive:stream-start', { requestId });
     }
+    beginTrackedAiActivity(requestId, 'archive', 'archive-chat', providerConfig, startedAt);
 
     try {
       for await (const token of streamFromProvider(providerConfig, {
@@ -8966,6 +9017,7 @@ function registerArchiveChatHandler() {
         throw new Error(userMessage);
       }
     } finally {
+      endTrackedAiActivity(requestId, { aborted: controller.signal.aborted, error: genError, empty: fullText.length === 0 });
       agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const promptText = cappedPrompt;
@@ -9171,6 +9223,7 @@ function registerWritingAssistantHandler() {
     if (!event.sender.isDestroyed()) {
       event.sender.send('agent:writing-assistant:stream-start', { requestId });
     }
+    beginTrackedAiActivity(requestId, 'writingAssistant', 'writing-coach', providerConfig, startedAt);
 
     try {
       // Thinking stays off here: the Writing Assistant panel's stall timer
@@ -9198,6 +9251,7 @@ function registerWritingAssistantHandler() {
         throw new Error(userMessage);
       }
     } finally {
+      endTrackedAiActivity(requestId, { aborted: controller.signal.aborted, error: genError, empty: fullText.length === 0 });
       agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const payloadDigest = process.env.PERSIST_PROMPTS === '1'
@@ -9333,6 +9387,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
     if (!event.sender.isDestroyed()) {
       event.sender.send('agent:vault-check:stream-start', { requestId });
     }
+    beginTrackedAiActivity(requestId, 'archive', 'vault-check', vaultCheckProviderConfig, vaultStartedAt);
 
     try {
       // 2048: the prompt asks for every genuine contradiction plus a summary;
@@ -9360,6 +9415,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
         throw new Error(userMessage);
       }
     } finally {
+      endTrackedAiActivity(requestId, { aborted: controller.signal.aborted, error: vaultGenError, empty: fullText.length === 0 });
       agentControllers.delete(requestId);
       event.sender.off('destroyed', onDestroyed);
       const vaultPayloadDigest = process.env.PERSIST_PROMPTS === '1'
@@ -9642,9 +9698,16 @@ function registerBetaReadScanHandler(): void {
     const betaReadProviderConfig = getProviderConfigForAgent('betaReader');
     const scannedAt = new Date().toISOString();
     const startedAt = Date.now();
+    const requestId = crypto.randomUUID();
     let genError: string | null = null;
+    let userCancelled = false;
+    let commentCount = 0;
     const scanAbort = new AbortController();
-    const scanTimeout = setTimeout(() => scanAbort.abort(), SCAN_STREAM_TIMEOUT_MS);
+    agentControllers.set(requestId, scanAbort);
+    // SKY-11223: tag the timeout's own abort so it stays distinguishable
+    // from a user-initiated cancel sharing the same signal.
+    const scanTimeout = setTimeout(() => scanAbort.abort(new Error('scan-timeout')), SCAN_STREAM_TIMEOUT_MS);
+    beginTrackedAiActivity(requestId, 'betaReader', 'beta-reader-scan', betaReadProviderConfig, startedAt);
 
     try {
       let betaText = '';
@@ -9668,6 +9731,7 @@ function registerBetaReadScanHandler(): void {
 
       const parsed = parseBetaReadLines(betaText);
       const comments = buildBetaReadComments(parsed, payload.sceneId, scannedAt, crypto.randomUUID.bind(crypto));
+      commentCount = comments.length;
 
       for (const comment of comments) {
         insertBetaReadComment({
@@ -9682,9 +9746,21 @@ function registerBetaReadScanHandler(): void {
 
       return { comments, scannedAt };
     } catch (err: unknown) {
+      userCancelled = scanAbort.signal.aborted && (scanAbort.signal.reason as Error | undefined)?.message !== 'scan-timeout';
+      if (userCancelled) {
+        // A deliberate stop is not an error — resolve quietly, same shape as
+        // the disabled-agent short-circuit above.
+        return { comments: [], scannedAt };
+      }
       genError = (err as Error).message ?? 'unknown error';
       throw err;
     } finally {
+      endTrackedAiActivity(requestId, {
+        aborted: userCancelled,
+        error: genError,
+        empty: !userCancelled && !genError && commentCount === 0,
+      });
+      agentControllers.delete(requestId);
       clearTimeout(scanTimeout);
       const digest = crypto.createHash('sha256').update(payload.prose.slice(0, 100)).digest('hex');
       try {
@@ -9693,7 +9769,7 @@ function registerBetaReadScanHandler(): void {
           agent: 'beta-reader',
           model: betaReadProviderConfig.model,
           endpoint: 'messages.stream',
-          request_id: null,
+          request_id: requestId,
           tokens_in: null,
           tokens_out: null,
           latency_ms: Date.now() - startedAt,
@@ -9742,9 +9818,14 @@ function registerBetaReportRunHandler(): void {
 
     const betaReportProviderConfig = getProviderConfigForAgent('betaReader');
     const startedAt = Date.now();
+    const requestId = crypto.randomUUID();
     let genError: string | null = null;
+    let userCancelled = false;
+    let reactionCount = 0;
     const runAbort = new AbortController();
-    const runTimeout = setTimeout(() => runAbort.abort(), SCAN_STREAM_TIMEOUT_MS);
+    agentControllers.set(requestId, runAbort);
+    const runTimeout = setTimeout(() => runAbort.abort(new Error('scan-timeout')), SCAN_STREAM_TIMEOUT_MS);
+    beginTrackedAiActivity(requestId, 'betaReader', 'beta-reader-report', betaReportProviderConfig, startedAt);
 
     try {
       let responseText = '';
@@ -9775,6 +9856,7 @@ function registerBetaReportRunHandler(): void {
         where: r.where,
         note: r.note,
       }));
+      reactionCount = reactions.length;
       const report: BetaReport = {
         id: reportId,
         storyId: payload.storyId,
@@ -9804,9 +9886,22 @@ function registerBetaReportRunHandler(): void {
 
       return { report };
     } catch (err: unknown) {
+      userCancelled = runAbort.signal.aborted && (runAbort.signal.reason as Error | undefined)?.message !== 'scan-timeout';
+      if (userCancelled) {
+        // A deliberate stop is not an error — SafeIpcError forwards this
+        // exact message so the renderer can tell "you stopped it" apart
+        // from a real failure instead of showing a scary error toast.
+        throw new SafeIpcError('cancelled');
+      }
       genError = (err as Error).message ?? 'unknown error';
       throw err;
     } finally {
+      endTrackedAiActivity(requestId, {
+        aborted: userCancelled,
+        error: genError,
+        empty: !userCancelled && !genError && reactionCount === 0,
+      });
+      agentControllers.delete(requestId);
       clearTimeout(runTimeout);
       const digest = crypto.createHash('sha256').update(payload.text.slice(0, 100)).digest('hex');
       try {
@@ -9815,7 +9910,7 @@ function registerBetaReportRunHandler(): void {
           agent: 'beta-reader',
           model: betaReportProviderConfig.model,
           endpoint: 'messages.stream',
-          request_id: null,
+          request_id: requestId,
           tokens_in: null,
           tokens_out: null,
           latency_ms: Date.now() - startedAt,

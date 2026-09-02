@@ -1,0 +1,97 @@
+.ai-activity-indicator {
+  position: fixed;
+  top: 3rem; /* clears the custom title bar */
+  right: 1rem;
+  z-index: 9998; /* just under the toast stack (9999) */
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: 22rem;
+  pointer-events: none;
+}
+
+.ai-activity-indicator__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--glass-fill-overlay, #2a2a2e);
+  color: var(--text-primary, #f0f0f0);
+  border: 1px solid var(--border-subtle, #45475a);
+  border-radius: 6px;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.78rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+  animation: ai-activity-indicator-in 0.2s ease-out;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .ai-activity-indicator__row {
+    backdrop-filter: blur(var(--blur-panel-overlay));
+    -webkit-backdrop-filter: blur(var(--blur-panel-overlay));
+  }
+}
+
+.ai-activity-indicator__row--running {
+  border-color: var(--color-success-border, rgba(74, 222, 128, 0.4));
+}
+
+.ai-activity-indicator__row--error {
+  border-color: var(--color-danger-border, rgba(248, 113, 113, 0.4));
+  color: var(--state-danger, #f88585);
+}
+
+.ai-activity-indicator__row--cancelled {
+  border-color: var(--border-subtle, #45475a);
+  opacity: 0.85;
+}
+
+.ai-activity-indicator__dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--state-success, #4ade80);
+  flex: none;
+  animation: ai-activity-indicator-pulse 1.4s ease-in-out infinite;
+}
+
+.ai-activity-indicator__text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ai-activity-indicator__stop {
+  flex: none;
+  pointer-events: auto;
+  background: none;
+  border: 1px solid var(--border-subtle, #45475a);
+  border-radius: 4px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+}
+
+.ai-activity-indicator__stop:hover {
+  background: var(--color-danger-border, rgba(248, 113, 113, 0.2));
+}
+
+@keyframes ai-activity-indicator-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ai-activity-indicator-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-activity-indicator__row,
+  .ai-activity-indicator__dot {
+    animation: none;
+  }
+}
