@@ -108,6 +108,7 @@
     "test:e2e:bg-scrim-slider": "playwright test e2e/bg-scrim-slider.spec.ts --reporter=list,html",
     "test:e2e:cross-tab-links": "playwright test e2e/cross-tab-links.spec.ts --reporter=list,html",
     "test:e2e:notes-tab": "playwright test e2e/notes-tab.spec.ts --reporter=list,html",
+    "test:e2e:per-vault-tabs": "playwright test e2e/tests/sky-11236-per-vault-tab-isolation.spec.ts --reporter=list,html",
     "test:e2e:readme-screenshots": "playwright test e2e/readme-screenshots.spec.ts --reporter=list,html",
     "test:e2e:shell-relayout-regression": "playwright test e2e/shell-relayout-regression.spec.ts --reporter=list,html",
     "test:e2e:sky-9022-m6-sidebars": "playwright test e2e/tests/sky-9022-m6-sidebars.spec.ts --reporter=list,html",

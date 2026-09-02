@@ -1779,6 +1779,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       setSelectedChapter(null);
       setSelectedStory(null);
       setSelectedEntity(null);
+      // SKY-11236: clear the open-note pointer too. Otherwise the "opening a
+      // note surfaces its tab" effect re-adds the OUTGOING vault's note tab
+      // right after loadVault clears the strip — resurrecting the very leak
+      // this fix removes (its note doesn't exist in the incoming vault).
+      setOpenedNotePath(null);
       // SKY-130: allow restore to fire again for the new project
       sceneRestoreAttemptedRef.current = false;
       loadVault();
@@ -1796,6 +1801,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setSelectedChapter(null);
     setSelectedStory(null);
     setSelectedEntity(null);
+    // SKY-11236: clear the open-note pointer too (see the onProjectSwitched
+    // listener above) so the note-surfacing effect can't re-add the outgoing
+    // vault's tab after loadVault clears the strip.
+    setOpenedNotePath(null);
     // SKY-130: allow restore to fire again for the new project
     sceneRestoreAttemptedRef.current = false;
     loadVault();
