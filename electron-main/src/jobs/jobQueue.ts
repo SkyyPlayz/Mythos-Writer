@@ -63,9 +63,11 @@ export interface JobQueueOptions {
 
 /** Don't push progress events to the renderer more often than this. */
 const PROGRESS_PUSH_INTERVAL_MS = 100;
-/** ETA is unstable early in a run — hold it back until this much has elapsed
- *  and at least one unit has been processed. */
-const ETA_MIN_ELAPSED_MS = 1000;
+/** ETA is unstable early in a run, but we must surface it soon enough for the
+ *  progress row to be useful while work is still in flight. Keeping the warm-up
+ *  low avoids a race where a real worker finishes before the first ETA can be
+ *  displayed, while still avoiding jitter from a single checkpoint. */
+const ETA_MIN_ELAPSED_MS = 250;
 
 interface RunningJobState {
   job: DbBackgroundJob;

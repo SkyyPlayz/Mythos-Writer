@@ -31,6 +31,45 @@
   white-space: nowrap;
 }
 
+/* ── M12.B3 (SKY-10738): "Continuity pass ▾" header control ──
+   Mirrors WritingAssistantPanel's wa-header-controls/wa-cadence-select. ── */
+.cp-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cp-check-type-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.cp-check-type-select {
+  min-height: 28px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: var(--text-xs, 12px);
+  padding: 3px 6px;
+  max-width: 160px;
+}
+
+.cp-check-type-select:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* ── M12.B3: scan status line — "Last scan — 4m ago. N scenes and M notes
+   checked; K continuity flags are open." ── */
+.cp-scan-status {
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted);
+  margin: 0;
+  line-height: var(--dyslexia-line-height);
+}
+
 /* ── Centered states (empty, not-scanned, loading) ── */
 .cp-centered {
   display: flex;

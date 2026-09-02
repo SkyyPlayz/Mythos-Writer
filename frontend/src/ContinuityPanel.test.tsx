@@ -10,7 +10,7 @@ import type { Scene } from './types';
 type Callback = (...args: any[]) => void;
 
 let onStartCb: (() => void) | null = null;
-let onResultCb: ((data: { items: InconsistencyItem[]; tokenUsed: number; partial?: boolean }) => void) | null = null;
+let onResultCb: ((data: { items: InconsistencyItem[]; tokenUsed: number; partial?: boolean; scannedAt?: string; scenesChecked?: number; notesChecked?: number }) => void) | null = null;
 let onErrorCb: ((data: { error: string }) => void) | null = null;
 
 const mockArchiveListContinuity = vi.fn();
@@ -350,6 +350,8 @@ describe('ContinuityPanel — Scan now triggers IPC', () => {
       'sc-1',
       expect.stringContaining('Her eyes were green'),
       'active_scene',
+      // M12.B3 (SKY-10738): "Continuity pass ▾" defaults to Check 2.
+      'story_vault',
     );
   });
 });
@@ -415,6 +417,90 @@ describe('ContinuityPanel — scope tags (M9d)', () => {
     const labels = screen.getAllByTestId('ic-scope-tag').map((el) => el.textContent);
     expect(labels).toEqual(['Story ↔ Vault', 'Vault internal', 'Timeline']);
   });
+
+  it('renders "Story internal" for a story_internal flag (Check 1, M12.B3)', async () => {
+    mockArchiveListContinuity.mockResolvedValue({ items: [makeItem({ scope: 'story_internal' })] });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    await waitFor(() => expect(screen.getByTestId('ic-scope-tag')).toHaveTextContent('Story internal'));
+  });
+});
+
+// M12.B3 (SKY-10738): "Continuity pass ▾" header control.
+describe('ContinuityPanel — Continuity pass control', () => {
+  it('defaults to Check 2 and offers both checks', async () => {
+    mockArchiveListContinuity.mockResolvedValue({ items: [] });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    const select = screen.getByRole('combobox', { name: /continuity pass/i }) as HTMLSelectElement;
+    expect(select.value).toBe('story_vault');
+    expect(screen.getByRole('option', { name: /check 1 — story internal/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /check 2 — story ↔ vault/i })).toBeInTheDocument();
+  });
+
+  it('selecting Check 1 re-scans with checkType=story_internal', async () => {
+    mockArchiveListContinuity.mockResolvedValue({ items: [] });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    const select = screen.getByRole('combobox', { name: /continuity pass/i });
+    fireEvent.change(select, { target: { value: 'story_internal' } });
+    expect(mockArchiveScanContinuity).toHaveBeenCalledWith(
+      'sc-1',
+      expect.stringContaining('Her eyes were green'),
+      'active_scene',
+      'story_internal',
+    );
+  });
+});
+
+// M12.B3 (SKY-10738): scan status line.
+describe('ContinuityPanel — scan status line', () => {
+  it('shows the scan status line with scene/note counts and open flag count after a scan', async () => {
+    mockArchiveListContinuity.mockResolvedValue({ items: [] });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    await waitFor(() => screen.getByRole('button', { name: /scan now/i }));
+
+    act(() => {
+      onResultCb?.({
+        items: [makeItem(), makeItem({ id: 'inc-2' })],
+        tokenUsed: 100,
+        partial: false,
+        scannedAt: new Date(Date.now() - 4 * 60_000).toISOString(),
+        scenesChecked: 28,
+        notesChecked: 124,
+      });
+    });
+
+    const status = screen.getByTestId('cp-scan-status');
+    expect(status).toHaveTextContent(/last scan — 4m ago/i);
+    expect(status).toHaveTextContent(/28 scenes and 124 notes checked/i);
+    expect(status).toHaveTextContent(/2 continuity flags are open/i);
+  });
+
+  it('is absent before any scan has run this session', async () => {
+    mockArchiveListContinuity.mockResolvedValue({ items: [] });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    await waitFor(() => screen.getByRole('button', { name: /scan now/i }));
+    expect(screen.queryByTestId('cp-scan-status')).not.toBeInTheDocument();
+  });
+
+  it('omits the notes clause for a Check 1 scan (never reads the vault)', async () => {
+    mockArchiveListContinuity.mockResolvedValue({ items: [] });
+    await renderContinuity(<ContinuityPanel scene={mockScene} />);
+    await waitFor(() => screen.getByRole('button', { name: /scan now/i }));
+
+    act(() => {
+      onResultCb?.({
+        items: [],
+        tokenUsed: 0,
+        partial: false,
+        scannedAt: new Date().toISOString(),
+        scenesChecked: 12,
+        notesChecked: 0,
+      });
+    });
+
+    const status = screen.getByTestId('cp-scan-status');
+    expect(status).toHaveTextContent(/12 scenes checked/i);
+    expect(status).not.toHaveTextContent(/notes checked/i);
+  });
 });
 
 describe('ContinuityPanel — failed action keeps the flag open (M9d)', () => {
@@ -424,7 +510,10 @@ describe('ContinuityPanel — failed action keeps the flag open (M9d)', () => {
     await renderContinuity(<ContinuityPanel scene={mockScene} />);
     await waitFor(() => screen.getByText(/Manuscript says green but vault says blue/i));
 
-    fireEvent.click(screen.getByRole('button', { name: /^Ignore —/ }));
+    // M12.B3 (SKY-10738): the action row's "Ignore" button was replaced by
+    // "Suggest fix"/"Open sources" — dismiss/ignore now lives on the header's
+    // × button only.
+    fireEvent.click(screen.getByRole('button', { name: /^Dismiss —/ }));
     await flushAsyncEffects();
 
     expect(screen.getByTestId('cp-action-error')).toHaveTextContent(/flagged text has changed/i);
@@ -475,6 +564,7 @@ describe('ContinuityPanel — M12.3 scan scope picker', () => {
       'sc-1',
       expect.stringContaining('Her eyes were green'),
       'active_chapter',
+      'story_vault',
     );
   });
 

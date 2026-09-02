@@ -319,7 +319,9 @@ if (doApp) {
   check('app: scope Timeline', scopeTags.includes('Timeline'));
   const contText = await rightColumnText();
   fs.writeFileSync(`${OUT}/app-continuity.txt`, contText);
-  check('app: three actions on cards', contText.includes('Edit notes to match') && contText.includes('Suggest story change') && contText.includes('Ignore'));
+  // M12.B3 (SKY-10738): owner's annotated-screenshot ruling replaces the
+  // prototype's three actions with two — "Suggest fix" / "Open sources".
+  check('app: two actions on cards (M12.B3)', contText.includes('Suggest fix') && contText.includes('Open sources'));
   // Put the flag cards at the top of the sidebar viewport so all three are in
   // frame (the Assistant tab stacks AGENTS/SUGGESTIONS/ANALYSIS above them).
   await page.evaluate(() => {
@@ -330,8 +332,11 @@ if (doApp) {
   await shootRight('app-continuity');
 
   // 5. Exercise each per-flag action (acceptance box 3).
-  // 5a. Edit notes to match → Apply Change → The Sunken Gate note is patched.
-  await page.locator('button[aria-label^="Match Archive to Story"]').first().click({ timeout: 5000 });
+  // 5a. Suggest fix → Update your notes → Apply Change → the Sunken Gate
+  // note is patched (M12.B3: "Suggest fix" opens the choice first).
+  await page.locator('button[aria-label^="Suggest fix"]').first().click({ timeout: 5000 });
+  await page.waitForTimeout(300);
+  await page.locator('button[aria-label="Update your notes to match the story"]').click({ timeout: 5000 });
   await page.waitForTimeout(800);
   await shootRight('app-action-match-expand');
   await page.locator('button[aria-label="Apply vault change"]').click({ timeout: 5000 });
@@ -339,9 +344,11 @@ if (doApp) {
   const gateNote = fs.readFileSync(path.join(fx.vaultDir, 'entities/locations/The Sunken Gate.md'), 'utf8');
   check('action: Edit notes to match patched the note', gateNote.includes('The inner passage opens at high tide.') && !gateNote.includes(GATE_EXCERPT));
 
-  // 5b. Suggest story change → Apply Edit → suggestion row lands (verified
-  // from state.db after the app closes).
-  await page.locator('button[aria-label^="Suggest Story Change"]').first().click({ timeout: 5000 });
+  // 5b. Suggest fix → Suggest a story change → Apply Edit → suggestion row
+  // lands (verified from state.db after the app closes).
+  await page.locator('button[aria-label^="Suggest fix"]').nth(1).click({ timeout: 5000 });
+  await page.waitForTimeout(300);
+  await page.locator('button[aria-label="Suggest a change to the story"]').click({ timeout: 5000 });
   await page.waitForTimeout(800);
   await shootRight('app-action-suggest-expand');
   await page.locator('button[aria-label="Apply suggested edit"]').click({ timeout: 5000 });

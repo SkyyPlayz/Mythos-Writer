@@ -291,7 +291,9 @@
 }
 
 .ic-diff-preview,
-.ic-suggest-preview {
+.ic-suggest-preview,
+.ic-fix-choice,
+.ic-sources-preview {
   background: var(--bg-input, var(--bg-inset));
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);

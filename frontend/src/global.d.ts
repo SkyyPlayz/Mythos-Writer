@@ -1737,7 +1737,9 @@ interface Window {
     agentPersonaWrite: (agentName: string, key: string, content: string) => Promise<unknown>;
 
     // SKY-1684 / SKY-1685: Archive Agent v1 — continuity scan
-    archiveScanContinuity: (sceneId: string, text: string, scope?: string) => Promise<void>;
+    // M12.B3 (SKY-10738): checkType selects Check 1 (story_internal) vs
+    // Check 2 (story_vault, default) — the panel's "Continuity pass ▾".
+    archiveScanContinuity: (sceneId: string, text: string, scope?: string, checkType?: string) => Promise<void>;
     archiveResolveContinuity: (itemId: string, action: 'match_archive_to_story' | 'suggest_story_change' | 'ignore', note?: string) => Promise<{ ok: boolean; reason?: 'note_not_found' | 'excerpt_not_found' }>;
     archiveListContinuity: (options?: { sceneId?: string; filter?: { status?: string; category?: string } }) => Promise<{
       items: Array<{
@@ -1823,6 +1825,10 @@ interface Window {
       }>;
       tokenUsed: number;
       partial: boolean;
+      /** M12.B3 (SKY-10738): scan-status line data. */
+      scannedAt: string;
+      scenesChecked: number;
+      notesChecked: number;
     }) => void) => () => void;
     onArchiveContScanError: (cb: (data: { sceneId: string; error: string }) => void) => () => void;
     /** Beta 3 M23: a continuity item was resolved/ignored anywhere (Continuity

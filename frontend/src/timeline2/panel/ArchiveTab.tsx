@@ -25,7 +25,10 @@ export interface ArchiveTabProps {
   showToast: (message: string, level?: 'info' | 'warn' | 'error') => void;
 }
 
-const invokeArchive: MiniChatInvoke = async (prompt, history) => {
+// M12.B3 (SKY-10738): exported so the Archive Agent's right-sidebar chat
+// panel (AgentHubPanel) can reuse the exact same invoke — one archive chat
+// session, everywhere it's mounted (§11 "sessions everywhere" contract).
+export const invokeArchive: MiniChatInvoke = async (prompt, history) => {
   const api = window.api;
   if (typeof api?.agentArchive !== 'function') {
     throw new Error('Archive agent unavailable — check your provider settings.');

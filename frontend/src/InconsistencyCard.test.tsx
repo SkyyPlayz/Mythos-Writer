@@ -86,8 +86,16 @@ describe('InconsistencyCard — Ignore action', () => {
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
     await waitFor(() => expect(onResolve).toHaveBeenCalledWith('item-1', 'ignore'));
   });
+});
 
-  it('calls onResolve with ignore when Ignore button clicked', async () => {
+// M12.B3 (SKY-10738): owner's annotated screenshot ruling replaces the
+// prototype's three action-row buttons with two — `Suggest fix` opens a
+// sub-choice between the two underlying fix directions (still both
+// reachable), `Open sources` reveals the full anchors. Dismiss/ignore stays
+// reachable via the header's × button (SKY-9825's M9 wording tests removed:
+// the top-level buttons they asserted on no longer exist).
+describe('InconsistencyCard — action row (M12.B3)', () => {
+  it('renders exactly the two SKY-10738 actions', () => {
     render(
       <InconsistencyCard
         item={makeItem()}
@@ -96,18 +104,14 @@ describe('InconsistencyCard — Ignore action', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    // "Ignore" button has aria-label "Ignore — His eyes were blue"
-    fireEvent.click(screen.getByRole('button', { name: /^ignore/i }));
-    await waitFor(() => expect(onResolve).toHaveBeenCalledWith('item-1', 'ignore'));
+    expect(screen.getByText('Suggest fix')).toBeInTheDocument();
+    expect(screen.getByText('Open sources')).toBeInTheDocument();
+    expect(screen.queryByText('Edit notes to match')).not.toBeInTheDocument();
+    expect(screen.queryByText('Suggest story change')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ignore')).not.toBeInTheDocument();
   });
-});
 
-// SKY-6978 (Beta4/M18): button copy must match the M9 comments-v2 archive
-// action labels verbatim (frontend/src/comments/agentActions.ts AGENT_ACTIONS)
-// so the Notes right panel's flag cards read identically to the manuscript's
-// Archive Agent comment card.
-describe('InconsistencyCard — action labels match M9 wording', () => {
-  it('renders the full M9-canonical labels, not the old short copy', () => {
+  it('"Suggest fix" opens a choice between updating notes and suggesting a story change', () => {
     render(
       <InconsistencyCard
         item={makeItem()}
@@ -116,11 +120,66 @@ describe('InconsistencyCard — action labels match M9 wording', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    expect(screen.getByText('Edit notes to match')).toBeInTheDocument();
-    expect(screen.getByText('Suggest story change')).toBeInTheDocument();
-    expect(screen.getByText('Ignore')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /suggest fix/i }));
+    expect(screen.getByRole('button', { name: /update your notes/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /suggest a change to the story/i })).toBeInTheDocument();
+  });
+
+  it('"Open sources" reveals both full anchors and toggles closed on second click', () => {
+    render(
+      <InconsistencyCard
+        item={makeItem()}
+        archiveStoryEditConsentGiven={true}
+        onResolve={onResolve}
+        onConsentGranted={onConsentGranted}
+      />,
+    );
+    const openSources = screen.getByRole('button', { name: /open sources/i });
+    fireEvent.click(openSources);
+    expect(screen.getByTestId('ic-sources-preview')).toBeInTheDocument();
+    expect(screen.getByText('Vault note')).toBeInTheDocument();
+    fireEvent.click(openSources);
+    expect(screen.queryByTestId('ic-sources-preview')).not.toBeInTheDocument();
+  });
+
+  it('labels the second anchor "Earlier scene" for a story_internal flag (no vault side)', () => {
+    render(
+      <InconsistencyCard
+        item={makeItem({ scope: 'story_internal' })}
+        archiveStoryEditConsentGiven={true}
+        onResolve={onResolve}
+        onConsentGranted={onConsentGranted}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /open sources/i }));
+    expect(screen.getByText('Earlier scene')).toBeInTheDocument();
+    expect(screen.queryByText('Vault note')).not.toBeInTheDocument();
+  });
+
+  it('story_internal "Suggest fix" skips the choice and opens the suggest panel directly (no vault side)', () => {
+    render(
+      <InconsistencyCard
+        item={makeItem({ scope: 'story_internal' })}
+        archiveStoryEditConsentGiven={true}
+        onResolve={onResolve}
+        onConsentGranted={onConsentGranted}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /suggest fix/i }));
+    expect(screen.queryByRole('button', { name: /update your notes/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Suggested manuscript change')).toBeInTheDocument();
   });
 });
+
+/** Drives the new two-step entry: "Suggest fix" → fix-choice sub-menu. */
+function openMatchArchive() {
+  fireEvent.click(screen.getByRole('button', { name: /suggest fix/i }));
+  fireEvent.click(screen.getByRole('button', { name: /update your notes/i }));
+}
+function openSuggestStoryChange() {
+  fireEvent.click(screen.getByRole('button', { name: /suggest fix/i }));
+  fireEvent.click(screen.getByRole('button', { name: /suggest a change to the story/i }));
+}
 
 describe('InconsistencyCard — Match Archive action', () => {
   it('opens expand area with proposed vault change when Match Archive clicked', () => {
@@ -132,8 +191,7 @@ describe('InconsistencyCard — Match Archive action', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    // aria-label: "Match Archive to Story — His eyes were blue"
-    fireEvent.click(screen.getByRole('button', { name: /match archive to story/i }));
+    openMatchArchive();
     expect(screen.getByText('Proposed vault change')).toBeInTheDocument();
     expect(screen.getByText('Update vault entry to say blue eyes.')).toBeInTheDocument();
   });
@@ -147,7 +205,7 @@ describe('InconsistencyCard — Match Archive action', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /match archive to story/i }));
+    openMatchArchive();
     // aria-label: "Apply vault change"
     fireEvent.click(screen.getByRole('button', { name: /apply vault change/i }));
     await waitFor(() =>
@@ -164,7 +222,7 @@ describe('InconsistencyCard — Match Archive action', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /match archive to story/i }));
+    openMatchArchive();
     expect(screen.getByText('Proposed vault change')).toBeInTheDocument();
     // aria-label: "Cancel match archive"
     fireEvent.click(screen.getByRole('button', { name: /cancel match archive/i }));
@@ -182,8 +240,7 @@ describe('InconsistencyCard — Suggest Edit action', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    // aria-label: "Suggest Story Change — His eyes were blue"
-    fireEvent.click(screen.getByRole('button', { name: /suggest story change/i }));
+    openSuggestStoryChange();
     expect(screen.getByText('Suggested manuscript change')).toBeInTheDocument();
     expect(screen.getByText(/Change manuscript to say brown eyes/)).toBeInTheDocument();
   });
@@ -197,7 +254,7 @@ describe('InconsistencyCard — Suggest Edit action', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /suggest story change/i }));
+    openSuggestStoryChange();
     // aria-label: "Apply suggested edit"
     fireEvent.click(screen.getByRole('button', { name: /apply suggested edit/i }));
     // M9d: the drafted story-change text rides along so the suggestion
@@ -220,7 +277,7 @@ describe('InconsistencyCard — Suggest Edit action', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /suggest story change/i }));
+    openSuggestStoryChange();
     // aria-label: "Edit before applying"
     fireEvent.click(screen.getByRole('button', { name: /edit before applying/i }));
     expect(screen.getByRole('textbox', { name: /edit suggested manuscript change/i })).toBeInTheDocument();
@@ -235,7 +292,7 @@ describe('InconsistencyCard — Suggest Edit action', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /suggest story change/i }));
+    openSuggestStoryChange();
     fireEvent.click(screen.getByRole('button', { name: /edit before applying/i }));
     fireEvent.change(screen.getByRole('textbox', { name: /edit suggested manuscript change/i }), {
       target: { value: 'Her eyes caught the brown of river silt.' },
@@ -261,7 +318,7 @@ describe('InconsistencyCard — consent modal', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /suggest story change/i }));
+    openSuggestStoryChange();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText(/Archive Agent — Editing Your Manuscript/i)).toBeInTheDocument();
   });
@@ -275,7 +332,7 @@ describe('InconsistencyCard — consent modal', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /suggest story change/i }));
+    openSuggestStoryChange();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
@@ -288,7 +345,7 @@ describe('InconsistencyCard — consent modal', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /suggest story change/i }));
+    openSuggestStoryChange();
     fireEvent.click(screen.getByRole('checkbox', { name: /don't show this again/i }));
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     await waitFor(() => expect(onConsentGranted).toHaveBeenCalled());
@@ -305,7 +362,7 @@ describe('InconsistencyCard — consent modal', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /suggest story change/i }));
+    openSuggestStoryChange();
     fireEvent.click(screen.getByRole('button', { name: /^continue$/i }));
     expect(onConsentGranted).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -320,7 +377,7 @@ describe('InconsistencyCard — consent modal', () => {
         onConsentGranted={onConsentGranted}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /suggest story change/i }));
+    openSuggestStoryChange();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

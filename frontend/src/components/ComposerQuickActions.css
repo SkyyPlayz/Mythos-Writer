@@ -1,0 +1,41 @@
+/* M12.B3 (SKY-10738) — mirrors RefinementChips.css's affordance. */
+.cqa-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-default);
+}
+
+.cqa-chips-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.cqa-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--bg-inset, rgba(255, 255, 255, 0.04));
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, color 0.12s;
+}
+
+.cqa-chip:hover:not(:disabled) {
+  border-color: var(--border-strong, #444);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.07));
+}
+
+.cqa-chip:focus-visible {
+  outline: 2px solid var(--accent, #0ff);
+  outline-offset: 2px;
+}
+
+.cqa-chip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
