@@ -136,7 +136,7 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 // the "One-click setup" link (design-handoff v2 §2.2), reached via the Start
 // Blank card — see e2e/onboarding-v2.spec.ts's clickStep1Card for the same move.
 async function selectQuickStartCard(pg: Page): Promise<void> {
-  await expect(pg.locator('[data-testid="screen-step1"]')).toBeVisible({ timeout: 30_000 });
+  await expect(pg.locator('[data-testid="screen-welcome"]')).toBeVisible({ timeout: 30_000 });
 
   const quickStartLinkCandidates = [
     'custom-location-quick-start-link',
