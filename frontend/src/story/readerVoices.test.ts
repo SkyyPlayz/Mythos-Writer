@@ -37,7 +37,10 @@ describe('listReaderVoices', () => {
       'kokoro:nicole',
       'kokoro:sky',
     ]);
-    for (const o of options.slice(1)) expect(o.setupHint).toBeTruthy();
+    for (const o of options.slice(1)) {
+      expect(o.setupHint).toBeTruthy();
+      expect(o.unavailable).toBe(true);
+    }
   });
 
   it('lists English OS voices first (prototype en filter)', () => {
@@ -80,19 +83,22 @@ describe('listReaderVoices', () => {
     stubVoices([{ name: 'Zira', lang: 'en-US' }]);
     const options = listReaderVoices();
     const aria = options.find((o) => o.value === 'edge:aria');
-    expect(aria?.label).toBe('Aria Natural — Edge');
-    expect(aria?.setupHint).toContain('default voice');
+    expect(aria?.label).toBe('Aria Natural — Edge (not installed)');
+    expect(aria?.setupHint).toContain('Settings → Voice');
+    expect(aria?.unavailable).toBe(true);
   });
 
-  it('always offers Piper/Kokoro catalog entries that explain their setup', () => {
+  it('always offers Piper/Kokoro catalog entries marked unavailable', () => {
     stubVoices([{ name: 'Aria', lang: 'en-US' }]);
     const options = listReaderVoices();
     const amy = options.find((o) => o.value === 'piper:amy');
     const sky = options.find((o) => o.value === 'kokoro:sky');
-    expect(amy?.label).toBe('Amy — Piper (offline)');
+    expect(amy?.label).toBe('Amy — Piper offline (engine not set up)');
     expect(amy?.setupHint).toContain('Settings → Voice');
-    expect(sky?.label).toBe('Sky — Kokoro (offline)');
+    expect(amy?.unavailable).toBe(true);
+    expect(sky?.label).toBe('Sky — Kokoro offline (engine not set up)');
     expect(sky?.setupHint).toContain('Settings → Voice');
+    expect(sky?.unavailable).toBe(true);
   });
 
   it('appends the configured Piper engine voice when an engine is set up', () => {

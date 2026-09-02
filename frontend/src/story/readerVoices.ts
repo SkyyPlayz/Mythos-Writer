@@ -19,9 +19,12 @@ export interface ReaderVoiceOption {
   value: string;
   label: string;
   /**
-   * Present when picking this entry can't drive its engine yet — the UI
-   * must explain it (toast) and playback falls back to the default voice.
+   * True when the entry's engine is not installed — the UI must render it
+   * disabled so the user cannot pick it and get a different voice silently.
+   * A setup path is always visible (title/tooltip on the option).
    */
+  unavailable?: boolean;
+  /** Shown as tooltip on the option and as a toast if the user somehow triggers it. */
   setupHint?: string;
 }
 
@@ -34,23 +37,23 @@ const MAX_OS_VOICES = 12;
 // ── catalog entries (prototype voiceOpts e0–e6) ──────────────────────────────
 
 const EDGE_HINT =
-  'Edge natural voices are provided by Windows — not on this system yet, so the default voice reads for now';
+  'Edge natural voices need the Windows Narrator / Edge speech package — not installed on this system. Go to Settings → Voice to set up a voice engine.';
 const PIPER_HINT =
-  'Piper voices run fully offline once the Piper engine is set up in Settings → Voice — the default voice reads for now';
+  'Piper is an offline voice engine. Go to Settings → Voice and point it at a Piper binary to enable these voices.';
 const KOKORO_HINT =
-  'Kokoro voices run offline once a Kokoro engine is set up in Settings → Voice — the default voice reads for now';
+  'Kokoro is an offline voice engine. Go to Settings → Voice to install it and enable these voices.';
 
 const EDGE_CATALOG: ReadonlyArray<readonly [string, string]> = [
-  ['edge:aria', 'Aria Natural — Edge'],
-  ['edge:guy', 'Guy Natural — Edge'],
-  ['edge:jenny', 'Jenny Natural — Edge'],
+  ['edge:aria', 'Aria Natural — Edge (not installed)'],
+  ['edge:guy', 'Guy Natural — Edge (not installed)'],
+  ['edge:jenny', 'Jenny Natural — Edge (not installed)'],
 ];
 
 const OFFLINE_CATALOG: ReadonlyArray<readonly [string, string, string]> = [
-  ['piper:amy', 'Amy — Piper (offline)', PIPER_HINT],
-  ['piper:ryan', 'Ryan — Piper (offline)', PIPER_HINT],
-  ['kokoro:nicole', 'Nicole — Kokoro (offline)', KOKORO_HINT],
-  ['kokoro:sky', 'Sky — Kokoro (offline)', KOKORO_HINT],
+  ['piper:amy', 'Amy — Piper offline (engine not set up)', PIPER_HINT],
+  ['piper:ryan', 'Ryan — Piper offline (engine not set up)', PIPER_HINT],
+  ['kokoro:nicole', 'Nicole — Kokoro offline (engine not set up)', KOKORO_HINT],
+  ['kokoro:sky', 'Sky — Kokoro offline (engine not set up)', KOKORO_HINT],
 ];
 
 /** True for catalog picks (edge:/piper:/kokoro:) that name an engine, not a voice id. */
@@ -110,10 +113,13 @@ export function listReaderVoices(
 ): ReaderVoiceOption[] {
   const options: ReaderVoiceOption[] = [{ value: '', label: 'Default voice' }];
   const seen = new Set<string>(['']);
-  const push = (value: string | undefined, label: string, setupHint?: string) => {
+  const push = (value: string | undefined, label: string, setupHint?: string, unavailable?: boolean) => {
     if (!value || seen.has(value)) return;
     seen.add(value);
-    options.push(setupHint ? { value, label, setupHint } : { value, label });
+    const entry: ReaderVoiceOption = { value, label };
+    if (setupHint) entry.setupHint = setupHint;
+    if (unavailable) entry.unavailable = true;
+    options.push(entry);
   };
 
   // OS voices — English first (prototype voices() filter), everything as a
@@ -129,10 +135,11 @@ export function listReaderVoices(
     push(v.name, osVoiceLabel(v));
   }
 
-  // Edge natural catalog — only when the OS doesn't surface real ones. Picks
-  // explain themselves (setupHint toast) and read with the default voice.
+  // Edge natural catalog — only when the OS doesn't surface real ones.
+  // Marked unavailable so the picker disables them and cannot silently swap
+  // to the system voice when the user picks one.
   if (!hasNatural) {
-    for (const [value, label] of EDGE_CATALOG) push(value, label, EDGE_HINT);
+    for (const [value, label] of EDGE_CATALOG) push(value, label, EDGE_HINT, true);
   }
 
   // Configured engine voice (Piper local / cloud) from Settings → Voice.
@@ -144,13 +151,17 @@ export function listReaderVoices(
     push(ttsSettings.voiceId, `${ttsSettings.voiceId} — ${engine}`);
   }
 
-  // Offline Piper/Kokoro catalog — never dead: picking one toasts how to set
-  // the engine up and keeps reading with the default voice meanwhile.
-  for (const [value, label, hint] of OFFLINE_CATALOG) push(value, label, hint);
+  // Offline Piper/Kokoro catalog — marked unavailable (engine not set up).
+  // The picker disables these entries; picking a disabled entry is not possible
+  // so no silent fallback can occur.
+  for (const [value, label, hint] of OFFLINE_CATALOG) push(value, label, hint, true);
 
-  // Whatever is currently selected must stay selectable, even if the OS list
-  // changed underneath it (voice prefs roam between machines).
-  push(selectedVoiceId, `${selectedVoiceId ?? ''} — configured`);
+  // Whatever is currently selected must remain visible in the picker, even if
+  // the OS list changed underneath it. Only add if it is NOT a catalog voice
+  // (those are already in the list above as unavailable).
+  if (selectedVoiceId && !isCatalogReaderVoice(selectedVoiceId)) {
+    push(selectedVoiceId, `${selectedVoiceId} — configured`);
+  }
 
   return options;
 }

@@ -112,9 +112,19 @@ function useReaderControls(reader: ManuscriptReader, ttsSettings?: ReaderTtsSett
   useEffect(() => {
     const synth = (window as { speechSynthesis?: SpeechSynthesis }).speechSynthesis;
     if (!synth?.addEventListener) return;
-    const bump = () => setVoicesVersion((v) => v + 1);
+    // Debounce: Chromium fires voiceschanged multiple times during startup,
+    // causing picker flicker. A 300ms trailing window collapses bursts into
+    // a single re-render.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const bump = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => setVoicesVersion((v) => v + 1), 300);
+    };
     synth.addEventListener('voiceschanged', bump);
-    return () => synth.removeEventListener('voiceschanged', bump);
+    return () => {
+      clearTimeout(timer);
+      synth.removeEventListener('voiceschanged', bump);
+    };
   }, []);
 
   const voiceOptions = useMemo(() => {
@@ -140,9 +150,9 @@ function useReaderControls(reader: ManuscriptReader, ttsSettings?: ReaderTtsSett
     if (!reader.playFrom({ fromCursor })) explainSilence();
   };
 
-  // §1.2 "nothing is dead": voices whose engine isn't set up explain
-  // themselves on pick (prototype voiceChange toast) and playback falls
-  // back to the default voice via resolveReaderVoiceId.
+  // Unavailable catalog entries are disabled in the picker and cannot trigger
+  // onChange — no silent fallback is possible. This handler only fires for
+  // live, selectable options.
   const handleVoiceChange = (value: string) => {
     reader.setVoiceId(value);
     const hint = readerVoiceSetupHint(value);
@@ -219,16 +229,22 @@ function VoiceSelect({
   options: ReturnType<typeof listReaderVoices>;
   onChange: (value: string) => void;
 }) {
+  // If the stored voice is an unavailable catalog entry, show the picker
+  // at Default (empty string) so the user sees an honest selection, not a
+  // grayed-out disabled option that implies they're hearing that voice.
+  const storedOpt = options.find((o) => o.value === reader.voiceId);
+  const effectiveValue = storedOpt?.unavailable ? '' : reader.voiceId;
+
   return (
     <select
       className="msv-reader-voice"
       data-testid="msv-reader-voice"
       aria-label="Reader voice"
-      value={reader.voiceId}
+      value={effectiveValue}
       onChange={(e) => onChange(e.target.value)}
     >
       {options.map((v) => (
-        <option key={v.value} value={v.value} title={v.setupHint}>
+        <option key={v.value} value={v.value} title={v.setupHint} disabled={v.unavailable}>
           {v.label}
         </option>
       ))}
