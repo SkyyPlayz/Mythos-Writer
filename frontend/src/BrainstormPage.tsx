@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo, Fragment, type ReactElement } from 'react';
 import { useAgentActivity } from './agents/agentActivity';
+import { setBrainstormActivity, IDLE_BRAINSTORM_ACTIVITY } from './agents/brainstormActivity';
 import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
 import { EmptyState } from './components/EmptyState/EmptyState';
@@ -980,6 +981,23 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
   }, [messages, facts.length, prompt]);
+
+  // SKY-11214: report real activity to the AGENTS card's Brainstorm row — a
+  // module-level store (not a prop) since this page unmounts on every tab
+  // switch while the right panel persists. "active" mirrors the beforeunload
+  // guard above (a passive mount with only the auto-greeting doesn't count).
+  useEffect(() => {
+    const hasUserMessage = messages.some((m) => m.role === 'user');
+    setBrainstormActivity({
+      active: hasUserMessage || facts.length > 0,
+      factsCount: facts.length,
+      lastActionText: activity[0]?.text ?? null,
+      hasError: !!error || facts.some((f) => f.savedStatus === 'error'),
+    });
+  }, [messages, facts, activity, error]);
+
+  // Leaving the page is honest idle, not "still watching" — reset on unmount.
+  useEffect(() => () => setBrainstormActivity(IDLE_BRAINSTORM_ACTIVITY), []);
 
   // ESC closes the page unless an overlay (drawer, delete confirm, preset editor, context
   // menu) is handling it. Overlays call e.stopPropagation() or we detect them by state.
