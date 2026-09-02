@@ -260,6 +260,9 @@ export default function AppNavRail({
   onVaultOpenSettings,
 }: AppNavRailProps) {
   const itemRefs = useRef<HTMLButtonElement[]>([]);
+  // SKY-11238: the vault-tile group scrolls when long (stable order means the
+  // active tile can sit anywhere in it, so it must never just clip).
+  const vaultsGroupRef = useRef<HTMLDivElement>(null);
   const [storiesOpen, setStoriesOpen] = useState(false);
   // Beta 4 M3: rail edit popover + drag-reorder source row index.
   const [editOpen, setEditOpen] = useState(false);
@@ -282,6 +285,18 @@ export default function AppNavRail({
   useEffect(() => {
     if (activeSection !== 'story') setStoriesOpen(false);
   }, [activeSection]);
+
+  // SKY-11238: tiles keep registration order (never active-first), so bring
+  // the active tile into view when the vault changes. block:'nearest' scrolls
+  // instantly and only when needed — no reduced-motion special-casing.
+  // (scrollIntoView is absent in jsdom, hence the optional call.)
+  const activeVaultId = vaults?.find((v) => v.active)?.id;
+  useEffect(() => {
+    if (!activeVaultId) return;
+    vaultsGroupRef.current
+      ?.querySelector('.nav-rail__vault-tile--active')
+      ?.scrollIntoView?.({ block: 'nearest' });
+  }, [activeVaultId]);
 
   const handleNavKeyDown = useCallback(
     (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -528,7 +543,7 @@ export default function AppNavRail({
           `+` tile is always reachable. Not part of `editableItems` — the rail
           edit popover cannot hide these. */}
       {vaults && (
-        <div className="nav-rail__vaults" role="group" aria-label="Mythos vaults" data-testid="nav-rail-vaults">
+        <div ref={vaultsGroupRef} className="nav-rail__vaults" role="group" aria-label="Mythos vaults" data-testid="nav-rail-vaults">
           {vaults.map((vault) => (
             <button
               key={vault.id}

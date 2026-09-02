@@ -420,6 +420,7 @@ import {
   writeArcManifest,
 } from './vault.js';
 import { readOrderMap, writeOrderMap, rewriteOrderOnMove } from './vaultOrder.js';
+import { upsertRecentProject } from './recentProjects.js';
 import { readIconMap, writeIconMap, setIcon, rewriteIconsOnMove, removeIconsUnderPath } from './vaultIcons.js';
 // SKY-11183 (Notes Board 1/9): board metadata store — see notesBoard.ts.
 import {
@@ -816,11 +817,11 @@ interface VaultSettings {
   hiddenVaultRoots?: string[];
 }
 
-// SKY-320: bumped from 5 → 16 so the Obsidian-style switcher can list every
-// Mythos Vault a user has opened without quietly trimming older ones.
-const MAX_RECENT_PROJECTS = 16;
-
-function addToRecentProjects(vaultRoot: string, notesVaultRoot?: string): void {
+// SKY-11238: order-stable registration — the persisted list order IS the
+// vault order every switcher surface renders, so opening a vault must never
+// move it (see recentProjects.ts). `previousRoot` is for the vault-move
+// flows: the relocated vault keeps its slot instead of re-registering.
+function addToRecentProjects(vaultRoot: string, notesVaultRoot?: string, previousRoot?: string): void {
   const current = loadVaultSettings();
   const name = deriveProjectName(vaultRoot, notesVaultRoot);
   const entry: ProjectEntry = {
@@ -829,9 +830,9 @@ function addToRecentProjects(vaultRoot: string, notesVaultRoot?: string): void {
     notesVaultRoot,
     openedAt: new Date().toISOString(),
   };
-  const existing = (current.recentProjects ?? []).filter((p) => p.vaultRoot !== vaultRoot);
-  const updated = [entry, ...existing].slice(0, MAX_RECENT_PROJECTS);
-  saveVaultSettings({ recentProjects: updated });
+  saveVaultSettings({
+    recentProjects: upsertRecentProject(current.recentProjects ?? [], entry, { previousRoot }),
+  });
 }
 
 function getRecentProjects(): ProjectEntry[] {
@@ -999,6 +1000,10 @@ async function repointToMigratedVault(
     vaultRoot: target.storyVaultPath,
     notesVaultRoot: target.notesVaultPath,
   });
+  // Deliberately NO previousRoot (unlike the folder-move flows): migration is
+  // copy-based and the v0.4 source stays on disk as a valid, openable entry —
+  // replacing it would also drop it from the switch allowlist. The migrated
+  // vault registers fresh at the end (SKY-11238 registration order).
   addToRecentProjects(target.storyVaultPath, target.notesVaultPath);
   // Settings now point at the finished vault — the build is confirmed, so the
   // in-flight marker (retry-reclaim flag) must not outlive this moment.
@@ -6156,7 +6161,9 @@ const handlers: IpcHandlers = {
         syncProvider: gate.syncProvider,
         updateSettings: (newPath) => {
           saveVaultSettings({ vaultRoot: newPath });
-          addToRecentProjects(newPath);
+          // SKY-11238: the moved vault keeps its registry slot (and notes
+          // pairing) — a folder move must not reorder the rail either.
+          addToRecentProjects(newPath, undefined, srcVaultRoot);
         },
       });
     } catch (err) {
@@ -6218,7 +6225,9 @@ const handlers: IpcHandlers = {
         syncProvider: 'local',
         updateSettings: (newPath) => {
           saveVaultSettings({ vaultRoot: newPath });
-          addToRecentProjects(newPath);
+          // SKY-11238: the moved vault keeps its registry slot (and notes
+          // pairing) — a folder move must not reorder the rail either.
+          addToRecentProjects(newPath, undefined, srcVaultRoot);
         },
       });
     } catch (err) {

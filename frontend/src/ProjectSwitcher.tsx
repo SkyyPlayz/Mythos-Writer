@@ -214,7 +214,7 @@ export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onS
         <div
           className="project-switcher-dropdown"
           role="listbox"
-          aria-label="Recent projects"
+          aria-label="Mythos Vaults"
         >
           {projects.length > 0 && (
             <>

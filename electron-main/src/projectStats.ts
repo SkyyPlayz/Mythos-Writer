@@ -57,7 +57,8 @@ export interface ProjectStatsEntry {
 
 /**
  * Collect stats for each recent-project entry. Roots are deduplicated by
- * `vaultRoot` (first entry wins — recents are newest-first).
+ * `vaultRoot` (first entry wins — callers pass the active vault first;
+ * recents follow in stable registration order, SKY-11238).
  */
 export function collectProjectStats(
   entries: Array<{ vaultRoot: string; notesVaultRoot?: string }>,

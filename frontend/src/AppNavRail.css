@@ -349,6 +349,18 @@
   align-items: center;
   gap: 6px;
   padding-bottom: 2px;
+  /* SKY-11238: stable registration order means the active tile can sit
+     anywhere in the group, so a long list must scroll rather than clip it
+     off the rail (the component scrolls the active tile into view).
+     Scrollbar hidden — a 9px bar would crowd the 30px tiles; same
+     wheel-scroll-without-bar treatment as focus-hide-scrollbars. */
+  max-height: 294px; /* 8 tiles + gaps before scrolling kicks in */
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.nav-rail__vaults::-webkit-scrollbar {
+  display: none;
 }
 
 .nav-rail--collapsed .nav-rail__vaults {

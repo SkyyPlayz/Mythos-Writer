@@ -101,7 +101,17 @@ function makeDirs(): Dirs {
   );
   fs.writeFileSync(
     path.join(userData, 'vault-settings.json'),
-    JSON.stringify({ vaultRoot: storyVault, notesVaultRoot: notesVault }, null, 2),
+    JSON.stringify({
+      vaultRoot: storyVault,
+      notesVaultRoot: notesVault,
+      // SKY-11238: a second registered vault after the one being moved, so the
+      // post-move assertions can prove the moved vault kept its SLOT (a
+      // re-registration would land it after the decoy) and left no ghost.
+      recentProjects: [
+        { name: 'Moving Vault', vaultRoot: storyVault, notesVaultRoot: notesVault, openedAt: '2026-09-01T00:00:00.000Z' },
+        { name: 'Decoy Vault', vaultRoot: path.join(homeRoot, 'decoy'), openedAt: '2026-09-01T00:00:01.000Z' },
+      ],
+    }, null, 2),
   );
 
   return { homeRoot, userData, storyVault, notesVault, targetVault };
@@ -245,6 +255,13 @@ test('Move Vault wizard performs a real fs move with no stubbed IPC handler', as
     const vaultSettings = JSON.parse(fs.readFileSync(path.join(dirs.userData, 'vault-settings.json'), 'utf-8'));
     expect(vaultSettings.vaultRoot).toBe(dirs.targetVault);
 
+    // SKY-11238: the registry entry was rewritten in place — same slot (still
+    // ahead of the decoy), no ghost entry at the old path, and the notes
+    // pairing survived a move that carries no notes root of its own.
+    const recents = (vaultSettings.recentProjects ?? []) as Array<{ vaultRoot: string; notesVaultRoot?: string }>;
+    expect(recents.map((p) => p.vaultRoot)).toEqual([dirs.targetVault, path.join(dirs.homeRoot, 'decoy')]);
+    expect(recents[0].notesVaultRoot).toBe(dirs.notesVault);
+
     await app.close().catch(() => undefined);
 
     // ── Restart: app must re-point at the new location and read/write there ──
@@ -254,6 +271,12 @@ test('Move Vault wizard performs a real fs move with no stubbed IPC handler', as
       await expect(page2.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
       // No "vault not found" recovery screen — app booted straight into the moved vault.
       await expect(page2.locator('.vault-not-found, [data-testid="vault-not-found"]')).toHaveCount(0);
+
+      // SKY-11238: boot re-registers the active vault — in place, so the
+      // registry order survives the restart unchanged.
+      const restartSettings = JSON.parse(fs.readFileSync(path.join(dirs.userData, 'vault-settings.json'), 'utf-8'));
+      expect(((restartSettings.recentProjects ?? []) as Array<{ vaultRoot: string }>).map((p) => p.vaultRoot))
+        .toEqual([dirs.targetVault, path.join(dirs.homeRoot, 'decoy')]);
 
       await openSettingsOnSyncTab(page2);
       await expect(page2.locator('[data-testid="sync-vault-path"]')).toHaveText(dirs.targetVault);
