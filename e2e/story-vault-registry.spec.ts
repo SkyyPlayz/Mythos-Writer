@@ -209,7 +209,7 @@ test.describe.serial('SKY-11150 — Story vault registry (fresh profile)', () =>
 
   test('TC-SVR-02: storyVaultRegistry:create creates "Second World" — listed, NOT active, dir exists', async () => {
     const result = await page.evaluate(async (name: string) => {
-      return await (window as any).api.storyVaultRegistryCreate(name);
+      return await (window as any).api.storyVaultRegistryCreate({ displayName: name });
     }, SECOND_VAULT_NAME);
 
     expect(result.entry).toBeTruthy();

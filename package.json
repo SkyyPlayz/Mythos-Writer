@@ -64,8 +64,6 @@
     "test:e2e:two-vault-firstrun": "playwright test e2e/tests/two-vault-firstrun.spec.ts --reporter=list,html",
     "test:e2e:delete-scene-chapter": "playwright test e2e/tests/sky-11008-delete-scene-chapter.spec.ts --reporter=list,html",
     "test:e2e:nav-rail-vault-tiles": "playwright test e2e/tests/sky-11048-nav-rail-vault-tiles.spec.ts --reporter=list,html",
-    "test:e2e:onboarding": "playwright test e2e/onboarding.spec.ts --reporter=list,html",
-    "test:e2e:onboarding-v2": "playwright test e2e/onboarding-v2.spec.ts --reporter=list,html",
     "test:e2e:onboarding-four-paths": "playwright test e2e/onboarding-four-paths.spec.ts --reporter=list,html",
     "test:e2e:cloud-sync": "playwright test e2e/cloud-sync.spec.ts --reporter=list,html",
     "test:e2e:move-vault": "playwright test e2e/move-vault-real.spec.ts e2e/move-vault-local-real.spec.ts --reporter=list,html",
