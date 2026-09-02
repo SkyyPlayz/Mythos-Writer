@@ -5748,8 +5748,17 @@ const handlers: IpcHandlers = {
       await stopNotesVaultWatcher();
     }
 
-    // Remove from registry BEFORE trashing — a failed trash must not leave a
-    // dangling registry entry pointing at the now-gone path.
+    // Trash via shell.trashItem ONLY — never fs.rm, no fallback. Do this
+    // FIRST: only a confirmed trash may mutate registries/settings below. A
+    // failed trash (permissions, trash disabled, Windows delete-pending
+    // ghost, ...) must leave the folder AND every list the UI reads from
+    // completely untouched — removing the registry entry first would make
+    // the card vanish from the UI even though the folder is still there.
+    const result = await trashVaultFolder(vaultPath);
+    if (!result.trashed) {
+      return result;
+    }
+
     if (level === 'mythos') {
       const current = loadVaultSettings();
       const remaining = (current.recentProjects ?? []).filter(
@@ -5802,8 +5811,7 @@ const handlers: IpcHandlers = {
       }
     }
 
-    // Trash via shell.trashItem ONLY — never fs.rm, no fallback.
-    return trashVaultFolder(vaultPath);
+    return result;
   },
 
   [IPC_CHANNELS.VAULT_SURFACE_HIDE]: (payload: import('./ipc.js').VaultSurfaceHidePayload) => {
