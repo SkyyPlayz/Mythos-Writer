@@ -59,6 +59,7 @@ import {
   BETA_READER_DEFAULTS,
   PROVIDER_OPTIONS,
   LISTABLE_PROVIDERS,
+  DEFAULT_BASE_URLS,
   modelListErrorCopy,
   validateApiKey,
   providerSupportsVoice,
@@ -201,12 +202,12 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       } else {
         setModelList([]);
         setModelListStatus('error');
-        setModelListError(modelListErrorCopy(kind, result.error));
+        setModelListError(modelListErrorCopy(kind, result.error, baseUrl || DEFAULT_BASE_URLS[kind]));
       }
     } catch {
       setModelList([]);
       setModelListStatus('error');
-      setModelListError(modelListErrorCopy(kind));
+      setModelListError(modelListErrorCopy(kind, undefined, baseUrl || DEFAULT_BASE_URLS[kind]));
     }
   }, []);
 

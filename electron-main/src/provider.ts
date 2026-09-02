@@ -6,6 +6,7 @@
 // streaming.ts and agents can stay provider-unaware.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { SafeIpcError } from './ipcErrors.js';
 
 // ─── Provider config ─────────────────────────────────────────────────────────
 
@@ -131,7 +132,9 @@ export type ListModelsResult =
  *   - ollama  → GET {origin}/api/tags   → models[].name
  *   - others  → GET {baseUrl}/models    → data[].id
  *
- * The 5 s timeout is enforced via AbortController. validateBaseUrl is called
+ * The timeout is enforced via AbortController — local runtimes get a longer
+ * budget because a cold LM Studio / Ollama / llama.cpp can take several seconds
+ * to load a model on the first call (SKY-11240 AC1). validateBaseUrl is called
  * before any fetch to block SSRF targets.
  */
 export async function listModels(payload: ListModelsPayload): Promise<ListModelsResult> {
@@ -161,8 +164,14 @@ export async function listModels(payload: ListModelsPayload): Promise<ListModels
     return { ok: false, error: guardError };
   }
 
+  // Local runtimes (LM Studio / Ollama / llama.cpp / a self-hosted custom
+  // endpoint) may still be loading a model on the first request; give them
+  // warmup headroom. Cloud APIs answer /models instantly, so keep them snappy.
+  const localKinds = new Set<ProviderKind>(['ollama', 'lmstudio', 'llamacpp', 'custom']);
+  const timeoutMs = localKinds.has(kind) ? 15_000 : 5_000;
+  const timeoutSeconds = Math.round(timeoutMs / 1000);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5_000);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const url = kind === 'ollama'
@@ -178,7 +187,7 @@ export async function listModels(payload: ListModelsPayload): Promise<ListModels
     if (!res.ok) {
       return {
         ok: false,
-        error: `Provider returned HTTP ${res.status}. Check the endpoint and try again.`,
+        error: `${PROVIDER_LABELS[kind]} at ${resolvedBase} returned HTTP ${res.status}. Check the endpoint and try again.`,
       };
     }
 
@@ -195,17 +204,18 @@ export async function listModels(payload: ListModelsPayload): Promise<ListModels
 
     return { ok: true, models };
   } catch (err) {
+    const label = PROVIDER_LABELS[kind];
     if ((err as { name?: string }).name === 'AbortError') {
       return {
         ok: false,
-        error: 'Request timed out after 5 s — check that the provider is running and reachable.',
+        error: `${label} at ${resolvedBase} did not respond within ${timeoutSeconds} seconds — if it is still loading a model, wait a moment and try again.`,
       };
     }
     const msg = ((err as Error).message ?? '').toLowerCase();
     if (msg.includes('fetch failed') || msg.includes('econnrefused') || msg.includes('network')) {
-      return { ok: false, error: 'Network error — check that the provider is running and reachable.' };
+      return { ok: false, error: `Network error reaching ${label} at ${resolvedBase} — check that the server is running and reachable.` };
     }
-    return { ok: false, error: 'Failed to list models — check the provider configuration.' };
+    return { ok: false, error: `Failed to list ${label} models at ${resolvedBase} — check the provider configuration.` };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -370,6 +380,133 @@ async function* runAnthropicStream(
   }
 }
 
+// ─── Human-readable provider labels ──────────────────────────────────────────
+// Used in user-facing error messages so a failure names the provider + address
+// the user actually configured, never a bare kind string (SKY-11240 AC3).
+
+export const PROVIDER_LABELS: Record<ProviderKind, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  ollama: 'Ollama',
+  lmstudio: 'LM Studio',
+  llamacpp: 'llama.cpp',
+  custom: 'Custom endpoint',
+};
+
+/**
+ * Raised when an OpenAI-compatible stream completes without ever yielding a
+ * single usable token — no `content`, no `reasoning_content`/`reasoning`, and
+ * nothing but `<think>` chain-of-thought. Rather than let the surface fall
+ * silent (or show a generic "produced no content"), we throw a specific,
+ * actionable error naming the provider and its address so every consumer
+ * surface (chat, Quick Entry, both beta-read paths) reports the same thing
+ * (SKY-11240 AC3).
+ *
+ * Extends SafeIpcError so the message — which names a user-configured endpoint
+ * URL, not a filesystem path or secret — passes the IPC sanitizer verbatim
+ * instead of being flattened to "Internal error." (the `http:/` in the URL
+ * would otherwise trip the Windows-drive-letter path-leak heuristic).
+ */
+export class EmptyProviderResponseError extends SafeIpcError {
+  readonly kind: ProviderKind;
+  readonly address: string;
+  constructor(kind: ProviderKind, address: string) {
+    super(
+      `${PROVIDER_LABELS[kind]} at ${address} returned an empty response — ` +
+        `no content and no reasoning. Make sure a model is loaded on the server ` +
+        `and try again.`,
+    );
+    this.name = 'EmptyProviderResponseError';
+    this.kind = kind;
+    this.address = address;
+  }
+}
+
+// ─── Inline chain-of-thought (<think>) stripping (SKY-11240) ──────────────────
+// Some local reasoning models don't split their thinking into a separate
+// `reasoning_content` field — they emit literal `<think>…</think>` blocks
+// *inside* `content`. Left untouched, that private reasoning lands verbatim in
+// the manuscript/notes. We strip complete `<think>…</think>` spans from the
+// emitted text.
+
+const THINK_OPEN = '<think>';
+const THINK_CLOSE = '</think>';
+
+/**
+ * Longest suffix of `buf` that is a prefix of `tag`. Those trailing chars might
+ * be the start of `tag` split across the SSE chunk boundary, so the streaming
+ * stripper holds them back until the next chunk disambiguates.
+ */
+function danglingTagPrefixLen(buf: string, tag: string): number {
+  const max = Math.min(buf.length, tag.length - 1);
+  for (let k = max; k >= 1; k--) {
+    if (buf.slice(buf.length - k) === tag.slice(0, k)) return k;
+  }
+  return 0;
+}
+
+/**
+ * Stateful, streaming-safe `<think>` stripper. `push()` returns the text that
+ * is safe to emit now (with any complete `<think>…</think>` spans removed and
+ * any partial-tag / mid-think tail held back); `flush()` returns whatever
+ * remains once the stream ends (dropping an unterminated `<think>` block).
+ */
+export function createThinkStripper(): { push(chunk: string): string; flush(): string } {
+  let inside = false;
+  let buf = '';
+
+  function push(chunk: string): string {
+    buf += chunk;
+    let out = '';
+    // Loop until we can make no further definite progress on the buffer.
+    for (;;) {
+      if (!inside) {
+        const open = buf.indexOf(THINK_OPEN);
+        if (open === -1) {
+          // No complete open tag. Emit everything except a possible partial
+          // `<think>` straddling the next chunk boundary.
+          const hold = danglingTagPrefixLen(buf, THINK_OPEN);
+          out += buf.slice(0, buf.length - hold);
+          buf = buf.slice(buf.length - hold);
+          break;
+        }
+        out += buf.slice(0, open);
+        buf = buf.slice(open + THINK_OPEN.length);
+        inside = true;
+      } else {
+        const close = buf.indexOf(THINK_CLOSE);
+        if (close === -1) {
+          // Still inside a think block. Discard everything except a possible
+          // partial `</think>` straddling the next chunk boundary.
+          const hold = danglingTagPrefixLen(buf, THINK_CLOSE);
+          buf = buf.slice(buf.length - hold);
+          break;
+        }
+        buf = buf.slice(close + THINK_CLOSE.length);
+        inside = false;
+      }
+    }
+    return out;
+  }
+
+  function flush(): string {
+    // An unterminated `<think>` (inside === true) is dropped — its content is
+    // private reasoning that never got closed. Otherwise the held-back tail was
+    // ordinary text that merely looked like the start of a tag; emit it.
+    const rest = inside ? '' : buf;
+    buf = '';
+    return rest;
+  }
+
+  return { push, flush };
+}
+
+/** One-shot `<think>…</think>` strip for non-streaming text (e.g. the reasoning fallback). */
+export function stripThinkBlocks(text: string): string {
+  const stripper = createThinkStripper();
+  return stripper.push(text) + stripper.flush();
+}
+
 // ─── OpenAI-compatible SSE implementation ─────────────────────────────────────
 // Used for OpenAI, Ollama, LM Studio, and custom endpoints.
 // Avoids adding an openai npm dependency — uses the streaming REST API directly.
@@ -437,7 +574,15 @@ async function* runOpenAICompatibleStream(
   // fall back to it rather than yielding nothing. When content IS present the
   // reasoning (the model's private thinking) is discarded, so well-behaved
   // reasoning models keep hiding their chain-of-thought.
-  let sawContent = false;
+  //
+  // SKY-11240: two further guarantees layered on top —
+  //   • inline `<think>…</think>` blocks are stripped from emitted content so
+  //     raw chain-of-thought never reaches saved manuscript/notes; and
+  //   • a stream that ends with nothing usable (no content, no reasoning, only
+  //     stripped `<think>`) throws EmptyProviderResponseError instead of ending
+  //     silently, so every surface shows a specific, actionable message.
+  const thinkStripper = createThinkStripper();
+  let yieldedText = false;
   let reasoningBuffer = '';
 
   try {
@@ -468,25 +613,46 @@ async function* runOpenAICompatibleStream(
 
         const content = delta?.content;
         if (typeof content === 'string' && content.length > 0) {
-          sawContent = true;
-          yield content;
+          const clean = thinkStripper.push(content);
+          if (clean.length > 0) {
+            yieldedText = true;
+            yield clean;
+          }
           continue;
         }
 
         // No content on this chunk — accumulate any reasoning text as a fallback.
-        if (!sawContent) {
-          const reasoning = delta?.reasoning_content ?? delta?.reasoning;
-          if (typeof reasoning === 'string' && reasoning.length > 0) {
-            reasoningBuffer += reasoning;
-          }
+        // Buffered unconditionally; it is only surfaced below if the stream never
+        // produced usable content.
+        const reasoning = delta?.reasoning_content ?? delta?.reasoning;
+        if (typeof reasoning === 'string' && reasoning.length > 0) {
+          reasoningBuffer += reasoning;
         }
       }
     }
 
-    // The model streamed reasoning but never emitted any content — surface the
-    // reasoning text so the answer isn't silently dropped (SKY-11220).
-    if (!sawContent && reasoningBuffer.length > 0) {
-      yield reasoningBuffer;
+    // Flush any text held back at a chunk boundary (a `<think>` that never
+    // opened, or trailing content after the final `</think>`).
+    const tail = thinkStripper.flush();
+    if (tail.length > 0) {
+      yieldedText = true;
+      yield tail;
+    }
+
+    // The model streamed reasoning but never emitted usable content — surface
+    // the reasoning text (with any `<think>` blocks stripped) so the answer
+    // isn't silently dropped (SKY-11220).
+    if (!yieldedText && reasoningBuffer.length > 0) {
+      const cleanedReasoning = stripThinkBlocks(reasoningBuffer);
+      if (cleanedReasoning.length > 0) {
+        yieldedText = true;
+        yield cleanedReasoning;
+      }
+    }
+
+    // Nothing usable at all — never end silently (SKY-11240 AC3).
+    if (!yieldedText) {
+      throw new EmptyProviderResponseError(config.kind, baseUrl);
     }
   } finally {
     reader.releaseLock();

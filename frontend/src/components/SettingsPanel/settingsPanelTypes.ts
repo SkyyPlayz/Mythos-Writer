@@ -63,21 +63,38 @@ export type TestConnectionStatus = 'idle' | 'testing' | 'ok' | 'error';
 export type ModelListStatus = 'idle' | 'loading' | 'ok' | 'error';
 
 const OLLAMA_NOT_RUNNING_COPY = 'Ollama is not running. Start it with ollama serve.';
-const MODEL_LIST_TIMEOUT_COPY = 'Endpoint did not respond within 5 seconds — check the URL and try again.';
-const MODEL_LIST_NETWORK_COPY = 'Could not reach the endpoint — check the URL and try again.';
 
-export function modelListErrorCopy(kind: ProviderKind, error?: string): string {
+/** Human-readable provider name for user-facing copy (SKY-11240 AC3). */
+export function providerDisplayName(kind: ProviderKind): string {
+  return PROVIDER_OPTIONS.find((p) => p.value === kind)?.label ?? kind;
+}
+
+/**
+ * Build the copy shown under the model field when "Refresh models" fails.
+ *
+ * SKY-11240 (AC1/AC3): every message now names the provider and the address it
+ * tried, so the user is never told to "check the URL" without being shown which
+ * URL was tried. Timeouts additionally hint at local-server warmup, because a
+ * cold LM Studio can take longer than the request budget to load a model on the
+ * first call — a retry usually succeeds.
+ */
+export function modelListErrorCopy(kind: ProviderKind, error?: string, baseUrl?: string): string {
   const normalized = (error ?? '').toLowerCase();
-  if (normalized.includes('5 second') || normalized.includes('timeout') || normalized.includes('timed out')) {
-    return MODEL_LIST_TIMEOUT_COPY;
+  const name = providerDisplayName(kind);
+  const addr = baseUrl ? ` at ${baseUrl}` : '';
+  const isTimeout = normalized.includes('second') || normalized.includes('timeout') || normalized.includes('timed out');
+  const isNetwork = normalized.includes('network') || normalized.includes('econn') || normalized.includes('fetch');
+
+  if (isTimeout) {
+    return `${name}${addr} did not respond in time — if it is still loading a model, wait a moment and click Refresh again.`;
   }
-  if (kind === 'ollama' && (!error || normalized.includes('ollama') || normalized.includes('network') || normalized.includes('econnrefused') || normalized.includes('fetch'))) {
-    return OLLAMA_NOT_RUNNING_COPY;
+  if (kind === 'ollama' && (!error || normalized.includes('ollama') || isNetwork)) {
+    return `${OLLAMA_NOT_RUNNING_COPY}${addr ? ` (tried ${baseUrl})` : ''}`;
   }
-  if (normalized.includes('network') || normalized.includes('econn') || normalized.includes('fetch')) {
-    return MODEL_LIST_NETWORK_COPY;
+  if (isNetwork) {
+    return `Could not reach ${name}${addr} — check that the server is running and the URL is correct.`;
   }
-  return error || MODEL_LIST_NETWORK_COPY;
+  return error || `Could not reach ${name}${addr} — check that the server is running and the URL is correct.`;
 }
 
 export const THEME_CHOICES: { value: ThemeMode; label: string }[] = [
