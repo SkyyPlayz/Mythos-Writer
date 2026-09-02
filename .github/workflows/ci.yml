@@ -114,6 +114,9 @@ jobs:
           fi
           echo "Guard passed: no Windows-illegal filenames tracked."
 
+      - name: Guard — all .github/workflows/*.yml files must parse as valid YAML (SKY-11200)
+        run: python3 .github/scripts/check-workflow-yaml.py
+
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
 
