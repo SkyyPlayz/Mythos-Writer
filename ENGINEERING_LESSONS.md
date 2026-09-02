@@ -135,3 +135,9 @@ Caught by the scanScopeResolver book-scope test before it shipped.
 **Lesson:** when a surface gains persisted "active document" state (Scene Crafter board tabs: `activeBoardDocTabId` restores across unmount/remount and relaunch), every e2e helper that navigates to that surface stops landing on the default view — it lands on whatever tab a *previous test* left active, and the suite fails in cascades far from the real cause. **Fix:** make the navigation helper idempotent (explicitly select the known base tab — here, click the pinned Setup tab when it isn't `aria-selected`), instead of assuming route == view. Also from this lane: a second canvas mount (ScenesPanel mini preview) makes bare `getByTestId('canvas-board')` a strict-mode violation — scope full-page canvas asserts to `.sc-canvas-view`.
 
 ---
+
+## SKY-11183 — `Omit<T, K>` silently collapses required fields once `T` has a `[key: string]: unknown` index signature (Notes Board furniture types)
+
+**2026-09-01** — Defining furniture-create/update input types as `Omit<BoardFurnitureItem, 'id'>` (BoardFurnitureItem carries `[key: string]: unknown` for kind-specific fields per BOARDS-SPEC.md §4) type-checked fine at the declaration site but broke every call site that spread the omitted-from type back into a literal (`{ ...item, id }`) — TS reported the literal as "missing k, x, y" even though the runtime value always had them, because `Omit`'s `Pick<T, Exclude<keyof T, K>>` machinery degrades once an index signature widens `keyof T`. **Fix:** for any type with an index signature, spell out create/patch input shapes as their own explicit interface (named required fields + the index signature) instead of `Omit`/`Pick` over the base type — don't rely on utility-type algebra surviving an index signature.
+
+---

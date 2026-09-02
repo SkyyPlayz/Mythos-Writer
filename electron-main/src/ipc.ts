@@ -493,6 +493,19 @@ export const IPC_CHANNELS = {
   // read-only NOTES_VAULT_READ_ICONS above (frontmatter-derived, file-only).
   NOTES_VAULT_SET_ICON: 'notesVault:setIcon',
 
+  // SKY-11183 (Notes Board 1/9): board metadata store — positions, sizes,
+  // colours, furniture, thumbnails, icons, keyed by stable id (see
+  // notesBoard.ts / BOARDS-SPEC.md). No UI yet — this is the data/IPC layer
+  // every other Notes Board ticket builds on.
+  NOTES_BOARD_GET: 'notesBoard:get',
+  NOTES_BOARD_PATCH_LAYOUT: 'notesBoard:patchLayout',
+  NOTES_BOARD_PATCH_COLORS: 'notesBoard:patchColors',
+  NOTES_BOARD_FURNITURE_CREATE: 'notesBoard:furnitureCreate',
+  NOTES_BOARD_FURNITURE_UPDATE: 'notesBoard:furnitureUpdate',
+  NOTES_BOARD_FURNITURE_DELETE: 'notesBoard:furnitureDelete',
+  NOTES_BOARD_ITEM_RENAME: 'notesBoard:itemRename',
+  NOTES_BOARD_ITEM_DELETE: 'notesBoard:itemDelete',
+
   // SKY-11058: per-Mythos-vault notes-vault registry (multiple notes vaults)
   NOTES_VAULT_REGISTRY_LIST: 'notesVaultRegistry:list',
   NOTES_VAULT_REGISTRY_CREATE: 'notesVaultRegistry:create',
@@ -1148,6 +1161,16 @@ export interface IpcHandlers {
   [IPC_CHANNELS.AGENT_SESSION_DUPLICATE]: (payload: AgentSessionDuplicatePayload) => AgentSessionDuplicateResponse;
   [IPC_CHANNELS.AGENT_SESSION_DELETE]: (payload: AgentSessionDeletePayload) => AgentSessionDeleteResponse;
   [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) => AgentSessionAppendTurnsResponse;
+
+  // SKY-11183 (Notes Board 1/9): board metadata store IPC — see notesBoard.ts.
+  [IPC_CHANNELS.NOTES_BOARD_GET]: (payload: NotesBoardGetPayload) => NotesBoardGetResponse;
+  [IPC_CHANNELS.NOTES_BOARD_PATCH_LAYOUT]: (payload: NotesBoardPatchLayoutPayload) => NotesBoardPatchLayoutResponse;
+  [IPC_CHANNELS.NOTES_BOARD_PATCH_COLORS]: (payload: NotesBoardPatchColorsPayload) => NotesBoardPatchColorsResponse;
+  [IPC_CHANNELS.NOTES_BOARD_FURNITURE_CREATE]: (payload: NotesBoardFurnitureCreatePayload) => NotesBoardFurnitureCreateResponse;
+  [IPC_CHANNELS.NOTES_BOARD_FURNITURE_UPDATE]: (payload: NotesBoardFurnitureUpdatePayload) => NotesBoardFurnitureUpdateResponse;
+  [IPC_CHANNELS.NOTES_BOARD_FURNITURE_DELETE]: (payload: NotesBoardFurnitureDeletePayload) => NotesBoardFurnitureDeleteResponse;
+  [IPC_CHANNELS.NOTES_BOARD_ITEM_RENAME]: (payload: NotesBoardItemRenamePayload) => NotesBoardItemRenameResponse;
+  [IPC_CHANNELS.NOTES_BOARD_ITEM_DELETE]: (payload: NotesBoardItemDeletePayload) => NotesBoardItemDeleteResponse;
 }
 
 // ─── Payload / Response types ───
@@ -1393,6 +1416,153 @@ export interface VaultMkdirPayload {
 export interface VaultMkdirResponse {
   path: string;
   created: boolean;
+}
+
+// ─── SKY-11183 (Notes Board 1/9): board metadata store IPC types ───
+// See notesBoard.ts + BOARDS-SPEC.md v2. `folderPath` is the vault-relative
+// POSIX path of the board's own folder ('' for the notes vault root board);
+// `itemPath` (where present) is the child item's path RELATIVE TO
+// `folderPath` — board children are always immediate, so there is no
+// nested-item addressing.
+
+export interface NotesBoardChild {
+  path: string;
+  kind: 'note' | 'folder';
+  id: string | null;
+}
+
+export interface NotesBoardLayoutEntry {
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+}
+
+export type NotesBoardFurnitureKind =
+  | 'column'
+  | 'check'
+  | 'table'
+  | 'image'
+  | 'sketch'
+  | 'swatch'
+  | 'line';
+
+export interface NotesBoardFurnitureItem {
+  id: string;
+  k: NotesBoardFurnitureKind;
+  x: number;
+  y: number;
+  title?: string;
+  color?: string;
+  [key: string]: unknown;
+}
+
+export interface NotesBoardView {
+  zoom: number;
+  panX: number;
+  panY: number;
+}
+
+export interface NotesBoardGetPayload {
+  folderPath: string;
+}
+
+export interface NotesBoardGetResponse {
+  id: string | null;
+  children: NotesBoardChild[];
+  layout: Record<string, NotesBoardLayoutEntry>;
+  colors: Record<string, string>;
+  furniture: NotesBoardFurnitureItem[];
+  view: NotesBoardView;
+}
+
+export interface NotesBoardPatchLayoutPayload {
+  folderPath: string;
+  itemPath: string;
+  patch: { x?: number; y?: number; w?: number; h?: number };
+}
+
+export interface NotesBoardPatchLayoutResponse {
+  key: string;
+  id: string;
+}
+
+export interface NotesBoardPatchColorsPayload {
+  folderPath: string;
+  itemPath: string;
+  color: string | null;
+}
+
+export interface NotesBoardPatchColorsResponse {
+  key: string;
+  id: string;
+}
+
+// NOTE: deliberately NOT Omit<NotesBoardFurnitureItem, 'id'> — that type
+// carries a `[key: string]: unknown` index signature, and TS's Omit/Pick
+// mapped-type machinery collapses the named-required-property guarantee once
+// an index signature is involved, which then makes callers unable to satisfy
+// `item`/`patch` with a literal that TS still considers complete. Spelling
+// the required fields out directly avoids it (see notesBoard.ts's identical
+// NewFurnitureItem/FurniturePatch types, which this payload shape mirrors).
+export interface NotesBoardFurnitureCreatePayload {
+  folderPath: string;
+  item: {
+    k: NotesBoardFurnitureKind;
+    x: number;
+    y: number;
+    title?: string;
+    color?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface NotesBoardFurnitureCreateResponse {
+  item: NotesBoardFurnitureItem;
+}
+
+export interface NotesBoardFurnitureUpdatePayload {
+  folderPath: string;
+  furnitureId: string;
+  patch: {
+    x?: number;
+    y?: number;
+    title?: string;
+    color?: string;
+    [key: string]: unknown;
+  };
+}
+
+export interface NotesBoardFurnitureUpdateResponse {
+  item: NotesBoardFurnitureItem | null;
+}
+
+export interface NotesBoardFurnitureDeletePayload {
+  folderPath: string;
+  furnitureId: string;
+}
+
+export interface NotesBoardFurnitureDeleteResponse {
+  deleted: boolean;
+}
+
+export interface NotesBoardItemRenamePayload {
+  folderPath: string;
+  fromPath: string;
+  toPath: string;
+}
+
+export interface NotesBoardItemRenameResponse {
+  ok: true;
+}
+
+export interface NotesBoardItemDeletePayload {
+  folderPath: string;
+  itemPath: string;
+}
+
+export interface NotesBoardItemDeleteResponse {
+  key: string | null;
 }
 
 // ─── SKY-862: Guided-folder vault relocation (cloud sync) ───
