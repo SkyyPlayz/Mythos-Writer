@@ -11,8 +11,6 @@ const mockWritingAssistantCadenceChange = vi.fn();
 const mockWritingAssistantTipDecision = vi.fn();
 const mockWritingAssistantScanNow = vi.fn();
 const mockWritingAssistantSetActiveScene = vi.fn();
-const mockBetaReadScan = vi.fn();
-const mockBetaReadDismiss = vi.fn();
 const mockVoiceSpeak = vi.fn();
 const mockVoiceSpeakCancel = vi.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,8 +27,6 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     writingAssistantTipDecision: mockWritingAssistantTipDecision,
     writingAssistantScanNow: mockWritingAssistantScanNow,
     writingAssistantSetActiveScene: mockWritingAssistantSetActiveScene,
-    betaReadScan: mockBetaReadScan,
-    betaReadDismiss: mockBetaReadDismiss,
     voiceSpeak: mockVoiceSpeak,
     voiceSpeakCancel: mockVoiceSpeakCancel,
     onVoiceSpeakDone: mockOnVoiceSpeakDone,
@@ -46,8 +42,6 @@ beforeEach(() => {
   mockWritingAssistantTipDecision.mockResolvedValue({ saved: true });
   mockWritingAssistantScanNow.mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() });
   mockWritingAssistantSetActiveScene.mockResolvedValue({ ok: true });
-  mockBetaReadScan.mockResolvedValue({ comments: [], scannedAt: new Date().toISOString() });
-  mockBetaReadDismiss.mockResolvedValue({ id: 'br-1', dismissed: true });
   mockVoiceSpeak.mockResolvedValue({ speakId: 'speak-1' });
   (window as unknown as { api: unknown }).api = makeApi();
 });
@@ -196,59 +190,6 @@ describe('WritingAssistantPanel', () => {
         scenePath: null,
       });
     });
-  });
-
-  it('routes explicit beta-read scene requests to Beta-Read scan IPC', async () => {
-    mockBetaReadScan.mockResolvedValueOnce({
-      comments: [
-        {
-          id: 'br-1',
-          scene_id: 's1',
-          anchor_text: 'The airship docked.',
-          comment_text: 'Clarify the sensory detail here.',
-          created_at: '2026-01-01T00:00:00.000Z',
-          dismissed_at: null,
-        },
-      ],
-      scannedAt: '2026-01-01T00:00:00.000Z',
-    });
-
-    const scene = {
-      id: 's1',
-      title: 'The Heist',
-      blocks: [{ id: 'b1', type: 'prose' as const, order: 0, content: 'The airship docked.', updatedAt: '' }],
-      draftState: 'in-progress' as const,
-      order: 0,
-      path: '/scene.md',
-      createdAt: '',
-      updatedAt: '',
-    };
-
-    render(<WritingAssistantPanel scene={scene} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Beta-read this scene' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => {
-      expect(mockBetaReadScan).toHaveBeenCalledWith('s1', 'The airship docked.', '/scene.md');
-    });
-    expect(mockAgentWritingAssistant).not.toHaveBeenCalled();
-    expect(screen.getByRole('article', { name: /beta-read comment/i })).toHaveTextContent('Clarify the sensory detail here.');
-  });
-
-  it('requires a selected scene before starting Beta-Read mode', async () => {
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'beta read this scene' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent(/select a scene/i);
-    });
-    expect(mockBetaReadScan).not.toHaveBeenCalled();
-    expect(mockAgentWritingAssistant).not.toHaveBeenCalled();
   });
 
   it('shows an error message when the IPC call rejects', async () => {
@@ -1051,62 +992,6 @@ describe('WritingAssistantPanel — TTS voice controls', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Beta-Read trigger detection (AC-WA-17)
-// ---------------------------------------------------------------------------
-const betaReadScene = {
-  id: 's1',
-  title: 'Chapter One',
-  blocks: [{ id: 'b1', type: 'prose' as const, order: 0, content: 'The airship docked.', updatedAt: '' }],
-  draftState: 'in-progress' as const,
-  order: 0,
-  path: '/scene.md',
-  createdAt: '',
-  updatedAt: '',
-};
-
-describe('WritingAssistantPanel — Beta-Read trigger detection (AC-WA-17)', () => {
-  it.each([
-    { prompt: 'beta read this scene', label: 'lowercase "beta read"' },
-    { prompt: 'Beta Read this scene', label: 'title-case "Beta Read"' },
-    { prompt: 'beta-read this please', label: 'hyphenated "beta-read"' },
-    { prompt: 'DEEP REVIEW the pacing', label: 'uppercase "DEEP REVIEW"' },
-    { prompt: 'deep review my prose', label: 'lowercase "deep review"' },
-  ])('routes "$label" prompt to beta-read IPC, not writing-assistant', async ({ prompt }) => {
-    mockBetaReadScan.mockResolvedValueOnce({ comments: [], scannedAt: new Date().toISOString() });
-
-    render(<WritingAssistantPanel scene={betaReadScene} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), { target: { value: prompt } });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => expect(mockBetaReadScan).toHaveBeenCalledTimes(1));
-    expect(mockAgentWritingAssistant).not.toHaveBeenCalled();
-  });
-
-  it('dedicated Beta-Read button triggers the scan without typing a prompt', async () => {
-    mockBetaReadScan.mockResolvedValueOnce({ comments: [], scannedAt: new Date().toISOString() });
-
-    render(<WritingAssistantPanel scene={betaReadScene} />);
-    fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }));
-
-    await waitFor(() => expect(mockBetaReadScan).toHaveBeenCalledTimes(1));
-    expect(mockAgentWritingAssistant).not.toHaveBeenCalled();
-  });
-
-  it('regular writing prompts do NOT route to beta-read IPC', async () => {
-    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Try adding a ticking clock.' });
-
-    render(<WritingAssistantPanel scene={betaReadScene} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'How can I improve the pacing of this scene?' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(1));
-    expect(mockBetaReadScan).not.toHaveBeenCalled();
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Streaming bubble (AC-WA-09, AC-WA-10, AC-WA-13)
 // ---------------------------------------------------------------------------
 describe('WritingAssistantPanel — streaming bubble (AC-WA-09/10/13)', () => {
@@ -1470,57 +1355,6 @@ describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
     render(<WritingAssistantPanel scene={null} autoApply autoApplyCategories={{}} />);
     const pill = screen.getByRole('button', { name: /auto-apply spelling/i });
     expect(() => fireEvent.click(pill)).not.toThrow();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Beta-Read error propagation (GH #740 regression)
-// ---------------------------------------------------------------------------
-describe('WritingAssistantPanel — Beta-Read error propagation (GH #740)', () => {
-  it('shows the provider error message when betaReadScan returns { error }', async () => {
-    mockBetaReadScan.mockResolvedValueOnce({ error: 'ANTHROPIC_API_KEY is not set.' });
-
-    render(<WritingAssistantPanel scene={betaReadScene} />);
-    fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('ANTHROPIC_API_KEY is not set.');
-    });
-  });
-
-  it('does NOT show 0-comment success state when betaReadScan returns { error }', async () => {
-    mockBetaReadScan.mockResolvedValueOnce({ error: 'Provider timeout.' });
-
-    render(<WritingAssistantPanel scene={betaReadScene} />);
-    fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument();
-    });
-    expect(screen.queryByText(/no comments/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/beta-read complete/i)).not.toBeInTheDocument();
-  });
-
-  it('does NOT crash with TypeError when betaReadScan returns { error } (regression for GH #740)', async () => {
-    mockBetaReadScan.mockResolvedValueOnce({ error: 'Writing Coach unavailable.' });
-
-    render(<WritingAssistantPanel scene={betaReadScene} />);
-    expect(() => fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }))).not.toThrow();
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Writing Coach unavailable.');
-    });
-  });
-
-  it('shows error state when betaReadScan rejects with a network/IPC error', async () => {
-    mockBetaReadScan.mockRejectedValueOnce(new Error('IPC channel closed unexpectedly.'));
-
-    render(<WritingAssistantPanel scene={betaReadScene} />);
-    fireEvent.click(screen.getByRole('button', { name: /^beta-read$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('IPC channel closed unexpectedly.');
-    });
   });
 });
 
