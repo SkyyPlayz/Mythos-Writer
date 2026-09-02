@@ -689,6 +689,9 @@ jobs:
         # and wall-clock — see PR description for measurements)
         run: xvfb-run --auto-servernum npm run test:e2e:notes-split-pane-tab-strips
 
+      - name: "E2E — Notes Board canvas shell: reachability, drag persistence, no-cap layout, rename-follows (SKY-11184/SKY-11335)"
+        run: xvfb-run --auto-servernum npm run test:e2e:notes-board-canvas
+
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
