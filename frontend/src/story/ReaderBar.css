@@ -98,7 +98,7 @@
 
 .msv-reader-voice {
   height: 26px;
-  max-width: 150px;
+  max-width: 168px;
   background: rgba(255, 255, 255, 0.05);
   border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.4));
   border-radius: 8px;
@@ -108,6 +108,29 @@
   cursor: pointer;
   flex: none;
   font-family: inherit;
+  /* SKY-11242: force the native dropdown popup to render dark so the option
+     list is legible in the dark theme (Chromium honors this for the popup) and
+     doesn't flash a light-on-light frame while it opens. */
+  color-scheme: dark;
+}
+
+/* SKY-11242: explicit popup colors so grouped options stay readable regardless
+   of platform defaults. Chromium (Electron) honors option/optgroup colors. */
+.msv-reader-voice option,
+.msv-reader-voice optgroup {
+  background: rgb(15, 18, 32); /* near prototype base #0b0d17, slightly lifted */
+  color: rgb(219, 228, 245);
+}
+
+.msv-reader-voice optgroup {
+  color: rgb(142, 157, 184); /* prototype #8e9db8 — group headers read as labels */
+  font-style: normal;
+  font-weight: 600;
+}
+
+/* Unavailable voices (engine not installed) read as dimmed, not selectable-looking. */
+.msv-reader-voice option[data-unavailable='true'] {
+  color: rgb(120, 132, 156);
 }
 
 .msv-reader-jump {

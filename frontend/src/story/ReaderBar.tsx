@@ -17,8 +17,9 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import {
   listReaderVoices,
-  readerVoiceSetupHint,
   type ReaderTtsSettings,
+  type ReaderVoiceEngine,
+  type ReaderVoiceOption,
 } from './readerVoices';
 import type { ManuscriptReader } from './useManuscriptReader';
 import { showLnToast } from '../theme/lnToast';
@@ -140,13 +141,17 @@ function useReaderControls(reader: ManuscriptReader, ttsSettings?: ReaderTtsSett
     if (!reader.playFrom({ fromCursor })) explainSilence();
   };
 
-  // §1.2 "nothing is dead": voices whose engine isn't set up explain
-  // themselves on pick (prototype voiceChange toast) and playback falls
-  // back to the default voice via resolveReaderVoiceId.
+  // SKY-11242: a voice whose engine isn't installed is marked unavailable in
+  // the picker. Picking one explains itself (setupHint toast) and does NOT
+  // switch playback to it — the current voice keeps reading, so an entry never
+  // plays a different voice than its label promises.
   const handleVoiceChange = (value: string) => {
+    const option = voiceOptions.find((o) => o.value === value);
+    if (option && !option.available) {
+      if (option.setupHint) showLnToast(option.setupHint);
+      return; // keep the current, playable voice
+    }
     reader.setVoiceId(value);
-    const hint = readerVoiceSetupHint(value);
-    if (hint) showLnToast(hint);
   };
 
   return { voiceOptions, handleToggle, handlePlayFrom, handleVoiceChange };
@@ -210,15 +215,45 @@ function TransportControls({ reader, onToggle }: { reader: ManuscriptReader; onT
   );
 }
 
+/** Group headers shown as <optgroup> labels, in picker order (SKY-11242 AC4). */
+const VOICE_GROUPS: ReadonlyArray<{ engine: ReaderVoiceEngine; label: string }> = [
+  { engine: 'system', label: 'System voices' },
+  { engine: 'edge', label: 'Edge natural' },
+  { engine: 'cloud', label: 'Cloud' },
+  { engine: 'piper', label: 'Piper (offline)' },
+  { engine: 'kokoro', label: 'Kokoro (offline)' },
+];
+
+/** Marker appended to an unavailable option so it reads as such when collapsed. */
+function voiceOptionText(v: ReaderVoiceOption): string {
+  return v.available ? v.label : `${v.label} · needs setup`;
+}
+
+function VoiceOption({ v }: { v: ReaderVoiceOption }) {
+  return (
+    <option
+      value={v.value}
+      title={v.setupHint}
+      data-unavailable={v.available ? undefined : 'true'}
+      aria-disabled={v.available ? undefined : true}
+    >
+      {voiceOptionText(v)}
+    </option>
+  );
+}
+
 function VoiceSelect({
   reader,
   options,
   onChange,
 }: {
   reader: ManuscriptReader;
-  options: ReturnType<typeof listReaderVoices>;
+  options: ReaderVoiceOption[];
   onChange: (value: string) => void;
 }) {
+  // The default entry stays ungrouped at the top; everything else falls under
+  // its engine's <optgroup>. A group renders only when it has voices.
+  const ungrouped = options.filter((v) => v.engine === 'default');
   return (
     <select
       className="msv-reader-voice"
@@ -227,11 +262,20 @@ function VoiceSelect({
       value={reader.voiceId}
       onChange={(e) => onChange(e.target.value)}
     >
-      {options.map((v) => (
-        <option key={v.value} value={v.value} title={v.setupHint}>
-          {v.label}
-        </option>
+      {ungrouped.map((v) => (
+        <VoiceOption key={v.value} v={v} />
       ))}
+      {VOICE_GROUPS.map(({ engine, label }) => {
+        const groupVoices = options.filter((v) => v.engine === engine);
+        if (groupVoices.length === 0) return null;
+        return (
+          <optgroup key={engine} label={label}>
+            {groupVoices.map((v) => (
+              <VoiceOption key={v.value} v={v} />
+            ))}
+          </optgroup>
+        );
+      })}
     </select>
   );
 }
