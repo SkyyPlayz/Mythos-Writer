@@ -245,6 +245,56 @@ describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () 
     expect(screen.getByTestId('ahp-agent-row-beta-reader'))
       .toHaveAccessibleName('Open Beta Reader chat — Disabled');
   });
+
+  // SKY-11224: the AGENTS card used to open three of its four rows onto a
+  // "chat coming soon" placeholder — only Writing Coach was ever wired up.
+  // Test every agent id, not just Writing Coach, so a regression on any one
+  // row's real surface fails here instead of shipping silently again.
+  it('SKY-11224: every agent id opens a real surface — none fall through to the "coming soon" placeholder', async () => {
+    const navEvents: CustomEvent[] = [];
+    const onNav = (e: Event) => navEvents.push(e as CustomEvent);
+    window.addEventListener('mythos:nav', onNav);
+
+    try {
+      render(<AgentHubPanel scene={null} />);
+      await screen.findByText(/No suggestions right now/i);
+
+      // Writing Coach: opens the in-panel chat, session picker included.
+      fireEvent.click(screen.getByTestId('ahp-agent-row-writing-assistant'));
+      expect(await screen.findByRole('button', { name: /back to agents/i })).toBeInTheDocument();
+      expect(screen.queryByText(/chat coming soon/i)).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/^Session:/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /back to agents/i }));
+      await screen.findByTestId('ahp-agent-row-writing-assistant');
+
+      // Archive: opens its own redesigned continuity + mini chat body (SKY-10738).
+      fireEvent.click(screen.getByTestId('ahp-agent-row-archive'));
+      expect(await screen.findByRole('button', { name: /back to agents/i })).toBeInTheDocument();
+      expect(screen.queryByText(/chat coming soon/i)).not.toBeInTheDocument();
+      expect(screen.getByTestId('ahp-archive-chat')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /back to agents/i }));
+      await screen.findByTestId('ahp-agent-row-archive');
+
+      // Brainstorm: this ticket's fix — a real mini chat on the shared
+      // Brainstorm session, same backend the timeline tab already uses.
+      fireEvent.click(screen.getByTestId('ahp-agent-row-brainstorm'));
+      expect(await screen.findByRole('button', { name: /back to agents/i })).toBeInTheDocument();
+      expect(screen.queryByText(/chat coming soon/i)).not.toBeInTheDocument();
+      expect(screen.getByTestId('ahp-brainstorm-chat')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /back to agents/i }));
+      await screen.findByTestId('ahp-agent-row-brainstorm');
+
+      // Beta Reader: never opens this panel's chat view at all — it routes
+      // to the real, dedicated Beta Reader page (M27) via a nav event.
+      fireEvent.click(screen.getByTestId('ahp-agent-row-beta-reader'));
+      expect(screen.queryByRole('button', { name: /back to agents/i })).not.toBeInTheDocument();
+      expect(screen.queryByText(/chat coming soon/i)).not.toBeInTheDocument();
+      expect(navEvents).toHaveLength(1);
+      expect(navEvents[0].detail).toEqual({ view: 'beta' });
+    } finally {
+      window.removeEventListener('mythos:nav', onNav);
+    }
+  });
 });
 
 // ── SKY-9022/M6 GAP-6: AGENTS card ↔ Continuity section agreement ───────────
