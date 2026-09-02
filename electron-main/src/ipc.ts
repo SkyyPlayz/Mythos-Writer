@@ -4629,6 +4629,12 @@ export interface VaultGetPathsResponse {
   /** SKY-10388: default parent for new Mythos vaults — lets the renderer
    *  prefill destination pickers without hardcoding a path. */
   defaultVaultsParentPath: string;
+  /** SKY-11152: the enclosing MythosVault root (the folder that holds
+   *  `Story Vault/` + `Notes Vault/`) for the currently-open vault, or null
+   *  for a legacy v0.4 layout that has no such enclosing root. Lets Settings
+   *  "Add a Notes/Story Vault…" compute a destination without re-deriving
+   *  the v2 naming convention in the renderer. */
+  mythosRoot: string | null;
 }
 
 export interface VaultGetSystemPathsResponse {

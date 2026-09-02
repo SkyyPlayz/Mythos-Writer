@@ -5897,6 +5897,7 @@ const handlers: IpcHandlers = {
       homeDir: app.getPath('home'),
       pathSeparator: path.sep as '/' | '\\',
       defaultVaultsParentPath: defaultMythosVaultsParent(),
+      mythosRoot: mythosRootForStoryVault(getVaultRoot()),
     };
   },
 
