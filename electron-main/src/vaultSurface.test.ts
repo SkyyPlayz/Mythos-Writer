@@ -3,7 +3,8 @@
 // Key invariants verified:
 //   1. trashVaultFolder calls shell.trashItem and nothing else that mutates disk.
 //   2. shell.trashItem failure leaves files untouched and surfaces an error.
-//   3. getBlastRadius counts inner vault dirs correctly.
+//   3. getBlastRadius counts registered notes+story vaults correctly (SKY-11322:
+//      matches projectStats.ts's countInnerVaults, not a raw directory listing).
 //   4. VAULT_SURFACE_COPY strings say "Recycle Bin", never imply permanent delete.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -19,7 +20,12 @@ vi.mock('electron', () => ({
 // Imports come AFTER vi.mock declarations so the hoisted mocks apply.
 import { shell } from 'electron';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { trashVaultFolder, getBlastRadius, VAULT_SURFACE_COPY } from './vaultSurface.js';
+import { createMythosFile, writeMythosFile } from './mythosFormat/mythosJson.js';
+import { ensureNotesVaultRegistry, createBlankNotesVault } from './mythosFormat/notesVaultRegistry.js';
+import { ensureStoryVaultRegistry, createBlankStoryVault } from './mythosFormat/storyVaultRegistry.js';
 
 const mockTrashItem = vi.mocked(shell.trashItem);
 
@@ -67,39 +73,97 @@ describe('trashVaultFolder', () => {
 // ─── getBlastRadius ───────────────────────────────────────────────────────────
 
 describe('getBlastRadius', () => {
-  let readdirSpy: ReturnType<typeof vi.spyOn>;
+  let tmpRoot: string;
 
   beforeEach(() => {
-    readdirSpy = vi.spyOn(fs, 'readdirSync');
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-blastradius-'));
   });
 
   afterEach(() => {
-    readdirSpy.mockRestore();
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
   });
 
-  it('counts directory entries inside the mythos vault root', () => {
-    readdirSpy.mockReturnValueOnce([
-      { isDirectory: () => true },   // Story Vault
-      { isDirectory: () => true },   // Notes Vault
-      { isDirectory: () => false },  // some file — must not be counted
-    ] as unknown as ReturnType<typeof fs.readdirSync>);
-    const result = getBlastRadius('/vaults/MyStory');
+  it('SKY-11322: counts registered notes+story vaults, not raw directory entries', () => {
+    const mythosRoot = path.join(tmpRoot, 'MyStory');
+    fs.mkdirSync(mythosRoot, { recursive: true });
+    writeMythosFile(mythosRoot, createMythosFile('MyStory'));
+    ensureStoryVaultRegistry(mythosRoot);
+    ensureNotesVaultRegistry(mythosRoot);
+    // A non-vault directory alongside Story/Notes Vault (e.g. scaffold-written
+    // icons/cache folder) must NOT inflate the count — this is the SKY-11322 bug.
+    fs.mkdirSync(path.join(mythosRoot, 'some-other-dir'), { recursive: true });
+
+    const result = getBlastRadius(mythosRoot);
     expect(result.vaultName).toBe('MyStory');
     expect(result.innerCount).toBe(2);
   });
 
-  it('returns innerCount 0 when readdirSync throws', () => {
-    readdirSpy.mockImplementationOnce(() => {
-      throw new Error('ENOENT');
+  it('SKY-11322: matches the card count for >1 paired vaults (rules out off-by-N)', () => {
+    const mythosRoot = path.join(tmpRoot, 'BigMythos');
+    fs.mkdirSync(mythosRoot, { recursive: true });
+    writeMythosFile(mythosRoot, createMythosFile('BigMythos'));
+    ensureStoryVaultRegistry(mythosRoot);
+    createBlankStoryVault(mythosRoot, 'Second Story');
+    ensureNotesVaultRegistry(mythosRoot);
+    createBlankNotesVault(mythosRoot, 'Second Notes');
+    createBlankNotesVault(mythosRoot, 'Third Notes');
+
+    // 2 story vaults + 3 notes vaults = 5, matching notesVaultCount/storyVaultCount
+    // as shown on the card (projectStats.ts's countInnerVaults).
+    const result = getBlastRadius(mythosRoot);
+    expect(result.innerCount).toBe(5);
+  });
+
+  it('SKY-11322: a v2 root registry write failure falls back to the implicit 1/1 pair, not 0 (matches countInnerVaults)', () => {
+    const mythosRoot = path.join(tmpRoot, 'FlakyMythos');
+    fs.mkdirSync(mythosRoot, { recursive: true });
+    writeMythosFile(mythosRoot, createMythosFile('FlakyMythos'));
+    // No registry file exists yet, so the first ensure*VaultRegistry call
+    // must lazily WRITE one (writeFileAtomic -> fs.openSync) — simulate that
+    // write failing (e.g. ENOSPC/EACCES/network-share hiccup).
+    const openSpy = vi.spyOn(fs, 'openSync').mockImplementation(() => {
+      throw new Error('ENOSPC: no space left on device');
     });
-    const result = getBlastRadius('/vaults/Missing');
+    try {
+      const result = getBlastRadius(mythosRoot);
+      expect(result.innerCount).toBe(2);
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it('SKY-11322: a legacy (pre-v2, no mythos.json) root reports the implicit 1/1 pair', () => {
+    const legacyRoot = path.join(tmpRoot, 'LegacyVault');
+    fs.mkdirSync(legacyRoot, { recursive: true });
+    fs.writeFileSync(path.join(legacyRoot, 'scene1.md'), '# scene');
+
+    const result = getBlastRadius(legacyRoot);
+    expect(result.innerCount).toBe(2);
+  });
+
+  it('SKY-11322: never writes a v2 registry into a legacy root just to compute the count', () => {
+    // ensure*VaultRegistry auto-create a registry file on first read — calling
+    // them on a legacy vault would plant v2 metadata inside a folder that was
+    // never migrated, just from opening the delete menu. Guard: isMythosV2Root
+    // must gate the write, not just the read.
+    const legacyRoot = path.join(tmpRoot, 'LegacyVault2');
+    fs.mkdirSync(legacyRoot, { recursive: true });
+
+    getBlastRadius(legacyRoot);
+
+    expect(fs.readdirSync(legacyRoot)).toEqual([]);
+  });
+
+  it('returns innerCount 0 for a root that does not exist', () => {
+    const result = getBlastRadius(path.join(tmpRoot, 'Missing'));
     expect(result.innerCount).toBe(0);
     expect(result.vaultName).toBe('Missing');
   });
 
   it('derives vaultName from the final path segment', () => {
-    readdirSpy.mockReturnValueOnce([] as unknown as ReturnType<typeof fs.readdirSync>);
-    const result = getBlastRadius('/home/user/vaults/My Great Novel');
+    const mythosRoot = path.join(tmpRoot, 'My Great Novel');
+    fs.mkdirSync(mythosRoot, { recursive: true });
+    const result = getBlastRadius(mythosRoot);
     expect(result.vaultName).toBe('My Great Novel');
   });
 });

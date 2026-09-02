@@ -13,6 +13,9 @@
 import { shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import { isMythosV2Root } from './mythosFormat/mythosJson.js';
+import { ensureNotesVaultRegistry } from './mythosFormat/notesVaultRegistry.js';
+import { ensureStoryVaultRegistry } from './mythosFormat/storyVaultRegistry.js';
 
 // ─── User-visible copy strings ────────────────────────────────────────────────
 // Centralised so the Settings UI can import without touching this logic.
@@ -61,22 +64,46 @@ export const VAULT_SURFACE_COPY = {
 
 export interface BlastRadius {
   vaultName: string;
-  /** Directory count directly inside the Mythos vault root. Story + Notes = 2. */
+  /** Registered notes-vault count + story-vault count. Matches the card's own
+   *  `notesVaultCount`/`storyVaultCount` stats (projectStats.ts). */
   innerCount: number;
 }
 
 /**
  * Count the inner vault directories for the Mythos-vault 2-confirm dialog.
- * Does not recurse — only direct children of `mythosVaultRoot` that are dirs.
+ *
+ * For a v2 vault, reads the notes/story vault registries — the same source
+ * of truth `collectProjectStats` uses for the card's displayed count
+ * (SKY-11322) — rather than a raw directory listing, which over-counts any
+ * non-vault directory the default scaffold happens to write alongside them.
+ *
+ * A legacy (pre-v2, no mythos.json) root reports the implicit 1 story + 1
+ * notes vault, matching `countInnerVaults`'s fallback — and, critically,
+ * never calls the `ensure*VaultRegistry` writers on a legacy root, which
+ * would otherwise plant new v2 registry files inside a vault folder that
+ * was never migrated, just from opening the delete menu.
+ *
+ * A registry read/write failure on a genuine v2 root also falls back to the
+ * implicit 1+1 pair rather than 0 — mirroring `countInnerVaults`'s own
+ * try/catch exactly, so the delete dialog and the card never disagree.
  */
 export function getBlastRadius(mythosVaultRoot: string): BlastRadius {
   const vaultName = path.basename(mythosVaultRoot);
   let innerCount = 0;
   try {
-    const entries = fs.readdirSync(mythosVaultRoot, { withFileTypes: true });
-    innerCount = entries.filter((e) => e.isDirectory()).length;
+    if (isMythosV2Root(mythosVaultRoot)) {
+      try {
+        const notesCount = ensureNotesVaultRegistry(mythosVaultRoot).vaults.length;
+        const storyCount = ensureStoryVaultRegistry(mythosVaultRoot).vaults.length;
+        innerCount = notesCount + storyCount;
+      } catch {
+        innerCount = 2;
+      }
+    } else if (fs.existsSync(mythosVaultRoot)) {
+      innerCount = 2;
+    }
   } catch {
-    // Unreadable dir — report 0; UI still shows the confirm dialog.
+    // Unreadable/malformed vault — report 0; UI still shows the confirm dialog.
   }
   return { vaultName, innerCount };
 }

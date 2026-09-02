@@ -62,7 +62,12 @@ beforeEach(() => {
   mockVaultSurfaceUnhide.mockResolvedValue({ ok: true });
   mockVaultSurfaceHide.mockResolvedValue({ hidden: true });
   mockVaultSurfaceTrash.mockResolvedValue({ trashed: true });
-  mockVaultSurfaceBlastRadius.mockResolvedValue({ vaultName: 'Alpha', innerCount: 2 });
+  // SKY-11322: must match VAULT_A's own mockProjectStats sum
+  // (notesVaultCount:2 + storyVaultCount:1 = 3) — the same as the card's
+  // displayed "2 notes vaults · 1 story vault" — so a real getBlastRadius
+  // regression that disagreed with the card is caught by the cross-reference
+  // assertion below, not masked by a mock that never has to agree with it.
+  mockVaultSurfaceBlastRadius.mockResolvedValue({ vaultName: 'Alpha', innerCount: 3 });
   Object.defineProperty(window, 'api', {
     value: {
       projectList: mockProjectList,
@@ -363,8 +368,12 @@ describe('MythosVaultsSection — the ⋯ overflow menu (SKY-11154 §4a, AC-VS-0
     fireEvent.click(screen.getByLabelText('More options for Alpha'));
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
     await waitFor(() => expect(mockVaultSurfaceBlastRadius).toHaveBeenCalled());
+    // SKY-11322: the confirm dialog's inner-vault count must match the card's
+    // own "2 notes vaults · 1 story vault" (= 3) stats for the same vault.
+    expect(await screen.findByText(/contains 3 inner vaults/i)).toBeInTheDocument();
     fireEvent.click(await screen.findByText('Continue'));
     await waitFor(() => expect(screen.getByText(/moved to the recycle bin/i)).toBeInTheDocument());
+    expect(screen.getByText(/and its 3 inner vaults will be moved/i)).toBeInTheDocument();
     fireEvent.click(screen.getByText('Move to Recycle Bin'));
     await waitFor(() => expect(mockVaultSurfaceTrash).toHaveBeenCalledWith({ vaultPath: '/vaults/Alpha', level: 'mythos' }));
   });
