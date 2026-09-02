@@ -836,3 +836,62 @@ describe('SceneCrafterPage — SKY-9878 R11/M11c hint copy (rail is manual eithe
     expect(card).toHaveAttribute('aria-pressed', 'true');
   });
 });
+
+describe('SceneCrafterPage — SKY-11213 Create Scene from Setup', () => {
+  it('shows "Create Scene" button when onCreateSceneFromSetup is provided', async () => {
+    render(
+      <SceneCrafterPage
+        story={STORY}
+        onOpenNote={vi.fn()}
+        onOpenScene={vi.fn()}
+        onCreateSceneFromSetup={vi.fn().mockResolvedValue(undefined)}
+      />
+    );
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /create scene/i })).toBeInTheDocument();
+  });
+
+  it('does not show "Create Scene" button when onCreateSceneFromSetup is not provided', async () => {
+    await renderPage();
+    expect(screen.queryByRole('button', { name: /create scene/i })).not.toBeInTheDocument();
+  });
+
+  it('calls onCreateSceneFromSetup with current setup when clicked', async () => {
+    const onCreateSceneFromSetup = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SceneCrafterPage
+        story={STORY}
+        onOpenNote={vi.fn()}
+        onOpenScene={vi.fn()}
+        onCreateSceneFromSetup={onCreateSceneFromSetup}
+      />
+    );
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
+
+    const btn = screen.getByRole('button', { name: /create scene/i });
+    await act(async () => { fireEvent.click(btn); });
+
+    expect(onCreateSceneFromSetup).toHaveBeenCalledTimes(1);
+    const [setup] = (onCreateSceneFromSetup as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(setup).toHaveProperty('title');
+    expect(setup).toHaveProperty('beats');
+  });
+
+  it('shows error text when onCreateSceneFromSetup rejects', async () => {
+    const onCreateSceneFromSetup = vi.fn().mockRejectedValue(new Error('No story selected.'));
+    render(
+      <SceneCrafterPage
+        story={STORY}
+        onOpenNote={vi.fn()}
+        onOpenScene={vi.fn()}
+        onCreateSceneFromSetup={onCreateSceneFromSetup}
+      />
+    );
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
+
+    const btn = screen.getByRole('button', { name: /create scene/i });
+    await act(async () => { fireEvent.click(btn); });
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('No story selected.'));
+  });
+});

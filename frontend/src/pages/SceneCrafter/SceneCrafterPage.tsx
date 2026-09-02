@@ -255,6 +255,9 @@ interface Props {
   story: Story;
   onOpenNote?: (notePath: string) => void;
   onOpenScene?: (sceneId: string) => void;
+  /** SKY-11213: create a scene directly from Setup, no AI draft required.
+   * Shell resolves the active chapter and calls window.api.sceneCreate. */
+  onCreateSceneFromSetup?: (setup: CrafterSetup) => Promise<void>;
   /** SKY-11069: the board shown full-screen — the active board tab's docId
    * (a board's id IS its vault file path); null shows the Setup view. The
    * shell owns this via the Scene Crafter tab strip — one navigation model. */
@@ -313,6 +316,7 @@ export default function SceneCrafterPage({
   story,
   onOpenNote,
   onOpenScene,
+  onCreateSceneFromSetup,
   openBoardId = null,
   onOpenBoard,
   onBoardsLoaded,
@@ -340,6 +344,8 @@ export default function SceneCrafterPage({
   // since useIpcStream only observes post-start stream:error events.
   const [draftStreamId, setDraftStreamId] = useState<string | null>(null);
   const [draftStartError, setDraftStartError] = useState<string | null>(null);
+  const [creatingScene, setCreatingScene] = useState(false);
+  const [createSceneError, setCreateSceneError] = useState<string | null>(null);
   const draftStream = useIpcStream(draftStreamId);
   // R11 / M11a: master AI toggle. The suggested-cards rail and its
   // click-or-drag-onto-the-board path are already 100% manual (pure vault
@@ -595,6 +601,20 @@ export default function SceneCrafterPage({
   function generateDraft() {
     if (draftStreamId) return;
     startDraftStream();
+  }
+
+  /** SKY-11213: Create a real scene directly from Setup — no AI draft needed. */
+  async function handleCreateSceneFromSetup() {
+    if (!onCreateSceneFromSetup || creatingScene) return;
+    setCreateSceneError(null);
+    setCreatingScene(true);
+    try {
+      await onCreateSceneFromSetup(setup);
+    } catch (err) {
+      setCreateSceneError(err instanceof Error ? err.message : 'Failed to create scene.');
+    } finally {
+      setCreatingScene(false);
+    }
   }
 
   function discardDraft() {
@@ -1020,6 +1040,23 @@ export default function SceneCrafterPage({
                   </button>
                 ))}
               </div>
+              {onCreateSceneFromSetup && (
+                <div className="sc-create-scene-row">
+                  <button
+                    type="button"
+                    className="sc-create-scene-btn"
+                    onClick={() => void handleCreateSceneFromSetup()}
+                    disabled={creatingScene}
+                    data-testid="sc-create-scene-btn"
+                    aria-label="Create scene from setup"
+                  >
+                    {creatingScene ? 'Creating…' : 'Create Scene'}
+                  </button>
+                  {createSceneError && (
+                    <span className="sc-create-scene-error" role="alert">{createSceneError}</span>
+                  )}
+                </div>
+              )}
               <p className="sc-generate-copy">{CRAFTER_GENERATE_COPY}</p>
               {aiEnabled && !draftStreamId && (
                 <button type="button" className="sc-draft-btn" onClick={generateDraft}>
