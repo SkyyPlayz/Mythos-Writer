@@ -224,7 +224,7 @@ test.describe('Outline Planning (SKY-10019: opens as a Story-strip workspace tab
 // The beforeAll creates a full story+scenes fixture via real UI interactions.
 // With the always-mounted AppNavRail (SKY-3177) the cumulative worst-case is ~50s;
 // raise the suite timeout to 150s so it doesn't race.
-test.describe.configure({ timeout: 150_000 });
+test.describe.configure({ mode: 'serial', timeout: 150_000 });
 
 // ─── Suite-level state ────────────────────────────────────────────────────────
 
