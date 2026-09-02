@@ -570,7 +570,8 @@ export const IPC_CHANNELS = {
   // Beta 4 M22: Axis engine — era/span/event/row item persistence
   TIMELINES_UPSERT_ITEM: 'timelines:upsertItem',
   TIMELINES_DELETE_ITEM: 'timelines:deleteItem',
-  // SKY-10876 M12.B4b: "Rebuild my timeline" command (manuscript-driven)
+  // SKY-10876 M12.B4b: "Rebuild my timeline" — manuscript-driven, separately
+  // invokable command sharing the M12.B4a manuscript-pass primitive.
   TIMELINE_REBUILD: 'timeline:rebuild',
 
   // SKY-863: Cloud-sync conflict detection + lockfile
@@ -2797,6 +2798,17 @@ export interface AppSettings {
 
   // SKY-10772 M12.5: background auto-scan toggle. Absent = true (on by default).
   agentIndexAutoScan?: boolean;
+
+  /**
+   * SKY-10878 M12.B5b: wiki self-building autonomy. Tri-state.
+   *  - 'ask'  (default) — never writes to the vault; each auto-stub candidate
+   *            becomes a Brainstorm question the author answers (SKY-10737).
+   *  - 'auto' — auto-stubs entities that pass the M12.B5a hygiene contract
+   *            (SKY-10877); junk / duplicates are suppressed, never written.
+   *  - 'off'  — the self-building wiki proposes nothing: no questions, no stubs.
+   * Absent = 'ask' (the safe default; never writes without author approval).
+   */
+  wikiAutonomy?: 'off' | 'ask' | 'auto';
 }
 
 /** Archive Agent v1 — right sidebar panel descriptor (SKY-1683). */

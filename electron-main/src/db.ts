@@ -2383,7 +2383,15 @@ export function deleteContinuityIssue(id: string): void {
 // conversation with the author, not resolved/ignored like a defect; once
 // answered it is tombstoned (durable), never removed.
 
-export type BrainstormQuestionSource = 'archive_check2' | 'brainstorm_gap_hunt' | 'obscured_reference';
+// 'wiki_autostub' (SKY-10878 M12.B5b): the self-building wiki, in "always ask"
+// mode, routes each auto-stub candidate here as a question instead of writing
+// to the vault. The `source` column is unconstrained TEXT, so this is a pure
+// type-level addition.
+export type BrainstormQuestionSource =
+  | 'archive_check2'
+  | 'brainstorm_gap_hunt'
+  | 'obscured_reference'
+  | 'wiki_autostub';
 export type BrainstormQuestionStatus = 'pending' | 'answered';
 
 export interface DbBrainstormQuestion {
