@@ -214,9 +214,17 @@ describe('progress/ETA queryable while a real worker runs (AC #3)', () => {
 });
 
 describe('kill mid-run → resume with a REAL worker (AC #2)', () => {
+  // SKY-11289: was units:20 (~1s total), leaving only an 850ms window between
+  // the >=3 checkpoint gate below and job completion. Under a starved CI
+  // event loop the 25ms poll can miss that window entirely and observe
+  // 'completed' instead of 'running' at the shutdown() assertion. units:60
+  // widens the mid-flight window to ~2.85s so the kill deterministically
+  // lands mid-run even under scheduling contention.
+  const KILL_MID_RUN_LOAD = { units: 60, spinMsPerUnit: 50 };
+
   it('terminating the app mid-job resumes from the persisted checkpoint next launch', async () => {
     const queue1 = new JobQueue({ spawnWorker: spawnRealWorker });
-    const id = queue1.enqueue('synthetic-load', { units: 20, spinMsPerUnit: 50 });
+    const id = queue1.enqueue('synthetic-load', KILL_MID_RUN_LOAD);
 
     // Wait until the worker has checkpointed real progress…
     const t0 = Date.now();
@@ -247,7 +255,7 @@ describe('kill mid-run → resume with a REAL worker (AC #2)', () => {
     expect(spawnInputs).toHaveLength(1);
     const resumedFrom = JSON.parse(spawnInputs[0].checkpointJson!) as { cursor: number };
     expect(resumedFrom.cursor).toBeGreaterThanOrEqual(3); // not from scratch
-    expect(getBackgroundJob(id)!.completed_units).toBe(20);
+    expect(getBackgroundJob(id)!.completed_units).toBe(KILL_MID_RUN_LOAD.units);
   }, 30_000);
 });
 
