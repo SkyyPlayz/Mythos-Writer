@@ -113,6 +113,23 @@ export function getAiActivitySnapshot(): AiActivityEntry[] {
 }
 
 /**
+ * Whether a completed run (already known to be neither cancelled nor errored)
+ * should terminate as `empty` ("Produced nothing") rather than `done`.
+ *
+ * "Empty" means the *model streamed no usable text* — it must NOT be inferred
+ * from a run yielding zero discrete artifacts. A beta scan of a clean scene
+ * (a real "no issues here" answer that parses to zero margin comments) and a
+ * beta report with a score/verdict but zero LOVED/STUMBLED/CONFUSED reactions
+ * are both genuine successes; labeling them "Produced nothing — try again"
+ * contradicts the saved, on-screen result (SKY-11223 AC2/AC4). This is the one
+ * canonical predicate every tracked call site uses so the four text-streaming
+ * agents and the two beta surfaces can never drift apart again.
+ */
+export function isEmptyModelOutput(text: string): boolean {
+  return text.trim().length === 0;
+}
+
+/**
  * Registers the IPC surface: a pull channel for the initial snapshot (a
  * fresh renderer isn't blind to work already running) and the generic cancel
  * channel. Cancellation itself is delegated to `abort` — the registry only
