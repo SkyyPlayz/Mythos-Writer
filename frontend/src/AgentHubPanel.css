@@ -501,14 +501,52 @@
 }
 
 /* ── M12.B3 (SKY-10738): Archive Agent chat body ──
-   Continuity panel + composer quick-action chips + mini chat, stacked. ── */
+   SKY-11228: Chat (composer chips + mini chat) and Flags (Continuity panel)
+   are separate sub-tabs, not stacked in one scrolling column — each gets the
+   full available height of .ahp-archive-chat. ── */
 .ahp-archive-chat {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
   padding: 0 12px 12px;
+}
+
+.ahp-archive-subtabs {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+  padding: 6px 0;
+}
+
+.ahp-archive-subtab {
+  border: 0;
+  background: none;
+  padding: 3px 9px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #8e9db8;
+  cursor: pointer;
+}
+
+.ahp-archive-subtab:hover {
+  color: #c8d3e7;
+}
+
+.ahp-archive-subtab--active {
+  color: #f0f3fc;
+  background: rgba(255, 77, 255, 0.14);
+}
+
+.ahp-archive-chat-section,
+.ahp-archive-flags-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── SKY-11224: Brainstorm Agent chat body — mini chat only. ── */

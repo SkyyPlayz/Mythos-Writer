@@ -294,6 +294,11 @@
 }
 
 .shell-panel-tab-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-bottom: 1px solid var(--border-default);
 }
 

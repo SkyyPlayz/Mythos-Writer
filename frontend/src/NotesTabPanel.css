@@ -494,20 +494,15 @@
   color: rgb(118 134 162); /* prototype #7686a2 */
 }
 
-/* M16: Agent tab column — continuity flags docked above the Brainstorm chat. */
+/* SKY-11228: Agent and Flags are sibling tabs in the right sidebar, each
+   full-height on its own — no longer a stacked column where Flags ate into
+   the chat's space. Both fill .notes-right-sidebar-content (flex column). */
 
-.notes-agent-col {
+.notes-agent-flags {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-.notes-agent-continuity {
-  flex: none;
-  max-height: 42%;
-  overflow-y: auto;
-  border-bottom: 1px solid var(--glass-border);
 }
 
 .notes-agent-chat {
