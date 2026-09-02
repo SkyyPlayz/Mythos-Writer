@@ -23,8 +23,13 @@ export function wallpaperImageUrl(wpCss: string): string | null {
  * cover-stretched back to the viewport. Blur radius scales down with the
  * canvas so the on-screen blur matches the user's radius (≈, at a nominal
  * 1080p wallpaper); a blurred image has no detail to lose from downscaling.
+ *
+ * 1920 (not a smaller value) so the upscale factor to the viewport stays
+ * small even on 1080p/1440p screens — a bigger cache dimension is cheap
+ * (SKY-10912: the old 1280 cap magnified 3x+ on high-DPI displays, and
+ * stacked with lossy compression that read as a checkerboard/grain).
  */
-export const PRE_BLUR_MAX_DIM = 1280;
+export const PRE_BLUR_MAX_DIM = 1920;
 
 interface PreBlurState {
   key: string;
@@ -66,9 +71,14 @@ export async function generateBlurredWallpaper(url: string, blurPx: number): Pro
     const pad = Math.ceil(radius * 2);
     ctx.filter = `blur(${radius}px)`;
     ctx.drawImage(img, -pad, -pad, w + 2 * pad, h + 2 * pad);
+    // PNG, not WebP: Canvas toBlob's 'image/webp' path is always lossy in
+    // Chromium (the quality arg has no lossless mode), and 8x8 DCT blocks
+    // read as a checkerboard/grain once magnified across the viewport
+    // (SKY-10912). The source is already blurred — no fine detail left for
+    // PNG's lossless DEFLATE to spend bytes on — so it compresses cheaply.
     const blob = await new Promise<Blob | null>((resolve) => {
       try {
-        canvas.toBlob((b) => resolve(b), 'image/webp', 0.9);
+        canvas.toBlob((b) => resolve(b), 'image/png');
       } catch {
         resolve(null);
       }

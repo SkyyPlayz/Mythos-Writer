@@ -189,3 +189,81 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
     }
   });
 });
+
+// SKY-10926: NotesTabPanel's onOpenInNewTab prop was declared but never wired
+// at its only JSX call site (DesktopShell) — every internal
+// `(onOpenInNewTab ?? onOpenFile)?.(path)` fallback silently degraded to
+// onOpenFile, so the notes-tree "Open in new tab" context-menu action opened
+// the note in the SAME tab instead of a genuinely new one. This exercises the
+// real user trigger (VaultBrowser's context menu, ContextMenu.tsx's
+// `menu-item-open-tab`) end to end and asserts a second, distinct workspace
+// tab appears — not just that the existing tab's content changed.
+test.describe('Notes tab — "Open in new tab" (SKY-10926)', () => {
+  let tempRoot: string;
+  let userData: string;
+  let vaultDir: string;
+  let notesDir: string;
+
+  test.beforeEach(() => {
+    tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-notes-newtab-'));
+    userData = path.join(tempRoot, 'userData');
+    vaultDir = path.join(tempRoot, 'vault');
+    notesDir = path.join(tempRoot, 'notes');
+    seedUserData(userData, vaultDir, notesDir);
+    // Seed a real note at the vault root so the tree has something to open.
+    fs.writeFileSync(path.join(notesDir, 'Alpha.md'), '# Alpha\n\nFirst note.\n');
+  });
+
+  test.afterEach(() => {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  });
+
+  test('notes-tree "Open in new tab" opens a second, distinct workspace tab for an already-open note', async () => {
+    const app = await launchApp(userData);
+    try {
+      const page = await firstWindow(app);
+      await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
+
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+      await expect(page.locator('[data-testid="vb-notes-vault"]')).toBeVisible({ timeout: 8_000 });
+
+      const workspaceTabs = page.getByRole('tablist', { name: 'Workspace tabs' });
+      const alphaRow = page.locator('[data-testid="vb-row-Alpha.md"]');
+      await expect(alphaRow).toBeVisible({ timeout: 8_000 });
+
+      // 1) Open the note normally (single click) — one workspace tab.
+      await alphaRow.click();
+      await expect(workspaceTabs.getByRole('tab')).toHaveCount(1, { timeout: 6_000 });
+      const firstTab = workspaceTabs.getByRole('tab').first();
+      const firstTabId = await firstTab.getAttribute('id');
+      await expect(firstTab).toHaveAttribute('aria-selected', 'true');
+
+      // 2) Right-click the SAME note row and pick "Open in new tab" from the
+      // context menu — the real trigger for onOpenInNewTab (ContextMenu.tsx).
+      await alphaRow.click({ button: 'right' });
+      const openTabItem = page.locator('[data-testid="vb-context-menu"] [data-testid="menu-item-open-tab"]');
+      await expect(openTabItem).toBeVisible({ timeout: 5_000 });
+      await openTabItem.click();
+
+      // 3) A genuinely NEW, second tab must appear — pre-fix, the dead prop
+      // fell back to onOpenFile, which just re-focused the existing tab
+      // (count would have stayed at 1 with the same tab id active).
+      await expect(workspaceTabs.getByRole('tab')).toHaveCount(2, { timeout: 6_000 });
+      const tabs = workspaceTabs.getByRole('tab');
+      const secondTab = tabs.nth(1);
+      const secondTabId = await secondTab.getAttribute('id');
+      expect(secondTabId, 'new tab must have a distinct id from the original').not.toBe(firstTabId);
+
+      // The new tab is the active one, both are titled for the same note
+      // (same underlying path, two independent tab instances), and the note
+      // content is showing — not that the original tab just re-rendered.
+      await expect(secondTab).toHaveAttribute('aria-selected', 'true');
+      await expect(tabs.first()).toHaveAttribute('aria-selected', 'false');
+      await expect(tabs.first()).toContainText('Alpha');
+      await expect(secondTab).toContainText('Alpha');
+      await expect(page.locator('[data-testid="notes-tab-center"]')).toContainText('Alpha', { timeout: 5_000 });
+    } finally {
+      await app.close().catch(() => undefined);
+    }
+  });
+});

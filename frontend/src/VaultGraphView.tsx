@@ -23,7 +23,7 @@ const LONG_PRESS_MS = 500;
 const MAX_VISIBLE_CHIPS = 8;
 
 // ─── M21 force sim (exact port of prototype `stepSim`, lines 3805–3840) ──────
-const SIM_CENTER_X = 500;
+// Center is (500, 325) — width/2, height/2 + 5 (see computeSimExtent below).
 const SIM_CENTER_Y = 325;
 const SIM_DAMPING = 0.85;
 const SIM_MAX_VELOCITY = 4.5;
@@ -31,6 +31,44 @@ const SIM_MIN_X = 36;
 const SIM_MAX_X = 964;
 const SIM_MIN_Y = 42;
 const SIM_MAX_Y = 602;
+
+// SKY-10933: the box above was sized for the prototype's own 15-node fixture
+// (928×560 usable px² ÷ 15 ≈ 34,600 px²/node). Real vaults run into the
+// thousands, so the sim world now scales with node count to hold that same
+// density instead of clamping every vault into a fixed box — a fixed
+// multiplier (e.g. 6x) would just move the wall to a different node count.
+const SIM_DENSITY_AREA_PER_NODE = 34_600;
+
+export interface SimExtent {
+  width: number;
+  height: number;
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+  centerX: number;
+  centerY: number;
+}
+
+/** Never smaller than the prototype's 1000×640 box; grows to hold density constant. */
+export function computeSimExtent(nodeCount: number): SimExtent {
+  const side = Math.sqrt(Math.max(nodeCount, 0) * SIM_DENSITY_AREA_PER_NODE);
+  const maxX = Math.max(SIM_MAX_X, side);
+  const maxY = Math.max(SIM_MAX_Y, side * 0.6);
+  const width = maxX + (GRAPH_WIDTH - SIM_MAX_X);
+  const height = maxY + (GRAPH_HEIGHT - SIM_MAX_Y);
+  return {
+    width,
+    height,
+    minX: SIM_MIN_X,
+    maxX,
+    minY: SIM_MIN_Y,
+    maxY,
+    centerX: width / 2,
+    centerY: height / 2 + (SIM_CENTER_Y - GRAPH_HEIGHT / 2),
+  };
+}
+
 /** Below this total energy the rAF loop stops repainting (prototype 3844). */
 export const SIM_ENERGY_CUTOFF = 0.06;
 /** Synchronous settle budgets for the initial (non-animated) layout. */
@@ -483,11 +521,12 @@ export function stepSim(
     const p = sim.get(id);
     if (p) bodies.push(p);
   }
+  const extent = computeSimExtent(bodies.length);
 
   for (let i = 0; i < bodies.length; i += 1) {
     const a = bodies[i];
-    a.vx += (SIM_CENTER_X - a.x) * kC;
-    a.vy += (SIM_CENTER_Y - a.y) * kC;
+    a.vx += (extent.centerX - a.x) * kC;
+    a.vy += (extent.centerY - a.y) * kC;
     for (let j = i + 1; j < bodies.length; j += 1) {
       const b = bodies[j];
       let dx = a.x - b.x;
@@ -543,8 +582,8 @@ export function stepSim(
     p.vy = clampValue(-SIM_MAX_VELOCITY, SIM_MAX_VELOCITY, p.vy);
     p.x += p.vx;
     p.y += p.vy;
-    p.x = clampValue(SIM_MIN_X, SIM_MAX_X, p.x);
-    p.y = clampValue(SIM_MIN_Y, SIM_MAX_Y, p.y);
+    p.x = clampValue(extent.minX, extent.maxX, p.x);
+    p.y = clampValue(extent.minY, extent.maxY, p.y);
     energy += Math.abs(p.vx) + Math.abs(p.vy);
   }
   return energy;
@@ -591,13 +630,14 @@ function settleBudget(nodeCount: number): number {
 
 /** Seed sim entries for new nodes on a circle around the sim center. */
 function seedSim(sim: Map<string, SimNodeState>, nodes: GraphNode[]): void {
-  const radius = Math.min(GRAPH_WIDTH, GRAPH_HEIGHT) * 0.32;
+  const extent = computeSimExtent(nodes.length);
+  const radius = Math.min(extent.width, extent.height) * 0.32;
   nodes.forEach((node, index) => {
     if (sim.has(node.id)) return;
     const angle = (2 * Math.PI * index) / Math.max(nodes.length, 1);
     sim.set(node.id, {
-      x: SIM_CENTER_X + radius * Math.cos(angle),
-      y: SIM_CENTER_Y + radius * Math.sin(angle),
+      x: extent.centerX + radius * Math.cos(angle),
+      y: extent.centerY + radius * Math.sin(angle),
       vx: 0,
       vy: 0,
       fx: null,
@@ -1053,6 +1093,14 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     return { nodes, edges };
   }, [categoryFilteredData, neighbours, selectedNodeId, depthLimit]);
 
+  // SKY-10933: sim world + canvas scale with the currently simulated node
+  // count so density (and thus per-node spacing) stays constant as the vault
+  // grows, instead of clamping every vault into the prototype's fixed box.
+  const graphExtent = useMemo(
+    () => computeSimExtent(filteredData?.nodes.length ?? 0),
+    [filteredData],
+  );
+
   // M21: reconcile the live sim with the visible data. New nodes are seeded on
   // a circle; the first layout settles synchronously so the initial paint is
   // already arranged, later data changes animate on rAF (via pendingWakeRef).
@@ -1086,8 +1134,8 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
       ...node,
       categoryKey: nodeCategory(node),
       radius: computeNodeRadius(nodeDegree(node, neighbours)),
-      x: p?.x ?? SIM_CENTER_X,
-      y: p?.y ?? SIM_CENTER_Y,
+      x: p?.x ?? graphExtent.centerX,
+      y: p?.y ?? graphExtent.centerY,
     };
   });
 
@@ -1103,9 +1151,9 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     // the DOM lean during panning/zooming large graphs.
     if (showAll) return positionedNodes;
     return positionedNodes.filter((node) =>
-      isNodeInViewport(node, pan, zoom, GRAPH_WIDTH, GRAPH_HEIGHT),
+      isNodeInViewport(node, pan, zoom, graphExtent.width, graphExtent.height),
     );
-  }, [positionedNodes, showAll, pan, zoom]);
+  }, [positionedNodes, showAll, pan, zoom, graphExtent]);
 
   // Hover visibility (existing behaviour)
   const hoverVisibleIds = useMemo(
@@ -1338,13 +1386,13 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
       const p = simRef.current.get(nodeId);
       if (!p) return;
       const rect = svg?.getBoundingClientRect();
-      const width = rect && rect.width > 0 ? rect.width : GRAPH_WIDTH;
-      const height = rect && rect.height > 0 ? rect.height : GRAPH_HEIGHT;
+      const width = rect && rect.width > 0 ? rect.width : graphExtent.width;
+      const height = rect && rect.height > 0 ? rect.height : graphExtent.height;
       const left = rect?.left ?? 0;
       const top = rect?.top ?? 0;
       // Prototype 3856–3859: client coords → sim coords, clamped to sim bounds.
-      p.fx = clampValue(SIM_MIN_X, SIM_MAX_X, ((ev.clientX - left - width / 2 - pan.x) / (width * zoom) + 0.5) * GRAPH_WIDTH);
-      p.fy = clampValue(SIM_MIN_Y, SIM_MAX_Y, ((ev.clientY - top - height / 2 - pan.y) / (height * zoom) + 0.5) * GRAPH_HEIGHT);
+      p.fx = clampValue(graphExtent.minX, graphExtent.maxX, ((ev.clientX - left - width / 2 - pan.x) / (width * zoom) + 0.5) * graphExtent.width);
+      p.fy = clampValue(graphExtent.minY, graphExtent.maxY, ((ev.clientY - top - height / 2 - pan.y) / (height * zoom) + 0.5) * graphExtent.height);
       p.x = p.fx;
       p.y = p.fy;
       p.vx = 0;
@@ -1805,7 +1853,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
         <svg
           ref={svgRef}
           className="vgv-svg"
-          viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
+          viewBox={`0 0 ${graphExtent.width} ${graphExtent.height}`}
           role="application"
           aria-label="Notes Vault graph"
           tabIndex={0}
@@ -1832,7 +1880,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
               );
             })}
           </defs>
-          <g transform={`translate(${GRAPH_WIDTH * (1 - zoom) / 2 + pan.x} ${GRAPH_HEIGHT * (1 - zoom) / 2 + pan.y}) scale(${zoom})`}>
+          <g transform={`translate(${graphExtent.width * (1 - zoom) / 2 + pan.x} ${graphExtent.height * (1 - zoom) / 2 + pan.y}) scale(${zoom})`}>
             {filteredData?.edges.map((edge) => {
               const source = nodeById.get(edge.source);
               const target = nodeById.get(edge.target);

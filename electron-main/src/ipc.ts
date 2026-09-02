@@ -575,6 +575,11 @@ export const IPC_CHANNELS = {
   NAVIGATOR_REPORT_MANIFEST: 'navigator:report-manifest',
   NAVIGATOR_MANIFEST_CHANGED: 'navigator:manifest-changed',
 
+  // SKY-10916: app-wide nav history — OS-level back/forward mouse buttons
+  // (Windows `app-command` browser-backward/-forward) forwarded to the renderer.
+  NAV_HISTORY_BACK: 'nav-history:back',
+  NAV_HISTORY_FORWARD: 'nav-history:forward',
+
   // SKY-1684: Archive Agent v1 — continuity scan IPC
   ARCHIVE_SCAN_CONTINUITY: 'archive:scan-continuity',
   ARCHIVE_RESOLVE_CONTINUITY: 'archive:resolve-continuity',

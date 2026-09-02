@@ -41,7 +41,12 @@ interface Fixture {
   notesVaultDir: string;
 }
 
-function seedUserData(userData: string, vaultDir: string, notesVaultDir: string): void {
+function seedUserData(
+  userData: string,
+  vaultDir: string,
+  notesVaultDir: string,
+  archiveStoryEditConsentGiven = true,
+): void {
   fs.mkdirSync(userData, { recursive: true });
   const appSettings = {
     apiKey: '',
@@ -68,7 +73,7 @@ function seedUserData(userData: string, vaultDir: string, notesVaultDir: string)
     rightSidebarVisible: true,
     rightSidebarWidth: 360,
     rightSidebarPanels: [{ id: 'archive-continuity', collapsed: false }],
-    archiveStoryEditConsentGiven: true,
+    archiveStoryEditConsentGiven,
   };
   const vaultSettings = { vaultRoot: vaultDir, notesVaultRoot: notesVaultDir };
   fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify(appSettings, null, 2));
@@ -233,15 +238,22 @@ function readContinuityStatus(vaultDir: string, id: string): string | undefined 
   }
 }
 
-function createFixture(issues: ContinuitySeed[] = []): Fixture {
+function createFixture(
+  issues: ContinuitySeed[] = [],
+  opts: { archiveStoryEditConsentGiven?: boolean } = {},
+): Fixture {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-cont-panel-user-'));
   const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-cont-panel-story-'));
   const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-cont-panel-notes-'));
-  seedUserData(userData, vaultDir, notesVaultDir);
+  seedUserData(userData, vaultDir, notesVaultDir, opts.archiveStoryEditConsentGiven ?? true);
   seedVault(vaultDir);
   seedNotesVault(notesVaultDir);
   seedContinuityIssues(vaultDir, issues);
   return { userData, vaultDir, notesVaultDir };
+}
+
+function readAppSettings(userData: string): Record<string, unknown> {
+  return JSON.parse(fs.readFileSync(path.join(userData, 'app-settings.json'), 'utf-8')) as Record<string, unknown>;
 }
 
 async function launchApp(userData: string): Promise<ElectronApplication> {
@@ -541,6 +553,79 @@ test('TC-CP-08: "Ignore" hides the flag and persists ignored status', async () =
       );
       return res.items.map((it) => it.id);
     }, { timeout: 8_000 }).toContain('inc-ignore');
+  } finally {
+    await closeApp(app);
+    cleanupFixture(fixture);
+  }
+});
+
+// ─── SKY-10926: onConsentGranted reachability ───────────────────────────────
+// ContinuityPanel's `onConsentGranted` prop was wired up on the child side
+// (InconsistencyCard's consent modal → ContinuityPanel.handleConsentGranted,
+// which persists archiveStoryEditConsentGiven via settingsSet) but was never
+// passed in from any of its parents, so the parent's own `appSettings` mirror
+// never learned that consent had been granted until a full reload. This test
+// starts from consent NOT yet given, drives the real "Suggest story change"
+// consent-grant UI, and asserts the persisted setting flips to true — proving
+// the callback prop is reachable end to end, not dead wiring.
+test('TC-CP-09: granting story-edit consent via the modal persists and survives reload (SKY-10926)', async () => {
+  const fixture = createFixture(
+    [{ id: 'inc-consent', severity: 'high' }],
+    { archiveStoryEditConsentGiven: false },
+  );
+  let app: ElectronApplication | undefined;
+  try {
+    let opened = await openApp(fixture);
+    app = opened.app;
+    let page = opened.page;
+    const sidebar = page.getByTestId('global-right-sidebar');
+    const card = sidebar.getByRole('listitem', { name: /high character attribute drift/i });
+    await expect(card).toBeVisible({ timeout: 12_000 });
+
+    // Consent not yet given — "Suggest story change" opens the consent gate,
+    // not the edit area.
+    await card.getByRole('button', { name: /suggest story change/i }).click();
+    const consentDialog = page.getByRole('dialog', { name: /Archive Agent — Editing Your Manuscript/i });
+    await expect(consentDialog).toBeVisible();
+    await expect(card.getByRole('textbox', { name: /edit suggested manuscript change/i })).toBeHidden();
+
+    await consentDialog.getByLabel(/don.t show this again/i).check();
+    await consentDialog.getByRole('button', { name: 'Continue' }).click();
+    await expect(consentDialog).toBeHidden();
+
+    // Granting consent flipped straight into the suggest-edit expand area for
+    // this card too (ContinuityPanel's own onConsentGranted-independent flow).
+    await expect(card.getByText('Suggested manuscript change')).toBeVisible();
+    await card.getByRole('button', { name: /cancel suggested edit/i }).click();
+
+    // The onConsentGranted callback synced the parent's settings mirror AND
+    // persisted to disk — assert both without racing settingsSet's async
+    // write by polling app-settings.json.
+    await expect.poll(async () => {
+      const s = await page.evaluate(() =>
+        (window as unknown as { api: { settingsGet: () => Promise<{ archiveStoryEditConsentGiven?: boolean }> } })
+          .api.settingsGet(),
+      );
+      return s.archiveStoryEditConsentGiven;
+    }, { timeout: 8_000 }).toBe(true);
+    await expect.poll(() => readAppSettings(fixture.userData).archiveStoryEditConsentGiven, { timeout: 8_000 }).toBe(true);
+
+    await closeApp(app);
+    app = undefined;
+    expect(readAppSettings(fixture.userData).archiveStoryEditConsentGiven).toBe(true);
+
+    // Reopen: a fresh card's "Suggest story change" now skips the consent
+    // modal entirely — the gated feature stayed active across reload.
+    opened = await openApp(fixture);
+    app = opened.app;
+    page = opened.page;
+    const reopenedSidebar = page.getByTestId('global-right-sidebar');
+    const reopenedCard = reopenedSidebar.getByRole('listitem', { name: /high character attribute drift/i });
+    await expect(reopenedCard).toBeVisible({ timeout: 12_000 });
+
+    await reopenedCard.getByRole('button', { name: /suggest story change/i }).click();
+    await expect(page.getByRole('dialog', { name: /Archive Agent — Editing Your Manuscript/i })).toBeHidden();
+    await expect(reopenedCard.getByText('Suggested manuscript change')).toBeVisible();
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);

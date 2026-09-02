@@ -57,6 +57,15 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
     });
   }, []);
 
+  // SKY-10926: ContinuityPanel persists archiveStoryEditConsentGiven via
+  // settingsSet internally, but this floated panel keeps its own local
+  // `settings` mirror (loaded once on mount) — without this, the consent gate
+  // stays stale here until the panel is reopened. Sync optimistically instead
+  // of re-fetching the whole settings object.
+  const handleContinuityConsentGranted = useCallback(() => {
+    setSettings((prev) => (prev ? { ...prev, archiveStoryEditConsentGiven: true } : prev));
+  }, []);
+
   // Refresh the manifest from disk into local state.
   const refreshStories = useCallback(() => {
     (window.api.readManifest() as Promise<Manifest>).then((m) => {
@@ -268,6 +277,7 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
             enabled={(settings?.agents?.archive?.enabled ?? true) && (settings?.archiveContinuityEnabled ?? true)}
             archiveScanScope={settings?.archiveScanScope ?? 'active_scene'}
             archiveStoryEditConsentGiven={settings?.archiveStoryEditConsentGiven ?? false}
+            onConsentGranted={handleContinuityConsentGranted}
             onCountChange={() => {}}
             onOpenSettings={() => {}}
           />

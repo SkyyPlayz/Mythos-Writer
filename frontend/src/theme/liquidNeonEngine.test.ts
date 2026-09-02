@@ -150,6 +150,52 @@ describe('apply/reset', () => {
   });
 });
 
+// SKY-10914: --glass-fill/--blur-panel used to be owned exclusively by the v1
+// engine (theme.ts applyLiquidNeonTokens), so the Appearance tab's v2 Glass
+// opacity/Backdrop blur sliders — which only ever wrote --glass/--blur — had
+// zero visible effect on Settings (or any other --glass-fill/--blur-panel
+// consumer). v2 must also bridge those legacy panel tokens so it's the live
+// source of truth, matching the "v2 layers on after v1" boot-time ordering.
+describe('panel-glass token bridge (SKY-10914)', () => {
+  it('derives --glass-fill from glassA using the same color family as --glass', () => {
+    const el = document.createElement('div');
+    const tokens = applyLiquidNeonV2Tokens({ glassA: 42 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill')).toBe('rgba(13,16,28,0.420)');
+    expect(tokens['--glass']).toBe('rgba(13,16,28,0.42)');
+  });
+
+  it('derives --blur-panel directly from the blur px value', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ blur: 17 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--blur-panel')).toBe('17px');
+  });
+
+  it('sets an opaque --glass-fill-fallback regardless of glassA', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ glassA: 0 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill-fallback')).toBe('rgb(13,16,28)');
+  });
+
+  it('updates live on every re-apply, same as the v2-native tokens', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ glassA: 10, blur: 2 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill')).toBe('rgba(13,16,28,0.100)');
+    applyLiquidNeonV2Tokens({ glassA: 90, blur: 30 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill')).toBe('rgba(13,16,28,0.900)');
+    expect(el.style.getPropertyValue('--blur-panel')).toBe('30px');
+  });
+
+  it('reset clears the bridged panel tokens along with the native v2 tokens', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ glassA: 55 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill')).not.toBe('');
+    resetLiquidNeonV2Tokens(el);
+    expect(el.style.getPropertyValue('--glass-fill')).toBe('');
+    expect(el.style.getPropertyValue('--blur-panel')).toBe('');
+    expect(el.style.getPropertyValue('--glass-fill-fallback')).toBe('');
+  });
+});
+
 // ═══ Beta 4 M1 ═══════════════════════════════════════════════════════════════
 
 describe('preset import/export (§3; prototype 7191–7192)', () => {

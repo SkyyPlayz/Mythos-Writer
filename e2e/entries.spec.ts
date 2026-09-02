@@ -172,3 +172,42 @@ test('TC-ENT-02: Undo removes the saved quick-entry note', async () => {
     .poll(async () => (await savedEntryFiles()).length, { timeout: 5_000 })
     .toBe(0);
 });
+
+// ─── TC-ENT-04 (SKY-10926): reachability — quick-add saves reach the activity feed ──
+//
+// EntriesQuickAdd.onEntrySaved was previously unwired at its only call site
+// (BrainstormPage.tsx), so a freshly-saved entry never surfaced anywhere else
+// in the UI. This test drives the real quick-add UI from a fresh vault state
+// (no pre-seeded entry) and asserts the save is reflected in the Brainstorm
+// "Agent Activity" feed without any manual reload. The compact Notes-tab
+// instance of BrainstormPage hides the facts column (see
+// .brainstorm-body--compact .brainstorm-facts-col in BrainstormPage.css), so
+// this exercises the full, non-compact Brainstorm tab (Ctrl+3) where the feed
+// is visible.
+test('TC-ENT-04: quick entry save reaches the Brainstorm activity feed without a reload', async () => {
+  await page.keyboard.press('Control+3');
+  const panel = page.locator('#app-tabpanel-brainstorm');
+  await expect(panel).toBeVisible({ timeout: 6_000 });
+
+  const textarea = panel.locator('[data-testid="entries-qa-textarea"]');
+  await expect(textarea).toBeVisible({ timeout: 5_000 });
+  const feed = panel.locator('[data-testid="bs-activity-feed"]');
+  await expect(feed).toBeVisible({ timeout: 5_000 });
+
+  const beforeCount = (await savedEntryFiles()).length;
+  const body = 'A hidden door behind the waterfall leads to the old archive';
+
+  await textarea.fill(body);
+  await panel.locator('[data-testid="entries-qa-save-btn"]').click();
+
+  await expect(panel.locator('[data-testid="entries-qa-toast"]')).toBeVisible({ timeout: 6_000 });
+  await expect
+    .poll(async () => (await savedEntryFiles()).length, { timeout: 5_000 })
+    .toBeGreaterThan(beforeCount);
+
+  // Reachability check: the activity feed reflects the new entry immediately —
+  // no page reload/refresh happens anywhere in this test.
+  await expect(feed.locator('.bs-activity-item').first()).toContainText('Entry captured', {
+    timeout: 5_000,
+  });
+});

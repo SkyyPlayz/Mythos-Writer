@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import AgentProviderSection from '../AgentProviderSection';
 import AutoApplyCategoryToggles from '../AutoApplyCategoryToggles';
 import PersonaViewer from '../PersonaViewer';
+import SessionHistoryViewer from '../SessionHistoryViewer';
 import {
   MODEL_OPTIONS,
   BETA_READER_DEFAULTS,
@@ -399,6 +400,7 @@ export default function AgentsSection({
           </div>
         </div>
         <PersonaViewer agentName="writingAssistant" />
+        <SessionHistoryViewer agentName="writingAssistant" />
       </div>
 
       <div className="settings-agent-card">
@@ -595,6 +597,7 @@ export default function AgentsSection({
           <BrainstormRoutingPanel />
         </div>
         <PersonaViewer agentName="brainstorm" />
+        <SessionHistoryViewer agentName="brainstorm" />
       </div>
 
       <div className="settings-agent-card">
@@ -754,6 +757,7 @@ export default function AgentsSection({
           </div>
         </div>
         <PersonaViewer agentName="archive" />
+        <SessionHistoryViewer agentName="archive" />
       </div>
 
       {/* Beta 3 M22: fourth named agent — Beta Reader (prototype agentDefs, HTML 4350).
@@ -903,6 +907,7 @@ export default function AgentsSection({
           </div>
         </div>
         <PersonaViewer agentName="betaReader" />
+        <SessionHistoryViewer agentName="betaReader" />
       </div>
 
       {/* M6: green callout — note linking is built-in, no agent needed (spec §13) */}

@@ -5,6 +5,7 @@ import VaultGraphView, {
   categoryColor,
   computeNodeRadius,
   computeDepthVisible,
+  computeSimExtent,
   deriveNodeBlurb,
   FALLBACK_BLURB,
   hexToRgba,
@@ -568,6 +569,40 @@ describe('computeDepthVisible', () => {
   it('with no selection, orphans are always visible', () => {
     const visible = computeDepthVisible(null, allIds, neighbours, 1);
     expect(visible!.has('d')).toBe(true);
+  });
+});
+
+// ─── SKY-10933: sim world scales with node count to hold prototype density ───
+
+describe('computeSimExtent (SKY-10933)', () => {
+  it('never shrinks below the prototype 1000×640 box, even for 0-15 nodes', () => {
+    for (const n of [0, 1, 15]) {
+      const extent = computeSimExtent(n);
+      expect(extent.maxX).toBe(964);
+      expect(extent.maxY).toBe(602);
+    }
+  });
+
+  it('grows the sim world for a dense real vault (181 notes) instead of clamping', () => {
+    const extent = computeSimExtent(181);
+    expect(extent.maxX).toBeGreaterThan(964);
+    expect(extent.maxY).toBeGreaterThan(602);
+  });
+
+  it('holds roughly constant area-per-node as node count scales up', () => {
+    const small = computeSimExtent(200);
+    const large = computeSimExtent(2000);
+    const smallDensity = ((small.maxX - small.minX) * (small.maxY - small.minY)) / 200;
+    const largeDensity = ((large.maxX - large.minX) * (large.maxY - large.minY)) / 2000;
+    // Fixed margins mean density isn't exactly constant at small n, but it
+    // should stay within the same order of magnitude, not scale linearly.
+    expect(largeDensity / smallDensity).toBeGreaterThan(0.9);
+    expect(largeDensity / smallDensity).toBeLessThan(1.1);
+  });
+
+  it('keeps the center point in the middle of the extent', () => {
+    const extent = computeSimExtent(500);
+    expect(extent.centerX).toBeCloseTo(extent.width / 2, 5);
   });
 });
 

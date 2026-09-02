@@ -1100,7 +1100,11 @@ test.describe('AC-OB-19: onboarding:reset clears flag; wizard reappears', () => 
     app = await launchFreshApp(userData);
     page = await firstWindow(app);
 
-    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 12_000 });
+    // SKY-11017: this relaunch is a full close+relaunch cycle, the same
+    // weight as the beforeAll boot above (which allows 20_000ms for
+    // appMenuBar) — not the 12_000ms used by first-boot screenStep1 checks
+    // elsewhere in this file. Match the sibling restart timeout.
+    await expect(page.locator(SELECTOR.screenStep1)).toBeVisible({ timeout: 20_000 });
   });
 });
 

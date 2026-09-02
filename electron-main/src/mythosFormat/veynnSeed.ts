@@ -19,6 +19,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { writeFileAtomic } from '../vault.js';
 import {
+  agentVaultRootFor,
   notesVaultRootFor,
   storyVaultRootFor,
   tryReadMythosFile,
@@ -376,6 +377,9 @@ The last city of a drowned coast. A silent watcher, a ringing bell, and a gate u
   ),
 ];
 
+// SKY-10952: no 'Sessions' entry — the prototype's notes tree ships a
+// visible Sessions/ folder here, but that is superseded; the demo session
+// below now seeds under Agent Vault/Sessions/ instead.
 const NOTE_DIRS = [
   'Worldbuilding/Locations',
   'Worldbuilding/Factions',
@@ -384,7 +388,6 @@ const NOTE_DIRS = [
   'Characters',
   'Plot & Story',
   'Research',
-  'Sessions',
 ];
 
 // ─── Starter idea library (prototype `bsData` + `bsPool`) ────────────────────
@@ -541,6 +544,7 @@ export interface VeynnSeedResult {
 export function writeVeynnSeed(mythosRoot: string, now: () => Date = () => new Date()): VeynnSeedResult {
   const storyVaultRoot = storyVaultRootFor(mythosRoot);
   const notesVaultRoot = notesVaultRootFor(mythosRoot);
+  const agentVaultRoot = agentVaultRootFor(mythosRoot);
   const nowStr = now().toISOString();
   const storyId = crypto.randomUUID();
 
@@ -626,8 +630,9 @@ export function writeVeynnSeed(mythosRoot: string, now: () => Date = () => new D
   timelines.events = TIMELINE_EVENTS.map((e) => ({ ...e, id: crypto.randomUUID() }));
   writeTimelinesFile(mythosRoot, timelines);
 
-  // One demo agent session so the Sessions store demos itself (M15 grows this).
-  createSession(notesVaultRoot, {
+  // One demo agent session so the Sessions store demos itself (M15 grows
+  // this). SKY-10952: seeded under Agent Vault, not Notes Vault.
+  createSession(agentVaultRoot, {
     agent: 'brainstorm',
     title: 'Worldbuilding kickoff',
     startedAt: nowStr,

@@ -1420,6 +1420,10 @@ export interface VaultBrowserProps {
   /** SKY-9710: bump to open the new-note dialog from outside the tree
    *  (e.g. the notes editor pane's empty-state "New note" button). */
   newNoteRequestId?: number;
+  /** SKY-10926: bump when a note was created outside this tree (e.g. the
+   *  sidebar "New note from template" picker) so the notes list refetches
+   *  and shows the new note without a manual reload. */
+  notesRefreshSignal?: number;
 }
 
 // SKY-204: Daily Notes widget shown at the top of the vault browser when journal mode is on.
@@ -1497,11 +1501,30 @@ export default function VaultBrowser({
   onContinuityCheck,
   activeFilePath,
   newNoteRequestId,
+  notesRefreshSignal,
 }: VaultBrowserProps) {
   const [scope, setScope] = useState<VaultScope>(initialScope);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const { items: notesItems, loading: notesLoading, reload: notesReload } = useVaultFiles('notes');
   const [notesIconMap, setNotesIconMap] = useState<Record<string, string>>({});
+
+  // SKY-10926: a note created outside this tree (TemplatePicker's sidebar
+  // "New note from template" flow) writes straight to the notes vault via
+  // IPC — no fs-watch event round-trips back to this component's own
+  // notesReload, so without this the new note is invisible here until a
+  // manual reload. Mirrors the newNoteRequestId "bump to signal" pattern
+  // above; skips the initial mount since useVaultFiles already loads then.
+  const lastHandledNotesRefreshSignal = useRef<number | null>(null);
+  useEffect(() => {
+    if (notesRefreshSignal === undefined) return;
+    if (lastHandledNotesRefreshSignal.current === null) {
+      lastHandledNotesRefreshSignal.current = notesRefreshSignal;
+      return;
+    }
+    if (lastHandledNotesRefreshSignal.current === notesRefreshSignal) return;
+    lastHandledNotesRefreshSignal.current = notesRefreshSignal;
+    notesReload();
+  }, [notesRefreshSignal, notesReload]);
 
   // W0.1 (GAP #1): manifest id → title map so any UUID-named entry that
   // legitimately reaches a tree renders its story/chapter/scene title.

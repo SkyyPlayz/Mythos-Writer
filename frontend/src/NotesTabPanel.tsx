@@ -79,6 +79,10 @@ export interface NotesTabPanelProps {
   brainstormCollapsed: boolean;
   onBrainstormCollapsedChange: (collapsed: boolean) => void;
   // VaultBrowser passthrough
+  /** SKY-10926: bump when a note was created outside this tree (e.g. the
+   *  Story tab's TemplatePicker "New note from template" flow) so the notes
+   *  tree refetches and shows it without a manual reload. */
+  notesRefreshSignal?: number;
   stories: VaultBrowserProps['stories'];
   selectedSceneId: string | null;
   onSelectScene: (scene: Scene, chapter: Chapter, story: Story) => void;
@@ -151,6 +155,7 @@ export default function NotesTabPanel({
   onNoteSplitActiveChange,
   brainstormCollapsed,
   onBrainstormCollapsedChange,
+  notesRefreshSignal,
   stories,
   selectedSceneId,
   onSelectScene,
@@ -500,6 +505,7 @@ export default function NotesTabPanel({
                 onBetaRead={onBetaRead}
                 onContinuityCheck={onContinuityCheck}
                 newNoteRequestId={newNoteRequestId}
+                notesRefreshSignal={notesRefreshSignal}
               />
             </div>
           </div>

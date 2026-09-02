@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
+    "lint": "eslint src --ext .ts,.tsx --max-warnings 0 && node ../scripts/check-dead-wiring.mjs",
+    "lint:dead-wiring": "node ../scripts/check-dead-wiring.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"

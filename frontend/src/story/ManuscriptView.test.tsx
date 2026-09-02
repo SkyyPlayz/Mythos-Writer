@@ -4,7 +4,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import type { Block, Chapter, DraftState, Scene, Story } from '../types';
+import type { Block, Chapter, DraftState, Part, Scene, Story } from '../types';
 import ManuscriptView from './ManuscriptView';
 import { mergeParagraphUp, splitParagraph, type ManuscriptCursor } from './manuscriptModel';
 
@@ -53,6 +53,23 @@ function mkStory(): Story {
     ],
     createdAt: NOW,
     updatedAt: NOW,
+  };
+}
+
+function mkPart(id: string, title: string, order: number, chapters: Chapter[], note: Block[] = []): Part {
+  return { id, title, order, note, chapters, createdAt: NOW, updatedAt: NOW };
+}
+
+/** M2 (SKY-9017): a real (multi-part) story — buildBlocks only emits the H1 +
+ *  part-note-slot blocks once the story is no longer the simple single part. */
+function mkMultiPartStory(): Story {
+  const story = mkStory();
+  return {
+    ...story,
+    parts: [
+      mkPart('p1', 'Part One', 0, [story.chapters[0]]),
+      mkPart('p2', 'Part Two', 1, [story.chapters[1]]),
+    ],
   };
 }
 
@@ -172,6 +189,91 @@ describe('status dot', () => {
     fireEvent.click(screen.getByTestId('msv-dot-s3'));
     expect(props.onCycleStatus).toHaveBeenCalledTimes(1);
     expect(props.onCycleStatus).toHaveBeenCalledWith('s3');
+  });
+});
+
+describe('M2 (SKY-9017): part/chapter notes', () => {
+  it('renders a chapter note affordance when empty and onEditChapterNote is wired', () => {
+    renderView({ onEditChapterNote: vi.fn() });
+    expect(screen.getByTestId('msv-note-affordance-chapter-ch1')).toHaveTextContent('+ CHAPTER NOTE');
+  });
+
+  it('hides the chapter note affordance when onEditChapterNote is not wired', () => {
+    renderView();
+    expect(screen.queryByTestId('msv-note-affordance-chapter-ch1')).toBeNull();
+  });
+
+  it('clicking the affordance opens an editable field without persisting yet', () => {
+    const onEditChapterNote = vi.fn();
+    renderView({ onEditChapterNote });
+    fireEvent.click(screen.getByTestId('msv-note-affordance-chapter-ch1'));
+    expect(onEditChapterNote).not.toHaveBeenCalled();
+    expect(screen.getByTestId('msv-note-edit-note-chapter-ch1')).toBeInTheDocument();
+  });
+
+  it('commits the typed note on blur', () => {
+    const onEditChapterNote = vi.fn();
+    renderView({ onEditChapterNote });
+    fireEvent.click(screen.getByTestId('msv-note-affordance-chapter-ch1'));
+    const field = screen.getByTestId('msv-note-edit-note-chapter-ch1');
+    field.textContent = 'A quiet dread settled over the city.';
+    fireEvent.blur(field);
+    expect(onEditChapterNote).toHaveBeenCalledWith('ch1', 'A quiet dread settled over the city.');
+    expect(screen.queryByTestId('msv-note-edit-note-chapter-ch1')).toBeNull();
+  });
+
+  it('Enter commits without a duplicate blur commit', () => {
+    const onEditChapterNote = vi.fn();
+    renderView({ onEditChapterNote });
+    fireEvent.click(screen.getByTestId('msv-note-affordance-chapter-ch1'));
+    const field = screen.getByTestId('msv-note-edit-note-chapter-ch1');
+    field.textContent = 'Committed via Enter.';
+    fireEvent.keyDown(field, { key: 'Enter' });
+    fireEvent.blur(field);
+    expect(onEditChapterNote).toHaveBeenCalledTimes(1);
+    expect(onEditChapterNote).toHaveBeenCalledWith('ch1', 'Committed via Enter.');
+  });
+
+  it('Escape closes without persisting', () => {
+    const onEditChapterNote = vi.fn();
+    renderView({ onEditChapterNote });
+    fireEvent.click(screen.getByTestId('msv-note-affordance-chapter-ch1'));
+    const field = screen.getByTestId('msv-note-edit-note-chapter-ch1');
+    field.textContent = 'Abandoned draft';
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(onEditChapterNote).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('msv-note-edit-note-chapter-ch1')).toBeNull();
+    expect(screen.getByTestId('msv-note-affordance-chapter-ch1')).toBeInTheDocument();
+  });
+
+  it('an existing chapter note is clickable/keyboard-activatable to reopen for editing, seeded with its text', () => {
+    const story = mkStory();
+    story.chapters[0] = { ...story.chapters[0], note: [mkBlock('note-ch1', 'Existing epigraph.', 0)] };
+    const onEditChapterNote = vi.fn();
+    renderView({ story, onEditChapterNote });
+    const epigraph = screen.getByTestId('msv-note-chapter-ch1');
+    expect(epigraph).toHaveTextContent('Existing epigraph.');
+    fireEvent.keyDown(epigraph, { key: 'Enter' });
+    const field = screen.getByTestId('msv-note-edit-note-chapter-ch1');
+    expect(field).toHaveTextContent('Existing epigraph.');
+  });
+
+  it('an existing chapter note is plain (no click affordance) when onEditChapterNote is absent', () => {
+    const story = mkStory();
+    story.chapters[0] = { ...story.chapters[0], note: [mkBlock('note-ch1', 'Existing epigraph.', 0)] };
+    renderView({ story });
+    expect(screen.getByTestId('msv-note-chapter-ch1')).not.toHaveAttribute('role');
+  });
+
+  it('part note: affordance, open, and commit follow the same contract as chapter notes', () => {
+    const story = mkMultiPartStory();
+    const onEditPartNote = vi.fn();
+    renderView({ story, onEditPartNote });
+    fireEvent.click(screen.getByTestId('msv-note-affordance-part-p1'));
+    const field = screen.getByTestId('msv-note-edit-note-part-p1');
+    field.textContent = 'Book the First.';
+    fireEvent.blur(field);
+    expect(onEditPartNote).toHaveBeenCalledWith('p1', 'Book the First.');
   });
 });
 
@@ -303,10 +405,24 @@ describe('page width', () => {
     expect(onPagePrefsChange).toHaveBeenCalledWith(expect.objectContaining({ pageWidthPx: 1100 }));
   });
 
-  it('the margin ruler reserves the comments-gutter width while the gutter is open (open by default) and drops it once closed', () => {
+  // SKY-10917: the ruler must only reserve the gutter's width when the
+  // CommentsGutter panel is actually on screen — it used to key off the
+  // comments-enabled *preference* alone (commentsVisible), which stays true
+  // even for a scene with zero comments, so the ruler reserved 236px for a
+  // gutter nobody could see and every diamond drifted ~118px off the page/
+  // margin edges it's supposed to sit on. The panel itself only renders when
+  // there's something to show it (comments present or the reader open) —
+  // see the render condition a few lines below `<MarginRuler`.
+  it('the margin ruler reserves no gutter width by default (no comments, reader closed)', () => {
     renderView();
+    expect(screen.getByTestId('margin-ruler').style.marginRight).toBe('');
+  });
+
+  it('the margin ruler reserves the comments-gutter width once the reader panel actually opens, and drops it on close', () => {
+    renderView();
+    fireEvent.click(screen.getByTestId('msv-tb-read'));
     expect(screen.getByTestId('margin-ruler').style.marginRight).toBe('236px');
-    fireEvent.click(screen.getByTestId('msv-comments-chip')); // closes the gutter
+    fireEvent.click(screen.getByTestId('msv-tb-read')); // closes the reader/gutter
     expect(screen.getByTestId('margin-ruler').style.marginRight).toBe('');
   });
 

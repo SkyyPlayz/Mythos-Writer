@@ -27,7 +27,18 @@ export type NoteViewerMode = 'source' | 'rich' | 'markdown' | 'preview';
 interface Props {
   path: string;
   /** 'rich' (TipTap) | 'markdown' (raw, editable) | 'source' (raw, editable) | legacy 'preview'. */
+  // dead-wiring-ignore: SKY-10926 — the gear-menu "VIEW AS" seg (GEAR_MODES,
+  // handleModeClick) already switches rich/markdown/source via NoteViewer's
+  // own `mode` state on every render path, uncontrolled by this prop or by
+  // `onModeChange`; no caller-side UI is gated behind either. `mode` /
+  // `onModeChange` are a forward-compatible controlled-component API for a
+  // future caller that wants to own/observe the mode externally (mirroring
+  // the deprecated `previewMode`/`onPreviewModeChange` pair one level up in
+  // richness) — real callers (DesktopShell, NotesTabPanel, NoteSplitPane)
+  // still only need the legacy preview boolean today. Migrating them is out
+  // of scope for this finding; see SKY-10926.
   mode?: NoteViewerMode;
+  // dead-wiring-ignore: SKY-10926 — see rationale on `mode` above.
   onModeChange?: (mode: NoteViewerMode) => void;
   onWikiLinkClick?: (target: string) => void;
   /** SKY-5702: resolvable note/story titles, for unresolved [[link]] styling. */
