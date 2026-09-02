@@ -77,7 +77,7 @@ import NoteViewer from './NoteViewer';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
 import SceneCrafterPage from './pages/SceneCrafter/SceneCrafterPage';
-import type { CrafterSetup } from './pages/SceneCrafter/crafterState';
+import { craftedSceneNote, type CrafterSetup } from './pages/SceneCrafter/crafterState';
 import VaultGraphView from './VaultGraphView';
 import ManuscriptStructureView from './ManuscriptStructureView';
 import BookPreview from './story/BookPreview';
@@ -231,6 +231,7 @@ function blocksToMarkdown(scene: Scene): string {
     `---`,
     `id: ${scene.id}`,
     `title: "${scene.title.replace(/"/g, '\\"')}"`,
+    ...(scene.pov ? [`pov: "${scene.pov.replace(/"/g, '\\"')}"`] : []),
     `draftState: ${scene.draftState ?? 'in-progress'}`,
     `updatedAt: ${now()}`,
     `---`,
@@ -3492,11 +3493,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       chapter = preferred ?? workingStory.chapters[0];
     }
     const sceneId = generateId();
+    // SKY-11279: goal/conflict/beats/tone/length have no dedicated Scene
+    // field, so they land in a leading note block (existing Block type,
+    // renders as an HTML-comment line via blocksToMarkdown's 'note' case) —
+    // otherwise Create Scene drops everything Setup collected but the title.
+    const noteContent = craftedSceneNote(setup);
+    const blocks: Block[] = noteContent
+      ? [{ id: generateId(), type: 'note', content: noteContent, order: 0, updatedAt: now() }]
+      : [];
     const scene: Scene = {
       id: sceneId, title: rawTitle,
       path: `stories/${workingStory.id}/chapters/${chapter.id}/scenes/${sceneId}.md`,
       order: chapter.scenes.length, chapterId: chapter.id, storyId: workingStory.id,
-      blocks: [], draftState: 'in-progress',
+      blocks, draftState: 'in-progress',
+      pov: setup.pov.trim() || undefined,
       createdAt: now(), updatedAt: now(),
     };
     workingStory = updateChapterOwner(workingStory, chapter.id, (chapters) =>
