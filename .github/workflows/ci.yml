@@ -515,7 +515,7 @@ jobs:
           echo "WSL2 sleep prevention stopped."
 
   e2e-shard-2:
-    # Shard 2: writing-assistant-tips, two-vault, notes-vault-registry (SKY-11058), story-vault-registry (SKY-11150), versioned-drafts, entity, title-bar-undo-redo, mythos-migration
+    # Shard 2: writing-assistant-tips, two-vault, notes-vault-registry (SKY-11058), story-vault-registry (SKY-11150), story-vault-picker (SKY-11169), versioned-drafts, entity, title-bar-undo-redo, mythos-migration
     # two-vault-firstrun, notes-tab, archive-agent-mvp, editor-page-chrome, coach-page (SKY-6933 sweep)
     # agent-hub-session-picker (SKY-8537, #1130 — added by SKY-8749 audit, was never wired into CI)
     # notes-split-pane-tab-strips (SKY-9784, rebalanced in from shard-4 by SKY-11045)
@@ -618,11 +618,19 @@ jobs:
       # SKY-11150: story-vault registry across the renderer↔main IPC boundary —
       # fresh profile, story-vaults.json NOT pre-seeded (lazy migration on first
       # open), then create → pair → restart-persistence. Drives the preload API
-      # directly because the story-vault *picker UI* is a separate follow-up
-      # (see SKY-11150 report); the registry substrate itself is exercised
-      # end-to-end, never pre-seeded (§4c).
+      # directly (registry substrate only, no UI) — the picker UI reachability
+      # E2E is the SKY-11169 step below.
       - name: E2E — Story-vault registry migrate/create/pair/restart (SKY-11150)
         run: xvfb-run --auto-servernum npm run test:e2e:story-vault-registry
+
+      # SKY-11169 reachability: fresh profile → create a second story vault via
+      # the LeftRail picker UI → switch active → rename → pair to a notes
+      # vault → relaunch → still active/paired. The second vault is
+      # user-created through the real UI, never pre-seeded (§4c). Also proves
+      # the storyVaultRootFor v2-gate fix (a non-default dirname must keep
+      # resolving after a switch, not silently demote to legacy-vault mode).
+      - name: E2E — Story-vault picker UI reachability (SKY-11169)
+        run: xvfb-run --auto-servernum npm run test:e2e:story-vault-picker
 
       - name: E2E — Vault-creation primitive template/blank/import reachability (SKY-11151)
         run: xvfb-run --auto-servernum npm run test:e2e:vault-create-primitive

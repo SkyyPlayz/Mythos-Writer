@@ -7214,6 +7214,16 @@ const handlers: IpcHandlers = {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
     if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
     const { entry } = setActiveStoryVault(mythosRoot, payload.id);
+    // SKY-11169: keep vault-settings.json + the live watcher in sync so a
+    // picker switch actually re-points the app at the new story vault —
+    // mirrors NOTES_VAULT_REGISTRY_SET_ACTIVE. Before this fix,
+    // storyVaultRootFor() always resolved the literal "Story Vault" dirname
+    // regardless of which entry was active (a lying control).
+    const newVaultRoot = storyVaultAbsPath(mythosRoot, entry);
+    saveVaultSettings({ vaultRoot: newVaultRoot });
+    stopVaultWatcher().catch(() => {}).finally(() => {
+      startVaultWatcher(newVaultRoot, notifyVaultChanged).catch(() => {});
+    });
     mainWindow?.webContents.send('storyVaultRegistry:changed');
     return { entry };
   },
