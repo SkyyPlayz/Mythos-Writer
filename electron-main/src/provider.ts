@@ -428,6 +428,18 @@ async function* runOpenAICompatibleStream(
   const decoder = new TextDecoder();
   let buffer = '';
 
+  // SKY-11220: local reasoning models (e.g. qwen3 / DeepSeek-R1 / gpt-oss on LM
+  // Studio) stream their answer in `delta.reasoning_content` (or `delta.reasoning`)
+  // and — for the whole stream — leave `delta.content` empty. A parser that reads
+  // only `delta.content` therefore emits zero tokens, making every AI surface look
+  // silent even though the model responded. We stream `content` as before, but
+  // buffer any reasoning text so that if the model never emits real content we can
+  // fall back to it rather than yielding nothing. When content IS present the
+  // reasoning (the model's private thinking) is discarded, so well-behaved
+  // reasoning models keep hiding their chain-of-thought.
+  let sawContent = false;
+  let reasoningBuffer = '';
+
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -450,11 +462,31 @@ async function* runOpenAICompatibleStream(
           continue;
         }
 
-        const delta = (parsed as { choices?: Array<{ delta?: { content?: string } }> })?.choices?.[0]?.delta?.content;
-        if (typeof delta === 'string' && delta.length > 0) {
-          yield delta;
+        const delta = (parsed as {
+          choices?: Array<{ delta?: { content?: string; reasoning_content?: string; reasoning?: string } }>;
+        })?.choices?.[0]?.delta;
+
+        const content = delta?.content;
+        if (typeof content === 'string' && content.length > 0) {
+          sawContent = true;
+          yield content;
+          continue;
+        }
+
+        // No content on this chunk — accumulate any reasoning text as a fallback.
+        if (!sawContent) {
+          const reasoning = delta?.reasoning_content ?? delta?.reasoning;
+          if (typeof reasoning === 'string' && reasoning.length > 0) {
+            reasoningBuffer += reasoning;
+          }
         }
       }
+    }
+
+    // The model streamed reasoning but never emitted any content — surface the
+    // reasoning text so the answer isn't silently dropped (SKY-11220).
+    if (!sawContent && reasoningBuffer.length > 0) {
+      yield reasoningBuffer;
     }
   } finally {
     reader.releaseLock();
