@@ -230,9 +230,12 @@ export const BG_POSITIONS = [
   { value: 'bottom right', label: '↘' },
 ];
 
-export function validateApiKey(key: string): string | null {
+// SKY-11219: the sk-ant- prefix check is Anthropic's key format — enforcing
+// it against every provider would reject valid OpenAI/custom keys typed into
+// the provider-aware key field. Defaults to 'anthropic' for existing callers.
+export function validateApiKey(key: string, kind: ProviderKind = 'anthropic'): string | null {
   if (!key) return null;
-  if (!key.startsWith('sk-ant-')) return 'Key must start with sk-ant-';
+  if (kind === 'anthropic' && !key.startsWith('sk-ant-')) return 'Key must start with sk-ant-';
   return null;
 }
 

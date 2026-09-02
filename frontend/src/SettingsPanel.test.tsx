@@ -1407,6 +1407,106 @@ describe('SettingsPanel', () => {
     expect(screen.getByRole('textbox', { name: /default model for this provider/i })).toBeInTheDocument();
   });
 
+  // ── SKY-11219: provider settings must adapt to a local (keyless) provider ──
+
+  it('AC-1: selecting LM Studio hides the legacy Anthropic API-key field and its copy', async () => {
+    mockProviderListModels.mockResolvedValueOnce({ ok: true, models: ['qwen/qwen3.6-35b-a3b'] });
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'lmstudio');
+
+    expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
+    // The legacy "API Key" section must not render at all for a keyless
+    // provider — not just relabeled (the <option> for Anthropic in the
+    // provider <select> itself is expected to remain).
+    expect(document.getElementById('section-api-key')).not.toBeInTheDocument();
+    expect(screen.queryByText(/ANTHROPIC_API_KEY environment variable/i)).not.toBeInTheDocument();
+  });
+
+  it('AC-1: selecting Ollama hides the legacy API-key field entirely', async () => {
+    mockProviderListModels.mockResolvedValueOnce({ ok: false, error: 'Ollama is not running.' });
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'ollama');
+
+    expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
+    expect(document.getElementById('section-api-key')).not.toBeInTheDocument();
+  });
+
+  it('AC-2: selecting OpenAI keeps the legacy key field with OpenAI-specific copy', async () => {
+    mockProviderListModels.mockResolvedValueOnce({ ok: false, error: 'unused' });
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'openai');
+
+    expect(screen.getByLabelText(/^openai api key$/i)).toBeInTheDocument();
+    expect(document.getElementById('section-api-key')).not.toBeNull();
+  });
+
+  it('AC-3: with provider override OFF, a local provider\'s Default model fills the agent Model field without typing', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      // The agent has never had a per-agent model pinned (SKY-11219's actual
+      // repro: a fresh/never-touched agent Model field is an empty string) —
+      // it must inherit the global provider's Default model, not stay blank.
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, model: '' },
+      },
+      provider: { kind: 'lmstudio', baseUrl: 'http://127.0.0.1:1234/v1', model: 'qwen/qwen3.6-35b-a3b' },
+    });
+    mockProviderListModels.mockResolvedValue({ ok: true, models: ['qwen/qwen3.6-35b-a3b'] });
+
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+
+    // Agent has no per-agent override → its Model field must reflect the
+    // global provider's Default model automatically, not a blank/free-typed value.
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: /writing coach model/i })).toHaveValue('qwen/qwen3.6-35b-a3b')
+    );
+  });
+
+  it('AC-3: agent Model field tracks a live change to the provider Default model', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, model: '' },
+      },
+      provider: { kind: 'lmstudio', baseUrl: 'http://127.0.0.1:1234/v1', model: 'model-a' },
+    });
+    mockProviderListModels.mockResolvedValue({ ok: true, models: ['model-a', 'model-b'] });
+
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() =>
+      expect(screen.getByRole('combobox', { name: /writing coach model/i })).toHaveValue('model-a')
+    );
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /default model for this provider/i }), 'model-b');
+
+    expect(screen.getByRole('combobox', { name: /writing coach model/i })).toHaveValue('model-b');
+  });
+
+  it('AC-4: selecting LM Studio auto-fetches the running model list without a manual refresh click', async () => {
+    mockProviderListModels.mockResolvedValueOnce({ ok: true, models: ['qwen/qwen3.6-35b-a3b', 'llama-3.2-3b'] });
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'lmstudio');
+
+    await waitFor(() => expect(mockProviderListModels).toHaveBeenCalledTimes(1));
+    expect(mockProviderListModels).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'lmstudio' }),
+    );
+    const select = await screen.findByRole('combobox', { name: /default model for this provider/i });
+    const optionValues = Array.from((select as HTMLSelectElement).options).map((o) => o.value);
+    expect(optionValues).toContain('qwen/qwen3.6-35b-a3b');
+    expect(optionValues).toContain('llama-3.2-3b');
+  });
+
   // ── MYT-779: Telemetry section ──
 
   it('renders Telemetry section with opt-in toggle', async () => {

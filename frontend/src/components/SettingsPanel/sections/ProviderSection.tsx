@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   PROVIDER_OPTIONS,
   LISTABLE_PROVIDERS,
@@ -75,6 +75,16 @@ export default function ProviderSection({
   // state — clicking explains what account linking will do when it lands and
   // stores no credentials. Tracks which provider's explainer is open.
   const [oauthExplainerFor, setOauthExplainerFor] = useState<ProviderKind | null>(null);
+
+  // SKY-11219 (AC-4): re-fetch the model list a beat after the user edits the
+  // Base URL by hand — switching providers already auto-fetches immediately
+  // (onChange below); this covers pointing the same provider at a different
+  // running endpoint without a manual "Refresh models" click.
+  const baseUrlFetchTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (baseUrlFetchTimer.current) window.clearTimeout(baseUrlFetchTimer.current);
+  }, []);
+
   return (
     <section className="settings-section provider-settings-section" aria-labelledby="section-providers" data-settings-cat="agents">
       <h3 className="settings-section-title" id="section-providers">Provider Configuration</h3>
@@ -105,6 +115,11 @@ export default function ProviderSection({
             setModelListStatus('idle');
             setModelListError(null);
             setUseCustomInput(false);
+            // SKY-11219: a model name from the previous provider (e.g. an
+            // Anthropic model string) is meaningless once switched to a
+            // different provider/runtime — carrying it over would silently
+            // save it as the new provider's default model.
+            setProviderModel('');
             // SKY-6941: default Base URL to the new provider's endpoint (matches
             // AgentProviderSection's per-agent override behavior) instead of
             // leaving the previous provider's URL in place.
@@ -182,7 +197,18 @@ export default function ProviderSection({
                   placeholder={DEFAULT_BASE_URLS[providerKind] || 'http://localhost:11434'}
                   spellCheck={false}
                   aria-label="Provider base URL"
-                  onChange={(e) => { setProviderBaseUrl(e.target.value); setTestConnectionStatus('idle'); setSavedOk(false); }}
+                  onChange={(e) => {
+                    const nextUrl = e.target.value;
+                    setProviderBaseUrl(nextUrl);
+                    setTestConnectionStatus('idle');
+                    setSavedOk(false);
+                    if (LISTABLE_PROVIDERS.has(providerKind)) {
+                      if (baseUrlFetchTimer.current) window.clearTimeout(baseUrlFetchTimer.current);
+                      baseUrlFetchTimer.current = window.setTimeout(() => {
+                        onFetchModels(providerKind, nextUrl);
+                      }, 400);
+                    }
+                  }}
                 />
               </div>
             )}
