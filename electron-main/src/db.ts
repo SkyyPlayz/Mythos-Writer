@@ -1004,7 +1004,14 @@ function runMigrations(db: DatabaseSync): void {
     // backfilled on the next loadEntityIndex() call that hits a changed file;
     // rows for unchanged files get reveal_point=NULL until their content next
     // changes (safe: NULL = always-visible per AC5).
-    db.exec('ALTER TABLE vault_index_cache ADD COLUMN reveal_point TEXT');
+    // Column may already exist (e.g. a DB stuck below v34 via a manually
+    // reset PRAGMA while vault_index_cache itself was never rebuilt) — SQLite
+    // has no ADD COLUMN IF NOT EXISTS, so catch and ignore the duplicate.
+    try {
+      db.exec('ALTER TABLE vault_index_cache ADD COLUMN reveal_point TEXT');
+    } catch {
+      // column already present — OK
+    }
     db.exec('PRAGMA user_version = 34');
   }
 
