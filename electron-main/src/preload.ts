@@ -1204,6 +1204,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('timelines:upsertItem', payload),
   timelinesDeleteItem: (payload: { type: string; id: string }) =>
     ipcRenderer.invoke('timelines:deleteItem', payload),
+  // SKY-10876 M12.B4b: "Rebuild my timeline" command (manuscript-driven).
+  timelineRebuild: () => ipcRenderer.invoke('timeline:rebuild', {}),
 
   // SKY-6228: M15 — agent chat sessions
   agentSessions: {

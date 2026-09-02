@@ -299,6 +299,11 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
   const jumpSeq = useRef(0);
   const [flags, setFlags] = useState<TimelineFlag[]>([]);
   const [archiveBusy, setArchiveBusy] = useState(false);
+  // SKY-10876: which archive action owns `archiveBusy` right now. Both the
+  // quick-add and the rebuild disable the whole card while running, but only the
+  // active one should show its busy verb — otherwise clicking "Add" also flips
+  // the Rebuild button to "Rebuilding…" (and vice-versa).
+  const [rebuilding, setRebuilding] = useState(false);
   const [autoSyncing, setAutoSyncing] = useState(false);
   const [plannedBuild, setPlannedBuild] = useState<PlannedBuild | null>(null);
   // SKY-10542: POV track input — per-scene POV attribution for the lanes view.
@@ -939,6 +944,47 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
     notify('Archive Agent is rebuilding this timeline from your notes…');
   }, [notify]);
 
+  // SKY-10876 M12.B4b: the "Rebuild my timeline" command — a separately
+  // invokable, manuscript-driven wholesale rebuild (distinct from handleQuickAdd
+  // and the notes-driven handleRunArchiveNow above). One IPC round-trip reads
+  // the manuscript via the shared primitive, rewrites the active timeline's
+  // scene events, and returns the fresh store.
+  const handleRebuildTimeline = useCallback(async () => {
+    if (typeof api.timelineRebuild !== 'function' || archiveBusy) return;
+    setArchiveBusy(true);
+    setRebuilding(true);
+    try {
+      const res = await api.timelineRebuild();
+      if (!res.ok) {
+        notify(res.reason ?? 'Could not rebuild the timeline.', 'warn');
+        return;
+      }
+      if (res.store) setTimelinesStore(res.store);
+      const r = res.report;
+      if (r) {
+        const changed = r.eventsAdded + r.eventsUpdated + r.eventsRemoved;
+        // Surface unreadable scenes rather than letting them vanish silently
+        // (gh-944): the engine reports them, so the author hears about them.
+        const missing = r.missingSceneIds.length;
+        const missingNote =
+          missing > 0 ? ` (${missing} scene${missing === 1 ? '' : 's'} couldn’t be read)` : '';
+        notify(
+          changed === 0
+            ? `Timeline already up to date — read ${r.scenesRead} scene${r.scenesRead === 1 ? '' : 's'}.${missingNote}`
+            : `Rebuilt your timeline: +${r.eventsAdded} · ~${r.eventsUpdated} · −${r.eventsRemoved} from ${r.scenesRead} scene${r.scenesRead === 1 ? '' : 's'}.${missingNote}`,
+          missing > 0 ? 'warn' : undefined,
+        );
+      } else {
+        notify('Rebuilt your timeline from the manuscript.');
+      }
+    } catch {
+      notify('Could not rebuild the timeline.', 'error');
+    } finally {
+      setArchiveBusy(false);
+      setRebuilding(false);
+    }
+  }, [api, archiveBusy, notify]);
+
   const handleStartEmpty = useCallback(() => {
     setEmptyDismissed((prev) => new Set(prev).add(activeId));
   }, [activeId]);
@@ -1423,6 +1469,8 @@ export default function TimelineRoot({ story, onOpenScene }: Props) {
             onUndoAutoAdd={handleUndoAutoAdd}
             onFlagResolved={handleFlagResolved}
             archiveBusy={archiveBusy}
+            rebuilding={rebuilding}
+            onRebuildTimeline={handleRebuildTimeline}
           />
         )}
       </div>

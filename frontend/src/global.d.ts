@@ -1988,6 +1988,23 @@ interface Window {
       type: 'era' | 'span' | 'event' | 'row' | 'tensionPoint';
       id: string;
     }) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore; error?: string }>;
+    // SKY-10876 M12.B4b: "Rebuild my timeline" — manuscript-driven command.
+    timelineRebuild?: () => Promise<{
+      ok: boolean;
+      reason?: string;
+      report?: {
+        ok: boolean;
+        timelineId: string;
+        scenesRead: number;
+        missingSceneIds: string[];
+        eventsAdded: number;
+        eventsUpdated: number;
+        eventsRemoved: number;
+        eventsTotal: number;
+        reason?: string;
+      };
+      store?: import('./timelinesTypes').TimelinesStore;
+    }>;
     // SKY-6228: M15 — agent chat sessions
     agentSessions?: {
       list: (agent?: string) => Promise<{ sessions: AgentSessionSummary[] }>;

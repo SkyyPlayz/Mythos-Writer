@@ -1160,6 +1160,8 @@ export interface IpcHandlers {
   // Beta 4 M22: Axis engine item persistence
   [IPC_CHANNELS.TIMELINES_UPSERT_ITEM]: (payload: TimelinesUpsertItemPayload) => TimelinesUpsertItemResponse;
   [IPC_CHANNELS.TIMELINES_DELETE_ITEM]: (payload: TimelinesDeleteItemPayload) => TimelinesDeleteItemResponse;
+  // SKY-10876 M12.B4b: "Rebuild my timeline" command (payload-less; vault-scoped active timeline)
+  [IPC_CHANNELS.TIMELINE_REBUILD]: (payload: never) => TimelineRebuildResponse;
 
   // SKY-6228: M15 — agent chat sessions
   [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) => AgentSessionListResponse;
@@ -5712,6 +5714,33 @@ export interface TimelinesDeleteItemResponse {
   ok: boolean;
   store: TimelinesStore;
   error?: string;
+}
+
+// SKY-10876 M12.B4b: "Rebuild my timeline" command — manuscript-driven rebuild
+// of the active timeline's scene events, sharing the M12.B4a manuscript-pass
+// primitive. The report is the command's own reporting surface (distinct from
+// the continuity checks): what it read and what it changed.
+export interface TimelineRebuildReport {
+  ok: boolean;
+  timelineId: string;
+  /** Scenes read from the manuscript in reading order (one snapshot pass). */
+  scenesRead: number;
+  /** Scene ids whose file could not be read — surfaced, never silent. */
+  missingSceneIds: string[];
+  eventsAdded: number;
+  eventsUpdated: number;
+  eventsRemoved: number;
+  /** Manuscript-derived agent events on the active timeline after the rebuild. */
+  eventsTotal: number;
+  reason?: string;
+}
+export interface TimelineRebuildResponse {
+  ok: boolean;
+  report?: TimelineRebuildReport;
+  /** Fresh store so the renderer refreshes without a second round-trip. */
+  store?: TimelinesStore;
+  /** Set when ok is false (e.g. the Archive Agent is disabled). */
+  reason?: string;
 }
 
 // SKY-6228: M15 — agent chat session IPC types

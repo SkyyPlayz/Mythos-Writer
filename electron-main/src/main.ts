@@ -596,6 +596,7 @@ import {
   internalSuggestionToInconsistencyItem,
 } from './archiveContinuityEngine.js';
 import { buildManuscriptSnapshot } from './manuscriptPass.js';
+import { rebuildTimelineFromManuscript } from './timelineRebuild.js';
 import { confirmActionToResolution, dedupeScanItems } from './archiveCommentBridge.js';
 import { scanWikiLinks, acceptWikiLink, rejectWikiLink } from './wikiLinks.js';
 import {
@@ -7438,6 +7439,23 @@ const handlers: IpcHandlers = {
     writeProposalStore(vaultRoot, store);
 
     return { proposals: pendingForScenes(store.proposals, sceneIds) };
+  },
+
+  // SKY-10876 M12.B4b: "Rebuild my timeline" — a SEPARATELY invokable command
+  // (its own channel + report) that rebuilds the active timeline from the
+  // manuscript via the SHARED manuscript-pass primitive. Gated on the Archive
+  // Agent's own enable — deliberately NOT `archiveContinuityEnabled`, so it can
+  // never fire from, or be coupled to, a continuity-check invocation.
+  [IPC_CHANNELS.TIMELINE_REBUILD]: (): import('./ipc.js').TimelineRebuildResponse => {
+    ensureVaultDir();
+    const settings = loadAppSettings();
+    if (!settings.agents.archive.enabled) {
+      return { ok: false, reason: 'Archive Agent is turned off. Enable it in Settings.' };
+    }
+    const vaultRoot = getVaultRoot();
+    const manifest = readManifest(getManifestPath());
+    const { report, store } = rebuildTimelineFromManuscript(vaultRoot, manifest);
+    return { ok: report.ok, report, store };
   },
 
   [IPC_CHANNELS.TIMELINE_PROPOSALS_LIST]: (payload: import('./ipc.js').TimelineProposalsListPayload): import('./ipc.js').TimelineProposalsListResponse => {

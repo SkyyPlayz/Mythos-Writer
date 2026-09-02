@@ -714,6 +714,7 @@ jobs:
     # onboarding-four-paths, panel-system-wave2f, proposal-card-hover, provider-settings (SKY-6933 sweep)
     # scene-save-perf (SKY-6198), timeline-archive-quickadd (SKY-8266/SKY-8286)
     # paragraph-editing (SKY-8564), jobs-responsiveness (SKY-10768)
+    # timeline-rebuild (SKY-10876/M12.B4b)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -868,6 +869,9 @@ jobs:
 
       - name: E2E — Timeline Archive quick-add IPC->disk (SKY-8266)
         run: xvfb-run --auto-servernum npm run test:e2e:archive-quickadd
+
+      - name: E2E — "Rebuild my timeline" command IPC->disk (SKY-10876/M12.B4b)
+        run: xvfb-run --auto-servernum npm run test:e2e:timeline-rebuild
 
       - name: E2E — Paragraph split/merge/grip-drag reorder IPC->disk (SKY-8564)
         run: xvfb-run --auto-servernum npm run test:e2e:paragraph-editing
