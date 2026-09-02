@@ -3494,12 +3494,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
     const sceneId = generateId();
     // SKY-11279: goal/conflict/beats/tone/length have no dedicated Scene
-    // field, so they land in a leading note block (existing Block type,
-    // renders as an HTML-comment line via blocksToMarkdown's 'note' case) —
-    // otherwise Create Scene drops everything Setup collected but the title.
+    // field, so they land in a leading prose block — otherwise Create Scene
+    // drops everything Setup collected but the title. Not a 'note' block:
+    // that type renders as an HTML comment (blocksToMarkdown's 'note' case),
+    // which is invisible in the TipTap/markdown-it editor (html: true), so
+    // it would fail AC1's "visible ... in the scene" requirement.
     const noteContent = craftedSceneNote(setup);
     const blocks: Block[] = noteContent
-      ? [{ id: generateId(), type: 'note', content: noteContent, order: 0, updatedAt: now() }]
+      ? [{ id: generateId(), type: 'prose', content: noteContent, order: 0, updatedAt: now() }]
       : [];
     const scene: Scene = {
       id: sceneId, title: rawTitle,
