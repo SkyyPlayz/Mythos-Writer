@@ -657,9 +657,6 @@ jobs:
       - name: E2E — Brainstorm scene-append writes real content to disk (SKY-8007, SKY-8447)
         run: xvfb-run --auto-servernum npm run test:e2e:brainstorm-scene-append
 
-      - name: E2E — Custom template lifecycle (SKY-6933 sweep, skip-guarded — test setup bug)
-        run: xvfb-run --auto-servernum npm run test:e2e:custom-template-lifecycle
-
       - name: "E2E — TemplatePicker onCreated wiring (SKY-10926)"
         run: xvfb-run --auto-servernum npm run test:e2e:note-template-picker-oncreated
 

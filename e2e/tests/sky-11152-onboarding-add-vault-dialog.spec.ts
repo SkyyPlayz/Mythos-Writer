@@ -38,7 +38,7 @@ function freshUserData(prefix: string): string {
 // SKY-8211: detectLegacyVaults() scans the real OS home dir (not the test's
 // isolated --user-data-dir), so on a machine with a stray legacy vault this
 // dialog can appear over the wizard and intercept clicks. Dismiss it if present
-// (same guard as e2e/custom-template-lifecycle.spec.ts).
+// (same guard pattern used elsewhere for this dialog).
 async function dismissLegacyMigrationDialogIfPresent(page: import('@playwright/test').Page): Promise<void> {
   const migrationDialog = page.getByTestId('gs-migration-dialog');
   if (await migrationDialog.isVisible({ timeout: 1_000 }).catch(() => false)) {
