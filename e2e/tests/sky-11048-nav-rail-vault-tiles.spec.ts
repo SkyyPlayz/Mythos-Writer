@@ -140,11 +140,19 @@ test('TC-SKY-11048-01: + tile creates a second vault, tiles switch, per-vault th
       { timeout: 30_000, intervals: [200, 400, 800, 1000] },
     ).toBe(secondStory);
 
-    // The rail now reflects both vaults and the new one is active.
+    // The rail now reflects both vaults and the new one is active. SKY-11238:
+    // the created vault APPENDS (registration order) — a front-insert here is
+    // the MRU regression that reordered the rail.
     await expect(pg.locator('.nav-rail__vault-tile')).toHaveCount(2);
     const secondTile = pg.locator(`[data-testid="nav-rail-vault-tile-${secondStory}"]`);
     await expect(secondTile).toHaveClass(/nav-rail__vault-tile--active/);
     await expect(firstTile).not.toHaveClass(/nav-rail__vault-tile--active/);
+    await expect(pg.locator('.nav-rail__vault-tile').nth(0)).toHaveAttribute(
+      'data-testid', `nav-rail-vault-tile-${firstStory}`,
+    );
+    await expect(pg.locator('.nav-rail__vault-tile').nth(1)).toHaveAttribute(
+      'data-testid', `nav-rail-vault-tile-${secondStory}`,
+    );
 
     // 3. Switch back through the FIRST vault's tile (the rail path under
     // test, not the title-bar switcher already covered by sky-906).

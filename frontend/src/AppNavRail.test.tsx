@@ -394,6 +394,46 @@ describe('AppNavRail', () => {
   });
 });
 
+// ─── SKY-11238: vault tiles render in given order — never sorted ─────────────
+
+describe('AppNavRail vault tiles order', () => {
+  const VAULTS = [
+    { id: '/vaults/alpha', name: 'Alpha', active: false },
+    { id: '/vaults/beta', name: 'Beta', active: true },
+    { id: '/vaults/gamma', name: 'Gamma', active: false },
+  ];
+
+  function tileOrder(): string[] {
+    return screen.getAllByTestId(/^nav-rail-vault-tile-/)
+      .map((el) => el.getAttribute('data-testid')!.replace('nav-rail-vault-tile-', ''));
+  }
+
+  it('renders tiles in prop order, not active-first or active-last', () => {
+    render(<AppNavRail {...makeProps({ vaults: VAULTS })} />);
+    expect(tileOrder()).toEqual(['/vaults/alpha', '/vaults/beta', '/vaults/gamma']);
+  });
+
+  it('keeps every tile position when the active vault changes', () => {
+    // The SKY-11238 defect was purely positional — assert positions before
+    // AND after the active flag moves, not just which tile is active.
+    const { rerender } = render(<AppNavRail {...makeProps({ vaults: VAULTS })} />);
+    const before = tileOrder();
+    rerender(
+      <AppNavRail
+        {...makeProps({
+          vaults: VAULTS.map((v) => ({ ...v, active: v.id === '/vaults/gamma' })),
+        })}
+      />,
+    );
+    expect(tileOrder()).toEqual(before);
+    const gamma = screen.getByTestId('nav-rail-vault-tile-/vaults/gamma');
+    expect(gamma).toHaveClass('nav-rail__vault-tile--active');
+    expect(gamma).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('nav-rail-vault-tile-/vaults/beta'))
+      .not.toHaveClass('nav-rail__vault-tile--active');
+  });
+});
+
 // ─── Beta 4 M3: rail edit popover ─────────────────────────────────────────────
 
 describe('AppNavRail edit popover', () => {

@@ -18,7 +18,8 @@ import type { ProjectIconSetPayload, ProjectIconSetResponse, VaultIconEntry } fr
  * Resolve the stored icon (if any) for each vault root. Roots that aren't a
  * v2 Mythos vault, or that have no icon set, come back with `kind: null` so
  * the renderer falls back to its initials-on-accent default.
- * Deduplicated by `vaultRoot` (first entry wins — recents are newest-first).
+ * Deduplicated by `vaultRoot` (first entry wins — callers pass the active
+ * vault first; recents follow in stable registration order, SKY-11238).
  */
 export async function collectProjectIcons(
   vaultRoots: Array<{ vaultRoot: string }>,
