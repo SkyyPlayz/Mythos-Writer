@@ -277,6 +277,44 @@ describe('M2 (SKY-9017): part/chapter notes', () => {
   });
 });
 
+// SKY-11356 (AC6): the chapter note-slot used to be emitted BEFORE its h2 in
+// buildBlocks, so the editor showed the epigraph above the heading while the
+// Book view compiles chapter-head → epigraph. These tests pin the editor to
+// heading-first DOM order so both surfaces agree (BookPreview.test.tsx holds
+// the matching book-side assertion).
+describe('SKY-11356 (AC6): chapter heading precedes its note in the editor DOM', () => {
+  /** True when `other` comes after `node` in document order. */
+  const follows = (node: Element, other: Element) =>
+    (node.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+  it('SKY-11356: a filled chapter note renders AFTER its chapter heading', () => {
+    const story = mkStory();
+    story.chapters[0] = { ...story.chapters[0], note: [mkBlock('note-ch1', 'Existing epigraph.', 0)] };
+    renderView({ story });
+    expect(
+      follows(screen.getByTestId('msv-h2-ch1'), screen.getByTestId('msv-note-chapter-ch1'))
+    ).toBe(true);
+  });
+
+  it("SKY-11356: the empty-state '+ CHAPTER NOTE' affordance also renders AFTER the heading", () => {
+    renderView({ onEditChapterNote: vi.fn() });
+    expect(
+      follows(
+        screen.getByTestId('msv-h2-ch1'),
+        screen.getByTestId('msv-note-affordance-chapter-ch1')
+      )
+    ).toBe(true);
+  });
+
+  it('SKY-11356: the part convention is unchanged — H1 precedes the part note slot', () => {
+    const story = mkMultiPartStory();
+    renderView({ story, onEditPartNote: vi.fn() });
+    expect(
+      follows(screen.getByTestId('msv-h1-p1'), screen.getByTestId('msv-note-affordance-part-p1'))
+    ).toBe(true);
+  });
+});
+
 describe('paragraph editing', () => {
   it('commits on blur with the scene id, block id, and new text', () => {
     const { props } = renderView({ cursor: cur('scene', 0, 0) });

@@ -245,7 +245,8 @@ export function zoomStep(story: Story, cursor: ManuscriptCursor, dir: 1 | -1): M
  *
  * M2 (SKY-9017): when the story has real parts (not simple/untitled), emits
  * H1Block + NoteSlotBlock (part note) before each part's chapters, and
- * NoteSlotBlock (chapter note) before each H2 at book/part/chapter depth.
+ * NoteSlotBlock (chapter note) after each H2 at book/part/chapter depth
+ * (SKY-11356: heading first, note beneath — matching Book view).
  */
 export function buildBlocks(
   story: Story,
@@ -302,14 +303,6 @@ export function buildBlocks(
     const scenes = orderedScenes(c);
     const cFolded = collapsedIds.has(c.id);
     if (zoom !== 'scene') {
-      // M2: emit chapter note slot before H2 at book/part/chapter depth
-      blocks.push({
-        kind: 'note-slot',
-        id: `note-chapter-${c.id}`,
-        slotKind: 'chapter',
-        chapterId: c.id,
-        note: c.note ?? [],
-      });
       blocks.push({
         kind: 'h2',
         id: `h2-${c.id}`,
@@ -319,6 +312,15 @@ export function buildBlocks(
         status: chapterStatus(c),
         folded: cFolded,
         childCount: scenes.length,
+      });
+      // SKY-11356: chapter note follows its H2 (matches the part note above and
+      // Book view's heading→epigraph order); still shown when the chapter is folded.
+      blocks.push({
+        kind: 'note-slot',
+        id: `note-chapter-${c.id}`,
+        slotKind: 'chapter',
+        chapterId: c.id,
+        note: c.note ?? [],
       });
       if (cFolded) return;
     }
