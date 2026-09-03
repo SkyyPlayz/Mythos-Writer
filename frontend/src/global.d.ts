@@ -471,7 +471,7 @@ interface LiquidNeonPrefs {
   bgScrim?: number;
   /** Vignette strength 0–100 → 0–0.9 alpha. Default 40. */
   bgVignette?: number;
-  /** Base canvas hex colour (used when no image set). Default '#0e1116'. */
+  /** Base canvas hex colour (used when no image set). Default '#07090f'. */
   bgBaseColor?: string;
   /** Accent / button hex colour. Default '#00f0ff'. */
   accentColor?: string;
