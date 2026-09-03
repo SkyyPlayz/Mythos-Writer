@@ -154,20 +154,92 @@ export function resolveEntityKeyForFact(mention: string, index: EntityIndexEntry
 }
 
 /**
- * Parses a scene/chapter position string into a comparable {major, minor} pair.
- * Accepts any string containing one or two integers, e.g. "Chapter 3", "Scene 12",
- * "3.2", "Act 1 Scene 4". The first integer is major; the second (if present) minor.
- * Exported so consumers can use the same ordering logic.
+ * Canonical, axis-aware manuscript position (SKY-11349).
+ *
+ * Positions are compared as an ordered tuple `[stage, part, chapter, scene]`
+ * that mirrors the product's manuscript hierarchy — Part → Chapter → Scene,
+ * with Prologue/Epilogue as book-level sentinels — documented in
+ * `docs/MANUSCRIPT-STRUCTURE-VIEW-DESIGN.md` and
+ * `docs/entity-reveal-point-contract.md`.
+ *
+ * Each number is bound to an axis by the *label* that precedes it, not by the
+ * order it appears in the string. That is the fix for the SKY-11318 defect
+ * where `parseScenePosition` scraped the first two integers regardless of
+ * label, so "Scene 12" (a scene index) miscompared against "Chapter 3" (a
+ * chapter index) as if both lived on one numeric axis.
+ *
+ * A `0` on any axis means "unspecified" and sorts before any explicit value at
+ * that level (Chapter 0 sorts before Chapter 1).
  */
-export function parseScenePosition(pos: string): { major: number; minor: number } {
-  const nums = pos.match(/\d+/g) ?? [];
-  return { major: parseInt(nums[0] ?? '0', 10), minor: parseInt(nums[1] ?? '0', 10) };
+export interface ScenePosition {
+  /** -1 = Prologue (before the body), 0 = body, +1 = Epilogue (after the body). */
+  stage: number;
+  /** Part number; 0 when absent. */
+  part: number;
+  /** Chapter *or* Act number — the same structural level; 0 when absent. */
+  chapter: number;
+  /** Scene number; 0 when absent. */
+  scene: number;
+}
+
+// Label → axis bindings, evaluated case-insensitively. "Act" folds onto the
+// chapter axis: per docs/MANUSCRIPT-STRUCTURE-VIEW-DESIGN.md chapters and acts
+// are the single primary organizational unit, not two different axes.
+const POSITION_AXIS_PATTERNS: ReadonlyArray<{ axis: 'part' | 'chapter' | 'scene'; re: RegExp }> = [
+  { axis: 'part', re: /\bpart\s+(\d+)/i },
+  { axis: 'chapter', re: /\b(?:chapter|act)\s+(\d+)/i },
+  { axis: 'scene', re: /\bscene\s+(\d+)/i },
+];
+
+/**
+ * Parses a manuscript position string into a comparable {@link ScenePosition}.
+ *
+ * Recognized (canonical) forms are label-qualified and case-insensitive, e.g.
+ * "Part 2", "Chapter 3", "Act 1 Scene 4", "Scene 12", "Prologue", "Epilogue".
+ * Labels may be combined ("Part 2 Chapter 3 Scene 5"); each number binds to the
+ * axis named by the label in front of it.
+ *
+ * Legacy fallback: a string with **no** recognized label (e.g. "5", "3.2")
+ * treats the first integer as the chapter and the second as the scene, matching
+ * the historical major/minor behavior so existing bare-number data keeps
+ * ordering the same way.
+ *
+ * Exported so downstream consumers (e.g. SKY-10741 reader-perspective UI) share
+ * one ordering definition instead of re-deriving it.
+ */
+export function parseScenePosition(pos: string): ScenePosition {
+  const result: ScenePosition = { stage: 0, part: 0, chapter: 0, scene: 0 };
+
+  if (/\bprologue\b/i.test(pos)) result.stage = -1;
+  else if (/\bepilogue\b/i.test(pos)) result.stage = 1;
+
+  let matchedLabel = false;
+  for (const { axis, re } of POSITION_AXIS_PATTERNS) {
+    const m = re.exec(pos);
+    if (m) {
+      result[axis] = parseInt(m[1], 10);
+      matchedLabel = true;
+    }
+  }
+
+  // No axis label and no stage sentinel → legacy positional parse
+  // (first int = chapter/major, second int = scene/minor).
+  if (!matchedLabel && result.stage === 0) {
+    const nums = pos.match(/\d+/g) ?? [];
+    result.chapter = parseInt(nums[0] ?? '0', 10);
+    result.scene = parseInt(nums[1] ?? '0', 10);
+  }
+
+  return result;
+}
+
+/** Total order over {@link ScenePosition}: negative if a is before b. */
+export function compareScenePositions(a: ScenePosition, b: ScenePosition): number {
+  return a.stage - b.stage || a.part - b.part || a.chapter - b.chapter || a.scene - b.scene;
 }
 
 function positionReached(revealPoint: string, currentPosition: string): boolean {
-  const rp = parseScenePosition(revealPoint);
-  const cur = parseScenePosition(currentPosition);
-  return rp.major < cur.major || (rp.major === cur.major && rp.minor <= cur.minor);
+  return compareScenePositions(parseScenePosition(revealPoint), parseScenePosition(currentPosition)) <= 0;
 }
 
 /**
@@ -175,8 +247,10 @@ function positionReached(revealPoint: string, currentPosition: string): boolean 
  * has been reached at or before currentPosition. Entries with no reveal_point are
  * always included (AC5 — backward compatible).
  *
- * currentPosition format: same as reveal_point values, e.g. "Chapter 5", "Scene 12".
- * Comparison is numeric (first two integers found in the string).
+ * reveal_point and currentPosition must use the canonical position format parsed
+ * by {@link parseScenePosition} (see docs/entity-reveal-point-contract.md). They
+ * are compared axis-by-axis (stage → part → chapter → scene), so mixed label
+ * conventions can no longer silently miscompare their raw digits.
  */
 export function aliasesVisibleBefore(
   entries: EntityIndexEntry[],
