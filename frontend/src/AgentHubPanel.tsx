@@ -159,7 +159,6 @@ interface Props {
   waScanInterval?: number | 'on-save' | 'manual';
   isActive?: boolean;
   isPageFocused?: boolean;
-  onJumpToText?: (text: string) => void;
   voiceEnabled?: boolean;
   ttsSettings?: TtsEngineSettings;
   voicePrefs?: import('./hooks/useTtsPlayer').TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
@@ -218,7 +217,6 @@ export default function AgentHubPanel({
   waScanInterval,
   isActive = true,
   isPageFocused,
-  onJumpToText,
   voiceEnabled = false,
   ttsSettings,
   voicePrefs,
@@ -335,7 +333,6 @@ export default function AgentHubPanel({
                 waScanInterval={waScanInterval}
                 isActive={isActive}
                 isPageFocused={isPageFocused}
-                onJumpToText={onJumpToText}
                 voiceEnabled={voiceEnabled}
                 ttsSettings={ttsSettings}
                 voicePrefs={voicePrefs}
@@ -744,7 +741,6 @@ interface AgentChatViewProps {
   waScanInterval?: number | 'on-save' | 'manual';
   isActive: boolean;
   isPageFocused?: boolean;
-  onJumpToText?: (text: string) => void;
   voiceEnabled: boolean;
   ttsSettings?: TtsEngineSettings;
   voicePrefs?: import('./hooks/useTtsPlayer').TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
@@ -772,7 +768,6 @@ function AgentChatView({
   waScanInterval,
   isActive,
   isPageFocused,
-  onJumpToText,
   voiceEnabled,
   ttsSettings,
   voicePrefs,
@@ -829,7 +824,6 @@ function AgentChatView({
           waScanInterval={waScanInterval}
           isActive={isActive}
           isPageFocused={isPageFocused}
-          onJumpToText={onJumpToText}
           voiceEnabled={voiceEnabled}
           ttsSettings={ttsSettings}
           voicePrefs={voicePrefs}

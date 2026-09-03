@@ -1147,10 +1147,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setShowSceneHistory(false);
   }, [selectedScene]);
 
-  const handleJumpToText = useCallback((text: string) => {
-    editorApiRef.current?.jumpToText(text);
-  }, []);
-
   const handleEditorAcceptWikiLink = useCallback((id: string, link: string, anchorText: string) => {
     editorApiRef.current?.insertWikiLink(link, anchorText);
     setWikiLinkSuggestions((prev) => prev.filter((s) => s.id !== id));
@@ -5056,7 +5052,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
             isActive={view === 'editor'}
             isPageFocused={view === 'editor'}
-            onJumpToText={handleJumpToText}
             autoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
             autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
             onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
@@ -5171,7 +5166,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleReorderScenes, setTemplatePickerOpen, handleSelectEntity,
     gettingStartedProgress, persistGettingStartedProgress,
     handleOpenSceneByPath, handleOpenGraphScene, setExportScope, appSettings,
-    view, handleJumpToText,
+    view,
     continuityCount, setContinuityCount, setSettingsOpen, handleContinuityConsentGranted,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
     pane2Chapter, pane2Story, usePane2SidebarContext, handleSceneRestore,
@@ -7084,7 +7079,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
           isActive={view === 'editor'}
           isPageFocused={view === 'editor'}
-          onJumpToText={handleJumpToText}
           autoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
           autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
           onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
