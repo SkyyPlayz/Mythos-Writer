@@ -105,6 +105,12 @@ contextBridge.exposeInMainWorld('api', {
   readNotesVault: (filePath: string) => ipcRenderer.invoke('notesVault:read', { path: filePath }),
   writeNotesVault: (filePath: string, content: string) =>
     ipcRenderer.invoke('notesVault:write', { path: filePath, content }),
+  // SKY-11360: brainstorm/idea board persistence. Stored in the Agent Vault by
+  // the main process — the renderer never names the path, only the body.
+  brainstormBoard: {
+    read: () => ipcRenderer.invoke('brainstormBoard:read'),
+    write: (content: string) => ipcRenderer.invoke('brainstormBoard:write', { content }),
+  },
   listNotesVault: (root?: string) => ipcRenderer.invoke('notesVault:list', { root }),
   deleteNotesVault: (filePath: string) => ipcRenderer.invoke('notesVault:delete', { path: filePath }),
   moveNotesVault: (fromPath: string, toPath: string) =>

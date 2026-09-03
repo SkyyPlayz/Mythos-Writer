@@ -345,6 +345,11 @@ export const IPC_CHANNELS = {
   NOTES_VAULT_READ: 'notesVault:read',
   NOTES_VAULT_WRITE: 'notesVault:write',
   NOTES_VAULT_LIST: 'notesVault:list',
+  // SKY-11360: brainstorm/idea board is agent state — stored in the Agent
+  // Vault, not the Notes Vault. Dedicated read/write so the frontend store
+  // never routes board data through the notes-vault CRUD bridge.
+  BRAINSTORM_BOARD_READ: 'brainstormBoard:read',
+  BRAINSTORM_BOARD_WRITE: 'brainstormBoard:write',
   NOTES_VAULT_DELETE: 'notesVault:delete',
   NOTES_VAULT_MOVE: 'notesVault:move',
   // SKY-10712: one-shot undo of the most recent rename's inbound-link cascade.
@@ -941,6 +946,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
   [IPC_CHANNELS.NOTES_VAULT_READ]: (payload: VaultReadPayload) => VaultReadResponse;
   [IPC_CHANNELS.NOTES_VAULT_WRITE]: (payload: VaultWritePayload) => VaultWriteResponse;
+  [IPC_CHANNELS.BRAINSTORM_BOARD_READ]: (payload: never) => BrainstormBoardReadResponse;
+  [IPC_CHANNELS.BRAINSTORM_BOARD_WRITE]: (
+    payload: BrainstormBoardWritePayload,
+  ) => BrainstormBoardWriteResponse;
   [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload) => VaultListResponse;
   [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
@@ -1213,6 +1222,15 @@ export interface VaultWriteResponse {
   path: string;
   bytes: number;
 }
+
+// SKY-11360: brainstorm board lives in the Agent Vault. The renderer never
+// picks the path — the main process owns `Boards/brainstorm.board.json` under
+// the Agent Vault root — so there is no request path, only the serialized body.
+export interface BrainstormBoardWritePayload {
+  content: string;
+}
+export type BrainstormBoardReadResponse = { content: string } | { error: string };
+export type BrainstormBoardWriteResponse = { bytes: number } | { error: string };
 
 export interface VaultListPayload {
   root?: string;

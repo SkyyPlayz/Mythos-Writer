@@ -1590,6 +1590,12 @@ interface Window {
     // root via safeVaultIpcJoin on the main side.
     readNotesVault: (path: string) => Promise<{ content: string; path: string } | { error: string }>;
     writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number } | { error: string }>;
+    // SKY-11360: brainstorm/idea board — agent state stored in the Agent Vault
+    // (not the Notes Vault). The main process owns the path.
+    brainstormBoard: {
+      read: () => Promise<{ content: string } | { error: string }>;
+      write: (content: string) => Promise<{ bytes: number } | { error: string }>;
+    };
     listNotesVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string; excerpt?: string }> } | { error: string }>;
     deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean } | { error: string }>;
     moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean; linkUpdate?: RenameCascadeLinkUpdate } | { error: string }>;
