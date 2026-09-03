@@ -30,7 +30,7 @@ describe('ProjectSwitcher path display', () => {
   });
 
   it('middle-truncates recent project paths while preserving full path in the tooltip', async () => {
-    render(<ProjectSwitcher activeVaultRoot={longVaultRoot} onSwitched={vi.fn()} requestText={vi.fn().mockResolvedValue(null)} />);
+    render(<ProjectSwitcher activeVaultRoot={longVaultRoot} onSwitched={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: /active project/i }));
 
@@ -67,7 +67,6 @@ describe('ProjectSwitcher workspace label (SKY-9262)', () => {
         activeVaultRoot={longVaultRoot}
         activeStoryTitle="The Last City of Veynn"
         onSwitched={vi.fn()}
-        requestText={vi.fn().mockResolvedValue(null)}
       />,
     );
     // Flush the mount-time projectList load, then assert the story title
@@ -78,7 +77,7 @@ describe('ProjectSwitcher workspace label (SKY-9262)', () => {
   });
 
   it('falls back to the recents project name when no single-story title exists', async () => {
-    render(<ProjectSwitcher activeVaultRoot={longVaultRoot} onSwitched={vi.fn()} requestText={vi.fn().mockResolvedValue(null)} />);
+    render(<ProjectSwitcher activeVaultRoot={longVaultRoot} onSwitched={vi.fn()} />);
     // Once projectList resolves, the recents entry's name wins over the
     // directory-derived fallback.
     await waitFor(() => expect(screen.getByText('Fallback name')).toBeInTheDocument());
