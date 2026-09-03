@@ -1175,6 +1175,51 @@
   color: var(--bg-canvas, #0b0e13);
 }
 
+/* SKY-11376: destination-folder row for the create-vault modal above */
+.create-vault-modal {
+  width: 420px;
+}
+.create-vault-dest-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.create-vault-dest-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 8px 10px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border, #353048);
+  background: var(--bg, #15131f);
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.create-vault-browse-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border, #353048);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.create-vault-browse-btn:hover:not(:disabled) {
+  border-color: var(--accent, #7c5cff);
+}
+.create-vault-browse-btn:disabled {
+  opacity: .5;
+  cursor: default;
+}
+.create-vault-error {
+  margin: 0;
+  color: var(--danger, #ff4d78);
+  font-size: 13px;
+}
+
 /* ─── Distraction-free focus mode (SKY-133) ─── */
 
 /* Hide the toolbar button until hover to keep it from dominating */

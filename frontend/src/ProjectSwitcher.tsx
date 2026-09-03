@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { truncatePath, type TruncatePathOptions } from './utils/truncatePath';
+import { useCreateMythosVaultFlow } from './useCreateMythosVaultFlow';
 import './ProjectSwitcher.css';
 
 interface ProjectEntry {
@@ -17,7 +18,6 @@ interface Props {
    *  instead of the on-disk vault directory name. */
   activeStoryTitle?: string;
   onSwitched: (vaultRoot: string) => void;
-  requestText: (label: string) => Promise<string | null>;
 }
 
 // SKY-320: parent folder of `<Mythos Vault>/Story Vault/` is the user-facing
@@ -50,10 +50,9 @@ export function deriveSingleStoryTitle(
   return title || undefined;
 }
 
-export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onSwitched, requestText }: Props) {
+export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onSwitched }: Props) {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
-  const [creating, setCreating] = useState(false);
   const [activeNotesVaultRoot, setActiveNotesVaultRoot] = useState<string | undefined>(undefined);
   const [pathOptions, setPathOptions] = useState<TruncatePathOptions>({});
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -156,39 +155,18 @@ export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onS
   }, [onSwitched]);
 
   // SKY-320: Obsidian-style "Create new Mythos Vault" from the switcher.
-  // Asks for a friendly name (Cancel → bails) then mints a fresh bundle
-  // under ~/Mythos/Vaults/ and switches to it. Custom locations stay
-  // available through "Open Other Folder…" + the onboarding wizard.
-  const handleCreateNewMythosVault = useCallback(async () => {
-    if (creating) return;
-    setOpen(false);
-    const name = await requestText('Name for the new Mythos Vault:');
-    if (name === null) return;
-    const trimmed = name.trim();
-    if (trimmed && (trimmed.includes('/') || trimmed.includes('\\') || trimmed === '.' || trimmed === '..')) {
-      alert('Vault name cannot contain slashes or path traversal.');
-      return;
-    }
-    setCreating(true);
-    try {
-      const result = await window.api?.vaultCreateDefaultMythos?.({
-        vaultName: trimmed || undefined,
-        seedMode: 'default',
-      });
-      if (!result || result.error) {
-        alert(`Could not create vault: ${result?.error ?? 'unknown error'}`);
-        return;
-      }
+  // SKY-11376: name + destination now come from useCreateMythosVaultFlow's
+  // modal (shared with DesktopShell.tsx so the two entry points can't drift
+  // again — this one used to skip the location picker and always seed the
+  // sample story).
+  const { createVault: handleCreateNewMythosVault, createVaultModal } = useCreateMythosVaultFlow(
+    useCallback(async ({ vaultRoot }) => {
       // Main already persisted settings + added to recents; tell App to
       // reload so the new Story Vault becomes the active surface.
-      onSwitched(result.vaultRoot);
+      onSwitched(vaultRoot);
       await loadProjects();
-    } catch (err) {
-      alert(`Create failed: ${(err as Error).message}`);
-    } finally {
-      setCreating(false);
-    }
-  }, [creating, loadProjects, onSwitched, requestText]);
+    }, [loadProjects, onSwitched]),
+  );
 
   const handleBtnClick = () => {
     if (!open) loadProjects();
@@ -245,11 +223,10 @@ export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onS
           )}
           <button
             className="project-switcher-item create-new"
-            onClick={handleCreateNewMythosVault}
-            disabled={creating}
+            onClick={() => { setOpen(false); handleCreateNewMythosVault(); }}
             data-testid="project-switcher-create-new"
           >
-            {creating ? 'Creating…' : '+ Create new Mythos Vault'}
+            + Create new Mythos Vault
           </button>
           <button
             className="project-switcher-item open-other"
@@ -259,6 +236,7 @@ export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onS
           </button>
         </div>
       )}
+      {createVaultModal}
     </div>
   );
 }

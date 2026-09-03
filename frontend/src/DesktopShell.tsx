@@ -91,6 +91,7 @@ import ManuscriptStructureView from './ManuscriptStructureView';
 import BookPreview from './story/BookPreview';
 import TimelineRoot from './TimelineRoot';
 import { useTextPrompt } from './useTextPrompt';
+import { useCreateMythosVaultFlow } from './useCreateMythosVaultFlow';
 import { WIZARD_OPEN_IMPORT_STEP_KEY } from './OnboardingWizard';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
@@ -323,11 +324,10 @@ interface AppMenuBarProps {
   topBarHidden: boolean;
   onOpenTour: () => void;
   onOpenExport?: (scope: ExportScope) => void;
-  requestText: (label: string) => Promise<string | null>;
 }
 
 // SKY-2964: writing-mode selector removed from AppMenuBar — canonical controls live in StorySubViewBar (above the page)
-export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, activeStoryTitle, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport, requestText }: AppMenuBarProps) {
+export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, activeStoryTitle, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -369,7 +369,7 @@ export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, se
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
-      <ProjectSwitcher activeVaultRoot={activeVaultRoot} activeStoryTitle={activeStoryTitle} onSwitched={onProjectSwitched} requestText={requestText} />
+      <ProjectSwitcher activeVaultRoot={activeVaultRoot} activeStoryTitle={activeStoryTitle} onSwitched={onProjectSwitched} />
       <div className="app-menu-items" ref={fileMenuRef}>
         <div className="app-menu-item">
           <button
@@ -3327,31 +3327,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [selectedScene]);
 
   // SKY-320/SKY-906 parity for the Liquid Neon title bar: the legacy
-  // ProjectSwitcher's "+ Create new Mythos Vault" flow, driven through the
-  // same useTextPrompt modal and vaultCreateDefaultMythos IPC. Main persists
-  // settings + recents; we just switch the renderer to the new vault.
-  const createMythosVault = useCallback(async () => {
-    const name = await requestText('Name for the new Mythos Vault:');
-    if (name === null) return;
-    const trimmed = name.trim();
-    if (trimmed && (trimmed.includes('/') || trimmed.includes('\\') || trimmed === '.' || trimmed === '..')) {
-      alert('Vault name cannot contain slashes or path traversal.');
-      return;
-    }
-    try {
-      const result = await window.api?.vaultCreateDefaultMythos?.({
-        vaultName: trimmed || undefined,
-        seedMode: 'default',
-      });
-      if (!result || result.error) {
-        alert(`Could not create vault: ${result?.error ?? 'unknown error'}`);
-        return;
-      }
-      handleProjectSwitched(result.vaultRoot);
-    } catch (err) {
-      alert(`Create failed: ${(err as Error).message}`);
-    }
-  }, [requestText, handleProjectSwitched]);
+  // ProjectSwitcher's "+ Create new Mythos Vault" flow. SKY-11376: name +
+  // destination now come from useCreateMythosVaultFlow's modal (shared with
+  // ProjectSwitcher.tsx so the two entry points can't drift again).
+  const { createVault: createMythosVault, createVaultModal } = useCreateMythosVaultFlow(
+    useCallback(({ vaultRoot }) => { handleProjectSwitched(vaultRoot); }, [handleProjectSwitched]),
+  );
 
   // Title-bar "Open vault…" — the legacy switcher's "Open Other Folder…".
   const openVaultViaPicker = useCallback(async () => {
@@ -7213,6 +7194,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         onClose={() => setGlobalSearchOpen(false)}
       />
       {promptModal}
+      {createVaultModal}
       {syncModalOpen && (
         <SyncConflictModal
           resolved={syncConflictResolved}
