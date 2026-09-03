@@ -727,6 +727,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Beta 4 M1: set by the two project-switch paths right before loadVault so
   // the reload can apply that vault's default theme (per-vault theme, §14.9 #9).
   const pendingVaultThemeRootRef = useRef<string | null>(null);
+  // SKY-11379: monotonic vault-switch generation. Every switch bumps this
+  // before invoking loadVault; loadVault captures it and no-ops its state
+  // writes if a newer switch began while its IPCs were in flight. This closes
+  // the out-of-order race where a slower, earlier loadVault resolves last and
+  // overwrites activeVaultRoot (and the nav-rail highlight) back to the vault
+  // the user already switched away from. "Latest switch wins."
+  const vaultSwitchGenRef = useRef(0);
   const [editorSelectionText, setEditorSelectionText] = useState<string>('');
   const [continuityPeekOverlayOpen, setContinuityPeekOverlayOpen] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
@@ -1412,6 +1419,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   ]);
 
   const loadVault = useCallback(async () => {
+    // SKY-11379: pin the switch generation at call time. If a newer vault
+    // switch bumps vaultSwitchGenRef while this call's IPCs are in flight,
+    // superseded() turns true and every state-application point below bails —
+    // so a stale load can never win a "last write" race against the vault the
+    // user actually switched to.
+    const myGen = vaultSwitchGenRef.current;
+    const superseded = () => myGen !== vaultSwitchGenRef.current;
     setLoading(true);
     setError(null);
     // Beta 4 M1: consume the pending vault-switch marker synchronously so a
@@ -1442,6 +1456,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           ? { lastSampleGenre: initS.lastSampleGenre } : {}),
       } : (initS ?? sFromIpc);
       cachedSettings = s;
+      // SKY-11379: a newer switch began while settings/root/paths were in
+      // flight — abandon this stale load before writing any vault state.
+      if (superseded()) return;
 
       let storyValid = true;
       let notesValid = true;
@@ -1456,6 +1473,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         ]);
         storyValid = isValidVaultPath(storyResult);
         notesValid = isValidVaultPath(notesResult);
+        if (superseded()) return; // SKY-11379: stale after validatePath — bail.
         setVaultBinding({ storyPath, notesPath, storyValid, notesValid });
       } else {
         setVaultBinding((prev) => ({ ...prev, storyPath, storyValid: true, notesValid: true }));
@@ -1464,6 +1482,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       const m = storyValid
         ? await window.api.readManifest() as Manifest
         : { ...EMPTY_MANIFEST, vaultRoot: storyPath };
+      // SKY-11379: last IPC resolved — re-check the generation once more before
+      // the atomic apply below. setManifest through setActiveVaultRoot run with
+      // no further awaits between them, so a single check here protects the
+      // whole block (including the setActiveVaultRoot that drives the rail
+      // highlight) from a switch that started during readManifest.
+      if (superseded()) return;
       setManifest(m);
       setStories(m.stories ?? []);
       if (m.layout) {
@@ -1660,7 +1684,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       try {
         if (typeof window.api?.checkVaultConflicts === 'function') {
           const conflicts = await window.api.checkVaultConflicts();
-          if (conflicts && !conflicts.dismissed) {
+          // SKY-11379: don't raise a superseded load's conflict modal over the
+          // vault the user switched to.
+          if (!superseded() && conflicts && !conflicts.dismissed) {
             if ((conflicts.resolved?.length ?? 0) > 0 || conflicts.lockfileConflict) {
               setSyncConflictResolved(conflicts.resolved ?? []);
               setSyncLockfileConflict(conflicts.lockfileConflict ?? null);
@@ -1672,15 +1698,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         // conflict check is best-effort
       }
     } catch (e) {
-      setError('Failed to load vault: ' + String(e));
-      // Ensure grsVisible is resolved even when vault loading fails (e.g. no vault
-      // on fresh install). Without this, grsVisible stays undefined and
-      // GlobalRightSidebar never renders, so the Getting Started panel is invisible.
-      if (cachedSettings && typeof cachedSettings.rightSidebarVisible === 'boolean') {
-        setGrsVisible(cachedSettings.rightSidebarVisible);
+      // SKY-11379: a superseded load's failure must not surface over the vault
+      // the user actually switched to.
+      if (!superseded()) {
+        setError('Failed to load vault: ' + String(e));
+        // Ensure grsVisible is resolved even when vault loading fails (e.g. no vault
+        // on fresh install). Without this, grsVisible stays undefined and
+        // GlobalRightSidebar never renders, so the Getting Started panel is invisible.
+        if (cachedSettings && typeof cachedSettings.rightSidebarVisible === 'boolean') {
+          setGrsVisible(cachedSettings.rightSidebarVisible);
+        }
       }
     } finally {
-      setLoading(false);
+      // SKY-11379: only the freshest load owns the loading flag; a superseded
+      // call that bailed early must not clear the spinner the live load set.
+      if (!superseded()) setLoading(false);
     }
   }, [showUpgradeToast]);
 
@@ -1787,6 +1819,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   useEffect(() => {
     if (!window.api?.onProjectSwitched) return;
     const unsub = window.api.onProjectSwitched((data: { vaultRoot: string }) => {
+      vaultSwitchGenRef.current += 1; // SKY-11379: supersede any in-flight loadVault
       pendingVaultThemeRootRef.current = data.vaultRoot; // Beta 4 M1: per-vault theme
       activeVaultRootRef.current = data.vaultRoot; // SKY-11236: key persists to the new vault at once
       setActiveVaultRoot(data.vaultRoot);
@@ -1810,6 +1843,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [loadVault, loadVaults]);
 
   const handleProjectSwitched = useCallback((vaultRoot: string) => {
+    vaultSwitchGenRef.current += 1; // SKY-11379: supersede any in-flight loadVault
     pendingVaultThemeRootRef.current = vaultRoot; // Beta 4 M1: per-vault theme
     activeVaultRootRef.current = vaultRoot; // SKY-11236: key persists to the new vault at once
     setActiveVaultRoot(vaultRoot);
