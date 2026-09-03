@@ -2731,18 +2731,18 @@ describe('BrainstormPage — M20 idea collections and starter library', () => {
     render(<BrainstormPage onClose={() => {}} />);
 
     fireEvent.click(screen.getByTestId('bs-coll-toggle-trope'));
-    fireEvent.click(screen.getByRole('button', { name: 'Add The Chosen One to the board' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add The Chosen One to the Idea Board' }));
 
     // Jumped to the Board page with the card placed.
     expect(screen.getByTestId('bsc-mode-board')).toHaveAttribute('aria-pressed', 'true');
     expect(within(screen.getByTestId('bsc-board')).getByText('The Chosen One')).toBeInTheDocument();
-    expect(screen.getByText('“The Chosen One” added to the board')).toBeInTheDocument();
+    expect(screen.getByText('“The Chosen One” added to the Idea Board')).toBeInTheDocument();
 
     // The collections row is now a dimmed ✓ and re-clicking only toasts.
     fireEvent.click(screen.getByTestId('bs-coll-toggle-trope'));
-    const placedRow = screen.getByRole('button', { name: 'The Chosen One — already on the board' });
+    const placedRow = screen.getByRole('button', { name: 'The Chosen One — already on the Idea Board' });
     fireEvent.click(placedRow);
-    expect(screen.getByText('“The Chosen One” is already on the board')).toBeInTheDocument();
+    expect(screen.getByText('“The Chosen One” is already on the Idea Board')).toBeInTheDocument();
     // Still exactly one card on the canvas.
     expect(within(screen.getByTestId('bsc-board')).getAllByText('The Chosen One')).toHaveLength(1);
   });
@@ -2759,7 +2759,7 @@ describe('BrainstormPage — M20 idea collections and starter library', () => {
 
     fireEvent.click(screen.getByTestId('bs-coll-toggle-rel'));
     // The migrated fact is already on the board, so its row reads ✓.
-    expect(screen.getByRole('button', { name: 'Aria Voss — already on the board' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aria Voss — already on the Idea Board' })).toBeInTheDocument();
   });
 });
 
@@ -3244,7 +3244,7 @@ describe('BrainstormPage — M20 board tools, zoom, and idea search', () => {
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
 
-    expect(screen.getByRole('toolbar', { name: 'Board tools' })).toBeInTheDocument();
+    expect(screen.getByRole('toolbar', { name: 'Idea Board tools' })).toBeInTheDocument();
     expect(screen.getByTestId('bsc-tool-select')).toHaveAttribute('aria-pressed', 'true');
     for (const key of ['connect', 'frame', 'text']) {
       expect(screen.getByTestId(`bsc-tool-${key}`)).toHaveAttribute('aria-pressed', 'false');

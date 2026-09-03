@@ -118,13 +118,13 @@ export default function IdeaCollectionsPanel({ pool, placedTitles, onPlace, show
                     key={`${group.key}-${idea.key}`}
                     type="button"
                     className={`bs-coll-idea${placed ? ' bs-coll-idea--placed' : ''}`}
-                    title={placed ? 'Already on the board' : 'Add to the board'}
+                    title={placed ? 'Already on the Idea Board' : 'Add to the Idea Board'}
                     aria-label={placed
-                      ? `${idea.title} — already on the board`
-                      : `Add ${idea.title} to the board`}
+                      ? `${idea.title} — already on the Idea Board`
+                      : `Add ${idea.title} to the Idea Board`}
                     onClick={() => {
                       if (placed) {
-                        showToast(`“${idea.title}” is already on the board`);
+                        showToast(`“${idea.title}” is already on the Idea Board`);
                         return;
                       }
                       onPlace(idea);
@@ -149,8 +149,8 @@ export default function IdeaCollectionsPanel({ pool, placedTitles, onPlace, show
       </div>
       <div className="bs-collections-foot">
         {manualOnly
-          ? 'Click + to place an idea on the board, or add one straight from the board with + Idea.'
-          : 'Ideas the agent captures in chat land in your Notes Vault and appear here — click + to place one on the board.'}
+          ? 'Click + to place an idea on the Idea Board, or add one straight from the Idea Board with + Idea.'
+          : 'Ideas the agent captures in chat land in your Notes Vault and appear here — click + to place one on the Idea Board.'}
       </div>
     </aside>
   );

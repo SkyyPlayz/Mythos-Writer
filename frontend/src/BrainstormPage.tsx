@@ -119,7 +119,7 @@ type BrainstormMode = 'chat' | 'board';
 
 const MODE_LABELS: Record<BrainstormMode, string> = {
   chat: 'Agent Chat',
-  board: 'Board',
+  board: 'Idea Board',
 };
 
 const BRAINSTORM_MODES: BrainstormMode[] = ['chat', 'board'];
@@ -931,7 +931,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
       };
     });
     setMode('board');
-    showToast(`“${idea.title}” added to the board`);
+    showToast(`“${idea.title}” added to the Idea Board`);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -2138,13 +2138,13 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
             {/* M20: chat-page Board toggle — stacks the canvas under the chat
                 with a drag-bar height (prototype bsBoardToggle). */}
             {!compact && effectiveMode === 'chat' && (
-              <div className="bs-board-toggle-wrap" title="Show the idea board below the chat">
-                <span>Board</span>
+              <div className="bs-board-toggle-wrap" title="Show the Idea Board below the chat">
+                <span>Idea Board</span>
                 <button
                   type="button"
                   role="switch"
                   aria-checked={chatBoardOpen}
-                  aria-label="Show board under chat"
+                  aria-label="Show Idea Board under chat"
                   className={`bs-board-toggle${chatBoardOpen ? ' bs-board-toggle--on' : ''}`}
                   onClick={() => setChatBoardOpen((v) => !v)}
                   data-testid="bs-chat-board-toggle"
@@ -2589,7 +2589,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
               <div
                 className="bs-board-resize"
                 onMouseDown={handleChatBoardResize}
-                title="Drag to resize the board"
+                title="Drag to resize the Idea Board"
                 data-testid="bs-board-resize"
               >
                 <div className="bs-board-resize-grip" aria-hidden="true" />
