@@ -472,6 +472,8 @@ export interface StoryPagePrefs {
   /** The toolbar's "− 12 +" number; rendered px = step × 1.42 (prototype). */
   fontSizeStep?: number;
   lineHeightX?: number;
+  /** SKY-11239: manuscript drop cap on the first paragraph. Default false. */
+  dropCapEnabled?: boolean;
 }
 
 export const STORY_PAGE_DEFAULTS: StoryPagePrefs = {
@@ -481,6 +483,7 @@ export const STORY_PAGE_DEFAULTS: StoryPagePrefs = {
   fontFamily: 'serif',
   fontSizePx: 16,
   lineHeight: 1.7,
+  dropCapEnabled: false,
 };
 
 // M1 page geometry (plan §9.5 + prototype): centered page, default 1000px,
@@ -531,6 +534,9 @@ export const resolveFontStep = (p?: Partial<StoryPagePrefs> | null): number =>
 export const resolveLineHeight = (p?: Partial<StoryPagePrefs> | null): number =>
   p?.lineHeightX ?? LINE_HEIGHT_DEFAULT;
 
+export const resolveDropCapEnabled = (p?: Partial<StoryPagePrefs> | null): boolean =>
+  p?.dropCapEnabled ?? false;
+
 /** CSS stack for a manuscript font name (prototype's font select). */
 export function manuscriptFontStack(font: string): string {
   if (font === 'Inter') return "'Inter',sans-serif";
@@ -552,6 +558,9 @@ export function normalizeStoryPagePrefs(
   prev?: StoryPagePrefs | null
 ): StoryPagePrefs {
   const p: StoryPagePrefs = { ...next };
+
+  // dropCapEnabled (SKY-11239) needs no normalization step — it passes
+  // through unchanged via the `{ ...next }` spread above.
 
   // Seeding rule: a map with no canonical fields (pre-S3, prev == null) takes
   // the unified editor's defaults — the legacy fields described the legacy

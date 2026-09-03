@@ -14,6 +14,7 @@ import {
   PAGE_WIDTH_MIN,
   STORY_FONT_NAMES,
   maxPageMargin,
+  resolveDropCapEnabled,
   resolveFontName,
   resolveFontStep,
   resolvePageMargin,
@@ -62,6 +63,7 @@ export default function PageSetupPopover({
   const marginSliderId = useId();
   const fontNameId = useId();
   const fontSizeId = useId();
+  const dropCapId = useId();
   const textureInputRef = useRef<HTMLInputElement>(null);
 
   const widthPx = resolvePageWidth(prefs);
@@ -69,6 +71,7 @@ export default function PageSetupPopover({
   const marginMax = maxPageMargin(widthPx);
   const fontName = resolveFontName(prefs);
   const fontStep = resolveFontStep(prefs);
+  const dropCapEnabled = resolveDropCapEnabled(prefs);
 
   const setWidth = useCallback(
     (value: number) => {
@@ -98,6 +101,10 @@ export default function PageSetupPopover({
     },
     [prefs, onPrefsChange]
   );
+
+  const toggleDropCap = useCallback(() => {
+    onPrefsChange({ ...prefs, dropCapEnabled: !resolveDropCapEnabled(prefs) });
+  }, [prefs, onPrefsChange]);
 
   const handleTextureFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -294,6 +301,18 @@ export default function PageSetupPopover({
               aria-valuetext={`${fontStep}`}
             />
             <span className="page-setup-popover__slider-val" aria-hidden="true">{fontStep}</span>
+          </div>
+          <div className="page-setup-popover__row">
+            <label className="page-setup-popover__toggle" htmlFor={dropCapId}>
+              <input
+                id={dropCapId}
+                type="checkbox"
+                checked={dropCapEnabled}
+                aria-label="Drop cap"
+                onChange={toggleDropCap}
+              />
+              <span>Drop cap</span>
+            </label>
           </div>
         </section>
       </div>

@@ -67,6 +67,7 @@ import {
   clampPageMargin,
   clampPageWidth,
   manuscriptFontStack,
+  resolveDropCapEnabled,
   resolveFontName,
   resolveFontStep,
   resolveLineHeight,
@@ -1584,7 +1585,11 @@ export default function ManuscriptView({
             dragging={
               !!dragPara && dragPara.sceneId === b.sceneId && dragPara.blockId === b.blockId
             }
-            dropCap={b.first && (cursor.zoom === 'scene' || cursor.zoom === 'chapter')}
+            dropCap={
+              resolveDropCapEnabled(pagePrefs) &&
+              b.first &&
+              (cursor.zoom === 'scene' || cursor.zoom === 'chapter')
+            }
             placeholder={b.first ? PARA_PLACEHOLDER : undefined}
             paraStyle={paraStyle}
             onCommit={commitParagraph}
