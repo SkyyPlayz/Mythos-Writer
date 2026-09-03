@@ -369,20 +369,22 @@ test('TC-PROV-08: no-override agent Model field inherits & live-tracks the provi
   const providerModelInput = page.getByLabel('Default model for this provider');
   const waModel = page.getByLabel('Writing Coach model');
 
-  // Simulate a no-override agent that's never had a value typed for it —
-  // blank, not carrying over whatever a prior test left in place.
+  // SKY-11355: "no override" is now an explicit empty-string "Default"
+  // sentinel, not a copy of the provider's model string — the visible value
+  // stays '' and the resolved model surfaces via the placeholder instead.
   await waModel.fill('');
   await expect(waModel).toHaveValue('');
 
   // The field must reflect the provider's Default model instead of sitting
   // blank/stale (SKY-11219 AC-3).
   await providerModelInput.fill('llama3-70b-instruct');
-  await expect(waModel).toHaveValue('llama3-70b-instruct');
+  await expect(waModel).toHaveValue('');
+  await expect(waModel).toHaveAttribute('placeholder', 'Default: llama3-70b-instruct');
 
-  // Live-tracks: editing the provider default again updates the agent field,
-  // since no override was ever typed into it.
+  // Live-tracks: editing the provider default again updates the agent field's
+  // placeholder, since no override was ever typed into it.
   await providerModelInput.fill('mixtral-8x7b');
-  await expect(waModel).toHaveValue('mixtral-8x7b');
+  await expect(waModel).toHaveAttribute('placeholder', 'Default: mixtral-8x7b');
 
   // Once the user types their own value into the agent field, it wins over
   // the provider default and stops tracking further edits.

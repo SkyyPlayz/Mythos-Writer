@@ -8664,17 +8664,21 @@ const SETTINGS_DEFAULTS: AppSettings = {
   waIdleHeartbeatConstantInterval: false,
   waIdleDebounceSeconds: 30,
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 60, cadenceTrigger: 'on_save', idleHeartbeatConstantInterval: false, idleDebounceSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
-    brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...AGENT_BUDGET_DEFAULTS },
+    // SKY-11355: '' means "use the provider's Default model" — resolved by
+    // getProviderConfigForAgent()'s `agentSettings.model || undefined` fallthrough.
+    // A hardcoded Anthropic model name here silently overrode local providers
+    // (LM Studio/Ollama/etc. would be asked for a model they don't have).
+    writingAssistant: { enabled: true, model: '', scanIntervalSeconds: 60, cadenceTrigger: 'on_save', idleHeartbeatConstantInterval: false, idleDebounceSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
+    brainstorm: { enabled: true, model: '', ...AGENT_BUDGET_DEFAULTS },
     archive: {
       enabled: true,
-      model: 'claude-sonnet-4-6',
+      model: '',
       continuityCheckIntervalSeconds: 60,
       sceneCrafterSuggestions: { enabled: false, cadence: 1800 },
       ...AGENT_BUDGET_DEFAULTS,
     },
     // Beta 3 M22: fourth named agent — reader-eye chapter reads → margin comments.
-    betaReader: { enabled: true, model: 'claude-sonnet-4-6', ...AGENT_BUDGET_DEFAULTS },
+    betaReader: { enabled: true, model: '', ...AGENT_BUDGET_DEFAULTS },
   },
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
@@ -8763,6 +8767,20 @@ function loadAppSettings(): AppSettings {
         const rawAgent = rawAgents[agentKey] as unknown as Record<string, unknown> | undefined;
         if (rawAgent && rawAgent.autoApply === true && !('autoApplyCategories' in rawAgent)) {
           delete (base.agents[agentKey] as unknown as Record<string, unknown>).autoApplyCategories;
+        }
+      }
+      // SKY-11355: pre-fix installs may have 'claude-sonnet-4-6' baked into an
+      // agent's saved settings (the old hardcoded default). That value is only
+      // meaningful on Anthropic — on any other effective provider (global or
+      // the agent's own override) it silently broke the agent. Migrate it to
+      // '' (use the provider's Default model) so upgrading users get a working
+      // agent instead of carrying the stale value forward forever.
+      for (const agentKey of ['writingAssistant', 'brainstorm', 'archive', 'betaReader'] as const) {
+        const rawAgent = rawAgents[agentKey] as unknown as { model?: string; provider?: { kind?: string } } | undefined;
+        if (rawAgent?.model !== 'claude-sonnet-4-6') continue;
+        const effectiveKind = rawAgent.provider?.kind ?? raw.provider?.kind ?? 'anthropic';
+        if (effectiveKind !== 'anthropic') {
+          (base.agents[agentKey] as { model: string }).model = '';
         }
       }
       // SKY-2627: back-fill flat wa* fields for existing installs that predate this field set.

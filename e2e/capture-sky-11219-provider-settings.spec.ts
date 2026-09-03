@@ -68,7 +68,7 @@ test('capture provider-adaptive API key + agent model inherit screenshots', asyn
   const waModel = page.getByLabel('Writing Coach model');
   await waModel.fill('');
   await providerModelInput.fill('llama3-70b-instruct');
-  await expect(waModel).toHaveValue('llama3-70b-instruct');
+  await expect(waModel).toHaveAttribute('placeholder', 'Default: llama3-70b-instruct');
   await waModel.scrollIntoViewIfNeeded();
   // The "new Notes tab" upgrade toast (DesktopShell, 5s auto-dismiss) can
   // overlap this field on first boot — wait it out for a clean capture.
