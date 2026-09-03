@@ -547,6 +547,15 @@ contextBridge.exposeInMainWorld('api', {
   betaReportList: (storyId: string) => ipcRenderer.invoke('betaReport:list', { storyId }),
   betaReportGet: (id: string) => ipcRenderer.invoke('betaReport:get', { id }),
 
+  // Production-team roles (SKY-11411 / SKY-10741 M12.B6) — alphaReader /
+  // storylineConsultant / lineEditor. One channel; the main handler picks the
+  // persona + reader/author entity context by role.
+  productionRoleRun: (payload: {
+    role: 'alphaReader' | 'storylineConsultant' | 'lineEditor';
+    scope: { kind: 'scene' | 'chapter' | 'story'; id: string; label: string };
+    text: string;
+  }) => invokeEnvelope('productionRole:run', payload),
+
   // Voice IO (MYT-205) — local-first STT
   // voiceStart → starts a session; returns { sessionId }
   voiceStart: (micDeviceId?: string) =>

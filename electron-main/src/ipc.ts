@@ -10,6 +10,8 @@ import type { StoryTimeOfDay, ManifestTimelineEntry } from './vault/manifest/typ
 export type { StoryTimeOfDay, ManifestTimelineEntry };
 import type { OutlineNode, OutlineData } from './outline.js';
 export type { OutlineNode, OutlineData };
+import type { ProductionRoleId } from './productionRoles.js';
+export type { ProductionRoleId };
 import type {
   TimelinesStore,
   TimelineDefinition,
@@ -242,6 +244,11 @@ export const IPC_CHANNELS = {
   BETA_REPORT_RUN: 'betaReport:run',
   BETA_REPORT_LIST: 'betaReport:list',
   BETA_REPORT_GET: 'betaReport:get',
+
+  // Production-team roles (SKY-11411 / SKY-10741 M12.B6) — one generic run channel
+  // for alphaReader / storylineConsultant / lineEditor. Reader-perspective roles
+  // get a reveal-point-filtered entity dossier; craft roles get the full map.
+  PRODUCTION_ROLE_RUN: 'productionRole:run',
 
   // EPUB export (MYT-253)
   EXPORT_EPUB: 'export:epub',
@@ -895,6 +902,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BETA_REPORT_LIST]: (payload: BetaReportListPayload) => BetaReportListResponse;
   [IPC_CHANNELS.BETA_REPORT_GET]: (payload: BetaReportGetPayload) => BetaReportGetResponse;
   // BETA_REPORT_RUN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
+  // PRODUCTION_ROLE_RUN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
   [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
   [IPC_CHANNELS.EXPORT_MARKDOWN]: (payload: ExportMarkdownPayload) => Promise<ExportMarkdownResponse>;
@@ -2736,9 +2744,16 @@ export interface AppSettings {
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderSettings; sceneCrafterSuggestions?: { enabled: boolean; cadence: number } } & AgentBudgetSettings;
     /** Beta 3 M22: the fourth named agent — reader-eye chapter reads → margin comments. Optional so pre-M22 settings files remain valid; loadAppSettings back-fills defaults. */
     betaReader?: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
+    /** SKY-11411: production-team roles (SKY-10741 M12.B6). All optional + default OFF
+     *  (loadAppSettings back-fills), so pre-SKY-11411 settings files stay valid and no
+     *  role silently starts calling a provider on upgrade. alphaReader is a reader-
+     *  perspective role (reveal-point-filtered context); the two craft roles are not. */
+    alphaReader?: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
+    storylineConsultant?: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
+    lineEditor?: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
   };
-  /** Beta 3 M22: user renames for the four named agents (prototype `agentNames`, HTML 3245). Absent key = default display name. */
-  agentNames?: Partial<Record<'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader', string>>;
+  /** Beta 3 M22 / SKY-11411: user renames for the named agents (prototype `agentNames`, HTML 3245). Absent key = default display name. */
+  agentNames?: Partial<Record<'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader' | 'alphaReader' | 'storylineConsultant' | 'lineEditor', string>>;
   theme: 'dark' | 'high-contrast';
   snapshots?: {
     maxPerScene: number;
@@ -4010,6 +4025,24 @@ export interface BetaReportRunPayload {
 
 export interface BetaReportRunResponse {
   report: BetaReport;
+}
+
+/**
+ * SKY-11411: run one production-team role (alphaReader / storylineConsultant /
+ * lineEditor) against a scope of manuscript text. Reuses BetaReportScope so the
+ * reader-perspective roles get the same reveal-point boundary semantics the Beta
+ * Reader does (scene/chapter → filtered to `scope.label`; story → whole map).
+ */
+export interface ProductionRoleRunPayload {
+  role: ProductionRoleId;
+  scope: BetaReportScope;
+  /** Pre-assembled manuscript text with `<<SCENE id="...">>` markers — see textAssembly.ts. */
+  text: string;
+}
+
+export interface ProductionRoleRunResponse {
+  /** The role's free-text review output (framing/lens is role-specific — see productionRoles.ts). */
+  text: string;
 }
 
 export interface BetaReportListPayload {

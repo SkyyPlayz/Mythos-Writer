@@ -1293,6 +1293,15 @@ interface Window {
     betaReportList: (storyId: string) => Promise<{ reports: BetaReportSummary[] }>;
     betaReportGet: (id: string) => Promise<{ report: BetaReport | null }>;
 
+    // Production-team roles (SKY-11411 / SKY-10741 M12.B6) — alphaReader /
+    // storylineConsultant / lineEditor. Reader-perspective roles get reveal-point
+    // filtered entity context in the main handler; craft roles get the whole map.
+    productionRoleRun: (payload: {
+      role: 'alphaReader' | 'storylineConsultant' | 'lineEditor';
+      scope: BetaReportScope;
+      text: string;
+    }) => Promise<{ text: string } | { error: string }>;
+
     // Liquid Neon background image (MYT-716)
     pickBgImage: () => Promise<{ filePath: string | null; cancelled: boolean }>;
     loadBgImage: (filePath: string) => Promise<{ dataUrl: string | null }>;
