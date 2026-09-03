@@ -675,6 +675,12 @@ import {
   dbRowToBetaReport,
   dbRowToBetaReportSummary,
 } from './betaReport.js';
+// SKY-11411: reveal-point-filtered entity context for the live Beta Reader path.
+// buildReaderEntityContext strips any entity whose reveal_point is still in the
+// reader's future (the SKY-10741 AC2 spoiler-safety guarantee); buildAuthorEntityContext
+// is the whole-map dossier used only once the reader has finished the story.
+import { buildReaderEntityContext, buildAuthorEntityContext } from './readerPerspective.js';
+import { loadEntityIndex } from './vault/entityIndex.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
 import { cleanUninstall } from './uninstallHelper.js';
@@ -10136,6 +10142,28 @@ function registerBetaReportRunHandler(): void {
     }
 
     const betaReportProviderConfig = getProviderConfigForAgent('betaReader');
+    // SKY-11411: inject a continuity dossier so the Beta Reader can judge
+    // consistency — but reveal-point filtered, so it never learns a twist the
+    // reader hasn't reached. This makes SKY-10741's protective code reachable
+    // from the one production role that is actually live today. Best-effort:
+    // any vault/index problem yields no dossier and never fails the read.
+    //   • scene/chapter scope → reader has read UP TO this point → filter to it
+    //     (buildReaderEntityContext hides every not-yet-revealed identity).
+    //   • story scope → the reader finished the book → every reveal is fair game.
+    let betaEntityContext = '';
+    try {
+      const notesVaultRoot = getNotesVaultRoot();
+      if (notesVaultRoot && fs.existsSync(notesVaultRoot)) {
+        const entityIndex = loadEntityIndex(notesVaultRoot);
+        betaEntityContext = payload.scope.kind === 'story'
+          ? buildAuthorEntityContext(entityIndex)
+          : buildReaderEntityContext(entityIndex, payload.scope.label);
+      }
+    } catch {
+      // Continuity context is a best-effort enrichment; a missing or unreadable
+      // notes vault must never block a beta read.
+      betaEntityContext = '';
+    }
     const startedAt = Date.now();
     const requestId = crypto.randomUUID();
     let genError: string | null = null;
@@ -10160,6 +10188,7 @@ function registerBetaReportRunHandler(): void {
             payload.scope.label,
             payload.focus,
             payload.text.slice(0, BETA_REPORT_MAX_INPUT_CHARS),
+            betaEntityContext,
           ),
         }],
         maxTokens: 3072,
