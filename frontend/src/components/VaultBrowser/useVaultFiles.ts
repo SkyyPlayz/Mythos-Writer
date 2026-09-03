@@ -51,11 +51,21 @@ export function useVaultFiles(source: Source = 'story') {
       window.api.startVaultWatch?.().catch(() => {});
       unsub = window.api.onVaultFileChanged?.(scheduleReload);
     }
+
+    // SKY-11375: a project switch repoints BOTH vault roots in main, but
+    // neither fs-watch channel above fires on switch — so without an explicit
+    // reload this tree keeps listing the OUTGOING vault's files (the delete
+    // asymmetry the owner saw: a note removed in one vault still showed in the
+    // other because that pane was serving a stale, pre-switch tree). Reload
+    // from disk on every switch so both trees always reflect the active vault.
+    const unsubSwitch = window.api.onProjectSwitched?.(() => { void load(); });
+
     load();
 
     return () => {
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
       unsub?.();
+      unsubSwitch?.();
     };
   }, [load, source]);
 
