@@ -27,6 +27,9 @@ import {
   type VaultReadResponse,
   type VaultWritePayload,
   type VaultWriteResponse,
+  type BrainstormBoardWritePayload,
+  type BrainstormBoardReadResponse,
+  type BrainstormBoardWriteResponse,
   type VaultListPayload,
   type VaultListResponse,
   type VaultDeletePayload,
@@ -453,6 +456,11 @@ import {
 // Beta 4 M5 — MythosVault (v2) format + version gate + migration wizard.
 import { resolveManifestPath, mythosRootForStoryVault, agentVaultRootFor } from './mythosFormat/mythosJson.js';
 import { migrateSessionsToAgentVault } from './mythosFormat/agentSessions.js';
+import {
+  readBrainstormBoard,
+  writeBrainstormBoard,
+  migrateBrainstormBoardToAgentVault,
+} from './mythosFormat/brainstormBoardFile.js';
 import {
   scanMythosStoryVault,
   syncCanonicalFromManifest,
@@ -1245,6 +1253,10 @@ function ensureVaultDir() {
     // Notes Vault/Sessions/ onto the new Agent Vault/Sessions/ sibling. Cheap
     // no-op once migrated (single existsSync check).
     migrateSessionsToAgentVault(mythosRoot);
+    // SKY-11360: same one-shot move for the brainstorm/idea board, which used
+    // to leak as `Notes Vault/Boards/brainstorm.board.json` in the notes tree.
+    // No-op once migrated; never orphans a populated board.
+    migrateBrainstormBoardToAgentVault(mythosRoot);
     openDb(vaultRoot);
     initJobServiceForVault(vaultRoot);
     const cachePath = getManifestPath();
@@ -6207,6 +6219,19 @@ const handlers: IpcHandlers = {
     const root = getNotesVaultRoot();
     safeVaultIpcJoin(root, payload.path, true);
     return writeVaultFileAtomic(root, payload.path, payload.content);
+  },
+  // SKY-11360: brainstorm/idea board is agent state → Agent Vault, never the
+  // Notes Vault. The main process owns the fixed relpath; the renderer only
+  // supplies the serialized body.
+  [IPC_CHANNELS.BRAINSTORM_BOARD_READ]: (): BrainstormBoardReadResponse => {
+    ensureNotesVaultDir();
+    return readBrainstormBoard(getAgentVaultRoot());
+  },
+  [IPC_CHANNELS.BRAINSTORM_BOARD_WRITE]: (
+    payload: BrainstormBoardWritePayload,
+  ): BrainstormBoardWriteResponse => {
+    ensureNotesVaultDir();
+    return writeBrainstormBoard(getAgentVaultRoot(), payload.content);
   },
   [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
     ensureNotesVaultDir();

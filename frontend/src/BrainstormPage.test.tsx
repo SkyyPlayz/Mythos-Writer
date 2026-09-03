@@ -2572,12 +2572,15 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
     expect(screen.queryByTestId('bsc-board')).not.toBeInTheDocument();
   });
 
-  it('persists dragged positions to the vault board file (debounced save)', async () => {
+  it('persists dragged positions to the Agent-Vault board file (debounced save)', async () => {
     seedFacts(THREE_IDEAS);
-    const mockReadNotesVault = vi.fn().mockResolvedValue({ error: 'ENOENT' });
-    const mockWriteNotesVault = vi.fn().mockResolvedValue({ path: 'Boards/brainstorm.board.json', bytes: 1 });
+    // SKY-11360: board persistence now routes through the dedicated Agent-Vault
+    // bridge (window.api.brainstormBoard), never the notes-vault CRUD.
+    const mockBoardRead = vi.fn().mockResolvedValue({ error: 'ENOENT' });
+    const mockBoardWrite = vi.fn().mockResolvedValue({ bytes: 1 });
+    const mockWriteNotesVault = vi.fn().mockResolvedValue({ path: 'x', bytes: 1 });
     (window as unknown as { api: unknown }).api = buildApi({
-      readNotesVault: mockReadNotesVault,
+      brainstormBoard: { read: mockBoardRead, write: mockBoardWrite },
       writeNotesVault: mockWriteNotesVault,
     });
 
@@ -2585,7 +2588,7 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
       render(<BrainstormPage onClose={() => {}} />);
     });
     // The B4-4 migration itself writes the freshly-migrated board once.
-    await waitFor(() => expect(mockWriteNotesVault).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockBoardWrite).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
 
     const card = screen.getByTestId('bsc-card-fact-a');
@@ -2593,13 +2596,14 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
     fireEvent.mouseMove(window, { clientX: 130, clientY: 90 });
     fireEvent.mouseUp(window);
 
-    // The debounced save writes the moved position to the vault file.
+    // The debounced save writes the moved position to the Agent-Vault file.
     await waitFor(
-      () => expect(mockWriteNotesVault).toHaveBeenCalledTimes(2),
+      () => expect(mockBoardWrite).toHaveBeenCalledTimes(2),
       { timeout: 3_000 },
     );
-    const [savedPath, savedJson] = mockWriteNotesVault.mock.calls[1];
-    expect(savedPath).toBe('Boards/brainstorm.board.json');
+    // The board never touches the notes-vault bridge (leak regression guard).
+    expect(mockWriteNotesVault).not.toHaveBeenCalled();
+    const [savedJson] = mockBoardWrite.mock.calls[1];
     const saved = JSON.parse(savedJson as string);
     const savedCard = saved.cards.find((c: { factId?: string }) => c.factId === 'fact-a');
     expect(savedCard).toMatchObject({ x: 1000, y: 230 });

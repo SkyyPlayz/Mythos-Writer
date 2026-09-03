@@ -1,13 +1,10 @@
-// Beta 4 / M20 — brainstorm board store (Notes-Vault JSON via the SKY-9 CRUD
-// IPC bridge). Mirrors the SceneCrafter crafterBoardStore conventions.
+// Beta 4 / M20 — brainstorm board store. SKY-11360: persists to the Agent
+// Vault through the dedicated `brainstormBoard` bridge (not the notes-vault
+// CRUD), so board JSON never lands in the user's notes tree.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createEmptyBoard, migrateDraftFactsToBoard } from './brainstormBoard';
-import {
-  BRAINSTORM_BOARD_PATH,
-  loadBrainstormBoard,
-  saveBrainstormBoard,
-} from './brainstormBoardStore';
+import { loadBrainstormBoard, saveBrainstormBoard } from './brainstormBoardStore';
 
 const mockRead = vi.fn();
 const mockWrite = vi.fn();
@@ -15,35 +12,43 @@ const mockWrite = vi.fn();
 beforeEach(() => {
   vi.resetAllMocks();
   (window as unknown as { api: unknown }).api = {
-    readNotesVault: mockRead,
-    writeNotesVault: mockWrite,
+    brainstormBoard: { read: mockRead, write: mockWrite },
   };
 });
 
 describe('brainstormBoardStore', () => {
-  it('persists to a vault-visible .json path (M5 files-first storage)', () => {
-    expect(BRAINSTORM_BOARD_PATH).toBe('Boards/brainstorm.board.json');
-  });
-
-  it('save → load round-trips the board through the vault IPC', async () => {
+  it('save → load round-trips the board through the Agent-Vault bridge', async () => {
     const board = migrateDraftFactsToBoard(createEmptyBoard(), [
       { id: 'f1', type: 'character', name: 'Mira', content: 'Protagonist', createdAt: 1 },
     ]);
-    mockWrite.mockResolvedValue({ path: BRAINSTORM_BOARD_PATH, bytes: 1 });
+    mockWrite.mockResolvedValue({ bytes: 1 });
 
     expect(await saveBrainstormBoard(board)).toBe(true);
-    expect(mockWrite).toHaveBeenCalledWith(BRAINSTORM_BOARD_PATH, expect.any(String));
+    expect(mockWrite).toHaveBeenCalledWith(expect.any(String));
 
-    const written = mockWrite.mock.calls[0][1] as string;
-    mockRead.mockResolvedValue({ content: written, path: BRAINSTORM_BOARD_PATH });
+    const written = mockWrite.mock.calls[0][0] as string;
+    mockRead.mockResolvedValue({ content: written });
     expect(await loadBrainstormBoard()).toEqual(board);
+  });
+
+  it('never routes board data through the notes-vault bridge', async () => {
+    const notesWrite = vi.fn();
+    (window as unknown as { api: unknown }).api = {
+      brainstormBoard: { read: mockRead, write: mockWrite },
+      writeNotesVault: notesWrite,
+      readNotesVault: vi.fn(),
+    };
+    mockWrite.mockResolvedValue({ bytes: 1 });
+    await saveBrainstormBoard(createEmptyBoard());
+    expect(notesWrite).not.toHaveBeenCalled();
+    expect(mockWrite).toHaveBeenCalledTimes(1);
   });
 
   it('returns null when the board file is missing or unreadable', async () => {
     mockRead.mockResolvedValue({ error: 'ENOENT' });
     expect(await loadBrainstormBoard()).toBeNull();
 
-    mockRead.mockResolvedValue({ content: 'not json', path: BRAINSTORM_BOARD_PATH });
+    mockRead.mockResolvedValue({ content: 'not json' });
     expect(await loadBrainstormBoard()).toBeNull();
 
     mockRead.mockRejectedValue(new Error('ipc down'));

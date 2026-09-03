@@ -1,22 +1,20 @@
-// Beta 4 / M20 — brainstorm board persistence (M5 files-first storage).
+// Beta 4 / M20 — brainstorm board persistence.
 //
-// Same convention as the Scene Crafter board store: a plain JSON file inside
-// the Notes Vault, written through the SKY-9 vault CRUD IPC bridge. The vault
-// IPC extension allow-list admits `.md` / `.json` only, and `.mythos/` is
-// reserved for main-process internals, so the board lives at a vault-visible
-// path — it survives vault copy / Dropbox sync and restarts (M20 acceptance:
-// positions survive restart).
+// SKY-11360 (owner ruling `agent-vault-third-vault-ruling`, 2026-09-02): the
+// board is agent state, not user writing, so it must NOT live in the Notes
+// Vault where its raw JSON showed up in the user's notes tree. It now persists
+// in the Agent Vault via a dedicated main-process bridge — the renderer never
+// names the path; the main process owns `Boards/brainstorm.board.json` under
+// the Agent Vault root and migrates any pre-existing notes-vault file on open.
 
 import { parseBoardFile, type BrainstormBoardData } from './brainstormBoard';
-
-export const BRAINSTORM_BOARD_PATH = 'Boards/brainstorm.board.json';
 
 /** Read the unified board file. `null` = no board yet (or unreadable). */
 export async function loadBrainstormBoard(): Promise<BrainstormBoardData | null> {
   const api = window.api;
-  if (typeof api?.readNotesVault !== 'function') return null;
+  if (typeof api?.brainstormBoard?.read !== 'function') return null;
   try {
-    const read = await api.readNotesVault(BRAINSTORM_BOARD_PATH);
+    const read = await api.brainstormBoard.read();
     if ('error' in read) return null;
     return parseBoardFile(read.content);
   } catch {
@@ -27,12 +25,9 @@ export async function loadBrainstormBoard(): Promise<BrainstormBoardData | null>
 /** Serialize + write the board. Returns false when the vault is unavailable. */
 export async function saveBrainstormBoard(board: BrainstormBoardData): Promise<boolean> {
   const api = window.api;
-  if (typeof api?.writeNotesVault !== 'function') return false;
+  if (typeof api?.brainstormBoard?.write !== 'function') return false;
   try {
-    const result = await api.writeNotesVault(
-      BRAINSTORM_BOARD_PATH,
-      JSON.stringify(board, null, 2),
-    );
+    const result = await api.brainstormBoard.write(JSON.stringify(board, null, 2));
     return !('error' in result);
   } catch {
     return false;
