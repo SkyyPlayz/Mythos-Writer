@@ -363,7 +363,7 @@ export default function AdvancedAppearancePopover({
             <ColorPicker
               id="adv-bg-base"
               label="Base colour"
-              value={lg.bgBaseColor ?? '#0e1116'}
+              value={lg.bgBaseColor ?? '#07090f'}
               onChange={(v) => setLgField('bgBaseColor', v)}
             />
           </div>

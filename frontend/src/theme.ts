@@ -133,7 +133,7 @@ export const LIQUID_NEON_DEFAULTS: LiquidNeonPrefs = {
   bgPosition: 'center',
   bgScrim: 40,
   bgVignette: 40,
-  bgBaseColor: '#0e1116',
+  bgBaseColor: '#07090f',
   accentColor: '#00f0ff',
   neonBorderColor: 'cyan',
   neonBorderColor2: 'violet',
@@ -359,14 +359,14 @@ export const PAGE_BACKGROUND_DEFAULTS: PageBackgroundSettings = {
 
 /**
  * Compute a contrast ratio between the page-background panel color and the current text-body
- * token, at the given opacity blended over a reference dark canvas (#0b0e13).
+ * token, at the given opacity blended over a reference dark canvas (#04060c).
  */
 export function pageBackgroundContrastRatio(prefs: Partial<PageBackgroundSettings> | null | undefined): number {
   const p: PageBackgroundSettings = { ...PAGE_BACKGROUND_DEFAULTS, ...prefs };
   const [pr, pg, pb] = PAGE_BG_PRESET_RGB[p.preset] ?? PAGE_BG_PRESET_RGB['liquid-neon'];
   const alpha = p.opacity / 100;
-  // Blend over dark canvas (#0b0e13 = 11,14,19)
-  const canvasR = 11; const canvasG = 14; const canvasB = 19;
+  // Blend over dark canvas (#04060c = 4,6,12)
+  const canvasR = 4; const canvasG = 6; const canvasB = 12;
   const blendedR = Math.round(pr * alpha + canvasR * (1 - alpha));
   const blendedG = Math.round(pg * alpha + canvasG * (1 - alpha));
   const blendedB = Math.round(pb * alpha + canvasB * (1 - alpha));
