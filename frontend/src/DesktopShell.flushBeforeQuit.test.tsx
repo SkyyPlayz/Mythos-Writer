@@ -7,9 +7,10 @@
 //
 // Pattern: DesktopShell.storySelection.test.tsx — renders the real <App />
 // so this exercises the real scheduleManifestSave/persistManifest closures.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import App from './App';
+import { registerQuitFlusher, __resetQuitFlushers } from './lib/flushBeforeQuit';
 
 const STORY_ID = 'story-1';
 const STORY_TITLE = 'Flush Story';
@@ -72,6 +73,8 @@ beforeEach(() => {
   (window as any).api = makeMockApi();
 });
 
+afterEach(() => __resetQuitFlushers());
+
 describe('DesktopShell flush-before-quit (SKY-9973)', () => {
   it('flushes a pending debounced manifest save immediately when asked, instead of waiting 900ms', async () => {
     render(<App />);
@@ -103,5 +106,29 @@ describe('DesktopShell flush-before-quit (SKY-9973)', () => {
 
     await waitFor(() => expect(window.api.notifyFlushBeforeQuitDone).toHaveBeenCalledTimes(1));
     expect(window.api.writeManifest).not.toHaveBeenCalled();
+  });
+
+  // SKY-11363: the handshake must drain EVERY registered debounced writer (e.g.
+  // the brainstorm board), not just the manifest, before acking — otherwise a
+  // pending board write is silently lost on a full app-quit.
+  it('awaits registered quit flushers before acking done', async () => {
+    render(<App />);
+    await screen.findByRole('navigation', { name: 'Main navigation' });
+    await waitFor(() => expect(window.api.onFlushBeforeQuit).toHaveBeenCalled());
+
+    const order: string[] = [];
+    (window.api.notifyFlushBeforeQuitDone as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      order.push('done');
+    });
+    registerQuitFlusher(
+      () =>
+        new Promise<void>((resolve) => setTimeout(() => { order.push('flusher'); resolve(); }, 10)),
+    );
+
+    flushCallback!();
+
+    await waitFor(() => expect(window.api.notifyFlushBeforeQuitDone).toHaveBeenCalledTimes(1));
+    // The flusher completed BEFORE the quit ack — the barrier holds.
+    expect(order).toEqual(['flusher', 'done']);
   });
 });
