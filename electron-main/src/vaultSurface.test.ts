@@ -22,10 +22,16 @@ import { shell } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { trashVaultFolder, getBlastRadius, VAULT_SURFACE_COPY } from './vaultSurface.js';
+import {
+  trashVaultFolder,
+  getBlastRadius,
+  VAULT_SURFACE_COPY,
+  pruneRecentProjectsForTrash,
+} from './vaultSurface.js';
 import { createMythosFile, writeMythosFile } from './mythosFormat/mythosJson.js';
 import { ensureNotesVaultRegistry, createBlankNotesVault } from './mythosFormat/notesVaultRegistry.js';
 import { ensureStoryVaultRegistry, createBlankStoryVault } from './mythosFormat/storyVaultRegistry.js';
+import type { ProjectEntry } from './ipc.js';
 
 const mockTrashItem = vi.mocked(shell.trashItem);
 
@@ -165,6 +171,56 @@ describe('getBlastRadius', () => {
     fs.mkdirSync(mythosRoot, { recursive: true });
     const result = getBlastRadius(mythosRoot);
     expect(result.vaultName).toBe('My Great Novel');
+  });
+});
+
+// ─── pruneRecentProjectsForTrash (SKY-11202) ─────────────────────────────────
+
+describe('pruneRecentProjectsForTrash', () => {
+  const storyEntry = (over: Partial<ProjectEntry> = {}): ProjectEntry => ({
+    name: 'My Story',
+    vaultRoot: '/vaults/MyStory',
+    notesVaultRoot: '/vaults/MyStory/Notes Vault',
+    openedAt: '2026-01-01T00:00:00.000Z',
+    ...over,
+  });
+
+  it('notes level clears the dangling notesVaultRoot but KEEPS the story entry', () => {
+    const entries = [storyEntry()];
+    const result = pruneRecentProjectsForTrash(entries, '/vaults/MyStory/Notes Vault', 'notes');
+    expect(result).toHaveLength(1);
+    expect(result[0].vaultRoot).toBe('/vaults/MyStory');
+    expect(result[0].notesVaultRoot).toBeUndefined();
+    expect(result[0].name).toBe('My Story');
+  });
+
+  it('notes level leaves unrelated entries untouched', () => {
+    const other = storyEntry({ vaultRoot: '/vaults/Other', notesVaultRoot: '/vaults/Other/Notes Vault' });
+    const result = pruneRecentProjectsForTrash([other], '/vaults/MyStory/Notes Vault', 'notes');
+    expect(result).toEqual([other]);
+  });
+
+  it('story level drops the entry whose vaultRoot was trashed', () => {
+    const entries = [storyEntry(), storyEntry({ vaultRoot: '/vaults/Other' })];
+    const result = pruneRecentProjectsForTrash(entries, '/vaults/MyStory', 'story');
+    expect(result).toHaveLength(1);
+    expect(result[0].vaultRoot).toBe('/vaults/Other');
+  });
+
+  it('mythos level drops entries nested under the trashed root', () => {
+    const entries = [
+      storyEntry({ vaultRoot: '/vaults/MyMythos/Story Vault', notesVaultRoot: '/vaults/MyMythos/Notes Vault' }),
+      storyEntry({ vaultRoot: '/vaults/Other' }),
+    ];
+    const result = pruneRecentProjectsForTrash(entries, '/vaults/MyMythos', 'mythos');
+    expect(result).toHaveLength(1);
+    expect(result[0].vaultRoot).toBe('/vaults/Other');
+  });
+
+  it('resolves paths before comparing so trailing slashes/relative segments still match', () => {
+    const entries = [storyEntry()];
+    const result = pruneRecentProjectsForTrash(entries, '/vaults/MyStory/./Notes Vault/', 'notes');
+    expect(result[0].notesVaultRoot).toBeUndefined();
   });
 });
 

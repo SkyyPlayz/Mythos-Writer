@@ -16,6 +16,7 @@ import fs from 'node:fs';
 import { isMythosV2Root } from './mythosFormat/mythosJson.js';
 import { ensureNotesVaultRegistry } from './mythosFormat/notesVaultRegistry.js';
 import { ensureStoryVaultRegistry } from './mythosFormat/storyVaultRegistry.js';
+import type { ProjectEntry } from './ipc.js';
 
 // ─── User-visible copy strings ────────────────────────────────────────────────
 // Centralised so the Settings UI can import without touching this logic.
@@ -106,6 +107,55 @@ export function getBlastRadius(mythosVaultRoot: string): BlastRadius {
     // Unreadable/malformed vault — report 0; UI still shows the confirm dialog.
   }
   return { vaultName, innerCount };
+}
+
+// ─── recentProjects cleanup on trash (SKY-11202) ─────────────────────────────
+
+/**
+ * Compute the `recentProjects` list after trashing `vaultPath` at `level`.
+ *
+ * recentProjects entries are keyed by Story Vault `vaultRoot`, with an
+ * optional `notesVaultRoot` pointing at the paired Notes Vault. The three
+ * trash levels need different surgery so no entry is left pointing at a
+ * path that `shell.trashItem` just removed:
+ *   - 'mythos': the trashed path is a Mythos Vault root — drop every entry
+ *     whose vaultRoot is that root or nested under it (story + notes both
+ *     live inside it, so the whole entry goes).
+ *   - 'story': the trashed path IS an entry's vaultRoot — drop that entry.
+ *   - 'notes': the trashed path is only ever referenced via an entry's
+ *     `notesVaultRoot` field, never its `vaultRoot`. The paired Story
+ *     Vault entry must survive (it still exists on disk) but its
+ *     `notesVaultRoot` pointer must be cleared — otherwise it dangles at a
+ *     now-nonexistent folder and later blocks re-switching into that
+ *     project (PROJECT_SWITCH validates notesVaultRoot against this field
+ *     and then checks the path still exists on disk).
+ */
+export function pruneRecentProjectsForTrash(
+  recentProjects: ProjectEntry[],
+  vaultPath: string,
+  level: 'mythos' | 'notes' | 'story',
+): ProjectEntry[] {
+  const resolved = path.resolve(vaultPath);
+
+  if (level === 'mythos') {
+    return recentProjects.filter((p) => {
+      const r = path.resolve(p.vaultRoot);
+      return r !== resolved && !r.startsWith(resolved + path.sep);
+    });
+  }
+
+  if (level === 'story') {
+    return recentProjects.filter((p) => path.resolve(p.vaultRoot) !== resolved);
+  }
+
+  // level === 'notes': keep every entry, but clear a dangling notesVaultRoot.
+  return recentProjects.map((p) => {
+    if (p.notesVaultRoot != null && path.resolve(p.notesVaultRoot) === resolved) {
+      const { notesVaultRoot: _drop, ...rest } = p;
+      return rest;
+    }
+    return p;
+  });
 }
 
 // ─── Trash (shell.trashItem ONLY) ────────────────────────────────────────────
