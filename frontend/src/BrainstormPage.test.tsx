@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor, act, within } from '@testing-librar
 import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS, VAULT_ROOT_SENTINEL } from './BrainstormPage';
 import { __resetAgentSessionStores } from './lib/useAgentSessions';
 import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
+import { brainstormActivitySnapshot, resetBrainstormActivityForTests, IDLE_BRAINSTORM_ACTIVITY } from './agents/brainstormActivity';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
@@ -135,6 +136,7 @@ beforeEach(() => {
 
   vi.resetAllMocks();
   __resetAgentSessionStores();
+  resetBrainstormActivityForTests();
   tokenCb = null;
   endCb = null;
   errorCb = null;
@@ -3226,6 +3228,63 @@ describe('BrainstormPage — M19 chat extras and agent activity feed', () => {
     fireEvent.click(screen.getByRole('button', { name: /new session/i }));
     expect(screen.getByTestId('bs-activity-feed')).toHaveTextContent('Agent actions land here');
     expect(screen.getByTestId('bs-stat-notes')).toHaveTextContent('0');
+  });
+});
+
+// SKY-11214: the right panel's AGENTS card reads real activity from this
+// module store (see AgentHubPanel.test.tsx) — assert BrainstormPage actually
+// reports into it, not just that its own in-page feed updates.
+describe('BrainstormPage — SKY-11214 brainstormActivity reporting', () => {
+  it('reports idle before any message, active with no facts after sending, then the real fact count', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(brainstormActivitySnapshot()).toEqual(IDLE_BRAINSTORM_ACTIVITY);
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'A rogue named Zara' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+    expect(brainstormActivitySnapshot().active).toBe(true);
+    expect(brainstormActivitySnapshot().factsCount).toBe(0);
+
+    await simulateStream(['Great idea! [FACT:character|Zara|A cunning rogue]']);
+
+    await waitFor(() => expect(brainstormActivitySnapshot().factsCount).toBe(1));
+    // lastActionText is whatever the newest "BEHIND THE SCENES" entry is —
+    // the extraction entry is quickly followed by a "Created note" entry once
+    // the fact finishes saving, so only assert it's real, not a fixed string.
+    expect(brainstormActivitySnapshot().lastActionText).toEqual(expect.any(String));
+    expect(brainstormActivitySnapshot().hasError).toBe(false);
+  });
+
+  it('reports hasError on a stream failure', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'A rogue named Zara' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+    await simulateStream([], 'AI unavailable');
+
+    await waitFor(() => expect(brainstormActivitySnapshot().hasError).toBe(true));
+  });
+
+  it('resets to idle on unmount — leaving the page is not still watching', async () => {
+    const { unmount } = render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'A rogue named Zara' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+    await simulateStream(['[FACT:character|Zara|A cunning rogue]']);
+    await waitFor(() => expect(brainstormActivitySnapshot().active).toBe(true));
+
+    unmount();
+    expect(brainstormActivitySnapshot()).toEqual(IDLE_BRAINSTORM_ACTIVITY);
   });
 });
 

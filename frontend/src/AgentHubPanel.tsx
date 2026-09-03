@@ -14,6 +14,8 @@ import { useAiEnabled } from './hooks/useAiEnabled';
 import { resolveAgentDisplayName } from './agents/agentIdentity';
 import type { NamedAgentId } from './agents/agentIdentity';
 import { useAgentRunningEntry, useAgentRecentTerminal } from './agents/aiActivity';
+import { useBrainstormActivity } from './agents/brainstormActivity';
+import type { BrainstormActivitySnapshot } from './agents/brainstormActivity';
 import type { TtsEngineSettings } from './hooks/useTtsPlayer';
 import { AGENT_LABELS, type UnifiedSuggestion } from './SuggestionDetailPane';
 import {
@@ -98,13 +100,14 @@ type AgentStatusDot = 'idle' | 'watching' | 'attention' | 'disabled';
 interface AgentStatus {
   text: string;
   dot: AgentStatusDot;
-  /** Brainstorm's watching dot pulses (prototype 6398) — only while enabled. */
+  /** Brainstorm's watching dot pulses (prototype 6398) — only while genuinely
+   *  active (SKY-11214: a real session with no error), never merely enabled. */
   pulse: boolean;
 }
 
 export function resolveAgentStatus(
   agentId: AgentId,
-  { enabled, pendingCount, continuityCount, activeEntry, recentTerminal }: {
+  { enabled, pendingCount, continuityCount, activeEntry, recentTerminal, brainstormActivity }: {
     enabled: boolean;
     pendingCount: number;
     continuityCount: number;
@@ -112,6 +115,10 @@ export function resolveAgentStatus(
     activeEntry: AiActivityEntry | null;
     /** SKY-11223: this agent's most recently finished request, while still within its visible window. */
     recentTerminal: AiActivityTerminalEvent | null;
+    /** SKY-11214: real fact-extraction activity, fed by BrainstormPage via the
+     *  brainstormActivity module store (see AgentRow, which subscribes). Only
+     *  meaningful for 'brainstorm' — every other agent ignores it. */
+    brainstormActivity: BrainstormActivitySnapshot;
   },
 ): AgentStatus {
   // GAP-6: a disabled agent says so — and suppresses the '{n} new' override
@@ -119,11 +126,9 @@ export function resolveAgentStatus(
   if (!enabled) return { text: 'Disabled', dot: 'disabled', pulse: false };
   // §9 attention override: pending suggestions from this agent are waiting.
   if (pendingCount > 0) return { text: `${pendingCount} new`, dot: 'attention', pulse: false };
-  // SKY-11223: real activity from the shared registry beats every other
-  // signal below — this is the actual fix behind SKY-11214 (Brainstorm's
-  // "Watching session" used to be hardcoded to enabled, not real work) and
-  // generalizes it to all four agents instead of adding a second, agent-
-  // specific activity store.
+  // SKY-11223: a real in-flight request from the shared registry beats every
+  // signal below — it's the most immediate truth ("is this agent doing
+  // network work right now") and applies to all four agents uniformly.
   if (activeEntry) {
     return { text: `Working — ${activeEntry.surfaceLabel}`, dot: 'watching', pulse: true };
   }
@@ -134,6 +139,29 @@ export function resolveAgentStatus(
     return { text: 'Produced nothing — try again', dot: 'attention', pulse: false };
   }
   switch (agentId) {
+    case 'brainstorm': {
+      // SKY-11214: between requests, the registry alone goes quiet — but a
+      // brainstorm session tracks its own facts-extracted count, which is
+      // real activity the owner explicitly asked to see (AC2/AC5: "reuse the
+      // real counters that already exist"). This is honest status for the
+      // idle-between-messages window the registry can't see, layered below
+      // SKY-11223's in-flight/error/empty signals rather than replacing them.
+      if (brainstormActivity.hasError) {
+        return { text: 'Needs attention — check the session', dot: 'attention', pulse: false };
+      }
+      if (!brainstormActivity.active) {
+        return { text: 'Idle — will extract facts as you chat', dot: 'idle', pulse: false };
+      }
+      if (brainstormActivity.factsCount > 0) {
+        const n = brainstormActivity.factsCount;
+        return { text: `${n} fact${n === 1 ? '' : 's'} this session`, dot: 'watching', pulse: true };
+      }
+      return {
+        text: brainstormActivity.lastActionText ?? 'Watching for facts to extract into the vault',
+        dot: 'watching',
+        pulse: true,
+      };
+    }
     case 'archive':
       // Live open-flag count fed from ContinuityPanel via DesktopShell.
       return continuityCount > 0
@@ -424,6 +452,9 @@ function AgentHubView({ agentDefs, agentNames, agentEnablement, continuityCount,
     for (const s of items) counts[s.sourceAgent] = (counts[s.sourceAgent] ?? 0) + 1;
     return counts;
   }, [items]);
+  // SKY-11214: subscribed once here (not per-row) and passed down like
+  // continuityCount — only the brainstorm row reads it.
+  const brainstormActivity = useBrainstormActivity();
 
   return (
     <div className="ahp-hub">
@@ -443,6 +474,7 @@ function AgentHubView({ agentDefs, agentNames, agentEnablement, continuityCount,
               pendingCount={pendingByAgent[def.id] ?? 0}
               enabled={agentEnablement?.[def.id] ?? true}
               continuityCount={continuityCount}
+              brainstormActivity={brainstormActivity}
             />
           ))}
         </div>
@@ -476,14 +508,18 @@ interface AgentRowProps {
   enabled?: boolean;
   /** GAP-1: live open continuity-flag count (Archive row only). */
   continuityCount?: number;
+  /** SKY-11214: live brainstorm-session activity (Brainstorm row only) —
+   *  fed by BrainstormPage via the brainstormActivity module store, read
+   *  once in AgentHubView and passed down like continuityCount. */
+  brainstormActivity: BrainstormActivitySnapshot;
 }
 
-function AgentRow({ def, displayName, onClick, pendingCount = 0, enabled = true, continuityCount = 0 }: AgentRowProps) {
+function AgentRow({ def, displayName, onClick, pendingCount = 0, enabled = true, continuityCount = 0, brainstormActivity }: AgentRowProps) {
   // SKY-11223: def.agentKey (NamedAgentId) and AiActivityAgentId are the same
   // camelCase agent-id space by construction — no translation needed.
   const activeEntry = useAgentRunningEntry(def.agentKey);
   const recentTerminal = useAgentRecentTerminal(def.agentKey);
-  const status = resolveAgentStatus(def.id, { enabled, pendingCount, continuityCount, activeEntry, recentTerminal });
+  const status = resolveAgentStatus(def.id, { enabled, pendingCount, continuityCount, activeEntry, recentTerminal, brainstormActivity });
   // SKY-3941: the row is a button — its accessible name carries name + status
   // so a status change is announced with the agent it belongs to.
   const ariaStatus = status.dot === 'attention' && pendingCount > 0
