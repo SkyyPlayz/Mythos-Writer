@@ -26,18 +26,22 @@ import {
   type MouseEvent as ReactMouseEvent,
   type UIEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import type { Editor } from '@tiptap/core';
 import {
   breadcrumbs,
   buildBlocks,
   cursorChapter,
   cursorScene,
+  dropEdgeTarget,
   normalizeInlineTitle,
+  resolveDropEdge,
   scopeScenes,
   splitParagraphText,
   zoomStep,
   type ManuscriptBlock,
   type ManuscriptCursor,
+  type ParaBlock,
   type ParagraphRef,
   type SceneStatus,
   type ZoomLevel,
@@ -348,6 +352,12 @@ const EST_BLOCK_H = 96;
 /** Re-window only after the start index moves this far (scroll hysteresis). */
 const WINDOW_HYSTERESIS = 24;
 
+// ── SKY-11358: paragraph grip drag preview ──────────────────────────────────
+/** Fallback drop-gap height when the dragged row can't be measured (e.g. jsdom). */
+const DEFAULT_DRAG_GAP_HEIGHT = 40;
+/** Dead zone (px) straddling a row's midpoint before the before/after edge flips. */
+const DROP_EDGE_HYSTERESIS_PX = 6;
+
 // ── Page geometry (prototype state 3227 + startDrag 3392–3400): the canonical
 //    clamps live in theme.ts beside StoryPagePrefs (M1-S3).
 const clampPageW = clampPageWidth;
@@ -596,12 +606,32 @@ export default function ManuscriptView({
   const [rulerDrag, setRulerDrag] = useState<RulerDrag | null>(null);
   const [dragPara, setDragPara] = useState<ParagraphRef | null>(null);
   const [dropKey, setDropKey] = useState<string | null>(null);
+  // SKY-11358: which edge of the dropKey row is targeted — 'before' opens the
+  // gap above it, 'after' below. Reset to 'before' whenever dropKey changes.
+  const [dropEdge, setDropEdgeState] = useState<'before' | 'after'>('before');
+  // SKY-11358: height (px) of the dragged row, measured at grip-down, so the
+  // drop-gap placeholder previews the block's actual footprint.
+  const [dragGapHeight, setDragGapHeight] = useState(0);
+  // SKY-11358: cursor position for the floating drag-preview portal.
+  const [ghostPos, setGhostPos] = useState<{ x: number; y: number } | null>(null);
   // Mirror of dragPara so the row-facing drag handlers can stay
   // reference-stable — their identities feed ParagraphRow's memo gate.
   const dragParaRef = useRef<ParagraphRef | null>(null);
   const updateDragPara = useCallback((ref: ParagraphRef | null) => {
     dragParaRef.current = ref;
     setDragPara(ref);
+  }, []);
+  // SKY-11358: mirrors of dropKey/dropEdge for the same reason — handlers
+  // passed down as props must stay reference-stable across drag-state renders.
+  const dropKeyRef = useRef<string | null>(null);
+  const updateDropKey = useCallback((key: string | null) => {
+    dropKeyRef.current = key;
+    setDropKey(key);
+  }, []);
+  const dropEdgeRef = useRef<'before' | 'after'>('before');
+  const updateDropEdge = useCallback((edge: 'before' | 'after') => {
+    dropEdgeRef.current = edge;
+    setDropEdgeState(edge);
   }, []);
 
   // ── M11 comments (store binding + selection/open UI state) ──
@@ -649,6 +679,36 @@ export default function ManuscriptView({
 
   const blocks = useMemo(() => buildBlocks(story, cursor, collapsed), [story, cursor, collapsed]);
   const crumbs = useMemo(() => breadcrumbs(story, cursor), [story, cursor]);
+
+  // SKY-11358: paragraph blocks in document order + their index, so the grip
+  // drag can resolve an 'after' edge to "the next paragraph in this scene"
+  // (moveParagraph only ever inserts before a target — see resolveDropEdge).
+  const paraBlocks = useMemo(
+    () => blocks.filter((b): b is ParaBlock => b.kind === 'para'),
+    [blocks]
+  );
+  const paraIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    paraBlocks.forEach((b, i) => map.set(b.blockId, i));
+    return map;
+  }, [paraBlocks]);
+  // SKY-11358: the paragraph currently being dragged — its text feeds the
+  // floating drag preview (null once the drag ends or the block scrolls out
+  // of the lazy render window; the preview just disappears with the source).
+  const draggedBlock = useMemo(
+    () =>
+      dragPara ? paraBlocks.find((b) => b.sceneId === dragPara.sceneId && b.blockId === dragPara.blockId) : undefined,
+    [dragPara, paraBlocks]
+  );
+  // Refs so handleParaDrop (a stable, prop-identity-sensitive callback — see
+  // dragParaRef above) can read the latest paragraph order without taking a
+  // dependency on `blocks`, which changes on every paragraph edit.
+  const paraBlocksRef = useRef<ParaBlock[]>(paraBlocks);
+  const paraIndexByIdRef = useRef<Map<string, number>>(paraIndexById);
+  useEffect(() => {
+    paraBlocksRef.current = paraBlocks;
+    paraIndexByIdRef.current = paraIndexById;
+  }, [paraBlocks, paraIndexById]);
 
   // M1 row 3 (SKY-9013): scope stats + the status chip's target scene.
   const scene = useMemo(() => cursorScene(story, cursor), [story, cursor]);
@@ -746,24 +806,41 @@ export default function ManuscriptView({
 
   // M8 §14.2 "drag state can't get stuck": abandoned grip drags (mouseup
   // outside any paragraph), Escape, and losing window focus all clear it.
+  // SKY-11358: the same effect also tracks the cursor for the floating drag
+  // preview (rAF-throttled — one position update per frame, not per event).
   useEffect(() => {
     if (!dragPara) return;
     const clear = () => {
       updateDragPara(null);
-      setDropKey(null);
+      updateDropKey(null);
+      updateDropEdge('before');
+      setGhostPos(null);
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') clear();
     };
+    let raf = 0;
+    let lastMove: MouseEvent | null = null;
+    const onMouseMove = (e: MouseEvent) => {
+      lastMove = e;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        if (lastMove) setGhostPos({ x: lastMove.clientX, y: lastMove.clientY });
+      });
+    };
     window.addEventListener('mouseup', clear);
     window.addEventListener('blur', clear);
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('mousemove', onMouseMove);
     return () => {
       window.removeEventListener('mouseup', clear);
       window.removeEventListener('blur', clear);
       window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      if (raf) cancelAnimationFrame(raf);
     };
-  }, [dragPara, updateDragPara]);
+  }, [dragPara, updateDragPara, updateDropKey, updateDropEdge]);
 
   const handleScroll = useCallback(
     (e: UIEvent<HTMLDivElement>) => {
@@ -1100,24 +1177,64 @@ export default function ManuscriptView({
       if (typeof window.getSelection === 'function') {
         window.getSelection()?.removeAllRanges();
       }
+      // SKY-11358: measure the dragged row so the drop-gap placeholder (and
+      // the floating preview) match its actual footprint; the ghost starts
+      // at the mousedown point instead of waiting for the first mousemove.
+      const row = (e.target as HTMLElement).closest('.msv-para');
+      const h = row instanceof HTMLElement ? row.getBoundingClientRect().height : 0;
+      setDragGapHeight(h > 0 ? h : DEFAULT_DRAG_GAP_HEIGHT);
+      setGhostPos({ x: e.clientX, y: e.clientY });
       updateDragPara({ sceneId, blockId });
     },
     [updateDragPara]
   );
 
-  const handleParaOver = useCallback((blockId: string) => {
-    if (dragParaRef.current) setDropKey((prev) => (prev === blockId ? prev : blockId));
-  }, []);
+  const handleParaOver = useCallback(
+    (blockId: string) => {
+      if (!dragParaRef.current) return;
+      if (dropKeyRef.current !== blockId) {
+        updateDropKey(blockId);
+        updateDropEdge('before');
+      }
+    },
+    [updateDropKey, updateDropEdge]
+  );
+
+  // SKY-11358: live pointer position within the hovered row decides before
+  // vs after, with a dead zone straddling the midpoint so the target doesn't
+  // flicker when the row shifts slightly (e.g. the gap opening elsewhere).
+  const handleParaMove = useCallback(
+    (blockId: string, e: ReactMouseEvent) => {
+      if (!dragParaRef.current || dropKeyRef.current !== blockId) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const mid = rect.top + rect.height / 2;
+      const delta = e.clientY - mid;
+      if (Math.abs(delta) < DROP_EDGE_HYSTERESIS_PX) return;
+      const next = delta < 0 ? 'before' : 'after';
+      if (next !== dropEdgeRef.current) updateDropEdge(next);
+    },
+    [updateDropEdge]
+  );
 
   const handleParaDrop = useCallback(
     (sceneId: string, blockId: string) => {
       const d = dragParaRef.current;
+      const edge = resolveDropEdge(
+        paraBlocksRef.current,
+        paraIndexByIdRef.current,
+        sceneId,
+        blockId,
+        dropEdgeRef.current
+      );
       updateDragPara(null);
-      setDropKey(null);
-      if (!d || (d.sceneId === sceneId && d.blockId === blockId)) return;
-      onMoveParagraph?.(d, { sceneId, blockId });
+      updateDropKey(null);
+      updateDropEdge('before');
+      if (!d) return;
+      const to = dropEdgeTarget(paraBlocksRef.current, paraIndexByIdRef.current, sceneId, blockId, edge);
+      if (d.sceneId === to.sceneId && d.blockId === to.blockId) return;
+      onMoveParagraph?.(d, to);
     },
-    [onMoveParagraph, updateDragPara]
+    [onMoveParagraph, updateDragPara, updateDropKey, updateDropEdge]
   );
 
   // ── M11 comment handlers ──
@@ -1458,7 +1575,12 @@ export default function ManuscriptView({
             }
             autoLinkTerms={autoLinkTerms}
             reading={readerKey === b.blockId}
-            showDropLine={!!dragPara && dropKey === b.blockId}
+            dropGap={
+              dragPara && dropKey === b.blockId
+                ? resolveDropEdge(paraBlocks, paraIndexById, b.sceneId, b.blockId, dropEdge)
+                : null
+            }
+            dropGapHeight={dragGapHeight}
             dragging={
               !!dragPara && dragPara.sceneId === b.sceneId && dragPara.blockId === b.blockId
             }
@@ -1470,6 +1592,7 @@ export default function ManuscriptView({
             onMergeUp={onMergeParagraph ? handleRowMergeUp : undefined}
             onGripDown={handleGripDown}
             onParaOver={handleParaOver}
+            onParaMove={handleParaMove}
             onParaDrop={handleParaDrop}
             onOpenComment={handleOpenComment}
             onApplyAutoLink={handleApplyAutoLink}
@@ -2103,6 +2226,27 @@ export default function ManuscriptView({
           onClose={sceneHistory.onClose}
         />
       )}
+      {/* SKY-11358: floating drag preview — the block being dragged follows
+          the cursor (mirrors PanelDragContext's ghost pattern). Portaled to
+          <body> so it always sits above the page regardless of scroll/zoom
+          and is never clipped by an ancestor's overflow. */}
+      {dragPara &&
+        draggedBlock &&
+        ghostPos &&
+        createPortal(
+          <div
+            className="msv-drag-ghost"
+            style={{
+              transform: `translate(${ghostPos.x + 18}px, ${ghostPos.y - 14}px) scale(1.02)`,
+              maxWidth: Math.min(pageW, 640),
+            }}
+            aria-hidden="true"
+          >
+            <span className="msv-drag-ghost-grip">⠿</span>
+            <span className="msv-drag-ghost-text">{draggedBlock.content || ' '}</span>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

@@ -10,11 +10,13 @@ import {
   chapterStatus,
   cursorDefaultScene,
   cycleStatus,
+  dropEdgeTarget,
   flatUnits,
   mergeParagraphText,
   mergeParagraphUp,
   moveParagraph,
   normalizeInlineTitle,
+  resolveDropEdge,
   removeEmptyParagraph,
   renameChapter,
   renameScene,
@@ -509,6 +511,44 @@ describe('moveParagraph', () => {
     moveParagraph(story, { sceneId: 's4', blockId: 's4-b0' }, { sceneId: 's4', blockId: 's4-b2' });
     moveParagraph(story, { sceneId: 's1', blockId: 's1-b1' }, { sceneId: 's3', blockId: 's3-b0' });
     expect(JSON.stringify(story)).toBe(before);
+  });
+});
+
+describe('resolveDropEdge / dropEdgeTarget (SKY-11358 grip-drag preview)', () => {
+  const paraBlocks: ParaBlock[] = [
+    { kind: 'para', id: 'a', sceneId: 's1', chapterId: 'ch1', blockId: 'a', content: 'A', first: true },
+    { kind: 'para', id: 'b', sceneId: 's1', chapterId: 'ch1', blockId: 'b', content: 'B', first: false },
+    { kind: 'para', id: 'c', sceneId: 's2', chapterId: 'ch1', blockId: 'c', content: 'C', first: true },
+  ];
+  const paraIndexById = new Map(paraBlocks.map((b, i) => [b.blockId, i]));
+
+  it('a "before" edge always resolves as-is, and targets the hovered block', () => {
+    expect(resolveDropEdge(paraBlocks, paraIndexById, 's1', 'b', 'before')).toBe('before');
+    expect(dropEdgeTarget(paraBlocks, paraIndexById, 's1', 'b', 'before')).toEqual({
+      sceneId: 's1',
+      blockId: 'b',
+    });
+  });
+
+  it('an "after" edge resolves and targets the next paragraph when it is in the same scene', () => {
+    expect(resolveDropEdge(paraBlocks, paraIndexById, 's1', 'a', 'after')).toBe('after');
+    expect(dropEdgeTarget(paraBlocks, paraIndexById, 's1', 'a', 'after')).toEqual({
+      sceneId: 's1',
+      blockId: 'b',
+    });
+  });
+
+  it('an "after" edge clamps to "before" when the next paragraph is a different scene (scene\'s last paragraph)', () => {
+    // 'b' is s1's last paragraph — the next paraBlock ('c') belongs to s2.
+    expect(resolveDropEdge(paraBlocks, paraIndexById, 's1', 'b', 'after')).toBe('before');
+    expect(dropEdgeTarget(paraBlocks, paraIndexById, 's1', 'b', 'before')).toEqual({
+      sceneId: 's1',
+      blockId: 'b',
+    });
+  });
+
+  it('an "after" edge clamps to "before" for the very last paragraph in the document', () => {
+    expect(resolveDropEdge(paraBlocks, paraIndexById, 's2', 'c', 'after')).toBe('before');
   });
 });
 

@@ -727,6 +727,150 @@ describe('paragraph grip drag (M10, prototype paraDown/Over/Drop 3705–3719)', 
   });
 });
 
+// ─── Beta 4 SKY-11358 — grip drag preview: gap placeholder, edge hysteresis,
+//     floating ghost (owner: "make it show the text box, and preview the
+//     move" — see manuscriptModel.test.ts for resolveDropEdge/dropEdgeTarget
+//     unit coverage of the pure clamp logic exercised here). ─────────────────
+describe('paragraph grip drag preview (SKY-11358)', () => {
+  function mockRowRect(height: number) {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      left: 0,
+      right: 100,
+      bottom: height,
+      width: 100,
+      height,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+  }
+
+  it('a small jitter around the row midpoint does not flip the before/after edge (no flicker)', () => {
+    const onMoveParagraph = vi.fn();
+    renderView({ onMoveParagraph, cursor: cur('book') });
+    mockRowRect(52); // mid = 26; hysteresis dead zone is [20, 32]
+
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s3-b0'));
+    const targetRow = screen.getByTestId('msv-para-s1-b0').parentElement as HTMLElement;
+    fireEvent.mouseEnter(targetRow);
+    fireEvent.mouseMove(targetRow, { clientY: 29 }); // inside the dead zone
+    fireEvent.mouseUp(targetRow);
+    // Still 'before' — s1-b0 itself, unchanged from the mouseEnter default.
+    expect(onMoveParagraph).toHaveBeenLastCalledWith(
+      { sceneId: 's3', blockId: 's3-b0' },
+      { sceneId: 's1', blockId: 's1-b0' }
+    );
+  });
+
+  it('crossing well past the midpoint flips to the after edge and targets the next paragraph', () => {
+    const onMoveParagraph = vi.fn();
+    renderView({ onMoveParagraph, cursor: cur('book') });
+    mockRowRect(52); // mid = 26
+
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s3-b0'));
+    const targetRow = screen.getByTestId('msv-para-s1-b0').parentElement as HTMLElement;
+    fireEvent.mouseEnter(targetRow);
+    fireEvent.mouseMove(targetRow, { clientY: 40 }); // delta +14, clears the dead zone
+    fireEvent.mouseUp(targetRow);
+    // 'after' s1-b0 = before its next same-scene sibling s1-b1.
+    expect(onMoveParagraph).toHaveBeenLastCalledWith(
+      { sceneId: 's3', blockId: 's3-b0' },
+      { sceneId: 's1', blockId: 's1-b1' }
+    );
+  });
+
+  it('releasing over the open drop-gap itself (not the row) still commits the previewed move', () => {
+    // Regression (found via manual E2E verification, not jsdom — see PR
+    // description): opening a gap sized to the dragged block routinely
+    // leaves the cursor sitting over the gap placeholder rather than over
+    // `.msv-para`. Without a drop handler on the gap, that release used to
+    // bubble to window's "abandon drag" listener and silently no-op a move
+    // the preview showed as valid.
+    const onMoveParagraph = vi.fn();
+    renderView({ onMoveParagraph, cursor: cur('book') });
+    mockRowRect(52); // mid = 26
+
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s3-b0'));
+    const targetRow = screen.getByTestId('msv-para-s1-b0').parentElement as HTMLElement;
+    fireEvent.mouseEnter(targetRow);
+    fireEvent.mouseMove(targetRow, { clientY: 40 }); // clears the dead zone → 'after'
+    fireEvent.mouseUp(screen.getByTestId('msv-drop-gap')); // release over the gap, not the row
+    expect(onMoveParagraph).toHaveBeenLastCalledWith(
+      { sceneId: 's3', blockId: 's3-b0' },
+      { sceneId: 's1', blockId: 's1-b1' }
+    );
+  });
+
+  it('once flipped to after, a jitter back toward the midpoint does not revert to before', () => {
+    const onMoveParagraph = vi.fn();
+    renderView({ onMoveParagraph, cursor: cur('book') });
+    mockRowRect(52); // mid = 26
+
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s3-b0'));
+    const targetRow = screen.getByTestId('msv-para-s1-b0').parentElement as HTMLElement;
+    fireEvent.mouseEnter(targetRow);
+    fireEvent.mouseMove(targetRow, { clientY: 40 }); // → after
+    fireEvent.mouseMove(targetRow, { clientY: 22 }); // delta -4, inside the dead zone
+    fireEvent.mouseUp(targetRow);
+    expect(onMoveParagraph).toHaveBeenLastCalledWith(
+      { sceneId: 's3', blockId: 's3-b0' },
+      { sceneId: 's1', blockId: 's1-b1' } // still 'after' — no surprise revert
+    );
+  });
+
+  it("a scene's last paragraph has no after target — its lower half still previews and drops before it", () => {
+    const onMoveParagraph = vi.fn();
+    renderView({ onMoveParagraph, cursor: cur('book') });
+    mockRowRect(40); // mid = 20
+
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s1-b0'));
+    const lastRow = screen.getByTestId('msv-para-s3-b0').parentElement as HTMLElement; // s3's only paragraph
+    fireEvent.mouseEnter(lastRow);
+    fireEvent.mouseMove(lastRow, { clientY: 39 }); // well past the midpoint — raw 'after'
+    expect(screen.getByTestId('msv-drop-gap')).toBeInTheDocument();
+    fireEvent.mouseUp(lastRow);
+    // Clamped to 'before' — s3-b0 has no same-scene sibling to land after.
+    expect(onMoveParagraph).toHaveBeenCalledWith(
+      { sceneId: 's1', blockId: 's1-b0' },
+      { sceneId: 's3', blockId: 's3-b0' }
+    );
+  });
+
+  it('the drop-gap placeholder is sized to the dragged row, not a fixed default', () => {
+    renderView({ cursor: cur('book') });
+    mockRowRect(77);
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s1-b0'));
+    const targetRow = screen.getByTestId('msv-para-s3-b0').parentElement as HTMLElement;
+    fireEvent.mouseEnter(targetRow);
+    expect(screen.getByTestId('msv-drop-gap').style.height).toBe('77px');
+  });
+
+  it('shows a floating preview of the dragged paragraph that follows the cursor, and clears it on drop', () => {
+    vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => {
+      fn(0);
+      return 0;
+    });
+    try {
+      renderView({ cursor: cur('book') });
+      fireEvent.mouseDown(screen.getByTestId('msv-grip-s1-b0'), { clientX: 10, clientY: 20 });
+
+      const ghost = document.body.querySelector('.msv-drag-ghost') as HTMLElement | null;
+      expect(ghost).not.toBeNull();
+      expect(ghost!.textContent).toContain('Mira counted the bells.');
+      expect(ghost!.style.transform).toContain('translate(28px, 6px)');
+
+      fireEvent.mouseMove(window, { clientX: 100, clientY: 200 });
+      expect(ghost!.style.transform).toContain('translate(118px, 186px)');
+
+      fireEvent.mouseUp(window);
+      expect(document.body.querySelector('.msv-drag-ghost')).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 // ─── Beta 4 M8 — editing model hardening (FULL-SPEC §14.1/§14.2) ─────────────
 
 /** Place a collapsed caret at a plain-text offset inside a contentEditable. */

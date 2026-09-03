@@ -369,6 +369,47 @@ export interface MoveParagraphResult {
 }
 
 /**
+ * SKY-11358: clamp a hovered drop edge to one the drag can actually fulfil.
+ * The grip drag previews inserting either BEFORE the hovered paragraph or
+ * AFTER it (before the next one) — but "after" only makes sense when a next
+ * paragraph exists in the SAME scene; a scene's last paragraph has no
+ * "after" to land on (moveParagraph only ever inserts before a target).
+ * Clamping here — and reusing the same clamp for the actual drop — keeps the
+ * gap preview and the drop result identical (no surprise offsets).
+ */
+export function resolveDropEdge(
+  paraBlocks: readonly ParaBlock[],
+  paraIndexById: ReadonlyMap<string, number>,
+  sceneId: string,
+  blockId: string,
+  edge: 'before' | 'after'
+): 'before' | 'after' {
+  if (edge === 'before') return 'before';
+  const idx = paraIndexById.get(blockId);
+  const next = idx !== undefined ? paraBlocks[idx + 1] : undefined;
+  return next && next.sceneId === sceneId ? 'after' : 'before';
+}
+
+/**
+ * SKY-11358: resolve the actual insertion target for a grip drop, given the
+ * hovered block and the (already-clamped) edge — 'after' targets the next
+ * paragraph in the same scene, since moveParagraph always inserts before its
+ * `to` ref. Call resolveDropEdge first so `edge` is already valid for `blockId`.
+ */
+export function dropEdgeTarget(
+  paraBlocks: readonly ParaBlock[],
+  paraIndexById: ReadonlyMap<string, number>,
+  sceneId: string,
+  blockId: string,
+  edge: 'before' | 'after'
+): ParagraphRef {
+  if (edge === 'before') return { sceneId, blockId };
+  const idx = paraIndexById.get(blockId)!;
+  const next = paraBlocks[idx + 1]!;
+  return { sceneId: next.sceneId, blockId: next.blockId };
+}
+
+/**
  * Move a paragraph block so it lands immediately BEFORE the target block,
  * exactly like the prototype's grip drag (paraDrop 3708–3719): dropping a
  * block onto position `ti` re-inserts it at `ti`, adjusted by −1 when the
