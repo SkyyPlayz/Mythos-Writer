@@ -122,6 +122,7 @@ import {
 } from './gettingStartedReducer';
 import TemplatePicker from './TemplatePicker';
 import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
+import { RightSidebarSlotProvider } from './RightSidebarSlot';
 import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
 import { PanelDragProvider } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
@@ -6213,6 +6214,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         />
       )}
       {/* SKY-5592: outer flex row — GlobalRightSidebar persists across all top-level tabs (Story/Notes/Brainstorm) */}
+      {/* SKY-11211: provides the per-route right-sidebar slot — a page inside
+          this row (e.g. BrainstormPage) can claim GlobalRightSidebar via
+          <RightSidebarSlot> instead of rendering its own second column. */}
+      <RightSidebarSlotProvider>
       <div className="shell-main-row">
       {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active */}
       {tabShell.activeTab === 'story' && (
@@ -7186,6 +7191,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
            tab strip — migrateV1Layout now defaults rightSidebarVisible to true, so
            GRS (and with it the tab strip) is present on every fresh profile. */}
       </div>{/* end shell-main-row (SKY-5592: outer row wrapping all tabs + GRS) */}
+      </RightSidebarSlotProvider>
       {ambiguousLink && (
         <div className="cross-tab-link-modal" role="dialog" aria-modal="true" aria-label="Choose link target">
           <div className="cross-tab-link-modal__card">
