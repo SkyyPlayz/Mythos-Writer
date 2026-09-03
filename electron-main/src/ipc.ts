@@ -2773,6 +2773,9 @@ export interface AppSettings {
   liquidNeonV2?: Record<string, unknown>;
   /** Beta 4 M1: per-vault default theme — Story Vault root → preset key; renderer-owned. */
   vaultThemes?: Record<string, string>;
+  /** SKY-11236: per-vault open-tab workspace state — Story Vault root → tab set;
+   *  renderer-owned shape, main persists it opaquely (like liquidNeonV2). */
+  vaultWorkspaces?: Record<string, Record<string, unknown>>;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
   /** SKY-130: last-opened scene for cross-restart restore. */

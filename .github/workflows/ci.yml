@@ -659,6 +659,9 @@ jobs:
       - name: E2E — Notes tab (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:notes-tab
 
+      - name: E2E — Per-vault open-tab isolation across a real switch (SKY-11236)
+        run: xvfb-run --auto-servernum npm run test:e2e:per-vault-tabs
+
       - name: E2E — Archive agent MVP (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:archive-agent-mvp
 

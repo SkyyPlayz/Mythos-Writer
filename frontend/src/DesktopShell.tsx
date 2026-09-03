@@ -66,6 +66,13 @@ import {
   PROVISIONAL_CREATED_TOAST,
   PROVISIONAL_DISCARDED_TOAST,
 } from './workspaceDocTabs';
+// SKY-11236: per-vault open-tab workspace state (restore/persist/migration).
+import {
+  restoreVaultTabs,
+  writeVaultWorkspace,
+  migrateLegacyDocTabs,
+  shouldMigrateLegacy,
+} from './vaultWorkspaceTabs';
 import { NAV_RAIL_DEFAULTS, mergeNavConfigItems, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
 // SKY-10712: same pure transform the main process applies to scene files on
 // disk during a rename cascade — used to converge in-memory manuscript state.
@@ -711,6 +718,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
+  // SKY-11236: latest active vault root for persistDocTabs, which runs inside a
+  // stable ([]) callback and cannot close over activeVaultRoot. Kept in sync
+  // each render (below) + set eagerly by the switch paths so a persist that
+  // fires mid-switch keys the CORRECT vault, never leaking tabs across vaults.
+  const activeVaultRootRef = useRef<string>('');
+  activeVaultRootRef.current = activeVaultRoot;
   // Beta 4 M1: set by the two project-switch paths right before loadVault so
   // the reload can apply that vault's default theme (per-vault theme, §14.9 #9).
   const pendingVaultThemeRootRef = useRef<string | null>(null);
@@ -1495,36 +1508,36 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           // "start collapsed" preference.
           setNavRailCollapsed(true);
         }
-        // Beta 4 M4: restore document tabs. ≤Beta 3 module-mirror tabs
-        // (activeLayout.workspaceTabs) are deliberately ignored — tabs are
-        // documents now; provisional tabs never persist (§1.5).
-        if (Array.isArray(s.activeLayout?.storyDocTabs)) {
-          // SKY-9920: an Entity Browser tab (kind 'entities') survives
-          // relaunch too — only provisional scenes are deliberately dropped.
-          // SKY-10019: Outline Planning (kind 'outline') is story-only, same
-          // singleton-per-strip treatment as Entity Browser.
-          const restored = s.activeLayout.storyDocTabs.filter(
-            (t) => (t.kind === 'scene' && !t.provisional) || t.kind === 'entities' || t.kind === 'outline',
-          );
-          setStoryDocTabs(restored);
-          const act = s.activeLayout.activeStoryDocTabId ?? null;
-          setActiveStoryDocTabId(act !== null && restored.some((t) => t.id === act) ? act : null);
+        // SKY-11236: restore THIS vault's own open tabs. Tabs are per-vault
+        // now (keyed by Story-Vault root) — switching vaults swaps the whole
+        // set out and back, so a tab whose note lives in another vault can
+        // never leak in and fail with "Could not load note." ≤Beta 3
+        // module-mirror tabs are still ignored; provisional scenes, singleton
+        // Entity Browser / Outline, and Scene Crafter board-tab filtering are
+        // all preserved inside restoreVaultTabs (§1.5, SKY-9920/10019/11069).
+        let workspaces = s.vaultWorkspaces;
+        if (shouldMigrateLegacy(workspaces, !!switchedVaultRoot, storyPath)) {
+          // First load after upgrade: adopt the previous session's global
+          // doc-tabs as THIS vault's workspace (it was the active vault at
+          // shutdown) and persist, so they survive switching away and back
+          // instead of being stranded in the dead flat activeLayout fields.
+          const seeded = migrateLegacyDocTabs(s.activeLayout);
+          workspaces = { [storyPath]: seeded };
+          const migrated: AppSettings = { ...s, vaultWorkspaces: workspaces };
+          cachedSettings = migrated;
+          setAppSettings(migrated);
+          window.api.settingsSet(migrated).catch(() => {});
         }
-        if (Array.isArray(s.activeLayout?.notesDocTabs)) {
-          const restored = s.activeLayout.notesDocTabs.filter((t) => t.kind === 'note' || t.kind === 'entities');
-          setNotesDocTabs(restored);
-          const act = s.activeLayout.activeNotesDocTabId ?? null;
-          setActiveNotesDocTabId(act !== null && restored.some((t) => t.id === act) ? act : null);
-        }
-        // SKY-11069: restore open Scene Crafter board tabs. The synthetic
-        // Setup tab is composed at render and never persists; a null active
-        // id means Setup is the active tab.
-        if (Array.isArray(s.activeLayout?.boardDocTabs)) {
-          const restored = s.activeLayout.boardDocTabs.filter((t) => t.kind === 'board' && !!t.docId && !!t.storyId);
-          setBoardDocTabs(restored);
-          const act = s.activeLayout.activeBoardDocTabId ?? null;
-          setActiveBoardDocTabId(act !== null && restored.some((t) => t.id === act) ? act : null);
-        }
+        // Always set (empty arrays when this vault has no saved workspace) so a
+        // switch unconditionally CLEARS the outgoing vault's tabs — that
+        // clearing is the actual leak fix, not just the restore.
+        const restoredTabs = restoreVaultTabs(storyPath ? workspaces?.[storyPath] : undefined);
+        setStoryDocTabs(restoredTabs.storyDocTabs);
+        setActiveStoryDocTabId(restoredTabs.activeStoryDocTabId);
+        setNotesDocTabs(restoredTabs.notesDocTabs);
+        setActiveNotesDocTabId(restoredTabs.activeNotesDocTabId);
+        setBoardDocTabs(restoredTabs.boardDocTabs);
+        setActiveBoardDocTabId(restoredTabs.activeBoardDocTabId);
         // GH #643: restore the right-hand workspace split pane. SKY-9920:
         // 'entities' is excluded — Entity Browser's home is the document-tab
         // system now, not this legacy split pane (dead path: nothing has
@@ -1775,12 +1788,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (!window.api?.onProjectSwitched) return;
     const unsub = window.api.onProjectSwitched((data: { vaultRoot: string }) => {
       pendingVaultThemeRootRef.current = data.vaultRoot; // Beta 4 M1: per-vault theme
+      activeVaultRootRef.current = data.vaultRoot; // SKY-11236: key persists to the new vault at once
       setActiveVaultRoot(data.vaultRoot);
       // Reset selection state and reload vault content
       setSelectedScene(null);
       setSelectedChapter(null);
       setSelectedStory(null);
       setSelectedEntity(null);
+      // SKY-11236: clear the open-note pointer too. Otherwise the "opening a
+      // note surfaces its tab" effect re-adds the OUTGOING vault's note tab
+      // right after loadVault clears the strip — resurrecting the very leak
+      // this fix removes (its note doesn't exist in the incoming vault).
+      setOpenedNotePath(null);
       // SKY-130: allow restore to fire again for the new project
       sceneRestoreAttemptedRef.current = false;
       loadVault();
@@ -1792,11 +1811,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   const handleProjectSwitched = useCallback((vaultRoot: string) => {
     pendingVaultThemeRootRef.current = vaultRoot; // Beta 4 M1: per-vault theme
+    activeVaultRootRef.current = vaultRoot; // SKY-11236: key persists to the new vault at once
     setActiveVaultRoot(vaultRoot);
     setSelectedScene(null);
     setSelectedChapter(null);
     setSelectedStory(null);
     setSelectedEntity(null);
+    // SKY-11236: clear the open-note pointer too (see the onProjectSwitched
+    // listener above) so the note-surfacing effect can't re-add the outgoing
+    // vault's tab after loadVault clears the strip.
+    setOpenedNotePath(null);
     // SKY-130: allow restore to fire again for the new project
     sceneRestoreAttemptedRef.current = false;
     loadVault();
@@ -2062,28 +2086,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     notes?: { tabs: WorkspaceTab[]; activeId: string | null };
     board?: { tabs: WorkspaceTab[]; activeId: string | null };
   }) => {
+    // SKY-11236: doc tabs are per-vault now. The left-sidebar layout stays a
+    // global activeLayout field; only the tab sets move into the vault-keyed
+    // map, so switching vaults swaps them out and back with no cross-vault leak.
+    // (writeVaultWorkspace still drops provisional scenes and only touches the
+    // patched sections of the active vault — every other vault stays intact.)
+    const vaultRoot = activeVaultRootRef.current;
     setAppSettings((prev) => {
       if (!prev) return prev;
       const updated: AppSettings = {
         ...prev,
-        activeLayout: {
-          ...prev.activeLayout,
-          leftSidebar: leftSidebarLayoutRef.current,
-          ...(patch.story
-            ? {
-                storyDocTabs: patch.story.tabs.filter((t) => !t.provisional),
-                activeStoryDocTabId: patch.story.activeId,
-              }
-            : {}),
-          ...(patch.notes
-            ? { notesDocTabs: patch.notes.tabs, activeNotesDocTabId: patch.notes.activeId }
-            : {}),
-          // SKY-11069: only real board tabs persist — the pinned Setup tab is
-          // synthetic (its "active" state is activeBoardDocTabId = null).
-          ...(patch.board
-            ? { boardDocTabs: patch.board.tabs, activeBoardDocTabId: patch.board.activeId }
-            : {}),
-        },
+        activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current },
+        ...(vaultRoot
+          ? { vaultWorkspaces: writeVaultWorkspace(prev.vaultWorkspaces, vaultRoot, patch) }
+          : {}),
       };
       window.api.settingsSet(updated).catch(() => {});
       return updated;

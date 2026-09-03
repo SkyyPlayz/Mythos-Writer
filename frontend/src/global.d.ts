@@ -614,6 +614,13 @@ interface AppSettings {
    *  path → user-chosen label. A local rename only (the on-disk vault + its
    *  registry entry are untouched); absent → derive from the project entry. */
   vaultDisplayNames?: Record<string, string>;
+  /** SKY-11236: per-vault open-tab workspace state, keyed by Story-Vault root
+   *  path (the same identity used by vaultThemes / vaultDisplayNames). Each
+   *  vault owns its own tab set; switching vaults swaps the whole set out and
+   *  back so a tab whose note lives in another vault can never leak in (the
+   *  "Could not load note." bug). The flat activeLayout.*DocTabs fields are
+   *  legacy — migrated into this map on the first load after upgrade. */
+  vaultWorkspaces?: Record<string, VaultWorkspaceTabs>;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
   /** SKY-3206: per-vault story page chrome prefs. Key = vault root path. */
@@ -864,6 +871,19 @@ interface WorkspaceTab {
   provisional?: boolean;
   /** SKY-11069: pinned view tab (Scene Crafter Setup) — no ×, Ctrl+W no-op, not reorderable. */
   permanent?: boolean;
+}
+
+/** SKY-11236: one vault's open-document-tab workspace. Persisted under
+ *  AppSettings.vaultWorkspaces keyed by Story-Vault root path. Fields mirror
+ *  the three per-section strips that DesktopShell restores on load / vault
+ *  switch. Absent entry → that vault opens with no tabs (never another vault's). */
+interface VaultWorkspaceTabs {
+  storyDocTabs?: WorkspaceTab[];
+  activeStoryDocTabId?: string | null;
+  notesDocTabs?: WorkspaceTab[];
+  activeNotesDocTabId?: string | null;
+  boardDocTabs?: WorkspaceTab[];
+  activeBoardDocTabId?: string | null;
 }
 
 /** SKY-1700 (Wave 2f): A saved named workspace layout. */
