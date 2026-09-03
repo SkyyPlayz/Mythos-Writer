@@ -586,6 +586,61 @@
   box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, 0.4));
 }
 
+/* SKY-11358: the destination previews as a gap the size of the dragged
+   block, with the gradient line centered inside it as an accent — replaces
+   the old bare hairline, which only asked the user to infer the result. */
+.msv-drop-gap {
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  margin: 0 0 1.1em; /* matches .msv-para's own bottom margin, so the gap reads as "one more row" */
+}
+
+.msv-drop-gap .msv-dropline {
+  width: 100%;
+  margin: 0;
+}
+
+/* SKY-11358: the dragged paragraph's floating preview — follows the cursor
+   (portaled to <body>; see ManuscriptView's ghostPos tracking). Lifted via
+   shadow + a slight scale so it reads as "this block is in your hand". */
+.msv-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 160px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(13, 16, 28, 0.94);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow:
+    0 18px 40px -12px rgba(0, 0, 0, 0.6),
+    0 0 20px -4px var(--g1, rgba(0, 240, 255, 0.4));
+  pointer-events: none;
+  user-select: none;
+  will-change: transform;
+  z-index: 9000;
+}
+
+.msv-drag-ghost-grip {
+  flex: none;
+  color: var(--n1, #00f0ff);
+  opacity: 0.85;
+  line-height: 1.85;
+}
+
+.msv-drag-ghost-text {
+  color: var(--txB, #c8d3e7);
+  line-height: 1.85;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+}
+
 .msv-root--dragging-para,
 .msv-root--dragging-para .msv-para,
 .msv-root--dragging-para .msv-grip {

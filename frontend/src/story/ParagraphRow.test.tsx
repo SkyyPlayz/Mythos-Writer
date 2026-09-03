@@ -40,6 +40,7 @@ const PARA_STYLE: CSSProperties = { textAlign: 'left' };
 const noopCommit = () => {};
 const noopGrip = () => {};
 const noopOver = () => {};
+const noopMove = () => {};
 const noopDrop = () => {};
 const noopOpen = () => {};
 const noopApply = () => {};
@@ -65,13 +66,15 @@ function rowProps(blockId: string, over: Partial<ParagraphRowProps> = {}): Parag
     comments: EMPTY_COMMENTS,
     autoLinkTerms: EMPTY_TERMS,
     reading: false,
-    showDropLine: false,
+    dropGap: null,
+    dropGapHeight: 0,
     dragging: false,
     dropCap: false,
     paraStyle: PARA_STYLE,
     onCommit: noopCommit,
     onGripDown: noopGrip,
     onParaOver: noopOver,
+    onParaMove: noopMove,
     onParaDrop: noopDrop,
     onOpenComment: noopOpen,
     onApplyAutoLink: noopApply,
@@ -290,7 +293,8 @@ describe('ParagraphRow memo gate (render-count probes)', () => {
     // Unfocused content change → render (the guard applies only mid-edit).
     expect(paragraphRowPropsEqual(p, { ...p, content: 'changed' })).toBe(false);
     expect(paragraphRowPropsEqual(p, { ...p, reading: true })).toBe(false);
-    expect(paragraphRowPropsEqual(p, { ...p, showDropLine: true })).toBe(false);
+    expect(paragraphRowPropsEqual(p, { ...p, dropGap: 'before' })).toBe(false);
+    expect(paragraphRowPropsEqual(p, { ...p, dropGapHeight: 40 })).toBe(false);
     // M8: drag-dim + drop-cap + split/merge handlers gate too.
     expect(paragraphRowPropsEqual(p, { ...p, dragging: true })).toBe(false);
     expect(paragraphRowPropsEqual(p, { ...p, dropCap: true })).toBe(false);
@@ -300,6 +304,7 @@ describe('ParagraphRow memo gate (render-count probes)', () => {
     expect(paragraphRowPropsEqual(p, { ...p, autoLinkTerms: [] })).toBe(false);
     expect(paragraphRowPropsEqual(p, { ...p, comments: [mkComment('c9', 's1', 'x')] })).toBe(false);
     expect(paragraphRowPropsEqual(p, { ...p, onParaOver: () => {} })).toBe(false);
+    expect(paragraphRowPropsEqual(p, { ...p, onParaMove: () => {} })).toBe(false);
     expect(paragraphRowPropsEqual(p, { ...p, onCommit: () => {} })).toBe(false);
   });
 });
