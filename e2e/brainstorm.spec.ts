@@ -517,7 +517,7 @@ test('TC-BST-08: chat-captured fact appears live in the IDEA COLLECTIONS rail â€
   await page.locator('[data-testid="bs-coll-toggle-rel"]').click();
   // TC-BST-05's refinement regenerated the same mock fact, so two identical
   // (unplaced) rows can exist here â€” either is proof enough for this assertion.
-  const factRow = page.getByRole('button', { name: `Add ${MOCK_FACT_NAME} to the board`, exact: true }).first();
+  const factRow = page.getByRole('button', { name: `Add ${MOCK_FACT_NAME} to the Idea Board`, exact: true }).first();
   await expect(factRow).toBeVisible();
   await expect(factRow.locator('.bs-coll-starter-chip')).toHaveCount(0);
   await expect(factRow.locator('.bs-coll-idea-desc')).toContainText(MOCK_FACT_DESC);
@@ -649,7 +649,7 @@ test('TC-M20-01: Board page shows one canvas; starter library places ideas', asy
 
   // Expand Story Beats and place a starter idea (chips `Starter`).
   await page.locator('[data-testid="bs-coll-toggle-beats"]').click();
-  const starterRow = page.getByRole('button', { name: 'Add Midpoint Reversal to the board' });
+  const starterRow = page.getByRole('button', { name: 'Add Midpoint Reversal to the Idea Board' });
   await expect(starterRow).toBeVisible();
   await expect(starterRow.locator('.bs-coll-starter-chip')).toBeVisible();
   await starterRow.click();

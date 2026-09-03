@@ -310,7 +310,7 @@ export default function BoardCanvas({
           })}
         </div>
         <div className="bsb-hint" data-testid="bsc-canvas-hint">{canvasHint}</div>
-        <div className="bsb-dock" role="toolbar" aria-label="Board tools">
+        <div className="bsb-dock" role="toolbar" aria-label="Idea Board tools">
           {BOARD_TOOLS.map((t) => (
             <button
               key={t.key}

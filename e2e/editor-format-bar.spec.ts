@@ -202,7 +202,11 @@ test('FB-04: heading select offers H1-H6 and each level round-trips through the 
       await page.keyboard.type(`Heading Level ${level}`);
       await headingSelect.selectOption(`Heading ${level}`);
       await expect(editor.locator(`h${level}`, { hasText: `Heading Level ${level}` })).toBeVisible();
-      await expect(headingSelect).toHaveValue(`Heading ${level}`);
+      // e2e-shard-4 runs 6 iterations back-to-back and is documented (ci.yml,
+      // SKY-11045) as tripping the suite's default 10s expect timeout under
+      // normal tail latency, not a real desync — give this assertion the same
+      // 15s headroom used elsewhere in the suite for load-sensitive waits.
+      await expect(headingSelect).toHaveValue(`Heading ${level}`, { timeout: 15_000 });
     }
 
     // Wait past the debounce so the scene file is written, then verify every
