@@ -615,6 +615,7 @@ import { registerVoiceHandlers } from './voice.js';
 import type { KokoroAssets } from './kokoro.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
 import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
+import { restartVaultRuntime } from './vaultRuntimeRestart.js';
 import { resolveVaultImportCollisions } from './vaultImportConflict.js';
 import { initSecretsStore, getSecretsStore } from './secrets/index.js';
 import {
@@ -5899,13 +5900,21 @@ const handlers: IpcHandlers = {
       fs.renameSync(oldParent, resolvedDestination);
     } catch (err) {
       // Leave the folder alone on failure (mirrors trashVaultFolder's
-      // discipline) — restart the watchers we stopped and bail without
-      // touching settings.
+      // discipline) — bail without touching settings. Settings were never
+      // written (saveVaultSettings only runs on success), so getVaultRoot()/
+      // getNotesVaultRoot() still point at the original, unmoved folder.
+      // SKY-11346: reopen the DB (via ensureVaultDir/ensureNotesVaultDir) as
+      // well as restarting the watchers we stopped — closeDb() ran above, and
+      // without this the app is left with getDb() throwing until a restart.
       const activeRoot = getVaultRoot();
       const activeNotesRoot = getNotesVaultRoot();
-      await startVaultWatcher(activeRoot, notifyVaultChanged);
-      await startNotesVaultWatcher(activeNotesRoot, notifyNotesVaultChanged);
-      startWritingScanScheduler();
+      await restartVaultRuntime(activeRoot, activeNotesRoot, {
+        ensureVaultDir,
+        ensureNotesVaultDir,
+        startVaultWatcher: (root) => startVaultWatcher(root, notifyVaultChanged),
+        startNotesVaultWatcher: (root) => startNotesVaultWatcher(root, notifyNotesVaultChanged),
+        startWritingScanScheduler,
+      });
       return { moved: false, error: err instanceof Error ? err.message : String(err) };
     }
 
@@ -5915,11 +5924,13 @@ const handlers: IpcHandlers = {
 
     const newActiveRoot = remapped.vaultRoot ?? getVaultRoot();
     const newActiveNotesRoot = remapped.notesVaultRoot ?? getNotesVaultRoot();
-    ensureVaultDir();
-    ensureNotesVaultDir();
-    await startVaultWatcher(newActiveRoot, notifyVaultChanged);
-    await startNotesVaultWatcher(newActiveNotesRoot, notifyNotesVaultChanged);
-    startWritingScanScheduler();
+    await restartVaultRuntime(newActiveRoot, newActiveNotesRoot, {
+      ensureVaultDir,
+      ensureNotesVaultDir,
+      startVaultWatcher: (root) => startVaultWatcher(root, notifyVaultChanged),
+      startNotesVaultWatcher: (root) => startNotesVaultWatcher(root, notifyNotesVaultChanged),
+      startWritingScanScheduler,
+    });
 
     return { moved: true, newPath: resolvedDestination };
   },
