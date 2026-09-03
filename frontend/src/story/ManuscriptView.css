@@ -834,6 +834,22 @@
   border-bottom-style: solid;
 }
 
+/* ── SKY-11357: manuscript title — Book view's centered title treatment,
+      minus its page-header padding and the ::after rainbow rule (those are
+      Book-view-only dressing; the manuscript sheet already has its own top
+      padding). Sized a step above .msv-part-heading-title (1.8em) since the
+      book title outranks every part in the document. Own msv-* class so
+      Book view's book-preview__* rules stay untouched. ── */
+
+.msv-manuscript-title {
+  text-align: center;
+  font-size: 2.2em;
+  font-weight: 600;
+  color: var(--txH, #eef2fb);
+  line-height: 1.2;
+  margin: 0 0 0.5em;
+}
+
 /* ── M2 (SKY-9017): Part heading (H1), chapter/part epigraph, note affordance ── */
 
 .msv-part-heading {

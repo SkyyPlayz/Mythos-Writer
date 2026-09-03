@@ -2012,6 +2012,19 @@ export default function ManuscriptView({
                     : `${rulerDrag?.px ?? pageW} px page`}
                 </div>
               )}
+              {/* SKY-11357: book title at the very top of the manuscript — the
+                  Book-view title minus its page-header padding/rule, so it
+                  reads as part of the manuscript sheet, not a separate block. */}
+              {story.title && (
+                <div
+                  className="msv-manuscript-title"
+                  role="heading"
+                  aria-level={1}
+                  data-testid="msv-manuscript-title"
+                >
+                  {story.title}
+                </div>
+              )}
               <div style={{ height: topPad }} data-testid="msv-spacer-top" aria-hidden="true" />
               {sceneEditorSlot ?? visible.map(renderBlock)}
               <div
