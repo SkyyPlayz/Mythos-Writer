@@ -411,7 +411,10 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   const [expandedFactIds, setExpandedFactIds] = useState<Set<string>>(new Set());
   const [draftSizeWarning, setDraftSizeWarning] = useState(false);
   const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
-  const [streamPhase, setStreamPhase] = useState<'idle' | 'streaming' | 'stalled'>('idle');
+  // 'thinking' (SKY-11220): a local reasoning model is streaming its private
+  // chain-of-thought and has not emitted a visible answer token yet. It is a
+  // live, working state — distinct from 'stalled' (no activity at all).
+  const [streamPhase, setStreamPhase] = useState<'idle' | 'streaming' | 'thinking' | 'stalled'>('idle');
   const [presetId, setPresetId] = useState<string>(() => loadSessionPreset().presetId);
   const [presetOverrides, setPresetOverrides] = useState<Partial<PresetAxes>>(
     () => loadSessionPreset().overrides,
@@ -517,7 +520,15 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   // Refs for drag state values needed inside closures without stale captures
   const dragSourceIdRef = useRef<string | null>(null);
   const dropBelowRef = useRef(false);
-  const lastTokenAtRef = useRef<number>(0);
+  // SKY-11220: timestamp of the last sign of life from the stream — a visible
+  // token OR a reasoning heartbeat. The stall/hard timers key off this, not off
+  // visible tokens alone, so a local reasoning model thinking for minutes before
+  // its first answer token is never mistaken for a hung stream.
+  const lastActivityAtRef = useRef<number>(0);
+  // Whether the current stream has emitted at least one visible answer token.
+  // Gates the 'thinking' display so a stray reasoning heartbeat between content
+  // tokens can't flip an already-answering stream back to "Thinking…".
+  const hasVisibleTokenRef = useRef<boolean>(false);
   const lastApiMessagesRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   // Holds the system prompt augmented with vault context for the current/last request.
   const contextSystemRef = useRef<string>(BRAINSTORM_SYSTEM_PROMPT);
@@ -1026,22 +1037,34 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     };
   }, []);
 
-  // Stall detection: 20 s no-token → warn; 90 s → hard abort
+  // Stall detection (SKY-11220): both timers measure time since the last sign of
+  // life — a visible token OR a reasoning heartbeat — not time since the last
+  // *visible* token. A local reasoning model emits reasoning heartbeats the whole
+  // time it thinks, so it never trips these; a genuinely wedged stream (no
+  // content AND no reasoning) still does. 20 s of silence → soft "still working"
+  // hint; HARD_TIMEOUT_MS of silence → abort. The server-side max_tokens budget
+  // is the real ceiling on total work, so activity-based reset can't hang forever.
   useEffect(() => {
     if (!loading) return;
     const interval = setInterval(() => {
-      const sinceLastToken = Date.now() - lastTokenAtRef.current;
-      if (sinceLastToken >= HARD_TIMEOUT_MS) {
+      const sinceLastActivity = Date.now() - lastActivityAtRef.current;
+      if (sinceLastActivity >= HARD_TIMEOUT_MS) {
         const sid = streamIdRef.current;
         if (sid) void window.api.streamCancel(sid);
         cleanupStreamRef.current?.();
         setMessages((prev) => prev.slice(0, -1));
-        setError('Generation timed out after 90 seconds. Check your connection and try again.');
+        // Our client-side timeout — say so, and say how long we waited. Never
+        // blame the server ("empty response") for a stall we declared.
+        const waitedSec = Math.round(HARD_TIMEOUT_MS / 1000);
+        setError(
+          `Timed out after ${waitedSec} seconds with no response — the model or connection seems stuck. ` +
+            'A large local model can be slow to start; try again, or switch to a faster model.',
+        );
         setLoading(false);
         setStreamPhase('idle');
         announce('Generation timed out.');
-      } else if (sinceLastToken >= STALL_TIMEOUT_MS) {
-        setStreamPhase((prev) => (prev === 'streaming' ? 'stalled' : prev));
+      } else if (sinceLastActivity >= STALL_TIMEOUT_MS) {
+        setStreamPhase((prev) => (prev === 'streaming' || prev === 'thinking' ? 'stalled' : prev));
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -1123,13 +1146,16 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     const lastApi = apiMessages[apiMessages.length - 1];
     pendingUserTextRef.current = lastApi?.role === 'user' ? lastApi.content : '';
     streamingTextRef.current = '';
-    lastTokenAtRef.current = Date.now();
+    lastActivityAtRef.current = Date.now();
+    hasVisibleTokenRef.current = false;
     setStreamPhase('streaming');
 
     const unsubToken = window.api.onStreamToken(({ streamId: sid, token }) => {
       if (sid !== streamIdRef.current) return;
-      lastTokenAtRef.current = Date.now();
-      setStreamPhase((prev) => (prev === 'stalled' ? 'streaming' : prev));
+      lastActivityAtRef.current = Date.now();
+      hasVisibleTokenRef.current = true;
+      // A visible answer token supersedes both 'stalled' and 'thinking'.
+      setStreamPhase((prev) => (prev === 'streaming' ? prev : 'streaming'));
       streamingTextRef.current += token;
       const currentText = streamingTextRef.current;
       setMessages((prev) => {
@@ -1141,6 +1167,18 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
         return updated;
       });
       window.api.streamAck(sid, 1);
+    });
+
+    // SKY-11220: the model is thinking (streaming reasoning_content). Treat it as
+    // activity so the stall/hard timers don't abort a live stream, and — until
+    // the first visible token — surface a 'thinking' state so the box is never a
+    // frozen, silent void (the owner's "i dont like having things running i cant
+    // see" ruling; ties SKY-11223). onStreamReasoning may be absent on an older
+    // preload, so it is called optionally.
+    const unsubReasoning = window.api.onStreamReasoning?.(({ streamId: sid }) => {
+      if (sid !== streamIdRef.current) return;
+      lastActivityAtRef.current = Date.now();
+      if (!hasVisibleTokenRef.current) setStreamPhase('thinking');
     });
 
     const unsubEnd = window.api.onStreamEnd(({ streamId: sid }) => {
@@ -1227,6 +1265,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
 
     cleanupStreamRef.current = () => {
       unsubToken();
+      unsubReasoning?.();
       unsubEnd();
       unsubError();
       streamIdRef.current = null;
@@ -1236,9 +1275,11 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
 
     try {
       // 2048 (the IPC cap) doubles the old 1024 default so long replies keep
-      // room for the required trailing [FACT:...] tags. Thinking stays off:
-      // this surface's stall/hard-timeout timers reset only on visible tokens,
-      // and a silent thinking phase would trip them (and share this budget).
+      // room for the required trailing [FACT:...] tags. We do NOT request
+      // adaptive thinking here (local reasoning models think natively regardless,
+      // and enabling it on Anthropic would change its budget); the stall/hard
+      // timers are now thinking-aware (they reset on reasoning heartbeats too,
+      // SKY-11220), so a native thinking phase no longer reads as a hung stream.
       const { streamId: sid } = await window.api.streamStart({
         messages: apiMessages,
         system: contextSystemRef.current,
@@ -2357,6 +2398,17 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
 
           {error && (
             <div className="brainstorm-error" role="alert">{error}</div>
+          )}
+
+          {streamPhase === 'thinking' && loading && (
+            <div className="bs-thinking-panel" role="status" aria-label="Model is thinking" data-testid="bs-thinking">
+              <span className="bs-thinking-dots" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </span>
+              <p className="bs-thinking-msg">
+                Thinking… a local reasoning model can take a while before it replies.
+              </p>
+            </div>
           )}
 
           {streamPhase === 'stalled' && loading && (

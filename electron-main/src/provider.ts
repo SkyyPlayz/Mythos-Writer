@@ -338,6 +338,19 @@ export interface StreamRequest {
    * Defaults to applying the reserve for eligible local runtimes.
    */
   reserveThinkingTokens?: boolean;
+  /**
+   * SKY-11220: invoked with each non-empty reasoning delta the model streams
+   * *before* (or instead of) visible answer content. Local reasoning models
+   * (qwen3, DeepSeek-R1, gpt-oss on LM Studio) can think for minutes, emitting
+   * `reasoning_content` the whole time while `content` stays empty — those
+   * chunks are buffered here and never yielded, so a caller watching only the
+   * yielded token stream sees total silence and reads a live thinking phase as a
+   * hung stream. This callback surfaces that the stream is *alive* so the caller
+   * can keep a stall/hard timeout from aborting it (BrainstormPage's timers).
+   * The delta is the model's private chain-of-thought — it is a liveness
+   * heartbeat, NOT for display, so CoT stays hidden.
+   */
+  onReasoning?: (delta: string) => void;
 }
 
 export interface StreamResult {
@@ -793,16 +806,24 @@ async function* runOpenAICompatibleStream(
           if (clean.length > 0) {
             yieldedText = true;
             yield clean;
+          } else {
+            // Content arrived but the strip held all of it back — the model is
+            // emitting private `<think>…</think>` reasoning inline. No visible
+            // token is yielded, so surface it as a thinking heartbeat too
+            // (SKY-11220) or an inline-CoT model reads as a hung stream.
+            req.onReasoning?.(content);
           }
           continue;
         }
 
         // No content on this chunk — accumulate any reasoning text as a fallback.
         // Buffered unconditionally; it is only surfaced below if the stream never
-        // produced usable content.
+        // produced usable content. It also drives the thinking heartbeat so a
+        // caller can tell a still-reasoning stream from a hung one (SKY-11220).
         const reasoning = delta?.reasoning_content ?? delta?.reasoning;
         if (typeof reasoning === 'string' && reasoning.length > 0) {
           reasoningBuffer += reasoning;
+          req.onReasoning?.(reasoning);
         }
       }
     }

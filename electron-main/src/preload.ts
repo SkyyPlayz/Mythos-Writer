@@ -351,6 +351,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('stream:end', handler);
     return () => ipcRenderer.removeListener('stream:end', handler);
   },
+  // SKY-11220: "still thinking" heartbeat for local reasoning models — fires
+  // while the model streams reasoning_content before its first visible token, so
+  // the renderer can keep its stall/hard timers alive and show a thinking state.
+  onStreamReasoning: (cb: (data: { streamId: string }) => void) => {
+    const handler = (_: unknown, data: { streamId: string }) => cb(data);
+    ipcRenderer.on('stream:reasoning', handler);
+    return () => ipcRenderer.removeListener('stream:reasoning', handler);
+  },
   onStreamError: (cb: (data: { streamId: string; category: string; message: string }) => void) => {
     const handler = (_: unknown, data: { streamId: string; category: string; message: string }) => cb(data);
     ipcRenderer.on('stream:error', handler);

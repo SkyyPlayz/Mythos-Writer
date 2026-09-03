@@ -38,6 +38,8 @@ function removeMediaRecorderMock() {
 let tokenCb: TokenHandler | null = null;
 let endCb: EndHandler | null = null;
 let errorCb: ErrorHandler | null = null;
+// SKY-11220: the "still thinking" reasoning heartbeat callback.
+let reasoningCb: ((data: { streamId: string }) => void) | null = null;
 
 const mockStreamStart = vi.fn();
 const mockStreamCancel = vi.fn().mockResolvedValue({ cancelled: true });
@@ -88,6 +90,12 @@ function buildApi(overrides: Record<string, unknown> = {}) {
         errorCb = null;
       };
     },
+    onStreamReasoning: (cb: (data: { streamId: string }) => void) => {
+      reasoningCb = cb;
+      return () => {
+        reasoningCb = null;
+      };
+    },
     sttStart: vi.fn(),
     sttStop: vi.fn(),
     onSttResult: () => () => {},
@@ -130,6 +138,7 @@ beforeEach(() => {
   tokenCb = null;
   endCb = null;
   errorCb = null;
+  reasoningCb = null;
   mockStreamStart.mockResolvedValue({ streamId: 'test-stream-1' });
   mockStreamCancel.mockResolvedValue({ cancelled: true });
   mockVoiceSpeak.mockResolvedValue({ speakId: 'speak-1' });
@@ -991,8 +1000,58 @@ describe('Stalled-stream UX', () => {
     await act(async () => { vi.advanceTimersByTime(HARD_TIMEOUT_MS + 1000); });
 
     expect(screen.getByRole('alert')).toHaveTextContent(/timed out/i);
+    // The timeout names how long we waited and reads as our own timeout — never
+    // as an "empty response" that blames the server (SKY-11220 AC3).
+    expect(screen.getByRole('alert')).toHaveTextContent(/90 seconds/i);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/empty response/i);
     expect(mockStreamCancel).toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: /cancel streaming/i })).not.toBeInTheDocument();
+  });
+
+  it('reasoning heartbeats keep a thinking model alive past HARD_TIMEOUT_MS (SKY-11220)', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'ask a 35B local reasoning model' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await act(async () => {});
+    await act(async () => {});
+
+    expect(reasoningCb).not.toBeNull();
+
+    // The model streams reasoning (no visible token) for 105 s — longer than the
+    // 90 s hard timeout — but emits a heartbeat every 15 s. Since the timers key
+    // off last *activity*, not last visible token, the stream is never aborted.
+    for (let i = 0; i < 7; i++) {
+      act(() => { reasoningCb?.({ streamId: 'test-stream-1' }); });
+      await act(async () => { vi.advanceTimersByTime(15_000); });
+    }
+
+    expect(mockStreamCancel).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // The box shows it is actively thinking, not frozen.
+    expect(screen.getByTestId('bs-thinking')).toBeInTheDocument();
+  });
+
+  it('shows a Thinking… indicator while reasoning, then clears it on the first token', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'think first' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await act(async () => {});
+    await act(async () => {});
+
+    expect(reasoningCb).not.toBeNull();
+
+    act(() => { reasoningCb?.({ streamId: 'test-stream-1' }); });
+    await act(async () => {});
+    expect(screen.getByTestId('bs-thinking')).toBeInTheDocument();
+
+    // First visible answer token supersedes the thinking state.
+    act(() => { tokenCb?.({ streamId: 'test-stream-1', token: 'Here' }); });
+    await act(async () => {});
+    expect(screen.queryByTestId('bs-thinking')).not.toBeInTheDocument();
   });
 
   it('Cancel button in input area shows cancelled toast', async () => {

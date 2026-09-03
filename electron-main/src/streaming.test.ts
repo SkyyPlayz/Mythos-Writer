@@ -289,6 +289,44 @@ describe('STREAM_START', () => {
     expect(endCalls[0][1]).toEqual({ streamId });
   });
 
+  it('forwards a STREAM_REASONING heartbeat while the model thinks (SKY-11220)', async () => {
+    mockStreamFromProvider.mockImplementation(async function*(_config, req) {
+      req?.onReasoning?.('private chain-of-thought');
+      yield 'answer';
+    });
+
+    const { startHandler } = getHandlers(reg);
+    const sender = makeSender();
+    const { streamId } = await startHandler(makeEvent(sender), {
+      messages: [{ role: 'user', content: 'Hi' }],
+    });
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    const reasoningCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_REASONING);
+    expect(reasoningCalls).toHaveLength(1);
+    // Only the streamId crosses the boundary — never the chain-of-thought text.
+    expect(reasoningCalls[0][1]).toEqual({ streamId });
+  });
+
+  it('coalesces a burst of reasoning deltas into a single heartbeat per window', async () => {
+    mockStreamFromProvider.mockImplementation(async function*(_config, req) {
+      // A reasoning model emits many deltas per second; all fire within one ms
+      // here, so the 1s throttle must collapse them to a single heartbeat.
+      for (let i = 0; i < 25; i++) req?.onReasoning?.('t');
+      yield 'x';
+    });
+
+    const { startHandler } = getHandlers(reg);
+    const sender = makeSender();
+    await startHandler(makeEvent(sender), { messages: [{ role: 'user', content: 'Hi' }] });
+
+    await new Promise((r) => setTimeout(r, 0));
+
+    const reasoningCalls = sender.send.mock.calls.filter(([ch]) => ch === STREAM_CHANNELS.STREAM_REASONING);
+    expect(reasoningCalls).toHaveLength(1);
+  });
+
   it('ignores non-text-delta chunk types without error', async () => {
     mockStreamFromProvider.mockImplementation(async function*() { yield 'x'; });
 
