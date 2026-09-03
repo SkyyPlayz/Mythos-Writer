@@ -1316,6 +1316,49 @@
   gap: 8px;
 }
 
+/* SKY-11220: live "thinking" indicator for local reasoning models — a working
+   state, not an error, so it stays quiet (no border/actions) and just pulses. */
+.bs-thinking-panel {
+  margin: 8px 16px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bs-thinking-msg {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.bs-thinking-dots {
+  display: inline-flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.bs-thinking-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  opacity: 0.4;
+  animation: bs-thinking-pulse 1.2s ease-in-out infinite;
+}
+
+.bs-thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.bs-thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes bs-thinking-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bs-thinking-dots span { animation: none; opacity: 0.7; }
+}
+
 .bs-stalled-msg {
   margin: 0;
   font-size: 0.8rem;

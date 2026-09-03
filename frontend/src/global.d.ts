@@ -1226,6 +1226,8 @@ interface Window {
     onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => () => void;
     onStreamEnd: (cb: (data: { streamId: string }) => void) => () => void;
     onStreamError: (cb: (data: { streamId: string; category: string; message: string }) => void) => () => void;
+    /** SKY-11220: "still thinking" heartbeat while a local reasoning model streams reasoning_content. */
+    onStreamReasoning: (cb: (data: { streamId: string }) => void) => () => void;
 
     // STT (MYT-156)
     sttStart: () => void;

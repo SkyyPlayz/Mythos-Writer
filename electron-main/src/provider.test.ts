@@ -398,6 +398,44 @@ describe('OpenAI-compatible routing (§2)', () => {
       expect(tokens).toEqual(['Final', ' answer']);
     });
 
+    it('fires onReasoning for each reasoning_content delta (thinking heartbeat)', async () => {
+      // The signal that keeps a caller's stall timer alive while the model
+      // thinks — buffered reasoning is otherwise invisible to the token stream.
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+        makeRawSseResponse([
+          { reasoning_content: 'step 1 ' },
+          { reasoning_content: 'step 2 ' },
+          { content: 'Done.' },
+        ]),
+      );
+      const seen: string[] = [];
+      const tokens = await collectTokens(
+        streamFromProvider(makeLmStudioConfig(), makeReq({ onReasoning: (d) => seen.push(d) })),
+      );
+      // Reasoning fired for both thinking deltas; only the answer content yielded.
+      expect(seen).toEqual(['step 1 ', 'step 2 ']);
+      expect(tokens).toEqual(['Done.']);
+    });
+
+    it('fires onReasoning for inline <think> content held back by the stripper', async () => {
+      // Some local models emit their reasoning as literal <think>…</think> inside
+      // `content`. The stripper holds all of it back (no visible token), so the
+      // heartbeat must still fire or an inline-CoT model reads as a hung stream.
+      (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+        makeRawSseResponse([
+          { content: '<think>pondering' },
+          { content: ' deeply</think>' },
+          { content: 'The answer.' },
+        ]),
+      );
+      let heartbeats = 0;
+      const tokens = await collectTokens(
+        streamFromProvider(makeLmStudioConfig(), makeReq({ onReasoning: () => { heartbeats++; } })),
+      );
+      expect(heartbeats).toBeGreaterThan(0);
+      expect(tokens.join('')).toBe('The answer.');
+    });
+
     it('reproduces the qwen3-on-LM-Studio bug against a real loopback HTTP server', async () => {
       // Not a mock: a real OpenAI-compatible server on 127.0.0.1 that streams the
       // documented qwen3 shape (answer in reasoning_content, empty content).
@@ -424,6 +462,45 @@ describe('OpenAI-compatible routing (§2)', () => {
       } finally {
         await new Promise<void>((r) => server.close(() => r()));
         vi.stubGlobal('fetch', vi.fn()); // restore the suite's fetch mock
+      }
+    });
+
+    it('fires the thinking heartbeat from a real server that reasons before answering (SKY-11220)', async () => {
+      // Reproduces the failing shape against a real HTTP stream: the model thinks
+      // (several reasoning_content deltas) THEN answers (content). Under the old
+      // visible-token-only timers this long silent phase was aborted; the
+      // heartbeat must fire for each thinking delta so a caller keeps it alive.
+      vi.unstubAllGlobals();
+      const http = await import('node:http');
+      const server = http.createServer((req, res) => {
+        if (req.url === '/v1/chat/completions') {
+          res.writeHead(200, { 'content-type': 'text/event-stream' });
+          for (const t of ['Let me ', 'think about ', 'this… ']) {
+            res.write(`data: ${JSON.stringify({ choices: [{ delta: { reasoning_content: t } }] })}\n\n`);
+          }
+          res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: 'The answer is 42.' } }] })}\n\n`);
+          res.write('data: [DONE]\n\n');
+          res.end();
+          return;
+        }
+        res.writeHead(404).end();
+      });
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+      const port = (server.address() as import('node:net').AddressInfo).port;
+      const heartbeats: string[] = [];
+      try {
+        const tokens = await collectTokens(
+          streamFromProvider(
+            makeCustomConfig({ baseUrl: `http://127.0.0.1:${port}/v1` }),
+            makeReq({ onReasoning: (d) => heartbeats.push(d) }),
+          ),
+        );
+        // Heartbeat fired for each thinking delta; only the answer surfaced.
+        expect(heartbeats).toEqual(['Let me ', 'think about ', 'this… ']);
+        expect(tokens.join('')).toBe('The answer is 42.');
+      } finally {
+        await new Promise<void>((r) => server.close(() => r()));
+        vi.stubGlobal('fetch', vi.fn());
       }
     });
   });

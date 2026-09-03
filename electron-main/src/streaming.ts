@@ -11,10 +11,22 @@ export const STREAM_CHANNELS = {
   STREAM_TOKEN: 'stream:token',
   STREAM_END: 'stream:end',
   STREAM_ERROR: 'stream:error',
+  // SKY-11220: "still thinking" heartbeat. A local reasoning model streams its
+  // chain-of-thought in reasoning_content (buffered by the provider, never
+  // yielded) for a long time before the first visible token; this event lets the
+  // renderer keep its stall/hard timers from aborting a live stream. Carries no
+  // chain-of-thought text — the delta stays in the main process.
+  STREAM_REASONING: 'stream:reasoning',
 } as const;
 
 // Max unacknowledged tokens before backpressure drops further tokens.
 export const MAX_PENDING_TOKENS = 50;
+
+// SKY-11220: minimum gap between STREAM_REASONING heartbeats. A reasoning model
+// emits many reasoning_content deltas per second; the renderer only needs a
+// periodic "still alive" ping (its stall window is 20s), so we coalesce to at
+// most one heartbeat per second rather than mirroring the whole CoT firehose.
+export const REASONING_HEARTBEAT_MS = 1000;
 
 // Max concurrent streams allowed from a single renderer sender (cost-DoS guard).
 export const MAX_CONCURRENT_PER_SENDER = 4;
@@ -258,12 +270,27 @@ async function runStream(
       ? { ...providerConfig, model: payload.model }
       : providerConfig;
 
+    // SKY-11220: forward a throttled "still thinking" heartbeat while the model
+    // reasons. Without it, the renderer's stall/hard timers (which only observe
+    // stream:token) abort a live local reasoning stream that has yet to emit its
+    // first visible token. No chain-of-thought text crosses the boundary — the
+    // event is a bare liveness ping.
+    let lastReasoningSentAt = 0;
+    const onReasoning = (): void => {
+      if (sender.isDestroyed()) return;
+      const now = Date.now();
+      if (now - lastReasoningSentAt < REASONING_HEARTBEAT_MS) return;
+      lastReasoningSentAt = now;
+      sender.send(STREAM_CHANNELS.STREAM_REASONING, { streamId });
+    };
+
     for await (const token of streamFromProvider(config, {
       messages: payload.messages,
       system: payload.system,
       maxTokens: payload.maxTokens,
       thinking: payload.thinking,
       signal: controller.signal,
+      onReasoning,
     })) {
       const entry = reg.get(streamId);
       if (!entry) continue;
