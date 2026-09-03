@@ -23,16 +23,25 @@ const mockOnVaultNotesUpdated = vi.fn((cb: () => void) => {
   notesUpdatedCb = cb;
   return vi.fn();
 });
+// SKY-11375: a project switch must reload the tree from disk so it never shows
+// the outgoing vault's files (cross-vault stale view).
+let projectSwitchedCb: (() => void) | undefined;
+const mockOnProjectSwitched = vi.fn((cb: () => void) => {
+  projectSwitchedCb = cb;
+  return vi.fn();
+});
 
 beforeEach(() => {
   vi.useFakeTimers();
   fileChangedCb = undefined;
   notesUpdatedCb = undefined;
+  projectSwitchedCb = undefined;
   mockListVault.mockReset().mockResolvedValue({ items: [] });
   mockListNotesVault.mockReset().mockResolvedValue({ items: [] });
   mockStartVaultWatch.mockReset().mockResolvedValue({ watching: true });
   mockOnVaultFileChanged.mockClear();
   mockOnVaultNotesUpdated.mockClear();
+  mockOnProjectSwitched.mockClear();
 
   (window as unknown as { api: unknown }).api = {
     listVault: mockListVault,
@@ -40,6 +49,7 @@ beforeEach(() => {
     startVaultWatch: mockStartVaultWatch,
     onVaultFileChanged: mockOnVaultFileChanged,
     onVaultNotesUpdated: mockOnVaultNotesUpdated,
+    onProjectSwitched: mockOnProjectSwitched,
   };
 });
 
@@ -86,6 +96,20 @@ describe("useVaultFiles('notes')", () => {
     expect(mockListNotesVault).toHaveBeenCalledTimes(2);
   });
 
+  it('reloads on project:switched (SKY-11375 — never serves the outgoing vault stale)', async () => {
+    renderHook(() => useVaultFiles('notes'));
+    await flushMicrotasks();
+    expect(mockListNotesVault).toHaveBeenCalledTimes(1); // initial load
+    expect(mockOnProjectSwitched).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      projectSwitchedCb?.();
+    });
+    await flushMicrotasks();
+    // Immediate (not debounced) reload against the newly-active notes root.
+    expect(mockListNotesVault).toHaveBeenCalledTimes(2);
+  });
+
   it('does NOT reload when the Story-Vault channel fires', async () => {
     renderHook(() => useVaultFiles('notes'));
     await flushMicrotasks();
@@ -124,6 +148,18 @@ describe("useVaultFiles('story')", () => {
     act(() => {
       fileChangedCb?.();
       vi.advanceTimersByTime(150);
+    });
+    await flushMicrotasks();
+    expect(mockListVault).toHaveBeenCalledTimes(2);
+  });
+
+  it('reloads on project:switched (SKY-11375 — story tree follows the switch too)', async () => {
+    renderHook(() => useVaultFiles('story'));
+    await flushMicrotasks();
+    expect(mockListVault).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      projectSwitchedCb?.();
     });
     await flushMicrotasks();
     expect(mockListVault).toHaveBeenCalledTimes(2);

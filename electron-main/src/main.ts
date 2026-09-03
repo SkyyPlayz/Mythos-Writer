@@ -475,6 +475,8 @@ import {
   notesVaultAbsPath,
   buildLinkResolutionReport,
 } from './mythosFormat/notesVaultRegistry.js';
+// SKY-11375: pure resolver for the switch-time Notes Vault (bleed guard).
+import { resolveSwitchNotesRoot } from './switchNotesResolution.js';
 import {
   ensureStoryVaultRegistry,
   readStoryVaultRegistry,
@@ -1010,24 +1012,34 @@ const getVaultRoot = () => loadVaultSettings().vaultRoot;
 // manifest to a regenerable cache under `.mythos/` — canonical structure
 // lives in mythos.json + book.md + scene frontmatter (see writeManifest).
 const getManifestPath = () => resolveManifestPath(getVaultRoot());
-const getNotesVaultRoot = () => {
-  // SKY-11058: v2 vaults resolve through the per-vault registry so the
-  // caller always gets the currently-active notes vault path.
-  // ensureNotesVaultRegistry is idempotent and fast after the first call
-  // (reads one JSON file). Legacy v0.4 vaults fall back to the userData
-  // vault-settings entry unchanged.
-  const mythosRoot = mythosRootForStoryVault(getVaultRoot());
-  if (mythosRoot !== null) {
-    try {
-      const registry = ensureNotesVaultRegistry(mythosRoot);
-      const entry = registry.vaults.find((v) => v.id === registry.activeId);
-      if (entry) return notesVaultAbsPath(mythosRoot, entry);
-    } catch {
-      // Fall through to legacy on any registry I/O error.
-    }
+// SKY-11375: the Notes Vault that STRUCTURALLY belongs to `storyVaultRoot` —
+// resolved from THAT vault's own MythosVault registry, independent of whatever
+// vault is currently active. Returns null for a legacy twin-root vault with no
+// registry. This is the authoritative pairing for a v2 vault and the only safe
+// input for a project switch: it never leaks the active (outgoing) vault's
+// notes root into the incoming vault (cross-vault content bleed).
+const notesRootForStoryVault = (storyVaultRoot: string): string | null => {
+  const mythosRoot = mythosRootForStoryVault(storyVaultRoot);
+  if (mythosRoot === null) return null;
+  try {
+    // ensureNotesVaultRegistry is idempotent and fast after the first call
+    // (reads one JSON file); it also heals a brand-new vault that has no
+    // registry yet by writing the default 'Notes Vault' entry.
+    const registry = ensureNotesVaultRegistry(mythosRoot);
+    const entry = registry.vaults.find((v) => v.id === registry.activeId);
+    if (entry) return notesVaultAbsPath(mythosRoot, entry);
+  } catch {
+    // Fall through to null on any registry I/O error.
   }
-  return loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
+  return null;
 };
+const getNotesVaultRoot = () =>
+  // SKY-11058: v2 vaults resolve through the per-vault registry so the caller
+  // always gets the currently-active notes vault path. Legacy v0.4 vaults fall
+  // back to the userData vault-settings entry unchanged.
+  notesRootForStoryVault(getVaultRoot())
+  ?? loadVaultSettings().notesVaultRoot
+  ?? defaultNotesVaultRoot();
 // SKY-10952: Agent Vault only exists as a sibling inside a v2 MythosVault
 // root. Legacy (twin-root) vaults have no Agent Vault — sessions there keep
 // living under Notes Vault/Sessions/ (pre-existing behavior, out of scope).
@@ -5951,31 +5963,41 @@ const handlers: IpcHandlers = {
     if (!fs.existsSync(newRoot)) {
       return { vaultRoot: getVaultRoot(), switched: false, error: `Path does not exist: ${newRoot}` };
     }
-    // SKY-320: when the caller supplies a Notes Vault, it must match the
-    // paired entry in recent-projects. Cross-pairing (story from entry A,
-    // notes from entry B) is rejected so a compromised renderer cannot
-    // assemble a never-seen pair from the allowlist. When the caller omits
-    // notesVaultRoot, fall back to the paired entry or the legacy default.
-    const pairedNotes = getPairedNotesVaultRoot(newRoot);
-    let newNotesRoot: string;
-    if (payload?.notesVaultRoot != null) {
-      if (typeof payload.notesVaultRoot !== 'string' || payload.notesVaultRoot.length === 0) {
-        return { vaultRoot: getVaultRoot(), switched: false, error: 'notesVaultRoot: must be a non-empty string' };
-      }
-      if (pairedNotes && pairedNotes !== payload.notesVaultRoot) {
-        return {
-          vaultRoot: getVaultRoot(),
-          switched: false,
-          error: 'notesVaultRoot: does not match the paired entry in recent-projects',
-        };
-      }
-      newNotesRoot = payload.notesVaultRoot;
-    } else {
-      newNotesRoot = pairedNotes ?? getNotesVaultRoot();
+    // SKY-11375 / SKY-320: resolve which Notes Vault this switch repoints to.
+    // The incoming vault's OWN structure (its MythosVault notes registry) is
+    // authoritative for a v2 vault; only a legacy twin-root vault falls back to
+    // the recents pairing or (last resort) the active root. The old code fell
+    // back to getNotesVaultRoot() — the OUTGOING vault's notes root — whenever
+    // the incoming vault had no pairing, silently repointing it at another
+    // vault's notes directory (cross-vault content bleed). See
+    // switchNotesResolution.ts for the full rationale + tests.
+    const suppliedNotesRoot: string | null =
+      payload?.notesVaultRoot == null ? null : payload.notesVaultRoot;
+    if (suppliedNotesRoot !== null && (typeof suppliedNotesRoot !== 'string' || suppliedNotesRoot.length === 0)) {
+      return { vaultRoot: getVaultRoot(), switched: false, error: 'notesVaultRoot: must be a non-empty string' };
     }
+    const previousStoryRoot = getVaultRoot();
+    const previousNotesRoot = getNotesVaultRoot();
+    const resolution = resolveSwitchNotesRoot({
+      suppliedNotesRoot,
+      structuralNotesRoot: notesRootForStoryVault(newRoot),
+      pairedNotesRoot: getPairedNotesVaultRoot(newRoot) ?? null,
+      activeNotesRoot: previousNotesRoot,
+    });
+    if (!resolution.ok) {
+      return { vaultRoot: getVaultRoot(), switched: false, error: resolution.error };
+    }
+    const newNotesRoot = resolution.notesVaultRoot;
     if (!fs.existsSync(newNotesRoot)) {
       return { vaultRoot: getVaultRoot(), switched: false, error: `Notes Vault path does not exist: ${newNotesRoot}` };
     }
+    // SKY-11375 AC#4: prove the repoint. One line that shows BOTH roots moving
+    // (or staying) per switch — the single log the ticket asked for to confirm
+    // the notes side actually follows the story side to the target vault.
+    console.log(
+      `[project-switch] SKY-11375 repoint: story ${previousStoryRoot} -> ${newRoot} | ` +
+      `notes ${previousNotesRoot} -> ${newNotesRoot} (notes-source: ${resolution.source})`,
+    );
     // Stop watchers, scheduler, and close current DB before switching
     stopWritingScanScheduler();
     await stopBoardWatcher();
