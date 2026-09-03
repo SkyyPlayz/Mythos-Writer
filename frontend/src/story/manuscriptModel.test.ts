@@ -275,17 +275,17 @@ describe('cycleStatus', () => {
 describe('buildBlocks', () => {
   const story = mkStory();
 
-  it('emits every chapter/scene/paragraph in order at book zoom (M2: note-slot before each H2)', () => {
+  it('emits every chapter/scene/paragraph in order at book zoom (SKY-11356: note-slot after each H2)', () => {
     const blocks = buildBlocks(story, cur('book'), NONE);
     expect(blocks.map((b) => `${b.kind}:${b.id}`)).toEqual([
-      'note-slot:note-chapter-ch1', 'h2:h2-ch1',
+      'h2:h2-ch1', 'note-slot:note-chapter-ch1',
       'h3:h3-s1', 'para:p-s1-b0', 'para:p-s1-b1',
       'h3:h3-s2', 'para:p-s2-b0',
-      'note-slot:note-chapter-ch2', 'h2:h2-ch2',
+      'h2:h2-ch2', 'note-slot:note-chapter-ch2',
       'h3:h3-s3', 'para:p-s3-b0',
       'h3:h3-s4', 'para:p-s4-b0', 'para:p-s4-b1', 'para:p-s4-b2',
       'h3:h3-s5', 'para:p-s5-b0',
-      'note-slot:note-chapter-ch3', 'h2:h2-ch3',
+      'h2:h2-ch3', 'note-slot:note-chapter-ch3',
       'h3:h3-s6', 'para:p-s6-b0',
       'h3:h3-s7', 'para:p-s7-b0',
     ]);
@@ -295,9 +295,31 @@ describe('buildBlocks', () => {
     expect(buildBlocks(story, cur('part'), NONE)).toEqual(buildBlocks(story, cur('book'), NONE));
   });
 
-  it('scopes chapter zoom to the cursor chapter, including its H2 (M2: note-slot precedes H2)', () => {
+  it('with real parts, every note follows its heading: h1 → part note, h2 → chapter note (SKY-11356, matches Book view)', () => {
+    const parted = mkStory();
+    const [ch1, ch2, ch3] = parted.chapters;
+    parted.parts = [
+      { id: 'p1', title: 'Part One', order: 0, note: [], chapters: [ch1, ch2], createdAt: NOW, updatedAt: NOW },
+      { id: 'p2', title: 'Part Two', order: 1, note: [], chapters: [ch3], createdAt: NOW, updatedAt: NOW },
+    ];
+    const heads = buildBlocks(parted, cur('book'), NONE)
+      .filter((b) => b.kind === 'h1' || b.kind === 'h2' || b.kind === 'note-slot')
+      .map((b) => `${b.kind}:${b.id}`);
+    expect(heads).toEqual([
+      'h1:h1-p1', 'note-slot:note-part-p1',
+      'h2:h2-ch1', 'note-slot:note-chapter-ch1',
+      'h2:h2-ch2', 'note-slot:note-chapter-ch2',
+      'h1:h1-p2', 'note-slot:note-part-p2',
+      'h2:h2-ch3', 'note-slot:note-chapter-ch3',
+    ]);
+  });
+
+  it('scopes chapter zoom to the cursor chapter, including its H2 (SKY-11356: note-slot follows H2)', () => {
     const blocks = buildBlocks(story, cur('chapter', 1), NONE);
-    // M2: a note-slot for the chapter precedes the H2 at chapter depth
+    // SKY-11356: the chapter's note-slot sits directly after its H2 at chapter depth
+    expect(blocks.map((b) => `${b.kind}:${b.id}`).slice(0, 2)).toEqual([
+      'h2:h2-ch2', 'note-slot:note-chapter-ch2',
+    ]);
     const h2 = blocks.find((b) => b.kind === 'h2');
     expect(h2).toMatchObject({
       kind: 'h2',
