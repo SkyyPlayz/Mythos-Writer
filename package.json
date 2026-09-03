@@ -97,6 +97,7 @@
     "test:e2e:ai-off-walkthrough": "playwright test e2e/tests/sky10604-ai-walkthrough.spec.ts --reporter=list,html",
     "test:e2e:ai-off-persistence": "playwright test e2e/tests/sky10604-ai-off-persistence.spec.ts --reporter=list,html",
     "test:e2e:writing-assistant": "playwright test e2e/writing-assistant.spec.ts --reporter=list,html",
+    "test:e2e:beta-reader-consolidation": "playwright test e2e/sky-11221-beta-reader-consolidation.spec.ts --reporter=list,html",
     "test:e2e:outline": "playwright test e2e/tests/outline-planning.spec.ts --reporter=list,html",
     "test:e2e:settings-background": "playwright test e2e/settings-background.spec.ts --reporter=list,html",
     "test:e2e:editor-format-bar": "playwright test e2e/editor-format-bar.spec.ts --reporter=list,html",
