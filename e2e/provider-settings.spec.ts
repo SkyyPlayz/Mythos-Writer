@@ -10,6 +10,12 @@
  * TC-PROV-05  Switching the global provider dropdown fills Base URL with that
  *              provider's default (SKY-6941 regression — it used to keep the
  *              previously-selected provider's URL/placeholder)
+ * TC-PROV-07  Legacy API Key section only renders for providers that need a
+ *              key (SKY-11219 AC-1/AC-2)
+ * TC-PROV-08  No-override agent Model field inherits and live-tracks the
+ *              global provider's Default model (SKY-11219 AC-3)
+ * TC-PROV-09  Editing Base URL for an already-selected listable provider
+ *              re-fetches models after a debounce (SKY-11219 AC-4)
  *
  * The real `settings:testConnection` IPC handler is replaced with a mock that
  * always succeeds so no actual Ollama/LM Studio instance is needed.
@@ -312,4 +318,118 @@ test('TC-PROV-06: Save persists global provider config to app-settings.json on d
   expect(stored.provider?.kind).toBe('lmstudio');
   expect(stored.provider?.baseUrl).toBe('http://127.0.0.1:9999/v1');
   expect(stored.provider?.model).toBe('e2e-persisted-model');
+});
+
+// ─── TC-PROV-07/08: SKY-11219 provider-adaptive settings ──────────────────────
+//
+// Each test below explicitly selects its starting provider rather than
+// relying on whatever a prior test left selected, matching TC-PROV-01's
+// pattern of asserting the exact starting state.
+
+test('TC-PROV-07: legacy API Key section only renders for providers that need one', async () => {
+  await page.locator('.app-menu-gear-btn').click();
+  await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
+
+  const providerSelect = page.getByLabel('AI provider');
+
+  // Ollama is keyless — the legacy top-level API Key field must not render
+  // at all, not just be hidden/disabled.
+  await providerSelect.selectOption('ollama');
+  await expect(page.locator('#api-key-input')).toHaveCount(0);
+
+  // Switch to OpenAI (needsKey) — field reappears with provider-specific copy.
+  await providerSelect.selectOption('openai');
+  await expect(page.locator('#api-key-input')).toBeVisible();
+  await expect(page.locator('label[for="api-key-input"]')).toHaveText('OpenAI API Key');
+  await expect(page.locator('#api-key-input')).toHaveAttribute('placeholder', 'Paste API key…');
+
+  // Switch to Ollama (keyless) again — hides.
+  await providerSelect.selectOption('ollama');
+  await expect(page.locator('#api-key-input')).toHaveCount(0);
+
+  // Switch to Anthropic (needsKey) — field reappears with the original copy.
+  await providerSelect.selectOption('anthropic');
+  await expect(page.locator('#api-key-input')).toBeVisible();
+  await expect(page.locator('label[for="api-key-input"]')).toHaveText('Anthropic API Key');
+
+  await page.click('.settings-close');
+});
+
+test('TC-PROV-08: no-override agent Model field inherits & live-tracks the provider Default model', async () => {
+  await page.locator('.app-menu-gear-btn').click();
+  await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
+
+  const providerSelect = page.getByLabel('AI provider');
+  await providerSelect.selectOption('ollama');
+
+  const providerModelInput = page.getByLabel('Default model for this provider');
+  const waModel = page.getByLabel('Writing Coach model');
+
+  // Simulate a no-override agent that's never had a value typed for it —
+  // blank, not carrying over whatever a prior test left in place.
+  await waModel.fill('');
+  await expect(waModel).toHaveValue('');
+
+  // The field must reflect the provider's Default model instead of sitting
+  // blank/stale (SKY-11219 AC-3).
+  await providerModelInput.fill('llama3-70b-instruct');
+  await expect(waModel).toHaveValue('llama3-70b-instruct');
+
+  // Live-tracks: editing the provider default again updates the agent field,
+  // since no override was ever typed into it.
+  await providerModelInput.fill('mixtral-8x7b');
+  await expect(waModel).toHaveValue('mixtral-8x7b');
+
+  // Once the user types their own value into the agent field, it wins over
+  // the provider default and stops tracking further edits.
+  await waModel.fill('custom-agent-only-model');
+  await providerModelInput.fill('yet-another-provider-default');
+  await expect(waModel).toHaveValue('custom-agent-only-model');
+
+  await page.click('.settings-close');
+});
+
+// ─── TC-PROV-09: SKY-11219 AC-4 — Base URL edit debounce re-fetch ─────────────
+//
+// Prior to SKY-11219 the model list only re-fetched on a provider *switch*;
+// editing the Base URL for an already-selected listable provider (e.g.
+// pointing the same LM Studio dropdown at a different running endpoint) did
+// nothing until a manual "Refresh models" click. The fix debounces a
+// re-fetch 400ms after the last keystroke — verified here against a real
+// `provider:listModels` IPC handler mock with call tracking, not a fixed sleep.
+
+test('TC-PROV-09: editing Base URL for a listable provider re-fetches models after a debounce', async () => {
+  await page.locator('.app-menu-gear-btn').click();
+  await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
+  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
+  await page.locator('[data-testid="settings-cat-agents"]').click();
+
+  const providerSelect = page.getByLabel('AI provider');
+  await providerSelect.selectOption('lmstudio');
+
+  await app!.evaluate(async ({ ipcMain }) => {
+    (globalThis as Record<string, unknown>).__e2eListModelsCalls = [];
+    ipcMain.removeHandler('provider:listModels');
+    ipcMain.handle('provider:listModels', async (_event, payload: unknown) => {
+      (((globalThis as Record<string, unknown>).__e2eListModelsCalls) as unknown[]).push(payload);
+      return { ok: true, models: ['e2e-debounced-model'] };
+    });
+  });
+
+  const baseUrlInput = page.getByLabel('Provider base URL');
+  await baseUrlInput.fill('http://127.0.0.1:5555/v1');
+
+  // Poll past the 400ms debounce instead of a single fixed wait.
+  await expect(async () => {
+    const calls = await app!.evaluate(
+      () => (globalThis as Record<string, unknown>).__e2eListModelsCalls as { baseUrl?: string }[],
+    );
+    expect(calls.some((c) => c.baseUrl === 'http://127.0.0.1:5555/v1')).toBe(true);
+  }).toPass({ timeout: 3_000 });
+
+  await page.click('.settings-close');
 });

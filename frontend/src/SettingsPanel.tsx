@@ -421,7 +421,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   }, []);
 
   const keyIsConfigured = Boolean(settings.apiKey);
-  const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
+  const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput, providerKind) : null;
 
   // Beta 3 M22: NonNullable so the optional betaReader slot is editable with
   // the same generic setter (the slot is normalized present at settings load).
@@ -952,22 +952,33 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 setModelListError={setModelListError}
               />
 
-              <ApiKeySection
-                apiKeyInput={apiKeyInput}
-                setApiKeyInput={setApiKeyInput}
-                apiKeyDirty={apiKeyDirty}
-                setApiKeyDirty={setApiKeyDirty}
-                showApiKey={showApiKey}
-                setShowApiKey={setShowApiKey}
-                keyIsConfigured={keyIsConfigured}
-                apiKeyError={apiKeyError}
-                setSavedOk={setSavedOk}
-              />
+              {/* SKY-11219: this legacy key is Anthropic/OpenAI/custom-only
+                  (ProviderSection already hides its own key field for
+                  providers that need none) — showing it for a keyless local
+                  provider like LM Studio/Ollama falsely implies a cloud key
+                  is required. */}
+              {PROVIDER_OPTIONS.find((p) => p.value === providerKind)?.needsKey && (
+                <ApiKeySection
+                  providerKind={providerKind}
+                  apiKeyInput={apiKeyInput}
+                  setApiKeyInput={setApiKeyInput}
+                  apiKeyDirty={apiKeyDirty}
+                  setApiKeyDirty={setApiKeyDirty}
+                  showApiKey={showApiKey}
+                  setShowApiKey={setShowApiKey}
+                  keyIsConfigured={keyIsConfigured}
+                  apiKeyError={apiKeyError}
+                  setSavedOk={setSavedOk}
+                />
+              )}
 
               <AgentsSection
                 settings={settings}
                 setSettings={setSettings}
                 providerKind={providerKind}
+                providerModel={providerModel}
+                modelList={modelList}
+                modelListStatus={modelListStatus}
                 agentOverrides={agentOverrides}
                 agentTestStatus={agentTestStatus}
                 agentTestMsg={agentTestMsg}

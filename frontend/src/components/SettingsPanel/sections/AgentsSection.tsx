@@ -6,10 +6,12 @@ import SessionHistoryViewer from '../SessionHistoryViewer';
 import {
   MODEL_OPTIONS,
   BETA_READER_DEFAULTS,
+  LISTABLE_PROVIDERS,
   type AgentName,
   type AgentOverrideState,
   type ProviderKind,
   type TestConnectionStatus,
+  type ModelListStatus,
   type MicDevice,
 } from '../settingsPanelTypes';
 import {
@@ -61,6 +63,86 @@ function AgentRenameField({
         maxLength={64}
         onChange={(e) => setAgentDisplayName(agent, e.target.value)}
       />
+    </div>
+  );
+}
+
+// SKY-11219 (AC-3): the Model field shown when an agent has no provider
+// override ("Override provider for this agent" OFF). It must actually track
+// the global provider's Default model rather than requiring the user to
+// retype it — `value` only wins over the live `providerModel` once the user
+// has explicitly typed/picked something of their own for this agent.
+function AgentDefaultModelField({
+  idPrefix,
+  label,
+  value,
+  onChange,
+  providerKind,
+  providerModel,
+  modelList,
+  modelListStatus,
+}: {
+  idPrefix: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  providerKind: ProviderKind;
+  providerModel: string;
+  modelList: string[];
+  modelListStatus: ModelListStatus;
+}) {
+  const [useCustomInput, setUseCustomInput] = useState(false);
+  useEffect(() => { setUseCustomInput(false); }, [providerKind]);
+  const effective = value || providerModel;
+  const fieldId = `${idPrefix}-model`;
+
+  return (
+    <div className="settings-field settings-field-inline">
+      <label className="settings-label" htmlFor={fieldId}>Model</label>
+      {providerKind === 'anthropic' ? (
+        <select
+          id={fieldId}
+          className="settings-input settings-select settings-input-sm"
+          value={effective}
+          aria-label={label}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+      ) : LISTABLE_PROVIDERS.has(providerKind) && modelListStatus === 'ok' && modelList.length > 0 && !useCustomInput ? (
+        <select
+          id={fieldId}
+          className="settings-input settings-select settings-input-sm"
+          value={modelList.includes(effective) ? effective : ''}
+          aria-label={label}
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val === '__custom__') {
+              setUseCustomInput(true);
+              onChange('');
+            } else {
+              onChange(val);
+            }
+          }}
+        >
+          {!modelList.includes(effective) && effective && (
+            <option value={effective}>{effective}</option>
+          )}
+          {modelList.map((m) => <option key={m} value={m}>{m}</option>)}
+          <option value="__custom__">Custom…</option>
+        </select>
+      ) : (
+        <input
+          id={fieldId}
+          className="settings-input settings-input-sm"
+          type="text"
+          value={effective}
+          placeholder={providerModel || 'model name (e.g. llama3-70b)'}
+          aria-label={label}
+          maxLength={128}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      )}
     </div>
   );
 }
@@ -140,6 +222,13 @@ interface AgentsSectionProps {
   settings: AppSettings;
   setSettings?: React.Dispatch<React.SetStateAction<AppSettings>>;
   providerKind: ProviderKind;
+  /** SKY-11219 (AC-3/AC-4): the global provider's live Default model + fetched
+   *  model list, reused so a no-override agent inherits/picks from the same
+   *  source of truth as Provider Configuration above instead of a stale
+   *  independent value. */
+  providerModel: string;
+  modelList: string[];
+  modelListStatus: ModelListStatus;
   agentOverrides: Record<AgentName, AgentOverrideState>;
   agentTestStatus: Record<AgentName, TestConnectionStatus>;
   agentTestMsg: Record<AgentName, string>;
@@ -159,6 +248,9 @@ export default function AgentsSection({
   settings,
   setSettings,
   providerKind,
+  providerModel,
+  modelList,
+  modelListStatus,
   agentOverrides,
   agentTestStatus,
   agentTestMsg,
@@ -255,31 +347,16 @@ export default function AgentsSection({
           <AgentDutiesChips agent="writingAssistant" />
           {/* Model selector for global provider override */}
           {!agentOverrides.writingAssistant.enabled && (
-            <div className="settings-field settings-field-inline">
-              <label className="settings-label" htmlFor="wa-model">Model</label>
-              {providerKind === 'anthropic' ? (
-                <select
-                  id="wa-model"
-                  className="settings-input settings-select settings-input-sm"
-                  value={settings.agents.writingAssistant.model}
-                  aria-label="Writing Coach model"
-                  onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
-                >
-                  {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              ) : (
-                <input
-                  id="wa-model"
-                  className="settings-input settings-input-sm"
-                  type="text"
-                  value={settings.agents.writingAssistant.model}
-                  placeholder="model name (e.g. llama3-70b)"
-                  aria-label="Writing Coach model"
-                  maxLength={128}
-                  onChange={(e) => setAgentField('writingAssistant', 'model', e.target.value)}
-                />
-              )}
-            </div>
+            <AgentDefaultModelField
+              idPrefix="wa"
+              label="Writing Coach model"
+              value={settings.agents.writingAssistant.model}
+              onChange={(v) => setAgentField('writingAssistant', 'model', v)}
+              providerKind={providerKind}
+              providerModel={providerModel}
+              modelList={modelList}
+              modelListStatus={modelListStatus}
+            />
           )}
           <AgentProviderSection
             agentName="writingAssistant"
@@ -480,31 +557,16 @@ export default function AgentsSection({
           <AgentRenameField agent="brainstorm" idPrefix="brainstorm" agentNames={settings.agentNames} setAgentDisplayName={setAgentDisplayName} />
           <AgentDutiesChips agent="brainstorm" />
           {!agentOverrides.brainstorm.enabled && (
-            <div className="settings-field settings-field-inline">
-              <label className="settings-label" htmlFor="brainstorm-model">Model</label>
-              {providerKind === 'anthropic' ? (
-                <select
-                  id="brainstorm-model"
-                  className="settings-input settings-select settings-input-sm"
-                  value={settings.agents.brainstorm.model}
-                  aria-label="Brainstorm Agent model"
-                  onChange={(e) => setAgentField('brainstorm', 'model', e.target.value)}
-                >
-                  {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              ) : (
-                <input
-                  id="brainstorm-model"
-                  className="settings-input settings-input-sm"
-                  type="text"
-                  value={settings.agents.brainstorm.model}
-                  placeholder="model name (e.g. llama3-70b)"
-                  aria-label="Brainstorm Agent model"
-                  maxLength={128}
-                  onChange={(e) => setAgentField('brainstorm', 'model', e.target.value)}
-                />
-              )}
-            </div>
+            <AgentDefaultModelField
+              idPrefix="brainstorm"
+              label="Brainstorm Agent model"
+              value={settings.agents.brainstorm.model}
+              onChange={(v) => setAgentField('brainstorm', 'model', v)}
+              providerKind={providerKind}
+              providerModel={providerModel}
+              modelList={modelList}
+              modelListStatus={modelListStatus}
+            />
           )}
           <AgentProviderSection
             agentName="brainstorm"
@@ -677,31 +739,16 @@ export default function AgentsSection({
           <AgentRenameField agent="archive" idPrefix="archive" agentNames={settings.agentNames} setAgentDisplayName={setAgentDisplayName} />
           <AgentDutiesChips agent="archive" />
           {!agentOverrides.archive.enabled && (
-            <div className="settings-field settings-field-inline">
-              <label className="settings-label" htmlFor="archive-model">Model</label>
-              {providerKind === 'anthropic' ? (
-                <select
-                  id="archive-model"
-                  className="settings-input settings-select settings-input-sm"
-                  value={settings.agents.archive.model}
-                  aria-label="Archive Agent model"
-                  onChange={(e) => setAgentField('archive', 'model', e.target.value)}
-                >
-                  {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              ) : (
-                <input
-                  id="archive-model"
-                  className="settings-input settings-input-sm"
-                  type="text"
-                  value={settings.agents.archive.model}
-                  placeholder="model name (e.g. llama3-70b)"
-                  aria-label="Archive Agent model"
-                  maxLength={128}
-                  onChange={(e) => setAgentField('archive', 'model', e.target.value)}
-                />
-              )}
-            </div>
+            <AgentDefaultModelField
+              idPrefix="archive"
+              label="Archive Agent model"
+              value={settings.agents.archive.model}
+              onChange={(v) => setAgentField('archive', 'model', v)}
+              providerKind={providerKind}
+              providerModel={providerModel}
+              modelList={modelList}
+              modelListStatus={modelListStatus}
+            />
           )}
           <AgentProviderSection
             agentName="archive"
@@ -839,31 +886,16 @@ export default function AgentsSection({
           <AgentRenameField agent="betaReader" idPrefix="beta-reader" agentNames={settings.agentNames} setAgentDisplayName={setAgentDisplayName} />
           <AgentDutiesChips agent="betaReader" />
           {!agentOverrides.betaReader.enabled && (
-            <div className="settings-field settings-field-inline">
-              <label className="settings-label" htmlFor="beta-reader-model">Model</label>
-              {providerKind === 'anthropic' ? (
-                <select
-                  id="beta-reader-model"
-                  className="settings-input settings-select settings-input-sm"
-                  value={betaReader.model}
-                  aria-label="Beta Reader model"
-                  onChange={(e) => setAgentField('betaReader', 'model', e.target.value)}
-                >
-                  {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                </select>
-              ) : (
-                <input
-                  id="beta-reader-model"
-                  className="settings-input settings-input-sm"
-                  type="text"
-                  value={betaReader.model}
-                  placeholder="model name (e.g. llama3-70b)"
-                  aria-label="Beta Reader model"
-                  maxLength={128}
-                  onChange={(e) => setAgentField('betaReader', 'model', e.target.value)}
-                />
-              )}
-            </div>
+            <AgentDefaultModelField
+              idPrefix="beta-reader"
+              label="Beta Reader model"
+              value={betaReader.model}
+              onChange={(v) => setAgentField('betaReader', 'model', v)}
+              providerKind={providerKind}
+              providerModel={providerModel}
+              modelList={modelList}
+              modelListStatus={modelListStatus}
+            />
           )}
           <AgentProviderSection
             agentName="betaReader"
