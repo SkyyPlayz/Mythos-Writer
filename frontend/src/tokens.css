@@ -71,15 +71,15 @@
   --bg-image-position: center;
   --bg-scrim-alpha: 0;         /* 0 = no scrim; auto-raised by contrast guard */
   --bg-vignette-alpha: 0.4;    /* vignette overlay strength */
-  --bg-base: #0e1116;          /* app shell / canvas — deep charcoal, not black */
-  --bg-vignette: radial-gradient(120% 120% at 50% 0%, #141b26 0%, #0e1116 55%, #0b0e13 100%);
-  --glass-fill: rgba(14, 14, 18, 0.72);      /* live glass panel fill (phase-2) */
-  --glass-fill-fallback: rgba(18, 18, 20, 0.92); /* opaque fallback, no-backdrop-filter */
+  --bg-base: #07090f;          /* app shell / canvas — deep charcoal, not black */
+  --bg-vignette: radial-gradient(120% 120% at 50% 0%, #0d131f 0%, #07090f 55%, #04060c 100%);
+  --glass-fill: rgba(13, 16, 28, 0.72);      /* live glass panel fill (phase-2) */
+  --glass-fill-fallback: rgba(13, 16, 28, 0.92); /* opaque fallback, no-backdrop-filter */
   /* SKY-11133: overlay tier — Settings/popups read this instead of
      --glass-fill so they stay legible at a low global glass setting.
      Static default here is pre-JS only; applyLiquidNeonV2Tokens (SKY-10914
      bridge) overrides it live as glassA × 1.25, clamped to 96%. */
-  --glass-fill-overlay: rgba(14, 14, 18, 0.9);
+  --glass-fill-overlay: rgba(13, 16, 28, 0.9);
   --glass-rim: rgba(255, 255, 255, 0.12);    /* 1px bright inner rim           */
   --glass-border: rgba(255, 255, 255, 0.07); /* glass edge highlight (alias)   */
   --glass-highlight: rgba(255, 255, 255, 0.04); /* glass inner glow            */
@@ -144,10 +144,10 @@
 
   /* ---- 1.6 Elevation / shadow ------------------------------------------ */
   --elev-0: none;
-  --elev-1: 0 8px 32px rgba(5, 8, 20, 0.45), inset 0 1px 24px rgba(20, 16, 40, 0.45);
-  --elev-2: 0 12px 48px rgba(5, 8, 20, 0.55);
-  --elev-3: 0 20px 64px rgba(5, 8, 20, 0.65);
-  --scrim: rgba(8, 10, 16, 0.55);
+  --elev-1: 0 8px 32px rgba(3, 5, 12, 0.45), inset 0 1px 24px rgba(20, 16, 40, 0.45);
+  --elev-2: 0 12px 48px rgba(3, 5, 12, 0.55);
+  --elev-3: 0 20px 64px rgba(3, 5, 12, 0.65);
+  --scrim: rgba(4, 6, 12, 0.55);
 
   /* ---- 1.7 Blur (axis-driven; perf-capped at 40px, MYT-520 §6) --------- */
   --blur-panel: 28px;
@@ -182,10 +182,10 @@
 
   /* Surfaces (opaque, foundation-safe; glass treatment is the polish pass) */
   --bg-app: var(--bg-base);          /* outermost app shell                  */
-  --bg-canvas: #0b0e13;              /* deepest layer behind content         */
+  --bg-canvas: #04060c;              /* deepest layer behind content         */
   --bg-panel: var(--glass-fill-fallback); /* default panel fill (opaque)     */
-  --bg-elevated: #222a36;            /* popovers, raised cards               */
-  --bg-inset: #15191f;               /* wells, inputs, code blocks           */
+  --bg-elevated: #0f1321;            /* popovers, raised cards               */
+  --bg-inset: #080a12;               /* wells, inputs, code blocks           */
   --bg-hover: rgba(255, 255, 255, 0.06);
   --bg-active: rgba(255, 255, 255, 0.1);
 
@@ -257,7 +257,7 @@
   /* Surfaces */
   --surface: var(--glass-fill-fallback);
   --surface-2: var(--bg-elevated);
-  --surface-3: #262d38;        /* kept dark enough that muted text holds ≥ 4.5:1 */
+  --surface-3: #151a2d;        /* kept dark enough that muted text holds ≥ 4.5:1 */
   --surface-alt: var(--bg-elevated);
   --bg-surface: var(--bg-panel);
   --bg-bar: var(--bg-canvas);
@@ -322,7 +322,7 @@
   --text-btn-danger: #fca5a5;          /* ~7:1 on --bg-btn-danger */
   --bg-btn-danger-hover: rgba(153, 27, 27, 0.92);
   /* Heavy scrim for full-screen overlays */
-  --scrim-heavy: rgba(5, 8, 14, 0.78);
+  --scrim-heavy: rgba(4, 6, 12, 0.78);
   --color-warning: var(--state-warning);
   --color-warning-bg: rgba(251, 191, 36, 0.12);
   --color-warning-border: rgba(251, 191, 36, 0.4);
