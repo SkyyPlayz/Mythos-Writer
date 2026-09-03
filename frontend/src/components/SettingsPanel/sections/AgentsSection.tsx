@@ -20,6 +20,8 @@ import {
   resolveAgentDisplayName,
   type NamedAgentId,
 } from '../../../agents/agentIdentity';
+// SKY-11411: production-team role display names (own registry, not NamedAgentId).
+import { resolveProductionRoleName } from '../../../agents/productionRoles';
 
 // Beta 4 M28 (§11/§13): duties chips — what each agent handles, shown on its
 // identity card (prototype agentDuties, HTML 6709).
@@ -998,6 +1000,46 @@ export default function AgentsSection({
         <PersonaViewer agentName="betaReader" />
         <SessionHistoryViewer agentName="betaReader" />
       </div>
+
+      {/* SKY-11411 (SKY-10741 M12.B6): production-team roles. All default OFF — a
+          fresh install never calls a provider for these until the author opts in.
+          Run them from the Beta Reader view's "Production Team" tab. */}
+      {([
+        { key: 'alphaReader', label: 'Alpha Reader', idPrefix: 'alpha-reader', hint: 'First-pass reader — raw reactions, blind to twists it hasn’t reached yet.' },
+        { key: 'storylineConsultant', label: 'Storyline Consultant', idPrefix: 'storyline-consultant', hint: 'Structural review — arc, stakes, and whether every setup pays off.' },
+        { key: 'lineEditor', label: 'Line Editor', idPrefix: 'line-editor', hint: 'Sentence-level craft — rhythm, word choice, grammar. Never changes meaning.' },
+      ] as const).map(({ key, label, idPrefix, hint }) => {
+        const roleSettings = settings.agents[key];
+        return (
+          <div key={key} className="settings-agent-card" data-testid={`${idPrefix}-agent-card`}>
+            <div className="settings-agent-header">
+              <span className="settings-agent-name">{resolveProductionRoleName(key, settings.agentNames)}</span>
+              <label className="settings-toggle">
+                <input
+                  type="checkbox"
+                  aria-label={`Enable ${label}`}
+                  checked={roleSettings?.enabled ?? false}
+                  onChange={(e) => setAgentField(key, 'enabled', e.target.checked)}
+                />
+                <span className="settings-toggle-track" />
+              </label>
+            </div>
+            <div className="settings-agent-fields">
+              <p className="settings-hint" style={{ marginBottom: '0.5rem' }}>{hint}</p>
+              <AgentDefaultModelField
+                idPrefix={idPrefix}
+                label={`${label} model`}
+                value={roleSettings?.model ?? ''}
+                onChange={(v) => setAgentField(key, 'model', v)}
+                providerKind={providerKind}
+                providerModel={providerModel}
+                modelList={modelList}
+                modelListStatus={modelListStatus}
+              />
+            </div>
+          </div>
+        );
+      })}
 
       {/* SKY-10772 M12.5: AI Agents index controls */}
       <div className="settings-agent-card" data-testid="agent-index-controls">

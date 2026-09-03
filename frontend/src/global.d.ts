@@ -558,9 +558,13 @@ interface AppSettings {
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderConfig; sceneCrafterSuggestions?: { enabled: boolean; cadence: number } } & AgentBudgetSettings;
     /** Beta 3 M22: the fourth named agent — reader-eye chapter reads → margin comments. Optional so pre-M22 settings stay valid; main back-fills defaults on load. */
     betaReader?: { enabled: boolean; model: string; provider?: ProviderConfig } & AgentBudgetSettings;
+    /** SKY-11411 (SKY-10741 M12.B6): production-team roles. Optional + default OFF; main back-fills on load. */
+    alphaReader?: { enabled: boolean; model: string; provider?: ProviderConfig } & AgentBudgetSettings;
+    storylineConsultant?: { enabled: boolean; model: string; provider?: ProviderConfig } & AgentBudgetSettings;
+    lineEditor?: { enabled: boolean; model: string; provider?: ProviderConfig } & AgentBudgetSettings;
   };
-  /** Beta 3 M22: user renames for the four named agents. Absent key = default display name. */
-  agentNames?: Partial<Record<'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader', string>>;
+  /** Beta 3 M22 / SKY-11411: user renames for the named agents. Absent key = default display name. */
+  agentNames?: Partial<Record<'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader' | 'alphaReader' | 'storylineConsultant' | 'lineEditor', string>>;
   /** Dark-only (MYT-517). 'high-contrast' is the WCAG accessibility overlay,
    *  not a separate palette. Legacy 'light'/'system' values normalize to 'dark'. */
   theme: 'dark' | 'high-contrast';
