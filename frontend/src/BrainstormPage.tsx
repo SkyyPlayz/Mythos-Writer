@@ -1328,7 +1328,13 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
-    const apiMessages = [...messages, userMsg].map((m) => ({
+    // Strip any leading assistant turns (e.g. the session auto-greeting) that
+    // precede the first real user turn. Some model Jinja templates (qwen3 on LM
+    // Studio) reject a messages array that opens with an assistant role — they
+    // require the first non-system message to be from the user (SKY-11373).
+    const allTurns = [...messages, userMsg];
+    const firstUserIdx = allTurns.findIndex((m) => m.role === 'user');
+    const apiMessages = (firstUserIdx >= 0 ? allTurns.slice(firstUserIdx) : allTurns).map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.text,
     }));
@@ -1381,7 +1387,11 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     const presetGuide = buildPresetContext({ ...effectiveAxes, ...adjusted });
     contextSystemRef.current = presetGuide + '\n\n' + BRAINSTORM_SYSTEM_PROMPT;
 
-    const apiMessages = [...messages, userMsg].map((m) => ({
+    // Strip leading assistant turns (e.g. session auto-greeting) — same
+    // reasoning as the submitText path above (SKY-11373).
+    const allTurnsRef = [...messages, userMsg];
+    const firstUserIdxRef = allTurnsRef.findIndex((m) => m.role === 'user');
+    const apiMessages = (firstUserIdxRef >= 0 ? allTurnsRef.slice(firstUserIdxRef) : allTurnsRef).map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.text,
     }));
