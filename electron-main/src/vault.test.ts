@@ -13,6 +13,8 @@ import {
   deleteVaultFile,
   excerptFromMarkdown,
   noteHasCharacterSignal,
+  noteHasLocationSignal,
+  noteHasItemSignal,
   readNoteListingMeta,
   parseFrontmatter,
   serializeFrontmatter,
@@ -641,6 +643,59 @@ describe('Note excerpt — hook line for Scene Crafter suggested cards (SKY-1051
     it('a missing file is not a character', () => {
       expect(readNoteListingMeta(path.join(tmpDir, 'nope.md')).characterTag).toBe(false);
     });
+
+    it('surfaces the location signal from a real note file (SKY-11212)', () => {
+      const p = path.join(tmpDir, 'Hidden Harbor.md');
+      fs.writeFileSync(p, '# Hidden Harbor\n\nA smuggler cove. #location\n');
+      const meta = readNoteListingMeta(p);
+      expect(meta.locationTag).toBe(true);
+      expect(meta.characterTag).toBe(false);
+      expect(meta.itemTag).toBe(false);
+    });
+
+    it('surfaces the item/system signal from a real note file (SKY-11212)', () => {
+      const p = path.join(tmpDir, 'Drownlight.md');
+      fs.writeFileSync(p, '---\ntype: item\n---\n# Drownlight\n\nGlows underwater.\n');
+      expect(readNoteListingMeta(p).itemTag).toBe(true);
+    });
+
+    it('a missing file has no tag signal at all', () => {
+      const meta = readNoteListingMeta(path.join(tmpDir, 'nope.md'));
+      expect(meta.locationTag).toBe(false);
+      expect(meta.itemTag).toBe(false);
+    });
+  });
+});
+
+describe('noteHasLocationSignal — Scene Crafter LOCATIONS tag priority (SKY-11212)', () => {
+  it('matches frontmatter type: location', () => {
+    expect(noteHasLocationSignal('---\ntype: Location\n---\n# Ashfall Docks\n')).toBe(true);
+  });
+
+  it('matches a frontmatter tags: entry of location', () => {
+    expect(noteHasLocationSignal('---\ntags: [waterfront, Location]\n---\n# Ashfall Docks\n')).toBe(true);
+  });
+
+  it('matches an inline #location hashtag anywhere in the body', () => {
+    expect(noteHasLocationSignal('# Hidden Harbor\n\nA smuggler cove. #location\n')).toBe(true);
+  });
+
+  it('does not match a character note', () => {
+    expect(noteHasLocationSignal('# Kael Thorne\n\nA wandering blade. #character\n')).toBe(false);
+  });
+});
+
+describe('noteHasItemSignal — Scene Crafter ITEMS & SYSTEMS tag priority (SKY-11212)', () => {
+  it('matches frontmatter type: item', () => {
+    expect(noteHasItemSignal('---\ntype: item\n---\n# Drownlight\n')).toBe(true);
+  });
+
+  it('matches an inline #system hashtag', () => {
+    expect(noteHasItemSignal('# The Undercity Grid\n\nRuns the whole district. #system\n')).toBe(true);
+  });
+
+  it('does not match a location note', () => {
+    expect(noteHasItemSignal('# Ashfall Docks\n\nA waterfront district. #location\n')).toBe(false);
   });
 });
 

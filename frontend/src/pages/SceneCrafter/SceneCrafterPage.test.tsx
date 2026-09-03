@@ -413,19 +413,37 @@ describe('SceneCrafterPage — SKY-11072 vault-reference columns (owner ruling: 
     expect(within(rail).getByText('Mira Veynn')).toBeInTheDocument();
   });
 
-  it('the + picker offers vault notes not in the column and adds the picked one', async () => {
+  it('the + picker offers a removed same-category note (un-remove path) and adds it back', async () => {
     await renderRefColumns();
 
     const characters = screen.getByTestId('sc-ref-col-characters');
+    fireEvent.click(within(characters).getByRole('button', { name: 'Remove Mira Veynn from this scene' }));
+    expect(within(characters).queryByText('Mira Veynn')).not.toBeInTheDocument();
+
     fireEvent.click(within(characters).getByRole('button', { name: 'Add a note to CHARACTERS' }));
-
     const search = screen.getByRole('textbox', { name: 'Search notes to add to CHARACTERS' });
-    fireEvent.change(search, { target: { value: 'loose' } });
-    fireEvent.click(within(characters).getByRole('button', { name: /loose note/i }));
+    fireEvent.change(search, { target: { value: 'mira' } });
+    fireEvent.click(within(characters).getByRole('button', { name: /mira veynn/i }));
 
-    // Picker closes; the note now sits in the column as a reference card.
+    // Picker closes; the note is back in the column as a reference card.
     expect(screen.queryByRole('textbox', { name: 'Search notes to add to CHARACTERS' })).not.toBeInTheDocument();
-    expect(within(characters).getByRole('button', { name: 'Remove Loose Note from this scene' })).toBeInTheDocument();
+    expect(within(characters).getByRole('button', { name: 'Remove Mira Veynn from this scene' })).toBeInTheDocument();
+  });
+
+  // SKY-11212 owner-reported bug: the LOCATIONS picker listed every vault
+  // note (characters, misc notes) instead of just locations.
+  it('SKY-11212: the LOCATIONS picker never offers a character, item, or misc note', async () => {
+    await renderRefColumns();
+
+    const locations = screen.getByTestId('sc-ref-col-locations');
+    fireEvent.click(within(locations).getByRole('button', { name: 'Add a note to LOCATIONS' }));
+
+    expect(within(locations).queryByRole('button', { name: /mira veynn/i })).not.toBeInTheDocument();
+    expect(within(locations).queryByRole('button', { name: /drownlight/i })).not.toBeInTheDocument();
+    expect(within(locations).queryByRole('button', { name: /loose note/i })).not.toBeInTheDocument();
+    // Ward Violet is already visible in the column itself, so the picker has
+    // no other LOCATIONS-category note left to offer.
+    expect(within(locations).getByText('No matching vault notes to add.')).toBeInTheDocument();
   });
 
   it('re-adding a removed note via the + picker restores it (un-remove path)', async () => {
