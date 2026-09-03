@@ -3054,7 +3054,31 @@ describe('BrainstormPage — M20 shared session store', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  it('blocks window close once the user has actually sent a message', async () => {
+  // SKY-11363: an unsent composer draft is genuinely-volatile work, so the
+  // guard blocks the close (the main process then prompts the user rather than
+  // silently refusing to close).
+  it('blocks window close while there is an unsent composer draft', async () => {
+    const sessionApi = makeSessionApi({ id: 's1', turns: [] });
+    (window as unknown as { api: unknown }).api = buildApi({ agentSessions: sessionApi });
+
+    await act(async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+    });
+    await waitFor(() => expect(sessionApi.list).toHaveBeenCalledWith('brainstorm'));
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'A market where memories are traded' },
+    });
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  // SKY-11363: sending clears the composer and the message is persisted to the
+  // shared session store, so a sent-then-idle session must NOT block the close
+  // — that false-positive is what made the app impossible to close on Windows.
+  it('does not block window close after a message was sent and the composer is empty', async () => {
     const sessionApi = makeSessionApi({ id: 's1', turns: [] });
     (window as unknown as { api: unknown }).api = buildApi({ agentSessions: sessionApi });
 
@@ -3069,10 +3093,12 @@ describe('BrainstormPage — M20 shared session store', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
     });
+    // Composer is cleared by the send handler; no pending board write.
+    expect(screen.getByLabelText(/brainstorm prompt/i)).toHaveValue('');
 
     const event = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(true);
+    expect(event.defaultPrevented).toBe(false);
   });
 });
 

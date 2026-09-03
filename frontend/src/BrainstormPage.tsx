@@ -34,6 +34,7 @@ import {
   type LegacyDraftFact,
 } from './brainstormBoard';
 import { loadBrainstormBoard, saveBrainstormBoard } from './brainstormBoardStore';
+import { registerQuitFlusher } from './lib/flushBeforeQuit';
 import BoardCanvas from './components/BrainstormBoard/BoardCanvas';
 import IdeaCollectionsPanel, {
   type CollectionIdea,
@@ -816,6 +817,23 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     };
   }, [board]);
 
+  // SKY-11363: a full app-quit (Cmd+Q / File→Exit) closes the window without
+  // the beforeunload prompt, and the 400ms debounce above may not have fired.
+  // Register a flusher so the shell drains any pending board write before it
+  // acks the quit — otherwise the last board change is silently lost. Re-runs
+  // on board change so the flusher always closes over the latest board; a
+  // no-op unless a write is actually pending.
+  useEffect(() => {
+    return registerQuitFlusher(async () => {
+      if (boardSaveTimerRef.current === null || !board) return;
+      window.clearTimeout(boardSaveTimerRef.current);
+      boardSaveTimerRef.current = null;
+      lastPersistedBoardRef.current = JSON.stringify(board, null, 2);
+      await saveBrainstormBoard(board);
+      setBoardSynced(true);
+    });
+  }, [board]);
+
   // M20: vault-note titles on board cards underline → open the note. Load the
   // entity index lazily whenever a canvas is visible.
   useEffect(() => {
@@ -966,20 +984,29 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     proposalsRef.current = proposals;
   }, [proposals]);
 
-  // Warn before window close when there is unsaved user work. M20: the shared
-  // session store (SKY-6663) hydrates `messages` with the agent's auto-greeting
-  // on mount — a passive panel open with zero user interaction must not count
-  // as "an active session", or the window can never close (SKY-6930).
+  // Warn before window close ONLY when there is genuinely-volatile work.
+  //
+  // SKY-11363: this guard previously fired on `hasUserMessage || facts.length`,
+  // but chat messages live on the shared session store (SKY-6663) and detected
+  // facts are persisted per-fact — both survive a close. So the guard tripped
+  // on nearly every close after any brainstorming, and because Electron
+  // SILENTLY cancels a prevented unload (no dialog), the app became impossible
+  // to close except via Task Manager — the owner-reported bug. The main
+  // process now backstops this with a `will-prevent-unload` prompt, but the
+  // guard should still only speak up for work that is actually at risk:
+  //   - an unsent composer draft (`prompt`), and
+  //   - a board change still inside its 400ms debounce (`boardSynced === false`).
+  // M20/SKY-6930: the auto-greeting no longer counts, so a passive panel open
+  // with zero interaction never blocks the close.
   useEffect(() => {
-    const hasUserMessage = messages.some((m) => m.role === 'user');
     const handler = (e: BeforeUnloadEvent) => {
-      if (hasUserMessage || facts.length > 0 || prompt.trim()) {
+      if (prompt.trim() || !boardSynced) {
         e.preventDefault();
       }
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [messages, facts.length, prompt]);
+  }, [prompt, boardSynced]);
 
   // ESC closes the page unless an overlay (drawer, delete confirm, preset editor, context
   // menu) is handling it. Overlays call e.stopPropagation() or we detect them by state.

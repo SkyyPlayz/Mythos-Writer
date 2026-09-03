@@ -731,6 +731,7 @@ import {
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
 import { getBlastRadius, trashVaultFolder } from './vaultSurface.js';
 import { shouldQuitOnWindowAllClosed } from './quitGuard.js';
+import { abortInFlightAiStreams, createQuitWatchdog } from './quitShutdown.js';
 const require = createRequire(import.meta.url);
 
 // SKY-3189 (G3): expose packaged state to renderer via process.env so preload can read it
@@ -755,6 +756,15 @@ let quitFlushHandled = false;
 // waiting on it (e.g. Playwright's app.close()) hits its own timeout.
 let quitRequested = false;
 app.on('before-quit', () => { quitRequested = true; });
+
+// SKY-11363: hard, bounded backstop for shutdown (see quitShutdown.ts). The
+// owner hit a Windows app that would not close and had to force-kill it from
+// Task Manager. This watchdog is armed once quit is committed (all windows
+// closed) and force-exits if teardown or a native handle wedges, so the app
+// can never become unclosable. 8s comfortably exceeds normal teardown (which
+// completes in well under a second) yet still guarantees a prompt exit.
+const QUIT_WATCHDOG_MS = 8000;
+const quitWatchdog = createQuitWatchdog(QUIT_WATCHDOG_MS, () => app.exit(0));
 
 // SKY-9973: before the window actually closes, ask the renderer to flush any
 // pending debounced manifest save (scheduleManifestSave's 900ms timer) and
@@ -8462,6 +8472,42 @@ function createWindow() {
       });
   });
 
+  // SKY-11363: when a renderer's `beforeunload` handler cancels the unload
+  // (BrainstormPage warns about unsaved work), Electron SILENTLY refuses to
+  // close the window — it shows no dialog of its own — leaving the app
+  // impossible to close except by force-killing it from Task Manager. That is
+  // exactly the owner-reported bug, and it is a data-loss risk for a writing
+  // app. Handling `will-prevent-unload` puts the decision back with the user.
+  mainWindow.webContents.on('will-prevent-unload', (event) => {
+    const win = mainWindow;
+    // A full app quit is already an explicit decision (File → Exit, Cmd+Q, or
+    // a programmatic app.quit() — including Playwright's app.close() in E2E,
+    // which has no human to answer a modal). Never block it on a dialog: allow
+    // the unload straight through. Persisted state (chat sessions, detected
+    // facts) survives; the flush-before-quit handshake drains pending saves.
+    if (!win || quitRequested) {
+      event.preventDefault(); // preventDefault here ALLOWS the unload to proceed
+      return;
+    }
+    // Plain window close (the X button — the owner's path on Windows) with
+    // genuinely-unsaved work: prompt so the app still closes reliably while
+    // giving the user a chance to keep it open.
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'question',
+      buttons: ['Leave', 'Stay'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+      title: 'Leave without saving?',
+      message: 'You have unsaved work.',
+      detail: 'Changes you have not saved yet may be lost if you leave now.',
+    });
+    if (choice === 0) {
+      event.preventDefault(); // allow the unload → the window closes
+    }
+    // choice === 1 (Stay): do nothing — the unload stays cancelled.
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -11071,6 +11117,27 @@ app.whenReady().then(async () => {
 // app.quit() always runs in the finally below regardless of teardown outcome —
 // a partially-failed teardown must not hold the process hostage.
 app.on('window-all-closed', async () => {
+  // SKY-11363: is this window-close an actual quit? On macOS the ordinary
+  // "close the last window, stay in the dock" case is NOT a quit — the app
+  // keeps running (see the darwin guard in the finally, and the `activate`
+  // handler that reopens a window). Only when quit is genuinely committed
+  // (Windows/Linux always; macOS Cmd+Q/File-Exit/app.close() → quitRequested)
+  // should we bound shutdown. Anything armed here on a non-quit macOS close
+  // would still fire while the app sits resident in the dock — the unref'd
+  // watchdog would force-exit the app ~8s after the window closed.
+  const committingQuit = shouldQuitOnWindowAllClosed(process.platform, quitRequested);
+  if (committingQuit) {
+    // Quit is committed. Two things could still hold the process open, so
+    // bound both before teardown:
+    //   1. An in-flight AI stream (its fetch socket). The owner runs
+    //      minute-plus local-model generations; awaiting one on quit is what
+    //      makes the app hang "again". Abort, never await (AC #3).
+    //   2. A wedged teardown step or native handle (e.g. a Windows watcher
+    //      whose fs.watch handle won't settle). Arm the hard watchdog so the
+    //      process force-exits if graceful shutdown stalls (scope #2).
+    abortInFlightAiStreams(agentControllers);
+    quitWatchdog.arm();
+  }
   try {
     await runQuitTeardownStep('stopWritingScanScheduler', () => stopWritingScanScheduler());
     await runQuitTeardownStep('stopArchiveContScheduler', () => stopArchiveContScheduler());
@@ -11091,7 +11158,7 @@ app.on('window-all-closed', async () => {
     // window, app stays in the dock" case — quitRequested (set by
     // before-quit) means quit is already underway, so this call must still
     // run there too, or the process never actually exits.
-    if (shouldQuitOnWindowAllClosed(process.platform, quitRequested)) {
+    if (committingQuit) {
       app.quit();
     }
   }

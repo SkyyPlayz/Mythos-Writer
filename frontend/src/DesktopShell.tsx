@@ -39,6 +39,7 @@ import { cursorChapter, cursorDefaultScene, cycleDraftState, draftStateLabel, is
 import { appendChapterToStory, mapAllChapters, reconcileParts, syncChaptersFromParts, updateChapterOwner } from './story/storyParts';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
+import { runQuitFlushers } from './lib/flushBeforeQuit';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail, { type NavRailVault } from './AppNavRail';
@@ -1924,6 +1925,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-9973: flush-before-quit — the main process asks the renderer to
   // flush any pending debounced manifest save before the window closes, so
   // an edit made within the 900ms debounce window isn't lost on quit.
+  // SKY-11363: also drain every other registered debounced writer (e.g. the
+  // brainstorm board) via runQuitFlushers before acking, so no component's
+  // pending save is dropped on a full app-quit.
   useEffect(() => {
     if (!window.api?.onFlushBeforeQuit) return;
     const unsub = window.api.onFlushBeforeQuit(() => {
@@ -1937,6 +1941,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         if (pending) {
           await persistManifest(pending);
         }
+        await runQuitFlushers();
         window.api.notifyFlushBeforeQuitDone?.();
       })();
     });
