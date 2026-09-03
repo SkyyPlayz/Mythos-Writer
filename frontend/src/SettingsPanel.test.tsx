@@ -1468,12 +1468,14 @@ describe('SettingsPanel', () => {
     expect(document.getElementById('section-api-key')).not.toBeNull();
   });
 
-  it('AC-3: with provider override OFF, a local provider\'s Default model fills the agent Model field without typing', async () => {
+  it('SKY-11355: with provider override OFF, a local provider\'s Default model shows as an explicit Default option, not free text', async () => {
     mockSettingsGet.mockResolvedValueOnce({
       ...defaultSettings,
-      // The agent has never had a per-agent model pinned (SKY-11219's actual
-      // repro: a fresh/never-touched agent Model field is an empty string) —
-      // it must inherit the global provider's Default model, not stay blank.
+      // The agent has never had a per-agent model pinned (an empty string is
+      // the out-of-box value for every agent post-SKY-11355) — the field must
+      // surface an explicit "Default" option naming the resolved model,
+      // rather than requiring the user to type or silently masquerading the
+      // resolved model as if it had been explicitly picked for this agent.
       agents: {
         ...defaultSettings.agents,
         writingAssistant: { ...defaultSettings.agents.writingAssistant, model: '' },
@@ -1484,14 +1486,16 @@ describe('SettingsPanel', () => {
 
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
 
-    // Agent has no per-agent override → its Model field must reflect the
-    // global provider's Default model automatically, not a blank/free-typed value.
-    await waitFor(() =>
-      expect(screen.getByRole('combobox', { name: /writing coach model/i })).toHaveValue('qwen/qwen3.6-35b-a3b')
-    );
+    // Agent has no per-agent override → its Model field stays on the "Default"
+    // option (value ''), whose label names the resolved provider model.
+    await waitFor(() => {
+      const select = screen.getByRole('combobox', { name: /writing coach model/i }) as HTMLSelectElement;
+      expect(select).toHaveValue('');
+      expect(select.options[select.selectedIndex]).toHaveTextContent('Default (qwen/qwen3.6-35b-a3b)');
+    });
   });
 
-  it('AC-3: agent Model field tracks a live change to the provider Default model', async () => {
+  it('SKY-11355: agent Model field\'s Default option tracks a live change to the provider Default model', async () => {
     mockSettingsGet.mockResolvedValueOnce({
       ...defaultSettings,
       agents: {
@@ -1503,13 +1507,62 @@ describe('SettingsPanel', () => {
     mockProviderListModels.mockResolvedValue({ ok: true, models: ['model-a', 'model-b'] });
 
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() =>
-      expect(screen.getByRole('combobox', { name: /writing coach model/i })).toHaveValue('model-a')
-    );
+    const waSelect = () => screen.getByRole('combobox', { name: /writing coach model/i }) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(waSelect()).toHaveValue('');
+      expect(waSelect().options[waSelect().selectedIndex]).toHaveTextContent('Default (model-a)');
+    });
 
     await changeAndFlush(screen.getByRole('combobox', { name: /default model for this provider/i }), 'model-b');
 
-    expect(screen.getByRole('combobox', { name: /writing coach model/i })).toHaveValue('model-b');
+    // Still on "Default" (value unchanged) — only its label re-resolves live.
+    expect(waSelect()).toHaveValue('');
+    expect(waSelect().options[waSelect().selectedIndex]).toHaveTextContent('Default (model-b)');
+  });
+
+  it('SKY-11355: the agent Model dropdown lists the same auto-detected models as the provider field', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, model: '' },
+      },
+      provider: { kind: 'lmstudio', baseUrl: 'http://127.0.0.1:1234/v1', model: 'model-a' },
+    });
+    mockProviderListModels.mockResolvedValue({ ok: true, models: ['model-a', 'model-b'] });
+
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    const waSelect = await screen.findByRole('combobox', { name: /writing coach model/i }) as HTMLSelectElement;
+    const optionValues = Array.from(waSelect.options).map((o) => o.value);
+    expect(optionValues).toEqual(expect.arrayContaining(['', 'model-a', 'model-b']));
+  });
+
+  it('SKY-11355: choosing an explicit model overrides only that agent — others stay on Default', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, model: '' },
+        brainstorm: { ...defaultSettings.agents.brainstorm, model: '' },
+        archive: { ...defaultSettings.agents.archive, model: '' },
+      },
+      provider: { kind: 'lmstudio', baseUrl: 'http://127.0.0.1:1234/v1', model: 'model-a' },
+    });
+    mockProviderListModels.mockResolvedValue({ ok: true, models: ['model-a', 'model-b'] });
+
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /writing coach model/i }));
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /writing coach model/i }), 'model-b');
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.writingAssistant.model).toBe('model-b');
+    // Brainstorm/Archive never had this agent's dropdown touched — they must
+    // still carry the '' Default sentinel, not inherit model-b.
+    expect(saved.agents.brainstorm.model).toBe('');
+    expect(saved.agents.archive.model).toBe('');
   });
 
   it('AC-4: selecting LM Studio auto-fetches the running model list without a manual refresh click', async () => {

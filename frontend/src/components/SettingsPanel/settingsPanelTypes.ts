@@ -217,7 +217,8 @@ export function categoryAutoApplyThreshold(
 /** Beta 3 M22: default Beta Reader agent settings (also the back-fill for pre-M22 settings files). */
 export const BETA_READER_DEFAULTS: NonNullable<AppSettings['agents']['betaReader']> = {
   enabled: true,
-  model: 'claude-sonnet-4-6',
+  // SKY-11355: '' == "use the provider's Default model" (see AgentDefaultModelField).
+  model: '',
   ...BUDGET_DEFAULTS,
 };
 
@@ -226,9 +227,9 @@ export const DEFAULTS: AppSettings = {
   // M11a (SKY-9160): master AI switch — default on; off = manual mode.
   ai: { enabled: true },
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, ...BUDGET_DEFAULTS },
-    brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...BUDGET_DEFAULTS },
-    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...BUDGET_DEFAULTS },
+    writingAssistant: { enabled: true, model: '', scanIntervalSeconds: 30, ...BUDGET_DEFAULTS },
+    brainstorm: { enabled: true, model: '', ...BUDGET_DEFAULTS },
+    archive: { enabled: true, model: '', continuityCheckIntervalSeconds: 60, ...BUDGET_DEFAULTS },
     betaReader: { ...BETA_READER_DEFAULTS },
   },
   theme: 'dark',

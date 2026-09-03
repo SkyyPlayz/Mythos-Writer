@@ -67,11 +67,13 @@ function AgentRenameField({
   );
 }
 
-// SKY-11219 (AC-3): the Model field shown when an agent has no provider
-// override ("Override provider for this agent" OFF). It must actually track
-// the global provider's Default model rather than requiring the user to
-// retype it — `value` only wins over the live `providerModel` once the user
-// has explicitly typed/picked something of their own for this agent.
+// SKY-11355 (follow-on to SKY-11219 AC-3): the Model field shown when an
+// agent has no provider override ("Override provider for this agent" OFF).
+// "Default" is a first-class option (value '') meaning "use the global
+// provider's Default model" — it must be the out-of-box selection on every
+// provider, not a hardcoded Anthropic model name that breaks local providers.
+// Choosing "Default" tracks the live `providerModel` as it changes; picking an
+// explicit model only overrides this one agent.
 function AgentDefaultModelField({
   idPrefix,
   label,
@@ -93,27 +95,21 @@ function AgentDefaultModelField({
 }) {
   const [useCustomInput, setUseCustomInput] = useState(false);
   useEffect(() => { setUseCustomInput(false); }, [providerKind]);
-  const effective = value || providerModel;
   const fieldId = `${idPrefix}-model`;
+  const defaultOptionLabel = providerModel ? `Default (${providerModel})` : 'Default';
+
+  const options = providerKind === 'anthropic' ? MODEL_OPTIONS : modelList.map((m) => ({ value: m, label: m }));
+  const hasOptions = providerKind === 'anthropic'
+    || (LISTABLE_PROVIDERS.has(providerKind) && modelListStatus === 'ok' && modelList.length > 0);
 
   return (
     <div className="settings-field settings-field-inline">
       <label className="settings-label" htmlFor={fieldId}>Model</label>
-      {providerKind === 'anthropic' ? (
+      {hasOptions && !useCustomInput ? (
         <select
           id={fieldId}
           className="settings-input settings-select settings-input-sm"
-          value={effective}
-          aria-label={label}
-          onChange={(e) => onChange(e.target.value)}
-        >
-          {MODEL_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-      ) : LISTABLE_PROVIDERS.has(providerKind) && modelListStatus === 'ok' && modelList.length > 0 && !useCustomInput ? (
-        <select
-          id={fieldId}
-          className="settings-input settings-select settings-input-sm"
-          value={modelList.includes(effective) ? effective : ''}
+          value={value}
           aria-label={label}
           onChange={(e) => {
             const val = e.target.value;
@@ -125,19 +121,20 @@ function AgentDefaultModelField({
             }
           }}
         >
-          {!modelList.includes(effective) && effective && (
-            <option value={effective}>{effective}</option>
+          <option value="">{defaultOptionLabel}</option>
+          {value !== '' && !options.some((o) => o.value === value) && (
+            <option value={value}>{value}</option>
           )}
-          {modelList.map((m) => <option key={m} value={m}>{m}</option>)}
-          <option value="__custom__">Custom…</option>
+          {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {providerKind !== 'anthropic' && <option value="__custom__">Custom…</option>}
         </select>
       ) : (
         <input
           id={fieldId}
           className="settings-input settings-input-sm"
           type="text"
-          value={effective}
-          placeholder={providerModel || 'model name (e.g. llama3-70b)'}
+          value={value}
+          placeholder={providerModel ? `Default: ${providerModel}` : 'model name (e.g. llama3-70b)'}
           aria-label={label}
           maxLength={128}
           onChange={(e) => onChange(e.target.value)}
