@@ -362,7 +362,7 @@ button.bsb-card-title--note {
   padding: 0 9px;
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--bh, rgba(0, 240, 255, 0.2));
+  border: 1px solid var(--gs1, rgba(0, 240, 255, 0.2));
   margin-bottom: 6px;
   color: #8e9db8;
   flex: none;

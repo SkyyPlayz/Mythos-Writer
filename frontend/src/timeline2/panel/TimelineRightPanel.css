@@ -27,7 +27,7 @@
   padding: 3px;
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.05);
-  border: var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, 0.2));
+  border: var(--bw, 1px) solid var(--gs1, rgba(0, 240, 255, 0.2));
   flex: none;
 }
 
