@@ -76,11 +76,44 @@ describe('ProductionReviewPanel (SKY-11411 reachability)', () => {
 
   it('a disabled role never reaches the provider (enable gate)', async () => {
     renderPanel({ alphaReader: false });
-    fireEvent.click(screen.getByTestId('production-review-run'));
 
-    // The nudge toast appears and no IPC call is made.
-    await screen.findByText(/enable it in Settings/i);
+    // Run is blocked outright, with a visible reason next to it (SKY-11456) —
+    // not a button that looks live and only nudges after the click.
+    const run = screen.getByTestId('production-review-run');
+    expect(run).toBeDisabled();
+    const hint = await screen.findByTestId('production-review-off-hint');
+    expect(hint).toHaveTextContent(/enable it in Settings/i);
+    expect(run).toHaveAttribute('aria-describedby', hint.id);
+
+    fireEvent.click(run);
     expect(mockProductionRoleRun).not.toHaveBeenCalled();
+  });
+
+  it('switching to an off role disables Run and hides the previous role’s review (SKY-11456)', async () => {
+    renderPanel({ alphaReader: true, storylineConsultant: false, lineEditor: false });
+    fireEvent.click(screen.getByTestId('production-review-run'));
+    await waitFor(() => expect(screen.getByTestId('production-review-result')).toHaveTextContent('the opening image gripped me'));
+
+    fireEvent.change(screen.getByLabelText('Production role'), { target: { value: 'lineEditor' } });
+
+    // The Alpha Reader's notes must not be relabelled as the Line Editor's.
+    expect(screen.queryByTestId('production-review-result')).toBeNull();
+    expect(screen.getByTestId('production-review-run')).toBeDisabled();
+    expect(screen.getByTestId('production-review-off-hint')).toHaveTextContent(/Line Editor is off/i);
+
+    // Coming back to the role that produced it shows it again, still its own.
+    fireEvent.change(screen.getByLabelText('Production role'), { target: { value: 'alphaReader' } });
+    expect(screen.getByTestId('production-review-result')).toHaveTextContent('Alpha Reader — Scene: Arrival');
+    expect(mockProductionRoleRun).toHaveBeenCalledTimes(1);
+  });
+
+  it('changing scope hides a review assembled for the old scope (SKY-11456)', async () => {
+    renderPanel();
+    fireEvent.click(screen.getByTestId('production-review-run'));
+    await waitFor(() => expect(screen.getByTestId('production-review-result')).toHaveTextContent('Scene: Arrival'));
+
+    fireEvent.change(screen.getByLabelText('Review scope'), { target: { value: 'chapter' } });
+    expect(screen.queryByTestId('production-review-result')).toBeNull();
   });
 
   it('surfaces a handler error as a toast without crashing', async () => {

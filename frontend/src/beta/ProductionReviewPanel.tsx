@@ -25,6 +25,20 @@ import {
 } from '../agents/productionRoles';
 import { buildBetaReadSourceText, buildScopeOptions, type BetaScopeOption } from './textAssembly';
 
+/**
+ * A finished review, stamped with the role + scope it was actually produced for
+ * (SKY-11456). The panel renders it only while that stamp still matches the
+ * live selection, so changing the Role or Scope dropdown can never relabel one
+ * role's notes as another's.
+ */
+interface ProductionReviewResult {
+  role: ProductionRoleId;
+  scopeKind: BetaScopeOption['kind'];
+  scopeId: string;
+  scopeLabel: string;
+  text: string;
+}
+
 export interface ProductionReviewPanelProps {
   story: Story | null;
   chapter: Chapter | null;
@@ -48,20 +62,32 @@ export default function ProductionReviewPanel({
 
   const [role, setRole] = useState<ProductionRoleId>('alphaReader');
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  const [result, setResult] = useState<ProductionReviewResult | null>(null);
   const { toast, showToast, clearToast } = useToast(4500);
   useAgentActivity(running);
 
   const roleName = resolveProductionRoleName(role, agentNames);
   const roleEnabled = rolesEnabled?.[role] === true;
 
+  // Only show the review that belongs to what is selected right now.
+  const shownResult =
+    result &&
+    result.role === role &&
+    result.scopeKind === activeScope?.kind &&
+    result.scopeId === activeScope?.id
+      ? result
+      : null;
+  const offHint = `${roleName} is off — enable it in Settings › AI Agents to run a review.`;
+
   const handleRun = useCallback(async () => {
     if (!story || !activeScope) {
       showToast('Open a story first — a review needs something to read.', 'warn');
       return;
     }
+    // The button is disabled for an off role; this stays as the guard for any
+    // non-pointer path into the run (keyboard/programmatic).
     if (!roleEnabled) {
-      showToast(`${roleName} is off — enable it in Settings › AI Agents to run a review.`, 'warn');
+      showToast(offHint, 'warn');
       return;
     }
     if (typeof window.api?.productionRoleRun !== 'function') {
@@ -80,7 +106,13 @@ export default function ProductionReviewPanel({
       const res = await window.api.productionRoleRun({ role, scope: activeScope, text });
       if ('error' in res) throw new Error(res.error);
       const reviewText = res.text.trim();
-      setResult(reviewText || `${roleName} finished but returned no notes — try a longer scope.`);
+      setResult({
+        role,
+        scopeKind: activeScope.kind,
+        scopeId: activeScope.id,
+        scopeLabel: activeScope.label,
+        text: reviewText || `${roleName} finished but returned no notes — try a longer scope.`,
+      });
       showToast(`${roleName} finished — review ready.`, 'info');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -91,7 +123,7 @@ export default function ProductionReviewPanel({
     } finally {
       setRunning(false);
     }
-  }, [story, activeScope, role, roleEnabled, roleName, showToast]);
+  }, [story, activeScope, role, roleEnabled, roleName, offHint, showToast]);
 
   return (
     <div className="beta-production-panel" data-testid="production-review-panel">
@@ -137,19 +169,32 @@ export default function ProductionReviewPanel({
           type="button"
           className="beta-run-button"
           data-testid="production-review-run"
-          disabled={running || !activeScope}
+          disabled={running || !activeScope || !roleEnabled}
+          aria-describedby={roleEnabled ? undefined : 'production-review-off-hint'}
           onClick={handleRun}
         >
           {running ? 'Reviewing…' : `Run ${roleName}`}
         </button>
       </div>
 
+      {!roleEnabled && (
+        <p
+          id="production-review-off-hint"
+          className="beta-reader-muted"
+          data-testid="production-review-off-hint"
+        >
+          {offHint}
+        </p>
+      )}
+
       <p className="beta-production-panel__lens">{PRODUCTION_ROLES[role].lens}</p>
 
-      {result !== null && (
+      {shownResult && (
         <div className="beta-production-panel__result" data-testid="production-review-result">
-          <h3 className="beta-production-panel__result-title">{roleName} — {activeScope?.label}</h3>
-          <pre className="beta-production-panel__result-body">{result}</pre>
+          <h3 className="beta-production-panel__result-title">
+            {resolveProductionRoleName(shownResult.role, agentNames)} — {shownResult.scopeLabel}
+          </h3>
+          <pre className="beta-production-panel__result-body">{shownResult.text}</pre>
         </div>
       )}
 
