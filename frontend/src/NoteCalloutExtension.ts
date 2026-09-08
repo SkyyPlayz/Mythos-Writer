@@ -3,9 +3,16 @@
 //
 // Markdown form (Obsidian callout, SUPPORTED shape only — see notesFidelityGuard):
 //
-//   > [!Legend]-
+//   > [!legend]-
+//   > [!note] Rule of the city
 //   > Sailors speak of a hum that rises from the depths…
 //   > and of the drowned bell that answers it.
+//
+// The bracket holds the admonition `type`; an optional fold marker (`-`/`+`)
+// may follow immediately, or an optional trailing title after a single space
+// — never both on the same line (see CALLOUT_TITLE_LINE_RE). The visible card
+// label is title when present, else type — see supportedCalloutLineCount /
+// CALLOUT_TITLE_LINE_RE.
 //
 // CF-11 (Obsidian round-trip stays lossless): only the shape the serializer
 // can re-emit byte-identically is parsed into a card. Every other `> [!…]`
@@ -85,11 +92,13 @@ function noteCalloutBlockRule(
   if (silent) return true;
 
   const match = CALLOUT_TITLE_LINE_RE.exec(lines[0] as string)!;
-  const title = match[1];
+  const type = match[1];
   const fold = match[2];
+  const title = match[3] ?? '';
   const open = state.push('note_callout_open', 'div', 1);
   open.attrSet('data-note-callout', '');
-  open.attrSet('data-callout-title', title);
+  open.attrSet('data-callout-type', type);
+  if (title) open.attrSet('data-callout-title', title);
   if (fold) open.attrSet('data-callout-fold', fold);
   open.map = [startLine, startLine + span];
 
@@ -118,9 +127,19 @@ export const NoteCallout = Node.create({
 
   addAttributes() {
     return {
+      // The bracketed admonition token (note/info/warning/tip/...), or the
+      // legacy free-form label when the note has no separate trailing title.
+      type: {
+        default: 'note',
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-callout-type') || 'note',
+        rendered: false,
+      },
+      // Trailing text after the bracket, e.g. `Rule of the city` in
+      // `[!note] Rule of the city`. Empty when the source has no title.
       title: {
-        default: 'Note',
-        parseHTML: (el) => (el as HTMLElement).getAttribute('data-callout-title') || 'Note',
+        default: '',
+        parseHTML: (el) => (el as HTMLElement).getAttribute('data-callout-title') || '',
+        rendered: false,
       },
       // Obsidian's collapsed (`-`) / expandable (`+`) fold marker. `null` =
       // no marker in the source (not foldable). Handled by hand (not the
@@ -142,12 +161,15 @@ export const NoteCallout = Node.create({
   },
 
   renderHTML({ node, HTMLAttributes }) {
+    const type = node.attrs.type as string;
+    const title = node.attrs.title as string;
     const fold = node.attrs.fold as string | null;
     return [
       'div',
       mergeAttributes(HTMLAttributes, {
         'data-note-callout': '',
-        'data-callout-title': node.attrs.title as string,
+        'data-callout-type': type,
+        ...(title ? { 'data-callout-title': title } : {}),
         ...(fold ? { 'data-callout-fold': fold } : {}),
         class: 'note-callout',
       }),
@@ -157,10 +179,16 @@ export const NoteCallout = Node.create({
 
   addNodeView() {
     return ({ node, editor, getPos }) => {
+      // The visible label is the title when the source has one, else the
+      // bracketed type — editing it always writes `title`, never `type`.
+      const label = (attrs: Record<string, unknown>) =>
+        (attrs.title as string) || (attrs.type as string);
+
       const dom = document.createElement('div');
       dom.className = 'note-callout';
       dom.setAttribute('data-note-callout', '');
-      dom.setAttribute('data-callout-title', node.attrs.title as string);
+      dom.setAttribute('data-callout-type', node.attrs.type as string);
+      if (node.attrs.title) dom.setAttribute('data-callout-title', node.attrs.title as string);
       // Fold state round-trips losslessly but isn't interactively
       // collapsible from the card yet — no UI to toggle it.
       if (node.attrs.fold) dom.setAttribute('data-callout-fold', node.attrs.fold as string);
@@ -181,14 +209,14 @@ export const NoteCallout = Node.create({
       titleEl.setAttribute('aria-label', 'Callout title');
       titleEl.setAttribute('contenteditable', editor.isEditable ? 'true' : 'false');
       titleEl.spellcheck = false;
-      titleEl.textContent = node.attrs.title as string;
+      titleEl.textContent = label(node.attrs);
 
-      let currentTitle = node.attrs.title as string;
+      let currentLabel = label(node.attrs);
 
       const commitTitle = () => {
         const next = sanitizeCalloutTitle(titleEl.textContent ?? '');
-        if (!next || next === currentTitle) {
-          titleEl.textContent = currentTitle; // revert empty/unchanged edits
+        if (!next || next === currentLabel) {
+          titleEl.textContent = currentLabel; // revert empty/unchanged edits
           return;
         }
         const pos = typeof getPos === 'function' ? getPos() : undefined;
@@ -207,7 +235,7 @@ export const NoteCallout = Node.create({
           titleEl.blur();
         } else if (e.key === 'Escape') {
           e.preventDefault();
-          titleEl.textContent = currentTitle;
+          titleEl.textContent = currentLabel;
           titleEl.blur();
         }
       });
@@ -229,11 +257,13 @@ export const NoteCallout = Node.create({
         },
         update: (updated) => {
           if (updated.type.name !== 'noteCallout') return false;
-          const nextTitle = updated.attrs.title as string;
-          if (nextTitle !== currentTitle) {
-            currentTitle = nextTitle;
-            dom.setAttribute('data-callout-title', nextTitle);
-            if (document.activeElement !== titleEl) titleEl.textContent = nextTitle;
+          dom.setAttribute('data-callout-type', updated.attrs.type as string);
+          if (updated.attrs.title) dom.setAttribute('data-callout-title', updated.attrs.title as string);
+          else dom.removeAttribute('data-callout-title');
+          const nextLabel = label(updated.attrs);
+          if (nextLabel !== currentLabel) {
+            currentLabel = nextLabel;
+            if (document.activeElement !== titleEl) titleEl.textContent = nextLabel;
           }
           return true;
         },
@@ -246,8 +276,10 @@ export const NoteCallout = Node.create({
       markdown: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         serialize(state: any, node: any) {
+          const type = node.attrs.type as string;
+          const title = node.attrs.title as string;
           const fold = node.attrs.fold as string | null;
-          state.write(`> [!${node.attrs.title as string}]${fold ?? ''}`);
+          state.write(`> [!${type}]${fold ?? ''}${title ? ` ${title}` : ''}`);
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           node.forEach((para: any) => {
             if (para.content.size === 0) return; // title-only callout's auto-filled empty paragraph

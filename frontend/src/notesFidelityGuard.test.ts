@@ -57,6 +57,28 @@ describe('detectLossyFeatures — LC-2 fidelity guard', () => {
     expect(detectLossyFeatures('> [!NOTE]-').map((f) => f.key)).not.toContain('callouts');
   });
 
+  it('does NOT flag the canonical titled callout `> [!type] Title` — SKY-11442', () => {
+    const titled = [
+      '> [!note] Rule of the city',
+      '> [!note] Rule of the city\n> A body line.',
+      '> [!info] Heads up',
+      '> [!warning] Careful',
+    ];
+    for (const md of titled) {
+      expect(detectLossyFeatures(md).map((f) => f.key), md).not.toContain('callouts');
+    }
+  });
+
+  it('still flags a titled callout with padding or trailing whitespace the serializer cannot re-emit', () => {
+    const unsupported = [
+      '> [!note]  Padded title', // two spaces before the title
+      '> [!note] Trailing space ', // trailing whitespace after the title
+    ];
+    for (const md of unsupported) {
+      expect(detectLossyFeatures(md).map((f) => f.key), md).toContain('callouts');
+    }
+  });
+
   it('still flags callout shapes the M17 card cannot round-trip', () => {
     const unsupported = [
       '> [!NOTE]- folded\n> body', // trailing text after the fold marker
@@ -78,6 +100,10 @@ describe('detectLossyFeatures — LC-2 fidelity guard', () => {
     expect(supportedCalloutLineCount(['> plain quote'], 0)).toBe(0);
     expect(supportedCalloutLineCount(['> [!a]', '> [!b]'], 0)).toBe(0); // back-to-back
     expect(supportedCalloutLineCount(['> [!a]', '> > nested'], 0)).toBe(0); // nested quote
+    expect(supportedCalloutLineCount(['> [!note] Rule of the city'], 0)).toBe(1);
+    expect(supportedCalloutLineCount(['> [!note] Rule of the city', '> body', ''], 0)).toBe(2);
+    expect(supportedCalloutLineCount(['> [!note]  Padded title'], 0)).toBe(0);
+    expect(supportedCalloutLineCount(['> [!note] Trailing space '], 0)).toBe(0);
   });
 
   it('detects multiple lossy features at once', () => {

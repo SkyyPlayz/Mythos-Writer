@@ -816,8 +816,55 @@ describe('NoteViewer M17 rich body blocks', () => {
       expect(el).not.toBeNull();
       return el as HTMLElement;
     });
-    expect(callout.getAttribute('data-callout-title')).toBe('legend');
+    expect(callout.getAttribute('data-callout-type')).toBe('legend');
     expect(callout.textContent).toContain('Sailors speak of a hum');
+  });
+
+  it('renders the canonical titled callout `> [!type] Title` as a card (no fidelity guard) — SKY-11442', async () => {
+    const note = [
+      'An ancient floodgate built by a lost civilization.',
+      '',
+      '> [!note] Rule of the city',
+    ].join('\n');
+    readNotesVault.mockResolvedValue({ content: note });
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
+    await screen.findByLabelText('Edit note: gate.md');
+
+    await pickMode('Rich Text');
+
+    // CF-11: the titled shape round-trips losslessly now — no guard dialog.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const callout = await waitFor(() => {
+      const el = document.querySelector('.note-rich-editor [data-note-callout]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(callout.getAttribute('data-callout-type')).toBe('note');
+    expect(callout.getAttribute('data-callout-title')).toBe('Rule of the city');
+  });
+
+  it('renders a titled callout with a body line as a card (no fidelity guard) — SKY-11442', async () => {
+    const note = [
+      'An ancient floodgate built by a lost civilization.',
+      '',
+      '> [!note] Rule of the city',
+      '> Nothing in Veynn is ever truly lost.',
+    ].join('\n');
+    readNotesVault.mockResolvedValue({ content: note });
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
+    await screen.findByLabelText('Edit note: gate.md');
+
+    await pickMode('Rich Text');
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const callout = await waitFor(() => {
+      const el = document.querySelector('.note-rich-editor [data-note-callout]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(callout.getAttribute('data-callout-type')).toBe('note');
+    expect(callout.getAttribute('data-callout-title')).toBe('Rule of the city');
+    expect(callout.textContent).toContain('Nothing in Veynn is ever truly lost.');
   });
 
   it('marks the links row as a links block and keeps H2s/bullets editable blocks', async () => {
