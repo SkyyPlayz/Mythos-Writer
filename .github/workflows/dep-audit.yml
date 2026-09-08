@@ -1,0 +1,48 @@
+name: Dependency Audit
+# Supply-chain scan: npm audit --audit-level=high (SKY-11423).
+# Fails on high/critical advisories; ignores low/moderate (too noisy for a block).
+# Separate workflow (not inlined into ci.yml) because adding a schedule trigger
+# to ci.yml would run all E2E/build jobs nightly — prohibitively expensive.
+# Pattern mirrors fuzz.yml: its own schedule + path-filtered PR trigger.
+
+on:
+  schedule:
+    - cron: '0 2 * * *'  # nightly 02:00 UTC — avoids fuzz (08:00) and issue-finder (Mon 06:00)
+  pull_request:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'frontend/package.json'
+      - 'electron-main/package.json'
+      - 'shared/package.json'
+      - '.github/workflows/dep-audit.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: dep-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dep-audit:
+    name: npm audit (high+critical)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependencies (fail on high/critical)
+        run: npm audit --audit-level=high
