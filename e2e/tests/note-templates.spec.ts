@@ -229,3 +229,50 @@ test('TC-NT-03: blank note fallback creates a plain note', async () => {
   // SKY-9027: filename preserves the typed title verbatim, no ASCII slug.
   expect(path.basename(newFile!)).toMatch(/My Research Notes/i);
 });
+
+// SKY-11455 / SKY-11072 §4 reachability: a character note created through
+// the app's own Default Character template — written to the vault ROOT, the
+// dialog's default target, not a Characters/ folder — must appear in Scene
+// Crafter's CHARACTERS vault-reference column. The template stamps
+// `type: character`, which the listing classifier reads with tag priority
+// over folder (SKY-11212). Real process boundary: dialog → writeNotesVault
+// IPC → disk → listNotesVault IPC → column.
+test('TC-NT-04: a Default Character note at the vault root reaches Scene Crafter CHARACTERS', async () => {
+  await openVaultTab(pg);
+  const addBtn = pg.locator('[data-testid="vb-btn-new-note"]').first();
+  await addBtn.click();
+  const templateSelect = pg.locator('[data-testid="ntd-template-select"]');
+  await expect(templateSelect).toBeVisible({ timeout: 6_000 });
+  await templateSelect.selectOption({ label: 'Default Character' });
+
+  const nameField = pg.locator('[data-testid="ntd-field-name"]');
+  await expect(nameField).toBeVisible({ timeout: 4_000 });
+  await nameField.fill('Kael Thorne');
+
+  const before = findMdFiles(notesVaultDir);
+  await pg.locator('[data-testid="ntd-submit"]').click();
+  await expect(templateSelect).not.toBeVisible({ timeout: 6_000 });
+
+  // The note landed at the vault root (no category folder) carrying the stamp.
+  const noteFile = findMdFiles(notesVaultDir).find((f) => !before.includes(f) && f.includes('Kael Thorne'));
+  expect(noteFile).toBeDefined();
+  expect(path.dirname(noteFile!)).toBe(notesVaultDir);
+  expect(fs.readFileSync(noteFile!, 'utf-8')).toMatch(/^type: character$/m);
+
+  // Story Writer → File → New story → select it → Scene Crafter.
+  await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]').click();
+  const storyCount = await pg.locator('.nav-story-row').count();
+  await pg.locator('.wc-menu', { hasText: 'File' }).click();
+  await pg.locator('.wc-menu-item', { hasText: 'New story' }).click();
+  await pg.locator('.nav-story-row').nth(storyCount).waitFor({ state: 'visible', timeout: 8_000 });
+  await pg.locator('.nav-story-title').nth(storyCount).click();
+  await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
+  await pg.locator('.sc-columns').waitFor({ state: 'visible', timeout: 10_000 });
+
+  const characters = pg.getByTestId('sc-ref-col-characters');
+  await expect(characters).toBeVisible({ timeout: 8_000 });
+  await expect(characters.getByText('Kael Thorne')).toBeVisible({ timeout: 8_000 });
+  // Category-limited: the other columns never pick up the character note.
+  await expect(pg.getByTestId('sc-ref-col-locations').getByText('Kael Thorne')).toHaveCount(0);
+  await expect(pg.getByTestId('sc-ref-col-items').getByText('Kael Thorne')).toHaveCount(0);
+});
