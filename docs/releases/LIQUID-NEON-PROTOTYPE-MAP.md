@@ -60,6 +60,26 @@ Tokens are inline CSS custom properties on the theme host (`{{ themeStyle }}`, H
 | `--glass2` | `rgba(21,26,45, clamp(.5, glassA/100+.16, .97))` (3961) | `rgba(21,26,45,.88)` |
 | `--bw` | `glowW+'px'` (3962; slider 1–4, 4204) | `1px` |
 | `--gr` | `glowR+'px'` (3962; slider 8–160, 4205) | `26px` |
+| `--bwh` | `max(.5, glowW/2)+'px'` (owner mockup 7139) | `1px` |
+| `--grh` | `round(glowR/2)+'px'` (owner mockup 7139) | — |
+| `--bh` | `hexA(c1, (.3 + .4*I) / 2)` (owner mockup 7140) | `rgba(0,240,255,.2)` |
+| `--glowH` | `'0 0 '+round(glowR/2)+'px -7px '+hexA(c1, (.18 + .5*I) / 2)` (owner mockup 7140) | `none` |
+
+**Hairline tier** (`--bwh/--grh/--bh/--glowH`, SKY-11504). Half-weight
+companions to `--bw/--gr/--b1/--g1`, used for the mockup's *inner* chrome —
+segmented controls, search chips, setting cards, the Scene Crafter panels —
+so it reads quieter than a panel edge. Two properties of the arithmetic
+matter and are easy to get wrong:
+
+- The alpha is halved **before** `hexA` clamps it. `--b1` is `hexA(c1, .3 + .4*I)`,
+  which already saturates to `1.000` at the shipped default intensity of 50,
+  so deriving the hairline in CSS as `color-mix(--b1 50%, transparent)` yields
+  `.500` where the mockup yields `.550`. Same for the glow: `.500` vs `.590`.
+  The unclamped value only exists inside the engine, so these must be engine
+  tokens. PR #1465 shipped the CSS derivation as a local `--sc-*` stand-in
+  before the engine emitted the real ones; SKY-11504 retired it.
+- `--grh` and `--glowH`'s radius are `Math.round`ed, not `calc(--gr / 2)`.
+  They differ on every odd `glowR` (61px → `31px`, not `30.5px`).
 | `--txH/--txB` | `txtCfg.head/body` (3963) | `#f0f3fc` / `#c8d3e7` |
 | `--txNH/--txNB` | `split ? nHead/nBody : head/body` (3964) | `#eef2fb` / `#c8d3e7` |
 | `--blur` | `blur+'px'` (3965; slider 0–40, 4207) | `18px` |
