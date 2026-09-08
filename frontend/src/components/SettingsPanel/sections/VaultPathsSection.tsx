@@ -123,7 +123,10 @@ export default function VaultPathsSection({
             Browse…
           </button>
         </div>
-        <p className="settings-hint" id="notes-vault-path-hint">Worldbuilding, characters, lore, and AI-curated notes. Seeded with <code>Universes/</code>, <code>Stories/</code>, <code>Inbox/</code>, <code>Research/</code>, <code>Daily Notes/</code>, and <code>Archive/</code> on first run (per the SKY-15 default layout).</p>
+        {/* SKY-11454: no folder list here — a blank vault starts empty
+            (SKY-11141 §3a) and the template layout is owned by the template,
+            so enumerating folders in copy goes stale. */}
+        <p className="settings-hint" id="notes-vault-path-hint">Worldbuilding, characters, lore, and AI-curated notes. Starts empty unless you created it from a template.</p>
       </div>
       <div className="settings-input-row">
         <button
