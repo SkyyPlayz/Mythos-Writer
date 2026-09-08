@@ -53,7 +53,7 @@ function EntityPicker({ onSelect, onClose }: EntityPickerProps) {
       aria-label="Entity picker"
       onKeyDown={handleKey}
     >
-      <div className="idd-entity-picker">
+      <div className="idd-entity-picker ln-overlay-surface">
         <input
           ref={inputRef}
           className="idd-entity-picker-input"
@@ -98,7 +98,7 @@ function DiscardDialog({ onDiscard, onSave }: DiscardDialogProps) {
       aria-modal="true"
       aria-label="Unsaved changes"
     >
-      <div className="idd-discard-dialog">
+      <div className="idd-discard-dialog ln-overlay-surface">
         <p className="idd-discard-msg">You have unsaved changes. Discard or save?</p>
         <div className="idd-discard-actions">
           <button className="idd-btn-secondary" type="button" onClick={onDiscard}>

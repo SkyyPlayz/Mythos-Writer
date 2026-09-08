@@ -194,7 +194,7 @@ export default function SceneHistory({ sceneId, currentContent, onRestore, onClo
       {confirmId && (
         <div className="history-confirm-overlay">
           <div
-            className="history-confirm-dialog"
+            className="history-confirm-dialog ln-overlay-surface"
             role="alertdialog"
             aria-modal="true"
             aria-label="Confirm restore"

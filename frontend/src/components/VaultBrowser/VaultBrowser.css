@@ -1024,7 +1024,7 @@
   gap: 8px;
   padding: 6px 10px;
   border-bottom: 1px solid var(--border, #2a2a2a);
-  background: var(--bg-secondary, #111);
+  background: var(--bg-inset);
 }
 
 .vb-daily-streak {

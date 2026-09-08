@@ -70,7 +70,7 @@
   left: 0;
   right: 0;
   z-index: 100;
-  background: var(--panel-bg, #1a1d2e);
+  background: var(--bg-elevated);
   border: 1px solid var(--border, rgba(255,255,255,0.15));
   border-radius: 6px;
   margin-top: 2px;

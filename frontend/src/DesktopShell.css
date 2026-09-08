@@ -1400,7 +1400,7 @@
 .cross-tab-link-modal button {
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-xs);
-  background: var(--bg-secondary);
+  background: var(--bg-inset);
   color: var(--text-primary);
   cursor: pointer;
   padding: 8px 10px;
