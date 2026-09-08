@@ -347,23 +347,30 @@ export function applyLiquidNeonV2Tokens(
   // on :root's inline value; reduced-transparency intentionally only touches
   // :root's own value (SKY-10908), so per-panel glass stays live either way.
   //
-  // SKY-11133: overlay tier — Settings and popups stay legible when the user
-  // keeps the global glass low (owner report). --glass-fill-overlay/
-  // --blur-panel-overlay are the SAME glassA/blur values scaled by a single
-  // derived offset (×1.25), clamped to the sliders' own maxima (glassA≤96,
-  // blur≤40) so a maxed-out global setting can't overshoot. Not a new
-  // system: same source values, same reactivity, one offset constant. Only
-  // CSS for overlay surfaces (Settings, popovers, dropdown/context menus,
-  // toasts) reads these — the K8/reduced-transparency overrides below apply
-  // to them the same way they apply to --glass-fill/--blur-panel.
+  // SKY-11133/SKY-11496: overlay tier — Settings and popups stay legible when
+  // the user keeps the global glass low (owner report). The owner mockup
+  // hardcodes the identical dialog/popover recipe everywhere —
+  // rgba(15,19,33,.97) + blur(24px) (see overlay-tier.css) — and never lets
+  // the glass sliders thin it below that, so --glass-fill-overlay/
+  // --blur-panel-overlay are FLOORED at the mockup's numbers, not derived as
+  // a plain multiple of glassA/blur: a low global glass setting can't drag
+  // dialog chrome transparent (SKY-11496 — that regression shipped dialogs at
+  // 25% opacity / 1.25px blur). A high global glass setting can still push
+  // the overlay tier past the floor, clamped to the sliders' own maxima
+  // (glassA≤96, blur≤40), so the tier stays live in that direction. Only CSS
+  // for overlay surfaces (Settings, popovers, dropdown/context menus, toasts)
+  // reads these — the K8/reduced-transparency overrides below apply to them
+  // the same way they apply to --glass-fill/--blur-panel.
   const OVERLAY_TIER_MULT = 1.25;
-  const overlayGlassA = Math.min(96, S.glassA * OVERLAY_TIER_MULT);
-  const overlayBlur = Math.min(40, S.blur * OVERLAY_TIER_MULT);
+  const OVERLAY_FLOOR_ALPHA = 97; // rgba(15,19,33,.97) — the mockup's frozen fill
+  const OVERLAY_FLOOR_BLUR = 24; // blur(24px) — the mockup's frozen blur
+  const overlayGlassA = Math.max(OVERLAY_FLOOR_ALPHA, Math.min(96, S.glassA * OVERLAY_TIER_MULT));
+  const overlayBlur = Math.max(OVERLAY_FLOOR_BLUR, Math.min(40, S.blur * OVERLAY_TIER_MULT));
   const panelGlassTokens: Record<string, string> = {
     '--glass-fill': `rgba(13,16,28,${(S.glassA / 100).toFixed(3)})`,
     '--glass-fill-fallback': 'rgb(13,16,28)',
     '--blur-panel': `${S.blur}px`,
-    '--glass-fill-overlay': `rgba(13,16,28,${(overlayGlassA / 100).toFixed(3)})`,
+    '--glass-fill-overlay': `rgba(15,19,33,${(overlayGlassA / 100).toFixed(3)})`,
     '--blur-panel-overlay': `${overlayBlur}px`,
   };
   for (const [k, v] of Object.entries(panelGlassTokens)) {

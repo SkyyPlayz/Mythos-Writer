@@ -75,11 +75,12 @@
   --bg-vignette: radial-gradient(120% 120% at 50% 0%, #0d131f 0%, #07090f 55%, #04060c 100%);
   --glass-fill: rgba(13, 16, 28, 0.72);      /* live glass panel fill (phase-2) */
   --glass-fill-fallback: rgba(13, 16, 28, 0.92); /* opaque fallback, no-backdrop-filter */
-  /* SKY-11133: overlay tier — Settings/popups read this instead of
+  /* SKY-11133/SKY-11496: overlay tier — Settings/popups read this instead of
      --glass-fill so they stay legible at a low global glass setting.
-     Static default here is pre-JS only; applyLiquidNeonV2Tokens (SKY-10914
-     bridge) overrides it live as glassA × 1.25, clamped to 96%. */
-  --glass-fill-overlay: rgba(13, 16, 28, 0.9);
+     Static default here is pre-JS only; applyLiquidNeonV2Tokens floors the
+     live value at the mockup's frozen rgba(15,19,33,.97) so glassA can only
+     push it more opaque, never less. */
+  --glass-fill-overlay: rgba(15, 19, 33, 0.97);
   --glass-rim: rgba(255, 255, 255, 0.12);    /* 1px bright inner rim           */
   --glass-border: rgba(255, 255, 255, 0.07); /* glass edge highlight (alias)   */
   --glass-highlight: rgba(255, 255, 255, 0.04); /* glass inner glow            */
@@ -153,9 +154,10 @@
   --blur-panel: 28px;
   --blur-overlay: 40px;
   --blur-chip: 18px;
-  /* SKY-11133: overlay tier blur — see --glass-fill-overlay above. Static
-     default is pre-JS only; live value is blur × 1.25, clamped to 40px. */
-  --blur-panel-overlay: 35px;
+  /* SKY-11133/SKY-11496: overlay tier blur — see --glass-fill-overlay above.
+     Static default is pre-JS only; live value is floored at the mockup's
+     frozen 24px, blur can only push it higher, clamped to 40px. */
+  --blur-panel-overlay: 24px;
 
   /* ---- 1.8 Neon glow + frame (axis-driven intensity) ------------------- */
   --neon-intensity: 0.75;      /* master 0–1 multiplier; 0 disables all glow  */
