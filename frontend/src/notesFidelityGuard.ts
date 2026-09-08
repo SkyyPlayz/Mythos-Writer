@@ -14,16 +14,18 @@
  * editor renders it as an editable purple callout card (NoteCalloutExtension)
  * and serializes it back byte-identically. The supported shape is:
  *
- *   > [!Title]-          (fold marker `-`/`+` optional)
+ *   > [!type]-           (fold marker `-`/`+` optional, right after the bracket)
+ *   > [!type] Title      (optional trailing title, one space — never combined
+ *                          with a fold marker on the same line)
  *   > body line 1        (any number of body lines, optional)
  *   > body line 2
  *   ...
  *
  * at column 0, followed by a blank line or EOF. Anything else quoting a
  * `[!…]` marker (a nested quote inside the body, lazy continuation,
- * back-to-back callouts without a blank line, or text trailing the fold
- * marker on the title line) keeps the lossy flag, because the round-trip
- * would rewrite it.
+ * back-to-back callouts without a blank line, a fold marker combined with a
+ * trailing title, or a padded/trailing-whitespace title) keeps the lossy flag,
+ * because the round-trip would rewrite it.
  *
  * YAML frontmatter is deliberately NOT flagged: since W0.2 (Beta 4) the Rich
  * editor never sees it — NoteViewer holds the block aside verbatim and
@@ -42,13 +44,16 @@ export interface LossyFeature {
 }
 
 /**
- * `> [!Title]` with an optional trailing fold marker — exactly one `> `
- * prefix at column 0, title without `]`, then immediately end of line or a
- * single `-`/`+` (Obsidian's collapsed/expandable marker) and end of line.
- * Any other text trailing the marker is not round-trippable and fails to
- * match, so that shape stays lossy.
+ * `> [!type]`, optionally followed by a fold marker (`-`/`+`, Obsidian's
+ * collapsed/expandable marker) OR a trailing title — never both on the same
+ * line. Exactly one `> ` prefix at column 0. Group 1 is the bracketed
+ * admonition type (no `]`, may contain spaces for the legacy free-form-label
+ * shape). Group 2, when present, is the fold marker. Group 3, when present,
+ * is the trailing title: exactly one separating space, no leading/trailing
+ * whitespace of its own (the serializer can only ever re-emit that exact
+ * shape).
  */
-export const CALLOUT_TITLE_LINE_RE = /^> \[!([^\]\r\n]+)\]([-+])?$/;
+export const CALLOUT_TITLE_LINE_RE = /^> \[!([^\]\r\n]+)\](?:([-+])|(?: (\S(?:.*\S)?)))?$/;
 /**
  * A supported callout body line: `> ` + text with no leading/trailing
  * whitespace (the serializer can only ever re-emit that exact shape).

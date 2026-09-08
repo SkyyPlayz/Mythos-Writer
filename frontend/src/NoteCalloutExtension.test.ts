@@ -46,15 +46,36 @@ function roundTrip(markdown: string): string {
 }
 
 describe('NoteCallout — parsing (prototype callout card)', () => {
-  it('parses the simple callout shape into a card with title + body', () => {
+  it('parses the simple callout shape into a card with type as label + body', () => {
     const editor = makeNotesEditor('> [!legend]\n> Sailors speak of a hum that rises from the depths.');
     const callout = editor.view.dom.querySelector('[data-note-callout]') as HTMLElement | null;
     expect(callout).not.toBeNull();
-    expect(callout?.getAttribute('data-callout-title')).toBe('legend');
+    expect(callout?.getAttribute('data-callout-type')).toBe('legend');
+    expect(callout?.hasAttribute('data-callout-title')).toBe(false);
     const title = callout?.querySelector('[data-testid="note-callout-title"]');
     expect(title?.textContent).toBe('legend');
     const body = callout?.querySelector('.note-callout-body');
     expect(body?.textContent).toContain('Sailors speak of a hum');
+    editor.destroy();
+  });
+
+  it('parses a titled callout into a card with type + title, title as the label', () => {
+    const editor = makeNotesEditor('> [!note] Rule of the city\n> Nothing in Veynn is ever truly lost.');
+    const callout = editor.view.dom.querySelector('[data-note-callout]') as HTMLElement | null;
+    expect(callout).not.toBeNull();
+    expect(callout?.getAttribute('data-callout-type')).toBe('note');
+    expect(callout?.getAttribute('data-callout-title')).toBe('Rule of the city');
+    const title = callout?.querySelector('[data-testid="note-callout-title"]');
+    expect(title?.textContent).toBe('Rule of the city');
+    editor.destroy();
+  });
+
+  it('parses a title-only titled callout (no body line)', () => {
+    const editor = makeNotesEditor('> [!info] Heads up');
+    const callout = editor.view.dom.querySelector('[data-note-callout]') as HTMLElement | null;
+    expect(callout).not.toBeNull();
+    expect(callout?.getAttribute('data-callout-type')).toBe('info');
+    expect(callout?.getAttribute('data-callout-title')).toBe('Heads up');
     editor.destroy();
   });
 
@@ -66,9 +87,9 @@ describe('NoteCallout — parsing (prototype callout card)', () => {
     editor.destroy();
   });
 
-  it('preserves multi-word title casing (prototype "Rule of the city")', () => {
+  it('preserves multi-word legacy bracket-only label casing (prototype "Rule of the city")', () => {
     const editor = makeNotesEditor('> [!Rule of the city]\n> Nothing in Veynn is ever truly lost.');
-    expect(editor.view.dom.querySelector('[data-note-callout]')?.getAttribute('data-callout-title'))
+    expect(editor.view.dom.querySelector('[data-note-callout]')?.getAttribute('data-callout-type'))
       .toBe('Rule of the city');
     editor.destroy();
   });
@@ -137,6 +158,16 @@ describe('NoteCallout — CF-11 byte-lossless round-trip', () => {
     expect(roundTrip('> [!note]-')).toBe('> [!note]-'); // fold marker, no body
   });
 
+  it('round-trips `> [!type] Title` byte-identically (title only, no body)', () => {
+    expect(roundTrip('> [!note] Rule of the city')).toBe('> [!note] Rule of the city');
+  });
+
+  it('round-trips `> [!type] Title` with a body line byte-identically', () => {
+    const md = '> [!info] Heads up\n> Careful along the eastern ridge.';
+    expect(roundTrip(md)).toBe(md);
+  });
+
+
   it('round-trips the prototype note body (paragraphs, callout, H2s, bullets, links block)', () => {
     const md = [
       'An ancient floodgate built by a lost civilization to control the tides of the [[Great Deep]].',
@@ -166,20 +197,26 @@ describe('NoteCallout — CF-11 byte-lossless round-trip', () => {
     expect(roundTrip(md)).toBe(md);
   });
 
-  it('serializes an edited title back into the marker', () => {
+  it('serializes an edited title back into the marker, keeping the source type', () => {
     const editor = makeNotesEditor('> [!legend]\n> Body text.');
     let calloutPos = -1;
+    let liveAttrs: Record<string, unknown> = {};
     editor.state.doc.descendants((node, pos) => {
-      if (node.type.name === 'noteCallout') calloutPos = pos;
+      if (node.type.name === 'noteCallout') {
+        calloutPos = pos;
+        liveAttrs = node.attrs;
+      }
       return calloutPos === -1;
     });
     expect(calloutPos).toBeGreaterThanOrEqual(0);
+    expect(liveAttrs.type).toBe('legend');
+    expect(liveAttrs.title).toBe('');
     editor.view.dispatch(
-      editor.state.tr.setNodeMarkup(calloutPos, undefined, { title: 'Old Legend' }),
+      editor.state.tr.setNodeMarkup(calloutPos, undefined, { ...liveAttrs, title: 'Old Legend' }),
     );
     const md = editor.storage.markdown.getMarkdown() as string;
     editor.destroy();
-    expect(md).toBe('> [!Old Legend]\n> Body text.');
+    expect(md).toBe('> [!legend] Old Legend\n> Body text.');
   });
 });
 
@@ -192,6 +229,9 @@ describe('NoteCallout — guard/parser contract (shapes cannot drift)', () => {
     '> [!note]-\n> body', // fold marker (collapsed)
     '> [!note]+\n> body', // fold marker (expandable)
     '> [!note]-', // fold marker, title only
+    '> [!note] Rule of the city',
+    '> [!note] Rule of the city\n> Nothing in Veynn is ever truly lost.',
+    '> [!info] Heads up',
   ];
   const UNSUPPORTED = [
     '> [!note]- folded\n> body', // trailing text after the fold marker
@@ -199,6 +239,8 @@ describe('NoteCallout — guard/parser contract (shapes cannot drift)', () => {
     '> [!note]\n> body\nlazy continuation', // lazy continuation would be rewritten
     '>[!note]\n> body', // missing space after >
     '> [!note]\n> > nested quote', // nested quote inside the body
+    '> [!note]  Padded title', // two spaces before the title
+    '> [!note] Trailing space ', // trailing whitespace after the title
   ];
 
   it('every supported shape parses to a card, round-trips, and passes the guard', () => {
