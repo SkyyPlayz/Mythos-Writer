@@ -14,10 +14,19 @@
  * (owner-reports/2026-09-02-design-liquid-neon.dc.html, `bsIsBoard`).
  */
 
-/* ── Canvas panel ──
-   Mockup: an inset rounded panel with a hairline slot-1 rim and a 26px
-   dot-grid. The grid lives on the panel, not inside the transformed world, so
-   it stays put while the world pans/zooms — same as the mockup. */
+/* ── Canvas panel ── (SKY-11501 BD-1)
+   Mockup `bdCanvasSt`: a 42%-opaque inset panel with a *neutral* hairline rim
+   and no glow. Both values are deliberate and deliberately literal:
+
+   - 42% is what makes the wallpaper run through the largest rectangle in the
+     app instead of dying at its rim. It is the backdrop, not a panel, so it
+     does not read --glass-fill: a user pushing Glass opacity to 96 would
+     re-opaque the very thing this token exists to keep see-through.
+   - the rim is white@7%, not a slot colour. In the mockup the neon in this
+     region is carried by the cards; a slot-coloured container rim competes
+     with them. --bw still applies, so the Glow width slider still lands here.
+
+   The dot grid moved to __scroll-area (BD-2) so it can track pan and zoom. */
 .board-canvas__root {
   position: relative;
   flex: 1;
@@ -25,12 +34,9 @@
   flex-direction: column;
   overflow: hidden;
   margin: 0 14px 12px;
-  border-radius: 15px;
-  border: var(--bw, 1px) solid var(--gs1, rgb(0 240 255 / 0.2));
-  background-color: var(--bg-canvas, #0b0e13);
-  background-image: radial-gradient(circle at 1px 1px, rgb(255 255 255 / 0.055) 1px, transparent 0);
-  background-size: 26px 26px;
-  box-shadow: 0 0 22px -10px var(--g1, rgb(0 240 255 / 0.4));
+  border-radius: 16px;
+  border: var(--bw, 1px) solid rgb(255 255 255 / 0.07);
+  background-color: rgb(8 10 18 / 0.42);
   user-select: none;
 }
 
@@ -110,11 +116,25 @@
   color: var(--text-primary, #f0f3fc);
 }
 
-/* ── Scroll area ── */
+/* ── Scroll area + dot grid ── (SKY-11501 BD-2)
+   The grid is the world's ruler, so it has to move with the world: mockup
+   `bdCanvasSt` binds background-size to 20 × zoom and background-position to
+   the pan offset. BoardCanvas.tsx writes both as the three custom properties
+   below, off the same `pan` / `zoom` state the world transform reads, so a dot
+   stays under the same world point at every zoom level and pan offset. 20px is
+   also GRID_SNAP — at 100% a snapped item lands exactly on a dot.
+
+   It lives on the scrolling box rather than on __root so `local` attachment
+   folds the scroll offset in for free; on __root the grid would tear away from
+   the world the moment a tall board scrolled. */
 .board-canvas__scroll-area {
   flex: 1;
   overflow: auto;
   position: relative;
+  background-image: radial-gradient(rgb(255 255 255 / 0.07) 1px, transparent 1px);
+  background-size: var(--board-grid-size, 20px) var(--board-grid-size, 20px);
+  background-position: var(--board-grid-x, 0px) var(--board-grid-y, 0px);
+  background-attachment: local;
 }
 
 .board-canvas__world {
@@ -146,22 +166,39 @@
   right: 0;
 }
 
-/* ── Items ──
+/* ── Items ── (SKY-11501 BD-3)
    The mockup colors each card by its category. Our two categories are the
    item kinds, so notes take slot 1 and boards take slot 2. The `--board-item-*`
    locals exist only so the shared hover/drag/focus rules below stay written
-   once; they always resolve to engine-stamped slot tokens. */
+   once; they always resolve to engine-stamped slot tokens.
+
+   The three states are a ladder, and the point of the ladder is that a tile at
+   rest must not look like a tile you picked:
+
+     rest      neutral white@10% hairline + a plain depth shadow, no neon
+     hover     the slot rim at --b strength + a lifted shadow and a faint glow
+     selected  the slot rim at near-full alpha + the ring-and-glow
+
+   We used to paint the *selected* rim (full-alpha slot colour plus a glow) at
+   rest, which spent the loudest affordance in the app on "this tile exists"
+   and left selection with nothing to say. Mockup `bdCards.st`/`.stH`.
+
+   Every alpha the mockup fixes is applied with color-mix rather than taken
+   from an engine token, because --b1..6 / --g1..6 are already saturated at the default
+   Glow intensity (the engine's I = intensity / 25, so 50 lands them at alpha
+   1). Reading them raw would paint the hover rim, the selection ring and the
+   selection glow at full strength and flatten the ladder back out. Mixing
+   *down* from the slot hue keeps the mockup's ratios at the default and still
+   thins out with the slider, since --g* does fade below intensity 25. */
 .board-canvas__item {
   --board-item-n: var(--n1, #00f0ff);
-  --board-item-b: var(--b1, rgb(0 240 255 / 0.38));
   --board-item-g: var(--g1, rgb(0 240 255 / 0.5));
-  --board-item-gs: var(--gs1, rgb(0 240 255 / 0.1));
 
   position: absolute;
   border-radius: 13px;
-  border: var(--bw, 1px) solid var(--board-item-b);
+  border: var(--bw, 1px) solid rgb(255 255 255 / 0.1);
   background: var(--glass2, rgb(21 26 45 / 0.92));
-  box-shadow: 0 0 14px -8px var(--board-item-g);
+  box-shadow: 0 8px 22px rgb(3 5 12 / 0.45);
   cursor: grab;
   transition: border-color 0.15s, box-shadow 0.15s;
   display: flex;
@@ -174,22 +211,36 @@
    rather than on source order. */
 .board-canvas__item.board-canvas__item--folder {
   --board-item-n: var(--n2, #9b5fff);
-  --board-item-b: var(--b2, rgb(155 95 255 / 0.38));
   --board-item-g: var(--g2, rgb(155 95 255 / 0.5));
-  --board-item-gs: var(--gs2, rgb(155 95 255 / 0.1));
 }
 
 .board-canvas__item:hover {
-  border-color: var(--board-item-n);
-  box-shadow: 0 0 22px -6px var(--board-item-g);
+  border-color: color-mix(in srgb, var(--board-item-n) 60%, transparent);
+  box-shadow:
+    0 10px 26px rgb(3 5 12 / 0.5),
+    0 0 18px -7px color-mix(in srgb, var(--board-item-g) 55%, transparent);
 }
 
+/* After :hover on purpose — in the mockup a selected card drops its hover
+   style (`stH` is empty when `sel`), so selection reads the same whether or
+   not the pointer happens to be over it. */
+.board-canvas__item--selected,
+.board-canvas__item--selected:hover {
+  border-color: color-mix(in srgb, var(--board-item-n) 95%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--board-item-n) 45%, transparent),
+    0 0 24px -6px color-mix(in srgb, var(--board-item-g) 65%, transparent);
+}
+
+/* Outline rather than box-shadow so the keyboard ring stacks with the
+   selection ring instead of replacing it. */
 .board-canvas__item:focus-visible {
-  border-color: var(--board-item-n);
-  box-shadow: 0 0 0 2px var(--focus-ring, #00f0ff);
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
 }
 
-.board-canvas__item--dragging {
+.board-canvas__item--dragging,
+.board-canvas__item--dragging:hover {
   cursor: grabbing;
   border-color: var(--board-item-n);
   box-shadow: 0 14px 40px rgb(3 5 12 / 0.6), 0 0 26px -6px var(--board-item-g);

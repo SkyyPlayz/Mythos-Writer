@@ -17,12 +17,33 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+const BOARDS_CSS_FILES = ['BoardCanvas.css', 'BoardsTabPanel.css'] as const;
+
 const readBoardsCss = (relPath: string): string => readFileSync(resolve(__dirname, relPath), 'utf8');
 
 /** Strip comments so a token named in prose isn't mistaken for a reference. */
 const stripComments = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//g, '');
 
 describe('SKY-11449 — Boards surface is wired to the Liquid Neon theme engine', () => {
+  /**
+   * SKY-11501: these files carry long comments full of token names, and a
+   * token glob written `--b*` immediately before a `/` closes the comment on
+   * the spot. The browser then swallows the following rule as comment fallout
+   * — which is how `.board-canvas__item { position: absolute }` silently
+   * vanished and dropped every tile into flow layout. Nothing else notices:
+   * the built bundle still contains the text, and a regex comment-stripper
+   * resyncs on the next comment opener.
+   */
+  it.each(BOARDS_CSS_FILES)('%s has no comment that closes itself early', (relPath) => {
+    const withoutComments = readBoardsCss(relPath).replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(
+      withoutComments.includes('*/'),
+      `${relPath} has a stray comment terminator once well-formed comments are removed, so one `
+        + 'of its comments ends earlier than it looks — usually a token glob such as "--b*" '
+        + 'written directly before a slash. The rule right after it will not parse in the browser.',
+    ).toBe(false);
+  });
+
   it('colours cards and rims from the accent slots, not a fixed palette', () => {
     const canvas = stripComments(readBoardsCss('BoardCanvas.css'));
 
