@@ -64,7 +64,7 @@ jobs:
 
       - name: Detect changed paths — docs-only (path-based CI optimization)
         id: filter-docs
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             docs-only:
@@ -84,7 +84,7 @@ jobs:
       # docs-only's positive OR patterns need the default 'some' quantifier.
       - name: Detect changed paths — run-e2e (path-based CI optimization)
         id: filter-e2e
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v4
         with:
           predicate-quantifier: every
           filters: |
