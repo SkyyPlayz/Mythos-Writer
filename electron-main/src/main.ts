@@ -597,6 +597,7 @@ import {
   type ManuscriptScene,
 } from './archiveAgent.js';
 import { ingestArchiveQuestions } from './brainstormQuestionQueue.js';
+import { runWikiAutonomyForScene, type WikiAutonomySummary } from './wikiAutonomyRunner.js';
 import {
   runEntityPrePass,
   buildScanPrompt,
@@ -4762,10 +4763,31 @@ const handlers: IpcHandlers = {
     // M12.B2: Check 2's proposed questions land in Brainstorm's queue, never
     // the continuity-flag store above — distinct artifact class, distinct table.
     ingestArchiveQuestions(result.questions);
+
+    // SKY-11457 / SKY-10740: the scene scan is the one place the wiki reads the
+    // draft, so it is where the tri-state `wikiAutonomy` setting is consulted.
+    // Failures here are contained — a stub the vault refused must never turn a
+    // continuity scan into an error dialog.
+    let wikiAutonomy: WikiAutonomySummary | undefined;
+    try {
+      ensureNotesVaultDir();
+      wikiAutonomy = runWikiAutonomyForScene({
+        sceneText: payload.sceneText,
+        scenePath: payload.scenePath,
+        entities: index.entities,
+        settings: loadAppSettings(),
+        notesVaultRoot: getNotesVaultRoot(),
+        storyVaultRoot: getVaultRoot(),
+      });
+    } catch (err) {
+      console.warn('[wiki-autonomy] scene pass failed:', (err as Error).message);
+    }
+
     return {
       suggestions: result.suggestions,
       inconsistenciesFound: result.inconsistenciesFound,
       wikiLinksFound: result.wikiLinksFound,
+      wikiAutonomy,
     };
   },
 

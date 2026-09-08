@@ -3637,6 +3637,19 @@ export interface ArchiveScanResponse {
   suggestions: SuggestionRow[];
   inconsistenciesFound: number;
   wikiLinksFound: number;
+  /**
+   * SKY-11457: what the tri-state `wikiAutonomy` setting did with the new names
+   * this scan found. Present on every scan so the mode is observable rather
+   * than silent.
+   */
+  wikiAutonomy?: {
+    mode: 'off' | 'ask' | 'auto';
+    candidates: number;
+    questionsQueued: number;
+    stubsWritten: number;
+    suppressed: number;
+    skipped: number;
+  };
 }
 
 export interface ArchiveStatusResponse {
