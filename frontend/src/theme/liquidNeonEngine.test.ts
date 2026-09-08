@@ -1,6 +1,8 @@
 // Exact-value tests for the Liquid Neon token engine. Expected strings are the
 // prototype's own outputs (renderVals HTML 3934–3967) — if these fail, the
 // port has drifted from the spec.
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, afterEach } from 'vitest';
 import {
   hexA,
@@ -196,56 +198,113 @@ describe('panel-glass token bridge (SKY-10914)', () => {
   });
 });
 
-// SKY-11133 (owner report): at the owner's preferred LOW global glass, Settings
-// and popups read through to the wallpaper and are hard to follow. Overlay
-// surfaces (Settings, popovers, dropdown/context menus, toasts) read a
-// derived tier — glassA/blur × 1.25, clamped to the sliders' own maxima
-// (96%/40px) — instead of the plain --glass-fill/--blur-panel the rest of
-// the app uses. Same source values as the SKY-10914 bridge above, just a
-// single offset constant; not a second theming system.
-describe('overlay-tier token bridge (SKY-11133)', () => {
-  it('derives --glass-fill-overlay as glassA × 1.25 in the same color family', () => {
-    const el = document.createElement('div');
-    applyLiquidNeonV2Tokens({ glassA: 20 }, COSMIC, el);
-    expect(el.style.getPropertyValue('--glass-fill')).toBe('rgba(13,16,28,0.200)');
-    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(13,16,28,0.250)');
+// SKY-11133 gave Settings and popups their own tier so they stay legible at
+// the owner's preferred LOW global glass — but derived it as glassA/blur ×
+// 1.25, which at the shipped defaults (20 / 1px) is a 25% fill behind a
+// 1.25px blur: every dialog moved onto the tier became thinner than the
+// frozen literal it replaced (SKY-11480 OT-1). The owner mockup never lets
+// the sliders touch floating chrome — every dialog and popover is the same
+// rgba(15,19,33,.97) / blur(24px) at any slider position — so the tier is a
+// fixed recipe owned by tokens.css and the engine must leave it alone.
+describe('overlay tier is a fixed recipe, not a slider derivative (SKY-11491)', () => {
+  const TOKENS_CSS = readFileSync(resolve(__dirname, '../tokens.css'), 'utf8');
+  const block = (re: RegExp) => re.exec(TOKENS_CSS)?.[1] ?? '';
+
+  it('tokens.css pins the mockup recipe: rgba(15,19,33,.97) over blur(24px)', () => {
+    const root = block(/:root\s*\{([^}]*)\}/);
+    expect(root).toMatch(/--glass-fill-overlay:\s*rgba\(15,\s*19,\s*33,\s*0?\.97\);/);
+    expect(root).toMatch(/--blur-panel-overlay:\s*24px;/);
   });
 
-  it('derives --blur-panel-overlay as blur × 1.25', () => {
+  it.each([
+    [0, 0],
+    [20, 1],
+    [96, 40],
+  ])('the engine never writes the tier — glassA %i / blur %ipx', (glassA, blur) => {
     const el = document.createElement('div');
-    applyLiquidNeonV2Tokens({ blur: 8 }, COSMIC, el);
-    expect(el.style.getPropertyValue('--blur-panel')).toBe('8px');
-    expect(el.style.getPropertyValue('--blur-panel-overlay')).toBe('10px');
-  });
-
-  it('clamps overlay opacity to 96% so a maxed-out global setting cannot overshoot', () => {
-    const el = document.createElement('div');
-    applyLiquidNeonV2Tokens({ glassA: 96 }, COSMIC, el);
-    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(13,16,28,0.960)');
-  });
-
-  it('clamps overlay blur to 40px so a maxed-out global setting cannot overshoot', () => {
-    const el = document.createElement('div');
-    applyLiquidNeonV2Tokens({ blur: 40 }, COSMIC, el);
-    expect(el.style.getPropertyValue('--blur-panel-overlay')).toBe('40px');
-  });
-
-  it('stays reactive: moving the sliders moves both tiers together', () => {
-    const el = document.createElement('div');
-    applyLiquidNeonV2Tokens({ glassA: 10, blur: 4 }, COSMIC, el);
-    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(13,16,28,0.125)');
-    applyLiquidNeonV2Tokens({ glassA: 60, blur: 20 }, COSMIC, el);
-    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(13,16,28,0.750)');
-    expect(el.style.getPropertyValue('--blur-panel-overlay')).toBe('25px');
-  });
-
-  it('reset clears the overlay tokens along with the panel-glass bridge', () => {
-    const el = document.createElement('div');
-    applyLiquidNeonV2Tokens({ glassA: 40 }, COSMIC, el);
-    expect(el.style.getPropertyValue('--glass-fill-overlay')).not.toBe('');
-    resetLiquidNeonV2Tokens(el);
+    const tokens = applyLiquidNeonV2Tokens({ glassA, blur }, COSMIC, el);
     expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('');
     expect(el.style.getPropertyValue('--blur-panel-overlay')).toBe('');
+    expect(tokens).not.toHaveProperty('--glass-fill-overlay');
+    expect(tokens).not.toHaveProperty('--blur-panel-overlay');
+  });
+
+  it('the panel tier still tracks the sliders — the two tiers are independent', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ glassA: 10, blur: 4 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill')).toBe('rgba(13,16,28,0.100)');
+    expect(el.style.getPropertyValue('--blur-panel')).toBe('4px');
+  });
+
+  it('the accessibility paths still flatten the recipe', () => {
+    // App high-contrast toggle (K8) — declared on every element via :where(*).
+    const k8 = block(/:root\[data-contrast="high"\][^{]*\{([^}]*)\}/);
+    expect(k8).toMatch(/--glass-fill-overlay:\s*#15191f;/);
+    expect(k8).toMatch(/--blur-panel-overlay:\s*0px;/);
+    // OS reduce-transparency — now honoured, since nothing inline outranks it.
+    const reduced = block(/@media \(prefers-reduced-transparency: reduce\)\s*\{\s*:root\s*\{([^}]*)\}/);
+    expect(reduced).toMatch(/--glass-fill-overlay:\s*var\(--glass-fill-fallback\);/);
+    expect(reduced).toMatch(/--blur-panel-overlay:\s*0px;/);
+    // No backdrop-filter at all — opaque fill.
+    const noBackdrop = block(/@supports not \(\(backdrop-filter: blur\(1px\)\)[^{]*\{\s*:root\s*\{([^}]*)\}/);
+    expect(noBackdrop).toMatch(/--glass-fill-overlay:\s*var\(--glass-fill-fallback\);/);
+  });
+});
+
+// SKY-11491 (SKY-11480 SC-1): the hairline set the mockup stamps beside
+// --bw/--gr/--b1/--g1 (dc.html 7193–7194) — half glow-width floored at .5px,
+// half glow radius, and the slot-1 border/glow at half the *formula's* alpha.
+// Until now the engine emitted none of the four: four stylesheets read them
+// and silently painted their literal fallbacks, and Scene Crafter hand-rolled
+// a color-mix stand-in that halved the clamped --b1 instead.
+describe('hairline tokens --bwh / --grh / --bh / --glowH (SKY-11491)', () => {
+  it('defaults: .5px width, 30px radius, .550 border alpha, .590 glow alpha', () => {
+    const t = compute();
+    expect(t['--bwh']).toBe('0.5px');
+    expect(t['--grh']).toBe('30px');
+    expect(t['--bh']).toBe('rgba(0,240,255,0.550)');
+    expect(t['--glowH']).toBe('0 0 30px -7px rgba(0,240,255,0.590)');
+  });
+
+  it('width is half of glowW, floored at .5px', () => {
+    expect(compute({ glowW: 4 })['--bwh']).toBe('2px');
+    expect(compute({ glowW: 1 })['--bwh']).toBe('0.5px');
+    expect(compute({ glowW: 0 })['--bwh']).toBe('0.5px'); // `glowW || 1`, same as --bw
+  });
+
+  it('radius is half of glowR, rounded, and shapes both --grh and the glow', () => {
+    const t = compute({ glowR: 27 });
+    expect(t['--grh']).toBe('14px');
+    expect(t['--glowH']).toMatch(/^0 0 14px -7px /);
+    expect(compute({ glowR: 0 })['--grh']).toBe('13px'); // `glowR || 26`, same as --gr
+  });
+
+  it('alphas halve the formula, not the clamped --b1/--g1', () => {
+    // intensity 100 → I=4: --b1 saturates at 1.000 but --bh keeps climbing.
+    const hi = compute({ intensity: 100 });
+    expect(hi['--b1']).toBe('rgba(0,240,255,1.000)');
+    expect(hi['--bh']).toBe('rgba(0,240,255,0.950)');
+    expect(hi['--glowH']).toBe('0 0 30px -7px rgba(0,240,255,1.000)');
+    const lo = compute({ intensity: 0 });
+    expect(lo['--bh']).toBe('rgba(0,240,255,0.150)');
+    expect(lo['--glowH']).toBe('0 0 30px -7px rgba(0,240,255,0.090)');
+  });
+
+  it('follow slot 1 and reduceGlow exactly like the full-strength tokens', () => {
+    const slots = [...LIQUID_NEON_PRESETS.cyber.c] as typeof LIQUID_NEON_V2_DEFAULTS.slots;
+    const t = compute({ slots, reduceGlow: true }); // I = min(50, 5) / 25 = .2
+    expect(t['--bh']).toBe(hexA(slots[0], 0.19));
+    expect(t['--glowH']).toBe('0 0 30px -7px ' + hexA(slots[0], 0.14));
+  });
+
+  it('are applied to the element and cleared by reset like every other token', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens(null, COSMIC, el);
+    expect(el.style.getPropertyValue('--bwh')).toBe('0.5px');
+    expect(el.style.getPropertyValue('--glowH')).toBe('0 0 30px -7px rgba(0,240,255,0.590)');
+    resetLiquidNeonV2Tokens(el);
+    expect(el.style.getPropertyValue('--bwh')).toBe('');
+    expect(el.style.getPropertyValue('--glowH')).toBe('');
   });
 });
 

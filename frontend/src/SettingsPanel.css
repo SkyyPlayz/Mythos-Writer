@@ -30,10 +30,10 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .settings-panel {
-    /* SKY-11133: Settings reads the overlay tier (glassA/blur × 1.25,
-       clamped) instead of --glass-fill/--blur-panel directly, so it stays
-       legible at the owner's preferred low global glass. Same slider, same
-       reactivity — see liquidNeonEngine.ts panelGlassTokens. */
+    /* SKY-11133: Settings reads the overlay tier instead of
+       --glass-fill/--blur-panel directly, so it stays legible at the owner's
+       preferred low global glass. SKY-11491: the tier is the mockup's fixed
+       recipe (tokens.css), independent of the Appearance sliders. */
     background: var(--glass-fill-overlay);
     backdrop-filter: blur(var(--blur-panel-overlay));
     -webkit-backdrop-filter: blur(var(--blur-panel-overlay));

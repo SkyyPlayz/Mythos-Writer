@@ -35,9 +35,11 @@
 }
 
 /* ── Floating zoom toolbar ──
-   Mockup: bottom-centre glass pill, blur(18px), slot-1 rim, lifted shadow.
-   --blur-panel-overlay is the engine's overlay tier (Backdrop blur × 1.25),
-   so this tracks the Appearance sliders instead of a hardcoded blur(8px). */
+   Mockup: bottom-centre glass pill (rgba(15,19,33,.94), blur(18px)), slot-1
+   rim, lifted shadow. It sits on the shared overlay tier here — the mockup's
+   dialog recipe (SKY-11491) via --glass-fill-overlay / --blur-panel-overlay —
+   so it matches every other floating surface; SKY-11480 BD-4 accepted that
+   over a bespoke fill/blur. */
 .board-canvas__zoom-controls {
   position: absolute;
   bottom: 12px;

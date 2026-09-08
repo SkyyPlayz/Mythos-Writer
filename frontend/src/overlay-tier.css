@@ -12,10 +12,13 @@
      box-shadow: 0 14px 40px rgba(3,5,12,.6),
                  0 0 22px -6px var(--g1, rgba(0,240,255,.4));
 
-   Here the fill and blur come from the SKY-11133 overlay tier
-   (--glass-fill-overlay / --blur-panel-overlay) rather than the mockup's frozen
-   literals, so Appearance → glass still drives them live; the border and glow
-   come from the v2 slot engine (--b* / --g*, alpha already scaled by neon
+   Here the fill and blur come from the SKY-11133 overlay tier tokens
+   (--glass-fill-overlay / --blur-panel-overlay). Those hold the mockup's
+   recipe as a fixed value (SKY-11491): floating chrome is independent of the
+   Appearance glass sliders, exactly as in the mockup, and the tokens exist so
+   the high-contrast / reduced-transparency / no-backdrop-filter paths in
+   tokens.css can flatten every consumer at once. The border and glow come
+   from the v2 slot engine (--b* / --g*, alpha already scaled by neon
    intensity, which is exactly how the mockup's own fallbacks are shaped).
 
    ── Usage ────────────────────────────────────────────────────────────────
