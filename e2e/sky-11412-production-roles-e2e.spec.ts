@@ -35,6 +35,12 @@
  *                    the reveal — proving role-specific framing is real, not
  *                    one output relabeled (AC3).
  *
+ *   TC-SKY11412-04  Same panel, switching to the OFF Line Editor: the previous
+ *                    role's review leaves the screen instead of being
+ *                    relabelled under the new role's heading, and Run is
+ *                    blocked with a visible reason — no provider hit
+ *                    (SKY-11456, found by SKY-11440).
+ *
  * Run (after `npm run build:electron`):
  *   npx playwright test e2e/sky-11412-production-roles-e2e.spec.ts --reporter=list
  */
@@ -94,8 +100,14 @@ interface CapturedRequest {
   user: string;
 }
 
-function startMockLlmServer(): Promise<{ port: number; close: () => Promise<void>; lastRequest: () => CapturedRequest | null }> {
+function startMockLlmServer(): Promise<{
+  port: number;
+  close: () => Promise<void>;
+  lastRequest: () => CapturedRequest | null;
+  hits: () => number;
+}> {
   let last: CapturedRequest | null = null;
+  let hits = 0;
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       if (req.method !== 'POST' || !req.url?.endsWith('/chat/completions')) {
@@ -116,6 +128,7 @@ function startMockLlmServer(): Promise<{ port: number; close: () => Promise<void
           /* malformed body — echo empty */
         }
         last = { system: systemMsg, user: userMsg };
+        hits += 1;
 
         // Echo the composed prompt back as the "model's" answer, delimited so
         // the test can assert on each half independently.
@@ -136,6 +149,7 @@ function startMockLlmServer(): Promise<{ port: number; close: () => Promise<void
       resolve({
         port,
         lastRequest: () => last,
+        hits: () => hits,
         close: () => new Promise<void>((r) => server.close(() => r())),
       });
     });
@@ -444,4 +458,37 @@ test('TC-SKY11412-03: Storyline Consultant run gets the full entity map — role
   expect(captured?.system).toContain('Storyline Consultant');
   expect(captured?.system).not.toContain('Alpha Reader');
   expect(captured?.user).toContain(HIDDEN_ENTITY_NAME);
+});
+
+// ─── TC-SKY11412-04: switching to an OFF role never relabels the last review ──
+
+test('TC-SKY11412-04: selecting an off role clears the previous review and blocks Run (SKY-11456)', async () => {
+  const overlay = page.locator('.beta-reader-overlay');
+  await expect(overlay).toBeVisible({ timeout: 5_000 });
+
+  // Carries the Storyline Consultant result from TC-SKY11412-03 on screen.
+  const result = overlay.locator('[data-testid="production-review-result"]');
+  await expect(result).toContainText('Storyline Consultant');
+  const hitsBefore = mockLlm.hits();
+
+  await overlay.getByLabel('Production role').selectOption('lineEditor');
+
+  // The previous role's notes must not survive under the new role's heading.
+  await expect(result).toHaveCount(0);
+
+  // Line Editor is OFF (TC-SKY11412-01): Run is blocked up front, with the
+  // reason visible next to it rather than only after a click.
+  const runBtn = overlay.locator('[data-testid="production-review-run"]');
+  await expect(runBtn).toBeDisabled();
+  await expect(overlay.locator('[data-testid="production-review-off-hint"]')).toContainText(
+    'Line Editor is off',
+  );
+
+  // Nothing reached the provider while the off role was selected.
+  expect(mockLlm.hits()).toBe(hitsBefore);
+
+  // Back to the role that produced it: its own review returns, still its own.
+  await overlay.getByLabel('Production role').selectOption('storylineConsultant');
+  await expect(result).toContainText('Storyline Consultant');
+  expect(mockLlm.hits()).toBe(hitsBefore);
 });
