@@ -1,0 +1,576 @@
+{
+  "sceneCrafter": {},
+  "boards": {},
+  "overlay": [
+    {
+      "label": "REFERENCE .ln-overlay-surface",
+      "spec": "div.ln-overlay-surface",
+      "background": "rgba(13, 16, 28, 0.25)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(1.25px)",
+      "border": "1px rgb(0, 240, 255)",
+      "radius": "0px",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px, rgb(0, 240, 255) 0px 0px 22px -6px"
+    },
+    {
+      "label": "ui/Menu .ln-menu",
+      "spec": "div.ln-menu",
+      "background": "rgb(15, 19, 33)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "12px",
+      "boxShadow": "rgba(3, 5, 12, 0.55) 0px 12px 48px 0px"
+    },
+    {
+      "label": "ui/DropdownSelect .ln-select-listbox",
+      "spec": "div.ln-select-listbox",
+      "background": "rgb(15, 19, 33)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "12px",
+      "boxShadow": "rgba(3, 5, 12, 0.55) 0px 12px 48px 0px"
+    },
+    {
+      "label": "ui/Dialog .ln-dialog",
+      "spec": "div.ln-dialog.ln-overlay-surface",
+      "background": "rgba(13, 16, 28, 0.25)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(1.25px)",
+      "border": "1px rgb(0, 240, 255)",
+      "radius": "24px",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px, rgb(0, 240, 255) 0px 0px 22px -6px"
+    },
+    {
+      "label": "ExportDialog .export-dialog",
+      "spec": "div.export-dialog",
+      "background": "rgba(15, 19, 33, 0.97)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgb(155, 95, 255)",
+      "radius": "18px",
+      "boxShadow": "rgba(2, 4, 10, 0.7) 0px 24px 70px 0px, rgb(155, 95, 255) 0px 0px 34px -8px"
+    },
+    {
+      "label": "NoteSplitPane .nsp-pane-menu",
+      "spec": "div.nsp-pane-menu",
+      "background": "rgba(15, 19, 33, 0.97)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(24px)",
+      "border": "1px rgb(0, 240, 255)",
+      "radius": "10px",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 12px 36px 0px"
+    },
+    {
+      "label": "SplitEditorPane .spe-pane-menu",
+      "spec": "div.spe-pane-menu",
+      "background": "rgba(15, 19, 33, 0.97)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(24px)",
+      "border": "1px rgb(0, 240, 255)",
+      "radius": "10px",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 12px 36px 0px"
+    },
+    {
+      "label": "NoteViewer .note-gear-menu",
+      "spec": "div.note-gear-menu",
+      "background": "rgba(15, 19, 33, 0.97)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(24px)",
+      "border": "1px rgb(0, 240, 255)",
+      "radius": "14px",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px, rgb(0, 240, 255) 0px 0px 22px -6px"
+    },
+    {
+      "label": "TimelineRoot .tlr-tpl-menu",
+      "spec": "div.tlr-tpl-menu",
+      "background": "rgba(15, 19, 33, 0.97)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(24px)",
+      "border": "1px rgb(155, 95, 255)",
+      "radius": "13px",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px"
+    },
+    {
+      "label": "WorkspaceTabBar .wtb-ctx-menu",
+      "spec": "div.wtb-ctx-menu",
+      "background": "rgba(15, 19, 33, 0.97)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(24px)",
+      "border": "1px rgb(0, 240, 255)",
+      "radius": "12px",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px"
+    },
+    {
+      "label": "WorkspaceTabBar .wtb-new-tab-menu",
+      "spec": "div.wtb-new-tab-menu",
+      "background": "rgba(15, 19, 33, 0.97)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(24px)",
+      "border": "1px rgb(0, 240, 255)",
+      "radius": "10px",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 12px 36px 0px"
+    },
+    {
+      "label": "WorkspaceTabBar .wtb-overflow-menu",
+      "spec": "div.wtb-overflow-menu",
+      "background": "rgba(15, 19, 33, 0.97)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(24px)",
+      "border": "1px rgb(0, 240, 255)",
+      "radius": "10px",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 12px 36px 0px"
+    },
+    {
+      "label": "WindowChrome .wc-popover",
+      "spec": "div.wc-popover",
+      "background": "rgba(15, 19, 33, 0.97)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(24px)",
+      "border": "1px rgb(0, 240, 255)",
+      "radius": "12px",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px"
+    },
+    {
+      "label": "DraftsPopover .ln-drafts-popover",
+      "spec": "div.ln-drafts-popover",
+      "background": "rgba(15, 19, 33, 0.97)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(24px)",
+      "border": "1px rgb(0, 240, 255)",
+      "radius": "14px",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px, rgb(0, 240, 255) 0px 0px 22px -6px"
+    },
+    {
+      "label": "VaultBrowser .vb-vault-picker-dropdown",
+      "spec": "div.vb-vault-picker-dropdown",
+      "background": "rgba(15, 19, 33, 0.97)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(24px)",
+      "border": "1px rgba(255, 255, 255, 0.1)",
+      "radius": "13px",
+      "boxShadow": "rgba(0, 0, 0, 0.5) 0px 8px 32px 0px"
+    },
+    {
+      "label": "LayoutPicker .layout-picker-dropdown",
+      "spec": "div.layout-picker-dropdown",
+      "background": "rgb(26, 31, 46)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "8px",
+      "boxShadow": "rgba(0, 0, 0, 0.4) 0px 8px 24px 0px"
+    },
+    {
+      "label": "TimelinePicker .tlpicker__dropdown",
+      "spec": "div.tlpicker__dropdown",
+      "background": "rgb(30, 30, 46)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(139, 92, 246, 0.3)",
+      "radius": "8px",
+      "boxShadow": "rgba(0, 0, 0, 0.4) 0px 8px 24px 0px"
+    },
+    {
+      "label": "TagInput .tag-dropdown",
+      "spec": "div.tag-dropdown",
+      "background": "rgb(26, 29, 46)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "6px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "TagPane .tp-merge-dialog",
+      "spec": "div.tp-merge-dialog",
+      "background": "rgb(26, 26, 46)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.07)",
+      "radius": "12px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "NoteViewer .note-fidelity-dialog",
+      "spec": "div.note-fidelity-dialog",
+      "background": "rgb(24, 24, 24)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "8px",
+      "boxShadow": "rgba(0, 0, 0, 0.5) 0px 8px 32px 0px"
+    },
+    {
+      "label": "GlobalRightSidebar .grs-add-panel-picker",
+      "spec": "div.grs-add-panel-picker",
+      "background": "rgb(42, 42, 42)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "6px",
+      "boxShadow": "rgba(0, 0, 0, 0.4) 0px 4px 12px 0px"
+    },
+    {
+      "label": "SceneHistory .history-confirm-dialog",
+      "spec": "div.history-confirm-dialog",
+      "background": "rgba(13, 16, 28, 0.2)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "10px",
+      "boxShadow": "rgba(3, 5, 12, 0.65) 0px 20px 64px 0px"
+    },
+    {
+      "label": "SplitEditorPane .spe-scene-popover",
+      "spec": "div.spe-scene-popover",
+      "background": "rgba(13, 16, 28, 0.2)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.24)",
+      "radius": "12px",
+      "boxShadow": "rgba(0, 0, 0, 0.4) 0px 4px 16px 0px"
+    },
+    {
+      "label": "GlobalSearchPanel .gsp-panel",
+      "spec": "div.gsp-panel",
+      "background": "rgb(30, 30, 46)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "12px",
+      "boxShadow": "rgba(3, 5, 12, 0.65) 0px 20px 64px 0px"
+    },
+    {
+      "label": "MigrationBanner .migration-modal-card",
+      "spec": "div.migration-modal-card",
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "0px rgb(191, 214, 232)",
+      "radius": "0px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "LeftRail .lr-panel-picker",
+      "spec": "div.lr-panel-picker",
+      "background": "rgb(15, 19, 33)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.06)",
+      "radius": "8px",
+      "boxShadow": "rgba(3, 5, 12, 0.55) 0px 12px 48px 0px"
+    },
+    {
+      "label": "TemplatePicker .tp-modal",
+      "spec": "div.tp-modal",
+      "background": "rgb(15, 19, 33)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.07)",
+      "radius": "16px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "InconsistencyCard .ic-consent-modal",
+      "spec": "div.ic-consent-modal",
+      "background": "rgb(15, 19, 33)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "16px",
+      "boxShadow": "rgba(3, 5, 12, 0.45) 0px 8px 32px 0px, rgba(20, 16, 40, 0.45) 0px 1px 24px 0px inset"
+    },
+    {
+      "label": "SceneGrid .context-menu",
+      "spec": "div.context-menu",
+      "background": "rgb(15, 19, 33)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "16px",
+      "boxShadow": "rgba(0, 0, 0, 0.5) 0px 8px 24px 0px"
+    },
+    {
+      "label": "PresetSelector .preset-selector-dropdown",
+      "spec": "div.preset-selector-dropdown",
+      "background": "rgb(15, 19, 33)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "6px",
+      "boxShadow": "rgba(0, 0, 0, 0.4) 0px 4px 16px 0px"
+    },
+    {
+      "label": "EntityBrowser .entity-dialog",
+      "spec": "div.entity-dialog",
+      "background": "rgb(13, 16, 28)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "8px",
+      "boxShadow": "rgba(3, 5, 12, 0.65) 0px 20px 64px 0px"
+    },
+    {
+      "label": "EntityBrowser .entity-type-picker",
+      "spec": "div.entity-type-picker",
+      "background": "rgb(13, 16, 28)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "6px",
+      "boxShadow": "rgba(3, 5, 12, 0.55) 0px 12px 48px 0px"
+    },
+    {
+      "label": "WikiLinkPicker .wiki-link-picker",
+      "spec": "div.wiki-link-picker",
+      "background": "rgb(13, 16, 28)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(0, 229, 255, 0.3)",
+      "radius": "6px",
+      "boxShadow": "rgba(0, 0, 0, 0.5) 0px 8px 24px 0px"
+    },
+    {
+      "label": "EntityMention .entity-mention-picker",
+      "spec": "div.entity-mention-picker",
+      "background": "rgb(13, 16, 28)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(0, 240, 255, 0.3)",
+      "radius": "6px",
+      "boxShadow": "rgba(0, 0, 0, 0.5) 0px 8px 24px 0px"
+    },
+    {
+      "label": "IconPicker .icon-picker-modal",
+      "spec": "div.icon-picker-modal",
+      "background": "rgb(13, 16, 28)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "8px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "KanbanBoard .kanban-entry-picker-panel",
+      "spec": "div.kanban-entry-picker-panel",
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "0px rgb(191, 214, 232)",
+      "radius": "0px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "ProjectSwitcher .project-switcher-dropdown",
+      "spec": "div.project-switcher-dropdown",
+      "background": "rgba(13, 16, 28, 0.2)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.06)",
+      "radius": "6px",
+      "boxShadow": "rgba(0, 0, 0, 0.3) 0px 4px 16px 0px"
+    },
+    {
+      "label": "BrainstormPage .bs-delete-confirm-dialog",
+      "spec": "div.bs-delete-confirm-dialog",
+      "background": "rgba(13, 16, 28, 0.2)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "16px",
+      "boxShadow": "rgba(0, 0, 0, 0.4) 0px 4px 16px 0px"
+    },
+    {
+      "label": "IdeaContextMenu .idea-context-menu",
+      "spec": "div.idea-context-menu",
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "0px rgb(191, 214, 232)",
+      "radius": "0px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "IdeaDetailDrawer .idd-discard-dialog",
+      "spec": "div.idd-discard-dialog",
+      "background": "rgba(13, 16, 28, 0.2)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.06)",
+      "radius": "16px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "IdeaDetailDrawer .idd-entity-picker",
+      "spec": "div.idd-entity-picker",
+      "background": "rgba(13, 16, 28, 0.2)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.06)",
+      "radius": "16px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "DesktopShell .prompt-modal",
+      "spec": "div.prompt-modal",
+      "background": "rgb(13, 16, 28)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "12px",
+      "boxShadow": "rgba(3, 5, 12, 0.55) 0px 12px 48px 0px"
+    },
+    {
+      "label": "SettingsPanel .lg-popover",
+      "spec": "div.lg-popover",
+      "background": "rgb(8, 10, 18)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "12px",
+      "boxShadow": "rgba(3, 5, 12, 0.65) 0px 20px 64px 0px, rgba(0, 240, 255, 0.18) 0px 0px 0px 1px"
+    },
+    {
+      "label": "VaultGraphView .vgv-legend-popover",
+      "spec": "div.vgv-legend-popover",
+      "background": "rgb(8, 10, 18)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "12px",
+      "boxShadow": "rgba(0, 0, 0, 0.35) 0px 8px 24px 0px"
+    },
+    {
+      "label": "AgentSessionPicker .asp-dropdown",
+      "spec": "div.asp-dropdown",
+      "background": "rgba(13, 16, 28, 0.96)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(18px) saturate(1.5)",
+      "border": "1px rgba(255, 77, 255, 0.3)",
+      "radius": "12px",
+      "boxShadow": "rgba(0, 0, 0, 0.6) 0px 8px 32px 0px, rgba(255, 77, 255, 0.3) 0px 0px 20px -8px"
+    },
+    {
+      "label": "SceneCrafter .sc-pov-dropdown",
+      "spec": "div.sc-pov-dropdown",
+      "background": "rgba(13, 16, 28, 0.25)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(1.25px)",
+      "border": "1px rgb(0, 240, 255)",
+      "radius": "11px",
+      "boxShadow": "rgba(0, 0, 0, 0.55) 0px 12px 28px -8px, rgb(0, 240, 255) 0px 0px 60px -6px"
+    },
+    {
+      "label": "SceneCrafter .sc-ref-picker",
+      "spec": "div.sc-ref-picker",
+      "background": "rgba(13, 16, 28, 0.25)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(1.25px)",
+      "border": "0px rgb(200, 211, 231)",
+      "radius": "12px",
+      "boxShadow": "rgba(0, 0, 0, 0.55) 0px 12px 28px -8px"
+    },
+    {
+      "label": "ManuscriptView .msv-title-menu-popover",
+      "spec": "div.msv-title-menu-popover",
+      "background": "rgba(18, 22, 32, 0.97)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.12)",
+      "radius": "10px",
+      "boxShadow": "rgba(0, 0, 0, 0.6) 0px 12px 32px -8px"
+    },
+    {
+      "label": "OutlinePlanningPanel .opl-link-picker",
+      "spec": "div.opl-link-picker",
+      "background": "rgb(24, 24, 27)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.15)",
+      "radius": "12px",
+      "boxShadow": "rgba(0, 0, 0, 0.4) 0px 8px 24px 0px"
+    },
+    {
+      "label": "MythosMigration .mythos-migration-modal",
+      "spec": "div.mythos-migration-modal",
+      "background": "rgba(13, 16, 28, 0.96)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(155, 95, 255, 0.5)",
+      "radius": "18px",
+      "boxShadow": "rgba(155, 95, 255, 0.6) 0px 0px 40px -8px"
+    },
+    {
+      "label": "DesktopShell .app-menu-dropdown",
+      "spec": "div.app-menu-dropdown",
+      "background": "rgba(13, 16, 28, 0.25)",
+      "backgroundImage": "",
+      "backdropFilter": "blur(16px) saturate(1.6)",
+      "border": "1px rgba(255, 255, 255, 0.07)",
+      "radius": "12px",
+      "boxShadow": "rgba(3, 5, 12, 0.55) 0px 12px 48px 0px"
+    },
+    {
+      "label": "DockedTabBar .dtb-picker",
+      "spec": "div.dtb-picker",
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "0px rgb(191, 214, 232)",
+      "radius": "0px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "DockedTabBar .dtb-close-popover",
+      "spec": "div.dtb-close-popover",
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "0px rgb(191, 214, 232)",
+      "radius": "0px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "AeonLaneView .aeon-popover",
+      "spec": "div.aeon-popover",
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "0px rgb(191, 214, 232)",
+      "radius": "0px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "AeonLaneView .aeon-context-menu",
+      "spec": "div.aeon-context-menu",
+      "background": "rgba(0, 0, 0, 0)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "0px rgb(191, 214, 232)",
+      "radius": "0px",
+      "boxShadow": "none"
+    },
+    {
+      "label": "VaultBrowser .vb-context-menu",
+      "spec": "div.vb-context-menu",
+      "background": "rgb(13, 16, 28)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.07)",
+      "radius": "12px",
+      "boxShadow": "rgba(0, 0, 0, 0.4) 0px 8px 32px 0px"
+    },
+    {
+      "label": "DesktopShell .cross-tab-link-modal__card",
+      "spec": "div.cross-tab-link-modal__card",
+      "background": "rgb(13, 16, 28)",
+      "backgroundImage": "",
+      "backdropFilter": "none",
+      "border": "1px rgba(255, 255, 255, 0.07)",
+      "radius": "12px",
+      "boxShadow": "rgba(3, 5, 12, 0.65) 0px 20px 64px 0px"
+    }
+  ]
+}
