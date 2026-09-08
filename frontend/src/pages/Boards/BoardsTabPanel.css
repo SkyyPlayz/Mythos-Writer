@@ -1,3 +1,10 @@
+/**
+ * SKY-11449: Boards tab shell, wired into the Liquid Neon v2 theme engine.
+ * `--bg-topbar` and `--surface-hover` were never defined anywhere, so the
+ * breadcrumb bar painted a flat grey and ignored the Appearance settings.
+ * See BoardCanvas.css for the full note.
+ */
+
 .boards-tab-panel {
   display: flex;
   flex-direction: column;
@@ -6,17 +13,27 @@
   min-height: 0;
 }
 
-/* ── Breadcrumb ── */
+/* ── Breadcrumb ──
+   Same glass pattern as the app's other top-level panels (BrainstormPage,
+   EntriesPanel): opaque fallback first, glass + engine blur where supported. */
 .boards-tab-panel__breadcrumb {
   display: flex;
   align-items: center;
   flex-shrink: 0;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.07));
-  background: var(--bg-topbar, #14161e);
+  border-bottom: 1px solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--glass-fill-fallback, rgb(13 16 28));
   gap: 0;
   overflow-x: auto;
   white-space: nowrap;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .boards-tab-panel__breadcrumb {
+    background: var(--glass-fill, rgb(13 16 28 / 0.72));
+    backdrop-filter: blur(var(--blur-panel, 28px));
+    -webkit-backdrop-filter: blur(var(--blur-panel, 28px));
+  }
 }
 
 .boards-tab-panel__breadcrumb-group {
@@ -25,7 +42,7 @@
 }
 
 .boards-tab-panel__breadcrumb-sep {
-  color: var(--text-tertiary, #52525b);
+  color: var(--text-tertiary, #8e9db8);
   font-size: 13px;
   padding: 0 5px;
 }
@@ -34,18 +51,25 @@
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-link, #818cf8);
+  color: var(--text-link, #00f0ff);
   font-size: 13px;
   padding: 2px 4px;
   border-radius: 4px;
 }
 
 .boards-tab-panel__breadcrumb-btn:hover {
-  background: var(--surface-hover, rgba(255,255,255,0.07));
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+}
+
+/* The crumbs are the only way back up a board stack — they need a keyboard
+   affordance, not just :hover. */
+.boards-tab-panel__breadcrumb-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
 }
 
 .boards-tab-panel__breadcrumb-current {
-  color: var(--text-primary, #e4e4e7);
+  color: var(--text-primary, #f0f3fc);
   font-size: 13px;
   font-weight: 500;
   padding: 2px 4px;
@@ -63,7 +87,7 @@
 
 .boards-tab-panel__empty-msg,
 .boards-tab-panel__error {
-  color: var(--text-secondary, #a1a1aa);
+  color: var(--text-secondary, #c8d3e7);
   font-size: 14px;
   text-align: center;
   max-width: 360px;
@@ -75,6 +99,6 @@
 }
 
 .boards-tab-panel__loading {
-  color: var(--text-tertiary, #71717a);
+  color: var(--text-tertiary, #8e9db8);
   font-size: 14px;
 }
