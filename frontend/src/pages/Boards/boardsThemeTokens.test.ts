@@ -8,60 +8,21 @@
  * hardcoded fallback. CSS has no error for that — the surface just quietly
  * stopped responding to accent colour, glow, glass and blur changes forever.
  *
- * So: resolve every `var(--x)` these two files reference against the two real
- * sources of truth (tokens.css declarations + what the engine actually stamps
- * onto an element at runtime), and fail on anything that resolves to nothing.
+ * The "nothing defines it" half of that check now runs repo-wide, over every
+ * stylesheet under frontend/src, in theme/themeTokenCoverage.test.ts (SKY-11482)
+ * — so it is not repeated here. What stays here is the part that check cannot
+ * know: which *specific* tokens the Boards mockup calls for.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { applyLiquidNeonV2Tokens } from '../../theme/liquidNeonEngine';
-
-const BOARDS_CSS_FILES = ['BoardCanvas.css', 'BoardsTabPanel.css'] as const;
 
 const readBoardsCss = (relPath: string): string => readFileSync(resolve(__dirname, relPath), 'utf8');
 
 /** Strip comments so a token named in prose isn't mistaken for a reference. */
 const stripComments = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//g, '');
 
-/** Every `--name` declared as a property in the given CSS text. */
-function declaredIn(css: string): Set<string> {
-  return new Set(Array.from(stripComments(css).matchAll(/(--[\w-]+)\s*:/g), (m) => m[1]));
-}
-
-/** Every `--name` read through `var(--name, …)` in the given CSS text. */
-function referencedIn(css: string): string[] {
-  return Array.from(stripComments(css).matchAll(/var\(\s*(--[\w-]+)/g), (m) => m[1]);
-}
-
-/** Custom properties the v2 engine stamps onto :root at runtime. */
-function engineStampedTokens(): (name: string) => boolean {
-  const el = document.createElement('div');
-  applyLiquidNeonV2Tokens(null, 'cosmic.png', el);
-  return (name) => el.style.getPropertyValue(name) !== '';
-}
-
-const tokensCssDeclared = declaredIn(readFileSync(resolve(__dirname, '../../tokens.css'), 'utf8'));
-
 describe('SKY-11449 — Boards surface is wired to the Liquid Neon theme engine', () => {
-  it.each(BOARDS_CSS_FILES)('%s references no undefined custom properties', (relPath) => {
-    const css = readBoardsCss(relPath);
-    const isEngineStamped = engineStampedTokens();
-    const localDeclared = declaredIn(css);
-
-    const orphans = [...new Set(referencedIn(css))].filter(
-      (name) => !tokensCssDeclared.has(name) && !localDeclared.has(name) && !isEngineStamped(name),
-    );
-
-    expect(
-      orphans,
-      `${relPath} reads custom propert${orphans.length === 1 ? 'y' : 'ies'} that nothing defines: `
-        + `${orphans.join(', ')}. Each one silently resolves to its var() fallback, which means this `
-        + 'surface will not repaint when the theme changes. Use a token from tokens.css or one the '
-        + 'engine stamps (--n1..--n6, --b1..--b6, --g1..--g6, --gs1..--gs6, --glass-fill*, --blur-panel*).',
-    ).toEqual([]);
-  });
-
   it('colours cards and rims from the accent slots, not a fixed palette', () => {
     const canvas = stripComments(readBoardsCss('BoardCanvas.css'));
 
