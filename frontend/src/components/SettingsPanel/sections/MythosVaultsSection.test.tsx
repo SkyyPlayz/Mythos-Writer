@@ -16,6 +16,7 @@ const mockProjectList = vi.fn();
 const mockGetVaultRoot = vi.fn();
 const mockProjectSwitch = vi.fn();
 const mockSettingsSet = vi.fn();
+const mockProjectNameSet = vi.fn();
 const mockVaultGetPaths = vi.fn();
 const mockChooseVaultFolder = vi.fn();
 const mockVaultCreateDefaultMythos = vi.fn();
@@ -39,6 +40,7 @@ beforeEach(() => {
   mockGetVaultRoot.mockResolvedValue({ vaultRoot: VAULT_A });
   mockProjectSwitch.mockResolvedValue({ switched: true });
   mockSettingsSet.mockResolvedValue({ saved: true });
+  mockProjectNameSet.mockResolvedValue({ ok: true, name: 'Renamed' });
   mockVaultGetPaths.mockResolvedValue({
     storyVaultPath: VAULT_A,
     notesVaultPath: '/vaults/Alpha/Notes Vault',
@@ -74,6 +76,7 @@ beforeEach(() => {
       getVaultRoot: mockGetVaultRoot,
       projectSwitch: mockProjectSwitch,
       settingsSet: mockSettingsSet,
+      projectNameSet: mockProjectNameSet,
       vaultGetPaths: mockVaultGetPaths,
       chooseVaultFolder: mockChooseVaultFolder,
       vaultCreateDefaultMythos: mockVaultCreateDefaultMythos,
@@ -310,6 +313,15 @@ describe('MythosVaultsSection — inline rename (SKY-11154 §4, AC-VS-02)', () =
     expect(next.vaultDisplayNames).toEqual({ [VAULT_A]: 'Renamed Alpha' });
     expect(mockSettingsSet).toHaveBeenCalledWith(next);
     expect(screen.queryByTestId(`mvs-rename-input-${VAULT_A}`)).not.toBeInTheDocument();
+  });
+
+  it('SKY-11453: Enter also writes the rename through to the vault-local mythos.json via projectNameSet, not just the settings cache', async () => {
+    await setup();
+    fireEvent.doubleClick(screen.getByText('Alpha'));
+    const input = await screen.findByTestId(`mvs-rename-input-${VAULT_A}`);
+    fireEvent.change(input, { target: { value: 'Renamed Alpha' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(mockProjectNameSet).toHaveBeenCalledWith({ vaultRoot: VAULT_A, name: 'Renamed Alpha' });
   });
 
   it('Escape cancels without persisting', async () => {

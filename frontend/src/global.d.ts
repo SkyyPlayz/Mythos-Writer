@@ -1468,6 +1468,9 @@ interface Window {
       | { vaultRoot: string; icon: null },
     ) => Promise<{ ok: boolean; error?: string; icon?: VaultIconRef }>;
     projectIconPick?: () => Promise<{ filePath: string | null; cancelled: boolean }>;
+    // SKY-11453 — vault-local rename: writes mythos.json's `name` field so
+    // the display name travels with the vault on move/copy.
+    projectNameSet?: (payload: { vaultRoot: string; name: string }) => Promise<{ ok: boolean; error?: string; name?: string }>;
     projectSwitch: (vaultRoot: string, notesVaultRoot?: string) => Promise<{ switched: boolean; notesVaultRoot?: string; error?: string }>;
     onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => () => void;
 

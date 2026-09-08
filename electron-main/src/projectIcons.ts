@@ -1,6 +1,8 @@
 // SKY-11068 — per-vault icon collection/mutation for the story switcher and
 // Settings > Mythos vaults. Mirrors projectStats.ts: pure-ish functions over
 // an explicit list of vault roots, tolerant of missing/legacy (v0.4) vaults.
+// SKY-11453 also puts vault-local rename here — same vault-root gate, same
+// read/mutate/write-mythos.json shape as the icon setter below.
 import {
   mythosRootForStoryVault,
   tryReadMythosFile,
@@ -12,7 +14,22 @@ import {
   readVaultIconAsDataUrl,
   removeVaultIconFiles,
 } from './vaultIconFile.js';
-import type { ProjectIconSetPayload, ProjectIconSetResponse, VaultIconEntry } from './ipc.js';
+import type {
+  ProjectIconSetPayload,
+  ProjectIconSetResponse,
+  ProjectNameSetPayload,
+  ProjectNameSetResponse,
+  VaultIconEntry,
+} from './ipc.js';
+
+/** SKY-11453: cap + strip control chars — mirrors sanitizeVaultIcon's glyph
+ *  guard. Generous length since this is a free-text display name, not a
+ *  filesystem segment (mythos.json's `name` is never joined onto a path). */
+function sanitizeVaultName(raw: string): string | null {
+  const trimmed = raw.trim().replace(/[\n\r\0]/g, '');
+  if (!trimmed || trimmed.length > 200) return null;
+  return trimmed;
+}
 
 /**
  * Resolve the stored icon (if any) for each vault root. Roots that aren't a
@@ -82,4 +99,22 @@ export async function setProjectIcon(payload: ProjectIconSetPayload): Promise<Pr
   writeMythosFile(mythosRoot, { ...mythosFile, icon: sanitized });
   const { dataUrl } = await readVaultIconAsDataUrl(mythosRoot, file);
   return { ok: true, icon: { vaultRoot: payload.vaultRoot, kind: 'image', dataUrl: dataUrl ?? undefined } };
+}
+
+/**
+ * SKY-11453: rename a vault in place — writes into the vault's own
+ * mythos.json `name` field so the display name travels with the vault on
+ * move/copy, instead of living only in this machine's app-settings.json.
+ */
+export async function setProjectName(payload: ProjectNameSetPayload): Promise<ProjectNameSetResponse> {
+  const mythosRoot = mythosRootForStoryVault(payload.vaultRoot);
+  if (!mythosRoot) return { ok: false, error: 'Not a Mythos vault (v0.4 legacy vaults cannot store a name).' };
+  const mythosFile = tryReadMythosFile(mythosRoot);
+  if (!mythosFile) return { ok: false, error: 'Could not read this vault’s mythos.json.' };
+
+  const name = sanitizeVaultName(payload.name);
+  if (!name) return { ok: false, error: 'Invalid name.' };
+
+  writeMythosFile(mythosRoot, { ...mythosFile, name });
+  return { ok: true, name };
 }
