@@ -203,6 +203,31 @@ describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
     expect(textarea.tagName).toBe('TEXTAREA');
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+
+  // SKY-11434: a multi-line-body or foldable callout was the only genuinely
+  // lossy shape in NoteCalloutExtension's schema, so any note using one was
+  // silently downgraded to Source on every open, even though nothing else
+  // about it was lossy. Once the extension round-trips both shapes, the CF-11
+  // guard must stop flagging them and the note should open in Rich.
+  it('opens a note with a multi-line-body callout in Rich by default — no CF-11 downgrade', async () => {
+    readNotesVault.mockResolvedValue({ content: '> [!note]\n> line one\n> line two' });
+
+    render(<NoteViewer path="Notes/MultiLineCallout.md" />);
+
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByLabelText('Edit note: MultiLineCallout.md')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('opens a note with a foldable callout in Rich by default — no CF-11 downgrade', async () => {
+    readNotesVault.mockResolvedValue({ content: '> [!note]-\n> hidden body' });
+
+    render(<NoteViewer path="Notes/FoldableCallout.md" />);
+
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByLabelText('Edit note: FoldableCallout.md')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------

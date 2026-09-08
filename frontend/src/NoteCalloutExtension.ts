@@ -1,10 +1,11 @@
 // M17 (Beta 4 "Refine", FULL-SPEC §6): purple callout cards in the Notes rich
 // editor — prototype note blocks `{ k: 'callout', title, text }` (HTML ~1545).
 //
-// Markdown form (Obsidian callout, SIMPLE shape only — see notesFidelityGuard):
+// Markdown form (Obsidian callout, SUPPORTED shape only — see notesFidelityGuard):
 //
-//   > [!Legend]
+//   > [!Legend]-
 //   > Sailors speak of a hum that rises from the depths…
+//   > and of the drowned bell that answers it.
 //
 // CF-11 (Obsidian round-trip stays lossless): only the shape the serializer
 // can re-emit byte-identically is parsed into a card. Every other `> [!…]`
@@ -55,7 +56,7 @@ function rawLine(state: MarkdownItBlockStateLike, line: number): string {
 }
 
 /**
- * markdown-it block rule: convert the supported simple callout shape into a
+ * markdown-it block rule: convert the supported callout shape into a
  * `<div data-note-callout>` token pair TipTap parses into a noteCallout node.
  * Runs before `blockquote`; unsupported shapes fall through untouched.
  */
@@ -69,27 +70,35 @@ function noteCalloutBlockRule(
   if (state.parentType !== 'root') return false;
   if (state.tShift[startLine] > 0) return false;
 
-  const lines: (string | undefined)[] = [
-    rawLine(state, startLine),
-    startLine + 1 < endLine ? rawLine(state, startLine + 1) : undefined,
-    startLine + 2 < endLine ? rawLine(state, startLine + 2) : undefined,
-  ];
+  // A callout ends at the first blank line, so it's enough to read forward
+  // one line past it (or to EOF) — never the whole remaining document, which
+  // would make this rule (it runs at nearly every block-start line) O(n^2)
+  // over a plain-prose note.
+  const lines: (string | undefined)[] = [rawLine(state, startLine)];
+  for (let i = startLine + 1; i < endLine; i++) {
+    const line = rawLine(state, i);
+    lines.push(line);
+    if (line.trim() === '') break;
+  }
   const span = supportedCalloutLineCount(lines, 0);
   if (span === 0) return false;
   if (silent) return true;
 
-  const title = CALLOUT_TITLE_LINE_RE.exec(lines[0] as string)![1];
+  const match = CALLOUT_TITLE_LINE_RE.exec(lines[0] as string)!;
+  const title = match[1];
+  const fold = match[2];
   const open = state.push('note_callout_open', 'div', 1);
   open.attrSet('data-note-callout', '');
   open.attrSet('data-callout-title', title);
+  if (fold) open.attrSet('data-callout-fold', fold);
   open.map = [startLine, startLine + span];
 
-  if (span === 2) {
-    const body = CALLOUT_BODY_LINE_RE.exec(lines[1] as string)![1];
+  for (let i = 1; i < span; i++) {
+    const body = CALLOUT_BODY_LINE_RE.exec(lines[i] as string)![1];
     state.push('paragraph_open', 'p', 1);
     const inline = state.push('inline', '', 0);
     inline.content = body;
-    inline.map = [startLine + 1, startLine + 2];
+    inline.map = [startLine + i, startLine + i + 1];
     inline.children = [];
     state.push('paragraph_close', 'p', -1);
   }
@@ -102,7 +111,9 @@ function noteCalloutBlockRule(
 export const NoteCallout = Node.create({
   name: 'noteCallout',
   group: 'block',
-  content: 'paragraph',
+  // Each source body line is its own paragraph child, so N raw `> ` lines
+  // round-trip as N paragraphs — not the usual blank-line-delimited grouping.
+  content: 'paragraph+',
   defining: true,
 
   addAttributes() {
@@ -110,6 +121,18 @@ export const NoteCallout = Node.create({
       title: {
         default: 'Note',
         parseHTML: (el) => (el as HTMLElement).getAttribute('data-callout-title') || 'Note',
+      },
+      // Obsidian's collapsed (`-`) / expandable (`+`) fold marker. `null` =
+      // no marker in the source (not foldable). Handled by hand (not the
+      // per-attribute renderHTML) so it's omitted from the DOM entirely when
+      // absent instead of round-tripping as an empty attribute.
+      fold: {
+        default: null,
+        parseHTML: (el) => {
+          const raw = (el as HTMLElement).getAttribute('data-callout-fold');
+          return raw === '-' || raw === '+' ? raw : null;
+        },
+        rendered: false,
       },
     };
   },
@@ -119,11 +142,13 @@ export const NoteCallout = Node.create({
   },
 
   renderHTML({ node, HTMLAttributes }) {
+    const fold = node.attrs.fold as string | null;
     return [
       'div',
       mergeAttributes(HTMLAttributes, {
         'data-note-callout': '',
         'data-callout-title': node.attrs.title as string,
+        ...(fold ? { 'data-callout-fold': fold } : {}),
         class: 'note-callout',
       }),
       0,
@@ -136,6 +161,9 @@ export const NoteCallout = Node.create({
       dom.className = 'note-callout';
       dom.setAttribute('data-note-callout', '');
       dom.setAttribute('data-callout-title', node.attrs.title as string);
+      // Fold state round-trips losslessly but isn't interactively
+      // collapsible from the card yet — no UI to toggle it.
+      if (node.attrs.fold) dom.setAttribute('data-callout-fold', node.attrs.fold as string);
       dom.setAttribute('data-testid', 'note-callout');
 
       const icon = document.createElement('div');
@@ -218,13 +246,15 @@ export const NoteCallout = Node.create({
       markdown: {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         serialize(state: any, node: any) {
-          state.write(`> [!${node.attrs.title as string}]`);
-          const para = node.childCount > 0 ? node.child(0) : null;
-          if (para && para.content.size > 0) {
+          const fold = node.attrs.fold as string | null;
+          state.write(`> [!${node.attrs.title as string}]${fold ?? ''}`);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          node.forEach((para: any) => {
+            if (para.content.size === 0) return; // title-only callout's auto-filled empty paragraph
             state.ensureNewLine();
             state.write('> ');
             state.renderInline(para);
-          }
+          });
           state.closeBlock(node);
         },
         parse: {
