@@ -1,29 +1,38 @@
 /**
- * capture-sky-11482-hairline-tokens.spec.ts — SKY-11482 PR evidence (NOT part of CI)
+ * capture-sky-11504-hairline-tokens.spec.ts — SKY-11504 / SKY-11482 PR evidence
+ * (NOT part of CI)
  *
- * Four surfaces read `var(--bh)` / `var(--bwh)` for their hairline rim. Neither
- * property was ever defined, so every one of those borders was frozen at the
- * literal fallback `rgba(0, 240, 255, .2)` and never repainted when the accent
- * changed. This PR points them at `--gs1` / `--bw`, which the theme engine
- * stamps.
+ * Five surfaces want the mockup's hairline tier — `--bwh` / `--bh` / `--glowH`.
+ * The engine emitted none of them, so four of the five froze on the literal
+ * fallback `rgba(0, 240, 255, .2)` and the fifth (Scene Crafter) ran on PR
+ * #1465's local `--sc-*` approximation. This PR emits the four tokens from
+ * liquidNeonEngine.ts and deletes the approximation.
  *
  * This spec proves the fix the only way that counts: it drives the real app,
- * reads the *computed* border colour of each of the four rims, changes the
- * accent through Settings → Appearance the way a user would, and reads them
- * again. A frozen rim reports the same colour twice; a live one does not.
+ * reads the *computed* border colour of each rim, changes the accent through
+ * Settings → Appearance the way a user would, and reads them again.
  *
- *   1-export-dialog     .export-scope-seg     — File ▸ Export…
- *   2-timeline-axis     .ax-zoom-seg          — Timeline toolbar
- *   3-timeline-panel    .trp-tabs             — Timeline right panel tab strip
+ * Two assertions, and the second is the one the ticket is actually about:
+ *   1. the rim colour changes with the accent — it is not a frozen literal;
+ *   2. the rim colour equals the engine's live `--bh` — it is the mockup's
+ *      value, not an approximation of it. PR #1465's `color-mix(--b1 50%)`
+ *      halved an already-saturated `--b1` and landed on alpha .500 where the
+ *      mockup halves .3+.4I first and lands on .550; that gap is exactly what
+ *      assertion 2 catches and assertion 1 alone would not.
+ *
+ *   1-export-dialog     .export-scope-seg      — File ▸ Export…
+ *   2-timeline-axis     .ax-zoom-seg           — Timeline toolbar
+ *   3-timeline-panel    .trp-tabs              — Timeline right panel tab strip
  *   4-brainstorm-board  .bs-collections-search — Brainstorm ▸ Idea Collections
+ *   5-scene-crafter     .sc-panel              — Scene Crafter Setup/Draft panels
  *
  * Modeled on e2e/capture-sky-11477-overlay-tier-tokens.spec.ts (same launch shape).
  *
- * Output: pr-screenshots/sky-11482-hairline-tokens/<classic|ember>-<name>.png
+ * Output: pr-screenshots/sky-11504-hairline-tokens/<classic|ember>-<name>.png
  *
  * Run (after `npm run build:electron`):
  *   xvfb-run -a npx playwright test \
- *     e2e/capture-sky-11482-hairline-tokens.spec.ts --reporter=list
+ *     e2e/capture-sky-11504-hairline-tokens.spec.ts --reporter=list
  */
 
 import path from 'path';
@@ -32,20 +41,21 @@ import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
-const OUT_DIR = path.resolve(__dirname, '../pr-screenshots/sky-11482-hairline-tokens');
+const OUT_DIR = path.resolve(__dirname, '../pr-screenshots/sky-11504-hairline-tokens');
 
-const STORY_ID = 'story-sky11482';
-const CHAPTER_ID = 'chapter-sky11482';
+const STORY_ID = 'story-sky11504';
+const CHAPTER_ID = 'chapter-sky11504';
 const STORY_TITLE = 'Hairline Tokens';
 const CHAPTER_TITLE = 'Chapter One';
-const SCENE = { id: 'sc-sky11482-1', title: 'The Gate' };
+const SCENE = { id: 'sc-sky11504-1', title: 'The Gate' };
 
-/** The four rims this ticket fixes, in the order they are visited. */
+/** The five rims this ticket fixes, in the order they are visited. */
 const RIMS = [
   { name: '1-export-dialog', selector: '.export-scope-seg' },
   { name: '2-timeline-axis', selector: '.ax-zoom-seg' },
   { name: '3-timeline-panel', selector: '.trp-tabs' },
   { name: '4-brainstorm-board', selector: '.bs-collections-search' },
+  { name: '5-scene-crafter', selector: '.sc-panel' },
 ] as const;
 
 test.setTimeout(300_000);
@@ -56,21 +66,49 @@ async function shot(page: Page, theme: string, name: string) {
   console.log(`  wrote ${theme}-${name}.png`);
 }
 
-/** The point of the ticket: is the rim wired to the engine, or a frozen literal? */
-async function readRim(page: Page, selector: string): Promise<{ borderColor: string; borderWidth: string; gs1: string }> {
+interface Rim {
+  /** The rim's own computed border colour. */
+  borderColor: string;
+  borderWidth: string;
+  /** The same colour the engine stamped on :root, resolved through the browser. */
+  bh: string;
+  bwh: string;
+}
+
+/**
+ * Read a rim and, alongside it, the engine's live `--bh`/`--bwh` resolved by
+ * the same engine. Both go through a throwaway probe element so the browser
+ * normalises them into the identical colour syntax the rim reports — comparing
+ * the raw custom-property string to a computed `borderTopColor` would fail on
+ * formatting alone.
+ */
+async function readRim(page: Page, selector: string): Promise<Rim> {
   const rim = await page.evaluate((sel) => {
     const el = document.querySelector(sel);
     if (!el) return null;
-    const cs = getComputedStyle(el);
-    const root = getComputedStyle(document.documentElement);
-    return {
-      borderColor: cs.borderTopColor,
-      borderWidth: cs.borderTopWidth,
-      gs1: root.getPropertyValue('--gs1').trim(),
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;left:-9999px;border-style:solid;'
+      + 'border-color:var(--bh);border-width:var(--bwh)';
+    document.body.appendChild(probe);
+    const probed = getComputedStyle(probe);
+    const out = {
+      borderColor: getComputedStyle(el).borderTopColor,
+      borderWidth: getComputedStyle(el).borderTopWidth,
+      bh: probed.borderTopColor,
+      bwh: probed.borderTopWidth,
     };
+    probe.remove();
+    return out;
   }, selector);
   expect(rim, `${selector} was not in the DOM`).not.toBeNull();
   console.log(`  [rim] ${selector}: ${JSON.stringify(rim)}`);
+  expect(
+    rim!.borderColor,
+    `${selector} does not paint the engine's --bh. It is either still frozen on a `
+      + 'literal fallback or running on a local approximation of the hairline tier '
+      + '(PR #1465 shipped one that resolved half an alpha-clamped --b1). The rim '
+      + 'must resolve the token the engine stamps.',
+  ).toBe(rim!.bh);
   return rim!;
 }
 
@@ -151,10 +189,10 @@ function seedVault(vaultDir: string): void {
     JSON.stringify(
       {
         schemaVersion: 1,
-        activeTimelineId: 'tl-sky11482',
+        activeTimelineId: 'tl-sky11504',
         timelines: [
           {
-            id: 'tl-sky11482',
+            id: 'tl-sky11504',
             name: 'The Last City of Veynn',
             kind: 'story',
             axis: 'calendar',
@@ -169,7 +207,7 @@ function seedVault(vaultDir: string): void {
         events: [
           {
             id: 'ev-watcher',
-            timelineId: 'tl-sky11482',
+            timelineId: 'tl-sky11504',
             name: 'The Watcher Calls',
             when: 100,
             chapter: 1,
@@ -198,7 +236,7 @@ async function activateStorySection(page: Page): Promise<void> {
 }
 
 /**
- * Walk all four rims and record each computed border, screenshotting as it
+ * Walk all five rims and record each computed border, screenshotting as it
  * goes. Every surface is opened and closed again so the walk is repeatable
  * against a changed theme without relaunching.
  */
@@ -243,6 +281,13 @@ async function walkRims(page: Page, theme: string): Promise<Record<string, strin
   colors['4-brainstorm-board'] = (await readRim(page, '.bs-collections-search')).borderColor;
   await shot(page, theme, '4-brainstorm-board');
 
+  // 5. Scene Crafter Setup/Draft panels — the surface PR #1465 wired to the
+  // local --sc-* approximation this PR deletes.
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
+  await expect(page.locator('.sc-panel').first()).toBeVisible({ timeout: 15_000 });
+  colors['5-scene-crafter'] = (await readRim(page, '.sc-panel')).borderColor;
+  await shot(page, theme, '5-scene-crafter');
+
   return colors;
 }
 
@@ -260,8 +305,8 @@ async function switchThemePreset(page: Page, presetKey: string): Promise<void> {
   await expect(dialog).toHaveCount(0);
 }
 
-test('SKY-11482 — all four hairline rims repaint when the accent changes', async () => {
-  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11482-shots-'));
+test('SKY-11504 — all five hairline rims paint the engine\'s --bh and repaint with the accent', async () => {
+  const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11504-shots-'));
   const userData = path.join(tmpRoot, 'user-data');
   const vaultDir = path.join(tmpRoot, 'vault');
   const notesVaultDir = path.join(tmpRoot, 'notes-vault');
@@ -298,7 +343,7 @@ test('SKY-11482 — all four hairline rims repaint when the accent changes', asy
           + 'frozen on its literal fallback rather than wired to the theme engine.',
       ).not.toBe(before[name]);
     }
-    console.log(`\nall four rims repainted:\n${JSON.stringify({ before, after }, null, 2)}`);
+    console.log(`\nall five rims repainted:\n${JSON.stringify({ before, after }, null, 2)}`);
   } finally {
     await app.close();
   }

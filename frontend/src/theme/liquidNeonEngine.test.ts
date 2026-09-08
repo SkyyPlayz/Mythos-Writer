@@ -249,6 +249,62 @@ describe('overlay-tier token bridge (SKY-11133)', () => {
   });
 });
 
+// SKY-11504 — the hairline tier. The mockup's inner chrome (segmented
+// controls, search chips, setting cards, the Scene Crafter panels) reads
+// --bwh/--bh/--glowH/--grh, a half-weight companion to --bw/--b1/--gr/--g1.
+// Our engine emitted none of them, so every one of those borders resolved to
+// its literal fallback and froze off-theme. These lock the mockup's own
+// arithmetic (dc.html 7139-7140) rather than any local approximation of it.
+describe('hairline tier (SKY-11504; mockup engine 7139–7140)', () => {
+  it('halves the UNCLAMPED alpha, which is where the CSS workaround diverged', () => {
+    const t = compute();
+    // --b1 saturates at default intensity (.3+.4*2 = 1.1 → clamped 1.000), so
+    // a `color-mix(--b1 50%)` in CSS — what PR #1465 shipped — lands on .500.
+    // The mockup halves 1.1 first and lands on .550. Same for the glow:
+    // (.18+.5*2)/2 = .590 against a CSS-halved --g1's .500.
+    expect(t['--b1']).toBe('rgba(0,240,255,1.000)');
+    expect(t['--bh']).toBe('rgba(0,240,255,0.550)');
+    expect(t['--glowH']).toBe('0 0 30px -7px rgba(0,240,255,0.590)');
+  });
+
+  it('is half the border width, floored at .5px so it never rounds away', () => {
+    expect(compute()['--bwh']).toBe('0.5px');
+    expect(compute({ glowW: 4 })['--bwh']).toBe('2px');
+  });
+
+  it('rounds the half glow radius to whole px, in both --grh and --glowH', () => {
+    expect(compute()['--grh']).toBe('30px');
+    const odd = compute({ glowR: 61 });
+    expect(odd['--grh']).toBe('31px');
+    expect(odd['--glowH']).toContain('0 0 31px -7px ');
+  });
+
+  it('tracks the accent slot and the intensity slider, unsaturated', () => {
+    const t = compute({ intensity: 25, slots: ['#ff4dff', '#9b5fff', '#ff4dff', '#ff9a3d', '#2fe6c8', '#3d9bff'] });
+    // I=1 → border (.3+.4)/2 = .350, glow (.18+.5)/2 = .340; hue follows slot A.
+    expect(t['--bh']).toBe('rgba(255,77,255,0.350)');
+    expect(t['--glowH']).toBe('0 0 30px -7px rgba(255,77,255,0.340)');
+  });
+
+  it('Reduce Glow dims the hairline the same way it dims --b1', () => {
+    const t = compute({ intensity: 50, reduceGlow: true });
+    expect(t['--b1']).toBe('rgba(0,240,255,0.380)');
+    expect(t['--bh']).toBe('rgba(0,240,255,0.190)');
+  });
+
+  it('applies to the element and reset removes all four', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens(null, COSMIC, el);
+    for (const k of ['--bwh', '--bh', '--glowH', '--grh']) {
+      expect(el.style.getPropertyValue(k)).not.toBe('');
+    }
+    resetLiquidNeonV2Tokens(el);
+    for (const k of ['--bwh', '--bh', '--glowH', '--grh']) {
+      expect(el.style.getPropertyValue(k)).toBe('');
+    }
+  });
+});
+
 // ═══ Beta 4 M1 ═══════════════════════════════════════════════════════════════
 
 describe('preset import/export (§3; prototype 7191–7192)', () => {

@@ -237,6 +237,17 @@ export function computeLiquidNeonV2Tokens(
     '--glass2': 'rgba(21,26,45,' + Math.max(.5, Math.min(.97, S.glassA / 100 + .16)).toFixed(2) + ')',
     '--bw': (S.glowW || 1) + 'px',
     '--gr': (S.glowR || 26) + 'px',
+    // SKY-11504: the hairline tier — half-weight border/glow for the mockup's
+    // inner chrome (segmented controls, search chips, setting cards). Verbatim
+    // port of the mockup engine (dc.html 7139-7140). It halves the *unclamped*
+    // alpha before hexA clamps it, which is why these have to be engine lines
+    // and not a CSS `color-mix(--b1 50%, transparent)`: --b1 has already
+    // saturated to 1.000 at the shipped default intensity, so halving it in
+    // CSS lands on .500 instead of the mockup's .550.
+    '--bwh': Math.max(.5, (S.glowW || 1) / 2) + 'px',
+    '--grh': Math.round((S.glowR || 26) / 2) + 'px',
+    '--bh': hexA(c1, (.3 + .4 * I) / 2),
+    '--glowH': '0 0 ' + Math.round((S.glowR || 26) / 2) + 'px -7px ' + hexA(c1, (.18 + .5 * I) / 2),
     '--txH': S.txtCfg.head, '--txB': S.txtCfg.body,
     '--txNH': S.txtCfg.split ? S.txtCfg.nHead : S.txtCfg.head,
     '--txNB': S.txtCfg.split ? S.txtCfg.nBody : S.txtCfg.body,

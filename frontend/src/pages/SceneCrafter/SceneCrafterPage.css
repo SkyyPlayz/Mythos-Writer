@@ -20,14 +20,6 @@
   padding: 14px 20px 20px;
   gap: 12px;
   color: #c8d3e7;
-  /* SKY-11448: hairline neon tokens — the mockup's --bwh / --bh / --glowH
-     (half glow-width, half-alpha slot-1 border, half-radius slot-1 glow),
-     derived here from the live --bw / --b1 / --gr / --g1 the theme engine
-     already emits, so the owner's glow sliders drive them without a new
-     engine token. color-mix with transparent halves the alpha, hue intact. */
-  --sc-bwh: max(0.5px, calc(var(--bw, 1px) / 2));
-  --sc-bh: color-mix(in srgb, var(--b1, rgba(0, 240, 255, 0.4)) 50%, transparent);
-  --sc-glow-h: 0 0 calc(var(--gr, 26px) / 2) -7px color-mix(in srgb, var(--g1, rgba(0, 240, 255, 0.4)) 50%, transparent);
 }
 
 /* SKY-11448: the page is the mockup's frosted center shell — live glass fill
@@ -218,8 +210,8 @@
   padding: 8px 10px;
   border-radius: 11px;
   background: rgba(255, 255, 255, 0.03);
-  border: var(--sc-bwh) solid var(--sc-bh);
-  box-shadow: var(--sc-glow-h);
+  border: var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, 0.2));
+  box-shadow: var(--glowH, none);
   cursor: grab;
   text-align: left;
 }
@@ -344,8 +336,8 @@
   padding: 13px;
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.03);
-  border: var(--sc-bwh) solid var(--sc-bh);
-  box-shadow: var(--sc-glow-h);
+  border: var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, 0.2));
+  box-shadow: var(--glowH, none);
 }
 
 /* Setup fields (prototype lines 487–496). */
