@@ -206,15 +206,21 @@ async function walkRims(page: Page, theme: string): Promise<Record<string, strin
   const colors: Record<string, string> = {};
   console.log(`\n── ${theme} ──`);
 
-  // 1. Export dialog — File ▸ Export… (needs a selected story).
+  // 1. Export dialog — File ▸ Export…. That item only opens the dialog when a
+  // story is selected (otherwise it toasts), and the scope segment only renders
+  // for a story-scoped open — so click into the scene first.
   await activateStorySection(page);
+  const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE.title }).first();
+  await expect(sceneRow).toBeVisible({ timeout: 15_000 });
+  await sceneRow.click();
+  await expect(page.locator('.ProseMirror').first()).toBeVisible({ timeout: 15_000 });
   await page.getByTestId('wc-menu-file').click();
   await page.locator('.wc-menu-item', { hasText: 'Export…' }).first().click();
   const exportSeg = page.locator('.export-scope-seg');
   await expect(exportSeg).toBeVisible({ timeout: 10_000 });
   colors['1-export-dialog'] = (await readRim(page, '.export-scope-seg')).borderColor;
   await shot(page, theme, '1-export-dialog');
-  await page.keyboard.press('Escape');
+  await page.locator('.export-dialog-close').click();
   await expect(exportSeg).toHaveCount(0);
 
   // 2 + 3. Timeline axis toolbar and right-panel tab strip.
