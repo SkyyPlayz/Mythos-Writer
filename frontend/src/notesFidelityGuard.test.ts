@@ -46,13 +46,24 @@ describe('detectLossyFeatures — LC-2 fidelity guard', () => {
     expect(detectLossyFeatures(md).map((f) => f.key)).not.toContain('callouts');
   });
 
+  it('does NOT flag multi-line callout bodies — M17 round-trips them line-for-line', () => {
+    const md = '> [!NOTE]\n> line one\n> line two';
+    expect(detectLossyFeatures(md).map((f) => f.key)).not.toContain('callouts');
+  });
+
+  it('does NOT flag foldable callout markers (-/+) — M17 preserves them losslessly', () => {
+    expect(detectLossyFeatures('> [!NOTE]-\n> body').map((f) => f.key)).not.toContain('callouts');
+    expect(detectLossyFeatures('> [!NOTE]+\n> body').map((f) => f.key)).not.toContain('callouts');
+    expect(detectLossyFeatures('> [!NOTE]-').map((f) => f.key)).not.toContain('callouts');
+  });
+
   it('still flags callout shapes the M17 card cannot round-trip', () => {
     const unsupported = [
-      '> [!NOTE]\n> line one\n> line two', // multi-line body
-      '> [!NOTE]- folded\n> body', // fold marker
+      '> [!NOTE]- folded\n> body', // trailing text after the fold marker
       '> [!a]\n> [!b]', // back-to-back without a blank line
       '> [!NOTE]\n> body\nlazy continuation line', // lazy continuation
       '  > [!NOTE]\n> body', // indented marker would be re-written
+      '> [!NOTE]\n> > nested quote', // nested quote inside the body
     ];
     for (const md of unsupported) {
       expect(detectLossyFeatures(md).map((f) => f.key), md).toContain('callouts');
@@ -62,8 +73,11 @@ describe('detectLossyFeatures — LC-2 fidelity guard', () => {
   it('supportedCalloutLineCount reports the span of supported shapes', () => {
     expect(supportedCalloutLineCount(['> [!legend]', '> body', ''], 0)).toBe(2);
     expect(supportedCalloutLineCount(['> [!legend]'], 0)).toBe(1);
-    expect(supportedCalloutLineCount(['> [!legend]', '> a', '> b'], 0)).toBe(0);
+    expect(supportedCalloutLineCount(['> [!legend]', '> a', '> b'], 0)).toBe(3); // multi-line body now supported
+    expect(supportedCalloutLineCount(['> [!legend]-', '> a', ''], 0)).toBe(2); // fold marker
     expect(supportedCalloutLineCount(['> plain quote'], 0)).toBe(0);
+    expect(supportedCalloutLineCount(['> [!a]', '> [!b]'], 0)).toBe(0); // back-to-back
+    expect(supportedCalloutLineCount(['> [!a]', '> > nested'], 0)).toBe(0); // nested quote
   });
 
   it('detects multiple lossy features at once', () => {
@@ -100,6 +114,7 @@ describe('detectLossyFeatures — SKY-11443 false positives', () => {
     ['inline code span', 'Type `<div>` or `| a | b |` to see it.'],
     ['multi-backtick inline span', 'Use ``a ` b <div>`` inline.'],
     ['callout shape inside a fence', '```\n> [!NOTE]- folded\n> body\n```'],
+    ['multi-line callout body outside a fence', '> [!NOTE]\n> line one\n> line two'],
   ];
 
   for (const [name, md] of clean) {
@@ -116,7 +131,7 @@ describe('detectLossyFeatures — SKY-11443 false positives', () => {
     ['table after a closed fence', '```\ncode\n```\n\n| a | b |\n|---|---|', 'tables'],
     ['tag that merely starts with u', 'A list <ul><li>item</li></ul> in HTML.', 'rawHtml'],
     ['self-closing tag', 'A line break <br/> mid-sentence.', 'rawHtml'],
-    ['unsupported callout outside a fence', '> [!NOTE]\n> line one\n> line two', 'callouts'],
+    ['unsupported callout outside a fence', '> [!NOTE]\n> > nested quote', 'callouts'],
   ];
 
   for (const [name, md, key] of flagged) {

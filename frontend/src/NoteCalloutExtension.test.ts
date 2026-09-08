@@ -73,16 +73,38 @@ describe('NoteCallout — parsing (prototype callout card)', () => {
     editor.destroy();
   });
 
-  it('leaves a multi-line callout body to the blockquote rule (unsupported shape)', () => {
+  it('parses a multi-line callout body into a card, one paragraph per source line', () => {
     const editor = makeNotesEditor('> [!note]\n> line one\n> line two');
+    const callout = editor.view.dom.querySelector('[data-note-callout]');
+    expect(callout).not.toBeNull();
+    expect(editor.view.dom.querySelector('blockquote')).toBeNull();
+    expect(callout?.querySelectorAll('.note-callout-body p')).toHaveLength(2);
+    editor.destroy();
+  });
+
+  it('parses a foldable callout (> [!x]- / > [!x]+) into a card, preserving the marker', () => {
+    const collapsed = makeNotesEditor('> [!note]-\n> hidden body');
+    const collapsedCard = collapsed.view.dom.querySelector('[data-note-callout]');
+    expect(collapsedCard).not.toBeNull();
+    expect(collapsedCard?.getAttribute('data-callout-fold')).toBe('-');
+    collapsed.destroy();
+
+    const expandable = makeNotesEditor('> [!note]+\n> visible by default');
+    expect(expandable.view.dom.querySelector('[data-note-callout]')?.getAttribute('data-callout-fold')).toBe('+');
+    expandable.destroy();
+  });
+
+  it('leaves a fold marker followed by trailing text to the blockquote rule (unsupported shape)', () => {
+    const editor = makeNotesEditor('> [!note]- folded\n> hidden body');
     expect(editor.view.dom.querySelector('[data-note-callout]')).toBeNull();
     expect(editor.view.dom.querySelector('blockquote')).not.toBeNull();
     editor.destroy();
   });
 
-  it('leaves fold-marker callouts (> [!x]- …) to the blockquote rule', () => {
-    const editor = makeNotesEditor('> [!note]- folded\n> hidden body');
+  it('leaves a nested quote inside the body to the blockquote rule (unsupported shape)', () => {
+    const editor = makeNotesEditor('> [!note]\n> > nested quote');
     expect(editor.view.dom.querySelector('[data-note-callout]')).toBeNull();
+    expect(editor.view.dom.querySelector('blockquote')).not.toBeNull();
     editor.destroy();
   });
 
@@ -102,6 +124,17 @@ describe('NoteCallout — CF-11 byte-lossless round-trip', () => {
 
   it('round-trips a title-only callout byte-identically', () => {
     expect(roundTrip('> [!warning]')).toBe('> [!warning]');
+  });
+
+  it('round-trips a multi-line callout body byte-identically', () => {
+    const md = '> [!note]\n> line one\n> line two\n> line three';
+    expect(roundTrip(md)).toBe(md);
+  });
+
+  it('round-trips a foldable callout (collapsed and expandable) byte-identically', () => {
+    expect(roundTrip('> [!note]-\n> hidden body')).toBe('> [!note]-\n> hidden body');
+    expect(roundTrip('> [!note]+\n> visible by default')).toBe('> [!note]+\n> visible by default');
+    expect(roundTrip('> [!note]-')).toBe('> [!note]-'); // fold marker, no body
   });
 
   it('round-trips the prototype note body (paragraphs, callout, H2s, bullets, links block)', () => {
@@ -155,13 +188,17 @@ describe('NoteCallout — guard/parser contract (shapes cannot drift)', () => {
     '> [!legend]\n> A single body line.',
     '> [!warning]',
     '> [!Rule of the city]\n> Nothing is ever lost.',
+    '> [!note]\n> line one\n> line two', // multi-line body
+    '> [!note]-\n> body', // fold marker (collapsed)
+    '> [!note]+\n> body', // fold marker (expandable)
+    '> [!note]-', // fold marker, title only
   ];
   const UNSUPPORTED = [
-    '> [!note]\n> line one\n> line two', // multi-line body
-    '> [!note]- folded\n> body', // fold marker
+    '> [!note]- folded\n> body', // trailing text after the fold marker
     '> [!a]\n> [!b]', // back-to-back callouts without a blank line
     '> [!note]\n> body\nlazy continuation', // lazy continuation would be rewritten
     '>[!note]\n> body', // missing space after >
+    '> [!note]\n> > nested quote', // nested quote inside the body
   ];
 
   it('every supported shape parses to a card, round-trips, and passes the guard', () => {

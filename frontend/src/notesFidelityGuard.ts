@@ -12,15 +12,18 @@
  *
  * M17 (Beta 4): the SIMPLE callout shape is no longer lossy — the Notes rich
  * editor renders it as an editable purple callout card (NoteCalloutExtension)
- * and serializes it back byte-identically. The supported shape is exactly:
+ * and serializes it back byte-identically. The supported shape is:
  *
- *   > [!Title]
- *   > one single body line          (optional)
+ *   > [!Title]-          (fold marker `-`/`+` optional)
+ *   > body line 1        (any number of body lines, optional)
+ *   > body line 2
+ *   ...
  *
  * at column 0, followed by a blank line or EOF. Anything else quoting a
- * `[!…]` marker (fold markers `[!x]-`, multi-line bodies, nesting, lazy
- * continuation, back-to-back callouts without a blank line) keeps the lossy
- * flag, because the round-trip would rewrite it.
+ * `[!…]` marker (a nested quote inside the body, lazy continuation,
+ * back-to-back callouts without a blank line, or text trailing the fold
+ * marker on the title line) keeps the lossy flag, because the round-trip
+ * would rewrite it.
  *
  * YAML frontmatter is deliberately NOT flagged: since W0.2 (Beta 4) the Rich
  * editor never sees it — NoteViewer holds the block aside verbatim and
@@ -38,8 +41,14 @@ export interface LossyFeature {
   label: string;
 }
 
-/** `> [!Title]` — exactly one `> ` prefix at column 0, title without `]`. */
-export const CALLOUT_TITLE_LINE_RE = /^> \[!([^\]\r\n]+)\]$/;
+/**
+ * `> [!Title]` with an optional trailing fold marker — exactly one `> `
+ * prefix at column 0, title without `]`, then immediately end of line or a
+ * single `-`/`+` (Obsidian's collapsed/expandable marker) and end of line.
+ * Any other text trailing the marker is not round-trippable and fails to
+ * match, so that shape stays lossy.
+ */
+export const CALLOUT_TITLE_LINE_RE = /^> \[!([^\]\r\n]+)\]([-+])?$/;
 /**
  * A supported callout body line: `> ` + text with no leading/trailing
  * whitespace (the serializer can only ever re-emit that exact shape).
@@ -52,24 +61,28 @@ const CALLOUT_MARKER_RE = /^\s*>\s*\[!/;
 
 /**
  * If `lines[i]` starts a callout the Notes rich editor round-trips
- * byte-identically, return how many lines it spans (1 = title only,
- * 2 = title + single body line). Returns 0 for every other shape.
+ * byte-identically, return how many lines it spans (1 = title only, N = title
+ * + (N - 1) body lines). Returns 0 for every other shape.
  *
  * Shared by the fidelity guard and NoteCalloutExtension's markdown-it block
  * rule so "what parses as a card" and "what is safe for Rich mode" can never
  * drift apart.
  */
-export function supportedCalloutLineCount(lines: readonly (string | undefined)[], i: number): 0 | 1 | 2 {
+export function supportedCalloutLineCount(lines: readonly (string | undefined)[], i: number): number {
   const title = lines[i];
   if (title === undefined || !CALLOUT_TITLE_LINE_RE.test(title)) return 0;
-  const next = lines[i + 1];
-  if (next === undefined || next.trim() === '') return 1; // blank line / EOF after the title
-  if (!QUOTE_LINE_RE.test(next)) return 0; // lazy continuation would be re-written
-  if (CALLOUT_TITLE_LINE_RE.test(next)) return 0; // back-to-back callouts need a blank line
-  if (!CALLOUT_BODY_LINE_RE.test(next)) return 0; // nested quote / `>` blank / padded body
-  const after = lines[i + 2];
-  if (after !== undefined && after.trim() !== '') return 0; // multi-line body or lazy continuation
-  return 2;
+  let span = 1;
+  for (;;) {
+    const next = lines[i + span];
+    if (next === undefined || next.trim() === '') break; // blank line / EOF ends the callout
+    if (!QUOTE_LINE_RE.test(next)) return 0; // lazy continuation would be re-written
+    if (CALLOUT_TITLE_LINE_RE.test(next)) return 0; // back-to-back callouts need a blank line
+    const body = CALLOUT_BODY_LINE_RE.exec(next);
+    if (!body) return 0; // padded/blank body line
+    if (body[1].startsWith('>')) return 0; // nested quote inside the body
+    span++;
+  }
+  return span;
 }
 
 /** True when the content quotes a `[!…]` marker in a shape Rich mode would rewrite. */
