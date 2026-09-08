@@ -134,7 +134,7 @@ export default function PageSetupPopover({
       />
 
       <div
-        className="page-setup-popover"
+        className="ln-overlay-surface page-setup-popover"
         role="dialog"
         aria-label="Page setup"
         aria-modal="true"

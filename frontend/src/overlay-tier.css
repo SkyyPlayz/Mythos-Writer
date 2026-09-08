@@ -1,0 +1,76 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Liquid Neon overlay tier — one chrome for every dialog and popover.
+   SKY-11450 (child of SKY-11439, owner-fidelity sweep).
+
+   The owner mockup (owner-reports/2026-09-02-design-liquid-neon.dc.html) repeats
+   the identical recipe on every floating surface — see lines 66, 102, 119, 188,
+   285, 982, 1569, 1738:
+
+     background: rgba(15,19,33,.97);
+     backdrop-filter: blur(24px);
+     border: var(--bw,1px) solid var(--b1, rgba(0,240,255,.5));
+     box-shadow: 0 14px 40px rgba(3,5,12,.6),
+                 0 0 22px -6px var(--g1, rgba(0,240,255,.4));
+
+   Here the fill and blur come from the SKY-11133 overlay tier
+   (--glass-fill-overlay / --blur-panel-overlay) rather than the mockup's frozen
+   literals, so Appearance → glass still drives them live; the border and glow
+   come from the v2 slot engine (--b* / --g*, alpha already scaled by neon
+   intensity, which is exactly how the mockup's own fallbacks are shaped).
+
+   ── Usage ────────────────────────────────────────────────────────────────
+   Add `ln-overlay-surface` to the floating panel element and delete the local
+   `background` / `border` / `box-shadow`. Geometry — width, radius, padding,
+   position, entrance animation — stays with the component; only the glass
+   chrome lives here.
+
+   ── Retinting ────────────────────────────────────────────────────────────
+   Set `--ln-overlay-border` / `--ln-overlay-glow` on the element or any
+   ancestor to move off the default slot-1 cyan (the mockup uses slot 2 violet,
+   slot 3 magenta and slot 6 blue in different regions). They are custom
+   properties on purpose: a component can retint without having to out-specify
+   the `border` shorthand or depend on CSS bundle order.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.ln-overlay-surface {
+  /* Base = the no-backdrop-filter path: an opaque fill, so copy never sits on
+     top of whatever happens to be behind the dialog. The @supports block below
+     swaps in the live glass when the platform can actually blur. */
+  background: var(--glass-fill-fallback);
+  border: var(--bw, 1px) solid var(--ln-overlay-border, var(--b1, rgba(0, 240, 255, 0.5)));
+  box-shadow:
+    0 14px 40px rgba(3, 5, 12, 0.6),
+    0 0 22px -6px var(--ln-overlay-glow, var(--g1, rgba(0, 240, 255, 0.4)));
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .ln-overlay-surface {
+    background: var(--glass-fill-overlay);
+    backdrop-filter: blur(var(--blur-panel-overlay));
+    -webkit-backdrop-filter: blur(var(--blur-panel-overlay));
+  }
+}
+
+/* High contrast — app toggle. tokens.css already flattens
+   --glass-fill-overlay / --blur-panel-overlay to opaque at [data-contrast="high"],
+   but the slot colours (--b* / --g*) are not zeroed there, so the tinted border
+   and the neon glow have to be dropped explicitly. */
+[data-contrast="high"] .ln-overlay-surface {
+  border: 2px solid var(--border-strong);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* High contrast — OS preference. Mirrors the rule above; unlike the app toggle
+   this path does not flatten the glass tokens at :root, so the opaque fill is
+   restated here too. */
+@media (prefers-contrast: more) {
+  .ln-overlay-surface {
+    background: var(--glass-fill-fallback);
+    border: 2px solid var(--border-strong);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
