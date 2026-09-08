@@ -501,7 +501,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-report-shard-1
-          path: e2e-report/
+          # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
+          # replaces playwright.config's html reporter (outputFolder e2e-report/)
+          # with the CLI default, so e2e-report/ is never written and this step
+          # uploaded nothing on every red run. Failure screenshots and
+          # error-context land in test-results/; upload both.
+          path: |
+            e2e-report/
+            playwright-report/
+            test-results/
           retention-days: 3
 
       - name: Stop WSL2 power keep-alive
@@ -709,7 +717,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-report-shard-2
-          path: e2e-report/
+          # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
+          # replaces playwright.config's html reporter (outputFolder e2e-report/)
+          # with the CLI default, so e2e-report/ is never written and this step
+          # uploaded nothing on every red run. Failure screenshots and
+          # error-context land in test-results/; upload both.
+          path: |
+            e2e-report/
+            playwright-report/
+            test-results/
           retention-days: 3
 
       - name: Stop WSL2 power keep-alive
@@ -899,7 +915,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-report-shard-3
-          path: e2e-report/
+          # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
+          # replaces playwright.config's html reporter (outputFolder e2e-report/)
+          # with the CLI default, so e2e-report/ is never written and this step
+          # uploaded nothing on every red run. Failure screenshots and
+          # error-context land in test-results/; upload both.
+          path: |
+            e2e-report/
+            playwright-report/
+            test-results/
           retention-days: 3
 
       - name: Stop WSL2 power keep-alive
@@ -1096,7 +1120,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-report-shard-4
-          path: e2e-report/
+          # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
+          # replaces playwright.config's html reporter (outputFolder e2e-report/)
+          # with the CLI default, so e2e-report/ is never written and this step
+          # uploaded nothing on every red run. Failure screenshots and
+          # error-context land in test-results/; upload both.
+          path: |
+            e2e-report/
+            playwright-report/
+            test-results/
           retention-days: 3
 
       - name: Stop WSL2 power keep-alive
