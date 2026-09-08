@@ -115,6 +115,8 @@ import {
   type WritingScanPayload,
   type BetaReadScanPayload,
   type BetaReportRunPayload,
+  type ProductionRoleRunPayload,
+  type ProductionRoleRunResponse,
   type BetaReportListPayload,
   type BetaReportGetPayload,
   type BetaReport,
@@ -681,6 +683,15 @@ import {
 // is the whole-map dossier used only once the reader has finished the story.
 import { buildReaderEntityContext, buildAuthorEntityContext } from './readerPerspective.js';
 import { loadEntityIndex } from './vault/entityIndex.js';
+// SKY-11411: production-team roles go live end-to-end. PRODUCTION_ROLES carries
+// each role's reader/author perspective + lens; buildProductionReviewUserContent
+// composes the role-specific user framing. The system prompt comes from the
+// persona registry (buildAgentSystemPrompt), so nothing here is dead code.
+import {
+  PRODUCTION_ROLES,
+  buildProductionReviewUserContent,
+  type ProductionRoleId,
+} from './productionRoles.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
 import { cleanUninstall } from './uninstallHelper.js';
@@ -2034,10 +2045,11 @@ const handlers: IpcHandlers = {
     const settingsKey = SOURCE_AGENT_TO_SETTINGS_KEY[payload.suggestion.source_agent];
     if (settingsKey) {
       const allSettings = loadAppSettings();
-      // Beta 3 M22: betaReader is optional in AppSettings — resolve with defaults.
-      const agentSettings = settingsKey === 'betaReader'
-        ? getBetaReaderSettings(allSettings)
-        : allSettings.agents[settingsKey as Exclude<keyof AppSettings['agents'], 'betaReader'>];
+      // Beta 3 M22 / SKY-11411: betaReader and the production-team roles are all
+      // optional in AppSettings — resolve them against their (default-OFF) defaults.
+      const agentSettings = isOptionalAgentKey(settingsKey)
+        ? getOptionalAgentSettings(allSettings, settingsKey)
+        : allSettings.agents[settingsKey];
       let payloadKind: string | null = null;
       if (payload.suggestion.payload_json) {
         try {
@@ -8751,6 +8763,12 @@ const SETTINGS_DEFAULTS: AppSettings = {
     },
     // Beta 3 M22: fourth named agent — reader-eye chapter reads → margin comments.
     betaReader: { enabled: true, model: '', ...AGENT_BUDGET_DEFAULTS },
+    // SKY-11411 (SKY-10741 M12.B6): production-team roles. All default OFF (AC1)
+    // — a fresh install never starts calling a provider for these until the
+    // author opts in from Settings > AI Agents.
+    alphaReader: { enabled: false, model: '', ...AGENT_BUDGET_DEFAULTS },
+    storylineConsultant: { enabled: false, model: '', ...AGENT_BUDGET_DEFAULTS },
+    lineEditor: { enabled: false, model: '', ...AGENT_BUDGET_DEFAULTS },
   },
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
@@ -8780,12 +8798,31 @@ const SOURCE_AGENT_TO_SETTINGS_KEY: Record<string, keyof AppSettings['agents']> 
   'brainstorm': 'brainstorm',
   'archive': 'archive',
   'beta-reader': 'betaReader',
+  // SKY-11411: production-team roles (source_agent ids used for budget enforcement).
+  'alpha-reader': 'alphaReader',
+  'storyline-consultant': 'storylineConsultant',
+  'line-editor': 'lineEditor',
 };
 
 /** Beta 3 M22: betaReader is optional in AppSettings (pre-M22 files); resolve with defaults. */
 function getBetaReaderSettings(settings: AppSettings): NonNullable<AppSettings['agents']['betaReader']> {
   return settings.agents.betaReader
     ?? (SETTINGS_DEFAULTS.agents.betaReader as NonNullable<AppSettings['agents']['betaReader']>);
+}
+
+/**
+ * SKY-11411: the production-team roles share betaReader's optional shape
+ * ({ enabled; model; provider? } & AgentBudgetSettings) and, like it, may be
+ * absent on pre-SKY-11411 settings files — resolve them against the default-OFF
+ * defaults so callers always get a concrete settings object.
+ */
+type OptionalAgentKey = 'betaReader' | 'alphaReader' | 'storylineConsultant' | 'lineEditor';
+function getOptionalAgentSettings(
+  settings: AppSettings,
+  key: OptionalAgentKey,
+): NonNullable<AppSettings['agents'][OptionalAgentKey]> {
+  return (settings.agents[key]
+    ?? SETTINGS_DEFAULTS.agents[key]) as NonNullable<AppSettings['agents'][OptionalAgentKey]>;
 }
 
 function getAppSettingsPath(): string {
@@ -8821,6 +8858,12 @@ function loadAppSettings(): AppSettings {
           archive: { ...SETTINGS_DEFAULTS.agents.archive, ...(rawAgents.archive ?? {}) },
           // Beta 3 M22: back-fill for pre-M22 settings files (key absent on disk).
           betaReader: { ...(SETTINGS_DEFAULTS.agents.betaReader as NonNullable<AppSettings['agents']['betaReader']>), ...(rawAgents.betaReader ?? {}) },
+          // SKY-11411: back-fill the production-team roles for pre-SKY-11411 files
+          // (keys absent on disk) so getProviderConfigForAgent / the run handler
+          // always see a full, default-OFF settings object.
+          alphaReader: { ...(SETTINGS_DEFAULTS.agents.alphaReader as NonNullable<AppSettings['agents']['alphaReader']>), ...(rawAgents.alphaReader ?? {}) },
+          storylineConsultant: { ...(SETTINGS_DEFAULTS.agents.storylineConsultant as NonNullable<AppSettings['agents']['storylineConsultant']>), ...(rawAgents.storylineConsultant ?? {}) },
+          lineEditor: { ...(SETTINGS_DEFAULTS.agents.lineEditor as NonNullable<AppSettings['agents']['lineEditor']>), ...(rawAgents.lineEditor ?? {}) },
         },
       };
       // Migration AC-CAD-12: existing installs without cadenceTrigger default to idle_heartbeat to preserve prior behavior
@@ -8955,9 +8998,18 @@ function buildGlobalProviderConfig(settings: AppSettings): ProviderConfig {
  * Uses the per-agent provider override when set; falls back to the global provider.
  * Key-inheritance: same kind + no agent API key → inherit the global API key (SKY-1511).
  */
-function getProviderConfigForAgent(agentName: 'brainstorm' | 'writingAssistant' | 'archive' | 'betaReader'): ProviderConfig {
+const OPTIONAL_AGENT_KEYS: readonly OptionalAgentKey[] = ['betaReader', 'alphaReader', 'storylineConsultant', 'lineEditor'];
+function isOptionalAgentKey(name: string): name is OptionalAgentKey {
+  return (OPTIONAL_AGENT_KEYS as readonly string[]).includes(name);
+}
+
+function getProviderConfigForAgent(
+  agentName: 'brainstorm' | 'writingAssistant' | 'archive' | OptionalAgentKey,
+): ProviderConfig {
   const settings = loadAppSettings();
-  const agentSettings = agentName === 'betaReader' ? getBetaReaderSettings(settings) : settings.agents[agentName];
+  const agentSettings = isOptionalAgentKey(agentName)
+    ? getOptionalAgentSettings(settings, agentName)
+    : settings.agents[agentName];
   const global = buildGlobalProviderConfig(settings);
   const agentProvider = agentSettings.provider
     ? {
@@ -10321,6 +10373,157 @@ function registerBetaReportRunHandler(): void {
   }));
 }
 
+// ─── Production-team role runs (SKY-11411 / SKY-10741 M12.B6) ────────────────
+//
+// One generic handler drives alphaReader / storylineConsultant / lineEditor and
+// is the live wiring that makes SKY-10741's role registry + reveal-point filter
+// reachable. It composes the persona system prompt (buildAgentSystemPrompt) with
+// the role-specific user framing (buildProductionReviewUserContent). For the
+// reader-perspective alphaReader it feeds a reveal-point-FILTERED entity dossier
+// (buildReaderEntityContext) so a not-yet-revealed identity can never enter the
+// prompt (AC2); the two craft roles get the whole map. betaReader keeps its own
+// dedicated report handler (BETA_REPORT_RUN), so there is exactly one path per role.
+
+const PRODUCTION_ROLE_SOURCE_AGENT: Record<ProductionRoleId, string> = {
+  alphaReader: 'alpha-reader',
+  betaReader: 'beta-reader',
+  storylineConsultant: 'storyline-consultant',
+  lineEditor: 'line-editor',
+};
+const PRODUCTION_ROLE_SURFACE: Record<ProductionRoleId, AiActivitySurface> = {
+  alphaReader: 'alpha-reader-review',
+  betaReader: 'beta-reader-report',
+  storylineConsultant: 'storyline-consultant-review',
+  lineEditor: 'line-editor-review',
+};
+/** Roles this generic handler serves — betaReader is excluded (it owns BETA_REPORT_RUN). */
+const PRODUCTION_RUN_ROLES: readonly ProductionRoleId[] = ['alphaReader', 'storylineConsultant', 'lineEditor'];
+
+function registerProductionRoleRunHandler(): void {
+  ipcMain.handle(IPC_CHANNELS.PRODUCTION_ROLE_RUN, wrapIpcHandler(IPC_CHANNELS.PRODUCTION_ROLE_RUN, async (event, payload: ProductionRoleRunPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+
+    const role = payload?.role;
+    // Allowlist guard: never echo an attacker-supplied role value (SEC-5 pattern).
+    if (!role || !(PRODUCTION_RUN_ROLES as readonly string[]).includes(role)) {
+      throw new Error('Unknown production role.');
+    }
+    if (!payload?.text?.trim()) {
+      throw new Error('Nothing to review — the selected scope has no manuscript text.');
+    }
+    // M11a: master AI gate beats the per-role enable.
+    if (!isAiMasterEnabled()) {
+      throw new Error('AI is turned off — enable it in Settings to run a review.');
+    }
+
+    const settings = loadAppSettings();
+    const roleSettings = getOptionalAgentSettings(settings, role);
+    const roleDef = PRODUCTION_ROLES[role];
+    const displayName = resolveAgentDisplayName(role, settings.agentNames);
+    if (!roleSettings.enabled) {
+      throw new Error(`${displayName} is disabled — enable it in Settings > AI Agents to run a review.`);
+    }
+
+    const sourceAgent = PRODUCTION_ROLE_SOURCE_AGENT[role];
+    const budgetCheck = checkCallBudget(sourceAgent, roleSettings, getDb());
+    if (!budgetCheck.allowed) {
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+            agent: sourceAgent,
+            agentLabel: displayName,
+            reason: budgetCheck.reason,
+          });
+        }
+      });
+      throw new Error(`${displayName} hit its ${budgetCheck.reason === 'daily_token_cap' ? 'daily' : 'hourly'} budget cap.`);
+    }
+
+    const providerConfig = getProviderConfigForAgent(role);
+
+    // Entity dossier assembly (AC2). Reader-perspective roles get a reveal-point
+    // FILTERED dossier for a mid-story read and the whole map only once the reader
+    // has finished (story scope); author-perspective craft roles always get the
+    // whole map. Best-effort: any vault/index problem yields no dossier and never
+    // fails the review — same contract as the Beta Reader path.
+    let entityContext = '';
+    try {
+      const notesVaultRoot = getNotesVaultRoot();
+      if (notesVaultRoot && fs.existsSync(notesVaultRoot)) {
+        const entityIndex = loadEntityIndex(notesVaultRoot);
+        entityContext = roleDef.readerPerspective && payload.scope.kind !== 'story'
+          ? buildReaderEntityContext(entityIndex, payload.scope.label)
+          : buildAuthorEntityContext(entityIndex);
+      }
+    } catch {
+      entityContext = '';
+    }
+
+    const userContent = buildProductionReviewUserContent(role, {
+      scopeLabel: payload.scope.label,
+      position: payload.scope.kind === 'story' ? undefined : payload.scope.label,
+      entityContext,
+      sourceText: payload.text.slice(0, BETA_REPORT_MAX_INPUT_CHARS),
+    });
+
+    const startedAt = Date.now();
+    const requestId = crypto.randomUUID();
+    let genError: string | null = null;
+    let userCancelled = false;
+    let modelProducedText = false;
+    const runAbort = new AbortController();
+    agentControllers.set(requestId, runAbort);
+    const runTimeout = setTimeout(() => runAbort.abort(new Error('scan-timeout')), SCAN_STREAM_TIMEOUT_MS);
+    beginTrackedAiActivity(requestId, role, PRODUCTION_ROLE_SURFACE[role], providerConfig, startedAt);
+
+    try {
+      let responseText = '';
+      for await (const token of streamFromProvider(providerConfig, {
+        system: buildAgentSystemPrompt(app.getPath('userData'), role),
+        messages: [{ role: 'user', content: userContent }],
+        maxTokens: 3072,
+        signal: runAbort.signal,
+      })) {
+        responseText += token;
+      }
+      modelProducedText = !isEmptyModelOutput(responseText);
+      return { text: responseText } satisfies ProductionRoleRunResponse;
+    } catch (err: unknown) {
+      userCancelled = runAbort.signal.aborted && (runAbort.signal.reason as Error | undefined)?.message !== 'scan-timeout';
+      if (userCancelled) {
+        // A deliberate stop is not an error — mirror the Beta Reader path.
+        throw new SafeIpcError('cancelled');
+      }
+      genError = (err as Error).message ?? 'unknown error';
+      throw err;
+    } finally {
+      endTrackedAiActivity(requestId, {
+        aborted: userCancelled,
+        error: genError,
+        empty: !userCancelled && !genError && !modelProducedText,
+      });
+      agentControllers.delete(requestId);
+      clearTimeout(runTimeout);
+      const digest = crypto.createHash('sha256').update(payload.text.slice(0, 100)).digest('hex');
+      try {
+        insertGenerationLog({
+          id: crypto.randomUUID(),
+          agent: sourceAgent,
+          model: providerConfig.model,
+          endpoint: 'messages.stream',
+          request_id: requestId,
+          tokens_in: null,
+          tokens_out: null,
+          latency_ms: Date.now() - startedAt,
+          error: genError,
+          created_at: new Date().toISOString(),
+          payload_digest: digest,
+        });
+      } catch { /* non-fatal */ }
+    }
+  }));
+}
+
 // ─── Archive → Scene Crafter suggestion generator (SKY-3200 / SKY-3199 §4) ──
 // Gap detection only — Archive proposes scene_crafter_card suggestions via DB
 // insert; it never reads or writes the board file. Gated on
@@ -11139,6 +11342,7 @@ app.whenReady().then(async () => {
   registerWritingScanHandler();
   registerBetaReadScanHandler();
   registerBetaReportRunHandler();
+  registerProductionRoleRunHandler();
   // M11a: arm the provider-level master gate before any AI handler can fire.
   setAiMasterGate(() => isAiMasterEnabled());
   registerStreamingHandlers(() => buildGlobalProviderConfig(loadAppSettings()));

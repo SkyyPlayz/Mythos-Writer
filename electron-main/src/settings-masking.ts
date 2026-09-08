@@ -47,13 +47,26 @@ export function maskSettingsForRenderer(settings: AppSettings): AppSettings {
   if (settings.tts && settings.tts.cloudApiKey) {
     masked.tts = { ...settings.tts, cloudApiKey: maskApiKey(settings.tts.cloudApiKey) };
   }
-  // Mask per-agent provider.apiKey overrides (SKY-738; Beta 3 M22 adds betaReader).
+  // Mask per-agent provider.apiKey overrides (SKY-738; Beta 3 M22 adds betaReader;
+  // SKY-11412 adds the three production-team roles — dropping them here would
+  // silently erase agents.alphaReader/storylineConsultant/lineEditor from every
+  // settings:get response, which then round-trips back into SETTINGS_SET as if
+  // the roles were never configured).
   masked.agents = {
     writingAssistant: maskAgentProvider(settings.agents.writingAssistant),
     brainstorm: maskAgentProvider(settings.agents.brainstorm),
     archive: maskAgentProvider(settings.agents.archive),
     ...(settings.agents.betaReader
       ? { betaReader: maskAgentProvider(settings.agents.betaReader) }
+      : {}),
+    ...(settings.agents.alphaReader
+      ? { alphaReader: maskAgentProvider(settings.agents.alphaReader) }
+      : {}),
+    ...(settings.agents.storylineConsultant
+      ? { storylineConsultant: maskAgentProvider(settings.agents.storylineConsultant) }
+      : {}),
+    ...(settings.agents.lineEditor
+      ? { lineEditor: maskAgentProvider(settings.agents.lineEditor) }
       : {}),
   };
   return masked;
@@ -112,7 +125,12 @@ export function reconcileSettingsFromRenderer(
   if (stored.tts?.cloudApiKey && incoming.tts && incoming.tts.cloudApiKey === maskApiKey(stored.tts.cloudApiKey)) {
     reconciled.tts = { ...incoming.tts, cloudApiKey: stored.tts.cloudApiKey };
   }
-  // Reconcile per-agent provider.apiKey overrides (SKY-738; Beta 3 M22 adds betaReader).
+  // Reconcile per-agent provider.apiKey overrides (SKY-738; Beta 3 M22 adds betaReader;
+  // SKY-11412 adds the three production-team roles). Rebuilding `agents` here
+  // must list every optional agent key — omitting one means every settings:set
+  // call silently discards that agent's config, including the mere act of
+  // toggling it on from Settings > AI Agents (the object save clobbers it back
+  // to whatever main.ts's back-fill default is on the next load).
   reconciled.agents = {
     writingAssistant: reconcileAgentProvider(incoming.agents.writingAssistant, stored.agents.writingAssistant),
     brainstorm: reconcileAgentProvider(incoming.agents.brainstorm, stored.agents.brainstorm),
@@ -122,6 +140,27 @@ export function reconcileSettingsFromRenderer(
           betaReader: stored.agents.betaReader
             ? reconcileAgentProvider(incoming.agents.betaReader, stored.agents.betaReader)
             : incoming.agents.betaReader,
+        }
+      : {}),
+    ...(incoming.agents.alphaReader
+      ? {
+          alphaReader: stored.agents.alphaReader
+            ? reconcileAgentProvider(incoming.agents.alphaReader, stored.agents.alphaReader)
+            : incoming.agents.alphaReader,
+        }
+      : {}),
+    ...(incoming.agents.storylineConsultant
+      ? {
+          storylineConsultant: stored.agents.storylineConsultant
+            ? reconcileAgentProvider(incoming.agents.storylineConsultant, stored.agents.storylineConsultant)
+            : incoming.agents.storylineConsultant,
+        }
+      : {}),
+    ...(incoming.agents.lineEditor
+      ? {
+          lineEditor: stored.agents.lineEditor
+            ? reconcileAgentProvider(incoming.agents.lineEditor, stored.agents.lineEditor)
+            : incoming.agents.lineEditor,
         }
       : {}),
   };

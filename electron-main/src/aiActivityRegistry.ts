@@ -23,7 +23,11 @@ export type AiActivitySurface =
   | 'writing-coach'
   | 'vault-check'
   | 'beta-reader-scan'
-  | 'beta-reader-report';
+  | 'beta-reader-report'
+  // SKY-11411: production-team roles (SKY-10741 M12.B6).
+  | 'alpha-reader-review'
+  | 'storyline-consultant-review'
+  | 'line-editor-review';
 
 export const AI_ACTIVITY_SURFACE_LABELS: Record<AiActivitySurface, string> = {
   'brainstorm-chat': 'Brainstorm chat',
@@ -32,6 +36,9 @@ export const AI_ACTIVITY_SURFACE_LABELS: Record<AiActivitySurface, string> = {
   'vault-check': 'Continuity check',
   'beta-reader-scan': 'Beta Reader — scene scan',
   'beta-reader-report': 'Beta Reader — report',
+  'alpha-reader-review': 'Alpha Reader — review',
+  'storyline-consultant-review': 'Storyline Consultant — review',
+  'line-editor-review': 'Line Editor — review',
 };
 
 export interface AiActivityEntry {

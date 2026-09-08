@@ -6177,6 +6177,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           chapter={selectedChapter}
           scene={selectedScene}
           agentNames={appSettings?.agentNames}
+          productionRolesEnabled={{
+            alphaReader: appSettings?.agents?.alphaReader?.enabled === true,
+            storylineConsultant: appSettings?.agents?.storylineConsultant?.enabled === true,
+            lineEditor: appSettings?.agents?.lineEditor?.enabled === true,
+          }}
           onClose={() => setBetaReaderOpen(false)}
           onNavigateToScene={handleBetaReaderNavigateToScene}
         />

@@ -1045,6 +1045,9 @@ jobs:
       - name: E2E — Beta Reader consolidation, real betaReport:run + agent:writing-assistant round trips (SKY-11221/SKY-11401)
         run: xvfb-run --auto-servernum npm run test:e2e:beta-reader-consolidation
 
+      - name: E2E — production-team roles live end-to-end, reveal-point no-leak proof (SKY-11412/SKY-11411)
+        run: xvfb-run --auto-servernum npm run test:e2e:production-roles
+
       - name: E2E — Outline planning surface AC-OPL-QA-01..09 (SKY-3028)
         run: xvfb-run --auto-servernum npm run test:e2e:outline
 
