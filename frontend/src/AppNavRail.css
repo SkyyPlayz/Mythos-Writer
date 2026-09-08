@@ -402,11 +402,23 @@
 }
 
 /* prototype vaultTiles st (5829): current vault = the same rainbow-gradient
-   glow the rail already uses for "this is the primary/active surface"
-   (color/background/box-shadow shared with .nav-rail__brand-glyph above). */
+   fill the rail already uses for "this is the primary/active surface"
+   (background/color shared with .nav-rail__brand-glyph above).
+   SKY-11377: the shared box-shadow read as a faint blue ring, not a glow —
+   the owner's literal ask was "make the highlight more of a neon glow."
+   Given a dedicated (stronger) shadow here rather than strengthening the
+   shared rule, so the brand mark's subtler look is unaffected. Reuses the
+   existing --neon-glow-strong utility (tokens.css) plus a solid --accent
+   ring for shape at a glance — no new colour, and it inherits that token's
+   existing high-contrast degradation (--accent flattens to a solid,
+   no-glow stroke under [data-contrast="high"]). */
 .nav-rail__vault-tile--active {
   cursor: default;
   border-color: transparent;
+  box-shadow:
+    0 0 0 2px var(--bg-panel, #12141f),
+    0 0 0 3.5px var(--accent, var(--neon-violet, #9b5fff)),
+    var(--neon-glow-strong);
 }
 
 /* prototype newMythosVaultH tile (HTML 174): dashed "minimized +" affordance.
