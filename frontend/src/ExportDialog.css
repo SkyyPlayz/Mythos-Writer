@@ -49,7 +49,7 @@
 .export-dialog-stats { font-size: 10.5px; color: #7686a2; flex-shrink: 0; margin-left: auto; }
 
 /* Beta 4 M14 — Full book / Current part / Current chapter segmented control */
-.export-scope-seg { display: flex; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, .05); border: var(--bw, 1px) solid var(--gs1, rgba(0, 240, 255, .2)); gap: 2px; }
+.export-scope-seg { display: flex; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, .05); border: var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, .2)); gap: 2px; }
 .export-scope-seg__btn { border: none; background: none; color: #94a3bd; font-size: 11px; font-weight: 400; padding: 4px 11px; border-radius: 8px; cursor: pointer; white-space: nowrap; transition: color .12s ease, background .12s ease; }
 .export-scope-seg__btn:hover:not(:disabled):not(.export-scope-seg__btn--active) { color: #fff; }
 .export-scope-seg__btn--active { color: var(--n1, #00f0ff); background: var(--gs1, rgba(0, 240, 255, .12)); font-weight: 600; box-shadow: 0 0 10px -3px var(--g1, rgba(0, 240, 255, .4)); }
