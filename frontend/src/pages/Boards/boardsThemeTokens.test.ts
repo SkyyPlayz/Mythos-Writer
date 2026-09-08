@@ -19,6 +19,9 @@ import { applyLiquidNeonV2Tokens } from '../../theme/liquidNeonEngine';
 
 const BOARDS_CSS_FILES = ['BoardCanvas.css', 'BoardsTabPanel.css'] as const;
 
+/** The components that own the CSS above, and may set properties inline. */
+const BOARDS_TSX_FILES = ['BoardCanvas.tsx', 'BoardsTabPanel.tsx'] as const;
+
 const readBoardsCss = (relPath: string): string => readFileSync(resolve(__dirname, relPath), 'utf8');
 
 /** Strip comments so a token named in prose isn't mistaken for a reference. */
@@ -43,14 +46,51 @@ function engineStampedTokens(): (name: string) => boolean {
 
 const tokensCssDeclared = declaredIn(readFileSync(resolve(__dirname, '../../tokens.css'), 'utf8'));
 
+/**
+ * Fourth legitimate source, added by SKY-11501: a property the owning
+ * component writes as inline style. BoardCanvas.tsx hands the dot grid its
+ * pan/zoom that way. The failure mode this test exists to catch is a property
+ * *nobody* defines, so a `'--name':` in the component beside the CSS counts —
+ * an unwired grid var would still show up here as an orphan.
+ */
+const componentDeclared = new Set(
+  BOARDS_TSX_FILES.flatMap((relPath) =>
+    Array.from(
+      readFileSync(resolve(__dirname, relPath), 'utf8').matchAll(/'(--[\w-]+)'\s*:/g),
+      (m) => m[1],
+    )),
+);
+
 describe('SKY-11449 — Boards surface is wired to the Liquid Neon theme engine', () => {
+  /**
+   * SKY-11501: these files carry long comments full of token names, and a
+   * token glob written `--b*` immediately before a `/` closes the comment on
+   * the spot. The browser then swallows the following rule as comment fallout
+   * — which is how `.board-canvas__item { position: absolute }` silently
+   * vanished and dropped every tile into flow layout. Nothing else notices:
+   * the built bundle still contains the text, and a regex comment-stripper
+   * resyncs on the next comment opener.
+   */
+  it.each(BOARDS_CSS_FILES)('%s has no comment that closes itself early', (relPath) => {
+    const withoutComments = readBoardsCss(relPath).replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(
+      withoutComments.includes('*/'),
+      `${relPath} has a stray comment terminator once well-formed comments are removed, so one `
+        + 'of its comments ends earlier than it looks — usually a token glob such as "--b*" '
+        + 'written directly before a slash. The rule right after it will not parse in the browser.',
+    ).toBe(false);
+  });
+
   it.each(BOARDS_CSS_FILES)('%s references no undefined custom properties', (relPath) => {
     const css = readBoardsCss(relPath);
     const isEngineStamped = engineStampedTokens();
     const localDeclared = declaredIn(css);
 
     const orphans = [...new Set(referencedIn(css))].filter(
-      (name) => !tokensCssDeclared.has(name) && !localDeclared.has(name) && !isEngineStamped(name),
+      (name) => !tokensCssDeclared.has(name)
+        && !localDeclared.has(name)
+        && !componentDeclared.has(name)
+        && !isEngineStamped(name),
     );
 
     expect(

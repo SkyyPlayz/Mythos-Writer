@@ -2,8 +2,8 @@
  * SKY-11184: Notes Board canvas — zoom/pan/drag/resize with auto-layout fallback.
  * BOARDS-SPEC.md §1, §6.
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { MouseEvent, WheelEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, KeyboardEvent, MouseEvent, WheelEvent } from 'react';
 import './BoardCanvas.css';
 
 // ── spec §6 constants ───────────────────────────────────────────────────────
@@ -102,18 +102,28 @@ export default function BoardCanvas({
   const [zoom, setZoom] = useState(savedView.zoom || 100);
   const [pan, setPan] = useState({ x: savedView.panX || 0, y: savedView.panY || 0 });
 
-  // Resolve items: merge saved layout with auto-layout for unsaved items
-  const resolvedItems: ResolvedItem[] = items.map((item, i) => {
-    const saved = savedLayout[item.path];
-    if (saved) {
-      return { ...item, layout: saved, autoLayout: false };
-    }
-    return {
-      ...item,
-      layout: autoLayoutItem(i, containerWidth),
-      autoLayout: true,
-    };
-  });
+  // Resolve items: merge saved layout with auto-layout for unsaved items.
+  //
+  // Memoised because the align-guide effect below depends on this array, and
+  // that effect calls setGuideLines on every run. Rebuilt fresh each render it
+  // made the pair self-feeding — new array → effect reruns → new state → new
+  // array — so the canvas spun in a render loop for as long as it was mounted.
+  // Found while adding the SKY-11501 tests: rendering this component under
+  // React's act() never returned. Pre-existing since SKY-11184.
+  const resolvedItems: ResolvedItem[] = useMemo(
+    () => items.map((item, i) => {
+      const saved = savedLayout[item.path];
+      if (saved) {
+        return { ...item, layout: saved, autoLayout: false };
+      }
+      return {
+        ...item,
+        layout: autoLayoutItem(i, containerWidth),
+        autoLayout: true,
+      };
+    }),
+    [items, savedLayout, containerWidth],
+  );
 
   // Observe container width for auto-layout column count
   useLayoutEffect(() => {
@@ -137,14 +147,35 @@ export default function BoardCanvas({
     }),
   );
 
+  // ── Selection ───────────────────────────────────────────────────────────
+  // SKY-11501 (BD-3): the mockup spends the full-alpha slot rim on the
+  // *selected* tile. Until now nothing was ever selected, so that rim sat on
+  // every tile at rest. One tile at a time, matching the mockup's `bdSel`.
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+
+  // Entering or leaving a board swaps the item set out from under us; a
+  // selection pointing at a tile that is no longer on the canvas is stale.
+  useEffect(() => {
+    setSelectedPath((prev) => (prev && items.some((i) => i.path === prev) ? prev : null));
+  }, [items]);
+
   // ── Pan via middle-mouse drag ───────────────────────────────────────────
   const panDragRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
 
   const handleMouseDownCanvas = useCallback((e: MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 1) return; // middle button only
+    // Bare canvas: a left press deselects. Presses that land on a tile or its
+    // resize handle stop propagating, so they never reach this handler.
+    if (e.button === 0) { setSelectedPath(null); return; }
+    if (e.button !== 1) return; // middle button pans
     e.preventDefault();
     panDragRef.current = { startX: e.clientX, startY: e.clientY, startPanX: pan.x, startPanY: pan.y };
   }, [pan]);
+
+  const handleKeyDownCanvas = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Escape') return;
+    // Keyboard parity with clicking bare canvas. Bubbles up from the tile.
+    setSelectedPath((prev) => (prev === null ? prev : null));
+  }, []);
 
   useEffect(() => {
     const onMouseMove = (e: globalThis.MouseEvent) => {
@@ -201,6 +232,7 @@ export default function BoardCanvas({
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('.board-canvas__resize-handle')) return;
     e.stopPropagation();
+    setSelectedPath(item.path);
     itemDragRef.current = {
       path: item.path,
       startMouseX: e.clientX,
@@ -293,10 +325,15 @@ export default function BoardCanvas({
   // ── Align guides — collect edges/centres of all non-dragged items ───────
   const [guideLines, setGuideLines] = useState<{ axis: 'h' | 'v'; pos: number }[]>([]);
 
+  /** No-op when there is nothing to clear, so idle renders never restate. */
+  const clearGuideLines = useCallback(() => {
+    setGuideLines((prev) => (prev.length === 0 ? prev : []));
+  }, []);
+
   useEffect(() => {
-    if (!draggingPath) { setGuideLines([]); return; }
+    if (!draggingPath) { clearGuideLines(); return; }
     const pos = localPositions[draggingPath];
-    if (!pos) { setGuideLines([]); return; }
+    if (!pos) { clearGuideLines(); return; }
     const dragItem = resolvedItems.find((i) => i.path === draggingPath);
     if (!dragItem) return;
     const def = defaultSize(dragItem.kind);
@@ -325,10 +362,16 @@ export default function BoardCanvas({
       }
     }
     setGuideLines(guides);
-  }, [draggingPath, localPositions, resolvedItems]);
+  }, [draggingPath, localPositions, resolvedItems, clearGuideLines]);
 
   return (
-    <div className="board-canvas__root" ref={containerRef} onMouseDown={handleMouseDownCanvas} onWheel={handleWheel}>
+    <div
+      className="board-canvas__root"
+      ref={containerRef}
+      onMouseDown={handleMouseDownCanvas}
+      onKeyDown={handleKeyDownCanvas}
+      onWheel={handleWheel}
+    >
       {/* Zoom controls */}
       <div className="board-canvas__zoom-controls" role="group" aria-label="Zoom controls">
         <button className="board-canvas__zoom-btn" onClick={handleZoomOut} aria-label="Zoom out" title="Zoom out (−10%)">−</button>
@@ -338,8 +381,19 @@ export default function BoardCanvas({
         <button className="board-canvas__zoom-btn" onClick={handleZoomIn} aria-label="Zoom in" title="Zoom in (+10%)">+</button>
       </div>
 
-      {/* Scrollable canvas area */}
-      <div className="board-canvas__scroll-area">
+      {/* Scrollable canvas area.
+          SKY-11501 (BD-2): the dot grid is painted here and driven off the same
+          pan/zoom state as the world transform below, so a dot stays pinned to
+          its world point while you pan and scale. GRID_SNAP is the dot pitch,
+          so at 100% a snapped item sits exactly on the grid. */}
+      <div
+        className="board-canvas__scroll-area"
+        style={{
+          '--board-grid-size': `${GRID_SNAP * (zoom / 100)}px`,
+          '--board-grid-x': `${pan.x}px`,
+          '--board-grid-y': `${pan.y}px`,
+        } as CSSProperties}
+      >
         <div
           className="board-canvas__world"
           style={{
@@ -364,17 +418,28 @@ export default function BoardCanvas({
             const w = size.w ?? def.w;
             const h = size.h ?? def.h;
             const isDragging = draggingPath === item.path;
+            const isSelected = selectedPath === item.path;
 
             return (
               <div
                 key={item.path}
-                className={`board-canvas__item board-canvas__item--${item.kind}${isDragging ? ' board-canvas__item--dragging' : ''}`}
+                className={
+                  `board-canvas__item board-canvas__item--${item.kind}`
+                  + (isSelected ? ' board-canvas__item--selected' : '')
+                  + (isDragging ? ' board-canvas__item--dragging' : '')
+                }
                 style={{ left: pos.x, top: pos.y, width: w, height: h }}
                 onMouseDown={(e) => handleItemMouseDown(e, { ...item, layout: { ...item.layout, x: pos.x, y: pos.y, w, h } })}
                 onDoubleClick={item.kind === 'folder' ? () => onEnterBoard?.(item.path) : undefined}
                 role={item.kind === 'folder' ? 'button' : 'article'}
                 aria-label={item.kind === 'folder' ? `Board: ${item.name}. Double-click to open.` : `Note card: ${item.name}`}
+                /* Neither `button` nor `article` allows aria-selected, so the
+                   selected tile announces as the current item of the set. */
+                aria-current={isSelected ? true : undefined}
                 tabIndex={0}
+                /* Tab-to-a-tile selects it too, so keyboard and pointer agree
+                   on what "the tile I am acting on" means. */
+                onFocus={() => setSelectedPath(item.path)}
                 onKeyDown={(e) => {
                   if (item.kind === 'folder' && (e.key === 'Enter' || e.key === ' ')) {
                     e.preventDefault();
