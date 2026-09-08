@@ -27,11 +27,11 @@
  *                                position under its new label with NO Store B
  *                                rewrite (layout keyed by stable id, not path).
  *
- * A separately-tracked Home/top-level board defect surfaced by this coverage
- * (SKY-11336 — absolute folderPath → flattened recursive listing + Home-level
- * drag not persisted) is captured as a `test.fixme` at the bottom so it is
- * recorded and enable-able the moment SKY-11336 lands, without silently
- * patching SKY-11184 inside this test-only ticket (AC / §5c).
+ * SKY-11336 — the Home/top-level board defect this coverage surfaced (absolute
+ * folderPath → flattened recursive listing + Home-level drag not persisted) —
+ * is now fixed, and the two tests at the bottom assert Home-board correctness
+ * plus the depth-2 nesting that the vault-relative folderPath contract makes
+ * possible.
  */
 
 import path from 'path';
@@ -347,36 +347,121 @@ test('SKY-11184 AC4: renaming a folder moves its board tile by id with no metada
   }
 });
 
-// ── Tracked defect surfaced by this coverage (SKY-11336) ─────────────────────
+// ── SKY-11336 — the Home / top-level board ───────────────────────────────────
 //
-// The Home / top-level board passes the ABSOLUTE notes-vault path as the board
-// folderPath, where every notesBoard IPC handler expects a vault-RELATIVE one.
-// Two user-visible defects follow, both proven by this spec's harness during
-// development and filed as SKY-11336 (a bug in SKY-11184, not this test ticket):
-//   (a) Home renders a FLATTENED recursive listing — nested notes/folders show
-//       as top-level cards/tiles instead of only immediate children.
-//   (b) A drag on the Home board is not persisted (item-not-found is swallowed);
-//       no sidecar is written, so the position is lost on relaunch.
-// Enable this test once SKY-11336 lands to assert Home-board correctness.
-test.fixme(
-  'SKY-11184/SKY-11336: Home board shows only immediate children and persists Home-level drags',
-  async () => {
-    const { tempRoot, userData, notesDir } = makeTemp('home-bug');
-    mkNote(notesDir, 'Characters/Alice.md', '# Alice\n');
-    mkNote(notesDir, 'Intro.md', '# Intro\n');
-    const app = await launchApp(userData);
-    try {
-      const page = await bootToBoards(app);
-      // Home must show only immediate children (Characters tile + Intro card),
-      // never the nested Alice card.
-      await expect(items(page)).toHaveCount(2);
-      await expect(page.locator('.board-canvas__item-name', { hasText: 'Alice' })).toHaveCount(0);
-      // A Home-level drag must persist a sidecar at the vault root.
-      await dragItem(page, 'Intro', 120, 80);
-      expect(fs.existsSync(path.join(notesDir, SIDECAR))).toBe(true);
-    } finally {
-      await app.close().catch(() => undefined);
-      fs.rmSync(tempRoot, { recursive: true, force: true });
-    }
-  },
-);
+// SKY-11184 seeded the Home breadcrumb with the ABSOLUTE notes-vault path where
+// every notesBoard IPC handler expects a vault-RELATIVE one, which produced two
+// user-visible defects at Home (and only at Home — a subfolder's breadcrumb path
+// was already relative):
+//   (a) Home rendered a FLATTENED recursive listing, because listNotesVault is
+//       recursive but was consumed as if it were an immediate listing;
+//   (b) a Home-level drag was not persisted — the absolute path resolved to a
+//       doubled, non-existent folder, so patchLayout threw item-not-found into
+//       an empty catch and no sidecar was ever written.
+// The fix normalises folderPath to vault-relative in the renderer (Home = '')
+// and derives each board's items from the immediate children only.
+
+test('SKY-11336 (a+b): Home shows only immediate children and persists a Home-level drag', async () => {
+  test.setTimeout(150_000);
+  const { tempRoot, userData, notesDir } = makeTemp('home-board');
+  mkNote(notesDir, 'Characters/Alice.md', '# Alice\n');
+  mkNote(notesDir, 'Characters/Bob.md', '# Bob\n');
+  mkNote(notesDir, 'Intro.md', '# Intro\n');
+
+  // Session 1: Home renders the right tree, and a drag there reaches disk.
+  let app = await launchApp(userData);
+  let persisted = { left: 0, top: 0 };
+  try {
+    const page = await bootToBoards(app);
+    await expect(page.locator('.boards-tab-panel__breadcrumb-current')).toHaveText('Home');
+
+    // (a) Exactly the two immediate children — the nested Alice/Bob notes are
+    // the Characters board's contents, never Home's.
+    await expect(items(page)).toHaveCount(2);
+    await expect(folderTile(page, 'Characters')).toBeVisible();
+    await expect(page.locator('.board-canvas__item--note', { hasText: 'Intro' })).toBeVisible();
+    await expect(page.locator('.board-canvas__item-name', { hasText: /^(Alice|Bob)$/ })).toHaveCount(0);
+    // Counts on the Home tile are still the folder's DIRECT children (spec §5).
+    await expect(folderTile(page, 'Characters').locator('.board-canvas__item-meta')).toHaveText(
+      '0 boards, 2 cards',
+    );
+
+    // (b) QA's repro: drag the Characters tile on the Home board. No board
+    // metadata exists anywhere yet — the drag is what creates it (§4c).
+    expect(fs.existsSync(path.join(notesDir, SIDECAR))).toBe(false);
+    await dragItem(page, 'Characters', 192, 156);
+    persisted = await itemPos(page, 'Characters');
+
+    // A real sidecar now exists at the VAULT ROOT — the Home board's own
+    // folder — keyed by the folder's stable id (v:<uuid>).
+    const layout = readSidecar(notesDir, '.').layout as Record<string, { x: number; y: number }>;
+    const keys = Object.keys(layout);
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatch(/^v:.+/);
+    expect(layout[keys[0]]).toMatchObject({ x: persisted.left, y: persisted.top });
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+
+  // Session 2: genuine relaunch — the Home tile is back where it was left.
+  app = await launchApp(userData);
+  try {
+    const page = await bootToBoards(app);
+    await expect(folderTile(page, 'Characters')).toBeVisible({ timeout: 8_000 });
+    expect(await itemPos(page, 'Characters')).toEqual(persisted);
+    await expect(items(page)).toHaveCount(2); // still not flattened after reload
+  } finally {
+    await app.close().catch(() => undefined);
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+// ── SKY-11336 — boards below the first level must not regress ────────────────
+//
+// With folderPath vault-relative everywhere, entering a board has to JOIN the
+// tile's (board-relative) path onto the current folder. A bare item path was
+// only ever correct one level below Home, so depth 2 is the guard that keeps
+// the contract honest.
+
+test('SKY-11336: nested boards address correctly at depth 2 and persist there', async () => {
+  test.setTimeout(150_000);
+  const { tempRoot, userData, notesDir } = makeTemp('home-nested');
+  mkNote(notesDir, 'Series/BookOne/Ch1.md', '# Ch1\n');
+  mkNote(notesDir, 'Series/Notes.md', '# Notes\n');
+
+  const app = await launchApp(userData);
+  try {
+    const page = await bootToBoards(app);
+
+    // Home: one tile, whose counts describe its DIRECT children only.
+    await expect(items(page)).toHaveCount(1);
+    await expect(folderTile(page, 'Series').locator('.board-canvas__item-meta')).toHaveText(
+      '1 boards, 1 cards',
+    );
+
+    // Depth 1 — Home / Series.
+    await enterBoard(page, 'Series');
+    await expect(items(page)).toHaveCount(2);
+    await expect(folderTile(page, 'BookOne')).toBeVisible();
+
+    // Depth 2 — Home / Series / BookOne. Before the fix this addressed
+    // `<root>/BookOne`, which does not exist.
+    await enterBoard(page, 'BookOne');
+    await expect(items(page)).toHaveCount(1);
+    await expect(page.locator('.board-canvas__item-name', { hasText: 'Ch1' })).toBeVisible();
+    await expect(page.locator('.boards-tab-panel__breadcrumb-btn')).toHaveCount(2); // Home, Series
+
+    // A drag at depth 2 writes to the nested board's own folder, not the root.
+    await dragItem(page, 'Ch1', 140, 100);
+    expect(fs.existsSync(path.join(notesDir, 'Series', 'BookOne', SIDECAR))).toBe(true);
+    expect(fs.existsSync(path.join(notesDir, SIDECAR))).toBe(false);
+
+    // Breadcrumb walks all the way back out.
+    await page.locator('.boards-tab-panel__breadcrumb-btn', { hasText: 'Home' }).click();
+    await expect(page.locator('.boards-tab-panel__breadcrumb-current')).toHaveText('Home');
+    await expect(items(page)).toHaveCount(1);
+  } finally {
+    await app.close().catch(() => undefined);
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
