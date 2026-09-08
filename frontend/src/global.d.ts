@@ -1284,7 +1284,20 @@ interface Window {
     onWritingAssistantScanError: (cb: (data: { sceneId?: string; scenePath?: string; error: string; occurredAt: string }) => void) => () => void;
 
     // Archive continuity-check scheduled scan (MYT-234)
-    archiveScan: (sceneText: string, scenePath: string) => Promise<{ suggestions: unknown[]; inconsistenciesFound: number; wikiLinksFound: number }>;
+    archiveScan: (sceneText: string, scenePath: string) => Promise<{
+      suggestions: unknown[];
+      inconsistenciesFound: number;
+      wikiLinksFound: number;
+      /** SKY-11457: what the `wikiAutonomy` setting did with new names in this scene. */
+      wikiAutonomy?: {
+        mode: 'off' | 'ask' | 'auto';
+        candidates: number;
+        questionsQueued: number;
+        stubsWritten: number;
+        suppressed: number;
+        skipped: number;
+      };
+    }>;
 
     // Beta-Read Mode (MYT-237) — anchored inline comments
     betaReadCreate: (sceneId: string, anchorText: string, commentText: string) => Promise<{ comment: BetaReadComment }>;

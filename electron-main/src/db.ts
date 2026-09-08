@@ -2481,6 +2481,26 @@ export function findBrainstormQuestionByEntityScene(
   );
 }
 
+/**
+ * Same re-queue guard as {@link findBrainstormQuestionByEntityScene}, keyed by
+ * name instead of id (SKY-11457). The self-building wiki asks about names that
+ * have no entity row yet, so `entity_id` is null for every one of its
+ * questions; without this, each timer-driven re-scan of an unchanged scene
+ * would queue the same question again.
+ */
+export function findBrainstormQuestionByNameScene(
+  entityName: string,
+  scenePath: string,
+): DbBrainstormQuestion | null {
+  return (
+    (getDb()
+      .prepare(
+        'SELECT * FROM brainstorm_questions WHERE entity_id IS NULL AND entity_name = ? COLLATE NOCASE AND scene_path = ?',
+      )
+      .get(entityName, scenePath) as DbBrainstormQuestion | undefined) ?? null
+  );
+}
+
 /** Tombstones a pending question — durable, never deleted (matches the fact-ledger durable/disposable split). */
 export function answerBrainstormQuestion(
   id: string,

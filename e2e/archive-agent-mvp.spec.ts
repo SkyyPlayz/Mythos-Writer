@@ -18,6 +18,11 @@
  *             archiveContinuityEnabled: false (no LLM call made).
  *   TC-AA-08  Scan-on-save trigger — saving a scene with archiveScanOnSave: true
  *             fires archive:cont-scan-start event to the renderer.
+ *   TC-AA-09  SKY-11457 — wikiAutonomy 'auto' stubs a new name into the Notes
+ *             Vault, asks nothing, and is idempotent across re-scans.
+ *   TC-AA-10  SKY-11457 — wikiAutonomy 'ask' queues a Brainstorm question and
+ *             writes nothing; a re-scan does not re-ask.
+ *   TC-AA-11  SKY-11457 — wikiAutonomy 'off' detects nothing and does nothing.
  *
  * No real LLM API key is required. Scan results are either injected via
  * app.evaluate / webContents.send (TC-AA-03, TC-AA-08) or seeded in SQLite
@@ -706,6 +711,136 @@ test('TC-AA-08: saving a scene with archiveScanOnSave:true fires archive:cont-sc
         return (window as any).__aa_scanStartReceived as boolean;
       });
     }, { timeout: 10_000 }).toBe(true);
+  } finally {
+    await closeApp(app);
+    cleanupFixture(fixture);
+  }
+});
+
+// ─── TC-AA-09..11: wiki autonomy tri-state (SKY-11457) ──────────────────────
+//
+// QA SKY-11440 found the `wikiAutonomy` setting persisting but changing
+// nothing — nothing in production read it. The scene scan is the chokepoint
+// where the wiki reads the draft, so these three cases prove, across the real
+// process boundary and on real disk, that each mode does something different.
+
+/** Two new names, each away from a sentence start so detection accepts them. */
+const NEW_NAME_PROSE =
+  'The lantern swung as Corwin crossed the Glass Bridge under twin moons.';
+
+async function scanScene(page: Page, prose: string): Promise<{
+  mode?: string;
+  candidates?: number;
+  questionsQueued?: number;
+  stubsWritten?: number;
+  skipped?: number;
+}> {
+  const raw = await page.evaluate(async (text) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const api = (window as any).api;
+    if (typeof api?.archiveScan !== 'function') return 'NO_API';
+    return JSON.stringify(await api.archiveScan(text, `stories/story-aa-mvp-e2e/chapters/chapter-aa-mvp-e2e/scenes/scene-aa-mvp-e2e.md`));
+  }, prose);
+  expect(raw).not.toBe('NO_API');
+  return JSON.parse(raw as string).wikiAutonomy ?? {};
+}
+
+function listInboxNotes(notesVaultDir: string): string[] {
+  const inbox = path.join(notesVaultDir, 'Inbox');
+  if (!fs.existsSync(inbox)) return [];
+  return fs.readdirSync(inbox).filter((f) => f.endsWith('.md')).sort();
+}
+
+function countQueuedQuestions(vaultDir: string): number {
+  const dbPath = path.join(vaultDir, '.mythos', 'state.db');
+  if (!fs.existsSync(dbPath)) return 0;
+  const db = new DatabaseSync(dbPath);
+  try {
+    const row = db
+      .prepare("SELECT COUNT(*) AS n FROM brainstorm_questions WHERE source = 'wiki_autostub'")
+      .get() as { n: number } | undefined;
+    return row?.n ?? 0;
+  } finally {
+    db.close();
+  }
+}
+
+test('TC-AA-09 (SKY-11457): wikiAutonomy "auto" stubs a new name into the Notes Vault', async () => {
+  const fixture = createFixture([], { wikiAutonomy: 'auto' }, NEW_NAME_PROSE);
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await openApp(fixture);
+    app = opened.app;
+
+    const first = await scanScene(opened.page, NEW_NAME_PROSE);
+    expect(first.mode).toBe('auto');
+    expect(first.candidates).toBeGreaterThan(0);
+    expect(first.stubsWritten).toBeGreaterThan(0);
+
+    const notes = listInboxNotes(fixture.notesVaultDir);
+    expect(notes).toContain('Corwin.md');
+    const body = fs.readFileSync(path.join(fixture.notesVaultDir, 'Inbox', 'Corwin.md'), 'utf-8');
+    expect(body).toContain('# Corwin');
+    expect(body).toContain('wiki_autostub');
+
+    // Auto mode asks nothing …
+    expect(countQueuedQuestions(fixture.vaultDir)).toBe(0);
+
+    // … and a re-scan of the same scene adds nothing and rewrites nothing.
+    const second = await scanScene(opened.page, NEW_NAME_PROSE);
+    expect(second.stubsWritten).toBe(0);
+    expect(second.skipped).toBeGreaterThan(0);
+    expect(listInboxNotes(fixture.notesVaultDir)).toEqual(notes);
+  } finally {
+    await closeApp(app);
+    cleanupFixture(fixture);
+  }
+});
+
+test('TC-AA-10 (SKY-11457): wikiAutonomy "ask" queues a question and writes nothing', async () => {
+  const fixture = createFixture([], { wikiAutonomy: 'ask' }, NEW_NAME_PROSE);
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await openApp(fixture);
+    app = opened.app;
+    const before = listInboxNotes(fixture.notesVaultDir);
+
+    const first = await scanScene(opened.page, NEW_NAME_PROSE);
+    expect(first.mode).toBe('ask');
+    expect(first.candidates).toBeGreaterThan(0);
+    expect(first.questionsQueued).toBeGreaterThan(0);
+    expect(first.stubsWritten).toBe(0);
+
+    // "Always ask" never writes to the vault before the author answers.
+    expect(listInboxNotes(fixture.notesVaultDir)).toEqual(before);
+    const queued = countQueuedQuestions(fixture.vaultDir);
+    expect(queued).toBeGreaterThan(0);
+
+    // A re-scan of an unchanged scene does not re-ask.
+    const second = await scanScene(opened.page, NEW_NAME_PROSE);
+    expect(second.questionsQueued).toBe(0);
+    expect(countQueuedQuestions(fixture.vaultDir)).toBe(queued);
+  } finally {
+    await closeApp(app);
+    cleanupFixture(fixture);
+  }
+});
+
+test('TC-AA-11 (SKY-11457): wikiAutonomy "off" proposes nothing at all', async () => {
+  const fixture = createFixture([], { wikiAutonomy: 'off' }, NEW_NAME_PROSE);
+  let app: ElectronApplication | undefined;
+  try {
+    const opened = await openApp(fixture);
+    app = opened.app;
+    const before = listInboxNotes(fixture.notesVaultDir);
+
+    const result = await scanScene(opened.page, NEW_NAME_PROSE);
+    expect(result.mode).toBe('off');
+    expect(result.candidates).toBe(0);
+    expect(result.questionsQueued).toBe(0);
+    expect(result.stubsWritten).toBe(0);
+    expect(listInboxNotes(fixture.notesVaultDir)).toEqual(before);
+    expect(countQueuedQuestions(fixture.vaultDir)).toBe(0);
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);
