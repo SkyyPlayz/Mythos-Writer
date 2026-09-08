@@ -33,6 +33,11 @@
    slot 3 magenta and slot 6 blue in different regions). They are custom
    properties on purpose: a component can retint without having to out-specify
    the `border` shorthand or depend on CSS bundle order.
+
+   `--ln-overlay-shadow` replaces the whole depth+glow shadow for the rare
+   surface the mockup lifts further off the canvas than a standard dialog
+   (SKY-11477: the Timeline exact-time / calendar cards). Same reasoning —
+   a custom property, so the high-contrast rules below still flatten it.
    ═══════════════════════════════════════════════════════════════════════ */
 
 .ln-overlay-surface {
@@ -41,9 +46,11 @@
      swaps in the live glass when the platform can actually blur. */
   background: var(--glass-fill-fallback);
   border: var(--bw, 1px) solid var(--ln-overlay-border, var(--b1, rgba(0, 240, 255, 0.5)));
-  box-shadow:
+  box-shadow: var(
+    --ln-overlay-shadow,
     0 14px 40px rgba(3, 5, 12, 0.6),
-    0 0 22px -6px var(--ln-overlay-glow, var(--g1, rgba(0, 240, 255, 0.4)));
+    0 0 22px -6px var(--ln-overlay-glow, var(--g1, rgba(0, 240, 255, 0.4)))
+  );
 }
 
 @supports (backdrop-filter: blur(1px)) {
