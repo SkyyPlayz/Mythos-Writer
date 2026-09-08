@@ -11,6 +11,8 @@
  * suite exercises (scene-crafter-*) is preserved. */
 
 .scene-crafter-page {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -18,7 +20,34 @@
   padding: 14px 20px 20px;
   gap: 12px;
   color: #c8d3e7;
-  background: radial-gradient(90% 90% at 50% 40%, rgba(20, 26, 48, 0.4), rgba(6, 8, 15, 0.6));
+  /* SKY-11448: hairline neon tokens — the mockup's --bwh / --bh / --glowH
+     (half glow-width, half-alpha slot-1 border, half-radius slot-1 glow),
+     derived here from the live --bw / --b1 / --gr / --g1 the theme engine
+     already emits, so the owner's glow sliders drive them without a new
+     engine token. color-mix with transparent halves the alpha, hue intact. */
+  --sc-bwh: max(0.5px, calc(var(--bw, 1px) / 2));
+  --sc-bh: color-mix(in srgb, var(--b1, rgba(0, 240, 255, 0.4)) 50%, transparent);
+  --sc-glow-h: 0 0 calc(var(--gr, 26px) / 2) -7px color-mix(in srgb, var(--g1, rgba(0, 240, 255, 0.4)) 50%, transparent);
+}
+
+/* SKY-11448: the page is the mockup's frosted center shell — live glass fill
+   + backdrop blur over the wallpaper (the flat radial-gradient this replaced
+   darkened the whole view and hid the wallpaper). The blur sits on a
+   pseudo-element, not the page itself: backdrop-filter turns its element
+   into the containing block for position:fixed descendants, which would pin
+   the diff modal's scrim to the page box instead of the window. tokens.css
+   already remaps --glass-fill / --blur-panel to the opaque fallback for
+   no-backdrop-filter, reduced-transparency and high-contrast, so no
+   @supports branch is needed here. */
+.scene-crafter-page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--glass-fill);
+  backdrop-filter: blur(var(--blur-panel));
+  -webkit-backdrop-filter: blur(var(--blur-panel));
+  pointer-events: none;
 }
 
 .scene-crafter-state {
@@ -27,19 +56,27 @@
   text-align: center;
 }
 
+/* SKY-11448: the mockup's title is an unboxed row (dc.html line 1428) — Lora
+   title with the tagline beside it — not a bordered card. */
 .scene-crafter-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 0 0 0 2px;
+}
+
+.scene-crafter-header > div {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 12px;
 }
 
 .scene-crafter-eyebrow {
-  margin: 0 0 4px;
+  width: 100%;
+  margin: 0;
+  text-align: left;
   color: #7686a2;
   font-size: 10px;
   font-weight: 700;
@@ -56,7 +93,7 @@
 }
 
 .scene-crafter-tagline {
-  margin: 2px 0 0;
+  margin: 0;
   font-size: 11px;
   color: #8e9db8;
 }
@@ -113,7 +150,9 @@
   min-height: 0;
 }
 
-/* Suggested cards panel (prototype lines 356–371). */
+/* Suggested cards panel (prototype lines 356–371). In the mockup this rail
+   IS the left glass panel (dc.html line 207: --glass fill, slot-1 ring +
+   glow); SKY-11448 gives the in-page rail that same shell treatment. */
 .sc-suggest {
   display: flex;
   flex: 0 0 218px;
@@ -123,8 +162,9 @@
   overflow-y: auto;
   padding: 14px 12px;
   border-radius: 13px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.02);
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  background: var(--glass, rgba(13, 16, 28, 0.2));
+  box-shadow: 0 0 var(--gr, 26px) -6px var(--g1, rgba(0, 240, 255, 0.4));
 }
 
 .sc-suggest-title {
@@ -169,6 +209,8 @@
   padding: 6px 2px 0;
 }
 
+/* SKY-11448: hairline slot-1 border + half glow (dc.html line 367), not a
+   flat white border. */
 .scene-crafter-page button.sc-sugg-card {
   display: flex;
   align-items: center;
@@ -176,7 +218,8 @@
   padding: 8px 10px;
   border-radius: 11px;
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: var(--sc-bwh) solid var(--sc-bh);
+  box-shadow: var(--sc-glow-h);
   cursor: grab;
   text-align: left;
 }
@@ -295,11 +338,14 @@
   text-shadow: 0 0 12px var(--g2, rgba(155, 95, 255, 0.4));
 }
 
+/* SKY-11448: Setup / Draft panels (dc.html lines 1438, 1474) — translucent
+   fill over the page glass, hairline slot-1 border, half glow. */
 .sc-panel {
   padding: 13px;
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: var(--sc-bwh) solid var(--sc-bh);
+  box-shadow: var(--sc-glow-h);
 }
 
 /* Setup fields (prototype lines 487–496). */
@@ -377,9 +423,14 @@
   max-height: 220px;
   overflow-y: auto;
   border-radius: 11px;
-  background: #141a29;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.55);
+  /* SKY-11448: overlay tier (SKY-11133 tokens) instead of an opaque
+     #141a29 — the mockup's dropdowns (dc.html line 153) are denser glass
+     with their own blur, a slot-1 ring and glow. */
+  background: var(--glass-fill-overlay, rgba(15, 19, 33, 0.97));
+  backdrop-filter: blur(var(--blur-panel-overlay, 24px));
+  -webkit-backdrop-filter: blur(var(--blur-panel-overlay, 24px));
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.55), 0 0 var(--gr, 26px) -6px var(--g1, rgba(0, 240, 255, 0.4));
 }
 
 .scene-crafter-page button.sc-pov-option {
@@ -1020,6 +1071,11 @@
   width: 250px;
   flex: none;
   gap: 9px;
+  /* SKY-11448: the mockup column (dc.html line 1524) — 14px radius, 2px
+     inset, and a dashed 1px rule across the top. */
+  padding: 2px;
+  border-radius: 14px;
+  background: repeating-linear-gradient(90deg, transparent 0 8px, rgba(158, 178, 214, 0.06) 8px 9px) top / 100% 1px no-repeat;
 }
 
 .sc-ref-col--characters {
@@ -1076,8 +1132,13 @@
   gap: 7px;
   padding: 8px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  background: rgba(13, 17, 30, 0.92);
+  /* SKY-11448: overlay tier, slot-colored hairline — was a hardcoded
+     rgba(13,17,30,.92) with no blur. */
+  border: 1px solid color-mix(in srgb, var(--ref-c) 45%, transparent);
+  background: var(--glass-fill-overlay, rgba(15, 19, 33, 0.97));
+  backdrop-filter: blur(var(--blur-panel-overlay, 24px));
+  -webkit-backdrop-filter: blur(var(--blur-panel-overlay, 24px));
+  box-shadow: 0 12px 28px -8px rgba(0, 0, 0, 0.55);
   max-height: 300px;
   overflow-y: auto;
   flex: none;
@@ -1196,8 +1257,12 @@
   padding: 20px;
   border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
   border-radius: 13px;
-  background: var(--glass2, rgba(21, 26, 45, 0.95));
-  box-shadow: 0 14px 40px rgba(3, 5, 12, 0.6);
+  /* SKY-11448: modal = overlay tier with its own blur + slot-1 glow
+     (dc.html line 4305), not the panel-tier --glass2 fill. */
+  background: var(--glass-fill-overlay, rgba(15, 19, 33, 0.97));
+  backdrop-filter: blur(var(--blur-panel-overlay, 28px));
+  -webkit-backdrop-filter: blur(var(--blur-panel-overlay, 28px));
+  box-shadow: 0 14px 40px rgba(3, 5, 12, 0.6), 0 0 30px -8px var(--g1, rgba(0, 240, 255, 0.4));
 }
 
 /* LINKED SCENES rows — jump-to-scene from a planning card (SKY-7601). */
