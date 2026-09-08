@@ -26,6 +26,12 @@
  * editor never sees it — NoteViewer holds the block aside verbatim and
  * re-attaches it on save (lib/frontmatter.ts), so it is lossless in Rich mode
  * and, per FULL-SPEC §6, never rendered there.
+ *
+ * SKY-11443: the checks are Markdown-context aware. Code (fenced blocks and
+ * inline spans) is masked before they run, because its contents are literal
+ * text that round-trips as a code block — a ```` ```html ```` sample or a pipe
+ * table pasted into a fence is not lossy. Masking preserves line count, line
+ * length and blank/non-blank-ness so block structure (callouts) is unchanged.
  */
 export interface LossyFeature {
   key: string;
@@ -76,10 +82,94 @@ export function hasUnsupportedCallout(content: string): boolean {
   return false;
 }
 
+/** Opening fence: up to 3 leading spaces, then 3+ backticks or tildes. */
+const FENCE_OPEN_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+
+/** Replace every character of `line` with a filler, keeping its length. */
+function blank(line: string): string {
+  return 'x'.repeat(line.length);
+}
+
+/**
+ * Mask inline code spans in a single line.
+ *
+ * CommonMark: a run of N backticks opens a span that the next run of exactly N
+ * backticks closes. Unpaired runs are literal text and stay visible.
+ */
+function maskInlineCode(line: string): string {
+  const runs: Array<{ start: number; len: number }> = [];
+  for (const m of line.matchAll(/`+/g)) runs.push({ start: m.index ?? 0, len: m[0].length });
+
+  let out = line;
+  for (let i = 0; i < runs.length; i++) {
+    const close = runs.findIndex((r, j) => j > i && r.len === runs[i].len);
+    if (close === -1) continue;
+    const from = runs[i].start;
+    const to = runs[close].start + runs[close].len;
+    out = out.slice(0, from) + blank(out.slice(from, to)) + out.slice(to);
+    i = close; // everything up to the closing run is consumed
+  }
+  return out;
+}
+
+/**
+ * Return `content` with all code regions replaced by filler characters.
+ *
+ * Line count, line lengths and which lines are blank are all preserved, so the
+ * structural (callout) check sees exactly the same block layout as the raw
+ * body — masking can only remove false positives, never create false negatives.
+ *
+ * Out of scope: 4-space indented code blocks, and fences nested inside a
+ * blockquote — neither appears in the reported false positives and both need a
+ * real block parser to detect safely.
+ */
+function maskCode(content: string): string {
+  const lines = content.split('\n');
+  let fence: { marker: string; len: number } | null = null;
+
+  return lines
+    .map((line) => {
+      const text = line.replace(/\r$/, '');
+      if (fence) {
+        // `marker` is only ever a backtick or a tilde — neither needs escaping.
+        const closes = new RegExp(`^ {0,3}${fence.marker}{${fence.len},}\\s*$`).test(text);
+        if (closes) fence = null;
+        return blank(line);
+      }
+      const open = FENCE_OPEN_RE.exec(text);
+      // A backtick fence's info string may not contain a backtick.
+      if (open && !(open[1].startsWith('`') && open[2].includes('`'))) {
+        fence = { marker: open[1][0], len: open[1].length };
+        return blank(line);
+      }
+      return maskInlineCode(line);
+    })
+    .join('\n');
+}
+
+/**
+ * Tag-shaped raw HTML: `<name …>` or `</name>`, optionally self-closing.
+ *
+ * Deliberately narrow so Markdown autolinks stay clean — `<https://example.com>`
+ * and `<ed@example.com>` fail the "name then whitespace-or-`>`" shape, because
+ * `:` and `@` are neither.
+ */
+const HTML_TAG_RE = /<\/?([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>]*)?\/?>/g;
+
+/** True when the content carries raw HTML other than `<u>` (SKY-3204). */
+function hasRawHtml(content: string): boolean {
+  for (const m of content.matchAll(HTML_TAG_RE)) {
+    // The Underline exception is case-insensitive and attribute-tolerant:
+    // `<U>`, `<u class="x">` and `</u>` all round-trip losslessly.
+    if (m[1].toLowerCase() !== 'u') return true;
+  }
+  return false;
+}
+
 const CHECKS: Array<{ key: string; label: string; test: (content: string) => boolean }> = [
   { key: 'tables',    label: 'Markdown tables', test: (c) => /^\|.+\|/m.test(c) },
   { key: 'footnotes', label: 'Footnotes',       test: (c) => /\[\^[^\]]+\]/.test(c) },
-  { key: 'rawHtml',   label: 'Raw HTML',        test: (c) => /<(?!u>)[a-zA-Z][^>]*>/.test(c) },
+  { key: 'rawHtml',   label: 'Raw HTML',        test: hasRawHtml },
   { key: 'callouts',  label: 'Complex callout blocks (> [!...])', test: hasUnsupportedCallout },
 ];
 
@@ -88,7 +178,8 @@ const CHECKS: Array<{ key: string; label: string; test: (content: string) => boo
  * Empty array = safe to switch to Rich mode.
  */
 export function detectLossyFeatures(content: string): LossyFeature[] {
+  const masked = maskCode(content);
   return CHECKS
-    .filter(({ test }) => test(content))
+    .filter(({ test }) => test(masked))
     .map(({ key, label }) => ({ key, label }));
 }

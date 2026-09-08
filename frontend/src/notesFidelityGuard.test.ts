@@ -78,3 +78,61 @@ describe('detectLossyFeatures — LC-2 fidelity guard', () => {
     expect(detectLossyFeatures(md)).toEqual([]);
   });
 });
+
+describe('detectLossyFeatures — SKY-11443 false positives', () => {
+  const clean: Array<[string, string]> = [
+    ['plain prose', 'A quiet chapter about the harbor.'],
+    ['wikilinks', 'See [[Chapter One]] and [[Chapter Two]].'],
+    ['comparisons and arrows', 'Then 5 < 6 and a -> b, so the ward holds.'],
+    ['URL autolink', 'Reference: <https://example.com/lore>'],
+    ['scheme autolink', 'Open <mailto:ed@example.com> or <ftp://host/path>.'],
+    ['email autolink', 'Contact <ed@example.com> for the archive key.'],
+    ['uppercase underline', 'A <U>word</U> here.'],
+    ['underline with attributes', 'A <u class="x">word</u> here.'],
+    ['closing underline only', 'Trailing </u> from a paste.'],
+    ['HTML inside a fenced block', '```html\n<div>hi</div>\n```'],
+    ['table inside a fenced block', '```\n| a | b |\n|---|---|\n```'],
+    ['footnote inside a fenced block', '```\nSee[^1].\n\n[^1]: note\n```'],
+    ['tilde fence', '~~~\n| a | b |\n~~~'],
+    ['indented fence', '  ```\n  <div>hi</div>\n  ```'],
+    ['unclosed fence runs to EOF', '```\n<div>hi</div>'],
+    ['longer fence closed by a matching run', '````\n```\n| a | b |\n```\n````'],
+    ['inline code span', 'Type `<div>` or `| a | b |` to see it.'],
+    ['multi-backtick inline span', 'Use ``a ` b <div>`` inline.'],
+    ['callout shape inside a fence', '```\n> [!NOTE]- folded\n> body\n```'],
+  ];
+
+  for (const [name, md] of clean) {
+    it(`stays clean: ${name}`, () => {
+      expect(detectLossyFeatures(md), md).toEqual([]);
+    });
+  }
+
+  const flagged: Array<[string, string, string]> = [
+    ['real table', '| Col A | Col B |\n|-------|-------|\n| v | w |', 'tables'],
+    ['real footnote', 'See note[^1].\n\n[^1]: The footnote text.', 'footnotes'],
+    ['real raw HTML', 'Some text <div class="callout">important</div> here.', 'rawHtml'],
+    ['raw HTML after a closed fence', '```\ncode\n```\n\n<div>real</div>', 'rawHtml'],
+    ['table after a closed fence', '```\ncode\n```\n\n| a | b |\n|---|---|', 'tables'],
+    ['tag that merely starts with u', 'A list <ul><li>item</li></ul> in HTML.', 'rawHtml'],
+    ['self-closing tag', 'A line break <br/> mid-sentence.', 'rawHtml'],
+    ['unsupported callout outside a fence', '> [!NOTE]\n> line one\n> line two', 'callouts'],
+  ];
+
+  for (const [name, md, key] of flagged) {
+    it(`still flags: ${name}`, () => {
+      expect(detectLossyFeatures(md).map((f) => f.key), md).toContain(key);
+    });
+  }
+
+  it('masking preserves block structure — a fence after a callout body still flags', () => {
+    // The fence lines are masked to filler, not removed, so the callout is
+    // still "title + body with no blank line after" and stays lossy.
+    const md = '> [!NOTE]\n> body\n```\ncode\n```';
+    expect(detectLossyFeatures(md).map((f) => f.key)).toContain('callouts');
+  });
+
+  it('handles CRLF bodies', () => {
+    expect(detectLossyFeatures('```\r\n| a | b |\r\n```\r\n')).toEqual([]);
+  });
+});
