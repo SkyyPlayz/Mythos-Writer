@@ -831,6 +831,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [ambiguousLink, setAmbiguousLink] = useState<{ rawTarget: string; matches: CrossTabLinkMatch[] } | null>(null);
   const [sceneFlashId, setSceneFlashId] = useState<string | null>(null);
 
+  // SKY-11444: the legacy Preview flag is a property of *this viewing*, not a
+  // sticky session mode — clear it whenever the open note changes so it never
+  // leaks onto the next note.
+  useEffect(() => {
+    setNotePreviewMode(false);
+  }, [openedNotePath]);
+
   // SKY-1694 (Wave 2a): left sidebar panel zone layout + right sidebar user-collapse toggle
   const [leftSidebarLayout, setLeftSidebarLayout] = useState<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
   // SKY-3177: AppNavRail collapse state + account modal
@@ -2754,7 +2761,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         return;
       }
       // SKY-2099: tab-aware shortcut map.
+      // SKY-11444: guard against firing while the writer is typing in the
+      // note, matching the `?` handler's guard above.
       if (mod && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E')) {
+        const target = e.target as HTMLElement;
+        const inText =
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable;
+        if (inText) return;
         e.preventDefault();
         if (tabShellRef.current.activeTab === 'notes') {
           setNotePreviewMode((prev) => !prev);

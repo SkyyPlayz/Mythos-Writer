@@ -302,6 +302,38 @@ describe('NoteViewer M17 gear menu', () => {
   });
 });
 
+// SKY-11444: the legacy previewMode prop was previously read only in the
+// initializers — a parent toggling it while a note was already open did
+// nothing until the note was closed and reopened.
+describe('NoteViewer SKY-11444 live previewMode toggle', () => {
+  it('arms Preview on the already-open note the instant the prop flips true', async () => {
+    const { rerender } = render(<NoteViewer path="Notes/Test.md" previewMode={false} />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByTestId('note-viewer-preview')).toBeNull();
+
+    rerender(<NoteViewer path="Notes/Test.md" previewMode={true} />);
+    expect(await screen.findByTestId('note-viewer-preview')).toBeInTheDocument();
+  });
+
+  it('leaves Preview on the already-open note the instant the prop flips false', async () => {
+    const { rerender } = render(<NoteViewer path="Notes/Test.md" previewMode={true} />);
+    await screen.findByTestId('note-viewer-preview');
+
+    rerender(<NoteViewer path="Notes/Test.md" previewMode={false} />);
+    await waitFor(() => expect(screen.queryByTestId('note-viewer-preview')).toBeNull());
+    expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull();
+  });
+
+  it('an explicit `mode` prop keeps taking precedence over a live previewMode flip', async () => {
+    const { rerender } = render(<NoteViewer path="Notes/Test.md" mode="source" previewMode={false} />);
+    await screen.findByLabelText('Edit note: Test.md');
+
+    rerender(<NoteViewer path="Notes/Test.md" mode="source" previewMode={true} />);
+    expect(screen.queryByTestId('note-viewer-preview')).toBeNull();
+    expect(screen.getByLabelText('Edit note: Test.md')).toBeTruthy();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // LC-2 fidelity guard (SKY-3208)
 // ---------------------------------------------------------------------------
