@@ -59,7 +59,7 @@ export default function TourModal({ onClose }: TourModalProps) {
       aria-label="Quick tour"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="tour-modal" data-testid="tour-modal">
+      <div className="ln-overlay-surface tour-modal" data-testid="tour-modal">
         <div className="tour-header">
           <span className="tour-step-label">Step {step + 1} of {TOUR_STEPS.length}</span>
           <button

@@ -161,7 +161,7 @@ export default function NoteTemplateDialog({
   return (
     <dialog
       ref={dialogRef}
-      className="ntd-dialog"
+      className="ln-overlay-surface ntd-dialog"
       aria-modal="true"
       aria-labelledby="ntd-title"
       onClick={handleDialogClick}

@@ -3,6 +3,10 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { applyTheme } from './theme';
 import './tokens.css';
+// Shared dialog/popover glass chrome (SKY-11450). Imported here, right after
+// the tokens it reads, so it always precedes component stylesheets in the CSS
+// bundle and a component can still override geometry at equal specificity.
+import './overlay-tier.css';
 import './index.css';
 import './obsidianCommunityPluginStyles.css';
 

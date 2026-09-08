@@ -155,7 +155,9 @@ export default function Dialog({
   return (
     <div className="ln-dialog-overlay" onClick={handleOverlayClick} data-testid={overlayTestId}>
       <div
-        className={['ln-dialog', `ln-dialog--${variant}`, className].filter(Boolean).join(' ')}
+        className={['ln-overlay-surface', 'ln-dialog', `ln-dialog--${variant}`, className]
+          .filter(Boolean)
+          .join(' ')}
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
