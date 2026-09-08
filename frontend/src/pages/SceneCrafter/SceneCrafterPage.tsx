@@ -1198,7 +1198,11 @@ export default function SceneCrafterPage({
                 )}
                 {cards.length === 0 && !pickerOpen && (
                   <div className="sc-help">
-                    No {col.noun} notes in your vault yet — press + to reference any note.
+                    {/* SKY-11455: the picker only offers this column's category
+                        (SKY-11212), so name the reachable path — the bundled
+                        template stamps the `type:` the classifier reads. */}
+                    No {col.noun} notes in this scene yet. Press + to add one, or create a note
+                    from the {col.templateName} template.
                   </div>
                 )}
                 {cards.map((card) => (

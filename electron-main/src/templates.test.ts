@@ -25,6 +25,7 @@ import {
   type TemplateNode,
   type NoteTemplate,
 } from './templates.js';
+import { noteHasCharacterSignal, noteHasLocationSignal, noteHasItemSignal } from './vault.js';
 
 let tmpDir: string;
 
@@ -332,6 +333,45 @@ describe('BUNDLED_NOTE_TEMPLATES', () => {
     expect(archetype).toBeDefined();
     expect(archetype?.kind).toBe('pick');
     expect(archetype?.entityType).toBe('character');
+  });
+
+  // SKY-11455: a note created from the Character/Location/Item template must
+  // classify into its Scene Crafter vault-reference column no matter which
+  // folder the dialog writes it to (the QA repro wrote it to the vault root).
+  // The classifier is the real one from vault.ts, run over the resolved body
+  // exactly as NoteTemplateDialog writes it.
+  describe('category templates stamp the Scene Crafter classifier signal (SKY-11455)', () => {
+    it('default-character resolves to a note noteHasCharacterSignal recognizes', () => {
+      const body = getNoteTemplate('note:default-character')!.body;
+      const note = resolveNoteTemplate(body, { name: 'Kael Thorne', age: '34', goal: 'x', fear: 'y', archetype: '' });
+      expect(noteHasCharacterSignal(note)).toBe(true);
+      expect(noteHasLocationSignal(note)).toBe(false);
+      expect(noteHasItemSignal(note)).toBe(false);
+      expect(note).toContain('# Kael Thorne');
+    });
+
+    it('default-location resolves to a note noteHasLocationSignal recognizes', () => {
+      const body = getNoteTemplate('note:default-location')!.body;
+      const note = resolveNoteTemplate(body, { name: 'The Sunken Gate', region: 'r', atmosphere: 'a' });
+      expect(noteHasLocationSignal(note)).toBe(true);
+      expect(noteHasCharacterSignal(note)).toBe(false);
+      expect(noteHasItemSignal(note)).toBe(false);
+    });
+
+    it('default-item resolves to a note noteHasItemSignal recognizes', () => {
+      const body = getNoteTemplate('note:default-item')!.body;
+      const note = resolveNoteTemplate(body, { name: 'Drownlight', owner: '', origin: 'o' });
+      expect(noteHasItemSignal(note)).toBe(true);
+      expect(noteHasCharacterSignal(note)).toBe(false);
+      expect(noteHasLocationSignal(note)).toBe(false);
+    });
+
+    it('the type stamp is a literal, not a user-facing template field', () => {
+      for (const id of ['note:default-character', 'note:default-location', 'note:default-item']) {
+        const fields = getNoteTemplate(id)!.fields;
+        expect(fields.find((f) => f.key === 'type')).toBeUndefined();
+      }
+    });
   });
 });
 

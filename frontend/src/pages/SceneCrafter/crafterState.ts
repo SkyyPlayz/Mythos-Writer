@@ -239,15 +239,22 @@ export interface VaultRefColumn {
   title: string;
   /** Sentence-case name for empty-state copy ("No Characters notes …"). */
   noun: string;
+  /**
+   * SKY-11455: the bundled note template whose notes land in this column
+   * (templates.ts stamps `type: <kind>`), named in the empty-state copy so a
+   * fresh vault tells the user the reachable path instead of promising the
+   * `+` picker offers "any note" (it is category-limited — SKY-11212).
+   */
+  templateName: string;
   /** Canvas color slot (canvas spec §5) — same mapping as `slotForSuggestedGroup`. */
   slot: number;
 }
 
 /** Column order, titles and slot colors exactly as the prototype's `crafterVaultCols`. */
 export const VAULT_REF_COLUMNS: readonly VaultRefColumn[] = [
-  { key: 'characters', title: 'CHARACTERS', noun: 'Characters', slot: 0 },
-  { key: 'locations', title: 'LOCATIONS', noun: 'Locations', slot: 1 },
-  { key: 'items', title: 'ITEMS & SYSTEMS', noun: 'Items & Systems', slot: 3 },
+  { key: 'characters', title: 'CHARACTERS', noun: 'Characters', templateName: 'Character', slot: 0 },
+  { key: 'locations', title: 'LOCATIONS', noun: 'Locations', templateName: 'Location', slot: 1 },
+  { key: 'items', title: 'ITEMS & SYSTEMS', noun: 'Items & Systems', templateName: 'Item', slot: 3 },
 ];
 
 /** What the vault itself files under a column, before per-scene add/remove. */
