@@ -28,7 +28,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -58,7 +58,7 @@ jobs:
       run-e2e: ${{ steps.filter-e2e.outputs.run-e2e }}
       docs-only: ${{ steps.filter-docs.outputs.docs-only }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -101,7 +101,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # SKY-1809: reject any tracked filename containing Windows-illegal characters
       # (\, <, >, :, ", |, ?, *) so build-windows can always check out the repo.
@@ -150,7 +150,7 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
@@ -188,7 +188,7 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
@@ -256,7 +256,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: WSL2 power keep-alive — prevent Windows host sleep
         # SKY-2427: GabesPC (WSL2 host) sleeps under default Windows power settings during
@@ -339,7 +339,7 @@ jobs:
     if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: WSL2 power keep-alive — prevent Windows host sleep
         # SKY-6906: GabesPC (WSL2 host) can sleep under default Windows power
@@ -534,7 +534,7 @@ jobs:
     if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: WSL2 power keep-alive — prevent Windows host sleep
         # SKY-6906: see e2e-shard-1 for rationale.
@@ -752,7 +752,7 @@ jobs:
     if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: WSL2 power keep-alive — prevent Windows host sleep
         # SKY-6906: see e2e-shard-1 for rationale.
@@ -951,7 +951,7 @@ jobs:
     if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: WSL2 power keep-alive — prevent Windows host sleep
         # SKY-6906: see e2e-shard-1 for rationale.
@@ -1205,7 +1205,7 @@ jobs:
       cancel-in-progress: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: github.event_name != 'pull_request'
 
       - name: WSL2 power keep-alive — prevent Windows host sleep
@@ -1396,7 +1396,7 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: github.event_name != 'pull_request'
 
       - name: Deinit stale git submodule registrations
@@ -1518,7 +1518,7 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
