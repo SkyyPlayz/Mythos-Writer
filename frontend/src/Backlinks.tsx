@@ -62,24 +62,36 @@ interface NoteBacklinkEntry {
   snippet: string;
 }
 
+/** SKY-11188: a Notes Board column item's `ref` — points at a BOARD (folder), not a linking note. */
+interface BoardRefBacklinkEntry {
+  boardPath: string;
+  boardItemTitle?: string;
+  itemText: string;
+}
+
 interface Props {
   /** Notes-Vault-relative path of the active note. */
   notePath: string;
   stories: Story[];
   onOpenNote: (path: string) => void;
   onOpenScene: (scene: Scene, chapter: Chapter, story: Story) => void;
+  /** SKY-11188: open a Notes Board by vault-relative folder path. */
+  onOpenBoard?: (folderPath: string) => void;
 }
 
-export default function Backlinks({ notePath, stories, onOpenNote, onOpenScene }: Props) {
+export default function Backlinks({ notePath, stories, onOpenNote, onOpenScene, onOpenBoard }: Props) {
   const [noteLinks, setNoteLinks] = useState<NoteBacklinkEntry[]>([]);
+  const [boardRefs, setBoardRefs] = useState<BoardRefBacklinkEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
       const res = await window.api.noteBacklinks(notePath);
       setNoteLinks(res.backlinks ?? []);
+      setBoardRefs(res.boardRefs ?? []);
     } catch {
       setNoteLinks([]);
+      setBoardRefs([]);
     } finally {
       setLoading(false);
     }
@@ -109,7 +121,7 @@ export default function Backlinks({ notePath, stories, onOpenNote, onOpenScene }
   }, [load]);
 
   const storyLinks = useMemo(() => findStoryBacklinks(stories, notePath), [stories, notePath]);
-  const total = noteLinks.length + storyLinks.length;
+  const total = noteLinks.length + storyLinks.length + boardRefs.length;
 
   return (
     <section className="bl-card" aria-label="Backlinks" data-testid="note-backlinks-panel">
@@ -153,6 +165,25 @@ export default function Backlinks({ notePath, stories, onOpenNote, onOpenScene }
                   <span className="bl-story-chip">STORY</span>
                 </span>
                 <span className="bl-item-snippet">{bl.snippet}</span>
+              </button>
+            </li>
+          ))}
+          {/* SKY-11188: a column item's `ref` — same wikilink class as
+              everywhere else, so it shows up here too (§4/§11). */}
+          {boardRefs.map((br, i) => (
+            <li key={`board:${br.boardPath}:${i}`}>
+              <button
+                type="button"
+                className="bl-item"
+                data-testid={`board-backlink-${br.boardPath}`}
+                title={br.boardPath || 'Home'}
+                onClick={() => onOpenBoard?.(br.boardPath)}
+              >
+                <span className="bl-item-head">
+                  <span className="bl-item-name">{br.boardItemTitle || br.boardPath.split('/').pop() || 'Home'}</span>
+                  <span className="bl-story-chip">BOARD</span>
+                </span>
+                <span className="bl-item-snippet">{br.itemText}</span>
               </button>
             </li>
           ))}

@@ -32,6 +32,7 @@ import {
 import { SafeIpcError } from './ipcErrors.js';
 import { SESSIONS_DIRNAME } from './mythosFormat/agentSessions.js';
 import { rewriteWikiLinksForRename } from '@mythos-writer/shared/wikiLinkRename';
+import { BOARD_SIDECAR_FILE_NAME, rewriteBoardSidecarTextForRename } from './notesBoard.js';
 import type {
   RenameCascadeLinkUpdate,
   RenameCascadeProgress,
@@ -48,6 +49,9 @@ const defaultWriter: VaultWriter = (root, relPath, content) => {
 
 interface PlanFile {
   side: 'notes' | 'story';
+  /** SKY-11188: a `.mythos-board.json` sidecar (column `ref` fields) rewrites
+   *  differently than a markdown file's `[[wikilinks]]` — see buildPlan/undo. */
+  kind: 'note' | 'board';
   relPath: string;
   oldContent: string;
   newContent: string;
@@ -93,12 +97,22 @@ function isSessionFile(relPath: string): boolean {
   return relPath.split(/[\\/]/)[0] === SESSIONS_DIRNAME;
 }
 
-function listMarkdownFiles(root: string, excludeSessions: boolean): string[] {
+interface CascadeFileRef {
+  relPath: string;
+  kind: 'note' | 'board';
+}
+
+/**
+ * SKY-11188: board sidecars only ever live in the notes vault (a board IS a
+ * notes-vault folder, §1) — `includeBoards` is false for the story side.
+ */
+function listCascadeFiles(root: string, excludeSessions: boolean, includeBoards: boolean): CascadeFileRef[] {
   const { items } = listVaultFiles(root);
   return items
-    .filter((f) => !f.isDirectory && f.path.toLowerCase().endsWith('.md'))
+    .filter((f) => !f.isDirectory)
     .filter((f) => !excludeSessions || !isSessionFile(f.path))
-    .map((f) => f.path);
+    .filter((f) => f.path.toLowerCase().endsWith('.md') || (includeBoards && path.basename(f.path) === BOARD_SIDECAR_FILE_NAME))
+    .map((f) => ({ relPath: f.path, kind: f.path.toLowerCase().endsWith('.md') ? 'note' : 'board' }));
 }
 
 function buildPlan(
@@ -108,33 +122,31 @@ function buildPlan(
   newStem: string,
 ): PlanFile[] {
   const plan: PlanFile[] = [];
-  const sides: Array<{ side: 'notes' | 'story'; root: string; mode: 'update-display' | 'preserve-display' }> = [
+  const sides: Array<{ side: 'notes' | 'story'; root: string; mode: 'update-display' | 'preserve-display'; includeBoards: boolean }> = [
     // Session transcripts are excluded to match the graph/backlinks scanners:
     // they are system files with no user-facing wikilink semantics (SKY-6228).
-    { side: 'notes', root: notesRoot, mode: 'update-display' },
+    { side: 'notes', root: notesRoot, mode: 'update-display', includeBoards: true },
   ];
   if (storyRoot && fs.existsSync(storyRoot)) {
     // The ENTIRE story vault (scenes, outline, synopsis) is author prose —
     // everything on that side gets the display-preserving rewrite.
-    sides.push({ side: 'story', root: storyRoot, mode: 'preserve-display' });
+    sides.push({ side: 'story', root: storyRoot, mode: 'preserve-display', includeBoards: false });
   }
 
-  for (const { side, root, mode } of sides) {
-    for (const relPath of listMarkdownFiles(root, side === 'notes')) {
+  for (const { side, root, mode, includeBoards } of sides) {
+    for (const file of listCascadeFiles(root, side === 'notes', includeBoards)) {
       let oldContent: string;
       try {
-        oldContent = readVaultFile(root, relPath).content;
+        oldContent = readVaultFile(root, file.relPath).content;
       } catch {
         continue; // unreadable file — leave it alone rather than abort the rename
       }
-      const { content: newContent, count } = rewriteWikiLinksForRename(
-        oldContent,
-        oldStem,
-        newStem,
-        mode,
-      );
+      const { content: newContent, count } =
+        file.kind === 'board'
+          ? rewriteBoardSidecarTextForRename(oldContent, oldStem, newStem)
+          : rewriteWikiLinksForRename(oldContent, oldStem, newStem, mode);
       if (count > 0) {
-        plan.push({ side, relPath, oldContent, newContent, linkCount: count, mode });
+        plan.push({ side, kind: file.kind, relPath: file.relPath, oldContent, newContent, linkCount: count, mode });
       }
     }
   }
@@ -322,7 +334,14 @@ export function undoLastRenameCascade(
       // inverse for this rename/mode pair — see SKY-10887), leaving the
       // rest of the user's edit untouched instead of skipping the file
       // outright and leaving a dangling link once the note moves back.
-      const { content, count } = rewriteWikiLinksForRename(current, tx.newStem, tx.oldStem, file.mode);
+      // SKY-11188: a board sidecar reverses through the same oldStem/newStem
+      // swap — rewriteRefForRename is symmetric by construction (it only
+      // ever compares/replaces the stem, so applying it forward then
+      // backward is a no-op on an untouched ref).
+      const { content, count } =
+        file.kind === 'board'
+          ? rewriteBoardSidecarTextForRename(current, tx.newStem, tx.oldStem)
+          : rewriteWikiLinksForRename(current, tx.newStem, tx.oldStem, file.mode);
       if (count === 0) {
         // The touched link(s) aren't present anymore either — nothing to revert.
         filesSkipped++;

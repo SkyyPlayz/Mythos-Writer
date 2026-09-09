@@ -523,3 +523,285 @@
   outline: 2px solid var(--focus-ring, #00f0ff);
   outline-offset: -2px;
 }
+
+/* ── SKY-11188: furniture (§4/§6) — column, check, table, image, sketch,
+   swatch. `line` is drawn as an SVG overlay (board-canvas__lines), not a box.
+   Deliberately its own accent slot (n4/teal) rather than reusing a card's, so
+   a mixed board reads furniture as its own layer at a glance. */
+.board-canvas__furniture {
+  --board-furniture-n: var(--n4, #2fe6c8);
+
+  position: absolute;
+  box-sizing: border-box;
+  border-radius: 14px;
+  border: var(--bw, 1px) solid rgb(255 255 255 / 0.1);
+  background: rgb(15 19 32 / 0.9);
+  box-shadow: 0 8px 22px rgb(3 5 12 / 0.45);
+  padding: 10px 12px;
+  cursor: grab;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.board-canvas__furniture:hover:not(.board-canvas__furniture--selected) {
+  border-color: color-mix(in srgb, var(--board-furniture-n) 60%, transparent);
+}
+
+.board-canvas__furniture--selected {
+  border-color: color-mix(in srgb, var(--board-furniture-n) 95%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--board-furniture-n) 45%, transparent),
+    0 0 24px -6px color-mix(in srgb, var(--board-furniture-n) 65%, transparent);
+}
+
+.board-canvas__furniture:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+.board-canvas__furniture--dragging {
+  cursor: grabbing;
+  z-index: 50;
+}
+
+.board-canvas__furniture-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.board-canvas__furniture-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary, #f0f3fc);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-canvas__furniture-delete {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-tertiary, #8e9db8);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.board-canvas__furniture:hover .board-canvas__furniture-delete,
+.board-canvas__furniture:focus-visible .board-canvas__furniture-delete,
+.board-canvas__furniture--selected .board-canvas__furniture-delete {
+  opacity: 1;
+}
+
+.board-canvas__furniture-delete:hover {
+  background: rgb(255 79 105 / 0.18);
+  color: #ff8fb0;
+}
+
+.board-canvas__furniture-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.board-canvas__furniture-card {
+  display: block;
+  padding: 8px 9px;
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-secondary, #c8d3e7);
+  background: rgb(255 255 255 / 0.045);
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+/* SKY-11188: a column ref renders and behaves like a wikilink — underlined,
+   accent-coloured, clickable — not a bespoke "board ref" style. */
+.board-canvas__furniture-ref {
+  display: block;
+  width: 100%;
+  padding: 8px 9px;
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: left;
+  color: var(--board-furniture-n);
+  background: rgb(255 255 255 / 0.045);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--board-furniture-n) 50%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.board-canvas__furniture-ref:hover {
+  background: rgb(255 255 255 / 0.09);
+  color: var(--text-primary, #f0f3fc);
+}
+
+.board-canvas__furniture-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  color: var(--text-secondary, #c8d3e7);
+  text-align: left;
+  cursor: pointer;
+}
+
+.board-canvas__furniture-check--done {
+  color: var(--text-tertiary, #8e9db8);
+  text-decoration: line-through;
+}
+
+.board-canvas__furniture-checkbox {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  border: 1.5px solid rgb(255 255 255 / 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 800;
+  color: #0b0d17;
+}
+
+.board-canvas__furniture-check--done .board-canvas__furniture-checkbox {
+  border-color: var(--board-furniture-n);
+  background: var(--board-furniture-n);
+}
+
+.board-canvas__furniture-table {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  border-radius: 8px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.board-canvas__furniture-table-row {
+  display: flex;
+}
+
+.board-canvas__furniture-table-row:not(:last-child) {
+  border-bottom: 1px solid rgb(255 255 255 / 0.07);
+}
+
+.board-canvas__furniture-table-row[data-header] {
+  background: rgb(255 255 255 / 0.045);
+  font-weight: 700;
+}
+
+.board-canvas__furniture-table-cell {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font-size: 10.5px;
+  color: var(--text-secondary, #c8d3e7);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* SKY-11188/§14: placeholder chrome for image/sketch — explicitly labelled
+   so review never mistakes it for the real attachment/drawing pipeline. */
+.board-canvas__furniture-media {
+  flex: 1;
+  min-height: 0;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: var(--text-tertiary, #8e9db8);
+  position: relative;
+  overflow: hidden;
+}
+
+.board-canvas__furniture-media--placeholder {
+  background: linear-gradient(140deg, color-mix(in srgb, var(--board-furniture-n) 16%, transparent), rgb(255 255 255 / 0.03));
+  border: 1px dashed rgb(255 255 255 / 0.16);
+  text-align: center;
+  padding: 0 10px;
+}
+
+.board-canvas__furniture-media--sketch {
+  background: rgb(255 255 255 / 0.02);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  color: var(--board-furniture-n);
+  flex-direction: column;
+}
+
+.board-canvas__furniture-media-label {
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 9px;
+  color: var(--text-tertiary, #8e9db8);
+  background: linear-gradient(rgb(6 8 15 / 0), rgb(6 8 15 / 0.8));
+  padding: 10px 0 3px;
+}
+
+.board-canvas__furniture-swatches {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+}
+
+.board-canvas__furniture-swatch-color {
+  flex: 1;
+  height: 36px;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  box-shadow: 0 8px 16px -8px rgb(0 0 0 / 0.6);
+}
+
+.board-canvas__furniture-swatch-color:hover {
+  border: none;
+  transform: translateY(-1px);
+}
+
+.board-canvas__furniture:hover .board-canvas__resize-handle,
+.board-canvas__furniture:focus-visible .board-canvas__resize-handle {
+  opacity: 1;
+}
+
+.board-canvas__lines {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-canvas__furniture,
+  .board-canvas__furniture-delete {
+    transition: none;
+  }
+}

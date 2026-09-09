@@ -2454,9 +2454,22 @@ export interface NoteBacklinkEntry {
   snippet: string;
 }
 
+/** SKY-11188: a column item's `ref` counts as a backlink too (§4/§11) — a
+ *  separate list, not merged into `backlinks`, since it points at a BOARD
+ *  (folder), not a linking note. */
+export interface NoteBoardRefBacklinkEntry {
+  /** Vault-relative path of the board (folder) holding the referencing column item. '' is Home. */
+  boardPath: string;
+  /** The furniture item's own title, if set. */
+  boardItemTitle?: string;
+  /** The column entry's own label text. */
+  itemText: string;
+}
+
 export interface NoteBacklinksResponse {
   notePath: string;
   backlinks: NoteBacklinkEntry[];
+  boardRefs: NoteBoardRefBacklinkEntry[];
 }
 
 // ─── Entity Relationship types (SKY-232) ───

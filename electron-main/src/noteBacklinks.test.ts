@@ -103,3 +103,91 @@ describe('getNoteBacklinks', () => {
     expect(result.backlinks.map((b) => b.path)).toEqual(['a-note.md', 'b-note.md', 'c-note.md']);
   });
 });
+
+// SKY-11188: a Notes Board column item's `ref` counts as a backlink too
+// (§4/§11) — this is the board-metadata half of "shows up in the Links tab".
+describe('getNoteBacklinks — boardRefs (§4 column ref)', () => {
+  let root: string;
+
+  beforeEach(() => { root = tmpDir(); });
+  afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
+
+  function writeSidecar(root: string, boardRelPath: string, furniture: unknown[]): void {
+    const dir = boardRelPath ? path.join(root, boardRelPath) : root;
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '.mythos-board.json'),
+      JSON.stringify({
+        version: 2,
+        id: 'board-1',
+        updated: new Date(0).toISOString(),
+        layout: {},
+        colors: {},
+        furniture,
+        view: { zoom: 100, panX: 0, panY: 0 },
+      }),
+      'utf-8',
+    );
+  }
+
+  it('finds a column item whose ref resolves to the note, by stem', () => {
+    writeNote(root, 'target.md', '# Target');
+    writeSidecar(root, 'Worldbuilding', [
+      { id: 'x1', k: 'column', x: 0, y: 0, title: 'Quick links', items: [{ t: 'Target', ref: 'target.md' }] },
+    ]);
+    const result = getNoteBacklinks(root, 'target.md');
+    expect(result.boardRefs).toEqual([
+      { boardPath: 'Worldbuilding', boardItemTitle: 'Quick links', itemText: 'Target' },
+    ]);
+  });
+
+  it('resolves case-insensitively and independently of a .md extension', () => {
+    writeNote(root, 'Target.md', '# Target');
+    writeSidecar(root, '', [
+      { id: 'x1', k: 'column', x: 0, y: 0, items: [{ t: 'x', ref: 'target' }] },
+    ]);
+    const result = getNoteBacklinks(root, 'Target.md');
+    expect(result.boardRefs).toHaveLength(1);
+    expect(result.boardRefs[0].boardPath).toBe(''); // Home board
+  });
+
+  it('ignores non-column furniture and column items with no ref', () => {
+    writeNote(root, 'target.md', '# Target');
+    writeSidecar(root, '', [
+      { id: 'x1', k: 'check', x: 0, y: 0, items: [{ t: 'target', done: false }] },
+      { id: 'x2', k: 'column', x: 0, y: 0, items: [{ t: 'no ref here' }] },
+    ]);
+    const result = getNoteBacklinks(root, 'target.md');
+    expect(result.boardRefs).toHaveLength(0);
+  });
+
+  it('ignores a ref pointing at a different note', () => {
+    writeNote(root, 'target.md', '# Target');
+    writeNote(root, 'other.md', '# Other');
+    writeSidecar(root, '', [
+      { id: 'x1', k: 'column', x: 0, y: 0, items: [{ t: 'Other', ref: 'other.md' }] },
+    ]);
+    const result = getNoteBacklinks(root, 'target.md');
+    expect(result.boardRefs).toHaveLength(0);
+  });
+
+  it('collects refs from more than one board', () => {
+    writeNote(root, 'target.md', '# Target');
+    writeSidecar(root, 'BoardA', [
+      { id: 'x1', k: 'column', x: 0, y: 0, items: [{ t: 'a', ref: 'target.md' }] },
+    ]);
+    writeSidecar(root, 'BoardB', [
+      { id: 'x2', k: 'column', x: 0, y: 0, items: [{ t: 'b', ref: 'target.md' }] },
+    ]);
+    const result = getNoteBacklinks(root, 'target.md');
+    expect(result.boardRefs.map((r) => r.boardPath).sort()).toEqual(['BoardA', 'BoardB']);
+  });
+
+  it('a note with no board refs still returns its prose backlinks unaffected', () => {
+    writeNote(root, 'target.md', '# Target');
+    writeNote(root, 'linker.md', 'See [[target]] here.');
+    const result = getNoteBacklinks(root, 'target.md');
+    expect(result.backlinks).toHaveLength(1);
+    expect(result.boardRefs).toHaveLength(0);
+  });
+});

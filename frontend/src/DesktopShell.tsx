@@ -7035,6 +7035,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           }}
           onOpenInNewTab={handleOpenNoteInNewTab}
           onOpenScene={handleOpenGraphScene}
+          onOpenBoard={(folderPath) => applyCrossTabLinkMatch({ kind: 'folder', label: folderPath, folderPath })}
           onBetaRead={betaReadNote}
           onContinuityCheck={continuityCheckNote}
           noteToolbarActions={noteToolbarActions}
@@ -7151,6 +7152,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             notesVaultValid={vaultBinding.notesValid}
             minZoom={appSettings?.notesBoard?.minZoom}
             openFolderRequest={boardsFolderRequest}
+            onOpenNote={handleOpenSceneByPath}
           />
         </div>
       )}

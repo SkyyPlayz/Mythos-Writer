@@ -90,6 +90,8 @@ export interface NotesTabPanelProps {
   onCreateScene: (storyId: string, chapterId: string) => void;
   onOpenFile?: (path: string) => void;
   onOpenScene?: (storyId: string, chapterId: string, sceneId: string) => void;
+  /** SKY-11188: Backlinks panel "BOARD" entry — open a Notes Board by vault-relative folder path. */
+  onOpenBoard?: (folderPath: string) => void;
   onExport?: (scope: ExportScope) => void;
   journalModeEnabled?: boolean;
   /** M15: notes-tree context menu "Open in new tab"; falls back to onOpenFile. */
@@ -173,6 +175,7 @@ export default function NotesTabPanel({
   onCreateScene,
   onOpenFile,
   onOpenScene: _onOpenScene,
+  onOpenBoard,
   onExport,
   journalModeEnabled,
   onOpenInNewTab,
@@ -848,6 +851,7 @@ export default function NotesTabPanel({
                         stories={stories}
                         onOpenNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
                         onOpenScene={onSelectScene}
+                        onOpenBoard={onOpenBoard}
                       />
                     </div>
                   ) : (

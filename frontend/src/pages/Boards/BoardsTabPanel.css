@@ -236,3 +236,37 @@
   color: var(--text-tertiary, #8e9db8);
   font-size: 14px;
 }
+
+/* SKY-11188 (§4/§5): reachable furniture-creation toolbar — the canvas
+   context-menu the prototype uses isn't built here; this is the
+   keyboard/screen-reader-friendly equivalent entry point. */
+.boards-tab-panel__furniture-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px 12px;
+}
+
+.boards-tab-panel__furniture-btn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.04);
+  color: var(--text-secondary, #c8d3e7);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.boards-tab-panel__furniture-btn:hover {
+  background: rgb(255 255 255 / 0.08);
+  color: var(--text-primary, #f0f3fc);
+  border-color: rgb(255 255 255 / 0.2);
+}
+
+.boards-tab-panel__furniture-btn--active {
+  background: color-mix(in srgb, var(--n4, #2fe6c8) 22%, transparent);
+  color: var(--text-primary, #f0f3fc);
+  border-color: color-mix(in srgb, var(--n4, #2fe6c8) 60%, transparent);
+}
