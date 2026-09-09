@@ -1560,6 +1560,9 @@ interface Window {
     templateSaveAs: (name: string) => Promise<{ ok: true; id: string } | { error: string }>;
     // SKY-1304: delete user template (AC-6)
     templateDelete: (templateId: string) => Promise<{ ok: true } | { error: string }>;
+    // SKY-1399: rename / duplicate a user template
+    templateRename: (id: string, name: string) => Promise<{ ok: true } | { error: string }>;
+    templateDuplicate: (id: string) => Promise<{ ok: true; id: string } | { error: string }>;
     // SKY-1403: export / import .mythostemplate files
     templateExport: (id: string) => Promise<{ cancelled: boolean } | { error: string }>;
     templateImport: () => Promise<{ cancelled: boolean; template?: { id: string; name: string } } | { error: string }>;
