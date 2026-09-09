@@ -440,6 +440,18 @@ export default function NoteViewer({
   const applyModeRef = useRef(applyMode);
   applyModeRef.current = applyMode;
 
+  // SKY-11444: `previewMode` was previously only read in the initializers
+  // above — toggling it while this note was already open did nothing until
+  // the note was closed and reopened. Sync live so the toggle gives
+  // immediate feedback on the note currently in view.
+  const prevPreviewModeRef = useRef(previewMode);
+  useEffect(() => {
+    if (previewMode === prevPreviewModeRef.current) return;
+    prevPreviewModeRef.current = previewMode;
+    if (modeProp !== undefined) return;
+    setMode(previewMode ? 'preview' : (stickyMode ?? (defaultRich ? 'rich' : 'source')));
+  }, [previewMode, modeProp, stickyMode, defaultRich]);
+
   useEffect(() => {
     setLoading(true);
     setError(null);
