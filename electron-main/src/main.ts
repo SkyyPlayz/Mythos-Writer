@@ -8897,6 +8897,12 @@ const SETTINGS_DEFAULTS: AppSettings = {
     storylineConsultant: { enabled: false, model: '', ...AGENT_BUDGET_DEFAULTS },
     lineEditor: { enabled: false, model: '', ...AGENT_BUDGET_DEFAULTS },
   },
+  // SKY-11241 (AC1): the reader's first voice should be the good one — Kokoro
+  // ships bundled and in-process (SKY-11243), so it needs no setup step to be
+  // the fresh-install default. Only applied when no settings file (or no
+  // `voice` block) exists yet; an install that already saved `voice` keeps
+  // whatever ttsVoiceId (or its absence) it already has.
+  voice: { enabled: false, cloudFallback: false, ttsVoiceId: 'kokoro:nicole' },
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
   updateChannel: 'stable',
