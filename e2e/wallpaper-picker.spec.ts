@@ -3,8 +3,13 @@
  *
  * Real e2e for the Theme match wallpaper cycle in Settings → Appearance →
  * Background (frontend/src/components/SettingsPanel/sections/
- * LiquidNeonAppearanceSection.tsx), reached from a fresh profile by clicks
- * only — nothing under test is pre-seeded:
+ * LiquidNeonAppearanceSection.tsx). The picker is reached by clicks only.
+ * The profile is a fresh temp user-data dir with onboarding marked complete
+ * and an empty temp vault configured, so the app opens straight to the shell
+ * (the onboarding wizard and vault creation are not under test here; they have
+ * their own specs). Nothing about the appearance state is pre-seeded: no
+ * liquidNeonV2, no wpPick, no vaultAppearance — every value asserted below is
+ * produced by the clicks in this test.
  *
  *   1. The renamed preset reads "Neon Nebula"; "No background" is gone.
  *   2. The Theme match tile shows arrows + "1/N" for the default preset.

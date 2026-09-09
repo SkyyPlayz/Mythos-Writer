@@ -2,9 +2,13 @@
 //
 // Every preset ships several wallpapers. The set is data, not code: the
 // manifest (assets/wallpapers/manifest.json) lists, per preset key, the files
-// that follow the preset's built-in wallpaper, and Vite's glob import turns
-// each file into a hashed asset URL at build time. Replacing the pack is a file
-// drop + manifest edit (scripts/wallpapers/build-pack.py regenerates both).
+// (in assets/wallpapers/pack/) that follow the preset's built-in wallpaper, and
+// Vite's glob import turns each file into a hashed asset URL at build time.
+// Replacing the pack is a file drop + manifest edit
+// (scripts/wallpapers/build-pack.py regenerates both).
+//
+// Only `pack/` is globbed: sibling files in assets/wallpapers/ (other asset
+// sets, licences, docs) are neither bundled nor counted as pack orphans.
 //
 // Index 0 of a preset's cycle is always the built-in wallpaper the theme had
 // before the pack existed (Neon Nebula: cosmic-bg.webp; every other preset: the
@@ -36,7 +40,7 @@ const DEFAULT_POSITION = 'center';
 // `?url` + eager: the module holds only the URL strings; the browser fetches an
 // image the first time its CSS url() is painted, so unselected wallpapers cost
 // nothing at runtime.
-const FILE_URLS = import.meta.glob('../assets/wallpapers/*.{webp,avif,jpg,png}', {
+const FILE_URLS = import.meta.glob('../assets/wallpapers/pack/*.{webp,avif,jpg,png}', {
   eager: true,
   query: '?url',
   import: 'default',
@@ -44,7 +48,7 @@ const FILE_URLS = import.meta.glob('../assets/wallpapers/*.{webp,avif,jpg,png}',
 
 /** Asset URL for a manifest file name, or undefined when the file is missing. */
 export function wallpaperFileUrl(file: string): string | undefined {
-  return FILE_URLS['../assets/wallpapers/' + file];
+  return FILE_URLS['../assets/wallpapers/pack/' + file];
 }
 
 /** Every file the glob found, by bare file name (test guard for manifest drift). */
