@@ -49,6 +49,7 @@ import AccountProfileSection from './components/SettingsPanel/sections/AccountPr
 import EditorSettingsSection from './components/SettingsPanel/sections/EditorSettingsSection';
 // Beta 4 M28: manuscript-only appearance cards live on the Editor page (§13)
 import EditorManuscriptSection from './components/SettingsPanel/sections/EditorManuscriptSection';
+import NotesBoardSection from './components/SettingsPanel/sections/NotesBoardSection';
 import SyncBackupSection from './components/SettingsPanel/sections/SyncBackupSection';
 import ShortcutsSection from './components/SettingsPanel/sections/ShortcutsSection';
 import AboutSection from './components/SettingsPanel/sections/AboutSection';
@@ -1074,6 +1075,8 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 onChange={(next) => { setSettings((p) => ({ ...p, liquidNeonV2: next })); }}
                 setSavedOk={setSavedOk}
               />
+              {/* SKY-11186: the Boards zoom-out cap — a visible performance setting (owner ruling 4). */}
+              <NotesBoardSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
             </>
           )}
 

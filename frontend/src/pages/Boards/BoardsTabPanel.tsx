@@ -2,10 +2,15 @@
  * SKY-11184: Notes Board top-level tab panel.
  * Renders a breadcrumb nav + BoardCanvas for the current board folder.
  * BOARDS-SPEC.md §1, §5.
+ * SKY-11186: resolves each note child's thumbnail (spec §9) alongside the
+ * listing, threads the zoom-out limit setting through, and reloads the open
+ * board when the Notes vault changes on disk.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import BoardCanvas from './BoardCanvas';
 import type { BoardItem, ItemLayout } from './BoardCanvas';
+import { resolveNoteThumbs } from '../../lib/noteThumbnails';
+import { boardFollowsChange } from './boardVaultChange';
 import './BoardsTabPanel.css';
 
 interface VaultListItem {
@@ -23,6 +28,8 @@ interface BreadcrumbEntry {
 export interface BoardsTabPanelProps {
   notesVaultRoot: string;
   notesVaultValid: boolean;
+  /** SKY-11186: Settings → Editor → Notes Board zoom-out limit (percent). */
+  minZoom?: number;
 }
 
 /**
@@ -40,7 +47,15 @@ export interface BoardsTabPanelProps {
  */
 const HOME_CRUMB: BreadcrumbEntry = { folderPath: '', name: 'Home' };
 
-export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: BoardsTabPanelProps) {
+/** Vault-relative path of a board child (item paths are relative to their board's folder). */
+function vaultPathOf(folderPath: string, itemPath: string): string {
+  return folderPath ? `${folderPath}/${itemPath}` : itemPath;
+}
+
+/** How long to coalesce a burst of vault change events before reloading the board. */
+const VAULT_CHANGE_RELOAD_MS = 200;
+
+export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoom }: BoardsTabPanelProps) {
   // Breadcrumb stack — bottom is home (vault root), top is current board
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([HOME_CRUMB]);
 
@@ -57,17 +72,25 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: Boar
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch board data: IPC gives us the metadata store + vault listing
-  const loadBoard = useCallback(async (folderPath: string) => {
+  // A reload that finishes after a newer one started must not clobber it —
+  // vault-change reloads and breadcrumb navigation can overlap.
+  const loadSeqRef = useRef(0);
+
+  // Fetch board data: IPC gives us the metadata store + vault listing.
+  // `silent` keeps the current board on screen while it refreshes (a vault
+  // change must not flash the loading state over a board the user is on).
+  const loadBoard = useCallback(async (folderPath: string, silent = false) => {
     // '' is the Home board (vault root), not "no board" — see HOME_CRUMB.
     if (!notesVaultValid) return;
-    setLoading(true);
+    const seq = ++loadSeqRef.current;
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const [vaultResult, meta] = await Promise.all([
         window.api.listNotesVault(folderPath) as Promise<{ items: VaultListItem[] } | { error: string }>,
         window.api.notesBoardGet(folderPath),
       ]);
+      if (seq !== loadSeqRef.current) return;
 
       if ('error' in vaultResult) {
         setError(vaultResult.error);
@@ -107,6 +130,16 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: Boar
         childCounts.set(parent, counts);
       }
 
+      // SKY-11186 / spec §9: one batched resolve for this board's notes — the
+      // card's default SIZE depends on whether it has a thumbnail (§6), so
+      // this has to be known before layout, not lazily per visible card. The
+      // ~256px derivative itself is fetched lazily by the card that needs it.
+      const notePaths = directChildren
+        .filter((v) => !v.isDirectory)
+        .map((v) => vaultPathOf(folderPath, v.path));
+      const thumbs = notePaths.length > 0 ? await resolveNoteThumbs(notePaths) : {};
+      if (seq !== loadSeqRef.current) return;
+
       const resolvedItems: BoardItem[] = directChildren.map((vaultItem) => {
         if (vaultItem.isDirectory) {
           const counts = childCounts.get(vaultItem.path) ?? { boards: 0, cards: 0 };
@@ -123,6 +156,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: Boar
           kind: 'note',
           name: vaultItem.name.replace(/\.md$/i, ''),
           excerpt: vaultItem.excerpt,
+          thumb: thumbs[vaultPathOf(folderPath, vaultItem.path)],
         };
       });
 
@@ -140,15 +174,51 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: Boar
       setSavedLayout(layoutMap);
       setSavedView(meta.view ?? { zoom: 100, panX: 0, panY: 0 });
     } catch (err) {
+      if (seq !== loadSeqRef.current) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setLoading(false);
+      // Whichever load finishes LAST clears the flag — a silent reload that
+      // superseded a visible one must not leave "Loading board…" on screen.
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, [notesVaultValid]);
 
   useEffect(() => {
     loadBoard(currentFolder);
   }, [currentFolder, loadBoard]);
+
+  // SKY-11186: a note edited, an image deleted, moved or rewritten, a
+  // thumbnail toggled off from the editor — the open board must follow the
+  // vault. The Notes watcher emits `vault:notes-updated` (notes and folders)
+  // and `vault:notes-asset-changed` (images) with the changed path; only a
+  // change this board can see triggers a reload (boardFollowsChange), bursts
+  // are coalesced, and the reload is silent.
+  const itemsRef = useRef<BoardItem[]>([]);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
+
+  useEffect(() => {
+    if (!notesVaultValid) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const onVaultChange = (data: { path?: string } | undefined) => {
+      const shown = itemsRef.current.map((item) => item.thumb?.src);
+      if (!boardFollowsChange(currentFolder, data?.path, shown)) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        void loadBoard(currentFolder, true);
+      }, VAULT_CHANGE_RELOAD_MS);
+    };
+    const unsubscribes = [
+      window.api.onVaultNotesUpdated?.(onVaultChange),
+      window.api.onVaultNotesAssetChanged?.(onVaultChange),
+    ];
+    return () => {
+      if (timer) clearTimeout(timer);
+      for (const unsub of unsubscribes) unsub?.();
+    };
+  }, [notesVaultValid, currentFolder, loadBoard]);
 
   const handleViewChange = useCallback((_zoom: number, _panX: number, _panY: number) => {
     // View is UI state — persisted via the board metadata store
@@ -191,7 +261,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: Boar
     const folderName = items.find((i) => i.path === itemPath)?.name ?? itemPath.split('/').pop() ?? itemPath;
     setBreadcrumb((prev) => {
       const parent = prev[prev.length - 1].folderPath;
-      return [...prev, { folderPath: parent ? `${parent}/${itemPath}` : itemPath, name: folderName }];
+      return [...prev, { folderPath: vaultPathOf(parent, itemPath), name: folderName }];
     });
   }, [items]);
 
@@ -245,6 +315,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: Boar
           items={items}
           savedLayout={savedLayout}
           savedView={savedView}
+          minZoom={minZoom}
           onItemMove={handleItemMove}
           onItemResize={handleItemResize}
           onViewChange={handleViewChange}

@@ -336,6 +336,89 @@
   -webkit-box-orient: vertical;
 }
 
+/* ── SKY-11186: thumbnail block (spec §9, mockup `thumbSt` script 8086) ──
+   Sits between the title row and the preview: radius 10, 8px above, and
+   the preview beneath it drops to two lines (mockup `max-height:36px` vs
+   68px on a text-only card). Height is set inline by BoardCard from
+   boardLod.thumbBlockHeight — 134px on the default 272px card. The image
+   inside is the cached ~256px derivative, cover-cropped, never the source. */
+.board-canvas__thumb {
+  flex-shrink: 0;
+  margin: 2px 12px 0;
+  border-radius: 10px;
+  overflow: hidden;
+  border: var(--bw, 1px) solid color-mix(in srgb, var(--board-item-n) 30%, transparent);
+}
+
+.board-canvas__thumb > .note-thumb {
+  height: 100%;
+}
+
+.board-canvas__item--has-thumb .board-canvas__item-excerpt {
+  padding-top: 7px;
+  -webkit-line-clamp: 2;
+}
+
+/* ── SKY-11186: level of detail (spec §6) ──
+   Tier 2 simply renders fewer children (BoardCard), so only the block tier
+   needs paint of its own: a flat accent rect — the card's slot colour over
+   the tile plate, rim in the same colour — with no text and no image. It is
+   the board seen as a map: at this on-screen size the text would not be
+   legible, and the field of accent blocks reads as the board's shape. The
+   selection and hover ladder stays intact so the block is still a card you
+   can pick, drag, resize and open. */
+.board-canvas__item--lod-3 {
+  background: color-mix(in srgb, var(--board-item-n) 72%, var(--board-tile-fill));
+  border-color: color-mix(in srgb, var(--board-item-n) 55%, transparent);
+}
+
+/* The block tier sets its own rim, so the selected / dragging rim has to be
+   restated at the doubled specificity or it would lose on source order. */
+.board-canvas__item--lod-3.board-canvas__item--selected,
+.board-canvas__item--lod-3.board-canvas__item--dragging {
+  background: color-mix(in srgb, var(--board-item-n) 88%, var(--board-tile-fill));
+  border-color: var(--board-item-rim-selected);
+}
+
+:root[data-contrast='high'] .board-canvas__item--lod-3 {
+  background: var(--board-item-n);
+  border-color: var(--border-default, #9fb3c8);
+}
+
+/* High contrast cannot lean on a glow: a selected block inverts — the plate
+   shows through with a doubled accent rim — so the state reads flat. */
+:root[data-contrast='high'] .board-canvas__item--lod-3.board-canvas__item--selected,
+:root[data-contrast='high'] .board-canvas__item--lod-3.board-canvas__item--dragging {
+  background: var(--board-tile-fill);
+  border-color: var(--board-item-n);
+  box-shadow: inset 0 0 0 2px var(--board-item-n);
+}
+
+/* At the map tiers the header shrinks to its text — no preview below it
+   competes for the vertical space of a 104px-wide card. */
+.board-canvas__item--lod-2 .board-canvas__item-header {
+  padding-bottom: 8px;
+}
+
+/* ── SKY-11186: the world's visual footprint at the current zoom ──
+   Sized by BoardCanvas to `world × scale`; clipping the unscaled layout box
+   keeps the panel's scroll extent equal to what is painted at any zoom. */
+.board-canvas__sizer {
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── SKY-11186: the visible zoom-out limit (owner ruling 4) ──
+   At the floor the button stays in the tab order and keeps its tooltip
+   (a disabled button would drop both), but reads as inert. */
+.board-canvas__zoom-btn--at-limit,
+.board-canvas__zoom-btn--at-limit:hover {
+  color: var(--text-tertiary, #8e9db8);
+  background: transparent;
+  cursor: default;
+  opacity: 0.55;
+}
+
 /* ── Resize handle ── */
 .board-canvas__resize-handle {
   position: absolute;
