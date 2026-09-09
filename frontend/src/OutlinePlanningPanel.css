@@ -268,7 +268,7 @@
   right: 0;
   top: calc(100% + 4px);
   z-index: 100;
-  background: #18181b;
+  background: var(--bg-elevated);
   border: 1px solid var(--border-default, #27272a);
   border-radius: var(--radius-sm, 6px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);

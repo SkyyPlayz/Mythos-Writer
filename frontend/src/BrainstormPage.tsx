@@ -3264,7 +3264,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
           aria-label="Delete idea"
           data-testid="bs-delete-confirm"
         >
-          <div className="bs-delete-confirm-dialog">
+          <div className="bs-delete-confirm-dialog ln-overlay-surface">
             <p className="bs-delete-confirm-message">Delete idea?</p>
             <div className="bs-delete-confirm-actions">
               <button

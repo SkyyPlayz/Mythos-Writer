@@ -48,16 +48,15 @@
   opacity: 0.6;
 }
 
+/* Chrome comes from `.ln-overlay-surface` (overlay-tier.css), SKY-11493;
+   this rule owns geometry only. */
 .project-switcher-dropdown {
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
   min-width: 220px;
   max-width: 320px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
   z-index: 1000;
   padding: 4px 0;
   display: flex;

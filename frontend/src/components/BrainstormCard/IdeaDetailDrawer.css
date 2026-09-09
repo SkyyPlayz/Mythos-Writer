@@ -327,9 +327,9 @@
   justify-content: center;
 }
 
+/* Chrome comes from `.ln-overlay-surface` (overlay-tier.css), SKY-11493;
+   this rule owns geometry only. */
 .idd-discard-dialog {
-  background: var(--bg-surface, #1a1a2e);
-  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md, 8px);
   padding: var(--space-5, 20px);
   min-width: 280px;
@@ -362,9 +362,9 @@
   padding-top: 80px;
 }
 
+/* Chrome comes from `.ln-overlay-surface` (overlay-tier.css), SKY-11493;
+   this rule owns geometry only. Shared with ScenePicker. */
 .idd-entity-picker {
-  background: var(--bg-surface, #1a1a2e);
-  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md, 8px);
   width: 320px;
   max-height: 400px;

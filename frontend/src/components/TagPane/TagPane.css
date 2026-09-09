@@ -231,7 +231,7 @@
 }
 
 .tp-merge-dialog {
-  background: var(--panel-bg, #1a1a2e);
+  background: var(--bg-elevated);
   border: 1px solid var(--glass-border, rgba(255,255,255,0.12));
   border-radius: var(--radius-sm, 6px);
   padding: 16px 20px;

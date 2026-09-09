@@ -190,7 +190,7 @@ export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onS
 
       {open && (
         <div
-          className="project-switcher-dropdown"
+          className="project-switcher-dropdown ln-overlay-surface"
           role="listbox"
           aria-label="Mythos Vaults"
         >

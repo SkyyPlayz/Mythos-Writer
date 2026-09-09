@@ -1513,13 +1513,12 @@
   background: rgba(0, 0, 0, 0.45);
 }
 
+/* Chrome comes from `.ln-overlay-surface` (overlay-tier.css), SKY-11493;
+   this rule owns geometry only. */
 .bs-delete-confirm-dialog {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   padding: var(--space-4);
   min-width: 240px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 .bs-delete-confirm-message {

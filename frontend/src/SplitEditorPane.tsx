@@ -108,7 +108,7 @@ const PaneSceneSelector = forwardRef<PaneSceneSelectorHandle, PaneSceneSelectorP
         </button>
 
         {open && (
-          <div className="spe-scene-popover" role="dialog" aria-label="Select scene">
+          <div className="spe-scene-popover ln-overlay-surface" role="dialog" aria-label="Select scene">
             <input
               ref={inputRef}
               className="spe-scene-search"
