@@ -54,6 +54,35 @@ describe('readIconMap / writeIconMap', () => {
     expect(readIconMap(root)).toEqual({ 'a.md': '📖', Folder: 'pack:lucide/sword' });
   });
 
+  it('keeps well-formed {icon, color} entries (SKY-11190) alongside plain-string ones', () => {
+    fs.mkdirSync(path.join(root, ICONS_DIR_NAME), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, ICONS_DIR_NAME, ICONS_FILE_NAME),
+      JSON.stringify({
+        'a.md': '📖',
+        Folder: { icon: 'pack:lucide/sword', color: '#e06c75' },
+      }),
+    );
+    expect(readIconMap(root)).toEqual({
+      'a.md': '📖',
+      Folder: { icon: 'pack:lucide/sword', color: '#e06c75' },
+    });
+  });
+
+  it('drops a colour entry missing icon or color, or with non-string fields', () => {
+    fs.mkdirSync(path.join(root, ICONS_DIR_NAME), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, ICONS_DIR_NAME, ICONS_FILE_NAME),
+      JSON.stringify({
+        'a.md': { icon: 'pack:lucide/sword' },
+        'b.md': { color: '#e06c75' },
+        'c.md': { icon: 'pack:lucide/sword', color: 5 },
+        'd.md': { icon: 'pack:lucide/sword', color: '#e06c75' },
+      }),
+    );
+    expect(readIconMap(root)).toEqual({ 'd.md': { icon: 'pack:lucide/sword', color: '#e06c75' } });
+  });
+
   it('round-trips a map through write + read, creating .mythos/ on demand', () => {
     const map = { 'a.md': '🔥', Folder: '🌍', 'Folder/b.md': 'pack:lucide/sword' };
     writeIconMap(root, map);
@@ -96,6 +125,18 @@ describe('setIcon', () => {
     setIcon(root, 'a.md', '📖');
     const result = setIcon(root, 'b.md', '🔥');
     expect(result).toEqual({ 'a.md': '📖', 'b.md': '🔥' });
+  });
+
+  it('stores the {icon, color} form (SKY-11190) when a colour is passed', () => {
+    const result = setIcon(root, 'Folder', 'pack:lucide/sword', '#e06c75');
+    expect(result).toEqual({ Folder: { icon: 'pack:lucide/sword', color: '#e06c75' } });
+    expect(readIconMap(root)).toEqual({ Folder: { icon: 'pack:lucide/sword', color: '#e06c75' } });
+  });
+
+  it('clears a colour-tagged icon when icon is null, regardless of the color arg', () => {
+    setIcon(root, 'Folder', 'pack:lucide/sword', '#e06c75');
+    const result = setIcon(root, 'Folder', null);
+    expect(result).toEqual({});
   });
 });
 

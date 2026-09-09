@@ -7260,7 +7260,7 @@ const handlers: IpcHandlers = {
   // authoritative (it's the only way a folder — which has no frontmatter —
   // can carry an icon); frontmatter `icon:` stays as a read-only fallback for
   // notes that only ever had that field seeded.
-  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (): Record<string, string> => {
+  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (): Record<string, string | { icon: string; color: string }> => {
     const root = getNotesVaultRoot();
     return { ...batchReadVaultIcons(root), ...readIconMap(root) };
   },
@@ -7271,8 +7271,8 @@ const handlers: IpcHandlers = {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
     safeVaultEntryIpcJoin(root, payload.path);
-    setIcon(root, payload.path, payload.icon);
-    return { path: payload.path, icon: payload.icon };
+    setIcon(root, payload.path, payload.icon, payload.color ?? null);
+    return { path: payload.path, icon: payload.icon, color: payload.color ?? null };
   },
 
   // ─── SKY-11183 (Notes Board 1/9): board metadata store IPC ──────────────

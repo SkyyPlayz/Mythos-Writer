@@ -20,6 +20,8 @@
  */
 import { memo, useEffect, useRef, useState } from 'react';
 import type { MouseEvent, KeyboardEvent } from 'react';
+import { NodeIcon } from '../../NodeIcon';
+import type { VaultIconEntry } from '../../iconUtils';
 import { NoteThumbnail } from '../../components/NoteThumbnail';
 import type { NoteThumbInfo } from '../../lib/noteThumbnails';
 import { thumbBlockHeight, type LodTier } from './boardLod';
@@ -143,6 +145,7 @@ export interface BoardCardProps {
   /** Commit the typed name. An empty name is a no-op, resolved in main (§5). */
   onRenameCommit?: (path: string, newName: string) => void;
   onRenameCancel?: () => void;
+  icon?: VaultIconEntry;
 }
 
 function BoardCardImpl({
@@ -163,6 +166,7 @@ function BoardCardImpl({
   onRequestRename,
   onRenameCommit,
   onRenameCancel,
+  icon,
 }: BoardCardProps) {
   const isFolder = item.kind === 'folder';
   const hasThumb = itemHasThumb(item);
@@ -225,6 +229,9 @@ function BoardCardImpl({
         </div>
       ) : tier < 3 ? (
         <div className="board-canvas__item-header">
+          <span className="board-canvas__item-icon">
+            <NodeIcon icon={icon} fallback={<span aria-hidden="true">{isFolder ? '▤' : '▯'}</span>} />
+          </span>
           <span className="board-canvas__item-name">{item.name}</span>
         </div>
       ) : null}

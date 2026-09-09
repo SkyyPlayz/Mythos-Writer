@@ -1086,7 +1086,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTE_BACKLINKS]: (payload: NoteBacklinksPayload) => NoteBacklinksResponse;
 
   // SKY-194: Iconize — per-node icon IPC
-  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
+  // SKY-11190: entries may be the plain string form or the colour-tagged
+  // `{icon, color}` form — see VaultIconEntry in vaultIcons.ts.
+  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (payload: never) => Record<string, string | { icon: string; color: string }>;
   [IPC_CHANNELS.VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
   [IPC_CHANNELS.ICONS_LIST_USER_PACKS]: (payload: never) => { packName: string; icons: string[] }[];
   [IPC_CHANNELS.ICONS_READ_SVG]: (payload: { packName: string; iconName: string }) => { svg: string | null };
@@ -1525,11 +1527,14 @@ export interface StoryVaultRegistryPairResponse {
 export interface VaultSetIconPayload {
   path: string;
   icon: string | null;
+  /** SKY-11190: optional colour tag, written as the `{icon, color}` map form. */
+  color?: string | null;
 }
 
 export interface VaultSetIconResponse {
   path: string;
   icon: string | null;
+  color?: string | null;
 }
 
 export interface VaultMkdirPayload {

@@ -27,6 +27,8 @@ import { basenameNoExt } from '../../crossTabLinkResolver';
 import { useToast } from '../../hooks/useToast';
 import { Toast } from '../../components/Toast/Toast';
 import { pushUndo, undo as undoLastAction } from '../../lib/notesUndoStack';
+import { NodeIcon } from '../../NodeIcon';
+import type { VaultIconEntry } from '../../iconUtils';
 import './BoardsTabPanel.css';
 
 /**
@@ -172,6 +174,11 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // SKY-11190: icon+colour map, keyed by FULL vault-relative path — same
+  // `.mythos/icons.json` store the vault tree reads (SKY-9310), so setting
+  // an icon here shows up there too, and vice versa.
+  const [iconMap, setIconMap] = useState<Record<string, VaultIconEntry>>({});
+
   // SKY-11187 §5: the canvas tools and the inline rename they hand off to.
   const [activeTool, setActiveTool] = useState<BoardTool>('select');
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
@@ -192,11 +199,13 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const [vaultResult, meta] = await Promise.all([
+      const [vaultResult, meta, icons] = await Promise.all([
         window.api.listNotesVault(folderPath) as Promise<{ items: VaultListItem[] } | { error: string }>,
         window.api.notesBoardGet(folderPath),
+        window.api.notesVaultReadIcons(),
       ]);
       if (seq !== loadSeqRef.current) return;
+      setIconMap(icons);
 
       if ('error' in vaultResult) {
         setError(vaultResult.error);
@@ -749,6 +758,24 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     }
   }, [currentFolder, lineFromId]);
 
+  // SKY-11190: itemPath is relative to the current board (BoardCanvas's
+  // contract — see handleEnterBoard below); resolve to the full
+  // vault-relative key the icon store and vault tree both use.
+  const handleSetIcon = useCallback(async (itemPath: string, icon: string | null, color: string | null) => {
+    const full = currentFolder ? `${currentFolder}/${itemPath}` : itemPath;
+    try {
+      await window.api.notesVaultSetIcon(full, icon, color ?? undefined);
+      setIconMap((prev) => {
+        const next = { ...prev };
+        if (icon) next[full] = color ? { icon, color } : icon;
+        else delete next[full];
+        return next;
+      });
+    } catch (err) {
+      console.warn('[Boards] failed to persist icon', err);
+    }
+  }, [currentFolder]);
+
   // BoardCanvas hands back the tile's path relative to the CURRENT board, so
   // join it onto the current folder to keep folderPath vault-relative at any
   // depth. A bare item path was only ever correct one level below Home.
@@ -794,10 +821,22 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
                 onClick={() => handleBreadcrumbClick(i)}
                 aria-label={`Navigate to ${crumb.name}`}
               >
+                {iconMap[crumb.folderPath] && (
+                  <span className="boards-tab-panel__breadcrumb-icon">
+                    <NodeIcon icon={iconMap[crumb.folderPath]} fallback={null} />
+                  </span>
+                )}
                 {crumb.name}
               </button>
             ) : (
-              <span className="boards-tab-panel__breadcrumb-current" aria-current="page">{crumb.name}</span>
+              <span className="boards-tab-panel__breadcrumb-current" aria-current="page">
+                {iconMap[crumb.folderPath] && (
+                  <span className="boards-tab-panel__breadcrumb-icon">
+                    <NodeIcon icon={iconMap[crumb.folderPath]} fallback={null} />
+                  </span>
+                )}
+                {crumb.name}
+              </span>
             )}
           </span>
         ))}
@@ -1001,6 +1040,9 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             linkAnchors={linkAnchors}
             showMinimap={showMinimap}
             selectRequest={selectRequest}
+            iconMap={iconMap}
+            folderPath={currentFolder}
+            onSetIcon={handleSetIcon}
           />
         </div>
       )}
