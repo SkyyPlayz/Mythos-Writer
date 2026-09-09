@@ -29,3 +29,7 @@ electron-main/resources/kokoro/model_*.onnx
 electron-main/resources/kokoro/tokenizer.json
 electron-main/resources/kokoro/voices/
 electron-main/resources/kokoro/wasm/
+
+# SKY-11623 / SKY-11625 — Python bytecode caches are build artifacts, never source
+__pycache__/
+*.py[cod]
