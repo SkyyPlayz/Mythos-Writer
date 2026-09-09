@@ -924,32 +924,7 @@
       "atQualityFloor": true,
       "bytes": 61316,
       "note": "Native 16:9. Moonlit lake with pines on the right bank."
-    },
-    {
-      "file": "bg-winter-4.webp",
-      "set": "winter",
-      "order": 4,
-      "source": "winter-src-02.png",
-      "sourceSize": [
-        1938,
-        811
-      ],
-      "anchor": 0.375,
-      "cropBox": [
-        6,
-        0,
-        1448,
-        811
-      ],
-      "outputSize": [
-        1442,
-        811
-      ],
-      "quality": 70,
-      "atQualityFloor": true,
-      "bytes": 54536,
-      "note": "Sunrise sits at ~0.20, far left. Anchored hard left (the leftmost a 16:9 window can go on this source) so the sun stays in frame. Brightest wallpaper in the pack \u2014 flagged to QA for contrast."
     }
   ],
-  "totalBytes": 1926720
+  "totalBytes": 1872184
 }

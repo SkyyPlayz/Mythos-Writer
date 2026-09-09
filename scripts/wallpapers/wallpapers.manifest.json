@@ -279,11 +279,12 @@
           "src": "winter-src-01.png",
           "anchor": 0.5,
           "note": "Native 16:9. Moonlit lake with pines on the right bank."
-        },
+        }
+      ],
+      "rejected": [
         {
           "src": "winter-src-02.png",
-          "anchor": 0.375,
-          "note": "Sunrise sits at ~0.20, far left. Anchored hard left (the leftmost a 16:9 window can go on this source) so the sun stays in frame. Brightest wallpaper in the pack \u2014 flagged to QA for contrast."
+          "why": "UXDesigner (SKY-11599): daylight sunrise breaks the moonlit/aurora mood the other three share \u2014 same failure as aurora-src-05, which was dropped for the identical reason ('warm sunrise dominates; reads as Sunset Coast rather than Aurora'). Also the brightest wallpaper in the pack, flagged for a QA contrast check against Liquid Neon's light-on-dark text; dropping it removes the risk rather than shipping it as the default-set's most jarring frame. Winterlight ships 3, matching the Cyberpunk/Emberfall precedent for sets without four cohesive originals."
         }
       ]
     }
