@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { parseFrontmatter } from './vault.js';
+import { parseFrontmatter, isRecentSelfWrite } from './vault.js';
 import {
   BOARD_SIDECAR_FILE_NAME,
   getBoard,
@@ -72,6 +72,9 @@ describe('resolveId / resolveOrAssignId — notes', () => {
     expect(frontmatter.title).toBe('Idea');
     expect(frontmatter.tags).toEqual(['a', 'b']);
     expect(prose).toBe('# Idea\n\nSome body text.\n');
+    // SKY-11186: the id write is the app's own — the Notes watcher must not
+    // report it back as an external vault change.
+    expect(isRecentSelfWrite(abs)).toBe(true);
 
     // Idempotent: calling again returns the SAME id, doesn't mint a new one.
     expect(resolveOrAssignId('note', abs)).toBe(id);

@@ -73,7 +73,11 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     id: 'editor',
     label: 'Editor',
     description: 'Defaults for manuscripts and notes.',
-    sectionIds: ['section-editor', 'section-editor-manuscript'],
+    sectionIds: [
+      'section-editor',
+      'section-editor-manuscript',
+      'section-notes-board', // SKY-11186: Boards zoom-out limit — a visible performance setting
+    ],
   },
   {
     id: 'vaults',

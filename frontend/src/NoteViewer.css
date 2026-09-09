@@ -312,12 +312,29 @@
   padding: 10px 20px 8px;
   flex-shrink: 0;
   border-bottom: 1px solid rgb(255 255 255 / 0.05);
+  /* SKY-11186: the cover (NoteCoverBadge, spec §9) sits beside the title in
+     a second, top-aligned column that is 0px wide when the note has no cover
+     — the title row and tags row keep exactly their place either way. The
+     spare third row absorbs any height the 104px cover adds, so the tags
+     row never drifts down to meet it. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  align-items: start;
 }
 
 .note-header-row {
+  grid-column: 1;
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: 11px; /* prototype title row gap */
+}
+
+.note-header > .note-cover {
+  grid-column: 2;
+  grid-row: 1 / 4;
+  margin-left: 14px;
 }
 
 .note-header-icon {
@@ -360,6 +377,8 @@
 }
 
 .note-tags-row {
+  grid-column: 1;
+  grid-row: 2;
   display: flex;
   align-items: center;
   /* Must exceed .note-tag-remove's 6px negative-margin hit-area bleed on

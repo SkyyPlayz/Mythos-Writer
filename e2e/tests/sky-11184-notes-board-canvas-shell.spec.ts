@@ -241,6 +241,12 @@ test('SKY-11184 AC2: a dragged card keeps its position across quit + relaunch', 
 });
 
 // ── AC3 — 200+ children lay out with no cap, none off-canvas (§15.4) ──────────
+//
+// SKY-11186 (§6 virtualization): "no cap" is now proven through the layout,
+// not the DOM. Every child owns a slot in a world that grows to hold it, but
+// only the children inside the viewport (plus one cell of margin) are MOUNTED
+// — a card far below the fold is not in the DOM until you scroll to it. So
+// the assertions read the world's geometry and then scroll to the last card.
 
 test('SKY-11184 AC3: a board with 200+ children lays out uncapped, nothing off-canvas', async () => {
   test.setTimeout(150_000);
@@ -256,14 +262,22 @@ test('SKY-11184 AC3: a board with 200+ children lays out uncapped, nothing off-c
     const page = await bootToBoards(app);
     await enterBoard(page, 'Crowd');
 
-    // No cap: every one of the 220 children is rendered.
-    await expect(items(page)).toHaveCount(N);
+    // The first card is on screen; the last is laid out but NOT mounted —
+    // culling keeps the DOM bounded regardless of the child count.
+    await expect(card(page, 'n000')).toBeVisible();
+    await expect(items(page)).not.toHaveCount(N);
+    await expect(page.locator('.board-canvas__item-name', { hasText: /^n219$/ })).toHaveCount(0);
 
-    // Nothing pushed off-canvas, and the canvas grew vertically to fit.
-    const geom = await page.locator('.board-canvas__world').evaluate((el) => {
+    // Nothing pushed off-canvas, and the canvas grew vertically to fit ALL
+    // 220 slots: with the spec's 268×216 cell over `cols` columns the last
+    // row's bottom must sit inside the world.
+    const geom = await page.locator('.board-canvas__world').evaluate((el, n) => {
       const world = el as HTMLElement;
       const worldW = parseFloat(world.style.width);
       const worldH = parseFloat(world.style.height);
+      const cols = Math.max(1, Math.floor((worldW - 48) / 268));
+      const rows = Math.ceil(n / cols);
+      const lastRowBottom = 44 + (rows - 1) * 216 + 154;
       let minLeft = Infinity;
       let maxRight = -Infinity;
       let maxBottom = -Infinity;
@@ -277,14 +291,22 @@ test('SKY-11184 AC3: a board with 200+ children lays out uncapped, nothing off-c
         maxRight = Math.max(maxRight, l + w);
         maxBottom = Math.max(maxBottom, t + h);
       }
-      return { worldW, worldH, minLeft, maxRight, maxBottom };
-    });
+      return { worldW, worldH, cols, lastRowBottom, minLeft, maxRight, maxBottom };
+    }, N);
 
-    expect(geom.minLeft).toBeGreaterThanOrEqual(0); // no item off the left/top
+    expect(geom.minLeft).toBeGreaterThanOrEqual(0); // no mounted item off the left/top
     expect(geom.maxRight).toBeLessThanOrEqual(geom.worldW + 1); // none off the right
     expect(geom.maxBottom).toBeLessThanOrEqual(geom.worldH + 1); // none off the bottom
+    expect(geom.worldH).toBeGreaterThanOrEqual(geom.lastRowBottom); // room for all 220 slots
     expect(geom.worldH).toBeGreaterThan(600); // canvas grew past its 600px floor
-    expect(geom.maxBottom).toBeGreaterThan(900); // rows extend well below one screen
+    expect(geom.lastRowBottom).toBeGreaterThan(900); // rows extend well below one screen
+
+    // Scroll to the bottom: the last child mounts, the first is released.
+    await page.locator('.board-canvas__scroll-area').evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    await expect(card(page, 'n219')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('.board-canvas__item-name', { hasText: /^n000$/ })).toHaveCount(0);
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });

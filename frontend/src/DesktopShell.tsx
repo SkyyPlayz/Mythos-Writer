@@ -7069,7 +7069,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           aria-labelledby="app-tab-boards"
           style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}
         >
-          <BoardsTabPanel notesVaultRoot={vaultBinding.notesPath} notesVaultValid={vaultBinding.notesValid} />
+          <BoardsTabPanel
+            notesVaultRoot={vaultBinding.notesPath}
+            notesVaultValid={vaultBinding.notesValid}
+            minZoom={appSettings?.notesBoard?.minZoom}
+          />
         </div>
       )}
       {/* SKY-1686: Global right sidebar — only rendered once rightSidebarVisible is known from settings.

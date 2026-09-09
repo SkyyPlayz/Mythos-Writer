@@ -37,6 +37,7 @@ import {
   type VaultRefColumnKey,
 } from './crafterState';
 import { boardFilePath, loadCrafterBoards, saveCrafterBoard } from './crafterBoardStore';
+import { SceneCrafterCardThumb } from './SceneCrafterCardThumb';
 import { useIpcStream } from '../../hooks/useIpcStream';
 import { useAiEnabled } from '../../hooks/useAiEnabled';
 import './SceneCrafterPage.css';
@@ -102,7 +103,7 @@ function SuggestedCardsRail({
               onDragStart={draggable ? (event) => onCardDragStart?.(card, event) : undefined}
               onClick={() => onCardActivate(card)}
             >
-              <span className="sc-sugg-av">{card.av}</span>
+              <SceneCrafterCardThumb nid={card.nid} alt={card.t} className="sc-sugg-av">{card.av}</SceneCrafterCardThumb>
               <span className="sc-sugg-text">
                 <span className="sc-sugg-t">{card.t}</span>
                 <span className="sc-sugg-d">{card.d}</span>
@@ -207,7 +208,7 @@ function PovField({ value, onChange, characters }: PovFieldProps) {
                 onMouseEnter={() => setHighlight(i)}
                 onClick={() => commit(card.t)}
               >
-                <span className="sc-sugg-av">{card.av}</span>
+                <SceneCrafterCardThumb nid={card.nid} alt={card.t} className="sc-sugg-av">{card.av}</SceneCrafterCardThumb>
                 <span className="sc-sugg-text">
                   <span className="sc-sugg-t">{card.t}</span>
                   <span className="sc-sugg-d">{card.d}</span>
@@ -1163,7 +1164,7 @@ export default function SceneCrafterPage({
                           setRefPickerCol(null);
                         }}
                       >
-                        <span className="sc-sugg-av">{card.av}</span>
+                        <SceneCrafterCardThumb nid={card.nid} alt={card.t} className="sc-sugg-av">{card.av}</SceneCrafterCardThumb>
                         <span className="sc-sugg-text">
                           <span className="sc-sugg-t">{card.t}</span>
                           <span className="sc-sugg-d">{card.d}</span>
@@ -1189,7 +1190,7 @@ export default function SceneCrafterPage({
                       title="Open the note"
                       onClick={() => onOpenNote?.(card.nid)}
                     >
-                      <span className="sc-ref-band" aria-hidden="true">{card.av}</span>
+                      <SceneCrafterCardThumb nid={card.nid} alt={card.t} className="sc-ref-band" aria-hidden="true">{card.av}</SceneCrafterCardThumb>
                       <span className="sc-ref-name">{card.t}</span>
                       <span className="sc-ref-role">{card.d}</span>
                     </button>

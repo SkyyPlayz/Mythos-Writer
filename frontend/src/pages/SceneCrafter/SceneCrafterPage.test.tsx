@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SceneCrafterPage from './SceneCrafterPage';
 import { CANVAS_CARD_DRAG_MIME } from '../../canvas/canvasTypes';
 import { __resetAiEnabledForTests, setAiEnabled } from '../../hooks/useAiEnabled';
+import { __resetThumbnailCachesForTests } from '../../lib/noteThumbnails';
 
 const STORY = {
   id: 'story-1',
@@ -911,5 +912,72 @@ describe('SceneCrafterPage — SKY-11213 Create Scene from Setup', () => {
     await act(async () => { fireEvent.click(btn); });
 
     await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('No story selected.'));
+  });
+});
+
+// ── SKY-11186: Scene Crafter cards consume the shared note thumbnail ─────────
+// Owner ruling on SKY-10724: the Notes Board and the Scene Crafter cards show
+// the SAME cached ~256px derivative. The reference band and the suggested-rail
+// avatar swap their initials for it once ready; a note without a cover keeps
+// its initials exactly as before.
+
+describe('SceneCrafterPage — SKY-11186 cards show the shared note thumbnail', () => {
+  const DATA_URL = 'data:image/webp;base64,UklGRg==';
+  const THUMB_ITEMS = [
+    { path: 'Characters/Mira Veynn.md', name: 'Mira Veynn.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+    { path: 'Characters/kael-thorne.md', name: 'kael-thorne.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+  ];
+  const MIRA_THUMB = { mode: 'auto', src: 'Characters/mira.png', version: '1-2', missing: false, caption: '' };
+
+  beforeEach(() => {
+    __resetThumbnailCachesForTests();
+  });
+
+  afterEach(() => {
+    __resetThumbnailCachesForTests();
+  });
+
+  it('paints the derivative in the reference band and the suggested avatar for a note with a cover; initials otherwise', async () => {
+    const api = makeApi({
+      listNotesVault: vi.fn().mockResolvedValue({ items: THUMB_ITEMS }),
+      notesThumbResolve: vi.fn(async (paths: string[]) => ({
+        thumbs: Object.fromEntries(paths.filter((p) => p === 'Characters/Mira Veynn.md').map((p) => [p, MIRA_THUMB])),
+      })),
+      notesThumbGet: vi.fn(async () => ({ status: 'ready', dataUrl: DATA_URL, version: '1-2' })),
+      notesThumbPut: vi.fn(async () => ({ ok: true })),
+    });
+    (window as unknown as { api: unknown }).api = api;
+    render(<SceneCrafterPage story={STORY} onOpenNote={vi.fn()} onOpenScene={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    // Every card asks under the note's full vault path (nid + '.md') …
+    await waitFor(() => expect(api.notesThumbResolve).toHaveBeenCalled());
+    const asked = api.notesThumbResolve.mock.calls.flatMap((call: [string[]]) => call[0]);
+    expect(asked).toEqual(expect.arrayContaining(['Characters/Mira Veynn.md', 'Characters/kael-thorne.md']));
+
+    // … Mira's reference band and suggested avatar show the derivative …
+    const characters = screen.getByTestId('sc-ref-col-characters');
+    const miraRef = within(characters).getByRole('button', { name: /^mira veynn/i });
+    await waitFor(() =>
+      expect(miraRef.querySelector('.sc-ref-band--thumb img.note-thumb__img')).toHaveAttribute('src', DATA_URL),
+    );
+    const rail = screen.getByLabelText('Suggested cards');
+    const miraSugg = within(rail).getByText('Mira Veynn').closest('button') as HTMLElement;
+    await waitFor(() =>
+      expect(miraSugg.querySelector('.sc-sugg-av--thumb img.note-thumb__img')).toHaveAttribute('src', DATA_URL),
+    );
+
+    // … while Kael keeps the initials in both places — no thumb slot, no <img>.
+    const kaelRef = within(characters).getByRole('button', { name: /^kael thorne/i });
+    const kaelBand = kaelRef.querySelector('.sc-ref-band') as HTMLElement;
+    expect(kaelBand).not.toHaveClass('sc-ref-band--thumb');
+    expect(kaelBand.textContent).not.toBe('');
+    expect(kaelRef.querySelector('img')).toBeNull();
+    const kaelSugg = within(rail).getByText('Kael Thorne').closest('button') as HTMLElement;
+    expect(kaelSugg.querySelector('.sc-sugg-av')).not.toHaveClass('sc-sugg-av--thumb');
+    expect(kaelSugg.querySelector('img')).toBeNull();
+
+    // One derivative fetch serves every slot that shows it.
+    expect(api.notesThumbGet).toHaveBeenCalledTimes(1);
   });
 });

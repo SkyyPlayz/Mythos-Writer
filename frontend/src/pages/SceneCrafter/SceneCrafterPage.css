@@ -256,6 +256,22 @@
   background: var(--gs2, rgba(155, 95, 255, 0.14));
 }
 
+/* SKY-11186: a note with a thumbnail shows the shared ~256px derivative in
+   the slot the initials used (SceneCrafterCardThumb) — same box, same
+   radius; the image simply replaces the initials fill. Applies to the
+   suggested-rail avatar and the reference-card band alike. */
+.sc-sugg-av--thumb,
+.sc-ref-band--thumb {
+  overflow: hidden;
+  padding: 0;
+}
+
+.sc-card-thumb {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+}
+
 .sc-sugg-text {
   flex: 1;
   min-width: 0;

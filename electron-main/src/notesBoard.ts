@@ -45,6 +45,7 @@ import {
   serializeFrontmatter,
   writeFileAtomic,
   listVaultFiles,
+  markSelfWrite,
 } from './vault.js';
 
 // ─── Constants ───
@@ -360,6 +361,11 @@ export function resolveOrAssignId(kind: NotesBoardItemKind, absPath: string): st
     // byte-for-byte untouched. Same idiom notesTagWrangler.ts uses to
     // rewrite one frontmatter field without disturbing the rest.
     writeFileAtomic(absPath, serializeFrontmatter({ ...frontmatter, id }, prose));
+    // SKY-11186: this is the app's own write, not an external edit — without
+    // the mark, the first drag of every never-arranged card would bounce back
+    // through the Notes watcher as a vault change (board reload, tree
+    // refresh, reindex) for a frontmatter key nothing on screen shows.
+    markSelfWrite(absPath);
   }
   return id;
 }
