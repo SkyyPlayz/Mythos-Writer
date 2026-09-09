@@ -156,6 +156,61 @@ describe('useAgentSessions', () => {
     expect(emptyApi.appendTurns).toHaveBeenLastCalledWith('real-1', [reply]);
   });
 
+  it('SKY-11540: appendTurns issued before the initial list settles still lands on the auto-created session', async () => {
+    // Main answers the list IPC late (busy boot). The exchange finishes first.
+    let resolveList: (v: { sessions: AgentSessionSummary[] }) => void = () => undefined;
+    const lateApi = {
+      list: vi.fn().mockImplementation(() => new Promise<{ sessions: AgentSessionSummary[] }>((r) => { resolveList = r; })),
+      read: vi.fn().mockResolvedValue({ session: null }),
+      create: vi.fn().mockImplementation(async (agent: string, title?: string, greeting?: string, id?: string) => {
+        const s = makeMockSession({
+          id: id ?? 'real-1',
+          agent,
+          title,
+          turns: greeting ? [{ role: 'agent' as const, text: greeting, at: 't0' }] : [],
+        });
+        return { session: s, relPath: `Sessions/${s.id}.md` };
+      }),
+      rename: vi.fn(),
+      duplicate: vi.fn(),
+      delete: vi.fn(),
+      appendTurns: vi.fn().mockImplementation(async (sessionId: string, turns: AgentSessionTurn[]) => ({
+        session: { ...makeMockSession({ id: sessionId }), turns },
+      })),
+    };
+    (window as unknown as Record<string, unknown>).api = { agentSessions: lateApi };
+
+    const { result } = renderHook(() => useAgentSessions('brainstorm'));
+    expect(lateApi.list).toHaveBeenCalledTimes(1);
+    expect(result.current.activeSessionId).toBeNull();
+
+    // The completed exchange is appended while the store is still listing.
+    const turns: AgentSessionTurn[] = [
+      { role: 'user', text: 'Tell me about my main character', at: 't1' },
+      { role: 'agent', text: 'Great idea for your story!', at: 't2' },
+    ];
+    let appended = false;
+    const appending = result.current.appendTurns(turns).then(() => { appended = true; });
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    // Nothing is dropped and nothing is written until init settles.
+    expect(appended).toBe(false);
+    expect(lateApi.create).not.toHaveBeenCalled();
+    expect(lateApi.appendTurns).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveList({ sessions: [] });
+      await appending;
+    });
+
+    // Init auto-created the pending session; the write materialized it and
+    // the turns reached the file under that same id.
+    expect(lateApi.create).toHaveBeenCalledTimes(1);
+    const materializedId = result.current.activeSessionId as string;
+    expect(materializedId).not.toBeNull();
+    expect(lateApi.appendTurns).toHaveBeenCalledWith(materializedId, turns);
+    expect(result.current.activeSession?.turns).toEqual(turns);
+  });
+
   it('SKY-9028: deleting the pending session resets it without any file I/O', async () => {
     const emptyApi = {
       list: vi.fn().mockResolvedValue({ sessions: [] }),

@@ -89,6 +89,11 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
   // translated to the materialized id.
   let pending: AgentSessionFile | null = null;
   let materializing: Promise<string | null> | null = null;
+  // SKY-11540: the initial `list` round-trip. A write that lands before it
+  // settles has no active id yet and used to be dropped on the floor — the
+  // first exchange of a fresh Brainstorm session vanished from the durable
+  // store whenever the reply finished before main answered the list IPC.
+  let initialising: Promise<void> = Promise.resolve();
   // Pending-id → materialized-id. Callers pin a session id when they SEND a
   // request; by the time the async reply appends its turn the pending session
   // may have materialized under a new id, and the write must follow it.
@@ -219,7 +224,7 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
   const ensureInit = () => {
     if (store.initialised) return;
     store.initialised = true;
-    void initSession();
+    initialising = initSession();
   };
 
   store.actions = {
@@ -325,6 +330,10 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
     },
     appendTurns: async (turns: AgentSessionTurn[], sessionId?: string) => {
       const api = getApi();
+      // SKY-11540: never resolve the target id against a store that is still
+      // listing sessions — wait for init so the auto-created pending session
+      // (or the newest file) exists to receive the turns.
+      await initialising;
       // Pin the write to the id the caller captured at send time; never to
       // whatever happens to be active when this promise settles.
       let id = sessionId ?? store.state.activeSessionId;
