@@ -217,86 +217,91 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
     position: 'absolute', [side]: 4, top: '50%', transform: 'translateY(-50%)',
     width: 19, height: 19, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
     background: 'rgba(8,10,18,.72)', border: '1px solid rgba(255,255,255,.18)', color: '#e6ecf9', cursor: 'pointer',
-    padding: 0,
+    padding: 0, pointerEvents: 'auto',
   });
   const wpCards = wpDefs.map(([k, label]) => {
     const active = S.wp === k;
     const thumbBg = wallpaperCss({ ...S, wp: k }, cosmicBgUrl);
     const isMatch = k === 'match';
+    const showArrows = isMatch && hasArrows;
+    // The tile is the selectable role="button"; the arrow controls are
+    // siblings laid over its thumbnail (not descendants) so no interactive
+    // control nests inside another (axe nested-interactive).
     return (
-      <div
-        key={k}
-        data-testid={`lnas-wp-${k}`}
-        onClick={() => patch({ wp: k })}
-        role="button"
-        tabIndex={0}
-        aria-pressed={active}
-        aria-label={isMatch && hasArrows ? `Wallpaper: ${label}, ${matchIdx + 1} of ${matchList.length}` : `Wallpaper: ${label}`}
-        onKeyDown={(e) => {
-          // Left/Right on the Theme match tile cycle its wallpapers (mouse users
-          // get the on-thumbnail arrows); Enter/Space still select the tile.
-          if (isMatch && hasArrows && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
-            e.preventDefault();
-            stepMatch(e.key === 'ArrowRight' ? 1 : -1);
-            return;
-          }
-          onActivateKey(() => patch({ wp: k }))(e);
-        }}
-        className={active ? undefined : 'lnas-hover-border'}
-        style={{
-          flex: 1, minWidth: 120, padding: 7, borderRadius: 13, cursor: 'pointer',
-          background: 'rgba(255,255,255,.03)', transition: 'all .18s ease',
-          ...(active
-            ? { border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.5))', boxShadow: '0 0 18px -5px var(--g1,rgba(0,240,255,.4))' }
-            : { border: '1px solid rgba(255,255,255,.08)' }),
-        }}
-      >
+      <div key={k} style={{ position: 'relative', flex: 1, minWidth: 120, display: 'flex' }}>
         <div
+          data-testid={`lnas-wp-${k}`}
+          onClick={() => patch({ wp: k })}
+          role="button"
+          tabIndex={0}
+          aria-pressed={active}
+          aria-label={showArrows ? `Wallpaper: ${label}, ${matchIdx + 1} of ${matchList.length}` : `Wallpaper: ${label}`}
+          onKeyDown={(e) => {
+            // Left/Right on the Theme match tile cycle its wallpapers (mouse users
+            // get the on-thumbnail arrows); Enter/Space still select the tile.
+            if (showArrows && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+              e.preventDefault();
+              stepMatch(e.key === 'ArrowRight' ? 1 : -1);
+              return;
+            }
+            onActivateKey(() => patch({ wp: k }))(e);
+          }}
+          className={active ? undefined : 'lnas-hover-border'}
           style={{
-            position: 'relative', height: 58, borderRadius: 9, backgroundImage: thumbBg,
-            backgroundSize: 'cover', backgroundPosition: isMatch ? matchList[matchIdx].position : 'center',
-            border: '1px solid rgba(255,255,255,.08)',
+            flex: 1, padding: 7, borderRadius: 13, cursor: 'pointer',
+            background: 'rgba(255,255,255,.03)', transition: 'all .18s ease',
+            ...(active
+              ? { border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.5))', boxShadow: '0 0 18px -5px var(--g1,rgba(0,240,255,.4))' }
+              : { border: '1px solid rgba(255,255,255,.08)' }),
           }}
         >
-          {isMatch && hasArrows && (
-            <>
-              <button
-                type="button"
-                className="lnas-wp-arrow"
-                data-testid="lnas-wp-match-prev"
-                title="Previous theme wallpaper"
-                aria-label="Previous theme wallpaper"
-                onClick={(e) => { e.stopPropagation(); stepMatch(-1); }}
-                style={arrowSt('left')}
-              >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5" /></svg>
-              </button>
-              <button
-                type="button"
-                className="lnas-wp-arrow"
-                data-testid="lnas-wp-match-next"
-                title="Next theme wallpaper"
-                aria-label="Next theme wallpaper"
-                onClick={(e) => { e.stopPropagation(); stepMatch(1); }}
-                style={arrowSt('right')}
-              >
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 5.5L16 12l-6.5 6.5" /></svg>
-              </button>
-              <span
-                data-testid="lnas-wp-match-count"
-                aria-hidden="true"
-                style={{
-                  position: 'absolute', left: '50%', bottom: 3, transform: 'translateX(-50%)',
-                  fontSize: 8.5, fontWeight: 700, letterSpacing: '.06em', color: '#e6ecf9',
-                  background: 'rgba(8,10,18,.72)', borderRadius: 5, padding: '1px 5px', pointerEvents: 'none',
-                }}
-              >
-                {matchIdx + 1}/{matchList.length}
-              </span>
-            </>
-          )}
+          <div
+            style={{
+              height: 58, borderRadius: 9, backgroundImage: thumbBg,
+              backgroundSize: 'cover', backgroundPosition: isMatch ? matchList[matchIdx].position : 'center',
+              border: '1px solid rgba(255,255,255,.08)',
+            }}
+          />
+          <div style={{ fontSize: 11, marginTop: 7, textAlign: 'center', ...(active ? { color: 'var(--n1,#00f0ff)', fontWeight: 600 } : { color: '#aebad0' }) }}>{label}</div>
         </div>
-        <div style={{ fontSize: 11, marginTop: 7, textAlign: 'center', ...(active ? { color: 'var(--n1,#00f0ff)', fontWeight: 600 } : { color: '#aebad0' }) }}>{label}</div>
+        {showArrows && (
+          // Overlay matches the thumbnail box (tile padding 7 + border 1).
+          <div style={{ position: 'absolute', left: 8, right: 8, top: 8, height: 58, pointerEvents: 'none' }}>
+            <button
+              type="button"
+              className="lnas-wp-arrow"
+              data-testid="lnas-wp-match-prev"
+              title="Previous theme wallpaper"
+              aria-label="Previous theme wallpaper"
+              onClick={() => stepMatch(-1)}
+              style={arrowSt('left')}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5" /></svg>
+            </button>
+            <button
+              type="button"
+              className="lnas-wp-arrow"
+              data-testid="lnas-wp-match-next"
+              title="Next theme wallpaper"
+              aria-label="Next theme wallpaper"
+              onClick={() => stepMatch(1)}
+              style={arrowSt('right')}
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 5.5L16 12l-6.5 6.5" /></svg>
+            </button>
+            <span
+              data-testid="lnas-wp-match-count"
+              aria-hidden="true"
+              style={{
+                position: 'absolute', left: '50%', bottom: 3, transform: 'translateX(-50%)',
+                fontSize: 8.5, fontWeight: 700, letterSpacing: '.06em', color: '#e6ecf9',
+                background: 'rgba(8,10,18,.72)', borderRadius: 5, padding: '1px 5px',
+              }}
+            >
+              {matchIdx + 1}/{matchList.length}
+            </span>
+          </div>
+        )}
       </div>
     );
   });
