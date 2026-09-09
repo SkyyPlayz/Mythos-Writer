@@ -22,6 +22,11 @@ const mockProviderListModels = vi.fn();
 const mockVoicePickBinary = vi.fn();
 const mockOnClose = vi.fn();
 const mockOnSaved = vi.fn();
+const mockTemplateList = vi.fn();
+const mockTemplateSaveAs = vi.fn();
+const mockTemplateRename = vi.fn();
+const mockTemplateDuplicate = vi.fn();
+const mockTemplateDelete = vi.fn();
 
 const defaultVaultPaths = {
   storyVaultPath: '/home/test/Mythos/Story Vault',
@@ -31,6 +36,8 @@ const defaultVaultPaths = {
 
 async function flushAsyncEffects() {
   await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -77,6 +84,11 @@ beforeEach(() => {
   mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
   mockProviderListModels.mockResolvedValue({ ok: false, error: 'No models available' });
   mockVoicePickBinary.mockResolvedValue({ path: null, cancelled: true, registrationToken: null });
+  mockTemplateList.mockResolvedValue({ templates: [] });
+  mockTemplateSaveAs.mockResolvedValue({ ok: true, id: 'user:test-1234' });
+  mockTemplateRename.mockResolvedValue({ ok: true });
+  mockTemplateDuplicate.mockResolvedValue({ ok: true, id: 'user:test-copy-1234' });
+  mockTemplateDelete.mockResolvedValue({ ok: true });
   (window as unknown as { api: unknown }).api = {
     settingsGet: mockSettingsGet,
     settingsSet: mockSettingsSet,
@@ -85,6 +97,11 @@ beforeEach(() => {
     chooseVaultFolder: mockChooseVaultFolder,
     providerListModels: mockProviderListModels,
     voicePickBinary: mockVoicePickBinary,
+    templateList: mockTemplateList,
+    templateSaveAs: mockTemplateSaveAs,
+    templateRename: mockTemplateRename,
+    templateDuplicate: mockTemplateDuplicate,
+    templateDelete: mockTemplateDelete,
   };
 });
 
@@ -149,6 +166,7 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
     fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
+    await flushAsyncEffects();
     expect(screen.getByRole('tab', { name: /vault & files/i })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('heading', { name: /^vault paths$/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
@@ -158,9 +176,78 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
     fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
+    await flushAsyncEffects();
     expect(screen.getByRole('heading', { name: /back up & restore/i })).toBeInTheDocument();
     expect(screen.getByTestId('backup-app-data-btn')).toBeInTheDocument();
     expect(screen.getByTestId('restore-app-data-btn')).toBeInTheDocument();
+  });
+
+  describe('SKY-11352: custom-template management (restored)', () => {
+    beforeEach(() => {
+      mockTemplateList.mockResolvedValue({
+        templates: [
+          { id: 'bundled:novel-3act', name: 'Novel (3-Act)', description: 'Bundled', isUserTemplate: false },
+          { id: 'user:my-novel-1234', name: 'My Novel', description: 'Custom: My Novel', isUserTemplate: true },
+        ],
+      });
+    });
+
+    async function openVaultsTab() {
+      await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+      await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+      fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
+      await flushAsyncEffects();
+    }
+
+    it('lists only user templates, with a count badge, and hides bundled ones', async () => {
+      await openVaultsTab();
+      expect(await screen.findByTestId('template-name-user:my-novel-1234')).toHaveTextContent('My Novel');
+      expect(screen.getByTestId('user-templates-count')).toHaveTextContent('1');
+      expect(screen.queryByText('Novel (3-Act)')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('template-delete-btn-bundled:novel-3act')).not.toBeInTheDocument();
+    });
+
+    it('renames a user template and reloads the list', async () => {
+      await openVaultsTab();
+      await screen.findByTestId('template-name-user:my-novel-1234');
+      mockTemplateList.mockResolvedValueOnce({
+        templates: [{ id: 'user:my-novel-1234', name: 'My Renamed Novel', description: '', isUserTemplate: true }],
+      });
+      await clickAndFlush(screen.getByTestId('template-rename-btn-user:my-novel-1234'));
+      const input = screen.getByTestId('template-rename-input-user:my-novel-1234');
+      await changeAndFlush(input, 'My Renamed Novel');
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await flushAsyncEffects();
+      expect(mockTemplateRename).toHaveBeenCalledWith('user:my-novel-1234', 'My Renamed Novel');
+      expect(await screen.findByText('My Renamed Novel')).toBeInTheDocument();
+    });
+
+    it('duplicates a user template', async () => {
+      await openVaultsTab();
+      await screen.findByTestId('template-name-user:my-novel-1234');
+      await clickAndFlush(screen.getByTestId('template-duplicate-btn-user:my-novel-1234'));
+      expect(mockTemplateDuplicate).toHaveBeenCalledWith('user:my-novel-1234');
+    });
+
+    it('shows a confirm dialog before deleting, and cancel preserves the template', async () => {
+      await openVaultsTab();
+      await screen.findByTestId('template-name-user:my-novel-1234');
+      await clickAndFlush(screen.getByTestId('template-delete-btn-user:my-novel-1234'));
+      expect(screen.getByTestId('template-delete-confirm')).toBeInTheDocument();
+      await clickAndFlush(screen.getByTestId('template-delete-cancel'));
+      expect(mockTemplateDelete).not.toHaveBeenCalled();
+      expect(screen.getByTestId('template-name-user:my-novel-1234')).toBeInTheDocument();
+    });
+
+    it('deletes a user template on confirm', async () => {
+      await openVaultsTab();
+      await screen.findByTestId('template-name-user:my-novel-1234');
+      mockTemplateList.mockResolvedValueOnce({ templates: [] });
+      await clickAndFlush(screen.getByTestId('template-delete-btn-user:my-novel-1234'));
+      await clickAndFlush(screen.getByTestId('template-delete-confirm'));
+      expect(mockTemplateDelete).toHaveBeenCalledWith('user:my-novel-1234');
+      await waitFor(() => expect(screen.queryByTestId('user-templates-section')).not.toBeInTheDocument());
+    });
   });
 
   it('SKY-2973: clicking Appearance tab shows appearance sections', async () => {
@@ -1044,6 +1131,7 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
     fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
+    await flushAsyncEffects();
     expect(screen.getByRole('tab', { name: /vault & files/i })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('heading', { name: /^vault paths$/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/stt binary path/i)).not.toBeInTheDocument();

@@ -1,4 +1,11 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+
+interface UserTemplateSummary {
+  id: string;
+  name: string;
+  description: string;
+  isUserTemplate?: boolean;
+}
 
 interface VaultPathsSectionProps {
   vaults: { storyVaultPath: string; notesVaultPath: string };
@@ -30,6 +37,95 @@ export default function VaultPathsSection({
   const [saveAsTplResult, setSaveAsTplResult] = useState<{ ok: true; name: string } | { error: string } | null>(null);
   const saveAsTplInputRef = useRef<HTMLInputElement>(null);
 
+  // SKY-1399 (restored SKY-11352): manage previously-saved custom templates —
+  // rename / duplicate / delete. Bundled templates (isUserTemplate falsy)
+  // never render these actions: template:rename/delete/duplicate only look
+  // inside the user templates dir and throw "Template not found" for them.
+  const [userTemplates, setUserTemplates] = useState<UserTemplateSummary[]>([]);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [templateOpBusyId, setTemplateOpBusyId] = useState<string | null>(null);
+
+  const loadUserTemplates = useCallback(async () => {
+    try {
+      const res = await window.api.templateList();
+      setUserTemplates(res.templates.filter((t) => t.isUserTemplate));
+      setTemplatesError(null);
+    } catch (e) {
+      setTemplatesError(e instanceof Error ? e.message : 'Failed to load templates.');
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadUserTemplates();
+  }, [loadUserTemplates]);
+
+  const handleStartRename = useCallback((tpl: UserTemplateSummary) => {
+    setRenamingId(tpl.id);
+    setRenameValue(tpl.name);
+    setDeleteConfirmId(null);
+  }, []);
+
+  const handleCancelRename = useCallback(() => {
+    setRenamingId(null);
+    setRenameValue('');
+  }, []);
+
+  const handleCommitRename = useCallback(async (id: string) => {
+    const trimmed = renameValue.trim();
+    if (!trimmed) return;
+    setTemplateOpBusyId(id);
+    try {
+      const res = await window.api.templateRename(id, trimmed);
+      if ('error' in res) {
+        setTemplatesError(res.error);
+      } else {
+        setRenamingId(null);
+        setRenameValue('');
+        await loadUserTemplates();
+      }
+    } catch (e) {
+      setTemplatesError(e instanceof Error ? e.message : 'Failed to rename template.');
+    } finally {
+      setTemplateOpBusyId(null);
+    }
+  }, [renameValue, loadUserTemplates]);
+
+  const handleDuplicate = useCallback(async (id: string) => {
+    setTemplateOpBusyId(id);
+    try {
+      const res = await window.api.templateDuplicate(id);
+      if ('error' in res) {
+        setTemplatesError(res.error);
+      } else {
+        await loadUserTemplates();
+      }
+    } catch (e) {
+      setTemplatesError(e instanceof Error ? e.message : 'Failed to duplicate template.');
+    } finally {
+      setTemplateOpBusyId(null);
+    }
+  }, [loadUserTemplates]);
+
+  const handleConfirmDelete = useCallback(async (id: string) => {
+    setTemplateOpBusyId(id);
+    try {
+      const res = await window.api.templateDelete(id);
+      if ('error' in res) {
+        setTemplatesError(res.error);
+      } else {
+        setDeleteConfirmId(null);
+        await loadUserTemplates();
+      }
+    } catch (e) {
+      setTemplatesError(e instanceof Error ? e.message : 'Failed to delete template.');
+    } finally {
+      setTemplateOpBusyId(null);
+    }
+  }, [loadUserTemplates]);
+
   const handleOpenSaveAsTpl = useCallback(() => {
     setSaveAsTplOpen(true);
     setSaveAsTplName('');
@@ -50,13 +146,14 @@ export default function VaultPathsSection({
         setSaveAsTplResult({ ok: true, name });
         setSaveAsTplOpen(false);
         setSaveAsTplName('');
+        await loadUserTemplates();
       }
     } catch (e) {
       setSaveAsTplResult({ error: e instanceof Error ? e.message : 'Failed to save template.' });
     } finally {
       setSaveAsTplBusy(false);
     }
-  }, [saveAsTplName]);
+  }, [saveAsTplName, loadUserTemplates]);
 
   const handleCancelSaveAsTpl = useCallback(() => {
     setSaveAsTplOpen(false);
@@ -204,6 +301,103 @@ export default function VaultPathsSection({
         )}
         <p className="settings-hint">Snapshots the current Story Vault and Notes Vault folder structure as a reusable template.</p>
       </div>
+
+      {/* SKY-11352: restored custom-template management UI (rename / duplicate /
+          delete + confirm dialog + count badge) — deleted from the pre-rewrite
+          onboarding wizard by PR #1408; the IPC layer it drives was never
+          removed (template:rename/delete/duplicate, electron-main/src/templates.ts). */}
+      {userTemplates.length > 0 && (
+        <div className="settings-user-templates" data-testid="user-templates-section">
+          <div className="settings-section-header-row">
+            <h4 className="settings-label" id="user-templates-heading">Your templates</h4>
+            <span className="settings-badge" data-testid="user-templates-count">{userTemplates.length}</span>
+          </div>
+          <ul className="settings-user-templates-list" aria-labelledby="user-templates-heading">
+            {userTemplates.map((tpl) => (
+              <li key={tpl.id} className="settings-user-template-item" data-testid={`user-template-item-${tpl.id}`}>
+                {renamingId === tpl.id ? (
+                  <input
+                    className="settings-input"
+                    type="text"
+                    value={renameValue}
+                    maxLength={80}
+                    autoFocus
+                    aria-label={`Rename template ${tpl.name}`}
+                    data-testid={`template-rename-input-${tpl.id}`}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleCommitRename(tpl.id);
+                      if (e.key === 'Escape') handleCancelRename();
+                    }}
+                    onBlur={() => handleCommitRename(tpl.id)}
+                  />
+                ) : (
+                  <span className="settings-user-template-name" data-testid={`template-name-${tpl.id}`}>{tpl.name}</span>
+                )}
+
+                {deleteConfirmId === tpl.id ? (
+                  <span className="settings-user-template-actions" role="group" aria-label={`Confirm delete ${tpl.name}`}>
+                    <span className="settings-error-msg">Delete &ldquo;{tpl.name}&rdquo;?</span>
+                    <button
+                      type="button"
+                      className="settings-btn-danger"
+                      disabled={templateOpBusyId === tpl.id}
+                      onClick={() => handleConfirmDelete(tpl.id)}
+                      data-testid="template-delete-confirm"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      className="settings-btn-secondary"
+                      onClick={() => setDeleteConfirmId(null)}
+                      data-testid="template-delete-cancel"
+                    >
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  renamingId !== tpl.id && (
+                    <span className="settings-user-template-actions">
+                      <button
+                        type="button"
+                        className="settings-btn-secondary"
+                        disabled={templateOpBusyId === tpl.id}
+                        onClick={() => handleStartRename(tpl)}
+                        data-testid={`template-rename-btn-${tpl.id}`}
+                        aria-label={`Rename ${tpl.name}`}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        className="settings-btn-secondary"
+                        disabled={templateOpBusyId === tpl.id}
+                        onClick={() => handleDuplicate(tpl.id)}
+                        data-testid={`template-duplicate-btn-${tpl.id}`}
+                        aria-label={`Duplicate ${tpl.name}`}
+                      >
+                        Duplicate
+                      </button>
+                      <button
+                        type="button"
+                        className="settings-btn-danger"
+                        disabled={templateOpBusyId === tpl.id}
+                        onClick={() => setDeleteConfirmId(tpl.id)}
+                        data-testid={`template-delete-btn-${tpl.id}`}
+                        aria-label={`Delete ${tpl.name}`}
+                      >
+                        Delete
+                      </button>
+                    </span>
+                  )
+                )}
+              </li>
+            ))}
+          </ul>
+          {templatesError && <span className="settings-error-msg" role="alert" data-testid="user-templates-error">{templatesError}</span>}
+        </div>
+      )}
     </section>
   );
 }
