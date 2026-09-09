@@ -8,7 +8,7 @@
  * (the bug IS that the computed value looked fine while the pixels didn't).
  * This asserts real rendered pixel luminance: with a bright custom
  * wallpaper set, each view's own canvas region must read meaningfully
- * lighter than with wp:'none'.
+ * lighter than with wp:'deep'.
  *
  * Run (after `npm run build:electron`):
  *   npx playwright test e2e/tests/sky-11209-liquid-neon-views.spec.ts --reporter=list
@@ -52,7 +52,7 @@ function seedProject(
   userData: string,
   storyVaultDir: string,
   notesVaultDir: string,
-  wp: 'custom' | 'none',
+  wp: 'custom' | 'deep',
   opts: SeedOptions = {},
 ): void {
   fs.mkdirSync(path.join(storyVaultDir, 'Test Story', 'Manuscript', 'Chapter One'), { recursive: true });
@@ -72,7 +72,9 @@ function seedProject(
     // wallpaper layer painted at z-index:0 inside .desktop-shell).
     liquidNeonV2: wp === 'custom'
       ? { wp: 'custom', customWp: BRIGHT_WALLPAPER_DATA_URL }
-      : { wp: 'none' },
+      // SKY-11589: `none` was removed (normalizes to Theme match); `deep` is the
+      // plain-dark baseline (linear-gradient(#07080d,#07080d)) the old `none` gave.
+      : { wp: 'deep' },
   }, null, 2));
   fs.writeFileSync(path.join(userData, 'vault-settings.json'), JSON.stringify({
     vaultRoot: storyVaultDir, notesVaultRoot: notesVaultDir,
@@ -136,7 +138,7 @@ function meanLuma(pngBuffer: Buffer, box: { x: number; y: number; width: number;
 }
 
 async function withApp(
-  wp: 'custom' | 'none',
+  wp: 'custom' | 'deep',
   fn: (page: Page) => Promise<void>,
   opts: SeedOptions = {},
 ): Promise<void> {
@@ -161,7 +163,7 @@ async function withApp(
 
 test('SKY-11209: Vault Graph canvas shows the wallpaper behind it, not a flat fill', async () => {
   let brightLuma = NaN;
-  let noneLuma = NaN;
+  let deepLuma = NaN;
 
   await withApp('custom', async (page) => {
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]').click();
@@ -173,28 +175,28 @@ test('SKY-11209: Vault Graph canvas shows the wallpaper behind it, not a flat fi
     brightLuma = meanLuma(buf, box!);
   });
 
-  await withApp('none', async (page) => {
+  await withApp('deep', async (page) => {
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]').click();
     await page.waitForSelector('#app-tabpanel-vault-graph', { timeout: 8000 });
     await page.waitForTimeout(1200);
     const box = await page.locator('.vgv-canvas').boundingBox();
     expect(box).not.toBeNull();
     const buf = await page.screenshot();
-    noneLuma = meanLuma(buf, box!);
+    deepLuma = meanLuma(buf, box!);
   });
 
-  // wp:'none' stays dark (no regression from the pre-fix flat --bg-base look).
-  expect(noneLuma).toBeLessThan(30);
+  // wp:'deep' stays dark (no regression from the pre-fix flat --bg-base look).
+  expect(deepLuma).toBeLessThan(30);
   // A bright, busy wallpaper must visibly lighten the canvas region — this
   // is the actual bug: the old opaque fill kept this flat regardless of the
   // wallpaper setting.
   expect(brightLuma).toBeGreaterThan(50);
-  expect(brightLuma - noneLuma).toBeGreaterThan(30);
+  expect(brightLuma - deepLuma).toBeGreaterThan(30);
 });
 
 test('SKY-11209: Manuscript Structure view shows the wallpaper behind it, not a flat fill', async () => {
   let brightLuma = NaN;
-  let noneLuma = NaN;
+  let deepLuma = NaN;
 
   await withApp('custom', async (page) => {
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]').click();
@@ -212,7 +214,7 @@ test('SKY-11209: Manuscript Structure view shows the wallpaper behind it, not a 
     brightLuma = meanLuma(buf, box!);
   });
 
-  await withApp('none', async (page) => {
+  await withApp('deep', async (page) => {
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]').click();
     // A fresh vault has no active story, so Story Writer opens the Stories
     // popover instead of a tabpanel — pick the seeded story to close it and
@@ -225,12 +227,12 @@ test('SKY-11209: Manuscript Structure view shows the wallpaper behind it, not a 
     const box = await page.locator('.msv').boundingBox();
     expect(box).not.toBeNull();
     const buf = await page.screenshot();
-    noneLuma = meanLuma(buf, box!);
+    deepLuma = meanLuma(buf, box!);
   });
 
-  expect(noneLuma).toBeLessThan(30);
+  expect(deepLuma).toBeLessThan(30);
   expect(brightLuma).toBeGreaterThan(50);
-  expect(brightLuma - noneLuma).toBeGreaterThan(30);
+  expect(brightLuma - deepLuma).toBeGreaterThan(30);
 });
 
 // ─── SKY-11492: shared popup primitives on the overlay tier ──────────────────
@@ -305,7 +307,7 @@ async function clickOutsidePopups(page: Page): Promise<void> {
 }
 
 test('SKY-11492: .ln-menu and .ln-select-listbox popups render on the overlay tier', async () => {
-  await withApp('none', async (page) => {
+  await withApp('deep', async (page) => {
     // 1. `.ln-menu` — the Story Navigator context menu, via a real right-click.
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]').click();
     const storyPick = page.locator('[data-testid="nav-rail-story-story-1"]');

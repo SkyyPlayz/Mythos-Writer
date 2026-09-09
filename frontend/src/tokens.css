@@ -684,7 +684,7 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    Beta 3 "Liquid Neon" v2 slot-engine tokens (docs/releases/BETA-LIQUID-NEON.md
    M1). JS (theme/liquidNeonEngine.ts) recomputes and overrides these at
-   runtime; the values below are the Neon Classic defaults at intensity 50 so
+   runtime; the values below are the Neon Nebula defaults at intensity 50 so
    surfaces paint correctly before settings load. Slot roles:
    1 left panel/primary · 2 center/wiki-links · 3 right/agents ·
    4 warm data · 5 cool data · 6 nav rail/timeline.

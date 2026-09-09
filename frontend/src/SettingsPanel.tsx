@@ -812,6 +812,23 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const persistAppearanceLive = useCallback(async () => {
     try {
       const base = await window.api.settingsGet();
+      // SKY-11589: the live path must write the active vault's per-vault
+      // appearance entry too (SKY-11237), exactly as the footer Save does —
+      // otherwise the stale per-vault entry shadows every live Appearance edit
+      // (theme, wallpaper pick, slots…) on the next launch. Persisted entries
+      // win over the load-time seeded map; the active vault gets the edit.
+      const vaultAppearance: AppSettings['vaultAppearance'] = activeVaultRoot
+        ? {
+            ...(settings.vaultAppearance ?? {}),
+            ...(base.vaultAppearance ?? {}),
+            [activeVaultRoot]: {
+              ...(base.vaultAppearance?.[activeVaultRoot] ?? settings.vaultAppearance?.[activeVaultRoot] ?? {}),
+              theme: settings.theme,
+              liquidNeon: lg,
+              ...(settings.liquidNeonV2 !== undefined ? { liquidNeonV2: settings.liquidNeonV2 } : {}),
+            },
+          }
+        : base.vaultAppearance;
       const payload: AppSettings = {
         ...base,
         theme: settings.theme,
@@ -821,6 +838,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         navConfig,
         updateChannel: settings.updateChannel,
         telemetry: { enabled: telemetryEnabled, sessionId: base.telemetry?.sessionId ?? '' },
+        ...(vaultAppearance !== undefined ? { vaultAppearance } : {}),
       };
       await window.api.settingsSet(payload);
       setSaveError(null);
@@ -828,7 +846,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save settings.');
     }
-  }, [settings.theme, settings.liquidNeonV2, settings.updateChannel, lg, pageBg, navConfig, telemetryEnabled, onSaved]);
+  }, [settings.theme, settings.liquidNeonV2, settings.updateChannel, settings.vaultAppearance, activeVaultRoot, lg, pageBg, navConfig, telemetryEnabled, onSaved]);
 
   // Write-guard for the live-persist debounce. The load hydration commits in
   // one batch with setLoading(false), so the first post-load run of the effect

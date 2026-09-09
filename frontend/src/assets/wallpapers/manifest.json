@@ -1,0 +1,236 @@
+{
+  "$comment": "Bundled theme-match wallpapers (SKY-11589). Regenerate with scripts/wallpapers/build-pack.py. Keys are Liquid Neon preset keys (frontend/src/theme/presets.ts). Index 0 of each theme in the app is the built-in wallpaper (Neon Nebula: cosmic-bg.webp; others: the starfield gradient); these files follow it in order. Optional per-entry \"position\" is a CSS background-position (default \"center\").",
+  "position": "center",
+  "themes": {
+    "aurora": [
+      {
+        "file": "aurora-1.webp",
+        "width": 1916,
+        "height": 821
+      },
+      {
+        "file": "aurora-2.webp",
+        "width": 1916,
+        "height": 821
+      },
+      {
+        "file": "aurora-3.webp",
+        "width": 1916,
+        "height": 821
+      },
+      {
+        "file": "aurora-4.webp",
+        "width": 1672,
+        "height": 941
+      },
+      {
+        "file": "aurora-5.webp",
+        "width": 1672,
+        "height": 941
+      },
+      {
+        "file": "aurora-6.webp",
+        "width": 1672,
+        "height": 941
+      }
+    ],
+    "cyber": [
+      {
+        "file": "cyber-1.webp",
+        "width": 1916,
+        "height": 821
+      },
+      {
+        "file": "cyber-2.webp",
+        "width": 1916,
+        "height": 821
+      },
+      {
+        "file": "cyber-3.webp",
+        "width": 1916,
+        "height": 821
+      }
+    ],
+    "ember": [
+      {
+        "file": "ember-1.webp",
+        "width": 1942,
+        "height": 809
+      },
+      {
+        "file": "ember-2.webp",
+        "width": 1942,
+        "height": 809
+      },
+      {
+        "file": "ember-3.webp",
+        "width": 1942,
+        "height": 809
+      }
+    ],
+    "ice": [
+      {
+        "file": "ice-1.webp",
+        "width": 1916,
+        "height": 821
+      },
+      {
+        "file": "ice-2.webp",
+        "width": 1916,
+        "height": 821
+      },
+      {
+        "file": "ice-3.webp",
+        "width": 1916,
+        "height": 821
+      },
+      {
+        "file": "ice-4.webp",
+        "width": 1916,
+        "height": 821
+      }
+    ],
+    "classic": [
+      {
+        "file": "classic-1.webp",
+        "width": 1942,
+        "height": 809
+      },
+      {
+        "file": "classic-2.webp",
+        "width": 1942,
+        "height": 809
+      },
+      {
+        "file": "classic-3.webp",
+        "width": 1942,
+        "height": 809
+      },
+      {
+        "file": "classic-4.webp",
+        "width": 1942,
+        "height": 809
+      }
+    ],
+    "noir": [
+      {
+        "file": "noir-1.webp",
+        "width": 1672,
+        "height": 941
+      },
+      {
+        "file": "noir-2.webp",
+        "width": 1672,
+        "height": 941
+      },
+      {
+        "file": "noir-3.webp",
+        "width": 1672,
+        "height": 941
+      },
+      {
+        "file": "noir-4.webp",
+        "width": 1672,
+        "height": 941
+      },
+      {
+        "file": "noir-5.webp",
+        "width": 1672,
+        "height": 941
+      }
+    ],
+    "royal": [
+      {
+        "file": "royal-1.webp",
+        "width": 1672,
+        "height": 941
+      },
+      {
+        "file": "royal-2.webp",
+        "width": 1672,
+        "height": 941
+      },
+      {
+        "file": "royal-3.webp",
+        "width": 1672,
+        "height": 941
+      },
+      {
+        "file": "royal-4.webp",
+        "width": 1672,
+        "height": 941
+      },
+      {
+        "file": "royal-5.webp",
+        "width": 1672,
+        "height": 941
+      }
+    ],
+    "sunset": [
+      {
+        "file": "sunset-1.webp",
+        "width": 1916,
+        "height": 821
+      },
+      {
+        "file": "sunset-2.webp",
+        "width": 1916,
+        "height": 821
+      },
+      {
+        "file": "sunset-3.webp",
+        "width": 1916,
+        "height": 821
+      },
+      {
+        "file": "sunset-4.webp",
+        "width": 1916,
+        "height": 821
+      }
+    ],
+    "verdant": [
+      {
+        "file": "verdant-1.webp",
+        "width": 1942,
+        "height": 809
+      },
+      {
+        "file": "verdant-2.webp",
+        "width": 1942,
+        "height": 809
+      },
+      {
+        "file": "verdant-3.webp",
+        "width": 1942,
+        "height": 809
+      },
+      {
+        "file": "verdant-4.webp",
+        "width": 1942,
+        "height": 809
+      }
+    ],
+    "winter": [
+      {
+        "file": "winter-1.webp",
+        "width": 1672,
+        "height": 941
+      },
+      {
+        "file": "winter-2.webp",
+        "width": 1938,
+        "height": 811
+      },
+      {
+        "file": "winter-3.webp",
+        "width": 1672,
+        "height": 941
+      },
+      {
+        "file": "winter-4.webp",
+        "width": 1672,
+        "height": 941
+      }
+    ]
+  }
+}

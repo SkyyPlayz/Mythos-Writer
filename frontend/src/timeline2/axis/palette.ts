@@ -1,8 +1,8 @@
 // Beta 4 M22 — Axis engine: lane color palette + alpha helper.
-// Prototype `tlLanePal` (6038) with the Neon Classic slot colors (3973) and
+// Prototype `tlLanePal` (6038) with the Neon Nebula slot colors (3973) and
 // `hexA` (4591).
 
-/** Prototype tlLanePal resolved against the Neon Classic theme slots. */
+/** Prototype tlLanePal resolved against the Neon Nebula theme slots. */
 export const LANE_PALETTE: readonly string[] = [
   '#00f0ff', '#9b5fff', '#ff4dff', '#ff9a3d', '#2fe6c8', '#3d9bff',
   '#ffd319', '#3d9bff', '#2fe6c8',

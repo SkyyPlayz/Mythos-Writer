@@ -1087,6 +1087,9 @@ jobs:
       - name: "E2E — Theme export/import round-trip (FULL-SPEC §14 item 9, SKY-8210)"
         run: xvfb-run --auto-servernum npm run test:e2e:theme-export-import
 
+      - name: "E2E — Theme match wallpaper picker: arrows cycle + per-vault persistence (SKY-11589)"
+        run: xvfb-run --auto-servernum npm run test:e2e:wallpaper-picker
+
       - name: E2E — Settings category sub-nav (SKY-6933 sweep, skip-guarded — needs Electron-harness rewrite)
         run: xvfb-run --auto-servernum npm run test:e2e:settings-category-subnav
 

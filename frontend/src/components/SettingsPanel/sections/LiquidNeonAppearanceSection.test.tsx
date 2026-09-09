@@ -5,7 +5,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import LiquidNeonAppearanceSection from './LiquidNeonAppearanceSection';
 import { LIQUID_NEON_PRESETS } from '../../../theme/presets';
-import { resetLiquidNeonV2Tokens, type LiquidNeonV2Settings } from '../../../theme/liquidNeonEngine';
+import { matchWallpaperList, normalizeLiquidNeonV2, resetLiquidNeonV2Tokens, type LiquidNeonV2Settings } from '../../../theme/liquidNeonEngine';
 
 async function setup(liquidNeonV2: Partial<LiquidNeonV2Settings> | undefined = undefined) {
   const onChange = vi.fn();
@@ -91,15 +91,62 @@ describe('LiquidNeonAppearanceSection', () => {
     expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).wp).toBe('aurora');
   });
 
-  it('wp none applies the plain dark backdrop with no restart affordance (B4-2)', async () => {
-    const { onChange } = await setup();
-    fireEvent.click(screen.getByTestId('lnas-wp-none'));
-    expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).wp).toBe('none');
-    expect(document.documentElement.style.getPropertyValue('--wp')).toBe('linear-gradient(#07090f,#07090f)');
-    expect(screen.queryByTestId('lnas-restart-row')).not.toBeInTheDocument();
+  // SKY-11589 — owner directive: `No background` is gone; Theme match carries
+  // arrows that cycle the preset's bundled wallpapers (mockup 9.9, dc.html 2657).
+  it('SKY-11589: no "No background" card; Theme match shows arrows and a count', async () => {
+    await setup();
+    expect(screen.queryByTestId('lnas-wp-none')).not.toBeInTheDocument();
+    expect(screen.queryByText('No background')).not.toBeInTheDocument();
+    const n = matchWallpaperList(normalizeLiquidNeonV2({ setKey: 'classic' }), '').length;
+    expect(n).toBeGreaterThan(1);
+    expect(screen.getByTestId('lnas-wp-match-count')).toHaveTextContent(`1/${n}`);
+    expect(screen.getByTestId('lnas-wp-match')).toHaveAttribute('aria-label', `Wallpaper: Theme match, 1 of ${n}`);
+    expect(screen.getByLabelText('Next theme wallpaper')).toBeInTheDocument();
+    expect(screen.getByLabelText('Previous theme wallpaper')).toBeInTheDocument();
   });
 
-  it('reset restores the Neon Classic defaults', async () => {
+  it('SKY-11589: arrows step wpPick for the active preset, select match, and repaint --wp', async () => {
+    const { onChange } = await setup({ setKey: 'classic', wp: 'deep' });
+    const list = matchWallpaperList(normalizeLiquidNeonV2({ setKey: 'classic' }), '');
+    fireEvent.click(screen.getByTestId('lnas-wp-match-next'));
+    const next = onChange.mock.calls[0][0] as LiquidNeonV2Settings;
+    expect(next.wp).toBe('match');
+    expect(next.wpPick).toEqual({ classic: 1 });
+    // Live preview points at the second entry (the first bundled pack image).
+    expect(document.documentElement.style.getPropertyValue('--wp')).toContain(list[1].url!.split('/').pop()!);
+    // The arrow click did not bubble into the tile's own select handler.
+    expect(onChange).toHaveBeenCalledTimes(1);
+
+    // Previous from index 0 wraps to the last entry (controlled: re-render with the pick).
+    fireEvent.click(screen.getByTestId('lnas-wp-match-prev'));
+    expect((onChange.mock.calls[1][0] as LiquidNeonV2Settings).wpPick).toEqual({ classic: list.length - 1 });
+  });
+
+  it('SKY-11589: Left/Right keys on the Theme match tile cycle; Enter still selects', async () => {
+    const { onChange } = await setup({ setKey: 'classic', wp: 'deep' });
+    const tile = screen.getByTestId('lnas-wp-match');
+    fireEvent.keyDown(tile, { key: 'ArrowRight' });
+    expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).wpPick).toEqual({ classic: 1 });
+    fireEvent.keyDown(tile, { key: 'Enter' });
+    const sel = onChange.mock.calls[1][0] as LiquidNeonV2Settings;
+    expect(sel.wp).toBe('match');
+    expect(sel.wpPick).toEqual({});
+  });
+
+  it('SKY-11589: a custom palette has nothing to cycle — no arrows on Theme match', async () => {
+    await setup({ setKey: 'custom' });
+    expect(screen.queryByTestId('lnas-wp-match-next')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('lnas-wp-match-count')).not.toBeInTheDocument();
+    expect(screen.getByTestId('lnas-wp-match')).toHaveAttribute('aria-label', 'Wallpaper: Theme match');
+  });
+
+  it('SKY-11589: the Neon Nebula preset card carries the renamed label', async () => {
+    await setup();
+    expect(screen.getByTestId('lnas-preset-classic')).toHaveTextContent('Neon Nebula');
+    expect(screen.queryByText('Neon Classic')).not.toBeInTheDocument();
+  });
+
+  it('reset restores the Neon Nebula defaults', async () => {
     const { onChange } = await setup({ setKey: 'ember', intensity: 90, wp: 'deep' });
     fireEvent.click(screen.getByTestId('lnas-reset'));
     const next = onChange.mock.calls[0][0] as LiquidNeonV2Settings;

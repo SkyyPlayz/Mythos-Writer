@@ -9,6 +9,13 @@ Mythos Writer uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **Theme "Neon Classic" is now "Neon Nebula"** — display name only; the stored preset key is unchanged. (SKY-11589)
+- **Background settings: "No background" removed** — a stored `none` wallpaper mode falls back to Theme match. (SKY-11589)
+
+### Added
+- **Theme match wallpaper cycle** — every Liquid Neon preset ships several wallpapers; arrows on the Theme match tile (Settings → Appearance → Background) cycle them, and the pick persists per vault. The pack is manifest-driven (`frontend/src/assets/wallpapers/manifest.json`, regenerate with `scripts/wallpapers/build-pack.py`). (SKY-11589)
+
 ## [0.5.0-beta.1] — 2026-07-23
 
 **"Liquid Neon · Refined."** Beta 4 closes the gap between the Beta 3 shell and the approved v2 prototype across integrity/performance, fidelity, and 29 build milestones (build plan: [`docs/releases/BETA-REFINE.md`](docs/releases/BETA-REFINE.md)).

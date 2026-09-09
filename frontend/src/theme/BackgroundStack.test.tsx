@@ -7,7 +7,7 @@ import type { LiquidNeonV2Settings } from './liquidNeonEngine';
 import { LIQUID_NEON_PRESETS } from './presets';
 
 describe('ambienceLayerStyle (verbatim mkAmb)', () => {
-  it('Neon Classic layer 0: white dots, lnRiseT 46s, opacity .4', () => {
+  it('Neon Nebula layer 0: white dots, lnRiseT 46s, opacity .4', () => {
     const st = ambienceLayerStyle({ setKey: 'classic', slots: [...LIQUID_NEON_PRESETS.classic.c] }, 0)!;
     expect(st.backgroundImage).toBe(
       'radial-gradient(1.8px 1.8px at 25% 30%,rgba(255,255,255,.75),transparent 100%),radial-gradient(1.4px 1.4px at 65% 72%,rgba(255,255,255,.75),transparent 100%)',
@@ -20,7 +20,7 @@ describe('ambienceLayerStyle (verbatim mkAmb)', () => {
     expect(st.willChange).toBe('transform');
   });
 
-  it('Neon Classic layer 1: slot-B tinted dots at .7 scale, lnRiseT 70s', () => {
+  it('Neon Nebula layer 1: slot-B tinted dots at .7 scale, lnRiseT 70s', () => {
     const st = ambienceLayerStyle({ setKey: 'classic', slots: [...LIQUID_NEON_PRESETS.classic.c] }, 1)!;
     // hexA('#9b5fff', .5) — layer color derives from the LIVE palette.
     expect(st.backgroundImage).toContain('rgba(155,95,255,0.500)');
