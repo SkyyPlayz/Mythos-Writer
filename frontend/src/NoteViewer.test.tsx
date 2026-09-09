@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import NoteViewer, { NOTES_DEFAULT_RICH_KEY, NOTES_MODE_BY_PATH_KEY } from './NoteViewer';
+import { runQuitFlushers, __resetQuitFlushers } from './lib/flushBeforeQuit';
 
 const readNotesVault = vi.fn();
 const writeNotesVault = vi.fn();
@@ -1023,5 +1024,38 @@ describe('NoteViewer M8d surface inventory', () => {
 
     fireEvent.click(screen.getByTestId('note-tag-add-btn'));
     expect(screen.getByTestId('note-add-tag-input')).toHaveFocus();
+  });
+});
+
+// SKY-11646: the same silent data loss the scene editor had. Closing the
+// window tears the renderer down without unmounting React, so NoteViewer's
+// unmount save never runs and an edit inside the 800ms autosave debounce is
+// dropped. The note now registers with the shell's quit-flush registry.
+describe('NoteViewer quit flush (SKY-11646)', () => {
+  afterEach(() => __resetQuitFlushers());
+
+  it('writes a pending debounced edit when the shell drains quit flushers', async () => {
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
+    await screen.findByLabelText('Edit note: Test.md');
+    writeNotesVault.mockClear();
+
+    fireEvent.change(screen.getByLabelText('Edit note: Test.md'), {
+      target: { value: 'Typed right before the X button.' },
+    });
+    expect(writeNotesVault).not.toHaveBeenCalled();
+
+    await act(async () => { await runQuitFlushers(); });
+
+    expect(writeNotesVault).toHaveBeenCalledWith('Notes/Test.md', 'Typed right before the X button.');
+  });
+
+  it('writes nothing on quit when the note was only opened', async () => {
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
+    await screen.findByLabelText('Edit note: Test.md');
+    writeNotesVault.mockClear();
+
+    await act(async () => { await runQuitFlushers(); });
+
+    expect(writeNotesVault).not.toHaveBeenCalled();
   });
 });

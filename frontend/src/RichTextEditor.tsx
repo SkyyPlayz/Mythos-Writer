@@ -14,6 +14,7 @@ import WikiLinkPicker, { buildWikiLinkPickerItems, type WikiLinkCandidate, type 
 import { WIKI_LINK_RESOLUTION_META } from './WikiLinkResolutionExtension';
 import type { EntityEntry } from './types';
 import { useRichEditor, getEditorMarkdown } from './lib/useRichEditor';
+import { registerQuitFlusher } from './lib/flushBeforeQuit';
 import FormatToolbar, { type FormatToolbarActions } from './FormatToolbar';
 import './EntityMention.css';
 import './WikiLinkPicker.css';
@@ -187,6 +188,15 @@ export default function RichTextEditor({
   // Skip mention-state setters until mounted, preventing React act() warnings
   // from Tiptap's internal initialization events.
   const editorMountedRef = useRef(false);
+  // SKY-11646: true once the mount tick has passed, and true once a document
+  // change has landed after it. Surfaces that leave `suppressInitialChange`
+  // off (the Story editor) let Tiptap's initial content-normalization
+  // transaction arm a pending flush, so "something is pending" alone is not
+  // evidence the user typed. The quit flusher needs that evidence — otherwise
+  // merely opening a scene and closing the app would rewrite it and bump its
+  // "last edited" stamp.
+  const postMountRef = useRef(false);
+  const userEditedRef = useRef(false);
 
   useEffect(() => {
     window.api.entityList().then(({ entities: list }) => setEntities(list)).catch(() => {});
@@ -225,6 +235,7 @@ export default function RichTextEditor({
       syncWikiLinkState(ed);
       onUpdateRef.current?.(ed);
       if (!initializedRef.current) return;
+      if (postMountRef.current) userEditedRef.current = true;
       if (changeTimerRef.current) clearTimeout(changeTimerRef.current);
       const flush = () => {
         pendingFlushRef.current = null;
@@ -251,10 +262,13 @@ export default function RichTextEditor({
   useEffect(() => {
     if (!editor) return;
     editorMountedRef.current = true;
-    if (initializedRef.current) {
-      return () => { editorMountedRef.current = false; };
-    }
-    const timer = setTimeout(() => { initializedRef.current = true; }, 0);
+    // The timer is armed unconditionally (setting an already-true
+    // initializedRef is a no-op) so postMountRef flips on every surface, not
+    // only the ones that suppress the initial change.
+    const timer = setTimeout(() => {
+      initializedRef.current = true;
+      postMountRef.current = true;
+    }, 0);
     return () => {
       clearTimeout(timer);
       editorMountedRef.current = false;
@@ -284,6 +298,22 @@ export default function RichTextEditor({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // SKY-11646: closing the window does NOT unmount React, so the flush above
+  // never runs on quit — type a word, hit X inside the 800ms debounce, and the
+  // text was gone. Register the same flush with the shell's quit registry
+  // (SKY-11363) so the debounce is drained before the close is acked. This is
+  // the shared editor core, so every surface built on it (scene body, chapter
+  // interlude, note body) inherits the guard.
+  useEffect(() => registerQuitFlusher(() => {
+    if (!userEditedRef.current || !pendingFlushRef.current) return;
+    if (changeTimerRef.current) {
+      clearTimeout(changeTimerRef.current);
+      changeTimerRef.current = null;
+    }
+    // `flush` clears pendingFlushRef itself, so a second quit attempt is a no-op.
+    pendingFlushRef.current();
+  }), []);
 
   // Insert an entityMention node at the current @-trigger position.
   const insertEntityMention = useCallback((entity: EntityEntry) => {

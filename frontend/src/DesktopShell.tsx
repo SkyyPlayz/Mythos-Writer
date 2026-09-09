@@ -39,7 +39,7 @@ import { cursorChapter, cursorDefaultScene, cycleDraftState, draftStateLabel, is
 import { appendChapterToStory, mapAllChapters, reconcileParts, syncChaptersFromParts, updateChapterOwner } from './story/storyParts';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
-import { runQuitFlushers } from './lib/flushBeforeQuit';
+import { runQuitFlushers, trackQuitCriticalWrite } from './lib/flushBeforeQuit';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail, { type NavRailVault } from './AppNavRail';
@@ -1970,10 +1970,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-11363: also drain every other registered debounced writer (e.g. the
   // brainstorm board) via runQuitFlushers before acking, so no component's
   // pending save is dropped on a full app-quit.
+  // SKY-11646: flushers run FIRST, manifest second. Draining the scene editor's
+  // debounce re-enters updateManifest → scheduleManifestSave, so a manifest
+  // flushed before the flushers would miss the very edit we just rescued.
   useEffect(() => {
     if (!window.api?.onFlushBeforeQuit) return;
     const unsub = window.api.onFlushBeforeQuit(() => {
       (async () => {
+        await runQuitFlushers();
         if (saveTimer.current) {
           clearTimeout(saveTimer.current);
           saveTimer.current = null;
@@ -1983,7 +1987,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         if (pending) {
           await persistManifest(pending);
         }
-        await runQuitFlushers();
         window.api.notifyFlushBeforeQuitDone?.();
       })();
     });
@@ -3202,7 +3205,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   const persistSceneMarkdown = useCallback(async (scene: Scene) => {
     try {
-      await window.api.writeVault(scene.path, blocksToMarkdown(scene));
+      // SKY-11646: every caller fires this without awaiting, so on quit the
+      // write can still be in flight when the window closes. Track it as
+      // quit-critical — the flush-before-quit handshake drains it before
+      // acking, which is what keeps the last keystrokes on disk.
+      await trackQuitCriticalWrite(window.api.writeVault(scene.path, blocksToMarkdown(scene)));
     } catch (e) {
       console.error('Failed to write scene markdown:', e);
     }

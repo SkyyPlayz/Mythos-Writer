@@ -131,4 +131,36 @@ describe('DesktopShell flush-before-quit (SKY-9973)', () => {
     // The flusher completed BEFORE the quit ack — the barrier holds.
     expect(order).toEqual(['flusher', 'done']);
   });
+
+  // SKY-11646: draining the scene editor's debounce re-enters updateManifest,
+  // which schedules a NEW manifest save. If the manifest were flushed before
+  // the flushers ran, that rescued edit would be dropped from the manifest.
+  it('runs quit flushers before the manifest flush, so a flusher can still dirty it', async () => {
+    render(<App />);
+    await screen.findByRole('navigation', { name: 'Main navigation' });
+    await waitFor(() => expect(window.api.onFlushBeforeQuit).toHaveBeenCalled());
+
+    const order: string[] = [];
+    (window.api.writeManifest as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      order.push('manifest');
+      return Promise.resolve({});
+    });
+    (window.api.notifyFlushBeforeQuitDone as ReturnType<typeof vi.fn>).mockImplementation(() => {
+      order.push('done');
+    });
+
+    // A pending debounced manifest save, exactly as an edit would leave it.
+    const divider = await screen.findByRole('separator', { name: 'Resize left panel' });
+    fireEvent.keyDown(divider, { key: 'Home' });
+    expect(window.api.writeManifest).not.toHaveBeenCalled();
+
+    registerQuitFlusher(
+      () => new Promise<void>((resolve) => setTimeout(() => { order.push('flusher'); resolve(); }, 10)),
+    );
+
+    flushCallback!();
+
+    await waitFor(() => expect(window.api.notifyFlushBeforeQuitDone).toHaveBeenCalledTimes(1));
+    expect(order).toEqual(['flusher', 'manifest', 'done']);
+  });
 });
