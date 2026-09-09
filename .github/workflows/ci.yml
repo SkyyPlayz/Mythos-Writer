@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -121,7 +121,7 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -156,7 +156,7 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -194,7 +194,7 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -279,7 +279,7 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -363,7 +363,7 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -554,7 +554,7 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -772,7 +772,7 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -971,7 +971,7 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -1235,7 +1235,7 @@ jobs:
 
       - name: Set up Node.js
         if: github.event_name != 'pull_request'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -1404,7 +1404,7 @@ jobs:
 
       - name: Set up Node.js
         if: github.event_name != 'pull_request'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -1534,7 +1534,7 @@ jobs:
         run: Add-MpPreference -ExclusionPath "$env:TEMP"
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
