@@ -86,7 +86,7 @@ async function gotoNotesVaultTree(page: Page): Promise<void> {
 }
 
 const folderTile = (page: Page, name: string) =>
-  page.locator('.board-canvas__item--folder', { hasText: name }).first();
+  page.getByRole('button', { name: `Board: ${name}. Double-click to open.` });
 
 /** Right-click a folder tile, pick a colour swatch, then a glyph — closes the picker. */
 async function capture(page: Page, name: string): Promise<void> {
