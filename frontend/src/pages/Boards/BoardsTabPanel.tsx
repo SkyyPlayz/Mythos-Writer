@@ -30,6 +30,12 @@ export interface BoardsTabPanelProps {
   notesVaultValid: boolean;
   /** SKY-11186: Settings → Editor → Notes Board zoom-out limit (percent). */
   minZoom?: number;
+  /**
+   * SKY-11615: navigate straight to a vault-relative folder — a `[[Folder]]`
+   * wiki-link click elsewhere in the app. `seq` is bumped per request so
+   * re-clicking the folder you are already on still re-navigates.
+   */
+  openFolderRequest?: { folderPath: string; seq: number } | null;
 }
 
 /**
@@ -52,10 +58,22 @@ function vaultPathOf(folderPath: string, itemPath: string): string {
   return folderPath ? `${folderPath}/${itemPath}` : itemPath;
 }
 
+/** SKY-11615: breadcrumb stack for an arbitrary vault-relative folder path,
+ *  so a deep-linked board still shows the trail back up to Home. */
+function breadcrumbForFolder(folderPath: string): BreadcrumbEntry[] {
+  const crumbs: BreadcrumbEntry[] = [HOME_CRUMB];
+  let parent = '';
+  for (const segment of folderPath.split('/').filter(Boolean)) {
+    parent = vaultPathOf(parent, segment);
+    crumbs.push({ folderPath: parent, name: segment });
+  }
+  return crumbs;
+}
+
 /** How long to coalesce a burst of vault change events before reloading the board. */
 const VAULT_CHANGE_RELOAD_MS = 200;
 
-export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoom }: BoardsTabPanelProps) {
+export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoom, openFolderRequest }: BoardsTabPanelProps) {
   // Breadcrumb stack — bottom is home (vault root), top is current board
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([HOME_CRUMB]);
 
@@ -65,6 +83,16 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   useEffect(() => {
     setBreadcrumb([HOME_CRUMB]);
   }, [notesVaultRoot]);
+
+  // SKY-11615: external deep-link (a `[[Folder]]` wiki-link click). Keyed on
+  // `seq`, not the path, so the same folder can be requested twice.
+  const requestSeq = openFolderRequest?.seq;
+  const requestPath = openFolderRequest?.folderPath;
+  useEffect(() => {
+    if (requestSeq === undefined || requestPath === undefined) return;
+    setBreadcrumb(breadcrumbForFolder(requestPath));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `seq` is the trigger; the path rides along with it.
+  }, [requestSeq]);
 
   const [items, setItems] = useState<BoardItem[]>([]);
   const [savedLayout, setSavedLayout] = useState<Record<string, ItemLayout>>({});

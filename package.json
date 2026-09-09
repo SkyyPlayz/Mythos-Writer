@@ -38,6 +38,7 @@
     "test:e2e:vault-rail-stable-order": "playwright test e2e/tests/sky-11238-vault-rail-stable-order.spec.ts --reporter=list,html",
     "test:e2e:archive-quickadd": "playwright test e2e/timeline-archive-quickadd.spec.ts --reporter=list,html",
     "test:e2e:timeline-rebuild": "playwright test e2e/timeline-rebuild-sky10876.spec.ts --reporter=list,html",
+    "test:e2e:timeline-wikilinks": "playwright test e2e/tests/sky-11615-timeline-wikilinks.spec.ts --reporter=list,html",
     "test:e2e:paragraph-editing": "playwright test e2e/paragraph-editing.spec.ts --reporter=list,html",
     "test:e2e:jobs-responsiveness": "playwright test e2e/tests/m12-scale-architecture-acceptance.spec.ts -g \"starting a large vault scan\" --reporter=list,html",
     "test:e2e:folder-ops": "playwright test e2e/folder-ops-sky7995.spec.ts --reporter=list,html",

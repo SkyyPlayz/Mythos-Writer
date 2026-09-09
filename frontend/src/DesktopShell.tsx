@@ -91,6 +91,7 @@ import BoardsTabPanel from './pages/Boards/BoardsTabPanel';
 import ManuscriptStructureView from './ManuscriptStructureView';
 import BookPreview from './story/BookPreview';
 import TimelineRoot from './TimelineRoot';
+import type { TimelineWikiLinkApi } from './timeline2/TimelineWikiText';
 import { useTextPrompt } from './useTextPrompt';
 import { useCreateMythosVaultFlow } from './useCreateMythosVaultFlow';
 import { WIZARD_OPEN_IMPORT_STEP_KEY } from './OnboardingWizard';
@@ -131,7 +132,7 @@ import StorySubViewBar from './StorySubViewBar';
 import NotesTabPanel from './NotesTabPanel';
 import BrainstormPage from './BrainstormPage';
 import BetaReaderPage from './beta/BetaReaderPage';
-import { resolveCrossTabLink, buildWikiLinkTitleIndex, buildWikiLinkCandidates, buildSceneWikiLinkTitleIndex, notePathForUnresolvedLink, buildUnresolvedLinkNote, wikiLinkTargetStem, type CrossTabLinkMatch } from './crossTabLinkResolver';
+import { resolveCrossTabLink, resolveWikiLinkTarget, crossTabLinkMatchKey, buildWikiLinkTitleIndex, buildWikiLinkCandidates, buildSceneWikiLinkTitleIndex, notePathForUnresolvedLink, buildUnresolvedLinkNote, wikiLinkTargetStem, type CrossTabLinkMatch } from './crossTabLinkResolver';
 import type { WikiLinkPreviewData } from './WikiLinkHoverPreview';
 import {
   tabbedShellReducer,
@@ -995,6 +996,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-192: entity registry for the auto-linker
   const [allEntities, setAllEntities] = useState<EntityEntry[]>([]);
   const [allNotePaths, setAllNotePaths] = useState<string[]>([]);
+  // SKY-11615: the directory half of the same listNotesVault() result — feeds
+  // `[[Folder]]` wiki-link resolution without a second vault walk.
+  const [allFolderPaths, setAllFolderPaths] = useState<string[]>([]);
+  // SKY-11615: a `[[Folder]]` click asks the Boards tab to navigate. `seq`
+  // makes a repeat click on the folder you are already on re-fire.
+  const [boardsFolderRequest, setBoardsFolderRequest] = useState<{ folderPath: string; seq: number } | null>(null);
 
   // SKY-130: cross-restart scene/cursor restore refs
   const pendingCursorPosRef = useRef<number | null>(null);
@@ -1762,11 +1769,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         window.api.listNotesVault?.().catch(() => null),
       ]);
       setAllEntities(entityResult.entities ?? []);
-      setAllNotePaths(
-        notesResult && !('error' in notesResult)
-          ? (notesResult.items ?? []).filter((item) => !item.isDirectory).map((item) => item.path)
-          : [],
-      );
+      const notesItems = notesResult && !('error' in notesResult) ? (notesResult.items ?? []) : [];
+      setAllNotePaths(notesItems.filter((item) => !item.isDirectory).map((item) => item.path));
+      setAllFolderPaths(notesItems.filter((item) => item.isDirectory).map((item) => item.path));
     } catch {
       // non-fatal; auto-linker just won't suggest anything
     }
@@ -4588,11 +4593,44 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (match.kind === 'scene') {
       setOpenedNotePath(null);
       handleSelectScene(match.scene, match.chapter, match.story);
-      setView('editor');
-      setViewDepth('scene');
+      // Order matters: handleTabChange('story') restores the persisted story
+      // sub-view, so the editor has to be chosen AFTER it — otherwise a link
+      // followed from the Timeline (or Kanban) lands you straight back on the
+      // surface you clicked from. handleSetView also persists the sub-view, so
+      // the story tab remembers you are in the editor now.
       handleTabChange('story');
+      handleSetView('editor');
+      setViewDepth('scene');
       setSceneFlashId(match.sceneId);
       window.setTimeout(() => setSceneFlashId((current) => current === match.sceneId ? null : current), 1200);
+      return;
+    }
+
+    // SKY-11615: a chapter link lands on the manuscript at chapter depth. Its
+    // first scene is the natural caret home; an empty chapter still opens, it
+    // just has no scene to select.
+    if (match.kind === 'chapter') {
+      setOpenedNotePath(null);
+      const firstScene = match.chapter.scenes[0];
+      if (firstScene) {
+        handleSelectScene(firstScene, match.chapter, match.story);
+      } else {
+        setSelectedScene(null);
+        setSelectedEntity(null);
+        setSelectedStory(match.story);
+        setSelectedChapter(match.chapter);
+      }
+      handleTabChange('story');
+      handleSetView('editor');
+      setViewDepth('chapter');
+      return;
+    }
+
+    // SKY-11615: a folder link opens that folder as a board (mockup wikiClick).
+    if (match.kind === 'folder') {
+      setOpenedNotePath(null);
+      setBoardsFolderRequest((prev) => ({ folderPath: match.folderPath, seq: (prev?.seq ?? 0) + 1 }));
+      handleTabChange('boards');
       return;
     }
 
@@ -4603,7 +4641,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setOpenedNotePath(match.entityPath);
     handleNotesSubViewChange('editor');
     handleTabChange('notes');
-  }, [handleSelectScene, handleTabChange, handleNotesSubViewChange, setViewDepth]);
+  }, [handleSelectScene, handleTabChange, handleNotesSubViewChange, handleSetView, setViewDepth]);
 
   const handleWikiLinkClick = useCallback((target: string) => {
     const resolution = resolveCrossTabLink(target, {
@@ -4638,24 +4676,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     [stories],
   );
 
-  // M16: notes-editor wiki-link click — same resolution as the story editor,
-  // but an unresolved link CREATES the note in the Notes Vault (Obsidian
-  // parity, plan §M16 "unresolved click creates the note") instead of only
-  // toasting. The story editor keeps its warn-toast behavior.
-  const handleNotesWikiLinkClick = useCallback((target: string) => {
-    const resolution = resolveCrossTabLink(target, {
-      stories,
-      entities: allEntities,
-      notePaths: allNotePaths,
-    });
-    if (resolution.status === 'single') {
-      applyCrossTabLinkMatch(resolution.matches[0]);
-      return;
-    }
-    if (resolution.status === 'ambiguous') {
-      setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
-      return;
-    }
+  // M16: an unresolved [[link]] CREATES the note in the Notes Vault (Obsidian
+  // parity, plan §M16 "unresolved click creates the note") and opens it.
+  // Shared by the notes editor and, since SKY-11615, the Timeline — the story
+  // editor keeps its warn-toast behavior instead.
+  const createNoteForUnresolvedLink = useCallback((target: string) => {
     const newNotePath = notePathForUnresolvedLink(target);
     if (!newNotePath) return;
     void (async () => {
@@ -4684,7 +4709,48 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       handleNotesSubViewChange('editor');
       handleTabChange('notes');
     })();
-  }, [stories, allEntities, allNotePaths, applyCrossTabLinkMatch, handleNotesSubViewChange, handleTabChange, loadEntities, showWikiLinkToast]);
+  }, [handleNotesSubViewChange, handleTabChange, loadEntities, showWikiLinkToast]);
+
+  // M16: notes-editor wiki-link click — same resolution as the story editor,
+  // but unresolved creates the note instead of only toasting.
+  const handleNotesWikiLinkClick = useCallback((target: string) => {
+    const resolution = resolveCrossTabLink(target, {
+      stories,
+      entities: allEntities,
+      notePaths: allNotePaths,
+    });
+    if (resolution.status === 'single') {
+      applyCrossTabLinkMatch(resolution.matches[0]);
+      return;
+    }
+    if (resolution.status === 'ambiguous') {
+      setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
+      return;
+    }
+    createNoteForUnresolvedLink(target);
+  }, [stories, allEntities, allNotePaths, applyCrossTabLinkMatch, createNoteForUnresolvedLink]);
+
+  // SKY-11615: the Timeline's [[wiki links]] resolve one target in the product
+  // order (scene → chapter → note → folder) rather than opening the ambiguity
+  // picker — a link inside prose has to paint a single colour, so it has to
+  // mean a single thing. Unresolved falls through to the same create-note flow
+  // the notes editor uses.
+  const timelineWikiLinks = useMemo<TimelineWikiLinkApi>(() => {
+    const context = {
+      stories,
+      entities: allEntities,
+      notePaths: allNotePaths,
+      folderPaths: allFolderPaths,
+    };
+    return {
+      resolve: (target: string) => resolveWikiLinkTarget(target, context),
+      open: (target: string) => {
+        const match = resolveWikiLinkTarget(target, context);
+        if (match) applyCrossTabLinkMatch(match);
+        else createNoteForUnresolvedLink(target);
+      },
+    };
+  }, [stories, allEntities, allNotePaths, allFolderPaths, applyCrossTabLinkMatch, createNoteForUnresolvedLink]);
 
   // M16: hover-preview resolver — notes read via the vault IPC, scenes from
   // the already-loaded in-memory blocks. Null means "unresolved" and the card
@@ -4705,6 +4771,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         markdown: match.scene.blocks.map((b) => b.content).join('\n\n'),
       };
     }
+    // resolveCrossTabLink only ever yields scene/entity matches; chapters and
+    // folders are the Timeline's resolveWikiLinkTarget path, which has no
+    // markdown body to preview.
+    if (match.kind !== 'entity') return null;
     const r = await window.api.readNotesVault(match.entityPath);
     if ('error' in r) return null; // fallback entity whose file does not exist yet
     return {
@@ -6325,7 +6395,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         <div className="shell-timeline">
           {/* SKY-3185 — F5: TimelineRoot owns the mode switcher (Spreadsheet |
               AEON | AEON Track), grouping, and cross-view selection state. */}
-          <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} />
+          <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} wikiLinks={timelineWikiLinks} />
         </div>
       )}
       {activeDockedTabId === null && view === 'structure' && (
@@ -7073,6 +7143,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             notesVaultRoot={vaultBinding.notesPath}
             notesVaultValid={vaultBinding.notesValid}
             minZoom={appSettings?.notesBoard?.minZoom}
+            openFolderRequest={boardsFolderRequest}
           />
         </div>
       )}
@@ -7217,7 +7288,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             <div className="cross-tab-link-modal__list">
               {ambiguousLink.matches.map((match) => (
                 <button
-                  key={match.kind === 'scene' ? `scene-${match.sceneId}` : `entity-${match.entityId}`}
+                  key={crossTabLinkMatchKey(match)}
                   type="button"
                   onClick={() => applyCrossTabLinkMatch(match)}
                 >
@@ -7298,7 +7369,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 <div className="shell-editor-empty"><p>Select a story to see its Scene Board.</p></div>
               )
             ) : workspaceSplitKind === 'timeline' ? (
-              <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} />
+              <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} wikiLinks={timelineWikiLinks} />
             ) : workspaceSplitKind === 'vault-graph' ? (
               <VaultGraphView onOpenNote={handleOpenSceneByPath} onOpenScene={handleOpenGraphScene} />
             ) : workspaceSplitKind === 'brainstorm' ? (

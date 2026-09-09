@@ -1,0 +1,102 @@
+/* SKY-11615 — Timeline [[wiki link]] segments + reference badges.
+   Values ported from the design authority's `wikiSeg` / `tlRefBadges`
+   (owner-reports/2026-09-09-design-liquid-neon.dc.html, 7498 & 7513).
+   Note links follow the theme's slot-B neon (--n2) exactly as the notes
+   editor does (NoteViewer.css .note-wiki-link); the gold, teal and pink are
+   fixed semantic colours in the mockup and stay literal here. */
+
+.tlw-link {
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+  padding: 0 1.5px;
+  text-decoration: underline;
+  text-underline-offset: 2.5px;
+  transition: background 0.12s ease;
+}
+
+.tlw-link:focus-visible {
+  outline: 1px solid currentcolor;
+  outline-offset: 1px;
+}
+
+/* Scene + chapter — story gold. */
+.tlw-link--story {
+  color: #ffd319;
+  text-decoration-color: rgb(255 211 25 / 0.55);
+}
+
+.tlw-link--story:hover {
+  background: rgb(255 211 25 / 0.16);
+  text-decoration-color: #ffd319;
+}
+
+/* Note — slot-B purple, theme-reactive like every other note link. */
+.tlw-link--note {
+  color: var(--n2, #9b5fff);
+  text-decoration-color: rgb(155 95 255 / 0.55);
+}
+
+.tlw-link--note:hover {
+  background: rgb(155 95 255 / 0.16);
+  text-decoration-color: var(--n2, #9b5fff);
+}
+
+/* Folder — teal; opens as a board. */
+.tlw-link--folder {
+  color: #2fe6c8;
+  text-decoration-color: rgb(47 230 200 / 0.55);
+}
+
+.tlw-link--folder:hover {
+  background: rgb(47 230 200 / 0.16);
+  text-decoration-color: #2fe6c8;
+}
+
+/* Unresolved — pink, dashed; clicking creates the note. */
+.tlw-link--unresolved {
+  color: #ff7d9e;
+  text-decoration-color: rgb(255 125 158 / 0.55);
+  text-decoration-style: dashed;
+}
+
+.tlw-link--unresolved:hover {
+  background: rgb(255 125 158 / 0.16);
+  text-decoration-color: #ff7d9e;
+}
+
+/* ── Reference badges ── */
+
+.tlw-badges {
+  align-items: center;
+  display: flex;
+  flex: none;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.tlw-badge {
+  align-items: center;
+  border-radius: 5px;
+  display: flex;
+  flex: none;
+  font-size: 8.5px;
+  font-weight: 700;
+  gap: 2px;
+  height: 14px;
+  padding: 0 4px;
+}
+
+.tlw-badge--note {
+  background: rgb(47 230 200 / 0.13);
+  border: 1px solid rgb(47 230 200 / 0.45);
+  color: #2fe6c8;
+}
+
+.tlw-badge--story {
+  background: rgb(255 211 25 / 0.13);
+  border: 1px solid rgb(255 211 25 / 0.45);
+  color: #ffd319;
+}

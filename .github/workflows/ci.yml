@@ -903,6 +903,9 @@ jobs:
       - name: E2E — "Rebuild my timeline" command IPC->disk (SKY-10876/M12.B4b)
         run: xvfb-run --auto-servernum npm run test:e2e:timeline-rebuild
 
+      - name: E2E — Timeline event wiki-links resolve + navigate (SKY-11615)
+        run: xvfb-run --auto-servernum npm run test:e2e:timeline-wikilinks
+
       - name: E2E — Paragraph split/merge/grip-drag reorder IPC->disk (SKY-8564)
         run: xvfb-run --auto-servernum npm run test:e2e:paragraph-editing
 

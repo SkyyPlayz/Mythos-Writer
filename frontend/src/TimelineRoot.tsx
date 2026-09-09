@@ -59,6 +59,7 @@ import TimelinePlotlines from './TimelinePlotlines';
 import { TimelineSubwayTableToggleButton } from './TimelineSubwayTableToggle';
 import TimelineSubwayTableView from './TimelineSubwayTableToggle';
 import AxisView, { type AxisChapterCell } from './timeline2/AxisView';
+import { TimelineWikiLinkProvider, type TimelineWikiLinkApi } from './timeline2/TimelineWikiText';
 import CalendarEditorModal from './timeline2/CalendarEditorModal';
 import TimelineRightPanel, { type TimelineRightTab } from './timeline2/panel/TimelineRightPanel';
 import type { TimelineSelection, TimelineSelectableType } from './timeline2/panel/selection';
@@ -216,9 +217,24 @@ interface PlannedBuild {
 interface Props {
   story: Story | null;
   onOpenScene?: (sceneId: string) => void;
+  /**
+   * SKY-11615: resolve + navigate for `[[wiki links]]` in event prose. Owned
+   * by the shell (it holds the vault indexes and every navigation handler) and
+   * republished here as context, because the two surfaces that render those
+   * links sit two and three levels down. Omitted → links render as plain text.
+   */
+  wikiLinks?: TimelineWikiLinkApi;
 }
 
-export default function TimelineRoot({ story, onOpenScene }: Props) {
+export default function TimelineRoot({ wikiLinks, ...rest }: Props) {
+  return (
+    <TimelineWikiLinkProvider value={wikiLinks ?? null}>
+      <TimelineSurface {...rest} />
+    </TimelineWikiLinkProvider>
+  );
+}
+
+function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
   // Lazy init so localStorage is read once per mount, not on every render.
   const [viewMode, setViewModeState] = useState<TimelineMode>(readStoredViewMode);
   const [groupBy, setGroupByState] = useState<TimelineGroupBy>(readStoredGroupBy);
