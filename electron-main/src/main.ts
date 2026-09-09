@@ -3123,8 +3123,16 @@ const handlers: IpcHandlers = {
     });
     if (!created.ok) return { ok: false, error: created.error };
 
-    // Opt-in activation: persist paths, add to recents, (re)start watchers so
-    // the freshly created vault is the one the shell opens. Same sequence as
+    // SKY-11452: ALWAYS register the new pair in recents — that list is what
+    // Settings' vault cards / the nav rail render, and what gates
+    // project:switch (MYT-789 allowlist). A create-without-activate caller
+    // (Settings "New vault…" → "Not now") must still see and later switch to
+    // the vault it just made. Registering is not activating: the open vault,
+    // watchers and DB stay untouched unless `activate` is set.
+    addToRecentProjects(created.storyVaultPath, created.notesVaultPath);
+
+    // Opt-in activation: persist paths, (re)start watchers so the freshly
+    // created vault is the one the shell opens. Same sequence as
     // completeWithMythosV2 / open-existing above.
     if (activate) {
       saveVaultSettings({
@@ -3132,7 +3140,6 @@ const handlers: IpcHandlers = {
         notesVaultRoot: created.notesVaultPath,
         layoutMode: 'blank',
       });
-      addToRecentProjects(created.storyVaultPath, created.notesVaultPath);
       ensureVaultDir();
       ensureNotesVaultDir();
       await stopVaultWatcher();

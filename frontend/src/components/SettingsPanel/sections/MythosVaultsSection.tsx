@@ -4,10 +4,15 @@
 // dropdown on each vault card; switching vaults applies its theme + toast").
 // Clicking a card switches vaults; DesktopShell applies the stored theme on
 // the switch push. M28 later grows these cards (stats, import, danger zone).
-// SKY-10401: "New vault" button + inline create-empty-vault flow — reuses the
-// SKY-320 vaultCreateDefaultMythos backend with activate:false, then offers a
-// normal project:switch to the new vault.
-import { useCallback, useEffect, useRef, useState } from 'react';
+// SKY-10401: "New vault" button + inline create flow (activate:false), then
+// offers a normal project:switch to the new vault.
+// SKY-11452 (spec SKY-11141 §3/§3a): the form carries THE shared creation
+// option set — template / blank / import (VaultCreateModePicker) — and
+// creates through the SKY-11151 primitive (createVaultFromOptions). The
+// legacy vaultCreateDefaultMythos({ seedMode: 'default' }) call is gone: it
+// seeded every new vault with the Veynn demo story + notes and offered no
+// choice at all.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import {
   applyLiquidNeonV2Tokens,
@@ -18,6 +23,7 @@ import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from '../../../theme/pr
 import { showLnToast } from '../../../theme/lnToast';
 import { deriveVaultDisplayName } from '../../../ProjectSwitcher';
 import VaultDestinationPicker from './VaultDestinationPicker';
+import VaultCreateModePicker, { type VaultCreateMode } from './VaultCreateModePicker';
 import { useVaultIcons } from '../../../hooks/useVaultIcons';
 import { VaultIconAvatar } from '../../ui/VaultIconAvatar';
 import { VaultIconEditMenu } from '../../ui/VaultIconEditMenu';
@@ -77,6 +83,11 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createDest, setCreateDest] = useState('');
+  // SKY-11452: template (RECOMMENDED) / blank / import — same default as the
+  // Add-vault dialogs and the first-run wizard.
+  const [createMode, setCreateMode] = useState<VaultCreateMode>('template');
+  const [importNotesSrc, setImportNotesSrc] = useState('');
+  const [importStorySrc, setImportStorySrc] = useState('');
   const [createBusy, setCreateBusy] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [createdVault, setCreatedVault] = useState<CreatedVault | null>(null);
@@ -201,6 +212,9 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     setCreateOpen(true);
     setCreateError(null);
     setCreatedVault(null);
+    setCreateMode('template');
+    setImportNotesSrc('');
+    setImportStorySrc('');
     if (!createDest) {
       try {
         const paths = await window.api?.vaultGetPaths?.();
@@ -221,32 +235,60 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     } catch { /* picker unavailable */ }
   }, [createDest]);
 
-  /** Create the vault WITHOUT activating it (activate:false) — main scaffolds
-   *  Story Vault + Notes Vault with the standard seeded layout and registers
-   *  the pair in recents; the user is then offered a normal switch. */
+  const onBrowseImportSource = useCallback(async (side: 'notes' | 'story') => {
+    try {
+      const res = await window.api?.chooseVaultFolder?.(
+        side === 'notes'
+          ? 'Select an Obsidian or Markdown notes folder'
+          : 'Select a Markdown story folder',
+      );
+      if (res && !res.cancelled && res.path) {
+        if (side === 'notes') setImportNotesSrc(res.path);
+        else setImportStorySrc(res.path);
+      }
+    } catch { /* picker unavailable */ }
+  }, []);
+
+  const importSources = useMemo(() => [
+    ...(importNotesSrc.trim() ? [{ kind: 'notes' as const, srcPath: importNotesSrc.trim() }] : []),
+    ...(importStorySrc.trim() ? [{ kind: 'story' as const, srcPath: importStorySrc.trim() }] : []),
+  ], [importNotesSrc, importStorySrc]);
+  const importNeedsSource = createMode === 'import' && importSources.length === 0;
+
+  /** Create the vault WITHOUT activating it (activate:false) through the
+   *  SKY-11151 primitive — main scaffolds a clean v2 bundle for the chosen
+   *  option (template shape / Obsidian-parity blank / copied-in import),
+   *  never the demo seed, and registers the pair in recents so it lists and
+   *  passes the switch allowlist; the user is then offered a normal switch. */
   const onCreateVault = useCallback(async () => {
     if (createBusy) return;
+    if (importNeedsSource) {
+      setCreateError('Choose at least one folder to import from.');
+      return;
+    }
     setCreateBusy(true);
     setCreateError(null);
     try {
-      const res = await window.api?.vaultCreateDefaultMythos?.({
-        parentPath: createDest || undefined,
-        vaultName: createName.trim() || undefined,
-        seedMode: 'default',
+      const res = await window.api?.createVaultFromOptions?.({
+        mode: createMode,
+        destinationParent: createDest || undefined,
+        name: createName.trim() || undefined,
+        ...(createMode === 'import' ? { importSources } : {}),
         activate: false,
       });
-      if (!res || res.error) {
+      if (!res || !res.ok || !res.mythosRoot || !res.storyVaultPath || !res.notesVaultPath) {
         setCreateError(res?.error ?? 'Could not create the vault. Check the destination and try again.');
       } else {
+        const name = res.vaultName ?? createName.trim();
         setCreatedVault({
-          mythosVaultRoot: res.mythosVaultRoot,
-          vaultRoot: res.vaultRoot,
-          notesVaultRoot: res.notesVaultRoot,
-          name: res.name,
+          mythosVaultRoot: res.mythosRoot,
+          vaultRoot: res.storyVaultPath,
+          notesVaultRoot: res.notesVaultPath,
+          name,
         });
         setCreateOpen(false);
         setCreateName('');
-        showLnToast(`Vault "${res.name}" created`);
+        showLnToast(`Vault "${name}" created`);
         refreshVaults();
       }
     } catch (e) {
@@ -254,7 +296,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     } finally {
       setCreateBusy(false);
     }
-  }, [createBusy, createDest, createName, refreshVaults]);
+  }, [createBusy, createDest, createName, createMode, importNeedsSource, importSources, refreshVaults]);
 
   const onSwitchToCreated = useCallback(async () => {
     if (!createdVault || createBusy) return;
@@ -378,13 +420,46 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
           <p className="settings-hint">
             A new folder named after the vault is created inside this destination.
           </p>
+          <div className="settings-label" style={{ marginTop: 4 }}>How to start</div>
+          <VaultCreateModePicker
+            kind="mythos"
+            value={createMode}
+            onChange={(m) => { setCreateMode(m); setCreateError(null); }}
+            disabled={createBusy}
+            testIdPrefix="mvs-create-mode"
+          />
+          {createMode === 'import' && (
+            <div data-testid="mvs-create-import" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="settings-label">Notes source (optional)</div>
+              <VaultDestinationPicker
+                variant="m24"
+                path={importNotesSrc}
+                placeholder="Pick an Obsidian or Markdown notes folder…"
+                onBrowse={() => onBrowseImportSource('notes')}
+                disabled={createBusy}
+                testIdPrefix="mvs-create-import-notes"
+              />
+              <div className="settings-label">Story source (optional)</div>
+              <VaultDestinationPicker
+                variant="m24"
+                path={importStorySrc}
+                placeholder="Pick a Markdown story folder…"
+                onBrowse={() => onBrowseImportSource('story')}
+                disabled={createBusy}
+                testIdPrefix="mvs-create-import-story"
+              />
+              <p className="settings-hint">
+                Pick at least one. Folders, note bodies and [[wiki-links]] are copied in as-is — nothing at the source is moved or modified.
+              </p>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
             <button
               type="button"
               className="m24-btn m24-btn--primary"
               data-testid="mvs-create-confirm"
               onClick={() => { void onCreateVault(); }}
-              disabled={createBusy}
+              disabled={createBusy || importNeedsSource}
             >
               {createBusy ? 'Creating…' : 'Create vault'}
             </button>
