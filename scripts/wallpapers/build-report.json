@@ -679,31 +679,6 @@
       "file": "bg-royal-2.webp",
       "set": "royal",
       "order": 2,
-      "source": "royal-src-02.png",
-      "sourceSize": [
-        1672,
-        941
-      ],
-      "anchor": 0.5,
-      "cropBox": [
-        0,
-        0,
-        1672,
-        940
-      ],
-      "outputSize": [
-        1672,
-        940
-      ],
-      "quality": 77,
-      "atQualityFloor": false,
-      "bytes": 50894,
-      "note": "Native 16:9. Vertical gold axis through a centred star."
-    },
-    {
-      "file": "bg-royal-3.webp",
-      "set": "royal",
-      "order": 3,
       "source": "royal-src-05.png",
       "sourceSize": [
         1672,
@@ -726,9 +701,9 @@
       "note": "Native 16:9. Dark calm centre with the arcana detail pushed to both edges."
     },
     {
-      "file": "bg-royal-4.webp",
+      "file": "bg-royal-3.webp",
       "set": "royal",
-      "order": 4,
+      "order": 3,
       "source": "royal-src-03.png",
       "sourceSize": [
         1672,
@@ -749,6 +724,31 @@
       "atQualityFloor": true,
       "bytes": 60796,
       "note": "Native 16:9. Diagonal nebula river with moon-phase glyphs on the right."
+    },
+    {
+      "file": "bg-royal-4.webp",
+      "set": "royal",
+      "order": 4,
+      "source": "royal-src-02.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 77,
+      "atQualityFloor": false,
+      "bytes": 50894,
+      "note": "Native 16:9. Vertical gold axis through a centred star; symmetric bright burst dead centre is the worst of the four for text legibility, so it ranks last, not second."
     },
     {
       "file": "bg-noir-1.webp",

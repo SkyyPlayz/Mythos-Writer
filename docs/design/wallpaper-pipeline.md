@@ -92,11 +92,31 @@ a reason recorded in the manifest under `rejected`:
 - `royal-src-01` — busiest ring-and-constellation detail of the five; too much competing structure behind panel glass.
 - `noir-src-03` — muddiest frame of the five; the right two thirds are near-black with no readable subject.
 
-Ordering within a set is a UX call, not an engineering one. The current order is
+Ordering within a set is a UX call, not an engineering one. The order is
 strongest thematic read first, breaking ties toward the calmer frame, on the
 grounds that these sit behind a writing surface. **UXDesigner owns the final
 order.** Reordering is a manifest edit plus a rebuild — no code changes — because
 nothing depends on which source backs which `n`.
+
+UX sign-off (SKY-11602), confirming the order shipped in PR #1502 with one fix:
+
+- **`cyber`** — kept as shipped (`cyber-src-02` skyline at n=1). It's the
+  literal cyberpunk read; `cyber-src-01`'s grid is calmer but reads as generic
+  synthwave on its own, and every other set in the pack already puts its most
+  scenic/iconic frame first and saves its calmest frame for last (e.g.
+  `aurora-src-02`, explicitly the calmest of its set, sits at n=4). Flagging
+  `cyber-src-02` to QA for the same scrim/legibility check as `bg-winter-4` —
+  its skyline silhouette is the densest edge detail in the pack, even though
+  it isn't the brightest.
+- **`royal`** — corrected. The ticket's own rationale says `royal-src-02` (a
+  symmetric composition with a bright star dead centre) was ranked last for
+  legibility, but the shipped manifest had it at n=2, the second-most-seen
+  slot. Visual review confirms it's the one frame in the set where a title or
+  cursor would sit right on the brightest point. Moved to n=4; `royal-src-05`
+  and `royal-src-03` moved up to n=2 and n=3. New order: `royal-src-04`,
+  `royal-src-05`, `royal-src-03`, `royal-src-02`.
+- All other sets — reviewed against the full contact sheet, no dead-centre
+  bursts or other legibility red flags found. Confirmed as shipped.
 
 ### Encoding
 
@@ -114,9 +134,9 @@ WebP decode path is the one the app already exercises.
 | Images | 38 |
 | Total | 1.76 MB |
 | Average | 47.4 KB |
-| Largest | `bg-royal-4.webp`, 59.4 KB |
+| Largest | `bg-royal-3.webp`, 59.4 KB |
 
-`bg-royal-4` is the one image that cannot reach 52 KB — `royal-src-03` is an
+`bg-royal-3` is the one image that cannot reach 52 KB — `royal-src-03` is an
 unusually dense nebula-and-starfield frame. It sits at the quality floor (40) and
 the build prints a warning saying so. A q40-vs-q70 comparison at 100% showed no
 visible difference in the gold rings, star points or the smooth violet field, so
