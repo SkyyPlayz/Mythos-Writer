@@ -117,7 +117,9 @@ describe('overlay tier — consumers', () => {
 
   // SKY-11477 — the other way a consumer leaves the tier: copying the owner
   // mockup's chrome verbatim. Frozen literals look right on the day they are
-  // written and then stop tracking the glass sliders forever.
+  // written and then can't be flattened by the high-contrast /
+  // reduced-transparency / no-backdrop-filter paths the shared tokens exist
+  // to drive (SKY-11491).
   it.each(CONSUMER_CSS)('%s does not freeze the mockup fill/blur as literals', (file) => {
     // `::backdrop` is the scrim behind a native <dialog>, not the panel — its
     // blur is a separate, deliberately fixed 2px and is out of scope here.
