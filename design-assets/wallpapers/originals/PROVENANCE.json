@@ -1,0 +1,274 @@
+{
+  "classic": [
+    {
+      "staged": "classic-src-01.png",
+      "sourceFolder": "Neon Nebula",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_45_08 PM (1).png",
+      "sha256": "23cf46f8fe075e1dd1f8664e329f497401048039af95622fa8f3fab3ea0212c6"
+    },
+    {
+      "staged": "classic-src-02.png",
+      "sourceFolder": "Neon Nebula",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_45_08 PM (2).png",
+      "sha256": "47be5ac691202253918abe7f66c8b830e29337d189abd54ff9c987bf5680b969"
+    },
+    {
+      "staged": "classic-src-03.png",
+      "sourceFolder": "Neon Nebula",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_45_09 PM (3).png",
+      "sha256": "b69afe2cf1f94fce440524e84a9ac06d36a2cdd45d181b03eba4a40d4c36dac7"
+    },
+    {
+      "staged": "classic-src-04.png",
+      "sourceFolder": "Neon Nebula",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_45_09 PM (4).png",
+      "sha256": "3c8bd137495b93b2683ed49d56c8e6a2c8f5a7e4287fac6721755b64705591ab"
+    }
+  ],
+  "aurora": [
+    {
+      "staged": "aurora-src-01.png",
+      "sourceFolder": "Aurora",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_43_21 PM (2).png",
+      "sha256": "5273c55069f442729d425f3a44803bf20c7cde9b1f30ca7ecbfa3f05df730f3a"
+    },
+    {
+      "staged": "aurora-src-02.png",
+      "sourceFolder": "Aurora",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_43_22 PM (3).png",
+      "sha256": "2371efc28fa83f1b68fb529664b3a02103b273d25437a1a05f86989d8a683c3d"
+    },
+    {
+      "staged": "aurora-src-03.png",
+      "sourceFolder": "Aurora",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_43_22 PM (4).png",
+      "sha256": "caa6201dc634204bed66f09f097c593144b82124c0e2a21e64cb9e592b37bc77"
+    },
+    {
+      "staged": "aurora-src-04.png",
+      "sourceFolder": "Aurora",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (1).png",
+      "sha256": "4e8c17e7a1f77cd9e8813779624fbab9a8de86aab3583c0e1988d9692e33bbfc"
+    },
+    {
+      "staged": "aurora-src-05.png",
+      "sourceFolder": "Aurora",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (2).png",
+      "sha256": "9337a141094d9102d468d8b437a856ba97db1096d705c93c4e7820b30347b075"
+    },
+    {
+      "staged": "aurora-src-06.png",
+      "sourceFolder": "Aurora",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (3).png",
+      "sha256": "02e4ce71d7f5f3342a629e3ae610bc3c992c1b7ae49df12ec078bf71b786558d"
+    }
+  ],
+  "cyber": [
+    {
+      "staged": "cyber-src-01.png",
+      "sourceFolder": "cyberpunk",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_40_26 PM (1).png",
+      "sha256": "b89dae1ef7b09e74b3d91a7b2a957748b34188bd0ed792e9b992fbe15102b907"
+    },
+    {
+      "staged": "cyber-src-02.png",
+      "sourceFolder": "cyberpunk",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_40_27 PM (2).png",
+      "sha256": "bb47a213faeae4eb36fcfb33318fa1fc859d3efa4532789c687fed4607073e0e"
+    },
+    {
+      "staged": "cyber-src-03.png",
+      "sourceFolder": "cyberpunk",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_40_27 PM (4).png",
+      "sha256": "f10a6472155a3f25e8b55ef39e13d0bb64961582b8b903b6288062094ecbffeb"
+    }
+  ],
+  "sunset": [
+    {
+      "staged": "sunset-src-01.png",
+      "sourceFolder": "Sunset coast",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 09_04_12 PM (1).png",
+      "sha256": "fa887308b1a8b0e54f8b122c96881a57a4a55e0da18d50d573d09ad542896ac8"
+    },
+    {
+      "staged": "sunset-src-02.png",
+      "sourceFolder": "Sunset coast",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 09_04_13 PM (2).png",
+      "sha256": "597dcce51a13017403681e18018ca04eeed5578ee78a34c4dbdeea1c6dc394c2"
+    },
+    {
+      "staged": "sunset-src-03.png",
+      "sourceFolder": "Sunset coast",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 09_04_13 PM (3).png",
+      "sha256": "c392f46bebe47dce630ef54cc090168c82c00eef1a53e69e41aee4776652e3cd"
+    },
+    {
+      "staged": "sunset-src-04.png",
+      "sourceFolder": "Sunset coast",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 09_04_13 PM (4).png",
+      "sha256": "1d7e3698e3e862c8244dee868d637a237689a85d8967f570ac20cb1d1152ca49"
+    }
+  ],
+  "ice": [
+    {
+      "staged": "ice-src-01.png",
+      "sourceFolder": "Ice mono",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_35_49 PM (1).png",
+      "sha256": "accef2545d418a2f3ea610d5fa2e599f2af842c4f338d3fbb32487983bb34a12"
+    },
+    {
+      "staged": "ice-src-02.png",
+      "sourceFolder": "Ice mono",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_35_49 PM (2).png",
+      "sha256": "bc0dd0785ac435f44342084c4fad049e125b970162d470f150fb419039ee36b5"
+    },
+    {
+      "staged": "ice-src-03.png",
+      "sourceFolder": "Ice mono",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_35_50 PM (3).png",
+      "sha256": "613953676258abfd66b15b8a198ac74be89b32a65d6e56a6c24ce47b52f557ad"
+    },
+    {
+      "staged": "ice-src-04.png",
+      "sourceFolder": "Ice mono",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_35_50 PM (4).png",
+      "sha256": "685f011e1513c2662f11a47968ab45b805ea4ad952cdca17c0c46d56bad2ca8b"
+    }
+  ],
+  "ember": [
+    {
+      "staged": "ember-src-01.png",
+      "sourceFolder": "Emberfall",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_34_02 PM (1).png",
+      "sha256": "7fbc28a1da30643483db8ea1c8fb571f2cd8560431222edb7b27cf6066b48b3b"
+    },
+    {
+      "staged": "ember-src-02.png",
+      "sourceFolder": "Emberfall",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_34_03 PM (2).png",
+      "sha256": "1571138cea943225bb0a6a6a1c690f0d9ca323f346029cb5167c9a47264c4ffe"
+    },
+    {
+      "staged": "ember-src-03.png",
+      "sourceFolder": "Emberfall",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_34_03 PM (4).png",
+      "sha256": "5174b36b58595bebdb112125266bbdf3552a1887aedf3a55bdd84b5b2369baad"
+    }
+  ],
+  "verdant": [
+    {
+      "staged": "verdant-src-01.png",
+      "sourceFolder": "Verdant reach",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_30_59 PM (1).png",
+      "sha256": "0a6f4071e5150a326eebea8572575544ebfb73f7a85a74372e79e4e075994c00"
+    },
+    {
+      "staged": "verdant-src-02.png",
+      "sourceFolder": "Verdant reach",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_30_59 PM (2).png",
+      "sha256": "4805dc0060d1497606a2a9f4af2b202f8bc9902c95984623e55450827062429c"
+    },
+    {
+      "staged": "verdant-src-03.png",
+      "sourceFolder": "Verdant reach",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_31_00 PM (3).png",
+      "sha256": "1450ad72802c515177fe6c42185195686312b2532ec8feff48f510f811960130"
+    },
+    {
+      "staged": "verdant-src-04.png",
+      "sourceFolder": "Verdant reach",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_31_00 PM (4).png",
+      "sha256": "68d175a6f67a5f3e5b91574c39e9c1c2cb82f6460d9ae2a4558e326722229ca1"
+    }
+  ],
+  "royal": [
+    {
+      "staged": "royal-src-01.png",
+      "sourceFolder": "Royal Arcana",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_28_21 PM (2).png",
+      "sha256": "942b38f2e7f579b9d4b8e3ccf78549a6eb3763c5eddd3ecb583c540d6adf7ee9"
+    },
+    {
+      "staged": "royal-src-02.png",
+      "sourceFolder": "Royal Arcana",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_28_23 PM (4).png",
+      "sha256": "b9a0c12fd94e0a70aa6f802ffce3b86c58711b187d1041e070e43a3e1eaaca85"
+    },
+    {
+      "staged": "royal-src-03.png",
+      "sourceFolder": "Royal Arcana",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 09_16_52 PM (2).png",
+      "sha256": "21aaa037cc4d4a9212acf8ec7b31e2bd361e5a338ab0e908e5c066a845910f5b"
+    },
+    {
+      "staged": "royal-src-04.png",
+      "sourceFolder": "Royal Arcana",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 09_16_53 PM (3).png",
+      "sha256": "a611af87372ae552c658433e50e655c4f0200302b213154c03dbde4cc873b3fb"
+    },
+    {
+      "staged": "royal-src-05.png",
+      "sourceFolder": "Royal Arcana",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 09_16_53 PM (4).png",
+      "sha256": "3791121a9a2a001d1ce99cd3e72c8ccea66bd183308511099f7d8dc8768de99b"
+    }
+  ],
+  "noir": [
+    {
+      "staged": "noir-src-01.png",
+      "sourceFolder": "Noir Rose",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_21_13 PM (1).png",
+      "sha256": "657e07440f359c508c439414697e791d8668af612bb351a578bac5c5b837ef6b"
+    },
+    {
+      "staged": "noir-src-02.png",
+      "sourceFolder": "Noir Rose",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_21_14 PM (4).png",
+      "sha256": "95d4bf483eb362ab753f450c9da0f452468a6e457d332c16a8aa70d8da3ce1a8"
+    },
+    {
+      "staged": "noir-src-03.png",
+      "sourceFolder": "Noir Rose",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 09_07_15 PM (2).png",
+      "sha256": "11041f7d2572a1cacc8688715f0c6e66705335db6af12bc2ce61aa7c7d5c6dec"
+    },
+    {
+      "staged": "noir-src-04.png",
+      "sourceFolder": "Noir Rose",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 09_07_16 PM (3).png",
+      "sha256": "e66c27ecd401358ce9c1c8e4ff1c3963e9e06f8ab13487cb63c1c51f96f182a0"
+    },
+    {
+      "staged": "noir-src-05.png",
+      "sourceFolder": "Noir Rose",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 09_07_16 PM (4).png",
+      "sha256": "142bbf86bbfe0ed9d27579860d8e19e8c77ad1d208fffc1c103796922ee2ce58"
+    }
+  ],
+  "winter": [
+    {
+      "staged": "winter-src-01.png",
+      "sourceFolder": "Winterlight",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_06_13 PM.png",
+      "sha256": "c96418b30ae527ee46df2c9ba8cf656474c7f0b593df5c7615c92e7c48ad4c64"
+    },
+    {
+      "staged": "winter-src-02.png",
+      "sourceFolder": "Winterlight",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_23_25 PM.png",
+      "sha256": "c8fd9b11de4f3582e440ef8ae181b9648222151eee17da19bfef258692b91ae4"
+    },
+    {
+      "staged": "winter-src-03.png",
+      "sourceFolder": "Winterlight",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_59_22 PM (2).png",
+      "sha256": "82845ed4c3c68453b1de9692b8be0348a795e69e09b23c509af9b89f4e4cc831"
+    },
+    {
+      "staged": "winter-src-04.png",
+      "sourceFolder": "Winterlight",
+      "sourceFile": "ChatGPT Image Sep 8, 2026, 08_59_22 PM (3).png",
+      "sha256": "204eea4b194bd812f231e345676a1eaf9a387f1c7210da59125c697683b5ff6a"
+    }
+  ]
+}

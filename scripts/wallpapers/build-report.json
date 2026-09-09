@@ -1,0 +1,955 @@
+{
+  "images": [
+    {
+      "file": "bg-classic-1.webp",
+      "set": "classic",
+      "order": 1,
+      "source": "classic-src-04.png",
+      "sourceSize": [
+        1942,
+        809
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        252,
+        0,
+        1690,
+        809
+      ],
+      "outputSize": [
+        1438,
+        809
+      ],
+      "quality": 87,
+      "atQualityFloor": false,
+      "bytes": 51100,
+      "note": "Bright diagonal nebula band across the middle; symmetric, no offset needed."
+    },
+    {
+      "file": "bg-classic-2.webp",
+      "set": "classic",
+      "order": 2,
+      "source": "classic-src-02.png",
+      "sourceSize": [
+        1942,
+        809
+      ],
+      "anchor": 0.62,
+      "cropBox": [
+        485,
+        0,
+        1923,
+        809
+      ],
+      "outputSize": [
+        1438,
+        809
+      ],
+      "quality": 84,
+      "atQualityFloor": false,
+      "bytes": 51036,
+      "note": "Pink nebula mass sits right of centre; anchored right so it is not clipped at the frame edge."
+    },
+    {
+      "file": "bg-classic-3.webp",
+      "set": "classic",
+      "order": 3,
+      "source": "classic-src-03.png",
+      "sourceSize": [
+        1942,
+        809
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        252,
+        0,
+        1690,
+        809
+      ],
+      "outputSize": [
+        1438,
+        809
+      ],
+      "quality": 85,
+      "atQualityFloor": false,
+      "bytes": 50360,
+      "note": "Mirrored wing streaks top-left / bottom-right; centre keeps the symmetry."
+    },
+    {
+      "file": "bg-classic-4.webp",
+      "set": "classic",
+      "order": 4,
+      "source": "classic-src-01.png",
+      "sourceSize": [
+        1942,
+        809
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        252,
+        0,
+        1690,
+        809
+      ],
+      "outputSize": [
+        1438,
+        809
+      ],
+      "quality": 82,
+      "atQualityFloor": false,
+      "bytes": 49244,
+      "note": "Nebula walls on both edges; centre keeps both walls partly in frame."
+    },
+    {
+      "file": "bg-aurora-1.webp",
+      "set": "aurora",
+      "order": 1,
+      "source": "aurora-src-04.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 46,
+      "atQualityFloor": false,
+      "bytes": 51060,
+      "note": "Native 16:9. Mountain range with a full mirror reflection; the strongest Aurora frame."
+    },
+    {
+      "file": "bg-aurora-2.webp",
+      "set": "aurora",
+      "order": 2,
+      "source": "aurora-src-06.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 58,
+      "atQualityFloor": false,
+      "bytes": 51572,
+      "note": "Native 16:9. Pine foreground left, lit river valley right."
+    },
+    {
+      "file": "bg-aurora-3.webp",
+      "set": "aurora",
+      "order": 3,
+      "source": "aurora-src-01.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.55,
+      "cropBox": [
+        324,
+        0,
+        1784,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 81,
+      "atQualityFloor": false,
+      "bytes": 51930,
+      "note": "Aurora arc crests right of centre over the lake; slight right anchor keeps the crest."
+    },
+    {
+      "file": "bg-aurora-4.webp",
+      "set": "aurora",
+      "order": 4,
+      "source": "aurora-src-02.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        228,
+        0,
+        1688,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 48792,
+      "note": "Vertical curtains over a cloud sea; the calmest of the six, best for long writing sessions."
+    },
+    {
+      "file": "bg-cyber-1.webp",
+      "set": "cyber",
+      "order": 1,
+      "source": "cyber-src-02.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.61,
+      "cropBox": [
+        439,
+        0,
+        1899,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 75,
+      "atQualityFloor": false,
+      "bytes": 49698,
+      "note": "Neon skyline sits at ~0.73 across; a centre crop would slice it. Anchored right so the whole skyline lands inside the frame."
+    },
+    {
+      "file": "bg-cyber-2.webp",
+      "set": "cyber",
+      "order": 2,
+      "source": "cyber-src-01.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        228,
+        0,
+        1688,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 87,
+      "atQualityFloor": false,
+      "bytes": 49908,
+      "note": "Symmetric grid horizon, teal left / magenta right."
+    },
+    {
+      "file": "bg-cyber-3.webp",
+      "set": "cyber",
+      "order": 3,
+      "source": "cyber-src-03.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        228,
+        0,
+        1688,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 46758,
+      "note": "Mirrored neon slabs on both edges; centre keeps the mirroring."
+    },
+    {
+      "file": "bg-sunset-1.webp",
+      "set": "sunset",
+      "order": 1,
+      "source": "sunset-src-02.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.53,
+      "cropBox": [
+        285,
+        0,
+        1745,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 77,
+      "atQualityFloor": false,
+      "bytes": 50700,
+      "note": "Sun on the horizon just right of centre with a full sun-path reflection."
+    },
+    {
+      "file": "bg-sunset-2.webp",
+      "set": "sunset",
+      "order": 2,
+      "source": "sunset-src-01.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.55,
+      "cropBox": [
+        324,
+        0,
+        1784,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 70,
+      "atQualityFloor": false,
+      "bytes": 51300,
+      "note": "Sun at ~0.61; anchored right so the sun and its reflection column stay off the frame edge."
+    },
+    {
+      "file": "bg-sunset-3.webp",
+      "set": "sunset",
+      "order": 3,
+      "source": "sunset-src-04.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.6,
+      "cropBox": [
+        420,
+        0,
+        1880,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 77,
+      "atQualityFloor": false,
+      "bytes": 50762,
+      "note": "Sun at ~0.66 behind sea stacks; the strongest right-side offset in this set."
+    },
+    {
+      "file": "bg-sunset-4.webp",
+      "set": "sunset",
+      "order": 4,
+      "source": "sunset-src-03.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.54,
+      "cropBox": [
+        305,
+        0,
+        1765,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 76,
+      "atQualityFloor": false,
+      "bytes": 51616,
+      "note": "Wide low horizon; near-centre with a small right lean toward the sun."
+    },
+    {
+      "file": "bg-ice-1.webp",
+      "set": "ice",
+      "order": 1,
+      "source": "ice-src-04.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.6,
+      "cropBox": [
+        420,
+        0,
+        1880,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 47904,
+      "note": "Horizon glow at ~0.66 over a frozen lake; anchored right to hold the glow."
+    },
+    {
+      "file": "bg-ice-2.webp",
+      "set": "ice",
+      "order": 2,
+      "source": "ice-src-02.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        228,
+        0,
+        1688,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 47196,
+      "note": "Mirrored curtains on both edges; centre keeps them balanced."
+    },
+    {
+      "file": "bg-ice-3.webp",
+      "set": "ice",
+      "order": 3,
+      "source": "ice-src-03.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        228,
+        0,
+        1688,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 29078,
+      "note": "Ice shards frame both edges; centre keeps both."
+    },
+    {
+      "file": "bg-ice-4.webp",
+      "set": "ice",
+      "order": 4,
+      "source": "ice-src-01.png",
+      "sourceSize": [
+        1916,
+        821
+      ],
+      "anchor": 0.44,
+      "cropBox": [
+        113,
+        0,
+        1573,
+        821
+      ],
+      "outputSize": [
+        1460,
+        821
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 40096,
+      "note": "Bright plume in the upper left (luminance centroid 0.34); anchored left so the plume is not cut off."
+    },
+    {
+      "file": "bg-ember-1.webp",
+      "set": "ember",
+      "order": 1,
+      "source": "ember-src-03.png",
+      "sourceSize": [
+        1942,
+        809
+      ],
+      "anchor": 0.58,
+      "cropBox": [
+        407,
+        0,
+        1845,
+        809
+      ],
+      "outputSize": [
+        1438,
+        809
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 48378,
+      "note": "Sunset over a misty valley, sun at ~0.66; anchored right."
+    },
+    {
+      "file": "bg-ember-2.webp",
+      "set": "ember",
+      "order": 2,
+      "source": "ember-src-01.png",
+      "sourceSize": [
+        1942,
+        809
+      ],
+      "anchor": 0.42,
+      "cropBox": [
+        97,
+        0,
+        1535,
+        809
+      ],
+      "outputSize": [
+        1438,
+        809
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 42350,
+      "note": "Fire nebula band runs out of the lower-left corner (luminance centroid 0.37); anchored left to keep the band's brightest stretch."
+    },
+    {
+      "file": "bg-ember-3.webp",
+      "set": "ember",
+      "order": 3,
+      "source": "ember-src-02.png",
+      "sourceSize": [
+        1942,
+        809
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        252,
+        0,
+        1690,
+        809
+      ],
+      "outputSize": [
+        1438,
+        809
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 34496,
+      "note": "Autumn-leaf vignette on both edges with a centre glow."
+    },
+    {
+      "file": "bg-verdant-1.webp",
+      "set": "verdant",
+      "order": 1,
+      "source": "verdant-src-01.png",
+      "sourceSize": [
+        1942,
+        809
+      ],
+      "anchor": 0.56,
+      "cropBox": [
+        369,
+        0,
+        1807,
+        809
+      ],
+      "outputSize": [
+        1438,
+        809
+      ],
+      "quality": 83,
+      "atQualityFloor": false,
+      "bytes": 51950,
+      "note": "Misty forest lake with a canopy break at ~0.66; anchored right to keep the light shaft."
+    },
+    {
+      "file": "bg-verdant-2.webp",
+      "set": "verdant",
+      "order": 2,
+      "source": "verdant-src-03.png",
+      "sourceSize": [
+        1942,
+        809
+      ],
+      "anchor": 0.58,
+      "cropBox": [
+        407,
+        0,
+        1845,
+        809
+      ],
+      "outputSize": [
+        1438,
+        809
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 46618,
+      "note": "Green nebula sweep with its focal bloom at ~0.65; anchored right."
+    },
+    {
+      "file": "bg-verdant-3.webp",
+      "set": "verdant",
+      "order": 3,
+      "source": "verdant-src-04.png",
+      "sourceSize": [
+        1942,
+        809
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        252,
+        0,
+        1690,
+        809
+      ],
+      "outputSize": [
+        1438,
+        809
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 49828,
+      "note": "Symmetric canopy vignette with a calm centre; the most text-friendly of this set."
+    },
+    {
+      "file": "bg-verdant-4.webp",
+      "set": "verdant",
+      "order": 4,
+      "source": "verdant-src-02.png",
+      "sourceSize": [
+        1942,
+        809
+      ],
+      "anchor": 0.52,
+      "cropBox": [
+        291,
+        0,
+        1729,
+        809
+      ],
+      "outputSize": [
+        1438,
+        809
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 37918,
+      "note": "Leaf-and-vine frame on both edges; barely off centre toward the upper-right glow."
+    },
+    {
+      "file": "bg-royal-1.webp",
+      "set": "royal",
+      "order": 1,
+      "source": "royal-src-04.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 73,
+      "atQualityFloor": false,
+      "bytes": 50762,
+      "note": "Native 16:9. Radiant violet core inside the gold orrery rings."
+    },
+    {
+      "file": "bg-royal-2.webp",
+      "set": "royal",
+      "order": 2,
+      "source": "royal-src-02.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 77,
+      "atQualityFloor": false,
+      "bytes": 50894,
+      "note": "Native 16:9. Vertical gold axis through a centred star."
+    },
+    {
+      "file": "bg-royal-3.webp",
+      "set": "royal",
+      "order": 3,
+      "source": "royal-src-05.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 69,
+      "atQualityFloor": false,
+      "bytes": 51518,
+      "note": "Native 16:9. Dark calm centre with the arcana detail pushed to both edges."
+    },
+    {
+      "file": "bg-royal-4.webp",
+      "set": "royal",
+      "order": 4,
+      "source": "royal-src-03.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 40,
+      "atQualityFloor": true,
+      "bytes": 60796,
+      "note": "Native 16:9. Diagonal nebula river with moon-phase glyphs on the right."
+    },
+    {
+      "file": "bg-noir-1.webp",
+      "set": "noir",
+      "order": 1,
+      "source": "noir-src-04.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 84,
+      "atQualityFloor": false,
+      "bytes": 51246,
+      "note": "Native 16:9. Strongest rose bloom, balanced left and right."
+    },
+    {
+      "file": "bg-noir-2.webp",
+      "set": "noir",
+      "order": 2,
+      "source": "noir-src-01.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 40902,
+      "note": "Native 16:9. Rose cloud bank left, indigo field right."
+    },
+    {
+      "file": "bg-noir-3.webp",
+      "set": "noir",
+      "order": 3,
+      "source": "noir-src-05.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 85,
+      "atQualityFloor": false,
+      "bytes": 51438,
+      "note": "Native 16:9. Dark centre channel with rose walls on both edges; very text-friendly."
+    },
+    {
+      "file": "bg-noir-4.webp",
+      "set": "noir",
+      "order": 4,
+      "source": "noir-src-02.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 88,
+      "atQualityFloor": false,
+      "bytes": 51890,
+      "note": "Native 16:9. Soft diagonal light bands over a rose nebula."
+    },
+    {
+      "file": "bg-winter-1.webp",
+      "set": "winter",
+      "order": 1,
+      "source": "winter-src-04.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 86,
+      "atQualityFloor": false,
+      "bytes": 50572,
+      "note": "Native 16:9. Aurora over a snow plain; horizon glow dead centre."
+    },
+    {
+      "file": "bg-winter-2.webp",
+      "set": "winter",
+      "order": 2,
+      "source": "winter-src-03.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 75,
+      "atQualityFloor": false,
+      "bytes": 50352,
+      "note": "Native 16:9. Moon over a frozen lake, snowfall throughout."
+    },
+    {
+      "file": "bg-winter-3.webp",
+      "set": "winter",
+      "order": 3,
+      "source": "winter-src-01.png",
+      "sourceSize": [
+        1672,
+        941
+      ],
+      "anchor": 0.5,
+      "cropBox": [
+        0,
+        0,
+        1672,
+        940
+      ],
+      "outputSize": [
+        1672,
+        940
+      ],
+      "quality": 58,
+      "atQualityFloor": false,
+      "bytes": 51406,
+      "note": "Native 16:9. Moonlit lake with pines on the right bank."
+    },
+    {
+      "file": "bg-winter-4.webp",
+      "set": "winter",
+      "order": 4,
+      "source": "winter-src-02.png",
+      "sourceSize": [
+        1938,
+        811
+      ],
+      "anchor": 0.375,
+      "cropBox": [
+        6,
+        0,
+        1448,
+        811
+      ],
+      "outputSize": [
+        1442,
+        811
+      ],
+      "quality": 65,
+      "atQualityFloor": false,
+      "bytes": 50894,
+      "note": "Sunrise sits at ~0.20, far left. Anchored hard left (the leftmost a 16:9 window can go on this source) so the sun stays in frame. Brightest wallpaper in the pack \u2014 flagged to QA for contrast."
+    }
+  ],
+  "totalBytes": 1844318
+}

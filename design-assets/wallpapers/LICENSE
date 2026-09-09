@@ -1,0 +1,25 @@
+Liquid Neon wallpapers — PNG originals
+======================================
+
+The 42 PNGs in `originals/` are owner-authored: Skyy generated them himself with
+an AI image generator and supplied them to engineering on 2026-09-09. Wholly
+owned, no stock-library licence, no third-party rights holder, no attribution
+requirement. Confirmed by Skyy on 2026-09-09 (SKY-11591).
+
+The canonical licence record — the one that covers redistribution inside the
+installer — is kept next to the assets that actually ship:
+
+    frontend/src/assets/wallpapers/LICENSE
+
+Keep that file authoritative and this one a pointer, so the two cannot drift.
+
+These originals are the design source of truth and are NEVER packaged.
+`electron-builder.json` sets `files: ["out/**/*", "package.json"]`, so only what
+the renderer build emits reaches the installer — this directory sits outside that
+tree by construction, not by an ignore rule.
+
+`originals/PROVENANCE.json` records, per staged PNG, the owner's original folder
+and filename plus a SHA-256 of the bytes, so any shipped wallpaper can be traced
+back to the file the owner handed over.
+
+Pipeline notes: docs/design/wallpaper-pipeline.md

@@ -1,0 +1,32 @@
+Liquid Neon wallpapers — bundled image assets
+=============================================
+
+The 38 WebP wallpapers in this directory are owner-authored work.
+
+Origin
+------
+Skyy (the owner of Sky High Infinite Techwork) generated the 42 PNG originals
+himself with an AI image generator on 2026-09-08 and supplied them to
+engineering on 2026-09-09. They are his own output, wholly owned. There is no
+stock-library licence behind them, no third-party rights holder, and therefore
+no indemnification gap.
+
+Confirmed by Skyy on 2026-09-09 (SKY-11591, child of SKY-11378).
+
+This permits commercial redistribution inside the Mythos Writer installer with
+no attribution requirement and no non-commercial restriction — the same clean
+footing as the Kokoro model weights bundled under
+electron-main/resources/kokoro/LICENSE (SKY-11230).
+
+Derivation
+----------
+Each shipped file is a 16:9 crop of one original, re-encoded to WebP. No other
+image is composited in; nothing is upscaled; no third-party asset, font, or
+texture is layered on top. The crop and encode are fully reproducible from
+scripts/wallpapers/wallpapers.manifest.json.
+
+The PNG originals are preserved in design-assets/wallpapers/originals/ with a
+SHA-256 per file in PROVENANCE.json, outside the shipped bundle. They are the
+source of truth if a crop ever has to be redone.
+
+Pipeline notes: docs/design/wallpaper-pipeline.md
