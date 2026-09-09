@@ -64,11 +64,17 @@ describe('DesktopShell voice capture shortcuts (SKY-7771)', () => {
     render(<App />);
     await screen.findByRole('navigation', { name: 'Main navigation' });
 
-    fireEvent.keyDown(window, { key: 'v', ctrlKey: true, shiftKey: true });
-
-    // startVoice resolves settings + IPC mocks asynchronously; the 5000ms
-    // default (and even a 5s override) times out on loaded CI runners, so use
-    // the suite-wide 15s convention documented in vite.config.ts (SKY-9893).
-    await waitFor(() => expect(window.api.voiceStart).toHaveBeenCalled(), { timeout: 15_000 });
+    // SKY-11585: the keydown listener is attached by a useEffect gated on
+    // appSettings.voice.enabled, i.e. only after settingsGet resolves and
+    // commits — which can land AFTER the nav renders. startVoice calls
+    // window.api.voiceStart synchronously on its first line, so a keydown the
+    // listener actually receives always hits the mock. A single keydown fired
+    // too early is simply lost, and no amount of waiting afterwards recovers
+    // it (that was the PR #1474 flake). Re-fire inside waitFor so each retry
+    // probes whether the listener is live yet; the default timeout suffices.
+    await waitFor(() => {
+      fireEvent.keyDown(window, { key: 'v', ctrlKey: true, shiftKey: true });
+      expect(window.api.voiceStart).toHaveBeenCalled();
+    });
   });
 });
