@@ -1,29 +1,42 @@
 /* Beta 4 M22 — Exact-time picker + calendar editor modals.
    Exact values from the prototype 3702–3772: 400px/360px cards, r18,
-   rgba(15,19,33,.97) glass, cyan/purple borders, 30px mono inputs r9,
-   lnFadeUp .16s, gradient primary button with #0b0d17 text. */
+   cyan/purple borders, 30px mono inputs r9, lnFadeUp .16s, gradient primary
+   button with #0b0d17 text.
+
+   SKY-11477: both cards render through `Dialog`, so the fill/blur/border/glow
+   come from `.ln-overlay-surface` (overlay-tier.css) and follow the Appearance
+   → glass sliders. The rules below own geometry, the slot tint, and one
+   deliberate depth override; the prototype's frozen `rgba(15,19,33,.97)` /
+   `blur(28px)` literals are gone. Note these rules never won at paint time
+   anyway — overlay-tier.css is bundled last, so before this change both cards
+   silently rendered with the tier's fill *and* its slot-1 cyan border, i.e.
+   the purple card was not purple. */
 
 .t2m-card {
   position: relative;
   width: 400px;
   max-width: 92%;
   border-radius: 18px;
-  background: rgba(15, 19, 33, 0.97);
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
   padding: 18px 20px;
   animation: t2mFadeUp 0.16s ease;
+
+  /* Deliberate override, not the shared chrome: the prototype (3702–3772)
+     lifts these two cards further off the canvas than a standard dialog —
+     0 20px 60px / 0 0 30px -8px vs the tier's 0 14px 40px / 0 0 22px -6px.
+     Kept as a token so the high-contrast rules still flatten it to none. */
+  --ln-overlay-shadow: 0 20px 60px rgba(3, 5, 12, 0.7),
+    0 0 30px -8px var(--ln-overlay-glow, var(--g1, rgba(0, 240, 255, 0.4)));
 }
 
 .t2m-card--cyan {
-  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
-  box-shadow: 0 20px 60px rgba(3, 5, 12, 0.7), 0 0 30px -8px var(--g1, rgba(0, 240, 255, 0.4));
+  --ln-overlay-border: var(--b1, rgba(0, 240, 255, 0.5));
+  --ln-overlay-glow: var(--g1, rgba(0, 240, 255, 0.4));
 }
 
 .t2m-card--purple {
   width: 360px;
-  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
-  box-shadow: 0 20px 60px rgba(3, 5, 12, 0.7), 0 0 30px -8px var(--g2, rgba(155, 95, 255, 0.4));
+  --ln-overlay-border: var(--b2, rgba(155, 95, 255, 0.5));
+  --ln-overlay-glow: var(--g2, rgba(155, 95, 255, 0.4));
 }
 
 @keyframes t2mFadeUp {

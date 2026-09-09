@@ -29,9 +29,12 @@ const CONSUMERS: ReadonlyArray<readonly [file: string, localClass: string]> = [
   ['src/PageSetupPopover.tsx', 'page-setup-popover'],
   ['src/TourModal.tsx', 'tour-modal'],
   ['src/components/NoteTemplateDialog/index.tsx', 'ntd-dialog'],
+  ['src/drafts/DraftsPopover.tsx', 'ln-drafts-popover'],
 ];
 
-/** Stylesheets whose panel rule must no longer hand-roll its own glass. */
+/** Stylesheets whose panel rule must no longer hand-roll its own glass.
+ *  Timeline2Modals skins the `Dialog` primitive, so it gets the class from
+ *  there rather than from its own markup (SKY-11477). */
 const CONSUMER_CSS = [
   'src/components/ui/Dialog.css',
   'src/components/ui/Menu.css',
@@ -42,6 +45,8 @@ const CONSUMER_CSS = [
   'src/PageSetupPopover.css',
   'src/TourModal.css',
   'src/components/NoteTemplateDialog/NoteTemplateDialog.css',
+  'src/drafts/DraftsPopover.css',
+  'src/timeline2/Timeline2Modals.css',
 ] as const;
 
 function ruleBody(css: string, selector: string): string {
@@ -108,5 +113,42 @@ describe('overlay tier — consumers', () => {
     expect(css).not.toContain('var(--color-surface-elevated');
     expect(css).not.toContain('var(--color-surface-raised');
     expect(css).not.toContain('var(--color-surface-2');
+  });
+
+  // SKY-11477 — the other way a consumer leaves the tier: copying the owner
+  // mockup's chrome verbatim. Frozen literals look right on the day they are
+  // written and then stop tracking the glass sliders forever.
+  it.each(CONSUMER_CSS)('%s does not freeze the mockup fill/blur as literals', (file) => {
+    // `::backdrop` is the scrim behind a native <dialog>, not the panel — its
+    // blur is a separate, deliberately fixed 2px and is out of scope here.
+    const css = read(file).replace(/[^{}]*::backdrop\s*\{[^}]*\}/g, '');
+    expect(css).not.toMatch(/background:\s*rgba\(\s*15\s*,\s*19\s*,\s*33/);
+    expect(css).not.toMatch(/backdrop-filter:\s*blur\(\s*\d/);
+  });
+});
+
+describe('overlay tier — deliberate overrides', () => {
+  it('exposes the depth+glow shadow as one replaceable custom property', () => {
+    const base = ruleBody(OVERLAY_CSS, '.ln-overlay-surface');
+    expect(base).toContain('box-shadow: var(');
+    expect(base).toContain('--ln-overlay-shadow,');
+  });
+
+  it('the Timeline M22 cards keep the prototype heavy lift via that property', () => {
+    const css = read('src/timeline2/Timeline2Modals.css');
+    const card = ruleBody(css, '.t2m-card');
+    // Prototype 3702–3772 lifts these two cards further than a standard dialog.
+    expect(card).toContain('--ln-overlay-shadow: 0 20px 60px');
+    expect(card).toContain('0 0 30px -8px var(--ln-overlay-glow');
+  });
+
+  it('the Timeline M22 cards retint through the tier, not the border shorthand', () => {
+    const css = read('src/timeline2/Timeline2Modals.css');
+    const purple = ruleBody(css, '.t2m-card--purple');
+    // Regression guard: overlay-tier.css is bundled last, so a local `border`
+    // shorthand here loses and the purple card renders slot-1 cyan.
+    expect(purple).not.toMatch(/(^|[;{])\s*border:/);
+    expect(purple).toContain('--ln-overlay-border: var(--b2');
+    expect(purple).toContain('--ln-overlay-glow: var(--g2');
   });
 });
