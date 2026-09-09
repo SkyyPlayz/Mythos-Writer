@@ -695,6 +695,125 @@ export function furnitureDelete(
   return { deleted: true };
 }
 
+// ─── Vault-mutating canvas operations (§5) — SKY-11187 ───
+//
+// The canvas's Note/Board tools create REAL files and folders, and its rename
+// renames the REAL entry on disk (§5, §1 "two renderings of one filesystem").
+// Everything below is Store A only: none of it writes a board sidecar, and
+// none of it mints an id — the first drag of the new card does that, through
+// patchLayout, exactly as it does for a note created in the Notes tab (§2).
+//
+// Home (`folderRelPath === ''`, the vault root) is deliberately NOT special
+// cased anywhere in this section: resolveFolderAbs already maps '' to the
+// vault root, so the root board creates, names and renames like any other.
+
+/** Placeholder names the canvas tools create with (§5). */
+export const NEW_NOTE_BASE_NAME = 'New note';
+export const NEW_BOARD_BASE_NAME = 'New board';
+
+/**
+ * First free `<base><ext>` / `<base> 2<ext>` / `<base> 3<ext>` … inside
+ * `folderAbs`. Existence is checked against the FILESYSTEM rather than a
+ * caller-supplied sibling list, so the answer is correct on a
+ * case-insensitive volume (macOS/Windows: "new note.md" already occupies
+ * "New note.md") and cannot be raced stale by anything the renderer last
+ * listed.
+ */
+export function uniqueChildName(folderAbs: string, base: string, ext = ''): string {
+  for (let n = 1; ; n++) {
+    const name = n === 1 ? `${base}${ext}` : `${base} ${n}${ext}`;
+    if (!fs.existsSync(path.join(folderAbs, name))) return name;
+  }
+}
+
+export interface CreatedBoardItem {
+  /** Path relative to the board's own folder — the shape every per-item function here takes. */
+  itemPath: string;
+  kind: NotesBoardItemKind;
+}
+
+/**
+ * Create a new note (`New note.md`, empty) or sub-board (`New board/`) inside
+ * `folderRelPath`, optionally pinned at the click point. Returns the created
+ * item's board-relative path so the caller can drop it straight into inline
+ * rename.
+ *
+ * The note body is deliberately EMPTY — no frontmatter, no heading. A
+ * heading would be stale the moment the user finishes the inline rename that
+ * follows every create, and an `id:` here would break §2's lazy-assignment
+ * rule (a note acquires an id when it first acquires board metadata, not when
+ * it is born) — giving it a POSITION is exactly that first acquisition, so
+ * the id minted below comes from patchLayout, the one place §2 allows.
+ *
+ * The position is written and FLUSHED here rather than left in the drag
+ * debounce: a card's birth position is a structural fact about the create,
+ * not an animation frame. Leaving it buffered would let the board reload this
+ * create triggers (the renderer refresh the IPC handler pushes) read the
+ * sidecar before the entry landed and lay the brand-new card out in an
+ * auto-layout slot instead of under the pointer.
+ */
+export function createBoardItem(
+  vaultRoot: string,
+  folderRelPath: string,
+  kind: NotesBoardItemKind,
+  position?: { x: number; y: number },
+): CreatedBoardItem {
+  const folderAbs = resolveFolderAbs(vaultRoot, folderRelPath);
+  // Same guard as furnitureCreate: Store B is never authoritative about
+  // existence, and neither is a stale breadcrumb — refuse to materialize a
+  // board folder that Store A doesn't have.
+  if (!fs.existsSync(folderAbs) || !fs.statSync(folderAbs).isDirectory()) {
+    throw new Error(`notesBoard: board folder not found: ${folderRelPath || '.'}`);
+  }
+
+  let itemPath: string;
+  if (kind === 'folder') {
+    itemPath = uniqueChildName(folderAbs, NEW_BOARD_BASE_NAME);
+    fs.mkdirSync(path.join(folderAbs, itemPath));
+  } else {
+    itemPath = uniqueChildName(folderAbs, NEW_NOTE_BASE_NAME, '.md');
+    const abs = path.join(folderAbs, itemPath);
+    writeFileAtomic(abs, '');
+    // The app's own write — without the mark, chokidar's `add` would bounce
+    // straight back as an external vault change (reindex, graph work, a board
+    // reload) for a file the canvas is already rendering. The IPC handler
+    // pushes the renderer notification itself, so nothing is lost by
+    // suppressing the watcher here (same trade resolveOrAssignId makes).
+    markSelfWrite(abs);
+  }
+
+  if (position) {
+    patchLayout(vaultRoot, folderRelPath, itemPath, position);
+    flushBoardWrite(folderAbs);
+  }
+  return { itemPath, kind };
+}
+
+/**
+ * Board-relative path this item would move to under `newBaseName`, or null
+ * when the rename is a no-op the caller must NOT send to the filesystem:
+ * an empty/whitespace-only name (§5 — "renaming to empty string is a no-op",
+ * never a delete and never an unnamed file), or a name that resolves to the
+ * path the item already has.
+ *
+ * A note keeps its extension (`.md`), because the inline rename edits the
+ * DISPLAYED name, which is the stem. A folder has no extension to preserve —
+ * "Book v1.2" is the whole name, not a stem plus ".2" — matching the same
+ * split VaultBrowser's rename already makes.
+ */
+export function boardItemRenameTarget(
+  itemRelPath: string,
+  newBaseName: string,
+  kind: NotesBoardItemKind,
+): string | null {
+  const trimmed = newBaseName.trim();
+  if (!trimmed) return null;
+  const lastDot = itemRelPath.lastIndexOf('.');
+  const ext = kind === 'note' && lastDot > 0 ? itemRelPath.slice(lastDot) : '';
+  const target = `${trimmed}${ext}`;
+  return target === itemRelPath ? null : target;
+}
+
 // ─── Rename (§2, §5 scope note) — Store B no-op by construction ───
 
 /**
@@ -706,9 +825,13 @@ export function furnitureDelete(
  * key — so id-keyed lookups resolve correctly at whatever NEW path Store A
  * reports, with no rewrite anywhere. This function is a validation/no-op
  * pass-through so the rest of the IPC surface has one entry point per
- * operation for API symmetry; ticket 4 owns actually calling
- * moveVaultFile/renameNoteWithCascade. Nothing is persisted here by design —
- * do not add a write path.
+ * operation for API symmetry.
+ *
+ * SKY-11187: the real rename now happens in the NOTES_BOARD_RENAME_ITEM
+ * handler, which routes through the SAME renameNoteWithCascade the Notes tab
+ * uses (one rename implementation, one wikilink cascade). This function stays
+ * a no-op on purpose — it is the assertion that a rename costs Store B
+ * nothing. Nothing is persisted here by design; do not add a write path.
  */
 export function itemRenameNotify(
   _vaultRoot: string,

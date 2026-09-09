@@ -1671,6 +1671,20 @@ interface Window {
     notesBoardItemRename: (folderPath: string, fromPath: string, toPath: string) => Promise<{ ok: true }>;
     notesBoardItemDelete: (folderPath: string, itemPath: string) => Promise<{ key: string | null }>;
 
+    // SKY-11187 §5: the canvas's REAL vault mutations (Note/Board tool, inline
+    // rename). `renamed: false` is a successful no-op (empty or unchanged
+    // name); `error` is a refusal to show the user.
+    notesBoardCreateItem: (
+      folderPath: string,
+      kind: 'note' | 'folder',
+      position?: { x: number; y: number },
+    ) => Promise<{ itemPath: string; kind: 'note' | 'folder' }>;
+    notesBoardRenameItem: (
+      folderPath: string,
+      itemPath: string,
+      newName: string,
+    ) => Promise<{ renamed: true; itemPath: string } | { renamed: false } | { error: string }>;
+
     // SKY-11186: note thumbnails (main-process half — noteThumbnails.ts, spec §9).
     // `resolve` says which image (if any) is each note's cover; `get` returns a
     // cached WebP derivative or the raw source bytes for the renderer to derive

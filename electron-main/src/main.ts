@@ -450,6 +450,9 @@ import {
   itemRenameNotify as notesBoardItemRenameNotify,
   itemDeleteStub as notesBoardItemDeleteStub,
   flushPendingNotesBoardWrites,
+  // SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5).
+  createBoardItem as notesBoardCreateItem,
+  boardItemRenameTarget as notesBoardRenameTarget,
 } from './notesBoard.js';
 // SKY-11186 (Notes Board 6/9): note thumbnails — see noteThumbnails.ts.
 import {
@@ -546,6 +549,10 @@ import type {
   NotesBoardItemRenameResponse,
   NotesBoardItemDeletePayload,
   NotesBoardItemDeleteResponse,
+  NotesBoardCreateItemPayload,
+  NotesBoardCreateItemResponse,
+  NotesBoardRenameItemPayload,
+  NotesBoardRenameItemResponse,
   NotesThumbResolvePayload,
   NotesThumbResolveResponse,
   NotesThumbGetPayload,
@@ -1581,6 +1588,64 @@ function notifyRenameCascadeApplied(changedStoryPaths: string[]) {
     for (const rel of changedStoryPaths) {
       mainWindow.webContents.send('vault:file-changed', { path: rel });
     }
+  }
+}
+
+/**
+ * The one notes-vault rename implementation. Shared verbatim by the Notes
+ * tab's NOTES_VAULT_MOVE and by the Boards canvas's NOTES_BOARD_RENAME_ITEM
+ * (SKY-11187) — two entry points, one wikilink cascade, one manual-order
+ * rewrite, one icon rewrite. Callers sandbox both paths before calling.
+ */
+function renameNotesVaultEntry(fromPath: string, toPath: string): VaultMoveResponse {
+  const root = getNotesVaultRoot();
+  // SKY-10712: a stem-changing note rename cascade-updates inbound
+  // [[wikilinks]] across both vaults (Obsidian's "Automatically update
+  // internal links"); plain moves/folder renames pass straight through.
+  const result = renameNoteWithCascade({
+    notesRoot: root,
+    storyRoot: getVaultRoot(),
+    fromPath,
+    toPath,
+    onProgress: (p) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('notesVault:renameCascade:progress', p);
+      }
+    },
+  });
+  // SKY-8891: keep the manual-order store in step with the rename — same
+  // handler as the filesystem move so the two can't diverge. A moved
+  // folder's descendants keep their manual order via prefix rewrite.
+  if (result.moved) {
+    const rewritten = rewriteOrderOnMove(readOrderMap(root), fromPath, toPath);
+    if (rewritten) writeOrderMap(root, rewritten);
+    // SKY-9310: icon assignments survive rename/move — the filename never
+    // encodes the icon, so only this sidecar's key needs to follow.
+    const rewrittenIcons = rewriteIconsOnMove(readIconMap(root), fromPath, toPath);
+    if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
+  }
+  if (result.linkUpdate) notifyRenameCascadeApplied(result.linkUpdate.changedStoryPaths);
+  return result;
+}
+
+/**
+ * SKY-11187 (§1 "two renderings of one filesystem"): push a Boards-canvas
+ * Store A mutation to every renderer surface that lists the notes vault, so
+ * the Notes tab reflects a canvas create or rename IMMEDIATELY.
+ *
+ * The notes watcher cannot be relied on for this. A canvas create writes
+ * through writeFileAtomic + markSelfWrite, and startNotesVaultWatcher drops
+ * self-written `add` events outright — so a note created on the board would
+ * never reach the tree at all. A rename does emit (via `unlink`), but only
+ * after chokidar's 300 ms awaitWriteFinish window, and on Windows only after
+ * a 500 ms poll tick. Both cases are covered by pushing the same fan-out the
+ * watcher would have done, exactly as notifyRenameCascadeApplied does for
+ * cascade rewrites.
+ */
+function notifyNotesVaultMutatedByApp(relPath: string): void {
+  scheduleReindex();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('vault:notes-updated', { count: 1, path: relPath });
   }
 }
 
@@ -6417,39 +6482,8 @@ const handlers: IpcHandlers = {
     }
     return result;
   },
-  [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload): VaultMoveResponse => {
-    ensureNotesVaultDir();
-    const root = getNotesVaultRoot();
-    safeVaultEntryIpcJoin(root, payload.fromPath);
-    safeVaultEntryIpcJoin(root, payload.toPath);
-    // SKY-10712: a stem-changing note rename cascade-updates inbound
-    // [[wikilinks]] across both vaults (Obsidian's "Automatically update
-    // internal links"); plain moves/folder renames pass straight through.
-    const result = renameNoteWithCascade({
-      notesRoot: root,
-      storyRoot: getVaultRoot(),
-      fromPath: payload.fromPath,
-      toPath: payload.toPath,
-      onProgress: (p) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('notesVault:renameCascade:progress', p);
-        }
-      },
-    });
-    // SKY-8891: keep the manual-order store in step with the rename — same
-    // handler as the filesystem move so the two can't diverge. A moved
-    // folder's descendants keep their manual order via prefix rewrite.
-    if (result.moved) {
-      const rewritten = rewriteOrderOnMove(readOrderMap(root), payload.fromPath, payload.toPath);
-      if (rewritten) writeOrderMap(root, rewritten);
-      // SKY-9310: icon assignments survive rename/move — the filename never
-      // encodes the icon, so only this sidecar's key needs to follow.
-      const rewrittenIcons = rewriteIconsOnMove(readIconMap(root), payload.fromPath, payload.toPath);
-      if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
-    }
-    if (result.linkUpdate) notifyRenameCascadeApplied(result.linkUpdate.changedStoryPaths);
-    return result;
-  },
+  [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload): VaultMoveResponse =>
+    renameNotesVaultEntry(payload.fromPath, payload.toPath),
   // SKY-10712: one-shot undo of the last rename cascade — renames the note
   // back and restores every rewritten file that hasn't been edited since.
   [IPC_CHANNELS.NOTES_VAULT_RENAME_UNDO]: (): RenameCascadeUndoResponse => {
@@ -7267,6 +7301,77 @@ const handlers: IpcHandlers = {
     if (folderPath) safeVaultDirIpcJoin(root, folderPath);
     safeVaultEntryIpcJoin(root, folderPath ? `${folderPath}/${payload.itemPath}` : payload.itemPath);
     return notesBoardItemDeleteStub(root, folderPath, payload.itemPath);
+  },
+
+  // ─── SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5) ──
+  // The only notesBoard:* channels that touch Store A. Home ('' folderPath)
+  // goes down the identical path as any other board — no root special case.
+  [IPC_CHANNELS.NOTES_BOARD_CREATE_ITEM]: (
+    payload: NotesBoardCreateItemPayload
+  ): NotesBoardCreateItemResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    const kind = payload.kind === 'folder' ? 'folder' : 'note';
+    const pos = payload.position;
+    const position =
+      pos && Number.isFinite(pos.x) && Number.isFinite(pos.y) ? { x: pos.x, y: pos.y } : undefined;
+    const created = notesBoardCreateItem(root, folderPath, kind, position);
+    const vaultPath = folderPath ? `${folderPath}/${created.itemPath}` : created.itemPath;
+    // The name is generated by notesBoard.uniqueChildName from a fixed base,
+    // so it cannot traverse — but hold it to the same boundary every other
+    // notes-vault path crosses rather than trusting that by construction.
+    safeVaultEntryIpcJoin(root, vaultPath);
+    notifyNotesVaultMutatedByApp(vaultPath);
+    return created;
+  },
+  [IPC_CHANNELS.NOTES_BOARD_RENAME_ITEM]: (
+    payload: NotesBoardRenameItemPayload
+  ): NotesBoardRenameItemResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    const fromVaultPath = folderPath ? `${folderPath}/${payload.itemPath}` : payload.itemPath;
+    safeVaultEntryIpcJoin(root, fromVaultPath);
+
+    const itemAbs = path.join(folderPath ? path.join(root, folderPath) : root, payload.itemPath);
+    let isDir: boolean;
+    try {
+      isDir = fs.statSync(itemAbs).isDirectory();
+    } catch {
+      return { error: `Item not found: ${payload.itemPath}` };
+    }
+
+    // §5: renaming to an empty string is a NO-OP — not an error, not a
+    // delete, and never a file left with no name. Same for a name that
+    // resolves to the path the item already has.
+    const toItemPath = notesBoardRenameTarget(
+      payload.itemPath,
+      payload.newName ?? '',
+      isDir ? 'folder' : 'note',
+    );
+    if (toItemPath === null) return { renamed: false };
+
+    const toVaultPath = folderPath ? `${folderPath}/${toItemPath}` : toItemPath;
+    let toAbs: string;
+    try {
+      toAbs = safeVaultEntryIpcJoin(root, toVaultPath);
+    } catch (err) {
+      // A user-typed name that fails the traversal/dotfile guard is a
+      // refusal to show, not a crash to swallow.
+      return { error: (err as Error).message };
+    }
+    // Collision check before the rename: fs.renameSync would silently
+    // clobber an existing FILE on POSIX, and the Notes tab already refuses
+    // this case, so the two surfaces agree.
+    if (fs.existsSync(toAbs)) return { error: 'An item with that name already exists' };
+
+    const result = renameNotesVaultEntry(fromVaultPath, toVaultPath);
+    if (!result.moved) return { renamed: false };
+    notifyNotesVaultMutatedByApp(toVaultPath);
+    return { renamed: true, itemPath: toItemPath };
   },
 
   // ─── SKY-11186 (Notes Board 6/9): note thumbnails IPC ──────────────────

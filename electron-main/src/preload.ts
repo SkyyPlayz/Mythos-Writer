@@ -960,6 +960,24 @@ contextBridge.exposeInMainWorld('api', {
   notesBoardItemDelete: (folderPath: string, itemPath: string) =>
     ipcRenderer.invoke('notesBoard:itemDelete', { folderPath, itemPath }) as Promise<{ key: string | null }>,
 
+  // SKY-11187 (Notes Board 4/9) §5: the canvas's REAL vault mutations. Both
+  // push `vault:notes-updated` from main, so the Notes tab reflects them
+  // without waiting on the notes watcher (which drops a self-written create
+  // outright).
+  notesBoardCreateItem: (
+    folderPath: string,
+    kind: 'note' | 'folder',
+    position?: { x: number; y: number },
+  ) =>
+    ipcRenderer.invoke('notesBoard:createItem', { folderPath, kind, position }) as Promise<{
+      itemPath: string;
+      kind: 'note' | 'folder';
+    }>,
+  notesBoardRenameItem: (folderPath: string, itemPath: string, newName: string) =>
+    ipcRenderer.invoke('notesBoard:renameItem', { folderPath, itemPath, newName }) as Promise<
+      { renamed: true; itemPath: string } | { renamed: false } | { error: string }
+    >,
+
   // SKY-11186 (Notes Board 6/9): note thumbnails — main resolves which image
   // is a note's cover (spec §9) and stores/serves derivatives; the renderer
   // derives the WebP from `source` bytes and hands it back via notesThumbPut.

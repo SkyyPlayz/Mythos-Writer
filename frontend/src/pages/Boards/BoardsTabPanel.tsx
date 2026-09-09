@@ -8,9 +8,10 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import BoardCanvas from './BoardCanvas';
-import type { BoardItem, ItemLayout } from './BoardCanvas';
+import type { BoardItem, BoardTool, ItemLayout } from './BoardCanvas';
 import { resolveNoteThumbs } from '../../lib/noteThumbnails';
 import { boardFollowsChange } from './boardVaultChange';
+import { validateRenameName } from '../../components/VaultBrowser/renameUtils';
 import './BoardsTabPanel.css';
 
 interface VaultListItem {
@@ -73,6 +74,18 @@ function breadcrumbForFolder(folderPath: string): BreadcrumbEntry[] {
 /** How long to coalesce a burst of vault change events before reloading the board. */
 const VAULT_CHANGE_RELOAD_MS = 200;
 
+/**
+ * SKY-11187 §5: the canvas tool palette. Text labels rather than glyphs —
+ * there is no owner mockup for this row yet, and a labelled control is the
+ * one version that is unambiguous to both a screen reader and a first-time
+ * user. Swap in the mockup's icons when the Boards chrome spec lands.
+ */
+const TOOLS: ReadonlyArray<{ id: BoardTool; label: string; title: string }> = [
+  { id: 'select', label: 'Select', title: 'Select and move items' },
+  { id: 'note', label: 'Note', title: 'Note tool — click the canvas to create a note' },
+  { id: 'board', label: 'Board', title: 'Board tool — click the canvas to create a board' },
+];
+
 export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoom, openFolderRequest }: BoardsTabPanelProps) {
   // Breadcrumb stack — bottom is home (vault root), top is current board
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([HOME_CRUMB]);
@@ -99,6 +112,12 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   const [savedView, setSavedView] = useState<{ zoom: number; panX: number; panY: number }>({ zoom: 100, panX: 0, panY: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // SKY-11187 §5: the canvas tools and the inline rename they hand off to.
+  const [activeTool, setActiveTool] = useState<BoardTool>('select');
+  const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  /** A refused vault mutation (name collision, invalid characters, fs error). */
+  const [actionError, setActionError] = useState<string | null>(null);
 
   // A reload that finishes after a newer one started must not clobber it —
   // vault-change reloads and breadcrumb navigation can overlap.
@@ -282,6 +301,62 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     }
   }, [currentFolder]);
 
+  // ── SKY-11187 §5: vault-mutating canvas operations ──────────────────────
+  //
+  // These are REAL filesystem mutations, not metadata edits (§1: the Notes
+  // tab and this canvas are two renderings of one filesystem). Both go
+  // through `notesBoard:createItem` / `notesBoard:renameItem`, which do the
+  // fs work in main AND push `vault:notes-updated` — so the Notes tree
+  // reflects them without waiting on the notes watcher.
+  //
+  // Home (currentFolder === '') is NOT special-cased anywhere below: the
+  // root board creates, names and renames exactly like a nested one.
+
+  const handleCreateItem = useCallback(async (kind: 'note' | 'folder', x: number, y: number) => {
+    // One-shot tool: disarm before the await, so a second click landing
+    // during the round-trip cannot create a second item.
+    setActiveTool('select');
+    setActionError(null);
+    try {
+      const created = await window.api.notesBoardCreateItem(currentFolder, kind, { x, y });
+      await loadBoard(currentFolder, true);
+      // Straight into inline rename — the placeholder name ("New note") is a
+      // prompt, not a decision.
+      setRenamingPath(created.itemPath);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    }
+  }, [currentFolder, loadBoard]);
+
+  const handleRenameCommit = useCallback(async (itemPath: string, newName: string) => {
+    setRenamingPath(null);
+    // §5: an empty name is a no-op — leave the item exactly as it is. Checked
+    // here as well as in main so the round-trip is skipped entirely.
+    if (!newName.trim()) return;
+    const invalid = validateRenameName(newName);
+    if (invalid) { setActionError(invalid); return; }
+    setActionError(null);
+    try {
+      const res = await window.api.notesBoardRenameItem(currentFolder, itemPath, newName);
+      if ('error' in res) { setActionError(res.error); return; }
+      if (!res.renamed) return; // unchanged name — nothing moved on disk
+      await loadBoard(currentFolder, true);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    }
+  }, [currentFolder, loadBoard]);
+
+  const handleRenameCancel = useCallback(() => setRenamingPath(null), []);
+  const handleRequestRename = useCallback((itemPath: string) => setRenamingPath(itemPath), []);
+
+  // Navigating to another board drops any half-finished rename and disarms
+  // the tool — neither addresses anything on the board you just opened.
+  useEffect(() => {
+    setRenamingPath(null);
+    setActiveTool('select');
+    setActionError(null);
+  }, [currentFolder]);
+
   // BoardCanvas hands back the tile's path relative to the CURRENT board, so
   // join it onto the current folder to keep folderPath vault-relative at any
   // depth. A bare item path was only ever correct one level below Home.
@@ -327,6 +402,32 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             )}
           </span>
         ))}
+
+        {/*
+          SKY-11187 §5: the placement tools. A radio group, because exactly
+          one tool is armed at a time and arrow keys are the expected way to
+          move between them; `aria-checked` carries the state that the neon
+          pressed styling shows.
+        */}
+        <div className="boards-tab-panel__tools" role="radiogroup" aria-label="Board tools">
+          {TOOLS.map((tool) => (
+            <button
+              key={tool.id}
+              type="button"
+              role="radio"
+              aria-checked={activeTool === tool.id}
+              className={
+                'boards-tab-panel__tool' +
+                (activeTool === tool.id ? ' boards-tab-panel__tool--active' : '')
+              }
+              data-tool={tool.id}
+              title={tool.title}
+              onClick={() => setActiveTool(tool.id)}
+            >
+              {tool.label}
+            </button>
+          ))}
+        </div>
       </nav>
 
       {/* Canvas area */}
@@ -334,21 +435,52 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
         <div className="boards-tab-panel__loading" role="status" aria-live="polite">Loading board…</div>
       ) : error ? (
         <div className="boards-tab-panel__error" role="alert">{error}</div>
-      ) : items.length === 0 ? (
-        <div className="boards-tab-panel__empty">
-          <p className="boards-tab-panel__empty-msg">This board is empty. Create folders or notes in the Notes tab to see them here.</p>
-        </div>
       ) : (
-        <BoardCanvas
-          items={items}
-          savedLayout={savedLayout}
-          savedView={savedView}
-          minZoom={minZoom}
-          onItemMove={handleItemMove}
-          onItemResize={handleItemResize}
-          onViewChange={handleViewChange}
-          onEnterBoard={handleEnterBoard}
-        />
+        <div className="boards-tab-panel__canvas-wrap">
+          {/*
+            SKY-11187: an EMPTY board still renders the canvas. It used to
+            render the empty message instead, which left the Note/Board tools
+            with nothing to click on — the one board where creating the first
+            item matters most (a fresh vault's Home) was the one board where
+            it was impossible. The message is a hint layered over the canvas,
+            not a replacement for it, so it never swallows the click.
+          */}
+          {items.length === 0 && (
+            <p className="boards-tab-panel__empty-msg boards-tab-panel__empty-msg--overlay">
+              This board is empty. Pick the Note or Board tool, then click anywhere to add one.
+            </p>
+          )}
+          <BoardCanvas
+            items={items}
+            savedLayout={savedLayout}
+            savedView={savedView}
+            minZoom={minZoom}
+            onItemMove={handleItemMove}
+            onItemResize={handleItemResize}
+            onViewChange={handleViewChange}
+            onEnterBoard={handleEnterBoard}
+            activeTool={activeTool}
+            onCreateItem={handleCreateItem}
+            renamingPath={renamingPath}
+            onRequestRename={handleRequestRename}
+            onRenameCommit={handleRenameCommit}
+            onRenameCancel={handleRenameCancel}
+          />
+        </div>
+      )}
+
+      {actionError && (
+        <div className="boards-tab-panel__action-error" role="alert">
+          {actionError}
+          <button
+            type="button"
+            className="boards-tab-panel__action-error-dismiss"
+            aria-label="Dismiss"
+            onClick={() => setActionError(null)}
+          >
+            ×
+          </button>
+        </div>
       )}
     </div>
   );

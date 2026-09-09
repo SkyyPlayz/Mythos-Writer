@@ -23,6 +23,10 @@ import {
   itemRenameNotify,
   itemDeleteStub,
   gcBoardEntries,
+  // SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5).
+  uniqueChildName,
+  createBoardItem,
+  boardItemRenameTarget,
   type BoardFile,
 } from './notesBoard.js';
 
@@ -633,5 +637,137 @@ describe('nested folder boards (getBoard on a non-root folderRelPath)', () => {
     const board = getBoard(root, 'Characters');
     expect(board.children).toEqual([{ path: 'Hero.md', kind: 'note', id }]);
     expect(board.layout[`n:${id}`]).toEqual({ x: 7, y: 8 });
+  });
+});
+
+// ─── SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5) ───
+
+describe('uniqueChildName', () => {
+  let root: string;
+  beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'vb-nb-unique-')); });
+  afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
+
+  it('gives the bare base name when nothing occupies it, then numbers upward', () => {
+    expect(uniqueChildName(root, 'New note', '.md')).toBe('New note.md');
+    fs.writeFileSync(path.join(root, 'New note.md'), '');
+    expect(uniqueChildName(root, 'New note', '.md')).toBe('New note 2.md');
+    fs.writeFileSync(path.join(root, 'New note 2.md'), '');
+    expect(uniqueChildName(root, 'New note', '.md')).toBe('New note 3.md');
+  });
+
+  it('counts a FOLDER of the same name as occupying it (no extension)', () => {
+    fs.mkdirSync(path.join(root, 'New board'));
+    expect(uniqueChildName(root, 'New board')).toBe('New board 2');
+  });
+});
+
+describe('createBoardItem', () => {
+  let root: string;
+  beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'vb-nb-create-')); });
+  afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
+
+  it('creates a real, EMPTY note file and reports its board-relative path', () => {
+    fs.mkdirSync(path.join(root, 'Characters'));
+    const created = createBoardItem(root, 'Characters', 'note');
+
+    expect(created).toEqual({ itemPath: 'New note.md', kind: 'note' });
+    const abs = path.join(root, 'Characters', 'New note.md');
+    expect(fs.existsSync(abs)).toBe(true);
+    expect(fs.readFileSync(abs, 'utf-8')).toBe('');
+  });
+
+  it('creates a real sub-board directory', () => {
+    fs.mkdirSync(path.join(root, 'Characters'));
+    const created = createBoardItem(root, 'Characters', 'folder');
+
+    expect(created).toEqual({ itemPath: 'New board', kind: 'folder' });
+    expect(fs.statSync(path.join(root, 'Characters', 'New board')).isDirectory()).toBe(true);
+  });
+
+  // Spec §15 test 13 / the ticket's headline AC: the root board is not special.
+  it('creates at the vault ROOT (Home) exactly as it does inside a folder', () => {
+    const note = createBoardItem(root, '', 'note');
+    const board = createBoardItem(root, '', 'folder');
+
+    expect(fs.existsSync(path.join(root, 'New note.md'))).toBe(true);
+    expect(fs.statSync(path.join(root, 'New board')).isDirectory()).toBe(true);
+    expect(getBoard(root, '').children.map((c) => c.path).sort()).toEqual(
+      [board.itemPath, note.itemPath].sort(),
+    );
+  });
+
+  it('does not mint an id when created without a position (§2 lazy assignment)', () => {
+    createBoardItem(root, '', 'note');
+    expect(resolveId('note', path.join(root, 'New note.md'))).toBeNull();
+    expect(fs.existsSync(path.join(root, BOARD_SIDECAR_FILE_NAME))).toBe(false);
+  });
+
+  // A card's birth position is structural: it must be on disk by the time the
+  // create returns, not sitting in the drag debounce where the board reload
+  // this create triggers would miss it.
+  it('pins the item at the click point and FLUSHES that layout entry immediately', () => {
+    const created = createBoardItem(root, '', 'note', { x: 320, y: 180 });
+
+    const board = getBoard(root, '');
+    const child = board.children.find((c) => c.path === created.itemPath);
+    expect(child?.id).toBeTruthy();
+    expect(board.layout[`n:${child!.id}`]).toEqual({ x: 320, y: 180 });
+  });
+
+  it('refuses to materialize a board folder that Store A does not have', () => {
+    expect(() => createBoardItem(root, 'Nope', 'note')).toThrow(/board folder not found/);
+    expect(fs.existsSync(path.join(root, 'Nope'))).toBe(false);
+  });
+
+  it('marks the note it writes as a self-write so the watcher does not echo it', () => {
+    createBoardItem(root, '', 'note');
+    expect(isRecentSelfWrite(path.join(root, 'New note.md'))).toBe(true);
+  });
+});
+
+describe('boardItemRenameTarget', () => {
+  it('preserves a note’s extension while renaming its stem', () => {
+    expect(boardItemRenameTarget('New note.md', 'Aria', 'note')).toBe('Aria.md');
+  });
+
+  it('treats a folder name as whole — no stem/extension split', () => {
+    expect(boardItemRenameTarget('Book v1.2', 'Book v2.0', 'folder')).toBe('Book v2.0');
+  });
+
+  it('trims surrounding whitespace off the typed name', () => {
+    expect(boardItemRenameTarget('New note.md', '  Aria  ', 'note')).toBe('Aria.md');
+  });
+
+  // §5: renaming to an empty string is a NO-OP — never a delete, never an
+  // unnamed file, never a bare ".md".
+  it('returns null for an empty or whitespace-only name', () => {
+    expect(boardItemRenameTarget('New note.md', '', 'note')).toBeNull();
+    expect(boardItemRenameTarget('New note.md', '   ', 'note')).toBeNull();
+    expect(boardItemRenameTarget('New board', '', 'folder')).toBeNull();
+  });
+
+  it('returns null when the name resolves to the path the item already has', () => {
+    expect(boardItemRenameTarget('Aria.md', 'Aria', 'note')).toBeNull();
+    expect(boardItemRenameTarget('Aria', 'Aria', 'folder')).toBeNull();
+  });
+});
+
+describe('rename is a Store B no-op by construction (§2, §15 test 3)', () => {
+  let root: string;
+  beforeEach(() => { root = fs.mkdtempSync(path.join(os.tmpdir(), 'vb-nb-rename-')); });
+  afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
+
+  it('keeps a renamed note at its position with the parent sidecar untouched', () => {
+    const created = createBoardItem(root, '', 'note', { x: 90, y: 40 });
+    const id = resolveId('note', path.join(root, created.itemPath));
+    const before = fs.readFileSync(path.join(root, BOARD_SIDECAR_FILE_NAME), 'utf-8');
+
+    // The real filesystem rename the IPC handler performs.
+    fs.renameSync(path.join(root, created.itemPath), path.join(root, 'Aria.md'));
+
+    const board = getBoard(root, '');
+    expect(board.children).toEqual([{ path: 'Aria.md', kind: 'note', id }]);
+    expect(board.layout[`n:${id}`]).toEqual({ x: 90, y: 40 });
+    expect(fs.readFileSync(path.join(root, BOARD_SIDECAR_FILE_NAME), 'utf-8')).toBe(before);
   });
 });
