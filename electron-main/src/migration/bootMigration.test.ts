@@ -144,21 +144,21 @@ describe('runBootMythosMigration — happy path', () => {
     expect(outcome.report.ok).toBe(true);
     expect(outcome.report.verified.mismatches).toEqual([]);
 
-    // Repoint received exactly the verified build's paths.
+    // Repoint received exactly the verified build's paths (grouped layout, SKY-11141 §1).
     expect(repoints).toEqual([{
       targetRoot: target,
-      storyVaultPath: path.join(target, 'Story Vault'),
-      notesVaultPath: path.join(target, 'Notes Vault'),
+      storyVaultPath: path.join(target, 'Stories', 'Story Vault'),
+      notesVaultPath: path.join(target, 'Notes', 'Notes Vault'),
     }]);
 
     // Content survives in the new layout; the in-flight marker is gone.
     expect(
       fs.readFileSync(
-        path.join(target, 'Story Vault', 'The Deep', 'Part 1', 'Chapter 01', 'Scene 01.md'),
+        path.join(target, 'Stories', 'Story Vault', 'The Deep', 'Part 1', 'Chapter 01', 'Scene 01.md'),
         'utf-8',
       ),
     ).toContain(PROSE);
-    expect(fs.readFileSync(path.join(target, 'Notes Vault', 'Mira.md'), 'utf-8')).toBe(NOTE);
+    expect(fs.readFileSync(path.join(target, 'Notes', 'Notes Vault', 'Mira.md'), 'utf-8')).toBe(NOTE);
     expect(fs.existsSync(path.join(target, MIGRATION_INCOMPLETE_MARKER))).toBe(false);
 
     // The source vault is byte-for-byte untouched.

@@ -66,8 +66,9 @@ describe('createMythosVault + Veynn seed', () => {
     expect(files).toContain('settings.json');
     expect(files).toContain('timelines.json');
     expect(files).toContain('Brainstorm/idea-library.json');
+    // Grouped layout (SKY-11141 §1): Stories/ and Notes/ group folders.
     // Manuscript: 3 parts / 4 chapters / 9 scenes + book.md.
-    const story = `Story Vault/${VEYNN_STORY_FOLDER}`;
+    const story = `Stories/Story Vault/${VEYNN_STORY_FOLDER}`;
     expect(files).toContain(`${story}/book.md`);
     expect(files).toContain(`${story}/Part 1/Chapter 01/Scene 01.md`);
     expect(files).toContain(`${story}/Part 1/Chapter 01/Scene 02.md`);
@@ -79,14 +80,14 @@ describe('createMythosVault + Veynn seed', () => {
     expect(files).toContain(`${story}/Part 3/Chapter 04/Scene 01.md`);
     expect(files).toContain(`${story}/Part 3/Chapter 04/Scene 02.md`);
     // Sample notes.
-    expect(files).toContain('Notes Vault/Characters/Mira Veynn.md');
-    expect(files).toContain('Notes Vault/Characters/Kael Thorne.md');
-    expect(files).toContain('Notes Vault/Worldbuilding/Locations/The Sunken Gate.md');
-    expect(files).toContain('Notes Vault/Worldbuilding/Lore & Myth/Tide Mechanics.md');
-    expect(files).toContain('Notes Vault/Plot & Story/Project Bible.md');
+    expect(files).toContain('Notes/Notes Vault/Characters/Mira Veynn.md');
+    expect(files).toContain('Notes/Notes Vault/Characters/Kael Thorne.md');
+    expect(files).toContain('Notes/Notes Vault/Worldbuilding/Locations/The Sunken Gate.md');
+    expect(files).toContain('Notes/Notes Vault/Worldbuilding/Lore & Myth/Tide Mechanics.md');
+    expect(files).toContain('Notes/Notes Vault/Plot & Story/Project Bible.md');
     // SKY-10952: Agent Vault is a third sibling; sessions live there, not in
     // Notes Vault — the prototype's Notes Vault/Sessions/ folder is superseded.
-    expect(files.some((f) => f.startsWith('Notes Vault/Sessions/'))).toBe(false);
+    expect(files.some((f) => f.startsWith('Notes/Notes Vault/Sessions/'))).toBe(false);
     expect(files.some((f) => f.startsWith('Agent Vault/Sessions/'))).toBe(true);
 
     // mythos.json: story listed, seed marker recorded.
@@ -337,9 +338,9 @@ describe('syncCanonicalFromManifest + creation-path helpers', () => {
 });
 
 describe('storyVaultRootFor sanity', () => {
-  it('derives the three vault roots from the mythos root', () => {
-    expect(storyVaultRootFor('/x/V')).toBe(path.join('/x/V', 'Story Vault'));
-    expect(notesVaultRootFor('/x/V')).toBe(path.join('/x/V', 'Notes Vault'));
+  it('derives the three vault roots from the mythos root (grouped layout, SKY-11141 §1)', () => {
+    expect(storyVaultRootFor('/x/V')).toBe(path.join('/x/V', 'Stories', 'Story Vault'));
+    expect(notesVaultRootFor('/x/V')).toBe(path.join('/x/V', 'Notes', 'Notes Vault'));
     expect(agentVaultRootFor('/x/V')).toBe(path.join('/x/V', 'Agent Vault'));
   });
 });
