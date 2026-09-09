@@ -147,7 +147,7 @@ export default function DraftsPopover({
   return (
     <div
       ref={rootRef}
-      className="ln-drafts-popover"
+      className="ln-overlay-surface ln-drafts-popover"
       role="dialog"
       aria-label={`Drafts and history — ${documentLabel}`}
       data-testid="ln-drafts-popover"
