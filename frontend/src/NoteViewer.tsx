@@ -21,6 +21,8 @@ import type { AnyExtension } from '@tiptap/core';
 import { useNoteReader } from './story/useNoteReader';
 import ReaderBar from './story/ReaderBar';
 import type { TtsEngineSettings, TtsVoicePrefs } from './hooks/useTtsPlayer';
+import { NoteCoverBadge } from './components/NoteCoverBadge';
+import { invalidateNoteThumbs } from './lib/noteThumbnails';
 import './NoteViewer.css';
 
 export type NoteViewerMode = 'source' | 'rich' | 'markdown' | 'preview';
@@ -592,9 +594,11 @@ export default function NoteViewer({
       .catch(() => showLnToast('Could not copy the note path'));
   }, [path]);
 
-  // A frontmatter edit (title/tags) is a discrete commit: adopt + save now.
-  const adoptFrontmatterChange = useCallback((next: string) => {
-    if (next === contentRef.current) return;
+  // A frontmatter edit (title/tags/thumb) is a discrete commit: adopt + save
+  // now. Resolves true once the write has landed on disk (false: unchanged,
+  // or the save failed and the GH#616 banner is showing).
+  const adoptFrontmatterChange = useCallback((next: string): Promise<boolean> => {
+    if (next === contentRef.current) return Promise.resolve(false);
     contentRef.current = next;
     setContent(next);
     scheduleWordCount(next);
@@ -604,15 +608,30 @@ export default function NoteViewer({
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    void saveContent(next).then((ok) => {
-      if (!ok) return;
+    return saveContent(next).then((ok) => {
+      if (!ok) return false;
       // Keep any other open surface on this note (split pane, properties
       // panel) in sync — same event contract as NoteProperties (M16).
       window.dispatchEvent(new CustomEvent('mythos:note-frontmatter-updated', {
         detail: { path, content: next },
       }));
+      return true;
     });
   }, [path, saveContent, scheduleWordCount]);
+
+  // SKY-11186 (BOARDS-SPEC v2 §9): the editor cover's × writes `thumb: false`
+  // through the same frontmatter commit as the title/tags (unquoted — main's
+  // parseFrontmatter reads it as boolean false, which the resolver treats as
+  // "off"), then tells the shared thumbnail memo to re-ask main. The
+  // invalidate waits for the write so the re-ask can't race the old file.
+  // The memo is keyed on vault-relative POSIX paths (what the vault watcher
+  // reports), so a Windows-separator path is normalised before use.
+  const thumbNotePath = useMemo(() => path.replace(/\\/g, '/'), [path]);
+  const removeThumbnail = useCallback(() => {
+    void adoptFrontmatterChange(setFrontmatterField(contentRef.current, 'thumb', 'false')).then((ok) => {
+      if (ok) invalidateNoteThumbs([thumbNotePath]);
+    });
+  }, [adoptFrontmatterChange, thumbNotePath]);
 
   const commitTitle = useCallback(() => {
     const el = titleElRef.current;
@@ -934,6 +953,10 @@ export default function NoteViewer({
             +
           </button>
         </div>
+        {/* SKY-11186: the note's cover beside the title (spec §9) — the same
+            derivative the Notes Board card shows. Renders nothing when the
+            note has no cover; the header's second grid column collapses. */}
+        <NoteCoverBadge notePath={thumbNotePath} title={noteTitle} onRemove={removeThumbnail} />
       </div>
 
       {mode === 'source' && (
