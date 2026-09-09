@@ -38,7 +38,7 @@ jobs:
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -128,7 +128,7 @@ jobs:
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -163,7 +163,7 @@ jobs:
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -201,7 +201,7 @@ jobs:
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -286,7 +286,7 @@ jobs:
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -313,7 +313,7 @@ jobs:
         # SKY-3872/SKY-4216: switched back to cache/save (separate 10 GB LRU quota)
         # after upload-artifact hit artifact storage quota on run 28113426547.
         # E2E shards fall back to a local rebuild on cache miss (SKY-3742).
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: out/
           key: electron-build-${{ github.run_id }}
@@ -370,7 +370,7 @@ jobs:
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -394,7 +394,7 @@ jobs:
         run: source scripts/ci-retry.sh && retry node node_modules/electron/install.js
       - name: Restore electron build from cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: out/
           key: electron-build-${{ github.run_id }}
@@ -561,7 +561,7 @@ jobs:
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -585,7 +585,7 @@ jobs:
         run: source scripts/ci-retry.sh && retry node node_modules/electron/install.js
       - name: Restore electron build from cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: out/
           key: electron-build-${{ github.run_id }}
@@ -779,7 +779,7 @@ jobs:
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -803,7 +803,7 @@ jobs:
         run: source scripts/ci-retry.sh && retry node node_modules/electron/install.js
       - name: Restore electron build from cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: out/
           key: electron-build-${{ github.run_id }}
@@ -978,7 +978,7 @@ jobs:
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -1002,7 +1002,7 @@ jobs:
         run: source scripts/ci-retry.sh && retry node node_modules/electron/install.js
       - name: Restore electron build from cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: out/
           key: electron-build-${{ github.run_id }}
@@ -1248,7 +1248,7 @@ jobs:
       - name: Cache node_modules
         if: github.event_name != 'pull_request'
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -1268,7 +1268,7 @@ jobs:
       # Cached independently since it's untouched by the node_modules cache key.
       - name: Cache electron-builder toolchain
         if: github.event_name != 'pull_request'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/electron-builder
           key: electron-builder-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -1416,7 +1416,7 @@ jobs:
       - name: Cache node_modules
         if: github.event_name != 'pull_request'
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -1428,7 +1428,7 @@ jobs:
 
       - name: Cache electron-builder toolchain
         if: github.event_name != 'pull_request'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/AppData/Local/electron-builder/Cache
           key: electron-builder-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
