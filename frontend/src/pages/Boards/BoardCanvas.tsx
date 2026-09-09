@@ -98,9 +98,14 @@ export default function BoardCanvas({
   onEnterBoard,
 }: BoardCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(900);
   const [zoom, setZoom] = useState(savedView.zoom || 100);
   const [pan, setPan] = useState({ x: savedView.panX || 0, y: savedView.panY || 0 });
+  // SKY-11494 BD-3: the neon rim is the mockup's *selection* affordance, so the
+  // canvas needs a selection to spend it on. View-local and deliberately not
+  // persisted — it is a pointer state, not board content.
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
 
   // Resolve items: merge saved layout with auto-layout for unsaved items
   const resolvedItems: ResolvedItem[] = items.map((item, i) => {
@@ -137,11 +142,50 @@ export default function BoardCanvas({
     }),
   );
 
+  // A selected item that is no longer on this board (renamed, deleted, or we
+  // navigated into a sub-board) must not keep a rim alive against nothing.
+  useEffect(() => {
+    if (selectedPath && !items.some((item) => item.path === selectedPath)) {
+      setSelectedPath(null);
+    }
+  }, [items, selectedPath]);
+
+  // ── SKY-11494 BD-2: keep the dot grid on top of the world ───────────────
+  // The grid is painted on the panel, but the world it describes is
+  // translated by `pan`, scaled by `zoom`, and scrolled inside the panel. The
+  // mockup binds background-size to `20 * scale` and background-position to
+  // the pan offset; ours additionally subtracts the scroll offset, because our
+  // world scrolls and the mockup's fixed 3200x2200 one does not.
+  //
+  // Written straight onto the element instead of through an inline style prop:
+  // panning and scrolling then cost one style write, not a re-render of every
+  // tile on a board that is uncapped at 200+ (spec §6).
+  const syncGridToWorld = useCallback(() => {
+    const root = containerRef.current;
+    if (!root) return;
+    const scale = zoom / 100;
+    const scroller = scrollAreaRef.current;
+    root.style.setProperty('--board-grid-size', `${GRID_SNAP * scale}px`);
+    root.style.setProperty('--board-grid-x', `${pan.x - (scroller?.scrollLeft ?? 0)}px`);
+    root.style.setProperty('--board-grid-y', `${pan.y - (scroller?.scrollTop ?? 0)}px`);
+  }, [zoom, pan]);
+
+  useLayoutEffect(syncGridToWorld, [syncGridToWorld]);
+
   // ── Pan via middle-mouse drag ───────────────────────────────────────────
   const panDragRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
 
   const handleMouseDownCanvas = useCallback((e: MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 1) return; // middle button only
+    if (e.button === 0) {
+      // Item mousedown stops propagation, so a left press that reaches the
+      // panel is empty canvas — clear the selection. The zoom pill lives
+      // inside the panel and is not canvas.
+      if (!(e.target as HTMLElement).closest('.board-canvas__zoom-controls')) {
+        setSelectedPath(null);
+      }
+      return;
+    }
+    if (e.button !== 1) return; // middle button pans
     e.preventDefault();
     panDragRef.current = { startX: e.clientX, startY: e.clientY, startPanX: pan.x, startPanY: pan.y };
   }, [pan]);
@@ -201,6 +245,7 @@ export default function BoardCanvas({
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('.board-canvas__resize-handle')) return;
     e.stopPropagation();
+    setSelectedPath(item.path);
     itemDragRef.current = {
       path: item.path,
       startMouseX: e.clientX,
@@ -253,6 +298,7 @@ export default function BoardCanvas({
   const handleResizeMouseDown = useCallback((e: MouseEvent<HTMLDivElement>, item: ResolvedItem) => {
     e.stopPropagation();
     e.preventDefault();
+    setSelectedPath(item.path);
     const def = defaultSize(item.kind);
     resizeDragRef.current = {
       path: item.path,
@@ -339,7 +385,7 @@ export default function BoardCanvas({
       </div>
 
       {/* Scrollable canvas area */}
-      <div className="board-canvas__scroll-area">
+      <div className="board-canvas__scroll-area" ref={scrollAreaRef} onScroll={syncGridToWorld}>
         <div
           className="board-canvas__world"
           style={{
@@ -364,17 +410,26 @@ export default function BoardCanvas({
             const w = size.w ?? def.w;
             const h = size.h ?? def.h;
             const isDragging = draggingPath === item.path;
+            const isSelected = selectedPath === item.path;
+            // `role="button"`/`"article"` do not take aria-selected, so the
+            // state rides the accessible name instead of an invalid attribute.
+            const label = item.kind === 'folder'
+              ? `Board: ${item.name}. Double-click to open.`
+              : `Note card: ${item.name}`;
 
             return (
               <div
                 key={item.path}
-                className={`board-canvas__item board-canvas__item--${item.kind}${isDragging ? ' board-canvas__item--dragging' : ''}`}
+                className={`board-canvas__item board-canvas__item--${item.kind}${isSelected ? ' board-canvas__item--selected' : ''}${isDragging ? ' board-canvas__item--dragging' : ''}`}
                 style={{ left: pos.x, top: pos.y, width: w, height: h }}
                 onMouseDown={(e) => handleItemMouseDown(e, { ...item, layout: { ...item.layout, x: pos.x, y: pos.y, w, h } })}
                 onDoubleClick={item.kind === 'folder' ? () => onEnterBoard?.(item.path) : undefined}
                 role={item.kind === 'folder' ? 'button' : 'article'}
-                aria-label={item.kind === 'folder' ? `Board: ${item.name}. Double-click to open.` : `Note card: ${item.name}`}
+                aria-label={isSelected ? `${label} Selected.` : label}
+                data-selected={isSelected ? 'true' : undefined}
                 tabIndex={0}
+                // Selection follows focus, so the rim is reachable by Tab and not only by pointer.
+                onFocus={() => setSelectedPath(item.path)}
                 onKeyDown={(e) => {
                   if (item.kind === 'folder' && (e.key === 'Enter' || e.key === ' ')) {
                     e.preventDefault();

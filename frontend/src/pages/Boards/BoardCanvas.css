@@ -15,23 +15,52 @@
  */
 
 /* ── Canvas panel ──
-   Mockup: an inset rounded panel with a hairline slot-1 rim and a 26px
-   dot-grid. The grid lives on the panel, not inside the transformed world, so
-   it stays put while the world pans/zooms — same as the mockup. */
+   Mockup `bdCanvasSt` (owner report, script 8151):
+
+     border-radius:16px; background:rgba(8,10,18,.42);
+     border:1px solid rgba(255,255,255,.07);
+     background-image:radial-gradient(rgba(255,255,255,.07) 1px,transparent 1px);
+     background-size:(20 * scale)px; background-position:panX panY;
+
+   SKY-11494 BD-1: this panel is the single largest rectangle in the app and it
+   shipped fully opaque, so the wallpaper died at its rim. The fill is a 42%
+   scrim, and the rim is a NEUTRAL hairline — in this region the mockup spends
+   its neon on the cards, not on the container, which is also why the slot-1
+   halo that used to ring the panel is gone.
+
+   SKY-11494 BD-2: the grid is painted on the panel but the world it describes
+   is transformed, so BoardCanvas.tsx feeds the offsets in through
+   --board-grid-size/-x/-y. Spacing is the world's own snap grid (20px) times
+   the zoom scale, so the dots are the snap targets rather than a decorative
+   26px that lined up with nothing. */
 .board-canvas__root {
+  --board-canvas-fill: rgb(8 10 18 / 0.42);
+
   position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   margin: 0 14px 12px;
-  border-radius: 15px;
-  border: var(--bw, 1px) solid var(--gs1, rgb(0 240 255 / 0.2));
-  background-color: var(--bg-canvas, #0b0e13);
-  background-image: radial-gradient(circle at 1px 1px, rgb(255 255 255 / 0.055) 1px, transparent 0);
-  background-size: 26px 26px;
-  box-shadow: 0 0 22px -10px var(--g1, rgb(0 240 255 / 0.4));
+  border-radius: 16px;
+  border: var(--bw, 1px) solid rgb(255 255 255 / 0.07);
+  background-color: var(--board-canvas-fill);
+  background-image: radial-gradient(circle at 1px 1px, rgb(255 255 255 / 0.07) 1px, transparent 0);
+  background-size: var(--board-grid-size, 20px) var(--board-grid-size, 20px);
+  background-position: var(--board-grid-x, 0px) var(--board-grid-y, 0px);
   user-select: none;
+}
+
+/* Transparency-averse users get the wallpaper cut out again, not a 42% scrim
+   they explicitly asked the OS to stop showing them (SKY-10908 / MYT-520 §5.4). */
+@media (prefers-reduced-transparency: reduce) {
+  .board-canvas__root {
+    --board-canvas-fill: var(--bg-canvas, #04060c);
+  }
+}
+
+:root[data-contrast='high'] .board-canvas__root {
+  --board-canvas-fill: var(--bg-canvas, #06080b);
 }
 
 /* ── Floating zoom toolbar ──
@@ -148,20 +177,47 @@
 
 /* ── Items ──
    The mockup colors each card by its category. Our two categories are the
-   item kinds, so notes take slot 1 and boards take slot 2. The `--board-item-*`
-   locals exist only so the shared hover/drag/focus rules below stay written
-   once; they always resolve to engine-stamped slot tokens. */
+   item kinds, so notes take slot 1 and boards take slot 2. `--board-item-n` is
+   the slot hex; every alpha below is mixed off it, so the whole state ladder
+   still tracks the user's accent while landing on the mockup's exact values.
+
+   SKY-11494 BD-3 — mockup `bdCards` (script 8062, `stH` on 8063):
+
+     rest      border rgba(255,255,255,.1)   shadow 0 8px 22px rgba(3,5,12,.45)
+     hover     border slot@.6                shadow 0 10px 26px rgba(3,5,12,.5),
+                                                    0 0 18px -7px slot@.55
+     selected  border slot@.95               shadow 0 0 0 1px slot@.45,
+                                                    0 0 24px -6px slot@.65
+     fill      rgba(20,25,42,.9)             radius 14px
+
+   We shipped the full-alpha slot rim AND a glow at rest, which is the mockup's
+   *selection* affordance — so selection had no signal left to spend. Rest is
+   now a neutral hairline over a depth shadow; the neon means "selected".
+
+   The fill is the mockup's fixed near-opaque plate rather than the engine's
+   `--glass2` (which floors at 50%): with BD-1 the canvas underneath is now a
+   42% scrim over the wallpaper, and 50% tiles put body text on a starfield.
+   The theme reactivity for a tile lives in its rim and glow, per the mockup.
+   The mockup also gives cards `backdrop-filter: blur(14px)`; deliberately not
+   adopted — a board carries 200+ tiles uncapped (spec §6) and that many
+   backdrop layers is a scroll-jank hazard for a 10% alpha of blur. */
 .board-canvas__item {
   --board-item-n: var(--n1, #00f0ff);
-  --board-item-b: var(--b1, rgb(0 240 255 / 0.38));
   --board-item-g: var(--g1, rgb(0 240 255 / 0.5));
-  --board-item-gs: var(--gs1, rgb(0 240 255 / 0.1));
+
+  --board-tile-fill: rgb(20 25 42 / 0.9);
+  --board-item-rim-rest: rgb(255 255 255 / 0.1);
+  --board-item-rim-hover: color-mix(in srgb, var(--board-item-n) 60%, transparent);
+  --board-item-rim-selected: color-mix(in srgb, var(--board-item-n) 95%, transparent);
+  --board-item-halo-selected: color-mix(in srgb, var(--board-item-n) 45%, transparent);
+  --board-item-glow-hover: color-mix(in srgb, var(--board-item-n) 55%, transparent);
+  --board-item-glow-selected: color-mix(in srgb, var(--board-item-n) 65%, transparent);
 
   position: absolute;
-  border-radius: 13px;
-  border: var(--bw, 1px) solid var(--board-item-b);
-  background: var(--glass2, rgb(21 26 45 / 0.92));
-  box-shadow: 0 0 14px -8px var(--board-item-g);
+  border-radius: 14px;
+  border: var(--bw, 1px) solid var(--board-item-rim-rest);
+  background: var(--board-tile-fill);
+  box-shadow: 0 8px 22px rgb(3 5 12 / 0.45);
   cursor: grab;
   transition: border-color 0.15s, box-shadow 0.15s;
   display: flex;
@@ -170,28 +226,46 @@
   outline: none;
 }
 
+@media (prefers-reduced-transparency: reduce) {
+  .board-canvas__item {
+    --board-tile-fill: rgb(20 25 42);
+  }
+}
+
+:root[data-contrast='high'] .board-canvas__item {
+  --board-tile-fill: var(--bg-panel, #15191f);
+  --board-item-rim-rest: var(--border-default, #9fb3c8);
+}
+
 /* Doubled class so the slot-2 override beats the base block on specificity
    rather than on source order. */
 .board-canvas__item.board-canvas__item--folder {
   --board-item-n: var(--n2, #9b5fff);
-  --board-item-b: var(--b2, rgb(155 95 255 / 0.38));
   --board-item-g: var(--g2, rgb(155 95 255 / 0.5));
-  --board-item-gs: var(--gs2, rgb(155 95 255 / 0.1));
 }
 
-.board-canvas__item:hover {
-  border-color: var(--board-item-n);
-  box-shadow: 0 0 22px -6px var(--board-item-g);
+/* `:not(--selected)` so hover never overwrites the stronger selected rim —
+   the mockup's `stH` is likewise suppressed while a card is selected. */
+.board-canvas__item:hover:not(.board-canvas__item--selected) {
+  border-color: var(--board-item-rim-hover);
+  box-shadow: 0 10px 26px rgb(3 5 12 / 0.5), 0 0 18px -7px var(--board-item-glow-hover);
 }
 
+.board-canvas__item--selected {
+  border-color: var(--board-item-rim-selected);
+  box-shadow: 0 0 0 1px var(--board-item-halo-selected), 0 0 24px -6px var(--board-item-glow-selected);
+}
+
+/* An outline rather than a rim/shadow swap, so the focus ring composes with
+   whichever of the three states the tile is already painting. */
 .board-canvas__item:focus-visible {
-  border-color: var(--board-item-n);
-  box-shadow: 0 0 0 2px var(--focus-ring, #00f0ff);
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
 }
 
 .board-canvas__item--dragging {
   cursor: grabbing;
-  border-color: var(--board-item-n);
+  border-color: var(--board-item-rim-selected);
   box-shadow: 0 14px 40px rgb(3 5 12 / 0.6), 0 0 26px -6px var(--board-item-g);
   z-index: 50;
 }
