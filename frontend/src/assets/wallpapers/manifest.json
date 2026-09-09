@@ -1,5 +1,5 @@
 {
-  "$comment": "Bundled theme-match wallpapers (SKY-11589). Regenerate with scripts/wallpapers/build-pack.py. Keys are Liquid Neon preset keys (frontend/src/theme/presets.ts). Index 0 of each theme in the app is the built-in wallpaper (Neon Nebula: cosmic-bg.webp; others: the starfield gradient); these files follow it in order. Optional per-entry \"position\" is a CSS background-position (default \"center\").",
+  "$comment": "Bundled theme-match wallpapers (SKY-11589), files under pack/. Regenerate with scripts/wallpapers/build-pack.py. Keys are Liquid Neon preset keys (frontend/src/theme/presets.ts). Index 0 of each theme in the app is the built-in wallpaper (Neon Nebula: cosmic-bg.webp; others: the starfield gradient); these files follow it in order. Optional per-entry \"position\" is a CSS background-position (default \"center\"); \"source\" is the original file name the entry was encoded from and keeps \"position\" attached to the right image across regenerations.",
   "position": "center",
   "themes": {
     "aurora": [
