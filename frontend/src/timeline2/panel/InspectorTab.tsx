@@ -21,6 +21,7 @@ import type { InspectorTarget, TimelineSelectableType } from './selection';
 import { formatWhen, roundWhen, whenPerYear } from '../axis/calendarCodec';
 import { LANE_PALETTE } from '../axis/palette';
 import { DraftNumberInput, DraftTextInput } from './DraftInput';
+import { TimelineWikiText } from '../TimelineWikiText';
 
 type AnyItem = TimelineEra | TimelineSpan | TimelineEvent;
 
@@ -494,7 +495,13 @@ function EventEditor(props: InspectorTabProps & { event: TimelineEvent }) {
           {event.summary && (
             <>
               <FieldLabel>SUMMARY</FieldLabel>
-              <div className="trp-summary">{event.summary}</div>
+              {/* SKY-11615: the mockup's `evDetail.sumSegs` — the detail
+                  summary linkifies exactly like the card description. */}
+              <TimelineWikiText
+                className="trp-summary"
+                text={event.summary}
+                data-testid="trp-event-summary-text"
+              />
             </>
           )}
           {impactChips.length > 0 && (

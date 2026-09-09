@@ -449,6 +449,9 @@
 }
 
 .trp-summary {
+  /* SKY-11615: an inline element now (it wraps [[wiki link]] buttons), so it
+     has to be told to keep the block layout it had as a div. */
+  display: block;
   font-size: 11.5px;
   color: #c3cee2;
   line-height: 1.55;

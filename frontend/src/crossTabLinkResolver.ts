@@ -18,12 +18,36 @@ export type CrossTabLinkMatch =
       entityId: string;
       entityPath: string;
       entity: EntityEntry;
+    }
+  /** SKY-11615: a whole chapter, for `[[Chapter Title]]` links that name no scene. */
+  | {
+      kind: 'chapter';
+      label: string;
+      storyId: string;
+      chapterId: string;
+      chapter: Chapter;
+      story: Story;
+    }
+  /** SKY-11615: a Notes-Vault folder — opens as a board. */
+  | {
+      kind: 'folder';
+      label: string;
+      /** Vault-relative folder path, the same shape Boards navigates by. */
+      folderPath: string;
     };
 
 export interface CrossTabLinkContext {
   stories: Story[];
   entities: EntityEntry[];
   notePaths?: string[];
+  /**
+   * SKY-11615: vault-relative Notes-Vault FOLDER paths — the `isDirectory`
+   * half of the same `listNotesVault()` result that yields `notePaths`, so
+   * supplying it costs no extra IPC. Only `resolveWikiLinkTarget` reads it;
+   * `resolveCrossTabLink` never resolves folders, which keeps the editors'
+   * unresolved-link → create-note behaviour exactly as it was.
+   */
+  folderPaths?: string[];
   onNotify?: (message: string, level?: 'info' | 'warn' | 'error') => void;
 }
 
@@ -112,6 +136,54 @@ function resolveScene(value: string, stories: Story[]): CrossTabLinkMatch[] {
         }
       }
     }
+  }
+  return matches;
+}
+
+/**
+ * SKY-11615: chapter-level story targets. Deliberately a sibling of
+ * `resolveScene` rather than a branch inside it — `[[scene: X]]` must keep
+ * meaning "a scene", and the caller decides the scene-before-chapter order.
+ */
+function resolveChapter(value: string, stories: Story[]): CrossTabLinkMatch[] {
+  const needle = normalize(value);
+  if (!needle) return [];
+  const matches: CrossTabLinkMatch[] = [];
+  for (const story of stories) {
+    for (const chapter of story.chapters) {
+      if (normalize(chapter.title) === needle || basenameNoExt(chapter.path) === needle) {
+        matches.push({
+          kind: 'chapter',
+          label: chapter.title,
+          storyId: story.id,
+          chapterId: chapter.id,
+          chapter,
+          story,
+        });
+      }
+    }
+  }
+  return matches;
+}
+
+/**
+ * SKY-11615: Notes-Vault folder targets. Matches the folder's own name or its
+ * full vault-relative path, both case-insensitively — the mockup's vault walk
+ * (`resolveWiki`, design-liquid-neon 6355) compares on the folder label only,
+ * and the path form is the disambiguator for same-named folders.
+ */
+function resolveFolder(value: string, folderPaths: string[]): CrossTabLinkMatch[] {
+  const needle = normalize(value);
+  if (!needle) return [];
+  const matches: CrossTabLinkMatch[] = [];
+  for (const folderPath of folderPaths) {
+    if (normalize(folderPath) !== needle && basenameNoExt(folderPath) !== needle) continue;
+    const posix = folderPath.replace(/\\/g, '/').replace(/\/+$/, '');
+    matches.push({
+      kind: 'folder',
+      label: posix.split('/').pop() ?? posix,
+      folderPath: posix,
+    });
   }
   return matches;
 }
@@ -410,6 +482,92 @@ export function buildUnresolvedLinkNote(rawTarget: string, now: string = new Dat
     '',
     '',
   ].join('\n');
+}
+
+/** Stable list key for a match, exhaustive over the union so a new kind is a
+ *  compile error here rather than a duplicate React key at runtime. */
+export function crossTabLinkMatchKey(match: CrossTabLinkMatch): string {
+  switch (match.kind) {
+    case 'scene': return `scene-${match.sceneId}`;
+    case 'chapter': return `chapter-${match.chapterId}`;
+    case 'entity': return `entity-${match.entityId}`;
+    case 'folder': return `folder-${match.folderPath}`;
+  }
+}
+
+// ─── SKY-11615: plain-text [[wiki link]] segments + single-target resolution ──
+
+export type WikiSegment =
+  | { isLink: false; text: string }
+  | { isLink: true; raw: string; target: string };
+
+/**
+ * Split prose into plain-text and `[[link]]` segments — port of the design
+ * mockup's `wikiSegs` (design-liquid-neon 6335). Used by surfaces that render
+ * a raw string rather than a ProseMirror document (Timeline event cards and
+ * the Inspector's event summary), where the editor's decoration plugin has
+ * nothing to attach to.
+ */
+export function parseWikiSegments(text: string): WikiSegment[] {
+  const source = String(text ?? '');
+  const segments: WikiSegment[] = [];
+  const re = new RegExp(WIKI_LINK_RE.source, 'g'); // own lastIndex, safe to loop
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(source)) !== null) {
+    if (match.index > last) segments.push({ isLink: false, text: source.slice(last, match.index) });
+    segments.push({ isLink: true, raw: match[0], target: match[1] });
+    last = match.index + match[0].length;
+  }
+  if (last < source.length) segments.push({ isLink: false, text: source.slice(last) });
+  return segments;
+}
+
+/**
+ * What a `[[link]]` reads as on screen — port of the mockup's `wikiDisp`
+ * (design-liquid-neon 6347): an alias replaces the name outright, a heading
+ * anchor renders as `Name › Heading`, and a bare `[[#Heading]]` shows just the
+ * heading. The separator is the mockup's `›`, not a plain `>`.
+ */
+export function wikiLinkDisplayText(target: string): string {
+  const raw = String(target ?? '');
+  if (raw.includes('|')) return raw.split('|').slice(1).join('|').trim();
+  const hash = raw.indexOf('#');
+  if (hash === 0) return raw.slice(1).trim();
+  if (hash > 0) return `${raw.slice(0, hash).trim()} › ${raw.slice(hash + 1).trim()}`;
+  return raw.trim();
+}
+
+/**
+ * Resolve one `[[link]]` to a single navigable target in the product's
+ * documented order: story scene → story chapter → vault note → vault folder →
+ * unresolved (SKY-11594 AC / mockup `resolveWiki`). Ambiguity is resolved by
+ * that order rather than surfaced as a picker, because a link inside prose has
+ * to paint one colour.
+ *
+ * Reuses the same matchers the editors run — `resolveUntypedStem` for scenes
+ * and notes — so a link that resolves here resolves identically everywhere.
+ * Returns null when nothing matches, including for a bare `[[#Heading]]`,
+ * which is an in-document anchor with no target of its own.
+ */
+export function resolveWikiLinkTarget(
+  rawTarget: string,
+  context: CrossTabLinkContext,
+): CrossTabLinkMatch | null {
+  const stem = wikiLinkTargetStem(rawTarget);
+  if (!stem) return null;
+
+  const untyped = resolveUntypedStem(stem, context);
+  const scene = untyped.find((match) => match.kind === 'scene');
+  if (scene) return scene;
+
+  const chapter = resolveChapter(stem, context.stories)[0];
+  if (chapter) return chapter;
+
+  const note = untyped.find((match) => match.kind === 'entity');
+  if (note) return note;
+
+  return resolveFolder(stem, context.folderPaths ?? [])[0] ?? null;
 }
 
 export function resolveCrossTabLink(rawTarget: string, context: CrossTabLinkContext): CrossTabLinkResolution {
