@@ -60,12 +60,24 @@ const SRC_ROOT = resolve(__dirname, '..');
  * Every orphan present when this guard went repo-wide, as `file  --token`.
  * Each one is a real surface frozen on a literal fallback — not an exemption.
  * Fix one, delete its line. See SKY-11489.
+ *
+ * Nine entries were added by SKY-11636, which stopped the class name
+ * `` `cvb-card--s${slot}` `` from registering `--s` as a token prefix. That one
+ * character had been covering every `--s…` token in the repo. Three of the nine
+ * are read with no fallback at all (`--state-error`, `--state-danger-border`,
+ * `--state-success-border`), so those declarations are invalid at computed-value
+ * time and the property falls back to `unset` rather than to a literal.
  */
 const KNOWN_ORPHANS: readonly string[] = [
   'AccountModal.css  --text-md',
+  'AeonLaneView.css  --surface-subtle',
   'AeonLaneView.css  --text-heading',
   'AeonLaneView.css  --text-md',
+  'AgentHubPanel.css  --sp-2',
+  'AgentHubPanel.css  --sp-3',
   'BlockEditor.css  --page-bg-radius',
+  'BrainstormPage.css  --state-error',
+  'ContinuityPanel.css  --severity-critical-border',
   'DesktopShell.css  --accent-primary',
   'DesktopShell.css  --bg',
   'DesktopShell.css  --bg-control',
@@ -94,13 +106,17 @@ const KNOWN_ORPHANS: readonly string[] = [
   'SuggestionDetailPane.css  --accent-muted',
   'SyncConflictModal.css  --color-accent-muted',
   'SyncConflictModal.css  --color-warn',
+  'TemplatePicker.css  --state-error',
   'TemplatePicker.css  --text-md',
   'ThemeContrastSlider.css  --pct',
+  'ThemeContrastSlider.css  --state-danger-border',
+  'ThemeContrastSlider.css  --state-success-border',
   'TimelinePlotlines.css  --color-panel-bg',
   'TimelineSpreadsheet.css  --color-bg',
   'VaultGraphView.css  --chip-color',
   'VaultGraphView.css  --font-mono',
   'VaultGraphView.css  --ln-graph-edge-cross-vault',
+  'VaultGraphView.css  --shadow-panel',
   'VaultGraphView.css  --text-accent',
   'WritingAssistantPanel.css  --bg-dark',
   'components/BrainstormCard/IdeaDetailDrawer.css  --weight-md',
@@ -152,7 +168,14 @@ function walk(extensions: readonly string[], dir = '', out: string[] = []): stri
 }
 
 const cssFiles = walk(['.css']);
-const tsFiles = walk(['.ts', '.tsx']);
+
+/**
+ * Only shipped modules can define a token for a real surface, so specs are
+ * excluded — including this one, whose fixtures name tokens on purpose and
+ * would otherwise declare them for the whole repo.
+ */
+const isSpec = (relPath: string): boolean => /\.(test|spec)\.tsx?$/.test(relPath);
+const tsFiles = walk(['.ts', '.tsx']).filter((relPath) => !isSpec(relPath));
 
 /** (1) + (2): declared by any stylesheet in the bundle. */
 const cssDeclared = new Set<string>();
@@ -186,13 +209,56 @@ function applyToFreshElement(settings: Parameters<typeof applyLiquidNeonV2Tokens
 }
 
 /**
+ * SKY-11636 — the three syntactic positions where a template literal really is
+ * a custom-property name. Each is anchored on both sides, because an
+ * unanchored `--x${` also matches a BEM class-name modifier: the className
+ * `` `fmt-btn--bold${isBold ? …}` `` would otherwise register `--bold` as a
+ * token prefix, and `` `cvb-card--s${slot}` `` would register `--s` and cover
+ * every token in the repo that starts with an s.
+ */
+const DYNAMIC_PREFIX_PATTERNS: readonly RegExp[] = [
+  /var\(\s*(--[\w-]*?)\$\{/g, //                                   var(--x-${…})
+  /setProperty\(\s*['"`](--[\w-]*?)\$\{/g, //          setProperty(`--x-${…}`, v)
+  /`(--[\w-]*?)\$\{[^`]*`(?:\s+as\s+[\w.<>[\]]+)?\s*\]?\s*:/g, // [`--x-${…}`]: v
+];
+
+/**
+ * The shortest static prefix trusted to stand in for a whole token family: a
+ * namespace segment plus its trailing `-`.
+ *
+ * Without a floor the cover is vacuous. The now-deleted TimelineLanes.tsx read
+ * `var(--n${j.slot})`, registering the one-character prefix `--n`, which
+ * satisfied every token starting with an n — including the genuine orphans
+ * `--neon-green` and `--neon-pink` in OnboardingWizard.css. The guard stayed
+ * green for as long as that dead file existed and only went red when it was
+ * deleted (SKY-11619). Requiring the `-` boundary also stops `--ln-graph` from
+ * swallowing `--ln-graphics`.
+ */
+const MIN_SAFE_PREFIX_LENGTH = 6;
+const isSafePrefix = (prefix: string): boolean =>
+  prefix.endsWith('-') && prefix.length >= MIN_SAFE_PREFIX_LENGTH;
+
+/** Static prefixes of every template-literal custom-property name in one file. */
+function dynamicPrefixesIn(src: string): string[] {
+  const found = new Set<string>();
+  for (const pattern of DYNAMIC_PREFIX_PATTERNS) {
+    for (const m of src.matchAll(pattern)) found.add(m[1]);
+  }
+  return [...found];
+}
+
+/**
  * (4): set from a component. Matches `'--x': v`, `['--x' as string]: v`,
  * `setProperty('--x', v)`, and template-literal names, whose static prefix is
  * collected so `--ln-graph-node-${category}` covers `--ln-graph-node-scenes`.
+ *
+ * A prefix too short to be a namespace covers nothing and is reported instead,
+ * so the author renames the token rather than blanket-covering a family.
  */
-function componentDeclared(): { exact: Set<string>; prefixes: string[] } {
+function componentDeclared(): { exact: Set<string>; prefixes: string[]; unsafePrefixes: string[] } {
   const exact = new Set<string>();
   const prefixes = new Set<string>();
+  const unsafePrefixes: string[] = [];
   for (const file of tsFiles) {
     const src = read(file);
     // `'--x'` / `"--x"` / `` `--x` `` used as an object key, with an optional
@@ -200,10 +266,15 @@ function componentDeclared(): { exact: Set<string>; prefixes: string[] } {
     for (const m of src.matchAll(/['"`](--[\w-]+)['"`](?:\s+as\s+[\w.<>[\]]+)?\s*\]?\s*:/g)) exact.add(m[1]);
     for (const m of src.matchAll(/setProperty\(\s*['"`](--[\w-]+)/g)) exact.add(m[1]);
     // `--ln-graph-node-${category}` → prefix `--ln-graph-node-`.
-    for (const m of src.matchAll(/(--[\w-]+?)\$\{/g)) prefixes.add(m[1]);
+    for (const prefix of dynamicPrefixesIn(src)) {
+      if (isSafePrefix(prefix)) prefixes.add(prefix);
+      else unsafePrefixes.push(`${file}  ${prefix}\${…}`);
+    }
   }
-  return { exact, prefixes: [...prefixes] };
+  return { exact, prefixes: [...prefixes], unsafePrefixes: unsafePrefixes.sort() };
 }
+
+const components = componentDeclared();
 
 describe('SKY-11482 — every stylesheet reads only custom properties something defines', () => {
   it('has stylesheets to check', () => {
@@ -211,9 +282,20 @@ describe('SKY-11482 — every stylesheet reads only custom properties something 
     expect(cssFiles.length).toBeGreaterThan(100);
   });
 
+  it('collects no dynamic token prefix too short to be a namespace', () => {
+    expect(
+      components.unsafePrefixes,
+      'These components build a custom-property name from a template literal whose static prefix is '
+        + 'too short to be a safe namespace, so it would cover every token that happens to start with '
+        + `those characters (needs a trailing "-" and at least ${MIN_SAFE_PREFIX_LENGTH} characters). `
+        + 'Rename the token to a real namespace — `--ln-lane-3`, not `--n3` — so this guard keeps '
+        + 'checking the rest of that family. See SKY-11636.',
+    ).toEqual([]);
+  });
+
   it('finds no orphaned custom properties outside the known baseline', () => {
     const stamped = engineStamped();
-    const { exact: fromComponents, prefixes } = componentDeclared();
+    const { exact: fromComponents, prefixes } = components;
 
     const isDefined = (name: string, localDeclared: Set<string>): boolean =>
       localDeclared.has(name)
@@ -249,5 +331,35 @@ describe('SKY-11482 — every stylesheet reads only custom properties something 
       'These entries in KNOWN_ORPHANS are no longer orphaned — the baseline only ratchets down. '
         + 'Delete these lines from KNOWN_ORPHANS so the fix stays fixed.',
     ).toEqual([]);
+  });
+});
+
+describe('SKY-11636 — a dynamic token prefix covers a family only when it names one', () => {
+  it('collects the namespace prefix of a template-literal custom property', () => {
+    expect(dynamicPrefixesIn('return `var(--ln-graph-node-${category})`;')).toEqual(['--ln-graph-node-']);
+    expect(dynamicPrefixesIn('el.style.setProperty(`--beat-tint-${id}`, colour);')).toEqual(['--beat-tint-']);
+    expect(dynamicPrefixesIn('<div style={{ [`--lane-slot-${i}`]: colour }} />')).toEqual(['--lane-slot-']);
+  });
+
+  it('ignores BEM class-name modifiers, which are not custom properties at all', () => {
+    expect(dynamicPrefixesIn('className={`fmt-btn fmt-btn--bold${isBold ? " is-active" : ""}`}')).toEqual([]);
+    expect(dynamicPrefixesIn('return `cvb-card--s${slot + 1}`;')).toEqual([]);
+    expect(dynamicPrefixesIn('const cls = `nav-rail__item--slot-${slot}`;')).toEqual([]);
+  });
+
+  it('does not let the one-character `--n${…}` prefix cover `--neon-green`', () => {
+    // The exact SKY-11619 regression: TimelineLanes.tsx read `var(--n${j.slot})`
+    // and that vacuously satisfied the OnboardingWizard.css orphans.
+    const collected = dynamicPrefixesIn('background: `var(--n${j.slot}, #0f1321)`');
+    expect(collected).toEqual(['--n']);
+    expect(collected.filter(isSafePrefix)).toEqual([]);
+    expect(collected.filter(isSafePrefix).some((p) => '--neon-green'.startsWith(p))).toBe(false);
+  });
+
+  it('requires the trailing `-` so a prefix cannot straddle a token boundary', () => {
+    expect(isSafePrefix('--ln-graph-node-')).toBe(true);
+    expect(isSafePrefix('--ln-graph')).toBe(false); //   would swallow --ln-graphics
+    expect(isSafePrefix('--ln-')).toBe(false); //         a namespace, but far too broad
+    expect(isSafePrefix('--')).toBe(false); //            `var(--${name})` covers everything
   });
 });
