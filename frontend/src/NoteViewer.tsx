@@ -23,6 +23,7 @@ import ReaderBar from './story/ReaderBar';
 import type { TtsEngineSettings, TtsVoicePrefs } from './hooks/useTtsPlayer';
 import { NoteCoverBadge } from './components/NoteCoverBadge';
 import { invalidateNoteThumbs } from './lib/noteThumbnails';
+import { registerQuitFlusher } from './lib/flushBeforeQuit';
 import './NoteViewer.css';
 
 export type NoteViewerMode = 'source' | 'rich' | 'markdown' | 'preview';
@@ -536,6 +537,21 @@ export default function NoteViewer({
       }
     };
   }, [flushSave, saveContent]);
+
+  // SKY-11646: the unmount save above never runs when the window closes — the
+  // renderer is torn down, not unmounted. Drain this note's 800ms autosave in
+  // the quit handshake instead, or typing and immediately closing loses the
+  // note body exactly as it did for scenes.
+  useEffect(() => registerQuitFlusher(async () => {
+    // RichTextEditor's own quit flusher runs in the same pass and pushes the
+    // latest body into contentRef synchronously. Yielding one microtask puts
+    // this save strictly after it, whichever order the two were registered in.
+    await Promise.resolve();
+    if (!saveTimerRef.current) return;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    await saveContent(contentRef.current);
+  }), [saveContent]);
 
   // M16: the properties/tags panel writes frontmatter to this same file. Sync
   // its result into the open editor so a later autosave doesn't clobber it.

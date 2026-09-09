@@ -1114,6 +1114,9 @@ jobs:
       - name: E2E — Scene editor empty states (SKY-6933 sweep, skip-guarded — stale selector)
         run: xvfb-run --auto-servernum npm run test:e2e:scene-editor-empty-states
 
+      - name: E2E — Scene editor flushes on window close (SKY-11646)
+        run: xvfb-run --auto-servernum npm run test:e2e:scene-quit-flush
+
       - name: E2E — Scene notes add/persist/drag-promote to vault (SKY-9823, M9b)
         run: xvfb-run --auto-servernum npm run test:e2e:scene-notes-promote
 
