@@ -432,6 +432,9 @@ import {
   writeTimelineSettings,
   readArcManifest,
   writeArcManifest,
+  vaultRootHash,
+  NOTES_ASSET_EXT_RE,
+  type NotesWatchEvent,
 } from './vault.js';
 import { readOrderMap, writeOrderMap, rewriteOrderOnMove } from './vaultOrder.js';
 import { upsertRecentProject } from './recentProjects.js';
@@ -448,6 +451,16 @@ import {
   itemDeleteStub as notesBoardItemDeleteStub,
   flushPendingNotesBoardWrites,
 } from './notesBoard.js';
+// SKY-11186 (Notes Board 6/9): note thumbnails — see noteThumbnails.ts.
+import {
+  resolveNoteThumbs,
+  getThumb as getNoteThumb,
+  putThumb as putNoteThumb,
+  noneThumbInfo,
+  MAX_THUMB_RESOLVE_BATCH,
+  THUMB_CACHE_DIR_NAME,
+  type NoteThumbInfo,
+} from './noteThumbnails.js';
 import {
   ensureVaultSeeded,
   STORY_VAULT_SEED_LAYOUT,
@@ -533,6 +546,12 @@ import type {
   NotesBoardItemRenameResponse,
   NotesBoardItemDeletePayload,
   NotesBoardItemDeleteResponse,
+  NotesThumbResolvePayload,
+  NotesThumbResolveResponse,
+  NotesThumbGetPayload,
+  NotesThumbGetResponse,
+  NotesThumbPutPayload,
+  NotesThumbPutResponse,
 } from './ipc.js';
 // Beta 4 M29 — Welcome wizard genre starter notes.
 import { isGenreSeedGenre, writeGenreStarterNotes } from './mythosFormat/genreSeed.js';
@@ -953,6 +972,13 @@ function getVaultSettingsPath(): string {
 
 function getVaultIndexCacheDir(): string {
   return path.join(app.getPath('userData'), 'vault-index-cache');
+}
+
+// SKY-11186: per-vault note-thumbnail derivative cache (noteThumbnails.ts).
+// Same convention as vault-index-cache — under userData, keyed by
+// vaultRootHash so two vaults never share derivatives, disposable/rebuildable.
+function getNoteThumbCacheDir(vaultRoot: string): string {
+  return path.join(app.getPath('userData'), THUMB_CACHE_DIR_NAME, vaultRootHash(vaultRoot));
 }
 
 // SKY-2157 / SKY-2204: Default vault roots live under app.getPath('userData')
@@ -1501,11 +1527,21 @@ function notifyVaultChanged(filePath: string) {
 // Fires on external edits (e.g. Obsidian) and schedules an FTS rebuild.
 // SKY-1756: also invalidates the in-memory graph index when link topology changes.
 // Content-only saves do NOT push vault:graph-topology-changed so the renderer graph stays stable.
-function notifyNotesVaultChanged(filePath: string) {
+// SKY-11186: both events carry the notes-vault-relative POSIX path so the
+// renderer can act on the one note, image or board concerned instead of
+// re-asking for everything. An image added or rewritten in place only matters
+// to the thumbnails that show it, so it gets its own event and skips the
+// reindex + graph work a note change needs.
+function notifyNotesVaultChanged(filePath: string, event?: NotesWatchEvent) {
   if (mainWindow && !mainWindow.isDestroyed()) {
+    const relPath = path.relative(getNotesVaultRoot(), filePath).split(path.sep).join('/');
+    if ((event === 'add' || event === 'change') && NOTES_ASSET_EXT_RE.test(filePath)) {
+      mainWindow.webContents.send('vault:notes-asset-changed', { path: relPath });
+      return;
+    }
     scheduleReindex();
     const topologyChanged = handleNoteFileChanged(getNotesVaultRoot(), filePath);
-    mainWindow.webContents.send('vault:notes-updated', { count: 1 });
+    mainWindow.webContents.send('vault:notes-updated', { count: 1, path: relPath });
     if (topologyChanged) {
       mainWindow.webContents.send('vault:graph-topology-changed', {});
     }
@@ -7233,6 +7269,54 @@ const handlers: IpcHandlers = {
     return notesBoardItemDeleteStub(root, folderPath, payload.itemPath);
   },
 
+  // ─── SKY-11186 (Notes Board 6/9): note thumbnails IPC ──────────────────
+  // Thin bodies — path sandboxing here (safeVaultEntryIpcJoin, same boundary
+  // as NOTES_BOARD_*), all real logic in noteThumbnails.ts. Every path in a
+  // resolve batch is sandboxed individually so one bad path degrades to a
+  // 'none' entry instead of failing the whole board's tiles; get/put treat a
+  // rejected `src` as missing / ok:false rather than throwing — a thumbnail
+  // is decoration, never an error the renderer has to handle.
+  [IPC_CHANNELS.NOTES_THUMB_RESOLVE]: async (
+    payload: NotesThumbResolvePayload
+  ): Promise<NotesThumbResolveResponse> => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const requested = Array.isArray(payload?.paths) ? payload.paths.slice(0, MAX_THUMB_RESOLVE_BATCH) : [];
+    const thumbs: Record<string, NoteThumbInfo> = {};
+    const safePaths: string[] = [];
+    for (const notePath of requested) {
+      if (typeof notePath !== 'string') continue;
+      try {
+        safeVaultEntryIpcJoin(root, notePath);
+        safePaths.push(notePath);
+      } catch {
+        thumbs[notePath] = noneThumbInfo();
+      }
+    }
+    Object.assign(thumbs, await resolveNoteThumbs(root, safePaths));
+    return { thumbs };
+  },
+  [IPC_CHANNELS.NOTES_THUMB_GET]: async (payload: NotesThumbGetPayload): Promise<NotesThumbGetResponse> => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    try {
+      safeVaultEntryIpcJoin(root, payload.src);
+    } catch {
+      return { status: 'missing' };
+    }
+    return getNoteThumb(root, getNoteThumbCacheDir(root), payload.src);
+  },
+  [IPC_CHANNELS.NOTES_THUMB_PUT]: async (payload: NotesThumbPutPayload): Promise<NotesThumbPutResponse> => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    try {
+      safeVaultEntryIpcJoin(root, payload.src);
+    } catch {
+      return { ok: false };
+    }
+    return putNoteThumb(getNoteThumbCacheDir(root), payload.src, payload.version, payload.bytes);
+  },
+
   // ─── SKY-11058: Notes vault registry ────────────────────────────────────
 
   [IPC_CHANNELS.NOTES_VAULT_REGISTRY_LIST]: (): NotesVaultRegistryListResponse => {
@@ -8829,6 +8913,9 @@ const SETTINGS_DEFAULTS: AppSettings = {
   archiveCheckFactualContradict: true,
   archiveScanBudget: 8000,
   archiveStoryEditConsentGiven: false,
+  // SKY-11186: Notes Board zoom-out limit — the spec §6 default; a visible
+  // performance setting (owner ruling 4), adjustable in Settings → Editor.
+  notesBoard: { minZoom: 40 },
   // rightSidebarVisible/Width/Panels are intentionally absent from defaults so
   // DesktopShell keeps grsVisible=undefined until the user explicitly opens the
   // new global sidebar. This prevents the old per-view RightSidebar and the new

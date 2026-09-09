@@ -11,6 +11,7 @@ export type { StoryTimeOfDay, ManifestTimelineEntry };
 import type { OutlineNode, OutlineData } from './outline.js';
 export type { OutlineNode, OutlineData };
 import type { ProductionRoleId } from './productionRoles.js';
+import type { NoteThumbInfo } from './noteThumbnails.js';
 export type { ProductionRoleId };
 import type {
   TimelinesStore,
@@ -532,6 +533,13 @@ export const IPC_CHANNELS = {
   NOTES_BOARD_FURNITURE_DELETE: 'notesBoard:furnitureDelete',
   NOTES_BOARD_ITEM_RENAME: 'notesBoard:itemRename',
   NOTES_BOARD_ITEM_DELETE: 'notesBoard:itemDelete',
+
+  // SKY-11186 (Notes Board 6/9): note thumbnails — resolve which image is a
+  // note's cover (spec §9), serve a cached derivative or the raw source, and
+  // store the renderer-derived WebP. See noteThumbnails.ts.
+  NOTES_THUMB_RESOLVE: 'notesThumb:resolve',
+  NOTES_THUMB_GET: 'notesThumb:get',
+  NOTES_THUMB_PUT: 'notesThumb:put',
 
   // SKY-11058: per-Mythos-vault notes-vault registry (multiple notes vaults)
   NOTES_VAULT_REGISTRY_LIST: 'notesVaultRegistry:list',
@@ -1213,6 +1221,11 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_BOARD_FURNITURE_DELETE]: (payload: NotesBoardFurnitureDeletePayload) => NotesBoardFurnitureDeleteResponse;
   [IPC_CHANNELS.NOTES_BOARD_ITEM_RENAME]: (payload: NotesBoardItemRenamePayload) => NotesBoardItemRenameResponse;
   [IPC_CHANNELS.NOTES_BOARD_ITEM_DELETE]: (payload: NotesBoardItemDeletePayload) => NotesBoardItemDeleteResponse;
+
+  // SKY-11186 (Notes Board 6/9): note thumbnails IPC — see noteThumbnails.ts.
+  [IPC_CHANNELS.NOTES_THUMB_RESOLVE]: (payload: NotesThumbResolvePayload) => Promise<NotesThumbResolveResponse>;
+  [IPC_CHANNELS.NOTES_THUMB_GET]: (payload: NotesThumbGetPayload) => Promise<NotesThumbGetResponse>;
+  [IPC_CHANNELS.NOTES_THUMB_PUT]: (payload: NotesThumbPutPayload) => Promise<NotesThumbPutResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -1650,6 +1663,44 @@ export interface NotesBoardItemDeletePayload {
 
 export interface NotesBoardItemDeleteResponse {
   key: string | null;
+}
+
+// ─── SKY-11186 (Notes Board 6/9): note thumbnails IPC types ───
+// See noteThumbnails.ts + BOARDS-SPEC.md v2 §6/§9. Every path is a
+// vault-relative POSIX path in the NOTES vault; `src` is the resolved source
+// image reported by `resolve`. The renderer derives the WebP thumbnail from
+// `source` bytes and stores it via `put`; main only resolves/serves/stores.
+
+export interface NotesThumbResolvePayload {
+  /** Note paths to resolve; capped at MAX_THUMB_RESOLVE_BATCH (noteThumbnails.ts). */
+  paths: string[];
+}
+
+export interface NotesThumbResolveResponse {
+  /** Keyed by the request's paths verbatim; an invalid path yields mode 'none'. */
+  thumbs: Record<string, NoteThumbInfo>;
+}
+
+export interface NotesThumbGetPayload {
+  src: string;
+}
+
+export type NotesThumbGetResponse =
+  | { status: 'ready'; dataUrl: string; version: string }
+  | { status: 'source'; mime: string; bytes: Uint8Array; version: string }
+  | { status: 'missing' }
+  | { status: 'unsupported' };
+
+export interface NotesThumbPutPayload {
+  src: string;
+  /** `${mtimeMs}-${size}` as reported by resolve/get — becomes part of the cache file name. */
+  version: string;
+  /** Renderer-derived WebP, ≤ MAX_THUMB_CACHE_BYTES. */
+  bytes: Uint8Array;
+}
+
+export interface NotesThumbPutResponse {
+  ok: boolean;
 }
 
 // ─── SKY-862: Guided-folder vault relocation (cloud sync) ───
@@ -2830,6 +2881,15 @@ export interface AppSettings {
   vaultWorkspaces?: Record<string, Record<string, unknown>>;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
+  /**
+   * SKY-11186 (BOARDS-SPEC v2 §6, owner ruling 4): Notes Board preferences.
+   * `minZoom` is the board's zoom-out limit in percent — a visible,
+   * adjustable performance cap (40 = spec default; 30/20/10 map-view stops).
+   * Optional so pre-existing settings files stay valid; absent = 40.
+   */
+  notesBoard?: {
+    minZoom?: number;
+  };
   /** SKY-130: last-opened scene for cross-restart restore. */
   lastOpenedScene?: LastOpenedScene;
   /** SKY-204: opt-in daily notes / journal mode. */

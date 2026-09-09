@@ -576,6 +576,10 @@ interface AppSettings {
     maxPerScene: number;
     maxAgeDays: number;
   };
+  /** SKY-11186: Notes Board zoom-out limit (percent; 40 default, 30/20/10 map-view stops). */
+  notesBoard?: {
+    minZoom?: number;
+  };
   onboardingComplete?: boolean;
   /** SKY-2220: first-upgrade legacy ~/Mythos vault recovery prompt state. */
   legacyVaultDetected?: boolean;
@@ -1241,7 +1245,10 @@ interface Window {
     onSttResult: (cb: (text: string) => void) => () => void;
 
     // Vault notes updated push event (MYT-156)
-    onVaultNotesUpdated: (cb: (data: { count: number }) => void) => () => void;
+    /** SKY-11186: `path` = the changed note/folder, notes-vault-relative POSIX (absent on untargeted updates). */
+    onVaultNotesUpdated: (cb: (data: { count: number; path?: string }) => void) => () => void;
+    /** SKY-11186: an image in the Notes vault was added or rewritten in place. */
+    onVaultNotesAssetChanged: (cb: (data: { path: string }) => void) => () => void;
 
     // SKY-8943: Notes Vault graph topology changed (link added/removed)
     onVaultGraphTopologyChanged?: (cb: () => void) => () => void;
@@ -1663,6 +1670,27 @@ interface Window {
     notesBoardFurnitureDelete: (folderPath: string, furnitureId: string) => Promise<{ ok: true }>;
     notesBoardItemRename: (folderPath: string, fromPath: string, toPath: string) => Promise<{ ok: true }>;
     notesBoardItemDelete: (folderPath: string, itemPath: string) => Promise<{ key: string | null }>;
+
+    // SKY-11186: note thumbnails (main-process half — noteThumbnails.ts, spec §9).
+    // `resolve` says which image (if any) is each note's cover; `get` returns a
+    // cached WebP derivative or the raw source bytes for the renderer to derive
+    // (then store via `put`). Keys of `thumbs` are the requested paths verbatim.
+    notesThumbResolve: (paths: string[]) => Promise<{
+      thumbs: Record<string, {
+        mode: 'explicit' | 'auto' | 'off' | 'none';
+        src: string | null;
+        version: string | null;
+        missing: boolean;
+        caption: string;
+      }>;
+    }>;
+    notesThumbGet: (src: string) => Promise<
+      | { status: 'ready'; dataUrl: string; version: string }
+      | { status: 'source'; mime: string; bytes: Uint8Array; version: string }
+      | { status: 'missing' }
+      | { status: 'unsupported' }
+    >;
+    notesThumbPut: (src: string, version: string, bytes: Uint8Array) => Promise<{ ok: boolean }>;
 
     // Per-chapter/per-scene file layout (MYT-609)
     vaultCreateChapter: (projectPath: string, chapterName: string) => Promise<unknown>;

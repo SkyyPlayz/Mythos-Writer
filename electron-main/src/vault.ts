@@ -1785,9 +1785,15 @@ export function isEmptyOrMissing(root: string): boolean {
 
 let activeNotesWatcher: FSWatcher | null = null;
 
+/** chokidar event kinds the Notes watcher forwards (SKY-11186). */
+export type NotesWatchEvent = 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir';
+
+/** Image files a note can show as its thumbnail (noteThumbnails.ts THUMB_IMAGE_MIME). */
+export const NOTES_ASSET_EXT_RE = /\.(?:png|jpe?g|gif|webp|avif|bmp|svg)$/i;
+
 export async function startNotesVaultWatcher(
   vaultRoot: string,
-  onChanged: (filePath: string) => void
+  onChanged: (filePath: string, event?: NotesWatchEvent) => void
 ): Promise<void> {
   if (activeNotesWatcher) return;
 
@@ -1805,17 +1811,23 @@ export async function startNotesVaultWatcher(
     followSymlinks: false, // MYT-362: don't recurse into symlinked dirs
   });
 
+  // SKY-11186: images are watched too — a note's thumbnail (spec §9) is keyed
+  // by the image's mtime+size, so an image rewritten in place must reach the
+  // renderer. The event kind rides along so main can route asset changes to
+  // the thumbnail path alone (no reindex, no graph work).
+  const isWatchedFile = (filePath: string): boolean =>
+    filePath.endsWith('.md') || NOTES_ASSET_EXT_RE.test(filePath);
   activeNotesWatcher.on('change', (filePath: string) => {
-    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
+    if (isWatchedFile(filePath) && !isRecentSelfWrite(filePath)) onChanged(filePath, 'change');
   });
   activeNotesWatcher.on('add', (filePath: string) => {
-    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
+    if (isWatchedFile(filePath) && !isRecentSelfWrite(filePath)) onChanged(filePath, 'add');
   });
   activeNotesWatcher.on('unlink', (filePath: string) => {
-    if (!isRecentSelfWrite(filePath)) onChanged(filePath);
+    if (!isRecentSelfWrite(filePath)) onChanged(filePath, 'unlink');
   });
-  activeNotesWatcher.on('addDir', (filePath: string) => onChanged(filePath));
-  activeNotesWatcher.on('unlinkDir', (filePath: string) => onChanged(filePath));
+  activeNotesWatcher.on('addDir', (filePath: string) => onChanged(filePath, 'addDir'));
+  activeNotesWatcher.on('unlinkDir', (filePath: string) => onChanged(filePath, 'unlinkDir'));
 
   // SKY-9469/SKY-9587: same narrowing as startVaultWatcher — poll mode only.
   if (usePollingOnWinNotes) {

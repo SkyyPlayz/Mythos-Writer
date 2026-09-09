@@ -381,10 +381,19 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // Vault notes updated push event (MYT-156)
-  onVaultNotesUpdated: (cb: (data: { count: number }) => void) => {
-    const handler = (_: unknown, data: { count: number }) => cb(data);
+  // SKY-11186: `path` is the changed note/folder, notes-vault-relative POSIX.
+  onVaultNotesUpdated: (cb: (data: { count: number; path?: string }) => void) => {
+    const handler = (_: unknown, data: { count: number; path?: string }) => cb(data);
     ipcRenderer.on('vault:notes-updated', handler);
     return () => ipcRenderer.removeListener('vault:notes-updated', handler);
+  },
+
+  // SKY-11186: an image in the Notes vault was added or rewritten in place —
+  // only thumbnails care (lib/noteThumbnails.ts, BoardsTabPanel).
+  onVaultNotesAssetChanged: (cb: (data: { path: string }) => void) => {
+    const handler = (_: unknown, data: { path: string }) => cb(data);
+    ipcRenderer.on('vault:notes-asset-changed', handler);
+    return () => ipcRenderer.removeListener('vault:notes-asset-changed', handler);
   },
 
   // SKY-8943: Notes Vault graph topology changed (link added/removed) —
@@ -950,6 +959,30 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-11183 §6 stub: Store B cleanup only, never touches the real fs item.
   notesBoardItemDelete: (folderPath: string, itemPath: string) =>
     ipcRenderer.invoke('notesBoard:itemDelete', { folderPath, itemPath }) as Promise<{ key: string | null }>,
+
+  // SKY-11186 (Notes Board 6/9): note thumbnails — main resolves which image
+  // is a note's cover (spec §9) and stores/serves derivatives; the renderer
+  // derives the WebP from `source` bytes and hands it back via notesThumbPut.
+  // See noteThumbnails.ts.
+  notesThumbResolve: (paths: string[]) =>
+    ipcRenderer.invoke('notesThumb:resolve', { paths }) as Promise<{
+      thumbs: Record<string, {
+        mode: 'explicit' | 'auto' | 'off' | 'none';
+        src: string | null;
+        version: string | null;
+        missing: boolean;
+        caption: string;
+      }>;
+    }>,
+  notesThumbGet: (src: string) =>
+    ipcRenderer.invoke('notesThumb:get', { src }) as Promise<
+      | { status: 'ready'; dataUrl: string; version: string }
+      | { status: 'source'; mime: string; bytes: Uint8Array; version: string }
+      | { status: 'missing' }
+      | { status: 'unsupported' }
+    >,
+  notesThumbPut: (src: string, version: string, bytes: Uint8Array) =>
+    ipcRenderer.invoke('notesThumb:put', { src, version, bytes }) as Promise<{ ok: boolean }>,
 
   // SKY-205: Smart Folders — frontmatter-backed persistent queries
   smartFolderList: () =>
