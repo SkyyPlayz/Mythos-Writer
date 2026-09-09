@@ -403,6 +403,12 @@ export default function NoteViewer({
   // writer never loses changes to a save they believe succeeded.
   const [saveError, setSaveError] = useState<string | null>(null);
   const [fidelityWarning, setFidelityWarning] = useState<LossyFeature[] | null>(null);
+  // SKY-11429: the CF-11 guard (below) silently lands a never-switched note in
+  // Source instead of the Rich default when it's lossy — silent so it never
+  // looks like data got destroyed, but from the writer's seat a note that
+  // "should" default to Rich just... doesn't, with no visible reason. This
+  // surfaces why, non-blocking (no dialog — CF-11's no-modal contract holds).
+  const [autoSourceNotice, setAutoSourceNotice] = useState<LossyFeature[] | null>(null);
   const [pendingMode, setPendingMode] = useState<NoteViewerMode | null>(null);
   const [gearOpen, setGearOpen] = useState(false);
   const [tagInput, setTagInput] = useState('');
@@ -466,8 +472,10 @@ export default function NoteViewer({
         // markdown (CF-11) — downgrade to Source without a modal on open.
         if (pendingPrefRichRef.current) {
           pendingPrefRichRef.current = false;
-          if (detectLossyFeatures(stripHiddenBlocks(r.content)).length > 0) {
+          const lossy = detectLossyFeatures(stripHiddenBlocks(r.content));
+          if (lossy.length > 0) {
             applyModeRef.current('source');
+            setAutoSourceNotice(lossy);
           }
         }
       })
@@ -683,6 +691,7 @@ export default function NoteViewer({
 
   const handleModeClick = useCallback((next: NoteViewerMode) => {
     setGearOpen(false);
+    setAutoSourceNotice(null);
     if (next === mode) return;
     if (next === 'rich') {
       // W0.2: judge fidelity on what Rich mode actually consumes — the display
@@ -763,6 +772,28 @@ export default function NoteViewer({
           onEditInSource={handleFidelityEditInSource}
           onOpenRichAnyway={handleFidelityOpenAnyway}
         />
+      )}
+      {autoSourceNotice && (
+        <div className="note-viewer-auto-source-notice" role="status" data-testid="note-auto-source-notice">
+          <span>
+            Opened in Source — this note has {autoSourceNotice.map((f) => f.label).join(', ')}, which Rich mode can&apos;t fully preserve.
+          </span>
+          <button
+            type="button"
+            className="note-viewer-auto-source-action"
+            onClick={() => handleModeClick('rich')}
+          >
+            Open in Rich anyway
+          </button>
+          <button
+            type="button"
+            className="note-viewer-auto-source-dismiss"
+            aria-label="Dismiss"
+            onClick={() => setAutoSourceNotice(null)}
+          >
+            ×
+          </button>
+        </div>
       )}
       <div className="note-viewer-toolbar">
         {/* M8d: breadcrumb (prototype `noteCrumbs`) — folder path + note title. */}
