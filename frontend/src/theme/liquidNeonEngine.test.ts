@@ -14,8 +14,13 @@ import {
   exportLiquidNeonPreset,
   parseLiquidNeonPreset,
   vaultDefaultThemePatch,
+  matchWallpaperList,
+  matchWallpaperIndex,
+  stepMatchWallpaper,
   LIQUID_NEON_V2_DEFAULTS,
+  type LiquidNeonV2Settings,
 } from './liquidNeonEngine';
+import { packWallpapers } from './wallpapers';
 import { contrastRatio } from '../theme';
 import { LIQUID_NEON_PRESETS } from './presets';
 
@@ -33,7 +38,7 @@ describe('hexA (verbatim prototype 3305–3309)', () => {
   });
 });
 
-describe('token computation at prototype defaults (Neon Classic, intensity 50 → I=2)', () => {
+describe('token computation at prototype defaults (Neon Nebula, intensity 50 → I=2)', () => {
   const t = compute();
 
   it('raw slot colors', () => {
@@ -116,10 +121,11 @@ describe('presets & wallpaper modes', () => {
     expect(t['--wp']).toContain('linear-gradient(168deg,#0a0d16,#0b0f20 52%,#070911)');
   });
 
-  it("'none' is a plain dark backdrop (B4-2: transparency removed)", () => {
-    const t = compute({ wp: 'none' });
-    expect(t['--wp']).toBe('linear-gradient(#07090f,#07090f)');
-    expect(t['--wpsize']).toBe('cover');
+  it("SKY-11589: a stored 'none' (removed option) normalizes to Theme match", () => {
+    const s = normalizeLiquidNeonV2({ wp: 'none' as unknown as LiquidNeonV2Settings['wp'] });
+    expect(s.wp).toBe('match');
+    expect(compute({ wp: 'none' as unknown as LiquidNeonV2Settings['wp'] })['--wp']).toBe("url('/assets/cosmic-bg.webp')");
+    expect(parseLiquidNeonPreset(JSON.stringify({ wp: 'none' }))).toBeNull();
   });
 
   it("'custom' without an upload falls back to the cosmic asset", () => {
@@ -130,6 +136,77 @@ describe('presets & wallpaper modes', () => {
   it('glass2 tracks glassA+.16 inside the clamp band', () => {
     const t = compute({ glassA: 60 });
     expect(t['--glass2']).toBe('rgba(21,26,45,0.76)');
+  });
+});
+
+// SKY-11589 — Theme match cycles the preset's wallpapers: built-in first, then
+// the bundled pack (manifest order); the pick lives in liquidNeonV2.wpPick.
+describe('Theme match wallpaper cycle (SKY-11589)', () => {
+  const classic = normalizeLiquidNeonV2({ setKey: 'classic' });
+  const aurora = normalizeLiquidNeonV2({ setKey: 'aurora', slots: [...LIQUID_NEON_PRESETS.aurora.c] });
+
+  it('index 0 is the built-in wallpaper: cosmic for Neon Nebula, starfield elsewhere', () => {
+    expect(matchWallpaperList(classic, COSMIC)[0].css).toBe("url('/assets/cosmic-bg.webp')");
+    expect(matchWallpaperList(aurora, COSMIC)[0].css).toContain('radial-gradient(1.6px 1.6px at 12% 22%');
+    expect(matchWallpaperList(aurora, COSMIC)[0].url).toBeUndefined();
+  });
+
+  it('the pack follows the built-in, in manifest order, for every preset', () => {
+    for (const key of Object.keys(LIQUID_NEON_PRESETS) as (keyof typeof LIQUID_NEON_PRESETS)[]) {
+      const s = normalizeLiquidNeonV2({ setKey: key, slots: [...LIQUID_NEON_PRESETS[key].c] });
+      const list = matchWallpaperList(s, COSMIC);
+      const pack = packWallpapers(key);
+      expect(pack.length, `${key} ships pack wallpapers`).toBeGreaterThan(0);
+      expect(list).toHaveLength(pack.length + 1);
+      pack.forEach((e, i) => expect(list[i + 1].css).toBe("url('" + e.url + "')"));
+    }
+  });
+
+  it('custom palettes cycle nothing (starfield only)', () => {
+    const s = normalizeLiquidNeonV2({ setKey: 'custom' });
+    expect(matchWallpaperList(s, COSMIC)).toHaveLength(1);
+    expect(stepMatchWallpaper(s, 1, 1)).toBeNull();
+  });
+
+  it('--wp follows wpPick for the active preset and wraps both ways', () => {
+    const list = matchWallpaperList(classic, COSMIC);
+    const n = list.length;
+    expect(compute({ wpPick: { classic: 1 } })['--wp']).toBe(list[1].css);
+    expect(compute({ wpPick: { classic: n } })['--wp']).toBe(list[0].css);
+    // Negative stored picks are garbage, dropped by normalize → index 0.
+    expect(compute({ wpPick: { classic: -1 } })['--wp']).toBe(list[0].css);
+    expect(matchWallpaperIndex({ ...classic, wpPick: { classic: -1 } }, n)).toBe(n - 1);
+    // A pick under another preset's key does not move this one.
+    expect(compute({ wpPick: { aurora: 2 } })['--wp']).toBe(list[0].css);
+  });
+
+  it('stepMatchWallpaper wraps, keeps other presets\' picks, and selects match', () => {
+    const n = matchWallpaperList(classic, COSMIC).length;
+    const s = { ...classic, wp: 'deep' as const, wpPick: { aurora: 2 } };
+    const p1 = stepMatchWallpaper(s, 1, n)!;
+    expect(p1).toEqual({ wpPick: { aurora: 2, classic: 1 }, wp: 'match' });
+    const back = stepMatchWallpaper({ ...s, ...p1 }, -1, n)!;
+    expect(back.wpPick).toEqual({ aurora: 2, classic: 0 });
+    const wrapped = stepMatchWallpaper({ ...s, wpPick: { classic: 0 } }, -1, n)!;
+    expect(wrapped.wpPick?.classic).toBe(n - 1);
+    expect(matchWallpaperIndex({ ...classic, wpPick: { classic: n - 1 } }, n)).toBe(n - 1);
+  });
+
+  it('--wppos carries the manifest anchor for pack images and center otherwise', () => {
+    const t = compute({ wpPick: { classic: 1 } });
+    expect(t['--wppos']).toBe(matchWallpaperList(classic, COSMIC)[1].position);
+    expect(compute({ wp: 'deep' })['--wppos']).toBe('center');
+  });
+
+  it('normalize drops garbage picks and keeps valid ones', () => {
+    const s = normalizeLiquidNeonV2({ wpPick: { classic: 2, aurora: -1, nope: 3, ice: 1.5, winter: 'x' } as unknown as LiquidNeonV2Settings['wpPick'] });
+    expect(s.wpPick).toEqual({ classic: 2 });
+    expect(normalizeLiquidNeonV2({ wpPick: [1, 2] as unknown as LiquidNeonV2Settings['wpPick'] }).wpPick).toEqual({});
+  });
+
+  it('export omits wpPick (the pack may differ between installs)', () => {
+    const json = exportLiquidNeonPreset({ ...classic, wpPick: { classic: 2 } });
+    expect(JSON.parse(json)).not.toHaveProperty('wpPick');
   });
 });
 

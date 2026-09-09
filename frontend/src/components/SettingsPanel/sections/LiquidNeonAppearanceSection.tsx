@@ -3,13 +3,16 @@
 // prototype is the spec: card layouts, copy, and computed style strings are
 // ported verbatim; controls bind to settings.liquidNeonV2 and apply live via
 // the v2 token engine, persisting through the panel's normal Save flow.
-import { useMemo, useRef } from 'react';
+import { useMemo, useRef, type CSSProperties } from 'react';
 import {
   applyLiquidNeonV2Tokens,
   exportLiquidNeonPreset,
   hexA,
+  matchWallpaperIndex,
+  matchWallpaperList,
   normalizeLiquidNeonV2,
   parseLiquidNeonPreset,
+  stepMatchWallpaper,
   wallpaperCss,
   LIQUID_NEON_V2_DEFAULTS,
   type LiquidNeonV2Settings,
@@ -195,14 +198,31 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
     </div>
   ));
 
-  // Wallpaper cards (prototype 4225–4232)
+  // Wallpaper cards (prototype 4225–4232; SKY-11589 owner mockup 9.9 2657 /
+  // 7562–7571: `No background` removed, arrows on the Theme match tile).
   const wpDefs: [LiquidNeonWallpaperKey, string][] = [
-    ['match', 'Theme match'], ['aurora', 'Aurora Glass'], ['slate', 'Slate Gradient'], ['deep', 'Deep Space'], ['none', 'No background'],
+    ['match', 'Theme match'], ['aurora', 'Aurora Glass'], ['slate', 'Slate Gradient'], ['deep', 'Deep Space'],
     ...(S.customWp ? ([['custom', 'Your image']] as [LiquidNeonWallpaperKey, string][]) : []),
   ];
+  // The active preset's Theme-match cycle: built-in wallpaper first, then the
+  // bundled pack. Arrows show only when there is something to cycle.
+  const matchList = matchWallpaperList(S, cosmicBgUrl);
+  const matchIdx = matchWallpaperIndex(S, matchList.length);
+  const hasArrows = matchList.length > 1;
+  const stepMatch = (dir: 1 | -1) => {
+    const p = stepMatchWallpaper(S, dir, matchList.length);
+    if (p) patch(p);
+  };
+  const arrowSt = (side: 'left' | 'right'): CSSProperties => ({
+    position: 'absolute', [side]: 4, top: '50%', transform: 'translateY(-50%)',
+    width: 19, height: 19, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    background: 'rgba(8,10,18,.72)', border: '1px solid rgba(255,255,255,.18)', color: '#e6ecf9', cursor: 'pointer',
+    padding: 0,
+  });
   const wpCards = wpDefs.map(([k, label]) => {
     const active = S.wp === k;
     const thumbBg = wallpaperCss({ ...S, wp: k }, cosmicBgUrl);
+    const isMatch = k === 'match';
     return (
       <div
         key={k}
@@ -211,8 +231,17 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         role="button"
         tabIndex={0}
         aria-pressed={active}
-        aria-label={`Wallpaper: ${label}`}
-        onKeyDown={onActivateKey(() => patch({ wp: k }))}
+        aria-label={isMatch && hasArrows ? `Wallpaper: ${label}, ${matchIdx + 1} of ${matchList.length}` : `Wallpaper: ${label}`}
+        onKeyDown={(e) => {
+          // Left/Right on the Theme match tile cycle its wallpapers (mouse users
+          // get the on-thumbnail arrows); Enter/Space still select the tile.
+          if (isMatch && hasArrows && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+            e.preventDefault();
+            stepMatch(e.key === 'ArrowRight' ? 1 : -1);
+            return;
+          }
+          onActivateKey(() => patch({ wp: k }))(e);
+        }}
         className={active ? undefined : 'lnas-hover-border'}
         style={{
           flex: 1, minWidth: 120, padding: 7, borderRadius: 13, cursor: 'pointer',
@@ -224,14 +253,48 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
       >
         <div
           style={{
-            height: 58, borderRadius: 9, backgroundImage: thumbBg,
-            backgroundSize: 'cover', backgroundPosition: 'center',
+            position: 'relative', height: 58, borderRadius: 9, backgroundImage: thumbBg,
+            backgroundSize: 'cover', backgroundPosition: isMatch ? matchList[matchIdx].position : 'center',
             border: '1px solid rgba(255,255,255,.08)',
-            // B4-2: `No background` is a plain dark backdrop now (no transparency).
-            ...(k === 'none' ? { display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7686a2', fontSize: 9, letterSpacing: '.06em' } : {}),
           }}
         >
-          {k === 'none' ? 'plain dark' : ''}
+          {isMatch && hasArrows && (
+            <>
+              <button
+                type="button"
+                className="lnas-wp-arrow"
+                data-testid="lnas-wp-match-prev"
+                title="Previous theme wallpaper"
+                aria-label="Previous theme wallpaper"
+                onClick={(e) => { e.stopPropagation(); stepMatch(-1); }}
+                style={arrowSt('left')}
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5" /></svg>
+              </button>
+              <button
+                type="button"
+                className="lnas-wp-arrow"
+                data-testid="lnas-wp-match-next"
+                title="Next theme wallpaper"
+                aria-label="Next theme wallpaper"
+                onClick={(e) => { e.stopPropagation(); stepMatch(1); }}
+                style={arrowSt('right')}
+              >
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 5.5L16 12l-6.5 6.5" /></svg>
+              </button>
+              <span
+                data-testid="lnas-wp-match-count"
+                aria-hidden="true"
+                style={{
+                  position: 'absolute', left: '50%', bottom: 3, transform: 'translateX(-50%)',
+                  fontSize: 8.5, fontWeight: 700, letterSpacing: '.06em', color: '#e6ecf9',
+                  background: 'rgba(8,10,18,.72)', borderRadius: 5, padding: '1px 5px', pointerEvents: 'none',
+                }}
+              >
+                {matchIdx + 1}/{matchList.length}
+              </span>
+            </>
+          )}
         </div>
         <div style={{ fontSize: 11, marginTop: 7, textAlign: 'center', ...(active ? { color: 'var(--n1,#00f0ff)', fontWeight: 600 } : { color: '#aebad0' }) }}>{label}</div>
       </div>
@@ -359,7 +422,7 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         </div>
       </Card>
 
-      <Card title="Background" sub="The glass needs something to refract. Wallpaper sits behind every panel — or go minimal with a plain dark backdrop.">
+      <Card title="Background" sub="The glass needs something to refract. Wallpaper sits behind every panel — Theme match follows your palette, and its arrows cycle that theme's wallpapers.">
         <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
           {wpCards}
           {/* div, not label: axe aria-allowed-role forbids role="button" on label,

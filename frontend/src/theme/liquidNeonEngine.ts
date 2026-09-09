@@ -4,6 +4,7 @@
 // formats below are verbatim — do not "improve" them.
 // Map: docs/releases/LIQUID-NEON-PROTOTYPE-MAP.md §B.
 import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey, type LiquidNeonSetKey } from './presets';
+import { packWallpapers, type WallpaperEntry } from './wallpapers';
 import { schedulePreBlurredWallpaper } from './preBlurWallpaper';
 // Resolves to frontend/src/theme.ts (file wins over this directory's index-less
 // folder). CF-6: the body-text contrast clamp is shared with the v1 engine.
@@ -42,7 +43,9 @@ export interface LiquidNeonTextCfg {
   wiki?: string | null;
 }
 
-export type LiquidNeonWallpaperKey = 'match' | 'aurora' | 'slate' | 'deep' | 'none' | 'custom';
+/** Wallpaper mode. SKY-11589: `none` (plain dark backdrop) is gone — stored
+ *  values that aren't in this union normalize to `match`. */
+export type LiquidNeonWallpaperKey = 'match' | 'aurora' | 'slate' | 'deep' | 'custom';
 export type LiquidNeonFrameAnim = 'off' | 'cycle' | 'sparkle';
 /** Background ambience mode (prototype ambMode, HTML 6793–6798). */
 export type LiquidNeonAmbMode = 'match' | 'snow' | 'rise' | 'off';
@@ -63,6 +66,13 @@ export interface LiquidNeonV2Settings {
   wp: LiquidNeonWallpaperKey;
   /** Custom wallpaper ref (app bg-image id or data/blob URL) when wp==='custom'. */
   customWp?: string;
+  /**
+   * SKY-11589: which of a preset's "Theme match" wallpapers is showing, keyed
+   * by preset key (mockup `wpPick`, dc.html 6202). Index 0 is the preset's
+   * built-in wallpaper; the bundled pack follows. Lives inside liquidNeonV2 so
+   * it persists per vault with the rest of the appearance (SKY-11237).
+   */
+  wpPick?: Partial<Record<LiquidNeonSetKey, number>>;
   /** Wallpaper scrim 0–70 (%). */
   scrim: number;
   /** Accessibility: cap intensity contribution (prototype 3935). */
@@ -98,7 +108,7 @@ export interface LiquidNeonV2Settings {
   uiBtnCol: string;
 }
 
-/** Prototype state defaults (HTML 3212–3230). Default preset: Neon Classic. */
+/** Prototype state defaults (HTML 3212–3230). Default preset: Neon Nebula (`classic`). */
 export const LIQUID_NEON_V2_DEFAULTS: LiquidNeonV2Settings = {
   setKey: 'classic',
   slots: [...LIQUID_NEON_PRESETS.classic.c] as LiquidNeonV2Settings['slots'],
@@ -126,6 +136,13 @@ export const LIQUID_NEON_V2_DEFAULTS: LiquidNeonV2Settings = {
   uiBtnCol: '#cdd8ea',
 };
 
+/** Accepted enum values — shared by normalize (SKY-11589) and preset import. */
+const HEX_RE = /^#[0-9a-f]{6}$/i;
+const SET_KEYS: readonly string[] = [...(Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[]), 'custom'];
+const WP_KEYS: readonly string[] = ['match', 'aurora', 'slate', 'deep', 'custom'];
+const AMB_MODES: readonly string[] = ['match', 'snow', 'rise', 'off'];
+const FRAME_ANIMS: readonly string[] = ['off', 'cycle', 'sparkle'];
+
 /** Verbatim hexA (prototype 3305–3309): #rrggbb + alpha → rgba string, alpha clamped and toFixed(3). */
 export function hexA(hex: string, a: number): string {
   const h = hex.replace('#', '');
@@ -140,23 +157,100 @@ export function normalizeLiquidNeonV2(partial?: Partial<LiquidNeonV2Settings> | 
   const slots = Array.isArray(partial.slots) && partial.slots.length === 6
     ? ([...partial.slots] as LiquidNeonV2Settings['slots'])
     : ([...d.slots] as LiquidNeonV2Settings['slots']);
+  // SKY-11589: a stored wallpaper mode this build no longer offers (the
+  // removed `none`) lands on `match` — the theme's own wallpaper — rather
+  // than a dead value. Only Skyy has installs, so no migration beyond this.
+  const wp: LiquidNeonWallpaperKey = WP_KEYS.includes(partial.wp as string) ? (partial.wp as LiquidNeonWallpaperKey) : 'match';
   return {
     ...d,
     ...partial,
     slots,
+    wp,
+    wpPick: normalizeWpPick(partial.wpPick),
     pageCfg: { ...d.pageCfg, ...(partial.pageCfg ?? {}) },
     txtCfg: { ...d.txtCfg, ...(partial.txtCfg ?? {}) },
   };
 }
 
+/** Keep only finite non-negative integer picks; anything else is "index 0". */
+function normalizeWpPick(raw: unknown): Partial<Record<LiquidNeonSetKey, number>> {
+  const out: Partial<Record<LiquidNeonSetKey, number>> = {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (SET_KEYS.includes(k) && typeof v === 'number' && Number.isInteger(v) && v >= 0) out[k as LiquidNeonSetKey] = v;
+  }
+  return out;
+}
+
+// ── SKY-11589: "Theme match" wallpaper cycle ─────────────────────────────────
+
+/**
+ * The generated starfield wallpaper every non-Nebula preset had before the
+ * bundled pack existed (prototype `wps.match`, HTML 3945). Still index 0 of
+ * those presets' cycles.
+ */
+function starfieldCss(slots: LiquidNeonV2Settings['slots']): string {
+  const [c1, c2, c3] = slots;
+  const c4 = slots[3] || '#ff9a3d';
+  return 'radial-gradient(1.6px 1.6px at 12% 22%,rgba(255,255,255,.85),transparent 100%),radial-gradient(1.2px 1.2px at 34% 64%,rgba(255,255,255,.6),transparent 100%),radial-gradient(1.8px 1.8px at 58% 18%,rgba(255,255,255,.75),transparent 100%),radial-gradient(1.2px 1.2px at 73% 48%,rgba(255,255,255,.55),transparent 100%),radial-gradient(1.5px 1.5px at 88% 76%,rgba(255,255,255,.7),transparent 100%),radial-gradient(1.1px 1.1px at 22% 86%,rgba(255,255,255,.5),transparent 100%),radial-gradient(85% 65% at 12% 8%,' + hexA(c1, .2) + ',transparent 58%),radial-gradient(75% 60% at 88% 12%,' + hexA(c2, .24) + ',transparent 55%),radial-gradient(60% 50% at 68% 42%,' + hexA(c3, .14) + ',transparent 60%),radial-gradient(95% 85% at 50% 100%,' + hexA(c4, .1) + ',transparent 62%),linear-gradient(168deg,#0a0d16,#0b0f20 52%,#070911)';
+}
+
+/** One entry of a preset's Theme-match cycle: a CSS background-image value + position. */
+export interface MatchWallpaper {
+  /** CSS `background-image` value (url() or gradient list). */
+  css: string;
+  /** CSS `background-position`. */
+  position: string;
+  /** Set for pack images (the bundled file's URL); absent for the built-ins. */
+  url?: string;
+}
+
+/**
+ * The full Theme-match cycle for the active preset: the built-in wallpaper
+ * first (Neon Nebula → `cosmicUrl`; other presets → starfield), then the
+ * bundled pack in manifest order. `custom` palettes have only the starfield.
+ */
+export function matchWallpaperList(s: LiquidNeonV2Settings, cosmicUrl: string): MatchWallpaper[] {
+  const builtIn: MatchWallpaper = s.setKey === 'classic'
+    ? { css: "url('" + cosmicUrl + "')", position: 'center', url: cosmicUrl }
+    : { css: starfieldCss(s.slots), position: 'center' };
+  const pack = packWallpapers(s.setKey).map((e: WallpaperEntry): MatchWallpaper => ({ css: "url('" + e.url + "')", position: e.position, url: e.url }));
+  return [builtIn, ...pack];
+}
+
+/** Wrapped index into `matchWallpaperList` for the active preset (mockup 7194). */
+export function matchWallpaperIndex(s: LiquidNeonV2Settings, count: number): number {
+  if (count < 1) return 0;
+  const raw = s.wpPick?.[s.setKey] ?? 0;
+  return ((raw % count) + count) % count;
+}
+
+/**
+ * The settings patch for stepping the Theme-match wallpaper by `dir`
+ * (mockup `wpStep`, dc.html 6202): wraps around, records the pick under the
+ * active preset key, and selects `match` so the step is visible at once.
+ * Returns null when the preset has nothing to cycle.
+ */
+export function stepMatchWallpaper(s: LiquidNeonV2Settings, dir: 1 | -1, count: number): Pick<LiquidNeonV2Settings, 'wpPick' | 'wp'> | null {
+  if (count < 2) return null;
+  const next = matchWallpaperIndex({ ...s, wpPick: { ...s.wpPick, [s.setKey]: matchWallpaperIndex(s, count) + dir } }, count);
+  return { wpPick: { ...s.wpPick, [s.setKey]: next }, wp: 'match' };
+}
+
+/** The active Theme-match entry (index 0 when the pick is out of range). */
+export function currentMatchWallpaper(s: LiquidNeonV2Settings, cosmicUrl: string): MatchWallpaper {
+  const list = matchWallpaperList(s, cosmicUrl);
+  return list[matchWallpaperIndex(s, list.length)];
+}
+
 /**
  * The wallpaper CSS `background` values (prototype `wps`, HTML 3939–3947).
- * `cosmicUrl` is the bundled Neon Classic wallpaper asset URL (the prototype's
- * relative 'assets/cosmic-bg.webp'); injected so the engine stays testable.
+ * `cosmicUrl` is the Neon Nebula preset's built-in wallpaper asset URL (the
+ * prototype's relative 'assets/cosmic-bg.webp'); injected so the engine stays
+ * testable. `match` resolves through the preset's wallpaper cycle (SKY-11589).
  */
 export function wallpaperCss(s: LiquidNeonV2Settings, cosmicUrl: string): string {
   const [c1, c2, c3] = s.slots;
-  const c4 = s.slots[3] || '#ff9a3d';
   switch (s.wp) {
     case 'aurora':
       return 'radial-gradient(90% 70% at 15% 10%,' + hexA(c1, .14) + ',transparent 60%),radial-gradient(80% 60% at 85% 15%,' + hexA(c2, .18) + ',transparent 55%),radial-gradient(90% 80% at 55% 95%,' + hexA(c3, .1) + ',transparent 60%),linear-gradient(170deg,#0a0d18,#0b0f22 50%,#070910)';
@@ -164,17 +258,11 @@ export function wallpaperCss(s: LiquidNeonV2Settings, cosmicUrl: string): string
       return 'linear-gradient(165deg,#0d1017,#121826 55%,#0b0e17)';
     case 'deep':
       return 'linear-gradient(#07080d,#07080d)';
-    case 'none':
-      // Beta 4 W0.5 (B4-2): window transparency is removed — `No background`
-      // renders a plain dark backdrop instead of the desktop showing through.
-      return 'linear-gradient(#07090f,#07090f)';
     case 'custom':
       return s.customWp ? "url('" + s.customWp + "')" : "url('" + cosmicUrl + "')";
     case 'match':
     default:
-      return s.setKey === 'classic'
-        ? "url('" + cosmicUrl + "')"
-        : 'radial-gradient(1.6px 1.6px at 12% 22%,rgba(255,255,255,.85),transparent 100%),radial-gradient(1.2px 1.2px at 34% 64%,rgba(255,255,255,.6),transparent 100%),radial-gradient(1.8px 1.8px at 58% 18%,rgba(255,255,255,.75),transparent 100%),radial-gradient(1.2px 1.2px at 73% 48%,rgba(255,255,255,.55),transparent 100%),radial-gradient(1.5px 1.5px at 88% 76%,rgba(255,255,255,.7),transparent 100%),radial-gradient(1.1px 1.1px at 22% 86%,rgba(255,255,255,.5),transparent 100%),radial-gradient(85% 65% at 12% 8%,' + hexA(c1, .2) + ',transparent 58%),radial-gradient(75% 60% at 88% 12%,' + hexA(c2, .24) + ',transparent 55%),radial-gradient(60% 50% at 68% 42%,' + hexA(c3, .14) + ',transparent 60%),radial-gradient(95% 85% at 50% 100%,' + hexA(c4, .1) + ',transparent 62%),linear-gradient(168deg,#0a0d16,#0b0f20 52%,#070911)';
+      return currentMatchWallpaper(s, cosmicUrl).css;
   }
 }
 
@@ -248,6 +336,9 @@ export function computeLiquidNeonV2Tokens(
     '--blur': S.blur + 'px',
     '--wp': wallpaperCss(S, cosmicUrl),
     '--wpsize': 'cover',
+    // SKY-11589: cover-crop anchor for the bundled wallpapers (manifest
+    // `position`, default center); gradients and custom images stay centered.
+    '--wppos': S.wp === 'match' ? currentMatchWallpaper(S, cosmicUrl).position : 'center',
     '--ln-scrim': String(S.scrim / 100),
   };
   // Beta 4 M1 — Interface card color wheels. Only emitted when customized so
@@ -294,11 +385,6 @@ export function exportLiquidNeonPreset(settings: Partial<LiquidNeonV2Settings> |
   return JSON.stringify(file, null, 2);
 }
 
-const HEX_RE = /^#[0-9a-f]{6}$/i;
-const SET_KEYS: readonly string[] = [...(Object.keys(LIQUID_NEON_PRESETS) as LiquidNeonPresetKey[]), 'custom'];
-const WP_KEYS: readonly string[] = ['match', 'aurora', 'slate', 'deep', 'none', 'custom'];
-const AMB_MODES: readonly string[] = ['match', 'snow', 'rise', 'off'];
-const FRAME_ANIMS: readonly string[] = ['off', 'cycle', 'sparkle'];
 
 /**
  * Parse a preset JSON string. Returns the recognized subset of

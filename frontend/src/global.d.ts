@@ -612,7 +612,7 @@ interface AppSettings {
   editorPrefs?: EditorPrefs;
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
   liquidNeon?: LiquidNeonPrefs;
-  /** Beta 3 Liquid Neon v2 slot engine (docs/releases/BETA-LIQUID-NEON.md M1). Absent → Neon Classic defaults. */
+  /** Beta 3 Liquid Neon v2 slot engine (docs/releases/BETA-LIQUID-NEON.md M1). Absent → Neon Nebula defaults. */
   liquidNeonV2?: import('./theme/liquidNeonEngine').LiquidNeonV2Settings;
   /** Beta 4 M1: per-vault default theme — Story Vault root path → preset key.
    *  Applied (setKey + slots + wp 'match') when switching to that vault. */

@@ -78,7 +78,7 @@ Palettes `this.sets` 2872–2882 · idle border animation `this.themeAnim` 2884 
 
 | Key | Name | Slots A–F | Ambience (layers 1/2) | Idle border anim |
 |---|---|---|---|---|
-| `classic` | Neon Classic | `#00f0ff #9b5fff #ff4dff #ff9a3d #2fe6c8 #3d9bff` | `lnRise` 46s/70s, `rgba(255,255,255,.75)` / `hexA(c2,.5)`, op .4/.28, 1.8×1.8 | `lnBreathe 4.6s ease-in-out` |
+| `classic` | Neon Nebula | `#00f0ff #9b5fff #ff4dff #ff9a3d #2fe6c8 #3d9bff` | `lnRise` 46s/70s, `rgba(255,255,255,.75)` / `hexA(c2,.5)`, op .4/.28, 1.8×1.8 | `lnBreathe 4.6s ease-in-out` |
 | `aurora` | Aurora | `#34ffc8 #00d4ff #a78bfa #ffd97a #5f8bff #8ad9ff` | `lnRise` 40/64s, `c1/.55`+`c2/.45`, .42/.3, 2×2 | `lnHueSoft 9s linear` |
 | `cyber` | Cyberpunk | `#ff2d95 #ffd319 #00e5ff #b4ff39 #8a5cff #ff6b4d` | `lnSnow` 7/11s, `c1/.55`+`c3/.45`, .35/.25, 1.4×15 (rain) | `lnFlicker 3.4s steps(1,end)` |
 | `sunset` | Sunset Coast | `#ff9a3d #ff4d88 #b06bff #ffd319 #ff6b4d #ffe680` | `lnRise` 26/40s, `c4/.6`+`c1/.5`, .45/.3, 2×2.4 | `lnBreathe 6.5s ease-in-out` |

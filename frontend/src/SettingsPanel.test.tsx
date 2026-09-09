@@ -2562,5 +2562,22 @@ describe('SKY-3218 nav-bar configuration', () => {
       expect(saved.telemetry?.enabled).toBe(true);
       expect(saved.agents.writingAssistant.enabled).toBe(true);
     });
+
+    it('SKY-11589: live-persist writes the active vault\'s per-vault appearance entry (wallpaper pick)', async () => {
+      await renderSettings(<SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/alpha" />);
+      await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+      fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
+      // Theme match → next wallpaper: an Appearance-owned edit on liquidNeonV2.
+      fireEvent.click(screen.getByTestId('lnas-wp-match-next'));
+      await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+      const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+      expect(saved.liquidNeonV2?.wp).toBe('match');
+      expect(saved.liquidNeonV2?.wpPick).toEqual({ classic: 1 });
+      // SKY-11237 store gets the same slice, so the pick survives a relaunch per vault.
+      expect(saved.vaultAppearance?.['/vaults/alpha']?.liquidNeonV2?.wpPick).toEqual({ classic: 1 });
+      expect(saved.vaultAppearance?.['/vaults/alpha']?.theme).toBe(saved.theme);
+    });
   });
 });
