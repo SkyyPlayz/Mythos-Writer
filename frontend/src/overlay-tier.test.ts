@@ -14,6 +14,7 @@ import { describe, it, expect } from 'vitest';
 
 const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf-8');
 const OVERLAY_CSS = read('src/overlay-tier.css');
+const TOKENS_CSS = read('src/tokens.css');
 
 /** Floating surfaces that must render with the shared overlay chrome. */
 const CONSUMERS: ReadonlyArray<readonly [file: string, localClass: string]> = [
@@ -72,10 +73,14 @@ describe('overlay tier — shared chrome', () => {
   });
 
   it('drops glow, tint and blur under the app high-contrast toggle', () => {
-    const hc = ruleBody(OVERLAY_CSS, '[data-contrast="high"] .ln-overlay-surface');
-    expect(hc).toContain('box-shadow: none');
-    expect(hc).toContain('backdrop-filter: none');
-    expect(hc).toContain('var(--border-strong)');
+    // SKY-11532: the K8 block in tokens.css now flattens the v2 slot tokens
+    // (--b1/--g1) directly, so .ln-overlay-surface's border/box-shadow
+    // (which read --b1/--g1) resolve correctly without a local override here.
+    const k8 = ruleBody(TOKENS_CSS, ':root[data-contrast="high"] :where(*)');
+    expect(k8).toContain('--b1: var(--border-strong)');
+    expect(k8).toContain('--g1: none');
+    // blur still goes to 0px via --blur-panel-overlay, flattened in the same block.
+    expect(k8).toContain('--blur-panel-overlay: 0px');
   });
 
   it('mirrors the high-contrast degrade for the OS prefers-contrast path', () => {

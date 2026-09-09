@@ -457,6 +457,36 @@
   --border-default: #9fb3c8;  /* ≥ 3:1 for UI components (WCAG 1.4.11)        */
   --border-strong: #ffffff;
 
+  /* SKY-11532: the v2 slot engine's border/glow/glow-soft tokens and hairline
+     pair are written inline on the html element by the theme engine and are
+     NOT touched by the glass flatten above, so every consumer of them
+     (ExportDialog, Timeline, Brainstorm, Scene Crafter, Boards, the overlay
+     tier, ...) kept a tinted neon rim and glow under K8. Flatten them here to
+     the same "neon becomes a solid stroke, glows removed" contract as the
+     rest of this block, matching the overlay-tier local override this
+     supersedes (border slot one to the strong border colour, glow to none). */
+  --b1: var(--border-strong);
+  --b2: var(--border-strong);
+  --b3: var(--border-strong);
+  --b4: var(--border-strong);
+  --b5: var(--border-strong);
+  --b6: var(--border-strong);
+  --bh: var(--border-strong);
+  --bwh: 1px;
+  --g1: none;
+  --g2: none;
+  --g3: none;
+  --g4: none;
+  --g5: none;
+  --g6: none;
+  --glowH: none;
+  --gs1: transparent;
+  --gs2: transparent;
+  --gs3: transparent;
+  --gs4: transparent;
+  --gs5: transparent;
+  --gs6: transparent;
+
   --accent: #c9b6ff;          /* solid high-contrast stroke, no glow         */
   --focus-ring: #ffffff;
 
@@ -557,6 +587,29 @@
     --text-faint: #aebccd;
     --border-default: #9fb3c8;
     --glass-rim: rgba(255, 255, 255, 0.3);
+
+    /* SKY-11532: mirror the [data-contrast="high"] slot-token flatten above. */
+    --b1: var(--border-strong);
+    --b2: var(--border-strong);
+    --b3: var(--border-strong);
+    --b4: var(--border-strong);
+    --b5: var(--border-strong);
+    --b6: var(--border-strong);
+    --bh: var(--border-strong);
+    --bwh: 1px;
+    --g1: none;
+    --g2: none;
+    --g3: none;
+    --g4: none;
+    --g5: none;
+    --g6: none;
+    --glowH: none;
+    --gs1: transparent;
+    --gs2: transparent;
+    --gs3: transparent;
+    --gs4: transparent;
+    --gs5: transparent;
+    --gs6: transparent;
   }
 }
 

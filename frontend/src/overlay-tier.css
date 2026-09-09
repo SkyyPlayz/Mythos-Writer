@@ -54,16 +54,11 @@
   }
 }
 
-/* High contrast — app toggle. tokens.css already flattens
-   --glass-fill-overlay / --blur-panel-overlay to opaque at [data-contrast="high"],
-   but the slot colours (--b* / --g*) are not zeroed there, so the tinted border
-   and the neon glow have to be dropped explicitly. */
-[data-contrast="high"] .ln-overlay-surface {
-  border: 2px solid var(--border-strong);
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
+/* High contrast — app toggle. SKY-11532: tokens.css's [data-contrast="high"]
+   block now flattens --glass-fill-overlay / --blur-panel-overlay AND the v2
+   slot tokens (--b* -> --border-strong, --g* -> none) directly, so `border`
+   and `box-shadow` above already resolve correctly here without a local
+   override. backdrop-filter still goes to 0px via --blur-panel-overlay. */
 
 /* High contrast — OS preference. Mirrors the rule above; unlike the app toggle
    this path does not flatten the glass tokens at :root, so the opaque fill is
