@@ -230,13 +230,13 @@ describe('Menu — Liquid Neon a11y CSS', () => {
     expect(m?.[1] ?? '').toContain('animation: none');
   });
 
-  it('high-contrast block exists and explicitly resets glow on menu', () => {
+  it('high-contrast panel flattening is delegated to the overlay tier, not re-rolled here', () => {
     expect(MENU_CSS).toContain('[data-contrast="high"]');
-    const m = MENU_CSS.match(/\[data-contrast="high"\]\s*\.ln-menu\s*\{([^}]*)\}/);
-    const block = m?.[1] ?? '';
-    expect(block).toContain('border-color');
-    // box-shadow: none is the correct reset — ensures no glow in high-contrast mode
-    expect(block).toContain('box-shadow: none');
+    // SKY-11492: `.ln-overlay-surface` (overlay-tier.css) owns the opaque
+    // fill / solid border / no-glow degrade for every floating surface. A
+    // local `.ln-menu` block at equal specificity would race it on bundle
+    // order, so there must be none.
+    expect(MENU_CSS).not.toMatch(/\[data-contrast="high"\]\s*\.ln-menu\s*\{/);
   });
 
   it('high-contrast hover inverts colors without glow', () => {
@@ -250,5 +250,44 @@ describe('Menu — Liquid Neon a11y CSS', () => {
     renderMenu();
     expect(screen.getByRole('menu')).toBeInTheDocument();
     expect(screen.getAllByRole('menuitem').length).toBeGreaterThan(0);
+  });
+});
+
+// ─── Overlay tier (SKY-11492) ─────────────────────────────────────────────────
+//
+// `.ln-menu` used to paint its own flat `--bg-elevated` fill with a neutral
+// hairline and a depth-only shadow — entirely off the glass tier every dialog
+// has been on since SKY-11450. The chrome now comes from `.ln-overlay-surface`,
+// so the eight consumers of this primitive are corrected by the one class.
+
+/** Every `<selector> { … }` body in the sheet, top-level or nested in an at-rule. */
+function ruleBodies(css: string, selector: string): string[] {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return Array.from(css.matchAll(new RegExp(`(^|[},])\\s*${escaped}\\s*\\{([^}]*)\\}`, 'gm')), (m) => m[2]);
+}
+
+// Any fill / border (other than radius) / shadow / blur longhand or shorthand.
+const CHROME_PROPERTY = /(^|[;{\s])(background(-[a-z]+)?|border(-(?!radius)[a-z-]+)?|box-shadow|backdrop-filter):/;
+
+describe('Menu — overlay tier (SKY-11492)', () => {
+  it('renders the popup on .ln-overlay-surface, keeping the caller variant class', () => {
+    renderMenu({ className: 'vb-ctx-menu' });
+    expect(screen.getByRole('menu')).toHaveClass('ln-menu', 'ln-overlay-surface', 'vb-ctx-menu');
+  });
+
+  it('every .ln-menu rule owns geometry only — no fill, border, shadow or blur in any block', () => {
+    const bodies = ruleBodies(MENU_CSS, '.ln-menu');
+    expect(bodies.length).toBeGreaterThan(0);
+    expect(bodies[0]).toContain('border-radius');
+    for (const body of bodies) expect(body).not.toMatch(CHROME_PROPERTY);
+  });
+
+  it('drops the tier glow — the mockup paints menus with the depth shadow only', () => {
+    expect(ruleBodies(MENU_CSS, '.ln-menu')[0]).toContain('--ln-overlay-glow: transparent');
+  });
+
+  it('the off-tier recipe (--bg-elevated + --elev-2) is gone from the stylesheet', () => {
+    expect(MENU_CSS).not.toContain('--bg-elevated');
+    expect(MENU_CSS).not.toContain('--elev-2');
   });
 });

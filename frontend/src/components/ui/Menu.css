@@ -1,10 +1,14 @@
 /* Liquid Neon — shared popup menu surface (SKY-3030) */
 
+/* Chrome (fill, blur, border, shadow — and its high-contrast flattening) comes
+   from `.ln-overlay-surface` (overlay-tier.css, SKY-11492), which Menu.tsx
+   applies next to this class. This rule owns geometry and motion, plus one
+   retint through the tier's own hook: the owner mockup paints its menus and
+   dropdowns with the depth shadow only — no neon glow layer (dc.html 83;
+   prototype navCtxSt / treeCtxSt) — unlike its popovers and dialogs. */
 .ln-menu {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
+  --ln-overlay-glow: transparent;
   border-radius: var(--radius-sm);
-  box-shadow: var(--elev-2);
   padding: var(--space-1) 0;
   min-width: 192px;
   animation: ln-menu-in var(--dur-hover-in) var(--ease-out) both;
@@ -69,14 +73,9 @@
   pointer-events: none;
 }
 
-/* High-contrast mode */
-[data-contrast="high"] .ln-menu {
-  background: #000;
-  border-color: #fff;
-  border-width: 2px;
-  box-shadow: none;
-}
-
+/* High-contrast mode — the panel itself flattens through `.ln-overlay-surface`
+   (opaque fill, solid border, no glow or blur); only the item rows need their
+   own inversion here. */
 [data-contrast="high"] .ln-menu-item:hover:not(:disabled),
 [data-contrast="high"] .ln-menu-item:focus-visible:not(:disabled) {
   background: #fff;

@@ -221,7 +221,7 @@ export function DropdownSelect({
             id={listboxId}
             role="listbox"
             aria-label={ariaLabel}
-            className="ln-select-listbox"
+            className="ln-select-listbox ln-overlay-surface"
             style={{ position: 'fixed', zIndex: 9999 }}
             onKeyDown={handleListboxKeyDown}
             data-testid="ln-select-listbox"
