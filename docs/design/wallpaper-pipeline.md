@@ -100,10 +100,10 @@ Aurora, Royal Arcana and Noir Rose drop their weakest frames; the manifest's
 ## Open for UX and QA
 
 **Ordering is provisional.** Within each set the order is my read of thematic
-fit, strongest first. UXDesigner owns the final order (SKY-11592). Reordering is
+fit, strongest first. UXDesigner owns the final order (SKY-11599). Reordering is
 a manifest edit and a rebuild.
 
-**Softness above 1080p.** Because no source cleared 1080p, every wallpaper
+**Softness above 1080p.** (QA: SKY-11600) Because no source cleared 1080p, every wallpaper
 upscales on a large window. Two buckets:
 
 | Output size | Count | Scale at 1440x900 | Scale at 1920x1080 |
@@ -116,6 +116,6 @@ Coast, Ice Mono, Emberfall, Verdant Reach, and Aurora's two ultrawide frames.
 If any read soft on a 1080p display the fix is regenerating those specific
 originals at a higher source resolution, which is the owner's call.
 
-**One brightness outlier.** `bg-winter-4.webp` is a daylight sunrise and by far
+**One brightness outlier.** (QA: SKY-11600) `bg-winter-4.webp` is a daylight sunrise and by far
 the brightest image in the pack. Worth a contrast check against Liquid Neon's
 light-on-dark text before it ships in the default four.
