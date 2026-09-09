@@ -77,6 +77,15 @@ describe('deriveProjectName', () => {
     expect(deriveProjectName('/home/alice/Mythos/Story Vault')).toBe('Story Vault');
   });
 
+  it('uses the grandparent for grouped layout (SKY-11141 §1)', () => {
+    expect(
+      deriveProjectName(
+        '/home/alice/Mythos/Vaults/My Novel/Stories/Story Vault',
+        '/home/alice/Mythos/Vaults/My Novel/Notes/Notes Vault',
+      ),
+    ).toBe('My Novel');
+  });
+
   it('falls back when story + notes are in different parents (legacy split)', () => {
     expect(
       deriveProjectName(

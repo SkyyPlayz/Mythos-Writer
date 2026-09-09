@@ -56,9 +56,19 @@ export function pickUniqueMythosVaultName(
 export function deriveProjectName(vaultRoot: string, notesVaultRoot?: string): string {
   if (notesVaultRoot) {
     const parent = path.dirname(vaultRoot);
-    if (parent === path.dirname(notesVaultRoot)) {
+    const notesParent = path.dirname(notesVaultRoot);
+    if (parent === notesParent) {
+      // Flat layout: both live directly inside the mythosRoot.
       const base = path.basename(parent);
       if (base) return base;
+    } else {
+      // Grouped layout (SKY-11141 §1): <mythosRoot>/Stories/Story Vault and
+      // <mythosRoot>/Notes/Notes Vault — compare grandparents.
+      const grandparent = path.dirname(parent);
+      if (grandparent === path.dirname(notesParent)) {
+        const base = path.basename(grandparent);
+        if (base) return base;
+      }
     }
   }
   return path.basename(vaultRoot);

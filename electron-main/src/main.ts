@@ -6058,15 +6058,13 @@ const handlers: IpcHandlers = {
     const baseName = rawName || DEFAULT_MYTHOS_VAULT_NAME;
     const finalName = pickUniqueMythosVaultName(parentPath, baseName);
     const mythosVaultRoot = path.join(parentPath, finalName);
-    const storyVaultPath = path.join(mythosVaultRoot, 'Story Vault');
-    const notesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
     // Reuse an existing folder only when fully empty — never overwrite.
     const created = !fs.existsSync(mythosVaultRoot);
     if (!created && !isEmptyOrMissing(mythosVaultRoot)) {
       return {
         mythosVaultRoot,
-        vaultRoot: storyVaultPath,
-        notesVaultRoot: notesVaultPath,
+        vaultRoot: '',
+        notesVaultRoot: '',
         name: finalName,
         created: false,
         error: 'Mythos Vault folder is not empty',
@@ -6085,13 +6083,15 @@ const handlers: IpcHandlers = {
     if (!createdVault.ok) {
       return {
         mythosVaultRoot,
-        vaultRoot: storyVaultPath,
-        notesVaultRoot: notesVaultPath,
+        vaultRoot: '',
+        notesVaultRoot: '',
         name: finalName,
         created: false,
         error: `Could not create vault bundle: ${createdVault.error}`,
       };
     }
+    const storyVaultPath = createdVault.storyVaultPath;
+    const notesVaultPath = createdVault.notesVaultPath;
     // SKY-10401: Settings' "New vault" flow creates without activating — it
     // registers the pair in recents (so a later project:switch passes the
     // allowlist gate) but leaves the active vault, watchers and DB untouched

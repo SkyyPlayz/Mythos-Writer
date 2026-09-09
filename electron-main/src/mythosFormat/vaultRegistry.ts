@@ -18,7 +18,7 @@ export interface VaultEntry {
   id: string;
   /** User-visible label shown in the picker. */
   displayName: string;
-  /** Directory name directly inside mythosRoot (not a full path). */
+  /** Forward-slash relative path from mythosRoot: "<group>/<leaf>" for new vaults or legacy "<leaf>". */
   dirName: string;
   /** ISO 8601 creation timestamp. */
   createdAt: string;
@@ -35,10 +35,12 @@ export interface VaultRegistry<E extends VaultEntry = VaultEntry> {
 export interface VaultRegistryConfig {
   /** Filename of the JSON registry at <mythosRoot>/<registryFilename>. */
   registryFilename: string;
-  /** Dir name of the pre-existing vault the lazy migration picks up. */
+  /** Dir name of the pre-existing vault the lazy migration picks up (flat, for backward compat). */
   defaultDirName: string;
   /** Display name used for the auto-created first entry. */
   defaultDisplayName: string;
+  /** Group folder directly under mythosRoot that contains vaults of this kind (SKY-11141 §1). */
+  groupDirName: string;
 }
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
@@ -151,17 +153,23 @@ export function createBlankVaultEntry<E extends VaultEntry>(
 ): { registry: VaultRegistry<E>; entry: E } {
   const registry = ensureVaultRegistry(mythosRoot, config, makeEntry);
 
-  const slug = displayName.replace(/[^a-zA-Z0-9 _-]/g, '').trim() || config.defaultDirName;
-  let dirName = slug;
+  // Leaf name (the part inside the group folder). Uniqueness is per leaf so that
+  // a flat legacy entry "Notes Vault" and a grouped "Notes/Notes Vault" never
+  // collide under the same display name.
+  const defaultLeaf = path.basename(config.defaultDirName);
+  const slug = displayName.replace(/[^a-zA-Z0-9 _-]/g, '').trim() || defaultLeaf;
+  const usedLeaves = new Set(registry.vaults.map((v) => path.basename(v.dirName).toLowerCase()));
+  let leafName = slug;
   let attempt = 2;
-  const used = new Set(registry.vaults.map((v) => v.dirName.toLowerCase()));
-  while (used.has(dirName.toLowerCase())) {
-    dirName = slug + ' ' + attempt++;
+  while (usedLeaves.has(leafName.toLowerCase())) {
+    leafName = slug + ' ' + attempt++;
   }
+  // dirName is a forward-slash relative path from mythosRoot: "<group>/<leaf>".
+  const dirName = config.groupDirName + '/' + leafName;
 
   const base: VaultEntry = {
     id: crypto.randomUUID(),
-    displayName: displayName.trim() || dirName,
+    displayName: displayName.trim() || leafName,
     dirName,
     createdAt: new Date().toISOString(),
   };
@@ -190,15 +198,16 @@ export function reserveVaultDirName<E extends VaultEntry>(
 ): string {
   const registry = ensureVaultRegistry(mythosRoot, config, makeEntry);
 
-  const slug = displayName.replace(/[^a-zA-Z0-9 _-]/g, '').trim() || config.defaultDirName;
-  let dirName = slug;
+  const defaultLeaf = path.basename(config.defaultDirName);
+  const slug = displayName.replace(/[^a-zA-Z0-9 _-]/g, '').trim() || defaultLeaf;
+  const usedLeaves = new Set(registry.vaults.map((v) => path.basename(v.dirName).toLowerCase()));
+  let leafName = slug;
   let attempt = 2;
-  const used = new Set(registry.vaults.map((v) => v.dirName.toLowerCase()));
-  while (used.has(dirName.toLowerCase())) {
-    dirName = slug + ' ' + attempt++;
+  while (usedLeaves.has(leafName.toLowerCase())) {
+    leafName = slug + ' ' + attempt++;
   }
 
-  return dirName;
+  return config.groupDirName + '/' + leafName;
 }
 
 /**
