@@ -583,3 +583,155 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 }
+
+/* ── Production Team page (SKY-11411; chrome SKY-11458) ──────────── */
+/* Same tiles, labels, selects and gradient Run as the Reports page's
+   "Run a Beta Read" card, so the three tabs read as one surface. Literal
+   values on purpose — this sheet defines no custom properties, and an
+   undefined var() would silently freeze the tier off the theme (SKY-11449). */
+
+/* The page hosts one panel, not the Reports three-column grid. */
+.beta-reader-columns--production {
+  display: block;
+  overflow-y: auto;
+  padding: 18px 20px;
+}
+
+.beta-production-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.beta-production-panel__intro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c8d3e7;
+}
+
+.beta-run-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.beta-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.beta-field__label {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8e9db8;
+}
+
+.beta-select {
+  width: 100%;
+  min-width: 0;
+  min-height: 30px;
+  background: #171a26;
+  color: #f0f3fc;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.beta-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.beta-run-button {
+  min-height: 30px;
+  background: linear-gradient(90deg, #8ad9ff, #b06bff);
+  border: none;
+  color: #0a0d16;
+  font-weight: 700;
+  font-size: 13px;
+  line-height: 1.2;
+  padding: 7px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.beta-run-button:hover:not(:disabled) {
+  box-shadow: 0 0 18px -5px rgba(138, 217, 255, 0.6);
+}
+
+.beta-run-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.beta-select:focus-visible,
+.beta-run-button:focus-visible {
+  outline: 2px solid rgba(138, 217, 255, 0.7);
+  outline-offset: 2px;
+}
+
+/* Off-role hint (SKY-11456) hangs directly under the run card. */
+.beta-production-panel > .beta-reader-muted {
+  margin: -6px 0 0;
+  line-height: 1.5;
+}
+
+/* The picked role's lens — a quiet callout in the reaction-card language. */
+.beta-production-panel__lens {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid rgba(138, 217, 255, 0.45);
+  border-radius: 8px;
+  background: rgba(138, 217, 255, 0.06);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #c8d3e7;
+}
+
+.beta-production-panel__result {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.beta-production-panel__result-title {
+  margin: 0 0 10px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8e9db8;
+}
+
+/* Review text arrives as plain prose in a <pre>; wrap it and drop the mono. */
+.beta-production-panel__result-body {
+  margin: 0;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #d5dcee;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .beta-run-controls {
+    grid-template-columns: 1fr;
+  }
+  .beta-run-button {
+    width: 100%;
+  }
+}
