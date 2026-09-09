@@ -14,9 +14,34 @@
 }
 
 /* ── Breadcrumb ──
-   Same glass pattern as the app's other top-level panels (BrainstormPage,
-   EntriesPanel): opaque fallback first, glass + engine blur where supported. */
+   SKY-11566 BD-5. This bar shipped reading --glass-fill / --blur-panel — the
+   *panel* tier, which the engine drives to rgba(13,16,28,.20) + blur(1px) at
+   the shipped defaults (glassA 20, blur 1). A 1px backdrop-filter is not a
+   frost: it costs a full compositing layer and produces no legible separation,
+   so the crumbs were effectively painted straight onto the wallpaper.
+
+   Why the panel tier is the wrong token here, from the mockup rather than by
+   eye: the mockup's Boards crumb row (owner report, dc.html:2382) carries no
+   fill at all, because the center pane that wraps every view (dc.html:571)
+   already paints `var(--glass)` + `blur(var(--blur)) saturate(150%)` behind
+   it. We have no such pane — #app-tabpanel-boards and .boards-tab-panel are
+   both fully transparent down to the BackgroundStack — so this bar was given
+   a bespoke glass to stand in for a container fill that does not exist, and it
+   was bound to the panel tier instead of the chrome tier.
+
+   So the bar carries the mockup's Boards *chrome* fill itself: --glass2, which
+   the engine floors at 50% and which the mockup uses for exactly this kind of
+   raised chrome (its tab strip, dc.html script 7251/7274, and the zoom pill,
+   dc.html:2553), behind the same real 20px frost the pill uses. Boards chrome
+   now reads as one recipe and stays legible at every slider position.
+
+   Restoring the missing pane fill is the structural fix and is deliberately
+   NOT done here — it would repaint the canvas region SKY-11494 has just
+   measured. Filed separately. */
 .boards-tab-panel__breadcrumb {
+  --boards-crumb-fill: var(--glass2, rgb(21 26 45 / 0.9));
+  --boards-crumb-blur: 20px;
+
   display: flex;
   align-items: center;
   flex-shrink: 0;
@@ -30,10 +55,25 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .boards-tab-panel__breadcrumb {
-    background: var(--glass-fill, rgb(13 16 28 / 0.72));
-    backdrop-filter: blur(var(--blur-panel, 28px));
-    -webkit-backdrop-filter: blur(var(--blur-panel, 28px));
+    background: var(--boards-crumb-fill);
+    backdrop-filter: blur(var(--boards-crumb-blur));
+    -webkit-backdrop-filter: blur(var(--boards-crumb-blur));
   }
+}
+
+/* Transparency-averse users and high contrast get the opaque fallback and no
+   compositing layer, matching how BoardCanvas.css flattens the canvas and the
+   zoom pill (SKY-10908 / MYT-520 §5.4). */
+@media (prefers-reduced-transparency: reduce) {
+  .boards-tab-panel__breadcrumb {
+    --boards-crumb-fill: var(--glass-fill-fallback, rgb(13 16 28));
+    --boards-crumb-blur: 0px;
+  }
+}
+
+:root[data-contrast='high'] .boards-tab-panel__breadcrumb {
+  --boards-crumb-fill: var(--glass-fill-fallback, rgb(13 16 28));
+  --boards-crumb-blur: 0px;
 }
 
 .boards-tab-panel__breadcrumb-group {

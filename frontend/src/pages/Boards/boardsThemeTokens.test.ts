@@ -82,11 +82,71 @@ describe('SKY-11449 — Boards surface is wired to the Liquid Neon theme engine'
     });
   });
 
-  it('blurs the floating toolbar off the engine blur, not a hardcoded value', () => {
+  /**
+   * SKY-11566 — the two remaining named gaps on the Boards chrome (BD-4/BD-5),
+   * pinned to the mockup's own declarations: the zoom pill at dc.html:2553 and
+   * the crumb row at dc.html:2382 sitting inside the center pane at dc.html:571.
+   */
+  describe('SKY-11566 — Boards chrome matches the owner mockup', () => {
     // Drop `@supports (backdrop-filter: blur(1px))` conditions — that literal is
     // a feature probe, not a painted value.
-    const canvas = stripComments(readBoardsCss('BoardCanvas.css')).replace(/@supports[^{]*/g, '');
-    expect(canvas).toMatch(/backdrop-filter:\s*blur\(var\(--blur-panel-overlay/);
-    expect(canvas).not.toMatch(/backdrop-filter:\s*blur\(\d/);
+    const painted = (relPath: string): string =>
+      stripComments(readBoardsCss(relPath)).replace(/@supports[^{]*/g, '');
+
+    it('BD-4: the zoom pill wears the slot-2 rim, not slot 1', () => {
+      const canvas = painted('BoardCanvas.css');
+      expect(canvas).toMatch(
+        /\.board-canvas__zoom-controls\s*\{[^}]*border:\s*var\(--bw[^;]*var\(--b2/,
+      );
+      // Slot 1 is what this region spends on its cards; the pill must not take it.
+      expect(canvas).not.toMatch(
+        /\.board-canvas__zoom-controls\s*\{[^}]*border:[^;]*var\(--b1/,
+      );
+    });
+
+    it('BD-4: the zoom pill is filled from --glass2, not the frozen overlay tier', () => {
+      const canvas = painted('BoardCanvas.css');
+      expect(canvas).toMatch(/--board-pill-fill:\s*var\(--glass2/);
+      expect(canvas).toMatch(/background:\s*var\(--board-pill-fill\)/);
+      // The overlay tier is the mockup's *dialog* recipe and is deliberately
+      // frozen (SKY-11491) — on this pill it meant Boards chrome alone ignored
+      // the Appearance glass slider.
+      expect(canvas).not.toMatch(/--glass-fill-overlay/);
+    });
+
+    it('BD-5: the crumb bar is filled from --glass2, not the 20% panel tier', () => {
+      const crumbs = painted('BoardsTabPanel.css');
+      expect(crumbs).toMatch(/--boards-crumb-fill:\s*var\(--glass2/);
+      expect(crumbs).toMatch(/background:\s*var\(--boards-crumb-fill\)/);
+      // --glass-fill / --blur-panel are the panel tier the engine drives to
+      // rgba(13,16,28,.20) + blur(1px) at the shipped defaults. That is the
+      // BD-5 regression, and a 1px backdrop-filter is a compositing layer
+      // bought for no visible frost.
+      expect(crumbs).not.toMatch(/background:\s*var\(--glass-fill[,)]/);
+      expect(crumbs).not.toMatch(/blur\(var\(--blur-panel[,)]/);
+    });
+
+    it('flattens both for reduced transparency and high contrast', () => {
+      for (const [file, fill, blur] of [
+        ['BoardCanvas.css', '--board-pill-fill', '--board-pill-blur'],
+        ['BoardsTabPanel.css', '--boards-crumb-fill', '--boards-crumb-blur'],
+      ] as const) {
+        const css = painted(file);
+        for (const guard of ['@media \\(prefers-reduced-transparency: reduce\\)', "data-contrast='high'"]) {
+          const block = new RegExp(`${guard}[\\s\\S]{0,400}?${fill}:\\s*var\\(--glass-fill-fallback`);
+          expect(css, `${file} must flatten ${fill} under ${guard}`).toMatch(block);
+        }
+        expect(css).toMatch(new RegExp(`${blur}:\\s*0px`));
+      }
+    });
+
+    it('routes every blur through a token so those paths can flatten it', () => {
+      for (const file of ['BoardCanvas.css', 'BoardsTabPanel.css'] as const) {
+        // A literal `blur(20px)` would survive both accessibility blocks.
+        expect(painted(file), `${file} hardcodes a backdrop blur`).not.toMatch(
+          /backdrop-filter:\s*blur\(\d/,
+        );
+      }
+    });
   });
 });

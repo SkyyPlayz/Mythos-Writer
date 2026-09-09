@@ -35,6 +35,13 @@
    26px that lined up with nothing. */
 .board-canvas__root {
   --board-canvas-fill: rgb(8 10 18 / 0.42);
+  /* Zoom-pill chrome — see the toolbar block below. Declared here, on the
+     pill's parent, so the two accessibility blocks underneath can flatten the
+     canvas and the pill together: a custom property set on this element
+     inherits into the pill, whereas one set on the pill itself would out-rank
+     anything those blocks could say from here. */
+  --board-pill-fill: var(--glass2, rgb(21 26 45 / 0.9));
+  --board-pill-blur: 20px;
 
   position: relative;
   flex: 1;
@@ -56,19 +63,43 @@
 @media (prefers-reduced-transparency: reduce) {
   .board-canvas__root {
     --board-canvas-fill: var(--bg-canvas, #04060c);
+    --board-pill-fill: var(--glass-fill-fallback, rgb(13 16 28));
+    --board-pill-blur: 0px;
   }
 }
 
 :root[data-contrast='high'] .board-canvas__root {
   --board-canvas-fill: var(--bg-canvas, #06080b);
+  --board-pill-fill: var(--glass-fill-fallback, rgb(13 16 28));
+  --board-pill-blur: 0px;
 }
 
 /* ── Floating zoom toolbar ──
-   Mockup: bottom-centre glass pill (rgba(15,19,33,.94), blur(18px)), slot-1
-   rim, lifted shadow. It sits on the shared overlay tier here — the mockup's
-   dialog recipe (SKY-11491) via --glass-fill-overlay / --blur-panel-overlay —
-   so it matches every other floating surface; SKY-11480 BD-4 accepted that
-   over a bespoke fill/blur. */
+   SKY-11566 BD-4. The mockup's Boards zoom pill (owner report, dc.html:2553 —
+   the `bdZoomOut/bdZoomIn/bdSnapPick` group) is:
+
+     background: var(--glass2, rgba(21,26,45,.9));
+     backdrop-filter: blur(20px);
+     border: var(--bw,1px) solid var(--b2, rgba(155,95,255,.5));
+     box-shadow: 0 10px 30px rgba(3,5,12,.5);
+
+   Two corrections to what shipped, both measured rather than eyeballed:
+
+   1. The rim was slot 1. Both of the mockup's canvas pills — this one and
+      Scene Crafter's at dc.html:1415 — put it on slot 2, and slot 1 is what
+      the Boards region spends on its cards. Now --b2.
+
+   2. The fill was the overlay tier. That tier is the mockup's *dialog* recipe
+      and it is deliberately frozen (SKY-11491), so the pill was the one piece
+      of Boards chrome that ignored the Appearance glass slider entirely. The
+      earlier note here quoted rgba(15,19,33,.94) as "the mockup's canvas
+      pill"; that is the Scene Crafter pill, a different surface. This pill is
+      --glass2 — the mockup's raised-chrome fill, which the engine floors at
+      50% — behind a real 20px frost, exactly as the mockup pairs them.
+
+   The shadow and the 12px radius already matched and are unchanged. Fill and
+   blur route through --board-pill-* on .board-canvas__root so the
+   reduced-transparency and high-contrast paths above flatten this too. */
 .board-canvas__zoom-controls {
   position: absolute;
   bottom: 12px;
@@ -81,15 +112,15 @@
   padding: 5px;
   border-radius: 12px;
   background: var(--glass-fill-fallback, rgb(13 16 28));
-  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.4));
+  border: var(--bw, 1px) solid var(--b2, rgb(155 95 255 / 0.5));
   box-shadow: 0 10px 30px rgb(3 5 12 / 0.5);
 }
 
 @supports (backdrop-filter: blur(1px)) {
   .board-canvas__zoom-controls {
-    background: var(--glass-fill-overlay, rgb(13 16 28 / 0.9));
-    backdrop-filter: blur(var(--blur-panel-overlay, 18px));
-    -webkit-backdrop-filter: blur(var(--blur-panel-overlay, 18px));
+    background: var(--board-pill-fill);
+    backdrop-filter: blur(var(--board-pill-blur));
+    -webkit-backdrop-filter: blur(var(--board-pill-blur));
   }
 }
 
