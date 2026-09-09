@@ -4,9 +4,12 @@
    button with #0b0d17 text.
 
    SKY-11477: both cards render through `Dialog`, so the fill/blur/border/glow
-   come from `.ln-overlay-surface` (overlay-tier.css) and follow the Appearance
-   → glass sliders. The rules below own geometry, the slot tint, and one
-   deliberate depth override; the prototype's frozen `rgba(15,19,33,.97)` /
+   come from `.ln-overlay-surface` (overlay-tier.css), which pins the mockup's
+   recipe as a fixed value (SKY-11491) rather than tracking the Appearance
+   glass sliders — the tokens exist so the high-contrast / reduced-transparency
+   / no-backdrop-filter paths can flatten every consumer at once. The rules
+   below own geometry, the slot tint, and one deliberate depth override; the
+   prototype's frozen `rgba(15,19,33,.97)` /
    `blur(28px)` literals are gone. Note these rules never won at paint time
    anyway — overlay-tier.css is bundled last, so before this change both cards
    silently rendered with the tier's fill *and* its slot-1 cyan border, i.e.
