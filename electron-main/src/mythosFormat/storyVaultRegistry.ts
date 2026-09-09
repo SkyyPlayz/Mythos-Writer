@@ -14,6 +14,7 @@
 // Pure Node — no Electron imports — so unit tests drive it with tmpdirs.
 
 import { importObsidianToVaultDir } from '../obsidianImporter.js';
+import { STORIES_GROUP_DIRNAME } from './mythosJson.js';
 import {
   VaultEntry,
   VaultRegistryConfig,
@@ -38,6 +39,7 @@ const STORY_CONFIG: VaultRegistryConfig = {
   registryFilename: STORY_VAULT_REGISTRY_FILENAME,
   defaultDirName: DEFAULT_STORY_VAULT_DIRNAME,
   defaultDisplayName: 'Story',
+  groupDirName: STORIES_GROUP_DIRNAME,
 };
 
 export interface StoryVaultEntry extends VaultEntry {

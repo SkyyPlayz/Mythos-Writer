@@ -23,6 +23,7 @@ const TEST_CONFIG: VaultRegistryConfig = {
   registryFilename: 'test-vaults.json',
   defaultDirName: 'Test Vault',
   defaultDisplayName: 'Test',
+  groupDirName: 'Tests',
 };
 
 function makeTestEntry(base: VaultEntry): TestEntry {

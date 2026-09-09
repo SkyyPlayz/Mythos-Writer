@@ -56,7 +56,7 @@ describe('importObsidianAsExtraNotesVault — happy path', () => {
     expect(result.ok).toBe(true);
     expect(result.error).toBeUndefined();
     expect(result.displayName).toBe('My Obsidian');
-    expect(result.dirName).toBe('My Obsidian');
+    expect(result.dirName).toBe('Notes/My Obsidian');
     expect(result.imported).toBe(3);
     expect(result.sourceCount).toBe(3);
 

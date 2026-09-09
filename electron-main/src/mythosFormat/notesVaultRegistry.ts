@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { listVaultFiles, readVaultFile } from '../vault.js';
 import { importObsidianToVaultDir } from '../obsidianImporter.js';
+import { NOTES_GROUP_DIRNAME } from './mythosJson.js';
 import {
   VaultEntry,
   VaultRegistryConfig,
@@ -46,6 +47,7 @@ const NOTES_CONFIG: VaultRegistryConfig = {
   registryFilename: NOTES_VAULT_REGISTRY_FILENAME,
   defaultDirName: DEFAULT_NOTES_VAULT_DIRNAME,
   defaultDisplayName: 'Notes',
+  groupDirName: NOTES_GROUP_DIRNAME,
 };
 
 export type NotesVaultOrigin = 'created' | 'imported';

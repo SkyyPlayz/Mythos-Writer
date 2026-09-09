@@ -33,6 +33,9 @@ export const MYTHOS_FORMAT_VERSION = 2 as const;
 
 export const STORY_VAULT_DIRNAME = 'Story Vault';
 export const NOTES_VAULT_DIRNAME = 'Notes Vault';
+/** Group folders that contain inner story/notes vaults (SKY-11141 §1). */
+export const STORIES_GROUP_DIRNAME = 'Stories';
+export const NOTES_GROUP_DIRNAME = 'Notes';
 // SKY-10952 (owner ruling 2026-08-19, SKY-10949): third top-level sibling —
 // machine state (agent chat sessions today) that is visible but not rendered
 // in the notes UI. Not hidden — a curious user can open it — just kept out of
@@ -119,11 +122,11 @@ export function mythosJsonPath(mythosRoot: string): string {
 }
 
 export function storyVaultRootFor(mythosRoot: string): string {
-  return path.join(mythosRoot, STORY_VAULT_DIRNAME);
+  return path.join(mythosRoot, STORIES_GROUP_DIRNAME, STORY_VAULT_DIRNAME);
 }
 
 export function notesVaultRootFor(mythosRoot: string): string {
-  return path.join(mythosRoot, NOTES_VAULT_DIRNAME);
+  return path.join(mythosRoot, NOTES_GROUP_DIRNAME, NOTES_VAULT_DIRNAME);
 }
 
 export function agentVaultRootFor(mythosRoot: string): string {
@@ -384,10 +387,26 @@ function registeredStoryVaultDirNames(mythosRoot: string): Set<string> {
 export function mythosRootForStoryVault(storyVaultRoot: string): string | null {
   const parent = path.dirname(storyVaultRoot);
   if (parent === storyVaultRoot) return null;
-  if (!isMythosV2Root(parent)) return null;
   const basename = path.basename(storyVaultRoot);
-  if (basename === STORY_VAULT_DIRNAME) return parent;
-  return registeredStoryVaultDirNames(parent).has(basename) ? parent : null;
+
+  // Direct child of mythosRoot (flat layout: <mythosRoot>/Story Vault or registered name).
+  if (isMythosV2Root(parent)) {
+    if (basename === STORY_VAULT_DIRNAME) return parent;
+    return registeredStoryVaultDirNames(parent).has(basename) ? parent : null;
+  }
+
+  // Grandchild via group dir (grouped layout: <mythosRoot>/Stories/<name>, SKY-11141 §1).
+  const grandparent = path.dirname(parent);
+  if (grandparent === parent) return null;
+  if (path.basename(parent) === STORIES_GROUP_DIRNAME && isMythosV2Root(grandparent)) {
+    // Default dirname always gates without a registry; others require registration.
+    if (basename === STORY_VAULT_DIRNAME) return grandparent;
+    return registeredStoryVaultDirNames(grandparent).has(STORIES_GROUP_DIRNAME + '/' + basename)
+      ? grandparent
+      : null;
+  }
+
+  return null;
 }
 
 /**
