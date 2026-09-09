@@ -25,17 +25,30 @@ export interface BoardsTabPanelProps {
   notesVaultValid: boolean;
 }
 
+/**
+ * SKY-11336: a board's `folderPath` is VAULT-RELATIVE, and the vault root —
+ * the Home board — is the empty string.
+ *
+ * That is the contract the main process already documents and enforces on
+ * every `notesBoard:*` channel (main.ts sandboxes with `safeVaultDirIpcJoin`,
+ * notesBoard.ts resolves with `path.join(vaultRoot, folderRelPath)`), so the
+ * renderer normalises to it rather than teaching main a second, absolute form.
+ * Seeding Home with the ABSOLUTE notes-vault root instead is what broke the
+ * Home board for a whole beta: the absolute value slipped past the sandbox
+ * (path.resolve collapses it back to root) and then resolved to a doubled,
+ * non-existent folder, so every Home-level write landed nowhere.
+ */
+const HOME_CRUMB: BreadcrumbEntry = { folderPath: '', name: 'Home' };
+
 export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: BoardsTabPanelProps) {
   // Breadcrumb stack — bottom is home (vault root), top is current board
-  const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([
-    { folderPath: notesVaultRoot, name: 'Home' },
-  ]);
+  const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([HOME_CRUMB]);
 
   const currentFolder = breadcrumb[breadcrumb.length - 1].folderPath;
 
   // Reset breadcrumb when vault root changes
   useEffect(() => {
-    setBreadcrumb([{ folderPath: notesVaultRoot, name: 'Home' }]);
+    setBreadcrumb([HOME_CRUMB]);
   }, [notesVaultRoot]);
 
   const [items, setItems] = useState<BoardItem[]>([]);
@@ -46,7 +59,8 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: Boar
 
   // Fetch board data: IPC gives us the metadata store + vault listing
   const loadBoard = useCallback(async (folderPath: string) => {
-    if (!folderPath || !notesVaultValid) return;
+    // '' is the Home board (vault root), not "no board" — see HOME_CRUMB.
+    if (!notesVaultValid) return;
     setLoading(true);
     setError(null);
     try {
@@ -61,45 +75,65 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: Boar
         return;
       }
 
-      // Build items: vault items are canonical (spec §1 — Store B never hides a note)
-      // listNotesVault returns the immediate directory listing
-      const directChildren = vaultResult.items;
+      // Vault items are canonical for what a board shows (spec §1 — Store B
+      // never hides a note), but listNotesVault is RECURSIVE: vault.ts's
+      // listVaultFiles walks the entire subtree. A board shows only its
+      // IMMEDIATE children (SKY-11336 defect A — Home rendered every
+      // descendant as a top-level card), so split that one listing by depth:
+      //   no separator  → an immediate child of this board;
+      //   one separator → a grandchild, which only feeds its parent tile's
+      //                   child counts (spec §5).
+      // Deriving the counts here also removes the per-folder listNotesVault
+      // round-trip the tiles used to make — an N+1 that re-walked every
+      // subtree (and, being recursive, counted descendants rather than direct
+      // children). listVaultFiles always emits '/' regardless of platform
+      // (SKY-8881), so splitting on it is correct on Windows too.
+      const directChildren: VaultListItem[] = [];
+      const childCounts = new Map<string, { boards: number; cards: number }>();
+      for (const vaultItem of vaultResult.items) {
+        const slash = vaultItem.path.indexOf('/');
+        if (slash === -1) {
+          // Mirror notesBoard.ts's listImmediateChildren: a board's children
+          // are folders and .md notes, so item paths stay 1:1 with
+          // meta.children (and nothing undraggable renders as a card).
+          if (vaultItem.isDirectory || /\.md$/i.test(vaultItem.name)) directChildren.push(vaultItem);
+          continue;
+        }
+        if (vaultItem.path.indexOf('/', slash + 1) !== -1) continue; // deeper than a grandchild
+        const parent = vaultItem.path.slice(0, slash);
+        const counts = childCounts.get(parent) ?? { boards: 0, cards: 0 };
+        if (vaultItem.isDirectory) counts.boards += 1;
+        else if (/\.md$/i.test(vaultItem.name)) counts.cards += 1;
+        childCounts.set(parent, counts);
+      }
 
-      // Map vault items to BoardItems, counting children for board tiles
-      const boardItemsPromises = directChildren.map(async (vaultItem): Promise<BoardItem> => {
+      const resolvedItems: BoardItem[] = directChildren.map((vaultItem) => {
         if (vaultItem.isDirectory) {
-          // Count direct children for the tile subtitle (from vault, not metadata — spec §5)
-          const childResult = await window.api.listNotesVault(vaultItem.path) as { items: VaultListItem[] } | { error: string };
-          const childItems = 'items' in childResult ? childResult.items : [];
+          const counts = childCounts.get(vaultItem.path) ?? { boards: 0, cards: 0 };
           return {
             path: vaultItem.path,
             kind: 'folder',
             name: vaultItem.name,
-            childBoards: childItems.filter((c) => c.isDirectory).length,
-            childCards: childItems.filter((c) => !c.isDirectory && c.name.endsWith('.md')).length,
+            childBoards: counts.boards,
+            childCards: counts.cards,
           };
         }
         return {
           path: vaultItem.path,
           kind: 'note',
-          name: vaultItem.name.replace(/\.md$/, ''),
+          name: vaultItem.name.replace(/\.md$/i, ''),
           excerpt: vaultItem.excerpt,
         };
       });
 
-      const resolvedItems = await Promise.all(boardItemsPromises);
-
-      // Build saved layout: the store returns layout keyed by path (resolved by the IPC layer)
-      // Map from the metadata children list (path → stored layout)
+      // Store B layout is keyed by each child's STABLE id (§3). meta.children
+      // reports paths relative to this board's own folder — the same contract
+      // item.path now follows — so the two line up 1:1.
       const layoutMap: Record<string, ItemLayout> = {};
       for (const child of meta.children) {
-        if (meta.layout[`v:${child.id ?? ''}`] || meta.layout[`n:${child.id ?? ''}`]) {
-          const key = child.kind === 'folder' ? `v:${child.id}` : `n:${child.id}`;
-          const storedLayout = meta.layout[key];
-          if (storedLayout) {
-            layoutMap[child.path] = storedLayout;
-          }
-        }
+        if (!child.id) continue;
+        const storedLayout = meta.layout[`${child.kind === 'folder' ? 'v' : 'n'}:${child.id}`];
+        if (storedLayout) layoutMap[child.path] = storedLayout;
       }
 
       setItems(resolvedItems);
@@ -129,8 +163,11 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: Boar
         ...prev,
         [itemPath]: { ...(prev[itemPath] ?? {}), x, y },
       }));
-    } catch {
-      // non-fatal: position stays in local state
+    } catch (err) {
+      // Non-fatal — the position stays in local state for this session. Logged
+      // rather than swallowed: an "item not found" here is exactly the shape
+      // SKY-11336 took, and a bare `catch {}` hid it for a whole beta.
+      console.warn('[Boards] failed to persist item position', err);
     }
   }, [currentFolder]);
 
@@ -141,14 +178,21 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: Boar
         ...prev,
         [itemPath]: { ...(prev[itemPath] ?? {}), w, h },
       }));
-    } catch {
-      // non-fatal
+    } catch (err) {
+      // Non-fatal — see handleItemMove.
+      console.warn('[Boards] failed to persist item size', err);
     }
   }, [currentFolder]);
 
-  const handleEnterBoard = useCallback((folderPath: string) => {
-    const folderName = items.find((i) => i.path === folderPath)?.name ?? folderPath.split(/[\\/]/).pop() ?? folderPath;
-    setBreadcrumb((prev) => [...prev, { folderPath, name: folderName }]);
+  // BoardCanvas hands back the tile's path relative to the CURRENT board, so
+  // join it onto the current folder to keep folderPath vault-relative at any
+  // depth. A bare item path was only ever correct one level below Home.
+  const handleEnterBoard = useCallback((itemPath: string) => {
+    const folderName = items.find((i) => i.path === itemPath)?.name ?? itemPath.split('/').pop() ?? itemPath;
+    setBreadcrumb((prev) => {
+      const parent = prev[prev.length - 1].folderPath;
+      return [...prev, { folderPath: parent ? `${parent}/${itemPath}` : itemPath, name: folderName }];
+    });
   }, [items]);
 
   const handleBreadcrumbClick = useCallback((index: number) => {
@@ -168,7 +212,9 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid }: Boar
       {/* Breadcrumb nav */}
       <nav className="boards-tab-panel__breadcrumb" aria-label="Board navigation">
         {breadcrumb.map((crumb, i) => (
-          <span key={crumb.folderPath} className="boards-tab-panel__breadcrumb-group">
+          // Home's folderPath is '' (HOME_CRUMB), so qualify by depth — the
+          // crumb at a given index is stable for the life of the stack.
+          <span key={`${i}:${crumb.folderPath}`} className="boards-tab-panel__breadcrumb-group">
             {i > 0 && <span className="boards-tab-panel__breadcrumb-sep" aria-hidden="true">/</span>}
             {i < breadcrumb.length - 1 ? (
               <button
