@@ -115,6 +115,100 @@
   padding: 2px 4px;
 }
 
+/* ── SKY-11187 §5: canvas tool palette ──
+   Sits at the trailing end of the crumb bar so the board's chrome stays one
+   row, and borrows the crumb button's neon-on-glass recipe rather than
+   inventing a second one. */
+.boards-tab-panel__tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+.boards-tab-panel__tool {
+  background: none;
+  border: var(--bw, 1px) solid transparent;
+  border-radius: 5px;
+  color: var(--text-secondary, #c8d3e7);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 9px;
+}
+
+.boards-tab-panel__tool:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+}
+
+.boards-tab-panel__tool:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+/* The armed tool wears the same hairline rim the canvas spends on selection,
+   so "this tool will write to the vault on your next click" is visible
+   without reading the label. */
+.boards-tab-panel__tool--active {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  border-color: var(--text-link, #00f0ff);
+  color: var(--text-link, #00f0ff);
+}
+
+/* The canvas fills whatever the crumb bar leaves; the empty-board hint is
+   layered over it (see BoardsTabPanel.tsx) instead of replacing it. */
+.boards-tab-panel__canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.boards-tab-panel__empty-msg--overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  z-index: 1;
+  /* A hint must never intercept the click that dismisses it by creating the
+     board's first item. */
+  pointer-events: none;
+}
+
+/* A refused mutation (name collision, invalid characters). Pinned to the
+   bottom of the panel so it cannot cover the card being renamed. */
+.boards-tab-panel__action-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--color-error, #f87171);
+  border-top: var(--bw, 1px) solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--glass-fill-fallback, rgb(13 16 28));
+}
+
+.boards-tab-panel__action-error-dismiss {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  margin-left: auto;
+  padding: 0 4px;
+}
+
+.boards-tab-panel__action-error-dismiss:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
 /* ── States ── */
 .boards-tab-panel__loading,
 .boards-tab-panel__empty,

@@ -50,6 +50,14 @@ export interface ItemLayout {
   h?: number;
 }
 
+/**
+ * SKY-11187 §5: the canvas tools. `select` is the ordinary pointer; `note`
+ * and `board` are one-shot placement tools — the next click on empty canvas
+ * creates a real file/folder there and hands the tool back to `select`, so
+ * the canvas is never left in a state where a stray click writes to the vault.
+ */
+export type BoardTool = 'select' | 'note' | 'board';
+
 export interface BoardCanvasProps {
   /** Direct children of this board */
   items: BoardItem[];
@@ -73,6 +81,24 @@ export interface BoardCanvasProps {
   onViewChange?: (zoom: number, panX: number, panY: number) => void;
   /** Double-click a board tile to enter it */
   onEnterBoard?: (folderPath: string) => void;
+  /**
+   * SKY-11187 §5: the active placement tool. `select` (the default) leaves
+   * every existing gesture exactly as it was — no tool, no vault writes.
+   */
+  activeTool?: BoardTool;
+  /**
+   * A placement tool was used on empty canvas at world position (x, y).
+   * The canvas does not create anything itself — it reports the intent and
+   * the panel owns the filesystem call (§5).
+   */
+  onCreateItem?: (kind: 'note' | 'folder', x: number, y: number) => void;
+  /** Path (board-relative) of the item currently in inline rename, if any. */
+  renamingPath?: string | null;
+  /** The user asked to rename this item (F2 or the context menu). */
+  onRequestRename?: (itemPath: string) => void;
+  /** Commit a typed name. Empty/unchanged is resolved as a no-op in main. */
+  onRenameCommit?: (itemPath: string, newName: string) => void;
+  onRenameCancel?: () => void;
 }
 
 interface ResolvedItem {
@@ -92,9 +118,16 @@ export default function BoardCanvas({
   onItemResize,
   onViewChange,
   onEnterBoard,
+  activeTool = 'select',
+  onCreateItem,
+  renamingPath = null,
+  onRequestRename,
+  onRenameCommit,
+  onRenameCancel,
 }: BoardCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const worldRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(900);
   const [zoom, setZoom] = useState(savedView.zoom || 100);
   const [pan, setPan] = useState({ x: savedView.panX || 0, y: savedView.panY || 0 });
@@ -241,20 +274,44 @@ export default function BoardCanvas({
   // ── Pan via middle-mouse drag ───────────────────────────────────────────
   const panDragRef = useRef<{ startX: number; startY: number; startPanX: number; startPanY: number } | null>(null);
 
+  /**
+   * SKY-11187: screen point → world coordinates. The world element carries
+   * the pan translate and the zoom scale, so its own client rect already
+   * describes where world (0, 0) is on screen and how big a world pixel is —
+   * dividing by `scale` is the whole conversion, and it stays correct while
+   * the panel is scrolled.
+   */
+  const worldPointFrom = useCallback((clientX: number, clientY: number) => {
+    const rect = worldRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    let x = (clientX - rect.left) / scale;
+    let y = (clientY - rect.top) / scale;
+    if (gridSnap) { x = snapToGrid(x); y = snapToGrid(y); }
+    // The world has no negative quadrant (auto-layout starts at ORIGIN_Y and
+    // the sizer clips to the painted footprint), so a click on the very edge
+    // must not place a card at a coordinate nothing can scroll to.
+    return { x: Math.max(0, x), y: Math.max(0, y) };
+  }, [scale, gridSnap]);
+
   const handleMouseDownCanvas = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (e.button === 0) {
       // Item mousedown stops propagation, so a left press that reaches the
       // panel is empty canvas — clear the selection. The zoom pill lives
       // inside the panel and is not canvas.
-      if (!(e.target as HTMLElement).closest('.board-canvas__zoom-controls')) {
-        setSelectedPath(null);
+      if ((e.target as HTMLElement).closest('.board-canvas__zoom-controls')) return;
+      setSelectedPath(null);
+      // SKY-11187 §5: a placement tool turns that same empty-canvas press
+      // into a real vault create at the click point.
+      if (activeTool !== 'select') {
+        const point = worldPointFrom(e.clientX, e.clientY);
+        if (point) onCreateItem?.(activeTool === 'board' ? 'folder' : 'note', point.x, point.y);
       }
       return;
     }
     if (e.button !== 1) return; // middle button pans
     e.preventDefault();
     panDragRef.current = { startX: e.clientX, startY: e.clientY, startPanX: pan.x, startPanY: pan.y };
-  }, [pan]);
+  }, [pan, activeTool, onCreateItem, worldPointFrom]);
 
   useEffect(() => {
     const onMouseMove = (e: globalThis.MouseEvent) => {
@@ -306,6 +363,14 @@ export default function BoardCanvas({
     startMouseY: number;
     startItemX: number;
     startItemY: number;
+    /**
+     * Latest dragged-to position. Mirrored on the ref rather than read back
+     * out of `localPositions` at mouseup: that state is captured in this
+     * effect's closure, so a drag whose move and release land in the SAME
+     * React batch (a flick, or any synthetic input) would persist the
+     * pre-drag position — or nothing at all.
+     */
+    latest: { x: number; y: number } | null;
   } | null>(null);
 
   const [draggingPath, setDraggingPath] = useState<string | null>(null);
@@ -314,6 +379,10 @@ export default function BoardCanvas({
   const handleItemMouseDown = useCallback((e: MouseEvent<HTMLDivElement>, path: string, rect: ItemRect) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('.board-canvas__resize-handle')) return;
+    // SKY-11187: with a placement tool armed, a press on a card is still a
+    // press on the canvas — let it bubble so the tool places there instead of
+    // starting a drag the user did not ask for.
+    if (activeTool !== 'select') return;
     e.stopPropagation();
     setSelectedPath(path);
     itemDragRef.current = {
@@ -322,29 +391,32 @@ export default function BoardCanvas({
       startMouseY: e.clientY,
       startItemX: rect.x,
       startItemY: rect.y,
+      latest: null,
     };
     setDraggingPath(path);
-  }, []);
+  }, [activeTool]);
 
   useEffect(() => {
     const onMouseMove = (e: globalThis.MouseEvent) => {
-      if (!itemDragRef.current) return;
-      const dx = (e.clientX - itemDragRef.current.startMouseX) / scale;
-      const dy = (e.clientY - itemDragRef.current.startMouseY) / scale;
-      let nx = itemDragRef.current.startItemX + dx;
-      let ny = itemDragRef.current.startItemY + dy;
+      const drag = itemDragRef.current;
+      if (!drag) return;
+      const dx = (e.clientX - drag.startMouseX) / scale;
+      const dy = (e.clientY - drag.startMouseY) / scale;
+      let nx = drag.startItemX + dx;
+      let ny = drag.startItemY + dy;
       if (gridSnap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
-      setLocalPositions((prev) => ({ ...prev, [itemDragRef.current!.path]: { x: nx, y: ny } }));
+      drag.latest = { x: nx, y: ny };
+      // `drag.path`, not itemDragRef.current.path: React runs this updater at
+      // render time, not at dispatch time, so a mouseup landing in the same
+      // batch as the move would have already nulled the ref out from under it.
+      setLocalPositions((prev) => ({ ...prev, [drag.path]: { x: nx, y: ny } }));
     };
     const onMouseUp = () => {
-      if (itemDragRef.current) {
-        const pos = localPositions[itemDragRef.current.path];
-        if (pos) {
-          onItemMove?.(itemDragRef.current.path, pos.x, pos.y);
-        }
-        itemDragRef.current = null;
-        setDraggingPath(null);
-      }
+      const drag = itemDragRef.current;
+      if (!drag) return;
+      if (drag.latest) onItemMove?.(drag.path, drag.latest.x, drag.latest.y);
+      itemDragRef.current = null;
+      setDraggingPath(null);
     };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
@@ -352,7 +424,7 @@ export default function BoardCanvas({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [scale, gridSnap, localPositions, onItemMove]);
+  }, [scale, gridSnap, onItemMove]);
 
   // ── Item resize ─────────────────────────────────────────────────────────
   const resizeDragRef = useRef<{
@@ -361,6 +433,8 @@ export default function BoardCanvas({
     startMouseY: number;
     startW: number;
     startH: number;
+    /** Latest resized-to size — same closure-staleness reason as the drag's `latest`. */
+    latest: { w: number; h: number } | null;
   } | null>(null);
   const [localSizes, setLocalSizes] = useState<Record<string, { w: number; h: number }>>({});
 
@@ -374,26 +448,28 @@ export default function BoardCanvas({
       startMouseY: e.clientY,
       startW: rect.w,
       startH: rect.h,
+      latest: null,
     };
   }, []);
 
   useEffect(() => {
     const onMouseMove = (e: globalThis.MouseEvent) => {
-      if (!resizeDragRef.current) return;
-      const dx = (e.clientX - resizeDragRef.current.startMouseX) / scale;
-      const dy = (e.clientY - resizeDragRef.current.startMouseY) / scale;
-      const nw = Math.min(RESIZE_MAX_W, Math.max(RESIZE_MIN_W, resizeDragRef.current.startW + dx));
-      const nh = Math.min(RESIZE_MAX_H, Math.max(RESIZE_MIN_H, resizeDragRef.current.startH + dy));
-      setLocalSizes((prev) => ({ ...prev, [resizeDragRef.current!.path]: { w: nw, h: nh } }));
+      const resize = resizeDragRef.current;
+      if (!resize) return;
+      const dx = (e.clientX - resize.startMouseX) / scale;
+      const dy = (e.clientY - resize.startMouseY) / scale;
+      const nw = Math.min(RESIZE_MAX_W, Math.max(RESIZE_MIN_W, resize.startW + dx));
+      const nh = Math.min(RESIZE_MAX_H, Math.max(RESIZE_MIN_H, resize.startH + dy));
+      // Same render-time-updater hazard as the drag above — read the path off
+      // the captured snapshot, not off the ref.
+      resize.latest = { w: nw, h: nh };
+      setLocalSizes((prev) => ({ ...prev, [resize.path]: { w: nw, h: nh } }));
     };
     const onMouseUp = () => {
-      if (resizeDragRef.current) {
-        const size = localSizes[resizeDragRef.current.path];
-        if (size) {
-          onItemResize?.(resizeDragRef.current.path, size.w, size.h);
-        }
-        resizeDragRef.current = null;
-      }
+      const resize = resizeDragRef.current;
+      if (!resize) return;
+      if (resize.latest) onItemResize?.(resize.path, resize.latest.w, resize.latest.h);
+      resizeDragRef.current = null;
     };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
@@ -401,9 +477,40 @@ export default function BoardCanvas({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [scale, localSizes, onItemResize]);
+  }, [scale, onItemResize]);
 
   const handleFocusItem = useCallback((path: string) => setSelectedPath(path), []);
+
+  // ── SKY-11187 §5: inline rename + the context menu that reaches it ───────
+  // The renaming card is always the selected one, which also exempts it from
+  // culling (boardLod.shouldMount) — a card being named must never be
+  // unmounted out from under the caret because the viewport moved.
+  useEffect(() => {
+    if (renamingPath) setSelectedPath(renamingPath);
+  }, [renamingPath]);
+
+  const [contextMenu, setContextMenu] = useState<{ path: string; x: number; y: number } | null>(null);
+
+  const handleItemContextMenu = useCallback((e: MouseEvent<HTMLDivElement>, path: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedPath(path);
+    setContextMenu({ path, x: e.clientX, y: e.clientY });
+  }, []);
+
+  // Any press elsewhere, a scroll, or Escape dismisses the menu — it is a
+  // transient pointer affordance, never something to click your way out of.
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [contextMenu]);
 
   // ── Align guides — collect edges/centres of all non-dragged items ───────
   const [guideLines, setGuideLines] = useState<{ axis: 'h' | 'v'; pos: number }[]>([]);
@@ -467,10 +574,15 @@ export default function BoardCanvas({
         tier={lodTierForScreenWidth(w * scale, r.item.kind)}
         selected={selected}
         dragging={dragging}
+        renaming={renamingPath === path}
         onItemMouseDown={handleItemMouseDown}
         onResizeMouseDown={handleResizeMouseDown}
         onFocusItem={handleFocusItem}
         onEnterBoard={onEnterBoard}
+        onContextMenu={handleItemContextMenu}
+        onRequestRename={onRequestRename}
+        onRenameCommit={onRenameCommit}
+        onRenameCancel={onRenameCancel}
       />,
     );
   }
@@ -483,6 +595,7 @@ export default function BoardCanvas({
       onWheel={handleWheel}
       data-min-zoom={minZoom}
       data-mounted-count={mountedCards.length}
+      data-active-tool={activeTool}
     >
       {/* Zoom controls */}
       <div className="board-canvas__zoom-controls" role="group" aria-label="Zoom controls">
@@ -530,6 +643,7 @@ export default function BoardCanvas({
         >
           <div
             className="board-canvas__world"
+            ref={worldRef}
             style={{
               transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
               transformOrigin: '0 0',
@@ -549,6 +663,35 @@ export default function BoardCanvas({
           </div>
         </div>
       </div>
+
+      {/*
+        SKY-11187 §5: the item menu. Positioned in viewport coordinates and
+        rendered outside the zoomed world on purpose — chrome must stay
+        legible at 40% zoom. Rename is its only entry: delete belongs to
+        ticket 6's deferred-delete model, not to an ad-hoc one here.
+      */}
+      {contextMenu && (
+        <div
+          className="board-canvas__menu"
+          role="menu"
+          aria-label="Board item actions"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="board-canvas__menu-item"
+            onClick={() => {
+              const target = contextMenu.path;
+              setContextMenu(null);
+              onRequestRename?.(target);
+            }}
+          >
+            Rename
+          </button>
+        </div>
+      )}
     </div>
   );
 }

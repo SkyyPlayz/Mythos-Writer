@@ -533,6 +533,9 @@ export const IPC_CHANNELS = {
   NOTES_BOARD_FURNITURE_DELETE: 'notesBoard:furnitureDelete',
   NOTES_BOARD_ITEM_RENAME: 'notesBoard:itemRename',
   NOTES_BOARD_ITEM_DELETE: 'notesBoard:itemDelete',
+  // SKY-11187 (Notes Board 4/9): the canvas's own Store A mutations (§5).
+  NOTES_BOARD_CREATE_ITEM: 'notesBoard:createItem',
+  NOTES_BOARD_RENAME_ITEM: 'notesBoard:renameItem',
 
   // SKY-11186 (Notes Board 6/9): note thumbnails — resolve which image is a
   // note's cover (spec §9), serve a cached derivative or the raw source, and
@@ -1221,6 +1224,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_BOARD_FURNITURE_DELETE]: (payload: NotesBoardFurnitureDeletePayload) => NotesBoardFurnitureDeleteResponse;
   [IPC_CHANNELS.NOTES_BOARD_ITEM_RENAME]: (payload: NotesBoardItemRenamePayload) => NotesBoardItemRenameResponse;
   [IPC_CHANNELS.NOTES_BOARD_ITEM_DELETE]: (payload: NotesBoardItemDeletePayload) => NotesBoardItemDeleteResponse;
+  // SKY-11187 (Notes Board 4/9): vault-mutating canvas operations — see notesBoard.ts §5 block.
+  [IPC_CHANNELS.NOTES_BOARD_CREATE_ITEM]: (payload: NotesBoardCreateItemPayload) => NotesBoardCreateItemResponse;
+  [IPC_CHANNELS.NOTES_BOARD_RENAME_ITEM]: (payload: NotesBoardRenameItemPayload) => NotesBoardRenameItemResponse;
 
   // SKY-11186 (Notes Board 6/9): note thumbnails IPC — see noteThumbnails.ts.
   [IPC_CHANNELS.NOTES_THUMB_RESOLVE]: (payload: NotesThumbResolvePayload) => Promise<NotesThumbResolveResponse>;
@@ -1664,6 +1670,43 @@ export interface NotesBoardItemDeletePayload {
 export interface NotesBoardItemDeleteResponse {
   key: string | null;
 }
+
+// ─── SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5) ───
+// These two channels are the ONLY notesBoard:* ones that touch Store A. They
+// create/rename the real file or folder and then push `vault:notes-updated`
+// themselves, so the Notes tab reflects a canvas create or rename without
+// waiting on (or, for a create, being silently skipped by) the notes watcher.
+
+export interface NotesBoardCreateItemPayload {
+  folderPath: string;
+  /** 'note' → `New note.md`; 'folder' → `New board/`. */
+  kind: 'note' | 'folder';
+  /** World position of the click that created it; omitted → auto-layout slot. */
+  position?: { x: number; y: number };
+}
+
+export interface NotesBoardCreateItemResponse {
+  /** Created item's path relative to `folderPath` — ready for patchLayout. */
+  itemPath: string;
+  kind: 'note' | 'folder';
+}
+
+export interface NotesBoardRenameItemPayload {
+  folderPath: string;
+  itemPath: string;
+  /** The DISPLAYED name (a note's stem, a folder's whole name), as typed. */
+  newName: string;
+}
+
+/**
+ * `renamed: false` is a successful no-op, never an error: an empty name, or a
+ * name that resolves to the path the item already has (§5). `error` carries a
+ * refusal the user must see (name collision, invalid characters).
+ */
+export type NotesBoardRenameItemResponse =
+  | { renamed: true; itemPath: string }
+  | { renamed: false }
+  | { error: string };
 
 // ─── SKY-11186 (Notes Board 6/9): note thumbnails IPC types ───
 // See noteThumbnails.ts + BOARDS-SPEC.md v2 §6/§9. Every path is a

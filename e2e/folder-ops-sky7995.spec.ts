@@ -10,10 +10,11 @@
  *   FO-01  Create folder                    — toolbar "New folder" → dir on disk
  *   FO-02  Nest a note inside a folder       — "New note" from a folder's context menu
  *   FO-03  Drag a note INTO a folder         — dir-safe move, file relocated on disk
- *   FO-04  Drag a note OUT to vault root     — SKY-8892 spec item 9: refused with a
- *                                              toast, note stays put (notes must live
- *                                              inside a folder)
- *   FO-04b Drag a FOLDER OUT to vault root   — SKY-8892: folders may still move to root
+ *   FO-04  Drag a note OUT to vault root     — SKY-11187: allowed. The SKY-8892
+ *                                              "notes must live inside a folder"
+ *                                              rule is REMOVED (BOARDS-SPEC v2 §5 —
+ *                                              root is the Home board)
+ *   FO-04b Drag a FOLDER OUT to vault root   — folders move to root, unchanged
  *   FO-05  Rename a folder                   — inline rename, dir renamed on disk incl. contents
  *   FO-06  Delete a folder (with contents)   — item-count confirm, recursive delete on disk
  *   FO-07  New Folder → straight to inline rename, no slugifying ("Lore & Myth")
@@ -266,9 +267,16 @@ test('FO-03: dragging a root note onto a folder moves it in (dir-safe IPC move)'
   expect(moved, 'Loose Note.md was not moved into Archive/ on disk').toBe(true);
 });
 
-// ─── FO-04: Drag a note OUT to the vault root — refused (SKY-8892 spec item 9) ─
+// ─── FO-04: Drag a note OUT to the vault root — allowed (SKY-11187) ──────────
+//
+// This test asserted the OPPOSITE until SKY-11187: SKY-8892 spec item 9 said
+// "notes must live inside a folder", so the root strip refused a note with a
+// toast. Notes Board (BOARDS-SPEC v2 §5) removes that rule entirely — the
+// vault root is the Home board, and Home holds notes like any other board.
+// Leaving the tree refusing a note the canvas can create at root would make
+// the two surfaces disagree about the same filesystem (§1).
 
-test('FO-04: dragging a nested note to the root drop zone is refused, not moved', async () => {
+test('FO-04: dragging a nested note to the root drop zone moves it to the vault root', async () => {
   await ensureExpanded(page, 'vb-row-Archive');
   await expect(page.locator('[data-testid="vb-row-Archive/Loose Note.md"]')).toBeVisible({ timeout: 8_000 });
 
@@ -276,12 +284,31 @@ test('FO-04: dragging a nested note to the root drop zone is refused, not moved'
   expect(from, 'nested row not found').toBeTruthy();
   await simulateDropToRoot(page, from!);
 
-  // Scoped to VaultBrowser's own toast — DesktopShell renders an unrelated
-  // "Your notes are in the new Notes tab" upgrade toast with the same testid.
-  await expect(page.locator('[data-testid="vb-notes-vault"] [data-testid="app-toast"]')).toContainText(/notes must live inside a folder/i, { timeout: 3_000 });
-  // Refused — the note stays exactly where it was, nothing lands at root.
-  expect(fs.existsSync(path.join(notesVaultDir, 'Archive', 'Loose Note.md')), 'Loose Note.md was unexpectedly moved out of Archive/').toBe(true);
-  expect(fs.existsSync(path.join(notesVaultDir, 'Loose Note.md')), 'Loose Note.md unexpectedly appeared at the vault root').toBe(false);
+  const movedOut = await waitUntil(() =>
+    fs.existsSync(path.join(notesVaultDir, 'Loose Note.md')) &&
+    !fs.existsSync(path.join(notesVaultDir, 'Archive', 'Loose Note.md')),
+  );
+  expect(movedOut, 'Loose Note.md was not moved out to the vault root').toBe(true);
+  // No refusal toast — the rule is gone, not relaxed. Asserted as "no toast
+  // carrying that text exists" rather than not.toContainText, which needs the
+  // toast element to be present to make a statement about it at all.
+  await expect(
+    page.locator('[data-testid="vb-notes-vault"] [data-testid="app-toast"]', {
+      hasText: /notes must live inside a folder/i,
+    }),
+  ).toHaveCount(0);
+
+  // Put it back so the rest of this suite (FO-06 deletes Archive/ with its
+  // contents) sees the fixture it expects — these tests share one vault.
+  const back = await page.locator('[data-testid="vb-row-Loose Note.md"]').elementHandle();
+  const archive = await page.locator('[data-testid="vb-row-Archive"]').elementHandle();
+  expect(back, 'root row not found after the move').toBeTruthy();
+  expect(archive, 'Archive row not found').toBeTruthy();
+  await simulateRowDrag(back!, archive!);
+  const restored = await waitUntil(() =>
+    fs.existsSync(path.join(notesVaultDir, 'Archive', 'Loose Note.md')),
+  );
+  expect(restored, 'Loose Note.md was not restored into Archive/').toBe(true);
 });
 
 // ─── FO-04b: Drag a FOLDER OUT to the vault root — still allowed ─────────────
