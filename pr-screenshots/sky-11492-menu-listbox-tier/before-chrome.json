@@ -1,0 +1,140 @@
+{
+  "1-story-navigator-menu": {
+    "elements": [
+      {
+        "selector": "[data-testid=\"story-navigator-context-menu\"]",
+        "count": 1,
+        "backgroundColor": "rgb(15, 19, 33)",
+        "backdropFilter": "none",
+        "borderTopWidth": "1px",
+        "borderTopColor": "rgba(255, 255, 255, 0.15)",
+        "boxShadow": "rgba(3, 5, 12, 0.55) 0px 12px 48px 0px",
+        "borderRadius": "12px"
+      }
+    ],
+    "tierReference": {
+      "selector": ".ln-overlay-surface (probe)",
+      "count": 1,
+      "backgroundColor": "rgba(15, 19, 33, 0.97)",
+      "backdropFilter": "blur(24px)",
+      "borderTopWidth": "1px",
+      "borderTopColor": "rgb(0, 240, 255)",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px, rgb(0, 240, 255) 0px 0px 22px -6px",
+      "borderRadius": "0px"
+    },
+    "tokens": {
+      "--glass-fill-overlay": "rgba(15, 19, 33, 0.97)",
+      "--blur-panel-overlay": "24px",
+      "--bw": "1px",
+      "--b1": "rgba(0,240,255,1.000)",
+      "--g1": "rgba(0,240,255,1.000)",
+      "--bg-elevated": "#0f1321",
+      "--border-default": "rgba(255,255,255,0.150)"
+    }
+  },
+  "2-notes-tree-context-menu": {
+    "elements": [
+      {
+        "selector": "[data-testid=\"vb-context-menu\"]",
+        "count": 1,
+        "backgroundColor": "rgba(15, 19, 33, 0.97)",
+        "backdropFilter": "blur(24px)",
+        "borderTopWidth": "1px",
+        "borderTopColor": "rgb(0, 240, 255)",
+        "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px",
+        "borderRadius": "12px"
+      }
+    ],
+    "tierReference": {
+      "selector": ".ln-overlay-surface (probe)",
+      "count": 1,
+      "backgroundColor": "rgba(15, 19, 33, 0.97)",
+      "backdropFilter": "blur(24px)",
+      "borderTopWidth": "1px",
+      "borderTopColor": "rgb(0, 240, 255)",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px, rgb(0, 240, 255) 0px 0px 22px -6px",
+      "borderRadius": "0px"
+    }
+  },
+  "3-nav-rail-vault-menu": {
+    "elements": [
+      {
+        "selector": "[data-testid=\"nav-rail-vault-menu\"]",
+        "count": 1,
+        "backgroundColor": "rgb(15, 19, 33)",
+        "backdropFilter": "none",
+        "borderTopWidth": "1px",
+        "borderTopColor": "rgba(255, 255, 255, 0.15)",
+        "boxShadow": "rgba(3, 5, 12, 0.55) 0px 12px 48px 0px",
+        "borderRadius": "12px"
+      }
+    ],
+    "tierReference": {
+      "selector": ".ln-overlay-surface (probe)",
+      "count": 1,
+      "backgroundColor": "rgba(15, 19, 33, 0.97)",
+      "backdropFilter": "blur(24px)",
+      "borderTopWidth": "1px",
+      "borderTopColor": "rgb(0, 240, 255)",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px, rgb(0, 240, 255) 0px 0px 22px -6px",
+      "borderRadius": "0px"
+    }
+  },
+  "4-continuity-scope-listbox": {
+    "elements": [
+      {
+        "selector": "[data-testid=\"ln-select-listbox\"]",
+        "count": 1,
+        "backgroundColor": "rgb(15, 19, 33)",
+        "backdropFilter": "none",
+        "borderTopWidth": "1px",
+        "borderTopColor": "rgba(255, 255, 255, 0.15)",
+        "boxShadow": "rgba(3, 5, 12, 0.55) 0px 12px 48px 0px",
+        "borderRadius": "12px"
+      }
+    ],
+    "tierReference": {
+      "selector": ".ln-overlay-surface (probe)",
+      "count": 1,
+      "backgroundColor": "rgba(15, 19, 33, 0.97)",
+      "backdropFilter": "blur(24px)",
+      "borderTopWidth": "1px",
+      "borderTopColor": "rgb(0, 240, 255)",
+      "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px, rgb(0, 240, 255) 0px 0px 22px -6px",
+      "borderRadius": "0px"
+    }
+  },
+  "5-story-navigator-menu-high-contrast": {
+    "elements": [
+      {
+        "selector": "[data-testid=\"story-navigator-context-menu\"]",
+        "count": 1,
+        "backgroundColor": "rgb(0, 0, 0)",
+        "backdropFilter": "none",
+        "borderTopWidth": "2px",
+        "borderTopColor": "rgb(255, 255, 255)",
+        "boxShadow": "none",
+        "borderRadius": "12px"
+      }
+    ],
+    "tierReference": {
+      "selector": ".ln-overlay-surface (probe)",
+      "count": 1,
+      "backgroundColor": "rgb(21, 25, 31)",
+      "backdropFilter": "none",
+      "borderTopWidth": "2px",
+      "borderTopColor": "rgb(255, 255, 255)",
+      "boxShadow": "none",
+      "borderRadius": "0px"
+    },
+    "tokens": {
+      "--glass-fill-overlay": "#15191f",
+      "--blur-panel-overlay": "0px",
+      "--bw": "1px",
+      "--b1": "rgba(0,240,255,1.000)",
+      "--g1": "rgba(0,240,255,1.000)",
+      "--bg-elevated": "#1d232c",
+      "--border-default": "rgba(255,255,255,0.150)"
+    }
+  }
+}

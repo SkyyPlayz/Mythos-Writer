@@ -815,17 +815,14 @@
 
 /* ─── Context menu ─── */
 
-/* M15: notes-tree context menu — Liquid Neon prototype popover (treeCtxSt):
-   rgba(15,19,33,.97) surface, blur 24, b1 border, lnFadeUp entrance. */
+/* M15: notes-tree context menu — Liquid Neon prototype popover (treeCtxSt).
+   The glass chrome (rgba(15,19,33,.97) fill, blur 24, b1 border) now comes
+   from `.ln-overlay-surface` through the Menu primitive (SKY-11492); this
+   rule keeps only the prototype's tighter geometry and lnFadeUp entrance. */
 .ln-menu.vb-ctx-menu {
   min-width: 188px;
   padding: 7px;
   border-radius: 12px;
-  background: rgba(15, 19, 33, 0.97);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.5));
-  box-shadow: 0 14px 40px rgba(3, 5, 12, 0.6);
   animation: lnFadeUp 0.12s ease;
 }
 

@@ -40,7 +40,21 @@ const BRIGHT_WALLPAPER_SVG = `<svg xmlns='http://www.w3.org/2000/svg' width='400
 </svg>`;
 const BRIGHT_WALLPAPER_DATA_URL = `data:image/svg+xml;base64,${Buffer.from(BRIGHT_WALLPAPER_SVG).toString('base64')}`;
 
-function seedProject(userData: string, storyVaultDir: string, notesVaultDir: string, wp: 'custom' | 'none'): void {
+interface SeedOptions {
+  /**
+   * Mount the Continuity panel with its scan toolbar (SKY-11492): the Archive
+   * Agent on and the right sidebar explicitly visible, as continuity-panel.spec seeds.
+   */
+  continuityPanel?: boolean;
+}
+
+function seedProject(
+  userData: string,
+  storyVaultDir: string,
+  notesVaultDir: string,
+  wp: 'custom' | 'none',
+  opts: SeedOptions = {},
+): void {
   fs.mkdirSync(path.join(storyVaultDir, 'Test Story', 'Manuscript', 'Chapter One'), { recursive: true });
   fs.mkdirSync(path.join(notesVaultDir, 'Characters'), { recursive: true });
 
@@ -50,9 +64,10 @@ function seedProject(userData: string, storyVaultDir: string, notesVaultDir: str
     agents: {
       writingAssistant: { enabled: false, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500000 },
       brainstorm: { enabled: false, model: 'claude-sonnet-4-6', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500000 },
-      archive: { enabled: false, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500000 },
+      archive: { enabled: opts.continuityPanel ?? false, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500000 },
     },
     theme: 'dark', snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+    ...(opts.continuityPanel ? { rightSidebarVisible: true } : {}),
     // SKY-11209: liquidNeonV2 drives BackgroundStack's --wp (the live
     // wallpaper layer painted at z-index:0 inside .desktop-shell).
     liquidNeonV2: wp === 'custom'
@@ -123,11 +138,12 @@ function meanLuma(pngBuffer: Buffer, box: { x: number; y: number; width: number;
 async function withApp(
   wp: 'custom' | 'none',
   fn: (page: Page) => Promise<void>,
+  opts: SeedOptions = {},
 ): Promise<void> {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), `mythos-sky11209-${wp}-`));
   const storyVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11209-story-'));
   const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sky11209-notes-'));
-  seedProject(userData, storyVaultDir, notesVaultDir, wp);
+  seedProject(userData, storyVaultDir, notesVaultDir, wp, opts);
 
   const app = await launchApp(userData);
   try {
@@ -215,4 +231,119 @@ test('SKY-11209: Manuscript Structure view shows the wallpaper behind it, not a 
   expect(noneLuma).toBeLessThan(30);
   expect(brightLuma).toBeGreaterThan(50);
   expect(brightLuma - noneLuma).toBeGreaterThan(30);
+});
+
+// ─── SKY-11492: shared popup primitives on the overlay tier ──────────────────
+//
+// `.ln-menu` (ui/Menu — every context/action menu in the app) and
+// `.ln-select-listbox` (ui/DropdownSelect) painted a flat `--bg-elevated` fill
+// with a neutral hairline and no blur, while every dialog sat on the Liquid
+// Neon overlay tier. Both now carry `.ln-overlay-surface`. This opens real
+// consumers through the UI and asserts each popup's computed fill / blur / rim
+// is *identical* to a bare `.ln-overlay-surface` probe read in the same tick —
+// so a primitive can't quietly drift off the tier again — and that the tier
+// itself is the owner mockup's recipe (rgba(15,19,33,.97) over blur(24px)),
+// not two broken values agreeing with each other. The shadow is asserted on
+// its own: the mockup paints menus and dropdowns with the depth layer only,
+// no neon glow (dc.html 83; prototype navCtxSt / treeCtxSt).
+
+interface PopupChrome {
+  backgroundColor: string;
+  backdropFilter: string;
+  borderTopWidth: string;
+  borderTopColor: string;
+  boxShadow: string;
+}
+
+/** The popup's computed chrome and a throwaway `.ln-overlay-surface` probe's, read together. */
+async function popupVsTier(page: Page, selector: string): Promise<{ popup: PopupChrome; tier: PopupChrome }> {
+  return page.evaluate((sel) => {
+    const read = (el: Element): PopupChrome => {
+      const cs = getComputedStyle(el);
+      return {
+        backgroundColor: cs.backgroundColor,
+        backdropFilter: cs.backdropFilter,
+        borderTopWidth: cs.borderTopWidth,
+        borderTopColor: cs.borderTopColor,
+        boxShadow: cs.boxShadow,
+      };
+    };
+    const el = document.querySelector(sel);
+    if (!el) throw new Error(`popupVsTier: ${sel} not in the DOM`);
+    const probe = document.createElement('div');
+    probe.className = 'ln-overlay-surface';
+    probe.style.position = 'fixed';
+    probe.style.left = '-9999px';
+    document.body.appendChild(probe);
+    try {
+      return { popup: read(el), tier: read(probe) };
+    } finally {
+      probe.remove();
+    }
+  }, selector);
+}
+
+// The tier's depth layer, optionally followed by the transparent glow slot
+// (`--ln-overlay-glow: transparent`) — never a visible glow colour.
+const MENU_SHADOW = /^rgba\(3, 5, 12, 0\.6\) 0px 14px 40px 0px(, rgba\(0, 0, 0, 0\) 0px 0px 22px -6px)?$/;
+
+function expectPopupOnTier({ popup, tier }: { popup: PopupChrome; tier: PopupChrome }): void {
+  // Guard the target first: the tier is the mockup's fixed recipe (SKY-11491).
+  expect(tier.backgroundColor).toBe('rgba(15, 19, 33, 0.97)');
+  expect(tier.backdropFilter).toBe('blur(24px)');
+  const { boxShadow: popupShadow, ...popupGlass } = popup;
+  const { boxShadow: tierShadow, ...tierGlass } = tier;
+  expect(popupGlass).toEqual(tierGlass);
+  expect(tierShadow).toMatch(/^rgba\(3, 5, 12, 0\.6\) 0px 14px 40px 0px, /);
+  expect(popupShadow).toMatch(MENU_SHADOW);
+}
+
+/** Menus dismiss on any outside mousedown — the corner is always outside a popup. */
+async function clickOutsidePopups(page: Page): Promise<void> {
+  const [w, h] = await page.evaluate(() => [window.innerWidth, window.innerHeight]);
+  await page.mouse.click(w - 2, h - 2);
+}
+
+test('SKY-11492: .ln-menu and .ln-select-listbox popups render on the overlay tier', async () => {
+  await withApp('none', async (page) => {
+    // 1. `.ln-menu` — the Story Navigator context menu, via a real right-click.
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]').click();
+    const storyPick = page.locator('[data-testid="nav-rail-story-story-1"]');
+    if (await storyPick.count()) await storyPick.click();
+    const storyRow = page.locator('.nav-story-row').first();
+    await expect(storyRow).toBeVisible({ timeout: 15_000 });
+    await storyRow.click({ button: 'right' });
+    const menu = page.locator('[data-testid="story-navigator-context-menu"]');
+    await expect(menu).toBeVisible({ timeout: 5_000 });
+    await expect(menu).toHaveClass(/\bln-overlay-surface\b/);
+    expectPopupOnTier(await popupVsTier(page, '[data-testid="story-navigator-context-menu"]'));
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+
+    // 2. `.ln-menu.vb-ctx-menu` — the notes-tree context menu. It hand-rolled
+    //    this exact recipe before SKY-11492, so it is the regression control:
+    //    on the primitive now, and still measuring the same.
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+    const notesRow = page.locator('[data-testid="vb-row-Characters"]');
+    await expect(notesRow).toBeVisible({ timeout: 15_000 });
+    await notesRow.click({ button: 'right' });
+    const treeMenu = page.locator('[data-testid="vb-context-menu"]');
+    await expect(treeMenu).toBeVisible({ timeout: 5_000 });
+    expectPopupOnTier(await popupVsTier(page, '[data-testid="vb-context-menu"]'));
+    await clickOutsidePopups(page);
+    await expect(treeMenu).toHaveCount(0);
+
+    // 3. `.ln-select-listbox` — the Continuity scan-scope picker in the right sidebar.
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]').click();
+    if (await storyPick.count()) await storyPick.click();
+    const picker = page.getByTestId('global-right-sidebar').getByRole('combobox', { name: /scan scope/i });
+    await expect(picker).toBeVisible({ timeout: 12_000 });
+    await picker.click();
+    const listbox = page.locator('[data-testid="ln-select-listbox"]');
+    await expect(listbox).toBeVisible({ timeout: 5_000 });
+    await expect(listbox).toHaveClass(/\bln-overlay-surface\b/);
+    expectPopupOnTier(await popupVsTier(page, '[data-testid="ln-select-listbox"]'));
+    await page.keyboard.press('Escape');
+    await expect(listbox).toHaveCount(0);
+  }, { continuityPanel: true });
 });

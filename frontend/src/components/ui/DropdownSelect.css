@@ -66,12 +66,14 @@
   transform: rotate(180deg);
 }
 
-/* Listbox popup */
+/* Listbox popup. Chrome (fill, blur, border, shadow — and its high-contrast
+   flattening) comes from `.ln-overlay-surface` (overlay-tier.css, SKY-11492),
+   which DropdownSelect.tsx applies next to this class. Geometry only here,
+   plus the same retint as `.ln-menu`: a dropdown carries the mockup's depth
+   shadow only, never the popover/dialog glow layer. */
 .ln-select-listbox {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-default);
+  --ln-overlay-glow: transparent;
   border-radius: var(--radius-sm);
-  box-shadow: var(--elev-2);
   padding: var(--space-1) 0;
   overflow-y: auto;
   max-height: min(320px, 40vh);
@@ -130,13 +132,8 @@
   border-width: 2px;
 }
 
-[data-contrast="high"] .ln-select-listbox {
-  background: #000;
-  border-color: #fff;
-  border-width: 2px;
-  box-shadow: none;
-}
-
+/* The listbox panel flattens through `.ln-overlay-surface`; only the option
+   rows need their own inversion here. */
 [data-contrast="high"] .ln-select-option:hover:not([aria-disabled="true"]),
 [data-contrast="high"] .ln-select-option:focus:not([aria-disabled="true"]) {
   background: #fff;

@@ -18,6 +18,10 @@ const OVERLAY_CSS = read('src/overlay-tier.css');
 /** Floating surfaces that must render with the shared overlay chrome. */
 const CONSUMERS: ReadonlyArray<readonly [file: string, localClass: string]> = [
   ['src/components/ui/Dialog.tsx', 'ln-dialog'],
+  // SKY-11492: the two shared popup primitives — every Menu / DropdownSelect
+  // consumer in the app rides on these.
+  ['src/components/ui/Menu.tsx', 'ln-menu'],
+  ['src/components/ui/DropdownSelect.tsx', 'ln-select-listbox'],
   ['src/FocusModePrefsDialog.tsx', 'focus-prefs-dialog'],
   ['src/KeyboardShortcutsDialog.tsx', 'ksd-dialog'],
   ['src/LayoutManagerDialog.tsx', 'layout-manager-dialog'],
@@ -29,6 +33,8 @@ const CONSUMERS: ReadonlyArray<readonly [file: string, localClass: string]> = [
 /** Stylesheets whose panel rule must no longer hand-roll its own glass. */
 const CONSUMER_CSS = [
   'src/components/ui/Dialog.css',
+  'src/components/ui/Menu.css',
+  'src/components/ui/DropdownSelect.css',
   'src/FocusModePrefsDialog.css',
   'src/KeyboardShortcutsDialog.css',
   'src/LayoutManagerDialog.css',
