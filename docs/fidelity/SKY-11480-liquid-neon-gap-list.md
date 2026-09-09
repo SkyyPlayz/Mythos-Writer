@@ -252,7 +252,7 @@ the rest state is missing the mockup's `0 8px 22px` depth shadow entirely.
 The functional cost is the point: the mockup spends the neon rim on *selected*, we
 spend it on *exists*.
 
-### BD-4 — zoom toolbar inherits the 25%/1.25px tier — **fix (blocked on the headline)**
+### BD-4 — zoom toolbar inherits the 25%/1.25px tier — **CLOSED by SKY-11566**
 
 Measured `.board-canvas__zoom-controls`: `rgba(13,16,28,0.25)` / `blur(1.25px)`.
 Mockup's canvas pill: `rgba(15,19,33,.94)` + `--b2` rim. Structure from #1466 is right
@@ -260,11 +260,49 @@ Mockup's canvas pill: `rgba(15,19,33,.94)` + `--b2` rim. Structure from #1466 is
 except the rim, which the mockup puts on **slot 2**, not slot 1: one-line retint via
 `--ln-overlay-border`.
 
-### BD-5 — breadcrumb bar is 20% opaque with a 1px blur — **fix**
+> **Correction from SKY-11566.** `rgba(15,19,33,.94)` is the *Scene Crafter* pill
+> (dc.html:1415), not this one. The Boards pill is `bdZoom*` at **dc.html:2553**:
+> `var(--glass2, rgba(21,26,45,.9))` + `blur(20px)` + `var(--b2, …)` +
+> `0 10px 30px rgba(3,5,12,.5)`. So the fill was not merely mis-valued — the
+> overlay tier was the wrong tier. That tier is the mockup's *dialog* recipe and
+> OT-1/SKY-11491 deliberately froze it, which left this pill the one piece of
+> Boards chrome that ignored the Appearance glass slider. Now `--glass2` (engine
+> floors it at 50%) behind a real 20px frost, with the slot-2 rim. Both mockup
+> pills agree on slot 2.
+
+### BD-5 — breadcrumb bar is 20% opaque with a 1px blur — **CLOSED by SKY-11566**
 
 Measured `.boards-tab-panel__breadcrumb`: `rgba(13,16,28,0.2)`, `blur(1px)`. It reads
 `--bg-panel`, which `tokens.css:595` remaps to `--glass-fill` — the *panel* tier, which
 the engine drives to 20% at defaults. Same family of bug as OT-5 below.
+
+> **Root cause found by SKY-11566, and one gap it leaves open.** The mockup's
+> Boards crumb row (dc.html:2382) carries *no fill at all*. It does not need one:
+> the center pane that wraps every view (**dc.html:571**) already paints
+> `var(--glass, rgba(13,16,28,.72))` + `blur(var(--blur,18px)) saturate(150%)`
+> behind a slot-2 rim and an 18px radius. **We have no such pane** —
+> `#app-tabpanel-boards` and `.boards-tab-panel` are transparent all the way down
+> to the BackgroundStack — so this bar was given a bespoke glass to stand in for a
+> container fill that does not exist, and bound to the panel tier while doing it.
+>
+> SKY-11566 moved the bar onto the mockup's Boards *chrome* tier (`--glass2` +
+> `blur(20px)`, the same recipe as the zoom pill), which fixes the measured
+> defect. It did **not** add the missing pane fill: that repaints the canvas
+> region SKY-11494 has only just measured, and it is a structural change to the
+> tab shell rather than a token retint. Filed as **BD-7** below.
+
+### BD-7 — the Boards view has no center-pane fill; the mockup's every view has one — **fix (new, from SKY-11566)**
+
+The mockup wraps every center view — Scene Crafter, Notes, Brainstorm, Beta Reader,
+Timeline, Graph, **Boards** — in one pane (dc.html:571) carrying the panel glass, an
+18px radius, a slot-2 rim and a `0 0 var(--gr,26px) -7px var(--g2,…)` halo plus an
+`inset 0 1px 0 rgba(255,255,255,.08)` top light. Our Boards tab renders straight onto
+the BackgroundStack, so every child that needs a backdrop has to invent one — which is
+precisely what produced BD-5.
+
+Not scoped to a single surface, so it is not a token retint: it belongs with whoever
+owns the tab shell. Worth checking whether the other center views share the omission
+before anyone builds it.
 
 ### BD-6 — tiles have no icon, no thumbnail, no preview text, no tag chips — **needs-ruling, not filed as a fix**
 
