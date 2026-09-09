@@ -657,7 +657,7 @@ import {
 } from './continuityPeekHandlers.js';
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { collectProjectStats } from './projectStats.js';
-import { collectProjectIcons, setProjectIcon } from './projectIcons.js';
+import { collectProjectIcons, setProjectIcon, setProjectName } from './projectIcons.js';
 import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, anthropicThinkingParam, setAiMasterGate, TokenBudgetExhaustedError, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
@@ -5807,6 +5807,20 @@ const handlers: IpcHandlers = {
       return { filePath: null, cancelled: true };
     }
     return { filePath: result.filePaths[0], cancelled: false };
+  },
+
+  [IPC_CHANNELS.PROJECT_NAME_SET]: async (payload: import('./ipc.js').ProjectNameSetPayload) => {
+    // SKY-11453: same allowlist gate as PROJECT_ICON_SET — without it a
+    // compromised renderer could pass any structurally-valid v2 vault path
+    // and get an arbitrary mythos.json write.
+    const gate = checkProjectSwitchGate(payload?.vaultRoot, [
+      getVaultRoot(),
+      ...getRecentProjects().map((p) => p.vaultRoot),
+    ]);
+    if (!gate.ok) {
+      return { ok: false, error: gate.error };
+    }
+    return await setProjectName({ ...payload, vaultRoot: gate.vaultRoot });
   },
 
   // ─── SKY-11153: Vault surface delete/hide (Recycle Bin semantics) ─────────

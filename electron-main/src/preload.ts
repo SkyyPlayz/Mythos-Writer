@@ -687,6 +687,9 @@ contextBridge.exposeInMainWorld('api', {
   projectIconSet: (payload: import('./ipc.js').ProjectIconSetPayload) =>
     ipcRenderer.invoke('project:iconSet', payload),
   projectIconPick: () => ipcRenderer.invoke('project:iconPick', undefined),
+  // SKY-11453 — vault-local rename: writes mythos.json's `name` field.
+  projectNameSet: (payload: import('./ipc.js').ProjectNameSetPayload) =>
+    ipcRenderer.invoke('project:nameSet', payload),
   projectSwitch: (vaultRoot: string, notesVaultRoot?: string) =>
     ipcRenderer.invoke('project:switch', { vaultRoot, notesVaultRoot }),
 

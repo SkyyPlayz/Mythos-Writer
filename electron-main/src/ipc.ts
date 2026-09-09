@@ -317,6 +317,10 @@ export const IPC_CHANNELS = {
   PROJECT_ICONS: 'project:icons',
   PROJECT_ICON_SET: 'project:iconSet',
   PROJECT_ICON_PICK: 'project:iconPick',
+  // SKY-11453 — vault-local rename: mythos.json `name` is the source of
+  // truth so a renamed vault carries its new name on move/copy; settings'
+  // vaultDisplayNames stays only as a cache/fallback.
+  PROJECT_NAME_SET: 'project:nameSet',
 
   // SKY-11153 — Vault surface: Recycle Bin delete + hide/show
   VAULT_SURFACE_TRASH: 'vault:surface:trash',
@@ -934,6 +938,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_ICONS]: (payload: never) => Promise<ProjectIconsResponse>;
   [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: ProjectIconSetPayload) => Promise<ProjectIconSetResponse>;
   [IPC_CHANNELS.PROJECT_ICON_PICK]: (payload: never) => Promise<ProjectIconPickResponse>;
+  [IPC_CHANNELS.PROJECT_NAME_SET]: (payload: ProjectNameSetPayload) => Promise<ProjectNameSetResponse>;
   [IPC_CHANNELS.VAULT_SURFACE_BLAST_RADIUS]: (payload: VaultSurfaceBlastRadiusPayload) => VaultSurfaceBlastRadiusResponse;
   [IPC_CHANNELS.VAULT_SURFACE_TRASH]: (payload: VaultSurfaceTrashPayload) => Promise<VaultSurfaceTrashResponse>;
   [IPC_CHANNELS.VAULT_SURFACE_HIDE]: (payload: VaultSurfaceHidePayload) => VaultSurfaceHideResponse;
@@ -3192,6 +3197,20 @@ export interface ProjectIconSetResponse {
 export interface ProjectIconPickResponse {
   filePath: string | null;
   cancelled: boolean;
+}
+
+// SKY-11453 — vault-local rename: writes `mythos.json.name` so the vault
+// carries its display name when moved/copied to another machine/profile.
+export interface ProjectNameSetPayload {
+  vaultRoot: string;
+  name: string;
+}
+
+export interface ProjectNameSetResponse {
+  ok: boolean;
+  error?: string;
+  /** Sanitized name actually written, for the caller to reconcile local state. */
+  name?: string;
 }
 
 // ─── SKY-11153 — Vault surface: Recycle Bin delete + hide/show ───────────────

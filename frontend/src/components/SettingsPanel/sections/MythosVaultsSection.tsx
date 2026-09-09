@@ -340,9 +340,12 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     setRenameValue('');
   }, []);
 
-  /** Persisted the SAME way onThemeChange (above) persists vaultThemes — a
-   *  plain settings write, non-fatal on failure. Empty submissions are
-   *  ignored (revert to the previous name, no override written). */
+  /** SKY-11453: the vault's own mythos.json `name` is the source of truth —
+   *  written first so the rename travels with the vault on move/copy/another
+   *  profile. settings.vaultDisplayNames is kept in lockstep as a read cache
+   *  (displayNameFor above still prefers it, so the UI updates immediately
+   *  and legacy v0.4 vaults — which can't hold mythos.json — still rename).
+   *  Empty submissions are ignored (revert to the previous name, no write). */
   const commitRename = useCallback((v: VaultEntry) => {
     const trimmed = renameValue.trim();
     setRenameFor(null);
@@ -352,6 +355,8 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     setSettings(next);
     setSavedOk(false);
     window.api?.settingsSet?.(next).catch(() => { /* panel Save still persists */ });
+    window.api?.projectNameSet?.({ vaultRoot: v.vaultRoot, name: trimmed })
+      .catch(() => { /* non-fatal — the settings-cache write above still renders the new name */ });
   }, [renameValue, settings, setSettings, setSavedOk]);
 
   const onUnhide = useCallback((vaultRoot: string) => {
