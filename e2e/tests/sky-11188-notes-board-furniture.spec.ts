@@ -20,6 +20,11 @@
  *   4. Column ref (§4/§2/§11 acceptance criterion) — a column item whose
  *      `ref` names an existing note renders as a clickable link and clicking
  *      it opens that note in the Notes editor.
+ *   5. Connector persistence — a connector survives a reload of the board's
+ *      own IPC-backed data instead of being silently sanitized away.
+ *   6. Column ref resolution — a bare-stem, wrong-case `ref` still resolves,
+ *      by the same case-insensitive filename-stem rule the rename cascade
+ *      and backlinks already use, instead of being opened as an exact path.
  */
 
 import path from 'path';
@@ -188,6 +193,78 @@ test('SKY-11188 §4 acceptance criterion: deleting an item cascade-deletes every
     expect(furniture.some((f) => f.k === 'line')).toBe(false);
     expect(furniture.some((f) => f.k === 'column')).toBe(false);
     expect(furniture.some((f) => f.k === 'table')).toBe(true);
+  } finally {
+    await app.close().catch(() => undefined);
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('SKY-11188 Copilot finding: a connector survives a reload instead of vanishing (persistence gap)', async () => {
+  test.setTimeout(120_000);
+  const { tempRoot, userData, notesDir } = makeTemp('line-reload');
+  mkNote(notesDir, 'Intro.md', '# Intro\n');
+
+  const app = await launchApp(userData);
+  try {
+    const page = await bootToBoards(app);
+    await addFurniture(page, 'Column');
+    await addFurniture(page, 'Table');
+    await expect(furnitureItems(page)).toHaveCount(2);
+
+    await page.locator('.boards-tab-panel__furniture-btn', { hasText: 'Connector' }).click();
+    await furnitureOfKind(page, 'column').click();
+    await furnitureOfKind(page, 'table').click();
+    await expect(page.locator('.board-canvas__lines line')).toHaveCount(1);
+
+    // sanitizeFurniture (electron-main/notesBoard.ts) drops any furniture
+    // record missing x/y on every read from disk — navigate away and back
+    // (a real reload of the board's own IPC-backed data, not a hand-edited
+    // sidecar) to prove the connector isn't silently sanitized away.
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();
+    await expect(page.locator('.board-canvas__root')).toBeVisible({ timeout: 8_000 });
+
+    await expect(page.locator('.board-canvas__lines line')).toHaveCount(1);
+    const sidecar = readSidecar(notesDir);
+    const furniture = sidecar.furniture as Array<{ k: string }>;
+    expect(furniture.filter((f) => f.k === 'line')).toHaveLength(1);
+  } finally {
+    await app.close().catch(() => undefined);
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('SKY-11188 Copilot finding: a bare-stem, wrong-case column ref still resolves (case-insensitive filename-stem rule)', async () => {
+  test.setTimeout(120_000);
+  const { tempRoot, userData, notesDir } = makeTemp('ref-stem');
+  mkNote(notesDir, 'Target.md', '# Target\n\nThe target note.\n');
+
+  const app = await launchApp(userData);
+  try {
+    const page = await bootToBoards(app);
+
+    // `ref: 'target'` — lowercase, no `.md` — is exactly the shape the
+    // rename cascade and backlinks already resolve by stem; the click path
+    // must use the same rule instead of treating `ref` as an exact vault path.
+    await page.evaluate(async () => {
+      await (window as unknown as { api: { notesBoardFurnitureCreate: (f: string, i: unknown) => Promise<unknown> } }).api.notesBoardFurnitureCreate('', {
+        k: 'column',
+        x: 400,
+        y: 44,
+        title: 'Quick links',
+        items: [{ t: 'Target', ref: 'target' }],
+      });
+    });
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();
+    await expect(page.locator('.board-canvas__root')).toBeVisible({ timeout: 8_000 });
+
+    const refLink = page.locator('.board-canvas__furniture-ref', { hasText: 'Target' });
+    await expect(refLink).toBeVisible();
+    await refLink.click();
+
+    await expect(page.locator('[role="tabpanel"][aria-labelledby="app-tab-notes"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.getByText('The target note.')).toBeVisible({ timeout: 8_000 });
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });

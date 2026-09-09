@@ -13,6 +13,7 @@ import type { FurnitureKind } from './boardLod';
 import { resolveNoteThumbs } from '../../lib/noteThumbnails';
 import { boardFollowsChange } from './boardVaultChange';
 import { validateRenameName } from '../../components/VaultBrowser/renameUtils';
+import { basenameNoExt } from '../../crossTabLinkResolver';
 import './BoardsTabPanel.css';
 
 /**
@@ -66,6 +67,14 @@ export interface BoardsTabPanelProps {
   openFolderRequest?: { folderPath: string; seq: number } | null;
   /** SKY-11188: a column item's `ref` click — opens that vault-relative note path (§4). */
   onOpenNote?: (path: string) => void;
+  /**
+   * SKY-11188: live note paths (DesktopShell.allNotePaths), so a column `ref`
+   * resolves by case-insensitive filename-stem — same rule as
+   * `shared/wikiLinkRename.ts`/`notesBoard.ts`'s rename cascade and
+   * `crossTabLinkResolver.ts`'s wikilink resolution — instead of being handed
+   * to `onOpenNote` as if it were already an exact vault path.
+   */
+  notePaths?: string[];
 }
 
 /**
@@ -115,7 +124,7 @@ const TOOLS: ReadonlyArray<{ id: BoardTool; label: string; title: string }> = [
   { id: 'board', label: 'Board', title: 'Board tool — click the canvas to create a board' },
 ];
 
-export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoom, openFolderRequest, onOpenNote }: BoardsTabPanelProps) {
+export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoom, openFolderRequest, onOpenNote, notePaths }: BoardsTabPanelProps) {
   // Breadcrumb stack — bottom is home (vault root), top is current board
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([HOME_CRUMB]);
 
@@ -468,8 +477,14 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   }, [currentFolder]);
 
   const handleOpenNoteRef = useCallback((ref: string) => {
-    onOpenNote?.(ref);
-  }, [onOpenNote]);
+    const stem = basenameNoExt(ref);
+    const resolved = (notePaths ?? []).find((p) => basenameNoExt(p) === stem);
+    if (!resolved) {
+      console.warn('[Boards] column ref did not resolve to a note', ref);
+      return;
+    }
+    onOpenNote?.(resolved);
+  }, [onOpenNote, notePaths]);
 
   // ── SKY-11188: "Connect" tool — line furniture (§4) between two furniture
   // items, picked by two clicks (mirrors the prototype's bdTool==='line'). ──
@@ -491,6 +506,13 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     try {
       const { item } = await window.api.notesBoardFurnitureCreate(currentFolder, {
         k: 'line',
+        // `line` has no rendered box (BoardFurnitureLines draws it as an SVG
+        // overlay from its endpoints' own boxes), but sanitizeFurniture
+        // (notesBoard.ts) rejects any record missing x/y — without inert
+        // coordinates here the connector survives the initial write but is
+        // dropped on the very next reload.
+        x: 0,
+        y: 0,
         from: `x:${from}`,
         to: `x:${id}`,
         label: '',

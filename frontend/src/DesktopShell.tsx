@@ -7153,6 +7153,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             minZoom={appSettings?.notesBoard?.minZoom}
             openFolderRequest={boardsFolderRequest}
             onOpenNote={handleOpenSceneByPath}
+            notePaths={allNotePaths}
           />
         </div>
       )}
