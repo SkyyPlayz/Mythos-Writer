@@ -835,6 +835,16 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
       setBoard(next);
       boardLoadedRef.current = true;
     };
+    // SKY-11192: under the unified board the legacy model is retired — its
+    // cards have been migrated into real notes and the file parked. Reading it
+    // here would be pointless; WRITING it back (below, and in the debounced
+    // save) would resurrect the very file the migration just parked, and the
+    // next launch would migrate it again and park a second copy. So the whole
+    // legacy store is inert under the flag, not merely unrendered.
+    if (unifiedBoard) {
+      boardLoadedRef.current = true;
+      return () => { cancelled = true; };
+    }
     if (typeof window.api?.brainstormBoard?.read !== 'function') {
       // No vault bridge (unit tests / degraded startup): resolve synchronously
       // so the mount stays act-clean; the board lives in memory only.
@@ -843,11 +853,13 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
       void loadBrainstormBoard().then(finish);
     }
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only; `unifiedBoard` is read once and a mid-session flip re-mounts the page
   }, []);
 
   // M20: debounced write-back — positions survive restart (M5 vault storage).
   useEffect(() => {
+    // SKY-11192: never write the retired board file back under the flag.
+    if (unifiedBoard) return;
     if (!board || !boardLoadedRef.current) return;
     // No vault bridge (unit tests / degraded startup): the board lives in
     // memory only, so skip the timer + sync-state churn entirely.
@@ -867,7 +879,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
         boardSaveTimerRef.current = null;
       }
     };
-  }, [board]);
+  }, [board, unifiedBoard]);
 
   // SKY-11363: a full app-quit (Cmd+Q / File→Exit) closes the window without
   // the beforeunload prompt, and the 400ms debounce above may not have fired.
@@ -877,6 +889,8 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   // no-op unless a write is actually pending.
   useEffect(() => {
     return registerQuitFlusher(async () => {
+      // SKY-11192: nothing pending under the flag — see the save effect above.
+      if (unifiedBoard) return;
       if (boardSaveTimerRef.current === null || !board) return;
       window.clearTimeout(boardSaveTimerRef.current);
       boardSaveTimerRef.current = null;
@@ -884,7 +898,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
       await saveBrainstormBoard(board);
       setBoardSynced(true);
     });
-  }, [board]);
+  }, [board, unifiedBoard]);
 
   // M20: vault-note titles on board cards underline → open the note. Load the
   // entity index lazily whenever a canvas is visible.
@@ -2352,8 +2366,18 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                 Extracting facts to vault
               </div>
             )}
-            {/* M20: Board page adds `+ Idea` + `Search ideas…` (§7.2). */}
-            {!compact && effectiveMode === 'board' && (
+            {/*
+              M20: Board page adds `+ Idea` + `Search ideas…` (§7.2).
+
+              SKY-11192: both are legacy-board-only, so they are hidden under
+              the unified flag rather than left on screen doing nothing.
+              `+ Idea` appends to the in-memory board model that the flag
+              retires; the canvas's own Note tool is its replacement, and it
+              creates a real note instead of a card. `Search ideas…` filters
+              only the legacy canvas — search over a vault-backed board is
+              SKY-11191's, not something to fake here with a dead input.
+            */}
+            {!compact && !unifiedBoard && effectiveMode === 'board' && (
               <>
                 <button
                   type="button"
