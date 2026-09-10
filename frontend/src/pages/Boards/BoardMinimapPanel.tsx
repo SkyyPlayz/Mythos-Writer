@@ -12,6 +12,11 @@
  * surface is `aria-hidden` and the toolbar's "Minimap" toggle carries the
  * announced state, rather than inventing a widget role that screen readers
  * would have to be taught to drive.
+ *
+ * Named `...Panel` rather than `BoardMinimap` on purpose: the geometry lives
+ * next door in `boardMinimap.ts`, and two module paths that differ only in
+ * case are one file on Windows (SKY-11718). Same split as `boardLinks.ts` /
+ * `BoardLinkOverlay.tsx`. `moduleCaseCollisions.test.ts` keeps it that way.
  */
 import { memo, useCallback, useRef } from 'react';
 import type { MouseEvent } from 'react';
@@ -22,7 +27,7 @@ import type { MinimapBox } from './boardMinimap';
 export const MINIMAP_W = 168;
 export const MINIMAP_H = 116;
 
-export interface BoardMinimapProps {
+export interface BoardMinimapPanelProps {
   boxes: readonly MinimapBox[];
   world: { w: number; h: number };
   /** The visible slice of the world, in world coordinates. */
@@ -31,7 +36,7 @@ export interface BoardMinimapProps {
   onNavigate: (point: { x: number; y: number }) => void;
 }
 
-function BoardMinimapImpl({ boxes, world, viewport, onNavigate }: BoardMinimapProps) {
+function BoardMinimapPanelImpl({ boxes, world, viewport, onNavigate }: BoardMinimapPanelProps) {
   const frameRef = useRef<HTMLDivElement>(null);
   const projection = minimapProjection(world, { w: MINIMAP_W, h: MINIMAP_H });
 
@@ -95,5 +100,5 @@ function BoardMinimapImpl({ boxes, world, viewport, onNavigate }: BoardMinimapPr
  * Memoised: the canvas re-renders on every drag frame and scroll bucket, and
  * the map only moves when a box or the viewport does.
  */
-const BoardMinimap = memo(BoardMinimapImpl);
-export default BoardMinimap;
+const BoardMinimapPanel = memo(BoardMinimapPanelImpl);
+export default BoardMinimapPanel;
