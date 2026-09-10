@@ -1332,6 +1332,10 @@ function ensureVaultDir() {
     migrateBrainstormBoardToAgentVault(mythosRoot);
     openDb(vaultRoot);
     initJobServiceForVault(vaultRoot);
+    // SKY-11661: ensure the registry exists before scanning so that
+    // getActiveStoryVaultPath returns the correct path for flat-layout vaults
+    // (pre-SKY-11451) rather than falling back to the new grouped default.
+    ensureStoryVaultRegistry(mythosRoot);
     const cachePath = getManifestPath();
     if (!fs.existsSync(cachePath)) {
       // Fresh machine / deleted .mythos: rebuild the regenerable manifest
