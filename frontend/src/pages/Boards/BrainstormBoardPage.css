@@ -1,0 +1,344 @@
+/**
+ * SKY-11192 — Brainstorm Board page + Agent Chat board strip.
+ *
+ * Deliberately borrows BoardsTabPanel.css's recipes rather than inventing a
+ * second set: the scope row is the crumb bar's chrome-tier glass, the pills
+ * and tools are the crumb button's neon-on-glass, and the canvas region is
+ * left transparent so BoardCanvas paints exactly as it does in the Notes tab.
+ * Spec §1's "what must NOT differ" is enforced here by not styling the canvas
+ * at all.
+ *
+ * Every token below is one BoardsTabPanel.css already resolves (SKY-11449 /
+ * SKY-11482 — an undefined var() silently freezes a surface off the theme
+ * engine), and each carries the same literal fallback.
+ */
+
+.bsb {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Folder scope row (§1) ──
+   Same chrome-tier glass as the Notes tab's crumb bar, so a user moving
+   between the two homes sees one board chrome, not two. */
+.bsb__scope {
+  --bsb-scope-fill: var(--glass2, rgb(21 26 45 / 0.9));
+  --bsb-scope-blur: 20px;
+
+  flex-shrink: 0;
+  padding: 8px 16px 6px;
+  border-bottom: 1px solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--glass-fill-fallback, rgb(13 16 28));
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .bsb__scope {
+    background: var(--bsb-scope-fill);
+    backdrop-filter: blur(var(--bsb-scope-blur));
+    -webkit-backdrop-filter: blur(var(--bsb-scope-blur));
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .bsb__scope {
+    --bsb-scope-fill: var(--glass-fill-fallback, rgb(13 16 28));
+    --bsb-scope-blur: 0px;
+  }
+}
+
+:root[data-contrast='high'] .bsb__scope {
+  --bsb-scope-fill: var(--glass-fill-fallback, rgb(13 16 28));
+  --bsb-scope-blur: 0px;
+}
+
+.bsb__pills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.bsb__pill {
+  background: none;
+  border: var(--bw, 1px) solid transparent;
+  border-radius: 999px;
+  color: var(--text-secondary, #c8d3e7);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 12px;
+}
+
+.bsb__pill:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+}
+
+.bsb__pill:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+/* The active pill answers "which board is this" without reading the trail. */
+.bsb__pill--active {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  border-color: var(--text-link, #00f0ff);
+  color: var(--text-link, #00f0ff);
+}
+
+/* Tools ride at the trailing end of the same row, exactly as in the Notes tab. */
+.bsb__tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+.bsb__tool {
+  background: none;
+  border: var(--bw, 1px) solid transparent;
+  border-radius: 5px;
+  color: var(--text-secondary, #c8d3e7);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 9px;
+}
+
+.bsb__tool:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+}
+
+.bsb__tool:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+.bsb__tool--active {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  border-color: var(--text-link, #00f0ff);
+  color: var(--text-link, #00f0ff);
+}
+
+/* §1: the standing caption. Left-aligned and full-sentence per the dyslexia
+   baseline — it is a label the user can re-read, not a transient toast. */
+.bsb__caption {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: var(--dyslexia-line-height, 1.6);
+  color: var(--text-tertiary, #8e9db8);
+  text-align: left;
+}
+
+.bsb__trail {
+  display: flex;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 12px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.bsb__trail-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-link, #00f0ff);
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.bsb__trail-btn:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+}
+
+.bsb__trail-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+.bsb__trail-sep {
+  color: var(--text-tertiary, #8e9db8);
+  padding: 0 4px;
+}
+
+.bsb__trail-current {
+  color: var(--text-primary, #f0f3fc);
+  font-weight: 500;
+  padding: 2px 4px;
+}
+
+/* ── Canvas region ── */
+.bsb__canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* §4: an empty board still renders the canvas underneath — the dock has to
+   stay clickable, so the copy is layered and never intercepts a click. */
+.bsb__empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  z-index: 1;
+  pointer-events: none;
+  padding: 0 24px;
+}
+
+.bsb__empty-head {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary, #f0f3fc);
+}
+
+.bsb__empty-body,
+.bsb__empty {
+  margin: 0;
+  font-size: 13px;
+  line-height: var(--dyslexia-line-height, 1.6);
+  color: var(--text-tertiary, #8e9db8);
+}
+
+.bsb__empty--overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  z-index: 1;
+  pointer-events: none;
+  padding: 0 16px;
+}
+
+.bsb__loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* §4: a static pulse, not a spinner. Reduced-motion users get a flat block —
+   the state is still legible without the animation. */
+.bsb__pulse {
+  width: 180px;
+  height: 96px;
+  border-radius: 8px;
+  border: var(--bw, 1px) solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  animation: bsb-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes bsb-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.7; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bsb__pulse {
+    animation: none;
+    opacity: 0.45;
+  }
+}
+
+/* §4: reserved for a folder that is genuinely gone. A malformed sidecar is
+   NOT routed here — notesBoard.ts degrades it to an empty board. */
+.bsb__error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  font-size: 13px;
+  line-height: var(--dyslexia-line-height, 1.6);
+  color: var(--text-secondary, #c8d3e7);
+  text-align: left;
+}
+
+.bsb__error-action {
+  background: none;
+  border: var(--bw, 1px) solid var(--text-link, #00f0ff);
+  border-radius: 5px;
+  color: var(--text-link, #00f0ff);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+.bsb__error-action:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+.bsb__action-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--color-error, #f87171);
+  border-top: var(--bw, 1px) solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--glass-fill-fallback, rgb(13 16 28));
+}
+
+.bsb__action-error-dismiss {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+.bsb__action-error-dismiss:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+/* ── Agent Chat strip (§2) ──
+   The same canvas, shorter. Height is set inline by the resize handle and
+   clamped in BrainstormBoardPage.tsx, so nothing here fights the drag. */
+.bsb--strip {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  position: relative;
+}
+
+.bsb__strip-scope {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: var(--text-tertiary, #8e9db8);
+  border-bottom: 1px solid var(--border-subtle, rgb(255 255 255 / 0.07));
+}
+
+/*
+  §2 collapsed band, pinned below 190px by CEO ruling 3.
+
+  A CSS state on the card markup the canvas already renders — the same card
+  data, a shorter render, never a truncated word. Hiding the resize handle
+  matters as much as hiding the body: a handle you cannot see but can still
+  grab is worse than no handle.
+*/
+.bsb--collapsed .board-canvas__item-excerpt,
+.bsb--collapsed .board-canvas__thumb,
+.bsb--collapsed .board-canvas__item-meta,
+.bsb--collapsed .board-canvas__resize-handle {
+  display: none;
+}
