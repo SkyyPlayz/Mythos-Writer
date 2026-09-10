@@ -896,16 +896,21 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
           >
             Recently Deleted
           </button>
-          <RecentlyDeletedPanel
-            open={recentlyDeletedOpen}
-            onClose={() => setRecentlyDeletedOpen(false)}
-            entries={recentlyDeletedEntries}
-            onRestore={handleRestoreFromPanel}
-            onEmpty={handleEmptyTrash}
-            anchorRef={recentlyDeletedBtnRef}
-          />
         </div>
       </nav>
+
+      {/* SKY-11189 §8: dropped out of <nav> itself for the same reason the
+          search results are (comment above) — the crumb bar's overflow-x:auto
+          makes it a vertical clipping context too, so an absolutely-positioned
+          panel nested inside it never actually paints on screen. */}
+      <RecentlyDeletedPanel
+        open={recentlyDeletedOpen}
+        onClose={() => setRecentlyDeletedOpen(false)}
+        entries={recentlyDeletedEntries}
+        onRestore={handleRestoreFromPanel}
+        onEmpty={handleEmptyTrash}
+        anchorRef={recentlyDeletedBtnRef}
+      />
 
       {searchQuery.trim() && (
         <ul
