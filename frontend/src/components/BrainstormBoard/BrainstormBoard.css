@@ -530,6 +530,30 @@ button.bsb-card-title--note {
   gap: 8px;
 }
 
+/*
+  The legacy row truncates its title on one line, which was fine behind a 15px
+  `+` glyph. A labelled `File` — and especially a `Filed ✓` + `Open` pair — is
+  several times wider, so titles that used to fit started clipping ("Found
+  Family…" at twelve characters). An idea's title is the only thing that
+  identifies it in this list, so it wraps to two lines rather than truncating;
+  the description keeps its single-line ellipsis, since it is a preview.
+*/
+.bs-coll-idea--row .bs-coll-idea-main {
+  flex: 1;
+}
+
+.bs-coll-idea--row .bs-coll-idea-title {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-y: hidden;
+  line-height: 1.35;
+}
+
 /* A filed row stays fully legible rather than dimming to 0.45 like the legacy
    `placed` state: `Filed ✓` and `Open` are both things the user still needs to
    read, and 0.45 on body text fails contrast. */
