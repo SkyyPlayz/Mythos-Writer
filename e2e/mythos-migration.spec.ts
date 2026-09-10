@@ -216,14 +216,14 @@ test.describe.serial('MythosVault migration wizard (M5)', () => {
     expect(fs.existsSync(path.join(target, 'mythos.json'))).toBe(true);
     expect(fs.existsSync(path.join(target, 'timelines.json'))).toBe(true);
     const newScene = path.join(
-      target, 'Story Vault', 'The Deep', 'Part 1', 'Chapter 01', 'Scene 01.md');
+      target, 'Stories', 'Story Vault', 'The Deep', 'Part 1', 'Chapter 01', 'Scene 01.md');
     expect(fs.readFileSync(newScene, 'utf-8')).toContain(PROSE);
     expect(fs.readFileSync(newScene, 'utf-8')).toContain('status: done');
     expect(
-      fs.readFileSync(path.join(target, 'Story Vault', 'The Deep', 'comments.json'), 'utf-8'),
+      fs.readFileSync(path.join(target, 'Stories', 'Story Vault', 'The Deep', 'comments.json'), 'utf-8'),
     ).toContain('Expand the recognition beat.');
     expect(
-      fs.readFileSync(path.join(target, 'Notes Vault', 'Mira.md'), 'utf-8'),
+      fs.readFileSync(path.join(target, 'Notes', 'Notes Vault', 'Mira.md'), 'utf-8'),
     ).toContain('She counts bells.');
 
     // …and the ORIGINAL is byte-for-byte untouched.
@@ -241,8 +241,8 @@ test.describe.serial('MythosVault migration wizard (M5)', () => {
       fs.readFileSync(path.join(userData, 'vault-settings.json'), 'utf-8'),
     ) as { vaultRoot: string; notesVaultRoot?: string };
     const target = path.join(tmpRoot, 'My Vault (MythosVault)');
-    expect(settings.vaultRoot).toBe(path.join(target, 'Story Vault'));
-    expect(settings.notesVaultRoot).toBe(path.join(target, 'Notes Vault'));
+    expect(settings.vaultRoot).toBe(path.join(target, 'Stories', 'Story Vault'));
+    expect(settings.notesVaultRoot).toBe(path.join(target, 'Notes', 'Notes Vault'));
 
     // The migrated story tree is served through the v2 gate: the story,
     // chapter, and scene rows appear and the scene opens with prose intact.
@@ -462,8 +462,8 @@ test('TC-BM-01: v0.4 vault silently migrates at boot — no prompt, content surv
     const settings = JSON.parse(
       fs.readFileSync(path.join(userData, 'vault-settings.json'), 'utf-8'),
     ) as { vaultRoot: string; notesVaultRoot?: string };
-    expect(settings.vaultRoot).toBe(path.join(target, 'Story Vault'));
-    expect(settings.notesVaultRoot).toBe(path.join(target, 'Notes Vault'));
+    expect(settings.vaultRoot).toBe(path.join(target, 'Stories', 'Story Vault'));
+    expect(settings.notesVaultRoot).toBe(path.join(target, 'Notes', 'Notes Vault'));
 
     // The build completed and the in-flight marker is gone.
     expect(fs.existsSync(path.join(target, 'mythos.json'))).toBe(true);
@@ -471,13 +471,13 @@ test('TC-BM-01: v0.4 vault silently migrates at boot — no prompt, content surv
 
     // Content survives byte-for-byte in the new layout.
     const newScene = path.join(
-      target, 'Story Vault', 'The Deep', 'Part 1', 'Chapter 01', 'Scene 01.md');
+      target, 'Stories', 'Story Vault', 'The Deep', 'Part 1', 'Chapter 01', 'Scene 01.md');
     expect(fs.readFileSync(newScene, 'utf-8')).toContain(PROSE);
     expect(
-      fs.readFileSync(path.join(target, 'Story Vault', 'The Deep', 'comments.json'), 'utf-8'),
+      fs.readFileSync(path.join(target, 'Stories', 'Story Vault', 'The Deep', 'comments.json'), 'utf-8'),
     ).toContain('Expand the recognition beat.');
     expect(
-      fs.readFileSync(path.join(target, 'Notes Vault', 'Mira.md'), 'utf-8'),
+      fs.readFileSync(path.join(target, 'Notes', 'Notes Vault', 'Mira.md'), 'utf-8'),
     ).toContain('She counts bells.');
 
     // The original vault is byte-for-byte untouched…
