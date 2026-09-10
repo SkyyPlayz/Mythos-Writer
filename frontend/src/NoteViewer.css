@@ -132,6 +132,52 @@
   outline-offset: 1px;
 }
 
+/* SKY-11429: non-modal notice for the CF-11 auto-downgrade — explains why a
+   never-switched note landed in Source instead of the Rich default. */
+.note-viewer-auto-source-notice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--text-secondary, #b8c2d8);
+  background: rgba(255, 200, 90, 0.08);
+  border-bottom: 1px solid rgba(255, 200, 90, 0.25);
+}
+
+.note-viewer-auto-source-action {
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 200, 90, 0.4);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.note-viewer-auto-source-action:hover {
+  background: rgba(255, 200, 90, 0.15);
+}
+
+.note-viewer-auto-source-dismiss {
+  margin-left: auto;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.note-viewer-auto-source-dismiss:hover {
+  opacity: 1;
+}
+
 /* ── M17: gear menu (prototype "View options" popover) ─────────────────── */
 
 .note-gear-wrap {

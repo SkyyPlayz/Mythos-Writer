@@ -205,6 +205,63 @@ describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  // SKY-11429: the CF-11 downgrade above is silent by design (no data-loss
+  // modal), but silent also meant invisible — a writer who never explicitly
+  // switched a note saw it open outside Rich with zero indication why, which
+  // read exactly like "the Rich default doesn't work". A non-modal notice
+  // must explain the downgrade and offer a way past it without reintroducing
+  // a blocking dialog on open.
+  it('explains a CF-11 auto-downgrade with a dismissible, non-modal notice', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+
+    render(<NoteViewer path="Notes/Table.md" />);
+
+    const notice = await screen.findByTestId('note-auto-source-notice');
+    expect(notice).toHaveTextContent('Markdown tables');
+    expect(screen.queryByRole('dialog')).toBeNull(); // still no modal (CF-11 contract)
+
+    fireEvent.click(screen.getByLabelText('Dismiss'));
+    expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
+  });
+
+  it('a CF-11 auto-downgrade notice offers "Open in Rich anyway", which reuses the real fidelity dialog', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+
+    render(<NoteViewer path="Notes/Table.md" />);
+    await screen.findByTestId('note-auto-source-notice');
+
+    fireEvent.click(screen.getByText('Open in Rich anyway'));
+
+    expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /open.*anyway/i }));
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+  });
+
+  it('never shows the auto-downgrade notice for a note that opens in Rich cleanly', async () => {
+    render(<NoteViewer path="Notes/Test.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
+  });
+
+  it('does not show the auto-downgrade notice for a note reopened via its own sticky Source choice', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+    const { unmount } = render(<NoteViewer path="Notes/Table.md" />);
+    await screen.findByTestId('note-auto-source-notice');
+
+    // Explicitly confirming Source via the fidelity dialog ("Edit in Source")
+    // makes the choice sticky — the next open is an intentional choice, not
+    // an auto-downgrade, so the notice must not reappear.
+    fireEvent.click(screen.getByText('Open in Rich anyway')); // opens the fidelity dialog
+    fireEvent.click(await screen.findByText('Edit in Source (safe)'));
+    unmount();
+
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+    render(<NoteViewer path="Notes/Table.md" />);
+    await screen.findByLabelText('Edit note: Table.md');
+    expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
+  });
+
   // SKY-11434: a multi-line-body or foldable callout was the only genuinely
   // lossy shape in NoteCalloutExtension's schema, so any note using one was
   // silently downgraded to Source on every open, even though nothing else
