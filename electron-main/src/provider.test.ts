@@ -8,7 +8,11 @@ vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(),
 }));
 
+// listModels uses nodeFetch from undici (bypasses Electron's Chromium networking — SKY-11225).
+vi.mock('undici', () => ({ fetch: vi.fn() }));
+
 import Anthropic from '@anthropic-ai/sdk';
+import { fetch as undici_fetch } from 'undici';
 import {
   streamFromProvider,
   validateProviderConfig,
@@ -1273,13 +1277,10 @@ describe('validateBaseUrl (§5)', () => {
 // ─── listModels (§6) ─────────────────────────────────────────────────────────
 
 describe('listModels (§6)', () => {
+  const mockFetch = undici_fetch as ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('fetch', vi.fn());
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
   });
 
   function makeJsonResponse(body: unknown, status = 200) {
@@ -1294,12 +1295,12 @@ describe('listModels (§6)', () => {
     const result = await listModels({ kind: 'custom', baseUrl: 'http://192.168.1.1/v1' });
     expect(result.ok).toBe(false);
     expect((result as { ok: false; error: string }).error).toMatch(/RFC-1918/);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('returns { ok: false } with timeout copy naming provider + address on AbortError', async () => {
     const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
-    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(abortErr);
+    mockFetch.mockRejectedValue(abortErr);
     const result = await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
     expect(result.ok).toBe(false);
     const msg = (result as { ok: false; error: string }).error;
@@ -1310,7 +1311,7 @@ describe('listModels (§6)', () => {
   });
 
   it('parses Ollama /api/tags response (models[].name)', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+    mockFetch.mockReturnValue(
       makeJsonResponse({ models: [{ name: 'llama3' }, { name: 'phi3' }] }),
     );
     const result = await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
@@ -1318,14 +1319,14 @@ describe('listModels (§6)', () => {
   });
 
   it('fetches Ollama at {origin}/api/tags, stripping any /v1 suffix', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({ models: [] }));
+    mockFetch.mockReturnValue(makeJsonResponse({ models: [] }));
     await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434/v1' });
-    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    const [url] = mockFetch.mock.calls[0] as [string];
     expect(url).toBe('http://localhost:11434/api/tags');
   });
 
   it('parses OpenAI /models response (data[].id)', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+    mockFetch.mockReturnValue(
       makeJsonResponse({ data: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }] }),
     );
     const result = await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1' });
@@ -1333,7 +1334,7 @@ describe('listModels (§6)', () => {
   });
 
   it('parses LM Studio /models response (data[].id)', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+    mockFetch.mockReturnValue(
       makeJsonResponse({ data: [{ id: 'local-model' }] }),
     );
     const result = await listModels({ kind: 'lmstudio', baseUrl: 'http://localhost:1234/v1' });
@@ -1341,7 +1342,7 @@ describe('listModels (§6)', () => {
   });
 
   it('parses custom endpoint /models response (data[].id)', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+    mockFetch.mockReturnValue(
       makeJsonResponse({ data: [{ id: 'custom-model' }] }),
     );
     const result = await listModels({ kind: 'custom', baseUrl: 'http://localhost:9999/v1' });
@@ -1349,29 +1350,29 @@ describe('listModels (§6)', () => {
   });
 
   it('returns { ok: false } on HTTP error response', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({}, 401));
+    mockFetch.mockReturnValue(makeJsonResponse({}, 401));
     const result = await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1' });
     expect(result.ok).toBe(false);
     expect((result as { ok: false; error: string }).error).toMatch(/HTTP 401/);
   });
 
   it('returns { ok: false } on network error', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new TypeError('fetch failed'));
+    mockFetch.mockRejectedValue(new TypeError('fetch failed'));
     const result = await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
     expect(result.ok).toBe(false);
   });
 
   it('forwards Bearer token when apiKey is provided', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({ data: [] }));
+    mockFetch.mockReturnValue(makeJsonResponse({ data: [] }));
     await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test' });
-    const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    const [, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect((opts.headers as Record<string, string>)['Authorization']).toBe('Bearer sk-test');
   });
 
   it('omits Authorization header when no apiKey', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({ models: [] }));
+    mockFetch.mockReturnValue(makeJsonResponse({ models: [] }));
     await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
-    const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    const [, opts] = mockFetch.mock.calls[0] as [string, RequestInit];
     expect((opts.headers as Record<string, string>)['Authorization']).toBeUndefined();
   });
 
@@ -1381,9 +1382,9 @@ describe('listModels (§6)', () => {
   });
 
   it('uses DEFAULT_BASE_URLS.ollama when no baseUrl given', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({ models: [] }));
+    mockFetch.mockReturnValue(makeJsonResponse({ models: [] }));
     await listModels({ kind: 'ollama' });
-    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    const [url] = mockFetch.mock.calls[0] as [string];
     expect(url).toContain('127.0.0.1:11434');
   });
 });
@@ -1463,13 +1464,10 @@ describe('validateBaseUrl (§5)', () => {
 // ─── listModels (§6) ─────────────────────────────────────────────────────────
 
 describe('listModels (§6)', () => {
+  const mockFetch2 = undici_fetch as ReturnType<typeof vi.fn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('fetch', vi.fn());
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
   });
 
   function makeJsonResponse(body: unknown, status = 200) {
@@ -1484,12 +1482,12 @@ describe('listModels (§6)', () => {
     const result = await listModels({ kind: 'custom', baseUrl: 'http://192.168.1.1/v1' });
     expect(result.ok).toBe(false);
     expect((result as { ok: false; error: string }).error).toMatch(/RFC-1918/);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(mockFetch2).not.toHaveBeenCalled();
   });
 
   it('returns { ok: false } with timeout copy naming provider + address on AbortError', async () => {
     const abortErr = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
-    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(abortErr);
+    mockFetch2.mockRejectedValue(abortErr);
     const result = await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
     expect(result.ok).toBe(false);
     const msg = (result as { ok: false; error: string }).error;
@@ -1500,7 +1498,7 @@ describe('listModels (§6)', () => {
   });
 
   it('parses Ollama /api/tags response (models[].name)', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+    mockFetch2.mockReturnValue(
       makeJsonResponse({ models: [{ name: 'llama3' }, { name: 'phi3' }] }),
     );
     const result = await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
@@ -1508,14 +1506,14 @@ describe('listModels (§6)', () => {
   });
 
   it('fetches Ollama at {origin}/api/tags, stripping any /v1 suffix', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({ models: [] }));
+    mockFetch2.mockReturnValue(makeJsonResponse({ models: [] }));
     await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434/v1' });
-    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    const [url] = mockFetch2.mock.calls[0] as [string];
     expect(url).toBe('http://localhost:11434/api/tags');
   });
 
   it('parses OpenAI /models response (data[].id)', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+    mockFetch2.mockReturnValue(
       makeJsonResponse({ data: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }] }),
     );
     const result = await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1' });
@@ -1523,7 +1521,7 @@ describe('listModels (§6)', () => {
   });
 
   it('parses LM Studio /models response (data[].id)', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+    mockFetch2.mockReturnValue(
       makeJsonResponse({ data: [{ id: 'local-model' }] }),
     );
     const result = await listModels({ kind: 'lmstudio', baseUrl: 'http://localhost:1234/v1' });
@@ -1531,7 +1529,7 @@ describe('listModels (§6)', () => {
   });
 
   it('parses custom endpoint /models response (data[].id)', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+    mockFetch2.mockReturnValue(
       makeJsonResponse({ data: [{ id: 'custom-model' }] }),
     );
     const result = await listModels({ kind: 'custom', baseUrl: 'http://localhost:9999/v1' });
@@ -1539,29 +1537,29 @@ describe('listModels (§6)', () => {
   });
 
   it('returns { ok: false } on HTTP error response', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({}, 401));
+    mockFetch2.mockReturnValue(makeJsonResponse({}, 401));
     const result = await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1' });
     expect(result.ok).toBe(false);
     expect((result as { ok: false; error: string }).error).toMatch(/HTTP 401/);
   });
 
   it('returns { ok: false } on network error', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new TypeError('fetch failed'));
+    mockFetch2.mockRejectedValue(new TypeError('fetch failed'));
     const result = await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
     expect(result.ok).toBe(false);
   });
 
   it('forwards Bearer token when apiKey is provided', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({ data: [] }));
+    mockFetch2.mockReturnValue(makeJsonResponse({ data: [] }));
     await listModels({ kind: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-test' });
-    const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    const [, opts] = mockFetch2.mock.calls[0] as [string, RequestInit];
     expect((opts.headers as Record<string, string>)['Authorization']).toBe('Bearer sk-test');
   });
 
   it('omits Authorization header when no apiKey', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({ models: [] }));
+    mockFetch2.mockReturnValue(makeJsonResponse({ models: [] }));
     await listModels({ kind: 'ollama', baseUrl: 'http://localhost:11434' });
-    const [, opts] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
+    const [, opts] = mockFetch2.mock.calls[0] as [string, RequestInit];
     expect((opts.headers as Record<string, string>)['Authorization']).toBeUndefined();
   });
 
@@ -1571,9 +1569,9 @@ describe('listModels (§6)', () => {
   });
 
   it('uses DEFAULT_BASE_URLS.ollama when no baseUrl given', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockReturnValue(makeJsonResponse({ models: [] }));
+    mockFetch2.mockReturnValue(makeJsonResponse({ models: [] }));
     await listModels({ kind: 'ollama' });
-    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    const [url] = mockFetch2.mock.calls[0] as [string];
     expect(url).toContain('127.0.0.1:11434');
   });
 });

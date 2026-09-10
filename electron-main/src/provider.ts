@@ -6,6 +6,11 @@
 // streaming.ts and agents can stay provider-unaware.
 
 import Anthropic from '@anthropic-ai/sdk';
+// Electron's global fetch routes through Chromium's networking layer (proxy, session) and can
+// fail for plain-HTTP localhost calls (e.g. LM Studio on 127.0.0.1:1234) even when Node's
+// undici stack reaches the same URL without issue (SKY-11225). Import undici's fetch explicitly
+// to keep all main-process HTTP calls on Node's networking path.
+import { fetch as nodeFetch } from 'undici';
 import { SafeIpcError } from './ipcErrors.js';
 
 // ─── Provider config ─────────────────────────────────────────────────────────
@@ -272,7 +277,7 @@ export async function listModels(payload: ListModelsPayload): Promise<ListModels
       headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
-    const res = await fetch(url, { headers, signal: controller.signal });
+    const res = await nodeFetch(url, { headers, signal: controller.signal });
     if (!res.ok) {
       return {
         ok: false,
@@ -301,8 +306,10 @@ export async function listModels(payload: ListModelsPayload): Promise<ListModels
       };
     }
     const msg = ((err as Error).message ?? '').toLowerCase();
-    if (msg.includes('fetch failed') || msg.includes('econnrefused') || msg.includes('network')) {
-      return { ok: false, error: `Network error reaching ${label} at ${resolvedBase} — check that the server is running and reachable.` };
+    const causeCode = (err as { cause?: { code?: string } }).cause?.code ?? '';
+    if (msg.includes('fetch failed') || msg.includes('econnrefused') || msg.includes('network') || causeCode) {
+      const detail = causeCode ? ` (${causeCode})` : '';
+      return { ok: false, error: `Network error reaching ${label} at ${resolvedBase}${detail} — check that the server is running and reachable.` };
     }
     return { ok: false, error: `Failed to list ${label} models at ${resolvedBase} — check the provider configuration.` };
   } finally {
