@@ -978,6 +978,18 @@ contextBridge.exposeInMainWorld('api', {
       { renamed: true; itemPath: string } | { renamed: false } | { error: string }
     >,
 
+  // SKY-11192/SKY-11674 §3: Idea Collections `File` action — see
+  // ideaCollectionsFiling.ts. `category` is one of the six Idea Collections
+  // keys; the target folder mapping is fixed on the main-process side.
+  ideaCollectionsFile: (category: string, title: string, desc: string) =>
+    ipcRenderer.invoke('ideaCollections:file', { category, title, desc }) as Promise<
+      | { status: 'filed'; folderPath: string; itemPath: string }
+      | { status: 'already-filed'; folderPath: string; itemPath: string }
+      | { error: string }
+    >,
+  ideaCollectionsUnfile: (category: string, itemPath: string) =>
+    ipcRenderer.invoke('ideaCollections:unfile', { category, itemPath }) as Promise<{ deleted: boolean }>,
+
   // SKY-11186 (Notes Board 6/9): note thumbnails — main resolves which image
   // is a note's cover (spec §9) and stores/serves derivatives; the renderer
   // derives the WebP from `source` bytes and hands it back via notesThumbPut.

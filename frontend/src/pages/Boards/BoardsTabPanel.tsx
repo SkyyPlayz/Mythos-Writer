@@ -13,10 +13,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import BoardCanvas from './BoardCanvas';
-import type { BoardItem, BoardTool, BoardFurnitureItemData, ItemLayout } from './BoardCanvas';
+import type { BoardTool, BoardFurnitureItemData } from './BoardCanvas';
 import type { FurnitureKind } from './boardLod';
-import { resolveNoteThumbs } from '../../lib/noteThumbnails';
-import { boardFollowsChange } from './boardVaultChange';
+import { useNotesBoard, vaultPathOf } from './useNotesBoard';
 import { boardWikiLinks, furnitureAnchorRects } from './boardLinks';
 import type { VaultGraphEdge } from './boardLinks';
 import { searchVaultIndex } from './boardSearch';
@@ -50,13 +49,6 @@ export const FURNITURE_TOOLBAR_KINDS: Array<{ kind: FurnitureKind; label: string
   { kind: 'sketch', label: 'Sketch' },
   { kind: 'swatch', label: 'Colour swatch' },
 ];
-
-interface VaultListItem {
-  path: string;
-  name: string;
-  isDirectory: boolean;
-  excerpt?: string;
-}
 
 interface BreadcrumbEntry {
   folderPath: string;
@@ -101,11 +93,6 @@ export interface BoardsTabPanelProps {
  */
 const HOME_CRUMB: BreadcrumbEntry = { folderPath: '', name: 'Home' };
 
-/** Vault-relative path of a board child (item paths are relative to their board's folder). */
-function vaultPathOf(folderPath: string, itemPath: string): string {
-  return folderPath ? `${folderPath}/${itemPath}` : itemPath;
-}
-
 /** SKY-11615: breadcrumb stack for an arbitrary vault-relative folder path,
  *  so a deep-linked board still shows the trail back up to Home. */
 function breadcrumbForFolder(folderPath: string): BreadcrumbEntry[] {
@@ -117,9 +104,6 @@ function breadcrumbForFolder(folderPath: string): BreadcrumbEntry[] {
   }
   return crumbs;
 }
-
-/** How long to coalesce a burst of vault change events before reloading the board. */
-const VAULT_CHANGE_RELOAD_MS = 200;
 
 /** SKY-11191: `aria-activedescendant` target for the nth search hit. */
 const searchOptionId = (index: number): string => `boards-search-hit-${index}`;
@@ -157,179 +141,20 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     // eslint-disable-next-line react-hooks/exhaustive-deps -- `seq` is the trigger; the path rides along with it.
   }, [requestSeq]);
 
-  const [items, setItems] = useState<BoardItem[]>([]);
-  const [savedLayout, setSavedLayout] = useState<Record<string, ItemLayout>>({});
-  const [savedView, setSavedView] = useState<{ zoom: number; panX: number; panY: number }>({ zoom: 100, panX: 0, panY: 0 });
-  // SKY-11188: board-only furniture + every touched child's own item key.
-  // SKY-11191 reads the same array for its `column` items' `ref`s (§11) —
-  // one source, so an overlay connector can never point at a stale box.
-  const [furniture, setFurniture] = useState<BoardFurnitureItemData[]>([]);
-  const [itemKeysByPath, setItemKeysByPath] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // SKY-11192/SKY-11674: the load/save slice (including SKY-11188's
+  // furniture) is the shared hook — see useNotesBoard.ts. Brainstorm's
+  // Board page and chat strip use the exact same hook against their own
+  // mapped folder, so an edit from either home is the same state, not a sync.
+  const {
+    items, savedLayout, savedView, furniture, itemKeysByPath, setFurniture,
+    loading, error, handleItemMove, handleItemResize, handleViewChange, reload,
+  } = useNotesBoard(currentFolder, notesVaultValid);
 
   // SKY-11187 §5: the canvas tools and the inline rename they hand off to.
   const [activeTool, setActiveTool] = useState<BoardTool>('select');
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   /** A refused vault mutation (name collision, invalid characters, fs error). */
   const [actionError, setActionError] = useState<string | null>(null);
-
-  // A reload that finishes after a newer one started must not clobber it —
-  // vault-change reloads and breadcrumb navigation can overlap.
-  const loadSeqRef = useRef(0);
-
-  // Fetch board data: IPC gives us the metadata store + vault listing.
-  // `silent` keeps the current board on screen while it refreshes (a vault
-  // change must not flash the loading state over a board the user is on).
-  const loadBoard = useCallback(async (folderPath: string, silent = false) => {
-    // '' is the Home board (vault root), not "no board" — see HOME_CRUMB.
-    if (!notesVaultValid) return;
-    const seq = ++loadSeqRef.current;
-    if (!silent) setLoading(true);
-    setError(null);
-    try {
-      const [vaultResult, meta] = await Promise.all([
-        window.api.listNotesVault(folderPath) as Promise<{ items: VaultListItem[] } | { error: string }>,
-        window.api.notesBoardGet(folderPath),
-      ]);
-      if (seq !== loadSeqRef.current) return;
-
-      if ('error' in vaultResult) {
-        setError(vaultResult.error);
-        setItems([]);
-        setFurniture([]);
-        return;
-      }
-
-      // Vault items are canonical for what a board shows (spec §1 — Store B
-      // never hides a note), but listNotesVault is RECURSIVE: vault.ts's
-      // listVaultFiles walks the entire subtree. A board shows only its
-      // IMMEDIATE children (SKY-11336 defect A — Home rendered every
-      // descendant as a top-level card), so split that one listing by depth:
-      //   no separator  → an immediate child of this board;
-      //   one separator → a grandchild, which only feeds its parent tile's
-      //                   child counts (spec §5).
-      // Deriving the counts here also removes the per-folder listNotesVault
-      // round-trip the tiles used to make — an N+1 that re-walked every
-      // subtree (and, being recursive, counted descendants rather than direct
-      // children). listVaultFiles always emits '/' regardless of platform
-      // (SKY-8881), so splitting on it is correct on Windows too.
-      const directChildren: VaultListItem[] = [];
-      const childCounts = new Map<string, { boards: number; cards: number }>();
-      for (const vaultItem of vaultResult.items) {
-        const slash = vaultItem.path.indexOf('/');
-        if (slash === -1) {
-          // Mirror notesBoard.ts's listImmediateChildren: a board's children
-          // are folders and .md notes, so item paths stay 1:1 with
-          // meta.children (and nothing undraggable renders as a card).
-          if (vaultItem.isDirectory || /\.md$/i.test(vaultItem.name)) directChildren.push(vaultItem);
-          continue;
-        }
-        if (vaultItem.path.indexOf('/', slash + 1) !== -1) continue; // deeper than a grandchild
-        const parent = vaultItem.path.slice(0, slash);
-        const counts = childCounts.get(parent) ?? { boards: 0, cards: 0 };
-        if (vaultItem.isDirectory) counts.boards += 1;
-        else if (/\.md$/i.test(vaultItem.name)) counts.cards += 1;
-        childCounts.set(parent, counts);
-      }
-
-      // SKY-11186 / spec §9: one batched resolve for this board's notes — the
-      // card's default SIZE depends on whether it has a thumbnail (§6), so
-      // this has to be known before layout, not lazily per visible card. The
-      // ~256px derivative itself is fetched lazily by the card that needs it.
-      const notePaths = directChildren
-        .filter((v) => !v.isDirectory)
-        .map((v) => vaultPathOf(folderPath, v.path));
-      const thumbs = notePaths.length > 0 ? await resolveNoteThumbs(notePaths) : {};
-      if (seq !== loadSeqRef.current) return;
-
-      const resolvedItems: BoardItem[] = directChildren.map((vaultItem) => {
-        if (vaultItem.isDirectory) {
-          const counts = childCounts.get(vaultItem.path) ?? { boards: 0, cards: 0 };
-          return {
-            path: vaultItem.path,
-            kind: 'folder',
-            name: vaultItem.name,
-            childBoards: counts.boards,
-            childCards: counts.cards,
-          };
-        }
-        return {
-          path: vaultItem.path,
-          kind: 'note',
-          name: vaultItem.name.replace(/\.md$/i, ''),
-          excerpt: vaultItem.excerpt,
-          thumb: thumbs[vaultPathOf(folderPath, vaultItem.path)],
-        };
-      });
-
-      // Store B layout is keyed by each child's STABLE id (§3). meta.children
-      // reports paths relative to this board's own folder — the same contract
-      // item.path now follows — so the two line up 1:1.
-      const layoutMap: Record<string, ItemLayout> = {};
-      // SKY-11188: every TOUCHED child's own item key, by path — a `line`
-      // furniture's from/to may name one (§4). Built independently of
-      // layoutMap: a colour-only touch mints an id without a layout entry.
-      const keysByPath: Record<string, string> = {};
-      for (const child of meta.children) {
-        if (!child.id) continue;
-        const key = `${child.kind === 'folder' ? 'v' : 'n'}:${child.id}`;
-        keysByPath[child.path] = key;
-        const storedLayout = meta.layout[key];
-        if (storedLayout) layoutMap[child.path] = storedLayout;
-      }
-
-      setItems(resolvedItems);
-      setSavedLayout(layoutMap);
-      setItemKeysByPath(keysByPath);
-      setFurniture((meta.furniture ?? []) as BoardFurnitureItemData[]);
-      setSavedView(meta.view ?? { zoom: 100, panX: 0, panY: 0 });
-    } catch (err) {
-      if (seq !== loadSeqRef.current) return;
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      // Whichever load finishes LAST clears the flag — a silent reload that
-      // superseded a visible one must not leave "Loading board…" on screen.
-      if (seq === loadSeqRef.current) setLoading(false);
-    }
-  }, [notesVaultValid]);
-
-  useEffect(() => {
-    loadBoard(currentFolder);
-  }, [currentFolder, loadBoard]);
-
-  // SKY-11186: a note edited, an image deleted, moved or rewritten, a
-  // thumbnail toggled off from the editor — the open board must follow the
-  // vault. The Notes watcher emits `vault:notes-updated` (notes and folders)
-  // and `vault:notes-asset-changed` (images) with the changed path; only a
-  // change this board can see triggers a reload (boardFollowsChange), bursts
-  // are coalesced, and the reload is silent.
-  const itemsRef = useRef<BoardItem[]>([]);
-  useEffect(() => {
-    itemsRef.current = items;
-  }, [items]);
-
-  useEffect(() => {
-    if (!notesVaultValid) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const onVaultChange = (data: { path?: string } | undefined) => {
-      const shown = itemsRef.current.map((item) => item.thumb?.src);
-      if (!boardFollowsChange(currentFolder, data?.path, shown)) return;
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        timer = null;
-        void loadBoard(currentFolder, true);
-      }, VAULT_CHANGE_RELOAD_MS);
-    };
-    const unsubscribes = [
-      window.api.onVaultNotesUpdated?.(onVaultChange),
-      window.api.onVaultNotesAssetChanged?.(onVaultChange),
-    ];
-    return () => {
-      if (timer) clearTimeout(timer);
-      for (const unsub of unsubscribes) unsub?.();
-    };
-  }, [notesVaultValid, currentFolder, loadBoard]);
 
   // ── SKY-11191 §11: wiki-link overlay + minimap ──────────────────────────
   //
@@ -464,39 +289,6 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     }
   }, [searchHits, activeHit, handleSearchHit]);
 
-  const handleViewChange = useCallback((_zoom: number, _panX: number, _panY: number) => {
-    // View is UI state — persisted via the board metadata store
-    // We don't call patchLayout here; view is stored separately (spec §3 "view" field)
-    // For this ticket, view is ephemeral within the session; persistence will come in a later pass
-  }, []);
-
-  const handleItemMove = useCallback(async (itemPath: string, x: number, y: number) => {
-    try {
-      await window.api.notesBoardPatchLayout(currentFolder, itemPath, { x, y });
-      setSavedLayout((prev) => ({
-        ...prev,
-        [itemPath]: { ...(prev[itemPath] ?? {}), x, y },
-      }));
-    } catch (err) {
-      // Non-fatal — the position stays in local state for this session. Logged
-      // rather than swallowed: an "item not found" here is exactly the shape
-      // SKY-11336 took, and a bare `catch {}` hid it for a whole beta.
-      console.warn('[Boards] failed to persist item position', err);
-    }
-  }, [currentFolder]);
-
-  const handleItemResize = useCallback(async (itemPath: string, w: number, h: number) => {
-    try {
-      await window.api.notesBoardPatchLayout(currentFolder, itemPath, { w, h });
-      setSavedLayout((prev) => ({
-        ...prev,
-        [itemPath]: { ...(prev[itemPath] ?? {}), w, h },
-      }));
-    } catch (err) {
-      // Non-fatal — see handleItemMove.
-      console.warn('[Boards] failed to persist item size', err);
-    }
-  }, [currentFolder]);
 
   // ── SKY-11187 §5: vault-mutating canvas operations ──────────────────────
   //
@@ -516,14 +308,14 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     setActionError(null);
     try {
       const created = await window.api.notesBoardCreateItem(currentFolder, kind, { x, y });
-      await loadBoard(currentFolder, true);
+      reload();
       // Straight into inline rename — the placeholder name ("New note") is a
       // prompt, not a decision.
       setRenamingPath(created.itemPath);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     }
-  }, [currentFolder, loadBoard]);
+  }, [currentFolder, reload]);
 
   const handleRenameCommit = useCallback(async (itemPath: string, newName: string) => {
     setRenamingPath(null);
@@ -537,11 +329,11 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
       const res = await window.api.notesBoardRenameItem(currentFolder, itemPath, newName);
       if ('error' in res) { setActionError(res.error); return; }
       if (!res.renamed) return; // unchanged name — nothing moved on disk
-      await loadBoard(currentFolder, true);
+      reload();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     }
-  }, [currentFolder, loadBoard]);
+  }, [currentFolder, reload]);
 
   const handleRenameCancel = useCallback(() => setRenamingPath(null), []);
   const handleRequestRename = useCallback((itemPath: string) => setRenamingPath(itemPath), []);
@@ -570,7 +362,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to create furniture', err);
     }
-  }, [currentFolder, furniture.length]);
+  }, [currentFolder, furniture.length, setFurniture]);
 
   const handleFurnitureMove = useCallback(async (id: string, x: number, y: number) => {
     try {
@@ -579,7 +371,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to persist furniture position', err);
     }
-  }, [currentFolder]);
+  }, [currentFolder, setFurniture]);
 
   const handleFurnitureResize = useCallback(async (id: string, w: number, h: number) => {
     try {
@@ -588,7 +380,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to persist furniture size', err);
     }
-  }, [currentFolder]);
+  }, [currentFolder, setFurniture]);
 
   const handleFurnitureColor = useCallback(async (id: string, hex: string) => {
     try {
@@ -597,7 +389,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to persist furniture colour', err);
     }
-  }, [currentFolder]);
+  }, [currentFolder, setFurniture]);
 
   const handleFurnitureCheckToggle = useCallback(async (id: string, index: number) => {
     const current = furniture.find((f) => f.id === id);
@@ -609,7 +401,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to persist checklist toggle', err);
     }
-  }, [currentFolder, furniture]);
+  }, [currentFolder, furniture, setFurniture]);
 
   const handleFurnitureDelete = useCallback(async (id: string) => {
     try {
@@ -622,7 +414,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to delete furniture', err);
     }
-  }, [currentFolder]);
+  }, [currentFolder, setFurniture]);
 
   const handleOpenNoteRef = useCallback((ref: string) => {
     const stem = basenameNoExt(ref);
@@ -670,7 +462,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to create connector', err);
     }
-  }, [currentFolder, lineFromId]);
+  }, [currentFolder, lineFromId, setFurniture]);
 
   // BoardCanvas hands back the tile's path relative to the CURRENT board, so
   // join it onto the current folder to keep folderPath vault-relative at any

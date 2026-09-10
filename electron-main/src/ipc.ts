@@ -537,6 +537,13 @@ export const IPC_CHANNELS = {
   NOTES_BOARD_CREATE_ITEM: 'notesBoard:createItem',
   NOTES_BOARD_RENAME_ITEM: 'notesBoard:renameItem',
 
+  // SKY-11192/SKY-11674 §3: Idea Collections `File` action — files a real
+  // vault note into one of three fixed, non-user-editable folders. Every
+  // call is the direct result of a user's own click on `File` (review-
+  // blocking constraint — see ideaCollectionsFiling.ts).
+  IDEA_COLLECTIONS_FILE: 'ideaCollections:file',
+  IDEA_COLLECTIONS_UNFILE: 'ideaCollections:unfile',
+
   // SKY-11186 (Notes Board 6/9): note thumbnails — resolve which image is a
   // note's cover (spec §9), serve a cached derivative or the raw source, and
   // store the renderer-derived WebP. See noteThumbnails.ts.
@@ -1228,6 +1235,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_BOARD_CREATE_ITEM]: (payload: NotesBoardCreateItemPayload) => NotesBoardCreateItemResponse;
   [IPC_CHANNELS.NOTES_BOARD_RENAME_ITEM]: (payload: NotesBoardRenameItemPayload) => NotesBoardRenameItemResponse;
 
+  // SKY-11192/SKY-11674 §3: Idea Collections `File` action — see ideaCollectionsFiling.ts.
+  [IPC_CHANNELS.IDEA_COLLECTIONS_FILE]: (payload: IdeaCollectionsFilePayload) => IdeaCollectionsFileResponse;
+  [IPC_CHANNELS.IDEA_COLLECTIONS_UNFILE]: (payload: IdeaCollectionsUnfilePayload) => IdeaCollectionsUnfileResponse;
+
   // SKY-11186 (Notes Board 6/9): note thumbnails IPC — see noteThumbnails.ts.
   [IPC_CHANNELS.NOTES_THUMB_RESOLVE]: (payload: NotesThumbResolvePayload) => Promise<NotesThumbResolveResponse>;
   [IPC_CHANNELS.NOTES_THUMB_GET]: (payload: NotesThumbGetPayload) => Promise<NotesThumbGetResponse>;
@@ -1707,6 +1718,31 @@ export type NotesBoardRenameItemResponse =
   | { renamed: true; itemPath: string }
   | { renamed: false }
   | { error: string };
+
+// ─── SKY-11192/SKY-11674 §3: Idea Collections filing IPC types ───
+// See ideaCollectionsFiling.ts. `category` is one of the six Idea Collections
+// keys — the folder mapping is fixed on the main-process side, never chosen
+// by the caller.
+
+export type IdeaCollectionsCategory = 'beats' | 'theme' | 'trope' | 'loose' | 'rel' | 'world';
+
+export interface IdeaCollectionsFilePayload {
+  category: IdeaCollectionsCategory;
+  title: string;
+  desc: string;
+}
+
+export type IdeaCollectionsFileResponse =
+  | { status: 'filed'; folderPath: string; itemPath: string }
+  | { status: 'already-filed'; folderPath: string; itemPath: string }
+  | { error: string };
+
+export interface IdeaCollectionsUnfilePayload {
+  category: IdeaCollectionsCategory;
+  itemPath: string;
+}
+
+export type IdeaCollectionsUnfileResponse = { deleted: boolean };
 
 // ─── SKY-11186 (Notes Board 6/9): note thumbnails IPC types ───
 // See noteThumbnails.ts + BOARDS-SPEC.md v2 §6/§9. Every path is a
@@ -2952,6 +2988,19 @@ export interface AppSettings {
   journalMode?: JournalModeSettings;
   /** SKY-627: author name entered during onboarding (optional). */
   authorName?: string;
+
+  /**
+   * SKY-11192/SKY-11674: off-by-default trunk flag (COMPANY-STANDARDS §3a).
+   * Gates the Brainstorm/Notes-Board unification surfaces — the Board page's
+   * folder-scope pill row, the Agent Chat inline board strip, and Idea
+   * Collections' real-note `File` action. The underlying board engine swap
+   * and the one-time brainstorm-board-JSON→notes migration are NOT gated by
+   * this flag (the old board component/model is deleted, so there is no
+   * "old" code path left to fall back to) — only the new chrome is. Flip
+   * only after QA signs off on the round-trip edit; removing this flag is
+   * part of the milestone's done-criteria (§3a flag hygiene).
+   */
+  brainstormBoardsUnification?: boolean;
 
   // ── Archive Agent v1 continuity settings (SKY-1683 / PRD §8) ──
   archiveContinuityEnabled?: boolean;
