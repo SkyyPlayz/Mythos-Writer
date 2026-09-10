@@ -454,6 +454,8 @@ import {
   createBoardItem as notesBoardCreateItem,
   boardItemRenameTarget as notesBoardRenameTarget,
 } from './notesBoard.js';
+// SKY-11192/SKY-11674 §3: Idea Collections filing — see ideaCollectionsFiling.ts.
+import { fileIdea, unfileIdea, IDEA_COLLECTION_FOLDER } from './ideaCollectionsFiling.js';
 // SKY-11186 (Notes Board 6/9): note thumbnails — see noteThumbnails.ts.
 import {
   resolveNoteThumbs,
@@ -479,6 +481,9 @@ import {
   writeBrainstormBoard,
   migrateBrainstormBoardToAgentVault,
 } from './mythosFormat/brainstormBoardFile.js';
+// SKY-11192/SKY-11674: one-time migration of the retired board's cards into
+// real Notes Vault notes — see brainstormBoardMigration.ts.
+import { migrateBrainstormBoardCardsToNotes } from './mythosFormat/brainstormBoardMigration.js';
 import {
   scanMythosStoryVault,
   syncCanonicalFromManifest,
@@ -553,6 +558,10 @@ import type {
   NotesBoardCreateItemResponse,
   NotesBoardRenameItemPayload,
   NotesBoardRenameItemResponse,
+  IdeaCollectionsFilePayload,
+  IdeaCollectionsFileResponse,
+  IdeaCollectionsUnfilePayload,
+  IdeaCollectionsUnfileResponse,
   NotesThumbResolvePayload,
   NotesThumbResolveResponse,
   NotesThumbGetPayload,
@@ -1330,6 +1339,12 @@ function ensureVaultDir() {
     // to leak as `Notes Vault/Boards/brainstorm.board.json` in the notes tree.
     // No-op once migrated; never orphans a populated board.
     migrateBrainstormBoardToAgentVault(mythosRoot);
+    // SKY-11192/SKY-11674: one-time migration of that board's cards into real
+    // Notes Vault notes, now that the file (if any) is at its Agent Vault
+    // location. Runs unconditionally (data preservation, not gated by the
+    // brainstormBoardsUnification flag); no-op once the legacy file is
+    // renamed to `.migrated`.
+    migrateBrainstormBoardCardsToNotes(mythosRoot);
     openDb(vaultRoot);
     initJobServiceForVault(vaultRoot);
     const cachePath = getManifestPath();
@@ -7374,6 +7389,52 @@ const handlers: IpcHandlers = {
     return { renamed: true, itemPath: toItemPath };
   },
 
+  // ─── SKY-11192/SKY-11674 §3: Idea Collections filing ───────────────────
+  // The target folder is one of three FIXED names (ideaCollectionsFiling.ts)
+  // — never renderer-supplied — so this is the one notesBoard-adjacent
+  // writer that doesn't sandbox a caller-chosen folder path. The computed
+  // note path is still run through safeVaultEntryIpcJoin before it's used,
+  // matching every other vault write's boundary rather than trusting the
+  // fixed-mapping property to hold forever.
+  [IPC_CHANNELS.IDEA_COLLECTIONS_FILE]: (
+    payload: IdeaCollectionsFilePayload
+  ): IdeaCollectionsFileResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const title = (payload.title ?? '').trim();
+    if (!title) return { error: 'An idea needs a title to file.' };
+    let result: ReturnType<typeof fileIdea>;
+    try {
+      result = fileIdea({ notesVaultRoot: root, category: payload.category, title, desc: payload.desc ?? '' });
+    } catch (err) {
+      return { error: (err as Error).message || 'Could not file this idea.' };
+    }
+    const vaultPath = `${result.folderPath}/${result.itemPath}`;
+    try {
+      safeVaultEntryIpcJoin(root, vaultPath);
+    } catch (err) {
+      return { error: (err as Error).message };
+    }
+    if (result.status === 'filed') notifyNotesVaultMutatedByApp(vaultPath);
+    return result;
+  },
+  [IPC_CHANNELS.IDEA_COLLECTIONS_UNFILE]: (
+    payload: IdeaCollectionsUnfilePayload
+  ): IdeaCollectionsUnfileResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = IDEA_COLLECTION_FOLDER[payload.category];
+    const vaultPath = `${folderPath}/${payload.itemPath}`;
+    try {
+      safeVaultEntryIpcJoin(root, vaultPath);
+    } catch {
+      return { deleted: false };
+    }
+    const result = unfileIdea(root, payload.category, payload.itemPath);
+    if (result.deleted) notifyNotesVaultMutatedByApp(vaultPath);
+    return result;
+  },
+
   // ─── SKY-11186 (Notes Board 6/9): note thumbnails IPC ──────────────────
   // Thin bodies — path sandboxing here (safeVaultEntryIpcJoin, same boundary
   // as NOTES_BOARD_*), all real logic in noteThumbnails.ts. Every path in a
@@ -9014,6 +9075,8 @@ const SETTINGS_DEFAULTS: AppSettings = {
   // SKY-10878 M12.B5b: default the self-building wiki to "always ask" so it
   // never writes to the vault without author approval.
   wikiAutonomy: 'ask',
+  // SKY-11192/SKY-11674: off by default until QA signs off (§3a).
+  brainstormBoardsUnification: false,
   archiveContinuityEnabled: true,
   archiveScanOnSave: true,
   archiveScanScope: 'active_scene',

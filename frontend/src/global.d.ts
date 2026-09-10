@@ -705,6 +705,9 @@ interface AppSettings {
   /** SKY-627: author name entered during onboarding (optional). */
   authorName?: string;
 
+  /** SKY-11192/SKY-11674: off-by-default flag — see electron-main/src/ipc.ts for the full comment. */
+  brainstormBoardsUnification?: boolean;
+
   // ── Archive Agent v1 continuity settings (SKY-1683 / PRD §8) ──
   archiveContinuityEnabled?: boolean;
   archiveScanOnSave?: boolean;
@@ -1687,6 +1690,18 @@ interface Window {
       itemPath: string,
       newName: string,
     ) => Promise<{ renamed: true; itemPath: string } | { renamed: false } | { error: string }>;
+
+    // SKY-11192/SKY-11674 §3: Idea Collections `File` action.
+    ideaCollectionsFile: (
+      category: string,
+      title: string,
+      desc: string,
+    ) => Promise<
+      | { status: 'filed'; folderPath: string; itemPath: string }
+      | { status: 'already-filed'; folderPath: string; itemPath: string }
+      | { error: string }
+    >;
+    ideaCollectionsUnfile: (category: string, itemPath: string) => Promise<{ deleted: boolean }>;
 
     // SKY-11186: note thumbnails (main-process half — noteThumbnails.ts, spec §9).
     // `resolve` says which image (if any) is each note's cover; `get` returns a
