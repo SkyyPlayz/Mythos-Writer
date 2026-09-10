@@ -257,11 +257,11 @@ test.describe.serial('SKY-11169 — Story vault picker UI (fresh profile)', () =
       .toBe(2);
     const registry = readRegistry(bundle)!;
     const second = registry.vaults.find((v) => v.displayName === SECOND_VAULT_NAME);
-    expect(second).toMatchObject({ dirName: SECOND_VAULT_NAME });
+    expect(second).toMatchObject({ dirName: 'Stories/' + SECOND_VAULT_NAME });
     expect(registry.activeId).toBe(
       registry.vaults.find((v) => v.displayName === 'Story')!.id,
     );
-    expect(fs.existsSync(path.join(bundle, SECOND_VAULT_NAME))).toBe(true);
+    expect(fs.existsSync(path.join(bundle, 'Stories', SECOND_VAULT_NAME))).toBe(true);
 
     // The picker did NOT switch — the button still shows the original vault…
     await expect(
@@ -344,7 +344,7 @@ test.describe.serial('SKY-11169 — Story vault picker UI (fresh profile)', () =
       page.locator('[data-testid="story-vault-picker-btn"] .story-vault-picker-name'),
     ).toHaveText(RENAMED_VAULT_NAME, { timeout: 10_000 });
     await expect
-      .poll(() => readRegistry(bundle)?.vaults.find((v) => v.dirName === SECOND_VAULT_NAME)?.displayName, {
+      .poll(() => readRegistry(bundle)?.vaults.find((v) => v.dirName === 'Stories/' + SECOND_VAULT_NAME)?.displayName, {
         timeout: 10_000,
       })
       .toBe(RENAMED_VAULT_NAME);
