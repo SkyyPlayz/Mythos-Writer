@@ -5,13 +5,22 @@
  * SKY-11186: resolves each note child's thumbnail (spec §9) alongside the
  * listing, threads the zoom-out limit setting through, and reloads the open
  * board when the Notes vault changes on disk.
+ * SKY-11191 §11: cross-board search, the wiki-link overlay toggle and the
+ * minimap toggle. All three are purely derived — the panel owns the two data
+ * sources (the recursive vault listing and the Vault Graph's link index) and
+ * the canvas owns the geometry; nothing new is written to Store B.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import BoardCanvas from './BoardCanvas';
 import type { BoardItem, BoardTool, BoardFurnitureItemData, ItemLayout } from './BoardCanvas';
 import type { FurnitureKind } from './boardLod';
 import { resolveNoteThumbs } from '../../lib/noteThumbnails';
 import { boardFollowsChange } from './boardVaultChange';
+import { boardWikiLinks, furnitureAnchorRects } from './boardLinks';
+import type { VaultGraphEdge } from './boardLinks';
+import { searchVaultIndex } from './boardSearch';
+import type { BoardSearchHit, VaultIndexEntry } from './boardSearch';
 import { validateRenameName } from '../../components/VaultBrowser/renameUtils';
 import { basenameNoExt } from '../../crossTabLinkResolver';
 import './BoardsTabPanel.css';
@@ -112,6 +121,9 @@ function breadcrumbForFolder(folderPath: string): BreadcrumbEntry[] {
 /** How long to coalesce a burst of vault change events before reloading the board. */
 const VAULT_CHANGE_RELOAD_MS = 200;
 
+/** SKY-11191: `aria-activedescendant` target for the nth search hit. */
+const searchOptionId = (index: number): string => `boards-search-hit-${index}`;
+
 /**
  * SKY-11187 §5: the canvas tool palette. Text labels rather than glyphs —
  * there is no owner mockup for this row yet, and a labelled control is the
@@ -149,6 +161,8 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   const [savedLayout, setSavedLayout] = useState<Record<string, ItemLayout>>({});
   const [savedView, setSavedView] = useState<{ zoom: number; panX: number; panY: number }>({ zoom: 100, panX: 0, panY: 0 });
   // SKY-11188: board-only furniture + every touched child's own item key.
+  // SKY-11191 reads the same array for its `column` items' `ref`s (§11) —
+  // one source, so an overlay connector can never point at a stale box.
   const [furniture, setFurniture] = useState<BoardFurnitureItemData[]>([]);
   const [itemKeysByPath, setItemKeysByPath] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
@@ -183,6 +197,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
       if ('error' in vaultResult) {
         setError(vaultResult.error);
         setItems([]);
+        setFurniture([]);
         return;
       }
 
@@ -267,7 +282,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
       setItems(resolvedItems);
       setSavedLayout(layoutMap);
       setItemKeysByPath(keysByPath);
-      setFurniture(meta.furniture as BoardFurnitureItemData[]);
+      setFurniture((meta.furniture ?? []) as BoardFurnitureItemData[]);
       setSavedView(meta.view ?? { zoom: 100, panX: 0, panY: 0 });
     } catch (err) {
       if (seq !== loadSeqRef.current) return;
@@ -315,6 +330,139 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
       for (const unsub of unsubscribes) unsub?.();
     };
   }, [notesVaultValid, currentFolder, loadBoard]);
+
+  // ── SKY-11191 §11: wiki-link overlay + minimap ──────────────────────────
+  //
+  // Both are VIEW state, deliberately not persisted anywhere: the ticket's
+  // third acceptance criterion is that killing and reloading the app needs no
+  // stored state for either to reconstruct. The overlay starts off (it is a
+  // toggle, and an unasked-for web of lines over a fresh board is noise); the
+  // minimap starts on, because it is the board's own shape and costs nothing
+  // to read.
+  const [wikiLinkOverlay, setWikiLinkOverlay] = useState(false);
+  const [showMinimap, setShowMinimap] = useState(true);
+
+  // The link graph itself is the Vault Graph's index (vaultGraph.ts) — the
+  // one that already resolves `[[wikilinks]]` by note name and records
+  // backlinks. Fetched only while the overlay is on, and refetched when the
+  // watcher reports a topology change (a link added or removed).
+  const [graphEdges, setGraphEdges] = useState<VaultGraphEdge[]>([]);
+
+  useEffect(() => {
+    if (!wikiLinkOverlay || !notesVaultValid) {
+      setGraphEdges([]);
+      return;
+    }
+    let cancelled = false;
+    const fetchEdges = async () => {
+      try {
+        const res = await window.api.vaultGraphEdges('notes');
+        if (!cancelled) setGraphEdges(res.edges);
+      } catch (err) {
+        // The overlay is an enhancement over a board that works without it —
+        // a graph that cannot be read draws no connectors rather than
+        // taking the board down with it.
+        console.warn('[Boards] failed to read the vault link graph', err);
+        if (!cancelled) setGraphEdges([]);
+      }
+    };
+    void fetchEdges();
+    const unsubscribe = window.api.onVaultGraphTopologyChanged?.(() => { void fetchEdges(); });
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [wikiLinkOverlay, notesVaultValid]);
+
+  const wikiLinks = useMemo(
+    () =>
+      wikiLinkOverlay
+        ? boardWikiLinks({ folderPath: currentFolder, items, edges: graphEdges, furniture })
+        : [],
+    [wikiLinkOverlay, currentFolder, items, graphEdges, furniture],
+  );
+
+  // Ticket 5's `column` boxes are anchors the canvas does not lay out itself —
+  // their geometry lives in Store B, so it is resolved here and handed over.
+  const linkAnchors = useMemo(
+    () => (wikiLinkOverlay ? furnitureAnchorRects(furniture) : undefined),
+    [wikiLinkOverlay, furniture],
+  );
+
+  // ── SKY-11191 §11: cross-board search ───────────────────────────────────
+  //
+  // The name index is `listNotesVault('')` — already recursive, so one call
+  // from the vault root indexes every folder and note. Loaded lazily on the
+  // first keystroke and dropped when the vault changes, so a board that is
+  // never searched never pays for the walk.
+  const [searchQuery, setSearchQuery] = useState('');
+  const [vaultIndex, setVaultIndex] = useState<VaultIndexEntry[] | null>(null);
+  const [indexing, setIndexing] = useState(false);
+  /** The hit to select once its board is open. `seq` re-fires on the same hit. */
+  const [selectRequest, setSelectRequest] = useState<{ itemPath: string; seq: number } | null>(null);
+  const selectSeqRef = useRef(0);
+
+  useEffect(() => {
+    // A vault mutation (create, rename, delete) invalidates the name index.
+    setVaultIndex(null);
+  }, [notesVaultRoot, items]);
+
+  useEffect(() => {
+    if (!searchQuery.trim() || vaultIndex !== null || !notesVaultValid) return;
+    let cancelled = false;
+    setIndexing(true);
+    void (async () => {
+      try {
+        const res = (await window.api.listNotesVault('')) as { items: VaultIndexEntry[] } | { error: string };
+        if (cancelled) return;
+        setVaultIndex('error' in res ? [] : res.items);
+      } catch {
+        if (!cancelled) setVaultIndex([]);
+      } finally {
+        if (!cancelled) setIndexing(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [searchQuery, vaultIndex, notesVaultValid]);
+
+  const searchHits = useMemo(
+    () => (vaultIndex ? searchVaultIndex(vaultIndex, searchQuery) : []),
+    [vaultIndex, searchQuery],
+  );
+
+  /**
+   * Navigate to the board that CONTAINS the hit and select the item there —
+   * including for a hit nested many boards down, which is why the breadcrumb
+   * is rebuilt from the hit's folder path rather than pushed onto.
+   */
+  const handleSearchHit = useCallback((hit: BoardSearchHit) => {
+    setBreadcrumb(breadcrumbForFolder(hit.boardPath));
+    setSelectRequest({ itemPath: hit.itemPath, seq: ++selectSeqRef.current });
+    setSearchQuery('');
+  }, []);
+
+  /** Which hit Enter would take. Reset whenever the result set changes. */
+  const [activeHit, setActiveHit] = useState(0);
+  useEffect(() => { setActiveHit(0); }, [searchQuery]);
+
+  const handleSearchKeyDown = useCallback((e: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') { setSearchQuery(''); return; }
+    if (searchHits.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveHit((i) => (i + 1) % searchHits.length);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveHit((i) => (i - 1 + searchHits.length) % searchHits.length);
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSearchHit(searchHits[activeHit] ?? searchHits[0]);
+    }
+  }, [searchHits, activeHit, handleSearchHit]);
 
   const handleViewChange = useCallback((_zoom: number, _panX: number, _panY: number) => {
     // View is UI state — persisted via the board metadata store
@@ -549,6 +697,13 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
 
   return (
     <div className="boards-tab-panel" role="main" aria-label="Boards">
+      {/*
+        SKY-11191: the crumb bar scrolls horizontally, which makes it a
+        clipping context — the search results have to drop out of a wrapper
+        around it rather than out of the bar itself, or a long breadcrumb
+        stack would cut them off.
+      */}
+      <div className="boards-tab-panel__chrome">
       {/* Breadcrumb nav */}
       <nav className="boards-tab-panel__breadcrumb" aria-label="Board navigation">
         {breadcrumb.map((crumb, i) => (
@@ -595,7 +750,100 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             </button>
           ))}
         </div>
+
+        {/*
+          SKY-11191 §11: the two derived-view toggles. Plain toggle buttons
+          rather than a second radio group — the overlay and the minimap are
+          independent, and either can be on without the other.
+        */}
+        <div className="boards-tab-panel__view-toggles">
+          <button
+            type="button"
+            className={
+              'boards-tab-panel__toggle' +
+              (wikiLinkOverlay ? ' boards-tab-panel__toggle--active' : '')
+            }
+            aria-pressed={wikiLinkOverlay}
+            data-toggle="links"
+            title="Show a dashed connector between cards on this board that link to each other"
+            onClick={() => setWikiLinkOverlay((on) => !on)}
+          >
+            Links
+          </button>
+          <button
+            type="button"
+            className={
+              'boards-tab-panel__toggle' + (showMinimap ? ' boards-tab-panel__toggle--active' : '')
+            }
+            aria-pressed={showMinimap}
+            data-toggle="minimap"
+            title="Show a small map of this board"
+            onClick={() => setShowMinimap((on) => !on)}
+          >
+            Minimap
+          </button>
+        </div>
+
+        {/*
+          SKY-11191 §11: cross-board search. A real combobox — the results are
+          the control's whole purpose, so the arrow keys have to walk them and
+          `aria-activedescendant` has to name the one Enter would take. A bare
+          field with a list of buttons under it would be reachable only by
+          tabbing past every hit.
+        */}
+        <input
+          type="search"
+          className="boards-tab-panel__search-input"
+          role="combobox"
+          aria-label="Search all boards"
+          aria-expanded={searchHits.length > 0}
+          aria-controls="boards-search-results"
+          aria-activedescendant={searchHits[activeHit] ? searchOptionId(activeHit) : undefined}
+          aria-autocomplete="list"
+          placeholder="Search all boards…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={handleSearchKeyDown}
+        />
       </nav>
+
+      {searchQuery.trim() && (
+        <ul
+          className="boards-tab-panel__search-results"
+          id="boards-search-results"
+          role="listbox"
+          aria-label="Search results"
+        >
+          {searchHits.length === 0 ? (
+            <li className="boards-tab-panel__search-empty" role="presentation">
+              {indexing || vaultIndex === null ? 'Searching…' : 'No matching boards or notes'}
+            </li>
+          ) : (
+            searchHits.map((hit, i) => (
+              <li
+                key={hit.vaultPath}
+                id={searchOptionId(i)}
+                role="option"
+                aria-selected={i === activeHit}
+                className={
+                  'boards-tab-panel__search-hit' +
+                  (i === activeHit ? ' boards-tab-panel__search-hit--active' : '')
+                }
+                data-kind={hit.kind}
+                data-vault-path={hit.vaultPath}
+                // mousedown, not click: the field keeps focus, so a pick can
+                // never race the input's own blur handling.
+                onMouseDown={(e) => { e.preventDefault(); handleSearchHit(hit); }}
+                onMouseEnter={() => setActiveHit(i)}
+              >
+                <span className="boards-tab-panel__search-hit-name">{hit.name}</span>
+                <span className="boards-tab-panel__search-hit-board">{hit.boardLabel}</span>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+      </div>
 
       {/* Canvas area */}
       {loading ? (
@@ -642,6 +890,11 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             onOpenNoteRef={handleOpenNoteRef}
             lineToolActive={lineToolActive}
             onFurniturePick={(id) => void handleFurniturePick(id)}
+            wikiLinks={wikiLinks}
+            wikiLinkOverlay={wikiLinkOverlay}
+            linkAnchors={linkAnchors}
+            showMinimap={showMinimap}
+            selectRequest={selectRequest}
           />
         </div>
       )}

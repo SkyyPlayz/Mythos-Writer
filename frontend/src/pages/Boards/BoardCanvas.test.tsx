@@ -284,3 +284,130 @@ describe('the visible zoom-out limit (owner ruling 4)', () => {
     expect(document.querySelector('.board-canvas__root')?.getAttribute('data-min-zoom')).toBe('40');
   });
 });
+
+// ── SKY-11191 §11: overlay, minimap, and search reveal ──────────────────────
+
+describe('wiki-link overlay (§11)', () => {
+  const linked: BoardItem[] = [
+    { path: 'a.md', kind: 'note', name: 'A' },
+    { path: 'b.md', kind: 'note', name: 'B' },
+  ];
+  const links = [{ id: 'a→b', from: 'a.md', to: 'b.md', label: 'A links to B' }];
+
+  it('draws nothing until the toggle is on — it is opt-in', () => {
+    render(<BoardCanvas items={linked} savedLayout={{}} savedView={view} wikiLinks={links} />);
+    expect(screen.queryByTestId('board-link-overlay')).toBeNull();
+  });
+
+  it('draws one dashed connector, anchored on the two cards’ borders', () => {
+    render(
+      <BoardCanvas
+        items={linked}
+        savedLayout={{ 'a.md': { x: 0, y: 0, w: 100, h: 100 }, 'b.md': { x: 300, y: 0, w: 100, h: 100 } }}
+        savedView={view}
+        wikiLinks={links}
+        wikiLinkOverlay
+      />,
+    );
+    const line = document.querySelector('.board-canvas__link') as SVGLineElement;
+    expect(line).not.toBeNull();
+    // Right edge of A to left edge of B, both at the shared centre height.
+    expect(line.getAttribute('x1')).toBe('100');
+    expect(line.getAttribute('x2')).toBe('300');
+    expect(line.getAttribute('y1')).toBe('50');
+    expect(screen.getByTestId('board-link-overlay').getAttribute('data-connector-count')).toBe('1');
+  });
+
+  it('follows a card as it is dragged, without needing the layout to be saved first', () => {
+    render(
+      <BoardCanvas
+        items={linked}
+        savedLayout={{ 'a.md': { x: 0, y: 0, w: 100, h: 100 }, 'b.md': { x: 300, y: 0, w: 100, h: 100 } }}
+        savedView={view}
+        wikiLinks={links}
+        wikiLinkOverlay
+      />,
+    );
+    const card = screen.getByLabelText('Note card: B');
+    fireEvent.mouseDown(card, { button: 0, clientX: 0, clientY: 0 });
+    act(() => { fireEvent.mouseMove(window, { clientX: 200, clientY: 0 }); });
+    const line = document.querySelector('.board-canvas__link') as SVGLineElement;
+    expect(parseFloat(line.getAttribute('x2')!)).toBe(500); // 300 + 200 snapped to the 20px grid
+  });
+
+  it('anchors a link whose source is a column furniture box the canvas does not render', () => {
+    render(
+      <BoardCanvas
+        items={linked}
+        savedLayout={{ 'a.md': { x: 400, y: 0, w: 100, h: 100 } }}
+        savedView={view}
+        wikiLinks={[{ id: 'furniture:c1→a.md', from: 'furniture:c1', to: 'a.md', label: 'Cast links to A' }]}
+        linkAnchors={new Map([['furniture:c1', { x: 0, y: 0, w: 100, h: 100 }]])}
+        wikiLinkOverlay
+      />,
+    );
+    const line = document.querySelector('.board-canvas__link') as SVGLineElement;
+    expect(line.getAttribute('x1')).toBe('100');
+    expect(line.getAttribute('x2')).toBe('400');
+  });
+});
+
+describe('minimap (§11)', () => {
+  it('renders one box per item and a viewport indicator, and nothing when toggled off', () => {
+    const { rerender } = render(
+      <BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} showMinimap />,
+    );
+    const map = screen.getByTestId('board-minimap');
+    expect(map.getAttribute('data-box-count')).toBe('3');
+    expect(map.querySelectorAll('.board-canvas__minimap-box')).toHaveLength(3);
+    expect(screen.getByTestId('board-minimap-viewport')).toBeTruthy();
+
+    rerender(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} />);
+    expect(screen.queryByTestId('board-minimap')).toBeNull();
+  });
+
+  it('maps a board too tall for the frame, including cards culled out of the DOM', () => {
+    render(<BoardCanvas items={notes(600)} savedLayout={{}} savedView={view} showMinimap />);
+    // Culling bounds the mounted cards; the map is of the whole board.
+    expect(document.querySelectorAll('.board-canvas__item').length).toBeLessThan(600);
+    expect(screen.getByTestId('board-minimap').getAttribute('data-box-count')).toBe('600');
+  });
+
+  it('is reconstructed from the board alone — nothing is read from or written to storage', () => {
+    const { unmount } = render(
+      <BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} showMinimap />,
+    );
+    const before = screen.getByTestId('board-minimap').innerHTML;
+    unmount();
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} showMinimap />);
+    expect(screen.getByTestId('board-minimap').innerHTML).toBe(before);
+  });
+});
+
+describe('search reveal (§11)', () => {
+  it('selects the requested item once the board holding it has loaded', () => {
+    const { rerender } = render(
+      <BoardCanvas items={[]} savedLayout={{}} savedView={view} selectRequest={{ itemPath: 'n0002.md', seq: 1 }} />,
+    );
+    // The request arrived before the board did — nothing to select yet.
+    expect(document.querySelector('[data-selected="true"]')).toBeNull();
+
+    rerender(
+      <BoardCanvas items={notes(4)} savedLayout={{}} savedView={view} selectRequest={{ itemPath: 'n0002.md', seq: 1 }} />,
+    );
+    expect(screen.getByLabelText('Note card: Note 2 Selected.')).toBeTruthy();
+  });
+
+  it('re-reveals the same item when the request is repeated with a new seq', () => {
+    const { rerender } = render(
+      <BoardCanvas items={notes(4)} savedLayout={{}} savedView={view} selectRequest={{ itemPath: 'n0001.md', seq: 1 }} />,
+    );
+    fireEvent.mouseDown(screen.getByLabelText('Note card: Note 3'), { button: 0 });
+    expect(screen.getByLabelText('Note card: Note 3 Selected.')).toBeTruthy();
+
+    rerender(
+      <BoardCanvas items={notes(4)} savedLayout={{}} savedView={view} selectRequest={{ itemPath: 'n0001.md', seq: 2 }} />,
+    );
+    expect(screen.getByLabelText('Note card: Note 1 Selected.')).toBeTruthy();
+  });
+});

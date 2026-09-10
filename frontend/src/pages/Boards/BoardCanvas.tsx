@@ -8,12 +8,18 @@
  * event wiring over them. Cards render through the memoised BoardCard so a
  * drag frame or a scroll bucket only re-renders the cards whose numbers moved.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactElement, WheelEvent } from 'react';
 import BoardCard, { itemHasThumb } from './BoardCard';
 import type { BoardItem, ItemRect } from './BoardCard';
 import BoardFurniture from './BoardFurniture';
 import type { BoardFurnitureItemData } from './BoardFurniture';
+import BoardLinkOverlay from './BoardLinkOverlay';
+import BoardMinimap from './BoardMinimap';
+import { connectorSegments } from './boardLinks';
+import type { AnchorRect, BoardWikiLink } from './boardLinks';
+import { minimapViewportRect, scrollToCentreWorldPoint } from './boardMinimap';
+import type { MinimapBox } from './boardMinimap';
 import {
   ALIGN_THRESHOLD,
   CULL_MARGIN_X,
@@ -133,6 +139,31 @@ export interface BoardCanvasProps {
    */
   lineToolActive?: boolean;
   onFurniturePick?: (id: string) => void;
+
+  // ── SKY-11191: wiki-link overlay + minimap (§11) ──
+  /**
+   * SKY-11191 §11: the wiki-link overlay's connectors, as ANCHOR KEY pairs
+   * (an item path, or `furniture:<id>`). The panel owns the link graph; the
+   * canvas owns the geometry, because only it knows where a card ended up
+   * after auto-layout, a drag or a resize.
+   */
+  wikiLinks?: readonly BoardWikiLink[];
+  /** Draw those connectors. Off by default — the overlay is a toggle (§11). */
+  wikiLinkOverlay?: boolean;
+  /**
+   * Rects for anchors the canvas does not itself render — today, ticket 5's
+   * `column` furniture boxes, whose x/y/w/h live in Store B rather than in
+   * this component's layout.
+   */
+  linkAnchors?: ReadonlyMap<string, AnchorRect>;
+  /** SKY-11191 §11: show the derived minimap. */
+  showMinimap?: boolean;
+  /**
+   * SKY-11191 §11: select an item and scroll it into view — a cross-board
+   * search hit landing on this board. `seq` is bumped per request so picking
+   * the same hit twice re-reveals it.
+   */
+  selectRequest?: { itemPath: string; seq: number } | null;
 }
 
 interface ResolvedItem {
@@ -168,6 +199,11 @@ export default function BoardCanvas({
   onOpenNoteRef,
   lineToolActive = false,
   onFurniturePick,
+  wikiLinks,
+  wikiLinkOverlay = false,
+  linkAnchors,
+  showMinimap = false,
+  selectRequest = null,
 }: BoardCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -709,17 +745,111 @@ export default function BoardCanvas({
     setGuideLines(guides);
   }, [draggingPath, localPositions, resolvedItems]);
 
+  // ── Where every item actually IS, right now ─────────────────────────────
+  // Saved layout, overridden by the live drag/resize. Computed once per
+  // render for ALL items rather than only the mounted ones: a connector whose
+  // far end is culled still has to leave the card it starts on, and the
+  // minimap is a map of the whole board, not of the visible slice.
+  const itemRects = useMemo(() => {
+    return resolvedItems.map((r) => {
+      const path = r.item.path;
+      const pos = localPositions[path] ?? { x: r.layout.x, y: r.layout.y };
+      const size = localSizes[path] ?? { w: r.layout.w, h: r.layout.h };
+      const def = defaultSize(r.item.kind, r.hasThumb);
+      return { r, x: pos.x, y: pos.y, w: size.w ?? def.w, h: size.h ?? def.h };
+    });
+  }, [resolvedItems, localPositions, localSizes]);
+
+  // ── SKY-11191 §11: wiki-link overlay ────────────────────────────────────
+  // Anchors are item paths plus whatever extra boxes the panel supplied
+  // (ticket 5's `column` furniture). Both maps are built only while the
+  // overlay is on, so a board with the toggle off pays nothing for it.
+  const linkSegments = useMemo(() => {
+    if (!wikiLinkOverlay || !wikiLinks || wikiLinks.length === 0) return [];
+    const anchors = new Map<string, AnchorRect>();
+    for (const { r, x, y, w, h } of itemRects) anchors.set(r.item.path, { x, y, w, h });
+    if (linkAnchors) for (const [key, rect] of linkAnchors) anchors.set(key, rect);
+    return connectorSegments(wikiLinks, anchors);
+  }, [wikiLinkOverlay, wikiLinks, linkAnchors, itemRects]);
+
+  // ── SKY-11191 §11: minimap ──────────────────────────────────────────────
+  const minimapBoxes: MinimapBox[] = useMemo(
+    () =>
+      showMinimap
+        ? itemRects.map(({ r, x, y, w, h }) => ({ key: r.item.path, kind: r.item.kind, x, y, w, h }))
+        : [],
+    [showMinimap, itemRects],
+  );
+
+  const minimapWorld = useMemo(
+    () => ({ w: containerWidth, h: canvasHeight }),
+    [containerWidth, canvasHeight],
+  );
+
+  const minimapViewport = useMemo(
+    () =>
+      minimapViewportRect(
+        { scrollLeft: scrollBucket.x, scrollTop: scrollBucket.y, clientWidth: viewportSize.w, clientHeight: viewportSize.h },
+        pan,
+        zoom,
+        minimapWorld,
+      ),
+    [scrollBucket, viewportSize, pan, zoom, minimapWorld],
+  );
+
+  const handleMinimapNavigate = useCallback(
+    (point: { x: number; y: number }) => {
+      const el = scrollAreaRef.current;
+      if (!el) return;
+      const next = scrollToCentreWorldPoint(
+        point,
+        {
+          clientWidth: el.clientWidth,
+          clientHeight: el.clientHeight,
+          scrollWidth: el.scrollWidth,
+          scrollHeight: el.scrollHeight,
+        },
+        pan,
+        zoom,
+      );
+      el.scrollLeft = next.scrollLeft;
+      el.scrollTop = next.scrollTop;
+      handleScroll();
+    },
+    [pan, zoom, handleScroll],
+  );
+
+  // ── SKY-11191 §11: reveal a searched-for item ───────────────────────────
+  // The request routinely arrives BEFORE the board it points at has finished
+  // loading, so this watches the resolved items rather than firing once: it
+  // stays pending until the named item is actually on the board, then selects
+  // and centres it. Selecting a path that is not there yet would be cleared
+  // by the stale-selection guard above before the user ever saw it.
+  const appliedSelectRef = useRef<number | null>(null);
+  const selectSeq = selectRequest?.seq;
+  const selectPath = selectRequest?.itemPath;
+
+  useEffect(() => {
+    if (selectSeq === undefined || selectPath === undefined) return;
+    if (appliedSelectRef.current === selectSeq) return;
+    const target = itemRects.find((entry) => entry.r.item.path === selectPath);
+    if (!target) return; // not on this board yet — try again when it loads
+    appliedSelectRef.current = selectSeq;
+    setSelectedPath(selectPath);
+    // Centre it: a hit can be far outside the mounted set, and a selection rim
+    // the user has to go looking for is not a reveal.
+    handleMinimapNavigate({ x: target.x + target.w / 2, y: target.y + target.h / 2 });
+  }, [selectSeq, selectPath, itemRects, handleMinimapNavigate]);
+
+  const instanceId = useId();
+
   // ── SKY-11186: cull, then pick each survivor's LOD tier ─────────────────
   // Items fully outside the cull rect are not mounted at all — at any zoom.
   // The dragged and the selected item are exempt (boardLod.shouldMount).
   const mountedCards: ReactElement[] = [];
-  for (const r of resolvedItems) {
+  for (const { r, x: posX, y: posY, w, h } of itemRects) {
     const path = r.item.path;
-    const pos = localPositions[path] ?? { x: r.layout.x, y: r.layout.y };
-    const size = localSizes[path] ?? { w: r.layout.w, h: r.layout.h };
-    const def = defaultSize(r.item.kind, r.hasThumb);
-    const w = size.w ?? def.w;
-    const h = size.h ?? def.h;
+    const pos = { x: posX, y: posY };
     const dragging = draggingPath === path;
     const selected = selectedPath === path;
     if (!shouldMount({ rect: { x: pos.x, y: pos.y, w, h }, dragging, selected }, cullRect)) continue;
@@ -911,11 +1041,39 @@ export default function BoardCanvas({
               </svg>
             )}
 
+            {/*
+              SKY-11191 §11: the wiki-link overlay sits UNDER the cards and
+              inside the same transformed world, so a connector is attached to
+              the two boxes it joins through pan, zoom and drag without any
+              per-frame recalculation of its own.
+            */}
+            {wikiLinkOverlay && linkSegments.length > 0 && (
+              <BoardLinkOverlay
+                segments={linkSegments}
+                width={containerWidth}
+                height={canvasHeight}
+                instanceId={instanceId}
+              />
+            )}
+
             {mountedCards}
             {mountedFurniture}
           </div>
         </div>
       </div>
+
+      {/* SKY-11191 §11: derived minimap. A sibling of the scroll panel, not a
+          child of the world: it must keep its size at every zoom and stay
+          pinned to the panel's corner instead of scrolling away with the
+          board — the same reason the zoom pill lives out here. */}
+      {showMinimap && (
+        <BoardMinimap
+          boxes={minimapBoxes}
+          world={minimapWorld}
+          viewport={minimapViewport}
+          onNavigate={handleMinimapNavigate}
+        />
+      )}
 
       {/*
         SKY-11187 §5: the item menu. Positioned in viewport coordinates and

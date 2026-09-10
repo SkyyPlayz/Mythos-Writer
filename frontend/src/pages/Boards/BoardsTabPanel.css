@@ -156,6 +156,130 @@
   color: var(--text-link, #00f0ff);
 }
 
+/* ── SKY-11191 §11: view toggles + cross-board search ──
+   Both ride the crumb bar's trailing end alongside the tool palette and reuse
+   its neon-on-glass recipe, so the board's chrome stays one row and one
+   visual language. */
+.boards-tab-panel__view-toggles {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 12px;
+}
+
+.boards-tab-panel__toggle {
+  background: none;
+  border: var(--bw, 1px) solid transparent;
+  border-radius: 5px;
+  color: var(--text-secondary, #c8d3e7);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 9px;
+}
+
+.boards-tab-panel__toggle:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+}
+
+.boards-tab-panel__toggle:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+.boards-tab-panel__toggle--active {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  border-color: var(--text-link, #00f0ff);
+  color: var(--text-link, #00f0ff);
+}
+
+/* The results drop out of this wrapper, not out of the bar — the bar scrolls
+   horizontally, so it clips (see BoardsTabPanel.tsx). */
+.boards-tab-panel__chrome {
+  position: relative;
+  flex-shrink: 0;
+  z-index: 20;
+}
+
+.boards-tab-panel__search-input {
+  width: 168px;
+  margin-left: 12px;
+  padding: 3px 9px;
+  border-radius: 5px;
+  border: var(--bw, 1px) solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+  font-size: 12px;
+}
+
+.boards-tab-panel__search-input::placeholder {
+  color: var(--text-tertiary, #8e9db8);
+}
+
+.boards-tab-panel__search-input:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+.boards-tab-panel__search-results {
+  position: absolute;
+  top: 100%;
+  right: 16px;
+  z-index: 30;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  width: 288px;
+  max-height: 320px;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: var(--bw, 1px) solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--glass-fill-fallback, rgb(13 16 28));
+  box-shadow: 0 14px 40px rgb(3 5 12 / 0.6);
+}
+
+.boards-tab-panel__search-hit {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* One highlight for both the pointer and the arrow keys: the active option is
+   the one Enter takes, and hovering makes that option active. */
+.boards-tab-panel__search-hit--active {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+}
+
+.boards-tab-panel__search-hit-name {
+  color: var(--text-primary, #f0f3fc);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Which board the hit lives on — the whole point of a cross-board search is
+   that two notes can share a name. */
+.boards-tab-panel__search-hit-board {
+  color: var(--text-tertiary, #8e9db8);
+  font-size: 11px;
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}
+
+.boards-tab-panel__search-empty {
+  padding: 6px 8px;
+  color: var(--text-tertiary, #8e9db8);
+  font-size: 12px;
+}
+
 /* The canvas fills whatever the crumb bar leaves; the empty-board hint is
    layered over it (see BoardsTabPanel.tsx) instead of replacing it. */
 .boards-tab-panel__canvas-wrap {
