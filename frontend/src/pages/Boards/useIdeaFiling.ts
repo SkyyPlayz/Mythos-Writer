@@ -38,12 +38,14 @@
  * the user's own click: the hard constraint is about agent autonomy, not about
  * a folder being an implicit side effect of an action the user just took.
  */
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 import {
+  IDEA_FOLDERS,
   IDEA_TARGET_FOLDER,
   ideaNoteBody,
   ideaNoteName,
+  ideaTargetFolder,
   isIdeaFiled,
   type IdeaCategory,
 } from './ideaFiling';
@@ -170,4 +172,64 @@ export function useIdeaFiling(): IdeaFiling {
   }, []);
 
   return { filingKey, fileIdea };
+}
+
+/**
+ * §3 already-filed detection, read from the vault rather than from a flag.
+ *
+ * Lists the three target folders and answers "does a note of this name already
+ * exist in the folder this idea maps to". Because it is derived from note
+ * NAMES, an idea filed in a previous session and a note the user typed by hand
+ * both show `Filed ✓`, and both block the duplicate.
+ *
+ * It re-reads on `vault:notes-updated`, so renaming a note away un-blocks its
+ * idea without a reload. Spec §3 calls that out as intended behaviour.
+ *
+ * Read-only: nothing here can create a note.
+ */
+export function useFiledIdeas(notesVaultValid: boolean): {
+  isFiled: (idea: { cat: IdeaCategory; title: string }) => boolean;
+  refresh: () => void;
+} {
+  const [namesByFolder, setNamesByFolder] = useState<Record<string, string[]>>({});
+  const [tick, setTick] = useState(0);
+  const refresh = useCallback(() => setTick((t) => t + 1), []);
+
+  useEffect(() => {
+    if (!notesVaultValid) {
+      setNamesByFolder({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const entries = await Promise.all(IDEA_FOLDERS.map(async (folder) => {
+        const res = await window.api.listNotesVault(folder);
+        // A missing folder is not an error here — it just has no notes yet, so
+        // nothing in it is filed. Creating it is the `File` click's job.
+        if ('error' in res) return [folder, [] as string[]] as const;
+        const names = res.items
+          .filter((i) => !i.isDirectory && !i.path.includes('/') && /\.md$/i.test(i.name))
+          .map((i) => i.name);
+        return [folder, names] as const;
+      }));
+      if (cancelled) return;
+      setNamesByFolder(Object.fromEntries(entries));
+    })();
+    return () => { cancelled = true; };
+  }, [notesVaultValid, tick]);
+
+  // Filing writes the note itself, and an app self-write does not always reach
+  // the notes watcher — so callers also refresh() explicitly after a file.
+  useEffect(() => {
+    if (!notesVaultValid) return;
+    const unsub = window.api.onVaultNotesUpdated?.(() => refresh());
+    return () => { unsub?.(); };
+  }, [notesVaultValid, refresh]);
+
+  const isFiled = useCallback((idea: { cat: IdeaCategory; title: string }) => {
+    const folder = ideaTargetFolder(idea.cat);
+    return isIdeaFiled(namesByFolder[folder] ?? [], idea.title);
+  }, [namesByFolder]);
+
+  return { isFiled, refresh };
 }

@@ -3027,6 +3027,13 @@ export interface AppSettings {
    */
   notesBoard?: {
     minZoom?: number;
+    /**
+     * SKY-11192 (COMPANY-STANDARDS §3a): off-by-default flag for the unified
+     * Brainstorm board. Absent or false = the legacy free-form idea canvas.
+     * Persisted here so the renderer's toggle survives a restart; the main
+     * process reads it only to keep the shape valid on save.
+     */
+    brainstormUnified?: boolean;
   };
   /** SKY-130: last-opened scene for cross-restart restore. */
   lastOpenedScene?: LastOpenedScene;

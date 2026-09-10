@@ -37,6 +37,12 @@ import {
 import { loadBrainstormBoard, saveBrainstormBoard } from './brainstormBoardStore';
 import { registerQuitFlusher } from './lib/flushBeforeQuit';
 import BoardCanvas from './components/BrainstormBoard/BoardCanvas';
+import BrainstormBoardPage, {
+  clampStripHeight,
+  STRIP_DEFAULT_H,
+} from './pages/Boards/BrainstormBoardPage';
+import { useFiledIdeas, useIdeaFiling, userGestureFrom } from './pages/Boards/useIdeaFiling';
+import { IDEA_FOLDERS, ideaTargetFolder } from './pages/Boards/ideaFiling';
 import IdeaCollectionsPanel, {
   type CollectionIdea,
 } from './components/BrainstormBoard/IdeaCollectionsPanel';
@@ -155,6 +161,17 @@ const EXPLORE_PROMPTS: ReadonlyArray<readonly [string, string]> = [
   ['What If Scenarios', 'Give me three “what if” scenarios that could raise the stakes.'],
   ['Surprise Me', 'Surprise me with an unexpected story idea.'],
 ] as const;
+
+/**
+ * SKY-11192 §1: the pill the Board page opens on.
+ *
+ * Module-level, not component state, because the spec asks for per-SESSION
+ * persistence: reopening the Board page mid-session must return to the same
+ * folder, and BrainstormPage unmounts when the user leaves the tab. It is
+ * deliberately not persisted to disk — per-launch stickiness was not asked
+ * for, and a folder the user visited once should not outlive the session.
+ */
+let sessionBoardFolder: string = IDEA_FOLDERS[0];
 
 // M20: chat-stacked board height limits (prototype bsBoardResizeH clamp).
 const CHAT_BOARD_MIN_H = 150;
@@ -382,6 +399,19 @@ interface Props {
    *  embedding uses the prototype's curator copy (line 3221); story-side
    *  embeddings keep the default. */
   inputPlaceholder?: string;
+  /**
+   * SKY-11192 (COMPANY-STANDARDS §3a): the unified-board flag. ON swaps the
+   * Board page and the chat strip onto the same vault-backed canvas the Notes
+   * Board tab renders, and turns Idea Collections' `+` into a real `File`.
+   * OFF is the legacy free-form idea canvas, untouched.
+   */
+  unifiedBoard?: boolean;
+  /** SKY-11192: needed by the unified board — it renders a real vault folder. */
+  notesVaultValid?: boolean;
+  /** SKY-11192: Settings → Editor → Notes Board zoom-out limit. */
+  boardMinZoom?: number;
+  /** SKY-11192: show a vault folder in the Notes Board tab (the `Open` link). */
+  onOpenBoardFolder?: (folderPath: string) => void;
 }
 
 const MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
@@ -395,7 +425,7 @@ const MIC_ICONS: Record<VoiceDictationState, string> = {
   idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
 };
 
-export default function BrainstormPage({ onClose, enabled = true, onOpenSettings, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false, inputPlaceholder = 'Ask about your story — characters, plot, world-building…' }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onOpenSettings, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false, inputPlaceholder = 'Ask about your story — characters, plot, world-building…', unifiedBoard = false, notesVaultValid = false, boardMinZoom, onOpenBoardFolder }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -964,6 +994,93 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── SKY-11192: unified board (flag-gated) ────────────────────────────────
+
+  // The scope folder is owned HERE, not inside the board component, because
+  // the Board page and the Agent Chat strip must show the same board (§2 —
+  // the strip has no selection of its own).
+  const [boardFolder, setBoardFolderState] = useState<string>(sessionBoardFolder);
+  const setBoardFolder = useCallback((folder: string) => {
+    sessionBoardFolder = folder;
+    setBoardFolderState(folder);
+  }, []);
+
+  const filedIdeas = useFiledIdeas(unifiedBoard && notesVaultValid);
+  const { filingKey, fileIdea } = useIdeaFiling();
+
+  /**
+   * CEO ruling 2: the retired board's cards become real notes, once, the first
+   * time the unified board is actually shown. Not at boot — with the flag off
+   * the legacy board is still the page the user is looking at, and migrating
+   * out from under it would empty a page they are using.
+   *
+   * The main-process half is idempotent (it parks the source file), so the
+   * `once` ref here is a courtesy, not the correctness argument.
+   */
+  const migrationRunRef = useRef(false);
+  useEffect(() => {
+    if (!unifiedBoard || !notesVaultValid) return;
+    if (migrationRunRef.current) return;
+    migrationRunRef.current = true;
+    void (async () => {
+      try {
+        const res = await window.api.brainstormBoard?.migrateToNotes?.();
+        if (res?.migrated && res.created.length > 0) {
+          showToast(`Moved ${res.created.length} idea${res.created.length === 1 ? '' : 's'} into your notes`);
+          filedIdeas.refresh();
+        }
+      } catch { /* the board file stays put and is retried next launch */ }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot; showToast/filedIdeas are stable enough and re-running is the bug
+  }, [unifiedBoard, notesVaultValid]);
+
+  /**
+   * §3 — file ONE idea, on ONE direct user click.
+   *
+   * `userGestureFrom(e)` is the load-bearing line: it returns a token only for
+   * a trusted DOM event, and `fileIdea` refuses to write without one. An agent
+   * turn, a timer or a batch action has no such event and therefore cannot
+   * reach the write, which is the hard constraint from the ticket (AC 4).
+   */
+  const handleFileIdea = useCallback(async (
+    event: React.MouseEvent,
+    idea: CollectionIdea,
+  ) => {
+    const result = await fileIdea(userGestureFrom(event), {
+      key: idea.key,
+      cat: idea.cat,
+      title: idea.title,
+      desc: idea.desc,
+      chips: idea.chips,
+    });
+    if (!result.ok) {
+      if (result.reason !== 'busy') showToast(result.message);
+      return;
+    }
+    // An app-created note does not reliably reach the notes watcher, so the
+    // filed-state and the board are refreshed explicitly rather than waited on.
+    filedIdeas.refresh();
+    setBoardFolder(result.folderPath);
+    setMode('board');
+    showToast(`Filed “${result.noteName}” into ${result.folderPath}`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileIdea, setBoardFolder]);
+
+  /** §3 `Open`: show the idea's board. */
+  const handleOpenFiledIdea = useCallback((idea: CollectionIdea) => {
+    const folder = ideaTargetFolder(idea.cat);
+    setBoardFolder(folder);
+    setMode('board');
+    onOpenBoardFolder?.(folder);
+  }, [setBoardFolder, onOpenBoardFolder]);
+
+  const ideaFilingMode = useMemo(() => (unifiedBoard ? {
+    isFiled: (idea: CollectionIdea) => filedIdeas.isFiled({ cat: idea.cat, title: idea.title }),
+    filingKey,
+    onFile: (e: React.MouseEvent, idea: CollectionIdea) => { void handleFileIdea(e, idea); },
+    onOpen: handleOpenFiledIdea,
+  } : undefined), [unifiedBoard, filedIdeas, filingKey, handleFileIdea, handleOpenFiledIdea]);
+
   // M20: `+ Idea` header button (prototype bsAddIdea) — lands near Loose Ideas.
   const addLooseIdea = useCallback(() => {
     setBoard((b) => {
@@ -983,15 +1100,24 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   }, []);
 
   // M20: chat-page stacked board drag-bar (prototype bsBoardResizeH).
+  //
+  // SKY-11192 §2 / CEO ruling 3: under the unified board the strip has a
+  // pinned band — 240 default, 140 floor, and 480 or 60% of the chat panel,
+  // whichever is smaller, so the transcript never drops below a readable few
+  // lines. Dragging below the floor SNAPS to it; the strip is only ever hidden
+  // by the explicit Board toggle.
   const handleChatBoardResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const startY = e.clientY;
     const startHeight = chatBoardHeight;
+    // The 60% cap is of the panel the strip lives in, measured at drag start.
+    const panelHeight = (e.currentTarget as HTMLElement)
+      .closest('.brainstorm-chat-col')?.clientHeight ?? 0;
     const move = (ev: MouseEvent) => {
-      setChatBoardHeight(Math.max(
-        CHAT_BOARD_MIN_H,
-        Math.min(CHAT_BOARD_MAX_H, startHeight - (ev.clientY - startY)),
-      ));
+      const dragged = startHeight - (ev.clientY - startY);
+      setChatBoardHeight(unifiedBoard
+        ? clampStripHeight(dragged, panelHeight)
+        : Math.max(CHAT_BOARD_MIN_H, Math.min(CHAT_BOARD_MAX_H, dragged)));
     };
     const up = () => {
       window.removeEventListener('mousemove', move);
@@ -999,7 +1125,17 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);
-  }, [chatBoardHeight]);
+  }, [chatBoardHeight, unifiedBoard]);
+
+  // §2: the unified strip opens at its own default (240), not the legacy 380.
+  // Applied on the flag rather than at useState so a user who has already
+  // dragged the legacy strip this session is not yanked back on flag flip.
+  const unifiedStripDefaultRef = useRef(false);
+  useEffect(() => {
+    if (!unifiedBoard || unifiedStripDefaultRef.current) return;
+    unifiedStripDefaultRef.current = true;
+    setChatBoardHeight(STRIP_DEFAULT_H);
+  }, [unifiedBoard]);
 
   // SKY-1485: keep proposalsRef in sync so async confirm/reject callbacks read latest state
   useEffect(() => {
@@ -2319,6 +2455,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
             placedTitles={placedTitles}
             onPlace={placeIdeaOnBoard}
             showToast={showToast}
+            filing={ideaFilingMode}
           />
         )}
       <div className={`brainstorm-body${compact ? ' brainstorm-body--compact' : ''}`}>
@@ -2639,7 +2776,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
           )}
           {/* M20: Board toggle — the ONE canvas stacked under the chat with a
               drag-bar height (prototype bsChatBoard / bsBoardResizeH). */}
-          {!compact && chatBoardOpen && board && (
+          {!compact && chatBoardOpen && (unifiedBoard || board) && (
             <>
               <div
                 className="bs-board-resize"
@@ -2649,6 +2786,16 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
               >
                 <div className="bs-board-resize-grip" aria-hidden="true" />
               </div>
+              {unifiedBoard ? (
+                <BrainstormBoardPage
+                  variant="strip"
+                  stripHeight={chatBoardHeight}
+                  notesVaultValid={notesVaultValid}
+                  minZoom={boardMinZoom}
+                  activeFolder={boardFolder}
+                  onActiveFolderChange={setBoardFolder}
+                />
+              ) : board && (
               <BoardCanvas
                 cards={board.cards}
                 links={board.links}
@@ -2661,6 +2808,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                 synced={boardSynced}
                 stackedHeight={chatBoardHeight}
               />
+              )}
             </>
           )}
         </div>
@@ -3139,10 +3287,21 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
             onPlace={placeIdeaOnBoard}
             showToast={showToast}
             manualOnly={!aiEnabled}
+            filing={ideaFilingMode}
           />
         )}
         <div className="bsc-body">
-          {board && (
+          {/* SKY-11192: the ONE canvas — the same component and the same
+              vault-backed state the Notes Board tab renders, so an edit here
+              is already an edit there. Flag off keeps the legacy canvas. */}
+          {unifiedBoard ? (
+            <BrainstormBoardPage
+              notesVaultValid={notesVaultValid}
+              minZoom={boardMinZoom}
+              activeFolder={boardFolder}
+              onActiveFolderChange={setBoardFolder}
+            />
+          ) : board && (
             <BoardCanvas
               cards={board.cards}
               links={board.links}
