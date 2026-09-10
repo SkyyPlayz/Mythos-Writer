@@ -1,0 +1,122 @@
+/* SKY-11189 (Notes Board 6/9): Recently Deleted panel — anchored dropdown,
+   same visual language as BoardCanvas's item context menu. */
+
+.recently-deleted-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 200;
+  width: 280px;
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  border: var(--bw, 1px) solid var(--border-default, rgb(255 255 255 / 0.12));
+  border-radius: 10px;
+  background: var(--glass-fill-fallback, rgb(13 16 28));
+  box-shadow: 0 12px 32px rgb(3 5 12 / 0.6);
+  overflow: hidden;
+}
+
+.recently-deleted-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-default, rgb(255 255 255 / 0.1));
+}
+
+.recently-deleted-panel__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #f0f3fc);
+}
+
+.recently-deleted-panel__empty-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--danger, #e5484d);
+  border-radius: 6px;
+  background: none;
+  color: var(--danger, #e5484d);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.recently-deleted-panel__empty-btn:hover:not(:disabled) {
+  background: var(--danger, #e5484d);
+  color: #fff;
+}
+
+.recently-deleted-panel__empty-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.recently-deleted-panel__empty-msg {
+  padding: 16px 12px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary, rgb(240 243 252 / 0.6));
+  text-align: center;
+}
+
+.recently-deleted-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+}
+
+.recently-deleted-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.recently-deleted-panel__row:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.08));
+}
+
+.recently-deleted-panel__row-icon {
+  flex: none;
+  font-size: 14px;
+}
+
+.recently-deleted-panel__row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.recently-deleted-panel__row-label {
+  font-size: 12.5px;
+  color: var(--text-primary, #f0f3fc);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recently-deleted-panel__row-path {
+  font-size: 11px;
+  color: var(--text-secondary, rgb(240 243 252 / 0.5));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recently-deleted-panel__restore-btn {
+  flex: none;
+  padding: 3px 8px;
+  border: 1px solid var(--border-default, rgb(255 255 255 / 0.16));
+  border-radius: 6px;
+  background: none;
+  color: var(--text-primary, #f0f3fc);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.recently-deleted-panel__restore-btn:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+}

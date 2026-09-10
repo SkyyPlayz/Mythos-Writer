@@ -894,3 +894,12 @@
     transition: none;
   }
 }
+
+.board-canvas__menu-item--danger {
+  color: var(--danger, #e5484d);
+}
+
+.board-canvas__menu-item--danger:hover {
+  background: var(--danger, #e5484d);
+  color: #fff;
+}

@@ -69,6 +69,26 @@ const api = {
   }),
   onVaultNotesUpdated: vi.fn(() => () => {}),
   onVaultNotesAssetChanged: vi.fn(() => () => {}),
+  // SKY-11189 §7/§8
+  notesBoardTrashItems: vi.fn(async (
+    _folder: string,
+    targets: Array<{ kind: string; itemPath?: string; furnitureId?: string; label: string }>,
+  ) => ({
+    entries: targets.map((t, i) => ({
+      id: `pending-${i}`,
+      groupId: `group-${i}`,
+      kind: t.kind,
+      boardPath: '',
+      vaultPath: t.itemPath,
+      furnitureId: t.furnitureId,
+      label: t.label,
+      deletedAt: new Date().toISOString(),
+    })),
+    undoWindowMs: 8000,
+  })),
+  notesBoardRestore: vi.fn(async () => ({ restored: true, restoredIds: [] })),
+  notesBoardRecentlyDeletedList: vi.fn(async () => ({ entries: [] as NotesBoardPendingEntry[] })),
+  notesBoardEmptyTrash: vi.fn(async () => ({ flushedGroupIds: [] })),
 };
 
 beforeEach(() => {
@@ -247,5 +267,68 @@ describe('SKY-11187 — dragging a card stays metadata-only', () => {
     expect(api.notesBoardPatchLayout).toHaveBeenCalledTimes(1);
     expect(api.notesBoardCreateItem).not.toHaveBeenCalled();
     expect(api.notesBoardRenameItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('SKY-11189 §7/§8 — trash + undo toast + Recently Deleted panel wiring', () => {
+  it('Delete on a selected card calls notesBoardTrashItems with the real vault path', async () => {
+    vaultItems = [{ path: 'Idea.md', name: 'Idea.md', isDirectory: false }];
+    await mountPanel();
+    const card = await screen.findByLabelText('Note card: Idea');
+    act(() => { card.focus(); });
+    await act(async () => { fireEvent.keyDown(window, { key: 'Delete' }); });
+
+    expect(api.notesBoardTrashItems).toHaveBeenCalledWith('', [
+      { kind: 'note', itemPath: 'Idea.md', label: 'Idea.md' },
+    ]);
+  });
+
+  it('shows a toast with an Undo action, and clicking it calls notesBoardRestore', async () => {
+    vaultItems = [{ path: 'Idea.md', name: 'Idea.md', isDirectory: false }];
+    await mountPanel();
+    const card = await screen.findByLabelText('Note card: Idea');
+    act(() => { card.focus(); });
+    await act(async () => { fireEvent.keyDown(window, { key: 'Delete' }); });
+
+    const undoBtn = await screen.findByRole('button', { name: 'Undo' });
+    await act(async () => { fireEvent.click(undoBtn); });
+    expect(api.notesBoardRestore).toHaveBeenCalledWith('pending-0');
+  });
+
+  it('the Recently Deleted button opens a panel listing pending entries', async () => {
+    api.notesBoardRecentlyDeletedList.mockResolvedValueOnce({
+      entries: [
+        { id: 'x', groupId: 'g', kind: 'note', boardPath: '', vaultPath: 'Idea.md', label: 'Idea.md', deletedAt: new Date().toISOString() },
+      ],
+    });
+    await mountPanel();
+    fireEvent.click(screen.getByRole('button', { name: 'Recently Deleted' }));
+    await waitFor(() => expect(screen.getAllByText('Idea.md').length).toBeGreaterThan(0));
+  });
+
+  it('Restore in the panel calls notesBoardRestore with that entry\'s id', async () => {
+    api.notesBoardRecentlyDeletedList.mockResolvedValue({
+      entries: [
+        { id: 'x', groupId: 'g', kind: 'note', boardPath: '', vaultPath: 'Idea.md', label: 'Idea.md', deletedAt: new Date().toISOString() },
+      ],
+    });
+    await mountPanel();
+    fireEvent.click(screen.getByRole('button', { name: 'Recently Deleted' }));
+    const restoreBtn = await screen.findByRole('button', { name: 'Restore' });
+    await act(async () => { fireEvent.click(restoreBtn); });
+    expect(api.notesBoardRestore).toHaveBeenCalledWith('x');
+  });
+
+  it('Empty calls notesBoardEmptyTrash and refreshes the list', async () => {
+    api.notesBoardRecentlyDeletedList.mockResolvedValue({
+      entries: [
+        { id: 'x', groupId: 'g', kind: 'note', boardPath: '', vaultPath: 'Idea.md', label: 'Idea.md', deletedAt: new Date().toISOString() },
+      ],
+    });
+    await mountPanel();
+    fireEvent.click(screen.getByRole('button', { name: 'Recently Deleted' }));
+    const emptyBtn = await screen.findByRole('button', { name: 'Empty' });
+    await act(async () => { fireEvent.click(emptyBtn); });
+    expect(api.notesBoardEmptyTrash).toHaveBeenCalledTimes(1);
   });
 });

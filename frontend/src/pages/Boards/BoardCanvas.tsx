@@ -117,6 +117,14 @@ export interface BoardCanvasProps {
   /** Commit a typed name. Empty/unchanged is resolved as a no-op in main. */
   onRenameCommit?: (itemPath: string, newName: string) => void;
   onRenameCancel?: () => void;
+  /**
+   * SKY-11189 §7/§8: Delete/Backspace or the context menu's Delete entry, for
+   * the current selection (one or more paths, board-relative — matches every
+   * other item path in this component). The canvas does not trash anything
+   * itself — same "report the intent, the panel owns the filesystem call"
+   * split §5's onCreateItem already established.
+   */
+  onTrashItems?: (itemPaths: string[]) => void;
 
   // ── SKY-11188: furniture (§4) ──
   /** Board-only items (columns, checklists, tables, images, sketches, swatches, lines). */
@@ -189,6 +197,7 @@ export default function BoardCanvas({
   onRequestRename,
   onRenameCommit,
   onRenameCancel,
+  onTrashItems,
   furniture = [],
   itemKeysByPath = {},
   onFurnitureMove,
@@ -220,6 +229,17 @@ export default function BoardCanvas({
   // unifying the two into one generic key, so the existing card drag/resize
   // code above is untouched by this ticket.
   const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
+  // SKY-11189 §7: a ctrl/cmd/shift+click adds to this set instead of replacing
+  // `selectedPath` — "canvas Delete/Backspace trashes the entire current
+  // selection" needs a real multi-selection, which nothing on this canvas
+  // had before (drag/resize/rename all stay single-item, keyed off
+  // `selectedPath`). Empty means "no additive selection is active" — the
+  // effective selection then falls back to `selectedPath` alone.
+  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
+  const effectiveSelection = useMemo(
+    () => (multiSelected.size > 0 ? multiSelected : new Set(selectedPath ? [selectedPath] : [])),
+    [multiSelected, selectedPath],
+  );
 
   const minZoom = clampMinZoom(minZoomProp);
   const scale = zoom / 100;
@@ -333,6 +353,11 @@ export default function BoardCanvas({
     if (selectedPath && !items.some((item) => item.path === selectedPath)) {
       setSelectedPath(null);
     }
+    setMultiSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set([...prev].filter((p) => items.some((item) => item.path === p)));
+      return next.size === prev.size ? prev : next;
+    });
   }, [items, selectedPath]);
 
   useEffect(() => {
@@ -397,6 +422,7 @@ export default function BoardCanvas({
       if ((e.target as HTMLElement).closest('.board-canvas__zoom-controls')) return;
       setSelectedPath(null);
       setSelectedFurnitureId(null);
+      setMultiSelected(new Set());
       // SKY-11187 §5: a placement tool turns that same empty-canvas press
       // into a real vault create at the click point.
       if (activeTool !== 'select') {
@@ -481,6 +507,22 @@ export default function BoardCanvas({
     // starting a drag the user did not ask for.
     if (activeTool !== 'select') return;
     e.stopPropagation();
+    // SKY-11189 §7: ctrl/cmd/shift+click toggles membership in the
+    // multi-selection instead of starting a drag — a modifier click is a
+    // selection gesture, not a move (and the existing single-select drag
+    // below is keyed off exactly one path, so a multi-selected drag isn't
+    // something this canvas supports).
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      setMultiSelected((prev) => {
+        const base = prev.size > 0 ? prev : new Set(selectedPath ? [selectedPath] : []);
+        const next = new Set(base);
+        if (next.has(path)) next.delete(path); else next.add(path);
+        return next;
+      });
+      setSelectedPath(path);
+      return;
+    }
+    setMultiSelected(new Set());
     setSelectedPath(path);
     setSelectedFurnitureId(null);
     itemDragRef.current = {
@@ -492,7 +534,7 @@ export default function BoardCanvas({
       latest: null,
     };
     setDraggingPath(path);
-  }, [activeTool]);
+  }, [activeTool, selectedPath]);
 
   useEffect(() => {
     const onMouseMove = (e: globalThis.MouseEvent) => {
@@ -592,9 +634,45 @@ export default function BoardCanvas({
   const handleItemContextMenu = useCallback((e: MouseEvent<HTMLDivElement>, path: string) => {
     e.preventDefault();
     e.stopPropagation();
-    setSelectedPath(path);
+    // SKY-11189 §7: right-clicking a card that is already part of the
+    // current multi-selection keeps that whole selection (so Delete acts on
+    // all of it) — right-clicking anything else resets to just that card,
+    // the same "click elsewhere clears it" convention every other selection
+    // gesture on this canvas follows.
+    if (!effectiveSelection.has(path)) {
+      setMultiSelected(new Set());
+      setSelectedPath(path);
+    }
     setContextMenu({ path, x: e.clientX, y: e.clientY });
-  }, []);
+  }, [effectiveSelection]);
+
+  const handleTrashSelection = useCallback(() => {
+    const targets = [...effectiveSelection];
+    if (targets.length === 0) return;
+    setSelectedPath(null);
+    setMultiSelected(new Set());
+    setContextMenu(null);
+    onTrashItems?.(targets);
+  }, [effectiveSelection, onTrashItems]);
+
+  // SKY-11189 §7: Delete/Backspace trashes the entire current selection.
+  // Guarded off text inputs and the inline-rename box exactly like the
+  // other keyboard shortcuts in this app (DesktopShell's own keydown
+  // handler follows the same inText pattern).
+  useEffect(() => {
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (renamingPath) return;
+      const target = e.target as HTMLElement;
+      const inText = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (inText) return;
+      if (effectiveSelection.size === 0) return;
+      e.preventDefault();
+      handleTrashSelection();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [effectiveSelection, renamingPath, handleTrashSelection]);
 
   // Any press elsewhere, a scroll, or Escape dismisses the menu — it is a
   // transient pointer affordance, never something to click your way out of.
@@ -851,7 +929,7 @@ export default function BoardCanvas({
     const path = r.item.path;
     const pos = { x: posX, y: posY };
     const dragging = draggingPath === path;
-    const selected = selectedPath === path;
+    const selected = effectiveSelection.has(path);
     if (!shouldMount({ rect: { x: pos.x, y: pos.y, w, h }, dragging, selected }, cullRect)) continue;
     mountedCards.push(
       <BoardCard
@@ -1076,10 +1154,10 @@ export default function BoardCanvas({
       )}
 
       {/*
-        SKY-11187 §5: the item menu. Positioned in viewport coordinates and
-        rendered outside the zoomed world on purpose — chrome must stay
-        legible at 40% zoom. Rename is its only entry: delete belongs to
-        ticket 6's deferred-delete model, not to an ad-hoc one here.
+        SKY-11187 §5 / SKY-11189 §7: the item menu. Positioned in viewport
+        coordinates and rendered outside the zoomed world on purpose — chrome
+        must stay legible at 40% zoom. Delete routes through the deferred-
+        delete model (onTrashItems), never an ad-hoc fs call here.
       */}
       {contextMenu && (
         <div
@@ -1100,6 +1178,14 @@ export default function BoardCanvas({
             }}
           >
             Rename
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="board-canvas__menu-item board-canvas__menu-item--danger"
+            onClick={handleTrashSelection}
+          >
+            {effectiveSelection.size > 1 ? `Delete ${effectiveSelection.size} items` : 'Delete'}
           </button>
         </div>
       )}

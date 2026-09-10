@@ -40,6 +40,7 @@ import { appendChapterToStory, mapAllChapters, reconcileParts, syncChaptersFromP
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import { runQuitFlushers, trackQuitCriticalWrite } from './lib/flushBeforeQuit';
+import { canUndo as canUndoNotesAction, undo as undoNotesAction } from './lib/notesUndoStack';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail, { type NavRailVault } from './AppNavRail';
@@ -2768,6 +2769,28 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         e.preventDefault();
         setSettingsOpen(true);
         return;
+      }
+      // SKY-11189 §8: Ctrl/Cmd+Z undoes the most recent Notes Board delete
+      // (a session-scoped stack — see notesUndoStack.ts — deliberately built
+      // as a generic `{label, undo}` stack so a future ticket can push a
+      // rename/move/drag/furniture undo onto the SAME stack rather than a
+      // second one). Guarded off text inputs exactly like the other
+      // shortcuts here: a focused editor's OWN undo (ProseMirror's keymap,
+      // or plain contentEditable) must keep first claim on Ctrl+Z — this
+      // only fires for the rest of the app, and is a no-op (falls through to
+      // nothing) when the stack is empty, so a bare Ctrl+Z outside any
+      // editor and with nothing pending does nothing.
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
+        const target = e.target as HTMLElement;
+        const inText =
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable;
+        if (!inText && canUndoNotesAction()) {
+          e.preventDefault();
+          void undoNotesAction();
+          return;
+        }
       }
       // SKY-2099: tab-aware shortcut map.
       // SKY-11444: guard against firing while the writer is typing in the

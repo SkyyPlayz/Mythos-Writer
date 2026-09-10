@@ -536,6 +536,14 @@ export const IPC_CHANNELS = {
   // SKY-11187 (Notes Board 4/9): the canvas's own Store A mutations (§5).
   NOTES_BOARD_CREATE_ITEM: 'notesBoard:createItem',
   NOTES_BOARD_RENAME_ITEM: 'notesBoard:renameItem',
+  // SKY-11189 (Notes Board 6/9): trash split by target type + deferred-delete
+  // undo (§7/§8). Supersedes NOTES_BOARD_ITEM_DELETE's Store-B-only stub for
+  // real deletes — that channel stays wired to itemDeleteStub for now (kept
+  // as a defensive no-op path), but trashItems is what the canvas calls.
+  NOTES_BOARD_TRASH_ITEMS: 'notesBoard:trashItems',
+  NOTES_BOARD_RESTORE: 'notesBoard:restore',
+  NOTES_BOARD_RECENTLY_DELETED_LIST: 'notesBoard:recentlyDeletedList',
+  NOTES_BOARD_EMPTY_TRASH: 'notesBoard:emptyTrash',
 
   // SKY-11186 (Notes Board 6/9): note thumbnails — resolve which image is a
   // note's cover (spec §9), serve a cached derivative or the raw source, and
@@ -1227,6 +1235,15 @@ export interface IpcHandlers {
   // SKY-11187 (Notes Board 4/9): vault-mutating canvas operations — see notesBoard.ts §5 block.
   [IPC_CHANNELS.NOTES_BOARD_CREATE_ITEM]: (payload: NotesBoardCreateItemPayload) => NotesBoardCreateItemResponse;
   [IPC_CHANNELS.NOTES_BOARD_RENAME_ITEM]: (payload: NotesBoardRenameItemPayload) => NotesBoardRenameItemResponse;
+  // SKY-11189 (Notes Board 6/9): trash split by target type + deferred-delete — see notesTrash.ts §7/§8.
+  [IPC_CHANNELS.NOTES_BOARD_TRASH_ITEMS]: (payload: NotesBoardTrashItemsPayload) => NotesBoardTrashItemsResponse;
+  [IPC_CHANNELS.NOTES_BOARD_RESTORE]: (payload: NotesBoardRestorePayload) => NotesBoardRestoreResponse;
+  [IPC_CHANNELS.NOTES_BOARD_RECENTLY_DELETED_LIST]: (
+    payload: NotesBoardRecentlyDeletedListPayload,
+  ) => NotesBoardRecentlyDeletedListResponse;
+  [IPC_CHANNELS.NOTES_BOARD_EMPTY_TRASH]: (
+    payload: NotesBoardEmptyTrashPayload,
+  ) => Promise<NotesBoardEmptyTrashResponse>;
 
   // SKY-11186 (Notes Board 6/9): note thumbnails IPC — see noteThumbnails.ts.
   [IPC_CHANNELS.NOTES_THUMB_RESOLVE]: (payload: NotesThumbResolvePayload) => Promise<NotesThumbResolveResponse>;
@@ -1669,6 +1686,57 @@ export interface NotesBoardItemDeletePayload {
 
 export interface NotesBoardItemDeleteResponse {
   key: string | null;
+}
+
+// ─── SKY-11189 (Notes Board 6/9): trash split by target type + deferred-delete (§7/§8) ───
+
+export type NotesBoardTrashTarget =
+  | { kind: 'note' | 'folder'; itemPath: string; label: string }
+  | { kind: 'furniture'; furnitureId: string; label: string };
+
+export interface NotesBoardTrashItemsPayload {
+  folderPath: string;
+  targets: NotesBoardTrashTarget[];
+}
+
+export interface NotesBoardPendingEntry {
+  id: string;
+  groupId: string;
+  kind: 'note' | 'folder' | 'furniture';
+  /** Vault-relative path of the board (folder) this entry belongs to. */
+  boardPath: string;
+  /** Vault-relative path of the note/folder itself — absent for furniture. */
+  vaultPath?: string;
+  furnitureId?: string;
+  label: string;
+  deletedAt: string;
+}
+
+export interface NotesBoardTrashItemsResponse {
+  entries: NotesBoardPendingEntry[];
+  undoWindowMs: number;
+}
+
+export interface NotesBoardRestorePayload {
+  /** Any entry id belonging to the group to restore — see notesTrash.ts's group model. */
+  id: string;
+}
+
+export interface NotesBoardRestoreResponse {
+  restored: boolean;
+  restoredIds: string[];
+}
+
+export type NotesBoardRecentlyDeletedListPayload = Record<string, never>;
+
+export interface NotesBoardRecentlyDeletedListResponse {
+  entries: NotesBoardPendingEntry[];
+}
+
+export type NotesBoardEmptyTrashPayload = Record<string, never>;
+
+export interface NotesBoardEmptyTrashResponse {
+  flushedGroupIds: string[];
 }
 
 // ─── SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5) ───

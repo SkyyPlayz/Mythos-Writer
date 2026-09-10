@@ -454,6 +454,33 @@ import {
   createBoardItem as notesBoardCreateItem,
   boardItemRenameTarget as notesBoardRenameTarget,
 } from './notesBoard.js';
+// SKY-11189 (Notes Board 6/9): trash split by target type + deferred-delete — see notesTrash.ts §7/§8.
+import {
+  trashTargets as notesTrashTargets,
+  restoreEntry as notesTrashRestoreEntry,
+  listPendingForVault as notesTrashListPendingForVault,
+  emptyTrash as notesTrashEmptyTrash,
+  flushAllPendingNotesTrash,
+  invalidatePendingUnderPath,
+  isVaultRelPathPending,
+  isFurniturePending,
+  UNDO_WINDOW_MS as NOTES_TRASH_UNDO_WINDOW_MS,
+  type PendingEntry as NotesTrashPendingEntry,
+} from './notesTrash.js';
+
+/** notesTrash.ts's internal shape -> the IPC-facing NotesBoardPendingEntry. */
+function toIpcPendingEntry(entry: NotesTrashPendingEntry): NotesBoardPendingEntry {
+  return {
+    id: entry.id,
+    groupId: entry.groupId,
+    kind: entry.kind,
+    boardPath: entry.boardRelPath,
+    vaultPath: entry.vaultRelPath,
+    furnitureId: entry.furnitureId,
+    label: entry.label,
+    deletedAt: entry.deletedAt,
+  };
+}
 // SKY-11186 (Notes Board 6/9): note thumbnails — see noteThumbnails.ts.
 import {
   resolveNoteThumbs,
@@ -553,6 +580,13 @@ import type {
   NotesBoardCreateItemResponse,
   NotesBoardRenameItemPayload,
   NotesBoardRenameItemResponse,
+  NotesBoardTrashItemsPayload,
+  NotesBoardTrashItemsResponse,
+  NotesBoardRestorePayload,
+  NotesBoardRestoreResponse,
+  NotesBoardRecentlyDeletedListResponse,
+  NotesBoardEmptyTrashResponse,
+  NotesBoardPendingEntry,
   NotesThumbResolvePayload,
   NotesThumbResolveResponse,
   NotesThumbGetPayload,
@@ -1542,6 +1576,12 @@ function notifyVaultChanged(filePath: string) {
 function notifyNotesVaultChanged(filePath: string, event?: NotesWatchEvent) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     const relPath = path.relative(getNotesVaultRoot(), filePath).split(path.sep).join('/');
+    // SKY-11189 §8: "Invalidate a stack/panel entry if its target changed
+    // externally (edited in Obsidian, or via sync)." A watcher event for a
+    // path we believe is still sitting untouched in a pending-delete window
+    // means that belief just went stale — drop the pending entry rather than
+    // later trashing (or restoring) something someone else already changed.
+    invalidatePendingUnderPath(getNotesVaultRoot(), relPath);
     if ((event === 'add' || event === 'change') && NOTES_ASSET_EXT_RE.test(filePath)) {
       mainWindow.webContents.send('vault:notes-asset-changed', { path: relPath });
       return;
@@ -6432,7 +6472,14 @@ const handlers: IpcHandlers = {
     // even when the configured roots overlap.
     const { items } = listVaultFiles(root, payload.root);
     const listedRoot = payload.root ? path.join(root, payload.root) : root;
-    const filtered = filterNotesListing(items, storyVaultRelPrefix(listedRoot, getVaultRoot()));
+    const rootRelPrefix = payload.root ? `${payload.root}/` : '';
+    // SKY-11189 §8: a pending-delete note/folder is "hidden from the UI" —
+    // this is the Notes-tab tree's listing, so it must honor the same hide
+    // NOTES_BOARD_GET applies to the canvas (both surfaces share one
+    // deferred-delete registry — see notesTrash.ts).
+    const filtered = filterNotesListing(items, storyVaultRelPrefix(listedRoot, getVaultRoot())).filter(
+      (item) => !isVaultRelPathPending(root, `${rootRelPrefix}${item.path}`),
+    );
     // SKY-10511: Scene Crafter's suggested cards show each note's hook line.
     // SKY-11049 / SKY-11212: same bounded read also surfaces character/
     // location/item tag signals for the POV picker's vault-wide fallback and
@@ -6464,6 +6511,16 @@ const handlers: IpcHandlers = {
     // prunes the same dangling entry the next time anything reads that
     // parent board regardless — this just keeps the sidecar tidy sooner and
     // never blocks the real delete on Store B upkeep.
+    //
+    // SKY-11189: deliberately NOT routed through notesTrash.ts's deferred-
+    // delete — this channel is the Notes tab tree's own delete (immediate,
+    // permanent, its own in-vault throwaway-rename-then-rm, per SKY-7995),
+    // and pre-existing E2E coverage (folder-ops-sky7995.spec.ts) asserts it
+    // completes synchronously. SKY-11189's trash-split/undo model is scoped
+    // to the Board canvas's own notesBoard:trashItems channel; a pending-
+    // delete registered THERE still hides the item from this tree's own
+    // listing (NOTES_VAULT_LIST below), so the two surfaces stay consistent
+    // without the tree's delete button needing the same deferred contract.
     try {
       const slash = payload.path.lastIndexOf('/');
       const parentRelPath = slash === -1 ? '' : payload.path.slice(0, slash);
@@ -7231,7 +7288,17 @@ const handlers: IpcHandlers = {
     const root = getNotesVaultRoot();
     const folderPath = payload.folderPath ?? '';
     if (folderPath) safeVaultDirIpcJoin(root, folderPath);
-    return getNotesBoard(root, folderPath);
+    const board = getNotesBoard(root, folderPath);
+    // SKY-11189 §8: "Delete does not move the file immediately ... hidden
+    // from the UI." A pending-delete item still exists in Store A/B — hide
+    // it here, at the read boundary, rather than mutating either store.
+    return {
+      ...board,
+      children: board.children.filter(
+        (c) => !isVaultRelPathPending(root, folderPath ? `${folderPath}/${c.path}` : c.path),
+      ),
+      furniture: board.furniture.filter((f) => !isFurniturePending(root, folderPath, f.id)),
+    };
   },
   [IPC_CHANNELS.NOTES_BOARD_PATCH_LAYOUT]: (
     payload: NotesBoardPatchLayoutPayload
@@ -7301,6 +7368,37 @@ const handlers: IpcHandlers = {
     if (folderPath) safeVaultDirIpcJoin(root, folderPath);
     safeVaultEntryIpcJoin(root, folderPath ? `${folderPath}/${payload.itemPath}` : payload.itemPath);
     return notesBoardItemDeleteStub(root, folderPath, payload.itemPath);
+  },
+
+  // ─── SKY-11189 (Notes Board 6/9): trash split by target type + deferred-delete (§7/§8) ──
+  [IPC_CHANNELS.NOTES_BOARD_TRASH_ITEMS]: (
+    payload: NotesBoardTrashItemsPayload
+  ): NotesBoardTrashItemsResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    for (const target of payload.targets) {
+      if (target.kind !== 'furniture') {
+        safeVaultEntryIpcJoin(root, folderPath ? `${folderPath}/${target.itemPath}` : target.itemPath);
+      }
+    }
+    const { entries } = notesTrashTargets(root, folderPath, payload.targets);
+    return { entries: entries.map(toIpcPendingEntry), undoWindowMs: NOTES_TRASH_UNDO_WINDOW_MS };
+  },
+  [IPC_CHANNELS.NOTES_BOARD_RESTORE]: (payload: NotesBoardRestorePayload): NotesBoardRestoreResponse => {
+    ensureNotesVaultDir();
+    return notesTrashRestoreEntry(payload.id);
+  },
+  [IPC_CHANNELS.NOTES_BOARD_RECENTLY_DELETED_LIST]: (): NotesBoardRecentlyDeletedListResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    return { entries: notesTrashListPendingForVault(root).map(toIpcPendingEntry) };
+  },
+  [IPC_CHANNELS.NOTES_BOARD_EMPTY_TRASH]: async (): Promise<NotesBoardEmptyTrashResponse> => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    return notesTrashEmptyTrash(root);
   },
 
   // ─── SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5) ──
@@ -8756,12 +8854,19 @@ function createWindow() {
     if (quitFlushHandled) return;
     event.preventDefault();
     const win = mainWindow;
-    flushRendererManifestSave(win)
-      .catch(() => { /* best-effort — timeout/error still allows quit to proceed */ })
-      .finally(() => {
-        quitFlushHandled = true;
-        if (!win.isDestroyed()) win.close();
-      });
+    Promise.all([
+      flushRendererManifestSave(win).catch(() => { /* best-effort — timeout/error still allows quit to proceed */ }),
+      // SKY-11189 §8: "Flush happens on whichever comes first: the undo
+      // window elapsing, the app quitting, or the user pressing 'Empty'."
+      // Awaited here so a quit within the undo window still lands every
+      // pending note/folder in the OS trash rather than abandoning it
+      // in limbo (in-memory-only state that a closed process can't act on
+      // after the fact).
+      flushAllPendingNotesTrash().catch(() => { /* best-effort, same as above */ }),
+    ]).finally(() => {
+      quitFlushHandled = true;
+      if (!win.isDestroyed()) win.close();
+    });
   });
 
   // SKY-11363: when a renderer's `beforeunload` handler cancels the unload
