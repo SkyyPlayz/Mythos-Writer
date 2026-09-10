@@ -22,7 +22,6 @@ import ProviderSection from './components/SettingsPanel/sections/ProviderSection
 import ApiKeySection from './components/SettingsPanel/sections/ApiKeySection';
 import AccountSection from './components/SettingsPanel/sections/AccountSection';
 import VaultPathsSection from './components/SettingsPanel/sections/VaultPathsSection';
-import MythosFormatSection from './components/SettingsPanel/sections/MythosFormatSection';
 import VaultHealthSection from './components/SettingsPanel/sections/VaultHealthSection';
 import AgentsSection from './components/SettingsPanel/sections/AgentsSection';
 import AutoLinkerSection from './components/SettingsPanel/sections/AutoLinkerSection';
@@ -1063,9 +1062,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 onPickVaultFolder={handlePickVaultFolder}
                 onSaveVaults={handleSaveVaults}
               />
-
-              {/* Beta 4 M5: vault format card + MythosVault upgrade entry */}
-              <MythosFormatSection />
 
               <VaultHealthSection />
 

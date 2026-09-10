@@ -1,4 +1,8 @@
-// Beta 4 M5 — migration prompt + wizard flow tests (IPC mocked).
+// SKY-10390/SKY-10407 — the v0.4 → MythosVault upgrade migrates silently.
+// No boot prompt, no Settings entry point; this suite asserts the prompt is
+// gone in every case (even when the main process still reports
+// shouldPrompt: true) and that the wizard machinery stays reachable via the
+// global open event for a future explicit trigger.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import MythosMigrationCenter, {
@@ -39,7 +43,6 @@ const mockStatus = vi.fn();
 const mockPlan = vi.fn();
 const mockRun = vi.fn();
 const mockConfirm = vi.fn();
-const mockDismiss = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -47,14 +50,12 @@ beforeEach(() => {
   mockPlan.mockResolvedValue(planResult);
   mockRun.mockResolvedValue(runResult);
   mockConfirm.mockResolvedValue({ switched: true, vaultRoot: '/x', notesVaultRoot: '/y' });
-  mockDismiss.mockResolvedValue({ dismissed: true });
   Object.defineProperty(window, 'api', {
     value: {
       mythosMigrationStatus: mockStatus,
       mythosMigrationPlan: mockPlan,
       mythosMigrationRun: mockRun,
       mythosMigrationConfirm: mockConfirm,
-      mythosMigrationDismiss: mockDismiss,
     },
     writable: true,
     configurable: true,
@@ -63,32 +64,25 @@ beforeEach(() => {
 
 describe('MythosMigrationCenter', () => {
   it('renders nothing for a v2 vault', async () => {
-    mockStatus.mockResolvedValue({ ...v04Status, format: 'mythos-v2', shouldPrompt: false });
+    mockStatus.mockResolvedValue({ ...v04Status, format: 'mythos-v2' });
+    render(<MythosMigrationCenter />);
+    await waitFor(() => expect(mockStatus).toHaveBeenCalled());
+    expect(screen.queryByTestId('mythos-migration-wizard')).toBeNull();
+  });
+
+  it('never shows a boot prompt for a v0.4 vault, even when the status still reports shouldPrompt', async () => {
     render(<MythosMigrationCenter />);
     await waitFor(() => expect(mockStatus).toHaveBeenCalled());
     expect(screen.queryByTestId('mythos-migration-prompt')).toBeNull();
     expect(screen.queryByTestId('mythos-migration-wizard')).toBeNull();
   });
 
-  it('renders nothing when the prompt was dismissed for this vault', async () => {
-    mockStatus.mockResolvedValue({ ...v04Status, shouldPrompt: false });
+  it('walks intro → plan → run → report → confirm when opened via the global event', async () => {
     render(<MythosMigrationCenter />);
     await waitFor(() => expect(mockStatus).toHaveBeenCalled());
-    expect(screen.queryByTestId('mythos-migration-prompt')).toBeNull();
-  });
-
-  it('shows the prompt for a detected v0.4 vault and dismisses persistently', async () => {
-    render(<MythosMigrationCenter />);
-    const prompt = await screen.findByTestId('mythos-migration-prompt');
-    expect(prompt.textContent).toContain('My Vault');
-    fireEvent.click(screen.getByTestId('mythos-migration-prompt-dismiss'));
-    expect(screen.queryByTestId('mythos-migration-prompt')).toBeNull();
-    expect(mockDismiss).toHaveBeenCalledTimes(1);
-  });
-
-  it('walks intro → plan → run → report → confirm', async () => {
-    render(<MythosMigrationCenter />);
-    fireEvent.click(await screen.findByTestId('mythos-migration-prompt-upgrade'));
+    act(() => {
+      openMythosMigrationWizard();
+    });
 
     // Intro: safety promise + target path.
     const intro = await screen.findByTestId('mythos-migration-step-intro');
@@ -124,8 +118,11 @@ describe('MythosMigrationCenter', () => {
       verified: { scenesChecked: 4, notesChecked: 5, mismatches: ['scene prose mismatch: "X"'] },
     });
     render(<MythosMigrationCenter />);
-    fireEvent.click(await screen.findByTestId('mythos-migration-prompt-upgrade'));
-    fireEvent.click(screen.getByTestId('mythos-migration-review'));
+    await waitFor(() => expect(mockStatus).toHaveBeenCalled());
+    act(() => {
+      openMythosMigrationWizard();
+    });
+    fireEvent.click(await screen.findByTestId('mythos-migration-review'));
     fireEvent.click(await screen.findByTestId('mythos-migration-run'));
     const report = await screen.findByTestId('mythos-migration-step-report');
     expect(report.textContent).toContain('untouched');
@@ -137,8 +134,11 @@ describe('MythosMigrationCenter', () => {
   it('a failed confirm keeps the report open with the error', async () => {
     mockConfirm.mockResolvedValue({ switched: false, error: 'The migrated vault folder is missing.' });
     render(<MythosMigrationCenter />);
-    fireEvent.click(await screen.findByTestId('mythos-migration-prompt-upgrade'));
-    fireEvent.click(screen.getByTestId('mythos-migration-review'));
+    await waitFor(() => expect(mockStatus).toHaveBeenCalled());
+    act(() => {
+      openMythosMigrationWizard();
+    });
+    fireEvent.click(await screen.findByTestId('mythos-migration-review'));
     fireEvent.click(await screen.findByTestId('mythos-migration-run'));
     fireEvent.click(await screen.findByTestId('mythos-migration-confirm'));
     await waitFor(() =>
@@ -148,43 +148,20 @@ describe('MythosMigrationCenter', () => {
     );
   });
 
-  it('opens via the global event (Settings card entry point)', async () => {
-    mockStatus.mockResolvedValue({ ...v04Status, shouldPrompt: false });
-    render(<MythosMigrationCenter />);
-    await waitFor(() => expect(mockStatus).toHaveBeenCalled());
-    act(() => {
-      openMythosMigrationWizard();
-    });
-    await screen.findByTestId('mythos-migration-wizard');
-  });
-
-  // SKY-8882 defect #2: a fresh vault created/switched-to in-session must not
-  // keep showing the prompt from whatever vault was active at mount.
-  it('re-probes and clears the prompt when the active vault changes in-session', async () => {
-    render(<MythosMigrationCenter />);
-    await screen.findByTestId('mythos-migration-prompt');
-    expect(mockStatus).toHaveBeenCalledTimes(1);
-
-    mockStatus.mockResolvedValue({ ...v04Status, format: 'mythos-v2', shouldPrompt: false });
-    act(() => {
-      notifyMythosActiveVaultChanged();
-    });
-
-    await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.queryByTestId('mythos-migration-prompt')).toBeNull());
-  });
-
-  it('re-probes and shows the prompt when switching from a v2 vault into a v0.4 one', async () => {
-    mockStatus.mockResolvedValue({ ...v04Status, format: 'mythos-v2', shouldPrompt: false });
+  // SKY-8882 defect #2 regression guard: re-probing on vault change must not
+  // resurrect any prompt UI for the newly active vault.
+  it('re-probes on active-vault-change but still shows no prompt for a v0.4 vault', async () => {
+    mockStatus.mockResolvedValue({ ...v04Status, format: 'mythos-v2' });
     render(<MythosMigrationCenter />);
     await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(1));
-    expect(screen.queryByTestId('mythos-migration-prompt')).toBeNull();
 
     mockStatus.mockResolvedValue(v04Status);
     act(() => {
       notifyMythosActiveVaultChanged();
     });
 
-    await screen.findByTestId('mythos-migration-prompt');
+    await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('mythos-migration-prompt')).toBeNull();
+    expect(screen.queryByTestId('mythos-migration-wizard')).toBeNull();
   });
 });
