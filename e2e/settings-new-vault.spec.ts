@@ -105,8 +105,8 @@ test('SKY-10401 / SKY-11452: create a second vault from Settings (template = sha
 
     // A full MythosVault v2 bundle exists on disk at the chosen destination.
     const newRoot = path.join(defaultParent, 'Second Vault');
-    const newStoryRoot = path.join(newRoot, 'Story Vault');
-    const newNotesRoot = path.join(newRoot, 'Notes Vault');
+    const newStoryRoot = path.join(newRoot, 'Stories', 'Story Vault');
+    const newNotesRoot = path.join(newRoot, 'Notes', 'Notes Vault');
     expect(fs.existsSync(path.join(newRoot, 'mythos.json'))).toBe(true);
     expect(fs.existsSync(path.join(newRoot, 'settings.json'))).toBe(true);
     expect(fs.existsSync(path.join(newRoot, 'timelines.json'))).toBe(true);
@@ -157,8 +157,8 @@ test('SKY-11452 / SKY-11141 §3a: "Start blank" from Settings creates nothing us
   const notesVault = path.join(tempRoot, 'Vault A', 'Notes Vault');
   seedCompletedOnboarding(userData, storyVault, notesVault);
   const newRoot = path.join(userData, 'vaults', 'QA Vault 2');
-  const newStoryRoot = path.join(newRoot, 'Story Vault');
-  const newNotesRoot = path.join(newRoot, 'Notes Vault');
+  const newStoryRoot = path.join(newRoot, 'Stories', 'Story Vault');
+  const newNotesRoot = path.join(newRoot, 'Notes', 'Notes Vault');
 
   const assertBlankOnDisk = (when: string) => {
     expect(fs.existsSync(path.join(newRoot, 'mythos.json')), `${when}: mythos.json`).toBe(true);

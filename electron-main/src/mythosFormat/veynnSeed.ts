@@ -541,10 +541,14 @@ export interface VeynnSeedResult {
  * story in mythos.json. Caller is responsible for the seed-once marker
  * (createMythosVault records it right after this returns).
  */
-export function writeVeynnSeed(mythosRoot: string, now: () => Date = () => new Date()): VeynnSeedResult {
-  const storyVaultRoot = storyVaultRootFor(mythosRoot);
-  const notesVaultRoot = notesVaultRootFor(mythosRoot);
-  const agentVaultRoot = agentVaultRootFor(mythosRoot);
+export function writeVeynnSeed(
+  mythosRoot: string,
+  now: () => Date = () => new Date(),
+  overrideRoots?: { storyVaultRoot?: string; notesVaultRoot?: string; agentVaultRoot?: string },
+): VeynnSeedResult {
+  const storyVaultRoot = overrideRoots?.storyVaultRoot ?? storyVaultRootFor(mythosRoot);
+  const notesVaultRoot = overrideRoots?.notesVaultRoot ?? notesVaultRootFor(mythosRoot);
+  const agentVaultRoot = overrideRoots?.agentVaultRoot ?? agentVaultRootFor(mythosRoot);
   const nowStr = now().toISOString();
   const storyId = crypto.randomUUID();
 

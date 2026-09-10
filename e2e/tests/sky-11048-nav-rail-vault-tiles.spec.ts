@@ -134,7 +134,7 @@ test('TC-SKY-11048-01: + tile creates a second vault, tiles switch, per-vault th
     await pg.locator('.prompt-modal-input').fill('Second');
     await pg.locator('.prompt-modal-ok').click();
 
-    const secondStory = path.join(userData, 'vaults', 'Second', 'Story Vault');
+    const secondStory = path.join(userData, 'vaults', 'Second', 'Stories', 'Story Vault');
     await expect.poll(
       () => readVaultSettings(userData).vaultRoot,
       { timeout: 30_000, intervals: [200, 400, 800, 1000] },

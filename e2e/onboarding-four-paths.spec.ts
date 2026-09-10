@@ -246,15 +246,15 @@ test.describe('AC-OB-03: Template mode creates Story Vault + Notes Vault skeleto
     await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 25_000 });
 
     const mythosRoot = path.join(vaultParent, 'AC-OB-03 Vault');
-    const storyVault = path.join(mythosRoot, 'Story Vault');
-    const notesVault = path.join(mythosRoot, 'Notes Vault');
+    const storyVault = path.join(mythosRoot, 'Stories', 'Story Vault');
+    const notesVault = path.join(mythosRoot, 'Notes', 'Notes Vault');
     expect(fs.existsSync(storyVault)).toBe(true);
     expect(fs.existsSync(notesVault)).toBe(true);
 
     for (const dir of ['Characters', 'Locations', 'Stories', 'Plot', 'Worldbuilding', 'Research']) {
       const full = path.join(notesVault, dir);
-      expect(fs.existsSync(full), `Notes Vault/${dir} should exist`).toBe(true);
-      expect(fs.readdirSync(full), `Notes Vault/${dir} should be empty (shape, not notes)`).toHaveLength(0);
+      expect(fs.existsSync(full), `Notes/Notes Vault/${dir} should exist`).toBe(true);
+      expect(fs.readdirSync(full), `Notes/Notes Vault/${dir} should be empty (shape, not notes)`).toHaveLength(0);
     }
 
     const mythosJson = JSON.parse(fs.readFileSync(path.join(mythosRoot, 'mythos.json'), 'utf-8'));
@@ -295,8 +295,8 @@ test.describe('AC-OB-04: Vault name reflected in the on-disk folder name', () =>
 
     await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 25_000 });
 
-    const storyVault = path.join(vaultParent, "Dragon's Crossing", 'Story Vault');
-    expect(fs.existsSync(storyVault), "vaultParent/Dragon's Crossing/Story Vault should exist").toBe(true);
+    const storyVault = path.join(vaultParent, "Dragon's Crossing", 'Stories', 'Story Vault');
+    expect(fs.existsSync(storyVault), "vaultParent/Dragon's Crossing/Stories/Story Vault should exist").toBe(true);
   });
 });
 
@@ -333,7 +333,7 @@ test.describe('AC-OB-05: Blank mode creates empty Story/Notes Vault dirs', () =>
     await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 25_000 });
 
     const mythosRoot = path.join(vaultParent, 'AC-OB-05 Vault');
-    const notesVault = path.join(mythosRoot, 'Notes Vault');
+    const notesVault = path.join(mythosRoot, 'Notes', 'Notes Vault');
     expect(fs.existsSync(notesVault)).toBe(true);
     expect(fs.readdirSync(notesVault), 'blank mode should not seed any Notes Vault folders').toHaveLength(0);
 
@@ -373,7 +373,7 @@ test.describe('AC-OB-06: Empty vault name falls back to "My Vault"', () => {
 
     await page.locator(SELECTOR.openVaultBtn).click();
     await expect(page.locator(SELECTOR.appMenuBar)).toBeVisible({ timeout: 25_000 });
-    expect(fs.existsSync(path.join(vaultParent, 'My Vault', 'Story Vault'))).toBe(true);
+    expect(fs.existsSync(path.join(vaultParent, 'My Vault', 'Stories', 'Story Vault'))).toBe(true);
   });
 });
 
@@ -616,10 +616,10 @@ test.describe('AC-OB-11: Import creates a NEW Mythos vault; source untouched (SK
     // injected frontmatter).
     const mythosRoot = path.join(vaultParent, 'AC-OB-11 Vault');
     expect(fs.existsSync(path.join(mythosRoot, 'mythos.json'))).toBe(true);
-    expect(fs.existsSync(path.join(mythosRoot, 'Story Vault'))).toBe(true);
-    const importedNote1 = fs.readFileSync(path.join(mythosRoot, 'Notes Vault', 'note1.md'), 'utf8');
+    expect(fs.existsSync(path.join(mythosRoot, 'Stories', 'Story Vault'))).toBe(true);
+    const importedNote1 = fs.readFileSync(path.join(mythosRoot, 'Notes', 'Notes Vault', 'note1.md'), 'utf8');
     expect(importedNote1).toBe('# Note One\n\nLinks to [[Note Two]].\n');
-    expect(fs.existsSync(path.join(mythosRoot, 'Notes Vault', 'Ideas', 'Note Two.md'))).toBe(true);
+    expect(fs.existsSync(path.join(mythosRoot, 'Notes', 'Notes Vault', 'Ideas', 'Note Two.md'))).toBe(true);
 
     // The source Obsidian folder is untouched — the SKY-11132 pinned rule.
     expect(sourceSnapshot()).toBe(before);
@@ -911,8 +911,8 @@ test.describe('AC-OB-20: §4c reachability — real click-through, vault created
 
     const mythosRoot = path.join(customParent, '§4c Reachability Vault');
     expect(fs.existsSync(path.join(mythosRoot, 'mythos.json')), 'vault must exist ON DISK at the custom location').toBe(true);
-    expect(fs.existsSync(path.join(mythosRoot, 'Story Vault'))).toBe(true);
-    expect(fs.existsSync(path.join(mythosRoot, 'Notes Vault'))).toBe(true);
+    expect(fs.existsSync(path.join(mythosRoot, 'Stories', 'Story Vault'))).toBe(true);
+    expect(fs.existsSync(path.join(mythosRoot, 'Notes', 'Notes Vault'))).toBe(true);
     // ...and definitely not under the default vaults parent.
     expect(fs.existsSync(path.join(defaultParent, '§4c Reachability Vault'))).toBe(false);
   });
