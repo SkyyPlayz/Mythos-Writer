@@ -517,3 +517,75 @@ button.bsb-card-title--note {
   line-height: 1.5;
   flex: none;
 }
+
+/* ── SKY-11192 §3: Idea Collections filing row ──
+   The unified-board variant of .bs-coll-idea. The row itself is no longer the
+   control (a `Filed` row carries both a status and an `Open` link), so the
+   trailing button owns the affordance and the row keeps only the hover. */
+.bs-coll-idea--row {
+  cursor: default;
+  align-items: center;
+  justify-content: space-between;
+  padding-left: 10px;
+  gap: 8px;
+}
+
+/* A filed row stays fully legible rather than dimming to 0.45 like the legacy
+   `placed` state: `Filed ✓` and `Open` are both things the user still needs to
+   read, and 0.45 on body text fails contrast. */
+.bs-coll-idea--row.bs-coll-idea--placed {
+  opacity: 1;
+}
+
+.bs-coll-filed-group {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bs-coll-filed {
+  font-size: 11px;
+  color: var(--text-tertiary, #8e9db8);
+  white-space: nowrap;
+}
+
+/* §3: `File` is the secondary style on purpose. Filing one of a dozen
+   suggested ideas is not THE action on this screen — Agent Chat is. */
+.bs-coll-file,
+.bs-coll-open {
+  flex: none;
+  background: none;
+  border: var(--bw, 1px) solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  border-radius: 6px;
+  color: var(--text-secondary, #c8d3e7);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+.bs-coll-open {
+  border-color: transparent;
+  color: var(--text-link, #00f0ff);
+  padding: 3px 6px;
+}
+
+.bs-coll-file:hover,
+.bs-coll-open:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+}
+
+.bs-coll-file:focus-visible,
+.bs-coll-open:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+/* `Filing…` — a local write, expected to resolve well under a second, so it
+   needs a disabled state and no cancel affordance. */
+.bs-coll-file:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
