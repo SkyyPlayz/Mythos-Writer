@@ -250,7 +250,20 @@ describe('notesTrash', () => {
     // found via a real end-to-end run, not appearing in a synthetic pure-unit
     // scenario. The file's mtime here is from BEFORE trashTargets ran (no
     // write happens after it), so it must NOT be treated as a conflict.
+    //
+    // writeNote is a REAL fs write, stamped with the REAL OS clock, while
+    // `deletedAt` below comes from the FAKE, frozen `Date` installed in
+    // beforeEach. Those two clocks are not the same clock, so nothing
+    // guarantees the frozen fake "now" already sits at-or-after the real
+    // mtime the OS just wrote — on a loaded runner the real write can land
+    // later than the frozen instant fake timers captured, which would flip
+    // this into the "conflict" branch for a reason that has nothing to do
+    // with the invalidation logic under test. Pin the fake clock to the
+    // file's actual mtime so `deletedAt` is deterministically >= it,
+    // matching production (where both come from the same real clock).
     writeNote(root, 'Idea.md');
+    const writeMtimeMs = fs.statSync(path.join(root, 'Idea.md')).mtimeMs;
+    vi.setSystemTime(Math.ceil(writeMtimeMs));
     const { entries } = trashTargets(root, '', [{ kind: 'note', itemPath: 'Idea.md', label: 'Idea.md' }]);
 
     invalidatePendingUnderPath(root, 'Idea.md');
