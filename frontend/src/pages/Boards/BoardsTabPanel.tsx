@@ -215,7 +215,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to create furniture', err);
     }
-  }, [currentFolder, furniture.length]);
+  }, [currentFolder, furniture.length, setFurniture]);
 
   const handleFurnitureMove = useCallback(async (id: string, x: number, y: number) => {
     try {
@@ -224,7 +224,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to persist furniture position', err);
     }
-  }, [currentFolder]);
+  }, [currentFolder, setFurniture]);
 
   const handleFurnitureResize = useCallback(async (id: string, w: number, h: number) => {
     try {
@@ -233,7 +233,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to persist furniture size', err);
     }
-  }, [currentFolder]);
+  }, [currentFolder, setFurniture]);
 
   const handleFurnitureColor = useCallback(async (id: string, hex: string) => {
     try {
@@ -242,7 +242,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to persist furniture colour', err);
     }
-  }, [currentFolder]);
+  }, [currentFolder, setFurniture]);
 
   const handleFurnitureCheckToggle = useCallback(async (id: string, index: number) => {
     const current = furniture.find((f) => f.id === id);
@@ -254,7 +254,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to persist checklist toggle', err);
     }
-  }, [currentFolder, furniture]);
+  }, [currentFolder, furniture, setFurniture]);
 
   const handleFurnitureDelete = useCallback(async (id: string) => {
     try {
@@ -267,7 +267,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to delete furniture', err);
     }
-  }, [currentFolder]);
+  }, [currentFolder, setFurniture]);
 
   const handleOpenNoteRef = useCallback((ref: string) => {
     const stem = basenameNoExt(ref);
@@ -315,7 +315,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to create connector', err);
     }
-  }, [currentFolder, lineFromId]);
+  }, [currentFolder, lineFromId, setFurniture]);
 
   // BoardCanvas hands back the tile's path relative to the CURRENT board, so
   // join it onto the current folder to keep folderPath vault-relative at any
