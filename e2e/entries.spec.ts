@@ -184,6 +184,10 @@ test('TC-ENT-02: Undo removes the saved quick-entry note', async () => {
 // .brainstorm-body--compact .brainstorm-facts-col in BrainstormPage.css), so
 // this exercises the full, non-compact Brainstorm tab (Ctrl+3) where the feed
 // is visible.
+//
+// SKY-11211: the non-compact facts column (including this feed) is portaled
+// into the global right sidebar (RightSidebarSlot) rather than rendered
+// inline in the tab panel, so the feed must be queried page-wide.
 test('TC-ENT-04: quick entry save reaches the Brainstorm activity feed without a reload', async () => {
   await page.keyboard.press('Control+3');
   const panel = page.locator('#app-tabpanel-brainstorm');
@@ -191,7 +195,7 @@ test('TC-ENT-04: quick entry save reaches the Brainstorm activity feed without a
 
   const textarea = panel.locator('[data-testid="entries-qa-textarea"]');
   await expect(textarea).toBeVisible({ timeout: 5_000 });
-  const feed = panel.locator('[data-testid="bs-activity-feed"]');
+  const feed = page.locator('[data-testid="bs-activity-feed"]');
   await expect(feed).toBeVisible({ timeout: 5_000 });
 
   const beforeCount = (await savedEntryFiles()).length;

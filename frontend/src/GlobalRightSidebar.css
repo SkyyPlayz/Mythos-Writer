@@ -258,6 +258,22 @@
   min-height: 0;
 }
 
+/* SKY-11211: route-slot target — a page's own content (e.g. Brainstorm)
+   portals into this div. Fills the sidebar like the default content does
+   while claimed; collapses to nothing so it never adds an empty gap while
+   unclaimed and the default content (Assistant panel) shows instead. */
+.grs-route-slot {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.grs-route-slot--empty {
+  display: none;
+}
+
 /* ── M6: topbar (hide button) ────────────────────────────────────────────── */
 
 .grs-topbar {

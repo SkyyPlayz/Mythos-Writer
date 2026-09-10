@@ -394,6 +394,17 @@
   background: var(--bg-bar);
 }
 
+/* SKY-11211: hosted inside GlobalRightSidebar's route slot instead of a
+   second in-page column — fill the sidebar's width/height and scroll,
+   background transparent so the sidebar's own glass shows through (matches
+   the default Assistant panel it replaces). */
+.brainstorm-facts-col--in-sidebar {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background: transparent;
+}
+
 .brainstorm-facts-header {
   display: flex;
   align-items: center;
