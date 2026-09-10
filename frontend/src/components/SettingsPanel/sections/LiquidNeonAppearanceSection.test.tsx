@@ -101,8 +101,22 @@ describe('LiquidNeonAppearanceSection', () => {
     expect(n).toBeGreaterThan(1);
     expect(screen.getByTestId('lnas-wp-match-count')).toHaveTextContent(`1/${n}`);
     expect(screen.getByTestId('lnas-wp-match')).toHaveAttribute('aria-label', `Wallpaper: Theme match, 1 of ${n}`);
-    expect(screen.getByLabelText('Next theme wallpaper')).toBeInTheDocument();
-    expect(screen.getByLabelText('Previous theme wallpaper')).toBeInTheDocument();
+    expect(screen.getByLabelText('Next wallpaper for Neon Nebula')).toBeInTheDocument();
+    expect(screen.getByLabelText('Previous wallpaper for Neon Nebula')).toBeInTheDocument();
+  });
+
+  // SKY-11676 (SKY-11592 interaction spec) — deltas from the raw mockup:
+  // 24x24 hit target (not 19x19), theme-named accessible name (not the
+  // generic "theme wallpaper"), and a 10px-minimum count pill.
+  it('SKY-11676: arrows name the active theme, use a 24x24 hit target, and a readable count pill', async () => {
+    await setup({ setKey: 'cyber' });
+    const next = screen.getByLabelText('Next wallpaper for Cyberpunk');
+    const prev = screen.getByLabelText('Previous wallpaper for Cyberpunk');
+    expect(next).toBeInTheDocument();
+    expect(prev).toBeInTheDocument();
+    expect(next).toHaveStyle({ width: '24px', height: '24px' });
+    expect(prev).toHaveStyle({ width: '24px', height: '24px' });
+    expect(screen.getByTestId('lnas-wp-match-count')).toHaveStyle({ fontSize: '10px' });
   });
 
   it('SKY-11589: arrows step wpPick for the active preset, select match, and repaint --wp', async () => {

@@ -214,11 +214,15 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
     if (p) patch(p);
   };
   const arrowSt = (side: 'left' | 'right'): CSSProperties => ({
-    position: 'absolute', [side]: 4, top: '50%', transform: 'translateY(-50%)',
-    width: 19, height: 19, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    position: 'absolute', [side]: 3, top: '50%', transform: 'translateY(-50%)',
+    width: 24, height: 24, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
     background: 'rgba(8,10,18,.72)', border: '1px solid rgba(255,255,255,.18)', color: '#e6ecf9', cursor: 'pointer',
     padding: 0, pointerEvents: 'auto',
   });
+  // SKY-11676: interaction spec (SKY-11592) names the direction + active
+  // theme in the accessible name, not the generic "theme wallpaper" — the
+  // `title` attribute alone isn't reliably exposed to assistive tech.
+  const matchThemeName = LIQUID_NEON_PRESETS[S.setKey as LiquidNeonPresetKey]?.name ?? 'this theme';
   const wpCards = wpDefs.map(([k, label]) => {
     const active = S.wp === k;
     const thumbBg = wallpaperCss({ ...S, wp: k }, cosmicBgUrl);
@@ -271,31 +275,31 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
               type="button"
               className="lnas-wp-arrow"
               data-testid="lnas-wp-match-prev"
-              title="Previous theme wallpaper"
-              aria-label="Previous theme wallpaper"
+              title={`Previous wallpaper for ${matchThemeName}`}
+              aria-label={`Previous wallpaper for ${matchThemeName}`}
               onClick={() => stepMatch(-1)}
               style={arrowSt('left')}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5" /></svg>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M14.5 5.5L8 12l6.5 6.5" /></svg>
             </button>
             <button
               type="button"
               className="lnas-wp-arrow"
               data-testid="lnas-wp-match-next"
-              title="Next theme wallpaper"
-              aria-label="Next theme wallpaper"
+              title={`Next wallpaper for ${matchThemeName}`}
+              aria-label={`Next wallpaper for ${matchThemeName}`}
               onClick={() => stepMatch(1)}
               style={arrowSt('right')}
             >
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 5.5L16 12l-6.5 6.5" /></svg>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9.5 5.5L16 12l-6.5 6.5" /></svg>
             </button>
             <span
               data-testid="lnas-wp-match-count"
               aria-hidden="true"
               style={{
                 position: 'absolute', left: '50%', bottom: 3, transform: 'translateX(-50%)',
-                fontSize: 8.5, fontWeight: 700, letterSpacing: '.06em', color: '#e6ecf9',
-                background: 'rgba(8,10,18,.72)', borderRadius: 5, padding: '1px 5px',
+                fontSize: 10, fontWeight: 700, letterSpacing: '.06em', color: '#e6ecf9',
+                background: 'rgba(8,10,18,.72)', borderRadius: 5, padding: '1px 6px',
               }}
             >
               {matchIdx + 1}/{matchList.length}
