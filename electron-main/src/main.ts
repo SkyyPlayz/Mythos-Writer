@@ -30,6 +30,7 @@ import {
   type BrainstormBoardWritePayload,
   type BrainstormBoardReadResponse,
   type BrainstormBoardWriteResponse,
+  type BrainstormBoardMigrateNotesResponse,
   type VaultListPayload,
   type VaultListResponse,
   type VaultDeletePayload,
@@ -505,6 +506,7 @@ import {
   writeBrainstormBoard,
   migrateBrainstormBoardToAgentVault,
 } from './mythosFormat/brainstormBoardFile.js';
+import { migrateBrainstormBoardToNotes } from './mythosFormat/brainstormBoardToNotes.js';
 import {
   scanMythosStoryVault,
   syncCanonicalFromManifest,
@@ -6426,6 +6428,22 @@ const handlers: IpcHandlers = {
   ): BrainstormBoardWriteResponse => {
     ensureNotesVaultDir();
     return writeBrainstormBoard(getAgentVaultRoot(), payload.content);
+  },
+  // SKY-11192: retire the old board model by turning its cards into real
+  // notes. Renderer-triggered rather than run at boot, because it only makes
+  // sense once the unified-board flag is on — with the flag off the legacy
+  // board is still the page the user is looking at.
+  [IPC_CHANNELS.BRAINSTORM_BOARD_MIGRATE_NOTES]: (): BrainstormBoardMigrateNotesResponse => {
+    ensureNotesVaultDir();
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (mythosRoot === null) {
+      return { migrated: false, created: [], skipped: [], error: 'no Mythos vault' };
+    }
+    // SKY-11451 moved NEW vaults to `<root>/Notes/Notes Vault`, so the notes
+    // root must come from the binding the rest of the notes IPC uses, not from
+    // a path recomputed off the mythos root — otherwise a legacy flat vault's
+    // ideas land in a grouped folder the user has never opened.
+    return migrateBrainstormBoardToNotes(mythosRoot, getNotesVaultRoot());
   },
   [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
     ensureNotesVaultDir();
