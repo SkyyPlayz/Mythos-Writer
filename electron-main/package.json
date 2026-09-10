@@ -33,6 +33,6 @@
     "electron-vite": "^5.0.0",
     "fast-check": "^4.9.0",
     "typescript": "^5.3.3",
-    "vitest": "^4.1.8"
+    "vitest": "^5.0.0"
   }
 }
