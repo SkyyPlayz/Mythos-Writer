@@ -1,9 +1,18 @@
-// Beta 4 / M20 — left IDEA COLLECTIONS panel (§7.2).
+// SKY-11192/SKY-11674 §3 — left IDEA COLLECTIONS panel.
 //
 // Collapsible groups over the agent's captured ideas + the preloaded starter
 // library (prototype bsCollections / bsPool). Search filters rows AND
-// auto-expands groups with matches; `+` places an idea on the board, `✓`
-// (dimmed) marks ideas already placed.
+// auto-expands groups with matches. The row's trailing control is a labeled
+// `File` button (not an icon-only `+`) — filing now has a real, visible
+// consequence (creates a vault note, may create a folder), so a text label
+// is required (design spec §3 / constraints: "clear labels rather than
+// icon-only controls").
+//
+// REVIEW-BLOCKING CONSTRAINT (design spec §3, ticket ruling 5): `onFile`
+// below is wired to exactly ONE call site in this file — the `File`
+// button's `onClick`. No effect, no timer, no prop default, and no agent/
+// chat code path may call it. A reviewer who cannot see that this is the
+// only caller should block the PR.
 
 import { useMemo, useState } from 'react';
 import {
@@ -11,6 +20,7 @@ import {
   boardCategory,
   type BoardCategoryKey,
 } from '../../brainstormBoard';
+import type { IdeaFileStatus } from './useIdeaCollectionsFiling';
 import './BrainstormBoard.css';
 
 export interface CollectionIdea {
@@ -26,10 +36,11 @@ export interface CollectionIdea {
 
 interface Props {
   pool: CollectionIdea[];
-  /** Lowercase titles of cards already placed on the board. */
-  placedTitles: ReadonlySet<string>;
-  onPlace: (idea: CollectionIdea) => void;
-  showToast: (message: string) => void;
+  statusFor: (idea: CollectionIdea) => IdeaFileStatus;
+  /** Direct user click on `File` only — see the review-blocking constraint above. */
+  onFile: (idea: CollectionIdea) => void;
+  /** `Open` on an already-filed idea — navigates to its board. */
+  onOpen: (idea: CollectionIdea) => void;
   /** R11: true when the master AI toggle is off — Agent Chat is unreachable,
    * so the footer copy shouldn't promise a chat-driven capture flow. */
   manualOnly?: boolean;
@@ -42,7 +53,7 @@ interface GroupDef {
   ideas: CollectionIdea[];
 }
 
-export default function IdeaCollectionsPanel({ pool, placedTitles, onPlace, showToast, manualOnly }: Props) {
+export default function IdeaCollectionsPanel({ pool, statusFor, onFile, onOpen, manualOnly }: Props) {
   const [query, setQuery] = useState('');
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
@@ -111,27 +122,12 @@ export default function IdeaCollectionsPanel({ pool, placedTitles, onPlace, show
                 <span className="bs-coll-count">{group.ideas.length}</span>
               </button>
               {open && group.ideas.map((idea) => {
-                const placed = placedTitles.has(idea.title.trim().toLowerCase());
+                const status = statusFor(idea);
                 const starter = idea.chips[0] === 'Starter';
                 return (
-                  <button
-                    key={`${group.key}-${idea.key}`}
-                    type="button"
-                    className={`bs-coll-idea${placed ? ' bs-coll-idea--placed' : ''}`}
-                    title={placed ? 'Already on the Idea Board' : 'Add to the Idea Board'}
-                    aria-label={placed
-                      ? `${idea.title} — already on the Idea Board`
-                      : `Add ${idea.title} to the Idea Board`}
-                    onClick={() => {
-                      if (placed) {
-                        showToast(`“${idea.title}” is already on the Idea Board`);
-                        return;
-                      }
-                      onPlace(idea);
-                    }}
-                  >
-                    <span className={`bs-coll-glyph${placed ? ' bs-coll-glyph--placed' : ''}`} aria-hidden="true">
-                      {placed ? '✓' : '+'}
+                  <div key={`${group.key}-${idea.key}`} className={`bs-coll-idea bs-coll-idea--${status}`}>
+                    <span className={`bs-coll-glyph${status === 'filed' ? ' bs-coll-glyph--placed' : ''}`} aria-hidden="true">
+                      {status === 'filed' ? '✓' : '+'}
                     </span>
                     <span className="bs-coll-idea-main">
                       <span className="bs-coll-idea-title">
@@ -140,7 +136,33 @@ export default function IdeaCollectionsPanel({ pool, placedTitles, onPlace, show
                       </span>
                       <span className="bs-coll-idea-desc">{idea.desc}</span>
                     </span>
-                  </button>
+                    {status === 'unfiled' && (
+                      <button
+                        type="button"
+                        className="bs-coll-file-btn"
+                        onClick={() => onFile(idea)}
+                        data-testid="bs-coll-file"
+                      >
+                        File
+                      </button>
+                    )}
+                    {status === 'filing' && (
+                      <span className="bs-coll-filing" aria-live="polite">Filing…</span>
+                    )}
+                    {status === 'filed' && (
+                      <span className="bs-coll-filed-group">
+                        <span className="bs-coll-filed-label">Filed ✓</span>
+                        <button
+                          type="button"
+                          className="bs-coll-open-btn"
+                          onClick={() => onOpen(idea)}
+                          data-testid="bs-coll-open"
+                        >
+                          Open
+                        </button>
+                      </span>
+                    )}
+                  </div>
                 );
               })}
             </div>
@@ -149,8 +171,8 @@ export default function IdeaCollectionsPanel({ pool, placedTitles, onPlace, show
       </div>
       <div className="bs-collections-foot">
         {manualOnly
-          ? 'Click + to place an idea on the Idea Board, or add one straight from the Idea Board with + Idea.'
-          : 'Ideas the agent captures in chat land in your Notes Vault and appear here — click + to place one on the Idea Board.'}
+          ? 'Click File to add an idea as a real note in your Notes Vault.'
+          : 'Ideas the agent captures in chat land in your Notes Vault and appear here — click File to add one as a real note.'}
       </div>
     </aside>
   );

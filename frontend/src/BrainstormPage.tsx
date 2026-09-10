@@ -27,16 +27,12 @@ import {
   COLLECTION_ORDER,
   FACT_CATEGORY,
   STARTER_LIBRARY,
-  createBoardCard,
-  createEmptyBoard,
   extractOpenQuestions,
-  migrateDraftFactsToBoard,
-  type BrainstormBoardData,
   type LegacyDraftFact,
 } from './brainstormBoard';
-import { loadBrainstormBoard, saveBrainstormBoard } from './brainstormBoardStore';
-import { registerQuitFlusher } from './lib/flushBeforeQuit';
-import BoardCanvas from './components/BrainstormBoard/BoardCanvas';
+import BrainstormBoardSurface, { PILL_FOLDERS, type PillFolder } from './components/BrainstormBoard/BrainstormBoardSurface';
+import BrainstormBoardPills from './components/BrainstormBoard/BrainstormBoardPills';
+import { useIdeaCollectionsFiling } from './components/BrainstormBoard/useIdeaCollectionsFiling';
 import IdeaCollectionsPanel, {
   type CollectionIdea,
 } from './components/BrainstormBoard/IdeaCollectionsPanel';
@@ -79,13 +75,6 @@ const MAX_DRAFT_BYTES = 2 * 1024 * 1024; // 2 MB
 // M20 (SKY-6663): one-shot marker — the legacy draft transcript has been
 // copied into the shared agent-session store (never orphan chat history).
 const SESSION_MIGRATED_KEY = 'brainstorm:session-migrated';
-// SKY-9028: one-shot guard for the legacy-draft → board migration. It used to
-// live only in the board file's `draftMigrated` flag, but the board file is no
-// longer written on mount (an empty board must not create a Boards/ folder in
-// the Agent Vault), so a file-less mount needs a durable flag or the migration
-// re-arms every mount and drags chat-detected draft facts onto the board.
-const BOARD_MIGRATED_KEY = 'brainstorm:board-migrated';
-
 // Sentinel value used when the user explicitly picks "Vault root" in the
 // routing-prompt select. Empty string is reserved for "nothing selected yet"
 // (the disabled placeholder), so vault-root needs its own distinct token.
@@ -156,10 +145,15 @@ const EXPLORE_PROMPTS: ReadonlyArray<readonly [string, string]> = [
   ['Surprise Me', 'Surprise me with an unexpected story idea.'],
 ] as const;
 
-// M20: chat-stacked board height limits (prototype bsBoardResizeH clamp).
-const CHAT_BOARD_MIN_H = 150;
-const CHAT_BOARD_MAX_H = 720;
-const CHAT_BOARD_DEFAULT_H = 380;
+// SKY-11192/SKY-11674 §2 (CEO ruling 3, pinning the design spec's default/
+// min/max exactly, not "~"): default 240px, floor 140px (below this a card
+// head + one line of body cannot render without clipping — dragging below
+// the floor snaps to it, never hides the strip). Max is 480px OR 60% of the
+// chat panel's rendered height, whichever is smaller — computed at resize
+// time against the live panel height, not a fixed constant.
+const CHAT_BOARD_MIN_H = 140;
+const CHAT_BOARD_MAX_H_CAP = 480;
+const CHAT_BOARD_DEFAULT_H = 240;
 
 // M19: agent activity feed (prototype right panel, lines 2468–2496). Entries
 // mirror real events only — fact extraction, note filing, routing, proposals.
@@ -382,6 +376,12 @@ interface Props {
    *  embedding uses the prototype's curator copy (line 3221); story-side
    *  embeddings keep the default. */
   inputPlaceholder?: string;
+  /** SKY-11192/SKY-11674: off-by-default trunk flag — see AppSettings comment
+   *  in electron-main/src/ipc.ts. Gates the folder-scope pill row and the
+   *  chat-strip's resizable chrome; the underlying board engine and Idea
+   *  Collections' real-note filing are NOT gated (the old board component is
+   *  deleted, so there is no fallback to gate them against). */
+  brainstormBoardsUnification?: boolean;
 }
 
 const MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
@@ -395,7 +395,7 @@ const MIC_ICONS: Record<VoiceDictationState, string> = {
   idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
 };
 
-export default function BrainstormPage({ onClose, enabled = true, onOpenSettings, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false, inputPlaceholder = 'Ask about your story — characters, plot, world-building…' }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onOpenSettings, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false, inputPlaceholder = 'Ask about your story — characters, plot, world-building…', brainstormBoardsUnification = false }: Props) {
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -415,6 +415,19 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
       inputLanguage: voicePrefs?.inputLanguage,
     });
   const { toast: toastState, showToast } = useToast(3000);
+  // SKY-11192/SKY-11674 §3: the Idea Collections `File` toast's `Undo`
+  // action — same toast+undo idiom CanvasBoard's card-delete already uses.
+  // Cleared automatically as soon as ANOTHER toast fires (the ref check
+  // below), so an unrelated later toast never inherits a stale Undo.
+  const [toastUndo, setToastUndo] = useState<(() => void) | null>(null);
+  const toastMessageForUndoRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (toastState?.message !== toastMessageForUndoRef.current) {
+      toastMessageForUndoRef.current = null;
+      setToastUndo(null);
+    }
+  }, [toastState]);
+  const filing = useIdeaCollectionsFiling(true);
   const [pasteWarning, setPasteWarning] = useState(false);
   const [detailDrawerIdeaId, setDetailDrawerIdeaId] = useState<string | null>(null);
   const [proposals, setProposals] = useState<NoteProposal[]>([]);
@@ -457,8 +470,6 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     [aiEnabled],
   );
   const effectiveMode: BrainstormMode = aiEnabled ? mode : 'board';
-  // M20: board search ("Search ideas…" in the Board-page header).
-  const [ideaQuery, setIdeaQuery] = useState('');
   // M20 (B4-4): capture the legacy draft ONCE, synchronously, before any
   // effect runs — the draft-persist effect deletes/overwrites the key on
   // mount while state is still empty, so later reads would lose the data the
@@ -478,21 +489,25 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     } catch { /* malformed draft — nothing to migrate */ }
     return { facts: draftFacts, customOrder: draftOrder, messages: draftMessages };
   });
-  // M20: the unified board (persisted on M5 vault storage; null until loaded).
-  const [board, setBoard] = useState<BrainstormBoardData | null>(null);
-  const [boardSynced, setBoardSynced] = useState(true);
-  const boardLoadedRef = useRef(false);
-  const boardSaveTimerRef = useRef<number | null>(null);
   // SKY-9781: root element, used by the ESC handler to tell whether focus
   // lives inside this page — the compact notes-sidebar instance shares the
   // document with other Escape-owning surfaces (vault tree inline rename).
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const lastPersistedBoardRef = useRef<string | null>(null);
   // M20: chat-page Board toggle — canvas stacked under the chat, drag-bar height.
   const [chatBoardOpen, setChatBoardOpen] = useState(false);
   const [chatBoardHeight, setChatBoardHeight] = useState(CHAT_BOARD_DEFAULT_H);
-  // M20: vault-note titles on cards underline + open the note.
-  const [noteIndex, setNoteIndex] = useState<Map<string, string>>(new Map());
+  // SKY-11192/SKY-11674 §1: the folder-scope pill row's active folder — one
+  // state, shared by the Board page's pill row AND the chat strip (spec:
+  // "the strip renders the same folder's board ... not its own selection").
+  // Defaults to 'plot' (Plot & Story) per spec §1's "otherwise Plot & Story"
+  // fallback; a File in Idea Collections updates it to "most recently filed
+  // into" (§1's other default rule). Persists per-session (this component
+  // stays mounted across chat/board mode switches), resets on relaunch —
+  // no localStorage, matching the spec's "not per-launch" instruction.
+  const [activePillKey, setActivePillKey] = useState<PillFolder['key']>('plot');
+  const activeFolderPath = brainstormBoardsUnification
+    ? (PILL_FOLDERS.find((p) => p.key === activePillKey)?.folderPath ?? PILL_FOLDERS[0].folderPath)
+    : PILL_FOLDERS[0].folderPath;
   // M20: board-page right panel QUICK GENERATE box.
   const [quickGenText, setQuickGenText] = useState('');
   // M20 (SKY-6663): Brainstorm chat lives on the shared M15 agent-session store.
@@ -610,32 +625,6 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     return [...factIdeas, ...starters];
   }, [facts]);
 
-  // Lowercase card titles already on the board — drives the `+` / `✓` glyphs.
-  const placedTitles = useMemo(
-    () => new Set((board?.cards ?? []).map((c) => c.title.trim().toLowerCase())),
-    [board],
-  );
-
-  // ── M20 board mutators (persisted via the debounced save effect below) ──
-  const moveBoardCard = useCallback((id: string, x: number, y: number) => {
-    setBoard((b) => (b ? { ...b, cards: b.cards.map((c) => (c.id === id ? { ...c, x, y } : c)) } : b));
-  }, []);
-
-  const editBoardCard = useCallback((id: string, updates: { title: string; desc: string }) => {
-    setBoard((b) => (b
-      ? { ...b, cards: b.cards.map((c) => (c.id === id ? { ...c, title: updates.title, desc: updates.desc } : c)) }
-      : b));
-  }, []);
-
-  const addBoardLink = useCallback((from: string, to: string) => {
-    setBoard((b) => {
-      if (!b) return b;
-      const exists = b.links.some(
-        (l) => (l.from === from && l.to === to) || (l.from === to && l.to === from),
-      );
-      return exists ? b : { ...b, links: [...b.links, { from, to }] };
-    });
-  }, []);
   // M20: activity stats row (prototype bsStatsRow: Notes / Links / Props) —
   // real counters: notes written to the vault, board connections, proposals.
   const savedNoteCount = useMemo(
@@ -774,105 +763,15 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prompt, messages, facts, sortOrder, customOrder]);
 
-  // M20: load the unified board from the vault. B4-4: before the old
-  // Board/Map/Clusters views were deleted, their data — the draft's facts with
-  // their type collections and custom order — migrates into the board model
-  // exactly once (the one-shot flag lives in the board file itself).
-  useEffect(() => {
-    let cancelled = false;
-    const finish = (loaded: BrainstormBoardData | null) => {
-      if (cancelled) return;
-      let next = loaded ?? createEmptyBoard();
-      if (!next.draftMigrated) {
-        let migratedBefore = false;
-        try { migratedBefore = localStorage.getItem(BOARD_MIGRATED_KEY) === '1'; } catch { /* ignore */ }
-        if (migratedBefore) {
-          next = { ...next, draftMigrated: true };
-        } else {
-          next = migrateDraftFactsToBoard(next, legacyDraft.facts, legacyDraft.customOrder);
-          try { localStorage.setItem(BOARD_MIGRATED_KEY, '1'); } catch { /* ignore */ }
-        }
-        lastPersistedBoardRef.current = JSON.stringify(next, null, 2);
-        // SKY-9028 (GAP P0 #1): only write when there is real data to keep —
-        // the file already exists, or the migration actually captured cards.
-        // A fresh mount with an empty board must not create a Boards/ folder
-        // in the Agent Vault; the debounced write-back below persists the
-        // board on the first real user change instead.
-        if (loaded !== null || next.cards.length > 0) void saveBrainstormBoard(next);
-      } else {
-        lastPersistedBoardRef.current = JSON.stringify(next, null, 2);
-      }
-      setBoard(next);
-      boardLoadedRef.current = true;
-    };
-    if (typeof window.api?.brainstormBoard?.read !== 'function') {
-      // No vault bridge (unit tests / degraded startup): resolve synchronously
-      // so the mount stays act-clean; the board lives in memory only.
-      finish(null);
-    } else {
-      void loadBrainstormBoard().then(finish);
-    }
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // M20: debounced write-back — positions survive restart (M5 vault storage).
-  useEffect(() => {
-    if (!board || !boardLoadedRef.current) return;
-    // No vault bridge (unit tests / degraded startup): the board lives in
-    // memory only, so skip the timer + sync-state churn entirely.
-    if (typeof window.api?.brainstormBoard?.write !== 'function') return;
-    const serialized = JSON.stringify(board, null, 2);
-    if (serialized === lastPersistedBoardRef.current) return;
-    setBoardSynced(false);
-    if (boardSaveTimerRef.current !== null) window.clearTimeout(boardSaveTimerRef.current);
-    boardSaveTimerRef.current = window.setTimeout(() => {
-      boardSaveTimerRef.current = null;
-      lastPersistedBoardRef.current = serialized;
-      void saveBrainstormBoard(board).then(() => setBoardSynced(true));
-    }, 400);
-    return () => {
-      if (boardSaveTimerRef.current !== null) {
-        window.clearTimeout(boardSaveTimerRef.current);
-        boardSaveTimerRef.current = null;
-      }
-    };
-  }, [board]);
-
-  // SKY-11363: a full app-quit (Cmd+Q / File→Exit) closes the window without
-  // the beforeunload prompt, and the 400ms debounce above may not have fired.
-  // Register a flusher so the shell drains any pending board write before it
-  // acks the quit — otherwise the last board change is silently lost. Re-runs
-  // on board change so the flusher always closes over the latest board; a
-  // no-op unless a write is actually pending.
-  useEffect(() => {
-    return registerQuitFlusher(async () => {
-      if (boardSaveTimerRef.current === null || !board) return;
-      window.clearTimeout(boardSaveTimerRef.current);
-      boardSaveTimerRef.current = null;
-      lastPersistedBoardRef.current = JSON.stringify(board, null, 2);
-      await saveBrainstormBoard(board);
-      setBoardSynced(true);
-    });
-  }, [board]);
-
-  // M20: vault-note titles on board cards underline → open the note. Load the
-  // entity index lazily whenever a canvas is visible.
-  useEffect(() => {
-    if (effectiveMode !== 'board' && !chatBoardOpen) return;
-    if (typeof window.api?.entityList !== 'function') return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const { entities } = await window.api.entityList();
-        // Skip the no-op update — an empty vault should not churn state.
-        if (!cancelled && entities.length > 0) {
-          setNoteIndex(new Map(entities.map((e) => [e.name.trim().toLowerCase(), e.id])));
-        }
-      } catch { /* vault unavailable — titles just render un-linked */ }
-    })();
-    return () => { cancelled = true; };
-  }, [effectiveMode, chatBoardOpen]);
+  // SKY-11192/SKY-11674: the old unified board's load/save/quit-flush
+  // effects and the vault-note-title index (noteIndex) are retired along
+  // with components/BrainstormBoard/BoardCanvas.tsx — the shared engine's
+  // cards ARE real vault notes now, sourced by BrainstormBoardSurface via
+  // useNotesBoard, so there is no separate board file to load/save here and
+  // no title index to build (the real engine has no note-title-underline
+  // affordance to feed). The old board file's data is migrated into real
+  // notes once, on vault open, by electron-main's
+  // migrateBrainstormBoardCardsToNotes — not from this component.
 
   // M20 (SKY-6663): sync the chat feed with the shared agent-session store.
   // First adoption keeps a restored draft (and migrates it into the session so
@@ -943,54 +842,61 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     })));
   }, [sessionStore.activeSession, sessionStore.activeSessionId, legacyDraft]);
 
-  // M20: place a collection idea (starter or agent-filed fact) on the board.
-  const placeIdeaOnBoard = useCallback((idea: CollectionIdea) => {
-    setBoard((b) => {
-      const base = b ?? createEmptyBoard();
-      return {
-        ...base,
-        cards: [...base.cards, createBoardCard(base.cards, {
-          cat: idea.cat,
-          title: idea.title,
-          desc: idea.desc,
-          chips: idea.chips,
-          ...(idea.av ? { av: idea.av } : {}),
-          ...(idea.factId ? { factId: idea.factId } : {}),
-        })],
-      };
-    });
-    setMode('board');
-    showToast(`“${idea.title}” added to the Idea Board`);
+  // SKY-11192/SKY-11674 §1/§3: navigate to a mapped folder's board — used
+  // both by Idea Collections' post-File navigation and its `Open` link.
+  // With the flag off there is only one folder (no pills to switch), so
+  // this just ensures the board is visible.
+  const navigateToFolder = useCallback((folderPath: string) => {
+    const pill = PILL_FOLDERS.find((p) => p.folderPath === folderPath);
+    if (pill && brainstormBoardsUnification) setActivePillKey(pill.key);
+    if (mode === 'chat') setChatBoardOpen(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [mode, brainstormBoardsUnification]);
 
-  // M20: `+ Idea` header button (prototype bsAddIdea) — lands near Loose Ideas.
-  const addLooseIdea = useCallback(() => {
-    setBoard((b) => {
-      const base = b ?? createEmptyBoard();
-      return {
-        ...base,
-        cards: [...base.cards, createBoardCard(base.cards, {
-          cat: 'loose',
-          title: 'New idea',
-          desc: 'Drag me anywhere — expand me with the Agent chat.',
-          chips: ['New'],
-        })],
-      };
+  // SKY-11192/SKY-11674 §3: `File` on an Idea Collections row. Direct user
+  // click only — see IdeaCollectionsPanel's review-blocking constraint
+  // comment; this function itself has exactly one caller (the panel's
+  // `onFile` prop, wired below at both call sites).
+  const handleFileIdea = useCallback(async (idea: CollectionIdea) => {
+    const result = await filing.fileIdea(idea);
+    if (!result) {
+      showToast('Could not file this idea — try again.', 'error');
+      return;
+    }
+    navigateToFolder(result.folderPath);
+    if (result.alreadyFiled) {
+      showToast(`“${idea.title}” is already filed`);
+      return;
+    }
+    const message = `“${idea.title}” filed`;
+    toastMessageForUndoRef.current = message;
+    showToast(message);
+    setToastUndo(() => () => {
+      void filing.unfileIdea(idea.cat, result.itemPath);
+      toastMessageForUndoRef.current = null;
+      setToastUndo(null);
     });
-    showToast('Idea captured — landed near Loose Ideas');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [filing, navigateToFolder, showToast]);
 
-  // M20: chat-page stacked board drag-bar (prototype bsBoardResizeH).
+  const handleOpenIdea = useCallback((idea: CollectionIdea) => {
+    navigateToFolder(filing.folderPathFor(idea.cat));
+  }, [filing, navigateToFolder]);
+
+  // SKY-11192/SKY-11674 §2 (CEO ruling 3): chat-page stacked board drag-bar.
+  // Min/default are fixed (140/240); max is 480px OR 60% of the chat
+  // column's rendered height, whichever is smaller — measured at drag-start
+  // against the live panel, not a stale/fixed constant.
+  const chatColRef = useRef<HTMLDivElement | null>(null);
   const handleChatBoardResize = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     const startY = e.clientY;
     const startHeight = chatBoardHeight;
+    const panelH = chatColRef.current?.getBoundingClientRect().height ?? CHAT_BOARD_MAX_H_CAP;
+    const maxH = Math.min(CHAT_BOARD_MAX_H_CAP, panelH * 0.6);
     const move = (ev: MouseEvent) => {
       setChatBoardHeight(Math.max(
         CHAT_BOARD_MIN_H,
-        Math.min(CHAT_BOARD_MAX_H, startHeight - (ev.clientY - startY)),
+        Math.min(maxH, startHeight - (ev.clientY - startY)),
       ));
     };
     const up = () => {
@@ -1015,20 +921,22 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   // SILENTLY cancels a prevented unload (no dialog), the app became impossible
   // to close except via Task Manager — the owner-reported bug. The main
   // process now backstops this with a `will-prevent-unload` prompt, but the
-  // guard should still only speak up for work that is actually at risk:
-  //   - an unsent composer draft (`prompt`), and
-  //   - a board change still inside its 400ms debounce (`boardSynced === false`).
+  // guard should still only speak up for work that is actually at risk: an
+  // unsent composer draft (`prompt`). SKY-11192/SKY-11674: the old board's
+  // debounced-write "still syncing" flag is gone — board mutations now go
+  // straight through per-action IPC calls (patchLayout, ideaCollections:file),
+  // nothing to debounce here anymore.
   // M20/SKY-6930: the auto-greeting no longer counts, so a passive panel open
   // with zero interaction never blocks the close.
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (prompt.trim() || !boardSynced) {
+      if (prompt.trim()) {
         e.preventDefault();
       }
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [prompt, boardSynced]);
+  }, [prompt]);
 
   // SKY-11214: report real activity to the AGENTS card's Brainstorm row — a
   // module-level store (not a prop) since this page unmounts on every tab
@@ -1157,7 +1065,6 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     setDraggingId(null);
     setDragOverId(null);
     setActivity([]);
-    setIdeaQuery('');
     dragSourceIdRef.current = null;
     contextSystemRef.current = BRAINSTORM_SYSTEM_PROMPT;
     localStorage.removeItem(DRAFT_KEY);
@@ -2143,7 +2050,11 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
         {alertText}
       </span>
 
-      <Toast message={toastState?.message ?? null} level={toastState?.level} />
+      <Toast
+        message={toastState?.message ?? null}
+        level={toastState?.level}
+        action={toastUndo ? { label: 'Undo', onClick: toastUndo } : undefined}
+      />
 
       <PanelHeader
         className={compact ? 'brainstorm-header brainstorm-header--compact' : 'brainstorm-header'}
@@ -2216,35 +2127,6 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                 Extracting facts to vault
               </div>
             )}
-            {/* M20: Board page adds `+ Idea` + `Search ideas…` (§7.2). */}
-            {!compact && effectiveMode === 'board' && (
-              <>
-                <button
-                  type="button"
-                  className="bsc-add-idea-btn"
-                  onClick={addLooseIdea}
-                  data-testid="bsc-add-idea"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" aria-hidden="true">
-                    <path d="M12 5v14M5 12h14" />
-                  </svg>
-                  Idea
-                </button>
-                <div className="bsc-search">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                    <circle cx="11" cy="11" r="6.5" />
-                    <path d="M20.5 20.5L16 16" />
-                  </svg>
-                  <input
-                    value={ideaQuery}
-                    onChange={(e) => setIdeaQuery(e.target.value)}
-                    placeholder="Search ideas…"
-                    aria-label="Search ideas"
-                    data-testid="bsc-search-input"
-                  />
-                </div>
-              </>
-            )}
             {/* R11: the preset only steers the agent's tone — nothing to
                 configure with the agent gone (no dead AI-only chrome). */}
             {aiEnabled && (
@@ -2311,18 +2193,20 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
 
       {effectiveMode === 'chat' && (
       <div className={`brainstorm-layout${compact ? ' brainstorm-layout--compact' : ''}`}>
-        {/* M20: left IDEA COLLECTIONS panel (§7.2) — starter library + the
-            agent's captured ideas, placeable onto the board. */}
+        {/* M20 / SKY-11192/SKY-11674 §3: left IDEA COLLECTIONS panel —
+            starter library + the agent's captured ideas, filed as real
+            vault notes. */}
         {!compact && (
           <IdeaCollectionsPanel
             pool={collectionsPool}
-            placedTitles={placedTitles}
-            onPlace={placeIdeaOnBoard}
-            showToast={showToast}
+            statusFor={filing.statusFor}
+            onFile={handleFileIdea}
+            onOpen={handleOpenIdea}
+            manualOnly={!aiEnabled}
           />
         )}
       <div className={`brainstorm-body${compact ? ' brainstorm-body--compact' : ''}`}>
-        <div className="brainstorm-chat-col">
+        <div className="brainstorm-chat-col" ref={chatColRef}>
           <div className="brainstorm-messages">
             {messages.length === 0 && (
               <div className="brainstorm-empty">
@@ -2637,9 +2521,10 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
               onBrowseFolder={handleBrowseFolder}
             />
           )}
-          {/* M20: Board toggle — the ONE canvas stacked under the chat with a
-              drag-bar height (prototype bsChatBoard / bsBoardResizeH). */}
-          {!compact && chatBoardOpen && board && (
+          {/* SKY-11192/SKY-11674 §2: the Agent Chat inline board strip — the
+              shared canvas, same active folder as the Board page's pill
+              row, resizable (240 default / 140 min / 480-or-60% max). */}
+          {!compact && chatBoardOpen && (
             <>
               <div
                 className="bs-board-resize"
@@ -2649,18 +2534,14 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
               >
                 <div className="bs-board-resize-grip" aria-hidden="true" />
               </div>
-              <BoardCanvas
-                cards={board.cards}
-                links={board.links}
-                onMoveCard={moveBoardCard}
-                onEditCard={editBoardCard}
-                onAddLink={addBoardLink}
-                noteIndex={noteIndex}
-                onOpenNote={onNavigateToEntity}
-                showToast={showToast}
-                synced={boardSynced}
-                stackedHeight={chatBoardHeight}
-              />
+              <div style={{ height: chatBoardHeight, display: 'flex', flex: 'none' }}>
+                <BrainstormBoardSurface
+                  folderPath={activeFolderPath}
+                  notesVaultValid
+                  variant="strip"
+                  heightPx={chatBoardHeight}
+                />
+              </div>
             </>
           )}
         </div>
@@ -2681,8 +2562,13 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                 <span className="bs-activity-stat-k">Notes</span>
               </div>
               <div className="bs-activity-stat">
-                <span className="bs-activity-stat-v" data-testid="bs-stat-links">{board?.links.length ?? 0}</span>
-                <span className="bs-activity-stat-k">Links</span>
+                {/* SKY-11192/SKY-11674: the old in-memory board's link count
+                    has no equivalent in the real engine (card-to-card
+                    connect has no UI there yet — pre-existing gap, not
+                    introduced here). Repurposed to a real count: notes
+                    filed across the three Idea Collections folders. */}
+                <span className="bs-activity-stat-v" data-testid="bs-stat-cards">{filing.totalNoteCount}</span>
+                <span className="bs-activity-stat-k">Cards</span>
               </div>
               <div className="bs-activity-stat">
                 <span className="bs-activity-stat-v" data-testid="bs-stat-props">{proposals.length}</span>
@@ -3128,34 +3014,35 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
       </div>
       )}
 
-      {/* M20 (§7.2): the ONE Board page — collections, canvas, agent side panel. */}
+      {/* M20 / SKY-11192/SKY-11674 §1: the ONE Board page — collections,
+          the shared canvas (same folder-scoped state the Notes Board tab
+          uses), agent side panel. */}
       {effectiveMode === 'board' && (
       <div className="brainstorm-layout">
         {/* M20: left IDEA COLLECTIONS panel — shared with the chat page. */}
         {!compact && (
           <IdeaCollectionsPanel
             pool={collectionsPool}
-            placedTitles={placedTitles}
-            onPlace={placeIdeaOnBoard}
-            showToast={showToast}
+            statusFor={filing.statusFor}
+            onFile={handleFileIdea}
+            onOpen={handleOpenIdea}
             manualOnly={!aiEnabled}
           />
         )}
         <div className="bsc-body">
-          {board && (
-            <BoardCanvas
-              cards={board.cards}
-              links={board.links}
-              query={ideaQuery}
-              onMoveCard={moveBoardCard}
-              onEditCard={editBoardCard}
-              onAddLink={addBoardLink}
-              noteIndex={noteIndex}
-              onOpenNote={onNavigateToEntity}
-              showToast={showToast}
-              synced={boardSynced}
-            />
+          {/* CEO ruling on SKY-11192: exactly three pills, no `Browse
+              vault…` picker — that navigator already lives in the Notes
+              Board tab. Off-by-default flag: with it off, the board is
+              locked to Plot & Story and no pill row renders. */}
+          {brainstormBoardsUnification && (
+            <BrainstormBoardPills active={activePillKey} onSelect={setActivePillKey} />
           )}
+          <BrainstormBoardSurface
+            folderPath={activeFolderPath}
+            notesVaultValid
+            variant="page"
+            onChooseAnotherBoard={brainstormBoardsUnification ? () => setActivePillKey('plot') : undefined}
+          />
         </div>
         {/* M20 (§7.2): board-page right panel — explore buttons, saved
             prompts, quick-generate. Every action runs through the real chat

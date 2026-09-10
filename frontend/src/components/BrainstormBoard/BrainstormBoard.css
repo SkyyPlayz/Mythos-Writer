@@ -442,18 +442,65 @@ button.bsb-card-title--note {
   gap: 7px;
   padding: 6px 8px 6px 24px;
   border-radius: 8px;
-  cursor: pointer;
-  background: none;
-  border: none;
-  text-align: left;
 }
 
 .bs-coll-idea:hover {
   background: rgba(255, 255, 255, 0.06);
 }
 
-.bs-coll-idea--placed {
-  opacity: 0.45;
+.bs-coll-idea--filed {
+  opacity: 0.7;
+}
+
+/* SKY-11192/SKY-11674 §3: labeled `File` button — secondary style, not the
+   accent-filled primary: filing one of a dozen suggested ideas isn't THE
+   action on this screen, Agent Chat is. */
+.bs-coll-file-btn {
+  flex: none;
+  align-self: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted, #9fb0c8);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.bs-coll-file-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary, #dbe4f5);
+}
+
+.bs-coll-filing {
+  flex: none;
+  align-self: center;
+  font-size: 10px;
+  color: var(--text-muted, #9fb0c8);
+}
+
+.bs-coll-filed-group {
+  flex: none;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bs-coll-filed-label {
+  font-size: 10px;
+  color: #4ade80;
+}
+
+.bs-coll-open-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--n1, #00f0ff);
+  font-size: 10px;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .bs-coll-glyph {
