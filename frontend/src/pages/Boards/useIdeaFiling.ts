@@ -39,7 +39,6 @@
  * a folder being an implicit side effect of an action the user just took.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { KeyboardEvent, MouseEvent } from 'react';
 import {
   IDEA_FOLDERS,
   IDEA_TARGET_FOLDER,
@@ -74,7 +73,11 @@ const GESTURE: UserGesture = Object.freeze({}) as UserGesture;
  * synthetic wrapper is script-constructed by definition.
  */
 export function userGestureFrom(
-  event: Pick<MouseEvent | KeyboardEvent, 'nativeEvent'> | null | undefined,
+  // `nativeEvent: unknown` rather than the React event types: the guarantee
+  // here is a RUNTIME one (`instanceof Event` plus `isTrusted`), and a
+  // narrower compile-time type would only imply a promise the types cannot
+  // keep — a caller can always assert past it.
+  event: { nativeEvent?: unknown } | null | undefined,
 ): UserGesture | null {
   const native: unknown = event?.nativeEvent;
   // Must be an actual DOM Event — a plain object claiming isTrusted is not.
