@@ -41,6 +41,9 @@ import {
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const SIDECAR = '.mythos-board.json';
+// SKY-11717 evidence: the drag is the only moment the defect is visible, so the
+// proving frames are captured with the mouse button still down.
+const SHOTS = path.resolve(__dirname, '../../docs/screenshots/sky11717');
 
 // ── Fixture ─────────────────────────────────────────────────────────────────
 
@@ -307,6 +310,13 @@ test('SKY-11191 AC1: a column item’s ref shows its connector under the overlay
     const x1Before = await x1Of();
     const leftBefore = await leftOf();
 
+    // Evidence for the merge gate. Clipped to the band that holds the cards and
+    // the connector: a full-page shot buries a 160px move in 900px of chrome.
+    const canvas = await page.locator('.board-canvas__root').boundingBox();
+    const band = { x: canvas!.x, y: canvas!.y, width: canvas!.width, height: 240 };
+    fs.mkdirSync(SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(SHOTS, 'column-connector-at-rest.png'), clip: band });
+
     await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2);
     await page.mouse.down();
     // Two steps so the move is a real drag, not a single synthetic jump.
@@ -321,6 +331,13 @@ test('SKY-11191 AC1: a column item’s ref shows its connector under the overlay
       expect(x1Mid).toBeGreaterThan(x1Before + 100);
       // Same delta, not merely "also moved": the two are reading one rect.
       expect(Math.abs(x1Mid - x1Before - (leftMid - leftBefore))).toBeLessThan(1);
+      // The frame the ticket is about: button still down, box carried +160px,
+      // dashed connector already on the column's new edge. Pre-fix this same
+      // shot shows the connector stranded at the committed x.
+      await page.screenshot({
+        path: path.join(SHOTS, 'column-connector-mid-drag.png'),
+        clip: band,
+      });
     } finally {
       await page.mouse.up();
     }
