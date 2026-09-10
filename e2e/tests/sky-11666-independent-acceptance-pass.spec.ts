@@ -316,18 +316,30 @@ test('SKY-11666 GAP-3: a never-arranged note has no id: in frontmatter; only a d
     await dragItem(page, 'Mira', 240, 160);
 
     await expect.poll(() => fs.existsSync(sidecarPath(notesDir, 'Characters')), { timeout: 10_000 }).toBe(true);
+
+    // The id has to actually land in Mira's OWN frontmatter (spec §2-§3:
+    // lazy assignment on first touch writes `id:` to the note file itself,
+    // not just to the sidecar) — read it back from disk rather than trusting
+    // any key the sidecar happens to expose.
+    const miraIdMatch = /^---[\s\S]*?^id:\s*(\S+)\s*$[\s\S]*?^---/m.exec(fs.readFileSync(noteFile, 'utf-8'));
+    expect(miraIdMatch).toBeTruthy();
+    const miraId = miraIdMatch![1];
+
     const sidecar = readSidecar(notesDir, 'Characters');
     const layout = sidecar.layout as Record<string, unknown>;
-    const touchedKey = Object.keys(layout).find((k) => k.startsWith('n:'));
-    expect(touchedKey).toBeTruthy();
+    const noteKeys = Object.keys(layout).filter((k) => k.startsWith('n:'));
+    // Exactly one note-keyed layout entry, and it is keyed by Mira's own
+    // frontmatter id — not Bram's (never touched), and not some other `n:`
+    // entry that happens to be truthy. This is the assertion GAP-3 named:
+    // "any `n:` key is truthy" passes even if the entry belongs to Bram or
+    // nothing was actually touched.
+    expect(noteKeys).toEqual([`n:${miraId}`]);
 
-    // Bram was never touched: still no layout entry for it, and — if the id
-    // lives in frontmatter rather than only in the sidecar — Bram's own file
-    // must still be clean too.
+    // Bram was never touched: still no layout entry for it, and — since the
+    // id lives in frontmatter rather than only in the sidecar — Bram's own
+    // file must still be clean too.
     const bramFile = path.join(notesDir, 'Characters', 'Bram.md');
     expect(fs.readFileSync(bramFile, 'utf-8')).not.toMatch(/^---[\s\S]*id:/);
-    const untouchedStillAuto = !Object.keys(layout).some((k) => k !== touchedKey && k.startsWith('n:'));
-    expect(untouchedStillAuto).toBe(true);
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -415,14 +427,20 @@ test('SKY-11666 GAP-5: the same thumbnail derivative renders in the Notes editor
     const cover = page.locator('[data-testid="note-cover"]');
     await expect(cover).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('[data-testid="note-cover-badge"]')).toHaveText('Auto');
-    await expect(cover.locator('.note-thumb img')).toHaveAttribute('src', /^data:image\/webp;base64,/, { timeout: 15_000 });
+    const coverImg = cover.locator('.note-thumb img');
+    await expect(coverImg).toHaveAttribute('src', /^data:image\/webp;base64,/, { timeout: 15_000 });
+    // Captured while surface 1 is still mounted — the actual bytes, not just
+    // "some webp", so it can be compared against the other two surfaces below.
+    const notesSrc = await coverImg.getAttribute('src');
 
     // Surface 2 — the Board card, same note, no re-seed of any kind.
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();
     await expect(page.locator('.board-canvas__root')).toBeVisible({ timeout: 8_000 });
     const boardCard = page.locator('.board-canvas__item[aria-label^="Note card: Mira"]').first();
     await expect(boardCard).toBeVisible({ timeout: 10_000 });
-    await expect(boardCard.locator('.board-canvas__thumb img')).toHaveAttribute('src', /^data:image\/webp;base64,/, { timeout: 15_000 });
+    const boardImg = boardCard.locator('.board-canvas__thumb img');
+    await expect(boardImg).toHaveAttribute('src', /^data:image\/webp;base64,/, { timeout: 15_000 });
+    const boardSrc = await boardImg.getAttribute('src');
 
     // Surface 3 — Scene Crafter's suggested-cards rail. Every markdown note
     // outside `boards/`/`scenes/` is auto-listed here with no linking step
@@ -440,11 +458,16 @@ test('SKY-11666 GAP-5: the same thumbnail derivative renders in the Notes editor
     // The claim under test: the avatar slot paints the SAME cached
     // derivative, not the initials fallback it shows before the cache
     // resolves (or when it can't).
-    await expect(suggestedCard.locator('.sc-sugg-av img')).toHaveAttribute(
-      'src',
-      /^data:image\/webp;base64,/,
-      { timeout: 15_000 },
-    );
+    const craftImg = suggestedCard.locator('.sc-sugg-av img');
+    await expect(craftImg).toHaveAttribute('src', /^data:image\/webp;base64,/, { timeout: 15_000 });
+    const craftSrc = await craftImg.getAttribute('src');
+
+    // GAP-5's actual claim is cross-surface consistency, not "each surface
+    // independently renders some webp" — three surfaces rendering three
+    // different derivatives would still pass the per-surface regex checks
+    // above. Compare the captured bytes directly.
+    expect(boardSrc).toBe(notesSrc);
+    expect(craftSrc).toBe(notesSrc);
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });
