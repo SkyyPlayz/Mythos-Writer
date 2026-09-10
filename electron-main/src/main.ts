@@ -31,6 +31,7 @@ import {
   type BrainstormBoardReadResponse,
   type BrainstormBoardWriteResponse,
   type BrainstormBoardMigrateNotesResponse,
+  type BrainstormBoardMigrationPreviewResponse,
   type VaultListPayload,
   type VaultListResponse,
   type VaultDeletePayload,
@@ -507,7 +508,10 @@ import {
   writeBrainstormBoard,
   migrateBrainstormBoardToAgentVault,
 } from './mythosFormat/brainstormBoardFile.js';
-import { migrateBrainstormBoardToNotes } from './mythosFormat/brainstormBoardToNotes.js';
+import {
+  migrateBrainstormBoardToNotes,
+  previewBrainstormBoardMigration,
+} from './mythosFormat/brainstormBoardToNotes.js';
 import {
   scanMythosStoryVault,
   syncCanonicalFromManifest,
@@ -6468,6 +6472,11 @@ const handlers: IpcHandlers = {
   // notes. Renderer-triggered rather than run at boot, because it only makes
   // sense once the unified-board flag is on — with the flag off the legacy
   // board is still the page the user is looking at.
+  //
+  // It writes to the user's vault, so it runs only on an explicit click: the
+  // renderer will not reach this channel without a trusted user gesture (see
+  // `useBoardMigration.ts`). Ask via BRAINSTORM_BOARD_MIGRATION_PREVIEW to
+  // find out whether there is anything to offer.
   [IPC_CHANNELS.BRAINSTORM_BOARD_MIGRATE_NOTES]: (): BrainstormBoardMigrateNotesResponse => {
     ensureNotesVaultDir();
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
@@ -6475,6 +6484,13 @@ const handlers: IpcHandlers = {
       return { migrated: false, created: [], skipped: [], error: 'no Mythos vault' };
     }
     return migrateBrainstormBoardToNotes(mythosRoot);
+  },
+  // SKY-11192: read-only counterpart of the above — stat, read, parse, nothing
+  // else. Safe to call on render because it cannot change the vault.
+  [IPC_CHANNELS.BRAINSTORM_BOARD_MIGRATION_PREVIEW]: (): BrainstormBoardMigrationPreviewResponse => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (mythosRoot === null) return { pending: 0, unreadable: false };
+    return previewBrainstormBoardMigration(mythosRoot);
   },
   [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
     ensureNotesVaultDir();

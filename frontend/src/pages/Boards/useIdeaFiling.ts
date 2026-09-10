@@ -49,41 +49,11 @@ import {
   type IdeaCategory,
 } from './ideaFiling';
 
-declare const userGestureBrand: unique symbol;
+// The gesture lock is shared with `useBoardMigration` — see `userGesture.ts`
+// for why the token itself is not exported from anywhere.
+import { isUserGesture, type UserGesture } from './userGesture';
 
-/**
- * Proof that a real user activated a control. Branded so it cannot be
- * structurally faked by an object literal in TypeScript, and only mintable
- * from a trusted DOM event at runtime.
- */
-export interface UserGesture {
-  readonly [userGestureBrand]: true;
-}
-
-const GESTURE: UserGesture = Object.freeze({}) as UserGesture;
-
-/**
- * Mint a gesture token from a React event, or `null` if the event was not
- * user-generated.
- *
- * `isTrusted` is the browser's own answer to "did a human do this": it is true
- * only for events the user agent dispatched from real input, and false for
- * anything script-dispatched, including `element.click()` and a hand-built
- * `new MouseEvent(...)`. We read it off `nativeEvent` because React's
- * synthetic wrapper is script-constructed by definition.
- */
-export function userGestureFrom(
-  // `nativeEvent: unknown` rather than the React event types: the guarantee
-  // here is a RUNTIME one (`instanceof Event` plus `isTrusted`), and a
-  // narrower compile-time type would only imply a promise the types cannot
-  // keep — a caller can always assert past it.
-  event: { nativeEvent?: unknown } | null | undefined,
-): UserGesture | null {
-  const native: unknown = event?.nativeEvent;
-  // Must be an actual DOM Event — a plain object claiming isTrusted is not.
-  if (typeof Event === 'undefined' || !(native instanceof Event)) return null;
-  return native.isTrusted ? GESTURE : null;
-}
+export { userGestureFrom, type UserGesture } from './userGesture';
 
 export interface FileableIdea {
   key: string;
@@ -131,7 +101,7 @@ export function useIdeaFiling(): IdeaFiling {
   ): Promise<FileIdeaResult> => {
     // LOCK 2 — no trusted user event, no write. This is the line a reviewer
     // should look for; deleting it is the whole regression.
-    if (gesture !== GESTURE) {
+    if (!isUserGesture(gesture)) {
       return { ok: false, reason: 'no-gesture', message: 'Filing an idea requires a direct click.' };
     }
     // LOCK 3 — one idea at a time.

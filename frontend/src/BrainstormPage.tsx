@@ -42,6 +42,7 @@ import BrainstormBoardPage, {
   STRIP_DEFAULT_H,
 } from './pages/Boards/BrainstormBoardPage';
 import { useFiledIdeas, useIdeaFiling, userGestureFrom } from './pages/Boards/useIdeaFiling';
+import { useBoardMigration } from './pages/Boards/useBoardMigration';
 import { IDEA_FOLDERS, ideaTargetFolder } from './pages/Boards/ideaFiling';
 import IdeaCollectionsPanel, {
   type CollectionIdea,
@@ -1023,30 +1024,28 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   const { filingKey, fileIdea } = useIdeaFiling();
 
   /**
-   * CEO ruling 2: the retired board's cards become real notes, once, the first
-   * time the unified board is actually shown. Not at boot — with the flag off
-   * the legacy board is still the page the user is looking at, and migrating
-   * out from under it would empty a page they are using.
-   *
-   * The main-process half is idempotent (it parks the source file), so the
-   * `once` ref here is a courtesy, not the correctness argument.
+   * CEO ruling 2: the retired board's cards become real notes rather than
+   * being dropped. They are OFFERED, not converted automatically — the same
+   * user-click constraint the `File` button below carries (AC 4), because this
+   * writes to the user's vault too. `useBoardMigration` only reads until the
+   * button in the banner is actually clicked; see that file for why.
    */
-  const migrationRunRef = useRef(false);
-  useEffect(() => {
-    if (!unifiedBoard || !notesVaultValid) return;
-    if (migrationRunRef.current) return;
-    migrationRunRef.current = true;
-    void (async () => {
-      try {
-        const res = await window.api.brainstormBoard?.migrateToNotes?.();
-        if (res?.migrated && res.created.length > 0) {
-          showToast(`Moved ${res.created.length} idea${res.created.length === 1 ? '' : 's'} into your notes`);
-          filedIdeas.refresh();
-        }
-      } catch { /* the board file stays put and is retried next launch */ }
-    })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot; showToast/filedIdeas are stable enough and re-running is the bug
-  }, [unifiedBoard, notesVaultValid]);
+  const boardMigration = useBoardMigration(unifiedBoard && notesVaultValid);
+
+  const handleMigrateBoard = useCallback(async (event: React.MouseEvent) => {
+    const result = await boardMigration.migrate(userGestureFrom(event));
+    if (!result.ok) {
+      if (result.reason !== 'busy') showToast(result.message);
+      return;
+    }
+    showToast(result.created > 0
+      ? `Moved ${result.created} idea${result.created === 1 ? '' : 's'} into your notes`
+      : 'Your old board had nothing left to move');
+    // An app-created note does not reliably reach the notes watcher, so the
+    // filed-state is refreshed explicitly rather than waited on.
+    filedIdeas.refresh();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- showToast is stable; filedIdeas.refresh is stable by useCallback
+  }, [boardMigration, filedIdeas.refresh]);
 
   /**
    * §3 — file ONE idea, on ONE direct user click.
@@ -3315,6 +3314,38 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
           />
         )}
         <div className="bsc-body">
+          {/* SKY-11192: the retired board's cards are OFFERED, never converted
+              on the user's behalf — see useBoardMigration. Rendered only here,
+              not in the chat strip, so the ask happens once. */}
+          {unifiedBoard && boardMigration.offer && (
+            <div className="bs-board-migrate" role="region" aria-label="Ideas from your old board" data-testid="bs-board-migrate">
+              <p className="bs-board-migrate__text">
+                {boardMigration.offer.unreadable
+                  ? 'Your old brainstorm board can’t be read. Moving it will set it aside so it stops being retried.'
+                  : `You have ${boardMigration.offer.pending} idea${boardMigration.offer.pending === 1 ? '' : 's'} on your old brainstorm board. Move ${boardMigration.offer.pending === 1 ? 'it' : 'them'} into your notes?`}
+              </p>
+              <div className="bs-board-migrate__actions">
+                <button
+                  type="button"
+                  className="bs-board-migrate__go"
+                  onClick={(e) => { void handleMigrateBoard(e); }}
+                  disabled={boardMigration.running}
+                  data-testid="bs-board-migrate-go"
+                >
+                  {boardMigration.running ? 'Moving…' : 'Move into notes'}
+                </button>
+                <button
+                  type="button"
+                  className="bs-board-migrate__later"
+                  onClick={boardMigration.dismiss}
+                  disabled={boardMigration.running}
+                  data-testid="bs-board-migrate-later"
+                >
+                  Not now
+                </button>
+              </div>
+            </div>
+          )}
           {/* SKY-11192: the ONE canvas — the same component and the same
               vault-backed state the Notes Board tab renders, so an edit here
               is already an edit there. Flag off keeps the legacy canvas. */}

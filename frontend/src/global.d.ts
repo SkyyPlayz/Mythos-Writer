@@ -1660,8 +1660,14 @@ interface Window {
     brainstormBoard: {
       read: () => Promise<{ content: string } | { error: string }>;
       write: (content: string) => Promise<{ bytes: number } | { error: string }>;
-      /** SKY-11192: one-time card→note migration. Idempotent; never overwrites. */
+      /**
+       * SKY-11192: one-time card→note migration. Idempotent; never overwrites.
+       * WRITES to the vault — only call it from `useBoardMigration`, which
+       * requires a trusted user gesture (ticket AC 4).
+       */
       migrateToNotes: () => Promise<{ migrated: boolean; created: string[]; skipped: string[]; error?: string }>;
+      /** SKY-11192: read-only "is there anything to migrate", for the prompt. */
+      migrationPreview: () => Promise<{ pending: number; unreadable: boolean }>;
     };
     listNotesVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string; excerpt?: string }> } | { error: string }>;
     deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean } | { error: string }>;

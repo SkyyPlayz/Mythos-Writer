@@ -342,3 +342,78 @@
 .bsb--collapsed .board-canvas__resize-handle {
   display: none;
 }
+
+/*
+  ── "Move your old board's ideas into notes" offer (§2, ticket AC 4) ──
+
+  The retired brainstorm board is converted only when the user asks, so this
+  banner IS the feature's entry point rather than a notice about something that
+  already happened. It therefore sits above the canvas in normal flow — not as
+  an overlay or a toast — so it cannot be missed, cannot cover the board, and
+  leaves with a click either way.
+
+  Tokens are the same ones the scope row above resolves, with the same literal
+  fallbacks (SKY-11482: an undefined var() freezes the surface off the theme).
+*/
+.bs-board-migrate {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 10px 16px;
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  border-bottom: var(--bw, 1px) solid var(--text-link, #00f0ff);
+}
+
+.bs-board-migrate__text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-primary, #f0f3fc);
+}
+
+.bs-board-migrate__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bs-board-migrate__go,
+.bs-board-migrate__later {
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 14px;
+  white-space: nowrap;
+}
+
+.bs-board-migrate__go {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  border: var(--bw, 1px) solid var(--text-link, #00f0ff);
+  color: var(--text-link, #00f0ff);
+}
+
+.bs-board-migrate__later {
+  background: none;
+  border: var(--bw, 1px) solid transparent;
+  color: var(--text-secondary, #c8d3e7);
+}
+
+.bs-board-migrate__later:hover {
+  color: var(--text-primary, #f0f3fc);
+}
+
+.bs-board-migrate__go:focus-visible,
+.bs-board-migrate__later:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+/* Busy is a real state, not just a disabled button: the write is happening. */
+.bs-board-migrate__go:disabled,
+.bs-board-migrate__later:disabled {
+  cursor: default;
+  opacity: 0.55;
+}

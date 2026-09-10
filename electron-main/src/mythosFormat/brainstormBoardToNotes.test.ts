@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   migrateBrainstormBoardToNotes,
+  previewBrainstormBoardMigration,
   parseLegacyCards,
   MIGRATED_SUFFIX,
 } from './brainstormBoardToNotes.js';
@@ -61,6 +62,49 @@ describe('parseLegacyCards', () => {
     // beats a strict one that refuses the whole board over one bad field.
     const cards = parseLegacyCards('{"cards":[{"title":"X","cat":"invented"}]}');
     expect(cards).toHaveLength(1);
+  });
+});
+
+/**
+ * AC 4: the migration is offered, never performed on the user's behalf, so the
+ * renderer needs to know what is waiting BEFORE anything is written. The whole
+ * point of these tests is the last one — that asking does not change the vault.
+ */
+describe('previewBrainstormBoardMigration', () => {
+  it('reports nothing to do when there is no legacy board file', () => {
+    expect(previewBrainstormBoardMigration(mythosRoot)).toEqual({ pending: 0, unreadable: false });
+  });
+
+  it('counts the cards the migration would act on, not the raw array length', () => {
+    // The titleless card is dropped by parseLegacyCards, so offering "3" here
+    // would promise the user one more note than the click can deliver.
+    seedBoard([{ title: 'Keep' }, { title: '   ' }, { title: 'Also keep' }]);
+    expect(previewBrainstormBoardMigration(mythosRoot)).toEqual({ pending: 2, unreadable: false });
+  });
+
+  it('flags an unparseable board rather than calling it empty', () => {
+    fs.mkdirSync(path.dirname(boardPath), { recursive: true });
+    fs.writeFileSync(boardPath, 'not json{');
+    expect(previewBrainstormBoardMigration(mythosRoot)).toEqual({ pending: 0, unreadable: true });
+  });
+
+  it('reports nothing once the source has been parked', () => {
+    seedBoard([{ title: 'Gone' }]);
+    migrateBrainstormBoardToNotes(mythosRoot);
+    expect(previewBrainstormBoardMigration(mythosRoot)).toEqual({ pending: 0, unreadable: false });
+  });
+
+  it('does not touch the vault — asking is not consent (AC 4)', () => {
+    seedBoard([{ title: 'Midpoint Reversal', cat: 'beats', desc: 'The goal changes.' }]);
+    const before = fs.readFileSync(boardPath, 'utf8');
+
+    previewBrainstormBoardMigration(mythosRoot);
+    previewBrainstormBoardMigration(mythosRoot);
+
+    // Source untouched, nothing parked, and no note written anywhere.
+    expect(fs.readFileSync(boardPath, 'utf8')).toBe(before);
+    expect(fs.existsSync(`${boardPath}${MIGRATED_SUFFIX}`)).toBe(false);
+    expect(fs.existsSync(path.join(notesRoot, 'Plot & Story'))).toBe(false);
   });
 });
 
