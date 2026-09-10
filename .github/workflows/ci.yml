@@ -235,7 +235,7 @@ jobs:
       - name: Upload coverage report
         if: github.event_name != 'pull_request'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: |
@@ -442,7 +442,7 @@ jobs:
 
       - name: Upload visual-capture artifacts
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-capture-artifacts
           path: e2e-visual-artifacts/visual-capture/
@@ -498,7 +498,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-report-shard-1
           # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
@@ -717,7 +717,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-report-shard-2
           # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
@@ -839,7 +839,7 @@ jobs:
       - name: Upload visual-regression diffs on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-regression-diffs
           path: e2e-visual-artifacts/visual-regression/
@@ -918,7 +918,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-report-shard-3
           # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
@@ -1129,7 +1129,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-report-shard-4
           # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
@@ -1370,7 +1370,7 @@ jobs:
       - name: Upload Linux packages
         if: github.event_name != 'pull_request'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-packages
           path: |
@@ -1499,7 +1499,7 @@ jobs:
       - name: Upload Windows packages
         if: github.event_name != 'pull_request'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-packages
           path: |
@@ -1648,7 +1648,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: notes-windows-e2e-report
           # The e2e npm scripts pass --reporter=list, which replaces the html
