@@ -206,6 +206,95 @@
   right: 0;
 }
 
+/* ── SKY-11191 §11: wiki-link overlay ──
+   Slot 1 (the notes slot) at low alpha: a connector belongs to the cards it
+   joins, so it should read as the same family of light rather than as a third
+   colour. Beneath the cards (z-index 0 against their positioned boxes) and
+   pointer-transparent, so it can never take a click that was aimed at a card
+   or at empty canvas. */
+.board-canvas__links {
+  --board-link-stroke: color-mix(in srgb, var(--n1, #00f0ff) 62%, transparent);
+  --board-link-glow: color-mix(in srgb, var(--g1, rgb(0 240 255 / 0.5)) 70%, transparent);
+
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.board-canvas__link {
+  stroke: var(--board-link-stroke);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+  filter: drop-shadow(0 0 4px var(--board-link-glow));
+}
+
+.board-canvas__link-arrow {
+  fill: var(--board-link-stroke);
+}
+
+/* High contrast and Reduce Glow both want the line itself, not the halo it
+   sits in — the dash pattern is what carries the meaning. */
+@media (prefers-contrast: more) {
+  .board-canvas__links {
+    --board-link-stroke: var(--text-primary, #e8eefc);
+  }
+
+  .board-canvas__link {
+    filter: none;
+  }
+}
+
+/* ── SKY-11191 §11: minimap ──
+   Derived from the item boxes; nothing about it is persisted. Bottom-LEFT so
+   it never collides with the centred zoom pill or with the resize handle of a
+   card parked in the bottom-right corner. */
+.board-canvas__minimap {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  z-index: 10;
+  width: 168px;
+  height: 116px;
+  border-radius: 10px;
+  border: var(--bw, 1px) solid var(--gs1, rgb(255 255 255 / 0.1));
+  background: var(--glass-fill-fallback, rgb(13 16 28));
+  overflow: hidden;
+  cursor: pointer;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .board-canvas__minimap {
+    background: var(--board-pill-fill);
+    backdrop-filter: blur(var(--board-pill-blur));
+    -webkit-backdrop-filter: blur(var(--board-pill-blur));
+  }
+}
+
+.board-canvas__minimap-box {
+  position: absolute;
+  border-radius: 1px;
+}
+
+/* Same slot split as the cards: notes slot 1, boards slot 2. At this size the
+   colour IS the item type — there is no room for a label. */
+.board-canvas__minimap-box--note {
+  background: color-mix(in srgb, var(--n1, #00f0ff) 55%, transparent);
+}
+
+.board-canvas__minimap-box--folder {
+  background: color-mix(in srgb, var(--n2, #9b5fff) 55%, transparent);
+}
+
+.board-canvas__minimap-viewport {
+  position: absolute;
+  border: 1px solid var(--n3, #ff4dff);
+  background: color-mix(in srgb, var(--n3, #ff4dff) 12%, transparent);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
 /* ── Items ──
    The mockup colors each card by its category. Our two categories are the
    item kinds, so notes take slot 1 and boards take slot 2. `--board-item-n` is
