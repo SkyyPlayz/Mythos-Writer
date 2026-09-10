@@ -16,7 +16,7 @@ import BoardFurniture from './BoardFurniture';
 import type { BoardFurnitureItemData } from './BoardFurniture';
 import BoardLinkOverlay from './BoardLinkOverlay';
 import BoardMinimapPanel from './BoardMinimapPanel';
-import { connectorSegments } from './boardLinks';
+import { connectorSegments, furnitureAnchorKey } from './boardLinks';
 import type { AnchorRect, BoardWikiLink } from './boardLinks';
 import { minimapViewportRect, scrollToCentreWorldPoint } from './boardMinimap';
 import type { MinimapBox } from './boardMinimap';
@@ -49,7 +49,12 @@ import './BoardCanvas.css';
 export type { BoardItem } from './BoardCard';
 export type { BoardFurnitureItemData } from './BoardFurniture';
 
-/** A furniture item's resolved on-screen box, keyed by its OWN item key (v:/n:/x:) for line endpoints. */
+/**
+ * A furniture item's resolved on-screen box — the live one, drag and resize
+ * already applied. Collected twice: by furniture id (`furnitureRects`, what
+ * the box is painted at and what a wiki-link connector anchors on) and by
+ * item key `v:/n:/x:` (`keyRects`, what a `line` looks its endpoints up in).
+ */
 interface KeyRect {
   x: number;
   y: number;
@@ -151,9 +156,11 @@ export interface BoardCanvasProps {
   /** Draw those connectors. Off by default — the overlay is a toggle (§11). */
   wikiLinkOverlay?: boolean;
   /**
-   * Rects for anchors the canvas does not itself render — today, ticket 5's
-   * `column` furniture boxes, whose x/y/w/h live in Store B rather than in
-   * this component's layout.
+   * FALLBACK rects for anchors the canvas cannot resolve itself, keyed the
+   * same way `wikiLinks` are. The panel derives ticket 5's `column` boxes
+   * from Store B and passes them here; where the canvas also lays that anchor
+   * out, its own live rect wins, so a connector tracks a drag in progress
+   * instead of waiting for the commit (SKY-11717).
    */
   linkAnchors?: ReadonlyMap<string, AnchorRect>;
   /** SKY-11191 §11: show the derived minimap. */
@@ -760,17 +767,41 @@ export default function BoardCanvas({
     });
   }, [resolvedItems, localPositions, localSizes]);
 
+  // ── Where every furniture item actually IS, right now ───────────────────
+  // The furniture half of `itemRects`: saved x/y/w/h, overridden by the live
+  // drag/resize. Keyed by furniture id; both the rendered box and the two
+  // connector layers read it, so a `line`, a wiki-link connector and the box
+  // itself can never disagree about where a column is mid-drag (SKY-11717).
+  const furnitureRects = useMemo(() => {
+    const rects = new Map<string, KeyRect>();
+    for (const f of furniture) {
+      if (f.k === 'line') continue; // drawn from other items' rects — has no box of its own
+      const pos = localFurniturePositions[f.id] ?? { x: f.x, y: f.y };
+      const size = localFurnitureSizes[f.id] ?? { w: f.w, h: f.h };
+      const def = defaultFurnitureSize(f.k, furnitureCount(f), { w: f.w, h: f.h });
+      rects.set(f.id, { x: pos.x, y: pos.y, w: size.w ?? def.w, h: size.h ?? def.h });
+    }
+    return rects;
+  }, [furniture, localFurniturePositions, localFurnitureSizes]);
+
   // ── SKY-11191 §11: wiki-link overlay ────────────────────────────────────
   // Anchors are item paths plus whatever extra boxes the panel supplied
   // (ticket 5's `column` furniture). Both maps are built only while the
   // overlay is on, so a board with the toggle off pays nothing for it.
+  //
+  // SKY-11717: the panel derives its `linkAnchors` from Store B, so those are
+  // the COMMITTED x/y — they only move once a drag ends and the row reloads.
+  // Wherever the canvas lays the same anchor out itself it knows better, so
+  // its live rect is applied last and wins; `linkAnchors` stays the fallback
+  // for anchors the canvas does not render.
   const linkSegments = useMemo(() => {
     if (!wikiLinkOverlay || !wikiLinks || wikiLinks.length === 0) return [];
     const anchors = new Map<string, AnchorRect>();
     for (const { r, x, y, w, h } of itemRects) anchors.set(r.item.path, { x, y, w, h });
     if (linkAnchors) for (const [key, rect] of linkAnchors) anchors.set(key, rect);
+    for (const [id, rect] of furnitureRects) anchors.set(furnitureAnchorKey(id), rect);
     return connectorSegments(wikiLinks, anchors);
-  }, [wikiLinkOverlay, wikiLinks, linkAnchors, itemRects]);
+  }, [wikiLinkOverlay, wikiLinks, linkAnchors, itemRects, furnitureRects]);
 
   // ── SKY-11191 §11: minimap ──────────────────────────────────────────────
   const minimapBoxes: MinimapBox[] = useMemo(
@@ -892,24 +923,20 @@ export default function BoardCanvas({
 
   const mountedFurniture: ReactElement[] = [];
   for (const f of furniture) {
-    if (f.k === 'line') continue; // drawn separately, below — it has no box of its own
-    const pos = localFurniturePositions[f.id] ?? { x: f.x, y: f.y };
-    const size = localFurnitureSizes[f.id] ?? { w: f.w, h: f.h };
-    const def = defaultFurnitureSize(f.k, furnitureCount(f), { w: f.w, h: f.h });
-    const w = size.w ?? def.w;
-    const h = size.h ?? def.h;
-    keyRects.set(`x:${f.id}`, { x: pos.x, y: pos.y, w, h });
+    const rect = furnitureRects.get(f.id);
+    if (!rect) continue; // `line` furniture — drawn separately, below
     const dragging = draggingFurnitureId === f.id;
     const selected = selectedFurnitureId === f.id;
-    if (!shouldMount({ rect: { x: pos.x, y: pos.y, w, h }, dragging, selected }, cullRect)) continue;
+    keyRects.set(`x:${f.id}`, rect);
+    if (!shouldMount({ rect, dragging, selected }, cullRect)) continue;
     mountedFurniture.push(
       <BoardFurniture
         key={f.id}
         item={f}
-        x={pos.x}
-        y={pos.y}
-        w={w}
-        h={h}
+        x={rect.x}
+        y={rect.y}
+        w={rect.w}
+        h={rect.h}
         resizable={RESIZABLE_FURNITURE_KINDS.has(f.k)}
         selected={selected}
         dragging={dragging}

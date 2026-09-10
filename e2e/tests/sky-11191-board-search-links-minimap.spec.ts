@@ -16,7 +16,8 @@
  *   2  The overlay toggle draws a dashed connector between two cards on the
  *      same board that link to each other, and only while it is on.
  *   3  A `column` item's `ref` (ticket 5, SKY-11188) shows its connector under
- *      the same toggle (AC1 / spec §15 test 6, overlay half).
+ *      the same toggle (AC1 / spec §15 test 6, overlay half), and that
+ *      connector tracks the column through a live drag (SKY-11717).
  *   4  Overlay and minimap are purely derived: nothing about either is written
  *      to the board sidecar, and killing and relaunching the app reconstructs
  *      both from the vault alone (AC3).
@@ -40,6 +41,9 @@ import {
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const SIDECAR = '.mythos-board.json';
+// SKY-11717 evidence: the drag is the only moment the defect is visible, so the
+// proving frames are captured with the mouse button still down.
+const SHOTS = path.resolve(__dirname, '../../docs/screenshots/sky11717');
 
 // ── Fixture ─────────────────────────────────────────────────────────────────
 
@@ -284,9 +288,63 @@ test('SKY-11191 AC1: a column item’s ref shows its connector under the overlay
       page.locator('.board-canvas__link[data-link-label="Cast links to Aria"]'),
     ).toHaveCount(1);
     // Anchored on the column box itself, not on some stand-in.
-    await expect(
-      page.locator(`.board-canvas__link[data-link-id="furniture:${created.id}→Aria.md"]`),
-    ).toHaveCount(1);
+    const columnLink = page.locator(
+      `.board-canvas__link[data-link-id="furniture:${created.id}→Aria.md"]`,
+    );
+    await expect(columnLink).toHaveCount(1);
+
+    // ── SKY-11717: the connector tracks the column DURING the drag ──────────
+    //
+    // The panel's anchor for this box comes from Store B, so it does not move
+    // until the drag commits and the row reloads. The canvas owns the live
+    // rect, and this asserts the connector is reading that one — every check
+    // below happens with the mouse button still down.
+    const column = page.locator(`[data-testid="board-furniture-${created.id}"]`);
+    const handle = column.locator('.board-canvas__furniture-title');
+    const x1Of = async () => parseFloat((await columnLink.getAttribute('x1')) ?? 'NaN');
+    const leftOf = async () =>
+      column.evaluate((el) => parseFloat(getComputedStyle(el as HTMLElement).left));
+
+    const grip = await handle.boundingBox();
+    expect(grip).not.toBeNull();
+    const x1Before = await x1Of();
+    const leftBefore = await leftOf();
+
+    // Evidence for the merge gate. Clipped to the band that holds the cards and
+    // the connector: a full-page shot buries a 160px move in 900px of chrome.
+    const canvas = await page.locator('.board-canvas__root').boundingBox();
+    const band = { x: canvas!.x, y: canvas!.y, width: canvas!.width, height: 240 };
+    fs.mkdirSync(SHOTS, { recursive: true });
+    await page.screenshot({ path: path.join(SHOTS, 'column-connector-at-rest.png'), clip: band });
+
+    await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2);
+    await page.mouse.down();
+    // Two steps so the move is a real drag, not a single synthetic jump.
+    await page.mouse.move(grip!.x + grip!.width / 2 + 60, grip!.y + grip!.height / 2, { steps: 4 });
+    await page.mouse.move(grip!.x + grip!.width / 2 + 160, grip!.y + grip!.height / 2, { steps: 8 });
+
+    try {
+      // The box moved, and the connector moved with it — before mouseup.
+      await expect.poll(leftOf).toBeGreaterThan(leftBefore + 100);
+      const leftMid = await leftOf();
+      const x1Mid = await x1Of();
+      expect(x1Mid).toBeGreaterThan(x1Before + 100);
+      // Same delta, not merely "also moved": the two are reading one rect.
+      expect(Math.abs(x1Mid - x1Before - (leftMid - leftBefore))).toBeLessThan(1);
+      // The frame the ticket is about: button still down, box carried +160px,
+      // dashed connector already on the column's new edge. Pre-fix this same
+      // shot shows the connector stranded at the committed x.
+      await page.screenshot({
+        path: path.join(SHOTS, 'column-connector-mid-drag.png'),
+        clip: band,
+      });
+    } finally {
+      await page.mouse.up();
+    }
+
+    // And the commit round-trip leaves it exactly where the drag had it —
+    // no snap-back when Store B catches up.
+    await expect.poll(x1Of).toBeGreaterThan(x1Before + 100);
   } finally {
     await app.close();
   }
