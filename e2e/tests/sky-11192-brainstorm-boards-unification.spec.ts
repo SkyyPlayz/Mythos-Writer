@@ -382,13 +382,18 @@ function makeV2Vault(slug: string, cards: Array<Record<string, unknown>>): {
   return { tempRoot, userData, notesDir, boardFile };
 }
 
-test('SKY-11192 ruling 2: turning the flag on migrates the old board into real notes and parks the file', async () => {
+test('SKY-11192 ruling 2 + AC 4: the old board is OFFERED, and only a real click converts it', async () => {
   test.setTimeout(180_000);
   const { tempRoot, userData, notesDir, boardFile } = makeV2Vault('migrate', [
     { id: 'c1', cat: 'beats', title: 'Midpoint Reversal', desc: 'The goal changes.', chips: [] },
     { id: 'c2', cat: 'rel', title: 'Mira and Vale', desc: 'Rivals.', chips: [] },
     { id: 'c3', cat: 'world', title: 'The Deep Vault', desc: 'Under the city.', chips: [] },
   ]);
+  const migratedNotes = [
+    'Plot & Story/Midpoint Reversal.md',
+    'Characters/Mira and Vale.md',
+    'Worldbuilding/The Deep Vault.md',
+  ];
 
   const app = await launchApp(userData);
   try {
@@ -396,12 +401,25 @@ test('SKY-11192 ruling 2: turning the flag on migrates the old board into real n
     await enableUnifiedBoard(page);
     await openBrainstormBoard(page);
 
+    // ── AC 4, the negative half ──
+    // Showing the board is not consent. The offer appears, and until it is
+    // clicked the vault is byte-for-byte untouched: no notes, source in place.
+    const banner = page.getByTestId('bs-board-migrate');
+    await expect(banner).toBeVisible({ timeout: 15_000 });
+    await expect(banner).toContainText('3 ideas');
+    for (const rel of migratedNotes) {
+      expect(fs.existsSync(path.join(notesDir, rel))).toBe(false);
+    }
+    expect(fs.existsSync(boardFile)).toBe(true);
+    expect(fs.existsSync(`${boardFile}.migrated`)).toBe(false);
+
+    // ── The click ──
+    // A real Playwright click, so the browser marks the event `isTrusted` and
+    // `userGestureFrom` mints the token the write demands. Nothing else can.
+    await page.getByTestId('bs-board-migrate-go').click();
+
     // Every card is now a real note, in the folder its category maps to.
-    for (const rel of [
-      'Plot & Story/Midpoint Reversal.md',
-      'Characters/Mira and Vale.md',
-      'Worldbuilding/The Deep Vault.md',
-    ]) {
+    for (const rel of migratedNotes) {
       await expect.poll(() => fs.existsSync(path.join(notesDir, rel)), { timeout: 15_000 }).toBe(true);
     }
     expect(fs.readFileSync(path.join(notesDir, 'Plot & Story/Midpoint Reversal.md'), 'utf-8'))
@@ -412,9 +430,43 @@ test('SKY-11192 ruling 2: turning the flag on migrates the old board into real n
     expect(fs.existsSync(boardFile)).toBe(false);
     expect(JSON.parse(fs.readFileSync(`${boardFile}.migrated`, 'utf-8')).cards).toHaveLength(3);
 
+    // The offer is spent, so the banner goes away rather than asking again.
+    await expect(banner).toBeHidden({ timeout: 10_000 });
+
     // And the migrated ideas are on the board, reachable as ordinary notes.
     await pickPill(page, 'Characters');
     await expect(card(page, 'Mira and Vale')).toBeVisible({ timeout: 10_000 });
+  } finally {
+    await app.close().catch(() => {});
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('SKY-11192 AC 4: declining the offer leaves the legacy board exactly where it was', async () => {
+  test.setTimeout(180_000);
+  const { tempRoot, userData, notesDir, boardFile } = makeV2Vault('decline', [
+    { id: 'c1', cat: 'beats', title: 'Midpoint Reversal', desc: 'The goal changes.', chips: [] },
+  ]);
+
+  const app = await launchApp(userData);
+  try {
+    const page = await boot(app);
+    await enableUnifiedBoard(page);
+    await openBrainstormBoard(page);
+
+    const banner = page.getByTestId('bs-board-migrate');
+    await expect(banner).toBeVisible({ timeout: 15_000 });
+    // Singular copy, because one idea is not "1 ideas".
+    await expect(banner).toContainText('1 idea on your old');
+
+    await page.getByTestId('bs-board-migrate-later').click();
+    await expect(banner).toBeHidden({ timeout: 10_000 });
+
+    // "Not now" is not "discard": the ideas survive, unconverted, so the offer
+    // can come back on the next launch.
+    expect(fs.existsSync(boardFile)).toBe(true);
+    expect(fs.existsSync(`${boardFile}.migrated`)).toBe(false);
+    expect(fs.existsSync(path.join(notesDir, 'Plot & Story/Midpoint Reversal.md'))).toBe(false);
   } finally {
     await app.close().catch(() => {});
     fs.rmSync(tempRoot, { recursive: true, force: true });

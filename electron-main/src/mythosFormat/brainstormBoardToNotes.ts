@@ -90,6 +90,40 @@ export function parseLegacyCards(raw: string): LegacyCard[] | null {
   return out;
 }
 
+/** What a migration WOULD do. Nothing here writes, renames or creates. */
+export interface BoardToNotesPreview {
+  /** Cards with a usable title waiting to become notes. 0 = nothing to offer. */
+  pending: number;
+  /** A board file exists but its JSON does not parse. */
+  unreadable: boolean;
+}
+
+/**
+ * Read-only companion to `migrateBrainstormBoardToNotes`.
+ *
+ * The migration is offered to the user, never run on their behalf (ticket AC 4
+ * — see `useBoardMigration.ts` for the renderer half), so the prompt needs a
+ * count BEFORE anything is written. It comes from `parseLegacyCards`, the same
+ * parser the migration itself uses, so the number in the prompt is exactly the
+ * number of cards the click will act on rather than a second opinion that can
+ * drift from it.
+ */
+export function previewBrainstormBoardMigration(mythosRoot: string): BoardToNotesPreview {
+  const sourcePath = path.join(agentVaultRootFor(mythosRoot), BRAINSTORM_BOARD_RELPATH);
+  if (!fs.existsSync(sourcePath)) return { pending: 0, unreadable: false };
+  let raw: string;
+  try {
+    raw = fs.readFileSync(sourcePath, 'utf8');
+  } catch {
+    // Present but unreadable: report it as unreadable rather than as "nothing
+    // to do", so the prompt can still offer to park it.
+    return { pending: 0, unreadable: true };
+  }
+  const cards = parseLegacyCards(raw);
+  if (cards === null) return { pending: 0, unreadable: true };
+  return { pending: cards.length, unreadable: false };
+}
+
 /** `x.json.migrated` → `x.json.migrated (2)`, … so a re-run never clobbers a park. */
 function uniquePath(candidate: string): string {
   if (!fs.existsSync(candidate)) return candidate;
