@@ -346,6 +346,10 @@ test('SKY-11492: .ln-menu and .ln-select-listbox popups render on the overlay ti
     await expect(listbox).toHaveClass(/\bln-overlay-surface\b/);
     expectPopupOnTier(await popupVsTier(page, '[data-testid="ln-select-listbox"]'));
     await page.keyboard.press('Escape');
-    await expect(listbox).toHaveCount(0);
+    // SKY-11664: this is the last assertion in a long, DOM-heavy test — under
+    // shard load it can sit past the project's 10s default before the portal
+    // unmount commits (confirmed 3/3 local pass on the flaking SHA with zero
+    // code changes; not a listener-ordering race like SKY-11581's voicePtt).
+    await expect(listbox).toHaveCount(0, { timeout: 20_000 });
   }, { continuityPanel: true });
 });
