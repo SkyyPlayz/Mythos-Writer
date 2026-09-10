@@ -300,7 +300,7 @@ test.describe.serial('SKY-11169 — Story vault picker UI (fresh profile)', () =
       .toBe(SECOND_VAULT_NAME);
     await expect
       .poll(() => readVaultSettings(userData).vaultRoot, { timeout: 10_000 })
-      .toBe(path.join(bundle, SECOND_VAULT_NAME));
+      .toBe(path.join(bundle, 'Stories', SECOND_VAULT_NAME));
 
     // The empty "Second World" vault has no stories — LeftRail shows the
     // no-story-selected state, proving the app actually re-rooted onto the
