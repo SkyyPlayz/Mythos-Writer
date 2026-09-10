@@ -15,7 +15,7 @@ import type { BoardItem, ItemRect } from './BoardCard';
 import BoardFurniture from './BoardFurniture';
 import type { BoardFurnitureItemData } from './BoardFurniture';
 import BoardLinkOverlay from './BoardLinkOverlay';
-import BoardMinimap from './BoardMinimap';
+import BoardMinimapPanel from './BoardMinimapPanel';
 import { connectorSegments } from './boardLinks';
 import type { AnchorRect, BoardWikiLink } from './boardLinks';
 import { minimapViewportRect, scrollToCentreWorldPoint } from './boardMinimap';
@@ -1067,7 +1067,7 @@ export default function BoardCanvas({
           pinned to the panel's corner instead of scrolling away with the
           board — the same reason the zoom pill lives out here. */}
       {showMinimap && (
-        <BoardMinimap
+        <BoardMinimapPanel
           boxes={minimapBoxes}
           world={minimapWorld}
           viewport={minimapViewport}
