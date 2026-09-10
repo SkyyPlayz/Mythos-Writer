@@ -10,7 +10,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import BoardCanvas from './BoardCanvas';
-import type { BoardItem } from './BoardCanvas';
+import type { BoardFurnitureItemData, BoardItem } from './BoardCanvas';
 import { CARD_DEFAULT_H, CARD_THUMB_DEFAULT_H, CELL_H, ORIGIN_Y } from './boardLod';
 
 vi.mock('../../components/NoteThumbnail', () => ({
@@ -349,6 +349,44 @@ describe('wiki-link overlay (§11)', () => {
     const line = document.querySelector('.board-canvas__link') as SVGLineElement;
     expect(line.getAttribute('x1')).toBe('100');
     expect(line.getAttribute('x2')).toBe('400');
+  });
+
+  it('SKY-11717: follows a column as it is dragged, ignoring the panel’s pre-drag anchor', () => {
+    const column: BoardFurnitureItemData = {
+      id: 'c1',
+      k: 'column',
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 100,
+      title: 'Cast',
+      items: [{ t: 'A', ref: 'a.md' }],
+    };
+    render(
+      <BoardCanvas
+        items={linked}
+        savedLayout={{ 'a.md': { x: 400, y: 0, w: 100, h: 100 } }}
+        savedView={view}
+        furniture={[column]}
+        wikiLinks={[{ id: 'furniture:c1→a.md', from: 'furniture:c1', to: 'a.md', label: 'Cast links to A' }]}
+        // What the panel derived from Store B — correct now, stale the moment
+        // the drag starts, and never updated until the move commits.
+        linkAnchors={new Map([['furniture:c1', { x: 0, y: 0, w: 100, h: 100 }]])}
+        wikiLinkOverlay
+      />,
+    );
+    const line = () => document.querySelector('.board-canvas__link') as SVGLineElement;
+    expect(line().getAttribute('x1')).toBe('100');
+
+    const box = screen.getByLabelText('Cast. Column.');
+    fireEvent.mouseDown(box, { button: 0, clientX: 0, clientY: 0 });
+    act(() => { fireEvent.mouseMove(window, { clientX: 200, clientY: 0 }); });
+
+    // The box moved to 200..300, so its connector leaves the new right edge —
+    // mid-drag, with `linkAnchors` still reporting the old one.
+    expect(parseFloat(getComputedStyle(box).left)).toBe(200);
+    expect(parseFloat(line().getAttribute('x1')!)).toBe(300);
+    expect(parseFloat(line().getAttribute('x2')!)).toBe(400);
   });
 });
 
