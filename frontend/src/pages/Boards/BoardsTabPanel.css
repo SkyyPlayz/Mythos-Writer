@@ -280,6 +280,35 @@
   font-size: 12px;
 }
 
+/* SKY-11189 §8: anchors the RecentlyDeletedPanel dropdown (position: absolute,
+   top: 100%, right: 0 — see RecentlyDeletedPanel.css) to this button. */
+.boards-tab-panel__recently-deleted {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.boards-tab-panel__recently-deleted-btn {
+  background: none;
+  border: var(--bw, 1px) solid transparent;
+  border-radius: 5px;
+  color: var(--text-secondary, #c8d3e7);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+.boards-tab-panel__recently-deleted-btn:hover,
+.boards-tab-panel__recently-deleted-btn[aria-expanded='true'] {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+}
+
+.boards-tab-panel__recently-deleted-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
 /* The canvas fills whatever the crumb bar leaves; the empty-board hint is
    layered over it (see BoardsTabPanel.tsx) instead of replacing it. */
 .boards-tab-panel__canvas-wrap {

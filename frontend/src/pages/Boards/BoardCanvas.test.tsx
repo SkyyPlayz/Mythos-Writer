@@ -449,3 +449,108 @@ describe('search reveal (§11)', () => {
     expect(screen.getByLabelText('Note card: Note 1 Selected.')).toBeTruthy();
   });
 });
+
+describe('SKY-11189 §7: multi-select + Delete/Backspace trashes the selection', () => {
+  it('Delete trashes the single selected item', () => {
+    const onTrashItems = vi.fn();
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />);
+    act(() => { screen.getByLabelText('Note card: Note 0').focus(); });
+    act(() => { fireEvent.keyDown(window, { key: 'Delete' }); });
+    expect(onTrashItems).toHaveBeenCalledWith(['n0000.md']);
+  });
+
+  it('Backspace trashes the selection too', () => {
+    const onTrashItems = vi.fn();
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />);
+    act(() => { screen.getByLabelText('Note card: Note 0').focus(); });
+    act(() => { fireEvent.keyDown(window, { key: 'Backspace' }); });
+    expect(onTrashItems).toHaveBeenCalledWith(['n0000.md']);
+  });
+
+  it('does nothing when nothing is selected', () => {
+    const onTrashItems = vi.fn();
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />);
+    act(() => { fireEvent.keyDown(window, { key: 'Delete' }); });
+    expect(onTrashItems).not.toHaveBeenCalled();
+  });
+
+  it('does not fire while typing in a text input elsewhere on the page', () => {
+    const onTrashItems = vi.fn();
+    render(
+      <div>
+        <input aria-label="unrelated input" />
+        <BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />
+      </div>,
+    );
+    act(() => { screen.getByLabelText('Note card: Note 0').focus(); });
+    const input = screen.getByLabelText('unrelated input');
+    act(() => { input.focus(); });
+    act(() => { fireEvent.keyDown(input, { key: 'Delete' }); });
+    expect(onTrashItems).not.toHaveBeenCalled();
+  });
+
+  it('ctrl+click adds a second card to the selection — both get the selected rim, and Delete trashes both', () => {
+    const onTrashItems = vi.fn();
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />);
+    const first = screen.getByLabelText('Note card: Note 0');
+    const second = screen.getByLabelText('Note card: Note 1');
+    act(() => { fireEvent.mouseDown(first, { button: 0 }); });
+    act(() => { fireEvent.mouseDown(second, { button: 0, ctrlKey: true }); });
+
+    expect(screen.getByLabelText('Note card: Note 0 Selected.')).toBeTruthy();
+    expect(screen.getByLabelText('Note card: Note 1 Selected.')).toBeTruthy();
+
+    act(() => { fireEvent.keyDown(window, { key: 'Delete' }); });
+    expect(onTrashItems).toHaveBeenCalledTimes(1);
+    expect(onTrashItems.mock.calls[0]![0]).toEqual(expect.arrayContaining(['n0000.md', 'n0001.md']));
+  });
+
+  it('a shift+click toggle removes a card from an existing multi-selection', () => {
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} />);
+    const first = screen.getByLabelText('Note card: Note 0');
+    const second = screen.getByLabelText('Note card: Note 1');
+    act(() => { fireEvent.mouseDown(first, { button: 0 }); });
+    act(() => { fireEvent.mouseDown(second, { button: 0, shiftKey: true }); });
+    act(() => { fireEvent.mouseDown(second, { button: 0, shiftKey: true }); }); // toggle back off
+    expect(screen.queryByLabelText('Note card: Note 1 Selected.')).toBeNull();
+    expect(screen.getByLabelText('Note card: Note 0 Selected.')).toBeTruthy();
+  });
+
+  it('a plain click after a multi-selection collapses back to a single selection', () => {
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} />);
+    const first = screen.getByLabelText('Note card: Note 0');
+    const second = screen.getByLabelText('Note card: Note 1');
+    const third = screen.getByLabelText('Note card: Note 2');
+    act(() => { fireEvent.mouseDown(first, { button: 0 }); });
+    act(() => { fireEvent.mouseDown(second, { button: 0, ctrlKey: true }); });
+    act(() => { fireEvent.mouseDown(third, { button: 0 }); }); // plain click, no modifier
+    expect(screen.queryByLabelText('Note card: Note 0 Selected.')).toBeNull();
+    expect(screen.queryByLabelText('Note card: Note 1 Selected.')).toBeNull();
+    expect(screen.getByLabelText('Note card: Note 2 Selected.')).toBeTruthy();
+  });
+});
+
+describe('SKY-11189 §7: context menu Delete entry', () => {
+  it('right-clicking an unselected card selects it and shows a single-item Delete', () => {
+    const onTrashItems = vi.fn();
+    render(<BoardCanvas items={notes(2)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />);
+    const first = screen.getByLabelText('Note card: Note 0');
+    act(() => { fireEvent.contextMenu(first); });
+    const deleteBtn = screen.getByRole('menuitem', { name: 'Delete' });
+    act(() => { fireEvent.click(deleteBtn); });
+    expect(onTrashItems).toHaveBeenCalledWith(['n0000.md']);
+  });
+
+  it('right-clicking a card already in a multi-selection deletes the whole selection', () => {
+    const onTrashItems = vi.fn();
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />);
+    const first = screen.getByLabelText('Note card: Note 0');
+    const second = screen.getByLabelText('Note card: Note 1');
+    act(() => { fireEvent.mouseDown(first, { button: 0 }); });
+    act(() => { fireEvent.mouseDown(second, { button: 0, ctrlKey: true }); });
+    act(() => { fireEvent.contextMenu(second); });
+    expect(screen.getByRole('menuitem', { name: 'Delete 2 items' })).toBeTruthy();
+    act(() => { fireEvent.click(screen.getByRole('menuitem', { name: 'Delete 2 items' })); });
+    expect(onTrashItems.mock.calls[0]![0]).toEqual(expect.arrayContaining(['n0000.md', 'n0001.md']));
+  });
+});

@@ -1,5 +1,18 @@
 /// <reference types="vite/client" />
 
+// SKY-11189 (Notes Board 6/9) §7/§8: one pending-delete entry (mirrors
+// electron-main/src/ipc.ts's NotesBoardPendingEntry).
+interface NotesBoardPendingEntry {
+  id: string;
+  groupId: string;
+  kind: 'note' | 'folder' | 'furniture';
+  boardPath: string;
+  vaultPath?: string;
+  furnitureId?: string;
+  label: string;
+  deletedAt: string;
+}
+
 // SKY-10712: rename → inbound-link cascade (mirrors electron-main/src/ipc.ts)
 interface RenameCascadeLinkUpdate {
   linksUpdated: number;
@@ -1687,6 +1700,20 @@ interface Window {
       itemPath: string,
       newName: string,
     ) => Promise<{ renamed: true; itemPath: string } | { renamed: false } | { error: string }>;
+
+    // SKY-11189 (Notes Board 6/9) §7/§8: trash split by target type +
+    // deferred-delete (notesTrash.ts). This is the real delete path now —
+    // notesBoardItemDelete above stays wired to the Store-B-only stub.
+    notesBoardTrashItems: (
+      folderPath: string,
+      targets: Array<
+        | { kind: 'note' | 'folder'; itemPath: string; label: string }
+        | { kind: 'furniture'; furnitureId: string; label: string }
+      >,
+    ) => Promise<{ entries: NotesBoardPendingEntry[]; undoWindowMs: number }>;
+    notesBoardRestore: (id: string) => Promise<{ restored: boolean; restoredIds: string[] }>;
+    notesBoardRecentlyDeletedList: () => Promise<{ entries: NotesBoardPendingEntry[] }>;
+    notesBoardEmptyTrash: () => Promise<{ flushedGroupIds: string[] }>;
 
     // SKY-11186: note thumbnails (main-process half — noteThumbnails.ts, spec §9).
     // `resolve` says which image (if any) is each note's cover; `get` returns a

@@ -4,6 +4,19 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { unwrapIpcEnvelope } from './ipcEnvelope.js';
 import type { AiActivityEntry, AiActivityTerminalEvent } from './aiActivityRegistry.js';
 
+// SKY-11189 (Notes Board 6/9) §7/§8: one pending-delete entry, as the
+// renderer sees it (Recently Deleted panel row, undo-stack bookkeeping).
+interface NotesBoardPendingEntryDTO {
+  id: string;
+  groupId: string;
+  kind: 'note' | 'folder' | 'furniture';
+  boardPath: string;
+  vaultPath?: string;
+  furnitureId?: string;
+  label: string;
+  deletedAt: string;
+}
+
 // Primary API exposed as window.api
 
 async function invokeEnvelope<T>(channel: string, payload: unknown): Promise<T | { error: string }> {
@@ -977,6 +990,27 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('notesBoard:renameItem', { folderPath, itemPath, newName }) as Promise<
       { renamed: true; itemPath: string } | { renamed: false } | { error: string }
     >,
+
+  // SKY-11189 (Notes Board 6/9) §7/§8: trash split by target type +
+  // deferred-delete. See notesTrash.ts — this is the real delete path now;
+  // notesBoardItemDelete above stays wired to the Store-B-only stub.
+  notesBoardTrashItems: (
+    folderPath: string,
+    targets: Array<
+      | { kind: 'note' | 'folder'; itemPath: string; label: string }
+      | { kind: 'furniture'; furnitureId: string; label: string }
+    >,
+  ) =>
+    ipcRenderer.invoke('notesBoard:trashItems', { folderPath, targets }) as Promise<{
+      entries: NotesBoardPendingEntryDTO[];
+      undoWindowMs: number;
+    }>,
+  notesBoardRestore: (id: string) =>
+    ipcRenderer.invoke('notesBoard:restore', { id }) as Promise<{ restored: boolean; restoredIds: string[] }>,
+  notesBoardRecentlyDeletedList: () =>
+    ipcRenderer.invoke('notesBoard:recentlyDeletedList', {}) as Promise<{ entries: NotesBoardPendingEntryDTO[] }>,
+  notesBoardEmptyTrash: () =>
+    ipcRenderer.invoke('notesBoard:emptyTrash', {}) as Promise<{ flushedGroupIds: string[] }>,
 
   // SKY-11186 (Notes Board 6/9): note thumbnails — main resolves which image
   // is a note's cover (spec §9) and stores/serves derivatives; the renderer

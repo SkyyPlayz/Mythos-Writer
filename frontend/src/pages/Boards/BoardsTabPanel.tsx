@@ -15,6 +15,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 import BoardCanvas from './BoardCanvas';
 import type { BoardItem, BoardTool, BoardFurnitureItemData, ItemLayout } from './BoardCanvas';
 import type { FurnitureKind } from './boardLod';
+import RecentlyDeletedPanel from './RecentlyDeletedPanel';
 import { resolveNoteThumbs } from '../../lib/noteThumbnails';
 import { boardFollowsChange } from './boardVaultChange';
 import { boardWikiLinks, furnitureAnchorRects } from './boardLinks';
@@ -23,6 +24,9 @@ import { searchVaultIndex } from './boardSearch';
 import type { BoardSearchHit, VaultIndexEntry } from './boardSearch';
 import { validateRenameName } from '../../components/VaultBrowser/renameUtils';
 import { basenameNoExt } from '../../crossTabLinkResolver';
+import { useToast } from '../../hooks/useToast';
+import { Toast } from '../../components/Toast/Toast';
+import { pushUndo, undo as undoLastAction } from '../../lib/notesUndoStack';
 import './BoardsTabPanel.css';
 
 /**
@@ -546,6 +550,79 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   const handleRenameCancel = useCallback(() => setRenamingPath(null), []);
   const handleRequestRename = useCallback((itemPath: string) => setRenamingPath(itemPath), []);
 
+  // ── SKY-11189 §7/§8: trash split by target type + deferred-delete undo ──
+  const { toast, showToast, clearToast } = useToast(8000);
+  const [recentlyDeletedOpen, setRecentlyDeletedOpen] = useState(false);
+  const [recentlyDeletedEntries, setRecentlyDeletedEntries] = useState<NotesBoardPendingEntry[]>([]);
+  const recentlyDeletedBtnRef = useRef<HTMLButtonElement>(null);
+
+  const refreshRecentlyDeleted = useCallback(async () => {
+    const res = await window.api.notesBoardRecentlyDeletedList();
+    setRecentlyDeletedEntries(res.entries);
+  }, []);
+
+  const handleToggleRecentlyDeleted = useCallback(() => {
+    setRecentlyDeletedOpen((prev) => {
+      const next = !prev;
+      if (next) void refreshRecentlyDeleted();
+      return next;
+    });
+  }, [refreshRecentlyDeleted]);
+
+  const handleTrashItems = useCallback(async (itemPaths: string[]) => {
+    const targets = itemPaths
+      .map((p) => items.find((i) => i.path === p))
+      .filter((i): i is BoardItem => i != null)
+      .map((i) => ({
+        kind: i.kind,
+        itemPath: i.path,
+        label: i.kind === 'note' ? `${i.name}.md` : i.name,
+      }));
+    if (targets.length === 0) return;
+    setActionError(null);
+    try {
+      const { entries } = await window.api.notesBoardTrashItems(currentFolder, targets);
+      await loadBoard(currentFolder, true);
+      // Restoring the whole batch means restoring every DISTINCT group it
+      // touched (a folder target's descendants share its group, but two
+      // unrelated top-level targets from one multi-select do not — see
+      // notesTrash.ts). One entry per group is enough to name to `restore`.
+      const seenGroups = new Set<string>();
+      const restoreIds: string[] = [];
+      for (const entry of entries) {
+        if (seenGroups.has(entry.groupId)) continue;
+        seenGroups.add(entry.groupId);
+        restoreIds.push(entry.id);
+      }
+      const label = targets.length > 1 ? `Deleted ${targets.length} items` : `Deleted "${targets[0]!.label}"`;
+      pushUndo({
+        label,
+        undo: async () => {
+          await Promise.all(restoreIds.map((id) => window.api.notesBoardRestore(id)));
+          await loadBoard(currentFolder, true);
+        },
+      });
+      showToast(label, 'info');
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : String(err));
+    }
+  }, [items, currentFolder, loadBoard, showToast]);
+
+  const handleUndoToast = useCallback(() => {
+    clearToast();
+    void undoLastAction();
+  }, [clearToast]);
+
+  const handleRestoreFromPanel = useCallback(async (id: string) => {
+    await window.api.notesBoardRestore(id);
+    await Promise.all([refreshRecentlyDeleted(), loadBoard(currentFolder, true)]);
+  }, [refreshRecentlyDeleted, currentFolder, loadBoard]);
+
+  const handleEmptyTrash = useCallback(async () => {
+    await window.api.notesBoardEmptyTrash();
+    await refreshRecentlyDeleted();
+  }, [refreshRecentlyDeleted]);
+
   // Navigating to another board drops any half-finished rename and disarms
   // the tool — neither addresses anything on the board you just opened.
   useEffect(() => {
@@ -805,7 +882,35 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={handleSearchKeyDown}
         />
+
+        {/* SKY-11189 §8: vault-wide, not scoped to the open board — a Notes
+            tab tree delete lands here exactly like a canvas delete. */}
+        <div className="boards-tab-panel__recently-deleted">
+          <button
+            type="button"
+            ref={recentlyDeletedBtnRef}
+            className="boards-tab-panel__recently-deleted-btn"
+            aria-haspopup="dialog"
+            aria-expanded={recentlyDeletedOpen}
+            onClick={handleToggleRecentlyDeleted}
+          >
+            Recently Deleted
+          </button>
+        </div>
       </nav>
+
+      {/* SKY-11189 §8: dropped out of <nav> itself for the same reason the
+          search results are (comment above) — the crumb bar's overflow-x:auto
+          makes it a vertical clipping context too, so an absolutely-positioned
+          panel nested inside it never actually paints on screen. */}
+      <RecentlyDeletedPanel
+        open={recentlyDeletedOpen}
+        onClose={() => setRecentlyDeletedOpen(false)}
+        entries={recentlyDeletedEntries}
+        onRestore={handleRestoreFromPanel}
+        onEmpty={handleEmptyTrash}
+        anchorRef={recentlyDeletedBtnRef}
+      />
 
       {searchQuery.trim() && (
         <ul
@@ -880,6 +985,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             onRequestRename={handleRequestRename}
             onRenameCommit={handleRenameCommit}
             onRenameCancel={handleRenameCancel}
+            onTrashItems={handleTrashItems}
             furniture={furniture}
             itemKeysByPath={itemKeysByPath}
             onFurnitureMove={handleFurnitureMove}
@@ -936,6 +1042,17 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
           </button>
         </div>
       )}
+
+      {/* SKY-11189 §8: immediate feedback for a trash action, mirroring
+          CanvasBoard.tsx's own delete-toast-with-undo precedent. Ctrl+Z
+          works whether or not this toast is still showing (DesktopShell's
+          undo stack, not this component, is the source of truth). */}
+      <Toast
+        message={toast?.message ?? null}
+        level={toast?.level}
+        action={toast ? { label: 'Undo', onClick: handleUndoToast } : undefined}
+        onDismiss={clearToast}
+      />
     </div>
   );
 }
