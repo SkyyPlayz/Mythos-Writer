@@ -195,9 +195,15 @@ test('SKY-11192/SKY-11674 §3: Idea Collections File creates a real note in the 
     await expect(row).toBeVisible();
     await row.getByTestId('bs-coll-file').click();
 
-    // Filed state replaces the File button.
-    await expect(row.getByText('Filed ✓')).toBeVisible({ timeout: 8_000 });
-    await expect(row.getByTestId('bs-coll-open')).toBeVisible();
+    // Filing switches to the Board page (DoD: "navigates there") — the
+    // chat-page Idea Collections panel unmounts on that navigation (a
+    // separate instance backs the Board page's own copy), so "Filed ✓" is
+    // asserted there instead, not on `row` from the page we just left.
+    await expect(page.locator('[data-testid="bsc-mode-board"]')).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('[data-testid="bs-coll-toggle-trope"]').click();
+    const boardPageRow = page.locator('.bs-coll-idea', { hasText: 'The Chosen One' }).first();
+    await expect(boardPageRow.getByText('Filed ✓')).toBeVisible({ timeout: 8_000 });
+    await expect(boardPageRow.getByTestId('bs-coll-open')).toBeVisible();
 
     // The real file, in the mapped folder.
     const created = path.join(notesDir, 'Plot & Story', 'The Chosen One.md');
