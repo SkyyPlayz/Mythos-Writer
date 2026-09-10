@@ -1,0 +1,128 @@
+/**
+ * SKY-11192/SKY-11674 — chrome around the shared canvas in Brainstorm's two
+ * homes (design spec §1/§2/§4). The canvas itself (BoardCanvas.tsx +
+ * BoardCard.tsx) is untouched — every rule here is either layout for this
+ * wrapper or a collapsed-card override scoped by an ancestor class, per the
+ * spec's own "CSS state, not a second component" instruction.
+ */
+
+.bbs-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.bbs-canvas .board-canvas__root {
+  flex: 1;
+}
+
+.bbs-empty-msg {
+  position: absolute;
+  top: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  max-width: 34em;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: var(--dyslexia-line-height);
+  pointer-events: none;
+}
+
+/* Design spec §2: below the ~190px band, cards collapse to head-only chips —
+   same card markup, a shorter render, never a clipped mid-word body. */
+.bbs-canvas--collapsed .board-canvas__thumb,
+.bbs-canvas--collapsed .board-canvas__item-excerpt,
+.bbs-canvas--collapsed .board-canvas__item-meta,
+.bbs-canvas--collapsed .board-canvas__resize-handle {
+  display: none;
+}
+
+.bbs-loading {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bbs-loading-pulse {
+  width: 180px;
+  height: 96px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  animation: bbs-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes bbs-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.9; }
+}
+
+.bbs-error {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+}
+
+.bbs-error p {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  line-height: var(--dyslexia-line-height);
+}
+
+.bbs-error-choose {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--n1, #00f0ff);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ── Folder-scope pill row (design spec §1) ── */
+
+.bbs-pills {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) 0;
+  flex-wrap: wrap;
+}
+
+.bbs-pill {
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: 99px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.bbs-pill--active {
+  background: var(--gs1, rgba(0, 240, 255, 0.16));
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  color: var(--text-primary);
+}
+
+.bbs-pills-caption {
+  margin: var(--space-1) 0 0;
+  padding: 0 var(--space-3);
+  color: var(--text-faint);
+  font-size: var(--text-xs, var(--text-sm));
+  line-height: var(--dyslexia-line-height);
+}

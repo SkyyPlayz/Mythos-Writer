@@ -61,6 +61,15 @@ const mockVoiceSpeakCancel = vi.fn();
 const mockOnVoiceSpeakDone = vi.fn<any>(() => vi.fn()); // returns unsub fn
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mockOnVoiceSpeakError = vi.fn<any>(() => vi.fn());
+// SKY-11192/SKY-11674: the shared board surface + Idea Collections filing.
+// Defaults are empty-but-successful so a mount that shows the Board page or
+// opens the chat strip never crashes on an unmocked IPC call; individual
+// tests override these to exercise specific behavior.
+const mockListNotesVault = vi.fn();
+const mockNotesBoardGet = vi.fn();
+const mockNotesBoardPatchLayout = vi.fn();
+const mockIdeaCollectionsFile = vi.fn();
+const mockIdeaCollectionsUnfile = vi.fn();
 
 function buildApi(overrides: Record<string, unknown> = {}) {
   return {
@@ -73,6 +82,13 @@ function buildApi(overrides: Record<string, unknown> = {}) {
     brainstormResolveRouting: mockBrainstormResolveRouting,
     brainstormListNotesFolders: mockBrainstormListNotesFolders,
     brainstormSelectContext: mockBrainstormSelectContext,
+    // SKY-11192/SKY-11674: deliberately NOT in the base default set. Both
+    // useNotesBoard and useIdeaCollectionsFiling guard on
+    // `typeof window.api?.X !== 'function'` and degrade synchronously (no
+    // pending promise, no post-render act warning) when absent — the same
+    // "no vault bridge" contract BoardsTabPanel/useNotesBoard already rely
+    // on elsewhere. Tests that care about board/filing content opt in via
+    // `buildApi({ listNotesVault: mockListNotesVault, ... })`.
     onStreamToken: (cb: TokenHandler) => {
       tokenCb = cb;
       return () => {
@@ -167,6 +183,15 @@ beforeEach(() => {
   mockBrainstormSelectContext.mockResolvedValue({
     included: [], excluded: [], usedTokens: 0, budgetTokens: 4000,
   });
+  // SKY-11192/SKY-11674: an empty board by default — individual tests seed
+  // items/layout to exercise the shared canvas.
+  mockListNotesVault.mockResolvedValue({ items: [] });
+  mockNotesBoardGet.mockResolvedValue({
+    id: null, children: [], layout: {}, colors: {}, furniture: [], view: { zoom: 100, panX: 0, panY: 0 },
+  });
+  mockNotesBoardPatchLayout.mockResolvedValue({ key: 'n:x', id: 'x' });
+  mockIdeaCollectionsFile.mockResolvedValue({ status: 'filed', folderPath: 'Plot & Story', itemPath: 'Idea.md' });
+  mockIdeaCollectionsUnfile.mockResolvedValue({ deleted: true });
   (window as unknown as { api: unknown }).api = buildApi();
   localStorage.clear();
 });
@@ -2455,8 +2480,9 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
     { id: 'fact-c', type: 'location', name: 'Dark Cave', content: 'An underground cavern' },
   ];
 
-  it('page segment switches between Agent Chat (default) and the ONE Board', () => {
+  it('page segment switches between Agent Chat (default) and the ONE Board', async () => {
     seedFacts(THREE_IDEAS);
+    (window as unknown as { api: unknown }).api = buildApi({ listNotesVault: mockListNotesVault, notesBoardGet: mockNotesBoardGet });
     render(<BrainstormPage onClose={() => {}} />);
 
     // Agent Chat is the default page — composer and facts panel are live.
@@ -2468,134 +2494,75 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
     expect(screen.queryByTestId('bsc-mode-map')).not.toBeInTheDocument();
     expect(screen.queryByTestId('bsc-mode-clusters')).not.toBeInTheDocument();
 
-    // Board: one free-form canvas with floating category region labels.
+    // Board: the shared canvas (SKY-11192/SKY-11674 — same engine the Notes
+    // Board tab uses, not the old free-form category-region canvas).
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
-    expect(screen.getByTestId('bsc-board')).toBeInTheDocument();
+    expect(await screen.findByTestId('bbs-canvas')).toBeInTheDocument();
     expect(screen.queryByLabelText(/brainstorm prompt/i)).not.toBeInTheDocument();
-    expect(screen.getByText('STORY BEATS')).toBeInTheDocument();
-    expect(screen.getByText('CHARACTER RELATIONSHIPS')).toBeInTheDocument();
-    expect(screen.getByText('TROPES')).toBeInTheDocument();
-    expect(screen.getByTestId('bsc-card-fact-a')).toHaveTextContent('Aria Voss');
-    expect(screen.getByTestId('bsc-card-fact-c')).toHaveTextContent('Dark Cave');
 
     // Back to chat — the composer returns.
     fireEvent.click(screen.getByTestId('bsc-mode-chat'));
     expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
   });
 
-  it('B4-4 migration places legacy draft facts on the prototype home grid', () => {
-    seedFacts(THREE_IDEAS);
+  it('the Board page renders the real notes-board items via the shared engine', async () => {
+    mockListNotesVault.mockResolvedValue({
+      items: [{ path: 'Aria Voss.md', name: 'Aria Voss.md', isDirectory: false }],
+    });
+    mockNotesBoardGet.mockResolvedValue({
+      id: null,
+      children: [{ path: 'Aria Voss.md', kind: 'note', id: 'n1' }],
+      layout: { 'n:n1': { x: 100, y: 50 } },
+      colors: {},
+      furniture: [],
+      view: { zoom: 100, panX: 0, panY: 0 },
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ listNotesVault: mockListNotesVault, notesBoardGet: mockNotesBoardGet });
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
 
-    // characters → CHARACTER RELATIONSHIPS home [880, 150]; slot math
-    // x = h[0] + (i%2)·240, y = h[1] + ⌊i/2⌋·158 + (i%2)·28 (prototype bsPosOf).
-    const cardA = screen.getByTestId('bsc-card-fact-a');
-    expect(cardA.style.left).toBe('880px');
-    expect(cardA.style.top).toBe('150px');
-    const cardB = screen.getByTestId('bsc-card-fact-b');
-    expect(cardB.style.left).toBe('1120px');
-    expect(cardB.style.top).toBe('178px');
-    // location → WORLDBUILDING CLUSTERS home [1480, 200].
-    const cardC = screen.getByTestId('bsc-card-fact-c');
-    expect(cardC.style.left).toBe('1480px');
-    expect(cardC.style.top).toBe('200px');
+    expect(await screen.findByText('Aria Voss')).toBeInTheDocument();
+    // Locked to Plot & Story with the flag off — no pill row.
+    expect(screen.queryByTestId('bbs-pill-plot')).not.toBeInTheDocument();
+    expect(mockListNotesVault).toHaveBeenCalledWith('Plot & Story');
   });
 
-  it('cards drag anywhere and keep the dropped position', () => {
-    seedFacts(THREE_IDEAS);
+  it('dragging a card on the Board page persists via notesBoard:patchLayout', async () => {
+    mockListNotesVault.mockResolvedValue({
+      items: [{ path: 'Aria Voss.md', name: 'Aria Voss.md', isDirectory: false }],
+    });
+    mockNotesBoardGet.mockResolvedValue({
+      id: null,
+      children: [{ path: 'Aria Voss.md', kind: 'note', id: 'n1' }],
+      layout: { 'n:n1': { x: 100, y: 50 } },
+      colors: {},
+      furniture: [],
+      view: { zoom: 100, panX: 0, panY: 0 },
+    });
+    (window as unknown as { api: unknown }).api = buildApi({
+      listNotesVault: mockListNotesVault,
+      notesBoardGet: mockNotesBoardGet,
+      notesBoardPatchLayout: mockNotesBoardPatchLayout,
+    });
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
 
-    const card = screen.getByTestId('bsc-card-fact-a');
-    fireEvent.mouseDown(card, { button: 0, clientX: 10, clientY: 10 });
+    const card = await screen.findByText('Aria Voss');
+    const cardRoot = card.closest('[role="article"]') as HTMLElement;
+    fireEvent.mouseDown(cardRoot, { button: 0, clientX: 10, clientY: 10 });
     fireEvent.mouseMove(window, { clientX: 60, clientY: 40 });
     fireEvent.mouseUp(window);
 
-    expect(screen.getByTestId('bsc-card-fact-a').style.left).toBe('930px');
-    expect(screen.getByTestId('bsc-card-fact-a').style.top).toBe('180px');
-
-    // The position sticks across a page round-trip (board state, not layout).
-    fireEvent.click(screen.getByTestId('bsc-mode-chat'));
-    fireEvent.click(screen.getByTestId('bsc-mode-board'));
-    expect(screen.getByTestId('bsc-card-fact-a').style.left).toBe('930px');
-  });
-
-  it('Connect tool links two cards with a purple line and updates the status line', () => {
-    seedFacts(THREE_IDEAS);
-    render(<BrainstormPage onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('bsc-mode-board'));
-    expect(screen.getByTestId('bsc-status')).toHaveTextContent('0 connections');
-
-    fireEvent.click(screen.getByTestId('bsc-tool-connect'));
-    fireEvent.mouseDown(screen.getByTestId('bsc-card-fact-a'), { button: 0 });
-    expect(screen.getByText('Now click the idea to connect it to')).toBeInTheDocument();
-    fireEvent.mouseDown(screen.getByTestId('bsc-card-fact-c'), { button: 0 });
-    expect(screen.getByText('Ideas connected')).toBeInTheDocument();
-
-    expect(document.querySelectorAll('[data-testid="bsc-link"]')).toHaveLength(1);
-    expect(screen.getByTestId('bsc-status')).toHaveTextContent('1 connections');
-  });
-
-  it('double-click opens inline edit; Done commits title and description', () => {
-    seedFacts(THREE_IDEAS);
-    render(<BrainstormPage onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('bsc-mode-board'));
-
-    fireEvent.doubleClick(screen.getByTestId('bsc-card-fact-a'));
-    fireEvent.change(screen.getByTestId('bsc-edit-title-fact-a'), {
-      target: { value: 'Aria, Reforged' },
-    });
-    fireEvent.change(screen.getByTestId('bsc-edit-desc-fact-a'), {
-      target: { value: 'Now with a plan.' },
-    });
-    fireEvent.click(screen.getByTestId('bsc-edit-done-fact-a'));
-
-    const card = screen.getByTestId('bsc-card-fact-a');
-    expect(card).toHaveTextContent('Aria, Reforged');
-    expect(card).toHaveTextContent('Now with a plan.');
-  });
-
-  it('Enter commits the inline title edit (prototype editKey)', () => {
-    seedFacts(THREE_IDEAS);
-    render(<BrainstormPage onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('bsc-mode-board'));
-
-    fireEvent.doubleClick(screen.getByTestId('bsc-card-fact-a'));
-    fireEvent.change(screen.getByTestId('bsc-edit-title-fact-a'), {
-      target: { value: 'Renamed by Enter' },
-    });
-    fireEvent.keyDown(screen.getByTestId('bsc-edit-title-fact-a'), { key: 'Enter' });
-    expect(screen.getByTestId('bsc-card-fact-a')).toHaveTextContent('Renamed by Enter');
-  });
-
-  it('vault-note card titles are underlined and open the note', async () => {
-    seedFacts(THREE_IDEAS);
-    mockEntityList.mockResolvedValue({
-      entities: [{ id: 'ent-aria', name: 'Aria Voss', type: 'character' }],
-    });
-    const onNavigateToEntity = vi.fn();
-    render(<BrainstormPage onClose={() => {}} onNavigateToEntity={onNavigateToEntity} />);
-    fireEvent.click(screen.getByTestId('bsc-mode-board'));
-
-    const titleBtn = await screen.findByTestId('bsc-card-title-fact-a');
-    expect(titleBtn).toHaveAttribute('title', 'Linked note — click to open it in your vault');
-    fireEvent.click(titleBtn);
-    expect(onNavigateToEntity).toHaveBeenCalledWith('ent-aria');
-    // Cards without a matching note stay plain text.
-    expect(screen.queryByTestId('bsc-card-title-fact-c')).not.toBeInTheDocument();
-  });
-
-  it('`+ Idea` captures a New idea card near Loose Ideas with a toast', () => {
-    render(<BrainstormPage onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('bsc-mode-board'));
-
-    fireEvent.click(screen.getByTestId('bsc-add-idea'));
-
-    const board = within(screen.getByTestId('bsc-board'));
-    expect(board.getByText('New idea')).toBeInTheDocument();
-    expect(board.getByText('Drag me anywhere — expand me with the Agent chat.')).toBeInTheDocument();
-    expect(screen.getByText('Idea captured — landed near Loose Ideas')).toBeInTheDocument();
+    // Exact snapped coordinates are BoardCanvas's own grid-snap math (covered
+    // by its own test suite) — here we only assert the wiring: a drag on
+    // Brainstorm's Board page reaches the real notesBoard:patchLayout IPC,
+    // scoped to the active folder and the right item.
+    await waitFor(() =>
+      expect(mockNotesBoardPatchLayout).toHaveBeenCalledWith('Plot & Story', 'Aria Voss.md', {
+        x: expect.any(Number),
+        y: expect.any(Number),
+      }),
+    );
   });
 
   it('chat still renders and sends after a board round-trip', async () => {
@@ -2616,60 +2583,20 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
     expect(mockStreamStart).toHaveBeenCalledTimes(1);
   });
 
-  it('Board toggle stacks the canvas under the chat with a drag-bar', () => {
-    seedFacts(THREE_IDEAS);
+  it('chat-page Board toggle stacks the shared canvas under the chat with a drag-bar', async () => {
+    (window as unknown as { api: unknown }).api = buildApi({ listNotesVault: mockListNotesVault, notesBoardGet: mockNotesBoardGet });
     render(<BrainstormPage onClose={() => {}} />);
 
-    expect(screen.queryByTestId('bsc-board')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bbs-canvas')).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId('bs-chat-board-toggle'));
 
     // The canvas appears WITHOUT leaving the chat page.
-    expect(screen.getByTestId('bsc-board')).toBeInTheDocument();
+    expect(await screen.findByTestId('bbs-canvas')).toBeInTheDocument();
     expect(screen.getByLabelText(/brainstorm prompt/i)).toBeInTheDocument();
     expect(screen.getByTestId('bs-board-resize')).toBeInTheDocument();
-    expect(screen.getByTestId('bsc-card-fact-a')).toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId('bs-chat-board-toggle'));
-    expect(screen.queryByTestId('bsc-board')).not.toBeInTheDocument();
-  });
-
-  it('persists dragged positions to the Agent-Vault board file (debounced save)', async () => {
-    seedFacts(THREE_IDEAS);
-    // SKY-11360: board persistence now routes through the dedicated Agent-Vault
-    // bridge (window.api.brainstormBoard), never the notes-vault CRUD.
-    const mockBoardRead = vi.fn().mockResolvedValue({ error: 'ENOENT' });
-    const mockBoardWrite = vi.fn().mockResolvedValue({ bytes: 1 });
-    const mockWriteNotesVault = vi.fn().mockResolvedValue({ path: 'x', bytes: 1 });
-    (window as unknown as { api: unknown }).api = buildApi({
-      brainstormBoard: { read: mockBoardRead, write: mockBoardWrite },
-      writeNotesVault: mockWriteNotesVault,
-    });
-
-    await act(async () => {
-      render(<BrainstormPage onClose={() => {}} />);
-    });
-    // The B4-4 migration itself writes the freshly-migrated board once.
-    await waitFor(() => expect(mockBoardWrite).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByTestId('bsc-mode-board'));
-
-    const card = screen.getByTestId('bsc-card-fact-a');
-    fireEvent.mouseDown(card, { button: 0, clientX: 10, clientY: 10 });
-    fireEvent.mouseMove(window, { clientX: 130, clientY: 90 });
-    fireEvent.mouseUp(window);
-
-    // The debounced save writes the moved position to the Agent-Vault file.
-    await waitFor(
-      () => expect(mockBoardWrite).toHaveBeenCalledTimes(2),
-      { timeout: 3_000 },
-    );
-    // The board never touches the notes-vault bridge (leak regression guard).
-    expect(mockWriteNotesVault).not.toHaveBeenCalled();
-    const [savedJson] = mockBoardWrite.mock.calls[1];
-    const saved = JSON.parse(savedJson as string);
-    const savedCard = saved.cards.find((c: { factId?: string }) => c.factId === 'fact-a');
-    expect(savedCard).toMatchObject({ x: 1000, y: 230 });
-    expect(saved.version).toBe(1);
-    expect(saved.draftMigrated).toBe(true);
+    expect(screen.queryByTestId('bbs-canvas')).not.toBeInTheDocument();
   });
 
   it('mode segment is hidden in compact sidebar contexts', () => {
@@ -2733,39 +2660,37 @@ describe('BrainstormPage — M20 idea collections and starter library', () => {
     expect(panel.queryByText('The Ticking Clock')).not.toBeInTheDocument();
   });
 
-  it('`+` places an idea on the board, jumps to Board, and the row turns ✓', () => {
+  it('SKY-11192/SKY-11674 §3: File creates a real note via the ideaCollections IPC and navigates to its board', async () => {
+    mockIdeaCollectionsFile.mockResolvedValue({ status: 'filed', folderPath: 'Plot & Story', itemPath: 'The Chosen One.md' });
+    (window as unknown as { api: unknown }).api = buildApi({ ideaCollectionsFile: mockIdeaCollectionsFile });
     render(<BrainstormPage onClose={() => {}} />);
 
     fireEvent.click(screen.getByTestId('bs-coll-toggle-trope'));
-    fireEvent.click(screen.getByRole('button', { name: 'Add The Chosen One to the Idea Board' }));
+    const row = screen.getByText('The Chosen One').closest('.bs-coll-idea') as HTMLElement;
+    fireEvent.click(within(row).getByTestId('bs-coll-file'));
 
-    // Jumped to the Board page with the card placed.
-    expect(screen.getByTestId('bsc-mode-board')).toHaveAttribute('aria-pressed', 'true');
-    expect(within(screen.getByTestId('bsc-board')).getByText('The Chosen One')).toBeInTheDocument();
-    expect(screen.getByText('“The Chosen One” added to the Idea Board')).toBeInTheDocument();
-
-    // The collections row is now a dimmed ✓ and re-clicking only toasts.
-    fireEvent.click(screen.getByTestId('bs-coll-toggle-trope'));
-    const placedRow = screen.getByRole('button', { name: 'The Chosen One — already on the Idea Board' });
-    fireEvent.click(placedRow);
-    expect(screen.getByText('“The Chosen One” is already on the Idea Board')).toBeInTheDocument();
-    // Still exactly one card on the canvas.
-    expect(within(screen.getByTestId('bsc-board')).getAllByText('The Chosen One')).toHaveLength(1);
+    expect(mockIdeaCollectionsFile).toHaveBeenCalledWith('trope', 'The Chosen One', expect.any(String));
+    await waitFor(() => expect(screen.getByText('“The Chosen One” filed')).toBeInTheDocument());
+    // Direct user click only — no other call site ever invokes the filing IPC.
+    expect(mockIdeaCollectionsFile).toHaveBeenCalledTimes(1);
   });
 
-  it('agent-filed facts appear in their collection with a ✓ once migrated to the board', () => {
-    localStorage.setItem('brainstorm:draft', JSON.stringify({
-      v: 2,
-      savedAt: new Date().toISOString(),
-      prompt: '',
-      messages: [],
-      facts: [{ id: 'fact-a', type: 'character', name: 'Aria Voss', content: 'A young sorceress', savedStatus: 'saved', createdAt: 1000 }],
-    }));
+  it('an already-filed idea shows Filed ✓ and Open, not a File button', async () => {
+    mockListNotesVault.mockImplementation(async (folder: string) => {
+      if (folder === 'Plot & Story') {
+        return { items: [{ path: 'The Chosen One.md', name: 'The Chosen One.md', isDirectory: false }] };
+      }
+      return { items: [] };
+    });
+    (window as unknown as { api: unknown }).api = buildApi({ listNotesVault: mockListNotesVault });
     render(<BrainstormPage onClose={() => {}} />);
 
-    fireEvent.click(screen.getByTestId('bs-coll-toggle-rel'));
-    // The migrated fact is already on the board, so its row reads ✓.
-    expect(screen.getByRole('button', { name: 'Aria Voss — already on the Idea Board' })).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('bs-coll-toggle-trope'));
+    const row = await screen.findByText('The Chosen One');
+    const rowEl = row.closest('.bs-coll-idea') as HTMLElement;
+    await waitFor(() => expect(within(rowEl).getByText('Filed ✓')).toBeInTheDocument());
+    expect(within(rowEl).queryByTestId('bs-coll-file')).not.toBeInTheDocument();
+    expect(within(rowEl).getByTestId('bs-coll-open')).toBeInTheDocument();
   });
 });
 
@@ -3230,9 +3155,11 @@ describe('BrainstormPage — M19 chat extras and agent activity feed', () => {
 
     const feed = screen.getByTestId('bs-activity-feed');
     expect(feed).toHaveTextContent('Agent actions land here');
-    // M20: prototype stats row Notes / Links / Props with real counters.
+    // M20 / SKY-11192/SKY-11674: prototype stats row Notes / Cards / Props
+    // with real counters — Cards replaced the old in-memory board's Links
+    // count (see that stat's inline comment in BrainstormPage.tsx).
     expect(screen.getByTestId('bs-stat-notes')).toHaveTextContent('0');
-    expect(screen.getByTestId('bs-stat-links')).toHaveTextContent('0');
+    await waitFor(() => expect(screen.getByTestId('bs-stat-cards')).toHaveTextContent('0'));
     expect(screen.getByTestId('bs-stat-props')).toHaveTextContent('0');
 
     fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
@@ -3314,103 +3241,24 @@ describe('BrainstormPage — SKY-11214 brainstormActivity reporting', () => {
   });
 });
 
-describe('BrainstormPage — M20 board tools, zoom, and idea search', () => {
-  function seedThreeIdeas() {
-    localStorage.setItem('brainstorm:draft', JSON.stringify({
-      v: 2,
-      savedAt: new Date().toISOString(),
-      prompt: '',
-      messages: [],
-      facts: [
-        { id: 'fact-a', type: 'character', name: 'Aria Voss', content: 'A young sorceress', savedStatus: 'saved', createdAt: 1000 },
-        { id: 'fact-b', type: 'character', name: 'Kael Thorne', content: 'A guarded smuggler', savedStatus: 'saved', createdAt: 1001 },
-        { id: 'fact-c', type: 'location', name: 'Dark Cave', content: 'An underground cavern', savedStatus: 'saved', createdAt: 1002 },
-      ],
-    }));
-  }
-
-  it('renders the dock with Select active; Frame/Text toast as staged, Connect arms for real', () => {
+// SKY-11192/SKY-11674: the old free-form canvas's own tool dock
+// (Select/Connect/Frame/Text), its bespoke zoom control (bsc-zoom-*,
+// bsc-world), and its in-canvas idea search are retired along with
+// components/BrainstormBoard/BoardCanvas.tsx — the shared engine
+// (pages/Boards/BoardCanvas.tsx) has its own zoom controls (covered by that
+// component's own test suite) and no canvas-level search. Brainstorm's
+// Board page renders that engine locked to `activeTool: 'select'` — no
+// creation tools, no inline rename — Idea Collections' `File` action is the
+// one way a new card lands here (see BrainstormBoardSurface.tsx).
+describe('BrainstormPage — M20 board page (post SKY-11192/SKY-11674)', () => {
+  it('does not render the old canvas tool dock or search input', async () => {
+    (window as unknown as { api: unknown }).api = buildApi({ listNotesVault: mockListNotesVault, notesBoardGet: mockNotesBoardGet });
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
+    await screen.findByTestId('bbs-canvas');
 
-    expect(screen.getByRole('toolbar', { name: 'Idea Board tools' })).toBeInTheDocument();
-    expect(screen.getByTestId('bsc-tool-select')).toHaveAttribute('aria-pressed', 'true');
-    for (const key of ['connect', 'frame', 'text']) {
-      expect(screen.getByTestId(`bsc-tool-${key}`)).toHaveAttribute('aria-pressed', 'false');
-    }
-
-    // Frame stays a staged tool (prototype mocks it too).
-    fireEvent.click(screen.getByTestId('bsc-tool-frame'));
-    expect(screen.getByText('Frame tool — coming soon')).toBeInTheDocument();
-
-    // Connect is REAL in M20 — no staged toast; the canvas hint arms instead.
-    fireEvent.click(screen.getByTestId('bsc-tool-connect'));
-    expect(screen.getByTestId('bsc-tool-connect')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('bsc-tool-select')).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.queryByText('Connect ideas tool — coming soon')).not.toBeInTheDocument();
-    expect(screen.getByTestId('bsc-canvas-hint')).toHaveTextContent(
-      'Connect tool — click two ideas to link them',
-    );
-  });
-
-  it('zoom steps ±25 between 50% and 200% and scales the canvas world', () => {
-    render(<BrainstormPage onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('bsc-mode-board'));
-
-    const pct = screen.getByTestId('bsc-zoom-pct');
-    expect(pct).toHaveTextContent('100%');
-
-    fireEvent.click(screen.getByTestId('bsc-zoom-in'));
-    expect(pct).toHaveTextContent('125%');
-    const world = screen.getByTestId('bsc-world');
-    expect(world.style.transform).toContain('scale(1.25)');
-
-    // Clamp at 200%…
-    for (let i = 0; i < 5; i++) fireEvent.click(screen.getByTestId('bsc-zoom-in'));
-    expect(pct).toHaveTextContent('200%');
-    // …and at 50%.
-    for (let i = 0; i < 10; i++) fireEvent.click(screen.getByTestId('bsc-zoom-out'));
-    expect(pct).toHaveTextContent('50%');
-  });
-
-  it('wheel zoom follows the prototype ×1.08 / ×0.93 curve', () => {
-    render(<BrainstormPage onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('bsc-mode-board'));
-
-    fireEvent.wheel(screen.getByTestId('bsc-board'), { deltaY: -1 });
-    expect(screen.getByTestId('bsc-zoom-pct')).toHaveTextContent('108%');
-    fireEvent.wheel(screen.getByTestId('bsc-board'), { deltaY: 1 });
-    expect(screen.getByTestId('bsc-zoom-pct')).toHaveTextContent('100%');
-  });
-
-  it('idea search filters the canvas and updates the status line', () => {
-    seedThreeIdeas();
-    render(<BrainstormPage onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('bsc-mode-board'));
-
-    expect(screen.getByTestId('bsc-status')).toHaveTextContent('3 ideas');
-    expect(screen.getByTestId('bsc-status')).toHaveTextContent('2 clusters');
-
-    fireEvent.change(screen.getByTestId('bsc-search-input'), { target: { value: 'aria' } });
-
-    expect(screen.getByTestId('bsc-card-fact-a')).toBeInTheDocument();
-    expect(screen.queryByTestId('bsc-card-fact-b')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('bsc-card-fact-c')).not.toBeInTheDocument();
-    expect(screen.getByTestId('bsc-status')).toHaveTextContent('1 of 3 ideas');
-
-    // Clearing the query restores everything.
-    fireEvent.change(screen.getByTestId('bsc-search-input'), { target: { value: '' } });
-    expect(screen.getByTestId('bsc-card-fact-b')).toBeInTheDocument();
-    expect(screen.getByTestId('bsc-status')).toHaveTextContent('3 ideas');
-  });
-
-  it('search matches idea bodies as well as titles', () => {
-    seedThreeIdeas();
-    render(<BrainstormPage onClose={() => {}} />);
-    fireEvent.click(screen.getByTestId('bsc-mode-board'));
-
-    fireEvent.change(screen.getByTestId('bsc-search-input'), { target: { value: 'underground' } });
-    expect(screen.getByTestId('bsc-card-fact-c')).toBeInTheDocument();
-    expect(screen.queryByTestId('bsc-card-fact-a')).not.toBeInTheDocument();
+    expect(screen.queryByRole('toolbar', { name: 'Idea Board tools' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bsc-search-input')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('bsc-add-idea')).not.toBeInTheDocument();
   });
 });
