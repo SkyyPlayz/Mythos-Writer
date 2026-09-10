@@ -1,0 +1,535 @@
+{
+  "$comment": "SKY-11591 / SKY-11675 — provenance for the PNG originals behind the shipped Liquid Neon wallpapers. The originals themselves are owner-held and deliberately NOT in this repository (see design-assets/wallpapers/LICENSE). This file is the proof of which source each WebP came from: filename, pixel dimensions and a SHA-256 of the bytes, so a restaged copy can be shown byte-identical to the file the crop was taken from.",
+  "originalsPath": "design-assets/wallpapers/originals/<setKey>/ (git-ignored; restage here to rebuild)",
+  "generatedFor": "PR #1502",
+  "sets": {
+    "classic": [
+      {
+        "file": "classic-src-01.png",
+        "pixels": [
+          1942,
+          809
+        ],
+        "bytes": 1930469,
+        "sha256": "23cf46f8fe075e1dd1f8664e329f497401048039af95622fa8f3fab3ea0212c6",
+        "ownerFolder": "Neon Nebula",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_45_08 PM (1).png",
+        "shipped": "bg-classic-4.webp"
+      },
+      {
+        "file": "classic-src-02.png",
+        "pixels": [
+          1942,
+          809
+        ],
+        "bytes": 1729439,
+        "sha256": "47be5ac691202253918abe7f66c8b830e29337d189abd54ff9c987bf5680b969",
+        "ownerFolder": "Neon Nebula",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_45_08 PM (2).png",
+        "shipped": "bg-classic-2.webp"
+      },
+      {
+        "file": "classic-src-03.png",
+        "pixels": [
+          1942,
+          809
+        ],
+        "bytes": 1873689,
+        "sha256": "b69afe2cf1f94fce440524e84a9ac06d36a2cdd45d181b03eba4a40d4c36dac7",
+        "ownerFolder": "Neon Nebula",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_45_09 PM (3).png",
+        "shipped": "bg-classic-3.webp"
+      },
+      {
+        "file": "classic-src-04.png",
+        "pixels": [
+          1942,
+          809
+        ],
+        "bytes": 1814750,
+        "sha256": "3c8bd137495b93b2683ed49d56c8e6a2c8f5a7e4287fac6721755b64705591ab",
+        "ownerFolder": "Neon Nebula",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_45_09 PM (4).png",
+        "shipped": "bg-classic-1.webp"
+      }
+    ],
+    "aurora": [
+      {
+        "file": "aurora-src-01.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1762772,
+        "sha256": "5273c55069f442729d425f3a44803bf20c7cde9b1f30ca7ecbfa3f05df730f3a",
+        "ownerFolder": "Aurora",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_43_21 PM (2).png",
+        "shipped": "bg-aurora-3.webp"
+      },
+      {
+        "file": "aurora-src-02.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1447875,
+        "sha256": "2371efc28fa83f1b68fb529664b3a02103b273d25437a1a05f86989d8a683c3d",
+        "ownerFolder": "Aurora",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_43_22 PM (3).png",
+        "shipped": "bg-aurora-4.webp"
+      },
+      {
+        "file": "aurora-src-03.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1579292,
+        "sha256": "caa6201dc634204bed66f09f097c593144b82124c0e2a21e64cb9e592b37bc77",
+        "ownerFolder": "Aurora",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_43_22 PM (4).png",
+        "shipped": null,
+        "rejectedWhy": "Near-duplicate composition of src-01 with a busier foreground."
+      },
+      {
+        "file": "aurora-src-04.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 2132150,
+        "sha256": "4e8c17e7a1f77cd9e8813779624fbab9a8de86aab3583c0e1988d9692e33bbfc",
+        "ownerFolder": "Aurora",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (1).png",
+        "shipped": "bg-aurora-1.webp"
+      },
+      {
+        "file": "aurora-src-05.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 1790393,
+        "sha256": "9337a141094d9102d468d8b437a856ba97db1096d705c93c4e7820b30347b075",
+        "ownerFolder": "Aurora",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (2).png",
+        "shipped": null,
+        "rejectedWhy": "Warm sunrise dominates; reads as Sunset Coast rather than Aurora."
+      },
+      {
+        "file": "aurora-src-06.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 2116434,
+        "sha256": "02e4ce71d7f5f3342a629e3ae610bc3c992c1b7ae49df12ec078bf71b786558d",
+        "ownerFolder": "Aurora",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (3).png",
+        "shipped": "bg-aurora-2.webp"
+      }
+    ],
+    "cyber": [
+      {
+        "file": "cyber-src-01.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1652007,
+        "sha256": "b89dae1ef7b09e74b3d91a7b2a957748b34188bd0ed792e9b992fbe15102b907",
+        "ownerFolder": "cyberpunk",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_40_26 PM (1).png",
+        "shipped": "bg-cyber-2.webp"
+      },
+      {
+        "file": "cyber-src-02.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1776327,
+        "sha256": "bb47a213faeae4eb36fcfb33318fa1fc859d3efa4532789c687fed4607073e0e",
+        "ownerFolder": "cyberpunk",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_40_27 PM (2).png",
+        "shipped": "bg-cyber-1.webp"
+      },
+      {
+        "file": "cyber-src-03.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1548879,
+        "sha256": "f10a6472155a3f25e8b55ef39e13d0bb64961582b8b903b6288062094ecbffeb",
+        "ownerFolder": "cyberpunk",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_40_27 PM (4).png",
+        "shipped": "bg-cyber-3.webp"
+      }
+    ],
+    "sunset": [
+      {
+        "file": "sunset-src-01.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1848569,
+        "sha256": "fa887308b1a8b0e54f8b122c96881a57a4a55e0da18d50d573d09ad542896ac8",
+        "ownerFolder": "Sunset coast",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 09_04_12 PM (1).png",
+        "shipped": "bg-sunset-2.webp"
+      },
+      {
+        "file": "sunset-src-02.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1714051,
+        "sha256": "597dcce51a13017403681e18018ca04eeed5578ee78a34c4dbdeea1c6dc394c2",
+        "ownerFolder": "Sunset coast",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 09_04_13 PM (2).png",
+        "shipped": "bg-sunset-1.webp"
+      },
+      {
+        "file": "sunset-src-03.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1725774,
+        "sha256": "c392f46bebe47dce630ef54cc090168c82c00eef1a53e69e41aee4776652e3cd",
+        "ownerFolder": "Sunset coast",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 09_04_13 PM (3).png",
+        "shipped": "bg-sunset-4.webp"
+      },
+      {
+        "file": "sunset-src-04.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1747124,
+        "sha256": "1d7e3698e3e862c8244dee868d637a237689a85d8967f570ac20cb1d1152ca49",
+        "ownerFolder": "Sunset coast",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 09_04_13 PM (4).png",
+        "shipped": "bg-sunset-3.webp"
+      }
+    ],
+    "ice": [
+      {
+        "file": "ice-src-01.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1595383,
+        "sha256": "accef2545d418a2f3ea610d5fa2e599f2af842c4f338d3fbb32487983bb34a12",
+        "ownerFolder": "Ice mono",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_35_49 PM (1).png",
+        "shipped": "bg-ice-4.webp"
+      },
+      {
+        "file": "ice-src-02.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1558182,
+        "sha256": "bc0dd0785ac435f44342084c4fad049e125b970162d470f150fb419039ee36b5",
+        "ownerFolder": "Ice mono",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_35_49 PM (2).png",
+        "shipped": "bg-ice-2.webp"
+      },
+      {
+        "file": "ice-src-03.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1561043,
+        "sha256": "613953676258abfd66b15b8a198ac74be89b32a65d6e56a6c24ce47b52f557ad",
+        "ownerFolder": "Ice mono",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_35_50 PM (3).png",
+        "shipped": "bg-ice-3.webp"
+      },
+      {
+        "file": "ice-src-04.png",
+        "pixels": [
+          1916,
+          821
+        ],
+        "bytes": 1448597,
+        "sha256": "685f011e1513c2662f11a47968ab45b805ea4ad952cdca17c0c46d56bad2ca8b",
+        "ownerFolder": "Ice mono",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_35_50 PM (4).png",
+        "shipped": "bg-ice-1.webp"
+      }
+    ],
+    "ember": [
+      {
+        "file": "ember-src-01.png",
+        "pixels": [
+          1942,
+          809
+        ],
+        "bytes": 1364563,
+        "sha256": "7fbc28a1da30643483db8ea1c8fb571f2cd8560431222edb7b27cf6066b48b3b",
+        "ownerFolder": "Emberfall",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_34_02 PM (1).png",
+        "shipped": "bg-ember-2.webp"
+      },
+      {
+        "file": "ember-src-02.png",
+        "pixels": [
+          1942,
+          809
+        ],
+        "bytes": 1390620,
+        "sha256": "1571138cea943225bb0a6a6a1c690f0d9ca323f346029cb5167c9a47264c4ffe",
+        "ownerFolder": "Emberfall",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_34_03 PM (2).png",
+        "shipped": "bg-ember-3.webp"
+      },
+      {
+        "file": "ember-src-03.png",
+        "pixels": [
+          1942,
+          809
+        ],
+        "bytes": 1443599,
+        "sha256": "5174b36b58595bebdb112125266bbdf3552a1887aedf3a55bdd84b5b2369baad",
+        "ownerFolder": "Emberfall",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_34_03 PM (4).png",
+        "shipped": "bg-ember-1.webp"
+      }
+    ],
+    "verdant": [
+      {
+        "file": "verdant-src-01.png",
+        "pixels": [
+          1942,
+          809
+        ],
+        "bytes": 1727366,
+        "sha256": "0a6f4071e5150a326eebea8572575544ebfb73f7a85a74372e79e4e075994c00",
+        "ownerFolder": "Verdant reach",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_30_59 PM (1).png",
+        "shipped": "bg-verdant-1.webp"
+      },
+      {
+        "file": "verdant-src-02.png",
+        "pixels": [
+          1942,
+          809
+        ],
+        "bytes": 1417950,
+        "sha256": "4805dc0060d1497606a2a9f4af2b202f8bc9902c95984623e55450827062429c",
+        "ownerFolder": "Verdant reach",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_30_59 PM (2).png",
+        "shipped": "bg-verdant-4.webp"
+      },
+      {
+        "file": "verdant-src-03.png",
+        "pixels": [
+          1942,
+          809
+        ],
+        "bytes": 1415134,
+        "sha256": "1450ad72802c515177fe6c42185195686312b2532ec8feff48f510f811960130",
+        "ownerFolder": "Verdant reach",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_31_00 PM (3).png",
+        "shipped": "bg-verdant-2.webp"
+      },
+      {
+        "file": "verdant-src-04.png",
+        "pixels": [
+          1942,
+          809
+        ],
+        "bytes": 1588646,
+        "sha256": "68d175a6f67a5f3e5b91574c39e9c1c2cb82f6460d9ae2a4558e326722229ca1",
+        "ownerFolder": "Verdant reach",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_31_00 PM (4).png",
+        "shipped": "bg-verdant-3.webp"
+      }
+    ],
+    "royal": [
+      {
+        "file": "royal-src-01.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 2030191,
+        "sha256": "942b38f2e7f579b9d4b8e3ccf78549a6eb3763c5eddd3ecb583c540d6adf7ee9",
+        "ownerFolder": "Royal Arcana",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_28_21 PM (2).png",
+        "shipped": null,
+        "rejectedWhy": "Busiest ring-and-constellation detail of the five; too much competing structure behind panel glass."
+      },
+      {
+        "file": "royal-src-02.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 1668444,
+        "sha256": "b9a0c12fd94e0a70aa6f802ffce3b86c58711b187d1041e070e43a3e1eaaca85",
+        "ownerFolder": "Royal Arcana",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_28_23 PM (4).png",
+        "shipped": "bg-royal-4.webp"
+      },
+      {
+        "file": "royal-src-03.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 2218741,
+        "sha256": "21aaa037cc4d4a9212acf8ec7b31e2bd361e5a338ab0e908e5c066a845910f5b",
+        "ownerFolder": "Royal Arcana",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 09_16_52 PM (2).png",
+        "shipped": "bg-royal-3.webp"
+      },
+      {
+        "file": "royal-src-04.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 1885143,
+        "sha256": "a611af87372ae552c658433e50e655c4f0200302b213154c03dbde4cc873b3fb",
+        "ownerFolder": "Royal Arcana",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 09_16_53 PM (3).png",
+        "shipped": "bg-royal-1.webp"
+      },
+      {
+        "file": "royal-src-05.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 1838010,
+        "sha256": "3791121a9a2a001d1ce99cd3e72c8ccea66bd183308511099f7d8dc8768de99b",
+        "ownerFolder": "Royal Arcana",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 09_16_53 PM (4).png",
+        "shipped": "bg-royal-2.webp"
+      }
+    ],
+    "noir": [
+      {
+        "file": "noir-src-01.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 1421440,
+        "sha256": "657e07440f359c508c439414697e791d8668af612bb351a578bac5c5b837ef6b",
+        "ownerFolder": "Noir Rose",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_21_13 PM (1).png",
+        "shipped": "bg-noir-2.webp"
+      },
+      {
+        "file": "noir-src-02.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 1627238,
+        "sha256": "95d4bf483eb362ab753f450c9da0f452468a6e457d332c16a8aa70d8da3ce1a8",
+        "ownerFolder": "Noir Rose",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_21_14 PM (4).png",
+        "shipped": "bg-noir-4.webp"
+      },
+      {
+        "file": "noir-src-03.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 1446977,
+        "sha256": "11041f7d2572a1cacc8688715f0c6e66705335db6af12bc2ce61aa7c7d5c6dec",
+        "ownerFolder": "Noir Rose",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 09_07_15 PM (2).png",
+        "shipped": null,
+        "rejectedWhy": "Muddiest frame of the five; the right two thirds are near-black with no readable subject."
+      },
+      {
+        "file": "noir-src-04.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 1687250,
+        "sha256": "e66c27ecd401358ce9c1c8e4ff1c3963e9e06f8ab13487cb63c1c51f96f182a0",
+        "ownerFolder": "Noir Rose",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 09_07_16 PM (3).png",
+        "shipped": "bg-noir-1.webp"
+      },
+      {
+        "file": "noir-src-05.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 1698528,
+        "sha256": "142bbf86bbfe0ed9d27579860d8e19e8c77ad1d208fffc1c103796922ee2ce58",
+        "ownerFolder": "Noir Rose",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 09_07_16 PM (4).png",
+        "shipped": "bg-noir-3.webp"
+      }
+    ],
+    "winter": [
+      {
+        "file": "winter-src-01.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 1972401,
+        "sha256": "c96418b30ae527ee46df2c9ba8cf656474c7f0b593df5c7615c92e7c48ad4c64",
+        "ownerFolder": "Winterlight",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_06_13 PM.png",
+        "shipped": "bg-winter-3.webp"
+      },
+      {
+        "file": "winter-src-02.png",
+        "pixels": [
+          1938,
+          811
+        ],
+        "bytes": 2020903,
+        "sha256": "c8fd9b11de4f3582e440ef8ae181b9648222151eee17da19bfef258692b91ae4",
+        "ownerFolder": "Winterlight",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_23_25 PM.png",
+        "shipped": "bg-winter-4.webp"
+      },
+      {
+        "file": "winter-src-03.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 1724058,
+        "sha256": "82845ed4c3c68453b1de9692b8be0348a795e69e09b23c509af9b89f4e4cc831",
+        "ownerFolder": "Winterlight",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_59_22 PM (2).png",
+        "shipped": "bg-winter-2.webp"
+      },
+      {
+        "file": "winter-src-04.png",
+        "pixels": [
+          1672,
+          941
+        ],
+        "bytes": 1573674,
+        "sha256": "204eea4b194bd812f231e345676a1eaf9a387f1c7210da59125c697683b5ff6a",
+        "ownerFolder": "Winterlight",
+        "ownerFile": "ChatGPT Image Sep 8, 2026, 08_59_22 PM (3).png",
+        "shipped": "bg-winter-1.webp"
+      }
+    ]
+  }
+}

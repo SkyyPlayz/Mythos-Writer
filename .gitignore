@@ -33,3 +33,8 @@ electron-main/resources/kokoro/wasm/
 # SKY-11623 / SKY-11625 — Python bytecode caches are build artifacts, never source
 __pycache__/
 *.py[cod]
+
+# SKY-11675 — the wallpaper PNG originals are owner-held and stay out of git
+# history (68.2 MB). Restage them here to rebuild; PROVENANCE.json next to this
+# folder carries the dimensions and SHA-256 that identify each one.
+design-assets/wallpapers/originals/

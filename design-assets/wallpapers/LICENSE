@@ -1,0 +1,34 @@
+Liquid Neon wallpapers — PNG originals
+======================================
+
+The 42 PNGs behind this pack are owner-authored: Skyy generated them himself
+with an AI image generator and supplied them to engineering on 2026-09-09.
+Wholly owned, no stock-library licence, no third-party rights holder, no
+attribution requirement. Confirmed by Skyy on 2026-09-09 (SKY-11591).
+
+The canonical licence record — the one that covers redistribution inside the
+installer — is kept next to the assets that actually ship:
+
+    frontend/src/assets/wallpapers/LICENSE
+
+Keep that file authoritative and this one a pointer, so the two cannot drift.
+
+The originals are NOT in this repository
+----------------------------------------
+The PNGs total 68.2 MB and would live in git history forever. Ivy ruled on
+2026-09-09 (SKY-11675) that they must not enter it. `originals/` is git-ignored;
+the owner holds the files and is regenerating them at higher resolution
+(SKY-11600). They are also never packaged: `electron-builder.json` sets
+`files: ["out/**/*", "package.json"]`, so only what the renderer build emits
+reaches the installer, and this directory sits outside that tree by
+construction.
+
+`PROVENANCE.json` next to this file is what replaces the blobs. It records, per
+original: the staged filename, pixel dimensions, byte size, a SHA-256 of the
+bytes, the owner's folder and filename, and which shipped WebP was cropped from
+it — or why it was rejected. A restaged copy can therefore be proven identical
+to the file a given wallpaper was actually made from.
+
+To rebuild: restage the PNGs under `originals/<setKey>/<setKey>-src-NN.png`,
+check each SHA-256 against `PROVENANCE.json`, then run the build. See
+docs/design/wallpaper-pipeline.md.

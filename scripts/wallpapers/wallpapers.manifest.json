@@ -1,0 +1,291 @@
+{
+  "$comment": "SKY-11591 — Liquid Neon wallpaper build manifest. Edit this, then run `python3 scripts/wallpapers/build_wallpapers.py`. See docs/design/wallpaper-pipeline.md.",
+  "targetAspect": [
+    16,
+    9
+  ],
+  "encode": {
+    "format": "webp",
+    "method": 6,
+    "qualityRange": [
+      40,
+      88
+    ],
+    "targetBytes": 52000,
+    "maxBytes": 62000
+  },
+  "sets": {
+    "classic": {
+      "presetName": "Neon Nebula",
+      "sourceFolder": "Neon Nebula",
+      "images": [
+        {
+          "src": "classic-src-04.png",
+          "anchor": 0.5,
+          "note": "Bright diagonal nebula band across the middle; symmetric, no offset needed."
+        },
+        {
+          "src": "classic-src-02.png",
+          "anchor": 0.62,
+          "note": "Pink nebula mass sits right of centre; anchored right so it is not clipped at the frame edge."
+        },
+        {
+          "src": "classic-src-03.png",
+          "anchor": 0.5,
+          "note": "Mirrored wing streaks top-left / bottom-right; centre keeps the symmetry."
+        },
+        {
+          "src": "classic-src-01.png",
+          "anchor": 0.5,
+          "note": "Nebula walls on both edges; centre keeps both walls partly in frame."
+        }
+      ]
+    },
+    "aurora": {
+      "presetName": "Aurora",
+      "sourceFolder": "Aurora",
+      "images": [
+        {
+          "src": "aurora-src-04.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Mountain range with a full mirror reflection; the strongest Aurora frame."
+        },
+        {
+          "src": "aurora-src-06.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Pine foreground left, lit river valley right."
+        },
+        {
+          "src": "aurora-src-01.png",
+          "anchor": 0.55,
+          "note": "Aurora arc crests right of centre over the lake; slight right anchor keeps the crest."
+        },
+        {
+          "src": "aurora-src-02.png",
+          "anchor": 0.5,
+          "note": "Vertical curtains over a cloud sea; the calmest of the six, best for long writing sessions."
+        }
+      ],
+      "rejected": [
+        {
+          "src": "aurora-src-03.png",
+          "why": "Near-duplicate composition of src-01 with a busier foreground."
+        },
+        {
+          "src": "aurora-src-05.png",
+          "why": "Warm sunrise dominates; reads as Sunset Coast rather than Aurora."
+        }
+      ]
+    },
+    "cyber": {
+      "presetName": "Cyberpunk",
+      "sourceFolder": "cyberpunk",
+      "images": [
+        {
+          "src": "cyber-src-02.png",
+          "anchor": 0.61,
+          "note": "Neon skyline sits at ~0.73 across; a centre crop would slice it. Anchored right so the whole skyline lands inside the frame."
+        },
+        {
+          "src": "cyber-src-01.png",
+          "anchor": 0.5,
+          "note": "Symmetric grid horizon, teal left / magenta right."
+        },
+        {
+          "src": "cyber-src-03.png",
+          "anchor": 0.5,
+          "note": "Mirrored neon slabs on both edges; centre keeps the mirroring."
+        }
+      ]
+    },
+    "sunset": {
+      "presetName": "Sunset Coast",
+      "sourceFolder": "Sunset coast",
+      "images": [
+        {
+          "src": "sunset-src-02.png",
+          "anchor": 0.53,
+          "note": "Sun on the horizon just right of centre with a full sun-path reflection."
+        },
+        {
+          "src": "sunset-src-01.png",
+          "anchor": 0.55,
+          "note": "Sun at ~0.61; anchored right so the sun and its reflection column stay off the frame edge."
+        },
+        {
+          "src": "sunset-src-04.png",
+          "anchor": 0.6,
+          "note": "Sun at ~0.66 behind sea stacks; the strongest right-side offset in this set."
+        },
+        {
+          "src": "sunset-src-03.png",
+          "anchor": 0.54,
+          "note": "Wide low horizon; near-centre with a small right lean toward the sun."
+        }
+      ]
+    },
+    "ice": {
+      "presetName": "Ice Mono",
+      "sourceFolder": "Ice mono",
+      "images": [
+        {
+          "src": "ice-src-04.png",
+          "anchor": 0.6,
+          "note": "Horizon glow at ~0.66 over a frozen lake; anchored right to hold the glow."
+        },
+        {
+          "src": "ice-src-02.png",
+          "anchor": 0.5,
+          "note": "Mirrored curtains on both edges; centre keeps them balanced."
+        },
+        {
+          "src": "ice-src-03.png",
+          "anchor": 0.5,
+          "note": "Ice shards frame both edges; centre keeps both."
+        },
+        {
+          "src": "ice-src-01.png",
+          "anchor": 0.44,
+          "note": "Bright plume in the upper left (luminance centroid 0.34); anchored left so the plume is not cut off."
+        }
+      ]
+    },
+    "ember": {
+      "presetName": "Emberfall",
+      "sourceFolder": "Emberfall",
+      "images": [
+        {
+          "src": "ember-src-03.png",
+          "anchor": 0.58,
+          "note": "Sunset over a misty valley, sun at ~0.66; anchored right."
+        },
+        {
+          "src": "ember-src-01.png",
+          "anchor": 0.42,
+          "note": "Fire nebula band runs out of the lower-left corner (luminance centroid 0.37); anchored left to keep the band's brightest stretch."
+        },
+        {
+          "src": "ember-src-02.png",
+          "anchor": 0.5,
+          "note": "Autumn-leaf vignette on both edges with a centre glow."
+        }
+      ]
+    },
+    "verdant": {
+      "presetName": "Verdant Reach",
+      "sourceFolder": "Verdant reach",
+      "images": [
+        {
+          "src": "verdant-src-01.png",
+          "anchor": 0.56,
+          "note": "Misty forest lake with a canopy break at ~0.66; anchored right to keep the light shaft."
+        },
+        {
+          "src": "verdant-src-03.png",
+          "anchor": 0.58,
+          "note": "Green nebula sweep with its focal bloom at ~0.65; anchored right."
+        },
+        {
+          "src": "verdant-src-04.png",
+          "anchor": 0.5,
+          "note": "Symmetric canopy vignette with a calm centre; the most text-friendly of this set."
+        },
+        {
+          "src": "verdant-src-02.png",
+          "anchor": 0.52,
+          "note": "Leaf-and-vine frame on both edges; barely off centre toward the upper-right glow."
+        }
+      ]
+    },
+    "royal": {
+      "presetName": "Royal Arcana",
+      "sourceFolder": "Royal Arcana",
+      "images": [
+        {
+          "src": "royal-src-04.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Radiant violet core inside the gold orrery rings."
+        },
+        {
+          "src": "royal-src-05.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Dark calm centre with the arcana detail pushed to both edges."
+        },
+        {
+          "src": "royal-src-03.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Diagonal nebula river with moon-phase glyphs on the right."
+        },
+        {
+          "src": "royal-src-02.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Vertical gold axis through a centred star; symmetric bright burst dead centre is the worst of the four for text legibility, so it ranks last, not second."
+        }
+      ],
+      "rejected": [
+        {
+          "src": "royal-src-01.png",
+          "why": "Busiest ring-and-constellation detail of the five; too much competing structure behind panel glass."
+        }
+      ]
+    },
+    "noir": {
+      "presetName": "Noir Rose",
+      "sourceFolder": "Noir Rose",
+      "images": [
+        {
+          "src": "noir-src-04.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Strongest rose bloom, balanced left and right."
+        },
+        {
+          "src": "noir-src-01.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Rose cloud bank left, indigo field right."
+        },
+        {
+          "src": "noir-src-05.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Dark centre channel with rose walls on both edges; very text-friendly."
+        },
+        {
+          "src": "noir-src-02.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Soft diagonal light bands over a rose nebula."
+        }
+      ],
+      "rejected": [
+        {
+          "src": "noir-src-03.png",
+          "why": "Muddiest frame of the five; the right two thirds are near-black with no readable subject."
+        }
+      ]
+    },
+    "winter": {
+      "presetName": "Winterlight",
+      "sourceFolder": "Winterlight",
+      "images": [
+        {
+          "src": "winter-src-04.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Aurora over a snow plain; horizon glow dead centre."
+        },
+        {
+          "src": "winter-src-03.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Moon over a frozen lake, snowfall throughout."
+        },
+        {
+          "src": "winter-src-01.png",
+          "anchor": 0.5,
+          "note": "Native 16:9. Moonlit lake with pines on the right bank."
+        },
+        {
+          "src": "winter-src-02.png",
+          "anchor": 0.375,
+          "note": "Sunrise sits at ~0.20, far left. Anchored hard left (the leftmost a 16:9 window can go on this source) so the sun stays in frame. Brightest wallpaper in the pack — flagged to QA for contrast."
+        }
+      ]
+    }
+  }
+}
