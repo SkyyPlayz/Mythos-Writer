@@ -101,6 +101,54 @@ export function defaultSize(kind: BoardItemKind, hasThumb: boolean): { w: number
   return { w: CARD_DEFAULT_W, h: hasThumb ? CARD_THUMB_DEFAULT_H : CARD_DEFAULT_H };
 }
 
+// ── SKY-11188: furniture default sizes (§4/§6) ──────────────────────────────
+// A furniture item's size is absent from the sidecar unless the user resized
+// it (same "absent = default" contract as a note/board's own layout.w/h,
+// §3) — these are the formulas that fill the gap, keyed by item content so a
+// column growing a row doesn't need a stored resize just to fit it.
+
+export type FurnitureKind = 'column' | 'check' | 'table' | 'image' | 'sketch' | 'swatch' | 'line';
+
+export const SWATCH_DEFAULT_W = 238;
+export const SWATCH_DEFAULT_H = 92;
+/** Fallback content box for a placeholder image/sketch that hasn't been given its own w/h (§4/§14). */
+export const IMAGE_DEFAULT_CONTENT_W = 240;
+export const IMAGE_DEFAULT_CONTENT_H = 160;
+const IMAGE_CHROME_H = 48;
+
+/**
+ * Default size for a furniture item, given its kind and the count that
+ * drives its height (items.length for column/check, rows.length for table —
+ * ignored for every other kind). `image`/`sketch` read their own intrinsic
+ * `w`/`h` from the item (spec: "w × (h + 48)"); pass them when known.
+ */
+export function defaultFurnitureSize(
+  kind: FurnitureKind,
+  count: number,
+  intrinsic?: { w?: number; h?: number },
+): { w: number; h: number } {
+  switch (kind) {
+    case 'column':
+      return { w: 248, h: 66 + count * 44 };
+    case 'check':
+      return { w: 238, h: 60 + count * 26 };
+    case 'table':
+      return { w: 252, h: 56 + count * 29 };
+    case 'image':
+    case 'sketch': {
+      const w = intrinsic?.w ?? IMAGE_DEFAULT_CONTENT_W;
+      const h = intrinsic?.h ?? IMAGE_DEFAULT_CONTENT_H;
+      return { w, h: h + IMAGE_CHROME_H };
+    }
+    case 'swatch':
+      return { w: SWATCH_DEFAULT_W, h: SWATCH_DEFAULT_H };
+    case 'line':
+      // A line has no box of its own — it is drawn between two other
+      // items' positions (BoardFurnitureLine), never mounted/sized as a box.
+      return { w: 0, h: 0 };
+  }
+}
+
 /**
  * Height of the image block inside a thumbnail card (mockup `thumbSt`,
  * owner report script 8086): 134px on the default 272px card, and on a

@@ -149,7 +149,7 @@
     "test:e2e:scene-quit-flush": "playwright test e2e/tests/sky-11646-scene-quit-flush.spec.ts --reporter=list,html",
     "test:e2e:split-pane-tab-strips": "playwright test e2e/tests/split-pane-tab-strips.spec.ts --reporter=list,html",
     "test:e2e:notes-split-pane-tab-strips": "playwright test e2e/tests/notes-split-pane-tab-strips.spec.ts --reporter=list,html",
-    "test:e2e:notes-board-canvas": "playwright test e2e/tests/sky-11184-notes-board-canvas-shell.spec.ts e2e/tests/sky-11494-boards-canvas-fidelity.spec.ts e2e/tests/sky-11566-boards-chrome-fidelity.spec.ts e2e/tests/sky-11186-board-lod-thumbnails.spec.ts e2e/tests/sky-11187-board-vault-mutations.spec.ts --reporter=list,html",
+    "test:e2e:notes-board-canvas": "playwright test e2e/tests/sky-11184-notes-board-canvas-shell.spec.ts e2e/tests/sky-11494-boards-canvas-fidelity.spec.ts e2e/tests/sky-11566-boards-chrome-fidelity.spec.ts e2e/tests/sky-11186-board-lod-thumbnails.spec.ts e2e/tests/sky-11187-board-vault-mutations.spec.ts e2e/tests/sky-11188-notes-board-furniture.spec.ts --reporter=list,html",
     "test:e2e:board-vault-mutations": "playwright test e2e/tests/sky-11187-board-vault-mutations.spec.ts --reporter=list",
     "test:e2e:sky214-entity-screenshots": "playwright test e2e/tests/sky214-entity-screenshots.spec.ts --reporter=list,html",
     "test:e2e:scene-save-perf": "playwright test e2e/scene-save-perf.spec.ts --reporter=list,html",

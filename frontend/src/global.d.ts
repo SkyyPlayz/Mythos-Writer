@@ -1861,6 +1861,9 @@ interface Window {
     noteBacklinks: (notePath: string) => Promise<{
       notePath: string;
       backlinks: Array<{ path: string; name: string; snippet: string }>;
+      // SKY-11188: Notes Board column `ref` backlinks (§4/§11) — a separate
+      // list, since a board ref points at a folder, not a linking note.
+      boardRefs: Array<{ boardPath: string; boardItemTitle?: string; itemText: string }>;
     }>;
 
     // SKY-194: Iconize — per-node icon IPC

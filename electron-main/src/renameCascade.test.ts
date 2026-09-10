@@ -251,6 +251,90 @@ describe('per-side rewrite behaviour (owner ruling)', () => {
   });
 });
 
+// SKY-11188: a Notes Board column item's `ref` is not a second link
+// representation — it must participate in this same cascade, exactly as a
+// [[wikilink]] does (BOARDS-SPEC.md §4/§2).
+describe('board sidecar column `ref` participates in the cascade (SKY-11188)', () => {
+  function writeSidecar(boardRelPath: string, furniture: unknown[]): void {
+    const dir = boardRelPath ? path.join(notesRoot, boardRelPath) : notesRoot;
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '.mythos-board.json'),
+      JSON.stringify({
+        version: 2,
+        id: 'board-1',
+        updated: new Date(0).toISOString(),
+        layout: {},
+        colors: {},
+        furniture,
+        view: { zoom: 100, panX: 0, panY: 0 },
+      }),
+      'utf-8',
+    );
+  }
+
+  function readSidecar(boardRelPath: string): { furniture: Array<{ items?: Array<{ ref?: string }> }> } {
+    const dir = boardRelPath ? path.join(notesRoot, boardRelPath) : notesRoot;
+    return JSON.parse(fs.readFileSync(path.join(dir, '.mythos-board.json'), 'utf-8'));
+  }
+
+  it('retargets a column ref to the renamed note and counts it in the cascade result', () => {
+    writeNote('Jasper.md', 'x');
+    writeSidecar('Worldbuilding', [
+      { id: 'x1', k: 'column', x: 0, y: 0, title: 'Quick links', items: [{ t: 'Jasper', ref: 'Jasper.md' }] },
+    ]);
+
+    const result = renameNoteWithCascade({
+      notesRoot,
+      storyRoot,
+      fromPath: 'Jasper.md',
+      toPath: 'Jasper Thorne.md',
+    });
+
+    expect(result.linkUpdate!.linksUpdated).toBe(1);
+    expect(readSidecar('Worldbuilding').furniture[0].items![0].ref).toBe('Jasper Thorne.md');
+  });
+
+  it('leaves a ref pointing at a different note untouched', () => {
+    writeNote('Jasper.md', 'x');
+    writeNote('Casper.md', 'y');
+    writeSidecar('', [
+      { id: 'x1', k: 'column', x: 0, y: 0, items: [{ t: 'Casper', ref: 'Casper.md' }] },
+    ]);
+
+    renameNoteWithCascade({ notesRoot, storyRoot, fromPath: 'Jasper.md', toPath: 'Jasper Thorne.md' });
+
+    expect(readSidecar('').furniture[0].items![0].ref).toBe('Casper.md');
+  });
+
+  it('undo reverts the ref back to its pre-rename target', () => {
+    writeNote('Jasper.md', 'x');
+    writeSidecar('', [
+      { id: 'x1', k: 'column', x: 0, y: 0, items: [{ t: 'Jasper', ref: 'Jasper.md' }] },
+    ]);
+
+    renameNoteWithCascade({ notesRoot, storyRoot, fromPath: 'Jasper.md', toPath: 'Jasper Thorne.md' });
+    expect(readSidecar('').furniture[0].items![0].ref).toBe('Jasper Thorne.md');
+
+    const undoResult = undoLastRenameCascade({ notesRoot, storyRoot });
+    expect(undoResult.undone).toBe(true);
+    expect(readSidecar('').furniture[0].items![0].ref).toBe('Jasper.md');
+  });
+
+  it('a malformed sidecar does not abort the rename or the rest of the cascade', () => {
+    writeNote('Jasper.md', 'x');
+    writeNote('Allies.md', '[[Jasper]]');
+    fs.mkdirSync(path.join(notesRoot, 'Broken'), { recursive: true });
+    fs.writeFileSync(path.join(notesRoot, 'Broken', '.mythos-board.json'), '{ not json', 'utf-8');
+
+    const result = renameNoteWithCascade({ notesRoot, storyRoot, fromPath: 'Jasper.md', toPath: 'Jasper Thorne.md' });
+
+    expect(result.moved).toBe(true);
+    expect(readNote('Allies.md')).toBe('[[Jasper Thorne]]');
+    expect(fs.readFileSync(path.join(notesRoot, 'Broken', '.mythos-board.json'), 'utf-8')).toBe('{ not json');
+  });
+});
+
 describe('undo — one step, never overwrites newer work', () => {
   it('renames back and restores every rewritten file in one call', () => {
     writeNote('Jasper.md', 'self: [[Jasper]]');

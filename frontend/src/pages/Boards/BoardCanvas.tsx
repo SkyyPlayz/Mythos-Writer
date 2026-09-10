@@ -12,6 +12,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { MouseEvent, ReactElement, WheelEvent } from 'react';
 import BoardCard, { itemHasThumb } from './BoardCard';
 import type { BoardItem, ItemRect } from './BoardCard';
+import BoardFurniture from './BoardFurniture';
+import type { BoardFurnitureItemData } from './BoardFurniture';
 import {
   ALIGN_THRESHOLD,
   CULL_MARGIN_X,
@@ -29,6 +31,7 @@ import {
   autoLayoutSlots,
   bucketScroll,
   clampMinZoom,
+  defaultFurnitureSize,
   defaultSize,
   expandRect,
   lodTierForScreenWidth,
@@ -38,6 +41,15 @@ import {
 import './BoardCanvas.css';
 
 export type { BoardItem } from './BoardCard';
+export type { BoardFurnitureItemData } from './BoardFurniture';
+
+/** A furniture item's resolved on-screen box, keyed by its OWN item key (v:/n:/x:) for line endpoints. */
+interface KeyRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 function snapToGrid(v: number): number {
   return Math.round(v / GRID_SNAP) * GRID_SNAP;
@@ -99,6 +111,28 @@ export interface BoardCanvasProps {
   /** Commit a typed name. Empty/unchanged is resolved as a no-op in main. */
   onRenameCommit?: (itemPath: string, newName: string) => void;
   onRenameCancel?: () => void;
+
+  // ── SKY-11188: furniture (§4) ──
+  /** Board-only items (columns, checklists, tables, images, sketches, swatches, lines). */
+  furniture?: BoardFurnitureItemData[];
+  /** Every TOUCHED card/tile's own item key (`v:<id>`/`n:<id>`), by its `path` — a `line`'s endpoint may name one of these. Untouched (never-arranged) items have no id yet and cannot be a line endpoint. */
+  itemKeysByPath?: Record<string, string>;
+  onFurnitureMove?: (id: string, x: number, y: number) => void;
+  onFurnitureResize?: (id: string, w: number, h: number) => void;
+  onFurnitureDelete?: (id: string) => void;
+  onFurnitureCheckToggle?: (id: string, index: number) => void;
+  /** Spec §4: clicking a swatch colour applies it. Scoped here to the swatch's OWN `color` field, not a cross-item "current selection" apply — see BoardsTabPanel. */
+  onFurnitureColor?: (id: string, hex: string) => void;
+  /** A column item's `ref` — a vault-relative note path kept live by the rename cascade (§4/§2). */
+  onOpenNoteRef?: (ref: string) => void;
+  /**
+   * SKY-11188: "Connect" tool — while active, clicking a furniture item
+   * picks it as a `line` endpoint instead of starting a drag (mirrors the
+   * prototype's `bdTool === 'line'` behaviour, scoped to furniture-only
+   * endpoints for this ticket).
+   */
+  lineToolActive?: boolean;
+  onFurniturePick?: (id: string) => void;
 }
 
 interface ResolvedItem {
@@ -124,6 +158,16 @@ export default function BoardCanvas({
   onRequestRename,
   onRenameCommit,
   onRenameCancel,
+  furniture = [],
+  itemKeysByPath = {},
+  onFurnitureMove,
+  onFurnitureResize,
+  onFurnitureDelete,
+  onFurnitureCheckToggle,
+  onFurnitureColor,
+  onOpenNoteRef,
+  lineToolActive = false,
+  onFurniturePick,
 }: BoardCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -135,6 +179,11 @@ export default function BoardCanvas({
   // canvas needs a selection to spend it on. View-local and deliberately not
   // persisted — it is a pointer state, not board content.
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  // SKY-11188: furniture selection is tracked separately from card selection
+  // (mutually exclusive — selecting one clears the other) rather than
+  // unifying the two into one generic key, so the existing card drag/resize
+  // code above is untouched by this ticket.
+  const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
 
   const minZoom = clampMinZoom(minZoomProp);
   const scale = zoom / 100;
@@ -234,8 +283,13 @@ export default function BoardCanvas({
       const def = defaultSize(r.item.kind, r.hasThumb);
       max = Math.max(max, r.layout.y + (r.layout.h ?? def.h) + ORIGIN_Y);
     }
+    for (const f of furniture) {
+      if (f.k === 'line') continue;
+      const def = defaultFurnitureSize(f.k, furnitureCount(f), { w: f.w, h: f.h });
+      max = Math.max(max, f.y + (f.h ?? def.h) + ORIGIN_Y);
+    }
     return max;
-  }, [resolvedItems]);
+  }, [resolvedItems, furniture]);
 
   // A selected item that is no longer on this board (renamed, deleted, or we
   // navigated into a sub-board) must not keep a rim alive against nothing.
@@ -244,6 +298,12 @@ export default function BoardCanvas({
       setSelectedPath(null);
     }
   }, [items, selectedPath]);
+
+  useEffect(() => {
+    if (selectedFurnitureId && !furniture.some((f) => f.id === selectedFurnitureId)) {
+      setSelectedFurnitureId(null);
+    }
+  }, [furniture, selectedFurnitureId]);
 
   // ── SKY-11494 BD-2: keep the dot grid on top of the world ───────────────
   // The grid is painted on the panel, but the world it describes is
@@ -300,6 +360,7 @@ export default function BoardCanvas({
       // inside the panel and is not canvas.
       if ((e.target as HTMLElement).closest('.board-canvas__zoom-controls')) return;
       setSelectedPath(null);
+      setSelectedFurnitureId(null);
       // SKY-11187 §5: a placement tool turns that same empty-canvas press
       // into a real vault create at the click point.
       if (activeTool !== 'select') {
@@ -385,6 +446,7 @@ export default function BoardCanvas({
     if (activeTool !== 'select') return;
     e.stopPropagation();
     setSelectedPath(path);
+    setSelectedFurnitureId(null);
     itemDragRef.current = {
       path,
       startMouseX: e.clientX,
@@ -512,6 +574,104 @@ export default function BoardCanvas({
     };
   }, [contextMenu]);
 
+  // ── SKY-11188: furniture drag/resize — same pattern as items above, keyed
+  // by furniture id instead of path (a furniture item has no vault path). ──
+  const furnitureDragRef = useRef<{
+    id: string;
+    startMouseX: number;
+    startMouseY: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const [draggingFurnitureId, setDraggingFurnitureId] = useState<string | null>(null);
+  const [localFurniturePositions, setLocalFurniturePositions] = useState<Record<string, { x: number; y: number }>>({});
+
+  const handleFurnitureMouseDown = useCallback((e: MouseEvent<HTMLDivElement>, id: string, rect: { x: number; y: number; w: number; h: number }) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('.board-canvas__resize-handle')) return;
+    e.stopPropagation();
+    if (lineToolActive) {
+      onFurniturePick?.(id);
+      return;
+    }
+    setSelectedFurnitureId(id);
+    setSelectedPath(null);
+    furnitureDragRef.current = { id, startMouseX: e.clientX, startMouseY: e.clientY, startX: rect.x, startY: rect.y };
+    setDraggingFurnitureId(id);
+  }, [lineToolActive, onFurniturePick]);
+
+  useEffect(() => {
+    const onMouseMove = (e: globalThis.MouseEvent) => {
+      if (!furnitureDragRef.current) return;
+      const dx = (e.clientX - furnitureDragRef.current.startMouseX) / scale;
+      const dy = (e.clientY - furnitureDragRef.current.startMouseY) / scale;
+      let nx = furnitureDragRef.current.startX + dx;
+      let ny = furnitureDragRef.current.startY + dy;
+      if (gridSnap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
+      setLocalFurniturePositions((prev) => ({ ...prev, [furnitureDragRef.current!.id]: { x: nx, y: ny } }));
+    };
+    const onMouseUp = () => {
+      if (furnitureDragRef.current) {
+        const pos = localFurniturePositions[furnitureDragRef.current.id];
+        if (pos) onFurnitureMove?.(furnitureDragRef.current.id, pos.x, pos.y);
+        furnitureDragRef.current = null;
+        setDraggingFurnitureId(null);
+      }
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [scale, gridSnap, localFurniturePositions, onFurnitureMove]);
+
+  const furnitureResizeDragRef = useRef<{ id: string; startMouseX: number; startMouseY: number; startW: number; startH: number } | null>(null);
+  const [localFurnitureSizes, setLocalFurnitureSizes] = useState<Record<string, { w: number; h: number }>>({});
+
+  const handleFurnitureResizeMouseDown = useCallback((e: MouseEvent<HTMLDivElement>, id: string, rect: { x: number; y: number; w: number; h: number }) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSelectedFurnitureId(id);
+    setSelectedPath(null);
+    furnitureResizeDragRef.current = { id, startMouseX: e.clientX, startMouseY: e.clientY, startW: rect.w, startH: rect.h };
+  }, []);
+
+  useEffect(() => {
+    const onMouseMove = (e: globalThis.MouseEvent) => {
+      if (!furnitureResizeDragRef.current) return;
+      const dx = (e.clientX - furnitureResizeDragRef.current.startMouseX) / scale;
+      const dy = (e.clientY - furnitureResizeDragRef.current.startMouseY) / scale;
+      const nw = Math.min(RESIZE_MAX_W, Math.max(RESIZE_MIN_W, furnitureResizeDragRef.current.startW + dx));
+      const nh = Math.min(RESIZE_MAX_H, Math.max(RESIZE_MIN_H, furnitureResizeDragRef.current.startH + dy));
+      setLocalFurnitureSizes((prev) => ({ ...prev, [furnitureResizeDragRef.current!.id]: { w: nw, h: nh } }));
+    };
+    const onMouseUp = () => {
+      if (furnitureResizeDragRef.current) {
+        const size = localFurnitureSizes[furnitureResizeDragRef.current.id];
+        if (size) onFurnitureResize?.(furnitureResizeDragRef.current.id, size.w, size.h);
+        furnitureResizeDragRef.current = null;
+      }
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [scale, localFurnitureSizes, onFurnitureResize]);
+
+  const handleFocusFurniture = useCallback((id: string) => { setSelectedFurnitureId(id); setSelectedPath(null); }, []);
+
+  /** Furniture item count that drives its default height (§6) — items.length for column/check, rows.length for table. */
+  function furnitureCount(f: BoardFurnitureItemData): number {
+    if (f.k === 'column' || f.k === 'check') return f.items?.length ?? 0;
+    if (f.k === 'table') return f.rows?.length ?? 0;
+    return 0;
+  }
+
+  const RESIZABLE_FURNITURE_KINDS = new Set(['column', 'check', 'table', 'image', 'sketch']);
+
   // ── Align guides — collect edges/centres of all non-dragged items ───────
   const [guideLines, setGuideLines] = useState<{ axis: 'h' | 'v'; pos: number }[]>([]);
 
@@ -587,6 +747,75 @@ export default function BoardCanvas({
     );
   }
 
+  // ── SKY-11188: furniture — cull/mount the same way cards do, and build a
+  // key → box map (cards + furniture) so `line` items can find their
+  // endpoints regardless of which one is a card and which is furniture. ──
+  const keyRects = new Map<string, KeyRect>();
+  for (const r of resolvedItems) {
+    const key = itemKeysByPath[r.item.path];
+    if (!key) continue; // never-arranged — has no id yet, can't be a line endpoint (§2)
+    const pos = localPositions[r.item.path] ?? { x: r.layout.x, y: r.layout.y };
+    const size = localSizes[r.item.path] ?? { w: r.layout.w, h: r.layout.h };
+    const def = defaultSize(r.item.kind, r.hasThumb);
+    keyRects.set(key, { x: pos.x, y: pos.y, w: size.w ?? def.w, h: size.h ?? def.h });
+  }
+
+  const mountedFurniture: ReactElement[] = [];
+  for (const f of furniture) {
+    if (f.k === 'line') continue; // drawn separately, below — it has no box of its own
+    const pos = localFurniturePositions[f.id] ?? { x: f.x, y: f.y };
+    const size = localFurnitureSizes[f.id] ?? { w: f.w, h: f.h };
+    const def = defaultFurnitureSize(f.k, furnitureCount(f), { w: f.w, h: f.h });
+    const w = size.w ?? def.w;
+    const h = size.h ?? def.h;
+    keyRects.set(`x:${f.id}`, { x: pos.x, y: pos.y, w, h });
+    const dragging = draggingFurnitureId === f.id;
+    const selected = selectedFurnitureId === f.id;
+    if (!shouldMount({ rect: { x: pos.x, y: pos.y, w, h }, dragging, selected }, cullRect)) continue;
+    mountedFurniture.push(
+      <BoardFurniture
+        key={f.id}
+        item={f}
+        x={pos.x}
+        y={pos.y}
+        w={w}
+        h={h}
+        resizable={RESIZABLE_FURNITURE_KINDS.has(f.k)}
+        selected={selected}
+        dragging={dragging}
+        onItemMouseDown={handleFurnitureMouseDown}
+        onResizeMouseDown={handleFurnitureResizeMouseDown}
+        onFocusItem={handleFocusFurniture}
+        onDelete={(id) => onFurnitureDelete?.(id)}
+        onOpenRef={onOpenNoteRef}
+        onCheckToggle={onFurnitureCheckToggle}
+        onSwatchPick={(hex) => onFurnitureColor?.(f.id, hex)}
+      />,
+    );
+  }
+
+  // `line` furniture connects two item KEYS (v:/n:/x:) — drawn only once
+  // BOTH endpoints currently resolve (§4: "deleted when either end is
+  // deleted" — the server already cascade-deletes the line itself on that
+  // event, but a stale local state frame during a delete round-trip must not
+  // draw a connector into empty space either).
+  const lineSegments: Array<{ id: string; x1: number; y1: number; x2: number; y2: number; label?: string; color?: string }> = [];
+  for (const f of furniture) {
+    if (f.k !== 'line') continue;
+    const from = keyRects.get(String(f.from ?? ''));
+    const to = keyRects.get(String(f.to ?? ''));
+    if (!from || !to) continue;
+    lineSegments.push({
+      id: f.id,
+      x1: from.x + from.w / 2,
+      y1: from.y + Math.min(from.h, 150) / 2,
+      x2: to.x + to.w / 2,
+      y2: to.y + Math.min(to.h, 150) / 2,
+      label: typeof f.label === 'string' ? f.label : undefined,
+      color: f.color,
+    });
+  }
+
   return (
     <div
       className="board-canvas__root"
@@ -659,7 +888,31 @@ export default function BoardCanvas({
                 : <div key={i} className="board-canvas__guide board-canvas__guide--h" style={{ top: g.pos }} />
             )}
 
+            {/* SKY-11188: `line` connectors — behind the cards/furniture they join. */}
+            {lineSegments.length > 0 && (
+              <svg
+                className="board-canvas__lines"
+                width={containerWidth}
+                height={canvasHeight}
+                aria-hidden="true"
+              >
+                {lineSegments.map((l) => (
+                  <line
+                    key={l.id}
+                    x1={l.x1}
+                    y1={l.y1}
+                    x2={l.x2}
+                    y2={l.y2}
+                    stroke={l.color || 'var(--n1, #00f0ff)'}
+                    strokeWidth={1.8}
+                    opacity={0.85}
+                  />
+                ))}
+              </svg>
+            )}
+
             {mountedCards}
+            {mountedFurniture}
           </div>
         </div>
       </div>

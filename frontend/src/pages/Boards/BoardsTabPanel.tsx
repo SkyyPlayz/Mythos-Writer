@@ -8,11 +8,39 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import BoardCanvas from './BoardCanvas';
-import type { BoardItem, BoardTool, ItemLayout } from './BoardCanvas';
+import type { BoardItem, BoardTool, BoardFurnitureItemData, ItemLayout } from './BoardCanvas';
+import type { FurnitureKind } from './boardLod';
 import { resolveNoteThumbs } from '../../lib/noteThumbnails';
 import { boardFollowsChange } from './boardVaultChange';
 import { validateRenameName } from '../../components/VaultBrowser/renameUtils';
+import { basenameNoExt } from '../../crossTabLinkResolver';
 import './BoardsTabPanel.css';
+
+/**
+ * SKY-11188 (§4/§5): default seed content per furniture kind, matching the
+ * prototype's own `bdAdd` seeds exactly (owner-reports/…Liquid Neon.dc.html)
+ * so a freshly-created column/checklist/table isn't empty chrome.
+ */
+const FURNITURE_SEEDS: Record<FurnitureKind, Record<string, unknown>> = {
+  column: { title: 'New column', items: [{ t: 'First card' }] },
+  check: { title: 'To-do', items: [{ t: 'First task', done: false }, { t: 'Second task', done: false }] },
+  table: { title: 'Table', rows: [['Column', 'Column'], ['', ''], ['', '']] },
+  image: { title: 'Image', w: 260, h: 150 },
+  sketch: { title: 'Sketch', w: 260, h: 150 },
+  swatch: { title: 'Palette', colors: null },
+  // `line` is created by picking two items on the canvas, not from the
+  // toolbar — it has no standalone seed (§4: "endpoints are item keys").
+  line: {},
+};
+
+export const FURNITURE_TOOLBAR_KINDS: Array<{ kind: FurnitureKind; label: string }> = [
+  { kind: 'column', label: 'Column' },
+  { kind: 'check', label: 'To-do list' },
+  { kind: 'table', label: 'Table' },
+  { kind: 'image', label: 'Image' },
+  { kind: 'sketch', label: 'Sketch' },
+  { kind: 'swatch', label: 'Colour swatch' },
+];
 
 interface VaultListItem {
   path: string;
@@ -37,6 +65,16 @@ export interface BoardsTabPanelProps {
    * re-clicking the folder you are already on still re-navigates.
    */
   openFolderRequest?: { folderPath: string; seq: number } | null;
+  /** SKY-11188: a column item's `ref` click — opens that vault-relative note path (§4). */
+  onOpenNote?: (path: string) => void;
+  /**
+   * SKY-11188: live note paths (DesktopShell.allNotePaths), so a column `ref`
+   * resolves by case-insensitive filename-stem — same rule as
+   * `shared/wikiLinkRename.ts`/`notesBoard.ts`'s rename cascade and
+   * `crossTabLinkResolver.ts`'s wikilink resolution — instead of being handed
+   * to `onOpenNote` as if it were already an exact vault path.
+   */
+  notePaths?: string[];
 }
 
 /**
@@ -86,7 +124,7 @@ const TOOLS: ReadonlyArray<{ id: BoardTool; label: string; title: string }> = [
   { id: 'board', label: 'Board', title: 'Board tool — click the canvas to create a board' },
 ];
 
-export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoom, openFolderRequest }: BoardsTabPanelProps) {
+export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoom, openFolderRequest, onOpenNote, notePaths }: BoardsTabPanelProps) {
   // Breadcrumb stack — bottom is home (vault root), top is current board
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([HOME_CRUMB]);
 
@@ -110,6 +148,9 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   const [items, setItems] = useState<BoardItem[]>([]);
   const [savedLayout, setSavedLayout] = useState<Record<string, ItemLayout>>({});
   const [savedView, setSavedView] = useState<{ zoom: number; panX: number; panY: number }>({ zoom: 100, panX: 0, panY: 0 });
+  // SKY-11188: board-only furniture + every touched child's own item key.
+  const [furniture, setFurniture] = useState<BoardFurnitureItemData[]>([]);
+  const [itemKeysByPath, setItemKeysByPath] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -211,14 +252,22 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
       // reports paths relative to this board's own folder — the same contract
       // item.path now follows — so the two line up 1:1.
       const layoutMap: Record<string, ItemLayout> = {};
+      // SKY-11188: every TOUCHED child's own item key, by path — a `line`
+      // furniture's from/to may name one (§4). Built independently of
+      // layoutMap: a colour-only touch mints an id without a layout entry.
+      const keysByPath: Record<string, string> = {};
       for (const child of meta.children) {
         if (!child.id) continue;
-        const storedLayout = meta.layout[`${child.kind === 'folder' ? 'v' : 'n'}:${child.id}`];
+        const key = `${child.kind === 'folder' ? 'v' : 'n'}:${child.id}`;
+        keysByPath[child.path] = key;
+        const storedLayout = meta.layout[key];
         if (storedLayout) layoutMap[child.path] = storedLayout;
       }
 
       setItems(resolvedItems);
       setSavedLayout(layoutMap);
+      setItemKeysByPath(keysByPath);
+      setFurniture(meta.furniture as BoardFurnitureItemData[]);
       setSavedView(meta.view ?? { zoom: 100, panX: 0, panY: 0 });
     } catch (err) {
       if (seq !== loadSeqRef.current) return;
@@ -357,6 +406,124 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     setActionError(null);
   }, [currentFolder]);
 
+  // ── SKY-11188: furniture CRUD (§4) — structural ops, immediate writes,
+  // matching notesBoard.ts's furnitureCreate/Update/Delete contract. ──
+  const handleFurnitureCreate = useCallback(async (kind: FurnitureKind) => {
+    try {
+      const seed = FURNITURE_SEEDS[kind];
+      // A simple grid so successive adds don't overlap each other —
+      // "Tidy up"/drag is how a user actually arranges them afterwards.
+      const col = furniture.length % 4;
+      const row = Math.floor(furniture.length / 4);
+      const x = 48 + col * 300;
+      const y = 44 + row * 260;
+      const { item } = await window.api.notesBoardFurnitureCreate(currentFolder, { k: kind, x, y, ...seed });
+      setFurniture((prev) => [...prev, item as unknown as BoardFurnitureItemData]);
+    } catch (err) {
+      console.warn('[Boards] failed to create furniture', err);
+    }
+  }, [currentFolder, furniture.length]);
+
+  const handleFurnitureMove = useCallback(async (id: string, x: number, y: number) => {
+    try {
+      const { item } = await window.api.notesBoardFurnitureUpdate(currentFolder, id, { x, y });
+      if (item) setFurniture((prev) => prev.map((f) => (f.id === id ? (item as unknown as BoardFurnitureItemData) : f)));
+    } catch (err) {
+      console.warn('[Boards] failed to persist furniture position', err);
+    }
+  }, [currentFolder]);
+
+  const handleFurnitureResize = useCallback(async (id: string, w: number, h: number) => {
+    try {
+      const { item } = await window.api.notesBoardFurnitureUpdate(currentFolder, id, { w, h });
+      if (item) setFurniture((prev) => prev.map((f) => (f.id === id ? (item as unknown as BoardFurnitureItemData) : f)));
+    } catch (err) {
+      console.warn('[Boards] failed to persist furniture size', err);
+    }
+  }, [currentFolder]);
+
+  const handleFurnitureColor = useCallback(async (id: string, hex: string) => {
+    try {
+      const { item } = await window.api.notesBoardFurnitureUpdate(currentFolder, id, { color: hex });
+      if (item) setFurniture((prev) => prev.map((f) => (f.id === id ? (item as unknown as BoardFurnitureItemData) : f)));
+    } catch (err) {
+      console.warn('[Boards] failed to persist furniture colour', err);
+    }
+  }, [currentFolder]);
+
+  const handleFurnitureCheckToggle = useCallback(async (id: string, index: number) => {
+    const current = furniture.find((f) => f.id === id);
+    if (!current || !current.items) return;
+    const items = current.items.map((it, i) => (i === index ? { ...it, done: !it.done } : it));
+    try {
+      const { item } = await window.api.notesBoardFurnitureUpdate(currentFolder, id, { items });
+      if (item) setFurniture((prev) => prev.map((f) => (f.id === id ? (item as unknown as BoardFurnitureItemData) : f)));
+    } catch (err) {
+      console.warn('[Boards] failed to persist checklist toggle', err);
+    }
+  }, [currentFolder, furniture]);
+
+  const handleFurnitureDelete = useCallback(async (id: string) => {
+    try {
+      await window.api.notesBoardFurnitureDelete(currentFolder, id);
+      // The server cascade-deletes every `line` referencing this item too
+      // (§4) — mirror that locally so a stale line doesn't flash into empty
+      // space for one frame before the next reload.
+      const key = `x:${id}`;
+      setFurniture((prev) => prev.filter((f) => f.id !== id && !(f.k === 'line' && (f.from === key || f.to === key))));
+    } catch (err) {
+      console.warn('[Boards] failed to delete furniture', err);
+    }
+  }, [currentFolder]);
+
+  const handleOpenNoteRef = useCallback((ref: string) => {
+    const stem = basenameNoExt(ref);
+    const resolved = (notePaths ?? []).find((p) => basenameNoExt(p) === stem);
+    if (!resolved) {
+      console.warn('[Boards] column ref did not resolve to a note', ref);
+      return;
+    }
+    onOpenNote?.(resolved);
+  }, [onOpenNote, notePaths]);
+
+  // ── SKY-11188: "Connect" tool — line furniture (§4) between two furniture
+  // items, picked by two clicks (mirrors the prototype's bdTool==='line'). ──
+  const [lineToolActive, setLineToolActive] = useState(false);
+  const [lineFromId, setLineFromId] = useState<string | null>(null);
+
+  const handleFurniturePick = useCallback(async (id: string) => {
+    if (!lineFromId) {
+      setLineFromId(id);
+      return;
+    }
+    if (lineFromId === id) {
+      setLineFromId(null);
+      return;
+    }
+    const from = lineFromId;
+    setLineFromId(null);
+    setLineToolActive(false);
+    try {
+      const { item } = await window.api.notesBoardFurnitureCreate(currentFolder, {
+        k: 'line',
+        // `line` has no rendered box (BoardFurnitureLines draws it as an SVG
+        // overlay from its endpoints' own boxes), but sanitizeFurniture
+        // (notesBoard.ts) rejects any record missing x/y — without inert
+        // coordinates here the connector survives the initial write but is
+        // dropped on the very next reload.
+        x: 0,
+        y: 0,
+        from: `x:${from}`,
+        to: `x:${id}`,
+        label: '',
+        color: null,
+      });
+      setFurniture((prev) => [...prev, item as unknown as BoardFurnitureItemData]);
+    } catch (err) {
+      console.warn('[Boards] failed to create connector', err);
+    }
+  }, [currentFolder, lineFromId]);
+
   // BoardCanvas hands back the tile's path relative to the CURRENT board, so
   // join it onto the current folder to keep folderPath vault-relative at any
   // depth. A bare item path was only ever correct one level below Home.
@@ -445,7 +612,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             it was impossible. The message is a hint layered over the canvas,
             not a replacement for it, so it never swallows the click.
           */}
-          {items.length === 0 && (
+          {items.length === 0 && furniture.length === 0 && (
             <p className="boards-tab-panel__empty-msg boards-tab-panel__empty-msg--overlay">
               This board is empty. Pick the Note or Board tool, then click anywhere to add one.
             </p>
@@ -465,6 +632,16 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             onRequestRename={handleRequestRename}
             onRenameCommit={handleRenameCommit}
             onRenameCancel={handleRenameCancel}
+            furniture={furniture}
+            itemKeysByPath={itemKeysByPath}
+            onFurnitureMove={handleFurnitureMove}
+            onFurnitureResize={handleFurnitureResize}
+            onFurnitureDelete={handleFurnitureDelete}
+            onFurnitureCheckToggle={handleFurnitureCheckToggle}
+            onFurnitureColor={handleFurnitureColor}
+            onOpenNoteRef={handleOpenNoteRef}
+            lineToolActive={lineToolActive}
+            onFurniturePick={(id) => void handleFurniturePick(id)}
           />
         </div>
       )}
@@ -479,6 +656,30 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             onClick={() => setActionError(null)}
           >
             ×
+          </button>
+        </div>
+      )}
+      {/* SKY-11188 (§4/§5): add board-only furniture — mirrors the prototype's
+          canvas context-menu "Add …" items as a reachable toolbar. */}
+      {!loading && !error && (
+        <div className="boards-tab-panel__furniture-toolbar" role="group" aria-label="Add furniture">
+          {FURNITURE_TOOLBAR_KINDS.map(({ kind, label }) => (
+            <button
+              key={kind}
+              type="button"
+              className="boards-tab-panel__furniture-btn"
+              onClick={() => void handleFurnitureCreate(kind)}
+            >
+              + {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            className={`boards-tab-panel__furniture-btn${lineToolActive ? ' boards-tab-panel__furniture-btn--active' : ''}`}
+            aria-pressed={lineToolActive}
+            onClick={() => { setLineToolActive((v) => !v); setLineFromId(null); }}
+          >
+            {lineToolActive ? (lineFromId ? 'Click the item to connect to…' : 'Click an item to connect…') : '+ Connector'}
           </button>
         </div>
       )}

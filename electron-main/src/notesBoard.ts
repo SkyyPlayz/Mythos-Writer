@@ -108,6 +108,19 @@ export interface BoardFurnitureItem {
   [key: string]: unknown;
 }
 
+/**
+ * A `column` furniture item's `items[]` entry (§4). `ref`, when present, is a
+ * vault-relative note path and is NOT a second link representation — it
+ * resolves and rename-cascades exactly as a `[[wikilink]]` does elsewhere
+ * (rewriteRefForRename below mirrors shared/wikiLinkRename.ts's stem-match
+ * rule; findColumnRefBacklinks mirrors noteBacklinks.ts's). Do not add a
+ * bespoke "board ref link" type.
+ */
+export interface ColumnItem {
+  t: string;
+  ref?: string;
+}
+
 export interface BoardView {
   zoom: number;
   panX: number;
@@ -919,4 +932,142 @@ export function itemDeleteStub(
     writeBoardFileRaw(folderAbs, board);
   }
   return { key };
+}
+
+// ─── Column `ref` = real wikilink (§4, §2, §11) ───
+//
+// A column item's `ref` is a vault-relative note path, resolved by STEM
+// (last path segment, `.md` stripped, case-insensitive) — the exact rule
+// shared/wikiLinkRename.ts and vaultGraph.ts/noteBacklinks.ts already use for
+// `[[wikilinks]]`. Reusing that rule (not a bespoke path comparison) is what
+// makes `ref` "not a second link representation" true in practice, not just
+// in the doc comment.
+
+/** Split a vault-relative path into its folder prefix, stem, and whether it carried a `.md` extension. */
+function splitRefStem(ref: string): { prefix: string; stem: string; hadMdExt: boolean } {
+  const segments = ref.split(/[\\/]/);
+  const lastSeg = segments[segments.length - 1];
+  const hadMdExt = /\.md$/i.test(lastSeg);
+  const stem = hadMdExt ? lastSeg.slice(0, -3) : lastSeg;
+  return { prefix: segments.slice(0, -1).join('/'), stem, hadMdExt };
+}
+
+/**
+ * Retarget one `ref` if its stem matches `oldStem` (case-insensitive) —
+ * mirrors rewriteWikiLinksForRename's target-matching rule, minus the
+ * `[[...]]`/alias/heading grammar a bare path doesn't have. Returns null
+ * when the ref doesn't match (no rewrite needed).
+ */
+export function rewriteRefForRename(ref: string, oldStem: string, newStem: string): string | null {
+  const { prefix, stem, hadMdExt } = splitRefStem(ref);
+  if (stem.toLowerCase() !== oldStem.trim().toLowerCase()) return null;
+  return (prefix ? `${prefix}/` : '') + newStem + (hadMdExt ? '.md' : '');
+}
+
+/**
+ * Rewrite every `column` item's matching `ref` in one board file. Returns
+ * the SAME object (count: 0) when nothing changed, so callers can skip a
+ * write — same no-op contract as gcBoardEntries.
+ */
+export function rewriteBoardFurnitureRefs(
+  board: BoardFile,
+  oldStem: string,
+  newStem: string,
+): { board: BoardFile; count: number } {
+  let count = 0;
+  const furniture = board.furniture.map((f) => {
+    if (f.k !== 'column' || !Array.isArray(f.items)) return f;
+    const items = (f.items as unknown[]).map((raw) => {
+      if (raw === null || typeof raw !== 'object') return raw;
+      const it = raw as Record<string, unknown>;
+      if (typeof it.ref !== 'string' || !it.ref) return raw;
+      const rewritten = rewriteRefForRename(it.ref, oldStem, newStem);
+      if (rewritten === null) return raw;
+      count++;
+      return { ...it, ref: rewritten };
+    });
+    return { ...f, items };
+  });
+  if (count === 0) return { board, count: 0 };
+  return { board: { ...board, furniture }, count };
+}
+
+/**
+ * Same rewrite, over the raw on-disk sidecar TEXT — the shape
+ * renameCascade.ts's transaction plan needs (it tracks every touched file as
+ * before/after text so a failure partway can roll back with a plain write,
+ * exactly like it already does for markdown files). Malformed/unparsable
+ * JSON is left untouched rather than thrown: a rename must never fail
+ * because an unrelated sidecar is corrupt.
+ */
+export function rewriteBoardSidecarTextForRename(
+  raw: string,
+  oldStem: string,
+  newStem: string,
+): { content: string; count: number } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { content: raw, count: 0 };
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { content: raw, count: 0 };
+  }
+  const board = sanitizeBoardFile(parsed as Record<string, unknown>);
+  const { board: rewritten, count } = rewriteBoardFurnitureRefs(board, oldStem, newStem);
+  if (count === 0) return { content: raw, count: 0 };
+  return {
+    content: JSON.stringify({ ...rewritten, updated: new Date().toISOString() }, null, 2),
+    count,
+  };
+}
+
+// ─── Column `ref` backlinks (§4/§11 "shows up in the Links tab") ───
+
+export interface ColumnRefBacklinkEntry {
+  /** Vault-relative path of the board (folder) holding the referencing column item. '' is Home. */
+  boardPath: string;
+  /** The furniture item's own title, if set. */
+  boardItemTitle?: string;
+  /** The column entry's own label text. */
+  itemText: string;
+}
+
+/**
+ * Scan every `.mythos-board.json` sidecar in the vault for `column` items
+ * whose `ref` resolves (by stem, same rule as above) to `notePath`. This is
+ * the board-metadata half of "shows up in the Links tab" (§4 acceptance
+ * criteria) — noteBacklinks.ts covers the prose-`[[wikilink]]` half; a note
+ * linked from both surfaces shows up in both lists, not merged into one.
+ */
+export function findColumnRefBacklinks(vaultRoot: string, notePath: string): ColumnRefBacklinkEntry[] {
+  const stem = path.basename(notePath, '.md').toLowerCase();
+  if (!stem) return [];
+
+  const { items } = listVaultFiles(vaultRoot);
+  const out: ColumnRefBacklinkEntry[] = [];
+  for (const file of items) {
+    if (file.isDirectory || path.basename(file.path) !== BOARD_SIDECAR_FILE_NAME) continue;
+    const boardRelPath = path.dirname(file.path);
+    const boardPath = boardRelPath === '.' ? '' : boardRelPath;
+    const board = readBoardFileRaw(resolveFolderAbs(vaultRoot, boardPath));
+    if (!board) continue;
+
+    for (const f of board.furniture) {
+      if (f.k !== 'column' || !Array.isArray(f.items)) continue;
+      for (const raw of f.items as unknown[]) {
+        if (raw === null || typeof raw !== 'object') continue;
+        const it = raw as Record<string, unknown>;
+        if (typeof it.ref !== 'string' || !it.ref) continue;
+        if (splitRefStem(it.ref).stem.toLowerCase() !== stem) continue;
+        out.push({
+          boardPath,
+          boardItemTitle: typeof f.title === 'string' ? f.title : undefined,
+          itemText: typeof it.t === 'string' ? it.t : '',
+        });
+      }
+    }
+  }
+  return out;
 }
