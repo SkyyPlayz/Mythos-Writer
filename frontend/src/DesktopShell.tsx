@@ -5248,6 +5248,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onOpenSettings={() => setSettingsOpen(true)}
             voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
             archiveContinuityEnabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
+            brainstormBoardsUnification={appSettings?.brainstormBoardsUnification === true}
             activeScene={activeSceneForSidebar}
             activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
             ttsSettings={appSettings?.tts}
@@ -7101,6 +7102,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onOpenSettings={() => setSettingsOpen(true)}
             voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
             archiveContinuityEnabled={appSettings?.archiveContinuityEnabled ?? true}
+            brainstormBoardsUnification={appSettings?.brainstormBoardsUnification === true}
             ttsSettings={appSettings?.tts}
             voicePrefs={appSettings?.voice}
             activeScene={selectedScene}
@@ -7395,6 +7397,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 onOpenSettings={() => setSettingsOpen(true)}
                 voiceEnabled={appSettings?.agents?.brainstorm?.voiceEnabled ?? false}
                 archiveContinuityEnabled={appSettings?.archiveContinuityEnabled ?? true}
+                brainstormBoardsUnification={appSettings?.brainstormBoardsUnification === true}
                 activeScene={selectedScene}
                 activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
                 ttsSettings={appSettings?.tts}

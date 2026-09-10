@@ -4,6 +4,7 @@
  * Settings panel, Editor toolbar (BlockEditor draft-state), Vault browser (EntityBrowser).
  * Each describe block renders the component in isolation and asserts axe passes.
  */
+import type { ComponentProps } from 'react';
 import { render, fireEvent, waitFor, act } from '@testing-library/react';
 import { configureAxe } from 'vitest-axe';
 import * as axeMatchers from 'vitest-axe/matchers';
@@ -103,30 +104,40 @@ function stubApi(overrides: Record<string, unknown> = {}) {
 import BrainstormPage from './BrainstormPage';
 
 describe('Accessibility — BrainstormPage (Brainstorm chat)', () => {
+  // SKY-11192/SKY-11674: the shared board hook fetches already-filed idea
+  // state on mount (stubApi's listNotesVault resolves, unrelated to what
+  // any of these tests assert) — flush that pending update inside act()
+  // before asserting, or React logs an act() warning for a state change
+  // these tests never awaited.
   beforeEach(() => { stubApi(); vi.clearAllMocks(); });
+  async function renderBrainstorm(props: ComponentProps<typeof BrainstormPage> = { onClose: () => {} }) {
+    const result = render(<BrainstormPage {...props} />);
+    await act(async () => {});
+    return result;
+  }
 
   it('idle state has no axe violations', async () => {
-    const { container } = render(<BrainstormPage onClose={() => {}} />);
+    const { container } = await renderBrainstorm();
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
   it('disabled state has no axe violations', async () => {
-    const { container } = render(<BrainstormPage onClose={() => {}} enabled={false} />);
+    const { container } = await renderBrainstorm({ onClose: () => {}, enabled: false });
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
   // ── Voice IO AC-V-10: live region structural assertions (SKY-1506) ─────────
 
-  it('AC-V-10: sr-only live region is always present in idle state', () => {
-    const { container } = render(<BrainstormPage onClose={() => {}} />);
+  it('AC-V-10: sr-only live region is always present in idle state', async () => {
+    const { container } = await renderBrainstorm();
     const liveRegion = container.querySelector('[role="status"][aria-live="polite"]');
     expect(liveRegion).not.toBeNull();
   });
 
   it('AC-V-10: axe passes with live region in idle state', async () => {
-    const { container } = render(<BrainstormPage onClose={() => {}} />);
+    const { container } = await renderBrainstorm();
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
@@ -164,15 +175,15 @@ describe('Accessibility — BrainstormPage (Brainstorm chat)', () => {
     mockMediaRecorder = null;
   });
 
-  it('AC-V-05: mic button has aria-pressed=false in idle state', () => {
-    const { container } = render(<BrainstormPage onClose={() => {}} voiceEnabled />);
+  it('AC-V-05: mic button has aria-pressed=false in idle state', async () => {
+    const { container } = await renderBrainstorm({ onClose: () => {}, voiceEnabled: true });
     const micBtn = container.querySelector('.brainstorm-mic-btn');
     expect(micBtn).not.toBeNull();
     expect(micBtn?.getAttribute('aria-pressed')).toBe('false');
   });
 
   it('AC-V-05: mic button has aria-pressed=true while recording', async () => {
-    const { getByRole } = render(<BrainstormPage onClose={() => {}} voiceEnabled />);
+    const { getByRole } = await renderBrainstorm({ onClose: () => {}, voiceEnabled: true });
     const micBtn = getByRole('button', { name: /start voice input/i });
     fireEvent.click(micBtn);
     // getUserMedia is async; wait for listening state
@@ -180,7 +191,7 @@ describe('Accessibility — BrainstormPage (Brainstorm chat)', () => {
   });
 
   it('AC-V-05: axe passes on brainstorm mic in recording state', async () => {
-    const { container, getByRole } = render(<BrainstormPage onClose={() => {}} voiceEnabled />);
+    const { container, getByRole } = await renderBrainstorm({ onClose: () => {}, voiceEnabled: true });
     const micBtn = getByRole('button', { name: /start voice input/i });
     fireEvent.click(micBtn);
     await waitFor(() => expect(micBtn.getAttribute('aria-pressed')).toBe('true'));

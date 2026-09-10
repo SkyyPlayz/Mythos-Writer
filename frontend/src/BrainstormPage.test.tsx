@@ -2527,6 +2527,24 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
     expect(mockListNotesVault).toHaveBeenCalledWith('Plot & Story');
   });
 
+  it('SKY-11192/SKY-11674 §1: with the flag on, the pill row switches the board between the three mapped folders', async () => {
+    mockListNotesVault.mockImplementation(async (folder: string) => ({
+      items: folder === 'Characters' ? [{ path: 'Mira.md', name: 'Mira.md', isDirectory: false }] : [],
+    }));
+    (window as unknown as { api: unknown }).api = buildApi({ listNotesVault: mockListNotesVault, notesBoardGet: mockNotesBoardGet });
+    render(<BrainstormPage onClose={() => {}} brainstormBoardsUnification />);
+    fireEvent.click(screen.getByTestId('bsc-mode-board'));
+    await screen.findByTestId('bbs-canvas');
+
+    expect(screen.getByTestId('bbs-pill-plot')).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByTestId('bbs-pill-characters'));
+    expect(screen.getByTestId('bbs-pill-characters')).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByText('Mira')).toBeInTheDocument();
+    expect(mockListNotesVault).toHaveBeenCalledWith('Characters');
+    // CEO ruling on SKY-11192: exactly three pills, no `Browse vault…` picker.
+    expect(screen.getByRole('tablist', { name: 'Board folder' }).children).toHaveLength(3);
+  });
+
   it('dragging a card on the Board page persists via notesBoard:patchLayout', async () => {
     mockListNotesVault.mockResolvedValue({
       items: [{ path: 'Aria Voss.md', name: 'Aria Voss.md', isDirectory: false }],
