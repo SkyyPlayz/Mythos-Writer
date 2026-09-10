@@ -843,15 +843,17 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   }, [sessionStore.activeSession, sessionStore.activeSessionId, legacyDraft]);
 
   // SKY-11192/SKY-11674 §1/§3: navigate to a mapped folder's board — used
-  // both by Idea Collections' post-File navigation and its `Open` link.
-  // With the flag off there is only one folder (no pills to switch), so
-  // this just ensures the board is visible.
+  // both by Idea Collections' post-File navigation and its `Open` link
+  // (DoD: "creates a real note ... and navigates there"). Switches to the
+  // Board page itself, matching the retired placeIdeaOnBoard's behavior —
+  // filing is a deliberate act with a real, visible consequence, so jumping
+  // to see it lands is the expected result, not a background change. With
+  // the flag off there is only one folder (no pills to switch).
   const navigateToFolder = useCallback((folderPath: string) => {
     const pill = PILL_FOLDERS.find((p) => p.folderPath === folderPath);
     if (pill && brainstormBoardsUnification) setActivePillKey(pill.key);
-    if (mode === 'chat') setChatBoardOpen(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, brainstormBoardsUnification]);
+    setMode('board');
+  }, [brainstormBoardsUnification]);
 
   // SKY-11192/SKY-11674 §3: `File` on an Idea Collections row. Direct user
   // click only — see IdeaCollectionsPanel's review-blocking constraint
