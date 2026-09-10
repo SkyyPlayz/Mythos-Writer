@@ -79,7 +79,10 @@ export function ideaNoteName(title: string): string {
 export function isIdeaFiled(existingNoteNames: Iterable<string>, title: string): boolean {
   const target = ideaNoteName(title).toLowerCase();
   for (const name of existingNoteNames) {
-    if (name.replace(/\.md$/i, '').trim().toLowerCase() === target) return true;
+    // Trim BEFORE stripping the extension: on a name with trailing whitespace
+    // the `\.md$` anchor does not match, and stripping second would leave the
+    // extension in the comparison and miss a real duplicate.
+    if (name.trim().replace(/\.md$/i, '').trim().toLowerCase() === target) return true;
   }
   return false;
 }
