@@ -560,7 +560,8 @@ describe('SKY-11190 icons on culled, memoised cards', () => {
   it('resolves nested paths, updates colour, and keeps the picker reachable in the block tier', () => {
     const items: BoardItem[] = [{ path: 'Court', kind: 'folder', name: 'Court' }];
     const onSetIcon = vi.fn();
-    const props = { items, savedLayout: {}, savedView: view, folderPath: 'World', onSetIcon };
+    const onCreateItem = vi.fn();
+    const props = { items, savedLayout: {}, savedView: view, folderPath: 'World', onSetIcon, activeTool: 'note' as const, onCreateItem };
     const { rerender } = render(
       <BoardCanvas {...props} iconMap={{ 'World/Court': { icon: 'pack:lucide/sword', color: '#61afef' } }} />,
     );
@@ -579,13 +580,17 @@ describe('SKY-11190 icons on culled, memoised cards', () => {
     expect(tile().querySelector('.board-canvas__item-icon')).toBeNull();
 
     fireEvent.contextMenu(tile());
-    expect(screen.getByRole('menuitem', { name: 'Rename', exact: true })).toBeTruthy();
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Set icon…', exact: true }));
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Set icon…' }));
     expect(screen.queryByRole('menu')).toBeNull();
     expect(screen.getByRole('dialog', { name: 'Choose icon and colour' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Purple' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Blue' }), { button: 0 });
+    expect(onCreateItem).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Blue' }));
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'sword' }), { button: 0 });
     fireEvent.click(screen.getByRole('button', { name: 'sword' }));
+    expect(onCreateItem).not.toHaveBeenCalled();
     expect(onSetIcon).toHaveBeenCalledWith('Court', 'pack:lucide/sword', '#61afef');
   });
 

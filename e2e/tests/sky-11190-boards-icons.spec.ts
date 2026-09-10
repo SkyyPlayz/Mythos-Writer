@@ -122,7 +122,14 @@ test('SKY-11190 AC1: setting icon+colour on a folder shows on the tile, vault tr
     await expect(folderTile(page, 'Characters')).toBeVisible({ timeout: 8_000 });
 
     await capture(page, '01-before-icon');
+    // The picker is chrome even when main's new placement tool is armed:
+    // colour/glyph clicks must never fall through and create a vault note.
+    await page.getByRole('radio', { name: 'Note', exact: true }).click();
     await setTileIcon(page, 'Characters', 'sword', 'Blue');
+    await expect(page.getByRole('radio', { name: 'Note', exact: true })).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator('.board-canvas__item')).toHaveCount(1);
+    expect(fs.existsSync(path.join(notesDir, 'New note.md'))).toBe(false);
+    await page.getByRole('radio', { name: 'Select', exact: true }).click();
 
     // The store now exists on disk, keyed by the vault-relative path.
     const sidecarPath = path.join(notesDir, ICONS_SIDECAR);

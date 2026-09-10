@@ -38,6 +38,7 @@ const BoardIconPicker: FC<BoardIconPickerProps> = ({ currentIcon, currentColor, 
   return (
     <div
       className="board-icon-picker-overlay"
+      onMouseDown={(e) => e.stopPropagation()}
       onClick={handleOverlayClick}
       onKeyDown={handleOverlayKeyDown}
       ref={overlayRef}
