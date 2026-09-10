@@ -1,26 +1,27 @@
 /**
- * mythos-migration.spec.ts — Beta 4 M5
+ * mythos-migration.spec.ts — Beta 4 M5, reworked for SKY-10390/SKY-10407
  *
- * End-to-end acceptance for the MythosVault migration wizard (packaged
- * runtime, real IPC, real files):
+ * End-to-end acceptance for the MythosVault upgrade (packaged runtime, real
+ * IPC, real files). The upgrade migrates SILENTLY now — no on-screen choice
+ * anywhere (owner ruling SKY-10390). The former interactive wizard-via-prompt
+ * flow (TC-MV-01/02) is gone along with the boot prompt / Settings card
+ * (SKY-10407): that UI path is no longer reachable, so it is no longer
+ * tested at the E2E layer (the wizard component itself is still covered at
+ * the unit level in MythosMigrationCenter.test.tsx, kept reachable for a
+ * possible future explicit entry point).
  *
- *   TC-MV-01  A v0.4 vault WITH user content shows the upgrade prompt on
- *             boot; the wizard walks plan → run → report and builds the new
- *             vault in a sibling folder while the ORIGINAL stays untouched.
- *   TC-MV-02  Confirming switches the app to the new vault; after the
- *             renderer reloads, the migrated story/chapter/scene open with
- *             prose intact, and the vault-settings point at the new folder.
  *   TC-MV-03  A fresh (seed-only) v0.4 vault shows NO prompt — fresh-vault
  *             fixtures render unchanged (visual-regression safety).
+ *   TC-MV-04  An in-app "new vault" never shows the upgrade prompt.
+ *   TC-MV-05  Settings → Danger zone → "Clear all data" actually clears.
  *
  * SKY-10405 adds the boot-time SILENT migration cases (TC-BM-01/02) at the
- * bottom of this file. The wizard cases above still run because the suite
- * disables the silent path (playwright.config.ts sets
- * MYTHOS_DISABLE_BOOT_MIGRATION=1); they go away with the wizard UI when the
- * sibling prompt-removal ticket lands.
+ * bottom of this file — those are now the sole real-E2E coverage of the
+ * build → verify → switch migration path, since it always runs
+ * automatically on boot instead of behind a user choice.
  *
- * Runs in CI e2e-shard-2 (`npm run test:e2e:mythos-migration` — the M5
- * Wave-2 wiring follow-up). Run locally with:
+ * Runs in CI e2e-shard-2 (`npm run test:e2e:mythos-migration`). Run locally
+ * with:
  *   npx playwright test e2e/mythos-migration.spec.ts --reporter=list
  */
 
@@ -161,117 +162,6 @@ function treeSnapshot(root: string): Record<string, string> {
   walk(root, '');
   return out;
 }
-
-test.describe.serial('MythosVault migration wizard (M5)', () => {
-  let tmpRoot: string;
-  let userData: string;
-  let vaultDir: string;
-  let notesVaultDir: string;
-  let app: ElectronApplication | undefined;
-  let page: Page;
-
-  test.beforeAll(async () => {
-    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-mv-e2e-'));
-    userData = path.join(tmpRoot, 'user-data');
-    const bundle = path.join(tmpRoot, 'My Vault');
-    vaultDir = path.join(bundle, 'Story Vault');
-    notesVaultDir = path.join(bundle, 'Notes Vault');
-    seedUserData(userData, vaultDir, notesVaultDir);
-    seedV04Content(vaultDir, notesVaultDir);
-    app = await launchApp(userData);
-    page = await firstWindow(app);
-  });
-
-  test.afterAll(async () => {
-    const proc = app?.process();
-    await Promise.race([
-      app?.close().catch(() => undefined),
-      new Promise<void>((r) => setTimeout(r, 5_000)),
-    ]);
-    try { if (proc && !proc.killed) proc.kill('SIGKILL'); } catch { /* exited */ }
-    fs.rmSync(tmpRoot, { recursive: true, force: true });
-  });
-
-  test('TC-MV-01: prompt appears; wizard builds + verifies; original untouched', async () => {
-    // Sanity: SQLite/.mythos state created by boot is machine-local — snapshot
-    // the USER files only (the migrator's read-only promise covers them all,
-    // but boot itself legitimately writes .mythos/state.db + seed markers).
-    await expect(page.locator('[data-testid="mythos-migration-prompt"]')).toBeVisible({
-      timeout: 15_000,
-    });
-    const storyBefore = treeSnapshot(vaultDir);
-    const notesBefore = treeSnapshot(notesVaultDir);
-
-    await page.locator('[data-testid="mythos-migration-prompt-upgrade"]').click();
-    await expect(page.locator('[data-testid="mythos-migration-step-intro"]')).toBeVisible();
-    await page.locator('[data-testid="mythos-migration-review"]').click();
-    await expect(page.locator('[data-testid="mythos-migration-run"]')).toBeVisible({ timeout: 10_000 });
-    await page.locator('[data-testid="mythos-migration-run"]').click();
-    const report = page.locator('[data-testid="mythos-migration-step-report"]');
-    await expect(report).toBeVisible({ timeout: 30_000 });
-    await expect(report).toContainText('Verified');
-
-    // New vault exists with the canonical layout…
-    const target = path.join(tmpRoot, 'My Vault (MythosVault)');
-    expect(fs.existsSync(path.join(target, 'mythos.json'))).toBe(true);
-    expect(fs.existsSync(path.join(target, 'timelines.json'))).toBe(true);
-    const newScene = path.join(
-      target, 'Story Vault', 'The Deep', 'Part 1', 'Chapter 01', 'Scene 01.md');
-    expect(fs.readFileSync(newScene, 'utf-8')).toContain(PROSE);
-    expect(fs.readFileSync(newScene, 'utf-8')).toContain('status: done');
-    expect(
-      fs.readFileSync(path.join(target, 'Story Vault', 'The Deep', 'comments.json'), 'utf-8'),
-    ).toContain('Expand the recognition beat.');
-    expect(
-      fs.readFileSync(path.join(target, 'Notes Vault', 'Mira.md'), 'utf-8'),
-    ).toContain('She counts bells.');
-
-    // …and the ORIGINAL is byte-for-byte untouched.
-    expect(treeSnapshot(vaultDir)).toEqual(storyBefore);
-    expect(treeSnapshot(notesVaultDir)).toEqual(notesBefore);
-  });
-
-  test('TC-MV-02: confirm switches the app onto the migrated vault', async () => {
-    await page.locator('[data-testid="mythos-migration-confirm"]').click();
-    // The renderer reloads itself after the switch.
-    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 30_000 });
-    await page.waitForTimeout(1_000);
-
-    const settings = JSON.parse(
-      fs.readFileSync(path.join(userData, 'vault-settings.json'), 'utf-8'),
-    ) as { vaultRoot: string; notesVaultRoot?: string };
-    const target = path.join(tmpRoot, 'My Vault (MythosVault)');
-    expect(settings.vaultRoot).toBe(path.join(target, 'Story Vault'));
-    expect(settings.notesVaultRoot).toBe(path.join(target, 'Notes Vault'));
-
-    // The migrated story tree is served through the v2 gate: the story,
-    // chapter, and scene rows appear and the scene opens with prose intact.
-    const storyRow = page.getByRole('button', { name: /The Deep/ }).first();
-    await expect(storyRow).toBeVisible({ timeout: 20_000 });
-    const chapterRow = page.getByRole('button', { name: /Chapter One/ }).first();
-    await expect(chapterRow).toBeVisible({ timeout: 10_000 });
-    // Boot-time reindex re-renders the navigator and can collapse a freshly
-    // expanded chapter — retry the expand until the scene row stays visible.
-    const sceneRow = page.getByRole('button', { name: /The Gate/ }).first();
-    for (let attempt = 0; attempt < 4; attempt++) {
-      await chapterRow.click();
-      try {
-        await sceneRow.waitFor({ state: 'visible', timeout: 3_000 });
-        break;
-      } catch {
-        /* collapsed again — retry */
-      }
-    }
-    await expect(sceneRow).toBeVisible({ timeout: 5_000 });
-    await sceneRow.click();
-    await expect(page.getByText('under the sea, and it recognized her').first()).toBeVisible({
-      timeout: 15_000,
-    });
-
-    // No migration prompt on the new-format vault.
-    await expect(page.locator('[data-testid="mythos-migration-prompt"]')).toHaveCount(0);
-  });
-});
 
 // ─── SKY-8882: vault lifecycle regressions (owner bug, Windows beta test) ────
 //
