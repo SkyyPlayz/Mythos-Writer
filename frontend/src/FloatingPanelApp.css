@@ -19,7 +19,7 @@
   gap: 8px;
   height: 36px;
   padding: 0 8px;
-  background: var(--color-surface-2, #16213e);
+  background: var(--color-surface-alt, #16213e);
   border-bottom: 1px solid var(--color-border, rgba(255,255,255,0.08));
   flex-shrink: 0;
   /* Make the whole title bar draggable except controls */
@@ -78,7 +78,7 @@
 
 .fpa-ctrl-btn--active {
   opacity: 1;
-  background: var(--color-accent-faint, rgba(0, 240, 255, 0.15));
+  background: var(--accent-soft, rgba(0, 240, 255, 0.15));
   color: var(--color-accent, #00f0ff);
 }
 

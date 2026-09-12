@@ -74,7 +74,7 @@
 
 .ntd-input,
 .ntd-select {
-  background: var(--color-input-bg, rgba(255, 255, 255, 0.05));
+  background: var(--input-bg, rgba(255, 255, 255, 0.05));
   border: 1px solid var(--color-border, rgba(0, 240, 255, 0.18));
   border-radius: 6px;
   color: var(--color-text, #e6eaf0);
