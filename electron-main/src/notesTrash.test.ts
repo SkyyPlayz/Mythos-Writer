@@ -51,7 +51,20 @@ describe('notesTrash', () => {
     // point) — the mock does the same so flush-time "is this descendant
     // already gone" logic has something real to observe, instead of always
     // finding the file still there because the mock is a no-op.
+    //
+    // SKY-11742: the removal MUST be deferred past an async boundary. Real
+    // shell.trashItem is a genuine async OS move and never settles in the
+    // turn it was called in; a mock that calls the synchronous fs.rmSync
+    // straight down its body settles before it even returns, which let a
+    // caller that fired every entry off concurrently still observe an
+    // ancestor as already-gone. That made the ancestor-skip assertions below
+    // pass by coincidence rather than because flushGroup serializes. Defer
+    // here and those assertions can actually fail if the serialization
+    // regresses. process.nextTick (not setTimeout) because these tests run
+    // on fake timers — nextTick is not faked, so the mock stays independent
+    // of whichever advanceTimers* call is driving the flush.
     mockTrashItem.mockImplementation(async (target: string) => {
+      await new Promise<void>((resolve) => { process.nextTick(resolve); });
       fs.rmSync(target, { recursive: true, force: true });
     });
     resetNotesTrashForTests();
@@ -143,6 +156,45 @@ describe('notesTrash', () => {
 
     expect(mockTrashItem).toHaveBeenCalledTimes(1);
     expect(mockTrashItem).toHaveBeenCalledWith(path.join(root, 'Board'));
+  });
+
+  it('skips descendants at EVERY depth, not just the folder\'s direct children (SKY-11742)', async () => {
+    // The single-level case above can be satisfied by checking only the
+    // first descendant. A nested tree proves the serialized flush keeps
+    // observing real post-move state all the way down.
+    writeNote(root, 'Board/Card A.md');
+    writeNote(root, 'Board/Sub/Card B.md');
+    writeNote(root, 'Board/Sub/Deeper/Card C.md');
+    trashTargets(root, '', [{ kind: 'folder', itemPath: 'Board', label: 'Board' }]);
+
+    await vi.advanceTimersByTimeAsync(UNDO_WINDOW_MS);
+
+    expect(mockTrashItem).toHaveBeenCalledTimes(1);
+    expect(mockTrashItem).toHaveBeenCalledWith(path.join(root, 'Board'));
+    expect(fs.existsSync(path.join(root, 'Board'))).toBe(false);
+  });
+
+  it('a force-flush orders OVERLAPPING groups ancestor-first, so a separately-trashed descendant is not double-trashed (SKY-11742)', async () => {
+    writeNote(root, 'Board/Card A.md');
+
+    // Two SEPARATE user actions: the card is deleted on its own board
+    // first, then the whole folder is deleted from the root board. The
+    // second call re-enumerates the still-on-disk card into its own group,
+    // so one path now sits in two groups with no cross-group awareness.
+    const first = trashTargets(root, 'Board', [{ kind: 'note', itemPath: 'Card A.md', label: 'Card A.md' }]);
+    const second = trashTargets(root, '', [{ kind: 'folder', itemPath: 'Board', label: 'Board' }]);
+    expect(first.entries.map((e) => e.vaultRelPath)).toEqual(['Board/Card A.md']);
+    expect(second.entries.map((e) => e.vaultRelPath).sort()).toEqual(['Board', 'Board/Card A.md']);
+    expect(first.entries[0]!.groupId).not.toBe(second.entries[0]!.groupId);
+
+    // Empty flushes every group at once — without ancestor-first ordering
+    // the card's group would race an overlapping trash against the folder's.
+    const { flushedGroupIds } = await emptyTrash(root);
+
+    expect(flushedGroupIds).toHaveLength(2);
+    expect(mockTrashItem).toHaveBeenCalledTimes(1);
+    expect(mockTrashItem).toHaveBeenCalledWith(path.join(root, 'Board'));
+    expect(listPendingForVault(root)).toEqual([]);
   });
 
   it('an unrelated multi-select gets INDEPENDENT groups — restoring one leaves the other pending', () => {
