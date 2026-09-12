@@ -743,7 +743,7 @@
 
 .scene-snapshot-save {
   padding: 4px 12px;
-  background: var(--bg-control, #313244);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle, #45475a);
   border-radius: var(--radius-xs);
   color: var(--text-primary, #cdd6f4);
@@ -753,7 +753,7 @@
 }
 
 .scene-snapshot-save:hover {
-  background: var(--bg-control-hover, #45475a);
+  background: var(--bg-hover);
 }
 
 .scene-autosave {
@@ -765,7 +765,7 @@
 
 .btn-history {
   padding: 4px 12px;
-  background: var(--bg-control, #313244);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle, #45475a);
   border-radius: var(--radius-xs);
   color: var(--text-primary, #cdd6f4);
@@ -775,7 +775,7 @@
 }
 
 .btn-history:hover {
-  background: var(--bg-control-hover, #45475a);
+  background: var(--bg-hover);
 }
 
 .voice-toast {
@@ -928,13 +928,13 @@
 }
 
 .chapter-doc-scene:hover {
-  background: var(--bg-overlay);
+  background: var(--bg-hover);
   border-color: var(--border-strong);
 }
 
 .chapter-doc-scene.active {
   border-color: var(--accent-primary, var(--accent));
-  background: var(--bg-overlay);
+  background: var(--bg-active);
 }
 
 .chapter-doc-scene:focus-visible {
@@ -1108,12 +1108,12 @@
 }
 
 .book-outline-scene:hover {
-  background: var(--bg-overlay);
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
 
 .book-outline-scene.active-scene {
-  background: var(--bg-overlay);
+  background: var(--bg-active);
   color: var(--text-primary);
   font-weight: 500;
 }
@@ -1152,7 +1152,7 @@
   padding: 8px 10px;
   border-radius: var(--radius-xs);
   border: 1px solid var(--border, #353048);
-  background: var(--bg, #15131f);
+  background: var(--bg-inset);
   color: inherit;
   font-size: 14px;
 }
@@ -1194,7 +1194,7 @@
   padding: 8px 10px;
   border-radius: var(--radius-xs);
   border: 1px solid var(--border, #353048);
-  background: var(--bg, #15131f);
+  background: var(--bg-inset);
   font-size: 13px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -1517,7 +1517,7 @@
 
 .scene-drafts-compare-btn {
   padding: 4px 12px;
-  background: var(--bg-control, #313244);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle, #45475a);
   border-radius: var(--radius-xs);
   color: var(--text-primary, #cdd6f4);
@@ -1527,7 +1527,7 @@
 }
 
 .scene-drafts-compare-btn:hover {
-  background: var(--bg-control-hover, #45475a);
+  background: var(--bg-hover);
 }
 
 .scene-drafts-compare-btn.is-active {

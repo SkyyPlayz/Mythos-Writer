@@ -63,7 +63,7 @@
 }
 
 .pct-preset-btn:hover {
-  background: var(--bg-control-hover, #1e2430);
+  background: var(--bg-hover);
   color: var(--text-primary, #cdd6f4);
 }
 
@@ -154,7 +154,7 @@
 .pct-font-btn--mono  { font-family: 'Courier New', Courier, monospace; }
 
 .pct-font-btn:hover {
-  background: var(--bg-control-hover, #1e2430);
+  background: var(--bg-hover);
   color: var(--text-primary, #cdd6f4);
 }
 
@@ -185,7 +185,7 @@
 }
 
 .pct-reset-btn:hover {
-  background: var(--bg-control-hover, #1e2430);
+  background: var(--bg-hover);
   color: var(--text-primary, #cdd6f4);
   border-color: var(--border-strong, #4a5060);
 }
