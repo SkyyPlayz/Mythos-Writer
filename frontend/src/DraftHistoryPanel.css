@@ -102,7 +102,7 @@
 }
 
 .draft-history-btn:hover {
-  background: var(--bg-elevated, var(--background-secondary));
+  background: var(--bg-elevated);
 }
 
 .draft-history-btn--restore:hover {
@@ -130,7 +130,7 @@
   padding: 2px 4px;
   border: 1px solid var(--border-default);
   border-radius: 3px;
-  background: var(--bg-elevated, var(--background-secondary));
+  background: var(--bg-elevated);
   color: var(--text-default);
   min-width: 0;
 }
@@ -147,12 +147,12 @@
 }
 
 .draft-history-label-edit button:hover {
-  background: var(--bg-elevated, var(--background-secondary));
+  background: var(--bg-elevated);
 }
 
 .draft-history-preview {
   margin-top: 6px;
-  background: var(--bg-elevated, var(--background-secondary));
+  background: var(--bg-elevated);
   border: 1px solid var(--border-default);
   border-radius: 4px;
   padding: 6px 8px;
@@ -180,7 +180,7 @@
 }
 
 .draft-history-confirm {
-  background: var(--background-primary, #1e1e2e);
+  background: var(--bg-panel);
   border: 1px solid var(--border-default);
   border-radius: 8px;
   padding: 20px 24px;
@@ -212,7 +212,7 @@
 }
 
 .draft-history-confirm-actions button:hover {
-  background: var(--bg-elevated, var(--background-secondary));
+  background: var(--bg-elevated);
 }
 
 .draft-history-confirm-actions button.primary {
