@@ -362,6 +362,9 @@ export const IPC_CHANNELS = {
   // never routes board data through the notes-vault CRUD bridge.
   BRAINSTORM_BOARD_READ: 'brainstormBoard:read',
   BRAINSTORM_BOARD_WRITE: 'brainstormBoard:write',
+  // SKY-11192: one-time migration of the retired board's cards into real notes.
+  BRAINSTORM_BOARD_MIGRATE_NOTES: 'brainstormBoard:migrateToNotes',
+  BRAINSTORM_BOARD_MIGRATION_PREVIEW: 'brainstormBoard:migrationPreview',
   NOTES_VAULT_DELETE: 'notesVault:delete',
   NOTES_VAULT_MOVE: 'notesVault:move',
   // SKY-10712: one-shot undo of the most recent rename's inbound-link cascade.
@@ -982,6 +985,12 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BRAINSTORM_BOARD_WRITE]: (
     payload: BrainstormBoardWritePayload,
   ) => BrainstormBoardWriteResponse;
+  [IPC_CHANNELS.BRAINSTORM_BOARD_MIGRATE_NOTES]: (
+    payload: never,
+  ) => BrainstormBoardMigrateNotesResponse;
+  [IPC_CHANNELS.BRAINSTORM_BOARD_MIGRATION_PREVIEW]: (
+    payload: never,
+  ) => BrainstormBoardMigrationPreviewResponse;
   [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload) => VaultListResponse;
   [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
@@ -1280,6 +1289,22 @@ export interface BrainstormBoardWritePayload {
 }
 export type BrainstormBoardReadResponse = { content: string } | { error: string };
 export type BrainstormBoardWriteResponse = { bytes: number } | { error: string };
+
+// SKY-11192: the one-time card→note migration. `migrated` false with no error
+// is the steady state — there was no legacy board file left to migrate.
+export interface BrainstormBoardMigrateNotesResponse {
+  migrated: boolean;
+  created: string[];
+  skipped: string[];
+  error?: string;
+}
+
+// SKY-11192: read-only "what would the migration do", so the renderer can OFFER
+// it. `pending: 0, unreadable: false` means there is nothing to prompt about.
+export interface BrainstormBoardMigrationPreviewResponse {
+  pending: number;
+  unreadable: boolean;
+}
 
 export interface VaultListPayload {
   root?: string;
@@ -3013,6 +3038,13 @@ export interface AppSettings {
    */
   notesBoard?: {
     minZoom?: number;
+    /**
+     * SKY-11192 (COMPANY-STANDARDS §3a): off-by-default flag for the unified
+     * Brainstorm board. Absent or false = the legacy free-form idea canvas.
+     * Persisted here so the renderer's toggle survives a restart; the main
+     * process reads it only to keep the shape valid on save.
+     */
+    brainstormUnified?: boolean;
   };
   /** SKY-130: last-opened scene for cross-restart restore. */
   lastOpenedScene?: LastOpenedScene;

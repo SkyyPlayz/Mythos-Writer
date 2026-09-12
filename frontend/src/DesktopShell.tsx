@@ -7129,6 +7129,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             activeScene={selectedScene}
             activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
             onFirstSubmit={() => checkGettingStartedItem('brainstorm')}
+            /* SKY-11192: unified Brainstorm board, off by default (§3a). The
+               Board page and chat strip render the same vault-backed canvas as
+               the Boards tab; `Open` on a filed idea hands that folder to the
+               Boards tab through the same deep-link seq the wiki-links use. */
+            unifiedBoard={appSettings?.notesBoard?.brainstormUnified ?? false}
+            notesVaultValid={vaultBinding.notesValid}
+            boardMinZoom={appSettings?.notesBoard?.minZoom}
+            onOpenBoardFolder={(folderPath) => {
+              setOpenedNotePath(null);
+              setBoardsFolderRequest((prev) => ({ folderPath, seq: (prev?.seq ?? 0) + 1 }));
+              handleTabChange('boards');
+            }}
             onNavigateToEntity={(entityId) => {
               window.api.entityRead(entityId).then((entity) => {
                 if (entity) {

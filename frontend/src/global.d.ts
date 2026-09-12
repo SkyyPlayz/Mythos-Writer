@@ -592,6 +592,17 @@ interface AppSettings {
   /** SKY-11186: Notes Board zoom-out limit (percent; 40 default, 30/20/10 map-view stops). */
   notesBoard?: {
     minZoom?: number;
+    /**
+     * SKY-11192 (COMPANY-STANDARDS §3a): off-by-default flag for the unified
+     * Brainstorm board. ON swaps Brainstorm's Board page and Agent Chat strip
+     * onto the same vault-backed canvas the Notes Board tab renders, and runs
+     * the one-time migration of the old brainstorm-board JSON into real notes.
+     * OFF leaves the legacy free-form idea canvas exactly as it shipped.
+     *
+     * This flag replaces a page the user already has, so it stays off until QA
+     * signs off on the round-trip edit (CEO ruling 4 on SKY-11192).
+     */
+    brainstormUnified?: boolean;
   };
   onboardingComplete?: boolean;
   /** SKY-2220: first-upgrade legacy ~/Mythos vault recovery prompt state. */
@@ -1649,6 +1660,14 @@ interface Window {
     brainstormBoard: {
       read: () => Promise<{ content: string } | { error: string }>;
       write: (content: string) => Promise<{ bytes: number } | { error: string }>;
+      /**
+       * SKY-11192: one-time card→note migration. Idempotent; never overwrites.
+       * WRITES to the vault — only call it from `useBoardMigration`, which
+       * requires a trusted user gesture (ticket AC 4).
+       */
+      migrateToNotes: () => Promise<{ migrated: boolean; created: string[]; skipped: string[]; error?: string }>;
+      /** SKY-11192: read-only "is there anything to migrate", for the prompt. */
+      migrationPreview: () => Promise<{ pending: number; unreadable: boolean }>;
     };
     listNotesVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string; excerpt?: string }> } | { error: string }>;
     deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean } | { error: string }>;
