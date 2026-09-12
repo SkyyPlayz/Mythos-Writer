@@ -120,6 +120,10 @@
 
   /* ---- 1.5 Type scale (base 16, Inter / system sans) ------------------- */
   --font-sans: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  /* SKY-11489: canonical mono token — code samples, file paths, hashes. Matches
+     the JetBrains Mono / Fira Code / Courier New fallback stacks every site
+     already carried locally so defining it is a no-op at default settings. */
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", "Courier New", monospace;
 
   --text-xs: 12px;   --leading-xs: 1.4;   --weight-xs: 400;
   --text-sm: 14px;   --leading-sm: 1.5;   --weight-sm: 400;
