@@ -42,6 +42,7 @@ interface VaultItem { path: string; name: string; isDirectory: boolean }
 let vaultItems: VaultItem[] = [];
 
 const api = {
+  notesVaultReadIcons: vi.fn(async () => ({})),
   listNotesVault: vi.fn(async () => ({ items: vaultItems })),
   notesBoardGet: vi.fn(async () => ({
     id: null,

@@ -1,5 +1,18 @@
 // Icon value parsing and SVG safelist for SKY-194 (Iconize).
 
+// SKY-11190 (Notes Board 7/9, Iconize colour parity): a path-keyed map entry
+// is either the original plain icon reference (no colour) or `{icon, color}`
+// from the Boards closed 24-glyph/8-colour picker. Mirrors
+// electron-main/src/vaultIcons.ts's VaultIconEntry.
+export type VaultIconEntry = string | { icon: string; color: string };
+
+/** Split a map entry into its icon-reference string and optional colour. */
+export function unpackIconEntry(entry: VaultIconEntry | undefined): { icon?: string; color?: string } {
+  if (entry === undefined) return {};
+  if (typeof entry === 'string') return { icon: entry };
+  return { icon: entry.icon, color: entry.color };
+}
+
 export type IconValue =
   | { kind: 'emoji'; value: string }
   | { kind: 'lucide'; name: string }

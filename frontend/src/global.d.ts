@@ -1894,10 +1894,13 @@ interface Window {
     }>;
 
     // SKY-194: Iconize — per-node icon IPC
-    notesVaultReadIcons: () => Promise<Record<string, string>>;
+    // SKY-11190: entries may be the plain string form or the Boards closed-picker
+    // colour-tagged `{icon, color}` form.
+    notesVaultReadIcons: () => Promise<Record<string, string | { icon: string; color: string }>>;
     vaultReadIcons: () => Promise<Record<string, string>>;
     // SKY-9310 (M8 spec item 6): assign/clear a path-keyed icon (file or folder).
-    notesVaultSetIcon: (filePath: string, icon: string | null) => Promise<{ path: string; icon: string | null }>;
+    // SKY-11190: optional `color` stores the {icon, color} form.
+    notesVaultSetIcon: (filePath: string, icon: string | null, color?: string | null) => Promise<{ path: string; icon: string | null; color?: string | null }>;
     iconListUserPacks: () => Promise<{ packName: string; icons: string[] }[]>;
     iconReadSvg: (packName: string, iconName: string) => Promise<{ svg: string | null }>;
 

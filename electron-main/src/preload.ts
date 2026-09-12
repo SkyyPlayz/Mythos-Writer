@@ -915,14 +915,17 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('notesVault:backlinks', { notePath }),
 
   // SKY-194: Iconize — per-node icon IPC
+  // SKY-11190: entries may be the plain string form or the Boards closed-picker
+  // colour-tagged `{icon, color}` form.
   notesVaultReadIcons: () =>
-    ipcRenderer.invoke('notesVault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
+    ipcRenderer.invoke('notesVault:readIcons', undefined) as unknown as Promise<Record<string, string | { icon: string; color: string }>>,
   vaultReadIcons: () =>
     ipcRenderer.invoke('vault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
   // SKY-9310 (M8 spec item 6): assign (icon truthy) or clear (icon null) a
   // path-keyed icon in .mythos/icons.json — works for both notes and folders.
-  notesVaultSetIcon: (filePath: string, icon: string | null) =>
-    ipcRenderer.invoke('notesVault:setIcon', { path: filePath, icon }) as Promise<{ path: string; icon: string | null }>,
+  // SKY-11190: optional `color` stores the {icon, color} form.
+  notesVaultSetIcon: (filePath: string, icon: string | null, color?: string | null) =>
+    ipcRenderer.invoke('notesVault:setIcon', { path: filePath, icon, color }) as Promise<{ path: string; icon: string | null; color?: string | null }>,
   iconListUserPacks: () =>
     ipcRenderer.invoke('icons:listUserPacks', undefined) as unknown as Promise<{ packName: string; icons: string[] }[]>,
   iconReadSvg: (packName: string, iconName: string) =>

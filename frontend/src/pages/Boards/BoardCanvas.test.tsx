@@ -554,3 +554,60 @@ describe('SKY-11189 §7: context menu Delete entry', () => {
     expect(onTrashItems.mock.calls[0]![0]).toEqual(expect.arrayContaining(['n0000.md', 'n0001.md']));
   });
 });
+
+// The icon layer must share the culling/LOD render path introduced in SKY-11186.
+describe('SKY-11190 icons on culled, memoised cards', () => {
+  it('resolves nested paths, updates colour, and keeps the picker reachable in the block tier', () => {
+    const items: BoardItem[] = [{ path: 'Court', kind: 'folder', name: 'Court' }];
+    const onSetIcon = vi.fn();
+    const onCreateItem = vi.fn();
+    const props = { items, savedLayout: {}, savedView: view, folderPath: 'World', onSetIcon, activeTool: 'note' as const, onCreateItem };
+    const { rerender } = render(
+      <BoardCanvas {...props} iconMap={{ 'World/Court': { icon: 'pack:lucide/sword', color: '#61afef' } }} />,
+    );
+    const tile = () => screen.getByLabelText(/^Board: Court/);
+    expect(tile().querySelector('.board-canvas__item-icon svg')?.getAttribute('stroke')).toBe('#61afef');
+
+    rerender(<BoardCanvas {...props} iconMap={{ 'World/Court': { icon: 'pack:lucide/crown', color: '#c678dd' } }} />);
+    expect(tile().querySelector('.board-canvas__item-icon svg')?.getAttribute('stroke')).toBe('#c678dd');
+
+    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByLabelText('Zoom out'));
+    expect(tile().getAttribute('data-lod')).toBe('2');
+    expect(tile().querySelector('.board-canvas__item-icon svg')).not.toBeNull();
+    for (let i = 0; i < 2; i++) fireEvent.click(screen.getByLabelText('Zoom out'));
+    expect(tile().getAttribute('data-lod')).toBe('3');
+    expect(tile().textContent).toBe('');
+    expect(tile().querySelector('.board-canvas__item-icon')).toBeNull();
+
+    fireEvent.contextMenu(tile());
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Set icon…' }));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Choose icon and colour' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Purple' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Blue' }), { button: 0 });
+    expect(onCreateItem).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Blue' }));
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'sword' }), { button: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'sword' }));
+    expect(onCreateItem).not.toHaveBeenCalled();
+    expect(onSetIcon).toHaveBeenCalledWith('Court', 'pack:lucide/sword', '#61afef');
+  });
+
+  it('retains a custom note icon when scrolling culls and remounts the card', () => {
+    render(
+      <BoardCanvas items={notes(600)} savedLayout={{}} savedView={view}
+        iconMap={{ 'n0599.md': { icon: 'pack:lucide/book', color: '#61afef' } }} />,
+    );
+    const scroller = document.querySelector('.board-canvas__scroll-area') as HTMLElement;
+    const last = () => screen.queryByLabelText('Note card: Note 599');
+    expect(last()).toBeNull();
+    for (const scrollTop of [ORIGIN_Y + 149 * CELL_H, 0, ORIGIN_Y + 149 * CELL_H]) {
+      Object.defineProperty(scroller, 'scrollTop', { value: scrollTop, configurable: true });
+      fireEvent.scroll(scroller);
+      if (scrollTop === 0) expect(last()).toBeNull();
+      else expect(last()?.querySelector('.board-canvas__item-icon svg')?.getAttribute('stroke')).toBe('#61afef');
+    }
+    expect(mounted().length).toBeLessThanOrEqual(24);
+  });
+});
