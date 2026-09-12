@@ -87,9 +87,6 @@ const KNOWN_ORPHANS: readonly string[] = [
   'NoteViewer.css  --danger-bg-hover',
   'NoteViewer.css  --danger-border',
   'NoteViewer.css  --danger-text',
-  'NoteViewer.css  --font-mono',
-  'OnboardingWizard.css  --font-mono',
-  'SettingsPanel.css  --font-mono',
   'SplitEditorPane.css  --page-bg-radius',
   'SuggestionDetailPane.css  --accent-muted',
   'TemplatePicker.css  --state-error',
@@ -98,7 +95,6 @@ const KNOWN_ORPHANS: readonly string[] = [
   'ThemeContrastSlider.css  --state-danger-border',
   'ThemeContrastSlider.css  --state-success-border',
   'VaultGraphView.css  --chip-color',
-  'VaultGraphView.css  --font-mono',
   'VaultGraphView.css  --ln-graph-edge-cross-vault',
   'VaultGraphView.css  --shadow-panel',
   'VaultGraphView.css  --text-accent',
@@ -111,7 +107,6 @@ const KNOWN_ORPHANS: readonly string[] = [
   'components/SettingsPanel/sections/AddVaultDialog.css  --text-subtle',
   'components/TagPane/TagPane.css  --glass-bg',
   'components/VaultBrowser/VaultBrowser.css  --accent-primary',
-  'migration/MythosBootMigrationNotice.css  --font-mono',
 ];
 
 /** Strip comments so a token named in prose isn't mistaken for a reference. */
