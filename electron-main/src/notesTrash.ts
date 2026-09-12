@@ -263,6 +263,13 @@ async function flushGroup(groupId: string): Promise<void> {
   group.flushing = true;
   clearTimeout(group.timer);
 
+  // Leaving the registry is what "this group has flushed" means to every
+  // reader (Recently Deleted, the board's hide filter, restore). Do it here,
+  // up front, so the serialized OS moves below don't stretch that moment out
+  // across the trash latency of a whole folder tree.
+  groups.delete(groupId);
+  for (const e of group.entries) entryIndex.delete(e.id);
+
   // Shallowest first: a parent folder's shell.trashItem already removes
   // every descendant, so deeper entries below a flushed ancestor must be
   // skipped (checked via fs.existsSync below), not double-trashed.
@@ -270,7 +277,14 @@ async function flushGroup(groupId: string): Promise<void> {
     (a, b) => depth(a.vaultRelPath ?? '') - depth(b.vaultRelPath ?? ''),
   );
 
-  const trashOps: Promise<unknown>[] = [];
+  // SKY-11742: strictly sequential, one entry at a time. The fs.existsSync
+  // skip below can only observe an ancestor's move once that move has
+  // ACTUALLY completed, and shell.trashItem is a real async OS operation —
+  // it does not settle in the turn it was called in. Firing the whole group
+  // off concurrently therefore made the skip a guaranteed no-op in
+  // production, and raced an overlapping trash of every descendant against
+  // its still-in-flight ancestor. A group is one top-level target (plus its
+  // descendants, which this loop skips), so serializing costs one OS move.
   for (const entry of sorted) {
     try {
       if (entry.kind === 'furniture') {
@@ -306,22 +320,60 @@ async function flushGroup(groupId: string): Promise<void> {
       // it silently drops off Recently Deleted since its pending entry is
       // gone either way, matching "flush" being a one-shot best-effort move
       // rather than a retried operation.
-      trashOps.push(shell.trashItem(absPath).catch(() => { /* best-effort, see above */ }));
+      //
+      // A rejection lands in the per-entry catch below, which is exactly the
+      // best-effort behaviour we want: the next entry still gets its turn.
+      await shell.trashItem(absPath);
     } catch {
       // best-effort per-entry — one bad entry must not abort the rest of the group.
     }
   }
+}
 
-  groups.delete(groupId);
-  for (const e of group.entries) entryIndex.delete(e.id);
+/**
+ * Shallowest vault-relative depth in a group, used to order a multi-group
+ * force-flush. Furniture-only groups have no path at all and sort last;
+ * they touch no filesystem path, so their position is irrelevant.
+ */
+function groupDepth(group: PendingGroup): number {
+  let shallowest = Number.MAX_SAFE_INTEGER;
+  for (const e of group.entries) {
+    if (!e.vaultRelPath) continue;
+    shallowest = Math.min(shallowest, depth(e.vaultRelPath));
+  }
+  return shallowest;
+}
 
-  await Promise.all(trashOps);
+/**
+ * SKY-11742: force-flush several groups shallowest-group-first, one at a
+ * time, for the same reason flushGroup serializes within a group.
+ *
+ * A folder and one of its own descendants CAN end up in two different
+ * groups: the descendant is trashed on its own first, then the folder is
+ * trashed in a later, separate action and trashTargets re-enumerates that
+ * still-on-disk descendant into the folder's group. Each flushGroup only
+ * sorts and existsSync-checks within its own entries, so it has no way to
+ * see the other group's overlapping path.
+ *
+ * Under the undo timers that is harmless — the timers fire in deletion
+ * order, so the descendant's group always flushes before the ancestor's.
+ * A force-flush has no such ordering: it fires every pending group at once.
+ * Ordering them shallowest-first and awaiting each restores the same
+ * ancestor-before-descendant sequence the within-group sort relies on, so
+ * the existsSync skip sees real post-move state across groups too.
+ */
+async function flushGroupsShallowestFirst(ids: string[]): Promise<void> {
+  const ordered = ids
+    .map((id) => groups.get(id))
+    .filter((g): g is PendingGroup => g !== undefined)
+    .sort((a, b) => groupDepth(a) - groupDepth(b));
+  for (const group of ordered) await flushGroup(group.id);
 }
 
 /** The panel's "Empty" button — force-flush every pending entry for one vault, right now. */
 export async function emptyTrash(vaultRoot: string): Promise<{ flushedGroupIds: string[] }> {
   const ids = [...groups.values()].filter((g) => g.vaultRoot === vaultRoot).map((g) => g.id);
-  await Promise.all(ids.map((id) => flushGroup(id)));
+  await flushGroupsShallowestFirst(ids);
   return { flushedGroupIds: ids };
 }
 
@@ -332,8 +384,7 @@ export async function emptyTrash(vaultRoot: string): Promise<{ flushedGroupIds: 
  * same flush-before-quit shape as flushRendererManifestSave.
  */
 export async function flushAllPendingNotesTrash(): Promise<void> {
-  const ids = [...groups.keys()];
-  await Promise.all(ids.map((id) => flushGroup(id)));
+  await flushGroupsShallowestFirst([...groups.keys()]);
 }
 
 // ─── External-change invalidation (§8) ───────────────────────────────────
