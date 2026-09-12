@@ -41,7 +41,7 @@
   padding: 8px 10px;
   font-size: 13px;
   line-height: 1.45;
-  background: var(--color-surface-2, rgba(255, 255, 255, 0.04));
+  background: var(--color-surface-alt, rgba(255, 255, 255, 0.04));
   color: var(--color-text, #e0e0e0);
   font-family: inherit;
   outline: none;

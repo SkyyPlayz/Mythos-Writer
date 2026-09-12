@@ -69,7 +69,7 @@
   z-index: 3;
   width: 150px;
   flex: none;
-  background: var(--color-panel-bg, #0f1420);
+  background: var(--bg-panel, #0f1420);
 }
 
 .tlp-corner {
