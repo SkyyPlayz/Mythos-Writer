@@ -29,8 +29,10 @@
 //    adopts or writes into the source folder (§3b, the SKY-11132 rule).
 //    Startup importer coverage today is Obsidian + plain-Markdown trees (both
 //    route through importObsidianToVaultDir, byte-for-byte, links untouched —
-//    SKY-10383). Notion / Scrivener are NOT wired into this startup primitive
-//    yet; callers must not claim that parity. See docs note.
+//    SKY-10383), plus .docx for story-kind sources (SKY-11814: mammoth-parsed
+//    and materialized as a v2 story folder via docxStoryImport.ts — H1/H2
+//    become chapters/scenes). Notion / Scrivener are NOT wired into this
+//    startup primitive yet; callers must not claim that parity. See docs note.
 //
 // Pure Node — no Electron imports — so unit tests drive it with real tmpdirs.
 
@@ -43,6 +45,8 @@ import {
   writeMythosFile,
 } from './mythosJson.js';
 import { importObsidianToVaultDir } from '../obsidianImporter.js';
+import { parseDocxBuffer } from '../docxImporter.js';
+import { materializeDocxAsStoryFolder } from './docxStoryImport.js';
 
 /** The three creation options, identical wherever the primitive is invoked. */
 export type VaultCreationMode = 'template' | 'blank' | 'import';
@@ -147,9 +151,9 @@ function writeTemplateSkeleton(mythosRoot: string): void {
  * always creates a NEW vault (import copies in — it never adopts the source),
  * and always persists the choice so no later boot re-seeds it.
  */
-export function createVaultFromOptions(
+export async function createVaultFromOptions(
   input: CreateVaultFromOptionsInput,
-): CreateVaultFromOptionsResult {
+): Promise<CreateVaultFromOptionsResult> {
   const { destinationParent, name, exactName, mode, defaultTheme, importSources } = input;
 
   if (!path.isAbsolute(destinationParent)) {
@@ -203,14 +207,38 @@ export function createVaultFromOptions(
   const errors: string[] = [];
   for (const source of sources) {
     const dest = source.kind === 'notes' ? created.notesVaultPath : created.storyVaultPath;
-    const result = importObsidianToVaultDir(source.srcPath, dest);
+    const isStory = source.kind === 'story';
+    const result = importObsidianToVaultDir(source.srcPath, dest, { docxHandledByCaller: isStory });
     tally.imported += result.imported;
     tally.skipped += result.skipped;
     tally.sourceCount += result.sourceCount;
     if (result.dropWarning) tally.warnings.push(result.dropWarning);
     if (!result.ok) errors.push(...result.errors);
+
+    // SKY-11814: story-kind .docx files aren't byte-copyable — convert each
+    // into a v2 story folder (book.md + Part 1/Chapter NN/Scene NN.md) so
+    // chapters/scenes land where the author expects them.
+    if (isStory && result.docxFiles.length > 0) {
+      const takenFolderNames = new Set<string>();
+      for (const docxAbsPath of result.docxFiles) {
+        try {
+          const buffer = fs.readFileSync(docxAbsPath);
+          const parsed = await parseDocxBuffer(buffer, path.basename(docxAbsPath, '.docx'));
+          materializeDocxAsStoryFolder(parsed, dest, takenFolderNames);
+          tally.imported++;
+        } catch (err) {
+          errors.push(`${path.basename(docxAbsPath)}: ${(err as Error).message}`);
+        }
+      }
+    }
   }
   retagSeedLayout(created.mythosRoot, IMPORT_SEED_LAYOUT);
+
+  // SKY-11814 (AC3): a folder with nothing this importer could use must say
+  // so — never report plain success for an import that landed zero content.
+  if (errors.length === 0 && tally.imported === 0) {
+    tally.warnings.push('Nothing was imported — the selected source folder(s) had no supported files.');
+  }
 
   if (errors.length > 0) {
     // The new vault scaffold stays on disk (partial copies may exist) but the

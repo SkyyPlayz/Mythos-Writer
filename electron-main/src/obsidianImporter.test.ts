@@ -77,9 +77,23 @@ describe('collectObsidianFiles', () => {
     expect(result.attachmentFiles.length).toBeGreaterThanOrEqual(5);
   });
 
-  it('ignores unknown extensions (e.g. .txt)', () => {
+  it('reports unknown extensions (e.g. .txt) instead of dropping them silently', () => {
+    // SKY-11814: a file that matches neither bucket used to vanish with no
+    // trace at all — it must now surface via unknownFiles so callers can
+    // name it in a warning.
     writeFile(tmp, 'notes.txt', 'text');
     const result = collectObsidianFiles(tmp);
+    expect(result.markdownFiles).toHaveLength(0);
+    expect(result.attachmentFiles).toHaveLength(0);
+    expect(result.unknownFiles).toEqual(['notes.txt']);
+  });
+
+  it('classifies .docx files separately from markdown/attachments/unknown', () => {
+    writeFile(tmp, 'Manuscript.docx', 'fake docx bytes');
+    writeFile(tmp, 'notes.txt', 'text');
+    const result = collectObsidianFiles(tmp);
+    expect(result.docxFiles).toEqual(['Manuscript.docx']);
+    expect(result.unknownFiles).toEqual(['notes.txt']);
     expect(result.markdownFiles).toHaveLength(0);
     expect(result.attachmentFiles).toHaveLength(0);
   });
@@ -328,5 +342,35 @@ describe('importObsidianToVaultDir — post-import verification', () => {
     expect(result.skipped).toBe(1);
     expect(result.imported).toBe(0);
     expect(result.dropWarning).toBe('');
+  });
+
+  // SKY-11814: a .docx (or any other unsupported file) must never vanish
+  // without naming it — this was the silent-empty-vault bug.
+  it('names an unsupported file in dropWarning instead of silently dropping it', () => {
+    writeFile(src, 'Manuscript.docx', 'fake docx bytes');
+    const result = importObsidianToVaultDir(src, dst);
+    expect(result.imported).toBe(0);
+    expect(result.sourceCount).toBe(1);
+    expect(result.dropWarning).toContain('Manuscript.docx');
+    expect(result.docxFiles).toEqual([]); // not handed back — caller didn't opt in
+  });
+
+  it('names multiple unsupported files and truncates past 5 with a count', () => {
+    for (let i = 0; i < 7; i++) writeFile(src, `file${i}.xyz`, 'x');
+    const result = importObsidianToVaultDir(src, dst);
+    expect(result.dropWarning).toContain('7 file(s)');
+    expect(result.dropWarning).toContain('+2 more');
+  });
+
+  it('docxHandledByCaller=true excludes .docx from dropWarning and returns absolute paths', () => {
+    writeFile(src, 'Chapter One.docx', 'fake docx bytes');
+    writeFile(src, 'notes.xyz', 'unrelated unsupported file');
+    const result = importObsidianToVaultDir(src, dst, { docxHandledByCaller: true });
+    // The unrelated unknown file is still named — only .docx is deferred.
+    expect(result.dropWarning).toContain('notes.xyz');
+    expect(result.dropWarning).not.toContain('Chapter One.docx');
+    expect(result.docxFiles).toEqual([path.join(fs.realpathSync.native(src), 'Chapter One.docx')]);
+    // Deferred docx isn't copied by this function — caller converts it.
+    expect(fs.existsSync(path.join(dst, 'Chapter One.docx'))).toBe(false);
   });
 });

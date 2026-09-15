@@ -17,6 +17,12 @@
  *   TC-CVP-04  blank stays empty across a full relaunch + the vault-open /
  *              seed-marker rebuild path — the real §3a acceptance test, not
  *              merely "looks empty right after create."
+ *   TC-CVP-05  SKY-11814 — a Story-source folder containing ONLY a .docx (no
+ *              .md alongside it, the exact repro) lands as real chapters/
+ *              scenes on disk instead of producing a silently empty vault.
+ *   TC-CVP-06  SKY-11814 — a Story-source folder with nothing this importer
+ *              can use (an unsupported file, no .md/.docx) reports zero
+ *              imported and names the skipped file — never plain success.
  *
  * Run:
  *   npx playwright test e2e/vault-create-primitive-sky11151.spec.ts --reporter=list
@@ -35,6 +41,11 @@ import {
 import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
+
+// SKY-11814: the minimal valid .docx fixture the ticket describes — two
+// Heading-1 chapter titles, each followed by one body paragraph. Built by
+// e2e/fixtures/build-vault-import-docx.cjs.
+const VAULT_IMPORT_DOCX_FIXTURE = path.resolve(__dirname, 'fixtures/vault-import-story.docx');
 
 // The RECOMMENDED template's ready-shape (mirrors TEMPLATE_NOTES_SKELETON in
 // electron-main/src/mythosFormat/createVaultFromOptions.ts).
@@ -241,5 +252,68 @@ test.describe('SKY-11151 — shared vault-creation primitive (reachability)', ()
       .toBe(0);
     expect(visibleEntries(notesVaultPath)).toEqual([]);
     expect(visibleEntries(storyVaultPath)).toEqual([]);
+  });
+
+  test('TC-CVP-05 (SKY-11814): a Story-source folder with only a .docx lands as real chapters/scenes', async () => {
+    // The exact repro: a plain folder holding ONE .docx, no .md alongside it.
+    const source = path.join(tmpRoot, 'DocxOnlyStorySource');
+    fs.mkdirSync(source, { recursive: true });
+    fs.copyFileSync(VAULT_IMPORT_DOCX_FIXTURE, path.join(source, 'Manuscript.docx'));
+
+    const res = await createVault(page, {
+      mode: 'import',
+      destinationParent: chosenParent,
+      name: 'Docx Import Vault',
+      exactName: true,
+      importSources: [{ kind: 'story', srcPath: source }],
+    });
+    expect(res.ok).toBe(true);
+    expect(res.importTally).toBeTruthy();
+    expect(res.importTally!.imported).toBeGreaterThan(0);
+    // No unsupported-file warning — the .docx was actually converted, not skipped.
+    expect((res.importTally!.warnings ?? []).join(' ')).not.toContain('Manuscript.docx');
+
+    // Fresh vault: exactly one story folder landed, adopted purely by book.md
+    // presence (mythosFormat/v2Manifest.ts's untrackedStoryFolders) — no
+    // manifest.json write required for this to surface as a real story.
+    const storyVaultPath = res.storyVaultPath!;
+    const storyFolders = visibleEntries(storyVaultPath).filter((n) =>
+      fs.statSync(path.join(storyVaultPath, n)).isDirectory(),
+    );
+    expect(storyFolders).toHaveLength(1);
+    const storyDir = path.join(storyVaultPath, storyFolders[0]);
+    expect(fs.existsSync(path.join(storyDir, 'book.md'))).toBe(true);
+
+    // Both chapters' prose is really on disk as numbered scene files.
+    const scene1 = path.join(storyDir, 'Part 1', 'Chapter 01', 'Scene 01.md');
+    const scene2 = path.join(storyDir, 'Part 1', 'Chapter 02', 'Scene 01.md');
+    expect(fs.existsSync(scene1)).toBe(true);
+    expect(fs.existsSync(scene2)).toBe(true);
+    expect(fs.readFileSync(scene1, 'utf-8')).toContain('drop this paragraph on the floor');
+    expect(fs.readFileSync(scene2, 'utf-8')).toContain('separates one chapter from the next');
+  });
+
+  test('TC-CVP-06 (SKY-11814): a Story-source folder with nothing importable reports it instead of plain success', async () => {
+    const source = path.join(tmpRoot, 'NothingImportableSource');
+    fs.mkdirSync(source, { recursive: true });
+    fs.writeFileSync(path.join(source, 'notes.rtf'), 'not a format this importer understands');
+
+    const res = await createVault(page, {
+      mode: 'import',
+      destinationParent: chosenParent,
+      name: 'Empty Import Vault',
+      exactName: true,
+      importSources: [{ kind: 'story', srcPath: source }],
+    });
+    expect(res.ok).toBe(true); // the vault itself is still created successfully…
+    expect(res.importTally!.imported).toBe(0);
+    // …but the response says so and names the file, rather than claiming a
+    // clean import (SKY-11814 AC2/AC3 — no more silent empty vault).
+    const warningsText = (res.importTally!.warnings ?? []).join(' ');
+    expect(warningsText).toContain('notes.rtf');
+    expect(warningsText).toMatch(/nothing was imported/i);
+
+    const storyFolders = visibleEntries(res.storyVaultPath!);
+    expect(storyFolders).toHaveLength(0);
   });
 });
