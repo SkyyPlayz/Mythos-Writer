@@ -76,6 +76,30 @@ function over(under, o, alpha) {
 }
 
 /**
+ * SKY-11787 — the app's adaptive text-backing alpha, mirrored from
+ * solveBackingAlpha() in frontend/src/theme/textBacking.ts. Keep the two
+ * in step: this script is the acceptance evidence for that solver.
+ *
+ * `peakLum` is the wallpaper's brightest 12x8 cell (relative luminance),
+ * `scrimA`/`glassA` the live 0-1 alphas. The vignette is excluded on purpose —
+ * it is transparent across the middle 40% of the frame, which is where the
+ * panels carrying body copy sit.
+ */
+const MAX_BACKING_ALPHA = 0.92;
+function solveBackingAlpha(peakLum, scrimA, glassA, minRatio = 4.5) {
+  const bodyLum = relLuminance(TEXT_BODY.r, TEXT_BODY.g, TEXT_BODY.b);
+  const scrimLum = relLuminance(SCRIM.r, SCRIM.g, SCRIM.b);
+  const glassLum = relLuminance(GLASS.r, GLASS.g, GLASS.b);
+  const pre = peakLum * (1 - scrimA) + scrimLum * scrimA;
+  const behind = pre * (1 - glassA) + glassLum * glassA;
+  const ceiling = (bodyLum + 0.05) / minRatio - 0.05;
+  if (behind <= ceiling) return 0;
+  const denom = behind - glassLum;
+  if (denom <= 0) return 0;
+  return Math.min(MAX_BACKING_ALPHA, Math.ceil(((behind - ceiling) / denom) * 1000) / 1000);
+}
+
+/**
  * CSS `background-position` for a cover-scaled image: the fraction of the
  * overflow that sits off the LEADING edge. `50% center` -> 0.5.
  */
@@ -99,6 +123,8 @@ function vignetteAlpha(x, y, w, h) {
 }
 
 const argJson = process.argv.includes('--json');
+// SKY-11787: must equal PEAK_CELLS_X/Y in frontend/src/theme/textBacking.ts.
+const PEAK_GRID = [64, 36];
 
 const manifest = JSON.parse(await readFile(MANIFEST, 'utf8'));
 const entries = [];
@@ -117,7 +143,7 @@ for (const entry of entries) {
   const bytes = await readFile(path.join(PACK, entry.file));
   const dataUrl = `data:image/webp;base64,${bytes.toString('base64')}`;
 
-  const stats = await page.evaluate(async (url) => {
+  const stats = await page.evaluate(async ({ url, GRID }) => {
     const img = new Image();
     await new Promise((res, rej) => {
       img.onload = res;
@@ -197,6 +223,34 @@ for (const entry of entries) {
       return 255;
     };
 
+    // SKY-11787: the number the app itself measures at runtime. Must stay
+    // byte-for-byte equivalent to peakCellLuminance() +
+    // PEAK_MEASURE_MAX_DIM/PEAK_CELLS_* in frontend/src/theme/textBacking.ts —
+    // 12x8 cells of mean relative luminance over the WHOLE image (not the
+    // `cover` crop, which moves with the window and the lnDrift zoom),
+    // measured after the same <=1280px downscale.
+    const PEAK_MAX_DIM = 1280, PCX = GRID[0], PCY = GRID[1];
+    const pScale = Math.min(1, PEAK_MAX_DIM / Math.max(w, h));
+    const pw = Math.max(1, Math.round(w * pScale));
+    const ph = Math.max(1, Math.round(h * pScale));
+    const pc = document.createElement('canvas');
+    pc.width = pw; pc.height = ph;
+    const pctx = pc.getContext('2d', { willReadFrequently: true });
+    pctx.drawImage(img, 0, 0, pw, ph);
+    const pdata = pctx.getImageData(0, 0, pw, ph).data;
+    const pSum = new Float64Array(PCX * PCY), pN = new Float64Array(PCX * PCY);
+    for (let y = 0; y < ph; y++) {
+      const cy = Math.min(PCY - 1, Math.floor((y / ph) * PCY));
+      for (let x = 0; x < pw; x++) {
+        const cx = Math.min(PCX - 1, Math.floor((x / pw) * PCX));
+        const i = (y * pw + x) * 4;
+        pSum[cy * PCX + cx] += relLum(pdata[i], pdata[i + 1], pdata[i + 2]);
+        pN[cy * PCX + cx]++;
+      }
+    }
+    let peakCellLum = 0;
+    for (let i = 0; i < pSum.length; i++) if (pN[i]) peakCellLum = Math.max(peakCellLum, pSum[i] / pN[i]);
+
     return {
       w, h,
       meanRgb: [sr / total, sg / total, sb / total],
@@ -204,9 +258,10 @@ for (const entry of entries) {
       brightFraction: (() => { let a = 0; for (let y = 160; y < 256; y++) a += lumHist[y]; return a / total; })(),
       lapMean: lapSum / lapCount,
       edgeFraction: edgePixels / lapCount,
+      peakCellLum,
       mosaic: Array.from(mosaic), MX, MY,
     };
-  }, dataUrl);
+  }, { url: dataUrl, GRID: PEAK_GRID });
 
   rows.push({ ...entry, ...stats });
 }
@@ -242,7 +297,12 @@ for (const r of rows) {
   const dispW = r.w * cover, dispH = r.h * cover;
   const offX = (dispW - v.w) * posFrac(r);
   const offY = (dispH - v.h) * 0.5;
+  // SKY-11787: the adaptive text-backing the app will paint for this image.
+  // Same solve as solveBackingAlpha() in frontend/src/theme/textBacking.ts.
+  r.backingAlpha = solveBackingAlpha(r.peakCellLum, SCRIM_A, GLASS.a);
+
   let worst = null;
+  let worstBacked = null;
   const cells = [];
   const CELLS_X = 12, CELLS_Y = 8;
   for (let cy = 0; cy < CELLS_Y; cy++) {
@@ -269,6 +329,9 @@ for (const r of rows) {
       const bare = lum;                                   // exposed wallpaper
       const panel = lum * (1 - GLASS.a) + glassLum * GLASS.a; // behind --glass
 
+      // SKY-11787: the same cell once the content-box text-backing is on top.
+      const backed = panel * (1 - r.backingAlpha) + glassLum * r.backingAlpha;
+
       const cand = {
         cell: `${cx},${cy}`,
         bare: +bare.toFixed(4),
@@ -276,12 +339,16 @@ for (const r of rows) {
         bodyOnPanel: +contrast(relLuminance(TEXT_BODY.r, TEXT_BODY.g, TEXT_BODY.b), panel).toFixed(2),
         headOnPanel: +contrast(relLuminance(TEXT_HEAD.r, TEXT_HEAD.g, TEXT_HEAD.b), panel).toFixed(2),
         bodyOnBare: +contrast(relLuminance(TEXT_BODY.r, TEXT_BODY.g, TEXT_BODY.b), bare).toFixed(2),
+        bodyOnBacked: +contrast(relLuminance(TEXT_BODY.r, TEXT_BODY.g, TEXT_BODY.b), backed).toFixed(2),
+        headOnBacked: +contrast(relLuminance(TEXT_HEAD.r, TEXT_HEAD.g, TEXT_HEAD.b), backed).toFixed(2),
       };
       if (!worst || cand.bodyOnPanel < worst.bodyOnPanel) worst = cand;
+      if (!worstBacked || cand.bodyOnBacked < worstBacked.bodyOnBacked) worstBacked = cand;
       cells.push(cand.bodyOnPanel);
     }
   }
   r.worst = worst;
+  r.worstBacked = worstBacked;
   // Median cell separates "one bright highlight under one panel" from "the
   // whole frame is bright" — the two cases have different fixes.
   cells.sort((a, b) => a - b);
@@ -367,4 +434,38 @@ if (medianFail.length) {
     const verdict = pct > 70 ? 'IMPOSSIBLE — above the slider maximum' : `${pct.toFixed(0)}% (default is 10%)`;
     console.log(`  ${pad(r.file, 16)} ${verdict}`);
   }
+}
+
+// ── 3. SKY-11787 — the adaptive per-panel text-backing ──────────────────────
+// This is the acceptance evidence for the fix: `--ln-text-backing` is solved
+// per wallpaper from its brightest 12x8 cell and painted inside each base
+// panel's content box, so body text clears 4.5:1 without any change to the
+// global glassA (20) / scrim (10) defaults.
+console.log('\n=== 3. TEXT-BACKING (SKY-11787) at shipped defaults ===');
+console.log('alpha = solved --ln-text-backing over rgba(13,16,28); 0 = image already passes,');
+console.log('so the panel renders exactly as it does today. before/after = worst (brightest) cell.\n');
+console.log(pad('file', 15) + num('peakY', 8) + num('alpha', 8)
+  + num('before', 9) + num('after', 8) + num('head', 8) + '  verdict');
+
+const backed = [...rows].sort((a, b) => a.worst.bodyOnPanel - b.worst.bodyOnPanel);
+let stillFailing = [];
+let unchanged = [];
+for (const r of backed) {
+  const ok = r.worstBacked.bodyOnBacked >= 4.5;
+  if (!ok) stillFailing.push(r);
+  if (r.backingAlpha === 0) unchanged.push(r);
+  console.log(
+    pad(r.file, 15) + num(r.peakCellLum.toFixed(3), 8) + num(r.backingAlpha.toFixed(3), 8)
+    + num(r.worst.bodyOnPanel, 9) + num(r.worstBacked.bodyOnBacked, 8)
+    + num(r.worstBacked.headOnBacked, 8)
+    + '  ' + (ok ? 'pass' : `FAIL (alpha capped at ${MAX_BACKING_ALPHA})`),
+  );
+}
+
+console.log(`\n${rows.length - stillFailing.length} of ${rows.length} clear 4.5:1 body text in their brightest cell with the backing on.`);
+console.log(`${unchanged.length} of ${rows.length} need no backing at all (alpha 0, pixel-identical to today): `
+  + (unchanged.map((r) => r.file).join(', ') || 'none'));
+if (stillFailing.length) {
+  console.log(`STILL FAILING (the image itself is the defect, not the glass): `
+    + stillFailing.map((r) => `${r.file} (${r.worstBacked.bodyOnBacked}:1)`).join(', '));
 }

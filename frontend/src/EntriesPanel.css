@@ -12,7 +12,7 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .entries-panel {
-    background: var(--glass-fill);
+    background: var(--glass-panel-bg);
     backdrop-filter: blur(var(--blur-panel));
     -webkit-backdrop-filter: blur(var(--blur-panel));
   }

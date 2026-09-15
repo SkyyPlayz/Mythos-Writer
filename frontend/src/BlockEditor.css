@@ -37,7 +37,7 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .block-editor-toolbar {
-    background: var(--glass-fill);
+    background: var(--glass-panel-bg);
   }
 }
 

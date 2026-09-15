@@ -175,10 +175,19 @@ wrong fix for this one image:
 ### Do not read the other 34 as wallpaper defects
 
 34 of 42 images fail 4.5:1 in their single brightest cell. That is not 34 bad
-images — it is the 20% glass floor, already filed as **SKY-11488**. Median-cell
-contrast of 8-13:1 says the panels are fine almost everywhere and thin out only
-over a highlight. Fixing the glass floor fixes all 33; only `winter-2` is a
-genuine per-image problem.
+images — it is the 20% glass floor. Median-cell contrast of 8-13:1 says the
+panels are fine almost everywhere and thin out only over a highlight. Fixing
+the glass floor fixes all 33; only `winter-2` is a genuine per-image problem.
+
+Routed as **SKY-11782** and fixed by **SKY-11787** — a per-panel adaptive
+text-backing (`--ln-text-backing`, solved per wallpaper in
+`frontend/src/theme/textBacking.ts`), not a global `glassA`/`scrim` bump. Run
+`node scripts/wallpapers/measure-pack.mjs` for section 3, which is the
+before/after evidence: 42/42 clear 4.5:1 with the backing on.
+
+> An earlier revision of this file deferred to SKY-11488. That ticket was
+> cancelled (superseded by SKY-11491, which froze the *overlay* tier instead);
+> SKY-11787 is the base-panel equivalent.
 
 ---
 
