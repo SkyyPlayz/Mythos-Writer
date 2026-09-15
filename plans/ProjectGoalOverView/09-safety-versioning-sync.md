@@ -33,7 +33,7 @@ This makes revisions safe, simple, and reversible.
 
 Your vaults live on your computer. You own the files; you can open them in any editor; you can back them up however you like.
 
-**MVP sync approach:** To keep your vault in sync across multiple machines, place the vault folder inside your existing cloud-storage folder (Dropbox, iCloud Drive, Google Drive, or OneDrive) and let the OS desktop client handle sync. No account or Mythos configuration required — it works because the vault is plain markdown files. See the setup guide at `plans/help/sync-vault-between-devices.md`.
+**MVP sync approach:** None. SKY-11804 (owner ruling via SKY-11141 §5) removed the branded cloud/sync surface — Mythos Writer ships no sync feature, recommends no provider, and detects none. A vault is plain markdown in a folder the user places wherever they like; whatever they do with that folder is outside the product.
 
 **Caveat:** Do not open Mythos Writer and the OS sync client at the same time when the sync client is mid-conflict. Close Mythos before resolving sync conflicts in the cloud client, then reopen Mythos.
 

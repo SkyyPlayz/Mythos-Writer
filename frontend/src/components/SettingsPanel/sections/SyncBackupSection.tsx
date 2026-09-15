@@ -1,17 +1,17 @@
 // Beta 3 "Liquid Neon" M24 — Settings → Sync & Backup (prototype 1966–2002).
-// Real surface only: cloud-provider detection on the vault path (Beta-2
-// cloudSync lib), the existing app-data backup/restore IPC (SKY-699/700
-// two-step restore handshake), and the recovery runbook. Scheduled cloud sync
-// itself ships with a later milestone — no fake toggles here.
+// Real surface only: vault location + the move wizard, the app-data
+// backup/restore IPC (SKY-699/700 two-step restore handshake), and the
+// recovery runbook.
+//
+// SKY-11804: no branded cloud-provider surface here. Mythos Writer is
+// local-first — a vault is plain files in a folder the user chooses, and the
+// app neither detects nor endorses any sync service.
 import { useCallback, useState } from 'react';
-import type { detectCloudProvider } from '../../../lib/cloudSync';
-import VaultSyncBadge from '../../VaultSyncBadge';
 import { M24Card } from './M24Controls';
 import './M24Sections.css';
 
 interface Props {
   vaults: { storyVaultPath: string; notesVaultPath: string };
-  vaultProvider: ReturnType<typeof detectCloudProvider>;
   onMoveVault: () => void;
 }
 
@@ -21,7 +21,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function SyncBackupSection({ vaults, vaultProvider, onMoveVault }: Props) {
+export default function SyncBackupSection({ vaults, onMoveVault }: Props) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,15 +76,10 @@ export default function SyncBackupSection({ vaults, vaultProvider, onMoveVault }
     <section className="settings-section m24-root" aria-labelledby="section-sync-backup" data-settings-cat="sync">
       <h3 className="settings-section-title" id="section-sync-backup">Sync &amp; Backup</h3>
 
-      <M24Card title="Cloud sync">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 11, color: '#8e9db8' }}>
-              Your vaults are plain files on disk — put them in a synced folder (Dropbox, OneDrive, iCloud
-              Drive…) and every device stays current. Conflicting edits keep both versions.
-            </div>
-          </div>
-          <VaultSyncBadge provider={vaultProvider} />
+      <M24Card title="Vault location">
+        <div style={{ fontSize: 11, color: '#8e9db8' }}>
+          Your vaults are plain files on disk, and they stay on this machine. Nothing is
+          uploaded and no account is required — you own the folder.
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 11 }}>
           <span className="m24-path" title={vaults.storyVaultPath || undefined} data-testid="sync-vault-path">
@@ -102,8 +97,8 @@ export default function SyncBackupSection({ vaults, vaultProvider, onMoveVault }
           </button>
         </div>
         <p className="settings-hint" style={{ marginTop: 8 }}>
-          The move wizard defaults to a local folder on this PC; pick a cloud-synced folder to turn sync on.
-          Everything moves in one pass; links stay intact.
+          The move wizard relocates the whole vault to another folder on this machine in one
+          pass; links stay intact.
         </p>
       </M24Card>
 

@@ -115,7 +115,7 @@ import { scrollBehavior } from './lib/reducedMotion';
 import ChapterInterlude from './ChapterInterlude';
 import { stepScene, computeStepState, type StepSceneTarget } from './stepScene';
 import { useFocusMode } from './useFocusMode';
-import SyncConflictModal, { type ResolvedConflictInfo, type LockfileConflictInfo } from './SyncConflictModal';
+import ConcurrentSessionModal, { type LockfileConflictInfo } from './ConcurrentSessionModal';
 import {
   createInitialGettingStartedProgress,
   gettingStartedReducer,
@@ -976,7 +976,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [layoutHasUnsavedChanges, setLayoutHasUnsavedChanges] = useState(false);
 
   // ─── SKY-863: Sync conflict modal state ───
-  const [syncConflictResolved, setSyncConflictResolved] = useState<ResolvedConflictInfo[]>([]);
   const [syncLockfileConflict, setSyncLockfileConflict] = useState<LockfileConflictInfo | null>(null);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
 
@@ -1692,23 +1691,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
       else if (storyPath) setActiveVaultRoot(storyPath);
 
-      // SKY-863: run conflict check after vault is ready.
+      // SKY-863: claim the vault session lock once the vault is ready, and
+      // warn if another Mythos session already holds it.
       // Non-fatal: errors here must not prevent opening the vault.
       try {
-        if (typeof window.api?.checkVaultConflicts === 'function') {
-          const conflicts = await window.api.checkVaultConflicts();
-          // SKY-11379: don't raise a superseded load's conflict modal over the
-          // vault the user switched to.
-          if (!superseded() && conflicts && !conflicts.dismissed) {
-            if ((conflicts.resolved?.length ?? 0) > 0 || conflicts.lockfileConflict) {
-              setSyncConflictResolved(conflicts.resolved ?? []);
-              setSyncLockfileConflict(conflicts.lockfileConflict ?? null);
-              setSyncModalOpen(true);
-            }
+        if (typeof window.api?.checkVaultSessionLock === 'function') {
+          const sessionLock = await window.api.checkVaultSessionLock();
+          // SKY-11379: don't raise a superseded load's warning over the vault
+          // the user switched to.
+          if (!superseded() && sessionLock && !sessionLock.dismissed && sessionLock.lockfileConflict) {
+            setSyncLockfileConflict(sessionLock.lockfileConflict);
+            setSyncModalOpen(true);
           }
         }
       } catch {
-        // conflict check is best-effort
+        // session-lock check is best-effort
       }
     } catch (e) {
       // SKY-11379: a superseded load's failure must not surface over the vault
@@ -7362,9 +7359,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       />
       {promptModal}
       {createVaultModal}
-      {syncModalOpen && (
-        <SyncConflictModal
-          resolved={syncConflictResolved}
+      {syncModalOpen && syncLockfileConflict && (
+        <ConcurrentSessionModal
           lockfileConflict={syncLockfileConflict}
           onContinue={handleSyncConflictContinue}
         />

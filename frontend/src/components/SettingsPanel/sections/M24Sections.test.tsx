@@ -119,7 +119,7 @@ describe('SyncBackupSection', () => {
   const vaults = { storyVaultPath: '/story', notesVaultPath: '/notes' };
 
   it('backs up via the existing app-data IPC', async () => {
-    render(<SyncBackupSection vaults={vaults} vaultProvider={null} onMoveVault={vi.fn()} />);
+    render(<SyncBackupSection vaults={vaults} onMoveVault={vi.fn()} />);
     fireEvent.click(screen.getByTestId('sync-backup-btn'));
     await flush();
     expect(mockBackupAppData).toHaveBeenCalled();
@@ -127,7 +127,7 @@ describe('SyncBackupSection', () => {
   });
 
   it('keeps the two-step restore handshake', async () => {
-    render(<SyncBackupSection vaults={vaults} vaultProvider={null} onMoveVault={vi.fn()} />);
+    render(<SyncBackupSection vaults={vaults} onMoveVault={vi.fn()} />);
     fireEvent.click(screen.getByTestId('sync-restore-btn'));
     await flush();
     expect(screen.getByTestId('sync-restore-confirm')).toBeTruthy();
@@ -140,7 +140,7 @@ describe('SyncBackupSection', () => {
 
   it('offers the Move vault wizard entry point', () => {
     const onMoveVault = vi.fn();
-    render(<SyncBackupSection vaults={vaults} vaultProvider={null} onMoveVault={onMoveVault} />);
+    render(<SyncBackupSection vaults={vaults} onMoveVault={onMoveVault} />);
     fireEvent.click(screen.getByTestId('sync-move-vault'));
     expect(onMoveVault).toHaveBeenCalled();
   });

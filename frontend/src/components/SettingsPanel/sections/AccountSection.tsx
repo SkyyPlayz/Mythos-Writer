@@ -1,13 +1,9 @@
-import { detectCloudProvider } from '../../../lib/cloudSync';
-import VaultSyncBadge from '../../VaultSyncBadge';
-
 interface AccountSectionProps {
   vaults: { storyVaultPath: string; notesVaultPath: string };
-  vaultProvider: ReturnType<typeof detectCloudProvider>;
   onMoveVault: () => void;
 }
 
-export default function AccountSection({ vaults, vaultProvider, onMoveVault }: AccountSectionProps) {
+export default function AccountSection({ vaults, onMoveVault }: AccountSectionProps) {
   return (
     <section className="settings-section settings-account-section" aria-labelledby="section-account" data-settings-cat="vaults">
       <h3 className="settings-section-title" id="section-account">Account</h3>
@@ -17,7 +13,6 @@ export default function AccountSection({ vaults, vaultProvider, onMoveVault }: A
             <span className="settings-vault-card-kicker">Vault</span>
             <h4 className="settings-vault-card-title">Story Vault location</h4>
           </div>
-          <VaultSyncBadge provider={vaultProvider} />
         </div>
         <p
           className="settings-vault-path-display"

@@ -157,77 +157,6 @@
   word-break: break-all;
 }
 
-/* ─── Provider cards ─────────────────────────────────────────────────────── */
-
-.mv-provider-fieldset {
-  border: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.mv-provider-legend {
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--text-muted, #71717a);
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.mv-provider-card {
-  display: grid;
-  grid-template-columns: 20px 1fr;
-  grid-template-rows: auto auto;
-  align-items: start;
-  gap: 2px 10px;
-  padding: 10px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 6px;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.03);
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.mv-provider-card:hover {
-  border-color: rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.06);
-}
-
-.mv-provider-card--selected {
-  border-color: var(--accent-color, #00f0ff);
-  background: rgba(0, 240, 255, 0.05);
-}
-
-.mv-provider-card input[type='radio'] {
-  grid-column: 1;
-  grid-row: 1 / 3;
-  align-self: center;
-  accent-color: var(--accent-color, #00f0ff);
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  cursor: pointer;
-}
-
-.mv-provider-label {
-  grid-column: 2;
-  grid-row: 1;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--text-body, #e4e4e7);
-}
-
-.mv-provider-desc {
-  grid-column: 2;
-  grid-row: 2;
-  font-size: 0.78rem;
-  color: var(--text-muted, #71717a);
-  line-height: 1.4;
-}
-
 /* ─── Folder picker row ──────────────────────────────────────────────────── */
 
 .mv-folder-row {
@@ -239,30 +168,6 @@
 .mv-folder-input {
   flex: 1;
   min-width: 0;
-}
-
-/* ─── Secondary action (destination switch link) ─────────────────────────── */
-
-.mv-secondary-action {
-  align-self: flex-start;
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: 0.8rem;
-  color: var(--accent-color, #00f0ff);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.mv-secondary-action:hover {
-  opacity: 0.85;
-}
-
-.mv-secondary-action:focus-visible {
-  outline: 2px solid var(--accent-color, #00f0ff);
-  outline-offset: 2px;
-  border-radius: 2px;
 }
 
 /* ─── Path definition list ───────────────────────────────────────────────── */
@@ -297,27 +202,6 @@
   font-size: 0.82rem;
   color: var(--text-body, #d4d4d8);
   word-break: break-all;
-}
-
-/* ─── Confirm checkbox ───────────────────────────────────────────────────── */
-
-.mv-confirm-label {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  font-size: 0.875rem;
-  color: var(--text-body, #d4d4d8);
-  cursor: pointer;
-  line-height: 1.4;
-}
-
-.mv-confirm-label input[type='checkbox'] {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  margin-top: 2px;
-  accent-color: var(--accent-color, #00f0ff);
-  cursor: pointer;
 }
 
 /* ─── Test status ────────────────────────────────────────────────────────── */

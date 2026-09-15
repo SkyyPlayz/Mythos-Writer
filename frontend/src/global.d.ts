@@ -1914,30 +1914,15 @@ interface Window {
     entityRelationshipsCreate: (fromEntityId: string, toEntityId: string, label: string) => Promise<{ relationship: EntityRelationshipRow }>;
     entityRelationshipsDelete: (relationshipId: string) => Promise<{ deleted: boolean }>;
 
-    // SKY-861: Move vault root to a cloud-sync folder.
-    vaultGuidedFolderMove: (payload: {
-      targetPath: string;
-      syncProvider: 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
-      sessionToken: string;
-    }) => Promise<{ moved: boolean; newVaultPath: string; verificationWarning?: string } | { error: string }>;
-
-    // SKY-10367: Move vault root to a plain local folder (default entry
-    // point for "Move to a different folder"; no cloud provider required).
+    // SKY-10367: Move vault root to a plain local folder — the only vault
+    // relocation path since SKY-11804 removed the branded cloud variant.
     vaultLocalFolderMove: (payload: {
       targetPath: string;
       registrationToken: string;
     }) => Promise<{ moved: boolean; newVaultPath: string; verificationWarning?: string } | { error: string }>;
 
-    // SKY-863: Conflict detection + lockfile.
-    checkVaultConflicts: () => Promise<{
-      resolved: Array<{
-        conflictPath: string;
-        originalPath: string;
-        provider: 'dropbox' | 'icloud' | 'syncthing';
-        keptPath: string;
-        archivedPath: string;
-        resolvedAt: string;
-      }>;
+    // SKY-863: concurrent-session lockfile.
+    checkVaultSessionLock: () => Promise<{
       lockfileConflict: { hostname: string; pid: number; timestamp: string } | null;
       dismissed: boolean;
     }>;

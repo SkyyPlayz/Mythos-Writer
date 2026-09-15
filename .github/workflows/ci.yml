@@ -478,8 +478,11 @@ jobs:
       - name: E2E — Local model picker (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:lmp
 
-      - name: E2E — Cloud sync (SKY-6933 sweep, skip-guarded — deferred feature)
-        run: xvfb-run --auto-servernum npm run test:e2e:cloud-sync
+      # SKY-11804: replaces the retired cloud-sync shard. move-vault has had an
+      # npm script since SKY-10367 but no CI step, so the only E2E covering the
+      # surviving local vault move never ran on a PR.
+      - name: E2E — Move Vault wizard, local destination (SKY-11804)
+        run: xvfb-run --auto-servernum npm run test:e2e:move-vault
 
       - name: E2E — Continuity peek (SKY-8242 un-skipped, was flaky full-sequential-run)
         run: xvfb-run --auto-servernum npm run test:e2e:continuity-peek
@@ -1592,15 +1595,6 @@ jobs:
       # this defect is invisible everywhere except here.
       - name: E2E — Move Vault wizard releases handles before rename on native Windows (SKY-10895)
         run: npx playwright test e2e/move-vault-local-real.spec.ts --reporter=list
-
-      # SKY-10910 gap 5: the cloud-sync guided-move path (move-vault-real.spec.ts)
-      # was previously POSIX-only — it satisfies checkGuidedMoveGate's
-      # homedir-containment check by overriding $HOME, which native Windows
-      # (os.homedir() reads USERPROFILE, not HOME) silently ignored. The spec
-      # now branches its home-override env var by platform so this runs for
-      # real here too.
-      - name: E2E — Move Vault wizard cloud-sync guided move on native Windows (SKY-10910 gap 5)
-        run: npx playwright test e2e/move-vault-real.spec.ts --reporter=list
 
       # SKY-11058: swapping the active notes vault re-points the chokidar
       # watcher + DB handles from the old vault dir to the new one. Windows

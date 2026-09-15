@@ -1,8 +1,7 @@
 // SKY-11154 (parent spec SKY-11141 §2) — the "Vaults folder" row at the top
 // of Settings > Vault & Files: shows the parent folder holding every Mythos
 // vault, an "Open folder" button, and a "Move…" flow. Deliberately does NOT
-// import anything from MoveVaultWizard.tsx / cloudSync.ts / SyncConflictModal
-// / VaultSyncBadge — that is a separate, pre-existing cloud-branded
+// import anything from MoveVaultWizard.tsx — that was a separate cloud-branded
 // subsystem for moving a single (story, notes) vault pair and is explicitly
 // out of scope here; this is a different move (the folder that CONTAINS every
 // Mythos vault) with a small, narrowly-scoped IPC pair of its own
