@@ -953,6 +953,10 @@ interface VaultSettings {
   layoutMode?: 'default' | 'blank' | 'imported';
   recentProjects?: ProjectEntry[];
   // SKY-1129: keyed by vaultRoot so dismissal is scoped to each vault.
+  // SKY-11804 kept the `sync` in this name on purpose. It now gates only the
+  // concurrent-session warning, so "sessionWarningDismissed" would read better
+  // — but this is a PERSISTED key in vault-settings.json, and renaming it would
+  // silently un-dismiss the warning for every existing user. Not worth it.
   syncWarningDismissed?: Record<string, boolean>;
   // W0.1 (Beta 4): durable seed-once registry — resolved vault root → ISO
   // timestamp of when its SKY-15 seeding decision was recorded. Pairs with
