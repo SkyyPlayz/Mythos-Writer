@@ -26,12 +26,11 @@ import type {
 import { SCHEMA_VERSION } from '../manifest.js';
 import {
   readMythosFile,
-  storyVaultRootFor,
   tryReadMythosFile,
   writeMythosFile,
   type MythosStoryRef,
 } from './mythosJson.js';
-import { getActiveStoryVaultPath } from './storyVaultRegistry.js';
+import { ensureActiveStoryVaultPath } from './storyVaultRegistry.js';
 import {
   BOOK_FILENAME,
   parseBookFile,
@@ -267,7 +266,7 @@ export function scanMythosStoryVault(
   opts: { carry?: Partial<Manifest> } = {},
 ): Manifest {
   // Use the registry's active story vault when available (handles both flat and grouped layouts).
-  const storyVaultRoot = getActiveStoryVaultPath(mythosRoot) ?? storyVaultRootFor(mythosRoot);
+  const storyVaultRoot = ensureActiveStoryVaultPath(mythosRoot);
   const mythos = readMythosFile(mythosRoot);
   const tracked = new Set(mythos.stories.map((s) => s.folder));
   const refs = [...mythos.stories, ...untrackedStoryFolders(storyVaultRoot, tracked)];
@@ -366,7 +365,7 @@ export function syncCanonicalFromManifest(mythosRoot: string, manifest: Manifest
   try {
     const mythos = tryReadMythosFile(mythosRoot);
     if (!mythos) return;
-    const storyVaultRoot = getActiveStoryVaultPath(mythosRoot) ?? storyVaultRootFor(mythosRoot);
+    const storyVaultRoot = ensureActiveStoryVaultPath(mythosRoot);
     const prevRefs = new Map(mythos.stories.map((s) => [s.id, s]));
     const nextRefs: MythosStoryRef[] = [];
 

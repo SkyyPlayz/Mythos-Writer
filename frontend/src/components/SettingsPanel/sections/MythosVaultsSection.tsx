@@ -44,13 +44,17 @@ interface VaultStatEntry {
 }
 
 /** SKY-11154: the enclosing Mythos-vault root for the "..." Hide/Delete menu
- *  and for cross-referencing the hidden-paths list — vaults live FLAT
- *  directly under it (path.join(mythosRoot, 'Story Vault')), so strip that
- *  one known segment when present; a legacy (pre-v2) vaultRoot has no such
- *  enclosing folder, so it stands in for itself. */
+ *  and for cross-referencing the hidden-paths list. Vaults created before
+ *  SKY-11451 live FLAT directly under it (path.join(mythosRoot, 'Story
+ *  Vault')); vaults created after live under the grouped `Stories/` dir
+ *  (path.join(mythosRoot, 'Stories', 'Story Vault'), SKY-11141 §1) — strip
+ *  whichever of those two known suffixes is present. A legacy (pre-v2)
+ *  vaultRoot has neither, so it stands in for itself. */
 function mythosPathFor(vaultRoot: string): string {
-  const m = vaultRoot.match(/^(.*)[\\/]Story Vault$/);
-  return m ? m[1] : vaultRoot;
+  const grouped = vaultRoot.match(/^(.*)[\\/]Stories[\\/]Story Vault$/);
+  if (grouped) return grouped[1];
+  const flat = vaultRoot.match(/^(.*)[\\/]Story Vault$/);
+  return flat ? flat[1] : vaultRoot;
 }
 
 function pluralize(n: number, noun: string): string {

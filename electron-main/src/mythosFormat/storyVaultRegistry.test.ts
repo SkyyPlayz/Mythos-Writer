@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   ensureStoryVaultRegistry,
+  ensureActiveStoryVaultPath,
   createBlankStoryVault,
   createStoryVaultFromOptions,
   setActiveStoryVault,
@@ -16,6 +17,7 @@ import {
   STORY_VAULT_REGISTRY_FILENAME,
   DEFAULT_STORY_VAULT_DIRNAME,
 } from './storyVaultRegistry.js';
+import { storyVaultRootFor } from './mythosJson.js';
 
 let tmpDir: string;
 
@@ -46,6 +48,29 @@ describe('ensureStoryVaultRegistry', () => {
   it('writes story-vaults.json to mythosRoot', () => {
     ensureStoryVaultRegistry(tmpDir);
     expect(fs.existsSync(path.join(tmpDir, STORY_VAULT_REGISTRY_FILENAME))).toBe(true);
+  });
+});
+
+describe('ensureActiveStoryVaultPath', () => {
+  it('resolves a pre-registry flat v2 vault to its existing FLAT dir, never the grouped default', () => {
+    // No story-vaults.json yet — only the flat DEFAULT_STORY_VAULT_DIRNAME
+    // dir the beforeEach hook seeded. Must NOT fall back to
+    // storyVaultRootFor's grouped `Stories/Story Vault` path, which does not
+    // exist on disk for a vault created before SKY-11451.
+    expect(readStoryVaultRegistry(tmpDir)).toBeNull();
+    const resolved = ensureActiveStoryVaultPath(tmpDir);
+    expect(resolved).toBe(path.join(tmpDir, DEFAULT_STORY_VAULT_DIRNAME));
+    expect(resolved).not.toBe(storyVaultRootFor(tmpDir));
+    // Lazy migration also persisted the registry as a side effect.
+    expect(readStoryVaultRegistry(tmpDir)).not.toBeNull();
+  });
+
+  it('resolves a vault created after SKY-11451 to its grouped Stories/ path', () => {
+    ensureStoryVaultRegistry(tmpDir);
+    const { entry } = createBlankStoryVault(tmpDir, 'New World');
+    setActiveStoryVault(tmpDir, entry.id);
+    expect(ensureActiveStoryVaultPath(tmpDir)).toBe(storyVaultAbsPath(tmpDir, entry));
+    expect(ensureActiveStoryVaultPath(tmpDir)).toBe(path.join(tmpDir, 'Stories', 'New World'));
   });
 });
 

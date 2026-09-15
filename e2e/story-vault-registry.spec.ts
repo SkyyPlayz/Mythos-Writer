@@ -230,8 +230,10 @@ test.describe.serial('SKY-11150 — Story vault registry (fresh profile)', () =>
     const firstVault = reg.vaults.find((v) => v.id !== secondVaultId);
     expect(reg.activeId).toBe(firstVault!.id);
 
-    // Directory was created on disk.
-    expect(fs.existsSync(path.join(bundle, SECOND_VAULT_NAME))).toBe(true);
+    // Directory was created on disk, grouped under `Stories/` (SKY-11451) —
+    // unlike the flat legacy entry migrated in TC-SVR-01.
+    expect(second).toMatchObject({ dirName: `Stories/${SECOND_VAULT_NAME}` });
+    expect(fs.existsSync(path.join(bundle, 'Stories', SECOND_VAULT_NAME))).toBe(true);
 
     // The new vault starts with no pairing.
     expect(second!.pairedNotesVaultId).toBeNull();

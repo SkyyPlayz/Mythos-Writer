@@ -9,6 +9,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { STORIES_GROUP_DIRNAME, NOTES_GROUP_DIRNAME } from './mythosFormat/mythosJson.js';
 
 export const DEFAULT_MYTHOS_VAULT_NAME = 'My First Vault';
 
@@ -61,9 +62,16 @@ export function deriveProjectName(vaultRoot: string, notesVaultRoot?: string): s
       // Flat layout: both live directly inside the mythosRoot.
       const base = path.basename(parent);
       if (base) return base;
-    } else {
+    } else if (
+      path.basename(parent) === STORIES_GROUP_DIRNAME &&
+      path.basename(notesParent) === NOTES_GROUP_DIRNAME
+    ) {
       // Grouped layout (SKY-11141 §1): <mythosRoot>/Stories/Story Vault and
-      // <mythosRoot>/Notes/Notes Vault — compare grandparents.
+      // <mythosRoot>/Notes/Notes Vault — compare grandparents, but only once
+      // the immediate parents are actually the group dirs (otherwise two
+      // unrelated legacy split roots that happen to share a grandparent, e.g.
+      // ~/Fiction/Novel and ~/Research/Notes, would wrongly display the
+      // grandparent's name instead of falling through to the Story basename).
       const grandparent = path.dirname(parent);
       if (grandparent === path.dirname(notesParent)) {
         const base = path.basename(grandparent);
