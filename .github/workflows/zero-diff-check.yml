@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Flag PRs with no net diff against the base branch
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const marker = '<!-- zero-diff-check -->';
