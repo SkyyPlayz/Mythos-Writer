@@ -606,15 +606,11 @@ interface AppSettings {
     completed?: Partial<Record<'writeScene' | 'addCharacter' | 'brainstorm' | 'openNotes', boolean>>;
   };
   /** SKY-1188: onboarding mode captured when onboarding completed. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
+  onboardingStartMode?: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
   /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (prototype `wizGenre`). */
   onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
   recentVaultParentPaths?: string[];
-  /** SKY-2005: last sample genre selected from the onboarding sample preview. */
-  lastSampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
-  /** SKY-2553: one-time post-onboarding sample-project banner dismissal. */
-  sampleProjectBannerDismissed?: boolean;
   /** SKY-1188: first post-onboarding timestamp, written once. */
   firstLaunchAt?: string;
   /** SKY-2098: one-time upgrade notice for existing users moved to the two-tab shell. */
@@ -1608,13 +1604,12 @@ interface Window {
     }>;
     // SKY-627: orchestrates vault creation + first-scene setup during onboarding
     onboardingComplete: (payload?: {
-      startMode: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+      startMode: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
       storyTitle?: string;
       authorName?: string;
       vaultParentPath?: string;
       templateId?: string;
       vaultName?: string;
-      sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
       customTemplate?: 'recommended' | 'blank';
       // M29: wizard genre (seeds starter notes) + Liquid Neon preset key
       // (recorded as the new vault's default theme).

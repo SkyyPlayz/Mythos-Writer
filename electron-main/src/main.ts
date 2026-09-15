@@ -3301,9 +3301,9 @@ const handlers: IpcHandlers = {
   },
 
   // SKY-627 / SKY-906: extended onboarding handler — orchestrates vault creation, first-scene setup,
-  // and settings persistence for all start modes (blank / sample / template / skip / default-mythos-vault).
+  // and settings persistence for all start modes (blank / template / skip / default-mythos-vault).
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: async (payload: OnboardingCompletePayload): Promise<OnboardingCompleteResponse> => {
-    const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName, sampleGenre, customTemplate, genre, themeKey } = payload ?? {};
+    const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName, customTemplate, genre, themeKey } = payload ?? {};
 
     const persistSettings = (firstSceneId?: string, firstScenePath?: string, recentParentPath?: string, opts?: { openAtDepth?: 'book' }) => {
       const current = loadAppSettings();
@@ -3321,7 +3321,6 @@ const handlers: IpcHandlers = {
       }
       const recentVaultParentPaths = updateRecentVaultParentPaths(current.recentVaultParentPaths, recentParentPath);
       if (recentVaultParentPaths) patch.recentVaultParentPaths = recentVaultParentPaths;
-      if (sampleGenre && startMode === 'sample') patch.lastSampleGenre = sampleGenre;
       if (authorName?.trim()) patch.authorName = authorName.trim();
       if (firstSceneId && firstScenePath) {
         // M3 (SKY-9021): openAtDepth 'book' makes the first open land at Full
@@ -3505,15 +3504,11 @@ const handlers: IpcHandlers = {
       }
     }
 
-    if (startMode !== 'sample') {
-      if (!storyTitle?.trim()) return { ok: false, error: 'storyTitle is required' };
-      if (!vaultParentPath?.trim()) return { ok: false, error: 'vaultParentPath is required' };
-    }
+    if (!storyTitle?.trim()) return { ok: false, error: 'storyTitle is required' };
+    if (!vaultParentPath?.trim()) return { ok: false, error: 'vaultParentPath is required' };
 
-    const resolvedParent = startMode === 'sample'
-      ? defaultMythosVaultsParent()
-      : vaultParentPath!.trim().replace(/^~/, app.getPath('home'));
-    const storyDir = startMode === 'sample' ? '' : path.join(resolvedParent, storyTitle!.trim());
+    const resolvedParent = vaultParentPath!.trim().replace(/^~/, app.getPath('home'));
+    const storyDir = path.join(resolvedParent, storyTitle!.trim());
     const storyVaultPath = path.join(storyDir, 'Story Vault');
     const notesVaultPath = path.join(storyDir, 'Notes Vault');
 
@@ -3578,62 +3573,6 @@ const handlers: IpcHandlers = {
 
       persistSettings(sceneId, sceneRelPath, resolvedParent, { openAtDepth: 'book' });
       return { ok: true, firstSceneId: sceneId, firstScenePath: sceneRelPath };
-
-    } else if (startMode === 'sample') {
-      const ALLOWED_GENRES = ['cozy-fantasy', 'sci-fi-noir', 'mystery'] as const;
-      type GenreId = typeof ALLOWED_GENRES[number];
-      if (!sampleGenre || !ALLOWED_GENRES.includes(sampleGenre as GenreId)) {
-        return { ok: false, error: `sampleGenre is required for sample start (got: ${sampleGenre ?? 'undefined'})` };
-      }
-
-      const sampleDir = app.isPackaged
-        ? path.join(process.resourcesPath, 'samples', sampleGenre)
-        : path.join(app.getAppPath(), 'resources', 'samples', sampleGenre);
-
-      if (!fs.existsSync(sampleDir)) {
-        return { ok: false, error: `Sample vault bundle not found at: ${sampleDir}` };
-      }
-
-      // Place genre vault under the default Mythos Vaults parent, auto-suffixed
-      // if a folder with that name already exists (same pattern as default-mythos-vault).
-      const GENRE_VAULT_NAMES: Record<GenreId, string> = {
-        'cozy-fantasy': 'The Hearthstone Witch',
-        'sci-fi-noir': 'Neon Rust',
-        'mystery': 'The Last Wednesday Club',
-      };
-      const parentBase = defaultMythosVaultsParent();
-      const vaultBaseName = GENRE_VAULT_NAMES[sampleGenre as GenreId];
-      const uniqueVaultName = pickUniqueMythosVaultName(parentBase, vaultBaseName);
-      const mythosVaultRoot = path.join(parentBase, uniqueVaultName);
-      const sampleStoryVaultPath = path.join(mythosVaultRoot, 'Story Vault');
-      const sampleNotesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
-
-      try {
-        fs.cpSync(path.join(sampleDir, 'story-vault'), sampleStoryVaultPath, { recursive: true });
-        fs.cpSync(path.join(sampleDir, 'notes-vault'), sampleNotesVaultPath, { recursive: true });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return { ok: false, error: `Failed to copy sample vault: ${msg}` };
-      }
-
-      saveVaultSettings({ vaultRoot: sampleStoryVaultPath, notesVaultRoot: sampleNotesVaultPath, layoutMode: 'default' });
-      addToRecentProjects(sampleStoryVaultPath, sampleNotesVaultPath);
-      ensureVaultDir();
-      ensureNotesVaultDir();
-
-      const rawManifest = readManifest(getManifestPath());
-      const { manifest: synced } = reindexVault(sampleStoryVaultPath, rawManifest);
-      writeManifest(getManifestPath(), synced);
-      try { buildFullIndex(getDb(), sampleStoryVaultPath, synced); } catch { /* non-fatal */ }
-
-      await stopVaultWatcher();
-      await startVaultWatcher(sampleStoryVaultPath, notifyVaultChanged);
-      await stopNotesVaultWatcher();
-      await startNotesVaultWatcher(sampleNotesVaultPath, notifyNotesVaultChanged);
-
-      const firstScene = synced.stories[0]?.chapters[0]?.scenes[0] ?? synced.scenes[0];
-      persistSettings(firstScene?.id, firstScene?.path, resolvedParent);
-      return { ok: true, firstSceneId: firstScene?.id, firstScenePath: firstScene?.path };
 
     } else if (startMode === 'template') {
       if (!templateId) return { ok: false, error: 'templateId required for template start' };
