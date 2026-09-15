@@ -53,7 +53,7 @@ These must be visually distinguishable at a glance, not just by reading the copy
 
 **Failed state** (new: `FailureState`, sibling of `EmptyState`, same content-area position)
 - Uses `--state-danger` / `--color-danger-bg` / `--color-danger-border` (existing tokens,
-  `frontend/src/tokens.css:208,218,320-322`).
+  `frontend/src/tokens.css:212,324-325`).
 - Icon is a warning glyph, not the surface's neutral icon — icon shape carries the meaning too,
   never color alone (WCAG color-independence).
 - Heading states what didn't work, in plain language, not the error class name.
@@ -96,8 +96,12 @@ text on every user):
 └─────────────────────────────────────────────────────────┘
 ```
 
-- Component: reuse `MigrationBanner` chrome (`frontend/src/components/MigrationBanner/`) — it
-  already has this exact shape (persistent bar + expandable detail body). Restyle with
+- Component: reuse `MigrationBanner`'s **bar chrome only** (`frontend/src/components/MigrationBanner/`)
+  — the persistent summary bar. Its disclosure is a "Review" button that opens a modal
+  (`role="dialog" aria-modal="true"`), not an inline expand-in-place body — that part does not
+  match this pattern and is not reusable as-is. The `[Details ▾]` inline expansion shown above is
+  **new**: build it as a disclosure region under the bar (`aria-expanded` on the toggle,
+  `role="region"` on the revealed list), styled to match the bar. Restyle the bar with
   `--color-warning-bg` / `--color-warning-border` for partial success (not the green "migration
   ok" tint it currently uses, and not danger-red — partial success is its own tone, not a subset
   of failure).
@@ -199,36 +203,47 @@ Required behavior:
 
 ## 9. Worked example B — SKY-11816, unparseable AI response in Beta Reader
 
-**Before (the bug):** click Run → button shows "Reading…" → button reverts, main panel reverts to
-the `EmptyState` ("No beta reads yet"). The model's response existed; nothing downstream signaled
-the mismatch.
+**Before (the bug):** click Run → button shows "Reading…" → the read completes → the panel shows a
+report that reads as near-empty and unhelpful (0 score, "weak" verdict, no reactions), or on some
+runs the surrounding UI collapses back toward "No beta reads yet." Either way the model produced a
+response and the user gets no signal that anything went wrong — a failure reads as a valid,
+if disappointing, result.
 
-**After, per this pattern:**
-
-`BetaReaderPage.tsx`'s `handleRun` (`frontend/src/beta/BetaReaderPage.tsx:187-249`) already has a
-`try/catch` that shows an `error`-level toast when `window.api.betaReportRun` throws or resolves
-`{ error }`. The gap SKY-11816 exposes is a response that resolves successfully at the IPC layer
-but fails a later step (e.g. the report shape doesn't parse, `report.reactions` isn't iterable,
-whatever the specific defect turns out to be) *without* throwing — so it falls through to the
-success path with a report that was never actually set, leaving `selectedReport` unset and the
-empty state render.
+**Actual mechanism** — `parseBetaReportResponse` (`electron-main/src/betaReport.ts:76-133`) is
+written to *never fail*: it scans the model's response line by line for JSON objects tagged
+`type: 'summary'` / `type: 'reaction'` and silently skips anything that doesn't parse. If the
+model's response is fully unparseable — no valid JSON lines at all, e.g. a reasoning model that
+answers only in prose, or wraps its JSON in `<think>` tags the parser never unwraps — the function
+still returns a well-formed `ParsedBetaReport`: `summary.overallScore: 0`, `overallVerdict: 'weak'`,
+`summary.feedback` set to the hardcoded `FALLBACK_FEEDBACK` string ("The Beta Reader could not
+produce a structured report for this read. Try running it again."), and `reactions: []`. In
+`BetaReaderPage.tsx`, `handleRun` (`frontend/src/beta/BetaReaderPage.tsx:187-249`) has no way to
+tell this fallback report apart from a real one — `setSelectedReport(report)` runs unconditionally
+at line 213, before the code ever looks at `report.reactions` (line 217). **A total parse failure
+silently succeeds as a valid-looking, near-empty report.** That is itself the exact violation this
+spec's §2/§3 rule exists to catch — Failed presenting as Empty/weak-Success — which makes this a
+sharper example than a thrown-exception case, not a weaker one.
 
 Required behavior:
 
-1. Any step between "the model responded" and "a valid report is set in state" that cannot
-   proceed must throw (or set an explicit failure state) — never fall through silently to leave
-   `selectedReport` unset. Treat "response came back but didn't match the expected shape" as a
-   parse failure, same bucket as a network error.
-2. On that failure, render the in-place **Failed** state (§3) in the `beta-reader-main` panel —
-   not the `beta-reader-empty` block — with heading "Could not read the response." and body "Try
-   running it again." plus a **Retry** button that re-invokes `handleRun` with the same scope/focus
-   (no need to reselect anything — Tesler's law, keep the complexity on the system's side).
-3. Keep the existing `error`-level toast (`frontend/src/beta/BetaReaderPage.tsx:245`) as the
-   secondary, transient echo — the in-place Failed state is the record that persists if the user
-   looks away mid-run and misses the toast.
+1. `parseBetaReportResponse` must report *whether it found anything to parse*, not just return a
+   best-effort shape. Add a signal the caller can check — e.g. a `parsed: boolean` (or
+   `summary === null` before defaulting) — that is `false` only when zero summary/reaction lines
+   were recognized in the response text, so a genuinely weak-but-real report (model tried, scored
+   itself low) is never confused with a response the parser found nothing in.
+2. In `handleRun`, when that signal says nothing was parsed, do not call
+   `setSelectedReport(report)` with the fallback shape. Instead render the in-place **Failed**
+   state (§3) in the `beta-reader-main` panel — not `EmptyState` — with heading "Could not read
+   the response." and body "Try running it again." plus a **Retry** button that re-invokes
+   `handleRun` with the same scope/focus (no need to reselect anything — Tesler's law, keep the
+   complexity on the system's side).
+3. Keep the existing `error`-level toast path (`frontend/src/beta/BetaReaderPage.tsx:245`, for
+   thrown/`{ error }` responses) as the transient echo for that case; the new parse-failure branch
+   gets the same toast treatment plus the persistent in-place Failed state, since a toast alone
+   is not enough if the user looks away mid-run.
 4. The distinction from a genuine empty state ("no reads run yet," a first-time user) must remain
-   intact: `EmptyState` is for "you haven't tried," `FailureState` is for "you tried and it broke."
-   Never let a failed run silently reset back to the "you haven't tried" copy.
+   intact: `EmptyState` is for "you haven't tried," `FailureState` is for "you tried and the
+   response couldn't be used." Never let an unparseable response render as a real, if weak, report.
 
 ## 10. Components and tokens to reuse (do not invent new ones without cause)
 
@@ -237,7 +252,7 @@ Required behavior:
 | Neutral empty content area | `frontend/src/components/EmptyState/EmptyState.tsx` |
 | Failed content area | **New** `FailureState` — same file/prop shape as `EmptyState` (`icon`, `heading`, `hint`, `action`), danger-toned. Build as a sibling in `frontend/src/components/EmptyState/`, not a one-off per surface. |
 | Transient confirmations | `frontend/src/hooks/useToast.ts` + `frontend/src/components/Toast/Toast.tsx` (already has the `role="alert"` vs `role="status"` split — reuse, don't reinvent) |
-| Persistent partial-success / skipped-items banner | Restyle `frontend/src/components/MigrationBanner/` chrome — expandable bar + detail list already exists |
+| Persistent partial-success / skipped-items banner | Restyle `frontend/src/components/MigrationBanner/`'s **bar only** — its "Review" disclosure is a modal, not inline; the inline `[Details ▾]` expand-in-place body is new, built as a disclosure region under the reused bar |
 | Color tokens | `--state-danger` / `--color-danger-bg` / `--color-danger-border` (failure); `--state-warning` / `--color-warning-bg` / `--color-warning-border` (partial); no new colors |
 | Spacing / radius | `--space-*`, `--radius-*` scale in `frontend/src/tokens.css` — no hardcoded px |
 
