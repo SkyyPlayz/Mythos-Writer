@@ -184,6 +184,44 @@ animation and would desync from the pixels it is meant to be darkening.
 - `scripts/wallpapers/measure-pack.mjs` section 3 — the acceptance numbers, on
   the real WebP decoder and the real pack. Its `solveBackingAlpha` mirrors the
   module's; keep the two in step.
+- `e2e/tests/sky-11209-liquid-neon-views.spec.ts` — the floor, proven in real
+  Electron pixels on `.msv`. See below.
+
+## The SKY-11209 threshold this displaced
+
+SKY-11209 pixel-proved that `.vgv-canvas` and `.msv` show the wallpaper instead
+of a flat opaque `--bg-base` fill, by asserting each region's mean luminance
+reads `> 50` over a deliberately blinding synthetic wallpaper (flat `#fff04d`
+and friends — brighter than any image in the shipped pack).
+
+`.msv` is a full-screen **base panel carrying body text**, so it takes the
+backing. That makes the two assertions incompatible, and not marginally:
+
+| `.msv` mean luma, blinding wallpaper | without backing | with backing |
+| --- | --- | --- |
+| mean | 86.0 | 33.8 |
+| median | 84.9 | 28.8 |
+| p90 | 123.6 | 41.0 |
+
+This is not a threshold that could be nudged. A 4.5:1 floor behind `#c8d3e7`
+caps the composited panel background near sRGB 89 *whatever* the wallpaper is,
+so `> 50` became unreachable for every wallpaper, not just this one — the AA
+floor is now the binding constraint, not the glass fill.
+
+So the `.msv` assertions were re-expressed as the invariant SKY-11209 actually
+protects — the view **tracks** the wallpaper rather than being a fixed fill —
+plus a new guard that buys back more than it gave up:
+
+- `brightLuma > deepLuma * 1.5` and `brightLuma - deepLuma > 10`. The original
+  bug read bright ≈ deep (ratio 1.0); this build reads 33.8 vs 16.7 = 2.02x.
+- `brightMedian < 45` — **new**. Over a blinding wallpaper the bulk of the
+  panel must stay dark enough for body text. Median, not mean, so bright glyphs
+  and neon accents can't mask a regression. 28.8 with the backing, 84.9
+  without: removing the backing fails this by a factor of ~1.9.
+
+`.vgv-canvas` keeps the original absolute `> 50` / `> 30` thresholds untouched
+— it is a graph canvas, not a text-bearing panel, takes no backing, and still
+guards SKY-11209 in its original form.
 
 ## Out of scope
 
