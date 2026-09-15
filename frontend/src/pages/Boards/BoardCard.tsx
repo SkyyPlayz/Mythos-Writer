@@ -34,7 +34,7 @@ export interface BoardItem {
   childCards?: number;
   /** preview text excerpt (first ~140 chars of note content) */
   excerpt?: string;
-  /** SKY-11186: resolved thumbnail (spec §9); absent/none/off → text-only card. */
+  /** SKY-11186: resolved thumbnail (spec §8); absent/none/off → text-only card. */
   thumb?: NoteThumbInfo;
 }
 

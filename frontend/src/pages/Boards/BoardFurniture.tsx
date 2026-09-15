@@ -1,6 +1,6 @@
 /**
  * SKY-11188 (Notes Board 5/9): board-only furniture — column, check, table,
- * image, sketch, swatch. BOARDS-SPEC.md v2 §4/§6/§14. `line` has no box of
+ * image, sketch, swatch. BOARDS-SPEC.md v2 §4/§6/§13. `line` has no box of
  * its own — see BoardFurnitureLines — so it isn't rendered here.
  *
  * A column item's `ref` is not a second link representation (§4): it is a
@@ -10,7 +10,7 @@
  * at click time elsewhere in the app would a raw `[[wikilink]]` need it.
  *
  * `image`/`sketch` render a drop placeholder / canned SVG — the real
- * attachment and drawing pipelines are out of scope per spec §14, and are
+ * attachment and drawing pipelines are out of scope per spec §13, and are
  * labelled as such so review doesn't mistake them for the real thing.
  */
 import { memo } from 'react';

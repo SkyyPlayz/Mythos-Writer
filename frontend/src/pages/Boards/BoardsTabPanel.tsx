@@ -2,10 +2,10 @@
  * SKY-11184: Notes Board top-level tab panel.
  * Renders a breadcrumb nav + BoardCanvas for the current board folder.
  * BOARDS-SPEC.md §1, §5.
- * SKY-11186: resolves each note child's thumbnail (spec §9) alongside the
+ * SKY-11186: resolves each note child's thumbnail (spec §8) alongside the
  * listing, threads the zoom-out limit setting through, and reloads the open
  * board when the Notes vault changes on disk.
- * SKY-11191 §11: cross-board search, the wiki-link overlay toggle and the
+ * SKY-11191 §10: cross-board search, the wiki-link overlay toggle and the
  * minimap toggle. All three are purely derived — the panel owns the two data
  * sources (the recursive vault listing and the Vault Graph's link index) and
  * the canvas owns the geometry; nothing new is written to Store B.
@@ -165,7 +165,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   const [savedLayout, setSavedLayout] = useState<Record<string, ItemLayout>>({});
   const [savedView, setSavedView] = useState<{ zoom: number; panX: number; panY: number }>({ zoom: 100, panX: 0, panY: 0 });
   // SKY-11188: board-only furniture + every touched child's own item key.
-  // SKY-11191 reads the same array for its `column` items' `ref`s (§11) —
+  // SKY-11191 reads the same array for its `column` items' `ref`s (§10) —
   // one source, so an overlay connector can never point at a stale box.
   const [furniture, setFurniture] = useState<BoardFurnitureItemData[]>([]);
   const [itemKeysByPath, setItemKeysByPath] = useState<Record<string, string>>({});
@@ -237,7 +237,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
         childCounts.set(parent, counts);
       }
 
-      // SKY-11186 / spec §9: one batched resolve for this board's notes — the
+      // SKY-11186 / spec §8: one batched resolve for this board's notes — the
       // card's default SIZE depends on whether it has a thumbnail (§6), so
       // this has to be known before layout, not lazily per visible card. The
       // ~256px derivative itself is fetched lazily by the card that needs it.
@@ -335,7 +335,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     };
   }, [notesVaultValid, currentFolder, loadBoard]);
 
-  // ── SKY-11191 §11: wiki-link overlay + minimap ──────────────────────────
+  // ── SKY-11191 §10: wiki-link overlay + minimap ──────────────────────────
   //
   // Both are VIEW state, deliberately not persisted anywhere: the ticket's
   // third acceptance criterion is that killing and reloading the app needs no
@@ -393,7 +393,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     [wikiLinkOverlay, furniture],
   );
 
-  // ── SKY-11191 §11: cross-board search ───────────────────────────────────
+  // ── SKY-11191 §10: cross-board search ───────────────────────────────────
   //
   // The name index is `listNotesVault('')` — already recursive, so one call
   // from the vault root indexes every folder and note. Loaded lazily on the
@@ -829,7 +829,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
         </div>
 
         {/*
-          SKY-11191 §11: the two derived-view toggles. Plain toggle buttons
+          SKY-11191 §10: the two derived-view toggles. Plain toggle buttons
           rather than a second radio group — the overlay and the minimap are
           independent, and either can be on without the other.
         */}
@@ -862,7 +862,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
         </div>
 
         {/*
-          SKY-11191 §11: cross-board search. A real combobox — the results are
+          SKY-11191 §10: cross-board search. A real combobox — the results are
           the control's whole purpose, so the arrow keys have to walk them and
           `aria-activedescendant` has to name the one Enter would take. A bare
           field with a list of buttons under it would be reachable only by

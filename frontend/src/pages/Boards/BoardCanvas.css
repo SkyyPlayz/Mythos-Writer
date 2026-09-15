@@ -206,7 +206,7 @@
   right: 0;
 }
 
-/* ── SKY-11191 §11: wiki-link overlay ──
+/* ── SKY-11191 §10: wiki-link overlay ──
    Slot 1 (the notes slot) at low alpha: a connector belongs to the cards it
    joins, so it should read as the same family of light rather than as a third
    colour. Beneath the cards (z-index 0 against their positioned boxes) and
@@ -246,7 +246,7 @@
   }
 }
 
-/* ── SKY-11191 §11: minimap ──
+/* ── SKY-11191 §10: minimap ──
    Derived from the item boxes; nothing about it is persisted. Bottom-LEFT so
    it never collides with the centred zoom pill or with the resize handle of a
    card parked in the bottom-right corner. */
@@ -425,7 +425,7 @@
   -webkit-box-orient: vertical;
 }
 
-/* ── SKY-11186: thumbnail block (spec §9, mockup `thumbSt` script 8086) ──
+/* ── SKY-11186: thumbnail block (spec §8, mockup `thumbSt` script 8086) ──
    Sits between the title row and the preview: radius 10, 8px above, and
    the preview beneath it drops to two lines (mockup `max-height:36px` vs
    68px on a text-only card). Height is set inline by BoardCard from
@@ -814,7 +814,7 @@
   white-space: nowrap;
 }
 
-/* SKY-11188/§14: placeholder chrome for image/sketch — explicitly labelled
+/* SKY-11188/§13: placeholder chrome for image/sketch — explicitly labelled
    so review never mistakes it for the real attachment/drawing pipeline. */
 .board-canvas__furniture-media {
   flex: 1;

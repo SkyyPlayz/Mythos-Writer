@@ -153,15 +153,15 @@ export interface BoardCanvasProps {
   lineToolActive?: boolean;
   onFurniturePick?: (id: string) => void;
 
-  // ── SKY-11191: wiki-link overlay + minimap (§11) ──
+  // ── SKY-11191: wiki-link overlay + minimap (§10) ──
   /**
-   * SKY-11191 §11: the wiki-link overlay's connectors, as ANCHOR KEY pairs
+   * SKY-11191 §10: the wiki-link overlay's connectors, as ANCHOR KEY pairs
    * (an item path, or `furniture:<id>`). The panel owns the link graph; the
    * canvas owns the geometry, because only it knows where a card ended up
    * after auto-layout, a drag or a resize.
    */
   wikiLinks?: readonly BoardWikiLink[];
-  /** Draw those connectors. Off by default — the overlay is a toggle (§11). */
+  /** Draw those connectors. Off by default — the overlay is a toggle (§10). */
   wikiLinkOverlay?: boolean;
   /**
    * FALLBACK rects for anchors the canvas cannot resolve itself, keyed the
@@ -171,10 +171,10 @@ export interface BoardCanvasProps {
    * instead of waiting for the commit (SKY-11717).
    */
   linkAnchors?: ReadonlyMap<string, AnchorRect>;
-  /** SKY-11191 §11: show the derived minimap. */
+  /** SKY-11191 §10: show the derived minimap. */
   showMinimap?: boolean;
   /**
-   * SKY-11191 §11: select an item and scroll it into view — a cross-board
+   * SKY-11191 §10: select an item and scroll it into view — a cross-board
    * search hit landing on this board. `seq` is bumped per request so picking
    * the same hit twice re-reveals it.
    */
@@ -862,7 +862,7 @@ export default function BoardCanvas({
     return rects;
   }, [furniture, localFurniturePositions, localFurnitureSizes]);
 
-  // ── SKY-11191 §11: wiki-link overlay ────────────────────────────────────
+  // ── SKY-11191 §10: wiki-link overlay ────────────────────────────────────
   // Anchors are item paths plus whatever extra boxes the panel supplied
   // (ticket 5's `column` furniture). Both maps are built only while the
   // overlay is on, so a board with the toggle off pays nothing for it.
@@ -881,7 +881,7 @@ export default function BoardCanvas({
     return connectorSegments(wikiLinks, anchors);
   }, [wikiLinkOverlay, wikiLinks, linkAnchors, itemRects, furnitureRects]);
 
-  // ── SKY-11191 §11: minimap ──────────────────────────────────────────────
+  // ── SKY-11191 §10: minimap ──────────────────────────────────────────────
   const minimapBoxes: MinimapBox[] = useMemo(
     () =>
       showMinimap
@@ -928,7 +928,7 @@ export default function BoardCanvas({
     [pan, zoom, handleScroll],
   );
 
-  // ── SKY-11191 §11: reveal a searched-for item ───────────────────────────
+  // ── SKY-11191 §10: reveal a searched-for item ───────────────────────────
   // The request routinely arrives BEFORE the board it points at has finished
   // loading, so this watches the resolved items rather than firing once: it
   // stays pending until the named item is actually on the board, then selects
@@ -1147,7 +1147,7 @@ export default function BoardCanvas({
             )}
 
             {/*
-              SKY-11191 §11: the wiki-link overlay sits UNDER the cards and
+              SKY-11191 §10: the wiki-link overlay sits UNDER the cards and
               inside the same transformed world, so a connector is attached to
               the two boxes it joins through pan, zoom and drag without any
               per-frame recalculation of its own.
@@ -1167,7 +1167,7 @@ export default function BoardCanvas({
         </div>
       </div>
 
-      {/* SKY-11191 §11: derived minimap. A sibling of the scroll panel, not a
+      {/* SKY-11191 §10: derived minimap. A sibling of the scroll panel, not a
           child of the world: it must keep its size at every zoom and stay
           pinned to the panel's corner instead of scrolling away with the
           board — the same reason the zoom pill lives out here. */}
