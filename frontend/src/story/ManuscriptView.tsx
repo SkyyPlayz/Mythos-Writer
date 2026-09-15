@@ -550,17 +550,36 @@ export default function ManuscriptView({
     return 'Body Text';
   }
 
+  // SKY-11761: the style <select> is the one toolbar control that must take
+  // real DOM focus to work (native <select>s can't be opened with a
+  // mousedown-preventDefault guard the way the fmt/align/block buttons are).
+  // Tiptap's chained `.focus()` command defers the actual `view.focus()` to
+  // `requestAnimationFrame` (its React workaround), so running it before the
+  // style command here would dispatch toggleHeading/setParagraph/
+  // toggleBlockquote while `view.hasFocus()` is still false — the doc and
+  // editor.state.selection land correctly, but ProseMirror's selectionToDOM
+  // skips writing that selection into the browser (editorOwnsSelection
+  // requires focus), leaving the native caret stale. One frame later the
+  // deferred view.focus() restores DOM focus, the browser drops the caret
+  // wherever it defaults (not necessarily inside the new heading), and
+  // ProseMirror's selectionchange listener treats that as authoritative —
+  // silently moving editor.state.selection back out of the heading. The
+  // select's value (read from isActive()) desyncs from the visible document.
+  // Applying the command first, then refocusing via the raw view (not the
+  // tiptap command) closes that window: EditorView.focus() calls
+  // selectionToDOM() synchronously once it has already set DOM focus, so it
+  // writes the correct (already-updated) selection into the browser in the
+  // same tick instead of leaving it to a later, unsynced flush.
   function applySceneStyle(ed: Editor, value: string) {
     if (value === 'Quote') {
-      ed.chain().focus().toggleBlockquote().run();
-      return;
+      ed.chain().toggleBlockquote().run();
+    } else if (value === 'Body Text') {
+      ed.chain().setParagraph().run();
+    } else {
+      const level = Number(value.replace('Heading ', '')) as 1 | 2 | 3 | 4 | 5 | 6;
+      ed.chain().toggleHeading({ level }).run();
     }
-    if (value === 'Body Text') {
-      ed.chain().focus().setParagraph().run();
-      return;
-    }
-    const level = Number(value.replace('Heading ', '')) as 1 | 2 | 3 | 4 | 5 | 6;
-    ed.chain().focus().toggleHeading({ level }).run();
+    ed.view.focus();
   }
 
   // SKY-10925: FormatToolbar's list/quote/code toggles carry no msv-toolbar
