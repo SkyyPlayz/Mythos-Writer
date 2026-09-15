@@ -21,7 +21,7 @@
         "sourceFolder": "Aurora",
         "sourceFile": "ChatGPT Image Sep 8, 2026, 08_43_22 PM (4).png",
         "sha256": "caa6201dc634204bed66f09f097c593144b82124c0e2a21e64cb9e592b37bc77",
-        "cropNote": null
+        "cropNote": "Symmetric aurora arc over a mirror-still lake, mountains balanced on both sides; a centre 16:9 crop keeps the full lake, peaks, and the arc's brightest curve intact."
       },
       {
         "file": "aurora-4.webp",
@@ -35,7 +35,7 @@
         "sourceFolder": "Aurora",
         "sourceFile": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (2).png",
         "sha256": "9337a141094d9102d468d8b437a856ba97db1096d705c93c4e7820b30347b075",
-        "cropNote": null
+        "cropNote": "Native 16:9. Aurora curtains fanning above a sunset cloud sea, sun low and centred."
       },
       {
         "file": "aurora-6.webp",
@@ -171,7 +171,7 @@
         "sourceFolder": "Noir Rose",
         "sourceFile": "ChatGPT Image Sep 8, 2026, 09_07_15 PM (2).png",
         "sha256": "11041f7d2572a1cacc8688715f0c6e66705335db6af12bc2ce61aa7c7d5c6dec",
-        "cropNote": null
+        "cropNote": "Native 16:9. Rose nebula bank lower-left with a faint comet streak upper-right, balanced against open dark sky."
       },
       {
         "file": "noir-4.webp",
@@ -194,7 +194,7 @@
         "sourceFolder": "Royal Arcana",
         "sourceFile": "ChatGPT Image Sep 8, 2026, 08_28_21 PM (2).png",
         "sha256": "942b38f2e7f579b9d4b8e3ccf78549a6eb3763c5eddd3ecb583c540d6adf7ee9",
-        "cropNote": null
+        "cropNote": "Native 16:9. Centred orrery rings and starburst; twin side dials bleed off both edges symmetrically by design."
       },
       {
         "file": "royal-2.webp",
