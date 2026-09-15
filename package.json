@@ -34,7 +34,7 @@
     "test:e2e:obsidian-import-fidelity": "playwright test e2e/obsidian-import-fidelity.spec.ts --reporter=list,html",
     "test:e2e:vault-open-folder-guard": "playwright test e2e/vault-open-folder-guard-sky11132.spec.ts --reporter=list,html",
     "test:e2e:auto-update": "MYTHOS_AUTO_UPDATE=1 playwright test e2e/auto-update-beta.spec.ts --reporter=list,html",
-    "test:e2e:crud": "playwright test e2e/vault-crud.spec.ts e2e/tests/first-run-dead-end.spec.ts e2e/vault-not-found.spec.ts e2e/settings-vault-path.spec.ts e2e/settings-new-vault.spec.ts e2e/tests/sky-906-default-vault-and-switcher.spec.ts e2e/navigator-popout.spec.ts e2e/story-import.spec.ts e2e/story-import-epub.spec.ts e2e/tests/sky-11008-delete-scene-chapter.spec.ts e2e/tests/sky-11048-nav-rail-vault-tiles.spec.ts e2e/tests/sky-11238-vault-rail-stable-order.spec.ts --reporter=list,html",
+    "test:e2e:crud": "playwright test e2e/vault-crud.spec.ts e2e/tests/first-run-dead-end.spec.ts e2e/vault-not-found.spec.ts e2e/settings-vault-path.spec.ts e2e/settings-new-vault.spec.ts e2e/tests/sky-906-default-vault-and-switcher.spec.ts e2e/navigator-popout.spec.ts e2e/story-import.spec.ts e2e/story-import-epub.spec.ts e2e/tests/sky-11008-delete-scene-chapter.spec.ts e2e/tests/sky-11048-nav-rail-vault-tiles.spec.ts e2e/tests/sky-11238-vault-rail-stable-order.spec.ts e2e/tests/sky-11815-vaults-parent-move-stale-state.spec.ts --reporter=list,html",
     "test:e2e:vault-rail-stable-order": "playwright test e2e/tests/sky-11238-vault-rail-stable-order.spec.ts --reporter=list,html",
     "test:e2e:archive-quickadd": "playwright test e2e/timeline-archive-quickadd.spec.ts --reporter=list,html",
     "test:e2e:timeline-rebuild": "playwright test e2e/timeline-rebuild-sky10876.spec.ts --reporter=list,html",

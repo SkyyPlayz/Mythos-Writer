@@ -139,14 +139,37 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
       .catch(() => { /* non-fatal */ });
   }, []);
 
+  const refreshActiveRoot = useCallback(() => {
+    window.api?.getVaultRoot?.()
+      .then((res) => { if (res?.vaultRoot) setActiveRoot(res.vaultRoot); })
+      .catch(() => { /* non-fatal */ });
+  }, []);
+
   useEffect(() => {
     refreshVaults();
     refreshHidden();
     loadIcons();
-    window.api?.getVaultRoot?.()
-      .then((res) => { if (res?.vaultRoot) setActiveRoot(res.vaultRoot); })
-      .catch(() => { /* non-fatal */ });
-  }, [refreshVaults, refreshHidden, loadIcons]);
+    refreshActiveRoot();
+  }, [refreshVaults, refreshHidden, loadIcons, refreshActiveRoot]);
+
+  // SKY-11815: a Vaults-folder Move rewrites every vault's absolute path in
+  // vault-settings.json, but this component's `vaults` and `activeRoot` state
+  // were only ever fetched on mount — left alone, cards kept showing the
+  // pre-move paths for the rest of the session, so clicking one to switch
+  // failed the recent-projects allowlist (it only recognizes the post-move
+  // paths). `createDest` gets the same treatment: it is normally prefilled
+  // once and left alone so the user's own edits stick, but a stale prefill
+  // here means "New vault…" silently recreates the just-deleted pre-move
+  // folder — so a Move clears it, and onOpenCreate's existing
+  // `if (!createDest)` guard re-prefills it from the (now current) default.
+  useEffect(() => {
+    if (!window.api?.onVaultsParentMoved) return;
+    return window.api.onVaultsParentMoved(() => {
+      refreshVaults();
+      refreshActiveRoot();
+      setCreateDest('');
+    });
+  }, [refreshVaults, refreshActiveRoot]);
 
   useEffect(() => {
     if (createOpen) createNameRef.current?.focus();
@@ -221,7 +244,17 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     if (!createDest) {
       try {
         const paths = await window.api?.vaultGetPaths?.();
-        if (paths?.defaultVaultsParentPath) setCreateDest(paths.defaultVaultsParentPath);
+        // SKY-11815: `defaultVaultsParentPath` is the static <userData>/vaults
+        // default and never reflects a completed Vault & Files "Move…" — it
+        // is NOT a caching bug, it's this call site reading the wrong field
+        // (independent of repro 1's staleness). `vaultsParentPath` is the
+        // CURRENT parent (falls back to the same default when unmoved) —
+        // useCreateMythosVaultFlow.tsx already prefers it the same way; this
+        // call site just never did. Falling back to defaultVaultsParentPath
+        // keeps a legacy main process (older than SKY-11154, no such field)
+        // working the way it always did.
+        const dest = paths?.vaultsParentPath || paths?.defaultVaultsParentPath;
+        if (dest) setCreateDest(dest);
       } catch { /* prefill unavailable — Browse still works */ }
     }
   }, [createDest]);

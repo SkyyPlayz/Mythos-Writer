@@ -6102,6 +6102,21 @@ const handlers: IpcHandlers = {
       startWritingScanScheduler,
     });
 
+    // SKY-11815: every path derived from vaultsParentPath was correct in
+    // vault-settings.json the moment saveVaultSettings(remapped) above ran,
+    // but the renderer's own copies — nav-rail tiles, Settings > Mythos
+    // vaults cards, and the New-vault Destination prefill — were all read
+    // once on mount and never told the parent moved, so they kept pointing
+    // at the now-gone pre-move paths for the rest of the session (switching
+    // to them failed the recent-projects allowlist; New-vault silently
+    // recreated the deleted folder). Push the new roots so those surfaces
+    // can refresh in place without resetting editor/selection state the way
+    // a full 'project:switched' broadcast would.
+    mainWindow?.webContents.send('vaultsParent:moved', {
+      vaultRoot: newActiveRoot,
+      notesVaultRoot: newActiveNotesRoot,
+    });
+
     return { moved: true, newPath: resolvedDestination };
   },
 

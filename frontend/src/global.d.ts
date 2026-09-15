@@ -1513,6 +1513,9 @@ interface Window {
     // every Mythos vault.
     vaultSurfaceRevealVaultsParent: () => Promise<{ opened: boolean }>;
     vaultSurfaceMoveVaultsParent: (newParentPath: string) => Promise<{ moved: boolean; newPath?: string; error?: string }>;
+    // SKY-11815: pushed after a successful Vaults-folder move so surfaces that
+    // cached a pre-move vault path can refresh in place.
+    onVaultsParentMoved: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => () => void;
 
     // One-click Mythos Vault create (SKY-320). Omitting parentPath puts the
     // new bundle under ~/Mythos/Vaults/<auto-name>/; the renderer can supply

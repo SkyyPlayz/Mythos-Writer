@@ -732,6 +732,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('vault:surface:revealVaultsParent', undefined),
   vaultSurfaceMoveVaultsParent: (newParentPath: string) =>
     ipcRenderer.invoke('vault:surface:moveVaultsParent', { newParentPath }),
+  // SKY-11815: fired after a successful Vaults-folder move so any renderer
+  // surface caching a vault path (nav-rail tiles, Settings > Mythos vaults,
+  // New-vault Destination prefill) can refresh without a full project switch.
+  onVaultsParentMoved: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {
+    const handler = (_: unknown, data: { vaultRoot: string; notesVaultRoot?: string }) => cb(data);
+    ipcRenderer.on('vaultsParent:moved', handler);
+    return () => ipcRenderer.removeListener('vaultsParent:moved', handler);
+  },
   onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {
     const handler = (_: unknown, data: { vaultRoot: string; notesVaultRoot?: string }) => cb(data);
     ipcRenderer.on('project:switched', handler);
