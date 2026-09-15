@@ -166,6 +166,12 @@ export const PEAK_MEASURE_MAX_DIM = 1280;
  * window aspect ratio and with the `lnDrift` zoom, so a bright corner that is
  * off-screen right now can be on-screen a resize later. Measuring everything
  * is the conservative choice.
+ *
+ * That conservatism costs roughly 2x alpha at 1920x1080 — it is unspent
+ * headroom, deliberately left here. UXDesigner's SKY-11817 sign-off ruled it
+ * stays unspent: claiming it means baking in a viewport aspect ratio for a
+ * glass gain on wallpapers that already clear AA at ~9:1. If a future ticket
+ * wants denser glass back, this is the knob, and that is the trade it buys.
  */
 export function peakCellLuminance(
   data: Uint8ClampedArray | Uint8Array,

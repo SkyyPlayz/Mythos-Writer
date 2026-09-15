@@ -127,6 +127,27 @@ call, not an engineering one. Two knobs exist if it is judged too heavy:
 - keep the cap (`MAX_BACKING_ALPHA`) and accept AA failure on the worst
   handful of images.
 
+## Design sign-off — SKY-11817, approve as-is
+
+UXDesigner reviewed the composited before/after renders and ruled on all four
+open questions. Recorded here so the trade is not re-litigated:
+
+- **Density: accepted.** Both alternative knobs above resolve to leaving body
+  text below AA on real wallpapers, and accessibility is structural per
+  COMPANY-STANDARDS — correctness outranks aesthetic consistency in our own
+  priority order. Weighed as landing right because the border, rim and glow are
+  untouched (the panel still reads as glass, just denser) and the fresh-install
+  default wallpaper only solves to alpha 0.242.
+- **Padding box over content box: confirmed.** Content-box's square corners
+  inside a 20px-radius panel break Prägnanz — the panel stops reading as one
+  shape.
+- **The ~2x measurement headroom stays unspent.** Claiming it means baking in a
+  viewport aspect ratio for a glass gain on wallpapers that already clear AA at
+  ~9:1. Noted at `peakCellLuminance` in `theme/textBacking.ts` as the knob a
+  future ticket would turn.
+- **The spatially varying scrim below is an owner-level call**, filed
+  separately as non-blocking; it does not gate this change.
+
 ## The alternative worth considering (out of scope here)
 
 A **spatially varying scrim** would cost far less glass: generate a darkening
