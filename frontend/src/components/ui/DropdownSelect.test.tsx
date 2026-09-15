@@ -80,6 +80,16 @@ describe('DropdownSelect', () => {
       expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     });
 
+    it('closes on Escape even when focus is outside the portal (SKY-11809)', () => {
+      renderSelect();
+      fireEvent.click(screen.getByRole('combobox'));
+      expect(screen.getByRole('listbox')).toBeInTheDocument();
+      (document.activeElement as HTMLElement | null)?.blur();
+      expect(document.activeElement).toBe(document.body);
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
+    });
+
     it('closes on outside click', () => {
       renderSelect();
       fireEvent.click(screen.getByRole('combobox'));
