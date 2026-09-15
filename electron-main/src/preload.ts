@@ -70,7 +70,7 @@ contextBridge.exposeInMainWorld('api', {
     activate?: boolean;
   }) => ipcRenderer.invoke('vault:create-from-options', payload),
   // SKY-627: extended onboarding orchestration — creates vault + first scene.
-  onboardingComplete: (payload?: { startMode: string; storyTitle?: string; authorName?: string; vaultParentPath?: string; templateId?: string; vaultName?: string; sampleGenre?: string; customTemplate?: 'recommended' | 'blank'; genre?: string; themeKey?: string }) =>
+  onboardingComplete: (payload?: { startMode: string; storyTitle?: string; authorName?: string; vaultParentPath?: string; templateId?: string; vaultName?: string; customTemplate?: 'recommended' | 'blank'; genre?: string; themeKey?: string }) =>
     ipcRenderer.invoke('onboarding:complete', payload ?? {}),
   // SKY-12.4 / SKY-7473: soft reset (default) re-arms the onboarding gate without
   // touching vault paths; `hard: true` (MYTHOS_DEV=1 only) also clears vault paths.

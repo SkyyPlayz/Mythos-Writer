@@ -2950,21 +2950,17 @@ export interface AppSettings {
   legacyVaultDismissed?: boolean;
   legacyVaultPath?: string;
   /** SKY-1188: first-run path used to seed post-onboarding guidance. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+  onboardingStartMode?: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
   /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (renderer-owned). */
   onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
   recentVaultParentPaths?: string[];
-  /** SKY-2005: last sample genre selected from the onboarding sample preview. */
-  lastSampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
-  /** SKY-2553: one-time post-onboarding sample-project banner dismissal. */
-  sampleProjectBannerDismissed?: boolean;
   /** SKY-1188: timestamp of first completed onboarding. */
   firstLaunchAt?: string;
   /** SKY-1188: persisted post-onboarding checklist state. */
   gettingStartedProgress?: {
     firstSeenAt?: string;
-    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+    onboardingStartMode?: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
     dismissed: boolean;
     collapsed?: boolean;
     completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
@@ -3106,14 +3102,14 @@ export interface LastOpenedScene {
 export interface OnboardingCompletePayload {
   /** M29: 'start-fresh' creates a MythosVault v2 with the Veynn demo seed at a
    *  chosen location; 'quick-start' does the same at the default location. */
-  startMode: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
-  /** Required for blank / sample / template modes. Optional for default-mythos-vault
+  startMode: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+  /** Required for blank / template modes. Optional for default-mythos-vault
    *  (defaults to "My First Story" — a renamable seed). */
   storyTitle?: string;
   /** Optional; persisted to AppSettings.authorName. */
   authorName?: string;
   /** Parent directory for the new vault. Tilde-expanded server-side. Required for
-   *  blank/sample/template; for default-mythos-vault the main side falls back to
+   *  blank/template; for default-mythos-vault the main side falls back to
    *  the OS-default Mythos vaults parent when this is absent. */
   vaultParentPath?: string;
   /** Required for template mode. */
@@ -3121,9 +3117,6 @@ export interface OnboardingCompletePayload {
   /** Optional override for the Mythos Vault folder name (default-mythos-vault only).
    *  Rejected if it contains path separators or parent-traversal. */
   vaultName?: string;
-  /** Required for sample mode (SKY-2008): identifies which bundled genre vault to
-   *  install. Main-side validates against the allowlist and resolves the source dir. */
-  sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
   /** SKY-2991: Custom Setup template choice. When startMode='blank', 'recommended'
    *  scaffolds the default quick-start bundle; 'blank' leaves the vault empty.
    *  For startMode='start-fresh' (M29), 'recommended' seeds the Veynn demo and
@@ -3141,7 +3134,7 @@ export interface OnboardingCompletePayload {
 /** SKY-627: response from the extended onboarding:complete handler. */
 export interface OnboardingCompleteResponse {
   ok: boolean;
-  /** Scene ID of the first scene (blank/template/sample starts). */
+  /** Scene ID of the first scene (blank/template starts). */
   firstSceneId?: string;
   /** Relative path of the first scene within the story vault. */
   firstScenePath?: string;

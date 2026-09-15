@@ -4,7 +4,7 @@ export type GettingStartedItemId = (typeof CHECKLIST_ITEM_IDS)[number];
 // SKY-11152: 'import' added — the new 3-path first-run wizard's import mode
 // (createVaultFromOptions). Not 'skip', so the checklist behaves like any
 // other non-skip start mode (shown normally).
-export type OnboardingStartMode = 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
+export type OnboardingStartMode = 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
 
 export interface GettingStartedProgress {
   completedItems: GettingStartedItemId[];

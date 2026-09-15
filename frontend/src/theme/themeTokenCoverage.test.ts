@@ -79,7 +79,6 @@ const KNOWN_ORPHANS: readonly string[] = [
   'BrainstormPage.css  --state-error',
   'ContinuityPanel.css  --severity-critical-border',
   'DesktopShell.css  --accent-primary',
-  'DesktopShell.css  --muted-text',
   'DraftHistoryPanel.css  --text-default',
   'EntriesPanel.css  --accent-fg',
   'MoveVaultWizard.css  --accent-color',

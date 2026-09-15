@@ -1072,15 +1072,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
-  const handleDismissSampleProjectBanner = useCallback(() => {
-    setAppSettings((prev) => {
-      if (!prev) return prev;
-      const updated = { ...prev, sampleProjectBannerDismissed: true } as AppSettings;
-      window.api.settingsSet(updated).catch(() => {});
-      return updated;
-    });
-  }, []);
-
   const handleWaAutoApplyCategoriesChange = useCallback(
     (categories: Partial<Record<SuggestionCategory, boolean>>) => {
       setAppSettings((prev) => {
@@ -1465,8 +1456,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           ? { gettingStartedProgress: initS.gettingStartedProgress } : {}),
         ...(initS?.onboardingStartMode != null && sFromIpc.onboardingStartMode == null
           ? { onboardingStartMode: initS.onboardingStartMode } : {}),
-        ...(initS?.lastSampleGenre != null && sFromIpc.lastSampleGenre == null
-          ? { lastSampleGenre: initS.lastSampleGenre } : {}),
       } : (initS ?? sFromIpc);
       cachedSettings = s;
       // SKY-11379: a newer switch began while settings/root/paths were in
@@ -6133,9 +6122,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     : vaultBinding.storyPath || activeVaultRoot;
   const activeVaultBadgeMissing = tabShell.activeTab === 'notes' ? !vaultBinding.notesValid : !vaultBinding.storyValid;
   const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : tabShell.activeTab === 'brainstorm' ? 'Brainstorm' : 'Story'} vault: ${activeVaultBadge}`;
-  const showSampleProjectBanner = appSettings?.onboardingStartMode === 'sample'
-    && !appSettings.sampleProjectBannerDismissed;
-
   const navRailConfig = appSettings?.navConfig;
 
   return (
@@ -6350,28 +6336,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         vaultName={labelFromPath(vaultBinding.storyPath || activeVaultRoot)}
         aiEnabled={aiEnabled}
       />}
-      {showSampleProjectBanner && (
-        <div
-          className="sample-project-banner"
-          data-testid="gs-sample-banner"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="sample-project-banner__copy">
-            <strong>Sample project</strong>
-            <span>Explore the seeded scenes, characters, and notes, or replace them whenever you are ready.</span>
-          </div>
-          <button
-            type="button"
-            className="sample-project-banner__dismiss"
-            data-testid="gs-sample-banner-dismiss"
-            aria-label="Dismiss sample project banner"
-            onClick={handleDismissSampleProjectBanner}
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
       {/* SKY-1698: active docked tab shows its panels in the main area */}
       {activeDockedTabId !== null && (() => {
         const activeTab = dockedTabs.find((t) => t.id === activeDockedTabId);
