@@ -120,6 +120,45 @@ describe('MythosVaultsSection (Beta 4 M1)', () => {
     expect(screen.getByText('Click to switch ›')).toBeInTheDocument();
   });
 
+  // SKY-11815 repro 1: `vaults`/`activeRoot` were fetched once on mount and
+  // never re-fetched after a Vault & Files "Move…" — cards kept the pre-move
+  // paths for the rest of the session, so clicking a non-current card to
+  // switch would target a vaultRoot the recent-projects allowlist no longer
+  // recognized (main already remapped it to the post-move path).
+  it('SKY-11815: a vaultsParent:moved push re-fetches the vault list and active root', async () => {
+    let movedHandler: ((data: { vaultRoot: string; notesVaultRoot?: string }) => void) | undefined;
+    const onVaultsParentMoved = vi.fn((cb: typeof movedHandler) => {
+      movedHandler = cb;
+      return () => {};
+    });
+    Object.defineProperty(window, 'api', {
+      value: { ...window.api, onVaultsParentMoved },
+      writable: true,
+      configurable: true,
+    });
+
+    await setup();
+    expect(onVaultsParentMoved).toHaveBeenCalledTimes(1);
+    expect(mockProjectList).toHaveBeenCalledTimes(1);
+    expect(mockGetVaultRoot).toHaveBeenCalledTimes(1);
+
+    const VAULT_B_MOVED = '/vaults_moved/vaults/Beta/Story Vault';
+    mockProjectList.mockResolvedValue({
+      projects: [
+        { vaultRoot: VAULT_A.replace('/vaults/', '/vaults_moved/vaults/'), notesVaultRoot: '', name: 'Alpha', openedAt: '' },
+        { vaultRoot: VAULT_B_MOVED, notesVaultRoot: '', name: 'Beta', openedAt: '' },
+      ],
+    });
+    mockGetVaultRoot.mockResolvedValue({ vaultRoot: VAULT_A.replace('/vaults/', '/vaults_moved/vaults/') });
+
+    await act(async () => { movedHandler?.({ vaultRoot: VAULT_A }); });
+
+    expect(mockProjectList).toHaveBeenCalledTimes(2);
+    expect(mockGetVaultRoot).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.getByTestId(`mvs-card-${VAULT_B_MOVED}`)).toBeInTheDocument());
+    expect(screen.queryByTestId(`mvs-card-${VAULT_B}`)).not.toBeInTheDocument();
+  });
+
   it('choosing a theme for a NON-current vault stores it and persists, without recoloring now', async () => {
     const { setSettings, setSavedOk } = await setup();
     fireEvent.change(screen.getByTestId(`mvs-theme-${VAULT_B}`), { target: { value: 'ice' } });
@@ -189,6 +228,55 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
     expect(mockVaultGetPaths).toHaveBeenCalledTimes(1);
     // Name input is focused for immediate typing.
     expect(screen.getByTestId('mvs-create-name')).toHaveFocus();
+  });
+
+  // SKY-11815 repro 2: after a Vault & Files "Move…", `vaultsParentPath` is
+  // the CURRENT parent while `defaultVaultsParentPath` stays pinned at the
+  // static <userData>/vaults default forever — reading the wrong field here
+  // silently re-created the just-deleted pre-move folder on "Create vault".
+  it('SKY-11815: prefers the CURRENT vaultsParentPath over the static default when both are present', async () => {
+    mockVaultGetPaths.mockResolvedValue({
+      storyVaultPath: VAULT_A,
+      notesVaultPath: '/vaults/Alpha/Notes Vault',
+      defaultVaultsParentPath: '/vaults',
+      vaultsParentPath: '/vaults_moved/vaults',
+    });
+    await openCreateForm();
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults_moved/vaults'));
+  });
+
+  // SKY-11815 repro 2 (the caching half): the prefill above is fetched once
+  // and cached in `createDest` for the component's lifetime — without the
+  // 'vaultsParent:moved' broadcast clearing it, a Move mid-session still
+  // leaves a Settings panel that was already open pointing at the deleted
+  // pre-move folder.
+  it('SKY-11815: a vaultsParent:moved push clears a stale cached destination so it re-prefills', async () => {
+    let movedHandler: ((data: { vaultRoot: string; notesVaultRoot?: string }) => void) | undefined;
+    const onVaultsParentMoved = vi.fn((cb: typeof movedHandler) => {
+      movedHandler = cb;
+      return () => {};
+    });
+    Object.defineProperty(window, 'api', {
+      value: { ...window.api, onVaultsParentMoved },
+      writable: true,
+      configurable: true,
+    });
+
+    await openCreateForm();
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
+    expect(onVaultsParentMoved).toHaveBeenCalledTimes(1);
+
+    mockVaultGetPaths.mockResolvedValue({
+      storyVaultPath: VAULT_A,
+      notesVaultPath: '/vaults/Alpha/Notes Vault',
+      defaultVaultsParentPath: '/vaults',
+      vaultsParentPath: '/vaults_moved/vaults',
+    });
+    await act(async () => { movedHandler?.({ vaultRoot: VAULT_A }); });
+    // createDest was reset to '' by the push; "New vault…" re-runs
+    // onOpenCreate's `if (!createDest)` prefill against the now-current path.
+    fireEvent.click(screen.getByTestId('mvs-new-vault'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults_moved/vaults'));
   });
 
   it('SKY-11141 §3: the form offers the SAME three choices — template (recommended, default) / blank / import', async () => {

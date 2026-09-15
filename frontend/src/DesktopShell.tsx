@@ -1806,6 +1806,23 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   useEffect(() => { loadVaults(); loadVaultIcons(); }, [loadVaults, loadVaultIcons]);
 
+  // SKY-11815: a Vaults-folder Move rewrites every registered vault's
+  // absolute path (including the active one) but is not a project switch —
+  // the same vault content stays loaded, only its on-disk path changed — so
+  // this refreshes the nav-rail tiles + the active-root pointer used to
+  // highlight one of them, without the full loadVault()/selection-reset that
+  // onProjectSwitched below triggers (that would blow away the user's open
+  // scene/chapter/entity for no reason mid-Move).
+  useEffect(() => {
+    if (!window.api?.onVaultsParentMoved) return;
+    const unsub = window.api.onVaultsParentMoved((data: { vaultRoot: string }) => {
+      activeVaultRootRef.current = data.vaultRoot;
+      setActiveVaultRoot(data.vaultRoot);
+      loadVaults();
+    });
+    return () => unsub?.();
+  }, [loadVaults]);
+
   // Derived display shape — recomputed whenever the raw list, the active
   // vault, or a per-vault display-name/icon override changes.
   const navRailVaults: NavRailVault[] = navRailProjects.map((p) => ({
