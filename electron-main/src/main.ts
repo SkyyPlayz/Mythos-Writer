@@ -130,7 +130,6 @@ import {
   type VaultValidatePathPayload,
   type VaultValidatePathResponse,
   type VaultPickFolderByPathPayload,
-  type VaultGuidedMovePayload,
   type VaultLocalMovePayload,
   type VaultPickFolderPayload,
   type ProjectEntry,
@@ -377,7 +376,7 @@ import {
 import { queryGlobalContradictions } from './contradictionQuery.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
-import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkGuidedMoveGate, consumeGuidedMoveToken, checkOpenFolderGate } from './vaultGate.js';
+import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkOpenFolderGate } from './vaultGate.js';
 import { validateMoveTarget, moveVaultAtomic } from './vaultGuidedMove.js';
 import {
   checkVoiceSettingsUpdate,
@@ -807,15 +806,11 @@ import {
   pickUniqueMythosVaultName,
 } from './mythosVault.js';
 import {
-  detectConflicts,
-  resolveConflict,
   acquireLockfile,
   releaseLockfile,
   checkLockfile,
-  isLockfileLive,
-  isForeignHostLock,
   appendSyncEvent,
-} from './cloudSync.js';
+} from './vaultSessionLock.js';
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
 import { getBlastRadius, trashVaultFolder, pruneRecentProjectsForTrash } from './vaultSurface.js';
 import { shouldQuitOnWindowAllClosed } from './quitGuard.js';
@@ -958,6 +953,10 @@ interface VaultSettings {
   layoutMode?: 'default' | 'blank' | 'imported';
   recentProjects?: ProjectEntry[];
   // SKY-1129: keyed by vaultRoot so dismissal is scoped to each vault.
+  // SKY-11804 kept the `sync` in this name on purpose. It now gates only the
+  // concurrent-session warning, so "sessionWarningDismissed" would read better
+  // — but this is a PERSISTED key in vault-settings.json, and renaming it would
+  // silently un-dismiss the warning for every existing user. Not worth it.
   syncWarningDismissed?: Record<string, boolean>;
   // W0.1 (Beta 4): durable seed-once registry — resolved vault root → ISO
   // timestamp of when its SKY-15 seeding decision was recorded. Pairs with
@@ -6553,86 +6552,13 @@ const handlers: IpcHandlers = {
     return moveVaultFile(root, payload.fromPath, payload.toPath);
   },
 
-  // SKY-862: relocate the entire story vault to a cloud-synced folder.
-  // SEC-11 vault-token pattern: isFromTopFrame + sanitizeIpcError are applied
-  // automatically by setupIpcMain; session-token validation is in the gate.
-  [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: async (
-    payload: VaultGuidedMovePayload,
-  ) => {
-    // SKY-10910: os.homedir() reads USERPROFILE on win32 (unlike app.getPath('home')
-    // which reads from the Windows API and may return a different path form — e.g.
-    // 8.3 short name vs long name). Using os.homedir() keeps gate semantics consistent
-    // with what the test's USERPROFILE env override sets, and is equivalent on real
-    // user machines where USERPROFILE always points to the same directory.
-    const homeDir = os.homedir();
-
-    // Gate: validates targetPath (homedir containment, no ..), syncProvider,
-    // and sessionToken (registration token bound to targetPath).
-    const gate = checkGuidedMoveGate(payload, homeDir);
-    if (!gate.ok) return { error: gate.error };
-
-    const srcVaultRoot = getVaultRoot();
-
-    // Runtime FS checks: src exists, target not occupied, target writable.
-    const targetCheck = validateMoveTarget(srcVaultRoot, gate.targetPath);
-    if (!targetCheck.ok) return { error: targetCheck.error };
-
-    // SKY-10895: release every handle the app holds inside the source vault
-    // before the rename — not just the watcher + DB. On Windows, fs.rename
-    // refuses to touch a directory that still has open handles anywhere in
-    // its tree (EPERM), even though POSIX allows it. This is the same
-    // constraint the SKY-8882 uninstall handler and repointToMigratedVault
-    // (main.ts) already handle correctly — mirror their full teardown, not
-    // just stopVaultWatcher+closeDb (a widened retry budget alone can't
-    // outlast a job-queue worker or scheduler that never gets torn down).
-    // Always re-acquire in `finally` so a failed/rolled-back move never
-    // leaves the app running with no watcher, no DB, and no schedulers.
-    stopWritingScanScheduler();
-    stopArchiveContScheduler();
-    await stopBoardWatcher();
-    await stopVaultWatcher();
-    await shutdownJobService();
-    closeDb();
-    let moveResult;
-    try {
-      moveResult = await moveVaultAtomic(srcVaultRoot, gate.targetPath, {
-        syncProvider: gate.syncProvider,
-        updateSettings: (newPath) => {
-          saveVaultSettings({ vaultRoot: newPath });
-          // SKY-11238: the moved vault keeps its registry slot (and notes
-          // pairing) — a folder move must not reorder the rail either.
-          addToRecentProjects(newPath, undefined, srcVaultRoot);
-        },
-      });
-    } catch (err) {
-      throw toGuidedMoveError(err);
-    } finally {
-      const currentRoot = getVaultRoot();
-      openDb(currentRoot);
-      initJobServiceForVault(currentRoot);
-      await startVaultWatcher(currentRoot, notifyVaultChanged);
-      startWritingScanScheduler();
-      startArchiveContScheduler();
-    }
-    // SKY-10890: consume only once the move has actually succeeded — a
-    // mid-move failure (antivirus, a locked file, a full disk) throws out of
-    // moveVaultAtomic above, so this line is never reached and the token
-    // stays valid for retry.
-    consumeGuidedMoveToken(payload.sessionToken);
-
-    const verificationWarning = !moveResult.verification.ok
-      ? moveResult.verification.message
-      : undefined;
-    return { moved: true, newVaultPath: gate.targetPath, verificationWarning };
-  },
-
   // SKY-10367: relocate the entire story vault to a plain local folder — the
-  // default entry point for "Move to a different folder". Shares the same
-  // atomic move + post-move verification as VAULT_GUIDED_FOLDER_MOVE, but the
-  // target isn't restricted to the home directory: checkSinglePathGate (the
-  // same SEC-11 pattern used by VAULT_CREATE_BLANK) authorises any path the
-  // user picked via a real vault:pick-folder dialog, or one already in the
-  // recent-projects allowlist.
+  // only entry point for "Move to a different folder" since SKY-11804 removed
+  // the branded cloud-provider variant. The target isn't restricted to the
+  // home directory: checkSinglePathGate (the same SEC-11 pattern used by
+  // VAULT_CREATE_BLANK) authorises any path the user picked via a real
+  // vault:pick-folder dialog, or one already in the recent-projects
+  // allowlist.
   [IPC_CHANNELS.VAULT_LOCAL_FOLDER_MOVE]: async (
     payload: VaultLocalMovePayload,
   ) => {
@@ -6649,8 +6575,11 @@ const handlers: IpcHandlers = {
     if (!targetCheck.ok) return { error: targetCheck.error };
 
     // SKY-10895: release every handle the app holds inside the source vault
-    // before the rename — see the matching comment in VAULT_GUIDED_FOLDER_MOVE
-    // above.
+    // before the rename — not just the watcher + DB. On Windows, fs.rename
+    // refuses to touch a directory that still has open handles anywhere in
+    // its tree (EPERM), even though POSIX allows it. Always re-acquire in
+    // `finally` so a failed/rolled-back move never leaves the app running
+    // with no watcher, no DB, and no schedulers.
     stopWritingScanScheduler();
     stopArchiveContScheduler();
     await stopBoardWatcher();
@@ -6678,8 +6607,10 @@ const handlers: IpcHandlers = {
       startWritingScanScheduler();
       startArchiveContScheduler();
     }
-    // SKY-10890: consume only once the move has actually succeeded — see the
-    // matching comment in VAULT_GUIDED_FOLDER_MOVE above.
+    // SKY-10890: consume only once the move has actually succeeded — a
+    // mid-move failure (antivirus, a locked file, a full disk) throws out of
+    // moveVaultAtomic above, so this line is never reached and the token
+    // stays valid for retry.
     consumeSinglePathToken(payload?.registrationToken);
 
     const verificationWarning = !moveResult.verification.ok
@@ -8101,15 +8032,15 @@ const handlers: IpcHandlers = {
     return { proposal: updated, scene: responseScene };
   },
 
-  // ─── SKY-863: Cloud-sync conflict detection + lockfile ───────────────────
+  // ─── SKY-863: concurrent-session lockfile ────────────────────────────────
 
-  [IPC_CHANNELS.VAULT_CHECK_CONFLICTS]: async (): Promise<import('./ipc.js').VaultCheckConflictsResponse> => {
+  [IPC_CHANNELS.VAULT_CHECK_SESSION_LOCK]: async (): Promise<import('./ipc.js').VaultCheckSessionLockResponse> => {
     const vaultRoot = getVaultRoot();
     const ts = () => new Date().toISOString();
 
-    // SKY-1128: acquireLockfile is now atomic (O_CREAT|O_EXCL / 'ax').
-    // It returns null when a live process (same or foreign host) already holds
-    // the lock — no TOCTOU between the old checkLockfile read and write.
+    // SKY-1128: acquireLockfile is atomic (O_CREAT|O_EXCL / 'ax'). It returns
+    // null when a live process (same or foreign host) already holds the lock —
+    // no TOCTOU between the old checkLockfile read and write.
     let lockfileConflict: import('./ipc.js').LockfileConflictInfo | null = null;
     const lock = acquireLockfile(vaultRoot);
     if (lock === null) {
@@ -8131,31 +8062,8 @@ const handlers: IpcHandlers = {
       });
     }
 
-    // 3. Detect and resolve conflicts.
-    const conflicts = detectConflicts(vaultRoot);
-    const resolved: import('./ipc.js').ResolvedConflictInfo[] = [];
-    for (const conflict of conflicts) {
-      try {
-        const result = resolveConflict(vaultRoot, conflict);
-        appendSyncEvent(vaultRoot, {
-          type: 'conflict_resolved',
-          ts: ts(),
-          detail: {
-            conflictPath: result.conflictPath,
-            originalPath: result.originalPath,
-            keptPath: result.keptPath,
-            archivedPath: result.archivedPath,
-            provider: result.provider,
-          },
-        });
-        resolved.push(result);
-      } catch {
-        // Non-fatal: log but don't crash the vault open if a single conflict can't be resolved.
-      }
-    }
-
     const dismissed = (loadVaultSettings().syncWarningDismissed ?? {})[vaultRoot] ?? false;
-    return { resolved, lockfileConflict, dismissed };
+    return { lockfileConflict, dismissed };
   },
 
   [IPC_CHANNELS.VAULT_DISMISS_SYNC_WARNING]: (): { ok: true } => {

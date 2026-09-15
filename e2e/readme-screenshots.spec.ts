@@ -4,7 +4,7 @@
  * Captures four README hero screenshots:
  *   1. onboarding-wizard   — first-launch Welcome screen (step 1, path picker)
  *   2. getting-started     — post-onboarding shell with Getting Started panel visible
- *   3. settings-vault-local   — Settings dialog with VaultSyncBadge in (Local) state
+ *   3. settings-vault-badge   — Settings dialog showing the vault location
  *   4. brainstorm-panel    — Brainstorm view with empty prompt state
  *
  * Output: docs/screenshots/*.png
@@ -214,10 +214,11 @@ test('screenshot: settings vault badge (local / no sync)', async () => {
     await gearBtn.first().click();
     await page.waitForTimeout(800);
 
-    // Scroll to vault section if needed
-    const vaultBadge = page.locator('.vault-sync-badge, [aria-label*="Vault sync"]');
-    if (await vaultBadge.isVisible({ timeout: 3_000 }).catch(() => false)) {
-      await vaultBadge.scrollIntoViewIfNeeded();
+    // Scroll to the vault section if needed. SKY-11804 removed the cloud sync
+    // badge this used to target; the vault path display is the surviving anchor.
+    const vaultPath = page.locator('[data-testid="sync-vault-path"], .settings-vault-path-display');
+    if (await vaultPath.first().isVisible({ timeout: 3_000 }).catch(() => false)) {
+      await vaultPath.first().scrollIntoViewIfNeeded();
       await page.waitForTimeout(300);
     }
 

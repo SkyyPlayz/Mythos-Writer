@@ -17,7 +17,6 @@
 import path from 'path';
 import fs from 'fs';
 import { validateRegistrationToken } from './registrationToken.js';
-import type { CloudSyncProvider } from './ipc.js';
 export interface SetPathsGateInput {
   storyVaultPath: unknown;
   notesVaultPath: unknown;
@@ -48,18 +47,6 @@ function pathApiFor(...paths: string[]): typeof path.posix | typeof path.win32 {
 
 function joinPathLike(root: string, child: string): string {
   return pathApiFor(root).join(root, child);
-}
-
-function isStrictChildPath(parent: string, child: string): boolean {
-  const pathApi = pathApiFor(parent, child);
-  if (!pathApi.isAbsolute(parent) || !pathApi.isAbsolute(child)) return false;
-  const relative = pathApi.relative(pathApi.resolve(parent), pathApi.resolve(child));
-  return (
-    relative.length > 0 &&
-    relative !== '..' &&
-    !relative.startsWith(`..${pathApi.sep}`) &&
-    !pathApi.isAbsolute(relative)
-  );
 }
 
 /**
@@ -340,89 +327,3 @@ export function checkOpenFolderGate(input: OpenFolderGateInput): OpenFolderGateR
   };
 }
 
-// ─── checkGuidedMoveGate (SKY-862) ───────────────────────────────────────────
-// Gate for vault:guidedFolderMove. Validates all three required proof layers:
-//   1. targetPath is within os.homedir() and has no `..` components.
-//   2. syncProvider is one of the approved big-4 cloud providers.
-//   3. sessionToken is a valid registration token bound to targetPath.
-// Never consumes the token — call consumeGuidedMoveToken (below) after the
-// move itself succeeds, so a mid-move failure doesn't burn the one-shot
-// token and permanently block retry (SKY-10890).
-
-const VALID_SYNC_PROVIDERS = new Set<string>(['icloud', 'dropbox', 'google-drive', 'onedrive']);
-
-export interface GuidedMoveGateInput {
-  targetPath: unknown;
-  syncProvider: unknown;
-  sessionToken: unknown;
-}
-
-export type GuidedMoveGateResult =
-  | { ok: true; targetPath: string; syncProvider: CloudSyncProvider }
-  | { ok: false; error: string };
-
-/**
- * Gate vault:guidedFolderMove (SKY-862, SEC-11 vault-token pattern).
- *
- * Pure validation — no FS side effects. Pass `homeDir` from `os.homedir()` so
- * tests remain Electron-free.
- *
- * Rejection reasons:
- *  - targetPath missing / empty / not absolute.
- *  - targetPath contains `..` (traversal attempt).
- *  - targetPath is not within homeDir (system-directory escape).
- *  - syncProvider is not in the approved set.
- *  - sessionToken absent, invalid, expired, or bound to a different path.
- */
-export function checkGuidedMoveGate(
-  input: GuidedMoveGateInput,
-  homeDir: string,
-  now: number = Date.now(),
-): GuidedMoveGateResult {
-  if (!isNonEmptyString(input.targetPath)) {
-    return { ok: false, error: 'targetPath: must be a non-empty string' };
-  }
-  const targetPath = input.targetPath;
-
-  // Reject any path component equal to `..` (belt-and-suspenders alongside resolve).
-  if (targetPath.split(/[/\\]/).some((seg) => seg === '..')) {
-    return { ok: false, error: 'targetPath: path traversal denied' };
-  }
-
-  // Require an absolute path strictly within homeDir (not homeDir itself).
-  if (!isStrictChildPath(homeDir, targetPath)) {
-    return { ok: false, error: 'targetPath: must be within the user home directory' };
-  }
-
-  // Validate syncProvider.
-  if (!isNonEmptyString(input.syncProvider) || !VALID_SYNC_PROVIDERS.has(input.syncProvider)) {
-    return {
-      ok: false,
-      error: `syncProvider: must be one of ${[...VALID_SYNC_PROVIDERS].join(', ')}`,
-    };
-  }
-
-  // Validate sessionToken — must be a registration token issued by vault:pick-folder
-  // and bound to exactly targetPath.
-  if (!isNonEmptyString(input.sessionToken)) {
-    return { ok: false, error: 'sessionToken: required — use vault:pick-folder first' };
-  }
-  const validated = validateRegistrationToken(input.sessionToken, { consume: false, now });
-  if (!validated) {
-    return { ok: false, error: 'sessionToken: invalid or expired — use vault:pick-folder first' };
-  }
-  if (validated.vaultRoot !== targetPath) {
-    return { ok: false, error: 'sessionToken: not bound to the requested targetPath' };
-  }
-
-  return { ok: true, targetPath, syncProvider: input.syncProvider as CloudSyncProvider };
-}
-
-/**
- * Consumes the sessionToken `checkGuidedMoveGate` validated, so it cannot be
- * replayed. Call only after the move the gate authorised has actually
- * succeeded.
- */
-export function consumeGuidedMoveToken(sessionToken: unknown, now: number = Date.now()): void {
-  if (isNonEmptyString(sessionToken)) validateRegistrationToken(sessionToken, { now });
-}

@@ -151,8 +151,6 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-9: intra-Story-Vault rename, symmetric with moveNotesVault.
   moveVault: (fromPath: string, toPath: string) =>
     ipcRenderer.invoke('vault:move', { fromPath, toPath }),
-  vaultGuidedFolderMove: (payload: { targetPath: string; syncProvider: string; sessionToken: string }) =>
-    ipcRenderer.invoke('vault:guidedFolderMove', payload),
   vaultLocalFolderMove: (payload: { targetPath: string; registrationToken: string }) =>
     ipcRenderer.invoke('vault:localFolderMove', payload),
   // SKY-9: generic folder picker for the Settings panel (decoupled from the
@@ -871,9 +869,9 @@ contextBridge.exposeInMainWorld('api', {
   notesTagMerge: (sourceTag: string, targetTag: string) =>
     ipcRenderer.invoke('notesVault:tag:merge', { sourceTag, targetTag }),
 
-  // SKY-863: Cloud-sync conflict detection + lockfile
-  checkVaultConflicts: () =>
-    ipcRenderer.invoke('vault:check-conflicts', undefined),
+  // SKY-863: concurrent-session lockfile
+  checkVaultSessionLock: () =>
+    ipcRenderer.invoke('vault:check-session-lock', undefined),
   dismissSyncWarning: () =>
     ipcRenderer.invoke('vault:dismiss-sync-warning', undefined),
   // SKY-1399: manage custom templates

@@ -102,7 +102,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
     id: 'sync',
     label: 'Sync & Backup',
-    description: 'Cloud sync, snapshots, restore points.',
+    description: 'Vault location, snapshots, restore points.',
     sectionIds: ['section-sync-backup'],
   },
   {

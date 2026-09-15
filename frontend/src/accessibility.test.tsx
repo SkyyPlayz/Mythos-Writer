@@ -489,23 +489,11 @@ describe('Accessibility — ScenePropertiesPanel (WCAG 4.1.2)', () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// Surface 8 — SyncConflictModal
+// Surface 8 — ConcurrentSessionModal
 // ══════════════════════════════════════════════════════════════════════════════
-import SyncConflictModal, {
+import ConcurrentSessionModal, {
   type LockfileConflictInfo,
-  type ResolvedConflictInfo,
-} from './SyncConflictModal';
-
-const SYNC_CONFLICT_RESOLVED: ResolvedConflictInfo[] = [
-  {
-    conflictPath: 'Manuscript/Ch01/scene (conflicted copy).md',
-    originalPath: 'Manuscript/Ch01/scene.md',
-    provider: 'dropbox',
-    keptPath: 'Manuscript/Ch01/scene.md',
-    archivedPath: '.mythos/.archive/scene (conflicted copy).md',
-    resolvedAt: '2024-01-15T12:00:00.000Z',
-  },
-];
+} from './ConcurrentSessionModal';
 
 const SYNC_LOCKFILE_CONFLICT: LockfileConflictInfo = {
   hostname: 'other-machine.local',
@@ -513,24 +501,10 @@ const SYNC_LOCKFILE_CONFLICT: LockfileConflictInfo = {
   timestamp: '2024-01-15T12:00:00.000Z',
 };
 
-describe('Accessibility — SyncConflictModal', () => {
-  it('resolved-conflicts state has no axe violations', async () => {
+describe('Accessibility — ConcurrentSessionModal', () => {
+  it('concurrent-session warning has no axe violations', async () => {
     const { container } = render(
-      <SyncConflictModal
-        resolved={SYNC_CONFLICT_RESOLVED}
-        lockfileConflict={null}
-        onContinue={() => {}}
-      />,
-    );
-
-    const results = await axe(container);
-    expect(results).toHaveNoViolations();
-  });
-
-  it('lockfile-warning state has no axe violations', async () => {
-    const { container } = render(
-      <SyncConflictModal
-        resolved={[]}
+      <ConcurrentSessionModal
         lockfileConflict={SYNC_LOCKFILE_CONFLICT}
         onContinue={() => {}}
       />,

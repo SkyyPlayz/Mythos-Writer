@@ -377,15 +377,11 @@ export const IPC_CHANNELS = {
   // SKY-9: intra-Story-Vault rename, symmetric with NOTES_VAULT_MOVE so the
   // renderer has one move channel per vault root.
   VAULT_MOVE: 'vault:move',
-  // SKY-862: relocate the entire story vault to a cloud-synced folder.
-  // Distinct from VAULT_MOVE (intra-vault file rename) — this moves the root
-  // directory itself and updates persisted settings.
-  VAULT_GUIDED_FOLDER_MOVE: 'vault:guidedFolderMove',
   // SKY-10367: relocate the entire story vault to a plain local folder — the
-  // default path through "Move to a different folder". Shares the atomic
-  // move + verification logic with VAULT_GUIDED_FOLDER_MOVE but authorises
-  // the target via checkSinglePathGate (any user-picked path, not just a
-  // cloud-provider folder within the home directory).
+  // only vault-relocation path (SKY-11804 removed the branded cloud-provider
+  // variant). Distinct from VAULT_MOVE (intra-vault file rename): this moves
+  // the root directory itself and updates persisted settings. The target is
+  // authorised via checkSinglePathGate, so any user-picked path works.
   VAULT_LOCAL_FOLDER_MOVE: 'vault:localFolderMove',
   // SKY-9: generic folder picker for the Settings UI. Distinct from
   // VAULT_PICK_FOLDER (Obsidian import wizard — issues a registration token)
@@ -613,8 +609,11 @@ export const IPC_CHANNELS = {
   // invokable command sharing the M12.B4a manuscript-pass primitive.
   TIMELINE_REBUILD: 'timeline:rebuild',
 
-  // SKY-863: Cloud-sync conflict detection + lockfile
-  VAULT_CHECK_CONFLICTS: 'vault:check-conflicts',
+  // SKY-863 / SKY-11804: concurrent-session lockfile. Local-only — detects a
+  // second Mythos session holding this vault, on this host or across a network
+  // share. The branded cloud conflict-file scan that used to share this channel
+  // was removed with the rest of the cloud surface.
+  VAULT_CHECK_SESSION_LOCK: 'vault:check-session-lock',
   VAULT_DISMISS_SYNC_WARNING: 'vault:dismiss-sync-warning',
   // SKY-1399: manage custom templates
   TEMPLATE_RENAME: 'template:rename',
@@ -1002,7 +1001,6 @@ export interface IpcHandlers {
   [IPC_CHANNELS.STORY_VAULT_REGISTRY_RENAME]: (payload: StoryVaultRegistryRenamePayload) => StoryVaultRegistryRenameResponse;
   [IPC_CHANNELS.STORY_VAULT_REGISTRY_PAIR]: (payload: StoryVaultRegistryPairPayload) => StoryVaultRegistryPairResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
-  [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: (payload: VaultGuidedMovePayload) => Promise<VaultGuidedMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_LOCAL_FOLDER_MOVE]: (payload: VaultLocalMovePayload) => Promise<VaultLocalMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
@@ -1123,8 +1121,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TIMELINE_PROPOSALS_LIST]: (payload: TimelineProposalsListPayload) => TimelineProposalsListResponse;
   [IPC_CHANNELS.TIMELINE_PROPOSAL_RESOLVE]: (payload: TimelineProposalResolvePayload) => TimelineProposalResolveResponse;
 
-  // SKY-863: Cloud-sync conflict detection + lockfile
-  [IPC_CHANNELS.VAULT_CHECK_CONFLICTS]: (payload: never) => Promise<VaultCheckConflictsResponse>;
+  // SKY-863: concurrent-session lockfile
+  [IPC_CHANNELS.VAULT_CHECK_SESSION_LOCK]: (payload: never) => Promise<VaultCheckSessionLockResponse>;
   [IPC_CHANNELS.VAULT_DISMISS_SYNC_WARNING]: (payload: never) => { ok: true };
   // SKY-1399: manage custom templates
   [IPC_CHANNELS.TEMPLATE_RENAME]: (payload: TemplateRenamePayload) => TemplateRenameResponse | { error: string };
@@ -1814,31 +1812,17 @@ export interface NotesThumbPutResponse {
   ok: boolean;
 }
 
-// ─── SKY-862: Guided-folder vault relocation (cloud sync) ───
-
-/** Big-4 cloud-sync providers supported in Wave 2.B. */
-export type CloudSyncProvider = 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
-
-/** Destination kind recorded on a guided vault move — a cloud provider or a plain local folder. */
-export type VaultMoveDestination = CloudSyncProvider | 'local';
+// ─── SKY-10367: vault relocation ───
 
 /**
- * Payload for VAULT_GUIDED_FOLDER_MOVE.
- * `sessionToken` must be a registration token issued by a main-process
- * vault:pick-folder dialog and bound to exactly `targetPath`.
+ * Destination kind recorded on a vault move's audit entry.
+ *
+ * SKY-11804 removed the branded cloud-provider destinations, so `'local'` is
+ * now the only member. It stays a named union rather than collapsing to the
+ * bare literal: the audit log is a persisted on-disk format, and existing logs
+ * still carry the retired provider values.
  */
-export interface VaultGuidedMovePayload {
-  targetPath: string;
-  syncProvider: CloudSyncProvider;
-  sessionToken: string;
-}
-
-export interface VaultGuidedMoveResponse {
-  moved: boolean;
-  newVaultPath: string;
-  /** Non-empty when post-move verification detected dropped files or stubs. */
-  verificationWarning?: string;
-}
+export type VaultMoveDestination = 'local';
 
 /**
  * Payload for VAULT_LOCAL_FOLDER_MOVE (SKY-10367).
@@ -5615,17 +5599,7 @@ export interface TimelineProposalResolveResponse {
   skippedBecauseUserSet?: boolean;
 }
 
-// ─── SKY-863: Cloud-sync conflict detection + lockfile types ──────────────────
-
-/** One conflict file that was detected and resolved during vault open. */
-export interface ResolvedConflictInfo {
-  conflictPath: string;
-  originalPath: string;
-  provider: 'dropbox' | 'icloud' | 'syncthing';
-  keptPath: string;
-  archivedPath: string;
-  resolvedAt: string;
-}
+// ─── SKY-863: concurrent-session lockfile types ───────────────────────────────
 
 /** Metadata from an existing lockfile that belongs to a live concurrent session. */
 export interface LockfileConflictInfo {
@@ -5634,10 +5608,8 @@ export interface LockfileConflictInfo {
   timestamp: string;
 }
 
-/** Response from `vault:check-conflicts`. */
-export interface VaultCheckConflictsResponse {
-  /** Conflicts detected and auto-resolved during this call. */
-  resolved: ResolvedConflictInfo[];
+/** Response from `vault:check-session-lock`. */
+export interface VaultCheckSessionLockResponse {
   /** Non-null when another live Mythos session has this vault open. */
   lockfileConflict: LockfileConflictInfo | null;
   /** True when the user has previously dismissed warnings for this vault. */

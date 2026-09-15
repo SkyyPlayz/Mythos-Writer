@@ -1,243 +1,24 @@
-// vault:guidedFolderMove — unit + integration tests (SKY-862)
+// vault:localFolderMove — unit + integration tests (SKY-862 / SKY-10367)
 //
-// Gate tests (§1): pure validation — no FS, covers all checkGuidedMoveGate
-// rejection branches from vaultGate.ts.
+// §2: real tmpdir FS — covers validateMoveTarget + moveVaultAtomic happy path
+// and each error/rollback branch.
 //
-// Move tests (§2): real tmpdir FS — covers validateMoveTarget + moveVaultAtomic
-// happy path and each error/rollback branch.
+// §3: SKY-10890 regression — a failed move must not burn the one-shot token.
+//
+// SKY-11804 removed the branded cloud-provider gate (checkGuidedMoveGate) and
+// with it the §1 gate suite; the surviving local move authorises through
+// checkSinglePathGate, covered here in §3 and in vaultGate.test.ts.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { checkGuidedMoveGate, consumeGuidedMoveToken } from './vaultGate.js';
+import { checkSinglePathGate, consumeSinglePathToken } from './vaultGate.js';
 import { validateMoveTarget, moveVaultAtomic } from './vaultGuidedMove.js';
 import {
   generateRegistrationToken,
   __clearRegistrationTokens,
-  TOKEN_TTL_MS,
 } from './registrationToken.js';
-
-const HOME = '/home/testuser';
-const DROPBOX = `${HOME}/Dropbox`;
-const TARGET = `${DROPBOX}/Mythos/Story Vault`;
-
-// ─── §1: checkGuidedMoveGate (pure, no FS) ───────────────────────────────────
-
-describe('checkGuidedMoveGate', () => {
-  beforeEach(() => __clearRegistrationTokens());
-
-  function makeToken(path: string, now?: number) {
-    return generateRegistrationToken(path, now);
-  }
-
-  it('accepts a valid payload with matching token', () => {
-    const token = makeToken(TARGET);
-    const result = checkGuidedMoveGate(
-      { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.targetPath).toBe(TARGET);
-      expect(result.syncProvider).toBe('dropbox');
-    }
-  });
-
-  it('accepts a valid Windows payload with matching token', () => {
-    const windowsHome = 'C:\\Users\\testuser';
-    const windowsTarget = `${windowsHome}\\Dropbox\\Mythos\\Story Vault`;
-    const token = makeToken(windowsTarget);
-    const result = checkGuidedMoveGate(
-      { targetPath: windowsTarget, syncProvider: 'dropbox', sessionToken: token },
-      windowsHome,
-    );
-    expect(result.ok).toBe(true);
-    if (result.ok) {
-      expect(result.targetPath).toBe(windowsTarget);
-      expect(result.syncProvider).toBe('dropbox');
-    }
-  });
-
-  it('rejects missing targetPath', () => {
-    const token = makeToken(TARGET);
-    const result = checkGuidedMoveGate(
-      { targetPath: '', syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/targetPath/);
-  });
-
-  it('rejects null targetPath', () => {
-    const token = makeToken(TARGET);
-    const result = checkGuidedMoveGate(
-      { targetPath: null, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(result.ok).toBe(false);
-  });
-
-  it('rejects path traversal via .. components', () => {
-    const badPath = `${HOME}/Dropbox/../../../etc/passwd`;
-    const token = makeToken(badPath);
-    const result = checkGuidedMoveGate(
-      { targetPath: badPath, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/traversal/);
-  });
-
-  it('rejects path with .. segment even within homedir', () => {
-    const badPath = `${HOME}/Dropbox/../Dropbox`;
-    const token = makeToken(badPath);
-    const result = checkGuidedMoveGate(
-      { targetPath: badPath, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/traversal/);
-  });
-
-  it('rejects targetPath outside homedir (e.g. /tmp)', () => {
-    const outsidePath = '/tmp/MyVault';
-    const token = makeToken(outsidePath);
-    const result = checkGuidedMoveGate(
-      { targetPath: outsidePath, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/home directory/);
-  });
-
-  it('rejects targetPath equal to homedir itself', () => {
-    const token = makeToken(HOME);
-    const result = checkGuidedMoveGate(
-      { targetPath: HOME, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/home directory/);
-  });
-
-  it('rejects a relative (non-absolute) targetPath', () => {
-    const token = makeToken('Dropbox/Vault');
-    const result = checkGuidedMoveGate(
-      { targetPath: 'Dropbox/Vault', syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(result.ok).toBe(false);
-  });
-
-  it('rejects an unknown syncProvider', () => {
-    const token = makeToken(TARGET);
-    const result = checkGuidedMoveGate(
-      { targetPath: TARGET, syncProvider: 'megacloud' as never, sessionToken: token },
-      HOME,
-    );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/syncProvider/);
-  });
-
-  it('accepts all four approved syncProviders', () => {
-    for (const provider of ['icloud', 'dropbox', 'google-drive', 'onedrive'] as const) {
-      const t = makeToken(TARGET);
-      const r = checkGuidedMoveGate(
-        { targetPath: TARGET, syncProvider: provider, sessionToken: t },
-        HOME,
-      );
-      expect(r.ok, `expected ok for provider '${provider}'`).toBe(true);
-    }
-  });
-
-  it('rejects missing sessionToken', () => {
-    const result = checkGuidedMoveGate(
-      { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: '' },
-      HOME,
-    );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/sessionToken/);
-  });
-
-  it('rejects an invalid (random) sessionToken', () => {
-    const result = checkGuidedMoveGate(
-      { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: 'not-a-real-token' },
-      HOME,
-    );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/sessionToken/);
-  });
-
-  it('rejects a token bound to a different path (renderer-tampered targetPath)', () => {
-    const token = makeToken(`${HOME}/Dropbox/OtherFolder`);
-    const result = checkGuidedMoveGate(
-      { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/sessionToken/);
-  });
-
-  it('rejects an expired token', () => {
-    const now = Date.now();
-    const token = makeToken(TARGET, now);
-    const result = checkGuidedMoveGate(
-      { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-      now + TOKEN_TTL_MS + 1,
-    );
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toMatch(/sessionToken/);
-  });
-
-  it('does NOT consume the token itself — the caller must call consumeGuidedMoveToken after the move succeeds (SKY-10890)', () => {
-    const token = makeToken(TARGET);
-    const first = checkGuidedMoveGate(
-      { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(first.ok).toBe(true);
-    // Token is still valid — a mid-move failure (antivirus, a locked file,
-    // a full disk) must not have burned it, or retry is permanently blocked
-    // with UNAUTHORIZED_PATH (the SKY-10890 bug).
-    const replay = checkGuidedMoveGate(
-      { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(replay.ok).toBe(true);
-  });
-
-  it('consumeGuidedMoveToken burns the token so it cannot be replayed', () => {
-    const token = makeToken(TARGET);
-    const first = checkGuidedMoveGate(
-      { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(first.ok).toBe(true);
-    consumeGuidedMoveToken(token);
-    const replay = checkGuidedMoveGate(
-      { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(replay.ok).toBe(false);
-  });
-
-  it('does not consume the token when validation fails before consume', () => {
-    const token = makeToken(TARGET);
-    // Fail due to bad syncProvider (checked before token consume).
-    checkGuidedMoveGate(
-      { targetPath: TARGET, syncProvider: 'bad' as never, sessionToken: token },
-      HOME,
-    );
-    // Token should still be valid.
-    const retry = checkGuidedMoveGate(
-      { targetPath: TARGET, syncProvider: 'dropbox', sessionToken: token },
-      HOME,
-    );
-    expect(retry.ok).toBe(true);
-  });
-});
 
 // ─── §2: validateMoveTarget + moveVaultAtomic (real FS via tmpdir) ────────────
 
@@ -323,11 +104,11 @@ describe('moveVaultAtomic', () => {
     fs.mkdirSync(src);
     fs.writeFileSync(path.join(src, 'manifest.json'), '{}');
 
-    const dst = path.join(tmpDir, 'DropboxVault');
+    const dst = path.join(tmpDir, 'ExternalDriveVault');
     let settingsReceived = '';
 
     const moveResult = await moveVaultAtomic(src, dst, {
-      syncProvider: 'dropbox',
+      syncProvider: 'local',
       updateSettings: (newPath) => { settingsReceived = newPath; },
     });
 
@@ -342,10 +123,10 @@ describe('moveVaultAtomic', () => {
     const auditLog = path.join(dst, '.mythos', 'settings_audit.log');
     expect(fs.existsSync(auditLog)).toBe(true);
     const entry = JSON.parse(fs.readFileSync(auditLog, 'utf-8').trim());
-    expect(entry.action).toBe('vault:guidedFolderMove');
+    expect(entry.action).toBe('vault:localFolderMove');
     expect(entry.fromPath).toBe(src);
     expect(entry.toPath).toBe(dst);
-    expect(entry.syncProvider).toBe('dropbox');
+    expect(entry.syncProvider).toBe('local');
     expect(typeof entry.timestamp).toBe('string');
   });
 
@@ -354,12 +135,12 @@ describe('moveVaultAtomic', () => {
     fs.mkdirSync(src);
     fs.writeFileSync(path.join(src, 'manifest.json'), '{}');
 
-    const dst = path.join(tmpDir, 'DropboxVault');
+    const dst = path.join(tmpDir, 'MovedVault');
     const boom = new Error('Settings write failed');
 
     await expect(
       moveVaultAtomic(src, dst, {
-        syncProvider: 'icloud',
+        syncProvider: 'local',
         updateSettings: () => { throw boom; },
       }),
     ).rejects.toThrow('Settings write failed');
@@ -376,10 +157,10 @@ describe('moveVaultAtomic', () => {
     fs.mkdirSync(path.join(src, 'Manuscript', 'ch1'), { recursive: true });
     fs.writeFileSync(path.join(src, 'Manuscript', 'ch1', 'scene.md'), '# Scene One');
 
-    const dst = path.join(tmpDir, 'GoogleDriveVault');
+    const dst = path.join(tmpDir, 'SecondDriveVault');
 
     const r = await moveVaultAtomic(src, dst, {
-      syncProvider: 'google-drive',
+      syncProvider: 'local',
       updateSettings: () => {},
     });
 
@@ -387,26 +168,6 @@ describe('moveVaultAtomic', () => {
       fs.readFileSync(path.join(dst, 'Manuscript', 'ch1', 'scene.md'), 'utf-8'),
     ).toBe('# Scene One');
     expect(r.verification.ok).toBe(true);
-  });
-
-  it('SKY-10367: records vault:localFolderMove in the audit log for a local destination', async () => {
-    const src = path.join(tmpDir, 'StoryVault');
-    fs.mkdirSync(src);
-    fs.writeFileSync(path.join(src, 'manifest.json'), '{}');
-
-    const dst = path.join(tmpDir, 'ExternalDriveVault');
-
-    const moveResult = await moveVaultAtomic(src, dst, {
-      syncProvider: 'local',
-      updateSettings: () => {},
-    });
-
-    expect(moveResult.verification.ok).toBe(true);
-    expect(fs.existsSync(src)).toBe(false);
-    const auditLog = path.join(dst, '.mythos', 'settings_audit.log');
-    const entry = JSON.parse(fs.readFileSync(auditLog, 'utf-8').trim());
-    expect(entry.action).toBe('vault:localFolderMove');
-    expect(entry.syncProvider).toBe('local');
   });
 
   it('SKY-10367: falls back to copy+delete when rename fails with EXDEV (cross-device move)', async () => {
@@ -638,7 +399,7 @@ describe('moveVaultAtomic', () => {
     );
 
     await moveVaultAtomic(src, dst, {
-      syncProvider: 'onedrive',
+      syncProvider: 'local',
       updateSettings: () => {},
     });
 
@@ -649,7 +410,7 @@ describe('moveVaultAtomic', () => {
     const lines = logContent.trim().split('\n').filter(Boolean);
     expect(lines).toHaveLength(2);
     expect(JSON.parse(lines[0]).action).toBe('earlier-event');
-    expect(JSON.parse(lines[1]).action).toBe('vault:guidedFolderMove');
+    expect(JSON.parse(lines[1]).action).toBe('vault:localFolderMove');
   });
 });
 
@@ -661,7 +422,7 @@ describe('moveVaultAtomic', () => {
 // way any mid-move failure — a locked file, a full disk, a dropped network
 // drive — would), then confirm the *same* token authorises a retry and the
 // retry actually succeeds, exactly as the caller in main.ts now behaves by
-// only calling consumeGuidedMoveToken after moveVaultAtomic resolves.
+// only calling consumeSinglePathToken after moveVaultAtomic resolves.
 
 describe('SKY-10890: failed move does not consume the registration token', () => {
   let tmpDir: string;
@@ -683,10 +444,7 @@ describe('SKY-10890: failed move does not consume the registration token', () =>
     const dst = path.join(tmpDir, 'NewHome');
 
     const token = generateRegistrationToken(dst);
-    const gate = checkGuidedMoveGate(
-      { targetPath: dst, syncProvider: 'dropbox', sessionToken: token },
-      tmpDir,
-    );
+    const gate = checkSinglePathGate({ targetPath: dst, registrationToken: token }, []);
     expect(gate.ok).toBe(true);
 
     // Simulate the move being blocked mid-operation (antivirus / locked file
@@ -708,7 +466,7 @@ describe('SKY-10890: failed move does not consume the registration token', () =>
 
     vi.useFakeTimers();
     try {
-      const result = moveVaultAtomic(src, dst, { syncProvider: 'dropbox', updateSettings: () => {} });
+      const result = moveVaultAtomic(src, dst, { syncProvider: 'local', updateSettings: () => {} });
       const assertion = expect(result).rejects.toThrow('Operation blocked');
       await vi.runAllTimersAsync();
       await assertion;
@@ -718,30 +476,24 @@ describe('SKY-10890: failed move does not consume the registration token', () =>
     cpSpy.mockRestore();
     renameSpy.mockRestore();
 
-    // The real IPC handler only calls consumeGuidedMoveToken after
+    // The real IPC handler only calls consumeSinglePathToken after
     // moveVaultAtomic resolves, so a failed attempt like the one above must
     // leave the token usable — gating the retry with the identical token
     // must still succeed.
-    const retryGate = checkGuidedMoveGate(
-      { targetPath: dst, syncProvider: 'dropbox', sessionToken: token },
-      tmpDir,
-    );
+    const retryGate = checkSinglePathGate({ targetPath: dst, registrationToken: token }, []);
     expect(retryGate.ok).toBe(true);
 
     // And the retry itself (now unblocked) actually completes the move.
     const retryResult = await moveVaultAtomic(src, dst, {
-      syncProvider: 'dropbox',
+      syncProvider: 'local',
       updateSettings: () => {},
     });
     expect(retryResult.verification.ok).toBe(true);
     expect(fs.existsSync(path.join(dst, 'manifest.json'))).toBe(true);
 
     // Only now — after real success — does the token get burned.
-    consumeGuidedMoveToken(token);
-    const replay = checkGuidedMoveGate(
-      { targetPath: dst, syncProvider: 'dropbox', sessionToken: token },
-      tmpDir,
-    );
+    consumeSinglePathToken(token);
+    const replay = checkSinglePathGate({ targetPath: dst, registrationToken: token }, []);
     expect(replay.ok).toBe(false);
   });
 });
