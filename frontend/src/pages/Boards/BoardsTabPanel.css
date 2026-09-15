@@ -95,6 +95,17 @@
   font-size: 13px;
   padding: 2px 4px;
   border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* SKY-11190: icon+colour badge, mirrors the same path-keyed entry the vault
+   tree and board tiles render — this "board tree" is the breadcrumb trail. */
+.boards-tab-panel__breadcrumb-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .boards-tab-panel__breadcrumb-btn:hover {
@@ -113,6 +124,9 @@
   font-size: 13px;
   font-weight: 500;
   padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* ── SKY-11187 §5: canvas tool palette ──

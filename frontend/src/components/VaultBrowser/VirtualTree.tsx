@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react';
 import type { ListImperativeAPI } from 'react-window';
 import type { FlatRow } from './treeUtils';
 import { NodeIcon } from '../../NodeIcon';
+import type { VaultIconEntry } from '../../iconUtils';
 import { FolderIcon, FileIcon } from './TreeIcons';
 
 // M15: 28px matches the Liquid Neon prototype tree row (12px type + 5.5px×2 padding).
@@ -49,7 +50,7 @@ interface RowData {
   onRenameCancel?: () => void;
   focusedIdx: number;
   onMoveFocus: (newIdx: number) => void;
-  iconMap?: Record<string, string>;
+  iconMap?: Record<string, VaultIconEntry>;
   // SKY-10935: suppress scroll-on-focus during right-click on Windows (focus fires before contextmenu).
   rightClickPendingRef: React.MutableRefObject<boolean>;
   // Drag-and-drop
@@ -278,7 +279,7 @@ interface VirtualTreeProps {
   onRenameCommit?: () => void;
   onRenameCancel?: () => void;
   label?: string;
-  iconMap?: Record<string, string>;
+  iconMap?: Record<string, VaultIconEntry>;
   onMove?: (fromPath: string, targetRow: FlatRow) => void;
   /** M16: when this path is present in `rows`, scroll it into view (auto-reveal). */
   scrollToPath?: string | null;

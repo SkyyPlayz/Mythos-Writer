@@ -44,6 +44,9 @@ import {
   shouldMount,
   visibleWorldRect,
 } from './boardLod';
+import { unpackIconEntry } from '../../iconUtils';
+import type { VaultIconEntry } from '../../iconUtils';
+import BoardIconPicker from '../../components/BoardIconPicker/BoardIconPicker';
 import './BoardCanvas.css';
 
 export type { BoardItem } from './BoardCard';
@@ -179,6 +182,16 @@ export interface BoardCanvasProps {
    * the same hit twice re-reveals it.
    */
   selectRequest?: { itemPath: string; seq: number } | null;
+  /**
+   * SKY-11190: icon/colour map, keyed by FULL vault-relative path (not
+   * relative to this board — same keying as the vault tree's iconMap, so
+   * `folderPath` is needed below to resolve each item's key).
+   */
+  iconMap?: Record<string, VaultIconEntry>;
+  /** This board's own vault-relative folder path ('' for Home). */
+  folderPath?: string;
+  /** Right-click "Set icon…" on a tile. itemPath is THIS board's relative path, matching `items[].path`. */
+  onSetIcon?: (itemPath: string, icon: string | null, color: string | null) => void;
 }
 
 interface ResolvedItem {
@@ -220,6 +233,9 @@ export default function BoardCanvas({
   linkAnchors,
   showMinimap = false,
   selectRequest = null,
+  iconMap,
+  folderPath = '',
+  onSetIcon,
 }: BoardCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -793,6 +809,12 @@ export default function BoardCanvas({
 
   const RESIZABLE_FURNITURE_KINDS = new Set(['column', 'check', 'table', 'image', 'sketch']);
 
+  // ── SKY-11190: icon/colour picker — right-click a tile to set icon+colour ─
+  const [iconPickerFor, setIconPickerFor] = useState<string | null>(null);
+  const fullPath = useCallback((itemPath: string) => (folderPath ? `${folderPath}/${itemPath}` : itemPath), [folderPath]);
+  const iconPickerEntry = iconPickerFor ? iconMap?.[fullPath(iconPickerFor)] : undefined;
+  const { icon: iconPickerCurrentIcon, color: iconPickerCurrentColor } = unpackIconEntry(iconPickerEntry);
+
   // ── Align guides — collect edges/centres of all non-dragged items ───────
   const [guideLines, setGuideLines] = useState<{ axis: 'h' | 'v'; pos: number }[]>([]);
 
@@ -982,6 +1004,7 @@ export default function BoardCanvas({
         onRequestRename={onRequestRename}
         onRenameCommit={onRenameCommit}
         onRenameCancel={onRenameCancel}
+        icon={iconMap?.[fullPath(path)]}
       />,
     );
   }
@@ -1183,8 +1206,9 @@ export default function BoardCanvas({
       {/*
         SKY-11187 §5 / SKY-11189 §7: the item menu. Positioned in viewport
         coordinates and rendered outside the zoomed world on purpose — chrome
-        must stay legible at 40% zoom. Delete routes through the deferred-
-        delete model (onTrashItems), never an ad-hoc fs call here.
+        must stay legible at 40% zoom. Rename and Set icon share this menu;
+        Delete routes through the deferred-delete model (onTrashItems), never
+        an ad-hoc fs call here.
       */}
       {contextMenu && (
         <div
@@ -1206,6 +1230,19 @@ export default function BoardCanvas({
           >
             Rename
           </button>
+          {onSetIcon && (
+            <button
+              type="button"
+              role="menuitem"
+              className="board-canvas__menu-item"
+              onClick={() => {
+                setIconPickerFor(contextMenu.path);
+                setContextMenu(null);
+              }}
+            >
+              Set icon…
+            </button>
+          )}
           <button
             type="button"
             role="menuitem"
@@ -1215,6 +1252,16 @@ export default function BoardCanvas({
             {effectiveSelection.size > 1 ? `Delete ${effectiveSelection.size} items` : 'Delete'}
           </button>
         </div>
+      )}
+
+      {iconPickerFor && onSetIcon && (
+        <BoardIconPicker
+          currentIcon={iconPickerCurrentIcon}
+          currentColor={iconPickerCurrentColor}
+          onSelect={(icon, color) => { onSetIcon(iconPickerFor, icon, color); setIconPickerFor(null); }}
+          onClear={() => { onSetIcon(iconPickerFor, null, null); setIconPickerFor(null); }}
+          onClose={() => setIconPickerFor(null)}
+        />
       )}
     </div>
   );

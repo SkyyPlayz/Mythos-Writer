@@ -393,6 +393,16 @@
 .board-canvas__item-header {
   padding: 10px 12px 6px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* SKY-11190: icon+colour badge, set via right-click "Set icon…" on a tile */
+.board-canvas__item-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .board-canvas__item-name {

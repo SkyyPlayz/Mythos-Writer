@@ -4,10 +4,11 @@ import type { LucideProps } from 'lucide-react';
 import {
   Sword, Shield, Crown, Star, Heart, Flame, Zap, Globe,
   BookOpen, Book, ScrollText, FileText, Pen, Feather, Notebook,
-  Map, MapPin, Compass, Mountain, Trees, Castle, Home, Landmark,
+  Map, MapPin, Compass, Mountain, Trees, TreePine, Castle, Home, Landmark,
   User, Users, UserRound, Ghost, Skull, Eye, Fingerprint,
   Gem, Package, Key, Lock, Wand2, Scroll, Sparkles, Moon, Sun,
   Music, Image, Clock, Tag, Folder, Search, MessageSquare,
+  Waves, VenetianMask, FlaskConical, Ship, Bell, Hourglass,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
@@ -66,6 +67,15 @@ export const LUCIDE_ICONS: Record<string, LucideIconComponent> = {
   folder: Folder,
   search: Search,
   'message-square': MessageSquare,
+  // SKY-11190 (Notes Board 7/9): the 7 names the Boards closed 24-glyph
+  // picker needs that the free-form set above didn't already cover.
+  wave: Waves,
+  mask: VenetianMask,
+  potion: FlaskConical,
+  tree: TreePine,
+  ship: Ship,
+  bell: Bell,
+  hourglass: Hourglass,
 };
 
 export const LUCIDE_ICON_NAMES = Object.keys(LUCIDE_ICONS).sort();
