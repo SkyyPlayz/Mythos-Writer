@@ -26,7 +26,7 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .notes-tab-toolbar {
-    background: var(--glass-fill);
+    background: var(--glass-panel-bg);
   }
 }
 
@@ -111,7 +111,7 @@
    (LeftRail.css/StoryNavigator.css use the identical pattern). */
 @supports (backdrop-filter: blur(1px)) {
   .notes-tab-sidebar-left {
-    background: var(--glass-fill);
+    background: var(--glass-panel-bg);
   }
 }
 
@@ -369,7 +369,7 @@
    bug report; bring it in line with every other panel in the app. */
 @supports (backdrop-filter: blur(1px)) {
   .notes-tab-sidebar-right {
-    background: var(--glass-fill);
+    background: var(--glass-panel-bg);
   }
 }
 

@@ -115,26 +115,42 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-/** Mean luminance (Rec. 601) over a screenshot buffer, cropped to `box`. */
-function meanLuma(pngBuffer: Buffer, box: { x: number; y: number; width: number; height: number }): number {
+interface Box { x: number; y: number; width: number; height: number }
+
+/** Rec. 601 luminance of every 3rd pixel inside `box`, as a flat sample. */
+function sampleLuma(pngBuffer: Buffer, box: Box): number[] {
   const png = PNG.sync.read(pngBuffer);
   const x0 = Math.max(0, Math.round(box.x));
   const y0 = Math.max(0, Math.round(box.y));
   const x1 = Math.min(png.width, Math.round(box.x + box.width));
   const y1 = Math.min(png.height, Math.round(box.y + box.height));
-  let sum = 0;
-  let n = 0;
+  const out: number[] = [];
   for (let y = y0; y < y1; y += 3) {
     for (let x = x0; x < x1; x += 3) {
       const idx = (png.width * y + x) << 2;
       const r = png.data[idx];
       const g = png.data[idx + 1];
       const b = png.data[idx + 2];
-      sum += 0.299 * r + 0.587 * g + 0.114 * b;
-      n++;
+      out.push(0.299 * r + 0.587 * g + 0.114 * b);
     }
   }
-  return n ? sum / n : NaN;
+  return out;
+}
+
+/** Mean luminance (Rec. 601) over a screenshot buffer, cropped to `box`. */
+function meanLuma(pngBuffer: Buffer, box: Box): number {
+  const v = sampleLuma(pngBuffer, box);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN;
+}
+
+/**
+ * Median luminance over `box` — the *bulk* of the surface, which (unlike a
+ * mean) is not dragged around by the handful of bright glyph and neon-accent
+ * pixels sitting on top of it.
+ */
+function medianLuma(pngBuffer: Buffer, box: Box): number {
+  const v = sampleLuma(pngBuffer, box).sort((a, b) => a - b);
+  return v.length ? v[v.length >> 1] : NaN;
 }
 
 async function withApp(
@@ -196,6 +212,7 @@ test('SKY-11209: Vault Graph canvas shows the wallpaper behind it, not a flat fi
 
 test('SKY-11209: Manuscript Structure view shows the wallpaper behind it, not a flat fill', async () => {
   let brightLuma = NaN;
+  let brightMedian = NaN;
   let deepLuma = NaN;
 
   await withApp('custom', async (page) => {
@@ -212,6 +229,7 @@ test('SKY-11209: Manuscript Structure view shows the wallpaper behind it, not a 
     expect(box).not.toBeNull();
     const buf = await page.screenshot();
     brightLuma = meanLuma(buf, box!);
+    brightMedian = medianLuma(buf, box!);
   });
 
   await withApp('deep', async (page) => {
@@ -231,8 +249,32 @@ test('SKY-11209: Manuscript Structure view shows the wallpaper behind it, not a 
   });
 
   expect(deepLuma).toBeLessThan(30);
-  expect(brightLuma).toBeGreaterThan(50);
-  expect(brightLuma - deepLuma).toBeGreaterThan(30);
+
+  // `.msv` is a full-screen *base panel* carrying body text, so since
+  // SKY-11787 it also paints `--ln-text-backing`: an adaptive scrim solved so
+  // #c8d3e7 body text holds 4.5:1 over the wallpaper behind it. The brighter
+  // the wallpaper, the more backing — which caps how light this region can
+  // read. BRIGHT_WALLPAPER_SVG is deliberately blinding (flat #fff04d and
+  // friends, brighter than any shipped pack image), so it drives the backing
+  // to its heaviest and the old absolute `> 50` mean is now unreachable *for
+  // any wallpaper*: the AA floor is the binding constraint, not the fill.
+  //
+  // So assert the invariant SKY-11209 actually protects — the view TRACKS the
+  // wallpaper instead of being a fixed opaque fill — as a relationship rather
+  // than a magnitude. The original bug read bright ≈ deep (ratio 1.0).
+  // Measured on this build: bright 33.8, deep 16.7 → 2.02x, +17.1.
+  expect(brightLuma).toBeGreaterThan(deepLuma * 1.5);
+  expect(brightLuma - deepLuma).toBeGreaterThan(10);
+
+  // …and, in exchange, pin the SKY-11787 floor at the same surface: over a
+  // blinding wallpaper the *bulk* of the panel must stay dark enough for body
+  // text. Median, not mean, so bright glyphs and neon accents don't mask a
+  // regression. Measured: 28.8 with the backing, 84.9 without it.
+  expect(brightMedian).toBeLessThan(45);
+
+  // The Vault Graph test above still holds the original absolute thresholds:
+  // `.vgv-canvas` is a graph canvas, not a text-bearing panel, so it takes no
+  // text backing and must still read > 50 over a bright wallpaper.
 });
 
 // ─── SKY-11492: shared popup primitives on the overlay tier ──────────────────

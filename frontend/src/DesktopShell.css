@@ -1396,7 +1396,7 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .top-bar-chrome--peeking {
-    background: var(--glass-fill);
+    background: var(--glass-panel-bg);
   }
 }
 

@@ -30,13 +30,17 @@
    the diff modal's scrim to the page box instead of the window. tokens.css
    already remaps --glass-fill / --blur-panel to the opaque fallback for
    no-backdrop-filter, reduced-transparency and high-contrast, so no
-   @supports branch is needed here. */
+   @supports branch is needed here.
+   SKY-11787: `--glass-panel-bg` is that same glass fill plus the adaptive
+   text-backing, clipped to the padding box. This pseudo-element has no
+   border, so here the two boxes coincide and the backing covers the whole
+   shell — which is where this page's body copy sits. */
 .scene-crafter-page::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: -1;
-  background: var(--glass-fill);
+  background: var(--glass-panel-bg);
   backdrop-filter: blur(var(--blur-panel));
   -webkit-backdrop-filter: blur(var(--blur-panel));
   pointer-events: none;

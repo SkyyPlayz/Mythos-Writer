@@ -23,7 +23,7 @@
   min-height: 32px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--border-default);
-  background: var(--glass-fill);
+  background: var(--glass-panel-bg);
   flex-shrink: 0;
 }
 
@@ -249,7 +249,7 @@
   padding: 6px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
-  background: var(--glass-fill);
+  background: var(--glass-panel-bg);
 }
 
 .vgv-legend-wrap {
@@ -543,7 +543,7 @@
   height: 40px;
   padding: 0 12px;
   border-top: 1px solid var(--border-default);
-  background: var(--glass-fill);
+  background: var(--glass-panel-bg);
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -758,7 +758,7 @@
   padding: 14px 16px;
   overflow-y: auto;
   border-right: 1px solid var(--border-default);
-  background: var(--glass-fill);
+  background: var(--glass-panel-bg);
   font-family: var(--font-sans);
 }
 
@@ -1011,7 +1011,7 @@
   overflow-y: auto;
   border: 1px solid var(--border-default);
   border-radius: 14px;
-  background: var(--glass-fill);
+  background: var(--glass-panel-bg);
   font-family: var(--font-sans);
   z-index: 2;
 }
