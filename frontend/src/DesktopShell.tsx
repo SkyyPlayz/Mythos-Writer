@@ -3956,6 +3956,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             : t,
         );
       });
+      // SKY-11791: keep allNotePaths (the Boards column-ref click-to-open
+      // index) in step with the rename immediately. The main process also
+      // pushes vault:file-changed for this, but DesktopShell debounces that
+      // 500ms client-side (perf audit P4) — long enough for a rename
+      // immediately followed by clicking the still-stale ref to silently
+      // no-op. This event fires synchronously in the rename's success path,
+      // ahead of that debounce window.
+      setAllNotePaths((prev) => (prev.includes(fromPath) ? prev.map((p) => (p === fromPath ? toPath : p)) : prev));
     };
     window.addEventListener('mythos:note-renamed', onNoteRenamed);
     return () => window.removeEventListener('mythos:note-renamed', onNoteRenamed);

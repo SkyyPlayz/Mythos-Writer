@@ -1676,6 +1676,18 @@ function renameNotesVaultEntry(fromPath: string, toPath: string): VaultMoveRespo
   if (result.linkUpdate) {
     notifyRenameCascadeApplied(result.linkUpdate.changedStoryPaths, result.linkUpdate.changedNotesPaths);
   }
+  // SKY-11791: notifyRenameCascadeApplied only pushes vault:file-changed for
+  // changedStoryPaths/changedNotesPaths (rewritten wikilinks) — a rename with no
+  // inbound [[wikilinks]] (e.g. only a Boards column ref pointing at it) never
+  // triggers linkUpdate at all, and the notes-vault watcher's own notify path
+  // never sends vault:file-changed at all (only vault:notes-updated), so
+  // DesktopShell's allNotePaths — refreshed solely off vault:file-changed —
+  // goes stale and ref click-to-open silently fails to resolve the renamed
+  // note. Push the renamed note's own path unconditionally so that index
+  // always catches up.
+  if (result.moved && mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('vault:file-changed', { path: toPath });
+  }
   return result;
 }
 
