@@ -3254,7 +3254,7 @@ const handlers: IpcHandlers = {
       ? defaultTheme
       : undefined;
 
-    const created = createVaultFromOptions({
+    const created = await createVaultFromOptions({
       destinationParent: destinationParentResolved,
       ...(name?.trim() ? { name: name.trim() } : {}),
       ...(exactName ? { exactName: true } : {}),

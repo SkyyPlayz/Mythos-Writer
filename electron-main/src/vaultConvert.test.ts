@@ -146,6 +146,7 @@ describe('markdown tree import', () => {
       skipped: 0,
       errors: [],
       dropWarning: '2 file(s) from the Obsidian vault were not imported and not reported as errors — check for unsupported file types or permission issues in the source vault',
+      docxFiles: [],
     });
     const src = path.join(tmp, 'obs-vault');
     fs.mkdirSync(src, { recursive: true });

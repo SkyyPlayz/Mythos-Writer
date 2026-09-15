@@ -62,6 +62,9 @@ interface CreatedVault {
   vaultRoot: string;
   notesVaultRoot: string;
   name: string;
+  /** SKY-11814: non-fatal import warnings (skipped files, nothing-imported) —
+   *  shown persistently here since the create-vault toast is transient. */
+  importWarnings?: string[];
 }
 
 interface Props {
@@ -285,6 +288,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
           vaultRoot: res.storyVaultPath,
           notesVaultRoot: res.notesVaultPath,
           name,
+          importWarnings: res.importTally?.warnings?.length ? res.importTally.warnings : undefined,
         });
         setCreateOpen(false);
         setCreateName('');
@@ -488,6 +492,16 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
           <div style={{ fontSize: 10.5, color: '#8e9db8', fontFamily: 'ui-monospace,monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {createdVault.mythosVaultRoot}
           </div>
+          {createdVault.importWarnings && createdVault.importWarnings.length > 0 && (
+            <ul
+              data-testid="mvs-create-import-warnings"
+              style={{ margin: 0, padding: '0 0 0 16px', fontSize: 10.5, color: '#f2c94c', lineHeight: 1.5 }}
+            >
+              {createdVault.importWarnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          )}
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               type="button"
