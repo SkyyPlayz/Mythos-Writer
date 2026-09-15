@@ -197,6 +197,10 @@ describe('buildVaultImageIndex — one walk, basename → shortest paths', () =>
   it('collects allowlisted images only, skips dot-prefixed segments, shortest path first', () => {
     writeFile(root, 'deep/dir/cover.png', 'x');
     writeFile(root, 'img/cover.png', 'x');
+    // Probe the temp filesystem's case sensitivity before asserting on
+    // img/COVER.PNG: on a case-insensitive volume (macOS APFS default)
+    // this write lands on img/cover.png above, so only two paths exist.
+    const caseInsensitiveFs = fs.existsSync(path.join(root, 'img', 'COVER.PNG'));
     writeFile(root, 'img/COVER.PNG', 'x');
     writeFile(root, 'notes/a.md', 'x');
     writeFile(root, 'doc.pdf', 'x');
@@ -204,7 +208,11 @@ describe('buildVaultImageIndex — one walk, basename → shortest paths', () =>
     writeFile(root, 'img/.hidden.png', 'x');
 
     const index = buildVaultImageIndex(root);
-    expect(index.get('cover.png')).toEqual(['img/COVER.PNG', 'img/cover.png', 'deep/dir/cover.png']);
+    if (caseInsensitiveFs) {
+      expect(index.get('cover.png')).toEqual(['img/cover.png', 'deep/dir/cover.png']);
+    } else {
+      expect(index.get('cover.png')).toEqual(['img/COVER.PNG', 'img/cover.png', 'deep/dir/cover.png']);
+    }
     expect(index.has('a.md')).toBe(false);
     expect(index.has('doc.pdf')).toBe(false);
     expect(index.has('.hidden.png')).toBe(false);
