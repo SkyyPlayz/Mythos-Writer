@@ -224,7 +224,7 @@ test('Vaults folder Move refreshes the vault list, switch, and New-vault Destina
     // The new vault landed under the CURRENT parent — the deleted pre-move
     // folder was never resurrected.
     expect(fs.existsSync(dirs.vaultsParent)).toBe(false);
-    expect(fs.existsSync(path.join(movedParent, 'Gamma', 'Story Vault'))).toBe(true);
+    expect(fs.existsSync(path.join(movedParent, 'Gamma', 'Stories', 'Story Vault'))).toBe(true);
   } finally {
     await app.close().catch(() => {});
     cleanup(dirs);
