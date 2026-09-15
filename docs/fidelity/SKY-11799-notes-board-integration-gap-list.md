@@ -9,8 +9,18 @@ would reach it — nothing pre-seeded beyond vault files (COMPANY-STANDARDS
 Contract used: `plans/design-handoff/v2/FULL-SPEC.md` (no dedicated Notes
 Board section — it postdates FULL-SPEC and is governed by the Paperclip
 owner-concept epic instead), the SKY-11188/89/90/92 slice ACs, and the
-owner rulings on that epic. `BOARDS-SPEC.md` does not exist in this repo
-and was not searched for (per standing note).
+owner rulings on that epic.
+
+**Update (same pass, same PR):** Ivy surfaced a verbatim copy of the
+owner's `BOARDS-SPEC.md` after this report's first draft (source: Claude
+Design, previously 403). It is being added to the repo byte-for-byte in a
+separate docs-only PR (`plans/design-handoff/v2/BOARDS-SPEC.md`) per her
+instruction — no edits, no other files in that PR. This report is now
+checked against it too; see "BOARDS-SPEC.md conformance" below and NB-7/
+NB-8. §2 (identity/keys), §4 (furniture field shapes), §10 (search/wikilink/
+minimap-as-derived), §11 (Brainstorm-is-one-canvas), and §12 (API surface)
+are backend/data-model sections with no independent visual surface to walk
+under this ticket's read-only-UI scope — not re-verified line-by-line here.
 
 **Coverage-area 3 (legibility over wallpaper) and area 5 (icons) turned
 out to be gated by two other open slices, not board-surface bugs** — see
@@ -137,6 +147,121 @@ different apps in the same chrome.
 the bounds instructions: needs an owner ruling on whether the right-panel
 IA should converge, not a coder dispatch.
 
+### NB-7 — Creating a note at Home (vault root) is allowed, contradicting BOARDS-SPEC §5's explicit guard rail — **fidelity**
+
+Not independently screenshot-able (it's an absence, not a visual state) —
+verified against source instead.
+
+`BOARDS-SPEC.md` §5 lists as a guard rail "worth keeping": *"Creating a
+note at Home (vault root) is refused — root holds boards only."* The
+shipped code does the opposite, deliberately: `frontend/src/pages/Boards/BoardsTabPanel.tsx:513-514`
+carries the comment *"Home (currentFolder === '') is NOT special-cased
+anywhere below: the root board creates, names and renames exactly like a
+nested one,"* and `handleCreateItem` (`BoardsTabPanel.tsx:516-529`) calls
+`notesBoardCreateItem(currentFolder, kind, {x,y})` unconditionally.
+Mirrored on the main-process side: `electron-main/src/main.ts:7404-7424`
+(the `NOTES_BOARD_CREATE_ITEM` handler) carries the matching comment
+*"Home ('' folderPath) goes down the identical path as any other board —
+no root special case"* and applies no guard before creating. This reads as
+an intentional, documented divergence rather than an oversight — both
+comments explain themselves — but it directly contradicts the written
+spec, and a user who uses the Note tool while sitting at Home today gets a
+stray file at vault root, which every board tile above it treats as
+structure (folders = boards).
+
+**Fix:** needs-owner — either the spec guard rail is stale and should be
+dropped from the contract, or the two call sites above need a root check
+that redirects/refuses with the same messaging pattern used elsewhere in
+this codebase for blocked ops (see NB restore-guard note below). Don't
+guess at intent; this is a product-behavior call, not a rendering bug.
+
+### NB-8 — Auto-layout column count is responsive, not the fixed 4 columns BOARDS-SPEC §6 specifies — **polish**
+
+Not independently screenshot-able — verified against source.
+
+`frontend/src/pages/Boards/boardLod.ts:21-24` matches the spec's cell
+size and origin exactly (`CELL_W=268`, `CELL_H=216`, `ORIGIN_X=48`,
+`ORIGIN_Y=44`), and the resize clamps (`RESIZE_MIN_W=150`,
+`RESIZE_MAX_W=720`, `RESIZE_MIN_H=100`, `RESIZE_MAX_H=760`) and
+`GRID_SNAP=20` at `boardLod.ts:35-39` match §6 too. The one divergence:
+§6 specifies a fixed "4 columns," but `autoLayoutColumns(canvasWidth)`
+(`boardLod.ts:174-176`) computes `Math.max(1, Math.floor((canvasWidth -
+ORIGIN_X) / CELL_W))` — a responsive value that only equals 4 at the
+canvas width this ticket happened to capture (~1120px). This is
+plausibly a deliberate, reasonable improvement (auto-layout that adapts
+to window width rather than clipping/wasting space), not a defect — but
+it's a literal spec deviation worth recording since §6 was called out by
+name for this pass.
+
+**Fix:** none proposed — flagging for the record. If the owner wants the
+grid to stay a fixed 4 columns regardless of canvas width, that's a
+one-line change to `autoLayoutColumns`; otherwise no action needed.
+
+## BOARDS-SPEC.md conformance — sections checked, no gap filed
+
+Per Ivy's list, checked against current `origin/main` source (not the
+prototype):
+
+- **§1 (two stores, one truth — Store B must never hide a note).** Holds.
+  `electron-main/src/notesBoard.ts` sidecar load drops layout entries for
+  children that no longer exist in the vault, but any vault child with NO
+  layout entry still renders via an auto-layout slot (`boardLod.ts`) — the
+  vault (Store A) is never gated behind board metadata (Store B).
+- **§3 (sidecar `<folder>/.mythos-board.json`; `w`/`h` absent unless
+  resized).** Holds exactly. `notesBoard.ts:53` defines the sidecar
+  filename; `BoardLayoutEntry` (`notesBoard.ts:69-76`) declares `w?`/`h?`
+  optional with a matching code comment, and `patchLayout`
+  (`notesBoard.ts:613-629`) only merges the fields a given patch actually
+  passes — a plain move never writes `w`/`h`.
+- **§5 (guard rails)** — see **NB-7** above; the root-note guard is
+  missing by deliberate design. The other two guard rails in §5 (rename to
+  empty string is a no-op; tile counts come from the vault not metadata)
+  were not independently re-verified this pass beyond what NB-2/NB-3 and
+  the "board tile counts are vault-derived, not mocked" check below
+  already cover.
+- **§6 (layout maths).** Cell size, origin, resize clamps, and grid snap
+  all match exactly — see **NB-8** for the one divergence (column count).
+- **§7 (trash restore rules — a trashed parent must block restore with a
+  clear message).** Met, but by a different mechanism than the spec
+  describes: `electron-main/src/notesTrash.ts` restores by "group" —
+  when a folder is trashed, every descendant shares its ancestor's restore
+  group, so there is no UI path to select "restore just the orphaned
+  child" in the first place. The scenario §7 asks to block can't occur
+  structurally, so no blocking-error-message code path exists or is
+  needed. Not filed as a gap; noting the mechanism differs from the
+  literal spec text in case a future feature (e.g. per-item restore)
+  reintroduces the scenario without the guard.
+- **§8 (thumbnail resolution order, including `thumb: false`).** Matches
+  exactly. `electron-main/src/noteThumbnails.ts:388-424` checks the
+  frontmatter `thumb` field first and returns immediately on `false`/
+  `"off"` — before the first-image-in-body fallback ever runs — so
+  `thumb: false` correctly suppresses an existing image rather than being
+  overridden by it.
+- **§13 (what's still mock — don't reverse-engineer a placeholder as a
+  feature).** Clean. Image and sketch furniture cards are real
+  placeholders with an explicit disclaimer rendered in the UI ("Image
+  placeholder — no attachment yet" / "Sketch placeholder — drawing not
+  saved," `frontend/src/pages/Boards/BoardFurniture.tsx:182-196`) and a
+  matching source comment citing spec §14 scope. Board-tile counts ("N
+  boards, M cards") are live-computed from real vault listings
+  (`BoardsTabPanel.tsx:221-259`, `BoardCard.tsx:233`), not a mocked
+  `count` field — this is *better* than the prototype's mock, correctly
+  productionized. Canvas metadata undo (drag/resize/recolour/furniture
+  edits) is honestly not yet wired — only trash-delete pushes an undo
+  entry (`BoardsTabPanel.tsx:598`) — but the shared-stack module says so
+  itself (`frontend/src/lib/notesUndoStack.ts:1-26`) rather than faking
+  it, and §13 already lists "no undo stack for board metadata" as
+  expected-mock, so this is spec-compliant, not a gap.
+- **§14 (7 acceptance tests).** Not independently re-run end-to-end in
+  this UI-walk pass. Tests 2 (persist across reopen, metadata-file
+  deletion recovers auto-layout), 3 (rename propagates icon/layout), 5
+  (connector cascade-delete on trash, no resurrect on restore), and 7
+  (`thumb: false` text-only) are each backed by the source-level
+  guarantees already confirmed above (§3, §8) and by NB-2/NB-3's own
+  reproduction path; recommend a follow-up unit/e2e pass explicitly named
+  against these 7 if there isn't one already, since this ticket's scope
+  was visual walk-through, not test-suite audit.
+
 ## Coverage note — area 3 (legibility over wallpaper)
 
 SKY-11787 (per-panel text-backing) is described as in-flight in this
@@ -155,17 +280,25 @@ tier the way an un-backed panel would. No gap filed for this area.
 | 1 | NB-2 | Reachable on any board with one existing item; corrupts the newest, most basic interaction (adding a card). |
 | 2 | NB-3 | Breaks a core navigation affordance under realistic content volume (many notes is the normal case, not an edge case). |
 | 3 | NB-5 | One-line anchor fix, low risk, improves first-run polish. |
+| 4 | NB-7 | Spec-contradicting guard-rail gap, but needs an owner call before a fix is written (see below). |
 | — | NB-1, NB-4 | No new dispatch — already tracked by SKY-11192 and SKY-11190 respectively; re-review once merged. |
-| — | NB-6 | Owner ruling needed before any dispatch. |
+| — | NB-6, NB-7 | Owner ruling needed before any dispatch. |
+| — | NB-8 | No action proposed; recorded for the spec-conformance record only. |
 
-Not fixes: NB-1, NB-4 (already-scoped open slices), NB-6 (needs-ruling).
+Not fixes: NB-1, NB-4 (already-scoped open slices), NB-6/NB-7 (needs-ruling), NB-8 (no gap, informational).
 
-**Total: 6 gaps — 3 blocker, 2 fidelity (1 of which is a not-yet-landed
-slice), 1 needs-owner, 1 polish.** Verdict: **the Notes Board is not
-beta-ready as an integrated surface yet.** Two of the six coverage areas
-this ticket asked about are gated on slices still marked open in this
-same epic (icons, Brainstorm unification), and of the areas that could be
-walked end-to-end, the canvas itself has two newly-found, easily-reachable
-rendering blockers (furniture placement, minimap overflow) that would
-surface on the very first session a real user has with more than a
-handful of notes.
+**Total: 8 gaps — 3 blocker, 2 fidelity (1 of which is a not-yet-landed
+slice, 1 the NB-7 spec-guard-rail divergence), 2 needs-owner (NB-6, NB-7),
+1 polish (NB-5; NB-8 is informational and not counted as a defect).**
+Verdict: **the Notes Board is not beta-ready as an integrated surface
+yet.** Two of the six coverage areas this ticket asked about are gated on
+slices still marked open in this same epic (icons, Brainstorm
+unification); of the areas that could be walked end-to-end, the canvas
+itself has two newly-found, easily-reachable rendering blockers
+(furniture placement, minimap overflow) that would surface on the very
+first session a real user has with more than a handful of notes; and the
+owner's now-available `BOARDS-SPEC.md` surfaced one further contract
+violation (NB-7, the missing root-note guard) that needs an explicit
+ruling before it can be scheduled. Everything else checked against the
+new spec — the metadata model, layout maths, trash-restore behavior, and
+thumbnail resolution — holds up cleanly against the written contract.
