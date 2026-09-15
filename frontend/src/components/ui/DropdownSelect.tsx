@@ -111,6 +111,22 @@ export function DropdownSelect({
     return () => document.removeEventListener('mousedown', onMouseDown, true);
   }, [open, close]);
 
+  // Dismiss on Escape, no matter where focus currently sits. The listbox is
+  // portaled to document.body and its options are focused imperatively, so a
+  // re-render or a disabled trigger can strand focus outside the portal —
+  // relying on the listbox's own onKeyDown misses Escape in that case.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [open, close]);
+
   const handleTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -160,10 +176,6 @@ export function DropdownSelect({
         if (opt && !opt.disabled) select(opt.value);
         break;
       }
-      case 'Escape':
-        e.preventDefault();
-        close();
-        break;
       case 'Tab':
         close();
         break;

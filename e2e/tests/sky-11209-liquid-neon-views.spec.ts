@@ -346,10 +346,27 @@ test('SKY-11492: .ln-menu and .ln-select-listbox popups render on the overlay ti
     await expect(listbox).toHaveClass(/\bln-overlay-surface\b/);
     expectPopupOnTier(await popupVsTier(page, '[data-testid="ln-select-listbox"]'));
     await page.keyboard.press('Escape');
-    // SKY-11664: this is the last assertion in a long, DOM-heavy test — under
-    // shard load it can sit past the project's 10s default before the portal
-    // unmount commits (confirmed 3/3 local pass on the flaking SHA with zero
-    // code changes; not a listener-ordering race like SKY-11581's voicePtt).
-    await expect(listbox).toHaveCount(0, { timeout: 20_000 });
+    await expect(listbox).toHaveCount(0);
+  }, { continuityPanel: true });
+});
+
+test('SKY-11809: Escape dismisses DropdownSelect even when focus is outside the portal', async () => {
+  await withApp('deep', async (page) => {
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]').click();
+    const storyPick = page.locator('[data-testid="nav-rail-story-story-1"]');
+    if (await storyPick.count()) await storyPick.click();
+    const picker = page.getByTestId('global-right-sidebar').getByRole('combobox', { name: /scan scope/i });
+    await expect(picker).toBeVisible({ timeout: 12_000 });
+    await picker.click();
+    const listbox = page.locator('[data-testid="ln-select-listbox"]');
+    await expect(listbox).toBeVisible({ timeout: 5_000 });
+
+    // Strand focus outside the portal — the case the listbox's own onKeyDown
+    // cannot see. Dismissal must still work via the document-level listener.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await expect.poll(() => page.evaluate(() => document.activeElement === document.body)).toBe(true);
+
+    await page.keyboard.press('Escape');
+    await expect(listbox).toHaveCount(0);
   }, { continuityPanel: true });
 });
