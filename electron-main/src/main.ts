@@ -10582,6 +10582,17 @@ function registerBetaReportRunHandler(): void {
       modelProducedText = !isEmptyModelOutput(responseText);
 
       const parsed = parseBetaReportResponse(responseText);
+      // SKY-11816: a response the model DID send but that never resolved to a
+      // real summary object (garbage, or a format the parser can't recover —
+      // e.g. an unterminated JSON object) must not silently save a fake
+      // zero-score report. Surface a visible, actionable error instead — the
+      // "silent revert to No beta reads yet" the owner hit is this exact gap.
+      if (!parsed.summaryFound) {
+        throw new SafeIpcError(
+          "The Beta Reader's response couldn't be parsed into a report. This can happen with " +
+            'some local/reasoning models — try again, or try a different model in Settings > AI Agents.',
+        );
+      }
       const reportId = crypto.randomUUID();
       const createdAt = new Date().toISOString();
       const reactions: BetaReport['reactions'] = parsed.reactions.map((r) => ({
