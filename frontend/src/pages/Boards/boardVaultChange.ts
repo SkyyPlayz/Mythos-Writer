@@ -4,7 +4,7 @@
  * A board shows its immediate children plus each child folder's direct-child
  * counts (BoardsTabPanel), so a note or folder up to two levels below the
  * board's folder can change what it paints — and so can any image one of its
- * cards is showing, wherever in the vault that image lives (spec §9 lets a
+ * cards is showing, wherever in the vault that image lives (spec §8 lets a
  * note point at `attachments/` at the root). Everything else is another
  * board's business: a keystroke in Obsidian three folders away must not
  * re-list and re-resolve a 2,000-card board.

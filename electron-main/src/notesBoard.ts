@@ -1,6 +1,6 @@
 // SKY-11183 (Notes Board 1/9): board metadata store + identity model.
 //
-// Implements BOARDS-SPEC.md v2 §1-4, §13, §15 (data/IPC half — no UI in this
+// Implements BOARDS-SPEC.md v2 §1-4, §12, §15 (data/IPC half — no UI in this
 // ticket, see SKY-10724/M-Notes-Board for the full build).
 //
 // Store A (vault: folders + .md files, already exists — vault.ts/listVaultFiles)
@@ -56,7 +56,7 @@ export const BOARD_SCHEMA_VERSION = 2;
 /**
  * Drag/colour writes to a board file are coalesced within this window so a
  * drag doesn't round-trip a disk write per animation frame (BOARDS-SPEC.md
- * §13 "write behaviour that matters for feel"). Structural ops (id
+ * §12 "write behaviour that matters for feel"). Structural ops (id
  * assignment, furniture CRUD) are NOT subject to this — they write
  * immediately via writeFileAtomic.
  */
@@ -168,7 +168,7 @@ export interface BoardChild {
   id: string | null;
 }
 
-/** Renderer-facing shape returned by getBoard() (§13 illustrative `GET board`). */
+/** Renderer-facing shape returned by getBoard() (§12 illustrative `GET board`). */
 export interface Board {
   /** This folder's OWN id, null if this folder has never itself been touched. */
   id: string | null;
@@ -460,7 +460,7 @@ function listImmediateChildren(
     .map((it) => ({ name: it.name, relPath: it.path, isDirectory: it.isDirectory }));
 }
 
-// ─── GET board (§13, §15 test 2 + test 7 half) ───
+// ─── GET board (§12, §15 test 2 + test 7 half) ───
 
 /**
  * List Store A children of `folderRelPath`, resolve each child's id
@@ -505,7 +505,7 @@ export function getBoard(vaultRoot: string, folderRelPath: string): Board {
   };
 }
 
-// ─── Debounced, key-level-merged layout/colors writes (§13 write behaviour) ───
+// ─── Debounced, key-level-merged layout/colors writes (§12 write behaviour) ───
 
 interface PendingBoardWrite {
   timer: ReturnType<typeof setTimeout>;
@@ -1036,7 +1036,7 @@ export function itemDeleteStub(
   return { key };
 }
 
-// ─── Column `ref` = real wikilink (§4, §2, §11) ───
+// ─── Column `ref` = real wikilink (§4, §2, §10) ───
 //
 // A column item's `ref` is a vault-relative note path, resolved by STEM
 // (last path segment, `.md` stripped, case-insensitive) — the exact rule
@@ -1125,7 +1125,7 @@ export function rewriteBoardSidecarTextForRename(
   };
 }
 
-// ─── Column `ref` backlinks (§4/§11 "shows up in the Links tab") ───
+// ─── Column `ref` backlinks (§4/§10 "shows up in the Links tab") ───
 
 export interface ColumnRefBacklinkEntry {
   /** Vault-relative path of the board (folder) holding the referencing column item. '' is Home. */

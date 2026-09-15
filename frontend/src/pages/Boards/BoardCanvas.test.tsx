@@ -1,6 +1,6 @@
 /**
  * SKY-11186 — BoardCanvas: viewport culling, 3-tier LOD, thumbnail-aware
- * card sizes and the visible zoom-out limit (BOARDS-SPEC v2 §6/§9).
+ * card sizes and the visible zoom-out limit (BOARDS-SPEC v2 §6/§8).
  *
  * jsdom has no layout, so the scroll panel's size is stubbed through a
  * ResizeObserver that reports a fixed viewport; everything else — which
@@ -214,7 +214,7 @@ describe('3-tier LOD by on-screen size (§6)', () => {
   });
 });
 
-describe('thumbnail-aware sizes and layout (§6/§9)', () => {
+describe('thumbnail-aware sizes and layout (§6/§8)', () => {
   it('a note with a thumbnail defaults to 236×272; without, 236×154; thumb:false is text-only', () => {
     const items: BoardItem[] = [
       { ...notes(1)[0], path: 'plain.md', name: 'Plain' },
@@ -285,9 +285,9 @@ describe('the visible zoom-out limit (owner ruling 4)', () => {
   });
 });
 
-// ── SKY-11191 §11: overlay, minimap, and search reveal ──────────────────────
+// ── SKY-11191 §10: overlay, minimap, and search reveal ──────────────────────
 
-describe('wiki-link overlay (§11)', () => {
+describe('wiki-link overlay (§10)', () => {
   const linked: BoardItem[] = [
     { path: 'a.md', kind: 'note', name: 'A' },
     { path: 'b.md', kind: 'note', name: 'B' },
@@ -390,7 +390,7 @@ describe('wiki-link overlay (§11)', () => {
   });
 });
 
-describe('minimap (§11)', () => {
+describe('minimap (§10)', () => {
   it('renders one box per item and a viewport indicator, and nothing when toggled off', () => {
     const { rerender } = render(
       <BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} showMinimap />,
@@ -422,7 +422,7 @@ describe('minimap (§11)', () => {
   });
 });
 
-describe('search reveal (§11)', () => {
+describe('search reveal (§10)', () => {
   it('selects the requested item once the board holding it has loaded', () => {
     const { rerender } = render(
       <BoardCanvas items={[]} savedLayout={{}} savedView={view} selectRequest={{ itemPath: 'n0002.md', seq: 1 }} />,

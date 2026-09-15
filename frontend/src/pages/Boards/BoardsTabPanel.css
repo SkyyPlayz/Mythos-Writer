@@ -156,7 +156,7 @@
   color: var(--text-link, #00f0ff);
 }
 
-/* ── SKY-11191 §11: view toggles + cross-board search ──
+/* ── SKY-11191 §10: view toggles + cross-board search ──
    Both ride the crumb bar's trailing end alongside the tool palette and reuse
    its neon-on-glass recipe, so the board's chrome stays one row and one
    visual language. */

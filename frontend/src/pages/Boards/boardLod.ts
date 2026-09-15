@@ -111,7 +111,7 @@ export type FurnitureKind = 'column' | 'check' | 'table' | 'image' | 'sketch' | 
 
 export const SWATCH_DEFAULT_W = 238;
 export const SWATCH_DEFAULT_H = 92;
-/** Fallback content box for a placeholder image/sketch that hasn't been given its own w/h (§4/§14). */
+/** Fallback content box for a placeholder image/sketch that hasn't been given its own w/h (§4/§13). */
 export const IMAGE_DEFAULT_CONTENT_W = 240;
 export const IMAGE_DEFAULT_CONTENT_H = 160;
 const IMAGE_CHROME_H = 48;
