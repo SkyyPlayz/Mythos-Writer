@@ -1078,6 +1078,9 @@ jobs:
       - name: E2E — production-team roles live end-to-end, reveal-point no-leak proof (SKY-11412/SKY-11411)
         run: xvfb-run --auto-servernum npm run test:e2e:production-roles
 
+      - name: E2E — Beta Reader Reports reasoning-model parser recovery (SKY-11816)
+        run: xvfb-run --auto-servernum npm run test:e2e:beta-report-reasoning-parser
+
       - name: E2E — Outline planning surface AC-OPL-QA-01..09 (SKY-3028)
         run: xvfb-run --auto-servernum npm run test:e2e:outline
 
