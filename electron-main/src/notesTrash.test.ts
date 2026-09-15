@@ -197,6 +197,58 @@ describe('notesTrash', () => {
     expect(listPendingForVault(root)).toEqual([]);
   });
 
+  it('a force-flush claims EVERY group before the first OS move, so nothing can race it (SKY-11742)', async () => {
+    writeNote(root, 'A.md');
+    writeNote(root, 'B.md');
+    trashTargets(root, '', [{ kind: 'note', itemPath: 'A.md', label: 'A.md' }]);
+    const second = trashTargets(root, '', [{ kind: 'note', itemPath: 'B.md', label: 'B.md' }]);
+
+    // Sampled from inside the OS move — i.e. while the flush is suspended,
+    // which is exactly the window where a still-armed undo timer or a Restore
+    // IPC used to be able to reach a group the flush had not claimed yet.
+    const pendingDuringMove: number[] = [];
+    const restoreRefusedDuringMove: boolean[] = [];
+    mockTrashItem.mockImplementation(async (target: string) => {
+      pendingDuringMove.push(listPendingForVault(root).length);
+      restoreRefusedDuringMove.push(!restoreEntry(second.entries[0]!.id).restored);
+      await new Promise<void>((resolve) => { process.nextTick(resolve); });
+      fs.rmSync(target, { recursive: true, force: true });
+    });
+
+    await emptyTrash(root);
+
+    // Both groups had already left the registry before the first move began.
+    expect(pendingDuringMove).toEqual([0, 0]);
+    expect(restoreRefusedDuringMove).toEqual([true, true]);
+    expect(mockTrashItem).toHaveBeenCalledTimes(2);
+  });
+
+  it('unrelated top-level groups still trash CONCURRENTLY — one slow move must not delay the others (SKY-11742)', async () => {
+    writeNote(root, 'A.md');
+    writeNote(root, 'Other/B.md');
+    trashTargets(root, '', [{ kind: 'note', itemPath: 'A.md', label: 'A.md' }]);
+    trashTargets(root, '', [{ kind: 'folder', itemPath: 'Other', label: 'Other' }]);
+
+    // emptyTrash and the app-quit hook are both awaited (main.ts holds the
+    // window open until this settles), so serializing groups that share no
+    // subtree would put every independent OS move on the critical path.
+    let inFlight = 0;
+    let peakInFlight = 0;
+    mockTrashItem.mockImplementation(async (target: string) => {
+      inFlight += 1;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      await new Promise<void>((resolve) => { process.nextTick(resolve); });
+      fs.rmSync(target, { recursive: true, force: true });
+      inFlight -= 1;
+    });
+
+    await emptyTrash(root);
+
+    expect(mockTrashItem).toHaveBeenCalledTimes(2);
+    expect(peakInFlight).toBe(2);
+    expect(listPendingForVault(root)).toEqual([]);
+  });
+
   it('an unrelated multi-select gets INDEPENDENT groups — restoring one leaves the other pending', () => {
     writeNote(root, 'A.md');
     writeNote(root, 'B.md');
