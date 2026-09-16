@@ -1,6 +1,12 @@
 # Fact Ledger + Continuity Check — Buildable Spec
 
-Version: 1.0 · Status: Draft, awaiting Ivy review · Author: CTO · Date: 2026-08-25
+Version: 1.1 · Status: Draft, amended per Ivy ruling · Author: CTO · Date: 2026-08-26
+
+**Amendment (v1.1, 2026-08-26, SKY-11031):** Ivy ruled on Open Question #1 below —
+**extend `fact_ledger`/`fact_provenance`/`fact_decisions`, do not parallel them.** v1.0's §0/§1
+(new `manuscript_fact_*` tables at a new schema slot) is superseded by this section and by the
+rewritten §1. Every other section is unchanged except for table-name references. See §0 for
+the ruling's paper trail and §1 for the extended schema.
 
 **Source of intent:** the verbatim design record captured in SKY-11018 (owner + Ivy design
 session, 2026-08-25). That record is authoritative for product intent; this document turns
@@ -14,48 +20,69 @@ inside `Agent Vault/`, no split).
 
 ---
 
-## 0. Read this first — a name collision already exists
+## 0. Read this first — the name collision is ruled, extend not parallel
 
-Before section 1, the single fact that reshapes everything below: **`SKY-10731` already has
-an open, CI-green, `in_review` PR** — **#1283**, `feat(SKY-10731): fact-ledger schema +
-persistent vault index cache (M12.2)`, branch `sky-10731-fact-ledger-schema`. It landed
-before this design conversation happened and claims:
+Before section 1, the ruling that reshapes everything below. **`SKY-10731` has an open,
+CI-green, `in_review` PR** — **#1283**, `feat(SKY-10731): fact-ledger schema + persistent
+vault index cache (M12.2)`, branch `sky-10731-fact-ledger-schema`. It landed before this
+design conversation happened and built:
 
-- the name **`fact_ledger`** (table)
+- table **`fact_ledger`**: generic `entity_key` / `fact_key` / `fact_value` store, keyed by
+  `fingerprint = sha256(entity_key\nfact_key\nfact_value)`
+- table **`fact_provenance`**: `source_path`/`source_hash`/`span_start`/`span_end`, FK'd to
+  `fact_ledger.id`
+- table **`fact_decisions`**: tombstoned dismiss/answer decisions, `fingerprint` PK
+- table **`vault_index_cache`**: name/aliases/type, a persistent replacement for
+  `entityIndex.ts`'s rebuild-on-open (unrelated to this spec, no change below)
 - schema slot **`PRAGMA user_version = 30`**
-- the acceptance criteria in `electron-main/src/factLedger.acceptance.test.ts` (AC1–AC4)
+- acceptance criteria in `electron-main/src/factLedger.acceptance.test.ts` (AC1–AC4)
 
-But what it actually builds is **not** the manuscript-scene continuity system this ticket
-designs. PR #1283's `fact_ledger` is a generic `entity_key` / `fact_key` / `fact_value`
-store, keyed by `fingerprint = sha256(entity_key\nfact_key\nfact_value)`, with
-`fact_provenance.source_path`/`source_hash`/`span_start`/`span_end` as generic provenance,
-plus `vault_index_cache` (name/aliases/type — a persistent replacement for
-`entityIndex.ts`'s rebuild-on-open) and `fact_decisions` (tombstoned dismiss/answer
-decisions). `entity_key` is documented in the diff as "the resolved **vault note** path" —
-i.e. this is a persistent cache for the existing **Notes Vault entity/property index** (the
-thing `archiveContinuityEngine.ts`'s `PROPERTY_CONTRADICTION_PAIRS` and the entity panel
-already use), not a manuscript-prose fact extractor. It has no `scene_id`, no `kind`
-(attribute/state/rule/quantity), no `grounding` (shown/stated/implied/absent), no
-`exitValue`, no position, no adjacency-diff or blind-extraction pipeline.
+`entity_key` in PR #1283 resolves to the existing vault entity/property index (the thing
+`archiveContinuityEngine.ts`'s `PROPERTY_CONTRADICTION_PAIRS` and the entity panel already
+use) via the same alias-resolution graph this spec's §1.3 also requires. As shipped, PR #1283
+has no `scene_id`, no `kind`, no `grounding`, no `exit_value` — none of the manuscript-scene
+vocabulary this spec adds. **v1.0 of this document treated that gap as license to build a
+second, parallel `manuscript_fact_*` table family at a new schema slot** (v32), and named the
+choice Risk #1 / Open Question #1 for Ivy to decide.
 
-There is also a **third** thing already named "continuity check" in the shipped product:
-Archive Agent's `continuity_issues` table + `archiveContinuityEngine.ts` (SKY-1684, live
-since v23) — a single-scene-vs-vault-notes contradiction scanner with its own LLM prompt and
-its own Notes-tree context-menu entry.
+**Ivy ruled (SKY-10731 thread, 2026-08-26 11:31, superseding this doc's own Open Question
+#1): extend `fact_ledger`/`fact_provenance`/`fact_decisions`, do not parallel them.** The
+paper trail on `sky-10731-fact-ledger-schema` shows the ruling being worked out in real time:
+commit `b87ca777` (2026-08-26 11:28 UTC) first tried a narrower fix — rename the notes-side
+table `fact_ledger` → `entity_index_facts` and coexist with a separate manuscript table —
+then commit `d813d9b9` (2026-08-26 11:39 UTC) reverted that rename eleven minutes later, once
+the fuller "extend, don't parallel" ruling landed. **The table names on `main`/PR #1283 do not
+change.** `fact_ledger`/`fact_provenance`/`fact_decisions` stay exactly as shipped in #1283;
+the manuscript ledger adds columns and a `source` discriminator to those same tables instead
+of inventing `manuscript_fact_*`. §1 below is the rewritten schema; no other section of v1.0
+depended on the parallel-table design, so §2–§7 only need table-name reference updates (done
+inline).
 
-So as of 2026-08-25 there are three overlapping things:
+**Why this is sound, not just directed** — Ivy's own reasoning, confirmed against the
+codebase rather than taken on faith: the continuity check this spec exists to build *is* the
+query "does the manuscript's value for `(entity_key, fact_key)` match notes' value for the
+same `(entity_key, fact_key)`." That only stays a plain `SELECT ... WHERE source = ?` query,
+not a second subsystem kept in sync with the first, if both sides resolve to the *same*
+`entity_key`/`fact_key` vocabulary — and they already do: both sides go through the same
+wikilink/alias graph (`vaultGraph.ts`/`entities.ts`/`wikiLinks.ts`) that PR #1283's AC4
+specifies and this doc's original §1.3 already required reusing. Extending was always
+structurally available; v1.0 didn't take it because the parallel-table design predates this
+ruling.
+
+This does **not** resolve the Archive Agent naming overlap (row #1 below) — that is a
+separate, still-open product question about the user-facing "Continuity Check" term, not a
+schema question, and Ivy's ruling was schema-specific. Two overlapping things remain, one
+resolved:
 
 | # | What | Where | Status |
 |---|---|---|---|
-| 1 | Archive Agent "Continuity Scan" — one scene vs. vault notes, LLM contradiction check | `archiveContinuityEngine.ts`, `continuity_issues` table (v23) | Shipped |
-| 2 | PR #1283's `fact_ledger` — generic vault-notes entity/property cache, replaces `entityIndex.ts` rebuild-on-open | `db.ts` v30 (unmerged) | In review, CI green, mergeable |
-| 3 | **This spec** — manuscript-scene-derived fact ledger + adjacency-diff continuity check | Net new | Not started |
+| 1 | Archive Agent "Continuity Scan" — one scene vs. vault notes, LLM contradiction check | `archiveContinuityEngine.ts`, `continuity_issues` table (v23) | Shipped — naming overlap with this spec still open, **Open Question #1 below** |
+| 2 | `fact_ledger` + `fact_provenance` + `fact_decisions` — now a **shared** store: PR #1283's notes-side rows (`source = 'notes'`) and this spec's manuscript-scene rows (`source = 'manuscript'`) | `db.ts` v30 (PR #1283, unmerged) + a later `ALTER TABLE` migration (§1.6) for the manuscript columns | PR #1283: in review, CI green, mergeable, **unmodified by this amendment** (§1.1). Manuscript extension: net new, not started |
 
-This is not mine to silently reconcile by picking a name. **Risk #1 / Open Question #1**
-below names the decision Ivy needs to make. Everything past this section is written to be
-correct *either way* that decision goes, but section 1's schema deliberately does **not**
-reuse `fact_ledger`/`fact_provenance`/`fact_decisions`/v30 — it proposes new tables at a new
-schema slot, so this spec never blocks or gets blocked by PR #1283 merging.
+If a future implementer hits a concrete technical reason the shared-table design breaks down
+(not found here — see §1.3's identity-recipe resolution, which was the one real structural
+tension), that goes back to Ivy with the reason, not a silent fork back to parallel tables —
+per the ticket's own instruction.
 
 ---
 
@@ -78,12 +105,19 @@ matches how every other durable subsystem in this codebase versions itself (`db.
 migration blocks; `mythos.json`'s `formatVersion` gate is the file-format analog, unused
 here since this is DB-native).
 
-Table names use a `manuscript_fact_*` prefix to avoid the PR #1283 collision (§0). Schema
-version: **claim the next free slot** at spec-finalization time — currently that is **v32**
-(v30 claimed by PR #1283, v31 already landed on `main` for the M12.1 job-queue tables).
-Confirm the actual free slot in `db.ts` immediately before implementation; this number will
-drift if other migrations land first (the codebase's own db.ts comment already warns this
-happened once between v30 and v31 — expect it again, don't hardcode without re-checking).
+**No new table names for the ledger itself (§0).** `fact_ledger`, `fact_provenance`, and
+`fact_decisions` are extended in place with new nullable columns plus a `source`
+discriminator — not superseded, not duplicated. `fact_flags` (§1.4) is the one genuinely new
+table, since nothing in PR #1283 has an adjacency-diff-finding concept to extend.
+
+**PR #1283 itself is not touched by this amendment.** It merges at v30 exactly as already
+reviewed — don't reopen a CI-green, in-review PR to add columns a not-yet-started feature
+needs. The extension lands as its own `ALTER TABLE ... ADD COLUMN` migration (§1.6) at
+whatever slot is free when the manuscript-ledger build (§7 Phase 0) actually starts. As of
+this amendment, v30 (PR #1283, unmerged) and v32 (`SKY-10737` brainstorm questions, merged to
+`main`) are both claimed — **the next free slot is v33**, and that number is a known moving
+target (§1.6, Risk #6): confirm it in `db.ts` immediately before implementation, don't trust
+this document's number past the day it's read.
 
 Vault-conceptual location: these tables are **Agent Vault content** per the SKY-10949 ruling
 (`index/` in that ruling's logical layout). `state.db` physically sits under `.mythos/`
@@ -95,76 +129,141 @@ the eventual PR description so the two land coherently.
 
 ### 1.2 Two buckets (binding — mirrors PR #1283's AC1, apply the same discipline)
 
-- **Derived / disposable** — `manuscript_fact_ledger`, `manuscript_fact_flags`. Fully
-  rebuildable from manuscript content at any time; a full wipe-and-rescan must be a
-  supported, safe operation.
-- **Durable / decision** — `manuscript_fact_decisions`. Author actions (dismiss a flag,
-  accept a plan-drift note, "don't ask again"). Tombstoned, never hard-deleted. Must be
-  included in the existing `.mythos/` backup path (`electron-main/src/backup.ts`) the same
-  way PR #1283's `fact_decisions` already is.
+- **Derived / disposable** — `fact_ledger` (both sources), `fact_flags` (manuscript only).
+  Fully rebuildable from manuscript content at any time; a full wipe-and-rescan must be a
+  supported, safe operation. Wiping and re-scanning **must filter by `source = 'manuscript'`**
+  — a manuscript rescan must never touch or drop notes-side rows, and vice versa.
+- **Durable / decision** — `fact_decisions` (both sources, already shared — no schema change,
+  §1.5). Author actions (dismiss a flag, accept a plan-drift note, "don't ask again").
+  Tombstoned, never hard-deleted. Already included in the existing `.mythos/` backup path
+  (`electron-main/src/backup.ts`) via PR #1283; nothing new to wire up.
 
-### 1.3 `manuscript_fact_ledger` — field table
+### 1.3 `fact_ledger` — extended field table
+
+Existing PR #1283 columns are reused directly; new columns are additive and nullable so
+existing (notes-side) rows need no backfill beyond a default. `source` is the one column that
+must land with a real default so existing rows classify correctly:
+
+| Field | Type | PR #1283? | Required (manuscript rows) | Description |
+|---|---|---|---|---|
+| `id` | TEXT (uuid) | existing | yes | Row identity. Unchanged. |
+| `source` | TEXT enum: `notes` \| `manuscript` | **new** | yes | `NOT NULL DEFAULT 'notes'` — existing v30 rows backfill to `'notes'` automatically on `ALTER TABLE ... ADD COLUMN ... DEFAULT`, matching PR #1283's actual (pre-this-spec) behavior. This is the column that turns "manuscript vs. notes for the same fact" into a `WHERE` clause instead of a join across two subsystems (§0). |
+| `entity_key` | TEXT | existing | yes | Reused as-is for both sources. For manuscript rows this **is** `subject_entity_key` from v1.0 — same resolver, same column, renamed only in this doc's prose for clarity. Resolved via the existing wikilink/alias graph (`vaultGraph.ts`/`entities.ts`/`wikiLinks.ts`) — never a raw extracted name string. Reuse the alias resolution PR #1283 and AC4 already specify; do not build a second matcher. |
+| `fact_key` | TEXT | existing | yes | Reused as-is. For manuscript rows this **is** `attribute` from v1.0 — free-text attribute name as extracted (e.g. `location`, `eye_colour`). Not an enum — the extractor decides the vocabulary; normalization is a v-next concern, not v1. |
+| `fact_value` | TEXT | existing | yes | Reused as-is. For manuscript rows this **is** `value` from v1.0 — the entry value for the scene. |
+| `kind` | TEXT enum: `attribute` \| `state` \| `rule` | **new**, nullable | yes | `NULL` for notes rows (PR #1283 has no `kind` concept). Drives which check applies downstream (§ design record). **Quantity is deliberately excluded from this enum**, not merely inert — the owner ruling is that Quantity is a separate, standalone visible tool, not part of this checker (§ design record, "Deferred: Quantity"). If a future Quantity tool needs its own ledger, it gets its own table; this schema should not grow a fifth kind to accommodate it later without a fresh decision. |
+| `exit_value` | TEXT | **new**, nullable | no | `NULL` for notes rows always; for manuscript rows, only set when the fact changes **within** the same scene (§ design record — "most facts have value == exitValue"). Null means value == exitValue. |
+| `scene_id` | TEXT (uuid) | **new**, nullable | yes | `NULL` for notes rows always. The manuscript scene's stable identifier — see §3. **Never** a positional path string. This column *is* the manuscript position this amendment's directive asks for — Part/Chapter/Scene display text is derived from it at read time (§3), never stored redundantly. |
+| `grounding_entry` | TEXT enum: `shown` \| `stated` \| `implied` \| `absent` | **new**, nullable | yes | `NULL` for notes rows. Grounding of the fact's assertion at scene entry. |
+| `grounding_exit` | TEXT enum: `shown` \| `stated` \| `implied` \| `absent` | **new**, nullable | no | `NULL` for notes rows and for manuscript rows with no in-scene change. Only set alongside `exit_value`. |
+| `extractor_prompt_version` | INTEGER | **new**, nullable | yes | `NULL` for notes rows (PR #1283's extractor, if any, isn't versioned this way). Which extractor-prompt version produced this row — see §4. Used for incremental invalidation (§5) and regression triage, **not** a schema-version field. |
+| `status` | TEXT enum: `active` \| `superseded` | existing | yes | Reused as-is. `superseded` rows are kept (audit trail / undo), not deleted — same semantics both sources already share. |
+| `superseded_by` | TEXT (uuid) | existing | no | Reused as-is. Points at the row that replaced this one after re-extraction. |
+| `fingerprint` | TEXT (sha256), UNIQUE | existing, **recipe extended** | yes | See "Identity / dedup rule" below — this is the one column where notes and manuscript genuinely need different hashing recipes, and that difference has to be explicit, not papered over. |
+| `extracted_at` | TEXT (ISO) | existing | yes | Reused as-is. No separate `updated_at` — matches PR #1283's existing convention; rows are never mutated in place (a re-extraction inserts a new row and marks the old one `superseded`), so there is nothing for `updated_at` to track that `extracted_at` + `superseded_by` don't already capture. |
+
+`source_content_hash` from v1.0 is **dropped as a ledger-row column** — it duplicated what
+`fact_provenance.source_hash` already captures via the `fact_id` FK (§1.3.1). One hash, one
+place, matching how PR #1283's notes rows already work.
+
+**Identity / dedup rule — the one real structural tension this amendment surfaces, resolved
+explicitly rather than left implicit.** PR #1283's `fingerprint` is content-addressed:
+`sha256(entity_key + fact_key + fact_value)` — the *value* is part of the identity, so any
+value change mints a logically new fact (correct for a property cache: a note's stated eye
+colour changing IS a different fact). v1.0's manuscript design is deliberately **not**
+content-addressed the same way: identity is `(subject_entity_key, attribute, scene_id)`
+**excluding value**, specifically so an entry→exit change within one scene stays *one* row,
+not two competing facts that would incorrectly reach the adjacency-diff step (§1.3's original
+"Identity / dedup rule" paragraph, unchanged reasoning, restated below). These are two
+genuinely different identity schemes, not a styling difference — a shared table needs both to
+coexist under one `UNIQUE(fingerprint)` constraint without either breaking the other:
+
+- `source = 'notes'`: `fingerprint = sha256(entity_key + '\n' + fact_key + '\n' + fact_value)`
+  — **unchanged from PR #1283.**
+- `source = 'manuscript'`: `fingerprint = sha256('manuscript\n' + entity_key + '\n' + fact_key
+  + '\n' + scene_id)` — value deliberately **excluded** from the hash, `scene_id` included
+  instead, and a literal `'manuscript'` tag prefixed so a manuscript fingerprint can never
+  collide with a notes fingerprint even in the (already astronomically unlikely, sha256)
+  case where the remaining fields matched.
+
+`fingerprint` stays **one column, one `UNIQUE` constraint** — this is what makes "extend, not
+parallel" hold structurally rather than just nominally: the recipe branches on `source` in
+application code (an ordinary discriminated-union pattern), the storage and uniqueness
+enforcement do not fork. If a future change needs a *third* fingerprint recipe, that is a
+signal to revisit this design, not a reason to add a second column.
+
+**Dedup semantics restated for manuscript rows, unchanged from v1.0:** among `status =
+'active'` rows, `(entity_key, fact_key, scene_id)` is unique (enforced by the `fingerprint`
+recipe above). One row per subject+attribute+scene captures both the entry value and, when
+present, the in-scene exit value — a change *within* a scene is data on one row, not two
+competing facts, so it never reaches the merge/adjacency step (mirrors the design record's
+own framing: the extractor sees an in-scene change directly).
+
+Re-extracting a scene whose provenance `source_hash` (§1.3.1) is unchanged is a no-op
+(idempotent). Re-extracting after an edit (new hash) does **not** overwrite in place — the old
+row is marked `superseded`, a new `active` row is inserted, linked via `superseded_by`. This
+gives an audit trail for free and is now literally the same code path PR #1283's notes-side
+supersede logic already runs — no separate implementation, just a different `source` value on
+the same write path.
+
+#### 1.3.1 `fact_provenance` — reused as-is, no schema change
+
+`source_path`, `source_hash`, `span_start`, `span_end`, `fact_id` FK all map directly onto
+manuscript rows: for a manuscript fact, `source_path` is the scene's markdown file path
+(`electron-main/src/vault.ts` `readSceneFile`/`writeSceneFile` — scenes are files too),
+`source_hash` is that scene's content hash (§5's invalidation key — this is where it lives,
+not a second column on `fact_ledger`), and `span_start`/`span_end` stay unused (`NULL`) for
+v1 manuscript rows, exactly as they're already optional for notes rows. `UNIQUE(fact_id,
+source_path)` holds unchanged — one manuscript fact traces to exactly one scene file.
+
+### 1.4 `fact_flags` — new table (adjacency-diff / boundary-pass output)
+
+The one genuinely new table this amendment introduces — nothing in PR #1283 has an
+equivalent concept to extend, so there is nothing to reuse here. Named without a
+`manuscript_` prefix for consistency with the now-shared `fact_ledger` family, even though
+every row is inherently manuscript-only via its FKs (a notes fact has no adjacent-scene
+relationship to flag).
 
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `id` | TEXT (uuid) | yes | Row identity. |
-| `subject_entity_key` | TEXT | yes | Resolved via the existing wikilink/alias graph (`vaultGraph.ts`/`entities.ts`/`wikiLinks.ts`) — never a raw extracted name string. Reuse the alias resolution PR #1283 and AC4 already specify; do not build a second matcher. |
-| `attribute` | TEXT | yes | Free-text attribute name as extracted (e.g. `location`, `eye_colour`). Not an enum — the extractor decides the vocabulary; normalization is a v-next concern, not v1. |
-| `kind` | TEXT enum: `attribute` \| `state` \| `rule` | yes | Drives which check applies downstream (§ design record). **Quantity is deliberately excluded from this enum**, not merely inert — the owner ruling is that Quantity is a separate, standalone visible tool, not part of this checker (§ design record, "Deferred: Quantity"). If a future Quantity tool needs its own ledger, it gets its own table; this schema should not grow a fifth kind to accommodate it later without a fresh decision. |
-| `value` | TEXT | yes | Entry value for the scene. |
-| `exit_value` | TEXT | no | Only set when the fact changes **within** the same scene; the extractor sees this directly (§ design record — "most facts have value == exitValue"). Null means value == exitValue. |
-| `scene_id` | TEXT (uuid) | yes | The manuscript scene's stable identifier — see §3. **Never** a positional path string. |
-| `grounding_entry` | TEXT enum: `shown` \| `stated` \| `implied` \| `absent` | yes | Grounding of the fact's assertion at scene entry. |
-| `grounding_exit` | TEXT enum: `shown` \| `stated` \| `implied` \| `absent` | no | Only set alongside `exit_value`; grounding of the in-scene change. |
-| `extractor_prompt_version` | INTEGER | yes | Which extractor-prompt version produced this row — see §4. Used for incremental invalidation (§5) and regression triage, **not** a schema-version field. |
-| `source_content_hash` | TEXT (sha256) | yes | Hash of the scene text this row was extracted from. Reuse the existing hashing convention (`versions.ts`/`draftFiles.ts`/`snapshots.ts`), don't add a second hash function. |
-| `status` | TEXT enum: `active` \| `superseded` | yes | `superseded` rows are kept (audit trail / undo), not deleted. |
-| `superseded_by` | TEXT (uuid) | no | Points at the row that replaced this one after re-extraction. |
-| `created_at` / `updated_at` | TEXT (ISO) | yes | Standard. |
-
-**Identity / dedup rule** — what makes two facts "the same fact":
-`(subject_entity_key, attribute, scene_id)` is unique among `status = 'active'` rows. One
-row per subject+attribute+scene captures both the entry value and, when present, the
-in-scene exit value — a change *within* a scene is data on one row, not two competing facts,
-so it never reaches the merge/adjacency step (this mirrors the design record's own framing:
-the extractor sees an in-scene change directly).
-
-Re-extracting a scene whose `source_content_hash` is unchanged is a no-op (idempotent).
-Re-extracting after an edit (new hash) does **not** overwrite in place — the old row is
-marked `superseded`, a new `active` row is inserted, linked via `superseded_by`. This gives
-an audit trail for free and matches PR #1283's own `status`/`superseded_by` pattern, which is
-worth keeping consistent across both fact stores even though the tables are separate.
-
-### 1.4 `manuscript_fact_flags` — field table (adjacency-diff / boundary-pass output)
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `id` | TEXT (uuid) | yes | Row identity. |
-| `fact_a_id` / `fact_b_id` | TEXT (uuid) | yes | The two `manuscript_fact_ledger` rows in tension (consecutive-scene value change). |
+| `fact_a_id` / `fact_b_id` | TEXT (uuid), `REFERENCES fact_ledger(id) ON DELETE CASCADE` | yes | The two `fact_ledger` rows in tension (consecutive-scene value change). FK'd and cascaded, matching `fact_provenance`'s existing pattern. |
 | `boundary_scene_prev_id` / `boundary_scene_next_id` | TEXT (uuid) | yes | The two scenes bracketing the change — the exact context the boundary pass (§2, Stage 3) was allowed to see. |
 | `match_state` | TEXT enum: `matched` \| `unmatched` \| `judged` | yes | `matched` = adjacency diff found an explanation marker mechanically, written straight through, no LLM judgment needed. `unmatched` = queued for boundary pass. `judged` = boundary pass has run. |
 | `account_grounding` | TEXT enum: `shown` \| `stated` \| `implied` \| `absent` | no | Set only once `match_state = judged`. This is the actual finding — "was the change accounted for, and how clearly" (design record's worked example). |
-| `status` | TEXT enum: `open` \| `dismissed` | yes | Author disposition. Dismissal writes a `manuscript_fact_decisions` tombstone (§1.2), not a delete here. |
+| `status` | TEXT enum: `open` \| `dismissed` | yes | Author disposition. Dismissal writes a `fact_decisions` tombstone (§1.5), not a delete here. |
 | `created_at` / `updated_at` | TEXT (ISO) | yes | Standard. |
 
-### 1.5 `manuscript_fact_decisions` — durable bucket
+### 1.5 `fact_decisions` — reused as-is, no schema change
 
-Same tombstone shape as PR #1283's `fact_decisions` (`fingerprint` PK, `decision`,
-`payload_json`, `decided_at`, `revoked_at`) — reuse that pattern rather than inventing a
-third one. `fingerprint` here is `sha256(fact_a_id + fact_b_id + boundary_scene ids)` since a
-flag decision is about a *relationship*, not a single fact.
+Same tombstone shape PR #1283 already ships (`fingerprint` PK, `decision`, `payload_json`,
+`decided_at`, `revoked_at`) — `fingerprint` here has never been FK-constrained to
+`fact_ledger.fingerprint` in the DDL (it's a loosely-coupled convention key), which is exactly
+what lets it carry two different fingerprint *shapes* without a schema change:
+
+- Single-fact dismissal (notes or manuscript): the fact's own `fact_ledger.fingerprint`
+  (§1.3).
+- Flag dismissal (manuscript only, a *relationship*, not a single fact): `fingerprint =
+  sha256('flag\n' + fact_a_id + '\n' + fact_b_id + '\n' + boundary_scene_prev_id + '\n' +
+  boundary_scene_next_id)` — the `'flag\n'` prefix keeps this namespace distinct from
+  single-fact fingerprints on the same shared PRIMARY KEY column, on top of sha256's own
+  collision resistance.
 
 ### 1.6 Migration / versioning discipline
 
-- Schema version = the `PRAGMA user_version` slot claimed at build time (§1.1). One
-  migration block, `CREATE TABLE IF NOT EXISTS`, matching every existing block in `db.ts`.
+- Schema version = the `PRAGMA user_version` slot claimed at build time (§1.1) — an
+  `ALTER TABLE fact_ledger ADD COLUMN ...` block (one per new column, guarded by the existing
+  presence-check pattern) plus one `CREATE TABLE IF NOT EXISTS fact_flags`, not a
+  `CREATE TABLE` for the ledger itself. `fact_provenance` and `fact_decisions` need no DDL
+  changes at all (§1.3.1, §1.5).
 - `extractor_prompt_version` (per-row) is a *content* version, unrelated to the DB schema
   version — do not conflate the two. A schema migration changes column shapes; a prompt
   version change re-derives row *content* under the same columns.
-- This file will outlive several releases (ticket's own framing) — when a future migration
-  needs to add a column, follow `db.ts`'s existing `ALTER TABLE ... ADD COLUMN` +
-  presence-check pattern (see the v29 `continuity_issues.scope` backfill) rather than a
-  destructive rebuild.
+- This file will outlive several releases (ticket's own framing) — follow `db.ts`'s existing
+  `ALTER TABLE ... ADD COLUMN` + presence-check pattern (see the v29 `continuity_issues.scope`
+  backfill) for every column added here, rather than a destructive rebuild. This is no longer
+  a "when a future migration needs it" hedge (v1.0's framing) — it is what Phase 0 (§7) does
+  on day one, since this amendment's entire schema is additive columns on an existing table.
 
 ---
 
@@ -238,9 +337,10 @@ what's already there → continuity flag (Stage 2's `unmatchedChanges` → Stage
 pipeline, two effects — do not build a second "checker" path later; extend this one.
 
 **Self-correcting rescan property**: because Stage 2 only ever compares to what's already in
-`manuscript_fact_ledger`, re-running the whole pipeline against unchanged content is a no-op
-(§1.3's content-hash idempotency) — a full rescan naturally finds fewer new items each pass
-and terminates when a pass finds nothing new, with no separate "convergence" logic required.
+`fact_ledger` (`source = 'manuscript'`), re-running the whole pipeline against unchanged
+content is a no-op (§1.3.1's content-hash idempotency) — a full rescan naturally finds fewer
+new items each pass and terminates when a pass finds nothing new, with no separate
+"convergence" logic required.
 
 ---
 
@@ -286,9 +386,12 @@ means:
 nothing cascades to anything else keyed by that `sceneId` — not `TimelineEvent`, not
 `scene_entity_links`, not snapshots. The fact ledger will face the identical dangling-
 reference problem unless it adds its **own** delete hook. Build item: on scene delete, mark
-that scene's `manuscript_fact_ledger` rows `superseded` (disposable bucket — safe to just
-drop) and tombstone any `manuscript_fact_decisions` rows whose flag referenced the deleted
-scene (durable bucket — tombstone, don't hard-delete, consistent with §1.5).
+that scene's `fact_ledger` rows (`source = 'manuscript'`, matching `scene_id`) `superseded`
+(disposable bucket — safe to just drop) and tombstone any `fact_decisions` rows whose flag
+referenced the deleted scene (durable bucket — tombstone, don't hard-delete, consistent with
+§1.5). Scope every one of these operations to `source = 'manuscript'` explicitly — a scene
+delete must never touch a `source = 'notes'` row even if some other bug produced a matching
+`entity_key`/`fact_key`.
 
 ### 3.3 Third note: a second, weaker identity axis exists
 
@@ -344,9 +447,9 @@ default batch — §6/§7 of the design record).
 
 **Invalidation key**: reuse the existing SHA-256 content-hash convention
 (`versions.ts`/`draftFiles.ts`/`snapshots.ts`) over scene text — do not invent a second
-hashing scheme. A `manuscript_fact_ledger` row's `source_content_hash` is compared against
-the scene's current hash; a mismatch means stale, triggering re-extraction of **that scene
-only**.
+hashing scheme. A manuscript fact's `fact_provenance.source_hash` (§1.3.1 — this is where the
+hash lives now, not a ledger-row column) is compared against the scene's current hash; a
+mismatch means stale, triggering re-extraction of **that scene only**.
 
 **On edit of scene S**:
 1. Re-run Stage 1 for S only.
@@ -358,15 +461,15 @@ only**.
 Cost is therefore **O(1) in manuscript length, O(scene length) in the edited scene** — never
 a full rescan for a single-scene edit (§6 quantifies this).
 
-**Reorder or move with no text change**: `source_content_hash` is unchanged, so Stage 1 is
-skipped entirely. Only the adjacency pairs affected by the scene's *new* neighbor set need
-Stage 2 re-run — the old neighbor pair (now discontinuous) and the new one.
+**Reorder or move with no text change**: `fact_provenance.source_hash` is unchanged, so
+Stage 1 is skipped entirely. Only the adjacency pairs affected by the scene's *new* neighbor
+set need Stage 2 re-run — the old neighbor pair (now discontinuous) and the new one.
 
 **Delete**: see §3.2 — this is an invalidation case too, not just an addressing risk. Handle
 it as part of the same delete hook.
 
 **Open call, not decided here**: when a flag tied to a scene pair is dismissed
-(`manuscript_fact_decisions` tombstone) and later one of those two scenes is deleted, does
+(`fact_decisions` tombstone) and later one of those two scenes is deleted, does
 the tombstone need to be remembered, or is it fine for it to become moot along with the
 scene? Recommendation: let it become moot (no special handling) — the underlying fact no
 longer has a home either. Flagging as an explicit product call for Ivy rather than silently
@@ -429,7 +532,9 @@ estimate should show the user before every run (owner decision: show the estimat
 ## 7. Phasing
 
 **Phase 0 — infra, blocking, needs sign-off before Phase 1 starts.**
-Claim the schema slot (§1.1/§1.6) and resolve one real architectural conflict this research
+Confirm the free schema slot and write the `ALTER TABLE fact_ledger ADD COLUMN` migration
+plus the new `fact_flags` table (§1.1/§1.6) — no `CREATE TABLE` for the ledger itself, since
+it already exists via PR #1283. Then resolve one real architectural conflict this research
 surfaced that the design record doesn't address: the existing background job-queue
 (`docs/jobs-background-queue.md`, M12.1/`SKY-10730`, done) is strictly **FIFO, one job at a
 time**, and its worker threads are documented as **filesystem + compute only — no network,
@@ -457,7 +562,7 @@ judgment passes, so we can measure extraction fidelity before building on top of
 is now self-building and self-maintaining (§2's "same mechanism" property). Still no
 judgment — unmatched changes are queued, not surfaced to the author yet.
 
-**Phase 3 — BoundaryPass + `manuscript_fact_flags` (§1.4, §2 Stage 3).** This spec fully
+**Phase 3 — BoundaryPass + `fact_flags` (§1.4, §2 Stage 3).** This spec fully
 designs this stage — the ticket's instruction 2 requires all three pipeline stages as real
 interfaces, and that's already delivered above, not deferred. What's gated is the **build**:
 **do not start writing Phase 3 code until Phase 1+2 fidelity has actually been measured
@@ -468,42 +573,51 @@ sees it.
 **Phase 4 — genuinely out of this spec's scope per the ticket, named here only for
 sequencing awareness, not designed anywhere in this document.** The findings-report UI, the
 quick-command surface, the beta-read command, the Rule check, and Quantity as a standalone
-tool. These consume `manuscript_fact_flags` (Rule/report) or don't touch this schema at all
-(Quantity, per §1.3) — none of them are specified here.
+tool. These consume `fact_flags` (Rule/report) or don't touch this schema at all (Quantity,
+per §1.3) — none of them are specified here.
 
 ---
 
 ## Risk list (most severe first)
 
-1. **Three overlapping "fact ledger"/"continuity" systems, one collision unresolved (§0).**
-   Archive Agent's shipped `continuity_issues` scanner, PR #1283's in-review generic
-   vault-notes entity cache (claiming the name `fact_ledger` and schema v30), and this
-   spec's manuscript-scene system are three different things that happen to share
-   vocabulary and, in PR #1283's case, a ticket number. This spec avoids the *technical*
-   collision (new table names, new schema slot), but the *product* question — does the
-   final feature set replace, subsume, or coexist with the other two, and what does the
-   user-facing name become — is unresolved and does not belong to engineering. **→ Ivy,
-   open question #1.**
-2. **Extraction fidelity is completely unmeasured.** The design's own thesis (§ design
+1. **Archive Agent naming/UX overlap — still unresolved (§0), narrower than v1.0's framing.**
+   Ivy's ruling closed the *schema* half of the three-way collision (extend `fact_ledger`,
+   don't parallel it — §0). What's left open is genuinely a two-way, product-only question:
+   Archive Agent's shipped `continuity_issues` scanner and this spec's manuscript-scene
+   system both want the term "continuity check" in the UI. Does Archive Agent's existing menu
+   item get renamed, merged into, or left alongside this new one? **→ Ivy, open question #1**
+   (narrowed from v1.0 — no longer includes PR #1283, which is now a settled "extend"
+   target, not an open naming collision).
+2. **Fingerprint identity-recipe divergence, resolved but non-obvious — must not regress
+   (§1.3).** Notes-side `fingerprint` is content-addressed (value is part of the hash);
+   manuscript-side deliberately excludes value from the hash so an in-scene entry→exit change
+   stays one row. Both now share one `fingerprint` column and one `UNIQUE` constraint via a
+   `source`-conditional recipe. This is the one place "extend, don't parallel" required real
+   design work, not just a rename — any future change to either recipe must re-verify it
+   doesn't collide with or corrupt the other source's rows.
+3. **Extraction fidelity is completely unmeasured.** The design's own thesis (§ design
    record) is that everything downstream only works if extraction is faithful — there is no
    eval harness today. Phase 1 (§7) must ship with the golden-fixture regression harness
    (§4) before any later phase is trusted, not as a nice-to-have added afterward.
-3. **Job-queue substrate doesn't fit blind fan-out as documented (§7 Phase 0).** FIFO,
+4. **Job-queue substrate doesn't fit blind fan-out as documented (§7 Phase 0).** FIFO,
    single job, fs+compute-only workers vs. N-concurrent LLM calls. A real conflict, not a
    detail — needs the Phase 0 sign-off before any extraction code is written against
    either assumption.
-4. **No split/merge-scene feature exists (§3.1).** Scene addressing is solid for everything
+5. **No split/merge-scene feature exists (§3.1).** Scene addressing is solid for everything
    the app does today; it is untested against the one future operation most likely to break
    "stable identifier." Surfaced, not worked around, per the ticket's explicit instruction.
-5. **No cascade cleanup on scene delete today (§3.2).** The ledger must add its own hook or
-   it will accumulate orphaned rows the moment an author deletes a scene.
-6. **Schema slot is a moving target.** `db.ts`'s own comments show v30/v31 already collided
-   once between sibling branches. Re-verify the free slot immediately before implementation,
-   don't trust this document's "v32" past the day it's read.
-7. **Prompt caching doesn't exist in `provider.ts` yet (§4).** The cost model's central
+6. **No cascade cleanup on scene delete today (§3.2).** The ledger must add its own hook or
+   it will accumulate orphaned rows the moment an author deletes a scene — scoped to
+   `source = 'manuscript'` only (§3.2).
+7. **Schema slot is a moving target.** `db.ts`'s own comments show migrations colliding
+   between sibling branches before (v30/v31); as of this amendment v30 (PR #1283, unmerged)
+   and v32 (`SKY-10737`, merged) are both already claimed. Re-verify the free slot (currently
+   v33) immediately before implementation, don't trust this document's number past the day
+   it's read.
+8. **Prompt caching doesn't exist in `provider.ts` yet (§4).** The cost model's central
    economics claim (§6) requires `cache_control` support that is net-new engineering work,
    not just prompt wording.
-8. **No pre-run cost estimate infrastructure exists anywhere (§6).** No pricing table, no
+9. **No pre-run cost estimate infrastructure exists anywhere (§6).** No pricing table, no
    estimate UI — both fully net-new, and pricing tables go stale (the design record's own
    caveat, carried forward here).
 
@@ -527,11 +641,11 @@ tool. These consume `manuscript_fact_flags` (Rule/report) or don't touch this sc
 
 ## Open questions for Ivy (not answered here — product calls, not engineering ones)
 
-1. **The three-way name/scope collision (§0, Risk #1).** Does PR #1283 still merge as-is
-   (useful on its own — it's AC2's persistent-cache fix for the existing vault-notes entity
-   index)? Does the Archive Agent's existing "Continuity Check" menu item get renamed,
-   merged into, or left alongside this new one? What does the user-facing name become so it
-   doesn't collide with the term Archive Agent already owns?
+1. **The Archive Agent naming/UX overlap (§0, Risk #1) — narrowed by the extend ruling, not
+   closed.** PR #1283 merges as-is, unmodified (settled by this amendment). What's still
+   open: does the Archive Agent's existing "Continuity Check" menu item get renamed, merged
+   into, or left alongside this new one? What does the user-facing name become so it doesn't
+   collide with the term Archive Agent already owns?
 2. **Product naming**, downstream of #1 — "continuity check" is already a shipped UI term.
 3. **Phase 0's architecture call (§7)** — main-process LLM orchestration alongside the
    existing worker-only job queue, as opposed to extending the worker substrate itself for
