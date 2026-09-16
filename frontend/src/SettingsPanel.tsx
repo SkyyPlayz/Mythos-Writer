@@ -884,7 +884,21 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       <div className="settings-panel" ref={dialogRef} onKeyDown={handleDialogKeyDown}>
         <div className="settings-header">
           <h2 id="settings-dialog-title" className="settings-title">Settings</h2>
-          <button type="button" className="settings-close" onClick={onClose} aria-label="Close settings">✕</button>
+          <button
+            type="button"
+            className="settings-close"
+            data-testid="settings-close"
+            aria-label="Close settings"
+            onPointerDown={(e) => {
+              // Owner punch: pointerdown (not only click) so a covering
+              // overlay or focus-trap cannot swallow the dismiss.
+              e.preventDefault();
+              e.stopPropagation();
+              onClose();
+            }}
+          >
+            ✕
+          </button>
         </div>
 
         {/* Beta 4 M28 (§13; GAP #8): full workspace view — left rail (vertical

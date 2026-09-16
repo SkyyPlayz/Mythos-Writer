@@ -383,7 +383,7 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/close settings/i));
 
-    fireEvent.click(screen.getByLabelText(/close settings/i));
+    fireEvent.pointerDown(screen.getByLabelText(/close settings/i));
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 

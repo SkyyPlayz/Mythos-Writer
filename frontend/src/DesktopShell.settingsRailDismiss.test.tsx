@@ -79,4 +79,16 @@ describe('DesktopShell Settings dismiss on rail nav (owner punch)', () => {
 
     expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
   });
+
+  it('closes Settings when the header X is pressed', async () => {
+    render(<App />);
+    await screen.findByRole('navigation', { name: 'Main navigation' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
+    expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByTestId('settings-close'));
+
+    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
+  });
 });
