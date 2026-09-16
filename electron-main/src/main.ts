@@ -822,7 +822,11 @@ import {
 } from './vaultSessionLock.js';
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
 import { getBlastRadius, trashVaultFolder, pruneRecentProjectsForTrash } from './vaultSurface.js';
-import { shouldQuitOnWindowAllClosed } from './quitGuard.js';
+import {
+  resolveWillPreventUnloadAction,
+  shouldCommitQuitOnWindowClose,
+  shouldQuitOnWindowAllClosed,
+} from './quitGuard.js';
 import { abortInFlightAiStreams, createQuitWatchdog } from './quitShutdown.js';
 const require = createRequire(import.meta.url);
 
@@ -8781,6 +8785,15 @@ function createWindow() {
   mainWindow.on('close', (event) => {
     if (!mainWindow) return;
 
+    // 0.5.2 P0 quit hang: on Windows/Linux, closing the window IS quitting.
+    // Mark quitRequested before will-prevent-unload so Brainstorm's
+    // beforeunload cannot park the unload on a modal (or silently refuse
+    // when the frameless Windows dialog fails to surface). Flush-before-quit
+    // below still drains pending saves. macOS keeps dock-resident close.
+    if (shouldCommitQuitOnWindowClose(process.platform)) {
+      quitRequested = true;
+    }
+
     const isMaximized = mainWindow.isMaximized();
     // getNormalBounds returns the restored (non-maximized) size so we preserve
     // a sensible window size even when the user closes while maximized.
@@ -8828,8 +8841,9 @@ function createWindow() {
   // app. Handling `will-prevent-unload` puts the decision back with the user.
   mainWindow.webContents.on('will-prevent-unload', (event) => {
     const win = mainWindow;
-    // A full app quit is already an explicit decision (File → Exit, Cmd+Q, or
-    // a programmatic app.quit() — including Playwright's app.close() in E2E,
+    // A full app quit is already an explicit decision (File → Exit, Cmd+Q,
+    // Windows/Linux window X via shouldCommitQuitOnWindowClose, or a
+    // programmatic app.quit() — including Playwright's app.close() in E2E,
     // which has no human to answer a modal). Never block it on a dialog: allow
     // the unload straight through. Persisted state (chat sessions, detected
     // facts) survives; the flush-before-quit handshake drains pending saves.
@@ -8837,23 +8851,33 @@ function createWindow() {
       event.preventDefault(); // preventDefault here ALLOWS the unload to proceed
       return;
     }
-    // Plain window close (the X button — the owner's path on Windows) with
-    // genuinely-unsaved work: prompt so the app still closes reliably while
-    // giving the user a chance to keep it open.
-    const choice = dialog.showMessageBoxSync(win, {
-      type: 'question',
-      buttons: ['Leave', 'Stay'],
-      defaultId: 0,
-      cancelId: 1,
-      noLink: true,
-      title: 'Leave without saving?',
-      message: 'You have unsaved work.',
-      detail: 'Changes you have not saved yet may be lost if you leave now.',
-    });
-    if (choice === 0) {
+    // Plain window close on macOS (dock-resident) with genuinely-unsaved work:
+    // prompt so the app still closes reliably while giving the user a chance
+    // to keep it open. If the sync dialog fails (frameless / platform quirk),
+    // allow unload — never leave the process unclosable.
+    let dialogChoice: 0 | 1 | 'error' = 'error';
+    try {
+      dialogChoice = dialog.showMessageBoxSync(win, {
+        type: 'question',
+        buttons: ['Leave', 'Stay'],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+        title: 'Leave without saving?',
+        message: 'You have unsaved work.',
+        detail: 'Changes you have not saved yet may be lost if you leave now.',
+      }) as 0 | 1;
+    } catch (err) {
+      console.error(
+        '[quit] will-prevent-unload dialog failed — allowing unload:',
+        err instanceof Error ? err.message : String(err),
+      );
+      dialogChoice = 'error';
+    }
+    if (resolveWillPreventUnloadAction({ quitRequested, dialogChoice }) === 'allow') {
       event.preventDefault(); // allow the unload → the window closes
     }
-    // choice === 1 (Stay): do nothing — the unload stays cancelled.
+    // 'stay': do nothing — the unload stays cancelled.
   });
 
   mainWindow.on('closed', () => {
