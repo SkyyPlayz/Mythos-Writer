@@ -301,6 +301,18 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
     expect(mockChooseVaultFolder).toHaveBeenCalledWith('Choose where to create the new vault', '/vaults');
   });
 
+  it('opens as a Create a Mythos vault popup; Default folder resets the destination', async () => {
+    await openCreateForm();
+    expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument();
+    expect(screen.getByText('Where to create')).toBeInTheDocument();
+    expect(screen.getByTestId('mvs-create-default-folder')).toBeInTheDocument();
+    mockChooseVaultFolder.mockResolvedValueOnce({ path: '/elsewhere/Vaults', cancelled: false });
+    fireEvent.click(screen.getByTestId('mvs-create-dest-browse'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/elsewhere/Vaults'));
+    fireEvent.click(screen.getByTestId('mvs-create-default-folder'));
+    expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults');
+  });
+
   it('a cancelled Browse leaves the destination untouched', async () => {
     await openCreateForm();
     await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));

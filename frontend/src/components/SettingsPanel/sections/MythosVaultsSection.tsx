@@ -28,6 +28,7 @@ import { useVaultIcons } from '../../../hooks/useVaultIcons';
 import { VaultIconAvatar } from '../../ui/VaultIconAvatar';
 import { VaultIconEditMenu } from '../../ui/VaultIconEditMenu';
 import VaultOverflowMenu from './VaultOverflowMenu';
+import Dialog, { DialogBody, DialogFooter, DialogHeader } from '../../ui/Dialog';
 import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
 
 interface VaultEntry {
@@ -81,6 +82,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createDest, setCreateDest] = useState('');
+  const [defaultFolder, setDefaultFolder] = useState('');
   // SKY-11452: template (RECOMMENDED) / blank / import — same default as the
   // Add-vault dialogs and the first-run wizard.
   const [createMode, setCreateMode] = useState<VaultCreateMode>('template');
@@ -258,7 +260,9 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
         // keeps a legacy main process (older than SKY-11154, no such field)
         // working the way it always did.
         const dest = paths?.vaultsParentPath || paths?.defaultVaultsParentPath;
-        if (dest) setCreateDest(dest);
+        const fallback = paths?.defaultVaultsParentPath || dest;
+        if (fallback) setDefaultFolder(fallback);
+        if (!createDest && dest) setCreateDest(dest);
       } catch { /* prefill unavailable — Browse still works */ }
     }
   }, [createDest]);
@@ -437,69 +441,97 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
       </p>
 
       {createOpen && !createdVault && (
-        <div
-          data-testid="mvs-create-form"
-          style={{ padding: 12, borderRadius: 12, background: 'rgba(255,255,255,.03)', border: '1px solid rgba(255,255,255,.08)', display: 'flex', flexDirection: 'column', gap: 8 }}
+        <Dialog
+          open
+          onClose={onCancelCreate}
+          variant="form"
+          aria-label="Create a Mythos vault"
+          className="create-vault-modal"
+          testId="mvs-create-form"
         >
-          <label className="settings-label" htmlFor="mvs-create-name">Vault name</label>
-          <input
-            id="mvs-create-name"
-            data-testid="mvs-create-name"
-            ref={createNameRef}
-            className="settings-input"
-            value={createName}
-            maxLength={120}
-            placeholder="My First Vault"
-            disabled={createBusy}
-            onChange={(e) => setCreateName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') void onCreateVault(); }}
-          />
-          <div className="settings-label" style={{ marginTop: 4 }}>Destination</div>
-          <VaultDestinationPicker
-            variant="m24"
-            path={createDest}
-            placeholder="Choose where to create the new vault"
-            onBrowse={onBrowseDest}
-            disabled={createBusy}
-            testIdPrefix="mvs-create-dest"
-          />
-          <p className="settings-hint">
-            A new folder named after the vault is created inside this destination.
-          </p>
-          <div className="settings-label" style={{ marginTop: 4 }}>How to start</div>
-          <VaultCreateModePicker
-            kind="mythos"
-            value={createMode}
-            onChange={(m) => { setCreateMode(m); setCreateError(null); }}
-            disabled={createBusy}
-            testIdPrefix="mvs-create-mode"
-          />
-          {createMode === 'import' && (
-            <div data-testid="mvs-create-import" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div className="settings-label">Notes source (optional)</div>
-              <VaultDestinationPicker
-                variant="m24"
-                path={importNotesSrc}
-                placeholder="Pick an Obsidian or Markdown notes folder…"
-                onBrowse={() => onBrowseImportSource('notes')}
-                disabled={createBusy}
-                testIdPrefix="mvs-create-import-notes"
-              />
-              <div className="settings-label">Story source (optional)</div>
-              <VaultDestinationPicker
-                variant="m24"
-                path={importStorySrc}
-                placeholder="Pick a Markdown story folder…"
-                onBrowse={() => onBrowseImportSource('story')}
-                disabled={createBusy}
-                testIdPrefix="mvs-create-import-story"
-              />
-              <p className="settings-hint">
-                Pick at least one. Folders, note bodies and [[wiki-links]] are copied in as-is — nothing at the source is moved or modified.
-              </p>
+          <DialogHeader>
+            <h2>Create a Mythos vault</h2>
+          </DialogHeader>
+          <DialogBody>
+            <label className="settings-label" htmlFor="mvs-create-name">Name</label>
+            <input
+              id="mvs-create-name"
+              data-testid="mvs-create-name"
+              ref={createNameRef}
+              className="settings-input"
+              autoFocus
+              value={createName}
+              maxLength={120}
+              placeholder="My First Vault"
+              disabled={createBusy}
+              onChange={(e) => setCreateName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void onCreateVault(); }}
+            />
+            <div className="create-vault-where-header" style={{ marginTop: 4 }}>
+              <div className="settings-label" id="mvs-create-where-label">Where to create</div>
+              <button
+                type="button"
+                className="create-vault-default-folder"
+                title="Use the default vaults folder"
+                data-testid="mvs-create-default-folder"
+                onClick={() => { if (defaultFolder) setCreateDest(defaultFolder); }}
+                disabled={createBusy || !defaultFolder}
+              >
+                Default folder
+              </button>
             </div>
-          )}
-          <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
+            <VaultDestinationPicker
+              variant="m24"
+              path={createDest}
+              placeholder="Choose where to create the new vault"
+              onBrowse={onBrowseDest}
+              disabled={createBusy}
+              testIdPrefix="mvs-create-dest"
+            />
+            <p className="settings-hint">
+              A new folder named after the vault is created inside this destination.
+            </p>
+            <div className="settings-label" style={{ marginTop: 4 }}>How to start</div>
+            <VaultCreateModePicker
+              kind="mythos"
+              value={createMode}
+              onChange={(m) => { setCreateMode(m); setCreateError(null); }}
+              disabled={createBusy}
+              testIdPrefix="mvs-create-mode"
+            />
+            {createMode === 'import' && (
+              <div data-testid="mvs-create-import" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="settings-label">Notes source (optional)</div>
+                <VaultDestinationPicker
+                  variant="m24"
+                  path={importNotesSrc}
+                  placeholder="Pick an Obsidian or Markdown notes folder…"
+                  onBrowse={() => onBrowseImportSource('notes')}
+                  disabled={createBusy}
+                  testIdPrefix="mvs-create-import-notes"
+                />
+                <div className="settings-label">Story source (optional)</div>
+                <VaultDestinationPicker
+                  variant="m24"
+                  path={importStorySrc}
+                  placeholder="Pick a Markdown story folder…"
+                  onBrowse={() => onBrowseImportSource('story')}
+                  disabled={createBusy}
+                  testIdPrefix="mvs-create-import-story"
+                />
+                <p className="settings-hint">
+                  Pick at least one. Folders, note bodies and [[wiki-links]] are copied in as-is — nothing at the source is moved or modified.
+                </p>
+              </div>
+            )}
+            {createError && (
+              <p className="settings-error-msg" role="alert" data-testid="mvs-create-error">{createError}</p>
+            )}
+          </DialogBody>
+          <DialogFooter>
+            <button type="button" className="m24-btn" data-testid="mvs-create-cancel" onClick={onCancelCreate} disabled={createBusy}>
+              Cancel
+            </button>
             <button
               type="button"
               className="m24-btn m24-btn--primary"
@@ -509,11 +541,8 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
             >
               {createBusy ? 'Creating…' : 'Create vault'}
             </button>
-            <button type="button" className="m24-btn" data-testid="mvs-create-cancel" onClick={onCancelCreate} disabled={createBusy}>
-              Cancel
-            </button>
-          </div>
-        </div>
+          </DialogFooter>
+        </Dialog>
       )}
 
       {createdVault && (
@@ -556,7 +585,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
         </div>
       )}
 
-      {createError && (
+      {createError && !createOpen && (
         <p className="settings-error-msg" role="alert" data-testid="mvs-create-error">{createError}</p>
       )}
 

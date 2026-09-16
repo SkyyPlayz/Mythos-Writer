@@ -1,11 +1,16 @@
 import { useCallback, useRef, useState } from 'react';
+import Dialog, { DialogBody, DialogFooter, DialogHeader } from './components/ui/Dialog';
 
 /**
- * SKY-11376: "Create new Mythos Vault" flow (name + destination folder),
+ * SKY-11376: "Create a Mythos vault" modal (name + destination folder),
  * shared by DesktopShell's nav-rail "+" and the legacy ProjectSwitcher so
  * the two entry points can't drift the way they did before (both hardcoded
  * seedMode: 'default' and never passed parentPath). New vaults are blank —
  * sample content was removed from onboarding and shouldn't sneak back in here.
+ *
+ * Owner punch (Sep Liquid Neon Create-vault modal): title, Name, Where to
+ * create, Browse…, Default folder chip, Cancel / Create vault. Settings
+ * "New vault…" uses the same chrome in MythosVaultsSection.
  */
 export function useCreateMythosVaultFlow(
   onCreated: (result: { vaultRoot: string; notesVaultRoot: string }) => void | Promise<void>,
@@ -16,6 +21,7 @@ export function useCreateMythosVaultFlow(
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [dest, setDest] = useState('');
+  const [defaultFolder, setDefaultFolder] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const onCreatedRef = useRef(onCreated);
@@ -26,7 +32,10 @@ export function useCreateMythosVaultFlow(
     setError(null);
     setOpen(true);
     window.api?.vaultGetPaths?.().then((paths) => {
-      setDest(paths?.vaultsParentPath || paths?.defaultVaultsParentPath || '');
+      const current = paths?.vaultsParentPath || paths?.defaultVaultsParentPath || '';
+      const fallback = paths?.defaultVaultsParentPath || current;
+      setDest(current);
+      setDefaultFolder(fallback);
     }).catch(() => { /* non-fatal — Browse… still works with an empty start */ });
   }, []);
 
@@ -39,6 +48,10 @@ export function useCreateMythosVaultFlow(
     const res = await window.api?.chooseVaultFolder?.('Choose where to create the new vault', dest || undefined);
     if (res && !res.cancelled && res.path) setDest(res.path);
   }, [dest]);
+
+  const useDefaultFolder = useCallback(() => {
+    if (defaultFolder) setDest(defaultFolder);
+  }, [defaultFolder]);
 
   const submit = useCallback(async () => {
     const trimmed = name.trim();
@@ -67,22 +80,26 @@ export function useCreateMythosVaultFlow(
     }
   }, [name, dest]);
 
-  const createVaultModal = !open ? null : (
-    <div
-      className="prompt-modal-overlay"
-      role="dialog"
-      aria-modal="true"
-      aria-label="Create new Mythos Vault"
-      onClick={(e) => { if (e.target === e.currentTarget) close(); }}
+  const createVaultModal = (
+    <Dialog
+      open={open}
+      onClose={close}
+      variant="form"
+      aria-label="Create a Mythos vault"
+      className="create-vault-modal"
     >
-      <div className="prompt-modal create-vault-modal">
+      <DialogHeader>
+        <h2>Create a Mythos vault</h2>
+      </DialogHeader>
+      <DialogBody>
         <label className="prompt-modal-label" htmlFor="create-vault-name">
-          Name for the new Mythos Vault:
+          Name
         </label>
         <input
           id="create-vault-name"
           className="prompt-modal-input"
           autoFocus
+          aria-label="Name for the new Mythos Vault"
           value={name}
           disabled={busy}
           onFocus={(e) => e.target.select()}
@@ -92,9 +109,21 @@ export function useCreateMythosVaultFlow(
             else if (e.key === 'Escape') close();
           }}
         />
-        <label className="prompt-modal-label" htmlFor="create-vault-dest">
-          Location:
-        </label>
+        <div className="create-vault-where-header">
+          <label className="prompt-modal-label" htmlFor="create-vault-dest">
+            Where to create
+          </label>
+          <button
+            type="button"
+            className="create-vault-default-folder"
+            title="Use the default vaults folder"
+            data-testid="create-vault-default-folder"
+            onClick={useDefaultFolder}
+            disabled={busy || !defaultFolder}
+          >
+            Default folder
+          </button>
+        </div>
         <div className="create-vault-dest-row">
           <span id="create-vault-dest" className="create-vault-dest-path" title={dest || undefined}>
             {dest || 'Choose a folder…'}
@@ -104,16 +133,16 @@ export function useCreateMythosVaultFlow(
           </button>
         </div>
         {error && <p className="create-vault-error" role="alert">{error}</p>}
-        <div className="prompt-modal-actions">
-          <button type="button" className="prompt-modal-cancel" onClick={close} disabled={busy}>
-            Cancel
-          </button>
-          <button type="button" className="prompt-modal-ok" onClick={() => void submit()} disabled={busy}>
-            {busy ? 'Creating…' : 'Create'}
-          </button>
-        </div>
-      </div>
-    </div>
+      </DialogBody>
+      <DialogFooter className="prompt-modal-actions">
+        <button type="button" className="prompt-modal-cancel" onClick={close} disabled={busy}>
+          Cancel
+        </button>
+        <button type="button" className="prompt-modal-ok" onClick={() => void submit()} disabled={busy}>
+          {busy ? 'Creating…' : 'Create vault'}
+        </button>
+      </DialogFooter>
+    </Dialog>
   );
 
   return { createVault, createVaultModal };
