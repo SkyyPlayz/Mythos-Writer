@@ -12,9 +12,10 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .entries-panel {
+    /* 0.5.2 P0 jank (PERFORMANCE.md §2): glass fill over pre-blurred
+       wallpaper (--wp-blur). No live backdrop-filter — stacking blur(var(
+       --blur-panel)) on full-page shells is a per-frame tax. */
     background: var(--glass-panel-bg);
-    backdrop-filter: blur(var(--blur-panel));
-    -webkit-backdrop-filter: blur(var(--blur-panel));
   }
 }
 

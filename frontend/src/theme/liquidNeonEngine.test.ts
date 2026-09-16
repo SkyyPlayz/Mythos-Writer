@@ -322,6 +322,12 @@ describe('overlay tier tracks glassA + 10pp (owner punch)', () => {
     expect(el.style.getPropertyValue('--blur-panel')).toBe('4px');
   });
 
+  it('collapses --page-bg-backdrop-filter to none (0.5.2 P0 jank / pre-blur path)', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ glassA: 40, blur: 18 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--page-bg-backdrop-filter')).toBe('none');
+  });
+
   it('the accessibility paths still flatten the recipe', () => {
     const k8 = block(/:root\[data-contrast="high"\][^{]*\{([^}]*)\}/);
     expect(k8).toMatch(/--glass-fill-overlay:\s*#15191f;/);
