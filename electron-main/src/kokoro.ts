@@ -19,6 +19,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import * as ort from 'onnxruntime-web';
 import { phonemize } from 'phonemizer';
 
@@ -289,13 +290,36 @@ let sessionPromise: Promise<ort.InferenceSession> | null = null;
 let sessionKey: string | null = null;
 const voicePackCache = new Map<string, Float32Array>();
 
+/**
+ * Build the `ort.env.wasm.wasmPaths` prefix for a directory of bundled runtime
+ * files. Returns a slash-terminated `file:` URL, never a bare filesystem path.
+ *
+ * SKY-11887: onnxruntime-web loads its runtime by resolving
+ * `<wasmPaths>ort-wasm-simd-threaded.mjs` and `import()`-ing the result. Feeding
+ * it a bare Windows directory (`C:\…\wasm\`, which is what `wasmDir + path.sep`
+ * produced) makes that specifier parse as a URL with scheme `c:`, and Node's ESM
+ * loader rejects every scheme but file/data/node — so the WASM backend never
+ * initialized and every `kokoro:*` synthesis failed in the packaged Windows
+ * build. Swapping the separators is *not* a fix: `C:/…/wasm/` still parses as
+ * scheme `c:`. A `file:` URL is the only form the loader accepts, and it is
+ * equally valid on macOS/Linux, so this path is not platform-branched.
+ *
+ * It also percent-encodes the install directory, which matters here: the Windows
+ * default is `…\Programs\Mythos Writer\resources\kokoro\wasm`, and ORT hands the
+ * same prefix straight to Emscripten's `locateFile` for the `.wasm` binary —
+ * which unwraps `file:` URLs before calling `fs`, so the space survives.
+ */
+export function kokoroWasmPathPrefix(wasmDir: string): string {
+  const href = pathToFileURL(wasmDir).href;
+  return href.endsWith('/') ? href : `${href}/`;
+}
+
 async function getSession(assets: KokoroAssets, opts?: KokoroSynthesizeOptions): Promise<ort.InferenceSession> {
   if (sessionPromise && sessionKey === assets.modelPath) return sessionPromise;
   // A different model path (tests) invalidates the cached session.
   sessionKey = assets.modelPath;
   if (assets.wasmDir) {
-    // onnxruntime-web accepts a path prefix (must end with a separator).
-    ort.env.wasm.wasmPaths = assets.wasmDir.endsWith(path.sep) ? assets.wasmDir : assets.wasmDir + path.sep;
+    ort.env.wasm.wasmPaths = kokoroWasmPathPrefix(assets.wasmDir);
   }
   ort.env.wasm.numThreads = Math.max(1, opts?.numThreads ?? 1);
   ort.env.wasm.proxy = false;
