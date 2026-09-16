@@ -267,6 +267,43 @@
   gap: 10px;
 }
 
+/* Sep Liquid Neon Vaults & Files (prototype 2598–2735): each category card
+   is a 15px-radius glass panel. Scoped to this page so other Settings
+   categories keep their existing chrome. */
+.settings-body:has(> [data-settings-cat="vaults"]) {
+  gap: 12px;
+}
+
+.settings-section[data-settings-cat="vaults"] {
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.03);
+  border: var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, 0.2));
+  box-shadow: var(--glowH, none);
+  padding: 15px 17px;
+}
+
+.settings-section[data-settings-cat="vaults"] .settings-section-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #eef2fb;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.settings-section[data-settings-cat="vaults"] .settings-danger-zone {
+  margin-top: 12px;
+  padding: 15px 17px;
+  border-radius: 15px;
+  border: 1px solid rgba(255, 77, 120, 0.3);
+  background: rgba(255, 77, 120, 0.04);
+}
+
+[data-contrast="high"] .settings-section[data-settings-cat="vaults"] {
+  background: var(--bg-inset);
+  border-color: var(--border-strong);
+  box-shadow: none;
+}
+
 .provider-settings-section {
   position: relative;
 }

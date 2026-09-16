@@ -71,7 +71,8 @@ interface Props {
 const cardSt = (current: boolean): CSSProperties => ({
   display: 'flex', alignItems: 'center', gap: 11, padding: '10px 12px', borderRadius: 12,
   background: 'rgba(255,255,255,.03)',
-  border: current ? 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.45))' : '1px solid rgba(255,255,255,.08)',
+  border: current ? 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.45))' : 'var(--bwh,1px) solid var(--bh,rgba(0,240,255,.2))',
+  boxShadow: 'var(--glowH, none)',
   cursor: current ? 'default' : 'pointer',
 });
 
