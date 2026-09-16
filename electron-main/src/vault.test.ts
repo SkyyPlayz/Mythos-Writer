@@ -13,6 +13,8 @@ import {
   deleteVaultFile,
   excerptFromMarkdown,
   noteHasCharacterSignal,
+  noteHasLocationSignal,
+  noteHasItemSignal,
   readNoteListingMeta,
   parseFrontmatter,
   serializeFrontmatter,
@@ -638,8 +640,22 @@ describe('Note excerpt — hook line for Scene Crafter suggested cards (SKY-1051
       expect(readNoteListingMeta(p).characterTag).toBe(true);
     });
 
-    it('a missing file is not a character', () => {
-      expect(readNoteListingMeta(path.join(tmpDir, 'nope.md')).characterTag).toBe(false);
+    it('surfaces the location and item signals from a real note file (SKY-11212)', () => {
+      const loc = path.join(tmpDir, 'The Undercity.md');
+      fs.writeFileSync(loc, '# The Undercity\n\nA sunken district. #location\n');
+      expect(readNoteListingMeta(loc).locationTag).toBe(true);
+      expect(readNoteListingMeta(loc).characterTag).toBe(false);
+
+      const it_ = path.join(tmpDir, 'Drownlight.md');
+      fs.writeFileSync(it_, '---\ntype: item\n---\n# Drownlight\n\nA lantern that never dims.\n');
+      expect(readNoteListingMeta(it_).itemTag).toBe(true);
+    });
+
+    it('a missing file is not a character, location, or item', () => {
+      const meta = readNoteListingMeta(path.join(tmpDir, 'nope.md'));
+      expect(meta.characterTag).toBe(false);
+      expect(meta.locationTag).toBe(false);
+      expect(meta.itemTag).toBe(false);
     });
   });
 });
@@ -667,6 +683,44 @@ describe('noteHasCharacterSignal — vault-wide POV picker fallback (SKY-11049)'
 
   it('does not match a hashtag that merely starts with "character"', () => {
     expect(noteHasCharacterSignal('# Style Guide\n\nOur #charactersheet template lives elsewhere.\n')).toBe(false);
+  });
+});
+
+describe('noteHasLocationSignal — Scene Crafter LOCATIONS picker (SKY-11212)', () => {
+  it('matches frontmatter type: location', () => {
+    expect(noteHasLocationSignal('---\ntype: Location\n---\n# Ward Violet\n')).toBe(true);
+  });
+
+  it('matches a frontmatter tags: entry of location', () => {
+    expect(noteHasLocationSignal('---\ntags: [district, Location]\n---\n# Ward Violet\n')).toBe(true);
+  });
+
+  it('matches an inline #location hashtag anywhere in the body', () => {
+    expect(noteHasLocationSignal('# Ward Violet\n\nA district that never sleeps. #location\n')).toBe(true);
+  });
+
+  it('does not match a character note', () => {
+    expect(noteHasLocationSignal('# Kael Thorne\n\nA wandering blade. #Character\n')).toBe(false);
+  });
+});
+
+describe('noteHasItemSignal — Scene Crafter ITEMS & SYSTEMS picker (SKY-11212)', () => {
+  it('matches frontmatter type: item', () => {
+    expect(noteHasItemSignal('---\ntype: Item\n---\n# Drownlight\n')).toBe(true);
+  });
+
+  it('matches frontmatter type: system', () => {
+    expect(noteHasItemSignal('---\ntype: System\n---\n# The Blood Ledger\n')).toBe(true);
+  });
+
+  it('matches an inline #item or #system hashtag anywhere in the body', () => {
+    expect(noteHasItemSignal('# Drownlight\n\nA lantern that never dims. #item\n')).toBe(true);
+    expect(noteHasItemSignal('# The Blood Ledger\n\nTracks every debt in the city. #system\n')).toBe(true);
+  });
+
+  it('does not match a character or location note', () => {
+    expect(noteHasItemSignal('# Kael Thorne\n\nA wandering blade. #Character\n')).toBe(false);
+    expect(noteHasItemSignal('# Ward Violet\n\nA district. #location\n')).toBe(false);
   });
 });
 

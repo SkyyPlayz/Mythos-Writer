@@ -413,19 +413,55 @@ describe('SceneCrafterPage — SKY-11072 vault-reference columns (owner ruling: 
     expect(within(rail).getByText('Mira Veynn')).toBeInTheDocument();
   });
 
-  it('the + picker offers vault notes not in the column and adds the picked one', async () => {
+  it('the + picker offers a removed note of the same category and re-adds the picked one', async () => {
     await renderRefColumns();
 
     const characters = screen.getByTestId('sc-ref-col-characters');
+    fireEvent.click(within(characters).getByRole('button', { name: 'Remove Mira Veynn from this scene' }));
     fireEvent.click(within(characters).getByRole('button', { name: 'Add a note to CHARACTERS' }));
 
     const search = screen.getByRole('textbox', { name: 'Search notes to add to CHARACTERS' });
-    fireEvent.change(search, { target: { value: 'loose' } });
-    fireEvent.click(within(characters).getByRole('button', { name: /loose note/i }));
+    fireEvent.change(search, { target: { value: 'mira' } });
+    fireEvent.click(within(characters).getByRole('button', { name: /mira veynn/i }));
 
-    // Picker closes; the note now sits in the column as a reference card.
+    // Picker closes; the note is back in the column as a reference card.
     expect(screen.queryByRole('textbox', { name: 'Search notes to add to CHARACTERS' })).not.toBeInTheDocument();
-    expect(within(characters).getByRole('button', { name: 'Remove Loose Note from this scene' })).toBeInTheDocument();
+    expect(within(characters).getByRole('button', { name: 'Remove Mira Veynn from this scene' })).toBeInTheDocument();
+  });
+
+  // SKY-11212: the owner's screenshot bug — the LOCATIONS picker listed
+  // Kael Thorne / Mira Veynn / The Broker (characters) and misc notes
+  // alongside real locations. The picker must be scoped to its own category.
+  it('the LOCATIONS + picker never offers a character or item note (SKY-11212)', async () => {
+    await renderRefColumns();
+
+    const locations = screen.getByTestId('sc-ref-col-locations');
+    fireEvent.click(within(locations).getByRole('button', { name: 'Add a note to LOCATIONS' }));
+
+    expect(within(locations).queryByRole('button', { name: /mira veynn/i })).not.toBeInTheDocument();
+    expect(within(locations).queryByRole('button', { name: /drownlight/i })).not.toBeInTheDocument();
+    expect(within(locations).queryByRole('button', { name: /loose note/i })).not.toBeInTheDocument();
+  });
+
+  // SKY-11212 AC2: a tag reaches the LOCATIONS column even outside a
+  // Locations/ folder — tags and folders disagree in this fixture.
+  it('a #location-tagged note reaches LOCATIONS even when it lives outside a Locations folder', async () => {
+    const api = makeApi({
+      listNotesVault: vi.fn().mockResolvedValue({
+        items: [
+          { path: 'Characters/Kael Thorne.md', name: 'Kael Thorne.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+          { path: 'Notes/The Sunken Archive.md', name: 'The Sunken Archive.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z', locationTag: true },
+        ],
+      }),
+    });
+    (window as unknown as { api: unknown }).api = api;
+    render(<SceneCrafterPage story={STORY} onOpenNote={vi.fn()} onOpenScene={vi.fn()} />);
+    await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
+
+    const locations = screen.getByTestId('sc-ref-col-locations');
+    expect(within(locations).getByText('The Sunken Archive')).toBeInTheDocument();
+    // The character note never leaks into LOCATIONS even by an untagged fallback.
+    expect(within(locations).queryByText('Kael Thorne')).not.toBeInTheDocument();
   });
 
   it('re-adding a removed note via the + picker restores it (un-remove path)', async () => {

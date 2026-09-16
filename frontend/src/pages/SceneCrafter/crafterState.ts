@@ -105,6 +105,10 @@ export interface VaultListItem {
   excerpt?: string;
   /** SKY-11049: vault-wide character signal (frontmatter/tag), main-side. */
   characterTag?: boolean;
+  /** SKY-11212: vault-wide location signal (frontmatter/tag), main-side. */
+  locationTag?: boolean;
+  /** SKY-11212: vault-wide item/system signal (frontmatter/tag), main-side. */
+  itemTag?: boolean;
 }
 
 export interface SuggestedCard {
@@ -120,6 +124,10 @@ export interface SuggestedCard {
   nid: string;
   /** SKY-11049: vault-wide character signal, independent of `group`. */
   characterTag: boolean;
+  /** SKY-11212: vault-wide location signal, independent of `group`. */
+  locationTag: boolean;
+  /** SKY-11212: vault-wide item/system signal, independent of `group`. */
+  itemTag: boolean;
 }
 
 export interface SuggestedGroup {
@@ -172,34 +180,53 @@ export function suggestedFromVault(items: VaultListItem[]): SuggestedCard[] {
       group: top ? top.replace(/[-_]+/g, ' ').toUpperCase() : 'NOTES',
       nid: path.replace(/\.md$/i, ''),
       characterTag: item.characterTag ?? false,
+      locationTag: item.locationTag ?? false,
+      itemTag: item.itemTag ?? false,
     });
   }
   return cards;
 }
 
 /**
+ * Does this card carry any of the three category tag signals? A note with
+ * no relevant tag falls back to its folder (see `cardsForCategory`); a note
+ * that does carry a tag is classified by the tag alone, folder ignored.
+ */
+function hasCategoryTag(card: SuggestedCard): boolean {
+  return card.characterTag || card.locationTag || card.itemTag;
+}
+
+/**
+ * SKY-11212 owner ruling: a card's category is its **tag** when it has one
+ * (`tagField`), with its top-level folder (`folderGroup`) as the fallback
+ * only for notes that carry no relevant tag at all — so a `#location`-tagged
+ * note resolves under LOCATIONS even outside a `Locations/` folder, while a
+ * folder-organized vault with no tags keeps working exactly as before.
+ */
+function cardsForCategory(
+  cards: SuggestedCard[],
+  tagField: 'characterTag' | 'locationTag' | 'itemTag',
+  folderGroup: string,
+): SuggestedCard[] {
+  return cards.filter((card) => (hasCategoryTag(card) ? card[tagField] : card.group === folderGroup));
+}
+
+/**
  * Cards for the CHARACTERS vault-reference column and the POV picker
- * (SKY-11072 / SKY-11049 item 7): prefer a top-level `Characters` folder when
- * the vault has one —
- * otherwise fall back to any note carrying a character signal anywhere in the
- * vault (frontmatter `type`/`tags`, or an inline `#character` hashtag), so a
- * vault organized as `Main Characters/` + `#Character` tags still resolves.
- * Never both at once — an explicit `Characters` folder is the stronger signal.
+ * (SKY-11072 / SKY-11049 item 7 / SKY-11212).
  */
 export function castCardsFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
-  const byFolder = cards.filter((card) => card.group === 'CHARACTERS');
-  if (byFolder.length > 0) return byFolder;
-  return cards.filter((card) => card.characterTag);
+  return cardsForCategory(cards, 'characterTag', 'CHARACTERS');
 }
 
-/** Cards for the LOCATIONS vault-reference column (SKY-11072). */
+/** Cards for the LOCATIONS vault-reference column (SKY-11072 / SKY-11212). */
 export function placesFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
-  return cards.filter((card) => card.group === 'LOCATIONS');
+  return cardsForCategory(cards, 'locationTag', 'LOCATIONS');
 }
 
-/** Cards for the ITEMS & SYSTEMS vault-reference column (SKY-11072). */
+/** Cards for the ITEMS & SYSTEMS vault-reference column (SKY-11072 / SKY-11212). */
 export function itemsFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
-  return cards.filter((card) => card.group === 'ITEMS & SYSTEMS');
+  return cardsForCategory(cards, 'itemTag', 'ITEMS & SYSTEMS');
 }
 
 // ─── Vault-reference columns (right side — SKY-11072 owner ruling) ────────────
@@ -262,9 +289,11 @@ export function refCardsForColumn(
 }
 
 /**
- * Candidates for a column's `+` picker: every vault note not already visible
- * in that column, run through the same substring filter the suggested rail
- * uses. Removed notes ARE offered — picking one is the un-remove path.
+ * Candidates for a column's `+` picker: this column's category only (SKY-11212
+ * — the CHARACTERS picker must never offer a location note and vice versa),
+ * minus notes already visible in the column, run through the same substring
+ * filter the suggested rail uses. Removed notes ARE offered — picking one is
+ * the un-remove path.
  */
 export function refPickerCards(
   key: VaultRefColumnKey,
@@ -273,7 +302,7 @@ export function refPickerCards(
   query: string,
 ): SuggestedCard[] {
   const visible = new Set(refCardsForColumn(key, cards, setup).map((card) => card.nid));
-  return filterSuggested(cards, query).filter((card) => !visible.has(card.nid));
+  return filterSuggested(baseRefCards(key, cards), query).filter((card) => !visible.has(card.nid));
 }
 
 /** Remove a note from THIS scene's column — never deletes or edits the note. */

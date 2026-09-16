@@ -1226,6 +1226,10 @@ export interface VaultListItem {
    * top-level `Characters` folder. Same availability as `excerpt`.
    */
   characterTag?: boolean;
+  /** SKY-11212: same signal as `characterTag`, for the `location` alias. */
+  locationTag?: boolean;
+  /** SKY-11212: same signal as `characterTag`, for the `item`/`system` aliases. */
+  itemTag?: boolean;
 }
 
 export interface VaultListResponse {
