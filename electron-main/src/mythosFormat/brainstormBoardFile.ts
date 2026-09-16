@@ -26,7 +26,8 @@ import {
   writeVaultFileAtomic,
   renameSyncWithRetry,
 } from '../vault.js';
-import { agentVaultRootFor, notesVaultRootFor } from './mythosJson.js';
+import { agentVaultRootFor } from './mythosJson.js';
+import { ensureActiveNotesVaultPath } from './notesVaultRegistry.js';
 
 /** Agent-Vault-relative path of the unified brainstorm board file. */
 export const BRAINSTORM_BOARD_RELPATH = path.posix.join('Boards', 'brainstorm.board.json');
@@ -80,7 +81,7 @@ function uniqueName(dir: string, name: string): string {
  * `Boards/<storySlug>/` boards keep the folder alive and are left untouched.
  */
 export function migrateBrainstormBoardToAgentVault(mythosRoot: string): { migrated: boolean } {
-  const notesBoardsDir = path.join(notesVaultRootFor(mythosRoot), 'Boards');
+  const notesBoardsDir = path.join(ensureActiveNotesVaultPath(mythosRoot), 'Boards');
   const legacyPath = path.join(notesBoardsDir, 'brainstorm.board.json');
   if (!fs.existsSync(legacyPath)) return { migrated: false };
 

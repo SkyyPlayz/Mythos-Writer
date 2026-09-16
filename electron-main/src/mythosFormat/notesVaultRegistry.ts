@@ -17,7 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { listVaultFiles, readVaultFile } from '../vault.js';
 import { importObsidianToVaultDir } from '../obsidianImporter.js';
-import { NOTES_GROUP_DIRNAME } from './mythosJson.js';
+import { NOTES_GROUP_DIRNAME, notesVaultRootFor } from './mythosJson.js';
 import {
   VaultEntry,
   VaultRegistryConfig,
@@ -105,6 +105,20 @@ export function getActiveNotesVaultPath(mythosRoot: string): string | null {
   const entry = getActiveNotesVaultEntry(registry);
   if (!entry) return null;
   return notesVaultAbsPath(mythosRoot, entry);
+}
+
+/**
+ * Resolve the active notes vault path, lazily migrating (registering) a
+ * pre-registry vault first. Mirrors storyVaultRegistry.ts's
+ * ensureActiveStoryVaultPath (SKY-11451): a vault created before that change
+ * has no notes-vaults.json yet, so ensureNotesVaultRegistry seeds one entry
+ * pointing at the existing FLAT DEFAULT_NOTES_VAULT_DIRNAME — never the
+ * grouped default, which does not exist on disk for such a vault.
+ */
+export function ensureActiveNotesVaultPath(mythosRoot: string): string {
+  const registry = ensureNotesVaultRegistry(mythosRoot);
+  const entry = getActiveNotesVaultEntry(registry);
+  return entry ? notesVaultAbsPath(mythosRoot, entry) : notesVaultRootFor(mythosRoot);
 }
 
 // ─── Mutations ────────────────────────────────────────────────────────────────

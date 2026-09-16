@@ -18,6 +18,7 @@ import {
   NOTES_VAULT_DIRNAME,
   AGENT_VAULT_DIRNAME,
 } from './mythosJson.js';
+import { DEFAULT_NOTES_VAULT_DIRNAME, readNotesVaultRegistry } from './notesVaultRegistry.js';
 
 let tmp: string;
 
@@ -38,8 +39,14 @@ const POPULATED_BOARD = JSON.stringify({
   links: [{ from: 'bsc-mtlxtpiv-1-ez1m2', to: 'bsc-mtlxtpiv-2-abc' }],
 });
 
+// A vault created before SKY-11451 has its Notes Vault physically at the
+// FLAT `<mythosRoot>/Notes Vault`, not the grouped default notesVaultRootFor
+// now returns. Fixtures use this literal so they exercise the real
+// pre-existing-vault path (SKY-11891).
+const legacyNotesVaultRoot = (mythosRoot: string) =>
+  path.join(mythosRoot, DEFAULT_NOTES_VAULT_DIRNAME);
 const legacyBoardPath = (mythosRoot: string) =>
-  path.join(notesVaultRootFor(mythosRoot), 'Boards', 'brainstorm.board.json');
+  path.join(legacyNotesVaultRoot(mythosRoot), 'Boards', 'brainstorm.board.json');
 const agentBoardPath = (mythosRoot: string) =>
   path.join(agentVaultRootFor(mythosRoot), BRAINSTORM_BOARD_RELPATH);
 
@@ -94,7 +101,7 @@ describe('migrateBrainstormBoardToAgentVault', () => {
   it('leaves the notes-vault Boards/ folder when Scene Crafter boards live there', () => {
     // A user-created Scene Crafter board shares the Notes Vault Boards/ folder.
     const crafterBoard = path.join(
-      notesVaultRootFor(tmp), 'Boards', 'my-story', 'The Gate.canvas.json',
+      legacyNotesVaultRoot(tmp), 'Boards', 'my-story', 'The Gate.canvas.json',
     );
     fs.mkdirSync(path.dirname(crafterBoard), { recursive: true });
     fs.writeFileSync(crafterBoard, '{"nodes":[]}');
@@ -132,5 +139,22 @@ describe('migrateBrainstormBoardToAgentVault', () => {
     expect(migrateBrainstormBoardToAgentVault(tmp).migrated).toBe(true);
     expect(migrateBrainstormBoardToAgentVault(tmp).migrated).toBe(false);
     expect(fs.readFileSync(agentBoardPath(tmp), 'utf-8')).toBe(POPULATED_BOARD);
+  });
+
+  it('finds a legacy board on a pre-registry vault even though notesVaultRootFor now points at the grouped path (SKY-11891 regression)', () => {
+    // Simulates a real vault created before SKY-11451: no notes-vaults.json
+    // yet, board physically at the flat path. notesVaultRootFor(tmp) would
+    // resolve to the grouped `Notes/Notes Vault`, which does not exist here.
+    expect(readNotesVaultRegistry(tmp)).toBeNull();
+    expect(notesVaultRootFor(tmp)).not.toBe(legacyNotesVaultRoot(tmp));
+
+    fs.mkdirSync(path.dirname(legacyBoardPath(tmp)), { recursive: true });
+    fs.writeFileSync(legacyBoardPath(tmp), POPULATED_BOARD);
+
+    expect(migrateBrainstormBoardToAgentVault(tmp).migrated).toBe(true);
+    expect(fs.existsSync(legacyBoardPath(tmp))).toBe(false);
+    expect(JSON.parse(fs.readFileSync(agentBoardPath(tmp), 'utf-8'))).toEqual(
+      JSON.parse(POPULATED_BOARD),
+    );
   });
 });
