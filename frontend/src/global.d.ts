@@ -1437,7 +1437,11 @@ interface Window {
     telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) => Promise<unknown>;
 
     // Multi-project switcher (MYT-374; SKY-320 paired-vault switching)
-    projectList: () => Promise<{ projects: Array<{ vaultRoot: string; notesVaultRoot?: string; name: string; openedAt: string }>; activeNotesVaultRoot?: string }>;
+    // SKY-11882: `mythosVaultRoot` is the enclosing Mythos-vault root, resolved
+    // in main against story-vaults.json. Whole-vault operations (Hide / Delete
+    // at level='mythos') MUST use it — a story vault's dirname is user-chosen,
+    // so it cannot be derived from `vaultRoot` in the renderer.
+    projectList: () => Promise<{ projects: Array<{ vaultRoot: string; mythosVaultRoot: string; notesVaultRoot?: string; name: string; openedAt: string }>; activeNotesVaultRoot?: string }>;
 
     // SKY-11058: notes vault registry
     notesVaultRegistryList?: () => Promise<{

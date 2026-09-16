@@ -5846,7 +5846,14 @@ const handlers: IpcHandlers = {
   // ─── Multi-project switcher (MYT-374) ───
   [IPC_CHANNELS.PROJECT_LIST]: () => {
     return {
-      projects: getRecentProjects(),
+      // SKY-11882: resolve each entry's enclosing Mythos root HERE — only
+      // main can read story-vaults.json, and a custom-named story vault
+      // (`<mythos>/Stories/Second World`) is unguessable from the path alone.
+      // Settings → Vault & Files Hide/Delete acts on this value.
+      projects: getRecentProjects().map((p) => ({
+        ...p,
+        mythosVaultRoot: mythosRootForStoryVault(p.vaultRoot) ?? p.vaultRoot,
+      })),
       activeVaultRoot: getVaultRoot(),
       activeNotesVaultRoot: getNotesVaultRoot(),
     };

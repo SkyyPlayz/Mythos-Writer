@@ -17,7 +17,12 @@ import {
   STORY_VAULT_REGISTRY_FILENAME,
   DEFAULT_STORY_VAULT_DIRNAME,
 } from './storyVaultRegistry.js';
-import { storyVaultRootFor } from './mythosJson.js';
+import {
+  storyVaultRootFor,
+  mythosRootForStoryVault,
+  createMythosFile,
+  writeMythosFile,
+} from './mythosJson.js';
 
 let tmpDir: string;
 
@@ -214,5 +219,45 @@ describe('storyVaultsForNotesVault', () => {
     const registry = ensureStoryVaultRegistry(tmpDir);
     const result = storyVaultsForNotesVault(registry, 'unknown-notes-id');
     expect(result).toHaveLength(0);
+  });
+});
+
+// SKY-11882 — the round trip the Settings → Vault & Files Hide/Delete menu
+// depends on: a story vault created through the picker with a CUSTOM name
+// must resolve back to the enclosing Mythos-vault root, not to its own
+// folder. PROJECT_LIST publishes exactly this value as `mythosVaultRoot`;
+// getting it wrong means shell.trashItem removes only the story-vault
+// subfolder and strands Notes/, mythos.json and both registries on disk.
+describe('mythosRootForStoryVault round trip (SKY-11882)', () => {
+  beforeEach(() => {
+    writeMythosFile(tmpDir, createMythosFile('Bundle'));
+  });
+
+  it('a custom-named story vault resolves to the bundle root, not to itself', () => {
+    const { entry } = createBlankStoryVault(tmpDir, 'Second World');
+    const abs = storyVaultAbsPath(tmpDir, entry);
+
+    // The picker files new vaults under the grouped `Stories/` dir with a
+    // user-chosen leaf, so the path alone cannot say where the bundle root is
+    // — only story-vaults.json can. This is why the old frontend regex, which
+    // stripped a hardcoded `Story Vault` suffix, returned `abs` unchanged.
+    expect(entry.dirName).toBe('Stories/Second World');
+    expect(abs).toBe(path.join(tmpDir, 'Stories', 'Second World'));
+
+    expect(mythosRootForStoryVault(abs)).toBe(tmpDir);
+  });
+
+  it('the default-named story vault keeps resolving to the bundle root', () => {
+    const registry = ensureStoryVaultRegistry(tmpDir);
+    const abs = storyVaultAbsPath(tmpDir, registry.vaults[0]);
+    expect(abs).toBe(path.join(tmpDir, DEFAULT_STORY_VAULT_DIRNAME));
+    expect(mythosRootForStoryVault(abs)).toBe(tmpDir);
+  });
+
+  it('an unregistered sibling folder still never resolves (SKY-11132 guard holds)', () => {
+    const stray = path.join(tmpDir, 'Stories', 'Not A Vault');
+    fs.mkdirSync(stray, { recursive: true });
+    ensureStoryVaultRegistry(tmpDir);
+    expect(mythosRootForStoryVault(stray)).toBeNull();
   });
 });
