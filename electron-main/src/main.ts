@@ -498,7 +498,7 @@ import {
   type SeedRegistry,
 } from './vaultSeeding.js';
 // Beta 4 M5 — MythosVault (v2) format + version gate + migration wizard.
-import { resolveManifestPath, mythosRootForStoryVault, agentVaultRootFor } from './mythosFormat/mythosJson.js';
+import { resolveManifestPath, mythosRootForStoryVault, resolveMythosVaultRoot, agentVaultRootFor } from './mythosFormat/mythosJson.js';
 import { migrateSessionsToAgentVault } from './mythosFormat/agentSessions.js';
 import {
   readBrainstormBoard,
@@ -5852,7 +5852,7 @@ const handlers: IpcHandlers = {
       // Settings → Vault & Files Hide/Delete acts on this value.
       projects: getRecentProjects().map((p) => ({
         ...p,
-        mythosVaultRoot: mythosRootForStoryVault(p.vaultRoot) ?? p.vaultRoot,
+        mythosVaultRoot: resolveMythosVaultRoot(p.vaultRoot),
       })),
       activeVaultRoot: getVaultRoot(),
       activeNotesVaultRoot: getNotesVaultRoot(),

@@ -644,6 +644,28 @@ describe('MythosVaultsSection — the ⋯ overflow menu (SKY-11154 §4a, AC-VS-0
     fireEvent.click(await screen.findByText('Hide', { selector: 'button' }));
     await waitFor(() => expect(mockVaultSurfaceHide).toHaveBeenCalledWith({ vaultRoot: '/vaults/Delta', level: 'mythos' }));
   });
+
+  // SKY-11882: main returns mythosVaultRoot:null when it cannot read the vault
+  // at all (today: a too-new mythos.json, which mythosJson.ts raises rather
+  // than "never touches"). There is then no path that is safe to trash, and
+  // falling back to vaultRoot would be the original orphaning bug — so the
+  // whole destructive menu is withheld. The card still lists and still
+  // switches; only Hide/Delete disappear.
+  it('a vault with an UNRESOLVED mythos root offers no Hide/Delete menu at all', async () => {
+    const UNREADABLE = '/vaults/Epsilon/Stories/Story Vault';
+    mockProjectList.mockResolvedValue({
+      projects: [
+        { vaultRoot: UNREADABLE, mythosVaultRoot: null, notesVaultRoot: '/vaults/Epsilon/Notes/Notes Vault', name: 'Epsilon', openedAt: '' },
+      ],
+    });
+    await act(async () => {
+      render(<MythosVaultsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
+    });
+    await waitFor(() => expect(screen.getByTestId(`mvs-card-${UNREADABLE}`)).toBeInTheDocument());
+
+    expect(screen.queryByLabelText('More options for Epsilon')).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument();
+  });
 });
 
 describe('MythosVaultsSection — Show hidden (SKY-11154 §4a, AC-VS-05)', () => {

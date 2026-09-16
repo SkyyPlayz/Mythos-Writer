@@ -34,8 +34,9 @@ interface VaultEntry {
   vaultRoot: string;
   /** SKY-11882: the enclosing Mythos-vault root, resolved in main (PROJECT_LIST)
    *  against story-vaults.json. Equals `vaultRoot` for a legacy (pre-v2) vault,
-   *  which is its own bundle root. */
-  mythosVaultRoot: string;
+   *  which is its own bundle root; `null` when main could not read the vault at
+   *  all, in which case NO whole-vault operation may be offered. */
+  mythosVaultRoot: string | null;
   notesVaultRoot?: string;
   name: string;
 }
@@ -138,6 +139,15 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
       .then((res) => { if (res?.vaultRoot) setActiveRoot(res.vaultRoot); })
       .catch(() => { /* non-fatal */ });
   }, []);
+
+  // SKY-11882: the hidden list holds MYTHOS roots, so it must be matched
+  // against the same resolved root that Hide sent — not the card's vaultRoot.
+  // A vault whose root didn't resolve (null) can never be on the list: it was
+  // never hideable, so it always lists as visible.
+  const isHidden = useCallback(
+    (v: VaultEntry) => v.mythosVaultRoot !== null && hiddenPaths.includes(v.mythosVaultRoot),
+    [hiddenPaths],
+  );
 
   useEffect(() => {
     refreshVaults();
@@ -551,7 +561,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {vaults.filter((v) => !hiddenPaths.includes(v.mythosVaultRoot)).map((v) => {
+        {vaults.filter((v) => !isHidden(v)).map((v) => {
           const current = v.vaultRoot === activeRoot;
           const themeKey = settings.vaultThemes?.[v.vaultRoot] ?? '';
           const displayName = displayNameFor(v);
@@ -660,16 +670,22 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
               ) : (
                 <span style={{ fontSize: 10.5, color: '#7686a2', flex: 'none' }}>Click to switch ›</span>
               )}
-              <div onClick={(e) => e.stopPropagation()}>
-                <VaultOverflowMenu
-                  level="mythos"
-                  vaultPath={v.mythosVaultRoot}
-                  vaultName={displayName}
-                  testIdSuffix={v.vaultRoot}
-                  onHidden={refreshHidden}
-                  onDeleted={refreshVaults}
-                />
-              </div>
+              {/* SKY-11882: no resolved Mythos root (a too-new mythos.json main
+                  refuses to read) means no path is safe to Hide or Delete — the
+                  card still lists and switches, but the destructive menu is
+                  withheld rather than aimed at a guessed path. */}
+              {v.mythosVaultRoot !== null && (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <VaultOverflowMenu
+                    level="mythos"
+                    vaultPath={v.mythosVaultRoot}
+                    vaultName={displayName}
+                    testIdSuffix={v.vaultRoot}
+                    onHidden={refreshHidden}
+                    onDeleted={refreshVaults}
+                  />
+                </div>
+              )}
             </div>
           );
         })}
@@ -682,7 +698,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
 
       {showHidden && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }} data-testid="mvs-hidden-list">
-          {vaults.filter((v) => hiddenPaths.includes(v.mythosVaultRoot)).map((v) => (
+          {vaults.filter(isHidden).map((v) => (
             <div
               key={`hidden-${v.vaultRoot}`}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 10, background: 'rgba(255,255,255,.02)', border: '1px dashed rgba(255,255,255,.1)' }}
@@ -692,13 +708,13 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
                 type="button"
                 className="m24-btn"
                 data-testid={`mvs-unhide-${v.vaultRoot}`}
-                onClick={() => onUnhide(v.mythosVaultRoot)}
+                onClick={() => { if (v.mythosVaultRoot) onUnhide(v.mythosVaultRoot); }}
               >
                 Unhide
               </button>
             </div>
           ))}
-          {vaults.filter((v) => hiddenPaths.includes(v.mythosVaultRoot)).length === 0 && (
+          {vaults.filter(isHidden).length === 0 && (
             <p className="settings-hint">No hidden Mythos vaults.</p>
           )}
         </div>

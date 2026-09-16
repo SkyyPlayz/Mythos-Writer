@@ -410,6 +410,32 @@ export function mythosRootForStoryVault(storyVaultRoot: string): string | null {
 }
 
 /**
+ * SKY-11882 — the Mythos-vault root that whole-vault operations (Hide, Delete,
+ * blast-radius) must act on for a given Story Vault root. Three outcomes, kept
+ * distinct on purpose:
+ *
+ *   - a recognized v2 story vault → its enclosing Mythos root;
+ *   - a legacy (pre-v2) vault     → itself, because it IS its own bundle root;
+ *   - unreadable                  → `null`.
+ *
+ * `null` today means only a too-new `mythos.json`, which `isMythosV2Root`
+ * raises as MythosFormatVersionError ("never touch it"). Unlike the bare
+ * resolver this swallows that so one forward-version vault in the recents list
+ * cannot fail the whole list — but it reports `null` rather than substituting
+ * `storyVaultRoot`, because for a v2 vault that path is an INNER folder.
+ * Trashing it while pruning registries at the mythos level is precisely the
+ * orphaning bug this function exists to prevent, so callers must suppress the
+ * operation instead of guessing.
+ */
+export function resolveMythosVaultRoot(storyVaultRoot: string): string | null {
+  try {
+    return mythosRootForStoryVault(storyVaultRoot) ?? storyVaultRoot;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * THE VERSION GATE for the legacy Manifest path.
  *
  * v0.4 vault  → `<storyVaultRoot>/manifest.json` (unchanged behavior).

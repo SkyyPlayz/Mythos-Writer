@@ -20,8 +20,10 @@ import {
 import {
   storyVaultRootFor,
   mythosRootForStoryVault,
+  resolveMythosVaultRoot,
   createMythosFile,
   writeMythosFile,
+  _clearDetectionCache,
 } from './mythosJson.js';
 
 let tmpDir: string;
@@ -259,5 +261,41 @@ describe('mythosRootForStoryVault round trip (SKY-11882)', () => {
     fs.mkdirSync(stray, { recursive: true });
     ensureStoryVaultRegistry(tmpDir);
     expect(mythosRootForStoryVault(stray)).toBeNull();
+  });
+
+  // resolveMythosVaultRoot is what PROJECT_LIST publishes. It must collapse
+  // the "legacy vault, is its own bundle root" case to a usable path, but must
+  // NOT collapse the unreadable case — substituting the story-vault path there
+  // is exactly the orphaning bug.
+  describe('resolveMythosVaultRoot', () => {
+    it('returns the bundle root for a custom-named story vault', () => {
+      const { entry } = createBlankStoryVault(tmpDir, 'Second World');
+      expect(resolveMythosVaultRoot(storyVaultAbsPath(tmpDir, entry))).toBe(tmpDir);
+    });
+
+    it('a legacy (non-v2) vault stands in for itself', () => {
+      const legacy = fs.mkdtempSync(path.join(os.tmpdir(), 'svr-legacy-'));
+      try {
+        expect(resolveMythosVaultRoot(legacy)).toBe(legacy);
+      } finally {
+        fs.rmSync(legacy, { recursive: true, force: true });
+      }
+    });
+
+    it('returns null — never the story-vault path — for a TOO-NEW mythos.json', () => {
+      const { entry } = createBlankStoryVault(tmpDir, 'Second World');
+      const abs = storyVaultAbsPath(tmpDir, entry);
+      // A vault written by a future build: mythosJson refuses to touch it and
+      // raises MythosFormatVersionError out of isMythosV2Root.
+      const raw = JSON.parse(fs.readFileSync(path.join(tmpDir, 'mythos.json'), 'utf-8'));
+      fs.writeFileSync(
+        path.join(tmpDir, 'mythos.json'),
+        JSON.stringify({ ...raw, formatVersion: 99 }),
+      );
+      _clearDetectionCache();
+
+      expect(() => mythosRootForStoryVault(abs)).toThrow();
+      expect(resolveMythosVaultRoot(abs)).toBeNull();
+    });
   });
 });

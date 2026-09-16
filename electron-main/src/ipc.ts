@@ -3312,9 +3312,17 @@ export interface ProjectEntry {
  * `recentProjects` (which stays a plain `ProjectEntry[]`).
  */
 export interface ProjectListEntry extends ProjectEntry {
-  /** Enclosing Mythos-vault root; the entry's own `vaultRoot` for a legacy
-   *  (pre-v2) vault, which is its own bundle root. */
-  mythosVaultRoot: string;
+  /**
+   * Enclosing Mythos-vault root; the entry's own `vaultRoot` for a legacy
+   * (pre-v2) vault, which is its own bundle root.
+   *
+   * `null` means main could not resolve it — today only a too-new
+   * `mythos.json` (MythosFormatVersionError, "never touch it"). Callers MUST
+   * treat null as "no whole-vault operation is safe here" and suppress
+   * Delete/Hide, never as "fall back to `vaultRoot`": that fallback is the
+   * story-vault subfolder, which is exactly the SKY-11882 data-loss bug.
+   */
+  mythosVaultRoot: string | null;
 }
 
 export interface ProjectListResponse {

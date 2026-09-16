@@ -1441,7 +1441,7 @@ interface Window {
     // in main against story-vaults.json. Whole-vault operations (Hide / Delete
     // at level='mythos') MUST use it — a story vault's dirname is user-chosen,
     // so it cannot be derived from `vaultRoot` in the renderer.
-    projectList: () => Promise<{ projects: Array<{ vaultRoot: string; mythosVaultRoot: string; notesVaultRoot?: string; name: string; openedAt: string }>; activeNotesVaultRoot?: string }>;
+    projectList: () => Promise<{ projects: Array<{ vaultRoot: string; mythosVaultRoot: string | null; notesVaultRoot?: string; name: string; openedAt: string }>; activeNotesVaultRoot?: string }>;
 
     // SKY-11058: notes vault registry
     notesVaultRegistryList?: () => Promise<{
