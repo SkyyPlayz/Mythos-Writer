@@ -443,7 +443,7 @@ export default function TrackTimeline({
   );
 
   // SKY-5738 — window scene markers to the visible viewport + buffer so pan/zoom stays
-  // interactive at large scene counts (mirrors AeonLaneView's visibleCards windowing).
+  // interactive at large scene counts.
   // screen_x = offsetX + content_x * zoom, so solve for the content-space range whose
   // screen_x falls within [0 - buffer, containerWidth + buffer].
   const visiblePlaced = useMemo(() => {

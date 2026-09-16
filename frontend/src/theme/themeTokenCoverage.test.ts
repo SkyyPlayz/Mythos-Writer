@@ -70,9 +70,6 @@ const SRC_ROOT = resolve(__dirname, '..');
  */
 const KNOWN_ORPHANS: readonly string[] = [
   'AccountModal.css  --text-md',
-  'AeonLaneView.css  --surface-subtle',
-  'AeonLaneView.css  --text-heading',
-  'AeonLaneView.css  --text-md',
   'AgentHubPanel.css  --sp-2',
   'AgentHubPanel.css  --sp-3',
   'BlockEditor.css  --page-bg-radius',
