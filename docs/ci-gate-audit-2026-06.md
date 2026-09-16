@@ -45,7 +45,13 @@
 | No force-push to `main` | ✅ | ❌ NOT configured |
 | Linear history | — | ❌ NOT configured (not required to change) |
 
-**Blocker:** The GitHub PAT (`github_pat_11ARTSEHA0EE1pSUUxf90j_...`) does not have the "Administration" write permission required to configure branch protection via API (REST and GraphQL both return 403). CEO must update the fine-grained PAT permissions or configure branch protection manually.
+**Blocker:** A fine-grained GitHub PAT used for this June 2026 audit lacked the
+"Administration" write permission required to configure branch protection via
+API (REST and GraphQL both return 403). **Do not paste token values here.**
+CEO must rotate any token that was ever committed or pasted in full, then
+either grant Administration read/write on a new PAT or configure branch
+protection manually. Awareness: `git log -S 'github_pat_'` (history rewrite is
+out of scope for cleanup PRs).
 
 ---
 
@@ -80,10 +86,20 @@
 
 ### Immediate (CEO)
 
-1. **Update PAT permissions:** Add "Administration → Read and write" to the fine-grained PAT `github_pat_11ARTSEHA0EE1pSUUxf90j_...` in GitHub Settings → Developer settings → Fine-grained personal access tokens. Both `Mythos-Writer` and `Obsidian-Liquid-Neon` must be in scope.
+1. **Rotate + update PAT permissions:** If any fine-grained PAT from this audit
+   was ever committed or pasted in full, rotate it. Then add
+   "Administration → Read and write" (or configure protection in the UI).
+   Both `Mythos-Writer` and `Obsidian-Liquid-Neon` must be in scope if using API.
+   Path-only reference: GitHub Settings → Developer settings → Fine-grained
+   personal access tokens. Do not re-publish token prefixes or values in docs.
 
-2. **Configure Mythos-Writer branch protection** (`main`) with these settings:
-   - Required status checks: `CI / ci`, `CI / build-linux`, `CI / build-macos`
+2. **Configure Mythos-Writer branch protection** (`main`) with these settings
+   (update to match **live** gates — see `docs/REPO_AUDIT.md` §4.2 /
+   `CI-PREFLIGHT.md`; as of 2026-09 the PR gates are `CI / ci` +
+   `CI / notes-windows`, not packaging jobs):
+   - Required status checks: `CI / ci`, `CI / notes-windows`
+     (historical note: this audit originally listed `build-linux` /
+     `build-macos`; those are no longer PR jobs)
    - Require PR before merge: true (0 approving reviews minimum)
    - Allow force pushes: false
    - Allow deletions: false
