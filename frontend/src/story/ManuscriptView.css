@@ -578,12 +578,69 @@
 
 /* ── paragraph drag (prototype 891–895 drop line + grip) ── */
 
+/* SKY-11358: the drop indicator previews the GAP the block will land in,
+   not just the seam between two rows — a bare 2px hairline made the owner
+   "infer the result" instead of seeing it. Sized to the dragged block's own
+   height via an inline style (ParagraphRow's `dropGapHeight`); the min-height
+   here is only the pre-measurement fallback (jsdom, or the very first paint
+   before a real rect exists). A thin gradient cap on top keeps the original
+   hairline motif alive inside the larger gap. */
 .msv-dropline {
-  height: 2px;
-  border-radius: 2px;
-  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  min-height: 3.4em;
+  border-radius: 10px;
   margin: 0 0 10px;
+  border: 1.5px dashed var(--n1, rgba(0, 240, 255, 0.55));
+  background: linear-gradient(180deg, var(--gs1, rgba(0, 240, 255, 0.1)), rgba(155, 95, 255, 0.05));
+  box-shadow: 0 0 14px -4px var(--g1, rgba(0, 240, 255, 0.4));
+  position: relative;
+  overflow: hidden;
+  transition: height 0.14s ease;
+}
+
+.msv-dropline::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
   box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+/* SKY-11358: a legible clone of the dragged paragraph that follows the
+   cursor — fixed + portalled to <body> (see ManuscriptView.tsx) so it is
+   never clipped by an ancestor's overflow/transform, matching the
+   PanelDragContext ghost card's approach for panel drags. */
+.msv-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  max-width: min(90vw, 720px);
+  max-height: 6.5em;
+  padding: 0.7em 1em;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+
+  background: var(--bg-elevated, rgba(20, 26, 40, 0.92));
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--n1, rgba(0, 240, 255, 0.4));
+  border-radius: 10px;
+  box-shadow:
+    0 18px 40px -12px rgba(5, 8, 20, 0.65),
+    0 0 18px -4px var(--g1, rgba(0, 240, 255, 0.35));
+
+  color: var(--txB, #c8d3e7);
+  line-height: 1.85;
+
+  opacity: 0.96;
+  transform-origin: top left;
+  user-select: none;
+  pointer-events: none;
+  will-change: transform;
+  z-index: 9000;
 }
 
 .msv-root--dragging-para,

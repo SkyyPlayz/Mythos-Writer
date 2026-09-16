@@ -40,7 +40,6 @@ const PARA_STYLE: CSSProperties = { textAlign: 'left' };
 const noopCommit = () => {};
 const noopGrip = () => {};
 const noopOver = () => {};
-const noopDrop = () => {};
 const noopOpen = () => {};
 const noopApply = () => {};
 
@@ -72,7 +71,6 @@ function rowProps(blockId: string, over: Partial<ParagraphRowProps> = {}): Parag
     onCommit: noopCommit,
     onGripDown: noopGrip,
     onParaOver: noopOver,
-    onParaDrop: noopDrop,
     onOpenComment: noopOpen,
     onApplyAutoLink: noopApply,
     ...over,

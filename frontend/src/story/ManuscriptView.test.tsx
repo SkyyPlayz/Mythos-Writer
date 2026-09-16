@@ -687,6 +687,114 @@ describe('paragraph grip drag (M10, prototype paraDown/Over/Drop 3705–3719)', 
     fireEvent.mouseUp(row);
     expect(onMoveParagraph).not.toHaveBeenCalled();
   });
+
+  // SKY-11358 — a legible preview follows the cursor, and the destination
+  // previews as a gap sized to the dragged block, not just a hairline.
+  it('shows a floating preview of the dragged paragraph, which clears on drop', () => {
+    renderView({ cursor: cur('book') });
+    fireEvent.mouseDown(screen.getByTestId('msv-grip-s1-b0'));
+    const ghost = document.querySelector('.msv-drag-ghost');
+    expect(ghost).not.toBeNull();
+    expect(ghost).toHaveTextContent('Mira counted the bells.');
+
+    const targetRow = screen.getByTestId('msv-para-s3-b0').parentElement as HTMLElement;
+    fireEvent.mouseEnter(targetRow);
+    fireEvent.mouseUp(targetRow);
+    expect(document.querySelector('.msv-drag-ghost')).toBeNull();
+  });
+
+  it("sizes the drop-gap placeholder to the dragged block's measured height", () => {
+    const mockRect = (top: number, bottom: number, left = 0, right = 400): DOMRect =>
+      ({
+        top,
+        bottom,
+        left,
+        right,
+        width: right - left,
+        height: bottom - top,
+        x: left,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const spy = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: Element) {
+        // Only the s1-b0 row's `.msv-para` wrapper (grip + text) gets a real
+        // height — everything else stays jsdom's default all-zero rect.
+        if (this.classList?.contains('msv-para') && this.querySelector('[data-testid="msv-grip-s1-b0"]')) {
+          return mockRect(0, 63);
+        }
+        return mockRect(0, 0);
+      });
+    try {
+      renderView({ cursor: cur('book') });
+      fireEvent.mouseDown(screen.getByTestId('msv-grip-s1-b0'));
+      const targetRow = screen.getByTestId('msv-para-s3-b0').parentElement as HTMLElement;
+      fireEvent.mouseEnter(targetRow);
+      expect(screen.getByTestId('msv-dropline')).toHaveStyle({ height: '63px' });
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  // Real-geometry hit-testing: frozen row midpoints resolve the target, and
+  // a pointer outside the manuscript page's own bounds clears it — closing
+  // the gap where releasing over the Comments Gutter/toolbar (whose Y can
+  // coincide with a row's band) used to commit a move nobody asked for.
+  it('resolves the drop target from frozen row geometry, and clears it once the pointer leaves the page', () => {
+    const mockRect = (top: number, bottom: number, left = 0, right = 800): DOMRect =>
+      ({
+        top,
+        bottom,
+        left,
+        right,
+        width: right - left,
+        height: bottom - top,
+        x: left,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const ROWS: Record<string, DOMRect> = {
+      'msv-page': mockRect(0, 1000),
+      'msv-para-s1-b1': mockRect(40, 80),
+      'msv-para-s2-b0': mockRect(80, 120),
+      'msv-para-s3-b0': mockRect(120, 160),
+    };
+    const spy = vi
+      .spyOn(Element.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: Element) {
+        const testid = this.getAttribute?.('data-testid');
+        return (testid && ROWS[testid]) || mockRect(0, 0);
+      });
+    const onMoveParagraph = vi.fn();
+    try {
+      renderView({ onMoveParagraph, cursor: cur('book') });
+      fireEvent.mouseDown(screen.getByTestId('msv-grip-s1-b0'));
+
+      // Y=65 falls in s2-b0's band (80..120's predecessor gap resolves to
+      // the first row whose midpoint, 100, is still below the cursor —
+      // s1-b1's midpoint is 60, so 65 already passed it).
+      fireEvent.mouseMove(window, { clientX: 50, clientY: 65 });
+      const s2Wrapper = screen.getByTestId('msv-para-s2-b0').parentElement!.parentElement!;
+      expect(within(s2Wrapper).getByTestId('msv-dropline')).toBeInTheDocument();
+
+      // Past every row's midpoint, but still inside the page — clamps to
+      // the last row (moveParagraph has no "after everything" target).
+      fireEvent.mouseMove(window, { clientX: 50, clientY: 900 });
+      const s3Wrapper = screen.getByTestId('msv-para-s3-b0').parentElement!.parentElement!;
+      expect(within(s3Wrapper).getByTestId('msv-dropline')).toBeInTheDocument();
+
+      // Outside the page's own horizontal bounds (e.g. over the Comments
+      // Gutter) at a Y that would otherwise match a row's band — no target.
+      fireEvent.mouseMove(window, { clientX: 900, clientY: 900 });
+      expect(screen.queryByTestId('msv-dropline')).not.toBeInTheDocument();
+
+      fireEvent.mouseUp(window);
+      expect(onMoveParagraph).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });
 
 // ─── Beta 4 M8 — editing model hardening (FULL-SPEC §14.1/§14.2) ─────────────

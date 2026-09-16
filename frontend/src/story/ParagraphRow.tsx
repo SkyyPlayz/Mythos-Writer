@@ -66,6 +66,12 @@ export interface ParagraphRowProps {
   reading: boolean;
   /** M10 grip drag — true while this row is the hovered drop target. */
   showDropLine: boolean;
+  /**
+   * SKY-11358 — height (px) of the block being dragged, so the drop
+   * placeholder previews the gap it will actually occupy instead of a bare
+   * hairline. Ignored while `showDropLine` is false.
+   */
+  dropGapHeight?: number;
   /** M8 grip drag — true while THIS row is the block being dragged (dims to 38%). */
   dragging: boolean;
   /**
@@ -98,8 +104,16 @@ export interface ParagraphRowProps {
    */
   onMergeUp?: (sceneId: string, blockId: string, currentText: string) => boolean;
   onGripDown: (sceneId: string, blockId: string, e: ReactMouseEvent) => void;
-  onParaOver: (blockId: string) => void;
-  onParaDrop: (sceneId: string, blockId: string) => void;
+  /**
+   * M10/SKY-11358 — jsdom-safe drag-target fallback: real browsers resolve
+   * the target from frozen row geometry on `mousemove` instead (see
+   * ManuscriptView's drag-lifecycle effect — a target resolved from a ROW's
+   * *live*, currently-shifting rect fed back into the very reflow the drop
+   * gap causes, oscillating the target near a boundary). This still fires so
+   * jsdom (no real layout, `getBoundingClientRect` all-zero) and unit tests
+   * keep working without a synthetic `mousemove`.
+   */
+  onParaOver: (sceneId: string, blockId: string) => void;
   onOpenComment: (id: string | null) => void;
   onApplyAutoLink: (sceneId: string, blockId: string, content: string, hint: EntityMatch) => void;
 }
@@ -174,6 +188,7 @@ export function paragraphRowPropsEqual(
     prev.blockId !== next.blockId ||
     prev.reading !== next.reading ||
     prev.showDropLine !== next.showDropLine ||
+    prev.dropGapHeight !== next.dropGapHeight ||
     prev.dragging !== next.dragging ||
     prev.dropCap !== next.dropCap ||
     prev.placeholder !== next.placeholder ||
@@ -184,7 +199,6 @@ export function paragraphRowPropsEqual(
     prev.onMergeUp !== next.onMergeUp ||
     prev.onGripDown !== next.onGripDown ||
     prev.onParaOver !== next.onParaOver ||
-    prev.onParaDrop !== next.onParaDrop ||
     prev.onOpenComment !== next.onOpenComment ||
     prev.onApplyAutoLink !== next.onApplyAutoLink ||
     !sameCommentList(prev.comments, next.comments)
@@ -204,6 +218,7 @@ export function ParagraphRowBase({
   autoLinkTerms,
   reading,
   showDropLine,
+  dropGapHeight,
   dragging,
   dropCap,
   placeholder,
@@ -213,7 +228,6 @@ export function ParagraphRowBase({
   onMergeUp,
   onGripDown,
   onParaOver,
-  onParaDrop,
   onOpenComment,
   onApplyAutoLink,
 }: ParagraphRowProps) {
@@ -290,11 +304,17 @@ export function ParagraphRowBase({
 
   return (
     <div>
-      {showDropLine && <div className="msv-dropline" data-testid="msv-dropline" aria-hidden="true" />}
+      {showDropLine && (
+        <div
+          className="msv-dropline"
+          data-testid="msv-dropline"
+          aria-hidden="true"
+          style={dropGapHeight ? { height: dropGapHeight } : undefined}
+        />
+      )}
       <div
         className={`msv-para${dragging ? ' msv-para--dragging' : ''}`}
-        onMouseEnter={() => onParaOver(blockId)}
-        onMouseUp={() => onParaDrop(sceneId, blockId)}
+        onMouseEnter={() => onParaOver(sceneId, blockId)}
       >
         <span
           className="msv-grip"

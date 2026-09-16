@@ -26,6 +26,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type UIEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import type { Editor } from '@tiptap/core';
 import {
   breadcrumbs,
@@ -595,7 +596,7 @@ export default function ManuscriptView({
   // M1-S3: live ruler-diamond drag — feeds the page-corner value badge.
   const [rulerDrag, setRulerDrag] = useState<RulerDrag | null>(null);
   const [dragPara, setDragPara] = useState<ParagraphRef | null>(null);
-  const [dropKey, setDropKey] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<ParagraphRef | null>(null);
   // Mirror of dragPara so the row-facing drag handlers can stay
   // reference-stable — their identities feed ParagraphRow's memo gate.
   const dragParaRef = useRef<ParagraphRef | null>(null);
@@ -603,6 +604,47 @@ export default function ManuscriptView({
     dragParaRef.current = ref;
     setDragPara(ref);
   }, []);
+  // SKY-11358: mirror of dropTarget for the window-level commit handler
+  // below, which needs the LATEST resolved target without depending on it
+  // (that dependency would tear the mousemove/mouseup listeners down and
+  // re-add them on every target change, mid-drag).
+  const dropTargetRef = useRef<ParagraphRef | null>(null);
+  const updateDropTarget = useCallback((ref: ParagraphRef | null) => {
+    dropTargetRef.current = ref;
+    setDropTarget((prev) =>
+      prev?.sceneId === ref?.sceneId && prev?.blockId === ref?.blockId ? prev : ref
+    );
+  }, []);
+  // SKY-11358: a legible clone of the dragged paragraph that follows the
+  // cursor (prototype had none — the browser's default HTML5 ghost was used,
+  // which is why the owner couldn't see what he was moving). Captured once
+  // at grip-down; width/height size both the ghost and the drop-gap
+  // placeholder so the gap previews the ACTUAL space the block will occupy.
+  const [dragPreview, setDragPreview] = useState<{
+    text: string;
+    width: number | null;
+    height: number | null;
+  } | null>(null);
+  const [dragPreviewPos, setDragPreviewPos] = useState({ x: -9999, y: -9999 });
+  // SKY-11358: the ghost's position after the FIRST paint updates through
+  // this ref, not React state — `dragPreviewPos` only seeds the initial
+  // transform (grip-down through the first paint). ManuscriptView is a
+  // large, unmemoized component (~2000 lines of toolbar/gutter/ruler
+  // chrome); routing every mousemove tick through setState would reconcile
+  // all of it on every pixel of pointer movement for the whole drag.
+  const dragGhostElRef = useRef<HTMLDivElement | null>(null);
+  // SKY-11358: paragraph rows' viewport Y-midpoints, snapshotted ONCE when
+  // the drag starts (and re-snapshotted on scroll — see the drag-lifecycle
+  // effect). Real-browser hit-testing during the drag reads only this frozen
+  // list, never a row's LIVE rect: the drop-gap placeholder itself changes
+  // row layout by a full paragraph's height, so hit-testing against live
+  // rects fed back into its own cause — the target could cross a boundary
+  // it never crossed, or (confirmed by e2e/paragraph-editing.spec.ts
+  // TC-PE-03 going red against a live-rect version of this fix) miss the
+  // intended target across a multi-step drag entirely. Empty in jsdom
+  // (getBoundingClientRect is all-zero there) — handleParaOver's mouseenter
+  // fallback drives targeting in that case, exactly like before this fix.
+  const frozenRowsRef = useRef<Array<ParagraphRef & { mid: number }>>([]);
 
   // ── M11 comments (store binding + selection/open UI state) ──
   // SKY-10608: AI-off agent-comment filtering happens inside useStoryComments
@@ -649,6 +691,52 @@ export default function ManuscriptView({
 
   const blocks = useMemo(() => buildBlocks(story, cursor, collapsed), [story, cursor, collapsed]);
   const crumbs = useMemo(() => breadcrumbs(story, cursor), [story, cursor]);
+
+  // SKY-11358: every paragraph in the currently lazy-rendered window (GH#843
+  // — mirrors the `start`/`end` clamp the render body computes for `visible`
+  // below; keep the two in sync), in document order — the source list for
+  // the drag-start geometry snapshot below. A block outside this window has
+  // no DOM node to measure anyway (querySelector would just miss), and on a
+  // long manuscript the full unwindowed `blocks` would turn every re-snapshot
+  // into up to `blocks.length` querySelector calls instead of ≤ WINDOW.
+  // Mirrored into a ref (not read directly) so the memoized row callbacks
+  // keep a stable identity.
+  const paraOrder = useMemo(() => {
+    const start = Math.max(0, Math.min(winStart, Math.max(0, blocks.length - WINDOW)));
+    const end = Math.min(blocks.length, start + WINDOW);
+    return blocks
+      .slice(start, end)
+      .filter((b): b is Extract<ManuscriptBlock, { kind: 'para' }> => b.kind === 'para')
+      .map((b): ParagraphRef => ({ sceneId: b.sceneId, blockId: b.blockId }));
+  }, [blocks, winStart]);
+  const paraOrderRef = useRef(paraOrder);
+  paraOrderRef.current = paraOrder;
+
+  // SKY-11358: (re)build frozenRowsRef from the DOM as it stands RIGHT NOW —
+  // called once at grip-down, and again on scroll during a drag (the
+  // scrolled-to position is a legitimate reason to re-baseline; the drop
+  // gap's own reflow is not, which is exactly what staying frozen in
+  // between guards against). A stable identity (empty deps, reads through
+  // paraOrderRef) so it's safe to call from other stable callbacks.
+  //
+  // The block being dragged is excluded — it's never a legal drop target
+  // (moveParagraph treats dropping a block onto itself as a no-op) and
+  // including it let the row simultaneously show `dragging` (38% opacity)
+  // and its own full-height drop-gap placeholder when the cursor lingered
+  // near its origin, which read as two contradictory indicators at once.
+  const snapshotRows = useCallback(() => {
+    const dragging = dragParaRef.current;
+    const rows: Array<ParagraphRef & { mid: number }> = [];
+    for (const ref of paraOrderRef.current) {
+      if (dragging && dragging.sceneId === ref.sceneId && dragging.blockId === ref.blockId) continue;
+      const el = document.querySelector(`[data-testid="msv-para-${ref.blockId}"]`);
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.height <= 0) continue; // jsdom, or not actually laid out yet
+      rows.push({ ...ref, mid: rect.top + rect.height / 2 });
+    }
+    frozenRowsRef.current = rows;
+  }, []);
 
   // M1 row 3 (SKY-9013): scope stats + the status chip's target scene.
   const scene = useMemo(() => cursorScene(story, cursor), [story, cursor]);
@@ -745,25 +833,104 @@ export default function ManuscriptView({
   }, [cursor, onCursorChange, step, onHistoryAltArrow]);
 
   // M8 §14.2 "drag state can't get stuck": abandoned grip drags (mouseup
-  // outside any paragraph), Escape, and losing window focus all clear it.
+  // outside any paragraph), Escape, and losing window focus all clear it —
+  // no move fires for any of these.
+  //
+  // SKY-11358: mouseup here (not a per-row handler) is the single place a
+  // move commits, reading dropTargetRef which the per-row hover handlers
+  // below keep current. A per-row-only listener would miss drops released
+  // over the placeholder itself rather than over a `.msv-para` — and the
+  // placeholder is now full paragraph height, so that's the common case.
   useEffect(() => {
     if (!dragPara) return;
-    const clear = () => {
+    const abandon = () => {
       updateDragPara(null);
-      setDropKey(null);
+      updateDropTarget(null);
+      setDragPreview(null);
+    };
+    const commit = () => {
+      const from = dragParaRef.current;
+      const to = dropTargetRef.current;
+      abandon();
+      if (!from || !to) return;
+      if (from.sceneId === to.sceneId && from.blockId === to.blockId) return;
+      onMoveParagraph?.(from, to);
+    };
+    // SKY-11358: hit-test against the FROZEN snapshot, never a row's live
+    // rect — see frozenRowsRef's doc comment for why. Rows are frozen in
+    // document (top-to-bottom) order, so the first one whose midpoint is
+    // still below the cursor is the target; past the last row's midpoint,
+    // the target stays the last row (moveParagraph has no "after everything"
+    // target — see manuscriptModel.ts's moveParagraph doc comment).
+    const onMouseMove = (e: MouseEvent) => {
+      // Imperative, not setState — see dragGhostElRef's doc comment.
+      const ghostEl = dragGhostElRef.current;
+      if (ghostEl) {
+        ghostEl.style.transform = `translate3d(${e.clientX + 18}px, ${e.clientY + 14}px, 0) scale(1.02) rotate(-0.6deg)`;
+      }
+      // SKY-11358: the hit-test below only reasons about Y (row midpoints) —
+      // bound it to the manuscript page area first, or a Y that happens to
+      // fall inside some row's band while the cursor is over the Comments
+      // Gutter, the toolbar, or the side margin would still resolve (and
+      // then commit, on mouseup) a target the user never visually dropped
+      // on. Clearing the target outside these bounds also makes releasing
+      // out there a clean abandon, like releasing outside the window.
+      const bounds = scrollRef.current?.getBoundingClientRect();
+      if (
+        !bounds ||
+        e.clientX < bounds.left ||
+        e.clientX > bounds.right ||
+        e.clientY < bounds.top ||
+        e.clientY > bounds.bottom
+      ) {
+        updateDropTarget(null);
+        return;
+      }
+      const rows = frozenRowsRef.current;
+      if (rows.length === 0) return; // jsdom — handleParaOver's mouseenter drives targeting
+      let target = rows[rows.length - 1];
+      for (const row of rows) {
+        if (e.clientY < row.mid) {
+          target = row;
+          break;
+        }
+      }
+      updateDropTarget({ sceneId: target.sceneId, blockId: target.blockId });
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') clear();
+      if (e.key === 'Escape') abandon();
     };
-    window.addEventListener('mouseup', clear);
-    window.addEventListener('blur', clear);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', commit);
+    window.addEventListener('blur', abandon);
     window.addEventListener('keydown', onKeyDown);
-    return () => {
-      window.removeEventListener('mouseup', clear);
-      window.removeEventListener('blur', clear);
-      window.removeEventListener('keydown', onKeyDown);
+    // Re-baseline on scroll (a legitimate reason for the frozen geometry to
+    // move; the drop gap's own reflow, guarded against above, is not) and on
+    // resize (a font/line-spacing/page-width change, or the OS window
+    // itself). rAF-throttled — native `scroll`/`resize` can fire many times
+    // per second during a fling/live resize, and each call is up to WINDOW
+    // querySelector + getBoundingClientRect pairs.
+    const scrollEl = scrollRef.current;
+    let rafId = 0;
+    const scheduleSnapshot = () => {
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        snapshotRows();
+      });
     };
-  }, [dragPara, updateDragPara]);
+    scrollEl?.addEventListener('scroll', scheduleSnapshot);
+    window.addEventListener('resize', scheduleSnapshot);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', commit);
+      window.removeEventListener('blur', abandon);
+      window.removeEventListener('keydown', onKeyDown);
+      scrollEl?.removeEventListener('scroll', scheduleSnapshot);
+      window.removeEventListener('resize', scheduleSnapshot);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [dragPara, updateDragPara, updateDropTarget, onMoveParagraph, snapshotRows]);
 
   const handleScroll = useCallback(
     (e: UIEvent<HTMLDivElement>) => {
@@ -1090,7 +1257,8 @@ export default function ManuscriptView({
   // Paragraph grip drag (prototype paraDown/paraOver/paraDrop 3705–3719).
   // Row-facing callbacks read the drag state through dragParaRef instead of
   // closing over it, so their identities survive drag-state renders and the
-  // ParagraphRow memo keeps untouched rows from re-rendering.
+  // ParagraphRow memo keeps untouched rows from re-rendering. The actual
+  // move commits from the window `mouseup` listener above, not from here.
   const handleGripDown = useCallback(
     (sceneId: string, blockId: string, e: ReactMouseEvent) => {
       e.preventDefault();
@@ -1100,24 +1268,39 @@ export default function ManuscriptView({
       if (typeof window.getSelection === 'function') {
         window.getSelection()?.removeAllRanges();
       }
+      // SKY-11358: measure the row being picked up so the floating preview
+      // and the drop-gap placeholder both size to its ACTUAL text box —
+      // getBoundingClientRect is 0×0 in jsdom, so both fall back to the
+      // CSS-authored defaults there (see ManuscriptView.css) rather than
+      // collapsing to nothing. Also freezes every row's geometry for the
+      // drag's hit-testing — see snapshotRows / frozenRowsRef.
+      const row = e.currentTarget.closest('.msv-para');
+      const rect = row?.getBoundingClientRect();
+      setDragPreview({
+        text: row?.querySelector<HTMLElement>('[data-testid^="msv-para-"]')?.textContent ?? '',
+        width: rect?.width || null,
+        height: rect?.height || null,
+      });
+      setDragPreviewPos({ x: e.clientX + 18, y: e.clientY + 14 });
+      // dragParaRef must already point at this block before snapshotRows
+      // runs, so the initial snapshot excludes it too (not just later
+      // re-snapshots from scroll/resize) — see snapshotRows' doc comment.
       updateDragPara({ sceneId, blockId });
+      snapshotRows();
     },
-    [updateDragPara]
+    [updateDragPara, snapshotRows]
   );
 
-  const handleParaOver = useCallback((blockId: string) => {
-    if (dragParaRef.current) setDropKey((prev) => (prev === blockId ? prev : blockId));
-  }, []);
-
-  const handleParaDrop = useCallback(
+  // jsdom-only fallback (see ParagraphRow's onParaOver doc comment) — a real
+  // browser's frozenRowsRef is never empty once a drag starts moving, so
+  // this never overrides the window mousemove hit-test there.
+  const handleParaOver = useCallback(
     (sceneId: string, blockId: string) => {
-      const d = dragParaRef.current;
-      updateDragPara(null);
-      setDropKey(null);
-      if (!d || (d.sceneId === sceneId && d.blockId === blockId)) return;
-      onMoveParagraph?.(d, { sceneId, blockId });
+      if (dragParaRef.current && frozenRowsRef.current.length === 0) {
+        updateDropTarget({ sceneId, blockId });
+      }
     },
-    [onMoveParagraph, updateDragPara]
+    [updateDropTarget]
   );
 
   // ── M11 comment handlers ──
@@ -1458,7 +1641,8 @@ export default function ManuscriptView({
             }
             autoLinkTerms={autoLinkTerms}
             reading={readerKey === b.blockId}
-            showDropLine={!!dragPara && dropKey === b.blockId}
+            showDropLine={!!dragPara && dropTarget?.blockId === b.blockId}
+            dropGapHeight={dragPreview?.height ?? undefined}
             dragging={
               !!dragPara && dragPara.sceneId === b.sceneId && dragPara.blockId === b.blockId
             }
@@ -1470,7 +1654,6 @@ export default function ManuscriptView({
             onMergeUp={onMergeParagraph ? handleRowMergeUp : undefined}
             onGripDown={handleGripDown}
             onParaOver={handleParaOver}
-            onParaDrop={handleParaDrop}
             onOpenComment={handleOpenComment}
             onApplyAutoLink={handleApplyAutoLink}
           />
@@ -2090,6 +2273,30 @@ export default function ManuscriptView({
           onClose={sceneHistory.onClose}
         />
       )}
+      {/* SKY-11358: a legible clone of the dragged paragraph follows the
+          cursor — the owner could only ever see the browser's default HTML5
+          ghost before, and on a full-width block that was a faint clipped
+          snapshot. Portalled to <body> (matching PanelDragContext's ghost)
+          so it's never clipped by an ancestor's overflow/transform. */}
+      {dragPara &&
+        dragPreview &&
+        createPortal(
+          <div
+            ref={dragGhostElRef}
+            className="msv-drag-ghost"
+            style={{
+              // Only the FIRST paint's transform comes from React state — see
+              // dragGhostElRef's doc comment for why later frames don't.
+              transform: `translate3d(${dragPreviewPos.x}px, ${dragPreviewPos.y}px, 0) scale(1.02) rotate(-0.6deg)`,
+              width: dragPreview.width ?? undefined,
+              ...paraStyle,
+            }}
+            aria-hidden="true"
+          >
+            {dragPreview.text}
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
