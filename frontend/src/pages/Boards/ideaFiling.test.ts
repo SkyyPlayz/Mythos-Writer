@@ -1,0 +1,242 @@
+/**
+ * SKY-11192 §3 — Idea Collections filing.
+ *
+ * The `userGestureFrom` block below is the acceptance record for the ticket's
+ * load-bearing constraint (AC 4, CEO ruling 5): no code path may file an idea
+ * without a direct user click. If someone deletes the gesture check to "make a
+ * test pass", these fail.
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import {
+  IDEA_TARGET_FOLDER,
+  IDEA_FOLDERS,
+  ideaNoteBody,
+  ideaNoteName,
+  ideaTargetFolder,
+  isIdeaFiled,
+} from './ideaFiling';
+import { useIdeaFiling, userGestureFrom } from './useIdeaFiling';
+
+describe('SKY-11192 §3 — the fixed category → folder mapping', () => {
+  it('routes the four plot-shaped categories to one Plot & Story folder', () => {
+    expect(IDEA_TARGET_FOLDER.beats).toBe('Plot & Story');
+    expect(IDEA_TARGET_FOLDER.theme).toBe('Plot & Story');
+    expect(IDEA_TARGET_FOLDER.trope).toBe('Plot & Story');
+    expect(IDEA_TARGET_FOLDER.loose).toBe('Plot & Story');
+  });
+
+  it('routes relationships to Characters and clusters to Worldbuilding', () => {
+    expect(IDEA_TARGET_FOLDER.rel).toBe('Characters');
+    expect(IDEA_TARGET_FOLDER.world).toBe('Worldbuilding');
+  });
+
+  it('only ever names the three pill folders', () => {
+    expect(new Set(Object.values(IDEA_TARGET_FOLDER))).toEqual(new Set(IDEA_FOLDERS));
+  });
+
+  it('falls back to Plot & Story for a category from an older board file', () => {
+    expect(ideaTargetFolder('not-a-category')).toBe('Plot & Story');
+    expect(ideaTargetFolder(undefined)).toBe('Plot & Story');
+  });
+});
+
+describe('SKY-11192 §3 — note names', () => {
+  it('keeps the punctuation a title actually needs', () => {
+    // Regression: an over-broad "unsafe characters" class once stripped
+    // hyphens and spaces, turning the starter library into run-on words.
+    expect(ideaNoteName('Enemies to Allies')).toBe('Enemies to Allies');
+    expect(ideaNoteName('Power Corrupts — Quietly')).toBe('Power Corrupts — Quietly');
+    expect(ideaNoteName("Home You Can't Return To")).toBe("Home You Can't Return To");
+    expect(ideaNoteName('Legacy vs. Choice')).toBe('Legacy vs. Choice');
+  });
+
+  it('strips characters no target filesystem accepts', () => {
+    expect(ideaNoteName('Plot: A/B "test" <draft>?')).toBe('Plot A B test draft');
+    expect(ideaNoteName('a\u0000b')).toBe('a b');
+  });
+
+  it('never returns a name Windows rejects or an empty one', () => {
+    expect(ideaNoteName('trailing dot.')).toBe('trailing dot');
+    expect(ideaNoteName('trailing space   ')).toBe('trailing space');
+    expect(ideaNoteName('   ')).toBe('Untitled idea');
+    expect(ideaNoteName('///')).toBe('Untitled idea');
+  });
+});
+
+describe('SKY-11192 §3 — already-filed detection', () => {
+  it('matches on the note name, with or without the extension', () => {
+    expect(isIdeaFiled(['The Betrayal.md'], 'The Betrayal')).toBe(true);
+    expect(isIdeaFiled(['The Betrayal'], 'The Betrayal')).toBe(true);
+  });
+
+  it('ignores case and surrounding whitespace', () => {
+    expect(isIdeaFiled(['  the betrayal.MD  '], 'The Betrayal')).toBe(true);
+  });
+
+  it('matches a note the user wrote by hand, not just one we filed', () => {
+    // The check is "is this idea already in my vault", not "did this button
+    // get pressed" — that is the whole reason it is name-based (§3).
+    expect(isIdeaFiled(['Found Family.md'], 'Found Family')).toBe(true);
+  });
+
+  it('compares the SANITISED name, so an unfilable title still matches', () => {
+    expect(isIdeaFiled(['Plot A B.md'], 'Plot: A/B')).toBe(true);
+  });
+
+  it('does not match a different idea', () => {
+    expect(isIdeaFiled(['The Betrayal.md'], 'The Mentor Falls')).toBe(false);
+    expect(isIdeaFiled([], 'The Betrayal')).toBe(false);
+  });
+});
+
+describe('SKY-11192 §3 — note body', () => {
+  it('leads with the title as a heading, then the idea text', () => {
+    expect(ideaNoteBody({ title: 'The Betrayal', desc: 'Seeded in plain sight.' }))
+      .toBe('# The Betrayal\n\nSeeded in plain sight.\n');
+  });
+
+  it('renders chips as tags and omits empty sections', () => {
+    expect(ideaNoteBody({ title: 'X', desc: '', chips: ['Starter', 'Trope'] }))
+      .toBe('# X\n\n#Starter #Trope\n');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The user-click-only constraint. These are the tests a reviewer should look
+ * for per CEO ruling 5.
+ */
+describe('SKY-11192 AC4 — an idea is only ever filed by a direct user click', () => {
+  const mkdirNotesVault = vi.fn();
+  const writeNotesVault = vi.fn();
+  const listNotesVault = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mkdirNotesVault.mockResolvedValue({ path: 'Plot & Story', created: true });
+    listNotesVault.mockResolvedValue({ items: [] });
+    writeNotesVault.mockResolvedValue({ path: 'Plot & Story/X.md', bytes: 10 });
+    (window as unknown as { api: unknown }).api = { mkdirNotesVault, writeNotesVault, listNotesVault };
+  });
+
+  afterEach(() => {
+    delete (window as unknown as { api?: unknown }).api;
+  });
+
+  const idea = { key: 'k1', cat: 'beats' as const, title: 'The Betrayal', desc: 'd', chips: [] };
+
+  /**
+   * A stand-in for a real, user-dispatched event.
+   *
+   * Only the browser can set `isTrusted` — which is exactly why the production
+   * code trusts it — and jsdom makes it non-configurable, so it cannot be
+   * overwritten in place. Deriving an object FROM a genuine MouseEvent keeps
+   * `instanceof Event` true (the prototype chain is intact) while letting the
+   * flag read true, which is the closest jsdom gets to a user click. The real
+   * proof is the Playwright click in the E2E spec, where the event is
+   * genuinely trusted.
+   */
+  function trustedClick(): { nativeEvent: Event } {
+    const native = Object.create(new MouseEvent('click'), {
+      isTrusted: { value: true },
+    }) as Event;
+    return { nativeEvent: native };
+  }
+
+  it('refuses a null gesture — the shape every autonomous path has', () => {
+    // An agent turn, a setTimeout, a stream callback or a batch action has no
+    // user event to offer. This is what they would be able to pass.
+    expect(userGestureFrom(null)).toBeNull();
+    expect(userGestureFrom(undefined)).toBeNull();
+  });
+
+  it('refuses a script-dispatched (untrusted) event', () => {
+    // element.click() and new MouseEvent(...) both land here.
+    expect(userGestureFrom({ nativeEvent: new MouseEvent('click') })).toBeNull();
+  });
+
+  it('refuses a forged object that merely claims to be trusted', () => {
+    expect(userGestureFrom({ nativeEvent: { isTrusted: true } })).toBeNull();
+  });
+
+  it('mints a token for a genuine trusted event', () => {
+    expect(userGestureFrom(trustedClick())).not.toBeNull();
+  });
+
+  it('WRITES NOTHING when fileIdea is called without a gesture', async () => {
+    const { result } = renderHook(() => useIdeaFiling());
+    let res!: Awaited<ReturnType<typeof result.current.fileIdea>>;
+    await act(async () => { res = await result.current.fileIdea(null, idea); });
+
+    expect(res).toMatchObject({ ok: false, reason: 'no-gesture' });
+    expect(writeNotesVault).not.toHaveBeenCalled();
+    expect(mkdirNotesVault).not.toHaveBeenCalled();
+  });
+
+  it('WRITES NOTHING for a gesture minted from an untrusted event', async () => {
+    const { result } = renderHook(() => useIdeaFiling());
+    const gesture = userGestureFrom({ nativeEvent: new MouseEvent('click') });
+    await act(async () => { await result.current.fileIdea(gesture, idea); });
+
+    expect(writeNotesVault).not.toHaveBeenCalled();
+  });
+
+  it('writes the note for a real click, into the mapped folder', async () => {
+    const { result } = renderHook(() => useIdeaFiling());
+    let res!: Awaited<ReturnType<typeof result.current.fileIdea>>;
+    await act(async () => {
+      res = await result.current.fileIdea(userGestureFrom(trustedClick()), idea);
+    });
+
+    expect(res).toMatchObject({ ok: true, folderPath: 'Plot & Story', noteName: 'The Betrayal' });
+    expect(writeNotesVault).toHaveBeenCalledWith(
+      'Plot & Story/The Betrayal.md',
+      expect.stringContaining('# The Betrayal'),
+    );
+  });
+
+  it('creates the target folder silently as part of the same click (§3)', async () => {
+    const { result } = renderHook(() => useIdeaFiling());
+    await act(async () => {
+      await result.current.fileIdea(userGestureFrom(trustedClick()), { ...idea, cat: 'world' });
+    });
+    expect(mkdirNotesVault).toHaveBeenCalledWith('Worldbuilding');
+  });
+
+  it('refuses a duplicate found on the folder at click time, not a cached list', async () => {
+    listNotesVault.mockResolvedValue({
+      items: [{ path: 'The Betrayal.md', name: 'The Betrayal.md', isDirectory: false }],
+    });
+    const { result } = renderHook(() => useIdeaFiling());
+    let res!: Awaited<ReturnType<typeof result.current.fileIdea>>;
+    await act(async () => {
+      res = await result.current.fileIdea(userGestureFrom(trustedClick()), idea);
+    });
+
+    expect(res).toMatchObject({ ok: false, reason: 'duplicate' });
+    expect(writeNotesVault).not.toHaveBeenCalled();
+  });
+
+  it('is single-flight — a second click mid-write cannot batch a second note', async () => {
+    let release!: () => void;
+    listNotesVault.mockReturnValue(new Promise((resolve) => {
+      release = () => resolve({ items: [] });
+    }));
+
+    const { result } = renderHook(() => useIdeaFiling());
+    let first!: Promise<unknown>;
+    let second!: Awaited<ReturnType<typeof result.current.fileIdea>>;
+    await act(async () => {
+      first = result.current.fileIdea(userGestureFrom(trustedClick()), idea);
+      // Second click lands while the first is still awaiting the listing.
+      second = await result.current.fileIdea(userGestureFrom(trustedClick()), { ...idea, key: 'k2' });
+      release();
+      await first;
+    });
+
+    expect(second).toMatchObject({ ok: false, reason: 'busy' });
+    expect(writeNotesVault).toHaveBeenCalledTimes(1);
+  });
+});

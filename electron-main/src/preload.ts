@@ -123,6 +123,8 @@ contextBridge.exposeInMainWorld('api', {
   brainstormBoard: {
     read: () => ipcRenderer.invoke('brainstormBoard:read'),
     write: (content: string) => ipcRenderer.invoke('brainstormBoard:write', { content }),
+    migrateToNotes: () => ipcRenderer.invoke('brainstormBoard:migrateToNotes'),
+    migrationPreview: () => ipcRenderer.invoke('brainstormBoard:migrationPreview'),
   },
   listNotesVault: (root?: string) => ipcRenderer.invoke('notesVault:list', { root }),
   deleteNotesVault: (filePath: string) => ipcRenderer.invoke('notesVault:delete', { path: filePath }),
