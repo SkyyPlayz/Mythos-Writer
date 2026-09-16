@@ -67,7 +67,7 @@ jobs:
 
       - name: Upload baselines artifact
         continue-on-error: true  # storage quota may be exhausted; the commit below is the real output
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vr-baselines
           path: e2e/visual-baselines/
