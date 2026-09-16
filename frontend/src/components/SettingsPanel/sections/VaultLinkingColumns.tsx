@@ -6,7 +6,7 @@
 // Mythos-vault-level cards and the inner Notes/Story columns stay a clean
 // diff, matching this codebase's one-component-per-settings-sub-block
 // convention.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import Dialog, { DialogHeader, DialogBody, DialogFooter } from '../../ui/Dialog';
 import { Button } from '../../ui/Button';
@@ -33,6 +33,12 @@ interface StoryVaultEntry {
 type DotSelection = { side: 'notes' | 'story'; id: string } | null;
 
 const columnSt = { display: 'flex', flexDirection: 'column' as const, gap: 8, flex: 1, minWidth: 0 };
+
+/** Cubic link between pair dots — Notes column (right edge) → Story column (left). */
+export function pairLinePath(from: { x: number; y: number }, to: { x: number; y: number }): string {
+  const mx = (from.x + to.x) / 2;
+  return `M ${from.x} ${from.y} C ${mx} ${from.y}, ${mx} ${to.y}, ${to.x} ${to.y}`;
+}
 
 const cardSt = (current: boolean): CSSProperties => ({
   display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', borderRadius: 12,
@@ -176,15 +182,57 @@ export default function VaultLinkingColumns() {
     window.api?.vaultSurfaceUnhide?.(path).then(refreshHidden).catch(() => { /* non-fatal */ });
   }, [refreshHidden]);
 
+  const visibleNotes = (notesVaults ?? []).filter((n) => !hiddenPaths.includes(notesAbsPath(n)));
+  const hiddenNotes = (notesVaults ?? []).filter((n) => hiddenPaths.includes(notesAbsPath(n)));
+  const visibleStory = (storyVaults ?? []).filter((s) => !hiddenPaths.includes(storyAbsPath(s)));
+  const hiddenStory = (storyVaults ?? []).filter((s) => hiddenPaths.includes(storyAbsPath(s)));
+
+  const columnsRef = useRef<HTMLDivElement>(null);
+  const [pairPaths, setPairPaths] = useState<Array<{ storyId: string; notesId: string; d: string }>>([]);
+
+  useLayoutEffect(() => {
+    const root = columnsRef.current;
+    if (!root) return;
+    const measure = () => {
+      const rootBox = root.getBoundingClientRect();
+      const next: Array<{ storyId: string; notesId: string; d: string }> = [];
+      for (const story of visibleStory) {
+        if (!story.pairedNotesVaultId) continue;
+        const notesEl = root.querySelector<HTMLElement>(`[data-pair-dot="notes:${story.pairedNotesVaultId}"]`);
+        const storyEl = root.querySelector<HTMLElement>(`[data-pair-dot="story:${story.id}"]`);
+        if (!notesEl || !storyEl) continue;
+        const a = notesEl.getBoundingClientRect();
+        const b = storyEl.getBoundingClientRect();
+        next.push({
+          storyId: story.id,
+          notesId: story.pairedNotesVaultId,
+          d: pairLinePath(
+            { x: a.left + a.width / 2 - rootBox.left, y: a.top + a.height / 2 - rootBox.top },
+            { x: b.left + b.width / 2 - rootBox.left, y: b.top + b.height / 2 - rootBox.top },
+          ),
+        });
+      }
+      setPairPaths((prev) => {
+        if (
+          prev.length === next.length
+          && prev.every((p, i) => p.storyId === next[i].storyId && p.notesId === next[i].notesId && p.d === next[i].d)
+        ) {
+          return prev;
+        }
+        return next;
+      });
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(root);
+    return () => ro.disconnect();
+  }, [notesVaults, storyVaults, hiddenPaths]);
+
   // notesVaultRegistryList returns vaults: null for a legacy (pre-v2) vault
   // with no Mythos bundle — hide this UI entirely, matching the existing
   // NotesVaultPicker.tsx convention for the same signal.
   if (notesVaults === null) return null;
-
-  const visibleNotes = notesVaults.filter((n) => !hiddenPaths.includes(notesAbsPath(n)));
-  const hiddenNotes = notesVaults.filter((n) => hiddenPaths.includes(notesAbsPath(n)));
-  const visibleStory = (storyVaults ?? []).filter((s) => !hiddenPaths.includes(storyAbsPath(s)));
-  const hiddenStory = (storyVaults ?? []).filter((s) => hiddenPaths.includes(storyAbsPath(s)));
 
   return (
     <section className="settings-section" aria-labelledby="section-add-vault" data-settings-cat="vaults">
@@ -195,7 +243,27 @@ export default function VaultLinkingColumns() {
         vault at a time.
       </p>
 
-      <div style={{ display: 'flex', gap: 16 }}>
+      <div ref={columnsRef} className="vault-link-columns" style={{ display: 'flex', gap: 16, position: 'relative' }}>
+        <svg
+          className="vault-pair-lines"
+          data-testid="vault-pair-lines"
+          aria-hidden="true"
+          width="100%"
+          height="100%"
+          style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'visible' }}
+        >
+          {pairPaths.map((p) => (
+            <path
+              key={`${p.notesId}-${p.storyId}`}
+              data-testid={`vault-pair-line-${p.storyId}`}
+              d={p.d}
+              fill="none"
+              stroke="var(--n1, #00f0ff)"
+              strokeWidth="1.4"
+              strokeOpacity="0.55"
+            />
+          ))}
+        </svg>
         <div style={columnSt}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span className="settings-label">Notes vaults</span>
@@ -258,6 +326,7 @@ export default function VaultLinkingColumns() {
                   className="vault-pair-dot"
                   aria-label={`Pair with notes vault ${n.displayName}`}
                   data-testid={`pair-dot-notes-${n.id}`}
+                  data-pair-dot={`notes:${n.id}`}
                   style={dotSt(linked.length > 0, selectedDot?.side === 'notes' && selectedDot.id === n.id)}
                   onClick={(e) => { e.stopPropagation(); onDotClick('notes', n.id); }}
                 />
@@ -326,6 +395,7 @@ export default function VaultLinkingColumns() {
                   className="vault-pair-dot"
                   aria-label={`Pair with story vault ${s.displayName}`}
                   data-testid={`pair-dot-story-${s.id}`}
+                  data-pair-dot={`story:${s.id}`}
                   style={dotSt(s.pairedNotesVaultId != null, selectedDot?.side === 'story' && selectedDot.id === s.id)}
                   onClick={(e) => { e.stopPropagation(); onDotClick('story', s.id); }}
                 />

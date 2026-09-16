@@ -4,7 +4,7 @@
 // manual-switch gate, and hidden-vault filtering.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import VaultLinkingColumns from './VaultLinkingColumns';
+import VaultLinkingColumns, { pairLinePath } from './VaultLinkingColumns';
 
 const NOTES_A = { id: 'n1', displayName: 'Notes A', dirName: 'Notes A', createdAt: '', origin: 'created' as const };
 const NOTES_B = { id: 'n2', displayName: 'Notes B', dirName: 'Notes B', createdAt: '', origin: 'created' as const };
@@ -191,5 +191,19 @@ describe('VaultLinkingColumns — Show hidden (§4a)', () => {
     expect(await screen.findByTestId('story-target-hidden-s2')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('story-target-hidden-s2'));
     await waitFor(() => expect(mockUnhide).toHaveBeenCalledWith('/mythos/Notes A'));
+  });
+});
+
+describe('VaultLinkingColumns — visual pair lines (owner punch)', () => {
+  it('draws a connector for each paired Notes/Story vault', async () => {
+    await setup();
+    expect(screen.getByTestId('vault-pair-lines')).toBeInTheDocument();
+    // STORY_B is paired to n1 in the fixture.
+    expect(screen.getByTestId('vault-pair-line-s2')).toBeInTheDocument();
+    expect(screen.queryByTestId('vault-pair-line-s1')).not.toBeInTheDocument();
+  });
+
+  it('pairLinePath is a cubic from notes dot to story dot', () => {
+    expect(pairLinePath({ x: 10, y: 20 }, { x: 90, y: 40 })).toBe('M 10 20 C 50 20, 50 40, 90 40');
   });
 });
