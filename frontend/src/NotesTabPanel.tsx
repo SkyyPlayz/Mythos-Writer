@@ -10,6 +10,7 @@ import BrainstormPage from './BrainstormPage';
 import ContinuityPanel from './ContinuityPanel';
 import NoteViewer from './NoteViewer';
 import type { FormatToolbarActions } from './FormatToolbar';
+import type { TtsEngineSettings, TtsVoicePrefs } from './hooks/useTtsPlayer';
 import NoteSplitPane, { NotesPaneTabStrip } from './NoteSplitPane';
 import { makeNoteTab, upsertNoteTab, upsertEntityBrowserTab } from './workspaceDocTabs';
 import NoteProperties from './NoteProperties';
@@ -123,6 +124,9 @@ export interface NotesTabPanelProps {
   onOpenBrainstorm?: (seedText: string) => void;
   /** M8d: note-editor Read/Dictate toolbar buttons — reuses the app's TTS/voice pipeline. */
   noteToolbarActions?: FormatToolbarActions;
+  /** SKY-11229: TTS engine + voice prefs for the note reader (NoteViewer's onRead). */
+  noteTtsSettings?: TtsEngineSettings;
+  noteVoicePrefs?: TtsVoicePrefs;
   /** SKY-10929: Slot A/B/C breathing neon border — same settings + slot
    * numbers (1 left · 2 center · 3 right) the Story editor's shell-panels
    * use, so Notes gets the identical treatment instead of none at all. */
@@ -194,6 +198,8 @@ export default function NotesTabPanel({
   selectedEntityId,
   onOpenBrainstorm,
   noteToolbarActions,
+  noteTtsSettings,
+  noteVoicePrefs,
   liquidNeonV2,
   docTabStrip,
 }: NotesTabPanelProps) {
@@ -568,6 +574,8 @@ export default function NotesTabPanel({
               wikiLinkCandidates={wikiLinkCandidates}
               onClose={onCloseActiveNote}
               toolbarActions={noteToolbarActions}
+              ttsSettings={noteTtsSettings}
+              voicePrefs={noteVoicePrefs}
             />
           )}
           {/* M16 / SKY-9784: note split — active note + a second note side by
@@ -615,6 +623,8 @@ export default function NotesTabPanel({
                     wikiLinkCandidates={wikiLinkCandidates}
                     onClose={onCloseActiveNote}
                     toolbarActions={noteToolbarActions}
+                    ttsSettings={noteTtsSettings}
+                    voicePrefs={noteVoicePrefs}
                   />
                 )}
               </div>

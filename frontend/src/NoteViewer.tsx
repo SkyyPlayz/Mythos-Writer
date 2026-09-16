@@ -18,6 +18,9 @@ import RichTextEditor from './RichTextEditor';
 import type { FormatToolbarActions } from './FormatToolbar';
 import { showLnToast } from './theme/lnToast';
 import type { AnyExtension } from '@tiptap/core';
+import type { TtsEngineSettings, TtsVoicePrefs } from './hooks/useTtsPlayer';
+import { useNoteReader } from './story/useNoteReader';
+import { ReaderCard } from './story/ReaderBar';
 import './NoteViewer.css';
 
 export type NoteViewerMode = 'source' | 'rich' | 'markdown' | 'preview';
@@ -52,8 +55,14 @@ interface Props {
   /** @deprecated Use `mode` + `onModeChange`. */
   onPreviewModeChange?: (previewMode: boolean) => void;
   /** M8d: Read/Dictate toolbar buttons (prototype toolbar 1532-1538) — reuses
-   * the app's existing TTS/voice pipeline (R11: utility, not AI). */
+   * the app's existing TTS/voice pipeline (R11: utility, not AI). onRead is
+   * overridden internally (SKY-11229: the real reader lives here, not with
+   * the caller) — only onDictate/dictating come from toolbarActions as-is. */
   toolbarActions?: FormatToolbarActions;
+  /** SKY-11229: TTS engine + voice prefs for this note's reader — same
+   * settings the Story editor's useManuscriptReader takes. */
+  ttsSettings?: TtsEngineSettings;
+  voicePrefs?: TtsVoicePrefs;
 }
 
 // ---------------------------------------------------------------------------
@@ -363,6 +372,8 @@ export default function NoteViewer({
   previewMode,
   onPreviewModeChange,
   toolbarActions,
+  ttsSettings,
+  voicePrefs,
 }: Props) {
   const [defaultRich, setDefaultRich] = useState(readDefaultRichPref);
   // SKY-10929: this note's own remembered mode, if it was ever explicitly
@@ -569,6 +580,17 @@ export default function NoteViewer({
   const displayBody = useMemo(() => stripHiddenBlocks(content), [content]);
   const bodyWordCount = useMemo(() => countWords(displayBody), [displayBody]);
   const bodyCharCount = useMemo(() => countChars(displayBody), [displayBody]);
+
+  // SKY-11229: the Notes editor's real reader — same engine/pipeline as the
+  // Story editor's useManuscriptReader, scoped to this note's display body.
+  const reader = useNoteReader(path, displayBody, ttsSettings, voicePrefs);
+  const effectiveToolbarActions = useMemo<FormatToolbarActions | undefined>(() => {
+    if (!toolbarActions) return toolbarActions;
+    return {
+      ...toolbarActions,
+      onRead: () => (reader.open ? reader.close() : reader.openReader()),
+    };
+  }, [toolbarActions, reader]);
 
   // SKY-10929: the app is 100% local — there is nothing to "share". This
   // copies the note path (kept as a utility, moved off the primary toolbar
@@ -951,8 +973,14 @@ export default function NoteViewer({
           sceneWikiLinkTitles={sceneWikiLinkTitles}
           wikiLinkCandidates={wikiLinkCandidates}
           fileName={fileName}
-          toolbarActions={toolbarActions}
+          toolbarActions={effectiveToolbarActions}
         />
+      )}
+
+      {reader.open && (
+        <div className="note-viewer-reader-dock">
+          <ReaderCard reader={reader} ttsSettings={ttsSettings} />
+        </div>
       )}
 
       {mode === 'preview' && (

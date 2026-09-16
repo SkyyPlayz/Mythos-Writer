@@ -6,7 +6,7 @@ export function stripFrontmatter(text: string): string {
   return splitFrontmatter(text).body;
 }
 
-function stripMarkdown(text: string): string {
+export function stripMarkdown(text: string): string {
   return (
     text
       // Fenced code blocks — strip fences, keep content

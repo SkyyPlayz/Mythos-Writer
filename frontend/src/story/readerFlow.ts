@@ -21,6 +21,7 @@ import {
   orderedScenes,
   type ManuscriptCursor,
 } from './manuscriptModel';
+import { stripMarkdown } from '../wordStats';
 
 export interface ReaderFlowItem {
   /** Utterance text passed to the TTS engine. */
@@ -243,6 +244,26 @@ export function sceneSkipIndex(
   const target = flow.findIndex((f) => f.sceneOrdinal === current + dir);
   if (target > -1) return target;
   return Math.max(0, Math.min(flow.length - 1, bounded + dir));
+}
+
+/**
+ * SKY-11229: linearize a note's prose into utterances for the Notes editor
+ * reader. A note has no chapter/scene tree — markdown syntax is stripped
+ * (same stripMarkdown the word-count footer uses) and the remaining text is
+ * split on blank lines into paragraphs, then into sentences. `key` is a
+ * paragraph index (no per-block id to highlight against, unlike the
+ * manuscript flow); `sceneOrdinal` stays 0 throughout — a note is one flat
+ * scope, so skipScene degrades to a plain sentence step.
+ */
+export function buildNoteReaderFlow(displayBody: string): ReaderFlowItem[] {
+  const flow: ReaderFlowItem[] = [];
+  const plain = stripMarkdown(displayBody);
+  plain.split(/\n{2,}/).forEach((para, pi) => {
+    for (const span of splitSentences(para)) {
+      flow.push({ text: span.text, key: `p${pi}`, sceneId: null, sceneOrdinal: 0, start: span.start, end: span.end });
+    }
+  });
+  return flow;
 }
 
 /**

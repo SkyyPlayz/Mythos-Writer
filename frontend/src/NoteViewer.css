@@ -10,6 +10,16 @@
   position: relative;
 }
 
+/* SKY-11229: the reader card has no gutter column here (unlike the Story
+   editor's CommentsGutter) — it floats over the top-right of the note. */
+.note-viewer-reader-dock {
+  position: absolute;
+  top: 48px;
+  right: 16px;
+  width: 230px;
+  z-index: 20;
+}
+
 .note-viewer-loading,
 .note-viewer-error {
   padding: 24px;

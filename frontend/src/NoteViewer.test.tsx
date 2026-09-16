@@ -921,3 +921,77 @@ describe('NoteViewer M8d surface inventory', () => {
     expect(screen.getByTestId('note-add-tag-input')).toHaveFocus();
   });
 });
+
+// SKY-11229: Read aloud was a stub that only toasted "arrives with the TTS
+// Reader milestone (M13)" — this exercises the real path end to end so a fix
+// that only wires the Story editor (and leaves Notes untouched) fails here.
+describe('NoteViewer read aloud (SKY-11229)', () => {
+  const speak = vi.fn();
+
+  beforeEach(() => {
+    speak.mockClear();
+    (window as unknown as { speechSynthesis: unknown }).speechSynthesis = {
+      speak,
+      cancel: vi.fn(),
+      getVoices: () => [],
+    };
+    (globalThis as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = vi
+      .fn()
+      .mockImplementation(function SpeechSynthesisUtterance(this: { text: string }, text: string) {
+        this.text = text;
+      });
+  });
+
+  afterEach(() => {
+    // Unmount while the mock is still in place — useFlowReader's unmount
+    // effect calls tts.cancelCurrent(), which reaches window.speechSynthesis.
+    cleanup();
+    delete (window as unknown as { speechSynthesis?: unknown }).speechSynthesis;
+    delete (globalThis as unknown as { SpeechSynthesisUtterance?: unknown }).SpeechSynthesisUtterance;
+  });
+
+  it('opens the same reader dock the Story editor uses and speaks the note body', async () => {
+    readNotesVault.mockResolvedValue({ content: 'Mira counted the bells. The lanterns guttered.' });
+    render(
+      <NoteViewer
+        path="Notes/gate.md"
+        toolbarActions={{ onRead: vi.fn(), onDictate: vi.fn(), dictating: false }}
+      />,
+    );
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+
+    // The toolbar's Read button opens the dock — same component
+    // (msv-reader-card / ReaderCard) the manuscript reader renders.
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Read aloud' }));
+    expect(screen.getByTestId('msv-reader-card')).toBeInTheDocument();
+
+    // Controls match the Story editor: transport, speed, voice.
+    expect(screen.getByTestId('msv-reader-play')).toBeInTheDocument();
+    expect(screen.getByTestId('msv-reader-rate')).toBeInTheDocument();
+    expect(screen.getByTestId('msv-reader-voice')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('msv-reader-play'));
+    expect(speak).toHaveBeenCalledTimes(1);
+    expect((speak.mock.calls[0][0] as { text: string }).text).toBe('Mira counted the bells.');
+
+    // No internal milestone id anywhere in what the user sees.
+    expect(document.body.textContent).not.toMatch(/M13/);
+  });
+
+  it('never shows the M13 stub toast on click', async () => {
+    readNotesVault.mockResolvedValue({ content: 'Some prose.' });
+    render(
+      <NoteViewer
+        path="Notes/gate.md"
+        toolbarActions={{ onRead: vi.fn(), onDictate: vi.fn(), dictating: false }}
+      />,
+    );
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Read aloud' }));
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Read aloud' }));
+
+    expect(document.body.textContent).not.toMatch(/M13/);
+    expect(document.body.textContent).not.toMatch(/TTS Reader milestone/);
+  });
+});

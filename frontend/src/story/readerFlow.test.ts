@@ -5,6 +5,7 @@ import { describe, it, expect } from 'vitest';
 import type { Block, Chapter, Scene, Story } from '../types';
 import type { ManuscriptCursor } from './manuscriptModel';
 import {
+  buildNoteReaderFlow,
   buildReaderFlow,
   flowScopeKey,
   flowStartIndex,
@@ -260,6 +261,31 @@ describe('sceneSkipIndex', () => {
 
   it('returns -1 for an empty flow', () => {
     expect(sceneSkipIndex([], 0, 1)).toBe(-1);
+  });
+});
+
+describe('buildNoteReaderFlow (SKY-11229)', () => {
+  it('splits paragraphs into sentence-level utterances', () => {
+    const flow = buildNoteReaderFlow('Mira counted the bells. The lanterns guttered.\n\nBy morning the rumor had teeth.');
+    expect(flow.map((f) => f.text)).toEqual([
+      'Mira counted the bells.',
+      'The lanterns guttered.',
+      'By morning the rumor had teeth.',
+    ]);
+  });
+
+  it('strips markdown syntax so headings/emphasis are not read literally', () => {
+    const flow = buildNoteReaderFlow('# Field notes\n\nThe **old bridge** creaked.');
+    expect(flow.map((f) => f.text)).toEqual(['Field notes', 'The old bridge creaked.']);
+  });
+
+  it('has no scene concept — every item shares ordinal 0', () => {
+    const flow = buildNoteReaderFlow('One sentence.\n\nAnother paragraph entirely.');
+    expect(flow.every((f) => f.sceneOrdinal === 0 && f.sceneId === null)).toBe(true);
+  });
+
+  it('returns an empty flow for blank content', () => {
+    expect(buildNoteReaderFlow('   \n\n  ')).toEqual([]);
   });
 });
 
