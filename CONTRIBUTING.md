@@ -19,16 +19,20 @@ CI check **and** is up to date with `main` at the time of merge.
 
 ### Required checks
 
-Three jobs must be green before a PR can merge:
+Live pull-request gates (see [`CI-PREFLIGHT.md`](CI-PREFLIGHT.md) and
+[`docs/REPO_AUDIT.md`](docs/REPO_AUDIT.md) §4.2):
 
 | Check name | What it validates |
 |---|---|
-| `CI / ci (pull_request)` | Lint, type-checks, unit tests, Electron build, Playwright E2E |
-| `CI / build-macos (pull_request)` | Same checks + macOS DMG packaging |
-| `CI / build-linux (pull_request)` | Same checks + Linux AppImage / .deb / .rpm packaging, artifact verification, and AppImage smoke test |
+| `CI / ci (pull_request)` | Lint, type-checks, unit tests, Electron build, Playwright E2E shards (path-filtered) |
+| `CI / notes-windows (pull_request)` | Native Windows notes/vault/Kokoro-path suites |
+
+Packaging jobs (`build-linux` / `build-windows`) run on pushes to `main` and via
+[`release.yml`](.github/workflows/release.yml); they are **skipped on
+`pull_request`**. There is **no** `build-macos` PR job.
 
 These are defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
-**Do not bypass or skip these checks.**
+**Do not bypass or skip the live PR gates.**
 
 ### Branch must be up to date
 
@@ -118,8 +122,9 @@ Refs: MYT-638
 
 ## Linux packages
 
-The `build-linux` CI job produces three installable artifacts bundled under the
-`linux-packages` artifact:
+On pushes to `main` (and via the release workflow), the `build-linux` job
+produces three installable artifacts bundled under the `linux-packages`
+artifact:
 
 | Format | File | Target distros |
 |--------|------|----------------|
