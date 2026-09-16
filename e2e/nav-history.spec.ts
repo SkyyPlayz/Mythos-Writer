@@ -115,7 +115,8 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       await expect(page.locator('.msv-crumb--current', { hasText: 'Opening Scene' })).toBeVisible();
 
       // B -> C: follow a second wikilink back into Notes (Elara's profile).
-      await page.getByText('[[Character: Elara]]', { exact: true }).click();
+      // SKY-10929: rich mode renders styled link text only — no [[ ]] brackets.
+      await page.locator('[data-wiki-link="Character: Elara"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 5_000 });
 
@@ -178,7 +179,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
 
   // SKY-11042: Windows side-button can fire both a DOM mousedown (button 3/4)
   // AND an Electron app-command IPC event for the same physical click. Without
-  // the 50 ms coalescing guard the nav history would step twice — landing two
+  // the coalescing guard the nav history would step twice — landing two
   // entries back instead of one. Simulate both paths firing in rapid succession
   // and assert exactly one back-navigation occurred.
   test('simultaneous mousedown + IPC back does not double-navigate (SKY-11042)', async () => {
@@ -198,10 +199,16 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
 
       // Fire the DOM mousedown (button 3 = X1 back) first, then immediately
       // fire the IPC `nav-history:back` channel from the main process — this
-      // simulates the Windows double-delivery within the 50 ms coalescing window.
-      // The guard must suppress the IPC copy, leaving exactly one step back.
+      // simulates the Windows double-delivery of one physical gesture. The
+      // guard must suppress the IPC copy, leaving exactly one step back.
       await page.evaluate(() => {
         window.dispatchEvent(new MouseEvent('mousedown', { button: 3, bubbles: true, cancelable: true }));
+        // SKY-11070: hold the renderer busy past the old guard's 50 ms
+        // wall-clock window, the way the rich-editor re-render does on slow
+        // CI runners (rich is the restored default since SKY-10929) — the
+        // paired IPC callback below runs late but must still be coalesced.
+        const until = Date.now() + 120;
+        while (Date.now() < until) { /* busy */ }
       });
       // Send the IPC back event from main — arrives async but well within 50 ms
       await app.evaluate(({ BrowserWindow }) => {
