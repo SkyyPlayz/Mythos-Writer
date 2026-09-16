@@ -87,7 +87,7 @@
 }
 
 .mv-stepbar-item--done {
-  color: var(--accent-color, #00f0ff);
+  color: var(--accent);
 }
 
 .mv-stepbar-dot {
@@ -105,13 +105,13 @@
 }
 
 .mv-stepbar-item--active .mv-stepbar-dot {
-  background: var(--accent-color, #00f0ff);
+  background: var(--accent);
   color: #000;
 }
 
 .mv-stepbar-item--done .mv-stepbar-dot {
   background: transparent;
-  border: 1px solid var(--accent-color, #00f0ff);
+  border: 1px solid var(--accent);
 }
 
 .mv-stepbar-label {

@@ -235,6 +235,10 @@
   /* Brand accent — cyan per Liquid Neon spec §1.1 (MYT-680 polish pass). */
   --accent: var(--neon-cyan);
   --accent-soft: rgba(0, 240, 255, 0.12);
+  /* SKY-11748: a hover tint distinct from --accent-soft's own resting-state
+     fill on the same element (PresetBrowser apply button) — reusing
+     --accent-soft for both would erase the hover feedback entirely. */
+  --accent-soft-strong: rgba(0, 240, 255, 0.22);
   --accent-violet: var(--neon-violet);
   --accent-magenta: var(--neon-magenta);
   --focus-ring: var(--neon-cyan);
