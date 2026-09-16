@@ -32,6 +32,11 @@ import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
 
 interface VaultEntry {
   vaultRoot: string;
+  /** SKY-11882: the enclosing Mythos-vault root, resolved in main (PROJECT_LIST)
+   *  against story-vaults.json. Equals `vaultRoot` for a legacy (pre-v2) vault,
+   *  which is its own bundle root; `null` when main could not read the vault at
+   *  all, in which case NO whole-vault operation may be offered. */
+  mythosVaultRoot: string | null;
   notesVaultRoot?: string;
   name: string;
 }
@@ -41,20 +46,6 @@ interface VaultStatEntry {
   noteCount: number | null;
   notesVaultCount: number;
   storyVaultCount: number;
-}
-
-/** SKY-11154: the enclosing Mythos-vault root for the "..." Hide/Delete menu
- *  and for cross-referencing the hidden-paths list. Vaults created before
- *  SKY-11451 live FLAT directly under it (path.join(mythosRoot, 'Story
- *  Vault')); vaults created after live under the grouped `Stories/` dir
- *  (path.join(mythosRoot, 'Stories', 'Story Vault'), SKY-11141 §1) — strip
- *  whichever of those two known suffixes is present. A legacy (pre-v2)
- *  vaultRoot has neither, so it stands in for itself. */
-function mythosPathFor(vaultRoot: string): string {
-  const grouped = vaultRoot.match(/^(.*)[\\/]Stories[\\/]Story Vault$/);
-  if (grouped) return grouped[1];
-  const flat = vaultRoot.match(/^(.*)[\\/]Story Vault$/);
-  return flat ? flat[1] : vaultRoot;
 }
 
 function pluralize(n: number, noun: string): string {
@@ -112,7 +103,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   const [renameValue, setRenameValue] = useState('');
   // SKY-11154: Hide/Delete + "Show hidden" (§4a) — hidden state is a flat
   // list of absolute vault-root paths, cross-referenced against each card's
-  // computed Mythos-root path.
+  // `mythosVaultRoot` (SKY-11882: resolved by main, not guessed here).
   const [hiddenPaths, setHiddenPaths] = useState<string[]>([]);
   const [showHidden, setShowHidden] = useState(false);
 
@@ -148,6 +139,15 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
       .then((res) => { if (res?.vaultRoot) setActiveRoot(res.vaultRoot); })
       .catch(() => { /* non-fatal */ });
   }, []);
+
+  // SKY-11882: the hidden list holds MYTHOS roots, so it must be matched
+  // against the same resolved root that Hide sent — not the card's vaultRoot.
+  // A vault whose root didn't resolve (null) can never be on the list: it was
+  // never hideable, so it always lists as visible.
+  const isHidden = useCallback(
+    (v: VaultEntry) => v.mythosVaultRoot !== null && hiddenPaths.includes(v.mythosVaultRoot),
+    [hiddenPaths],
+  );
 
   useEffect(() => {
     refreshVaults();
@@ -561,7 +561,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {vaults.filter((v) => !hiddenPaths.includes(mythosPathFor(v.vaultRoot))).map((v) => {
+        {vaults.filter((v) => !isHidden(v)).map((v) => {
           const current = v.vaultRoot === activeRoot;
           const themeKey = settings.vaultThemes?.[v.vaultRoot] ?? '';
           const displayName = displayNameFor(v);
@@ -670,16 +670,22 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
               ) : (
                 <span style={{ fontSize: 10.5, color: '#7686a2', flex: 'none' }}>Click to switch ›</span>
               )}
-              <div onClick={(e) => e.stopPropagation()}>
-                <VaultOverflowMenu
-                  level="mythos"
-                  vaultPath={mythosPathFor(v.vaultRoot)}
-                  vaultName={displayName}
-                  testIdSuffix={v.vaultRoot}
-                  onHidden={refreshHidden}
-                  onDeleted={refreshVaults}
-                />
-              </div>
+              {/* SKY-11882: no resolved Mythos root (a too-new mythos.json main
+                  refuses to read) means no path is safe to Hide or Delete — the
+                  card still lists and switches, but the destructive menu is
+                  withheld rather than aimed at a guessed path. */}
+              {v.mythosVaultRoot !== null && (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <VaultOverflowMenu
+                    level="mythos"
+                    vaultPath={v.mythosVaultRoot}
+                    vaultName={displayName}
+                    testIdSuffix={v.vaultRoot}
+                    onHidden={refreshHidden}
+                    onDeleted={refreshVaults}
+                  />
+                </div>
+              )}
             </div>
           );
         })}
@@ -692,7 +698,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
 
       {showHidden && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }} data-testid="mvs-hidden-list">
-          {vaults.filter((v) => hiddenPaths.includes(mythosPathFor(v.vaultRoot))).map((v) => (
+          {vaults.filter(isHidden).map((v) => (
             <div
               key={`hidden-${v.vaultRoot}`}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 10, background: 'rgba(255,255,255,.02)', border: '1px dashed rgba(255,255,255,.1)' }}
@@ -702,13 +708,13 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
                 type="button"
                 className="m24-btn"
                 data-testid={`mvs-unhide-${v.vaultRoot}`}
-                onClick={() => onUnhide(mythosPathFor(v.vaultRoot))}
+                onClick={() => { if (v.mythosVaultRoot) onUnhide(v.mythosVaultRoot); }}
               >
                 Unhide
               </button>
             </div>
           ))}
-          {vaults.filter((v) => hiddenPaths.includes(mythosPathFor(v.vaultRoot))).length === 0 && (
+          {vaults.filter(isHidden).length === 0 && (
             <p className="settings-hint">No hidden Mythos vaults.</p>
           )}
         </div>

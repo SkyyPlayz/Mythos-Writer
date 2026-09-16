@@ -3307,8 +3307,38 @@ export interface ProjectEntry {
   openedAt: string;
 }
 
+/**
+ * SKY-11882: a ProjectEntry plus the enclosing Mythos-vault root, resolved by
+ * main through the registry-aware `mythosRootForStoryVault()`.
+ *
+ * The renderer cannot derive this itself: a story vault's directory name is
+ * user-chosen (SKY-11169 lets one Mythos vault hold several, e.g.
+ * `<mythos>/Stories/Second World`), so only `story-vaults.json` knows which
+ * folder is a story vault and which is the bundle root. The frontend used to
+ * guess by stripping a hardcoded `Story Vault` suffix, which silently returned
+ * the story-vault subfolder for every custom-named vault — and Settings →
+ * Vault & Files Hide/Delete then targeted that subfolder, stranding `Notes/`,
+ * `mythos.json` and both registries on disk.
+ *
+ * Response-only: computed per call from disk, never persisted into
+ * `recentProjects` (which stays a plain `ProjectEntry[]`).
+ */
+export interface ProjectListEntry extends ProjectEntry {
+  /**
+   * Enclosing Mythos-vault root; the entry's own `vaultRoot` for a legacy
+   * (pre-v2) vault, which is its own bundle root.
+   *
+   * `null` means main could not resolve it — today only a too-new
+   * `mythos.json` (MythosFormatVersionError, "never touch it"). Callers MUST
+   * treat null as "no whole-vault operation is safe here" and suppress
+   * Delete/Hide, never as "fall back to `vaultRoot`": that fallback is the
+   * story-vault subfolder, which is exactly the SKY-11882 data-loss bug.
+   */
+  mythosVaultRoot: string | null;
+}
+
 export interface ProjectListResponse {
-  projects: ProjectEntry[];
+  projects: ProjectListEntry[];
   activeVaultRoot: string;
   /** SKY-320: paired Notes Vault for the currently-active project. */
   activeNotesVaultRoot?: string;
