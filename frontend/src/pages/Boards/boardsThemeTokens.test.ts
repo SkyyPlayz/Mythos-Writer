@@ -114,30 +114,51 @@ describe('SKY-11449 — Boards surface is wired to the Liquid Neon theme engine'
       expect(canvas).not.toMatch(/--glass-fill-overlay/);
     });
 
-    it('BD-5: the crumb bar is filled from --glass2, not the 20% panel tier', () => {
+    it('BD-5: the crumb bar stays off the 20% panel tier (pane owns the glass)', () => {
       const crumbs = painted('BoardsTabPanel.css');
-      expect(crumbs).toMatch(/--boards-crumb-fill:\s*var\(--glass2/);
-      expect(crumbs).toMatch(/background:\s*var\(--boards-crumb-fill\)/);
+      // BD-7 restored the center pane; mockup crumb has no fill of its own.
+      expect(crumbs).toMatch(
+        /\.boards-tab-panel__breadcrumb\s*\{[^}]*background:\s*transparent/,
+      );
       // --glass-fill / --blur-panel are the panel tier the engine drives to
       // rgba(13,16,28,.20) + blur(1px) at the shipped defaults. That is the
-      // BD-5 regression, and a 1px backdrop-filter is a compositing layer
-      // bought for no visible frost.
-      expect(crumbs).not.toMatch(/background:\s*var\(--glass-fill[,)]/);
+      // BD-5 regression.
+      expect(crumbs).not.toMatch(
+        /\.boards-tab-panel__breadcrumb\s*\{[^}]*background:\s*var\(--glass-fill[,)]/,
+      );
       expect(crumbs).not.toMatch(/blur\(var\(--blur-panel[,)]/);
     });
 
-    it('flattens both for reduced transparency and high contrast', () => {
-      for (const [file, fill, blur] of [
-        ['BoardCanvas.css', '--board-pill-fill', '--board-pill-blur'],
-        ['BoardsTabPanel.css', '--boards-crumb-fill', '--boards-crumb-blur'],
-      ] as const) {
-        const css = painted(file);
-        for (const guard of ['@media \\(prefers-reduced-transparency: reduce\\)', "data-contrast='high'"]) {
-          const block = new RegExp(`${guard}[\\s\\S]{0,400}?${fill}:\\s*var\\(--glass-fill-fallback`);
-          expect(css, `${file} must flatten ${fill} under ${guard}`).toMatch(block);
-        }
-        expect(css).toMatch(new RegExp(`${blur}:\\s*0px`));
+    it('BD-7: the Boards tab is a center pane (glass2 fill, slot-2 rim, no live blur-panel)', () => {
+      const panel = painted('BoardsTabPanel.css');
+      expect(panel).toMatch(/\.boards-tab-panel\s*\{[^}]*border-radius:\s*18px/);
+      expect(panel).toMatch(
+        /\.boards-tab-panel\s*\{[^}]*border:\s*var\(--bw[^;]*var\(--b2/,
+      );
+      // Denser raised-chrome tier — distinct from thin panel --glass-fill /
+      // --glass-panel-bg (SKY-11566 BD-5+BD-7).
+      expect(panel).toMatch(/--boards-pane-fill:\s*var\(--glass2/);
+      expect(panel).not.toMatch(/--boards-pane-fill:\s*var\(--glass-panel-bg\)/);
+      // 0.5.2 P0 jank contract: full-page shells must not stack live blur-panel.
+      expect(panel).not.toMatch(/blur\(\s*var\(--blur-panel/);
+    });
+
+    it('flattens pill + furniture + pane for reduced transparency and high contrast', () => {
+      const canvas = painted('BoardCanvas.css');
+      for (const guard of ['@media \\(prefers-reduced-transparency: reduce\\)', "data-contrast='high'"]) {
+        const block = new RegExp(`${guard}[\\s\\S]{0,400}?--board-pill-fill:\\s*var\\(--glass-fill-fallback`);
+        expect(canvas, `BoardCanvas.css must flatten --board-pill-fill under ${guard}`).toMatch(block);
       }
+      expect(canvas).toMatch(/--board-pill-blur:\s*0px/);
+
+      const panel = painted('BoardsTabPanel.css');
+      for (const guard of ['@media \\(prefers-reduced-transparency: reduce\\)', "data-contrast='high'"]) {
+        const furniture = new RegExp(`${guard}[\\s\\S]{0,400}?--boards-furniture-fill:\\s*var\\(--glass-fill-fallback`);
+        expect(panel, `furniture must flatten under ${guard}`).toMatch(furniture);
+        const pane = new RegExp(`${guard}[\\s\\S]{0,500}?--boards-pane-fill:\\s*var\\(--glass-fill-fallback`);
+        expect(panel, `pane must flatten under ${guard}`).toMatch(pane);
+      }
+      expect(panel).toMatch(/--boards-furniture-blur:\s*0px/);
     });
 
     it('routes every blur through a token so those paths can flatten it', () => {

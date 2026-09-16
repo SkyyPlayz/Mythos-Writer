@@ -1,24 +1,17 @@
 /**
- * sky-11566-boards-chrome-fidelity.spec.ts — SKY-11566 (owner-fidelity wave 2).
+ * sky-11566-boards-chrome-fidelity.spec.ts — SKY-11566 (owner-fidelity wave 2)
+ * + 0.5.2 residual BD-7.
  *
- * The two Boards chrome gaps left over from `docs/fidelity/SKY-11480-liquid-neon-gap-list.md`
- * after SKY-11494 closed the canvas and the tiles, measured across the real
- * process boundary (COMPANY-STANDARDS §4a) against the mockup's own
- * declarations rather than by eye:
+ * Boards chrome gaps from `docs/fidelity/SKY-11480-liquid-neon-gap-list.md`,
+ * measured across the real process boundary (COMPANY-STANDARDS §4a):
  *
- *   BD-4  the zoom pill wore the slot-1 rim and the frozen overlay (dialog)
- *         tier. `owner-reports/2026-09-02-design-liquid-neon.dc.html:2553`
- *         gives it `--glass2` + `blur(20px)` behind a slot-2 rim.
- *   BD-5  the crumb bar rode the panel tier, which the engine drives to
- *         rgba(13,16,28,.20) + blur(1px) at the shipped defaults. The mockup
- *         leaves the crumb row unfilled (dc.html:2382) only because its center
- *         pane (dc.html:571) paints the glass behind it; we have no such pane,
- *         so the bar carries the mockup's Boards chrome fill itself.
+ *   BD-4  zoom pill on slot-2 rim + `--glass2` + `blur(20px)` (dc.html:2553).
+ *   BD-5  crumb must not ride the 20% panel tier. With BD-7 the crumb is
+ *         transparent; the center pane owns the glass (mockup dc.html ~495).
+ *   BD-7  `.boards-tab-panel` is the center pane: 18px, slot-2 rim,
+ *         `--glass2` pane fill (no live blur-panel — #1598 contract).
  *
- * Both are asserted as computed values, and both are proven live against the
- * Appearance glass slider by driving `--glass2` and re-reading the paint — a
- * fill pinned to a literal would not move. Screenshots land in
- * `docs/screenshots/sky11566/`, one per gap.
+ * Screenshots land in `docs/screenshots/sky11566/`.
  */
 
 import path from 'path';
@@ -164,43 +157,43 @@ test.describe('SKY-11566 — Boards chrome vs the owner mockup', () => {
     expect(pill.boxShadow).toContain('0px 10px 30px');
   });
 
-  test('BD-5: the crumb bar is off the 20% panel tier and onto the chrome tier', async () => {
+  test('BD-5 + BD-7: crumb is transparent; the center pane owns the glass (not panel tier)', async () => {
     const bar = await chromeOf(page, '.boards-tab-panel__breadcrumb');
-    const glass2 = parseColor(await rootToken(page, '--glass2'));
+    const pane = await chromeOf(page, '.boards-tab-panel');
+    const b2 = parseColor(await rootToken(page, '--b2'));
     const panel = parseColor(await rootToken(page, '--glass-fill'));
 
-    expect(bar.fill).toEqual(glass2);
-    expect(bar.fill.a).toBeGreaterThanOrEqual(0.5);
+    // Mockup crumb has no fill once the center pane exists (BD-7).
+    expect(bar.fill.a).toBe(0);
+    expect(bar.backdropFilter === 'none' || bar.backdropFilter === '').toBe(true);
 
-    // The regression: the panel tier resolves to 20% at the shipped defaults,
-    // and its 1px blur is a compositing layer bought for no visible frost.
-    expect(bar.fill).not.toEqual(panel);
+    // Pane: slot-2 rim + halo (mockup center pane). Fill is denser --glass2
+    // (raised chrome), not the thin panel-tier --glass-fill / --glass-panel-bg.
+    expect(pane.rim).toEqual(b2);
+    expect(pane.boxShadow).toMatch(/inset/);
     expect(panel.a).toBeLessThan(0.5);
-    expect(bar.backdropFilter).toBe('blur(20px)');
-    expect(bar.backdropFilter).not.toBe(`blur(${await rootToken(page, '--blur-panel')})`);
+    // Must not paint the thin panel-tier solid as the pane background.
+    expect(pane.fill).not.toEqual(panel);
+    const paneToken = await page.locator('.boards-tab-panel').evaluate((el) =>
+      getComputedStyle(el).getPropertyValue('--boards-pane-fill').trim(),
+    );
+    expect(paneToken.length).toBeGreaterThan(0);
+    expect(paneToken).not.toMatch(/rgba\(\s*13\s*,\s*16\s*,\s*28\s*,\s*0\.2/);
   });
 
-  test('both surfaces repaint when the glass slider moves', async () => {
+  test('zoom pill repaints when the glass slider moves', async () => {
     // A fill pinned to a literal — the overlay tier, or the mockup's fallback —
     // would not move. Drive --glass2 the way the engine does and re-read paint.
-    const before = {
-      pill: (await chromeOf(page, '.board-canvas__zoom-controls')).background,
-      bar: (await chromeOf(page, '.boards-tab-panel__breadcrumb')).background,
-    };
+    const before = (await chromeOf(page, '.board-canvas__zoom-controls')).background;
 
     await page.evaluate(() =>
       document.documentElement.style.setProperty('--glass2', 'rgba(21,26,45,0.93)'),
     );
-    const after = {
-      pill: (await chromeOf(page, '.board-canvas__zoom-controls')).fill,
-      bar: (await chromeOf(page, '.boards-tab-panel__breadcrumb')).fill,
-    };
-    expect(after.pill.a).toBeCloseTo(0.93, 2);
-    expect(after.bar.a).toBeCloseTo(0.93, 2);
+    const after = (await chromeOf(page, '.board-canvas__zoom-controls')).fill;
+    expect(after.a).toBeCloseTo(0.93, 2);
 
     await page.evaluate(() => document.documentElement.style.removeProperty('--glass2'));
-    expect((await chromeOf(page, '.board-canvas__zoom-controls')).background).toBe(before.pill);
-    expect((await chromeOf(page, '.boards-tab-panel__breadcrumb')).background).toBe(before.bar);
+    expect((await chromeOf(page, '.board-canvas__zoom-controls')).background).toBe(before);
   });
 
   test('captures one screenshot per gap', async () => {

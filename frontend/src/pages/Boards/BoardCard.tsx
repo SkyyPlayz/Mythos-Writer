@@ -253,16 +253,39 @@ function BoardCardImpl({
       ) : null}
       {tier === 1 && isFolder && (
         <div className="board-canvas__item-meta">
-          {item.childBoards ?? 0} boards, {item.childCards ?? 0} cards
+          {(item.childBoards ?? 0) === 0 && (item.childCards ?? 0) === 0
+            ? 'Empty board — double-click to open'
+            : `${item.childBoards ?? 0} boards, ${item.childCards ?? 0} cards`}
         </div>
       )}
-      {tier < 3 && hasThumb && (
+      {tier < 3 && !isFolder && hasThumb && (
         <div className="board-canvas__thumb" style={{ height: thumbBlockHeight(h) }}>
           <NoteThumbnail info={item.thumb} alt={item.name} caption />
         </div>
       )}
-      {tier === 1 && !isFolder && item.excerpt && (
-        <div className="board-canvas__item-excerpt">{item.excerpt}</div>
+      {/* 0.5.2 residual: empty-thumb chrome — gradient plate + glyph when the
+          note has no resolved thumbnail (BOARDS-SPEC §8 "none"). Intentional
+          empty plate keeps `.board-canvas__thumb` + `--empty` (Probe contract);
+          text-only height stays 154px; no real <img>. Compact 56px band. */}
+      {tier < 3 && !isFolder && !hasThumb && (
+        <div
+          className="board-canvas__thumb board-canvas__thumb--empty"
+          style={{ height: Math.min(56, Math.max(40, Math.round(h * 0.28))) }}
+          aria-hidden="true"
+        >
+          <div className="note-thumb" data-thumb-state="empty">
+            <svg className="note-thumb__glyph" viewBox="0 0 24 24" focusable="false">
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <circle cx="8.5" cy="10" r="1.5" />
+              <path d="M3 16l5-4 4 3 3-2 6 4" />
+            </svg>
+          </div>
+        </div>
+      )}
+      {tier === 1 && !isFolder && (
+        <div className={`board-canvas__item-excerpt${item.excerpt ? '' : ' board-canvas__item-excerpt--empty'}`}>
+          {item.excerpt || 'Empty note — double-click to open'}
+        </div>
       )}
       <div
         className="board-canvas__resize-handle"

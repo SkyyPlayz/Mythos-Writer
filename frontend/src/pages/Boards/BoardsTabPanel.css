@@ -5,75 +5,60 @@
  * See BoardCanvas.css for the full note.
  */
 
+/* ── SKY-11480 BD-7 / 0.5.2 residual: center-pane shell ──
+   Mockup center pane (dc.html ~495): 18px radius, denser glass2 fill, slot-2
+   rim, halo + inset top light. Pane owns glass distinct from the thin panel
+   tier (--glass-fill / --glass-panel-bg). 0.5.2 P0 jank (#1598): no live
+   blur(var(--blur-panel)) here. */
 .boards-tab-panel {
+  --boards-pane-fill: var(--glass-fill-fallback, rgb(13 16 28));
+
   display: flex;
   flex-direction: column;
   flex: 1;
   overflow: hidden;
   min-height: 0;
+  margin: 0 10px 10px 0;
+  border-radius: 18px;
+  border: var(--bw, 1px) solid var(--b2, rgb(155 95 255 / 0.5));
+  background: var(--boards-pane-fill);
+  box-shadow:
+    0 0 var(--gr, 26px) -7px var(--g2, rgb(155 95 255 / 0.4)),
+    inset 0 1px 0 rgb(255 255 255 / 0.08);
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .boards-tab-panel {
+    --boards-pane-fill: var(--glass2, rgb(21 26 45 / 0.9));
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .boards-tab-panel {
+    --boards-pane-fill: var(--glass-fill-fallback, rgb(13 16 28));
+  }
+}
+
+:root[data-contrast='high'] .boards-tab-panel {
+  --boards-pane-fill: var(--glass-fill-fallback, rgb(13 16 28));
+  border-color: var(--border-default, #9fb3c8);
+  box-shadow: none;
 }
 
 /* ── Breadcrumb ──
-   SKY-11566 BD-5. This bar shipped reading --glass-fill / --blur-panel — the
-   *panel* tier, which the engine drives to rgba(13,16,28,.20) + blur(1px) at
-   the shipped defaults (glassA 20, blur 1). A 1px backdrop-filter is not a
-   frost: it costs a full compositing layer and produces no legible separation,
-   so the crumbs were effectively painted straight onto the wallpaper.
-
-   Why the panel tier is the wrong token here, from the mockup rather than by
-   eye: the mockup's Boards crumb row (owner report, dc.html:2382) carries no
-   fill at all, because the center pane that wraps every view (dc.html:571)
-   already paints `var(--glass)` + `blur(var(--blur)) saturate(150%)` behind
-   it. We have no such pane — #app-tabpanel-boards and .boards-tab-panel are
-   both fully transparent down to the BackgroundStack — so this bar was given
-   a bespoke glass to stand in for a container fill that does not exist, and it
-   was bound to the panel tier instead of the chrome tier.
-
-   So the bar carries the mockup's Boards *chrome* fill itself: --glass2, which
-   the engine floors at 50% and which the mockup uses for exactly this kind of
-   raised chrome (its tab strip, dc.html script 7251/7274, and the zoom pill,
-   dc.html:2553), behind the same real 20px frost the pill uses. Boards chrome
-   now reads as one recipe and stays legible at every slider position.
-
-   Restoring the missing pane fill is the structural fix and is deliberately
-   NOT done here — it would repaint the canvas region SKY-11494 has just
-   measured. Filed separately. */
+   SKY-11566 BD-5 + BD-7: mockup crumb row carries no fill of its own — the
+   center pane (above) is the glass. Keep a hairline separator only; never
+   re-bind this bar to the 20% panel tier (--glass-fill / --blur-panel). */
 .boards-tab-panel__breadcrumb {
-  --boards-crumb-fill: var(--glass2, rgb(21 26 45 / 0.9));
-  --boards-crumb-blur: 20px;
-
   display: flex;
   align-items: center;
   flex-shrink: 0;
   padding: 8px 16px;
   border-bottom: 1px solid var(--border-subtle, rgb(255 255 255 / 0.07));
-  background: var(--glass-fill-fallback, rgb(13 16 28));
+  background: transparent;
   gap: 0;
   overflow-x: auto;
   white-space: nowrap;
-}
-
-@supports (backdrop-filter: blur(1px)) {
-  .boards-tab-panel__breadcrumb {
-    background: var(--boards-crumb-fill);
-    backdrop-filter: blur(var(--boards-crumb-blur));
-    -webkit-backdrop-filter: blur(var(--boards-crumb-blur));
-  }
-}
-
-/* Transparency-averse users and high contrast get the opaque fallback and no
-   compositing layer, matching how BoardCanvas.css flattens the canvas and the
-   zoom pill (SKY-10908 / MYT-520 §5.4). */
-@media (prefers-reduced-transparency: reduce) {
-  .boards-tab-panel__breadcrumb {
-    --boards-crumb-fill: var(--glass-fill-fallback, rgb(13 16 28));
-    --boards-crumb-blur: 0px;
-  }
-}
-
-:root[data-contrast='high'] .boards-tab-panel__breadcrumb {
-  --boards-crumb-fill: var(--glass-fill-fallback, rgb(13 16 28));
-  --boards-crumb-blur: 0px;
 }
 
 .boards-tab-panel__breadcrumb-group {
@@ -336,14 +321,60 @@
 .boards-tab-panel__empty-msg--overlay {
   position: absolute;
   inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  padding: 24px;
+  text-align: center;
+  pointer-events: none;
+  color: var(--text-secondary, #c8d3e7);
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: none;
+}
+
+.boards-tab-panel__empty-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 320px;
+  padding: 22px 26px;
+  border-radius: 14px;
+  border: var(--bw, 1px) solid rgb(255 255 255 / 0.1);
+  background: rgb(20 25 42 / 0.72);
+  box-shadow: 0 8px 22px rgb(3 5 12 / 0.45);
+}
+
+.boards-tab-panel__empty-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto;
-  z-index: 1;
-  /* A hint must never intercept the click that dismisses it by creating the
-     board's first item. */
-  pointer-events: none;
+  color: var(--n2, #9b5fff);
+  background: color-mix(in srgb, var(--n2, #9b5fff) 14%, transparent);
+  border: var(--bw, 1px) solid color-mix(in srgb, var(--n2, #9b5fff) 45%, transparent);
+  box-shadow: 0 0 16px -6px var(--g2, rgb(155 95 255 / 0.4));
+}
+
+.boards-tab-panel__empty-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #f0f3fc);
+}
+
+.boards-tab-panel__empty-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary, #8e9db8);
+  line-height: 1.5;
 }
 
 /* A refused mutation (name collision, invalid characters). Pinned to the

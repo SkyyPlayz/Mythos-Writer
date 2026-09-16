@@ -215,7 +215,7 @@ describe('3-tier LOD by on-screen size (§6)', () => {
 });
 
 describe('thumbnail-aware sizes and layout (§6/§8)', () => {
-  it('a note with a thumbnail defaults to 236×272; without, 236×154; thumb:false is text-only', () => {
+  it('a note with a thumbnail defaults to 236×272; without, 236×154; thumb:false keeps text-only height with empty-thumb chrome', () => {
     const items: BoardItem[] = [
       { ...notes(1)[0], path: 'plain.md', name: 'Plain' },
       { ...notes(1, true)[0], path: 'pic.md', name: 'Pic' },
@@ -232,12 +232,18 @@ describe('thumbnail-aware sizes and layout (§6/§8)', () => {
     expect(cardStyle('Plain').height).toBe(`${CARD_DEFAULT_H}px`);
     expect(cardStyle('Pic').height).toBe(`${CARD_THUMB_DEFAULT_H}px`);
     expect(cardStyle('Off').height).toBe(`${CARD_DEFAULT_H}px`);
-    expect(screen.getByLabelText(/^Note card: Off\b/).querySelector('.board-canvas__thumb')).toBeNull();
+    // 0.5.2 residual / Probe: empty-thumb chrome (compact gradient) — not a
+    // layout jump. `.board-canvas__thumb--empty` present; no real <img>; 154px.
+    expect(screen.getByLabelText(/^Note card: Off\b/).querySelector('.board-canvas__thumb--empty')).not.toBeNull();
+    expect(screen.getByLabelText(/^Note card: Off\b/).querySelector('.board-canvas__thumb img')).toBeNull();
+    expect(screen.getByLabelText(/^Note card: Plain\b/).querySelector('.board-canvas__thumb--empty')).not.toBeNull();
+    expect(screen.getByLabelText(/^Note card: Plain\b/).querySelector('.board-canvas__thumb img')).toBeNull();
     // A missing source still gets the image block — the fallback glyph lives
     // inside it (owner ruling 5f) — so the layout does not jump when a file
     // goes away and comes back.
     expect(cardStyle('Gone').height).toBe(`${CARD_THUMB_DEFAULT_H}px`);
     expect(screen.getByLabelText(/^Note card: Gone\b/).querySelector('.board-canvas__thumb')).not.toBeNull();
+    expect(screen.getByLabelText(/^Note card: Gone\b/).querySelector('.board-canvas__thumb--empty')).toBeNull();
   });
 
   it('an auto-laid row holding a thumbnail card is taller, so the 272px card never overlaps the next row', () => {

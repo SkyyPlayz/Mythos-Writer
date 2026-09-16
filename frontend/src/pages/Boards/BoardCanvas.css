@@ -398,11 +398,24 @@
   gap: 6px;
 }
 
-/* SKY-11190: icon+colour badge, set via right-click "Set icon…" on a tile */
+/* SKY-11190 + 0.5.2 residual: folder/file glyph sits in a slot-tinted badge
+   (mockup Idea Board icon tile, scaled to our card header). */
 .board-canvas__item-icon {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--board-item-n);
+  background: color-mix(in srgb, var(--board-item-n) 16%, transparent);
+  border: var(--bw, 1px) solid color-mix(in srgb, var(--board-item-n) 42%, transparent);
+}
+
+.board-canvas__item-icon svg {
+  width: 14px;
+  height: 14px;
 }
 
 .board-canvas__item-name {
@@ -453,7 +466,26 @@
   height: 100%;
 }
 
-.board-canvas__item--has-thumb .board-canvas__item-excerpt {
+/* Empty-thumb chrome — same gradient plate as NoteThumbnail unavailable,
+   without claiming a real image. Probe contract: keep `.board-canvas__thumb`
+   + `--empty` so e2e asserts the empty plate (not thumb count 0). */
+.board-canvas__thumb--empty {
+  border-color: color-mix(in srgb, var(--board-item-n) 22%, transparent);
+}
+
+.board-canvas__thumb--empty .note-thumb[data-thumb-state='empty'] {
+  height: 100%;
+  background: linear-gradient(150deg, var(--gs1, rgb(0 240 255 / 0.22)), var(--gs2, rgb(155 95 255 / 0.22)));
+}
+
+.board-canvas__item-excerpt--empty {
+  font-style: italic;
+  color: var(--text-tertiary, #8e9db8);
+  -webkit-line-clamp: 2;
+}
+
+.board-canvas__item--has-thumb .board-canvas__item-excerpt,
+.board-canvas__item:has(.board-canvas__thumb--empty) .board-canvas__item-excerpt {
   padding-top: 7px;
   -webkit-line-clamp: 2;
 }
