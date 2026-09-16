@@ -1,29 +1,6 @@
-/* Beta 4 M5 — MythosVault migration prompt + wizard (Liquid Neon glass). */
+/* SKY-10390 — MythosVault migration wizard (Liquid Neon glass). No boot or
+   Settings prompt UI — the upgrade migrates silently (see App.tsx / SKY-10405). */
 
-.mythos-migration-prompt {
-  position: fixed;
-  left: 88px; /* clear of the nav rail */
-  bottom: 44px; /* above the status bar */
-  width: 320px;
-  z-index: 1200;
-  padding: 14px 16px;
-  border-radius: 13px;
-  background: rgba(13, 16, 28, 0.92);
-  border: 1px solid rgba(0, 240, 255, 0.45);
-  box-shadow: 0 0 26px -7px rgba(0, 240, 255, 0.55);
-  color: #c8d3e7;
-  font-size: 11.5px;
-  line-height: 1.5;
-}
-
-.mythos-migration-prompt-title {
-  color: #f0f3fc;
-  font-size: 12.5px;
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-
-.mythos-migration-prompt-actions,
 .mythos-migration-actions {
   display: flex;
   justify-content: flex-end;
