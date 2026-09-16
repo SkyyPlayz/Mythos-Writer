@@ -144,6 +144,17 @@ const WP_KEYS: readonly string[] = ['match', 'aurora', 'slate', 'deep', 'custom'
 const AMB_MODES: readonly string[] = ['match', 'snow', 'rise', 'off'];
 const FRAME_ANIMS: readonly string[] = ['off', 'cycle', 'sparkle'];
 
+/**
+ * Overlay-tier glass opacity (percentage points) for Settings / popups /
+ * menus / toasts. Owner punch: always `min(96, glassA + 10)` — ten points
+ * above the Appearance slider, capped so the tier never claims to be fully
+ * opaque past the panel slider's own ceiling.
+ */
+export function overlayGlassOpacityPercent(glassA: number): number {
+  const a = Number.isFinite(glassA) ? glassA : LIQUID_NEON_V2_DEFAULTS.glassA;
+  return Math.min(96, a + 10);
+}
+
 /** Verbatim hexA (prototype 3305–3309): #rrggbb + alpha → rgba string, alpha clamped and toFixed(3). */
 export function hexA(hex: string, a: number): string {
   const h = hex.replace('#', '');
@@ -439,15 +450,13 @@ export function applyLiquidNeonV2Tokens(
   // on :root's inline value; reduced-transparency intentionally only touches
   // :root's own value (SKY-10908), so per-panel glass stays live either way.
   //
-  // The overlay tier (--glass-fill-overlay / --blur-panel-overlay, read by
-  // Settings, dialogs, popovers, menus and toasts) is deliberately NOT bridged
-  // here. SKY-11491: the owner mockup never lets the glass sliders touch
-  // floating chrome — every dialog and popover is the same fixed recipe
-  // (rgba(15,19,33,.97) / blur(24px)) at any slider position — so the tier is
-  // a constant owned by tokens.css, and the K8 / reduced-transparency /
-  // no-backdrop-filter overrides there flatten it like any other static token.
-  // Deriving it from glassA/blur (the old ×1.25 offset) made every migrated
-  // dialog thinner than the frozen literals it replaced (SKY-11480 OT-1).
+  // Overlay tier fill (--glass-fill-overlay): Settings, dialogs, popovers,
+  // menus and toasts. Owner punch (P0 fidelity): opacity is
+  // min(96, glassA + 10) percentage points — not the old ×1.25 mult, and not
+  // the SKY-11491 fixed 0.97 recipe that left the Appearance workspace reading
+  // like thin panel glass when the slider sat at 20%. Blur stays the mockup's
+  // fixed 24px in tokens.css (--blur-panel-overlay); K8 / reduced-transparency
+  // / no-backdrop-filter overrides there still flatten the fill.
   //
   // SKY-11787: `--ln-text-backing` is the adaptive contrast floor base panels
   // paint inside their padding box (see theme/textBacking.ts and
@@ -455,10 +464,12 @@ export function applyLiquidNeonV2Tokens(
   // derivative either — it is solved from the *wallpaper*, so a wallpaper that
   // already clears 4.5:1 behind body text resolves to `transparent` and
   // nothing about the panel changes. The glass tokens above stay untouched.
+  const overlayA = overlayGlassOpacityPercent(S.glassA);
   const panelGlassTokens: Record<string, string> = {
     '--glass-fill': `rgba(13,16,28,${(S.glassA / 100).toFixed(3)})`,
     '--glass-fill-fallback': 'rgb(13,16,28)',
     '--blur-panel': `${S.blur}px`,
+    '--glass-fill-overlay': `rgba(15,19,33,${(overlayA / 100).toFixed(3)})`,
     '--ln-text-backing': textBackingToken(tokens['--wp'], S.scrim, S.glassA),
   };
   for (const [k, v] of Object.entries(panelGlassTokens)) {

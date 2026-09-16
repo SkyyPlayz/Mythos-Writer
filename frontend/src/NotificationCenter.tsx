@@ -79,7 +79,7 @@ export default function NotificationCenter({ className }: NotificationCenterProp
           onClick={(e) => e.stopPropagation()}
           style={{
             position: 'absolute', right: 0, top: 36, width: 300, zIndex: 46, padding: 8, borderRadius: 14,
-            background: 'rgba(15,19,33,.97)', backdropFilter: 'blur(24px)', WebkitBackdropFilter: 'blur(24px)',
+            background: 'var(--glass-fill-overlay)', backdropFilter: 'blur(var(--blur-panel-overlay, 24px))', WebkitBackdropFilter: 'blur(var(--blur-panel-overlay, 24px))',
             border: 'var(--bw,1px) solid var(--b3,rgba(255,77,255,.5))',
             boxShadow: '0 14px 40px rgba(3,5,12,.6),0 0 22px -6px var(--g3,rgba(255,77,255,.4))',
             animation: 'lnFadeUp .16s ease', cursor: 'default', textAlign: 'left',

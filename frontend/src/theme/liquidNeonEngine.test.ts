@@ -10,6 +10,7 @@ import {
   applyLiquidNeonV2Tokens,
   resetLiquidNeonV2Tokens,
   normalizeLiquidNeonV2,
+  overlayGlassOpacityPercent,
   wallpaperCss,
   exportLiquidNeonPreset,
   parseLiquidNeonPreset,
@@ -275,54 +276,59 @@ describe('panel-glass token bridge (SKY-10914)', () => {
   });
 });
 
-// SKY-11133 gave Settings and popups their own tier so they stay legible at
-// the owner's preferred LOW global glass — but derived it as glassA/blur ×
-// 1.25, which at the shipped defaults (20 / 1px) is a 25% fill behind a
-// 1.25px blur: every dialog moved onto the tier became thinner than the
-// frozen literal it replaced (SKY-11480 OT-1). The owner mockup never lets
-// the sliders touch floating chrome — every dialog and popover is the same
-// rgba(15,19,33,.97) / blur(24px) at any slider position — so the tier is a
-// fixed recipe owned by tokens.css and the engine must leave it alone.
-describe('overlay tier is a fixed recipe, not a slider derivative (SKY-11491)', () => {
+// Owner punch (P0 fidelity): Settings / popups / menus / toasts read
+// `--glass-fill-overlay` at min(96, glassA + 10) — ten percentage points above
+// the Appearance slider. That replaces both the old ×1.25 mult (too thin at
+// glassA 20 → 25%) and the SKY-11491 fixed 0.97 recipe (ignored the slider).
+// Blur stays the mockup's fixed 24px in tokens.css.
+describe('overlay tier tracks glassA + 10pp (owner punch)', () => {
   const TOKENS_CSS = readFileSync(resolve(__dirname, '../tokens.css'), 'utf8');
   const block = (re: RegExp) => re.exec(TOKENS_CSS)?.[1] ?? '';
 
-  it('tokens.css pins the mockup recipe: rgba(15,19,33,.97) over blur(24px)', () => {
+  it('tokens.css fallback matches default glassA 20 → 30%', () => {
     const root = block(/:root\s*\{([^}]*)\}/);
-    expect(root).toMatch(/--glass-fill-overlay:\s*rgba\(15,\s*19,\s*33,\s*0?\.97\);/);
+    expect(root).toMatch(/--glass-fill-overlay:\s*rgba\(15,\s*19,\s*33,\s*0?\.30\);/);
     expect(root).toMatch(/--blur-panel-overlay:\s*24px;/);
   });
 
   it.each([
-    [0, 0],
-    [20, 1],
-    [96, 40],
-  ])('the engine never writes the tier — glassA %i / blur %ipx', (glassA, blur) => {
-    const el = document.createElement('div');
-    const tokens = applyLiquidNeonV2Tokens({ glassA, blur }, COSMIC, el);
-    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('');
-    expect(el.style.getPropertyValue('--blur-panel-overlay')).toBe('');
-    expect(tokens).not.toHaveProperty('--glass-fill-overlay');
-    expect(tokens).not.toHaveProperty('--blur-panel-overlay');
+    [0, 10],
+    [20, 30],
+    [86, 96],
+    [96, 96],
+    [100, 96],
+  ] as const)('overlayGlassOpacityPercent(%i) → %i', (glassA, expected) => {
+    expect(overlayGlassOpacityPercent(glassA)).toBe(expected);
   });
 
-  it('the panel tier still tracks the sliders — the two tiers are independent', () => {
+  it.each([
+    [0, 'rgba(15,19,33,0.100)'],
+    [20, 'rgba(15,19,33,0.300)'],
+    [86, 'rgba(15,19,33,0.960)'],
+    [96, 'rgba(15,19,33,0.960)'],
+  ] as const)('engine writes --glass-fill-overlay for glassA %i', (glassA, fill) => {
     const el = document.createElement('div');
-    applyLiquidNeonV2Tokens({ glassA: 10, blur: 4 }, COSMIC, el);
-    expect(el.style.getPropertyValue('--glass-fill')).toBe('rgba(13,16,28,0.100)');
+    applyLiquidNeonV2Tokens({ glassA, blur: 1 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe(fill);
+    // Blur stays owned by tokens.css — engine does not write it.
+    expect(el.style.getPropertyValue('--blur-panel-overlay')).toBe('');
+  });
+
+  it('panel tier still tracks the raw slider — overlay stays +10 above it', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ glassA: 20, blur: 4 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-fill')).toBe('rgba(13,16,28,0.200)');
+    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(15,19,33,0.300)');
     expect(el.style.getPropertyValue('--blur-panel')).toBe('4px');
   });
 
   it('the accessibility paths still flatten the recipe', () => {
-    // App high-contrast toggle (K8) — declared on every element via :where(*).
     const k8 = block(/:root\[data-contrast="high"\][^{]*\{([^}]*)\}/);
     expect(k8).toMatch(/--glass-fill-overlay:\s*#15191f;/);
     expect(k8).toMatch(/--blur-panel-overlay:\s*0px;/);
-    // OS reduce-transparency — now honoured, since nothing inline outranks it.
     const reduced = block(/@media \(prefers-reduced-transparency: reduce\)\s*\{\s*:root\s*\{([^}]*)\}/);
     expect(reduced).toMatch(/--glass-fill-overlay:\s*var\(--glass-fill-fallback\);/);
     expect(reduced).toMatch(/--blur-panel-overlay:\s*0px;/);
-    // No backdrop-filter at all — opaque fill.
     const noBackdrop = block(/@supports not \(\(backdrop-filter: blur\(1px\)\)[^{]*\{\s*:root\s*\{([^}]*)\}/);
     expect(noBackdrop).toMatch(/--glass-fill-overlay:\s*var\(--glass-fill-fallback\);/);
   });
