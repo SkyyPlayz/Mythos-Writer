@@ -6,7 +6,7 @@
 // Mythos-vault-level cards and the inner Notes/Story columns stay a clean
 // diff, matching this codebase's one-component-per-settings-sub-block
 // convention.
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
 import Dialog, { DialogHeader, DialogBody, DialogFooter } from '../../ui/Dialog';
 import { Button } from '../../ui/Button';
@@ -182,10 +182,22 @@ export default function VaultLinkingColumns() {
     window.api?.vaultSurfaceUnhide?.(path).then(refreshHidden).catch(() => { /* non-fatal */ });
   }, [refreshHidden]);
 
-  const visibleNotes = (notesVaults ?? []).filter((n) => !hiddenPaths.includes(notesAbsPath(n)));
-  const hiddenNotes = (notesVaults ?? []).filter((n) => hiddenPaths.includes(notesAbsPath(n)));
-  const visibleStory = (storyVaults ?? []).filter((s) => !hiddenPaths.includes(storyAbsPath(s)));
-  const hiddenStory = (storyVaults ?? []).filter((s) => hiddenPaths.includes(storyAbsPath(s)));
+  const visibleNotes = useMemo(
+    () => (notesVaults ?? []).filter((n) => !hiddenPaths.includes(notesAbsPath(n))),
+    [notesVaults, hiddenPaths, notesAbsPath],
+  );
+  const hiddenNotes = useMemo(
+    () => (notesVaults ?? []).filter((n) => hiddenPaths.includes(notesAbsPath(n))),
+    [notesVaults, hiddenPaths, notesAbsPath],
+  );
+  const visibleStory = useMemo(
+    () => (storyVaults ?? []).filter((s) => !hiddenPaths.includes(storyAbsPath(s))),
+    [storyVaults, hiddenPaths, storyAbsPath],
+  );
+  const hiddenStory = useMemo(
+    () => (storyVaults ?? []).filter((s) => hiddenPaths.includes(storyAbsPath(s))),
+    [storyVaults, hiddenPaths, storyAbsPath],
+  );
 
   const columnsRef = useRef<HTMLDivElement>(null);
   const [pairPaths, setPairPaths] = useState<Array<{ storyId: string; notesId: string; d: string }>>([]);
@@ -227,7 +239,7 @@ export default function VaultLinkingColumns() {
     const ro = new ResizeObserver(measure);
     ro.observe(root);
     return () => ro.disconnect();
-  }, [notesVaults, storyVaults, hiddenPaths]);
+  }, [visibleStory]);
 
   // notesVaultRegistryList returns vaults: null for a legacy (pre-v2) vault
   // with no Mythos bundle — hide this UI entirely, matching the existing
