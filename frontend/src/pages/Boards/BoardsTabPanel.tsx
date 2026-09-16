@@ -823,9 +823,22 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             not a replacement for it, so it never swallows the click.
           */}
           {items.length === 0 && furniture.length === 0 && (
-            <p className="boards-tab-panel__empty-msg boards-tab-panel__empty-msg--overlay">
-              This board is empty. Pick the Note or Board tool, then click anywhere to add one.
-            </p>
+            <div className="boards-tab-panel__empty-msg--overlay" role="status">
+              <div className="boards-tab-panel__empty-card">
+                <div className="boards-tab-panel__empty-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+                    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+                    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+                  </svg>
+                </div>
+                <p className="boards-tab-panel__empty-title">This board is empty</p>
+                <p className="boards-tab-panel__empty-hint">
+                  Pick the Note or Board tool, then click anywhere on the canvas to add one.
+                </p>
+              </div>
+            </div>
           )}
           <BoardCanvas
             items={items}
