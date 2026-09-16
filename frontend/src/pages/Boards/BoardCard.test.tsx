@@ -66,8 +66,8 @@ describe('BoardCard open gestures (owner punch)', () => {
 
   it('notes without a thumbnail still paint empty-thumb chrome', () => {
     const { container } = render(<BoardCard {...base} item={note} />);
-    expect(container.querySelector('.board-canvas__empty-thumb')).not.toBeNull();
-    expect(container.querySelector('.board-canvas__thumb')).toBeNull();
+    expect(container.querySelector('.board-canvas__thumb.board-canvas__thumb--empty')).not.toBeNull();
+    expect(container.querySelector('.board-canvas__thumb img')).toBeNull();
     expect(container.querySelector('[data-thumb-state="empty"]')).not.toBeNull();
     expect(screen.getByText(/Empty note/)).toBeInTheDocument();
   });

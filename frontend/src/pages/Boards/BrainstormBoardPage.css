@@ -338,7 +338,6 @@
 */
 .bsb--collapsed .board-canvas__item-excerpt,
 .bsb--collapsed .board-canvas__thumb,
-.bsb--collapsed .board-canvas__empty-thumb,
 .bsb--collapsed .board-canvas__item-meta,
 .bsb--collapsed .board-canvas__resize-handle {
   display: none;

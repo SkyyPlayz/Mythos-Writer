@@ -249,13 +249,16 @@ test('SKY-11186 THUMB-1/2: explicit thumb → first image → none; thumb:false 
     // The auto caption is the FIRST image's alt text.
     await expect(auto.locator('.note-thumb__caption')).toHaveText('Inline art');
 
-    // §15 test 12: `thumb: false` → text-only card even though the note has an image.
+    // §15 test 12 / Probe: `thumb: false` → text-only height + empty-thumb chrome
+    // (`.board-canvas__thumb--empty`), not a real image — do not assert thumb count 0.
     await expect(off).toBeVisible();
     expect(await cardHeight(off)).toBe(154);
-    await expect(off.locator('.board-canvas__thumb')).toHaveCount(0);
+    await expect(off.locator('.board-canvas__thumb.board-canvas__thumb--empty')).toHaveCount(1);
+    await expect(off.locator('.board-canvas__thumb img')).toHaveCount(0);
     await expect(off.locator('.board-canvas__item-excerpt')).toHaveText(/turned the thumbnail off/);
     expect(await cardHeight(plain)).toBe(154);
-    await expect(plain.locator('.board-canvas__thumb')).toHaveCount(0);
+    await expect(plain.locator('.board-canvas__thumb.board-canvas__thumb--empty')).toHaveCount(1);
+    await expect(plain.locator('.board-canvas__thumb img')).toHaveCount(0);
 
     // Derivatives are cached OUTSIDE the vault (owner ruling 5c): under
     // userData, keyed by vault — never inside the notes folder.
@@ -624,12 +627,13 @@ test('SKY-11186 BADGE-1: the editor cover badge reads Auto/Thumbnail and × writ
     await expect(page.locator('[data-testid="note-cover-badge"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="note-title"]')).toHaveText('Mira');
 
-    // The Board agrees: the same note is now a text-only card (§15 test 12).
+    // The Board agrees: text-only height + empty-thumb chrome (Probe / §15 test 12).
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();
     await expect(page.locator('.board-canvas__root')).toBeVisible({ timeout: 8_000 });
     const mira = cardByLabel(page, 'Mira');
     await expect(mira).toBeVisible({ timeout: 10_000 });
-    await expect(mira.locator('.board-canvas__thumb')).toHaveCount(0);
+    await expect(mira.locator('.board-canvas__thumb.board-canvas__thumb--empty')).toHaveCount(1);
+    await expect(mira.locator('.board-canvas__thumb img')).toHaveCount(0);
     expect(await cardHeight(mira)).toBe(154);
   } finally {
     await app.close().catch(() => undefined);

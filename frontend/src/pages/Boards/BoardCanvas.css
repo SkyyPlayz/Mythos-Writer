@@ -467,17 +467,13 @@
 }
 
 /* Empty-thumb chrome — same gradient plate as NoteThumbnail unavailable,
-   without claiming a real image. Must NOT reuse `.board-canvas__thumb`
-   (SKY-11186 THUMB-1/2: thumb:false / text-only → zero `.board-canvas__thumb`). */
-.board-canvas__empty-thumb {
-  flex-shrink: 0;
-  margin: 2px 12px 0;
-  border-radius: 10px;
-  overflow: hidden;
-  border: var(--bw, 1px) solid color-mix(in srgb, var(--board-item-n) 22%, transparent);
+   without claiming a real image. Probe contract: keep `.board-canvas__thumb`
+   + `--empty` so e2e asserts the empty plate (not thumb count 0). */
+.board-canvas__thumb--empty {
+  border-color: color-mix(in srgb, var(--board-item-n) 22%, transparent);
 }
 
-.board-canvas__empty-thumb .note-thumb[data-thumb-state='empty'] {
+.board-canvas__thumb--empty .note-thumb[data-thumb-state='empty'] {
   height: 100%;
   background: linear-gradient(150deg, var(--gs1, rgb(0 240 255 / 0.22)), var(--gs2, rgb(155 95 255 / 0.22)));
 }
@@ -489,7 +485,7 @@
 }
 
 .board-canvas__item--has-thumb .board-canvas__item-excerpt,
-.board-canvas__item:has(.board-canvas__empty-thumb) .board-canvas__item-excerpt {
+.board-canvas__item:has(.board-canvas__thumb--empty) .board-canvas__item-excerpt {
   padding-top: 7px;
   -webkit-line-clamp: 2;
 }
