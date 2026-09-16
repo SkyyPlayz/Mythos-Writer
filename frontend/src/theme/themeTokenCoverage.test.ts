@@ -75,16 +75,12 @@ const KNOWN_ORPHANS: readonly string[] = [
   'BlockEditor.css  --page-bg-radius',
   'BrainstormPage.css  --state-error',
   'ContinuityPanel.css  --severity-critical-border',
-  'DesktopShell.css  --accent-primary',
   'DraftHistoryPanel.css  --text-default',
-  'EntriesPanel.css  --accent-fg',
-  'MoveVaultWizard.css  --accent-color',
   'NoteViewer.css  --danger-bg',
   'NoteViewer.css  --danger-bg-hover',
   'NoteViewer.css  --danger-border',
   'NoteViewer.css  --danger-text',
   'SplitEditorPane.css  --page-bg-radius',
-  'SuggestionDetailPane.css  --accent-muted',
   'TemplatePicker.css  --state-error',
   'TemplatePicker.css  --text-md',
   'ThemeContrastSlider.css  --pct',
@@ -98,11 +94,9 @@ const KNOWN_ORPHANS: readonly string[] = [
   'components/BrainstormCard/ProposalCard.css  --entity-scene_card-bg',
   'components/BrainstormCard/ProposalCard.css  --entity-scene_card-text',
   'components/MigrationBanner/MigrationBanner.css  --border-soft',
-  'components/PresetBrowser.css  --accent-soft-hover',
   'components/SceneHistoryPane/SceneHistoryPane.css  --border-soft',
   'components/SettingsPanel/sections/AddVaultDialog.css  --text-subtle',
   'components/TagPane/TagPane.css  --glass-bg',
-  'components/VaultBrowser/VaultBrowser.css  --accent-primary',
 ];
 
 /** Strip comments so a token named in prose isn't mistaken for a reference. */

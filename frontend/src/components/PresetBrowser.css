@@ -163,7 +163,7 @@
 }
 
 .preset-browser-apply-btn:hover {
-  background: var(--accent-soft-hover, rgba(0,240,255,0.15));
+  background: var(--accent-soft-strong);
 }
 
 .preset-browser-card--active .preset-browser-apply-btn {
