@@ -77,9 +77,11 @@
   --glass-fill-fallback: rgba(13, 16, 28, 0.92); /* opaque fallback, no-backdrop-filter */
   /* SKY-11133: overlay tier — Settings/popups/menus/toasts read this instead
      of --glass-fill so they stay legible above the Appearance glass slider.
-     Owner punch: live opacity is min(96, glassA + 10) from liquidNeonEngine
-     (default glassA 20 → 30%). CSS fallback matches that default before JS. */
-  --glass-fill-overlay: rgba(15, 19, 33, 0.30);
+     Lens AC / 0.5.2: denser than panel — live opacity is
+     min(96, max(50, glassA + 16)) from liquidNeonEngine (mockup --glass2;
+     default glassA 20 → 50%). --pop is the same fill under the mockup alias. */
+  --glass-fill-overlay: rgba(15, 19, 33, 0.50);
+  --pop: var(--glass-fill-overlay);
   /* SKY-11787: adaptive text-backing behind base-panel body copy. Solved from
      the active wallpaper by theme/textBacking.ts — `transparent` (this
      default, i.e. today's rendering) for any wallpaper whose brightest cell
@@ -482,6 +484,7 @@
   --blur-chip: 0px;
   /* SKY-11133: overlay tier must go opaque at K8 same as --glass-fill/--blur-panel. */
   --glass-fill-overlay: #15191f;
+  --pop: #15191f;
   --blur-panel-overlay: 0px;
   --neon-intensity: 0;
 
@@ -666,6 +669,7 @@
     --blur-chip: 0px;
     /* SKY-11133: overlay tier follows the same opaque fallback (SKY-10908). */
     --glass-fill-overlay: var(--glass-fill-fallback);
+    --pop: var(--glass-fill-fallback);
     --blur-panel-overlay: 0px;
     /* SKY-11787: an opaque panel fill already blocks the wallpaper, so the
        adaptive backing is redundant here. --glass-panel-bg has to be restated
@@ -681,6 +685,7 @@
   :root {
     --glass-fill: var(--glass-fill-fallback);
     --glass-fill-overlay: var(--glass-fill-fallback);
+    --pop: var(--glass-fill-fallback);
     /* SKY-11787 — same reasoning as the reduced-transparency block above. The
        panels that gate on @supports fall back to their own
        --glass-fill-fallback rule; this is what reaches the ones that do not

@@ -145,14 +145,18 @@ const AMB_MODES: readonly string[] = ['match', 'snow', 'rise', 'off'];
 const FRAME_ANIMS: readonly string[] = ['off', 'cycle', 'sparkle'];
 
 /**
- * Overlay-tier glass opacity (percentage points) for Settings / popups /
- * menus / toasts. Owner punch: always `min(96, glassA + 10)` — ten points
- * above the Appearance slider, capped so the tier never claims to be fully
- * opaque past the panel slider's own ceiling.
+ * Overlay / `--pop` denser glass opacity (percentage points) for Settings /
+ * popups / menus / toasts (Lens AC: denser than panel glass).
+ *
+ * Mockup `renderVals` `--glass2` recipe:
+ *   max(0.50, min(0.97, glassA/100 + 0.16))
+ * expressed here in percentage points as `min(96, max(50, glassA + 16))`.
+ * Replaces the thinner `glassA + 10` punch so floating chrome stays readable
+ * at low slider values without freezing at the old SKY-11491 0.97 constant.
  */
 export function overlayGlassOpacityPercent(glassA: number): number {
   const a = Number.isFinite(glassA) ? glassA : LIQUID_NEON_V2_DEFAULTS.glassA;
-  return Math.min(96, a + 10);
+  return Math.min(96, Math.max(50, a + 16));
 }
 
 /** Verbatim hexA (prototype 3305–3309): #rrggbb + alpha → rgba string, alpha clamped and toFixed(3). */
@@ -450,13 +454,12 @@ export function applyLiquidNeonV2Tokens(
   // on :root's inline value; reduced-transparency intentionally only touches
   // :root's own value (SKY-10908), so per-panel glass stays live either way.
   //
-  // Overlay tier fill (--glass-fill-overlay): Settings, dialogs, popovers,
-  // menus and toasts. Owner punch (P0 fidelity): opacity is
-  // min(96, glassA + 10) percentage points — not the old ×1.25 mult, and not
-  // the SKY-11491 fixed 0.97 recipe that left the Appearance workspace reading
-  // like thin panel glass when the slider sat at 20%. Blur stays the mockup's
-  // fixed 24px in tokens.css (--blur-panel-overlay); K8 / reduced-transparency
-  // / no-backdrop-filter overrides there still flatten the fill.
+  // Overlay / --pop denser glass (--glass-fill-overlay): Settings, dialogs,
+  // popovers, menus and toasts. Lens AC: denser than panel glass. Formula
+  // matches mockup --glass2: min(96, max(50, glassA + 16)) — not the thinner
+  // +10 punch and not the SKY-11491 fixed 0.97 recipe. Blur stays the mockup's
+  // fixed 24px in tokens.css (--blur-panel-overlay). Do NOT apply this live
+  // blur to full-page shells (#1598 / P0 jank).
   //
   // SKY-11787: `--ln-text-backing` is the adaptive contrast floor base panels
   // paint inside their padding box (see theme/textBacking.ts and
@@ -465,11 +468,14 @@ export function applyLiquidNeonV2Tokens(
   // already clears 4.5:1 behind body text resolves to `transparent` and
   // nothing about the panel changes. The glass tokens above stay untouched.
   const overlayA = overlayGlassOpacityPercent(S.glassA);
+  const overlayFill = `rgba(15,19,33,${(overlayA / 100).toFixed(3)})`;
   const panelGlassTokens: Record<string, string> = {
     '--glass-fill': `rgba(13,16,28,${(S.glassA / 100).toFixed(3)})`,
     '--glass-fill-fallback': 'rgb(13,16,28)',
     '--blur-panel': `${S.blur}px`,
-    '--glass-fill-overlay': `rgba(15,19,33,${(overlayA / 100).toFixed(3)})`,
+    '--glass-fill-overlay': overlayFill,
+    // Lens AC alias — same denser fill under the mockup's --pop name.
+    '--pop': overlayFill,
     '--ln-text-backing': textBackingToken(tokens['--wp'], S.scrim, S.glassA),
   };
   for (const [k, v] of Object.entries(panelGlassTokens)) {

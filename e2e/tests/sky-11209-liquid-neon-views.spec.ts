@@ -286,10 +286,10 @@ test('SKY-11209: Manuscript Structure view shows the wallpaper behind it, not a 
 // consumers through the UI and asserts each popup's computed fill / blur / rim
 // is *identical* to a bare `.ln-overlay-surface` probe read in the same tick —
 // so a primitive can't quietly drift off the tier again — and that the tier
-// itself is glassA+10 (default 20 → rgba(15,19,33,0.30) over blur(24px)),
-// not two broken values agreeing with each other. The shadow is asserted on
-// its own: the mockup paints menus and dropdowns with the depth layer only,
-// no neon glow (dc.html 83; prototype navCtxSt / treeCtxSt).
+// itself is glassA+16 floored at 50% (default 20 → rgba(15,19,33,0.50) over
+// blur(24px)), not two broken values agreeing with each other. The shadow is
+// asserted on its own: the mockup paints menus and dropdowns with the depth
+// layer only, no neon glow (dc.html 83; prototype navCtxSt / treeCtxSt).
 
 interface PopupChrome {
   backgroundColor: string;
@@ -332,8 +332,8 @@ async function popupVsTier(page: Page, selector: string): Promise<{ popup: Popup
 const MENU_SHADOW = /^rgba\(3, 5, 12, 0\.6\) 0px 14px 40px 0px(, rgba\(0, 0, 0, 0\) 0px 0px 22px -6px)?$/;
 
 function expectPopupOnTier({ popup, tier }: { popup: PopupChrome; tier: PopupChrome }): void {
-  // Guard the target first: overlay tier = glassA+10 (defaults → 0.30) over blur(24px).
-  expect(tier.backgroundColor).toBe('rgba(15, 19, 33, 0.3)');
+  // Guard the target first: overlay/--pop denser glass (defaults → 0.50) over blur(24px).
+  expect(tier.backgroundColor).toBe('rgba(15, 19, 33, 0.5)');
   expect(tier.backdropFilter).toBe('blur(24px)');
   const { boxShadow: popupShadow, ...popupGlass } = popup;
   const { boxShadow: tierShadow, ...tierGlass } = tier;

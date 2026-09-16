@@ -276,25 +276,28 @@ describe('panel-glass token bridge (SKY-10914)', () => {
   });
 });
 
-// Owner punch (P0 fidelity): Settings / popups / menus / toasts read
-// `--glass-fill-overlay` at min(96, glassA + 10) — ten percentage points above
-// the Appearance slider. That replaces both the old ×1.25 mult (too thin at
-// glassA 20 → 25%) and the SKY-11491 fixed 0.97 recipe (ignored the slider).
-// Blur stays the mockup's fixed 24px in tokens.css.
-describe('overlay tier tracks glassA + 10pp (owner punch)', () => {
+/* Lens AC / 0.5.2: Settings / popups / menus / toasts read
+ * `--glass-fill-overlay` / `--pop` at min(96, max(50, glassA + 16)) — denser
+ * than panel glass (mockup --glass2). Replaces the thinner +10 punch and the
+ * SKY-11491 fixed 0.97 recipe. Blur stays the mockup's fixed 24px in tokens.css.
+ */
+describe('overlay / --pop denser glass (Lens AC)', () => {
   const TOKENS_CSS = readFileSync(resolve(__dirname, '../tokens.css'), 'utf8');
   const block = (re: RegExp) => re.exec(TOKENS_CSS)?.[1] ?? '';
 
-  it('tokens.css fallback matches default glassA 20 → 30%', () => {
+  it('tokens.css fallback matches default glassA 20 → 50% floor', () => {
     const root = block(/:root\s*\{([^}]*)\}/);
-    expect(root).toMatch(/--glass-fill-overlay:\s*rgba\(15,\s*19,\s*33,\s*0?\.30\);/);
+    expect(root).toMatch(/--glass-fill-overlay:\s*rgba\(15,\s*19,\s*33,\s*0?\.50\);/);
+    expect(root).toMatch(/--pop:\s*var\(--glass-fill-overlay\);/);
     expect(root).toMatch(/--blur-panel-overlay:\s*24px;/);
   });
 
   it.each([
-    [0, 10],
-    [20, 30],
-    [86, 96],
+    [0, 50],
+    [20, 50],
+    [34, 50],
+    [40, 56],
+    [80, 96],
     [96, 96],
     [100, 96],
   ] as const)('overlayGlassOpacityPercent(%i) → %i', (glassA, expected) => {
@@ -302,23 +305,26 @@ describe('overlay tier tracks glassA + 10pp (owner punch)', () => {
   });
 
   it.each([
-    [0, 'rgba(15,19,33,0.100)'],
-    [20, 'rgba(15,19,33,0.300)'],
-    [86, 'rgba(15,19,33,0.960)'],
+    [0, 'rgba(15,19,33,0.500)'],
+    [20, 'rgba(15,19,33,0.500)'],
+    [40, 'rgba(15,19,33,0.560)'],
+    [80, 'rgba(15,19,33,0.960)'],
     [96, 'rgba(15,19,33,0.960)'],
-  ] as const)('engine writes --glass-fill-overlay for glassA %i', (glassA, fill) => {
+  ] as const)('engine writes --glass-fill-overlay and --pop for glassA %i', (glassA, fill) => {
     const el = document.createElement('div');
     applyLiquidNeonV2Tokens({ glassA, blur: 1 }, COSMIC, el);
     expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe(fill);
+    expect(el.style.getPropertyValue('--pop')).toBe(fill);
     // Blur stays owned by tokens.css — engine does not write it.
     expect(el.style.getPropertyValue('--blur-panel-overlay')).toBe('');
   });
 
-  it('panel tier still tracks the raw slider — overlay stays +10 above it', () => {
+  it('panel tier still tracks the raw slider — overlay stays denser above it', () => {
     const el = document.createElement('div');
     applyLiquidNeonV2Tokens({ glassA: 20, blur: 4 }, COSMIC, el);
     expect(el.style.getPropertyValue('--glass-fill')).toBe('rgba(13,16,28,0.200)');
-    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(15,19,33,0.300)');
+    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(15,19,33,0.500)');
+    expect(el.style.getPropertyValue('--pop')).toBe('rgba(15,19,33,0.500)');
     expect(el.style.getPropertyValue('--blur-panel')).toBe('4px');
   });
 

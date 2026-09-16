@@ -31,8 +31,8 @@
 @supports (backdrop-filter: blur(1px)) {
   .settings-panel {
     /* SKY-11133: Settings reads the overlay tier instead of
-       --glass-fill/--blur-panel. Owner punch: --glass-fill-overlay is
-       min(96, glassA + 10) from the engine (e.g. slider 20 → 30%). */
+       --glass-fill/--blur-panel. Lens AC: --glass-fill-overlay / --pop is
+       min(96, max(50, glassA + 16)) from the engine (e.g. slider 20 → 50%). */
     background: var(--glass-fill-overlay);
     backdrop-filter: blur(var(--blur-panel-overlay));
     -webkit-backdrop-filter: blur(var(--blur-panel-overlay));
