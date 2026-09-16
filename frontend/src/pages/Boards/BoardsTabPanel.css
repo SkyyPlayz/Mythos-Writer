@@ -6,9 +6,10 @@
  */
 
 /* ── SKY-11480 BD-7 / 0.5.2 residual: center-pane shell ──
-   Mockup center pane (dc.html ~495): 18px radius, panel glass, slot-2 rim,
-   halo + inset top light. 0.5.2 P0 jank (#1598): frost comes from --wp-blur +
-   --glass-panel-bg — do NOT stack live blur(var(--blur-panel)) here. */
+   Mockup center pane (dc.html ~495): 18px radius, denser glass2 fill, slot-2
+   rim, halo + inset top light. Pane owns glass distinct from the thin panel
+   tier (--glass-fill / --glass-panel-bg). 0.5.2 P0 jank (#1598): no live
+   blur(var(--blur-panel)) here. */
 .boards-tab-panel {
   --boards-pane-fill: var(--glass-fill-fallback, rgb(13 16 28));
 
@@ -28,7 +29,7 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .boards-tab-panel {
-    --boards-pane-fill: var(--glass-panel-bg);
+    --boards-pane-fill: var(--glass2, rgb(21 26 45 / 0.9));
   }
 }
 

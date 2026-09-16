@@ -9,7 +9,7 @@
  *   BD-5  crumb must not ride the 20% panel tier. With BD-7 the crumb is
  *         transparent; the center pane owns the glass (mockup dc.html ~495).
  *   BD-7  `.boards-tab-panel` is the center pane: 18px, slot-2 rim,
- *         `--glass-panel-bg` (no live blur-panel — #1598 contract).
+ *         `--glass2` pane fill (no live blur-panel — #1598 contract).
  *
  * Screenshots land in `docs/screenshots/sky11566/`.
  */
@@ -167,8 +167,8 @@ test.describe('SKY-11566 — Boards chrome vs the owner mockup', () => {
     expect(bar.fill.a).toBe(0);
     expect(bar.backdropFilter === 'none' || bar.backdropFilter === '').toBe(true);
 
-    // Pane: slot-2 rim + halo (mockup center pane). Fill may be layered
-    // (--glass-panel-bg) so backgroundColor can be transparent — assert chrome.
+    // Pane: slot-2 rim + halo (mockup center pane). Fill is denser --glass2
+    // (raised chrome), not the thin panel-tier --glass-fill / --glass-panel-bg.
     expect(pane.rim).toEqual(b2);
     expect(pane.boxShadow).toMatch(/inset/);
     expect(panel.a).toBeLessThan(0.5);

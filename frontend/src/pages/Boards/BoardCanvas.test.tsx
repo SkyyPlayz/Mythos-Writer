@@ -233,14 +233,17 @@ describe('thumbnail-aware sizes and layout (§6/§8)', () => {
     expect(cardStyle('Pic').height).toBe(`${CARD_THUMB_DEFAULT_H}px`);
     expect(cardStyle('Off').height).toBe(`${CARD_DEFAULT_H}px`);
     // 0.5.2 residual: empty-thumb chrome (compact gradient) — not a layout jump.
-    expect(screen.getByLabelText(/^Note card: Off\b/).querySelector('.board-canvas__thumb--empty')).not.toBeNull();
-    expect(screen.getByLabelText(/^Note card: Plain\b/).querySelector('.board-canvas__thumb--empty')).not.toBeNull();
+    // Distinct class so SKY-11186 THUMB-1/2 sees zero `.board-canvas__thumb`.
+    expect(screen.getByLabelText(/^Note card: Off\b/).querySelector('.board-canvas__empty-thumb')).not.toBeNull();
+    expect(screen.getByLabelText(/^Note card: Off\b/).querySelector('.board-canvas__thumb')).toBeNull();
+    expect(screen.getByLabelText(/^Note card: Plain\b/).querySelector('.board-canvas__empty-thumb')).not.toBeNull();
+    expect(screen.getByLabelText(/^Note card: Plain\b/).querySelector('.board-canvas__thumb')).toBeNull();
     // A missing source still gets the image block — the fallback glyph lives
     // inside it (owner ruling 5f) — so the layout does not jump when a file
     // goes away and comes back.
     expect(cardStyle('Gone').height).toBe(`${CARD_THUMB_DEFAULT_H}px`);
     expect(screen.getByLabelText(/^Note card: Gone\b/).querySelector('.board-canvas__thumb')).not.toBeNull();
-    expect(screen.getByLabelText(/^Note card: Gone\b/).querySelector('.board-canvas__thumb--empty')).toBeNull();
+    expect(screen.getByLabelText(/^Note card: Gone\b/).querySelector('.board-canvas__empty-thumb')).toBeNull();
   });
 
   it('an auto-laid row holding a thumbnail card is taller, so the 272px card never overlaps the next row', () => {

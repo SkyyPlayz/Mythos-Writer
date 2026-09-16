@@ -129,13 +129,16 @@ describe('SKY-11449 — Boards surface is wired to the Liquid Neon theme engine'
       expect(crumbs).not.toMatch(/blur\(var\(--blur-panel[,)]/);
     });
 
-    it('BD-7: the Boards tab is a center pane (glass fill, slot-2 rim, no live blur-panel)', () => {
+    it('BD-7: the Boards tab is a center pane (glass2 fill, slot-2 rim, no live blur-panel)', () => {
       const panel = painted('BoardsTabPanel.css');
       expect(panel).toMatch(/\.boards-tab-panel\s*\{[^}]*border-radius:\s*18px/);
       expect(panel).toMatch(
         /\.boards-tab-panel\s*\{[^}]*border:\s*var\(--bw[^;]*var\(--b2/,
       );
-      expect(panel).toMatch(/--boards-pane-fill:\s*var\(--glass-panel-bg\)/);
+      // Denser raised-chrome tier — distinct from thin panel --glass-fill /
+      // --glass-panel-bg (SKY-11566 BD-5+BD-7).
+      expect(panel).toMatch(/--boards-pane-fill:\s*var\(--glass2/);
+      expect(panel).not.toMatch(/--boards-pane-fill:\s*var\(--glass-panel-bg\)/);
       // 0.5.2 P0 jank contract: full-page shells must not stack live blur-panel.
       expect(panel).not.toMatch(/blur\(\s*var\(--blur-panel/);
     });

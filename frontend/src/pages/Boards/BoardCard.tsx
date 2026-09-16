@@ -264,11 +264,12 @@ function BoardCardImpl({
         </div>
       )}
       {/* 0.5.2 residual: empty-thumb chrome — gradient plate + glyph when the
-          note has no resolved thumbnail (BOARDS-SPEC §8 "none"), so text-only
-          cards still read as Milanote-style media cards. Compact 56px band. */}
+          note has no resolved thumbnail (BOARDS-SPEC §8 "none"). Distinct
+          class (not `.board-canvas__thumb`) so SKY-11186 thumb:false / text-only
+          cards stay free of the real-image thumb selector. Compact 56px band. */}
       {tier < 3 && !isFolder && !hasThumb && (
         <div
-          className="board-canvas__thumb board-canvas__thumb--empty"
+          className="board-canvas__empty-thumb"
           style={{ height: Math.min(56, Math.max(40, Math.round(h * 0.28))) }}
           aria-hidden="true"
         >
