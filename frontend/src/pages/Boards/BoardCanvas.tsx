@@ -713,12 +713,27 @@ export default function BoardCanvas({
 
   // ── SKY-11188: furniture drag/resize — same pattern as items above, keyed
   // by furniture id instead of path (a furniture item has no vault path). ──
+  //
+  // SKY-11866: `latest` lives on the ref, not read back off `localFurniture-
+  // Positions` state, for the same reason the item drag above does it this
+  // way (see its comment): this effect's deps must NOT include the local-
+  // position state, or it tears down and re-adds its `window` listeners on
+  // every mousemove. Effect cleanup is scheduled after paint, not
+  // synchronously, so any stall while the button is still down (a slow paint,
+  // a screenshot, a GC pause) can leave more than one generation of listener
+  // attached at once; the browser then runs ALL of them on the eventual
+  // mouseup, oldest first, and the oldest — reading its own stale closure —
+  // nulls the ref before the current one gets a chance to commit the real
+  // position. Reading `latest` off the ref sidesteps the whole race: every
+  // listener generation shares the one ref, so whichever fires first commits
+  // the same up-to-date value.
   const furnitureDragRef = useRef<{
     id: string;
     startMouseX: number;
     startMouseY: number;
     startX: number;
     startY: number;
+    latest: { x: number; y: number } | null;
   } | null>(null);
   const [draggingFurnitureId, setDraggingFurnitureId] = useState<string | null>(null);
   const [localFurniturePositions, setLocalFurniturePositions] = useState<Record<string, { x: number; y: number }>>({});
@@ -733,27 +748,28 @@ export default function BoardCanvas({
     }
     setSelectedFurnitureId(id);
     setSelectedPath(null);
-    furnitureDragRef.current = { id, startMouseX: e.clientX, startMouseY: e.clientY, startX: rect.x, startY: rect.y };
+    furnitureDragRef.current = { id, startMouseX: e.clientX, startMouseY: e.clientY, startX: rect.x, startY: rect.y, latest: null };
     setDraggingFurnitureId(id);
   }, [lineToolActive, onFurniturePick]);
 
   useEffect(() => {
     const onMouseMove = (e: globalThis.MouseEvent) => {
-      if (!furnitureDragRef.current) return;
-      const dx = (e.clientX - furnitureDragRef.current.startMouseX) / scale;
-      const dy = (e.clientY - furnitureDragRef.current.startMouseY) / scale;
-      let nx = furnitureDragRef.current.startX + dx;
-      let ny = furnitureDragRef.current.startY + dy;
+      const drag = furnitureDragRef.current;
+      if (!drag) return;
+      const dx = (e.clientX - drag.startMouseX) / scale;
+      const dy = (e.clientY - drag.startMouseY) / scale;
+      let nx = drag.startX + dx;
+      let ny = drag.startY + dy;
       if (gridSnap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
-      setLocalFurniturePositions((prev) => ({ ...prev, [furnitureDragRef.current!.id]: { x: nx, y: ny } }));
+      drag.latest = { x: nx, y: ny };
+      setLocalFurniturePositions((prev) => ({ ...prev, [drag.id]: { x: nx, y: ny } }));
     };
     const onMouseUp = () => {
-      if (furnitureDragRef.current) {
-        const pos = localFurniturePositions[furnitureDragRef.current.id];
-        if (pos) onFurnitureMove?.(furnitureDragRef.current.id, pos.x, pos.y);
-        furnitureDragRef.current = null;
-        setDraggingFurnitureId(null);
-      }
+      const drag = furnitureDragRef.current;
+      if (!drag) return;
+      if (drag.latest) onFurnitureMove?.(drag.id, drag.latest.x, drag.latest.y);
+      furnitureDragRef.current = null;
+      setDraggingFurnitureId(null);
     };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
@@ -761,9 +777,16 @@ export default function BoardCanvas({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [scale, gridSnap, localFurniturePositions, onFurnitureMove]);
+  }, [scale, gridSnap, onFurnitureMove]);
 
-  const furnitureResizeDragRef = useRef<{ id: string; startMouseX: number; startMouseY: number; startW: number; startH: number } | null>(null);
+  const furnitureResizeDragRef = useRef<{
+    id: string;
+    startMouseX: number;
+    startMouseY: number;
+    startW: number;
+    startH: number;
+    latest: { w: number; h: number } | null;
+  } | null>(null);
   const [localFurnitureSizes, setLocalFurnitureSizes] = useState<Record<string, { w: number; h: number }>>({});
 
   const handleFurnitureResizeMouseDown = useCallback((e: MouseEvent<HTMLDivElement>, id: string, rect: { x: number; y: number; w: number; h: number }) => {
@@ -771,24 +794,25 @@ export default function BoardCanvas({
     e.preventDefault();
     setSelectedFurnitureId(id);
     setSelectedPath(null);
-    furnitureResizeDragRef.current = { id, startMouseX: e.clientX, startMouseY: e.clientY, startW: rect.w, startH: rect.h };
+    furnitureResizeDragRef.current = { id, startMouseX: e.clientX, startMouseY: e.clientY, startW: rect.w, startH: rect.h, latest: null };
   }, []);
 
   useEffect(() => {
     const onMouseMove = (e: globalThis.MouseEvent) => {
-      if (!furnitureResizeDragRef.current) return;
-      const dx = (e.clientX - furnitureResizeDragRef.current.startMouseX) / scale;
-      const dy = (e.clientY - furnitureResizeDragRef.current.startMouseY) / scale;
-      const nw = Math.min(RESIZE_MAX_W, Math.max(RESIZE_MIN_W, furnitureResizeDragRef.current.startW + dx));
-      const nh = Math.min(RESIZE_MAX_H, Math.max(RESIZE_MIN_H, furnitureResizeDragRef.current.startH + dy));
-      setLocalFurnitureSizes((prev) => ({ ...prev, [furnitureResizeDragRef.current!.id]: { w: nw, h: nh } }));
+      const resize = furnitureResizeDragRef.current;
+      if (!resize) return;
+      const dx = (e.clientX - resize.startMouseX) / scale;
+      const dy = (e.clientY - resize.startMouseY) / scale;
+      const nw = Math.min(RESIZE_MAX_W, Math.max(RESIZE_MIN_W, resize.startW + dx));
+      const nh = Math.min(RESIZE_MAX_H, Math.max(RESIZE_MIN_H, resize.startH + dy));
+      resize.latest = { w: nw, h: nh };
+      setLocalFurnitureSizes((prev) => ({ ...prev, [resize.id]: { w: nw, h: nh } }));
     };
     const onMouseUp = () => {
-      if (furnitureResizeDragRef.current) {
-        const size = localFurnitureSizes[furnitureResizeDragRef.current.id];
-        if (size) onFurnitureResize?.(furnitureResizeDragRef.current.id, size.w, size.h);
-        furnitureResizeDragRef.current = null;
-      }
+      const resize = furnitureResizeDragRef.current;
+      if (!resize) return;
+      if (resize.latest) onFurnitureResize?.(resize.id, resize.latest.w, resize.latest.h);
+      furnitureResizeDragRef.current = null;
     };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
@@ -796,7 +820,7 @@ export default function BoardCanvas({
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
     };
-  }, [scale, localFurnitureSizes, onFurnitureResize]);
+  }, [scale, onFurnitureResize]);
 
   const handleFocusFurniture = useCallback((id: string) => { setSelectedFurnitureId(id); setSelectedPath(null); }, []);
 
