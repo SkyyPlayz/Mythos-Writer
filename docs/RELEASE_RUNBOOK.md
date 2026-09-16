@@ -10,8 +10,8 @@
 Bump version → Tag commit → Trigger build → Smoke test → Owner sign-off (via Ivy) → Publish
 ```
 
-1. **Bump version** in `package.json`
-2. **Create a git tag** (e.g., `v0.3.0-beta.1`)
+1. **Bump version** in `package.json` (and workspace `package.json` files)
+2. **Create a git tag** (e.g., `v0.5.1`)
 3. **GitHub Actions builds** unsigned artifacts (Linux AppImage, macOS DMG, Windows NSIS)
 4. **Smoke test** the packaged builds (launch + basic nav)
 5. **Get owner sign-off** via Ivy (blocking gate)
@@ -23,21 +23,25 @@ Bump version → Tag commit → Trigger build → Smoke test → Owner sign-off 
 
 Determine the next version number using **semver**:
 
-- **Major.Minor.Patch** (e.g., `0.3.0`) for stable releases
-- **Major.Minor.Patch-beta.N** (e.g., `0.3.0-beta.1`) for beta releases
+- **Major.Minor.Patch** (e.g., `0.5.1`, then `0.5.2`) — current scheme as of
+  0.5.1. Do **not** resume `0.5.0-beta.N`.
+- **Major.Minor.Patch-beta.N** (e.g., `0.3.0-beta.1`) — historical only; keep
+  using it only if a future line is explicitly a beta track again
 - No leading `v` in `package.json`; the git tag adds it
+- Keep `frontend/package.json`, `electron-main/package.json`, and
+  `shared/package.json` on the same version as the root
 
 Edit `package.json`:
 
 ```bash
-npm version 0.3.0-beta.1 --no-git-tag-version
+npm version 0.5.1 --no-git-tag-version
 ```
 
 Or manually edit the `version` field and commit:
 
 ```bash
-git add package.json
-git commit -m "chore: bump to 0.3.0-beta.1"
+git add package.json frontend/package.json electron-main/package.json shared/package.json package-lock.json
+git commit -m "chore: bump to 0.5.1"
 ```
 
 ---
@@ -47,8 +51,8 @@ git commit -m "chore: bump to 0.3.0-beta.1"
 Tag the commit. The tag triggers the GitHub Actions release workflow:
 
 ```bash
-git tag -a v0.3.0-beta.1 -m "Release v0.3.0-beta.1"
-git push origin v0.3.0-beta.1
+git tag -a v0.5.1 -m "Release v0.5.1"
+git push origin v0.5.1
 ```
 
 **Important:** Tag on `main` only. Never tag feature branches.
@@ -255,8 +259,9 @@ tag-push path too.)
 
 ## Release Cadence
 
-- **Beta releases** (`-beta.1`, `-beta.2`, etc.) are published as `prerelease: true` on GitHub, visible to users who opt into pre-releases
-- **Stable releases** (`v0.3.0`, `v0.4.0`, etc.) are published as `prerelease: false` and appear as "Latest Release"
+- **Patch releases** (`v0.5.1`, `v0.5.2`, etc.) are the current numbering; publish as `prerelease: false` unless the owner asks for a pre-release channel
+- **Historical beta tags** (`-beta.1`, `-beta.2`, etc.) were published as `prerelease: true` on GitHub
+- **Stable / latest** (`v0.5.1`, later `v0.6.0`, etc.) appear as "Latest Release" once the owner publishes the draft
 - Each release corresponds to one commit on `main` (the tag points to a commit)
 
 ---

@@ -11,14 +11,18 @@ version bump is a normal reviewed PR, and `release.yml` does everything else.
 
 ### 1. Version-bump PR
 
-Open a normal PR against `main` that sets the new version in `package.json`:
+Open a normal PR against `main` that sets the new version in `package.json`
+**and** the workspace packages (`frontend`, `electron-main`, `shared`) so they
+stay in sync. Numbering is now `0.5.1`, `0.5.2`, … — not `0.5.0-beta.N`.
 
 ```bash
-jq '.version = "0.5.0-beta.2"' package.json > package.json.tmp && mv package.json.tmp package.json
+jq '.version = "0.5.1"' package.json > package.json.tmp && mv package.json.tmp package.json
+# Repeat for frontend/package.json, electron-main/package.json, shared/package.json
 ```
 
 The PR goes through regular CI and the standard merge gate like any other
-change. (Example: v0.5.0-beta.2 was bumped via PR #1279.)
+change. (Historical: v0.5.0-beta.2 was bumped via PR #1279. Next patch after
+`0.5.1` is `0.5.2`.)
 
 ### 2. Cut the release with `release.yml`
 
@@ -28,8 +32,8 @@ tag:
 ```bash
 gh workflow run release.yml \
   -R SkyyPlayz/Mythos-Writer \
-  -f tag=v0.5.0-beta.2 \
-  -f is-beta=true
+  -f tag=v0.5.1 \
+  -f is-beta=false
 ```
 
 (Pushing an annotated tag `v*` to the bumped commit triggers the same workflow;
