@@ -90,4 +90,11 @@ describe('SETTINGS_CATEGORIES registry (SKY-3215)', () => {
     }
     expect(missing, `Stale section ids (in registry but not rendered): ${missing.join(', ')}`).toHaveLength(0);
   });
+
+  it('Vaults & Files sections use Sep Liquid Neon glass card chrome', () => {
+    const css = readFileSync(resolve(__dirname, 'SettingsPanel.css'), 'utf-8');
+    expect(css).toContain('.settings-section[data-settings-cat="vaults"]');
+    expect(css).toContain('var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, 0.2))');
+    expect(css).toContain('var(--glowH, none)');
+  });
 });
