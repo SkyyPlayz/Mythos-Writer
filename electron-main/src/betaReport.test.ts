@@ -8,6 +8,22 @@ import {
   BETA_REPORT_CATEGORIES,
 } from './betaReport.js';
 import type { DbBetaReport } from './db.js';
+// SKY-11411: the live Beta Reader handler (main.ts registerBetaReportRunHandler)
+// composes these two functions to produce the entityContext it feeds into
+// buildBetaReportUserContent. Testing the real composition — not a hand-rolled
+// string — is what proves the spoiler-safety guarantee holds on the live path.
+import { buildReaderEntityContext, buildAuthorEntityContext } from './readerPerspective.js';
+import type { EntityIndexEntry } from './vault/entityIndex.js';
+
+const ALL_FOCUS = { pacing: true, clarity: true, character: true, plot: true } as const;
+
+// A planted-reveal fixture (mirrors readerPerspective.test.ts): "Lord Vhaeraun"
+// / alias "the true villain" is only revealed in Chapter 10, so a reader at
+// Chapter 2 must not see it. Mira has no reveal_point → always visible.
+const REVEAL_FIXTURE: EntityIndexEntry[] = [
+  { name: 'Mira', aliases: ['the innkeeper'], type: 'Character', path: '/Universes/Mira.md', reveal_point: null },
+  { name: 'Lord Vhaeraun', aliases: ['the true villain'], type: 'Character', path: '/Universes/Lord Vhaeraun.md', reveal_point: 'Chapter 10' },
+];
 
 describe('verdictForScore', () => {
   it('scores >= 75 are strong', () => {
@@ -130,6 +146,49 @@ describe('buildBetaReportUserContent', () => {
   it('instructs the model to never rewrite the manuscript', () => {
     const content = buildBetaReportUserContent('Full story', { pacing: true, clarity: true, character: true, plot: true }, 'text');
     expect(content).toMatch(/never rewrite/i);
+  });
+
+  // SKY-11411: back-compat — the fourth arg is optional and defaults to "no
+  // dossier", so pre-SKY-11411 3-arg callers keep the exact same prompt.
+  it('injects no continuity block when entityContext is omitted or blank', () => {
+    const omitted = buildBetaReportUserContent('Chapter 2', ALL_FOCUS, 'text');
+    const blank = buildBetaReportUserContent('Chapter 2', ALL_FOCUS, 'text', '   ');
+    expect(omitted).not.toContain('<entity_context>');
+    expect(omitted).not.toContain('Continuity notes');
+    expect(blank).not.toContain('<entity_context>');
+  });
+
+  it('injects the continuity dossier before the manuscript, with a reveal-order instruction', () => {
+    const dossier = buildAuthorEntityContext(REVEAL_FIXTURE);
+    const content = buildBetaReportUserContent('Chapter 2', ALL_FOCUS, '<<SCENE id="s1">>x<</SCENE>>', dossier);
+    expect(content).toContain('<entity_context>');
+    expect(content).toMatch(/Continuity notes: ONLY entities the reader has met/i);
+    // Ordering matters: continuity context must precede the manuscript block.
+    expect(content.indexOf('<entity_context>')).toBeLessThan(content.indexOf('<manuscript>'));
+  });
+});
+
+// SKY-11411 — the safety property, tested through the exact function composition
+// the live handler uses (main.ts: buildReaderEntityContext → buildBetaReportUserContent).
+// A planted post-reveal identity must never reach the prompt for a mid-story
+// (reader-perspective) read, yet a finished (story-scope) read may see it.
+describe('buildBetaReportUserContent — reveal-point spoiler safety (SKY-11411 / SKY-10741 AC2)', () => {
+  it('does NOT leak a not-yet-revealed identity into a mid-story reader prompt', () => {
+    // Reader has reached Chapter 2; the villain identity is revealed in Chapter 10.
+    const dossier = buildReaderEntityContext(REVEAL_FIXTURE, 'Chapter 2');
+    const content = buildBetaReportUserContent('Chapter 2', ALL_FOCUS, '<<SCENE id="s1">>The hooded figure watched.<</SCENE>>', dossier);
+    // Pre-reveal entities are present…
+    expect(content).toContain('Mira');
+    // …but the post-reveal twist identity — canonical name AND its alias — is absent.
+    expect(content).not.toContain('Lord Vhaeraun');
+    expect(content).not.toContain('the true villain');
+  });
+
+  it('DOES include a post-reveal identity once the reader has finished the story', () => {
+    // story scope → reader reached the end → author-perspective (unfiltered) dossier.
+    const dossier = buildAuthorEntityContext(REVEAL_FIXTURE);
+    const content = buildBetaReportUserContent('Full story', ALL_FOCUS, 'text', dossier);
+    expect(content).toContain('Lord Vhaeraun');
   });
 });
 

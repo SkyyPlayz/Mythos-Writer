@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo, Fragment, type ReactElement } from 'react';
 import { useAgentActivity } from './agents/agentActivity';
+import { setBrainstormActivity, IDLE_BRAINSTORM_ACTIVITY } from './agents/brainstormActivity';
 import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
 import { EmptyState } from './components/EmptyState/EmptyState';
@@ -34,6 +35,7 @@ import {
   type LegacyDraftFact,
 } from './brainstormBoard';
 import { loadBrainstormBoard, saveBrainstormBoard } from './brainstormBoardStore';
+import { registerQuitFlusher } from './lib/flushBeforeQuit';
 import BoardCanvas from './components/BrainstormBoard/BoardCanvas';
 import IdeaCollectionsPanel, {
   type CollectionIdea,
@@ -45,7 +47,17 @@ import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
 import ContinuityPanel from './ContinuityPanel';
 import type { Scene } from './types';
+import { RightSidebarSlot } from './RightSidebarSlot';
 import './BrainstormPage.css';
+
+/** SKY-11211: hosts the facts column inline (unchanged) in compact/split-pane
+ *  contexts, or claims the global right sidebar's route slot everywhere else
+ *  — so the page never renders its own second right-hand column next to the
+ *  real one. */
+function FactsColShell({ compact, children }: { compact: boolean; children: ReactElement }) {
+  if (compact) return children;
+  return <RightSidebarSlot>{children}</RightSidebarSlot>;
+}
 
 
 const BRAINSTORM_SYSTEM_PROMPT = `You are a creative writing assistant helping an author develop their story world. Respond naturally to help develop the story — be generative and specific, offer possibilities rather than prescriptions, and keep replies conversational.
@@ -69,8 +81,8 @@ const MAX_DRAFT_BYTES = 2 * 1024 * 1024; // 2 MB
 const SESSION_MIGRATED_KEY = 'brainstorm:session-migrated';
 // SKY-9028: one-shot guard for the legacy-draft → board migration. It used to
 // live only in the board file's `draftMigrated` flag, but the board file is no
-// longer written on mount (an empty board must not create Boards/ in the
-// user's vault), so a file-less mount needs a durable flag or the migration
+// longer written on mount (an empty board must not create a Boards/ folder in
+// the Agent Vault), so a file-less mount needs a durable flag or the migration
 // re-arms every mount and drags chat-detected draft facts onto the board.
 const BOARD_MIGRATED_KEY = 'brainstorm:board-migrated';
 
@@ -119,7 +131,7 @@ type BrainstormMode = 'chat' | 'board';
 
 const MODE_LABELS: Record<BrainstormMode, string> = {
   chat: 'Agent Chat',
-  board: 'Board',
+  board: 'Idea Board',
 };
 
 const BRAINSTORM_MODES: BrainstormMode[] = ['chat', 'board'];
@@ -411,7 +423,10 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   const [expandedFactIds, setExpandedFactIds] = useState<Set<string>>(new Set());
   const [draftSizeWarning, setDraftSizeWarning] = useState(false);
   const [showRecoveryBanner, setShowRecoveryBanner] = useState(false);
-  const [streamPhase, setStreamPhase] = useState<'idle' | 'streaming' | 'stalled'>('idle');
+  // 'thinking' (SKY-11220): a local reasoning model is streaming its private
+  // chain-of-thought and has not emitted a visible answer token yet. It is a
+  // live, working state — distinct from 'stalled' (no activity at all).
+  const [streamPhase, setStreamPhase] = useState<'idle' | 'streaming' | 'thinking' | 'stalled'>('idle');
   const [presetId, setPresetId] = useState<string>(() => loadSessionPreset().presetId);
   const [presetOverrides, setPresetOverrides] = useState<Partial<PresetAxes>>(
     () => loadSessionPreset().overrides,
@@ -517,7 +532,15 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   // Refs for drag state values needed inside closures without stale captures
   const dragSourceIdRef = useRef<string | null>(null);
   const dropBelowRef = useRef(false);
-  const lastTokenAtRef = useRef<number>(0);
+  // SKY-11220: timestamp of the last sign of life from the stream — a visible
+  // token OR a reasoning heartbeat. The stall/hard timers key off this, not off
+  // visible tokens alone, so a local reasoning model thinking for minutes before
+  // its first answer token is never mistaken for a hung stream.
+  const lastActivityAtRef = useRef<number>(0);
+  // Whether the current stream has emitted at least one visible answer token.
+  // Gates the 'thinking' display so a stray reasoning heartbeat between content
+  // tokens can't flip an already-answering stream back to "Thinking…".
+  const hasVisibleTokenRef = useRef<boolean>(false);
   const lastApiMessagesRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
   // Holds the system prompt augmented with vault context for the current/last request.
   const contextSystemRef = useRef<string>(BRAINSTORM_SYSTEM_PROMPT);
@@ -772,9 +795,9 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
         lastPersistedBoardRef.current = JSON.stringify(next, null, 2);
         // SKY-9028 (GAP P0 #1): only write when there is real data to keep —
         // the file already exists, or the migration actually captured cards.
-        // A fresh mount with an empty board must not create Boards/ in the
-        // user's vault; the debounced write-back below persists the board on
-        // the first real user change instead.
+        // A fresh mount with an empty board must not create a Boards/ folder
+        // in the Agent Vault; the debounced write-back below persists the
+        // board on the first real user change instead.
         if (loaded !== null || next.cards.length > 0) void saveBrainstormBoard(next);
       } else {
         lastPersistedBoardRef.current = JSON.stringify(next, null, 2);
@@ -782,7 +805,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
       setBoard(next);
       boardLoadedRef.current = true;
     };
-    if (typeof window.api?.readNotesVault !== 'function') {
+    if (typeof window.api?.brainstormBoard?.read !== 'function') {
       // No vault bridge (unit tests / degraded startup): resolve synchronously
       // so the mount stays act-clean; the board lives in memory only.
       finish(null);
@@ -798,7 +821,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     if (!board || !boardLoadedRef.current) return;
     // No vault bridge (unit tests / degraded startup): the board lives in
     // memory only, so skip the timer + sync-state churn entirely.
-    if (typeof window.api?.writeNotesVault !== 'function') return;
+    if (typeof window.api?.brainstormBoard?.write !== 'function') return;
     const serialized = JSON.stringify(board, null, 2);
     if (serialized === lastPersistedBoardRef.current) return;
     setBoardSynced(false);
@@ -814,6 +837,23 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
         boardSaveTimerRef.current = null;
       }
     };
+  }, [board]);
+
+  // SKY-11363: a full app-quit (Cmd+Q / File→Exit) closes the window without
+  // the beforeunload prompt, and the 400ms debounce above may not have fired.
+  // Register a flusher so the shell drains any pending board write before it
+  // acks the quit — otherwise the last board change is silently lost. Re-runs
+  // on board change so the flusher always closes over the latest board; a
+  // no-op unless a write is actually pending.
+  useEffect(() => {
+    return registerQuitFlusher(async () => {
+      if (boardSaveTimerRef.current === null || !board) return;
+      window.clearTimeout(boardSaveTimerRef.current);
+      boardSaveTimerRef.current = null;
+      lastPersistedBoardRef.current = JSON.stringify(board, null, 2);
+      await saveBrainstormBoard(board);
+      setBoardSynced(true);
+    });
   }, [board]);
 
   // M20: vault-note titles on board cards underline → open the note. Load the
@@ -920,7 +960,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
       };
     });
     setMode('board');
-    showToast(`“${idea.title}” added to the board`);
+    showToast(`“${idea.title}” added to the Idea Board`);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -966,20 +1006,46 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     proposalsRef.current = proposals;
   }, [proposals]);
 
-  // Warn before window close when there is unsaved user work. M20: the shared
-  // session store (SKY-6663) hydrates `messages` with the agent's auto-greeting
-  // on mount — a passive panel open with zero user interaction must not count
-  // as "an active session", or the window can never close (SKY-6930).
+  // Warn before window close ONLY when there is genuinely-volatile work.
+  //
+  // SKY-11363: this guard previously fired on `hasUserMessage || facts.length`,
+  // but chat messages live on the shared session store (SKY-6663) and detected
+  // facts are persisted per-fact — both survive a close. So the guard tripped
+  // on nearly every close after any brainstorming, and because Electron
+  // SILENTLY cancels a prevented unload (no dialog), the app became impossible
+  // to close except via Task Manager — the owner-reported bug. The main
+  // process now backstops this with a `will-prevent-unload` prompt, but the
+  // guard should still only speak up for work that is actually at risk:
+  //   - an unsent composer draft (`prompt`), and
+  //   - a board change still inside its 400ms debounce (`boardSynced === false`).
+  // M20/SKY-6930: the auto-greeting no longer counts, so a passive panel open
+  // with zero interaction never blocks the close.
   useEffect(() => {
-    const hasUserMessage = messages.some((m) => m.role === 'user');
     const handler = (e: BeforeUnloadEvent) => {
-      if (hasUserMessage || facts.length > 0 || prompt.trim()) {
+      if (prompt.trim() || !boardSynced) {
         e.preventDefault();
       }
     };
     window.addEventListener('beforeunload', handler);
     return () => window.removeEventListener('beforeunload', handler);
-  }, [messages, facts.length, prompt]);
+  }, [prompt, boardSynced]);
+
+  // SKY-11214: report real activity to the AGENTS card's Brainstorm row — a
+  // module-level store (not a prop) since this page unmounts on every tab
+  // switch while the right panel persists. "active" mirrors the beforeunload
+  // guard above (a passive mount with only the auto-greeting doesn't count).
+  useEffect(() => {
+    const hasUserMessage = messages.some((m) => m.role === 'user');
+    setBrainstormActivity({
+      active: hasUserMessage || facts.length > 0,
+      factsCount: facts.length,
+      lastActionText: activity[0]?.text ?? null,
+      hasError: !!error || facts.some((f) => f.savedStatus === 'error'),
+    });
+  }, [messages, facts, activity, error]);
+
+  // Leaving the page is honest idle, not "still watching" — reset on unmount.
+  useEffect(() => () => setBrainstormActivity(IDLE_BRAINSTORM_ACTIVITY), []);
 
   // ESC closes the page unless an overlay (drawer, delete confirm, preset editor, context
   // menu) is handling it. Overlays call e.stopPropagation() or we detect them by state.
@@ -1026,22 +1092,34 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     };
   }, []);
 
-  // Stall detection: 20 s no-token → warn; 90 s → hard abort
+  // Stall detection (SKY-11220): both timers measure time since the last sign of
+  // life — a visible token OR a reasoning heartbeat — not time since the last
+  // *visible* token. A local reasoning model emits reasoning heartbeats the whole
+  // time it thinks, so it never trips these; a genuinely wedged stream (no
+  // content AND no reasoning) still does. 20 s of silence → soft "still working"
+  // hint; HARD_TIMEOUT_MS of silence → abort. The server-side max_tokens budget
+  // is the real ceiling on total work, so activity-based reset can't hang forever.
   useEffect(() => {
     if (!loading) return;
     const interval = setInterval(() => {
-      const sinceLastToken = Date.now() - lastTokenAtRef.current;
-      if (sinceLastToken >= HARD_TIMEOUT_MS) {
+      const sinceLastActivity = Date.now() - lastActivityAtRef.current;
+      if (sinceLastActivity >= HARD_TIMEOUT_MS) {
         const sid = streamIdRef.current;
         if (sid) void window.api.streamCancel(sid);
         cleanupStreamRef.current?.();
         setMessages((prev) => prev.slice(0, -1));
-        setError('Generation timed out after 90 seconds. Check your connection and try again.');
+        // Our client-side timeout — say so, and say how long we waited. Never
+        // blame the server ("empty response") for a stall we declared.
+        const waitedSec = Math.round(HARD_TIMEOUT_MS / 1000);
+        setError(
+          `Timed out after ${waitedSec} seconds with no response — the model or connection seems stuck. ` +
+            'A large local model can be slow to start; try again, or switch to a faster model.',
+        );
         setLoading(false);
         setStreamPhase('idle');
         announce('Generation timed out.');
-      } else if (sinceLastToken >= STALL_TIMEOUT_MS) {
-        setStreamPhase((prev) => (prev === 'streaming' ? 'stalled' : prev));
+      } else if (sinceLastActivity >= STALL_TIMEOUT_MS) {
+        setStreamPhase((prev) => (prev === 'streaming' || prev === 'thinking' ? 'stalled' : prev));
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -1123,13 +1201,16 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     const lastApi = apiMessages[apiMessages.length - 1];
     pendingUserTextRef.current = lastApi?.role === 'user' ? lastApi.content : '';
     streamingTextRef.current = '';
-    lastTokenAtRef.current = Date.now();
+    lastActivityAtRef.current = Date.now();
+    hasVisibleTokenRef.current = false;
     setStreamPhase('streaming');
 
     const unsubToken = window.api.onStreamToken(({ streamId: sid, token }) => {
       if (sid !== streamIdRef.current) return;
-      lastTokenAtRef.current = Date.now();
-      setStreamPhase((prev) => (prev === 'stalled' ? 'streaming' : prev));
+      lastActivityAtRef.current = Date.now();
+      hasVisibleTokenRef.current = true;
+      // A visible answer token supersedes both 'stalled' and 'thinking'.
+      setStreamPhase((prev) => (prev === 'streaming' ? prev : 'streaming'));
       streamingTextRef.current += token;
       const currentText = streamingTextRef.current;
       setMessages((prev) => {
@@ -1141,6 +1222,18 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
         return updated;
       });
       window.api.streamAck(sid, 1);
+    });
+
+    // SKY-11220: the model is thinking (streaming reasoning_content). Treat it as
+    // activity so the stall/hard timers don't abort a live stream, and — until
+    // the first visible token — surface a 'thinking' state so the box is never a
+    // frozen, silent void (the owner's "i dont like having things running i cant
+    // see" ruling; ties SKY-11223). onStreamReasoning may be absent on an older
+    // preload, so it is called optionally.
+    const unsubReasoning = window.api.onStreamReasoning?.(({ streamId: sid }) => {
+      if (sid !== streamIdRef.current) return;
+      lastActivityAtRef.current = Date.now();
+      if (!hasVisibleTokenRef.current) setStreamPhase('thinking');
     });
 
     const unsubEnd = window.api.onStreamEnd(({ streamId: sid }) => {
@@ -1227,6 +1320,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
 
     cleanupStreamRef.current = () => {
       unsubToken();
+      unsubReasoning?.();
       unsubEnd();
       unsubError();
       streamIdRef.current = null;
@@ -1236,9 +1330,11 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
 
     try {
       // 2048 (the IPC cap) doubles the old 1024 default so long replies keep
-      // room for the required trailing [FACT:...] tags. Thinking stays off:
-      // this surface's stall/hard-timeout timers reset only on visible tokens,
-      // and a silent thinking phase would trip them (and share this budget).
+      // room for the required trailing [FACT:...] tags. We do NOT request
+      // adaptive thinking here (local reasoning models think natively regardless,
+      // and enabling it on Anthropic would change its budget); the stall/hard
+      // timers are now thinking-aware (they reset on reasoning heartbeats too,
+      // SKY-11220), so a native thinking phase no longer reads as a hung stream.
       const { streamId: sid } = await window.api.streamStart({
         messages: apiMessages,
         system: contextSystemRef.current,
@@ -1287,7 +1383,13 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
-    const apiMessages = [...messages, userMsg].map((m) => ({
+    // Strip any leading assistant turns (e.g. the session auto-greeting) that
+    // precede the first real user turn. Some model Jinja templates (qwen3 on LM
+    // Studio) reject a messages array that opens with an assistant role — they
+    // require the first non-system message to be from the user (SKY-11373).
+    const allTurns = [...messages, userMsg];
+    const firstUserIdx = allTurns.findIndex((m) => m.role === 'user');
+    const apiMessages = (firstUserIdx >= 0 ? allTurns.slice(firstUserIdx) : allTurns).map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.text,
     }));
@@ -1340,7 +1442,11 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     const presetGuide = buildPresetContext({ ...effectiveAxes, ...adjusted });
     contextSystemRef.current = presetGuide + '\n\n' + BRAINSTORM_SYSTEM_PROMPT;
 
-    const apiMessages = [...messages, userMsg].map((m) => ({
+    // Strip leading assistant turns (e.g. session auto-greeting) — same
+    // reasoning as the submitText path above (SKY-11373).
+    const allTurnsRef = [...messages, userMsg];
+    const firstUserIdxRef = allTurnsRef.findIndex((m) => m.role === 'user');
+    const apiMessages = (firstUserIdxRef >= 0 ? allTurnsRef.slice(firstUserIdxRef) : allTurnsRef).map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.text,
     }));
@@ -2087,13 +2193,13 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
             {/* M20: chat-page Board toggle — stacks the canvas under the chat
                 with a drag-bar height (prototype bsBoardToggle). */}
             {!compact && effectiveMode === 'chat' && (
-              <div className="bs-board-toggle-wrap" title="Show the idea board below the chat">
-                <span>Board</span>
+              <div className="bs-board-toggle-wrap" title="Show the Idea Board below the chat">
+                <span>Idea Board</span>
                 <button
                   type="button"
                   role="switch"
                   aria-checked={chatBoardOpen}
-                  aria-label="Show board under chat"
+                  aria-label="Show Idea Board under chat"
                   className={`bs-board-toggle${chatBoardOpen ? ' bs-board-toggle--on' : ''}`}
                   onClick={() => setChatBoardOpen((v) => !v)}
                   data-testid="bs-chat-board-toggle"
@@ -2359,6 +2465,17 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
             <div className="brainstorm-error" role="alert">{error}</div>
           )}
 
+          {streamPhase === 'thinking' && loading && (
+            <div className="bs-thinking-panel" role="status" aria-label="Model is thinking" data-testid="bs-thinking">
+              <span className="bs-thinking-dots" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </span>
+              <p className="bs-thinking-msg">
+                Thinking… a local reasoning model can take a while before it replies.
+              </p>
+            </div>
+          )}
+
           {streamPhase === 'stalled' && loading && (
             <div className="bs-stalled-panel" role="status" aria-label="Generation stalled">
               <p className="bs-stalled-msg">
@@ -2527,7 +2644,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
               <div
                 className="bs-board-resize"
                 onMouseDown={handleChatBoardResize}
-                title="Drag to resize the board"
+                title="Drag to resize the Idea Board"
                 data-testid="bs-board-resize"
               >
                 <div className="bs-board-resize-grip" aria-hidden="true" />
@@ -2548,7 +2665,8 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
           )}
         </div>
 
-        <div className="brainstorm-facts-col">
+        <FactsColShell compact={compact}>
+        <div className={`brainstorm-facts-col${compact ? '' : ' brainstorm-facts-col--in-sidebar'}`}>
           {/* M19: agent activity feed (prototype right panel, lines 2468–2496)
               — LIVE header, real counters, and a feed of actual vault events. */}
           <div className="bs-activity-section" data-testid="bs-activity-section">
@@ -3005,6 +3123,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
           </div>
           )}
         </div>
+        </FactsColShell>
       </div>
       </div>
       )}
@@ -3157,7 +3276,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
           aria-label="Delete idea"
           data-testid="bs-delete-confirm"
         >
-          <div className="bs-delete-confirm-dialog">
+          <div className="bs-delete-confirm-dialog ln-overlay-surface">
             <p className="bs-delete-confirm-message">Delete idea?</p>
             <div className="bs-delete-confirm-actions">
               <button

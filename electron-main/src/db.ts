@@ -996,6 +996,34 @@ function runMigrations(db: DatabaseSync): void {
     `);
     db.exec('PRAGMA user_version = 33');
   }
+
+  if (currentVersion < 34) {
+    // SKY-11318 (M12.4b): reveal_point field on entity alias frontmatter.
+    // Added as a nullable column so DBs at v30–33 self-upgrade without a full
+    // rebuild. vault_index_cache is DERIVED data — the column is always
+    // backfilled on the next loadEntityIndex() call that hits a changed file;
+    // rows for unchanged files get reveal_point=NULL until their content next
+    // changes (safe: NULL = always-visible per AC5).
+    // Column may already exist (e.g. a DB stuck below v34 via a manually
+    // reset PRAGMA while vault_index_cache itself was never rebuilt) — SQLite
+    // has no ADD COLUMN IF NOT EXISTS, so catch and ignore the duplicate.
+    try {
+      db.exec('ALTER TABLE vault_index_cache ADD COLUMN reveal_point TEXT');
+    } catch {
+      // column already present — OK
+    }
+    db.exec('PRAGMA user_version = 34');
+  }
+
+  // SKY-11318 self-heal: DBs that were created at v30–v33 and already had
+  // vault_index_cache but missed the v34 ALTER TABLE (e.g. DB opened at v31
+  // via the existing self-heal and then not upgraded). SQLite returns an error
+  // when the column already exists; catch and ignore.
+  try {
+    db.exec('ALTER TABLE vault_index_cache ADD COLUMN reveal_point TEXT');
+  } catch {
+    // column already present — OK
+  }
 }
 
 // ─── Retention pruning (perf audit P2) ───
@@ -2383,7 +2411,15 @@ export function deleteContinuityIssue(id: string): void {
 // conversation with the author, not resolved/ignored like a defect; once
 // answered it is tombstoned (durable), never removed.
 
-export type BrainstormQuestionSource = 'archive_check2' | 'brainstorm_gap_hunt' | 'obscured_reference';
+// 'wiki_autostub' (SKY-10878 M12.B5b): the self-building wiki, in "always ask"
+// mode, routes each auto-stub candidate here as a question instead of writing
+// to the vault. The `source` column is unconstrained TEXT, so this is a pure
+// type-level addition.
+export type BrainstormQuestionSource =
+  | 'archive_check2'
+  | 'brainstorm_gap_hunt'
+  | 'obscured_reference'
+  | 'wiki_autostub';
 export type BrainstormQuestionStatus = 'pending' | 'answered';
 
 export interface DbBrainstormQuestion {
@@ -2442,6 +2478,26 @@ export function findBrainstormQuestionByEntityScene(
     (getDb()
       .prepare('SELECT * FROM brainstorm_questions WHERE entity_id = ? AND scene_path = ?')
       .get(entityId, scenePath) as DbBrainstormQuestion | undefined) ?? null
+  );
+}
+
+/**
+ * Same re-queue guard as {@link findBrainstormQuestionByEntityScene}, keyed by
+ * name instead of id (SKY-11457). The self-building wiki asks about names that
+ * have no entity row yet, so `entity_id` is null for every one of its
+ * questions; without this, each timer-driven re-scan of an unchanged scene
+ * would queue the same question again.
+ */
+export function findBrainstormQuestionByNameScene(
+  entityName: string,
+  scenePath: string,
+): DbBrainstormQuestion | null {
+  return (
+    (getDb()
+      .prepare(
+        'SELECT * FROM brainstorm_questions WHERE entity_id IS NULL AND entity_name = ? COLLATE NOCASE AND scene_path = ?',
+      )
+      .get(entityName, scenePath) as DbBrainstormQuestion | undefined) ?? null
   );
 }
 
@@ -2570,6 +2626,7 @@ export interface DbVaultIndexCacheRow {
   type: string | null;
   needs_rescan: number;
   indexed_at: string;
+  reveal_point: string | null;
 }
 
 /** Tables a full index rebuild is allowed to wipe. fact_decisions is
@@ -2664,8 +2721,8 @@ export function upsertVaultIndexCacheRow(row: DbVaultIndexCacheRow): void {
   getDb()
     .prepare(
       `INSERT OR REPLACE INTO vault_index_cache
-         (file_path, content_hash, name, aliases_json, type, needs_rescan, indexed_at)
-       VALUES (@file_path, @content_hash, @name, @aliases_json, @type, @needs_rescan, @indexed_at)`
+         (file_path, content_hash, name, aliases_json, type, needs_rescan, indexed_at, reveal_point)
+       VALUES (@file_path, @content_hash, @name, @aliases_json, @type, @needs_rescan, @indexed_at, @reveal_point)`
     )
     .run(row as unknown as Record<string, SQLInputValue>);
 }

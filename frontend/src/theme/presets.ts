@@ -43,7 +43,8 @@ export interface LiquidNeonPreset {
 
 export const LIQUID_NEON_PRESETS: Record<LiquidNeonPresetKey, LiquidNeonPreset> = {
   classic: {
-    key: 'classic', name: 'Neon Classic',
+    // SKY-11589: display name only — the stored key stays `classic` (owner mockup 9.9, dc.html 4761).
+    key: 'classic', name: 'Neon Nebula',
     c: ['#00f0ff', '#9b5fff', '#ff4dff', '#ff9a3d', '#2fe6c8', '#3d9bff'],
     idleAnim: 'lnBreathe 4.6s ease-in-out',
     ambience: { anim: 'lnRise', dur: [46, 70], colors: ['rgba(255,255,255,.75)', { slot: 1, a: 0.5 }], op: [0.4, 0.28], dot: [1.8, 1.8] },

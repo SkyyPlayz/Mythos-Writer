@@ -140,17 +140,37 @@ export function parseBetaReportResponse(text: string): ParsedBetaReport {
  * guess. Scene text is attacker-controlled (imported vault content) — kept
  * inside explicit delimiters, same defense-in-depth as
  * buildWritingAssistantUserContent.
+ *
+ * SKY-11411: `entityContext` is an optional continuity dossier block, already
+ * rendered by readerPerspective.renderEntityDossier (so it carries its own
+ * <entity_context> delimiters). The Beta Reader is a reader-perspective role, so
+ * the caller MUST pass a reveal-point-filtered dossier (buildReaderEntityContext)
+ * — an unfiltered dossier would hand the model a not-yet-revealed identity and
+ * defeat the SKY-10741 AC2 spoiler-safety guarantee. `''` (the default) injects
+ * no block at all, preserving the pre-SKY-11411 prompt verbatim.
  */
 export function buildBetaReportUserContent(
   scopeLabel: string,
   focus: { pacing: boolean; clarity: boolean; character: boolean; plot: boolean },
   sourceText: string,
+  entityContext = '',
 ): string {
   const focusOn = (['pacing', 'clarity', 'character', 'plot'] as const).filter((k) => focus[k]);
   const focusLine = focusOn.length > 0 ? focusOn.join(', ') : 'overall impression';
+  const continuityBlock = entityContext.trim()
+    ? [
+        // Reinforce the reveal-order contract in-band: the dossier is already
+        // filtered, but the instruction stops the model from "reading ahead"
+        // and inferring an identity the manuscript has not yet disclosed.
+        '<!-- Continuity notes: ONLY entities the reader has met by this point are listed. Never reference an identity that does not appear below or in the manuscript. -->',
+        entityContext,
+        '',
+      ]
+    : [];
   return [
     `You are reading "${scopeLabel}" as a first-time reader. Focus on: ${focusLine}.`,
     '',
+    ...continuityBlock,
     '<manuscript>',
     sourceText,
     '</manuscript>',

@@ -245,7 +245,8 @@ export function zoomStep(story: Story, cursor: ManuscriptCursor, dir: 1 | -1): M
  *
  * M2 (SKY-9017): when the story has real parts (not simple/untitled), emits
  * H1Block + NoteSlotBlock (part note) before each part's chapters, and
- * NoteSlotBlock (chapter note) before each H2 at book/part/chapter depth.
+ * NoteSlotBlock (chapter note) after each H2 at book/part/chapter depth
+ * (SKY-11356: heading first, note beneath — matching Book view).
  */
 export function buildBlocks(
   story: Story,
@@ -302,14 +303,6 @@ export function buildBlocks(
     const scenes = orderedScenes(c);
     const cFolded = collapsedIds.has(c.id);
     if (zoom !== 'scene') {
-      // M2: emit chapter note slot before H2 at book/part/chapter depth
-      blocks.push({
-        kind: 'note-slot',
-        id: `note-chapter-${c.id}`,
-        slotKind: 'chapter',
-        chapterId: c.id,
-        note: c.note ?? [],
-      });
       blocks.push({
         kind: 'h2',
         id: `h2-${c.id}`,
@@ -319,6 +312,15 @@ export function buildBlocks(
         status: chapterStatus(c),
         folded: cFolded,
         childCount: scenes.length,
+      });
+      // SKY-11356: chapter note follows its H2 (matches the part note above and
+      // Book view's heading→epigraph order); still shown when the chapter is folded.
+      blocks.push({
+        kind: 'note-slot',
+        id: `note-chapter-${c.id}`,
+        slotKind: 'chapter',
+        chapterId: c.id,
+        note: c.note ?? [],
       });
       if (cFolded) return;
     }
@@ -364,6 +366,47 @@ export interface MoveParagraphResult {
   story: Story;
   /** Scenes whose block lists changed (1 for same-scene moves, 2 across scenes). */
   changedSceneIds: string[];
+}
+
+/**
+ * SKY-11358: clamp a hovered drop edge to one the drag can actually fulfil.
+ * The grip drag previews inserting either BEFORE the hovered paragraph or
+ * AFTER it (before the next one) — but "after" only makes sense when a next
+ * paragraph exists in the SAME scene; a scene's last paragraph has no
+ * "after" to land on (moveParagraph only ever inserts before a target).
+ * Clamping here — and reusing the same clamp for the actual drop — keeps the
+ * gap preview and the drop result identical (no surprise offsets).
+ */
+export function resolveDropEdge(
+  paraBlocks: readonly ParaBlock[],
+  paraIndexById: ReadonlyMap<string, number>,
+  sceneId: string,
+  blockId: string,
+  edge: 'before' | 'after'
+): 'before' | 'after' {
+  if (edge === 'before') return 'before';
+  const idx = paraIndexById.get(blockId);
+  const next = idx !== undefined ? paraBlocks[idx + 1] : undefined;
+  return next && next.sceneId === sceneId ? 'after' : 'before';
+}
+
+/**
+ * SKY-11358: resolve the actual insertion target for a grip drop, given the
+ * hovered block and the (already-clamped) edge — 'after' targets the next
+ * paragraph in the same scene, since moveParagraph always inserts before its
+ * `to` ref. Call resolveDropEdge first so `edge` is already valid for `blockId`.
+ */
+export function dropEdgeTarget(
+  paraBlocks: readonly ParaBlock[],
+  paraIndexById: ReadonlyMap<string, number>,
+  sceneId: string,
+  blockId: string,
+  edge: 'before' | 'after'
+): ParagraphRef {
+  if (edge === 'before') return { sceneId, blockId };
+  const idx = paraIndexById.get(blockId)!;
+  const next = paraBlocks[idx + 1]!;
+  return { sceneId: next.sceneId, blockId: next.blockId };
 }
 
 /**

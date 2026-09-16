@@ -1,0 +1,106 @@
+{
+  "1-keyboard-shortcuts": {
+    "elements": [
+      {
+        "selector": ".ln-overlay-surface",
+        "count": 1,
+        "backgroundColor": "rgba(15, 19, 33, 0.97)",
+        "backdropFilter": "blur(24px)",
+        "borderTopWidth": "1px",
+        "borderTopColor": "rgb(0, 240, 255)",
+        "boxShadow": "rgba(3, 5, 12, 0.6) 0px 14px 40px 0px, rgb(0, 240, 255) 0px 0px 22px -6px"
+      }
+    ],
+    "tokens": {
+      "--glass-fill-overlay": "rgba(15, 19, 33, 0.97)",
+      "--blur-panel-overlay": "24px",
+      "--bwh": "0.5px",
+      "--grh": "30px",
+      "--bh": "rgba(0,240,255,0.550)",
+      "--glowH": "0 0 30px -7px rgba(0,240,255,0.590)",
+      "--glass-fill": "rgba(13,16,28,0.200)",
+      "--blur-panel": "1px"
+    }
+  },
+  "2-keyboard-shortcuts-high-contrast": {
+    "elements": [
+      {
+        "selector": ".ln-overlay-surface",
+        "count": 1,
+        "backgroundColor": "rgb(21, 25, 31)",
+        "backdropFilter": "none",
+        "borderTopWidth": "2px",
+        "borderTopColor": "rgb(255, 255, 255)",
+        "boxShadow": "none"
+      }
+    ],
+    "tokens": {
+      "--glass-fill-overlay": "#15191f",
+      "--blur-panel-overlay": "0px",
+      "--bwh": "0.5px",
+      "--grh": "30px",
+      "--bh": "rgba(0,240,255,0.550)",
+      "--glowH": "0 0 30px -7px rgba(0,240,255,0.590)",
+      "--glass-fill": "rgba(13,16,28,0.200)",
+      "--blur-panel": "1px"
+    }
+  },
+  "3-settings": {
+    "elements": [
+      {
+        "selector": ".settings-panel",
+        "count": 1,
+        "backgroundColor": "rgba(15, 19, 33, 0.97)",
+        "backdropFilter": "blur(24px)",
+        "borderTopWidth": "1px",
+        "borderTopColor": "rgba(255, 255, 255, 0.07)",
+        "boxShadow": "rgba(255, 255, 255, 0.04) 0px 1px 0px 0px inset"
+      }
+    ]
+  },
+  "4-scene-crafter-panels": {
+    "elements": [
+      {
+        "selector": ".sc-panel",
+        "count": 2,
+        "backgroundColor": "rgba(255, 255, 255, 0.03)",
+        "backdropFilter": "none",
+        "borderTopWidth": "1px",
+        "borderTopColor": "rgba(0, 240, 255, 0.55)",
+        "boxShadow": "rgba(0, 240, 255, 0.59) 0px 0px 30px -7px"
+      },
+      {
+        "selector": "button.sc-sugg-card",
+        "count": 4,
+        "backgroundColor": "rgba(255, 255, 255, 0.03)",
+        "backdropFilter": "none",
+        "borderTopWidth": "1px",
+        "borderTopColor": "rgba(0, 240, 255, 0.55)",
+        "boxShadow": "rgba(0, 240, 255, 0.59) 0px 0px 30px -7px"
+      }
+    ],
+    "tokens": {
+      "--glass-fill-overlay": "rgba(15, 19, 33, 0.97)",
+      "--blur-panel-overlay": "24px",
+      "--bwh": "0.5px",
+      "--grh": "30px",
+      "--bh": "rgba(0,240,255,0.550)",
+      "--glowH": "0 0 30px -7px rgba(0,240,255,0.590)",
+      "--glass-fill": "rgba(13,16,28,0.200)",
+      "--blur-panel": "1px"
+    }
+  },
+  "5-boards-zoom-toolbar": {
+    "elements": [
+      {
+        "selector": ".board-canvas__zoom-controls",
+        "count": 1,
+        "backgroundColor": "rgba(15, 19, 33, 0.97)",
+        "backdropFilter": "blur(24px)",
+        "borderTopWidth": "1px",
+        "borderTopColor": "rgb(0, 240, 255)",
+        "boxShadow": "rgba(3, 5, 12, 0.5) 0px 10px 30px 0px"
+      }
+    ]
+  }
+}

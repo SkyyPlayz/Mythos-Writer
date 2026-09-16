@@ -64,8 +64,15 @@ export interface ParagraphRowProps {
   autoLinkTerms: EntityTerm[];
   /** M13 reader — true only for the paragraph currently being read aloud. */
   reading: boolean;
-  /** M10 grip drag — true while this row is the hovered drop target. */
-  showDropLine: boolean;
+  /**
+   * SKY-11358 grip drag — non-null while this row is the hovered drop
+   * target: 'before' opens the gap above the row, 'after' below it. Replaces
+   * the old bare-hairline `showDropLine` so the destination previews as a
+   * placeholder the size of the dragged block, not just a 2px seam.
+   */
+  dropGap: 'before' | 'after' | null;
+  /** SKY-11358 — height (px) of the open drop-gap placeholder, measured from the dragged row. */
+  dropGapHeight: number;
   /** M8 grip drag — true while THIS row is the block being dragged (dims to 38%). */
   dragging: boolean;
   /**
@@ -99,6 +106,8 @@ export interface ParagraphRowProps {
   onMergeUp?: (sceneId: string, blockId: string, currentText: string) => boolean;
   onGripDown: (sceneId: string, blockId: string, e: ReactMouseEvent) => void;
   onParaOver: (blockId: string) => void;
+  /** SKY-11358 — live pointer position within the hovered row, for before/after edge hysteresis. */
+  onParaMove: (blockId: string, e: ReactMouseEvent) => void;
   onParaDrop: (sceneId: string, blockId: string) => void;
   onOpenComment: (id: string | null) => void;
   onApplyAutoLink: (sceneId: string, blockId: string, content: string, hint: EntityMatch) => void;
@@ -173,7 +182,8 @@ export function paragraphRowPropsEqual(
     prev.sceneId !== next.sceneId ||
     prev.blockId !== next.blockId ||
     prev.reading !== next.reading ||
-    prev.showDropLine !== next.showDropLine ||
+    prev.dropGap !== next.dropGap ||
+    prev.dropGapHeight !== next.dropGapHeight ||
     prev.dragging !== next.dragging ||
     prev.dropCap !== next.dropCap ||
     prev.placeholder !== next.placeholder ||
@@ -184,6 +194,7 @@ export function paragraphRowPropsEqual(
     prev.onMergeUp !== next.onMergeUp ||
     prev.onGripDown !== next.onGripDown ||
     prev.onParaOver !== next.onParaOver ||
+    prev.onParaMove !== next.onParaMove ||
     prev.onParaDrop !== next.onParaDrop ||
     prev.onOpenComment !== next.onOpenComment ||
     prev.onApplyAutoLink !== next.onApplyAutoLink ||
@@ -203,7 +214,8 @@ export function ParagraphRowBase({
   comments,
   autoLinkTerms,
   reading,
-  showDropLine,
+  dropGap,
+  dropGapHeight,
   dragging,
   dropCap,
   placeholder,
@@ -213,6 +225,7 @@ export function ParagraphRowBase({
   onMergeUp,
   onGripDown,
   onParaOver,
+  onParaMove,
   onParaDrop,
   onOpenComment,
   onApplyAutoLink,
@@ -288,12 +301,37 @@ export function ParagraphRowBase({
     dropCap && !segs ? ' msv-para-text--dropcap' : ''
   }`;
 
+  // SKY-11358: a gap placeholder sized to the dragged block, previewing where
+  // it will land, with the gradient line as an accent inside it (replaces
+  // the old bare 2px hairline — see ManuscriptView's resolveDropEdge).
+  //
+  // The gap must carry its own onMouseEnter/onMouseUp: opening it (to the
+  // full height of the dragged block) routinely leaves the cursor sitting
+  // over the gap itself rather than over `.msv-para` — without these, that
+  // release lands on no element with a drop handler, bubbles to window's
+  // "abandon drag" listener, and silently no-ops a drop the preview showed
+  // as valid. onMouseEnter is a no-op re-affirmation of the same row (see
+  // handleParaOver's dropKeyRef guard) — it must NOT reset the edge.
+  const dropGapEl = (
+    <div
+      className="msv-drop-gap"
+      style={{ height: dropGapHeight }}
+      data-testid="msv-drop-gap"
+      aria-hidden="true"
+      onMouseEnter={() => onParaOver(blockId)}
+      onMouseUp={() => onParaDrop(sceneId, blockId)}
+    >
+      <div className="msv-dropline" data-testid="msv-dropline" />
+    </div>
+  );
+
   return (
     <div>
-      {showDropLine && <div className="msv-dropline" data-testid="msv-dropline" aria-hidden="true" />}
+      {dropGap === 'before' && dropGapEl}
       <div
         className={`msv-para${dragging ? ' msv-para--dragging' : ''}`}
         onMouseEnter={() => onParaOver(blockId)}
+        onMouseMove={(e) => onParaMove(blockId, e)}
         onMouseUp={() => onParaDrop(sceneId, blockId)}
       >
         <span
@@ -341,6 +379,7 @@ export function ParagraphRowBase({
           {renderedChildren}
         </div>
       </div>
+      {dropGap === 'after' && dropGapEl}
     </div>
   );
 }

@@ -139,7 +139,7 @@ const GRAPH_CATEGORY_LABELS: Record<GraphCategory, string> = {
   default: 'Default',
 };
 // M21: category colors ported from the prototype `gCats` (3044–3052) with the
-// Neon Classic slot defaults (`catCol`, 4156). `scenes` is the prototype's gold
+// Neon Nebula slot defaults (`catCol`, 4156). `scenes` is the prototype's gold
 // "Story" cluster; `history` is "History / Lore". `misc` (no prototype
 // counterpart) uses classic slot c6; `default` uses the note-edge blue.
 export const GRAPH_CATEGORY_COLORS: Record<GraphCategory, string> = {

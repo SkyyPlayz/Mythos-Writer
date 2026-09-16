@@ -39,6 +39,7 @@ import { cursorChapter, cursorDefaultScene, cycleDraftState, draftStateLabel, is
 import { appendChapterToStory, mapAllChapters, reconcileParts, syncChaptersFromParts, updateChapterOwner } from './story/storyParts';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
+import { runQuitFlushers, trackQuitCriticalWrite } from './lib/flushBeforeQuit';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail, { type NavRailVault } from './AppNavRail';
@@ -66,6 +67,13 @@ import {
   PROVISIONAL_CREATED_TOAST,
   PROVISIONAL_DISCARDED_TOAST,
 } from './workspaceDocTabs';
+// SKY-11236: per-vault open-tab workspace state (restore/persist/migration).
+import {
+  restoreVaultTabs,
+  writeVaultWorkspace,
+  migrateLegacyDocTabs,
+  shouldMigrateLegacy,
+} from './vaultWorkspaceTabs';
 import { NAV_RAIL_DEFAULTS, mergeNavConfigItems, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
 // SKY-10712: same pure transform the main process applies to scene files on
 // disk during a rename cascade — used to converge in-memory manuscript state.
@@ -79,10 +87,13 @@ import EntityDetail from './EntityDetail';
 import SceneCrafterPage from './pages/SceneCrafter/SceneCrafterPage';
 import { craftedSceneNote, type CrafterSetup } from './pages/SceneCrafter/crafterState';
 import VaultGraphView from './VaultGraphView';
+import BoardsTabPanel from './pages/Boards/BoardsTabPanel';
 import ManuscriptStructureView from './ManuscriptStructureView';
 import BookPreview from './story/BookPreview';
 import TimelineRoot from './TimelineRoot';
+import type { TimelineWikiLinkApi } from './timeline2/TimelineWikiText';
 import { useTextPrompt } from './useTextPrompt';
+import { useCreateMythosVaultFlow } from './useCreateMythosVaultFlow';
 import { WIZARD_OPEN_IMPORT_STEP_KEY } from './OnboardingWizard';
 import SettingsPanel from './components/SettingsPanel';
 import PromptHistoryPanel from './PromptHistoryPanel';
@@ -113,6 +124,7 @@ import {
 } from './gettingStartedReducer';
 import TemplatePicker from './TemplatePicker';
 import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
+import { RightSidebarSlotProvider } from './RightSidebarSlot';
 import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
 import { PanelDragProvider } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
@@ -121,7 +133,7 @@ import StorySubViewBar from './StorySubViewBar';
 import NotesTabPanel from './NotesTabPanel';
 import BrainstormPage from './BrainstormPage';
 import BetaReaderPage from './beta/BetaReaderPage';
-import { resolveCrossTabLink, buildWikiLinkTitleIndex, buildWikiLinkCandidates, buildSceneWikiLinkTitleIndex, notePathForUnresolvedLink, buildUnresolvedLinkNote, wikiLinkTargetStem, type CrossTabLinkMatch } from './crossTabLinkResolver';
+import { resolveCrossTabLink, resolveWikiLinkTarget, crossTabLinkMatchKey, buildWikiLinkTitleIndex, buildWikiLinkCandidates, buildSceneWikiLinkTitleIndex, notePathForUnresolvedLink, buildUnresolvedLinkNote, wikiLinkTargetStem, type CrossTabLinkMatch } from './crossTabLinkResolver';
 import type { WikiLinkPreviewData } from './WikiLinkHoverPreview';
 import {
   tabbedShellReducer,
@@ -315,11 +327,10 @@ interface AppMenuBarProps {
   topBarHidden: boolean;
   onOpenTour: () => void;
   onOpenExport?: (scope: ExportScope) => void;
-  requestText: (label: string) => Promise<string | null>;
 }
 
 // SKY-2964: writing-mode selector removed from AppMenuBar — canonical controls live in StorySubViewBar (above the page)
-export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, activeStoryTitle, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport, requestText }: AppMenuBarProps) {
+export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, activeStoryTitle, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -361,7 +372,7 @@ export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, se
   return (
     <div className="app-menu-bar">
       <span className="app-menu-brand">Mythos</span>
-      <ProjectSwitcher activeVaultRoot={activeVaultRoot} activeStoryTitle={activeStoryTitle} onSwitched={onProjectSwitched} requestText={requestText} />
+      <ProjectSwitcher activeVaultRoot={activeVaultRoot} activeStoryTitle={activeStoryTitle} onSwitched={onProjectSwitched} />
       <div className="app-menu-items" ref={fileMenuRef}>
         <div className="app-menu-item">
           <button
@@ -710,9 +721,22 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeVaultRoot, setActiveVaultRoot] = useState<string>('');
+  // SKY-11236: latest active vault root for persistDocTabs, which runs inside a
+  // stable ([]) callback and cannot close over activeVaultRoot. Kept in sync
+  // each render (below) + set eagerly by the switch paths so a persist that
+  // fires mid-switch keys the CORRECT vault, never leaking tabs across vaults.
+  const activeVaultRootRef = useRef<string>('');
+  activeVaultRootRef.current = activeVaultRoot;
   // Beta 4 M1: set by the two project-switch paths right before loadVault so
   // the reload can apply that vault's default theme (per-vault theme, §14.9 #9).
   const pendingVaultThemeRootRef = useRef<string | null>(null);
+  // SKY-11379: monotonic vault-switch generation. Every switch bumps this
+  // before invoking loadVault; loadVault captures it and no-ops its state
+  // writes if a newer switch began while its IPCs were in flight. This closes
+  // the out-of-order race where a slower, earlier loadVault resolves last and
+  // overwrites activeVaultRoot (and the nav-rail highlight) back to the vault
+  // the user already switched away from. "Latest switch wins."
+  const vaultSwitchGenRef = useRef(0);
   const [editorSelectionText, setEditorSelectionText] = useState<string>('');
   const [continuityPeekOverlayOpen, setContinuityPeekOverlayOpen] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
@@ -808,6 +832,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [brainstormSeedPrompt, setBrainstormSeedPrompt] = useState<string | null>(null);
   const [ambiguousLink, setAmbiguousLink] = useState<{ rawTarget: string; matches: CrossTabLinkMatch[] } | null>(null);
   const [sceneFlashId, setSceneFlashId] = useState<string | null>(null);
+
+  // SKY-11444: the legacy Preview flag is a property of *this viewing*, not a
+  // sticky session mode — clear it whenever the open note changes so it never
+  // leaks onto the next note.
+  useEffect(() => {
+    setNotePreviewMode(false);
+  }, [openedNotePath]);
 
   // SKY-1694 (Wave 2a): left sidebar panel zone layout + right sidebar user-collapse toggle
   const [leftSidebarLayout, setLeftSidebarLayout] = useState<LeftSidebarLayout>(DEFAULT_LEFT_SIDEBAR_LAYOUT);
@@ -966,6 +997,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-192: entity registry for the auto-linker
   const [allEntities, setAllEntities] = useState<EntityEntry[]>([]);
   const [allNotePaths, setAllNotePaths] = useState<string[]>([]);
+  // SKY-11615: the directory half of the same listNotesVault() result — feeds
+  // `[[Folder]]` wiki-link resolution without a second vault walk.
+  const [allFolderPaths, setAllFolderPaths] = useState<string[]>([]);
+  // SKY-11615: a `[[Folder]]` click asks the Boards tab to navigate. `seq`
+  // makes a repeat click on the folder you are already on re-fire.
+  const [boardsFolderRequest, setBoardsFolderRequest] = useState<{ folderPath: string; seq: number } | null>(null);
 
   // SKY-130: cross-restart scene/cursor restore refs
   const pendingCursorPosRef = useRef<number | null>(null);
@@ -1125,10 +1162,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setRestoreKey(k => k + 1);
     setShowSceneHistory(false);
   }, [selectedScene]);
-
-  const handleJumpToText = useCallback((text: string) => {
-    editorApiRef.current?.jumpToText(text);
-  }, []);
 
   const handleEditorAcceptWikiLink = useCallback((id: string, link: string, anchorText: string) => {
     editorApiRef.current?.insertWikiLink(link, anchorText);
@@ -1398,6 +1431,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   ]);
 
   const loadVault = useCallback(async () => {
+    // SKY-11379: pin the switch generation at call time. If a newer vault
+    // switch bumps vaultSwitchGenRef while this call's IPCs are in flight,
+    // superseded() turns true and every state-application point below bails —
+    // so a stale load can never win a "last write" race against the vault the
+    // user actually switched to.
+    const myGen = vaultSwitchGenRef.current;
+    const superseded = () => myGen !== vaultSwitchGenRef.current;
     setLoading(true);
     setError(null);
     // Beta 4 M1: consume the pending vault-switch marker synchronously so a
@@ -1428,6 +1468,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           ? { lastSampleGenre: initS.lastSampleGenre } : {}),
       } : (initS ?? sFromIpc);
       cachedSettings = s;
+      // SKY-11379: a newer switch began while settings/root/paths were in
+      // flight — abandon this stale load before writing any vault state.
+      if (superseded()) return;
 
       let storyValid = true;
       let notesValid = true;
@@ -1442,6 +1485,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         ]);
         storyValid = isValidVaultPath(storyResult);
         notesValid = isValidVaultPath(notesResult);
+        if (superseded()) return; // SKY-11379: stale after validatePath — bail.
         setVaultBinding({ storyPath, notesPath, storyValid, notesValid });
       } else {
         setVaultBinding((prev) => ({ ...prev, storyPath, storyValid: true, notesValid: true }));
@@ -1450,6 +1494,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       const m = storyValid
         ? await window.api.readManifest() as Manifest
         : { ...EMPTY_MANIFEST, vaultRoot: storyPath };
+      // SKY-11379: last IPC resolved — re-check the generation once more before
+      // the atomic apply below. setManifest through setActiveVaultRoot run with
+      // no further awaits between them, so a single check here protects the
+      // whole block (including the setActiveVaultRoot that drives the rail
+      // highlight) from a switch that started during readManifest.
+      if (superseded()) return;
       setManifest(m);
       setStories(m.stories ?? []);
       if (m.layout) {
@@ -1494,36 +1544,36 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           // "start collapsed" preference.
           setNavRailCollapsed(true);
         }
-        // Beta 4 M4: restore document tabs. ≤Beta 3 module-mirror tabs
-        // (activeLayout.workspaceTabs) are deliberately ignored — tabs are
-        // documents now; provisional tabs never persist (§1.5).
-        if (Array.isArray(s.activeLayout?.storyDocTabs)) {
-          // SKY-9920: an Entity Browser tab (kind 'entities') survives
-          // relaunch too — only provisional scenes are deliberately dropped.
-          // SKY-10019: Outline Planning (kind 'outline') is story-only, same
-          // singleton-per-strip treatment as Entity Browser.
-          const restored = s.activeLayout.storyDocTabs.filter(
-            (t) => (t.kind === 'scene' && !t.provisional) || t.kind === 'entities' || t.kind === 'outline',
-          );
-          setStoryDocTabs(restored);
-          const act = s.activeLayout.activeStoryDocTabId ?? null;
-          setActiveStoryDocTabId(act !== null && restored.some((t) => t.id === act) ? act : null);
+        // SKY-11236: restore THIS vault's own open tabs. Tabs are per-vault
+        // now (keyed by Story-Vault root) — switching vaults swaps the whole
+        // set out and back, so a tab whose note lives in another vault can
+        // never leak in and fail with "Could not load note." ≤Beta 3
+        // module-mirror tabs are still ignored; provisional scenes, singleton
+        // Entity Browser / Outline, and Scene Crafter board-tab filtering are
+        // all preserved inside restoreVaultTabs (§1.5, SKY-9920/10019/11069).
+        let workspaces = s.vaultWorkspaces;
+        if (shouldMigrateLegacy(workspaces, !!switchedVaultRoot, storyPath)) {
+          // First load after upgrade: adopt the previous session's global
+          // doc-tabs as THIS vault's workspace (it was the active vault at
+          // shutdown) and persist, so they survive switching away and back
+          // instead of being stranded in the dead flat activeLayout fields.
+          const seeded = migrateLegacyDocTabs(s.activeLayout);
+          workspaces = { [storyPath]: seeded };
+          const migrated: AppSettings = { ...s, vaultWorkspaces: workspaces };
+          cachedSettings = migrated;
+          setAppSettings(migrated);
+          window.api.settingsSet(migrated).catch(() => {});
         }
-        if (Array.isArray(s.activeLayout?.notesDocTabs)) {
-          const restored = s.activeLayout.notesDocTabs.filter((t) => t.kind === 'note' || t.kind === 'entities');
-          setNotesDocTabs(restored);
-          const act = s.activeLayout.activeNotesDocTabId ?? null;
-          setActiveNotesDocTabId(act !== null && restored.some((t) => t.id === act) ? act : null);
-        }
-        // SKY-11069: restore open Scene Crafter board tabs. The synthetic
-        // Setup tab is composed at render and never persists; a null active
-        // id means Setup is the active tab.
-        if (Array.isArray(s.activeLayout?.boardDocTabs)) {
-          const restored = s.activeLayout.boardDocTabs.filter((t) => t.kind === 'board' && !!t.docId && !!t.storyId);
-          setBoardDocTabs(restored);
-          const act = s.activeLayout.activeBoardDocTabId ?? null;
-          setActiveBoardDocTabId(act !== null && restored.some((t) => t.id === act) ? act : null);
-        }
+        // Always set (empty arrays when this vault has no saved workspace) so a
+        // switch unconditionally CLEARS the outgoing vault's tabs — that
+        // clearing is the actual leak fix, not just the restore.
+        const restoredTabs = restoreVaultTabs(storyPath ? workspaces?.[storyPath] : undefined);
+        setStoryDocTabs(restoredTabs.storyDocTabs);
+        setActiveStoryDocTabId(restoredTabs.activeStoryDocTabId);
+        setNotesDocTabs(restoredTabs.notesDocTabs);
+        setActiveNotesDocTabId(restoredTabs.activeNotesDocTabId);
+        setBoardDocTabs(restoredTabs.boardDocTabs);
+        setActiveBoardDocTabId(restoredTabs.activeBoardDocTabId);
         // GH #643: restore the right-hand workspace split pane. SKY-9920:
         // 'entities' is excluded — Entity Browser's home is the document-tab
         // system now, not this legacy split pane (dead path: nothing has
@@ -1646,7 +1696,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       try {
         if (typeof window.api?.checkVaultConflicts === 'function') {
           const conflicts = await window.api.checkVaultConflicts();
-          if (conflicts && !conflicts.dismissed) {
+          // SKY-11379: don't raise a superseded load's conflict modal over the
+          // vault the user switched to.
+          if (!superseded() && conflicts && !conflicts.dismissed) {
             if ((conflicts.resolved?.length ?? 0) > 0 || conflicts.lockfileConflict) {
               setSyncConflictResolved(conflicts.resolved ?? []);
               setSyncLockfileConflict(conflicts.lockfileConflict ?? null);
@@ -1658,15 +1710,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         // conflict check is best-effort
       }
     } catch (e) {
-      setError('Failed to load vault: ' + String(e));
-      // Ensure grsVisible is resolved even when vault loading fails (e.g. no vault
-      // on fresh install). Without this, grsVisible stays undefined and
-      // GlobalRightSidebar never renders, so the Getting Started panel is invisible.
-      if (cachedSettings && typeof cachedSettings.rightSidebarVisible === 'boolean') {
-        setGrsVisible(cachedSettings.rightSidebarVisible);
+      // SKY-11379: a superseded load's failure must not surface over the vault
+      // the user actually switched to.
+      if (!superseded()) {
+        setError('Failed to load vault: ' + String(e));
+        // Ensure grsVisible is resolved even when vault loading fails (e.g. no vault
+        // on fresh install). Without this, grsVisible stays undefined and
+        // GlobalRightSidebar never renders, so the Getting Started panel is invisible.
+        if (cachedSettings && typeof cachedSettings.rightSidebarVisible === 'boolean') {
+          setGrsVisible(cachedSettings.rightSidebarVisible);
+        }
       }
     } finally {
-      setLoading(false);
+      // SKY-11379: only the freshest load owns the loading flag; a superseded
+      // call that bailed early must not clear the spinner the live load set.
+      if (!superseded()) setLoading(false);
     }
   }, [showUpgradeToast]);
 
@@ -1712,11 +1770,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         window.api.listNotesVault?.().catch(() => null),
       ]);
       setAllEntities(entityResult.entities ?? []);
-      setAllNotePaths(
-        notesResult && !('error' in notesResult)
-          ? (notesResult.items ?? []).filter((item) => !item.isDirectory).map((item) => item.path)
-          : [],
-      );
+      const notesItems = notesResult && !('error' in notesResult) ? (notesResult.items ?? []) : [];
+      setAllNotePaths(notesItems.filter((item) => !item.isDirectory).map((item) => item.path));
+      setAllFolderPaths(notesItems.filter((item) => item.isDirectory).map((item) => item.path));
     } catch {
       // non-fatal; auto-linker just won't suggest anything
     }
@@ -1773,13 +1829,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   useEffect(() => {
     if (!window.api?.onProjectSwitched) return;
     const unsub = window.api.onProjectSwitched((data: { vaultRoot: string }) => {
+      vaultSwitchGenRef.current += 1; // SKY-11379: supersede any in-flight loadVault
       pendingVaultThemeRootRef.current = data.vaultRoot; // Beta 4 M1: per-vault theme
+      activeVaultRootRef.current = data.vaultRoot; // SKY-11236: key persists to the new vault at once
       setActiveVaultRoot(data.vaultRoot);
       // Reset selection state and reload vault content
       setSelectedScene(null);
       setSelectedChapter(null);
       setSelectedStory(null);
       setSelectedEntity(null);
+      // SKY-11236: clear the open-note pointer too. Otherwise the "opening a
+      // note surfaces its tab" effect re-adds the OUTGOING vault's note tab
+      // right after loadVault clears the strip — resurrecting the very leak
+      // this fix removes (its note doesn't exist in the incoming vault).
+      setOpenedNotePath(null);
       // SKY-130: allow restore to fire again for the new project
       sceneRestoreAttemptedRef.current = false;
       loadVault();
@@ -1790,12 +1853,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [loadVault, loadVaults]);
 
   const handleProjectSwitched = useCallback((vaultRoot: string) => {
+    vaultSwitchGenRef.current += 1; // SKY-11379: supersede any in-flight loadVault
     pendingVaultThemeRootRef.current = vaultRoot; // Beta 4 M1: per-vault theme
+    activeVaultRootRef.current = vaultRoot; // SKY-11236: key persists to the new vault at once
     setActiveVaultRoot(vaultRoot);
     setSelectedScene(null);
     setSelectedChapter(null);
     setSelectedStory(null);
     setSelectedEntity(null);
+    // SKY-11236: clear the open-note pointer too (see the onProjectSwitched
+    // listener above) so the note-surfacing effect can't re-add the outgoing
+    // vault's tab after loadVault clears the strip.
+    setOpenedNotePath(null);
     // SKY-130: allow restore to fire again for the new project
     sceneRestoreAttemptedRef.current = false;
     loadVault();
@@ -1899,10 +1968,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-9973: flush-before-quit — the main process asks the renderer to
   // flush any pending debounced manifest save before the window closes, so
   // an edit made within the 900ms debounce window isn't lost on quit.
+  // SKY-11363: also drain every other registered debounced writer (e.g. the
+  // brainstorm board) via runQuitFlushers before acking, so no component's
+  // pending save is dropped on a full app-quit.
+  // SKY-11646: flushers run FIRST, manifest second. Draining the scene editor's
+  // debounce re-enters updateManifest → scheduleManifestSave, so a manifest
+  // flushed before the flushers would miss the very edit we just rescued.
   useEffect(() => {
     if (!window.api?.onFlushBeforeQuit) return;
     const unsub = window.api.onFlushBeforeQuit(() => {
       (async () => {
+        await runQuitFlushers();
         if (saveTimer.current) {
           clearTimeout(saveTimer.current);
           saveTimer.current = null;
@@ -2061,28 +2137,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     notes?: { tabs: WorkspaceTab[]; activeId: string | null };
     board?: { tabs: WorkspaceTab[]; activeId: string | null };
   }) => {
+    // SKY-11236: doc tabs are per-vault now. The left-sidebar layout stays a
+    // global activeLayout field; only the tab sets move into the vault-keyed
+    // map, so switching vaults swaps them out and back with no cross-vault leak.
+    // (writeVaultWorkspace still drops provisional scenes and only touches the
+    // patched sections of the active vault — every other vault stays intact.)
+    const vaultRoot = activeVaultRootRef.current;
     setAppSettings((prev) => {
       if (!prev) return prev;
       const updated: AppSettings = {
         ...prev,
-        activeLayout: {
-          ...prev.activeLayout,
-          leftSidebar: leftSidebarLayoutRef.current,
-          ...(patch.story
-            ? {
-                storyDocTabs: patch.story.tabs.filter((t) => !t.provisional),
-                activeStoryDocTabId: patch.story.activeId,
-              }
-            : {}),
-          ...(patch.notes
-            ? { notesDocTabs: patch.notes.tabs, activeNotesDocTabId: patch.notes.activeId }
-            : {}),
-          // SKY-11069: only real board tabs persist — the pinned Setup tab is
-          // synthetic (its "active" state is activeBoardDocTabId = null).
-          ...(patch.board
-            ? { boardDocTabs: patch.board.tabs, activeBoardDocTabId: patch.board.activeId }
-            : {}),
-        },
+        activeLayout: { ...prev.activeLayout, leftSidebar: leftSidebarLayoutRef.current },
+        ...(vaultRoot
+          ? { vaultWorkspaces: writeVaultWorkspace(prev.vaultWorkspaces, vaultRoot, patch) }
+          : {}),
       };
       window.api.settingsSet(updated).catch(() => {});
       return updated;
@@ -2655,6 +2723,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       case 'vault-graph':
         handleTabChange('vault-graph');
         break;
+      case 'boards':
+        handleTabChange('boards');
+        break;
       case 'story':
         handleNavSectionChange('story');
         // Scene Crafter and Timeline have their own rail items — Story Writer
@@ -2699,7 +2770,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         return;
       }
       // SKY-2099: tab-aware shortcut map.
+      // SKY-11444: guard against firing while the writer is typing in the
+      // note, matching the `?` handler's guard above.
       if (mod && !e.shiftKey && !e.altKey && (e.key === 'e' || e.key === 'E')) {
+        const target = e.target as HTMLElement;
+        const inText =
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable;
+        if (inText) return;
         e.preventDefault();
         if (tabShellRef.current.activeTab === 'notes') {
           setNotePreviewMode((prev) => !prev);
@@ -3127,7 +3206,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   const persistSceneMarkdown = useCallback(async (scene: Scene) => {
     try {
-      await window.api.writeVault(scene.path, blocksToMarkdown(scene));
+      // SKY-11646: every caller fires this without awaiting, so on quit the
+      // write can still be in flight when the window closes. Track it as
+      // quit-critical — the flush-before-quit handshake drains it before
+      // acking, which is what keeps the last keystrokes on disk.
+      await trackQuitCriticalWrite(window.api.writeVault(scene.path, blocksToMarkdown(scene)));
     } catch (e) {
       console.error('Failed to write scene markdown:', e);
     }
@@ -3307,31 +3390,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [selectedScene]);
 
   // SKY-320/SKY-906 parity for the Liquid Neon title bar: the legacy
-  // ProjectSwitcher's "+ Create new Mythos Vault" flow, driven through the
-  // same useTextPrompt modal and vaultCreateDefaultMythos IPC. Main persists
-  // settings + recents; we just switch the renderer to the new vault.
-  const createMythosVault = useCallback(async () => {
-    const name = await requestText('Name for the new Mythos Vault:');
-    if (name === null) return;
-    const trimmed = name.trim();
-    if (trimmed && (trimmed.includes('/') || trimmed.includes('\\') || trimmed === '.' || trimmed === '..')) {
-      alert('Vault name cannot contain slashes or path traversal.');
-      return;
-    }
-    try {
-      const result = await window.api?.vaultCreateDefaultMythos?.({
-        vaultName: trimmed || undefined,
-        seedMode: 'default',
-      });
-      if (!result || result.error) {
-        alert(`Could not create vault: ${result?.error ?? 'unknown error'}`);
-        return;
-      }
-      handleProjectSwitched(result.vaultRoot);
-    } catch (err) {
-      alert(`Create failed: ${(err as Error).message}`);
-    }
-  }, [requestText, handleProjectSwitched]);
+  // ProjectSwitcher's "+ Create new Mythos Vault" flow. SKY-11376: name +
+  // destination now come from useCreateMythosVaultFlow's modal (shared with
+  // ProjectSwitcher.tsx so the two entry points can't drift again).
+  const { createVault: createMythosVault, createVaultModal } = useCreateMythosVaultFlow(
+    useCallback(({ vaultRoot }) => { handleProjectSwitched(vaultRoot); }, [handleProjectSwitched]),
+  );
 
   // Title-bar "Open vault…" — the legacy switcher's "Open Other Folder…".
   const openVaultViaPicker = useCallback(async () => {
@@ -4537,11 +4601,44 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (match.kind === 'scene') {
       setOpenedNotePath(null);
       handleSelectScene(match.scene, match.chapter, match.story);
-      setView('editor');
-      setViewDepth('scene');
+      // Order matters: handleTabChange('story') restores the persisted story
+      // sub-view, so the editor has to be chosen AFTER it — otherwise a link
+      // followed from the Timeline (or Kanban) lands you straight back on the
+      // surface you clicked from. handleSetView also persists the sub-view, so
+      // the story tab remembers you are in the editor now.
       handleTabChange('story');
+      handleSetView('editor');
+      setViewDepth('scene');
       setSceneFlashId(match.sceneId);
       window.setTimeout(() => setSceneFlashId((current) => current === match.sceneId ? null : current), 1200);
+      return;
+    }
+
+    // SKY-11615: a chapter link lands on the manuscript at chapter depth. Its
+    // first scene is the natural caret home; an empty chapter still opens, it
+    // just has no scene to select.
+    if (match.kind === 'chapter') {
+      setOpenedNotePath(null);
+      const firstScene = match.chapter.scenes[0];
+      if (firstScene) {
+        handleSelectScene(firstScene, match.chapter, match.story);
+      } else {
+        setSelectedScene(null);
+        setSelectedEntity(null);
+        setSelectedStory(match.story);
+        setSelectedChapter(match.chapter);
+      }
+      handleTabChange('story');
+      handleSetView('editor');
+      setViewDepth('chapter');
+      return;
+    }
+
+    // SKY-11615: a folder link opens that folder as a board (mockup wikiClick).
+    if (match.kind === 'folder') {
+      setOpenedNotePath(null);
+      setBoardsFolderRequest((prev) => ({ folderPath: match.folderPath, seq: (prev?.seq ?? 0) + 1 }));
+      handleTabChange('boards');
       return;
     }
 
@@ -4552,7 +4649,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setOpenedNotePath(match.entityPath);
     handleNotesSubViewChange('editor');
     handleTabChange('notes');
-  }, [handleSelectScene, handleTabChange, handleNotesSubViewChange, setViewDepth]);
+  }, [handleSelectScene, handleTabChange, handleNotesSubViewChange, handleSetView, setViewDepth]);
 
   const handleWikiLinkClick = useCallback((target: string) => {
     const resolution = resolveCrossTabLink(target, {
@@ -4587,24 +4684,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     [stories],
   );
 
-  // M16: notes-editor wiki-link click — same resolution as the story editor,
-  // but an unresolved link CREATES the note in the Notes Vault (Obsidian
-  // parity, plan §M16 "unresolved click creates the note") instead of only
-  // toasting. The story editor keeps its warn-toast behavior.
-  const handleNotesWikiLinkClick = useCallback((target: string) => {
-    const resolution = resolveCrossTabLink(target, {
-      stories,
-      entities: allEntities,
-      notePaths: allNotePaths,
-    });
-    if (resolution.status === 'single') {
-      applyCrossTabLinkMatch(resolution.matches[0]);
-      return;
-    }
-    if (resolution.status === 'ambiguous') {
-      setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
-      return;
-    }
+  // M16: an unresolved [[link]] CREATES the note in the Notes Vault (Obsidian
+  // parity, plan §M16 "unresolved click creates the note") and opens it.
+  // Shared by the notes editor and, since SKY-11615, the Timeline — the story
+  // editor keeps its warn-toast behavior instead.
+  const createNoteForUnresolvedLink = useCallback((target: string) => {
     const newNotePath = notePathForUnresolvedLink(target);
     if (!newNotePath) return;
     void (async () => {
@@ -4633,7 +4717,48 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       handleNotesSubViewChange('editor');
       handleTabChange('notes');
     })();
-  }, [stories, allEntities, allNotePaths, applyCrossTabLinkMatch, handleNotesSubViewChange, handleTabChange, loadEntities, showWikiLinkToast]);
+  }, [handleNotesSubViewChange, handleTabChange, loadEntities, showWikiLinkToast]);
+
+  // M16: notes-editor wiki-link click — same resolution as the story editor,
+  // but unresolved creates the note instead of only toasting.
+  const handleNotesWikiLinkClick = useCallback((target: string) => {
+    const resolution = resolveCrossTabLink(target, {
+      stories,
+      entities: allEntities,
+      notePaths: allNotePaths,
+    });
+    if (resolution.status === 'single') {
+      applyCrossTabLinkMatch(resolution.matches[0]);
+      return;
+    }
+    if (resolution.status === 'ambiguous') {
+      setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
+      return;
+    }
+    createNoteForUnresolvedLink(target);
+  }, [stories, allEntities, allNotePaths, applyCrossTabLinkMatch, createNoteForUnresolvedLink]);
+
+  // SKY-11615: the Timeline's [[wiki links]] resolve one target in the product
+  // order (scene → chapter → note → folder) rather than opening the ambiguity
+  // picker — a link inside prose has to paint a single colour, so it has to
+  // mean a single thing. Unresolved falls through to the same create-note flow
+  // the notes editor uses.
+  const timelineWikiLinks = useMemo<TimelineWikiLinkApi>(() => {
+    const context = {
+      stories,
+      entities: allEntities,
+      notePaths: allNotePaths,
+      folderPaths: allFolderPaths,
+    };
+    return {
+      resolve: (target: string) => resolveWikiLinkTarget(target, context),
+      open: (target: string) => {
+        const match = resolveWikiLinkTarget(target, context);
+        if (match) applyCrossTabLinkMatch(match);
+        else createNoteForUnresolvedLink(target);
+      },
+    };
+  }, [stories, allEntities, allNotePaths, allFolderPaths, applyCrossTabLinkMatch, createNoteForUnresolvedLink]);
 
   // M16: hover-preview resolver — notes read via the vault IPC, scenes from
   // the already-loaded in-memory blocks. Null means "unresolved" and the card
@@ -4654,6 +4779,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         markdown: match.scene.blocks.map((b) => b.content).join('\n\n'),
       };
     }
+    // resolveCrossTabLink only ever yields scene/entity matches; chapters and
+    // folders are the Timeline's resolveWikiLinkTarget path, which has no
+    // markdown body to preview.
+    if (match.kind !== 'entity') return null;
     const r = await window.api.readNotesVault(match.entityPath);
     if ('error' in r) return null; // fallback entity whose file does not exist yet
     return {
@@ -5021,7 +5150,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
             isActive={view === 'editor'}
             isPageFocused={view === 'editor'}
-            onJumpToText={handleJumpToText}
             autoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
             autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
             onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
@@ -5136,7 +5264,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleReorderScenes, setTemplatePickerOpen, handleSelectEntity,
     gettingStartedProgress, persistGettingStartedProgress,
     handleOpenSceneByPath, handleOpenGraphScene, setExportScope, appSettings,
-    view, handleJumpToText,
+    view,
     continuityCount, setContinuityCount, setSettingsOpen, handleContinuityConsentGranted,
     activeSceneForSidebar, handleWaAutoApplyCategoriesChange,
     pane2Chapter, pane2Story, usePane2SidebarContext, handleSceneRestore,
@@ -5722,7 +5850,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       ? 'vault-graph'
       : tabShell.activeTab === 'brainstorm'
         ? 'brainstorm'
-        : 'notes';
+        : tabShell.activeTab === 'boards'
+          ? 'boards'
+          : 'notes';
 
   // Beta 4 M3: rail edit popover rows — the full merged module config
   // (hidden items included) in user order; SKY-5903 merge semantics apply.
@@ -6140,6 +6270,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           chapter={selectedChapter}
           scene={selectedScene}
           agentNames={appSettings?.agentNames}
+          productionRolesEnabled={{
+            alphaReader: appSettings?.agents?.alphaReader?.enabled === true,
+            storylineConsultant: appSettings?.agents?.storylineConsultant?.enabled === true,
+            lineEditor: appSettings?.agents?.lineEditor?.enabled === true,
+          }}
           onClose={() => setBetaReaderOpen(false)}
           onNavigateToScene={handleBetaReaderNavigateToScene}
         />
@@ -6176,6 +6311,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         />
       )}
       {/* SKY-5592: outer flex row — GlobalRightSidebar persists across all top-level tabs (Story/Notes/Brainstorm) */}
+      {/* SKY-11211: provides the per-route right-sidebar slot — a page inside
+          this row (e.g. BrainstormPage) can claim GlobalRightSidebar via
+          <RightSidebarSlot> instead of rendering its own second column. */}
+      <RightSidebarSlotProvider>
       <div className="shell-main-row">
       {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active */}
       {tabShell.activeTab === 'story' && (
@@ -6268,7 +6407,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         <div className="shell-timeline">
           {/* SKY-3185 — F5: TimelineRoot owns the mode switcher (Spreadsheet |
               AEON | AEON Track), grouping, and cross-view selection state. */}
-          <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} />
+          <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} wikiLinks={timelineWikiLinks} />
         </div>
       )}
       {activeDockedTabId === null && view === 'structure' && (
@@ -6901,6 +7040,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           }}
           onOpenInNewTab={handleOpenNoteInNewTab}
           onOpenScene={handleOpenGraphScene}
+          onOpenBoard={(folderPath) => applyCrossTabLinkMatch({ kind: 'folder', label: folderPath, folderPath })}
           onBetaRead={betaReadNote}
           onContinuityCheck={continuityCheckNote}
           noteToolbarActions={noteToolbarActions}
@@ -7004,6 +7144,24 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           <VaultGraphView onOpenNote={handleOpenSceneByPath} onOpenScene={handleOpenGraphScene} />
         </div>
       )}
+      {/* SKY-11184: Boards tab — Notes-vault canvas view (BOARDS-SPEC.md §1). */}
+      {tabShell.activeTab === 'boards' && (
+        <div
+          id="app-tabpanel-boards"
+          role="tabpanel"
+          aria-labelledby="app-tab-boards"
+          style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}
+        >
+          <BoardsTabPanel
+            notesVaultRoot={vaultBinding.notesPath}
+            notesVaultValid={vaultBinding.notesValid}
+            minZoom={appSettings?.notesBoard?.minZoom}
+            openFolderRequest={boardsFolderRequest}
+            onOpenNote={handleOpenSceneByPath}
+            notePaths={allNotePaths}
+          />
+        </div>
+      )}
       {/* SKY-1686: Global right sidebar — only rendered once rightSidebarVisible is known from settings.
            undefined = settings not yet loaded or not seeded → omit entirely so layout is unchanged.
            This prevents the collapsed-edge strip from narrowing sibling views (e.g. timeline) before
@@ -7036,7 +7194,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           idleDebounceSeconds={appSettings?.agents?.writingAssistant?.idleDebounceSeconds}
           isActive={view === 'editor'}
           isPageFocused={view === 'editor'}
-          onJumpToText={handleJumpToText}
           autoApply={appSettings?.agents?.writingAssistant?.autoApply ?? false}
           autoApplyCategories={appSettings?.agents?.writingAssistant?.autoApplyCategories}
           onAutoApplyCategoriesChange={handleWaAutoApplyCategoriesChange}
@@ -7138,6 +7295,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
            tab strip — migrateV1Layout now defaults rightSidebarVisible to true, so
            GRS (and with it the tab strip) is present on every fresh profile. */}
       </div>{/* end shell-main-row (SKY-5592: outer row wrapping all tabs + GRS) */}
+      </RightSidebarSlotProvider>
       {ambiguousLink && (
         <div className="cross-tab-link-modal" role="dialog" aria-modal="true" aria-label="Choose link target">
           <div className="cross-tab-link-modal__card">
@@ -7146,7 +7304,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             <div className="cross-tab-link-modal__list">
               {ambiguousLink.matches.map((match) => (
                 <button
-                  key={match.kind === 'scene' ? `scene-${match.sceneId}` : `entity-${match.entityId}`}
+                  key={crossTabLinkMatchKey(match)}
                   type="button"
                   onClick={() => applyCrossTabLinkMatch(match)}
                 >
@@ -7180,6 +7338,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         onClose={() => setGlobalSearchOpen(false)}
       />
       {promptModal}
+      {createVaultModal}
       {syncModalOpen && (
         <SyncConflictModal
           resolved={syncConflictResolved}
@@ -7226,7 +7385,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 <div className="shell-editor-empty"><p>Select a story to see its Scene Board.</p></div>
               )
             ) : workspaceSplitKind === 'timeline' ? (
-              <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} />
+              <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} wikiLinks={timelineWikiLinks} />
             ) : workspaceSplitKind === 'vault-graph' ? (
               <VaultGraphView onOpenNote={handleOpenSceneByPath} onOpenScene={handleOpenGraphScene} />
             ) : workspaceSplitKind === 'brainstorm' ? (

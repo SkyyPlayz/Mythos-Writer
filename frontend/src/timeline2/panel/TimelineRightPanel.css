@@ -449,6 +449,9 @@
 }
 
 .trp-summary {
+  /* SKY-11615: an inline element now (it wraps [[wiki link]] buttons), so it
+     has to be told to keep the block layout it had as a div. */
+  display: block;
   font-size: 11.5px;
   color: #c3cee2;
   line-height: 1.55;
@@ -927,6 +930,30 @@
 }
 
 .trp-quickadd-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* SKY-10876 M12.B4b: "Rebuild my timeline" command — full-width, secondary to
+   the quick-add so the wholesale rebuild reads as the deliberate action. */
+.trp-rebuild-btn {
+  margin-top: 9px;
+  width: 100%;
+  height: 28px;
+  border-radius: 9px;
+  background: rgba(255, 211, 25, 0.08);
+  border: 1px solid rgba(255, 211, 25, 0.35);
+  color: #ffe680;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trp-rebuild-btn:hover {
+  background: rgba(255, 211, 25, 0.16);
+}
+
+.trp-rebuild-btn:disabled {
   opacity: 0.55;
   cursor: default;
 }

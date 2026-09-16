@@ -2,15 +2,13 @@
 
 /* Native <dialog> backdrop */
 .ntd-dialog::backdrop {
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--scrim);
   backdrop-filter: blur(2px);
 }
 
+/* Chrome comes from `.ln-overlay-surface` (overlay-tier.css, SKY-11450). */
 .ntd-dialog {
-  background: var(--color-surface, #12161e);
-  border: 1px solid var(--color-border, rgba(0, 240, 255, 0.18));
-  border-radius: 10px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(0, 240, 255, 0.08);
+  border-radius: var(--radius-sm);
   color: var(--color-text, #e6eaf0);
   max-width: 480px;
   width: 100%;
@@ -95,7 +93,7 @@
 }
 
 .ntd-select option {
-  background: var(--color-surface-raised, #1a1f2e);
+  background: var(--bg-elevated);
   color: var(--color-text, #e6eaf0);
 }
 

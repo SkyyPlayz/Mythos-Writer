@@ -11,6 +11,7 @@ import Dialog, {
 } from './ui/Dialog';
 import { Button } from './ui/Button';
 import { useTextPrompt } from '../useTextPrompt';
+import { useNotesVaultLinkGate } from '../hooks/useNotesVaultLinkGate';
 
 interface NotesVaultEntry {
   id: string;
@@ -25,27 +26,17 @@ interface NotesVaultPickerProps {
   onImportVault?: () => void;
 }
 
-interface LinkReport {
-  resolvedCount: number;
-  unresolvedStems: string[];
-  totalStems: number;
-}
-
-interface PendingSwitch {
-  entry: NotesVaultEntry;
-  report: LinkReport;
-}
-
 export default function NotesVaultPicker({ onImportVault }: NotesVaultPickerProps = {}) {
   const [vaults, setVaults] = useState<NotesVaultEntry[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [pending, setPending] = useState<PendingSwitch | null>(null);
-  const [switching, setSwitching] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
   // window.prompt is unsupported in Electron ("prompt() is not supported") —
   // useTextPrompt renders the in-app modal replacement instead.
   const { requestText, promptModal } = useTextPrompt();
+  // SKY-11154: the broken-wikilink preview-then-confirm gate, shared with the
+  // Settings-page Notes/Story columns via useNotesVaultLinkGate.
+  const { pending, busy: switching, requestGatedSwitch, confirm: confirmSwitch, cancel: cancelSwitch } = useNotesVaultLinkGate();
 
   const load = useCallback(async () => {
     const result = await window.api?.notesVaultRegistryList?.();
@@ -100,29 +91,9 @@ export default function NotesVaultPicker({ onImportVault }: NotesVaultPickerProp
       const target = vaults.find((v) => v.id === targetId);
       if (!target) return;
 
-      // Get the link resolution preview before switching.
-      const report = await window.api?.notesVaultRegistrySetActivePreview?.(targetId);
-      if (!report) return;
-
-      if (report.totalStems === 0) {
-        // No links in story — switch immediately, no dialog needed.
-        await window.api?.notesVaultRegistrySetActive?.(targetId);
-        return;
-      }
-
-      // Show the confirm dialog with the report.
-      setPending({ entry: target, report });
-    }
-  };
-
-  const handleConfirmSwitch = async () => {
-    if (!pending) return;
-    setSwitching(true);
-    try {
-      await window.api?.notesVaultRegistrySetActive?.(pending.entry.id);
-    } finally {
-      setSwitching(false);
-      setPending(null);
+      await requestGatedSwitch(targetId, target.displayName, async (id) => {
+        await window.api?.notesVaultRegistrySetActive?.(id);
+      });
     }
   };
 
@@ -160,13 +131,13 @@ export default function NotesVaultPicker({ onImportVault }: NotesVaultPickerProp
       {pending && (
         <Dialog
           open
-          onClose={() => setPending(null)}
+          onClose={cancelSwitch}
           aria-labelledby="nvp-dialog-title"
           aria-describedby="nvp-dialog-body"
           testId="notes-vault-switch-dialog"
         >
-          <DialogHeader onClose={() => setPending(null)}>
-            <span id="nvp-dialog-title">Switch to &ldquo;{pending.entry.displayName}&rdquo;?</span>
+          <DialogHeader onClose={cancelSwitch}>
+            <span id="nvp-dialog-title">Switch to &ldquo;{pending.targetDisplayName}&rdquo;?</span>
           </DialogHeader>
           <DialogBody id="nvp-dialog-body">
             <p>
@@ -193,12 +164,12 @@ export default function NotesVaultPicker({ onImportVault }: NotesVaultPickerProp
             )}
           </DialogBody>
           <DialogFooter>
-            <Button variant="secondary" onClick={() => setPending(null)} disabled={switching}>
+            <Button variant="secondary" onClick={cancelSwitch} disabled={switching}>
               Cancel
             </Button>
             <Button
               variant="primary"
-              onClick={() => void handleConfirmSwitch()}
+              onClick={() => void confirmSwitch()}
               disabled={switching}
               data-testid="notes-vault-switch-confirm"
             >

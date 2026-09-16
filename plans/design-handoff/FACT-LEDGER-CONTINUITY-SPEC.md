@@ -571,9 +571,108 @@ on top. No adjacency diff, no flags, no UI beyond a bare job summary. This is th
 sequencing instruction, restated as a hard gate: *"ledger scan + adjacency diff before any
 judgment passes, so we can measure extraction fidelity before building on top of it."*
 
+#### Phase 1 sub-design: coreference resolution (SKY-11317)
+
+**Constraint (SKY-10666 binding, `factLedger.acceptance.test.ts` AC4):** no separate
+matcher, no separate lookup table. Reuse `wikiLinks.ts`/`vaultGraph.ts` resolution exactly
+as the notes-side pipeline already does. Do not build a second alias store.
+
+**Build gate:** coreference code ships *with* Phase 1, and only after Phase 0 sign-off.
+
+**What it is.** The BlindExtractor receives `knownEntityNames: string[]` — the extractor
+prompt maps every mention to a canonical entity name. That array today is described as
+"names/aliases ONLY — never values, never other facts." Coreference resolution extends what
+populates that array and how the extractor uses it; it does not change the interface shape.
+
+**How it extends Phase 1 (interface delta):**
+
+```ts
+// Existing ExtractorInput — no structural change.
+// The orchestrator now populates knownEntityNames via vault-graph alias resolution:
+//
+//   knownEntityNames = resolveAliases(vaultGraph, entityNames)
+//     // for each entity in scope: entity canonical name + all known aliases,
+//     // pronouns, and shorthand references as registered in wikiLinks.ts.
+//
+// The extractor prompt instructs the model to map every pronoun / shorthand
+// reference it sees in sceneText to the CANONICAL name from knownEntityNames.
+// The returned subjectName on each fact must be the canonical name, not the
+// pronoun or shorthand that appeared in the text.
+//
+// Concretely, if knownEntityNames includes "Mira (she/her, the captain)" the
+// extractor should resolve "she" and "the captain" to "Mira" in subjectName.
+// The prompt fragment is part of the Phase 1 prompt harness (§4); this is the
+// resolution contract that harness must satisfy.
+
+// ExtractorOutput — no structural change required. subjectName is already the
+// resolved canonical name; coreference just makes resolution more complete.
+```
+
+**What this does NOT introduce:**
+- No new table. Alias resolution lives in `vaultGraph.ts` (existing).
+- No post-extraction re-pass. Resolution happens inside the single extractor call,
+  guided by the prompt. If the LLM fails to resolve a pronoun, Phase 1 fidelity
+  measurement (the §7 golden-fixture harness) will surface that as a gap to fix in §4.
+- No runtime alias store seeded from extraction output — that would be the dropped
+  notes-side ledger pattern (SKY-11035 ruling). Aliases flow only FROM vault graph TO
+  the extractor prompt, never the other direction in this phase.
+
 **Phase 2 — AdjacencyDiff (mechanical).** New-fact and matched-change detection. The ledger
 is now self-building and self-maintaining (§2's "same mechanism" property). Still no
 judgment — unmatched changes are queued, not surfaced to the author yet.
+
+#### Phase 2 sub-design: alias-collision detection (SKY-11317)
+
+**Constraint (SKY-10666 binding, `factLedger.acceptance.test.ts` AC4):** no separate alias
+table. Collision detection reuses the existing `AdjacencyDiffOutput` flag mechanism —
+emit a flag record, not a new table row, exactly as `unmatchedChanges` already does.
+
+**Build gate:** alias-collision code ships *with* Phase 2, and only after Phase 0 sign-off
+AND Phase 1 extraction fidelity has been measured on real manuscripts.
+
+**What it is.** An alias collision is when two distinct entities share a name or alias in the
+vault graph — the same shorthand resolves ambiguously. This is a data-quality signal for the
+author, not a pipeline error. It is detected at diff time (Phase 2), when the orchestrator has
+access to the vault graph and can check whether the `subjectName` returned by extraction is
+canonical and unambiguous.
+
+**How it extends Phase 2 (interface delta):**
+
+```ts
+// Existing AdjacencyDiffOutput — one additive field:
+interface AdjacencyDiffOutput {
+  newFacts: FactRow[];
+  matchedChanges: FactRow[];
+  unmatchedChanges: Array<{ factA: FactRow; factB: FactRow }>;
+  aliasCollisions: AliasCollisionFlag[];  // NEW — empty array when no collisions
+}
+
+interface AliasCollisionFlag {
+  alias: string;                  // the shared name/alias that is ambiguous
+  entityKeys: string[];           // the two (or more) canonical entity keys that claim it
+  affectedFactSubjectName: string; // the subjectName in the current extraction batch that triggered the check
+  sceneId: string;
+}
+// AliasCollisionFlag rows are written to manuscript_fact_flags (§1.4a) with
+// kind = 'alias_collision'. They are produced by AdjacencyDiff, not BoundaryPass —
+// no LLM call required; this is a pure vault-graph lookup against the entity keys
+// in the current batch's ExtractorOutput.
+//
+// Detection: after resolveAliases() maps each subjectName to a canonical key, the
+// orchestrator checks whether any alias maps to more than one key in the current
+// vaultGraph snapshot. If yes → emit AliasCollisionFlag. If the same collision was
+// already flagged in a prior scene pass (manuscript_fact_flags content-hash), the
+// idempotency rule (§1.4) suppresses the duplicate write.
+//
+// Cross-reference: §1.4a manuscript_fact_flags; §2 "same mechanism builds the ledger
+// and checks continuity" — alias collision reuses that flag row path, not a new one.
+```
+
+**What this does NOT introduce:**
+- No new table beyond `manuscript_fact_flags` (§1.4a), which already exists in this spec.
+- No LLM call — pure graph lookup, deterministic, unit-testable without AI infra.
+- No author-facing UI — `manuscript_fact_flags` rows are queued for Phase 3+/Phase 4
+  surface decisions, exactly as `unmatchedChanges` are.
 
 **Phase 3 — BoundaryPass + `manuscript_fact_flags` (§1.4a, §2 Stage 3).** This spec fully
 designs this stage — the ticket's instruction 2 requires all three pipeline stages as real

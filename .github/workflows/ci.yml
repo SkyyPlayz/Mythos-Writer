@@ -28,17 +28,17 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -58,13 +58,13 @@ jobs:
       run-e2e: ${{ steps.filter-e2e.outputs.run-e2e }}
       docs-only: ${{ steps.filter-docs.outputs.docs-only }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Detect changed paths — docs-only (path-based CI optimization)
         id: filter-docs
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             docs-only:
@@ -84,7 +84,7 @@ jobs:
       # docs-only's positive OR patterns need the default 'some' quantifier.
       - name: Detect changed paths — run-e2e (path-based CI optimization)
         id: filter-e2e
-        uses: dorny/paths-filter@v2
+        uses: dorny/paths-filter@v4
         with:
           predicate-quantifier: every
           filters: |
@@ -101,7 +101,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # SKY-1809: reject any tracked filename containing Windows-illegal characters
       # (\, <, >, :, ", |, ?, *) so build-windows can always check out the repo.
@@ -121,14 +121,14 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -150,20 +150,20 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -188,20 +188,20 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -256,7 +256,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: WSL2 power keep-alive — prevent Windows host sleep
         # SKY-2427: GabesPC (WSL2 host) sleeps under default Windows power settings during
@@ -279,14 +279,14 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -313,7 +313,7 @@ jobs:
         # SKY-3872/SKY-4216: switched back to cache/save (separate 10 GB LRU quota)
         # after upload-artifact hit artifact storage quota on run 28113426547.
         # E2E shards fall back to a local rebuild on cache miss (SKY-3742).
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: out/
           key: electron-build-${{ github.run_id }}
@@ -339,7 +339,7 @@ jobs:
     if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: WSL2 power keep-alive — prevent Windows host sleep
         # SKY-6906: GabesPC (WSL2 host) can sleep under default Windows power
@@ -363,14 +363,14 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -394,7 +394,7 @@ jobs:
         run: source scripts/ci-retry.sh && retry node node_modules/electron/install.js
       - name: Restore electron build from cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: out/
           key: electron-build-${{ github.run_id }}
@@ -501,7 +501,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-report-shard-1
-          path: e2e-report/
+          # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
+          # replaces playwright.config's html reporter (outputFolder e2e-report/)
+          # with the CLI default, so e2e-report/ is never written and this step
+          # uploaded nothing on every red run. Failure screenshots and
+          # error-context land in test-results/; upload both.
+          path: |
+            e2e-report/
+            playwright-report/
+            test-results/
           retention-days: 3
 
       - name: Stop WSL2 power keep-alive
@@ -515,7 +523,7 @@ jobs:
           echo "WSL2 sleep prevention stopped."
 
   e2e-shard-2:
-    # Shard 2: writing-assistant-tips, two-vault, notes-vault-registry (SKY-11058), story-vault-registry (SKY-11150), versioned-drafts, entity, title-bar-undo-redo, mythos-migration
+    # Shard 2: writing-assistant-tips, two-vault, notes-vault-registry (SKY-11058), story-vault-registry (SKY-11150), story-vault-picker (SKY-11169), versioned-drafts, entity, title-bar-undo-redo, mythos-migration
     # two-vault-firstrun, notes-tab, archive-agent-mvp, editor-page-chrome, coach-page (SKY-6933 sweep)
     # agent-hub-session-picker (SKY-8537, #1130 — added by SKY-8749 audit, was never wired into CI)
     # notes-split-pane-tab-strips (SKY-9784, rebalanced in from shard-4 by SKY-11045)
@@ -526,7 +534,7 @@ jobs:
     if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: WSL2 power keep-alive — prevent Windows host sleep
         # SKY-6906: see e2e-shard-1 for rationale.
@@ -546,14 +554,14 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -577,7 +585,7 @@ jobs:
         run: source scripts/ci-retry.sh && retry node node_modules/electron/install.js
       - name: Restore electron build from cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: out/
           key: electron-build-${{ github.run_id }}
@@ -618,11 +626,19 @@ jobs:
       # SKY-11150: story-vault registry across the renderer↔main IPC boundary —
       # fresh profile, story-vaults.json NOT pre-seeded (lazy migration on first
       # open), then create → pair → restart-persistence. Drives the preload API
-      # directly because the story-vault *picker UI* is a separate follow-up
-      # (see SKY-11150 report); the registry substrate itself is exercised
-      # end-to-end, never pre-seeded (§4c).
+      # directly (registry substrate only, no UI) — the picker UI reachability
+      # E2E is the SKY-11169 step below.
       - name: E2E — Story-vault registry migrate/create/pair/restart (SKY-11150)
         run: xvfb-run --auto-servernum npm run test:e2e:story-vault-registry
+
+      # SKY-11169 reachability: fresh profile → create a second story vault via
+      # the LeftRail picker UI → switch active → rename → pair to a notes
+      # vault → relaunch → still active/paired. The second vault is
+      # user-created through the real UI, never pre-seeded (§4c). Also proves
+      # the storyVaultRootFor v2-gate fix (a non-default dirname must keep
+      # resolving after a switch, not silently demote to legacy-vault mode).
+      - name: E2E — Story-vault picker UI reachability (SKY-11169)
+        run: xvfb-run --auto-servernum npm run test:e2e:story-vault-picker
 
       - name: E2E — Vault-creation primitive template/blank/import reachability (SKY-11151)
         run: xvfb-run --auto-servernum npm run test:e2e:vault-create-primitive
@@ -650,6 +666,9 @@ jobs:
 
       - name: E2E — Notes tab (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:notes-tab
+
+      - name: E2E — Per-vault open-tab isolation across a real switch (SKY-11236)
+        run: xvfb-run --auto-servernum npm run test:e2e:per-vault-tabs
 
       - name: E2E — Archive agent MVP (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:archive-agent-mvp
@@ -684,10 +703,16 @@ jobs:
       - name: "E2E — Vault Graph + Manuscript Structure show the wallpaper, pixel-verified (SKY-11209)"
         run: xvfb-run --auto-servernum npm run test:e2e:liquid-neon-views
 
+      - name: "E2E — Brainstorm route claims the one global right sidebar, no duplicate column (SKY-11211)"
+        run: xvfb-run --auto-servernum npm run test:e2e:brainstorm-sidebar-slot
+
       - name: E2E — Notes split per-pane tab strips (SKY-9784)
         # SKY-11045: rebalanced off shard-4 (was ~2x shards 1-3 in step count
         # and wall-clock — see PR description for measurements)
         run: xvfb-run --auto-servernum npm run test:e2e:notes-split-pane-tab-strips
+
+      - name: "E2E — Notes Board canvas shell: reachability, drag persistence, no-cap layout, rename-follows (SKY-11184/SKY-11335)"
+        run: xvfb-run --auto-servernum npm run test:e2e:notes-board-canvas
 
       - name: Upload E2E report on failure
         if: failure()
@@ -695,7 +720,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-report-shard-2
-          path: e2e-report/
+          # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
+          # replaces playwright.config's html reporter (outputFolder e2e-report/)
+          # with the CLI default, so e2e-report/ is never written and this step
+          # uploaded nothing on every red run. Failure screenshots and
+          # error-context land in test-results/; upload both.
+          path: |
+            e2e-report/
+            playwright-report/
+            test-results/
           retention-days: 3
 
       - name: Stop WSL2 power keep-alive
@@ -714,6 +747,7 @@ jobs:
     # onboarding-four-paths, panel-system-wave2f, proposal-card-hover, provider-settings (SKY-6933 sweep)
     # scene-save-perf (SKY-6198), timeline-archive-quickadd (SKY-8266/SKY-8286)
     # paragraph-editing (SKY-8564), jobs-responsiveness (SKY-10768)
+    # timeline-rebuild (SKY-10876/M12.B4b)
     # SKY-8090: skip if diff cannot affect these tests (e.g., docs-only changes)
     needs: [build-electron, paths-filter]
     runs-on: ubuntu-latest
@@ -721,7 +755,7 @@ jobs:
     if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: WSL2 power keep-alive — prevent Windows host sleep
         # SKY-6906: see e2e-shard-1 for rationale.
@@ -741,14 +775,14 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -772,7 +806,7 @@ jobs:
         run: source scripts/ci-retry.sh && retry node node_modules/electron/install.js
       - name: Restore electron build from cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: out/
           key: electron-build-${{ github.run_id }}
@@ -869,6 +903,12 @@ jobs:
       - name: E2E — Timeline Archive quick-add IPC->disk (SKY-8266)
         run: xvfb-run --auto-servernum npm run test:e2e:archive-quickadd
 
+      - name: E2E — "Rebuild my timeline" command IPC->disk (SKY-10876/M12.B4b)
+        run: xvfb-run --auto-servernum npm run test:e2e:timeline-rebuild
+
+      - name: E2E — Timeline event wiki-links resolve + navigate (SKY-11615)
+        run: xvfb-run --auto-servernum npm run test:e2e:timeline-wikilinks
+
       - name: E2E — Paragraph split/merge/grip-drag reorder IPC->disk (SKY-8564)
         run: xvfb-run --auto-servernum npm run test:e2e:paragraph-editing
 
@@ -881,7 +921,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-report-shard-3
-          path: e2e-report/
+          # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
+          # replaces playwright.config's html reporter (outputFolder e2e-report/)
+          # with the CLI default, so e2e-report/ is never written and this step
+          # uploaded nothing on every red run. Failure screenshots and
+          # error-context land in test-results/; upload both.
+          path: |
+            e2e-report/
+            playwright-report/
+            test-results/
           retention-days: 3
 
       - name: Stop WSL2 power keep-alive
@@ -909,7 +957,7 @@ jobs:
     if: needs.paths-filter.outputs.run-e2e == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: WSL2 power keep-alive — prevent Windows host sleep
         # SKY-6906: see e2e-shard-1 for rationale.
@@ -929,14 +977,14 @@ jobs:
         run: git submodule deinit --all -f 2>/dev/null || true
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Cache node_modules
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -960,7 +1008,7 @@ jobs:
         run: source scripts/ci-retry.sh && retry node node_modules/electron/install.js
       - name: Restore electron build from cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: out/
           key: electron-build-${{ github.run_id }}
@@ -1024,6 +1072,12 @@ jobs:
       - name: E2E — Writing Assistant panel AC-WA-01..27 (SKY-2633)
         run: xvfb-run --auto-servernum npm run test:e2e:writing-assistant
 
+      - name: E2E — Beta Reader consolidation, real betaReport:run + agent:writing-assistant round trips (SKY-11221/SKY-11401)
+        run: xvfb-run --auto-servernum npm run test:e2e:beta-reader-consolidation
+
+      - name: E2E — production-team roles live end-to-end, reveal-point no-leak proof (SKY-11412/SKY-11411)
+        run: xvfb-run --auto-servernum npm run test:e2e:production-roles
+
       - name: E2E — Outline planning surface AC-OPL-QA-01..09 (SKY-3028)
         run: xvfb-run --auto-servernum npm run test:e2e:outline
 
@@ -1038,6 +1092,9 @@ jobs:
 
       - name: "E2E — Theme export/import round-trip (FULL-SPEC §14 item 9, SKY-8210)"
         run: xvfb-run --auto-servernum npm run test:e2e:theme-export-import
+
+      - name: "E2E — Theme match wallpaper picker: arrows cycle + per-vault persistence (SKY-11589)"
+        run: xvfb-run --auto-servernum npm run test:e2e:wallpaper-picker
 
       - name: E2E — Settings category sub-nav (SKY-6933 sweep, skip-guarded — needs Electron-harness rewrite)
         run: xvfb-run --auto-servernum npm run test:e2e:settings-category-subnav
@@ -1060,6 +1117,9 @@ jobs:
       - name: E2E — Scene editor empty states (SKY-6933 sweep, skip-guarded — stale selector)
         run: xvfb-run --auto-servernum npm run test:e2e:scene-editor-empty-states
 
+      - name: E2E — Scene editor flushes on window close (SKY-11646)
+        run: xvfb-run --auto-servernum npm run test:e2e:scene-quit-flush
+
       - name: E2E — Scene notes add/persist/drag-promote to vault (SKY-9823, M9b)
         run: xvfb-run --auto-servernum npm run test:e2e:scene-notes-promote
 
@@ -1072,7 +1132,15 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: e2e-report-shard-4
-          path: e2e-report/
+          # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
+          # replaces playwright.config's html reporter (outputFolder e2e-report/)
+          # with the CLI default, so e2e-report/ is never written and this step
+          # uploaded nothing on every red run. Failure screenshots and
+          # error-context land in test-results/; upload both.
+          path: |
+            e2e-report/
+            playwright-report/
+            test-results/
           retention-days: 3
 
       - name: Stop WSL2 power keep-alive
@@ -1149,7 +1217,7 @@ jobs:
       cancel-in-progress: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: github.event_name != 'pull_request'
 
       - name: WSL2 power keep-alive — prevent Windows host sleep
@@ -1179,7 +1247,7 @@ jobs:
 
       - name: Set up Node.js
         if: github.event_name != 'pull_request'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -1192,7 +1260,7 @@ jobs:
       - name: Cache node_modules
         if: github.event_name != 'pull_request'
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -1212,7 +1280,7 @@ jobs:
       # Cached independently since it's untouched by the node_modules cache key.
       - name: Cache electron-builder toolchain
         if: github.event_name != 'pull_request'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/electron-builder
           key: electron-builder-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -1340,7 +1408,7 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: github.event_name != 'pull_request'
 
       - name: Deinit stale git submodule registrations
@@ -1348,7 +1416,7 @@ jobs:
 
       - name: Set up Node.js
         if: github.event_name != 'pull_request'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -1360,7 +1428,7 @@ jobs:
       - name: Cache node_modules
         if: github.event_name != 'pull_request'
         id: nm-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             node_modules
@@ -1372,7 +1440,7 @@ jobs:
 
       - name: Cache electron-builder toolchain
         if: github.event_name != 'pull_request'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/AppData/Local/electron-builder/Cache
           key: electron-builder-cache-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
@@ -1462,7 +1530,7 @@ jobs:
         shell: bash
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Deinit stale git submodule registrations
         run: git submodule deinit --all -f 2>/dev/null || true
@@ -1478,7 +1546,7 @@ jobs:
         run: Add-MpPreference -ExclusionPath "$env:TEMP"
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'

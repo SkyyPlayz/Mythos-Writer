@@ -249,3 +249,48 @@ describe('DropdownSelect — Liquid Neon a11y CSS', () => {
     expect(screen.getByTestId('select-option-apple')).toHaveAttribute('aria-selected', 'true');
   });
 });
+
+// ─── Overlay tier (SKY-11492) ─────────────────────────────────────────────────
+//
+// `.ln-select-listbox` shared `.ln-menu`'s off-tier recipe (flat --bg-elevated,
+// neutral hairline, --elev-2). The popup chrome now comes from
+// `.ln-overlay-surface`; the trigger is a form control and keeps its own.
+
+/** Every `<selector> { … }` body in the sheet, top-level or nested in an at-rule. */
+function ruleBodies(css: string, selector: string): string[] {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return Array.from(css.matchAll(new RegExp(`(^|[},])\\s*${escaped}\\s*\\{([^}]*)\\}`, 'gm')), (m) => m[2]);
+}
+
+// Any fill / border (other than radius) / shadow / blur longhand or shorthand.
+const CHROME_PROPERTY = /(^|[;{\s])(background(-[a-z]+)?|border(-(?!radius)[a-z-]+)?|box-shadow|backdrop-filter):/;
+
+describe('DropdownSelect — overlay tier (SKY-11492)', () => {
+  it('renders the listbox on .ln-overlay-surface', () => {
+    renderSelect();
+    fireEvent.click(screen.getByRole('combobox'));
+    expect(screen.getByRole('listbox')).toHaveClass('ln-select-listbox', 'ln-overlay-surface');
+  });
+
+  it('every .ln-select-listbox rule owns geometry only — no fill, border, shadow or blur in any block', () => {
+    const bodies = ruleBodies(SELECT_CSS, '.ln-select-listbox');
+    expect(bodies.length).toBeGreaterThan(0);
+    expect(bodies[0]).toContain('max-height');
+    for (const body of bodies) expect(body).not.toMatch(CHROME_PROPERTY);
+  });
+
+  it('drops the tier glow — a dropdown carries the depth shadow only, like .ln-menu', () => {
+    expect(ruleBodies(SELECT_CSS, '.ln-select-listbox')[0]).toContain('--ln-overlay-glow: transparent');
+  });
+
+  it('high-contrast flattening of the listbox is delegated to the overlay tier', () => {
+    expect(SELECT_CSS).not.toMatch(/\[data-contrast="high"\]\s*\.ln-select-listbox\s*\{/);
+    // The trigger is not a floating surface — it keeps its own solid-border block.
+    expect(SELECT_CSS).toMatch(/\[data-contrast="high"\]\s*\.ln-select-trigger\s*\{/);
+  });
+
+  it('the off-tier recipe (--bg-elevated + --elev-2) is gone from the stylesheet', () => {
+    expect(SELECT_CSS).not.toContain('--bg-elevated');
+    expect(SELECT_CSS).not.toContain('--elev-2');
+  });
+});

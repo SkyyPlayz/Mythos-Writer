@@ -217,7 +217,8 @@ export function categoryAutoApplyThreshold(
 /** Beta 3 M22: default Beta Reader agent settings (also the back-fill for pre-M22 settings files). */
 export const BETA_READER_DEFAULTS: NonNullable<AppSettings['agents']['betaReader']> = {
   enabled: true,
-  model: 'claude-sonnet-4-6',
+  // SKY-11355: '' == "use the provider's Default model" (see AgentDefaultModelField).
+  model: '',
   ...BUDGET_DEFAULTS,
 };
 
@@ -226,9 +227,9 @@ export const DEFAULTS: AppSettings = {
   // M11a (SKY-9160): master AI switch — default on; off = manual mode.
   ai: { enabled: true },
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 30, ...BUDGET_DEFAULTS },
-    brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...BUDGET_DEFAULTS },
-    archive: { enabled: true, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, ...BUDGET_DEFAULTS },
+    writingAssistant: { enabled: true, model: '', scanIntervalSeconds: 30, ...BUDGET_DEFAULTS },
+    brainstorm: { enabled: true, model: '', ...BUDGET_DEFAULTS },
+    archive: { enabled: true, model: '', continuityCheckIntervalSeconds: 60, ...BUDGET_DEFAULTS },
     betaReader: { ...BETA_READER_DEFAULTS },
   },
   theme: 'dark',
@@ -247,9 +248,12 @@ export const BG_POSITIONS = [
   { value: 'bottom right', label: '↘' },
 ];
 
-export function validateApiKey(key: string): string | null {
+// SKY-11219: the sk-ant- prefix check is Anthropic's key format — enforcing
+// it against every provider would reject valid OpenAI/custom keys typed into
+// the provider-aware key field. Defaults to 'anthropic' for existing callers.
+export function validateApiKey(key: string, kind: ProviderKind = 'anthropic'): string | null {
   if (!key) return null;
-  if (!key.startsWith('sk-ant-')) return 'Key must start with sk-ant-';
+  if (kind === 'anthropic' && !key.startsWith('sk-ant-')) return 'Key must start with sk-ant-';
   return null;
 }
 
@@ -284,6 +288,7 @@ export const NAV_RAIL_DEFAULTS: NavRailConfig = {
     { id: 'brainstorm', enabled: true, label: 'Brainstorm', icon: 'brainstorm', order: 3 },
     { id: 'timeline', enabled: true, label: 'Timeline', icon: 'timeline', order: 4 },
     { id: 'vault-graph', enabled: true, label: 'Vault Graph', icon: 'vault-graph', order: 5 },
+    { id: 'boards', enabled: true, label: 'Boards', icon: 'boards', order: 6 },
   ],
   collapsedDefault: false,
   showLabels: true,

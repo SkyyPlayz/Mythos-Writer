@@ -1,0 +1,57 @@
+{
+  "1-keyboard-shortcuts-high-contrast": {
+    "elements": [
+      {
+        "selector": ".ln-overlay-surface",
+        "count": 1,
+        "backgroundColor": "rgb(21, 25, 31)",
+        "backdropFilter": "blur(0px)",
+        "borderTopWidth": "1px",
+        "borderTopColor": "rgb(255, 255, 255)",
+        "boxShadow": "none"
+      }
+    ],
+    "tokens": {
+      "--b1": "rgba(0,240,255,1.000)",
+      "--g1": "rgba(0,240,255,1.000)",
+      "--gs1": "rgba(0,240,255,0.310)",
+      "--bh": "rgba(0,240,255,0.550)",
+      "--glowH": "0 0 30px -7px rgba(0,240,255,0.590)",
+      "--bwh": "0.5px",
+      "--glass-fill-overlay": "#15191f",
+      "--blur-panel-overlay": "0px"
+    }
+  },
+  "2-scene-crafter-high-contrast": {
+    "elements": [
+      {
+        "selector": ".sc-panel",
+        "count": 2,
+        "backgroundColor": "rgba(255, 255, 255, 0.03)",
+        "backdropFilter": "none",
+        "borderTopWidth": "1px",
+        "borderTopColor": "rgb(255, 255, 255)",
+        "boxShadow": "none"
+      },
+      {
+        "selector": "button.sc-sugg-card",
+        "count": 2,
+        "backgroundColor": "rgba(255, 255, 255, 0.03)",
+        "backdropFilter": "none",
+        "borderTopWidth": "1px",
+        "borderTopColor": "rgb(255, 255, 255)",
+        "boxShadow": "none"
+      }
+    ],
+    "tokens": {
+      "--b1": "rgba(0,240,255,1.000)",
+      "--g1": "rgba(0,240,255,1.000)",
+      "--gs1": "rgba(0,240,255,0.310)",
+      "--bh": "rgba(0,240,255,0.550)",
+      "--glowH": "0 0 30px -7px rgba(0,240,255,0.590)",
+      "--bwh": "0.5px",
+      "--glass-fill-overlay": "#15191f",
+      "--blur-panel-overlay": "0px"
+    }
+  }
+}

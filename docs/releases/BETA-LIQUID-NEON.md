@@ -144,7 +144,7 @@ Specs for each are below in this doc; the prototype +
 ### M2 · Presets + wallpapers + ambience
 **Spec:** §1 presets list; PROTOTYPE-MAP §C for exact hexes and animations.
 **Repo files:** new `frontend/src/theme/presets.ts`, new `frontend/src/theme/AmbienceLayer.tsx` (+css), asset `frontend/src/assets/cosmic-bg.webp` (from handoff), existing bg-image IPC (`loadBgImage`/save) for custom wallpaper upload.
-**Build:** 10 presets (Neon Classic, Aurora, Cyberpunk, Sunset Coast, Emberfall, Ice Mono, Verdant Reach, Royal Arcana, Noir Rose, Winterlight), each = 6 slot colors + background + its own animated ambience (stardust/motes/rain/embers/snow/spores/sparkles/rose dust/snowfall) + idle border animation. Wallpaper modes: Theme match / custom upload / No background.
+**Build:** 10 presets (Neon Nebula, Aurora, Cyberpunk, Sunset Coast, Emberfall, Ice Mono, Verdant Reach, Royal Arcana, Noir Rose, Winterlight), each = 6 slot colors + background + its own animated ambience (stardust/motes/rain/embers/snow/spores/sparkles/rose dust/snowfall) + idle border animation. Wallpaper modes: Theme match (cycles the preset's bundled wallpapers, SKY-11589) / custom upload. (`No background` removed by owner directive SKY-11589.)
 **Accepts when:** selecting a preset swaps colors+background+ambience in one click and matches the prototype side-by-side; ambience respects `prefers-reduced-motion`; custom wallpaper survives restart.
 
 ### M3 · Neon animation + frame ring + transparent window

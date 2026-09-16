@@ -66,6 +66,8 @@ Tokens are inline CSS custom properties on the theme host (`{{ themeStyle }}`, H
 | `--wp` | `wps[wp]` (3965; defs 3939–3947) | `url('assets/cosmic-bg.webp')` |
 | `--wpsize` | `wp==='none' ? '26px 26px' : 'cover'` (3965) | `cover` |
 
+The **hairline set** is newer than this prototype: `--bwh` `max(.5, glowW/2)+'px'` · `--grh` `round(glowR/2)+'px'` · `--bh` `hexA(c1, (.3+.4*I)/2)` · `--glowH` `'0 0 '+round(glowR/2)+'px -7px '+hexA(c1, (.18+.5*I)/2)` — v2 prototype 5787–5788 / owner report `2026-09-02-design-liquid-neon.dc.html` 7193–7194, ported verbatim by SKY-11491. The overlay tier (`--glass-fill-overlay` / `--blur-panel-overlay`) is not an engine token in any prototype revision: floating surfaces hardcode `rgba(15,19,33,.97)` / `blur(24px)`, which `tokens.css` holds as a fixed recipe (SKY-11491).
+
 Scrim is a separate div: `opacity = scrim/100` over `#04050b` (3967, rendered 52). Wallpaper CSS per key (3939–3947): `aurora` = 3 radial tints (`c1/.14, c2/.18, c3/.1`) over `linear-gradient(170deg,#0a0d18,#0b0f22 50%,#070910)`; `slate` = `linear-gradient(165deg,#0d1017,#121826 55%,#0b0e17)`; `deep` = flat `#07080d`; `none` = `repeating-conic-gradient(#151a23 0% 25%,#0b0e14 0% 50%)` checkerboard (transparent-window stand-in, `--wpsize` 26px); `custom` = user blob URL; `match` = `cosmic-bg.webp` for `classic`, else generated starfield (6 white radial dots) + tints `c1/.2, c2/.24, c3/.14, c4/.1` + `linear-gradient(168deg,#0a0d16,#0b0f20 52%,#070911)`.
 
 Slot roles (3885; settings 1662–1680): **A** left panel · primary accent, **B** center panel · wiki-links, **C** right panel · agents, **D** warm data · ideas & items, **E** cool data · systems, **F** nav rail · timeline · frame. Curated swatches (2886): `#00f0ff #34ffc8 #3d9bff #9b5fff #c86bff #ff4dff #ff2d95 #ff6b4d #ffd319 #a3ff57 #eaf2ff`.
@@ -76,7 +78,7 @@ Palettes `this.sets` 2872–2882 · idle border animation `this.themeAnim` 2884 
 
 | Key | Name | Slots A–F | Ambience (layers 1/2) | Idle border anim |
 |---|---|---|---|---|
-| `classic` | Neon Classic | `#00f0ff #9b5fff #ff4dff #ff9a3d #2fe6c8 #3d9bff` | `lnRise` 46s/70s, `rgba(255,255,255,.75)` / `hexA(c2,.5)`, op .4/.28, 1.8×1.8 | `lnBreathe 4.6s ease-in-out` |
+| `classic` | Neon Nebula | `#00f0ff #9b5fff #ff4dff #ff9a3d #2fe6c8 #3d9bff` | `lnRise` 46s/70s, `rgba(255,255,255,.75)` / `hexA(c2,.5)`, op .4/.28, 1.8×1.8 | `lnBreathe 4.6s ease-in-out` |
 | `aurora` | Aurora | `#34ffc8 #00d4ff #a78bfa #ffd97a #5f8bff #8ad9ff` | `lnRise` 40/64s, `c1/.55`+`c2/.45`, .42/.3, 2×2 | `lnHueSoft 9s linear` |
 | `cyber` | Cyberpunk | `#ff2d95 #ffd319 #00e5ff #b4ff39 #8a5cff #ff6b4d` | `lnSnow` 7/11s, `c1/.55`+`c3/.45`, .35/.25, 1.4×15 (rain) | `lnFlicker 3.4s steps(1,end)` |
 | `sunset` | Sunset Coast | `#ff9a3d #ff4d88 #b06bff #ffd319 #ff6b4d #ffe680` | `lnRise` 26/40s, `c4/.6`+`c1/.5`, .45/.3, 2×2.4 | `lnBreathe 6.5s ease-in-out` |

@@ -1,0 +1,90 @@
+/**
+ * SKY-11186 — note-card thumbnail slot (BOARDS-SPEC v2 §6/§9).
+ *
+ * Mockup: owner report, scripts 8086 (board card thumb) / 9591 (editor cover):
+ *
+ *   thumb     background: linear-gradient(150deg, slot1@.31, slot2@.31);
+ *             border: 1px solid slot1 rim
+ *   glyph     20px image icon, stroke slot1, stroke-width 1.5, opacity .5
+ *   caption   padding 5px 8px; 9px; #dbe4f5; scrim rgba(6,8,15,0 → .8)
+ *
+ * Every token read here is stamped by theme/liquidNeonEngine.ts (--gs1/--gs2
+ * are the slot glow-soft alphas, --b1 the slot-1 rim, --n1 the slot-1 hex,
+ * --bw the rim width), so the placeholder repaints with the user's accents.
+ * The CALLER owns size and radius — the wrapper only inherits them.
+ */
+.note-thumb {
+  position: relative;
+  overflow: hidden;
+  border-radius: inherit;
+  box-sizing: border-box;
+}
+
+/* Placeholder block, shared by the loading and fallback states. */
+.note-thumb[data-thumb-state='loading'],
+.note-thumb[data-thumb-state='unavailable'] {
+  background: linear-gradient(150deg, var(--gs1, rgb(0 240 255 / 0.31)), var(--gs2, rgb(155 95 255 / 0.31)));
+  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.4));
+}
+
+/* A soft highlight sweeping the placeholder while the derivative decodes. */
+.note-thumb[data-thumb-state='loading']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.08) 50%, transparent 70%);
+  background-size: 200% 100%;
+  animation: note-thumb-shimmer 1.6s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes note-thumb-shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-thumb[data-thumb-state='loading']::after {
+    animation: none;
+  }
+}
+
+.note-thumb__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The fallback glyph — an image outline, never the platform broken-image icon. */
+.note-thumb__glyph {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translate(-50%, -50%);
+  fill: none;
+  stroke: var(--n1, #00f0ff);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.note-thumb__caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 5px 8px;
+  font-size: 9px;
+  line-height: 1.3;
+  color: #dbe4f5;
+  background: linear-gradient(rgb(6 8 15 / 0), rgb(6 8 15 / 0.8));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}

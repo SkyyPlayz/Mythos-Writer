@@ -27,6 +27,9 @@ import {
   type VaultReadResponse,
   type VaultWritePayload,
   type VaultWriteResponse,
+  type BrainstormBoardWritePayload,
+  type BrainstormBoardReadResponse,
+  type BrainstormBoardWriteResponse,
   type VaultListPayload,
   type VaultListResponse,
   type VaultDeletePayload,
@@ -112,6 +115,8 @@ import {
   type WritingScanPayload,
   type BetaReadScanPayload,
   type BetaReportRunPayload,
+  type ProductionRoleRunPayload,
+  type ProductionRoleRunResponse,
   type BetaReportListPayload,
   type BetaReportGetPayload,
   type BetaReport,
@@ -427,6 +432,9 @@ import {
   writeTimelineSettings,
   readArcManifest,
   writeArcManifest,
+  vaultRootHash,
+  NOTES_ASSET_EXT_RE,
+  type NotesWatchEvent,
 } from './vault.js';
 import { readOrderMap, writeOrderMap, rewriteOrderOnMove } from './vaultOrder.js';
 import { upsertRecentProject } from './recentProjects.js';
@@ -442,7 +450,20 @@ import {
   itemRenameNotify as notesBoardItemRenameNotify,
   itemDeleteStub as notesBoardItemDeleteStub,
   flushPendingNotesBoardWrites,
+  // SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5).
+  createBoardItem as notesBoardCreateItem,
+  boardItemRenameTarget as notesBoardRenameTarget,
 } from './notesBoard.js';
+// SKY-11186 (Notes Board 6/9): note thumbnails — see noteThumbnails.ts.
+import {
+  resolveNoteThumbs,
+  getThumb as getNoteThumb,
+  putThumb as putNoteThumb,
+  noneThumbInfo,
+  MAX_THUMB_RESOLVE_BATCH,
+  THUMB_CACHE_DIR_NAME,
+  type NoteThumbInfo,
+} from './noteThumbnails.js';
 import {
   ensureVaultSeeded,
   STORY_VAULT_SEED_LAYOUT,
@@ -453,6 +474,11 @@ import {
 // Beta 4 M5 — MythosVault (v2) format + version gate + migration wizard.
 import { resolveManifestPath, mythosRootForStoryVault, agentVaultRootFor } from './mythosFormat/mythosJson.js';
 import { migrateSessionsToAgentVault } from './mythosFormat/agentSessions.js';
+import {
+  readBrainstormBoard,
+  writeBrainstormBoard,
+  migrateBrainstormBoardToAgentVault,
+} from './mythosFormat/brainstormBoardFile.js';
 import {
   scanMythosStoryVault,
   syncCanonicalFromManifest,
@@ -465,21 +491,29 @@ import { createVaultFromOptions } from './mythosFormat/createVaultFromOptions.js
 // SKY-11058: notes vault registry
 import {
   ensureNotesVaultRegistry,
+  readNotesVaultRegistry,
   createNotesVaultFromOptions,
   registerImportedNotesVault,
   setActiveNotesVault,
   renameNotesVault,
+  removeNotesVault,
   getActiveNotesVaultPath,
   notesVaultAbsPath,
   buildLinkResolutionReport,
 } from './mythosFormat/notesVaultRegistry.js';
+// SKY-11375: pure resolver for the switch-time Notes Vault (bleed guard).
+import { resolveSwitchNotesRoot } from './switchNotesResolution.js';
 import {
   ensureStoryVaultRegistry,
+  readStoryVaultRegistry,
   createStoryVaultFromOptions,
   setActiveStoryVault,
   renameStoryVault,
+  removeStoryVault,
   pairStoryVaultToNotesVault,
+  storyVaultAbsPath,
 } from './mythosFormat/storyVaultRegistry.js';
+import { remapVaultSettingsPaths } from './vaultPathRemap.js';
 import type {
   NotesVaultRegistryListResponse,
   NotesVaultRegistryCreatePayload,
@@ -515,6 +549,16 @@ import type {
   NotesBoardItemRenameResponse,
   NotesBoardItemDeletePayload,
   NotesBoardItemDeleteResponse,
+  NotesBoardCreateItemPayload,
+  NotesBoardCreateItemResponse,
+  NotesBoardRenameItemPayload,
+  NotesBoardRenameItemResponse,
+  NotesThumbResolvePayload,
+  NotesThumbResolveResponse,
+  NotesThumbGetPayload,
+  NotesThumbGetResponse,
+  NotesThumbPutPayload,
+  NotesThumbPutResponse,
 } from './ipc.js';
 // Beta 4 M29 — Welcome wizard genre starter notes.
 import { isGenreSeedGenre, writeGenreStarterNotes } from './mythosFormat/genreSeed.js';
@@ -579,6 +623,7 @@ import {
   type ManuscriptScene,
 } from './archiveAgent.js';
 import { ingestArchiveQuestions } from './brainstormQuestionQueue.js';
+import { runWikiAutonomyForScene, type WikiAutonomySummary } from './wikiAutonomyRunner.js';
 import {
   runEntityPrePass,
   buildScanPrompt,
@@ -596,6 +641,7 @@ import {
   internalSuggestionToInconsistencyItem,
 } from './archiveContinuityEngine.js';
 import { buildManuscriptSnapshot } from './manuscriptPass.js';
+import { rebuildTimelineFromManuscript } from './timelineRebuild.js';
 import { confirmActionToResolution, dedupeScanItems } from './archiveCommentBridge.js';
 import { scanWikiLinks, acceptWikiLink, rejectWikiLink } from './wikiLinks.js';
 import {
@@ -608,6 +654,7 @@ import { registerVoiceHandlers } from './voice.js';
 import type { KokoroAssets } from './kokoro.js';
 import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
 import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
+import { restartVaultRuntime } from './vaultRuntimeRestart.js';
 import { resolveVaultImportCollisions } from './vaultImportConflict.js';
 import { initSecretsStore, getSecretsStore } from './secrets/index.js';
 import {
@@ -636,7 +683,7 @@ import {
 } from './continuityPeekHandlers.js';
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { collectProjectStats } from './projectStats.js';
-import { collectProjectIcons, setProjectIcon } from './projectIcons.js';
+import { collectProjectIcons, setProjectIcon, setProjectName } from './projectIcons.js';
 import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, anthropicThinkingParam, setAiMasterGate, TokenBudgetExhaustedError, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
@@ -657,6 +704,21 @@ import {
   dbRowToBetaReport,
   dbRowToBetaReportSummary,
 } from './betaReport.js';
+// SKY-11411: reveal-point-filtered entity context for the live Beta Reader path.
+// buildReaderEntityContext strips any entity whose reveal_point is still in the
+// reader's future (the SKY-10741 AC2 spoiler-safety guarantee); buildAuthorEntityContext
+// is the whole-map dossier used only once the reader has finished the story.
+import { buildReaderEntityContext, buildAuthorEntityContext } from './readerPerspective.js';
+import { loadEntityIndex } from './vault/entityIndex.js';
+// SKY-11411: production-team roles go live end-to-end. PRODUCTION_ROLES carries
+// each role's reader/author perspective + lens; buildProductionReviewUserContent
+// composes the role-specific user framing. The system prompt comes from the
+// persona registry (buildAgentSystemPrompt), so nothing here is dead code.
+import {
+  PRODUCTION_ROLES,
+  buildProductionReviewUserContent,
+  type ProductionRoleId,
+} from './productionRoles.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
 import { cleanUninstall } from './uninstallHelper.js';
@@ -721,8 +783,9 @@ import {
   appendSyncEvent,
 } from './cloudSync.js';
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
-import { getBlastRadius, trashVaultFolder } from './vaultSurface.js';
+import { getBlastRadius, trashVaultFolder, pruneRecentProjectsForTrash } from './vaultSurface.js';
 import { shouldQuitOnWindowAllClosed } from './quitGuard.js';
+import { abortInFlightAiStreams, createQuitWatchdog } from './quitShutdown.js';
 const require = createRequire(import.meta.url);
 
 // SKY-3189 (G3): expose packaged state to renderer via process.env so preload can read it
@@ -747,6 +810,15 @@ let quitFlushHandled = false;
 // waiting on it (e.g. Playwright's app.close()) hits its own timeout.
 let quitRequested = false;
 app.on('before-quit', () => { quitRequested = true; });
+
+// SKY-11363: hard, bounded backstop for shutdown (see quitShutdown.ts). The
+// owner hit a Windows app that would not close and had to force-kill it from
+// Task Manager. This watchdog is armed once quit is committed (all windows
+// closed) and force-exits if teardown or a native handle wedges, so the app
+// can never become unclosable. 8s comfortably exceeds normal teardown (which
+// completes in well under a second) yet still guarantees a prompt exit.
+const QUIT_WATCHDOG_MS = 8000;
+const quitWatchdog = createQuitWatchdog(QUIT_WATCHDOG_MS, () => app.exit(0));
 
 // SKY-9973: before the window actually closes, ask the renderer to flush any
 // pending debounced manifest save (scheduleManifestSave's 900ms timer) and
@@ -865,6 +937,10 @@ interface VaultSettings {
   // touches disk — this is purely a UI visibility flag. Keyed by resolved
   // absolute vaultRoot so the match is stable across restarts.
   hiddenVaultRoots?: string[];
+  // SKY-11154: the parent folder holding every Mythos vault, set once the
+  // user runs the Vault & Files "Move…" flow. Absent (the common case) falls
+  // back to defaultMythosVaultsParent().
+  vaultsParentPath?: string;
 }
 
 // SKY-11238: order-stable registration — the persisted list order IS the
@@ -903,6 +979,13 @@ function getVaultSettingsPath(): string {
 
 function getVaultIndexCacheDir(): string {
   return path.join(app.getPath('userData'), 'vault-index-cache');
+}
+
+// SKY-11186: per-vault note-thumbnail derivative cache (noteThumbnails.ts).
+// Same convention as vault-index-cache — under userData, keyed by
+// vaultRootHash so two vaults never share derivatives, disposable/rebuildable.
+function getNoteThumbCacheDir(vaultRoot: string): string {
+  return path.join(app.getPath('userData'), THUMB_CACHE_DIR_NAME, vaultRootHash(vaultRoot));
 }
 
 // SKY-2157 / SKY-2204: Default vault roots live under app.getPath('userData')
@@ -957,6 +1040,13 @@ function defaultMythosVaultsParent(): string {
   return defaultMythosVaultsParentPath(app.getPath('userData'));
 }
 
+// SKY-11154: the CURRENT parent folder holding every Mythos vault — the
+// default unless the user has run the Vault & Files "Move…" flow, which
+// persists the relocated parent in vault-settings.json.
+function getVaultsParentPath(): string {
+  return loadVaultSettings().vaultsParentPath ?? defaultMythosVaultsParent();
+}
+
 // SKY-9: layoutMode resolution. 'imported' (set by the Obsidian importer) is
 // treated as 'blank' here — the importer wrote its own content; we must not
 // scaffold over it. Absent = 'default' for back-compat with installs that
@@ -991,24 +1081,34 @@ const getVaultRoot = () => loadVaultSettings().vaultRoot;
 // manifest to a regenerable cache under `.mythos/` — canonical structure
 // lives in mythos.json + book.md + scene frontmatter (see writeManifest).
 const getManifestPath = () => resolveManifestPath(getVaultRoot());
-const getNotesVaultRoot = () => {
-  // SKY-11058: v2 vaults resolve through the per-vault registry so the
-  // caller always gets the currently-active notes vault path.
-  // ensureNotesVaultRegistry is idempotent and fast after the first call
-  // (reads one JSON file). Legacy v0.4 vaults fall back to the userData
-  // vault-settings entry unchanged.
-  const mythosRoot = mythosRootForStoryVault(getVaultRoot());
-  if (mythosRoot !== null) {
-    try {
-      const registry = ensureNotesVaultRegistry(mythosRoot);
-      const entry = registry.vaults.find((v) => v.id === registry.activeId);
-      if (entry) return notesVaultAbsPath(mythosRoot, entry);
-    } catch {
-      // Fall through to legacy on any registry I/O error.
-    }
+// SKY-11375: the Notes Vault that STRUCTURALLY belongs to `storyVaultRoot` —
+// resolved from THAT vault's own MythosVault registry, independent of whatever
+// vault is currently active. Returns null for a legacy twin-root vault with no
+// registry. This is the authoritative pairing for a v2 vault and the only safe
+// input for a project switch: it never leaks the active (outgoing) vault's
+// notes root into the incoming vault (cross-vault content bleed).
+const notesRootForStoryVault = (storyVaultRoot: string): string | null => {
+  const mythosRoot = mythosRootForStoryVault(storyVaultRoot);
+  if (mythosRoot === null) return null;
+  try {
+    // ensureNotesVaultRegistry is idempotent and fast after the first call
+    // (reads one JSON file); it also heals a brand-new vault that has no
+    // registry yet by writing the default 'Notes Vault' entry.
+    const registry = ensureNotesVaultRegistry(mythosRoot);
+    const entry = registry.vaults.find((v) => v.id === registry.activeId);
+    if (entry) return notesVaultAbsPath(mythosRoot, entry);
+  } catch {
+    // Fall through to null on any registry I/O error.
   }
-  return loadVaultSettings().notesVaultRoot ?? defaultNotesVaultRoot();
+  return null;
 };
+const getNotesVaultRoot = () =>
+  // SKY-11058: v2 vaults resolve through the per-vault registry so the caller
+  // always gets the currently-active notes vault path. Legacy v0.4 vaults fall
+  // back to the userData vault-settings entry unchanged.
+  notesRootForStoryVault(getVaultRoot())
+  ?? loadVaultSettings().notesVaultRoot
+  ?? defaultNotesVaultRoot();
 // SKY-10952: Agent Vault only exists as a sibling inside a v2 MythosVault
 // root. Legacy (twin-root) vaults have no Agent Vault — sessions there keep
 // living under Notes Vault/Sessions/ (pre-existing behavior, out of scope).
@@ -1226,6 +1326,10 @@ function ensureVaultDir() {
     // Notes Vault/Sessions/ onto the new Agent Vault/Sessions/ sibling. Cheap
     // no-op once migrated (single existsSync check).
     migrateSessionsToAgentVault(mythosRoot);
+    // SKY-11360: same one-shot move for the brainstorm/idea board, which used
+    // to leak as `Notes Vault/Boards/brainstorm.board.json` in the notes tree.
+    // No-op once migrated; never orphans a populated board.
+    migrateBrainstormBoardToAgentVault(mythosRoot);
     openDb(vaultRoot);
     initJobServiceForVault(vaultRoot);
     const cachePath = getManifestPath();
@@ -1430,11 +1534,21 @@ function notifyVaultChanged(filePath: string) {
 // Fires on external edits (e.g. Obsidian) and schedules an FTS rebuild.
 // SKY-1756: also invalidates the in-memory graph index when link topology changes.
 // Content-only saves do NOT push vault:graph-topology-changed so the renderer graph stays stable.
-function notifyNotesVaultChanged(filePath: string) {
+// SKY-11186: both events carry the notes-vault-relative POSIX path so the
+// renderer can act on the one note, image or board concerned instead of
+// re-asking for everything. An image added or rewritten in place only matters
+// to the thumbnails that show it, so it gets its own event and skips the
+// reindex + graph work a note change needs.
+function notifyNotesVaultChanged(filePath: string, event?: NotesWatchEvent) {
   if (mainWindow && !mainWindow.isDestroyed()) {
+    const relPath = path.relative(getNotesVaultRoot(), filePath).split(path.sep).join('/');
+    if ((event === 'add' || event === 'change') && NOTES_ASSET_EXT_RE.test(filePath)) {
+      mainWindow.webContents.send('vault:notes-asset-changed', { path: relPath });
+      return;
+    }
     scheduleReindex();
     const topologyChanged = handleNoteFileChanged(getNotesVaultRoot(), filePath);
-    mainWindow.webContents.send('vault:notes-updated', { count: 1 });
+    mainWindow.webContents.send('vault:notes-updated', { count: 1, path: relPath });
     if (topologyChanged) {
       mainWindow.webContents.send('vault:graph-topology-changed', {});
     }
@@ -1474,6 +1588,64 @@ function notifyRenameCascadeApplied(changedStoryPaths: string[]) {
     for (const rel of changedStoryPaths) {
       mainWindow.webContents.send('vault:file-changed', { path: rel });
     }
+  }
+}
+
+/**
+ * The one notes-vault rename implementation. Shared verbatim by the Notes
+ * tab's NOTES_VAULT_MOVE and by the Boards canvas's NOTES_BOARD_RENAME_ITEM
+ * (SKY-11187) — two entry points, one wikilink cascade, one manual-order
+ * rewrite, one icon rewrite. Callers sandbox both paths before calling.
+ */
+function renameNotesVaultEntry(fromPath: string, toPath: string): VaultMoveResponse {
+  const root = getNotesVaultRoot();
+  // SKY-10712: a stem-changing note rename cascade-updates inbound
+  // [[wikilinks]] across both vaults (Obsidian's "Automatically update
+  // internal links"); plain moves/folder renames pass straight through.
+  const result = renameNoteWithCascade({
+    notesRoot: root,
+    storyRoot: getVaultRoot(),
+    fromPath,
+    toPath,
+    onProgress: (p) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('notesVault:renameCascade:progress', p);
+      }
+    },
+  });
+  // SKY-8891: keep the manual-order store in step with the rename — same
+  // handler as the filesystem move so the two can't diverge. A moved
+  // folder's descendants keep their manual order via prefix rewrite.
+  if (result.moved) {
+    const rewritten = rewriteOrderOnMove(readOrderMap(root), fromPath, toPath);
+    if (rewritten) writeOrderMap(root, rewritten);
+    // SKY-9310: icon assignments survive rename/move — the filename never
+    // encodes the icon, so only this sidecar's key needs to follow.
+    const rewrittenIcons = rewriteIconsOnMove(readIconMap(root), fromPath, toPath);
+    if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
+  }
+  if (result.linkUpdate) notifyRenameCascadeApplied(result.linkUpdate.changedStoryPaths);
+  return result;
+}
+
+/**
+ * SKY-11187 (§1 "two renderings of one filesystem"): push a Boards-canvas
+ * Store A mutation to every renderer surface that lists the notes vault, so
+ * the Notes tab reflects a canvas create or rename IMMEDIATELY.
+ *
+ * The notes watcher cannot be relied on for this. A canvas create writes
+ * through writeFileAtomic + markSelfWrite, and startNotesVaultWatcher drops
+ * self-written `add` events outright — so a note created on the board would
+ * never reach the tree at all. A rename does emit (via `unlink`), but only
+ * after chokidar's 300 ms awaitWriteFinish window, and on Windows only after
+ * a 500 ms poll tick. Both cases are covered by pushing the same fan-out the
+ * watcher would have done, exactly as notifyRenameCascadeApplied does for
+ * cascade rewrites.
+ */
+function notifyNotesVaultMutatedByApp(relPath: string): void {
+  scheduleReindex();
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('vault:notes-updated', { count: 1, path: relPath });
   }
 }
 
@@ -1975,10 +2147,11 @@ const handlers: IpcHandlers = {
     const settingsKey = SOURCE_AGENT_TO_SETTINGS_KEY[payload.suggestion.source_agent];
     if (settingsKey) {
       const allSettings = loadAppSettings();
-      // Beta 3 M22: betaReader is optional in AppSettings — resolve with defaults.
-      const agentSettings = settingsKey === 'betaReader'
-        ? getBetaReaderSettings(allSettings)
-        : allSettings.agents[settingsKey as Exclude<keyof AppSettings['agents'], 'betaReader'>];
+      // Beta 3 M22 / SKY-11411: betaReader and the production-team roles are all
+      // optional in AppSettings — resolve them against their (default-OFF) defaults.
+      const agentSettings = isOptionalAgentKey(settingsKey)
+        ? getOptionalAgentSettings(allSettings, settingsKey)
+        : allSettings.agents[settingsKey];
       let payloadKind: string | null = null;
       if (payload.suggestion.payload_json) {
         try {
@@ -3051,8 +3224,16 @@ const handlers: IpcHandlers = {
     });
     if (!created.ok) return { ok: false, error: created.error };
 
-    // Opt-in activation: persist paths, add to recents, (re)start watchers so
-    // the freshly created vault is the one the shell opens. Same sequence as
+    // SKY-11452: ALWAYS register the new pair in recents — that list is what
+    // Settings' vault cards / the nav rail render, and what gates
+    // project:switch (MYT-789 allowlist). A create-without-activate caller
+    // (Settings "New vault…" → "Not now") must still see and later switch to
+    // the vault it just made. Registering is not activating: the open vault,
+    // watchers and DB stay untouched unless `activate` is set.
+    addToRecentProjects(created.storyVaultPath, created.notesVaultPath);
+
+    // Opt-in activation: persist paths, (re)start watchers so the freshly
+    // created vault is the one the shell opens. Same sequence as
     // completeWithMythosV2 / open-existing above.
     if (activate) {
       saveVaultSettings({
@@ -3060,7 +3241,6 @@ const handlers: IpcHandlers = {
         notesVaultRoot: created.notesVaultPath,
         layoutMode: 'blank',
       });
-      addToRecentProjects(created.storyVaultPath, created.notesVaultPath);
       ensureVaultDir();
       ensureNotesVaultDir();
       await stopVaultWatcher();
@@ -4691,10 +4871,31 @@ const handlers: IpcHandlers = {
     // M12.B2: Check 2's proposed questions land in Brainstorm's queue, never
     // the continuity-flag store above — distinct artifact class, distinct table.
     ingestArchiveQuestions(result.questions);
+
+    // SKY-11457 / SKY-10740: the scene scan is the one place the wiki reads the
+    // draft, so it is where the tri-state `wikiAutonomy` setting is consulted.
+    // Failures here are contained — a stub the vault refused must never turn a
+    // continuity scan into an error dialog.
+    let wikiAutonomy: WikiAutonomySummary | undefined;
+    try {
+      ensureNotesVaultDir();
+      wikiAutonomy = runWikiAutonomyForScene({
+        sceneText: payload.sceneText,
+        scenePath: payload.scenePath,
+        entities: index.entities,
+        settings: loadAppSettings(),
+        notesVaultRoot: getNotesVaultRoot(),
+        storyVaultRoot: getVaultRoot(),
+      });
+    } catch (err) {
+      console.warn('[wiki-autonomy] scene pass failed:', (err as Error).message);
+    }
+
     return {
       suggestions: result.suggestions,
       inconsistenciesFound: result.inconsistenciesFound,
       wikiLinksFound: result.wikiLinksFound,
+      wikiAutonomy,
     };
   },
 
@@ -5709,6 +5910,20 @@ const handlers: IpcHandlers = {
     return { filePath: result.filePaths[0], cancelled: false };
   },
 
+  [IPC_CHANNELS.PROJECT_NAME_SET]: async (payload: import('./ipc.js').ProjectNameSetPayload) => {
+    // SKY-11453: same allowlist gate as PROJECT_ICON_SET — without it a
+    // compromised renderer could pass any structurally-valid v2 vault path
+    // and get an arbitrary mythos.json write.
+    const gate = checkProjectSwitchGate(payload?.vaultRoot, [
+      getVaultRoot(),
+      ...getRecentProjects().map((p) => p.vaultRoot),
+    ]);
+    if (!gate.ok) {
+      return { ok: false, error: gate.error };
+    }
+    return await setProjectName({ ...payload, vaultRoot: gate.vaultRoot });
+  },
+
   // ─── SKY-11153: Vault surface delete/hide (Recycle Bin semantics) ─────────
 
   [IPC_CHANNELS.VAULT_SURFACE_BLAST_RADIUS]: (payload: import('./ipc.js').VaultSurfaceBlastRadiusPayload) => {
@@ -5731,25 +5946,65 @@ const handlers: IpcHandlers = {
       await stopNotesVaultWatcher();
     }
 
-    // Remove from registry BEFORE trashing — a failed trash must not leave a
-    // dangling registry entry pointing at the now-gone path.
-    if (level === 'mythos') {
+    // Trash via shell.trashItem ONLY — never fs.rm, no fallback. Do this
+    // FIRST: only a confirmed trash may mutate registries/settings below. A
+    // failed trash (permissions, trash disabled, Windows delete-pending
+    // ghost, ...) must leave the folder AND every list the UI reads from
+    // completely untouched — removing the registry entry first would make
+    // the card vanish from the UI even though the folder is still there.
+    const result = await trashVaultFolder(vaultPath);
+    if (!result.trashed) {
+      return result;
+    }
+
+    // SKY-11202: pruneRecentProjectsForTrash handles all three levels,
+    // including clearing a 'notes'-level entry's dangling notesVaultRoot
+    // pointer (the paired Story Vault entry survives, only the pointer is
+    // cleared) instead of leaving it pointing at a now-trashed folder.
+    {
       const current = loadVaultSettings();
-      const remaining = (current.recentProjects ?? []).filter(
-        (p) => !path.resolve(p.vaultRoot).startsWith(vaultPath + path.sep) &&
-               path.resolve(p.vaultRoot) !== vaultPath,
-      );
-      saveVaultSettings({ recentProjects: remaining });
-    } else {
-      const current = loadVaultSettings();
-      const remaining = (current.recentProjects ?? []).filter(
-        (p) => path.resolve(p.vaultRoot) !== vaultPath,
-      );
+      const remaining = pruneRecentProjectsForTrash(current.recentProjects ?? [], vaultPath, level);
       saveVaultSettings({ recentProjects: remaining });
     }
 
-    // Trash via shell.trashItem ONLY — never fs.rm, no fallback.
-    return trashVaultFolder(vaultPath);
+    // SKY-11154: inner notes/story vaults also live in notes-vaults.json /
+    // story-vaults.json (SKY-11058/11150) alongside recentProjects — remove
+    // the matching entry there too so a trashed card does not stay listed
+    // pointing at a now-gone folder. Scoped to the currently active Mythos
+    // vault, matching how the Notes/Story columns list their entries.
+    if (level === 'notes' || level === 'story') {
+      const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+      if (mythosRoot !== null) {
+        if (level === 'notes') {
+          const registry = readNotesVaultRegistry(mythosRoot);
+          const entry = registry?.vaults.find((v) => path.resolve(notesVaultAbsPath(mythosRoot, v)) === vaultPath);
+          if (entry) {
+            removeNotesVault(mythosRoot, entry.id);
+            // A story vault paired to the now-removed notes vault must not
+            // keep pointing at a dangling id.
+            const storyRegistry = readStoryVaultRegistry(mythosRoot);
+            let storyChanged = false;
+            for (const sv of storyRegistry?.vaults ?? []) {
+              if (sv.pairedNotesVaultId === entry.id) {
+                pairStoryVaultToNotesVault(mythosRoot, sv.id, null);
+                storyChanged = true;
+              }
+            }
+            mainWindow?.webContents.send('notesVaultRegistry:changed');
+            if (storyChanged) mainWindow?.webContents.send('storyVaultRegistry:changed');
+          }
+        } else {
+          const registry = readStoryVaultRegistry(mythosRoot);
+          const entry = registry?.vaults.find((v) => path.resolve(storyVaultAbsPath(mythosRoot, v)) === vaultPath);
+          if (entry) {
+            removeStoryVault(mythosRoot, entry.id);
+            mainWindow?.webContents.send('storyVaultRegistry:changed');
+          }
+        }
+      }
+    }
+
+    return result;
   },
 
   [IPC_CHANNELS.VAULT_SURFACE_HIDE]: (payload: import('./ipc.js').VaultSurfaceHidePayload) => {
@@ -5786,6 +6041,91 @@ const handlers: IpcHandlers = {
     return { hiddenVaultRoots: loadVaultSettings().hiddenVaultRoots ?? [] };
   },
 
+  // SKY-11154 — "Vaults folder" row: reveal the parent folder holding every
+  // Mythos vault (distinct from VAULT_REVEAL_FOLDER, which reveals the
+  // active Story Vault).
+  [IPC_CHANNELS.VAULT_SURFACE_REVEAL_VAULTS_PARENT]: async () => {
+    const err = await shell.openPath(getVaultsParentPath());
+    return { opened: err === '' };
+  },
+
+  // SKY-11154 — move the Vaults-folder parent to a new location. Stops the
+  // same watchers/db the 'mythos' level VAULT_SURFACE_TRASH handler stops
+  // (this can be moving the folder containing the currently active vault),
+  // renames the folder, then remaps every persisted absolute path that lived
+  // under the old parent. On any failure the settings are left untouched and
+  // the folder is left exactly where it was.
+  [IPC_CHANNELS.VAULT_SURFACE_MOVE_VAULTS_PARENT]: async (
+    payload: import('./ipc.js').VaultSurfaceMoveVaultsParentPayload,
+  ) => {
+    const oldParent = path.resolve(getVaultsParentPath());
+    const newParentPath = payload?.newParentPath;
+    if (!newParentPath || typeof newParentPath !== 'string' || !path.isAbsolute(newParentPath)) {
+      return { moved: false, error: 'A valid destination folder is required.' };
+    }
+    const destination = path.join(path.resolve(newParentPath), path.basename(oldParent));
+    const resolvedDestination = path.resolve(destination);
+
+    if (resolvedDestination === oldParent) {
+      return { moved: false, error: 'That is already the current Vaults folder.' };
+    }
+    if (fs.existsSync(resolvedDestination)) {
+      return { moved: false, error: 'A folder with that name already exists at the destination.' };
+    }
+    // Refuse a destination inside (or equal to) the folder being moved.
+    if (resolvedDestination === oldParent || resolvedDestination.startsWith(oldParent + path.sep)) {
+      return { moved: false, error: 'The destination cannot be inside the folder being moved.' };
+    }
+    if (!fs.existsSync(oldParent)) {
+      return { moved: false, error: 'The current Vaults folder could not be found.' };
+    }
+
+    stopWritingScanScheduler();
+    await stopBoardWatcher();
+    await stopVaultWatcher();
+    await stopNotesVaultWatcher();
+    closeDb();
+
+    try {
+      fs.mkdirSync(path.resolve(newParentPath), { recursive: true });
+      fs.renameSync(oldParent, resolvedDestination);
+    } catch (err) {
+      // Leave the folder alone on failure (mirrors trashVaultFolder's
+      // discipline) — bail without touching settings. Settings were never
+      // written (saveVaultSettings only runs on success), so getVaultRoot()/
+      // getNotesVaultRoot() still point at the original, unmoved folder.
+      // SKY-11346: reopen the DB (via ensureVaultDir/ensureNotesVaultDir) as
+      // well as restarting the watchers we stopped — closeDb() ran above, and
+      // without this the app is left with getDb() throwing until a restart.
+      const activeRoot = getVaultRoot();
+      const activeNotesRoot = getNotesVaultRoot();
+      await restartVaultRuntime(activeRoot, activeNotesRoot, {
+        ensureVaultDir,
+        ensureNotesVaultDir,
+        startVaultWatcher: (root) => startVaultWatcher(root, notifyVaultChanged),
+        startNotesVaultWatcher: (root) => startNotesVaultWatcher(root, notifyNotesVaultChanged),
+        startWritingScanScheduler,
+      });
+      return { moved: false, error: err instanceof Error ? err.message : String(err) };
+    }
+
+    const current = loadVaultSettings();
+    const remapped = remapVaultSettingsPaths(current, oldParent, resolvedDestination);
+    saveVaultSettings(remapped);
+
+    const newActiveRoot = remapped.vaultRoot ?? getVaultRoot();
+    const newActiveNotesRoot = remapped.notesVaultRoot ?? getNotesVaultRoot();
+    await restartVaultRuntime(newActiveRoot, newActiveNotesRoot, {
+      ensureVaultDir,
+      ensureNotesVaultDir,
+      startVaultWatcher: (root) => startVaultWatcher(root, notifyVaultChanged),
+      startNotesVaultWatcher: (root) => startNotesVaultWatcher(root, notifyNotesVaultChanged),
+      startWritingScanScheduler,
+    });
+
+    return { moved: true, newPath: resolvedDestination };
+  },
+
   [IPC_CHANNELS.PROJECT_SWITCH]: async (payload: ProjectSwitchPayload) => {
     // MYT-789: gate the switch behind the recent-projects allowlist. Without
     // this, a renderer could re-root the vault sandbox at any existing,
@@ -5802,31 +6142,41 @@ const handlers: IpcHandlers = {
     if (!fs.existsSync(newRoot)) {
       return { vaultRoot: getVaultRoot(), switched: false, error: `Path does not exist: ${newRoot}` };
     }
-    // SKY-320: when the caller supplies a Notes Vault, it must match the
-    // paired entry in recent-projects. Cross-pairing (story from entry A,
-    // notes from entry B) is rejected so a compromised renderer cannot
-    // assemble a never-seen pair from the allowlist. When the caller omits
-    // notesVaultRoot, fall back to the paired entry or the legacy default.
-    const pairedNotes = getPairedNotesVaultRoot(newRoot);
-    let newNotesRoot: string;
-    if (payload?.notesVaultRoot != null) {
-      if (typeof payload.notesVaultRoot !== 'string' || payload.notesVaultRoot.length === 0) {
-        return { vaultRoot: getVaultRoot(), switched: false, error: 'notesVaultRoot: must be a non-empty string' };
-      }
-      if (pairedNotes && pairedNotes !== payload.notesVaultRoot) {
-        return {
-          vaultRoot: getVaultRoot(),
-          switched: false,
-          error: 'notesVaultRoot: does not match the paired entry in recent-projects',
-        };
-      }
-      newNotesRoot = payload.notesVaultRoot;
-    } else {
-      newNotesRoot = pairedNotes ?? getNotesVaultRoot();
+    // SKY-11375 / SKY-320: resolve which Notes Vault this switch repoints to.
+    // The incoming vault's OWN structure (its MythosVault notes registry) is
+    // authoritative for a v2 vault; only a legacy twin-root vault falls back to
+    // the recents pairing or (last resort) the active root. The old code fell
+    // back to getNotesVaultRoot() — the OUTGOING vault's notes root — whenever
+    // the incoming vault had no pairing, silently repointing it at another
+    // vault's notes directory (cross-vault content bleed). See
+    // switchNotesResolution.ts for the full rationale + tests.
+    const suppliedNotesRoot: string | null =
+      payload?.notesVaultRoot == null ? null : payload.notesVaultRoot;
+    if (suppliedNotesRoot !== null && (typeof suppliedNotesRoot !== 'string' || suppliedNotesRoot.length === 0)) {
+      return { vaultRoot: getVaultRoot(), switched: false, error: 'notesVaultRoot: must be a non-empty string' };
     }
+    const previousStoryRoot = getVaultRoot();
+    const previousNotesRoot = getNotesVaultRoot();
+    const resolution = resolveSwitchNotesRoot({
+      suppliedNotesRoot,
+      structuralNotesRoot: notesRootForStoryVault(newRoot),
+      pairedNotesRoot: getPairedNotesVaultRoot(newRoot) ?? null,
+      activeNotesRoot: previousNotesRoot,
+    });
+    if (!resolution.ok) {
+      return { vaultRoot: getVaultRoot(), switched: false, error: resolution.error };
+    }
+    const newNotesRoot = resolution.notesVaultRoot;
     if (!fs.existsSync(newNotesRoot)) {
       return { vaultRoot: getVaultRoot(), switched: false, error: `Notes Vault path does not exist: ${newNotesRoot}` };
     }
+    // SKY-11375 AC#4: prove the repoint. One line that shows BOTH roots moving
+    // (or staying) per switch — the single log the ticket asked for to confirm
+    // the notes side actually follows the story side to the target vault.
+    console.log(
+      `[project-switch] SKY-11375 repoint: story ${previousStoryRoot} -> ${newRoot} | ` +
+      `notes ${previousNotesRoot} -> ${newNotesRoot} (notes-source: ${resolution.source})`,
+    );
     // Stop watchers, scheduler, and close current DB before switching
     stopWritingScanScheduler();
     await stopBoardWatcher();
@@ -5995,6 +6345,7 @@ const handlers: IpcHandlers = {
       pathSeparator: path.sep as '/' | '\\',
       defaultVaultsParentPath: defaultMythosVaultsParent(),
       mythosRoot: mythosRootForStoryVault(getVaultRoot()),
+      vaultsParentPath: getVaultsParentPath(),
     };
   },
 
@@ -6058,6 +6409,19 @@ const handlers: IpcHandlers = {
     safeVaultIpcJoin(root, payload.path, true);
     return writeVaultFileAtomic(root, payload.path, payload.content);
   },
+  // SKY-11360: brainstorm/idea board is agent state → Agent Vault, never the
+  // Notes Vault. The main process owns the fixed relpath; the renderer only
+  // supplies the serialized body.
+  [IPC_CHANNELS.BRAINSTORM_BOARD_READ]: (): BrainstormBoardReadResponse => {
+    ensureNotesVaultDir();
+    return readBrainstormBoard(getAgentVaultRoot());
+  },
+  [IPC_CHANNELS.BRAINSTORM_BOARD_WRITE]: (
+    payload: BrainstormBoardWritePayload,
+  ): BrainstormBoardWriteResponse => {
+    ensureNotesVaultDir();
+    return writeBrainstormBoard(getAgentVaultRoot(), payload.content);
+  },
   [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload): VaultListResponse => {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
@@ -6070,16 +6434,17 @@ const handlers: IpcHandlers = {
     const listedRoot = payload.root ? path.join(root, payload.root) : root;
     const filtered = filterNotesListing(items, storyVaultRelPrefix(listedRoot, getVaultRoot()));
     // SKY-10511: Scene Crafter's suggested cards show each note's hook line.
-    // SKY-11049: same bounded read also surfaces a character signal for the
-    // POV picker's vault-wide fallback. Compute both here — one bounded read
-    // per note during the listing, after filtering so story internals are
-    // never opened — instead of per-card IPC round-trips from the renderer
-    // (an N+1 over the vault).
+    // SKY-11049 / SKY-11212: same bounded read also surfaces character/
+    // location/item tag signals for the POV picker's vault-wide fallback and
+    // the board columns' tag-priority categorization. Compute all of it
+    // here — one bounded read per note during the listing, after filtering
+    // so story internals are never opened — instead of per-card IPC
+    // round-trips from the renderer (an N+1 over the vault).
     return {
       items: filtered.map((item) => {
         if (item.isDirectory || !/\.md$/i.test(item.path)) return item;
-        const { excerpt, characterTag } = readNoteListingMeta(path.join(listedRoot, item.path));
-        return { ...item, excerpt, characterTag };
+        const { excerpt, characterTag, locationTag, itemTag } = readNoteListingMeta(path.join(listedRoot, item.path));
+        return { ...item, excerpt, characterTag, locationTag, itemTag };
       }),
     };
   },
@@ -6117,39 +6482,8 @@ const handlers: IpcHandlers = {
     }
     return result;
   },
-  [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload): VaultMoveResponse => {
-    ensureNotesVaultDir();
-    const root = getNotesVaultRoot();
-    safeVaultEntryIpcJoin(root, payload.fromPath);
-    safeVaultEntryIpcJoin(root, payload.toPath);
-    // SKY-10712: a stem-changing note rename cascade-updates inbound
-    // [[wikilinks]] across both vaults (Obsidian's "Automatically update
-    // internal links"); plain moves/folder renames pass straight through.
-    const result = renameNoteWithCascade({
-      notesRoot: root,
-      storyRoot: getVaultRoot(),
-      fromPath: payload.fromPath,
-      toPath: payload.toPath,
-      onProgress: (p) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('notesVault:renameCascade:progress', p);
-        }
-      },
-    });
-    // SKY-8891: keep the manual-order store in step with the rename — same
-    // handler as the filesystem move so the two can't diverge. A moved
-    // folder's descendants keep their manual order via prefix rewrite.
-    if (result.moved) {
-      const rewritten = rewriteOrderOnMove(readOrderMap(root), payload.fromPath, payload.toPath);
-      if (rewritten) writeOrderMap(root, rewritten);
-      // SKY-9310: icon assignments survive rename/move — the filename never
-      // encodes the icon, so only this sidecar's key needs to follow.
-      const rewrittenIcons = rewriteIconsOnMove(readIconMap(root), payload.fromPath, payload.toPath);
-      if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
-    }
-    if (result.linkUpdate) notifyRenameCascadeApplied(result.linkUpdate.changedStoryPaths);
-    return result;
-  },
+  [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload): VaultMoveResponse =>
+    renameNotesVaultEntry(payload.fromPath, payload.toPath),
   // SKY-10712: one-shot undo of the last rename cascade — renames the note
   // back and restores every rewritten file that hasn't been edited since.
   [IPC_CHANNELS.NOTES_VAULT_RENAME_UNDO]: (): RenameCascadeUndoResponse => {
@@ -6969,6 +7303,125 @@ const handlers: IpcHandlers = {
     return notesBoardItemDeleteStub(root, folderPath, payload.itemPath);
   },
 
+  // ─── SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5) ──
+  // The only notesBoard:* channels that touch Store A. Home ('' folderPath)
+  // goes down the identical path as any other board — no root special case.
+  [IPC_CHANNELS.NOTES_BOARD_CREATE_ITEM]: (
+    payload: NotesBoardCreateItemPayload
+  ): NotesBoardCreateItemResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    const kind = payload.kind === 'folder' ? 'folder' : 'note';
+    const pos = payload.position;
+    const position =
+      pos && Number.isFinite(pos.x) && Number.isFinite(pos.y) ? { x: pos.x, y: pos.y } : undefined;
+    const created = notesBoardCreateItem(root, folderPath, kind, position);
+    const vaultPath = folderPath ? `${folderPath}/${created.itemPath}` : created.itemPath;
+    // The name is generated by notesBoard.uniqueChildName from a fixed base,
+    // so it cannot traverse — but hold it to the same boundary every other
+    // notes-vault path crosses rather than trusting that by construction.
+    safeVaultEntryIpcJoin(root, vaultPath);
+    notifyNotesVaultMutatedByApp(vaultPath);
+    return created;
+  },
+  [IPC_CHANNELS.NOTES_BOARD_RENAME_ITEM]: (
+    payload: NotesBoardRenameItemPayload
+  ): NotesBoardRenameItemResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    const fromVaultPath = folderPath ? `${folderPath}/${payload.itemPath}` : payload.itemPath;
+    safeVaultEntryIpcJoin(root, fromVaultPath);
+
+    const itemAbs = path.join(folderPath ? path.join(root, folderPath) : root, payload.itemPath);
+    let isDir: boolean;
+    try {
+      isDir = fs.statSync(itemAbs).isDirectory();
+    } catch {
+      return { error: `Item not found: ${payload.itemPath}` };
+    }
+
+    // §5: renaming to an empty string is a NO-OP — not an error, not a
+    // delete, and never a file left with no name. Same for a name that
+    // resolves to the path the item already has.
+    const toItemPath = notesBoardRenameTarget(
+      payload.itemPath,
+      payload.newName ?? '',
+      isDir ? 'folder' : 'note',
+    );
+    if (toItemPath === null) return { renamed: false };
+
+    const toVaultPath = folderPath ? `${folderPath}/${toItemPath}` : toItemPath;
+    let toAbs: string;
+    try {
+      toAbs = safeVaultEntryIpcJoin(root, toVaultPath);
+    } catch (err) {
+      // A user-typed name that fails the traversal/dotfile guard is a
+      // refusal to show, not a crash to swallow.
+      return { error: (err as Error).message };
+    }
+    // Collision check before the rename: fs.renameSync would silently
+    // clobber an existing FILE on POSIX, and the Notes tab already refuses
+    // this case, so the two surfaces agree.
+    if (fs.existsSync(toAbs)) return { error: 'An item with that name already exists' };
+
+    const result = renameNotesVaultEntry(fromVaultPath, toVaultPath);
+    if (!result.moved) return { renamed: false };
+    notifyNotesVaultMutatedByApp(toVaultPath);
+    return { renamed: true, itemPath: toItemPath };
+  },
+
+  // ─── SKY-11186 (Notes Board 6/9): note thumbnails IPC ──────────────────
+  // Thin bodies — path sandboxing here (safeVaultEntryIpcJoin, same boundary
+  // as NOTES_BOARD_*), all real logic in noteThumbnails.ts. Every path in a
+  // resolve batch is sandboxed individually so one bad path degrades to a
+  // 'none' entry instead of failing the whole board's tiles; get/put treat a
+  // rejected `src` as missing / ok:false rather than throwing — a thumbnail
+  // is decoration, never an error the renderer has to handle.
+  [IPC_CHANNELS.NOTES_THUMB_RESOLVE]: async (
+    payload: NotesThumbResolvePayload
+  ): Promise<NotesThumbResolveResponse> => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const requested = Array.isArray(payload?.paths) ? payload.paths.slice(0, MAX_THUMB_RESOLVE_BATCH) : [];
+    const thumbs: Record<string, NoteThumbInfo> = {};
+    const safePaths: string[] = [];
+    for (const notePath of requested) {
+      if (typeof notePath !== 'string') continue;
+      try {
+        safeVaultEntryIpcJoin(root, notePath);
+        safePaths.push(notePath);
+      } catch {
+        thumbs[notePath] = noneThumbInfo();
+      }
+    }
+    Object.assign(thumbs, await resolveNoteThumbs(root, safePaths));
+    return { thumbs };
+  },
+  [IPC_CHANNELS.NOTES_THUMB_GET]: async (payload: NotesThumbGetPayload): Promise<NotesThumbGetResponse> => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    try {
+      safeVaultEntryIpcJoin(root, payload.src);
+    } catch {
+      return { status: 'missing' };
+    }
+    return getNoteThumb(root, getNoteThumbCacheDir(root), payload.src);
+  },
+  [IPC_CHANNELS.NOTES_THUMB_PUT]: async (payload: NotesThumbPutPayload): Promise<NotesThumbPutResponse> => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    try {
+      safeVaultEntryIpcJoin(root, payload.src);
+    } catch {
+      return { ok: false };
+    }
+    return putNoteThumb(getNoteThumbCacheDir(root), payload.src, payload.version, payload.bytes);
+  },
+
   // ─── SKY-11058: Notes vault registry ────────────────────────────────────
 
   [IPC_CHANNELS.NOTES_VAULT_REGISTRY_LIST]: (): NotesVaultRegistryListResponse => {
@@ -7075,6 +7528,16 @@ const handlers: IpcHandlers = {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
     if (mythosRoot === null) throw new Error('Multi-vault registry requires a v2 Mythos vault');
     const { entry } = setActiveStoryVault(mythosRoot, payload.id);
+    // SKY-11169: keep vault-settings.json + the live watcher in sync so a
+    // picker switch actually re-points the app at the new story vault —
+    // mirrors NOTES_VAULT_REGISTRY_SET_ACTIVE. Before this fix,
+    // storyVaultRootFor() always resolved the literal "Story Vault" dirname
+    // regardless of which entry was active (a lying control).
+    const newVaultRoot = storyVaultAbsPath(mythosRoot, entry);
+    saveVaultSettings({ vaultRoot: newVaultRoot });
+    stopVaultWatcher().catch(() => {}).finally(() => {
+      startVaultWatcher(newVaultRoot, notifyVaultChanged).catch(() => {});
+    });
     mainWindow?.webContents.send('storyVaultRegistry:changed');
     return { entry };
   },
@@ -7438,6 +7901,23 @@ const handlers: IpcHandlers = {
     writeProposalStore(vaultRoot, store);
 
     return { proposals: pendingForScenes(store.proposals, sceneIds) };
+  },
+
+  // SKY-10876 M12.B4b: "Rebuild my timeline" — a SEPARATELY invokable command
+  // (its own channel + report) that rebuilds the active timeline from the
+  // manuscript via the SHARED manuscript-pass primitive. Gated on the Archive
+  // Agent's own enable — deliberately NOT `archiveContinuityEnabled`, so it can
+  // never fire from, or be coupled to, a continuity-check invocation.
+  [IPC_CHANNELS.TIMELINE_REBUILD]: (): import('./ipc.js').TimelineRebuildResponse => {
+    ensureVaultDir();
+    const settings = loadAppSettings();
+    if (!settings.agents.archive.enabled) {
+      return { ok: false, reason: 'Archive Agent is turned off. Enable it in Settings.' };
+    }
+    const vaultRoot = getVaultRoot();
+    const manifest = readManifest(getManifestPath());
+    const { report, store } = rebuildTimelineFromManuscript(vaultRoot, manifest);
+    return { ok: report.ok, report, store };
   },
 
   [IPC_CHANNELS.TIMELINE_PROPOSALS_LIST]: (payload: import('./ipc.js').TimelineProposalsListPayload): import('./ipc.js').TimelineProposalsListResponse => {
@@ -8284,6 +8764,42 @@ function createWindow() {
       });
   });
 
+  // SKY-11363: when a renderer's `beforeunload` handler cancels the unload
+  // (BrainstormPage warns about unsaved work), Electron SILENTLY refuses to
+  // close the window — it shows no dialog of its own — leaving the app
+  // impossible to close except by force-killing it from Task Manager. That is
+  // exactly the owner-reported bug, and it is a data-loss risk for a writing
+  // app. Handling `will-prevent-unload` puts the decision back with the user.
+  mainWindow.webContents.on('will-prevent-unload', (event) => {
+    const win = mainWindow;
+    // A full app quit is already an explicit decision (File → Exit, Cmd+Q, or
+    // a programmatic app.quit() — including Playwright's app.close() in E2E,
+    // which has no human to answer a modal). Never block it on a dialog: allow
+    // the unload straight through. Persisted state (chat sessions, detected
+    // facts) survives; the flush-before-quit handshake drains pending saves.
+    if (!win || quitRequested) {
+      event.preventDefault(); // preventDefault here ALLOWS the unload to proceed
+      return;
+    }
+    // Plain window close (the X button — the owner's path on Windows) with
+    // genuinely-unsaved work: prompt so the app still closes reliably while
+    // giving the user a chance to keep it open.
+    const choice = dialog.showMessageBoxSync(win, {
+      type: 'question',
+      buttons: ['Leave', 'Stay'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+      title: 'Leave without saving?',
+      message: 'You have unsaved work.',
+      detail: 'Changes you have not saved yet may be lost if you leave now.',
+    });
+    if (choice === 0) {
+      event.preventDefault(); // allow the unload → the window closes
+    }
+    // choice === 1 (Stay): do nothing — the unload stays cancelled.
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -8464,21 +8980,40 @@ const SETTINGS_DEFAULTS: AppSettings = {
   waIdleHeartbeatConstantInterval: false,
   waIdleDebounceSeconds: 30,
   agents: {
-    writingAssistant: { enabled: true, model: 'claude-sonnet-4-6', scanIntervalSeconds: 60, cadenceTrigger: 'on_save', idleHeartbeatConstantInterval: false, idleDebounceSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
-    brainstorm: { enabled: true, model: 'claude-sonnet-4-6', ...AGENT_BUDGET_DEFAULTS },
+    // SKY-11355: '' means "use the provider's Default model" — resolved by
+    // getProviderConfigForAgent()'s `agentSettings.model || undefined` fallthrough.
+    // A hardcoded Anthropic model name here silently overrode local providers
+    // (LM Studio/Ollama/etc. would be asked for a model they don't have).
+    writingAssistant: { enabled: true, model: '', scanIntervalSeconds: 60, cadenceTrigger: 'on_save', idleHeartbeatConstantInterval: false, idleDebounceSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
+    brainstorm: { enabled: true, model: '', ...AGENT_BUDGET_DEFAULTS },
     archive: {
       enabled: true,
-      model: 'claude-sonnet-4-6',
+      model: '',
       continuityCheckIntervalSeconds: 60,
       sceneCrafterSuggestions: { enabled: false, cadence: 1800 },
       ...AGENT_BUDGET_DEFAULTS,
     },
     // Beta 3 M22: fourth named agent — reader-eye chapter reads → margin comments.
-    betaReader: { enabled: true, model: 'claude-sonnet-4-6', ...AGENT_BUDGET_DEFAULTS },
+    betaReader: { enabled: true, model: '', ...AGENT_BUDGET_DEFAULTS },
+    // SKY-11411 (SKY-10741 M12.B6): production-team roles. All default OFF (AC1)
+    // — a fresh install never starts calling a provider for these until the
+    // author opts in from Settings > AI Agents.
+    alphaReader: { enabled: false, model: '', ...AGENT_BUDGET_DEFAULTS },
+    storylineConsultant: { enabled: false, model: '', ...AGENT_BUDGET_DEFAULTS },
+    lineEditor: { enabled: false, model: '', ...AGENT_BUDGET_DEFAULTS },
   },
+  // SKY-11241 (AC1): the reader's first voice should be the good one — Kokoro
+  // ships bundled and in-process (SKY-11243), so it needs no setup step to be
+  // the fresh-install default. Only applied when no settings file (or no
+  // `voice` block) exists yet; an install that already saved `voice` keeps
+  // whatever ttsVoiceId (or its absence) it already has.
+  voice: { enabled: false, cloudFallback: false, ttsVoiceId: 'kokoro:nicole' },
   theme: 'dark',
   snapshots: { maxPerScene: 100, maxAgeDays: 30 },
   updateChannel: 'stable',
+  // SKY-10878 M12.B5b: default the self-building wiki to "always ask" so it
+  // never writes to the vault without author approval.
+  wikiAutonomy: 'ask',
   archiveContinuityEnabled: true,
   archiveScanOnSave: true,
   archiveScanScope: 'active_scene',
@@ -8489,6 +9024,9 @@ const SETTINGS_DEFAULTS: AppSettings = {
   archiveCheckFactualContradict: true,
   archiveScanBudget: 8000,
   archiveStoryEditConsentGiven: false,
+  // SKY-11186: Notes Board zoom-out limit — the spec §6 default; a visible
+  // performance setting (owner ruling 4), adjustable in Settings → Editor.
+  notesBoard: { minZoom: 40 },
   // rightSidebarVisible/Width/Panels are intentionally absent from defaults so
   // DesktopShell keeps grsVisible=undefined until the user explicitly opens the
   // new global sidebar. This prevents the old per-view RightSidebar and the new
@@ -8501,12 +9039,31 @@ const SOURCE_AGENT_TO_SETTINGS_KEY: Record<string, keyof AppSettings['agents']> 
   'brainstorm': 'brainstorm',
   'archive': 'archive',
   'beta-reader': 'betaReader',
+  // SKY-11411: production-team roles (source_agent ids used for budget enforcement).
+  'alpha-reader': 'alphaReader',
+  'storyline-consultant': 'storylineConsultant',
+  'line-editor': 'lineEditor',
 };
 
 /** Beta 3 M22: betaReader is optional in AppSettings (pre-M22 files); resolve with defaults. */
 function getBetaReaderSettings(settings: AppSettings): NonNullable<AppSettings['agents']['betaReader']> {
   return settings.agents.betaReader
     ?? (SETTINGS_DEFAULTS.agents.betaReader as NonNullable<AppSettings['agents']['betaReader']>);
+}
+
+/**
+ * SKY-11411: the production-team roles share betaReader's optional shape
+ * ({ enabled; model; provider? } & AgentBudgetSettings) and, like it, may be
+ * absent on pre-SKY-11411 settings files — resolve them against the default-OFF
+ * defaults so callers always get a concrete settings object.
+ */
+type OptionalAgentKey = 'betaReader' | 'alphaReader' | 'storylineConsultant' | 'lineEditor';
+function getOptionalAgentSettings(
+  settings: AppSettings,
+  key: OptionalAgentKey,
+): NonNullable<AppSettings['agents'][OptionalAgentKey]> {
+  return (settings.agents[key]
+    ?? SETTINGS_DEFAULTS.agents[key]) as NonNullable<AppSettings['agents'][OptionalAgentKey]>;
 }
 
 function getAppSettingsPath(): string {
@@ -8542,6 +9099,12 @@ function loadAppSettings(): AppSettings {
           archive: { ...SETTINGS_DEFAULTS.agents.archive, ...(rawAgents.archive ?? {}) },
           // Beta 3 M22: back-fill for pre-M22 settings files (key absent on disk).
           betaReader: { ...(SETTINGS_DEFAULTS.agents.betaReader as NonNullable<AppSettings['agents']['betaReader']>), ...(rawAgents.betaReader ?? {}) },
+          // SKY-11411: back-fill the production-team roles for pre-SKY-11411 files
+          // (keys absent on disk) so getProviderConfigForAgent / the run handler
+          // always see a full, default-OFF settings object.
+          alphaReader: { ...(SETTINGS_DEFAULTS.agents.alphaReader as NonNullable<AppSettings['agents']['alphaReader']>), ...(rawAgents.alphaReader ?? {}) },
+          storylineConsultant: { ...(SETTINGS_DEFAULTS.agents.storylineConsultant as NonNullable<AppSettings['agents']['storylineConsultant']>), ...(rawAgents.storylineConsultant ?? {}) },
+          lineEditor: { ...(SETTINGS_DEFAULTS.agents.lineEditor as NonNullable<AppSettings['agents']['lineEditor']>), ...(rawAgents.lineEditor ?? {}) },
         },
       };
       // Migration AC-CAD-12: existing installs without cadenceTrigger default to idle_heartbeat to preserve prior behavior
@@ -8560,6 +9123,20 @@ function loadAppSettings(): AppSettings {
         const rawAgent = rawAgents[agentKey] as unknown as Record<string, unknown> | undefined;
         if (rawAgent && rawAgent.autoApply === true && !('autoApplyCategories' in rawAgent)) {
           delete (base.agents[agentKey] as unknown as Record<string, unknown>).autoApplyCategories;
+        }
+      }
+      // SKY-11355: pre-fix installs may have 'claude-sonnet-4-6' baked into an
+      // agent's saved settings (the old hardcoded default). That value is only
+      // meaningful on Anthropic — on any other effective provider (global or
+      // the agent's own override) it silently broke the agent. Migrate it to
+      // '' (use the provider's Default model) so upgrading users get a working
+      // agent instead of carrying the stale value forward forever.
+      for (const agentKey of ['writingAssistant', 'brainstorm', 'archive', 'betaReader'] as const) {
+        const rawAgent = rawAgents[agentKey] as unknown as { model?: string; provider?: { kind?: string } } | undefined;
+        if (rawAgent?.model !== 'claude-sonnet-4-6') continue;
+        const effectiveKind = rawAgent.provider?.kind ?? raw.provider?.kind ?? 'anthropic';
+        if (effectiveKind !== 'anthropic') {
+          (base.agents[agentKey] as { model: string }).model = '';
         }
       }
       // SKY-2627: back-fill flat wa* fields for existing installs that predate this field set.
@@ -8662,9 +9239,18 @@ function buildGlobalProviderConfig(settings: AppSettings): ProviderConfig {
  * Uses the per-agent provider override when set; falls back to the global provider.
  * Key-inheritance: same kind + no agent API key → inherit the global API key (SKY-1511).
  */
-function getProviderConfigForAgent(agentName: 'brainstorm' | 'writingAssistant' | 'archive' | 'betaReader'): ProviderConfig {
+const OPTIONAL_AGENT_KEYS: readonly OptionalAgentKey[] = ['betaReader', 'alphaReader', 'storylineConsultant', 'lineEditor'];
+function isOptionalAgentKey(name: string): name is OptionalAgentKey {
+  return (OPTIONAL_AGENT_KEYS as readonly string[]).includes(name);
+}
+
+function getProviderConfigForAgent(
+  agentName: 'brainstorm' | 'writingAssistant' | 'archive' | OptionalAgentKey,
+): ProviderConfig {
   const settings = loadAppSettings();
-  const agentSettings = agentName === 'betaReader' ? getBetaReaderSettings(settings) : settings.agents[agentName];
+  const agentSettings = isOptionalAgentKey(agentName)
+    ? getOptionalAgentSettings(settings, agentName)
+    : settings.agents[agentName];
   const global = buildGlobalProviderConfig(settings);
   const agentProvider = agentSettings.provider
     ? {
@@ -9895,6 +10481,28 @@ function registerBetaReportRunHandler(): void {
     }
 
     const betaReportProviderConfig = getProviderConfigForAgent('betaReader');
+    // SKY-11411: inject a continuity dossier so the Beta Reader can judge
+    // consistency — but reveal-point filtered, so it never learns a twist the
+    // reader hasn't reached. This makes SKY-10741's protective code reachable
+    // from the one production role that is actually live today. Best-effort:
+    // any vault/index problem yields no dossier and never fails the read.
+    //   • scene/chapter scope → reader has read UP TO this point → filter to it
+    //     (buildReaderEntityContext hides every not-yet-revealed identity).
+    //   • story scope → the reader finished the book → every reveal is fair game.
+    let betaEntityContext = '';
+    try {
+      const notesVaultRoot = getNotesVaultRoot();
+      if (notesVaultRoot && fs.existsSync(notesVaultRoot)) {
+        const entityIndex = loadEntityIndex(notesVaultRoot);
+        betaEntityContext = payload.scope.kind === 'story'
+          ? buildAuthorEntityContext(entityIndex)
+          : buildReaderEntityContext(entityIndex, payload.scope.label);
+      }
+    } catch {
+      // Continuity context is a best-effort enrichment; a missing or unreadable
+      // notes vault must never block a beta read.
+      betaEntityContext = '';
+    }
     const startedAt = Date.now();
     const requestId = crypto.randomUUID();
     let genError: string | null = null;
@@ -9919,6 +10527,7 @@ function registerBetaReportRunHandler(): void {
             payload.scope.label,
             payload.focus,
             payload.text.slice(0, BETA_REPORT_MAX_INPUT_CHARS),
+            betaEntityContext,
           ),
         }],
         maxTokens: 3072,
@@ -9991,6 +10600,157 @@ function registerBetaReportRunHandler(): void {
           id: crypto.randomUUID(),
           agent: 'beta-reader',
           model: betaReportProviderConfig.model,
+          endpoint: 'messages.stream',
+          request_id: requestId,
+          tokens_in: null,
+          tokens_out: null,
+          latency_ms: Date.now() - startedAt,
+          error: genError,
+          created_at: new Date().toISOString(),
+          payload_digest: digest,
+        });
+      } catch { /* non-fatal */ }
+    }
+  }));
+}
+
+// ─── Production-team role runs (SKY-11411 / SKY-10741 M12.B6) ────────────────
+//
+// One generic handler drives alphaReader / storylineConsultant / lineEditor and
+// is the live wiring that makes SKY-10741's role registry + reveal-point filter
+// reachable. It composes the persona system prompt (buildAgentSystemPrompt) with
+// the role-specific user framing (buildProductionReviewUserContent). For the
+// reader-perspective alphaReader it feeds a reveal-point-FILTERED entity dossier
+// (buildReaderEntityContext) so a not-yet-revealed identity can never enter the
+// prompt (AC2); the two craft roles get the whole map. betaReader keeps its own
+// dedicated report handler (BETA_REPORT_RUN), so there is exactly one path per role.
+
+const PRODUCTION_ROLE_SOURCE_AGENT: Record<ProductionRoleId, string> = {
+  alphaReader: 'alpha-reader',
+  betaReader: 'beta-reader',
+  storylineConsultant: 'storyline-consultant',
+  lineEditor: 'line-editor',
+};
+const PRODUCTION_ROLE_SURFACE: Record<ProductionRoleId, AiActivitySurface> = {
+  alphaReader: 'alpha-reader-review',
+  betaReader: 'beta-reader-report',
+  storylineConsultant: 'storyline-consultant-review',
+  lineEditor: 'line-editor-review',
+};
+/** Roles this generic handler serves — betaReader is excluded (it owns BETA_REPORT_RUN). */
+const PRODUCTION_RUN_ROLES: readonly ProductionRoleId[] = ['alphaReader', 'storylineConsultant', 'lineEditor'];
+
+function registerProductionRoleRunHandler(): void {
+  ipcMain.handle(IPC_CHANNELS.PRODUCTION_ROLE_RUN, wrapIpcHandler(IPC_CHANNELS.PRODUCTION_ROLE_RUN, async (event, payload: ProductionRoleRunPayload) => {
+    if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+
+    const role = payload?.role;
+    // Allowlist guard: never echo an attacker-supplied role value (SEC-5 pattern).
+    if (!role || !(PRODUCTION_RUN_ROLES as readonly string[]).includes(role)) {
+      throw new Error('Unknown production role.');
+    }
+    if (!payload?.text?.trim()) {
+      throw new Error('Nothing to review — the selected scope has no manuscript text.');
+    }
+    // M11a: master AI gate beats the per-role enable.
+    if (!isAiMasterEnabled()) {
+      throw new Error('AI is turned off — enable it in Settings to run a review.');
+    }
+
+    const settings = loadAppSettings();
+    const roleSettings = getOptionalAgentSettings(settings, role);
+    const roleDef = PRODUCTION_ROLES[role];
+    const displayName = resolveAgentDisplayName(role, settings.agentNames);
+    if (!roleSettings.enabled) {
+      throw new Error(`${displayName} is disabled — enable it in Settings > AI Agents to run a review.`);
+    }
+
+    const sourceAgent = PRODUCTION_ROLE_SOURCE_AGENT[role];
+    const budgetCheck = checkCallBudget(sourceAgent, roleSettings, getDb());
+    if (!budgetCheck.allowed) {
+      BrowserWindow.getAllWindows().forEach((win) => {
+        if (!win.isDestroyed()) {
+          win.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+            agent: sourceAgent,
+            agentLabel: displayName,
+            reason: budgetCheck.reason,
+          });
+        }
+      });
+      throw new Error(`${displayName} hit its ${budgetCheck.reason === 'daily_token_cap' ? 'daily' : 'hourly'} budget cap.`);
+    }
+
+    const providerConfig = getProviderConfigForAgent(role);
+
+    // Entity dossier assembly (AC2). Reader-perspective roles get a reveal-point
+    // FILTERED dossier for a mid-story read and the whole map only once the reader
+    // has finished (story scope); author-perspective craft roles always get the
+    // whole map. Best-effort: any vault/index problem yields no dossier and never
+    // fails the review — same contract as the Beta Reader path.
+    let entityContext = '';
+    try {
+      const notesVaultRoot = getNotesVaultRoot();
+      if (notesVaultRoot && fs.existsSync(notesVaultRoot)) {
+        const entityIndex = loadEntityIndex(notesVaultRoot);
+        entityContext = roleDef.readerPerspective && payload.scope.kind !== 'story'
+          ? buildReaderEntityContext(entityIndex, payload.scope.label)
+          : buildAuthorEntityContext(entityIndex);
+      }
+    } catch {
+      entityContext = '';
+    }
+
+    const userContent = buildProductionReviewUserContent(role, {
+      scopeLabel: payload.scope.label,
+      position: payload.scope.kind === 'story' ? undefined : payload.scope.label,
+      entityContext,
+      sourceText: payload.text.slice(0, BETA_REPORT_MAX_INPUT_CHARS),
+    });
+
+    const startedAt = Date.now();
+    const requestId = crypto.randomUUID();
+    let genError: string | null = null;
+    let userCancelled = false;
+    let modelProducedText = false;
+    const runAbort = new AbortController();
+    agentControllers.set(requestId, runAbort);
+    const runTimeout = setTimeout(() => runAbort.abort(new Error('scan-timeout')), SCAN_STREAM_TIMEOUT_MS);
+    beginTrackedAiActivity(requestId, role, PRODUCTION_ROLE_SURFACE[role], providerConfig, startedAt);
+
+    try {
+      let responseText = '';
+      for await (const token of streamFromProvider(providerConfig, {
+        system: buildAgentSystemPrompt(app.getPath('userData'), role),
+        messages: [{ role: 'user', content: userContent }],
+        maxTokens: 3072,
+        signal: runAbort.signal,
+      })) {
+        responseText += token;
+      }
+      modelProducedText = !isEmptyModelOutput(responseText);
+      return { text: responseText } satisfies ProductionRoleRunResponse;
+    } catch (err: unknown) {
+      userCancelled = runAbort.signal.aborted && (runAbort.signal.reason as Error | undefined)?.message !== 'scan-timeout';
+      if (userCancelled) {
+        // A deliberate stop is not an error — mirror the Beta Reader path.
+        throw new SafeIpcError('cancelled');
+      }
+      genError = (err as Error).message ?? 'unknown error';
+      throw err;
+    } finally {
+      endTrackedAiActivity(requestId, {
+        aborted: userCancelled,
+        error: genError,
+        empty: !userCancelled && !genError && !modelProducedText,
+      });
+      agentControllers.delete(requestId);
+      clearTimeout(runTimeout);
+      const digest = crypto.createHash('sha256').update(payload.text.slice(0, 100)).digest('hex');
+      try {
+        insertGenerationLog({
+          id: crypto.randomUUID(),
+          agent: sourceAgent,
+          model: providerConfig.model,
           endpoint: 'messages.stream',
           request_id: requestId,
           tokens_in: null,
@@ -10823,6 +11583,7 @@ app.whenReady().then(async () => {
   registerWritingScanHandler();
   registerBetaReadScanHandler();
   registerBetaReportRunHandler();
+  registerProductionRoleRunHandler();
   // M11a: arm the provider-level master gate before any AI handler can fire.
   setAiMasterGate(() => isAiMasterEnabled());
   registerStreamingHandlers(() => buildGlobalProviderConfig(loadAppSettings()));
@@ -10890,6 +11651,27 @@ app.whenReady().then(async () => {
 // app.quit() always runs in the finally below regardless of teardown outcome —
 // a partially-failed teardown must not hold the process hostage.
 app.on('window-all-closed', async () => {
+  // SKY-11363: is this window-close an actual quit? On macOS the ordinary
+  // "close the last window, stay in the dock" case is NOT a quit — the app
+  // keeps running (see the darwin guard in the finally, and the `activate`
+  // handler that reopens a window). Only when quit is genuinely committed
+  // (Windows/Linux always; macOS Cmd+Q/File-Exit/app.close() → quitRequested)
+  // should we bound shutdown. Anything armed here on a non-quit macOS close
+  // would still fire while the app sits resident in the dock — the unref'd
+  // watchdog would force-exit the app ~8s after the window closed.
+  const committingQuit = shouldQuitOnWindowAllClosed(process.platform, quitRequested);
+  if (committingQuit) {
+    // Quit is committed. Two things could still hold the process open, so
+    // bound both before teardown:
+    //   1. An in-flight AI stream (its fetch socket). The owner runs
+    //      minute-plus local-model generations; awaiting one on quit is what
+    //      makes the app hang "again". Abort, never await (AC #3).
+    //   2. A wedged teardown step or native handle (e.g. a Windows watcher
+    //      whose fs.watch handle won't settle). Arm the hard watchdog so the
+    //      process force-exits if graceful shutdown stalls (scope #2).
+    abortInFlightAiStreams(agentControllers);
+    quitWatchdog.arm();
+  }
   try {
     await runQuitTeardownStep('stopWritingScanScheduler', () => stopWritingScanScheduler());
     await runQuitTeardownStep('stopArchiveContScheduler', () => stopArchiveContScheduler());
@@ -10910,7 +11692,7 @@ app.on('window-all-closed', async () => {
     // window, app stays in the dock" case — quitRequested (set by
     // before-quit) means quit is already underway, so this call must still
     // run there too, or the process never actually exits.
-    if (shouldQuitOnWindowAllClosed(process.platform, quitRequested)) {
+    if (committingQuit) {
       app.quit();
     }
   }

@@ -24,11 +24,10 @@
   }
 }
 
+/* Chrome (fill, blur, border, glow) comes from `.ln-overlay-surface`
+   (overlay-tier.css, SKY-11450) — this rule owns geometry only. */
 .ln-dialog {
-  background: var(--bg-elevated);
-  box-shadow: var(--elev-3);
   border-radius: var(--radius-xl);
-  border: 1px solid var(--border-default);
   width: min(480px, 100%);
   max-height: calc(100vh - 4rem);
   display: flex;
@@ -41,8 +40,11 @@
   width: min(560px, 100%);
 }
 
+/* Retint the shared overlay chrome rather than overriding the `border`
+   shorthand — custom properties win regardless of CSS bundle order. */
 .ln-dialog--destructive {
-  border-color: var(--state-danger);
+  --ln-overlay-border: var(--state-danger);
+  --ln-overlay-glow: var(--state-danger);
 }
 
 .ln-dialog--destructive .ln-dialog-header {

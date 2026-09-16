@@ -261,7 +261,7 @@ test('NP-05 (M17): header title/tags + gear menu + callout card + links block', 
     await expect(page.locator('.note-fidelity-overlay')).toHaveCount(0);
     const callout = page.locator('.note-rich-editor [data-note-callout]');
     await expect(callout).toBeVisible();
-    await expect(callout).toHaveAttribute('data-callout-title', 'legend');
+    await expect(callout).toHaveAttribute('data-callout-type', 'legend');
     await expect(callout).toContainText('Sailors speak of a hum');
 
     // Links-only paragraph is chip-styled; frontmatter never shows in Rich.

@@ -1,0 +1,319 @@
+{
+  "$comment": "SKY-11591 - provenance for every file in pack/. The PNG originals are owner-authored and held off-repo (see LICENSE); sha256 is of the original the entry was encoded from, so a restaged copy can be proven identical. cropNote records why the manifest entry carries the position it does; null means no human reviewed this image's framing and it renders centred.",
+  "themes": {
+    "aurora": [
+      {
+        "file": "aurora-1.webp",
+        "sourceFolder": "Aurora",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_43_21 PM (2).png",
+        "sha256": "5273c55069f442729d425f3a44803bf20c7cde9b1f30ca7ecbfa3f05df730f3a",
+        "cropNote": "Aurora arc crests right of centre over the lake; slight right anchor keeps the crest."
+      },
+      {
+        "file": "aurora-2.webp",
+        "sourceFolder": "Aurora",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_43_22 PM (3).png",
+        "sha256": "2371efc28fa83f1b68fb529664b3a02103b273d25437a1a05f86989d8a683c3d",
+        "cropNote": "Vertical curtains over a cloud sea; the calmest of the six, best for long writing sessions."
+      },
+      {
+        "file": "aurora-3.webp",
+        "sourceFolder": "Aurora",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_43_22 PM (4).png",
+        "sha256": "caa6201dc634204bed66f09f097c593144b82124c0e2a21e64cb9e592b37bc77",
+        "cropNote": null
+      },
+      {
+        "file": "aurora-4.webp",
+        "sourceFolder": "Aurora",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (1).png",
+        "sha256": "4e8c17e7a1f77cd9e8813779624fbab9a8de86aab3583c0e1988d9692e33bbfc",
+        "cropNote": "Native 16:9. Mountain range with a full mirror reflection; the strongest Aurora frame."
+      },
+      {
+        "file": "aurora-5.webp",
+        "sourceFolder": "Aurora",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (2).png",
+        "sha256": "9337a141094d9102d468d8b437a856ba97db1096d705c93c4e7820b30347b075",
+        "cropNote": null
+      },
+      {
+        "file": "aurora-6.webp",
+        "sourceFolder": "Aurora",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (3).png",
+        "sha256": "02e4ce71d7f5f3342a629e3ae610bc3c992c1b7ae49df12ec078bf71b786558d",
+        "cropNote": "Native 16:9. Pine foreground left, lit river valley right."
+      }
+    ],
+    "cyber": [
+      {
+        "file": "cyber-1.webp",
+        "sourceFolder": "cyberpunk",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_40_26 PM (1).png",
+        "sha256": "b89dae1ef7b09e74b3d91a7b2a957748b34188bd0ed792e9b992fbe15102b907",
+        "cropNote": "Symmetric grid horizon, teal left / magenta right."
+      },
+      {
+        "file": "cyber-2.webp",
+        "sourceFolder": "cyberpunk",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_40_27 PM (2).png",
+        "sha256": "bb47a213faeae4eb36fcfb33318fa1fc859d3efa4532789c687fed4607073e0e",
+        "cropNote": "Neon skyline sits at ~0.73 across; a centre crop would slice it. Anchored right so the whole skyline lands inside the frame."
+      },
+      {
+        "file": "cyber-3.webp",
+        "sourceFolder": "cyberpunk",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_40_27 PM (4).png",
+        "sha256": "f10a6472155a3f25e8b55ef39e13d0bb64961582b8b903b6288062094ecbffeb",
+        "cropNote": "Mirrored neon slabs on both edges; centre keeps the mirroring."
+      }
+    ],
+    "ember": [
+      {
+        "file": "ember-1.webp",
+        "sourceFolder": "Emberfall",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_34_02 PM (1).png",
+        "sha256": "7fbc28a1da30643483db8ea1c8fb571f2cd8560431222edb7b27cf6066b48b3b",
+        "cropNote": "Fire nebula band runs out of the lower-left corner (luminance centroid 0.37); anchored left to keep the band's brightest stretch."
+      },
+      {
+        "file": "ember-2.webp",
+        "sourceFolder": "Emberfall",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_34_03 PM (2).png",
+        "sha256": "1571138cea943225bb0a6a6a1c690f0d9ca323f346029cb5167c9a47264c4ffe",
+        "cropNote": "Autumn-leaf vignette on both edges with a centre glow."
+      },
+      {
+        "file": "ember-3.webp",
+        "sourceFolder": "Emberfall",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_34_03 PM (4).png",
+        "sha256": "5174b36b58595bebdb112125266bbdf3552a1887aedf3a55bdd84b5b2369baad",
+        "cropNote": "Sunset over a misty valley, sun at ~0.66; anchored right."
+      }
+    ],
+    "ice": [
+      {
+        "file": "ice-1.webp",
+        "sourceFolder": "Ice mono",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_35_49 PM (1).png",
+        "sha256": "accef2545d418a2f3ea610d5fa2e599f2af842c4f338d3fbb32487983bb34a12",
+        "cropNote": "Bright plume in the upper left (luminance centroid 0.34); anchored left so the plume is not cut off."
+      },
+      {
+        "file": "ice-2.webp",
+        "sourceFolder": "Ice mono",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_35_49 PM (2).png",
+        "sha256": "bc0dd0785ac435f44342084c4fad049e125b970162d470f150fb419039ee36b5",
+        "cropNote": "Mirrored curtains on both edges; centre keeps them balanced."
+      },
+      {
+        "file": "ice-3.webp",
+        "sourceFolder": "Ice mono",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_35_50 PM (3).png",
+        "sha256": "613953676258abfd66b15b8a198ac74be89b32a65d6e56a6c24ce47b52f557ad",
+        "cropNote": "Ice shards frame both edges; centre keeps both."
+      },
+      {
+        "file": "ice-4.webp",
+        "sourceFolder": "Ice mono",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_35_50 PM (4).png",
+        "sha256": "685f011e1513c2662f11a47968ab45b805ea4ad952cdca17c0c46d56bad2ca8b",
+        "cropNote": "Horizon glow at ~0.66 over a frozen lake; anchored right to hold the glow."
+      }
+    ],
+    "classic": [
+      {
+        "file": "classic-1.webp",
+        "sourceFolder": "Neon Nebula",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_45_08 PM (1).png",
+        "sha256": "23cf46f8fe075e1dd1f8664e329f497401048039af95622fa8f3fab3ea0212c6",
+        "cropNote": "Nebula walls on both edges; centre keeps both walls partly in frame."
+      },
+      {
+        "file": "classic-2.webp",
+        "sourceFolder": "Neon Nebula",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_45_08 PM (2).png",
+        "sha256": "47be5ac691202253918abe7f66c8b830e29337d189abd54ff9c987bf5680b969",
+        "cropNote": "Pink nebula mass sits right of centre; anchored right so it is not clipped at the frame edge."
+      },
+      {
+        "file": "classic-3.webp",
+        "sourceFolder": "Neon Nebula",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_45_09 PM (3).png",
+        "sha256": "b69afe2cf1f94fce440524e84a9ac06d36a2cdd45d181b03eba4a40d4c36dac7",
+        "cropNote": "Mirrored wing streaks top-left / bottom-right; centre keeps the symmetry."
+      },
+      {
+        "file": "classic-4.webp",
+        "sourceFolder": "Neon Nebula",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_45_09 PM (4).png",
+        "sha256": "3c8bd137495b93b2683ed49d56c8e6a2c8f5a7e4287fac6721755b64705591ab",
+        "cropNote": "Bright diagonal nebula band across the middle; symmetric, no offset needed."
+      }
+    ],
+    "noir": [
+      {
+        "file": "noir-1.webp",
+        "sourceFolder": "Noir Rose",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_21_13 PM (1).png",
+        "sha256": "657e07440f359c508c439414697e791d8668af612bb351a578bac5c5b837ef6b",
+        "cropNote": "Native 16:9. Rose cloud bank left, indigo field right."
+      },
+      {
+        "file": "noir-2.webp",
+        "sourceFolder": "Noir Rose",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_21_14 PM (4).png",
+        "sha256": "95d4bf483eb362ab753f450c9da0f452468a6e457d332c16a8aa70d8da3ce1a8",
+        "cropNote": "Native 16:9. Soft diagonal light bands over a rose nebula."
+      },
+      {
+        "file": "noir-3.webp",
+        "sourceFolder": "Noir Rose",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 09_07_15 PM (2).png",
+        "sha256": "11041f7d2572a1cacc8688715f0c6e66705335db6af12bc2ce61aa7c7d5c6dec",
+        "cropNote": null
+      },
+      {
+        "file": "noir-4.webp",
+        "sourceFolder": "Noir Rose",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 09_07_16 PM (3).png",
+        "sha256": "e66c27ecd401358ce9c1c8e4ff1c3963e9e06f8ab13487cb63c1c51f96f182a0",
+        "cropNote": "Native 16:9. Strongest rose bloom, balanced left and right."
+      },
+      {
+        "file": "noir-5.webp",
+        "sourceFolder": "Noir Rose",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 09_07_16 PM (4).png",
+        "sha256": "142bbf86bbfe0ed9d27579860d8e19e8c77ad1d208fffc1c103796922ee2ce58",
+        "cropNote": "Native 16:9. Dark centre channel with rose walls on both edges; very text-friendly."
+      }
+    ],
+    "royal": [
+      {
+        "file": "royal-1.webp",
+        "sourceFolder": "Royal Arcana",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_28_21 PM (2).png",
+        "sha256": "942b38f2e7f579b9d4b8e3ccf78549a6eb3763c5eddd3ecb583c540d6adf7ee9",
+        "cropNote": null
+      },
+      {
+        "file": "royal-2.webp",
+        "sourceFolder": "Royal Arcana",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_28_23 PM (4).png",
+        "sha256": "b9a0c12fd94e0a70aa6f802ffce3b86c58711b187d1041e070e43a3e1eaaca85",
+        "cropNote": "Native 16:9. Vertical gold axis through a centred star; symmetric bright burst dead centre is the worst of the four for text legibility, so it ranks last, not second."
+      },
+      {
+        "file": "royal-3.webp",
+        "sourceFolder": "Royal Arcana",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 09_16_52 PM (2).png",
+        "sha256": "21aaa037cc4d4a9212acf8ec7b31e2bd361e5a338ab0e908e5c066a845910f5b",
+        "cropNote": "Native 16:9. Diagonal nebula river with moon-phase glyphs on the right."
+      },
+      {
+        "file": "royal-4.webp",
+        "sourceFolder": "Royal Arcana",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 09_16_53 PM (3).png",
+        "sha256": "a611af87372ae552c658433e50e655c4f0200302b213154c03dbde4cc873b3fb",
+        "cropNote": "Native 16:9. Radiant violet core inside the gold orrery rings."
+      },
+      {
+        "file": "royal-5.webp",
+        "sourceFolder": "Royal Arcana",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 09_16_53 PM (4).png",
+        "sha256": "3791121a9a2a001d1ce99cd3e72c8ccea66bd183308511099f7d8dc8768de99b",
+        "cropNote": "Native 16:9. Dark calm centre with the arcana detail pushed to both edges."
+      }
+    ],
+    "sunset": [
+      {
+        "file": "sunset-1.webp",
+        "sourceFolder": "Sunset coast",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 09_04_12 PM (1).png",
+        "sha256": "fa887308b1a8b0e54f8b122c96881a57a4a55e0da18d50d573d09ad542896ac8",
+        "cropNote": "Sun at ~0.61; anchored right so the sun and its reflection column stay off the frame edge."
+      },
+      {
+        "file": "sunset-2.webp",
+        "sourceFolder": "Sunset coast",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 09_04_13 PM (2).png",
+        "sha256": "597dcce51a13017403681e18018ca04eeed5578ee78a34c4dbdeea1c6dc394c2",
+        "cropNote": "Sun on the horizon just right of centre with a full sun-path reflection."
+      },
+      {
+        "file": "sunset-3.webp",
+        "sourceFolder": "Sunset coast",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 09_04_13 PM (3).png",
+        "sha256": "c392f46bebe47dce630ef54cc090168c82c00eef1a53e69e41aee4776652e3cd",
+        "cropNote": "Wide low horizon; near-centre with a small right lean toward the sun."
+      },
+      {
+        "file": "sunset-4.webp",
+        "sourceFolder": "Sunset coast",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 09_04_13 PM (4).png",
+        "sha256": "1d7e3698e3e862c8244dee868d637a237689a85d8967f570ac20cb1d1152ca49",
+        "cropNote": "Sun at ~0.66 behind sea stacks; the strongest right-side offset in this set."
+      }
+    ],
+    "verdant": [
+      {
+        "file": "verdant-1.webp",
+        "sourceFolder": "Verdant reach",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_30_59 PM (1).png",
+        "sha256": "0a6f4071e5150a326eebea8572575544ebfb73f7a85a74372e79e4e075994c00",
+        "cropNote": "Misty forest lake with a canopy break at ~0.66; anchored right to keep the light shaft."
+      },
+      {
+        "file": "verdant-2.webp",
+        "sourceFolder": "Verdant reach",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_30_59 PM (2).png",
+        "sha256": "4805dc0060d1497606a2a9f4af2b202f8bc9902c95984623e55450827062429c",
+        "cropNote": "Leaf-and-vine frame on both edges; barely off centre toward the upper-right glow."
+      },
+      {
+        "file": "verdant-3.webp",
+        "sourceFolder": "Verdant reach",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_31_00 PM (3).png",
+        "sha256": "1450ad72802c515177fe6c42185195686312b2532ec8feff48f510f811960130",
+        "cropNote": "Green nebula sweep with its focal bloom at ~0.65; anchored right."
+      },
+      {
+        "file": "verdant-4.webp",
+        "sourceFolder": "Verdant reach",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_31_00 PM (4).png",
+        "sha256": "68d175a6f67a5f3e5b91574c39e9c1c2cb82f6460d9ae2a4558e326722229ca1",
+        "cropNote": "Symmetric canopy vignette with a calm centre; the most text-friendly of this set."
+      }
+    ],
+    "winter": [
+      {
+        "file": "winter-1.webp",
+        "sourceFolder": "Winterlight",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_06_13 PM.png",
+        "sha256": "c96418b30ae527ee46df2c9ba8cf656474c7f0b593df5c7615c92e7c48ad4c64",
+        "cropNote": "Native 16:9. Moonlit lake with pines on the right bank."
+      },
+      {
+        "file": "winter-2.webp",
+        "sourceFolder": "Winterlight",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_23_25 PM.png",
+        "sha256": "c8fd9b11de4f3582e440ef8ae181b9648222151eee17da19bfef258692b91ae4",
+        "cropNote": "Sunrise sits at ~0.20, far left. Anchored hard left (the leftmost a 16:9 window can go on this source) so the sun stays in frame. Brightest wallpaper in the pack \u2014 flagged to QA for contrast."
+      },
+      {
+        "file": "winter-3.webp",
+        "sourceFolder": "Winterlight",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_59_22 PM (2).png",
+        "sha256": "82845ed4c3c68453b1de9692b8be0348a795e69e09b23c509af9b89f4e4cc831",
+        "cropNote": "Native 16:9. Moon over a frozen lake, snowfall throughout."
+      },
+      {
+        "file": "winter-4.webp",
+        "sourceFolder": "Winterlight",
+        "sourceFile": "ChatGPT Image Sep 8, 2026, 08_59_22 PM (3).png",
+        "sha256": "204eea4b194bd812f231e345676a1eaf9a387f1c7210da59125c697683b5ff6a",
+        "cropNote": "Native 16:9. Aurora over a snow plain; horizon glow dead centre."
+      }
+    ]
+  }
+}

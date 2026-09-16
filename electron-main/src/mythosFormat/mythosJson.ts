@@ -348,16 +348,46 @@ export function isMythosV2Root(mythosRoot: string): boolean {
   return isV2;
 }
 
+// SKY-11169: mirrors storyVaultRegistry.ts's STORY_VAULT_REGISTRY_FILENAME.
+// Duplicated (not imported) to keep this module's "pure format, no registry
+// knowledge" layering — mythosFormat/* registry modules import FROM here,
+// never the reverse. Only the filename is load-bearing here.
+const STORY_VAULT_REGISTRY_FILENAME = 'story-vaults.json';
+
+/** Dir names of every registered story vault for a mythos root, or empty on any read failure. */
+function registeredStoryVaultDirNames(mythosRoot: string): Set<string> {
+  try {
+    const raw = fs.readFileSync(path.join(mythosRoot, STORY_VAULT_REGISTRY_FILENAME), 'utf-8');
+    const parsed = JSON.parse(raw) as { vaults?: Array<{ dirName?: unknown }> };
+    const names = (parsed.vaults ?? [])
+      .map((v) => v.dirName)
+      .filter((d): d is string => typeof d === 'string');
+    return new Set(names);
+  } catch {
+    return new Set();
+  }
+}
+
 /**
  * Given a configured Story Vault root, return the enclosing MythosVault root
- * when (and only when) the root is the `Story Vault/` half of a v2 vault.
+ * when (and only when) the root is a recognized story vault of a v2 vault.
  * Returns null for every v0.4 layout.
+ *
+ * SKY-11169: the registry (story-vaults.json) lets one mythos vault hold
+ * MULTIPLE story vaults with non-default dir names (e.g. "Second World").
+ * The default `Story Vault` dirname always gates (works before the registry
+ * file exists, i.e. pre-migration); any other dirname gates only when it is
+ * REGISTERED for this mythos root — an unrelated sibling folder that merely
+ * sits beside mythos.json still never gates (preserves the SKY-11132 guard
+ * that "Open Vault Folder" can't silently adopt an unrecognized folder).
  */
 export function mythosRootForStoryVault(storyVaultRoot: string): string | null {
-  if (path.basename(storyVaultRoot) !== STORY_VAULT_DIRNAME) return null;
   const parent = path.dirname(storyVaultRoot);
   if (parent === storyVaultRoot) return null;
-  return isMythosV2Root(parent) ? parent : null;
+  if (!isMythosV2Root(parent)) return null;
+  const basename = path.basename(storyVaultRoot);
+  if (basename === STORY_VAULT_DIRNAME) return parent;
+  return registeredStoryVaultDirNames(parent).has(basename) ? parent : null;
 }
 
 /**

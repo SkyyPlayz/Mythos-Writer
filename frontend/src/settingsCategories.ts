@@ -73,7 +73,11 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     id: 'editor',
     label: 'Editor',
     description: 'Defaults for manuscripts and notes.',
-    sectionIds: ['section-editor', 'section-editor-manuscript'],
+    sectionIds: [
+      'section-editor',
+      'section-editor-manuscript',
+      'section-notes-board', // SKY-11186: Boards zoom-out limit — a visible performance setting
+    ],
   },
   {
     id: 'vaults',
@@ -82,12 +86,11 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     sectionIds: [
       'section-vault-autolinker', // M6: Auto Note Linker — FIRST card per spec §12
       'section-account',
+      'section-vaults-folder', // SKY-11154: "Vaults folder" row — Open folder + Move…
       'section-mythos-vaults', // Beta 4 M1: per-vault default theme cards
-      'section-add-vault', // SKY-11152: "+ Add Notes Vault" / "+ Add Story Vault" dialogs
+      'section-add-vault', // SKY-11154 (grew from SKY-11152): Notes/Story columns + dot-linking
       'section-vault-paths',
       'section-vault-format',
-      'section-import-vault',
-      'section-import-story',
       'section-vault-health',
       'section-vault-danger-zone',
       'section-scene-fields',

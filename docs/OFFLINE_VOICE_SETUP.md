@@ -14,6 +14,19 @@ Pick either from any reader's voice menu (Story Editor reader bar, Notes reader,
 "Hear" buttons). They synthesize **fully offline, in-process**, at 24 kHz — no
 binary to download, no API key, no network. Nothing to configure.
 
+**Default voice (SKY-11241):** `kokoro:nicole` is the reader's default voice on
+a fresh install — the owner ruling was "the first voice a user hears should be
+the good one." Installs that already saved a `voice` block (any prior version)
+keep whatever voice they already had; the default only seeds a brand-new
+settings file.
+
+**Installer size delta:** the bundled weights are ~86 MB uncompressed
+(`electron-main/resources/kokoro/`, see `scripts/fetch-kokoro-assets.mjs`).
+That is the size delta added to `dist:mac` / `dist:linux` packaging output
+relative to a build without Kokoro; the exact compressed delta in the shipped
+DMG/AppImage depends on electron-builder's compression and hasn't been
+measured against a pre-Kokoro build side by side.
+
 **How it works (for maintainers):**
 
 - The weights (`onnx-community/Kokoro-82M-v1.0-ONNX`, **Apache-2.0**) are fetched

@@ -4,6 +4,9 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { countMarkdownFiles, collectProjectStats } from './projectStats.js';
+import { createMythosFile, writeMythosFile } from './mythosFormat/mythosJson.js';
+import { ensureNotesVaultRegistry, createBlankNotesVault } from './mythosFormat/notesVaultRegistry.js';
+import { ensureStoryVaultRegistry, createBlankStoryVault } from './mythosFormat/storyVaultRegistry.js';
 
 let tmpRoot: string;
 
@@ -67,11 +70,46 @@ describe('collectProjectStats', () => {
     ]);
 
     expect(stats).toHaveLength(2);
-    expect(stats[0]).toEqual({ vaultRoot: story, storyFileCount: 2, noteCount: 1 });
+    // Neither root is the "Story Vault" half of a v2 Mythos bundle (no
+    // mythos.json at the parent) — inner counts default to the legacy 1/1.
+    expect(stats[0]).toEqual({
+      vaultRoot: story, storyFileCount: 2, noteCount: 1, notesVaultCount: 1, storyVaultCount: 1,
+    });
     expect(stats[1]).toEqual({
       vaultRoot: path.join(tmpRoot, 'gone'),
       storyFileCount: 0,
       noteCount: null,
+      notesVaultCount: 1,
+      storyVaultCount: 1,
     });
+  });
+
+  it('SKY-11154: reports real inner notes/story vault counts for a v2 Mythos vault', () => {
+    const mythosRoot = path.join(tmpRoot, 'MyMythos');
+    fs.mkdirSync(mythosRoot, { recursive: true });
+    writeMythosFile(mythosRoot, createMythosFile('My Mythos'));
+
+    const storyVaultRoot = path.join(mythosRoot, 'Story Vault');
+    fs.mkdirSync(storyVaultRoot, { recursive: true });
+
+    // 1 default + 1 extra story vault; 1 default + 2 extra notes vaults.
+    ensureStoryVaultRegistry(mythosRoot);
+    createBlankStoryVault(mythosRoot, 'Second Story');
+    ensureNotesVaultRegistry(mythosRoot);
+    createBlankNotesVault(mythosRoot, 'Second Notes');
+    createBlankNotesVault(mythosRoot, 'Third Notes');
+
+    const stats = collectProjectStats([{ vaultRoot: storyVaultRoot }]);
+    expect(stats).toHaveLength(1);
+    expect(stats[0].storyVaultCount).toBe(2);
+    expect(stats[0].notesVaultCount).toBe(3);
+  });
+
+  it('SKY-11154: a legacy v0.4 vault (no mythos.json) reports the implicit 1/1 pair', () => {
+    const story = path.join(tmpRoot, 'Story Vault');
+    fs.mkdirSync(story, { recursive: true });
+    const stats = collectProjectStats([{ vaultRoot: story }]);
+    expect(stats[0].notesVaultCount).toBe(1);
+    expect(stats[0].storyVaultCount).toBe(1);
   });
 });

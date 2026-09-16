@@ -1,6 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import NoteViewer, { NOTES_DEFAULT_RICH_KEY, NOTES_MODE_BY_PATH_KEY } from './NoteViewer';
+import { runQuitFlushers, __resetQuitFlushers } from './lib/flushBeforeQuit';
 
 const readNotesVault = vi.fn();
 const writeNotesVault = vi.fn();
@@ -203,6 +204,88 @@ describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
     expect(textarea.tagName).toBe('TEXTAREA');
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+
+  // SKY-11429: the CF-11 downgrade above is silent by design (no data-loss
+  // modal), but silent also meant invisible — a writer who never explicitly
+  // switched a note saw it open outside Rich with zero indication why, which
+  // read exactly like "the Rich default doesn't work". A non-modal notice
+  // must explain the downgrade and offer a way past it without reintroducing
+  // a blocking dialog on open.
+  it('explains a CF-11 auto-downgrade with a dismissible, non-modal notice', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+
+    render(<NoteViewer path="Notes/Table.md" />);
+
+    const notice = await screen.findByTestId('note-auto-source-notice');
+    expect(notice).toHaveTextContent('Markdown tables');
+    expect(screen.queryByRole('dialog')).toBeNull(); // still no modal (CF-11 contract)
+
+    fireEvent.click(screen.getByLabelText('Dismiss'));
+    expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
+  });
+
+  it('a CF-11 auto-downgrade notice offers "Open in Rich anyway", which reuses the real fidelity dialog', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+
+    render(<NoteViewer path="Notes/Table.md" />);
+    await screen.findByTestId('note-auto-source-notice');
+
+    fireEvent.click(screen.getByText('Open in Rich anyway'));
+
+    expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
+    expect(await screen.findByRole('dialog')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /open.*anyway/i }));
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+  });
+
+  it('never shows the auto-downgrade notice for a note that opens in Rich cleanly', async () => {
+    render(<NoteViewer path="Notes/Test.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
+  });
+
+  it('does not show the auto-downgrade notice for a note reopened via its own sticky Source choice', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+    const { unmount } = render(<NoteViewer path="Notes/Table.md" />);
+    await screen.findByTestId('note-auto-source-notice');
+
+    // Explicitly confirming Source via the fidelity dialog ("Edit in Source")
+    // makes the choice sticky — the next open is an intentional choice, not
+    // an auto-downgrade, so the notice must not reappear.
+    fireEvent.click(screen.getByText('Open in Rich anyway')); // opens the fidelity dialog
+    fireEvent.click(await screen.findByText('Edit in Source (safe)'));
+    unmount();
+
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+    render(<NoteViewer path="Notes/Table.md" />);
+    await screen.findByLabelText('Edit note: Table.md');
+    expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
+  });
+
+  // SKY-11434: a multi-line-body or foldable callout was the only genuinely
+  // lossy shape in NoteCalloutExtension's schema, so any note using one was
+  // silently downgraded to Source on every open, even though nothing else
+  // about it was lossy. Once the extension round-trips both shapes, the CF-11
+  // guard must stop flagging them and the note should open in Rich.
+  it('opens a note with a multi-line-body callout in Rich by default — no CF-11 downgrade', async () => {
+    readNotesVault.mockResolvedValue({ content: '> [!note]\n> line one\n> line two' });
+
+    render(<NoteViewer path="Notes/MultiLineCallout.md" />);
+
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByLabelText('Edit note: MultiLineCallout.md')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('opens a note with a foldable callout in Rich by default — no CF-11 downgrade', async () => {
+    readNotesVault.mockResolvedValue({ content: '> [!note]-\n> hidden body' });
+
+    render(<NoteViewer path="Notes/FoldableCallout.md" />);
+
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByLabelText('Edit note: FoldableCallout.md')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -274,6 +357,38 @@ describe('NoteViewer M17 gear menu', () => {
     await waitFor(() => expect(readNotesVault).toHaveBeenCalled());
     await screen.findByTestId('note-viewer-preview');
     expect(screen.queryByLabelText('Edit note: Test.md')).toBeNull();
+  });
+});
+
+// SKY-11444: the legacy previewMode prop was previously read only in the
+// initializers — a parent toggling it while a note was already open did
+// nothing until the note was closed and reopened.
+describe('NoteViewer SKY-11444 live previewMode toggle', () => {
+  it('arms Preview on the already-open note the instant the prop flips true', async () => {
+    const { rerender } = render(<NoteViewer path="Notes/Test.md" previewMode={false} />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByTestId('note-viewer-preview')).toBeNull();
+
+    rerender(<NoteViewer path="Notes/Test.md" previewMode={true} />);
+    expect(await screen.findByTestId('note-viewer-preview')).toBeInTheDocument();
+  });
+
+  it('leaves Preview on the already-open note the instant the prop flips false', async () => {
+    const { rerender } = render(<NoteViewer path="Notes/Test.md" previewMode={true} />);
+    await screen.findByTestId('note-viewer-preview');
+
+    rerender(<NoteViewer path="Notes/Test.md" previewMode={false} />);
+    await waitFor(() => expect(screen.queryByTestId('note-viewer-preview')).toBeNull());
+    expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull();
+  });
+
+  it('an explicit `mode` prop keeps taking precedence over a live previewMode flip', async () => {
+    const { rerender } = render(<NoteViewer path="Notes/Test.md" mode="source" previewMode={false} />);
+    await screen.findByLabelText('Edit note: Test.md');
+
+    rerender(<NoteViewer path="Notes/Test.md" mode="source" previewMode={true} />);
+    expect(screen.queryByTestId('note-viewer-preview')).toBeNull();
+    expect(screen.getByLabelText('Edit note: Test.md')).toBeTruthy();
   });
 });
 
@@ -791,8 +906,55 @@ describe('NoteViewer M17 rich body blocks', () => {
       expect(el).not.toBeNull();
       return el as HTMLElement;
     });
-    expect(callout.getAttribute('data-callout-title')).toBe('legend');
+    expect(callout.getAttribute('data-callout-type')).toBe('legend');
     expect(callout.textContent).toContain('Sailors speak of a hum');
+  });
+
+  it('renders the canonical titled callout `> [!type] Title` as a card (no fidelity guard) — SKY-11442', async () => {
+    const note = [
+      'An ancient floodgate built by a lost civilization.',
+      '',
+      '> [!note] Rule of the city',
+    ].join('\n');
+    readNotesVault.mockResolvedValue({ content: note });
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
+    await screen.findByLabelText('Edit note: gate.md');
+
+    await pickMode('Rich Text');
+
+    // CF-11: the titled shape round-trips losslessly now — no guard dialog.
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const callout = await waitFor(() => {
+      const el = document.querySelector('.note-rich-editor [data-note-callout]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(callout.getAttribute('data-callout-type')).toBe('note');
+    expect(callout.getAttribute('data-callout-title')).toBe('Rule of the city');
+  });
+
+  it('renders a titled callout with a body line as a card (no fidelity guard) — SKY-11442', async () => {
+    const note = [
+      'An ancient floodgate built by a lost civilization.',
+      '',
+      '> [!note] Rule of the city',
+      '> Nothing in Veynn is ever truly lost.',
+    ].join('\n');
+    readNotesVault.mockResolvedValue({ content: note });
+    render(<NoteViewer path="Notes/gate.md" mode="source" />);
+    await screen.findByLabelText('Edit note: gate.md');
+
+    await pickMode('Rich Text');
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const callout = await waitFor(() => {
+      const el = document.querySelector('.note-rich-editor [data-note-callout]');
+      expect(el).not.toBeNull();
+      return el as HTMLElement;
+    });
+    expect(callout.getAttribute('data-callout-type')).toBe('note');
+    expect(callout.getAttribute('data-callout-title')).toBe('Rule of the city');
+    expect(callout.textContent).toContain('Nothing in Veynn is ever truly lost.');
   });
 
   it('marks the links row as a links block and keeps H2s/bullets editable blocks', async () => {
@@ -919,5 +1081,38 @@ describe('NoteViewer M8d surface inventory', () => {
 
     fireEvent.click(screen.getByTestId('note-tag-add-btn'));
     expect(screen.getByTestId('note-add-tag-input')).toHaveFocus();
+  });
+});
+
+// SKY-11646: the same silent data loss the scene editor had. Closing the
+// window tears the renderer down without unmounting React, so NoteViewer's
+// unmount save never runs and an edit inside the 800ms autosave debounce is
+// dropped. The note now registers with the shell's quit-flush registry.
+describe('NoteViewer quit flush (SKY-11646)', () => {
+  afterEach(() => __resetQuitFlushers());
+
+  it('writes a pending debounced edit when the shell drains quit flushers', async () => {
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
+    await screen.findByLabelText('Edit note: Test.md');
+    writeNotesVault.mockClear();
+
+    fireEvent.change(screen.getByLabelText('Edit note: Test.md'), {
+      target: { value: 'Typed right before the X button.' },
+    });
+    expect(writeNotesVault).not.toHaveBeenCalled();
+
+    await act(async () => { await runQuitFlushers(); });
+
+    expect(writeNotesVault).toHaveBeenCalledWith('Notes/Test.md', 'Typed right before the X button.');
+  });
+
+  it('writes nothing on quit when the note was only opened', async () => {
+    render(<NoteViewer path="Notes/Test.md" mode="source" />);
+    await screen.findByLabelText('Edit note: Test.md');
+    writeNotesVault.mockClear();
+
+    await act(async () => { await runQuitFlushers(); });
+
+    expect(writeNotesVault).not.toHaveBeenCalled();
   });
 });

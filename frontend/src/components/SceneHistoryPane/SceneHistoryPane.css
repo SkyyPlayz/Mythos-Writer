@@ -4,7 +4,7 @@
   flex-direction: column;
   width: 320px;
   max-width: 360px;
-  background: var(--surface-1, #1a1d24);
+  background: var(--bg-panel);
   color: var(--text-primary, #e7e9ee);
   border-left: 1px solid var(--border-soft, rgba(255, 255, 255, 0.06));
   padding: 16px 12px;

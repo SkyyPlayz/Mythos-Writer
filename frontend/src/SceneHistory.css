@@ -363,7 +363,9 @@
 .btn-restore:hover { background: var(--accent-hover); }
 .btn-restore:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ── Restore confirmation dialog ── */
+/* ── Restore confirmation dialog ──
+   Chrome (fill, blur, border, glow) comes from `.ln-overlay-surface`
+   (overlay-tier.css) — SKY-11493. This rule owns geometry only. */
 .history-confirm-overlay {
   position: fixed;
   inset: 0;
@@ -375,13 +377,10 @@
 }
 
 .history-confirm-dialog {
-  background: var(--bg-panel);
-  border: 1px solid var(--border-default);
   border-radius: 10px;
   padding: 22px 24px;
   max-width: 400px;
   width: 90%;
-  box-shadow: var(--elev-3);
 }
 
 .history-confirm-dialog p {

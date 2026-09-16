@@ -660,8 +660,16 @@ time_of_day: "{{time_of_day | prompt(Time of Day)}}"
 
 `;
 
+// SKY-11455: the Character/Location/Item templates stamp a frontmatter
+// `type:` so the note classifies into its Scene Crafter vault-reference
+// column (CHARACTERS/LOCATIONS/ITEMS & SYSTEMS) wherever the user files it.
+// The dialog writes the note into whichever folder is selected — usually the
+// vault root — and the classifier (vault.ts noteHasTagSignal) reads
+// `type: <kind>` with tag priority over folder (SKY-11212 owner ruling), so
+// this is the one signal that makes the template path reach the column.
 const DEFAULT_CHARACTER_BODY = `---
 title: "{{name | prompt(Character Name)}}"
+type: character
 aliases: []
 archetype: "{{archetype | pick(Characters)}}"
 age: "{{age | prompt(Age)}}"
@@ -685,6 +693,7 @@ fear: "{{fear | prompt(Core Fear)}}"
 
 const DEFAULT_LOCATION_BODY = `---
 title: "{{name | prompt(Location Name)}}"
+type: location
 region: "{{region | prompt(Region)}}"
 atmosphere: "{{atmosphere | prompt(Atmosphere)}}"
 ---
@@ -705,6 +714,7 @@ atmosphere: "{{atmosphere | prompt(Atmosphere)}}"
 
 const DEFAULT_ITEM_BODY = `---
 title: "{{name | prompt(Item Name)}}"
+type: item
 owner: "{{owner | pick(Characters)}}"
 origin: "{{origin | prompt(Origin)}}"
 ---

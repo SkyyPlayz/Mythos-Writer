@@ -40,7 +40,7 @@
   top: calc(100% + 4px);
   right: 0;
   min-width: 200px;
-  background: var(--color-surface-elevated, #1a1f2e);
+  background: var(--bg-elevated);
   border: 1px solid var(--color-border, rgba(255,255,255,0.12));
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);

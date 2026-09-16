@@ -6,7 +6,6 @@
  * Coverage:
  *   Heartbeat:  AC-WA-01, AC-WA-03, AC-WA-04, AC-WA-05, AC-WA-07, AC-WA-08
  *   Chat:       AC-WA-09, AC-WA-10, AC-WA-11, AC-WA-13
- *   Beta-Read:  AC-WA-17, AC-WA-18, AC-WA-20, AC-WA-21
  *   Voice TTS:  AC-WA-22, AC-WA-23, AC-WA-24
  *   Settings:   AC-WA-26, AC-WA-27
  *
@@ -62,25 +61,6 @@ const SCENE_BODY = [
 
 const MOCK_CHAT_TOKENS = ['Here is some ', 'writing advice ', 'for your scene.'];
 const MOCK_CHAT_RESPONSE = MOCK_CHAT_TOKENS.join('');
-
-const MOCK_BETA_COMMENTS = [
-  {
-    id: 'br-e2e-01',
-    scene_id: SCENE_ID,
-    anchor_text: 'relentless patience',
-    comment_text: 'Strong anthropomorphization — works well to establish the setting tone.',
-    created_at: new Date().toISOString(),
-    dismissed_at: null,
-  },
-  {
-    id: 'br-e2e-02',
-    scene_id: SCENE_ID,
-    anchor_text: 'Seven feet in twenty years',
-    comment_text: 'This specific detail is evocative; consider adding a sensory element.',
-    created_at: new Date().toISOString(),
-    dismissed_at: null,
-  },
-];
 
 // ─── Seed helpers ──────────────────────────────────────────────────────────────
 
@@ -253,20 +233,11 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 
 
 type MockTip = { id: string; text: string; category: string; sceneUpdatedAt?: string };
-type MockComment = {
-  id: string;
-  scene_id: string;
-  anchor_text: string;
-  comment_text: string;
-  created_at: string;
-  dismissed_at: null | string;
-};
 
 type MockOpts = {
   tips?: MockTip[];
   chatTokens?: string[];
   chatResponse?: string;
-  betaComments?: MockComment[];
   scanDelayMs?: number;
   chatDelayMs?: number;
 };
@@ -304,7 +275,6 @@ async function installIpcMocks(app: ElectronApplication, opts: MockOpts = {}): P
     ],
     chatTokens = MOCK_CHAT_TOKENS,
     chatResponse = MOCK_CHAT_RESPONSE,
-    betaComments = MOCK_BETA_COMMENTS,
     scanDelayMs = 0,
     chatDelayMs = 40,
   } = opts;
@@ -316,7 +286,6 @@ async function installIpcMocks(app: ElectronApplication, opts: MockOpts = {}): P
         tips: MockTip[];
         chatTokens: string[];
         chatResponse: string;
-        betaComments: MockComment[];
         scannedAt: string;
         scanDelayMs: number;
         chatDelayMs: number;
@@ -367,15 +336,6 @@ async function installIpcMocks(app: ElectronApplication, opts: MockOpts = {}): P
         },
       );
 
-      // ── Beta-Read channels ────────────────────────────────────────────────
-      safeRemove('betaRead:scan');
-      safeRemove('betaRead:dismiss');
-      ipcMain.handle('betaRead:scan', async () => ({
-        comments: args.betaComments,
-        scannedAt: args.scannedAt,
-      }));
-      ipcMain.handle('betaRead:dismiss', async () => ({ ok: true }));
-
       // ── Voice / TTS channel ───────────────────────────────────────────────
       // Returns the speakId without emitting voice:speak:done so that
       // playingCardId state persists until the user explicitly clicks Stop.
@@ -388,7 +348,6 @@ async function installIpcMocks(app: ElectronApplication, opts: MockOpts = {}): P
       tips,
       chatTokens,
       chatResponse,
-      betaComments,
       scannedAt: freshTs,
       scanDelayMs,
       chatDelayMs,
@@ -818,105 +777,6 @@ test('TC-WA-11: stall panel appears after stall (E2E-fast timer override)', asyn
     delete (window as unknown as { __MYTHOS_E2E_TIMERS__?: Record<string, number> }).__MYTHOS_E2E_TIMERS__;
   });
   await installIpcMocks(app!);
-});
-
-// ════════════════════════════════════════════════════════════════════════════
-// BETA-READ SUITE
-// ════════════════════════════════════════════════════════════════════════════
-
-// ─── TC-WA-17: "beta read" prompt triggers Beta-Read scan ────────────────────
-//
-// AC-WA-17: "Submitting 'beta read' in the chat input routes to betaRead:scan
-// (not agent:writing-assistant) and renders the Beta-Read panel."
-
-test('TC-WA-17: "beta read" prompt triggers Beta-Read scan', async () => {
-  await installIpcMocks(app!);
-  await openWritingAssistantWithScene(page);
-
-  const input = await fillAssistantPrompt(page, 'beta read this scene');
-  await input.press('Enter');
-
-  // Beta-Read panel must appear with the mock comments.
-  const brPanel = page.locator('.br-panel');
-  await expect(brPanel).toBeVisible({ timeout: 8_000 });
-
-  const comments = brPanel.locator('[role="article"][aria-label="Beta-Read comment"]');
-  await expect(comments).toHaveCount(MOCK_BETA_COMMENTS.length, { timeout: 8_000 });
-});
-
-// ─── TC-WA-18: Beta-Read output renders BetaReadComment cards ────────────────
-//
-// AC-WA-18: "Beta-Read output renders one BetaReadCommentCard per comment,
-// showing the anchor text and comment body."
-
-test('TC-WA-18: Beta-Read output renders comment cards with correct content', async () => {
-  await installIpcMocks(app!);
-  await openWritingAssistantWithScene(page);
-
-  const brPanel = page.locator('.br-panel');
-  await expect(brPanel).toBeVisible({ timeout: 5_000 });
-
-  // Trigger Beta-Read via the panel button.
-  await brPanel.locator('.br-primary-btn').click();
-
-  const comments = brPanel.locator('[role="article"][aria-label="Beta-Read comment"]');
-  await expect(comments).toHaveCount(MOCK_BETA_COMMENTS.length, { timeout: 8_000 });
-
-  // First comment must show anchor text and comment body.
-  const first = comments.first();
-  await expect(first).toContainText(MOCK_BETA_COMMENTS[0].anchor_text);
-  await expect(first).toContainText(MOCK_BETA_COMMENTS[0].comment_text);
-});
-
-// ─── TC-WA-20: Dismiss removes comment from UI ───────────────────────────────
-//
-// AC-WA-20: "Clicking Dismiss on a Beta-Read comment removes it from the UI
-// and fires betaRead:dismiss. The comment does not reappear."
-
-test('TC-WA-20: dismissed Beta-Read comment is removed from UI', async () => {
-  await installIpcMocks(app!);
-  await openWritingAssistantWithScene(page);
-
-  const brPanel = page.locator('.br-panel');
-  await expect(brPanel).toBeVisible({ timeout: 5_000 });
-
-  // Ensure comments are loaded.
-  const comments = brPanel.locator('[role="article"][aria-label="Beta-Read comment"]');
-  if (await comments.count() === 0) {
-    await brPanel.locator('.br-primary-btn').click();
-    await expect(comments).toHaveCount(MOCK_BETA_COMMENTS.length, { timeout: 8_000 });
-  }
-
-  const before = await comments.count();
-  expect(before).toBeGreaterThan(0);
-
-  // Dismiss the first comment.
-  await comments.first().locator('.br-action-btn--danger').click();
-
-  // Comment count must drop by one.
-  await expect(comments).toHaveCount(before - 1, { timeout: 5_000 });
-});
-
-// ─── TC-WA-21: Empty scene shows Beta-Read blocked message ───────────────────
-//
-// AC-WA-21: "Clicking Beta-Read on an empty scene shows an error message
-// (no prose → blocked) rather than triggering a scan."
-
-test('TC-WA-21: Beta-Read shows error message for empty scene', async () => {
-  await installIpcMocks(app!);
-
-  await openScene(page, 'Empty Scene');
-  await openAssistantTab(page);
-
-  const brPanel = page.locator('.br-panel');
-  await expect(brPanel).toBeVisible({ timeout: 5_000 });
-
-  await brPanel.locator('.br-primary-btn').click();
-
-  // An error/blocked message must appear.
-  const error = page.locator('.br-error-state, .writing-assistant-error, [role="alert"]');
-  await expect(error).toBeVisible({ timeout: 5_000 });
-  await expect(error).toContainText(/empty|no prose|add prose/i);
 });
 
 // ════════════════════════════════════════════════════════════════════════════

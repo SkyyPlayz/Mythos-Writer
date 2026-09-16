@@ -49,6 +49,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { clickStoryNav } from '../helpers/navGuard';
+import { installDraftStreamMock, generateMockDraft } from '../helpers/draftStreamMock';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -817,22 +818,6 @@ test('SKY-9878: a vault write while the canvas rail is open restocks it with no 
 // land in the generated draft board, watch it survive a reload. Nothing is
 // pre-seeded: a fresh story (AC-SC-14's pattern) starts with zero boards.
 
-/** Replace the streaming IPC with a deterministic, no-network mock (mirrors
- *  m19-scene-crafter-prose-invariant.spec.ts's installDraftStreamMock). */
-async function installDraftStreamMock(electronApp: ElectronApplication, text: string): Promise<void> {
-  await electronApp.evaluate(({ ipcMain }, args) => {
-    try { ipcMain.removeHandler('stream:start'); } catch { /* not registered */ }
-    ipcMain.handle('stream:start', (event) => {
-      const streamId = 'mock-sky11049-stream';
-      setTimeout(() => {
-        event.sender.send('stream:token', { streamId, token: args.text });
-        event.sender.send('stream:end', { streamId });
-      }, 30);
-      return { streamId };
-    });
-  }, { text });
-}
-
 test('SKY-11049: a suggested card clicked in Setup visibly selects, lands on the generated board, and survives reload', async () => {
   if (!app) throw new Error('shared Electron app not launched');
   await installDraftStreamMock(app, 'A gust of cold air rolled through the doorway.');
@@ -870,9 +855,8 @@ test('SKY-11049: a suggested card clicked in Setup visibly selects, lands on the
 
   // Generate a draft with the suggested card selected as context, then add
   // it to the scene board.
-  await page.locator('.sc-draft-btn', { hasText: 'Generate' }).click();
-  await expect(page.locator('[data-testid="sc-draft-card"]')).toBeVisible({ timeout: 8_000 });
-  await page.locator('[data-testid="sc-draft-card"]').getByRole('button', { name: 'Add to scene board' }).click();
+  const draftCard = await generateMockDraft(app, page);
+  await draftCard.getByRole('button', { name: 'Add to scene board' }).click();
 
   // A brand-new canvas board opens, carrying the chosen suggested card — the
   // "click places it on the board" half of the owner report.

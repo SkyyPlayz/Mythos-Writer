@@ -18,7 +18,6 @@ import PresetEditor from './components/PresetEditor';
 import PresetBrowser from './components/PresetBrowser';
 import RefinementChips from './components/RefinementChips';
 import QualityRubric from './components/QualityRubric';
-import BetaReadPanel from './components/BetaReadPanel';
 import {
   getEffectiveAxes,
   buildPresetContext,
@@ -101,7 +100,6 @@ interface Props {
   waScanInterval?: number | 'on-save' | 'manual';
   isActive?: boolean;
   isPageFocused?: boolean;
-  onJumpToText?: (text: string) => void;
   /** AC-WA-25: show STT microphone button in input area only when true. Off by default. */
   voiceEnabled?: boolean;
   /** G2: TTS engine config. When absent or unconfigured, OS speechSynthesis is used as default. */
@@ -127,14 +125,6 @@ interface Props {
    *  the session picker (e.g. AgentHubPanel) can disable session switching for
    *  the duration — pinning already keeps data correct even if this is missed. */
   onBusyChange?: (busy: boolean) => void;
-}
-
-function isBetaReadRequest(prompt: string) {
-  return /\b(beta[-\s]?read|beta reader|deep review)\b/i.test(prompt);
-}
-
-function getSceneProse(scene: Scene) {
-  return scene.blocks.map((block) => block.content).join('\n\n');
 }
 
 const CADENCE_OPTIONS = [
@@ -190,7 +180,6 @@ export default function WritingAssistantPanel({
   scanIntervalSeconds = 60,
   waScanInterval,
   isActive = true,
-  onJumpToText,
   voiceEnabled = false,
   ttsSettings,
   voicePrefs,
@@ -216,10 +205,6 @@ export default function WritingAssistantPanel({
   const [showEditor, setShowEditor] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
   const [activeRefinementId, setActiveRefinementId] = useState<string | null>(null);
-  const [betaReadComments, setBetaReadComments] = useState<BetaReadComment[]>([]);
-  const [betaReadLoading, setBetaReadLoading] = useState(false);
-  const [betaReadError, setBetaReadError] = useState<string | null>(null);
-  const [betaReadLastScannedAt, setBetaReadLastScannedAt] = useState<string | null>(null);
   const [cadence, setCadence] = useState<CadenceValue>(() => toCadenceValue(waScanInterval ?? scanIntervalSeconds));
   const [cadenceTouched, setCadenceTouched] = useState(false);
   const [suppressedTipKeys, setSuppressedTipKeys] = useState<Set<string>>(() => new Set());
@@ -326,7 +311,7 @@ export default function WritingAssistantPanel({
 
   // Beta 3 M22: chat streaming, beta-read scans and writing scans all light
   // the workspace tab strip's agents chip while running.
-  useAgentActivity(loading || betaReadLoading || scanning);
+  useAgentActivity(loading || scanning);
 
   useEffect(() => {
     window.api.writingAssistantSetActiveScene?.({
@@ -443,53 +428,6 @@ export default function WritingAssistantPanel({
     }, getEffectiveTimerMs(HARD_TIMEOUT_MS, 'hardTimeoutMs'));
   }, [announce, clearStreamResources]);
 
-  const runBetaReadScan = useCallback(async () => {
-    if (!scene) {
-      const msg = 'Select a scene before starting Beta-Read mode.';
-      setBetaReadError(msg);
-      announce(msg);
-      return;
-    }
-
-    const prose = getSceneProse(scene);
-    if (!prose.trim()) {
-      const msg = 'This scene is empty — add prose before starting Beta-Read mode.';
-      setBetaReadError(msg);
-      announce(msg);
-      return;
-    }
-
-    setBetaReadLoading(true);
-    setBetaReadError(null);
-    setError(null);
-    try {
-      const result = await window.api.betaReadScan(scene.id, prose, scene.path);
-      if ('error' in result) throw new Error(result.error);
-      setBetaReadComments(result.comments);
-      setBetaReadLastScannedAt(result.scannedAt);
-      announce(`Beta-Read complete with ${result.comments.length} ${result.comments.length === 1 ? 'comment' : 'comments'}.`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const errorMsg = msg || 'Beta-Read unavailable — check your provider settings.';
-      setBetaReadError(errorMsg);
-      announce(`Error: ${errorMsg}`);
-    } finally {
-      setBetaReadLoading(false);
-    }
-  }, [announce, scene]);
-
-  const dismissBetaReadComment = useCallback(async (id: string) => {
-    setBetaReadComments((prev) => prev.filter((comment) => comment.id !== id));
-    try {
-      await window.api.betaReadDismiss(id);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      const errorMsg = msg || 'Could not dismiss Beta-Read comment.';
-      setBetaReadError(errorMsg);
-      announce(`Error: ${errorMsg}`);
-    }
-  }, [announce]);
-
   const cancelGeneration = useCallback(() => {
     if (!loading) return;
     requestIdRef.current += 1;
@@ -505,13 +443,6 @@ export default function WritingAssistantPanel({
   const ask = useCallback(async (overridePrompt?: string, overrideAxes?: PresetAxes) => {
     const trimmed = (overridePrompt ?? prompt).trim();
     if (!trimmed || loading) return;
-
-    if (isBetaReadRequest(trimmed)) {
-      lastPromptRef.current = trimmed;
-      if (!overridePrompt) setPrompt('');
-      await runBetaReadScan();
-      return;
-    }
 
     requestIdRef.current += 1;
     const requestId = requestIdRef.current;
@@ -623,7 +554,7 @@ export default function WritingAssistantPanel({
         setStalled(false);
       }
     }
-  }, [announce, clearStreamResources, effectiveAxes, loading, prompt, runBetaReadScan, scene, scheduleStallTimers, sessionStore]);
+  }, [announce, clearStreamResources, effectiveAxes, loading, prompt, scene, scheduleStallTimers, sessionStore]);
 
   const retryGeneration = useCallback(() => {
     const retryPrompt = lastPromptRef.current;
@@ -1052,17 +983,6 @@ export default function WritingAssistantPanel({
           </button>
         )}
       </div>
-
-      <BetaReadPanel
-        scene={scene}
-        comments={betaReadComments}
-        loading={betaReadLoading}
-        error={betaReadError}
-        lastScannedAt={betaReadLastScannedAt}
-        onRunScan={runBetaReadScan}
-        onDismiss={dismissBetaReadComment}
-        onJumpToText={onJumpToText}
-      />
 
       <div
         className="writing-assistant-messages"

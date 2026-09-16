@@ -14,7 +14,7 @@ export default function FocusModePrefsDialog({ prefs, onChange, onClose }: Props
 
   return (
     <div className="focus-prefs-backdrop" onClick={onClose}>
-      <div className="focus-prefs-dialog" role="dialog" aria-modal="true" aria-label="Focus Mode preferences" onClick={(e) => e.stopPropagation()}>
+      <div className="ln-overlay-surface focus-prefs-dialog" role="dialog" aria-modal="true" aria-label="Focus Mode preferences" onClick={(e) => e.stopPropagation()}>
         <div className="focus-prefs-header">
           <span className="focus-prefs-title">Focus Mode</span>
           <button className="focus-prefs-close" onClick={onClose} aria-label="Close">×</button>

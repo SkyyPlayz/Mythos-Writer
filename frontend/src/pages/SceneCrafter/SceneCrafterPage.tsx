@@ -21,7 +21,6 @@ import {
   groupSuggested,
   legacyBeatsFromLanes,
   moveBeat,
-  normalizeVaultPath,
   planNotesFromVault,
   refCardsForColumn,
   refPickerCards,
@@ -37,14 +36,8 @@ import {
   type VaultListItem,
   type VaultRefColumnKey,
 } from './crafterState';
-import {
-  BOARD_FILE_SUFFIX,
-  boardFilePath,
-  boardsDirForStory,
-  loadCrafterBoards,
-  saveCrafterBoard,
-} from './crafterBoardStore';
-import { formatEditedAgo } from '../../NoteViewer';
+import { boardFilePath, loadCrafterBoards, saveCrafterBoard } from './crafterBoardStore';
+import { SceneCrafterCardThumb } from './SceneCrafterCardThumb';
 import { useIpcStream } from '../../hooks/useIpcStream';
 import { useAiEnabled } from '../../hooks/useAiEnabled';
 import './SceneCrafterPage.css';
@@ -110,7 +103,7 @@ function SuggestedCardsRail({
               onDragStart={draggable ? (event) => onCardDragStart?.(card, event) : undefined}
               onClick={() => onCardActivate(card)}
             >
-              <span className="sc-sugg-av">{card.av}</span>
+              <SceneCrafterCardThumb nid={card.nid} alt={card.t} className="sc-sugg-av">{card.av}</SceneCrafterCardThumb>
               <span className="sc-sugg-text">
                 <span className="sc-sugg-t">{card.t}</span>
                 <span className="sc-sugg-d">{card.d}</span>
@@ -215,7 +208,7 @@ function PovField({ value, onChange, characters }: PovFieldProps) {
                 onMouseEnter={() => setHighlight(i)}
                 onClick={() => commit(card.t)}
               >
-                <span className="sc-sugg-av">{card.av}</span>
+                <SceneCrafterCardThumb nid={card.nid} alt={card.t} className="sc-sugg-av">{card.av}</SceneCrafterCardThumb>
                 <span className="sc-sugg-text">
                   <span className="sc-sugg-t">{card.t}</span>
                   <span className="sc-sugg-d">{card.d}</span>
@@ -505,19 +498,6 @@ export default function SceneCrafterPage({
   const suggestedGroups = groupSuggested(filterSuggested(allSuggested, sugQ));
   const planNotes = planNotesFromVault(vaultItems);
   const openBoard = openBoardId !== null ? boards.find((b) => b.id === openBoardId) ?? null : null;
-  // SKY-11069: gallery "Edited …" metadata — the vault listing already
-  // carries modifiedAt; boards are keyed by their file path. Fresh boards
-  // created this session appear here after the next vault-updated push.
-  const boardModifiedAt = useMemo(() => {
-    const prefix = `${boardsDirForStory(storySlug)}/`;
-    const map = new Map<string, string>();
-    for (const item of vaultItems) {
-      if (item.isDirectory) continue;
-      const path = normalizeVaultPath(item.path);
-      if (path.startsWith(prefix) && path.endsWith(BOARD_FILE_SUFFIX)) map.set(path, item.modifiedAt);
-    }
-    return map;
-  }, [vaultItems, storySlug]);
   // R11/M11c copy (SKY-9878): the rail itself never calls AI either way —
   // only who's credited with keeping it stocked changes.
   const vaultStockedCopy = aiEnabled
@@ -967,32 +947,29 @@ export default function SceneCrafterPage({
                   tab — the shell's upsertBoardTab). */}
               <div className="sc-field-label sc-section-label">BOARDS</div>
               <div className="sc-board-list" data-testid="crafter-board-list">
-                {boards.map((row) => {
-                  const modifiedAt = boardModifiedAt.get(row.id);
-                  return (
-                    <button
-                      type="button"
-                      key={row.id}
-                      className="sc-board-row"
-                      onClick={() => onOpenBoard?.({ id: row.id, name: row.name })}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round">
-                        <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
-                        <rect x="13.5" y="6.5" width="7" height="7" rx="1.5" />
-                        <rect x="7.5" y="14.5" width="7" height="7" rx="1.5" />
-                        <path d="M10.5 7.5h3M12 13.5v1" />
-                      </svg>
-                      <span className="sc-board-row-text">
-                        <span className="sc-board-row-name">{row.name}</span>
-                        <span className="sc-board-row-meta">
-                          {row.cards.length} {row.cards.length === 1 ? 'card' : 'cards'}
-                          {modifiedAt ? ` · edited ${formatEditedAgo(new Date(modifiedAt))}` : ''}
-                        </span>
+                {boards.map((row) => (
+                  <button
+                    type="button"
+                    key={row.id}
+                    className="sc-board-row"
+                    onClick={() => onOpenBoard?.({ id: row.id, name: row.name })}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round">
+                      <rect x="3.5" y="3.5" width="7" height="7" rx="1.5" />
+                      <rect x="13.5" y="6.5" width="7" height="7" rx="1.5" />
+                      <rect x="7.5" y="14.5" width="7" height="7" rx="1.5" />
+                      <path d="M10.5 7.5h3M12 13.5v1" />
+                    </svg>
+                    <span className="sc-board-row-text">
+                      <span className="sc-board-row-name">{row.name}</span>
+                      <span className="sc-board-row-meta">
+                        {row.cards.length} {row.cards.length === 1 ? 'card' : 'cards'} · {row.links.length}{' '}
+                        {row.links.length === 1 ? 'link' : 'links'}
                       </span>
-                      <span className="sc-board-chip">CANVAS</span>
-                    </button>
-                  );
-                })}
+                    </span>
+                    <span className="sc-board-chip">CANVAS</span>
+                  </button>
+                ))}
                 <button
                   type="button"
                   className="sc-board-row sc-board-row--new"
@@ -1187,7 +1164,7 @@ export default function SceneCrafterPage({
                           setRefPickerCol(null);
                         }}
                       >
-                        <span className="sc-sugg-av">{card.av}</span>
+                        <SceneCrafterCardThumb nid={card.nid} alt={card.t} className="sc-sugg-av">{card.av}</SceneCrafterCardThumb>
                         <span className="sc-sugg-text">
                           <span className="sc-sugg-t">{card.t}</span>
                           <span className="sc-sugg-d">{card.d}</span>
@@ -1198,7 +1175,11 @@ export default function SceneCrafterPage({
                 )}
                 {cards.length === 0 && !pickerOpen && (
                   <div className="sc-help">
-                    No {col.noun} notes in your vault yet — press + to reference any note.
+                    {/* SKY-11455: the picker only offers this column's category
+                        (SKY-11212), so name the reachable path — the bundled
+                        template stamps the `type:` the classifier reads. */}
+                    No {col.noun} notes in this scene yet. Press + to add one, or create a note
+                    from the {col.templateName} template.
                   </div>
                 )}
                 {cards.map((card) => (
@@ -1209,7 +1190,7 @@ export default function SceneCrafterPage({
                       title="Open the note"
                       onClick={() => onOpenNote?.(card.nid)}
                     >
-                      <span className="sc-ref-band" aria-hidden="true">{card.av}</span>
+                      <SceneCrafterCardThumb nid={card.nid} alt={card.t} className="sc-ref-band" aria-hidden="true">{card.av}</SceneCrafterCardThumb>
                       <span className="sc-ref-name">{card.t}</span>
                       <span className="sc-ref-role">{card.d}</span>
                     </button>

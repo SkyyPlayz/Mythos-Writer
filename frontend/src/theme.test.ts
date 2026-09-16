@@ -17,6 +17,44 @@ describe('token contrast floor (MYT-517 UX gate)', () => {
   });
 });
 
+describe('K8 high-contrast flattens the v2 slot tokens (SKY-11532)', () => {
+  // The v2 engine writes --b1..--b6/--g1..--g6/--gs1..--gs6/--bh/--glowH/--bwh
+  // inline on <html>; the K8 block must declare every one of them (on the
+  // :where(*) descendant selector, so it wins over the inherited inline
+  // value) or a tinted neon rim/glow survives under data-contrast="high".
+  const k8Block = tokensCss.match(
+    /:root\[data-contrast="high"\][\s\S]*?:root\[data-contrast="high"\]\s*:where\(\*\)\s*\{([\s\S]*?)\n\}/
+  );
+  const k8 = k8Block ? k8Block[1] : '';
+
+  it('finds the K8 block in tokens.css', () => {
+    expect(k8Block).not.toBeNull();
+  });
+
+  const slotTokens = [
+    '--b1', '--b2', '--b3', '--b4', '--b5', '--b6',
+    '--bh', '--bwh',
+    '--g1', '--g2', '--g3', '--g4', '--g5', '--g6',
+    '--glowH',
+    '--gs1', '--gs2', '--gs3', '--gs4', '--gs5', '--gs6',
+  ];
+
+  it.each(slotTokens)('declares %s', (token) => {
+    const re = new RegExp(`(?<![\\w-])${token.replace('--', '--')}\\s*:`);
+    expect(k8).toMatch(re);
+  });
+
+  it('mirrors the same slot tokens under prefers-contrast: more', () => {
+    const osBlock = tokensCss.match(/@media \(prefers-contrast: more\)\s*\{\s*:root\s*\{([\s\S]*?)\n {2}\}\n\}/);
+    expect(osBlock).not.toBeNull();
+    const os = osBlock ? osBlock[1] : '';
+    for (const token of slotTokens) {
+      const re = new RegExp(`(?<![\\w-])${token}\\s*:`);
+      expect(os).toMatch(re);
+    }
+  });
+});
+
 describe('theme (dark-only, MYT-517)', () => {
   beforeEach(() => {
     document.documentElement.removeAttribute('data-theme');

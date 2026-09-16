@@ -394,6 +394,17 @@
   background: var(--bg-bar);
 }
 
+/* SKY-11211: hosted inside GlobalRightSidebar's route slot instead of a
+   second in-page column — fill the sidebar's width/height and scroll,
+   background transparent so the sidebar's own glass shows through (matches
+   the default Assistant panel it replaces). */
+.brainstorm-facts-col--in-sidebar {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background: transparent;
+}
+
 .brainstorm-facts-header {
   display: flex;
   align-items: center;
@@ -1316,6 +1327,49 @@
   gap: 8px;
 }
 
+/* SKY-11220: live "thinking" indicator for local reasoning models — a working
+   state, not an error, so it stays quiet (no border/actions) and just pulses. */
+.bs-thinking-panel {
+  margin: 8px 16px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bs-thinking-msg {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.bs-thinking-dots {
+  display: inline-flex;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.bs-thinking-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  opacity: 0.4;
+  animation: bs-thinking-pulse 1.2s ease-in-out infinite;
+}
+
+.bs-thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.bs-thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes bs-thinking-pulse {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bs-thinking-dots span { animation: none; opacity: 0.7; }
+}
+
 .bs-stalled-msg {
   margin: 0;
   font-size: 0.8rem;
@@ -1470,13 +1524,12 @@
   background: rgba(0, 0, 0, 0.45);
 }
 
+/* Chrome comes from `.ln-overlay-surface` (overlay-tier.css), SKY-11493;
+   this rule owns geometry only. */
 .bs-delete-confirm-dialog {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   padding: var(--space-4);
   min-width: 240px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 .bs-delete-confirm-message {

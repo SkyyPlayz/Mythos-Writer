@@ -1,0 +1,9 @@
+Agent Vault/
+Notes Vault/
+Story Vault/
+Story Vault/.mythos/
+mythos.json
+notes-vaults.json
+settings.json
+story-vaults.json
+timelines.json

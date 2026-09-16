@@ -99,6 +99,33 @@ describe('ingestArchiveQuestions', () => {
     }
   });
 
+  // SKY-11457: the self-building wiki asks about names with no entity row, so
+  // the id-keyed guard above never fires for them. Scene scans run on a timer.
+  it('does not re-queue an entity-less new-name question on a repeat scan', () => {
+    const vault = makeTmp('mythos-question-queue-name-dedup-db-');
+    openDb(vault);
+    try {
+      const input = {
+        source: 'wiki_autostub' as const,
+        question: 'A new entity “Corwin” appeared in your draft. Add it to the wiki?',
+        entityName: 'Corwin',
+        scenePath: 'Scenes/01.md',
+      };
+
+      expect(enqueueQuestion(input)).not.toBeNull();
+      expect(enqueueQuestion(input)).toBeNull();
+      // Same name, different scene — still worth asking about.
+      expect(enqueueQuestion({ ...input, scenePath: 'Scenes/02.md' })).not.toBeNull();
+      // Casing is not a second question.
+      expect(enqueueQuestion({ ...input, entityName: 'corwin' })).toBeNull();
+
+      expect(listBrainstormQuestions()).toHaveLength(2);
+    } finally {
+      closeDb();
+      fs.rmSync(vault, { recursive: true, force: true });
+    }
+  });
+
   it('negative control: a continuity-flag write does not create a queue entry', () => {
     const vault = makeTmp('mythos-question-queue-negctrl-db-');
     openDb(vault);

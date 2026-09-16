@@ -37,7 +37,8 @@ import UpdatesSection from './components/SettingsPanel/sections/UpdatesSection';
 import AppearanceSection from './components/SettingsPanel/sections/AppearanceSection';
 import LiquidNeonAppearanceSection from './components/SettingsPanel/sections/LiquidNeonAppearanceSection';
 import MythosVaultsSection from './components/SettingsPanel/sections/MythosVaultsSection';
-import AddVaultButtonsSection from './components/SettingsPanel/sections/AddVaultButtonsSection';
+import VaultsFolderSection from './components/SettingsPanel/sections/VaultsFolderSection';
+import VaultLinkingColumns from './components/SettingsPanel/sections/VaultLinkingColumns';
 import PageAppearanceSection from './components/SettingsPanel/sections/PageAppearanceSection';
 import NavConfigSection from './components/SettingsPanel/sections/NavConfigSection';
 import FocusModeSection from './components/SettingsPanel/sections/FocusModeSection';
@@ -48,8 +49,7 @@ import AccountProfileSection from './components/SettingsPanel/sections/AccountPr
 import EditorSettingsSection from './components/SettingsPanel/sections/EditorSettingsSection';
 // Beta 4 M28: manuscript-only appearance cards live on the Editor page (§13)
 import EditorManuscriptSection from './components/SettingsPanel/sections/EditorManuscriptSection';
-import ImportVaultSection from './components/SettingsPanel/sections/ImportVaultSection';
-import ImportStorySection from './components/SettingsPanel/sections/ImportStorySection';
+import NotesBoardSection from './components/SettingsPanel/sections/NotesBoardSection';
 import SyncBackupSection from './components/SettingsPanel/sections/SyncBackupSection';
 import ShortcutsSection from './components/SettingsPanel/sections/ShortcutsSection';
 import AboutSection from './components/SettingsPanel/sections/AboutSection';
@@ -422,7 +422,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   }, []);
 
   const keyIsConfigured = Boolean(settings.apiKey);
-  const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput) : null;
+  const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput, providerKind) : null;
 
   // Beta 3 M22: NonNullable so the optional betaReader slot is editable with
   // the same generic setter (the slot is normalized present at settings load).
@@ -812,6 +812,23 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const persistAppearanceLive = useCallback(async () => {
     try {
       const base = await window.api.settingsGet();
+      // SKY-11589: the live path must write the active vault's per-vault
+      // appearance entry too (SKY-11237), exactly as the footer Save does —
+      // otherwise the stale per-vault entry shadows every live Appearance edit
+      // (theme, wallpaper pick, slots…) on the next launch. Persisted entries
+      // win over the load-time seeded map; the active vault gets the edit.
+      const vaultAppearance: AppSettings['vaultAppearance'] = activeVaultRoot
+        ? {
+            ...(settings.vaultAppearance ?? {}),
+            ...(base.vaultAppearance ?? {}),
+            [activeVaultRoot]: {
+              ...(base.vaultAppearance?.[activeVaultRoot] ?? settings.vaultAppearance?.[activeVaultRoot] ?? {}),
+              theme: settings.theme,
+              liquidNeon: lg,
+              ...(settings.liquidNeonV2 !== undefined ? { liquidNeonV2: settings.liquidNeonV2 } : {}),
+            },
+          }
+        : base.vaultAppearance;
       const payload: AppSettings = {
         ...base,
         theme: settings.theme,
@@ -821,6 +838,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         navConfig,
         updateChannel: settings.updateChannel,
         telemetry: { enabled: telemetryEnabled, sessionId: base.telemetry?.sessionId ?? '' },
+        ...(vaultAppearance !== undefined ? { vaultAppearance } : {}),
       };
       await window.api.settingsSet(payload);
       setSaveError(null);
@@ -828,7 +846,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save settings.');
     }
-  }, [settings.theme, settings.liquidNeonV2, settings.updateChannel, lg, pageBg, navConfig, telemetryEnabled, onSaved]);
+  }, [settings.theme, settings.liquidNeonV2, settings.updateChannel, settings.vaultAppearance, activeVaultRoot, lg, pageBg, navConfig, telemetryEnabled, onSaved]);
 
   // Write-guard for the live-persist debounce. The load hydration commits in
   // one batch with setLoading(false), so the first post-load run of the effect
@@ -953,22 +971,33 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 setModelListError={setModelListError}
               />
 
-              <ApiKeySection
-                apiKeyInput={apiKeyInput}
-                setApiKeyInput={setApiKeyInput}
-                apiKeyDirty={apiKeyDirty}
-                setApiKeyDirty={setApiKeyDirty}
-                showApiKey={showApiKey}
-                setShowApiKey={setShowApiKey}
-                keyIsConfigured={keyIsConfigured}
-                apiKeyError={apiKeyError}
-                setSavedOk={setSavedOk}
-              />
+              {/* SKY-11219: this legacy key is Anthropic/OpenAI/custom-only
+                  (ProviderSection already hides its own key field for
+                  providers that need none) — showing it for a keyless local
+                  provider like LM Studio/Ollama falsely implies a cloud key
+                  is required. */}
+              {PROVIDER_OPTIONS.find((p) => p.value === providerKind)?.needsKey && (
+                <ApiKeySection
+                  providerKind={providerKind}
+                  apiKeyInput={apiKeyInput}
+                  setApiKeyInput={setApiKeyInput}
+                  apiKeyDirty={apiKeyDirty}
+                  setApiKeyDirty={setApiKeyDirty}
+                  showApiKey={showApiKey}
+                  setShowApiKey={setShowApiKey}
+                  keyIsConfigured={keyIsConfigured}
+                  apiKeyError={apiKeyError}
+                  setSavedOk={setSavedOk}
+                />
+              )}
 
               <AgentsSection
                 settings={settings}
                 setSettings={setSettings}
                 providerKind={providerKind}
+                providerModel={providerModel}
+                modelList={modelList}
+                modelListStatus={modelListStatus}
                 agentOverrides={agentOverrides}
                 agentTestStatus={agentTestStatus}
                 agentTestMsg={agentTestMsg}
@@ -1008,13 +1037,20 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
               <AccountSection vaults={vaults} vaultProvider={vaultProvider} onMoveVault={handleMoveVault} />
 
+              {/* SKY-11154 (parent spec SKY-11141 §2): "Vaults folder" row —
+                  the parent folder holding every Mythos vault, with an
+                  Open-folder + Move… flow (distinct from the per-vault
+                  AccountSection move above). */}
+              <VaultsFolderSection />
+
               {/* Beta 4 M1: Mythos vaults cards — per-vault default theme (§3). */}
               <MythosVaultsSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
 
-              {/* SKY-11152 (parent spec SKY-11141 §3c): "+ Add Notes Vault" /
-                  "+ Add Story Vault" dialogs — reuses the SKY-11151 creation
-                  primitive, no location picker. */}
-              <AddVaultButtonsSection />
+              {/* SKY-11154 (parent spec SKY-11141 §4): Notes/Story columns for
+                  the active Mythos vault, with dot-linking pairing — grew out
+                  of SKY-11152's "+ Add Notes Vault"/"+ Add Story Vault"
+                  dialogs (still reused here, kind='notes'/'story'). */}
+              <VaultLinkingColumns />
 
               <VaultPathsSection
                 vaults={vaults}
@@ -1030,11 +1066,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
               {/* Beta 4 M5: vault format card + MythosVault upgrade entry */}
               <MythosFormatSection />
-
-              {/* Beta 3 M24: vault + story import (prototype Vault & Files page) */}
-              <ImportVaultSection notesVaultPath={vaults.notesVaultPath} />
-
-              <ImportStorySection />
 
               <VaultHealthSection />
 
@@ -1062,6 +1093,8 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 onChange={(next) => { setSettings((p) => ({ ...p, liquidNeonV2: next })); }}
                 setSavedOk={setSavedOk}
               />
+              {/* SKY-11186: the Boards zoom-out cap — a visible performance setting (owner ruling 4). */}
+              <NotesBoardSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
             </>
           )}
 

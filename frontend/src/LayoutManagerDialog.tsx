@@ -87,7 +87,7 @@ export default function LayoutManagerDialog({
 
   return (
     <div className="layout-manager-overlay" role="dialog" aria-modal="true" aria-label="Layout Manager">
-      <div className="layout-manager-dialog">
+      <div className="ln-overlay-surface layout-manager-dialog">
         <div className="layout-manager-header">
           <div className="layout-manager-title">Layout Manager</div>
           <button

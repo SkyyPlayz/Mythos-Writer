@@ -1,7 +1,8 @@
 // SKY-11133 fidelity capture — reachability (§4c): at the owner's preferred
-// LOW global glass/blur, Settings and popups must read the boosted overlay
-// tier (opacity/blur × 1.25) instead of the plain global values, while the
-// main app chrome keeps obeying the global sliders exactly.
+// LOW global glass/blur, Settings and popups must read the overlay tier
+// instead of the plain global values, while the main app chrome keeps
+// obeying the global sliders exactly. (SKY-11491: the tier is the mockup's
+// fixed rgba(15,19,33,.97) / blur(24px) recipe, no longer glassA/blur × 1.25.)
 import fs from 'fs';
 import os from 'os';
 import path from 'path';

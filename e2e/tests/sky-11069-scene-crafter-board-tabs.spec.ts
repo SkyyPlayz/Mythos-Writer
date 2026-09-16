@@ -127,12 +127,15 @@ test('SKY-11069: BOARDS gallery → board tabs → focus-existing → restart pe
     await expect(stripTabs(page)).toHaveCount(2);
     await expect(stripTabs(page).nth(1)).toHaveAttribute('aria-selected', 'true');
 
-    // The open tab reached disk (activeLayout) before we relaunch.
+    // The open tab reached disk before we relaunch. SKY-11236: doc tabs are
+    // per-vault now — persisted under vaultWorkspaces[<Story-Vault root>],
+    // keyed by this vault's root, not the old global activeLayout.boardDocTabs.
     await expect
       .poll(() => {
         try {
           const s = JSON.parse(fs.readFileSync(path.join(userData, 'app-settings.json'), 'utf-8'));
-          return Array.isArray(s.activeLayout?.boardDocTabs) ? s.activeLayout.boardDocTabs.length : 0;
+          const board = s.vaultWorkspaces?.[vaultDir]?.boardDocTabs;
+          return Array.isArray(board) ? board.length : 0;
         } catch {
           return -1;
         }

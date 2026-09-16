@@ -8,7 +8,10 @@ vi.mock('@anthropic-ai/sdk', () => ({
   default: vi.fn(),
 }));
 
+vi.mock('undici', () => ({ fetch: vi.fn() }));
+
 import Anthropic from '@anthropic-ai/sdk';
+import { fetch as undici_fetch } from 'undici';
 import {
   streamFromProvider,
   listModels,
@@ -87,9 +90,10 @@ describe('M11a master AI gate', () => {
   });
 
   it('default gate (tests / standalone module use) is enabled', async () => {
-    fetchSpy.mockResolvedValue({ ok: false, status: 500 } as unknown as Response);
+    // listModels uses undici fetch (not global fetch) to bypass Electron's networking (SKY-11225)
+    (undici_fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, status: 500 } as unknown as Response);
     const result = await listModels({ kind: 'openai', apiKey: 'sk-openai-test' });
-    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(undici_fetch).toHaveBeenCalledTimes(1);
     expect(result.ok).toBe(false); // 500 from the mock, not the gate
   });
 });

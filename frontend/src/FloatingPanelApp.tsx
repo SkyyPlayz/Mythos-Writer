@@ -265,7 +265,6 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
             idleDebounceSeconds={settings?.agents?.writingAssistant?.idleDebounceSeconds}
             isActive={true}
             isPageFocused={true}
-            onJumpToText={() => {}}
             ttsSettings={settings?.tts}
             voicePrefs={settings?.voice}
           />

@@ -25,7 +25,6 @@ function makeProps(overrides: { topBarHidden?: boolean; onToggleTopBar?: () => v
     onToggleTopBar: vi.fn(),
     topBarHidden: false,
     onOpenTour: vi.fn(),
-    requestText: vi.fn(),
     dockedTabs: [],
     activeDockedTabId: null,
     onDockedTabSelect: vi.fn(),

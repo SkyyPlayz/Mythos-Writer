@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { collectProjectIcons, setProjectIcon } from './projectIcons.js';
+import { collectProjectIcons, setProjectIcon, setProjectName } from './projectIcons.js';
 import { STORY_VAULT_DIRNAME, NOTES_VAULT_DIRNAME, _clearDetectionCache } from './mythosFormat/mythosJson.js';
 
 let tmpRoot: string;
@@ -153,5 +153,61 @@ describe('setProjectIcon', () => {
     const res = await setProjectIcon({ vaultRoot: storyRoot, icon: { kind: 'glyph', value: '⚔️' } });
     expect(res.ok).toBe(true);
     expect(fs.existsSync(path.join(mythosRoot, 'vault-icon.png'))).toBe(false);
+  });
+});
+
+describe('setProjectName (SKY-11453)', () => {
+  it('rejects a v0.4 legacy vault (no mythos.json to write into)', async () => {
+    const storyRoot = path.join(tmpRoot, 'legacy3', STORY_VAULT_DIRNAME);
+    fs.mkdirSync(storyRoot, { recursive: true });
+    const res = await setProjectName({ vaultRoot: storyRoot, name: 'New Name' });
+    expect(res.ok).toBe(false);
+  });
+
+  it('writes the new name into the vault-local mythos.json, not just a caller-side cache', async () => {
+    const mythosRoot = path.join(tmpRoot, 'rename');
+    writeMythosJson(mythosRoot);
+    const storyRoot = path.join(mythosRoot, STORY_VAULT_DIRNAME);
+
+    const res = await setProjectName({ vaultRoot: storyRoot, name: 'QA Vault Renamed' });
+    expect(res.ok).toBe(true);
+    expect(res.name).toBe('QA Vault Renamed');
+
+    const onDisk = JSON.parse(fs.readFileSync(path.join(mythosRoot, 'mythos.json'), 'utf-8'));
+    expect(onDisk.name).toBe('QA Vault Renamed');
+  });
+
+  it('trims whitespace before writing', async () => {
+    const mythosRoot = path.join(tmpRoot, 'rename-trim');
+    writeMythosJson(mythosRoot);
+    const storyRoot = path.join(mythosRoot, STORY_VAULT_DIRNAME);
+
+    const res = await setProjectName({ vaultRoot: storyRoot, name: '  Trimmed  ' });
+    expect(res.ok).toBe(true);
+    expect(res.name).toBe('Trimmed');
+  });
+
+  it('rejects an empty/whitespace-only name without writing', async () => {
+    const mythosRoot = path.join(tmpRoot, 'rename-empty');
+    writeMythosJson(mythosRoot);
+    const storyRoot = path.join(mythosRoot, STORY_VAULT_DIRNAME);
+
+    const res = await setProjectName({ vaultRoot: storyRoot, name: '   ' });
+    expect(res.ok).toBe(false);
+
+    const onDisk = JSON.parse(fs.readFileSync(path.join(mythosRoot, 'mythos.json'), 'utf-8'));
+    expect(onDisk.name).toBe('Test Vault');
+  });
+
+  it('rejects a name over the length cap without writing', async () => {
+    const mythosRoot = path.join(tmpRoot, 'rename-toolong');
+    writeMythosJson(mythosRoot);
+    const storyRoot = path.join(mythosRoot, STORY_VAULT_DIRNAME);
+
+    const res = await setProjectName({ vaultRoot: storyRoot, name: 'x'.repeat(201) });
+    expect(res.ok).toBe(false);
+
+    const onDisk = JSON.parse(fs.readFileSync(path.join(mythosRoot, 'mythos.json'), 'utf-8'));
+    expect(onDisk.name).toBe('Test Vault');
   });
 });

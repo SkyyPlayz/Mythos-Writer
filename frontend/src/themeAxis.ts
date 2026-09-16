@@ -61,7 +61,7 @@ export function applyAxisTokens(tokens: AxisTokens): void {
   root.style.setProperty('--lg-glass', String(tokens.glass));
   root.style.setProperty(
     '--glass-fill',
-    `rgba(14, 14, 18, ${tokens.glass.toFixed(2)})`,
+    `rgba(13, 16, 28, ${tokens.glass.toFixed(2)})`,
   );
   root.style.setProperty('--lg-neon', String(tokens.neon));
 }
@@ -139,11 +139,11 @@ export function readContrastFloors(): ContrastFloors {
   const textBody = cs.getPropertyValue('--text-body').trim() || '#bfd6e8';
 
   // Canvas background for compositing; fall back to --bg-base default
-  const canvasStr = cs.getPropertyValue('--bg-base').trim() || '#0e1116';
-  const canvasRgb = parseColor(canvasStr) ?? [14, 17, 22];
+  const canvasStr = cs.getPropertyValue('--bg-base').trim() || '#07090f';
+  const canvasRgb = parseColor(canvasStr) ?? [7, 9, 15];
 
-  // Glass fill base colour — matches applyAxisTokens's rgba(14, 14, 18, glass)
-  const glassFill: [number, number, number] = [14, 14, 18];
+  // Glass fill base colour — matches applyAxisTokens's rgba(13, 16, 28, glass)
+  const glassFill: [number, number, number] = [13, 16, 28];
 
   function measureAt(preset: ContrastPreset): number {
     const tokens = AXIS_PRESETS[preset];

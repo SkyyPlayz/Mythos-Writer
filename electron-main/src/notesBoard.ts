@@ -45,6 +45,7 @@ import {
   serializeFrontmatter,
   writeFileAtomic,
   listVaultFiles,
+  markSelfWrite,
 } from './vault.js';
 
 // ─── Constants ───
@@ -105,6 +106,19 @@ export interface BoardFurnitureItem {
   title?: string;
   color?: string;
   [key: string]: unknown;
+}
+
+/**
+ * A `column` furniture item's `items[]` entry (§4). `ref`, when present, is a
+ * vault-relative note path and is NOT a second link representation — it
+ * resolves and rename-cascades exactly as a `[[wikilink]]` does elsewhere
+ * (rewriteRefForRename below mirrors shared/wikiLinkRename.ts's stem-match
+ * rule; findColumnRefBacklinks mirrors noteBacklinks.ts's). Do not add a
+ * bespoke "board ref link" type.
+ */
+export interface ColumnItem {
+  t: string;
+  ref?: string;
 }
 
 export interface BoardView {
@@ -360,6 +374,11 @@ export function resolveOrAssignId(kind: NotesBoardItemKind, absPath: string): st
     // byte-for-byte untouched. Same idiom notesTagWrangler.ts uses to
     // rewrite one frontmatter field without disturbing the rest.
     writeFileAtomic(absPath, serializeFrontmatter({ ...frontmatter, id }, prose));
+    // SKY-11186: this is the app's own write, not an external edit — without
+    // the mark, the first drag of every never-arranged card would bounce back
+    // through the Notes watcher as a vault change (board reload, tree
+    // refresh, reindex) for a frontmatter key nothing on screen shows.
+    markSelfWrite(absPath);
   }
   return id;
 }
@@ -689,6 +708,125 @@ export function furnitureDelete(
   return { deleted: true };
 }
 
+// ─── Vault-mutating canvas operations (§5) — SKY-11187 ───
+//
+// The canvas's Note/Board tools create REAL files and folders, and its rename
+// renames the REAL entry on disk (§5, §1 "two renderings of one filesystem").
+// Everything below is Store A only: none of it writes a board sidecar, and
+// none of it mints an id — the first drag of the new card does that, through
+// patchLayout, exactly as it does for a note created in the Notes tab (§2).
+//
+// Home (`folderRelPath === ''`, the vault root) is deliberately NOT special
+// cased anywhere in this section: resolveFolderAbs already maps '' to the
+// vault root, so the root board creates, names and renames like any other.
+
+/** Placeholder names the canvas tools create with (§5). */
+export const NEW_NOTE_BASE_NAME = 'New note';
+export const NEW_BOARD_BASE_NAME = 'New board';
+
+/**
+ * First free `<base><ext>` / `<base> 2<ext>` / `<base> 3<ext>` … inside
+ * `folderAbs`. Existence is checked against the FILESYSTEM rather than a
+ * caller-supplied sibling list, so the answer is correct on a
+ * case-insensitive volume (macOS/Windows: "new note.md" already occupies
+ * "New note.md") and cannot be raced stale by anything the renderer last
+ * listed.
+ */
+export function uniqueChildName(folderAbs: string, base: string, ext = ''): string {
+  for (let n = 1; ; n++) {
+    const name = n === 1 ? `${base}${ext}` : `${base} ${n}${ext}`;
+    if (!fs.existsSync(path.join(folderAbs, name))) return name;
+  }
+}
+
+export interface CreatedBoardItem {
+  /** Path relative to the board's own folder — the shape every per-item function here takes. */
+  itemPath: string;
+  kind: NotesBoardItemKind;
+}
+
+/**
+ * Create a new note (`New note.md`, empty) or sub-board (`New board/`) inside
+ * `folderRelPath`, optionally pinned at the click point. Returns the created
+ * item's board-relative path so the caller can drop it straight into inline
+ * rename.
+ *
+ * The note body is deliberately EMPTY — no frontmatter, no heading. A
+ * heading would be stale the moment the user finishes the inline rename that
+ * follows every create, and an `id:` here would break §2's lazy-assignment
+ * rule (a note acquires an id when it first acquires board metadata, not when
+ * it is born) — giving it a POSITION is exactly that first acquisition, so
+ * the id minted below comes from patchLayout, the one place §2 allows.
+ *
+ * The position is written and FLUSHED here rather than left in the drag
+ * debounce: a card's birth position is a structural fact about the create,
+ * not an animation frame. Leaving it buffered would let the board reload this
+ * create triggers (the renderer refresh the IPC handler pushes) read the
+ * sidecar before the entry landed and lay the brand-new card out in an
+ * auto-layout slot instead of under the pointer.
+ */
+export function createBoardItem(
+  vaultRoot: string,
+  folderRelPath: string,
+  kind: NotesBoardItemKind,
+  position?: { x: number; y: number },
+): CreatedBoardItem {
+  const folderAbs = resolveFolderAbs(vaultRoot, folderRelPath);
+  // Same guard as furnitureCreate: Store B is never authoritative about
+  // existence, and neither is a stale breadcrumb — refuse to materialize a
+  // board folder that Store A doesn't have.
+  if (!fs.existsSync(folderAbs) || !fs.statSync(folderAbs).isDirectory()) {
+    throw new Error(`notesBoard: board folder not found: ${folderRelPath || '.'}`);
+  }
+
+  let itemPath: string;
+  if (kind === 'folder') {
+    itemPath = uniqueChildName(folderAbs, NEW_BOARD_BASE_NAME);
+    fs.mkdirSync(path.join(folderAbs, itemPath));
+  } else {
+    itemPath = uniqueChildName(folderAbs, NEW_NOTE_BASE_NAME, '.md');
+    const abs = path.join(folderAbs, itemPath);
+    writeFileAtomic(abs, '');
+    // The app's own write — without the mark, chokidar's `add` would bounce
+    // straight back as an external vault change (reindex, graph work, a board
+    // reload) for a file the canvas is already rendering. The IPC handler
+    // pushes the renderer notification itself, so nothing is lost by
+    // suppressing the watcher here (same trade resolveOrAssignId makes).
+    markSelfWrite(abs);
+  }
+
+  if (position) {
+    patchLayout(vaultRoot, folderRelPath, itemPath, position);
+    flushBoardWrite(folderAbs);
+  }
+  return { itemPath, kind };
+}
+
+/**
+ * Board-relative path this item would move to under `newBaseName`, or null
+ * when the rename is a no-op the caller must NOT send to the filesystem:
+ * an empty/whitespace-only name (§5 — "renaming to empty string is a no-op",
+ * never a delete and never an unnamed file), or a name that resolves to the
+ * path the item already has.
+ *
+ * A note keeps its extension (`.md`), because the inline rename edits the
+ * DISPLAYED name, which is the stem. A folder has no extension to preserve —
+ * "Book v1.2" is the whole name, not a stem plus ".2" — matching the same
+ * split VaultBrowser's rename already makes.
+ */
+export function boardItemRenameTarget(
+  itemRelPath: string,
+  newBaseName: string,
+  kind: NotesBoardItemKind,
+): string | null {
+  const trimmed = newBaseName.trim();
+  if (!trimmed) return null;
+  const lastDot = itemRelPath.lastIndexOf('.');
+  const ext = kind === 'note' && lastDot > 0 ? itemRelPath.slice(lastDot) : '';
+  const target = `${trimmed}${ext}`;
+  return target === itemRelPath ? null : target;
+}
+
 // ─── Rename (§2, §5 scope note) — Store B no-op by construction ───
 
 /**
@@ -700,9 +838,13 @@ export function furnitureDelete(
  * key — so id-keyed lookups resolve correctly at whatever NEW path Store A
  * reports, with no rewrite anywhere. This function is a validation/no-op
  * pass-through so the rest of the IPC surface has one entry point per
- * operation for API symmetry; ticket 4 owns actually calling
- * moveVaultFile/renameNoteWithCascade. Nothing is persisted here by design —
- * do not add a write path.
+ * operation for API symmetry.
+ *
+ * SKY-11187: the real rename now happens in the NOTES_BOARD_RENAME_ITEM
+ * handler, which routes through the SAME renameNoteWithCascade the Notes tab
+ * uses (one rename implementation, one wikilink cascade). This function stays
+ * a no-op on purpose — it is the assertion that a rename costs Store B
+ * nothing. Nothing is persisted here by design; do not add a write path.
  */
 export function itemRenameNotify(
   _vaultRoot: string,
@@ -790,4 +932,142 @@ export function itemDeleteStub(
     writeBoardFileRaw(folderAbs, board);
   }
   return { key };
+}
+
+// ─── Column `ref` = real wikilink (§4, §2, §11) ───
+//
+// A column item's `ref` is a vault-relative note path, resolved by STEM
+// (last path segment, `.md` stripped, case-insensitive) — the exact rule
+// shared/wikiLinkRename.ts and vaultGraph.ts/noteBacklinks.ts already use for
+// `[[wikilinks]]`. Reusing that rule (not a bespoke path comparison) is what
+// makes `ref` "not a second link representation" true in practice, not just
+// in the doc comment.
+
+/** Split a vault-relative path into its folder prefix, stem, and whether it carried a `.md` extension. */
+function splitRefStem(ref: string): { prefix: string; stem: string; hadMdExt: boolean } {
+  const segments = ref.split(/[\\/]/);
+  const lastSeg = segments[segments.length - 1];
+  const hadMdExt = /\.md$/i.test(lastSeg);
+  const stem = hadMdExt ? lastSeg.slice(0, -3) : lastSeg;
+  return { prefix: segments.slice(0, -1).join('/'), stem, hadMdExt };
+}
+
+/**
+ * Retarget one `ref` if its stem matches `oldStem` (case-insensitive) —
+ * mirrors rewriteWikiLinksForRename's target-matching rule, minus the
+ * `[[...]]`/alias/heading grammar a bare path doesn't have. Returns null
+ * when the ref doesn't match (no rewrite needed).
+ */
+export function rewriteRefForRename(ref: string, oldStem: string, newStem: string): string | null {
+  const { prefix, stem, hadMdExt } = splitRefStem(ref);
+  if (stem.toLowerCase() !== oldStem.trim().toLowerCase()) return null;
+  return (prefix ? `${prefix}/` : '') + newStem + (hadMdExt ? '.md' : '');
+}
+
+/**
+ * Rewrite every `column` item's matching `ref` in one board file. Returns
+ * the SAME object (count: 0) when nothing changed, so callers can skip a
+ * write — same no-op contract as gcBoardEntries.
+ */
+export function rewriteBoardFurnitureRefs(
+  board: BoardFile,
+  oldStem: string,
+  newStem: string,
+): { board: BoardFile; count: number } {
+  let count = 0;
+  const furniture = board.furniture.map((f) => {
+    if (f.k !== 'column' || !Array.isArray(f.items)) return f;
+    const items = (f.items as unknown[]).map((raw) => {
+      if (raw === null || typeof raw !== 'object') return raw;
+      const it = raw as Record<string, unknown>;
+      if (typeof it.ref !== 'string' || !it.ref) return raw;
+      const rewritten = rewriteRefForRename(it.ref, oldStem, newStem);
+      if (rewritten === null) return raw;
+      count++;
+      return { ...it, ref: rewritten };
+    });
+    return { ...f, items };
+  });
+  if (count === 0) return { board, count: 0 };
+  return { board: { ...board, furniture }, count };
+}
+
+/**
+ * Same rewrite, over the raw on-disk sidecar TEXT — the shape
+ * renameCascade.ts's transaction plan needs (it tracks every touched file as
+ * before/after text so a failure partway can roll back with a plain write,
+ * exactly like it already does for markdown files). Malformed/unparsable
+ * JSON is left untouched rather than thrown: a rename must never fail
+ * because an unrelated sidecar is corrupt.
+ */
+export function rewriteBoardSidecarTextForRename(
+  raw: string,
+  oldStem: string,
+  newStem: string,
+): { content: string; count: number } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { content: raw, count: 0 };
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { content: raw, count: 0 };
+  }
+  const board = sanitizeBoardFile(parsed as Record<string, unknown>);
+  const { board: rewritten, count } = rewriteBoardFurnitureRefs(board, oldStem, newStem);
+  if (count === 0) return { content: raw, count: 0 };
+  return {
+    content: JSON.stringify({ ...rewritten, updated: new Date().toISOString() }, null, 2),
+    count,
+  };
+}
+
+// ─── Column `ref` backlinks (§4/§11 "shows up in the Links tab") ───
+
+export interface ColumnRefBacklinkEntry {
+  /** Vault-relative path of the board (folder) holding the referencing column item. '' is Home. */
+  boardPath: string;
+  /** The furniture item's own title, if set. */
+  boardItemTitle?: string;
+  /** The column entry's own label text. */
+  itemText: string;
+}
+
+/**
+ * Scan every `.mythos-board.json` sidecar in the vault for `column` items
+ * whose `ref` resolves (by stem, same rule as above) to `notePath`. This is
+ * the board-metadata half of "shows up in the Links tab" (§4 acceptance
+ * criteria) — noteBacklinks.ts covers the prose-`[[wikilink]]` half; a note
+ * linked from both surfaces shows up in both lists, not merged into one.
+ */
+export function findColumnRefBacklinks(vaultRoot: string, notePath: string): ColumnRefBacklinkEntry[] {
+  const stem = path.basename(notePath, '.md').toLowerCase();
+  if (!stem) return [];
+
+  const { items } = listVaultFiles(vaultRoot);
+  const out: ColumnRefBacklinkEntry[] = [];
+  for (const file of items) {
+    if (file.isDirectory || path.basename(file.path) !== BOARD_SIDECAR_FILE_NAME) continue;
+    const boardRelPath = path.dirname(file.path);
+    const boardPath = boardRelPath === '.' ? '' : boardRelPath;
+    const board = readBoardFileRaw(resolveFolderAbs(vaultRoot, boardPath));
+    if (!board) continue;
+
+    for (const f of board.furniture) {
+      if (f.k !== 'column' || !Array.isArray(f.items)) continue;
+      for (const raw of f.items as unknown[]) {
+        if (raw === null || typeof raw !== 'object') continue;
+        const it = raw as Record<string, unknown>;
+        if (typeof it.ref !== 'string' || !it.ref) continue;
+        if (splitRefStem(it.ref).stem.toLowerCase() !== stem) continue;
+        out.push({
+          boardPath,
+          boardItemTitle: typeof f.title === 'string' ? f.title : undefined,
+          itemText: typeof it.t === 'string' ? it.t : '',
+        });
+      }
+    }
+  }
+  return out;
 }

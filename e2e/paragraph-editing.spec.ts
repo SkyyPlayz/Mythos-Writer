@@ -399,4 +399,95 @@ test.describe('Paragraph editing model (§14 items 1-2) — real UI → IPC → 
       fs.rmSync(tmpRoot, { recursive: true, force: true });
     }
   });
+
+  test('TC-PE-04 (SKY-11239): drop cap setting gates rendering, applies live, and persists across restart', async () => {
+    test.setTimeout(120_000);
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-para-dropcap-'));
+    const userData = path.join(tmpRoot, 'user-data');
+    const bundle = path.join(tmpRoot, 'Paragraph Vault');
+    const seedProse = 'The lantern flickered once.';
+    const { scenePath } = seedV2Vault(bundle, seedProse);
+    seedUserData(userData, path.join(bundle, 'Story Vault'), path.join(bundle, 'Notes Vault'));
+
+    const openPageSetup = async (page: Page) => {
+      await page.getByTestId('msv-page-setup-btn').click();
+      const toggle = page.getByLabel('Drop cap');
+      await expect(toggle).toBeVisible();
+      return toggle;
+    };
+    const closePageSetup = async (page: Page) => {
+      await page.getByRole('button', { name: /close page setup/i }).click();
+    };
+
+    let app = await launchApp(userData);
+    try {
+      const page = await firstWindow(app);
+      await openManuscript(page);
+
+      const row = page.locator('[data-testid^="msv-para-"]').first();
+      await expect(row).toHaveText(seedProse);
+
+      // Default is OFF: no dropcap class, and typing into the paragraph
+      // lands in order (the SKY-11227 complaint this ticket exists to fix).
+      await expect(row).not.toHaveClass(/msv-para-text--dropcap/);
+      await placeCaret(page, row, seedProse.length);
+      await page.keyboard.type(' Then the room went dark.');
+      let expected = `${seedProse} Then the room went dark.`;
+      await expect(row).toHaveText(expected);
+
+      // Toggle ON via the Page Setup popover — opening it blurs the
+      // paragraph (committing the typed text to disk) and applies live,
+      // with no reload.
+      let dropCapToggle = await openPageSetup(page);
+      await expect
+        .poll(() => sceneBody(readSceneFile(scenePath)), { timeout: 10_000 })
+        .toBe(`${expected}\n`);
+      await expect(dropCapToggle).not.toBeChecked();
+      await dropCapToggle.click();
+      await expect(dropCapToggle).toBeChecked();
+      await expect(row).toHaveClass(/msv-para-text--dropcap/);
+      await closePageSetup(page);
+
+      // Typing while the drop cap is on still lands correctly and in order —
+      // the exact regression (typing-into-the-first-paragraph) SKY-11227
+      // flagged as unfixed by a render-only check.
+      await placeCaret(page, row, expected.length);
+      await page.keyboard.type(' More prose after the cap.');
+      expected = `${expected} More prose after the cap.`;
+      await expect(row).toHaveText(expected);
+      await expect(row).toHaveClass(/msv-para-text--dropcap/);
+
+      // Toggle back OFF live — reopening the popover blurs+commits the
+      // second edit first.
+      dropCapToggle = await openPageSetup(page);
+      await expect
+        .poll(() => sceneBody(readSceneFile(scenePath)), { timeout: 10_000 })
+        .toBe(`${expected}\n`);
+      await expect(dropCapToggle).toBeChecked();
+      await dropCapToggle.click();
+      await expect(row).not.toHaveClass(/msv-para-text--dropcap/);
+
+      // Toggle ON again and leave it on, then restart the app against the
+      // same user-data dir to prove the setting rides storyPagePrefsMap
+      // persistence (AC #6) rather than only living in renderer memory.
+      await dropCapToggle.click();
+      await expect(dropCapToggle).toBeChecked();
+      await expect(row).toHaveClass(/msv-para-text--dropcap/);
+      await closePageSetup(page);
+    } finally {
+      await app.close().catch(() => {});
+    }
+
+    try {
+      app = await launchApp(userData);
+      const page = await firstWindow(app);
+      await openManuscript(page);
+      const row = page.locator('[data-testid^="msv-para-"]').first();
+      await expect(row).toHaveClass(/msv-para-text--dropcap/, { timeout: 15_000 });
+      await expect(row).toHaveText('The lantern flickered once. Then the room went dark. More prose after the cap.');
+    } finally {
+      await app.close().catch(() => {});
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  });
 });

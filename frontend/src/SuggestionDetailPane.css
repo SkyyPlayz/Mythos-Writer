@@ -22,7 +22,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: var(--surface-1, #161b27);
+  background: var(--bg-elevated);
   border-left: 1px solid var(--border, #2d3748);
   box-shadow: -4px 0 16px rgba(0, 0, 0, 0.4);
   overflow: hidden;

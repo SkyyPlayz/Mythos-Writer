@@ -3,6 +3,7 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import AxisView, { type AxisChapterCell } from './AxisView';
 import type { TimelinesStore } from '../timelinesTypes';
 import { ARC_LANE, CHARACTER_LANE, THEME_LANE, WORLD_LANE } from './axis/storyLanes';
+import { TimelineWikiLinkProvider } from './TimelineWikiText';
 
 const STANDARD = { preset: 'standard', monthsPerYear: 12, daysPerMonth: 30, hoursPerDay: 24 } as const;
 
@@ -707,5 +708,83 @@ describe('AxisView — M23 story-lane adds persist to the store', () => {
     expect(call.item.id).toBe('arc-1');
     expect(call.item.startWhen).toBe(0);
     expect(call.item.endWhen).toBeGreaterThan(400);
+  });
+});
+
+// ─── SKY-11615: [[wiki links]] in key-event descriptions ─────────────────────
+
+describe('AxisView — event description wiki-links', () => {
+  const WIKI_STORE = () => makeStoryLanesStore();
+  const SCENE_MATCH = { kind: 'scene', label: 'Ch1 / Opening', storyId: 's', chapterId: 'c',
+    sceneId: 'sc-1', scene: { title: 'Opening Scene' }, chapter: {}, story: {} } as never;
+  const NOTE_MATCH = { kind: 'entity', label: 'Elara Voss', entityId: 'e-1',
+    entityPath: 'Characters/Elara Voss.md', entity: { name: 'Elara Voss' } } as never;
+
+  function renderWithLinks(store: TimelinesStore, open = vi.fn()) {
+    const wiki = {
+      resolve: (target: string) =>
+        target === 'Opening Scene' ? SCENE_MATCH : target === 'Elara Voss' ? NOTE_MATCH : null,
+      open,
+    };
+    render(
+      <TimelineWikiLinkProvider value={wiki}>
+        <AxisView store={store} onStoreChange={() => {}} chapters={CHAPTERS} />
+      </TimelineWikiLinkProvider>,
+    );
+    return open;
+  }
+
+  it('linkifies the card description and leaves plain descriptions alone', () => {
+    const store = WIKI_STORE();
+    store.events = store.events.map((e) =>
+      e.id === 'ev-flash' ? { ...e, summary: 'Mira meets [[Elara Voss]] at [[Opening Scene]].' } : e);
+    renderWithLinks(store);
+    const desc = screen.getByTestId('ax-event-desc-ev-flash');
+    expect(desc.textContent).toBe('Mira meets Elara Voss at Opening Scene.');
+    expect(desc.querySelectorAll('[data-testid="tlw-link"]')).toHaveLength(2);
+    expect(screen.getByTestId('ax-event-ev-early').querySelector('[data-testid="tlw-link"]')).toBeNull();
+  });
+
+  it('opens the link without selecting the card it sits on', () => {
+    const store = WIKI_STORE();
+    store.events = store.events.map((e) =>
+      e.id === 'ev-flash' ? { ...e, summary: 'See [[Elara Voss]].' } : e);
+    const open = renderWithLinks(store);
+    fireEvent.click(screen.getByTestId('ax-event-desc-ev-flash').querySelector('[data-testid="tlw-link"]')!);
+    expect(open).toHaveBeenCalledWith('Elara Voss');
+    expect(screen.getByTestId('ax-event-ev-flash').className).not.toContain('ax-event--selected');
+  });
+
+  it('badges the card and rings it by what the description links to', () => {
+    const store = WIKI_STORE();
+    store.events = store.events.map((e) =>
+      e.id === 'ev-flash' ? { ...e, summary: 'Only [[Opening Scene]].' }
+        : e.id === 'ev-late' ? { ...e, summary: '[[Elara Voss]] and [[Opening Scene]].' } : e);
+    renderWithLinks(store);
+
+    const storyOnly = screen.getByTestId('ax-event-ev-flash');
+    expect(storyOnly.className).toContain('ax-event--refs-story');
+    expect(storyOnly.querySelector('[data-testid="tlw-badge-story"]')).toBeTruthy();
+    expect(storyOnly.querySelector('[data-testid="tlw-badge-note"]')).toBeNull();
+
+    const mixed = screen.getByTestId('ax-event-ev-late');
+    expect(mixed.className).toContain('ax-event--refs-mixed');
+    expect(mixed.querySelector('[data-testid="tlw-badge-note"]')).toBeTruthy();
+
+    // No links, no badges and no ring.
+    const plain = screen.getByTestId('ax-event-ev-early');
+    expect(plain.className).not.toContain('ax-event--refs');
+    expect(plain.querySelector('[data-testid="tlw-badges"]')).toBeNull();
+  });
+
+  it('drops the ring on the selected card so it never fights the selection outline', () => {
+    const store = WIKI_STORE();
+    store.events = store.events.map((e) =>
+      e.id === 'ev-flash' ? { ...e, summary: 'Only [[Opening Scene]].' } : e);
+    renderWithLinks(store);
+    const card = screen.getByTestId('ax-event-ev-flash');
+    fireEvent.click(card);
+    expect(card.className).toContain('ax-event--selected');
+    expect(card.className).not.toContain('ax-event--refs');
   });
 });

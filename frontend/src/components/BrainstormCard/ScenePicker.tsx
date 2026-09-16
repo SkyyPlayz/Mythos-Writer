@@ -74,7 +74,7 @@ export function ScenePicker({ onSelect, onClose }: ScenePickerProps) {
       onKeyDown={handleKey}
       data-testid="scene-picker"
     >
-      <div className="idd-entity-picker">
+      <div className="idd-entity-picker ln-overlay-surface">
         <input
           ref={inputRef}
           className="idd-entity-picker-input"

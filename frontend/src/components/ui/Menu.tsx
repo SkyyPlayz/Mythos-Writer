@@ -144,10 +144,12 @@ export function Menu({
 
   if (!open) return null;
 
+  // `ln-overlay-surface` is the shared dialog/popover glass chrome
+  // (overlay-tier.css, SKY-11492); `.ln-menu` keeps geometry and motion.
   return createPortal(
     <div
       ref={menuRef}
-      className={['ln-menu', className].filter(Boolean).join(' ')}
+      className={['ln-menu', 'ln-overlay-surface', className].filter(Boolean).join(' ')}
       role="menu"
       aria-label={ariaLabel}
       data-testid={testId}

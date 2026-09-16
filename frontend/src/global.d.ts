@@ -417,6 +417,8 @@ interface StoryPagePrefs {
   fontFamily: 'serif' | 'sans' | 'mono';
   fontSizePx: number;
   lineHeight: number;
+  /** SKY-11239: manuscript drop cap on the first paragraph. Default false. */
+  dropCapEnabled?: boolean;
 }
 
 /** SKY-2097: Writing-surface panel appearance preset. */
@@ -471,7 +473,7 @@ interface LiquidNeonPrefs {
   bgScrim?: number;
   /** Vignette strength 0–100 → 0–0.9 alpha. Default 40. */
   bgVignette?: number;
-  /** Base canvas hex colour (used when no image set). Default '#0e1116'. */
+  /** Base canvas hex colour (used when no image set). Default '#07090f'. */
   bgBaseColor?: string;
   /** Accent / button hex colour. Default '#00f0ff'. */
   accentColor?: string;
@@ -556,9 +558,13 @@ interface AppSettings {
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderConfig; sceneCrafterSuggestions?: { enabled: boolean; cadence: number } } & AgentBudgetSettings;
     /** Beta 3 M22: the fourth named agent — reader-eye chapter reads → margin comments. Optional so pre-M22 settings stay valid; main back-fills defaults on load. */
     betaReader?: { enabled: boolean; model: string; provider?: ProviderConfig } & AgentBudgetSettings;
+    /** SKY-11411 (SKY-10741 M12.B6): production-team roles. Optional + default OFF; main back-fills on load. */
+    alphaReader?: { enabled: boolean; model: string; provider?: ProviderConfig } & AgentBudgetSettings;
+    storylineConsultant?: { enabled: boolean; model: string; provider?: ProviderConfig } & AgentBudgetSettings;
+    lineEditor?: { enabled: boolean; model: string; provider?: ProviderConfig } & AgentBudgetSettings;
   };
-  /** Beta 3 M22: user renames for the four named agents. Absent key = default display name. */
-  agentNames?: Partial<Record<'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader', string>>;
+  /** Beta 3 M22 / SKY-11411: user renames for the named agents. Absent key = default display name. */
+  agentNames?: Partial<Record<'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader' | 'alphaReader' | 'storylineConsultant' | 'lineEditor', string>>;
   /** Dark-only (MYT-517). 'high-contrast' is the WCAG accessibility overlay,
    *  not a separate palette. Legacy 'light'/'system' values normalize to 'dark'. */
   theme: 'dark' | 'high-contrast';
@@ -569,6 +575,10 @@ interface AppSettings {
   versions?: {
     maxPerScene: number;
     maxAgeDays: number;
+  };
+  /** SKY-11186: Notes Board zoom-out limit (percent; 40 default, 30/20/10 map-view stops). */
+  notesBoard?: {
+    minZoom?: number;
   };
   onboardingComplete?: boolean;
   /** SKY-2220: first-upgrade legacy ~/Mythos vault recovery prompt state. */
@@ -602,7 +612,7 @@ interface AppSettings {
   editorPrefs?: EditorPrefs;
   /** Liquid Neon customization overrides (MYT-613). Absent = all defaults. */
   liquidNeon?: LiquidNeonPrefs;
-  /** Beta 3 Liquid Neon v2 slot engine (docs/releases/BETA-LIQUID-NEON.md M1). Absent → Neon Classic defaults. */
+  /** Beta 3 Liquid Neon v2 slot engine (docs/releases/BETA-LIQUID-NEON.md M1). Absent → Neon Nebula defaults. */
   liquidNeonV2?: import('./theme/liquidNeonEngine').LiquidNeonV2Settings;
   /** Beta 4 M1: per-vault default theme — Story Vault root path → preset key.
    *  Applied (setKey + slots + wp 'match') when switching to that vault. */
@@ -614,6 +624,13 @@ interface AppSettings {
    *  path → user-chosen label. A local rename only (the on-disk vault + its
    *  registry entry are untouched); absent → derive from the project entry. */
   vaultDisplayNames?: Record<string, string>;
+  /** SKY-11236: per-vault open-tab workspace state, keyed by Story-Vault root
+   *  path (the same identity used by vaultThemes / vaultDisplayNames). Each
+   *  vault owns its own tab set; switching vaults swaps the whole set out and
+   *  back so a tab whose note lives in another vault can never leak in (the
+   *  "Could not load note." bug). The flat activeLayout.*DocTabs fields are
+   *  legacy — migrated into this map on the first load after upgrade. */
+  vaultWorkspaces?: Record<string, VaultWorkspaceTabs>;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
   /** SKY-3206: per-vault story page chrome prefs. Key = vault root path. */
@@ -667,6 +684,16 @@ interface AppSettings {
   autoLinkerSettings?: AutoLinkerSettings;
   /** SKY-10772 M12.5: background auto-scan toggle. Absent = true (on by default). */
   agentIndexAutoScan?: boolean;
+  /**
+   * SKY-10878 M12.B5b: wiki self-building autonomy. Tri-state.
+   *  - 'ask'  (default) — never writes to the vault; each auto-stub candidate
+   *            becomes a Brainstorm question the author answers (SKY-10737).
+   *  - 'auto' — auto-stubs entities that pass the M12.B5a hygiene contract
+   *            (SKY-10877); junk / duplicates are suppressed, never written.
+   *  - 'off'  — the self-building wiki proposes nothing: no questions, no stubs.
+   * Absent = 'ask' (the safe default; never writes without author approval).
+   */
+  wikiAutonomy?: 'off' | 'ask' | 'auto';
   /** SKY-152: per-pane contextual tip dismissal. Keys are tip IDs; true = dismissed. */
   seenTips?: Record<string, boolean>;
   /** SKY-204: opt-in daily notes / journal mode. */
@@ -759,7 +786,7 @@ interface AppSettings {
 }
 
 /** SKY-2094 (Phase 2 #1): Top-level app sections. SKY-9019 M5: vault-graph added as standalone destination. */
-type AppTab = 'story' | 'notes' | 'brainstorm' | 'vault-graph';
+type AppTab = 'story' | 'notes' | 'brainstorm' | 'vault-graph' | 'boards';
 
 /** SKY-2094: Sub-view within the Story tab. */
 type StorySubView = 'editor' | 'coach' | 'kanban' | 'structure' | 'timeline' | 'book';
@@ -854,6 +881,19 @@ interface WorkspaceTab {
   provisional?: boolean;
   /** SKY-11069: pinned view tab (Scene Crafter Setup) — no ×, Ctrl+W no-op, not reorderable. */
   permanent?: boolean;
+}
+
+/** SKY-11236: one vault's open-document-tab workspace. Persisted under
+ *  AppSettings.vaultWorkspaces keyed by Story-Vault root path. Fields mirror
+ *  the three per-section strips that DesktopShell restores on load / vault
+ *  switch. Absent entry → that vault opens with no tabs (never another vault's). */
+interface VaultWorkspaceTabs {
+  storyDocTabs?: WorkspaceTab[];
+  activeStoryDocTabId?: string | null;
+  notesDocTabs?: WorkspaceTab[];
+  activeNotesDocTabId?: string | null;
+  boardDocTabs?: WorkspaceTab[];
+  activeBoardDocTabId?: string | null;
 }
 
 /** SKY-1700 (Wave 2f): A saved named workspace layout. */
@@ -1196,6 +1236,8 @@ interface Window {
     onStreamToken: (cb: (data: { streamId: string; token: string }) => void) => () => void;
     onStreamEnd: (cb: (data: { streamId: string }) => void) => () => void;
     onStreamError: (cb: (data: { streamId: string; category: string; message: string }) => void) => () => void;
+    /** SKY-11220: "still thinking" heartbeat while a local reasoning model streams reasoning_content. */
+    onStreamReasoning: (cb: (data: { streamId: string }) => void) => () => void;
 
     // STT (MYT-156)
     sttStart: () => void;
@@ -1203,7 +1245,10 @@ interface Window {
     onSttResult: (cb: (text: string) => void) => () => void;
 
     // Vault notes updated push event (MYT-156)
-    onVaultNotesUpdated: (cb: (data: { count: number }) => void) => () => void;
+    /** SKY-11186: `path` = the changed note/folder, notes-vault-relative POSIX (absent on untargeted updates). */
+    onVaultNotesUpdated: (cb: (data: { count: number; path?: string }) => void) => () => void;
+    /** SKY-11186: an image in the Notes vault was added or rewritten in place. */
+    onVaultNotesAssetChanged: (cb: (data: { path: string }) => void) => () => void;
 
     // SKY-8943: Notes Vault graph topology changed (link added/removed)
     onVaultGraphTopologyChanged?: (cb: () => void) => () => void;
@@ -1246,7 +1291,20 @@ interface Window {
     onWritingAssistantScanError: (cb: (data: { sceneId?: string; scenePath?: string; error: string; occurredAt: string }) => void) => () => void;
 
     // Archive continuity-check scheduled scan (MYT-234)
-    archiveScan: (sceneText: string, scenePath: string) => Promise<{ suggestions: unknown[]; inconsistenciesFound: number; wikiLinksFound: number }>;
+    archiveScan: (sceneText: string, scenePath: string) => Promise<{
+      suggestions: unknown[];
+      inconsistenciesFound: number;
+      wikiLinksFound: number;
+      /** SKY-11457: what the `wikiAutonomy` setting did with new names in this scene. */
+      wikiAutonomy?: {
+        mode: 'off' | 'ask' | 'auto';
+        candidates: number;
+        questionsQueued: number;
+        stubsWritten: number;
+        suppressed: number;
+        skipped: number;
+      };
+    }>;
 
     // Beta-Read Mode (MYT-237) — anchored inline comments
     betaReadCreate: (sceneId: string, anchorText: string, commentText: string) => Promise<{ comment: BetaReadComment }>;
@@ -1258,6 +1316,15 @@ interface Window {
     betaReportRun: (payload: { storyId: string; scope: BetaReportScope; focus: BetaReportFocus; text: string }) => Promise<{ report: BetaReport } | { error: string }>;
     betaReportList: (storyId: string) => Promise<{ reports: BetaReportSummary[] }>;
     betaReportGet: (id: string) => Promise<{ report: BetaReport | null }>;
+
+    // Production-team roles (SKY-11411 / SKY-10741 M12.B6) — alphaReader /
+    // storylineConsultant / lineEditor. Reader-perspective roles get reveal-point
+    // filtered entity context in the main handler; craft roles get the whole map.
+    productionRoleRun: (payload: {
+      role: 'alphaReader' | 'storylineConsultant' | 'lineEditor';
+      scope: BetaReportScope;
+      text: string;
+    }) => Promise<{ text: string } | { error: string }>;
 
     // Liquid Neon background image (MYT-716)
     pickBgImage: () => Promise<{ filePath: string | null; cancelled: boolean }>;
@@ -1412,7 +1479,7 @@ interface Window {
     }>;
     onStoryVaultRegistryChanged?: (cb: () => void) => () => void;
     // Beta 4 M2 — per-vault stats for the vault-switcher popover (§4)
-    projectStats?: () => Promise<{ stats: Array<{ vaultRoot: string; storyFileCount: number; noteCount: number | null }> }>;
+    projectStats?: () => Promise<{ stats: Array<{ vaultRoot: string; storyFileCount: number; noteCount: number | null; notesVaultCount: number; storyVaultCount: number }> }>;
     // SKY-11068 — per-vault icon for the story switcher / Settings > Mythos vaults
     projectIcons?: () => Promise<{ icons: VaultIconRef[] }>;
     projectIconSet?: (payload:
@@ -1421,6 +1488,9 @@ interface Window {
       | { vaultRoot: string; icon: null },
     ) => Promise<{ ok: boolean; error?: string; icon?: VaultIconRef }>;
     projectIconPick?: () => Promise<{ filePath: string | null; cancelled: boolean }>;
+    // SKY-11453 — vault-local rename: writes mythos.json's `name` field so
+    // the display name travels with the vault on move/copy.
+    projectNameSet?: (payload: { vaultRoot: string; name: string }) => Promise<{ ok: boolean; error?: string; name?: string }>;
     projectSwitch: (vaultRoot: string, notesVaultRoot?: string) => Promise<{ switched: boolean; notesVaultRoot?: string; error?: string }>;
     onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => () => void;
 
@@ -1430,6 +1500,10 @@ interface Window {
     vaultSurfaceHide: (payload: { vaultRoot: string; level: 'mythos' | 'notes' | 'story' }) => Promise<{ hidden: boolean; pairedStoryVaultName?: string }>;
     vaultSurfaceUnhide: (vaultRoot: string) => Promise<{ ok: true }>;
     vaultSurfaceListHidden: () => Promise<{ hiddenVaultRoots: string[] }>;
+    // SKY-11154 — "Vaults folder" row: reveal/move the parent folder holding
+    // every Mythos vault.
+    vaultSurfaceRevealVaultsParent: () => Promise<{ opened: boolean }>;
+    vaultSurfaceMoveVaultsParent: (newParentPath: string) => Promise<{ moved: boolean; newPath?: string; error?: string }>;
 
     // One-click Mythos Vault create (SKY-320). Omitting parentPath puts the
     // new bundle under ~/Mythos/Vaults/<auto-name>/; the renderer can supply
@@ -1466,7 +1540,7 @@ interface Window {
     // Two-vault path management (MYT-608 / SKY-9) — Story Vault + Notes Vault
     // MYT-789: setPaths now requires a per-path registrationToken from
     // vault:pick-folder, or the path must already be in recent-projects.
-    vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string; homeDir?: string; pathSeparator?: '/' | '\\'; defaultVaultsParentPath?: string; mythosRoot?: string | null }>;
+    vaultGetPaths: () => Promise<{ storyVaultPath: string; notesVaultPath: string; homeDir?: string; pathSeparator?: '/' | '\\'; defaultVaultsParentPath?: string; mythosRoot?: string | null; vaultsParentPath?: string }>;
     vaultGetSystemPaths: () => Promise<{
       homeDir: string;
       documentsDir: string;
@@ -1486,6 +1560,9 @@ interface Window {
     templateSaveAs: (name: string) => Promise<{ ok: true; id: string } | { error: string }>;
     // SKY-1304: delete user template (AC-6)
     templateDelete: (templateId: string) => Promise<{ ok: true } | { error: string }>;
+    // SKY-1399: rename / duplicate a user template
+    templateRename: (id: string, name: string) => Promise<{ ok: true } | { error: string }>;
+    templateDuplicate: (id: string) => Promise<{ ok: true; id: string } | { error: string }>;
     // SKY-1403: export / import .mythostemplate files
     templateExport: (id: string) => Promise<{ cancelled: boolean } | { error: string }>;
     templateImport: () => Promise<{ cancelled: boolean; template?: { id: string; name: string } } | { error: string }>;
@@ -1554,6 +1631,12 @@ interface Window {
     // root via safeVaultIpcJoin on the main side.
     readNotesVault: (path: string) => Promise<{ content: string; path: string } | { error: string }>;
     writeNotesVault: (path: string, content: string) => Promise<{ path: string; bytes: number } | { error: string }>;
+    // SKY-11360: brainstorm/idea board — agent state stored in the Agent Vault
+    // (not the Notes Vault). The main process owns the path.
+    brainstormBoard: {
+      read: () => Promise<{ content: string } | { error: string }>;
+      write: (content: string) => Promise<{ bytes: number } | { error: string }>;
+    };
     listNotesVault: (root?: string) => Promise<{ items: Array<{ path: string; name: string; isDirectory: boolean; modifiedAt: string; excerpt?: string }> } | { error: string }>;
     deleteNotesVault: (path: string) => Promise<{ path: string; deleted: boolean } | { error: string }>;
     moveNotesVault: (fromPath: string, toPath: string) => Promise<{ fromPath: string; toPath: string; moved: boolean; linkUpdate?: RenameCascadeLinkUpdate } | { error: string }>;
@@ -1569,6 +1652,62 @@ interface Window {
     getNotesVaultOrder: () => Promise<Record<string, string[]>>;
     reorderNotesVault: (parentPath: string, orderedPaths: string[]) => Promise<{ parentPath: string; orderedPaths: string[] } | { error: string }>;
     chooseVaultFolder: (title?: string, defaultPath?: string) => Promise<{ path: string | null; cancelled: boolean }>;
+
+    // SKY-11183: Notes Board metadata store IPC (data layer — notesBoard.ts).
+    notesBoardGet: (folderPath: string) => Promise<{
+      id: string | null;
+      children: Array<{ path: string; kind: 'note' | 'folder'; id: string | null }>;
+      layout: Record<string, { x: number; y: number; w?: number; h?: number }>;
+      colors: Record<string, string>;
+      furniture: Array<Record<string, unknown> & { id: string; k: string; x: number; y: number }>;
+      view: { zoom: number; panX: number; panY: number };
+    }>;
+    notesBoardPatchLayout: (
+      folderPath: string,
+      itemPath: string,
+      patch: { x?: number; y?: number; w?: number; h?: number },
+    ) => Promise<{ key: string; id: string }>;
+    notesBoardPatchColors: (folderPath: string, itemPath: string, color: string | null) => Promise<{ key: string; id: string }>;
+    notesBoardFurnitureCreate: (folderPath: string, item: Record<string, unknown>) => Promise<{ item: Record<string, unknown> & { id: string } }>;
+    notesBoardFurnitureUpdate: (folderPath: string, furnitureId: string, patch: Record<string, unknown>) => Promise<{ item: (Record<string, unknown> & { id: string }) | null }>;
+    notesBoardFurnitureDelete: (folderPath: string, furnitureId: string) => Promise<{ ok: true }>;
+    notesBoardItemRename: (folderPath: string, fromPath: string, toPath: string) => Promise<{ ok: true }>;
+    notesBoardItemDelete: (folderPath: string, itemPath: string) => Promise<{ key: string | null }>;
+
+    // SKY-11187 §5: the canvas's REAL vault mutations (Note/Board tool, inline
+    // rename). `renamed: false` is a successful no-op (empty or unchanged
+    // name); `error` is a refusal to show the user.
+    notesBoardCreateItem: (
+      folderPath: string,
+      kind: 'note' | 'folder',
+      position?: { x: number; y: number },
+    ) => Promise<{ itemPath: string; kind: 'note' | 'folder' }>;
+    notesBoardRenameItem: (
+      folderPath: string,
+      itemPath: string,
+      newName: string,
+    ) => Promise<{ renamed: true; itemPath: string } | { renamed: false } | { error: string }>;
+
+    // SKY-11186: note thumbnails (main-process half — noteThumbnails.ts, spec §9).
+    // `resolve` says which image (if any) is each note's cover; `get` returns a
+    // cached WebP derivative or the raw source bytes for the renderer to derive
+    // (then store via `put`). Keys of `thumbs` are the requested paths verbatim.
+    notesThumbResolve: (paths: string[]) => Promise<{
+      thumbs: Record<string, {
+        mode: 'explicit' | 'auto' | 'off' | 'none';
+        src: string | null;
+        version: string | null;
+        missing: boolean;
+        caption: string;
+      }>;
+    }>;
+    notesThumbGet: (src: string) => Promise<
+      | { status: 'ready'; dataUrl: string; version: string }
+      | { status: 'source'; mime: string; bytes: Uint8Array; version: string }
+      | { status: 'missing' }
+      | { status: 'unsupported' }
+    >;
+    notesThumbPut: (src: string, version: string, bytes: Uint8Array) => Promise<{ ok: boolean }>;
 
     // Per-chapter/per-scene file layout (MYT-609)
     vaultCreateChapter: (projectPath: string, chapterName: string) => Promise<unknown>;
@@ -1722,6 +1861,9 @@ interface Window {
     noteBacklinks: (notePath: string) => Promise<{
       notePath: string;
       backlinks: Array<{ path: string; name: string; snippet: string }>;
+      // SKY-11188: Notes Board column `ref` backlinks (§4/§11) — a separate
+      // list, since a board ref points at a folder, not a linking note.
+      boardRefs: Array<{ boardPath: string; boardItemTitle?: string; itemText: string }>;
     }>;
 
     // SKY-194: Iconize — per-node icon IPC
@@ -1978,6 +2120,23 @@ interface Window {
       type: 'era' | 'span' | 'event' | 'row' | 'tensionPoint';
       id: string;
     }) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore; error?: string }>;
+    // SKY-10876 M12.B4b: "Rebuild my timeline" — manuscript-driven command.
+    timelineRebuild?: () => Promise<{
+      ok: boolean;
+      reason?: string;
+      report?: {
+        ok: boolean;
+        timelineId: string;
+        scenesRead: number;
+        missingSceneIds: string[];
+        eventsAdded: number;
+        eventsUpdated: number;
+        eventsRemoved: number;
+        eventsTotal: number;
+        reason?: string;
+      };
+      store?: import('./timelinesTypes').TimelinesStore;
+    }>;
     // SKY-6228: M15 — agent chat sessions
     agentSessions?: {
       list: (agent?: string) => Promise<{ sessions: AgentSessionSummary[] }>;

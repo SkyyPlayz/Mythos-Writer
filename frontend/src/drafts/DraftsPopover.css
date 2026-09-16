@@ -3,6 +3,15 @@
  * Beta 3 M12; v2 prototype HTML 882–905). Anchored under the "Draft N ▾"
  * pill: version rows (label · delta · meta + Compare/Restore) over a footer
  * with the M10 settings — snapshot-frequency stepper + keep-N stepper.
+ *
+ * SKY-11490: the fill / blur / border / glow live in `.ln-overlay-surface`
+ * (src/overlay-tier.css), applied on the root alongside this class. Only
+ * geometry belongs here. Unlike the rest of the tier this popover is
+ * scrim-less — it floats over live manuscript prose — which is why it waited
+ * on SKY-11488/SKY-11491 to pin --glass-fill-overlay / --blur-panel-overlay to
+ * the mockup recipe instead of deriving them from the Appearance glass
+ * sliders. At a low glass setting the derived tier was see-through enough to
+ * read the manuscript straight through the draft rows.
  * ========================================================================= */
 
 .ln-drafts-popover {
@@ -13,11 +22,6 @@
   z-index: 46;
   padding: 8px;
   border-radius: 14px;
-  background: rgba(15, 19, 33, .97);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
-  box-shadow: 0 14px 40px rgba(3, 5, 12, .6), 0 0 22px -6px var(--g1, rgba(0, 240, 255, .4));
   animation: lnFadeUp .16s ease;
   cursor: default;
   text-align: left;

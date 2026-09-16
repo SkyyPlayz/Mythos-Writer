@@ -559,27 +559,51 @@ export function excerptFromMarkdown(raw: string): string {
 }
 
 /**
- * SKY-11049 item 7: does this note look like a character note, for the Scene
- * Crafter POV picker's fallback when the vault has no top-level `Characters`
- * folder? Three signals, matching how Obsidian users actually tag notes:
- * frontmatter `type: character` (same convention as entityFrontmatterParser's
- * `type` field), a frontmatter `tags:` entry of `character`, or an inline
- * `#character` hashtag in the body (optionally nested, `#character/pov`).
+ * SKY-11049 item 7 / SKY-11212: does this note carry a given category signal
+ * — for the Scene Crafter POV picker's fallback and, as of SKY-11212, the
+ * tag-priority category the LOCATIONS/CHARACTERS/ITEMS & SYSTEMS board
+ * columns now classify by? Three signals, matching how Obsidian users
+ * actually tag notes: frontmatter `type: <kind>` (same convention as
+ * entityFrontmatterParser's `type` field), a frontmatter `tags:` entry of
+ * `<kind>`, or an inline `#<kind>` hashtag in the body (optionally nested,
+ * `#character/pov`).
  */
-export function noteHasCharacterSignal(raw: string): boolean {
+function noteHasTagSignal(raw: string, kind: string): boolean {
   const { frontmatter, prose } = parseFrontmatter(raw);
   const type = frontmatter['type'];
-  if (typeof type === 'string' && type.trim().toLowerCase() === 'character') return true;
+  if (typeof type === 'string' && type.trim().toLowerCase() === kind) return true;
   const tagsRaw = frontmatter['tags'];
   const tagList = Array.isArray(tagsRaw) ? tagsRaw : typeof tagsRaw === 'string' ? [tagsRaw] : [];
-  if (tagList.some((tag) => String(tag).trim().toLowerCase().replace(/^#/, '') === 'character')) return true;
-  return /(^|\s)#character(?:\/[\w-]+)?\b/i.test(prose);
+  if (tagList.some((tag) => String(tag).trim().toLowerCase().replace(/^#/, '') === kind)) return true;
+  return new RegExp(`(^|\\s)#${kind}(?:/[\\w-]+)?\\b`, 'i').test(prose);
+}
+
+/** Does this note look like a character note (frontmatter/tag/hashtag `character`)? */
+export function noteHasCharacterSignal(raw: string): boolean {
+  return noteHasTagSignal(raw, 'character');
+}
+
+/** SKY-11212: does this note look like a location note (frontmatter/tag/hashtag `location`)? */
+export function noteHasLocationSignal(raw: string): boolean {
+  return noteHasTagSignal(raw, 'location');
+}
+
+/**
+ * SKY-11212: does this note look like an item/system note? The Scene Crafter
+ * board column is titled "ITEMS & SYSTEMS", so either tag counts.
+ */
+export function noteHasItemSignal(raw: string): boolean {
+  return noteHasTagSignal(raw, 'item') || noteHasTagSignal(raw, 'system');
 }
 
 export interface NoteListingMeta {
   excerpt: string;
   /** SKY-11049: vault-wide character signal, independent of folder placement. */
   characterTag: boolean;
+  /** SKY-11212: vault-wide location signal, independent of folder placement. */
+  locationTag: boolean;
+  /** SKY-11212: vault-wide item/system signal, independent of folder placement. */
+  itemTag: boolean;
 }
 
 /**
@@ -594,9 +618,14 @@ export function readNoteListingMeta(absPath: string): NoteListingMeta {
     const buf = Buffer.alloc(EXCERPT_READ_BYTES);
     const bytesRead = fs.readSync(fd, buf, 0, EXCERPT_READ_BYTES, 0);
     const raw = buf.toString('utf-8', 0, bytesRead);
-    return { excerpt: excerptFromMarkdown(raw), characterTag: noteHasCharacterSignal(raw) };
+    return {
+      excerpt: excerptFromMarkdown(raw),
+      characterTag: noteHasCharacterSignal(raw),
+      locationTag: noteHasLocationSignal(raw),
+      itemTag: noteHasItemSignal(raw),
+    };
   } catch {
-    return { excerpt: '', characterTag: false };
+    return { excerpt: '', characterTag: false, locationTag: false, itemTag: false };
   } finally {
     if (fd !== null) {
       try { fs.closeSync(fd); } catch { /* ignore close errors */ }
@@ -1756,9 +1785,15 @@ export function isEmptyOrMissing(root: string): boolean {
 
 let activeNotesWatcher: FSWatcher | null = null;
 
+/** chokidar event kinds the Notes watcher forwards (SKY-11186). */
+export type NotesWatchEvent = 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir';
+
+/** Image files a note can show as its thumbnail (noteThumbnails.ts THUMB_IMAGE_MIME). */
+export const NOTES_ASSET_EXT_RE = /\.(?:png|jpe?g|gif|webp|avif|bmp|svg)$/i;
+
 export async function startNotesVaultWatcher(
   vaultRoot: string,
-  onChanged: (filePath: string) => void
+  onChanged: (filePath: string, event?: NotesWatchEvent) => void
 ): Promise<void> {
   if (activeNotesWatcher) return;
 
@@ -1776,17 +1811,23 @@ export async function startNotesVaultWatcher(
     followSymlinks: false, // MYT-362: don't recurse into symlinked dirs
   });
 
+  // SKY-11186: images are watched too — a note's thumbnail (spec §9) is keyed
+  // by the image's mtime+size, so an image rewritten in place must reach the
+  // renderer. The event kind rides along so main can route asset changes to
+  // the thumbnail path alone (no reindex, no graph work).
+  const isWatchedFile = (filePath: string): boolean =>
+    filePath.endsWith('.md') || NOTES_ASSET_EXT_RE.test(filePath);
   activeNotesWatcher.on('change', (filePath: string) => {
-    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
+    if (isWatchedFile(filePath) && !isRecentSelfWrite(filePath)) onChanged(filePath, 'change');
   });
   activeNotesWatcher.on('add', (filePath: string) => {
-    if (filePath.endsWith('.md') && !isRecentSelfWrite(filePath)) onChanged(filePath);
+    if (isWatchedFile(filePath) && !isRecentSelfWrite(filePath)) onChanged(filePath, 'add');
   });
   activeNotesWatcher.on('unlink', (filePath: string) => {
-    if (!isRecentSelfWrite(filePath)) onChanged(filePath);
+    if (!isRecentSelfWrite(filePath)) onChanged(filePath, 'unlink');
   });
-  activeNotesWatcher.on('addDir', (filePath: string) => onChanged(filePath));
-  activeNotesWatcher.on('unlinkDir', (filePath: string) => onChanged(filePath));
+  activeNotesWatcher.on('addDir', (filePath: string) => onChanged(filePath, 'addDir'));
+  activeNotesWatcher.on('unlinkDir', (filePath: string) => onChanged(filePath, 'unlinkDir'));
 
   // SKY-9469/SKY-9587: same narrowing as startVaultWatcher — poll mode only.
   if (usePollingOnWinNotes) {

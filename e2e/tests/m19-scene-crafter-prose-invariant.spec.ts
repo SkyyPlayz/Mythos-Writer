@@ -48,6 +48,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { clickStoryNav } from '../helpers/navGuard';
+import { installDraftStreamMock, generateMockDraft } from '../helpers/draftStreamMock';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -213,29 +214,22 @@ async function closeApp(app: ElectronApplication | undefined): Promise<void> {
   } catch { /* already exited */ }
 }
 
-/** Replace the streaming IPC with a deterministic, no-network mock — only
- *  the provider call is stubbed; every other hop stays real (SKY-7994). */
-async function installDraftStreamMock(app: ElectronApplication, text: string): Promise<void> {
-  await app.evaluate(({ ipcMain }, args) => {
-    try { ipcMain.removeHandler('stream:start'); } catch { /* not registered */ }
-    ipcMain.handle('stream:start', (event) => {
-      const streamId = 'mock-draft-stream-1';
-      setTimeout(() => {
-        event.sender.send('stream:token', { streamId, token: args.text });
-        event.sender.send('stream:end', { streamId });
-      }, 30);
-      return { streamId };
-    });
-  }, { text });
-}
-
-/** Navigate to the Scene Crafter (Board) view via the toolbar, selecting the
- *  seeded story first (StoryNavigator requires an explicit story selection —
- *  mirrors e2e/tests/sceneCrafter.spec.ts's createStory/selectStory pair). */
+/** Navigate to the Scene Crafter (Board) view, selecting the seeded story
+ *  first (StoryNavigator requires an explicit story selection). Mirrors
+ *  e2e/tests/sceneCrafter.spec.ts's openBoardView: Scene Crafter left the
+ *  sub-tab strip in SKY-9019/M5 and is rail-only now (the old
+ *  `story-subview-kanban` toggle no longer exists — SKY-11514). */
 async function openBoardView(pg: Page): Promise<void> {
   await clickStoryNav(pg);
   await pg.locator('.nav-story-title', { hasText: STORY_TITLE }).click();
-  await pg.locator('[data-testid="story-subview-kanban"]').click();
+  await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
+  // SKY-11069: return to the pinned Setup tab if a board tab is still active.
+  const setupTab = pg.locator(
+    '[role="tablist"][aria-label="Workspace tabs"] [role="tab"]',
+    { hasText: 'Scene Crafter' },
+  );
+  await setupTab.waitFor({ state: 'visible', timeout: 8_000 });
+  if ((await setupTab.getAttribute('aria-selected')) !== 'true') await setupTab.click();
   await expect(pg.locator('.sc-columns')).toBeVisible({ timeout: 8_000 });
 }
 
@@ -256,11 +250,10 @@ test('AC-M19-01: generating a draft and adding it to the scene board never write
 
     await openBoardView(page);
 
-    await page.locator('.sc-draft-btn', { hasText: 'Generate' }).click();
-    await expect(page.locator('[data-testid="sc-draft-card"]')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('[data-testid="sc-draft-card"]')).toContainText(MOCK_DRAFT_TEXT);
+    const draftCard = await generateMockDraft(app, page);
+    await expect(draftCard).toContainText(MOCK_DRAFT_TEXT);
 
-    await page.locator('[data-testid="sc-draft-card"]').getByRole('button', { name: 'Add to scene board' }).click();
+    await draftCard.getByRole('button', { name: 'Add to scene board' }).click();
     // Board persistence is debounced/async — wait for the canvas view (draft
     // card cleared, board opened) rather than an arbitrary timeout.
     await expect(page.locator('.sc-canvas-body')).toBeVisible({ timeout: 8_000 });
@@ -298,9 +291,8 @@ test('AC-M19-02: "Add to scene board" places the first-pass draft card on the ca
     await installDraftStreamMock(app, MOCK_DRAFT_TEXT);
 
     await openBoardView(page);
-    await page.locator('.sc-draft-btn', { hasText: 'Generate' }).click();
-    await expect(page.locator('[data-testid="sc-draft-card"]')).toBeVisible({ timeout: 8_000 });
-    await page.locator('[data-testid="sc-draft-card"]').getByRole('button', { name: 'Add to scene board' }).click();
+    const draftCard = await generateMockDraft(app, page);
+    await draftCard.getByRole('button', { name: 'Add to scene board' }).click();
 
     // Canvas view opens on the newly-created board.
     await expect(page.locator('.sc-canvas-body')).toBeVisible({ timeout: 8_000 });
@@ -350,10 +342,8 @@ test('AC-M19-04: draft card title carries "— first pass" and a word count once
     await installDraftStreamMock(app, MOCK_DRAFT_TEXT);
 
     await openBoardView(page);
-    await page.locator('.sc-draft-btn', { hasText: 'Generate' }).click();
 
-    const card = page.locator('[data-testid="sc-draft-card"]');
-    await expect(card).toBeVisible({ timeout: 8_000 });
+    const card = await generateMockDraft(app, page);
     await expect(card.locator('.sc-draft-card-title')).toContainText('— first pass');
     const expectedWords = MOCK_DRAFT_TEXT.trim().split(/\s+/).length;
     await expect(card.locator('.sc-draft-card-meta')).toContainText(`${expectedWords} words`);

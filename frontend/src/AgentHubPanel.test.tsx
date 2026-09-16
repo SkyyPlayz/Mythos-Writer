@@ -3,10 +3,11 @@
 // SKY-9022/M6: AGENTS rich cards — live statuses, enablement, chevron (GAP-1/GAP-6).
 import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react';
 import { vi, afterEach, beforeEach, describe, it, expect } from 'vitest';
-import AgentHubPanel from './AgentHubPanel';
+import AgentHubPanel, { resolveAgentStatus } from './AgentHubPanel';
 import ContinuityPanel from './ContinuityPanel';
 import { __resetAgentSessionStores } from './lib/useAgentSessions';
 import { resetAiActivityForTests } from './agents/aiActivity';
+import { resetBrainstormActivityForTests } from './agents/brainstormActivity';
 import { buildAnalysisCard, parseCoachRead } from './coach/sceneAnalysis';
 import { decodeCoachCard, encodeCoachCard } from './coach/coachMessages';
 import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
@@ -161,6 +162,7 @@ describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () 
   beforeEach(() => {
     __resetAgentSessionStores();
     resetAiActivityForTests();
+    resetBrainstormActivityForTests();
     (window as any).api = {
       suggestionsUnifiedList: vi.fn().mockResolvedValue({ items: [], totalCount: 0 }),
       // SKY-11223: AgentHubPanel status now reads the shared AiActivityRegistry.
@@ -176,6 +178,7 @@ describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () 
   afterEach(() => {
     delete (window as any).api;
     resetAiActivityForTests();
+    resetBrainstormActivityForTests();
   });
 
   it('renders all four agents as two-line cards with a status line and a trailing chevron', async () => {
@@ -195,12 +198,13 @@ describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () 
     render(<AgentHubPanel scene={null} />);
     await screen.findByText(/No suggestions right now/i);
 
-    // SKY-11223: Brainstorm no longer claims to be "Watching session" just
-    // because it's enabled — that was hardcoded (SKY-11214) and wired to no
-    // real activity. All four agents now share the same honest idle text,
-    // driven by the shared AiActivityRegistry instead of a per-agent guess.
+    // SKY-11223: Writing Coach/Archive/Beta Reader no longer claim work is
+    // happening just because they're enabled — driven by the shared
+    // AiActivityRegistry instead of a per-agent guess.
     expect(within(screen.getByTestId('ahp-agent-row-writing-assistant')).getByText('Ready')).toBeInTheDocument();
-    expect(within(screen.getByTestId('ahp-agent-row-brainstorm')).getByText('Ready')).toBeInTheDocument();
+    // SKY-11214: no brainstorm session is active, so the row must not claim
+    // to be watching one — an honest idle label instead.
+    expect(within(screen.getByTestId('ahp-agent-row-brainstorm')).getByText('Idle — will extract facts as you chat')).toBeInTheDocument();
     expect(within(screen.getByTestId('ahp-agent-row-archive')).getByText('Ready')).toBeInTheDocument();
     expect(within(screen.getByTestId('ahp-agent-row-beta-reader')).getByText('Ready')).toBeInTheDocument();
   });
@@ -212,7 +216,7 @@ describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () 
     const dot = () => screen.getByTestId('ahp-agent-row-brainstorm').querySelector('.ahp-status-dot');
     // Enabled but idle — no hardcoded pulse (this is the actual SKY-11214 bug).
     expect(dot()?.className).not.toContain('ahp-status-dot--pulse');
-    expect(within(screen.getByTestId('ahp-agent-row-brainstorm')).getByText('Ready')).toBeInTheDocument();
+    expect(within(screen.getByTestId('ahp-agent-row-brainstorm')).getByText('Idle — will extract facts as you chat')).toBeInTheDocument();
 
     act(() => {
       aiActivityUpdateListener([{
@@ -230,6 +234,91 @@ describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () 
 
     act(() => { aiActivityUpdateListener([]); });
     expect(dot()?.className).not.toContain('ahp-status-dot--pulse');
+  });
+
+  // SKY-11214: resolveAgentStatus is the exact mapping AgentRow renders from
+  // (see the DOM-level "defaults everything enabled" test above for proof
+  // it's actually wired in) — exercising it directly asserts the real
+  // idle -> session start -> fact extracted -> error transitions without a
+  // snapshot of any one literal string. A hardcoded "Watching session" would
+  // have passed the old version of this suite despite reporting zero real
+  // activity; these transitions could not pass without the count/state
+  // actually driving the text.
+  it('brainstorm status transitions idle -> session start -> fact extracted as brainstormActivity changes', () => {
+    const base = { enabled: true, pendingCount: 0, continuityCount: 0, activeEntry: null, recentTerminal: null };
+
+    const idle = resolveAgentStatus('brainstorm', {
+      ...base,
+      brainstormActivity: { active: false, factsCount: 0, lastActionText: null, hasError: false },
+    });
+    expect(idle.text).toBe('Idle — will extract facts as you chat');
+    expect(idle.pulse).toBe(false);
+
+    const sessionStart = resolveAgentStatus('brainstorm', {
+      ...base,
+      brainstormActivity: { active: true, factsCount: 0, lastActionText: null, hasError: false },
+    });
+    expect(sessionStart.text).not.toBe(idle.text);
+    expect(sessionStart.text).not.toBe('Watching session');
+    expect(sessionStart.pulse).toBe(true);
+
+    const oneFact = resolveAgentStatus('brainstorm', {
+      ...base,
+      brainstormActivity: { active: true, factsCount: 1, lastActionText: 'Detected 1 fact — filing to your vault', hasError: false },
+    });
+    expect(oneFact.text).toBe('1 fact this session');
+    expect(oneFact.pulse).toBe(true);
+
+    const threeFacts = resolveAgentStatus('brainstorm', {
+      ...base,
+      brainstormActivity: { active: true, factsCount: 3, lastActionText: 'Detected 1 fact — filing to your vault', hasError: false },
+    });
+    expect(threeFacts.text).toBe('3 facts this session');
+  });
+
+  it('brainstorm status surfaces a real error instead of swallowing it, with no pulse', () => {
+    const status = resolveAgentStatus('brainstorm', {
+      enabled: true, pendingCount: 0, continuityCount: 0, activeEntry: null, recentTerminal: null,
+      brainstormActivity: { active: true, factsCount: 2, lastActionText: null, hasError: true },
+    });
+    expect(status.text).toBe('Needs attention — check the session');
+    expect(status.pulse).toBe(false);
+  });
+
+  it("brainstorm status pulses only while genuinely active, and Disabled beats an active session", () => {
+    const active = { active: true, factsCount: 0, lastActionText: null, hasError: false };
+
+    const enabled = resolveAgentStatus('brainstorm', {
+      enabled: true, pendingCount: 0, continuityCount: 0, activeEntry: null, recentTerminal: null, brainstormActivity: active,
+    });
+    expect(enabled.pulse).toBe(true);
+
+    const disabled = resolveAgentStatus('brainstorm', {
+      enabled: false, pendingCount: 0, continuityCount: 0, activeEntry: null, recentTerminal: null, brainstormActivity: active,
+    });
+    expect(disabled.text).toBe('Disabled');
+    expect(disabled.pulse).toBe(false);
+  });
+
+  it('a real in-flight registry request beats brainstormActivity facts (SKY-11223 signal outranks SKY-11214 idle-window signal)', () => {
+    const status = resolveAgentStatus('brainstorm', {
+      enabled: true,
+      pendingCount: 0,
+      continuityCount: 0,
+      activeEntry: {
+        requestId: 'req-1',
+        agent: 'brainstorm',
+        agentLabel: 'Brainstorm Agent',
+        surface: 'brainstorm-chat',
+        surfaceLabel: 'Brainstorm chat',
+        provider: { kind: 'lmstudio', model: 'qwen3.6-35b-a3b' },
+        startedAt: Date.now(),
+      },
+      recentTerminal: null,
+      brainstormActivity: { active: true, factsCount: 5, lastActionText: null, hasError: false },
+    });
+    expect(status.text).toBe('Working — Brainstorm chat');
+    expect(status.pulse).toBe(true);
   });
 
   it("archive: '{n} flags open' when continuity flags are open (singular at 1), 'Ready' at 0", async () => {

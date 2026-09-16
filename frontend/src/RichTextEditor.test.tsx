@@ -7,7 +7,7 @@
 //   3. entity @-mention insert works through the shared picker stack
 //   4. wiki-link clicks delegate to the caller
 //   5. debounced onChange, suppressed initial change, flush-on-unmount
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
 import RichTextEditor from './RichTextEditor';
@@ -16,8 +16,11 @@ import { AutoLinkerExtension } from './AutoLinkerExtension';
 import { getEditorMarkdown } from './lib/useRichEditor';
 import { installActWarningGuard } from './testActWarningGuard';
 import { RICH_TEXT_SCHEMA } from './lib/richTextSchema';
+import { runQuitFlushers, __resetQuitFlushers } from './lib/flushBeforeQuit';
 
 installActWarningGuard();
+
+afterEach(() => __resetQuitFlushers());
 
 const ENTITIES = [
   { id: 'char-elara', name: 'Elara', type: 'character' as const, aliases: [] },
@@ -417,5 +420,56 @@ describe('RichTextEditor debounced onChange', () => {
 
     expect(onChangeMarkdown).toHaveBeenCalledTimes(1);
     expect(onChangeMarkdown.mock.calls[0][0]).toContain('Do not lose this.');
+  });
+
+  // SKY-11646: closing the window tears the renderer down without unmounting
+  // React, so the unmount flush above never runs. Type, then close inside the
+  // 800ms debounce, and the text was silently dropped.
+  it('flushes a pending debounced change when the shell drains quit flushers', async () => {
+    const onChangeMarkdown = vi.fn();
+    const { editor, unmount } = await mountCore({ onChangeMarkdown });
+
+    await act(async () => {
+      editor.commands.insertContent('Typed right before the X button.');
+    });
+    expect(onChangeMarkdown).not.toHaveBeenCalled();
+
+    await act(async () => { await runQuitFlushers(); });
+
+    expect(onChangeMarkdown).toHaveBeenCalledTimes(1);
+    expect(onChangeMarkdown.mock.calls[0][0]).toContain('Typed right before the X button.');
+
+    // The debounce timer was cancelled, so it cannot fire a duplicate save,
+    // and a second quit pass is a no-op.
+    await act(async () => { await runQuitFlushers(); });
+    expect(onChangeMarkdown).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(onChangeMarkdown).toHaveBeenCalledTimes(1);
+  });
+
+  // The Story editor leaves suppressInitialChange off, so Tiptap's initial
+  // content-normalization arms a pending flush all on its own. Quitting must
+  // not mistake that for typing and rewrite an untouched scene.
+  it('does not flush on quit when the document was only loaded, never edited', async () => {
+    const onChangeMarkdown = vi.fn();
+    const { unmount } = await mountCore({ content: '# Untouched\n', onChangeMarkdown });
+
+    await act(async () => { await runQuitFlushers(); });
+
+    expect(onChangeMarkdown).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it('unregisters its quit flusher on unmount', async () => {
+    const onChangeMarkdown = vi.fn();
+    const { editor, unmount } = await mountCore({ onChangeMarkdown, flushPendingOnUnmount: false });
+
+    await act(async () => {
+      editor.commands.insertContent('Dropped by design.');
+    });
+    unmount();
+
+    await act(async () => { await runQuitFlushers(); });
+    expect(onChangeMarkdown).not.toHaveBeenCalled();
   });
 });

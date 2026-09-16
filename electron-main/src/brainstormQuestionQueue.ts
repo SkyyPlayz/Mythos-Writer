@@ -14,6 +14,7 @@ import {
   listBrainstormQuestions,
   getBrainstormQuestion,
   findBrainstormQuestionByEntityScene,
+  findBrainstormQuestionByNameScene,
   answerBrainstormQuestion,
   type DbBrainstormQuestion,
   type BrainstormQuestionSource,
@@ -40,10 +41,17 @@ export interface EnqueueQuestionInput {
  * Queues one question. Skips entity-scoped questions that already have a
  * row (pending or answered) for the same entity+scene, so a re-scan of an
  * unchanged gap doesn't spam the queue and an answered gap is never re-asked.
+ *
+ * SKY-11457: the same guard keyed by name for questions about names with no
+ * entity row yet (the self-building wiki's "new name" questions), which would
+ * otherwise re-queue on every timer-driven re-scan of the same scene.
  */
 export function enqueueQuestion(input: EnqueueQuestionInput): DbBrainstormQuestion | null {
   if (input.entityId && input.scenePath) {
     const existing = findBrainstormQuestionByEntityScene(input.entityId, input.scenePath);
+    if (existing) return null;
+  } else if (!input.entityId && input.entityName && input.scenePath) {
+    const existing = findBrainstormQuestionByNameScene(input.entityName, input.scenePath);
     if (existing) return null;
   }
   const row: DbBrainstormQuestion = {

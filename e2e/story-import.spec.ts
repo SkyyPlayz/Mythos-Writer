@@ -138,7 +138,16 @@ test.afterAll(async () => {
   fs.rmSync(notesVaultDir, { recursive: true, force: true });
 });
 
-test('Import a story (.docx) writes real scene/chapter files to the vault on disk', async () => {
+// SKY-11154: ImportStorySection.tsx (the "#section-import-story" UI this
+// spec drove) was deleted — the Vault & Files page's "Add a Story Vault"
+// dialog (AddVaultDialog.tsx, kind='story', mode='import') is the only
+// import entry point now. That new path does not yet support .docx/.epub
+// (it currently only wires importObsidianToVaultDir), so this spec is
+// skipped rather than rewritten — the underlying STORY_IMPORT_RUN /
+// docxToStoryMarkadown pipeline this test exercised is untouched and still
+// unit-tested by electron-main/src/storyImport.test.ts. A follow-up ticket
+// owns either restoring a docx/epub import UI or retiring this pipeline.
+test.skip('Import a story (.docx) writes real scene/chapter files to the vault on disk', async () => {
   expect(fs.existsSync(FIXTURE_DOCX), `missing fixture: ${FIXTURE_DOCX}`).toBe(true);
   expect(app, 'app failed to launch').toBeTruthy();
 

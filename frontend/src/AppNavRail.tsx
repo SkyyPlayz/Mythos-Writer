@@ -182,6 +182,18 @@ function VaultGraphGlyph() {
   );
 }
 
+/** SKY-11184: Boards tab — grid-of-cards canvas glyph. */
+function BoardsGlyph() {
+  return (
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7.5" height="6" rx="1.2" />
+      <rect x="13.5" y="3" width="7.5" height="6" rx="1.2" />
+      <rect x="3" y="13" width="7.5" height="6" rx="1.2" />
+      <rect x="13.5" y="13" width="7.5" height="6" rx="1.2" />
+    </svg>
+  );
+}
+
 /** SKY-9019 M5: drawn glyphs for the six rail modules, replacing the old
  *  emoji `icon` field (prototype `this.icons`, HTML 4112-4118). Keyed by
  *  NavRailModuleId rather than the config's `icon` string so a stale/custom
@@ -193,6 +205,7 @@ const RAIL_GLYPH_BY_ID: Partial<Record<NavRailModuleId, () => ReactNode>> = {
   brainstorm: BulbGlyph,
   timeline: TimelineGlyph,
   'vault-graph': VaultGraphGlyph,
+  boards: BoardsGlyph,
 };
 
 /** Prototype 213: settings sliders glyph. */

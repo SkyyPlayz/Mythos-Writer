@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import type { Story, Chapter, Scene } from './types';
 import StoryNavigator from './StoryNavigator';
+import StoryVaultPicker from './components/StoryVaultPicker';
 import type { SceneNoteDragPayload } from './sceneNotes';
 import { countWords } from './wordStats';
 import './LeftRail.css';
@@ -108,6 +109,11 @@ export default function LeftRail({
 
   return (
     <div className="left-rail" data-testid="left-rail">
+      {/* Zone 0 — Story Vault Picker (SKY-11169) */}
+      <div className="lr-vault-zone" data-testid="lr-vault-zone">
+        <StoryVaultPicker />
+      </div>
+
       {/* Zone 1 — Story Card */}
       {selectedStory && (
         <div className="lr-story-card" data-testid="lr-story-card">

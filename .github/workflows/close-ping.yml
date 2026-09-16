@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout (for scripts/notify-board.sh)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Close stale CI ping and fix-request issues
         env:

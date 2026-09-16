@@ -108,3 +108,13 @@
   color: #fff;
   box-shadow: 0 0 14px -4px var(--g3, rgba(255, 77, 255, .4));
 }
+
+/* SKY-11589: Theme match wallpaper arrows (owner mockup 9.9, dc.html 2657). */
+.lnas-wp-arrow:hover {
+  background: rgba(8, 10, 18, 0.92) !important;
+  border-color: var(--b1, rgba(0, 240, 255, 0.6)) !important;
+}
+.lnas-wp-arrow:focus-visible {
+  outline: 2px solid var(--n1, #00f0ff);
+  outline-offset: 1px;
+}

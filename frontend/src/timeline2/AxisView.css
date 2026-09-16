@@ -276,6 +276,19 @@
   box-shadow: 0 0 22px -5px var(--g1, rgba(0, 240, 255, 0.4));
 }
 
+/* SKY-11615: reference ring — a card whose description links somewhere reads
+   as connected at a glance (mockup `tlRefRing`, 7510). Gold when every link is
+   a story target, c5 teal as soon as a note, folder or unresolved link is in
+   there. Only ever applied to an UNSELECTED card, so it never fights the
+   selection outline above. */
+.ax-event--refs-story {
+  box-shadow: inset 0 0 0 1px rgb(255 211 25 / 0.3), 0 0 9px -4px rgb(255 211 25 / 0.55);
+}
+
+.ax-event--refs-mixed {
+  box-shadow: inset 0 0 0 1px rgb(47 230 200 / 0.3), 0 0 9px -4px rgb(47 230 200 / 0.55);
+}
+
 .ax-event-head {
   display: flex;
   align-items: center;
@@ -528,6 +541,12 @@
   border: 1px solid rgba(255, 211, 25, 0.4);
   flex: none;
   margin-left: auto;
+}
+
+/* The badge row already claimed the head's free space; two auto margins would
+   split it and strand the chip mid-card. */
+.tlw-badges + .ax-event-flash {
+  margin-left: 0;
 }
 
 .ax-event-desc {

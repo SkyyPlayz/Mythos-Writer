@@ -296,7 +296,7 @@ agents · **4** warm data · **5** cool data · **6** nav rail/timeline.
 **Finding:** the prototype's Timeline markup (authored before the slot engine
 existed) reaches for `var(--n1, …)` / `var(--n2, …)` positionally wherever a neon
 accent was needed — "you are here," Today, group headers, tension/today markers —
-without regard to the documented slot semantics. At Neon Classic defaults this
+without regard to the documented slot semantics. At Neon Nebula defaults this
 looks correct by coincidence (slot 1 and the prototype's literal `#00f0ff` are the
 same hue). It stops being correct the moment a user recolors **slot 6 (their
 Timeline slot)** in Settings: nothing in the Timeline view would actually change

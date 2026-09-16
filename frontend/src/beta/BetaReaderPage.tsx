@@ -22,9 +22,13 @@ import { useAgentSessions } from '../lib/useAgentSessions';
 import AgentSessionPicker from '../components/AgentSessionPicker';
 import { createComment, isValidAnchor } from '../comments';
 import { buildBetaReadSourceText, buildScopeOptions, findSceneAndChapter, type BetaScopeOption } from './textAssembly';
+import ProductionReviewPanel from './ProductionReviewPanel';
+import type { ProductionRoleId } from '../agents/productionRoles';
 import './BetaReaderPage.css';
 
-type BetaReaderTab = 'reports' | 'chat';
+// SKY-11411: a third page runs the production-team roles (Alpha Reader / Storyline
+// Consultant / Line Editor) through the same reveal-point-aware path.
+type BetaReaderTab = 'reports' | 'chat' | 'production';
 
 const FOCUS_DEFS: Array<{ key: keyof BetaReportFocus; label: string }> = [
   { key: 'pacing', label: 'Pacing' },
@@ -96,12 +100,14 @@ export interface BetaReaderPageProps {
   chapter: Chapter | null;
   scene: Scene | null;
   agentNames?: Partial<Record<NamedAgentId, string>>;
+  /** SKY-11411: per-role enable state (agents.<role>.enabled) for the Production Team tab. */
+  productionRolesEnabled?: Partial<Record<ProductionRoleId, boolean>>;
   onClose: () => void;
   /** Jump the manuscript view to a scene (and close this overlay). Omit to disable "Show in manuscript". */
   onNavigateToScene?: (sceneId: string, chapterId: string) => void;
 }
 
-export default function BetaReaderPage({ story, chapter, scene, agentNames, onClose, onNavigateToScene }: BetaReaderPageProps) {
+export default function BetaReaderPage({ story, chapter, scene, agentNames, productionRolesEnabled, onClose, onNavigateToScene }: BetaReaderPageProps) {
   const [tab, setTab] = useState<BetaReaderTab>('reports');
   const scopeOptions = useMemo(() => buildScopeOptions(story, chapter, scene), [story, chapter, scene]);
   const [scopeKind, setScopeKind] = useState<BetaScopeOption['kind'] | null>(scopeOptions[0]?.kind ?? null);
@@ -268,11 +274,12 @@ export default function BetaReaderPage({ story, chapter, scene, agentNames, onCl
           <div className="beta-reader-seg" role="tablist" aria-label="Beta Reader pages">
             <button type="button" role="tab" aria-selected={tab === 'reports'} className={tab === 'reports' ? 'active' : ''} onClick={() => setTab('reports')}>Reports</button>
             <button type="button" role="tab" aria-selected={tab === 'chat'} className={tab === 'chat' ? 'active' : ''} onClick={() => setTab('chat')}>Chat</button>
+            <button type="button" role="tab" aria-selected={tab === 'production'} className={tab === 'production' ? 'active' : ''} onClick={() => setTab('production')}>Production Team</button>
           </div>
           <button type="button" className="beta-reader-close" onClick={onClose} aria-label="Close Beta Reader">✕</button>
         </header>
 
-        {tab === 'reports' ? (
+        {tab === 'reports' && (
           <div className="beta-reader-columns">
             <aside className="beta-reader-left" aria-label="Beta reads history">
               <h3>BETA READS</h3>
@@ -406,13 +413,25 @@ export default function BetaReaderPage({ story, chapter, scene, agentNames, onCl
               </section>
             </aside>
           </div>
-        ) : (
+        )}
+        {tab === 'chat' && (
           <BetaChatPage
             agentLabel={agentLabel}
             sessionStore={sessionStore}
             selectedReport={selectedReport}
             onShowInManuscript={onNavigateToScene ? handleShowInManuscript : undefined}
           />
+        )}
+        {tab === 'production' && (
+          <div className="beta-reader-columns beta-reader-columns--production">
+            <ProductionReviewPanel
+              story={story}
+              chapter={chapter}
+              scene={scene}
+              rolesEnabled={productionRolesEnabled}
+              agentNames={agentNames}
+            />
+          </div>
         )}
       </div>
       <Toast message={toast?.message ?? null} level={toast?.level} onDismiss={clearToast} />

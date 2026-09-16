@@ -88,6 +88,7 @@ describe('fact decisions', () => {
         type: null,
         needs_rescan: 0,
         indexed_at: NOW,
+        reveal_point: null,
       });
       expect(getVaultIndexCacheRows()).toHaveLength(1);
 
@@ -111,6 +112,7 @@ describe('fact decisions', () => {
         type: 'Character',
         needs_rescan: 0,
         indexed_at: NOW,
+        reveal_point: null,
       });
 
       rebuildDerivedFactStores();
@@ -202,6 +204,7 @@ describe('fact decisions', () => {
         type: null,
         needs_rescan: 0,
         indexed_at: NOW,
+        reveal_point: null,
       });
       const before = listFactDecisions(true).length;
       rebuildDerivedFactStores();

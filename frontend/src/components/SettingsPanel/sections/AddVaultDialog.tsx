@@ -21,6 +21,7 @@ import { useEffect, useState } from 'react';
 import Dialog, { DialogHeader, DialogBody, DialogFooter } from '../../ui/Dialog';
 import { Button } from '../../ui/Button';
 import VaultDestinationPicker from './VaultDestinationPicker';
+import VaultCreateModePicker, { type VaultCreateMode } from './VaultCreateModePicker';
 import { showLnToast } from '../../../theme/lnToast';
 import './AddVaultDialog.css';
 
@@ -32,46 +33,10 @@ interface Props {
   onClose: () => void;
 }
 
-type CreateMode = 'template' | 'blank' | 'import';
-
-interface ModeOption {
-  key: CreateMode;
-  label: string;
-  desc: string;
-  recommended?: boolean;
-}
-
-// Copy pulled verbatim from the design's nvModes (HTML ~8977-8989).
-const MODES: Record<AddVaultKind, ModeOption[]> = {
-  notes: [
-    {
-      key: 'template',
-      label: 'From template',
-      desc: 'A ready structure — empty folders for Characters, Locations, Stories, Plot, Worldbuilding and Research. No notes, just the shape.',
-      recommended: true,
-    },
-    { key: 'blank', label: 'Start blank', desc: 'One empty folder. You build the structure yourself as you go.' },
-    {
-      key: 'import',
-      label: 'Import existing',
-      desc: 'Bring in an Obsidian or Notion vault, or a plain Markdown folder — folders, notes and wiki-links preserved.',
-    },
-  ],
-  story: [
-    {
-      key: 'template',
-      label: 'From template',
-      desc: 'Three acts with placeholder chapters — a spine you can rename and reorder as the story finds its shape.',
-      recommended: true,
-    },
-    { key: 'blank', label: 'Start blank', desc: 'One empty manuscript. Add your first chapter and scene when you are ready.' },
-    {
-      key: 'import',
-      label: 'Import existing',
-      desc: 'Bring in a Scrivener project, Word manuscript or Markdown folder — chapters and scenes preserved.',
-    },
-  ],
-};
+// The template / blank / import option set itself lives in the shared
+// VaultCreateModePicker (SKY-11151 primitive UI) — same component Settings
+// "New vault…" renders, so the three choices can't drift between surfaces.
+type CreateMode = VaultCreateMode;
 
 // Preview-only copy, matching the design's nvTemplateTree()/nvTree (HTML
 // 6224-6233, 9000-9004). Informational: createVaultFromOptions' `template`
@@ -107,7 +72,6 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
   const [mode, setMode] = useState<CreateMode>('template');
   const [importSrcPath, setImportSrcPath] = useState('');
   const [mythosRoot, setMythosRoot] = useState<string | null>(null);
-  const [pathSep, setPathSep] = useState<'/' | '\\'>('/');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -122,7 +86,6 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
     setBusy(false);
     window.api?.vaultGetPaths?.().then((paths) => {
       setMythosRoot(paths.mythosRoot ?? null);
-      if (paths.pathSeparator) setPathSep(paths.pathSeparator);
     }).catch(() => { /* leave mythosRoot null — submit surfaces the error */ });
   }, [open, kind]);
 
@@ -163,21 +126,32 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
     setBusy(true);
     setError('');
     try {
-      const destinationParent =
-        `${mythosRoot.replace(/[\\/]+$/, '')}${pathSep}${kind === 'notes' ? 'Notes' : 'Stories'}`;
-      const res = await window.api.createVaultFromOptions({
-        mode,
-        destinationParent,
-        name: name.trim() || (kind === 'notes' ? 'Notes' : 'Story'),
-        importSources: mode === 'import' ? [{ kind, srcPath: importSrcPath.trim() }] : undefined,
-        activate: false,
-      });
-      if (!res.ok) {
-        setError(res.error ?? 'Could not create the vault. Check the name and try again.');
-        setBusy(false);
-        return;
+      // SKY-11154: create through the notes/story REGISTRY (SKY-11058/11150),
+      // never through createVaultFromOptions — that primitive always
+      // scaffolds a whole new self-contained Mythos vault bundle, which is
+      // wrong here and also never writes to notes-vaults.json/
+      // story-vaults.json, so the result would not show up in this ticket's
+      // Settings columns. Story vaults have no backend 'template' mode — a
+      // UI 'template' selection becomes an empty blank story vault.
+      const displayName = name.trim() || (kind === 'notes' ? 'Notes' : 'Story');
+      const importSourcePath = mode === 'import' ? importSrcPath.trim() : undefined;
+      if (kind === 'notes') {
+        const res = await window.api?.notesVaultRegistryCreate?.({
+          mode,
+          displayName,
+          importSourcePath,
+        });
+        if (!res) throw new Error('Could not create the notes vault.');
+        showLnToast(`Notes vault "${res.entry.displayName}" added`);
+      } else {
+        const res = await window.api?.storyVaultRegistryCreate?.({
+          mode: mode === 'template' ? 'blank' : mode,
+          displayName,
+          importSourcePath,
+        });
+        if (!res) throw new Error('Could not create the story vault.');
+        showLnToast(`Story vault "${res.entry.displayName}" added`);
       }
-      showLnToast(`${kindLabel} vault "${res.vaultName ?? name.trim()}" added`);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not create the vault.');
@@ -214,27 +188,13 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
         </div>
 
         <div className="avd-section-label">HOW TO START</div>
-        <div className="avd-modes" role="radiogroup" aria-label="How to start">
-          {MODES[kind].map((m) => (
-            <button
-              key={m.key}
-              type="button"
-              role="radio"
-              aria-checked={mode === m.key}
-              className={`avd-mode${mode === m.key ? ' avd-mode--on' : ''}`}
-              onClick={() => setMode(m.key)}
-              disabled={busy}
-              data-testid={`avd-mode-${kind}-${m.key}`}
-            >
-              <span className="avd-mode__head">
-                <span className="avd-mode__dot" aria-hidden="true" />
-                <span className="avd-mode__label">{m.label}</span>
-                {m.recommended && <span className="avd-mode__tag">RECOMMENDED</span>}
-              </span>
-              <span className="avd-mode__desc">{m.desc}</span>
-            </button>
-          ))}
-        </div>
+        <VaultCreateModePicker
+          kind={kind}
+          value={mode}
+          onChange={setMode}
+          disabled={busy}
+          testIdPrefix={`avd-mode-${kind}`}
+        />
 
         {mode === 'template' && (
           <div className="avd-preview" data-testid={`avd-preview-${kind}`}>

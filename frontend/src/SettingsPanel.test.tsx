@@ -22,6 +22,11 @@ const mockProviderListModels = vi.fn();
 const mockVoicePickBinary = vi.fn();
 const mockOnClose = vi.fn();
 const mockOnSaved = vi.fn();
+const mockTemplateList = vi.fn();
+const mockTemplateSaveAs = vi.fn();
+const mockTemplateRename = vi.fn();
+const mockTemplateDuplicate = vi.fn();
+const mockTemplateDelete = vi.fn();
 
 const defaultVaultPaths = {
   storyVaultPath: '/home/test/Mythos/Story Vault',
@@ -31,6 +36,8 @@ const defaultVaultPaths = {
 
 async function flushAsyncEffects() {
   await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -77,6 +84,11 @@ beforeEach(() => {
   mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
   mockProviderListModels.mockResolvedValue({ ok: false, error: 'No models available' });
   mockVoicePickBinary.mockResolvedValue({ path: null, cancelled: true, registrationToken: null });
+  mockTemplateList.mockResolvedValue({ templates: [] });
+  mockTemplateSaveAs.mockResolvedValue({ ok: true, id: 'user:test-1234' });
+  mockTemplateRename.mockResolvedValue({ ok: true });
+  mockTemplateDuplicate.mockResolvedValue({ ok: true, id: 'user:test-copy-1234' });
+  mockTemplateDelete.mockResolvedValue({ ok: true });
   (window as unknown as { api: unknown }).api = {
     settingsGet: mockSettingsGet,
     settingsSet: mockSettingsSet,
@@ -85,6 +97,11 @@ beforeEach(() => {
     chooseVaultFolder: mockChooseVaultFolder,
     providerListModels: mockProviderListModels,
     voicePickBinary: mockVoicePickBinary,
+    templateList: mockTemplateList,
+    templateSaveAs: mockTemplateSaveAs,
+    templateRename: mockTemplateRename,
+    templateDuplicate: mockTemplateDuplicate,
+    templateDelete: mockTemplateDelete,
   };
 });
 
@@ -149,6 +166,7 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
     fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
+    await flushAsyncEffects();
     expect(screen.getByRole('tab', { name: /vault & files/i })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('heading', { name: /^vault paths$/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
@@ -158,9 +176,78 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
     fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
+    await flushAsyncEffects();
     expect(screen.getByRole('heading', { name: /back up & restore/i })).toBeInTheDocument();
     expect(screen.getByTestId('backup-app-data-btn')).toBeInTheDocument();
     expect(screen.getByTestId('restore-app-data-btn')).toBeInTheDocument();
+  });
+
+  describe('SKY-11352: custom-template management (restored)', () => {
+    beforeEach(() => {
+      mockTemplateList.mockResolvedValue({
+        templates: [
+          { id: 'bundled:novel-3act', name: 'Novel (3-Act)', description: 'Bundled', isUserTemplate: false },
+          { id: 'user:my-novel-1234', name: 'My Novel', description: 'Custom: My Novel', isUserTemplate: true },
+        ],
+      });
+    });
+
+    async function openVaultsTab() {
+      await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+      await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+      fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
+      await flushAsyncEffects();
+    }
+
+    it('lists only user templates, with a count badge, and hides bundled ones', async () => {
+      await openVaultsTab();
+      expect(await screen.findByTestId('template-name-user:my-novel-1234')).toHaveTextContent('My Novel');
+      expect(screen.getByTestId('user-templates-count')).toHaveTextContent('1');
+      expect(screen.queryByText('Novel (3-Act)')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('template-delete-btn-bundled:novel-3act')).not.toBeInTheDocument();
+    });
+
+    it('renames a user template and reloads the list', async () => {
+      await openVaultsTab();
+      await screen.findByTestId('template-name-user:my-novel-1234');
+      mockTemplateList.mockResolvedValueOnce({
+        templates: [{ id: 'user:my-novel-1234', name: 'My Renamed Novel', description: '', isUserTemplate: true }],
+      });
+      await clickAndFlush(screen.getByTestId('template-rename-btn-user:my-novel-1234'));
+      const input = screen.getByTestId('template-rename-input-user:my-novel-1234');
+      await changeAndFlush(input, 'My Renamed Novel');
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await flushAsyncEffects();
+      expect(mockTemplateRename).toHaveBeenCalledWith('user:my-novel-1234', 'My Renamed Novel');
+      expect(await screen.findByText('My Renamed Novel')).toBeInTheDocument();
+    });
+
+    it('duplicates a user template', async () => {
+      await openVaultsTab();
+      await screen.findByTestId('template-name-user:my-novel-1234');
+      await clickAndFlush(screen.getByTestId('template-duplicate-btn-user:my-novel-1234'));
+      expect(mockTemplateDuplicate).toHaveBeenCalledWith('user:my-novel-1234');
+    });
+
+    it('shows a confirm dialog before deleting, and cancel preserves the template', async () => {
+      await openVaultsTab();
+      await screen.findByTestId('template-name-user:my-novel-1234');
+      await clickAndFlush(screen.getByTestId('template-delete-btn-user:my-novel-1234'));
+      expect(screen.getByTestId('template-delete-confirm')).toBeInTheDocument();
+      await clickAndFlush(screen.getByTestId('template-delete-cancel'));
+      expect(mockTemplateDelete).not.toHaveBeenCalled();
+      expect(screen.getByTestId('template-name-user:my-novel-1234')).toBeInTheDocument();
+    });
+
+    it('deletes a user template on confirm', async () => {
+      await openVaultsTab();
+      await screen.findByTestId('template-name-user:my-novel-1234');
+      mockTemplateList.mockResolvedValueOnce({ templates: [] });
+      await clickAndFlush(screen.getByTestId('template-delete-btn-user:my-novel-1234'));
+      await clickAndFlush(screen.getByTestId('template-delete-confirm'));
+      expect(mockTemplateDelete).toHaveBeenCalledWith('user:my-novel-1234');
+      await waitFor(() => expect(screen.queryByTestId('user-templates-section')).not.toBeInTheDocument());
+    });
   });
 
   it('SKY-2973: clicking Appearance tab shows appearance sections', async () => {
@@ -525,6 +612,28 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     expect(document.querySelector('[data-testid="wa-category-toggles"]')).toBeInTheDocument();
+  });
+
+  // ── SKY-10878 M12.B5b: wiki-autonomy tri-state control ──
+  it('wiki-autonomy control is tri-state and defaults to "always ask"', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    const select = (await screen.findByTestId('wiki-autonomy-select')) as HTMLSelectElement;
+    // Default (setting absent from defaultSettings) resolves to "ask".
+    expect(select.value).toBe('ask');
+    const optionValues = Array.from(select.options).map((o) => o.value);
+    expect(optionValues).toEqual(['ask', 'auto', 'off']);
+  });
+
+  it('changing the wiki-autonomy control saves the new mode via IPC', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    const select = await screen.findByTestId('wiki-autonomy-select');
+
+    await changeAndFlush(select, 'auto');
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.wikiAutonomy).toBe('auto');
   });
 
   it('toggling a per-category switch saves the updated autoApplyCategories via IPC', async () => {
@@ -1022,6 +1131,7 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
     fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
+    await flushAsyncEffects();
     expect(screen.getByRole('tab', { name: /vault & files/i })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('heading', { name: /^vault paths$/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/stt binary path/i)).not.toBeInTheDocument();
@@ -1405,6 +1515,159 @@ describe('SettingsPanel', () => {
     // Empty list → falls back to free-text, no dropdown
     expect(screen.queryByRole('combobox', { name: /default model for this provider/i })).not.toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: /default model for this provider/i })).toBeInTheDocument();
+  });
+
+  // ── SKY-11219: provider settings must adapt to a local (keyless) provider ──
+
+  it('AC-1: selecting LM Studio hides the legacy Anthropic API-key field and its copy', async () => {
+    mockProviderListModels.mockResolvedValueOnce({ ok: true, models: ['qwen/qwen3.6-35b-a3b'] });
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'lmstudio');
+
+    expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
+    // The legacy "API Key" section must not render at all for a keyless
+    // provider — not just relabeled (the <option> for Anthropic in the
+    // provider <select> itself is expected to remain).
+    expect(document.getElementById('section-api-key')).not.toBeInTheDocument();
+    expect(screen.queryByText(/ANTHROPIC_API_KEY environment variable/i)).not.toBeInTheDocument();
+  });
+
+  it('AC-1: selecting Ollama hides the legacy API-key field entirely', async () => {
+    mockProviderListModels.mockResolvedValueOnce({ ok: false, error: 'Ollama is not running.' });
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'ollama');
+
+    expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
+    expect(document.getElementById('section-api-key')).not.toBeInTheDocument();
+  });
+
+  it('AC-2: selecting OpenAI keeps the legacy key field with OpenAI-specific copy', async () => {
+    mockProviderListModels.mockResolvedValueOnce({ ok: false, error: 'unused' });
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'openai');
+
+    expect(screen.getByLabelText(/^openai api key$/i)).toBeInTheDocument();
+    expect(document.getElementById('section-api-key')).not.toBeNull();
+  });
+
+  it('SKY-11355: with provider override OFF, a local provider\'s Default model shows as an explicit Default option, not free text', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      // The agent has never had a per-agent model pinned (an empty string is
+      // the out-of-box value for every agent post-SKY-11355) — the field must
+      // surface an explicit "Default" option naming the resolved model,
+      // rather than requiring the user to type or silently masquerading the
+      // resolved model as if it had been explicitly picked for this agent.
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, model: '' },
+      },
+      provider: { kind: 'lmstudio', baseUrl: 'http://127.0.0.1:1234/v1', model: 'qwen/qwen3.6-35b-a3b' },
+    });
+    mockProviderListModels.mockResolvedValue({ ok: true, models: ['qwen/qwen3.6-35b-a3b'] });
+
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+
+    // Agent has no per-agent override → its Model field stays on the "Default"
+    // option (value ''), whose label names the resolved provider model.
+    await waitFor(() => {
+      const select = screen.getByRole('combobox', { name: /writing coach model/i }) as HTMLSelectElement;
+      expect(select).toHaveValue('');
+      expect(select.options[select.selectedIndex]).toHaveTextContent('Default (qwen/qwen3.6-35b-a3b)');
+    });
+  });
+
+  it('SKY-11355: agent Model field\'s Default option tracks a live change to the provider Default model', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, model: '' },
+      },
+      provider: { kind: 'lmstudio', baseUrl: 'http://127.0.0.1:1234/v1', model: 'model-a' },
+    });
+    mockProviderListModels.mockResolvedValue({ ok: true, models: ['model-a', 'model-b'] });
+
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    const waSelect = () => screen.getByRole('combobox', { name: /writing coach model/i }) as HTMLSelectElement;
+    await waitFor(() => {
+      expect(waSelect()).toHaveValue('');
+      expect(waSelect().options[waSelect().selectedIndex]).toHaveTextContent('Default (model-a)');
+    });
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /default model for this provider/i }), 'model-b');
+
+    // Still on "Default" (value unchanged) — only its label re-resolves live.
+    expect(waSelect()).toHaveValue('');
+    expect(waSelect().options[waSelect().selectedIndex]).toHaveTextContent('Default (model-b)');
+  });
+
+  it('SKY-11355: the agent Model dropdown lists the same auto-detected models as the provider field', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        ...defaultSettings.agents,
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, model: '' },
+      },
+      provider: { kind: 'lmstudio', baseUrl: 'http://127.0.0.1:1234/v1', model: 'model-a' },
+    });
+    mockProviderListModels.mockResolvedValue({ ok: true, models: ['model-a', 'model-b'] });
+
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    const waSelect = await screen.findByRole('combobox', { name: /writing coach model/i }) as HTMLSelectElement;
+    const optionValues = Array.from(waSelect.options).map((o) => o.value);
+    expect(optionValues).toEqual(expect.arrayContaining(['', 'model-a', 'model-b']));
+  });
+
+  it('SKY-11355: choosing an explicit model overrides only that agent — others stay on Default', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      agents: {
+        writingAssistant: { ...defaultSettings.agents.writingAssistant, model: '' },
+        brainstorm: { ...defaultSettings.agents.brainstorm, model: '' },
+        archive: { ...defaultSettings.agents.archive, model: '' },
+      },
+      provider: { kind: 'lmstudio', baseUrl: 'http://127.0.0.1:1234/v1', model: 'model-a' },
+    });
+    mockProviderListModels.mockResolvedValue({ ok: true, models: ['model-a', 'model-b'] });
+
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /writing coach model/i }));
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /writing coach model/i }), 'model-b');
+
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.agents.writingAssistant.model).toBe('model-b');
+    // Brainstorm/Archive never had this agent's dropdown touched — they must
+    // still carry the '' Default sentinel, not inherit model-b.
+    expect(saved.agents.brainstorm.model).toBe('');
+    expect(saved.agents.archive.model).toBe('');
+  });
+
+  it('AC-4: selecting LM Studio auto-fetches the running model list without a manual refresh click', async () => {
+    mockProviderListModels.mockResolvedValueOnce({ ok: true, models: ['qwen/qwen3.6-35b-a3b', 'llama-3.2-3b'] });
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+
+    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'lmstudio');
+
+    await waitFor(() => expect(mockProviderListModels).toHaveBeenCalledTimes(1));
+    expect(mockProviderListModels).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'lmstudio' }),
+    );
+    const select = await screen.findByRole('combobox', { name: /default model for this provider/i });
+    const optionValues = Array.from((select as HTMLSelectElement).options).map((o) => o.value);
+    expect(optionValues).toContain('qwen/qwen3.6-35b-a3b');
+    expect(optionValues).toContain('llama-3.2-3b');
   });
 
   // ── MYT-779: Telemetry section ──
@@ -2257,10 +2520,10 @@ describe('SKY-3218 nav-bar configuration', () => {
 
     const saved = mockOnSaved.mock.calls[0][0] as AppSettings;
     expect(saved.navConfig).toBeDefined();
-    // Beta 4 M3: the six §4 modules in spec order.
-    expect(saved.navConfig?.items).toHaveLength(6);
+    // Beta 4 M3: the six §4 modules plus Boards (SKY-11184), in spec order.
+    expect(saved.navConfig?.items).toHaveLength(7);
     expect(saved.navConfig?.items.map((i) => i.id)).toEqual([
-      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'vault-graph',
+      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'vault-graph', 'boards',
     ]);
     expect(saved.navConfig?.showLabels).toBe(true);
     expect(saved.navConfig?.showIcons).toBe(true);
@@ -2386,6 +2649,23 @@ describe('SKY-3218 nav-bar configuration', () => {
       // Appearance slice committed; the parked Agents edit was not.
       expect(saved.telemetry?.enabled).toBe(true);
       expect(saved.agents.writingAssistant.enabled).toBe(true);
+    });
+
+    it('SKY-11589: live-persist writes the active vault\'s per-vault appearance entry (wallpaper pick)', async () => {
+      await renderSettings(<SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/alpha" />);
+      await waitFor(() => screen.getByLabelText(/anthropic api key/i));
+
+      fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
+      // Theme match → next wallpaper: an Appearance-owned edit on liquidNeonV2.
+      fireEvent.click(screen.getByTestId('lnas-wp-match-next'));
+      await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+      const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+      expect(saved.liquidNeonV2?.wp).toBe('match');
+      expect(saved.liquidNeonV2?.wpPick).toEqual({ classic: 1 });
+      // SKY-11237 store gets the same slice, so the pick survives a relaunch per vault.
+      expect(saved.vaultAppearance?.['/vaults/alpha']?.liquidNeonV2?.wpPick).toEqual({ classic: 1 });
+      expect(saved.vaultAppearance?.['/vaults/alpha']?.theme).toBe(saved.theme);
     });
   });
 });

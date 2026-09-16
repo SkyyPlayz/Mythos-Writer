@@ -139,8 +139,8 @@ describe('loadEntityIndex (persistent cache)', () => {
 describe('resolveEntityKeyForFact', () => {
   it('resolves aliases through the existing matcher to the vault note path', () => {
     const index = [
-      { name: 'Lyra', aliases: ['The Starchild'], type: 'Character', path: '/vault/Universes/Characters/Lyra.md' },
-      { name: 'Kael', aliases: [], type: 'Character', path: '/vault/Universes/Characters/Kael.md' },
+      { name: 'Lyra', aliases: ['The Starchild'], type: 'Character', path: '/vault/Universes/Characters/Lyra.md', reveal_point: null },
+      { name: 'Kael', aliases: [], type: 'Character', path: '/vault/Universes/Characters/Kael.md', reveal_point: null },
     ];
     expect(resolveEntityKeyForFact('The Starchild', index)).toBe('/vault/Universes/Characters/Lyra.md');
     expect(resolveEntityKeyForFact('kael', index)).toBe('/vault/Universes/Characters/Kael.md');

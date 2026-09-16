@@ -21,6 +21,9 @@ import type { AnyExtension } from '@tiptap/core';
 import { useNoteReader } from './story/useNoteReader';
 import ReaderBar from './story/ReaderBar';
 import type { TtsEngineSettings, TtsVoicePrefs } from './hooks/useTtsPlayer';
+import { NoteCoverBadge } from './components/NoteCoverBadge';
+import { invalidateNoteThumbs } from './lib/noteThumbnails';
+import { registerQuitFlusher } from './lib/flushBeforeQuit';
 import './NoteViewer.css';
 
 export type NoteViewerMode = 'source' | 'rich' | 'markdown' | 'preview';
@@ -401,6 +404,12 @@ export default function NoteViewer({
   // writer never loses changes to a save they believe succeeded.
   const [saveError, setSaveError] = useState<string | null>(null);
   const [fidelityWarning, setFidelityWarning] = useState<LossyFeature[] | null>(null);
+  // SKY-11429: the CF-11 guard (below) silently lands a never-switched note in
+  // Source instead of the Rich default when it's lossy — silent so it never
+  // looks like data got destroyed, but from the writer's seat a note that
+  // "should" default to Rich just... doesn't, with no visible reason. This
+  // surfaces why, non-blocking (no dialog — CF-11's no-modal contract holds).
+  const [autoSourceNotice, setAutoSourceNotice] = useState<LossyFeature[] | null>(null);
   const [pendingMode, setPendingMode] = useState<NoteViewerMode | null>(null);
   const [gearOpen, setGearOpen] = useState(false);
   const [tagInput, setTagInput] = useState('');
@@ -440,6 +449,18 @@ export default function NoteViewer({
   const applyModeRef = useRef(applyMode);
   applyModeRef.current = applyMode;
 
+  // SKY-11444: `previewMode` was previously only read in the initializers
+  // above — toggling it while this note was already open did nothing until
+  // the note was closed and reopened. Sync live so the toggle gives
+  // immediate feedback on the note currently in view.
+  const prevPreviewModeRef = useRef(previewMode);
+  useEffect(() => {
+    if (previewMode === prevPreviewModeRef.current) return;
+    prevPreviewModeRef.current = previewMode;
+    if (modeProp !== undefined) return;
+    setMode(previewMode ? 'preview' : (stickyMode ?? (defaultRich ? 'rich' : 'source')));
+  }, [previewMode, modeProp, stickyMode, defaultRich]);
+
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -452,8 +473,10 @@ export default function NoteViewer({
         // markdown (CF-11) — downgrade to Source without a modal on open.
         if (pendingPrefRichRef.current) {
           pendingPrefRichRef.current = false;
-          if (detectLossyFeatures(stripHiddenBlocks(r.content)).length > 0) {
+          const lossy = detectLossyFeatures(stripHiddenBlocks(r.content));
+          if (lossy.length > 0) {
             applyModeRef.current('source');
+            setAutoSourceNotice(lossy);
           }
         }
       })
@@ -522,6 +545,21 @@ export default function NoteViewer({
       }
     };
   }, [flushSave, saveContent]);
+
+  // SKY-11646: the unmount save above never runs when the window closes — the
+  // renderer is torn down, not unmounted. Drain this note's 800ms autosave in
+  // the quit handshake instead, or typing and immediately closing loses the
+  // note body exactly as it did for scenes.
+  useEffect(() => registerQuitFlusher(async () => {
+    // RichTextEditor's own quit flusher runs in the same pass and pushes the
+    // latest body into contentRef synchronously. Yielding one microtask puts
+    // this save strictly after it, whichever order the two were registered in.
+    await Promise.resolve();
+    if (!saveTimerRef.current) return;
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    await saveContent(contentRef.current);
+  }), [saveContent]);
 
   // M16: the properties/tags panel writes frontmatter to this same file. Sync
   // its result into the open editor so a later autosave doesn't clobber it.
@@ -592,9 +630,11 @@ export default function NoteViewer({
       .catch(() => showLnToast('Could not copy the note path'));
   }, [path]);
 
-  // A frontmatter edit (title/tags) is a discrete commit: adopt + save now.
-  const adoptFrontmatterChange = useCallback((next: string) => {
-    if (next === contentRef.current) return;
+  // A frontmatter edit (title/tags/thumb) is a discrete commit: adopt + save
+  // now. Resolves true once the write has landed on disk (false: unchanged,
+  // or the save failed and the GH#616 banner is showing).
+  const adoptFrontmatterChange = useCallback((next: string): Promise<boolean> => {
+    if (next === contentRef.current) return Promise.resolve(false);
     contentRef.current = next;
     setContent(next);
     scheduleWordCount(next);
@@ -604,15 +644,30 @@ export default function NoteViewer({
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    void saveContent(next).then((ok) => {
-      if (!ok) return;
+    return saveContent(next).then((ok) => {
+      if (!ok) return false;
       // Keep any other open surface on this note (split pane, properties
       // panel) in sync — same event contract as NoteProperties (M16).
       window.dispatchEvent(new CustomEvent('mythos:note-frontmatter-updated', {
         detail: { path, content: next },
       }));
+      return true;
     });
   }, [path, saveContent, scheduleWordCount]);
+
+  // SKY-11186 (BOARDS-SPEC v2 §9): the editor cover's × writes `thumb: false`
+  // through the same frontmatter commit as the title/tags (unquoted — main's
+  // parseFrontmatter reads it as boolean false, which the resolver treats as
+  // "off"), then tells the shared thumbnail memo to re-ask main. The
+  // invalidate waits for the write so the re-ask can't race the old file.
+  // The memo is keyed on vault-relative POSIX paths (what the vault watcher
+  // reports), so a Windows-separator path is normalised before use.
+  const thumbNotePath = useMemo(() => path.replace(/\\/g, '/'), [path]);
+  const removeThumbnail = useCallback(() => {
+    void adoptFrontmatterChange(setFrontmatterField(contentRef.current, 'thumb', 'false')).then((ok) => {
+      if (ok) invalidateNoteThumbs([thumbNotePath]);
+    });
+  }, [adoptFrontmatterChange, thumbNotePath]);
 
   const commitTitle = useCallback(() => {
     const el = titleElRef.current;
@@ -652,6 +707,7 @@ export default function NoteViewer({
 
   const handleModeClick = useCallback((next: NoteViewerMode) => {
     setGearOpen(false);
+    setAutoSourceNotice(null);
     if (next === mode) return;
     if (next === 'rich') {
       // W0.2: judge fidelity on what Rich mode actually consumes — the display
@@ -732,6 +788,28 @@ export default function NoteViewer({
           onEditInSource={handleFidelityEditInSource}
           onOpenRichAnyway={handleFidelityOpenAnyway}
         />
+      )}
+      {autoSourceNotice && (
+        <div className="note-viewer-auto-source-notice" role="status" data-testid="note-auto-source-notice">
+          <span>
+            Opened in Source — this note has {autoSourceNotice.map((f) => f.label).join(', ')}, which Rich mode can&apos;t fully preserve.
+          </span>
+          <button
+            type="button"
+            className="note-viewer-auto-source-action"
+            onClick={() => handleModeClick('rich')}
+          >
+            Open in Rich anyway
+          </button>
+          <button
+            type="button"
+            className="note-viewer-auto-source-dismiss"
+            aria-label="Dismiss"
+            onClick={() => setAutoSourceNotice(null)}
+          >
+            ×
+          </button>
+        </div>
       )}
       <div className="note-viewer-toolbar">
         {/* M8d: breadcrumb (prototype `noteCrumbs`) — folder path + note title. */}
@@ -934,6 +1012,10 @@ export default function NoteViewer({
             +
           </button>
         </div>
+        {/* SKY-11186: the note's cover beside the title (spec §9) — the same
+            derivative the Notes Board card shows. Renders nothing when the
+            note has no cover; the header's second grid column collapses. */}
+        <NoteCoverBadge notePath={thumbNotePath} title={noteTitle} onRemove={removeThumbnail} />
       </div>
 
       {mode === 'source' && (

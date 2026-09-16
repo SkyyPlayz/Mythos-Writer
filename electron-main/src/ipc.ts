@@ -10,6 +10,9 @@ import type { StoryTimeOfDay, ManifestTimelineEntry } from './vault/manifest/typ
 export type { StoryTimeOfDay, ManifestTimelineEntry };
 import type { OutlineNode, OutlineData } from './outline.js';
 export type { OutlineNode, OutlineData };
+import type { ProductionRoleId } from './productionRoles.js';
+import type { NoteThumbInfo } from './noteThumbnails.js';
+export type { ProductionRoleId };
 import type {
   TimelinesStore,
   TimelineDefinition,
@@ -243,6 +246,11 @@ export const IPC_CHANNELS = {
   BETA_REPORT_LIST: 'betaReport:list',
   BETA_REPORT_GET: 'betaReport:get',
 
+  // Production-team roles (SKY-11411 / SKY-10741 M12.B6) — one generic run channel
+  // for alphaReader / storylineConsultant / lineEditor. Reader-perspective roles
+  // get a reveal-point-filtered entity dossier; craft roles get the full map.
+  PRODUCTION_ROLE_RUN: 'productionRole:run',
+
   // EPUB export (MYT-253)
   EXPORT_EPUB: 'export:epub',
 
@@ -310,6 +318,10 @@ export const IPC_CHANNELS = {
   PROJECT_ICONS: 'project:icons',
   PROJECT_ICON_SET: 'project:iconSet',
   PROJECT_ICON_PICK: 'project:iconPick',
+  // SKY-11453 — vault-local rename: mythos.json `name` is the source of
+  // truth so a renamed vault carries its new name on move/copy; settings'
+  // vaultDisplayNames stays only as a cache/fallback.
+  PROJECT_NAME_SET: 'project:nameSet',
 
   // SKY-11153 — Vault surface: Recycle Bin delete + hide/show
   VAULT_SURFACE_TRASH: 'vault:surface:trash',
@@ -317,6 +329,10 @@ export const IPC_CHANNELS = {
   VAULT_SURFACE_HIDE: 'vault:surface:hide',
   VAULT_SURFACE_UNHIDE: 'vault:surface:unhide',
   VAULT_SURFACE_LIST_HIDDEN: 'vault:surface:listHidden',
+  // SKY-11154: "Vaults folder" reveal/move — the parent folder holding every
+  // Mythos vault, distinct from VAULT_REVEAL_FOLDER (the active Story Vault).
+  VAULT_SURFACE_REVEAL_VAULTS_PARENT: 'vault:surface:revealVaultsParent',
+  VAULT_SURFACE_MOVE_VAULTS_PARENT: 'vault:surface:moveVaultsParent',
 
   // Archive confirmation dialog (MYT-376) — three-verb resolution for inconsistencies
   ARCHIVE_CONFIRM: 'archive:confirm',
@@ -341,6 +357,11 @@ export const IPC_CHANNELS = {
   NOTES_VAULT_READ: 'notesVault:read',
   NOTES_VAULT_WRITE: 'notesVault:write',
   NOTES_VAULT_LIST: 'notesVault:list',
+  // SKY-11360: brainstorm/idea board is agent state — stored in the Agent
+  // Vault, not the Notes Vault. Dedicated read/write so the frontend store
+  // never routes board data through the notes-vault CRUD bridge.
+  BRAINSTORM_BOARD_READ: 'brainstormBoard:read',
+  BRAINSTORM_BOARD_WRITE: 'brainstormBoard:write',
   NOTES_VAULT_DELETE: 'notesVault:delete',
   NOTES_VAULT_MOVE: 'notesVault:move',
   // SKY-10712: one-shot undo of the most recent rename's inbound-link cascade.
@@ -512,6 +533,16 @@ export const IPC_CHANNELS = {
   NOTES_BOARD_FURNITURE_DELETE: 'notesBoard:furnitureDelete',
   NOTES_BOARD_ITEM_RENAME: 'notesBoard:itemRename',
   NOTES_BOARD_ITEM_DELETE: 'notesBoard:itemDelete',
+  // SKY-11187 (Notes Board 4/9): the canvas's own Store A mutations (§5).
+  NOTES_BOARD_CREATE_ITEM: 'notesBoard:createItem',
+  NOTES_BOARD_RENAME_ITEM: 'notesBoard:renameItem',
+
+  // SKY-11186 (Notes Board 6/9): note thumbnails — resolve which image is a
+  // note's cover (spec §9), serve a cached derivative or the raw source, and
+  // store the renderer-derived WebP. See noteThumbnails.ts.
+  NOTES_THUMB_RESOLVE: 'notesThumb:resolve',
+  NOTES_THUMB_GET: 'notesThumb:get',
+  NOTES_THUMB_PUT: 'notesThumb:put',
 
   // SKY-11058: per-Mythos-vault notes-vault registry (multiple notes vaults)
   NOTES_VAULT_REGISTRY_LIST: 'notesVaultRegistry:list',
@@ -570,6 +601,9 @@ export const IPC_CHANNELS = {
   // Beta 4 M22: Axis engine — era/span/event/row item persistence
   TIMELINES_UPSERT_ITEM: 'timelines:upsertItem',
   TIMELINES_DELETE_ITEM: 'timelines:deleteItem',
+  // SKY-10876 M12.B4b: "Rebuild my timeline" — manuscript-driven, separately
+  // invokable command sharing the M12.B4a manuscript-pass primitive.
+  TIMELINE_REBUILD: 'timeline:rebuild',
 
   // SKY-863: Cloud-sync conflict detection + lockfile
   VAULT_CHECK_CONFLICTS: 'vault:check-conflicts',
@@ -883,6 +917,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.BETA_REPORT_LIST]: (payload: BetaReportListPayload) => BetaReportListResponse;
   [IPC_CHANNELS.BETA_REPORT_GET]: (payload: BetaReportGetPayload) => BetaReportGetResponse;
   // BETA_REPORT_RUN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
+  // PRODUCTION_ROLE_RUN is registered manually in main.ts (async LLM handler — not via setupIpcMain)
   [IPC_CHANNELS.EXPORT_EPUB]: (payload: ExportEpubPayload) => Promise<ExportEpubResponse>;
   [IPC_CHANNELS.EXPORT_DOCX]: (payload: ExportDocxPayload) => Promise<ExportDocxResponse>;
   [IPC_CHANNELS.EXPORT_MARKDOWN]: (payload: ExportMarkdownPayload) => Promise<ExportMarkdownResponse>;
@@ -914,11 +949,14 @@ export interface IpcHandlers {
   [IPC_CHANNELS.PROJECT_ICONS]: (payload: never) => Promise<ProjectIconsResponse>;
   [IPC_CHANNELS.PROJECT_ICON_SET]: (payload: ProjectIconSetPayload) => Promise<ProjectIconSetResponse>;
   [IPC_CHANNELS.PROJECT_ICON_PICK]: (payload: never) => Promise<ProjectIconPickResponse>;
+  [IPC_CHANNELS.PROJECT_NAME_SET]: (payload: ProjectNameSetPayload) => Promise<ProjectNameSetResponse>;
   [IPC_CHANNELS.VAULT_SURFACE_BLAST_RADIUS]: (payload: VaultSurfaceBlastRadiusPayload) => VaultSurfaceBlastRadiusResponse;
   [IPC_CHANNELS.VAULT_SURFACE_TRASH]: (payload: VaultSurfaceTrashPayload) => Promise<VaultSurfaceTrashResponse>;
   [IPC_CHANNELS.VAULT_SURFACE_HIDE]: (payload: VaultSurfaceHidePayload) => VaultSurfaceHideResponse;
   [IPC_CHANNELS.VAULT_SURFACE_UNHIDE]: (payload: VaultSurfaceUnhidePayload) => { ok: true };
   [IPC_CHANNELS.VAULT_SURFACE_LIST_HIDDEN]: (payload: never) => VaultSurfaceListHiddenResponse;
+  [IPC_CHANNELS.VAULT_SURFACE_REVEAL_VAULTS_PARENT]: (payload: never) => Promise<VaultSurfaceRevealVaultsParentResponse>;
+  [IPC_CHANNELS.VAULT_SURFACE_MOVE_VAULTS_PARENT]: (payload: VaultSurfaceMoveVaultsParentPayload) => Promise<VaultSurfaceMoveVaultsParentResponse>;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
   [IPC_CHANNELS.ARCHIVE_SCAN_LINKS]: (payload: ArchiveScanLinksPayload) => ArchiveScanLinksResponse;
@@ -932,6 +970,10 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_SET_PATHS]: (payload: VaultSetPathsPayload) => VaultSetPathsResponse;
   [IPC_CHANNELS.NOTES_VAULT_READ]: (payload: VaultReadPayload) => VaultReadResponse;
   [IPC_CHANNELS.NOTES_VAULT_WRITE]: (payload: VaultWritePayload) => VaultWriteResponse;
+  [IPC_CHANNELS.BRAINSTORM_BOARD_READ]: (payload: never) => BrainstormBoardReadResponse;
+  [IPC_CHANNELS.BRAINSTORM_BOARD_WRITE]: (
+    payload: BrainstormBoardWritePayload,
+  ) => BrainstormBoardWriteResponse;
   [IPC_CHANNELS.NOTES_VAULT_LIST]: (payload: VaultListPayload) => VaultListResponse;
   [IPC_CHANNELS.NOTES_VAULT_DELETE]: (payload: VaultDeletePayload) => VaultDeleteResponse;
   [IPC_CHANNELS.NOTES_VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
@@ -1157,6 +1199,8 @@ export interface IpcHandlers {
   // Beta 4 M22: Axis engine item persistence
   [IPC_CHANNELS.TIMELINES_UPSERT_ITEM]: (payload: TimelinesUpsertItemPayload) => TimelinesUpsertItemResponse;
   [IPC_CHANNELS.TIMELINES_DELETE_ITEM]: (payload: TimelinesDeleteItemPayload) => TimelinesDeleteItemResponse;
+  // SKY-10876 M12.B4b: "Rebuild my timeline" command (payload-less; vault-scoped active timeline)
+  [IPC_CHANNELS.TIMELINE_REBUILD]: (payload: never) => TimelineRebuildResponse;
 
   // SKY-6228: M15 — agent chat sessions
   [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) => AgentSessionListResponse;
@@ -1180,6 +1224,14 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_BOARD_FURNITURE_DELETE]: (payload: NotesBoardFurnitureDeletePayload) => NotesBoardFurnitureDeleteResponse;
   [IPC_CHANNELS.NOTES_BOARD_ITEM_RENAME]: (payload: NotesBoardItemRenamePayload) => NotesBoardItemRenameResponse;
   [IPC_CHANNELS.NOTES_BOARD_ITEM_DELETE]: (payload: NotesBoardItemDeletePayload) => NotesBoardItemDeleteResponse;
+  // SKY-11187 (Notes Board 4/9): vault-mutating canvas operations — see notesBoard.ts §5 block.
+  [IPC_CHANNELS.NOTES_BOARD_CREATE_ITEM]: (payload: NotesBoardCreateItemPayload) => NotesBoardCreateItemResponse;
+  [IPC_CHANNELS.NOTES_BOARD_RENAME_ITEM]: (payload: NotesBoardRenameItemPayload) => NotesBoardRenameItemResponse;
+
+  // SKY-11186 (Notes Board 6/9): note thumbnails IPC — see noteThumbnails.ts.
+  [IPC_CHANNELS.NOTES_THUMB_RESOLVE]: (payload: NotesThumbResolvePayload) => Promise<NotesThumbResolveResponse>;
+  [IPC_CHANNELS.NOTES_THUMB_GET]: (payload: NotesThumbGetPayload) => Promise<NotesThumbGetResponse>;
+  [IPC_CHANNELS.NOTES_THUMB_PUT]: (payload: NotesThumbPutPayload) => Promise<NotesThumbPutResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -1202,6 +1254,15 @@ export interface VaultWriteResponse {
   path: string;
   bytes: number;
 }
+
+// SKY-11360: brainstorm board lives in the Agent Vault. The renderer never
+// picks the path — the main process owns `Boards/brainstorm.board.json` under
+// the Agent Vault root — so there is no request path, only the serialized body.
+export interface BrainstormBoardWritePayload {
+  content: string;
+}
+export type BrainstormBoardReadResponse = { content: string } | { error: string };
+export type BrainstormBoardWriteResponse = { bytes: number } | { error: string };
 
 export interface VaultListPayload {
   root?: string;
@@ -1226,6 +1287,20 @@ export interface VaultListItem {
    * top-level `Characters` folder. Same availability as `excerpt`.
    */
   characterTag?: boolean;
+  /**
+   * SKY-11212: true when the note carries a location signal (frontmatter
+   * `type: location`, a `location` tag, or an inline `#location` hashtag) —
+   * lets Scene Crafter's LOCATIONS column classify a note by tag even when
+   * it isn't in a top-level `Locations` folder. Same availability as `excerpt`.
+   */
+  locationTag?: boolean;
+  /**
+   * SKY-11212: true when the note carries an item/system signal (frontmatter
+   * `type: item`/`system`, an `item`/`system` tag, or an inline
+   * `#item`/`#system` hashtag) — same role as `locationTag` for the
+   * ITEMS & SYSTEMS column.
+   */
+  itemTag?: boolean;
 }
 
 export interface VaultListResponse {
@@ -1594,6 +1669,81 @@ export interface NotesBoardItemDeletePayload {
 
 export interface NotesBoardItemDeleteResponse {
   key: string | null;
+}
+
+// ─── SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5) ───
+// These two channels are the ONLY notesBoard:* ones that touch Store A. They
+// create/rename the real file or folder and then push `vault:notes-updated`
+// themselves, so the Notes tab reflects a canvas create or rename without
+// waiting on (or, for a create, being silently skipped by) the notes watcher.
+
+export interface NotesBoardCreateItemPayload {
+  folderPath: string;
+  /** 'note' → `New note.md`; 'folder' → `New board/`. */
+  kind: 'note' | 'folder';
+  /** World position of the click that created it; omitted → auto-layout slot. */
+  position?: { x: number; y: number };
+}
+
+export interface NotesBoardCreateItemResponse {
+  /** Created item's path relative to `folderPath` — ready for patchLayout. */
+  itemPath: string;
+  kind: 'note' | 'folder';
+}
+
+export interface NotesBoardRenameItemPayload {
+  folderPath: string;
+  itemPath: string;
+  /** The DISPLAYED name (a note's stem, a folder's whole name), as typed. */
+  newName: string;
+}
+
+/**
+ * `renamed: false` is a successful no-op, never an error: an empty name, or a
+ * name that resolves to the path the item already has (§5). `error` carries a
+ * refusal the user must see (name collision, invalid characters).
+ */
+export type NotesBoardRenameItemResponse =
+  | { renamed: true; itemPath: string }
+  | { renamed: false }
+  | { error: string };
+
+// ─── SKY-11186 (Notes Board 6/9): note thumbnails IPC types ───
+// See noteThumbnails.ts + BOARDS-SPEC.md v2 §6/§9. Every path is a
+// vault-relative POSIX path in the NOTES vault; `src` is the resolved source
+// image reported by `resolve`. The renderer derives the WebP thumbnail from
+// `source` bytes and stores it via `put`; main only resolves/serves/stores.
+
+export interface NotesThumbResolvePayload {
+  /** Note paths to resolve; capped at MAX_THUMB_RESOLVE_BATCH (noteThumbnails.ts). */
+  paths: string[];
+}
+
+export interface NotesThumbResolveResponse {
+  /** Keyed by the request's paths verbatim; an invalid path yields mode 'none'. */
+  thumbs: Record<string, NoteThumbInfo>;
+}
+
+export interface NotesThumbGetPayload {
+  src: string;
+}
+
+export type NotesThumbGetResponse =
+  | { status: 'ready'; dataUrl: string; version: string }
+  | { status: 'source'; mime: string; bytes: Uint8Array; version: string }
+  | { status: 'missing' }
+  | { status: 'unsupported' };
+
+export interface NotesThumbPutPayload {
+  src: string;
+  /** `${mtimeMs}-${size}` as reported by resolve/get — becomes part of the cache file name. */
+  version: string;
+  /** Renderer-derived WebP, ≤ MAX_THUMB_CACHE_BYTES. */
+  bytes: Uint8Array;
+}
+
+export interface NotesThumbPutResponse {
+  ok: boolean;
 }
 
 // ─── SKY-862: Guided-folder vault relocation (cloud sync) ───
@@ -2304,9 +2454,22 @@ export interface NoteBacklinkEntry {
   snippet: string;
 }
 
+/** SKY-11188: a column item's `ref` counts as a backlink too (§4/§11) — a
+ *  separate list, not merged into `backlinks`, since it points at a BOARD
+ *  (folder), not a linking note. */
+export interface NoteBoardRefBacklinkEntry {
+  /** Vault-relative path of the board (folder) holding the referencing column item. '' is Home. */
+  boardPath: string;
+  /** The furniture item's own title, if set. */
+  boardItemTitle?: string;
+  /** The column entry's own label text. */
+  itemText: string;
+}
+
 export interface NoteBacklinksResponse {
   notePath: string;
   backlinks: NoteBacklinkEntry[];
+  boardRefs: NoteBoardRefBacklinkEntry[];
 }
 
 // ─── Entity Relationship types (SKY-232) ───
@@ -2693,9 +2856,16 @@ export interface AppSettings {
     archive: { enabled: boolean; model: string; continuityCheckIntervalSeconds: number; provider?: ProviderSettings; sceneCrafterSuggestions?: { enabled: boolean; cadence: number } } & AgentBudgetSettings;
     /** Beta 3 M22: the fourth named agent — reader-eye chapter reads → margin comments. Optional so pre-M22 settings files remain valid; loadAppSettings back-fills defaults. */
     betaReader?: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
+    /** SKY-11411: production-team roles (SKY-10741 M12.B6). All optional + default OFF
+     *  (loadAppSettings back-fills), so pre-SKY-11411 settings files stay valid and no
+     *  role silently starts calling a provider on upgrade. alphaReader is a reader-
+     *  perspective role (reveal-point-filtered context); the two craft roles are not. */
+    alphaReader?: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
+    storylineConsultant?: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
+    lineEditor?: { enabled: boolean; model: string; provider?: ProviderSettings } & AgentBudgetSettings;
   };
-  /** Beta 3 M22: user renames for the four named agents (prototype `agentNames`, HTML 3245). Absent key = default display name. */
-  agentNames?: Partial<Record<'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader', string>>;
+  /** Beta 3 M22 / SKY-11411: user renames for the named agents (prototype `agentNames`, HTML 3245). Absent key = default display name. */
+  agentNames?: Partial<Record<'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader' | 'alphaReader' | 'storylineConsultant' | 'lineEditor', string>>;
   theme: 'dark' | 'high-contrast';
   snapshots?: {
     maxPerScene: number;
@@ -2762,8 +2932,20 @@ export interface AppSettings {
   liquidNeonV2?: Record<string, unknown>;
   /** Beta 4 M1: per-vault default theme — Story Vault root → preset key; renderer-owned. */
   vaultThemes?: Record<string, string>;
+  /** SKY-11236: per-vault open-tab workspace state — Story Vault root → tab set;
+   *  renderer-owned shape, main persists it opaquely (like liquidNeonV2). */
+  vaultWorkspaces?: Record<string, Record<string, unknown>>;
   /** SKY-2097 (Phase 2 #4): writing-surface panel appearance. Absent → Liquid Neon at 65/12/60. */
   pageBackground?: PageBackgroundSettings;
+  /**
+   * SKY-11186 (BOARDS-SPEC v2 §6, owner ruling 4): Notes Board preferences.
+   * `minZoom` is the board's zoom-out limit in percent — a visible,
+   * adjustable performance cap (40 = spec default; 30/20/10 map-view stops).
+   * Optional so pre-existing settings files stay valid; absent = 40.
+   */
+  notesBoard?: {
+    minZoom?: number;
+  };
   /** SKY-130: last-opened scene for cross-restart restore. */
   lastOpenedScene?: LastOpenedScene;
   /** SKY-204: opt-in daily notes / journal mode. */
@@ -2793,6 +2975,17 @@ export interface AppSettings {
 
   // SKY-10772 M12.5: background auto-scan toggle. Absent = true (on by default).
   agentIndexAutoScan?: boolean;
+
+  /**
+   * SKY-10878 M12.B5b: wiki self-building autonomy. Tri-state.
+   *  - 'ask'  (default) — never writes to the vault; each auto-stub candidate
+   *            becomes a Brainstorm question the author answers (SKY-10737).
+   *  - 'auto' — auto-stubs entities that pass the M12.B5a hygiene contract
+   *            (SKY-10877); junk / duplicates are suppressed, never written.
+   *  - 'off'  — the self-building wiki proposes nothing: no questions, no stubs.
+   * Absent = 'ask' (the safe default; never writes without author approval).
+   */
+  wikiAutonomy?: 'off' | 'ask' | 'auto';
 }
 
 /** Archive Agent v1 — right sidebar panel descriptor (SKY-1683). */
@@ -3082,6 +3275,10 @@ export interface ProjectStatsResponse {
     storyFileCount: number;
     /** `.md` files under the paired Notes Vault root; null when unpaired. */
     noteCount: number | null;
+    /** SKY-11154: inner notes-vault count for the owning Mythos vault (1 for legacy). */
+    notesVaultCount: number;
+    /** SKY-11154: inner story-vault count for the owning Mythos vault (1 for legacy). */
+    storyVaultCount: number;
   }>;
 }
 
@@ -3116,6 +3313,20 @@ export interface ProjectIconSetResponse {
 export interface ProjectIconPickResponse {
   filePath: string | null;
   cancelled: boolean;
+}
+
+// SKY-11453 — vault-local rename: writes `mythos.json.name` so the vault
+// carries its display name when moved/copied to another machine/profile.
+export interface ProjectNameSetPayload {
+  vaultRoot: string;
+  name: string;
+}
+
+export interface ProjectNameSetResponse {
+  ok: boolean;
+  error?: string;
+  /** Sanitized name actually written, for the caller to reconcile local state. */
+  name?: string;
 }
 
 // ─── SKY-11153 — Vault surface: Recycle Bin delete + hide/show ───────────────
@@ -3160,6 +3371,22 @@ export interface VaultSurfaceUnhidePayload {
 
 export interface VaultSurfaceListHiddenResponse {
   hiddenVaultRoots: string[];
+}
+
+// SKY-11154 — "Vaults folder" reveal/move flow (§2).
+
+export interface VaultSurfaceRevealVaultsParentResponse {
+  opened: boolean;
+}
+
+export interface VaultSurfaceMoveVaultsParentPayload {
+  newParentPath: string;
+}
+
+export interface VaultSurfaceMoveVaultsParentResponse {
+  moved: boolean;
+  newPath?: string;
+  error?: string;
 }
 
 // ─── One-click Mythos Vault (SKY-320) ──────────────────────────────────────
@@ -3545,6 +3772,19 @@ export interface ArchiveScanResponse {
   suggestions: SuggestionRow[];
   inconsistenciesFound: number;
   wikiLinksFound: number;
+  /**
+   * SKY-11457: what the tri-state `wikiAutonomy` setting did with the new names
+   * this scan found. Present on every scan so the mode is observable rather
+   * than silent.
+   */
+  wikiAutonomy?: {
+    mode: 'off' | 'ask' | 'auto';
+    candidates: number;
+    questionsQueued: number;
+    stubsWritten: number;
+    suppressed: number;
+    skipped: number;
+  };
 }
 
 export interface ArchiveStatusResponse {
@@ -3933,6 +4173,24 @@ export interface BetaReportRunPayload {
 
 export interface BetaReportRunResponse {
   report: BetaReport;
+}
+
+/**
+ * SKY-11411: run one production-team role (alphaReader / storylineConsultant /
+ * lineEditor) against a scope of manuscript text. Reuses BetaReportScope so the
+ * reader-perspective roles get the same reveal-point boundary semantics the Beta
+ * Reader does (scene/chapter → filtered to `scope.label`; story → whole map).
+ */
+export interface ProductionRoleRunPayload {
+  role: ProductionRoleId;
+  scope: BetaReportScope;
+  /** Pre-assembled manuscript text with `<<SCENE id="...">>` markers — see textAssembly.ts. */
+  text: string;
+}
+
+export interface ProductionRoleRunResponse {
+  /** The role's free-text review output (framing/lens is role-specific — see productionRoles.ts). */
+  text: string;
 }
 
 export interface BetaReportListPayload {
@@ -4635,6 +4893,11 @@ export interface VaultGetPathsResponse {
    *  "Add a Notes/Story Vault…" compute a destination without re-deriving
    *  the v2 naming convention in the renderer. */
   mythosRoot: string | null;
+  /** SKY-11154: the parent folder holding every Mythos vault — lets the
+   *  Vault & Files "Vaults folder" row show the current value without a
+   *  separate round trip. Falls back to the default (userData-relative)
+   *  parent when unset. */
+  vaultsParentPath: string;
 }
 
 export interface VaultGetSystemPathsResponse {
@@ -5698,6 +5961,33 @@ export interface TimelinesDeleteItemResponse {
   ok: boolean;
   store: TimelinesStore;
   error?: string;
+}
+
+// SKY-10876 M12.B4b: "Rebuild my timeline" command — manuscript-driven rebuild
+// of the active timeline's scene events, sharing the M12.B4a manuscript-pass
+// primitive. The report is the command's own reporting surface (distinct from
+// the continuity checks): what it read and what it changed.
+export interface TimelineRebuildReport {
+  ok: boolean;
+  timelineId: string;
+  /** Scenes read from the manuscript in reading order (one snapshot pass). */
+  scenesRead: number;
+  /** Scene ids whose file could not be read — surfaced, never silent. */
+  missingSceneIds: string[];
+  eventsAdded: number;
+  eventsUpdated: number;
+  eventsRemoved: number;
+  /** Manuscript-derived agent events on the active timeline after the rebuild. */
+  eventsTotal: number;
+  reason?: string;
+}
+export interface TimelineRebuildResponse {
+  ok: boolean;
+  report?: TimelineRebuildReport;
+  /** Fresh store so the renderer refreshes without a second round-trip. */
+  store?: TimelinesStore;
+  /** Set when ok is false (e.g. the Archive Agent is disabled). */
+  reason?: string;
 }
 
 // SKY-6228: M15 — agent chat session IPC types

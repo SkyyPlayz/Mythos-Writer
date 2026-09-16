@@ -231,6 +231,43 @@ describe('version gate', () => {
     expect(mythosRootForStoryVault(other)).toBeNull();
   });
 
+  // SKY-11169: story-vaults.json lets one mythos vault hold multiple story
+  // vaults with non-default dir names. mythosRootForStoryVault must gate on
+  // those too (a picker switch to "Second World" must not silently demote
+  // the app to v0.4 mode) — but ONLY when the dirname is actually registered.
+  it('a REGISTERED non-default story vault dirname gates', () => {
+    writeMythosFile(tmp, createMythosFile('V2'));
+    const other = path.join(tmp, 'Second World');
+    fs.mkdirSync(other, { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, 'story-vaults.json'),
+      JSON.stringify({
+        version: 1,
+        vaults: [
+          { id: 'a', displayName: 'Story', dirName: 'Story Vault', createdAt: '2026-01-01', pairedNotesVaultId: null },
+          { id: 'b', displayName: 'Second World', dirName: 'Second World', createdAt: '2026-01-01', pairedNotesVaultId: null },
+        ],
+        activeId: 'b',
+      }),
+    );
+    expect(mythosRootForStoryVault(other)).toBe(tmp);
+  });
+
+  it('an UNREGISTERED non-default dirname still never gates, even with a registry file present', () => {
+    writeMythosFile(tmp, createMythosFile('V2'));
+    const other = path.join(tmp, 'SomethingElse');
+    fs.mkdirSync(other, { recursive: true });
+    fs.writeFileSync(
+      path.join(tmp, 'story-vaults.json'),
+      JSON.stringify({
+        version: 1,
+        vaults: [{ id: 'a', displayName: 'Story', dirName: 'Story Vault', createdAt: '2026-01-01', pairedNotesVaultId: null }],
+        activeId: 'a',
+      }),
+    );
+    expect(mythosRootForStoryVault(other)).toBeNull();
+  });
+
   it('detection cache invalidates when mythos.json changes', () => {
     const storyRoot = storyVaultRootFor(tmp);
     fs.mkdirSync(storyRoot, { recursive: true });

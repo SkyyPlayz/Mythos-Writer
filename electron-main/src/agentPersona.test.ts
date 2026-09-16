@@ -410,10 +410,13 @@ describe('validatePersonaPayload — traversal rejection (§6c)', () => {
 
 // ─── §7  Beta 3 M22 — four agents, identity files, editing, display names ─────
 
-describe('M22 §7a — all four named agents carry a full file set', () => {
-  it('VALID_AGENT_NAMES contains exactly the four named agents', () => {
+describe('M22 §7a — all named agents carry a full file set', () => {
+  it('VALID_AGENT_NAMES contains the four M22 agents plus the SKY-11411 production-team roles', () => {
     expect([...VALID_AGENT_NAMES].sort()).toEqual(
-      ['archive', 'betaReader', 'brainstorm', 'writingAssistant'],
+      // Beta 3 M22 four + SKY-11411 production-team roles (alphaReader,
+      // storylineConsultant, lineEditor). Each carries a full bundled file set,
+      // asserted by the 'every agent+key combination' test below.
+      ['alphaReader', 'archive', 'betaReader', 'brainstorm', 'lineEditor', 'storylineConsultant', 'writingAssistant'],
     );
   });
 

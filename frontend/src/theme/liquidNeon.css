@@ -36,7 +36,7 @@
      var(--wp) — blurring a smooth gradient is visually an identity. */
   background-image: var(--wp-blur, var(--wp));
   background-size: var(--wpsize, cover);
-  background-position: center;
+  background-position: var(--wppos, center);
   animation: lnDrift 70s linear infinite alternate;
 }
 

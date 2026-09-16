@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { resolveCrossTabLink, buildWikiLinkTitleIndex, isWikiLinkTargetResolved, buildSceneWikiLinkTitleIndex, wikiLinkTargetStem, notePathForUnresolvedLink, buildUnresolvedLinkNote } from './crossTabLinkResolver';
+import { resolveCrossTabLink, resolveWikiLinkTarget, parseWikiSegments, wikiLinkDisplayText, crossTabLinkMatchKey, buildWikiLinkTitleIndex, isWikiLinkTargetResolved, buildSceneWikiLinkTitleIndex, wikiLinkTargetStem, notePathForUnresolvedLink, buildUnresolvedLinkNote } from './crossTabLinkResolver';
 import type { EntityEntry, Story } from './types';
 
 const now = '2026-06-17T00:00:00.000Z';
@@ -386,5 +386,131 @@ describe('buildUnresolvedLinkNote', () => {
     const md = buildUnresolvedLinkNote('The "Deep"|deep#x', '2026-07-07T00:00:00.000Z');
     expect(md).toContain(`title: "The 'Deep'"`);
     expect(md).toContain(`# The "Deep"`);
+  });
+});
+
+// ─── SKY-11615: Timeline wiki-link parsing + single-target resolution ────────
+
+describe('parseWikiSegments', () => {
+  it('splits prose into text and link segments, keeping the raw match', () => {
+    expect(parseWikiSegments('Before [[Opening Scene]] after')).toEqual([
+      { isLink: false, text: 'Before ' },
+      { isLink: true, raw: '[[Opening Scene]]', target: 'Opening Scene' },
+      { isLink: false, text: ' after' },
+    ]);
+  });
+
+  it('handles back-to-back links and a link at either end', () => {
+    expect(parseWikiSegments('[[A]][[B]]')).toEqual([
+      { isLink: true, raw: '[[A]]', target: 'A' },
+      { isLink: true, raw: '[[B]]', target: 'B' },
+    ]);
+  });
+
+  it('returns nothing for empty prose and leaves link-free prose whole', () => {
+    expect(parseWikiSegments('')).toEqual([]);
+    expect(parseWikiSegments('no links here')).toEqual([{ isLink: false, text: 'no links here' }]);
+  });
+
+  it('is re-entrant — the shared global regex cannot leak lastIndex between calls', () => {
+    const first = parseWikiSegments('[[A]] and [[B]]');
+    const second = parseWikiSegments('[[A]] and [[B]]');
+    expect(second).toEqual(first);
+    expect(first.filter((s) => s.isLink)).toHaveLength(2);
+  });
+});
+
+describe('wikiLinkDisplayText', () => {
+  it('shows the alias when one is given', () => {
+    expect(wikiLinkDisplayText('Opening Scene|the opening')).toBe('the opening');
+  });
+
+  it('renders a heading anchor as "Name › Heading" (mockup separator, not >)', () => {
+    expect(wikiLinkDisplayText('Elara Voss#Backstory')).toBe('Elara Voss › Backstory');
+  });
+
+  it('shows just the heading for a bare in-document anchor', () => {
+    expect(wikiLinkDisplayText('#Backstory')).toBe('Backstory');
+  });
+
+  it('passes a plain name through, trimmed', () => {
+    expect(wikiLinkDisplayText('  Elara Voss  ')).toBe('Elara Voss');
+  });
+});
+
+describe('resolveWikiLinkTarget', () => {
+  const context = () => ({
+    stories: [story()],
+    entities: [entity()],
+    notePaths: ['Characters/Elara Voss.md', 'Lore/The Drowned Gate.md'],
+    folderPaths: ['Characters', 'Lore', 'Lore/Relics'],
+  });
+
+  it('resolves a scene title to the scene', () => {
+    expect(resolveWikiLinkTarget('Opening Scene', context())).toMatchObject({
+      kind: 'scene', sceneId: 'scene-1',
+    });
+  });
+
+  it('resolves a chapter title to the chapter when no scene matches', () => {
+    expect(resolveWikiLinkTarget('Chapter One', context())).toMatchObject({
+      kind: 'chapter', chapterId: 'chapter-1', label: 'Chapter One',
+    });
+  });
+
+  it('resolves a note to its entity', () => {
+    expect(resolveWikiLinkTarget('The Drowned Gate', context())).toMatchObject({
+      kind: 'entity', entityPath: 'Lore/The Drowned Gate.md',
+    });
+  });
+
+  it('resolves a vault folder by name and by full path', () => {
+    expect(resolveWikiLinkTarget('Relics', context())).toMatchObject({
+      kind: 'folder', folderPath: 'Lore/Relics', label: 'Relics',
+    });
+    expect(resolveWikiLinkTarget('Lore/Relics', context())).toMatchObject({
+      kind: 'folder', folderPath: 'Lore/Relics',
+    });
+  });
+
+  it('is case-insensitive and strips the alias and the heading before matching', () => {
+    for (const target of ['opening scene', 'Opening Scene|the start', 'OPENING SCENE#Beat 2']) {
+      expect(resolveWikiLinkTarget(target, context())).toMatchObject({ kind: 'scene' });
+    }
+  });
+
+  it('keeps the documented order: story beats note, note beats folder', () => {
+    const ctx = {
+      ...context(),
+      notePaths: ['Notes/Opening Scene.md', 'Notes/Chapter One.md', 'Notes/Elara Voss.md'],
+      folderPaths: ['Elara Voss', 'Chapter One'],
+    };
+    expect(resolveWikiLinkTarget('Opening Scene', ctx)).toMatchObject({ kind: 'scene' });
+    expect(resolveWikiLinkTarget('Chapter One', ctx)).toMatchObject({ kind: 'chapter' });
+    expect(resolveWikiLinkTarget('Elara Voss', ctx)).toMatchObject({ kind: 'entity' });
+  });
+
+  it('returns null for an unknown name and for a bare heading anchor', () => {
+    expect(resolveWikiLinkTarget('Nothing Named This', context())).toBeNull();
+    expect(resolveWikiLinkTarget('#Backstory', context())).toBeNull();
+  });
+
+  it('never resolves a folder when the caller supplies no folder paths', () => {
+    expect(resolveWikiLinkTarget('Relics', { ...context(), folderPaths: undefined })).toBeNull();
+  });
+});
+
+describe('crossTabLinkMatchKey', () => {
+  it('gives every match kind its own key namespace', () => {
+    const ctx = {
+      stories: [story()],
+      entities: [entity()],
+      notePaths: ['Characters/Elara Voss.md'],
+      folderPaths: ['Lore/Relics'],
+    };
+    const keys = ['Opening Scene', 'Chapter One', 'Elara Voss', 'Relics']
+      .map((target) => crossTabLinkMatchKey(resolveWikiLinkTarget(target, ctx)!));
+    expect(keys).toEqual(['scene-scene-1', 'chapter-chapter-1', 'entity-entity-1', 'folder-Lore/Relics']);
+    expect(new Set(keys).size).toBe(4);
   });
 });

@@ -1600,8 +1600,11 @@ a.gs-footer-link:focus-visible {
   line-height: 1.4;
 }
 
-.import-validation--valid { color: var(--neon-green, #39ff14); }
-.import-validation--invalid { color: var(--neon-pink, #ff2d78); }
+/* SKY-11619: were `--neon-green` / `--neon-pink`, which nothing declares — they
+   painted a frozen literal and never repainted with the theme. Same semantic
+   tokens the rest of this stylesheet already uses for valid/destructive. */
+.import-validation--valid { color: var(--color-success); }
+.import-validation--invalid { color: var(--color-danger); }
 .import-validation--validating { color: var(--text-muted, rgba(191, 214, 232, 0.55)); }
 
 .import-section__file-btn {
@@ -1649,7 +1652,8 @@ a.gs-footer-link:focus-visible {
   color: var(--text-muted, rgba(191, 214, 232, 0.55));
 }
 
-.import-docx-list__remove:hover { color: var(--neon-pink, #ff2d78); }
+/* SKY-11619: `--neon-pink` is declared nowhere — see .import-validation above. */
+.import-docx-list__remove:hover { color: var(--color-danger); }
 
 .import-tip {
   font-size: 0.8125rem;

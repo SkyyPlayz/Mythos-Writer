@@ -2,7 +2,7 @@
 // prototype myVaultRows 7103–7121). Covers: dropdown persists vaultThemes,
 // current-vault change applies live + toasts, card click switches vaults.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import MythosVaultsSection from './MythosVaultsSection';
 import { LIQUID_NEON_PRESETS } from '../../../theme/presets';
 import { resetLiquidNeonV2Tokens } from '../../../theme/liquidNeonEngine';
@@ -16,9 +16,18 @@ const mockProjectList = vi.fn();
 const mockGetVaultRoot = vi.fn();
 const mockProjectSwitch = vi.fn();
 const mockSettingsSet = vi.fn();
+const mockProjectNameSet = vi.fn();
 const mockVaultGetPaths = vi.fn();
 const mockChooseVaultFolder = vi.fn();
+const mockCreateVaultFromOptions = vi.fn();
+// SKY-11452: the legacy demo-seeding backend must never be reached from here.
 const mockVaultCreateDefaultMythos = vi.fn();
+const mockProjectStats = vi.fn();
+const mockVaultSurfaceListHidden = vi.fn();
+const mockVaultSurfaceUnhide = vi.fn();
+const mockVaultSurfaceHide = vi.fn();
+const mockVaultSurfaceTrash = vi.fn();
+const mockVaultSurfaceBlastRadius = vi.fn();
 
 const baseSettings = { apiKey: '', agents: {}, theme: 'dark' } as unknown as AppSettings;
 
@@ -33,28 +42,54 @@ beforeEach(() => {
   mockGetVaultRoot.mockResolvedValue({ vaultRoot: VAULT_A });
   mockProjectSwitch.mockResolvedValue({ switched: true });
   mockSettingsSet.mockResolvedValue({ saved: true });
+  mockProjectNameSet.mockResolvedValue({ ok: true, name: 'Renamed' });
   mockVaultGetPaths.mockResolvedValue({
     storyVaultPath: VAULT_A,
     notesVaultPath: '/vaults/Alpha/Notes Vault',
     defaultVaultsParentPath: '/vaults',
   });
   mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
-  mockVaultCreateDefaultMythos.mockResolvedValue({
-    mythosVaultRoot: NEW_ROOT,
-    vaultRoot: `${NEW_ROOT}/Story Vault`,
-    notesVaultRoot: `${NEW_ROOT}/Notes Vault`,
-    name: 'Second Vault',
-    created: true,
+  mockCreateVaultFromOptions.mockResolvedValue({
+    ok: true,
+    mode: 'template',
+    mythosRoot: NEW_ROOT,
+    storyVaultPath: `${NEW_ROOT}/Story Vault`,
+    notesVaultPath: `${NEW_ROOT}/Notes Vault`,
+    vaultName: 'Second Vault',
   });
+  mockProjectStats.mockResolvedValue({
+    stats: [
+      { vaultRoot: VAULT_A, storyFileCount: 3, noteCount: 2, notesVaultCount: 2, storyVaultCount: 1 },
+      { vaultRoot: VAULT_B, storyFileCount: 1, noteCount: 0, notesVaultCount: 1, storyVaultCount: 1 },
+    ],
+  });
+  mockVaultSurfaceListHidden.mockResolvedValue({ hiddenVaultRoots: [] });
+  mockVaultSurfaceUnhide.mockResolvedValue({ ok: true });
+  mockVaultSurfaceHide.mockResolvedValue({ hidden: true });
+  mockVaultSurfaceTrash.mockResolvedValue({ trashed: true });
+  // SKY-11322: must match VAULT_A's own mockProjectStats sum
+  // (notesVaultCount:2 + storyVaultCount:1 = 3) — the same as the card's
+  // displayed "2 notes vaults · 1 story vault" — so a real getBlastRadius
+  // regression that disagreed with the card is caught by the cross-reference
+  // assertion below, not masked by a mock that never has to agree with it.
+  mockVaultSurfaceBlastRadius.mockResolvedValue({ vaultName: 'Alpha', innerCount: 3 });
   Object.defineProperty(window, 'api', {
     value: {
       projectList: mockProjectList,
       getVaultRoot: mockGetVaultRoot,
       projectSwitch: mockProjectSwitch,
       settingsSet: mockSettingsSet,
+      projectNameSet: mockProjectNameSet,
       vaultGetPaths: mockVaultGetPaths,
       chooseVaultFolder: mockChooseVaultFolder,
+      createVaultFromOptions: mockCreateVaultFromOptions,
       vaultCreateDefaultMythos: mockVaultCreateDefaultMythos,
+      projectStats: mockProjectStats,
+      vaultSurfaceListHidden: mockVaultSurfaceListHidden,
+      vaultSurfaceUnhide: mockVaultSurfaceUnhide,
+      vaultSurfaceHide: mockVaultSurfaceHide,
+      vaultSurfaceTrash: mockVaultSurfaceTrash,
+      vaultSurfaceBlastRadius: mockVaultSurfaceBlastRadius,
     },
     writable: true,
     configurable: true,
@@ -140,7 +175,7 @@ describe('MythosVaultsSection (Beta 4 M1)', () => {
   });
 });
 
-describe('MythosVaultsSection — New vault flow (SKY-10401)', () => {
+describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () => {
   async function openCreateForm() {
     const result = await setup();
     fireEvent.click(screen.getByTestId('mvs-new-vault'));
@@ -154,6 +189,20 @@ describe('MythosVaultsSection — New vault flow (SKY-10401)', () => {
     expect(mockVaultGetPaths).toHaveBeenCalledTimes(1);
     // Name input is focused for immediate typing.
     expect(screen.getByTestId('mvs-create-name')).toHaveFocus();
+  });
+
+  it('SKY-11141 §3: the form offers the SAME three choices — template (recommended, default) / blank / import', async () => {
+    await openCreateForm();
+    const group = screen.getByRole('radiogroup', { name: 'How to start' });
+    const radios = within(group).getAllByRole('radio');
+    expect(radios.map((r) => r.getAttribute('data-testid'))).toEqual([
+      'mvs-create-mode-template', 'mvs-create-mode-blank', 'mvs-create-mode-import',
+    ]);
+    expect(screen.getByTestId('mvs-create-mode-template')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByTestId('mvs-create-mode-template').textContent).toContain('RECOMMENDED');
+    expect(screen.getByTestId('mvs-create-mode-blank')).toHaveAttribute('aria-checked', 'false');
+    // Import sources only appear once import is chosen.
+    expect(screen.queryByTestId('mvs-create-import')).not.toBeInTheDocument();
   });
 
   it('Browse… replaces the destination with the picked folder', async () => {
@@ -172,33 +221,92 @@ describe('MythosVaultsSection — New vault flow (SKY-10401)', () => {
     expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults');
   });
 
-  it('Create vault calls the SKY-320 backend with activate:false and offers a switch', async () => {
+  it('Create vault calls the SKY-11151 primitive (template, activate:false) and offers a switch', async () => {
     await openCreateForm();
     await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
     fireEvent.change(screen.getByTestId('mvs-create-name'), { target: { value: '  Second Vault  ' } });
     fireEvent.click(screen.getByTestId('mvs-create-confirm'));
     await waitFor(() => expect(screen.getByTestId('mvs-create-done')).toBeInTheDocument());
-    expect(mockVaultCreateDefaultMythos).toHaveBeenCalledWith({
-      parentPath: '/vaults',
-      vaultName: 'Second Vault',
-      seedMode: 'default',
+    expect(mockCreateVaultFromOptions).toHaveBeenCalledWith({
+      mode: 'template',
+      destinationParent: '/vaults',
+      name: 'Second Vault',
       activate: false,
     });
+    // SKY-11452: the demo-seeding legacy backend is never reached from here.
+    expect(mockVaultCreateDefaultMythos).not.toHaveBeenCalled();
     // Form closed, offer visible, vault list refreshed to include the new card.
     expect(screen.queryByTestId('mvs-create-form')).not.toBeInTheDocument();
     expect(screen.getByTestId('mvs-create-done').textContent).toContain('Second Vault');
+    expect(screen.getByTestId('mvs-create-done').textContent).toContain(NEW_ROOT);
     expect(mockProjectList).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId('ln-toast').textContent).toContain('Vault "Second Vault" created');
+  });
+
+  it('§3a: choosing Start blank passes mode:"blank" — no seedMode, no demo', async () => {
+    await openCreateForm();
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
+    fireEvent.click(screen.getByTestId('mvs-create-mode-blank'));
+    expect(screen.getByTestId('mvs-create-mode-blank')).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByTestId('mvs-create-confirm'));
+    await waitFor(() => expect(mockCreateVaultFromOptions).toHaveBeenCalledTimes(1));
+    const payload = mockCreateVaultFromOptions.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload.mode).toBe('blank');
+    expect(payload.activate).toBe(false);
+    expect(payload).not.toHaveProperty('seedMode');
+    expect(payload).not.toHaveProperty('importSources');
+    expect(mockVaultCreateDefaultMythos).not.toHaveBeenCalled();
+  });
+
+  it('Import existing needs at least one source: Create is disabled until a folder is picked, then passes importSources', async () => {
+    await openCreateForm();
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
+    fireEvent.click(screen.getByTestId('mvs-create-mode-import'));
+    expect(screen.getByTestId('mvs-create-import')).toBeInTheDocument();
+    expect(screen.getByTestId('mvs-create-confirm')).toBeDisabled();
+    // Enter on the name field must not sneak past the disabled button.
+    fireEvent.keyDown(screen.getByTestId('mvs-create-name'), { key: 'Enter' });
+    expect(mockCreateVaultFromOptions).not.toHaveBeenCalled();
+    expect(screen.getByTestId('mvs-create-error')).toHaveTextContent(/at least one folder/i);
+
+    mockChooseVaultFolder.mockResolvedValue({ path: '/home/me/ObsidianVault', cancelled: false });
+    fireEvent.click(screen.getByTestId('mvs-create-import-notes-browse'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-import-notes-path').textContent).toBe('/home/me/ObsidianVault'));
+    expect(mockChooseVaultFolder).toHaveBeenLastCalledWith('Select an Obsidian or Markdown notes folder');
+    expect(screen.getByTestId('mvs-create-confirm')).toBeEnabled();
+
+    fireEvent.click(screen.getByTestId('mvs-create-confirm'));
+    await waitFor(() => expect(mockCreateVaultFromOptions).toHaveBeenCalledWith({
+      mode: 'import',
+      destinationParent: '/vaults',
+      name: undefined,
+      importSources: [{ kind: 'notes', srcPath: '/home/me/ObsidianVault' }],
+      activate: false,
+    }));
+  });
+
+  it('reopening the form resets the choice back to template and clears import sources', async () => {
+    await openCreateForm();
+    fireEvent.click(screen.getByTestId('mvs-create-mode-import'));
+    mockChooseVaultFolder.mockResolvedValue({ path: '/home/me/Stories', cancelled: false });
+    fireEvent.click(screen.getByTestId('mvs-create-import-story-browse'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-import-story-path').textContent).toBe('/home/me/Stories'));
+    fireEvent.click(screen.getByTestId('mvs-create-cancel'));
+    fireEvent.click(screen.getByTestId('mvs-new-vault'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-form')).toBeInTheDocument());
+    expect(screen.getByTestId('mvs-create-mode-template')).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByTestId('mvs-create-mode-import'));
+    expect(screen.getByTestId('mvs-create-import-story-path').textContent).not.toContain('/home/me/Stories');
   });
 
   it('an empty name is allowed — main falls back to its default vault name', async () => {
     await openCreateForm();
     await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
     fireEvent.click(screen.getByTestId('mvs-create-confirm'));
-    await waitFor(() => expect(mockVaultCreateDefaultMythos).toHaveBeenCalledWith({
-      parentPath: '/vaults',
-      vaultName: undefined,
-      seedMode: 'default',
+    await waitFor(() => expect(mockCreateVaultFromOptions).toHaveBeenCalledWith({
+      mode: 'template',
+      destinationParent: '/vaults',
+      name: undefined,
       activate: false,
     }));
   });
@@ -222,10 +330,7 @@ describe('MythosVaultsSection — New vault flow (SKY-10401)', () => {
   });
 
   it('a backend error keeps the form open and announces the failure', async () => {
-    mockVaultCreateDefaultMythos.mockResolvedValue({
-      mythosVaultRoot: '', vaultRoot: '', notesVaultRoot: '', name: '', created: false,
-      error: 'Mythos Vault folder is not empty',
-    });
+    mockCreateVaultFromOptions.mockResolvedValue({ ok: false, error: 'Mythos Vault folder is not empty' });
     await openCreateForm();
     fireEvent.click(screen.getByTestId('mvs-create-confirm'));
     await waitFor(() => expect(screen.getByTestId('mvs-create-error')).toHaveTextContent('Mythos Vault folder is not empty'));
@@ -247,6 +352,145 @@ describe('MythosVaultsSection — New vault flow (SKY-10401)', () => {
     await openCreateForm();
     fireEvent.click(screen.getByTestId('mvs-create-cancel'));
     expect(screen.queryByTestId('mvs-create-form')).not.toBeInTheDocument();
+    expect(mockCreateVaultFromOptions).not.toHaveBeenCalled();
     expect(mockVaultCreateDefaultMythos).not.toHaveBeenCalled();
+  });
+});
+
+describe('MythosVaultsSection — inner-vault counts (SKY-11154 §4)', () => {
+  it('shows "N notes vaults · N story vaults" under each card, matching the QA regex', async () => {
+    await setup();
+    expect(screen.getByTestId(`mvs-card-${VAULT_A}`).textContent).toMatch(
+      /\d+\s+notes vaults?\s*(&middot;|·)\s*\d+\s+story vaults?/i,
+    );
+    expect(screen.getByTestId(`mvs-card-${VAULT_A}`).textContent).toContain('2 notes vaults · 1 story vault');
+    expect(screen.getByTestId(`mvs-card-${VAULT_B}`).textContent).toContain('1 notes vault · 1 story vault');
+  });
+});
+
+describe('MythosVaultsSection — inline rename (SKY-11154 §4, AC-VS-02)', () => {
+  it('double-clicking the name column opens an inline rename field with an aria-label containing "rename"', async () => {
+    await setup();
+    fireEvent.doubleClick(screen.getByText('Alpha'));
+    const input = await screen.findByTestId(`mvs-rename-input-${VAULT_A}`);
+    expect(input).toHaveAttribute('aria-label', expect.stringMatching(/rename/i));
+    expect((input as HTMLInputElement).value).toBe('Alpha');
+  });
+
+  it('Enter commits the new name via settings.vaultDisplayNames (mirrors the vaultThemes persistence pattern)', async () => {
+    const { setSettings } = await setup();
+    fireEvent.doubleClick(screen.getByText('Alpha'));
+    const input = await screen.findByTestId(`mvs-rename-input-${VAULT_A}`);
+    fireEvent.change(input, { target: { value: 'Renamed Alpha' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(setSettings).toHaveBeenCalled();
+    const next = setSettings.mock.calls[setSettings.mock.calls.length - 1][0] as AppSettings;
+    expect(next.vaultDisplayNames).toEqual({ [VAULT_A]: 'Renamed Alpha' });
+    expect(mockSettingsSet).toHaveBeenCalledWith(next);
+    expect(screen.queryByTestId(`mvs-rename-input-${VAULT_A}`)).not.toBeInTheDocument();
+  });
+
+  it('SKY-11453: Enter also writes the rename through to the vault-local mythos.json via projectNameSet, not just the settings cache', async () => {
+    await setup();
+    fireEvent.doubleClick(screen.getByText('Alpha'));
+    const input = await screen.findByTestId(`mvs-rename-input-${VAULT_A}`);
+    fireEvent.change(input, { target: { value: 'Renamed Alpha' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(mockProjectNameSet).toHaveBeenCalledWith({ vaultRoot: VAULT_A, name: 'Renamed Alpha' });
+  });
+
+  it('Escape cancels without persisting', async () => {
+    const { setSettings } = await setup();
+    fireEvent.doubleClick(screen.getByText('Alpha'));
+    const input = await screen.findByTestId(`mvs-rename-input-${VAULT_A}`);
+    fireEvent.change(input, { target: { value: 'Should not stick' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    expect(screen.queryByTestId(`mvs-rename-input-${VAULT_A}`)).not.toBeInTheDocument();
+    expect(setSettings).not.toHaveBeenCalled();
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+  });
+
+  it('blur commits, matching Enter', async () => {
+    const { setSettings } = await setup();
+    fireEvent.doubleClick(screen.getByText('Alpha'));
+    const input = await screen.findByTestId(`mvs-rename-input-${VAULT_A}`);
+    fireEvent.change(input, { target: { value: 'Via Blur' } });
+    fireEvent.blur(input);
+    expect(setSettings).toHaveBeenCalled();
+    const next = setSettings.mock.calls[0][0] as AppSettings;
+    expect(next.vaultDisplayNames).toEqual({ [VAULT_A]: 'Via Blur' });
+  });
+
+  it('an empty submission is ignored — reverts without persisting', async () => {
+    const { setSettings } = await setup();
+    fireEvent.doubleClick(screen.getByText('Alpha'));
+    const input = await screen.findByTestId(`mvs-rename-input-${VAULT_A}`);
+    fireEvent.change(input, { target: { value: '   ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(setSettings).not.toHaveBeenCalled();
+    expect(screen.getByText('Alpha')).toBeInTheDocument();
+  });
+
+  it('reads settings.vaultDisplayNames as an override, matching DesktopShell precedence', async () => {
+    await setup({
+      apiKey: '', agents: {}, theme: 'dark', vaultDisplayNames: { [VAULT_A]: 'Custom Name' },
+    } as unknown as AppSettings);
+    expect(screen.getByText('Custom Name')).toBeInTheDocument();
+  });
+});
+
+describe('MythosVaultsSection — the ⋯ overflow menu (SKY-11154 §4a, AC-VS-03/04)', () => {
+  it('exposes a "More options" trigger with Hide/Delete menuitems, no bare Delete button', async () => {
+    await setup();
+    const card = screen.getByTestId(`mvs-card-${VAULT_A}`);
+    const trigger = screen.getByLabelText('More options for Alpha');
+    fireEvent.click(trigger);
+    expect(await screen.findByRole('menuitem', { name: 'Hide' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
+    expect(card.querySelectorAll('[aria-label="Delete" i]:not([role="menuitem"])').length).toBe(0);
+  });
+
+  it('Delete on a Mythos vault runs the 2-step confirm and the copy contains "moved to the Recycle Bin" (AC-VS-04)', async () => {
+    await setup();
+    fireEvent.click(screen.getByLabelText('More options for Alpha'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    await waitFor(() => expect(mockVaultSurfaceBlastRadius).toHaveBeenCalled());
+    // SKY-11322: the confirm dialog's inner-vault count must match the card's
+    // own "2 notes vaults · 1 story vault" (= 3) stats for the same vault.
+    expect(await screen.findByText(/contains 3 inner vaults/i)).toBeInTheDocument();
+    fireEvent.click(await screen.findByText('Continue'));
+    await waitFor(() => expect(screen.getByText(/moved to the recycle bin/i)).toBeInTheDocument());
+    expect(screen.getByText(/and its 3 inner vaults will be moved/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByText('Move to Recycle Bin'));
+    await waitFor(() => expect(mockVaultSurfaceTrash).toHaveBeenCalledWith({ vaultPath: '/vaults/Alpha', level: 'mythos' }));
+  });
+
+  it('Hide calls vaultSurfaceHide with level="mythos" on confirm', async () => {
+    await setup();
+    fireEvent.click(screen.getByLabelText('More options for Alpha'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Hide' }));
+    fireEvent.click(await screen.findByText('Hide', { selector: 'button' }));
+    await waitFor(() => expect(mockVaultSurfaceHide).toHaveBeenCalledWith({ vaultRoot: '/vaults/Alpha', level: 'mythos' }));
+  });
+});
+
+describe('MythosVaultsSection — Show hidden (SKY-11154 §4a, AC-VS-05)', () => {
+  it('a "Show hidden" button is always visible, even with zero hidden vaults', async () => {
+    await setup();
+    expect(screen.getByRole('button', { name: /show hidden/i })).toBeInTheDocument();
+  });
+
+  it('hidden vaults are excluded from the main list and appear with Unhide once expanded', async () => {
+    mockVaultSurfaceListHidden.mockResolvedValue({ hiddenVaultRoots: ['/vaults/Alpha'] });
+    await act(async () => {
+      render(<MythosVaultsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
+    });
+    await waitFor(() => expect(screen.getByTestId(`mvs-card-${VAULT_B}`)).toBeInTheDocument());
+    expect(screen.queryByTestId(`mvs-card-${VAULT_A}`)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /show hidden/i }));
+    expect(await screen.findByTestId(`mvs-unhide-${VAULT_A}`)).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId(`mvs-unhide-${VAULT_A}`));
+    await waitFor(() => expect(mockVaultSurfaceUnhide).toHaveBeenCalledWith('/vaults/Alpha'));
   });
 });

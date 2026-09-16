@@ -91,6 +91,7 @@ describe('queryGlobalContradictions', () => {
       type: 'location',
       needs_rescan: 0,
       indexed_at: '2026-08-27T00:00:00.000Z',
+      reveal_point: null,
     });
     insertContinuityIssue(issue({ id: 'enriched' }));
     insertContinuityIssue(issue({ id: 'bare', vault_note_path: 'lore/Unindexed.md' }));
@@ -110,6 +111,7 @@ describe('queryGlobalContradictions', () => {
         type: i % 2 === 0 ? 'character' : 'location',
         needs_rescan: 0,
         indexed_at: '2026-08-27T00:00:00.000Z',
+        reveal_point: null,
       });
     }
     // Contradictions spread across many scenes, plus noise the query filters.

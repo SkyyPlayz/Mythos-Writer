@@ -3,6 +3,9 @@
 // no Electron dependency; fully testable in Node.
 import fs from 'fs';
 import path from 'path';
+import { mythosRootForStoryVault } from './mythosFormat/mythosJson.js';
+import { ensureNotesVaultRegistry } from './mythosFormat/notesVaultRegistry.js';
+import { ensureStoryVaultRegistry } from './mythosFormat/storyVaultRegistry.js';
 
 /**
  * Hard cap on directory entries visited per root so a vault pointed at a huge
@@ -53,6 +56,30 @@ export interface ProjectStatsEntry {
   storyFileCount: number;
   /** `.md` files under the paired Notes Vault root; null when no pair exists. */
   noteCount: number | null;
+  /** SKY-11154: inner notes-vault count for the Mythos vault owning this
+   *  Story Vault. 1 for a legacy v0.4 vault (implicit single pair). */
+  notesVaultCount: number;
+  /** SKY-11154: inner story-vault count for the same Mythos vault. */
+  storyVaultCount: number;
+}
+
+/**
+ * SKY-11154 — inner notes/story vault counts for the Mythos vault root that
+ * owns `storyVaultRoot`, or `{ notesVaultCount: 1, storyVaultCount: 1 }` for
+ * a legacy v0.4 vault (implicit single Story Vault + Notes Vault pair) or a
+ * root that cannot be resolved to a Mythos vault at all.
+ */
+function countInnerVaults(storyVaultRoot: string): { notesVaultCount: number; storyVaultCount: number } {
+  const mythosRoot = mythosRootForStoryVault(storyVaultRoot);
+  if (mythosRoot === null) return { notesVaultCount: 1, storyVaultCount: 1 };
+  try {
+    return {
+      notesVaultCount: ensureNotesVaultRegistry(mythosRoot).vaults.length,
+      storyVaultCount: ensureStoryVaultRegistry(mythosRoot).vaults.length,
+    };
+  } catch {
+    return { notesVaultCount: 1, storyVaultCount: 1 };
+  }
 }
 
 /**
@@ -73,6 +100,7 @@ export function collectProjectStats(
       vaultRoot: entry.vaultRoot,
       storyFileCount: countMarkdownFiles(entry.vaultRoot, visitCap),
       noteCount: entry.notesVaultRoot ? countMarkdownFiles(entry.notesVaultRoot, visitCap) : null,
+      ...countInnerVaults(entry.vaultRoot),
     });
   }
   return out;

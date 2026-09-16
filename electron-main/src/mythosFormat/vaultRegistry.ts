@@ -261,3 +261,27 @@ export function renameVaultEntry<E extends VaultEntry>(
   writeVaultRegistry(mythosRoot, config, updated);
   return { registry: updated, entry };
 }
+
+/**
+ * SKY-11154 — Remove a registry entry (used after a successful Recycle-Bin
+ * trash of an inner notes/story vault, so the trashed folder does not leave
+ * a dangling registry entry behind). Does NOT touch the filesystem — callers
+ * trash the folder separately (vaultSurface.ts's trashVaultFolder). When the
+ * removed entry was the active one, the first remaining vault (if any)
+ * becomes active so the registry never points at a non-existent id.
+ * No-op (returns null) when the registry or entry does not exist.
+ */
+export function removeVaultEntry<E extends VaultEntry>(
+  mythosRoot: string,
+  config: VaultRegistryConfig,
+  id: string,
+): { registry: VaultRegistry<E> } | null {
+  const registry = readVaultRegistry<E>(mythosRoot, config);
+  if (!registry) return null;
+  if (!registry.vaults.some((v) => v.id === id)) return null;
+  const vaults = registry.vaults.filter((v) => v.id !== id);
+  const activeId = registry.activeId === id ? (vaults[0]?.id ?? registry.activeId) : registry.activeId;
+  const updated: VaultRegistry<E> = { ...registry, vaults, activeId };
+  writeVaultRegistry(mythosRoot, config, updated);
+  return { registry: updated };
+}

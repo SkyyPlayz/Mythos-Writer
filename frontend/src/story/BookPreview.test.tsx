@@ -165,4 +165,58 @@ describe('BookPreview', () => {
     render(<BookPreview story={story} pageWidth={1000} onExport={() => {}} />);
     expect(document.querySelector('.book-anchor')).toBeNull();
   });
+
+  // SKY-11356 (AC6): the compiled book renders chapter-head → epigraph; the
+  // editor's buildBlocks now emits h2 → note-slot in the same order (pinned in
+  // ManuscriptView.test.tsx), so both surfaces agree heading-first.
+  it('SKY-11356 (AC6): the chapter heading precedes its epigraph, matching the editor order', () => {
+    const story = makeStory();
+    story.chapters[0].note = [
+      { id: 'n1', type: 'note', content: 'A quiet dread settled over the city.', order: 0, updatedAt: '' },
+    ];
+    const { container } = render(
+      <BookPreview story={story} pageWidth={1000} onExport={() => {}} />,
+    );
+
+    const head = container.querySelector('.book-preview__chapter-head')!;
+    const epigraph = container.querySelector('.book-preview__epigraph--chapter')!;
+    expect(epigraph).not.toBeNull();
+    expect(head.compareDocumentPosition(epigraph) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('SKY-11356: parts mode keeps the same heading-first order for part AND chapter epigraphs', () => {
+    const story = makeStory();
+    // A titled part is not "simple", so BookPreview takes the parts branch.
+    story.parts = [
+      {
+        id: 'p1',
+        title: 'Part One',
+        order: 0,
+        note: [{ id: 'pn1', type: 'note', content: 'Book the First.', order: 0, updatedAt: '' }],
+        chapters: story.chapters,
+        createdAt: '',
+        updatedAt: '',
+      },
+    ];
+    story.chapters[0].note = [
+      { id: 'n1', type: 'note', content: 'A quiet dread settled over the city.', order: 0, updatedAt: '' },
+    ];
+    const { container } = render(
+      <BookPreview story={story} pageWidth={1000} onExport={() => {}} />,
+    );
+
+    const partHead = container.querySelector('.book-preview__part-head')!;
+    const partEpigraph = container.querySelector('.book-preview__epigraph--part')!;
+    expect(partEpigraph).not.toBeNull();
+    expect(
+      partHead.compareDocumentPosition(partEpigraph) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+
+    const chapterHead = container.querySelector('.book-preview__chapter-head')!;
+    const chapterEpigraph = container.querySelector('.book-preview__epigraph--chapter')!;
+    expect(chapterEpigraph).not.toBeNull();
+    expect(
+      chapterHead.compareDocumentPosition(chapterEpigraph) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+  });
 });

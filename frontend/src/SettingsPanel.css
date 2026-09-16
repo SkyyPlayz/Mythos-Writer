@@ -30,10 +30,10 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .settings-panel {
-    /* SKY-11133: Settings reads the overlay tier (glassA/blur × 1.25,
-       clamped) instead of --glass-fill/--blur-panel directly, so it stays
-       legible at the owner's preferred low global glass. Same slider, same
-       reactivity — see liquidNeonEngine.ts panelGlassTokens. */
+    /* SKY-11133: Settings reads the overlay tier instead of
+       --glass-fill/--blur-panel directly, so it stays legible at the owner's
+       preferred low global glass. SKY-11491: the tier is the mockup's fixed
+       recipe (tokens.css), independent of the Appearance sliders. */
     background: var(--glass-fill-overlay);
     backdrop-filter: blur(var(--blur-panel-overlay));
     -webkit-backdrop-filter: blur(var(--blur-panel-overlay));
@@ -584,6 +584,50 @@
 
 .settings-save-as-tpl-form .settings-input {
   flex: 1;
+}
+
+/* SKY-11352: restored custom-template management list */
+
+.settings-user-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.settings-user-templates-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-user-template-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+}
+
+.settings-user-template-name {
+  color: var(--text-body);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-user-template-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 /* Agent cards */

@@ -131,7 +131,7 @@ test('SKY-9876: AI off — Agent Chat gone, Board + Idea Collections stay manual
     expect(groupCount).toBe(7); // All Ideas + 6 categories
 
     await page.locator('[data-testid="bs-coll-toggle-beats"]').click();
-    const starterRow = page.getByRole('button', { name: 'Add Midpoint Reversal to the board' });
+    const starterRow = page.getByRole('button', { name: 'Add Midpoint Reversal to the Idea Board' });
     await expect(starterRow).toBeVisible();
     await starterRow.click();
 

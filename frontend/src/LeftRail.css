@@ -357,6 +357,19 @@
   pointer-events: none;
 }
 
+/* ── SKY-11169: Story Vault Picker (Zone 0) ──────────────────────────────── */
+
+.lr-vault-zone {
+  padding: 8px 12px 0;
+  flex-shrink: 0;
+}
+
+/* StoryVaultPicker renders null for single-vault users (the common case) —
+   collapse the zone's padding rather than leave a blank strip. */
+.lr-vault-zone:empty {
+  display: none;
+}
+
 /* ── M6: Story Card (Zone 1) ─────────────────────────────────────────────── */
 
 .lr-story-card {

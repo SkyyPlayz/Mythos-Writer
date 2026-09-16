@@ -105,6 +105,12 @@ contextBridge.exposeInMainWorld('api', {
   readNotesVault: (filePath: string) => ipcRenderer.invoke('notesVault:read', { path: filePath }),
   writeNotesVault: (filePath: string, content: string) =>
     ipcRenderer.invoke('notesVault:write', { path: filePath, content }),
+  // SKY-11360: brainstorm/idea board persistence. Stored in the Agent Vault by
+  // the main process — the renderer never names the path, only the body.
+  brainstormBoard: {
+    read: () => ipcRenderer.invoke('brainstormBoard:read'),
+    write: (content: string) => ipcRenderer.invoke('brainstormBoard:write', { content }),
+  },
   listNotesVault: (root?: string) => ipcRenderer.invoke('notesVault:list', { root }),
   deleteNotesVault: (filePath: string) => ipcRenderer.invoke('notesVault:delete', { path: filePath }),
   moveNotesVault: (fromPath: string, toPath: string) =>
@@ -351,6 +357,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('stream:end', handler);
     return () => ipcRenderer.removeListener('stream:end', handler);
   },
+  // SKY-11220: "still thinking" heartbeat for local reasoning models — fires
+  // while the model streams reasoning_content before its first visible token, so
+  // the renderer can keep its stall/hard timers alive and show a thinking state.
+  onStreamReasoning: (cb: (data: { streamId: string }) => void) => {
+    const handler = (_: unknown, data: { streamId: string }) => cb(data);
+    ipcRenderer.on('stream:reasoning', handler);
+    return () => ipcRenderer.removeListener('stream:reasoning', handler);
+  },
   onStreamError: (cb: (data: { streamId: string; category: string; message: string }) => void) => {
     const handler = (_: unknown, data: { streamId: string; category: string; message: string }) => cb(data);
     ipcRenderer.on('stream:error', handler);
@@ -367,10 +381,19 @@ contextBridge.exposeInMainWorld('api', {
   },
 
   // Vault notes updated push event (MYT-156)
-  onVaultNotesUpdated: (cb: (data: { count: number }) => void) => {
-    const handler = (_: unknown, data: { count: number }) => cb(data);
+  // SKY-11186: `path` is the changed note/folder, notes-vault-relative POSIX.
+  onVaultNotesUpdated: (cb: (data: { count: number; path?: string }) => void) => {
+    const handler = (_: unknown, data: { count: number; path?: string }) => cb(data);
     ipcRenderer.on('vault:notes-updated', handler);
     return () => ipcRenderer.removeListener('vault:notes-updated', handler);
+  },
+
+  // SKY-11186: an image in the Notes vault was added or rewritten in place —
+  // only thumbnails care (lib/noteThumbnails.ts, BoardsTabPanel).
+  onVaultNotesAssetChanged: (cb: (data: { path: string }) => void) => {
+    const handler = (_: unknown, data: { path: string }) => cb(data);
+    ipcRenderer.on('vault:notes-asset-changed', handler);
+    return () => ipcRenderer.removeListener('vault:notes-asset-changed', handler);
   },
 
   // SKY-8943: Notes Vault graph topology changed (link added/removed) —
@@ -533,6 +556,15 @@ contextBridge.exposeInMainWorld('api', {
   betaReportList: (storyId: string) => ipcRenderer.invoke('betaReport:list', { storyId }),
   betaReportGet: (id: string) => ipcRenderer.invoke('betaReport:get', { id }),
 
+  // Production-team roles (SKY-11411 / SKY-10741 M12.B6) — alphaReader /
+  // storylineConsultant / lineEditor. One channel; the main handler picks the
+  // persona + reader/author entity context by role.
+  productionRoleRun: (payload: {
+    role: 'alphaReader' | 'storylineConsultant' | 'lineEditor';
+    scope: { kind: 'scene' | 'chapter' | 'story'; id: string; label: string };
+    text: string;
+  }) => invokeEnvelope('productionRole:run', payload),
+
   // Voice IO (MYT-205) — local-first STT
   // voiceStart → starts a session; returns { sessionId }
   voiceStart: (micDeviceId?: string) =>
@@ -664,6 +696,9 @@ contextBridge.exposeInMainWorld('api', {
   projectIconSet: (payload: import('./ipc.js').ProjectIconSetPayload) =>
     ipcRenderer.invoke('project:iconSet', payload),
   projectIconPick: () => ipcRenderer.invoke('project:iconPick', undefined),
+  // SKY-11453 — vault-local rename: writes mythos.json's `name` field.
+  projectNameSet: (payload: import('./ipc.js').ProjectNameSetPayload) =>
+    ipcRenderer.invoke('project:nameSet', payload),
   projectSwitch: (vaultRoot: string, notesVaultRoot?: string) =>
     ipcRenderer.invoke('project:switch', { vaultRoot, notesVaultRoot }),
 
@@ -678,6 +713,12 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('vault:surface:unhide', { vaultRoot }),
   vaultSurfaceListHidden: () =>
     ipcRenderer.invoke('vault:surface:listHidden', undefined),
+  // SKY-11154 — "Vaults folder" row: reveal/move the parent folder holding
+  // every Mythos vault.
+  vaultSurfaceRevealVaultsParent: () =>
+    ipcRenderer.invoke('vault:surface:revealVaultsParent', undefined),
+  vaultSurfaceMoveVaultsParent: (newParentPath: string) =>
+    ipcRenderer.invoke('vault:surface:moveVaultsParent', { newParentPath }),
   onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {
     const handler = (_: unknown, data: { vaultRoot: string; notesVaultRoot?: string }) => cb(data);
     ipcRenderer.on('project:switched', handler);
@@ -918,6 +959,48 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-11183 §6 stub: Store B cleanup only, never touches the real fs item.
   notesBoardItemDelete: (folderPath: string, itemPath: string) =>
     ipcRenderer.invoke('notesBoard:itemDelete', { folderPath, itemPath }) as Promise<{ key: string | null }>,
+
+  // SKY-11187 (Notes Board 4/9) §5: the canvas's REAL vault mutations. Both
+  // push `vault:notes-updated` from main, so the Notes tab reflects them
+  // without waiting on the notes watcher (which drops a self-written create
+  // outright).
+  notesBoardCreateItem: (
+    folderPath: string,
+    kind: 'note' | 'folder',
+    position?: { x: number; y: number },
+  ) =>
+    ipcRenderer.invoke('notesBoard:createItem', { folderPath, kind, position }) as Promise<{
+      itemPath: string;
+      kind: 'note' | 'folder';
+    }>,
+  notesBoardRenameItem: (folderPath: string, itemPath: string, newName: string) =>
+    ipcRenderer.invoke('notesBoard:renameItem', { folderPath, itemPath, newName }) as Promise<
+      { renamed: true; itemPath: string } | { renamed: false } | { error: string }
+    >,
+
+  // SKY-11186 (Notes Board 6/9): note thumbnails — main resolves which image
+  // is a note's cover (spec §9) and stores/serves derivatives; the renderer
+  // derives the WebP from `source` bytes and hands it back via notesThumbPut.
+  // See noteThumbnails.ts.
+  notesThumbResolve: (paths: string[]) =>
+    ipcRenderer.invoke('notesThumb:resolve', { paths }) as Promise<{
+      thumbs: Record<string, {
+        mode: 'explicit' | 'auto' | 'off' | 'none';
+        src: string | null;
+        version: string | null;
+        missing: boolean;
+        caption: string;
+      }>;
+    }>,
+  notesThumbGet: (src: string) =>
+    ipcRenderer.invoke('notesThumb:get', { src }) as Promise<
+      | { status: 'ready'; dataUrl: string; version: string }
+      | { status: 'source'; mime: string; bytes: Uint8Array; version: string }
+      | { status: 'missing' }
+      | { status: 'unsupported' }
+    >,
+  notesThumbPut: (src: string, version: string, bytes: Uint8Array) =>
+    ipcRenderer.invoke('notesThumb:put', { src, version, bytes }) as Promise<{ ok: boolean }>,
 
   // SKY-205: Smart Folders — frontmatter-backed persistent queries
   smartFolderList: () =>
@@ -1204,6 +1287,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('timelines:upsertItem', payload),
   timelinesDeleteItem: (payload: { type: string; id: string }) =>
     ipcRenderer.invoke('timelines:deleteItem', payload),
+  // SKY-10876 M12.B4b: "Rebuild my timeline" command (manuscript-driven).
+  timelineRebuild: () => ipcRenderer.invoke('timeline:rebuild', {}),
 
   // SKY-6228: M15 — agent chat sessions
   agentSessions: {

@@ -1,0 +1,37 @@
+Bundled wallpapers — ownership and licence
+==========================================
+
+Covers `cosmic-bg.webp` and every file in `pack/`.
+
+Skyy, the owner of Sky High Infinite Techwork, generated the 42 PNG originals
+behind `pack/` himself with an AI image generator and supplied them to
+engineering on 2026-09-09. They are wholly owned by him. There is no stock
+library involved, no third-party rights holder, no attribution requirement and
+no indemnification gap. Confirmed by Skyy on 2026-09-09 (SKY-11591).
+
+The files in `pack/` are those originals re-encoded to WebP at quality 78,
+native resolution. Nothing is upscaled, nothing is composited in, and no
+third-party asset, font or texture is layered on top. The crop is not baked in:
+it happens at render time from `background-size: cover` plus the per-entry
+`position` in `manifest.json`.
+
+This is the authoritative record for the wallpaper art, kept next to the files
+that actually ship — the same arrangement as `electron-main/resources/kokoro/LICENSE`
+for the TTS weights.
+
+Where the originals are
+-----------------------
+
+Not in this repository. They are 68 MB of PNG, and this is a public repo with no
+git-lfs: committing them would put 68 MB into permanent history that a revert
+cannot remove, paid by every clone and every CI checkout, forever. Undoing it
+after the fact would mean a force-push history rewrite of a public repo. Skyy
+holds the originals; the 2.1 MB of WebP here is all the app needs.
+
+What is committed instead is the audit trail. `PROVENANCE.json` records, for
+every file in `pack/`, the owner's own folder and filename plus a SHA-256 of the
+original's bytes. Every shipped wallpaper is therefore traceable to the exact
+file the owner handed over, and a restaged copy can be proven byte-identical
+before anyone trusts a rebuild from it.
+
+Regenerating the pack: see README.md.

@@ -27,6 +27,7 @@ import {
   createBlankVaultEntry,
   setActiveVault,
   renameVaultEntry,
+  removeVaultEntry,
 } from './vaultRegistry.js';
 
 export const STORY_VAULT_REGISTRY_FILENAME = 'story-vaults.json';
@@ -201,6 +202,17 @@ export function renameStoryVault(
   displayName: string,
 ): { registry: StoryVaultRegistry; entry: StoryVaultEntry } {
   return renameVaultEntry<StoryVaultEntry>(mythosRoot, STORY_CONFIG, id, displayName);
+}
+
+/**
+ * SKY-11154 — Remove a story vault registry entry (post Recycle-Bin trash).
+ * Does not touch the filesystem. No-op when the entry/registry is absent.
+ */
+export function removeStoryVault(
+  mythosRoot: string,
+  id: string,
+): { registry: StoryVaultRegistry } | null {
+  return removeVaultEntry<StoryVaultEntry>(mythosRoot, STORY_CONFIG, id);
 }
 
 /**

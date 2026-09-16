@@ -32,6 +32,7 @@ import {
   registerExistingVaultEntry,
   setActiveVault,
   renameVaultEntry,
+  removeVaultEntry,
 } from './vaultRegistry.js';
 import { TEMPLATE_NOTES_SKELETON } from './createVaultFromOptions.js';
 
@@ -221,6 +222,17 @@ export function renameNotesVault(
   displayName: string,
 ): { registry: NotesVaultRegistry; entry: NotesVaultEntry } {
   return renameVaultEntry<NotesVaultEntry>(mythosRoot, NOTES_CONFIG, id, displayName);
+}
+
+/**
+ * SKY-11154 — Remove a notes vault registry entry (post Recycle-Bin trash).
+ * Does not touch the filesystem. No-op when the entry/registry is absent.
+ */
+export function removeNotesVault(
+  mythosRoot: string,
+  id: string,
+): { registry: NotesVaultRegistry } | null {
+  return removeVaultEntry<NotesVaultEntry>(mythosRoot, NOTES_CONFIG, id);
 }
 
 // ─── Link resolution report ───────────────────────────────────────────────────

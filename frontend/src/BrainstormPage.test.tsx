@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor, act, within } from '@testing-librar
 import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS, VAULT_ROOT_SENTINEL } from './BrainstormPage';
 import { __resetAgentSessionStores } from './lib/useAgentSessions';
 import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
+import { brainstormActivitySnapshot, resetBrainstormActivityForTests, IDLE_BRAINSTORM_ACTIVITY } from './agents/brainstormActivity';
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
@@ -38,6 +39,8 @@ function removeMediaRecorderMock() {
 let tokenCb: TokenHandler | null = null;
 let endCb: EndHandler | null = null;
 let errorCb: ErrorHandler | null = null;
+// SKY-11220: the "still thinking" reasoning heartbeat callback.
+let reasoningCb: ((data: { streamId: string }) => void) | null = null;
 
 const mockStreamStart = vi.fn();
 const mockStreamCancel = vi.fn().mockResolvedValue({ cancelled: true });
@@ -88,6 +91,12 @@ function buildApi(overrides: Record<string, unknown> = {}) {
         errorCb = null;
       };
     },
+    onStreamReasoning: (cb: (data: { streamId: string }) => void) => {
+      reasoningCb = cb;
+      return () => {
+        reasoningCb = null;
+      };
+    },
     sttStart: vi.fn(),
     sttStop: vi.fn(),
     onSttResult: () => () => {},
@@ -127,9 +136,11 @@ beforeEach(() => {
 
   vi.resetAllMocks();
   __resetAgentSessionStores();
+  resetBrainstormActivityForTests();
   tokenCb = null;
   endCb = null;
   errorCb = null;
+  reasoningCb = null;
   mockStreamStart.mockResolvedValue({ streamId: 'test-stream-1' });
   mockStreamCancel.mockResolvedValue({ cancelled: true });
   mockVoiceSpeak.mockResolvedValue({ speakId: 'speak-1' });
@@ -991,8 +1002,58 @@ describe('Stalled-stream UX', () => {
     await act(async () => { vi.advanceTimersByTime(HARD_TIMEOUT_MS + 1000); });
 
     expect(screen.getByRole('alert')).toHaveTextContent(/timed out/i);
+    // The timeout names how long we waited and reads as our own timeout — never
+    // as an "empty response" that blames the server (SKY-11220 AC3).
+    expect(screen.getByRole('alert')).toHaveTextContent(/90 seconds/i);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/empty response/i);
     expect(mockStreamCancel).toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: /cancel streaming/i })).not.toBeInTheDocument();
+  });
+
+  it('reasoning heartbeats keep a thinking model alive past HARD_TIMEOUT_MS (SKY-11220)', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'ask a 35B local reasoning model' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await act(async () => {});
+    await act(async () => {});
+
+    expect(reasoningCb).not.toBeNull();
+
+    // The model streams reasoning (no visible token) for 105 s — longer than the
+    // 90 s hard timeout — but emits a heartbeat every 15 s. Since the timers key
+    // off last *activity*, not last visible token, the stream is never aborted.
+    for (let i = 0; i < 7; i++) {
+      act(() => { reasoningCb?.({ streamId: 'test-stream-1' }); });
+      await act(async () => { vi.advanceTimersByTime(15_000); });
+    }
+
+    expect(mockStreamCancel).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // The box shows it is actively thinking, not frozen.
+    expect(screen.getByTestId('bs-thinking')).toBeInTheDocument();
+  });
+
+  it('shows a Thinking… indicator while reasoning, then clears it on the first token', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'think first' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    await act(async () => {});
+    await act(async () => {});
+
+    expect(reasoningCb).not.toBeNull();
+
+    act(() => { reasoningCb?.({ streamId: 'test-stream-1' }); });
+    await act(async () => {});
+    expect(screen.getByTestId('bs-thinking')).toBeInTheDocument();
+
+    // First visible answer token supersedes the thinking state.
+    act(() => { tokenCb?.({ streamId: 'test-stream-1', token: 'Here' }); });
+    await act(async () => {});
+    expect(screen.queryByTestId('bs-thinking')).not.toBeInTheDocument();
   });
 
   it('Cancel button in input area shows cancelled toast', async () => {
@@ -2572,12 +2633,15 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
     expect(screen.queryByTestId('bsc-board')).not.toBeInTheDocument();
   });
 
-  it('persists dragged positions to the vault board file (debounced save)', async () => {
+  it('persists dragged positions to the Agent-Vault board file (debounced save)', async () => {
     seedFacts(THREE_IDEAS);
-    const mockReadNotesVault = vi.fn().mockResolvedValue({ error: 'ENOENT' });
-    const mockWriteNotesVault = vi.fn().mockResolvedValue({ path: 'Boards/brainstorm.board.json', bytes: 1 });
+    // SKY-11360: board persistence now routes through the dedicated Agent-Vault
+    // bridge (window.api.brainstormBoard), never the notes-vault CRUD.
+    const mockBoardRead = vi.fn().mockResolvedValue({ error: 'ENOENT' });
+    const mockBoardWrite = vi.fn().mockResolvedValue({ bytes: 1 });
+    const mockWriteNotesVault = vi.fn().mockResolvedValue({ path: 'x', bytes: 1 });
     (window as unknown as { api: unknown }).api = buildApi({
-      readNotesVault: mockReadNotesVault,
+      brainstormBoard: { read: mockBoardRead, write: mockBoardWrite },
       writeNotesVault: mockWriteNotesVault,
     });
 
@@ -2585,7 +2649,7 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
       render(<BrainstormPage onClose={() => {}} />);
     });
     // The B4-4 migration itself writes the freshly-migrated board once.
-    await waitFor(() => expect(mockWriteNotesVault).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockBoardWrite).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
 
     const card = screen.getByTestId('bsc-card-fact-a');
@@ -2593,13 +2657,14 @@ describe('BrainstormPage — M20 unified board (§7.2; B4-4)', () => {
     fireEvent.mouseMove(window, { clientX: 130, clientY: 90 });
     fireEvent.mouseUp(window);
 
-    // The debounced save writes the moved position to the vault file.
+    // The debounced save writes the moved position to the Agent-Vault file.
     await waitFor(
-      () => expect(mockWriteNotesVault).toHaveBeenCalledTimes(2),
+      () => expect(mockBoardWrite).toHaveBeenCalledTimes(2),
       { timeout: 3_000 },
     );
-    const [savedPath, savedJson] = mockWriteNotesVault.mock.calls[1];
-    expect(savedPath).toBe('Boards/brainstorm.board.json');
+    // The board never touches the notes-vault bridge (leak regression guard).
+    expect(mockWriteNotesVault).not.toHaveBeenCalled();
+    const [savedJson] = mockBoardWrite.mock.calls[1];
     const saved = JSON.parse(savedJson as string);
     const savedCard = saved.cards.find((c: { factId?: string }) => c.factId === 'fact-a');
     expect(savedCard).toMatchObject({ x: 1000, y: 230 });
@@ -2672,18 +2737,18 @@ describe('BrainstormPage — M20 idea collections and starter library', () => {
     render(<BrainstormPage onClose={() => {}} />);
 
     fireEvent.click(screen.getByTestId('bs-coll-toggle-trope'));
-    fireEvent.click(screen.getByRole('button', { name: 'Add The Chosen One to the board' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add The Chosen One to the Idea Board' }));
 
     // Jumped to the Board page with the card placed.
     expect(screen.getByTestId('bsc-mode-board')).toHaveAttribute('aria-pressed', 'true');
     expect(within(screen.getByTestId('bsc-board')).getByText('The Chosen One')).toBeInTheDocument();
-    expect(screen.getByText('“The Chosen One” added to the board')).toBeInTheDocument();
+    expect(screen.getByText('“The Chosen One” added to the Idea Board')).toBeInTheDocument();
 
     // The collections row is now a dimmed ✓ and re-clicking only toasts.
     fireEvent.click(screen.getByTestId('bs-coll-toggle-trope'));
-    const placedRow = screen.getByRole('button', { name: 'The Chosen One — already on the board' });
+    const placedRow = screen.getByRole('button', { name: 'The Chosen One — already on the Idea Board' });
     fireEvent.click(placedRow);
-    expect(screen.getByText('“The Chosen One” is already on the board')).toBeInTheDocument();
+    expect(screen.getByText('“The Chosen One” is already on the Idea Board')).toBeInTheDocument();
     // Still exactly one card on the canvas.
     expect(within(screen.getByTestId('bsc-board')).getAllByText('The Chosen One')).toHaveLength(1);
   });
@@ -2700,7 +2765,7 @@ describe('BrainstormPage — M20 idea collections and starter library', () => {
 
     fireEvent.click(screen.getByTestId('bs-coll-toggle-rel'));
     // The migrated fact is already on the board, so its row reads ✓.
-    expect(screen.getByRole('button', { name: 'Aria Voss — already on the board' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Aria Voss — already on the Idea Board' })).toBeInTheDocument();
   });
 });
 
@@ -3054,7 +3119,31 @@ describe('BrainstormPage — M20 shared session store', () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  it('blocks window close once the user has actually sent a message', async () => {
+  // SKY-11363: an unsent composer draft is genuinely-volatile work, so the
+  // guard blocks the close (the main process then prompts the user rather than
+  // silently refusing to close).
+  it('blocks window close while there is an unsent composer draft', async () => {
+    const sessionApi = makeSessionApi({ id: 's1', turns: [] });
+    (window as unknown as { api: unknown }).api = buildApi({ agentSessions: sessionApi });
+
+    await act(async () => {
+      render(<BrainstormPage onClose={() => {}} />);
+    });
+    await waitFor(() => expect(sessionApi.list).toHaveBeenCalledWith('brainstorm'));
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'A market where memories are traded' },
+    });
+
+    const event = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  // SKY-11363: sending clears the composer and the message is persisted to the
+  // shared session store, so a sent-then-idle session must NOT block the close
+  // — that false-positive is what made the app impossible to close on Windows.
+  it('does not block window close after a message was sent and the composer is empty', async () => {
     const sessionApi = makeSessionApi({ id: 's1', turns: [] });
     (window as unknown as { api: unknown }).api = buildApi({ agentSessions: sessionApi });
 
@@ -3069,10 +3158,12 @@ describe('BrainstormPage — M20 shared session store', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
     });
+    // Composer is cleared by the send handler; no pending board write.
+    expect(screen.getByLabelText(/brainstorm prompt/i)).toHaveValue('');
 
     const event = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(event);
-    expect(event.defaultPrevented).toBe(true);
+    expect(event.defaultPrevented).toBe(false);
   });
 });
 
@@ -3166,6 +3257,63 @@ describe('BrainstormPage — M19 chat extras and agent activity feed', () => {
   });
 });
 
+// SKY-11214: the right panel's AGENTS card reads real activity from this
+// module store (see AgentHubPanel.test.tsx) — assert BrainstormPage actually
+// reports into it, not just that its own in-page feed updates.
+describe('BrainstormPage — SKY-11214 brainstormActivity reporting', () => {
+  it('reports idle before any message, active with no facts after sending, then the real fact count', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+    expect(brainstormActivitySnapshot()).toEqual(IDLE_BRAINSTORM_ACTIVITY);
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'A rogue named Zara' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+    expect(brainstormActivitySnapshot().active).toBe(true);
+    expect(brainstormActivitySnapshot().factsCount).toBe(0);
+
+    await simulateStream(['Great idea! [FACT:character|Zara|A cunning rogue]']);
+
+    await waitFor(() => expect(brainstormActivitySnapshot().factsCount).toBe(1));
+    // lastActionText is whatever the newest "BEHIND THE SCENES" entry is —
+    // the extraction entry is quickly followed by a "Created note" entry once
+    // the fact finishes saving, so only assert it's real, not a fixed string.
+    expect(brainstormActivitySnapshot().lastActionText).toEqual(expect.any(String));
+    expect(brainstormActivitySnapshot().hasError).toBe(false);
+  });
+
+  it('reports hasError on a stream failure', async () => {
+    render(<BrainstormPage onClose={() => {}} />);
+
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'A rogue named Zara' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+    await simulateStream([], 'AI unavailable');
+
+    await waitFor(() => expect(brainstormActivitySnapshot().hasError).toBe(true));
+  });
+
+  it('resets to idle on unmount — leaving the page is not still watching', async () => {
+    const { unmount } = render(<BrainstormPage onClose={() => {}} />);
+    fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
+      target: { value: 'A rogue named Zara' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^send$/i }));
+    });
+    await simulateStream(['[FACT:character|Zara|A cunning rogue]']);
+    await waitFor(() => expect(brainstormActivitySnapshot().active).toBe(true));
+
+    unmount();
+    expect(brainstormActivitySnapshot()).toEqual(IDLE_BRAINSTORM_ACTIVITY);
+  });
+});
+
 describe('BrainstormPage — M20 board tools, zoom, and idea search', () => {
   function seedThreeIdeas() {
     localStorage.setItem('brainstorm:draft', JSON.stringify({
@@ -3185,7 +3333,7 @@ describe('BrainstormPage — M20 board tools, zoom, and idea search', () => {
     render(<BrainstormPage onClose={() => {}} />);
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
 
-    expect(screen.getByRole('toolbar', { name: 'Board tools' })).toBeInTheDocument();
+    expect(screen.getByRole('toolbar', { name: 'Idea Board tools' })).toBeInTheDocument();
     expect(screen.getByTestId('bsc-tool-select')).toHaveAttribute('aria-pressed', 'true');
     for (const key of ['connect', 'frame', 'text']) {
       expect(screen.getByTestId(`bsc-tool-${key}`)).toHaveAttribute('aria-pressed', 'false');

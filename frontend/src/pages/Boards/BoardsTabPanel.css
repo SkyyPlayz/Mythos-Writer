@@ -1,0 +1,396 @@
+/**
+ * SKY-11449: Boards tab shell, wired into the Liquid Neon v2 theme engine.
+ * `--bg-topbar` and `--surface-hover` were never defined anywhere, so the
+ * breadcrumb bar painted a flat grey and ignored the Appearance settings.
+ * See BoardCanvas.css for the full note.
+ */
+
+.boards-tab-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Breadcrumb ──
+   SKY-11566 BD-5. This bar shipped reading --glass-fill / --blur-panel — the
+   *panel* tier, which the engine drives to rgba(13,16,28,.20) + blur(1px) at
+   the shipped defaults (glassA 20, blur 1). A 1px backdrop-filter is not a
+   frost: it costs a full compositing layer and produces no legible separation,
+   so the crumbs were effectively painted straight onto the wallpaper.
+
+   Why the panel tier is the wrong token here, from the mockup rather than by
+   eye: the mockup's Boards crumb row (owner report, dc.html:2382) carries no
+   fill at all, because the center pane that wraps every view (dc.html:571)
+   already paints `var(--glass)` + `blur(var(--blur)) saturate(150%)` behind
+   it. We have no such pane — #app-tabpanel-boards and .boards-tab-panel are
+   both fully transparent down to the BackgroundStack — so this bar was given
+   a bespoke glass to stand in for a container fill that does not exist, and it
+   was bound to the panel tier instead of the chrome tier.
+
+   So the bar carries the mockup's Boards *chrome* fill itself: --glass2, which
+   the engine floors at 50% and which the mockup uses for exactly this kind of
+   raised chrome (its tab strip, dc.html script 7251/7274, and the zoom pill,
+   dc.html:2553), behind the same real 20px frost the pill uses. Boards chrome
+   now reads as one recipe and stays legible at every slider position.
+
+   Restoring the missing pane fill is the structural fix and is deliberately
+   NOT done here — it would repaint the canvas region SKY-11494 has just
+   measured. Filed separately. */
+.boards-tab-panel__breadcrumb {
+  --boards-crumb-fill: var(--glass2, rgb(21 26 45 / 0.9));
+  --boards-crumb-blur: 20px;
+
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--glass-fill-fallback, rgb(13 16 28));
+  gap: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .boards-tab-panel__breadcrumb {
+    background: var(--boards-crumb-fill);
+    backdrop-filter: blur(var(--boards-crumb-blur));
+    -webkit-backdrop-filter: blur(var(--boards-crumb-blur));
+  }
+}
+
+/* Transparency-averse users and high contrast get the opaque fallback and no
+   compositing layer, matching how BoardCanvas.css flattens the canvas and the
+   zoom pill (SKY-10908 / MYT-520 §5.4). */
+@media (prefers-reduced-transparency: reduce) {
+  .boards-tab-panel__breadcrumb {
+    --boards-crumb-fill: var(--glass-fill-fallback, rgb(13 16 28));
+    --boards-crumb-blur: 0px;
+  }
+}
+
+:root[data-contrast='high'] .boards-tab-panel__breadcrumb {
+  --boards-crumb-fill: var(--glass-fill-fallback, rgb(13 16 28));
+  --boards-crumb-blur: 0px;
+}
+
+.boards-tab-panel__breadcrumb-group {
+  display: flex;
+  align-items: center;
+}
+
+.boards-tab-panel__breadcrumb-sep {
+  color: var(--text-tertiary, #8e9db8);
+  font-size: 13px;
+  padding: 0 5px;
+}
+
+.boards-tab-panel__breadcrumb-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-link, #00f0ff);
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.boards-tab-panel__breadcrumb-btn:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+}
+
+/* The crumbs are the only way back up a board stack — they need a keyboard
+   affordance, not just :hover. */
+.boards-tab-panel__breadcrumb-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+.boards-tab-panel__breadcrumb-current {
+  color: var(--text-primary, #f0f3fc);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 2px 4px;
+}
+
+/* ── SKY-11187 §5: canvas tool palette ──
+   Sits at the trailing end of the crumb bar so the board's chrome stays one
+   row, and borrows the crumb button's neon-on-glass recipe rather than
+   inventing a second one. */
+.boards-tab-panel__tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding-left: 12px;
+}
+
+.boards-tab-panel__tool {
+  background: none;
+  border: var(--bw, 1px) solid transparent;
+  border-radius: 5px;
+  color: var(--text-secondary, #c8d3e7);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 9px;
+}
+
+.boards-tab-panel__tool:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+}
+
+.boards-tab-panel__tool:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+/* The armed tool wears the same hairline rim the canvas spends on selection,
+   so "this tool will write to the vault on your next click" is visible
+   without reading the label. */
+.boards-tab-panel__tool--active {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  border-color: var(--text-link, #00f0ff);
+  color: var(--text-link, #00f0ff);
+}
+
+/* ── SKY-11191 §11: view toggles + cross-board search ──
+   Both ride the crumb bar's trailing end alongside the tool palette and reuse
+   its neon-on-glass recipe, so the board's chrome stays one row and one
+   visual language. */
+.boards-tab-panel__view-toggles {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 12px;
+}
+
+.boards-tab-panel__toggle {
+  background: none;
+  border: var(--bw, 1px) solid transparent;
+  border-radius: 5px;
+  color: var(--text-secondary, #c8d3e7);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 9px;
+}
+
+.boards-tab-panel__toggle:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+}
+
+.boards-tab-panel__toggle:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+.boards-tab-panel__toggle--active {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  border-color: var(--text-link, #00f0ff);
+  color: var(--text-link, #00f0ff);
+}
+
+/* The results drop out of this wrapper, not out of the bar — the bar scrolls
+   horizontally, so it clips (see BoardsTabPanel.tsx). */
+.boards-tab-panel__chrome {
+  position: relative;
+  flex-shrink: 0;
+  z-index: 20;
+}
+
+.boards-tab-panel__search-input {
+  width: 168px;
+  margin-left: 12px;
+  padding: 3px 9px;
+  border-radius: 5px;
+  border: var(--bw, 1px) solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+  font-size: 12px;
+}
+
+.boards-tab-panel__search-input::placeholder {
+  color: var(--text-tertiary, #8e9db8);
+}
+
+.boards-tab-panel__search-input:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+.boards-tab-panel__search-results {
+  position: absolute;
+  top: 100%;
+  right: 16px;
+  z-index: 30;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  width: 288px;
+  max-height: 320px;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: var(--bw, 1px) solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--glass-fill-fallback, rgb(13 16 28));
+  box-shadow: 0 14px 40px rgb(3 5 12 / 0.6);
+}
+
+.boards-tab-panel__search-hit {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* One highlight for both the pointer and the arrow keys: the active option is
+   the one Enter takes, and hovering makes that option active. */
+.boards-tab-panel__search-hit--active {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+}
+
+.boards-tab-panel__search-hit-name {
+  color: var(--text-primary, #f0f3fc);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Which board the hit lives on — the whole point of a cross-board search is
+   that two notes can share a name. */
+.boards-tab-panel__search-hit-board {
+  color: var(--text-tertiary, #8e9db8);
+  font-size: 11px;
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}
+
+.boards-tab-panel__search-empty {
+  padding: 6px 8px;
+  color: var(--text-tertiary, #8e9db8);
+  font-size: 12px;
+}
+
+/* The canvas fills whatever the crumb bar leaves; the empty-board hint is
+   layered over it (see BoardsTabPanel.tsx) instead of replacing it. */
+.boards-tab-panel__canvas-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.boards-tab-panel__empty-msg--overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  z-index: 1;
+  /* A hint must never intercept the click that dismisses it by creating the
+     board's first item. */
+  pointer-events: none;
+}
+
+/* A refused mutation (name collision, invalid characters). Pinned to the
+   bottom of the panel so it cannot cover the card being renamed. */
+.boards-tab-panel__action-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: var(--color-error, #f87171);
+  border-top: var(--bw, 1px) solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--glass-fill-fallback, rgb(13 16 28));
+}
+
+.boards-tab-panel__action-error-dismiss {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  margin-left: auto;
+  padding: 0 4px;
+}
+
+.boards-tab-panel__action-error-dismiss:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+/* ── States ── */
+.boards-tab-panel__loading,
+.boards-tab-panel__empty,
+.boards-tab-panel__error {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.boards-tab-panel__empty-msg,
+.boards-tab-panel__error {
+  color: var(--text-secondary, #c8d3e7);
+  font-size: 14px;
+  text-align: center;
+  max-width: 360px;
+  line-height: 1.6;
+}
+
+.boards-tab-panel__error {
+  color: var(--color-error, #f87171);
+}
+
+.boards-tab-panel__loading {
+  color: var(--text-tertiary, #8e9db8);
+  font-size: 14px;
+}
+
+/* SKY-11188 (§4/§5): reachable furniture-creation toolbar — the canvas
+   context-menu the prototype uses isn't built here; this is the
+   keyboard/screen-reader-friendly equivalent entry point. */
+.boards-tab-panel__furniture-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px 12px;
+}
+
+.boards-tab-panel__furniture-btn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.04);
+  color: var(--text-secondary, #c8d3e7);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.boards-tab-panel__furniture-btn:hover {
+  background: rgb(255 255 255 / 0.08);
+  color: var(--text-primary, #f0f3fc);
+  border-color: rgb(255 255 255 / 0.2);
+}
+
+.boards-tab-panel__furniture-btn--active {
+  background: color-mix(in srgb, var(--n4, #2fe6c8) 22%, transparent);
+  color: var(--text-primary, #f0f3fc);
+  border-color: color-mix(in srgb, var(--n4, #2fe6c8) 60%, transparent);
+}

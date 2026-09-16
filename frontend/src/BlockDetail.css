@@ -31,8 +31,8 @@
   border-radius: var(--radius-lg);
 
   /* W0.5: faked glass — fill over the pre-blurred wallpaper (PERFORMANCE §2).
-     SKY-11133: this is a popover, so it reads the overlay-tier opacity
-     (glassA × 1.25, clamped) instead of the panel-tier --glass-fill. */
+     SKY-11133: this is a popover, so it reads the overlay tier's fixed fill
+     (the mockup recipe, SKY-11491) instead of the panel-tier --glass-fill. */
   background: var(--glass-fill-overlay);
   border: 1.5px solid var(--bd-accent);
   box-shadow:

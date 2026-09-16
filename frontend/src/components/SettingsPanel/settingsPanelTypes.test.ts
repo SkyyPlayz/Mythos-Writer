@@ -14,15 +14,15 @@ import {
 } from './settingsPanelTypes';
 
 describe('NAV_RAIL_DEFAULTS (Beta 4 M3)', () => {
-  it('lists the six §4 modules in spec order', () => {
+  it('lists the six §4 modules plus Boards in spec order', () => {
     expect(NAV_RAIL_DEFAULTS.items.map((i) => i.id)).toEqual([
-      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'vault-graph',
+      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'vault-graph', 'boards',
     ]);
   });
 
   it('uses the §4 module labels', () => {
     expect(NAV_RAIL_DEFAULTS.items.map((i) => i.label)).toEqual([
-      'Story Writer', 'Notes Editor', 'Scene Crafter', 'Brainstorm', 'Timeline', 'Vault Graph',
+      'Story Writer', 'Notes Editor', 'Scene Crafter', 'Brainstorm', 'Timeline', 'Vault Graph', 'Boards',
     ]);
   });
 
@@ -99,7 +99,7 @@ describe('mergeNavConfigItems', () => {
     const merged = mergeNavConfigItems(legacyDefaults, NAV_RAIL_DEFAULTS.items);
 
     expect(merged.map((i) => i.id)).toEqual([
-      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'vault-graph',
+      'story', 'notes', 'crafter', 'brainstorm', 'timeline', 'vault-graph', 'boards',
     ]);
   });
 
@@ -114,7 +114,7 @@ describe('mergeNavConfigItems', () => {
     const merged = mergeNavConfigItems(customized, NAV_RAIL_DEFAULTS.items);
     const sortedIds = [...merged].sort((a, b) => a.order - b.order).map((i) => i.id);
 
-    expect(sortedIds).toEqual(['brainstorm', 'story', 'notes', 'crafter', 'timeline', 'vault-graph']);
+    expect(sortedIds).toEqual(['brainstorm', 'story', 'notes', 'crafter', 'timeline', 'vault-graph', 'boards']);
   });
 
   it('treats a disabled item in the pre-Beta-4 defaults as a customization', () => {
@@ -128,7 +128,7 @@ describe('mergeNavConfigItems', () => {
 
     expect(merged.find((i) => i.id === 'brainstorm')!.enabled).toBe(false);
     const sortedIds = [...merged].sort((a, b) => a.order - b.order).map((i) => i.id);
-    expect(sortedIds).toEqual(['story', 'notes', 'brainstorm', 'crafter', 'timeline', 'vault-graph']);
+    expect(sortedIds).toEqual(['story', 'notes', 'brainstorm', 'crafter', 'timeline', 'vault-graph', 'boards']);
   });
 });
 
@@ -137,20 +137,20 @@ describe('reorderNavConfigItems (Beta 4 M3 edit popover)', () => {
 
   it('moves an item and re-normalizes order to array positions', () => {
     const result = reorderNavConfigItems(items(), 0, 2);
-    expect(result.map((i) => i.id)).toEqual(['notes', 'crafter', 'story', 'brainstorm', 'timeline', 'vault-graph']);
-    expect(result.map((i) => i.order)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(result.map((i) => i.id)).toEqual(['notes', 'crafter', 'story', 'brainstorm', 'timeline', 'vault-graph', 'boards']);
+    expect(result.map((i) => i.order)).toEqual([0, 1, 2, 3, 4, 5, 6]);
   });
 
   it('moves an item up', () => {
     const result = reorderNavConfigItems(items(), 3, 1);
-    expect(result.map((i) => i.id)).toEqual(['story', 'brainstorm', 'notes', 'crafter', 'timeline', 'vault-graph']);
+    expect(result.map((i) => i.id)).toEqual(['story', 'brainstorm', 'notes', 'crafter', 'timeline', 'vault-graph', 'boards']);
   });
 
   it('ignores out-of-range targets but still normalizes order', () => {
     const shuffled = items().map((it, i) => ({ ...it, order: i * 10 }));
     const result = reorderNavConfigItems(shuffled, 0, 99);
     expect(result.map((i) => i.id)).toEqual(shuffled.map((i) => i.id));
-    expect(result.map((i) => i.order)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(result.map((i) => i.order)).toEqual([0, 1, 2, 3, 4, 5, 6]);
   });
 });
 
@@ -169,7 +169,7 @@ describe('resolveNavRailItems', () => {
     const items = resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS);
 
     expect(items.map((i) => i.id)).toEqual([
-      'notes', 'story', 'crafter', 'brainstorm', 'timeline', 'vault-graph',
+      'notes', 'story', 'crafter', 'brainstorm', 'timeline', 'vault-graph', 'boards',
     ]);
   });
 
@@ -187,7 +187,7 @@ describe('resolveNavRailItems', () => {
     const items = resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS);
 
     expect(items.map((i) => i.id)).toEqual([
-      'notes', 'story', 'crafter', 'brainstorm', 'timeline', 'vault-graph',
+      'notes', 'story', 'crafter', 'brainstorm', 'timeline', 'vault-graph', 'boards',
     ]);
   });
 
@@ -203,7 +203,7 @@ describe('resolveNavRailItems', () => {
 
     const items = resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS);
 
-    expect(items.map((i) => i.id)).toEqual(['story', 'notes', 'crafter', 'brainstorm']);
+    expect(items.map((i) => i.id)).toEqual(['story', 'notes', 'crafter', 'brainstorm', 'boards']);
   });
 
   it('falls back to full defaults when every saved item is disabled', () => {
@@ -227,7 +227,7 @@ describe('resolveNavRailItems', () => {
   it('renders the §4 module labels from a fresh config', () => {
     const items = resolveNavRailItems(undefined, NAV_RAIL_DEFAULTS);
     expect(items.map((i) => i.label)).toEqual([
-      'Story Writer', 'Notes Editor', 'Scene Crafter', 'Brainstorm', 'Timeline', 'Vault Graph',
+      'Story Writer', 'Notes Editor', 'Scene Crafter', 'Brainstorm', 'Timeline', 'Vault Graph', 'Boards',
     ]);
   });
 });

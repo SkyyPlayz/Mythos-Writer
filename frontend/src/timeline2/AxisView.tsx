@@ -54,6 +54,13 @@ import {
 } from './axis/drag';
 import { deriveAxisDomain, type AxisDomain } from './axis/domain';
 import { hexA, laneColor, LANE_PALETTE } from './axis/palette';
+import {
+  TimelineWikiRefBadges,
+  TimelineWikiText,
+  useTimelineWikiLinks,
+  wikiRefBadgesFor,
+} from './TimelineWikiText';
+import { wikiRefRingTone, type WikiRefBadge } from './timelineWikiLinks';
 import { chapterPositions, chapterSlotIndex, plotCardWhen, sortedBooks } from './axis/chapters';
 import {
   ARC_LANE,
@@ -366,6 +373,20 @@ export default function AxisView({
       stackPoints(visibleKeyEvents.map((e) => ({ item: e, pct: axisPct(e.when, t0, t1) })), 17, 2),
     [visibleKeyEvents, t0, t1],
   );
+
+  // SKY-11615: [[wiki link]] reference badges + card ring, counted once per
+  // render for the whole lane rather than per card — resolution walks the
+  // vault index, so doing it inside the map would re-walk it on every stack
+  // recompute (drag, zoom, filter).
+  const wikiLinks = useTimelineWikiLinks();
+  const eventRefBadges = useMemo(() => {
+    const byId = new Map<string, WikiRefBadge[]>();
+    for (const event of visibleKeyEvents) {
+      const badges = wikiRefBadgesFor(event.summary, wikiLinks);
+      if (badges.length > 0) byId.set(event.id, badges);
+    }
+    return byId;
+  }, [visibleKeyEvents, wikiLinks]);
 
   const rowItems = useCallback(
     (rowId: string) =>
@@ -1100,10 +1121,14 @@ export default function AxisView({
                 {stackedEvents.items.map(({ item: event, leftPct, lane }) => {
                   const selected = selection?.type === 'event' && selection.id === event.id;
                   const flash = isFlashback(event, visibleKeyEvents);
+                  const refBadges = eventRefBadges.get(event.id) ?? [];
+                  // The selection outline owns the card's border treatment, so
+                  // the reference ring only paints when unselected (mockup 8601).
+                  const ringTone = selected ? null : wikiRefRingTone(refBadges);
                   return (
                     <div
                       key={event.id}
-                      className={`ax-event${selected ? ' ax-event--selected' : ''}${flagCls(event.id)}`}
+                      className={`ax-event${selected ? ' ax-event--selected' : ''}${ringTone ? ` ax-event--refs-${ringTone}` : ''}${flagCls(event.id)}`}
                       style={{
                         left: `${leftPct}%`,
                         top: `${lane * 92}px`,
@@ -1130,13 +1155,20 @@ export default function AxisView({
                               : formatWhen(event.when, calendar, t0)}
                           </div>
                         </div>
+                        <TimelineWikiRefBadges badges={refBadges} />
                         {flash && (
                           <span className="ax-event-flash" data-testid={`ax-flash-${event.id}`}>
                             FLASHBACK
                           </span>
                         )}
                       </div>
-                      {event.summary && <div className="ax-event-desc">{event.summary}</div>}
+                      {event.summary && (
+                        <TimelineWikiText
+                          className="ax-event-desc"
+                          text={event.summary}
+                          data-testid={`ax-event-desc-${event.id}`}
+                        />
+                      )}
                     </div>
                   );
                 })}

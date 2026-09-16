@@ -8,7 +8,7 @@
  *   1. Select a non-default preset (Cyberpunk) — live-applies --n1 on <html>.
  *   2. Export it — downloads a real mythos-theme-preset.json file (captured
  *      via Playwright's download event).
- *   3. Switch to a different preset (Neon Classic) to prove the state actually
+ *   3. Switch to a different preset (Neon Nebula) to prove the state actually
  *      changed away from Cyberpunk.
  *   4. File-import — feed the downloaded JSON back in via the hidden
  *      lnas-import-file input and re-apply the preset.
@@ -145,7 +145,7 @@ test('theme preset export → clipboard → import round-trips the selected pres
   const exportedPath = path.join(downloadDir, 'mythos-theme-preset.json');
   await expect.poll(() => fs.existsSync(exportedPath), { timeout: 10_000 }).toBe(true);
 
-  // 3. Switch away to Neon Classic, proving state actually changes.
+  // 3. Switch away to Neon Nebula, proving state actually changes.
   await classicPreset.click();
   await expect(classicPreset).toHaveAttribute('aria-pressed', 'true', { timeout: 3_000 });
   await expect(cyberPreset).toHaveAttribute('aria-pressed', 'false');

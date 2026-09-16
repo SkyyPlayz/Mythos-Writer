@@ -482,7 +482,7 @@
 }
 
 .tlr-modal-stub__inner {
-  background: var(--color-surface-elevated, #1e1e2e);
+  background: var(--bg-elevated);
   border-radius: 10px;
   padding: 24px;
   max-width: 360px;

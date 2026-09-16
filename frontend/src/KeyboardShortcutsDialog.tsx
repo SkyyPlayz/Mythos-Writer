@@ -44,7 +44,7 @@ export default function KeyboardShortcutsDialog({ onClose }: Props) {
   return (
     <div className="ksd-backdrop" onClick={onClose} role="presentation">
       <div
-        className="ksd-dialog"
+        className="ln-overlay-surface ksd-dialog"
         role="dialog"
         aria-modal="true"
         aria-label="Keyboard shortcuts"

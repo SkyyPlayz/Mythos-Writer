@@ -497,7 +497,15 @@ test('TC-BST-07: agent-created note emits a grounded Relationships wikilink and 
 // the cross-boundary round trip — the same real `facts` state (no window.api
 // seam stubbed beyond the LLM stream itself) also drives the left IDEA
 // COLLECTIONS rail's live counts and its "Characters" group contents, with no
-// page reload / re-navigation between the chat turn and this assertion.
+// page reload between the chat turn and this assertion.
+//
+// SKY-11540: TC-BST-07 detours through the Vault Graph tab, which unmounts
+// BrainstormPage; coming back remounts it and its first commit renders the
+// rail with `facts = []` until the post-mount draft restore lands one task
+// later. A one-shot `textContent()` read can observe that first frame (it did,
+// on the GitHub runner: Characters 0, then 2 in the failure screenshot), so the
+// counts below use retrying assertions. This is the standard Playwright
+// pattern for state that settles asynchronously — not a widened timeout.
 
 test('TC-BST-08: chat-captured fact appears live in the IDEA COLLECTIONS rail — no refresh', async () => {
   await openBrainstormPanel();
@@ -507,17 +515,16 @@ test('TC-BST-08: chat-captured fact appears live in the IDEA COLLECTIONS rail �
 
   // All Ideas / Characters counts both include the Aria Voss fact from TC-BST-03 —
   // read directly off the live DOM, not a re-fetch or reload.
-  const allCount = await page.locator('[data-testid="bs-coll-toggle-all"] .bs-coll-count').textContent();
-  expect(Number(allCount?.trim())).toBeGreaterThanOrEqual(1);
-  const relCount = await page.locator('[data-testid="bs-coll-toggle-rel"] .bs-coll-count').textContent();
-  expect(Number(relCount?.trim())).toBeGreaterThanOrEqual(1);
+  const NON_ZERO = /^[1-9]\d*$/;
+  await expect(page.locator('[data-testid="bs-coll-toggle-all"] .bs-coll-count')).toHaveText(NON_ZERO);
+  await expect(page.locator('[data-testid="bs-coll-toggle-rel"] .bs-coll-count')).toHaveText(NON_ZERO);
 
   // Expand Characters and find the agent-filed row: real fact (no `Starter`
   // chip), title + description matching what the mock stream emitted.
   await page.locator('[data-testid="bs-coll-toggle-rel"]').click();
   // TC-BST-05's refinement regenerated the same mock fact, so two identical
   // (unplaced) rows can exist here — either is proof enough for this assertion.
-  const factRow = page.getByRole('button', { name: `Add ${MOCK_FACT_NAME} to the board`, exact: true }).first();
+  const factRow = page.getByRole('button', { name: `Add ${MOCK_FACT_NAME} to the Idea Board`, exact: true }).first();
   await expect(factRow).toBeVisible();
   await expect(factRow.locator('.bs-coll-starter-chip')).toHaveCount(0);
   await expect(factRow.locator('.bs-coll-idea-desc')).toContainText(MOCK_FACT_DESC);
@@ -649,7 +656,7 @@ test('TC-M20-01: Board page shows one canvas; starter library places ideas', asy
 
   // Expand Story Beats and place a starter idea (chips `Starter`).
   await page.locator('[data-testid="bs-coll-toggle-beats"]').click();
-  const starterRow = page.getByRole('button', { name: 'Add Midpoint Reversal to the board' });
+  const starterRow = page.getByRole('button', { name: 'Add Midpoint Reversal to the Idea Board' });
   await expect(starterRow).toBeVisible();
   await expect(starterRow.locator('.bs-coll-starter-chip')).toBeVisible();
   await starterRow.click();

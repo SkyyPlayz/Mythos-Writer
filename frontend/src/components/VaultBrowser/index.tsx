@@ -1307,14 +1307,14 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
             const from = e.dataTransfer.getData('text/plain');
             // Already at root (no '/') — nothing to move.
             if (!from || !from.includes('/')) return;
-            // SKY-8892 (spec item 9): notes must live inside a folder — only
-            // folders may drop onto the root strip. Refuse notes with a toast
-            // instead of silently moving them out to the vault root.
-            const draggedItem = allNotesItems.find((item) => item.path === from);
-            if (draggedItem && !draggedItem.isDirectory) {
-              showToast('Notes must live inside a folder — drag a folder to move it to the vault root', 'error');
-              return;
-            }
+            // SKY-11187: the SKY-8892 "notes must live inside a folder" rule
+            // is REMOVED, not relaxed. Notes Board (BOARDS-SPEC v2 §5) makes
+            // the vault root the Home board, and Home behaves like any other
+            // board — including holding notes you create there. A rule that
+            // let the canvas put a note at root while the tree refused to
+            // accept one dragged there would make the two surfaces disagree
+            // about the same filesystem (§1). Folders and notes now drop
+            // here on the same terms.
             onMoveToRoot(from);
           }}
         >
