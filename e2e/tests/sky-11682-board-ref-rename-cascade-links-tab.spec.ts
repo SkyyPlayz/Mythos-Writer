@@ -138,12 +138,11 @@ test('SKY-11188 §4/§11 acceptance: a column ref rename-cascades like a real wi
     await expect.poll(() => {
       const sidecar = readSidecar(notesDir);
       const items = (sidecar.furniture as Array<{ items?: Array<{ ref?: string }> }>)[0]?.items ?? [];
-      const ref = items[0]?.ref ?? '';
-      return ref.toLowerCase().includes('thorne');
-    }, { timeout: 8_000 }).toBe(true);
+      return items[0]?.ref ?? '';
+    }, { timeout: 8_000 }).toBe('Mira Thorne.md');
     const sidecarAfter = readSidecar(notesDir);
     const refAfter = (sidecarAfter.furniture as Array<{ items?: Array<{ ref?: string }> }>)[0]?.items?.[0]?.ref ?? '';
-    expect(refAfter.toLowerCase()).not.toContain('veynn');
+    expect(refAfter).toBe('Mira Thorne.md');
 
     // ── The renamed note's own Links tab still shows the board entry — the
     // rewritten ref resolves by the same stem rule as everywhere else,
