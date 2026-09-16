@@ -12,7 +12,7 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .story-navigator {
-    background: var(--glass-fill);
+    background: var(--glass-panel-bg);
     border-right: 1px solid var(--glass-border);
   }
 }

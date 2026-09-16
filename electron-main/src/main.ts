@@ -130,7 +130,6 @@ import {
   type VaultValidatePathPayload,
   type VaultValidatePathResponse,
   type VaultPickFolderByPathPayload,
-  type VaultGuidedMovePayload,
   type VaultLocalMovePayload,
   type VaultPickFolderPayload,
   type ProjectEntry,
@@ -377,7 +376,7 @@ import {
 import { queryGlobalContradictions } from './contradictionQuery.js';
 import { evaluateAutoApply, checkCallBudget } from './budget.js';
 import { generateRegistrationToken, validateRegistrationToken } from './registrationToken.js';
-import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkGuidedMoveGate, consumeGuidedMoveToken, checkOpenFolderGate } from './vaultGate.js';
+import { checkSetPathsGate, consumeSetPathsTokens, checkProjectSwitchGate, checkLoadSampleGate, checkSinglePathGate, consumeSinglePathToken, looksLikeObsidianVault, checkScaffoldGate, consumeScaffoldToken, checkOpenFolderGate } from './vaultGate.js';
 import { validateMoveTarget, moveVaultAtomic } from './vaultGuidedMove.js';
 import {
   checkVoiceSettingsUpdate,
@@ -454,6 +453,33 @@ import {
   createBoardItem as notesBoardCreateItem,
   boardItemRenameTarget as notesBoardRenameTarget,
 } from './notesBoard.js';
+// SKY-11189 (Notes Board 6/9): trash split by target type + deferred-delete — see notesTrash.ts §7/§8.
+import {
+  trashTargets as notesTrashTargets,
+  restoreEntry as notesTrashRestoreEntry,
+  listPendingForVault as notesTrashListPendingForVault,
+  emptyTrash as notesTrashEmptyTrash,
+  flushAllPendingNotesTrash,
+  invalidatePendingUnderPath,
+  isVaultRelPathPending,
+  isFurniturePending,
+  UNDO_WINDOW_MS as NOTES_TRASH_UNDO_WINDOW_MS,
+  type PendingEntry as NotesTrashPendingEntry,
+} from './notesTrash.js';
+
+/** notesTrash.ts's internal shape -> the IPC-facing NotesBoardPendingEntry. */
+function toIpcPendingEntry(entry: NotesTrashPendingEntry): NotesBoardPendingEntry {
+  return {
+    id: entry.id,
+    groupId: entry.groupId,
+    kind: entry.kind,
+    boardPath: entry.boardRelPath,
+    vaultPath: entry.vaultRelPath,
+    furnitureId: entry.furnitureId,
+    label: entry.label,
+    deletedAt: entry.deletedAt,
+  };
+}
 // SKY-11186 (Notes Board 6/9): note thumbnails — see noteThumbnails.ts.
 import {
   resolveNoteThumbs,
@@ -472,7 +498,7 @@ import {
   type SeedRegistry,
 } from './vaultSeeding.js';
 // Beta 4 M5 — MythosVault (v2) format + version gate + migration wizard.
-import { resolveManifestPath, mythosRootForStoryVault, agentVaultRootFor } from './mythosFormat/mythosJson.js';
+import { resolveManifestPath, mythosRootForStoryVault, resolveMythosVaultRoot, agentVaultRootFor } from './mythosFormat/mythosJson.js';
 import { migrateSessionsToAgentVault } from './mythosFormat/agentSessions.js';
 import {
   readBrainstormBoard,
@@ -553,6 +579,13 @@ import type {
   NotesBoardCreateItemResponse,
   NotesBoardRenameItemPayload,
   NotesBoardRenameItemResponse,
+  NotesBoardTrashItemsPayload,
+  NotesBoardTrashItemsResponse,
+  NotesBoardRestorePayload,
+  NotesBoardRestoreResponse,
+  NotesBoardRecentlyDeletedListResponse,
+  NotesBoardEmptyTrashResponse,
+  NotesBoardPendingEntry,
   NotesThumbResolvePayload,
   NotesThumbResolveResponse,
   NotesThumbGetPayload,
@@ -773,15 +806,11 @@ import {
   pickUniqueMythosVaultName,
 } from './mythosVault.js';
 import {
-  detectConflicts,
-  resolveConflict,
   acquireLockfile,
   releaseLockfile,
   checkLockfile,
-  isLockfileLive,
-  isForeignHostLock,
   appendSyncEvent,
-} from './cloudSync.js';
+} from './vaultSessionLock.js';
 import { applyVaultWrite, rollbackVaultWrite } from './suggestionApply.js';
 import { getBlastRadius, trashVaultFolder, pruneRecentProjectsForTrash } from './vaultSurface.js';
 import { shouldQuitOnWindowAllClosed } from './quitGuard.js';
@@ -924,6 +953,10 @@ interface VaultSettings {
   layoutMode?: 'default' | 'blank' | 'imported';
   recentProjects?: ProjectEntry[];
   // SKY-1129: keyed by vaultRoot so dismissal is scoped to each vault.
+  // SKY-11804 kept the `sync` in this name on purpose. It now gates only the
+  // concurrent-session warning, so "sessionWarningDismissed" would read better
+  // — but this is a PERSISTED key in vault-settings.json, and renaming it would
+  // silently un-dismiss the warning for every existing user. Not worth it.
   syncWarningDismissed?: Record<string, boolean>;
   // W0.1 (Beta 4): durable seed-once registry — resolved vault root → ISO
   // timestamp of when its SKY-15 seeding decision was recorded. Pairs with
@@ -1542,6 +1575,12 @@ function notifyVaultChanged(filePath: string) {
 function notifyNotesVaultChanged(filePath: string, event?: NotesWatchEvent) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     const relPath = path.relative(getNotesVaultRoot(), filePath).split(path.sep).join('/');
+    // SKY-11189 §8: "Invalidate a stack/panel entry if its target changed
+    // externally (edited in Obsidian, or via sync)." A watcher event for a
+    // path we believe is still sitting untouched in a pending-delete window
+    // means that belief just went stale — drop the pending entry rather than
+    // later trashing (or restoring) something someone else already changed.
+    invalidatePendingUnderPath(getNotesVaultRoot(), relPath);
     if ((event === 'add' || event === 'change') && NOTES_ASSET_EXT_RE.test(filePath)) {
       mainWindow.webContents.send('vault:notes-asset-changed', { path: relPath });
       return;
@@ -1578,7 +1617,14 @@ const REINDEX_INCREMENTAL_MAX = 50;
 // markSelfWrite suppresses the change watchers — so the fan-out the watcher
 // would have done (graph invalidation, FTS reindex, renderer refresh events)
 // must be mirrored manually after a cascade lands (or is undone).
-function notifyRenameCascadeApplied(changedStoryPaths: string[]) {
+//
+// SKY-11794: notes-side rewritten paths need the same 'vault:file-changed'
+// fan-out as story-side ones. DesktopShell's allNotePaths (and everything
+// built from it — wikiLinkTitleIndex, wikiLinkCandidates, the Boards column
+// ref resolver) only refreshes on that event; omitting notes-side paths here
+// left it stale after any same-session notes-vault-only rename until an
+// unrelated future notes edit happened to fire the event again.
+function notifyRenameCascadeApplied(changedStoryPaths: string[], changedNotesPaths: string[] = []) {
   invalidateNoteGraphIndex();
   scheduleReindex(); // notes-side entity docs
   for (const rel of changedStoryPaths) scheduleReindex(rel); // incremental FTS
@@ -1586,6 +1632,9 @@ function notifyRenameCascadeApplied(changedStoryPaths: string[]) {
     mainWindow.webContents.send('vault:notes-updated', { count: 1 });
     mainWindow.webContents.send('vault:graph-topology-changed', {});
     for (const rel of changedStoryPaths) {
+      mainWindow.webContents.send('vault:file-changed', { path: rel });
+    }
+    for (const rel of changedNotesPaths) {
       mainWindow.webContents.send('vault:file-changed', { path: rel });
     }
   }
@@ -1624,7 +1673,9 @@ function renameNotesVaultEntry(fromPath: string, toPath: string): VaultMoveRespo
     const rewrittenIcons = rewriteIconsOnMove(readIconMap(root), fromPath, toPath);
     if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
   }
-  if (result.linkUpdate) notifyRenameCascadeApplied(result.linkUpdate.changedStoryPaths);
+  if (result.linkUpdate) {
+    notifyRenameCascadeApplied(result.linkUpdate.changedStoryPaths, result.linkUpdate.changedNotesPaths);
+  }
   return result;
 }
 
@@ -3214,7 +3265,7 @@ const handlers: IpcHandlers = {
       ? defaultTheme
       : undefined;
 
-    const created = createVaultFromOptions({
+    const created = await createVaultFromOptions({
       destinationParent: destinationParentResolved,
       ...(name?.trim() ? { name: name.trim() } : {}),
       ...(exactName ? { exactName: true } : {}),
@@ -3261,9 +3312,9 @@ const handlers: IpcHandlers = {
   },
 
   // SKY-627 / SKY-906: extended onboarding handler — orchestrates vault creation, first-scene setup,
-  // and settings persistence for all start modes (blank / sample / template / skip / default-mythos-vault).
+  // and settings persistence for all start modes (blank / template / skip / default-mythos-vault).
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: async (payload: OnboardingCompletePayload): Promise<OnboardingCompleteResponse> => {
-    const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName, sampleGenre, customTemplate, genre, themeKey } = payload ?? {};
+    const { startMode, storyTitle, authorName, vaultParentPath, templateId, vaultName, customTemplate, genre, themeKey } = payload ?? {};
 
     const persistSettings = (firstSceneId?: string, firstScenePath?: string, recentParentPath?: string, opts?: { openAtDepth?: 'book' }) => {
       const current = loadAppSettings();
@@ -3281,7 +3332,6 @@ const handlers: IpcHandlers = {
       }
       const recentVaultParentPaths = updateRecentVaultParentPaths(current.recentVaultParentPaths, recentParentPath);
       if (recentVaultParentPaths) patch.recentVaultParentPaths = recentVaultParentPaths;
-      if (sampleGenre && startMode === 'sample') patch.lastSampleGenre = sampleGenre;
       if (authorName?.trim()) patch.authorName = authorName.trim();
       if (firstSceneId && firstScenePath) {
         // M3 (SKY-9021): openAtDepth 'book' makes the first open land at Full
@@ -3465,15 +3515,11 @@ const handlers: IpcHandlers = {
       }
     }
 
-    if (startMode !== 'sample') {
-      if (!storyTitle?.trim()) return { ok: false, error: 'storyTitle is required' };
-      if (!vaultParentPath?.trim()) return { ok: false, error: 'vaultParentPath is required' };
-    }
+    if (!storyTitle?.trim()) return { ok: false, error: 'storyTitle is required' };
+    if (!vaultParentPath?.trim()) return { ok: false, error: 'vaultParentPath is required' };
 
-    const resolvedParent = startMode === 'sample'
-      ? defaultMythosVaultsParent()
-      : vaultParentPath!.trim().replace(/^~/, app.getPath('home'));
-    const storyDir = startMode === 'sample' ? '' : path.join(resolvedParent, storyTitle!.trim());
+    const resolvedParent = vaultParentPath!.trim().replace(/^~/, app.getPath('home'));
+    const storyDir = path.join(resolvedParent, storyTitle!.trim());
     const storyVaultPath = path.join(storyDir, 'Story Vault');
     const notesVaultPath = path.join(storyDir, 'Notes Vault');
 
@@ -3538,62 +3584,6 @@ const handlers: IpcHandlers = {
 
       persistSettings(sceneId, sceneRelPath, resolvedParent, { openAtDepth: 'book' });
       return { ok: true, firstSceneId: sceneId, firstScenePath: sceneRelPath };
-
-    } else if (startMode === 'sample') {
-      const ALLOWED_GENRES = ['cozy-fantasy', 'sci-fi-noir', 'mystery'] as const;
-      type GenreId = typeof ALLOWED_GENRES[number];
-      if (!sampleGenre || !ALLOWED_GENRES.includes(sampleGenre as GenreId)) {
-        return { ok: false, error: `sampleGenre is required for sample start (got: ${sampleGenre ?? 'undefined'})` };
-      }
-
-      const sampleDir = app.isPackaged
-        ? path.join(process.resourcesPath, 'samples', sampleGenre)
-        : path.join(app.getAppPath(), 'resources', 'samples', sampleGenre);
-
-      if (!fs.existsSync(sampleDir)) {
-        return { ok: false, error: `Sample vault bundle not found at: ${sampleDir}` };
-      }
-
-      // Place genre vault under the default Mythos Vaults parent, auto-suffixed
-      // if a folder with that name already exists (same pattern as default-mythos-vault).
-      const GENRE_VAULT_NAMES: Record<GenreId, string> = {
-        'cozy-fantasy': 'The Hearthstone Witch',
-        'sci-fi-noir': 'Neon Rust',
-        'mystery': 'The Last Wednesday Club',
-      };
-      const parentBase = defaultMythosVaultsParent();
-      const vaultBaseName = GENRE_VAULT_NAMES[sampleGenre as GenreId];
-      const uniqueVaultName = pickUniqueMythosVaultName(parentBase, vaultBaseName);
-      const mythosVaultRoot = path.join(parentBase, uniqueVaultName);
-      const sampleStoryVaultPath = path.join(mythosVaultRoot, 'Story Vault');
-      const sampleNotesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
-
-      try {
-        fs.cpSync(path.join(sampleDir, 'story-vault'), sampleStoryVaultPath, { recursive: true });
-        fs.cpSync(path.join(sampleDir, 'notes-vault'), sampleNotesVaultPath, { recursive: true });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return { ok: false, error: `Failed to copy sample vault: ${msg}` };
-      }
-
-      saveVaultSettings({ vaultRoot: sampleStoryVaultPath, notesVaultRoot: sampleNotesVaultPath, layoutMode: 'default' });
-      addToRecentProjects(sampleStoryVaultPath, sampleNotesVaultPath);
-      ensureVaultDir();
-      ensureNotesVaultDir();
-
-      const rawManifest = readManifest(getManifestPath());
-      const { manifest: synced } = reindexVault(sampleStoryVaultPath, rawManifest);
-      writeManifest(getManifestPath(), synced);
-      try { buildFullIndex(getDb(), sampleStoryVaultPath, synced); } catch { /* non-fatal */ }
-
-      await stopVaultWatcher();
-      await startVaultWatcher(sampleStoryVaultPath, notifyVaultChanged);
-      await stopNotesVaultWatcher();
-      await startNotesVaultWatcher(sampleNotesVaultPath, notifyNotesVaultChanged);
-
-      const firstScene = synced.stories[0]?.chapters[0]?.scenes[0] ?? synced.scenes[0];
-      persistSettings(firstScene?.id, firstScene?.path, resolvedParent);
-      return { ok: true, firstSceneId: firstScene?.id, firstScenePath: firstScene?.path };
 
     } else if (startMode === 'template') {
       if (!templateId) return { ok: false, error: 'templateId required for template start' };
@@ -5856,7 +5846,14 @@ const handlers: IpcHandlers = {
   // ─── Multi-project switcher (MYT-374) ───
   [IPC_CHANNELS.PROJECT_LIST]: () => {
     return {
-      projects: getRecentProjects(),
+      // SKY-11882: resolve each entry's enclosing Mythos root HERE — only
+      // main can read story-vaults.json, and a custom-named story vault
+      // (`<mythos>/Stories/Second World`) is unguessable from the path alone.
+      // Settings → Vault & Files Hide/Delete acts on this value.
+      projects: getRecentProjects().map((p) => ({
+        ...p,
+        mythosVaultRoot: resolveMythosVaultRoot(p.vaultRoot),
+      })),
       activeVaultRoot: getVaultRoot(),
       activeNotesVaultRoot: getNotesVaultRoot(),
     };
@@ -6123,6 +6120,21 @@ const handlers: IpcHandlers = {
       startWritingScanScheduler,
     });
 
+    // SKY-11815: every path derived from vaultsParentPath was correct in
+    // vault-settings.json the moment saveVaultSettings(remapped) above ran,
+    // but the renderer's own copies — nav-rail tiles, Settings > Mythos
+    // vaults cards, and the New-vault Destination prefill — were all read
+    // once on mount and never told the parent moved, so they kept pointing
+    // at the now-gone pre-move paths for the rest of the session (switching
+    // to them failed the recent-projects allowlist; New-vault silently
+    // recreated the deleted folder). Push the new roots so those surfaces
+    // can refresh in place without resetting editor/selection state the way
+    // a full 'project:switched' broadcast would.
+    mainWindow?.webContents.send('vaultsParent:moved', {
+      vaultRoot: newActiveRoot,
+      notesVaultRoot: newActiveNotesRoot,
+    });
+
     return { moved: true, newPath: resolvedDestination };
   },
 
@@ -6259,15 +6271,13 @@ const handlers: IpcHandlers = {
     const baseName = rawName || DEFAULT_MYTHOS_VAULT_NAME;
     const finalName = pickUniqueMythosVaultName(parentPath, baseName);
     const mythosVaultRoot = path.join(parentPath, finalName);
-    const storyVaultPath = path.join(mythosVaultRoot, 'Story Vault');
-    const notesVaultPath = path.join(mythosVaultRoot, 'Notes Vault');
     // Reuse an existing folder only when fully empty — never overwrite.
     const created = !fs.existsSync(mythosVaultRoot);
     if (!created && !isEmptyOrMissing(mythosVaultRoot)) {
       return {
         mythosVaultRoot,
-        vaultRoot: storyVaultPath,
-        notesVaultRoot: notesVaultPath,
+        vaultRoot: '',
+        notesVaultRoot: '',
         name: finalName,
         created: false,
         error: 'Mythos Vault folder is not empty',
@@ -6286,13 +6296,15 @@ const handlers: IpcHandlers = {
     if (!createdVault.ok) {
       return {
         mythosVaultRoot,
-        vaultRoot: storyVaultPath,
-        notesVaultRoot: notesVaultPath,
+        vaultRoot: '',
+        notesVaultRoot: '',
         name: finalName,
         created: false,
         error: `Could not create vault bundle: ${createdVault.error}`,
       };
     }
+    const storyVaultPath = createdVault.storyVaultPath;
+    const notesVaultPath = createdVault.notesVaultPath;
     // SKY-10401: Settings' "New vault" flow creates without activating — it
     // registers the pair in recents (so a later project:switch passes the
     // allowlist gate) but leaves the active vault, watchers and DB untouched
@@ -6432,7 +6444,14 @@ const handlers: IpcHandlers = {
     // even when the configured roots overlap.
     const { items } = listVaultFiles(root, payload.root);
     const listedRoot = payload.root ? path.join(root, payload.root) : root;
-    const filtered = filterNotesListing(items, storyVaultRelPrefix(listedRoot, getVaultRoot()));
+    const rootRelPrefix = payload.root ? `${payload.root}/` : '';
+    // SKY-11189 §8: a pending-delete note/folder is "hidden from the UI" —
+    // this is the Notes-tab tree's listing, so it must honor the same hide
+    // NOTES_BOARD_GET applies to the canvas (both surfaces share one
+    // deferred-delete registry — see notesTrash.ts).
+    const filtered = filterNotesListing(items, storyVaultRelPrefix(listedRoot, getVaultRoot())).filter(
+      (item) => !isVaultRelPathPending(root, `${rootRelPrefix}${item.path}`),
+    );
     // SKY-10511: Scene Crafter's suggested cards show each note's hook line.
     // SKY-11049 / SKY-11212: same bounded read also surfaces character/
     // location/item tag signals for the POV picker's vault-wide fallback and
@@ -6464,6 +6483,16 @@ const handlers: IpcHandlers = {
     // prunes the same dangling entry the next time anything reads that
     // parent board regardless — this just keeps the sidecar tidy sooner and
     // never blocks the real delete on Store B upkeep.
+    //
+    // SKY-11189: deliberately NOT routed through notesTrash.ts's deferred-
+    // delete — this channel is the Notes tab tree's own delete (immediate,
+    // permanent, its own in-vault throwaway-rename-then-rm, per SKY-7995),
+    // and pre-existing E2E coverage (folder-ops-sky7995.spec.ts) asserts it
+    // completes synchronously. SKY-11189's trash-split/undo model is scoped
+    // to the Board canvas's own notesBoard:trashItems channel; a pending-
+    // delete registered THERE still hides the item from this tree's own
+    // listing (NOTES_VAULT_LIST below), so the two surfaces stay consistent
+    // without the tree's delete button needing the same deferred contract.
     try {
       const slash = payload.path.lastIndexOf('/');
       const parentRelPath = slash === -1 ? '' : payload.path.slice(0, slash);
@@ -6495,7 +6524,7 @@ const handlers: IpcHandlers = {
       if (rewritten) writeOrderMap(root, rewritten);
       const rewrittenIcons = rewriteIconsOnMove(readIconMap(root), result.toPath, result.fromPath);
       if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
-      notifyRenameCascadeApplied(result.restoredStoryPaths);
+      notifyRenameCascadeApplied(result.restoredStoryPaths, result.restoredNotesPaths);
     }
     return result;
   },
@@ -6542,86 +6571,13 @@ const handlers: IpcHandlers = {
     return moveVaultFile(root, payload.fromPath, payload.toPath);
   },
 
-  // SKY-862: relocate the entire story vault to a cloud-synced folder.
-  // SEC-11 vault-token pattern: isFromTopFrame + sanitizeIpcError are applied
-  // automatically by setupIpcMain; session-token validation is in the gate.
-  [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: async (
-    payload: VaultGuidedMovePayload,
-  ) => {
-    // SKY-10910: os.homedir() reads USERPROFILE on win32 (unlike app.getPath('home')
-    // which reads from the Windows API and may return a different path form — e.g.
-    // 8.3 short name vs long name). Using os.homedir() keeps gate semantics consistent
-    // with what the test's USERPROFILE env override sets, and is equivalent on real
-    // user machines where USERPROFILE always points to the same directory.
-    const homeDir = os.homedir();
-
-    // Gate: validates targetPath (homedir containment, no ..), syncProvider,
-    // and sessionToken (registration token bound to targetPath).
-    const gate = checkGuidedMoveGate(payload, homeDir);
-    if (!gate.ok) return { error: gate.error };
-
-    const srcVaultRoot = getVaultRoot();
-
-    // Runtime FS checks: src exists, target not occupied, target writable.
-    const targetCheck = validateMoveTarget(srcVaultRoot, gate.targetPath);
-    if (!targetCheck.ok) return { error: targetCheck.error };
-
-    // SKY-10895: release every handle the app holds inside the source vault
-    // before the rename — not just the watcher + DB. On Windows, fs.rename
-    // refuses to touch a directory that still has open handles anywhere in
-    // its tree (EPERM), even though POSIX allows it. This is the same
-    // constraint the SKY-8882 uninstall handler and repointToMigratedVault
-    // (main.ts) already handle correctly — mirror their full teardown, not
-    // just stopVaultWatcher+closeDb (a widened retry budget alone can't
-    // outlast a job-queue worker or scheduler that never gets torn down).
-    // Always re-acquire in `finally` so a failed/rolled-back move never
-    // leaves the app running with no watcher, no DB, and no schedulers.
-    stopWritingScanScheduler();
-    stopArchiveContScheduler();
-    await stopBoardWatcher();
-    await stopVaultWatcher();
-    await shutdownJobService();
-    closeDb();
-    let moveResult;
-    try {
-      moveResult = await moveVaultAtomic(srcVaultRoot, gate.targetPath, {
-        syncProvider: gate.syncProvider,
-        updateSettings: (newPath) => {
-          saveVaultSettings({ vaultRoot: newPath });
-          // SKY-11238: the moved vault keeps its registry slot (and notes
-          // pairing) — a folder move must not reorder the rail either.
-          addToRecentProjects(newPath, undefined, srcVaultRoot);
-        },
-      });
-    } catch (err) {
-      throw toGuidedMoveError(err);
-    } finally {
-      const currentRoot = getVaultRoot();
-      openDb(currentRoot);
-      initJobServiceForVault(currentRoot);
-      await startVaultWatcher(currentRoot, notifyVaultChanged);
-      startWritingScanScheduler();
-      startArchiveContScheduler();
-    }
-    // SKY-10890: consume only once the move has actually succeeded — a
-    // mid-move failure (antivirus, a locked file, a full disk) throws out of
-    // moveVaultAtomic above, so this line is never reached and the token
-    // stays valid for retry.
-    consumeGuidedMoveToken(payload.sessionToken);
-
-    const verificationWarning = !moveResult.verification.ok
-      ? moveResult.verification.message
-      : undefined;
-    return { moved: true, newVaultPath: gate.targetPath, verificationWarning };
-  },
-
   // SKY-10367: relocate the entire story vault to a plain local folder — the
-  // default entry point for "Move to a different folder". Shares the same
-  // atomic move + post-move verification as VAULT_GUIDED_FOLDER_MOVE, but the
-  // target isn't restricted to the home directory: checkSinglePathGate (the
-  // same SEC-11 pattern used by VAULT_CREATE_BLANK) authorises any path the
-  // user picked via a real vault:pick-folder dialog, or one already in the
-  // recent-projects allowlist.
+  // only entry point for "Move to a different folder" since SKY-11804 removed
+  // the branded cloud-provider variant. The target isn't restricted to the
+  // home directory: checkSinglePathGate (the same SEC-11 pattern used by
+  // VAULT_CREATE_BLANK) authorises any path the user picked via a real
+  // vault:pick-folder dialog, or one already in the recent-projects
+  // allowlist.
   [IPC_CHANNELS.VAULT_LOCAL_FOLDER_MOVE]: async (
     payload: VaultLocalMovePayload,
   ) => {
@@ -6638,8 +6594,11 @@ const handlers: IpcHandlers = {
     if (!targetCheck.ok) return { error: targetCheck.error };
 
     // SKY-10895: release every handle the app holds inside the source vault
-    // before the rename — see the matching comment in VAULT_GUIDED_FOLDER_MOVE
-    // above.
+    // before the rename — not just the watcher + DB. On Windows, fs.rename
+    // refuses to touch a directory that still has open handles anywhere in
+    // its tree (EPERM), even though POSIX allows it. Always re-acquire in
+    // `finally` so a failed/rolled-back move never leaves the app running
+    // with no watcher, no DB, and no schedulers.
     stopWritingScanScheduler();
     stopArchiveContScheduler();
     await stopBoardWatcher();
@@ -6667,8 +6626,10 @@ const handlers: IpcHandlers = {
       startWritingScanScheduler();
       startArchiveContScheduler();
     }
-    // SKY-10890: consume only once the move has actually succeeded — see the
-    // matching comment in VAULT_GUIDED_FOLDER_MOVE above.
+    // SKY-10890: consume only once the move has actually succeeded — a
+    // mid-move failure (antivirus, a locked file, a full disk) throws out of
+    // moveVaultAtomic above, so this line is never reached and the token
+    // stays valid for retry.
     consumeSinglePathToken(payload?.registrationToken);
 
     const verificationWarning = !moveResult.verification.ok
@@ -7203,7 +7164,7 @@ const handlers: IpcHandlers = {
   // authoritative (it's the only way a folder — which has no frontmatter —
   // can carry an icon); frontmatter `icon:` stays as a read-only fallback for
   // notes that only ever had that field seeded.
-  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (): Record<string, string> => {
+  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (): Record<string, string | { icon: string; color: string }> => {
     const root = getNotesVaultRoot();
     return { ...batchReadVaultIcons(root), ...readIconMap(root) };
   },
@@ -7214,8 +7175,8 @@ const handlers: IpcHandlers = {
     ensureNotesVaultDir();
     const root = getNotesVaultRoot();
     safeVaultEntryIpcJoin(root, payload.path);
-    setIcon(root, payload.path, payload.icon);
-    return { path: payload.path, icon: payload.icon };
+    setIcon(root, payload.path, payload.icon, payload.color ?? null);
+    return { path: payload.path, icon: payload.icon, color: payload.color ?? null };
   },
 
   // ─── SKY-11183 (Notes Board 1/9): board metadata store IPC ──────────────
@@ -7231,7 +7192,17 @@ const handlers: IpcHandlers = {
     const root = getNotesVaultRoot();
     const folderPath = payload.folderPath ?? '';
     if (folderPath) safeVaultDirIpcJoin(root, folderPath);
-    return getNotesBoard(root, folderPath);
+    const board = getNotesBoard(root, folderPath);
+    // SKY-11189 §8: "Delete does not move the file immediately ... hidden
+    // from the UI." A pending-delete item still exists in Store A/B — hide
+    // it here, at the read boundary, rather than mutating either store.
+    return {
+      ...board,
+      children: board.children.filter(
+        (c) => !isVaultRelPathPending(root, folderPath ? `${folderPath}/${c.path}` : c.path),
+      ),
+      furniture: board.furniture.filter((f) => !isFurniturePending(root, folderPath, f.id)),
+    };
   },
   [IPC_CHANNELS.NOTES_BOARD_PATCH_LAYOUT]: (
     payload: NotesBoardPatchLayoutPayload
@@ -7301,6 +7272,37 @@ const handlers: IpcHandlers = {
     if (folderPath) safeVaultDirIpcJoin(root, folderPath);
     safeVaultEntryIpcJoin(root, folderPath ? `${folderPath}/${payload.itemPath}` : payload.itemPath);
     return notesBoardItemDeleteStub(root, folderPath, payload.itemPath);
+  },
+
+  // ─── SKY-11189 (Notes Board 6/9): trash split by target type + deferred-delete (§7/§8) ──
+  [IPC_CHANNELS.NOTES_BOARD_TRASH_ITEMS]: (
+    payload: NotesBoardTrashItemsPayload
+  ): NotesBoardTrashItemsResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const folderPath = payload.folderPath ?? '';
+    if (folderPath) safeVaultDirIpcJoin(root, folderPath);
+    for (const target of payload.targets) {
+      if (target.kind !== 'furniture') {
+        safeVaultEntryIpcJoin(root, folderPath ? `${folderPath}/${target.itemPath}` : target.itemPath);
+      }
+    }
+    const { entries } = notesTrashTargets(root, folderPath, payload.targets);
+    return { entries: entries.map(toIpcPendingEntry), undoWindowMs: NOTES_TRASH_UNDO_WINDOW_MS };
+  },
+  [IPC_CHANNELS.NOTES_BOARD_RESTORE]: (payload: NotesBoardRestorePayload): NotesBoardRestoreResponse => {
+    ensureNotesVaultDir();
+    return notesTrashRestoreEntry(payload.id);
+  },
+  [IPC_CHANNELS.NOTES_BOARD_RECENTLY_DELETED_LIST]: (): NotesBoardRecentlyDeletedListResponse => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    return { entries: notesTrashListPendingForVault(root).map(toIpcPendingEntry) };
+  },
+  [IPC_CHANNELS.NOTES_BOARD_EMPTY_TRASH]: async (): Promise<NotesBoardEmptyTrashResponse> => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    return notesTrashEmptyTrash(root);
   },
 
   // ─── SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5) ──
@@ -8049,15 +8051,15 @@ const handlers: IpcHandlers = {
     return { proposal: updated, scene: responseScene };
   },
 
-  // ─── SKY-863: Cloud-sync conflict detection + lockfile ───────────────────
+  // ─── SKY-863: concurrent-session lockfile ────────────────────────────────
 
-  [IPC_CHANNELS.VAULT_CHECK_CONFLICTS]: async (): Promise<import('./ipc.js').VaultCheckConflictsResponse> => {
+  [IPC_CHANNELS.VAULT_CHECK_SESSION_LOCK]: async (): Promise<import('./ipc.js').VaultCheckSessionLockResponse> => {
     const vaultRoot = getVaultRoot();
     const ts = () => new Date().toISOString();
 
-    // SKY-1128: acquireLockfile is now atomic (O_CREAT|O_EXCL / 'ax').
-    // It returns null when a live process (same or foreign host) already holds
-    // the lock — no TOCTOU between the old checkLockfile read and write.
+    // SKY-1128: acquireLockfile is atomic (O_CREAT|O_EXCL / 'ax'). It returns
+    // null when a live process (same or foreign host) already holds the lock —
+    // no TOCTOU between the old checkLockfile read and write.
     let lockfileConflict: import('./ipc.js').LockfileConflictInfo | null = null;
     const lock = acquireLockfile(vaultRoot);
     if (lock === null) {
@@ -8079,31 +8081,8 @@ const handlers: IpcHandlers = {
       });
     }
 
-    // 3. Detect and resolve conflicts.
-    const conflicts = detectConflicts(vaultRoot);
-    const resolved: import('./ipc.js').ResolvedConflictInfo[] = [];
-    for (const conflict of conflicts) {
-      try {
-        const result = resolveConflict(vaultRoot, conflict);
-        appendSyncEvent(vaultRoot, {
-          type: 'conflict_resolved',
-          ts: ts(),
-          detail: {
-            conflictPath: result.conflictPath,
-            originalPath: result.originalPath,
-            keptPath: result.keptPath,
-            archivedPath: result.archivedPath,
-            provider: result.provider,
-          },
-        });
-        resolved.push(result);
-      } catch {
-        // Non-fatal: log but don't crash the vault open if a single conflict can't be resolved.
-      }
-    }
-
     const dismissed = (loadVaultSettings().syncWarningDismissed ?? {})[vaultRoot] ?? false;
-    return { resolved, lockfileConflict, dismissed };
+    return { lockfileConflict, dismissed };
   },
 
   [IPC_CHANNELS.VAULT_DISMISS_SYNC_WARNING]: (): { ok: true } => {
@@ -8756,12 +8735,19 @@ function createWindow() {
     if (quitFlushHandled) return;
     event.preventDefault();
     const win = mainWindow;
-    flushRendererManifestSave(win)
-      .catch(() => { /* best-effort — timeout/error still allows quit to proceed */ })
-      .finally(() => {
-        quitFlushHandled = true;
-        if (!win.isDestroyed()) win.close();
-      });
+    Promise.all([
+      flushRendererManifestSave(win).catch(() => { /* best-effort — timeout/error still allows quit to proceed */ }),
+      // SKY-11189 §8: "Flush happens on whichever comes first: the undo
+      // window elapsing, the app quitting, or the user pressing 'Empty'."
+      // Awaited here so a quit within the undo window still lands every
+      // pending note/folder in the OS trash rather than abandoning it
+      // in limbo (in-memory-only state that a closed process can't act on
+      // after the fact).
+      flushAllPendingNotesTrash().catch(() => { /* best-effort, same as above */ }),
+    ]).finally(() => {
+      quitFlushHandled = true;
+      if (!win.isDestroyed()) win.close();
+    });
   });
 
   // SKY-11363: when a renderer's `beforeunload` handler cancels the unload
@@ -10538,6 +10524,17 @@ function registerBetaReportRunHandler(): void {
       modelProducedText = !isEmptyModelOutput(responseText);
 
       const parsed = parseBetaReportResponse(responseText);
+      // SKY-11816: a response the model DID send but that never resolved to a
+      // real summary object (garbage, or a format the parser can't recover —
+      // e.g. an unterminated JSON object) must not silently save a fake
+      // zero-score report. Surface a visible, actionable error instead — the
+      // "silent revert to No beta reads yet" the owner hit is this exact gap.
+      if (!parsed.summaryFound) {
+        throw new SafeIpcError(
+          "The Beta Reader's response couldn't be parsed into a report. This can happen with " +
+            'some local/reasoning models — try again, or try a different model in Settings > AI Agents.',
+        );
+      }
       const reportId = crypto.randomUUID();
       const createdAt = new Date().toISOString();
       const reactions: BetaReport['reactions'] = parsed.reactions.map((r) => ({

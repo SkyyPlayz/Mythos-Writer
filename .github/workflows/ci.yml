@@ -235,7 +235,7 @@ jobs:
       - name: Upload coverage report
         if: github.event_name != 'pull_request'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: coverage-report
           path: |
@@ -442,7 +442,7 @@ jobs:
 
       - name: Upload visual-capture artifacts
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: visual-capture-artifacts
           path: e2e-visual-artifacts/visual-capture/
@@ -478,8 +478,11 @@ jobs:
       - name: E2E — Local model picker (SKY-6933 sweep)
         run: xvfb-run --auto-servernum npm run test:e2e:lmp
 
-      - name: E2E — Cloud sync (SKY-6933 sweep, skip-guarded — deferred feature)
-        run: xvfb-run --auto-servernum npm run test:e2e:cloud-sync
+      # SKY-11804: replaces the retired cloud-sync shard. move-vault has had an
+      # npm script since SKY-10367 but no CI step, so the only E2E covering the
+      # surviving local vault move never ran on a PR.
+      - name: E2E — Move Vault wizard, local destination (SKY-11804)
+        run: xvfb-run --auto-servernum npm run test:e2e:move-vault
 
       - name: E2E — Continuity peek (SKY-8242 un-skipped, was flaky full-sequential-run)
         run: xvfb-run --auto-servernum npm run test:e2e:continuity-peek
@@ -498,7 +501,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-report-shard-1
           # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
@@ -717,7 +720,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-report-shard-2
           # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
@@ -839,7 +842,7 @@ jobs:
       - name: Upload visual-regression diffs on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: visual-regression-diffs
           path: e2e-visual-artifacts/visual-regression/
@@ -918,7 +921,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-report-shard-3
           # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
@@ -1078,6 +1081,9 @@ jobs:
       - name: E2E — production-team roles live end-to-end, reveal-point no-leak proof (SKY-11412/SKY-11411)
         run: xvfb-run --auto-servernum npm run test:e2e:production-roles
 
+      - name: E2E — Beta Reader Reports reasoning-model parser recovery (SKY-11816)
+        run: xvfb-run --auto-servernum npm run test:e2e:beta-report-reasoning-parser
+
       - name: E2E — Outline planning surface AC-OPL-QA-01..09 (SKY-3028)
         run: xvfb-run --auto-servernum npm run test:e2e:outline
 
@@ -1129,7 +1135,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-report-shard-4
           # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
@@ -1370,7 +1376,7 @@ jobs:
       - name: Upload Linux packages
         if: github.event_name != 'pull_request'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux-packages
           path: |
@@ -1499,7 +1505,7 @@ jobs:
       - name: Upload Windows packages
         if: github.event_name != 'pull_request'
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-packages
           path: |
@@ -1556,8 +1562,18 @@ jobs:
       # Unicode-preserving sanitizer + slug/collision helpers — pure logic,
       # but Windows-reserved-device-name and trailing-dot/space rules are
       # exactly the platform-specific part worth re-checking natively.
-      - name: Unit — notes vault name sanitizer suite (SKY-9027)
-        run: npm run test -w electron-main -- vaultNameSanitizer vault.test
+      #
+      # SKY-11887 adds the `kokoro` filter (kokoro.test.ts +
+      # kokoroDefaultVoice.test.ts). `kokoroWasmPathPrefix()` turns a bundled
+      # wasm dir into the `file:` URL onnxruntime-web must be given — feeding it
+      # a bare `C:\...\` path made Node's ESM loader reject the runtime module
+      # (`ERR_UNSUPPORTED_ESM_URL_SCHEME`, scheme `c:`) and killed Kokoro TTS in
+      # the packaged Windows build. Its assertions are written to hold on any
+      # platform, but only here do they run against real `path.win32` input.
+      # The model-weight tests self-skip (weights are gitignored); this adds
+      # ~2 files / a few hundred ms.
+      - name: Unit — notes vault name sanitizer + Kokoro wasm path suites (SKY-9027, SKY-11887)
+        run: npm run test -w electron-main -- vaultNameSanitizer vault.test kokoro
 
       - name: Build (electron-vite)
         env:
@@ -1592,15 +1608,6 @@ jobs:
       # this defect is invisible everywhere except here.
       - name: E2E — Move Vault wizard releases handles before rename on native Windows (SKY-10895)
         run: npx playwright test e2e/move-vault-local-real.spec.ts --reporter=list
-
-      # SKY-10910 gap 5: the cloud-sync guided-move path (move-vault-real.spec.ts)
-      # was previously POSIX-only — it satisfies checkGuidedMoveGate's
-      # homedir-containment check by overriding $HOME, which native Windows
-      # (os.homedir() reads USERPROFILE, not HOME) silently ignored. The spec
-      # now branches its home-override env var by platform so this runs for
-      # real here too.
-      - name: E2E — Move Vault wizard cloud-sync guided move on native Windows (SKY-10910 gap 5)
-        run: npx playwright test e2e/move-vault-real.spec.ts --reporter=list
 
       # SKY-11058: swapping the active notes vault re-points the chokidar
       # watcher + DB handles from the old vault dir to the new one. Windows
@@ -1648,7 +1655,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: notes-windows-e2e-report
           # The e2e npm scripts pass --reporter=list, which replaces the html

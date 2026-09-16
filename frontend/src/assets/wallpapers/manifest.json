@@ -5,31 +5,38 @@
     "aurora": [
       {
         "file": "aurora-1.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_43_21 PM (2).png",
         "width": 1916,
-        "height": 821
+        "height": 821,
+        "position": "71% center"
       },
       {
         "file": "aurora-2.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_43_22 PM (3).png",
         "width": 1916,
         "height": 821
       },
       {
         "file": "aurora-3.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_43_22 PM (4).png",
         "width": 1916,
         "height": 821
       },
       {
         "file": "aurora-4.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (1).png",
         "width": 1672,
         "height": 941
       },
       {
         "file": "aurora-5.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (2).png",
         "width": 1672,
         "height": 941
       },
       {
         "file": "aurora-6.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_57_03 PM (3).png",
         "width": 1672,
         "height": 941
       }
@@ -37,16 +44,20 @@
     "cyber": [
       {
         "file": "cyber-1.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_40_26 PM (1).png",
         "width": 1916,
         "height": 821
       },
       {
         "file": "cyber-2.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_40_27 PM (2).png",
         "width": 1916,
-        "height": 821
+        "height": 821,
+        "position": "96% center"
       },
       {
         "file": "cyber-3.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_40_27 PM (4).png",
         "width": 1916,
         "height": 821
       }
@@ -54,60 +65,76 @@
     "ember": [
       {
         "file": "ember-1.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_34_02 PM (1).png",
         "width": 1942,
-        "height": 809
+        "height": 809,
+        "position": "19% center"
       },
       {
         "file": "ember-2.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_34_03 PM (2).png",
         "width": 1942,
         "height": 809
       },
       {
         "file": "ember-3.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_34_03 PM (4).png",
         "width": 1942,
-        "height": 809
+        "height": 809,
+        "position": "81% center"
       }
     ],
     "ice": [
       {
         "file": "ice-1.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_35_49 PM (1).png",
         "width": 1916,
-        "height": 821
+        "height": 821,
+        "position": "25% center"
       },
       {
         "file": "ice-2.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_35_49 PM (2).png",
         "width": 1916,
         "height": 821
       },
       {
         "file": "ice-3.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_35_50 PM (3).png",
         "width": 1916,
         "height": 821
       },
       {
         "file": "ice-4.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_35_50 PM (4).png",
         "width": 1916,
-        "height": 821
+        "height": 821,
+        "position": "92% center"
       }
     ],
     "classic": [
       {
         "file": "classic-1.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_45_08 PM (1).png",
         "width": 1942,
         "height": 809
       },
       {
         "file": "classic-2.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_45_08 PM (2).png",
         "width": 1942,
-        "height": 809
+        "height": 809,
+        "position": "96% center"
       },
       {
         "file": "classic-3.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_45_09 PM (3).png",
         "width": 1942,
         "height": 809
       },
       {
         "file": "classic-4.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_45_09 PM (4).png",
         "width": 1942,
         "height": 809
       }
@@ -115,26 +142,31 @@
     "noir": [
       {
         "file": "noir-1.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_21_13 PM (1).png",
         "width": 1672,
         "height": 941
       },
       {
         "file": "noir-2.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_21_14 PM (4).png",
         "width": 1672,
         "height": 941
       },
       {
         "file": "noir-3.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 09_07_15 PM (2).png",
         "width": 1672,
         "height": 941
       },
       {
         "file": "noir-4.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 09_07_16 PM (3).png",
         "width": 1672,
         "height": 941
       },
       {
         "file": "noir-5.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 09_07_16 PM (4).png",
         "width": 1672,
         "height": 941
       }
@@ -142,26 +174,31 @@
     "royal": [
       {
         "file": "royal-1.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_28_21 PM (2).png",
         "width": 1672,
         "height": 941
       },
       {
         "file": "royal-2.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_28_23 PM (4).png",
         "width": 1672,
         "height": 941
       },
       {
         "file": "royal-3.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 09_16_52 PM (2).png",
         "width": 1672,
         "height": 941
       },
       {
         "file": "royal-4.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 09_16_53 PM (3).png",
         "width": 1672,
         "height": 941
       },
       {
         "file": "royal-5.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 09_16_53 PM (4).png",
         "width": 1672,
         "height": 941
       }
@@ -169,43 +206,58 @@
     "sunset": [
       {
         "file": "sunset-1.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 09_04_12 PM (1).png",
         "width": 1916,
-        "height": 821
+        "height": 821,
+        "position": "71% center"
       },
       {
         "file": "sunset-2.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 09_04_13 PM (2).png",
         "width": 1916,
-        "height": 821
+        "height": 821,
+        "position": "63% center"
       },
       {
         "file": "sunset-3.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 09_04_13 PM (3).png",
         "width": 1916,
-        "height": 821
+        "height": 821,
+        "position": "67% center"
       },
       {
         "file": "sunset-4.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 09_04_13 PM (4).png",
         "width": 1916,
-        "height": 821
+        "height": 821,
+        "position": "92% center"
       }
     ],
     "verdant": [
       {
         "file": "verdant-1.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_30_59 PM (1).png",
         "width": 1942,
-        "height": 809
+        "height": 809,
+        "position": "73% center"
       },
       {
         "file": "verdant-2.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_30_59 PM (2).png",
         "width": 1942,
-        "height": 809
+        "height": 809,
+        "position": "58% center"
       },
       {
         "file": "verdant-3.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_31_00 PM (3).png",
         "width": 1942,
-        "height": 809
+        "height": 809,
+        "position": "81% center"
       },
       {
         "file": "verdant-4.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_31_00 PM (4).png",
         "width": 1942,
         "height": 809
       }
@@ -213,21 +265,26 @@
     "winter": [
       {
         "file": "winter-1.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_06_13 PM.png",
         "width": 1672,
         "height": 941
       },
       {
         "file": "winter-2.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_23_25 PM.png",
         "width": 1938,
-        "height": 811
+        "height": 811,
+        "position": "1% center"
       },
       {
         "file": "winter-3.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_59_22 PM (2).png",
         "width": 1672,
         "height": 941
       },
       {
         "file": "winter-4.webp",
+        "source": "ChatGPT Image Sep 8, 2026, 08_59_22 PM (3).png",
         "width": 1672,
         "height": 941
       }

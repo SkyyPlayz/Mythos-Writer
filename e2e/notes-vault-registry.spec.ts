@@ -236,11 +236,13 @@ test.describe.serial('SKY-11058 — Notes vault registry (fresh profile)', () =>
       .toBe(2);
     const registry = readRegistry(bundle)!;
     const research = registry.vaults.find((v) => v.displayName === SECOND_VAULT_NAME);
-    expect(research).toMatchObject({ dirName: SECOND_VAULT_NAME, origin: 'created' });
+    // SKY-11451: a newly created inner vault is grouped under `Notes/`, unlike
+    // the flat legacy entry migrated in TC-NVR-01.
+    expect(research).toMatchObject({ dirName: `Notes/${SECOND_VAULT_NAME}`, origin: 'created' });
     expect(registry.activeId).toBe(
       registry.vaults.find((v) => v.displayName === 'Notes')!.id,
     );
-    expect(fs.existsSync(path.join(bundle, SECOND_VAULT_NAME))).toBe(true);
+    expect(fs.existsSync(path.join(bundle, 'Notes', SECOND_VAULT_NAME))).toBe(true);
 
     // The picker did NOT switch — the button still shows the original vault…
     await expect(
@@ -299,7 +301,7 @@ test.describe.serial('SKY-11058 — Notes vault registry (fresh profile)', () =>
           return undefined;
         }
       }, { timeout: 10_000 })
-      .toBe(path.join(bundle, SECOND_VAULT_NAME));
+      .toBe(path.join(bundle, 'Notes', SECOND_VAULT_NAME));
   });
 
   test('TC-NVR-04: a note created via the Notes tree lands in the NEW vault directory', async () => {
@@ -313,8 +315,8 @@ test.describe.serial('SKY-11058 — Notes vault registry (fresh profile)', () =>
     await dialog.locator('[data-testid="ntd-submit"]').click();
     await expect(dialog).not.toBeVisible({ timeout: 8_000 });
 
-    // The file lands inside <mythosRoot>/Research/, NOT the original vault.
-    const newNotePath = path.join(bundle, SECOND_VAULT_NAME, `${NEW_NOTE_TITLE}.md`);
+    // The file lands inside <mythosRoot>/Notes/Research/, NOT the original vault.
+    const newNotePath = path.join(bundle, 'Notes', SECOND_VAULT_NAME, `${NEW_NOTE_TITLE}.md`);
     await expect.poll(() => fs.existsSync(newNotePath), { timeout: 10_000 }).toBe(true);
     expect(
       fs.existsSync(path.join(bundle, 'Notes Vault', `${NEW_NOTE_TITLE}.md`)),

@@ -60,7 +60,7 @@ Templates are available when you create a new story (click **+** next to *Story 
 ## Key features
 
 - **Story Vault** — organise your manuscript as Stories → Chapters → Scenes; each scene is a Markdown file you own
-- **Notes Vault** — a free-form Markdown folder for world-building notes, research, and reference; its storage location (local or cloud-synced) is shown by the vault status badge in Settings
+- **Notes Vault** — a free-form Markdown folder for world-building notes, research, and reference; its location is shown in Settings and you can move it any time
 - **Project templates** — four bundled vault structures (Novel, Short Story, World-building Bible, Series Bible); save your own from any project and reuse them at onboarding
 - **Rich scene editor** — TipTap-powered editor with WikiLinks (`[[Character Name]]`), draft states (In Progress / Review / Final), and word count
 - **Writing modes** — Normal, Focus (distraction-free), and Edit (with inline AI suggestions); toggle with `Ctrl+Shift+N/F/E`
@@ -72,7 +72,7 @@ Templates are available when you create a new story (click **+** next to *Story 
 - **Export** — one-click EPUB and DOCX export (File → Export…)
 - **Snapshot history** — automatic per-scene version snapshots; right-click the editor to restore
 - **Auto-updater** — Stable and Beta release channels; updates install in the background
-- **Vault status badge** — at-a-glance indicator in Settings showing whether your vault is stored locally or synced via a cloud provider (Google Drive, Dropbox, iCloud Drive, OneDrive)
+- **Local-first storage** — your vaults are plain folders on your own disk. No account, no upload, no sync service; Settings → Sync & Backup shows the location and moves the whole vault to another folder in one pass
 - **Getting Started checklist** — a guided panel walks new users through writing their first scene, adding a character, trying Brainstorm, and exploring the Notes Vault; dismissible once you're ready to fly solo
 
 ## Documentation

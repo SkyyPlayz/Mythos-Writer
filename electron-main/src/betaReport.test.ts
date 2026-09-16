@@ -64,6 +64,65 @@ describe('parseBetaReportResponse', () => {
     expect(parsed.reactions).toHaveLength(2);
     expect(parsed.reactions[0]).toMatchObject({ kind: 'loved', sceneId: 'scene-1', quote: 'the lantern flickered' });
     expect(parsed.reactions[1].kind).toBe('confused');
+    expect(parsed.summaryFound).toBe(true);
+  });
+
+  // SKY-11816: local reasoning models (LM Studio, DeepSeek-R1 distills, etc.)
+  // routinely pretty-print JSON across multiple indented lines and wrap it in
+  // markdown fences despite being told "one JSON object per line, no
+  // markdown fences" — unlike compliant models (Claude), which follow that
+  // instruction closely. The parser must recover the report either way.
+  it('parses a pretty-printed, multi-line summary wrapped in a markdown fence (reasoning-model formatting)', () => {
+    const text = [
+      'Here is my read of this chapter:',
+      '',
+      '```json',
+      '{',
+      '  "type": "summary",',
+      '  "overall": 74,',
+      '  "categories": {',
+      '    "hook": 80,',
+      '    "pacing": 60,',
+      '    "clarity": 70,',
+      '    "emotion": 75',
+      '  },',
+      '  "feedback": "Solid pacing, a little slow in the middle."',
+      '}',
+      '```',
+      '',
+      '```json',
+      '{',
+      '  "type": "reaction",',
+      '  "kind": "stumbled",',
+      '  "sceneId": "scene-1",',
+      '  "quote": "the lantern flickered",',
+      '  "where": "Ch. 1 - Scene 1",',
+      '  "note": "Lost the thread here."',
+      '}',
+      '```',
+    ].join('\n');
+
+    const parsed = parseBetaReportResponse(text);
+
+    expect(parsed.summaryFound).toBe(true);
+    expect(parsed.summary.overallScore).toBe(74);
+    expect(parsed.summary.feedback).toBe('Solid pacing, a little slow in the middle.');
+    expect(parsed.reactions).toHaveLength(1);
+    expect(parsed.reactions[0]).toMatchObject({ kind: 'stumbled', sceneId: 'scene-1' });
+  });
+
+  it('parses a compact summary object embedded in a `<think>`-stripped response with leading/trailing prose', () => {
+    const text = [
+      'Sure, here is my honest reaction as a first-time reader.',
+      '{"type":"summary","overall":88,"categories":{"hook":90,"pacing":85,"clarity":88,"emotion":90},"feedback":"Gripping opener."}',
+      '{"type":"reaction","kind":"loved","sceneId":"scene-1","quote":"the lantern flickered","where":"Ch. 1","note":"Loved this."}',
+      'Hope that helps!',
+    ].join('\n');
+
+    const parsed = parseBetaReportResponse(text);
+    expect(parsed.summaryFound).toBe(true);
+    expect(parsed.summary.overallScore).toBe(88);
+    expect(parsed.reactions).toHaveLength(1);
   });
 
   it('skips malformed JSON lines without throwing', () => {
@@ -118,12 +177,24 @@ describe('parseBetaReportResponse', () => {
     expect(parsed.summary.categories).toHaveLength(BETA_REPORT_CATEGORIES.length);
     expect(parsed.summary.feedback).toMatch(/could not produce a structured report/i);
     expect(parsed.reactions).toEqual([]);
+    // SKY-11816: callers that need to tell "nothing parsed" apart from a real
+    // report (e.g. to surface a visible error instead of saving this
+    // placeholder) check this flag rather than trusting `summary` truthiness.
+    expect(parsed.summaryFound).toBe(false);
   });
 
   it('handles empty input', () => {
     const parsed = parseBetaReportResponse('');
     expect(parsed.summary.overallScore).toBe(0);
     expect(parsed.reactions).toEqual([]);
+    expect(parsed.summaryFound).toBe(false);
+  });
+
+  it('does not mis-parse an unterminated JSON object as a report', () => {
+    // A response that got cut off mid-object (e.g. a truncated stream) must
+    // not be treated as a valid, if odd, report.
+    const parsed = parseBetaReportResponse('{"type":"summary","overall":80,"categories":{"hook":1');
+    expect(parsed.summaryFound).toBe(false);
   });
 });
 

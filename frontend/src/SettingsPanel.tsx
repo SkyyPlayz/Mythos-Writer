@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { FocusPrefs } from './types';
 import {
   applyLiquidNeonTokens,
@@ -13,7 +13,6 @@ import {
 } from './theme/liquidNeonEngine';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import { resolveAxisTokens } from './themeAxis';
-import { detectCloudProvider } from './lib/cloudSync';
 import MoveVaultWizard from './MoveVaultWizard';
 import SecurityWarningDialog from './components/SettingsPanel/SecurityWarningDialog';
 import AdvancedAppearancePopover from './components/SettingsPanel/AdvancedAppearancePopover';
@@ -22,7 +21,6 @@ import ProviderSection from './components/SettingsPanel/sections/ProviderSection
 import ApiKeySection from './components/SettingsPanel/sections/ApiKeySection';
 import AccountSection from './components/SettingsPanel/sections/AccountSection';
 import VaultPathsSection from './components/SettingsPanel/sections/VaultPathsSection';
-import MythosFormatSection from './components/SettingsPanel/sections/MythosFormatSection';
 import VaultHealthSection from './components/SettingsPanel/sections/VaultHealthSection';
 import AgentsSection from './components/SettingsPanel/sections/AgentsSection';
 import AutoLinkerSection from './components/SettingsPanel/sections/AutoLinkerSection';
@@ -129,7 +127,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
   // SKY-861/SKY-1112: Cloud-sync vault placement entry point.
   const [showMoveWizard, setShowMoveWizard] = useState(false);
-  const vaultProvider = useMemo(() => detectCloudProvider(vaults.storyVaultPath), [vaults.storyVaultPath]);
 
   // Provider state (MYT-779)
   const [providerKind, setProviderKind] = useState<ProviderKind>('anthropic');
@@ -1035,7 +1032,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               {/* M6: Auto Note Linker — FIRST card per spec §12 */}
               <VaultAutoLinkerSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
 
-              <AccountSection vaults={vaults} vaultProvider={vaultProvider} onMoveVault={handleMoveVault} />
+              <AccountSection vaults={vaults} onMoveVault={handleMoveVault} />
 
               {/* SKY-11154 (parent spec SKY-11141 §2): "Vaults folder" row —
                   the parent folder holding every Mythos vault, with an
@@ -1063,9 +1060,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 onPickVaultFolder={handlePickVaultFolder}
                 onSaveVaults={handleSaveVaults}
               />
-
-              {/* Beta 4 M5: vault format card + MythosVault upgrade entry */}
-              <MythosFormatSection />
 
               <VaultHealthSection />
 
@@ -1099,7 +1093,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           )}
 
           {settingsCategory === 'sync' && (
-            <SyncBackupSection vaults={vaults} vaultProvider={vaultProvider} onMoveVault={handleMoveVault} />
+            <SyncBackupSection vaults={vaults} onMoveVault={handleMoveVault} />
           )}
 
           {settingsCategory === 'shortcuts' && <ShortcutsSection />}

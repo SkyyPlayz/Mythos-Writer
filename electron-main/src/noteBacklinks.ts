@@ -1,7 +1,8 @@
 // SKY-203: Note-level backlinks — pure logic extracted for testability
 import path from 'path';
 import { listVaultFiles, readVaultFile } from './vault.js';
-import type { NoteBacklinkEntry } from './ipc.js';
+import { findColumnRefBacklinks } from './notesBoard.js';
+import type { NoteBacklinkEntry, NoteBoardRefBacklinkEntry } from './ipc.js';
 
 /**
  * Scan all markdown files in `notesVaultRoot` for [[wikilinks]] that reference
@@ -13,12 +14,17 @@ import type { NoteBacklinkEntry } from './ipc.js';
  *   - [[folder/stem]]    — last segment is compared against the stem
  *
  * Self-links (when a file's path equals `notePath`) are excluded.
+ *
+ * SKY-11188: also returns `boardRefs` — Notes Board `column` items whose
+ * `ref` resolves to this note (§4/§11). A note linked from both prose and a
+ * board shows up in both lists; they are not merged into one, since a board
+ * ref points at a folder, not a linking note.
  */
 export function getNoteBacklinks(
   notesVaultRoot: string,
   notePath: string,
-): { notePath: string; backlinks: NoteBacklinkEntry[] } {
-  if (!notePath) return { notePath: '', backlinks: [] };
+): { notePath: string; backlinks: NoteBacklinkEntry[]; boardRefs: NoteBoardRefBacklinkEntry[] } {
+  if (!notePath) return { notePath: '', backlinks: [], boardRefs: [] };
 
   const stem = path.basename(notePath, '.md');
   // Regex: [[stem]] or [[stem|...]] or [[.../stem]] or [[.../stem|...]]
@@ -60,6 +66,7 @@ export function getNoteBacklinks(
   }
 
   backlinks.sort((a, b) => a.path.localeCompare(b.path));
-  return { notePath, backlinks };
+  const boardRefs = findColumnRefBacklinks(notesVaultRoot, notePath);
+  return { notePath, backlinks, boardRefs };
 }
 

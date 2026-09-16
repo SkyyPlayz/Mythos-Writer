@@ -3,70 +3,24 @@ import './MoveVaultWizard.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type SyncProvider = 'dropbox' | 'icloud' | 'google-drive' | 'onedrive';
-
-// SKY-10367: local folder is the default entry point — cloud is an explicit
-// secondary choice reached via a link from the folder step.
-type Destination = 'local' | 'cloud';
-type WizardStep = 'folder' | 'provider' | 'confirm' | 'test' | 'result';
+// SKY-11804: a vault move goes to a plain local folder, full stop. The branded
+// cloud-provider destination (Dropbox / iCloud / OneDrive / Google Drive) was
+// removed — Mythos Writer is local-first, and a vault is just files on disk the
+// user is free to put wherever they like.
+type WizardStep = 'folder' | 'confirm' | 'test' | 'result';
 
 type TestStatus = 'idle' | 'testing' | 'ok' | 'error';
 
-interface ProviderDef {
-  value: SyncProvider;
-  label: string;
-  description: string;
-  defaultHint: string;
-}
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const PROVIDERS: ProviderDef[] = [
-  {
-    value: 'dropbox',
-    label: 'Dropbox',
-    description: 'Works everywhere, requires Dropbox account.',
-    defaultHint: '~/Dropbox',
-  },
-  {
-    value: 'icloud',
-    label: 'iCloud Drive',
-    description: 'Free for macOS + iOS, Apple only.',
-    defaultHint: '~/Library/Mobile Documents/com~apple~CloudDocs',
-  },
-  {
-    value: 'onedrive',
-    label: 'OneDrive',
-    description: 'Windows and macOS, requires Microsoft account.',
-    defaultHint: '~/OneDrive',
-  },
-  {
-    value: 'google-drive',
-    label: 'Google Drive',
-    description: 'Works with Google Drive for Desktop.',
-    defaultHint: '~/Google Drive',
-  },
-];
+const STEP_LABELS = ['Choose folder', 'Confirm move', 'Verify access', 'Done'];
 
-const LOCAL_STEP_LABELS = ['Choose folder', 'Confirm move', 'Verify access', 'Done'];
-const CLOUD_STEP_LABELS = ['Choose provider', 'Locate folder', 'Confirm move', 'Verify access', 'Done'];
-
-function stepIndex(step: WizardStep, destination: Destination): number {
-  if (destination === 'local') {
-    switch (step) {
-      case 'folder': return 0;
-      case 'confirm': return 1;
-      case 'test': return 2;
-      case 'result': return 3;
-      default: return 0;
-    }
-  }
+function stepIndex(step: WizardStep): number {
   switch (step) {
-    case 'provider': return 0;
-    case 'folder': return 1;
-    case 'confirm': return 2;
-    case 'test': return 3;
-    case 'result': return 4;
+    case 'folder': return 0;
+    case 'confirm': return 1;
+    case 'test': return 2;
+    case 'result': return 3;
     default: return 0;
   }
 }
@@ -85,7 +39,7 @@ function parentDir(p: string): string | undefined {
 
 interface Props {
   onClose: () => void;
-  onSuccess: (newVaultPath: string, provider: SyncProvider | null) => void;
+  onSuccess: (newVaultPath: string) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -93,13 +47,10 @@ interface Props {
 export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  const [destination, setDestination] = useState<Destination>('local');
   const [step, setStep] = useState<WizardStep>('folder');
-  const [provider, setProvider] = useState<SyncProvider | null>(null);
   const [targetFolder, setTargetFolder] = useState('');
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [currentVaultPath, setCurrentVaultPath] = useState('');
-  const [syncConfirmed, setSyncConfirmed] = useState(false);
   const [testStatus, setTestStatus] = useState<TestStatus>('idle');
   const [testError, setTestError] = useState<string | null>(null);
   const [migrating, setMigrating] = useState(false);
@@ -134,39 +85,17 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
     return () => document.removeEventListener('keydown', handler);
   }, [onClose, migrating]);
 
-  const providerDef = PROVIDERS.find((p) => p.value === provider) ?? null;
-
-  const switchToCloud = useCallback(() => {
-    setDestination('cloud');
-    setTargetFolder('');
-    setSessionToken(null);
-    setTestStatus('idle');
-    setSyncConfirmed(false);
-    setStep('provider');
-  }, []);
-
-  const switchToLocal = useCallback(() => {
-    setDestination('local');
-    setTargetFolder('');
-    setSessionToken(null);
-    setTestStatus('idle');
-    setSyncConfirmed(false);
-    setStep('folder');
-  }, []);
-
   const handlePickFolder = useCallback(async () => {
-    const res = await window.api.pickFolder(
-      destination === 'local'
-        ? { title: 'Choose a new folder for your Story Vault', defaultPath: parentDir(currentVaultPath) }
-        : { title: providerDef ? `Select your ${providerDef.label} folder` : 'Select your sync folder' }
-    );
+    const res = await window.api.pickFolder({
+      title: 'Choose a new folder for your Story Vault',
+      defaultPath: parentDir(currentVaultPath),
+    });
     if (!res.cancelled && res.vaultRoot) {
       setTargetFolder(res.vaultRoot);
       setSessionToken(res.registrationToken ?? null);
-      setSyncConfirmed(false);
       setFolderAuthError(null);
     }
-  }, [destination, providerDef, currentVaultPath]);
+  }, [currentVaultPath]);
 
   const runWriteTest = useCallback(async () => {
     if (!targetFolder) return;
@@ -199,20 +128,13 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
 
   const handleMigrate = useCallback(async () => {
     if (!targetFolder || !sessionToken) return;
-    if (destination === 'cloud' && !provider) return;
     setMigrating(true);
     setMigrationError(null);
     try {
-      const result = destination === 'cloud'
-        ? await window.api.vaultGuidedFolderMove({
-            targetPath: targetFolder,
-            syncProvider: provider!,
-            sessionToken,
-          })
-        : await window.api.vaultLocalFolderMove({
-            targetPath: targetFolder,
-            registrationToken: sessionToken,
-          });
+      const result = await window.api.vaultLocalFolderMove({
+        targetPath: targetFolder,
+        registrationToken: sessionToken,
+      });
       if ('error' in result) {
         if (result.error === 'UNAUTHORIZED_PATH') {
           // SKY-10890: the folder authorization is gone (expired, or was
@@ -241,13 +163,13 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
     } finally {
       setMigrating(false);
     }
-  }, [destination, provider, targetFolder, sessionToken]);
+  }, [targetFolder, sessionToken]);
 
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget && !migrating) onClose();
   };
 
-  const dialogTitle = destination === 'local' ? 'Move vault to a different folder' : 'Move vault to cloud sync';
+  const dialogTitle = 'Move vault to a different folder';
 
   return (
     <div
@@ -274,43 +196,24 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
         </div>
 
         {/* Step bar */}
-        <StepBar step={step} destination={destination} />
+        <StepBar step={step} />
 
         {/* Body */}
         <div className="mv-body">
           {step === 'folder' && (
             <StepFolder
-              destination={destination}
-              providerDef={providerDef}
               targetFolder={targetFolder}
               authError={folderAuthError}
               onPick={handlePickFolder}
-              onBack={destination === 'cloud' ? () => setStep('provider') : null}
               onCancel={onClose}
-              onSwitchToCloud={switchToCloud}
               onNext={() => setStep('confirm')}
-            />
-          )}
-
-          {step === 'provider' && (
-            <StepProvider
-              selected={provider}
-              onSelect={(p) => {
-                setProvider(p);
-                setSyncConfirmed(false);
-              }}
-              onSwitchToLocal={switchToLocal}
-              onNext={() => setStep('folder')}
             />
           )}
 
           {step === 'confirm' && (
             <StepConfirm
-              destination={destination}
               currentVaultPath={currentVaultPath}
               targetFolder={targetFolder}
-              syncConfirmed={syncConfirmed}
-              onConfirmChange={setSyncConfirmed}
               onBack={() => setStep('folder')}
               onNext={() => {
                 setTestStatus('idle');
@@ -338,8 +241,7 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
           {step === 'result' && newVaultPath && (
             <StepResult
               newVaultPath={newVaultPath}
-              provider={destination === 'cloud' ? provider : null}
-              onDone={() => onSuccess(newVaultPath, destination === 'cloud' ? provider : null)}
+              onDone={() => onSuccess(newVaultPath)}
             />
           )}
         </div>
@@ -350,12 +252,11 @@ export default function MoveVaultWizard({ onClose, onSuccess }: Props) {
 
 // ─── StepBar ─────────────────────────────────────────────────────────────────
 
-function StepBar({ step, destination }: { step: WizardStep; destination: Destination }) {
-  const labels = destination === 'local' ? LOCAL_STEP_LABELS : CLOUD_STEP_LABELS;
-  const active = stepIndex(step, destination);
+function StepBar({ step }: { step: WizardStep }) {
+  const active = stepIndex(step);
   return (
     <ol className="mv-stepbar" aria-label="Wizard progress">
-      {labels.map((label, i) => {
+      {STEP_LABELS.map((label, i) => {
         const done = i < active;
         const isActive = i === active;
         return (
@@ -375,42 +276,26 @@ function StepBar({ step, destination }: { step: WizardStep; destination: Destina
   );
 }
 
-// ─── Step — Folder (local entry, or cloud folder-locate) ─────────────────────
+// ─── Step — Folder ───────────────────────────────────────────────────────────
 
 function StepFolder({
-  destination,
-  providerDef,
   targetFolder,
   authError,
   onPick,
-  onBack,
   onCancel,
-  onSwitchToCloud,
   onNext,
 }: {
-  destination: Destination;
-  providerDef: ProviderDef | null;
   targetFolder: string;
   authError: string | null;
   onPick: () => void;
-  onBack: (() => void) | null;
   onCancel: () => void;
-  onSwitchToCloud: () => void;
   onNext: () => void;
 }) {
   return (
     <div className="mv-step">
       <p className="mv-step-intro">
-        {destination === 'local'
-          ? "Choose a new folder for your Story Vault. Mythos Writer will move all your files there."
-          : `Select the ${providerDef?.label ?? 'sync'} folder where your vault will be stored. Use the button to browse using the OS file picker.`}
+        Choose a new folder for your Story Vault. Mythos Writer will move all your files there.
       </p>
-
-      {destination === 'cloud' && providerDef && (
-        <p className="mv-hint" data-testid="mv-default-hint">
-          Default location: <code className="mv-code">{providerDef.defaultHint}</code>
-        </p>
-      )}
 
       {authError && (
         <p className="mv-migration-error" role="alert" data-testid="mv-folder-auth-error">
@@ -439,37 +324,15 @@ function StepFolder({
         </button>
       </div>
 
-      {destination === 'local' && (
+      <div className="mv-footer">
         <button
           type="button"
-          className="mv-secondary-action"
-          onClick={onSwitchToCloud}
-          data-testid="mv-switch-to-cloud"
+          className="settings-btn settings-btn-cancel"
+          onClick={onCancel}
+          data-testid="mv-cancel"
         >
-          Move to a cloud-synced folder instead
+          Cancel
         </button>
-      )}
-
-      <div className="mv-footer">
-        {onBack ? (
-          <button
-            type="button"
-            className="settings-btn settings-btn-cancel"
-            onClick={onBack}
-            data-testid="mv-back-folder"
-          >
-            Back
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="settings-btn settings-btn-cancel"
-            onClick={onCancel}
-            data-testid="mv-cancel"
-          >
-            Cancel
-          </button>
-        )}
         <button
           type="button"
           className="settings-btn settings-btn-save"
@@ -484,93 +347,19 @@ function StepFolder({
   );
 }
 
-// ─── Step — Provider (explicit secondary choice) ──────────────────────────────
-
-function StepProvider({
-  selected,
-  onSelect,
-  onSwitchToLocal,
-  onNext,
-}: {
-  selected: SyncProvider | null;
-  onSelect: (p: SyncProvider) => void;
-  onSwitchToLocal: () => void;
-  onNext: () => void;
-}) {
-  return (
-    <div className="mv-step">
-      <p className="mv-step-intro">
-        Choose a cloud sync provider. Mythos Writer will move your vault to the
-        provider&apos;s folder so all your devices stay in sync.
-      </p>
-
-      <fieldset className="mv-provider-fieldset">
-        <legend className="mv-provider-legend">Sync provider</legend>
-        {PROVIDERS.map((p) => (
-          <label
-            key={p.value}
-            className={`mv-provider-card${selected === p.value ? ' mv-provider-card--selected' : ''}`}
-            data-testid={`provider-option-${p.value}`}
-          >
-            <input
-              type="radio"
-              name="mv-provider"
-              value={p.value}
-              checked={selected === p.value}
-              onChange={() => onSelect(p.value)}
-              aria-label={`${p.label}: ${p.description}`}
-            />
-            <span className="mv-provider-label">{p.label}</span>
-            <span className="mv-provider-desc">{p.description}</span>
-          </label>
-        ))}
-      </fieldset>
-
-      <button
-        type="button"
-        className="mv-secondary-action"
-        onClick={onSwitchToLocal}
-        data-testid="mv-switch-to-local"
-      >
-        Use a local folder instead
-      </button>
-
-      <div className="mv-footer">
-        <button
-          type="button"
-          className="settings-btn settings-btn-save"
-          onClick={onNext}
-          disabled={!selected}
-          data-testid="mv-next-provider"
-        >
-          Next
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ─── Step — Confirm ────────────────────────────────────────────────────────
 
 function StepConfirm({
-  destination,
   currentVaultPath,
   targetFolder,
-  syncConfirmed,
-  onConfirmChange,
   onBack,
   onNext,
 }: {
-  destination: Destination;
   currentVaultPath: string;
   targetFolder: string;
-  syncConfirmed: boolean;
-  onConfirmChange: (v: boolean) => void;
   onBack: () => void;
   onNext: () => void;
 }) {
-  const canProceed = destination === 'cloud' ? syncConfirmed : true;
-
   return (
     <div className="mv-step">
       <p className="mv-step-intro">Review the move before proceeding.</p>
@@ -590,30 +379,10 @@ function StepConfirm({
         </div>
       </dl>
 
-      {destination === 'cloud' ? (
-        <>
-          <label className="mv-confirm-label" data-testid="mv-confirm-label">
-            <input
-              type="checkbox"
-              checked={syncConfirmed}
-              onChange={(e) => onConfirmChange(e.target.checked)}
-              aria-label="I have confirmed the sync client is set up and syncing"
-              data-testid="mv-confirm-checkbox"
-            />
-            <span>I&apos;ve confirmed the sync client is set up and syncing on this machine.</span>
-          </label>
-
-          <p className="mv-hint">
-            Mythos Writer will not start syncing — your cloud provider handles that.
-            Don&apos;t move vault files manually while this wizard is running.
-          </p>
-        </>
-      ) : (
-        <p className="mv-hint">
-          Your vault will be moved to the new folder. The old folder will be
-          removed once the move completes.
-        </p>
-      )}
+      <p className="mv-hint">
+        Your vault will be moved to the new folder. The old folder will be
+        removed once the move completes.
+      </p>
 
       <div className="mv-footer">
         <button
@@ -628,7 +397,6 @@ function StepConfirm({
           type="button"
           className="settings-btn settings-btn-save"
           onClick={onNext}
-          disabled={!canProceed}
           data-testid="mv-proceed-confirm"
         >
           Proceed
@@ -730,15 +498,11 @@ function StepTest({
 
 function StepResult({
   newVaultPath,
-  provider,
   onDone,
 }: {
   newVaultPath: string;
-  provider: SyncProvider | null;
   onDone: () => void;
 }) {
-  const providerDef = provider ? PROVIDERS.find((p) => p.value === provider) : null;
-
   return (
     <div className="mv-step" data-testid="mv-step-result">
       <p className="mv-result-success" aria-live="polite" data-testid="mv-success-message">
@@ -752,18 +516,10 @@ function StepResult({
             <code className="mv-code">{newVaultPath}</code>
           </dd>
         </div>
-        {providerDef && (
-          <div className="mv-path-row">
-            <dt className="mv-path-dt">Provider</dt>
-            <dd className="mv-path-dd">{providerDef.label}</dd>
-          </div>
-        )}
       </dl>
 
       <p className="mv-hint">
-        {providerDef
-          ? 'Sync is now active. Your cloud provider will begin syncing the vault to other devices.'
-          : 'Your vault now lives at this local folder. Keep writing as usual.'}
+        Your vault now lives at this local folder. Keep writing as usual.
       </p>
 
       <div className="mv-footer mv-footer--center">

@@ -1,6 +1,6 @@
 /**
  * SKY-11186 — BoardCanvas: viewport culling, 3-tier LOD, thumbnail-aware
- * card sizes and the visible zoom-out limit (BOARDS-SPEC v2 §6/§9).
+ * card sizes and the visible zoom-out limit (BOARDS-SPEC v2 §6/§8).
  *
  * jsdom has no layout, so the scroll panel's size is stubbed through a
  * ResizeObserver that reports a fixed viewport; everything else — which
@@ -10,7 +10,7 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import BoardCanvas from './BoardCanvas';
-import type { BoardItem } from './BoardCanvas';
+import type { BoardFurnitureItemData, BoardItem } from './BoardCanvas';
 import { CARD_DEFAULT_H, CARD_THUMB_DEFAULT_H, CELL_H, ORIGIN_Y } from './boardLod';
 
 vi.mock('../../components/NoteThumbnail', () => ({
@@ -214,7 +214,7 @@ describe('3-tier LOD by on-screen size (§6)', () => {
   });
 });
 
-describe('thumbnail-aware sizes and layout (§6/§9)', () => {
+describe('thumbnail-aware sizes and layout (§6/§8)', () => {
   it('a note with a thumbnail defaults to 236×272; without, 236×154; thumb:false is text-only', () => {
     const items: BoardItem[] = [
       { ...notes(1)[0], path: 'plain.md', name: 'Plain' },
@@ -282,5 +282,332 @@ describe('the visible zoom-out limit (owner ruling 4)', () => {
   it('coerces an unsupported persisted value to the default', () => {
     render(<BoardCanvas items={notes(1)} savedLayout={{}} savedView={view} minZoom={7} />);
     expect(document.querySelector('.board-canvas__root')?.getAttribute('data-min-zoom')).toBe('40');
+  });
+});
+
+// ── SKY-11191 §10: overlay, minimap, and search reveal ──────────────────────
+
+describe('wiki-link overlay (§10)', () => {
+  const linked: BoardItem[] = [
+    { path: 'a.md', kind: 'note', name: 'A' },
+    { path: 'b.md', kind: 'note', name: 'B' },
+  ];
+  const links = [{ id: 'a→b', from: 'a.md', to: 'b.md', label: 'A links to B' }];
+
+  it('draws nothing until the toggle is on — it is opt-in', () => {
+    render(<BoardCanvas items={linked} savedLayout={{}} savedView={view} wikiLinks={links} />);
+    expect(screen.queryByTestId('board-link-overlay')).toBeNull();
+  });
+
+  it('draws one dashed connector, anchored on the two cards’ borders', () => {
+    render(
+      <BoardCanvas
+        items={linked}
+        savedLayout={{ 'a.md': { x: 0, y: 0, w: 100, h: 100 }, 'b.md': { x: 300, y: 0, w: 100, h: 100 } }}
+        savedView={view}
+        wikiLinks={links}
+        wikiLinkOverlay
+      />,
+    );
+    const line = document.querySelector('.board-canvas__link') as SVGLineElement;
+    expect(line).not.toBeNull();
+    // Right edge of A to left edge of B, both at the shared centre height.
+    expect(line.getAttribute('x1')).toBe('100');
+    expect(line.getAttribute('x2')).toBe('300');
+    expect(line.getAttribute('y1')).toBe('50');
+    expect(screen.getByTestId('board-link-overlay').getAttribute('data-connector-count')).toBe('1');
+  });
+
+  it('follows a card as it is dragged, without needing the layout to be saved first', () => {
+    render(
+      <BoardCanvas
+        items={linked}
+        savedLayout={{ 'a.md': { x: 0, y: 0, w: 100, h: 100 }, 'b.md': { x: 300, y: 0, w: 100, h: 100 } }}
+        savedView={view}
+        wikiLinks={links}
+        wikiLinkOverlay
+      />,
+    );
+    const card = screen.getByLabelText('Note card: B');
+    fireEvent.mouseDown(card, { button: 0, clientX: 0, clientY: 0 });
+    act(() => { fireEvent.mouseMove(window, { clientX: 200, clientY: 0 }); });
+    const line = document.querySelector('.board-canvas__link') as SVGLineElement;
+    expect(parseFloat(line.getAttribute('x2')!)).toBe(500); // 300 + 200 snapped to the 20px grid
+  });
+
+  it('anchors a link whose source is a column furniture box the canvas does not render', () => {
+    render(
+      <BoardCanvas
+        items={linked}
+        savedLayout={{ 'a.md': { x: 400, y: 0, w: 100, h: 100 } }}
+        savedView={view}
+        wikiLinks={[{ id: 'furniture:c1→a.md', from: 'furniture:c1', to: 'a.md', label: 'Cast links to A' }]}
+        linkAnchors={new Map([['furniture:c1', { x: 0, y: 0, w: 100, h: 100 }]])}
+        wikiLinkOverlay
+      />,
+    );
+    const line = document.querySelector('.board-canvas__link') as SVGLineElement;
+    expect(line.getAttribute('x1')).toBe('100');
+    expect(line.getAttribute('x2')).toBe('400');
+  });
+
+  it('SKY-11717: follows a column as it is dragged, ignoring the panel’s pre-drag anchor', () => {
+    const column: BoardFurnitureItemData = {
+      id: 'c1',
+      k: 'column',
+      x: 0,
+      y: 0,
+      w: 100,
+      h: 100,
+      title: 'Cast',
+      items: [{ t: 'A', ref: 'a.md' }],
+    };
+    render(
+      <BoardCanvas
+        items={linked}
+        savedLayout={{ 'a.md': { x: 400, y: 0, w: 100, h: 100 } }}
+        savedView={view}
+        furniture={[column]}
+        wikiLinks={[{ id: 'furniture:c1→a.md', from: 'furniture:c1', to: 'a.md', label: 'Cast links to A' }]}
+        // What the panel derived from Store B — correct now, stale the moment
+        // the drag starts, and never updated until the move commits.
+        linkAnchors={new Map([['furniture:c1', { x: 0, y: 0, w: 100, h: 100 }]])}
+        wikiLinkOverlay
+      />,
+    );
+    const line = () => document.querySelector('.board-canvas__link') as SVGLineElement;
+    expect(line().getAttribute('x1')).toBe('100');
+
+    const box = screen.getByLabelText('Cast. Column.');
+    fireEvent.mouseDown(box, { button: 0, clientX: 0, clientY: 0 });
+    act(() => { fireEvent.mouseMove(window, { clientX: 200, clientY: 0 }); });
+
+    // The box moved to 200..300, so its connector leaves the new right edge —
+    // mid-drag, with `linkAnchors` still reporting the old one.
+    expect(parseFloat(getComputedStyle(box).left)).toBe(200);
+    expect(parseFloat(line().getAttribute('x1')!)).toBe(300);
+    expect(parseFloat(line().getAttribute('x2')!)).toBe(400);
+  });
+});
+
+describe('minimap (§10)', () => {
+  it('renders one box per item and a viewport indicator, and nothing when toggled off', () => {
+    const { rerender } = render(
+      <BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} showMinimap />,
+    );
+    const map = screen.getByTestId('board-minimap');
+    expect(map.getAttribute('data-box-count')).toBe('3');
+    expect(map.querySelectorAll('.board-canvas__minimap-box')).toHaveLength(3);
+    expect(screen.getByTestId('board-minimap-viewport')).toBeTruthy();
+
+    rerender(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} />);
+    expect(screen.queryByTestId('board-minimap')).toBeNull();
+  });
+
+  it('maps a board too tall for the frame, including cards culled out of the DOM', () => {
+    render(<BoardCanvas items={notes(600)} savedLayout={{}} savedView={view} showMinimap />);
+    // Culling bounds the mounted cards; the map is of the whole board.
+    expect(document.querySelectorAll('.board-canvas__item').length).toBeLessThan(600);
+    expect(screen.getByTestId('board-minimap').getAttribute('data-box-count')).toBe('600');
+  });
+
+  it('is reconstructed from the board alone — nothing is read from or written to storage', () => {
+    const { unmount } = render(
+      <BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} showMinimap />,
+    );
+    const before = screen.getByTestId('board-minimap').innerHTML;
+    unmount();
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} showMinimap />);
+    expect(screen.getByTestId('board-minimap').innerHTML).toBe(before);
+  });
+});
+
+describe('search reveal (§10)', () => {
+  it('selects the requested item once the board holding it has loaded', () => {
+    const { rerender } = render(
+      <BoardCanvas items={[]} savedLayout={{}} savedView={view} selectRequest={{ itemPath: 'n0002.md', seq: 1 }} />,
+    );
+    // The request arrived before the board did — nothing to select yet.
+    expect(document.querySelector('[data-selected="true"]')).toBeNull();
+
+    rerender(
+      <BoardCanvas items={notes(4)} savedLayout={{}} savedView={view} selectRequest={{ itemPath: 'n0002.md', seq: 1 }} />,
+    );
+    expect(screen.getByLabelText('Note card: Note 2 Selected.')).toBeTruthy();
+  });
+
+  it('re-reveals the same item when the request is repeated with a new seq', () => {
+    const { rerender } = render(
+      <BoardCanvas items={notes(4)} savedLayout={{}} savedView={view} selectRequest={{ itemPath: 'n0001.md', seq: 1 }} />,
+    );
+    fireEvent.mouseDown(screen.getByLabelText('Note card: Note 3'), { button: 0 });
+    expect(screen.getByLabelText('Note card: Note 3 Selected.')).toBeTruthy();
+
+    rerender(
+      <BoardCanvas items={notes(4)} savedLayout={{}} savedView={view} selectRequest={{ itemPath: 'n0001.md', seq: 2 }} />,
+    );
+    expect(screen.getByLabelText('Note card: Note 1 Selected.')).toBeTruthy();
+  });
+});
+
+describe('SKY-11189 §7: multi-select + Delete/Backspace trashes the selection', () => {
+  it('Delete trashes the single selected item', () => {
+    const onTrashItems = vi.fn();
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />);
+    act(() => { screen.getByLabelText('Note card: Note 0').focus(); });
+    act(() => { fireEvent.keyDown(window, { key: 'Delete' }); });
+    expect(onTrashItems).toHaveBeenCalledWith(['n0000.md']);
+  });
+
+  it('Backspace trashes the selection too', () => {
+    const onTrashItems = vi.fn();
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />);
+    act(() => { screen.getByLabelText('Note card: Note 0').focus(); });
+    act(() => { fireEvent.keyDown(window, { key: 'Backspace' }); });
+    expect(onTrashItems).toHaveBeenCalledWith(['n0000.md']);
+  });
+
+  it('does nothing when nothing is selected', () => {
+    const onTrashItems = vi.fn();
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />);
+    act(() => { fireEvent.keyDown(window, { key: 'Delete' }); });
+    expect(onTrashItems).not.toHaveBeenCalled();
+  });
+
+  it('does not fire while typing in a text input elsewhere on the page', () => {
+    const onTrashItems = vi.fn();
+    render(
+      <div>
+        <input aria-label="unrelated input" />
+        <BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />
+      </div>,
+    );
+    act(() => { screen.getByLabelText('Note card: Note 0').focus(); });
+    const input = screen.getByLabelText('unrelated input');
+    act(() => { input.focus(); });
+    act(() => { fireEvent.keyDown(input, { key: 'Delete' }); });
+    expect(onTrashItems).not.toHaveBeenCalled();
+  });
+
+  it('ctrl+click adds a second card to the selection — both get the selected rim, and Delete trashes both', () => {
+    const onTrashItems = vi.fn();
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />);
+    const first = screen.getByLabelText('Note card: Note 0');
+    const second = screen.getByLabelText('Note card: Note 1');
+    act(() => { fireEvent.mouseDown(first, { button: 0 }); });
+    act(() => { fireEvent.mouseDown(second, { button: 0, ctrlKey: true }); });
+
+    expect(screen.getByLabelText('Note card: Note 0 Selected.')).toBeTruthy();
+    expect(screen.getByLabelText('Note card: Note 1 Selected.')).toBeTruthy();
+
+    act(() => { fireEvent.keyDown(window, { key: 'Delete' }); });
+    expect(onTrashItems).toHaveBeenCalledTimes(1);
+    expect(onTrashItems.mock.calls[0]![0]).toEqual(expect.arrayContaining(['n0000.md', 'n0001.md']));
+  });
+
+  it('a shift+click toggle removes a card from an existing multi-selection', () => {
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} />);
+    const first = screen.getByLabelText('Note card: Note 0');
+    const second = screen.getByLabelText('Note card: Note 1');
+    act(() => { fireEvent.mouseDown(first, { button: 0 }); });
+    act(() => { fireEvent.mouseDown(second, { button: 0, shiftKey: true }); });
+    act(() => { fireEvent.mouseDown(second, { button: 0, shiftKey: true }); }); // toggle back off
+    expect(screen.queryByLabelText('Note card: Note 1 Selected.')).toBeNull();
+    expect(screen.getByLabelText('Note card: Note 0 Selected.')).toBeTruthy();
+  });
+
+  it('a plain click after a multi-selection collapses back to a single selection', () => {
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} />);
+    const first = screen.getByLabelText('Note card: Note 0');
+    const second = screen.getByLabelText('Note card: Note 1');
+    const third = screen.getByLabelText('Note card: Note 2');
+    act(() => { fireEvent.mouseDown(first, { button: 0 }); });
+    act(() => { fireEvent.mouseDown(second, { button: 0, ctrlKey: true }); });
+    act(() => { fireEvent.mouseDown(third, { button: 0 }); }); // plain click, no modifier
+    expect(screen.queryByLabelText('Note card: Note 0 Selected.')).toBeNull();
+    expect(screen.queryByLabelText('Note card: Note 1 Selected.')).toBeNull();
+    expect(screen.getByLabelText('Note card: Note 2 Selected.')).toBeTruthy();
+  });
+});
+
+describe('SKY-11189 §7: context menu Delete entry', () => {
+  it('right-clicking an unselected card selects it and shows a single-item Delete', () => {
+    const onTrashItems = vi.fn();
+    render(<BoardCanvas items={notes(2)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />);
+    const first = screen.getByLabelText('Note card: Note 0');
+    act(() => { fireEvent.contextMenu(first); });
+    const deleteBtn = screen.getByRole('menuitem', { name: 'Delete' });
+    act(() => { fireEvent.click(deleteBtn); });
+    expect(onTrashItems).toHaveBeenCalledWith(['n0000.md']);
+  });
+
+  it('right-clicking a card already in a multi-selection deletes the whole selection', () => {
+    const onTrashItems = vi.fn();
+    render(<BoardCanvas items={notes(3)} savedLayout={{}} savedView={view} onTrashItems={onTrashItems} />);
+    const first = screen.getByLabelText('Note card: Note 0');
+    const second = screen.getByLabelText('Note card: Note 1');
+    act(() => { fireEvent.mouseDown(first, { button: 0 }); });
+    act(() => { fireEvent.mouseDown(second, { button: 0, ctrlKey: true }); });
+    act(() => { fireEvent.contextMenu(second); });
+    expect(screen.getByRole('menuitem', { name: 'Delete 2 items' })).toBeTruthy();
+    act(() => { fireEvent.click(screen.getByRole('menuitem', { name: 'Delete 2 items' })); });
+    expect(onTrashItems.mock.calls[0]![0]).toEqual(expect.arrayContaining(['n0000.md', 'n0001.md']));
+  });
+});
+
+// The icon layer must share the culling/LOD render path introduced in SKY-11186.
+describe('SKY-11190 icons on culled, memoised cards', () => {
+  it('resolves nested paths, updates colour, and keeps the picker reachable in the block tier', () => {
+    const items: BoardItem[] = [{ path: 'Court', kind: 'folder', name: 'Court' }];
+    const onSetIcon = vi.fn();
+    const onCreateItem = vi.fn();
+    const props = { items, savedLayout: {}, savedView: view, folderPath: 'World', onSetIcon, activeTool: 'note' as const, onCreateItem };
+    const { rerender } = render(
+      <BoardCanvas {...props} iconMap={{ 'World/Court': { icon: 'pack:lucide/sword', color: '#61afef' } }} />,
+    );
+    const tile = () => screen.getByLabelText(/^Board: Court/);
+    expect(tile().querySelector('.board-canvas__item-icon svg')?.getAttribute('stroke')).toBe('#61afef');
+
+    rerender(<BoardCanvas {...props} iconMap={{ 'World/Court': { icon: 'pack:lucide/crown', color: '#c678dd' } }} />);
+    expect(tile().querySelector('.board-canvas__item-icon svg')?.getAttribute('stroke')).toBe('#c678dd');
+
+    for (let i = 0; i < 4; i++) fireEvent.click(screen.getByLabelText('Zoom out'));
+    expect(tile().getAttribute('data-lod')).toBe('2');
+    expect(tile().querySelector('.board-canvas__item-icon svg')).not.toBeNull();
+    for (let i = 0; i < 2; i++) fireEvent.click(screen.getByLabelText('Zoom out'));
+    expect(tile().getAttribute('data-lod')).toBe('3');
+    expect(tile().textContent).toBe('');
+    expect(tile().querySelector('.board-canvas__item-icon')).toBeNull();
+
+    fireEvent.contextMenu(tile());
+    expect(screen.getByRole('menuitem', { name: 'Rename' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Set icon…' }));
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Choose icon and colour' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Purple' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'Blue' }), { button: 0 });
+    expect(onCreateItem).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Blue' }));
+    fireEvent.mouseDown(screen.getByRole('button', { name: 'sword' }), { button: 0 });
+    fireEvent.click(screen.getByRole('button', { name: 'sword' }));
+    expect(onCreateItem).not.toHaveBeenCalled();
+    expect(onSetIcon).toHaveBeenCalledWith('Court', 'pack:lucide/sword', '#61afef');
+  });
+
+  it('retains a custom note icon when scrolling culls and remounts the card', () => {
+    render(
+      <BoardCanvas items={notes(600)} savedLayout={{}} savedView={view}
+        iconMap={{ 'n0599.md': { icon: 'pack:lucide/book', color: '#61afef' } }} />,
+    );
+    const scroller = document.querySelector('.board-canvas__scroll-area') as HTMLElement;
+    const last = () => screen.queryByLabelText('Note card: Note 599');
+    expect(last()).toBeNull();
+    for (const scrollTop of [ORIGIN_Y + 149 * CELL_H, 0, ORIGIN_Y + 149 * CELL_H]) {
+      Object.defineProperty(scroller, 'scrollTop', { value: scrollTop, configurable: true });
+      fireEvent.scroll(scroller);
+      if (scrollTop === 0) expect(last()).toBeNull();
+      else expect(last()?.querySelector('.board-canvas__item-icon svg')?.getAttribute('stroke')).toBe('#61afef');
+    }
+    expect(mounted().length).toBeLessThanOrEqual(24);
   });
 });

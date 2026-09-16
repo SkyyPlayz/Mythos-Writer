@@ -6,7 +6,6 @@ import MoveVaultWizard from './MoveVaultWizard';
 const mockVaultGetPaths = vi.fn();
 const mockPickFolder = vi.fn();
 const mockValidatePath = vi.fn();
-const mockVaultGuidedFolderMove = vi.fn();
 const mockVaultLocalFolderMove = vi.fn();
 const mockOnClose = vi.fn();
 const mockOnSuccess = vi.fn();
@@ -19,14 +18,12 @@ beforeEach(() => {
   });
   mockPickFolder.mockResolvedValue({ vaultRoot: null, cancelled: true, registrationToken: null });
   mockValidatePath.mockResolvedValue({ exists: true, isEmpty: false, writable: true });
-  mockVaultGuidedFolderMove.mockResolvedValue({ moved: true, newVaultPath: '/home/user/Dropbox/MythosVault' });
   mockVaultLocalFolderMove.mockResolvedValue({ moved: true, newVaultPath: '/home/user/Documents/MythosVault' });
 
   (window as unknown as { api: unknown }).api = {
     vaultGetPaths: mockVaultGetPaths,
     pickFolder: mockPickFolder,
     validatePath: mockValidatePath,
-    vaultGuidedFolderMove: mockVaultGuidedFolderMove,
     vaultLocalFolderMove: mockVaultLocalFolderMove,
   };
 });
@@ -51,22 +48,33 @@ async function pickLocalFolder(path = '/home/user/Documents/MythosVault') {
   await waitFor(() => expect((screen.getByTestId('mv-folder-display') as HTMLInputElement).value).toBe(path));
 }
 
-async function advanceToCloudFolderStep(provider = 'dropbox') {
-  fireEvent.click(screen.getByTestId('mv-switch-to-cloud'));
-  const radio = screen.getByTestId(`provider-option-${provider}`).querySelector('input[type="radio"]')!;
-  fireEvent.click(radio);
-  fireEvent.click(screen.getByTestId('mv-next-provider'));
-}
-
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('MoveVaultWizard', () => {
-  // Step 0 — local folder (default entry point, SKY-10367)
-  it('opens directly to a local folder picker, not the cloud provider list', async () => {
+  // Step 0 — local folder (SKY-10367; the only destination after SKY-11804)
+  it('opens directly to a local folder picker', async () => {
     await renderWizard();
     expect(screen.getByRole('dialog', { name: /move vault to a different folder/i })).toBeInTheDocument();
     expect(screen.getByTestId('mv-browse')).toBeInTheDocument();
-    expect(screen.queryByTestId('provider-option-dropbox')).not.toBeInTheDocument();
+  });
+
+  // SKY-11804: the branded cloud destination is gone, not merely hidden.
+  it('offers no cloud destination, provider list, or sync-client checkbox', async () => {
+    const { container } = await renderWizard();
+    expect(screen.queryByTestId('mv-switch-to-cloud')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mv-switch-to-local')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mv-next-provider')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('mv-default-hint')).not.toBeInTheDocument();
+    for (const p of ['dropbox', 'icloud', 'onedrive', 'google-drive']) {
+      expect(screen.queryByTestId(`provider-option-${p}`)).not.toBeInTheDocument();
+    }
+    expect(screen.queryAllByRole('radio')).toHaveLength(0);
+    expect(container.textContent).not.toMatch(/dropbox|icloud|onedrive|google drive|cloud/i);
+  });
+
+  it('exposes only the local move channel on window.api', async () => {
+    await renderWizard();
+    expect('vaultGuidedFolderMove' in window.api).toBe(false);
   });
 
   it('Next is disabled until a local folder is picked, then advances to confirm', async () => {
@@ -94,54 +102,6 @@ describe('MoveVaultWizard', () => {
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 
-  // Cloud path is an explicit secondary choice
-  it('"Move to a cloud-synced folder instead" reveals the provider list', async () => {
-    await renderWizard();
-    fireEvent.click(screen.getByTestId('mv-switch-to-cloud'));
-
-    expect(screen.getByTestId('provider-option-dropbox')).toBeInTheDocument();
-    expect(screen.getByTestId('provider-option-icloud')).toBeInTheDocument();
-    expect(screen.getByTestId('provider-option-onedrive')).toBeInTheDocument();
-    expect(screen.getByTestId('provider-option-google-drive')).toBeInTheDocument();
-    expect(screen.getByRole('dialog', { name: /move vault to cloud sync/i })).toBeInTheDocument();
-  });
-
-  it('"Use a local folder instead" returns from the provider step to the local folder step', async () => {
-    await renderWizard();
-    fireEvent.click(screen.getByTestId('mv-switch-to-cloud'));
-    fireEvent.click(screen.getByTestId('mv-switch-to-local'));
-
-    expect(screen.getByRole('dialog', { name: /move vault to a different folder/i })).toBeInTheDocument();
-    expect(screen.getByTestId('mv-cancel')).toBeInTheDocument();
-  });
-
-  it('cloud Next is disabled until a provider is chosen', async () => {
-    await renderWizard();
-    fireEvent.click(screen.getByTestId('mv-switch-to-cloud'));
-    expect(screen.getByTestId('mv-next-provider')).toBeDisabled();
-
-    const radio = screen.getByTestId('provider-option-dropbox').querySelector('input[type="radio"]')!;
-    fireEvent.click(radio);
-    expect(screen.getByTestId('mv-next-provider')).not.toBeDisabled();
-  });
-
-  it('advances to the cloud folder step with the provider hint after choosing a provider', async () => {
-    await renderWizard();
-    await advanceToCloudFolderStep('google-drive');
-
-    expect(screen.getByTestId('mv-browse')).toBeInTheDocument();
-    expect(screen.getByTestId('mv-default-hint')).toHaveTextContent('~/Google Drive');
-    // Cloud folder step offers Back to the provider step, not the local Cancel button.
-    expect(screen.getByTestId('mv-back-folder')).toBeInTheDocument();
-    expect(screen.queryByTestId('mv-cancel')).not.toBeInTheDocument();
-  });
-
-  it('cloud folder step Next is disabled until a folder is selected', async () => {
-    await renderWizard();
-    await advanceToCloudFolderStep();
-    expect(screen.getByTestId('mv-next-folder')).toBeDisabled();
-  });
-
   // Step — confirm
   it('local confirm step has no sync checkbox and Proceed is enabled immediately', async () => {
     await renderWizard();
@@ -161,90 +121,6 @@ describe('MoveVaultWizard', () => {
     await waitFor(() => expect(screen.getByTestId('mv-from-path')).toBeInTheDocument());
     expect(screen.getByTestId('mv-from-path')).toHaveTextContent('/home/user/Mythos/Story Vault');
     expect(screen.getByTestId('mv-to-path')).toHaveTextContent('/home/user/Documents/MythosVault');
-  });
-
-  it('cloud confirm step keeps the sync checkbox gate on Proceed', async () => {
-    await renderWizard();
-    await advanceToCloudFolderStep();
-    await pickLocalFolder('/home/user/Dropbox');
-    fireEvent.click(screen.getByTestId('mv-next-folder'));
-
-    await waitFor(() => expect(screen.getByTestId('mv-proceed-confirm')).toBeInTheDocument());
-    expect(screen.getByTestId('mv-proceed-confirm')).toBeDisabled();
-
-    fireEvent.click(screen.getByTestId('mv-confirm-checkbox'));
-    expect(screen.getByTestId('mv-proceed-confirm')).not.toBeDisabled();
-  });
-
-  // Regression: SKY-10483 — the sync-confirmation checkbox must not survive a
-  // change of target after it was checked, or Proceed re-enables for a folder/
-  // provider the user never actually confirmed.
-  it('going back and picking a different folder clears the sync confirmation checkbox', async () => {
-    await renderWizard();
-    await advanceToCloudFolderStep();
-    await pickLocalFolder('/home/user/Dropbox');
-    fireEvent.click(screen.getByTestId('mv-next-folder'));
-
-    await waitFor(() => expect(screen.getByTestId('mv-confirm-checkbox')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('mv-confirm-checkbox'));
-    expect(screen.getByTestId('mv-proceed-confirm')).not.toBeDisabled();
-
-    fireEvent.click(screen.getByTestId('mv-back-confirm'));
-    await pickLocalFolder('/home/user/Dropbox/OtherFolder');
-    fireEvent.click(screen.getByTestId('mv-next-folder'));
-
-    await waitFor(() => expect(screen.getByTestId('mv-to-path')).toHaveTextContent('/home/user/Dropbox/OtherFolder'));
-    expect(screen.getByTestId('mv-confirm-checkbox')).not.toBeChecked();
-    expect(screen.getByTestId('mv-proceed-confirm')).toBeDisabled();
-  });
-
-  it('switching from cloud to local and back to cloud clears the sync confirmation checkbox', async () => {
-    await renderWizard();
-    await advanceToCloudFolderStep();
-    await pickLocalFolder('/home/user/Dropbox');
-    fireEvent.click(screen.getByTestId('mv-next-folder'));
-
-    await waitFor(() => expect(screen.getByTestId('mv-confirm-checkbox')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('mv-confirm-checkbox'));
-    expect(screen.getByTestId('mv-proceed-confirm')).not.toBeDisabled();
-
-    fireEvent.click(screen.getByTestId('mv-back-confirm'));
-    fireEvent.click(screen.getByTestId('mv-back-folder'));
-    fireEvent.click(screen.getByTestId('mv-switch-to-local'));
-    fireEvent.click(screen.getByTestId('mv-switch-to-cloud'));
-
-    const radio = screen.getByTestId('provider-option-icloud').querySelector('input[type="radio"]')!;
-    fireEvent.click(radio);
-    fireEvent.click(screen.getByTestId('mv-next-provider'));
-    await pickLocalFolder('/home/user/Library/Mobile Documents/com~apple~CloudDocs');
-    fireEvent.click(screen.getByTestId('mv-next-folder'));
-
-    await waitFor(() => expect(screen.getByTestId('mv-confirm-checkbox')).toBeInTheDocument());
-    expect(screen.getByTestId('mv-confirm-checkbox')).not.toBeChecked();
-    expect(screen.getByTestId('mv-proceed-confirm')).toBeDisabled();
-  });
-
-  it('selecting a different provider clears the sync confirmation checkbox', async () => {
-    await renderWizard();
-    await advanceToCloudFolderStep('dropbox');
-    await pickLocalFolder('/home/user/Dropbox');
-    fireEvent.click(screen.getByTestId('mv-next-folder'));
-
-    await waitFor(() => expect(screen.getByTestId('mv-confirm-checkbox')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('mv-confirm-checkbox'));
-    expect(screen.getByTestId('mv-proceed-confirm')).not.toBeDisabled();
-
-    fireEvent.click(screen.getByTestId('mv-back-confirm'));
-    fireEvent.click(screen.getByTestId('mv-back-folder'));
-    const radio = screen.getByTestId('provider-option-onedrive').querySelector('input[type="radio"]')!;
-    fireEvent.click(radio);
-    fireEvent.click(screen.getByTestId('mv-next-provider'));
-    await pickLocalFolder('/home/user/OneDrive');
-    fireEvent.click(screen.getByTestId('mv-next-folder'));
-
-    await waitFor(() => expect(screen.getByTestId('mv-confirm-checkbox')).toBeInTheDocument());
-    expect(screen.getByTestId('mv-confirm-checkbox')).not.toBeChecked();
-    expect(screen.getByTestId('mv-proceed-confirm')).toBeDisabled();
   });
 
   // Step — permission test
@@ -277,7 +153,7 @@ describe('MoveVaultWizard', () => {
   });
 
   // Step — result
-  it('local move calls vaultLocalFolderMove and reports success with a null provider', async () => {
+  it('local move calls vaultLocalFolderMove and reports success', async () => {
     await renderWizard();
     await pickLocalFolder('/home/user/Documents/MythosVault');
     fireEvent.click(screen.getByTestId('mv-next-folder'));
@@ -291,36 +167,12 @@ describe('MoveVaultWizard', () => {
       targetPath: '/home/user/Documents/MythosVault',
       registrationToken: 'tok-local',
     });
-    expect(mockVaultGuidedFolderMove).not.toHaveBeenCalled();
 
     await waitFor(() => expect(screen.getByTestId('mv-success-message')).toBeInTheDocument());
     expect(screen.getByTestId('mv-new-path')).toHaveTextContent('/home/user/Documents/MythosVault');
 
     fireEvent.click(screen.getByTestId('mv-done'));
-    expect(mockOnSuccess).toHaveBeenCalledWith('/home/user/Documents/MythosVault', null);
-  });
-
-  it('cloud move calls vaultGuidedFolderMove and reports success with the chosen provider', async () => {
-    await renderWizard();
-    await advanceToCloudFolderStep('dropbox');
-    await pickLocalFolder('/home/user/Dropbox');
-    fireEvent.click(screen.getByTestId('mv-next-folder'));
-    await waitFor(() => screen.getByTestId('mv-confirm-checkbox'));
-    fireEvent.click(screen.getByTestId('mv-confirm-checkbox'));
-    fireEvent.click(screen.getByTestId('mv-proceed-confirm'));
-
-    await waitFor(() => expect(screen.getByTestId('mv-test-ok')).toBeInTheDocument());
-    await act(async () => { fireEvent.click(screen.getByTestId('mv-migrate')); });
-
-    expect(mockVaultGuidedFolderMove).toHaveBeenCalledWith({
-      targetPath: '/home/user/Dropbox',
-      syncProvider: 'dropbox',
-      sessionToken: 'tok-local',
-    });
-
-    await waitFor(() => expect(screen.getByTestId('mv-success-message')).toBeInTheDocument());
-    fireEvent.click(screen.getByTestId('mv-done'));
-    expect(mockOnSuccess).toHaveBeenCalledWith('/home/user/Dropbox/MythosVault', 'dropbox');
+    expect(mockOnSuccess).toHaveBeenCalledWith('/home/user/Documents/MythosVault');
   });
 
   it('shows migration error when IPC call fails', async () => {
@@ -369,20 +221,10 @@ describe('MoveVaultWizard', () => {
   });
 
   // Accessibility
-  it('dialog aria-label matches the active flow (local by default, cloud after switching)', async () => {
+  it('dialog is a labelled modal', async () => {
     await renderWizard();
     expect(screen.getByRole('dialog')).toHaveAttribute('aria-modal', 'true');
     expect(screen.getByRole('dialog')).toHaveAttribute('aria-label', 'Move vault to a different folder');
-
-    fireEvent.click(screen.getByTestId('mv-switch-to-cloud'));
-    expect(screen.getByRole('dialog')).toHaveAttribute('aria-label', 'Move vault to cloud sync');
-  });
-
-  it('has aria-label on all provider radio inputs', async () => {
-    await renderWizard();
-    fireEvent.click(screen.getByTestId('mv-switch-to-cloud'));
-    const radios = screen.getAllByRole('radio');
-    radios.forEach((r) => expect(r).toHaveAttribute('aria-label'));
   });
 
   it('close button calls onClose', async () => {

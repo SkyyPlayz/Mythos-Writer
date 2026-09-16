@@ -8,10 +8,18 @@
  * event wiring over them. Cards render through the memoised BoardCard so a
  * drag frame or a scroll bucket only re-renders the cards whose numbers moved.
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { MouseEvent, ReactElement, WheelEvent } from 'react';
 import BoardCard, { itemHasThumb } from './BoardCard';
 import type { BoardItem, ItemRect } from './BoardCard';
+import BoardFurniture from './BoardFurniture';
+import type { BoardFurnitureItemData } from './BoardFurniture';
+import BoardLinkOverlay from './BoardLinkOverlay';
+import BoardMinimapPanel from './BoardMinimapPanel';
+import { connectorSegments, furnitureAnchorKey } from './boardLinks';
+import type { AnchorRect, BoardWikiLink } from './boardLinks';
+import { minimapViewportRect, scrollToCentreWorldPoint } from './boardMinimap';
+import type { MinimapBox } from './boardMinimap';
 import {
   ALIGN_THRESHOLD,
   CULL_MARGIN_X,
@@ -29,15 +37,33 @@ import {
   autoLayoutSlots,
   bucketScroll,
   clampMinZoom,
+  defaultFurnitureSize,
   defaultSize,
   expandRect,
   lodTierForScreenWidth,
   shouldMount,
   visibleWorldRect,
 } from './boardLod';
+import { unpackIconEntry } from '../../iconUtils';
+import type { VaultIconEntry } from '../../iconUtils';
+import BoardIconPicker from '../../components/BoardIconPicker/BoardIconPicker';
 import './BoardCanvas.css';
 
 export type { BoardItem } from './BoardCard';
+export type { BoardFurnitureItemData } from './BoardFurniture';
+
+/**
+ * A furniture item's resolved on-screen box — the live one, drag and resize
+ * already applied. Collected twice: by furniture id (`furnitureRects`, what
+ * the box is painted at and what a wiki-link connector anchors on) and by
+ * item key `v:/n:/x:` (`keyRects`, what a `line` looks its endpoints up in).
+ */
+interface KeyRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 function snapToGrid(v: number): number {
   return Math.round(v / GRID_SNAP) * GRID_SNAP;
@@ -99,6 +125,73 @@ export interface BoardCanvasProps {
   /** Commit a typed name. Empty/unchanged is resolved as a no-op in main. */
   onRenameCommit?: (itemPath: string, newName: string) => void;
   onRenameCancel?: () => void;
+  /**
+   * SKY-11189 §7/§8: Delete/Backspace or the context menu's Delete entry, for
+   * the current selection (one or more paths, board-relative — matches every
+   * other item path in this component). The canvas does not trash anything
+   * itself — same "report the intent, the panel owns the filesystem call"
+   * split §5's onCreateItem already established.
+   */
+  onTrashItems?: (itemPaths: string[]) => void;
+
+  // ── SKY-11188: furniture (§4) ──
+  /** Board-only items (columns, checklists, tables, images, sketches, swatches, lines). */
+  furniture?: BoardFurnitureItemData[];
+  /** Every TOUCHED card/tile's own item key (`v:<id>`/`n:<id>`), by its `path` — a `line`'s endpoint may name one of these. Untouched (never-arranged) items have no id yet and cannot be a line endpoint. */
+  itemKeysByPath?: Record<string, string>;
+  onFurnitureMove?: (id: string, x: number, y: number) => void;
+  onFurnitureResize?: (id: string, w: number, h: number) => void;
+  onFurnitureDelete?: (id: string) => void;
+  onFurnitureCheckToggle?: (id: string, index: number) => void;
+  /** Spec §4: clicking a swatch colour applies it. Scoped here to the swatch's OWN `color` field, not a cross-item "current selection" apply — see BoardsTabPanel. */
+  onFurnitureColor?: (id: string, hex: string) => void;
+  /** A column item's `ref` — a vault-relative note path kept live by the rename cascade (§4/§2). */
+  onOpenNoteRef?: (ref: string) => void;
+  /**
+   * SKY-11188: "Connect" tool — while active, clicking a furniture item
+   * picks it as a `line` endpoint instead of starting a drag (mirrors the
+   * prototype's `bdTool === 'line'` behaviour, scoped to furniture-only
+   * endpoints for this ticket).
+   */
+  lineToolActive?: boolean;
+  onFurniturePick?: (id: string) => void;
+
+  // ── SKY-11191: wiki-link overlay + minimap (§10) ──
+  /**
+   * SKY-11191 §10: the wiki-link overlay's connectors, as ANCHOR KEY pairs
+   * (an item path, or `furniture:<id>`). The panel owns the link graph; the
+   * canvas owns the geometry, because only it knows where a card ended up
+   * after auto-layout, a drag or a resize.
+   */
+  wikiLinks?: readonly BoardWikiLink[];
+  /** Draw those connectors. Off by default — the overlay is a toggle (§10). */
+  wikiLinkOverlay?: boolean;
+  /**
+   * FALLBACK rects for anchors the canvas cannot resolve itself, keyed the
+   * same way `wikiLinks` are. The panel derives ticket 5's `column` boxes
+   * from Store B and passes them here; where the canvas also lays that anchor
+   * out, its own live rect wins, so a connector tracks a drag in progress
+   * instead of waiting for the commit (SKY-11717).
+   */
+  linkAnchors?: ReadonlyMap<string, AnchorRect>;
+  /** SKY-11191 §10: show the derived minimap. */
+  showMinimap?: boolean;
+  /**
+   * SKY-11191 §10: select an item and scroll it into view — a cross-board
+   * search hit landing on this board. `seq` is bumped per request so picking
+   * the same hit twice re-reveals it.
+   */
+  selectRequest?: { itemPath: string; seq: number } | null;
+  /**
+   * SKY-11190: icon/colour map, keyed by FULL vault-relative path (not
+   * relative to this board — same keying as the vault tree's iconMap, so
+   * `folderPath` is needed below to resolve each item's key).
+   */
+  iconMap?: Record<string, VaultIconEntry>;
+  /** This board's own vault-relative folder path ('' for Home). */
+  folderPath?: string;
+  /** Right-click "Set icon…" on a tile. itemPath is THIS board's relative path, matching `items[].path`. */
+  onSetIcon?: (itemPath: string, icon: string | null, color: string | null) => void;
 }
 
 interface ResolvedItem {
@@ -124,6 +217,25 @@ export default function BoardCanvas({
   onRequestRename,
   onRenameCommit,
   onRenameCancel,
+  onTrashItems,
+  furniture = [],
+  itemKeysByPath = {},
+  onFurnitureMove,
+  onFurnitureResize,
+  onFurnitureDelete,
+  onFurnitureCheckToggle,
+  onFurnitureColor,
+  onOpenNoteRef,
+  lineToolActive = false,
+  onFurniturePick,
+  wikiLinks,
+  wikiLinkOverlay = false,
+  linkAnchors,
+  showMinimap = false,
+  selectRequest = null,
+  iconMap,
+  folderPath = '',
+  onSetIcon,
 }: BoardCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -135,6 +247,22 @@ export default function BoardCanvas({
   // canvas needs a selection to spend it on. View-local and deliberately not
   // persisted — it is a pointer state, not board content.
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  // SKY-11188: furniture selection is tracked separately from card selection
+  // (mutually exclusive — selecting one clears the other) rather than
+  // unifying the two into one generic key, so the existing card drag/resize
+  // code above is untouched by this ticket.
+  const [selectedFurnitureId, setSelectedFurnitureId] = useState<string | null>(null);
+  // SKY-11189 §7: a ctrl/cmd/shift+click adds to this set instead of replacing
+  // `selectedPath` — "canvas Delete/Backspace trashes the entire current
+  // selection" needs a real multi-selection, which nothing on this canvas
+  // had before (drag/resize/rename all stay single-item, keyed off
+  // `selectedPath`). Empty means "no additive selection is active" — the
+  // effective selection then falls back to `selectedPath` alone.
+  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
+  const effectiveSelection = useMemo(
+    () => (multiSelected.size > 0 ? multiSelected : new Set(selectedPath ? [selectedPath] : [])),
+    [multiSelected, selectedPath],
+  );
 
   const minZoom = clampMinZoom(minZoomProp);
   const scale = zoom / 100;
@@ -234,8 +362,13 @@ export default function BoardCanvas({
       const def = defaultSize(r.item.kind, r.hasThumb);
       max = Math.max(max, r.layout.y + (r.layout.h ?? def.h) + ORIGIN_Y);
     }
+    for (const f of furniture) {
+      if (f.k === 'line') continue;
+      const def = defaultFurnitureSize(f.k, furnitureCount(f), { w: f.w, h: f.h });
+      max = Math.max(max, f.y + (f.h ?? def.h) + ORIGIN_Y);
+    }
     return max;
-  }, [resolvedItems]);
+  }, [resolvedItems, furniture]);
 
   // A selected item that is no longer on this board (renamed, deleted, or we
   // navigated into a sub-board) must not keep a rim alive against nothing.
@@ -243,7 +376,18 @@ export default function BoardCanvas({
     if (selectedPath && !items.some((item) => item.path === selectedPath)) {
       setSelectedPath(null);
     }
+    setMultiSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const next = new Set([...prev].filter((p) => items.some((item) => item.path === p)));
+      return next.size === prev.size ? prev : next;
+    });
   }, [items, selectedPath]);
+
+  useEffect(() => {
+    if (selectedFurnitureId && !furniture.some((f) => f.id === selectedFurnitureId)) {
+      setSelectedFurnitureId(null);
+    }
+  }, [furniture, selectedFurnitureId]);
 
   // ── SKY-11494 BD-2: keep the dot grid on top of the world ───────────────
   // The grid is painted on the panel, but the world it describes is
@@ -300,6 +444,8 @@ export default function BoardCanvas({
       // inside the panel and is not canvas.
       if ((e.target as HTMLElement).closest('.board-canvas__zoom-controls')) return;
       setSelectedPath(null);
+      setSelectedFurnitureId(null);
+      setMultiSelected(new Set());
       // SKY-11187 §5: a placement tool turns that same empty-canvas press
       // into a real vault create at the click point.
       if (activeTool !== 'select') {
@@ -384,7 +530,24 @@ export default function BoardCanvas({
     // starting a drag the user did not ask for.
     if (activeTool !== 'select') return;
     e.stopPropagation();
+    // SKY-11189 §7: ctrl/cmd/shift+click toggles membership in the
+    // multi-selection instead of starting a drag — a modifier click is a
+    // selection gesture, not a move (and the existing single-select drag
+    // below is keyed off exactly one path, so a multi-selected drag isn't
+    // something this canvas supports).
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      setMultiSelected((prev) => {
+        const base = prev.size > 0 ? prev : new Set(selectedPath ? [selectedPath] : []);
+        const next = new Set(base);
+        if (next.has(path)) next.delete(path); else next.add(path);
+        return next;
+      });
+      setSelectedPath(path);
+      return;
+    }
+    setMultiSelected(new Set());
     setSelectedPath(path);
+    setSelectedFurnitureId(null);
     itemDragRef.current = {
       path,
       startMouseX: e.clientX,
@@ -394,7 +557,7 @@ export default function BoardCanvas({
       latest: null,
     };
     setDraggingPath(path);
-  }, [activeTool]);
+  }, [activeTool, selectedPath]);
 
   useEffect(() => {
     const onMouseMove = (e: globalThis.MouseEvent) => {
@@ -494,9 +657,45 @@ export default function BoardCanvas({
   const handleItemContextMenu = useCallback((e: MouseEvent<HTMLDivElement>, path: string) => {
     e.preventDefault();
     e.stopPropagation();
-    setSelectedPath(path);
+    // SKY-11189 §7: right-clicking a card that is already part of the
+    // current multi-selection keeps that whole selection (so Delete acts on
+    // all of it) — right-clicking anything else resets to just that card,
+    // the same "click elsewhere clears it" convention every other selection
+    // gesture on this canvas follows.
+    if (!effectiveSelection.has(path)) {
+      setMultiSelected(new Set());
+      setSelectedPath(path);
+    }
     setContextMenu({ path, x: e.clientX, y: e.clientY });
-  }, []);
+  }, [effectiveSelection]);
+
+  const handleTrashSelection = useCallback(() => {
+    const targets = [...effectiveSelection];
+    if (targets.length === 0) return;
+    setSelectedPath(null);
+    setMultiSelected(new Set());
+    setContextMenu(null);
+    onTrashItems?.(targets);
+  }, [effectiveSelection, onTrashItems]);
+
+  // SKY-11189 §7: Delete/Backspace trashes the entire current selection.
+  // Guarded off text inputs and the inline-rename box exactly like the
+  // other keyboard shortcuts in this app (DesktopShell's own keydown
+  // handler follows the same inText pattern).
+  useEffect(() => {
+    const onKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      if (renamingPath) return;
+      const target = e.target as HTMLElement;
+      const inText = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable;
+      if (inText) return;
+      if (effectiveSelection.size === 0) return;
+      e.preventDefault();
+      handleTrashSelection();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [effectiveSelection, renamingPath, handleTrashSelection]);
 
   // Any press elsewhere, a scroll, or Escape dismisses the menu — it is a
   // transient pointer affordance, never something to click your way out of.
@@ -511,6 +710,134 @@ export default function BoardCanvas({
       window.removeEventListener('keydown', onKey);
     };
   }, [contextMenu]);
+
+  // ── SKY-11188: furniture drag/resize — same pattern as items above, keyed
+  // by furniture id instead of path (a furniture item has no vault path). ──
+  //
+  // SKY-11866: `latest` lives on the ref, not read back off `localFurniture-
+  // Positions` state, for the same reason the item drag above does it this
+  // way (see its comment): this effect's deps must NOT include the local-
+  // position state, or it tears down and re-adds its `window` listeners on
+  // every mousemove. Effect cleanup is scheduled after paint, not
+  // synchronously, so any stall while the button is still down (a slow paint,
+  // a screenshot, a GC pause) can leave more than one generation of listener
+  // attached at once; the browser then runs ALL of them on the eventual
+  // mouseup, oldest first, and the oldest — reading its own stale closure —
+  // nulls the ref before the current one gets a chance to commit the real
+  // position. Reading `latest` off the ref sidesteps the whole race: every
+  // listener generation shares the one ref, so whichever fires first commits
+  // the same up-to-date value.
+  const furnitureDragRef = useRef<{
+    id: string;
+    startMouseX: number;
+    startMouseY: number;
+    startX: number;
+    startY: number;
+    latest: { x: number; y: number } | null;
+  } | null>(null);
+  const [draggingFurnitureId, setDraggingFurnitureId] = useState<string | null>(null);
+  const [localFurniturePositions, setLocalFurniturePositions] = useState<Record<string, { x: number; y: number }>>({});
+
+  const handleFurnitureMouseDown = useCallback((e: MouseEvent<HTMLDivElement>, id: string, rect: { x: number; y: number; w: number; h: number }) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('.board-canvas__resize-handle')) return;
+    e.stopPropagation();
+    if (lineToolActive) {
+      onFurniturePick?.(id);
+      return;
+    }
+    setSelectedFurnitureId(id);
+    setSelectedPath(null);
+    furnitureDragRef.current = { id, startMouseX: e.clientX, startMouseY: e.clientY, startX: rect.x, startY: rect.y, latest: null };
+    setDraggingFurnitureId(id);
+  }, [lineToolActive, onFurniturePick]);
+
+  useEffect(() => {
+    const onMouseMove = (e: globalThis.MouseEvent) => {
+      const drag = furnitureDragRef.current;
+      if (!drag) return;
+      const dx = (e.clientX - drag.startMouseX) / scale;
+      const dy = (e.clientY - drag.startMouseY) / scale;
+      let nx = drag.startX + dx;
+      let ny = drag.startY + dy;
+      if (gridSnap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
+      drag.latest = { x: nx, y: ny };
+      setLocalFurniturePositions((prev) => ({ ...prev, [drag.id]: { x: nx, y: ny } }));
+    };
+    const onMouseUp = () => {
+      const drag = furnitureDragRef.current;
+      if (!drag) return;
+      if (drag.latest) onFurnitureMove?.(drag.id, drag.latest.x, drag.latest.y);
+      furnitureDragRef.current = null;
+      setDraggingFurnitureId(null);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [scale, gridSnap, onFurnitureMove]);
+
+  const furnitureResizeDragRef = useRef<{
+    id: string;
+    startMouseX: number;
+    startMouseY: number;
+    startW: number;
+    startH: number;
+    latest: { w: number; h: number } | null;
+  } | null>(null);
+  const [localFurnitureSizes, setLocalFurnitureSizes] = useState<Record<string, { w: number; h: number }>>({});
+
+  const handleFurnitureResizeMouseDown = useCallback((e: MouseEvent<HTMLDivElement>, id: string, rect: { x: number; y: number; w: number; h: number }) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setSelectedFurnitureId(id);
+    setSelectedPath(null);
+    furnitureResizeDragRef.current = { id, startMouseX: e.clientX, startMouseY: e.clientY, startW: rect.w, startH: rect.h, latest: null };
+  }, []);
+
+  useEffect(() => {
+    const onMouseMove = (e: globalThis.MouseEvent) => {
+      const resize = furnitureResizeDragRef.current;
+      if (!resize) return;
+      const dx = (e.clientX - resize.startMouseX) / scale;
+      const dy = (e.clientY - resize.startMouseY) / scale;
+      const nw = Math.min(RESIZE_MAX_W, Math.max(RESIZE_MIN_W, resize.startW + dx));
+      const nh = Math.min(RESIZE_MAX_H, Math.max(RESIZE_MIN_H, resize.startH + dy));
+      resize.latest = { w: nw, h: nh };
+      setLocalFurnitureSizes((prev) => ({ ...prev, [resize.id]: { w: nw, h: nh } }));
+    };
+    const onMouseUp = () => {
+      const resize = furnitureResizeDragRef.current;
+      if (!resize) return;
+      if (resize.latest) onFurnitureResize?.(resize.id, resize.latest.w, resize.latest.h);
+      furnitureResizeDragRef.current = null;
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [scale, onFurnitureResize]);
+
+  const handleFocusFurniture = useCallback((id: string) => { setSelectedFurnitureId(id); setSelectedPath(null); }, []);
+
+  /** Furniture item count that drives its default height (§6) — items.length for column/check, rows.length for table. */
+  function furnitureCount(f: BoardFurnitureItemData): number {
+    if (f.k === 'column' || f.k === 'check') return f.items?.length ?? 0;
+    if (f.k === 'table') return f.rows?.length ?? 0;
+    return 0;
+  }
+
+  const RESIZABLE_FURNITURE_KINDS = new Set(['column', 'check', 'table', 'image', 'sketch']);
+
+  // ── SKY-11190: icon/colour picker — right-click a tile to set icon+colour ─
+  const [iconPickerFor, setIconPickerFor] = useState<string | null>(null);
+  const fullPath = useCallback((itemPath: string) => (folderPath ? `${folderPath}/${itemPath}` : itemPath), [folderPath]);
+  const iconPickerEntry = iconPickerFor ? iconMap?.[fullPath(iconPickerFor)] : undefined;
+  const { icon: iconPickerCurrentIcon, color: iconPickerCurrentColor } = unpackIconEntry(iconPickerEntry);
 
   // ── Align guides — collect edges/centres of all non-dragged items ───────
   const [guideLines, setGuideLines] = useState<{ axis: 'h' | 'v'; pos: number }[]>([]);
@@ -549,19 +876,137 @@ export default function BoardCanvas({
     setGuideLines(guides);
   }, [draggingPath, localPositions, resolvedItems]);
 
+  // ── Where every item actually IS, right now ─────────────────────────────
+  // Saved layout, overridden by the live drag/resize. Computed once per
+  // render for ALL items rather than only the mounted ones: a connector whose
+  // far end is culled still has to leave the card it starts on, and the
+  // minimap is a map of the whole board, not of the visible slice.
+  const itemRects = useMemo(() => {
+    return resolvedItems.map((r) => {
+      const path = r.item.path;
+      const pos = localPositions[path] ?? { x: r.layout.x, y: r.layout.y };
+      const size = localSizes[path] ?? { w: r.layout.w, h: r.layout.h };
+      const def = defaultSize(r.item.kind, r.hasThumb);
+      return { r, x: pos.x, y: pos.y, w: size.w ?? def.w, h: size.h ?? def.h };
+    });
+  }, [resolvedItems, localPositions, localSizes]);
+
+  // ── Where every furniture item actually IS, right now ───────────────────
+  // The furniture half of `itemRects`: saved x/y/w/h, overridden by the live
+  // drag/resize. Keyed by furniture id; both the rendered box and the two
+  // connector layers read it, so a `line`, a wiki-link connector and the box
+  // itself can never disagree about where a column is mid-drag (SKY-11717).
+  const furnitureRects = useMemo(() => {
+    const rects = new Map<string, KeyRect>();
+    for (const f of furniture) {
+      if (f.k === 'line') continue; // drawn from other items' rects — has no box of its own
+      const pos = localFurniturePositions[f.id] ?? { x: f.x, y: f.y };
+      const size = localFurnitureSizes[f.id] ?? { w: f.w, h: f.h };
+      const def = defaultFurnitureSize(f.k, furnitureCount(f), { w: f.w, h: f.h });
+      rects.set(f.id, { x: pos.x, y: pos.y, w: size.w ?? def.w, h: size.h ?? def.h });
+    }
+    return rects;
+  }, [furniture, localFurniturePositions, localFurnitureSizes]);
+
+  // ── SKY-11191 §10: wiki-link overlay ────────────────────────────────────
+  // Anchors are item paths plus whatever extra boxes the panel supplied
+  // (ticket 5's `column` furniture). Both maps are built only while the
+  // overlay is on, so a board with the toggle off pays nothing for it.
+  //
+  // SKY-11717: the panel derives its `linkAnchors` from Store B, so those are
+  // the COMMITTED x/y — they only move once a drag ends and the row reloads.
+  // Wherever the canvas lays the same anchor out itself it knows better, so
+  // its live rect is applied last and wins; `linkAnchors` stays the fallback
+  // for anchors the canvas does not render.
+  const linkSegments = useMemo(() => {
+    if (!wikiLinkOverlay || !wikiLinks || wikiLinks.length === 0) return [];
+    const anchors = new Map<string, AnchorRect>();
+    for (const { r, x, y, w, h } of itemRects) anchors.set(r.item.path, { x, y, w, h });
+    if (linkAnchors) for (const [key, rect] of linkAnchors) anchors.set(key, rect);
+    for (const [id, rect] of furnitureRects) anchors.set(furnitureAnchorKey(id), rect);
+    return connectorSegments(wikiLinks, anchors);
+  }, [wikiLinkOverlay, wikiLinks, linkAnchors, itemRects, furnitureRects]);
+
+  // ── SKY-11191 §10: minimap ──────────────────────────────────────────────
+  const minimapBoxes: MinimapBox[] = useMemo(
+    () =>
+      showMinimap
+        ? itemRects.map(({ r, x, y, w, h }) => ({ key: r.item.path, kind: r.item.kind, x, y, w, h }))
+        : [],
+    [showMinimap, itemRects],
+  );
+
+  const minimapWorld = useMemo(
+    () => ({ w: containerWidth, h: canvasHeight }),
+    [containerWidth, canvasHeight],
+  );
+
+  const minimapViewport = useMemo(
+    () =>
+      minimapViewportRect(
+        { scrollLeft: scrollBucket.x, scrollTop: scrollBucket.y, clientWidth: viewportSize.w, clientHeight: viewportSize.h },
+        pan,
+        zoom,
+        minimapWorld,
+      ),
+    [scrollBucket, viewportSize, pan, zoom, minimapWorld],
+  );
+
+  const handleMinimapNavigate = useCallback(
+    (point: { x: number; y: number }) => {
+      const el = scrollAreaRef.current;
+      if (!el) return;
+      const next = scrollToCentreWorldPoint(
+        point,
+        {
+          clientWidth: el.clientWidth,
+          clientHeight: el.clientHeight,
+          scrollWidth: el.scrollWidth,
+          scrollHeight: el.scrollHeight,
+        },
+        pan,
+        zoom,
+      );
+      el.scrollLeft = next.scrollLeft;
+      el.scrollTop = next.scrollTop;
+      handleScroll();
+    },
+    [pan, zoom, handleScroll],
+  );
+
+  // ── SKY-11191 §10: reveal a searched-for item ───────────────────────────
+  // The request routinely arrives BEFORE the board it points at has finished
+  // loading, so this watches the resolved items rather than firing once: it
+  // stays pending until the named item is actually on the board, then selects
+  // and centres it. Selecting a path that is not there yet would be cleared
+  // by the stale-selection guard above before the user ever saw it.
+  const appliedSelectRef = useRef<number | null>(null);
+  const selectSeq = selectRequest?.seq;
+  const selectPath = selectRequest?.itemPath;
+
+  useEffect(() => {
+    if (selectSeq === undefined || selectPath === undefined) return;
+    if (appliedSelectRef.current === selectSeq) return;
+    const target = itemRects.find((entry) => entry.r.item.path === selectPath);
+    if (!target) return; // not on this board yet — try again when it loads
+    appliedSelectRef.current = selectSeq;
+    setSelectedPath(selectPath);
+    // Centre it: a hit can be far outside the mounted set, and a selection rim
+    // the user has to go looking for is not a reveal.
+    handleMinimapNavigate({ x: target.x + target.w / 2, y: target.y + target.h / 2 });
+  }, [selectSeq, selectPath, itemRects, handleMinimapNavigate]);
+
+  const instanceId = useId();
+
   // ── SKY-11186: cull, then pick each survivor's LOD tier ─────────────────
   // Items fully outside the cull rect are not mounted at all — at any zoom.
   // The dragged and the selected item are exempt (boardLod.shouldMount).
   const mountedCards: ReactElement[] = [];
-  for (const r of resolvedItems) {
+  for (const { r, x: posX, y: posY, w, h } of itemRects) {
     const path = r.item.path;
-    const pos = localPositions[path] ?? { x: r.layout.x, y: r.layout.y };
-    const size = localSizes[path] ?? { w: r.layout.w, h: r.layout.h };
-    const def = defaultSize(r.item.kind, r.hasThumb);
-    const w = size.w ?? def.w;
-    const h = size.h ?? def.h;
+    const pos = { x: posX, y: posY };
     const dragging = draggingPath === path;
-    const selected = selectedPath === path;
+    const selected = effectiveSelection.has(path);
     if (!shouldMount({ rect: { x: pos.x, y: pos.y, w, h }, dragging, selected }, cullRect)) continue;
     mountedCards.push(
       <BoardCard
@@ -583,8 +1028,74 @@ export default function BoardCanvas({
         onRequestRename={onRequestRename}
         onRenameCommit={onRenameCommit}
         onRenameCancel={onRenameCancel}
+        icon={iconMap?.[fullPath(path)]}
       />,
     );
+  }
+
+  // ── SKY-11188: furniture — cull/mount the same way cards do, and build a
+  // key → box map (cards + furniture) so `line` items can find their
+  // endpoints regardless of which one is a card and which is furniture. ──
+  const keyRects = new Map<string, KeyRect>();
+  for (const r of resolvedItems) {
+    const key = itemKeysByPath[r.item.path];
+    if (!key) continue; // never-arranged — has no id yet, can't be a line endpoint (§2)
+    const pos = localPositions[r.item.path] ?? { x: r.layout.x, y: r.layout.y };
+    const size = localSizes[r.item.path] ?? { w: r.layout.w, h: r.layout.h };
+    const def = defaultSize(r.item.kind, r.hasThumb);
+    keyRects.set(key, { x: pos.x, y: pos.y, w: size.w ?? def.w, h: size.h ?? def.h });
+  }
+
+  const mountedFurniture: ReactElement[] = [];
+  for (const f of furniture) {
+    const rect = furnitureRects.get(f.id);
+    if (!rect) continue; // `line` furniture — drawn separately, below
+    const dragging = draggingFurnitureId === f.id;
+    const selected = selectedFurnitureId === f.id;
+    keyRects.set(`x:${f.id}`, rect);
+    if (!shouldMount({ rect, dragging, selected }, cullRect)) continue;
+    mountedFurniture.push(
+      <BoardFurniture
+        key={f.id}
+        item={f}
+        x={rect.x}
+        y={rect.y}
+        w={rect.w}
+        h={rect.h}
+        resizable={RESIZABLE_FURNITURE_KINDS.has(f.k)}
+        selected={selected}
+        dragging={dragging}
+        onItemMouseDown={handleFurnitureMouseDown}
+        onResizeMouseDown={handleFurnitureResizeMouseDown}
+        onFocusItem={handleFocusFurniture}
+        onDelete={(id) => onFurnitureDelete?.(id)}
+        onOpenRef={onOpenNoteRef}
+        onCheckToggle={onFurnitureCheckToggle}
+        onSwatchPick={(hex) => onFurnitureColor?.(f.id, hex)}
+      />,
+    );
+  }
+
+  // `line` furniture connects two item KEYS (v:/n:/x:) — drawn only once
+  // BOTH endpoints currently resolve (§4: "deleted when either end is
+  // deleted" — the server already cascade-deletes the line itself on that
+  // event, but a stale local state frame during a delete round-trip must not
+  // draw a connector into empty space either).
+  const lineSegments: Array<{ id: string; x1: number; y1: number; x2: number; y2: number; label?: string; color?: string }> = [];
+  for (const f of furniture) {
+    if (f.k !== 'line') continue;
+    const from = keyRects.get(String(f.from ?? ''));
+    const to = keyRects.get(String(f.to ?? ''));
+    if (!from || !to) continue;
+    lineSegments.push({
+      id: f.id,
+      x1: from.x + from.w / 2,
+      y1: from.y + Math.min(from.h, 150) / 2,
+      x2: to.x + to.w / 2,
+      y2: to.y + Math.min(to.h, 150) / 2,
+      label: typeof f.label === 'string' ? f.label : undefined,
+      color: f.color,
+    });
   }
 
   return (
@@ -659,16 +1170,69 @@ export default function BoardCanvas({
                 : <div key={i} className="board-canvas__guide board-canvas__guide--h" style={{ top: g.pos }} />
             )}
 
+            {/* SKY-11188: `line` connectors — behind the cards/furniture they join. */}
+            {lineSegments.length > 0 && (
+              <svg
+                className="board-canvas__lines"
+                width={containerWidth}
+                height={canvasHeight}
+                aria-hidden="true"
+              >
+                {lineSegments.map((l) => (
+                  <line
+                    key={l.id}
+                    x1={l.x1}
+                    y1={l.y1}
+                    x2={l.x2}
+                    y2={l.y2}
+                    stroke={l.color || 'var(--n1, #00f0ff)'}
+                    strokeWidth={1.8}
+                    opacity={0.85}
+                  />
+                ))}
+              </svg>
+            )}
+
+            {/*
+              SKY-11191 §10: the wiki-link overlay sits UNDER the cards and
+              inside the same transformed world, so a connector is attached to
+              the two boxes it joins through pan, zoom and drag without any
+              per-frame recalculation of its own.
+            */}
+            {wikiLinkOverlay && linkSegments.length > 0 && (
+              <BoardLinkOverlay
+                segments={linkSegments}
+                width={containerWidth}
+                height={canvasHeight}
+                instanceId={instanceId}
+              />
+            )}
+
             {mountedCards}
+            {mountedFurniture}
           </div>
         </div>
       </div>
 
+      {/* SKY-11191 §10: derived minimap. A sibling of the scroll panel, not a
+          child of the world: it must keep its size at every zoom and stay
+          pinned to the panel's corner instead of scrolling away with the
+          board — the same reason the zoom pill lives out here. */}
+      {showMinimap && (
+        <BoardMinimapPanel
+          boxes={minimapBoxes}
+          world={minimapWorld}
+          viewport={minimapViewport}
+          onNavigate={handleMinimapNavigate}
+        />
+      )}
+
       {/*
-        SKY-11187 §5: the item menu. Positioned in viewport coordinates and
-        rendered outside the zoomed world on purpose — chrome must stay
-        legible at 40% zoom. Rename is its only entry: delete belongs to
-        ticket 6's deferred-delete model, not to an ad-hoc one here.
+        SKY-11187 §5 / SKY-11189 §7: the item menu. Positioned in viewport
+        coordinates and rendered outside the zoomed world on purpose — chrome
+        must stay legible at 40% zoom. Rename and Set icon share this menu;
+        Delete routes through the deferred-delete model (onTrashItems), never
+        an ad-hoc fs call here.
       */}
       {contextMenu && (
         <div
@@ -690,7 +1254,38 @@ export default function BoardCanvas({
           >
             Rename
           </button>
+          {onSetIcon && (
+            <button
+              type="button"
+              role="menuitem"
+              className="board-canvas__menu-item"
+              onClick={() => {
+                setIconPickerFor(contextMenu.path);
+                setContextMenu(null);
+              }}
+            >
+              Set icon…
+            </button>
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            className="board-canvas__menu-item board-canvas__menu-item--danger"
+            onClick={handleTrashSelection}
+          >
+            {effectiveSelection.size > 1 ? `Delete ${effectiveSelection.size} items` : 'Delete'}
+          </button>
         </div>
+      )}
+
+      {iconPickerFor && onSetIcon && (
+        <BoardIconPicker
+          currentIcon={iconPickerCurrentIcon}
+          currentColor={iconPickerCurrentColor}
+          onSelect={(icon, color) => { onSetIcon(iconPickerFor, icon, color); setIconPickerFor(null); }}
+          onClear={() => { onSetIcon(iconPickerFor, null, null); setIconPickerFor(null); }}
+          onClose={() => setIconPickerFor(null)}
+        />
       )}
     </div>
   );

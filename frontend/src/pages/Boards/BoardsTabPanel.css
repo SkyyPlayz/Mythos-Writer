@@ -95,6 +95,17 @@
   font-size: 13px;
   padding: 2px 4px;
   border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* SKY-11190: icon+colour badge, mirrors the same path-keyed entry the vault
+   tree and board tiles render — this "board tree" is the breadcrumb trail. */
+.boards-tab-panel__breadcrumb-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .boards-tab-panel__breadcrumb-btn:hover {
@@ -113,6 +124,9 @@
   font-size: 13px;
   font-weight: 500;
   padding: 2px 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* ── SKY-11187 §5: canvas tool palette ──
@@ -156,6 +170,159 @@
   color: var(--text-link, #00f0ff);
 }
 
+/* ── SKY-11191 §10: view toggles + cross-board search ──
+   Both ride the crumb bar's trailing end alongside the tool palette and reuse
+   its neon-on-glass recipe, so the board's chrome stays one row and one
+   visual language. */
+.boards-tab-panel__view-toggles {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 12px;
+}
+
+.boards-tab-panel__toggle {
+  background: none;
+  border: var(--bw, 1px) solid transparent;
+  border-radius: 5px;
+  color: var(--text-secondary, #c8d3e7);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 9px;
+}
+
+.boards-tab-panel__toggle:hover {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+}
+
+.boards-tab-panel__toggle:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+.boards-tab-panel__toggle--active {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  border-color: var(--text-link, #00f0ff);
+  color: var(--text-link, #00f0ff);
+}
+
+/* The results drop out of this wrapper, not out of the bar — the bar scrolls
+   horizontally, so it clips (see BoardsTabPanel.tsx). */
+.boards-tab-panel__chrome {
+  position: relative;
+  flex-shrink: 0;
+  z-index: 20;
+}
+
+.boards-tab-panel__search-input {
+  width: 168px;
+  margin-left: 12px;
+  padding: 3px 9px;
+  border-radius: 5px;
+  border: var(--bw, 1px) solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+  font-size: 12px;
+}
+
+.boards-tab-panel__search-input::placeholder {
+  color: var(--text-tertiary, #8e9db8);
+}
+
+.boards-tab-panel__search-input:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
+
+.boards-tab-panel__search-results {
+  position: absolute;
+  top: 100%;
+  right: 16px;
+  z-index: 30;
+  margin: 4px 0 0;
+  padding: 4px;
+  list-style: none;
+  width: 288px;
+  max-height: 320px;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: var(--bw, 1px) solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--glass-fill-fallback, rgb(13 16 28));
+  box-shadow: 0 14px 40px rgb(3 5 12 / 0.6);
+}
+
+.boards-tab-panel__search-hit {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+/* One highlight for both the pointer and the arrow keys: the active option is
+   the one Enter takes, and hovering makes that option active. */
+.boards-tab-panel__search-hit--active {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+}
+
+.boards-tab-panel__search-hit-name {
+  color: var(--text-primary, #f0f3fc);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Which board the hit lives on — the whole point of a cross-board search is
+   that two notes can share a name. */
+.boards-tab-panel__search-hit-board {
+  color: var(--text-tertiary, #8e9db8);
+  font-size: 11px;
+  margin-left: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}
+
+.boards-tab-panel__search-empty {
+  padding: 6px 8px;
+  color: var(--text-tertiary, #8e9db8);
+  font-size: 12px;
+}
+
+/* SKY-11189 §8: anchors the RecentlyDeletedPanel dropdown (position: absolute,
+   top: 100%, right: 0 — see RecentlyDeletedPanel.css) to this button. */
+.boards-tab-panel__recently-deleted {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.boards-tab-panel__recently-deleted-btn {
+  background: none;
+  border: var(--bw, 1px) solid transparent;
+  border-radius: 5px;
+  color: var(--text-secondary, #c8d3e7);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 9px;
+  white-space: nowrap;
+}
+
+.boards-tab-panel__recently-deleted-btn:hover,
+.boards-tab-panel__recently-deleted-btn[aria-expanded='true'] {
+  background: var(--gs1, rgb(0 240 255 / 0.12));
+  color: var(--text-primary, #f0f3fc);
+}
+
+.boards-tab-panel__recently-deleted-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 1px;
+}
 /* The canvas fills whatever the crumb bar leaves; the empty-board hint is
    layered over it (see BoardsTabPanel.tsx) instead of replacing it. */
 .boards-tab-panel__canvas-wrap {
@@ -235,4 +402,38 @@
 .boards-tab-panel__loading {
   color: var(--text-tertiary, #8e9db8);
   font-size: 14px;
+}
+
+/* SKY-11188 (§4/§5): reachable furniture-creation toolbar — the canvas
+   context-menu the prototype uses isn't built here; this is the
+   keyboard/screen-reader-friendly equivalent entry point. */
+.boards-tab-panel__furniture-toolbar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px 12px;
+}
+
+.boards-tab-panel__furniture-btn {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgb(255 255 255 / 0.1);
+  background: rgb(255 255 255 / 0.04);
+  color: var(--text-secondary, #c8d3e7);
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.boards-tab-panel__furniture-btn:hover {
+  background: rgb(255 255 255 / 0.08);
+  color: var(--text-primary, #f0f3fc);
+  border-color: rgb(255 255 255 / 0.2);
+}
+
+.boards-tab-panel__furniture-btn--active {
+  background: color-mix(in srgb, var(--n4, #2fe6c8) 22%, transparent);
+  color: var(--text-primary, #f0f3fc);
+  border-color: color-mix(in srgb, var(--n4, #2fe6c8) 60%, transparent);
 }

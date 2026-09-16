@@ -35,25 +35,40 @@ export const MAX_IMPORT_FILE_BYTES = 25 * 1024 * 1024;
 export interface ObsidianFileList {
   markdownFiles: string[];
   attachmentFiles: string[];
+  /** SKY-11814: .docx files — story-kind imports convert these into
+   *  chapters/scenes (see importObsidianToVaultDir's docxHandledByCaller
+   *  option); every other caller reports them by name instead of silently
+   *  dropping them. */
+  docxFiles: string[];
+  /** Files matching no known extension — always reported by name, never
+   *  silently dropped (SKY-11814). */
+  unknownFiles: string[];
 }
 
 /**
- * Recursively walk srcPath and collect:
+ * Recursively walk srcPath and classify every file into:
  *   - .md files (markdownFiles)
  *   - known attachment extensions (attachmentFiles)
- * Skips dotfiles, symlinks, and .obsidian metadata directories.
+ *   - .docx files (docxFiles)
+ *   - anything else (unknownFiles)
+ * Skips dotfiles, symlinks, and .obsidian metadata directories. Every file
+ * lands in exactly one bucket — nothing found on disk is invisible to the
+ * caller (SKY-11814: a file used to vanish silently if it matched none of
+ * the first two buckets).
  */
 export function collectObsidianFiles(srcPath: string, base = ''): ObsidianFileList {
   const markdownFiles: string[] = [];
   const attachmentFiles: string[] = [];
+  const docxFiles: string[] = [];
+  const unknownFiles: string[] = [];
 
-  if (!fs.existsSync(srcPath)) return { markdownFiles, attachmentFiles };
+  if (!fs.existsSync(srcPath)) return { markdownFiles, attachmentFiles, docxFiles, unknownFiles };
 
   let entries: fs.Dirent[];
   try {
     entries = fs.readdirSync(srcPath, { withFileTypes: true });
   } catch {
-    return { markdownFiles, attachmentFiles };
+    return { markdownFiles, attachmentFiles, docxFiles, unknownFiles };
   }
 
   for (const entry of entries) {
@@ -66,17 +81,23 @@ export function collectObsidianFiles(srcPath: string, base = ''): ObsidianFileLi
       const sub = collectObsidianFiles(path.join(srcPath, entry.name), rel);
       markdownFiles.push(...sub.markdownFiles);
       attachmentFiles.push(...sub.attachmentFiles);
+      docxFiles.push(...sub.docxFiles);
+      unknownFiles.push(...sub.unknownFiles);
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name).toLowerCase();
       if (ext === '.md') {
         markdownFiles.push(rel);
       } else if (OBSIDIAN_ATTACHMENT_EXTS.has(ext)) {
         attachmentFiles.push(rel);
+      } else if (ext === '.docx') {
+        docxFiles.push(rel);
+      } else {
+        unknownFiles.push(rel);
       }
     }
   }
 
-  return { markdownFiles, attachmentFiles };
+  return { markdownFiles, attachmentFiles, docxFiles, unknownFiles };
 }
 
 // ─── Import ───────────────────────────────────────────────────────────────────
@@ -84,13 +105,31 @@ export function collectObsidianFiles(srcPath: string, base = ''): ObsidianFileLi
 export interface ObsidianImportResult {
   ok: boolean;
   targetPath: string;
-  /** Total files found in the source vault (markdown + attachments). */
+  /** Total files found in the source vault (every file, whatever its type). */
   sourceCount: number;
   imported: number;
   skipped: number;
   errors: string[];
-  /** Non-empty when files were silently dropped. */
+  /** Non-empty when files were not imported — names every one (SKY-11814). */
   dropWarning: string;
+  /**
+   * .docx files found under srcPath (absolute paths), not copied here.
+   * Populated whenever `opts.docxHandledByCaller` is true, so a story-kind
+   * caller can convert them into chapters/scenes without a second directory
+   * walk (see createVaultFromOptions.ts).
+   */
+  docxFiles: string[];
+}
+
+export interface ImportObsidianOptions {
+  /**
+   * When true, .docx files are excluded from the skipped/dropWarning
+   * accounting and returned via `docxFiles` instead — the caller (a
+   * story-kind import) is responsible for converting and counting them.
+   * When false/omitted, .docx files are reported like any other unsupported
+   * file: named in `dropWarning`, never copied (SKY-11814).
+   */
+  docxHandledByCaller?: boolean;
 }
 
 /**
@@ -100,29 +139,36 @@ export interface ObsidianImportResult {
  * and [[links]] come across as-is"). Bare-stem `[[name]]` links resolve at
  * read time via noteBacklinks.ts; ambiguous or unresolvable links stay
  * verbatim in the note, exactly as Obsidian left them.
+ *
+ * Every other file found (unrecognized extensions, and .docx unless
+ * `opts.docxHandledByCaller`) is named in `dropWarning` rather than silently
+ * dropped (SKY-11814 — a Word manuscript or any other unsupported file used
+ * to vanish with zero user-facing feedback).
+ *
  * Returns stats; does NOT update the manifest (caller's responsibility).
  */
 export function importObsidianToVaultDir(
   srcPath: string,
   vaultRoot: string,
+  opts: ImportObsidianOptions = {},
 ): ObsidianImportResult {
   const errors: string[] = [];
   let imported = 0;
   let skipped = 0;
 
   if (!fs.existsSync(srcPath)) {
-    return { ok: false, targetPath: vaultRoot, sourceCount: 0, imported: 0, skipped: 0, errors: [`Source path does not exist: ${srcPath}`], dropWarning: '' };
+    return { ok: false, targetPath: vaultRoot, sourceCount: 0, imported: 0, skipped: 0, errors: [`Source path does not exist: ${srcPath}`], dropWarning: '', docxFiles: [] };
   }
 
   let realSrc: string;
   try {
     realSrc = fs.realpathSync.native(srcPath);
   } catch {
-    return { ok: false, targetPath: vaultRoot, sourceCount: 0, imported: 0, skipped: 0, errors: [`Cannot resolve source path: ${srcPath}`], dropWarning: '' };
+    return { ok: false, targetPath: vaultRoot, sourceCount: 0, imported: 0, skipped: 0, errors: [`Cannot resolve source path: ${srcPath}`], dropWarning: '', docxFiles: [] };
   }
 
-  const { markdownFiles, attachmentFiles } = collectObsidianFiles(realSrc);
-  const sourceCount = markdownFiles.length + attachmentFiles.length;
+  const { markdownFiles, attachmentFiles, docxFiles, unknownFiles } = collectObsidianFiles(realSrc);
+  const sourceCount = markdownFiles.length + attachmentFiles.length + docxFiles.length + unknownFiles.length;
 
   for (const rel of [...markdownFiles, ...attachmentFiles]) {
     try {
@@ -148,13 +194,11 @@ export function importObsidianToVaultDir(
     }
   }
 
-  // Post-import: detect silent drops (files in source not accounted for).
-  const accountedFor = imported + skipped + errors.length;
-  const dropped = Math.max(0, sourceCount - accountedFor);
+  const skippedNames = opts.docxHandledByCaller ? [...unknownFiles] : [...docxFiles, ...unknownFiles];
   const dropWarning =
-    dropped > 0
-      ? `${dropped} file(s) from the Obsidian vault were not imported and not reported as errors — ` +
-        'check for unsupported file types or permission issues in the source vault'
+    skippedNames.length > 0
+      ? `${skippedNames.length} file(s) were not imported (unsupported type): ` +
+        `${skippedNames.slice(0, 5).join(', ')}${skippedNames.length > 5 ? `, +${skippedNames.length - 5} more` : ''}`
       : '';
 
   return {
@@ -165,6 +209,7 @@ export function importObsidianToVaultDir(
     skipped,
     errors,
     dropWarning,
+    docxFiles: opts.docxHandledByCaller ? docxFiles.map((rel) => path.join(realSrc, rel)) : [],
   };
 }
 

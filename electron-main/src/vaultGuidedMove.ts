@@ -1,12 +1,12 @@
-// vault:guidedFolderMove FS logic (SKY-862) — atomic vault relocation for
-// cloud-sync guided folder.
+// vault:localFolderMove FS logic (SKY-862 / SKY-10367) — atomic relocation of
+// the story vault to a plain local folder.
 //
-// Moves the entire story-vault directory to a cloud-synced folder chosen by
-// the user, updates persisted vault settings, and appends a settings audit-log
-// entry inside the new vault location.
+// Moves the entire story-vault directory to a folder chosen by the user,
+// updates persisted vault settings, and appends a settings audit-log entry
+// inside the new vault location.
 //
 // Security contract:
-//   - The caller MUST validate input via checkGuidedMoveGate (vaultGate.ts)
+//   - The caller MUST validate input via checkSinglePathGate (vaultGate.ts)
 //     before invoking any function here. This module does not re-check tokens.
 //   - `validateMoveTarget` checks writable access and an unoccupied destination.
 //   - `moveVaultAtomic` uses fs.promises.rename (OS-level atomic on the same
@@ -111,7 +111,7 @@ export function validateMoveTarget(
 
 export interface AuditEntry {
   timestamp: string;
-  action: 'vault:guidedFolderMove' | 'vault:localFolderMove';
+  action: 'vault:localFolderMove';
   fromPath: string;
   toPath: string;
   syncProvider: VaultMoveDestination;
@@ -410,7 +410,7 @@ export async function moveVaultAtomic(
   try {
     appendAuditEntry(targetPath, {
       timestamp: new Date().toISOString(),
-      action: opts.syncProvider === 'local' ? 'vault:localFolderMove' : 'vault:guidedFolderMove',
+      action: 'vault:localFolderMove',
       fromPath: srcVaultRoot,
       toPath: targetPath,
       syncProvider: opts.syncProvider,
@@ -418,7 +418,7 @@ export async function moveVaultAtomic(
   } catch {
     // Non-fatal; log to main-process stderr so operators can investigate.
     // eslint-disable-next-line no-console
-    console.error('[vaultGuidedMove] audit log write failed — move itself succeeded');
+    console.error('[vaultLocalMove] audit log write failed — move itself succeeded');
   }
 
   // Post-move verification: confirm all files arrived at the destination.

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import ProjectSwitcher, { deriveSingleStoryTitle } from './ProjectSwitcher';
+import ProjectSwitcher, { deriveSingleStoryTitle, deriveVaultDisplayName } from './ProjectSwitcher';
 
 const longVaultRoot = '/home/skyy/Mythos/Vaults/Extremely Long Series Name/Story Vault';
 const notesVaultRoot = '/home/skyy/Mythos/Vaults/Extremely Long Series Name/Notes Vault';
@@ -38,6 +38,41 @@ describe('ProjectSwitcher path display', () => {
     await waitFor(() => expect(screen.getByText('~/Mythos/…/Story Vault')).toBeInTheDocument());
 
     expect(option).toHaveAttribute('title', `${longVaultRoot}\n${notesVaultRoot}`);
+  });
+});
+
+// ─── SKY-11451 — grouped-layout-aware display name ────────────────────────────
+
+describe('deriveVaultDisplayName', () => {
+  it('uses the shared parent folder name for the flat (pre-SKY-11451) bundle layout', () => {
+    expect(
+      deriveVaultDisplayName({
+        vaultRoot: '/home/alice/Mythos/Vaults/Mythos Vault/Story Vault',
+        notesVaultRoot: '/home/alice/Mythos/Vaults/Mythos Vault/Notes Vault',
+      }),
+    ).toBe('Mythos Vault');
+  });
+
+  it('uses the grandparent for the grouped layout (SKY-11141 §1)', () => {
+    expect(
+      deriveVaultDisplayName({
+        vaultRoot: '/home/alice/Mythos/Vaults/My Novel/Stories/Story Vault',
+        notesVaultRoot: '/home/alice/Mythos/Vaults/My Novel/Notes/Notes Vault',
+      }),
+    ).toBe('My Novel');
+  });
+
+  it('falls back to the Story Vault basename for a legacy (un-paired) entry', () => {
+    expect(deriveVaultDisplayName({ vaultRoot: '/home/alice/Mythos/Story Vault' })).toBe('Story Vault');
+  });
+
+  it('does not apply the grouped-grandparent rule when the shared grandparent is not a Stories/Notes pair', () => {
+    expect(
+      deriveVaultDisplayName({
+        vaultRoot: '/home/alice/Fiction/Novel',
+        notesVaultRoot: '/home/alice/Research/Notes',
+      }),
+    ).toBe('Novel');
   });
 });
 

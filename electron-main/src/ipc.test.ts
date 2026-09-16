@@ -111,6 +111,39 @@ describe('setupIpcMain — single-registration invariant', () => {
     expect(calls).toHaveLength(2);
   });
 
+  it('SKY-11865: a channel already claimed by an external caller does not abort registration of the rest', () => {
+    // Real Electron ipcMain.handle() throws synchronously ("Attempted to
+    // register a second handler") when a channel is already registered —
+    // exactly what happens when a Playwright E2E harness stubs a channel via
+    // app.evaluate() before boot reaches setupIpcMain(). The mock here throws
+    // for one channel to reproduce that, since the plain vi.fn() elsewhere in
+    // this file never throws and so can't catch this failure mode.
+    const handlers = {
+      'a:before': vi.fn(),
+      [IPC_CHANNELS.VAULT_VALIDATE_PATH]: vi.fn(),
+      'z:after': vi.fn(),
+    };
+
+    mockHandle.mockImplementation((channel: string) => {
+      if (channel === IPC_CHANNELS.VAULT_VALIDATE_PATH) {
+        throw new Error(`Attempted to register a second handler for '${channel}'`);
+      }
+    });
+
+    expect(() => setupIpcMain(handlers as any)).not.toThrow();
+
+    const registered = mockHandle.mock.calls.map((c) => c[0] as string);
+    // The conflicting channel was attempted (and rejected by the mock), but
+    // 'z:after' — listed after it in the handlers object — must still have
+    // been registered. Pre-fix, the thrown error aborted the whole for-loop
+    // and 'z:after' was never reached.
+    expect(registered).toContain('a:before');
+    expect(registered).toContain(IPC_CHANNELS.VAULT_VALIDATE_PATH);
+    expect(registered).toContain('z:after');
+
+    mockHandle.mockReset();
+  });
+
   it('registers settings get/set/testConnection with the standard IPC envelope', async () => {
     const handlers = {
       [IPC_CHANNELS.SETTINGS_GET]: vi.fn(() => ({ theme: 'dark' })),

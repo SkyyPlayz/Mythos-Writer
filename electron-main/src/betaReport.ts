@@ -60,6 +60,15 @@ export interface ParsedBetaReportReaction {
 export interface ParsedBetaReport {
   summary: ParsedBetaReportSummary;
   reactions: ParsedBetaReportReaction[];
+  /**
+   * True only when a real `type:"summary"` object was found in the response.
+   * `summary` is always populated (falling back to a zero-score placeholder)
+   * so this function's shape stays simple to consume, but callers that need
+   * to tell "the model gave us a report" apart from "nothing parsed" —
+   * e.g. to surface a visible error instead of silently saving a placeholder
+   * (SKY-11816 AC2) — must check this flag, not `summary` truthiness.
+   */
+  summaryFound: boolean;
 }
 
 const VALID_REACTION_KINDS: ReadonlySet<string> = new Set<BetaReportReactionKind>(['loved', 'stumbled', 'confused']);
@@ -67,26 +76,96 @@ const VALID_REACTION_KINDS: ReadonlySet<string> = new Set<BetaReportReactionKind
 const FALLBACK_FEEDBACK = 'The Beta Reader could not produce a structured report for this read. Try running it again.';
 
 /**
- * Parse the Beta Reader LLM response — one JSON object per line, tagged by
- * `type: 'summary' | 'reaction'`. Skips malformed lines rather than failing
- * the whole read (mirrors parseBetaReadLines). Always returns a valid report
- * shape, even for empty/garbage input, so the UI never has to special-case a
- * parse failure beyond an empty REACTIONS list.
+ * Scan `text` for top-level `{...}` objects and parse each as JSON,
+ * independent of line breaks or surrounding prose/markdown fences.
+ *
+ * SKY-11816: the original parser required each JSON object to sit alone on
+ * its own line (`trimmed.startsWith('{')` + `JSON.parse(trimmed)`). Compliant
+ * models (e.g. Claude) follow the "one compact JSON object per line"
+ * instruction closely, but local reasoning models (LM Studio / DeepSeek-R1
+ * distills etc.) routinely pretty-print the JSON across multiple indented
+ * lines even when told not to — every line of a pretty-printed object fails
+ * the single-line check, so the whole report silently vanished. Scanning for
+ * balanced braces (string-aware, so a `{`/`}` inside a quoted value can't
+ * desync the count) finds each object regardless of internal formatting, and
+ * markdown code fences or leading/trailing prose are simply text that never
+ * matches a brace and gets skipped over.
+ */
+function extractJsonObjects(text: string): Record<string, unknown>[] {
+  const objects: Record<string, unknown>[] = [];
+  let i = 0;
+  const len = text.length;
+
+  while (i < len) {
+    if (text[i] !== '{') {
+      i += 1;
+      continue;
+    }
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    let end = -1;
+    for (let j = i; j < len; j++) {
+      const ch = text[j];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (ch === '\\') escaped = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        continue;
+      }
+      if (ch === '{') {
+        depth += 1;
+      } else if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          end = j;
+          break;
+        }
+      }
+    }
+
+    if (end === -1) {
+      // No balanced close from here — either this '{' starts a genuinely
+      // truncated object, or it's a false start (e.g. a stray brace inside
+      // unterminated prose) that swallowed a real object further along by
+      // over-counting depth. Either way, retry from the next character
+      // rather than giving up on the rest of the text.
+      i += 1;
+      continue;
+    }
+
+    const candidate = text.slice(i, end + 1);
+    try {
+      objects.push(JSON.parse(candidate) as Record<string, unknown>);
+      i = end + 1;
+    } catch {
+      i += 1; // not valid JSON (e.g. a stray '{' in prose) — keep scanning
+    }
+  }
+
+  return objects;
+}
+
+/**
+ * Parse the Beta Reader LLM response into a report, tagged by
+ * `type: 'summary' | 'reaction'`. Tolerant of markdown fences, leading/
+ * trailing prose, and multi-line pretty-printed JSON (SKY-11816) — skips
+ * anything that isn't a balanced, parseable object rather than failing the
+ * whole read (mirrors parseBetaReadLines' malformed-line resilience). Always
+ * returns a valid report shape, even for empty/garbage input, so callers that
+ * don't care about the empty case can consume it directly; callers that must
+ * distinguish "no report was found" check `summaryFound`.
  */
 export function parseBetaReportResponse(text: string): ParsedBetaReport {
   const reactions: ParsedBetaReportReaction[] = [];
   let summary: ParsedBetaReportSummary | null = null;
 
-  for (const line of text.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith('{')) continue;
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(trimmed) as Record<string, unknown>;
-    } catch {
-      continue;
-    }
-
+  for (const parsed of extractJsonObjects(text)) {
     if (parsed.type === 'summary') {
       const rawCategories = (parsed.categories && typeof parsed.categories === 'object')
         ? parsed.categories as Record<string, unknown>
@@ -129,6 +208,7 @@ export function parseBetaReportResponse(text: string): ParsedBetaReport {
       feedback: FALLBACK_FEEDBACK,
     },
     reactions,
+    summaryFound: summary !== null,
   };
 }
 

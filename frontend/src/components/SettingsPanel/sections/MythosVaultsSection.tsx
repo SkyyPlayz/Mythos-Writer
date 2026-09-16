@@ -32,6 +32,11 @@ import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
 
 interface VaultEntry {
   vaultRoot: string;
+  /** SKY-11882: the enclosing Mythos-vault root, resolved in main (PROJECT_LIST)
+   *  against story-vaults.json. Equals `vaultRoot` for a legacy (pre-v2) vault,
+   *  which is its own bundle root; `null` when main could not read the vault at
+   *  all, in which case NO whole-vault operation may be offered. */
+  mythosVaultRoot: string | null;
   notesVaultRoot?: string;
   name: string;
 }
@@ -43,16 +48,6 @@ interface VaultStatEntry {
   storyVaultCount: number;
 }
 
-/** SKY-11154: the enclosing Mythos-vault root for the "..." Hide/Delete menu
- *  and for cross-referencing the hidden-paths list — vaults live FLAT
- *  directly under it (path.join(mythosRoot, 'Story Vault')), so strip that
- *  one known segment when present; a legacy (pre-v2) vaultRoot has no such
- *  enclosing folder, so it stands in for itself. */
-function mythosPathFor(vaultRoot: string): string {
-  const m = vaultRoot.match(/^(.*)[\\/]Story Vault$/);
-  return m ? m[1] : vaultRoot;
-}
-
 function pluralize(n: number, noun: string): string {
   return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
@@ -62,6 +57,9 @@ interface CreatedVault {
   vaultRoot: string;
   notesVaultRoot: string;
   name: string;
+  /** SKY-11814: non-fatal import warnings (skipped files, nothing-imported) —
+   *  shown persistently here since the create-vault toast is transient. */
+  importWarnings?: string[];
 }
 
 interface Props {
@@ -105,7 +103,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   const [renameValue, setRenameValue] = useState('');
   // SKY-11154: Hide/Delete + "Show hidden" (§4a) — hidden state is a flat
   // list of absolute vault-root paths, cross-referenced against each card's
-  // computed Mythos-root path.
+  // `mythosVaultRoot` (SKY-11882: resolved by main, not guessed here).
   const [hiddenPaths, setHiddenPaths] = useState<string[]>([]);
   const [showHidden, setShowHidden] = useState(false);
 
@@ -136,14 +134,46 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
       .catch(() => { /* non-fatal */ });
   }, []);
 
+  const refreshActiveRoot = useCallback(() => {
+    window.api?.getVaultRoot?.()
+      .then((res) => { if (res?.vaultRoot) setActiveRoot(res.vaultRoot); })
+      .catch(() => { /* non-fatal */ });
+  }, []);
+
+  // SKY-11882: the hidden list holds MYTHOS roots, so it must be matched
+  // against the same resolved root that Hide sent — not the card's vaultRoot.
+  // A vault whose root didn't resolve (null) can never be on the list: it was
+  // never hideable, so it always lists as visible.
+  const isHidden = useCallback(
+    (v: VaultEntry) => v.mythosVaultRoot !== null && hiddenPaths.includes(v.mythosVaultRoot),
+    [hiddenPaths],
+  );
+
   useEffect(() => {
     refreshVaults();
     refreshHidden();
     loadIcons();
-    window.api?.getVaultRoot?.()
-      .then((res) => { if (res?.vaultRoot) setActiveRoot(res.vaultRoot); })
-      .catch(() => { /* non-fatal */ });
-  }, [refreshVaults, refreshHidden, loadIcons]);
+    refreshActiveRoot();
+  }, [refreshVaults, refreshHidden, loadIcons, refreshActiveRoot]);
+
+  // SKY-11815: a Vaults-folder Move rewrites every vault's absolute path in
+  // vault-settings.json, but this component's `vaults` and `activeRoot` state
+  // were only ever fetched on mount — left alone, cards kept showing the
+  // pre-move paths for the rest of the session, so clicking one to switch
+  // failed the recent-projects allowlist (it only recognizes the post-move
+  // paths). `createDest` gets the same treatment: it is normally prefilled
+  // once and left alone so the user's own edits stick, but a stale prefill
+  // here means "New vault…" silently recreates the just-deleted pre-move
+  // folder — so a Move clears it, and onOpenCreate's existing
+  // `if (!createDest)` guard re-prefills it from the (now current) default.
+  useEffect(() => {
+    if (!window.api?.onVaultsParentMoved) return;
+    return window.api.onVaultsParentMoved(() => {
+      refreshVaults();
+      refreshActiveRoot();
+      setCreateDest('');
+    });
+  }, [refreshVaults, refreshActiveRoot]);
 
   useEffect(() => {
     if (createOpen) createNameRef.current?.focus();
@@ -218,7 +248,17 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     if (!createDest) {
       try {
         const paths = await window.api?.vaultGetPaths?.();
-        if (paths?.defaultVaultsParentPath) setCreateDest(paths.defaultVaultsParentPath);
+        // SKY-11815: `defaultVaultsParentPath` is the static <userData>/vaults
+        // default and never reflects a completed Vault & Files "Move…" — it
+        // is NOT a caching bug, it's this call site reading the wrong field
+        // (independent of repro 1's staleness). `vaultsParentPath` is the
+        // CURRENT parent (falls back to the same default when unmoved) —
+        // useCreateMythosVaultFlow.tsx already prefers it the same way; this
+        // call site just never did. Falling back to defaultVaultsParentPath
+        // keeps a legacy main process (older than SKY-11154, no such field)
+        // working the way it always did.
+        const dest = paths?.vaultsParentPath || paths?.defaultVaultsParentPath;
+        if (dest) setCreateDest(dest);
       } catch { /* prefill unavailable — Browse still works */ }
     }
   }, [createDest]);
@@ -285,6 +325,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
           vaultRoot: res.storyVaultPath,
           notesVaultRoot: res.notesVaultPath,
           name,
+          importWarnings: res.importTally?.warnings?.length ? res.importTally.warnings : undefined,
         });
         setCreateOpen(false);
         setCreateName('');
@@ -488,6 +529,16 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
           <div style={{ fontSize: 10.5, color: '#8e9db8', fontFamily: 'ui-monospace,monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {createdVault.mythosVaultRoot}
           </div>
+          {createdVault.importWarnings && createdVault.importWarnings.length > 0 && (
+            <ul
+              data-testid="mvs-create-import-warnings"
+              style={{ margin: 0, padding: '0 0 0 16px', fontSize: 10.5, color: '#f2c94c', lineHeight: 1.5 }}
+            >
+              {createdVault.importWarnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </ul>
+          )}
           <div style={{ display: 'flex', gap: 8 }}>
             <button
               type="button"
@@ -510,7 +561,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
       )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {vaults.filter((v) => !hiddenPaths.includes(mythosPathFor(v.vaultRoot))).map((v) => {
+        {vaults.filter((v) => !isHidden(v)).map((v) => {
           const current = v.vaultRoot === activeRoot;
           const themeKey = settings.vaultThemes?.[v.vaultRoot] ?? '';
           const displayName = displayNameFor(v);
@@ -619,16 +670,22 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
               ) : (
                 <span style={{ fontSize: 10.5, color: '#7686a2', flex: 'none' }}>Click to switch ›</span>
               )}
-              <div onClick={(e) => e.stopPropagation()}>
-                <VaultOverflowMenu
-                  level="mythos"
-                  vaultPath={mythosPathFor(v.vaultRoot)}
-                  vaultName={displayName}
-                  testIdSuffix={v.vaultRoot}
-                  onHidden={refreshHidden}
-                  onDeleted={refreshVaults}
-                />
-              </div>
+              {/* SKY-11882: no resolved Mythos root (a too-new mythos.json main
+                  refuses to read) means no path is safe to Hide or Delete — the
+                  card still lists and switches, but the destructive menu is
+                  withheld rather than aimed at a guessed path. */}
+              {v.mythosVaultRoot !== null && (
+                <div onClick={(e) => e.stopPropagation()}>
+                  <VaultOverflowMenu
+                    level="mythos"
+                    vaultPath={v.mythosVaultRoot}
+                    vaultName={displayName}
+                    testIdSuffix={v.vaultRoot}
+                    onHidden={refreshHidden}
+                    onDeleted={refreshVaults}
+                  />
+                </div>
+              )}
             </div>
           );
         })}
@@ -641,7 +698,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
 
       {showHidden && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }} data-testid="mvs-hidden-list">
-          {vaults.filter((v) => hiddenPaths.includes(mythosPathFor(v.vaultRoot))).map((v) => (
+          {vaults.filter(isHidden).map((v) => (
             <div
               key={`hidden-${v.vaultRoot}`}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', borderRadius: 10, background: 'rgba(255,255,255,.02)', border: '1px dashed rgba(255,255,255,.1)' }}
@@ -651,13 +708,13 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
                 type="button"
                 className="m24-btn"
                 data-testid={`mvs-unhide-${v.vaultRoot}`}
-                onClick={() => onUnhide(mythosPathFor(v.vaultRoot))}
+                onClick={() => { if (v.mythosVaultRoot) onUnhide(v.mythosVaultRoot); }}
               >
                 Unhide
               </button>
             </div>
           ))}
-          {vaults.filter((v) => hiddenPaths.includes(mythosPathFor(v.vaultRoot))).length === 0 && (
+          {vaults.filter(isHidden).length === 0 && (
             <p className="settings-hint">No hidden Mythos vaults.</p>
           )}
         </div>

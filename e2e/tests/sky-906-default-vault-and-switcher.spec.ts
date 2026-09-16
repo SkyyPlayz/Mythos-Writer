@@ -178,7 +178,7 @@ test('TC-SKY-906-01: default layout creates an empty story/notes vault pair and 
     const vaultPair = await waitForPersistedVaultPair(userData);
     expect(fs.existsSync(vaultPair.vaultRoot)).toBe(true);
     expect(fs.existsSync(vaultPair.notesVaultRoot)).toBe(true);
-    expect(vaultPair.vaultRoot).toBe(path.join(saveParent, 'My Vault', 'Story Vault'));
+    expect(vaultPair.vaultRoot).toBe(path.join(saveParent, 'My Vault', 'Stories', 'Story Vault'));
 
     // SKY-11141 §3 / SKY-11151: "blank" is Obsidian-parity EMPTY — no demo
     // seed content, unlike the old Quick Start flow. There is no scene file
@@ -231,8 +231,9 @@ test('TC-SKY-906-02: Start blank avoids clobbering an existing same-named vault 
     expect(vaultSettings.notesVaultRoot).not.toBe(path.join(preexistingRoot, 'Notes Vault'));
     // pickUniqueMythosVaultName suffixes on collision — the new vault lands
     // in a sibling folder, not inside the pre-existing "My Vault".
-    expect(path.dirname(path.dirname(vaultSettings.vaultRoot!))).toBe(saveParent);
-    expect(path.basename(path.dirname(vaultSettings.vaultRoot!))).not.toBe('My Vault');
+    // With grouped layout (SKY-11141 §1) the vault root is <parent>/<name>/Stories/Story Vault.
+    expect(path.dirname(path.dirname(path.dirname(vaultSettings.vaultRoot!)))).toBe(saveParent);
+    expect(path.basename(path.dirname(path.dirname(vaultSettings.vaultRoot!)))).not.toBe('My Vault');
   } finally {
     await app.close().catch(() => {});
   }
@@ -283,8 +284,8 @@ test('TC-SKY-906-03: vault switcher creates a 2nd vault, switches, and switches 
 
     // Wait until vault-settings reflects the new active vault.
     // "Second" vault lands under userData/vaults (SKY-2157: default parent → userData).
-    const secondVaultStory = path.join(userData, 'vaults', 'Second', 'Story Vault');
-    const secondVaultNotes = path.join(userData, 'vaults', 'Second', 'Notes Vault');
+    const secondVaultStory = path.join(userData, 'vaults', 'Second', 'Stories', 'Story Vault');
+    const secondVaultNotes = path.join(userData, 'vaults', 'Second', 'Notes', 'Notes Vault');
     await expect.poll(
       () => readVaultSettings(userData).vaultRoot,
       { timeout: 30_000, intervals: [200, 400, 800, 1000] },
@@ -296,7 +297,7 @@ test('TC-SKY-906-03: vault switcher creates a 2nd vault, switches, and switches 
     // Both pairs are in recent-projects.
     expect(vaultSettings.recentProjects?.length).toBeGreaterThanOrEqual(2);
     expect(vaultSettings.recentProjects?.some((p) => p.vaultRoot === firstStory)).toBe(true);
-    expect(vaultSettings.recentProjects?.some((p) => p.vaultRoot.endsWith('Second/Story Vault'))).toBe(true);
+    expect(vaultSettings.recentProjects?.some((p) => p.vaultRoot.endsWith('Second/Stories/Story Vault'))).toBe(true);
 
     // Switch back to the first vault via the switcher.
     await pg.locator('.project-switcher-btn').click();

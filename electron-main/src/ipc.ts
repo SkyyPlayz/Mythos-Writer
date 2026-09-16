@@ -377,15 +377,11 @@ export const IPC_CHANNELS = {
   // SKY-9: intra-Story-Vault rename, symmetric with NOTES_VAULT_MOVE so the
   // renderer has one move channel per vault root.
   VAULT_MOVE: 'vault:move',
-  // SKY-862: relocate the entire story vault to a cloud-synced folder.
-  // Distinct from VAULT_MOVE (intra-vault file rename) — this moves the root
-  // directory itself and updates persisted settings.
-  VAULT_GUIDED_FOLDER_MOVE: 'vault:guidedFolderMove',
   // SKY-10367: relocate the entire story vault to a plain local folder — the
-  // default path through "Move to a different folder". Shares the atomic
-  // move + verification logic with VAULT_GUIDED_FOLDER_MOVE but authorises
-  // the target via checkSinglePathGate (any user-picked path, not just a
-  // cloud-provider folder within the home directory).
+  // only vault-relocation path (SKY-11804 removed the branded cloud-provider
+  // variant). Distinct from VAULT_MOVE (intra-vault file rename): this moves
+  // the root directory itself and updates persisted settings. The target is
+  // authorised via checkSinglePathGate, so any user-picked path works.
   VAULT_LOCAL_FOLDER_MOVE: 'vault:localFolderMove',
   // SKY-9: generic folder picker for the Settings UI. Distinct from
   // VAULT_PICK_FOLDER (Obsidian import wizard — issues a registration token)
@@ -536,6 +532,14 @@ export const IPC_CHANNELS = {
   // SKY-11187 (Notes Board 4/9): the canvas's own Store A mutations (§5).
   NOTES_BOARD_CREATE_ITEM: 'notesBoard:createItem',
   NOTES_BOARD_RENAME_ITEM: 'notesBoard:renameItem',
+  // SKY-11189 (Notes Board 6/9): trash split by target type + deferred-delete
+  // undo (§7/§8). Supersedes NOTES_BOARD_ITEM_DELETE's Store-B-only stub for
+  // real deletes — that channel stays wired to itemDeleteStub for now (kept
+  // as a defensive no-op path), but trashItems is what the canvas calls.
+  NOTES_BOARD_TRASH_ITEMS: 'notesBoard:trashItems',
+  NOTES_BOARD_RESTORE: 'notesBoard:restore',
+  NOTES_BOARD_RECENTLY_DELETED_LIST: 'notesBoard:recentlyDeletedList',
+  NOTES_BOARD_EMPTY_TRASH: 'notesBoard:emptyTrash',
 
   // SKY-11186 (Notes Board 6/9): note thumbnails — resolve which image is a
   // note's cover (spec §9), serve a cached derivative or the raw source, and
@@ -605,8 +609,11 @@ export const IPC_CHANNELS = {
   // invokable command sharing the M12.B4a manuscript-pass primitive.
   TIMELINE_REBUILD: 'timeline:rebuild',
 
-  // SKY-863: Cloud-sync conflict detection + lockfile
-  VAULT_CHECK_CONFLICTS: 'vault:check-conflicts',
+  // SKY-863 / SKY-11804: concurrent-session lockfile. Local-only — detects a
+  // second Mythos session holding this vault, on this host or across a network
+  // share. The branded cloud conflict-file scan that used to share this channel
+  // was removed with the rest of the cloud surface.
+  VAULT_CHECK_SESSION_LOCK: 'vault:check-session-lock',
   VAULT_DISMISS_SYNC_WARNING: 'vault:dismiss-sync-warning',
   // SKY-1399: manage custom templates
   TEMPLATE_RENAME: 'template:rename',
@@ -794,18 +801,30 @@ export function setupIpcMain(handlers: IpcHandlers) {
     const loggedHandler = returnsEnvelope
       ? withIpcLog(channel, (payload: unknown) => handler(payload as never))
       : null;
-    // `await` is required so async rejections are caught here and sanitized
-    // before they reach the renderer. Previously thrown fs errors (ENOENT,
-    // EACCES) leaked absolute paths via `(error as Error).message`. (MYT-790)
-    ipcMain.handle(channel, async (event, payload) => {
-      if (!isFromTopFrame(event)) return returnsEnvelope ? untrustedFrameEnvelope() : UNTRUSTED_FRAME_REJECTION;
-      if (loggedHandler) return loggedHandler(payload);
-      try {
-        return await handler(payload);
-      } catch (error) {
-        return sanitizeIpcError(channel, error);
-      }
-    });
+    try {
+      // `await` is required so async rejections are caught here and sanitized
+      // before they reach the renderer. Previously thrown fs errors (ENOENT,
+      // EACCES) leaked absolute paths via `(error as Error).message`. (MYT-790)
+      ipcMain.handle(channel, async (event, payload) => {
+        if (!isFromTopFrame(event)) return returnsEnvelope ? untrustedFrameEnvelope() : UNTRUSTED_FRAME_REJECTION;
+        if (loggedHandler) return loggedHandler(payload);
+        try {
+          return await handler(payload);
+        } catch (error) {
+          return sanitizeIpcError(channel, error);
+        }
+      });
+    } catch (error) {
+      // SKY-11865: ipcMain.handle() throws synchronously ("second handler")
+      // when a channel is already claimed — e.g. a Playwright E2E harness
+      // stubbing this exact channel via app.evaluate() before boot reaches
+      // here. Uncaught, that exception aborted this whole for-loop (GH#444's
+      // failure mode resurfacing from an external caller instead of a
+      // duplicate entry in `handlers`), silently skipping registration for
+      // every channel listed after it. One conflicting channel must not cost
+      // the rest of the app's IPC surface.
+      console.error(`[ipc] setupIpcMain: '${channel}' already has a handler registered — skipping`, error);
+    }
   }
 }
 
@@ -994,7 +1013,6 @@ export interface IpcHandlers {
   [IPC_CHANNELS.STORY_VAULT_REGISTRY_RENAME]: (payload: StoryVaultRegistryRenamePayload) => StoryVaultRegistryRenameResponse;
   [IPC_CHANNELS.STORY_VAULT_REGISTRY_PAIR]: (payload: StoryVaultRegistryPairPayload) => StoryVaultRegistryPairResponse;
   [IPC_CHANNELS.VAULT_MOVE]: (payload: VaultMovePayload) => VaultMoveResponse;
-  [IPC_CHANNELS.VAULT_GUIDED_FOLDER_MOVE]: (payload: VaultGuidedMovePayload) => Promise<VaultGuidedMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_LOCAL_FOLDER_MOVE]: (payload: VaultLocalMovePayload) => Promise<VaultLocalMoveResponse | { error: string }>;
   [IPC_CHANNELS.VAULT_CHOOSE_FOLDER]: (payload: VaultChooseFolderPayload) => Promise<VaultChooseFolderResponse>;
   [IPC_CHANNELS.AGENT_BUDGET_USAGE]: (payload: never) => AgentBudgetUsageResponse;
@@ -1078,7 +1096,9 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTE_BACKLINKS]: (payload: NoteBacklinksPayload) => NoteBacklinksResponse;
 
   // SKY-194: Iconize — per-node icon IPC
-  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
+  // SKY-11190: entries may be the plain string form or the colour-tagged
+  // `{icon, color}` form — see VaultIconEntry in vaultIcons.ts.
+  [IPC_CHANNELS.NOTES_VAULT_READ_ICONS]: (payload: never) => Record<string, string | { icon: string; color: string }>;
   [IPC_CHANNELS.VAULT_READ_ICONS]: (payload: never) => Record<string, string>;
   [IPC_CHANNELS.ICONS_LIST_USER_PACKS]: (payload: never) => { packName: string; icons: string[] }[];
   [IPC_CHANNELS.ICONS_READ_SVG]: (payload: { packName: string; iconName: string }) => { svg: string | null };
@@ -1115,8 +1135,8 @@ export interface IpcHandlers {
   [IPC_CHANNELS.TIMELINE_PROPOSALS_LIST]: (payload: TimelineProposalsListPayload) => TimelineProposalsListResponse;
   [IPC_CHANNELS.TIMELINE_PROPOSAL_RESOLVE]: (payload: TimelineProposalResolvePayload) => TimelineProposalResolveResponse;
 
-  // SKY-863: Cloud-sync conflict detection + lockfile
-  [IPC_CHANNELS.VAULT_CHECK_CONFLICTS]: (payload: never) => Promise<VaultCheckConflictsResponse>;
+  // SKY-863: concurrent-session lockfile
+  [IPC_CHANNELS.VAULT_CHECK_SESSION_LOCK]: (payload: never) => Promise<VaultCheckSessionLockResponse>;
   [IPC_CHANNELS.VAULT_DISMISS_SYNC_WARNING]: (payload: never) => { ok: true };
   // SKY-1399: manage custom templates
   [IPC_CHANNELS.TEMPLATE_RENAME]: (payload: TemplateRenamePayload) => TemplateRenameResponse | { error: string };
@@ -1227,6 +1247,15 @@ export interface IpcHandlers {
   // SKY-11187 (Notes Board 4/9): vault-mutating canvas operations — see notesBoard.ts §5 block.
   [IPC_CHANNELS.NOTES_BOARD_CREATE_ITEM]: (payload: NotesBoardCreateItemPayload) => NotesBoardCreateItemResponse;
   [IPC_CHANNELS.NOTES_BOARD_RENAME_ITEM]: (payload: NotesBoardRenameItemPayload) => NotesBoardRenameItemResponse;
+  // SKY-11189 (Notes Board 6/9): trash split by target type + deferred-delete — see notesTrash.ts §7/§8.
+  [IPC_CHANNELS.NOTES_BOARD_TRASH_ITEMS]: (payload: NotesBoardTrashItemsPayload) => NotesBoardTrashItemsResponse;
+  [IPC_CHANNELS.NOTES_BOARD_RESTORE]: (payload: NotesBoardRestorePayload) => NotesBoardRestoreResponse;
+  [IPC_CHANNELS.NOTES_BOARD_RECENTLY_DELETED_LIST]: (
+    payload: NotesBoardRecentlyDeletedListPayload,
+  ) => NotesBoardRecentlyDeletedListResponse;
+  [IPC_CHANNELS.NOTES_BOARD_EMPTY_TRASH]: (
+    payload: NotesBoardEmptyTrashPayload,
+  ) => Promise<NotesBoardEmptyTrashResponse>;
 
   // SKY-11186 (Notes Board 6/9): note thumbnails IPC — see noteThumbnails.ts.
   [IPC_CHANNELS.NOTES_THUMB_RESOLVE]: (payload: NotesThumbResolvePayload) => Promise<NotesThumbResolveResponse>;
@@ -1508,11 +1537,14 @@ export interface StoryVaultRegistryPairResponse {
 export interface VaultSetIconPayload {
   path: string;
   icon: string | null;
+  /** SKY-11190: optional colour tag, written as the `{icon, color}` map form. */
+  color?: string | null;
 }
 
 export interface VaultSetIconResponse {
   path: string;
   icon: string | null;
+  color?: string | null;
 }
 
 export interface VaultMkdirPayload {
@@ -1671,6 +1703,57 @@ export interface NotesBoardItemDeleteResponse {
   key: string | null;
 }
 
+// ─── SKY-11189 (Notes Board 6/9): trash split by target type + deferred-delete (§7/§8) ───
+
+export type NotesBoardTrashTarget =
+  | { kind: 'note' | 'folder'; itemPath: string; label: string }
+  | { kind: 'furniture'; furnitureId: string; label: string };
+
+export interface NotesBoardTrashItemsPayload {
+  folderPath: string;
+  targets: NotesBoardTrashTarget[];
+}
+
+export interface NotesBoardPendingEntry {
+  id: string;
+  groupId: string;
+  kind: 'note' | 'folder' | 'furniture';
+  /** Vault-relative path of the board (folder) this entry belongs to. */
+  boardPath: string;
+  /** Vault-relative path of the note/folder itself — absent for furniture. */
+  vaultPath?: string;
+  furnitureId?: string;
+  label: string;
+  deletedAt: string;
+}
+
+export interface NotesBoardTrashItemsResponse {
+  entries: NotesBoardPendingEntry[];
+  undoWindowMs: number;
+}
+
+export interface NotesBoardRestorePayload {
+  /** Any entry id belonging to the group to restore — see notesTrash.ts's group model. */
+  id: string;
+}
+
+export interface NotesBoardRestoreResponse {
+  restored: boolean;
+  restoredIds: string[];
+}
+
+export type NotesBoardRecentlyDeletedListPayload = Record<string, never>;
+
+export interface NotesBoardRecentlyDeletedListResponse {
+  entries: NotesBoardPendingEntry[];
+}
+
+export type NotesBoardEmptyTrashPayload = Record<string, never>;
+
+export interface NotesBoardEmptyTrashResponse {
+  flushedGroupIds: string[];
+}
+
 // ─── SKY-11187 (Notes Board 4/9): vault-mutating canvas operations (§5) ───
 // These two channels are the ONLY notesBoard:* ones that touch Store A. They
 // create/rename the real file or folder and then push `vault:notes-updated`
@@ -1746,31 +1829,17 @@ export interface NotesThumbPutResponse {
   ok: boolean;
 }
 
-// ─── SKY-862: Guided-folder vault relocation (cloud sync) ───
-
-/** Big-4 cloud-sync providers supported in Wave 2.B. */
-export type CloudSyncProvider = 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
-
-/** Destination kind recorded on a guided vault move — a cloud provider or a plain local folder. */
-export type VaultMoveDestination = CloudSyncProvider | 'local';
+// ─── SKY-10367: vault relocation ───
 
 /**
- * Payload for VAULT_GUIDED_FOLDER_MOVE.
- * `sessionToken` must be a registration token issued by a main-process
- * vault:pick-folder dialog and bound to exactly `targetPath`.
+ * Destination kind recorded on a vault move's audit entry.
+ *
+ * SKY-11804 removed the branded cloud-provider destinations, so `'local'` is
+ * now the only member. It stays a named union rather than collapsing to the
+ * bare literal: the audit log is a persisted on-disk format, and existing logs
+ * still carry the retired provider values.
  */
-export interface VaultGuidedMovePayload {
-  targetPath: string;
-  syncProvider: CloudSyncProvider;
-  sessionToken: string;
-}
-
-export interface VaultGuidedMoveResponse {
-  moved: boolean;
-  newVaultPath: string;
-  /** Non-empty when post-move verification detected dropped files or stubs. */
-  verificationWarning?: string;
-}
+export type VaultMoveDestination = 'local';
 
 /**
  * Payload for VAULT_LOCAL_FOLDER_MOVE (SKY-10367).
@@ -2454,9 +2523,22 @@ export interface NoteBacklinkEntry {
   snippet: string;
 }
 
+/** SKY-11188: a column item's `ref` counts as a backlink too (§4/§11) — a
+ *  separate list, not merged into `backlinks`, since it points at a BOARD
+ *  (folder), not a linking note. */
+export interface NoteBoardRefBacklinkEntry {
+  /** Vault-relative path of the board (folder) holding the referencing column item. '' is Home. */
+  boardPath: string;
+  /** The furniture item's own title, if set. */
+  boardItemTitle?: string;
+  /** The column entry's own label text. */
+  itemText: string;
+}
+
 export interface NoteBacklinksResponse {
   notePath: string;
   backlinks: NoteBacklinkEntry[];
+  boardRefs: NoteBoardRefBacklinkEntry[];
 }
 
 // ─── Entity Relationship types (SKY-232) ───
@@ -2869,21 +2951,17 @@ export interface AppSettings {
   legacyVaultDismissed?: boolean;
   legacyVaultPath?: string;
   /** SKY-1188: first-run path used to seed post-onboarding guidance. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+  onboardingStartMode?: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
   /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (renderer-owned). */
   onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
   recentVaultParentPaths?: string[];
-  /** SKY-2005: last sample genre selected from the onboarding sample preview. */
-  lastSampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
-  /** SKY-2553: one-time post-onboarding sample-project banner dismissal. */
-  sampleProjectBannerDismissed?: boolean;
   /** SKY-1188: timestamp of first completed onboarding. */
   firstLaunchAt?: string;
   /** SKY-1188: persisted post-onboarding checklist state. */
   gettingStartedProgress?: {
     firstSeenAt?: string;
-    onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+    onboardingStartMode?: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
     dismissed: boolean;
     collapsed?: boolean;
     completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
@@ -3025,14 +3103,14 @@ export interface LastOpenedScene {
 export interface OnboardingCompletePayload {
   /** M29: 'start-fresh' creates a MythosVault v2 with the Veynn demo seed at a
    *  chosen location; 'quick-start' does the same at the default location. */
-  startMode: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
-  /** Required for blank / sample / template modes. Optional for default-mythos-vault
+  startMode: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+  /** Required for blank / template modes. Optional for default-mythos-vault
    *  (defaults to "My First Story" — a renamable seed). */
   storyTitle?: string;
   /** Optional; persisted to AppSettings.authorName. */
   authorName?: string;
   /** Parent directory for the new vault. Tilde-expanded server-side. Required for
-   *  blank/sample/template; for default-mythos-vault the main side falls back to
+   *  blank/template; for default-mythos-vault the main side falls back to
    *  the OS-default Mythos vaults parent when this is absent. */
   vaultParentPath?: string;
   /** Required for template mode. */
@@ -3040,9 +3118,6 @@ export interface OnboardingCompletePayload {
   /** Optional override for the Mythos Vault folder name (default-mythos-vault only).
    *  Rejected if it contains path separators or parent-traversal. */
   vaultName?: string;
-  /** Required for sample mode (SKY-2008): identifies which bundled genre vault to
-   *  install. Main-side validates against the allowlist and resolves the source dir. */
-  sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
   /** SKY-2991: Custom Setup template choice. When startMode='blank', 'recommended'
    *  scaffolds the default quick-start bundle; 'blank' leaves the vault empty.
    *  For startMode='start-fresh' (M29), 'recommended' seeds the Veynn demo and
@@ -3060,7 +3135,7 @@ export interface OnboardingCompletePayload {
 /** SKY-627: response from the extended onboarding:complete handler. */
 export interface OnboardingCompleteResponse {
   ok: boolean;
-  /** Scene ID of the first scene (blank/template/sample starts). */
+  /** Scene ID of the first scene (blank/template starts). */
   firstSceneId?: string;
   /** Relative path of the first scene within the story vault. */
   firstScenePath?: string;
@@ -3232,8 +3307,38 @@ export interface ProjectEntry {
   openedAt: string;
 }
 
+/**
+ * SKY-11882: a ProjectEntry plus the enclosing Mythos-vault root, resolved by
+ * main through the registry-aware `mythosRootForStoryVault()`.
+ *
+ * The renderer cannot derive this itself: a story vault's directory name is
+ * user-chosen (SKY-11169 lets one Mythos vault hold several, e.g.
+ * `<mythos>/Stories/Second World`), so only `story-vaults.json` knows which
+ * folder is a story vault and which is the bundle root. The frontend used to
+ * guess by stripping a hardcoded `Story Vault` suffix, which silently returned
+ * the story-vault subfolder for every custom-named vault — and Settings →
+ * Vault & Files Hide/Delete then targeted that subfolder, stranding `Notes/`,
+ * `mythos.json` and both registries on disk.
+ *
+ * Response-only: computed per call from disk, never persisted into
+ * `recentProjects` (which stays a plain `ProjectEntry[]`).
+ */
+export interface ProjectListEntry extends ProjectEntry {
+  /**
+   * Enclosing Mythos-vault root; the entry's own `vaultRoot` for a legacy
+   * (pre-v2) vault, which is its own bundle root.
+   *
+   * `null` means main could not resolve it — today only a too-new
+   * `mythos.json` (MythosFormatVersionError, "never touch it"). Callers MUST
+   * treat null as "no whole-vault operation is safe here" and suppress
+   * Delete/Hide, never as "fall back to `vaultRoot`": that fallback is the
+   * story-vault subfolder, which is exactly the SKY-11882 data-loss bug.
+   */
+  mythosVaultRoot: string | null;
+}
+
 export interface ProjectListResponse {
-  projects: ProjectEntry[];
+  projects: ProjectListEntry[];
   activeVaultRoot: string;
   /** SKY-320: paired Notes Vault for the currently-active project. */
   activeNotesVaultRoot?: string;
@@ -5541,17 +5646,7 @@ export interface TimelineProposalResolveResponse {
   skippedBecauseUserSet?: boolean;
 }
 
-// ─── SKY-863: Cloud-sync conflict detection + lockfile types ──────────────────
-
-/** One conflict file that was detected and resolved during vault open. */
-export interface ResolvedConflictInfo {
-  conflictPath: string;
-  originalPath: string;
-  provider: 'dropbox' | 'icloud' | 'syncthing';
-  keptPath: string;
-  archivedPath: string;
-  resolvedAt: string;
-}
+// ─── SKY-863: concurrent-session lockfile types ───────────────────────────────
 
 /** Metadata from an existing lockfile that belongs to a live concurrent session. */
 export interface LockfileConflictInfo {
@@ -5560,10 +5655,8 @@ export interface LockfileConflictInfo {
   timestamp: string;
 }
 
-/** Response from `vault:check-conflicts`. */
-export interface VaultCheckConflictsResponse {
-  /** Conflicts detected and auto-resolved during this call. */
-  resolved: ResolvedConflictInfo[];
+/** Response from `vault:check-session-lock`. */
+export interface VaultCheckSessionLockResponse {
   /** Non-null when another live Mythos session has this vault open. */
   lockfileConflict: LockfileConflictInfo | null;
   /** True when the user has previously dismissed warnings for this vault. */

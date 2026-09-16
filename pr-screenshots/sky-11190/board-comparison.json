@@ -1,0 +1,15 @@
+{
+  "baseline": "cf67e93b24db2b55076c79e6c4816292c464dcb4",
+  "baselineImage": "00-main-cf67e93b.png",
+  "iconImage": "03-board-tile.png",
+  "region": {
+    "x": 105,
+    "y": 106,
+    "width": 995,
+    "height": 694
+  },
+  "pixelmatchThreshold": 0.1,
+  "changedPixels": 327,
+  "changedPercent": 0.0473549302709513,
+  "note": "Board content region only; captures are unedited. Intentional difference: icon plus header alignment. Whole-window sidebar initialization is outside this region."
+}

@@ -23,7 +23,7 @@
   min-height: 32px;
   padding: 6px 12px;
   border-bottom: 1px solid var(--border-default);
-  background: var(--glass-fill);
+  background: var(--glass-panel-bg);
   flex-shrink: 0;
 }
 
@@ -58,7 +58,7 @@
 }
 
 .vgv-scope-btn--active {
-  background: color-mix(in srgb, var(--ln-graph-border-highlight, var(--text-accent)) 22%, transparent);
+  background: color-mix(in srgb, var(--ln-graph-border-highlight, var(--accent)) 22%, transparent);
   color: var(--text-body);
 }
 
@@ -249,7 +249,7 @@
   padding: 6px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
-  background: var(--glass-fill);
+  background: var(--glass-panel-bg);
 }
 
 .vgv-legend-wrap {
@@ -397,7 +397,7 @@
   width: 32px;
   height: 32px;
   border: 3px solid var(--border-default);
-  border-top-color: var(--ln-graph-border-highlight, var(--text-accent));
+  border-top-color: var(--ln-graph-border-highlight, var(--accent));
   border-radius: 50%;
   animation: vgv-spin 0.8s linear infinite;
 }
@@ -449,7 +449,7 @@
 }
 
 .vgv-empty-wikilink {
-  color: var(--text-accent, var(--ln-graph-node-default));
+  color: var(--text-link, var(--ln-graph-node-default));
   font-family: var(--font-mono, monospace);
   font-size: 13px;
 }
@@ -469,7 +469,7 @@
 
 .vgv-empty-cta:hover,
 .vgv-empty-cta:focus-visible {
-  border-color: var(--ln-graph-border-highlight, var(--text-accent));
+  border-color: var(--ln-graph-border-highlight, var(--accent));
   background: var(--bg-surface);
   outline: none;
 }
@@ -511,7 +511,7 @@
 .vgv-truncation-showall:focus-visible,
 .vgv-truncation-dismiss:hover,
 .vgv-truncation-dismiss:focus-visible {
-  border-color: var(--ln-graph-border-highlight, var(--text-accent));
+  border-color: var(--ln-graph-border-highlight, var(--accent));
   outline: none;
 }
 
@@ -543,7 +543,7 @@
   height: 40px;
   padding: 0 12px;
   border-top: 1px solid var(--border-default);
-  background: var(--glass-fill);
+  background: var(--glass-panel-bg);
   flex-shrink: 0;
   overflow: hidden;
 }
@@ -758,7 +758,7 @@
   padding: 14px 16px;
   overflow-y: auto;
   border-right: 1px solid var(--border-default);
-  background: var(--glass-fill);
+  background: var(--glass-panel-bg);
   font-family: var(--font-sans);
 }
 
@@ -1011,7 +1011,7 @@
   overflow-y: auto;
   border: 1px solid var(--border-default);
   border-radius: 14px;
-  background: var(--glass-fill);
+  background: var(--glass-panel-bg);
   font-family: var(--font-sans);
   z-index: 2;
 }

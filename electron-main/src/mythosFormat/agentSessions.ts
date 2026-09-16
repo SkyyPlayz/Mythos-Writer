@@ -27,7 +27,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { parseFrontmatter, serializeFrontmatter, renameSyncWithRetry, writeFileAtomic } from '../vault.js';
-import { agentVaultRootFor, notesVaultRootFor } from './mythosJson.js';
+import { agentVaultRootFor } from './mythosJson.js';
+import { ensureActiveNotesVaultPath } from './notesVaultRegistry.js';
 
 export const SESSIONS_DIRNAME = 'Sessions';
 
@@ -298,7 +299,7 @@ function uniqueDestName(dir: string, name: string): string {
  * (suffixed), never overwritten or dropped.
  */
 export function migrateSessionsToAgentVault(mythosRoot: string): { migratedCount: number } {
-  const legacyDir = sessionsDir(notesVaultRootFor(mythosRoot));
+  const legacyDir = sessionsDir(ensureActiveNotesVaultPath(mythosRoot));
   let names: string[];
   try {
     names = fs.readdirSync(legacyDir).filter((n) => {

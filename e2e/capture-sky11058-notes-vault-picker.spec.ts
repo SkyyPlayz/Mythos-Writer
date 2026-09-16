@@ -144,8 +144,9 @@ test('capture SKY-11058 notes-vault picker screenshots', async () => {
     await promptOverlay.locator('.prompt-modal-ok').click();
     await expect(promptOverlay).toHaveCount(0);
 
-    // The registry slugs "Research" to a same-named dir inside the bundle.
-    const secondVaultDir = path.join(bundle, SECOND_VAULT_NAME);
+    // The registry slugs "Research" to a same-named dir grouped under Notes/
+    // (SKY-11451).
+    const secondVaultDir = path.join(bundle, 'Notes', SECOND_VAULT_NAME);
     await expect.poll(() => fs.existsSync(secondVaultDir), { timeout: 10_000 }).toBe(true);
     // Only [[Eira]] resolves in the new vault; "Chapter 01" satisfies the
     // book.md spine stem so it stays out of the unresolved list.

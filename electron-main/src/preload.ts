@@ -4,6 +4,19 @@ import { contextBridge, ipcRenderer } from 'electron';
 import { unwrapIpcEnvelope } from './ipcEnvelope.js';
 import type { AiActivityEntry, AiActivityTerminalEvent } from './aiActivityRegistry.js';
 
+// SKY-11189 (Notes Board 6/9) §7/§8: one pending-delete entry, as the
+// renderer sees it (Recently Deleted panel row, undo-stack bookkeeping).
+interface NotesBoardPendingEntryDTO {
+  id: string;
+  groupId: string;
+  kind: 'note' | 'folder' | 'furniture';
+  boardPath: string;
+  vaultPath?: string;
+  furnitureId?: string;
+  label: string;
+  deletedAt: string;
+}
+
 // Primary API exposed as window.api
 
 async function invokeEnvelope<T>(channel: string, payload: unknown): Promise<T | { error: string }> {
@@ -57,7 +70,7 @@ contextBridge.exposeInMainWorld('api', {
     activate?: boolean;
   }) => ipcRenderer.invoke('vault:create-from-options', payload),
   // SKY-627: extended onboarding orchestration — creates vault + first scene.
-  onboardingComplete: (payload?: { startMode: string; storyTitle?: string; authorName?: string; vaultParentPath?: string; templateId?: string; vaultName?: string; sampleGenre?: string; customTemplate?: 'recommended' | 'blank'; genre?: string; themeKey?: string }) =>
+  onboardingComplete: (payload?: { startMode: string; storyTitle?: string; authorName?: string; vaultParentPath?: string; templateId?: string; vaultName?: string; customTemplate?: 'recommended' | 'blank'; genre?: string; themeKey?: string }) =>
     ipcRenderer.invoke('onboarding:complete', payload ?? {}),
   // SKY-12.4 / SKY-7473: soft reset (default) re-arms the onboarding gate without
   // touching vault paths; `hard: true` (MYTHOS_DEV=1 only) also clears vault paths.
@@ -138,8 +151,6 @@ contextBridge.exposeInMainWorld('api', {
   // SKY-9: intra-Story-Vault rename, symmetric with moveNotesVault.
   moveVault: (fromPath: string, toPath: string) =>
     ipcRenderer.invoke('vault:move', { fromPath, toPath }),
-  vaultGuidedFolderMove: (payload: { targetPath: string; syncProvider: string; sessionToken: string }) =>
-    ipcRenderer.invoke('vault:guidedFolderMove', payload),
   vaultLocalFolderMove: (payload: { targetPath: string; registrationToken: string }) =>
     ipcRenderer.invoke('vault:localFolderMove', payload),
   // SKY-9: generic folder picker for the Settings panel (decoupled from the
@@ -719,6 +730,14 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('vault:surface:revealVaultsParent', undefined),
   vaultSurfaceMoveVaultsParent: (newParentPath: string) =>
     ipcRenderer.invoke('vault:surface:moveVaultsParent', { newParentPath }),
+  // SKY-11815: fired after a successful Vaults-folder move so any renderer
+  // surface caching a vault path (nav-rail tiles, Settings > Mythos vaults,
+  // New-vault Destination prefill) can refresh without a full project switch.
+  onVaultsParentMoved: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {
+    const handler = (_: unknown, data: { vaultRoot: string; notesVaultRoot?: string }) => cb(data);
+    ipcRenderer.on('vaultsParent:moved', handler);
+    return () => ipcRenderer.removeListener('vaultsParent:moved', handler);
+  },
   onProjectSwitched: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => {
     const handler = (_: unknown, data: { vaultRoot: string; notesVaultRoot?: string }) => cb(data);
     ipcRenderer.on('project:switched', handler);
@@ -850,9 +869,9 @@ contextBridge.exposeInMainWorld('api', {
   notesTagMerge: (sourceTag: string, targetTag: string) =>
     ipcRenderer.invoke('notesVault:tag:merge', { sourceTag, targetTag }),
 
-  // SKY-863: Cloud-sync conflict detection + lockfile
-  checkVaultConflicts: () =>
-    ipcRenderer.invoke('vault:check-conflicts', undefined),
+  // SKY-863: concurrent-session lockfile
+  checkVaultSessionLock: () =>
+    ipcRenderer.invoke('vault:check-session-lock', undefined),
   dismissSyncWarning: () =>
     ipcRenderer.invoke('vault:dismiss-sync-warning', undefined),
   // SKY-1399: manage custom templates
@@ -902,14 +921,17 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('notesVault:backlinks', { notePath }),
 
   // SKY-194: Iconize — per-node icon IPC
+  // SKY-11190: entries may be the plain string form or the Boards closed-picker
+  // colour-tagged `{icon, color}` form.
   notesVaultReadIcons: () =>
-    ipcRenderer.invoke('notesVault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
+    ipcRenderer.invoke('notesVault:readIcons', undefined) as unknown as Promise<Record<string, string | { icon: string; color: string }>>,
   vaultReadIcons: () =>
     ipcRenderer.invoke('vault:readIcons', undefined) as unknown as Promise<Record<string, string>>,
   // SKY-9310 (M8 spec item 6): assign (icon truthy) or clear (icon null) a
   // path-keyed icon in .mythos/icons.json — works for both notes and folders.
-  notesVaultSetIcon: (filePath: string, icon: string | null) =>
-    ipcRenderer.invoke('notesVault:setIcon', { path: filePath, icon }) as Promise<{ path: string; icon: string | null }>,
+  // SKY-11190: optional `color` stores the {icon, color} form.
+  notesVaultSetIcon: (filePath: string, icon: string | null, color?: string | null) =>
+    ipcRenderer.invoke('notesVault:setIcon', { path: filePath, icon, color }) as Promise<{ path: string; icon: string | null; color?: string | null }>,
   iconListUserPacks: () =>
     ipcRenderer.invoke('icons:listUserPacks', undefined) as unknown as Promise<{ packName: string; icons: string[] }[]>,
   iconReadSvg: (packName: string, iconName: string) =>
@@ -977,6 +999,27 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('notesBoard:renameItem', { folderPath, itemPath, newName }) as Promise<
       { renamed: true; itemPath: string } | { renamed: false } | { error: string }
     >,
+
+  // SKY-11189 (Notes Board 6/9) §7/§8: trash split by target type +
+  // deferred-delete. See notesTrash.ts — this is the real delete path now;
+  // notesBoardItemDelete above stays wired to the Store-B-only stub.
+  notesBoardTrashItems: (
+    folderPath: string,
+    targets: Array<
+      | { kind: 'note' | 'folder'; itemPath: string; label: string }
+      | { kind: 'furniture'; furnitureId: string; label: string }
+    >,
+  ) =>
+    ipcRenderer.invoke('notesBoard:trashItems', { folderPath, targets }) as Promise<{
+      entries: NotesBoardPendingEntryDTO[];
+      undoWindowMs: number;
+    }>,
+  notesBoardRestore: (id: string) =>
+    ipcRenderer.invoke('notesBoard:restore', { id }) as Promise<{ restored: boolean; restoredIds: string[] }>,
+  notesBoardRecentlyDeletedList: () =>
+    ipcRenderer.invoke('notesBoard:recentlyDeletedList', {}) as Promise<{ entries: NotesBoardPendingEntryDTO[] }>,
+  notesBoardEmptyTrash: () =>
+    ipcRenderer.invoke('notesBoard:emptyTrash', {}) as Promise<{ flushedGroupIds: string[] }>,
 
   // SKY-11186 (Notes Board 6/9): note thumbnails — main resolves which image
   // is a note's cover (spec §9) and stores/serves derivatives; the renderer

@@ -35,8 +35,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockProjectList.mockResolvedValue({
     projects: [
-      { vaultRoot: VAULT_A, notesVaultRoot: '/vaults/Alpha/Notes Vault', name: 'Alpha', openedAt: '' },
-      { vaultRoot: VAULT_B, notesVaultRoot: '/vaults/Beta/Notes Vault', name: 'Beta', openedAt: '' },
+      { vaultRoot: VAULT_A, mythosVaultRoot: '/vaults/Alpha', notesVaultRoot: '/vaults/Alpha/Notes Vault', name: 'Alpha', openedAt: '' },
+      { vaultRoot: VAULT_B, mythosVaultRoot: '/vaults/Beta', notesVaultRoot: '/vaults/Beta/Notes Vault', name: 'Beta', openedAt: '' },
     ],
   });
   mockGetVaultRoot.mockResolvedValue({ vaultRoot: VAULT_A });
@@ -120,6 +120,45 @@ describe('MythosVaultsSection (Beta 4 M1)', () => {
     expect(screen.getByText('Click to switch ›')).toBeInTheDocument();
   });
 
+  // SKY-11815 repro 1: `vaults`/`activeRoot` were fetched once on mount and
+  // never re-fetched after a Vault & Files "Move…" — cards kept the pre-move
+  // paths for the rest of the session, so clicking a non-current card to
+  // switch would target a vaultRoot the recent-projects allowlist no longer
+  // recognized (main already remapped it to the post-move path).
+  it('SKY-11815: a vaultsParent:moved push re-fetches the vault list and active root', async () => {
+    let movedHandler: ((data: { vaultRoot: string; notesVaultRoot?: string }) => void) | undefined;
+    const onVaultsParentMoved = vi.fn((cb: typeof movedHandler) => {
+      movedHandler = cb;
+      return () => {};
+    });
+    Object.defineProperty(window, 'api', {
+      value: { ...window.api, onVaultsParentMoved },
+      writable: true,
+      configurable: true,
+    });
+
+    await setup();
+    expect(onVaultsParentMoved).toHaveBeenCalledTimes(1);
+    expect(mockProjectList).toHaveBeenCalledTimes(1);
+    expect(mockGetVaultRoot).toHaveBeenCalledTimes(1);
+
+    const VAULT_B_MOVED = '/vaults_moved/vaults/Beta/Story Vault';
+    mockProjectList.mockResolvedValue({
+      projects: [
+        { vaultRoot: VAULT_A.replace('/vaults/', '/vaults_moved/vaults/'), mythosVaultRoot: '/vaults_moved/vaults/Alpha', notesVaultRoot: '', name: 'Alpha', openedAt: '' },
+        { vaultRoot: VAULT_B_MOVED, mythosVaultRoot: '/vaults_moved/vaults/Beta', notesVaultRoot: '', name: 'Beta', openedAt: '' },
+      ],
+    });
+    mockGetVaultRoot.mockResolvedValue({ vaultRoot: VAULT_A.replace('/vaults/', '/vaults_moved/vaults/') });
+
+    await act(async () => { movedHandler?.({ vaultRoot: VAULT_A }); });
+
+    expect(mockProjectList).toHaveBeenCalledTimes(2);
+    expect(mockGetVaultRoot).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(screen.getByTestId(`mvs-card-${VAULT_B_MOVED}`)).toBeInTheDocument());
+    expect(screen.queryByTestId(`mvs-card-${VAULT_B}`)).not.toBeInTheDocument();
+  });
+
   it('choosing a theme for a NON-current vault stores it and persists, without recoloring now', async () => {
     const { setSettings, setSavedOk } = await setup();
     fireEvent.change(screen.getByTestId(`mvs-theme-${VAULT_B}`), { target: { value: 'ice' } });
@@ -189,6 +228,55 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
     expect(mockVaultGetPaths).toHaveBeenCalledTimes(1);
     // Name input is focused for immediate typing.
     expect(screen.getByTestId('mvs-create-name')).toHaveFocus();
+  });
+
+  // SKY-11815 repro 2: after a Vault & Files "Move…", `vaultsParentPath` is
+  // the CURRENT parent while `defaultVaultsParentPath` stays pinned at the
+  // static <userData>/vaults default forever — reading the wrong field here
+  // silently re-created the just-deleted pre-move folder on "Create vault".
+  it('SKY-11815: prefers the CURRENT vaultsParentPath over the static default when both are present', async () => {
+    mockVaultGetPaths.mockResolvedValue({
+      storyVaultPath: VAULT_A,
+      notesVaultPath: '/vaults/Alpha/Notes Vault',
+      defaultVaultsParentPath: '/vaults',
+      vaultsParentPath: '/vaults_moved/vaults',
+    });
+    await openCreateForm();
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults_moved/vaults'));
+  });
+
+  // SKY-11815 repro 2 (the caching half): the prefill above is fetched once
+  // and cached in `createDest` for the component's lifetime — without the
+  // 'vaultsParent:moved' broadcast clearing it, a Move mid-session still
+  // leaves a Settings panel that was already open pointing at the deleted
+  // pre-move folder.
+  it('SKY-11815: a vaultsParent:moved push clears a stale cached destination so it re-prefills', async () => {
+    let movedHandler: ((data: { vaultRoot: string; notesVaultRoot?: string }) => void) | undefined;
+    const onVaultsParentMoved = vi.fn((cb: typeof movedHandler) => {
+      movedHandler = cb;
+      return () => {};
+    });
+    Object.defineProperty(window, 'api', {
+      value: { ...window.api, onVaultsParentMoved },
+      writable: true,
+      configurable: true,
+    });
+
+    await openCreateForm();
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
+    expect(onVaultsParentMoved).toHaveBeenCalledTimes(1);
+
+    mockVaultGetPaths.mockResolvedValue({
+      storyVaultPath: VAULT_A,
+      notesVaultPath: '/vaults/Alpha/Notes Vault',
+      defaultVaultsParentPath: '/vaults',
+      vaultsParentPath: '/vaults_moved/vaults',
+    });
+    await act(async () => { movedHandler?.({ vaultRoot: VAULT_A }); });
+    // createDest was reset to '' by the push; "New vault…" re-runs
+    // onOpenCreate's `if (!createDest)` prefill against the now-current path.
+    fireEvent.click(screen.getByTestId('mvs-new-vault'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults_moved/vaults'));
   });
 
   it('SKY-11141 §3: the form offers the SAME three choices — template (recommended, default) / blank / import', async () => {
@@ -472,6 +560,112 @@ describe('MythosVaultsSection — the ⋯ overflow menu (SKY-11154 §4a, AC-VS-0
     fireEvent.click(await screen.findByText('Hide', { selector: 'button' }));
     await waitFor(() => expect(mockVaultSurfaceHide).toHaveBeenCalledWith({ vaultRoot: '/vaults/Alpha', level: 'mythos' }));
   });
+
+  // SKY-11451: a vault created under the grouped Stories/Notes layout must
+  // still resolve to the true Mythos root for whole-vault Hide/Delete — not
+  // to `<mythosRoot>/Stories`, which would trash/hide only the Stories group
+  // and strand Notes/, mythos.json and the registries on disk.
+  it('Delete on a GROUPED-layout Mythos vault trashes the true mythos root, not <root>/Stories', async () => {
+    const GROUPED_ROOT = '/vaults/Gamma/Stories/Story Vault';
+    mockProjectList.mockResolvedValue({
+      projects: [
+        { vaultRoot: GROUPED_ROOT, mythosVaultRoot: '/vaults/Gamma', notesVaultRoot: '/vaults/Gamma/Notes/Notes Vault', name: 'Gamma', openedAt: '' },
+      ],
+    });
+    mockProjectStats.mockResolvedValue({
+      stats: [
+        { vaultRoot: GROUPED_ROOT, storyFileCount: 0, noteCount: 0, notesVaultCount: 1, storyVaultCount: 1 },
+      ],
+    });
+    mockVaultSurfaceBlastRadius.mockResolvedValue({ vaultName: 'Gamma', innerCount: 2 });
+    const setSettings = vi.fn();
+    const setSavedOk = vi.fn();
+    await act(async () => {
+      render(<MythosVaultsSection settings={baseSettings} setSettings={setSettings} setSavedOk={setSavedOk} />);
+    });
+    await waitFor(() => expect(screen.getByTestId(`mvs-card-${GROUPED_ROOT}`)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('More options for Gamma'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    await waitFor(() => expect(mockVaultSurfaceBlastRadius).toHaveBeenCalledWith('/vaults/Gamma'));
+    fireEvent.click(await screen.findByText('Continue'));
+    fireEvent.click(await screen.findByText('Move to Recycle Bin'));
+    await waitFor(() => expect(mockVaultSurfaceTrash).toHaveBeenCalledWith({ vaultPath: '/vaults/Gamma', level: 'mythos' }));
+  });
+
+  // SKY-11882: a story vault created through the Story Vault Picker (SKY-11169)
+  // gets a USER-CHOSEN dir name — `<mythos>/Stories/Second World`. The old
+  // regex-based mythosPathFor() stripped only the two hardcoded `Story Vault`
+  // suffixes, so it fell through and returned the story-vault subfolder: Delete
+  // trashed just that folder and stranded Notes/, mythos.json, story-vaults.json
+  // and notes-vaults.json on disk with no path back into the UI. The mythos root
+  // is now resolved in main (PROJECT_LIST → `mythosVaultRoot`) against the
+  // registry, and this section must use it verbatim.
+  it('Delete on a CUSTOM-NAMED story vault trashes the mythos root, not the story-vault subfolder', async () => {
+    const CUSTOM_ROOT = '/vaults/Delta/Stories/Second World';
+    mockProjectList.mockResolvedValue({
+      projects: [
+        { vaultRoot: CUSTOM_ROOT, mythosVaultRoot: '/vaults/Delta', notesVaultRoot: '/vaults/Delta/Notes/Notes Vault', name: 'Delta', openedAt: '' },
+      ],
+    });
+    mockProjectStats.mockResolvedValue({
+      stats: [
+        { vaultRoot: CUSTOM_ROOT, storyFileCount: 0, noteCount: 0, notesVaultCount: 1, storyVaultCount: 2 },
+      ],
+    });
+    mockVaultSurfaceBlastRadius.mockResolvedValue({ vaultName: 'Delta', innerCount: 3 });
+    await act(async () => {
+      render(<MythosVaultsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
+    });
+    await waitFor(() => expect(screen.getByTestId(`mvs-card-${CUSTOM_ROOT}`)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('More options for Delta'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    await waitFor(() => expect(mockVaultSurfaceBlastRadius).toHaveBeenCalledWith('/vaults/Delta'));
+    fireEvent.click(await screen.findByText('Continue'));
+    fireEvent.click(await screen.findByText('Move to Recycle Bin'));
+    await waitFor(() => expect(mockVaultSurfaceTrash).toHaveBeenCalledWith({ vaultPath: '/vaults/Delta', level: 'mythos' }));
+  });
+
+  it('SKY-11882: Hide on a CUSTOM-NAMED story vault hides the mythos root', async () => {
+    const CUSTOM_ROOT = '/vaults/Delta/Stories/Second World';
+    mockProjectList.mockResolvedValue({
+      projects: [
+        { vaultRoot: CUSTOM_ROOT, mythosVaultRoot: '/vaults/Delta', notesVaultRoot: '/vaults/Delta/Notes/Notes Vault', name: 'Delta', openedAt: '' },
+      ],
+    });
+    await act(async () => {
+      render(<MythosVaultsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
+    });
+    await waitFor(() => expect(screen.getByTestId(`mvs-card-${CUSTOM_ROOT}`)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('More options for Delta'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Hide' }));
+    fireEvent.click(await screen.findByText('Hide', { selector: 'button' }));
+    await waitFor(() => expect(mockVaultSurfaceHide).toHaveBeenCalledWith({ vaultRoot: '/vaults/Delta', level: 'mythos' }));
+  });
+
+  // SKY-11882: main returns mythosVaultRoot:null when it cannot read the vault
+  // at all (today: a too-new mythos.json, which mythosJson.ts raises rather
+  // than "never touches"). There is then no path that is safe to trash, and
+  // falling back to vaultRoot would be the original orphaning bug — so the
+  // whole destructive menu is withheld. The card still lists and still
+  // switches; only Hide/Delete disappear.
+  it('a vault with an UNRESOLVED mythos root offers no Hide/Delete menu at all', async () => {
+    const UNREADABLE = '/vaults/Epsilon/Stories/Story Vault';
+    mockProjectList.mockResolvedValue({
+      projects: [
+        { vaultRoot: UNREADABLE, mythosVaultRoot: null, notesVaultRoot: '/vaults/Epsilon/Notes/Notes Vault', name: 'Epsilon', openedAt: '' },
+      ],
+    });
+    await act(async () => {
+      render(<MythosVaultsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
+    });
+    await waitFor(() => expect(screen.getByTestId(`mvs-card-${UNREADABLE}`)).toBeInTheDocument());
+
+    expect(screen.queryByLabelText('More options for Epsilon')).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument();
+  });
 });
 
 describe('MythosVaultsSection — Show hidden (SKY-11154 §4a, AC-VS-05)', () => {
@@ -492,5 +686,28 @@ describe('MythosVaultsSection — Show hidden (SKY-11154 §4a, AC-VS-05)', () =>
     expect(await screen.findByTestId(`mvs-unhide-${VAULT_A}`)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId(`mvs-unhide-${VAULT_A}`));
     await waitFor(() => expect(mockVaultSurfaceUnhide).toHaveBeenCalledWith('/vaults/Alpha'));
+  });
+
+  // SKY-11882: the hidden list stores MYTHOS roots, so the cross-reference has
+  // to use the same resolved root the Hide button sent. Under the old regex a
+  // custom-named vault cross-referenced its own subfolder instead — hiding it
+  // left the card in the visible list forever (the hide silently "did nothing").
+  it('a hidden CUSTOM-NAMED vault is cross-referenced by its mythos root, not its subfolder', async () => {
+    const CUSTOM_ROOT = '/vaults/Delta/Stories/Second World';
+    mockProjectList.mockResolvedValue({
+      projects: [
+        { vaultRoot: CUSTOM_ROOT, mythosVaultRoot: '/vaults/Delta', notesVaultRoot: '/vaults/Delta/Notes/Notes Vault', name: 'Delta', openedAt: '' },
+      ],
+    });
+    mockVaultSurfaceListHidden.mockResolvedValue({ hiddenVaultRoots: ['/vaults/Delta'] });
+    await act(async () => {
+      render(<MythosVaultsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
+    });
+    await waitFor(() => expect(screen.getByRole('button', { name: /show hidden/i })).toBeInTheDocument());
+    expect(screen.queryByTestId(`mvs-card-${CUSTOM_ROOT}`)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /show hidden/i }));
+    fireEvent.click(await screen.findByTestId(`mvs-unhide-${CUSTOM_ROOT}`));
+    await waitFor(() => expect(mockVaultSurfaceUnhide).toHaveBeenCalledWith('/vaults/Delta'));
   });
 });

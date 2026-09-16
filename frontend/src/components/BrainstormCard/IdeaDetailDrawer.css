@@ -35,7 +35,7 @@
 
 .idd-header-title {
   font-size: var(--text-sm, 14px);
-  font-weight: var(--weight-md, 500);
+  font-weight: 500;
   color: var(--text-muted, #a0aec0);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -88,7 +88,7 @@
 
 .idd-label {
   font-size: var(--text-xs, 12px);
-  font-weight: var(--weight-md, 500);
+  font-weight: 500;
   color: var(--text-muted, #a0aec0);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -167,7 +167,7 @@
   padding: 2px 8px 2px 10px;
   border-radius: 99px;
   font-size: var(--text-xs, 12px);
-  font-weight: var(--weight-md, 500);
+  font-weight: 500;
 }
 
 .idd-pill-name {
@@ -300,7 +300,7 @@
   padding: 6px 14px;
   color: var(--bg-canvas, #0f0f23);
   font-size: var(--text-sm, 14px);
-  font-weight: var(--weight-md, 500);
+  font-weight: 500;
   cursor: pointer;
   transition: opacity 0.15s;
 }
@@ -310,7 +310,7 @@
 }
 
 /* ── Badge colours (entity type) ───────────────────────────────────── */
-.idd-badge { border-radius: 4px; padding: 2px 6px; font-size: var(--text-xs, 12px); font-weight: var(--weight-md, 500); }
+.idd-badge { border-radius: 4px; padding: 2px 6px; font-size: var(--text-xs, 12px); font-weight: 500; }
 .idd-badge-character { background: var(--entity-char-bg, #2d1b4e); color: var(--entity-char-text, #c084fc); }
 .idd-badge-location  { background: var(--entity-loc-bg, #1a2e1a);  color: var(--entity-loc-text, #4ade80); }
 .idd-badge-item      { background: var(--entity-item-bg, #2e2a1a); color: var(--entity-item-text, #fbbf24); }

@@ -550,46 +550,6 @@
   opacity: 0.88;
 }
 
-.sample-project-banner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 10px 14px 0;
-  padding: 12px 14px;
-  border: 1px solid rgba(166, 227, 161, 0.36);
-  border-radius: 14px;
-  background: linear-gradient(135deg, rgba(166, 227, 161, 0.16), rgba(137, 180, 250, 0.12));
-  color: var(--text, #e5e7eb);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
-}
-
-.sample-project-banner__copy {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  font-size: 0.9rem;
-}
-
-.sample-project-banner__copy span {
-  color: var(--muted-text, #a8b0c2);
-}
-
-.sample-project-banner__dismiss {
-  flex: 0 0 auto;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.2);
-  color: inherit;
-  padding: 6px 12px;
-  cursor: pointer;
-}
-
-.sample-project-banner__dismiss:hover {
-  background: rgba(255, 255, 255, 0.1);
-}
-
 /* Loading / error states */
 .shell-loading {
   display: flex;
@@ -743,7 +703,7 @@
 
 .scene-snapshot-save {
   padding: 4px 12px;
-  background: var(--bg-control, #313244);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle, #45475a);
   border-radius: var(--radius-xs);
   color: var(--text-primary, #cdd6f4);
@@ -753,7 +713,7 @@
 }
 
 .scene-snapshot-save:hover {
-  background: var(--bg-control-hover, #45475a);
+  background: var(--bg-hover);
 }
 
 .scene-autosave {
@@ -765,7 +725,7 @@
 
 .btn-history {
   padding: 4px 12px;
-  background: var(--bg-control, #313244);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle, #45475a);
   border-radius: var(--radius-xs);
   color: var(--text-primary, #cdd6f4);
@@ -775,7 +735,7 @@
 }
 
 .btn-history:hover {
-  background: var(--bg-control-hover, #45475a);
+  background: var(--bg-hover);
 }
 
 .voice-toast {
@@ -928,17 +888,17 @@
 }
 
 .chapter-doc-scene:hover {
-  background: var(--bg-overlay);
+  background: var(--bg-hover);
   border-color: var(--border-strong);
 }
 
 .chapter-doc-scene.active {
-  border-color: var(--accent-primary, var(--accent));
-  background: var(--bg-overlay);
+  border-color: var(--accent);
+  background: var(--bg-active);
 }
 
 .chapter-doc-scene:focus-visible {
-  outline: 2px solid var(--accent-primary, var(--accent));
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -1076,7 +1036,7 @@
 }
 
 .book-outline-chapter.active-chapter {
-  border-left-color: var(--accent-primary, var(--accent));
+  border-left-color: var(--accent);
 }
 
 .book-outline-chapter-title {
@@ -1108,18 +1068,18 @@
 }
 
 .book-outline-scene:hover {
-  background: var(--bg-overlay);
+  background: var(--bg-hover);
   color: var(--text-primary);
 }
 
 .book-outline-scene.active-scene {
-  background: var(--bg-overlay);
+  background: var(--bg-active);
   color: var(--text-primary);
   font-weight: 500;
 }
 
 .book-outline-scene:focus-visible {
-  outline: 2px solid var(--accent-primary, var(--accent));
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -1152,7 +1112,7 @@
   padding: 8px 10px;
   border-radius: var(--radius-xs);
   border: 1px solid var(--border, #353048);
-  background: var(--bg, #15131f);
+  background: var(--bg-inset);
   color: inherit;
   font-size: 14px;
 }
@@ -1194,7 +1154,7 @@
   padding: 8px 10px;
   border-radius: var(--radius-xs);
   border: 1px solid var(--border, #353048);
-  background: var(--bg, #15131f);
+  background: var(--bg-inset);
   font-size: 13px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -1436,7 +1396,7 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .top-bar-chrome--peeking {
-    background: var(--glass-fill);
+    background: var(--glass-panel-bg);
   }
 }
 
@@ -1517,7 +1477,7 @@
 
 .scene-drafts-compare-btn {
   padding: 4px 12px;
-  background: var(--bg-control, #313244);
+  background: var(--bg-elevated);
   border: 1px solid var(--border-subtle, #45475a);
   border-radius: var(--radius-xs);
   color: var(--text-primary, #cdd6f4);
@@ -1527,7 +1487,7 @@
 }
 
 .scene-drafts-compare-btn:hover {
-  background: var(--bg-control-hover, #45475a);
+  background: var(--bg-hover);
 }
 
 .scene-drafts-compare-btn.is-active {

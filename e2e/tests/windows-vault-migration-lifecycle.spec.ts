@@ -155,20 +155,20 @@ test('SKY-10405 (native Windows): v0.4 vault silently migrates at boot — no pr
     const settings = JSON.parse(
       fs.readFileSync(path.join(userData, 'vault-settings.json'), 'utf-8'),
     ) as { vaultRoot: string; notesVaultRoot?: string };
-    expect(settings.vaultRoot).toBe(path.join(target, 'Story Vault'));
-    expect(settings.notesVaultRoot).toBe(path.join(target, 'Notes Vault'));
+    expect(settings.vaultRoot).toBe(path.join(target, 'Stories', 'Story Vault'));
+    expect(settings.notesVaultRoot).toBe(path.join(target, 'Notes', 'Notes Vault'));
 
     expect(fs.existsSync(path.join(target, 'mythos.json'))).toBe(true);
     expect(fs.existsSync(path.join(target, '.mythos-migration-incomplete'))).toBe(false);
 
     const newScene = path.join(
-      target, 'Story Vault', 'The Deep', 'Part 1', 'Chapter 01', 'Scene 01.md');
+      target, 'Stories', 'Story Vault', 'The Deep', 'Part 1', 'Chapter 01', 'Scene 01.md');
     expect(fs.readFileSync(newScene, 'utf-8')).toContain(PROSE);
     expect(
-      fs.readFileSync(path.join(target, 'Story Vault', 'The Deep', 'comments.json'), 'utf-8'),
+      fs.readFileSync(path.join(target, 'Stories', 'Story Vault', 'The Deep', 'comments.json'), 'utf-8'),
     ).toContain('Expand the recognition beat.');
     expect(
-      fs.readFileSync(path.join(target, 'Notes Vault', 'Mira.md'), 'utf-8'),
+      fs.readFileSync(path.join(target, 'Notes', 'Notes Vault', 'Mira.md'), 'utf-8'),
     ).toContain('She counts bells.');
 
     // The original vault is byte-for-byte untouched…

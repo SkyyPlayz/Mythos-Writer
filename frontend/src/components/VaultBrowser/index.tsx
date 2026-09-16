@@ -18,6 +18,8 @@ import { validateRenameName } from './renameUtils';
 import { RecentNoteIcon, NewFolderIcon } from './TreeIcons';
 import NoteTemplateDialog from '../NoteTemplateDialog';
 import IconPicker from '../IconPicker/IconPicker';
+import { unpackIconEntry } from '../../iconUtils';
+import type { VaultIconEntry } from '../../iconUtils';
 import TagPane from '../TagPane';
 import { useToast } from '../../hooks/useToast';
 import { Toast } from '../Toast/Toast';
@@ -526,7 +528,7 @@ interface NotesVaultProps {
   onContextChange?: (context: 'file' | 'folder' | null) => void;
   activeTag: string | null;
   onTagFilter: (tag: string | null) => void;
-  iconMap?: Record<string, string>;
+  iconMap?: Record<string, VaultIconEntry>;
   /** SKY-9310 (M8 spec item 6): notify the parent after a Set icon…/Remove
    *  icon action so it can update the map it owns (fetched once, then kept
    *  in sync locally rather than round-tripping an IPC read per change). */
@@ -1366,7 +1368,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
       />
       {iconPickerRow && (
         <IconPicker
-          currentIcon={iconMap?.[iconPickerRow.node.path]}
+          currentIcon={unpackIconEntry(iconMap?.[iconPickerRow.node.path]).icon}
           onSelect={handleIconSelect}
           onClose={() => setIconPickerRow(null)}
         />
@@ -1513,7 +1515,7 @@ export default function VaultBrowser({
   const [scope, setScope] = useState<VaultScope>(initialScope);
   const [activeTag, setActiveTag] = useState<string | null>(null);
   const { items: notesItems, loading: notesLoading, reload: notesReload } = useVaultFiles('notes');
-  const [notesIconMap, setNotesIconMap] = useState<Record<string, string>>({});
+  const [notesIconMap, setNotesIconMap] = useState<Record<string, VaultIconEntry>>({});
 
   // SKY-10926: a note created outside this tree (TemplatePicker's sidebar
   // "New note from template" flow) writes straight to the notes vault via
@@ -1556,7 +1558,7 @@ export default function VaultBrowser({
   // reference per load(), so this doesn't refire on unrelated re-renders.
   useEffect(() => {
     window.api.notesVaultReadIcons().then((m) => {
-      if (m && typeof m === 'object') setNotesIconMap(m as Record<string, string>);
+      if (m && typeof m === 'object') setNotesIconMap(m);
     }).catch(() => {});
   }, [notesItems]);
 

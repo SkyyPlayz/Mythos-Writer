@@ -59,6 +59,10 @@ import {
   serializeSessionFile,
 } from './agentSessions.js';
 import {
+  DEFAULT_NOTES_VAULT_DIRNAME,
+  readNotesVaultRegistry,
+} from './notesVaultRegistry.js';
+import {
   defaultVaultSettingsFile,
   readVaultSettingsFile,
   writeVaultSettingsFile,
@@ -587,11 +591,20 @@ describe('agent session files', () => {
 // ─── SKY-10952: Agent Vault migration ────────────────────────────────────────
 
 describe('migrateSessionsToAgentVault', () => {
+  // A vault created before SKY-11451 (grouped Notes/Stories layout) has its
+  // Notes Vault physically at the FLAT `<mythosRoot>/Notes Vault`, not the
+  // grouped default `notesVaultRootFor` now returns. Fixtures below use this
+  // literal — not `notesVaultRootFor(tmp)` — so they exercise the real
+  // pre-existing-vault path instead of tautologically matching whatever
+  // notesVaultRootFor happens to return (SKY-11891).
+  const legacyNotesVaultRoot = (mythosRoot: string) =>
+    path.join(mythosRoot, DEFAULT_NOTES_VAULT_DIRNAME);
+
   it('moves an existing Notes Vault/Sessions/ tree onto Agent Vault/Sessions/ and removes the empty source', () => {
-    const legacyDir = path.join(notesVaultRootFor(tmp), 'Sessions');
+    const legacyDir = path.join(legacyNotesVaultRoot(tmp), 'Sessions');
     fs.mkdirSync(legacyDir, { recursive: true });
-    createSession(notesVaultRootFor(tmp), { agent: 'brainstorm', title: 'Old session' });
-    createSession(notesVaultRootFor(tmp), { agent: 'coach', title: 'Another old session' });
+    createSession(legacyNotesVaultRoot(tmp), { agent: 'brainstorm', title: 'Old session' });
+    createSession(legacyNotesVaultRoot(tmp), { agent: 'coach', title: 'Another old session' });
 
     const result = migrateSessionsToAgentVault(tmp);
     expect(result.migratedCount).toBe(2);
@@ -600,7 +613,11 @@ describe('migrateSessionsToAgentVault', () => {
     const migrated = listSessions(agentVaultRootFor(tmp));
     expect(migrated).toHaveLength(2);
     expect(migrated.map((s) => s.title).sort()).toEqual(['Another old session', 'Old session']);
-    expect(listSessions(notesVaultRootFor(tmp))).toHaveLength(0);
+    expect(listSessions(legacyNotesVaultRoot(tmp))).toHaveLength(0);
+
+    // Lazy registry migration persisted the flat dir, not the grouped default.
+    const registry = readNotesVaultRegistry(tmp);
+    expect(registry?.vaults[0]?.dirName).toBe(DEFAULT_NOTES_VAULT_DIRNAME);
   });
 
   it('never orphans a transcript — a same-name collision at the destination is suffixed, not overwritten', () => {
@@ -614,7 +631,7 @@ describe('migrateSessionsToAgentVault', () => {
     const destName = path.basename(destRelPath);
 
     // A legacy session that happens to serialize to the exact same filename.
-    const legacyDir = path.join(notesVaultRootFor(tmp), 'Sessions');
+    const legacyDir = path.join(legacyNotesVaultRoot(tmp), 'Sessions');
     fs.mkdirSync(legacyDir, { recursive: true });
     fs.writeFileSync(
       path.join(legacyDir, destName),
@@ -636,13 +653,30 @@ describe('migrateSessionsToAgentVault', () => {
   });
 
   it('is idempotent — a second run after migration does nothing further', () => {
-    const legacyDir = path.join(notesVaultRootFor(tmp), 'Sessions');
+    const legacyDir = path.join(legacyNotesVaultRoot(tmp), 'Sessions');
     fs.mkdirSync(legacyDir, { recursive: true });
-    createSession(notesVaultRootFor(tmp), { agent: 'brainstorm', title: 'Once' });
+    createSession(legacyNotesVaultRoot(tmp), { agent: 'brainstorm', title: 'Once' });
 
     expect(migrateSessionsToAgentVault(tmp).migratedCount).toBe(1);
     expect(migrateSessionsToAgentVault(tmp).migratedCount).toBe(0);
     expect(listSessions(agentVaultRootFor(tmp))).toHaveLength(1);
+  });
+
+  it('finds legacy sessions on a pre-registry vault even though notesVaultRootFor now points at the grouped path (SKY-11891 regression)', () => {
+    // Simulates a real vault created before SKY-11451: no notes-vaults.json
+    // yet, sessions physically at the flat path. notesVaultRootFor(tmp) would
+    // resolve to the grouped `Notes/Notes Vault`, which does not exist here.
+    expect(readNotesVaultRegistry(tmp)).toBeNull();
+    expect(notesVaultRootFor(tmp)).not.toBe(legacyNotesVaultRoot(tmp));
+
+    const legacyDir = path.join(legacyNotesVaultRoot(tmp), 'Sessions');
+    fs.mkdirSync(legacyDir, { recursive: true });
+    createSession(legacyNotesVaultRoot(tmp), { agent: 'brainstorm', title: 'Pre-11451 session' });
+
+    expect(migrateSessionsToAgentVault(tmp).migratedCount).toBe(1);
+    expect(listSessions(agentVaultRootFor(tmp)).map((s) => s.title)).toEqual([
+      'Pre-11451 session',
+    ]);
   });
 });
 

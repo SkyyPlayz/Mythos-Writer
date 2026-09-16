@@ -1,20 +1,22 @@
 /**
- * move-vault-local-real.spec.ts — SKY-10367
+ * move-vault-local-real.spec.ts — SKY-10367 / SKY-11804
  *
- * Real E2E for the default local-folder path through the Move Vault wizard:
- * launches the actual Electron app, drives Settings → Sync & Backup → Move
- * vault… straight through the local folder step (no provider selection, no
- * sync-client confirmation checkbox), and lets the genuine
- * `vault:localFolderMove` IPC handler perform a real `fs.rename` on disk.
- * Nothing on the local-move seam is stubbed.
+ * Real E2E for the Move Vault wizard, which after SKY-11804 has exactly one
+ * destination: a plain local folder. Launches the actual Electron app, drives
+ * Settings → Sync & Backup → Move vault… through the folder step, and lets the
+ * genuine `vault:localFolderMove` IPC handler perform a real `fs.rename` on
+ * disk. Nothing on the move seam is stubbed.
  *
  * The only mock is `dialog.showOpenDialog` — Playwright cannot drive the
  * native OS folder picker, so we fake that single native call to return a
  * real, pre-existing empty directory. The chosen target deliberately sits
- * OUTSIDE the user's home directory (unlike move-vault-real.spec.ts's cloud
- * target) to prove the local-move gate (checkSinglePathGate) authorises any
- * user-picked path, not just locations under $HOME the way the cloud-sync
- * gate does.
+ * OUTSIDE the user's home directory, proving the move gate
+ * (checkSinglePathGate) authorises any user-picked path.
+ *
+ * SKY-11804 requirement 4: this is the proof that move-vault stays REACHABLE
+ * and works after the branded cloud/sync strip. Per §4c it pre-seeds only the
+ * vault being moved — never the wizard state under test, which is reached by
+ * real clicks from the app menu.
  *
  * Run (after `npm run build:electron`):
  *   npx playwright test e2e/move-vault-local-real.spec.ts --reporter=list
@@ -165,10 +167,24 @@ test('Move Vault wizard defaults to a local folder move with no stubbed IPC hand
 
     await page.locator('[data-testid="sync-move-vault"]').click();
 
-    // Step 0 — local folder is the default entry point; no provider list,
-    // no "cloud sync" title.
-    await expect(page.getByRole('dialog', { name: /move vault to a different folder/i })).toBeVisible();
-    await expect(page.locator('[data-testid="provider-option-dropbox"]')).toHaveCount(0);
+    // Step 0 — the local folder step is the ONLY entry point.
+    const wizard = page.getByRole('dialog', { name: /move vault to a different folder/i });
+    await expect(wizard).toBeVisible();
+
+    // SKY-11804: the branded cloud destination is gone from the real app, not
+    // merely hidden behind a flag.
+    for (const provider of ['dropbox', 'icloud', 'onedrive', 'google-drive']) {
+      await expect(page.locator(`[data-testid="provider-option-${provider}"]`)).toHaveCount(0);
+    }
+    await expect(page.locator('[data-testid="mv-switch-to-cloud"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="mv-next-provider"]')).toHaveCount(0);
+    await expect(wizard).not.toContainText(/dropbox|icloud|onedrive|google drive/i);
+
+    // ...and the IPC channel behind it is gone from the preload bridge, so no
+    // surviving UI can call a dead channel and no dead channel is left
+    // callerless (SKY-11804 requirement 3).
+    expect(await page.evaluate(() => 'vaultGuidedFolderMove' in window.api)).toBe(false);
+    expect(await page.evaluate(() => 'checkVaultSessionLock' in window.api)).toBe(true);
 
     // Browse triggers the real vault:pick-folder handler, which calls
     // dialog.showOpenDialog (mocked above) and mints a real one-shot
@@ -177,7 +193,7 @@ test('Move Vault wizard defaults to a local folder move with no stubbed IPC hand
     await expect(page.locator('[data-testid="mv-folder-display"]')).toHaveValue(dirs.targetVault);
     await page.locator('[data-testid="mv-next-folder"]').click();
 
-    // Step 1 — confirm. No sync-client checkbox gate for a local move.
+    // Step 1 — confirm. No sync-client checkbox gate survives the strip.
     await expect(page.locator('[data-testid="mv-from-path"]')).toContainText(dirs.storyVault);
     await expect(page.locator('[data-testid="mv-to-path"]')).toContainText(dirs.targetVault);
     await expect(page.locator('[data-testid="mv-confirm-checkbox"]')).toHaveCount(0);
@@ -209,7 +225,7 @@ test('Move Vault wizard defaults to a local folder move with no stubbed IPC hand
     expect(auditLog.action).toBe('vault:localFolderMove');
     expect(auditLog.syncProvider).toBe('local');
 
-    // guidedFolderMove/localFolderMove only relocates the Story Vault; the
+    // localFolderMove only relocates the Story Vault; the
     // separate Notes Vault is untouched by design.
     expect(fs.existsSync(dirs.notesVault)).toBe(true);
 

@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   ensureNotesVaultRegistry,
+  ensureActiveNotesVaultPath,
   createBlankNotesVault,
   createNotesVaultFromOptions,
   setActiveNotesVault,
@@ -17,6 +18,7 @@ import {
   DEFAULT_NOTES_VAULT_DIRNAME,
 } from './notesVaultRegistry.js';
 import { TEMPLATE_NOTES_SKELETON } from './createVaultFromOptions.js';
+import { notesVaultRootFor } from './mythosJson.js';
 
 let tmpDir: string;
 
@@ -50,6 +52,29 @@ describe('ensureNotesVaultRegistry', () => {
   it('writes registry file to mythosRoot', () => {
     ensureNotesVaultRegistry(tmpDir);
     expect(fs.existsSync(path.join(tmpDir, NOTES_VAULT_REGISTRY_FILENAME))).toBe(true);
+  });
+});
+
+describe('ensureActiveNotesVaultPath', () => {
+  it('resolves a pre-registry flat v2 vault to its existing FLAT dir, never the grouped default', () => {
+    // No notes-vaults.json yet — only the flat DEFAULT_NOTES_VAULT_DIRNAME
+    // dir the beforeEach hook seeded. Must NOT fall back to
+    // notesVaultRootFor's grouped `Notes/Notes Vault` path, which does not
+    // exist on disk for a vault created before SKY-11451 (SKY-11891).
+    expect(readNotesVaultRegistry(tmpDir)).toBeNull();
+    const resolved = ensureActiveNotesVaultPath(tmpDir);
+    expect(resolved).toBe(path.join(tmpDir, DEFAULT_NOTES_VAULT_DIRNAME));
+    expect(resolved).not.toBe(notesVaultRootFor(tmpDir));
+    // Lazy migration also persisted the registry as a side effect.
+    expect(readNotesVaultRegistry(tmpDir)).not.toBeNull();
+  });
+
+  it('resolves a vault created after SKY-11451 to its grouped Notes/ path', () => {
+    ensureNotesVaultRegistry(tmpDir);
+    const { entry } = createBlankNotesVault(tmpDir, 'Import 1');
+    setActiveNotesVault(tmpDir, entry.id);
+    expect(ensureActiveNotesVaultPath(tmpDir)).toBe(notesVaultAbsPath(tmpDir, entry));
+    expect(ensureActiveNotesVaultPath(tmpDir)).toBe(path.join(tmpDir, 'Notes', 'Import 1'));
   });
 });
 

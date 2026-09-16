@@ -40,6 +40,7 @@ import { appendChapterToStory, mapAllChapters, reconcileParts, syncChaptersFromP
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import { runQuitFlushers, trackQuitCriticalWrite } from './lib/flushBeforeQuit';
+import { canUndo as canUndoNotesAction, undo as undoNotesAction } from './lib/notesUndoStack';
 import cosmicBgUrl from './assets/cosmic-bg.webp';
 import LeftRail, { DEFAULT_LEFT_SIDEBAR_LAYOUT } from './LeftRail';
 import AppNavRail, { type NavRailVault } from './AppNavRail';
@@ -114,7 +115,7 @@ import { scrollBehavior } from './lib/reducedMotion';
 import ChapterInterlude from './ChapterInterlude';
 import { stepScene, computeStepState, type StepSceneTarget } from './stepScene';
 import { useFocusMode } from './useFocusMode';
-import SyncConflictModal, { type ResolvedConflictInfo, type LockfileConflictInfo } from './SyncConflictModal';
+import ConcurrentSessionModal, { type LockfileConflictInfo } from './ConcurrentSessionModal';
 import {
   createInitialGettingStartedProgress,
   gettingStartedReducer,
@@ -975,7 +976,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [layoutHasUnsavedChanges, setLayoutHasUnsavedChanges] = useState(false);
 
   // ─── SKY-863: Sync conflict modal state ───
-  const [syncConflictResolved, setSyncConflictResolved] = useState<ResolvedConflictInfo[]>([]);
   const [syncLockfileConflict, setSyncLockfileConflict] = useState<LockfileConflictInfo | null>(null);
   const [syncModalOpen, setSyncModalOpen] = useState(false);
 
@@ -1068,15 +1068,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         return updated;
       });
       return next;
-    });
-  }, []);
-
-  const handleDismissSampleProjectBanner = useCallback(() => {
-    setAppSettings((prev) => {
-      if (!prev) return prev;
-      const updated = { ...prev, sampleProjectBannerDismissed: true } as AppSettings;
-      window.api.settingsSet(updated).catch(() => {});
-      return updated;
     });
   }, []);
 
@@ -1464,8 +1455,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           ? { gettingStartedProgress: initS.gettingStartedProgress } : {}),
         ...(initS?.onboardingStartMode != null && sFromIpc.onboardingStartMode == null
           ? { onboardingStartMode: initS.onboardingStartMode } : {}),
-        ...(initS?.lastSampleGenre != null && sFromIpc.lastSampleGenre == null
-          ? { lastSampleGenre: initS.lastSampleGenre } : {}),
       } : (initS ?? sFromIpc);
       cachedSettings = s;
       // SKY-11379: a newer switch began while settings/root/paths were in
@@ -1691,23 +1680,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (rootResult?.vaultRoot) setActiveVaultRoot(rootResult.vaultRoot);
       else if (storyPath) setActiveVaultRoot(storyPath);
 
-      // SKY-863: run conflict check after vault is ready.
+      // SKY-863: claim the vault session lock once the vault is ready, and
+      // warn if another Mythos session already holds it.
       // Non-fatal: errors here must not prevent opening the vault.
       try {
-        if (typeof window.api?.checkVaultConflicts === 'function') {
-          const conflicts = await window.api.checkVaultConflicts();
-          // SKY-11379: don't raise a superseded load's conflict modal over the
-          // vault the user switched to.
-          if (!superseded() && conflicts && !conflicts.dismissed) {
-            if ((conflicts.resolved?.length ?? 0) > 0 || conflicts.lockfileConflict) {
-              setSyncConflictResolved(conflicts.resolved ?? []);
-              setSyncLockfileConflict(conflicts.lockfileConflict ?? null);
-              setSyncModalOpen(true);
-            }
+        if (typeof window.api?.checkVaultSessionLock === 'function') {
+          const sessionLock = await window.api.checkVaultSessionLock();
+          // SKY-11379: don't raise a superseded load's warning over the vault
+          // the user switched to.
+          if (!superseded() && sessionLock && !sessionLock.dismissed && sessionLock.lockfileConflict) {
+            setSyncLockfileConflict(sessionLock.lockfileConflict);
+            setSyncModalOpen(true);
           }
         }
       } catch {
-        // conflict check is best-effort
+        // session-lock check is best-effort
       }
     } catch (e) {
       // SKY-11379: a superseded load's failure must not surface over the vault
@@ -1815,6 +1802,23 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const { icons: vaultIconsByRoot, loadIcons: loadVaultIcons, setVaultIcon, pickIconImage } = useVaultIcons();
 
   useEffect(() => { loadVaults(); loadVaultIcons(); }, [loadVaults, loadVaultIcons]);
+
+  // SKY-11815: a Vaults-folder Move rewrites every registered vault's
+  // absolute path (including the active one) but is not a project switch —
+  // the same vault content stays loaded, only its on-disk path changed — so
+  // this refreshes the nav-rail tiles + the active-root pointer used to
+  // highlight one of them, without the full loadVault()/selection-reset that
+  // onProjectSwitched below triggers (that would blow away the user's open
+  // scene/chapter/entity for no reason mid-Move).
+  useEffect(() => {
+    if (!window.api?.onVaultsParentMoved) return;
+    const unsub = window.api.onVaultsParentMoved((data: { vaultRoot: string }) => {
+      activeVaultRootRef.current = data.vaultRoot;
+      setActiveVaultRoot(data.vaultRoot);
+      loadVaults();
+    });
+    return () => unsub?.();
+  }, [loadVaults]);
 
   // Derived display shape — recomputed whenever the raw list, the active
   // vault, or a per-vault display-name/icon override changes.
@@ -2768,6 +2772,28 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         e.preventDefault();
         setSettingsOpen(true);
         return;
+      }
+      // SKY-11189 §8: Ctrl/Cmd+Z undoes the most recent Notes Board delete
+      // (a session-scoped stack — see notesUndoStack.ts — deliberately built
+      // as a generic `{label, undo}` stack so a future ticket can push a
+      // rename/move/drag/furniture undo onto the SAME stack rather than a
+      // second one). Guarded off text inputs exactly like the other
+      // shortcuts here: a focused editor's OWN undo (ProseMirror's keymap,
+      // or plain contentEditable) must keep first claim on Ctrl+Z — this
+      // only fires for the rest of the app, and is a no-op (falls through to
+      // nothing) when the stack is empty, so a bare Ctrl+Z outside any
+      // editor and with nothing pending does nothing.
+      if (mod && !e.shiftKey && !e.altKey && (e.key === 'z' || e.key === 'Z')) {
+        const target = e.target as HTMLElement;
+        const inText =
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable;
+        if (!inText && canUndoNotesAction()) {
+          e.preventDefault();
+          void undoNotesAction();
+          return;
+        }
       }
       // SKY-2099: tab-aware shortcut map.
       // SKY-11444: guard against firing while the writer is typing in the
@@ -6110,9 +6136,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     : vaultBinding.storyPath || activeVaultRoot;
   const activeVaultBadgeMissing = tabShell.activeTab === 'notes' ? !vaultBinding.notesValid : !vaultBinding.storyValid;
   const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : tabShell.activeTab === 'brainstorm' ? 'Brainstorm' : 'Story'} vault: ${activeVaultBadge}`;
-  const showSampleProjectBanner = appSettings?.onboardingStartMode === 'sample'
-    && !appSettings.sampleProjectBannerDismissed;
-
   const navRailConfig = appSettings?.navConfig;
 
   return (
@@ -6327,28 +6350,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         vaultName={labelFromPath(vaultBinding.storyPath || activeVaultRoot)}
         aiEnabled={aiEnabled}
       />}
-      {showSampleProjectBanner && (
-        <div
-          className="sample-project-banner"
-          data-testid="gs-sample-banner"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="sample-project-banner__copy">
-            <strong>Sample project</strong>
-            <span>Explore the seeded scenes, characters, and notes, or replace them whenever you are ready.</span>
-          </div>
-          <button
-            type="button"
-            className="sample-project-banner__dismiss"
-            data-testid="gs-sample-banner-dismiss"
-            aria-label="Dismiss sample project banner"
-            onClick={handleDismissSampleProjectBanner}
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
       {/* SKY-1698: active docked tab shows its panels in the main area */}
       {activeDockedTabId !== null && (() => {
         const activeTab = dockedTabs.find((t) => t.id === activeDockedTabId);
@@ -7040,6 +7041,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           }}
           onOpenInNewTab={handleOpenNoteInNewTab}
           onOpenScene={handleOpenGraphScene}
+          onOpenBoard={(folderPath) => applyCrossTabLinkMatch({ kind: 'folder', label: folderPath, folderPath })}
           onBetaRead={betaReadNote}
           onContinuityCheck={continuityCheckNote}
           noteToolbarActions={noteToolbarActions}
@@ -7156,6 +7158,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             notesVaultValid={vaultBinding.notesValid}
             minZoom={appSettings?.notesBoard?.minZoom}
             openFolderRequest={boardsFolderRequest}
+            onOpenNote={handleOpenSceneByPath}
+            notePaths={allNotePaths}
           />
         </div>
       )}
@@ -7336,9 +7340,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       />
       {promptModal}
       {createVaultModal}
-      {syncModalOpen && (
-        <SyncConflictModal
-          resolved={syncConflictResolved}
+      {syncModalOpen && syncLockfileConflict && (
+        <ConcurrentSessionModal
           lockfileConflict={syncLockfileConflict}
           onContinue={handleSyncConflictContinue}
         />

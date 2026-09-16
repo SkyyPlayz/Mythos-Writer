@@ -152,14 +152,12 @@ describe('maskSettingsForRenderer — apiKey field (MYT-143)', () => {
     expect(masked.apiKey).toBe('');
   });
 
-  it('does not mask onboarding recents or sample genre fields', () => {
+  it('does not mask onboarding recents fields', () => {
     const masked = maskSettingsForRenderer(settingsFixture({
       recentVaultParentPaths: ['/vaults/A', '/vaults/B'],
-      lastSampleGenre: 'sci-fi-noir',
     }));
 
     expect(masked.recentVaultParentPaths).toEqual(['/vaults/A', '/vaults/B']);
-    expect(masked.lastSampleGenre).toBe('sci-fi-noir');
   });
 });
 

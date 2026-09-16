@@ -115,7 +115,7 @@ export default function AccountProfileSection({ settings, setSettings, setSavedO
           </span>
         </div>
         <p className="settings-hint" style={{ marginTop: 8 }}>
-          Everything lives on this PC. Linked devices arrive with cloud sync — see Sync &amp; Backup.
+          Everything lives on this PC. Mythos Writer has no account and syncs to nothing.
         </p>
       </M24Card>
     </section>

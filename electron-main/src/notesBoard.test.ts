@@ -325,6 +325,7 @@ describe('GC of dangling Store B entries (spec test 2, data half)', () => {
       layout: { 'n:live': { x: 1, y: 1 }, 'n:dead': { x: 2, y: 2 } },
       colors: { 'n:live': '#111', 'n:dead': '#222' },
       furniture: [{ id: 'f1', k: 'swatch', x: 0, y: 0 }],
+      trash: [],
       view: { zoom: 100, panX: 0, panY: 0 },
     };
     const { board: gcd, changed } = gcBoardEntries(board, new Set(['live']));

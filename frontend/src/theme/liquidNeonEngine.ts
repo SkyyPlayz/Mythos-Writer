@@ -6,6 +6,7 @@
 import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey, type LiquidNeonSetKey } from './presets';
 import { packWallpapers, type WallpaperEntry } from './wallpapers';
 import { schedulePreBlurredWallpaper } from './preBlurWallpaper';
+import { scheduleTextBacking, textBackingToken } from './textBacking';
 // Resolves to frontend/src/theme.ts (file wins over this directory's index-less
 // folder). CF-6: the body-text contrast clamp is shared with the v1 engine.
 import { enforceContrastFloor } from '../theme';
@@ -447,10 +448,18 @@ export function applyLiquidNeonV2Tokens(
   // no-backdrop-filter overrides there flatten it like any other static token.
   // Deriving it from glassA/blur (the old ×1.25 offset) made every migrated
   // dialog thinner than the frozen literals it replaced (SKY-11480 OT-1).
+  //
+  // SKY-11787: `--ln-text-backing` is the adaptive contrast floor base panels
+  // paint inside their padding box (see theme/textBacking.ts and
+  // `--glass-panel-bg` in tokens.css). It is deliberately NOT a slider
+  // derivative either — it is solved from the *wallpaper*, so a wallpaper that
+  // already clears 4.5:1 behind body text resolves to `transparent` and
+  // nothing about the panel changes. The glass tokens above stay untouched.
   const panelGlassTokens: Record<string, string> = {
     '--glass-fill': `rgba(13,16,28,${(S.glassA / 100).toFixed(3)})`,
     '--glass-fill-fallback': 'rgb(13,16,28)',
     '--blur-panel': `${S.blur}px`,
+    '--ln-text-backing': textBackingToken(tokens['--wp'], S.scrim, S.glassA),
   };
   for (const [k, v] of Object.entries(panelGlassTokens)) {
     el.style.setProperty(k, v);
@@ -481,6 +490,10 @@ export function applyLiquidNeonV2Tokens(
   // when the wallpaper or blur radius changes — the panels' faked glass reads
   // it through `--wp-blur` instead of stacking live backdrop-filters.
   schedulePreBlurredWallpaper(tokens['--wp'], parseFloat(tokens['--blur']) || 0, el);
+  // SKY-11787: first sight of an image wallpaper needs one async decode to
+  // solve its text-backing; every re-apply after that is served from cache by
+  // `textBackingToken` above.
+  scheduleTextBacking(tokens['--wp'], S.scrim, S.glassA, el);
   return tokens;
 }
 

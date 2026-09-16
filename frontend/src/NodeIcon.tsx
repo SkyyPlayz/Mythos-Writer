@@ -2,24 +2,31 @@
 // Supports emoji, bundled Lucide icons, and user SVG packs.
 import { useState, useEffect } from 'react';
 import type { FC, ReactNode } from 'react';
-import { parseIconValue } from './iconUtils';
+import { parseIconValue, unpackIconEntry } from './iconUtils';
+import type { VaultIconEntry } from './iconUtils';
 import { LUCIDE_ICONS } from './lucideRegistry';
 
 const SIZE = 14;
 const STROKE = 1.5;
 
 interface NodeIconProps {
-  /** Raw frontmatter icon string, e.g. "🗡️" or "pack:lucide/sword" */
-  icon?: string;
+  /**
+   * Raw icon entry: a frontmatter/legacy string ("🗡️" or "pack:lucide/sword"),
+   * or the SKY-11190 colour-tagged `{icon, color}` form from the Boards
+   * closed picker. An unresolvable icon name (corrupted/renamed out of the
+   * picker's known set) falls through to `fallback` — never a blank render.
+   */
+  icon?: VaultIconEntry;
   /** Fallback rendered when icon is absent or unresolvable — e.g. a drawn default icon */
   fallback: ReactNode;
 }
 
 export const NodeIcon: FC<NodeIconProps> = ({ icon, fallback }) => {
-  const parsed = parseIconValue(icon);
+  const { icon: raw, color } = unpackIconEntry(icon);
+  const parsed = parseIconValue(raw);
 
   if (parsed.kind === 'default') return <>{fallback}</>;
-  if (parsed.kind === 'emoji') return <>{parsed.value}</>;
+  if (parsed.kind === 'emoji') return <span style={color ? { color } : undefined}>{parsed.value}</span>;
 
   if (parsed.kind === 'lucide') {
     const Comp = LUCIDE_ICONS[parsed.name];
@@ -28,6 +35,7 @@ export const NodeIcon: FC<NodeIconProps> = ({ icon, fallback }) => {
       <Comp
         size={SIZE}
         strokeWidth={STROKE}
+        color={color}
         aria-hidden="true"
         focusable="false"
         style={{ display: 'inline-block', verticalAlign: 'middle', flexShrink: 0 }}

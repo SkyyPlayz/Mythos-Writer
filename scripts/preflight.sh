@@ -116,14 +116,14 @@ e2e entity-creation    test:e2e:entity-creation
 e2e vault-graph        test:e2e:vault-graph
 e2e vault-graph-v0     test:e2e:vault-graph-v0
 
-step "E2E — Shard 4 (entity-mention · timeline · entries · post-onboarding · continuity-panel · scene-crafter · onboarding-v2 · writing-assistant)"
+step "E2E — Shard 4 (entity-mention · timeline · entries · post-onboarding · continuity-panel · scene-crafter · onboarding-four-paths · writing-assistant)"
 e2e entity-mention     test:e2e:entity-mention
 e2e timeline           test:e2e:timeline
 e2e entries            test:e2e:entries
 e2e post-onboarding    test:e2e:post-onboarding
 e2e continuity-panel   test:e2e:continuity-panel
 e2e scene-crafter      test:e2e:scene-crafter
-e2e onboarding-v2      test:e2e:onboarding-v2
+e2e onboarding-four-paths  test:e2e:onboarding-four-paths
 e2e writing-assistant  test:e2e:writing-assistant
 
 echo -e "\n${GREEN}${BOLD}✓ Preflight complete — all checks passed. This branch is green.${NC}\n"

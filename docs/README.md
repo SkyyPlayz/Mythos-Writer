@@ -3,7 +3,6 @@
 | Document | Description |
 |----------|-------------|
 | [User Guide](user-guide.md) | Core features: vault management, scene editor, brainstorm AI, settings |
-| [Cloud Sync](user-guide/cloud-sync.md) | Move your vault into Dropbox, iCloud, OneDrive, or Google Drive |
 | [Entity System](user-guide/entities.md) | Characters, locations, factions and other story entities |
 | [Keyboard Shortcuts](keyboard-shortcuts.md) | Full keyboard shortcut reference |
 

@@ -17,7 +17,7 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .brainstorm-page {
-    background: var(--glass-fill);
+    background: var(--glass-panel-bg);
     backdrop-filter: blur(var(--blur-panel));
     -webkit-backdrop-filter: blur(var(--blur-panel));
   }

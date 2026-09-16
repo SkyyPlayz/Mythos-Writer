@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   ensureStoryVaultRegistry,
+  ensureActiveStoryVaultPath,
   createBlankStoryVault,
   createStoryVaultFromOptions,
   setActiveStoryVault,
@@ -16,6 +17,14 @@ import {
   STORY_VAULT_REGISTRY_FILENAME,
   DEFAULT_STORY_VAULT_DIRNAME,
 } from './storyVaultRegistry.js';
+import {
+  storyVaultRootFor,
+  mythosRootForStoryVault,
+  resolveMythosVaultRoot,
+  createMythosFile,
+  writeMythosFile,
+  _clearDetectionCache,
+} from './mythosJson.js';
 
 let tmpDir: string;
 
@@ -46,6 +55,29 @@ describe('ensureStoryVaultRegistry', () => {
   it('writes story-vaults.json to mythosRoot', () => {
     ensureStoryVaultRegistry(tmpDir);
     expect(fs.existsSync(path.join(tmpDir, STORY_VAULT_REGISTRY_FILENAME))).toBe(true);
+  });
+});
+
+describe('ensureActiveStoryVaultPath', () => {
+  it('resolves a pre-registry flat v2 vault to its existing FLAT dir, never the grouped default', () => {
+    // No story-vaults.json yet — only the flat DEFAULT_STORY_VAULT_DIRNAME
+    // dir the beforeEach hook seeded. Must NOT fall back to
+    // storyVaultRootFor's grouped `Stories/Story Vault` path, which does not
+    // exist on disk for a vault created before SKY-11451.
+    expect(readStoryVaultRegistry(tmpDir)).toBeNull();
+    const resolved = ensureActiveStoryVaultPath(tmpDir);
+    expect(resolved).toBe(path.join(tmpDir, DEFAULT_STORY_VAULT_DIRNAME));
+    expect(resolved).not.toBe(storyVaultRootFor(tmpDir));
+    // Lazy migration also persisted the registry as a side effect.
+    expect(readStoryVaultRegistry(tmpDir)).not.toBeNull();
+  });
+
+  it('resolves a vault created after SKY-11451 to its grouped Stories/ path', () => {
+    ensureStoryVaultRegistry(tmpDir);
+    const { entry } = createBlankStoryVault(tmpDir, 'New World');
+    setActiveStoryVault(tmpDir, entry.id);
+    expect(ensureActiveStoryVaultPath(tmpDir)).toBe(storyVaultAbsPath(tmpDir, entry));
+    expect(ensureActiveStoryVaultPath(tmpDir)).toBe(path.join(tmpDir, 'Stories', 'New World'));
   });
 });
 
@@ -189,5 +221,81 @@ describe('storyVaultsForNotesVault', () => {
     const registry = ensureStoryVaultRegistry(tmpDir);
     const result = storyVaultsForNotesVault(registry, 'unknown-notes-id');
     expect(result).toHaveLength(0);
+  });
+});
+
+// SKY-11882 — the round trip the Settings → Vault & Files Hide/Delete menu
+// depends on: a story vault created through the picker with a CUSTOM name
+// must resolve back to the enclosing Mythos-vault root, not to its own
+// folder. PROJECT_LIST publishes exactly this value as `mythosVaultRoot`;
+// getting it wrong means shell.trashItem removes only the story-vault
+// subfolder and strands Notes/, mythos.json and both registries on disk.
+describe('mythosRootForStoryVault round trip (SKY-11882)', () => {
+  beforeEach(() => {
+    writeMythosFile(tmpDir, createMythosFile('Bundle'));
+  });
+
+  it('a custom-named story vault resolves to the bundle root, not to itself', () => {
+    const { entry } = createBlankStoryVault(tmpDir, 'Second World');
+    const abs = storyVaultAbsPath(tmpDir, entry);
+
+    // The picker files new vaults under the grouped `Stories/` dir with a
+    // user-chosen leaf, so the path alone cannot say where the bundle root is
+    // — only story-vaults.json can. This is why the old frontend regex, which
+    // stripped a hardcoded `Story Vault` suffix, returned `abs` unchanged.
+    expect(entry.dirName).toBe('Stories/Second World');
+    expect(abs).toBe(path.join(tmpDir, 'Stories', 'Second World'));
+
+    expect(mythosRootForStoryVault(abs)).toBe(tmpDir);
+  });
+
+  it('the default-named story vault keeps resolving to the bundle root', () => {
+    const registry = ensureStoryVaultRegistry(tmpDir);
+    const abs = storyVaultAbsPath(tmpDir, registry.vaults[0]);
+    expect(abs).toBe(path.join(tmpDir, DEFAULT_STORY_VAULT_DIRNAME));
+    expect(mythosRootForStoryVault(abs)).toBe(tmpDir);
+  });
+
+  it('an unregistered sibling folder still never resolves (SKY-11132 guard holds)', () => {
+    const stray = path.join(tmpDir, 'Stories', 'Not A Vault');
+    fs.mkdirSync(stray, { recursive: true });
+    ensureStoryVaultRegistry(tmpDir);
+    expect(mythosRootForStoryVault(stray)).toBeNull();
+  });
+
+  // resolveMythosVaultRoot is what PROJECT_LIST publishes. It must collapse
+  // the "legacy vault, is its own bundle root" case to a usable path, but must
+  // NOT collapse the unreadable case — substituting the story-vault path there
+  // is exactly the orphaning bug.
+  describe('resolveMythosVaultRoot', () => {
+    it('returns the bundle root for a custom-named story vault', () => {
+      const { entry } = createBlankStoryVault(tmpDir, 'Second World');
+      expect(resolveMythosVaultRoot(storyVaultAbsPath(tmpDir, entry))).toBe(tmpDir);
+    });
+
+    it('a legacy (non-v2) vault stands in for itself', () => {
+      const legacy = fs.mkdtempSync(path.join(os.tmpdir(), 'svr-legacy-'));
+      try {
+        expect(resolveMythosVaultRoot(legacy)).toBe(legacy);
+      } finally {
+        fs.rmSync(legacy, { recursive: true, force: true });
+      }
+    });
+
+    it('returns null — never the story-vault path — for a TOO-NEW mythos.json', () => {
+      const { entry } = createBlankStoryVault(tmpDir, 'Second World');
+      const abs = storyVaultAbsPath(tmpDir, entry);
+      // A vault written by a future build: mythosJson refuses to touch it and
+      // raises MythosFormatVersionError out of isMythosV2Root.
+      const raw = JSON.parse(fs.readFileSync(path.join(tmpDir, 'mythos.json'), 'utf-8'));
+      fs.writeFileSync(
+        path.join(tmpDir, 'mythos.json'),
+        JSON.stringify({ ...raw, formatVersion: 99 }),
+      );
+      _clearDetectionCache();
+
+      expect(() => mythosRootForStoryVault(abs)).toThrow();
+      expect(resolveMythosVaultRoot(abs)).toBeNull();
+    });
   });
 });

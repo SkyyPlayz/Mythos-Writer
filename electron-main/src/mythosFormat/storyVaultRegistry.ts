@@ -14,6 +14,7 @@
 // Pure Node — no Electron imports — so unit tests drive it with tmpdirs.
 
 import { importObsidianToVaultDir } from '../obsidianImporter.js';
+import { STORIES_GROUP_DIRNAME, storyVaultRootFor } from './mythosJson.js';
 import {
   VaultEntry,
   VaultRegistryConfig,
@@ -38,6 +39,7 @@ const STORY_CONFIG: VaultRegistryConfig = {
   registryFilename: STORY_VAULT_REGISTRY_FILENAME,
   defaultDirName: DEFAULT_STORY_VAULT_DIRNAME,
   defaultDisplayName: 'Story',
+  groupDirName: STORIES_GROUP_DIRNAME,
 };
 
 export interface StoryVaultEntry extends VaultEntry {
@@ -103,6 +105,19 @@ export function getActiveStoryVaultPath(mythosRoot: string): string | null {
   const entry = getActiveStoryVaultEntry(registry);
   if (!entry) return null;
   return storyVaultAbsPath(mythosRoot, entry);
+}
+
+/**
+ * Like getActiveStoryVaultPath, but heals a missing registry first (lazy
+ * migration, SKY-11150) instead of returning null. A pre-registry v2 vault
+ * gets an entry pointing at its existing FLAT `Story Vault` dir — never the
+ * new grouped default — so scans/syncs of vaults created before SKY-11451
+ * keep resolving to the directory that actually holds their content.
+ */
+export function ensureActiveStoryVaultPath(mythosRoot: string): string {
+  const registry = ensureStoryVaultRegistry(mythosRoot);
+  const entry = getActiveStoryVaultEntry(registry);
+  return entry ? storyVaultAbsPath(mythosRoot, entry) : storyVaultRootFor(mythosRoot);
 }
 
 /**

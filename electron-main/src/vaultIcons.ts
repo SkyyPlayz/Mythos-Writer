@@ -22,10 +22,24 @@ import { writeFileAtomic } from './vault.js';
 export const ICONS_DIR_NAME = '.mythos';
 export const ICONS_FILE_NAME = 'icons.json';
 
-export type VaultIconMap = Record<string, string>;
+// SKY-11190 (Notes Board 7/9, Iconize colour parity): an entry is either the
+// original plain icon reference (emoji / `pack:...`, no colour — every
+// pre-11190 store on disk), or `{ icon, color }` for a colour-tagged
+// assignment made from the Boards closed 24-glyph/8-colour picker. Both
+// shapes share the same path-keyed map and the same rename/delete rewrite
+// logic below, which only ever moves `value` as an opaque unit.
+export type VaultIconEntry = string | { icon: string; color: string };
+export type VaultIconMap = Record<string, VaultIconEntry>;
 
 function iconsFilePath(vaultRoot: string): string {
   return path.join(vaultRoot, ICONS_DIR_NAME, ICONS_FILE_NAME);
+}
+
+function isWellFormedEntry(value: unknown): value is VaultIconEntry {
+  if (typeof value === 'string') return value.length > 0;
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const { icon, color } = value as { icon?: unknown; color?: unknown };
+  return typeof icon === 'string' && icon.length > 0 && typeof color === 'string' && color.length > 0;
 }
 
 /**
@@ -49,7 +63,7 @@ export function readIconMap(vaultRoot: string): VaultIconMap {
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
   const map: VaultIconMap = {};
   for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
-    if (typeof value === 'string' && value.length > 0) map[key] = value;
+    if (isWellFormedEntry(value)) map[key] = value;
   }
   return map;
 }
@@ -60,12 +74,19 @@ export function writeIconMap(vaultRoot: string, map: VaultIconMap): void {
 
 /**
  * Set (or, when `icon` is null/empty, clear) one path's icon and persist.
- * Returns the updated map.
+ * `color` is optional — passing it stores the SKY-11190 `{icon, color}` form;
+ * omitting it keeps writing the original plain-string form so every existing
+ * (colourless) caller is unaffected. Returns the updated map.
  */
-export function setIcon(vaultRoot: string, relPath: string, icon: string | null): VaultIconMap {
+export function setIcon(
+  vaultRoot: string,
+  relPath: string,
+  icon: string | null,
+  color?: string | null,
+): VaultIconMap {
   const map = readIconMap(vaultRoot);
   if (icon) {
-    map[relPath] = icon;
+    map[relPath] = color ? { icon, color } : icon;
   } else {
     delete map[relPath];
   }

@@ -90,7 +90,6 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-mythos-vaults', // Beta 4 M1: per-vault default theme cards
       'section-add-vault', // SKY-11154 (grew from SKY-11152): Notes/Story columns + dot-linking
       'section-vault-paths',
-      'section-vault-format',
       'section-vault-health',
       'section-vault-danger-zone',
       'section-scene-fields',
@@ -102,7 +101,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
   {
     id: 'sync',
     label: 'Sync & Backup',
-    description: 'Cloud sync, snapshots, restore points.',
+    description: 'Vault location, snapshots, restore points.',
     sectionIds: ['section-sync-backup'],
   },
   {

@@ -42,6 +42,10 @@ import { listSnapshots } from '../snapshots.js';
 import { deriveProjectName } from '../mythosVault.js';
 import {
   MYTHOS_MACHINE_DIRNAME,
+  NOTES_GROUP_DIRNAME,
+  NOTES_VAULT_DIRNAME,
+  STORIES_GROUP_DIRNAME,
+  STORY_VAULT_DIRNAME,
   createMythosFile,
   manifestCachePathFor,
   mythosRootForStoryVault,
@@ -49,6 +53,9 @@ import {
   storyVaultRootFor,
   writeMythosFile,
 } from '../mythosFormat/mythosJson.js';
+import { VAULT_REGISTRY_VERSION } from '../mythosFormat/vaultRegistry.js';
+import { writeNotesVaultRegistry } from '../mythosFormat/notesVaultRegistry.js';
+import { writeStoryVaultRegistry } from '../mythosFormat/storyVaultRegistry.js';
 import { BOOK_FILENAME, serializeBookFile, type BookSpinePart } from '../mythosFormat/bookFile.js';
 import {
   chapterDirName,
@@ -950,6 +957,35 @@ export function runMythosVaultMigration(opts: MigrationOptions): MigrationReport
     // 8. Regenerable manifest cache — so first open carries entities,
     //    relationships, suggestions refs, smart folders, board references.
     writeFileAtomic(manifestCachePathFor(storyVaultPath), JSON.stringify(newManifest));
+
+    // 8b. Write initial vault registries so ensureVaultRegistry() on first open
+    //     finds the correct grouped paths instead of falling back to flat defaults.
+    {
+      const notesEntryId = crypto.randomUUID();
+      writeNotesVaultRegistry(opts.targetRoot, {
+        version: VAULT_REGISTRY_VERSION,
+        vaults: [{
+          id: notesEntryId,
+          displayName: 'Notes',
+          dirName: NOTES_GROUP_DIRNAME + '/' + NOTES_VAULT_DIRNAME,
+          createdAt: nowStr,
+          origin: 'created',
+        }],
+        activeId: notesEntryId,
+      });
+      const storyEntryId = crypto.randomUUID();
+      writeStoryVaultRegistry(opts.targetRoot, {
+        version: VAULT_REGISTRY_VERSION,
+        vaults: [{
+          id: storyEntryId,
+          displayName: 'Story',
+          dirName: STORIES_GROUP_DIRNAME + '/' + STORY_VAULT_DIRNAME,
+          createdAt: nowStr,
+          pairedNotesVaultId: null,
+        }],
+        activeId: storyEntryId,
+      });
+    }
 
     // 9. VERIFY: re-open the target with the v2 scanner and cross-check.
     let scenesChecked = 0;

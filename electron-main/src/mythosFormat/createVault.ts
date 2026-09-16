@@ -9,13 +9,17 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { isSafeVaultName, pickUniqueMythosVaultName } from '../mythosVault.js';
 import {
   MYTHOS_MACHINE_DIRNAME,
+  NOTES_GROUP_DIRNAME,
+  NOTES_VAULT_DIRNAME,
+  STORIES_GROUP_DIRNAME,
+  STORY_VAULT_DIRNAME,
+  AGENT_VAULT_DIRNAME,
   agentVaultRootFor,
   createMythosFile,
-  notesVaultRootFor,
-  storyVaultRootFor,
   tryReadMythosFile,
   writeMythosFile,
   type MythosFile,
@@ -23,6 +27,9 @@ import {
 import { defaultVaultSettingsFile, writeVaultSettingsFile } from './vaultSettingsFile.js';
 import { defaultTimelinesFile, writeTimelinesFile } from './timelinesFile.js';
 import { VEYNN_SEED_LAYOUT, writeVeynnSeed } from './veynnSeed.js';
+import { VAULT_REGISTRY_VERSION } from './vaultRegistry.js';
+import { writeNotesVaultRegistry } from './notesVaultRegistry.js';
+import { writeStoryVaultRegistry } from './storyVaultRegistry.js';
 
 export interface CreateMythosVaultOptions {
   /** Vault display/folder name. Collision-suffixed unless `exactName`. */
@@ -81,9 +88,10 @@ export function createMythosVault(
     return { ok: false, error: `Target folder is not empty: ${mythosRoot}` };
   }
 
-  const storyVaultPath = storyVaultRootFor(mythosRoot);
-  const notesVaultPath = notesVaultRootFor(mythosRoot);
-  const agentVaultPath = agentVaultRootFor(mythosRoot);
+  // Grouped layout (SKY-11141 §1): <mythosRoot>/Stories/<name> and <mythosRoot>/Notes/<name>.
+  const storyVaultPath = path.join(mythosRoot, STORIES_GROUP_DIRNAME, STORY_VAULT_DIRNAME);
+  const notesVaultPath = path.join(mythosRoot, NOTES_GROUP_DIRNAME, NOTES_VAULT_DIRNAME);
+  const agentVaultPath = path.join(mythosRoot, AGENT_VAULT_DIRNAME);
   try {
     fs.mkdirSync(storyVaultPath, { recursive: true });
     fs.mkdirSync(notesVaultPath, { recursive: true });
@@ -103,8 +111,41 @@ export function createMythosVault(
     );
     writeTimelinesFile(mythosRoot, defaultTimelinesFile());
 
+    // Write registries up-front so ensureVaultRegistry() finds them on first open
+    // and never falls back to flat default paths for newly-created vaults.
+    const notesEntryId = crypto.randomUUID();
+    writeNotesVaultRegistry(mythosRoot, {
+      version: VAULT_REGISTRY_VERSION,
+      vaults: [{
+        id: notesEntryId,
+        displayName: 'Notes',
+        dirName: NOTES_GROUP_DIRNAME + '/' + NOTES_VAULT_DIRNAME,
+        createdAt: new Date().toISOString(),
+        origin: 'created',
+      }],
+      activeId: notesEntryId,
+    });
+    const storyEntryId = crypto.randomUUID();
+    writeStoryVaultRegistry(mythosRoot, {
+      version: VAULT_REGISTRY_VERSION,
+      vaults: [{
+        id: storyEntryId,
+        displayName: 'Story',
+        dirName: STORIES_GROUP_DIRNAME + '/' + STORY_VAULT_DIRNAME,
+        createdAt: new Date().toISOString(),
+        pairedNotesVaultId: null,
+      }],
+      activeId: storyEntryId,
+    });
+
     const seedDemo = opts.seedDemo !== false;
-    const seedResult = seedDemo ? writeVeynnSeed(mythosRoot) : null;
+    const seedResult = seedDemo
+      ? writeVeynnSeed(mythosRoot, () => new Date(), {
+          storyVaultRoot: storyVaultPath,
+          notesVaultRoot: notesVaultPath,
+          agentVaultRoot: agentVaultPath,
+        })
+      : null;
     // Record the seed decision LAST — a crash mid-seed leaves no marker, and
     // the folder is non-empty so a retry lands in a fresh sibling folder
     // instead of double-seeding this one.

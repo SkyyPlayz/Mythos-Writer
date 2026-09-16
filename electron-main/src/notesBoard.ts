@@ -1,6 +1,6 @@
 // SKY-11183 (Notes Board 1/9): board metadata store + identity model.
 //
-// Implements BOARDS-SPEC.md v2 §1-4, §13, §15 (data/IPC half — no UI in this
+// Implements BOARDS-SPEC.md v2 §1-4, §12, §15 (data/IPC half — no UI in this
 // ticket, see SKY-10724/M-Notes-Board for the full build).
 //
 // Store A (vault: folders + .md files, already exists — vault.ts/listVaultFiles)
@@ -56,7 +56,7 @@ export const BOARD_SCHEMA_VERSION = 2;
 /**
  * Drag/colour writes to a board file are coalesced within this window so a
  * drag doesn't round-trip a disk write per animation frame (BOARDS-SPEC.md
- * §13 "write behaviour that matters for feel"). Structural ops (id
+ * §12 "write behaviour that matters for feel"). Structural ops (id
  * assignment, furniture CRUD) are NOT subject to this — they write
  * immediately via writeFileAtomic.
  */
@@ -108,10 +108,38 @@ export interface BoardFurnitureItem {
   [key: string]: unknown;
 }
 
+/**
+ * A `column` furniture item's `items[]` entry (§4). `ref`, when present, is a
+ * vault-relative note path and is NOT a second link representation — it
+ * resolves and rename-cascades exactly as a `[[wikilink]]` does elsewhere
+ * (rewriteRefForRename below mirrors shared/wikiLinkRename.ts's stem-match
+ * rule; findColumnRefBacklinks mirrors noteBacklinks.ts's). Do not add a
+ * bespoke "board ref link" type.
+ */
+export interface ColumnItem {
+  t: string;
+  ref?: string;
+}
+
 export interface BoardView {
   zoom: number;
   panX: number;
   panY: number;
+}
+
+/**
+ * Furniture's permanent in-app trash record (§7/§8) — the one exception to
+ * flushing: furniture has no OS trash equivalent, so once its deferred-delete
+ * window elapses (SKY-11189's notesTrash.ts) it lands here forever instead of
+ * disappearing. Kept in the SAME sidecar as the live `furniture` array (it
+ * already travels with the folder) rather than a second file.
+ */
+export interface FurnitureTrashRecord {
+  kind: 'furniture';
+  /** This board's OWN id (§2), or '' if the board itself was never touched. */
+  board: string;
+  payload: BoardFurnitureItem;
+  deleted: string;
 }
 
 /** On-disk shape of `<folder>/.mythos-board.json` (§3), sanitized. */
@@ -123,6 +151,8 @@ export interface BoardFile {
   layout: BoardLayoutMap;
   colors: BoardColorMap;
   furniture: BoardFurnitureItem[];
+  /** Permanent furniture trash (§7) — never flushed, never GC'd. */
+  trash: FurnitureTrashRecord[];
   view: BoardView;
 }
 
@@ -138,7 +168,7 @@ export interface BoardChild {
   id: string | null;
 }
 
-/** Renderer-facing shape returned by getBoard() (§13 illustrative `GET board`). */
+/** Renderer-facing shape returned by getBoard() (§12 illustrative `GET board`). */
 export interface Board {
   /** This folder's OWN id, null if this folder has never itself been touched. */
   id: string | null;
@@ -163,6 +193,7 @@ function defaultBoardFile(): BoardFile {
     layout: {},
     colors: {},
     furniture: [],
+    trash: [],
     view: { zoom: 100, panX: 0, panY: 0 },
   };
 }
@@ -212,6 +243,21 @@ function sanitizeFurniture(value: unknown): BoardFurnitureItem[] {
   return out;
 }
 
+function sanitizeFurnitureTrash(value: unknown): FurnitureTrashRecord[] {
+  if (!Array.isArray(value)) return [];
+  const out: FurnitureTrashRecord[] = [];
+  for (const record of value) {
+    if (record === null || typeof record !== 'object') continue;
+    const r = record as Record<string, unknown>;
+    if (r.kind !== 'furniture') continue;
+    if (typeof r.deleted !== 'string' || !r.deleted) continue;
+    const [payload] = sanitizeFurniture([r.payload]);
+    if (!payload) continue;
+    out.push({ kind: 'furniture', board: typeof r.board === 'string' ? r.board : '', payload, deleted: r.deleted });
+  }
+  return out;
+}
+
 function sanitizeView(value: unknown): BoardView {
   const v =
     value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -232,6 +278,7 @@ function sanitizeBoardFile(parsed: Record<string, unknown>): BoardFile {
     layout: sanitizeLayoutMap(parsed.layout),
     colors: sanitizeColorMap(parsed.colors),
     furniture: sanitizeFurniture(parsed.furniture),
+    trash: sanitizeFurnitureTrash(parsed.trash),
     view: sanitizeView(parsed.view),
   };
 }
@@ -413,7 +460,7 @@ function listImmediateChildren(
     .map((it) => ({ name: it.name, relPath: it.path, isDirectory: it.isDirectory }));
 }
 
-// ─── GET board (§13, §15 test 2 + test 7 half) ───
+// ─── GET board (§12, §15 test 2 + test 7 half) ───
 
 /**
  * List Store A children of `folderRelPath`, resolve each child's id
@@ -458,7 +505,7 @@ export function getBoard(vaultRoot: string, folderRelPath: string): Board {
   };
 }
 
-// ─── Debounced, key-level-merged layout/colors writes (§13 write behaviour) ───
+// ─── Debounced, key-level-merged layout/colors writes (§12 write behaviour) ───
 
 interface PendingBoardWrite {
   timer: ReturnType<typeof setTimeout>;
@@ -677,6 +724,69 @@ export function furnitureUpdate(
   return updated;
 }
 
+/**
+ * SKY-11189 §8: cascade-only removal of every 'line' furniture entry
+ * referencing `key` (a `v:`/`n:`/`x:` key), WITHOUT touching the referenced
+ * item's own layout/colors/furniture entry. Called immediately when an item
+ * is marked pending-delete (notesTrash.ts) — connector removal is NOT
+ * deferred, so a card that is a connector endpoint loses its connector the
+ * moment it's trashed, and restoring the card via Ctrl+Z while pending does
+ * NOT resurrect the connector (spec §15 test 10, documented behaviour). The
+ * item's own entry is preserved so restore-in-place lands it back exactly
+ * where it was — only the flush step (itemDeleteStub / furnitureTrashPermanent
+ * below) removes that.
+ */
+export function cascadeLinesForKey(
+  vaultRoot: string,
+  folderRelPath: string,
+  key: string,
+): { changed: boolean } {
+  const folderAbs = resolveFolderAbs(vaultRoot, folderRelPath);
+  const board = readBoardFileRaw(folderAbs);
+  if (!board) return { changed: false };
+  const before = board.furniture.length;
+  board.furniture = dropLinesReferencing(board.furniture, key);
+  const changed = board.furniture.length !== before;
+  if (changed) {
+    board.updated = new Date().toISOString();
+    writeBoardFileRaw(folderAbs, board);
+  }
+  return { changed };
+}
+
+/**
+ * SKY-11189 §7/§8 flush step for furniture: move a still-live furniture item
+ * out of `furniture[]` and into the permanent `trash[]` record. Furniture has
+ * no OS trash equivalent, so — unlike a note/folder, which simply leaves the
+ * filesystem — this is the one case where the deferred-delete window ending
+ * does something irreversible-by-design (§7: "permanently"). Line cascade
+ * already happened at trash-time (cascadeLinesForKey), so this never touches
+ * other furniture. Returns null if the item is already gone (e.g. flushed
+ * twice, or removed by some other path) — callers treat that as a no-op.
+ */
+export function furnitureTrashPermanent(
+  vaultRoot: string,
+  folderRelPath: string,
+  furnitureId: string,
+): { record: FurnitureTrashRecord | null } {
+  const folderAbs = resolveFolderAbs(vaultRoot, folderRelPath);
+  const board = readBoardFileRaw(folderAbs);
+  if (!board) return { record: null };
+  const item = board.furniture.find((f) => f.id === furnitureId);
+  if (!item) return { record: null };
+  board.furniture = board.furniture.filter((f) => f.id !== furnitureId);
+  const record: FurnitureTrashRecord = {
+    kind: 'furniture',
+    board: board.id,
+    payload: item,
+    deleted: new Date().toISOString(),
+  };
+  board.trash = [...board.trash, record];
+  board.updated = new Date().toISOString();
+  writeBoardFileRaw(folderAbs, board);
+  return { record };
+}
+
 /** Removes the furniture entry AND cascade-deletes every 'line' entry referencing it (§4). */
 export function furnitureDelete(
   vaultRoot: string,
@@ -842,27 +952,32 @@ export function itemRenameNotify(
   return { ok: true };
 }
 
-// ─── Item delete (§6 stub) ───
+// ─── Item delete: Store B cleanup at flush time (§6/§8) ───
 
 /**
- * STUB for ticket 6's full deferred-delete/trash semantics. This ticket only
- * does a best-effort drop of the item's OWN layout/colors entry from its
- * PARENT folder's board file, plus cascade-deleting any 'line' furniture
- * entries referencing it — mirroring furnitureDelete's cascade rule (§4: "On
- * delete of ANY item ... cascade-delete every line furniture entry whose
- * from/to matches the deleted item's key").
+ * Drop the item's OWN layout/colors entry from its PARENT folder's board
+ * file, plus cascade-deleting any 'line' furniture entries referencing it —
+ * mirroring furnitureDelete's cascade rule (§4). The line cascade here is
+ * usually a no-op by the time this runs: SKY-11189's notesTrash.ts already
+ * called cascadeLinesForKey immediately at trash-time (§8 — connector removal
+ * is not deferred), so this is a defensive re-check, not the primary path.
  *
- * Does NOT touch the filesystem note/folder itself (no shell.trashItem, no
- * real delete) — that is ticket 6's job. Must be called while the item still
- * exists on disk (its id has to be read from frontmatter/sidecar to know
- * which layout/colors key to drop) — callers that perform a real delete
- * should call this FIRST, then delete. If the item was a folder, its own
- * sidecar file becoming orphaned (still sitting inside the now-deleted
- * folder, or inside a folder nobody can navigate to anymore) is harmless:
- * nothing will ever resolve to that folder's id again, and this cleanup is
+ * This is the FLUSH-time cleanup (§8: "on flush ... leave the Recently
+ * Deleted list") — called immediately before the real shell.trashItem move,
+ * while the item still exists on disk (its id has to be read from
+ * frontmatter/sidecar to know which layout/colors key to drop). Deliberately
+ * NOT called at trash-time: the item's own layout entry must survive the
+ * pending window intact so Ctrl+Z / Restore puts it back at the same
+ * position, not through auto-layout.
+ *
+ * Does NOT touch the filesystem note/folder itself (no shell.trashItem) —
+ * that lives in notesTrash.ts, which can import Electron; this module stays
+ * pure Node (see file header). If the item was a folder, its own sidecar
+ * file becoming orphaned (about to be trashed with it) is harmless: nothing
+ * will ever resolve to that folder's id again, and this cleanup is
  * best-effort in the first place — GC-on-load (gcBoardEntries) will catch
- * any entry this function misses (e.g. because the item was already gone
- * from disk before this ran) the next time anything reads the parent board.
+ * any entry this function misses the next time anything reads the parent
+ * board.
  */
 export function itemDeleteStub(
   vaultRoot: string,
@@ -919,4 +1034,142 @@ export function itemDeleteStub(
     writeBoardFileRaw(folderAbs, board);
   }
   return { key };
+}
+
+// ─── Column `ref` = real wikilink (§4, §2, §10) ───
+//
+// A column item's `ref` is a vault-relative note path, resolved by STEM
+// (last path segment, `.md` stripped, case-insensitive) — the exact rule
+// shared/wikiLinkRename.ts and vaultGraph.ts/noteBacklinks.ts already use for
+// `[[wikilinks]]`. Reusing that rule (not a bespoke path comparison) is what
+// makes `ref` "not a second link representation" true in practice, not just
+// in the doc comment.
+
+/** Split a vault-relative path into its folder prefix, stem, and whether it carried a `.md` extension. */
+function splitRefStem(ref: string): { prefix: string; stem: string; hadMdExt: boolean } {
+  const segments = ref.split(/[\\/]/);
+  const lastSeg = segments[segments.length - 1];
+  const hadMdExt = /\.md$/i.test(lastSeg);
+  const stem = hadMdExt ? lastSeg.slice(0, -3) : lastSeg;
+  return { prefix: segments.slice(0, -1).join('/'), stem, hadMdExt };
+}
+
+/**
+ * Retarget one `ref` if its stem matches `oldStem` (case-insensitive) —
+ * mirrors rewriteWikiLinksForRename's target-matching rule, minus the
+ * `[[...]]`/alias/heading grammar a bare path doesn't have. Returns null
+ * when the ref doesn't match (no rewrite needed).
+ */
+export function rewriteRefForRename(ref: string, oldStem: string, newStem: string): string | null {
+  const { prefix, stem, hadMdExt } = splitRefStem(ref);
+  if (stem.toLowerCase() !== oldStem.trim().toLowerCase()) return null;
+  return (prefix ? `${prefix}/` : '') + newStem + (hadMdExt ? '.md' : '');
+}
+
+/**
+ * Rewrite every `column` item's matching `ref` in one board file. Returns
+ * the SAME object (count: 0) when nothing changed, so callers can skip a
+ * write — same no-op contract as gcBoardEntries.
+ */
+export function rewriteBoardFurnitureRefs(
+  board: BoardFile,
+  oldStem: string,
+  newStem: string,
+): { board: BoardFile; count: number } {
+  let count = 0;
+  const furniture = board.furniture.map((f) => {
+    if (f.k !== 'column' || !Array.isArray(f.items)) return f;
+    const items = (f.items as unknown[]).map((raw) => {
+      if (raw === null || typeof raw !== 'object') return raw;
+      const it = raw as Record<string, unknown>;
+      if (typeof it.ref !== 'string' || !it.ref) return raw;
+      const rewritten = rewriteRefForRename(it.ref, oldStem, newStem);
+      if (rewritten === null) return raw;
+      count++;
+      return { ...it, ref: rewritten };
+    });
+    return { ...f, items };
+  });
+  if (count === 0) return { board, count: 0 };
+  return { board: { ...board, furniture }, count };
+}
+
+/**
+ * Same rewrite, over the raw on-disk sidecar TEXT — the shape
+ * renameCascade.ts's transaction plan needs (it tracks every touched file as
+ * before/after text so a failure partway can roll back with a plain write,
+ * exactly like it already does for markdown files). Malformed/unparsable
+ * JSON is left untouched rather than thrown: a rename must never fail
+ * because an unrelated sidecar is corrupt.
+ */
+export function rewriteBoardSidecarTextForRename(
+  raw: string,
+  oldStem: string,
+  newStem: string,
+): { content: string; count: number } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { content: raw, count: 0 };
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { content: raw, count: 0 };
+  }
+  const board = sanitizeBoardFile(parsed as Record<string, unknown>);
+  const { board: rewritten, count } = rewriteBoardFurnitureRefs(board, oldStem, newStem);
+  if (count === 0) return { content: raw, count: 0 };
+  return {
+    content: JSON.stringify({ ...rewritten, updated: new Date().toISOString() }, null, 2),
+    count,
+  };
+}
+
+// ─── Column `ref` backlinks (§4/§10 "shows up in the Links tab") ───
+
+export interface ColumnRefBacklinkEntry {
+  /** Vault-relative path of the board (folder) holding the referencing column item. '' is Home. */
+  boardPath: string;
+  /** The furniture item's own title, if set. */
+  boardItemTitle?: string;
+  /** The column entry's own label text. */
+  itemText: string;
+}
+
+/**
+ * Scan every `.mythos-board.json` sidecar in the vault for `column` items
+ * whose `ref` resolves (by stem, same rule as above) to `notePath`. This is
+ * the board-metadata half of "shows up in the Links tab" (§4 acceptance
+ * criteria) — noteBacklinks.ts covers the prose-`[[wikilink]]` half; a note
+ * linked from both surfaces shows up in both lists, not merged into one.
+ */
+export function findColumnRefBacklinks(vaultRoot: string, notePath: string): ColumnRefBacklinkEntry[] {
+  const stem = path.basename(notePath, '.md').toLowerCase();
+  if (!stem) return [];
+
+  const { items } = listVaultFiles(vaultRoot);
+  const out: ColumnRefBacklinkEntry[] = [];
+  for (const file of items) {
+    if (file.isDirectory || path.basename(file.path) !== BOARD_SIDECAR_FILE_NAME) continue;
+    const boardRelPath = path.dirname(file.path);
+    const boardPath = boardRelPath === '.' ? '' : boardRelPath;
+    const board = readBoardFileRaw(resolveFolderAbs(vaultRoot, boardPath));
+    if (!board) continue;
+
+    for (const f of board.furniture) {
+      if (f.k !== 'column' || !Array.isArray(f.items)) continue;
+      for (const raw of f.items as unknown[]) {
+        if (raw === null || typeof raw !== 'object') continue;
+        const it = raw as Record<string, unknown>;
+        if (typeof it.ref !== 'string' || !it.ref) continue;
+        if (splitRefStem(it.ref).stem.toLowerCase() !== stem) continue;
+        out.push({
+          boardPath,
+          boardItemTitle: typeof f.title === 'string' ? f.title : undefined,
+          itemText: typeof it.t === 'string' ? it.t : '',
+        });
+      }
+    }
+  }
+  return out;
 }

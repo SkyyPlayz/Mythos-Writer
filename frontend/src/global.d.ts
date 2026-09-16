@@ -1,5 +1,18 @@
 /// <reference types="vite/client" />
 
+// SKY-11189 (Notes Board 6/9) §7/§8: one pending-delete entry (mirrors
+// electron-main/src/ipc.ts's NotesBoardPendingEntry).
+interface NotesBoardPendingEntry {
+  id: string;
+  groupId: string;
+  kind: 'note' | 'folder' | 'furniture';
+  boardPath: string;
+  vaultPath?: string;
+  furnitureId?: string;
+  label: string;
+  deletedAt: string;
+}
+
 // SKY-10712: rename → inbound-link cascade (mirrors electron-main/src/ipc.ts)
 interface RenameCascadeLinkUpdate {
   linksUpdated: number;
@@ -593,15 +606,11 @@ interface AppSettings {
     completed?: Partial<Record<'writeScene' | 'addCharacter' | 'brainstorm' | 'openNotes', boolean>>;
   };
   /** SKY-1188: onboarding mode captured when onboarding completed. */
-  onboardingStartMode?: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
+  onboardingStartMode?: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
   /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (prototype `wizGenre`). */
   onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
   recentVaultParentPaths?: string[];
-  /** SKY-2005: last sample genre selected from the onboarding sample preview. */
-  lastSampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
-  /** SKY-2553: one-time post-onboarding sample-project banner dismissal. */
-  sampleProjectBannerDismissed?: boolean;
   /** SKY-1188: first post-onboarding timestamp, written once. */
   firstLaunchAt?: string;
   /** SKY-2098: one-time upgrade notice for existing users moved to the two-tab shell. */
@@ -1428,7 +1437,11 @@ interface Window {
     telemetryReport: (type: string, meta?: Record<string, string | number | boolean>) => Promise<unknown>;
 
     // Multi-project switcher (MYT-374; SKY-320 paired-vault switching)
-    projectList: () => Promise<{ projects: Array<{ vaultRoot: string; notesVaultRoot?: string; name: string; openedAt: string }>; activeNotesVaultRoot?: string }>;
+    // SKY-11882: `mythosVaultRoot` is the enclosing Mythos-vault root, resolved
+    // in main against story-vaults.json. Whole-vault operations (Hide / Delete
+    // at level='mythos') MUST use it — a story vault's dirname is user-chosen,
+    // so it cannot be derived from `vaultRoot` in the renderer.
+    projectList: () => Promise<{ projects: Array<{ vaultRoot: string; mythosVaultRoot: string | null; notesVaultRoot?: string; name: string; openedAt: string }>; activeNotesVaultRoot?: string }>;
 
     // SKY-11058: notes vault registry
     notesVaultRegistryList?: () => Promise<{
@@ -1504,6 +1517,9 @@ interface Window {
     // every Mythos vault.
     vaultSurfaceRevealVaultsParent: () => Promise<{ opened: boolean }>;
     vaultSurfaceMoveVaultsParent: (newParentPath: string) => Promise<{ moved: boolean; newPath?: string; error?: string }>;
+    // SKY-11815: pushed after a successful Vaults-folder move so surfaces that
+    // cached a pre-move vault path can refresh in place.
+    onVaultsParentMoved: (cb: (data: { vaultRoot: string; notesVaultRoot?: string }) => void) => () => void;
 
     // One-click Mythos Vault create (SKY-320). Omitting parentPath puts the
     // new bundle under ~/Mythos/Vaults/<auto-name>/; the renderer can supply
@@ -1595,13 +1611,12 @@ interface Window {
     }>;
     // SKY-627: orchestrates vault creation + first-scene setup during onboarding
     onboardingComplete: (payload?: {
-      startMode: 'blank' | 'sample' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+      startMode: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
       storyTitle?: string;
       authorName?: string;
       vaultParentPath?: string;
       templateId?: string;
       vaultName?: string;
-      sampleGenre?: 'cozy-fantasy' | 'sci-fi-noir' | 'mystery';
       customTemplate?: 'recommended' | 'blank';
       // M29: wizard genre (seeds starter notes) + Liquid Neon preset key
       // (recorded as the new vault's default theme).
@@ -1687,6 +1702,20 @@ interface Window {
       itemPath: string,
       newName: string,
     ) => Promise<{ renamed: true; itemPath: string } | { renamed: false } | { error: string }>;
+
+    // SKY-11189 (Notes Board 6/9) §7/§8: trash split by target type +
+    // deferred-delete (notesTrash.ts). This is the real delete path now —
+    // notesBoardItemDelete above stays wired to the Store-B-only stub.
+    notesBoardTrashItems: (
+      folderPath: string,
+      targets: Array<
+        | { kind: 'note' | 'folder'; itemPath: string; label: string }
+        | { kind: 'furniture'; furnitureId: string; label: string }
+      >,
+    ) => Promise<{ entries: NotesBoardPendingEntry[]; undoWindowMs: number }>;
+    notesBoardRestore: (id: string) => Promise<{ restored: boolean; restoredIds: string[] }>;
+    notesBoardRecentlyDeletedList: () => Promise<{ entries: NotesBoardPendingEntry[] }>;
+    notesBoardEmptyTrash: () => Promise<{ flushedGroupIds: string[] }>;
 
     // SKY-11186: note thumbnails (main-process half — noteThumbnails.ts, spec §9).
     // `resolve` says which image (if any) is each note's cover; `get` returns a
@@ -1861,13 +1890,19 @@ interface Window {
     noteBacklinks: (notePath: string) => Promise<{
       notePath: string;
       backlinks: Array<{ path: string; name: string; snippet: string }>;
+      // SKY-11188: Notes Board column `ref` backlinks (§4/§11) — a separate
+      // list, since a board ref points at a folder, not a linking note.
+      boardRefs: Array<{ boardPath: string; boardItemTitle?: string; itemText: string }>;
     }>;
 
     // SKY-194: Iconize — per-node icon IPC
-    notesVaultReadIcons: () => Promise<Record<string, string>>;
+    // SKY-11190: entries may be the plain string form or the Boards closed-picker
+    // colour-tagged `{icon, color}` form.
+    notesVaultReadIcons: () => Promise<Record<string, string | { icon: string; color: string }>>;
     vaultReadIcons: () => Promise<Record<string, string>>;
     // SKY-9310 (M8 spec item 6): assign/clear a path-keyed icon (file or folder).
-    notesVaultSetIcon: (filePath: string, icon: string | null) => Promise<{ path: string; icon: string | null }>;
+    // SKY-11190: optional `color` stores the {icon, color} form.
+    notesVaultSetIcon: (filePath: string, icon: string | null, color?: string | null) => Promise<{ path: string; icon: string | null; color?: string | null }>;
     iconListUserPacks: () => Promise<{ packName: string; icons: string[] }[]>;
     iconReadSvg: (packName: string, iconName: string) => Promise<{ svg: string | null }>;
 
@@ -1884,30 +1919,15 @@ interface Window {
     entityRelationshipsCreate: (fromEntityId: string, toEntityId: string, label: string) => Promise<{ relationship: EntityRelationshipRow }>;
     entityRelationshipsDelete: (relationshipId: string) => Promise<{ deleted: boolean }>;
 
-    // SKY-861: Move vault root to a cloud-sync folder.
-    vaultGuidedFolderMove: (payload: {
-      targetPath: string;
-      syncProvider: 'icloud' | 'dropbox' | 'google-drive' | 'onedrive';
-      sessionToken: string;
-    }) => Promise<{ moved: boolean; newVaultPath: string; verificationWarning?: string } | { error: string }>;
-
-    // SKY-10367: Move vault root to a plain local folder (default entry
-    // point for "Move to a different folder"; no cloud provider required).
+    // SKY-10367: Move vault root to a plain local folder — the only vault
+    // relocation path since SKY-11804 removed the branded cloud variant.
     vaultLocalFolderMove: (payload: {
       targetPath: string;
       registrationToken: string;
     }) => Promise<{ moved: boolean; newVaultPath: string; verificationWarning?: string } | { error: string }>;
 
-    // SKY-863: Conflict detection + lockfile.
-    checkVaultConflicts: () => Promise<{
-      resolved: Array<{
-        conflictPath: string;
-        originalPath: string;
-        provider: 'dropbox' | 'icloud' | 'syncthing';
-        keptPath: string;
-        archivedPath: string;
-        resolvedAt: string;
-      }>;
+    // SKY-863: concurrent-session lockfile.
+    checkVaultSessionLock: () => Promise<{
       lockfileConflict: { hostname: string; pid: number; timestamp: string } | null;
       dismissed: boolean;
     }>;
