@@ -1,0 +1,37 @@
+{
+  "accountModal": {
+    "01-default": true,
+    "02-accent": true,
+    "03-glow": true,
+    "04-reduceglow": true
+  },
+  "templatePicker": {
+    "01-default": true,
+    "02-accent": true,
+    "03-glow": true,
+    "04-reduceglow": true
+  },
+  "vaultGraph": {
+    "01-default": true,
+    "02-accent": true,
+    "03-glow": true,
+    "04-reduceglow": true
+  },
+  "addVaultDialog": {
+    "01-default": false,
+    "02-accent": false,
+    "03-glow": false,
+    "04-reduceglow": false
+  },
+  "ideaDrawer": {
+    "01-default": true,
+    "02-accent": true,
+    "03-glow": true,
+    "04-reduceglow": true
+  },
+  "settingsSteps": {
+    "accent": true,
+    "glow": true,
+    "reduceGlow": true
+  }
+}
