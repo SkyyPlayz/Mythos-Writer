@@ -5,9 +5,7 @@ import type { CanvasBoardData } from '../../canvas/canvasTypes';
 import {
   CRAFTER_LENGTHS,
   CRAFTER_TONES,
-  DRAFT_BOARD_DELAY_MS,
   addBeat,
-  composeDraftBoard,
   defaultCrafterSetup,
   filterSuggested,
   groupSuggested,
@@ -20,6 +18,7 @@ import {
   type SuggestedCard,
   type VaultListItem,
 } from './crafterState';
+import { buildDraftPrompt, draftFromResponseText, landDraftOnBoard, type SceneDraft } from './crafterDraft';
 import { loadCrafterBoards, saveCrafterBoard } from './crafterBoardStore';
 import './SceneCrafterPage.css';
 
@@ -48,8 +47,6 @@ interface Props {
   story: Story;
   onOpenNote?: (notePath: string) => void;
   onOpenScene?: (sceneId: string) => void;
-  /** Draft-board busy delay override (prototype: 1200ms). Tests pass 0. */
-  draftDelayMs?: number;
 }
 
 /** Debounce for persisting canvas edits (drag/resize emit change storms). */
@@ -84,7 +81,6 @@ export default function SceneCrafterPage({
   story,
   onOpenNote,
   onOpenScene,
-  draftDelayMs = DRAFT_BOARD_DELAY_MS,
 }: Props) {
   const storySlug = useMemo(() => storySlugFromStory(story), [story]);
   const [board, setBoard] = useState<SceneCrafterBoard | null>(null);
@@ -110,10 +106,11 @@ export default function SceneCrafterPage({
   const [planSel, setPlanSel] = useState<Record<string, boolean>>({});
   const [summary, setSummary] = useState('');
   const [boardsNote, setBoardsNote] = useState<string | null>(null);
+  const [draft, setDraft] = useState<SceneDraft | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
 
   const prevFocusRef = useRef<HTMLElement | null>(null);
   const moveMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const draftTimerRef = useRef<number | null>(null);
   const saveTimerRef = useRef<number | null>(null);
   const pendingSaveRef = useRef<CanvasBoardData | null>(null);
 
@@ -163,10 +160,9 @@ export default function SceneCrafterPage({
     return () => { window.api.sceneCrafterClose?.(storySlug); };
   }, [storySlug]);
 
-  // Cancel the draft-board timer and flush any pending canvas save on unmount.
+  // Flush any pending canvas save on unmount.
   useEffect(() => {
     return () => {
-      if (draftTimerRef.current !== null) window.clearTimeout(draftTimerRef.current);
       if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
       const toSave = pendingSaveRef.current;
       pendingSaveRef.current = null;
@@ -425,19 +421,46 @@ export default function SceneCrafterPage({
     return chosen;
   }
 
-  /** Prototype draftBoard() (lines 3403–3423): busy → compose → land under BOARDS. */
-  function draftBoard() {
+  /**
+   * Generate a first-pass AI draft (§7.1): Coach-framed prompt over the setup
+   * facts, staged for review — never persisted or written into the manuscript
+   * until the writer explicitly chooses "Add to scene board" (B4-9).
+   */
+  async function generateDraft() {
     if (setup.status === 'busy') return;
-    const chosen = chosenCards();
-    const boardNumber = boards.length + 1;
+    setDraftError(null);
     patchSetup({ status: 'busy' });
-    draftTimerRef.current = window.setTimeout(() => {
-      draftTimerRef.current = null;
-      const next = composeDraftBoard(setup, chosen, boardNumber);
-      setBoards((prev) => [...prev, next]);
-      setSetup((prev) => ({ ...prev, status: 'done' }));
-      void persistBoard(next);
-    }, draftDelayMs);
+    try {
+      const prompt = buildDraftPrompt(setup, chosenCards());
+      const response = await window.api.agentWritingAssistant(prompt);
+      setDraft(draftFromResponseText(response.text));
+      patchSetup({ status: 'idle' });
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : 'Could not generate a draft.');
+      patchSetup({ status: 'idle' });
+    }
+  }
+
+  function retryDraft() {
+    setDraft(null);
+    void generateDraft();
+  }
+
+  function discardDraft() {
+    setDraft(null);
+    setDraftError(null);
+    patchSetup({ status: 'idle' });
+  }
+
+  /** Lands the reviewed draft on the scene's canvas board — the only path from a generated draft to persisted state. */
+  async function addDraftToSceneBoard() {
+    if (!draft) return;
+    const boardNumber = boards.length + 1;
+    const next = landDraftOnBoard(setup, chosenCards(), draft, boardNumber);
+    setBoards((prev) => [...prev, next]);
+    setDraft(null);
+    patchSetup({ status: 'done' });
+    await persistBoard(next);
   }
 
   /** Canvas mutations update state immediately and persist on a debounce. */
@@ -779,17 +802,24 @@ export default function SceneCrafterPage({
               <button
                 type="button"
                 className="sc-draft-btn"
-                onClick={draftBoard}
-                disabled={setup.status === 'busy'}
+                onClick={() => void generateDraft()}
+                disabled={setup.status === 'busy' || draft !== null}
               >
-                Draft board ✦
+                Generate ✦
               </button>
               <div className="sc-help">
-                Reads your summary + selected plan cards and builds a canvas board — it lands under BOARDS in Scene Setup.
+                The Coach drafts a first pass from your setup + beats and annotates why it made
+                each choice, so the rewrite teaches you — it never writes into your manuscript.
               </div>
             </div>
-            {setup.status === 'idle' && (
-              <div className="sc-draft-idle">Set beats and tone, then<br />Draft — the card lands here.</div>
+            {draftError && (
+              <div className="sc-draft-error" role="alert">
+                {draftError}
+                <button type="button" onClick={() => void generateDraft()}>Retry</button>
+              </div>
+            )}
+            {!draftError && setup.status === 'idle' && !draft && (
+              <div className="sc-draft-idle">Set beats and tone, then<br />Generate — the draft lands here.</div>
             )}
             {setup.status === 'busy' && (
               <div className="sc-draft-busy">
@@ -798,8 +828,26 @@ export default function SceneCrafterPage({
                 <div className="sc-draft-busy-label">Drafting to your beats…</div>
               </div>
             )}
-            {setup.status === 'done' && (
-              <div className="sc-draft-done">✦ Canvas board drafted — open it under BOARDS.</div>
+            {draft && (
+              <div className="sc-draft-card" data-testid="scene-draft-card" aria-label="Generated scene draft">
+                <div className="sc-draft-card-head">
+                  <span className="sc-draft-card-title">
+                    {(setup.title.trim() || 'Untitled scene')} — first pass
+                  </span>
+                  <span className="sc-draft-card-words">{draft.wordCount} words</span>
+                </div>
+                <p className="sc-draft-card-preview">{draft.preview}</p>
+                <div className="sc-draft-card-actions">
+                  <button type="button" className="sc-draft-card-add" onClick={() => void addDraftToSceneBoard()}>
+                    Add to scene board
+                  </button>
+                  <button type="button" onClick={retryDraft}>Retry</button>
+                  <button type="button" onClick={discardDraft}>Discard</button>
+                </div>
+              </div>
+            )}
+            {setup.status === 'done' && !draft && (
+              <div className="sc-draft-done">✦ Draft added — open it under BOARDS.</div>
             )}
             {boardsNote && <div className="sc-boards-note">{boardsNote}</div>}
           </section>

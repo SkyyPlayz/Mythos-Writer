@@ -671,6 +671,96 @@
   padding: 2px;
 }
 
+.sc-draft-error {
+  padding: 10px 12px;
+  border-radius: 13px;
+  background: rgba(255, 77, 79, 0.08);
+  border: 1px solid rgba(255, 77, 79, 0.4);
+  font-size: 10.5px;
+  color: #ffb3b3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sc-draft-error button {
+  border: 1px solid rgba(255, 77, 79, 0.5);
+  background: transparent;
+  color: #ffb3b3;
+  border-radius: 8px;
+  padding: 3px 9px;
+  font-size: 10px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sc-draft-card {
+  padding: 14px;
+  border-radius: 13px;
+  background: var(--glass2, rgba(21, 26, 45, 0.88));
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow: 0 0 20px -6px var(--g2, rgba(155, 95, 255, 0.4));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sc-draft-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sc-draft-card-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #e6ecf9;
+}
+
+.sc-draft-card-words {
+  font-size: 10px;
+  color: var(--n2, #9b5fff);
+  white-space: nowrap;
+}
+
+.sc-draft-card-preview {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: #b7c2da;
+  max-height: 8.5em;
+  overflow: hidden;
+}
+
+.sc-draft-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.scene-crafter-page button.sc-draft-card-add {
+  flex: 1;
+  border: none;
+  border-radius: 9px;
+  padding: 6px 10px;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  color: #0b0d17;
+  font-size: 10.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.sc-draft-card-actions button:not(.sc-draft-card-add) {
+  border: 1px solid var(--b2, rgba(155, 95, 255, 0.4));
+  background: transparent;
+  color: #cdd8ea;
+  border-radius: 9px;
+  padding: 6px 10px;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
 /* Canvas board view header (prototype lines 1007–1015). */
 .sc-canvas-head {
   display: flex;

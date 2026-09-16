@@ -33,6 +33,12 @@ export interface CanvasBoardProps {
   onChange: (board: CanvasBoardData) => void;
   /** Called when a card's note avatar is clicked and the card has an attached note. */
   onOpenNote?: (nid: string) => void;
+  /**
+   * Disables every board mutation (drag, resize, connect, delete, add-card)
+   * — for preview surfaces like the editor right-panel mini canvas (§7.1
+   * AC#9). Pan and zoom stay live; `onChange` is never called.
+   */
+  readOnly?: boolean;
 }
 
 let cardSeq = 0;
@@ -42,7 +48,7 @@ function slotClass(c: number): string {
   return `cvb-card--s${slot + 1}`;
 }
 
-export default function CanvasBoard({ board, onChange, onOpenNote }: CanvasBoardProps) {
+export default function CanvasBoard({ board, onChange, onOpenNote, readOnly = false }: CanvasBoardProps) {
   const [view, setView] = useState<ViewTransform>({ zoom: 1, panX: 0, panY: 0 });
   const [linkFrom, setLinkFrom] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -80,7 +86,7 @@ export default function CanvasBoard({ board, onChange, onOpenNote }: CanvasBoard
 
   // Card drag — prototype `cvCardDown` (lines 3425–3435): zoom-scaled deltas.
   const onCardHeadDown = (cardId: string) => (e: React.MouseEvent) => {
-    if (e.button === 2) return;
+    if (readOnly || e.button === 2) return;
     e.stopPropagation();
     e.preventDefault();
     const card = boardRef.current.cards.find((c) => c.id === cardId);
@@ -97,7 +103,7 @@ export default function CanvasBoard({ board, onChange, onOpenNote }: CanvasBoard
 
   // Corner resize — prototype `cvResizeDown` (lines 3436–3446): min 130×60.
   const onResizeDown = (cardId: string) => (e: React.MouseEvent) => {
-    if (e.button === 2) return;
+    if (readOnly || e.button === 2) return;
     e.stopPropagation();
     e.preventDefault();
     const card = boardRef.current.cards.find((c) => c.id === cardId);
@@ -139,6 +145,7 @@ export default function CanvasBoard({ board, onChange, onOpenNote }: CanvasBoard
   // Connect mode — prototype `cvLinkClick` (lines 3461–3466).
   const onConnectClick = (cardId: string) => (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (readOnly) return;
     if (!linkFrom) {
       setLinkFrom(cardId);
     } else if (linkFrom === cardId) {
@@ -152,6 +159,7 @@ export default function CanvasBoard({ board, onChange, onOpenNote }: CanvasBoard
 
   const onDeleteClick = (cardId: string) => (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (readOnly) return;
     const b = boardRef.current;
     onChange({
       ...b,
@@ -168,6 +176,7 @@ export default function CanvasBoard({ board, onChange, onOpenNote }: CanvasBoard
 
   // Add card — prototype `cvAddCard` (line 4781): spawns at viewport (240, 180).
   const onAddCard = () => {
+    if (readOnly) return;
     const b = boardRef.current;
     const pos = newCardPosition(view);
     const card: CanvasCard = {
@@ -247,52 +256,58 @@ export default function CanvasBoard({ board, onChange, onOpenNote }: CanvasBoard
                 {card.av}
               </button>
               <span className="cvb-card-title">{card.t}</span>
-              <button
-                type="button"
-                className="cvb-card-connect"
-                title="Connect to another card"
-                onClick={onConnectClick(card.id)}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <svg
-                  width="10"
-                  height="10"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
+              {!readOnly && (
+                <button
+                  type="button"
+                  className="cvb-card-connect"
+                  title="Connect to another card"
+                  onClick={onConnectClick(card.id)}
+                  onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <path d="M9.5 14.5l5-5" />
-                  <path d="M11 7l1.5-1.5a3.5 3.5 0 0 1 5 5L16 12M8 12l-1.5 1.5a3.5 3.5 0 0 0 5 5L13 17" />
-                </svg>
-              </button>
-              <button
-                type="button"
-                className="cvb-card-del"
-                title="Delete card"
-                onClick={onDeleteClick(card.id)}
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <svg
-                  width="8"
-                  height="8"
-                  viewBox="0 0 12 12"
-                  stroke="currentColor"
-                  strokeWidth="1.7"
-                  strokeLinecap="round"
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  >
+                    <path d="M9.5 14.5l5-5" />
+                    <path d="M11 7l1.5-1.5a3.5 3.5 0 0 1 5 5L16 12M8 12l-1.5 1.5a3.5 3.5 0 0 0 5 5L13 17" />
+                  </svg>
+                </button>
+              )}
+              {!readOnly && (
+                <button
+                  type="button"
+                  className="cvb-card-del"
+                  title="Delete card"
+                  onClick={onDeleteClick(card.id)}
+                  onMouseDown={(e) => e.stopPropagation()}
                 >
-                  <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
-                </svg>
-              </button>
+                  <svg
+                    width="8"
+                    height="8"
+                    viewBox="0 0 12 12"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                  >
+                    <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
+                  </svg>
+                </button>
+              )}
             </div>
             <div className="cvb-card-body">{card.d}</div>
-            <span
-              className="cvb-card-resize"
-              title="Resize"
-              data-testid={`canvas-card-resize-${card.id}`}
-              onMouseDown={onResizeDown(card.id)}
-            />
+            {!readOnly && (
+              <span
+                className="cvb-card-resize"
+                title="Resize"
+                data-testid={`canvas-card-resize-${card.id}`}
+                onMouseDown={onResizeDown(card.id)}
+              />
+            )}
           </div>
         ))}
       </div>

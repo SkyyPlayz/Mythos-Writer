@@ -189,9 +189,6 @@ export function planNotesFromVault(items: VaultListItem[]): PlanNote[] {
 
 // ─── Draft-board composition (prototype draftBoard(), lines 3403–3423) ───────
 
-/** Busy → done delay before the board lands (`this.later(…, 1200)`, line 3423). */
-export const DRAFT_BOARD_DELAY_MS = 1200;
-
 /** `mk()` card-size defaults (line 3408). */
 export const DRAFT_CARD_W = 200;
 export const DRAFT_CARD_H = 86;
