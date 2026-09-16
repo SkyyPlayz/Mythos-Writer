@@ -26,7 +26,7 @@
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.13em;
-  color: var(--text-subtle, #7686a2);
+  color: var(--text-muted, #7686a2);
   margin-bottom: 7px;
   display: block;
 }
@@ -64,7 +64,7 @@
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.13em;
-  color: var(--text-subtle, #7686a2);
+  color: var(--text-muted, #7686a2);
   margin-bottom: 9px;
 }
 

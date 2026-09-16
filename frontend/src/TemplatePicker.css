@@ -28,7 +28,7 @@
 }
 
 .tp-title {
-  font-size: var(--text-md);
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-header);
   margin: 0;
