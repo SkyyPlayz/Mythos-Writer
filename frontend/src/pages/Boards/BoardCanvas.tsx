@@ -108,6 +108,12 @@ export interface BoardCanvasProps {
   /** Double-click a board tile to enter it */
   onEnterBoard?: (folderPath: string) => void;
   /**
+   * Double-click (or Enter) a note card to open it in the Notes editor.
+   * Path is vault-relative (includes `.md`), same contract as `onOpenNote`
+   * on the Boards tab panel — BOARDS-SPEC §1 "a card IS a note".
+   */
+  onOpenNote?: (vaultRelativePath: string) => void;
+  /**
    * SKY-11187 §5: the active placement tool. `select` (the default) leaves
    * every existing gesture exactly as it was — no tool, no vault writes.
    */
@@ -211,6 +217,7 @@ export default function BoardCanvas({
   onItemResize,
   onViewChange,
   onEnterBoard,
+  onOpenNote,
   activeTool = 'select',
   onCreateItem,
   renamingPath = null,
@@ -1024,6 +1031,7 @@ export default function BoardCanvas({
         onResizeMouseDown={handleResizeMouseDown}
         onFocusItem={handleFocusItem}
         onEnterBoard={onEnterBoard}
+        onOpenNote={onOpenNote ? (itemPath) => onOpenNote(fullPath(itemPath)) : undefined}
         onContextMenu={handleItemContextMenu}
         onRequestRename={onRequestRename}
         onRenameCommit={onRenameCommit}

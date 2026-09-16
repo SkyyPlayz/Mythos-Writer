@@ -663,6 +663,39 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
         </div>
       </nav>
 
+      {/* Owner punch (Sep Liquid Neon mockup / BOARDS-SPEC chrome IA): furniture
+          creation belongs on the TOP toolbar with the rest of the board chrome,
+          not a second strip under the canvas. Zoom stays a floating canvas pill
+          (SKY-11566 BD-4). */}
+      {!board.loading && !board.error && (
+        <div className="boards-tab-panel__furniture-toolbar" role="group" aria-label="Add furniture">
+          {FURNITURE_TOOLBAR_KINDS.map(({ kind, label }) => (
+            <button
+              key={kind}
+              type="button"
+              className="boards-tab-panel__furniture-btn"
+              onClick={() => void handleFurnitureCreate(kind)}
+            >
+              + {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            className={
+              'boards-tab-panel__furniture-btn' +
+              (lineToolActive ? ' boards-tab-panel__furniture-btn--active' : '')
+            }
+            aria-pressed={lineToolActive}
+            onClick={() => {
+              setLineToolActive((on) => !on);
+              setLineFromId(null);
+            }}
+          >
+            {lineToolActive ? (lineFromId ? 'Click the item to connect to…' : 'Click an item to connect…') : '+ Connector'}
+          </button>
+        </div>
+      )}
+
       {/* SKY-11189 §8: dropped out of <nav> itself for the same reason the
           search results are (comment above) — the crumb bar's overflow-x:auto
           makes it a vertical clipping context too, so an absolutely-positioned
@@ -743,6 +776,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             onItemResize={board.onItemResize}
             onViewChange={handleViewChange}
             onEnterBoard={handleEnterBoard}
+            onOpenNote={onOpenNote}
             activeTool={board.activeTool}
             onCreateItem={board.onCreateItem}
             renamingPath={board.renamingPath}
@@ -785,31 +819,6 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
           </button>
         </div>
       )}
-      {/* SKY-11188 (§4/§5): add board-only furniture — mirrors the prototype's
-          canvas context-menu "Add …" items as a reachable toolbar. */}
-      {!board.loading && !board.error && (
-        <div className="boards-tab-panel__furniture-toolbar" role="group" aria-label="Add furniture">
-          {FURNITURE_TOOLBAR_KINDS.map(({ kind, label }) => (
-            <button
-              key={kind}
-              type="button"
-              className="boards-tab-panel__furniture-btn"
-              onClick={() => void handleFurnitureCreate(kind)}
-            >
-              + {label}
-            </button>
-          ))}
-          <button
-            type="button"
-            className={`boards-tab-panel__furniture-btn${lineToolActive ? ' boards-tab-panel__furniture-btn--active' : ''}`}
-            aria-pressed={lineToolActive}
-            onClick={() => { setLineToolActive((v) => !v); setLineFromId(null); }}
-          >
-            {lineToolActive ? (lineFromId ? 'Click the item to connect to…' : 'Click an item to connect…') : '+ Connector'}
-          </button>
-        </div>
-      )}
-
       {/* SKY-11189 §8: immediate feedback for a trash action, mirroring
           CanvasBoard.tsx's own delete-toast-with-undo precedent. Ctrl+Z
           works whether or not this toast is still showing (DesktopShell's

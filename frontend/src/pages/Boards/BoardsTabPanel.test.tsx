@@ -177,12 +177,12 @@ describe('SKY-11187 §5 — inline rename renames the real file', () => {
   async function mountWithNote() {
     vaultItems = [{ path: 'Alice.md', name: 'Alice.md', isDirectory: false }];
     await mountPanel();
-    await screen.findByLabelText('Note card: Alice');
+    await screen.findByLabelText(/^Note card: Alice/);
   }
 
   it('F2 on a focused card opens rename; Enter commits it through the vault channel', async () => {
     await mountWithNote();
-    const card = screen.getByLabelText('Note card: Alice');
+    const card = screen.getByLabelText(/^Note card: Alice/);
     fireEvent.keyDown(card, { key: 'F2' });
 
     const input = (await screen.findByLabelText('Note name')) as HTMLInputElement;
@@ -195,7 +195,7 @@ describe('SKY-11187 §5 — inline rename renames the real file', () => {
 
   it('right-click → Rename reaches the same inline field', async () => {
     await mountWithNote();
-    fireEvent.contextMenu(screen.getByLabelText('Note card: Alice'), { clientX: 100, clientY: 100 });
+    fireEvent.contextMenu(screen.getByLabelText(/^Note card: Alice/), { clientX: 100, clientY: 100 });
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename' }));
     expect(await screen.findByLabelText('Note name')).toBeTruthy();
   });
@@ -204,7 +204,7 @@ describe('SKY-11187 §5 — inline rename renames the real file', () => {
   // file is left exactly as it was (never deleted, never left unnamed).
   it('committing an EMPTY name is a no-op — nothing is sent to the vault', async () => {
     await mountWithNote();
-    fireEvent.keyDown(screen.getByLabelText('Note card: Alice'), { key: 'F2' });
+    fireEvent.keyDown(screen.getByLabelText(/^Note card: Alice/), { key: 'F2' });
     const input = await screen.findByLabelText('Note name');
     fireEvent.change(input, { target: { value: '   ' } });
     await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }); });
@@ -217,7 +217,7 @@ describe('SKY-11187 §5 — inline rename renames the real file', () => {
 
   it('Escape abandons the rename without touching the vault', async () => {
     await mountWithNote();
-    fireEvent.keyDown(screen.getByLabelText('Note card: Alice'), { key: 'F2' });
+    fireEvent.keyDown(screen.getByLabelText(/^Note card: Alice/), { key: 'F2' });
     const input = await screen.findByLabelText('Note name');
     fireEvent.change(input, { target: { value: 'Aria' } });
     await act(async () => { fireEvent.keyDown(input, { key: 'Escape' }); });
@@ -231,7 +231,7 @@ describe('SKY-11187 §5 — inline rename renames the real file', () => {
       error: 'An item with that name already exists',
     } as never);
 
-    fireEvent.keyDown(screen.getByLabelText('Note card: Alice'), { key: 'F2' });
+    fireEvent.keyDown(screen.getByLabelText(/^Note card: Alice/), { key: 'F2' });
     const input = await screen.findByLabelText('Note name');
     fireEvent.change(input, { target: { value: 'Bob' } });
     await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }); });
@@ -241,7 +241,7 @@ describe('SKY-11187 §5 — inline rename renames the real file', () => {
 
   it('rejects a filesystem-unsafe name before it reaches the vault', async () => {
     await mountWithNote();
-    fireEvent.keyDown(screen.getByLabelText('Note card: Alice'), { key: 'F2' });
+    fireEvent.keyDown(screen.getByLabelText(/^Note card: Alice/), { key: 'F2' });
     const input = await screen.findByLabelText('Note name');
     fireEvent.change(input, { target: { value: 'a/b' } });
     await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }); });
@@ -257,7 +257,7 @@ describe('SKY-11187 — dragging a card stays metadata-only', () => {
   it('persists a drag through patchLayout alone — no create, no rename', async () => {
     vaultItems = [{ path: 'Alice.md', name: 'Alice.md', isDirectory: false }];
     await mountPanel();
-    const card = await screen.findByLabelText('Note card: Alice');
+    const card = await screen.findByLabelText(/^Note card: Alice/);
 
     fireEvent.mouseDown(card, { button: 0, clientX: 100, clientY: 100 });
     await act(async () => {
@@ -275,7 +275,7 @@ describe('SKY-11189 §7/§8 — trash + undo toast + Recently Deleted panel wiri
   it('Delete on a selected card calls notesBoardTrashItems with the real vault path', async () => {
     vaultItems = [{ path: 'Idea.md', name: 'Idea.md', isDirectory: false }];
     await mountPanel();
-    const card = await screen.findByLabelText('Note card: Idea');
+    const card = await screen.findByLabelText(/^Note card: Idea/);
     act(() => { card.focus(); });
     await act(async () => { fireEvent.keyDown(window, { key: 'Delete' }); });
 
@@ -287,7 +287,7 @@ describe('SKY-11189 §7/§8 — trash + undo toast + Recently Deleted panel wiri
   it('shows a toast with an Undo action, and clicking it calls notesBoardRestore', async () => {
     vaultItems = [{ path: 'Idea.md', name: 'Idea.md', isDirectory: false }];
     await mountPanel();
-    const card = await screen.findByLabelText('Note card: Idea');
+    const card = await screen.findByLabelText(/^Note card: Idea/);
     act(() => { card.focus(); });
     await act(async () => { fireEvent.keyDown(window, { key: 'Delete' }); });
 

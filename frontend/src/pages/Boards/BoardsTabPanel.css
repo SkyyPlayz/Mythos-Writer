@@ -404,15 +404,25 @@
   font-size: 14px;
 }
 
-/* SKY-11188 (§4/§5): reachable furniture-creation toolbar — the canvas
-   context-menu the prototype uses isn't built here; this is the
-   keyboard/screen-reader-friendly equivalent entry point. */
+/* Owner punch: furniture creation sits under the crumb/tools row as the
+   TOP board toolbar (Sep Liquid Neon mockup chrome IA / BOARDS-SPEC). Was a
+   bottom strip under the canvas — that fought the mockup's top nav. */
 .boards-tab-panel__furniture-toolbar {
   flex-shrink: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 8px 14px 12px;
+  padding: 6px 14px 10px;
+  border-bottom: 1px solid var(--border-subtle, rgb(255 255 255 / 0.07));
+  background: var(--glass-fill-fallback, rgb(13 16 28));
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .boards-tab-panel__furniture-toolbar {
+    background: var(--glass2, rgb(21 26 45 / 0.9));
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
 }
 
 .boards-tab-panel__furniture-btn {
