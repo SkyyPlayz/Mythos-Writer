@@ -387,6 +387,14 @@ describe('SettingsPanel', () => {
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 
+  it('calls onClose on click so keyboard Enter/Space still dismiss', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/close settings/i));
+
+    fireEvent.click(screen.getByLabelText(/close settings/i));
+    expect(mockOnClose).toHaveBeenCalled();
+  });
+
   it('toggles API key visibility', async () => {
     mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: 'sk-ant-secret' });
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);

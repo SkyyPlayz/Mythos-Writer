@@ -896,6 +896,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               e.stopPropagation();
               onClose();
             }}
+            // Keyboard activation of <button> fires click, not pointerdown —
+            // keep both; double-fire from a real pointer is harmless.
+            onClick={onClose}
           >
             ✕
           </button>
