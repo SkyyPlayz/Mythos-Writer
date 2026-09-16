@@ -801,18 +801,30 @@ export function setupIpcMain(handlers: IpcHandlers) {
     const loggedHandler = returnsEnvelope
       ? withIpcLog(channel, (payload: unknown) => handler(payload as never))
       : null;
-    // `await` is required so async rejections are caught here and sanitized
-    // before they reach the renderer. Previously thrown fs errors (ENOENT,
-    // EACCES) leaked absolute paths via `(error as Error).message`. (MYT-790)
-    ipcMain.handle(channel, async (event, payload) => {
-      if (!isFromTopFrame(event)) return returnsEnvelope ? untrustedFrameEnvelope() : UNTRUSTED_FRAME_REJECTION;
-      if (loggedHandler) return loggedHandler(payload);
-      try {
-        return await handler(payload);
-      } catch (error) {
-        return sanitizeIpcError(channel, error);
-      }
-    });
+    try {
+      // `await` is required so async rejections are caught here and sanitized
+      // before they reach the renderer. Previously thrown fs errors (ENOENT,
+      // EACCES) leaked absolute paths via `(error as Error).message`. (MYT-790)
+      ipcMain.handle(channel, async (event, payload) => {
+        if (!isFromTopFrame(event)) return returnsEnvelope ? untrustedFrameEnvelope() : UNTRUSTED_FRAME_REJECTION;
+        if (loggedHandler) return loggedHandler(payload);
+        try {
+          return await handler(payload);
+        } catch (error) {
+          return sanitizeIpcError(channel, error);
+        }
+      });
+    } catch (error) {
+      // SKY-11865: ipcMain.handle() throws synchronously ("second handler")
+      // when a channel is already claimed — e.g. a Playwright E2E harness
+      // stubbing this exact channel via app.evaluate() before boot reaches
+      // here. Uncaught, that exception aborted this whole for-loop (GH#444's
+      // failure mode resurfacing from an external caller instead of a
+      // duplicate entry in `handlers`), silently skipping registration for
+      // every channel listed after it. One conflicting channel must not cost
+      // the rest of the app's IPC surface.
+      console.error(`[ipc] setupIpcMain: '${channel}' already has a handler registered — skipping`, error);
+    }
   }
 }
 
