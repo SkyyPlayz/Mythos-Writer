@@ -1046,6 +1046,11 @@ contextBridge.exposeInMainWorld('api', {
     >,
   notesThumbPut: (src: string, version: string, bytes: Uint8Array) =>
     ipcRenderer.invoke('notesThumb:put', { src, version, bytes }) as Promise<{ ok: boolean }>,
+  /** Copy a picked OS image into vault `attachments/`; returns vault-relative POSIX path. */
+  notesThumbImport: (sourcePath: string) =>
+    ipcRenderer.invoke('notesThumb:import', { sourcePath }) as Promise<
+      { ok: true; relPath: string } | { ok: false; error: string }
+    >,
 
   // SKY-205: Smart Folders — frontmatter-backed persistent queries
   smartFolderList: () =>

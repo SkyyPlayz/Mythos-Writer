@@ -492,6 +492,7 @@ import {
   THUMB_CACHE_DIR_NAME,
   type NoteThumbInfo,
 } from './noteThumbnails.js';
+import { importNoteThumbAttachment } from './noteThumbImport.js';
 import {
   ensureVaultSeeded,
   STORY_VAULT_SEED_LAYOUT,
@@ -598,6 +599,8 @@ import type {
   NotesThumbGetResponse,
   NotesThumbPutPayload,
   NotesThumbPutResponse,
+  NotesThumbImportPayload,
+  NotesThumbImportResponse,
 } from './ipc.js';
 // Beta 4 M29 — Welcome wizard genre starter notes.
 import { isGenreSeedGenre, writeGenreStarterNotes } from './mythosFormat/genreSeed.js';
@@ -7468,6 +7471,27 @@ const handlers: IpcHandlers = {
       return { ok: false };
     }
     return putNoteThumb(getNoteThumbCacheDir(root), payload.src, payload.version, payload.bytes);
+  },
+  // Owner punch: copy a picked OS image into vault `attachments/` so the
+  // board (and editor cover) can set frontmatter `thumb:` to a vault-relative
+  // path (BOARDS-SPEC §8). Destination is sandboxed under attachments/.
+  [IPC_CHANNELS.NOTES_THUMB_IMPORT]: async (
+    payload: NotesThumbImportPayload,
+  ): Promise<NotesThumbImportResponse> => {
+    ensureNotesVaultDir();
+    const root = getNotesVaultRoot();
+    const sourcePath = typeof payload?.sourcePath === 'string' ? payload.sourcePath : '';
+    const result = importNoteThumbAttachment(root, sourcePath);
+    if (!result.ok) return result;
+    try {
+      safeVaultEntryIpcJoin(root, result.relPath);
+    } catch {
+      return { ok: false, error: 'imported path rejected by vault sandbox' };
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('vault:notes-asset-changed', { path: result.relPath });
+    }
+    return result;
   },
 
   // ─── SKY-11058: Notes vault registry ────────────────────────────────────

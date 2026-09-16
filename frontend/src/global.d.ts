@@ -1756,6 +1756,10 @@ interface Window {
       | { status: 'unsupported' }
     >;
     notesThumbPut: (src: string, version: string, bytes: Uint8Array) => Promise<{ ok: boolean }>;
+    /** Copy a picked OS image into vault `attachments/` for frontmatter `thumb:`. */
+    notesThumbImport: (sourcePath: string) => Promise<
+      { ok: true; relPath: string } | { ok: false; error: string }
+    >;
 
     // Per-chapter/per-scene file layout (MYT-609)
     vaultCreateChapter: (projectPath: string, chapterName: string) => Promise<unknown>;

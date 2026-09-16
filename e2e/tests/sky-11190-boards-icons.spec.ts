@@ -264,9 +264,12 @@ test('SKY-11190 AC3: an icon name outside the known set falls back to the defaul
     page.on('pageerror', (e) => pageErrors.push(e.message));
 
     // The tile still renders — with the default folder glyph, not a blank slot.
+    // Owner punch: Boards folder fallbacks use TreeIcons SVGs (same as the
+    // Notes tree). Playwright's toBeEmpty() checks textContent, which is
+    // always "" for an svg-only glyph — assert the fallback svg is visible
+    // (matches the vault-tree half below).
     await expect(folderTile(page, 'Ruins')).toBeVisible({ timeout: 8_000 });
-    await expect(folderTile(page, 'Ruins').locator('.board-canvas__item-icon')).not.toBeEmpty();
-    await expect(folderTile(page, 'Ruins').locator('.board-canvas__item-icon svg')).toHaveCount(0);
+    await expect(folderTile(page, 'Ruins').locator('.board-canvas__item-icon svg')).toBeVisible();
 
     await gotoNotesVaultTree(page);
     const treeRow = page.locator('[data-testid="vb-row-Ruins"]');

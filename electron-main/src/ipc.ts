@@ -550,6 +550,8 @@ export const IPC_CHANNELS = {
   NOTES_THUMB_RESOLVE: 'notesThumb:resolve',
   NOTES_THUMB_GET: 'notesThumb:get',
   NOTES_THUMB_PUT: 'notesThumb:put',
+  /** Owner punch: copy a picked image into vault `attachments/` for `thumb:`. */
+  NOTES_THUMB_IMPORT: 'notesThumb:import',
 
   // SKY-11058: per-Mythos-vault notes-vault registry (multiple notes vaults)
   NOTES_VAULT_REGISTRY_LIST: 'notesVaultRegistry:list',
@@ -1270,6 +1272,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_THUMB_RESOLVE]: (payload: NotesThumbResolvePayload) => Promise<NotesThumbResolveResponse>;
   [IPC_CHANNELS.NOTES_THUMB_GET]: (payload: NotesThumbGetPayload) => Promise<NotesThumbGetResponse>;
   [IPC_CHANNELS.NOTES_THUMB_PUT]: (payload: NotesThumbPutPayload) => Promise<NotesThumbPutResponse>;
+  [IPC_CHANNELS.NOTES_THUMB_IMPORT]: (payload: NotesThumbImportPayload) => Promise<NotesThumbImportResponse>;
 }
 
 // ─── Payload / Response types ───
@@ -1853,6 +1856,15 @@ export interface NotesThumbPutPayload {
 export interface NotesThumbPutResponse {
   ok: boolean;
 }
+
+/** Absolute filesystem path of a user-picked image (from BG_PICK or tests). */
+export interface NotesThumbImportPayload {
+  sourcePath: string;
+}
+
+export type NotesThumbImportResponse =
+  | { ok: true; relPath: string }
+  | { ok: false; error: string };
 
 // ─── SKY-10367: vault relocation ───
 

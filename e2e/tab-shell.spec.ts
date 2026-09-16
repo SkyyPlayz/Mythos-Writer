@@ -120,6 +120,9 @@ test.describe('TabBar — tab switching and persistence', () => {
 
     const app = await launchApp(userData);
     try {
+      // Wait for the renderer before IPC surgery — evaluate() before firstWindow
+      // intermittently throws "Resulting promise was garbage collected" in CI.
+      const page = await firstWindow(app);
       await app.evaluate(({ ipcMain }, { storyVaultDir, notesVaultDir }) => {
         ipcMain.removeHandler('vault:validate-path');
         ipcMain.handle('vault:validate-path', (_event, payload: { path?: string } | string) => {
@@ -128,9 +131,9 @@ test.describe('TabBar — tab switching and persistence', () => {
           if (targetPath === notesVaultDir) return { exists: false, writable: false };
           return { exists: true, writable: true };
         });
+        return true;
       }, { storyVaultDir, notesVaultDir });
 
-      const page = await firstWindow(app);
       await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 12_000 });
 
       await page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' }).click();
@@ -151,6 +154,7 @@ test.describe('TabBar — tab switching and persistence', () => {
 
     const app = await launchApp(userData);
     try {
+      const page = await firstWindow(app);
       await app.evaluate(({ ipcMain }, { storyVaultDir, notesVaultDir }) => {
         ipcMain.removeHandler('vault:validate-path');
         ipcMain.handle('vault:validate-path', (_event, payload: { path?: string } | string) => {
@@ -159,9 +163,9 @@ test.describe('TabBar — tab switching and persistence', () => {
           if (targetPath === notesVaultDir) return { exists: true, writable: true };
           return { exists: true, writable: true };
         });
+        return true;
       }, { storyVaultDir, notesVaultDir });
 
-      const page = await firstWindow(app);
       await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 12_000 });
 
       await expect(page.getByRole('heading', { name: 'No Story vault' })).toBeVisible();

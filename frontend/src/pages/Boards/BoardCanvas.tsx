@@ -108,6 +108,12 @@ export interface BoardCanvasProps {
   /** Double-click a board tile to enter it */
   onEnterBoard?: (folderPath: string) => void;
   /**
+   * Double-click (or Enter) a note card to open it in the Notes editor.
+   * Path is vault-relative (includes `.md`), same contract as `onOpenNote`
+   * on the Boards tab panel — BOARDS-SPEC §1 "a card IS a note".
+   */
+  onOpenNote?: (vaultRelativePath: string) => void;
+  /**
    * SKY-11187 §5: the active placement tool. `select` (the default) leaves
    * every existing gesture exactly as it was — no tool, no vault writes.
    */
@@ -192,6 +198,13 @@ export interface BoardCanvasProps {
   folderPath?: string;
   /** Right-click "Set icon…" on a tile. itemPath is THIS board's relative path, matching `items[].path`. */
   onSetIcon?: (itemPath: string, icon: string | null, color: string | null) => void;
+  /**
+   * Owner punch: right-click "Set thumbnail…" on a note card — pick an image,
+   * write frontmatter `thumb:` (BOARDS-SPEC §8). Folders never call this.
+   */
+  onSetThumbnail?: (itemPath: string) => void;
+  /** Right-click "Remove thumbnail" — writes `thumb: false`. */
+  onClearThumbnail?: (itemPath: string) => void;
 }
 
 interface ResolvedItem {
@@ -211,6 +224,7 @@ export default function BoardCanvas({
   onItemResize,
   onViewChange,
   onEnterBoard,
+  onOpenNote,
   activeTool = 'select',
   onCreateItem,
   renamingPath = null,
@@ -236,6 +250,8 @@ export default function BoardCanvas({
   iconMap,
   folderPath = '',
   onSetIcon,
+  onSetThumbnail,
+  onClearThumbnail,
 }: BoardCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -1024,6 +1040,7 @@ export default function BoardCanvas({
         onResizeMouseDown={handleResizeMouseDown}
         onFocusItem={handleFocusItem}
         onEnterBoard={onEnterBoard}
+        onOpenNote={onOpenNote ? (itemPath) => onOpenNote(fullPath(itemPath)) : undefined}
         onContextMenu={handleItemContextMenu}
         onRequestRename={onRequestRename}
         onRenameCommit={onRenameCommit}
@@ -1267,6 +1284,42 @@ export default function BoardCanvas({
               Set icon…
             </button>
           )}
+          {(() => {
+            const ctxItem = items.find((i) => i.path === contextMenu.path);
+            if (ctxItem?.kind !== 'note') return null;
+            return (
+              <>
+                {onSetThumbnail && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="board-canvas__menu-item"
+                    onClick={() => {
+                      const target = contextMenu.path;
+                      setContextMenu(null);
+                      onSetThumbnail(target);
+                    }}
+                  >
+                    Set thumbnail…
+                  </button>
+                )}
+                {onClearThumbnail && itemHasThumb(ctxItem) && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="board-canvas__menu-item"
+                    onClick={() => {
+                      const target = contextMenu.path;
+                      setContextMenu(null);
+                      onClearThumbnail(target);
+                    }}
+                  >
+                    Remove thumbnail
+                  </button>
+                )}
+              </>
+            );
+          })()}
           <button
             type="button"
             role="menuitem"

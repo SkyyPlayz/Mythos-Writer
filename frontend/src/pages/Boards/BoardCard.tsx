@@ -23,6 +23,7 @@ import type { MouseEvent, KeyboardEvent } from 'react';
 import { NodeIcon } from '../../NodeIcon';
 import type { VaultIconEntry } from '../../iconUtils';
 import { NoteThumbnail } from '../../components/NoteThumbnail';
+import { FolderIcon, FileIcon } from '../../components/VaultBrowser/TreeIcons';
 import type { NoteThumbInfo } from '../../lib/noteThumbnails';
 import { thumbBlockHeight, type LodTier } from './boardLod';
 
@@ -138,6 +139,8 @@ export interface BoardCardProps {
   onResizeMouseDown: (e: MouseEvent<HTMLDivElement>, path: string, rect: ItemRect) => void;
   onFocusItem: (path: string) => void;
   onEnterBoard?: (folderPath: string) => void;
+  /** Open this note card in the Notes editor (board-relative path). */
+  onOpenNote?: (itemPath: string) => void;
   /** SKY-11187: right-click opens the canvas item menu (Rename). */
   onContextMenu?: (e: MouseEvent<HTMLDivElement>, path: string) => void;
   /** SKY-11187: rename requested from the keyboard (F2) or the context menu. */
@@ -162,6 +165,7 @@ function BoardCardImpl({
   onResizeMouseDown,
   onFocusItem,
   onEnterBoard,
+  onOpenNote,
   onContextMenu,
   onRequestRename,
   onRenameCommit,
@@ -172,7 +176,9 @@ function BoardCardImpl({
   const hasThumb = itemHasThumb(item);
   // `role="button"`/`"article"` do not take aria-selected, so the state
   // rides the accessible name instead of an invalid attribute.
-  const label = isFolder ? `Board: ${item.name}. Double-click to open.` : `Note card: ${item.name}`;
+  const label = isFolder
+    ? `Board: ${item.name}. Double-click to open.`
+    : `Note card: ${item.name}. Double-click to open.`;
 
   const className =
     `board-canvas__item board-canvas__item--${item.kind} board-canvas__item--lod-${tier}` +
@@ -189,9 +195,10 @@ function BoardCardImpl({
       onRequestRename?.(item.path);
       return;
     }
-    if (isFolder && (e.key === 'Enter' || e.key === ' ')) {
+    if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      onEnterBoard?.(item.path);
+      if (isFolder) onEnterBoard?.(item.path);
+      else onOpenNote?.(item.path);
     }
   };
 
@@ -201,7 +208,13 @@ function BoardCardImpl({
       style={{ left: x, top: y, width: w, height: h }}
       onMouseDown={(e) => onItemMouseDown(e, item.path, { x, y, w, h })}
       onContextMenu={onContextMenu ? (e) => onContextMenu(e, item.path) : undefined}
-      onDoubleClick={isFolder && !renaming ? () => onEnterBoard?.(item.path) : undefined}
+      onDoubleClick={
+        renaming
+          ? undefined
+          : isFolder
+            ? () => onEnterBoard?.(item.path)
+            : () => onOpenNote?.(item.path)
+      }
       role={isFolder ? 'button' : 'article'}
       aria-label={selected ? `${label} Selected.` : label}
       data-selected={selected ? 'true' : undefined}
@@ -230,7 +243,10 @@ function BoardCardImpl({
       ) : tier < 3 ? (
         <div className="board-canvas__item-header">
           <span className="board-canvas__item-icon">
-            <NodeIcon icon={icon} fallback={<span aria-hidden="true">{isFolder ? '▤' : '▯'}</span>} />
+            <NodeIcon
+              icon={icon}
+              fallback={isFolder ? <FolderIcon /> : <FileIcon />}
+            />
           </span>
           <span className="board-canvas__item-name">{item.name}</span>
         </div>
