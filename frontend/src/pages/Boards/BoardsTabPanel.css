@@ -406,8 +406,13 @@
 
 /* Owner punch: furniture creation sits under the crumb/tools row as the
    TOP board toolbar (Sep Liquid Neon mockup chrome IA / BOARDS-SPEC). Was a
-   bottom strip under the canvas — that fought the mockup's top nav. */
+   bottom strip under the canvas — that fought the mockup's top nav.
+   Same chrome recipe as the crumb bar (SKY-11566 BD-5): --glass2 + tokenized
+   blur so reduced-transparency / high-contrast can flatten it. */
 .boards-tab-panel__furniture-toolbar {
+  --boards-furniture-fill: var(--glass2, rgb(21 26 45 / 0.9));
+  --boards-furniture-blur: 20px;
+
   flex-shrink: 0;
   display: flex;
   flex-wrap: wrap;
@@ -419,10 +424,22 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .boards-tab-panel__furniture-toolbar {
-    background: var(--glass2, rgb(21 26 45 / 0.9));
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: var(--boards-furniture-fill);
+    backdrop-filter: blur(var(--boards-furniture-blur));
+    -webkit-backdrop-filter: blur(var(--boards-furniture-blur));
   }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .boards-tab-panel__furniture-toolbar {
+    --boards-furniture-fill: var(--glass-fill-fallback, rgb(13 16 28));
+    --boards-furniture-blur: 0px;
+  }
+}
+
+:root[data-contrast='high'] .boards-tab-panel__furniture-toolbar {
+  --boards-furniture-fill: var(--glass-fill-fallback, rgb(13 16 28));
+  --boards-furniture-blur: 0px;
 }
 
 .boards-tab-panel__furniture-btn {
