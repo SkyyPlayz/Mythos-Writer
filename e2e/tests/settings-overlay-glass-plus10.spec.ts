@@ -1,10 +1,9 @@
 /**
- * settings-overlay-glass-plus10.spec.ts — owner punch (P0 fidelity)
+ * settings-overlay-glass-plus10.spec.ts — Lens AC / 0.5.2 denser --pop
  *
- * Settings / popups / menus / toasts must paint `--glass-fill-overlay` at
- * min(96, glassA + 10) — ten percentage points above the Appearance slider.
- * At the shipped default glassA=20 that is ≥ ~0.30, not the thin panel-tier
- * 0.20 and not the old ×1.25 (0.25) derivation.
+ * Settings / popups / menus / toasts must paint `--glass-fill-overlay` /
+ * `--pop` at min(96, max(50, glassA + 16)) — denser than panel glass
+ * (mockup --glass2). At the shipped default glassA=20 that is ≥ 0.50.
  *
  * Run (after `npm run build:electron`):
  *   npx playwright test e2e/tests/settings-overlay-glass-plus10.spec.ts --reporter=list
@@ -58,7 +57,7 @@ function parseAlpha(rgba: string): number {
   return m[1] === undefined ? 1 : Number(m[1]);
 }
 
-test('glassA=20 → overlay token + Settings panel alpha ≥ ~0.30', async () => {
+test('glassA=20 → overlay/--pop denser than panel (≥ 0.50)', async () => {
   const { tempRoot, userData } = makeTemp(20);
   let app: ElectronApplication | undefined;
   try {
@@ -70,15 +69,24 @@ test('glassA=20 → overlay token + Settings panel alpha ≥ ~0.30', async () =>
     const tokenFill = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--glass-fill-overlay').trim(),
     );
-    expect(parseAlpha(tokenFill)).toBeGreaterThanOrEqual(0.3);
-    expect(parseAlpha(tokenFill)).toBeLessThanOrEqual(0.301);
+    const popFill = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--pop').trim(),
+    );
+    expect(parseAlpha(tokenFill)).toBeGreaterThanOrEqual(0.5);
+    expect(parseAlpha(tokenFill)).toBeLessThanOrEqual(0.501);
+    expect(parseAlpha(popFill)).toBe(parseAlpha(tokenFill));
+
+    const panelToken = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--glass-fill').trim(),
+    );
+    expect(parseAlpha(panelToken)).toBeLessThan(parseAlpha(tokenFill));
 
     await page.getByRole('button', { name: 'Open settings' }).first().click();
     const panel = page.locator('.settings-panel');
     await expect(panel).toBeVisible({ timeout: 10_000 });
 
     const panelBg = await panel.evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(parseAlpha(panelBg)).toBeGreaterThanOrEqual(0.3);
+    expect(parseAlpha(panelBg)).toBeGreaterThanOrEqual(0.5);
   } finally {
     await app?.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });

@@ -12,10 +12,11 @@
      box-shadow: 0 14px 40px rgba(3,5,12,.6),
                  0 0 22px -6px var(--g1, rgba(0,240,255,.4));
 
-   Here the fill comes from `--glass-fill-overlay` (owner punch: live
-   min(96, glassA + 10) from liquidNeonEngine) and blur from the fixed
-   `--blur-panel-overlay` (24px). The K8 / reduced-transparency /
-   no-backdrop-filter paths in tokens.css flatten every consumer at once.
+   Here the fill comes from `--glass-fill-overlay` / `--pop` (Lens AC: live
+   min(96, max(50, glassA + 16)) from liquidNeonEngine — denser than panel
+   glass) and blur from the fixed `--blur-panel-overlay` (24px). The K8 /
+   reduced-transparency / no-backdrop-filter paths in tokens.css flatten every
+   consumer at once.
    The border and glow come
    from the v2 slot engine (--b* / --g*, alpha already scaled by neon
    intensity, which is exactly how the mockup's own fallbacks are shaped).
