@@ -205,7 +205,7 @@ Everything in §2 obsolete, §3 archive, §4 dead, and §5 leftover branches. Th
 | `CLAUDE.md`, `AGENTS.md`, `.github/pull_request_template.md`, `CONTRIBUTING.md` | Still require `CI / build-macos` + `CI / build-linux` on every PR. **False.** Live PR gates are `CI / ci` + `notes-windows` (+ advisory `screenshot-check`, `carve-out-check`, `zero-diff-check`, path-filtered `fuzz` / `dep-audit`). |
 | `docs/RELEASE_RUNBOOK.md` | Older Ivy/GHM flow; conflicts with `docs/releases/RELEASING.md`. |
 | `docs/README.md` | Incomplete index (misses BETA-REFINE, RELEASING, this audit, security set). |
-| `docs/ci-gate-audit-2026-06.md` | June 2026 snapshot. Claims `build-macos` stub + "branch protection not configured." Also embeds a **truncated GitHub PAT** (`github_pat_11ARTSEHA0EE1pSUUxf90j_...`). Rotate that token if it was ever committed in full; redact the mention. |
+| `docs/ci-gate-audit-2026-06.md` | June 2026 snapshot. Claims `build-macos` stub + "branch protection not configured." Also embeds a truncated GitHub PAT — do not quote it here. Rotate that token if it was ever committed in full; redact the mention in that file. Confirm with `git log -S 'github_pat_'`. |
 | `docs/security/npm-audit-2026-07.md` | Point-in-time audit. Keep as history; don't treat as current. |
 | `docs/testing-strategy.md` | Still says "the two E2E suites required by CI are vault-crud + brainstorm." The live gate is four shards + `notes-windows`. |
 | `plans/GOALS.md` | Mission/process still good; it points at `BETA-2-ROADMAP.md` as the live roadmap (wrong). |
@@ -705,7 +705,7 @@ Removes media from clones forever, and **rewrites every SHA**. Breaks every open
 
 ### 7.11 Security leftovers
 
-- Truncated PAT in `docs/ci-gate-audit-2026-06.md` — assume compromised; rotate. Grep history for `github_pat_11ARTSEHA0`.
+- Truncated PAT in `docs/ci-gate-audit-2026-06.md` — assume compromised; rotate. Confirm history with `git log -S 'github_pat_'` only; do not re-quote the token.
 - Hardcoded Paperclip UUIDs in `close-ping.yml` — not GitHub credentials, but they document a retired control plane.
 - `dependabot-auto-merge.yml` on a **public** repo uses `pull_request_target` + `contents: write`. Worth a dedicated security pass, not a drive-by delete.
 
