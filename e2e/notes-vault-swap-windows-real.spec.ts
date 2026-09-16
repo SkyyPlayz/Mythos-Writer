@@ -256,8 +256,8 @@ test('notes-vault swap releases every handle on the old vault dir (native Window
     await expect(promptOverlay).toHaveCount(0);
 
     // createBlankNotesVault slugifies the display name into the dir name; a
-    // collision-free name maps 1:1, directly inside the MythosVault root.
-    const newVaultDir = path.join(dirs.bundle, NEW_VAULT_NAME);
+    // collision-free name maps 1:1, grouped under Notes/ (SKY-11451).
+    const newVaultDir = path.join(dirs.bundle, 'Notes', NEW_VAULT_NAME);
     await expect
       .poll(() => fs.existsSync(newVaultDir), { timeout: 10_000 })
       .toBe(true);
@@ -300,8 +300,8 @@ test('notes-vault swap releases every handle on the old vault dir (native Window
     const registry = JSON.parse(
       fs.readFileSync(path.join(dirs.bundle, 'notes-vaults.json'), 'utf-8'),
     ) as { vaults: Array<{ id: string; dirName: string }>; activeId: string };
-    expect(registry.vaults.map((v) => v.dirName).sort()).toEqual([NEW_VAULT_NAME, 'Notes Vault']);
-    expect(registry.vaults.find((v) => v.id === registry.activeId)?.dirName).toBe(NEW_VAULT_NAME);
+    expect(registry.vaults.map((v) => v.dirName).sort()).toEqual(['Notes Vault', `Notes/${NEW_VAULT_NAME}`].sort());
+    expect(registry.vaults.find((v) => v.id === registry.activeId)?.dirName).toBe(`Notes/${NEW_VAULT_NAME}`);
 
     // ── 5. THE POINT: the old vault dir must be renameable ───────────────
     // On Windows this throws EPERM for as long as the app holds any handle

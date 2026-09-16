@@ -77,6 +77,15 @@ describe('deriveProjectName', () => {
     expect(deriveProjectName('/home/alice/Mythos/Story Vault')).toBe('Story Vault');
   });
 
+  it('uses the grandparent for grouped layout (SKY-11141 §1)', () => {
+    expect(
+      deriveProjectName(
+        '/home/alice/Mythos/Vaults/My Novel/Stories/Story Vault',
+        '/home/alice/Mythos/Vaults/My Novel/Notes/Notes Vault',
+      ),
+    ).toBe('My Novel');
+  });
+
   it('falls back when story + notes are in different parents (legacy split)', () => {
     expect(
       deriveProjectName(
@@ -84,6 +93,18 @@ describe('deriveProjectName', () => {
         '/elsewhere/Notes Vault',
       ),
     ).toBe('Story Vault');
+  });
+
+  it('falls back (does not apply the grouped-grandparent rule) when the shared grandparent is not a Stories/Notes pair', () => {
+    // Two unrelated legacy split roots that happen to share a grandparent —
+    // '/home/alice/Fiction' and '/home/alice/Research' are not the SKY-11141
+    // §1 group dirs, so this must NOT be mislabeled 'alice'.
+    expect(
+      deriveProjectName(
+        '/home/alice/Fiction/Novel',
+        '/home/alice/Research/Notes',
+      ),
+    ).toBe('Novel');
   });
 });
 

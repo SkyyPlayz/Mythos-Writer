@@ -25,13 +25,38 @@ interface Props {
 // Vault basename keeps display sane for legacy single-folder vaults.
 // Beta 4 M1: exported — the per-vault-theme toast (DesktopShell) and the
 // Mythos vaults settings cards name vaults the same way.
+// SKY-11451: mirrors electron-main's deriveProjectName (mythosVault.ts) —
+// keep both in sync. Duplicated rather than imported because electron-main
+// code cannot be bundled into the renderer.
+const STORIES_GROUP_DIRNAME = 'Stories';
+const NOTES_GROUP_DIRNAME = 'Notes';
+
 export function deriveVaultDisplayName(p: { vaultRoot: string; notesVaultRoot?: string }): string {
   const split = (s: string) => s.split(/[/\\]/).filter(Boolean);
   const story = split(p.vaultRoot);
   if (p.notesVaultRoot) {
     const notes = split(p.notesVaultRoot);
-    if (story.length >= 2 && notes.length >= 2 && story[story.length - 2] === notes[notes.length - 2]) {
-      return story[story.length - 2];
+    if (story.length >= 2 && notes.length >= 2) {
+      const storyParent = story[story.length - 2];
+      const notesParent = notes[notes.length - 2];
+      if (storyParent === notesParent) {
+        // Flat layout: both live directly inside the mythosRoot.
+        return storyParent;
+      }
+      // Grouped layout (SKY-11141 §1): <mythosRoot>/Stories/Story Vault and
+      // <mythosRoot>/Notes/Notes Vault — only apply the grandparent rule once
+      // the immediate parents are actually the group dirs (otherwise two
+      // unrelated legacy split roots that happen to share a grandparent would
+      // wrongly display the grandparent's name).
+      if (
+        storyParent === STORIES_GROUP_DIRNAME &&
+        notesParent === NOTES_GROUP_DIRNAME &&
+        story.length >= 3 &&
+        notes.length >= 3 &&
+        story[story.length - 3] === notes[notes.length - 3]
+      ) {
+        return story[story.length - 3];
+      }
     }
   }
   return story[story.length - 1] ?? p.vaultRoot;

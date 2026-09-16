@@ -323,7 +323,7 @@ describe('run: copy-based migration', () => {
 
   it('SKY-8882: classifies the migrated vault as mythos-v2 immediately, by the parsed marker', () => {
     _clearDetectionCache();
-    expect(detectVaultFormat(path.join(target, 'Story Vault'))).toBe('mythos-v2');
+    expect(detectVaultFormat(path.join(target, 'Stories', 'Story Vault'))).toBe('mythos-v2');
   });
 
   it('SKY-8882: a present-but-unparseable mythos.json is not treated as v2 (authoritative on the parsed marker, not existsSync)', () => {
@@ -347,7 +347,7 @@ describe('run: copy-based migration', () => {
     // Scene files landed at Part/Chapter/Scene with v2 frontmatter.
     const sceneA1 = parseV2SceneFile(
       fs.readFileSync(
-        path.join(target, 'Story Vault', 'Story One The Vault', 'Part 1', 'Chapter 01', 'Scene 01.md'),
+        path.join(target, 'Stories', 'Story Vault', 'Story One The Vault', 'Part 1', 'Chapter 01', 'Scene 01.md'),
         'utf-8',
       ),
     );
@@ -364,7 +364,7 @@ describe('run: copy-based migration', () => {
     // Orphan scene (manifest blocks, no file) migrated from blocks.
     const sceneA3 = parseV2SceneFile(
       fs.readFileSync(
-        path.join(target, 'Story Vault', 'Story One The Vault', 'Part 1', 'Chapter 02', 'Scene 01.md'),
+        path.join(target, 'Stories', 'Story Vault', 'Story One The Vault', 'Part 1', 'Chapter 02', 'Scene 01.md'),
         'utf-8',
       ),
     );
@@ -373,7 +373,7 @@ describe('run: copy-based migration', () => {
 
     // book.md spine carries chapter identity.
     const book = parseBookFile(
-      fs.readFileSync(path.join(target, 'Story Vault', 'Story One The Vault', 'book.md'), 'utf-8'),
+      fs.readFileSync(path.join(target, 'Stories', 'Story Vault', 'Story One The Vault', 'book.md'), 'utf-8'),
     );
     expect(book.id).toBe('story-one');
     expect(book.spine[0].chapters.map((c) => c.title)).toEqual(['Opening', 'The Locked Door']);
@@ -382,7 +382,7 @@ describe('run: copy-based migration', () => {
   it('migrates comments (sidecar + SQLite) into the story comments file', () => {
     const raw = JSON.parse(
       fs.readFileSync(
-        path.join(target, 'Story Vault', 'Story One The Vault', 'comments.json'), 'utf-8'),
+        path.join(target, 'Stories', 'Story Vault', 'Story One The Vault', 'comments.json'), 'utf-8'),
     ) as { comments: Array<Record<string, unknown>> };
     expect(raw.comments).toHaveLength(2);
     const user = raw.comments.find((c) => c.kind === 'user');
@@ -395,7 +395,7 @@ describe('run: copy-based migration', () => {
   });
 
   it('migrates versions + snapshots + DB snapshots into numbered draft files', () => {
-    const storyVaultV2 = path.join(target, 'Story Vault');
+    const storyVaultV2 = path.join(target, 'Stories', 'Story Vault');
     const draftsA1 = listDraftsForScene(
       storyVaultV2, 'Story One The Vault/Part 1/Chapter 01', 'scene-a1');
     expect(draftsA1).toHaveLength(3); // 2 versions + 1 snapshot
@@ -414,7 +414,7 @@ describe('run: copy-based migration', () => {
 
   it('the SKY-10 version IPC surface serves migrated drafts (v2 gate)', () => {
     _clearDetectionCache();
-    const storyVaultV2 = path.join(target, 'Story Vault');
+    const storyVaultV2 = path.join(target, 'Stories', 'Story Vault');
     const chapterRelPath = 'Story One The Vault/Part 1/Chapter 01';
     const versions = listVersions(storyVaultV2, 'scene-a1', { chapterRelPath });
     expect(versions.map((v) => v.ts)).toEqual(['draft-3', 'draft-2', 'draft-1']);
@@ -428,20 +428,20 @@ describe('run: copy-based migration', () => {
 
   it('carries the notes vault byte-identically and copies loose story files', () => {
     expect(
-      fs.readFileSync(path.join(target, 'Notes Vault', 'Universes', 'U', 'Characters', 'Mira.md'), 'utf-8'),
+      fs.readFileSync(path.join(target, 'Notes', 'Notes Vault', 'Universes', 'U', 'Characters', 'Mira.md'), 'utf-8'),
     ).toBe(fs.readFileSync(path.join(notesVault, 'Universes', 'U', 'Characters', 'Mira.md'), 'utf-8'));
-    expect(fs.existsSync(path.join(target, 'Notes Vault', '.obsidian', 'app.json'))).toBe(true);
-    expect(fs.existsSync(path.join(target, 'Notes Vault', '.mythos-seeded'))).toBe(false);
+    expect(fs.existsSync(path.join(target, 'Notes', 'Notes Vault', '.obsidian', 'app.json'))).toBe(true);
+    expect(fs.existsSync(path.join(target, 'Notes', 'Notes Vault', '.mythos-seeded'))).toBe(false);
     // Extras: Outline.md, boards, loose root files survive path-preserved.
-    expect(fs.existsSync(path.join(target, 'Story Vault', 'Manuscript', 'story-one', 'Outline.md'))).toBe(true);
-    expect(fs.existsSync(path.join(target, 'Story Vault', 'boards', 'board-1.json'))).toBe(true);
-    expect(fs.existsSync(path.join(target, 'Story Vault', 'notes-to-self.md'))).toBe(true);
+    expect(fs.existsSync(path.join(target, 'Stories', 'Story Vault', 'Manuscript', 'story-one', 'Outline.md'))).toBe(true);
+    expect(fs.existsSync(path.join(target, 'Stories', 'Story Vault', 'boards', 'board-1.json'))).toBe(true);
+    expect(fs.existsSync(path.join(target, 'Stories', 'Story Vault', 'notes-to-self.md'))).toBe(true);
     // Transformed artifacts did NOT leak into the new vault.
-    expect(fs.existsSync(path.join(target, 'Story Vault', 'manifest.json'))).toBe(false);
-    expect(fs.existsSync(path.join(target, 'Story Vault', 'timeline-settings.json'))).toBe(false);
-    expect(fs.existsSync(path.join(target, 'Story Vault', 'arcs.json'))).toBe(false);
+    expect(fs.existsSync(path.join(target, 'Stories', 'Story Vault', 'manifest.json'))).toBe(false);
+    expect(fs.existsSync(path.join(target, 'Stories', 'Story Vault', 'timeline-settings.json'))).toBe(false);
+    expect(fs.existsSync(path.join(target, 'Stories', 'Story Vault', 'arcs.json'))).toBe(false);
     expect(
-      fs.existsSync(path.join(target, 'Story Vault', 'Manuscript', 'story-one', '01 - opening', 'chapter.md')),
+      fs.existsSync(path.join(target, 'Stories', 'Story Vault', 'Manuscript', 'story-one', '01 - opening', 'chapter.md')),
     ).toBe(false);
   });
 
@@ -455,7 +455,7 @@ describe('run: copy-based migration', () => {
 
   it('the migrated vault opens through the v2 gate with everything intact', () => {
     _clearDetectionCache();
-    const storyVaultV2 = path.join(target, 'Story Vault');
+    const storyVaultV2 = path.join(target, 'Stories', 'Story Vault');
     // The gate routes the legacy manifest to the regenerable cache…
     const cachePath = resolveManifestPath(storyVaultV2);
     expect(cachePath).toContain('.mythos');

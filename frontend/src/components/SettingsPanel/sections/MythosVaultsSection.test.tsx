@@ -560,6 +560,38 @@ describe('MythosVaultsSection — the ⋯ overflow menu (SKY-11154 §4a, AC-VS-0
     fireEvent.click(await screen.findByText('Hide', { selector: 'button' }));
     await waitFor(() => expect(mockVaultSurfaceHide).toHaveBeenCalledWith({ vaultRoot: '/vaults/Alpha', level: 'mythos' }));
   });
+
+  // SKY-11451: a vault created under the grouped Stories/Notes layout must
+  // still resolve to the true Mythos root for whole-vault Hide/Delete — not
+  // to `<mythosRoot>/Stories`, which would trash/hide only the Stories group
+  // and strand Notes/, mythos.json and the registries on disk.
+  it('Delete on a GROUPED-layout Mythos vault trashes the true mythos root, not <root>/Stories', async () => {
+    const GROUPED_ROOT = '/vaults/Gamma/Stories/Story Vault';
+    mockProjectList.mockResolvedValue({
+      projects: [
+        { vaultRoot: GROUPED_ROOT, notesVaultRoot: '/vaults/Gamma/Notes/Notes Vault', name: 'Gamma', openedAt: '' },
+      ],
+    });
+    mockProjectStats.mockResolvedValue({
+      stats: [
+        { vaultRoot: GROUPED_ROOT, storyFileCount: 0, noteCount: 0, notesVaultCount: 1, storyVaultCount: 1 },
+      ],
+    });
+    mockVaultSurfaceBlastRadius.mockResolvedValue({ vaultName: 'Gamma', innerCount: 2 });
+    const setSettings = vi.fn();
+    const setSavedOk = vi.fn();
+    await act(async () => {
+      render(<MythosVaultsSection settings={baseSettings} setSettings={setSettings} setSavedOk={setSavedOk} />);
+    });
+    await waitFor(() => expect(screen.getByTestId(`mvs-card-${GROUPED_ROOT}`)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByLabelText('More options for Gamma'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    await waitFor(() => expect(mockVaultSurfaceBlastRadius).toHaveBeenCalledWith('/vaults/Gamma'));
+    fireEvent.click(await screen.findByText('Continue'));
+    fireEvent.click(await screen.findByText('Move to Recycle Bin'));
+    await waitFor(() => expect(mockVaultSurfaceTrash).toHaveBeenCalledWith({ vaultPath: '/vaults/Gamma', level: 'mythos' }));
+  });
 });
 
 describe('MythosVaultsSection — Show hidden (SKY-11154 §4a, AC-VS-05)', () => {
