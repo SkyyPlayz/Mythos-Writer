@@ -134,12 +134,7 @@ async function seedColumnRef(
 // GAP-1 — a column ref's target note rewrites through the rename cascade.
 // ═════════════════════════════════════════════════════════════════════════
 
-// SKY-11791: the sidecar-rewrite half of this passes, but the renamed note's
-// ref never becomes clickable again — `allNotePaths` (DesktopShell.tsx) is
-// only refreshed by the `vault:file-changed` push, which a board-ref-only
-// rename (no inbound [[wikilink]]) never fires. Gated so CI stays green
-// while the product fix lands; un-fixme once SKY-11791 is resolved.
-test.fixme('SKY-11682 GAP-1: renaming a column ref\'s target note rewrites the sidecar ref and the link keeps resolving', async () => {
+test('SKY-11682 GAP-1: renaming a column ref\'s target note rewrites the sidecar ref and the link keeps resolving', async () => {
   test.setTimeout(150_000);
   const { tempRoot, userData, notesDir } = makeTemp('gap1-rename-cascade');
   mkNote(notesDir, 'Target.md', '# Target\n\nOriginal target content.\n');
