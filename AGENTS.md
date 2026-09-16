@@ -4,8 +4,11 @@ This repository is built by autonomous agents. The canonical working rules —
 including the non-negotiable CI / merge-readiness contract — live in
 [`CLAUDE.md`](CLAUDE.md). Read it before making changes.
 
-Summary: a branch is not done until all three required PR checks pass —
-`CI / build-linux`, `CI / build-macos`, and `CI / ci`. CI is part of the spec.
+Summary: a branch is not done until the live PR gates pass — `CI / ci` and
+`CI / notes-windows`. Packaging (`build-linux` / `build-windows`) runs on
+`main` / `release.yml` only; there is no `build-macos` PR job. See
+[`CI-PREFLIGHT.md`](CI-PREFLIGHT.md) and [`docs/REPO_AUDIT.md`](docs/REPO_AUDIT.md)
+§4.2. CI is part of the spec.
 
 ## Mandatory pre-close verification (MYT-766 merge gate)
 

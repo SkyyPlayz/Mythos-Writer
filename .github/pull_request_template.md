@@ -26,7 +26,7 @@ _Every change must satisfy all items before merge. Reviewer confirms these hold.
 - [ ] `npm run typecheck` passes locally
 - [ ] `npm run test` passes locally
 - [ ] `npm run build:electron` succeeds locally
-- [ ] All three required CI checks pass: `ci`, `build-macos`, `build-linux`
+- [ ] Live required CI checks pass: `ci`, `notes-windows` (packaging is main/release-only)
 - [ ] No secrets, credentials, or customer data in the diff
 
 ## Test plan

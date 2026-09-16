@@ -25,18 +25,22 @@ genuinely not there. When you do ask, state which plan files you already read.
 
 ## CI is part of the spec
 
-Every branch must pass all three required pull-request checks before it is
-considered done:
+Every branch must pass the live pull-request gates before it is considered done:
 
-1. `CI / build-linux (pull_request)`
-2. `CI / build-macos (pull_request)`
-3. `CI / ci (pull_request)`
+1. `CI / ci (pull_request)` — aggregator over lint, typecheck, unit,
+   `build-electron`, and the four E2E shards (path-filtered; docs-only diffs
+   may skip E2E)
+2. `CI / notes-windows (pull_request)` — native Windows notes/vault/Kokoro-path
+   suites
 
 A branch with any failing required check is **not done**. Passing these checks
 is part of the implementation, not a follow-up step.
 
-These checks are defined in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
-as the `ci`, `build-macos`, and `build-linux` jobs.
+See [`CI-PREFLIGHT.md`](CI-PREFLIGHT.md) for the accurate local gate.
+Packaging jobs (`build-linux` / `build-windows`) run on pushes to `main` and via
+[`release.yml`](.github/workflows/release.yml); they are **skipped on
+`pull_request`**. There is **no** `build-macos` PR job — mac packaging is
+on-demand / release-only.
 
 ## Never merge a PR with failing required checks
 
@@ -44,11 +48,11 @@ This rule is non-negotiable, regardless of whether GitHub branch protection
 currently enforces it:
 
 - Before clicking `gh pr merge` or the Merge button, confirm `gh pr checks <num>`
-  shows **all three** of `ci`, `build-linux`, and `build-macos` as `pass`.
+  shows `ci` and `notes-windows` as `pass` (plus any advisory checks you rely on).
 - If a required check is red, fix the cause on the PR branch and push again.
   Do not merge "to fix on main" — that is what produced the SKY-143 and SKY-157
-  incidents (PRs #156 and #162 merged with red `ci` + `build-linux`, leaving
-  main red until subsequent fix-forward commits).
+  incidents (PRs merged with red required gates, leaving main red until
+  subsequent fix-forward commits).
 - A red required check that is unrelated to the PR's diff (e.g. inherited from
   a previously merged broken commit on main) is still a hard block on merging.
   Open a separate fix issue, get main green first, then rebase the PR.
@@ -59,20 +63,20 @@ currently enforces it:
 Pre-merge command:
 
 ```bash
-gh pr checks <num>   # all three required checks must show `pass`
+gh pr checks <num>   # ci + notes-windows must show `pass`
 ```
 
 ## What each check enforces
 
 - **`ci`** (ubuntu): frontend lint, frontend + electron-main type-checks,
   electron-main + frontend unit tests, `electron-vite` build, and headless
-  Playwright E2E (vault CRUD + brainstorm).
-- **`build-macos`** (macos-latest): runs `npm run dist:mac` to produce an unsigned DMG
-  (Phase 1). Notarization is skipped automatically when `APPLE_CERT_P12_BASE64` is
-  absent. Phase 2 (signing + notarization) tracked separately once Apple Developer
-  Program certs are provisioned.
-- **`build-linux`** (ubuntu): lint, type-checks, unit tests, then packages the
-  Linux AppImage (`npm run dist:linux`) and smoke-tests that it launches.
+  Playwright E2E (four shards; path-filtered).
+- **`notes-windows`** (windows-latest): native Windows notes/vault suites that
+  POSIX CI cannot see.
+- **`build-linux` / `build-windows`**: packaging on `main` pushes / release
+  workflow only — not PR merge gates.
+- **`build-macos`**: not a live PR job; `dist:mac` remains available locally /
+  via release config when Apple signing is provisioned.
 
 ## Validate locally before declaring completion
 
@@ -84,13 +88,12 @@ npm run lint -w frontend        # frontend lint
 npm run typecheck               # frontend + electron-main type-checks
 npm run test                    # electron-main + frontend unit tests
 npm run build:electron          # electron-vite production build
-npm run test:e2e:crud           # headless E2E (needs a display; xvfb in CI)
-npm run test:e2e:brainstorm
+npm run preflight               # preferred full local gate (see CI-PREFLIGHT.md)
 ```
 
-Packaging steps (`dist:mac` / `dist:linux`) are platform-specific; if you cannot
-run them locally, reason explicitly about why your change is safe for that
-platform.
+Packaging steps (`dist:mac` / `dist:linux`) are platform-specific and are not
+PR required checks; if you cannot run them locally, reason explicitly about why
+your change is safe for that platform.
 
 ## Standard of completion
 
@@ -105,7 +108,8 @@ platform.
 
 ## Cross-platform discipline
 
-CI runs on Linux and macOS. Avoid breakage that only shows up on one OS:
+CI runs on Linux (hosted) and Windows (`notes-windows`). Avoid breakage that
+only shows up on one OS:
 
 - Use correct import casing — imports are case-sensitive on Linux even when they
   resolve on a case-insensitive filesystem.
@@ -127,8 +131,8 @@ CI runs on Linux and macOS. Avoid breakage that only shows up on one OS:
 When you finish, state:
 
 - what you changed,
-- why it should pass `build-linux`,
-- why it should pass `build-macos`,
 - why it should pass `ci`,
+- why it should pass `notes-windows` (or why that job is N/A for the diff),
+- why packaging on `main` / `release.yml` remains safe if touched,
 - what tests were added / updated / relied on,
 - and any remaining risk areas.
