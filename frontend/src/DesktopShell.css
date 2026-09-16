@@ -1135,9 +1135,39 @@
   color: var(--bg-canvas, #0b0e13);
 }
 
-/* SKY-11376: destination-folder row for the create-vault modal above */
+/* SKY-11376 / Sep Liquid Neon Create-vault modal */
 .create-vault-modal {
-  width: 420px;
+  width: min(420px, 100%);
+}
+.create-vault-where-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.create-vault-where-header .prompt-modal-label {
+  flex: 1;
+  margin: 0;
+}
+.create-vault-default-folder {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted, #8e9db8);
+  background: none;
+  cursor: pointer;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.16));
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.create-vault-default-folder:hover:not(:disabled) {
+  color: var(--text-header, #fff);
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+}
+.create-vault-default-folder:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .create-vault-dest-row {
   display: flex;

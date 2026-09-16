@@ -43,7 +43,7 @@ describe('useCreateMythosVaultFlow (SKY-11376)', () => {
     await waitFor(() => expect(screen.getByText('/picked/location')).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/name for the new mythos vault/i), { target: { value: 'My Vault' } });
-    fireEvent.click(screen.getByText('Create'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create vault' }));
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith({
       vaultRoot: '/current/vaults/New/Story Vault',
@@ -61,11 +61,32 @@ describe('useCreateMythosVaultFlow (SKY-11376)', () => {
     fireEvent.click(screen.getByText('Open'));
     await waitFor(() => expect(screen.getByText('/current/vaults')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByText('Create'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create vault' }));
 
     await waitFor(() => expect(window.api.vaultCreateDefaultMythos).toHaveBeenCalled());
     const call = (window.api.vaultCreateDefaultMythos as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(call.seedMode).toBe('blank');
+  });
+
+  it('renders the Sep mockup Create a Mythos vault chrome', async () => {
+    render(<TestHarness onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Open'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
+    expect(screen.getByText('Where to create')).toBeInTheDocument();
+    expect(screen.getByTestId('create-vault-default-folder')).toHaveTextContent('Default folder');
+    expect(screen.getByRole('button', { name: 'Create vault' })).toBeInTheDocument();
+  });
+
+  it('Default folder resets the destination to defaultVaultsParentPath', async () => {
+    render(<TestHarness onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Open'));
+    await waitFor(() => expect(screen.getByText('/current/vaults')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Browse…'));
+    await waitFor(() => expect(screen.getByText('/picked/location')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId('create-vault-default-folder'));
+    await waitFor(() => expect(screen.getByText('/default/vaults')).toBeInTheDocument());
   });
 
   it('cancelling creates nothing', async () => {
