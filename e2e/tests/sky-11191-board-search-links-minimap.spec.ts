@@ -334,9 +334,18 @@ test('SKY-11191 AC1: a column item’s ref shows its connector under the overlay
       // The frame the ticket is about: button still down, box carried +160px,
       // dashed connector already on the column's new edge. Pre-fix this same
       // shot shows the connector stranded at the committed x.
-      await page.screenshot({
+      //
+      // SKY-11866: a page-level `clip` screenshot taken while the mouse
+      // button is still down (via page.mouse.down(), not a real OS button)
+      // can make Chromium re-dispatch a synthetic `mousemove` at an unrelated
+      // point as a side effect of the clipped capture — a real DOM event the
+      // canvas's own drag listener has no way to tell apart from user input,
+      // so it commits the drag to that bogus point. An element-scoped
+      // screenshot instead of `page.screenshot({ clip })` doesn't have that
+      // side effect, so it can't perturb the drag it's capturing evidence of.
+      await page.locator('.board-canvas__root').screenshot({
         path: path.join(SHOTS, 'column-connector-mid-drag.png'),
-        clip: band,
+        clip: { x: 0, y: 0, width: band.width, height: band.height },
       });
     } finally {
       await page.mouse.up();
