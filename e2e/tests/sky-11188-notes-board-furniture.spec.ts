@@ -25,6 +25,9 @@
  *   6. Column ref resolution — a bare-stem, wrong-case `ref` still resolves,
  *      by the same case-insensitive filename-stem rule the rename cascade
  *      and backlinks already use, instead of being opened as an exact path.
+ *   7. SKY-11794 regression — a column ref rewritten by a same-session
+ *      rename cascade still opens its target note (not just the pre-rename
+ *      ref from item 4).
  */
 
 import path from 'path';
@@ -306,6 +309,56 @@ test('SKY-11188 §4/§2/§11 acceptance criterion: a column ref renders as a rea
     await refLink.click();
 
     // Clicking the ref opens the note in the Notes editor (real wikilink behaviour).
+    await expect(page.locator('[role="tabpanel"][aria-labelledby="app-tab-notes"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.getByText('A character note.')).toBeVisible({ timeout: 8_000 });
+  } finally {
+    await app.close().catch(() => undefined);
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('SKY-11794: a column ref still opens the note after a same-session rename rewrites it', async () => {
+  test.setTimeout(120_000);
+  const { tempRoot, userData, notesDir } = makeTemp('ref-rename');
+  mkNote(notesDir, 'Mira Veynn.md', '# Mira Veynn\n\nA character note.\n');
+
+  const app = await launchApp(userData);
+  try {
+    const page = await bootToBoards(app);
+
+    await page.evaluate(async () => {
+      await (window as unknown as { api: { notesBoardFurnitureCreate: (f: string, i: unknown) => Promise<unknown> } }).api.notesBoardFurnitureCreate('', {
+        k: 'column',
+        x: 400,
+        y: 44,
+        title: 'Quick links',
+        items: [{ t: 'Mira Veynn', ref: 'Mira Veynn.md' }],
+      });
+    });
+
+    // Same-session rename via the app's own rename-cascade IPC (SKY-10712) —
+    // the same call the Notes vault browser's inline rename makes. The
+    // cascade rewrites this column's `ref` to the new stem (covered
+    // elsewhere); what's under test here is that the click path still
+    // resolves afterwards.
+    await page.evaluate(async () => {
+      await (window as unknown as { api: { moveNotesVault: (f: string, t: string) => Promise<unknown> } }).api.moveNotesVault('Mira Veynn.md', 'Mira Thorne.md');
+    });
+    // The renderer's note-path cache only refreshes off the debounced
+    // 'vault:file-changed' event (500ms) — give it a beat to land before
+    // treating a no-op click as a real failure.
+    await page.waitForTimeout(1_000);
+
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();
+    await expect(page.locator('.board-canvas__root')).toBeVisible({ timeout: 8_000 });
+
+    const refLink = page.locator('.board-canvas__furniture-ref', { hasText: 'Mira Veynn' });
+    await expect(refLink).toBeVisible();
+    await refLink.click();
+
+    // SKY-11794 regression: this used to silently no-op (stale allNotePaths
+    // cache) instead of opening the rewritten ref's target note.
     await expect(page.locator('[role="tabpanel"][aria-labelledby="app-tab-notes"]')).toBeVisible({ timeout: 8_000 });
     await expect(page.getByText('A character note.')).toBeVisible({ timeout: 8_000 });
   } finally {

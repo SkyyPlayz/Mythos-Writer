@@ -1617,7 +1617,14 @@ const REINDEX_INCREMENTAL_MAX = 50;
 // markSelfWrite suppresses the change watchers — so the fan-out the watcher
 // would have done (graph invalidation, FTS reindex, renderer refresh events)
 // must be mirrored manually after a cascade lands (or is undone).
-function notifyRenameCascadeApplied(changedStoryPaths: string[]) {
+//
+// SKY-11794: notes-side rewritten paths need the same 'vault:file-changed'
+// fan-out as story-side ones. DesktopShell's allNotePaths (and everything
+// built from it — wikiLinkTitleIndex, wikiLinkCandidates, the Boards column
+// ref resolver) only refreshes on that event; omitting notes-side paths here
+// left it stale after any same-session notes-vault-only rename until an
+// unrelated future notes edit happened to fire the event again.
+function notifyRenameCascadeApplied(changedStoryPaths: string[], changedNotesPaths: string[] = []) {
   invalidateNoteGraphIndex();
   scheduleReindex(); // notes-side entity docs
   for (const rel of changedStoryPaths) scheduleReindex(rel); // incremental FTS
@@ -1625,6 +1632,9 @@ function notifyRenameCascadeApplied(changedStoryPaths: string[]) {
     mainWindow.webContents.send('vault:notes-updated', { count: 1 });
     mainWindow.webContents.send('vault:graph-topology-changed', {});
     for (const rel of changedStoryPaths) {
+      mainWindow.webContents.send('vault:file-changed', { path: rel });
+    }
+    for (const rel of changedNotesPaths) {
       mainWindow.webContents.send('vault:file-changed', { path: rel });
     }
   }
@@ -1663,7 +1673,9 @@ function renameNotesVaultEntry(fromPath: string, toPath: string): VaultMoveRespo
     const rewrittenIcons = rewriteIconsOnMove(readIconMap(root), fromPath, toPath);
     if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
   }
-  if (result.linkUpdate) notifyRenameCascadeApplied(result.linkUpdate.changedStoryPaths);
+  if (result.linkUpdate) {
+    notifyRenameCascadeApplied(result.linkUpdate.changedStoryPaths, result.linkUpdate.changedNotesPaths);
+  }
   return result;
 }
 
@@ -6505,7 +6517,7 @@ const handlers: IpcHandlers = {
       if (rewritten) writeOrderMap(root, rewritten);
       const rewrittenIcons = rewriteIconsOnMove(readIconMap(root), result.toPath, result.fromPath);
       if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
-      notifyRenameCascadeApplied(result.restoredStoryPaths);
+      notifyRenameCascadeApplied(result.restoredStoryPaths, result.restoredNotesPaths);
     }
     return result;
   },
