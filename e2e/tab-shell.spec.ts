@@ -44,6 +44,48 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return page;
 }
 
+// SKY-11865: mocking vault:validate-path via app.evaluate() immediately after
+// electron.launch() races the main process's own boot-time IPC registration —
+// on a loaded runner the CDP evaluate call can outlive its execution context
+// before whenReady() settles, surfacing as "electronApplication.evaluate:
+// Resulting promise was garbage collected" (deterministic across all retries
+// within a bad run, since the boot race is systemic per-run, not per-attempt).
+// Same fix as vault-not-found.spec.ts: wait for whenReady(), then install the
+// mock only once the app's real handler is confirmed registered. handle()
+// throws only when a handler already exists, so the probe register+remove
+// pair is a synchronous, side-effect-free readiness check.
+async function mockVaultValidatePath(
+  app: ElectronApplication,
+  routes: { storyVaultDir: string; storyExists: boolean; notesVaultDir: string; notesExists: boolean },
+): Promise<void> {
+  await app.evaluate(async ({ app: electronApp, ipcMain }, routes) => {
+    await electronApp.whenReady();
+    const mock = (_event: unknown, payload: { path?: string } | string) => {
+      const targetPath = typeof payload === 'string' ? payload : payload.path;
+      if (targetPath === routes.storyVaultDir) return { exists: routes.storyExists, writable: routes.storyExists };
+      if (targetPath === routes.notesVaultDir) return { exists: routes.notesExists, writable: routes.notesExists };
+      return { exists: true, writable: true };
+    };
+    let installed = false;
+    for (let i = 0; i < 400; i++) {
+      try {
+        ipcMain.handle('vault:validate-path', mock);
+        ipcMain.removeHandler('vault:validate-path'); // too early — undo atomically
+      } catch {
+        ipcMain.removeHandler('vault:validate-path'); // real handler present — replace
+        ipcMain.handle('vault:validate-path', mock);
+        installed = true;
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    if (!installed) {
+      ipcMain.removeHandler('vault:validate-path');
+      ipcMain.handle('vault:validate-path', mock);
+    }
+  }, routes);
+}
+
 test.describe('TabBar — tab switching and persistence', () => {
   let tempRoot: string;
   let userData: string;
@@ -120,15 +162,7 @@ test.describe('TabBar — tab switching and persistence', () => {
 
     const app = await launchApp(userData);
     try {
-      await app.evaluate(({ ipcMain }, { storyVaultDir, notesVaultDir }) => {
-        ipcMain.removeHandler('vault:validate-path');
-        ipcMain.handle('vault:validate-path', (_event, payload: { path?: string } | string) => {
-          const targetPath = typeof payload === 'string' ? payload : payload.path;
-          if (targetPath === storyVaultDir) return { exists: true, writable: true };
-          if (targetPath === notesVaultDir) return { exists: false, writable: false };
-          return { exists: true, writable: true };
-        });
-      }, { storyVaultDir, notesVaultDir });
+      await mockVaultValidatePath(app, { storyVaultDir, storyExists: true, notesVaultDir, notesExists: false });
 
       const page = await firstWindow(app);
       await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 12_000 });
@@ -151,15 +185,7 @@ test.describe('TabBar — tab switching and persistence', () => {
 
     const app = await launchApp(userData);
     try {
-      await app.evaluate(({ ipcMain }, { storyVaultDir, notesVaultDir }) => {
-        ipcMain.removeHandler('vault:validate-path');
-        ipcMain.handle('vault:validate-path', (_event, payload: { path?: string } | string) => {
-          const targetPath = typeof payload === 'string' ? payload : payload.path;
-          if (targetPath === storyVaultDir) return { exists: false, writable: false };
-          if (targetPath === notesVaultDir) return { exists: true, writable: true };
-          return { exists: true, writable: true };
-        });
-      }, { storyVaultDir, notesVaultDir });
+      await mockVaultValidatePath(app, { storyVaultDir, storyExists: false, notesVaultDir, notesExists: true });
 
       const page = await firstWindow(app);
       await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible({ timeout: 12_000 });
