@@ -1562,8 +1562,18 @@ jobs:
       # Unicode-preserving sanitizer + slug/collision helpers — pure logic,
       # but Windows-reserved-device-name and trailing-dot/space rules are
       # exactly the platform-specific part worth re-checking natively.
-      - name: Unit — notes vault name sanitizer suite (SKY-9027)
-        run: npm run test -w electron-main -- vaultNameSanitizer vault.test
+      #
+      # SKY-11887 adds the `kokoro` filter (kokoro.test.ts +
+      # kokoroDefaultVoice.test.ts). `kokoroWasmPathPrefix()` turns a bundled
+      # wasm dir into the `file:` URL onnxruntime-web must be given — feeding it
+      # a bare `C:\...\` path made Node's ESM loader reject the runtime module
+      # (`ERR_UNSUPPORTED_ESM_URL_SCHEME`, scheme `c:`) and killed Kokoro TTS in
+      # the packaged Windows build. Its assertions are written to hold on any
+      # platform, but only here do they run against real `path.win32` input.
+      # The model-weight tests self-skip (weights are gitignored); this adds
+      # ~2 files / a few hundred ms.
+      - name: Unit — notes vault name sanitizer + Kokoro wasm path suites (SKY-9027, SKY-11887)
+        run: npm run test -w electron-main -- vaultNameSanitizer vault.test kokoro
 
       - name: Build (electron-vite)
         env:
