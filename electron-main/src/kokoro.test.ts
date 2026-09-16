@@ -7,10 +7,13 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+import os from 'os';
 import {
   isKokoroVoice,
   kokoroVoiceKey,
   floatToPcm16,
+  kokoroWasmPathPrefix,
   tokenizePhonemes,
   phonemizeText,
   synthesizeKokoro,
@@ -22,12 +25,18 @@ import {
 const KOKORO_DIR =
   process.env.MYTHOS_KOKORO_DIR ?? path.join(__dirname, '..', 'resources', 'kokoro');
 const MODEL_PATH = path.join(KOKORO_DIR, 'model_q8f16.onnx');
+const WASM_DIR = path.join(KOKORO_DIR, 'wasm');
 const HAS_MODEL = fs.existsSync(MODEL_PATH);
 
 const ASSETS: KokoroAssets = {
   modelPath: MODEL_PATH,
   voicesDir: path.join(KOKORO_DIR, 'voices'),
   tokenizerPath: path.join(KOKORO_DIR, 'tokenizer.json'),
+  // SKY-11887: exercise the *packaged* configuration — a bundled wasm dir, which
+  // is the only shape that goes through `kokoroWasmPathPrefix`. Before the fix
+  // the real-model tests always used onnxruntime-web's own node_modules-relative
+  // resolution, so nothing ever ran the branch that broke on Windows.
+  wasmDir: fs.existsSync(WASM_DIR) ? WASM_DIR : undefined,
 };
 
 describe('isKokoroVoice / kokoroVoiceKey', () => {
@@ -64,6 +73,61 @@ describe('floatToPcm16', () => {
   });
   it('produces an empty buffer for empty input', () => {
     expect(floatToPcm16([]).length).toBe(0);
+  });
+});
+
+describe('kokoroWasmPathPrefix (SKY-11887)', () => {
+  // The exact resolution onnxruntime-web performs on `env.wasm.wasmPaths`: build
+  // `<prefix>ort-wasm-simd-threaded.mjs` as a URL, fall back to concatenation
+  // when the prefix is not a usable base, then `import()` the result. Node's ESM
+  // loader only accepts the file/data/node schemes, so anything that does not
+  // come out as a `file:` URL is a load failure — which is what shipped.
+  const ORT_RUNTIME = 'ort-wasm-simd-threaded.mjs';
+  const resolveLikeOrt = (prefix: string): string => {
+    try {
+      return new URL(ORT_RUNTIME, prefix).href;
+    } catch {
+      return prefix + ORT_RUNTIME;
+    }
+  };
+
+  it('returns a slash-terminated file: URL that round-trips to the directory', () => {
+    const dir = path.join(os.tmpdir(), 'mythos-kokoro-wasm');
+    const prefix = kokoroWasmPathPrefix(dir);
+    expect(prefix.startsWith('file://')).toBe(true);
+    expect(prefix.endsWith('/')).toBe(true);
+    expect(fileURLToPath(prefix)).toBe(dir + path.sep);
+  });
+
+  it('does not double the separator when the directory already ends in one', () => {
+    const dir = path.join(os.tmpdir(), 'mythos-kokoro-wasm') + path.sep;
+    expect(kokoroWasmPathPrefix(dir).endsWith('//')).toBe(false);
+    expect(kokoroWasmPathPrefix(dir)).toBe(kokoroWasmPathPrefix(dir.slice(0, -1)));
+  });
+
+  it('percent-encodes an install directory containing spaces', () => {
+    // The Windows default install dir is `…\Programs\Mythos Writer\…`.
+    const prefix = kokoroWasmPathPrefix(path.join(os.tmpdir(), 'Mythos Writer', 'wasm'));
+    expect(prefix).toContain('Mythos%20Writer');
+    expect(prefix).not.toContain('Mythos Writer');
+  });
+
+  it("resolves to a file: URL Node's ESM loader accepts", () => {
+    const resolved = resolveLikeOrt(kokoroWasmPathPrefix(path.join(os.tmpdir(), 'wasm')));
+    expect(new URL(resolved).protocol).toBe('file:');
+    expect(resolved.endsWith(`/${ORT_RUNTIME}`)).toBe(true);
+  });
+
+  // Regression guard for the shipped bug. These assertions are platform-
+  // independent: `new URL()` parses a drive-letter path as scheme `c:` on Linux
+  // and macOS too, so this fails on any runner if the prefix ever goes back to
+  // a bare filesystem path. Note the forward-slash variant is *also* broken —
+  // normalizing separators alone would not have fixed it.
+  it.each([
+    ['backslashes (the shipped `wasmDir + path.sep`)', 'C:\\Program Files\\Mythos Writer\\resources\\kokoro\\wasm\\'],
+    ['forward slashes', 'C:/Program Files/Mythos Writer/resources/kokoro/wasm/'],
+  ])('a bare Windows prefix with %s resolves to the unsupported `c:` scheme', (_label, raw) => {
+    expect(new URL(resolveLikeOrt(raw)).protocol).toBe('c:');
   });
 });
 
