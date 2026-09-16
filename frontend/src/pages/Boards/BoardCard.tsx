@@ -23,6 +23,7 @@ import type { MouseEvent, KeyboardEvent } from 'react';
 import { NodeIcon } from '../../NodeIcon';
 import type { VaultIconEntry } from '../../iconUtils';
 import { NoteThumbnail } from '../../components/NoteThumbnail';
+import { FolderIcon, FileIcon } from '../../components/VaultBrowser/TreeIcons';
 import type { NoteThumbInfo } from '../../lib/noteThumbnails';
 import { thumbBlockHeight, type LodTier } from './boardLod';
 
@@ -242,7 +243,10 @@ function BoardCardImpl({
       ) : tier < 3 ? (
         <div className="board-canvas__item-header">
           <span className="board-canvas__item-icon">
-            <NodeIcon icon={icon} fallback={<span aria-hidden="true">{isFolder ? '▤' : '▯'}</span>} />
+            <NodeIcon
+              icon={icon}
+              fallback={isFolder ? <FolderIcon /> : <FileIcon />}
+            />
           </span>
           <span className="board-canvas__item-name">{item.name}</span>
         </div>

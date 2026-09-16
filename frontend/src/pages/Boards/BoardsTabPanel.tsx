@@ -26,6 +26,8 @@ import { useToast } from '../../hooks/useToast';
 import { Toast } from '../../components/Toast/Toast';
 import { pushUndo, undo as undoLastAction } from '../../lib/notesUndoStack';
 import { NodeIcon } from '../../NodeIcon';
+import { setFrontmatterField } from '../../noteFrontmatter';
+import { invalidateNoteThumbs } from '../../lib/noteThumbnails';
 import './BoardsTabPanel.css';
 
 /**
@@ -501,6 +503,64 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     }
   }, [currentFolder, setIconMap]);
 
+  // Owner punch: Set thumbnail… — pick an OS image, copy into vault
+  // attachments/, write frontmatter `thumb:` (BOARDS-SPEC §8), invalidate
+  // the shared thumb memo and reload so the card shows the image.
+  const handleSetThumbnail = useCallback(async (itemPath: string) => {
+    const full = currentFolder ? `${currentFolder}/${itemPath}` : itemPath;
+    try {
+      const picked = await window.api.pickBgImage?.();
+      if (!picked?.filePath || picked.cancelled) return;
+      const imported = await window.api.notesThumbImport(picked.filePath);
+      if (!imported.ok) {
+        reportActionError(imported.error);
+        return;
+      }
+      const read = await window.api.readNotesVault(full);
+      if ('error' in read) {
+        reportActionError(read.error);
+        return;
+      }
+      const next = setFrontmatterField(read.content, 'thumb', imported.relPath);
+      const written = await window.api.writeNotesVault(full, next);
+      if ('error' in written) {
+        reportActionError(written.error);
+        return;
+      }
+      invalidateNoteThumbs([full]);
+      window.dispatchEvent(new CustomEvent('mythos:note-frontmatter-updated', {
+        detail: { path: full, content: next },
+      }));
+      void reload(true);
+    } catch (err) {
+      reportActionError(err instanceof Error ? err.message : String(err));
+    }
+  }, [currentFolder, reload, reportActionError]);
+
+  const handleClearThumbnail = useCallback(async (itemPath: string) => {
+    const full = currentFolder ? `${currentFolder}/${itemPath}` : itemPath;
+    try {
+      const read = await window.api.readNotesVault(full);
+      if ('error' in read) {
+        reportActionError(read.error);
+        return;
+      }
+      const next = setFrontmatterField(read.content, 'thumb', 'false');
+      const written = await window.api.writeNotesVault(full, next);
+      if ('error' in written) {
+        reportActionError(written.error);
+        return;
+      }
+      invalidateNoteThumbs([full]);
+      window.dispatchEvent(new CustomEvent('mythos:note-frontmatter-updated', {
+        detail: { path: full, content: next },
+      }));
+      void reload(true);
+    } catch (err) {
+      reportActionError(err instanceof Error ? err.message : String(err));
+    }
+  }, [currentFolder, reload, reportActionError]);
+
   // BoardCanvas hands back the tile's path relative to the CURRENT board, so
   // join it onto the current folder to keep folderPath vault-relative at any
   // depth. A bare item path was only ever correct one level below Home.
@@ -802,6 +862,8 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             iconMap={iconMap}
             folderPath={currentFolder}
             onSetIcon={handleSetIcon}
+            onSetThumbnail={handleSetThumbnail}
+            onClearThumbnail={handleClearThumbnail}
           />
         </div>
       )}

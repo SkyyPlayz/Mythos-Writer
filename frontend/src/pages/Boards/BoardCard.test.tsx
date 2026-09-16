@@ -51,4 +51,11 @@ describe('BoardCard open gestures (owner punch)', () => {
     expect(onEnterBoard).toHaveBeenCalledWith('Locations');
     expect(onOpenNote).not.toHaveBeenCalled();
   });
+
+  it('folder tiles use the Liquid Neon folder glyph fallback (not unicode ▤)', () => {
+    const { container } = render(<BoardCard {...base} item={folder} />);
+    const icon = container.querySelector('.board-canvas__item-icon svg');
+    expect(icon).not.toBeNull();
+    expect(container.querySelector('.board-canvas__item-icon')?.textContent).not.toContain('▤');
+  });
 });
