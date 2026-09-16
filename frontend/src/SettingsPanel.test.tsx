@@ -383,8 +383,16 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/close settings/i));
 
-    fireEvent.click(screen.getByLabelText(/close settings/i));
+    fireEvent.pointerDown(screen.getByLabelText(/close settings/i));
     expect(mockOnClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('calls onClose on click so keyboard Enter/Space still dismiss', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByLabelText(/close settings/i));
+
+    fireEvent.click(screen.getByLabelText(/close settings/i));
+    expect(mockOnClose).toHaveBeenCalled();
   });
 
   it('toggles API key visibility', async () => {

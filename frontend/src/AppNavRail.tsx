@@ -332,6 +332,8 @@ export default function AppNavRail({
     (item: NavRailItem) => {
       if (storiesEnabled && item.id === 'story' && activeSection === 'story') {
         setStoriesOpen((open) => !open);
+        // Still notify the shell so covering overlays (Settings) dismiss.
+        onSectionChange(item.id);
         return;
       }
       setStoriesOpen(false);
