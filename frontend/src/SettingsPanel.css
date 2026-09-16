@@ -31,9 +31,8 @@
 @supports (backdrop-filter: blur(1px)) {
   .settings-panel {
     /* SKY-11133: Settings reads the overlay tier instead of
-       --glass-fill/--blur-panel directly, so it stays legible at the owner's
-       preferred low global glass. SKY-11491: the tier is the mockup's fixed
-       recipe (tokens.css), independent of the Appearance sliders. */
+       --glass-fill/--blur-panel. Owner punch: --glass-fill-overlay is
+       min(96, glassA + 10) from the engine (e.g. slider 20 → 30%). */
     background: var(--glass-fill-overlay);
     backdrop-filter: blur(var(--blur-panel-overlay));
     -webkit-backdrop-filter: blur(var(--blur-panel-overlay));

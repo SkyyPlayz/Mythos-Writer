@@ -75,14 +75,11 @@
   --bg-vignette: radial-gradient(120% 120% at 50% 0%, #0d131f 0%, #07090f 55%, #04060c 100%);
   --glass-fill: rgba(13, 16, 28, 0.72);      /* live glass panel fill (phase-2) */
   --glass-fill-fallback: rgba(13, 16, 28, 0.92); /* opaque fallback, no-backdrop-filter */
-  /* SKY-11133: overlay tier — Settings/popups read this instead of
-     --glass-fill so they stay legible at a low global glass setting.
-     SKY-11491: a fixed recipe, not a slider derivative. The owner mockup
-     (owner-reports/2026-09-02-design-liquid-neon.dc.html 66, 102, 119, 188,
-     285, 982, 1569, 1738 …) paints every floating surface rgba(15,19,33,.97)
-     over blur(24px) regardless of the glass sliders; the theme engine never
-     writes these two tokens. */
-  --glass-fill-overlay: rgba(15, 19, 33, 0.97);
+  /* SKY-11133: overlay tier — Settings/popups/menus/toasts read this instead
+     of --glass-fill so they stay legible above the Appearance glass slider.
+     Owner punch: live opacity is min(96, glassA + 10) from liquidNeonEngine
+     (default glassA 20 → 30%). CSS fallback matches that default before JS. */
+  --glass-fill-overlay: rgba(15, 19, 33, 0.30);
   /* SKY-11787: adaptive text-backing behind base-panel body copy. Solved from
      the active wallpaper by theme/textBacking.ts — `transparent` (this
      default, i.e. today's rendering) for any wallpaper whose brightest cell
@@ -191,8 +188,7 @@
   --blur-panel: 28px;
   --blur-overlay: 40px;
   --blur-chip: 18px;
-  /* SKY-11133 / SKY-11491: overlay tier blur — the mockup's fixed 24px, see
-     --glass-fill-overlay above. */
+  /* Overlay blur stays the mockup's fixed 24px (not slider-derived). */
   --blur-panel-overlay: 24px;
 
   /* ---- 1.8 Neon glow + frame (axis-driven intensity) ------------------- */
