@@ -77,6 +77,23 @@ describe('SKY-11787 — base panels read --glass-panel-bg', () => {
     expect(tokens).toMatch(/--ln-text-backing:\s*transparent;/);
   });
 
+  it('0.5.2 P0 jank — full-page shells must not stack live blur(var(--blur-panel))', () => {
+    // PERFORMANCE.md §2 / W0.5: frost comes from --wp-blur + semi-opaque
+    // --glass-panel-bg. Live backdrop-filter on these shells is a per-frame tax
+    // that made Liquid Neon animations unusable on Windows.
+    const shells = [
+      'EntriesPanel.css',
+      'BrainstormPage.css',
+      'ManuscriptStructureView.css',
+      'pages/SceneCrafter/SceneCrafterPage.css',
+    ];
+    for (const file of shells) {
+      const css = stripComments(read(file));
+      expect(css, file).not.toMatch(/backdrop-filter:\s*blur\(\s*var\(--blur-panel\)\s*\)/);
+      expect(css, file).not.toMatch(/-webkit-backdrop-filter:\s*blur\(\s*var\(--blur-panel\)\s*\)/);
+    }
+  });
+
   it('flattens the backing wherever the panel fill is already opaque', () => {
     const tokens = stripComments(read('tokens.css'));
     // High contrast (K8), reduced transparency, and no-backdrop-filter all

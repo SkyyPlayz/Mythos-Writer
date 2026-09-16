@@ -22,15 +22,16 @@
   color: #c8d3e7;
 }
 
-/* SKY-11448: the page is the mockup's frosted center shell — live glass fill
-   + backdrop blur over the wallpaper (the flat radial-gradient this replaced
-   darkened the whole view and hid the wallpaper). The blur sits on a
-   pseudo-element, not the page itself: backdrop-filter turns its element
-   into the containing block for position:fixed descendants, which would pin
-   the diff modal's scrim to the page box instead of the window. tokens.css
-   already remaps --glass-fill / --blur-panel to the opaque fallback for
-   no-backdrop-filter, reduced-transparency and high-contrast, so no
-   @supports branch is needed here.
+/* SKY-11448: the page is the mockup's frosted center shell — glass fill over
+   the wallpaper (the flat radial-gradient this replaced darkened the whole
+   view and hid the wallpaper). The fill sits on a pseudo-element, not the
+   page itself: a filter on the page would turn it into the containing block
+   for position:fixed descendants, which would pin the diff modal's scrim to
+   the page box instead of the window.
+   0.5.2 P0 jank (PERFORMANCE.md §2): do NOT stack live backdrop-filter here —
+   W0.5 pre-blurs the wallpaper into --wp-blur so semi-opaque --glass-panel-bg
+   already reads as frost. tokens.css remaps --glass-fill to the opaque
+   fallback for no-backdrop-filter / reduced-transparency / high-contrast.
    SKY-11787: `--glass-panel-bg` is that same glass fill plus the adaptive
    text-backing, clipped to the padding box. This pseudo-element has no
    border, so here the two boxes coincide and the backing covers the whole
@@ -41,8 +42,6 @@
   inset: 0;
   z-index: -1;
   background: var(--glass-panel-bg);
-  backdrop-filter: blur(var(--blur-panel));
-  -webkit-backdrop-filter: blur(var(--blur-panel));
   pointer-events: none;
 }
 

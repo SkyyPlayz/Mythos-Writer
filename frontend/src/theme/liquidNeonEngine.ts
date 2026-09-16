@@ -501,6 +501,14 @@ export function applyLiquidNeonV2Tokens(
   // when the wallpaper or blur radius changes — the panels' faked glass reads
   // it through `--wp-blur` instead of stacking live backdrop-filters.
   schedulePreBlurredWallpaper(tokens['--wp'], parseFloat(tokens['--blur']) || 0, el);
+  // 0.5.2 P0 jank: Liquid Neon v2 owns the frost via --wp-blur. Collapse the
+  // legacy "one live page backdrop-filter" token to none so Notes/editor
+  // surfaces that still read --page-bg-backdrop-filter do not stack a second
+  // per-frame blur on top of the pre-blurred wallpaper.
+  el.style.setProperty('--page-bg-backdrop-filter', 'none');
+  if (!APPLIED_KEYS.includes('--page-bg-backdrop-filter')) {
+    APPLIED_KEYS.push('--page-bg-backdrop-filter');
+  }
   // SKY-11787: first sight of an image wallpaper needs one async decode to
   // solve its text-backing; every re-apply after that is served from cache by
   // `textBackingToken` above.
