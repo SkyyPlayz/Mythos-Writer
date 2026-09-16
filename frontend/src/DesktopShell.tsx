@@ -1788,18 +1788,29 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // plus two setStates that re-render the whole shell. Only the last event in
   // a burst triggers the reload; the initial load on mount (above) stays
   // immediate.
+  //
+  // SKY-11794: also listen on vault:notes-updated (the notes-vault fan-out
+  // channel — see useVaultFiles.ts/BoardsTabPanel.tsx for the same pattern).
+  // A same-session notes-vault rename cascade (SKY-10712) sends this
+  // unconditionally, even when zero refs needed rewriting, so this is what
+  // keeps allNotePaths (and everything derived from it: wikiLinkTitleIndex,
+  // wikiLinkCandidates, the Boards column-ref resolver) from going stale
+  // after a rename — vault:file-changed alone only covers story-vault paths.
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const off = window.api.onVaultFileChanged(() => {
+    const scheduleReload = () => {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
         loadEntities();
       }, 500);
-    });
+    };
+    const offFile = window.api.onVaultFileChanged(scheduleReload);
+    const offNotes = window.api.onVaultNotesUpdated?.(scheduleReload);
     return () => {
       if (timer) clearTimeout(timer);
-      off();
+      offFile();
+      offNotes?.();
     };
   }, [loadEntities]);
 

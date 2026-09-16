@@ -344,22 +344,24 @@ test('SKY-11794: a column ref still opens the note after a same-session rename r
     await page.evaluate(async () => {
       await (window as unknown as { api: { moveNotesVault: (f: string, t: string) => Promise<unknown> } }).api.moveNotesVault('Mira Veynn.md', 'Mira Thorne.md');
     });
-    // The renderer's note-path cache only refreshes off the debounced
-    // 'vault:file-changed' event (500ms) — give it a beat to land before
-    // treating a no-op click as a real failure.
-    await page.waitForTimeout(1_000);
-
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();
     await expect(page.locator('.board-canvas__root')).toBeVisible({ timeout: 8_000 });
 
     const refLink = page.locator('.board-canvas__furniture-ref', { hasText: 'Mira Veynn' });
     await expect(refLink).toBeVisible();
-    await refLink.click();
 
     // SKY-11794 regression: this used to silently no-op (stale allNotePaths
-    // cache) instead of opening the rewritten ref's target note.
-    await expect(page.locator('[role="tabpanel"][aria-labelledby="app-tab-notes"]')).toBeVisible({ timeout: 8_000 });
+    // cache) instead of opening the rewritten ref's target note. The
+    // renderer's note-path cache refreshes off a debounced IPC event, not
+    // synchronously with the rename call above — retry the click against
+    // the observable outcome (the Notes tab actually opening) instead of a
+    // fixed sleep, so this doesn't flake under CI load.
+    const notesTabPanel = page.locator('[role="tabpanel"][aria-labelledby="app-tab-notes"]');
+    await expect(async () => {
+      await refLink.click();
+      await expect(notesTabPanel).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 15_000 });
     await expect(page.getByText('A character note.')).toBeVisible({ timeout: 8_000 });
   } finally {
     await app.close().catch(() => undefined);

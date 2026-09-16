@@ -1619,13 +1619,14 @@ const REINDEX_INCREMENTAL_MAX = 50;
 // would have done (graph invalidation, FTS reindex, renderer refresh events)
 // must be mirrored manually after a cascade lands (or is undone).
 //
-// SKY-11794: notes-side rewritten paths need the same 'vault:file-changed'
-// fan-out as story-side ones. DesktopShell's allNotePaths (and everything
-// built from it — wikiLinkTitleIndex, wikiLinkCandidates, the Boards column
-// ref resolver) only refreshes on that event; omitting notes-side paths here
-// left it stale after any same-session notes-vault-only rename until an
-// unrelated future notes edit happened to fire the event again.
-function notifyRenameCascadeApplied(changedStoryPaths: string[], changedNotesPaths: string[] = []) {
+// SKY-11794: the unconditional 'vault:notes-updated' send below is what
+// DesktopShell now listens on to refresh its notes-side caches (allNotePaths
+// etc, see the matching DesktopShell.tsx effect) — it fires on every cascade
+// apply regardless of whether any notes-side paths were rewritten, so it
+// also covers stem-changing renames with zero rewritten refs. Notes-side
+// paths deliberately do NOT go on 'vault:file-changed': that channel is the
+// story-vault fan-out (story-only consumers like EntityDetail listen on it).
+function notifyRenameCascadeApplied(changedStoryPaths: string[]) {
   invalidateNoteGraphIndex();
   scheduleReindex(); // notes-side entity docs
   for (const rel of changedStoryPaths) scheduleReindex(rel); // incremental FTS
@@ -1633,9 +1634,6 @@ function notifyRenameCascadeApplied(changedStoryPaths: string[], changedNotesPat
     mainWindow.webContents.send('vault:notes-updated', { count: 1 });
     mainWindow.webContents.send('vault:graph-topology-changed', {});
     for (const rel of changedStoryPaths) {
-      mainWindow.webContents.send('vault:file-changed', { path: rel });
-    }
-    for (const rel of changedNotesPaths) {
       mainWindow.webContents.send('vault:file-changed', { path: rel });
     }
   }
@@ -1675,7 +1673,7 @@ function renameNotesVaultEntry(fromPath: string, toPath: string): VaultMoveRespo
     if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
   }
   if (result.linkUpdate) {
-    notifyRenameCascadeApplied(result.linkUpdate.changedStoryPaths, result.linkUpdate.changedNotesPaths);
+    notifyRenameCascadeApplied(result.linkUpdate.changedStoryPaths);
   }
   return result;
 }
@@ -6564,7 +6562,7 @@ const handlers: IpcHandlers = {
       if (rewritten) writeOrderMap(root, rewritten);
       const rewrittenIcons = rewriteIconsOnMove(readIconMap(root), result.toPath, result.fromPath);
       if (rewrittenIcons) writeIconMap(root, rewrittenIcons);
-      notifyRenameCascadeApplied(result.restoredStoryPaths, result.restoredNotesPaths);
+      notifyRenameCascadeApplied(result.restoredStoryPaths);
     }
     return result;
   },
