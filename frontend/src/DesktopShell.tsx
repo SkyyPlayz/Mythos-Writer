@@ -2715,6 +2715,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-9019 M5: each rail item is a first-class destination; no aliases.
   // crafter/timeline route through the story workspace; vault-graph is its own AppTab.
   const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
+    // Owner punch: Settings is a covering overlay, not a rail module. A
+    // left-rail pick must dismiss it so the destination is visible.
+    setSettingsOpen(false);
+    setSettingsInitialCategory('appearance');
     switch (moduleId) {
       case 'crafter':
         handleNavSectionChange('story');

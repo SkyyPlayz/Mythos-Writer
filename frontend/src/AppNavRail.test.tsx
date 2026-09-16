@@ -263,7 +263,8 @@ describe('AppNavRail', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Story' }));
     expect(screen.getByTestId('nav-rail-stories')).toBeInTheDocument();
     expect(screen.getByText('STORIES — THIS VAULT')).toBeInTheDocument();
-    expect(onSectionChange).not.toHaveBeenCalled();
+    // Owner punch: re-click still notifies the shell so Settings can dismiss.
+    expect(onSectionChange).toHaveBeenCalledWith('story');
   });
 
   it('re-clicking the active Story item toggles the popover closed', () => {
