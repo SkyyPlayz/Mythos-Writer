@@ -99,7 +99,7 @@
   border: none;
   border-radius: 4px;
   background: var(--accent);
-  color: var(--accent-fg, #fff);
+  color: var(--text-on-accent, #fff);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -250,7 +250,7 @@
   padding: 1px 6px;
   border-radius: 8px;
   background: var(--accent);
-  color: var(--accent-fg, #fff);
+  color: var(--text-on-accent, #fff);
   opacity: 0.8;
   cursor: default;
 }
@@ -315,7 +315,7 @@
 
 .entries-action-brainstorm:hover:not(:disabled) {
   background: var(--accent);
-  color: var(--accent-fg, #fff);
+  color: var(--text-on-accent, #fff);
 }
 
 .entries-action-cancel {

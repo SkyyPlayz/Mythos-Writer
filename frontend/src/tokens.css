@@ -289,6 +289,11 @@
   --accent-dark: #007a8a;
   --accent-border: var(--accent);
   --accent-bg: var(--accent-soft);
+  /* SKY-11489: hover tint for --accent-soft surfaces. Derived from --accent
+     (not --accent-soft itself) so it stays a step more opaque under any
+     accent-colour override or the high-contrast theme, without needing its
+     own theme.ts wiring. */
+  --accent-soft-hover: color-mix(in srgb, var(--accent) 22%, transparent);
   --accent-success: var(--state-success); /* success-green accent — chips/badges (SKY-3196) */
   --text-on-accent: #000000;  /* black on neon-cyan --accent; update if accent changes to a dark hue */
 

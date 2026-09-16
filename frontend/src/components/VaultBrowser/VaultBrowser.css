@@ -388,7 +388,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--accent-primary, #00f0ff);
+  background: var(--accent, #00f0ff);
   box-shadow: 0 0 7px rgba(0,240,255,0.6);
   flex: none;
 }

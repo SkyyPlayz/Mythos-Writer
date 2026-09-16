@@ -933,12 +933,12 @@
 }
 
 .chapter-doc-scene.active {
-  border-color: var(--accent-primary, var(--accent));
+  border-color: var(--accent);
   background: var(--bg-overlay);
 }
 
 .chapter-doc-scene:focus-visible {
-  outline: 2px solid var(--accent-primary, var(--accent));
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -1076,7 +1076,7 @@
 }
 
 .book-outline-chapter.active-chapter {
-  border-left-color: var(--accent-primary, var(--accent));
+  border-left-color: var(--accent);
 }
 
 .book-outline-chapter-title {
@@ -1119,7 +1119,7 @@
 }
 
 .book-outline-scene:focus-visible {
-  outline: 2px solid var(--accent-primary, var(--accent));
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
