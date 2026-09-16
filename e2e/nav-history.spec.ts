@@ -197,16 +197,19 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       await page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
 
-      // Fire the DOM mousedown (button 3 = X1 back) first, then immediately
-      // fire the IPC `nav-history:back` channel from the main process — this
-      // simulates the Windows double-delivery within the 50 ms coalescing window.
-      // The guard must suppress the IPC copy, leaving exactly one step back.
-      await page.evaluate(() => {
-        window.dispatchEvent(new MouseEvent('mousedown', { button: 3, bubbles: true, cancelable: true }));
-      });
-      // Send the IPC back event from main — arrives async but well within 50 ms
-      await app.evaluate(({ BrowserWindow }) => {
+      // Fire the DOM mousedown (button 3 = X1 back) and the IPC
+      // `nav-history:back` event back-to-back from a SINGLE app.evaluate call
+      // running entirely in the Electron main process. Two separate
+      // Playwright round trips (page.evaluate + app.evaluate) can drift well
+      // past the 50 ms coalescing window on a loaded CI runner; doing both
+      // dispatches synchronously within one main-process call keeps the gap
+      // in the 1-5 ms range, reliably simulating the Windows double-delivery
+      // the guard is meant to suppress, leaving exactly one step back.
+      await app.evaluate(async ({ BrowserWindow }) => {
         const win = BrowserWindow.getAllWindows()[0];
+        await win?.webContents.executeJavaScript(
+          "window.dispatchEvent(new MouseEvent('mousedown', { button: 3, bubbles: true, cancelable: true }))"
+        );
         win?.webContents.send('nav-history:back');
       });
 
