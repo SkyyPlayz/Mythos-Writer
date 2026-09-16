@@ -69,33 +69,27 @@ const SRC_ROOT = resolve(__dirname, '..');
  * time and the property falls back to `unset` rather than to a literal.
  */
 const KNOWN_ORPHANS: readonly string[] = [
-  'AccountModal.css  --text-md',
   'AgentHubPanel.css  --sp-2',
   'AgentHubPanel.css  --sp-3',
   'BlockEditor.css  --page-bg-radius',
   'BrainstormPage.css  --state-error',
   'ContinuityPanel.css  --severity-critical-border',
-  'DraftHistoryPanel.css  --text-default',
   'NoteViewer.css  --danger-bg',
   'NoteViewer.css  --danger-bg-hover',
   'NoteViewer.css  --danger-border',
   'NoteViewer.css  --danger-text',
   'SplitEditorPane.css  --page-bg-radius',
   'TemplatePicker.css  --state-error',
-  'TemplatePicker.css  --text-md',
   'ThemeContrastSlider.css  --pct',
   'ThemeContrastSlider.css  --state-danger-border',
   'ThemeContrastSlider.css  --state-success-border',
   'VaultGraphView.css  --chip-color',
   'VaultGraphView.css  --ln-graph-edge-cross-vault',
   'VaultGraphView.css  --shadow-panel',
-  'VaultGraphView.css  --text-accent',
-  'components/BrainstormCard/IdeaDetailDrawer.css  --weight-md',
   'components/BrainstormCard/ProposalCard.css  --entity-scene_card-bg',
   'components/BrainstormCard/ProposalCard.css  --entity-scene_card-text',
   'components/MigrationBanner/MigrationBanner.css  --border-soft',
   'components/SceneHistoryPane/SceneHistoryPane.css  --border-soft',
-  'components/SettingsPanel/sections/AddVaultDialog.css  --text-subtle',
   'components/TagPane/TagPane.css  --glass-bg',
 ];
 

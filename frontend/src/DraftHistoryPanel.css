@@ -7,7 +7,7 @@
 .draft-history-toggle {
   background: none;
   border: none;
-  color: var(--text-default);
+  color: var(--text-body);
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
@@ -60,7 +60,7 @@
 .draft-history-date {
   background: none;
   border: none;
-  color: var(--text-default);
+  color: var(--text-body);
   font-size: 0.78rem;
   cursor: pointer;
   padding: 0;
@@ -110,7 +110,7 @@
 }
 
 .draft-history-btn--label:hover {
-  color: var(--text-default);
+  color: var(--text-body);
 }
 
 .draft-history-btn--delete:hover {
@@ -131,7 +131,7 @@
   border: 1px solid var(--border-default);
   border-radius: 3px;
   background: var(--bg-elevated);
-  color: var(--text-default);
+  color: var(--text-body);
   min-width: 0;
 }
 
@@ -142,7 +142,7 @@
   border: 1px solid var(--border-default);
   border-radius: 3px;
   background: transparent;
-  color: var(--text-default);
+  color: var(--text-body);
   flex-shrink: 0;
 }
 
@@ -165,7 +165,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;
-  color: var(--text-default);
+  color: var(--text-body);
   font-family: inherit;
 }
 
@@ -207,7 +207,7 @@
   cursor: pointer;
   border: 1px solid var(--border-default);
   background: transparent;
-  color: var(--text-default);
+  color: var(--text-body);
   font-size: 0.875rem;
 }
 

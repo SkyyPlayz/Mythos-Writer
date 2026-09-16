@@ -42,7 +42,7 @@
 .am-app-name {
   margin: 0;
   color: var(--text-header);
-  font-size: var(--text-md, 14px);
+  font-size: var(--text-base, 14px);
   font-weight: 600;
 }
 
