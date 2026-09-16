@@ -7,16 +7,15 @@ import {
   CRAFTER_TONES,
   addBeat,
   buildDraftPrompt,
-  castCardsFromSuggested,
   castFromSuggested,
   composeDraftBoard,
   composeDraftPassCard,
   defaultCrafterSetup,
   filterSuggested,
-  groupSuggested,
+  hookLineFromNoteContent,
   moveBeat,
-  placesFromSuggested,
   planNotesFromVault,
+  railGroupsFromSuggested,
   removeBeat,
   suggestedFromVault,
   toggleTone,
@@ -104,13 +103,6 @@ describe('suggested cards from the vault listing', () => {
     expect(filterSuggested(cards, '')).toEqual(cards);
   });
 
-  it('groups cards under their headings and drops empty groups', () => {
-    const groups = groupSuggested(filterSuggested(suggestedFromVault(items), 'ward'));
-    expect(groups).toHaveLength(1);
-    expect(groups[0].title).toBe('LOCATIONS');
-    expect(groups[0].cards.map((c) => c.t)).toEqual(['Ward Violet']);
-  });
-
   it('title-cases lowercase filenames without touching already-cased ones (GAP P2 #13)', () => {
     const cards = suggestedFromVault([item('Chapters/chaper 1.md'), item('Characters/McMillan.md')]);
     expect(cards.map((c) => c.t)).toEqual(['Chaper 1', 'McMillan']);
@@ -120,11 +112,84 @@ describe('suggested cards from the vault listing', () => {
     const cards = suggestedFromVault(items);
     expect(castFromSuggested(cards)).toEqual(['Liora Ashen', 'The Lamplighter']);
   });
+});
 
-  it('castCardsFromSuggested and placesFromSuggested split the right kanban columns (§7.1)', () => {
-    const cards = suggestedFromVault(items);
-    expect(castCardsFromSuggested(cards).map((c) => c.t)).toEqual(['Liora Ashen', 'The Lamplighter']);
-    expect(placesFromSuggested(cards).map((c) => c.t)).toEqual(['Ward Violet']);
+describe('railGroupsFromSuggested (M10-S3: SUGGESTED CARDS rail + scene board)', () => {
+  it('groups into the fixed CHARACTERS / LOCATIONS / ITEMS & SYSTEMS order regardless of source order', () => {
+    const cards = suggestedFromVault([
+      item('Items/Brass Token.md'),
+      item('Locations/Ward Violet.md'),
+      item('Characters/Liora-Ashen.md'),
+      item('Systems/The Nine Bells.md'),
+    ]);
+    const groups = railGroupsFromSuggested(cards);
+    expect(groups.map((g) => g.title)).toEqual(['CHARACTERS', 'LOCATIONS', 'ITEMS & SYSTEMS']);
+  });
+
+  it('merges Items and Systems folders into one ITEMS & SYSTEMS group', () => {
+    const cards = suggestedFromVault([item('Items/Brass Token.md'), item('Systems/The Nine Bells.md')]);
+    const groups = railGroupsFromSuggested(cards);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].title).toBe('ITEMS & SYSTEMS');
+    expect(groups[0].cards.map((c) => c.t)).toEqual(['Brass Token', 'The Nine Bells']);
+  });
+
+  it('resolves the category from nested Universes/<name>/<Category>/ paths (the real Brainstorm-agent write target)', () => {
+    const cards = suggestedFromVault([
+      item('Universes/My First Universe/Characters/Mira Veynn.md'),
+      item('Universes/My First Universe/Locations/The Undercity.md'),
+    ]);
+    const groups = railGroupsFromSuggested(cards);
+    expect(groups.map((g) => g.title)).toEqual(['CHARACTERS', 'LOCATIONS']);
+    expect(groups[0].cards.map((c) => c.t)).toEqual(['Mira Veynn']);
+  });
+
+  it('drops cards outside the three canonical categories (no catch-all group)', () => {
+    const cards = suggestedFromVault([
+      item('Factions/The Cartel.md'),
+      item('History/The Reckoning.md'),
+      item('Loose Note.md'),
+      item('Characters/Kael Thorne.md'),
+    ]);
+    const groups = railGroupsFromSuggested(cards);
+    expect(groups.map((g) => g.title)).toEqual(['CHARACTERS']);
+  });
+
+  it('drops empty groups entirely', () => {
+    const groups = railGroupsFromSuggested(suggestedFromVault([item('Locations/Ward Violet.md')]));
+    expect(groups).toHaveLength(1);
+    expect(groups[0].title).toBe('LOCATIONS');
+  });
+});
+
+describe('hookLineFromNoteContent (M10-S3: initialed cards with hook lines)', () => {
+  it('prefers a hook: frontmatter field', () => {
+    const raw = '---\nhook: Seeker → believer\nrole: Wanderer\n---\nSome body text.';
+    expect(hookLineFromNoteContent(raw)).toBe('Seeker → believer');
+  });
+
+  it('falls back through summary, description, then role when hook is absent', () => {
+    expect(hookLineFromNoteContent('---\nrole: Kael\'s new rival\n---\nBody.')).toBe("Kael's new rival");
+    expect(hookLineFromNoteContent('---\ndescription: The district that doesn\'t exist\n---\n')).toBe(
+      "The district that doesn't exist",
+    );
+  });
+
+  it('falls back to the first non-empty, non-heading body line when no frontmatter hook field is set', () => {
+    const raw = '---\nid: abc\n---\n# Ward Violet\n\nThe district that doesn\'t exist.\n\nMore detail.';
+    expect(hookLineFromNoteContent(raw)).toBe("The district that doesn't exist.");
+  });
+
+  it('returns an empty string for a note with no frontmatter hook and no body', () => {
+    expect(hookLineFromNoteContent('---\nid: abc\n---\n')).toBe('');
+    expect(hookLineFromNoteContent('')).toBe('');
+  });
+
+  it('truncates a long hook line with an ellipsis', () => {
+    const long = 'A'.repeat(80);
+    const result = hookLineFromNoteContent(`---\nhook: ${long}\n---\n`);
+    expect(result.length).toBe(64);
+    expect(result.endsWith('…')).toBe(true);
   });
 });
 

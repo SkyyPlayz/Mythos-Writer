@@ -162,16 +162,6 @@ export function castFromSuggested(cards: SuggestedCard[]): string[] {
   return cards.filter((card) => card.group === 'CHARACTERS').map((card) => card.t);
 }
 
-/** Cards for the right kanban's CAST column (§7.1) — full cards, not just names. */
-export function castCardsFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
-  return cards.filter((card) => card.group === 'CHARACTERS');
-}
-
-/** Cards for the right kanban's PLACES column (§7.1). */
-export function placesFromSuggested(cards: SuggestedCard[]): SuggestedCard[] {
-  return cards.filter((card) => card.group === 'LOCATIONS');
-}
-
 /** Prototype search filter (line 4527): substring over `"<title> <description>"`. */
 export function filterSuggested(cards: SuggestedCard[], query: string): SuggestedCard[] {
   const q = query.trim().toLowerCase();
@@ -179,20 +169,86 @@ export function filterSuggested(cards: SuggestedCard[], query: string): Suggeste
   return cards.filter((card) => (card.t + ' ' + card.d).toLowerCase().includes(q));
 }
 
-/** Group cards under their headings; empty groups drop out (line 4529). */
-export function groupSuggested(cards: SuggestedCard[]): SuggestedGroup[] {
-  const order: string[] = [];
-  const byGroup = new Map<string, SuggestedCard[]>();
-  for (const card of cards) {
-    let bucket = byGroup.get(card.group);
-    if (!bucket) {
-      bucket = [];
-      byGroup.set(card.group, bucket);
-      order.push(card.group);
-    }
-    bucket.push(card);
+// ─── Rail + board grouping (M10-S3, PLAN.md §M10 item 3) ─────────────────────
+// The rail and the scene board share one fixed 3-group taxonomy, regardless
+// of a card's general vault `.group` (which is just the top-level folder and
+// stays e.g. "UNIVERSES" for vault entities nested under
+// `Universes/<name>/Characters/…` — the real path Brainstorm agent proposals
+// resolve to, see brainstormNoteWriter.ts WORLD_KIND_DIR). Every path segment
+// is scanned for a known category folder so both the flat fixture shape
+// (`Characters/…`) and the real nested shape resolve the same way.
+
+export const SUGGESTED_GROUP_ORDER = ['CHARACTERS', 'LOCATIONS', 'ITEMS & SYSTEMS'] as const;
+export type SuggestedRailGroupTitle = (typeof SUGGESTED_GROUP_ORDER)[number];
+
+const RAIL_CANONICAL_GROUP: Record<string, SuggestedRailGroupTitle> = {
+  characters: 'CHARACTERS',
+  locations: 'LOCATIONS',
+  items: 'ITEMS & SYSTEMS',
+  systems: 'ITEMS & SYSTEMS',
+};
+
+/** Nearest category folder to the note wins — walk from the file up to the root. */
+function railGroupForNid(nid: string): SuggestedRailGroupTitle | null {
+  const segments = nid.split('/');
+  for (let i = segments.length - 2; i >= 0; i--) {
+    const bucket = RAIL_CANONICAL_GROUP[segments[i].toLowerCase()];
+    if (bucket) return bucket;
   }
-  return order.map((title) => ({ title, cards: byGroup.get(title) as SuggestedCard[] }));
+  return null;
+}
+
+/**
+ * SUGGESTED CARDS rail / scene board groups: CHARACTERS / LOCATIONS /
+ * ITEMS & SYSTEMS only (PLAN.md M10 item 3), in that fixed order — cards
+ * outside those three vault categories (Factions, History, loose notes, …)
+ * don't belong to this rail and are dropped, not shown under a catch-all.
+ */
+export function railGroupsFromSuggested(cards: SuggestedCard[]): SuggestedGroup[] {
+  const byGroup = new Map<SuggestedRailGroupTitle, SuggestedCard[]>();
+  for (const card of cards) {
+    const bucket = railGroupForNid(card.nid);
+    if (!bucket) continue;
+    const list = byGroup.get(bucket);
+    if (list) list.push(card);
+    else byGroup.set(bucket, [card]);
+  }
+  return SUGGESTED_GROUP_ORDER
+    .filter((title) => byGroup.has(title))
+    .map((title) => ({ title, cards: byGroup.get(title) as SuggestedCard[] }));
+}
+
+// ─── Hook lines (rail + board card subtitle) ─────────────────────────────────
+
+const HOOK_FRONTMATTER_KEYS = ['hook', 'summary', 'description', 'role'];
+const HOOK_MAX_CHARS = 64;
+const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
+
+function truncateHook(text: string): string {
+  return text.length > HOOK_MAX_CHARS ? `${text.slice(0, HOOK_MAX_CHARS - 1).trimEnd()}…` : text;
+}
+
+/**
+ * A one-line "hook" for a suggested/board card, read from real note content:
+ * a `hook:`/`summary:`/`description:`/`role:` frontmatter scalar first (in
+ * that priority order), else the first non-empty, non-heading prose line.
+ * Empty for a note with neither (e.g. a freshly created blank note).
+ */
+export function hookLineFromNoteContent(raw: string): string {
+  const match = FRONTMATTER_RE.exec(raw);
+  const fmBlock = match ? match[1] : '';
+  const body = match ? match[2] : raw;
+  for (const key of HOOK_FRONTMATTER_KEYS) {
+    const hit = new RegExp(`^${key}\\s*:\\s*(.+)$`, 'im').exec(fmBlock);
+    if (!hit) continue;
+    const value = hit[1].trim().replace(/^["']|["']$/g, '');
+    if (value) return truncateHook(value);
+  }
+  const firstLine = body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0 && !line.startsWith('#'));
+  return firstLine ? truncateHook(firstLine) : '';
 }
 
 // ─── Plan cards (prototype `planNotes`, lines 4717–4720) ─────────────────────

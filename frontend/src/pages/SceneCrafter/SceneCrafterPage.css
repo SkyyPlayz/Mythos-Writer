@@ -897,27 +897,67 @@
   gap: 0;
 }
 
-/* Right kanban: beats / cast / places (Beta 4/M19, §7.1, AC8). */
-.sc-right-kanban {
+/* Scene board: CHARACTERS / LOCATIONS / ITEMS & SYSTEMS (M10-S3, prototype
+ * `rail-scene-crafter` capture) — a visual board of the scene, every card a
+ * vault note. Fills remaining width so it can hold several columns, unlike
+ * the fixed-width setup/draft columns beside it. */
+.sc-board {
   display: flex;
-  flex: 0 0 200px;
+  flex: 1 1 320px;
   flex-direction: column;
   gap: 10px;
+  min-width: 280px;
   min-height: 0;
-  overflow-y: auto;
-  padding: 14px 12px;
+  padding: 14px 16px;
   border-radius: 13px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(255, 255, 255, 0.02);
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-.sc-right-kanban-col {
+.sc-board--drag-over {
+  border-color: var(--b1, rgba(0, 240, 255, 0.6));
+  background: var(--gs1, rgba(0, 240, 255, 0.06));
+}
+
+.sc-board-head {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  flex: none;
+  align-items: baseline;
+  gap: 10px;
 }
 
-.sc-right-kanban-head {
+.sc-board-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #7686a2;
+}
+
+.sc-board-hint {
+  font-size: 9.5px;
+  color: #586a88;
+}
+
+.sc-board-cols {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  gap: 16px;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.sc-board-col {
+  display: flex;
+  flex: 0 0 220px;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.sc-board-col-head {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -925,25 +965,88 @@
   padding: 0 2px;
 }
 
-.sc-right-kanban-card {
-  padding: 7px 9px;
-  border-radius: 9px;
-  font-size: 11px;
-  line-height: 1.4;
+.sc-board-card {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.scene-crafter-page button.sc-board-card-open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 9px;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
   color: #cdd8ea;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.07);
-  text-align: left;
 }
 
-.scene-crafter-page button.sc-right-kanban-card--linked {
-  cursor: pointer;
-  border-radius: 9px;
-}
-
-.scene-crafter-page button.sc-right-kanban-card--linked:hover {
+.scene-crafter-page button.sc-board-card-open:hover {
   border-color: var(--b1, rgba(0, 240, 255, 0.5));
   color: #f0f3fc;
+}
+
+.sc-board-av {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.85);
+  background: var(--gs2, rgba(155, 95, 255, 0.14));
+}
+
+.sc-board-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sc-board-t {
+  font-size: 11px;
+  font-weight: 600;
+  color: #e6ecf9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sc-board-d {
+  font-size: 9.5px;
+  color: #8e9db8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scene-crafter-page button.sc-board-remove {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #7686a2;
+  background: none;
+  cursor: pointer;
+}
+
+.scene-crafter-page button.sc-board-remove:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
 
 .scene-crafter-modal {

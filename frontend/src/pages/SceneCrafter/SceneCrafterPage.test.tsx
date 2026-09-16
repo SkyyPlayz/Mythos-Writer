@@ -1,6 +1,7 @@
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import SceneCrafterPage from './SceneCrafterPage';
+import { setAiEnabled, __resetAiEnabledForTests } from '../../hooks/useAiEnabled';
 
 const STORY = {
   id: 'story-1',
@@ -94,6 +95,7 @@ beforeEach(() => {
   tokenCb = null;
   endCb = null;
   errorCb = null;
+  __resetAiEnabledForTests();
 });
 
 async function renderPage() {
@@ -303,37 +305,147 @@ describe('SceneCrafterPage — M19 scene setup form (§7.1, AC1)', () => {
   });
 });
 
-describe('SceneCrafterPage — M19 right kanban: beats/cast/places (§7.1, AC8)', () => {
-  it('shows beats from the setup and cast/places notes from the vault, and opens a note on click', async () => {
-    const onOpenNote = vi.fn();
+describe('SceneCrafterPage — M10-S3 SUGGESTED CARDS rail + scene board', () => {
+  const VAULT_ITEMS = [
+    { path: 'Characters/Mira Veynn.md', name: 'Mira Veynn.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+    { path: 'Characters/Kael Thorne.md', name: 'Kael Thorne.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+    { path: 'Locations/Ward Violet.md', name: 'Ward Violet.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+    { path: 'Items/Brass Token.md', name: 'Brass Token.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+    { path: 'Systems/The Nine Bells.md', name: 'The Nine Bells.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
+  ];
+
+  const NOTE_CONTENT: Record<string, string> = {
+    'Characters/Mira Veynn.md': '---\nhook: Reluctant heir — resourceful, haunted.\n---\n',
+    'Characters/Kael Thorne.md': '---\nhook: Smuggler — witty, guarded, survivor.\n---\n',
+    'Locations/Ward Violet.md': '---\ndescription: The district that doesn\'t exist\n---\n',
+    'Items/Brass Token.md': "# Brass Token\n\nThe Broker's marker.\n",
+    'Systems/The Nine Bells.md': '# The Nine Bells\n\nCity signal system.\n',
+  };
+
+  function renderWithVaultFixture(overrides: Record<string, unknown> = {}) {
+    const readNotesVault = vi.fn(async (notePath: string) => {
+      const content = NOTE_CONTENT[notePath];
+      return content !== undefined ? { content, path: notePath } : { error: 'not found' };
+    });
     const api = makeApi({
-      listNotesVault: vi.fn().mockResolvedValue({
-        items: [
-          { path: 'Characters/Mira Veynn.md', name: 'Mira Veynn.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
-          { path: 'Locations/Ward Violet.md', name: 'Ward Violet.md', isDirectory: false, modifiedAt: '2026-01-01T00:00:00.000Z' },
-        ],
-      }),
+      listNotesVault: vi.fn().mockResolvedValue({ items: VAULT_ITEMS }),
+      readNotesVault,
+      ...overrides,
     });
     (window as unknown as { api: unknown }).api = api;
+    return { api, readNotesVault };
+  }
+
+  it('renders exactly the three canonical groups with initialed cards and hook lines from a seeded vault fixture', async () => {
+    renderWithVaultFixture();
+    await renderPage();
+
+    const suggested = screen.getByLabelText('Suggested cards');
+    expect(within(suggested).getAllByText(/^(CHARACTERS|LOCATIONS|ITEMS & SYSTEMS)$/).map((el) => el.textContent))
+      .toEqual(['CHARACTERS', 'LOCATIONS', 'ITEMS & SYSTEMS']);
+
+    const miraCard = within(suggested).getByRole('button', { name: /Mira Veynn/i });
+    expect(within(miraCard).getByText('MV')).toBeInTheDocument();
+    await waitFor(() => expect(within(miraCard).getByText('Reluctant heir — resourceful, haunted.')).toBeInTheDocument());
+
+    const wardCard = within(suggested).getByRole('button', { name: /Ward Violet/i });
+    await waitFor(() => expect(within(wardCard).getByText("The district that doesn't exist")).toBeInTheDocument());
+
+    // Items and Systems folders merge into one group.
+    expect(within(suggested).getByRole('button', { name: /Brass Token/i })).toBeInTheDocument();
+    expect(within(suggested).getByRole('button', { name: /The Nine Bells/i })).toBeInTheDocument();
+  });
+
+  it('an empty board shows a helpful hint and no group columns', async () => {
+    renderWithVaultFixture();
+    await renderPage();
+    const board = screen.getByLabelText('Scene board');
+    expect(within(board).getByText(/click or drag suggested cards here/i)).toBeInTheDocument();
+    expect(within(board).queryByText('CHARACTERS')).not.toBeInTheDocument();
+  });
+
+  it('clicking a suggested card adds it to the matching board group, and clicking it there opens its note', async () => {
+    const onOpenNote = vi.fn();
+    renderWithVaultFixture();
     render(<SceneCrafterPage story={STORY} onOpenNote={onOpenNote} onOpenScene={vi.fn()} />);
     await waitFor(() => expect(screen.queryByRole('status')).not.toBeInTheDocument());
 
-    const kanban = screen.getByLabelText('Scene board: beats, cast, and places');
-    expect(within(kanban).getByText('Mira Veynn')).toBeInTheDocument();
-    expect(within(kanban).getByText('Ward Violet')).toBeInTheDocument();
+    const suggested = screen.getByLabelText('Suggested cards');
+    fireEvent.click(within(suggested).getByRole('button', { name: /Ward Violet/i }));
 
-    fireEvent.click(within(kanban).getByRole('button', { name: 'Ward Violet' }));
+    const board = screen.getByLabelText('Scene board');
+    const boardCard = within(board).getByRole('button', { name: /^WV Ward Violet/i });
+    expect(boardCard).toBeInTheDocument();
+
+    fireEvent.click(boardCard);
     expect(onOpenNote).toHaveBeenCalledWith('Locations/Ward Violet');
   });
 
-  it('lists beats added in Scene Setup under the BEATS column', async () => {
+  it('dragging a suggested card onto the board produces the same board state as clicking it (AC2)', async () => {
+    renderWithVaultFixture();
     await renderPage();
-    const addInput = screen.getByRole('textbox', { name: 'Add a beat' });
-    fireEvent.change(addInput, { target: { value: 'Cold open on the sealed door' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
 
-    const kanban = screen.getByLabelText('Scene board: beats, cast, and places');
-    expect(within(kanban).getByText('Cold open on the sealed door')).toBeInTheDocument();
+    const board = screen.getByLabelText('Scene board');
+    fireEvent.drop(board, { dataTransfer: { getData: () => 'Characters/Mira Veynn' } });
+
+    expect(within(board).getByText('Mira Veynn')).toBeInTheDocument();
+    // The rail card reflects the same "on the board" state either way.
+    const suggested = screen.getByLabelText('Suggested cards');
+    expect(within(suggested).getByRole('button', { name: /Mira Veynn/i })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('removing a board card via its X button takes it off the board and clears the rail selection', async () => {
+    renderWithVaultFixture();
+    await renderPage();
+
+    const suggested = screen.getByLabelText('Suggested cards');
+    fireEvent.click(within(suggested).getByRole('button', { name: /Mira Veynn/i }));
+
+    const board = screen.getByLabelText('Scene board');
+    fireEvent.click(within(board).getByRole('button', { name: /remove mira veynn/i }));
+
+    expect(within(board).queryByRole('button', { name: /Mira Veynn/i })).not.toBeInTheDocument();
+    expect(within(suggested).getByRole('button', { name: /Mira Veynn/i })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('a new vault note restocks the rail without a manual refresh (SKY-7994: real onVaultNotesUpdated round trip)', async () => {
+    let notifyVaultUpdated: (() => void) | undefined;
+    const { api } = renderWithVaultFixture({
+      onVaultNotesUpdated: vi.fn((cb: () => void) => { notifyVaultUpdated = cb; return vi.fn(); }),
+    });
+    await renderPage();
+
+    const suggested = screen.getByLabelText('Suggested cards');
+    expect(within(suggested).queryByRole('button', { name: /Liora Ashen/i })).not.toBeInTheDocument();
+
+    // A new character note lands on disk (e.g. hand-created in Notes Editor,
+    // or Brainstorm-written) and the watcher fires — no reload/remount here.
+    api.listNotesVault.mockResolvedValue({
+      items: [...VAULT_ITEMS, { path: 'Characters/Liora Ashen.md', name: 'Liora Ashen.md', isDirectory: false, modifiedAt: '2026-01-02T00:00:00.000Z' }],
+    });
+    await act(async () => { notifyVaultUpdated?.(); });
+
+    await waitFor(() => expect(within(suggested).getByRole('button', { name: /Liora Ashen/i })).toBeInTheDocument());
+  });
+
+  it('AI on: hint copy credits the Brainstorm Agent', async () => {
+    renderWithVaultFixture();
+    await renderPage();
+    expect(screen.getByText(/the brainstorm agent keeps this list stocked/i)).toBeInTheDocument();
+  });
+
+  it('AI off: hint copy points to the manual Notes Editor path, and click/drag still work (M11c)', async () => {
+    renderWithVaultFixture();
+    await renderPage();
+    act(() => setAiEnabled(false));
+
+    expect(screen.queryByText(/the brainstorm agent keeps this list stocked/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/add characters, locations, items, and systems in notes editor/i)).toBeInTheDocument();
+
+    const suggested = screen.getByLabelText('Suggested cards');
+    fireEvent.click(within(suggested).getByRole('button', { name: /Mira Veynn/i }));
+    const board = screen.getByLabelText('Scene board');
+    expect(within(board).getByText('Mira Veynn')).toBeInTheDocument();
   });
 });
 

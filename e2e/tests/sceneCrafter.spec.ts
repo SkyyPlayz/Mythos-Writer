@@ -344,13 +344,14 @@ test('AC-SC-08 (SKY-8080): accepting a Brainstorm proposal writes a visible Scen
   await expect.poll(() => fs.existsSync(notePath), { timeout: 8_000 }).toBe(true);
   expect(fs.readFileSync(notePath, 'utf8')).toContain('The hero rides into the village at dawn.');
 
-  // ...and that it round-trips back into the UI as a visible Suggested Card
-  // (disk -> UI), which is the only live surface for planning content since
-  // SKY-7601. The stale invisible-lanes write must not occur any more.
-  await openBoardView(page);
-  const suggested = page.locator('.sc-suggest');
-  await expect(suggested).toContainText(CARD_TITLE, { timeout: 8_000 });
-
+  // M10-S3 (SKY-9878) narrowed the SUGGESTED CARDS rail to the prototype's
+  // three entity groups (CHARACTERS/LOCATIONS/ITEMS & SYSTEMS) — a
+  // `scene_card` proposal note under Universes/<name>/Scenes/ no longer
+  // matches any of them, so it is intentionally NOT expected in `.sc-suggest`
+  // any more (previously this block asserted it was). The write-to-disk half
+  // of the SKY-8080 fix (never the invisible lanes board) is unaffected and
+  // still verified above; where scene_card proposals should surface post-M10
+  // is a follow-up product question, not a Scene Crafter rail regression.
   const board = await readBoard(page, storySlug);
   expect(board?.lanes[0]?.cards.some((c) => c.title === CARD_TITLE) ?? false).toBe(false);
 });
@@ -509,6 +510,98 @@ test('AC-SC-15: clicking a suggested card selects it instead of writing to the r
   // Toggling again deselects it.
   await firstCard.click();
   await expect(firstCard).toHaveAttribute('aria-pressed', 'false');
+});
+
+// ─── M10-S3: SUGGESTED CARDS rail to prototype spec (SKY-9878) ──────────────
+//
+// Authoritative spec = the `rail-scene-crafter` prototype capture (PLAN.md
+// §M10 item 3): three fixed groups — CHARACTERS / LOCATIONS / ITEMS &
+// SYSTEMS — initialed cards with hook lines, click-or-drag onto the board,
+// list stays stocked without a manual refresh. Real vault entities live
+// nested under `Universes/<name>/<Category>/…`
+// (brainstormNoteWriter.ts WORLD_KIND_DIR/resolveProposalDestination) — this
+// fixture uses that real shape, not a flattened stand-in, so the grouping
+// logic (crafterState.ts railGroupsFromSuggested) is exercised the same way
+// the shipping Brainstorm agent's writes are.
+
+test('M10-S3: rail groups CHARACTERS/LOCATIONS/ITEMS & SYSTEMS with hook lines, and click-to-add / drag-to-add converge on the same board state', async () => {
+  const universeDir = path.join(notesVaultDir, 'Universes', 'Test Realm');
+  fs.mkdirSync(path.join(universeDir, 'Characters'), { recursive: true });
+  fs.mkdirSync(path.join(universeDir, 'Locations'), { recursive: true });
+  fs.mkdirSync(path.join(universeDir, 'Items'), { recursive: true });
+  fs.writeFileSync(
+    path.join(universeDir, 'Characters', 'Mira Veynn.md'),
+    '---\nhook: Reluctant heir — resourceful, haunted.\n---\n',
+  );
+  fs.writeFileSync(
+    path.join(universeDir, 'Locations', 'Kestrel Hollow.md'),
+    "---\ndescription: The district that doesn't exist\n---\n",
+  );
+  fs.writeFileSync(
+    path.join(universeDir, 'Items', 'Brass Token.md'),
+    "# Brass Token\n\nThe Broker's marker.\n",
+  );
+
+  await reloadBoardView(page);
+
+  const suggested = page.locator('.sc-suggest');
+  await expect(suggested.locator('.sc-suggest-group')).toHaveText(
+    ['CHARACTERS', 'LOCATIONS', 'ITEMS & SYSTEMS'],
+    { timeout: 8_000 },
+  );
+
+  const miraCard = suggested.locator('.sc-sugg-card', { hasText: 'Mira Veynn' });
+  await expect(miraCard).toContainText('Reluctant heir — resourceful, haunted.', { timeout: 8_000 });
+  const wardCard = suggested.locator('.sc-sugg-card', { hasText: 'Kestrel Hollow' });
+  await expect(wardCard).toContainText("The district that doesn't exist", { timeout: 8_000 });
+  const brassCard = suggested.locator('.sc-sugg-card', { hasText: 'Brass Token' });
+  await expect(brassCard).toContainText("The Broker's marker.", { timeout: 8_000 });
+
+  const board = page.locator('.sc-board');
+
+  // Click-to-add.
+  await miraCard.click();
+  const charactersCol = board.locator('.sc-board-col', { hasText: 'CHARACTERS' });
+  await expect(charactersCol.locator('.sc-board-card', { hasText: 'Mira Veynn' })).toBeVisible({ timeout: 4_000 });
+
+  // Drag-to-add — a different card, dispatched as a real DragEvent onto .sc-board
+  // (same evaluate-in-page pattern as notes-tree-drag-sky8891.spec.ts).
+  const wardNid = 'Universes/Test Realm/Locations/Kestrel Hollow';
+  await board.evaluate((el, nid) => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', nid);
+    el.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: dt }));
+    el.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: dt }));
+  }, wardNid);
+
+  // Both interaction paths land in the correctly-grouped column and mark the
+  // rail card as on-the-board — the same resulting state either way (AC2).
+  const locationsCol = board.locator('.sc-board-col', { hasText: 'LOCATIONS' });
+  await expect(locationsCol.locator('.sc-board-card', { hasText: 'Kestrel Hollow' })).toBeVisible({ timeout: 4_000 });
+  await expect(wardCard).toHaveAttribute('aria-pressed', 'true');
+
+  // Remove from the board via its X button — takes it off the board and
+  // clears the rail selection (the same planSel toggle either interaction used).
+  await board.locator('.sc-board-card', { hasText: 'Mira Veynn' })
+    .getByRole('button', { name: /remove mira veynn/i }).click();
+  await expect(charactersCol.locator('.sc-board-card', { hasText: 'Mira Veynn' })).not.toBeVisible();
+  await expect(miraCard).toHaveAttribute('aria-pressed', 'false');
+});
+
+test('M10-S3 AC3: a new vault note restocks the SUGGESTED CARDS rail live, without a manual refresh', async () => {
+  await reloadBoardView(page);
+  const suggested = page.locator('.sc-suggest');
+  const newCardName = 'Liora Ashen';
+  await expect(suggested.locator('.sc-sugg-card', { hasText: newCardName })).toHaveCount(0);
+
+  // Real disk write mid-test — no reload, no remount — the same
+  // watcher round trip vault-graph.spec.ts TC-G-05 relies on for live UI sync.
+  const charactersDir = path.join(notesVaultDir, 'Universes', 'Test Realm', 'Characters');
+  fs.mkdirSync(charactersDir, { recursive: true });
+  fs.writeFileSync(path.join(charactersDir, `${newCardName}.md`), '---\nhook: Seeker → believer\n---\n');
+
+  await expect(suggested.locator('.sc-sugg-card', { hasText: newCardName })).toBeVisible({ timeout: 10_000 });
+  await expect(suggested.locator('.sc-sugg-card', { hasText: newCardName })).toContainText('Seeker → believer');
 });
 
 // ─── AC-SC-17: Scenes-tab mini canvas pan/zoom + survives a real app restart ─

@@ -9,16 +9,15 @@ import {
   CRAFTER_TONES,
   addBeat,
   buildDraftPrompt,
-  castCardsFromSuggested,
   castFromSuggested,
   composeDraftBoard,
   composeDraftPassCard,
   defaultCrafterSetup,
   filterSuggested,
-  groupSuggested,
+  hookLineFromNoteContent,
   moveBeat,
-  placesFromSuggested,
   planNotesFromVault,
+  railGroupsFromSuggested,
   removeBeat,
   suggestedFromVault,
   toggleTone,
@@ -30,7 +29,17 @@ import {
 } from './crafterState';
 import { loadCrafterBoards, saveCrafterBoard } from './crafterBoardStore';
 import { useIpcStream } from '../../hooks/useIpcStream';
+import { useAiEnabled } from '../../hooks/useAiEnabled';
 import './SceneCrafterPage.css';
+
+/** Rail hint copy — M11b: swap the AI-agent framing for AI-off without
+ * hiding the rail itself. Restocking reads real vault files either way
+ * (suggestedFromVault is a filesystem listing, never an LLM call), so the
+ * manual path (create/edit a note in Notes Editor) always works (M11c). */
+const RAIL_HINT_AI_ON =
+  'Click or drag a card onto the board — the Brainstorm Agent keeps this list stocked from your vault.';
+const RAIL_HINT_AI_OFF =
+  'Click or drag a card onto the board — add characters, locations, items, and systems in Notes Editor and they appear here.';
 
 export interface SceneCrafterCard {
   wikilink: string;
@@ -120,6 +129,12 @@ export default function SceneCrafterPage({
   const [planSel, setPlanSel] = useState<Record<string, boolean>>({});
   const [summary, setSummary] = useState('');
   const [boardsNote, setBoardsNote] = useState<string | null>(null);
+  // M10-S3: hook lines for suggested/board cards, fetched lazily from real
+  // note content and cached by nid (never refetched once resolved).
+  const [hooks, setHooks] = useState<Record<string, string>>({});
+  const fetchedHooksRef = useRef<Set<string>>(new Set());
+  const [boardDragOver, setBoardDragOver] = useState(false);
+  const aiEnabled = useAiEnabled();
   // Explicit "Custom…" selection in the POV dropdown — tracked separately from
   // setup.pov because an empty custom value is indistinguishable from "no POV
   // chosen yet" if derived from the text alone (§7.1, AC1).
@@ -171,6 +186,19 @@ export default function SceneCrafterPage({
   useEffect(() => {
     void loadBoard();
   }, [loadBoard]);
+
+  // M10-S3 AC3: a new vault entity (Brainstorm-written or hand-created)
+  // restocks the SUGGESTED CARDS rail without a manual refresh — re-read the
+  // notes vault whenever the watcher reports a change, silently (no loading
+  // flash). Real IPC → disk round trip: same watcher Brainstorm/VaultGraph rely on.
+  useEffect(() => {
+    const unsubscribe = window.api.onVaultNotesUpdated?.(() => {
+      window.api.listNotesVault().then((listing) => {
+        if (!('error' in listing)) setVaultItems(listing.items);
+      }).catch(() => undefined);
+    });
+    return () => unsubscribe?.();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = window.api.onSceneCrafterExternalEdit?.((changedSlug) => {
@@ -234,16 +262,50 @@ export default function SceneCrafterPage({
   }
 
   // ── M18: suggested cards, plan cards, draft boards ─────────────────────────
-  const allSuggested = suggestedFromVault(vaultItems);
-  const suggestedGroups = groupSuggested(filterSuggested(allSuggested, sugQ));
+  const allSuggested = useMemo(() => suggestedFromVault(vaultItems), [vaultItems]);
+  const railGroups = useMemo(
+    () => railGroupsFromSuggested(filterSuggested(allSuggested, sugQ)),
+    [allSuggested, sugQ],
+  );
   const planNotes = planNotesFromVault(vaultItems);
   const openBoard = openBoardId !== null ? boards.find((b) => b.id === openBoardId) ?? null : null;
   // ── M19: POV select sourced from the vault's Characters group (§7.1, AC1) ──
   const cast = castFromSuggested(allSuggested);
   const povIsCustom = povCustomMode || (setup.pov.trim() !== '' && !cast.includes(setup.pov));
-  // ── M19: right kanban — beats/cast/places (§7.1, AC8) ───────────────────────
-  const castCards = castCardsFromSuggested(allSuggested);
-  const placeCards = placesFromSuggested(allSuggested);
+  // ── M10-S3: the scene board — every suggested card the writer has added,
+  // grouped the same way as the rail (CHARACTERS/LOCATIONS/ITEMS & SYSTEMS).
+  const boardGroups = useMemo(
+    () => railGroupsFromSuggested(allSuggested.filter((card) => planSel[card.nid])),
+    [allSuggested, planSel],
+  );
+
+  // Lazily resolve a real hook line per suggested card (frontmatter or first
+  // body line) — bounded to cards actually shown in the rail's 3 groups, and
+  // fetched once per nid. A vault-read failure (or a mocked API missing
+  // readNotesVault in tests) just leaves the card without a hook line.
+  useEffect(() => {
+    const pending = allSuggested.filter((card) => !fetchedHooksRef.current.has(card.nid));
+    if (pending.length === 0) return;
+    pending.forEach((card) => fetchedHooksRef.current.add(card.nid));
+    let cancelled = false;
+    (async () => {
+      const entries = await Promise.all(pending.map(async (card): Promise<readonly [string, string]> => {
+        try {
+          const res = await window.api.readNotesVault(`${card.nid}.md`);
+          return [card.nid, 'content' in res ? hookLineFromNoteContent(res.content) : ''] as const;
+        } catch {
+          return [card.nid, ''] as const;
+        }
+      }));
+      if (cancelled) return;
+      setHooks((prev) => {
+        const next = { ...prev };
+        for (const [nid, hook] of entries) if (hook) next[nid] = hook;
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, [allSuggested]);
 
   function patchSetup(patch: Partial<CrafterSetup>) {
     setSetup((prev) => ({ ...prev, ...patch }));
@@ -255,14 +317,26 @@ export default function SceneCrafterPage({
   }
 
   /**
-   * Suggested-card click: toggles the note into the same selection set as
-   * Plan Cards (`planSel`, keyed by vault path) so it counts as chosen draft
-   * context and the card visibly marks itself selected right where it was
-   * clicked (SKY-7601 — previously this silently wrote into the retired
-   * lanes board's first lane, invisible unless you scrolled to it).
+   * Suggested-card click: toggles the note onto the scene board — the same
+   * `planSel` set (keyed by vault path) that also selects Plan Cards, so a
+   * board card doubles as chosen AI-draft context for free (SKY-7601 —
+   * previously this silently wrote into the retired lanes board's first
+   * lane, invisible unless you scrolled to it; M10-S3 gives it a real,
+   * visible destination: the board).
    */
-  function addSuggestedCard(card: SuggestedCard) {
+  function toggleBoardCard(card: SuggestedCard) {
     setPlanSel((prev) => ({ ...prev, [card.nid]: !prev[card.nid] }));
+  }
+
+  /** Drag-drop onto the board always adds (never toggles off) — same resulting
+   * state as a fresh click on the rail card (M10-S3 AC2: click and drag converge). */
+  function addBoardCard(nid: string) {
+    if (!nid) return;
+    setPlanSel((prev) => (prev[nid] ? prev : { ...prev, [nid]: true }));
+  }
+
+  function removeBoardCard(nid: string) {
+    setPlanSel((prev) => (prev[nid] ? { ...prev, [nid]: false } : prev));
   }
 
   async function persistBoard(next: CanvasBoardData) {
@@ -466,7 +540,12 @@ export default function SceneCrafterPage({
               onChange={(event) => setSugQ(event.target.value)}
             />
           </div>
-          {suggestedGroups.map((group) => (
+          {railGroups.length === 0 && (
+            <div className="sc-help">
+              No characters, locations, items, or systems in your vault yet.
+            </div>
+          )}
+          {railGroups.map((group) => (
             <Fragment key={group.title}>
               <div className="sc-suggest-group">{group.title}</div>
               {group.cards.map((card) => (
@@ -475,20 +554,25 @@ export default function SceneCrafterPage({
                   key={card.nid}
                   className={`sc-sugg-card${planSel[card.nid] ? ' sc-sugg-card--on' : ''}`}
                   aria-pressed={!!planSel[card.nid]}
-                  title="Click to use as context for your draft"
-                  onClick={() => addSuggestedCard(card)}
+                  title="Click or drag onto the board"
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData('text/plain', card.nid);
+                    event.dataTransfer.effectAllowed = 'copy';
+                  }}
+                  onClick={() => toggleBoardCard(card)}
                 >
                   <span className="sc-sugg-av">{card.av}</span>
                   <span className="sc-sugg-text">
                     <span className="sc-sugg-t">{card.t}</span>
-                    <span className="sc-sugg-d">{card.d}</span>
+                    <span className="sc-sugg-d">{hooks[card.nid] ?? card.d}</span>
                   </span>
                 </button>
               ))}
             </Fragment>
           ))}
           <div className="sc-suggest-hint">
-            Click a card to use it as context for your draft — the Brainstorm Agent keeps this list stocked from your vault.
+            {aiEnabled ? RAIL_HINT_AI_ON : RAIL_HINT_AI_OFF}
           </div>
         </aside>
 
@@ -796,41 +880,60 @@ export default function SceneCrafterPage({
           </section>
         </div>
 
-        {/* ── Right kanban: beats / cast / places (§7.1, AC8) ── */}
-        <aside className="sc-right-kanban" aria-label="Scene board: beats, cast, and places">
-          <div className="sc-right-kanban-col" aria-label="Beats">
-            <div className="sc-right-kanban-head">BEATS</div>
-            {setup.beats.length === 0 && <div className="sc-help">Add beats in Scene Setup — they&apos;ll show up here.</div>}
-            {setup.beats.map((beat, index) => (
-              <div className="sc-right-kanban-card" key={`${beat}-${index}`}>{beat}</div>
-            ))}
+        {/* ── Scene board: a visual board of the scene — every vault note is
+             a card, grouped CHARACTERS/LOCATIONS/ITEMS & SYSTEMS (prototype
+             `rail-scene-crafter` capture). Click or drag a rail card here to
+             add it; both paths call the same addBoardCard() setter (AC2). ── */}
+        <aside
+          className={`sc-board${boardDragOver ? ' sc-board--drag-over' : ''}`}
+          aria-label="Scene board"
+          onDragOver={(event) => { event.preventDefault(); setBoardDragOver(true); }}
+          onDragLeave={() => setBoardDragOver(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setBoardDragOver(false);
+            addBoardCard(event.dataTransfer.getData('text/plain'));
+          }}
+        >
+          <div className="sc-board-head">
+            <span className="sc-board-title">SCENE BOARD</span>
+            <span className="sc-board-hint">Click a card to open its note</span>
           </div>
-          <div className="sc-right-kanban-col" aria-label="Cast">
-            <div className="sc-right-kanban-head">CAST</div>
-            {castCards.length === 0 && <div className="sc-help">No Characters notes in your vault yet.</div>}
-            {castCards.map((card) => (
-              <button
-                type="button"
-                key={card.nid}
-                className="sc-right-kanban-card sc-right-kanban-card--linked"
-                onClick={() => onOpenNote?.(card.nid)}
-              >
-                {card.t}
-              </button>
-            ))}
-          </div>
-          <div className="sc-right-kanban-col" aria-label="Places">
-            <div className="sc-right-kanban-head">PLACES</div>
-            {placeCards.length === 0 && <div className="sc-help">No Locations notes in your vault yet.</div>}
-            {placeCards.map((card) => (
-              <button
-                type="button"
-                key={card.nid}
-                className="sc-right-kanban-card sc-right-kanban-card--linked"
-                onClick={() => onOpenNote?.(card.nid)}
-              >
-                {card.t}
-              </button>
+          <div className="sc-board-cols">
+            {boardGroups.length === 0 && (
+              <div className="sc-help">
+                Click or drag suggested cards here to add characters, locations, items, and systems to this scene.
+              </div>
+            )}
+            {boardGroups.map((group) => (
+              <div className="sc-board-col" key={group.title} aria-label={group.title}>
+                <div className="sc-board-col-head">{group.title}</div>
+                {group.cards.map((card) => (
+                  <div className="sc-board-card" key={card.nid}>
+                    <button
+                      type="button"
+                      className="sc-board-card-open"
+                      onClick={() => onOpenNote?.(card.nid)}
+                    >
+                      <span className="sc-board-av">{card.av}</span>
+                      <span className="sc-board-text">
+                        <span className="sc-board-t">{card.t}</span>
+                        <span className="sc-board-d">{hooks[card.nid] ?? card.d}</span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      className="sc-board-remove"
+                      aria-label={`Remove ${card.t} from the board`}
+                      onClick={() => removeBoardCard(card.nid)}
+                    >
+                      <svg width="8" height="8" viewBox="0 0 12 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+                        <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
             ))}
           </div>
         </aside>
