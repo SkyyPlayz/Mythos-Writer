@@ -801,18 +801,28 @@ export function setupIpcMain(handlers: IpcHandlers) {
     const loggedHandler = returnsEnvelope
       ? withIpcLog(channel, (payload: unknown) => handler(payload as never))
       : null;
-    // `await` is required so async rejections are caught here and sanitized
-    // before they reach the renderer. Previously thrown fs errors (ENOENT,
-    // EACCES) leaked absolute paths via `(error as Error).message`. (MYT-790)
-    ipcMain.handle(channel, async (event, payload) => {
-      if (!isFromTopFrame(event)) return returnsEnvelope ? untrustedFrameEnvelope() : UNTRUSTED_FRAME_REJECTION;
-      if (loggedHandler) return loggedHandler(payload);
-      try {
-        return await handler(payload);
-      } catch (error) {
-        return sanitizeIpcError(channel, error);
-      }
-    });
+    try {
+      // `await` is required so async rejections are caught here and sanitized
+      // before they reach the renderer. Previously thrown fs errors (ENOENT,
+      // EACCES) leaked absolute paths via `(error as Error).message`. (MYT-790)
+      ipcMain.handle(channel, async (event, payload) => {
+        if (!isFromTopFrame(event)) return returnsEnvelope ? untrustedFrameEnvelope() : UNTRUSTED_FRAME_REJECTION;
+        if (loggedHandler) return loggedHandler(payload);
+        try {
+          return await handler(payload);
+        } catch (error) {
+          return sanitizeIpcError(channel, error);
+        }
+      });
+    } catch (error) {
+      // `ipcMain.handle` throws synchronously if `channel` already has a
+      // handler (e.g. a test harness pre-registered one via
+      // `app.evaluate()` before boot reached this point). That must not
+      // abort registration of every channel after it in iteration order —
+      // it did, which is what made SKY-11865's e2e flake possible: one
+      // raced channel silently stranded ~40% of the app's IPC surface.
+      console.error(`[ipc] failed to register handler for channel "${channel}" — continuing:`, error);
+    }
   }
 }
 

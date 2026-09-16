@@ -111,6 +111,30 @@ describe('setupIpcMain — single-registration invariant', () => {
     expect(calls).toHaveLength(2);
   });
 
+  it('a synchronous throw from ipcMain.handle for one channel does not abort registration of channels after it (SKY-11865)', () => {
+    // Real Electron throws synchronously from `ipcMain.handle` when a channel
+    // already has a handler (e.g. an e2e harness pre-registered one via
+    // `app.evaluate()` racing ahead of boot). Simulate that here — the mock
+    // otherwise never throws, so this is the one place that failure mode is
+    // actually exercised.
+    mockHandle.mockImplementationOnce(() => {
+      throw new Error(`Attempted to register a second handler for '${IPC_CHANNELS.VAULT_VALIDATE_PATH}'`);
+    });
+
+    const handlers = {
+      [IPC_CHANNELS.VAULT_VALIDATE_PATH]: vi.fn(),
+      'vault:read': vi.fn(),
+      'vault:write': vi.fn(),
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(() => setupIpcMain(handlers as any)).not.toThrow();
+
+    const registered = mockHandle.mock.calls.map((c) => c[0] as string);
+    expect(registered).toContain('vault:read');
+    expect(registered).toContain('vault:write');
+  });
+
   it('registers settings get/set/testConnection with the standard IPC envelope', async () => {
     const handlers = {
       [IPC_CHANNELS.SETTINGS_GET]: vi.fn(() => ({ theme: 'dark' })),
