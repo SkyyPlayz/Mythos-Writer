@@ -3,6 +3,7 @@ name: Mythos gate auto-merge
 # Tip-SHA-bound fail-closed auto-merge for routine PRs into main.
 # See docs/MERGE_GATE.md. Does not touch Dependabot or release publish.
 # Carve-out PRs never merge without owner `CARVE-OUT APPROVE` on tip.
+# Gate signals (Critic/Shield/Probe) must come from trusted accounts.
 
 on:
   workflow_run:
@@ -20,9 +21,11 @@ permissions:
   pull-requests: write
   checks: read
   statuses: read
+  actions: write
 
 concurrency:
-  group: mythos-gate-auto-merge-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.head_branch || github.run_id }}
+  # Prefer PR number on every trigger so CI completion cannot race a gate comment.
+  group: mythos-gate-auto-merge-${{ github.event.pull_request.number || github.event.issue.number || github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_sha || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -30,7 +33,6 @@ jobs:
     name: mythos-gate-auto-merge
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # Fail-closed entry filters: skip Dependabot actor and failed CI workflow_run.
     if: |
       github.actor != 'dependabot[bot]' &&
       (
@@ -42,6 +44,7 @@ jobs:
         uses: actions/github-script@v9
         env:
           MYTHOS_BOT_TOKEN: ${{ secrets.MYTHOS_BOT_TOKEN }}
+          DEFAULT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           # Prefer bot PAT when present (Contents + PRs write); else GITHUB_TOKEN.
           github-token: ${{ secrets.MYTHOS_BOT_TOKEN || secrets.GITHUB_TOKEN }}
@@ -52,6 +55,12 @@ jobs:
             const CARVE_STICKY = '<!-- mythos-gate-carve-out -->';
             const CARVE_CHECK_MARKER = '<!-- carve-out-check -->';
             const OWNER_LOGIN = 'SkyyPlayz';
+            // Gate posts today are authored by the owner account (Paperclip/MCP).
+            // Expand only via PR — fail-closed allowlist.
+            const TRUSTED_GATE_LOGINS = new Set([
+              OWNER_LOGIN,
+              'SkyHigh-Mythos-Bot',
+            ]);
             const REQUIRED_CHECKS = ['ci', 'notes-windows', 'screenshot-check'];
             const CARVE_OUT_PATTERNS = [
               /^\.github\/workflows\//,
@@ -79,28 +88,36 @@ jobs:
 
             function isGateSignalBody(body) {
               if (!body) return false;
-              return /approve|clear|verify\s+pass|carve-out/i.test(body);
+              return /approve|clear|verify\s+pass|carve-out|changes[_\s-]?requested/i.test(body);
             }
 
-            function hasCriticApprove(body, headSha) {
-              return /(?:##\s*)?critic\s*:?\s*approve|critic[\s\S]{0,120}approve/i.test(body)
-                && shaInBody(body, headSha);
+            function isTrustedGateAuthor(login) {
+              return !!(login && TRUSTED_GATE_LOGINS.has(login));
             }
 
-            function hasShieldClear(body, headSha) {
-              return /\*{0,2}shield\s+clear\*{0,2}|shield[\s\S]{0,80}\bclear\b/i.test(body)
-                && shaInBody(body, headSha);
+            function criticDecision(body) {
+              if (!body) return null;
+              if (/(?:##\s*)?critic\s*:?\s*changes[_\s-]?requested|critic[\s\S]{0,120}changes[_\s-]?requested/i.test(body)) {
+                return 'CHANGES_REQUESTED';
+              }
+              if (/(?:##\s*)?critic\s*:?\s*approve|critic[\s\S]{0,120}approve/i.test(body)) {
+                return 'APPROVE';
+              }
+              return null;
             }
 
-            function hasProbePass(body, headSha) {
-              return /verify\s+pass/i.test(body) && shaInBody(body, headSha);
+            function hasShieldClear(body) {
+              return /\*{0,2}shield\s+clear\*{0,2}|shield[\s\S]{0,80}\bclear\b/i.test(body);
             }
 
-            function hasCarveOutApprove(body, headSha) {
-              return /carve-out\s+approve/i.test(body) && shaInBody(body, headSha);
+            function hasProbePass(body) {
+              return /verify\s+pass/i.test(body);
             }
 
-            // Early exit for comment/review events that are not gate-shaped.
+            function hasCarveOutApprove(body) {
+              return /carve-out\s+approve/i.test(body);
+            }
+
             if (context.eventName === 'issue_comment') {
               const body = context.payload.comment && context.payload.comment.body;
               if (!context.payload.issue.pull_request) return skip('issue_comment not on a PR');
@@ -108,7 +125,8 @@ jobs:
             }
             if (context.eventName === 'pull_request_review') {
               const body = context.payload.review && context.payload.review.body;
-              if (!isGateSignalBody(body) && context.payload.review.state !== 'CHANGES_REQUESTED') {
+              const state = context.payload.review && context.payload.review.state;
+              if (!isGateSignalBody(body) && state !== 'CHANGES_REQUESTED') {
                 return skip('pull_request_review not a gate signal');
               }
             }
@@ -117,13 +135,14 @@ jobs:
               if (context.payload.pull_request) return context.payload.pull_request.number;
               if (context.payload.issue && context.payload.issue.pull_request) return context.payload.issue.number;
               if (context.eventName === 'workflow_run') {
+                const fromPayload = (context.payload.workflow_run.pull_requests || [])[0];
+                if (fromPayload && fromPayload.number) return fromPayload.number;
                 const headSha = context.payload.workflow_run.head_sha;
                 const { data } = await github.rest.pulls.list({
                   owner, repo, state: 'open', base: 'main', per_page: 50,
                 });
                 const match = data.find((p) => p.head.sha === headSha);
                 if (match) return match.number;
-                // Also search pulls associated with the workflow_run via API.
                 try {
                   const { data: associated } = await github.request(
                     'GET /repos/{owner}/{repo}/commits/{commit_sha}/pulls',
@@ -155,23 +174,15 @@ jobs:
             const headSha = pr.head.sha;
             log(`Evaluating PR #${prNumber} tip ${headSha}`);
 
-            // Mergeability — fail closed while unknown.
             if (pr.mergeable === false) return skip('mergeable=false (conflicts)');
             if (pr.mergeable !== true) return skip(`mergeable not clean yet (mergeable=${pr.mergeable}, mergeable_state=${pr.mergeable_state})`);
-            if (pr.mergeable_state && !['clean', 'has_hooks', 'unstable'].includes(pr.mergeable_state)) {
-              // 'unstable' can mean non-required checks pending — still require our named checks below.
-              if (pr.mergeable_state === 'dirty' || pr.mergeable_state === 'blocked') {
-                return skip(`mergeable_state=${pr.mergeable_state}`);
-              }
-            }
+            if (pr.mergeable_state === 'dirty') return skip('mergeable_state=dirty');
 
-            // Required check runs on CURRENT head SHA.
             const checks = await github.paginate(github.rest.checks.listForRef, {
               owner, repo, ref: headSha, per_page: 100,
             });
             const byName = new Map();
             for (const run of checks) {
-              // Prefer the newest completed run per name.
               const prev = byName.get(run.name);
               if (!prev || new Date(run.completed_at || run.started_at) > new Date(prev.completed_at || prev.started_at)) {
                 byName.set(run.name, run);
@@ -189,7 +200,6 @@ jobs:
             if (!carveCheck) return skip('carve-out-check not present yet (prefer completed)');
             if (carveCheck.status !== 'completed') return skip(`carve-out-check not completed (status=${carveCheck.status})`);
 
-            // Collect tip-bound gate signals from issue comments + reviews.
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number: prNumber, per_page: 100,
             });
@@ -197,46 +207,54 @@ jobs:
               owner, repo, pull_number: prNumber, per_page: 100,
             });
 
-            const bodies = [];
-            for (const c of comments) {
-              if (c.body) bodies.push({ body: c.body, login: c.user && c.user.login, kind: 'comment' });
-            }
-            for (const r of reviews) {
-              if (r.body) bodies.push({ body: r.body, login: r.user && r.user.login, kind: 'review', state: r.state, commit_id: r.commit_id });
-            }
-
-            // Block Critic CHANGES_REQUESTED on tip.
-            for (const r of reviews) {
-              if (r.state !== 'CHANGES_REQUESTED') continue;
-              const onTip = r.commit_id && (r.commit_id === headSha || headSha.startsWith(r.commit_id) || r.commit_id.startsWith(headSha.slice(0, 7)));
-              const criticShaped = r.body && /critic/i.test(r.body);
-              if (onTip || criticShaped) {
-                return skip(`CHANGES_REQUESTED review present (id=${r.id}, onTip=${!!onTip})`);
-              }
-            }
-
-            let criticOk = false;
+            // Collect tip-bound trusted signals with timestamps for "latest Critic wins".
+            const criticEvents = [];
             let shieldOk = false;
             let probeOk = false;
             let carveOwnerOk = false;
 
-            for (const item of bodies) {
-              if (hasCriticApprove(item.body, headSha)) criticOk = true;
-              if (hasShieldClear(item.body, headSha)) shieldOk = true;
-              if (hasProbePass(item.body, headSha)) probeOk = true;
-              if (
-                item.login === OWNER_LOGIN &&
-                hasCarveOutApprove(item.body, headSha)
-              ) {
-                carveOwnerOk = true;
+            function consider(body, login, createdAt) {
+              if (!body || !isTrustedGateAuthor(login) || !shaInBody(body, headSha)) return;
+              const decision = criticDecision(body);
+              if (decision) {
+                criticEvents.push({ decision, at: new Date(createdAt).getTime(), login });
               }
+              if (hasShieldClear(body)) shieldOk = true;
+              if (hasProbePass(body)) probeOk = true;
+              if (login === OWNER_LOGIN && hasCarveOutApprove(body)) carveOwnerOk = true;
             }
 
-            if (!criticOk) return skip('no tip-bound Critic APPROVE');
-            if (!shieldOk) return skip('no tip-bound Shield CLEAR');
-            if (!probeOk) return skip('no tip-bound Probe VERIFY PASS');
+            for (const c of comments) {
+              consider(c.body, c.user && c.user.login, c.created_at, null);
+            }
+            for (const r of reviews) {
+              const onTip = r.commit_id && (
+                r.commit_id === headSha ||
+                headSha.startsWith(r.commit_id) ||
+                r.commit_id.startsWith(headSha.slice(0, 7))
+              );
+              if (r.state === 'CHANGES_REQUESTED' && onTip && isTrustedGateAuthor(r.user && r.user.login)) {
+                criticEvents.push({
+                  decision: 'CHANGES_REQUESTED',
+                  at: new Date(r.submitted_at || r.created_at).getTime(),
+                  login: r.user.login,
+                });
+              }
+              consider(r.body, r.user && r.user.login, r.submitted_at || r.created_at, r.state);
+            }
 
-            // Carve-out detection: label, paths, or active carve-out-check sticky.
+            criticEvents.sort((a, b) => a.at - b.at);
+            const latestCritic = criticEvents.length ? criticEvents[criticEvents.length - 1] : null;
+            if (!latestCritic || latestCritic.decision !== 'APPROVE') {
+              return skip(
+                latestCritic
+                  ? `latest tip-bound Critic decision is ${latestCritic.decision} (not APPROVE)`
+                  : 'no tip-bound Critic APPROVE from trusted author'
+              );
+            }
+            if (!shieldOk) return skip('no tip-bound Shield CLEAR from trusted author');
+            if (!probeOk) return skip('no tip-bound Probe VERIFY PASS from trusted author');
+
             const labels = (pr.labels || []).map((l) => l.name.toLowerCase());
             let carveOut = labels.includes('carve-out');
 
@@ -276,7 +294,6 @@ jobs:
 
               const existing = comments.find((c) => c.body && c.body.includes(CARVE_STICKY));
               if (existing) {
-                // Refresh tip SHA in sticky if tip moved.
                 if (!shaInBody(existing.body, headSha)) {
                   await github.rest.issues.updateComment({
                     owner, repo, comment_id: existing.id, body: stickyBody,
@@ -290,26 +307,12 @@ jobs:
               return skip('carve-out present without tip-bound CARVE-OUT APPROVE from owner');
             }
 
-            // Already posted merge marker? Idempotent no-op if somehow re-entered.
-            if (comments.some((c) => c.body && c.body.includes(MERGE_MARKER) && shaInBody(c.body, headSha))) {
-              return skip('merge marker already present for this tip');
-            }
-
-            // Final re-fetch — tip must not have moved under us.
             const { data: fresh } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
             if (fresh.merged || fresh.state !== 'open') return skip('PR merged or closed during evaluate');
             if (fresh.head.sha !== headSha) return skip(`tip moved during evaluate (${fresh.head.sha} ≠ ${headSha})`);
             if (fresh.draft) return skip('became draft during evaluate');
 
-            const mergeBody = [
-              MERGE_MARKER,
-              `Mythos gate auto-merge: Critic+Shield+Probe tip-bound + required checks green on \`${headSha}\`.`,
-              carveOut ? 'Carve-out allow: tip-bound `CARVE-OUT APPROVE` from owner present.' : '',
-            ].filter(Boolean).join('\n');
-
-            await github.rest.issues.createComment({
-              owner, repo, issue_number: prNumber, body: mergeBody,
-            });
+            const usedBotToken = !!(process.env.MYTHOS_BOT_TOKEN && process.env.MYTHOS_BOT_TOKEN.length > 0);
 
             try {
               await github.rest.pulls.merge({
@@ -323,6 +326,31 @@ jobs:
               log(`MERGED PR #${prNumber} at ${headSha}`);
             } catch (e) {
               core.setFailed(`Merge failed (fail-closed): ${e.message}`);
-              // Leave the merge marker comment — operators can see intent; do not delete.
               throw e;
+            }
+
+            // Marker only after successful merge so transient failures can retry.
+            const mergeBody = [
+              MERGE_MARKER,
+              `Mythos gate auto-merge: Critic+Shield+Probe tip-bound + required checks green on \`${headSha}\`.`,
+              carveOut ? 'Carve-out allow: tip-bound `CARVE-OUT APPROVE` from owner present.' : '',
+            ].filter(Boolean).join('\n');
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: prNumber, body: mergeBody,
+            });
+
+            // GITHUB_TOKEN merges do not re-trigger workflow_run/push workflows.
+            // Dispatch CI on main so packaging still runs when PAT is absent.
+            if (!usedBotToken) {
+              try {
+                await github.rest.actions.createWorkflowDispatch({
+                  owner,
+                  repo,
+                  workflow_id: 'ci.yml',
+                  ref: 'main',
+                });
+                log('Dispatched CI on main after GITHUB_TOKEN merge');
+              } catch (e) {
+                core.warning(`Could not dispatch CI on main after merge: ${e.message}`);
+              }
             }

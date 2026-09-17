@@ -80,4 +80,6 @@ you changed. The Mythos gate workflow (or a human) decides whether it merges.
 - Commits: `fix(<TICKET-ID>): <what>` when a ticket id is known, else `fix(ci): <what>`.
 - PR body must state: the failing job/test, the root cause in one or two sentences, and whether
   the fix is in test code or product code (product code = propose only, do not push).
-- Squash-merge only; never force-push shared branches; never push to `main`.
+- Never force-push shared branches; never push to `main`. Merges into `main` are
+  performed by the Mythos gate workflow as **merge commits** (see *Merge model* /
+  `docs/MERGE_GATE.md`). Do not squash-merge yourself.

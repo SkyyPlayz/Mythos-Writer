@@ -24,8 +24,8 @@ Copilot / CI-fixer agents **never** merge (see `.github/copilot-instructions.md`
    - `notes-windows`
    - `screenshot-check`
    - `carve-out-check` must be **completed** (it never fails the build; it labels/comments only).
-3. **Tip-bound gate signals** — issue comments and/or PR reviews whose bodies reference the **current head SHA** (full or ≥7-char prefix) and include:
-   - Critic: `APPROVE` (COMMENT reviews count; formal GitHub APPROVE is often blocked on author token)
+3. **Tip-bound gate signals from trusted authors** — issue comments and/or PR reviews by allowlisted accounts (`SkyyPlayz`, `SkyHigh-Mythos-Bot`) whose bodies reference the **current head SHA** (full or ≥7-char prefix) and include:
+   - Critic: latest tip-bound decision must be `APPROVE` (COMMENT reviews count; a later tip-bound `CHANGES_REQUESTED` revokes an earlier APPROVE)
    - Shield: `CLEAR`
    - Probe: `VERIFY PASS`
 4. **Carve-outs** — if label `carve-out` is present, or the diff hits carve-out paths (workflows, actions, `db.ts`, auth, secrets, release/electron-builder config), or the active `carve-out-check` sticky still requires review:
@@ -43,14 +43,14 @@ Copilot / CI-fixer agents **never** merge (see `.github/copilot-instructions.md`
 
 ## Tokens
 
-Default: `GITHUB_TOKEN` (repo has `allow_auto_merge=true`).
+Prefer repo secret `MYTHOS_BOT_TOKEN` (SkyHigh-Mythos-Bot PAT with Contents + Pull requests write) when set so the merge push can trigger downstream workflows.
 
-Optional repo secret `MYTHOS_BOT_TOKEN` (SkyHigh-Mythos-Bot PAT with Contents + Pull requests write): used when present if `GITHUB_TOKEN` merge is insufficient (403). Wire later; the workflow already prefers the secret when set.
+Fallback: `GITHUB_TOKEN` (repo has `allow_auto_merge=true`). Because that token does not re-trigger `push` workflows, the gate **dispatches `ci.yml` on `main`** after a successful `GITHUB_TOKEN` merge.
 
 ## Idempotency
 
 - Already-merged PRs are no-ops.
-- On successful merge the workflow comments once:
+- The merge-intent comment is posted **only after** a successful merge API call (so transient merge failures can retry):
   `Mythos gate auto-merge: Critic+Shield+Probe tip-bound + required checks green on <sha>.`
 
 ## Out of scope
