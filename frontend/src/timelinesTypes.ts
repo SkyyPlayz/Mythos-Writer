@@ -30,6 +30,14 @@ export interface TimelineDefinition {
   createdAt: string;
   updatedAt: string;
   source?: TimelineItemSource;
+  /** Multi-calendar: standard-time when-unit where this timeline's local year 0 falls. */
+  ep?: number;
+  /** Multi-calendar: what this world calls year zero ("Landfall", "The Shatter"). */
+  epName?: string;
+  /** Multi-calendar: era suffix stamped on this timeline's own dates ("AL", "TF"). */
+  era?: string;
+  /** Multi-calendar: true for exactly one timeline whose calendar defines the standard year. */
+  std?: boolean;
 }
 
 export interface TimelineEvent {

@@ -2144,7 +2144,7 @@ interface Window {
 
     // SKY-6306 M21: Multi-timeline store
     timelinesGetStore?: () => Promise<{ store: import('./timelinesTypes').TimelinesStore }>;
-    timelinesUpsert?: (payload: { id?: string; name: string; kind: string; calendar?: Record<string, unknown> }) => Promise<{ ok: boolean; id: string; store: import('./timelinesTypes').TimelinesStore }>;
+    timelinesUpsert?: (payload: { id?: string; name: string; kind: string; calendar?: Record<string, unknown>; ep?: number; epName?: string; era?: string; std?: boolean }) => Promise<{ ok: boolean; id: string; store: import('./timelinesTypes').TimelinesStore }>;
     timelinesSetActive?: (timelineId: string) => Promise<{ ok: boolean; store: import('./timelinesTypes').TimelinesStore }>;
     // Beta 4 M22: Axis engine — era/span/event/row item persistence
     timelinesUpsertItem?: (payload: {

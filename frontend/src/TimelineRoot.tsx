@@ -78,7 +78,7 @@ import {
   type QuickAddContext,
 } from './timeline2/panel/quickAdd';
 import { deriveAxisDomain } from './timeline2/axis/domain';
-import { safeCalendar, formatWhen, roundWhen, whenSpanToDays } from './timeline2/axis/calendarCodec';
+import { safeCalendar, formatWhen, roundWhen, whenSpanToDays, resolveStdCalendar } from './timeline2/axis/calendarCodec';
 import { bookChapterRanges, chapterWhen, plotCardWhen, sortedBooks } from './timeline2/axis/chapters';
 import { laneColor } from './timeline2/axis/palette';
 import {
@@ -407,6 +407,27 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
         .catch(() => {});
     },
     [api, activeTimeline, notify],
+  );
+
+  const stdCalendar = useMemo(
+    () => resolveStdCalendar(timelinesStore?.timelines ?? []),
+    [timelinesStore],
+  );
+
+  const handleMultiCalChange = useCallback(
+    (patch: Partial<Pick<import('./timelinesTypes').TimelineDefinition, 'ep' | 'epName' | 'era' | 'std'>>) => {
+      if (!activeTimeline || typeof api.timelinesUpsert !== 'function') return;
+      api.timelinesUpsert({
+        id: activeTimeline.id,
+        name: activeTimeline.name,
+        kind: activeTimeline.kind,
+        calendar: activeTimeline.calendar as unknown as Record<string, unknown>,
+        ...patch,
+      })
+        .then((res) => { if (res.ok) setTimelinesStore(res.store); })
+        .catch(() => {});
+    },
+    [api, activeTimeline],
   );
 
   useEffect(() => {
@@ -1197,6 +1218,9 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
           calendar={activeTimeline.calendar}
           onChange={handleCalendarChange}
           onClose={() => setShowCalendarModal(false)}
+          timeline={activeTimeline}
+          stdCalendar={stdCalendar}
+          onMultiCalChange={handleMultiCalChange}
         />
       )}
 

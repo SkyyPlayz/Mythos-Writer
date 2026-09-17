@@ -57,6 +57,10 @@ export function handleTimelinesUpsert(
         ? { ...store.timelines[idx].calendar, ...payload.calendar }
         : store.timelines[idx].calendar,
       updatedAt: now,
+      ...(payload.ep !== undefined ? { ep: payload.ep } : {}),
+      ...(payload.epName !== undefined ? { epName: payload.epName } : {}),
+      ...(payload.era !== undefined ? { era: payload.era } : {}),
+      ...(payload.std !== undefined ? { std: payload.std || undefined } : {}),
     };
     writeTimelinesStore(vaultRoot, store);
     return { ok: true, id: payload.id, store: readTimelinesStore(vaultRoot) };
