@@ -69,8 +69,20 @@ jobs:
 
       - name: Commit regenerated baselines to a branch and open a PR
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Prefer bot PAT so the opened PR's pull_request event triggers CI /
+          # screenshot-check / carve-out-check (GITHUB_TOKEN events are suppressed).
+          MYTHOS_BOT_TOKEN: ${{ secrets.MYTHOS_BOT_TOKEN }}
+          GH_TOKEN: ${{ secrets.MYTHOS_BOT_TOKEN }}
         run: |
+          if [ -z "${MYTHOS_BOT_TOKEN}" ]; then
+            echo "::error::MYTHOS_BOT_TOKEN is required so VR baseline PRs receive required checks for the Mythos tip-SHA gate. GITHUB_TOKEN-created PRs do not trigger workflows."
+            exit 1
+          fi
+          if [ "${GITHUB_REF_NAME}" != "main" ]; then
+            echo "::error::Dispatch VR Baselines from main only (got '${GITHUB_REF_NAME}'). Mythos gate rejects non-main bases."
+            exit 1
+          fi
+
           git config user.name "vr-baselines-bot"
           git config user.email "noreply@github.com"
           git add e2e/visual-baselines/
@@ -79,14 +91,13 @@ jobs:
             exit 0
           fi
 
-          BASE="${GITHUB_REF_NAME}"
           BRANCH="vr-baselines/refresh-${GITHUB_RUN_ID}"
           git checkout -b "$BRANCH"
           git commit -m "test(vr): regenerate visual baselines on hosted runner"
           git push origin "HEAD:$BRANCH"
 
           gh pr create \
-            --base "$BASE" \
+            --base main \
             --head "$BRANCH" \
             --title "test(vr): regenerate visual baselines" \
             --body "Automated visual-regression baseline refresh (workflow run ${GITHUB_RUN_ID}). Does **not** auto-merge — lands only via Mythos tip-SHA gate (Critic APPROVE + Shield CLEAR + Probe VERIFY PASS + required checks). See docs/MERGE_GATE.md."
