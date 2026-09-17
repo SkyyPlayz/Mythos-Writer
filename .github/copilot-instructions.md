@@ -39,8 +39,10 @@ Owner: Skyy. Operations: Ivy (Co-Owner). Adopted 2026-08-27.
 
 1. An engineer/agent opens the PR. Required checks must be green on the **current tip SHA**:
    **`ci`**, **`notes-windows`**, **`screenshot-check`** (plus completed **`carve-out-check`**).
-2. Tip-bound gate signals (comment/review bodies that cite the tip SHA): Critic **APPROVE**,
-   Shield **CLEAR**, Probe **VERIFY PASS**.
+2. Tip-bound gate signals from **trusted authors only** (`SkyyPlayz`, `SkyHigh-Mythos-Bot`):
+   comment/review bodies that cite the tip SHA with Critic **APPROVE**, Shield **CLEAR**,
+   and Probe **VERIFY PASS** (Probe body must include both `Probe` and `VERIFY PASS`).
+   Unknown / missing author → fail closed (no merge).
 3. [`.github/workflows/mythos-gate-auto-merge.yml`](workflows/mythos-gate-auto-merge.yml) merges with a
    **merge commit** only when all of the above hold (fail-closed). See [`docs/MERGE_GATE.md`](../docs/MERGE_GATE.md).
 4. Carve-out paths (`.github/workflows/**`, migrations, auth, secrets, release config) **do not**
