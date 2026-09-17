@@ -424,10 +424,13 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
         calendar: activeTimeline.calendar as unknown as Record<string, unknown>,
         ...patch,
       })
-        .then((res) => { if (res.ok) setTimelinesStore(res.store); })
-        .catch(() => {});
+        .then((res) => {
+          if (res.ok) setTimelinesStore(res.store);
+          else notify('Could not update calendar settings', 'error');
+        })
+        .catch(() => { notify('Could not update calendar settings', 'error'); });
     },
-    [api, activeTimeline],
+    [api, activeTimeline, notify],
   );
 
   useEffect(() => {
@@ -1220,6 +1223,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
           onClose={() => setShowCalendarModal(false)}
           timeline={activeTimeline}
           stdCalendar={stdCalendar}
+          stdEra={timelinesStore?.timelines.find((t) => t.std)?.era}
           onMultiCalChange={handleMultiCalChange}
         />
       )}

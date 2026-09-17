@@ -92,6 +92,13 @@ describe('handleTimelinesUpsert', () => {
     expect(tl?.epName).toBe('Landfall');
     expect(tl?.era).toBe('AL');
   });
+
+  it('clears epName when sent as empty string', () => {
+    const res = handleTimelinesUpsert(dir, { name: 'Kepler', kind: 'world', epName: 'Landfall' });
+    expect(res.store.timelines.find((t) => t.id === res.id)?.epName).toBe('Landfall');
+    const res2 = handleTimelinesUpsert(dir, { id: res.id, name: 'Kepler', kind: 'world', epName: '' });
+    expect(res2.store.timelines.find((t) => t.id === res.id)?.epName).toBeUndefined();
+  });
 });
 
 describe('handleTimelinesSetActive', () => {

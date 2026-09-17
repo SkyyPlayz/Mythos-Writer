@@ -27,6 +27,8 @@ export interface CalendarEditorModalProps {
   timeline?: TimelineDefinition;
   /** Standard calendar resolved from the store. */
   stdCalendar?: TimelineCalendar;
+  /** Era suffix of the standard timeline (e.g. "EC"). */
+  stdEra?: string;
   /** Called when the user changes epoch, epName, era, or std. */
   onMultiCalChange?: (patch: Partial<Pick<TimelineDefinition, 'ep' | 'epName' | 'era' | 'std'>>) => void;
 }
@@ -55,6 +57,7 @@ export default function CalendarEditorModal({
   onClose,
   timeline,
   stdCalendar,
+  stdEra,
   onMultiCalChange,
 }: CalendarEditorModalProps) {
   const commitField = (key: (typeof FIELD_ROWS)[number]['key'], raw: string) => {
@@ -69,6 +72,7 @@ export default function CalendarEditorModal({
   const ratio = timeline ? calendarRatio(timeline, safeStdCal) : 1;
   const localHpy = hoursPerYear(safeCal);
   const stdHpy = hoursPerYear(safeStdCal);
+  const resolvedStdEra = stdEra || 'EC';
 
   const conversionTable = useMemo(() => {
     if (!timeline || isStd || !stdCalendar) return null;
@@ -140,7 +144,7 @@ export default function CalendarEditorModal({
               <input
                 className="t2m-field-input t2m-cal-input"
                 defaultValue={timeline?.epName ?? ''}
-                onBlur={(e) => onMultiCalChange!({ epName: e.target.value || undefined })}
+                onBlur={(e) => onMultiCalChange!({ epName: e.target.value })}
                 aria-label="Name of year zero"
                 data-testid="cem-epName"
               />
@@ -193,7 +197,7 @@ export default function CalendarEditorModal({
       {conversionTable && timeline && (
         <>
           <div className="t2m-section-label" data-testid="cem-conversion-head">
-            THIS WORLD SAYS → YOU FILE IT AT (EC)
+            THIS WORLD SAYS → YOU FILE IT AT ({resolvedStdEra})
           </div>
           <div className="t2m-conv-table" data-testid="cem-conversion-table">
             {conversionTable.map((row, i) => (
@@ -202,7 +206,7 @@ export default function CalendarEditorModal({
                   {row.localYear} {eraOf(timeline)}
                 </span>
                 <span className="t2m-conv-arrow" aria-hidden="true">→</span>
-                <span className="t2m-conv-std">{row.stdYear} EC</span>
+                <span className="t2m-conv-std">{row.stdYear} {resolvedStdEra}</span>
               </div>
             ))}
           </div>

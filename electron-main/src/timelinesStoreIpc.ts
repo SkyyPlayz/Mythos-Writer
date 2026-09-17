@@ -58,7 +58,7 @@ export function handleTimelinesUpsert(
         : store.timelines[idx].calendar,
       updatedAt: now,
       ...(payload.ep !== undefined ? { ep: payload.ep } : {}),
-      ...(payload.epName !== undefined ? { epName: payload.epName } : {}),
+      ...(payload.epName !== undefined ? { epName: payload.epName || undefined } : {}),
       ...(payload.era !== undefined ? { era: payload.era } : {}),
       ...(payload.std !== undefined ? { std: payload.std || undefined } : {}),
     };
@@ -87,7 +87,7 @@ export function handleTimelinesUpsert(
     updatedAt: now,
     source: 'manual' as const,
     ...(payload.ep !== undefined ? { ep: payload.ep } : {}),
-    ...(payload.epName !== undefined ? { epName: payload.epName } : {}),
+    ...(payload.epName !== undefined ? { epName: payload.epName || undefined } : {}),
     ...(payload.era !== undefined ? { era: payload.era } : {}),
     ...(payload.std !== undefined ? { std: payload.std || undefined } : {}),
   };
