@@ -1,7 +1,19 @@
 // Beta 4 M22 — Per-timeline calendar editor modal (§8.3, prototype
 // 3738–3772): three number fields (months/yr · days/mo · hours/day) +
 // presets `Earth-like — 12 × 30 · 24h` / `Strange world — 13 × 28 · 18h`.
-import type { TimelineCalendar } from '../timelinesTypes';
+//
+// 0.5.3 multi-calendar (SKY-11698 §6): epoch, era, conversion table, live
+// ratio note for non-standard timelines.
+import { useMemo } from 'react';
+import type { TimelineCalendar, TimelineDefinition } from '../timelinesTypes';
+import {
+  calendarRatio,
+  buildConversionTable,
+  eraOf,
+  hoursPerYear,
+  safeCalendar,
+  timelineEpoch,
+} from './axis/calendarCodec';
 import Dialog from '../components/ui/Dialog';
 import './Timeline2Modals.css';
 
@@ -11,6 +23,14 @@ export interface CalendarEditorModalProps {
   /** Called with the updated calendar; presetLabel set when a preset chip was picked (for the toast). */
   onChange: (calendar: TimelineCalendar, presetLabel?: string) => void;
   onClose: () => void;
+  /** Multi-calendar fields for the active timeline (optional — absent hides epoch/era UI). */
+  timeline?: TimelineDefinition;
+  /** Standard calendar resolved from the store. */
+  stdCalendar?: TimelineCalendar;
+  /** Era suffix of the standard timeline (e.g. "EC"). */
+  stdEra?: string;
+  /** Called when the user changes epoch, epName, era, or std. */
+  onMultiCalChange?: (patch: Partial<Pick<TimelineDefinition, 'ep' | 'epName' | 'era' | 'std'>>) => void;
 }
 
 const FIELD_ROWS: { key: 'monthsPerYear' | 'daysPerMonth' | 'hoursPerDay'; label: string }[] = [
@@ -35,12 +55,34 @@ export default function CalendarEditorModal({
   calendar,
   onChange,
   onClose,
+  timeline,
+  stdCalendar,
+  stdEra,
+  onMultiCalChange,
 }: CalendarEditorModalProps) {
   const commitField = (key: (typeof FIELD_ROWS)[number]['key'], raw: string) => {
     const n = parseInt(raw, 10);
-    if (Number.isNaN(n) || n <= 0) return; // prototype: only positive integers commit
+    if (Number.isNaN(n) || n <= 0) return;
     onChange({ ...calendar, preset: 'custom', [key]: n });
   };
+
+  const isStd = timeline?.std === true;
+  const safeCal = safeCalendar(calendar);
+  const safeStdCal = safeCalendar(stdCalendar);
+  const ratio = timeline ? calendarRatio(timeline, safeStdCal) : 1;
+  const localHpy = hoursPerYear(safeCal);
+  const stdHpy = hoursPerYear(safeStdCal);
+  const resolvedStdEra = stdEra || 'EC';
+
+  const conversionTable = useMemo(() => {
+    if (!timeline || isStd || !stdCalendar) return null;
+    const ep = timelineEpoch(timeline, safeStdCal);
+    const epYear = (ep * 10) / stdHpy;
+    const localEnd = Math.max(10, Math.round(epYear > 0 ? 125 : 100));
+    return buildConversionTable(timeline, safeStdCal, 0, localEnd, 5);
+  }, [timeline, isStd, stdCalendar, safeStdCal, stdHpy]);
+
+  const showMultiCal = Boolean(timeline && stdCalendar && onMultiCalChange);
 
   return (
     <Dialog
@@ -64,6 +106,7 @@ export default function CalendarEditorModal({
       <div className="t2m-note">
         Each timeline can run its own calendar — a 13-month world with 28-day months and 18-hour
         days plots just as cleanly. Dates entered in the time picker use these units.
+        {isStd && <><br /><b>This is the universal standard.</b></>}
       </div>
       <div className="t2m-cal-rows">
         {FIELD_ROWS.map((row) => (
@@ -80,6 +123,96 @@ export default function CalendarEditorModal({
           </div>
         ))}
       </div>
+
+      {/* Multi-calendar: ratio note */}
+      {showMultiCal && !isStd && (
+        <div className="t2m-note" data-testid="cem-ratio-note">
+          One local year = <b>{ratio.toFixed(ratio === Math.round(ratio) ? 1 : 3)} standard year{ratio === 1 ? '' : 's'}</b>
+          {' · '}{localHpy} local hours vs {stdHpy} standard
+          {safeCal.hoursPerDay !== safeStdCal.hoursPerDay &&
+            ` · a local day is ${safeCal.hoursPerDay}h against the standard ${safeStdCal.hoursPerDay}h`}
+        </div>
+      )}
+
+      {/* Multi-calendar: epoch + era */}
+      {showMultiCal && (
+        <>
+          <div className="t2m-section-label">WHERE ITS YEAR 0 LANDS</div>
+          <div className="t2m-cal-rows">
+            <div className="t2m-cal-row">
+              <span className="t2m-cal-label">Name of year zero</span>
+              <input
+                className="t2m-field-input t2m-cal-input"
+                defaultValue={timeline?.epName ?? ''}
+                onBlur={(e) => onMultiCalChange!({ epName: e.target.value })}
+                aria-label="Name of year zero"
+                data-testid="cem-epName"
+              />
+            </div>
+            {!isStd && (
+              <div className="t2m-cal-row">
+                <span className="t2m-cal-label">Standard year it falls on</span>
+                <input
+                  className="t2m-field-input t2m-cal-input"
+                  defaultValue={timeline?.ep != null ? String(Math.round((timeline.ep * 10) / stdHpy)) : ''}
+                  onBlur={(e) => {
+                    const n = parseInt(e.target.value, 10);
+                    if (Number.isNaN(n)) return;
+                    onMultiCalChange!({ ep: (n * stdHpy) / 10 });
+                  }}
+                  inputMode="numeric"
+                  aria-label="Epoch standard year"
+                  data-testid="cem-ep"
+                />
+              </div>
+            )}
+            <div className="t2m-cal-row">
+              <span className="t2m-cal-label">Era suffix</span>
+              <input
+                className="t2m-field-input t2m-cal-input"
+                defaultValue={timeline?.era ?? 'EC'}
+                onBlur={(e) => onMultiCalChange!({ era: e.target.value || 'EC' })}
+                aria-label="Era suffix"
+                data-testid="cem-era"
+              />
+            </div>
+            {!isStd && (
+              <div className="t2m-cal-row">
+                <label className="t2m-cal-label">
+                  <input
+                    type="checkbox"
+                    checked={isStd}
+                    onChange={(e) => onMultiCalChange!({ std: e.target.checked || undefined })}
+                    data-testid="cem-std"
+                  />{' '}
+                  This is the universal standard
+                </label>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Multi-calendar: conversion table */}
+      {conversionTable && timeline && (
+        <>
+          <div className="t2m-section-label" data-testid="cem-conversion-head">
+            THIS WORLD SAYS → YOU FILE IT AT ({resolvedStdEra})
+          </div>
+          <div className="t2m-conv-table" data-testid="cem-conversion-table">
+            {conversionTable.map((row, i) => (
+              <div className="t2m-conv-row" key={i}>
+                <span className="t2m-conv-local">
+                  {row.localYear} {eraOf(timeline)}
+                </span>
+                <span className="t2m-conv-arrow" aria-hidden="true">→</span>
+                <span className="t2m-conv-std">{row.stdYear} {resolvedStdEra}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
       <div className="t2m-section-label">PRESETS</div>
       <div className="t2m-presets">
         {PRESETS.map((preset) => (

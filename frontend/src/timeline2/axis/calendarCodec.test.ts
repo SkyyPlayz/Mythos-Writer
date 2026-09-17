@@ -152,3 +152,184 @@ describe('whenSpanToDays — TIMELINE NAVIGATOR "Est. N days" (prototype tlBooks
     expect(whenSpanToDays(0, STANDARD)).toBe(0);
   });
 });
+
+// ─── 0.5.3 Multi-calendar conversion (spec §1.3, §10) ──────────────────────
+
+import {
+  calendarRatio,
+  timelineEpoch,
+  toStandard,
+  toLocal,
+  eraOf,
+  formatLocalYear,
+  calendarSignature,
+  resolveStdCalendar,
+  buildConversionTable,
+  whenRoundTripError,
+} from './calendarCodec';
+import type { TimelineDefinition } from '../../timelinesTypes';
+
+const KEPLER: TimelineCalendar = { preset: 'custom', monthsPerYear: 10, daysPerMonth: 72, hoursPerDay: 24 };
+const AETHIS: TimelineCalendar = { preset: 'custom', monthsPerYear: 8, daysPerMonth: 44, hoursPerDay: 19 };
+
+function makeTl(overrides: Partial<TimelineDefinition>): TimelineDefinition {
+  return {
+    id: 'test',
+    name: 'Test',
+    kind: 'world',
+    axis: 'calendar',
+    calendar: STANDARD,
+    createdAt: '',
+    updatedAt: '',
+    ...overrides,
+  };
+}
+
+describe('calendarRatio', () => {
+  it('Kepler (10×72×24h vs 12×30×24h) = 2.0', () => {
+    expect(calendarRatio(makeTl({ calendar: KEPLER }), STANDARD)).toBe(2);
+  });
+
+  it('Aethis (8×44×19h vs 12×30×24h) ≈ 0.774', () => {
+    expect(calendarRatio(makeTl({ calendar: AETHIS }), STANDARD)).toBeCloseTo(0.774, 3);
+  });
+
+  it('standard vs standard = 1.0', () => {
+    expect(calendarRatio(makeTl({ calendar: STANDARD }), STANDARD)).toBe(1);
+  });
+});
+
+describe('timelineEpoch', () => {
+  it('reads ep when present', () => {
+    const wpy_std = hoursPerYear(STANDARD) / 10;
+    const ep347 = 347 * wpy_std;
+    expect(timelineEpoch(makeTl({ ep: ep347 }), STANDARD)).toBe(ep347);
+  });
+
+  it('derives back-compat default when ep absent', () => {
+    const tl = makeTl({ calendar: KEPLER });
+    expect(timelineEpoch(tl, STANDARD, 0)).toBe(0);
+  });
+});
+
+describe('toStandard / toLocal — spec §10 AC1 (Kepler bar placement)', () => {
+  const stdCal = STANDARD;
+  const hpyStd = hoursPerYear(stdCal);
+  const hpyKepler = hoursPerYear(KEPLER);
+  const wpy_std = hpyStd / 10;
+  const ep347 = 347 * wpy_std;
+  const kepler = makeTl({ calendar: KEPLER, ep: ep347, era: 'AL', epName: 'Landfall' });
+
+  it('local year 0 maps to standard year 347', () => {
+    const localWhen0 = 0;
+    const stdWhen = toStandard(kepler, stdCal, localWhen0);
+    const stdYear = (stdWhen * 10) / hpyStd;
+    expect(stdYear).toBeCloseTo(347, 6);
+  });
+
+  it('local year 100 maps to standard year 547', () => {
+    const localWhen100 = (100 * hpyKepler) / 10;
+    const stdWhen = toStandard(kepler, stdCal, localWhen100);
+    const stdYear = (stdWhen * 10) / hpyStd;
+    expect(stdYear).toBeCloseTo(547, 6);
+  });
+
+  it('range 0–125 AL spans 250 standard years', () => {
+    const localWhen0 = 0;
+    const localWhen125 = (125 * hpyKepler) / 10;
+    const stdStart = toStandard(kepler, stdCal, localWhen0);
+    const stdEnd = toStandard(kepler, stdCal, localWhen125);
+    const stdSpanYears = ((stdEnd - stdStart) * 10) / hpyStd;
+    expect(stdSpanYears).toBeCloseTo(250, 6);
+  });
+
+  it('toLocal inverts toStandard', () => {
+    const localWhen = (76 * hpyKepler) / 10;
+    const stdWhen = toStandard(kepler, stdCal, localWhen);
+    const back = toLocal(kepler, stdCal, stdWhen);
+    expect(back).toBeCloseTo(localWhen, 6);
+  });
+});
+
+describe('eraOf / formatLocalYear', () => {
+  it('returns era or falls back to EC', () => {
+    expect(eraOf(makeTl({ era: 'AL' }))).toBe('AL');
+    expect(eraOf(makeTl({}))).toBe('EC');
+    expect(eraOf(makeTl({ era: '' }))).toBe('EC');
+  });
+
+  it('spec §3: local dates never stamped with another era', () => {
+    expect(formatLocalYear(76, makeTl({ era: 'AL' }))).toBe('76 AL');
+    expect(formatLocalYear(76, makeTl({ era: 'EC' }))).toBe('76 EC');
+  });
+});
+
+describe('calendarSignature', () => {
+  it('compact format', () => {
+    expect(calendarSignature(KEPLER)).toBe('10 × 72 · 24h');
+    expect(calendarSignature(STANDARD)).toBe('12 × 30 · 24h');
+  });
+});
+
+describe('resolveStdCalendar', () => {
+  it('picks the std=true timeline', () => {
+    const tls = [
+      makeTl({ id: 'uni', calendar: STANDARD, std: true }),
+      makeTl({ id: 'kep', calendar: KEPLER }),
+    ];
+    expect(resolveStdCalendar(tls)).toEqual(STANDARD);
+  });
+
+  it('falls back to DEFAULT_CALENDAR when none marked', () => {
+    expect(resolveStdCalendar([makeTl({})])).toEqual(DEFAULT_CALENDAR);
+  });
+});
+
+describe('buildConversionTable — spec §6 (Kepler conversion)', () => {
+  const stdCal = STANDARD;
+  const wpy_std = hoursPerYear(stdCal) / 10;
+  const ep347 = 347 * wpy_std;
+  const kepler = makeTl({ calendar: KEPLER, ep: ep347, era: 'AL' });
+
+  it('0 AL → 347 EC, 124 AL → 595 EC (approx)', () => {
+    const table = buildConversionTable(kepler, stdCal, 0, 124, 5);
+    expect(table[0].localYear).toBe(0);
+    expect(table[0].stdYear).toBe(347);
+    const last = table[table.length - 1];
+    expect(last.localYear).toBe(124);
+    expect(last.stdYear).toBe(595);
+  });
+});
+
+describe('whenRoundTripError — spec §1.2 (precision ≤1e-6)', () => {
+  it('standard calendar round-trips exactly', () => {
+    expect(whenRoundTripError({ year: 871, month: 3, day: 14, hour: 6 }, STANDARD)).toBe(0);
+  });
+
+  it('13×28×18 calendar round-trips exactly', () => {
+    expect(whenRoundTripError({ year: 42, month: 7, day: 1, hour: 9 }, AEON13)).toBe(0);
+  });
+
+  it('Kepler calendar round-trips exactly', () => {
+    expect(whenRoundTripError({ year: 100, month: 5, day: 36, hour: 12 }, KEPLER)).toBe(0);
+  });
+});
+
+describe('spec §10 AC2 — changing standard calendar re-derives ratios', () => {
+  it('ratio updates when standard calendar changes', () => {
+    const r1 = calendarRatio(makeTl({ calendar: KEPLER }), STANDARD);
+    const newStd: TimelineCalendar = { preset: 'custom', monthsPerYear: 12, daysPerMonth: 30, hoursPerDay: 12 };
+    const r2 = calendarRatio(makeTl({ calendar: KEPLER }), newStd);
+    expect(r2).toBe(r1 * 2);
+  });
+});
+
+describe('spec §10 AC4 — local dates never stamped with another era', () => {
+  it('Kepler year never says EC', () => {
+    const kepler = makeTl({ era: 'AL' });
+    const veynn = makeTl({ era: 'EC' });
+    expect(formatLocalYear(76, kepler)).toContain('AL');
+    expect(formatLocalYear(76, kepler)).not.toContain('EC');
+    expect(formatLocalYear(76, veynn)).toContain('EC');
+  });
+});

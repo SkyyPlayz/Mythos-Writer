@@ -10,7 +10,7 @@
 // input — out-of-range parts clamp into the calendar and non-finite values
 // fall back to the axis start (§8.2: "a NaN once blanked the app; never
 // again").
-import type { TimelineCalendar } from '../../timelinesTypes';
+import type { TimelineCalendar, TimelineDefinition } from '../../timelinesTypes';
 
 export interface TimelineInstant {
   year: number;
@@ -142,4 +142,131 @@ function finiteOr(value: unknown, fallback: number): number {
 
 function clampInt(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, Math.trunc(value)));
+}
+
+// ─── Multi-calendar conversion (spec §1.3) ──────────────────────────────────
+
+/**
+ * Ratio of a timeline's year length to the standard year.
+ * `stdCalendar` is the calendar of the timeline marked `std: true`.
+ */
+export function calendarRatio(
+  tl: Pick<TimelineDefinition, 'calendar'>,
+  stdCalendar: TimelineCalendar,
+): number {
+  return hoursPerYear(safeCalendar(tl.calendar)) / hoursPerYear(safeCalendar(stdCalendar));
+}
+
+/**
+ * The epoch: standard-time when-unit where this timeline's local year 0 falls.
+ * Back-compat: when `ep` is absent, derives from `axis[0] × (1 − ratio)`.
+ */
+export function timelineEpoch(
+  tl: Pick<TimelineDefinition, 'ep' | 'calendar'>,
+  stdCalendar: TimelineCalendar,
+  axisStart = 0,
+): number {
+  if (tl.ep != null && Number.isFinite(tl.ep)) return tl.ep;
+  const result = axisStart * (1 - calendarRatio(tl, stdCalendar));
+  return result === 0 ? 0 : result;
+}
+
+/** Convert a local when-unit to standard when-units.
+ * When-units are absolute_hours/10 — a universal physical time unit —
+ * so conversion is just an epoch offset, not a ratio multiplication.
+ * (The ratio applies to year *numbers*, not when-units.)
+ */
+export function toStandard(
+  tl: Pick<TimelineDefinition, 'ep' | 'calendar'>,
+  stdCalendar: TimelineCalendar,
+  localWhen: number,
+  axisStart = 0,
+): number {
+  const ep = timelineEpoch(tl, stdCalendar, axisStart);
+  return ep + localWhen;
+}
+
+/** Convert a standard when-unit to local when-units. */
+export function toLocal(
+  tl: Pick<TimelineDefinition, 'ep' | 'calendar'>,
+  stdCalendar: TimelineCalendar,
+  stdWhen: number,
+  axisStart = 0,
+): number {
+  const ep = timelineEpoch(tl, stdCalendar, axisStart);
+  return stdWhen - ep;
+}
+
+/** Era suffix for a timeline — falls back to "EC" when absent. */
+export function eraOf(tl: Pick<TimelineDefinition, 'era'>): string {
+  return tl.era || 'EC';
+}
+
+/** Format a year with the timeline's era: `76 AL`. */
+export function formatLocalYear(year: number, tl: Pick<TimelineDefinition, 'era'>): string {
+  return `${Math.round(year)} ${eraOf(tl)}`;
+}
+
+/**
+ * Calendar signature: compact `months × days · hours h` string.
+ * Used in the navigator and calendar editor.
+ */
+export function calendarSignature(calendar: TimelineCalendar): string {
+  const cal = safeCalendar(calendar);
+  return `${cal.monthsPerYear} × ${cal.daysPerMonth} · ${cal.hoursPerDay}h`;
+}
+
+/**
+ * Resolve the standard calendar from a store — the calendar of the one
+ * timeline marked `std: true`, or `DEFAULT_CALENDAR` if none.
+ */
+export function resolveStdCalendar(
+  timelines: ReadonlyArray<Pick<TimelineDefinition, 'std' | 'calendar'>>,
+): TimelineCalendar {
+  const std = timelines.find((t) => t.std);
+  return std ? safeCalendar(std.calendar) : DEFAULT_CALENDAR;
+}
+
+/**
+ * Build a conversion table: N evenly-spaced local years → standard equivalents.
+ * Returns rows like `{ local: 0, std: 347 }` for the calendar editor.
+ */
+export function buildConversionTable(
+  tl: Pick<TimelineDefinition, 'ep' | 'calendar' | 'era'>,
+  stdCalendar: TimelineCalendar,
+  localStart: number,
+  localEnd: number,
+  rows = 5,
+): Array<{ localYear: number; stdYear: number }> {
+  if (rows < 2) rows = 2;
+  const hpyLocal = hoursPerYear(safeCalendar(tl.calendar));
+  const hpyStd = hoursPerYear(safeCalendar(stdCalendar));
+  const step = (localEnd - localStart) / (rows - 1);
+  const table: Array<{ localYear: number; stdYear: number }> = [];
+  for (let i = 0; i < rows; i++) {
+    const localYear = localStart + step * i;
+    const localWhen = (localYear * hpyLocal) / 10;
+    const stdWhen = toStandard(tl, stdCalendar, localWhen);
+    const stdYear = (stdWhen * 10) / hpyStd;
+    table.push({ localYear: Math.round(localYear), stdYear: Math.round(stdYear) });
+  }
+  return table;
+}
+
+/**
+ * Round-trip precision check: `whenDecode(whenEncode(y, m, d, h))` must match
+ * the original within ≤1e-6. Used in acceptance tests.
+ */
+export function whenRoundTripError(
+  instant: TimelineInstant,
+  calendar: TimelineCalendar,
+): number {
+  const encoded = safeEncodeWhen(instant, calendar);
+  const decoded = safeDecodeWhen(encoded, calendar);
+  return (
+    Math.abs(decoded.year - instant.year) +
+    Math.abs(decoded.month - instant.month) +
+    Math.abs(decoded.day - instant.day) +
+    Math.abs(decoded.hour - instant.hour)
+  );
 }

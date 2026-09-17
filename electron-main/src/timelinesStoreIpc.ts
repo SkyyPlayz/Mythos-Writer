@@ -57,7 +57,16 @@ export function handleTimelinesUpsert(
         ? { ...store.timelines[idx].calendar, ...payload.calendar }
         : store.timelines[idx].calendar,
       updatedAt: now,
+      ...(payload.ep !== undefined ? { ep: payload.ep } : {}),
+      ...(payload.epName !== undefined ? { epName: payload.epName || undefined } : {}),
+      ...(payload.era !== undefined ? { era: payload.era } : {}),
+      ...(payload.std !== undefined ? { std: payload.std || undefined } : {}),
     };
+    if (payload.std) {
+      for (let i = 0; i < store.timelines.length; i++) {
+        if (i !== idx) delete store.timelines[i].std;
+      }
+    }
     writeTimelinesStore(vaultRoot, store);
     return { ok: true, id: payload.id, store: readTimelinesStore(vaultRoot) };
   }
@@ -68,16 +77,26 @@ export function handleTimelinesUpsert(
     ...DEFAULT_TIMELINE_CALENDAR,
     ...payload.calendar,
   };
-  store.timelines.push({
+  const newTl = {
     id,
     name: payload.name,
     kind: payload.kind,
-    axis: 'calendar',
+    axis: 'calendar' as const,
     calendar,
     createdAt: now,
     updatedAt: now,
-    source: 'manual',
-  });
+    source: 'manual' as const,
+    ...(payload.ep !== undefined ? { ep: payload.ep } : {}),
+    ...(payload.epName !== undefined ? { epName: payload.epName || undefined } : {}),
+    ...(payload.era !== undefined ? { era: payload.era } : {}),
+    ...(payload.std !== undefined ? { std: payload.std || undefined } : {}),
+  };
+  store.timelines.push(newTl);
+  if (payload.std) {
+    for (const tl of store.timelines) {
+      if (tl.id !== id) delete tl.std;
+    }
+  }
   writeTimelinesStore(vaultRoot, store);
   return { ok: true, id, store: readTimelinesStore(vaultRoot) };
 }

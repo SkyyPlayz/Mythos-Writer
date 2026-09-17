@@ -6054,6 +6054,10 @@ export interface TimelinesUpsertPayload {
   name: string;
   kind: TimelineKind;
   calendar?: Partial<TimelineCalendar>;
+  ep?: number;
+  epName?: string;
+  era?: string;
+  std?: boolean;
 }
 export interface TimelinesUpsertResponse { ok: boolean; id: string; store: TimelinesStore; }
 

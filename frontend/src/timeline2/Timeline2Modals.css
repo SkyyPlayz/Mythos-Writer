@@ -228,3 +228,36 @@
 .t2m-btn--primary:hover {
   transform: scale(1.04);
 }
+
+/* 0.5.3 multi-calendar: conversion table rows */
+.t2m-conv-table {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 13px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.t2m-conv-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  color: #aebad0;
+}
+
+.t2m-conv-local {
+  min-width: 70px;
+  text-align: right;
+  color: var(--n2, #9b5fff);
+}
+
+.t2m-conv-arrow {
+  color: #586a88;
+  font-size: 10px;
+}
+
+.t2m-conv-std {
+  color: var(--n1, #00f0ff);
+}

@@ -39,6 +39,11 @@ import {
   roundWhen,
   safeCalendar,
   safeDecodeWhen,
+  calendarRatio,
+  calendarSignature,
+  eraOf,
+  resolveStdCalendar,
+  toStandard,
 } from './axis/calendarCodec';
 import { AXIS_ZOOM_SEGS, axisPct, axisPctL, generateTicks, type AxisZoomSeg } from './axis/ticks';
 import { applyWheelZoom, canvasMinWidth } from './axis/zoom';
@@ -870,6 +875,25 @@ export default function AxisView({
                   const embedDomain: AxisDomain | null = embedTl
                     ? deriveAxisDomain(localStore, embedTl.id, safeCalendar(embedTl.calendar))
                     : null;
+                  const embedSub = (() => {
+                    if (!embedTl) return 'timeline · click to open';
+                    const stdCal = resolveStdCalendar(localStore.timelines);
+                    const stdTl = localStore.timelines.find((t) => t.std);
+                    const stdEra = stdTl ? eraOf(stdTl) : 'EC';
+                    const r = calendarRatio(embedTl, stdCal);
+                    const era = eraOf(embedTl);
+                    if (embedDomain) {
+                      const localCal = safeCalendar(embedTl.calendar);
+                      const hpyLocal = localCal.monthsPerYear * localCal.daysPerMonth * localCal.hoursPerDay;
+                      const localStart = Math.round((embedDomain[0] * 10) / hpyLocal);
+                      const localEnd = Math.round((embedDomain[1] * 10) / hpyLocal);
+                      const stdHpy = stdCal.monthsPerYear * stdCal.daysPerMonth * stdCal.hoursPerDay;
+                      const stdStart = Math.round((toStandard(embedTl, stdCal, embedDomain[0]) * 10) / stdHpy);
+                      const stdEnd = Math.round((toStandard(embedTl, stdCal, embedDomain[1]) * 10) / stdHpy);
+                      return `${localStart}–${localEnd} ${era}  =  ${stdStart}–${stdEnd} ${stdEra} · ×${r.toFixed(r === Math.round(r) ? 0 : 2)}`;
+                    }
+                    return `${calendarSignature(embedTl.calendar)} · ×${r.toFixed(r === Math.round(r) ? 0 : 2)}`;
+                  })();
                   return (
                     <div
                       key={span.id}
@@ -886,7 +910,7 @@ export default function AxisView({
                       }}
                       title={
                         embedded
-                          ? `${span.name} — embedded timeline · click to open`
+                          ? `${span.name} — ${embedSub} · click to open`
                           : 'Drag to move · drag edges to resize · click to edit'
                       }
                       onClick={(e) =>
@@ -934,7 +958,7 @@ export default function AxisView({
                         {span.name}
                       </div>
                       <div className="ax-span-sub">
-                        {embedded ? 'timeline · click to open' : formatWhen(span.startWhen, calendar, t0)}
+                        {embedded ? embedSub : formatWhen(span.startWhen, calendar, t0)}
                       </div>
                     </div>
                   );

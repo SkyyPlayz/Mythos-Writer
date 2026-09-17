@@ -68,6 +68,37 @@ describe('handleTimelinesUpsert', () => {
     const res = handleTimelinesUpsert(dir, { name: 'Mine', kind: 'custom' });
     expect(res.store.timelines.find((t) => t.id === res.id)?.source).toBe('manual');
   });
+
+  it('setting std clears std on all other timelines (exclusivity)', () => {
+    const a = handleTimelinesUpsert(dir, { name: 'A', kind: 'world', std: true });
+    expect(a.store.timelines.find((t) => t.id === a.id)?.std).toBe(true);
+    const b = handleTimelinesUpsert(dir, { name: 'B', kind: 'world', std: true });
+    expect(b.store.timelines.find((t) => t.id === b.id)?.std).toBe(true);
+    expect(b.store.timelines.find((t) => t.id === a.id)?.std).toBeUndefined();
+  });
+
+  it('setting std on update clears std on others', () => {
+    const a = handleTimelinesUpsert(dir, { name: 'A', kind: 'world', std: true });
+    const b = handleTimelinesUpsert(dir, { name: 'B', kind: 'world' });
+    const res = handleTimelinesUpsert(dir, { id: b.id, name: 'B', kind: 'world', std: true });
+    expect(res.store.timelines.find((t) => t.id === b.id)?.std).toBe(true);
+    expect(res.store.timelines.find((t) => t.id === a.id)?.std).toBeUndefined();
+  });
+
+  it('persists multi-calendar fields (ep, epName, era) on create', () => {
+    const res = handleTimelinesUpsert(dir, { name: 'Kepler', kind: 'world', ep: 299808, epName: 'Landfall', era: 'AL' });
+    const tl = res.store.timelines.find((t) => t.id === res.id);
+    expect(tl?.ep).toBe(299808);
+    expect(tl?.epName).toBe('Landfall');
+    expect(tl?.era).toBe('AL');
+  });
+
+  it('clears epName when sent as empty string', () => {
+    const res = handleTimelinesUpsert(dir, { name: 'Kepler', kind: 'world', epName: 'Landfall' });
+    expect(res.store.timelines.find((t) => t.id === res.id)?.epName).toBe('Landfall');
+    const res2 = handleTimelinesUpsert(dir, { id: res.id, name: 'Kepler', kind: 'world', epName: '' });
+    expect(res2.store.timelines.find((t) => t.id === res.id)?.epName).toBeUndefined();
+  });
 });
 
 describe('handleTimelinesSetActive', () => {
