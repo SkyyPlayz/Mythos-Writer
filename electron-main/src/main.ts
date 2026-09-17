@@ -4178,6 +4178,7 @@ const handlers: IpcHandlers = {
 
       // Register notes vault root and set layoutMode:imported + onboardingComplete.
       saveVaultSettings({ notesVaultRoot: resolvedSource, layoutMode: 'imported' });
+      addToRecentProjects(getVaultRoot(), resolvedSource);
       const currentApp = loadAppSettings();
       saveAppSettings({ ...currentApp, onboardingComplete: true, onboardingStartMode: 'import-obsidian' });
 
