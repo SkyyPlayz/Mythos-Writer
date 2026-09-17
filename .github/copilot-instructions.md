@@ -37,16 +37,21 @@ Owner: Skyy. Operations: Ivy (Co-Owner). Adopted 2026-08-27.
 
 ## Merge model (context — you participate, you do not decide)
 
-1. An engineer opens the PR. CI must be green.
-2. A `PR #<n> merge gate` ticket is created on the internal board and the CEO agent posts one
-   SHA-pinned decision.
-3. A host script merges at the approved SHA once required checks pass.
-4. High-risk paths (`.github/`, migrations, auth, secrets, release config) escalate to Ivy.
+1. An engineer/agent opens the PR. Required checks must be green on the **current tip SHA**:
+   **`ci`**, **`notes-windows`**, **`screenshot-check`** (plus completed **`carve-out-check`**).
+2. Tip-bound gate signals from **trusted authors only** (`SkyyPlayz`, `SkyHigh-Mythos-Bot`):
+   comment/review bodies that cite the tip SHA with Critic **APPROVE**, Shield **CLEAR**,
+   and Probe **VERIFY PASS** (Probe body must include both `Probe` and `VERIFY PASS`).
+   Unknown / missing author → fail closed (no merge).
+3. [`.github/workflows/mythos-gate-auto-merge.yml`](workflows/mythos-gate-auto-merge.yml) merges with a
+   **merge commit** only when all of the above hold (fail-closed). See [`docs/MERGE_GATE.md`](../docs/MERGE_GATE.md).
+4. Carve-out paths (`.github/workflows/**`, migrations, auth, secrets, release config) **do not**
+   auto-merge unless owner `SkyyPlayz` posts tip-bound `CARVE-OUT APPROVE`. Dependabot keeps its
+   own workflow; releases stay on `release.yml` (draft until owner publishes).
 
-Required checks on `main`: **`ci`** and **`screenshot-check`**.
-
+**You still never merge.** No `gh pr merge`, no enabling auto-merge, no branch-protection changes.
 Your output is always a commit on the PR branch plus a comment explaining what failed and what
-you changed. Someone else decides whether it merges.
+you changed. The Mythos gate workflow (or a human) decides whether it merges.
 
 ---
 
@@ -77,4 +82,6 @@ you changed. Someone else decides whether it merges.
 - Commits: `fix(<TICKET-ID>): <what>` when a ticket id is known, else `fix(ci): <what>`.
 - PR body must state: the failing job/test, the root cause in one or two sentences, and whether
   the fix is in test code or product code (product code = propose only, do not push).
-- Squash-merge only; never force-push shared branches; never push to `main`.
+- Never force-push shared branches; never push to `main`. Merges into `main` are
+  performed by the Mythos gate workflow as **merge commits** (see *Merge model* /
+  `docs/MERGE_GATE.md`). Do not squash-merge yourself.
