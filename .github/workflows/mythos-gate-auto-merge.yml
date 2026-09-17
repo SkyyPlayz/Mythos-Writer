@@ -107,11 +107,13 @@ jobs:
             }
 
             function hasShieldClear(body) {
-              return /\*{0,2}shield\s+clear\*{0,2}|shield[\s\S]{0,80}\bclear\b/i.test(body);
+              // Require Shield role marker + CLEAR (not bare "clear").
+              return /\bshield\b/i.test(body) && /\bclear\b/i.test(body);
             }
 
             function hasProbePass(body) {
-              return /verify\s+pass/i.test(body);
+              // Require an explicit Probe role marker — not bare "verify pass".
+              return /\bprobe\b/i.test(body) && /verify\s+pass/i.test(body);
             }
 
             function hasCarveOutApprove(body) {
@@ -225,7 +227,7 @@ jobs:
             }
 
             for (const c of comments) {
-              consider(c.body, c.user && c.user.login, c.created_at, null);
+              consider(c.body, c.user && c.user.login, c.created_at);
             }
             for (const r of reviews) {
               const onTip = r.commit_id && (
@@ -233,6 +235,7 @@ jobs:
                 headSha.startsWith(r.commit_id) ||
                 r.commit_id.startsWith(headSha.slice(0, 7))
               );
+              // Formal GitHub CHANGES_REQUESTED on this tip counts even without SHA in body.
               if (r.state === 'CHANGES_REQUESTED' && onTip && isTrustedGateAuthor(r.user && r.user.login)) {
                 criticEvents.push({
                   decision: 'CHANGES_REQUESTED',
@@ -240,7 +243,7 @@ jobs:
                   login: r.user.login,
                 });
               }
-              consider(r.body, r.user && r.user.login, r.submitted_at || r.created_at, r.state);
+              consider(r.body, r.user && r.user.login, r.submitted_at || r.created_at);
             }
 
             criticEvents.sort((a, b) => a.at - b.at);
