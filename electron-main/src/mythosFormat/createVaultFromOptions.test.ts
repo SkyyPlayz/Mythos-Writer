@@ -263,3 +263,76 @@ describe('createVaultFromOptions — import (SKY-11814: .docx story source)', ()
     fs.rmSync(src, { recursive: true, force: true });
   });
 });
+
+describe('createVaultFromOptions — import fidelity (Obsidian vault with wiki-links, attachments, folders)', () => {
+  it('preserves folder structure, note bodies, wiki-links and attachments byte-for-byte', async () => {
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-fidelity-'));
+    fs.mkdirSync(path.join(src, '.obsidian'));
+    fs.mkdirSync(path.join(src, 'Characters'));
+    fs.mkdirSync(path.join(src, 'Worldbuilding'));
+    fs.mkdirSync(path.join(src, 'Worldbuilding', 'Magic'));
+    const note1 = '# Aria\n\nA [[Mage]] of the [[High Tower]].\n\n## Backstory\n\nShe grew up in [[Worldbuilding/Magic/Arcane Arts|the Arcane tradition]].\n';
+    const note2 = '# Mage\n\nPractitioners of the arcane.\n\nSee also: [[Aria]], [[Worldbuilding/Magic/Arcane Arts]].\n';
+    const note3 = '# Arcane Arts\n\nThe oldest branch of magic.\n';
+    fs.writeFileSync(path.join(src, 'Characters', 'Aria.md'), note1);
+    fs.writeFileSync(path.join(src, 'Characters', 'Mage.md'), note2);
+    fs.writeFileSync(path.join(src, 'Worldbuilding', 'Magic', 'Arcane Arts.md'), note3);
+    fs.writeFileSync(path.join(src, 'index.md'), '# World Index\n\n- [[Characters/Aria]]\n- [[Characters/Mage]]\n');
+    const pngData = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+    fs.writeFileSync(path.join(src, 'Characters', 'aria-portrait.png'), pngData);
+
+    const r = await createVaultFromOptions({
+      destinationParent: tmp,
+      name: 'Heptiverse',
+      mode: 'import',
+      importSources: [{ kind: 'notes', srcPath: src }],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.importTally?.imported).toBe(5);
+
+    expect(fs.readFileSync(path.join(r.notesVaultPath!, 'Characters', 'Aria.md'), 'utf-8')).toBe(note1);
+    expect(fs.readFileSync(path.join(r.notesVaultPath!, 'Characters', 'Mage.md'), 'utf-8')).toBe(note2);
+    expect(fs.readFileSync(path.join(r.notesVaultPath!, 'Worldbuilding', 'Magic', 'Arcane Arts.md'), 'utf-8')).toBe(note3);
+    expect(fs.readFileSync(path.join(r.notesVaultPath!, 'index.md'), 'utf-8')).toContain('[[Characters/Aria]]');
+    expect(Buffer.compare(
+      fs.readFileSync(path.join(r.notesVaultPath!, 'Characters', 'aria-portrait.png')),
+      pngData,
+    )).toBe(0);
+
+    expect(fs.existsSync(path.join(r.notesVaultPath!, '.obsidian'))).toBe(false);
+    expect(fs.existsSync(path.join(r.notesVaultPath!, 'Characters'))).toBe(true);
+    expect(fs.existsSync(path.join(r.notesVaultPath!, 'Worldbuilding', 'Magic'))).toBe(true);
+
+    fs.rmSync(src, { recursive: true, force: true });
+  });
+
+  it('imported notes vault is reachable at notesVaultRootFor(mythosRoot)', async () => {
+    const src = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-reach-'));
+    fs.mkdirSync(path.join(src, '.obsidian'));
+    fs.writeFileSync(path.join(src, 'hello.md'), '# Hello\n\n[[World]].\n');
+    fs.writeFileSync(path.join(src, 'World.md'), '# World\n');
+
+    const r = await createVaultFromOptions({
+      destinationParent: tmp,
+      name: 'ReachTest',
+      mode: 'import',
+      importSources: [{ kind: 'notes', srcPath: src }],
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+
+    const notesRoot = r.notesVaultPath!;
+    expect(fs.existsSync(notesRoot)).toBe(true);
+    const entries = fs.readdirSync(notesRoot).filter(n => !n.startsWith('.'));
+    expect(entries).toContain('hello.md');
+    expect(entries).toContain('World.md');
+    expect(fs.readFileSync(path.join(notesRoot, 'hello.md'), 'utf-8')).toContain('[[World]]');
+
+    const mythosRoot = r.mythosRoot!;
+    const resolvedNotesRoot = notesVaultRootFor(mythosRoot);
+    expect(resolvedNotesRoot).toBe(notesRoot);
+
+    fs.rmSync(src, { recursive: true, force: true });
+  });
+});
