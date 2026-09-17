@@ -87,17 +87,14 @@ test('SKY-10401 / SKY-11452: create a second vault from Settings (template = sha
     await expect(newVaultBtn).toBeVisible();
     await newVaultBtn.click();
 
+    // Chooser step: pick Create blank to proceed to Name/Where screen.
+    await expect(page.getByTestId('mvs-choose-blank')).toBeVisible();
+    await expect(page.getByTestId('mvs-choose-import')).toBeVisible();
+    await page.getByTestId('mvs-choose-blank').click();
+
     // Destination prefilled with defaultMythosVaultsParent() = <userData>/vaults.
     const defaultParent = path.join(userData, 'vaults');
     await expect(page.getByTestId('mvs-create-dest-path')).toHaveText(defaultParent);
-
-    // SKY-11141 §3: the SAME three choices as first run / Add vault, template
-    // recommended and preselected.
-    await expect(page.getByTestId('mvs-create-mode-template')).toBeVisible();
-    await expect(page.getByTestId('mvs-create-mode-blank')).toBeVisible();
-    await expect(page.getByTestId('mvs-create-mode-import')).toBeVisible();
-    await expect(page.getByTestId('mvs-create-mode-template')).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByTestId('mvs-create-mode-template')).toContainText('RECOMMENDED');
 
     await page.getByTestId('mvs-create-name').fill('Second Vault');
     await page.getByTestId('mvs-create-confirm').click();
@@ -180,11 +177,10 @@ test('SKY-11452 / SKY-11141 §3a: "Start blank" from Settings creates nothing us
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
     await openMythosVaultsSection(page);
     await page.getByTestId('mvs-new-vault').click();
+    await page.getByTestId('mvs-choose-blank').click();
     await expect(page.getByTestId('mvs-create-dest-path')).toHaveText(path.join(userData, 'vaults'));
 
     await page.getByTestId('mvs-create-name').fill('QA Vault 2');
-    await page.getByTestId('mvs-create-mode-blank').click();
-    await expect(page.getByTestId('mvs-create-mode-blank')).toHaveAttribute('aria-checked', 'true');
     await page.getByTestId('mvs-create-confirm').click();
     await expect(page.getByTestId('mvs-create-done')).toBeVisible({ timeout: 15_000 });
     // The QA repro's exact path: decline the switch.

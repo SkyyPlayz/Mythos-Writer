@@ -55,6 +55,7 @@ test('capture SKY-10401 new-vault flow screenshots', async () => {
 
     await page.getByTestId('mvs-new-vault').click();
     await expect(page.getByTestId('mvs-create-form')).toBeVisible();
+    await page.getByTestId('mvs-choose-blank').click();
     await expect(page.getByTestId('mvs-create-dest-path')).toHaveText(path.join(userData, 'vaults'));
     await page.getByTestId('mvs-create-name').fill('Second Vault');
     await section.scrollIntoViewIfNeeded();
