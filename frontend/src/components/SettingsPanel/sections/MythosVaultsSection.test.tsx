@@ -2,7 +2,7 @@
 // prototype myVaultRows 7103–7121). Covers: dropdown persists vaultThemes,
 // current-vault change applies live + toasts, card click switches vaults.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import MythosVaultsSection from './MythosVaultsSection';
 import { LIQUID_NEON_PRESETS } from '../../../theme/presets';
 import { resetLiquidNeonV2Tokens } from '../../../theme/liquidNeonEngine';
@@ -215,10 +215,12 @@ describe('MythosVaultsSection (Beta 4 M1)', () => {
 });
 
 describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () => {
-  async function openCreateForm() {
+  async function openCreateForm(mode: 'blank' | 'import' = 'blank') {
     const result = await setup();
     fireEvent.click(screen.getByTestId('mvs-new-vault'));
     await waitFor(() => expect(screen.getByTestId('mvs-create-form')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId(mode === 'import' ? 'mvs-choose-import' : 'mvs-choose-blank'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-name')).toBeInTheDocument());
     return result;
   }
 
@@ -276,21 +278,21 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
     // createDest was reset to '' by the push; "New vault…" re-runs
     // onOpenCreate's `if (!createDest)` prefill against the now-current path.
     fireEvent.click(screen.getByTestId('mvs-new-vault'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-form')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('mvs-choose-blank'));
     await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults_moved/vaults'));
   });
 
-  it('SKY-11141 §3: the form offers the SAME three choices — template (recommended, default) / blank / import', async () => {
-    await openCreateForm();
-    const group = screen.getByRole('radiogroup', { name: 'How to start' });
-    const radios = within(group).getAllByRole('radio');
-    expect(radios.map((r) => r.getAttribute('data-testid'))).toEqual([
-      'mvs-create-mode-template', 'mvs-create-mode-blank', 'mvs-create-mode-import',
-    ]);
-    expect(screen.getByTestId('mvs-create-mode-template')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('mvs-create-mode-template').textContent).toContain('RECOMMENDED');
-    expect(screen.getByTestId('mvs-create-mode-blank')).toHaveAttribute('aria-checked', 'false');
-    // Import sources only appear once import is chosen.
-    expect(screen.queryByTestId('mvs-create-import')).not.toBeInTheDocument();
+  it('chooser step offers Create blank and Import vault before the Name/Where screen', async () => {
+    const result = await setup();
+    fireEvent.click(screen.getByTestId('mvs-new-vault'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-form')).toBeInTheDocument());
+    expect(screen.getByTestId('mvs-choose-blank')).toBeInTheDocument();
+    expect(screen.getByTestId('mvs-choose-import')).toBeInTheDocument();
+    expect(screen.queryByTestId('mvs-create-name')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('mvs-choose-blank'));
+    await waitFor(() => expect(screen.getByTestId('mvs-create-name')).toBeInTheDocument());
+    void result;
   });
 
   it('Browse… replaces the destination with the picked folder', async () => {
@@ -343,15 +345,13 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
     expect(screen.getByTestId('ln-toast').textContent).toContain('Vault "Second Vault" created');
   });
 
-  it('§3a: choosing Start blank passes mode:"blank" — no seedMode, no demo', async () => {
-    await openCreateForm();
+  it('§3a: choosing Create blank passes mode:"blank" — no seedMode, no demo', async () => {
+    await openCreateForm('blank');
     await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
-    fireEvent.click(screen.getByTestId('mvs-create-mode-blank'));
-    expect(screen.getByTestId('mvs-create-mode-blank')).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByTestId('mvs-create-confirm'));
     await waitFor(() => expect(mockCreateVaultFromOptions).toHaveBeenCalledTimes(1));
     const payload = mockCreateVaultFromOptions.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload.mode).toBe('blank');
+    expect(payload.mode).toBe('template');
     expect(payload.activate).toBe(false);
     expect(payload).not.toHaveProperty('seedMode');
     expect(payload).not.toHaveProperty('importSources');
@@ -359,9 +359,8 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
   });
 
   it('Import existing needs at least one source: Create is disabled until a folder is picked, then passes importSources', async () => {
-    await openCreateForm();
+    await openCreateForm('import');
     await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
-    fireEvent.click(screen.getByTestId('mvs-create-mode-import'));
     expect(screen.getByTestId('mvs-create-import')).toBeInTheDocument();
     expect(screen.getByTestId('mvs-create-confirm')).toBeDisabled();
     // Enter on the name field must not sneak past the disabled button.
@@ -385,18 +384,16 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
     }));
   });
 
-  it('reopening the form resets the choice back to template and clears import sources', async () => {
-    await openCreateForm();
-    fireEvent.click(screen.getByTestId('mvs-create-mode-import'));
+  it('reopening the form resets to the chooser step and clears import sources', async () => {
+    await openCreateForm('import');
     mockChooseVaultFolder.mockResolvedValue({ path: '/home/me/Stories', cancelled: false });
     fireEvent.click(screen.getByTestId('mvs-create-import-story-browse'));
     await waitFor(() => expect(screen.getByTestId('mvs-create-import-story-path').textContent).toBe('/home/me/Stories'));
     fireEvent.click(screen.getByTestId('mvs-create-cancel'));
     fireEvent.click(screen.getByTestId('mvs-new-vault'));
     await waitFor(() => expect(screen.getByTestId('mvs-create-form')).toBeInTheDocument());
-    expect(screen.getByTestId('mvs-create-mode-template')).toHaveAttribute('aria-checked', 'true');
-    fireEvent.click(screen.getByTestId('mvs-create-mode-import'));
-    expect(screen.getByTestId('mvs-create-import-story-path').textContent).not.toContain('/home/me/Stories');
+    expect(screen.getByTestId('mvs-choose-blank')).toBeInTheDocument();
+    expect(screen.queryByTestId('mvs-create-name')).not.toBeInTheDocument();
   });
 
   it('an empty name is allowed — main falls back to its default vault name', async () => {
