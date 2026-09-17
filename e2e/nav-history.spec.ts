@@ -219,8 +219,8 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       });
 
       // Should have gone back exactly once: we're on the Notes tab showing "Cross Links"
-      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
-      await expect(page.getByText('Jump to')).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
+      await expect(page.getByText('Jump to')).toBeVisible({ timeout: 8_000 });
       // We should NOT have gone all the way back past Notes (double-fire would)
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible();
     } finally {

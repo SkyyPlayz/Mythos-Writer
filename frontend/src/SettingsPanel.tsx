@@ -1046,16 +1046,13 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
           {settingsCategory === 'vaults' && (
             <>
-              {/* M6: Auto Note Linker — FIRST card per spec §12 */}
-              <VaultAutoLinkerSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
-
-              <AccountSection vaults={vaults} onMoveVault={handleMoveVault} />
-
               {/* SKY-11154 (parent spec SKY-11141 §2): "Vaults folder" row —
                   the parent folder holding every Mythos vault, with an
                   Open-folder + Move… flow (distinct from the per-vault
                   AccountSection move above). */}
               <VaultsFolderSection />
+
+              <AccountSection vaults={vaults} onMoveVault={handleMoveVault} />
 
               {/* Beta 4 M1: Mythos vaults cards — per-vault default theme (§3). */}
               <MythosVaultsSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
@@ -1086,6 +1083,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
               <VersionHistorySection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
               <BackupSection />
+
+              {/* Auto Note Linker — moved to bottom per Liquid Neon fidelity */}
+              <VaultAutoLinkerSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
             </>
           )}
 
