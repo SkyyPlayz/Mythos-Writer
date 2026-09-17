@@ -878,6 +878,8 @@ export default function AxisView({
                   const embedSub = (() => {
                     if (!embedTl) return 'timeline · click to open';
                     const stdCal = resolveStdCalendar(localStore.timelines);
+                    const stdTl = localStore.timelines.find((t) => t.std);
+                    const stdEra = stdTl ? eraOf(stdTl) : 'EC';
                     const r = calendarRatio(embedTl, stdCal);
                     const era = eraOf(embedTl);
                     if (embedDomain) {
@@ -888,7 +890,7 @@ export default function AxisView({
                       const stdHpy = stdCal.monthsPerYear * stdCal.daysPerMonth * stdCal.hoursPerDay;
                       const stdStart = Math.round((toStandard(embedTl, stdCal, embedDomain[0]) * 10) / stdHpy);
                       const stdEnd = Math.round((toStandard(embedTl, stdCal, embedDomain[1]) * 10) / stdHpy);
-                      return `${localStart}–${localEnd} ${era}  =  ${stdStart}–${stdEnd} EC · ×${r.toFixed(r === Math.round(r) ? 0 : 2)}`;
+                      return `${localStart}–${localEnd} ${era}  =  ${stdStart}–${stdEnd} ${stdEra} · ×${r.toFixed(r === Math.round(r) ? 0 : 2)}`;
                     }
                     return `${calendarSignature(embedTl.calendar)} · ×${r.toFixed(r === Math.round(r) ? 0 : 2)}`;
                   })();
