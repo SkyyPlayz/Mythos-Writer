@@ -7,11 +7,12 @@ name: VR Baselines
 # redesign) or the CI rendering environment changes. Also uploads the
 # baselines as the `vr-baselines` artifact.
 #
-# Opens a PR against the branch the workflow ran on and enables auto-merge,
-# rather than pushing directly — branch protection on `main` requires the
-# `ci` and `screenshot-check` status checks, which only run on `pull_request`,
-# so a direct push is rejected (GH006). This matches how every other change
-# lands per the project's merge model. See SKY-8215.
+# Opens a PR against the branch the workflow ran on — does NOT auto-merge.
+# After Mythos tip-SHA gate (#1602 / docs/MERGE_GATE.md), baseline PRs land
+# only via mythos-gate-auto-merge.yml once Critic APPROVE + Shield CLEAR +
+# Probe VERIFY PASS are tip-bound and required checks are green. Branch
+# protection on `main` still requires checks that only run on pull_request,
+# so a direct push is rejected (GH006). See SKY-8215.
 
 on:
   workflow_dispatch:
@@ -88,6 +89,4 @@ jobs:
             --base "$BASE" \
             --head "$BRANCH" \
             --title "test(vr): regenerate visual baselines" \
-            --body "Automated visual-regression baseline refresh (workflow run ${GITHUB_RUN_ID}). Auto-merges once required checks pass."
-
-          gh pr merge "$BRANCH" --auto --squash
+            --body "Automated visual-regression baseline refresh (workflow run ${GITHUB_RUN_ID}). Does **not** auto-merge — lands only via Mythos tip-SHA gate (Critic APPROVE + Shield CLEAR + Probe VERIFY PASS + required checks). See docs/MERGE_GATE.md."
