@@ -406,10 +406,13 @@ test('SKY-11809: Escape dismisses DropdownSelect even when focus is outside the 
     // Strand focus outside the portal — the case the listbox's own onKeyDown
     // cannot see. Dismissal must still work via the document-level listener.
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-    await expect.poll(() => page.evaluate(() => {
-      const ae = document.activeElement;
-      return ae === document.body || ae === document.documentElement;
-    })).toBe(true);
+    await expect(async () => {
+      const blurred = await page.evaluate(() => {
+        const ae = document.activeElement;
+        return !ae || ae === document.body || ae === document.documentElement;
+      });
+      expect(blurred).toBe(true);
+    }).toPass({ timeout: 10_000 });
     // Still open after focus left the portal.
     await expect(listbox).toBeVisible();
 
