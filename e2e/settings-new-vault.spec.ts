@@ -67,7 +67,7 @@ async function openMythosVaultsSection(page: import('@playwright/test').Page): P
   await page.getByRole('tab', { name: 'Vault & Files' }).click();
 }
 
-test('SKY-10401 / SKY-11452: create a second vault from Settings (template = shape, no demo content), then switch to it', async () => {
+test('SKY-10401: create a second vault from Settings (blank = empty), then switch to it', async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-settings-new-vault-'));
   const userData = path.join(tempRoot, 'userData');
   const storyVault = path.join(tempRoot, 'Vault A', 'Story Vault');
@@ -110,10 +110,8 @@ test('SKY-10401 / SKY-11452: create a second vault from Settings (template = sha
     expect(fs.statSync(newStoryRoot).isDirectory()).toBe(true);
     expect(fs.statSync(newNotesRoot).isDirectory()).toBe(true);
 
-    // SKY-11452: template = the ready SHAPE only. Exactly the six empty Notes
-    // folders, zero files anywhere in either vault — no Veynn sample story,
-    // no Characters/Mira Veynn.md, no Project Bible.
-    expect(listVisibleEntries(newNotesRoot)).toEqual(TEMPLATE_NOTES_FOLDERS);
+    // Create blank = empty vault. No template folders, no files, no demo content.
+    expect(listVisibleEntries(newNotesRoot)).toEqual([]);
     expect(listVisibleFilesDeep(newNotesRoot)).toEqual([]);
     expect(listVisibleFilesDeep(newStoryRoot)).toEqual([]);
     expect(listVisibleFilesDeep(newRoot).join('\n')).not.toMatch(/Veynn|Kael Thorne|Project Bible|idea-library/);

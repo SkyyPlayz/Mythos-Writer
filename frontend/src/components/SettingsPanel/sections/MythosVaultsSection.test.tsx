@@ -323,7 +323,7 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
     expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults');
   });
 
-  it('Create vault calls the SKY-11151 primitive (template, activate:false) and offers a switch', async () => {
+  it('Create vault calls the SKY-11151 primitive (blank, activate:false) and offers a switch', async () => {
     await openCreateForm();
     await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
     fireEvent.change(screen.getByTestId('mvs-create-name'), { target: { value: '  Second Vault  ' } });
