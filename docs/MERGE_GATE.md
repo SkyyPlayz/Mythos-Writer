@@ -10,6 +10,7 @@ Fail-closed: if any condition is missing or ambiguous, the workflow **does not m
 | Path | Merger |
 | --- | --- |
 | Routine product/docs PRs | Mythos gate auto-merge workflow |
+| VR baseline refresh PRs (`vr-baselines.yml`) | Same Mythos gate — workflow opens a PR to **`main` only** with `MYTHOS_BOT_TOKEN` (so required checks run); **no** `--auto --squash` |
 | Dependabot patch/minor | [`dependabot-auto-merge.yml`](../.github/workflows/dependabot-auto-merge.yml) (unchanged) |
 | Carve-out paths | Same workflow **only** after owner tip-bound `CARVE-OUT APPROVE` |
 | Releases | [`release.yml`](../.github/workflows/release.yml) — draft only unless owner publishes |
