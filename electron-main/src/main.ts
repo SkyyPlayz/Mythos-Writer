@@ -3319,6 +3319,12 @@ const handlers: IpcHandlers = {
       });
       ensureVaultDir();
       ensureNotesVaultDir();
+      try {
+        const manifest = readManifest(getManifestPath());
+        const { manifest: synced } = reindexVault(created.storyVaultPath, manifest);
+        writeManifest(getManifestPath(), synced);
+        try { buildFullIndex(getDb(), created.storyVaultPath, synced); } catch { /* non-fatal */ }
+      } catch { /* non-fatal — notes are filesystem-listed, story index catches up on next open */ }
       await stopVaultWatcher();
       await startVaultWatcher(created.storyVaultPath, notifyVaultChanged);
       await stopNotesVaultWatcher();
