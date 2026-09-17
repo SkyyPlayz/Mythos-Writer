@@ -330,7 +330,7 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
     fireEvent.click(screen.getByTestId('mvs-create-confirm'));
     await waitFor(() => expect(screen.getByTestId('mvs-create-done')).toBeInTheDocument());
     expect(mockCreateVaultFromOptions).toHaveBeenCalledWith({
-      mode: 'template',
+      mode: 'blank',
       destinationParent: '/vaults',
       name: 'Second Vault',
       activate: false,
@@ -351,7 +351,7 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
     fireEvent.click(screen.getByTestId('mvs-create-confirm'));
     await waitFor(() => expect(mockCreateVaultFromOptions).toHaveBeenCalledTimes(1));
     const payload = mockCreateVaultFromOptions.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload.mode).toBe('template');
+    expect(payload.mode).toBe('blank');
     expect(payload.activate).toBe(false);
     expect(payload).not.toHaveProperty('seedMode');
     expect(payload).not.toHaveProperty('importSources');
@@ -401,7 +401,7 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
     await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
     fireEvent.click(screen.getByTestId('mvs-create-confirm'));
     await waitFor(() => expect(mockCreateVaultFromOptions).toHaveBeenCalledWith({
-      mode: 'template',
+      mode: 'blank',
       destinationParent: '/vaults',
       name: undefined,
       activate: false,

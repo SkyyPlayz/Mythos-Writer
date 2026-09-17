@@ -467,7 +467,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
                     className="m24-btn"
                     style={{ padding: '12px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 2 }}
                     data-testid="mvs-choose-blank"
-                    onClick={() => { setCreateMode('template'); setCreateStep('details'); }}
+                    onClick={() => { setCreateMode('blank'); setCreateStep('details'); }}
                   >
                     <span style={{ fontWeight: 600, fontSize: 12.5 }}>Create blank</span>
                     <span style={{ fontSize: 10.5, color: '#8e9db8' }}>
