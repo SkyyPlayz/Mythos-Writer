@@ -27,7 +27,7 @@ Copilot / CI-fixer agents **never** merge (see `.github/copilot-instructions.md`
 3. **Tip-bound gate signals from trusted authors** — issue comments and/or PR reviews by allowlisted accounts (`SkyyPlayz`, `SkyHigh-Mythos-Bot`) whose bodies reference the **current head SHA** (full or ≥7-char prefix) and include:
    - Critic: latest tip-bound decision must be `APPROVE` (body must include Critic; COMMENT reviews count; a later tip-bound `CHANGES_REQUESTED` revokes an earlier APPROVE)
    - Shield: body must include `Shield` + `CLEAR`
-   - Probe: body must include `Probe` + `VERIFY PASS`
+   - Probe: body must include `Probe` near `VERIFY PASS` (fail closed on bare "verify pass" alone)
 4. **Carve-outs** — if label `carve-out` is present, or the diff hits carve-out paths (workflows, actions, `db.ts`, auth, secrets, release/electron-builder config), or the active `carve-out-check` sticky still requires review:
    - **Do not merge** unless owner `SkyyPlayz` has commented tip-bound `CARVE-OUT APPROVE`.
    - Otherwise a sticky comment asks Ivy/owner for that allow.

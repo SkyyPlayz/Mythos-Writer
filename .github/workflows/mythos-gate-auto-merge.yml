@@ -112,8 +112,9 @@ jobs:
             }
 
             function hasProbePass(body) {
-              // Require an explicit Probe role marker — not bare "verify pass".
-              return /\bprobe\b/i.test(body) && /verify\s+pass/i.test(body);
+              // Fail closed: require Probe near VERIFY PASS (not bare "verify pass",
+              // and not Probe + VERIFY PASS scattered far apart in an unrelated paste).
+              return /\bprobe\b[\s\S]{0,120}verify\s+pass|verify\s+pass[\s\S]{0,120}\bprobe\b/i.test(body);
             }
 
             function hasCarveOutApprove(body) {
