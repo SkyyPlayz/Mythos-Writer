@@ -63,16 +63,21 @@ const OVERLAY_DIALOGS: ReadonlyArray<readonly [tsx: string, css: string, cls: st
   ['components/BrainstormCard/ScenePicker.tsx', 'components/BrainstormCard/IdeaDetailDrawer.css', 'idd-entity-picker'],
 ];
 
-/** OT-4: [css, selector] — the eight surfaces that painted a fallback grey. */
+/** OT-4: [css, selector] — surfaces that painted a fallback grey, now on --bg-elevated. */
 const RETOKENED_SURFACES: ReadonlyArray<readonly [css: string, selector: string]> = [
   ['GlobalRightSidebar.css', '.grs-add-panel-picker'],
   ['NoteViewer.css', '.note-fidelity-dialog'],
   ['OutlinePlanningPanel.css', '.opl-link-picker'],
   ['LayoutPicker.css', '.layout-picker-dropdown'],
   ['TimelinePicker.css', '.tlpicker__dropdown'],
-  ['GlobalSearchPanel.css', '.gsp-panel'],
   ['TagInput.css', '.tag-dropdown'],
   ['components/TagPane/TagPane.css', '.tp-merge-dialog'],
+];
+
+/** OT-4b: [css, selector] — surfaces moved to denser overlay/--pop glass tier.
+ *  Use --glass-fill-fallback (opaque no-backdrop path) + @supports blur(24px). */
+const OVERLAY_GLASS_SURFACES: ReadonlyArray<readonly [css: string, selector: string]> = [
+  ['GlobalSearchPanel.css', '.gsp-panel'],
 ];
 
 describe('SKY-11493 — OT-4: no stylesheet reads a custom property that nothing defines', () => {
@@ -104,6 +109,14 @@ describe('SKY-11493 — OT-4: no stylesheet reads a custom property that nothing
     const body = ruleBody(read(css), selector);
     expect(body).toMatch(/background:\s*var\(--bg-elevated\)/);
     expect(body).not.toMatch(/background:\s*#|background:\s*var\([^)]*,\s*#/);
+  });
+
+  it.each(OVERLAY_GLASS_SURFACES)('%s %s uses overlay glass (--glass-fill-fallback base + @supports blur)', (css, selector) => {
+    const full = read(css);
+    const body = ruleBody(full, selector);
+    expect(body).toMatch(/background:\s*var\(--glass-fill-fallback\)/);
+    expect(body).not.toMatch(/background:\s*var\(--bg-elevated\)/);
+    expect(full).toMatch(/@supports\s*\(backdrop-filter/);
   });
 });
 
