@@ -215,6 +215,7 @@ test('Vaults folder Move refreshes the vault list, switch, and New-vault Destina
     // silently recreated `dirs.vaultsParent` on disk.
     await openSettingsOnVaultsTab(page);
     await page.locator('[data-testid="mvs-new-vault"]').click();
+    await page.locator('[data-testid="mvs-choose-blank"]').click();
     await expect(page.locator('[data-testid="mvs-create-dest-path"]')).toHaveText(movedParent, { timeout: 10_000 });
 
     await page.locator('[data-testid="mvs-create-name"]').fill('Gamma');

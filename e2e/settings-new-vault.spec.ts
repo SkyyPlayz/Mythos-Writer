@@ -67,7 +67,7 @@ async function openMythosVaultsSection(page: import('@playwright/test').Page): P
   await page.getByRole('tab', { name: 'Vault & Files' }).click();
 }
 
-test('SKY-10401 / SKY-11452: create a second vault from Settings (template = shape, no demo content), then switch to it', async () => {
+test('SKY-10401: create a second vault from Settings (blank = empty), then switch to it', async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-settings-new-vault-'));
   const userData = path.join(tempRoot, 'userData');
   const storyVault = path.join(tempRoot, 'Vault A', 'Story Vault');
@@ -87,17 +87,14 @@ test('SKY-10401 / SKY-11452: create a second vault from Settings (template = sha
     await expect(newVaultBtn).toBeVisible();
     await newVaultBtn.click();
 
+    // Chooser step: pick Create blank to proceed to Name/Where screen.
+    await expect(page.getByTestId('mvs-choose-blank')).toBeVisible();
+    await expect(page.getByTestId('mvs-choose-import')).toBeVisible();
+    await page.getByTestId('mvs-choose-blank').click();
+
     // Destination prefilled with defaultMythosVaultsParent() = <userData>/vaults.
     const defaultParent = path.join(userData, 'vaults');
     await expect(page.getByTestId('mvs-create-dest-path')).toHaveText(defaultParent);
-
-    // SKY-11141 §3: the SAME three choices as first run / Add vault, template
-    // recommended and preselected.
-    await expect(page.getByTestId('mvs-create-mode-template')).toBeVisible();
-    await expect(page.getByTestId('mvs-create-mode-blank')).toBeVisible();
-    await expect(page.getByTestId('mvs-create-mode-import')).toBeVisible();
-    await expect(page.getByTestId('mvs-create-mode-template')).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByTestId('mvs-create-mode-template')).toContainText('RECOMMENDED');
 
     await page.getByTestId('mvs-create-name').fill('Second Vault');
     await page.getByTestId('mvs-create-confirm').click();
@@ -113,10 +110,8 @@ test('SKY-10401 / SKY-11452: create a second vault from Settings (template = sha
     expect(fs.statSync(newStoryRoot).isDirectory()).toBe(true);
     expect(fs.statSync(newNotesRoot).isDirectory()).toBe(true);
 
-    // SKY-11452: template = the ready SHAPE only. Exactly the six empty Notes
-    // folders, zero files anywhere in either vault — no Veynn sample story,
-    // no Characters/Mira Veynn.md, no Project Bible.
-    expect(listVisibleEntries(newNotesRoot)).toEqual(TEMPLATE_NOTES_FOLDERS);
+    // Create blank = empty vault. No template folders, no files, no demo content.
+    expect(listVisibleEntries(newNotesRoot)).toEqual([]);
     expect(listVisibleFilesDeep(newNotesRoot)).toEqual([]);
     expect(listVisibleFilesDeep(newStoryRoot)).toEqual([]);
     expect(listVisibleFilesDeep(newRoot).join('\n')).not.toMatch(/Veynn|Kael Thorne|Project Bible|idea-library/);
@@ -180,11 +175,10 @@ test('SKY-11452 / SKY-11141 §3a: "Start blank" from Settings creates nothing us
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
     await openMythosVaultsSection(page);
     await page.getByTestId('mvs-new-vault').click();
+    await page.getByTestId('mvs-choose-blank').click();
     await expect(page.getByTestId('mvs-create-dest-path')).toHaveText(path.join(userData, 'vaults'));
 
     await page.getByTestId('mvs-create-name').fill('QA Vault 2');
-    await page.getByTestId('mvs-create-mode-blank').click();
-    await expect(page.getByTestId('mvs-create-mode-blank')).toHaveAttribute('aria-checked', 'true');
     await page.getByTestId('mvs-create-confirm').click();
     await expect(page.getByTestId('mvs-create-done')).toBeVisible({ timeout: 15_000 });
     // The QA repro's exact path: decline the switch.

@@ -23,7 +23,7 @@ import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from '../../../theme/pr
 import { showLnToast } from '../../../theme/lnToast';
 import { deriveVaultDisplayName } from '../../../ProjectSwitcher';
 import VaultDestinationPicker from './VaultDestinationPicker';
-import VaultCreateModePicker, { type VaultCreateMode } from './VaultCreateModePicker';
+import type { VaultCreateMode } from './VaultCreateModePicker';
 import { useVaultIcons } from '../../../hooks/useVaultIcons';
 import { VaultIconAvatar } from '../../ui/VaultIconAvatar';
 import { VaultIconEditMenu } from '../../ui/VaultIconEditMenu';
@@ -81,6 +81,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   const [vaults, setVaults] = useState<VaultEntry[]>([]);
   const [activeRoot, setActiveRoot] = useState<string>('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [createStep, setCreateStep] = useState<'choose' | 'details'>('choose');
   const [createName, setCreateName] = useState('');
   const [createDest, setCreateDest] = useState('');
   const [defaultFolder, setDefaultFolder] = useState('');
@@ -179,8 +180,8 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   }, [refreshVaults, refreshActiveRoot]);
 
   useEffect(() => {
-    if (createOpen) createNameRef.current?.focus();
-  }, [createOpen]);
+    if (createOpen && createStep === 'details') createNameRef.current?.focus();
+  }, [createOpen, createStep]);
 
   // If the user switches to the just-created vault via its card instead of
   // the offer button, the offer is answered — drop it.
@@ -243,6 +244,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
    *  parent (same rule Skyy set for import destinations in SKY-10370 R3). */
   const onOpenCreate = useCallback(async () => {
     setCreateOpen(true);
+    setCreateStep('choose');
     setCreateError(null);
     setCreatedVault(null);
     setCreateMode('template');
@@ -450,6 +452,50 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
           className="create-vault-modal"
           testId="mvs-create-form"
         >
+          {createStep === 'choose' ? (
+            <>
+              <DialogHeader>
+                <h2>Create a Mythos vault</h2>
+              </DialogHeader>
+              <DialogBody>
+                <p className="settings-hint" style={{ marginBottom: 12 }}>
+                  How would you like to start?
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="m24-btn"
+                    style={{ padding: '12px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 2 }}
+                    data-testid="mvs-choose-blank"
+                    onClick={() => { setCreateMode('blank'); setCreateStep('details'); }}
+                  >
+                    <span style={{ fontWeight: 600, fontSize: 12.5 }}>Create blank</span>
+                    <span style={{ fontSize: 10.5, color: '#8e9db8' }}>
+                      Start with an empty vault — add notes and stories as you go
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="m24-btn"
+                    style={{ padding: '12px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 2 }}
+                    data-testid="mvs-choose-import"
+                    onClick={() => { setCreateMode('import'); setCreateStep('details'); }}
+                  >
+                    <span style={{ fontWeight: 600, fontSize: 12.5 }}>Import vault</span>
+                    <span style={{ fontSize: 10.5, color: '#8e9db8' }}>
+                      Bring in an Obsidian vault or Markdown folder — files and links preserved
+                    </span>
+                  </button>
+                </div>
+              </DialogBody>
+              <DialogFooter>
+                <button type="button" className="m24-btn" data-testid="mvs-create-cancel" onClick={onCancelCreate}>
+                  Cancel
+                </button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
           <DialogHeader>
             <h2>Create a Mythos vault</h2>
           </DialogHeader>
@@ -492,14 +538,6 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
             <p className="settings-hint">
               A new folder named after the vault is created inside this destination.
             </p>
-            <div className="settings-label" style={{ marginTop: 4 }}>How to start</div>
-            <VaultCreateModePicker
-              kind="mythos"
-              value={createMode}
-              onChange={(m) => { setCreateMode(m); setCreateError(null); }}
-              disabled={createBusy}
-              testIdPrefix="mvs-create-mode"
-            />
             {createMode === 'import' && (
               <div data-testid="mvs-create-import" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div className="settings-label">Notes source (optional)</div>
@@ -530,6 +568,9 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
             )}
           </DialogBody>
           <DialogFooter>
+            <button type="button" className="m24-btn" data-testid="mvs-create-back" onClick={() => setCreateStep('choose')} disabled={createBusy}>
+              Back
+            </button>
             <button type="button" className="m24-btn" data-testid="mvs-create-cancel" onClick={onCancelCreate} disabled={createBusy}>
               Cancel
             </button>
@@ -543,6 +584,8 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
               {createBusy ? 'Creating…' : 'Create vault'}
             </button>
           </DialogFooter>
+            </>
+          )}
         </Dialog>
       )}
 
