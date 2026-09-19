@@ -10,16 +10,34 @@
 }
 
 .gsp-panel {
-  background: var(--bg-elevated);
-  border: 1px solid var(--border, rgba(255, 255, 255, 0.15));
+  background: var(--glass-fill-fallback);
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
   border-radius: 12px;
-  box-shadow: var(--elev-3);
+  box-shadow: 0 14px 40px rgba(3, 5, 12, 0.6), 0 0 22px -6px var(--g2, rgba(155, 95, 255, 0.4));
   width: 640px;
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 112px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .gsp-panel {
+    background: var(--glass-fill-overlay);
+    backdrop-filter: blur(var(--blur-panel-overlay, 24px));
+    -webkit-backdrop-filter: blur(var(--blur-panel-overlay, 24px));
+  }
+}
+
+@media (prefers-contrast: more) {
+  .gsp-panel {
+    background: var(--glass-fill-fallback);
+    border: 2px solid var(--border-strong, #fff);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 /* ── Header ── */
@@ -190,7 +208,7 @@
 
 .gsp-result-item:hover,
 .gsp-result-item.active {
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--gs1, rgba(255, 255, 255, 0.05));
 }
 
 .gsp-result-icon {

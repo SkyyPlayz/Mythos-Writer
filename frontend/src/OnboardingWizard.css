@@ -130,12 +130,13 @@ a.gs-footer-link:focus-visible {
 /* ─── Modal shell ── */
 
 .gs-modal {
-  /* Beta 3 M25 — prototype glass step panel (HTML 2802): glass fill, neon
-     border, 18px radius, slot-1 glow. */
-  background: var(--glass, var(--color-surface));
+  /* Beta 3 M25 — prototype glass step panel (HTML 2802): overlay glass fill,
+     neon border, 18px radius, slot-1 glow. Upgraded to --pop/overlay tier
+     (matches Settings dialogs and popovers — denser fill + blur(24px)). */
+  background: var(--glass-fill-fallback);
   border: var(--bw, 1px) solid var(--b1, var(--color-border));
-  border-radius: 18px; /* prototype 2802 */
-  box-shadow: 0 0 30px -8px var(--g1); /* prototype 2802 */
+  border-radius: 18px;
+  box-shadow: 0 14px 40px rgba(3, 5, 12, 0.6), 0 0 22px -6px var(--g1, rgba(0, 240, 255, 0.4));
   padding: 2rem 2.5rem 2.5rem;
   width: 100%;
   max-width: 640px;
@@ -143,7 +144,25 @@ a.gs-footer-link:focus-visible {
   flex-direction: column;
   gap: 1.5rem;
   animation: gs-modal-in 180ms ease-out;
-  margin-block: 18px auto;  /* SKY-2967 + M25: fixed gap under the brand header, auto re-centers */
+  margin-block: 18px auto;
+}
+
+@supports (backdrop-filter: blur(1px)) {
+  .gs-modal {
+    background: var(--glass-fill-overlay);
+    backdrop-filter: blur(var(--blur-panel-overlay, 24px));
+    -webkit-backdrop-filter: blur(var(--blur-panel-overlay, 24px));
+  }
+}
+
+@media (prefers-contrast: more) {
+  .gs-modal {
+    background: var(--glass-fill-fallback);
+    border: 2px solid var(--border-strong, #fff);
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 
 .gs-modal--wide {
