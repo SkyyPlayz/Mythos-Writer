@@ -33,9 +33,10 @@ jobs:
             TAG="${{ github.ref }}"
             TAG="${TAG#refs/tags/}"
           fi
-          # Normalize: dispatch may supply "0.5.3" without the v-prefix;
-          # ensure TAG is always vX.Y.Z so validate-version comparison holds.
-          [[ "$TAG" == v* ]] || TAG="v${TAG}"
+          # Normalize: strip optional leading v/V, then always prepend lowercase v
+          # so dispatch with "0.5.3", "v0.5.3", or "V0.5.3" all become "v0.5.3".
+          TAG="${TAG#[vV]}"
+          TAG="v${TAG}"
           if [[ "$TAG" =~ ^v.*-beta ]] || [ "${{ inputs.is-beta }}" = "true" ]; then
             echo "is-beta=true" >> $GITHUB_OUTPUT
           else
