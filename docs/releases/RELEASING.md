@@ -36,6 +36,8 @@ gh workflow run release.yml \
   -f is-beta=false
 ```
 
+Both `v0.5.3` and `0.5.3` are accepted — the workflow normalizes the tag to the `v`-prefix form automatically.
+
 (Pushing an annotated tag `v*` to the bumped commit triggers the same workflow;
 dispatch is preferred because a tag pushed by another workflow's `GITHUB_TOKEN`
 would not trigger it at all.)

@@ -33,6 +33,10 @@ jobs:
             TAG="${{ github.ref }}"
             TAG="${TAG#refs/tags/}"
           fi
+          # Normalize: strip optional leading v/V, then always prepend lowercase v
+          # so dispatch with "0.5.3", "v0.5.3", or "V0.5.3" all become "v0.5.3".
+          TAG="${TAG#[vV]}"
+          TAG="v${TAG}"
           if [[ "$TAG" =~ ^v.*-beta ]] || [ "${{ inputs.is-beta }}" = "true" ]; then
             echo "is-beta=true" >> $GITHUB_OUTPUT
           else
