@@ -16,13 +16,13 @@
     "fuzz": "npm run fuzz:frontmatter && npm run fuzz:docxInline"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.125.0",
+    "@anthropic-ai/sdk": "^0.126.0",
     "chokidar": "^5.0.0",
     "docx": "^9.7.1",
     "electron-updater": "^6.8.9",
     "jszip": "^3.10.2",
-    "mammoth": "^1.12.2",
-    "onnxruntime-web": "^1.29.0",
+    "mammoth": "^1.12.3",
+    "onnxruntime-web": "^1.30.0",
     "phonemizer": "^1.2.1"
   },
   "devDependencies": {
@@ -31,8 +31,8 @@
     "@types/node": "^22.19.19",
     "@vitest/coverage-v8": "^4.1.8",
     "electron-vite": "^5.0.0",
-    "fast-check": "^4.9.0",
+    "fast-check": "^4.10.1",
     "typescript": "^5.3.3",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.11"
   }
 }
