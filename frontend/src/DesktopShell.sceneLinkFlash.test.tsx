@@ -131,7 +131,7 @@ describe('DesktopShell scene-link flash highlight (SKY-9729)', () => {
     fireEvent.click(wikiLink);
 
     // Navigated to the linked scene...
-    await screen.findByText('Scene Two body text.');
+    expect((await screen.findAllByText('Scene Two body text.')).length).toBeGreaterThan(0);
     // ...and its wrap is flash-highlighted (the part PR #1181 silently dropped).
     expect(document.querySelector('.shell-editor-scene-wrap--flash')).toBeInTheDocument();
 

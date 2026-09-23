@@ -50,7 +50,7 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 
 /** M17: mode switching moved into the gear "View options" popover. */
 async function switchNoteMode(page: Page, mode: 'rich' | 'markdown' | 'source'): Promise<void> {
-  await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+  await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
   await expect(page.locator('[data-testid="note-gear-menu"]')).toBeVisible();
   await page.locator(`[data-testid="note-gear-mode-${mode}"]`).click();
 }
@@ -59,7 +59,7 @@ async function openNoteInRichMode(page: Page, noteBaseName: string): Promise<voi
   await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
   await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
   await page.locator('[data-testid^="vb-row-"]', { hasText: noteBaseName }).first().click();
-  await expect(page.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
   await switchNoteMode(page, 'rich');
   await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible();
 }
@@ -183,7 +183,7 @@ test('NP-04: source mode stays the lossless source of truth (R1) — lossy conte
     await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
     await page.locator('[data-testid^="vb-row-"]', { hasText: 'lossless-guard' }).first().click();
-    await expect(page.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
 
     // Rich is opt-in: switching onto lossy content must raise the fidelity guard.
     // W0.2 (Beta 4): YAML frontmatter is no longer flagged — it is held aside
@@ -198,7 +198,7 @@ test('NP-04: source mode stays the lossless source of truth (R1) — lossy conte
     // Choosing the safe path keeps source mode active and the file untouched.
     await guard.locator('button', { hasText: 'Edit in Source (safe)' }).click();
     await expect(page.locator('textarea.note-viewer-editor')).toBeVisible();
-    await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+    await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
     await expect(page.locator('[data-testid="note-gear-mode-source"]')).toHaveAttribute('aria-checked', 'true');
     await page.locator('.note-gear-backdrop').click();
     expect(fs.readFileSync(notePath, 'utf-8')).toBe(lossyBody);
@@ -320,7 +320,7 @@ test('NP-06 (M17): wiki-link hover preview renders; unresolved link creates the 
 
     // Create-on-click: the note is written to the vault and opened.
     await unresolved.click();
-    await expect(page.locator('.note-breadcrumb-item--current', { hasText: 'Lost Civilization' })).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('#app-tabpanel-notes .note-breadcrumb-item--current', { hasText: 'Lost Civilization' })).toBeVisible({ timeout: 8_000 });
     expect(fs.existsSync(path.join(notesDir, 'Lost Civilization.md'))).toBe(true);
     expect(fs.readFileSync(path.join(notesDir, 'Lost Civilization.md'), 'utf-8')).toContain('# Lost Civilization');
   } finally {

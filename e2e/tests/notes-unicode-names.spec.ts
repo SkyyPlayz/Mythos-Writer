@@ -259,8 +259,8 @@ test.describe('UN-05: wikilink-to-create with an emoji target', () => {
     await openVaultTab(wlPage);
 
     await wlPage.locator('[data-testid="vb-row-Hub.md"]').click();
-    await expect(wlPage.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
-    await wlPage.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+    await expect(wlPage.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
+    await wlPage.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
     await expect(wlPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
     await wlPage.locator('[data-testid="note-gear-mode-rich"]').click();
     await expect(wlPage.locator('.note-viewer .ProseMirror')).toBeVisible();

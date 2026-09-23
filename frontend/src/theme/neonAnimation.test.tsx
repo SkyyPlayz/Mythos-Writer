@@ -8,9 +8,9 @@ import BorderOverlay from './BorderOverlay';
 
 describe('borderAnimation (verbatim borderAnim)', () => {
   it('idles on the preset animation with the panel stagger', () => {
-    expect(borderAnimation(null, 0)).toBe('lnBreathe 4.6s ease-in-out 0s infinite');
-    expect(borderAnimation({ setKey: 'winter' }, 0.8)).toBe('lnShimmer 7s ease-in-out 0.8s infinite');
-    expect(borderAnimation({ setKey: 'custom' }, 0)).toBe('lnBreathe 5s ease-in-out 0s infinite');
+    expect(borderAnimation({ animGlow: true }, 0)).toBe('lnBreathe 4.6s ease-in-out 0s infinite');
+    expect(borderAnimation({ setKey: 'winter', animGlow: true }, 0.8)).toBe('lnShimmer 7s ease-in-out 0.8s infinite');
+    expect(borderAnimation({ setKey: 'custom', animGlow: true }, 0)).toBe('lnBreathe 5s ease-in-out 0s infinite');
   });
 
   it('cycle overrides the idle with lnHue at frameSpeed', () => {
@@ -30,7 +30,7 @@ describe('borderAnimation (verbatim borderAnim)', () => {
 
 describe('breatheOverlayStyle (verbatim breathe)', () => {
   it('borders and inner-glows from the slot tokens', () => {
-    const st = breatheOverlayStyle(null, 6, 2.2);
+    const st = breatheOverlayStyle({ animGlow: true }, 6, 2.2);
     expect(st.border).toBe('var(--bw,1px) solid var(--b6)');
     expect(st.boxShadow).toBe('inset 0 0 28px var(--gs6), inset 0 0 4px var(--gs6)');
     expect(st.borderRadius).toBe('inherit');
@@ -41,7 +41,7 @@ describe('breatheOverlayStyle (verbatim breathe)', () => {
 
 describe('<BorderOverlay>', () => {
   it('renders an aria-hidden inset overlay for its slot', () => {
-    render(<BorderOverlay settings={{ setKey: 'cyber' }} slot={1} delay={0} />);
+    render(<BorderOverlay settings={{ setKey: 'cyber', animGlow: true }} slot={1} delay={0} />);
     const el = screen.getByTestId('ln-border-1');
     expect(el).toHaveAttribute('aria-hidden', 'true');
     expect(el.style.border).toBe('var(--bw,1px) solid var(--b1)');

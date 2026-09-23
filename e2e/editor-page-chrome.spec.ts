@@ -182,7 +182,7 @@ test('PC-03: page chrome is Story-only — Notes rich mode has minimal chrome (o
     await page.locator('[data-testid^="vb-row-"]', { hasText: 'chromeless' }).first().click();
     // M17: the mode switch now lives inside the gear-menu popover
     // (`[data-testid="note-gear-btn"]`), not an always-visible mode row.
-    await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+    await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
     await expect(page.locator('.note-viewer .note-mode-group[aria-label="Editor mode"]')).toBeVisible({ timeout: 8_000 });
     await page.locator('[data-testid="note-gear-mode-rich"]').click();
     await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible();

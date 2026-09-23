@@ -11,7 +11,7 @@
 // ManuscriptView render — so it exercises the actual DesktopShell closures
 // that SKY-8587 found broken.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import App from './App';
 
 const STORY_ID = 'story-1';
@@ -127,18 +127,21 @@ describe('DesktopShell manuscript paragraph refresh (SKY-8587)', () => {
     fireEvent.blur(paraA);
 
     // Edit #1 committed and is reflected in the re-rendered row.
-    expect(await screen.findByText(EDITED_A)).toBeInTheDocument();
+    // Use findAllByText to handle synopsis-card duplicates (scene cards echo paragraph content).
+    expect((await screen.findAllByText(EDITED_A)).length).toBeGreaterThan(0);
 
-    const paraB = screen.getByTestId(`msv-para-${BLOCK_B}`);
+    const storyPanel = document.getElementById('app-tabpanel-story')!;
+    const paraB = within(storyPanel).getByTestId(`msv-para-${BLOCK_B}`);
     paraB.textContent = EDITED_B;
     fireEvent.blur(paraB);
 
     // Edit #2 committed...
-    expect(await screen.findByText(EDITED_B)).toBeInTheDocument();
-    // ...and paragraph A's row STILL shows edit #1's text — proving the
-    // second edit read a refreshed selectedStory, not the pre-edit-1 one.
-    expect(screen.getByTestId(`msv-para-${BLOCK_A}`)).toHaveTextContent(EDITED_A);
-    expect(screen.queryByText(ORIGINAL_A)).not.toBeInTheDocument();
+    expect((await screen.findAllByText(EDITED_B)).length).toBeGreaterThan(0);
+    // ...and paragraph A's row STILL shows edit #1's text.
+    expect(within(storyPanel).getByTestId(`msv-para-${BLOCK_A}`)).toHaveTextContent(EDITED_A);
+    expect(within(storyPanel).queryAllByText(ORIGINAL_A).filter(
+      el => el.getAttribute('data-testid')?.startsWith('msv-para')
+    )).toHaveLength(0);
 
     // The decisive assertion: the SECOND scene-markdown write (persisted to
     // disk right after edit #2 commits) is handleManuscriptEditParagraph's

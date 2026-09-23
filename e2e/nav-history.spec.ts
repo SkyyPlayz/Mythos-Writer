@@ -105,7 +105,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
       await page.getByText('Cross Links', { exact: true }).click();
-      await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+      await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
       await page.locator('[data-testid="note-gear-mode-rich"]').click();
       await expect(page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]')).toBeVisible({ timeout: 5_000 });
 
@@ -152,7 +152,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
       await page.getByText('Cross Links', { exact: true }).click();
-      await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+      await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
       await page.locator('[data-testid="note-gear-mode-rich"]').click();
       await page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
@@ -192,7 +192,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
       await page.getByText('Cross Links', { exact: true }).click();
-      await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+      await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
       await page.locator('[data-testid="note-gear-mode-rich"]').click();
       await page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
