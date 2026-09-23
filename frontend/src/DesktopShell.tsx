@@ -3614,15 +3614,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       chapters.map((ch) => (ch.id !== chapter.id ? ch : { ...ch, scenes: [...ch.scenes, scene] }))
     );
     updateManifest(stories.map((s) => (s.id === workingStory.id ? workingStory : s)));
-    // Scene Crafter is its own workspace tab — switch to the Story Writer
-    // tab + editor sub-view so the new scene's .block-editor actually shows
-    // (mirrors the provisional-scene "New Scene" tab-bar action above).
+    // Scene Crafter: Create Scene → auto node board (video lock).
+    // Stay on the Scene Crafter canvas view (kanban) and open a new board for
+    // the created scene. handleOpenBoard navigates to 'kanban' for us.
+    // The board creation is triggered via the registered action (SceneCrafterPage owns it).
     handleTabChange('story');
-    setView('editor');
-    setViewDepth('scene');
+    handleSetView('kanban');
+    // After navigation, trigger board creation for the new scene.
+    // Small defer so SceneCrafterPage is mounted with the updated story.
+    setTimeout(() => {
+      createBoardActionRef.current?.();
+    }, 100);
+    // Also select the scene so the board's scene context is correct.
     handleSelectScene(scene, { ...chapter, scenes: [...chapter.scenes, scene] }, workingStory);
     window.api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
-  }, [stories, selectedStory, selectedChapter, updateManifest, handleSelectScene, handleTabChange, setViewDepth]);
+  }, [stories, selectedStory, selectedChapter, updateManifest, handleSelectScene, handleTabChange, handleSetView]);
 
   // SKY-10917: Story Navigator right-click "Delete scene…" — the tree had no
   // remove path at all before this. Scoped to story.chapters like
@@ -5128,7 +5134,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           <StoryNavigator
             stories={stories}
             selectedSceneId={selectedScene?.id ?? null}
-            onSelectScene={(sc, ch, st) => { handleSelectScene(sc, ch, st); setViewDepth('scene'); }}
+            onSelectScene={(sc, ch, st) => {
+              if (splitWindowEnabled && focusedPane === 2) {
+                handlePane2SelectScene(sc, ch, st);
+              } else {
+                handleSelectScene(sc, ch, st);
+                setViewDepth('scene');
+              }
+            }}
             onSelectStory={(st) => setSelectedStory(st)}
             onCreateStory={createStory}
             onCreateChapter={createChapter}
@@ -5311,6 +5324,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleNavSectionChange, handleSetView, handleOpenBoard,
     allEntities, allNotePaths, handleNotesWikiLinkClick,
     sceneNotesRefresh, handlePromoteSceneNote, handleSceneNotesChanged,
+    splitWindowEnabled, focusedPane, handlePane2SelectScene,
     notesRefreshSignal,
   ]);
 
@@ -6351,9 +6365,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           <RightSidebarSlot> instead of rendering its own second column. */}
       <RightSidebarSlotProvider>
       <div className="shell-main-row">
-      {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active */}
-      {tabShell.activeTab === 'story' && (
-      <div id="app-tabpanel-story" role="tabpanel" aria-labelledby="app-tab-story" style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+      {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active.
+          B7: keep mounted (display:none) so returning to story never loses content. */}
+      <div id="app-tabpanel-story" role="tabpanel" aria-labelledby="app-tab-story"
+        style={{ flex: 1, display: tabShell.activeTab === 'story' ? 'flex' : 'none', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}
+      >
       {/* SKY-9019/M5: sub-view bar hidden for rail-only destinations (kanban/timeline have their own full view). */}
       {/* SKY-2095 (Phase 2 #2): Story sub-view bar — vault badge + sub-view toggles + writing mode. */}
       {view !== 'kanban' && view !== 'timeline' && <StorySubViewBar
@@ -6382,6 +6398,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             <SceneCrafterPage
               key={(selectedStory ?? stories[0])!.id}
               story={(selectedStory ?? stories[0])!}
+              stories={stories}
+              onStoryChange={(s) => { setSelectedStory(s); setSelectedChapter(null); setSelectedScene(null); }}
               onOpenNote={handleOpenSceneByPath}
               onOpenScene={handleOpenSceneById}
               onCreateSceneFromSetup={createSceneFromSetup}
@@ -6423,8 +6441,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} wikiLinks={timelineWikiLinks} />
         </div>
       )}
-      {activeDockedTabId === null && view === 'structure' && (
-        <div className="shell-structure">
+      {/* B9: keep structure view mounted (display:none) to prevent glitch on back */}
+      {activeDockedTabId === null && (view === 'structure' || view === 'editor') && (
+        <div className="shell-structure" style={{ display: view === 'structure' ? 'flex' : 'none' }}>
           <ManuscriptStructureView
             story={selectedStory ?? null}
             onSelectScene={(scene, chapter, story) => {
@@ -6960,7 +6979,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       </div>
 
       </div>}{/* end shell-panels */}
-      </div>)}{/* end app-tabpanel-story */}
+      </div>{/* end app-tabpanel-story */}
       {/* SKY-2096: Notes tabpanel — full layout (vault tree + editor + Brainstorm sidebar) */}
       {tabShell.activeTab === 'notes' && !vaultBinding.notesValid && (
         <div

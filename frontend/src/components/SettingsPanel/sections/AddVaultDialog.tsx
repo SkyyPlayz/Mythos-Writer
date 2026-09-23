@@ -105,12 +105,17 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
     : 'A MANUSCRIPT WITH THIS SPINE — EMPTY, READY TO WRITE';
 
   async function browseImportSource() {
-    const res = await window.api?.chooseVaultFolder?.(
-      kind === 'notes'
-        ? 'Select an Obsidian or Markdown notes folder'
-        : 'Select a Scrivener project, Word or Markdown story folder',
-    );
-    if (res && !res.cancelled && res.path) setImportSrcPath(res.path);
+    setBusy(true);
+    try {
+      const res = await window.api?.chooseVaultFolder?.(
+        kind === 'notes'
+          ? 'Select an Obsidian or Markdown notes folder'
+          : 'Select a Scrivener project, Word or Markdown story folder',
+      );
+      if (res && !res.cancelled && res.path) setImportSrcPath(res.path);
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function handleSubmit() {

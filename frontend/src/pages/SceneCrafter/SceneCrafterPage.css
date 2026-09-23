@@ -1310,3 +1310,22 @@
   padding: 4px 8px;
   font-size: 10.5px;
 }
+
+/* Pack B: Scene Crafter story dropdown */
+.sc-story-dropdown {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  color: var(--text-primary, #f0f3fc);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 4px 10px;
+  cursor: pointer;
+  margin-bottom: 4px;
+}
+
+.sc-story-dropdown:focus-visible {
+  outline: 2px solid var(--n1, #00f0ff);
+  outline-offset: 2px;
+}

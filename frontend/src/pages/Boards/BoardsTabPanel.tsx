@@ -132,6 +132,16 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
 
   const currentFolder = breadcrumb[breadcrumb.length - 1].folderPath;
 
+  // B1/Pack B: left nav — fetch vault root folder list for persistent sidebar
+  const [rootFolders, setRootFolders] = useState<Array<{ name: string; path: string }>>([]);
+  useEffect(() => {
+    if (!notesVaultValid) return;
+    window.api.listNotesVault?.('').then((res: { items: Array<{ name: string; path: string; isDirectory: boolean }> } | { error: string }) => {
+      if ('error' in res) return;
+      setRootFolders(res.items.filter((item) => item.isDirectory).map((item) => ({ name: item.name, path: item.path })));
+    }).catch(() => { /* non-fatal */ });
+  }, [notesVaultValid, notesVaultRoot]);
+
   // Reset breadcrumb when vault root changes
   useEffect(() => {
     setBreadcrumb([HOME_CRUMB]);
@@ -586,6 +596,32 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
 
   return (
     <div className="boards-tab-panel" role="main" aria-label="Boards">
+      {/* B Pack: left nav sidebar — Home + vault root folders */}
+      <div className="boards-tab-panel__body">
+      <nav className="boards-tab-panel__left-nav" aria-label="Board folders">
+        <button
+          className={`boards-tab-panel__left-nav-item${currentFolder === '' ? ' boards-tab-panel__left-nav-item--active' : ''}`}
+          onClick={() => setBreadcrumb([HOME_CRUMB])}
+          aria-current={currentFolder === '' ? 'page' : undefined}
+          data-testid="boards-nav-home"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Home
+        </button>
+        {rootFolders.map((folder) => (
+          <button
+            key={folder.path}
+            className={`boards-tab-panel__left-nav-item${currentFolder === folder.path ? ' boards-tab-panel__left-nav-item--active' : ''}`}
+            onClick={() => setBreadcrumb(breadcrumbForFolder(folder.path))}
+            aria-current={currentFolder === folder.path ? 'page' : undefined}
+            data-testid={`boards-nav-folder-${folder.name}`}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            {folder.name}
+          </button>
+        ))}
+      </nav>
+      <div className="boards-tab-panel__main">
       {/*
         SKY-11191: the crumb bar scrolls horizontally, which makes it a
         clipping context — the search results have to drop out of a wrapper
@@ -904,6 +940,8 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
         action={toast ? { label: 'Undo', onClick: handleUndoToast } : undefined}
         onDismiss={clearToast}
       />
+      </div>{/* end boards-tab-panel__main */}
+      </div>{/* end boards-tab-panel__body */}
     </div>
   );
 }

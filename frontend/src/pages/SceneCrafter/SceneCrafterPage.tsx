@@ -246,6 +246,9 @@ export interface SceneCrafterBoard {
 
 interface Props {
   story: Story;
+  /** All available stories — for the story dropdown in the header. */
+  stories?: Story[];
+  onStoryChange?: (story: Story) => void;
   onOpenNote?: (notePath: string) => void;
   onOpenScene?: (sceneId: string) => void;
   /** SKY-11213: create a scene directly from Setup, no AI draft required.
@@ -307,6 +310,8 @@ function linkedSceneCards(board: SceneCrafterBoard | null): LinkedSceneCard[] {
 
 export default function SceneCrafterPage({
   story,
+  stories,
+  onStoryChange,
   onOpenNote,
   onOpenScene,
   onCreateSceneFromSetup,
@@ -732,7 +737,24 @@ export default function SceneCrafterPage({
       <header className="scene-crafter-header">
         <div>
           <p className="scene-crafter-eyebrow">Scene Crafter</p>
-          <h2>{story.title} — Board</h2>
+          {stories && stories.length > 1 && onStoryChange ? (
+            <select
+              className="sc-story-dropdown"
+              value={story.id}
+              onChange={(e) => {
+                const s = stories.find((st) => st.id === e.target.value);
+                if (s) onStoryChange(s);
+              }}
+              aria-label="Select story"
+              data-testid="sc-story-select"
+            >
+              {stories.map((s) => (
+                <option key={s.id} value={s.id}>{s.title || 'Untitled Story'}</option>
+              ))}
+            </select>
+          ) : (
+            <h2>{story.title} — Board</h2>
+          )}
           <p className="scene-crafter-tagline">
             Set the shape, pull in context from your vault, then let the Writing Coach draft a first pass.
           </p>
