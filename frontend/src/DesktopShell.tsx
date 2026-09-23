@@ -6147,7 +6147,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     ? vaultBinding.notesPath
     : vaultBinding.storyPath || activeVaultRoot;
   const activeVaultBadgeMissing = tabShell.activeTab === 'notes' ? !vaultBinding.notesValid : !vaultBinding.storyValid;
-  const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : tabShell.activeTab === 'brainstorm' ? 'Brainstorm' : 'Story'} vault: ${activeVaultBadge}`;
+  const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : tabShell.activeTab === 'brainstorm' ? 'Idea Board' : 'Story'} vault: ${activeVaultBadge}`;
   const navRailConfig = appSettings?.navConfig;
 
   return (

@@ -128,7 +128,7 @@ export const LIQUID_NEON_V2_DEFAULTS: LiquidNeonV2Settings = {
   txtCfg: { head: '#f0f3fc', body: '#c8d3e7', split: false, nHead: '#f0f3fc', nBody: '#c8d3e7', wiki: null },
   scrollTint: '#2b2213',
   scrollOp: 92,
-  ambMode: 'match',
+  ambMode: 'off',
   ambSpeed: 100,
   ambColor: null,
   density: 'comfortable',
