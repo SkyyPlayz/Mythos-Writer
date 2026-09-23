@@ -154,7 +154,7 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
       }
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not create the vault.');
+      setError(e instanceof Error ? e.message : 'Could not create the vault. Check the path and try again.');
       setBusy(false);
     }
   }
