@@ -6378,16 +6378,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       })()}
       {activeDockedTabId === null && view === 'kanban' && (
         <div className="shell-kanban">
-          {selectedStory ? (
+          {(selectedStory ?? stories[0]) ? (
             <SceneCrafterPage
-              key={selectedStory.id}
-              story={selectedStory}
+              key={(selectedStory ?? stories[0])!.id}
+              story={(selectedStory ?? stories[0])!}
               onOpenNote={handleOpenSceneByPath}
               onOpenScene={handleOpenSceneById}
               onCreateSceneFromSetup={createSceneFromSetup}
               // SKY-11069: the active board tab decides which canvas shows
               // full-screen; the Setup tab (activeId null) shows the gallery.
-              openBoardId={boardDocTabs.find((t) => t.id === activeBoardDocTabId && t.storyId === selectedStory.id)?.docId ?? null}
+              openBoardId={boardDocTabs.find((t) => t.id === activeBoardDocTabId && t.storyId === (selectedStory ?? stories[0])!.id)?.docId ?? null}
               onOpenBoard={handleOpenBoard}
               onBoardsLoaded={handleBoardsLoaded}
               registerCreateBoard={registerCreateBoard}

@@ -185,9 +185,9 @@ afterEach(() => cleanup());
 // ─── View switcher ───
 
 describe('TimelineRoot — view switcher', () => {
-  it('renders the Progress axis lanes by default (§8.4 DEFAULT mode)', async () => {
+  it('renders the Structure axis lanes by default (§8.4 Structure-first)', async () => {
     await renderRoot();
-    expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'progress');
+    expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'structure');
     expect(screen.queryByTestId('mock-spreadsheet')).toBeNull();
     expect(screen.queryByTestId('mock-relationships')).toBeNull();
     expect(screen.queryByTestId('mock-subway')).toBeNull();
@@ -198,7 +198,7 @@ describe('TimelineRoot — view switcher', () => {
     const toggle = screen.getByTestId('view-mode-toggle');
     const labels = Array.from(toggle.querySelectorAll('button')).map(b => b.textContent);
     expect(labels).toEqual([
-      'Progress', 'Structure', 'Plotlines', 'Spreadsheet', 'Tension', 'Relationships', 'Subway',
+      'Structure', 'Progress', 'Plotlines', 'Spreadsheet', 'Tension', 'Relationships', 'Subway',
     ]);
   });
 
@@ -230,10 +230,10 @@ describe('TimelineRoot — view switcher', () => {
 
   it('sets aria-pressed on the active mode button only', async () => {
     await renderRoot();
-    expect(screen.getByTestId('view-mode-progress')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('view-mode-structure')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('view-mode-spreadsheet')).toHaveAttribute('aria-pressed', 'false');
     fireEvent.click(screen.getByTestId('view-mode-spreadsheet'));
-    expect(screen.getByTestId('view-mode-progress')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByTestId('view-mode-structure')).toHaveAttribute('aria-pressed', 'false');
     expect(screen.getByTestId('view-mode-spreadsheet')).toHaveAttribute('aria-pressed', 'true');
   });
 
@@ -250,8 +250,13 @@ describe('TimelineRoot — view switcher', () => {
 describe('TimelineRoot — legend', () => {
   it('shows the written/planned legend only in progress mode', async () => {
     await renderRoot();
-    expect(screen.getByTestId('tl-legend')).toHaveTextContent('written');
+    // Default is structure — no legend
+    expect(screen.queryByTestId('tl-legend')).toBeNull();
+    // Switch to progress → legend appears
+    fireEvent.click(screen.getByTestId('view-mode-progress'));
+    await waitFor(() => expect(screen.getByTestId('tl-legend')).toHaveTextContent('written'));
     expect(screen.getByTestId('tl-legend')).toHaveTextContent('planned from your notes');
+    // Switch back to structure → legend gone
     fireEvent.click(screen.getByTestId('view-mode-structure'));
     await waitFor(() => expect(screen.queryByTestId('tl-legend')).toBeNull());
   });
@@ -409,12 +414,12 @@ describe('TimelineRoot — left focus panel', () => {
 // ─── Today jump ───
 
 describe('TimelineRoot — Today jump', () => {
-  it('flips structure mode to progress and bumps the axis signal', async () => {
+  it('stays on structure mode (structure-first default) and bumps the axis signal', async () => {
     await renderRoot();
-    fireEvent.click(screen.getByTestId('view-mode-structure'));
+    // Default is already structure — verify signal starts at 0
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-today-signal', '0');
     fireEvent.click(screen.getByTestId('tl-today-btn'));
-    expect(screen.getByTestId('view-mode-progress')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('view-mode-structure')).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-today-signal', '1');
   });
 
@@ -462,10 +467,10 @@ describe('TimelineRoot — persistence', () => {
     expect(await screen.findByTestId('mock-subway')).toBeInTheDocument();
   });
 
-  it('falls back to the progress lanes for an invalid stored viewMode', async () => {
+  it('falls back to the structure lanes for an invalid stored viewMode', async () => {
     localStorage.setItem('timeline:viewMode', 'kanban-nonsense');
     await renderRoot();
-    expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'progress');
+    expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-mode', 'structure');
   });
 
   it('persists groupBy to localStorage on change', async () => {
@@ -672,7 +677,7 @@ describe('TimelineRoot — M23 plan auto-build', () => {
   it('shows no flag badge when writing follows plan order', async () => {
     setupPlanApi("- The Watcher's Call\n- Finale");
     await renderRoot(STORY_WITH_CHAPTERS);
-    await screen.findByTestId('tl-legend');
+    await screen.findByTestId('mock-axis'); // wait for lanes to render
     expect(screen.queryByTestId('tl-flag-badge')).toBeNull();
   });
 

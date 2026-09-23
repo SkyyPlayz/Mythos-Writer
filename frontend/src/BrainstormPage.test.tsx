@@ -2844,8 +2844,7 @@ describe('BrainstormPage — M20 right panel sections', () => {
     expect(side.getByText('WHAT WOULD YOU LIKE TO EXPLORE?')).toBeInTheDocument();
     expect(side.getByText('QUICK GENERATE')).toBeInTheDocument();
     expect(side.getAllByTestId('bs-explore-btn')).toHaveLength(6);
-    // No prompts sent yet → saved prompts shows its hint.
-    expect(side.getByText('Prompts you send in the chat reappear here.')).toBeInTheDocument();
+    // Saved prompts section removed — no longer shown (spec: DROP Saved Prompts)
 
     await act(async () => {
       fireEvent.click(side.getByRole('button', { name: 'Generate Story Beats' }));
@@ -2859,9 +2858,9 @@ describe('BrainstormPage — M20 right panel sections', () => {
     });
     await simulateStream(['Beat one. Beat two. Beat three.']);
 
-    // The sent prompt now appears under SAVED PROMPTS on the board page.
+    // The sent prompt no longer appears under SAVED PROMPTS (removed).
     fireEvent.click(screen.getByTestId('bsc-mode-board'));
-    expect(screen.getByTestId('bs-saved-prompt')).toHaveTextContent('Give me 3 story beat ideas for the next chapter.');
+    expect(screen.queryByTestId('bs-saved-prompt')).not.toBeInTheDocument();
 
     // QUICK GENERATE sends its textarea through the same path.
     fireEvent.change(screen.getByTestId('bs-quick-gen-input'), {

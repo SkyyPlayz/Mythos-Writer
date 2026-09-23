@@ -432,6 +432,14 @@ export default function SceneCrafterPage({
     return () => unsubscribe?.();
   }, [fetchVaultItems]);
 
+  // B6: refresh scenes list when vault files change (scene created/renamed outside crafter)
+  useEffect(() => {
+    const unsubscribe = window.api.onVaultFileChanged?.(() => {
+      void fetchVaultItems().then(setVaultItems);
+    });
+    return () => unsubscribe?.();
+  }, [fetchVaultItems]);
+
   useEffect(() => {
     const unsubscribe = window.api.onSceneCrafterExternalEdit?.((changedSlug) => {
       if (changedSlug === storySlug) setConflicted(true);

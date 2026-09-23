@@ -119,7 +119,7 @@ export const LIQUID_NEON_V2_DEFAULTS: LiquidNeonV2Settings = {
   wp: 'match',
   scrim: 10,
   reduceGlow: false,
-  animGlow: true,
+  animGlow: false,
   glowW: 1,
   glowR: 60,
   frameAnim: 'off',
