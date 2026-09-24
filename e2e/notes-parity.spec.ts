@@ -105,7 +105,7 @@ test('NP-01: Notes rich mode has the shared format toolbar with a working Underl
     await expect(editor.locator('u', { hasText: 'underlined' })).toBeVisible();
 
     // Wait past the 800ms autosave debounce; the note file must round-trip <u>.
-    await expect(page.locator('.note-viewer-save-status')).toHaveText(/Saved/, { timeout: 8_000 });
+    await expect(page.locator('[data-testid="notes-tab-center"] .note-viewer-save-status')).toHaveText(/Saved/, { timeout: 8_000 });
     expect(fs.readFileSync(notePath, 'utf-8')).toContain('<u>underlined</u>');
 
     // Reopening rich mode must NOT trip the fidelity guard on our own <u> output.
@@ -141,7 +141,7 @@ test('NP-02: entity @-mention picker works in Notes rich mode (parity with Story
     await expect(editor.locator('.entity-mention-chip', { hasText: '@Elara' })).toBeVisible();
 
     // The mention serializes into the note file through the shared markdown path.
-    await expect(page.locator('.note-viewer-save-status')).toHaveText(/Saved/, { timeout: 8_000 });
+    await expect(page.locator('[data-testid="notes-tab-center"] .note-viewer-save-status')).toHaveText(/Saved/, { timeout: 8_000 });
     expect(fs.readFileSync(notePath, 'utf-8')).toContain('entity://char-elara');
   } finally {
     await app.close().catch(() => undefined);
@@ -197,7 +197,7 @@ test('NP-04: source mode stays the lossless source of truth (R1) — lossy conte
 
     // Choosing the safe path keeps source mode active and the file untouched.
     await guard.locator('button', { hasText: 'Edit in Source (safe)' }).click();
-    await expect(page.locator('textarea.note-viewer-editor')).toBeVisible();
+    await expect(page.locator('[data-testid="notes-tab-center"] textarea.note-viewer-editor')).toBeVisible();
     await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
     await expect(page.locator('[data-testid="note-gear-mode-source"]')).toHaveAttribute('aria-checked', 'true');
     await page.locator('.note-gear-backdrop').click();
@@ -239,7 +239,7 @@ test('NP-05 (M17): header title/tags + gear menu + callout card + links block', 
     await openNoteInRichMode(page, 'The Sunken Gate');
 
     // Editable Lora title (frontmatter-backed) + tag chips with add input.
-    const title = page.locator('.note-viewer [data-testid="note-title"]');
+    const title = page.locator('[data-testid="notes-tab-center"] .note-viewer [data-testid="note-title"]');
     await expect(title).toHaveText('The Sunken Gate');
     await expect(page.locator('[data-testid="note-header-tag-location"]')).toBeVisible();
     await expect(page.locator('[data-testid="note-header-tag-ruins"]')).toBeVisible();
@@ -272,7 +272,7 @@ test('NP-05 (M17): header title/tags + gear menu + callout card + links block', 
     // Gear menu: Markdown view shows the raw file (frontmatter included).
     await switchNoteMode(page, 'markdown');
     await expect(page.locator('[data-testid="note-mode-banner-markdown"]')).toBeVisible();
-    await expect(page.locator('textarea.note-viewer-editor--markdown')).toHaveValue(/title: The Sunken Gate/);
+    await expect(page.locator('[data-testid="notes-tab-center"] textarea.note-viewer-editor--markdown')).toHaveValue(/title: The Sunken Gate/);
 
     // Editing the title writes the frontmatter field through the W0.2 engine.
     await title.click();
@@ -300,7 +300,7 @@ test('NP-06 (M17): wiki-link hover preview renders; unresolved link creates the 
     await openNoteInRichMode(page, 'Hub');
 
     // Resolved link is styled resolved; hovering raises the preview card.
-    const resolved = page.locator('.note-viewer [data-wiki-link="Drownlight"]');
+    const resolved = page.locator('[data-testid="notes-tab-center"] .note-viewer [data-wiki-link="Drownlight"]');
     await expect(resolved).toBeVisible();
     await expect(resolved).not.toHaveClass(/wiki-link-unresolved/);
     await resolved.hover();
@@ -312,7 +312,7 @@ test('NP-06 (M17): wiki-link hover preview renders; unresolved link creates the 
     await expect(card).toHaveCount(0);
 
     // Unresolved link renders dashed and offers creation.
-    const unresolved = page.locator('.note-viewer [data-wiki-link="Lost Civilization"]');
+    const unresolved = page.locator('[data-testid="notes-tab-center"] .note-viewer [data-wiki-link="Lost Civilization"]');
     await expect(unresolved).toHaveClass(/wiki-link-unresolved/);
     await unresolved.hover();
     await expect(page.locator('[data-testid="wiki-link-hover-unresolved"]')).toBeVisible({ timeout: 5_000 });

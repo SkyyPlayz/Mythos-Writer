@@ -118,7 +118,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       // SKY-10929: rich mode renders styled link text only — no [[ ]] brackets.
       await page.locator('[data-wiki-link="Character: Elara"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
-      await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('[data-testid="notes-tab-center"]').getByText('Elara profile.')).toBeVisible({ timeout: 5_000 });
 
       // Back once: C -> B (Story tab, Opening Scene).
       await page.keyboard.press('Alt+ArrowLeft');
@@ -128,7 +128,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       // Back again: B -> A (Notes tab, Cross Links note).
       await page.keyboard.press('Alt+ArrowLeft');
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
-      await expect(page.getByText('Jump to')).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('[data-testid="notes-tab-center"]').getByText('Jump to')).toBeVisible({ timeout: 5_000 });
 
       // Forward twice: A -> B -> C.
       await page.keyboard.press('Alt+ArrowRight');
@@ -137,7 +137,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
 
       await page.keyboard.press('Alt+ArrowRight');
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
-      await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('[data-testid="notes-tab-center"]').getByText('Elara profile.')).toBeVisible({ timeout: 5_000 });
     } finally {
       await app.close().catch(() => undefined);
     }
@@ -165,7 +165,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
         window.dispatchEvent(new MouseEvent('mousedown', { button: 3, bubbles: true, cancelable: true }));
       });
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
-      await expect(page.getByText('Jump to')).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('[data-testid="notes-tab-center"]').getByText('Jump to')).toBeVisible({ timeout: 5_000 });
 
       await page.evaluate(() => {
         window.dispatchEvent(new MouseEvent('mousedown', { button: 4, bubbles: true, cancelable: true }));
@@ -220,7 +220,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
 
       // Should have gone back exactly once: we're on the Notes tab showing "Cross Links"
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
-      await expect(page.getByText('Jump to')).toBeVisible({ timeout: 8_000 });
+      await expect(page.locator('[data-testid="notes-tab-center"]').getByText('Jump to')).toBeVisible({ timeout: 8_000 });
       // We should NOT have gone all the way back past Notes (double-fire would)
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible();
     } finally {

@@ -232,7 +232,7 @@ test.describe('wiki-links and multi-vault graph', () => {
 
   test('[[Scene One]] in a notes file opens the story scene editor', async () => {
     await openSceneLinksNote(page);
-    await page.locator('.note-viewer [data-wiki-link="Scene One"]').click();
+    await page.locator('[data-testid="notes-tab-center"] .note-viewer [data-wiki-link="Scene One"]').click();
     await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
     await expect(page.locator('[data-testid="msv-sheet"] .block-editor--chromeless .ProseMirror')).toBeVisible({ timeout: 8_000 });
   });
