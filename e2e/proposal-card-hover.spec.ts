@@ -144,7 +144,7 @@ test('ProposalCard hover states at 1440×900 — SKY-1598', async () => {
   await page.waitForTimeout(300);
 
   // Navigate to Brainstorm view (nav-rail rewrite, SKY-3098/3218)
-  const brainstormBtn = page.locator('button.nav-rail__item[aria-label="Brainstorm"]');
+  const brainstormBtn = page.locator('button.nav-rail__item[aria-label="Idea Board"]');
   await expect(brainstormBtn).toBeVisible({ timeout: 5_000 });
   await brainstormBtn.click();
   await expect(page.locator('.brainstorm-page')).toBeVisible({ timeout: 8_000 });

@@ -112,7 +112,7 @@ test.afterAll(async () => {
 
 test('SKY-11211: Brainstorm route via nav rail shows exactly one right sidebar with brainstorm content', async () => {
   // Real nav-rail click — not the Ctrl+3 shortcut, not a mocked route.
-  await page.getByRole('group', { name: 'Sections' }).getByRole('button', { name: 'Brainstorm' }).click();
+  await page.getByRole('group', { name: 'Sections' }).getByRole('button', { name: 'Idea Board' }).click();
   const panel = page.locator('#app-tabpanel-brainstorm');
   await expect(panel).toBeVisible({ timeout: 10_000 });
 

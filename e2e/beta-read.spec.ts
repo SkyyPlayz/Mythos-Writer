@@ -327,7 +327,7 @@ test('TC-BR-01: select text → Beta-Read bubble → mocked review → comment i
 
 test('TC-BR-02: comments persist when navigating away and back to the scene', async () => {
   // Navigate away — switches view and clears selectedScene state.
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Brainstorm"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Idea Board"]').click();
   await page.waitForTimeout(300); // allow React to unmount scene state
 
   // Navigate back to the editor (Story Writer module).

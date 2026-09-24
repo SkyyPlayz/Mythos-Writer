@@ -99,7 +99,7 @@ async function closeApp(app: ElectronApplication | undefined): Promise<void> {
 }
 
 async function goToBrainstorm(page: Page): Promise<void> {
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Brainstorm"]').click();
+  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Idea Board"]').click();
   await expect(page.locator('[data-testid="bs-collections"]')).toBeVisible({ timeout: 10_000 });
 }
 
