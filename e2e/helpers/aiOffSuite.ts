@@ -159,7 +159,7 @@ export async function goSceneCrafter(page: Page): Promise<void> {
 }
 
 export async function goBrainstorm(page: Page): Promise<void> {
-  await clickRail(page, 'Brainstorm');
+  await clickRail(page, 'Idea Board');
   await expect(page.locator('[data-testid="bs-collections"]')).toBeVisible({ timeout: 10_000 });
 }
 

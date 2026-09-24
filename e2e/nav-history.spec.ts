@@ -107,10 +107,10 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       await page.getByText('Cross Links', { exact: true }).click();
       await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
       await page.locator('[data-testid="note-gear-mode-rich"]').click();
-      await expect(page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]')).toBeVisible({ timeout: 5_000 });
+      await expect(page.locator('[data-testid="notes-tab-center"] .note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]')).toBeVisible({ timeout: 5_000 });
 
       // A -> B: follow the wikilink into the Story tab's Opening Scene.
-      await page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
+      await page.locator('[data-testid="notes-tab-center"] .note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       await expect(page.locator('.msv-crumb--current', { hasText: 'Opening Scene' })).toBeVisible();
 
@@ -154,7 +154,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       await page.getByText('Cross Links', { exact: true }).click();
       await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
       await page.locator('[data-testid="note-gear-mode-rich"]').click();
-      await page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
+      await page.locator('[data-testid="notes-tab-center"] .note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
 
       // Real hardware X1/X2 side buttons aren't reachable via Playwright's
@@ -194,7 +194,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       await page.getByText('Cross Links', { exact: true }).click();
       await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
       await page.locator('[data-testid="note-gear-mode-rich"]').click();
-      await page.locator('.note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
+      await page.locator('[data-testid="notes-tab-center"] .note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
 
       // Fire the DOM mousedown (button 3 = X1 back), then immediately fire the

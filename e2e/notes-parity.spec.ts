@@ -61,7 +61,7 @@ async function openNoteInRichMode(page: Page, noteBaseName: string): Promise<voi
   await page.locator('[data-testid^="vb-row-"]', { hasText: noteBaseName }).first().click();
   await expect(page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
   await switchNoteMode(page, 'rich');
-  await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible();
+  await expect(page.locator('[data-testid="notes-tab-center"] .note-viewer .ProseMirror')).toBeVisible();
 }
 
 let tempRoot: string;
@@ -94,7 +94,7 @@ test('NP-01: Notes rich mode has the shared format toolbar with a working Underl
     const toolbar = page.locator('#app-tabpanel-notes .fmt-toolbar[aria-label="Text formatting"]');
     await expect(toolbar).toBeVisible();
 
-    const editor = page.locator('.note-viewer .ProseMirror');
+    const editor = page.locator('[data-testid="notes-tab-center"] .note-viewer .ProseMirror');
     await editor.click();
     await page.keyboard.press('End');
     await page.keyboard.type(' plus ');
@@ -112,7 +112,7 @@ test('NP-01: Notes rich mode has the shared format toolbar with a working Underl
     await switchNoteMode(page, 'source');
     await switchNoteMode(page, 'rich');
     await expect(page.locator('.note-fidelity-overlay')).toHaveCount(0);
-    await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible();
+    await expect(page.locator('[data-testid="notes-tab-center"] .note-viewer .ProseMirror')).toBeVisible();
   } finally {
     await app.close().catch(() => undefined);
   }
@@ -128,7 +128,7 @@ test('NP-02: entity @-mention picker works in Notes rich mode (parity with Story
     const page = await firstWindow(app);
     await openNoteInRichMode(page, 'mention-parity');
 
-    const editor = page.locator('.note-viewer .ProseMirror');
+    const editor = page.locator('[data-testid="notes-tab-center"] .note-viewer .ProseMirror');
     await editor.click();
     await page.keyboard.press('End');
     await page.keyboard.type(' @Ela');
@@ -157,15 +157,15 @@ test('NP-03: wiki-links render and click-delegate in Notes rich mode', async () 
     const page = await firstWindow(app);
     await openNoteInRichMode(page, 'wiki-parity');
 
-    const wikiLink = page.locator('.note-viewer .ProseMirror [data-wiki-link]');
+    const wikiLink = page.locator('[data-testid="notes-tab-center"] .note-viewer .ProseMirror [data-wiki-link]');
     await expect(wikiLink).toBeVisible();
     await expect(wikiLink).toHaveAttribute('data-wiki-link', 'Character: Elara');
 
     // Clicking plain body text must NOT activate the link (the Story-only
     // plain-text fallback stays out of Notes) — the note stays open.
-    await page.locator('.note-viewer .ProseMirror').click({ position: { x: 10, y: 10 } });
+    await page.locator('[data-testid="notes-tab-center"] .note-viewer .ProseMirror').click({ position: { x: 10, y: 10 } });
     await page.waitForTimeout(300);
-    await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible();
+    await expect(page.locator('[data-testid="notes-tab-center"] .note-viewer .ProseMirror')).toBeVisible();
     await expect(page.locator('.note-viewer-error')).toHaveCount(0);
   } finally {
     await app.close().catch(() => undefined);

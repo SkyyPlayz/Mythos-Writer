@@ -110,7 +110,7 @@ async function waitUntil(fn: () => boolean, timeoutMs = 8_000, stepMs = 100): Pr
 }
 
 async function ensureExpanded(pg: Page, rowTestId: string): Promise<void> {
-  const row = pg.locator(`#app-tabpanel-notes [data-testid="${rowTestId}"]`);
+  const row = pg.locator(`[data-testid="${rowTestId}"]`);
   const expanded = await row.getAttribute('aria-expanded');
   if (expanded !== 'true') await row.click();
 }
@@ -155,7 +155,7 @@ test('UN-01: creating a note named with an emoji preserves the name end-to-end',
   expect(onDisk, `${EMOJI_NOTE}.md was not created on disk`).toBe(true);
 
   // Visible in the tree.
-  await expect(pg.locator(`#app-tabpanel-notes [data-testid="vb-row-${EMOJI_NOTE}.md"]`)).toBeVisible({ timeout: 8_000 });
+  await expect(pg.locator(`[data-testid="vb-row-${EMOJI_NOTE}.md"]`)).toBeVisible({ timeout: 8_000 });
 });
 
 test('UN-02: creating and renaming a folder to an emoji name preserves it end-to-end', async () => {
@@ -171,11 +171,11 @@ test('UN-02: creating and renaming a folder to an emoji name preserves it end-to
     fs.statSync(path.join(notesVaultDir, EMOJI_FOLDER)).isDirectory(),
   );
   expect(onDisk, `${EMOJI_FOLDER}/ was not created on disk`).toBe(true);
-  await expect(pg.locator(`#app-tabpanel-notes [data-testid="vb-row-${EMOJI_FOLDER}"]`)).toBeVisible({ timeout: 8_000 });
+  await expect(pg.locator(`[data-testid="vb-row-${EMOJI_FOLDER}"]`)).toBeVisible({ timeout: 8_000 });
 });
 
 test('UN-03: a note nested inside the emoji folder opens and displays its emoji name in the tree and note viewer', async () => {
-  await pg.locator(`#app-tabpanel-notes [data-testid="vb-row-${EMOJI_FOLDER}"]`).click({ button: 'right' });
+  await pg.locator(`[data-testid="vb-row-${EMOJI_FOLDER}"]`).click({ button: 'right' });
   await pg.locator('[data-testid="vb-context-menu"] [data-testid="menu-item-new-note"]').click();
   const dialog = pg.locator('.ntd-dialog');
   await expect(dialog).toBeVisible({ timeout: 6_000 });
@@ -193,14 +193,14 @@ test('UN-03: a note nested inside the emoji folder opens and displays its emoji 
   expect(onDisk, `${nestedPath} was not created on disk`).toBe(true);
 
   await ensureExpanded(pg, `vb-row-${EMOJI_FOLDER}`);
-  const row = pg.locator(`#app-tabpanel-notes [data-testid="vb-row-${nestedPath}"]`);
+  const row = pg.locator(`[data-testid="vb-row-${nestedPath}"]`);
   await expect(row).toBeVisible({ timeout: 8_000 });
 
   // Open it — M8d replaced .note-viewer-filename with a breadcrumb nav;
   // the last breadcrumb item shows the note title (without .md extension).
   await row.click();
   await expect(
-    pg.locator('[data-testid="note-breadcrumb"] .note-breadcrumb-item--current', { hasText: EMOJI_NOTE }),
+    pg.locator('[data-testid="notes-tab-center"] [data-testid="note-breadcrumb"] .note-breadcrumb-item--current', { hasText: EMOJI_NOTE }),
   ).toBeVisible({ timeout: 8_000 });
 });
 
@@ -208,7 +208,7 @@ test('UN-04: renaming an existing note to an emoji name renames it on disk and i
   const originalPath = `${EMOJI_FOLDER}/${EMOJI_NOTE}.md`;
   const renamedTarget = '🎉 Celebration';
 
-  await pg.locator(`#app-tabpanel-notes [data-testid="vb-row-${originalPath}"]`).dblclick();
+  await pg.locator(`[data-testid="vb-row-${originalPath}"]`).dblclick();
   const input = pg.locator('.vb-rename-input');
   await expect(input).toBeVisible({ timeout: 6_000 });
   await input.fill(renamedTarget);
@@ -221,7 +221,7 @@ test('UN-04: renaming an existing note to an emoji name renames it on disk and i
   );
   expect(onDisk, `note was not renamed to ${renamedTarget}.md on disk`).toBe(true);
   await expect(
-    pg.locator(`#app-tabpanel-notes [data-testid="vb-row-${EMOJI_FOLDER}/${renamedTarget}.md"]`),
+    pg.locator(`[data-testid="vb-row-${EMOJI_FOLDER}/${renamedTarget}.md"]`),
   ).toBeVisible({ timeout: 8_000 });
 });
 
@@ -258,20 +258,20 @@ test.describe('UN-05: wikilink-to-create with an emoji target', () => {
     const wlPage = await firstWindow(wlApp);
     await openVaultTab(wlPage);
 
-    await wlPage.locator('#app-tabpanel-notes [data-testid="vb-row-Hub.md"]').click();
+    await wlPage.locator('[data-testid="vb-row-Hub.md"]').click();
     await expect(wlPage.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
     await wlPage.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
     await expect(wlPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
     await wlPage.locator('[data-testid="note-gear-mode-rich"]').click();
-    await expect(wlPage.locator('#app-tabpanel-notes .note-viewer .ProseMirror')).toBeVisible();
+    await expect(wlPage.locator('[data-testid="notes-tab-center"] .note-viewer .ProseMirror')).toBeVisible();
 
-    const unresolved = wlPage.locator(`.note-viewer [data-wiki-link="${EMOJI_WIKILINK_TARGET}"]`);
+    const unresolved = wlPage.locator(`[data-testid="notes-tab-center"] .note-viewer [data-wiki-link="${EMOJI_WIKILINK_TARGET}"]`);
     await expect(unresolved).toHaveClass(/wiki-link-unresolved/);
     await unresolved.click();
 
     // M8d replaced .note-viewer-filename with a breadcrumb nav.
     await expect(
-      wlPage.locator('[data-testid="note-breadcrumb"] .note-breadcrumb-item--current', { hasText: EMOJI_WIKILINK_TARGET }),
+      wlPage.locator('[data-testid="notes-tab-center"] [data-testid="note-breadcrumb"] .note-breadcrumb-item--current', { hasText: EMOJI_WIKILINK_TARGET }),
     ).toBeVisible({ timeout: 8_000 });
     expect(fs.existsSync(path.join(wlNotesVaultDir, `${EMOJI_WIKILINK_TARGET}.md`))).toBe(true);
     expect(fs.readFileSync(path.join(wlNotesVaultDir, `${EMOJI_WIKILINK_TARGET}.md`), 'utf-8')).toContain(

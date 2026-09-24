@@ -169,7 +169,7 @@ async function openSceneLinksNote(page: Page): Promise<void> {
   // M17: the mode seg moved into the gear popover; rendered links live in Rich.
   await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
   await page.locator('[data-testid="note-gear-mode-rich"]').click();
-  await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('[data-testid="notes-tab-center"] .note-viewer .ProseMirror')).toBeVisible({ timeout: 8_000 });
 }
 
 async function openGraph(page: Page): Promise<void> {
@@ -181,7 +181,7 @@ async function openGraph(page: Page): Promise<void> {
 async function expectElaraNoteOpen(page: Page): Promise<void> {
   await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
   await expect(page.locator('#app-tabpanel-notes .note-breadcrumb-item--current', { hasText: 'Elara' })).toBeVisible({ timeout: 8_000 });
-  await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('[data-testid="notes-tab-center"]').getByText('Elara profile.')).toBeVisible({ timeout: 8_000 });
 }
 
 async function clickStoryWikiLink(page: Page, target: string): Promise<void> {

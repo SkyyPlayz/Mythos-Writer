@@ -185,7 +185,7 @@ test('PC-03: page chrome is Story-only — Notes rich mode has minimal chrome (o
     await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
     await expect(page.locator('.note-viewer .note-mode-group[aria-label="Editor mode"]')).toBeVisible({ timeout: 8_000 });
     await page.locator('[data-testid="note-gear-mode-rich"]').click();
-    await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible();
+    await expect(page.locator('[data-testid="notes-tab-center"] .note-viewer .ProseMirror')).toBeVisible();
 
     // The Story manuscript toolbar / page ruler must NOT leak into the Notes surface.
     await expect(page.locator('#app-tabpanel-notes [data-testid="msv-toolbar"]')).toHaveCount(0);
