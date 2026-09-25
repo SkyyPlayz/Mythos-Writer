@@ -1,0 +1,119 @@
+name: Draft CI comment
+
+# Comment-only sticky when CI fails on a **draft** PR.
+# Creed: cut waste, don't weaken quality.
+# No Forge / Grok Bot / agent @mentions — cheap Actions minutes only.
+# Docs: docs/FORGE_E2E_KEEPALIVE.md · docs/FORGE_TIP_FREEZE.md
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+  checks: read
+
+concurrency:
+  group: draft-ci-comment-${{ github.event.workflow_run.head_sha || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  comment:
+    name: draft-ci-sticky
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: |
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event == 'pull_request'
+    steps:
+      - name: Sticky comment on draft PR (dedupe by tip SHA)
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const MARKER = '<!-- mythos-draft-ci -->';
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const run = context.payload.workflow_run;
+            const headSha = run.head_sha;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${run.id}`;
+
+            // Resolve PR from workflow_run (payload PRs can be empty for some forks).
+            let pr = (run.pull_requests || [])[0] || null;
+            if (!pr) {
+              const q = await github.rest.pulls.list({
+                owner, repo, state: 'open', head: `${owner}:${run.head_branch}`, per_page: 10,
+              });
+              pr = (q.data || []).find((p) => p.head && p.head.sha === headSha) || q.data[0] || null;
+            }
+            if (!pr) {
+              core.info('No open PR for failed CI run — skip');
+              return;
+            }
+
+            const { data: full } = await github.rest.pulls.get({
+              owner, repo, pull_number: pr.number,
+            });
+            if (!full.draft) {
+              core.info(`PR #${pr.number} is not draft — skip (ready PRs use tip-SHA gate)`);
+              return;
+            }
+            if (full.head.sha !== headSha) {
+              core.info(`PR tip moved (${full.head.sha} ≠ ${headSha}) — skip stale run`);
+              return;
+            }
+
+            // Collect failed check runs on this tip (cheap summary).
+            const failed = await github.paginate(
+              github.rest.checks.listForRef,
+              { owner, repo, ref: headSha, filter: 'latest', per_page: 100 },
+              (response) => (response.data.check_runs || []).filter((c) => c.conclusion === 'failure'),
+            );
+            const failedLines = failed.length
+              ? failed.slice(0, 20).map((c) => `- \`${c.name}\``).join('\n')
+              : '- _(no check-run names available — see workflow run)_';
+
+            const body = [
+              MARKER,
+              `<!-- tip:${headSha} -->`,
+              `## Draft CI failed on tip \`${headSha.slice(0, 7)}\``,
+              '',
+              'Comment only — no agent wake. See `docs/FORGE_E2E_KEEPALIVE.md`.',
+              '',
+              `Run: ${runUrl}`,
+              '',
+              '### Failed checks',
+              failedLines,
+              failed.length > 20 ? `\n_…and ${failed.length - 20} more_` : '',
+              '',
+              '### Tip-freeze reminder',
+              'Inventory → **one CI-fix batch** tip. Soft cap: if still red **~20 minutes** wall clock since that tip’s CI started, **one** emergency single-fix tip, then resume batching — `docs/FORGE_TIP_FREEZE.md`.',
+              '',
+              '_Creed: cut waste, don\'t weaken quality._',
+            ].filter((l) => l !== '').join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number: full.number, per_page: 100,
+            });
+            const existing = (comments || []).find((c) => c.body && c.body.includes(MARKER));
+
+            if (existing) {
+              // Same tip SHA already annotated → SILENT (no spam).
+              if (existing.body.includes(`<!-- tip:${headSha} -->`) || existing.body.includes(headSha)) {
+                core.info(`Sticky already covers tip ${headSha.slice(0, 7)} — silent`);
+                return;
+              }
+              await github.rest.issues.updateComment({
+                owner, repo, comment_id: existing.id, body,
+              });
+              core.info(`Updated draft-ci sticky on PR #${full.number} for tip ${headSha.slice(0, 7)}`);
+              return;
+            }
+
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: full.number, body,
+            });
+            core.info(`Created draft-ci sticky on PR #${full.number}`);
