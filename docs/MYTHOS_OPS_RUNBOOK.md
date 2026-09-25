@@ -13,9 +13,11 @@ to mythos-ops/specs after merge.
 ![ops-health](https://github.com/SkyyPlayz/Mythos-Writer/actions/workflows/mythos-ops-health.yml/badge.svg)
 ```
 
-Health canary (weekday mornings + after audit/hygiene completes) fails red within
-one cycle if token-audit is silent **>8d** or PR-hygiene silent **>26h**, or the
-latest completed run failed. Sticky marker: `<!-- mythos-ops-health -->`.
+Health canary (weekday mornings + after audit/hygiene completes). Sticky marker: `<!-- mythos-ops-health -->`.
+
+- **token-audit:** red if silent **>8d** or the latest completed run failed. No completed runs yet (workflow just landed; first Wed cron has not fired) is a **WARN**, not a failure. A missing workflow file is still a failure.
+- **pr-hygiene:** red on silence (**>26h since last success**) or when there is still no success and completed runs are older than the 26h bootstrap grace. A latest failure with a success inside 26h is OK (noted). No completed runs yet is a WARN.
+- **Main-push `workflow_run`:** `GET /actions/runs/{id}/pull_requests` is HTTP 404 (no PRs). `gh api` still prints that error JSON on stdout. Hygiene (`draft-ready-on-green`, `draft-ci-comment`, and the same list path in auto-rebase) soft-skips exit 0. Non-numeric tokens are never passed to `gh pr view`.
 
 ## Dependency map
 
@@ -27,12 +29,12 @@ latest completed run failed. Sticky marker: `<!-- mythos-ops-health -->`.
 | Circuit breaker | `MYTHOS_WAKE_CIRCUIT_BREAKER` | Grok Bot `mythos-pr-ci-watch` / Forge must stay SILENT while ISO future |
 | Shadow / autofix | `MYTHOS_AUTOFIX_MODE`, `MYTHOS_AUTOFIX_SHADOW_UNTIL` | [MYTHOS_AUTOFIX.md](./MYTHOS_AUTOFIX.md) |
 | Self-improvement loop | `MYTHOS_LOOP_ENABLED`, `MYTHOS_LOOP_STATE`, allow-listed tip-window / batch / circuit / retry vars | Wed audit proposes one tweak; shadow 1w; APPLY or MISS |
-| **PR hygiene** `mythos-pr-hygiene.yml` | Labels `tip-freeze` (skip rebase); draft-CI sticky; draft→ready | Merged auto-rebase + draft-CI (no duplicate workflows) |
+| **PR hygiene** `mythos-pr-hygiene.yml` | Labels `tip-freeze` (skip rebase); draft-CI sticky; draft→ready | Merged auto-rebase + draft-CI. Main-push `workflow_run` with no PRs soft-skips (404 is not a red job) |
 | Tip-freeze docs | [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md), [FORGE_E2E_KEEPALIVE.md](./FORGE_E2E_KEEPALIVE.md) | Inventory → one batch; soft cap window var |
 | Standing agents | Forge / Critic / Shield / Probe / Sentinel / `bc-fb92daf9` | [STANDING_AGENT_CONTEXT_COMPRESSION.md](./STANDING_AGENT_CONTEXT_COMPRESSION.md) |
 | Branch protection | [BRANCH_PROTECTION_MAIN.md](./BRANCH_PROTECTION_MAIN.md) + `scripts/branch-protection/apply-main-ruleset.mjs` | Manual admin apply after merge |
 | Merge gate | [MERGE_GATE.md](./MERGE_GATE.md) | Tip-SHA Critic+Shield+Probe — not collapsed |
-| Ops health | `mythos-ops-health.yml` jobs `canary` + `secrets-rotation` | Red X on silent/broken; quarterly PAT reminder |
+| Ops health | `mythos-ops-health.yml` jobs `canary` + `secrets-rotation` | Red on audit silence/failure and hygiene silence since last success. Token-audit bootstrap WARN until the first completed run. Hygiene latest-failure is OK when a success is inside 26h. Quarterly PAT reminder |
 | Secrets rotation | `vars.MYTHOS_BOT_TOKEN_SET_AT`, `vars.MYTHOS_SECRET_ROTATION_DAYS` (default 90) | Reminder only — never prints secrets |
 
 ## Rollback one-liners
