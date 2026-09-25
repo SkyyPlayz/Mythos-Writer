@@ -242,7 +242,7 @@ test('NP-05 (M17): header title/tags + gear menu + callout card + links block', 
     const title = page.locator('[data-testid="notes-tab-center"] .note-viewer [data-testid="note-title"]');
     await expect(title).toHaveText('The Sunken Gate');
     await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-header-tag-location"]')).toBeVisible();
-    await expect(page.locator('[data-testid="note-header-tag-ruins"]')).toBeVisible();
+    await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-header-tag-ruins"]')).toBeVisible();
     const tagInput = page.locator('.note-viewer [data-testid="note-add-tag-input"]').first();
     await tagInput.fill('ancient');
     await tagInput.press('Enter');
@@ -252,7 +252,7 @@ test('NP-05 (M17): header title/tags + gear menu + callout card + links block', 
     // synchronous locally, under CPU stress, and on every rerun observed —
     // give it the same auto-retrying assertion with more margin instead of
     // a bare sleep.
-    await expect(page.locator('[data-testid="note-header-tag-ancient"]')).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-header-tag-ancient"]')).toBeVisible({ timeout: 20_000 });
     await expect
       .poll(() => fs.readFileSync(path.join(notesDir, 'The Sunken Gate.md'), 'utf-8'))
       .toContain('tags: [location, ruins, ancient]');
