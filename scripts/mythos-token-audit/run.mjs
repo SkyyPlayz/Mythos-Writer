@@ -380,6 +380,9 @@ function main() {
   const usage = parseUsageSnapshot(args.usageSnapshot);
 
   const gateCycles = gateTips.size;
+  const mergedCount = merged.length;
+  // Product avg: distinct gated tips / merged PRs in lookback (≤1.0 healthy; >1.5 throttle).
+  const gateAvg = mergedCount > 0 ? gateCycles / mergedCount : gateCycles > 0 ? gateCycles : 0;
   const burn = {
     gate_cycles: gateCycles,
     full_tip_gates: fullGateTips,
@@ -387,6 +390,8 @@ function main() {
     draft_e2e_tip_storms: drafts.tipStorms,
     duplicate_forge_wakes_proxy: drafts.syncEventsProxy,
     ci_fix_drip_tips: drafts.ciFixDrip,
+    merged_prs: mergedCount,
+    gate_avg: Number(gateAvg.toFixed(3)),
   };
 
   const topDrains = drafts.drainRows
@@ -407,7 +412,8 @@ ${retryNote}
 | Distinct tip SHAs with trusted gate signals (Critic / Shield / Probe / CARVE-OUT) | ${burn.gate_cycles} |
 | Tips with full Critic+Shield+Probe | ${burn.full_tip_gates} |
 | Tips with CARVE-OUT APPROVE | ${burn.carve_out_approves} |
-| Merged PRs scanned | ${merged.length} |
+| Merged PRs scanned | ${burn.merged_prs} |
+| Gate avg (tips / merges) | ${burn.gate_avg} |
 
 Trusted authors: \`SkyyPlayz\`, \`SkyHigh-Mythos-Bot\` (same spirit as Mythos tip-SHA gate).
 
@@ -446,7 +452,7 @@ ${
 
   const summary = `## Mythos token audit (${day})
 <!-- mythos-token-audit -->
-Lookback ${args.lookback}d · gate tips **${burn.gate_cycles}** (full CSP ${burn.full_tip_gates}) · tip-storms **${burn.draft_e2e_tip_storms}** · forge-wake proxy **${burn.duplicate_forge_wakes_proxy}** · drip **${burn.ci_fix_drip_tips}**
+Lookback ${args.lookback}d · gate tips **${burn.gate_cycles}** (full CSP ${burn.full_tip_gates}) · gate_avg **${burn.gate_avg}** · tip-storms **${burn.draft_e2e_tip_storms}** · forge-wake proxy **${burn.duplicate_forge_wakes_proxy}** · drip **${burn.ci_fix_drip_tips}**
 ${usage.dualPoolLine}
 ${args.retryTag ? `Retry: ${args.retryTag}` : ""}
 ${CREED}
@@ -456,7 +462,9 @@ ${CREED}
   mkdirSync(dirname(args.summary), { recursive: true });
   writeFileSync(args.out, full, "utf8");
   writeFileSync(args.summary, summary.trim() + "\n", "utf8");
-  console.log(`wrote ${args.out} and ${args.summary}`);
+  const metricsPath = `${dirname(args.out)}/METRICS.json`;
+  writeFileSync(metricsPath, JSON.stringify(burn, null, 2) + "\n", "utf8");
+  console.log(`wrote ${args.out}, ${args.summary}, ${metricsPath}`);
 }
 
 main();

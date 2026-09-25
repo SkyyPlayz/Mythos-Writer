@@ -13,10 +13,12 @@ Workflow: [`.github/workflows/draft-ci-comment.yml`](../.github/workflows/draft-
 
 - Triggers when the **CI** workflow completes with **failure** on a **draft** PR.
 - Posts or updates a single sticky PR comment (`<!-- mythos-draft-ci -->`) with
-  failed checks + a link to the run.
-- Dedupes per **head SHA**: same tip → update or silent (no spam).
-- **No** Forge calls, **no** Grok Bot, **no** `@` mentions of agents — comment
-  only. Cheap Actions minutes.
+  failed checks + a link to the run + `fail_streak` across distinct tip SHAs.
+- Dedupes per **head SHA**: same tip → silent (no spam).
+- **Zero-intervention:** streak ≥ 2 distinct red tips → auto **ready-for-review**
+  (louder notifications; not close) — see [ops/ZERO_INTERVENTION_SILENCE_FIXES.md](./ops/ZERO_INTERVENTION_SILENCE_FIXES.md).
+- Sticky itself has **no** Forge calls, **no** Grok Bot, **no** `@` agent mentions.
+  Cheap Actions minutes.
 
 ## Tip-freeze soft cap (same 20-minute rule)
 

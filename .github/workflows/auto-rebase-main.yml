@@ -34,6 +34,37 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Expire draft-wake circuit breaker if due
+        env:
+          GH_TOKEN: ${{ secrets.MYTHOS_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          MYTHOS_BOT_TOKEN: ${{ secrets.MYTHOS_BOT_TOKEN }}
+          WAKES: ${{ vars.MYTHOS_DRAFT_PUSH_WAKES }}
+          UNTIL: ${{ vars.MYTHOS_DRAFT_PUSH_WAKES_UNTIL }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ "${WAKES:-}" != "off" ]]; then
+            echo "wake breaker not off — skip"
+            exit 0
+          fi
+          if [[ -z "${UNTIL:-}" ]]; then
+            echo "UNTIL empty — skip"
+            exit 0
+          fi
+          now_ms=$(($(date +%s) * 1000))
+          # UNTIL is epoch ms
+          if (( now_ms < UNTIL )); then
+            echo "breaker still active until $UNTIL (now_ms=$now_ms)"
+            exit 0
+          fi
+          if [[ -z "${MYTHOS_BOT_TOKEN:-}" ]]; then
+            echo "::warning::MYTHOS_BOT_TOKEN missing — cannot clear MYTHOS_DRAFT_PUSH_WAKES"
+            exit 0
+          fi
+          gh variable set MYTHOS_DRAFT_PUSH_WAKES --body on --repo "$GITHUB_REPOSITORY"
+          gh variable set MYTHOS_DRAFT_PUSH_WAKES_UNTIL --body "" --repo "$GITHUB_REPOSITORY"
+          echo "wake breaker expired → on"
+
       - name: Checkout (full history)
         uses: actions/checkout@v7
         with:

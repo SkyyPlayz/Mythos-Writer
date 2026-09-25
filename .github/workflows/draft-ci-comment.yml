@@ -1,9 +1,9 @@
 name: Draft CI comment
 
-# Comment-only sticky when CI fails on a **draft** PR.
+# Sticky when CI fails on a **draft** PR + zero-intervention escalation.
 # Creed: cut waste, don't weaken quality.
-# No Forge / Grok Bot / agent @mentions — cheap Actions minutes only.
-# Docs: docs/FORGE_E2E_KEEPALIVE.md · docs/FORGE_TIP_FREEZE.md
+# No Forge / Grok Bot / agent @mentions on the sticky itself.
+# Docs: docs/FORGE_E2E_KEEPALIVE.md · docs/ops/ZERO_INTERVENTION_SILENCE_FIXES.md
 
 on:
   workflow_run:
@@ -29,7 +29,7 @@ jobs:
       github.event.workflow_run.conclusion == 'failure' &&
       github.event.workflow_run.event == 'pull_request'
     steps:
-      - name: Sticky comment on draft PR (dedupe by tip SHA)
+      - name: Sticky comment + streak escalate (draft → ready)
         uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -41,7 +41,6 @@ jobs:
             const headSha = run.head_sha;
             const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${run.id}`;
 
-            // Resolve PR from workflow_run (payload PRs can be empty for some forks).
             let pr = (run.pull_requests || [])[0] || null;
             if (!pr) {
               const q = await github.rest.pulls.list({
@@ -58,7 +57,7 @@ jobs:
               owner, repo, pull_number: pr.number,
             });
             if (!full.draft) {
-              core.info(`PR #${pr.number} is not draft — skip (ready PRs use tip-SHA gate)`);
+              core.info(`PR #${pr.number} is not draft — skip`);
               return;
             }
             if (full.head.sha !== headSha) {
@@ -66,7 +65,6 @@ jobs:
               return;
             }
 
-            // Collect failed check runs on this tip (cheap summary).
             const failed = await github.paginate(
               github.rest.checks.listForRef,
               { owner, repo, ref: headSha, filter: 'latest', per_page: 100 },
@@ -76,12 +74,42 @@ jobs:
               ? failed.slice(0, 20).map((c) => `- \`${c.name}\``).join('\n')
               : '- _(no check-run names available — see workflow run)_';
 
+            const { data: comments } = await github.rest.issues.listComments({
+              owner, repo, issue_number: full.number, per_page: 100,
+            });
+            const existing = (comments || []).find((c) => c.body && c.body.includes(MARKER));
+
+            // Persist fail streak across distinct tip SHAs in HTML comment.
+            let failStreak = 1;
+            let lastTips = [];
+            if (existing?.body) {
+              const streakM = /<!--\s*fail_streak=(\d+)\s*-->/.exec(existing.body);
+              const tipsM = /<!--\s*fail_tips:([^>]*)-->/.exec(existing.body);
+              if (tipsM) {
+                lastTips = tipsM[1].split(',').map((s) => s.trim()).filter(Boolean);
+              }
+              if (lastTips.includes(headSha)) {
+                // Same tip already counted — SILENT (no spam, no double-count).
+                core.info(`Sticky already covers tip ${headSha.slice(0, 7)} — silent`);
+                return;
+              }
+              const prev = streakM ? Number(streakM[1]) : lastTips.length || 1;
+              failStreak = (Number.isFinite(prev) ? prev : 1) + 1;
+              lastTips = [...lastTips, headSha].slice(-5);
+            } else {
+              lastTips = [headSha];
+            }
+
             const body = [
               MARKER,
               `<!-- tip:${headSha} -->`,
+              `<!-- fail_streak=${failStreak} -->`,
+              `<!-- fail_tips:${lastTips.join(',')} -->`,
               `## Draft CI failed on tip \`${headSha.slice(0, 7)}\``,
               '',
-              'Comment only — no agent wake. See `docs/FORGE_E2E_KEEPALIVE.md`.',
+              `Fail streak (distinct tips): **${failStreak}**`,
+              '',
+              'Comment only on sticky — no agent @mention. See `docs/FORGE_E2E_KEEPALIVE.md`.',
               '',
               `Run: ${runUrl}`,
               '',
@@ -90,30 +118,45 @@ jobs:
               failed.length > 20 ? `\n_…and ${failed.length - 20} more_` : '',
               '',
               '### Tip-freeze reminder',
-              'Inventory → **one CI-fix batch** tip. Soft cap: if still red **~20 minutes** wall clock since that tip’s CI started, **one** emergency single-fix tip, then resume batching — `docs/FORGE_TIP_FREEZE.md`.',
+              'Inventory → **one CI-fix batch** tip. Soft cap ~20m (or `vars.MYTHOS_TIP_FREEZE_EMERGENCY_MINUTES`) — `docs/FORGE_TIP_FREEZE.md`.',
               '',
               '_Creed: cut waste, don\'t weaken quality._',
             ].filter((l) => l !== '').join('\n');
 
-            const { data: comments } = await github.rest.issues.listComments({
-              owner, repo, issue_number: full.number, per_page: 100,
-            });
-            const existing = (comments || []).find((c) => c.body && c.body.includes(MARKER));
-
             if (existing) {
-              // Same tip SHA already annotated → SILENT (no spam).
-              if (existing.body.includes(`<!-- tip:${headSha} -->`) || existing.body.includes(headSha)) {
-                core.info(`Sticky already covers tip ${headSha.slice(0, 7)} — silent`);
-                return;
-              }
               await github.rest.issues.updateComment({
                 owner, repo, comment_id: existing.id, body,
               });
-              core.info(`Updated draft-ci sticky on PR #${full.number} for tip ${headSha.slice(0, 7)}`);
-              return;
+              core.info(`Updated draft-ci sticky on PR #${full.number} streak=${failStreak}`);
+            } else {
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: full.number, body,
+              });
+              core.info(`Created draft-ci sticky on PR #${full.number}`);
             }
 
-            await github.rest.issues.createComment({
-              owner, repo, issue_number: full.number, body,
-            });
-            core.info(`Created draft-ci sticky on PR #${full.number}`);
+            // Zero-intervention: after 2 consecutive failures on different tips → ready-for-review
+            // (louder GH notifications; not close).
+            if (failStreak >= 2 && full.draft) {
+              try {
+                await github.rest.pulls.update({
+                  owner, repo, pull_number: full.number, draft: false,
+                });
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number: full.number,
+                  body: [
+                    '<!-- mythos-draft-ci-escalate -->',
+                    `## Auto-escalation: draft → ready-for-review`,
+                    '',
+                    `Fail streak reached **${failStreak}** distinct red tips. Converting to **ready for review** so notifications are loud (zero-intervention silence fix).`,
+                    '',
+                    'Still apply tip-freeze batching — do not drip-fix. See `docs/ops/ZERO_INTERVENTION_SILENCE_FIXES.md`.',
+                  ].join('\n'),
+                });
+                core.info(`Escalated PR #${full.number} draft→ready (streak=${failStreak})`);
+              } catch (e) {
+                core.warning(`Could not mark ready: ${e.message}`);
+              }
+            }
