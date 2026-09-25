@@ -1,0 +1,209 @@
+# SPEC / land on carve-out PR #1619 (Skyy voice 2026-09-25)
+# Merged: auto-rebase + draft-CI comment-only (one workflow, two jobs).
+# Creed: cut waste, don't weaken quality.
+#
+# Repo vars (optional):
+#   MYTHOS_TIP_FIX_WINDOW_MINUTES — default 20; audit may write 10 when gate avg >1.5 for 2 consecutive audits
+#   MYTHOS_WAKE_CIRCUIT_BREAKER — ISO timestamp until which Grok Bot PR-watch must stay SILENT on draft pr-pushed / CI-fail fan-out (48h spike cap)
+#
+# Labels:
+#   tip-freeze — auto-rebase SKIPS these PRs (never churn tip SHA mid-gate)
+
+name: Mythos PR hygiene
+
+on:
+  schedule:
+    # Hourly soft sweep for behind-main drafts / open PRs (cheap; no agent turns)
+    - cron: "17 * * * *"
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "rebase | draft-ci | both"
+        required: false
+        default: "both"
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  actions: read
+  checks: read
+
+concurrency:
+  group: mythos-pr-hygiene-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  auto-rebase:
+    name: auto-rebase
+    if: >
+      (github.event_name == 'schedule') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'rebase' || github.event.inputs.mode == 'both' || github.event.inputs.mode == '')) ||
+      (github.event_name == 'pull_request' && github.event.action != 'unlabeled')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Skip tip-freeze labeled PRs
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Collect candidate PR numbers (drafts INCLUDED)
+          CANDS=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            CANDS="${{ github.event.pull_request.number }}"
+          elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+            CANDS=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/pull_requests" --jq '.[].number' | tr '\n' ' ' || true)
+          else
+            # schedule / dispatch: open PRs behind base (include drafts)
+            CANDS=$(gh pr list --repo "${{ github.repository }}" --state open --limit 40 \
+              --json number,isDraft,labels,mergeStateStatus \
+              --jq '.[] | select(.mergeStateStatus=="BEHIND" or .mergeStateStatus=="DIRTY") | .number' | tr '\n' ' ' || true)
+          fi
+          KEEP=""
+          for n in $CANDS; do
+            [ -z "$n" ] && continue
+            LABELS=$(gh pr view "$n" --repo "${{ github.repository }}" --json labels --jq '[.labels[].name] | join(",")')
+            case ",$LABELS," in
+              *,tip-freeze,*) echo "skip #$n tip-freeze"; continue ;;
+            esac
+            KEEP="$KEEP $n"
+          done
+          echo "prs<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$KEEP" | xargs -n1 2>/dev/null || true
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Update branch (include drafts)
+        if: steps.gate.outputs.prs != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          for n in ${{ steps.gate.outputs.prs }}; do
+            [ -z "$n" ] && continue
+            echo "update-branch PR #$n (drafts allowed)"
+            gh api -X PUT "repos/${{ github.repository }}/pulls/$n/update-branch" \
+              -f expected_head_sha="$(gh pr view "$n" --repo "${{ github.repository }}" --json headRefOid --jq .headRefOid)" \
+              || echo "update-branch soft-fail #$n (conflict or race)"
+          done
+
+  draft-ci-comment:
+    name: draft-ci-comment
+    if: >
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'failure') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'draft-ci' || github.event.inputs.mode == 'both'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Comment-only on draft CI failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Resolve PR(s) for the failed CI run
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "" ]; then
+            echo "no workflow_run id — skip"
+            exit 0
+          fi
+          PRS=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}/pull_requests" --jq '.[].number' || true)
+          for n in $PRS; do
+            DRAFT=$(gh pr view "$n" --repo "${{ github.repository }}" --json isDraft --jq .isDraft)
+            if [ "$DRAFT" != "true" ]; then
+              echo "skip #$n not draft"
+              continue
+            fi
+            # Dedupe: one sticky comment marker per head SHA
+            HEAD=$(gh pr view "$n" --repo "${{ github.repository }}" --json headRefOid --jq .headRefOid)
+            MARKER="<!-- mythos-draft-ci:${HEAD} -->"
+            EXISTING=$(gh api "repos/${{ github.repository }}/issues/$n/comments" --paginate \
+              --jq ".[] | select(.body | contains(\"$MARKER\")) | .id" | head -1 || true)
+            FAIL_JOBS=$(gh run view "$RUN_ID" --repo "${{ github.repository }}" --json jobs \
+              --jq '[.jobs[] | select(.conclusion=="failure") | .name] | join(", ")' || echo "unknown")
+            BODY=$(printf '%s\n**Draft CI failed** on tip `%s`.\nFailed jobs: %s\nRun: %s/%s/actions/runs/%s\n\nStanding agent: one CI-FIX batch per FORGE_E2E_KEEPALIVE.md + FORGE_TIP_FREEZE.md (docs paths only — do not paste full contracts). Tip-fix window: vars.MYTHOS_TIP_FIX_WINDOW_MINUTES (default 20; may auto-drop to 10).\n' \
+              "$MARKER" "$HEAD" "$FAIL_JOBS" "${{ github.server_url }}" "${{ github.repository }}" "$RUN_ID")
+            if [ -n "$EXISTING" ]; then
+              gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$EXISTING" -f body="$BODY" >/dev/null
+              echo "updated comment on #$n"
+            else
+              gh pr comment "$n" --repo "${{ github.repository }}" --body "$BODY"
+              echo "created comment on #$n"
+            fi
+          done
+
+  # Zero-intervention: after 2 consecutive CI greens on the SAME draft tip → ready-for-review.
+  # NEVER auto-close drafts. Marker tracks green streak per tip SHA.
+  draft-ready-on-green:
+    name: draft-ready-on-green
+    if: >
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'draft-ci' || github.event.inputs.mode == 'both'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Mark draft ready after 2 greens on same tip
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          if [ -z "${RUN_ID:-}" ]; then
+            echo "no workflow_run id — skip"
+            exit 0
+          fi
+          HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
+          PRS=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}/pull_requests" --jq '.[].number' || true)
+          for n in $PRS; do
+            META=$(gh pr view "$n" --repo "${{ github.repository }}" --json isDraft,headRefOid,labels \
+              --jq '{draft:.isDraft,sha:.headRefOid,labels:[.labels[].name]}')
+            DRAFT=$(jq -r '.draft' <<<"$META")
+            SHA=$(jq -r '.sha' <<<"$META")
+            if [ "$DRAFT" != "true" ]; then
+              echo "skip #$n not draft"
+              continue
+            fi
+            if [ -n "$HEAD_SHA" ] && [ "$SHA" != "$HEAD_SHA" ]; then
+              echo "skip #$n tip moved"
+              continue
+            fi
+            case ",$(jq -r '.labels | join(",")' <<<"$META")," in
+              *,tip-freeze,*) echo "skip #$n tip-freeze"; continue ;;
+            esac
+            MARKER="<!-- mythos-draft-green:${SHA} -->"
+            STREAK_MARK="<!-- green_streak="
+            EXISTING=$(gh api "repos/${{ github.repository }}/issues/$n/comments" --paginate \
+              --jq ".[] | select(.body | contains(\"mythos-draft-green\")) | {id,body}" | jq -s '.[0] // empty' || true)
+            streak=1
+            if [ -n "$EXISTING" ] && [ "$EXISTING" != "null" ]; then
+              body=$(jq -r '.body // empty' <<<"$EXISTING")
+              cid=$(jq -r '.id // empty' <<<"$EXISTING")
+              if echo "$body" | grep -q "$MARKER"; then
+                prev=$(echo "$body" | sed -n 's/.*<!-- green_streak=\([0-9]*\) -->.*/\1/p' | head -1)
+                streak=$(( ${prev:-1} + 1 ))
+              else
+                # New tip SHA — reset streak to 1
+                streak=1
+              fi
+              NEW=$(printf '%s\n<!-- green_streak=%s -->\nDraft CI green streak **%s** on tip `%s`.\n' "$MARKER" "$streak" "$streak" "$SHA")
+              gh api -X PATCH "repos/${{ github.repository }}/issues/comments/$cid" -f body="$NEW" >/dev/null
+            else
+              NEW=$(printf '%s\n<!-- green_streak=1 -->\nDraft CI green streak **1** on tip `%s`.\n' "$MARKER" "$SHA")
+              gh pr comment "$n" --repo "${{ github.repository }}" --body "$NEW"
+            fi
+            if [ "$streak" -ge 2 ]; then
+              echo "escalate #$n draft→ready (green streak=$streak on same tip)"
+              gh pr ready "$n" --repo "${{ github.repository }}" || echo "gh pr ready soft-fail #$n"
+              ESC=$(printf '%s\n%s\n%s\n%s\n' \
+                '<!-- mythos-draft-ready-escalate -->' \
+                '## Auto-escalation: draft → ready-for-review' \
+                "Two consecutive CI greens on tip \`${SHA}\`. Marked ready (never auto-close)." \
+                'See docs/ops/ZERO_INTERVENTION_SILENCE_FIXES.md.')
+              gh pr comment "$n" --repo "${{ github.repository }}" --body "$ESC"
+            fi
+          done

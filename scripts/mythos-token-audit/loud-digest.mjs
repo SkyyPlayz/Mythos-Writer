@@ -11,11 +11,10 @@
  *   RUN_URL, RUN_ID, DAY (America/Denver date)
  *   GATE_AVG_PREV — vars.MYTHOS_GATE_AVG_PREV
  *   LAST_STATUS — vars.MYTHOS_TOKEN_AUDIT_LAST_STATUS
- *   DRAFT_WAKES — vars.MYTHOS_DRAFT_PUSH_WAKES
- *   DRAFT_WAKES_UNTIL — vars.MYTHOS_DRAFT_PUSH_WAKES_UNTIL
- *   TIP_FREEZE_EMERGENCY_MINUTES — vars.MYTHOS_TIP_FREEZE_EMERGENCY_MINUTES
+ *   TIP_FIX_WINDOW — vars.MYTHOS_TIP_FIX_WINDOW_MINUTES
+ *   WAKE_CIRCUIT — vars.MYTHOS_WAKE_CIRCUIT_BREAKER (ISO until)
  *
- * Reads out/SUMMARY.md + out/METRICS.json (optional).
+ * Reads out/SUMMARY.md + out/metrics.json (or METRICS.json).
  * Exits 1 when AUDIT_FAILED=1 (after loud notify) so Actions shows a red X.
  */
 
@@ -27,8 +26,8 @@ const TRACKING_TITLE = "Mythos token audit — weekly";
 const TRACKING_LABEL = "mythos-token-audit";
 const AUDIT_DOWN_LABEL = "audit-down";
 const OWNER_MENTION = "@SkyyPlayz";
-const WAKE_PROXY_THRESHOLD = 40; // lookback proxy; see ZERO_INTERVENTION doc
 const GATE_AVG_THROTTLE = 1.5;
+const TIP_STORM_WAKE_THRESHOLD = 3;
 
 function die(msg, code = 1) {
   console.error(`loud-digest: ${msg}`);
@@ -220,14 +219,17 @@ function main() {
   const runUrl = process.env.RUN_URL || "";
   const failed = process.env.AUDIT_FAILED === "1";
   const summaryPath = "out/SUMMARY.md";
-  const metricsPath = "out/METRICS.json";
-
   if (!existsSync(summaryPath)) die("missing out/SUMMARY.md");
   const summary = readFileSync(summaryPath, "utf8").trim();
   let metrics = {};
-  if (existsSync(metricsPath)) {
+  const metricsFile = existsSync("out/metrics.json")
+    ? "out/metrics.json"
+    : existsSync("out/METRICS.json")
+      ? "out/METRICS.json"
+      : null;
+  if (metricsFile) {
     try {
-      metrics = JSON.parse(readFileSync(metricsPath, "utf8"));
+      metrics = JSON.parse(readFileSync(metricsFile, "utf8"));
     } catch {
       metrics = {};
     }
@@ -338,28 +340,49 @@ function main() {
       console.log("opened audit-down issue");
     }
   }
+  // Also comment audit-down on the tracking issue (loud, zero-intervention).
+  if (failed && (lastStatus === "failed" || lastStatus === "failure")) {
+    gh(
+      [
+        "issue",
+        "comment",
+        String(issue.number),
+        "--repo",
+        repo,
+        "--body",
+        [
+          "<!-- mythos-audit-down-tracking -->",
+          `${OWNER_MENTION} — **audit-down**: two consecutive FAILED stubs. See label \`audit-down\` / \`docs/ops/ZERO_INTERVENTION_SILENCE_FIXES.md\`.`,
+          runUrl || "",
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      ],
+      { token, soft: true },
+    );
+  }
   setVar("MYTHOS_TOKEN_AUDIT_LAST_STATUS", failed ? "failed" : "ok", botToken);
 
-  // --- Trend throttle tip-freeze soft cap ---
-  const gateAvg =
-    typeof metrics.gate_avg === "number"
-      ? metrics.gate_avg
-      : Number(metrics.gate_avg);
-  const prevAvg = Number(process.env.GATE_AVG_PREV || "");
+  // --- Trend throttle: MYTHOS_TIP_FIX_WINDOW_MINUTES ---
+  const gateAvgRaw =
+    metrics.gate_avg_proxy != null ? metrics.gate_avg_proxy : metrics.gate_avg;
+  const gateAvg = Number(gateAvgRaw);
+  const prevAvg = Number(
+    process.env.GATE_AVG_PREV ||
+      (metrics.prior_gate_avg_proxy != null
+        ? metrics.prior_gate_avg_proxy
+        : ""),
+  );
   if (Number.isFinite(gateAvg)) {
-    writeFileSync(
-      "out/GATE_AVG.txt",
-      String(gateAvg),
-      "utf8",
-    );
+    writeFileSync("out/GATE_AVG.txt", String(gateAvg), "utf8");
     if (
       Number.isFinite(prevAvg) &&
       prevAvg > GATE_AVG_THROTTLE &&
       gateAvg > GATE_AVG_THROTTLE
     ) {
-      setVar("MYTHOS_TIP_FREEZE_EMERGENCY_MINUTES", "10", botToken);
+      const wrote = setVar("MYTHOS_TIP_FIX_WINDOW_MINUTES", "10", botToken);
       console.log(
-        `tip-freeze throttle: gate_avg ${gateAvg} (prev ${prevAvg}) > ${GATE_AVG_THROTTLE} → emergency=10m`,
+        `tip-fix window: gate_avg_proxy ${gateAvg} (prev ${prevAvg}) > ${GATE_AVG_THROTTLE} → 10m (wrote=${wrote})`,
       );
       gh(
         [
@@ -370,34 +393,35 @@ function main() {
           repo,
           "--body",
           [
-            "<!-- mythos-tip-freeze-throttle -->",
-            `${OWNER_MENTION} — gate_avg ${gateAvg.toFixed(2)} (prev ${prevAvg.toFixed(2)}) > ${GATE_AVG_THROTTLE} for two audits.`,
-            "Set `MYTHOS_TIP_FREEZE_EMERGENCY_MINUTES=10`. Forge/agents must read this var (`docs/FORGE_TIP_FREEZE.md`).",
+            "<!-- mythos-tip-fix-window -->",
+            `${OWNER_MENTION} — gate_avg_proxy ${gateAvg.toFixed(2)} (prev ${prevAvg.toFixed(2)}) > ${GATE_AVG_THROTTLE} for two audits.`,
+            wrote
+              ? "Set `MYTHOS_TIP_FIX_WINDOW_MINUTES=10`."
+              : "Actions could not write vars — Ivy: set `MYTHOS_TIP_FIX_WINDOW_MINUTES=10` in repo variables.",
+            "Forge/agents must read this var (`docs/FORGE_TIP_FREEZE.md`).",
           ].join("\n"),
         ],
         { token, soft: true },
       );
-    } else if (Number.isFinite(gateAvg) && gateAvg <= 1.0) {
-      // Heal throttle back toward default when healthy (best-effort).
-      const cur = process.env.TIP_FREEZE_EMERGENCY_MINUTES;
+    } else if (Number.isFinite(gateAvg) && gateAvg <= 1.5) {
+      const cur = process.env.TIP_FIX_WINDOW || "";
       if (cur && cur !== "20") {
-        setVar("MYTHOS_TIP_FREEZE_EMERGENCY_MINUTES", "20", botToken);
-        console.log("tip-freeze throttle healed → 20m");
+        setVar("MYTHOS_TIP_FIX_WINDOW_MINUTES", "20", botToken);
+        console.log("tip-fix window healed → 20m");
       }
     }
     setVar("MYTHOS_GATE_AVG_PREV", String(gateAvg), botToken);
   }
 
-  // --- Duplicate-wake circuit breaker ---
-  const wakeProxy = Number(metrics.duplicate_forge_wakes_proxy || 0);
-  const until = process.env.DRAFT_WAKES_UNTIL || "";
-  const now = Date.now();
-  if (until && Number(until) > now && process.env.DRAFT_WAKES === "off") {
-    console.log(`wake breaker already off until ${new Date(Number(until)).toISOString()}`);
-  } else if (wakeProxy > WAKE_PROXY_THRESHOLD) {
-    const expiry = now + 48 * 60 * 60 * 1000;
-    setVar("MYTHOS_DRAFT_PUSH_WAKES", "off", botToken);
-    setVar("MYTHOS_DRAFT_PUSH_WAKES_UNTIL", String(expiry), botToken);
+  // --- Draft-push wake circuit: MYTHOS_WAKE_CIRCUIT_BREAKER = ISO until ---
+  const tipStorms = Number(metrics.draft_e2e_tip_storms || 0);
+  const existingUntil = process.env.WAKE_CIRCUIT || "";
+  const existingMs = existingUntil ? Date.parse(existingUntil) : NaN;
+  if (Number.isFinite(existingMs) && existingMs > Date.now()) {
+    console.log(`wake circuit already active until ${existingUntil}`);
+  } else if (tipStorms >= TIP_STORM_WAKE_THRESHOLD) {
+    const untilIso = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    const wrote = setVar("MYTHOS_WAKE_CIRCUIT_BREAKER", untilIso, botToken);
     gh(
       [
         "issue",
@@ -407,18 +431,19 @@ function main() {
         repo,
         "--body",
         [
-          "<!-- mythos-draft-wake-breaker -->",
-          `${OWNER_MENTION} — duplicate-wake proxy **${wakeProxy}** > ${WAKE_PROXY_THRESHOLD}.`,
-          `Set \`MYTHOS_DRAFT_PUSH_WAKES=off\` until ${new Date(expiry).toISOString()} (48h).`,
-          "Forge / `mythos-pr-ci-watch` MUST stay SILENT on draft pr-pushed while off — `docs/ops/ZERO_INTERVENTION_SILENCE_FIXES.md`.",
+          "<!-- mythos-wake-circuit -->",
+          `${OWNER_MENTION} — draft e2e tip-storms **${tipStorms}** ≥ ${TIP_STORM_WAKE_THRESHOLD}.`,
+          wrote
+            ? `Set \`MYTHOS_WAKE_CIRCUIT_BREAKER=${untilIso}\` (48h).`
+            : `Actions could not write vars — Ivy: set \`MYTHOS_WAKE_CIRCUIT_BREAKER=${untilIso}\`.`,
+          "Grok Bot PR-watch / Forge MUST stay SILENT on draft pr-pushed / CI-fail fan-out until that ISO time.",
         ].join("\n"),
       ],
       { token, soft: true },
     );
-  } else if (until && Number(until) <= now && process.env.DRAFT_WAKES === "off") {
-    setVar("MYTHOS_DRAFT_PUSH_WAKES", "on", botToken);
-    setVar("MYTHOS_DRAFT_PUSH_WAKES_UNTIL", "", botToken);
-    console.log("wake breaker expired → on");
+  } else if (Number.isFinite(existingMs) && existingMs <= Date.now()) {
+    setVar("MYTHOS_WAKE_CIRCUIT_BREAKER", "", botToken);
+    console.log("wake circuit expired → cleared");
   }
 
   if (failed) {

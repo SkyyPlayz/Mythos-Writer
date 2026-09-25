@@ -15,23 +15,23 @@ Cross-links: [MERGE_GATE.md](./MERGE_GATE.md) · [FORGE_E2E_KEEPALIVE.md](./FORG
 3. Wait for that tip’s CI. Do **not** stream many small fix tips.
 
 Label `tip-freeze` (or document TIP FREEZE in the PR) means: stop tip pushes
-except as allowed below. The auto-rebase bot **skips** PRs with `tip-freeze` or
-`do-not-rebase` so mid-gate rebase cannot fight the freeze
-(see `.github/workflows/auto-rebase-main.yml`).
+except as allowed below. The Mythos PR hygiene auto-rebase job **skips** PRs
+with `tip-freeze` so mid-gate rebase cannot fight the freeze
+(see `.github/workflows/mythos-pr-hygiene.yml`).
 
-## Soft cap — one emergency single-fix tip (~20 minutes default)
+## Soft cap — one emergency single-fix tip
 
 If, **after that one batch tip**, CI is still red for longer than the emergency
 window wall clock, allow **exactly one emergency single-fix tip**:
 
 | Field | Rule |
 | --- | --- |
-| **Threshold** | **`vars.MYTHOS_TIP_FREEZE_EMERGENCY_MINUTES`** if set, else **20** minutes. Auto-throttle may set this to **10** when `gate_avg > 1.5` for two consecutive weekly audits (see [ops/ZERO_INTERVENTION_SILENCE_FIXES.md](./ops/ZERO_INTERVENTION_SILENCE_FIXES.md)). |
+| **Threshold** | **`vars.MYTHOS_TIP_FIX_WINDOW_MINUTES`** if set, else **20** minutes. Weekly audit may set this to **10** when CURRENT and PRIOR `gate_avg_proxy` both **> 1.5** (see [ops/ZERO_INTERVENTION_SILENCE_FIXES.md](./ops/ZERO_INTERVENTION_SILENCE_FIXES.md) · [TOKEN_AUDIT_LOUD_DIGEST.md](./TOKEN_AUDIT_LOUD_DIGEST.md)). |
 | **Clock starts** | When CI **starts** on the batch tip (preferred: `workflow_run` / check-suite `created_at` / `started_at` for that head SHA). If start time is unavailable, use wall clock since the **first red conclusion** on that tip. |
 | **Allowance** | **One** narrowly scoped commit (single failure class / one root cause), then push once. |
 | **After** | **Resume batching** — next reds go back through full inventory → one batch tip. No drip stream. |
 
-**Forge / standing agents MUST read** `MYTHOS_TIP_FREEZE_EMERGENCY_MINUTES` before
+**Forge / standing agents MUST read** `MYTHOS_TIP_FIX_WINDOW_MINUTES` before
 applying the soft cap (unset ⇒ 20).
 
 This is an emergency unblock only. It does **not** authorize a stream of

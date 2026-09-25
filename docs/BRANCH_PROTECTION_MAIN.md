@@ -68,7 +68,6 @@ it, or creates one. It never runs from the token-audit workflow.
 4. **Linear history** keeps `main` readable for audits and bisects.
 
 Strict “branches must be up to date” pairs with
-[`.github/workflows/auto-rebase-main.yml`](../.github/workflows/auto-rebase-main.yml)
-(hourly + on `main` push) so open PRs stay current without human rebase tax.
-PRs labeled `tip-freeze` or `do-not-rebase` are skipped so rebase cannot fight
-mid-gate tip-freeze — see [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md).
+[`.github/workflows/mythos-pr-hygiene.yml`](../.github/workflows/mythos-pr-hygiene.yml)
+(hourly + PR events; `gh` update-branch) so open PRs — **including drafts** —
+stay current without human rebase tax. PRs labeled `tip-freeze` are skipped.

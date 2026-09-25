@@ -1,19 +1,26 @@
 #!/usr/bin/env node
 /**
  * Cheap Mythos workflow token audit — Node 20 builtins + `gh` CLI only.
- * Heuristics for last N days; never invents dual-pool usage numbers.
+ * Creed: cut waste, don't weaken quality.
+ *
+ * Single-pass: list merged PRs once, then per-PR fetch comments+reviews (+ draft
+ * storms separately). Never re-lists the same PR set.
  *
  * Args:
  *   --out <path>              full TOKEN_AUDIT.md
- *   --summary <path>          short SUMMARY.md (issue comment body)
+ *   --summary <path>          short SUMMARY.md
  *   --lookback <days>         default 7
- *   --usage-snapshot <json>   optional JSON with cursor_models_pct / other_models_pct
- *   --retry-tag <string>      optional (e.g. "retry 1/1")
+ *   --usage-snapshot <json>   optional; never invent dual-pool numbers
+ *   --prior-metrics <path>    optional prior out/metrics.json
+ *   --retry-tag <string>      optional
+ *
+ * Writes out/metrics.json beside --out (gate_cycles, full_tip_gates,
+ * gate_avg_proxy, draft_e2e_tip_storms, …).
  */
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const TRUSTED = new Set(["SkyyPlayz", "SkyHigh-Mythos-Bot"]);
 const CREED = "Creed: cut waste, don't weaken quality.";
@@ -29,6 +36,7 @@ function parseArgs(argv) {
     summary: null,
     lookback: 7,
     usageSnapshot: "",
+    priorMetrics: "",
     retryTag: "",
   };
   for (let i = 2; i < argv.length; i++) {
@@ -50,6 +58,9 @@ function parseArgs(argv) {
         break;
       case "--usage-snapshot":
         out.usageSnapshot = next();
+        break;
+      case "--prior-metrics":
+        out.priorMetrics = next();
         break;
       case "--retry-tag":
         out.retryTag = next();
@@ -160,7 +171,8 @@ function parseUsageSnapshot(raw) {
       };
     }
     return {
-      dualPoolLine: "dual-pool: snapshot present but missing cursor_models_pct/other_models_pct — skip",
+      dualPoolLine:
+        "dual-pool: snapshot present but missing cursor_models_pct/other_models_pct — skip",
       snapshot: null,
     };
   } catch {
@@ -177,44 +189,57 @@ function isoDaysAgo(days) {
   return d.toISOString();
 }
 
-function collectGateTips(owner, repo, mergedPrs) {
+function loadPriorMetrics(path) {
+  if (!path || !existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, "utf8"));
+  } catch {
+    console.warn(`mythos-token-audit: could not parse prior metrics at ${path}`);
+    return null;
+  }
+}
+
+/**
+ * Single-pass over merged PRs: for each PR fetch comments + reviews once,
+ * accumulate tip-bound gate signals. No second list of the same PRs.
+ */
+function scanMergedOnce(owner, repo, mergedPrs) {
   /** @type {Map<string, { pr: number, signals: Set<string> }>} */
   const tips = new Map();
 
   for (const pr of mergedPrs) {
     const number = pr.number;
-    const mergeSha = pr.mergeCommit?.oid || pr.mergeCommitOid || null;
-    // Prefer head at merge time; fall back to merge commit.
+    const mergeSha =
+      (pr.mergeCommit && pr.mergeCommit.oid) || pr.mergeCommitOid || null;
     const headSha = pr.headRefOid || mergeSha;
     if (!headSha) continue;
 
-    const comments = ghJson([
-      "api",
-      `repos/${owner}/${repo}/issues/${number}/comments`,
-      "--paginate",
-    ]) || [];
-    const reviews = ghJson([
-      "api",
-      `repos/${owner}/${repo}/pulls/${number}/reviews`,
-      "--paginate",
-    ]) || [];
+    // One comments page + one reviews page per PR (paginate only if needed).
+    const comments =
+      ghJson(
+        ["api", `repos/${owner}/${repo}/issues/${number}/comments`, "--paginate"],
+        { soft: true },
+      ) || [];
+    const reviews =
+      ghJson(
+        ["api", `repos/${owner}/${repo}/pulls/${number}/reviews`, "--paginate"],
+        { soft: true },
+      ) || [];
 
     const bodies = [];
     for (const c of comments) {
       if (!TRUSTED.has(c.user?.login)) continue;
-      bodies.push({ body: c.body || "", login: c.user.login });
+      bodies.push(c.body || "");
     }
     for (const r of reviews) {
       if (!TRUSTED.has(r.user?.login)) continue;
-      bodies.push({ body: r.body || "", login: r.user.login });
+      bodies.push(r.body || "");
     }
 
-    for (const { body } of bodies) {
+    for (const body of bodies) {
       if (!isGateSignal(body)) continue;
-      // Tip-bound: cite merge/head SHA, or accept if this is the merge tip and body has any SHA-like gate.
       const bound =
-        shaInBody(body, headSha) ||
-        (mergeSha && shaInBody(body, mergeSha));
+        shaInBody(body, headSha) || (mergeSha && shaInBody(body, mergeSha));
       if (!bound) continue;
 
       const key = headSha.slice(0, 40);
@@ -230,20 +255,22 @@ function collectGateTips(owner, repo, mergedPrs) {
   return tips;
 }
 
-function analyzeDraftStorms(owner, repo, sinceIso) {
-  const drafts = ghJson([
-    "pr",
-    "list",
-    "--repo",
-    `${owner}/${repo}`,
-    "--state",
-    "open",
-    "--draft",
-    "--limit",
-    "50",
-    "--json",
-    "number,updatedAt,headRefOid,url,title",
-  ]) || [];
+/** Draft storms: list drafts once; per draft fetch pull meta + optional checks. */
+function scanDraftsOnce(owner, repo, sinceIso) {
+  const drafts =
+    ghJson([
+      "pr",
+      "list",
+      "--repo",
+      `${owner}/${repo}`,
+      "--state",
+      "open",
+      "--draft",
+      "--limit",
+      "50",
+      "--json",
+      "number,updatedAt,headRefOid,url,title",
+    ]) || [];
 
   let tipStorms = 0;
   let syncEventsProxy = 0;
@@ -254,7 +281,6 @@ function analyzeDraftStorms(owner, repo, sinceIso) {
   for (const pr of drafts) {
     if (pr.updatedAt && pr.updatedAt < sinceIso) continue;
 
-    // Cheap: REST pull payload exposes total commit count (not full commit nodes).
     const pull = ghJson(
       [
         "api",
@@ -265,10 +291,8 @@ function analyzeDraftStorms(owner, repo, sinceIso) {
       { soft: true },
     );
     const pushCount = Number(pull?.commits) || 0;
-    // Duplicate Forge wake proxy: draft synchronize ≈ head pushes beyond 1.
     if (pushCount > 1) syncEventsProxy += pushCount - 1;
 
-    // Optional: count commits dated within lookback for drip precision.
     let recentPushCount = pushCount;
     if (pushCount >= 3) {
       const commits = ghJson(
@@ -293,7 +317,7 @@ function analyzeDraftStorms(owner, repo, sinceIso) {
           "api",
           `repos/${owner}/${repo}/commits/${pr.headRefOid}/check-runs?per_page=100`,
           "--jq",
-          "[.check_runs[]? | select(.conclusion==\"failure\") | {name, title: .output.title}]",
+          '[.check_runs[]? | select(.conclusion=="failure") | {name, title: .output.title}]',
         ],
         { soft: true },
       );
@@ -326,6 +350,39 @@ function analyzeDraftStorms(owner, repo, sinceIso) {
   return { tipStorms, syncEventsProxy, ciFixDrip, drainRows };
 }
 
+function tipWindowInstruction(currentAvg, priorAvg) {
+  const cur = Number(currentAvg);
+  const prior = priorAvg == null ? null : Number(priorAvg);
+  if (!Number.isFinite(cur)) return "";
+  if (Number.isFinite(prior) && prior > 1.5 && cur > 1.5) {
+    return [
+      "**Soft OK tip window:** CURRENT and PRIOR `gate_avg_proxy` both **> 1.5**.",
+      "Set repo var `MYTHOS_TIP_FIX_WINDOW_MINUTES=10` (idempotent if already 10).",
+      "Requires vars:write (`MYTHOS_BOT_TOKEN` / admin). If unsettable from Actions, Ivy sets it in UI.",
+      "Forge/agents MUST read this var for the tip-freeze emergency single-fix window.",
+    ].join(" ");
+  }
+  if (
+    Number.isFinite(cur) &&
+    cur <= 1.5 &&
+    (prior == null || !Number.isFinite(prior) || prior <= 1.5)
+  ) {
+    return [
+      "**Soft OK tip window:** CURRENT (and PRIOR if present) `gate_avg_proxy` **≤ 1.5**.",
+      "Revert/keep repo var `MYTHOS_TIP_FIX_WINDOW_MINUTES=20` (default).",
+    ].join(" ");
+  }
+  if (Number.isFinite(cur) && cur <= 1.5 && Number.isFinite(prior) && prior > 1.5) {
+    return [
+      "**Soft OK tip window:** CURRENT ≤ 1.5 after PRIOR > 1.5 — instruct revert to",
+      "`MYTHOS_TIP_FIX_WINDOW_MINUTES=20`.",
+    ].join(" ");
+  }
+  return `**Soft OK tip window:** CURRENT gate_avg_proxy=${cur}${
+    prior != null && Number.isFinite(prior) ? ` PRIOR=${prior}` : " (no prior)"
+  } — no two-audit throttle yet.`;
+}
+
 function main() {
   const args = parseArgs(process.argv);
   const repoFull = process.env.GITHUB_REPOSITORY;
@@ -334,7 +391,6 @@ function main() {
   }
   const [owner, repo] = repoFull.split("/");
 
-  // Auth smoke — hard fail if gh cannot talk to the API for this repo.
   const repoMeta = ghJson([
     "api",
     `repos/${owner}/${repo}`,
@@ -345,86 +401,111 @@ function main() {
 
   const sinceIso = isoDaysAgo(args.lookback);
   const day = denverDay();
+  const prior = loadPriorMetrics(args.priorMetrics);
 
-  const merged = ghJson([
-    "pr",
-    "list",
-    "--repo",
-    repoFull,
-    "--state",
-    "merged",
-    "--limit",
-    "50",
-    "--search",
-    `merged:>=${sinceIso.slice(0, 10)}`,
-    "--json",
-    "number,mergedAt,mergeCommit,headRefOid,title,url",
-  ]) || [];
+  // --- Single list of merged PRs in lookback ---
+  const merged =
+    ghJson([
+      "pr",
+      "list",
+      "--repo",
+      repoFull,
+      "--state",
+      "merged",
+      "--limit",
+      "50",
+      "--search",
+      `merged:>=${sinceIso.slice(0, 10)}`,
+      "--json",
+      "number,mergedAt,mergeCommit,headRefOid,title,url",
+    ]) || [];
 
-  // Normalize mergeCommit shape from gh JSON.
-  for (const pr of merged) {
-    if (pr.mergeCommit && typeof pr.mergeCommit === "object") {
-      pr.mergeCommitOid = pr.mergeCommit.oid;
-    }
-  }
-
-  const gateTips = collectGateTips(owner, repo, merged);
+  const gateTips = scanMergedOnce(owner, repo, merged);
   const fullGateTips = [...gateTips.values()].filter(
-    (t) => t.signals.has("critic") && t.signals.has("shield") && t.signals.has("probe"),
+    (t) =>
+      t.signals.has("critic") &&
+      t.signals.has("shield") &&
+      t.signals.has("probe"),
   ).length;
   const carveTips = [...gateTips.values()].filter((t) =>
     t.signals.has("carve-out"),
   ).length;
 
-  const drafts = analyzeDraftStorms(owner, repo, sinceIso);
+  const drafts = scanDraftsOnce(owner, repo, sinceIso);
   const usage = parseUsageSnapshot(args.usageSnapshot);
 
   const gateCycles = gateTips.size;
   const mergedCount = merged.length;
-  // Product avg: distinct gated tips / merged PRs in lookback (≤1.0 healthy; >1.5 throttle).
-  const gateAvg = mergedCount > 0 ? gateCycles / mergedCount : gateCycles > 0 ? gateCycles : 0;
-  const burn = {
+  // Prefer full tip-gates / merges; fall back to distinct tips / merges.
+  const denom = Math.max(mergedCount, 1);
+  const gateAvgProxy = Number(
+    ((fullGateTips > 0 ? fullGateTips : gateCycles) / denom).toFixed(3),
+  );
+
+  const priorAvg =
+    prior &&
+    (prior.gate_avg_proxy != null
+      ? Number(prior.gate_avg_proxy)
+      : prior.gate_avg != null
+        ? Number(prior.gate_avg)
+        : null);
+
+  const metrics = {
+    day,
+    lookback_days: args.lookback,
     gate_cycles: gateCycles,
     full_tip_gates: fullGateTips,
     carve_out_approves: carveTips,
+    merged_prs: mergedCount,
+    gate_avg_proxy: gateAvgProxy,
     draft_e2e_tip_storms: drafts.tipStorms,
     duplicate_forge_wakes_proxy: drafts.syncEventsProxy,
     ci_fix_drip_tips: drafts.ciFixDrip,
-    merged_prs: mergedCount,
-    gate_avg: Number(gateAvg.toFixed(3)),
+    prior_gate_avg_proxy:
+      priorAvg != null && Number.isFinite(priorAvg) ? priorAvg : null,
   };
 
+  const tipWindow = tipWindowInstruction(gateAvgProxy, priorAvg);
   const topDrains = drafts.drainRows
     .sort((a, b) => b.pushes - a.pushes)
     .slice(0, 8);
-
   const retryNote = args.retryTag ? `\n_Retry tag: ${args.retryTag}_\n` : "";
+  const priorLine =
+    priorAvg != null && Number.isFinite(priorAvg)
+      ? `Prior gate_avg_proxy (cached): **${priorAvg}**`
+      : "Prior gate_avg_proxy: _none_ (first run or no artifact)";
 
   const full = `# Mythos workflow token audit — ${day}
 
 <!-- mythos-token-audit -->
 Lookback: **${args.lookback}** days (since \`${sinceIso.slice(0, 10)}\`) · repo \`${repoFull}\`
 ${retryNote}
+${priorLine}
+
 ## Gate table
 
 | Metric | Count |
 | --- | ---: |
-| Distinct tip SHAs with trusted gate signals (Critic / Shield / Probe / CARVE-OUT) | ${burn.gate_cycles} |
-| Tips with full Critic+Shield+Probe | ${burn.full_tip_gates} |
-| Tips with CARVE-OUT APPROVE | ${burn.carve_out_approves} |
-| Merged PRs scanned | ${burn.merged_prs} |
-| Gate avg (tips / merges) | ${burn.gate_avg} |
+| Distinct tip SHAs with trusted gate signals | ${metrics.gate_cycles} |
+| Tips with full Critic+Shield+Probe | ${metrics.full_tip_gates} |
+| Tips with CARVE-OUT APPROVE | ${metrics.carve_out_approves} |
+| Merged PRs scanned | ${metrics.merged_prs} |
+| gate_avg_proxy | ${metrics.gate_avg_proxy} |
 
-Trusted authors: \`SkyyPlayz\`, \`SkyHigh-Mythos-Bot\` (same spirit as Mythos tip-SHA gate).
+Trusted authors: \`SkyyPlayz\`, \`SkyHigh-Mythos-Bot\`.
 
 ## Burn categories
 
 | Category | Count | Notes |
 | --- | ---: | --- |
-| Gate cycles | ${burn.gate_cycles} | Distinct tip SHAs that collected tip-bound trusted gate comments/reviews |
-| Draft e2e tip-storms | ${burn.draft_e2e_tip_storms} | Draft PRs with ≥3 head pushes while recent CI failures mention e2e |
-| Duplicate Forge wakes (proxy) | ${burn.duplicate_forge_wakes_proxy} | Draft synchronize / extra head pushes; **agent wakes N/A in Actions** |
-| CI-fix drip | ${burn.ci_fix_drip_tips} | Tips beyond first in a red e2e streak on the same draft PR |
+| Gate cycles | ${metrics.gate_cycles} | Distinct tip SHAs with tip-bound trusted signals |
+| Draft e2e tip-storms | ${metrics.draft_e2e_tip_storms} | Drafts with ≥3 head pushes + e2e-ish CI fail |
+| Duplicate Forge wakes (proxy) | ${metrics.duplicate_forge_wakes_proxy} | Extra draft pushes; agent wakes N/A in Actions |
+| CI-fix drip | ${metrics.ci_fix_drip_tips} | Tips beyond first in red e2e streak |
+
+## Soft OK tip window
+
+${tipWindow}
 
 ## Dual-pool
 
@@ -445,25 +526,33 @@ ${
 
 ## Notes
 
-- Heuristics only; Actions cannot see Paperclip/Forge agent wake counts — proxy via draft sync/pushes.
-- Never invents dual-pool percentages; set repo var \`MYTHOS_USAGE_SNAPSHOT\` when available.
+- Single-pass fetch: merged list once, then per-PR comments/reviews; drafts listed once.
+- Never invents dual-pool percentages.
+- Tip-fix window var: \`MYTHOS_TIP_FIX_WINDOW_MINUTES\` (default 20).
 - ${CREED}
 `;
 
   const summary = `## Mythos token audit (${day})
 <!-- mythos-token-audit -->
-Lookback ${args.lookback}d · gate tips **${burn.gate_cycles}** (full CSP ${burn.full_tip_gates}) · gate_avg **${burn.gate_avg}** · tip-storms **${burn.draft_e2e_tip_storms}** · forge-wake proxy **${burn.duplicate_forge_wakes_proxy}** · drip **${burn.ci_fix_drip_tips}**
+Lookback ${args.lookback}d · gate tips **${metrics.gate_cycles}** (full CSP ${metrics.full_tip_gates}) · gate_avg_proxy **${metrics.gate_avg_proxy}** (prior ${
+    priorAvg != null && Number.isFinite(priorAvg) ? priorAvg : "n/a"
+  }) · tip-storms **${metrics.draft_e2e_tip_storms}** · wake proxy **${metrics.duplicate_forge_wakes_proxy}** · drip **${metrics.ci_fix_drip_tips}**
+${priorLine}
+${tipWindow}
 ${usage.dualPoolLine}
 ${args.retryTag ? `Retry: ${args.retryTag}` : ""}
 ${CREED}
 `;
 
-  mkdirSync(dirname(args.out), { recursive: true });
+  const outDir = dirname(args.out);
+  mkdirSync(outDir, { recursive: true });
   mkdirSync(dirname(args.summary), { recursive: true });
   writeFileSync(args.out, full, "utf8");
   writeFileSync(args.summary, summary.trim() + "\n", "utf8");
-  const metricsPath = `${dirname(args.out)}/METRICS.json`;
-  writeFileSync(metricsPath, JSON.stringify(burn, null, 2) + "\n", "utf8");
+  const metricsPath = join(outDir, "metrics.json");
+  writeFileSync(metricsPath, JSON.stringify(metrics, null, 2) + "\n", "utf8");
+  // Compat alias for older loud-digest readers
+  writeFileSync(join(outDir, "METRICS.json"), JSON.stringify(metrics, null, 2) + "\n", "utf8");
   console.log(`wrote ${args.out}, ${args.summary}, ${metricsPath}`);
 }
 

@@ -1,67 +1,63 @@
 # Zero-intervention silence fixes
 
-Creed: **cut waste, don't weaken quality.** Automated loudness so failures cannot
-rot unread. Humans are not required to open a weekly digest for the system to
-correct course.
+Creed: **cut waste, don't weaken quality.**
 
 Canonical loud digest: [TOKEN_AUDIT_LOUD_DIGEST.md](../TOKEN_AUDIT_LOUD_DIGEST.md).
+PR hygiene (rebase + draft-CI comment + draft→ready): [`.github/workflows/mythos-pr-hygiene.yml`](../../.github/workflows/mythos-pr-hygiene.yml).
 
 ## Map (trigger → action → silence failure prevented)
 
-### 1. Auto-escalation on repeated draft-CI failure
+### 1. Draft ready after 2 consecutive CI greens (same tip)
 
 | | |
 | --- | --- |
-| **Trigger** | `draft-ci-comment.yml` sees **≥2** CI failures on the same **draft** PR across **distinct head SHAs** (`fail_streak` + `fail_tips` in sticky `<!-- mythos-draft-ci -->`). |
-| **Action** | Auto **draft → ready-for-review** (`pulls.update draft:false`) + escalation comment. (Ready is louder than close; close is not used.) |
-| **Silence failure prevented** | Draft rot invisible forever. |
-| **Committed** | `.github/workflows/draft-ci-comment.yml` |
+| **Trigger** | `mythos-pr-hygiene` `draft-ready-on-green`: CI `workflow_run` **success** on a **draft** PR; sticky `<!-- mythos-draft-green:SHA -->` reaches `green_streak≥2` on the **same** tip SHA. |
+| **Action** | `gh pr ready` (mark ready-for-review). **Never** auto-close drafts. |
+| **Silence failure prevented** | Draft rot / forever-draft with green CI nobody notices. |
+| **Committed** | `.github/workflows/mythos-pr-hygiene.yml` |
 
 ### 2. Self-healing audit-down
 
 | | |
 | --- | --- |
 | **Trigger** | FAILED stub **and** `vars.MYTHOS_TOKEN_AUDIT_LAST_STATUS` was already `failed` (two consecutive Wed stubs). |
-| **Action** | Open/comment issue labeled `audit-down` with `@SkyyPlayz`; fail Actions job (red X). Persist new status via `MYTHOS_TOKEN_AUDIT_LAST_STATUS`. |
+| **Action** | Comment on tracking issue + open/comment `audit-down` issue with `@SkyyPlayz`; fail Actions job (red X). |
 | **Silence failure prevented** | Blind Wed gap / stub ignored. |
-| **Committed** | `scripts/mythos-token-audit/loud-digest.mjs` · `.github/workflows/mythos-token-audit.yml` |
+| **Committed** | `scripts/mythos-token-audit/loud-digest.mjs` |
 
-### 3. Trend-based auto-throttle tip-freeze soft cap
-
-| | |
-| --- | --- |
-| **Trigger** | Audit `gate_avg` (distinct gated tips / merged PRs) **> 1.5** for **two consecutive** audits (`vars.MYTHOS_GATE_AVG_PREV`). |
-| **Action** | Best-effort set `vars.MYTHOS_TIP_FREEZE_EMERGENCY_MINUTES=10` (heals back to `20` when `gate_avg ≤ 1.0`). Comment on tracking issue. |
-| **Silence failure prevented** | Gate-cycle avg drifts >1.5 with nobody reading the digest. |
-| **Committed** | `loud-digest.mjs` · `run.mjs` (emits `gate_avg`) · documented in `FORGE_TIP_FREEZE.md` |
-
-**Forge / standing agents MUST read** `MYTHOS_TIP_FREEZE_EMERGENCY_MINUTES` (default treat as **20** if unset) before applying the soft-cap emergency single-fix tip.
-
-### 4. Duplicate-wake circuit breaker
+### 3. Gate-avg tip-fix window throttle
 
 | | |
 | --- | --- |
-| **Trigger** | Audit proxy `duplicate_forge_wakes_proxy` **> 40** in lookback (draft sync / extra pushes). |
-| **Action** | Set `vars.MYTHOS_DRAFT_PUSH_WAKES=off` and `MYTHOS_DRAFT_PUSH_WAKES_UNTIL=<now+48h>`. Hourly auto-rebase job expires the breaker when due. |
+| **Trigger** | CURRENT and PRIOR `gate_avg_proxy` both **> 1.5** (prior from artifact / `MYTHOS_GATE_AVG_PREV`). |
+| **Action** | Best-effort set `vars.MYTHOS_TIP_FIX_WINDOW_MINUTES=10` (heal to `20` when ≤1.5). Document write if no vars:write token. |
+| **Silence failure prevented** | Gate avg drifts >1.5 with nobody reading the digest. |
+| **Committed** | `run.mjs` + `loud-digest.mjs` · `docs/FORGE_TIP_FREEZE.md` |
+
+### 4. Draft-push wake circuit breaker
+
+| | |
+| --- | --- |
+| **Trigger** | `draft_e2e_tip_storms ≥ 3` in lookback. |
+| **Action** | Set `vars.MYTHOS_WAKE_CIRCUIT_BREAKER` to ISO timestamp **now+48h**. Grok Bot PR-watch / Forge MUST stay SILENT on draft `pr-pushed` / CI-fail fan-out until that time. |
 | **Silence failure prevented** | Forge re-wake spam while humans ignore. |
-| **Committed** | `loud-digest.mjs` · `.github/workflows/auto-rebase-main.yml` (expiry) |
+| **Committed** | `loud-digest.mjs` · documented in hygiene workflow header |
 
-**Forge / `mythos-pr-ci-watch` MUST check** `MYTHOS_DRAFT_PUSH_WAKES`: while `off` and before `UNTIL`, stay **SILENT** on draft `pr-pushed` / synchronize wakes.
+## Repo vars
 
-### Follow-up (Ivy / Grok routines)
+| Variable | Meaning |
+| --- | --- |
+| `MYTHOS_TIP_FIX_WINDOW_MINUTES` | Emergency single-fix window (default **20**; throttle → **10**) |
+| `MYTHOS_WAKE_CIRCUIT_BREAKER` | ISO-until silence for draft wakes |
+| `MYTHOS_GATE_AVG_PREV` | Prior `gate_avg_proxy` |
+| `MYTHOS_TOKEN_AUDIT_LAST_STATUS` | `ok` / `failed` |
+| `MYTHOS_TOKEN_AUDIT_ISSUE` | Tracking issue number |
+| `MYTHOS_USAGE_SNAPSHOT` | Dual-pool JSON (never invented) |
 
-If Grok Bot routines cannot read repo vars yet, update the standing prompt to
-consult these vars (or pause routine) after merge — Actions cannot edit Grok
-routines itself.
+## Explicit non-goals
 
-## Vars cheat-sheet
-
-| Variable | Writer | Readers |
-| --- | --- | --- |
-| `MYTHOS_TOKEN_AUDIT_ISSUE` | loud-digest (bot) | workflow |
-| `MYTHOS_TOKEN_AUDIT_LAST_STATUS` | loud-digest (bot) | loud-digest |
-| `MYTHOS_GATE_AVG_PREV` | loud-digest (bot) | loud-digest |
-| `MYTHOS_TIP_FREEZE_EMERGENCY_MINUTES` | loud-digest (bot) | Forge / agents |
-| `MYTHOS_DRAFT_PUSH_WAKES` | loud-digest + hourly expiry | Forge / ci-watch |
-| `MYTHOS_DRAFT_PUSH_WAKES_UNTIL` | loud-digest + hourly expiry | hourly expiry |
-| `MYTHOS_USAGE_SNAPSHOT` | human | audit script |
+- Do **not** collapse Critic/Shield/Probe.
+- Do **not** skip the plan / tip-SHA gate.
+- Do **not** auto-close drafts.
+- Do **not** shorten lookback below 7d.
+- Do **not** ban Other Models.

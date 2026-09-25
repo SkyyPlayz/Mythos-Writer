@@ -13,32 +13,38 @@ Chosen mechanism (least human effort / loudest cheap combo):
 
 | Surface | Behavior |
 | --- | --- |
-| Tracking issue | Title `Mythos token audit — weekly`, label `mythos-token-audit`. Created if missing; number written to `vars.MYTHOS_TOKEN_AUDIT_ISSUE` when `MYTHOS_BOT_TOKEN` can set vars. |
+| Tracking issue | Title `Mythos token audit — weekly`, label `mythos-token-audit`. Created if missing; number written to `vars.MYTHOS_TOKEN_AUDIT_ISSUE` when bot can set vars. |
 | Reopen | Closed tracking issue is reopened every run. |
-| Body | Overwritten with latest SUMMARY. |
-| Comment | One `@SkyyPlayz` notify per America/Denver day (`<!-- mythos-token-audit-notify:YYYY-MM-DD -->` dedupe). |
-| Pin | Best-effort GraphQL `pinIssue`; if token lacks permission → **pin once in UI**. |
+| Body | Overwritten with latest SUMMARY (includes prior `gate_avg_proxy` cache). |
+| Comment | One `@SkyyPlayz` notify per America/Denver day (dedupe). |
+| Pin | Best-effort GraphQL `pinIssue`; else **pin once in UI**. |
 | Actions red X | `loud-digest.mjs` exits `1` after notify when FAILED stub was written. |
+
+## Efficiency
+
+- Single-pass `run.mjs`: list merged PRs once → per-PR comments/reviews.
+- Writes `out/metrics.json` (`gate_cycles`, `full_tip_gates`, `gate_avg_proxy`, …).
+- Downloads prior successful workflow artifact when possible (`--prior-metrics`).
+- Soft OK tip window instruction when CURRENT+PRIOR `gate_avg_proxy` > 1.5 →
+  `MYTHOS_TIP_FIX_WINDOW_MINUTES=10` (best-effort vars write).
 
 ## Workflow / scripts
 
 - [`.github/workflows/mythos-token-audit.yml`](../.github/workflows/mythos-token-audit.yml)
 - [`scripts/mythos-token-audit/run.mjs`](../scripts/mythos-token-audit/run.mjs)
 - [`scripts/mythos-token-audit/loud-digest.mjs`](../scripts/mythos-token-audit/loud-digest.mjs)
+- Hygiene (rebase + draft CI): [`.github/workflows/mythos-pr-hygiene.yml`](../.github/workflows/mythos-pr-hygiene.yml)
 
-## Repo vars (optional but recommended)
+## Repo vars
 
 | Var | Purpose |
 | --- | --- |
 | `MYTHOS_TOKEN_AUDIT_ISSUE` | Tracking issue number |
-| `MYTHOS_TOKEN_AUDIT_LAST_STATUS` | `ok` / `failed` (consecutive-fail heal) |
-| `MYTHOS_USAGE_SNAPSHOT` | Dual-pool JSON |
-| `MYTHOS_GATE_AVG_PREV` | Prior gate_avg for throttle |
-| `MYTHOS_TIP_FREEZE_EMERGENCY_MINUTES` | Soft-cap minutes (default 20; throttle → 10) |
-| `MYTHOS_DRAFT_PUSH_WAKES` | `on` / `off` circuit breaker |
-| `MYTHOS_DRAFT_PUSH_WAKES_UNTIL` | Epoch-ms expiry for breaker |
-
-Vars writes require `MYTHOS_BOT_TOKEN` (admin/vars). `GITHUB_TOKEN` still does issues + fail-job loudness.
+| `MYTHOS_TOKEN_AUDIT_LAST_STATUS` | `ok` / `failed` |
+| `MYTHOS_USAGE_SNAPSHOT` | Dual-pool JSON (never invented) |
+| `MYTHOS_GATE_AVG_PREV` | Prior `gate_avg_proxy` |
+| `MYTHOS_TIP_FIX_WINDOW_MINUTES` | Soft-cap minutes (default 20; throttle → 10) |
+| `MYTHOS_WAKE_CIRCUIT_BREAKER` | ISO-until silence for draft wakes |
 
 ## Related
 

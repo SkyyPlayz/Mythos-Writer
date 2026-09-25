@@ -5,32 +5,36 @@ the red tip without burning Forge / Grok Bot wakes.
 
 Creed: **cut waste, don't weaken quality.**
 
-Cross-links: [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md) · [MERGE_GATE.md](./MERGE_GATE.md)
+Cross-links: [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md) · [MERGE_GATE.md](./MERGE_GATE.md) ·
+[ops/ZERO_INTERVENTION_SILENCE_FIXES.md](./ops/ZERO_INTERVENTION_SILENCE_FIXES.md)
 
 ## What this is
 
-Workflow: [`.github/workflows/draft-ci-comment.yml`](../.github/workflows/draft-ci-comment.yml)
+Workflow: [`.github/workflows/mythos-pr-hygiene.yml`](../.github/workflows/mythos-pr-hygiene.yml)
+(`draft-ci-comment` job)
 
 - Triggers when the **CI** workflow completes with **failure** on a **draft** PR.
-- Posts or updates a single sticky PR comment (`<!-- mythos-draft-ci -->`) with
-  failed checks + a link to the run + `fail_streak` across distinct tip SHAs.
-- Dedupes per **head SHA**: same tip → silent (no spam).
-- **Zero-intervention:** streak ≥ 2 distinct red tips → auto **ready-for-review**
-  (louder notifications; not close) — see [ops/ZERO_INTERVENTION_SILENCE_FIXES.md](./ops/ZERO_INTERVENTION_SILENCE_FIXES.md).
-- Sticky itself has **no** Forge calls, **no** Grok Bot, **no** `@` agent mentions.
-  Cheap Actions minutes.
+- Posts or updates a sticky PR comment (`<!-- mythos-draft-ci:HEAD_SHA -->`) with
+  failed jobs + run link.
+- Dedupes per **head SHA**: same tip → update (no spam).
+- Points standing agents at **docs paths only** (`FORGE_E2E_KEEPALIVE.md`,
+  `FORGE_TIP_FREEZE.md`) — do not paste full contracts into the comment.
+- Tip-fix window: `vars.MYTHOS_TIP_FIX_WINDOW_MINUTES` (default 20).
+- Sticky itself has **no** Forge calls, **no** Grok Bot, **no** agent `@` mentions.
 
-## Tip-freeze soft cap (same 20-minute rule)
+## Zero-intervention ready (greens)
 
-Keep-alive comments do **not** change tip-freeze policy. They only surface reds.
+Separate job `draft-ready-on-green`: after **2 consecutive CI greens** on the
+**same** draft tip SHA → `gh pr ready`. **Never** auto-close drafts.
 
-When fixing a draft (or a tip-frozen PR) after a keep-alive / red CI notice:
+## Tip-freeze soft cap
 
-1. Default: full fail inventory → **one CI-fix batch** tip
-   ([FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md)).
-2. Soft cap: if after that batch tip CI stays red for **~20 minutes wall clock**
-   since that tip’s CI **started** (fallback: since first red on that tip), allow
-   **one emergency single-fix tip**, then **resume batching**.
+Keep-alive comments do **not** change tip-freeze policy. When fixing:
+
+1. Default: full fail inventory → **one CI-fix batch** tip.
+2. Soft cap: if still red for `MYTHOS_TIP_FIX_WINDOW_MINUTES` (default **20**)
+   wall clock since that tip’s CI started, **one** emergency single-fix tip,
+   then resume batching.
 3. Anti-pattern remains: streaming many small CI-fix tips.
 
 ## What this is not

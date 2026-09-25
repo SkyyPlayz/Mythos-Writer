@@ -4,9 +4,7 @@ name: Mythos token audit
 # routine. Creed: cut waste, don't weaken quality.
 # Cron Wed 12:12 UTC ≈ 06:12 America/Denver (MDT).
 #
-# Loud digest (zero daily reading habit):
-#   1) Tracking issue reopen + body update + @SkyyPlayz once/day
-#   2) Fail the Actions job when FAILED stub is written → red X on Actions tab
+# Loud digest: tracking issue reopen + @SkyyPlayz + fail job on FAILED stub (red X).
 # See docs/TOKEN_AUDIT_LOUD_DIGEST.md · docs/ops/ZERO_INTERVENTION_SILENCE_FIXES.md
 
 on:
@@ -48,6 +46,35 @@ jobs:
         with:
           node-version: "20"
 
+      - name: Download prior metrics artifact (best-effort)
+        id: prior
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p out/prior
+          RID=$(gh run list --repo "${{ github.repository }}" \
+            --workflow mythos-token-audit.yml --status success --limit 1 \
+            --json databaseId --jq '.[0].databaseId // empty' || true)
+          if [ -z "${RID:-}" ]; then
+            echo "no prior successful run"
+            exit 0
+          fi
+          gh run download "$RID" --repo "${{ github.repository }}" \
+            --name "mythos-token-audit-${RID}" --dir out/prior || true
+          if [ -f out/prior/metrics.json ]; then
+            echo "path=out/prior/metrics.json" >> "$GITHUB_OUTPUT"
+          elif [ -f out/prior/METRICS.json ]; then
+            echo "path=out/prior/METRICS.json" >> "$GITHUB_OUTPUT"
+          else
+            # artifact may nest
+            FOUND=$(find out/prior -name 'metrics.json' -o -name 'METRICS.json' 2>/dev/null | head -1 || true)
+            if [ -n "$FOUND" ]; then
+              echo "path=$FOUND" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
       - name: Run audit (attempt 1)
         id: run1
         continue-on-error: true
@@ -56,14 +83,20 @@ jobs:
           LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '7' }}
           USAGE_SNAPSHOT_JSON: ${{ vars.MYTHOS_USAGE_SNAPSHOT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          PRIOR: ${{ steps.prior.outputs.path }}
         run: |
           set -euo pipefail
           mkdir -p out
+          EXTRA=()
+          if [[ -n "${PRIOR:-}" && -f "$PRIOR" ]]; then
+            EXTRA+=(--prior-metrics "$PRIOR")
+          fi
           node scripts/mythos-token-audit/run.mjs \
             --out out/TOKEN_AUDIT.md \
             --summary out/SUMMARY.md \
             --lookback "${LOOKBACK_DAYS}" \
-            --usage-snapshot "${USAGE_SNAPSHOT_JSON:-}"
+            --usage-snapshot "${USAGE_SNAPSHOT_JSON:-}" \
+            "${EXTRA[@]}"
 
       - name: Retry once on failure
         id: run2
@@ -73,16 +106,22 @@ jobs:
           LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '7' }}
           USAGE_SNAPSHOT_JSON: ${{ vars.MYTHOS_USAGE_SNAPSHOT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          PRIOR: ${{ steps.prior.outputs.path }}
         run: |
           set -euo pipefail
           mkdir -p out
           echo "retry 1/1" > out/RETRY.txt
+          EXTRA=()
+          if [[ -n "${PRIOR:-}" && -f "$PRIOR" ]]; then
+            EXTRA+=(--prior-metrics "$PRIOR")
+          fi
           node scripts/mythos-token-audit/run.mjs \
             --out out/TOKEN_AUDIT.md \
             --summary out/SUMMARY.md \
             --lookback "${LOOKBACK_DAYS}" \
             --usage-snapshot "${USAGE_SNAPSHOT_JSON:-}" \
-            --retry-tag "retry 1/1"
+            --retry-tag "retry 1/1" \
+            "${EXTRA[@]}"
 
       - name: Write FAILED stub if both attempts failed
         id: stub
@@ -103,7 +142,8 @@ jobs:
             echo "retry 1/1 also failed. Blind-gap stub written."
             echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           } > out/SUMMARY.md
-          echo '{"gate_avg":0,"duplicate_forge_wakes_proxy":0,"failed_stub":true}' > out/METRICS.json
+          echo '{"gate_avg_proxy":0,"draft_e2e_tip_storms":0,"failed_stub":true}' > out/metrics.json
+          cp out/metrics.json out/METRICS.json
           echo "wrote=1" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact
@@ -124,17 +164,16 @@ jobs:
           TRACKING_ISSUE_VAR: ${{ vars.MYTHOS_TOKEN_AUDIT_ISSUE }}
           LAST_STATUS: ${{ vars.MYTHOS_TOKEN_AUDIT_LAST_STATUS }}
           GATE_AVG_PREV: ${{ vars.MYTHOS_GATE_AVG_PREV }}
-          DRAFT_WAKES: ${{ vars.MYTHOS_DRAFT_PUSH_WAKES }}
-          DRAFT_WAKES_UNTIL: ${{ vars.MYTHOS_DRAFT_PUSH_WAKES_UNTIL }}
-          TIP_FREEZE_EMERGENCY_MINUTES: ${{ vars.MYTHOS_TIP_FREEZE_EMERGENCY_MINUTES }}
+          TIP_FIX_WINDOW: ${{ vars.MYTHOS_TIP_FIX_WINDOW_MINUTES }}
+          WAKE_CIRCUIT: ${{ vars.MYTHOS_WAKE_CIRCUIT_BREAKER }}
           AUDIT_FAILED: ${{ steps.stub.outputs.wrote == '1' && '1' || '0' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ID: ${{ github.run_id }}
         run: |
           set -euo pipefail
           export DAY=$(TZ=America/Denver date +%F)
-          # Prefer bot token for vars write when present.
           if [[ -n "${MYTHOS_BOT_TOKEN:-}" ]]; then
             export GH_TOKEN="$MYTHOS_BOT_TOKEN"
           fi
+          # Loud digest exits 1 on FAILED stub → Actions red X (after comment).
           node scripts/mythos-token-audit/loud-digest.mjs
