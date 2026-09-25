@@ -1,0 +1,215 @@
+name: Mythos ops health
+
+# Canary for token-audit + PR-hygiene + quarterly secrets-rotation reminder.
+# Creed: cut waste, don't weaken quality.
+# Docs: docs/MYTHOS_OPS_RUNBOOK.md
+#
+# Jobs:
+#   canary — fail (red X) if audit silent >8d or hygiene silent >26h / last failed
+#   secrets-rotation — quarterly reminder issue (never prints secret values)
+
+on:
+  schedule:
+    # Weekday mornings ~08:00 UTC (~02:00 MT) — within one cycle visibility
+    - cron: "5 8 * * 1-5"
+    # Quarterly secrets reminder (1 Jan/Apr/Jul/Oct 12:00 UTC)
+    - cron: "0 12 1 1,4,7,10 *"
+  workflow_run:
+    workflows:
+      - "Mythos token audit"
+      - "Mythos PR hygiene"
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "canary | secrets | both"
+        required: false
+        default: "both"
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+  checks: read
+
+concurrency:
+  group: mythos-ops-health-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    name: ops-canary
+    if: >
+      github.event_name == 'workflow_run' ||
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'canary' || github.event.inputs.mode == 'both' || github.event.inputs.mode == '') ||
+      (github.event_name == 'schedule' && github.event.schedule == '5 8 * * 1-5')
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Canary — token-audit + PR-hygiene freshness
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TRACKING: ${{ vars.MYTHOS_TOKEN_AUDIT_ISSUE }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          NOW=$(date -u +%s)
+          FAIL=0
+          NOTES=""
+
+          check_wf() {
+            local NAME="$1"
+            local MAX_AGE_H="$2"
+            local LABEL="$3"
+            # Prefer last successful run; also note last conclusion
+            local ROW
+            ROW=$(gh run list --repo "$REPO" --workflow "$NAME" --limit 5 \
+              --json databaseId,conclusion,status,createdAt,updatedAt,url,event \
+              --jq '[.[] | select(.status=="completed")] | .[0] // empty' || true)
+            if [ -z "$ROW" ] || [ "$ROW" = "null" ]; then
+              NOTES="${NOTES}\n- **${LABEL}**: no completed runs found"
+              FAIL=1
+              return
+            fi
+            local CONC UPD URL
+            CONC=$(jq -r '.conclusion // empty' <<<"$ROW")
+            UPD=$(jq -r '.updatedAt // .createdAt' <<<"$ROW")
+            URL=$(jq -r '.url // empty' <<<"$ROW")
+            local UPD_S
+            UPD_S=$(date -u -d "$UPD" +%s 2>/dev/null || date -u -d "${UPD}" +%s 2>/dev/null || echo 0)
+            local AGE_H=9999
+            if [ "$UPD_S" -gt 0 ]; then
+              AGE_H=$(( (NOW - UPD_S) / 3600 ))
+            fi
+            NOTES="${NOTES}\n- **${LABEL}**: conclusion=\`${CONC}\` age=${AGE_H}h url=${URL}"
+            if [ "$CONC" = "failure" ] || [ "$CONC" = "timed_out" ] || [ "$CONC" = "cancelled" ]; then
+              # Latest completed is a failure — red
+              FAIL=1
+            fi
+            if [ "$AGE_H" -gt "$MAX_AGE_H" ]; then
+              NOTES="${NOTES}\n  → SILENT past window (>${MAX_AGE_H}h)"
+              FAIL=1
+            fi
+          }
+
+          # Audit weekly cron — allow ≤8 days (192h)
+          check_wf "mythos-token-audit.yml" 192 "token-audit"
+          # Hygiene hourly — allow ≤26h
+          check_wf "mythos-pr-hygiene.yml" 26 "pr-hygiene"
+
+          BODY=$(printf '%s\n' \
+            '<!-- mythos-ops-health -->' \
+            '## Mythos ops health canary' \
+            '' \
+            "$(echo -e "$NOTES")" \
+            '' \
+            "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            '' \
+            '_Creed: cut waste, don'\''t weaken quality. No agent wake._')
+
+          # Sticky on tracking issue or mythos-ops-health labeled issue
+          TARGET=""
+          if [ -n "${TRACKING:-}" ]; then
+            TARGET="$TRACKING"
+          else
+            TARGET=$(gh issue list --repo "$REPO" --state open --label mythos-ops-health \
+              --limit 1 --json number --jq '.[0].number // empty' || true)
+            if [ -z "$TARGET" ]; then
+              gh label create mythos-ops-health --repo "$REPO" --color D93F0B --force || true
+              TARGET=$(gh issue create --repo "$REPO" \
+                --title "Mythos ops health" \
+                --label mythos-ops-health \
+                --body "Tracking canary failures for token-audit + PR-hygiene. See docs/MYTHOS_OPS_RUNBOOK.md." \
+                --jq .number 2>/dev/null || true)
+              # gh issue create may print URL
+              if [[ "$TARGET" == http* ]]; then
+                TARGET=$(echo "$TARGET" | sed -n 's|.*/issues/\([0-9]*\).*|\1|p')
+              fi
+            fi
+          fi
+
+          if [ -n "$TARGET" ]; then
+            EXISTING=$(gh api "repos/$REPO/issues/$TARGET/comments" --paginate \
+              --jq '.[] | select(.body | contains("<!-- mythos-ops-health -->")) | .id' | head -1 || true)
+            if [ -n "$EXISTING" ]; then
+              gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING" -f body="$BODY" >/dev/null
+            else
+              gh issue comment "$TARGET" --repo "$REPO" --body "$BODY"
+            fi
+          fi
+
+          if [ "$FAIL" -ne 0 ]; then
+            echo "::error::Ops canary FAILED — see notes above"
+            exit 1
+          fi
+          echo "Ops canary OK"
+
+  secrets-rotation:
+    name: secrets-rotation-reminder
+    if: >
+      (github.event_name == 'schedule' && github.event.schedule == '0 12 1 1,4,7,10 *') ||
+      (github.event_name == 'workflow_dispatch' && (github.event.inputs.mode == 'secrets' || github.event.inputs.mode == 'both'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Open/update rotation reminder issue (no secret values)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ROTATION_DAYS: ${{ vars.MYTHOS_SECRET_ROTATION_DAYS }}
+          SET_AT: ${{ vars.MYTHOS_BOT_TOKEN_SET_AT }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          DAYS="${ROTATION_DAYS:-90}"
+          TITLE="Secrets rotation due — Mythos bot PAT / ops tokens"
+          DUE=0
+          REASON=""
+
+          if [ -z "${SET_AT:-}" ]; then
+            DUE=1
+            REASON="\`MYTHOS_BOT_TOKEN_SET_AT\` repo var is unset — treat as due (humans set ISO date when rotating)."
+          else
+            SET_S=$(date -u -d "$SET_AT" +%s 2>/dev/null || echo 0)
+            NOW=$(date -u +%s)
+            if [ "$SET_S" -eq 0 ]; then
+              DUE=1
+              REASON="\`MYTHOS_BOT_TOKEN_SET_AT\` unparseable — treat as due."
+            else
+              AGE_D=$(( (NOW - SET_S) / 86400 ))
+              if [ "$AGE_D" -gt "$DAYS" ]; then
+                DUE=1
+                REASON="PAT age proxy **${AGE_D}d** > window **${DAYS}d** (from \`MYTHOS_BOT_TOKEN_SET_AT\` date only — no secret values)."
+              else
+                echo "Rotation not due (age=${AGE_D}d ≤ ${DAYS}d) — OK"
+                exit 0
+              fi
+            fi
+          fi
+
+          BODY=$(printf '%s\n' \
+            '<!-- mythos-secrets-rotation -->' \
+            "## $TITLE" \
+            '' \
+            "$REASON" \
+            '' \
+            '### Checklist (rotate outside this workflow — never paste secrets here)' \
+            '- [ ] Rotate `MYTHOS_BOT_TOKEN` (repo secret) and update `vars.MYTHOS_BOT_TOKEN_SET_AT` to today ISO' \
+            '- [ ] Review any audit / ops PATs' \
+            '- [ ] Cursor / Grok bot secrets outside GitHub (if any)' \
+            '- [ ] Confirm `mythos-gate-auto-merge` still merges with new token' \
+            '' \
+            'See `docs/MYTHOS_OPS_RUNBOOK.md`. Creed: cut waste, do not weaken quality.' \
+            '' \
+            '_This job does not rotate secrets and never logs secret values._')
+
+          EXISTING=$(gh issue list --repo "$REPO" --state open --search "$TITLE in:title" \
+            --json number,title --jq '.[] | select(.title=="'"$TITLE"'") | .number' | head -1 || true)
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --repo "$REPO" --body "$BODY"
+            echo "Updated existing rotation issue #$EXISTING"
+          else
+            gh label create secrets-rotation --repo "$REPO" --color B60205 --force || true
+            gh issue create --repo "$REPO" --title "$TITLE" --label secrets-rotation --body "$BODY"
+            echo "Opened rotation reminder issue"
+          fi
