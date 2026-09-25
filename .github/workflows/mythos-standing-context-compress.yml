@@ -1,0 +1,60 @@
+name: Mythos standing context compress
+
+# Monthly checklist for standing-agent brief compression.
+# Creed: cut waste, don't weaken quality.
+# Does NOT auto-delete Grok/Paperclip memory — repo docs checklist only.
+# Docs: docs/STANDING_AGENT_CONTEXT_COMPRESSION.md
+
+on:
+  schedule:
+    # First Monday of the month-ish: 12:00 UTC on days 1–7 Monday
+    - cron: "0 12 1-7 * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  checklist:
+    name: compression-checklist
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Only fire on the first Monday (day 1–7) for schedule; always on dispatch.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'schedule' && github.event.schedule == '0 12 1-7 * 1')
+    steps:
+      - name: Post Ivy checklist (or find tracking issue)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          BODY=$(cat <<'EOF'
+          <!-- mythos-standing-context-compress -->
+          ## Standing-agent context compression checklist
+
+          Creed: cut waste, don't weaken quality.
+
+          1. Compress Forge / Sentinel / Critic / Shield / Probe briefs (or one Mythos standing summary).
+          2. Write archive to `docs/archive/standing-briefs/YYYY-MM.md`.
+          3. Update optional `docs/archive/standing-briefs/CURRENT.md` pointer.
+          4. Ivy-side: standing cloud agent `bc-fb92daf9` REPLY prompts start from compressed summary — not full history paste.
+          5. Open a **draft** docs PR if needed (do not auto-delete agent memory).
+
+          See `docs/STANDING_AGENT_CONTEXT_COMPRESSION.md`.
+          EOF
+          )
+          # Prefer commenting on an open issue labeled mythos-standing-brief; else create one.
+          N=$(gh issue list --repo "${{ github.repository }}" --state open \
+            --label mythos-standing-brief --limit 1 --json number --jq '.[0].number // empty' || true)
+          if [ -n "$N" ]; then
+            gh issue comment "$N" --repo "${{ github.repository }}" --body "$BODY"
+          else
+            gh label create mythos-standing-brief --repo "${{ github.repository }}" --color 5319E7 --force || true
+            gh issue create --repo "${{ github.repository }}" \
+              --title "Standing-agent context compression ($(date -u +%Y-%m))" \
+              --label mythos-standing-brief \
+              --body "$BODY" || true
+          fi

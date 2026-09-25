@@ -20,6 +20,13 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  appendShadowLog,
+  breakerActive,
+  ensureShadowWindow,
+  maybeFlipToLive,
+  resolveAutofixMode,
+} from "../mythos-autofix/shadow-mode.mjs";
 
 const CREED = "Creed: cut waste, don't weaken quality.";
 const TRACKING_TITLE = "Mythos token audit — weekly";
@@ -363,7 +370,98 @@ function main() {
   }
   setVar("MYTHOS_TOKEN_AUDIT_LAST_STATUS", failed ? "failed" : "ok", botToken);
 
-  // --- Trend throttle: MYTHOS_TIP_FIX_WINDOW_MINUTES ---
+  // --- Autofix shadow window + coordination (docs/MYTHOS_AUTOFIX.md) ---
+  // Sync env for shadow-mode helper (bot token already preferred in GH_TOKEN).
+  process.env.MYTHOS_AUTOFIX_MODE =
+    process.env.MYTHOS_AUTOFIX_MODE || process.env.AUTOFIX_MODE || "";
+  process.env.MYTHOS_AUTOFIX_SHADOW_UNTIL =
+    process.env.MYTHOS_AUTOFIX_SHADOW_UNTIL || process.env.AUTOFIX_SHADOW_UNTIL || "";
+  process.env.MYTHOS_WAKE_CIRCUIT_BREAKER =
+    process.env.WAKE_CIRCUIT || process.env.MYTHOS_WAKE_CIRCUIT_BREAKER || "";
+
+  const ensured = ensureShadowWindow({ writeVars: !!botToken });
+  if (ensured.actions.length) {
+    appendShadowLog(`ensure-window: ${ensured.actions.join("; ")}`);
+  }
+  // Refresh env after ensure
+  if (ensured.mode) process.env.MYTHOS_AUTOFIX_MODE = ensured.mode;
+  if (ensured.until) process.env.MYTHOS_AUTOFIX_SHADOW_UNTIL = ensured.until;
+
+  let autofix = resolveAutofixMode(process.env);
+  if (autofix.shouldFlip) {
+    const flip = maybeFlipToLive(autofix);
+    if (flip.flipped) {
+      process.env.MYTHOS_AUTOFIX_MODE = "live";
+      autofix = resolveAutofixMode(process.env);
+      appendShadowLog("auto-flipped MYTHOS_AUTOFIX_MODE → live (shadow window elapsed)");
+    }
+  }
+  const canExecute = autofix.execute && autofix.mode !== "disabled";
+  const shadowOnly = !canExecute;
+  appendShadowLog(
+    `mode=${autofix.mode} execute=${canExecute} reason=${autofix.reason} breakerActive=${breakerActive()}`,
+  );
+
+  // Priority 1: circuit breaker (may set even when lower actions are suppressed).
+  const tipStorms = Number(metrics.draft_e2e_tip_storms || 0);
+  const existingUntil = process.env.MYTHOS_WAKE_CIRCUIT_BREAKER || "";
+  const existingMs = existingUntil ? Date.parse(existingUntil) : NaN;
+  if (Number.isFinite(existingMs) && existingMs > Date.now()) {
+    console.log(`wake circuit already active until ${existingUntil}`);
+    appendShadowLog(`breaker already active until ${existingUntil}`);
+  } else if (tipStorms >= TIP_STORM_WAKE_THRESHOLD) {
+    const untilIso = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+    if (shadowOnly) {
+      appendShadowLog(
+        `SHADOW would set MYTHOS_WAKE_CIRCUIT_BREAKER=${untilIso} (tipStorms=${tipStorms})`,
+      );
+      gh(
+        [
+          "issue",
+          "comment",
+          String(issue.number),
+          "--repo",
+          repo,
+          "--body",
+          [
+            "<!-- mythos-wake-circuit-shadow -->",
+            `${OWNER_MENTION} — **shadow:** would set \`MYTHOS_WAKE_CIRCUIT_BREAKER=${untilIso}\` (tip-storms ${tipStorms}).`,
+            "See `docs/MYTHOS_AUTOFIX.md`.",
+          ].join("\n"),
+        ],
+        { token, soft: true },
+      );
+    } else {
+      const wrote = setVar("MYTHOS_WAKE_CIRCUIT_BREAKER", untilIso, botToken);
+      process.env.MYTHOS_WAKE_CIRCUIT_BREAKER = untilIso;
+      gh(
+        [
+          "issue",
+          "comment",
+          String(issue.number),
+          "--repo",
+          repo,
+          "--body",
+          [
+            "<!-- mythos-wake-circuit -->",
+            `${OWNER_MENTION} — draft e2e tip-storms **${tipStorms}** ≥ ${TIP_STORM_WAKE_THRESHOLD}.`,
+            wrote
+              ? `Set \`MYTHOS_WAKE_CIRCUIT_BREAKER=${untilIso}\` (48h).`
+              : `Actions could not write vars — Ivy: set \`MYTHOS_WAKE_CIRCUIT_BREAKER=${untilIso}\`.`,
+            "Grok Bot PR-watch / Forge MUST stay SILENT on draft pr-pushed until that ISO time.",
+          ].join("\n"),
+        ],
+        { token, soft: true },
+      );
+    }
+  } else if (Number.isFinite(existingMs) && existingMs <= Date.now()) {
+    if (!shadowOnly) setVar("MYTHOS_WAKE_CIRCUIT_BREAKER", "", botToken);
+    appendShadowLog("breaker expired → cleared (or would clear in shadow)");
+  }
+
+  const breakerOn = breakerActive(process.env.MYTHOS_WAKE_CIRCUIT_BREAKER);
+
+  // Priority 2: trend throttle — suppressed while breaker active.
   const gateAvgRaw =
     metrics.gate_avg_proxy != null ? metrics.gate_avg_proxy : metrics.gate_avg;
   const gateAvg = Number(gateAvgRaw);
@@ -375,75 +473,83 @@ function main() {
   );
   if (Number.isFinite(gateAvg)) {
     writeFileSync("out/GATE_AVG.txt", String(gateAvg), "utf8");
-    if (
+    const wantThrottle =
       Number.isFinite(prevAvg) &&
       prevAvg > GATE_AVG_THROTTLE &&
-      gateAvg > GATE_AVG_THROTTLE
-    ) {
-      const wrote = setVar("MYTHOS_TIP_FIX_WINDOW_MINUTES", "10", botToken);
-      console.log(
-        `tip-fix window: gate_avg_proxy ${gateAvg} (prev ${prevAvg}) > ${GATE_AVG_THROTTLE} → 10m (wrote=${wrote})`,
-      );
-      gh(
-        [
-          "issue",
-          "comment",
-          String(issue.number),
-          "--repo",
-          repo,
-          "--body",
+      gateAvg > GATE_AVG_THROTTLE;
+    if (wantThrottle) {
+      if (breakerOn) {
+        appendShadowLog(
+          `suppressed by circuit breaker: would set MYTHOS_TIP_FIX_WINDOW_MINUTES=10 (gate_avg_proxy ${gateAvg}/${prevAvg})`,
+        );
+        gh(
           [
-            "<!-- mythos-tip-fix-window -->",
-            `${OWNER_MENTION} — gate_avg_proxy ${gateAvg.toFixed(2)} (prev ${prevAvg.toFixed(2)}) > ${GATE_AVG_THROTTLE} for two audits.`,
-            wrote
-              ? "Set `MYTHOS_TIP_FIX_WINDOW_MINUTES=10`."
-              : "Actions could not write vars — Ivy: set `MYTHOS_TIP_FIX_WINDOW_MINUTES=10` in repo variables.",
-            "Forge/agents must read this var (`docs/FORGE_TIP_FREEZE.md`).",
-          ].join("\n"),
-        ],
-        { token, soft: true },
-      );
+            "issue",
+            "comment",
+            String(issue.number),
+            "--repo",
+            repo,
+            "--body",
+            [
+              "<!-- mythos-tip-fix-window-suppressed -->",
+              `Trend throttle suppressed by circuit breaker (would set tip-fix window → 10). See \`docs/MYTHOS_AUTOFIX.md\`.`,
+            ].join("\n"),
+          ],
+          { token, soft: true },
+        );
+      } else if (shadowOnly) {
+        appendShadowLog(
+          `SHADOW would set MYTHOS_TIP_FIX_WINDOW_MINUTES=10 (gate_avg_proxy ${gateAvg} prev ${prevAvg})`,
+        );
+        gh(
+          [
+            "issue",
+            "comment",
+            String(issue.number),
+            "--repo",
+            repo,
+            "--body",
+            [
+              "<!-- mythos-tip-fix-window-shadow -->",
+              `${OWNER_MENTION} — **shadow:** would set \`MYTHOS_TIP_FIX_WINDOW_MINUTES=10\` (gate_avg_proxy ${gateAvg.toFixed(2)} / prev ${prevAvg.toFixed(2)}).`,
+            ].join("\n"),
+          ],
+          { token, soft: true },
+        );
+      } else {
+        const wrote = setVar("MYTHOS_TIP_FIX_WINDOW_MINUTES", "10", botToken);
+        gh(
+          [
+            "issue",
+            "comment",
+            String(issue.number),
+            "--repo",
+            repo,
+            "--body",
+            [
+              "<!-- mythos-tip-fix-window -->",
+              `${OWNER_MENTION} — gate_avg_proxy ${gateAvg.toFixed(2)} (prev ${prevAvg.toFixed(2)}) > ${GATE_AVG_THROTTLE} for two audits.`,
+              wrote
+                ? "Set `MYTHOS_TIP_FIX_WINDOW_MINUTES=10`."
+                : "Actions could not write vars — Ivy: set `MYTHOS_TIP_FIX_WINDOW_MINUTES=10`.",
+              "Forge/agents must read this var (`docs/FORGE_TIP_FREEZE.md`).",
+            ].join("\n"),
+          ],
+          { token, soft: true },
+        );
+      }
     } else if (Number.isFinite(gateAvg) && gateAvg <= 1.5) {
       const cur = process.env.TIP_FIX_WINDOW || "";
-      if (cur && cur !== "20") {
+      if (cur && cur !== "20" && !breakerOn && !shadowOnly) {
         setVar("MYTHOS_TIP_FIX_WINDOW_MINUTES", "20", botToken);
-        console.log("tip-fix window healed → 20m");
+        appendShadowLog("tip-fix window healed → 20m");
+      } else if (cur && cur !== "20" && (breakerOn || shadowOnly)) {
+        appendShadowLog(
+          `heal tip-window→20 skipped (breaker=${breakerOn} shadow=${shadowOnly})`,
+        );
       }
     }
     setVar("MYTHOS_GATE_AVG_PREV", String(gateAvg), botToken);
-  }
-
-  // --- Draft-push wake circuit: MYTHOS_WAKE_CIRCUIT_BREAKER = ISO until ---
-  const tipStorms = Number(metrics.draft_e2e_tip_storms || 0);
-  const existingUntil = process.env.WAKE_CIRCUIT || "";
-  const existingMs = existingUntil ? Date.parse(existingUntil) : NaN;
-  if (Number.isFinite(existingMs) && existingMs > Date.now()) {
-    console.log(`wake circuit already active until ${existingUntil}`);
-  } else if (tipStorms >= TIP_STORM_WAKE_THRESHOLD) {
-    const untilIso = new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
-    const wrote = setVar("MYTHOS_WAKE_CIRCUIT_BREAKER", untilIso, botToken);
-    gh(
-      [
-        "issue",
-        "comment",
-        String(issue.number),
-        "--repo",
-        repo,
-        "--body",
-        [
-          "<!-- mythos-wake-circuit -->",
-          `${OWNER_MENTION} — draft e2e tip-storms **${tipStorms}** ≥ ${TIP_STORM_WAKE_THRESHOLD}.`,
-          wrote
-            ? `Set \`MYTHOS_WAKE_CIRCUIT_BREAKER=${untilIso}\` (48h).`
-            : `Actions could not write vars — Ivy: set \`MYTHOS_WAKE_CIRCUIT_BREAKER=${untilIso}\`.`,
-          "Grok Bot PR-watch / Forge MUST stay SILENT on draft pr-pushed / CI-fail fan-out until that ISO time.",
-        ].join("\n"),
-      ],
-      { token, soft: true },
-    );
-  } else if (Number.isFinite(existingMs) && existingMs <= Date.now()) {
-    setVar("MYTHOS_WAKE_CIRCUIT_BREAKER", "", botToken);
-    console.log("wake circuit expired → cleared");
   }
 
   if (failed) {

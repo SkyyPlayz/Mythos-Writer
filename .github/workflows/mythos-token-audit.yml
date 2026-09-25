@@ -39,6 +39,7 @@ jobs:
         with:
           sparse-checkout: |
             scripts/mythos-token-audit
+            scripts/mythos-autofix
           sparse-checkout-cone-mode: false
 
       - name: Setup Node
@@ -166,6 +167,8 @@ jobs:
           GATE_AVG_PREV: ${{ vars.MYTHOS_GATE_AVG_PREV }}
           TIP_FIX_WINDOW: ${{ vars.MYTHOS_TIP_FIX_WINDOW_MINUTES }}
           WAKE_CIRCUIT: ${{ vars.MYTHOS_WAKE_CIRCUIT_BREAKER }}
+          MYTHOS_AUTOFIX_MODE: ${{ vars.MYTHOS_AUTOFIX_MODE }}
+          MYTHOS_AUTOFIX_SHADOW_UNTIL: ${{ vars.MYTHOS_AUTOFIX_SHADOW_UNTIL }}
           AUDIT_FAILED: ${{ steps.stub.outputs.wrote == '1' && '1' || '0' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ID: ${{ github.run_id }}
@@ -176,4 +179,5 @@ jobs:
             export GH_TOKEN="$MYTHOS_BOT_TOKEN"
           fi
           # Loud digest exits 1 on FAILED stub → Actions red X (after comment).
+          # Shadow log written to out/shadow-log.md (uploaded with artifact).
           node scripts/mythos-token-audit/loud-digest.mjs

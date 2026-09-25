@@ -54,6 +54,9 @@ PR hygiene (rebase + draft-CI comment + draft→ready): [`.github/workflows/myth
 | `MYTHOS_TOKEN_AUDIT_ISSUE` | Tracking issue number |
 | `MYTHOS_USAGE_SNAPSHOT` | Dual-pool JSON (never invented) |
 
+| Autofix shadow / coord / rollback | [MYTHOS_AUTOFIX.md](../MYTHOS_AUTOFIX.md) |
+| Standing brief compression | [STANDING_AGENT_CONTEXT_COMPRESSION.md](../STANDING_AGENT_CONTEXT_COMPRESSION.md) |
+
 ## Explicit non-goals
 
 - Do **not** collapse Critic/Shield/Probe.
