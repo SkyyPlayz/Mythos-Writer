@@ -51,3 +51,4 @@ Chosen mechanism (least human effort / loudest cheap combo):
 - [ops/ZERO_INTERVENTION_SILENCE_FIXES.md](./ops/ZERO_INTERVENTION_SILENCE_FIXES.md)
 - [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md)
 - [FORGE_E2E_KEEPALIVE.md](./FORGE_E2E_KEEPALIVE.md)
+- [MYTHOS_OPS_RUNBOOK.md](./MYTHOS_OPS_RUNBOOK.md) — dependency map + badges + rollback table

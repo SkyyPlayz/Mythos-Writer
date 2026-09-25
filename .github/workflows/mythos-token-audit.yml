@@ -40,6 +40,7 @@ jobs:
           sparse-checkout: |
             scripts/mythos-token-audit
             scripts/mythos-autofix
+            scripts/mythos-ops
           sparse-checkout-cone-mode: false
 
       - name: Setup Node

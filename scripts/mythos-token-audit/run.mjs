@@ -18,9 +18,9 @@
  * gate_avg_proxy, draft_e2e_tip_storms, …).
  */
 
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { ghJson, ghRaw, ghState } from "../mythos-ops/gh.mjs";
 
 const TRUSTED = new Set(["SkyyPlayz", "SkyHigh-Mythos-Bot"]);
 const CREED = "Creed: cut waste, don't weaken quality.";
@@ -74,37 +74,6 @@ function parseArgs(argv) {
     die("--lookback must be a positive number");
   }
   return out;
-}
-
-function ghRaw(args, { soft = false } = {}) {
-  const r = spawnSync("gh", args, {
-    encoding: "utf8",
-    maxBuffer: 32 * 1024 * 1024,
-    env: process.env,
-  });
-  if (r.status !== 0) {
-    const err = (r.stderr || r.stdout || "").trim() || `gh exited ${r.status}`;
-    if (soft) {
-      console.warn(`mythos-token-audit: soft fail gh ${args.join(" ")}: ${err}`);
-      return null;
-    }
-    die(`gh ${args.join(" ")} failed: ${err}`);
-  }
-  return (r.stdout || "").trim();
-}
-
-function ghJson(args, opts = {}) {
-  const text = ghRaw(args, opts);
-  if (text === null || text === "") return null;
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    if (opts.soft) {
-      console.warn(`mythos-token-audit: soft JSON parse fail: ${e.message}`);
-      return null;
-    }
-    die(`failed to parse gh JSON: ${e.message}`);
-  }
 }
 
 function shaInBody(body, headSha) {
@@ -463,6 +432,8 @@ function main() {
     ci_fix_drip_tips: drafts.ciFixDrip,
     prior_gate_avg_proxy:
       priorAvg != null && Number.isFinite(priorAvg) ? priorAvg : null,
+    rate_limited: !!ghState.rateLimited,
+    rate_limit_retries: ghState.retries,
   };
 
   const tipWindow = tipWindowInstruction(gateAvgProxy, priorAvg);
@@ -474,6 +445,9 @@ function main() {
     priorAvg != null && Number.isFinite(priorAvg)
       ? `Prior gate_avg_proxy (cached): **${priorAvg}**`
       : "Prior gate_avg_proxy: _none_ (first run or no artifact)";
+  const rateBanner = metrics.rate_limited
+    ? `\n## RATE-LIMITED\n\n**rate-limited: yes** (retries=${metrics.rate_limit_retries}). Partial data below — do not invent dual-pool numbers.\n`
+    : "";
 
   const full = `# Mythos workflow token audit — ${day}
 
@@ -481,7 +455,7 @@ function main() {
 Lookback: **${args.lookback}** days (since \`${sinceIso.slice(0, 10)}\`) · repo \`${repoFull}\`
 ${retryNote}
 ${priorLine}
-
+${rateBanner}
 ## Gate table
 
 | Metric | Count |
@@ -491,6 +465,7 @@ ${priorLine}
 | Tips with CARVE-OUT APPROVE | ${metrics.carve_out_approves} |
 | Merged PRs scanned | ${metrics.merged_prs} |
 | gate_avg_proxy | ${metrics.gate_avg_proxy} |
+| rate_limited | ${metrics.rate_limited ? "yes" : "no"} |
 
 Trusted authors: \`SkyyPlayz\`, \`SkyHigh-Mythos-Bot\`.
 
@@ -529,11 +504,13 @@ ${
 - Single-pass fetch: merged list once, then per-PR comments/reviews; drafts listed once.
 - Never invents dual-pool percentages.
 - Tip-fix window var: \`MYTHOS_TIP_FIX_WINDOW_MINUTES\` (default 20).
+- Rate-limit: backoff 2s/8s/32s via \`scripts/mythos-ops/gh.mjs\`.
 - ${CREED}
 `;
 
   const summary = `## Mythos token audit (${day})
 <!-- mythos-token-audit -->
+rate-limited: ${metrics.rate_limited ? "**yes**" : "no"}
 Lookback ${args.lookback}d · gate tips **${metrics.gate_cycles}** (full CSP ${metrics.full_tip_gates}) · gate_avg_proxy **${metrics.gate_avg_proxy}** (prior ${
     priorAvg != null && Number.isFinite(priorAvg) ? priorAvg : "n/a"
   }) · tip-storms **${metrics.draft_e2e_tip_storms}** · wake proxy **${metrics.duplicate_forge_wakes_proxy}** · drip **${metrics.ci_fix_drip_tips}**
@@ -544,6 +521,15 @@ ${args.retryTag ? `Retry: ${args.retryTag}` : ""}
 ${CREED}
 `;
 
+  writeOutputs(args, full, summary, metrics);
+  // Prefer exit 0 with partial artifact when rate-limited but we have useful data.
+  if (metrics.rate_limited && metrics.merged_prs === 0 && metrics.gate_cycles === 0) {
+    console.error("rate-limited with zero useful data");
+    process.exit(1);
+  }
+}
+
+function writeOutputs(args, full, summary, metrics) {
   const outDir = dirname(args.out);
   mkdirSync(outDir, { recursive: true });
   mkdirSync(dirname(args.summary), { recursive: true });
@@ -551,9 +537,56 @@ ${CREED}
   writeFileSync(args.summary, summary.trim() + "\n", "utf8");
   const metricsPath = join(outDir, "metrics.json");
   writeFileSync(metricsPath, JSON.stringify(metrics, null, 2) + "\n", "utf8");
-  // Compat alias for older loud-digest readers
   writeFileSync(join(outDir, "METRICS.json"), JSON.stringify(metrics, null, 2) + "\n", "utf8");
   console.log(`wrote ${args.out}, ${args.summary}, ${metricsPath}`);
 }
 
-main();
+function writePartialRateLimited(args, day, err) {
+  const metrics = {
+    day,
+    lookback_days: args.lookback,
+    gate_cycles: 0,
+    full_tip_gates: 0,
+    carve_out_approves: 0,
+    merged_prs: 0,
+    gate_avg_proxy: 0,
+    draft_e2e_tip_storms: 0,
+    duplicate_forge_wakes_proxy: 0,
+    ci_fix_drip_tips: 0,
+    prior_gate_avg_proxy: null,
+    rate_limited: true,
+    rate_limit_retries: ghState.retries,
+    partial: true,
+    error: String(err?.message || err).slice(0, 300),
+  };
+  const full = `# Mythos workflow token audit — ${day} RATE-LIMITED
+
+<!-- mythos-token-audit -->
+## RATE-LIMITED
+
+**rate-limited: yes** — partial/empty collection. Blind-gap prevention stub.
+Retries=${metrics.rate_limit_retries}. Do not invent dual-pool numbers.
+
+${CREED}
+`;
+  const summary = `## Mythos token audit (${day}) RATE-LIMITED
+<!-- mythos-token-audit -->
+rate-limited: **yes**
+Partial artifact written; API backoff exhausted.
+${CREED}
+`;
+  writeOutputs(args, full, summary, metrics);
+}
+
+try {
+  main();
+} catch (e) {
+  if (e && (e.code === "RATE_LIMITED" || /RATE_LIMITED/i.test(String(e.message)))) {
+    const args = parseArgs(process.argv);
+    writePartialRateLimited(args, denverDay(), e);
+    // Artifact exists — exit 0 so upload+loud digest still run; banner is loud.
+    console.warn("exiting 0 after RATE-LIMITED partial write");
+    process.exit(0);
+  }
+  throw e;
+}
