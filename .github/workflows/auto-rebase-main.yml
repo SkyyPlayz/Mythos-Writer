@@ -1,0 +1,150 @@
+name: Auto-rebase onto main
+
+# Keep open PRs (including drafts) current with main so the branch-protection
+# "strict / up-to-date" required-check rule does not create human rebase tax.
+# Creed: cut waste, don't weaken quality.
+#
+# Skips labels: tip-freeze, do-not-rebase (must not fight mid-gate tip-freeze).
+# Skips Dependabot major bumps (noisy; minors/patches still rebased).
+# Prefer MYTHOS_BOT_TOKEN so the force-push re-triggers CI.
+#
+# Docs: docs/BRANCH_PROTECTION_MAIN.md · docs/FORGE_TIP_FREEZE.md
+
+on:
+  schedule:
+    # Hourly at :17 UTC — avoid top-of-hour stampede with other cron jobs.
+    - cron: "17 * * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  # Needed when a PR tip itself touches .github/workflows/**.
+  actions: read
+
+concurrency:
+  group: auto-rebase-main
+  cancel-in-progress: false
+
+jobs:
+  rebase:
+    name: rebase-open-prs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout (full history)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.MYTHOS_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Rebase open PRs onto origin/main
+        env:
+          GH_TOKEN: ${{ secrets.MYTHOS_BOT_TOKEN || secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          git config user.name "SkyHigh-Mythos-Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main --prune
+
+          # Include drafts — 0.5.x / carve-out drafts must stay current too.
+          mapfile -t PRS < <(gh pr list --repo "$GITHUB_REPOSITORY" --base main --state open \
+            --limit 50 \
+            --json number,title,author,labels,isDraft,headRefName,headRepositoryOwner,isCrossRepository,mergeStateStatus \
+            --jq '.[] | @json')
+
+          if [[ ${#PRS[@]} -eq 0 ]]; then
+            echo "No open PRs into main."
+            exit 0
+          fi
+
+          rebased=0
+          skipped=0
+          failed=0
+
+          for row in "${PRS[@]}"; do
+            number=$(jq -r '.number' <<<"$row")
+            title=$(jq -r '.title' <<<"$row")
+            author=$(jq -r '.author.login // empty' <<<"$row")
+            head_ref=$(jq -r '.headRefName' <<<"$row")
+            is_cross=$(jq -r '.isCrossRepository' <<<"$row")
+            merge_state=$(jq -r '.mergeStateStatus // "UNKNOWN"' <<<"$row")
+            labels=$(jq -r '[.labels[].name] | join(",")' <<<"$row")
+            draft=$(jq -r '.isDraft' <<<"$row")
+
+            echo "::group::PR #$number ($head_ref) draft=$draft state=$merge_state"
+
+            if [[ ",$labels," == *",tip-freeze,"* ]] || [[ ",$labels," == *",do-not-rebase,"* ]]; then
+              echo "SKIP: tip-freeze / do-not-rebase label"
+              skipped=$((skipped + 1))
+              echo "::endgroup::"
+              continue
+            fi
+
+            # Dependabot majors are noisy; leave them for Dependabot to recreate.
+            if [[ "$author" == "dependabot[bot]" ]] && echo "$title" | grep -qiE '(^|[^a-z])major([^a-z]|$)|semver-major|version-update:semver-major'; then
+              echo "SKIP: Dependabot major — $title"
+              skipped=$((skipped + 1))
+              echo "::endgroup::"
+              continue
+            fi
+
+            if [[ "$is_cross" == "true" ]]; then
+              echo "SKIP: fork PR (no maintainer push assumed)"
+              skipped=$((skipped + 1))
+              echo "::endgroup::"
+              continue
+            fi
+
+            # Only act when behind main (or unknown — compare explicitly).
+            behind=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${head_ref}" --jq '.behind_by' 2>/dev/null || echo "")
+            if [[ -z "$behind" ]]; then
+              echo "SKIP: compare failed for $head_ref"
+              skipped=$((skipped + 1))
+              echo "::endgroup::"
+              continue
+            fi
+            if [[ "$behind" == "0" ]]; then
+              echo "OK: already up to date with main"
+              skipped=$((skipped + 1))
+              echo "::endgroup::"
+              continue
+            fi
+
+            echo "Behind main by $behind commit(s) — rebasing…"
+            work="rebase-pr-$number"
+            git fetch origin "$head_ref":"refs/heads/$work" 2>/dev/null || git fetch origin "refs/heads/$head_ref:refs/heads/$work"
+            if ! git checkout -f "$work"; then
+              echo "FAIL: checkout $work"
+              failed=$((failed + 1))
+              echo "::endgroup::"
+              continue
+            fi
+
+            if git rebase origin/main; then
+              if git push origin "HEAD:refs/heads/$head_ref" --force-with-lease; then
+                echo "REBASED PR #$number onto main"
+                rebased=$((rebased + 1))
+              else
+                echo "FAIL: force-with-lease push for #$number"
+                git rebase --abort 2>/dev/null || true
+                failed=$((failed + 1))
+              fi
+            else
+              echo "FAIL: rebase conflict on #$number — leaving for human"
+              git rebase --abort 2>/dev/null || true
+              failed=$((failed + 1))
+            fi
+
+            git checkout -f main 2>/dev/null || git checkout -f origin/main
+            git branch -D "$work" 2>/dev/null || true
+            echo "::endgroup::"
+          done
+
+          echo "Done. rebased=$rebased skipped=$skipped failed=$failed"
+          # Conflicts / push failures are expected sometimes — do not fail the job
+          # (schedule should stay green; humans resolve dirty PRs).
+          exit 0
