@@ -192,7 +192,7 @@ test('SKY-11682 GAP-1: renaming a column ref\'s target note rewrites the sidecar
     await expect(refLinkAfter).toBeVisible({ timeout: 10_000 });
     await refLinkAfter.click();
     await expect(page.locator('[role="tabpanel"][aria-labelledby="app-tab-notes"]')).toBeVisible({ timeout: 8_000 });
-    await expect(page.getByText('Original target content.')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="notes-tab-center"]').getByText('Original target content.')).toBeVisible({ timeout: 8_000 });
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });

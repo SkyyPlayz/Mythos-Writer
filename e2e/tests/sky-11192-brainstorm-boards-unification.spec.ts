@@ -119,7 +119,7 @@ const navBtn = (page: Page, label: string) =>
 
 /** Open the Brainstorm tab and land on its Board page. */
 async function openBrainstormBoard(page: Page): Promise<void> {
-  await navBtn(page, 'Brainstorm').click();
+  await navBtn(page, 'Idea Board').click();
   // The Agent Chat | Board segment is only rendered when both pages are
   // reachable; with AI off Brainstorm opens straight onto the Board page.
   const boardSeg = page.locator('[data-testid="bsc-mode-board"]');

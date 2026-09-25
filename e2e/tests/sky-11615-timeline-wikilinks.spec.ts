@@ -300,7 +300,7 @@ test('TC-TWL-03: a note link on the card opens the note', async () => {
   await cardDesc(page).locator(`[data-target="${NOTE_NAME}"]`).click();
 
   await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 8_000 });
-  await expect(page.locator('[data-testid="note-title"]')).toHaveText(NOTE_NAME, { timeout: 8_000 });
+  await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-title"]')).toHaveText(NOTE_NAME, { timeout: 8_000 });
 });
 
 test('TC-TWL-04: a scene link opens that scene in the manuscript', async () => {
@@ -348,7 +348,7 @@ test('TC-TWL-07: an unresolved link creates the note in the Notes Vault and open
   expect(fs.readFileSync(created, 'utf-8')).toContain(`# ${UNRESOLVED_NAME}`);
 
   await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 8_000 });
-  await expect(page.locator('[data-testid="note-title"]')).toHaveText(UNRESOLVED_NAME, { timeout: 8_000 });
+  await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-title"]')).toHaveText(UNRESOLVED_NAME, { timeout: 8_000 });
 
   // Once the note exists the same link resolves — it is no longer pink.
   await backToTimeline(page);

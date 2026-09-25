@@ -600,7 +600,7 @@ test('SKY-11186 BADGE-1: the editor cover badge reads Auto/Thumbnail and × writ
     const row = page.locator('[data-testid="vb-row-Mira.md"]');
     await expect(row).toBeVisible({ timeout: 10_000 });
     await row.click();
-    await expect(page.locator('[data-testid="note-title"]')).toHaveText('Mira', { timeout: 10_000 });
+    await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-title"]')).toHaveText('Mira', { timeout: 10_000 });
 
     // The cover sits in the header beside the title. No frontmatter `thumb:`
     // → derived from the first image → the badge reads exactly "Auto", and
@@ -625,7 +625,7 @@ test('SKY-11186 BADGE-1: the editor cover badge reads Auto/Thumbnail and × writ
     expect(fs.readFileSync(noteFile, 'utf-8')).toContain('![[portrait.png]]');
     await expect(cover).toHaveCount(0, { timeout: 10_000 });
     await expect(page.locator('[data-testid="note-cover-badge"]')).toHaveCount(0);
-    await expect(page.locator('[data-testid="note-title"]')).toHaveText('Mira');
+    await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-title"]')).toHaveText('Mira');
 
     // The Board agrees: text-only height + empty-thumb chrome (Probe / §15 test 12).
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();

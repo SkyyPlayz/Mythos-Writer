@@ -241,7 +241,7 @@ test('NP-05 (M17): header title/tags + gear menu + callout card + links block', 
     // Editable Lora title (frontmatter-backed) + tag chips with add input.
     const title = page.locator('[data-testid="notes-tab-center"] .note-viewer [data-testid="note-title"]');
     await expect(title).toHaveText('The Sunken Gate');
-    await expect(page.locator('[data-testid="note-header-tag-location"]')).toBeVisible();
+    await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-header-tag-location"]')).toBeVisible();
     await expect(page.locator('[data-testid="note-header-tag-ruins"]')).toBeVisible();
     const tagInput = page.locator('.note-viewer [data-testid="note-add-tag-input"]').first();
     await tagInput.fill('ancient');

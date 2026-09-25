@@ -101,7 +101,7 @@ test('capture SKY-11791 column-ref click-to-open survives a target rename', asyn
 
     if (EXPECT_FIX) {
       await expect(page.locator('[role="tabpanel"][aria-labelledby="app-tab-notes"]')).toBeVisible({ timeout: 8_000 });
-      await expect(page.getByText('The target note.')).toBeVisible({ timeout: 8_000 });
+      await expect(page.locator('[data-testid="notes-tab-center"]').getByText('The target note.')).toBeVisible({ timeout: 8_000 });
     } else {
       // Unfixed build: the click silently no-ops. Give it the same window to
       // (fail to) resolve, then capture whatever state we're actually in.

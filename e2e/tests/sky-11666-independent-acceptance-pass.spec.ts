@@ -423,7 +423,7 @@ test('SKY-11666 GAP-5: the same thumbnail derivative renders in the Notes editor
     const row = page.locator('[data-testid="vb-row-Mira.md"]');
     await expect(row).toBeVisible({ timeout: 10_000 });
     await row.click();
-    await expect(page.locator('[data-testid="note-title"]')).toHaveText('Mira', { timeout: 10_000 });
+    await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-title"]')).toHaveText('Mira', { timeout: 10_000 });
     const cover = page.locator('[data-testid="note-cover"]');
     await expect(cover).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('[data-testid="note-cover-badge"]')).toHaveText('Auto');

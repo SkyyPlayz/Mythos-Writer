@@ -267,7 +267,7 @@ test('SKY-11188 Copilot finding: a bare-stem, wrong-case column ref still resolv
     await refLink.click();
 
     await expect(page.locator('[role="tabpanel"][aria-labelledby="app-tab-notes"]')).toBeVisible({ timeout: 8_000 });
-    await expect(page.getByText('The target note.')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="notes-tab-center"]').getByText('The target note.')).toBeVisible({ timeout: 8_000 });
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -310,7 +310,7 @@ test('SKY-11188 §4/§2/§11 acceptance criterion: a column ref renders as a rea
 
     // Clicking the ref opens the note in the Notes editor (real wikilink behaviour).
     await expect(page.locator('[role="tabpanel"][aria-labelledby="app-tab-notes"]')).toBeVisible({ timeout: 8_000 });
-    await expect(page.getByText('A character note.')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="notes-tab-center"]').getByText('A character note.')).toBeVisible({ timeout: 8_000 });
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -360,7 +360,7 @@ test('SKY-11794: a column ref still opens the note after a same-session rename r
     // SKY-11794 regression: this used to silently no-op (stale allNotePaths
     // cache) instead of opening the rewritten ref's target note.
     await expect(page.locator('[role="tabpanel"][aria-labelledby="app-tab-notes"]')).toBeVisible({ timeout: 8_000 });
-    await expect(page.getByText('A character note.')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="notes-tab-center"]').getByText('A character note.')).toBeVisible({ timeout: 8_000 });
   } finally {
     await app.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });
