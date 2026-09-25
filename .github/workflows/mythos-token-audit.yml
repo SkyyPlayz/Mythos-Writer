@@ -65,16 +65,13 @@ jobs:
           fi
           gh run download "$RID" --repo "${{ github.repository }}" \
             --name "mythos-token-audit-${RID}" --dir out/prior || true
-          if [ -f out/prior/metrics.json ]; then
-            echo "path=out/prior/metrics.json" >> "$GITHUB_OUTPUT"
-          elif [ -f out/prior/METRICS.json ]; then
-            echo "path=out/prior/METRICS.json" >> "$GITHUB_OUTPUT"
-          else
-            # artifact may nest
-            FOUND=$(find out/prior -name 'metrics.json' -o -name 'METRICS.json' 2>/dev/null | head -1 || true)
-            if [ -n "$FOUND" ]; then
-              echo "path=$FOUND" >> "$GITHUB_OUTPUT"
-            fi
+          MET=$(find out/prior \( -name 'metrics.json' -o -name 'METRICS.json' \) 2>/dev/null | head -1 || true)
+          LOOP=$(find out/prior -name 'loop-state.json' 2>/dev/null | head -1 || true)
+          if [ -n "$MET" ]; then
+            echo "path=$MET" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "$LOOP" ]; then
+            echo "loop=$LOOP" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run audit (attempt 1)
@@ -86,12 +83,22 @@ jobs:
           USAGE_SNAPSHOT_JSON: ${{ vars.MYTHOS_USAGE_SNAPSHOT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PRIOR: ${{ steps.prior.outputs.path }}
+          PRIOR_LOOP: ${{ steps.prior.outputs.loop }}
+          MYTHOS_LOOP_ENABLED: ${{ vars.MYTHOS_LOOP_ENABLED }}
+          MYTHOS_LOOP_STATE: ${{ vars.MYTHOS_LOOP_STATE }}
+          MYTHOS_TIP_FIX_WINDOW_MINUTES: ${{ vars.MYTHOS_TIP_FIX_WINDOW_MINUTES }}
+          MYTHOS_CI_FIX_BATCH_MAX: ${{ vars.MYTHOS_CI_FIX_BATCH_MAX }}
+          MYTHOS_CIRCUIT_BREAKER_TIP_STORM_THRESHOLD: ${{ vars.MYTHOS_CIRCUIT_BREAKER_TIP_STORM_THRESHOLD }}
+          MYTHOS_AUDIT_RETRY_COUNT: ${{ vars.MYTHOS_AUDIT_RETRY_COUNT }}
         run: |
           set -euo pipefail
           mkdir -p out
           EXTRA=()
           if [[ -n "${PRIOR:-}" && -f "$PRIOR" ]]; then
             EXTRA+=(--prior-metrics "$PRIOR")
+          fi
+          if [[ -n "${PRIOR_LOOP:-}" && -f "$PRIOR_LOOP" ]]; then
+            EXTRA+=(--prior-loop-state "$PRIOR_LOOP")
           fi
           node scripts/mythos-token-audit/run.mjs \
             --out out/TOKEN_AUDIT.md \
@@ -100,7 +107,7 @@ jobs:
             --usage-snapshot "${USAGE_SNAPSHOT_JSON:-}" \
             "${EXTRA[@]}"
 
-      - name: Retry once on failure
+      - name: Retry on failure (1)
         id: run2
         if: steps.run1.outcome == 'failure'
         env:
@@ -109,14 +116,19 @@ jobs:
           USAGE_SNAPSHOT_JSON: ${{ vars.MYTHOS_USAGE_SNAPSHOT }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PRIOR: ${{ steps.prior.outputs.path }}
+          PRIOR_LOOP: ${{ steps.prior.outputs.loop }}
+          MYTHOS_LOOP_ENABLED: ${{ vars.MYTHOS_LOOP_ENABLED }}
+          MYTHOS_LOOP_STATE: ${{ vars.MYTHOS_LOOP_STATE }}
+          MYTHOS_TIP_FIX_WINDOW_MINUTES: ${{ vars.MYTHOS_TIP_FIX_WINDOW_MINUTES }}
+          MYTHOS_CI_FIX_BATCH_MAX: ${{ vars.MYTHOS_CI_FIX_BATCH_MAX }}
+          MYTHOS_CIRCUIT_BREAKER_TIP_STORM_THRESHOLD: ${{ vars.MYTHOS_CIRCUIT_BREAKER_TIP_STORM_THRESHOLD }}
         run: |
           set -euo pipefail
           mkdir -p out
           echo "retry 1/1" > out/RETRY.txt
           EXTRA=()
-          if [[ -n "${PRIOR:-}" && -f "$PRIOR" ]]; then
-            EXTRA+=(--prior-metrics "$PRIOR")
-          fi
+          if [[ -n "${PRIOR:-}" && -f "$PRIOR" ]]; then EXTRA+=(--prior-metrics "$PRIOR"); fi
+          if [[ -n "${PRIOR_LOOP:-}" && -f "$PRIOR_LOOP" ]]; then EXTRA+=(--prior-loop-state "$PRIOR_LOOP"); fi
           node scripts/mythos-token-audit/run.mjs \
             --out out/TOKEN_AUDIT.md \
             --summary out/SUMMARY.md \
@@ -125,9 +137,44 @@ jobs:
             --retry-tag "retry 1/1" \
             "${EXTRA[@]}"
 
-      - name: Write FAILED stub if both attempts failed
+      - name: Retry on failure (2, if MYTHOS_AUDIT_RETRY_COUNT=2)
+        id: run3
+        if: >
+          always() &&
+          steps.run1.outcome == 'failure' &&
+          steps.run2.outcome == 'failure' &&
+          vars.MYTHOS_AUDIT_RETRY_COUNT == '2'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LOOKBACK_DAYS: ${{ github.event.inputs.lookback_days || '7' }}
+          USAGE_SNAPSHOT_JSON: ${{ vars.MYTHOS_USAGE_SNAPSHOT }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PRIOR: ${{ steps.prior.outputs.path }}
+          PRIOR_LOOP: ${{ steps.prior.outputs.loop }}
+          MYTHOS_LOOP_ENABLED: ${{ vars.MYTHOS_LOOP_ENABLED }}
+          MYTHOS_LOOP_STATE: ${{ vars.MYTHOS_LOOP_STATE }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          echo "retry 2/2" > out/RETRY.txt
+          EXTRA=()
+          if [[ -n "${PRIOR:-}" && -f "$PRIOR" ]]; then EXTRA+=(--prior-metrics "$PRIOR"); fi
+          if [[ -n "${PRIOR_LOOP:-}" && -f "$PRIOR_LOOP" ]]; then EXTRA+=(--prior-loop-state "$PRIOR_LOOP"); fi
+          node scripts/mythos-token-audit/run.mjs \
+            --out out/TOKEN_AUDIT.md \
+            --summary out/SUMMARY.md \
+            --lookback "${LOOKBACK_DAYS}" \
+            --usage-snapshot "${USAGE_SNAPSHOT_JSON:-}" \
+            --retry-tag "retry 2/2" \
+            "${EXTRA[@]}"
+
+      - name: Write FAILED stub if all attempts failed
         id: stub
-        if: always() && steps.run1.outcome == 'failure' && steps.run2.outcome != 'success'
+        if: >
+          always() &&
+          steps.run1.outcome == 'failure' &&
+          steps.run2.outcome != 'success' &&
+          (steps.run3.outcome != 'success')
         run: |
           set -euo pipefail
           mkdir -p out
@@ -135,16 +182,19 @@ jobs:
           {
             echo "# Mythos workflow token audit — ${DAY} FAILED"
             echo "<!-- mythos-token-audit-failed -->"
-            echo "Both attempt 1 and retry 1/1 failed. Blind-gap prevention stub."
+            echo "All audit attempts failed. Blind-gap prevention stub."
             echo "See Actions run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           } > out/TOKEN_AUDIT.md
           {
             echo "## Mythos token audit FAILED (${DAY})"
             echo "<!-- mythos-token-audit -->"
-            echo "retry 1/1 also failed. Blind-gap stub written."
+            echo "Audits failed. Blind-gap stub written."
             echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "## Loop"
+            echo ""
+            echo "_Skipped — FAILED stub cycle._"
           } > out/SUMMARY.md
-          echo '{"gate_avg_proxy":0,"draft_e2e_tip_storms":0,"failed_stub":true}' > out/metrics.json
+          echo '{"gate_avg_proxy":0,"draft_e2e_tip_storms":0,"failed_stub":true,"rate_limited":false}' > out/metrics.json
           cp out/metrics.json out/METRICS.json
           echo "wrote=1" >> "$GITHUB_OUTPUT"
 
@@ -170,6 +220,8 @@ jobs:
           WAKE_CIRCUIT: ${{ vars.MYTHOS_WAKE_CIRCUIT_BREAKER }}
           MYTHOS_AUTOFIX_MODE: ${{ vars.MYTHOS_AUTOFIX_MODE }}
           MYTHOS_AUTOFIX_SHADOW_UNTIL: ${{ vars.MYTHOS_AUTOFIX_SHADOW_UNTIL }}
+          MYTHOS_CIRCUIT_BREAKER_TIP_STORM_THRESHOLD: ${{ vars.MYTHOS_CIRCUIT_BREAKER_TIP_STORM_THRESHOLD }}
+          MYTHOS_LOOP_ENABLED: ${{ vars.MYTHOS_LOOP_ENABLED }}
           AUDIT_FAILED: ${{ steps.stub.outputs.wrote == '1' && '1' || '0' }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RUN_ID: ${{ github.run_id }}
@@ -179,6 +231,4 @@ jobs:
           if [[ -n "${MYTHOS_BOT_TOKEN:-}" ]]; then
             export GH_TOKEN="$MYTHOS_BOT_TOKEN"
           fi
-          # Loud digest exits 1 on FAILED stub → Actions red X (after comment).
-          # Shadow log written to out/shadow-log.md (uploaded with artifact).
           node scripts/mythos-token-audit/loud-digest.mjs

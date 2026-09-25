@@ -26,6 +26,7 @@ latest completed run failed. Sticky marker: `<!-- mythos-ops-health -->`.
 | Tip-fix window | `MYTHOS_TIP_FIX_WINDOW_MINUTES` (default 20) | Soft cap; see [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md) |
 | Circuit breaker | `MYTHOS_WAKE_CIRCUIT_BREAKER` | Grok Bot `mythos-pr-ci-watch` / Forge must stay SILENT while ISO future |
 | Shadow / autofix | `MYTHOS_AUTOFIX_MODE`, `MYTHOS_AUTOFIX_SHADOW_UNTIL` | [MYTHOS_AUTOFIX.md](./MYTHOS_AUTOFIX.md) |
+| Self-improvement loop | `MYTHOS_LOOP_ENABLED`, `MYTHOS_LOOP_STATE`, allow-listed tip-window / batch / circuit / retry vars | Wed audit proposes one tweak; shadow 1w; APPLY or MISS |
 | **PR hygiene** `mythos-pr-hygiene.yml` | Labels `tip-freeze` (skip rebase); draft-CI sticky; draft→ready | Merged auto-rebase + draft-CI (no duplicate workflows) |
 | Tip-freeze docs | [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md), [FORGE_E2E_KEEPALIVE.md](./FORGE_E2E_KEEPALIVE.md) | Inventory → one batch; soft cap window var |
 | Standing agents | Forge / Critic / Shield / Probe / Sentinel / `bc-fb92daf9` | [STANDING_AGENT_CONTEXT_COMPRESSION.md](./STANDING_AGENT_CONTEXT_COMPRESSION.md) |
@@ -45,6 +46,8 @@ Canonical detail: [MYTHOS_AUTOFIX.md](./MYTHOS_AUTOFIX.md). Helper:
 | Tip-fix window | `gh variable set MYTHOS_TIP_FIX_WINDOW_MINUTES -R SkyyPlayz/Mythos-Writer -b 20` |
 | Autofix kill switch | `gh variable set MYTHOS_AUTOFIX_MODE -R SkyyPlayz/Mythos-Writer -b disabled` |
 | Undo draft→ready | `gh pr ready <n> --undo -R SkyyPlayz/Mythos-Writer` |
+| Loop kill switch | `gh variable set MYTHOS_LOOP_ENABLED -R SkyyPlayz/Mythos-Writer -b false` |
+| Clear loop state | `gh variable set MYTHOS_LOOP_STATE -R SkyyPlayz/Mythos-Writer -b ""` |
 
 ## Rate-limit behavior (audit)
 

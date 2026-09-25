@@ -100,8 +100,29 @@ gh variable set MYTHOS_AUTOFIX_MODE -R SkyyPlayz/Mythos-Writer -b disabled
 
 | Path | Role |
 | --- | --- |
-| `.github/workflows/mythos-token-audit.yml` | Weekly audit + loud digest (breaker + throttle) |
+| `.github/workflows/mythos-token-audit.yml` | Weekly audit + loud digest (breaker + throttle + **loop**) |
 | `.github/workflows/mythos-pr-hygiene.yml` | Auto-rebase + draft-CI comment + draft→ready |
 | `scripts/mythos-autofix/shadow-mode.mjs` | Resolve mode / flip / shadow-log append |
+| `scripts/mythos-autofix/loop.mjs` | Allow-listed self-improvement propose / shadow / APPLY / MISS |
 | `scripts/mythos-autofix/rollback.sh` | One-command rollbacks |
-| `scripts/mythos-token-audit/loud-digest.mjs` | Executes or shadows breaker + throttle |
+| `scripts/mythos-token-audit/loud-digest.mjs` | Executes or shadows breaker + throttle + loop APPLY |
+
+## Self-improvement loop (Wed audit)
+
+Allow-listed ops-param tweaks only — **never** Critic/Shield/Probe, plan gate,
+tip-SHA quality locks, auto-close drafts, lookback &lt;7, or Other Models ban.
+
+| Step | Behavior |
+| --- | --- |
+| Propose | At most **one** candidate/week into `out/loop-state.json` + `vars.MYTHOS_LOOP_STATE` |
+| Shadow | 7 days log-only (`shadowWould`); score vs baseline after `shadow_until` |
+| APPLY | Target metric improved + no quality regression → set live repo var |
+| MISS | No help or regression → revert (never applied) + log |
+| Kill switch | `gh variable set MYTHOS_LOOP_ENABLED -R SkyyPlayz/Mythos-Writer -b false` |
+| Clear state | `gh variable set MYTHOS_LOOP_STATE -R SkyyPlayz/Mythos-Writer -b ""` |
+
+Allow-list: `MYTHOS_TIP_FIX_WINDOW_MINUTES`, `MYTHOS_CI_FIX_BATCH_MAX`,
+`MYTHOS_CIRCUIT_BREAKER_TIP_STORM_THRESHOLD`, `MYTHOS_AUDIT_RETRY_COUNT`,
+optional `MYTHOS_HYGIENE_REBASE_CRON_HOURS` (only if hygiene reads it).
+
+SUMMARY + digest always include a **Loop** section (proposed / shadowing / APPLY / MISS).

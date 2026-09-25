@@ -34,7 +34,11 @@ const TRACKING_LABEL = "mythos-token-audit";
 const AUDIT_DOWN_LABEL = "audit-down";
 const OWNER_MENTION = "@SkyyPlayz";
 const GATE_AVG_THROTTLE = 1.5;
-const TIP_STORM_WAKE_THRESHOLD = 3;
+const TIP_STORM_WAKE_THRESHOLD = Number(
+  process.env.MYTHOS_CIRCUIT_BREAKER_TIP_STORM_THRESHOLD ||
+    process.env.CIRCUIT_TIP_STORM_THRESHOLD ||
+    3,
+) || 3;
 
 function die(msg, code = 1) {
   console.error(`loud-digest: ${msg}`);
@@ -556,6 +560,58 @@ function main() {
     console.error("AUDIT FAILED stub — failing workflow for Actions red X");
     process.exit(1);
   }
+
+  // --- Self-improvement loop APPLY / shadow log / persist state ---
+  const loopPath = existsSync("out/loop-state.json") ? "out/loop-state.json" : null;
+  if (loopPath) {
+    try {
+      const loop = JSON.parse(readFileSync(loopPath, "utf8"));
+      if (loop.liveApply?.param && loop.liveApply?.value != null) {
+        const wrote = setVar(
+          loop.liveApply.param,
+          String(loop.liveApply.value),
+          botToken,
+        );
+        appendShadowLog(
+          `LOOP APPLY ${loop.liveApply.param}=${loop.liveApply.value} wrote=${wrote}`,
+        );
+        gh(
+          [
+            "issue",
+            "comment",
+            String(issue.number),
+            "--repo",
+            repo,
+            "--body",
+            [
+              "<!-- mythos-loop-apply -->",
+              `${OWNER_MENTION} — **Loop APPLY** \`${loop.liveApply.param}\` → \`${loop.liveApply.value}\`.`,
+              "See SUMMARY Loop section + `docs/MYTHOS_AUTOFIX.md`.",
+            ].join("\n"),
+          ],
+          { token, soft: true },
+        );
+      } else if (loop.shadowWould?.param) {
+        appendShadowLog(
+          `LOOP SHADOW would set ${loop.shadowWould.param}=${loop.shadowWould.value} (not live)`,
+        );
+      }
+      // Persist compact state for next week (var) — no secrets
+      const persist = {
+        status: loop.status,
+        candidate: loop.candidate || null,
+        baseline_metrics: loop.baseline_metrics || null,
+        shadow_until: loop.shadow_until || null,
+        last_result: loop.last_result || null,
+        applied: loop.applied || null,
+        updated_at: loop.updated_at || new Date().toISOString(),
+      };
+      setVar("MYTHOS_LOOP_STATE", JSON.stringify(persist), botToken);
+    } catch (e) {
+      console.warn(`loud-digest: loop-state handle failed: ${e.message}`);
+    }
+  }
+
   console.log("loud-digest complete (ok)");
 }
 

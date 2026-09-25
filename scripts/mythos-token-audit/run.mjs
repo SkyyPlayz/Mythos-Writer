@@ -21,6 +21,10 @@
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { ghJson, ghRaw, ghState } from "../mythos-ops/gh.mjs";
+import {
+  parseLoopState,
+  runLoopCycle,
+} from "../mythos-autofix/loop.mjs";
 
 const TRUSTED = new Set(["SkyyPlayz", "SkyHigh-Mythos-Bot"]);
 const CREED = "Creed: cut waste, don't weaken quality.";
@@ -37,6 +41,7 @@ function parseArgs(argv) {
     lookback: 7,
     usageSnapshot: "",
     priorMetrics: "",
+    priorLoopState: "",
     retryTag: "",
   };
   for (let i = 2; i < argv.length; i++) {
@@ -61,6 +66,9 @@ function parseArgs(argv) {
         break;
       case "--prior-metrics":
         out.priorMetrics = next();
+        break;
+      case "--prior-loop-state":
+        out.priorLoopState = next();
         break;
       case "--retry-tag":
         out.retryTag = next();
@@ -436,6 +444,29 @@ function main() {
     rate_limit_retries: ghState.retries,
   };
 
+  // --- Self-improvement loop (allow-listed ops params only) ---
+  let priorLoop = null;
+  if (args.priorLoopState && existsSync(args.priorLoopState)) {
+    try {
+      priorLoop = JSON.parse(readFileSync(args.priorLoopState, "utf8"));
+    } catch {
+      priorLoop = null;
+    }
+  }
+  if (!priorLoop && process.env.MYTHOS_LOOP_STATE) {
+    priorLoop = parseLoopState(process.env.MYTHOS_LOOP_STATE);
+  }
+  const loopEnabled = process.env.MYTHOS_LOOP_ENABLED;
+  const loopResult = runLoopCycle({
+    enabled: loopEnabled === undefined || loopEnabled === "" ? true : loopEnabled,
+    currentMetrics: metrics,
+    priorMetrics: prior,
+    loopState: priorLoop,
+    env: process.env,
+  });
+  metrics.loop_status = loopResult.state.status;
+  const loopSection = loopResult.loopSection || "## Loop\n\n_(none)_\n";
+
   const tipWindow = tipWindowInstruction(gateAvgProxy, priorAvg);
   const topDrains = drafts.drainRows
     .sort((a, b) => b.pushes - a.pushes)
@@ -482,6 +513,7 @@ Trusted authors: \`SkyyPlayz\`, \`SkyHigh-Mythos-Bot\`.
 
 ${tipWindow}
 
+${loopSection}
 ## Dual-pool
 
 ${usage.dualPoolLine}
@@ -504,6 +536,7 @@ ${
 - Single-pass fetch: merged list once, then per-PR comments/reviews; drafts listed once.
 - Never invents dual-pool percentages.
 - Tip-fix window var: \`MYTHOS_TIP_FIX_WINDOW_MINUTES\` (default 20).
+- Self-improvement loop: allow-listed ops params only — see \`docs/MYTHOS_AUTOFIX.md\`.
 - Rate-limit: backoff 2s/8s/32s via \`scripts/mythos-ops/gh.mjs\`.
 - ${CREED}
 `;
@@ -516,20 +549,20 @@ Lookback ${args.lookback}d · gate tips **${metrics.gate_cycles}** (full CSP ${m
   }) · tip-storms **${metrics.draft_e2e_tip_storms}** · wake proxy **${metrics.duplicate_forge_wakes_proxy}** · drip **${metrics.ci_fix_drip_tips}**
 ${priorLine}
 ${tipWindow}
+${loopSection}
 ${usage.dualPoolLine}
 ${args.retryTag ? `Retry: ${args.retryTag}` : ""}
 ${CREED}
 `;
 
-  writeOutputs(args, full, summary, metrics);
-  // Prefer exit 0 with partial artifact when rate-limited but we have useful data.
+  writeOutputs(args, full, summary, metrics, loopResult);
   if (metrics.rate_limited && metrics.merged_prs === 0 && metrics.gate_cycles === 0) {
     console.error("rate-limited with zero useful data");
     process.exit(1);
   }
 }
 
-function writeOutputs(args, full, summary, metrics) {
+function writeOutputs(args, full, summary, metrics, loopResult = null) {
   const outDir = dirname(args.out);
   mkdirSync(outDir, { recursive: true });
   mkdirSync(dirname(args.summary), { recursive: true });
@@ -538,6 +571,16 @@ function writeOutputs(args, full, summary, metrics) {
   const metricsPath = join(outDir, "metrics.json");
   writeFileSync(metricsPath, JSON.stringify(metrics, null, 2) + "\n", "utf8");
   writeFileSync(join(outDir, "METRICS.json"), JSON.stringify(metrics, null, 2) + "\n", "utf8");
+  if (loopResult) {
+    const loopPath = join(outDir, "loop-state.json");
+    const payload = {
+      ...loopResult.state,
+      liveApply: loopResult.liveApply,
+      shadowWould: loopResult.shadowWould,
+    };
+    writeFileSync(loopPath, JSON.stringify(payload, null, 2) + "\n", "utf8");
+    console.log(`wrote ${loopPath}`);
+  }
   console.log(`wrote ${args.out}, ${args.summary}, ${metricsPath}`);
 }
 
