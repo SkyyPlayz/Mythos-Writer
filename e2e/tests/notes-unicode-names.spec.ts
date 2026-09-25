@@ -27,6 +27,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { noteTestId, noteViewer } from '../helpers/notesPanel';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
@@ -200,7 +201,7 @@ test('UN-03: a note nested inside the emoji folder opens and displays its emoji 
   // the last breadcrumb item shows the note title (without .md extension).
   await row.click();
   await expect(
-    pg.locator('[data-testid="notes-tab-center"] [data-testid="note-breadcrumb"] .note-breadcrumb-item--current', { hasText: EMOJI_NOTE }),
+    noteTestId(pg, 'note-breadcrumb').locator('.note-breadcrumb-item--current', { hasText: EMOJI_NOTE }),
   ).toBeVisible({ timeout: 8_000 });
 });
 
@@ -259,19 +260,19 @@ test.describe('UN-05: wikilink-to-create with an emoji target', () => {
     await openVaultTab(wlPage);
 
     await wlPage.locator('[data-testid="vb-row-Hub.md"]').click();
-    await expect(wlPage.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
-    await wlPage.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
+    await expect(noteTestId(wlPage, 'note-gear-btn')).toBeVisible({ timeout: 8_000 });
+    await noteTestId(wlPage, 'note-gear-btn').click();
     await expect(wlPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
     await wlPage.locator('[data-testid="note-gear-mode-rich"]').click();
-    await expect(wlPage.locator('[data-testid="notes-tab-center"] .note-viewer .ProseMirror')).toBeVisible();
+    await expect(noteViewer(wlPage).locator('.ProseMirror')).toBeVisible();
 
-    const unresolved = wlPage.locator(`[data-testid="notes-tab-center"] .note-viewer [data-wiki-link="${EMOJI_WIKILINK_TARGET}"]`);
+    const unresolved = noteViewer(wlPage).locator(`[data-wiki-link="${EMOJI_WIKILINK_TARGET}"]`);
     await expect(unresolved).toHaveClass(/wiki-link-unresolved/);
     await unresolved.click();
 
     // M8d replaced .note-viewer-filename with a breadcrumb nav.
     await expect(
-      wlPage.locator('[data-testid="notes-tab-center"] [data-testid="note-breadcrumb"] .note-breadcrumb-item--current', { hasText: EMOJI_WIKILINK_TARGET }),
+      noteTestId(wlPage, 'note-breadcrumb').locator('.note-breadcrumb-item--current', { hasText: EMOJI_WIKILINK_TARGET }),
     ).toBeVisible({ timeout: 8_000 });
     expect(fs.existsSync(path.join(wlNotesVaultDir, `${EMOJI_WIKILINK_TARGET}.md`))).toBe(true);
     expect(fs.readFileSync(path.join(wlNotesVaultDir, `${EMOJI_WIKILINK_TARGET}.md`), 'utf-8')).toContain(

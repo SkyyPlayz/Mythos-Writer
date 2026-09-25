@@ -26,6 +26,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { notesPanel } from './helpers/notesPanel';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -381,7 +382,7 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     // The card's Open note button deep-links into the Notes editor
     await page.locator('[data-testid="vault-graph-inspector-open"]').click();
     await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
-    await expect(page.locator('#app-tabpanel-notes .note-breadcrumb-item--current')).toContainText('Arya', { timeout: 5_000 });
+    await expect(notesPanel(page).locator('.note-breadcrumb-item--current')).toContainText('Arya', { timeout: 5_000 });
   });
 
   // ── TC-GV-06 ─────────────────────────────────────────────────────────────────
@@ -432,7 +433,7 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     );
 
     await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
-    await expect(page.locator('#app-tabpanel-notes .note-breadcrumb-item--current')).toContainText('ChainA', { timeout: 5_000 });
+    await expect(notesPanel(page).locator('.note-breadcrumb-item--current')).toContainText('ChainA', { timeout: 5_000 });
   });
 
   // ── TC-GV-08 ─────────────────────────────────────────────────────────────────
@@ -497,7 +498,7 @@ test.describe('Suite A — Rich-topology vault (TC-GV-01..08, 11, 12)', () => {
     // …and a second Enter opens the selected note in the Notes editor.
     await svg.press('Enter');
     await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
-    await expect(page.locator('#app-tabpanel-notes .note-breadcrumb-item--current')).toBeVisible({ timeout: 5_000 });
+    await expect(notesPanel(page).locator('.note-breadcrumb-item--current')).toBeVisible({ timeout: 5_000 });
   });
 
   // ── TC-GV-12 ─────────────────────────────────────────────────────────────────

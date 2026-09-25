@@ -48,6 +48,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test';
+import { noteTestId } from '../helpers/notesPanel';
 import { clickStoryNav } from '../helpers/navGuard';
 import { installDraftStreamMock, generateMockDraft } from '../helpers/draftStreamMock';
 
@@ -951,8 +952,8 @@ test.describe('SKY-11049 item 7 — POV vault-wide character fallback (fresh pro
     // that default.
     await dismissMigrationPromptIfPresent(localPage);
     await localPage.locator('[data-testid^="vb-row-"]', { hasText: 'Kael Thorne' }).first().click();
-    await expect(localPage.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
-    await localPage.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
+    await expect(noteTestId(localPage, 'note-gear-btn')).toBeVisible({ timeout: 8_000 });
+    await noteTestId(localPage, 'note-gear-btn').click();
     await expect(localPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
     await localPage.locator('[data-testid="note-gear-mode-source"]').click();
     const editor = localPage.getByRole('textbox', { name: 'Edit note: Kael Thorne.md' });
@@ -1044,8 +1045,8 @@ test.describe('SKY-11072 — Scene Crafter vault-reference columns (fresh profil
     // proved out) so the CHARACTERS column's tag fallback resolves it.
     await dismissMigrationPromptIfPresent(localPage);
     await localPage.locator('[data-testid^="vb-row-"]', { hasText: 'Mira Veynn' }).first().click();
-    await expect(localPage.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
-    await localPage.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
+    await expect(noteTestId(localPage, 'note-gear-btn')).toBeVisible({ timeout: 8_000 });
+    await noteTestId(localPage, 'note-gear-btn').click();
     await expect(localPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
     await localPage.locator('[data-testid="note-gear-mode-source"]').click();
     const editor = localPage.getByRole('textbox', { name: 'Edit note: Mira Veynn.md' });

@@ -63,6 +63,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { noteTestId } from '../helpers/notesPanel';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const SIDECAR = '.mythos-board.json';
@@ -423,10 +424,10 @@ test('SKY-11666 GAP-5: the same thumbnail derivative renders in the Notes editor
     const row = page.locator('[data-testid="vb-row-Mira.md"]');
     await expect(row).toBeVisible({ timeout: 10_000 });
     await row.click();
-    await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-title"]')).toHaveText('Mira', { timeout: 10_000 });
-    const cover = page.locator('[data-testid="note-cover"]');
+    await expect(noteTestId(page, 'note-title')).toHaveText('Mira', { timeout: 10_000 });
+    const cover = noteTestId(page, 'note-cover');
     await expect(cover).toBeVisible({ timeout: 10_000 });
-    await expect(page.locator('[data-testid="note-cover-badge"]')).toHaveText('Auto');
+    await expect(noteTestId(page, 'note-cover-badge')).toHaveText('Auto');
     const coverImg = cover.locator('.note-thumb img');
     await expect(coverImg).toHaveAttribute('src', /^data:image\/webp;base64,/, { timeout: 15_000 });
     // Captured while surface 1 is still mounted — the actual bytes, not just

@@ -37,6 +37,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { noteTestId } from '../helpers/notesPanel';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
@@ -600,16 +601,16 @@ test('SKY-11186 BADGE-1: the editor cover badge reads Auto/Thumbnail and × writ
     const row = page.locator('[data-testid="vb-row-Mira.md"]');
     await expect(row).toBeVisible({ timeout: 10_000 });
     await row.click();
-    await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-title"]')).toHaveText('Mira', { timeout: 10_000 });
+    await expect(noteTestId(page, 'note-title')).toHaveText('Mira', { timeout: 10_000 });
 
     // The cover sits in the header beside the title. No frontmatter `thumb:`
     // → derived from the first image → the badge reads exactly "Auto", and
     // the slot paints the generated webp derivative, not the source PNG.
-    const cover = page.locator('[data-testid="notes-tab-center"] [data-testid="note-cover"]');
+    const cover = noteTestId(page, 'note-cover');
     await expect(cover).toBeVisible({ timeout: 10_000 });
     await expect(cover).toHaveAttribute('data-thumb-mode', 'auto');
-    await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-cover-badge"]')).toHaveText('Auto');
-    await expect(page.locator('[data-testid="note-header"] [data-testid="note-cover"]')).toHaveCount(1);
+    await expect(noteTestId(page, 'note-cover-badge')).toHaveText('Auto');
+    await expect(noteTestId(page, 'note-header').locator('[data-testid="note-cover"]')).toHaveCount(1);
     await expect(cover.locator('.note-thumb img')).toHaveAttribute('src', /^data:image\/webp;base64,/, { timeout: 15_000 });
     const box = await cover.boundingBox();
     expect(box?.width).toBe(176);
@@ -618,14 +619,14 @@ test('SKY-11186 BADGE-1: the editor cover badge reads Auto/Thumbnail and × writ
     // × is a real button with the spec label; pressing it writes `thumb: false`
     // into the note's frontmatter on disk (bare YAML boolean, body untouched)
     // and the cover leaves the editor.
-    const remove = page.locator('[data-testid="notes-tab-center"] [data-testid="note-cover-remove"]');
+    const remove = noteTestId(page, 'note-cover-remove');
     await expect(remove).toHaveAttribute('aria-label', 'Remove thumbnail');
     await remove.click();
     await expect.poll(() => fs.readFileSync(noteFile, 'utf-8'), { timeout: 10_000 }).toMatch(/^---\nthumb: false\n---\n/);
     expect(fs.readFileSync(noteFile, 'utf-8')).toContain('![[portrait.png]]');
     await expect(cover).toHaveCount(0, { timeout: 10_000 });
-    await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-cover-badge"]')).toHaveCount(0);
-    await expect(page.locator('[data-testid="notes-tab-center"] [data-testid="note-title"]')).toHaveText('Mira');
+    await expect(noteTestId(page, 'note-cover-badge')).toHaveCount(0);
+    await expect(noteTestId(page, 'note-title')).toHaveText('Mira');
 
     // The Board agrees: text-only height + empty-thumb chrome (Probe / §15 test 12).
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();

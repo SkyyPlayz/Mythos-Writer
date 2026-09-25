@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { noteTestId, noteViewer } from './helpers/notesPanel';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const now = '2026-06-17T00:00:00.000Z';
@@ -101,9 +102,9 @@ test.describe('Cross-tab links and tab-aware shortcuts', () => {
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
       await page.getByText('Cross Links', { exact: true }).click();
       // M17: the mode seg moved into the gear popover; rendered links live in Rich.
-      await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
+      await noteTestId(page, 'note-gear-btn').click();
       await page.locator('[data-testid="note-gear-mode-rich"]').click();
-      await page.locator('[data-testid="notes-tab-center"] .note-viewer [data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
+      await noteViewer(page).locator('[data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
 
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
       // SKY-10925: scene depth is now chromeless — BlockEditor's own .scene-name

@@ -6368,6 +6368,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {/* SKY-2094: Story tabpanel — wraps all story content; hidden when Notes tab active.
           B7: keep mounted (display:none) so returning to story never loses content. */}
       <div id="app-tabpanel-story" role="tabpanel" aria-labelledby="app-tab-story"
+        aria-hidden={tabShell.activeTab !== 'story'}
         style={{ flex: 1, display: tabShell.activeTab === 'story' ? 'flex' : 'none', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}
       >
       {/* SKY-9019/M5: sub-view bar hidden for rail-only destinations (kanban/timeline have their own full view). */}
@@ -6443,7 +6444,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {/* B9: keep structure view mounted (display:none) to prevent glitch on back */}
       {activeDockedTabId === null && (view === 'structure' || view === 'editor') && (
-        <div className="shell-structure" style={{ display: view === 'structure' ? 'flex' : 'none' }}>
+        <div className="shell-structure" aria-hidden={view !== 'structure'} style={{ display: view === 'structure' ? 'flex' : 'none' }}>
           <ManuscriptStructureView
             story={selectedStory ?? null}
             onSelectScene={(scene, chapter, story) => {

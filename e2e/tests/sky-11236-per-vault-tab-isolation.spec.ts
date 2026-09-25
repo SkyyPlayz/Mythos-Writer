@@ -30,6 +30,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { notesPanel } from '../helpers/notesPanel';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const NOW = '2026-09-01T00:00:00.000Z';
@@ -154,7 +155,7 @@ function notesTabs(pg: Page) {
 
 /** The visible NoteViewer error ("Could not load note." and friends). */
 function noteError(pg: Page) {
-  return pg.locator('.note-viewer-error');
+  return notesPanel(pg).locator('.note-viewer-error');
 }
 
 let userData: string;

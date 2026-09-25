@@ -16,6 +16,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { noteTestId, noteViewer } from './helpers/notesPanel';
 import { clickStoryNav } from './helpers/navGuard';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
@@ -182,10 +183,10 @@ test('PC-03: page chrome is Story-only — Notes rich mode has minimal chrome (o
     await page.locator('[data-testid^="vb-row-"]', { hasText: 'chromeless' }).first().click();
     // M17: the mode switch now lives inside the gear-menu popover
     // (`[data-testid="note-gear-btn"]`), not an always-visible mode row.
-    await page.locator('#app-tabpanel-notes .note-viewer [data-testid="note-gear-btn"]').click();
-    await expect(page.locator('.note-viewer .note-mode-group[aria-label="Editor mode"]')).toBeVisible({ timeout: 8_000 });
+    await noteTestId(page, 'note-gear-btn').click();
+    await expect(noteViewer(page).locator('.note-mode-group[aria-label="Editor mode"]')).toBeVisible({ timeout: 8_000 });
     await page.locator('[data-testid="note-gear-mode-rich"]').click();
-    await expect(page.locator('[data-testid="notes-tab-center"] .note-viewer .ProseMirror')).toBeVisible();
+    await expect(noteViewer(page).locator('.ProseMirror')).toBeVisible();
 
     // The Story manuscript toolbar / page ruler must NOT leak into the Notes surface.
     await expect(page.locator('#app-tabpanel-notes [data-testid="msv-toolbar"]')).toHaveCount(0);
