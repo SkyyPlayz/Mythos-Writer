@@ -57,6 +57,15 @@ PR hygiene (rebase + draft-CI comment + draft→ready): [`.github/workflows/myth
 | Autofix shadow / coord / rollback | [MYTHOS_AUTOFIX.md](../MYTHOS_AUTOFIX.md) |
 | Standing brief compression | [STANDING_AGENT_CONTEXT_COMPRESSION.md](../STANDING_AGENT_CONTEXT_COMPRESSION.md) |
 
+### 5. Main-push hygiene has no PRs; canary bootstrap
+
+| | |
+| --- | --- |
+| **Trigger** | CI `workflow_run` on a **main push** (no associated pull request). `GET /actions/runs/{id}/pull_requests` returns HTTP 404 and `gh api` still writes the error JSON to stdout. Separately, `mythos-token-audit.yml` may have zero completed runs until the first Wednesday cron. |
+| **Action** | `draft-ready-on-green` and `draft-ci-comment` soft-skip (exit 0). Non-numeric tokens never reach `gh pr view`. Ops canary logs a WARN for a token-audit that has never completed, and does not go red on a hygiene failure when a success exists within 26h. |
+| **Silence failure prevented** | A green main CI run painting hygiene (and then the ops canary) red, which looks like a product outage and invites noise. |
+| **Committed** | `.github/workflows/mythos-pr-hygiene.yml`, `.github/workflows/mythos-ops-health.yml`, `scripts/mythos-ops/ops-guards.sh` |
+
 ## Explicit non-goals
 
 - Do **not** collapse Critic/Shield/Probe.

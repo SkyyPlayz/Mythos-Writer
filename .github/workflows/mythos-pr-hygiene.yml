@@ -12,6 +12,11 @@
 # Autofix shadow / coordination: docs/MYTHOS_AUTOFIX.md
 #   MYTHOS_AUTOFIX_MODE, MYTHOS_AUTOFIX_SHADOW_UNTIL
 # Priority: circuit-breaker > trend-throttle > auto ready-for-review
+#
+# Main-push workflow_run has no associated PRs. GET .../pull_requests is HTTP 404
+# and `gh api` still prints the error JSON on stdout. Resolve via
+# scripts/mythos-ops/ops-guards.sh (soft skip exit 0). Never pass non-numeric
+# tokens to `gh pr view`.
 
 name: Mythos PR hygiene
 
@@ -52,18 +57,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      - uses: actions/checkout@v7
+
       - name: Skip tip-freeze labeled PRs
         id: gate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # shellcheck disable=SC1091
+          source "${GITHUB_WORKSPACE}/scripts/mythos-ops/ops-guards.sh"
           # Collect candidate PR numbers (drafts INCLUDED)
           CANDS=""
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             CANDS="${{ github.event.pull_request.number }}"
           elif [ "${{ github.event_name }}" = "workflow_run" ]; then
-            CANDS=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/pull_requests" --jq '.[].number' | tr '\n' ' ' || true)
+            # 404 on main push is a soft skip — do not capture the error JSON.
+            RUN_ID="${{ github.event.workflow_run.id }}"
+            if ! CANDS=$(resolve_run_prs "$RUN_ID"); then
+              echo "no pull_requests for run ${RUN_ID} (main push / 404) — soft skip"
+              CANDS=""
+            fi
+            CANDS=$(printf '%s' "$CANDS" | tr '\n' ' ')
           else
             # schedule / dispatch: open PRs behind base (include drafts)
             CANDS=$(gh pr list --repo "${{ github.repository }}" --state open --limit 40 \
@@ -72,7 +87,9 @@ jobs:
           fi
           KEEP=""
           for n in $CANDS; do
-            [ -z "$n" ] && continue
+            case "$n" in
+              ''|*[!0-9]*) echo "skip non-numeric token: $n"; continue ;;
+            esac
             LABELS=$(gh pr view "$n" --repo "${{ github.repository }}" --json labels --jq '[.labels[].name] | join(",")')
             case ",$LABELS," in
               *,tip-freeze,*) echo "skip #$n tip-freeze"; continue ;;
@@ -90,7 +107,9 @@ jobs:
         run: |
           set -euo pipefail
           for n in ${{ steps.gate.outputs.prs }}; do
-            [ -z "$n" ] && continue
+            case "$n" in
+              ''|*[!0-9]*) echo "skip non-numeric token: $n"; continue ;;
+            esac
             echo "update-branch PR #$n (drafts allowed)"
             gh api -X PUT "repos/${{ github.repository }}/pulls/$n/update-branch" \
               -f expected_head_sha="$(gh pr view "$n" --repo "${{ github.repository }}" --json headRefOid --jq .headRefOid)" \
@@ -105,19 +124,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
+      - uses: actions/checkout@v7
+
       - name: Comment-only on draft CI failure
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # Resolve PR(s) for the failed CI run
+          # shellcheck disable=SC1091
+          source "${GITHUB_WORKSPACE}/scripts/mythos-ops/ops-guards.sh"
+          # Resolve PR(s) for the failed CI run. Main push → 404 → soft skip.
           RUN_ID="${{ github.event.workflow_run.id }}"
-          if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "" ]; then
-            echo "no workflow_run id — skip"
+          if [ -z "${RUN_ID:-}" ]; then
+            echo "no workflow_run id — soft skip"
             exit 0
           fi
-          PRS=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}/pull_requests" --jq '.[].number' || true)
+          if ! PRS=$(resolve_run_prs "$RUN_ID"); then
+            echo "no pull_requests for run ${RUN_ID} (main push / 404) — soft skip"
+            exit 0
+          fi
+          if [ -z "$(printf '%s' "$PRS" | tr -d '[:space:]')" ]; then
+            exit 0
+          fi
           for n in $PRS; do
+            case "$n" in
+              ''|*[!0-9]*) echo "skip non-numeric token: $n"; continue ;;
+            esac
             DRAFT=$(gh pr view "$n" --repo "${{ github.repository }}" --json isDraft --jq .isDraft)
             if [ "$DRAFT" != "true" ]; then
               echo "skip #$n not draft"
@@ -151,6 +183,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - uses: actions/checkout@v7
+
       - name: Mark draft ready after 2 greens on same tip (shadow / breaker aware)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -161,6 +195,8 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # shellcheck disable=SC1091
+          source "${GITHUB_WORKSPACE}/scripts/mythos-ops/ops-guards.sh"
           MODE="${MYTHOS_AUTOFIX_MODE:-shadow}"
           UNTIL="${MYTHOS_AUTOFIX_SHADOW_UNTIL:-}"
           BREAKER="${MYTHOS_WAKE_CIRCUIT_BREAKER:-}"
@@ -196,12 +232,22 @@ jobs:
 
           RUN_ID="${{ github.event.workflow_run.id }}"
           if [ -z "${RUN_ID:-}" ]; then
-            echo "no workflow_run id — skip"
+            echo "no workflow_run id — soft skip"
             exit 0
           fi
           HEAD_SHA="${{ github.event.workflow_run.head_sha }}"
-          PRS=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}/pull_requests" --jq '.[].number' || true)
+          # Main-push CI success has no PRs (HTTP 404). Soft skip — do not word-split the error JSON.
+          if ! PRS=$(resolve_run_prs "$RUN_ID"); then
+            echo "no pull_requests for run ${RUN_ID} (main push / 404) — soft skip"
+            exit 0
+          fi
+          if [ -z "$(printf '%s' "$PRS" | tr -d '[:space:]')" ]; then
+            exit 0
+          fi
           for n in $PRS; do
+            case "$n" in
+              ''|*[!0-9]*) echo "skip non-numeric token: $n"; continue ;;
+            esac
             META=$(gh pr view "$n" --repo "${{ github.repository }}" --json isDraft,headRefOid,labels \
               --jq '{draft:.isDraft,sha:.headRefOid,labels:[.labels[].name]}')
             DRAFT=$(jq -r '.draft' <<<"$META")
