@@ -56,6 +56,9 @@ Fallback: `GITHUB_TOKEN` (repo has `allow_auto_merge=true`). Because that token 
 
 ## Out of scope
 
-- Branch protection UI (owner configures required checks)
+- Branch protection UI (owner configures required checks) — see
+  [BRANCH_PROTECTION_MAIN.md](./BRANCH_PROTECTION_MAIN.md) for the canonical
+  `main — Mythos single tip-gate` ruleset (docs + manual apply helper; not
+  auto-applied by Actions).
 - Dependabot auto-merge behavior
 - `release.yml` publish / draft policy
