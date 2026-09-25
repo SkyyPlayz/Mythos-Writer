@@ -60,5 +60,7 @@ Fallback: `GITHUB_TOKEN` (repo has `allow_auto_merge=true`). Because that token 
   [BRANCH_PROTECTION_MAIN.md](./BRANCH_PROTECTION_MAIN.md) for the canonical
   `main — Mythos single tip-gate` ruleset (docs + manual apply helper; not
   auto-applied by Actions).
+- Tip-freeze / CI-fix batching soft cap — see [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md)
+  and [FORGE_E2E_KEEPALIVE.md](./FORGE_E2E_KEEPALIVE.md) (comment-only draft CI sticky).
 - Dependabot auto-merge behavior
 - `release.yml` publish / draft policy

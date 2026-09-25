@@ -17,4 +17,5 @@ Mythos Writer is an **Electron / local-first** fiction writing app (desktop note
 
 - Prefer opening a **new branch** (or a sibling fix PR) for autofixes.
 - Do **not** thrash the tip SHA on gated PRs after TIP FREEZE — tip pushes reset Critic/Shield/Probe and burn gate cycles.
+- Soft cap (ops): after one CI-fix **batch** tip, if CI stays red **~20 minutes** wall clock since that tip’s CI started, **one** emergency single-fix tip is allowed, then resume batching — see [`docs/FORGE_TIP_FREEZE.md`](../docs/FORGE_TIP_FREEZE.md). Still forbid drip streams.
 - Leave merge decisions to the Mythos tip-SHA gate; Bugbot does not merge.

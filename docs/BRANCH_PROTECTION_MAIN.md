@@ -66,3 +66,9 @@ it, or creates one. It never runs from the token-audit workflow.
    without adding signal beyond Critic/Shield/Probe.
 3. **Empty bypass** stops force-push / admin shortcuts around the tip gate.
 4. **Linear history** keeps `main` readable for audits and bisects.
+
+Strict “branches must be up to date” pairs with
+[`.github/workflows/auto-rebase-main.yml`](../.github/workflows/auto-rebase-main.yml)
+(hourly + on `main` push) so open PRs stay current without human rebase tax.
+PRs labeled `tip-freeze` or `do-not-rebase` are skipped so rebase cannot fight
+mid-gate tip-freeze — see [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md).
