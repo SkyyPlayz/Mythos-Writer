@@ -19,7 +19,7 @@
   padding: 10px 0 12px;
   margin: 0;
   border-radius: 0;
-  z-index: 40;
+  z-index: 70; /* S2-1: above WindowChrome (60) / WorkspaceTabBar (55) so Stories popover receives clicks */
   background: var(--glass, rgba(13, 16, 28, .72));
   border: none;
   border-right: var(--bw, 1px) solid var(--b6, rgba(61, 155, 255, .4));
@@ -197,7 +197,7 @@
 .nav-rail__stories-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 44;
+  z-index: 71;
 }
 
 .nav-rail__stories {
@@ -205,7 +205,7 @@
   left: 64px;
   top: 10px;
   width: 272px;
-  z-index: 46;
+  z-index: 72;
   padding: 10px;
   border-radius: 15px;
   background: rgba(15, 19, 33, .97);

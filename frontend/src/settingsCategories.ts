@@ -60,12 +60,12 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     description: 'Provider, models and autonomy. Pick an agent in the sidebar for its own page.',
     sectionIds: [
       'section-ai-master',
+      'section-transcript-placement',
       'section-providers',
       'section-api-key',
       'section-agents',
       'section-autolinker',
       'section-journal',
-      'section-archive-agent',
       'section-voice',
     ],
   },
