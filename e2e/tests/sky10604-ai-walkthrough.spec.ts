@@ -143,7 +143,7 @@ async function walkAndAssert(aiOn: boolean): Promise<void> {
     await openSettingsDialog(page);
     await page.locator('[data-testid="settings-cat-agents"]').click();
     await expect(
-      page.locator('.ai-master-card input[role="switch"][aria-label="AI features"]'),
+      page.locator('.ai-master-card input[role="switch"][aria-label="All AI features"]'),
     ).toHaveJSProperty('checked', aiOn);
     await page.screenshot({
       path: test.info().outputPath(`sky10604-settings-${aiOn ? 'ai-on' : 'ai-off'}.png`),

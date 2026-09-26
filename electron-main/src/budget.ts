@@ -34,17 +34,17 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
  * should be auto-applied, given the agent's policy settings and current DB state.
  *
  * Rules (in evaluation order):
- * 1. autoApply must be true — otherwise stay proposed, no budget check.
- * 2. SKY-908 — if autoApplyCategories is defined, the suggestion's category
- *    must be enabled. Missing keys default to enabled so forward-compat
- *    schemas do not silently disable new categories.
- * 3. B4-8 (Beta 4 M28) — confidence must be >= the per-category certainty
- *    threshold (autoApplyThresholds[category]), falling back to the agent's
- *    confidenceThreshold when the category has no explicit value. Below the
- *    threshold the suggestion stays proposed and lands in the suggestion
- *    inbox for review.
- * 4. Budget must not be exhausted — otherwise mark budgetExceeded and stay proposed.
- *    Checks: hourly suggestion count, hourly token count, daily token count.
+ * 1. Hard-excluded payload kinds never auto-apply and never budget-hold.
+ * 2. Confidence must be >= the per-category certainty threshold
+ *    (autoApplyThresholds[category]), falling back to confidenceThreshold.
+ *    Below-threshold suggestions stay proposed with no budget-hold flag.
+ * 3. Budget must not be exhausted — otherwise mark budgetExceeded and stay
+ *    proposed. Checks: hourly suggestion count, hourly/daily token counts.
+ *    **Runs even when autoApply is off** so Review Inbox can still show
+ *    budget-held badges (S2-5 / AC-EPIC-14).
+ * 4. autoApply must be true, and if autoApplyCategories is set the category
+ *    must not be explicitly false — otherwise stay proposed (budgetExceeded
+ *    may already be true from step 3).
  * 5. All checks pass → auto-apply (snapshot-first via applyVaultWrite).
  */
 export function evaluateAutoApply(
@@ -59,20 +59,7 @@ export function evaluateAutoApply(
     return { shouldAutoApply: false, budgetExceeded: false };
   }
 
-  if (!settings.autoApply) {
-    return { shouldAutoApply: false, budgetExceeded: false };
-  }
-
   const effectiveCategory = coerceSuggestionCategory(category);
-
-  if (settings.autoApplyCategories) {
-    const enabled = settings.autoApplyCategories[effectiveCategory];
-    // Absent keys default to enabled (forward-compat); only an explicit
-    // `false` disables auto-apply for that category.
-    if (enabled === false) {
-      return { shouldAutoApply: false, budgetExceeded: false };
-    }
-  }
 
   // B4-8: per-category certainty threshold, falling back to the agent-wide
   // confidenceThreshold. Below-threshold suggestions stay proposed → inbox.
@@ -86,18 +73,30 @@ export function evaluateAutoApply(
   }
 
   const suggestionCount = countSuggestionsInWindowWithDb(db, sourceAgent, ONE_HOUR_MS);
-  if (suggestionCount >= settings.maxSuggestionsPerHour) {
-    return { shouldAutoApply: false, budgetExceeded: true };
-  }
-
   const hourlyTokens = countTokensInWindowWithDb(db, sourceAgent, ONE_HOUR_MS);
-  if (hourlyTokens >= settings.maxTokensPerHour) {
+  const dailyTokens = countTokensInWindowWithDb(db, sourceAgent, ONE_DAY_MS);
+  const budgetExceeded =
+    suggestionCount >= settings.maxSuggestionsPerHour ||
+    hourlyTokens >= settings.maxTokensPerHour ||
+    dailyTokens >= settings.maxTokensPerDay;
+
+  // S2-5 / AC-EPIC-14: budget-held is independent of autoApply so Review
+  // Inbox still surfaces over-cap suggestions when autonomy defaults are off.
+  if (budgetExceeded) {
     return { shouldAutoApply: false, budgetExceeded: true };
   }
 
-  const dailyTokens = countTokensInWindowWithDb(db, sourceAgent, ONE_DAY_MS);
-  if (dailyTokens >= settings.maxTokensPerDay) {
-    return { shouldAutoApply: false, budgetExceeded: true };
+  if (!settings.autoApply) {
+    return { shouldAutoApply: false, budgetExceeded: false };
+  }
+
+  if (settings.autoApplyCategories) {
+    const enabled = settings.autoApplyCategories[effectiveCategory];
+    // Absent keys default to enabled (forward-compat); only an explicit
+    // `false` disables auto-apply for that category.
+    if (enabled === false) {
+      return { shouldAutoApply: false, budgetExceeded: false };
+    }
   }
 
   return { shouldAutoApply: true, budgetExceeded: false };

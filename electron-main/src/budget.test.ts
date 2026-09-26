@@ -54,10 +54,19 @@ describe('evaluateAutoApply', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('returns shouldAutoApply=false when autoApply is disabled', () => {
+  it('returns shouldAutoApply=false when autoApply is disabled (under budget)', () => {
     const result = evaluateAutoApply(0.99, 'writing-assistant', { ...BASE_SETTINGS, autoApply: false }, db);
     expect(result.shouldAutoApply).toBe(false);
     expect(result.budgetExceeded).toBe(false);
+  });
+
+  it('S2-5 / AC-EPIC-14: marks budgetExceeded even when autoApply is off', () => {
+    for (let i = 0; i < BASE_SETTINGS.maxSuggestionsPerHour; i++) {
+      upsertSuggestion(makeSuggestion({ id: `sug-off-${i}`, source_agent: 'writing-assistant' }));
+    }
+    const result = evaluateAutoApply(0.95, 'writing-assistant', { ...BASE_SETTINGS, autoApply: false }, db);
+    expect(result.shouldAutoApply).toBe(false);
+    expect(result.budgetExceeded).toBe(true);
   });
 
   it('returns shouldAutoApply=false when confidence is below threshold', () => {

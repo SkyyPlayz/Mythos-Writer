@@ -220,16 +220,17 @@ test.describe('SKY-9022/M6 — right sidebar (tab order, single Continuity heade
 
   // SKY-9022/M6 GAP-1: AGENTS rows are prototype rich cards — a two-line
   // button (name over dot + status) with a trailing right-chevron.
-  test('AGENTS: four rich cards each render name, status line, and chevron', async () => {
+  test('AGENTS: three rich cards each render name, status line, and chevron (S2-6: no Archive)', async () => {
     const agents = page.locator('[data-testid="agent-hub-panel"] section[aria-label="Agents"]');
-    await expect(agents.locator('.ahp-agent-row')).toHaveCount(4);
-    for (const id of ['writing-assistant', 'brainstorm', 'archive', 'beta-reader']) {
+    await expect(agents.locator('.ahp-agent-row')).toHaveCount(3);
+    for (const id of ['writing-assistant', 'brainstorm', 'beta-reader']) {
       const row = agents.locator(`[data-testid="ahp-agent-row-${id}"]`);
       await expect(row.locator('.ahp-agent-name')).not.toBeEmpty();
       await expect(row.locator('.ahp-status-dot')).toBeVisible();
       await expect(row.locator('.ahp-status-text')).not.toBeEmpty();
       await expect(row.locator('.ahp-agent-chevron')).toBeVisible();
     }
+    await expect(agents.locator('[data-testid="ahp-agent-row-archive"]')).toHaveCount(0);
   });
 
   test('exactly one Continuity header in the DOM', async () => {

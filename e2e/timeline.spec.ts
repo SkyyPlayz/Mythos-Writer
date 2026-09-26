@@ -1169,65 +1169,16 @@ test.describe('SKY-9877 — TIMELINE NAVIGATOR fidelity (rail-timeline)', () => 
   });
 });
 
-// ─── Archive Agent chat — SKY-8886 ───────────────────────────────────────────
+// ─── Archive Agent chat — SKY-8886 / S2-6 removed ────────────────────────────
 //
-// Verifies the Archive Agent right-panel chat surface introduced in SKY-8886:
-//   1. The chat input is present in the Archive tab with the correct placeholder.
-//   2. Sending a chat message never modifies manuscript content on disk — the
-//      Archive Agent is suggestion-only and must never write to the vault.
-//
-// Both tests reuse the suite-level `app` / `page` / `vaultDir` state (the main
-// beforeAll already opened the Timeline Spreadsheet view), so no extra Electron
-// boot is needed.
+// 0.5.4 Slice 2 S2-6: Archivist / Archive Timeline tab is gone (video wins).
+// Keep a single regression that the Archive tab + chat input stay absent.
 
-test.describe('Archive Agent chat — SKY-8886', () => {
-  test('archive tab chat input is present with correct placeholder', async () => {
-    // The suite-level beforeAll leaves `page` on the Timeline Spreadsheet view.
-    // Open the right panel's Archive tab.
-    const archiveTab = page.locator('[data-testid="trp-tab-archive"]');
-    await expect(archiveTab).toBeVisible({ timeout: 8_000 });
-    await archiveTab.click();
-    await expect(archiveTab).toHaveAttribute('aria-selected', 'true');
-
-    const chatInput = page.locator('[data-testid="trp-archive-chat-input"]');
-    await expect(chatInput).toBeVisible({ timeout: 6_000 });
-    await expect(chatInput).toHaveAttribute('placeholder', 'Talk to the Archive Agent…');
-  });
-
-  test('archive chat send does not modify manuscript content', async () => {
-    // Read the current on-disk content of the anchor scene before any chat.
-    const scenePath = path.join(
-      vaultDir,
-      'stories', STORY_ID, 'chapters', CHAPTER_ID, 'scenes',
-      `${ANCHOR_SCENE.id}.md`,
-    );
-    const contentBefore = fs.readFileSync(scenePath, 'utf-8');
-
-    // Ensure we are on the Archive tab (previous test may already have done
-    // this, but tests must be independent in case of isolation / ordering).
-    const archiveTab = page.locator('[data-testid="trp-tab-archive"]');
-    await expect(archiveTab).toBeVisible({ timeout: 8_000 });
-    if (await archiveTab.getAttribute('aria-selected') !== 'true') {
-      await archiveTab.click();
-      await expect(archiveTab).toHaveAttribute('aria-selected', 'true');
-    }
-
-    const chatInput = page.locator('[data-testid="trp-archive-chat-input"]');
-    await expect(chatInput).toBeVisible({ timeout: 6_000 });
-
-    // Type and submit a chat message.
-    await chatInput.fill('List the arcs');
-    await chatInput.press('Enter');
-
-    // Wait briefly for any async processing the Archive Agent might trigger.
-    // We deliberately do NOT wait for a response element: the boundary under
-    // test is that the vault file is never touched, regardless of whether a
-    // reply renders.
-    await page.waitForTimeout(1_500);
-
-    // The manuscript file must be byte-for-byte identical to what it was before
-    // the chat message — the Archive Agent is suggestion-only.
-    const contentAfter = fs.readFileSync(scenePath, 'utf-8');
-    expect(contentAfter).toBe(contentBefore);
+test.describe('Archive Agent chat — SKY-8886 (removed S2-6)', () => {
+  test('archive tab and chat input are absent from Timeline right panel', async () => {
+    await expect(page.locator('[data-testid="trp-tab-inspector"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="trp-tab-inspector"]')).toHaveText('Ivy');
+    await expect(page.locator('[data-testid="trp-tab-archive"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="trp-archive-chat-input"]')).toHaveCount(0);
   });
 });

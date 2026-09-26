@@ -744,21 +744,23 @@ describe('TimelineRoot — M25 right panel', () => {
     expect(panel.style.width).toBe('250px');
   });
 
-  it('any canvas selection surfaces the Inspector tab, even from another tab (AC1/§14.5)', async () => {
+  it('any canvas selection surfaces Ivy (Inspector), even from Idea Board (AC1/§14.5 / S2-6)', async () => {
     await renderRoot();
-    fireEvent.click(screen.getByTestId('trp-tab-archive'));
+    fireEvent.click(screen.getByTestId('trp-tab-brainstorm'));
     await act(async () => {});
-    expect(screen.getByTestId('trp-tab-archive')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('trp-tab-brainstorm')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByTestId('trp-tab-archive')).toBeNull();
 
     fireEvent.click(screen.getByTestId('mock-axis-select-event'));
     await act(async () => {});
     expect(screen.getByTestId('trp-tab-inspector')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveTextContent('Ivy');
     // ev-1 has no rowId → the key-event editor
     expect(screen.getByTestId('trp-event-editor')).toHaveTextContent('Inciting incident');
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-selection', 'event:ev-1');
   });
 
-  it('a spreadsheet row click resolves to the store event and opens the Inspector (AC1)', async () => {
+  it('a spreadsheet row click resolves to the store event and opens Ivy (AC1)', async () => {
     const store = makeM21Store();
     store.events.push({ id: 'ev-scene', timelineId: 'tl-story', name: 'The Summons', when: 250, sceneId: 'sc-1' });
     setupApi(store);
@@ -770,44 +772,13 @@ describe('TimelineRoot — M25 right panel', () => {
     expect(screen.getByTestId('trp-event-editor')).toHaveTextContent('The Summons');
   });
 
-  it('quick-add plots an agent-sourced event through timelines.json (AC5)', async () => {
-    const api = setupApi();
+  it('S2-6: Archive tab / quick-add surface is gone from the right panel', async () => {
     await renderRoot();
-    fireEvent.click(screen.getByTestId('trp-tab-archive'));
-    await act(async () => {});
-
-    const input = screen.getByTestId('trp-quickadd-input');
-    fireEvent.change(input, { target: { value: 'Add the festival from Ch. 4' } });
-    fireEvent.click(screen.getByTestId('trp-quickadd-btn'));
-    await act(async () => {});
-
-    const upsert = (api.timelinesUpsertItem as ReturnType<typeof vi.fn>).mock.calls.find(
-      ([payload]) => payload.type === 'event' && payload.item.source === 'agent',
-    );
-    expect(upsert).toBeTruthy();
-    expect(upsert![0].item).toMatchObject({
-      timelineId: 'tl-story',
-      name: 'Festival',
-      written: false,
-      source: 'agent',
-    });
-    expect(screen.getByTestId('app-toast')).toHaveTextContent(/Added “Festival”/);
-  });
-
-  it('RECENTLY AUTO-ADDED derives from agent-sourced events with working undo (AC6)', async () => {
-    const store = makeM21Store();
-    store.events.push({
-      id: 'ev-agent', timelineId: 'tl-story', name: 'The festival', when: 300, source: 'agent',
-    });
-    const api = setupApi(store);
-    await renderRoot();
-    fireEvent.click(screen.getByTestId('trp-tab-archive'));
-    await act(async () => {});
-
-    expect(screen.getByTestId('trp-recent-list')).toHaveTextContent('The festival');
-    fireEvent.click(screen.getByTestId('trp-recent-undo-ev-agent'));
-    await act(async () => {});
-    expect(api.timelinesDeleteItem).toHaveBeenCalledWith({ type: 'event', id: 'ev-agent' });
+    expect(screen.queryByTestId('trp-tab-archive')).toBeNull();
+    expect(screen.queryByTestId('trp-quickadd-input')).toBeNull();
+    expect(screen.queryByTestId('trp-recent-list')).toBeNull();
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveTextContent('Ivy');
+    expect(screen.getByTestId('trp-tab-brainstorm')).toHaveTextContent('Idea Board');
   });
 
   it('Inspector delete is undoable from the toast (§1 principle 7)', async () => {

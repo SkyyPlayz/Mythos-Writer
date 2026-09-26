@@ -712,13 +712,9 @@ test('TC-CP-11: a contradiction flagged in a DIFFERENT scene surfaces via the gl
   }
 });
 
-// M12.B3 (SKY-10738): the Archive agent's own chat panel in the right
-// sidebar (owner's placement) — previously "coming soon", now the
-// redesigned panel + dynamic composer quick-action chips + mini chat.
-// SKY-11228: Chat and Flags are now sibling sub-tabs (chat gets full height
-// by default) rather than one stacked column, so the flags assertion moved
-// behind the Flags sub-tab click.
-test('TC-CP-12: Archive agent chat view renders the panel, dynamic quick-action chips, and a composer', async () => {
+// M12.B3 / S2-6: Archive agent chat hand removed from AGENTS card (video wins).
+// Continuity panel remains on the Assistant stack without an Archive row.
+test('TC-CP-12: Archive agent chat row is gone; Continuity still reachable without Archivist hand', async () => {
   const fixture = createFixture([{ id: 'inc-chat', severity: 'high' }]);
   let app: ElectronApplication | undefined;
   try {
@@ -727,24 +723,10 @@ test('TC-CP-12: Archive agent chat view renders the panel, dynamic quick-action 
     const page = opened.page;
     const sidebar = page.getByTestId('global-right-sidebar');
 
-    await sidebar.getByTestId('ahp-agent-row-archive').click();
-    const chatView = page.locator('.ahp-chat-view');
-    await expect(chatView.locator('.ahp-chat-agent-name')).toHaveText('Archive Agent', { timeout: 8_000 });
-
-    // Chat sub-tab is active by default: composer quick-action chips are
-    // dynamic, not static — the global scan chip is always present, and a
-    // seeded open flag adds two context chips.
-    await expect(chatView.getByRole('button', { name: 'Run full scan' })).toBeVisible({ timeout: 8_000 });
-    await expect(chatView.getByRole('button', { name: 'Explain flag #1' })).toBeVisible();
-    await expect(chatView.getByRole('button', { name: /^Suggest a fix for the /i })).toBeVisible();
-
-    // The mini chat composer (MiniAgentChat, reused from Timeline2's
-    // ArchiveTab — same shared Archive agent session).
-    await expect(chatView.getByTestId('ahp-archive-chat-input')).toBeVisible();
-
-    // The redesigned ContinuityPanel still renders, on its own Flags sub-tab.
-    await chatView.getByTestId('ahp-archive-subtab-flags').click();
-    await expect(chatView.getByRole('listitem', { name: /high character attribute drift/i })).toBeVisible({ timeout: 8_000 });
+    await expect(sidebar.getByTestId('ahp-agent-row-archive')).toHaveCount(0);
+    await expect(sidebar.getByTestId('ahp-archive-chat-input')).toHaveCount(0);
+    // Continuity flags still surface on the Assistant stack without Archive chat.
+    await expect(sidebar.getByRole('listitem', { name: /high character attribute drift/i })).toBeVisible({ timeout: 8_000 });
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);

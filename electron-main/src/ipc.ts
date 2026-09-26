@@ -3095,6 +3095,17 @@ export interface AppSettings {
    * Absent = 'ask' (the safe default; never writes without author approval).
    */
   wikiAutonomy?: 'off' | 'ask' | 'auto';
+
+  /**
+   * 0.5.4 Slice 2 S2-5: one-shot Autonomy migrate flag. When absent/false,
+   * loadAppSettings forces every agent autoApply (incl. Grammar) OFF once.
+   */
+  slice2AutonomyOffMigrated?: boolean;
+  /**
+   * 0.5.4 Slice 2 S2-6: partner LIVE transcript placement.
+   * `in-chat` dumps into the chat stream; `separate` keeps the LIVE strip.
+   */
+  agentTranscriptPlacement?: 'in-chat' | 'separate';
 }
 
 /** Archive Agent v1 — right sidebar panel descriptor (SKY-1683). */

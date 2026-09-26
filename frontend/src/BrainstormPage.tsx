@@ -483,6 +483,19 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   // SKY-10359: unify per-agent `enabled` with master toggle so both produce
   // the same Board-only surface instead of `enabled=false` nuking the whole page.
   const aiEnabled = useAiEnabled() && enabled;
+  const [transcriptPlacement, setTranscriptPlacement] = useState<'in-chat' | 'separate'>('separate');
+  useEffect(() => {
+    let cancelled = false;
+    const load = window.api?.settingsGet?.();
+    if (!load) return () => { cancelled = true; };
+    load.then((s) => {
+      if (cancelled) return;
+      if (s?.agentTranscriptPlacement === 'in-chat' || s?.agentTranscriptPlacement === 'separate') {
+        setTranscriptPlacement(s.agentTranscriptPlacement);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const visibleModes = useMemo(
     () => (aiEnabled ? BRAINSTORM_MODES : BRAINSTORM_MODES.filter((m) => m !== 'chat')),
     [aiEnabled],
@@ -2824,11 +2837,30 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
         <div className={`brainstorm-facts-col${compact ? '' : ' brainstorm-facts-col--in-sidebar'}`}>
           {/* M19: agent activity feed (prototype right panel, lines 2468–2496)
               — LIVE header, real counters, and a feed of actual vault events. */}
-          <div className="bs-activity-section" data-testid="bs-activity-section">
+          <div
+            className={`bs-activity-section${transcriptPlacement === 'in-chat' ? ' bs-activity-section--in-chat' : ' bs-activity-section--separate'}`}
+            data-testid="bs-activity-section"
+            data-transcript-placement={transcriptPlacement}
+          >
             <div className="bs-activity-header">
               <span className="bs-activity-dot" aria-hidden="true" />
               <span className="bs-activity-title">Agent Activity</span>
               <span className="bs-activity-live">LIVE</span>
+              <button
+                type="button"
+                className="bs-activity-placement-toggle"
+                data-testid="bs-transcript-placement-toggle"
+                aria-label={transcriptPlacement === 'in-chat' ? 'Use separate LIVE strip' : 'Dump transcript into chat'}
+                onClick={() => {
+                  const next = transcriptPlacement === 'in-chat' ? 'separate' : 'in-chat';
+                  setTranscriptPlacement(next);
+                  window.api?.settingsGet?.().then((s) => {
+                    window.api.settingsSet({ ...s, agentTranscriptPlacement: next }).catch(() => {});
+                  }).catch(() => {});
+                }}
+              >
+                {transcriptPlacement === 'in-chat' ? 'In chat' : 'Separate'}
+              </button>
             </div>
             <div className="bs-activity-stats">
               <div className="bs-activity-stat">
