@@ -29,6 +29,12 @@
   flex-shrink: 0;
 }
 
+/* S2-1: document tabs sit immediately under the title bar at the top of the
+   main column (not inset inside a page border). */
+.desktop-shell__main-col > .wc-bar {
+  flex-shrink: 0;
+}
+
 .desktop-shell {
   display: flex;
   flex-direction: column;

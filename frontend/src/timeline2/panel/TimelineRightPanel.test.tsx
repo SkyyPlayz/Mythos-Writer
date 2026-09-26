@@ -73,13 +73,16 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe('tab strip (§8.6)', () => {
-  it('renders the three tabs and reports switches', () => {
+describe('tab strip (§8.6 / S2-6)', () => {
+  it('renders Ivy + Idea Board tabs and reports switches', () => {
     const props = makeProps();
     render(<TimelineRightPanel {...props} />);
     expect(screen.getByTestId('trp-tab-inspector')).toHaveAttribute('aria-selected', 'true');
-    fireEvent.click(screen.getByTestId('trp-tab-archive'));
-    expect(props.onTabChange).toHaveBeenCalledWith('archive');
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveTextContent('Ivy');
+    expect(screen.getByTestId('trp-tab-brainstorm')).toHaveTextContent('Idea Board');
+    expect(screen.queryByTestId('trp-tab-archive')).toBeNull();
+    fireEvent.click(screen.getByTestId('trp-tab-brainstorm'));
+    expect(props.onTabChange).toHaveBeenCalledWith('brainstorm');
   });
 
   it('Inspector with nothing selected explains itself', () => {
@@ -231,16 +234,16 @@ describe('scene-card editor', () => {
   });
 });
 
-describe('AI master toggle gating (M11c)', () => {
-  it('shows all three tabs when AI is enabled', () => {
+describe('AI master toggle gating (M11c / S2-6)', () => {
+  it('shows Ivy + Idea Board when AI is enabled (no Archive tab)', () => {
     setAiEnabled(true);
     render(<TimelineRightPanel {...makeProps()} />);
-    expect(screen.getByTestId('trp-tab-inspector')).toBeInTheDocument();
-    expect(screen.getByTestId('trp-tab-brainstorm')).toBeInTheDocument();
-    expect(screen.getByTestId('trp-tab-archive')).toBeInTheDocument();
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveTextContent('Ivy');
+    expect(screen.getByTestId('trp-tab-brainstorm')).toHaveTextContent('Idea Board');
+    expect(screen.queryByTestId('trp-tab-archive')).toBeNull();
   });
 
-  it('hides Brainstorm and Archive tabs when AI is disabled', () => {
+  it('hides Idea Board when AI is disabled; Ivy remains', () => {
     setAiEnabled(false);
     render(<TimelineRightPanel {...makeProps()} />);
     expect(screen.getByTestId('trp-tab-inspector')).toBeInTheDocument();
@@ -248,7 +251,7 @@ describe('AI master toggle gating (M11c)', () => {
     expect(screen.queryByTestId('trp-tab-archive')).toBeNull();
   });
 
-  it('redirects to Inspector when AI is toggled off while Brainstorm is active', () => {
+  it('redirects to Ivy when AI is toggled off while Idea Board is active', () => {
     setAiEnabled(true);
     const props = makeProps({ tab: 'brainstorm' });
     render(<TimelineRightPanel {...props} />);
@@ -256,7 +259,7 @@ describe('AI master toggle gating (M11c)', () => {
     expect(props.onTabChange).toHaveBeenCalledWith('inspector');
   });
 
-  it('redirects to Inspector when AI is toggled off while Archive is active', () => {
+  it('redirects to Ivy when a stale Archive tab is active and AI is toggled off', () => {
     setAiEnabled(true);
     const props = makeProps({ tab: 'archive' });
     render(<TimelineRightPanel {...props} />);
@@ -264,7 +267,7 @@ describe('AI master toggle gating (M11c)', () => {
     expect(props.onTabChange).toHaveBeenCalledWith('inspector');
   });
 
-  it('does not redirect when Inspector is active and AI is toggled off', () => {
+  it('does not redirect when Ivy is active and AI is toggled off', () => {
     setAiEnabled(true);
     const props = makeProps({ tab: 'inspector' });
     render(<TimelineRightPanel {...props} />);

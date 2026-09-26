@@ -9212,6 +9212,32 @@ function loadAppSettings(): AppSettings {
           delete (base.agents[agentKey] as unknown as Record<string, unknown>).autoApplyCategories;
         }
       }
+      // 0.5.4 Slice 2 S2-5 (path A): one-time migrate every auto-apply Autonomy
+      // setting (incl. Grammar category) to OFF on first open of this build.
+      // Do not preserve prior on values. Fresh installs already default off.
+      if (!base.slice2AutonomyOffMigrated) {
+        const offCats = { ...AGENT_BUDGET_DEFAULTS.autoApplyCategories };
+        for (const agentKey of [
+          'writingAssistant', 'brainstorm', 'archive', 'betaReader',
+          'alphaReader', 'storylineConsultant', 'lineEditor',
+        ] as const) {
+          const agent = base.agents[agentKey];
+          if (!agent) continue;
+          (base.agents as Record<string, typeof agent>)[agentKey] = {
+            ...agent,
+            autoApply: false,
+            autoApplyCategories: { ...offCats },
+          };
+        }
+        base.slice2AutonomyOffMigrated = true;
+        try {
+          // Persist the one-shot migrate immediately so a subsequent load
+          // does not re-apply and so prior autoApply:true never comes back.
+          saveAppSettings(base);
+        } catch {
+          /* first-open migrate is best-effort; next Write will carry the flag */
+        }
+      }
       // SKY-11355: pre-fix installs may have 'claude-sonnet-4-6' baked into an
       // agent's saved settings (the old hardcoded default). That value is only
       // meaningful on Anthropic — on any other effective provider (global or

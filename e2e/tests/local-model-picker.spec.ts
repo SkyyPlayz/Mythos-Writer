@@ -179,7 +179,7 @@ async function openSettings(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Provider Configuration' })).toBeVisible();
 }
 
-function agentCard(page: Page, name: 'Writing Coach' | 'Brainstorm Agent' | 'Archive Agent'): Locator {
+function agentCard(page: Page, name: 'Writing Coach' | 'Brainstorm Agent' | 'Beta Reader'): Locator {
   return page.locator('.settings-agent-card').filter({ hasText: name });
 }
 
@@ -220,16 +220,17 @@ test('TC-LMP-01 / AC-8: fresh install defaults all agents to the global Anthropi
   await openSettings(page);
 
   await expect(page.getByLabel('AI provider')).toHaveValue('anthropic');
-  for (const [cardName, modelLabel] of [
-    ['Writing Coach', 'Writing Coach model'],
-    ['Brainstorm Agent', 'Brainstorm Agent model'],
-    ['Archive Agent', 'Archive Agent model'],
+  for (const [cardName, modelLabel, overrideAgent] of [
+    ['Writing Coach', 'Writing Coach model', 'writingAssistant'],
+    ['Brainstorm Agent', 'Brainstorm Agent model', 'brainstorm'],
+    ['Beta Reader', 'Beta Reader model', 'betaReader'],
   ] as const) {
     const card = agentCard(page, cardName);
     await expect(card).toContainText('Using global provider (Anthropic (Claude))');
     await expect(card.getByLabel(modelLabel)).toHaveValue('claude-sonnet-4-6');
-    await expect(card.getByLabel(`Enable ${cardName === 'Writing Coach' ? 'writingAssistant' : cardName === 'Brainstorm Agent' ? 'brainstorm' : 'archive'} provider override`)).not.toBeChecked();
+    await expect(card.getByLabel(`Enable ${overrideAgent} provider override`)).not.toBeChecked();
   }
+  await expect(page.getByLabel('Archive Agent model')).toHaveCount(0);
 });
 
 test('TC-LMP-02 / AC-1: per-agent picker renders and global provider changes only non-overridden agents', async () => {
@@ -251,13 +252,13 @@ test('TC-LMP-02 / AC-1: per-agent picker renders and global provider changes onl
   await expect(brainstorm.getByRole('button', { name: 'Refresh models for brainstorm' })).toBeVisible();
 
   const writing = agentCard(page, 'Writing Coach');
-  const archive = agentCard(page, 'Archive Agent');
+  const beta = agentCard(page, 'Beta Reader');
   await expect(writing).toContainText('Using global provider (Anthropic (Claude))');
-  await expect(archive).toContainText('Using global provider (Anthropic (Claude))');
+  await expect(beta).toContainText('Using global provider (Anthropic (Claude))');
 
   await page.getByLabel('AI provider').selectOption('openai');
   await expect(writing).toContainText('Using global provider (OpenAI)');
-  await expect(archive).toContainText('Using global provider (OpenAI)');
+  await expect(beta).toContainText('Using global provider (OpenAI)');
   await expect(brainstorm.getByLabel('Provider for brainstorm')).toHaveValue('openai');
 });
 
@@ -290,14 +291,14 @@ test('TC-LMP-04 / AC-4: custom OpenAI-compatible endpoint populates model dropdo
 
   await openSettings(page);
 
-  const archive = agentCard(page, 'Archive Agent');
-  await enableAgentOverride(archive, 'archive');
-  await archive.getByLabel('Provider for archive').selectOption('custom');
-  await archive.getByLabel('Base URL for archive').fill('https://api.custom-provider.local/v1');
-  await archive.getByLabel('API key for archive').fill('test-key-123');
-  await archive.getByRole('button', { name: 'Refresh models for archive' }).click();
+  const writing = agentCard(page, 'Writing Coach');
+  await enableAgentOverride(writing, 'writingAssistant');
+  await writing.getByLabel('Provider for writingAssistant').selectOption('custom');
+  await writing.getByLabel('Base URL for writingAssistant').fill('https://api.custom-provider.local/v1');
+  await writing.getByLabel('API key for writingAssistant').fill('test-key-123');
+  await writing.getByRole('button', { name: 'Refresh models for writingAssistant' }).click();
 
-  const model = archive.getByLabel('Model for archive');
+  const model = writing.getByLabel('Model for writingAssistant');
   await expect(model).toHaveJSProperty('tagName', 'SELECT');
   await expect(model.locator('option')).toHaveText(['gpt-4o', 'gpt-4o-mini', 'Custom…']);
   await model.selectOption('gpt-4o-mini');
@@ -374,11 +375,11 @@ test('TC-LMP-07 / AC-10: per-agent test-connection results are independent', asy
   await brainstorm.getByRole('button', { name: 'Test provider connection for brainstorm' }).click();
   await expect(brainstorm.getByRole('status')).toHaveText('Connection successful');
 
-  const archive = agentCard(page, 'Archive Agent');
-  await enableAgentOverride(archive, 'archive');
-  await archive.getByLabel('Provider for archive').selectOption('ollama');
-  await archive.getByRole('button', { name: 'Test provider connection for archive' }).click();
-  await expect(archive.getByRole('alert')).toHaveText('Mock Ollama connection failed');
+  const beta = agentCard(page, 'Beta Reader');
+  await enableAgentOverride(beta, 'betaReader');
+  await beta.getByLabel('Provider for betaReader').selectOption('ollama');
+  await beta.getByRole('button', { name: 'Test provider connection for betaReader' }).click();
+  await expect(beta.getByRole('alert')).toHaveText('Mock Ollama connection failed');
 
   await expect(brainstorm.getByRole('status')).toHaveText('Connection successful');
   await expect(agentCard(page, 'Writing Coach').getByRole('button', { name: /Test provider connection/ })).not.toBeVisible();

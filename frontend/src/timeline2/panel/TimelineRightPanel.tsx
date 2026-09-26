@@ -21,7 +21,7 @@ import ExactTimeModal from '../ExactTimeModal';
 import CalendarEditorModal from '../CalendarEditorModal';
 import InspectorTab from './InspectorTab';
 import BrainstormTab from './BrainstormTab';
-import ArchiveTab, { type RecentAutoAdd } from './ArchiveTab';
+import type { RecentAutoAdd } from './ArchiveTab';
 import './TimelineRightPanel.css';
 
 export type TimelineRightTab = 'inspector' | 'brainstorm' | 'archive';
@@ -29,9 +29,9 @@ export type TimelineRightTab = 'inspector' | 'brainstorm' | 'archive';
 type AnyItem = TimelineEra | TimelineSpan | TimelineEvent;
 
 const ALL_TABS: { value: TimelineRightTab; label: string; requiresAi?: true }[] = [
-  { value: 'inspector', label: 'Inspector' },
-  { value: 'brainstorm', label: 'Brainstorm', requiresAi: true },
-  { value: 'archive', label: 'Archive', requiresAi: true },
+  { value: 'inspector', label: 'Ivy' },
+  { value: 'brainstorm', label: 'Idea Board', requiresAi: true },
+  // S2-6: Archivist / Archive tab removed — Ivy (Inspector) remains.
 ];
 
 export interface TimelineRightPanelProps {
@@ -86,7 +86,7 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
   const aiEnabled = useAiEnabled();
   const visibleTabs = ALL_TABS.filter((t) => !t.requiresAi || aiEnabled);
 
-  // Redirect to Inspector if the active tab becomes unavailable when AI is toggled off.
+  // Redirect to Ivy (Inspector) if the active tab becomes unavailable when AI is toggled off.
   useEffect(() => {
     if (!aiEnabled && (tab === 'brainstorm' || tab === 'archive')) {
       onTabChange('inspector');
@@ -167,20 +167,7 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
         {tab === 'brainstorm' && (
           <BrainstormTab store={store} activeTimelineId={activeTimeline.id} onJumpTo={props.onJumpTo} showToast={props.showToast} />
         )}
-        {tab === 'archive' && (
-          <ArchiveTab
-            flags={props.flags}
-            recentAutoAdds={props.recentAutoAdds}
-            onQuickAdd={props.onQuickAdd}
-            onUndoAutoAdd={props.onUndoAutoAdd}
-            onFlagResolved={props.onFlagResolved}
-            onJumpTo={props.onJumpTo}
-            busy={props.archiveBusy}
-            showToast={props.showToast}
-            onRebuildTimeline={props.onRebuildTimeline}
-            rebuilding={props.rebuilding}
-          />
-        )}
+        {/* S2-6: Archive tab body removed with Archivist. */}
       </div>
 
       {exactTimeOpen && target && (

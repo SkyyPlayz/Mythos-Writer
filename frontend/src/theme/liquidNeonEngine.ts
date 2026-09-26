@@ -107,6 +107,11 @@ export interface LiquidNeonV2Settings {
   uiTextCol: string;
   /** Button/chip text color (prototype uiBtnCol, 7190). */
   uiBtnCol: string;
+  /**
+   * 0.5.4 Slice 2 S2-3: App text / chrome scale (0.82–1.18). Applied as
+   * `--ui-scale` on <html>. Separate from discrete density (comfortable/cozy/compact).
+   */
+  uiScale: number;
 }
 
 /** Prototype state defaults (HTML 3212–3230). Default preset: Neon Nebula (`classic`). */
@@ -135,6 +140,7 @@ export const LIQUID_NEON_V2_DEFAULTS: LiquidNeonV2Settings = {
   reduceMotion: false,
   uiTextCol: '#c8d3e7',
   uiBtnCol: '#cdd8ea',
+  uiScale: 1,
 };
 
 /** Accepted enum values — shared by normalize (SKY-11589) and preset import. */
@@ -491,6 +497,12 @@ export function applyLiquidNeonV2Tokens(
   // --ln-card-pad-* scales off this attribute, so paddings change live.
   if (S.density === 'comfortable') el.removeAttribute('data-ln-density');
   else el.setAttribute('data-ln-density', S.density);
+  // S2-3: App text size / chrome scale (82–118%).
+  const scaleRaw = typeof S.uiScale === 'number' && Number.isFinite(S.uiScale) ? S.uiScale : 1;
+  const scale = Math.min(1.18, Math.max(0.82, scaleRaw));
+  el.style.setProperty('--ui-scale', String(scale));
+  el.style.fontSize = `${(16 * scale).toFixed(2)}px`;
+  if (!APPLIED_KEYS.includes('--ui-scale')) APPLIED_KEYS.push('--ui-scale');
   // Beta 4 M1 — Button text color opt-in hook for Button.css (only when customized).
   if (tokens['--btn-text']) el.setAttribute('data-ln-btn-text', '');
   else el.removeAttribute('data-ln-btn-text');
@@ -526,6 +538,7 @@ export function applyLiquidNeonV2Tokens(
 export function resetLiquidNeonV2Tokens(el: HTMLElement = document.documentElement): void {
   for (const k of APPLIED_KEYS) el.style.removeProperty(k);
   APPLIED_KEYS.length = 0;
+  el.style.removeProperty('font-size');
   el.removeAttribute('data-ln-density');
   el.removeAttribute('data-ln-btn-text');
   el.removeAttribute('data-ln-amb');

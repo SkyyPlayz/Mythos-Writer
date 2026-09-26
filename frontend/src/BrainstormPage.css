@@ -1778,6 +1778,25 @@
   padding: 2px 7px;
 }
 
+.bs-activity-placement-toggle {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted, #7686a2);
+  background: transparent;
+  border: 1px solid var(--border-default, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+/* S2-6: In-chat mode collapses the separate LIVE strip into a compact chat-adjacent bar. */
+.bs-activity-section--in-chat .bs-activity-feed,
+.bs-activity-section--in-chat .bs-activity-stats,
+.bs-activity-section--in-chat .bs-activity-label {
+  display: none;
+}
+
 .bs-activity-stats {
   display: flex;
   gap: 6px;

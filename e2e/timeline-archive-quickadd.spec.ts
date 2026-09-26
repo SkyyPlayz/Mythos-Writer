@@ -32,6 +32,9 @@ import {
   type Page,
 } from '@playwright/test';
 
+// S2-6: Archive Timeline tab / quick-add UI removed (video wins on Archivist).
+test.skip(true, 'S2-6: Archive Timeline tab removed — quick-add E2E parked with Archivist');
+
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 const STORY_ID = 'story-archive-quickadd-e2e';

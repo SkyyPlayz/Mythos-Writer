@@ -267,7 +267,7 @@ function readTimelinesStore(vaultDir: string): { events: Array<{ id: string; nam
 
 // ─── AC-M25-01: any click surfaces Inspector (§14.5) ─────────────────────────
 
-test('AC-M25-01: clicking a timeline item surfaces the Inspector tab even when Archive was open', async () => {
+test('AC-M25-01: clicking a timeline item surfaces the Inspector (Ivy) tab even when Idea Board was open', async () => {
   const fixture = createFixture();
   let app: ElectronApplication | undefined;
   try {
@@ -277,10 +277,10 @@ test('AC-M25-01: clicking a timeline item surfaces the Inspector tab even when A
 
     await openTimeline(page);
 
-    // Open Archive tab explicitly first.
-    await page.locator('[data-testid="trp-tab-archive"]').click();
-    await expect(page.locator('[data-testid="trp-tab-archive"]')).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('[data-testid="trp-archive-tab"]')).toBeVisible();
+    // S2-6: Archive tab removed — open Idea Board instead.
+    await expect(page.locator('[data-testid="trp-tab-archive"]')).toHaveCount(0);
+    await page.locator('[data-testid="trp-tab-brainstorm"]').click();
+    await expect(page.locator('[data-testid="trp-tab-brainstorm"]')).toHaveAttribute('aria-selected', 'true');
 
     // Select the seeded event on the axis/spreadsheet — whichever timeline
     // item row renders it. Progress mode is the M23 default.
@@ -288,19 +288,18 @@ test('AC-M25-01: clicking a timeline item surfaces the Inspector tab even when A
     await expect(eventLocator).toBeVisible({ timeout: 8_000 });
     await eventLocator.click();
 
-    // §14.5: selection forces the Inspector tab open, even though Archive
-    // was the last tab the user had open.
+    // §14.5: selection forces Ivy (Inspector) open.
     await expect(page.locator('[data-testid="trp-tab-inspector"]')).toHaveAttribute('aria-selected', 'true', { timeout: 6_000 });
-    await expect(page.locator('[data-testid="trp-archive-tab"]')).not.toBeVisible();
+    await expect(page.locator('[data-testid="trp-tab-inspector"]')).toHaveText('Ivy');
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);
   }
 });
 
-// ─── AC-M25-02: Archive quick-add plots a real, dated event ─────────────────
+// ─── AC-M25-02: Archive quick-add removed with Archivist (S2-6) ──────────────
 
-test('AC-M25-02: Archive tab quick-add plots a dated event via real IPC + disk persistence', async () => {
+test('AC-M25-02: Archive tab quick-add surface is gone (S2-6)', async () => {
   const fixture = createFixture();
   let app: ElectronApplication | undefined;
   try {
@@ -309,25 +308,9 @@ test('AC-M25-02: Archive tab quick-add plots a dated event via real IPC + disk p
     const page = opened.page;
 
     await openTimeline(page);
-    await page.locator('[data-testid="trp-tab-archive"]').click();
-    await expect(page.locator('[data-testid="trp-archive-tab"]')).toBeVisible();
-
-    const before = readTimelinesStore(fixture.vaultDir).events.length;
-
-    await page.locator('[data-testid="trp-quickadd-input"]').fill('The harvest festival in Year 872');
-    await page.locator('[data-testid="trp-quickadd-btn"]').click();
-
-    // RECENTLY AUTO-ADDED list gets the new event (agent offline with no API
-    // key, so this exercises the heuristic quick-add fallback for real).
-    await expect(page.locator('[data-testid="trp-recent-list"]')).toBeVisible({ timeout: 10_000 });
-
-    await expect.poll(() => readTimelinesStore(fixture.vaultDir).events.length, { timeout: 10_000 })
-      .toBe(before + 1);
-
-    const events = readTimelinesStore(fixture.vaultDir).events;
-    const added = events.find((e) => e.id !== EVENT_ID);
-    expect(added).toBeDefined();
-    expect(added?.source).toBe('agent');
+    await expect(page.locator('[data-testid="trp-tab-archive"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="trp-archive-tab"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="trp-quickadd-input"]')).toHaveCount(0);
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);

@@ -180,7 +180,7 @@ async function setAiToggle(pg: Page, next: boolean): Promise<void> {
   // now opens on Appearance (SKY-10668), so reaching the AI toggle requires
   // this navigation — let click() auto-wait for the tab to mount.
   await dialog.getByTestId('settings-cat-agents').click();
-  const toggle = dialog.locator('input[aria-label="AI features"]');
+  const toggle = dialog.locator('input[aria-label="All AI features"]');
   await expect(toggle).toBeAttached({ timeout: 5_000 });
   if ((await toggle.isChecked()) !== next) {
     // The input itself is visually hidden behind the styled track (native

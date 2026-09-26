@@ -112,7 +112,9 @@ describe('SettingsPanel', () => {
     // Agents tab is the default: agent sections visible
     expect(screen.getAllByText(/writing coach/i)[0]).toBeInTheDocument();
     expect(screen.getByText(/brainstorm agent/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/archive agent/i)[0]).toBeInTheDocument();
+    // S2-6: Archivist / Archive Agent settings card removed from Agents IA.
+    expect(screen.queryByLabelText(/enable archive agent/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('beta-reader-agent-card')).toBeInTheDocument();
     // Category nav tabs exist
     expect(screen.getByRole('tab', { name: /vault & files/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /agents/i })).toBeInTheDocument();
@@ -491,13 +493,14 @@ describe('SettingsPanel', () => {
 
   // ── MYT-158: per-agent settings ──
 
-  it('renders model selectors for all three agents', async () => {
+  it('renders model selectors for Writing Coach, Brainstorm, and Beta Reader (S2-6: no Archive)', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/writing coach model/i));
 
     expect(screen.getByLabelText(/writing coach model/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/brainstorm agent model/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/archive agent model/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/beta reader model/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/archive agent model/i)).not.toBeInTheDocument();
   });
 
   it('model selectors show the haiku/sonnet/opus options', async () => {
@@ -526,13 +529,13 @@ describe('SettingsPanel', () => {
     expect(saved.agents.writingAssistant.model).toBe('claude-haiku-4-5-20251001');
   });
 
-  it('heartbeat interval inputs render for all three agents', async () => {
+  it('heartbeat interval inputs render for Writing Coach and Brainstorm (S2-6: no Archive)', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     expect(screen.getByLabelText(/heartbeat interval/i, { selector: '#wa-heartbeat' })).toBeInTheDocument();
     expect(screen.getByLabelText(/heartbeat interval/i, { selector: '#brainstorm-heartbeat' })).toBeInTheDocument();
-    expect(screen.getByLabelText(/heartbeat interval/i, { selector: '#archive-heartbeat' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/heartbeat interval/i, { selector: '#archive-heartbeat' })).not.toBeInTheDocument();
   });
 
   it('heartbeat interval change is saved via IPC', async () => {
@@ -670,13 +673,13 @@ describe('SettingsPanel', () => {
     expect(saved.agents.writingAssistant.autoApplyCategories?.spelling).toBe(false);
   });
 
-  it('max tokens per day inputs render for all three agents', async () => {
+  it('max tokens per day inputs render for Writing Coach and Brainstorm (S2-6: no Archive)', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     expect(document.getElementById('wa-max-tokens-day')).toBeInTheDocument();
     expect(document.getElementById('brainstorm-max-tokens-day')).toBeInTheDocument();
-    expect(document.getElementById('archive-max-tokens-day')).toBeInTheDocument();
+    expect(document.getElementById('archive-max-tokens-day')).toBeNull();
   });
 
   // ── SKY-2597: Brainstorm Agent voice toggle and mic selection ──
@@ -755,39 +758,25 @@ describe('SettingsPanel', () => {
 
   // ── MYT-200 acceptance criteria ──
 
-  it('archive continuity-check interval input renders', async () => {
+  it('S2-6: archive continuity-check interval controls are gone from Settings', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
-    expect(document.getElementById('archive-interval')).toBeInTheDocument();
-  });
-
-  it('archive continuity-check interval change is saved via IPC', async () => {
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByLabelText(/anthropic api key/i));
-
-    const input = document.getElementById('archive-interval') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: '120' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
-    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
-
-    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
-    expect(saved.agents.archive.continuityCheckIntervalSeconds).toBe(120);
+    expect(document.getElementById('archive-interval')).toBeNull();
   });
 
   it('max tokens per day change is saved via IPC', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
-    const input = document.getElementById('archive-max-tokens-day') as HTMLInputElement;
+    const input = document.getElementById('wa-max-tokens-day') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '2000000' } });
 
     fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
-    expect(saved.agents.archive.maxTokensPerDay).toBe(2000000);
+    expect(saved.agents.writingAssistant.maxTokensPerDay).toBe(2000000);
   });
 
   it('full settings round-trip via IPC mock', async () => {
@@ -1245,13 +1234,13 @@ describe('SettingsPanel', () => {
 
   // ── Beta 4 M28 (§11): duties chips on the identity cards ──
 
-  it('M28: every agent card shows its duties chips (prototype agentDuties)', async () => {
+  it('M28: every remaining agent card shows its duties chips (S2-6: no Archive)', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     expect(screen.getByTestId('agent-duties-writingAssistant')).toHaveTextContent('Inline prose comments');
     expect(screen.getByTestId('agent-duties-brainstorm')).toHaveTextContent('Template pre-fill');
-    expect(screen.getByTestId('agent-duties-archive')).toHaveTextContent('Continuity scans & flags');
+    expect(screen.queryByTestId('agent-duties-archive')).not.toBeInTheDocument();
     expect(screen.getByTestId('agent-duties-betaReader')).toHaveTextContent('Reactions as margin comments');
   });
 
@@ -1731,109 +1720,22 @@ describe('SettingsPanel', () => {
   });
 });
 
-// ── Archive Agent Settings (SKY-1683 / AC-CC-09) ──
+// ── S2-6: Archive Agent settings section removed (video wins) ──
 
-describe('Archive Agent settings section (AC-CC-09)', () => {
-  it('renders the Archive Agent section heading', async () => {
+describe('Archive Agent settings section removed (S2-6)', () => {
+  it('does not render Archive Agent heading, continuity master, or scene-crafter suggestion controls', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('heading', { name: /archive agent/i }));
-    expect(screen.getByRole('heading', { name: /archive agent/i })).toBeInTheDocument();
-  });
-
-  it('master toggle is enabled by default', async () => {
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByTestId('archive-continuity-enabled'));
-    const toggle = screen.getByTestId('archive-continuity-enabled') as HTMLInputElement;
-    expect(toggle.checked).toBe(true);
-  });
-
-  it('disabling master toggle disables sub-settings fieldset', async () => {
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByTestId('archive-continuity-enabled'));
-    fireEvent.click(screen.getByTestId('archive-continuity-enabled'));
-    const fieldset = screen.getByTestId('archive-agent-subsettings') as HTMLFieldSetElement;
-    expect(fieldset.disabled).toBe(true);
-  });
-
-  it('re-enabling master toggle re-enables sub-settings fieldset', async () => {
-    mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, archiveContinuityEnabled: false });
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByTestId('archive-continuity-enabled'));
-    fireEvent.click(screen.getByTestId('archive-continuity-enabled'));
-    const fieldset = screen.getByTestId('archive-agent-subsettings') as HTMLFieldSetElement;
-    expect(fieldset.disabled).toBe(false);
-  });
-
-  it('persists archiveContinuityEnabled=false when saved', async () => {
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByTestId('archive-continuity-enabled'));
-    fireEvent.click(screen.getByTestId('archive-continuity-enabled'));
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
-    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
-    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
-    expect(saved.archiveContinuityEnabled).toBe(false);
-  });
-
-  it('shows full-manuscript+interval warning when both conditions met', async () => {
-    mockSettingsGet.mockResolvedValueOnce({
-      ...defaultSettings,
-      archiveScanScope: 'full_manuscript',
-      archiveScanInterval: 900,
-    });
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByTestId('archive-full-manuscript-warning'));
-    expect(screen.getByTestId('archive-full-manuscript-warning')).toBeInTheDocument();
-  });
-
-  it('does not show full-manuscript+interval warning when interval is off', async () => {
-    mockSettingsGet.mockResolvedValueOnce({
-      ...defaultSettings,
-      archiveScanScope: 'full_manuscript',
-      archiveScanInterval: null,
-    });
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByTestId('archive-agent-section'));
-    expect(screen.queryByTestId('archive-full-manuscript-warning')).not.toBeInTheDocument();
-  });
-
-  it('archiveScanBudget change persists on save', async () => {
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByTestId('archive-scan-budget'));
-    fireEvent.change(screen.getByTestId('archive-scan-budget'), { target: { value: '12000' } });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
-    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
-    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
-    expect(saved.archiveScanBudget).toBe(12000);
+    await waitFor(() => screen.getByRole('switch', { name: 'All AI features' }));
+    expect(screen.queryByRole('heading', { name: /archive agent/i })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('archive-agent-section')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('archive-continuity-enabled')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('archive-scene-crafter-suggestions-enabled')).not.toBeInTheDocument();
+    expect(screen.getByTestId('agent-transcript-placement-select')).toBeInTheDocument();
   });
 });
 
-// ── Archive → Scene Crafter suggestions settings (SKY-3200 / Part E · E4b) ──
-
-describe('Archive → Scene Crafter suggestions settings', () => {
-  it('suggestions toggle is disabled by default and cadence select is disabled with it', async () => {
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByTestId('archive-scene-crafter-suggestions-enabled'));
-    const toggle = screen.getByTestId('archive-scene-crafter-suggestions-enabled') as HTMLInputElement;
-    const cadence = screen.getByTestId('archive-scene-crafter-suggestions-cadence') as HTMLSelectElement;
-    expect(toggle.checked).toBe(false);
-    expect(cadence.disabled).toBe(true);
-  });
-
-  it('enabling the toggle enables the cadence select and persists both fields on save', async () => {
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByTestId('archive-scene-crafter-suggestions-enabled'));
-    fireEvent.click(screen.getByTestId('archive-scene-crafter-suggestions-enabled'));
-    const cadence = screen.getByTestId('archive-scene-crafter-suggestions-cadence') as HTMLSelectElement;
-    expect(cadence.disabled).toBe(false);
-
-    fireEvent.change(cadence, { target: { value: '3600' } });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
-    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
-    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
-    expect(saved.agents.archive.sceneCrafterSuggestions).toEqual({ enabled: true, cadence: 3600 });
-  });
-
-  it('respects a persisted enabled=true, cadence value on load', async () => {
+describe('Archive → Scene Crafter suggestions settings (removed S2-6)', () => {
+  it('scene-crafter suggestion controls are gone from Settings even when persisted on', async () => {
     mockSettingsGet.mockResolvedValueOnce({
       ...defaultSettings,
       agents: {
@@ -1842,12 +1744,9 @@ describe('Archive → Scene Crafter suggestions settings', () => {
       },
     });
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByTestId('archive-scene-crafter-suggestions-enabled'));
-    const toggle = screen.getByTestId('archive-scene-crafter-suggestions-enabled') as HTMLInputElement;
-    const cadence = screen.getByTestId('archive-scene-crafter-suggestions-cadence') as HTMLSelectElement;
-    expect(toggle.checked).toBe(true);
-    expect(cadence.disabled).toBe(false);
-    expect(cadence.value).toBe('900');
+    await waitFor(() => screen.getByRole('switch', { name: 'All AI features' }));
+    expect(screen.queryByTestId('archive-scene-crafter-suggestions-enabled')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('archive-scene-crafter-suggestions-cadence')).not.toBeInTheDocument();
   });
 });
 
@@ -1879,13 +1778,14 @@ describe('Per-agent provider override (SKY-2440)', () => {
   });
 
   // AC-MP-04 — override toggle renders for all three agents
-  it('AC-MP-04: override toggle renders for all three agent cards', async () => {
+  it('AC-MP-04: override toggle renders for Writing Coach, Brainstorm, and Beta Reader (S2-6: no Archive)', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/anthropic api key/i));
 
     expect(screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /enable brainstorm provider override/i })).toBeInTheDocument();
-    expect(screen.getByRole('checkbox', { name: /enable archive provider override/i })).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /enable betaReader provider override/i })).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /enable archive provider override/i })).not.toBeInTheDocument();
   });
 
   // AC-MP-04 — override toggle is off by default
@@ -1895,10 +1795,10 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
     const waToggle = screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }) as HTMLInputElement;
     const brainstormToggle = screen.getByRole('checkbox', { name: /enable brainstorm provider override/i }) as HTMLInputElement;
-    const archiveToggle = screen.getByRole('checkbox', { name: /enable archive provider override/i }) as HTMLInputElement;
+    const betaToggle = screen.getByRole('checkbox', { name: /enable betaReader provider override/i }) as HTMLInputElement;
     expect(waToggle.checked).toBe(false);
     expect(brainstormToggle.checked).toBe(false);
-    expect(archiveToggle.checked).toBe(false);
+    expect(betaToggle.checked).toBe(false);
   });
 
   // AC-MP-13 — global provider hint when override is off
@@ -2026,17 +1926,17 @@ describe('Per-agent provider override (SKY-2440)', () => {
       ...defaultSettings,
       agents: {
         ...defaultSettings.agents,
-        archive: {
-          ...defaultSettings.agents.archive,
+        brainstorm: {
+          ...defaultSettings.agents.brainstorm,
           provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: '' },
         },
       },
     });
 
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('combobox', { name: /model for archive/i }));
+    await waitFor(() => screen.getByRole('combobox', { name: /model for brainstorm/i }));
 
-    const modelSelect = screen.getByRole('combobox', { name: /model for archive/i }) as HTMLSelectElement;
+    const modelSelect = screen.getByRole('combobox', { name: /model for brainstorm/i }) as HTMLSelectElement;
     expect(modelSelect.value).toBe('claude-haiku-4-5-20251001');
   });
 
@@ -2180,8 +2080,8 @@ describe('Per-agent provider override (SKY-2440)', () => {
     await waitFor(() => expect(screen.getByTestId('wa-model-list-error')).toBeInTheDocument());
   });
 
-  // AC-MP-08 — full round-trip for all three agents with different providers
-  it('AC-MP-08: all three agent overrides are included in saved settings', async () => {
+  // AC-MP-08 — full round-trip for Writing Coach + Beta Reader (S2-6: no Archive card)
+  it('AC-MP-08: Writing Coach and Beta Reader overrides are included in saved settings', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('checkbox', { name: /enable writingAssistant provider override/i }));
 
@@ -2191,9 +2091,9 @@ describe('Per-agent provider override (SKY-2440)', () => {
       target: { value: 'claude-haiku-4-5-20251001' },
     });
 
-    // Enable Archive override with Anthropic Opus
-    fireEvent.click(screen.getByRole('checkbox', { name: /enable archive provider override/i }));
-    fireEvent.change(screen.getByRole('combobox', { name: /model for archive/i }), {
+    // Enable Beta Reader override with Anthropic Opus
+    fireEvent.click(screen.getByRole('checkbox', { name: /enable betaReader provider override/i }));
+    fireEvent.change(screen.getByRole('combobox', { name: /model for betaReader/i }), {
       target: { value: 'claude-opus-4-7' },
     });
 
@@ -2202,7 +2102,7 @@ describe('Per-agent provider override (SKY-2440)', () => {
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
     expect(saved.agents.writingAssistant.provider?.model).toBe('claude-haiku-4-5-20251001');
-    expect(saved.agents.archive.provider?.model).toBe('claude-opus-4-7');
+    expect(saved.agents.betaReader?.provider?.model).toBe('claude-opus-4-7');
     // Brainstorm override was not enabled
     expect(saved.agents.brainstorm.provider).toBeUndefined();
   });
@@ -2580,11 +2480,11 @@ describe('SKY-3218 nav-bar configuration', () => {
     expect(notesItem?.enabled).toBe(false);
   });
 
-  // ── M11a (SKY-9160): master AI switch gates the AI Agents page ──
+  // ── M11a / S2-4: master AI switch gates the AI Agents page ──
   it('M11a: default-on — master switch checked, provider/agents sections mounted', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('switch', { name: 'AI features' }));
-    expect(screen.getByRole('switch', { name: 'AI features' })).toBeChecked();
+    await waitFor(() => screen.getByRole('switch', { name: 'All AI features' }));
+    expect(screen.getByRole('switch', { name: 'All AI features' })).toBeChecked();
     expect(screen.getByText('Provider Configuration')).toBeInTheDocument();
     expect(screen.queryByText('Manual mode is on')).not.toBeInTheDocument();
   });
@@ -2592,9 +2492,9 @@ describe('SKY-3218 nav-bar configuration', () => {
   it('M11a: manual mode — everything below the master card unmounts, indicator + swapped subtitle show', async () => {
     mockSettingsGet.mockResolvedValue({ ...defaultSettings, ai: { enabled: false } });
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('switch', { name: 'AI features' }));
+    await waitFor(() => screen.getByRole('switch', { name: 'All AI features' }));
 
-    expect(screen.getByRole('switch', { name: 'AI features' })).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: 'All AI features' })).not.toBeChecked();
     expect(screen.getByText('Manual mode is on')).toBeInTheDocument();
     // Prototype 2420: the rest of the page is removed from the DOM, not dimmed.
     expect(screen.queryByText('Provider Configuration')).not.toBeInTheDocument();

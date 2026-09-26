@@ -1,4 +1,4 @@
-// M11a (SKY-9160) — master AI switch card. Covers: exact prototype copy,
+// M11a (SKY-9160) / S2-4 — master AI switch card. Covers: All AI features label,
 // immediate persist on flip (settingsGet → settingsSet round-trip), toast
 // messages, the "Manual mode is on" indicator, and revert on failed save.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -8,7 +8,7 @@ import { DEFAULTS } from '../settingsPanelTypes';
 import { __resetAiEnabledForTests, getAiEnabled } from '../../../hooks/useAiEnabled';
 
 const DESCRIPTION_COPY =
-  'Turn this off and every AI surface disappears — the Coach, the agent panels, Brainstorm chat, continuity flags, beta reads and AI suggestions. Nothing is sent anywhere. Every tool stays fully usable by hand.';
+  'Turn this off and every AI surface disappears — the Coach, the agent panels, Idea Board chat, continuity flags, beta reads and AI suggestions. Nothing is sent anywhere. Every tool stays fully usable by hand. Flip it back on to restore the same surfaces.';
 const MANUAL_NOTE_COPY =
   'Wiki-links and backlinks still auto-build as you type — that is plain text matching, not AI. Timeline, Vault Graph, Scene Crafter beats, drafts, export and the reader all work exactly as before.';
 
@@ -37,26 +37,32 @@ function setup(settings: AppSettings = makeSettings()) {
   return { setSettings };
 }
 
-describe('AiMasterSection (M11a)', () => {
-  it('renders the prototype heading, description copy, and an on switch by default', () => {
+describe('AiMasterSection (M11a / S2-4)', () => {
+  it('renders the All AI features heading, description copy, and an on switch by default', () => {
     setup();
-    expect(screen.getByRole('heading', { name: 'AI features' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'All AI features' })).toBeInTheDocument();
     expect(screen.getByText(DESCRIPTION_COPY)).toBeInTheDocument();
-    const toggle = screen.getByRole('switch', { name: 'AI features' });
+    const toggle = screen.getByRole('switch', { name: 'All AI features' });
     expect(toggle).toBeChecked();
     expect(screen.queryByText('Manual mode is on')).not.toBeInTheDocument();
+  });
+
+  it('exposes the LIVE transcript placement select (S2-6)', () => {
+    setup();
+    expect(screen.getByTestId('agent-transcript-placement-select')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Agent transcript' })).toBeInTheDocument();
   });
 
   it('treats an absent ai field (pre-M11 settings) as enabled', () => {
     const settings = makeSettings();
     delete (settings as { ai?: unknown }).ai;
     setup(settings);
-    expect(screen.getByRole('switch', { name: 'AI features' })).toBeChecked();
+    expect(screen.getByRole('switch', { name: 'All AI features' })).toBeChecked();
   });
 
   it('turning off persists ai.enabled=false immediately and toasts the manual-mode message', async () => {
     const { setSettings } = setup();
-    fireEvent.click(screen.getByRole('switch', { name: 'AI features' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'All AI features' }));
 
     expect(await screen.findByText('AI features off — every tool is now manual')).toBeInTheDocument();
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
@@ -67,7 +73,7 @@ describe('AiMasterSection (M11a)', () => {
 
   it('turning back on toasts "AI features back on" and persists ai.enabled=true', async () => {
     setup(makeSettings({ ai: { enabled: false } }));
-    fireEvent.click(screen.getByRole('switch', { name: 'AI features' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'All AI features' }));
 
     expect(await screen.findByText('AI features back on')).toBeInTheDocument();
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
@@ -76,7 +82,7 @@ describe('AiMasterSection (M11a)', () => {
 
   it('shows the persistent "Manual mode is on" indicator with prototype copy while off', () => {
     setup(makeSettings({ ai: { enabled: false } }));
-    expect(screen.getByRole('switch', { name: 'AI features' })).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: 'All AI features' })).not.toBeChecked();
     expect(screen.getByText('Manual mode is on')).toBeInTheDocument();
     expect(screen.getByText(MANUAL_NOTE_COPY)).toBeInTheDocument();
   });
@@ -85,7 +91,7 @@ describe('AiMasterSection (M11a)', () => {
     mockSettingsSet.mockRejectedValue(new Error('disk full'));
     const { setSettings } = setup();
     await act(async () => {
-      fireEvent.click(screen.getByRole('switch', { name: 'AI features' }));
+      fireEvent.click(screen.getByRole('switch', { name: 'All AI features' }));
     });
 
     expect(await screen.findByText(/Could not save the AI switch — disk full/)).toBeInTheDocument();
