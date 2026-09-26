@@ -686,22 +686,6 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
     return [];
   }, [messages]);
 
-  // M20: SAVED PROMPTS (board-page right panel) — the last three distinct
-  // prompts the user actually sent; clicking one re-sends it in the chat.
-  const savedPrompts = useMemo(() => {
-    const seen = new Set<string>();
-    const out: string[] = [];
-    for (let i = messages.length - 1; i >= 0 && out.length < 3; i--) {
-      const msg = messages[i];
-      if (msg.role !== 'user') continue;
-      const text = msg.text.trim();
-      if (!text || seen.has(text)) continue;
-      seen.add(text);
-      out.push(text);
-    }
-    return out;
-  }, [messages]);
-
   // M20: NOTES THAT NEED WORK — captured ideas without a vault note yet
   // (MISSING) and saved notes that are still stubs (NEEDS WORK).
   const needsWorkRows = useMemo(() => {
@@ -1317,7 +1301,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   }, []);
 
   const handleDownload = useCallback(() => {
-    const lines: string[] = ['# Brainstorm Session\n'];
+    const lines: string[] = ['# Idea Board Session\n'];
     for (const msg of messages) {
       lines.push(`## ${msg.role === 'user' ? 'You' : 'Assistant'}`);
       lines.push(msg.text);
@@ -3386,7 +3370,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                 </svg>
               }
               heading="Agent Chat is off"
-              hint="Enable Brainstorm Agent in Settings to get explore prompts, saved prompts, and quick generate."
+              hint="Enable Idea Board Agent in Settings to get explore prompts and quick generate."
               action={onOpenSettings ? { label: 'Open Settings', onClick: onOpenSettings, testId: 'bs-board-side-open-settings' } : undefined}
               testId="bs-board-side-ai-off"
             />
@@ -3396,7 +3380,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
           <aside className="bs-board-side" data-testid="bs-board-side">
             <div className="bs-board-side-head">
               <span className="bs-activity-dot" aria-hidden="true" />
-              <span className="bs-board-side-title">Brainstorm Agent</span>
+              <span className="bs-board-side-title">Idea Board Agent</span>
               <span className="bs-activity-live">LIVE</span>
             </div>
             <div className="bs-board-side-scroll">
@@ -3416,25 +3400,6 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                   {label}
                 </button>
               ))}
-              <div className="bs-side-label">SAVED PROMPTS</div>
-              {savedPrompts.length === 0 ? (
-                <div className="bs-side-empty">Prompts you send in the chat reappear here.</div>
-              ) : (
-                savedPrompts.map((saved) => (
-                  <button
-                    key={saved}
-                    type="button"
-                    className="bs-saved-prompt"
-                    onClick={() => { setMode('chat'); void submitText(saved); }}
-                    disabled={loading}
-                    data-testid="bs-saved-prompt"
-                  >
-                    {saved}
-                  </button>
-                ))
-              )}
-            </div>
-            <div className="bs-quick-gen">
               <div className="bs-side-label">QUICK GENERATE</div>
               <div className="bs-quick-gen-row">
                 <textarea

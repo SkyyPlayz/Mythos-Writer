@@ -407,12 +407,20 @@ test('SKY-11809: Escape dismisses DropdownSelect even when focus is outside the 
     // cannot see. Dismissal must still work via the document-level listener.
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await expect(async () => {
+      // Also dispatch a focusout to help slower CI runners release focus
+      await page.evaluate(() => {
+        const ae = document.activeElement as HTMLElement | null;
+        if (ae && ae !== document.body && ae !== document.documentElement) {
+          ae.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+          ae.blur();
+        }
+      });
       const blurred = await page.evaluate(() => {
         const ae = document.activeElement;
         return !ae || ae === document.body || ae === document.documentElement;
       });
       expect(blurred).toBe(true);
-    }).toPass({ timeout: 10_000 });
+    }).toPass({ timeout: 15_000 });
     // Still open after focus left the portal.
     await expect(listbox).toBeVisible();
 

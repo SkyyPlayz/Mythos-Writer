@@ -285,7 +285,7 @@ export const NAV_RAIL_DEFAULTS: NavRailConfig = {
     { id: 'story', enabled: true, label: 'Story Writer', icon: 'story', order: 0 },
     { id: 'notes', enabled: true, label: 'Notes Editor', icon: 'notes', order: 1 },
     { id: 'crafter', enabled: true, label: 'Scene Crafter', icon: 'crafter', order: 2 },
-    { id: 'brainstorm', enabled: true, label: 'Brainstorm', icon: 'brainstorm', order: 3 },
+    { id: 'brainstorm', enabled: true, label: 'Idea Board', icon: 'brainstorm', order: 3 },
     { id: 'timeline', enabled: true, label: 'Timeline', icon: 'timeline', order: 4 },
     { id: 'vault-graph', enabled: true, label: 'Vault Graph', icon: 'vault-graph', order: 5 },
     { id: 'boards', enabled: true, label: 'Boards', icon: 'boards', order: 6 },

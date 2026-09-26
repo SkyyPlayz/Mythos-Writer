@@ -317,14 +317,14 @@ describe('Beta 4 M1 — preset export/import UI', () => {
 
 describe('Beta 4 M1 — Background animation card', () => {
   it('segment patches ambMode; Off hides the drift-speed slider', async () => {
-    const { onChange } = await setup();
+    const { onChange } = await setup({ ambMode: 'match' });
     expect(screen.getByTestId('lnas-ambspeed')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('lnas-amb-off'));
     expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).ambMode).toBe('off');
   });
 
   it('drift-speed slider patches ambSpeed', async () => {
-    const { onChange } = await setup();
+    const { onChange } = await setup({ ambMode: 'match' });
     fireEvent.change(screen.getByTestId('lnas-ambspeed'), { target: { value: '150' } });
     expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).ambSpeed).toBe(150);
   });
@@ -336,7 +336,7 @@ describe('Beta 4 M1 — Background animation card', () => {
   });
 
   it('particle color patches ambColor and Reset-to-theme clears it', async () => {
-    const { onChange } = await setup({ ambColor: '#9fd4ff' });
+    const { onChange } = await setup({ ambColor: '#9fd4ff', ambMode: 'match' });
     fireEvent.click(screen.getByTestId('lnas-ambcolor-clear'));
     expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).ambColor).toBeNull();
   });

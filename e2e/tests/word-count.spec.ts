@@ -107,10 +107,13 @@ test.beforeAll(async () => {
   // .lr-nav-add is now the only "New story" entry point.
   await page.locator('.lr-nav-add').click();
 
-  await page.locator(`[aria-label="Add chapter"]`).first().click();
+  // B9 keep-alive leaves ManuscriptStructureView mounted (display:none +
+  // aria-hidden) while editor is active; CSS `[aria-label=…]`.first() locks
+  // onto that hidden clone. Role queries skip aria-hidden ancestors.
+  await page.getByRole('button', { name: 'Add chapter' }).first().click();
   await fillPrompt(page, CHAPTER_TITLE);
 
-  await page.locator(`[aria-label="Add scene"]`).first().click();
+  await page.getByRole('button', { name: 'Add scene' }).first().click();
   await fillPrompt(page, SCENE_TITLE);
 
   // Open the scene

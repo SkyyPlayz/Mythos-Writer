@@ -8,7 +8,7 @@ import { LIQUID_NEON_PRESETS } from './presets';
 
 describe('ambienceLayerStyle (verbatim mkAmb)', () => {
   it('Neon Nebula layer 0: white dots, lnRiseT 46s, opacity .4', () => {
-    const st = ambienceLayerStyle({ setKey: 'classic', slots: [...LIQUID_NEON_PRESETS.classic.c] }, 0)!;
+    const st = ambienceLayerStyle({ setKey: 'classic', slots: [...LIQUID_NEON_PRESETS.classic.c], ambMode: 'match' }, 0)!;
     expect(st.backgroundImage).toBe(
       'radial-gradient(1.8px 1.8px at 25% 30%,rgba(255,255,255,.75),transparent 100%),radial-gradient(1.4px 1.4px at 65% 72%,rgba(255,255,255,.75),transparent 100%)',
     );
@@ -21,7 +21,7 @@ describe('ambienceLayerStyle (verbatim mkAmb)', () => {
   });
 
   it('Neon Nebula layer 1: slot-B tinted dots at .7 scale, lnRiseT 70s', () => {
-    const st = ambienceLayerStyle({ setKey: 'classic', slots: [...LIQUID_NEON_PRESETS.classic.c] }, 1)!;
+    const st = ambienceLayerStyle({ setKey: 'classic', slots: [...LIQUID_NEON_PRESETS.classic.c], ambMode: 'match' }, 1)!;
     // hexA('#9b5fff', .5) — layer color derives from the LIVE palette.
     expect(st.backgroundImage).toContain('rgba(155,95,255,0.500)');
     expect(st.backgroundImage).toContain('radial-gradient(1.3px 1.3px at 25% 30%');
@@ -31,7 +31,7 @@ describe('ambienceLayerStyle (verbatim mkAmb)', () => {
   });
 
   it('Cyberpunk rains: lnSnowT with tall 1.4×15 streaks', () => {
-    const st = ambienceLayerStyle({ setKey: 'cyber', slots: [...LIQUID_NEON_PRESETS.cyber.c] }, 0)!;
+    const st = ambienceLayerStyle({ setKey: 'cyber', slots: [...LIQUID_NEON_PRESETS.cyber.c], ambMode: 'match' }, 0)!;
     expect(st.animation).toBe('lnSnowT 7.0s linear infinite');
     expect(st.backgroundImage).toContain('1.4px 15.0px at 25% 30%');
   });
@@ -42,7 +42,7 @@ describe('ambienceLayerStyle (verbatim mkAmb)', () => {
 });
 
 describe('Beta 4 M1 — Background animation card (prototype ambMode 6793–6803)', () => {
-  const classic: Partial<LiquidNeonV2Settings> = { setKey: 'classic', slots: [...LIQUID_NEON_PRESETS.classic.c] };
+  const classic: Partial<LiquidNeonV2Settings> = { setKey: 'classic', slots: [...LIQUID_NEON_PRESETS.classic.c], ambMode: 'match' };
 
   it('ambMode off removes the layers', () => {
     expect(ambienceLayerStyle({ ...classic, ambMode: 'off' }, 0)).toBeNull();
@@ -80,7 +80,7 @@ describe('Beta 4 M1 — Background animation card (prototype ambMode 6793–6803
 
 describe('<BackgroundStack>', () => {
   it('renders wallpaper, two ambience layers, scrim, and vignette for a preset', () => {
-    render(<BackgroundStack settings={{ setKey: 'winter', slots: [...LIQUID_NEON_PRESETS.winter.c] }} />);
+    render(<BackgroundStack settings={{ setKey: 'winter', slots: [...LIQUID_NEON_PRESETS.winter.c], ambMode: 'match' }} />);
     expect(screen.getByTestId('ln-bg-wallpaper')).toBeInTheDocument();
     expect(screen.getByTestId('ln-bg-ambience-1')).toBeInTheDocument();
     expect(screen.getByTestId('ln-bg-ambience-2')).toBeInTheDocument();

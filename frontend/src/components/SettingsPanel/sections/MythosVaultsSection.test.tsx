@@ -537,20 +537,21 @@ describe('MythosVaultsSection — inline rename (SKY-11154 §4, AC-VS-02)', () =
 });
 
 describe('MythosVaultsSection — the ⋯ overflow menu (SKY-11154 §4a, AC-VS-03/04)', () => {
-  it('exposes a "More options" trigger with Hide/Delete menuitems, no bare Delete button', async () => {
+  it('exposes a "More options" trigger with Hide/Delete/Remove menuitems, no bare Delete button', async () => {
     await setup();
     const card = screen.getByTestId(`mvs-card-${VAULT_A}`);
     const trigger = screen.getByLabelText('More options for Alpha');
     fireEvent.click(trigger);
     expect(await screen.findByRole('menuitem', { name: 'Hide' })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Move to Recycle Bin' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'Remove from Mythos…' })).toBeInTheDocument();
     expect(card.querySelectorAll('[aria-label="Delete" i]:not([role="menuitem"])').length).toBe(0);
   });
 
   it('Delete on a Mythos vault runs the 2-step confirm and the copy contains "moved to the Recycle Bin" (AC-VS-04)', async () => {
     await setup();
     fireEvent.click(screen.getByLabelText('More options for Alpha'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Move to Recycle Bin' }));
     await waitFor(() => expect(mockVaultSurfaceBlastRadius).toHaveBeenCalled());
     // SKY-11322: the confirm dialog's inner-vault count must match the card's
     // own "2 notes vaults · 1 story vault" (= 3) stats for the same vault.
@@ -595,7 +596,7 @@ describe('MythosVaultsSection — the ⋯ overflow menu (SKY-11154 §4a, AC-VS-0
     await waitFor(() => expect(screen.getByTestId(`mvs-card-${GROUPED_ROOT}`)).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText('More options for Gamma'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Move to Recycle Bin' }));
     await waitFor(() => expect(mockVaultSurfaceBlastRadius).toHaveBeenCalledWith('/vaults/Gamma'));
     fireEvent.click(await screen.findByText('Continue'));
     fireEvent.click(await screen.findByText('Move to Recycle Bin'));
@@ -629,7 +630,7 @@ describe('MythosVaultsSection — the ⋯ overflow menu (SKY-11154 §4a, AC-VS-0
     await waitFor(() => expect(screen.getByTestId(`mvs-card-${CUSTOM_ROOT}`)).toBeInTheDocument());
 
     fireEvent.click(screen.getByLabelText('More options for Delta'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Move to Recycle Bin' }));
     await waitFor(() => expect(mockVaultSurfaceBlastRadius).toHaveBeenCalledWith('/vaults/Delta'));
     fireEvent.click(await screen.findByText('Continue'));
     fireEvent.click(await screen.findByText('Move to Recycle Bin'));
@@ -673,7 +674,7 @@ describe('MythosVaultsSection — the ⋯ overflow menu (SKY-11154 §4a, AC-VS-0
     await waitFor(() => expect(screen.getByTestId(`mvs-card-${UNREADABLE}`)).toBeInTheDocument());
 
     expect(screen.queryByLabelText('More options for Epsilon')).not.toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: 'Delete' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Move to Recycle Bin' })).not.toBeInTheDocument();
   });
 });
 

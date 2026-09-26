@@ -22,7 +22,7 @@ describe('NAV_RAIL_DEFAULTS (Beta 4 M3)', () => {
 
   it('uses the §4 module labels', () => {
     expect(NAV_RAIL_DEFAULTS.items.map((i) => i.label)).toEqual([
-      'Story Writer', 'Notes Editor', 'Scene Crafter', 'Brainstorm', 'Timeline', 'Vault Graph', 'Boards',
+      'Story Writer', 'Notes Editor', 'Scene Crafter', 'Idea Board', 'Timeline', 'Vault Graph', 'Boards',
     ]);
   });
 
@@ -93,7 +93,7 @@ describe('mergeNavConfigItems', () => {
     const legacyDefaults: NavRailItemConfig[] = [
       { id: 'story', enabled: true, label: 'Story', icon: '✍', order: 0 },
       { id: 'notes', enabled: true, label: 'Notes', icon: '📝', order: 1 },
-      { id: 'brainstorm', enabled: true, label: 'Brainstorm', icon: '💡', order: 2 },
+      { id: 'brainstorm', enabled: true, label: 'Idea Board', icon: '💡', order: 2 },
     ];
 
     const merged = mergeNavConfigItems(legacyDefaults, NAV_RAIL_DEFAULTS.items);
@@ -106,7 +106,7 @@ describe('mergeNavConfigItems', () => {
   it('does NOT rewrite a CUSTOMIZED pre-Beta-4 config — new modules append after it (SKY-5903)', () => {
     // brainstorm moved first: any customization disables the wholesale upgrade.
     const customized: NavRailItemConfig[] = [
-      { id: 'brainstorm', enabled: true, label: 'Brainstorm', icon: '💡', order: 0 },
+      { id: 'brainstorm', enabled: true, label: 'Idea Board', icon: '💡', order: 0 },
       { id: 'story', enabled: true, label: 'Story', icon: '✍', order: 1 },
       { id: 'notes', enabled: true, label: 'Notes', icon: '📝', order: 2 },
     ];
@@ -121,7 +121,7 @@ describe('mergeNavConfigItems', () => {
     const customized: NavRailItemConfig[] = [
       { id: 'story', enabled: true, label: 'Story', icon: '✍', order: 0 },
       { id: 'notes', enabled: true, label: 'Notes', icon: '📝', order: 1 },
-      { id: 'brainstorm', enabled: false, label: 'Brainstorm', icon: '💡', order: 2 },
+      { id: 'brainstorm', enabled: false, label: 'Idea Board', icon: '💡', order: 2 },
     ];
 
     const merged = mergeNavConfigItems(customized, NAV_RAIL_DEFAULTS.items);
@@ -227,7 +227,7 @@ describe('resolveNavRailItems', () => {
   it('renders the §4 module labels from a fresh config', () => {
     const items = resolveNavRailItems(undefined, NAV_RAIL_DEFAULTS);
     expect(items.map((i) => i.label)).toEqual([
-      'Story Writer', 'Notes Editor', 'Scene Crafter', 'Brainstorm', 'Timeline', 'Vault Graph', 'Boards',
+      'Story Writer', 'Notes Editor', 'Scene Crafter', 'Idea Board', 'Timeline', 'Vault Graph', 'Boards',
     ]);
   });
 });

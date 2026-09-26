@@ -41,6 +41,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { noteTestId } from '../helpers/notesPanel';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -178,8 +179,8 @@ async function createTaggedNote(
 
   await dismissMigrationPromptIfPresent(pg);
   await pg.locator('[data-testid^="vb-row-"]', { hasText: title }).first().click();
-  await expect(pg.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
-  await pg.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+  await expect(noteTestId(pg, 'note-gear-btn')).toBeVisible({ timeout: 8_000 });
+  await noteTestId(pg, 'note-gear-btn').click();
   await expect(pg.locator('[data-testid="note-gear-menu"]')).toBeVisible();
   await pg.locator('[data-testid="note-gear-mode-source"]').click();
   const editor = pg.getByRole('textbox', { name: `Edit note: ${title}.md` });

@@ -109,8 +109,8 @@ const RIGHT_PANEL_DEFAULT_WIDTH = 316;
 
 /** Prototype seven-mode segment labels (`tlModeSeg`, 6559). */
 const MODE_OPTIONS: { value: TimelineMode; label: string }[] = [
-  { value: 'progress', label: 'Progress' },
   { value: 'structure', label: 'Structure' },
+  { value: 'progress', label: 'Progress' },
   { value: 'plot', label: 'Plotlines' },
   { value: 'spreadsheet', label: 'Spreadsheet' },
   { value: 'tension', label: 'Tension' },
@@ -175,13 +175,13 @@ const GROUP_BY_OPTIONS: { value: TimelineGroupBy; label: string }[] = [
 
 /** Read the persisted view mode; legacy values ('aeon' → progress, 'track' →
  *  subway, 'axis' → progress) migrate, unknown/absent values fall back to
- *  'progress' — the §8.4 DEFAULT mode. */
+ *  'structure' — the §8.4 Structure-first default. */
 function readStoredViewMode(): TimelineMode {
   try {
-    return resolveTimelineMode(localStorage.getItem(STORAGE_KEY_MODE)) ?? 'progress';
+    return resolveTimelineMode(localStorage.getItem(STORAGE_KEY_MODE)) ?? 'structure';
   } catch {
     // localStorage unavailable — use the default
-    return 'progress';
+    return 'structure';
   }
 }
 
@@ -545,7 +545,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
   const handleToday = useCallback(() => {
     setViewModeState(prev => {
       const next: TimelineMode =
-        prev === 'spreadsheet' || prev === 'relations' || prev === 'subway' ? prev : 'progress';
+        prev === 'spreadsheet' || prev === 'relations' || prev === 'subway' ? prev : 'structure';
       try { localStorage.setItem(STORAGE_KEY_MODE, next); } catch { /* ignore quota errors */ }
       return next;
     });
@@ -713,7 +713,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
   // ── M25: flag jump — select the flagged item and scroll it into view. ──
   const handleJumpTo = useCallback(
     (itemId: string) => {
-      if (!isLanesMode) handleViewModeChange('progress');
+      if (!isLanesMode) handleViewModeChange('structure');
       const store = timelinesStore;
       if (store) {
         const event = store.events.find((e) => e.id === itemId || e.sceneId === itemId);

@@ -3,6 +3,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { noteTestId, noteViewer, notesPanel } from './helpers/notesPanel';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const NOW = '2026-07-01T00:00:00.000Z';
@@ -165,11 +166,11 @@ async function openSceneLinksNote(page: Page): Promise<void> {
   await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
   await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 8_000 });
   await page.getByText('Scene Links', { exact: true }).click();
-  await expect(page.locator('.note-breadcrumb-item--current', { hasText: 'Scene Links' })).toBeVisible({ timeout: 8_000 });
+  await expect(notesPanel(page).locator('.note-breadcrumb-item--current', { hasText: 'Scene Links' })).toBeVisible({ timeout: 8_000 });
   // M17: the mode seg moved into the gear popover; rendered links live in Rich.
-  await page.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+  await noteTestId(page, 'note-gear-btn').click();
   await page.locator('[data-testid="note-gear-mode-rich"]').click();
-  await expect(page.locator('.note-viewer .ProseMirror')).toBeVisible({ timeout: 8_000 });
+  await expect(noteViewer(page).locator('.ProseMirror')).toBeVisible({ timeout: 8_000 });
 }
 
 async function openGraph(page: Page): Promise<void> {
@@ -180,8 +181,8 @@ async function openGraph(page: Page): Promise<void> {
 
 async function expectElaraNoteOpen(page: Page): Promise<void> {
   await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
-  await expect(page.locator('.note-breadcrumb-item--current', { hasText: 'Elara' })).toBeVisible({ timeout: 8_000 });
-  await expect(page.getByText('Elara profile.')).toBeVisible({ timeout: 8_000 });
+  await expect(notesPanel(page).locator('.note-breadcrumb-item--current', { hasText: 'Elara' })).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('[data-testid="notes-tab-center"]').getByText('Elara profile.')).toBeVisible({ timeout: 8_000 });
 }
 
 async function clickStoryWikiLink(page: Page, target: string): Promise<void> {
@@ -232,7 +233,7 @@ test.describe('wiki-links and multi-vault graph', () => {
 
   test('[[Scene One]] in a notes file opens the story scene editor', async () => {
     await openSceneLinksNote(page);
-    await page.locator('.note-viewer [data-wiki-link="Scene One"]').click();
+    await noteViewer(page).locator('[data-wiki-link="Scene One"]').click();
     await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
     await expect(page.locator('[data-testid="msv-sheet"] .block-editor--chromeless .ProseMirror')).toBeVisible({ timeout: 8_000 });
   });

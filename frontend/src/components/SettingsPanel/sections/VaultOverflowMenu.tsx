@@ -31,6 +31,12 @@ const COPY = {
     `You can restore them from the Recycle Bin if you change your mind.`,
   mythosTrashConfirm2: 'Move to Recycle Bin',
 
+  removeOnlyTitle: 'Remove from Mythos only?',
+  removeOnlyBody: (vaultName: string) =>
+    `"${vaultName}" will be removed from Mythos Writer's vault list. The folder on disk is NOT deleted — ` +
+    `it stays exactly where it is. You can add it back later via "Open existing vault".`,
+  removeOnlyConfirm: 'Remove from Mythos',
+
   hideTitle: 'Hide vault?',
   hideBody: (vaultName: string) =>
     `"${vaultName}" will be hidden from this list. The folder stays exactly where it is — ` +
@@ -62,7 +68,7 @@ export interface VaultOverflowMenuProps {
   testIdSuffix: string;
 }
 
-type DeleteStep = 'idle' | 'inner-confirm' | 'mythos-confirm-1' | 'mythos-confirm-2' | 'failed';
+type DeleteStep = 'idle' | 'inner-confirm' | 'mythos-confirm-1' | 'mythos-confirm-2' | 'remove-only-confirm' | 'failed';
 
 export default function VaultOverflowMenu({
   level,
@@ -85,17 +91,17 @@ export default function VaultOverflowMenu({
 
   const items: MenuItemDef[] = [
     { id: 'hide', label: 'Hide' },
-    { id: 'delete', label: 'Delete', destructive: true },
+    { id: 'delete', label: 'Move to Recycle Bin', destructive: true },
+    { id: 'remove-only', label: 'Remove from Mythos…' },
   ];
 
   const handleMenuAction = useCallback((id: string) => {
     setMenuOpen(false);
     if (id === 'hide') {
-      // The caller (Mythos/Notes/Story card) already knows any story-vault
-      // pairing from its own loaded lists — passed in as a prop — so the
-      // dialog copy is correct on first paint with no extra round trip.
       setHideLinkedName(pairedStoryVaultName);
       setHideOpen(true);
+    } else if (id === 'remove-only') {
+      setDeleteStep('remove-only-confirm');
     } else if (id === 'delete') {
       setFailedError('');
       if (level === 'mythos') {
@@ -126,8 +132,26 @@ export default function VaultOverflowMenu({
     }
   }, [level, vaultPath, onHidden]);
 
-  const runTrash = useCallback(async () => {
+  const runRemoveOnly = useCallback(async () => {
     setDeleteBusy(true);
+    try {
+      const res = await window.api?.vaultSurfaceHide?.({ vaultRoot: vaultPath, level });
+      if (res?.hidden) {
+        setDeleteStep('idle');
+        onDeleted?.();
+      } else {
+        setFailedError('Could not remove from Mythos. Try again.');
+        setDeleteStep('failed');
+      }
+    } catch (e) {
+      setFailedError(e instanceof Error ? e.message : 'Unknown error');
+      setDeleteStep('failed');
+    } finally {
+      setDeleteBusy(false);
+    }
+  }, [vaultPath, level, onDeleted]);
+
+  const runTrash = useCallback(async () => {
     try {
       const res = await window.api?.vaultSurfaceTrash?.({ vaultPath, level });
       if (res?.trashed) {
@@ -285,6 +309,35 @@ export default function VaultOverflowMenu({
               data-testid={`vault-delete-confirm-2-${testIdSuffix}`}
             >
               {deleteBusy ? 'Moving…' : COPY.mythosTrashConfirm2}
+            </Button>
+          </DialogFooter>
+        </Dialog>
+      )}
+
+      {deleteStep === 'remove-only-confirm' && (
+        <Dialog
+          open
+          onClose={cancelDelete}
+          aria-labelledby={`vor-title-${testIdSuffix}`}
+          testId={`vault-remove-only-dialog-${testIdSuffix}`}
+        >
+          <DialogHeader onClose={cancelDelete}>
+            <span id={`vor-title-${testIdSuffix}`}>{COPY.removeOnlyTitle}</span>
+          </DialogHeader>
+          <DialogBody>
+            <p>{COPY.removeOnlyBody(vaultName)}</p>
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="secondary" onClick={cancelDelete} disabled={deleteBusy}>
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void runRemoveOnly()}
+              disabled={deleteBusy}
+              data-testid={`vault-remove-only-confirm-${testIdSuffix}`}
+            >
+              {deleteBusy ? 'Removing…' : COPY.removeOnlyConfirm}
             </Button>
           </DialogFooter>
         </Dialog>

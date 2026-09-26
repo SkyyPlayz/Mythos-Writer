@@ -48,6 +48,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test';
+import { noteTestId } from '../helpers/notesPanel';
 import { clickStoryNav } from '../helpers/navGuard';
 import { installDraftStreamMock, generateMockDraft } from '../helpers/draftStreamMock';
 
@@ -951,8 +952,8 @@ test.describe('SKY-11049 item 7 — POV vault-wide character fallback (fresh pro
     // that default.
     await dismissMigrationPromptIfPresent(localPage);
     await localPage.locator('[data-testid^="vb-row-"]', { hasText: 'Kael Thorne' }).first().click();
-    await expect(localPage.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
-    await localPage.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+    await expect(noteTestId(localPage, 'note-gear-btn')).toBeVisible({ timeout: 8_000 });
+    await noteTestId(localPage, 'note-gear-btn').click();
     await expect(localPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
     await localPage.locator('[data-testid="note-gear-mode-source"]').click();
     const editor = localPage.getByRole('textbox', { name: 'Edit note: Kael Thorne.md' });
@@ -1044,8 +1045,8 @@ test.describe('SKY-11072 — Scene Crafter vault-reference columns (fresh profil
     // proved out) so the CHARACTERS column's tag fallback resolves it.
     await dismissMigrationPromptIfPresent(localPage);
     await localPage.locator('[data-testid^="vb-row-"]', { hasText: 'Mira Veynn' }).first().click();
-    await expect(localPage.locator('.note-viewer [data-testid="note-gear-btn"]')).toBeVisible({ timeout: 8_000 });
-    await localPage.locator('.note-viewer [data-testid="note-gear-btn"]').click();
+    await expect(noteTestId(localPage, 'note-gear-btn')).toBeVisible({ timeout: 8_000 });
+    await noteTestId(localPage, 'note-gear-btn').click();
     await expect(localPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
     await localPage.locator('[data-testid="note-gear-mode-source"]').click();
     const editor = localPage.getByRole('textbox', { name: 'Edit note: Mira Veynn.md' });
@@ -1139,11 +1140,12 @@ test.describe('SKY-11213 — Create Scene from Setup (no AI draft)', () => {
     await expect(createBtn).toBeVisible({ timeout: 5_000 });
     expect(await localPage.locator('[data-testid="sc-draft-card"]').count()).toBe(0);
 
-    // Click Create Scene — must navigate to the editor view (scene open).
+    // Click Create Scene — PLAN lock: stays on kanban/node-board view (not editor).
     await createBtn.click();
 
-    // The shell navigates to the scene editor on success.
-    await expect(localPage.locator('.block-editor')).toBeVisible({ timeout: 10_000 });
+    // The shell stays on the Scene Crafter canvas view (kanban).
+    // The board creation is triggered — scene canvas shows without switching to editor.
+    await expect(localPage.locator('.shell-kanban')).toBeVisible({ timeout: 10_000 });
 
     // The scene file must exist on disk in the manuscript vault.
     const manuscriptDir = path.join(localVaultDir, 'Manuscript');
@@ -1178,7 +1180,8 @@ test.describe('SKY-11213 — Create Scene from Setup (no AI draft)', () => {
 
     const createBtn = localPage.getByTestId('sc-create-scene-btn');
     await createBtn.click();
-    await expect(localPage.locator('.block-editor')).toBeVisible({ timeout: 10_000 });
+    // PLAN lock: stays on kanban after Create Scene.
+    await expect(localPage.locator('.shell-kanban')).toBeVisible({ timeout: 10_000 });
 
     const manuscriptDir = path.join(localVaultDir, 'Manuscript');
     const sceneFiles = fs.existsSync(manuscriptDir)

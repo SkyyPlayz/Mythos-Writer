@@ -8,6 +8,7 @@ import { Markdown } from 'tiptap-markdown';
 import { WikiLink } from '../WikiLinkExtension';
 import { WikiLinkResolutionExtension } from '../WikiLinkResolutionExtension';
 import { AlignedParagraph, AlignedHeading } from './alignedBlocks';
+import { InlineImageExtension } from './InlineImageExtension';
 
 /**
  * Shared Tiptap editor hook for all rich-text surfaces (Story/Notes).
@@ -76,6 +77,7 @@ export function useRichEditor({
       TextAlign.configure({ types: ['paragraph', 'heading'] }),
       WikiLink,
       WikiLinkResolutionExtension,
+      InlineImageExtension,
       Markdown,
       ...extraExtensions,
     ],
