@@ -1,0 +1,70 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 0.5.4.5 UI refine — shared chrome polish (MW-0545-ui)
+ * Concentric nest helpers, press feedback, origin-aware overlay motion.
+ * Not Liquid Glass. No new animation library. Frequency-gated surfaces stay
+ * instant (command palette). Does not weaken focus rings / contrast.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Pressable feedback — primary / icon chrome (Lens emil-design-eng). */
+.mw-pressable:active:not(:disabled),
+.btn:active:not(:disabled),
+.fmt-btn:active:not(:disabled),
+.fmt-action:active:not(:disabled),
+.nfe-mode-btn:active:not(:disabled),
+.nav-rail__item:active,
+.nav-rail__brand-glyph:active,
+.nav-rail__vault-tile:active,
+.nav-rail__vault-add:active,
+.nav-rail__new-story:active,
+.nav-rail__settings:active,
+.nav-rail__toggle:active,
+.ui-empty-state-action:active:not(:disabled) {
+  transform: scale(var(--scale-press, 0.97));
+  transition:
+    transform var(--dur-press, 100ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    background var(--dur-press, 100ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    color var(--dur-press, 100ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1)),
+    border-color var(--dur-press, 100ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+/* Command palette / GlobalSearch — high-frequency: no enter/exit motion. */
+.gsp-backdrop,
+.gsp-panel {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Nested card inset — concentric with parent when parent uses --radius-md/lg. */
+.mw-nested-inset {
+  border-radius: var(--radius-nested-md);
+}
+
+.mw-nested-inset--lg {
+  border-radius: var(--radius-nested-lg);
+}
+
+.mw-nested-inset--sm {
+  border-radius: var(--radius-nested-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mw-pressable:active:not(:disabled),
+  .btn:active:not(:disabled),
+  .fmt-btn:active:not(:disabled),
+  .fmt-action:active:not(:disabled),
+  .nfe-mode-btn:active:not(:disabled),
+  .nav-rail__item:active,
+  .nav-rail__brand-glyph:active,
+  .nav-rail__vault-tile:active,
+  .nav-rail__vault-add:active,
+  .nav-rail__new-story:active,
+  .nav-rail__settings:active,
+  .nav-rail__toggle:active,
+  .ui-empty-state-action:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  /* Hover motion stays gated to fine pointers (Lens motion-review). */
+}

@@ -31,7 +31,7 @@
 
 .btn:active {
   transition-duration: var(--dur-press);
-  transform: scale(0.98);
+  transform: scale(var(--scale-press, 0.97));
 }
 
 .btn:disabled,

@@ -11,13 +11,14 @@
   border-radius: var(--radius-sm);
   padding: var(--space-1) 0;
   min-width: 192px;
-  animation: ln-menu-in var(--dur-hover-in) var(--ease-out) both;
+  animation: ln-menu-in var(--dur-popover, var(--dur-hover-in)) var(--ease-out) both;
   outline: none;
+  transform-origin: top center;
 }
 
 @keyframes ln-menu-in {
-  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
-  to   { opacity: 1; transform: scale(1) translateY(0); }
+  from { opacity: 0; transform: scale(var(--scale-enter-min, 0.96)); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {

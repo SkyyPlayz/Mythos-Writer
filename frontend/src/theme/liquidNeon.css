@@ -13,7 +13,11 @@
 @keyframes lnRiseT { from { transform: translate3d(0, 70vh, 0); } to { transform: translate3d(0, -70vh, 0); } }
 @keyframes lnBreathe { 0%, 100% { opacity: 1; } 50% { opacity: .32; } }
 @keyframes lnPulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
-@keyframes lnFadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+/* Chrome popovers: opacity + scale ≥ enter-min (never scale(0)); origin set per surface. */
+@keyframes lnFadeUp {
+  from { opacity: 0; transform: scale(var(--scale-enter-min, 0.96)); }
+  to   { opacity: 1; transform: scale(1); }
+}
 @keyframes lnDrift { from { transform: scale(1.04) translate(0, 0); } to { transform: scale(1.1) translate(-16px, -10px); } }
 @keyframes lnToast { 0% { opacity: 0; transform: translate(-50%, 10px); } 12% { opacity: 1; transform: translate(-50%, 0); } 82% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, 10px); } }
 

@@ -12,14 +12,14 @@
   background: var(--glass-fill-overlay, #2a2a2e);
   color: var(--text-primary, #f0f0f0);
   border: 1px solid var(--border-subtle, #45475a);
-  border-radius: 6px;
+  border-radius: var(--radius-sm, 6px);
   padding: 0.55rem 1rem;
   font-size: 0.84rem;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   z-index: 9999;
   white-space: nowrap;
   pointer-events: none;
-  animation: app-toast-in 0.2s ease-out;
+  animation: app-toast-in var(--dur-popover, 160ms) var(--ease-out) both;
 }
 
 @supports (backdrop-filter: blur(1px)) {
@@ -82,10 +82,16 @@
 @keyframes app-toast-in {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(8px);
+    transform: translateX(-50%) scale(var(--scale-enter-min, 0.96));
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateX(-50%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-toast {
+    animation: none;
   }
 }
