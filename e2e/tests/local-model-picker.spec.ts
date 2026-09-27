@@ -60,6 +60,7 @@ type AppSettingsSeed = {
     writingAssistant: AgentSettings;
     brainstorm: AgentSettings;
     archive: AgentSettings;
+    betaReader: AgentSettings;
   };
   theme: string;
   snapshots: { maxPerScene: number; maxAgeDays: number };
@@ -94,6 +95,14 @@ function baseSettings(): AppSettingsSeed {
         enabled: true,
         model: 'claude-sonnet-4-6',
         continuityCheckIntervalSeconds: 60,
+        ...budgets,
+      },
+      // S2-6: Archivist card is gone; Beta Reader is the third settings card.
+      // Seed the same explicit Anthropic model the other agents use so AC-8
+      // asserts the bound <select> value (not SETTINGS_DEFAULTS model:'').
+      betaReader: {
+        enabled: true,
+        model: 'claude-sonnet-4-6',
         ...budgets,
       },
     },
