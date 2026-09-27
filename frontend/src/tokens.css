@@ -203,12 +203,26 @@
 
   /* ---- 1.9 Motion curves + durations (all ≤ 320ms < Doherty 400ms) ----- */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1); /* keep for legacy; never use on UI chrome (Lens) */
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1); /* move/morph already on screen */
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --dur-press: 100ms;
   --dur-hover-in: 180ms;
   --dur-hover-out: 240ms;
   --dur-panel: 280ms;
+  /* 0.5.4.5 Lens chrome — press / enter / popover / modal caps */
+  --dur-chrome: 220ms;           /* modals/drawers preferred ≤300ms */
+  --dur-popover: 160ms;          /* small popovers / menus */
+  --scale-press: 0.97;           /* pressable feedback */
+  --scale-enter-min: 0.96;       /* enter floor — never scale(0) */
+  /* Concentric nested radii: inner ≈ outer − gap (HOLD §3 / Lens). Flag
+     exceptions (clipped media, layered glass, intentional emphasis). */
+  --radius-nested-gap: var(--space-2); /* 8px typical nest inset */
+  --radius-nested-xl: calc(var(--radius-xl) - var(--radius-nested-gap));
+  --radius-nested-lg: calc(var(--radius-lg) - var(--radius-nested-gap));
+  --radius-nested-md: calc(var(--radius-md) - var(--radius-nested-gap));
+  --radius-nested-sm: calc(var(--radius-sm) - var(--radius-nested-gap));
 
   /* =========================================================================
    * Semantic aliases — what components reference.
@@ -704,6 +718,8 @@
     --dur-hover-in: 0.01ms;
     --dur-hover-out: 0.01ms;
     --dur-panel: 0.01ms;
+    --dur-chrome: 0.01ms;
+    --dur-popover: 0.01ms;
   }
 }
 

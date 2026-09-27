@@ -19,6 +19,19 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transform-origin: top right;
+  animation: page-setup-in var(--dur-popover, 160ms) var(--ease-out) both;
+}
+
+@keyframes page-setup-in {
+  from { opacity: 0; transform: scale(var(--scale-enter-min, 0.96)); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-setup-popover {
+    animation: none;
+  }
 }
 
 .page-setup-popover__header {
@@ -75,11 +88,18 @@
   font-size: 12px;
   background: var(--bg-inset);
   border: 1px solid var(--border-default);
-  border-radius: 4px;
+  border-radius: var(--radius-nested-sm, 4px);
   cursor: pointer;
   color: var(--text-body);
   text-align: center;
-  transition: background 0.1s, border-color 0.1s;
+  transition:
+    background var(--dur-hover-in) var(--ease-out),
+    border-color var(--dur-hover-in) var(--ease-out),
+    transform var(--dur-press) var(--ease-out);
+}
+
+.page-setup-popover__style-btn:active {
+  transform: scale(var(--scale-press, 0.97));
 }
 
 .page-setup-popover__style-btn--active {
