@@ -5829,6 +5829,46 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   useEffect(() => {
     if (!aiEnabled && view === 'coach') handleSetView('editor');
   }, [aiEnabled, view, handleSetView]);
+
+  // S2-3: Ctrl+/−/0 and Ctrl+Scroll adjust App text size (uiScale 82–118%).
+  useEffect(() => {
+    const clampScale = (n: number) => Math.min(1.18, Math.max(0.82, n));
+    const setScale = (nextScale: number) => {
+      setAppSettings((prev) => {
+        if (!prev) return prev;
+        const cur = prev.liquidNeonV2?.uiScale ?? 1;
+        const uiScale = clampScale(nextScale);
+        if (Math.abs(uiScale - cur) < 0.001) return prev;
+        const liquidNeonV2 = {
+          ...(prev.liquidNeonV2 ?? {}),
+          uiScale,
+        } as NonNullable<AppSettings['liquidNeonV2']>;
+        const next = { ...prev, liquidNeonV2 };
+        window.api.settingsSet(next).catch(() => {});
+        return next;
+      });
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const cur = appSettings?.liquidNeonV2?.uiScale ?? 1;
+      if (e.key === '=' || e.key === '+') { e.preventDefault(); setScale(cur + 0.02); }
+      else if (e.key === '-') { e.preventDefault(); setScale(cur - 0.02); }
+      else if (e.key === '0') { e.preventDefault(); setScale(1); }
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      e.preventDefault();
+      const cur = appSettings?.liquidNeonV2?.uiScale ?? 1;
+      setScale(cur + (e.deltaY < 0 ? 0.02 : -0.02));
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('wheel', onWheel);
+    };
+  }, [appSettings?.liquidNeonV2?.uiScale]);
+
   const manuscriptToolbarActions = useMemo(() => ({
     onDictate: handleToolbarDictate,
     dictating: voiceActive,
@@ -6174,27 +6214,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           a full-viewport conic-gradient + hue-rotate paint storm (PERFORMANCE
           §3). Panel border overlays keep the neon look. */}
       <UpdateBanner />
-      {/* Beta 3 M5: the prototype's single 44px title bar replaces the old
-          WindowChrome + AppMenuBar rows (menus, Ctrl-K pill, bell, account). */}
-      {showTitleBar && (
-        <WindowChrome
-          menus={titleBarMenus}
-          onOpenPalette={(seed) => { setGlobalSearchSeed(seed ?? ''); setGlobalSearchOpen(true); }}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenAccount={() => setAccountModalOpen(true)}
-          activeVaultRoot={activeVaultRoot}
-          activeStoryTitle={deriveSingleStoryTitle(stories)}
-          onProjectSwitched={handleProjectSwitched}
-          onNewStory={() => { void createStory(); }}
-          onOpenVault={() => { void openVaultViaPicker(); }}
-          onCreateVault={() => { void createMythosVault(); }}
-          onReplayOnboarding={() => {
-            window.api?.onboardingReplay?.().then(() => window.location.reload()).catch(() => {});
-          }}
-          notificationCenter={<NotificationCenter />}
-        />
-      )}
-      {/* SKY-3098: AppNavRail + main content column */}
+      {/* S2-1 Full Book chrome: nav rail stretches to the window top; title bar
+          + document tabs live in the main column so tabs sit at the top of
+          content chrome (not inset under a full-width title row). */}
       <div className="desktop-shell__body">
         {showTitleBar && (
           <AppNavRail
@@ -6224,6 +6246,24 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           />
         )}
         <div className="desktop-shell__main-col">
+      {showTitleBar && (
+        <WindowChrome
+          menus={titleBarMenus}
+          onOpenPalette={(seed) => { setGlobalSearchSeed(seed ?? ''); setGlobalSearchOpen(true); }}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenAccount={() => setAccountModalOpen(true)}
+          activeVaultRoot={activeVaultRoot}
+          activeStoryTitle={deriveSingleStoryTitle(stories)}
+          onProjectSwitched={handleProjectSwitched}
+          onNewStory={() => { void createStory(); }}
+          onOpenVault={() => { void openVaultViaPicker(); }}
+          onCreateVault={() => { void createMythosVault(); }}
+          onReplayOnboarding={() => {
+            window.api?.onboardingReplay?.().then(() => window.location.reload()).catch(() => {});
+          }}
+          notificationCenter={<NotificationCenter />}
+        />
+      )}
         {/* Beta 4 M4 (§4): document tab strip — Story + Notes views only;
             static pseudo-tab on Scene Crafter/Entities; hidden on
             Brainstorm/Timeline/Graph (Settings/Beta are overlays). */}
@@ -6313,7 +6353,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {historyOpen && (
         <PromptHistoryPanel onClose={() => setHistoryOpen(false)} />
       )}
-      {betaReaderOpen && (
+      {betaReaderOpen && aiEnabled && (
         <BetaReaderPage
           story={selectedStory}
           chapter={selectedChapter}

@@ -249,9 +249,12 @@ test('TC-PROV-04: Non-Anthropic global provider shows text input for per-agent m
   const brainstormModel = page.getByLabel('Brainstorm Agent model');
   await expect(brainstormModel).toHaveAttribute('type', 'text');
 
-  // Archive model input should be text input
-  const archiveModel = page.getByLabel('Archive Agent model');
-  await expect(archiveModel).toHaveAttribute('type', 'text');
+  // S2-6: Archive Agent model picker removed with Archivist settings card.
+  await expect(page.getByLabel('Archive Agent model')).toHaveCount(0);
+
+  // Beta Reader model input should be text input
+  const betaModel = page.getByLabel('Beta Reader model');
+  await expect(betaModel).toHaveAttribute('type', 'text');
 
   // Close settings
   await page.click('.settings-close');

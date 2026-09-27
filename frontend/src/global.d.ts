@@ -794,6 +794,18 @@ interface AppSettings {
   activeLayoutId?: string | null;
   /** Migration flag: true once v1→v2 layout migration has run. */
   layoutMigrationDone?: boolean;
+  /**
+   * 0.5.4 Slice 2 (S2-5): one-shot Autonomy migrate — every agent autoApply
+   * (incl. Grammar category) forced OFF on first open of this build. Absent
+   * or false → run migrate once, then set true.
+   */
+  slice2AutonomyOffMigrated?: boolean;
+  /**
+   * 0.5.4 Slice 2 (S2-6): partner transcript placement.
+   * `in-chat` dumps LIVE transcript into the chat stream;
+   * `separate` keeps the LIVE strip beside chat.
+   */
+  agentTranscriptPlacement?: 'in-chat' | 'separate';
   /** SKY-3218: Nav-bar configuration. Absent → NAV_RAIL_DEFAULTS applied at runtime. */
   navConfig?: NavRailConfig;
   /**

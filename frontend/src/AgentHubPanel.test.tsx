@@ -181,32 +181,33 @@ describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () 
     resetBrainstormActivityForTests();
   });
 
-  it('renders all four agents as two-line cards with a status line and a trailing chevron', async () => {
+  it('renders Writing Coach, Brainstorm, and Beta Reader as two-line cards (S2-6: no Archive)', async () => {
     render(<AgentHubPanel scene={null} />);
     await screen.findByText(/No suggestions right now/i);
 
-    for (const id of ['writing-assistant', 'brainstorm', 'archive', 'beta-reader']) {
+    for (const id of ['writing-assistant', 'brainstorm', 'beta-reader']) {
       const row = screen.getByTestId(`ahp-agent-row-${id}`);
       expect(row.querySelector('.ahp-agent-name')?.textContent).toBeTruthy();
       expect(row.querySelector('.ahp-status-dot')).not.toBeNull();
       expect(row.querySelector('.ahp-status-text')?.textContent).toBeTruthy();
       expect(row.querySelector('svg.ahp-agent-chevron')).not.toBeNull();
     }
+    expect(screen.queryByTestId('ahp-agent-row-archive')).not.toBeInTheDocument();
   });
 
   it('defaults everything enabled when mounted without agentEnablement (fresh profile / standalone mounts)', async () => {
     render(<AgentHubPanel scene={null} />);
     await screen.findByText(/No suggestions right now/i);
 
-    // SKY-11223: Writing Coach/Archive/Beta Reader no longer claim work is
+    // SKY-11223: Writing Coach/Beta Reader no longer claim work is
     // happening just because they're enabled — driven by the shared
     // AiActivityRegistry instead of a per-agent guess.
     expect(within(screen.getByTestId('ahp-agent-row-writing-assistant')).getByText('Ready')).toBeInTheDocument();
     // SKY-11214: no brainstorm session is active, so the row must not claim
     // to be watching one — an honest idle label instead.
     expect(within(screen.getByTestId('ahp-agent-row-brainstorm')).getByText('Idle — will extract facts as you chat')).toBeInTheDocument();
-    expect(within(screen.getByTestId('ahp-agent-row-archive')).getByText('Ready')).toBeInTheDocument();
     expect(within(screen.getByTestId('ahp-agent-row-beta-reader')).getByText('Ready')).toBeInTheDocument();
+    expect(screen.queryByTestId('ahp-agent-row-archive')).not.toBeInTheDocument();
   });
 
   it("an agent's status dot pulses only while it has a real in-flight request in the shared registry", async () => {
@@ -321,20 +322,13 @@ describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () 
     expect(status.pulse).toBe(true);
   });
 
-  it("archive: '{n} flags open' when continuity flags are open (singular at 1), 'Ready' at 0", async () => {
-    const { rerender } = render(<AgentHubPanel scene={null} continuityCount={2} />);
+  it("S2-6: Archive Agent row is gone — continuityCount does not resurrect an Archivist card", async () => {
+    render(<AgentHubPanel scene={null} continuityCount={2} />);
     await screen.findByText(/No suggestions right now/i);
-    const archiveRow = () => screen.getByTestId('ahp-agent-row-archive');
-    expect(within(archiveRow()).getByText('2 flags open')).toBeInTheDocument();
-
-    rerender(<AgentHubPanel scene={null} continuityCount={1} />);
-    expect(within(archiveRow()).getByText('1 flag open')).toBeInTheDocument();
-
-    rerender(<AgentHubPanel scene={null} continuityCount={0} />);
-    expect(within(archiveRow()).getByText('Ready')).toBeInTheDocument();
+    expect(screen.queryByTestId('ahp-agent-row-archive')).not.toBeInTheDocument();
   });
 
-  it("archive: 'Disabled' beats open flags AND the '{n} new' override; click-through to chat stays live", async () => {
+  it("S2-6: Archive Agent row stays gone when archive enablement is false", async () => {
     (window as any).api = {
       suggestionsUnifiedList: vi.fn().mockResolvedValue({
         totalCount: 2,
@@ -346,15 +340,7 @@ describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () 
     };
     render(<AgentHubPanel scene={null} agentEnablement={{ archive: false }} continuityCount={3} />);
     await screen.findAllByText(/Tighten this paragraph/);
-
-    const archiveRow = screen.getByTestId('ahp-agent-row-archive');
-    expect(within(archiveRow).getByText('Disabled')).toBeInTheDocument();
-    expect(within(archiveRow).queryByText('2 new')).not.toBeInTheDocument();
-    expect(within(archiveRow).queryByText(/flags? open/)).not.toBeInTheDocument();
-    // No settings-routing special case — the chat view surfaces its own
-    // disabled state, so the row still opens it.
-    fireEvent.click(archiveRow);
-    expect(await screen.findByRole('button', { name: /back to agents/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('ahp-agent-row-archive')).not.toBeInTheDocument();
   });
 
   it('SKY-3941: the accessible name carries agent + status', async () => {
@@ -388,14 +374,6 @@ describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () 
       fireEvent.click(screen.getByRole('button', { name: /back to agents/i }));
       await screen.findByTestId('ahp-agent-row-writing-assistant');
 
-      // Archive: opens its own redesigned continuity + mini chat body (SKY-10738).
-      fireEvent.click(screen.getByTestId('ahp-agent-row-archive'));
-      expect(await screen.findByRole('button', { name: /back to agents/i })).toBeInTheDocument();
-      expect(screen.queryByText(/chat coming soon/i)).not.toBeInTheDocument();
-      expect(screen.getByTestId('ahp-archive-chat')).toBeInTheDocument();
-      fireEvent.click(screen.getByRole('button', { name: /back to agents/i }));
-      await screen.findByTestId('ahp-agent-row-archive');
-
       // Brainstorm: this ticket's fix — a real mini chat on the shared
       // Brainstorm session, same backend the timeline tab already uses.
       fireEvent.click(screen.getByTestId('ahp-agent-row-brainstorm'));
@@ -412,20 +390,22 @@ describe('AgentHubPanel — AGENTS card statuses (SKY-9022/M6 GAP-1/GAP-6)', () 
       expect(screen.queryByText(/chat coming soon/i)).not.toBeInTheDocument();
       expect(navEvents).toHaveLength(1);
       expect(navEvents[0].detail).toEqual({ view: 'beta' });
+
+      // S2-6: Archive Agent hand removed — no archive row / chat body.
+      expect(screen.queryByTestId('ahp-agent-row-archive')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('ahp-archive-chat')).not.toBeInTheDocument();
     } finally {
       window.removeEventListener('mythos:nav', onNav);
     }
   });
 });
 
-// ── SKY-9022/M6 GAP-6: AGENTS card ↔ Continuity section agreement ───────────
+// ── SKY-9022/M6 GAP-6 / S2-6: Continuity panel without Archive Agent card ──
 //
-// The two surfaces stack in the same Assistant column and must never
-// contradict each other in any combination of the Archive Agent toggle and
-// the "Enable continuity checking" feature toggle. `enabled`/`disabledReason`
-// are derived here exactly as DesktopShell derives them at both call sites.
+// Archivist hand is gone from AGENTS; ContinuityPanel still stacks below and
+// must keep coherent disabledReason copy for agent vs feature toggles.
 
-describe('AgentHubPanel × ContinuityPanel — archive enablement matrix (SKY-9022/M6 GAP-6)', () => {
+describe('AgentHubPanel × ContinuityPanel — enablement matrix without Archive row (S2-6)', () => {
   beforeEach(() => {
     __resetAgentSessionStores();
   });
@@ -456,34 +436,30 @@ describe('AgentHubPanel × ContinuityPanel — archive enablement matrix (SKY-90
     );
   }
 
-  const archiveStatus = () =>
-    screen.getByTestId('ahp-agent-row-archive').querySelector('.ahp-status-text')?.textContent;
-
-  it('agent on + feature on: card is live and no disabled message renders', async () => {
+  it('agent on + feature on: Continuity is live and no Archive Agent row', async () => {
     renderMatrix(true, true);
-    // Continuity settles into its real not_scanned state — panel is active.
     await screen.findByText(/Save your scene to check for continuity issues/i);
-    expect(archiveStatus()).toBe('Ready');
+    expect(screen.queryByTestId('ahp-agent-row-archive')).not.toBeInTheDocument();
     expect(screen.queryByText(/is disabled|turned off/i)).not.toBeInTheDocument();
   });
 
-  it('agent off + feature on: card says Disabled and Continuity names the agent', async () => {
+  it('agent off + feature on: Continuity names the agent; no Archive card', async () => {
     renderMatrix(false, true);
     await screen.findByText(/Archive Agent is disabled\. Enable it in Settings\./);
-    expect(archiveStatus()).toBe('Disabled');
+    expect(screen.queryByTestId('ahp-agent-row-archive')).not.toBeInTheDocument();
   });
 
-  it('agent on + feature off: card stays live and Continuity names the feature — not the agent', async () => {
+  it('agent on + feature off: Continuity names the feature — not the agent', async () => {
     renderMatrix(true, false);
     await screen.findByText(/Continuity checking is turned off\. Enable it in Settings\./);
-    expect(archiveStatus()).toBe('Ready');
+    expect(screen.queryByTestId('ahp-agent-row-archive')).not.toBeInTheDocument();
     expect(screen.queryByText(/Archive Agent is disabled/)).not.toBeInTheDocument();
   });
 
-  it('agent off + feature off: agent-disabled wins on both surfaces', async () => {
+  it('agent off + feature off: agent-disabled wins on Continuity; no Archive card', async () => {
     renderMatrix(false, false);
     await screen.findByText(/Archive Agent is disabled\. Enable it in Settings\./);
-    expect(archiveStatus()).toBe('Disabled');
+    expect(screen.queryByTestId('ahp-agent-row-archive')).not.toBeInTheDocument();
     expect(screen.queryByText(/Continuity checking is turned off/)).not.toBeInTheDocument();
   });
 });

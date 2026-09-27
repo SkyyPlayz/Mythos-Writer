@@ -26,6 +26,7 @@ import {
   DEFAULT_PRESET_ID,
 } from './presets';
 import type { PresetAxes, RefinementChip } from './presets';
+import { useAiEnabled } from './hooks/useAiEnabled';
 
 export const STALL_WARNING_MS = 20_000;
 export const HARD_TIMEOUT_MS = 90_000;
@@ -193,6 +194,7 @@ export default function WritingAssistantPanel({
   sessionStore,
   onBusyChange,
 }: Props) {
+  const aiMasterOn = useAiEnabled();
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   // M12: suggestion-card decorations for store-derived messages, keyed by the
@@ -232,6 +234,8 @@ export default function WritingAssistantPanel({
   const { announce, liveText } = useLiveAnnounce();
 
   const tts = useTtsPlayer(ttsSettings, voicePrefs);
+
+
 
   // ── M12: ONE conversation store shared with the Coach page (§5.2/§5.6) ────
   // Persisted turns render first; the local `messages` buffer only carries the
@@ -297,13 +301,13 @@ export default function WritingAssistantPanel({
     ? initialScanIntervalSeconds
     : Number(cadence);
   const effectiveCadenceTrigger = cadence === 'on-save' ? 'on_save' : cadenceTrigger;
-  const schedulerEnabled = enabled && cadence !== 'manual';
+  const schedulerEnabled = enabled && aiMasterOn && cadence !== 'manual';
 
   const { result: scheduledResult, scanning, scanError: scheduledScanError, runScan } = useWritingScheduler({
     scene,
     enabled: schedulerEnabled,
     scanIntervalSeconds: effectiveScanIntervalSeconds,
-    isActive,
+    isActive: isActive && aiMasterOn,
     cadenceTrigger: effectiveCadenceTrigger,
     idleHeartbeatConstantInterval,
     idleDebounceSeconds,
@@ -760,6 +764,14 @@ export default function WritingAssistantPanel({
             )}
           </button>
         </div>
+      </div>
+    );
+  }
+
+  if (!aiMasterOn || !enabled) {
+    return (
+      <div className="wa-panel wa-panel--ai-off" data-testid="wa-panel-ai-off" role="status">
+        <p className="wa-panel-ai-off-copy">Writing Coach is off while All AI features is disabled.</p>
       </div>
     );
   }

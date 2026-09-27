@@ -220,7 +220,8 @@ test('SKY-10507: master ON + per-agents disagree — defers to each per-agent en
     // AGENTS card: disabled agents say "Disabled"; enabled agents don't.
     const agentsCard = page.locator('[data-testid="agent-hub-panel"] section[aria-label="Agents"]');
     await expect(agentsCard.locator('[data-testid="ahp-agent-row-writing-assistant"] .ahp-status-text')).toHaveText('Disabled');
-    await expect(agentsCard.locator('[data-testid="ahp-agent-row-archive"] .ahp-status-text')).toHaveText('Disabled');
+    // S2-6: Archive Agent hand removed from AGENTS card.
+    await expect(agentsCard.locator('[data-testid="ahp-agent-row-archive"]')).toHaveCount(0);
     await expect(agentsCard.locator('[data-testid="ahp-agent-row-brainstorm"] .ahp-status-text')).not.toHaveText('Disabled');
     await expect(agentsCard.locator('[data-testid="ahp-agent-row-beta-reader"] .ahp-status-text')).not.toHaveText('Disabled');
 

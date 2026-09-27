@@ -511,6 +511,15 @@
   cursor: pointer;
 }
 
+/* S2-2: native <option> menus stay dark (not OS bright white). */
+.settings-input option,
+.settings-select option,
+select.settings-input option,
+select.settings-select option {
+  background-color: var(--bg-elevated, #0f1321);
+  color: var(--text-body, #dbe4f5);
+}
+
 .settings-slider-row {
   display: flex;
   align-items: center;

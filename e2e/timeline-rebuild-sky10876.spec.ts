@@ -34,6 +34,9 @@ import {
   type Page,
 } from '@playwright/test';
 
+// S2-6: Rebuild command lived on the Archive Timeline tab — surface removed.
+test.skip(true, 'S2-6: Archive Timeline tab removed — rebuild E2E parked with Archivist');
+
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 const STORY_ID = 'story-timeline-rebuild-e2e';

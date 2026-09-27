@@ -90,21 +90,21 @@ function seedUserData(userData: string, vaultDir: string): void {
 
 /**
  * Seed userData for the budget cap test.
- * writingAssistant.autoApply=true, maxSuggestionsPerHour=1.
- * Because countSuggestionsInWindowWithDb runs AFTER insertion, the very first
- * suggestion from writing-assistant with confidence >= 0.8 will have count=1
- * which satisfies 1 >= maxSuggestionsPerHour=1 → budgetExceeded=true.
+ * autoApply stays OFF (S2-5 Path A — do not re-enable). Budget-held still
+ * fires via evaluateAutoApply when maxSuggestionsPerHour is hit.
+ * slice2AutonomyOffMigrated=true so loadAppSettings does not re-migrate.
  */
 function seedBudgetUserData(userData: string, vaultDir: string): void {
   const appSettings = {
     apiKey: '',
     onboardingComplete: true,
+    slice2AutonomyOffMigrated: true,
     agents: {
       writingAssistant: {
         enabled: false,
         model: 'claude-sonnet-4-6',
         scanIntervalSeconds: 30,
-        autoApply: true,           // enabled for budget-cap evaluation
+        autoApply: false,          // S2-5: stay off — budget-held must still work
         confidenceThreshold: 0.8,
         maxTokensPerHour: 100_000,
         maxSuggestionsPerHour: 1,  // cap so low that the first suggestion hits it
@@ -475,10 +475,9 @@ test.describe('Suggestion store IPC smoke (TC-S-01/02/03)', () => {
 
 // ─── TC-S-04: Per-agent budget cap ────────────────────────────────────────────
 //
-// Uses a dedicated app instance seeded with autoApply=true and a hard cap of
-// maxSuggestionsPerHour=1.  After a single upsert the suggestion count in the
-// rolling window equals the cap, so the IPC handler sets budget_exceeded=1 and
-// does NOT auto-apply the suggestion.
+// Dedicated app instance with autoApply=false (S2-5) and maxSuggestionsPerHour=1.
+// After a single upsert the suggestion count in the rolling window equals the
+// cap, so the IPC handler sets budget_exceeded=1 and does NOT auto-apply.
 
 test.describe('Budget cap enforcement (TC-S-04)', () => {
   let userData: string;

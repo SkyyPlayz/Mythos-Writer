@@ -36,10 +36,7 @@ import type { SceneNoteDragPayload } from './sceneNotes';
 import type { InconsistencyItem } from './InconsistencyCard';
 import { useMiniAgentChat } from './timeline2/panel/useMiniAgentChat';
 import MiniAgentChat from './timeline2/panel/MiniAgentChat';
-import { invokeArchive } from './timeline2/panel/ArchiveTab';
 import { invokeBrainstorm } from './timeline2/panel/BrainstormTab';
-import ComposerQuickActions from './components/ComposerQuickActions';
-import { generateQuickActionChips, type QuickActionChip } from './archive/composerQuickActions';
 import SuggestionReview from './SuggestionReview';
 import './AgentHubPanel.css';
 
@@ -74,13 +71,8 @@ const AGENT_DEFS: AgentDef[] = [
     description: 'Curates your vault, extracts facts, and develops ideas with you.',
     color: '#9b5fff',
   },
-  {
-    id: 'archive',
-    agentKey: 'archive',
-    label: 'Archive Agent',
-    description: 'Continuity guardian — catches inconsistencies and builds your timeline.',
-    color: '#ffd319',
-  },
+  // S2-6: Archivist / Archive Agent hand removed from partner IA (video wins).
+  // Continuity still surfaces via Continuity panel; Timeline Archive tab gone.
   {
     id: 'beta-reader',
     agentKey: 'betaReader',
@@ -813,8 +805,6 @@ function AgentChatView({
   autoApply,
   autoApplyCategories,
   onAutoApplyCategoriesChange,
-  continuityPanel,
-  continuityItems,
 }: AgentChatViewProps) {
   const displayName = resolveAgentDisplayName(agentDef.agentKey, agentNames);
   // SKY-7076: mirror WritingAssistantPanel's generation state so this
@@ -874,17 +864,13 @@ function AgentChatView({
         />
       )}
 
-      {/* M12.B3 (SKY-10738): the Archive Agent's redesigned panel lives here —
-          the agent's chat panel in the right sidebar (owner's placement). */}
-      {agentId === 'archive' && (
-        <ArchiveChatBody scene={scene} continuityPanel={continuityPanel} continuityItems={continuityItems ?? []} />
-      )}
+      {/* S2-6: Archive Agent chat body removed with Archivist hand. */}
 
       {/* SKY-11224: Brainstorm's chat backend already existed (BrainstormTab's
           invokeBrainstorm, shared session) — this row just never rendered it. */}
       {agentId === 'brainstorm' && <BrainstormChatBody />}
 
-      {agentId !== 'writing-assistant' && agentId !== 'archive' && agentId !== 'brainstorm' && (
+      {agentId !== 'writing-assistant' && agentId !== 'brainstorm' && (
         <div className="ahp-chat-placeholder">
           <p className="ahp-chat-coming-soon">{displayName} chat coming soon.</p>
         </div>
@@ -902,80 +888,6 @@ function BrainstormChatBody() {
   return (
     <div className="ahp-brainstorm-chat">
       <MiniAgentChat chat={chat} accent="brainstorm" placeholder="Ask the Brainstorm agent…" testidPrefix="ahp-brainstorm" />
-    </div>
-  );
-}
-
-// ── Archive Agent chat body (SKY-10738/M12.B3; split SKY-11228) ────────────
-// Redesigned Continuity panel + composer quick-action chips (generated from
-// the CURRENT flag set — same affordance as Brainstorm's refine chips) + a
-// mini chat on the shared Archive agent session (reuses MiniAgentChat, the
-// same building block Timeline2's ArchiveTab already uses for this agent).
-//
-// SKY-11228: the Continuity panel and the chat used to share one scrolling
-// column, so a non-trivial flags list pushed the chat down and it never got
-// the full available height (standing rule: a chat surface gets the full
-// height available to it, no panel stacked above it). Mirrors the
-// NotesTabPanel "Agent" / "Flags" split — own sub-tabs, each its own
-// full-height flex column; both stay mounted so switching tabs never drops
-// the chat draft/transcript.
-
-function ArchiveChatBody({
-  scene,
-  continuityPanel,
-  continuityItems,
-}: {
-  scene: Scene | null;
-  continuityPanel?: import('react').ReactNode;
-  continuityItems: InconsistencyItem[];
-}) {
-  const chat = useMiniAgentChat('archive', invokeArchive);
-  const chips = useMemo(() => generateQuickActionChips(continuityItems), [continuityItems]);
-  const [scanning, setScanning] = useState(false);
-  const [archiveSubTab, setArchiveSubTab] = useState<'chat' | 'flags'>('chat');
-
-  const handleChipSelect = useCallback((chip: QuickActionChip) => {
-    if (chip.kind === 'scan') {
-      if (!scene) return;
-      const prose = scene.blocks.map((b) => b.content).join('\n\n');
-      setScanning(true);
-      void window.api.archiveScanContinuity(scene.id, prose, 'full_manuscript').finally(() => setScanning(false));
-      return;
-    }
-    if (chip.prompt) void chat.send(chip.prompt);
-  }, [scene, chat]);
-
-  return (
-    <div className="ahp-archive-chat">
-      <div className="ahp-archive-subtabs" role="tablist" aria-label="Archive Agent panel">
-        <button
-          role="tab"
-          aria-selected={archiveSubTab === 'chat'}
-          className={`ahp-archive-subtab${archiveSubTab === 'chat' ? ' ahp-archive-subtab--active' : ''}`}
-          data-testid="ahp-archive-subtab-chat"
-          onClick={() => setArchiveSubTab('chat')}
-          type="button"
-        >
-          Chat
-        </button>
-        <button
-          role="tab"
-          aria-selected={archiveSubTab === 'flags'}
-          className={`ahp-archive-subtab${archiveSubTab === 'flags' ? ' ahp-archive-subtab--active' : ''}`}
-          data-testid="ahp-archive-subtab-flags"
-          onClick={() => setArchiveSubTab('flags')}
-          type="button"
-        >
-          Flags
-        </button>
-      </div>
-      <div className="ahp-archive-chat-section" style={archiveSubTab === 'chat' ? undefined : { display: 'none' }}>
-        <ComposerQuickActions chips={chips} onSelect={handleChipSelect} disabled={scanning || chat.busy} />
-        <MiniAgentChat chat={chat} accent="archive" placeholder="Talk to the Archive Agent…" testidPrefix="ahp-archive" />
-      </div>
-      <div className="ahp-archive-flags-section" style={archiveSubTab === 'flags' ? undefined : { display: 'none' }}>
-        {continuityPanel}
-      </div>
     </div>
   );
 }

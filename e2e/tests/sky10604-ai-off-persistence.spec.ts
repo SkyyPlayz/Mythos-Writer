@@ -82,7 +82,7 @@ test('TC-PS-01: master toggle state persists across an app restart, both directi
     await expect(grs().getByRole('tab', { name: 'Scenes' })).toBeVisible({ timeout: 10_000 });
     await expect(grs().getByRole('tab', { name: 'Assistant' })).toHaveCount(0);
     await openSettingsDialog(page);
-    const toggle = page.locator('[role="dialog"][aria-label="Settings"] input[role="switch"][aria-label="AI features"]');
+    const toggle = page.locator('[role="dialog"][aria-label="Settings"] input[role="switch"][aria-label="All AI features"]');
     await page.locator('[data-testid="settings-cat-agents"]').click();
     await expect(toggle).toHaveJSProperty('checked', false);
 

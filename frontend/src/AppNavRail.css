@@ -5,22 +5,25 @@
  * Originally SKY-3096.
  * ========================================================================= */
 
-/* railSt (prototype 4047) — expanded 76px / slim 54px glass column */
+/* railSt — S2-1: flush to window top/edges (Full Book chrome); square top so
+   the rail meets the OS title edge instead of floating as an inset card. */
 .nav-rail {
   position: relative;
   width: 76px;
   flex: none;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 7px;
-  padding: 12px 0;
-  margin-right: 10px;
-  border-radius: 18px;
-  z-index: 40;
+  padding: 10px 0 12px;
+  margin: 0;
+  border-radius: 0;
+  z-index: 70; /* S2-1: above WindowChrome (60) / WorkspaceTabBar (55) so Stories popover receives clicks */
   background: var(--glass, rgba(13, 16, 28, .72));
-  border: var(--bw, 1px) solid var(--b6, rgba(61, 155, 255, .4));
-  box-shadow: 0 0 var(--gr, 26px) -8px var(--g6, rgba(61, 155, 255, .35)), inset 0 1px 0 rgba(255, 255, 255, .06);
+  border: none;
+  border-right: var(--bw, 1px) solid var(--b6, rgba(61, 155, 255, .4));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06);
   transition: width .22s ease;
   user-select: none;
 }
@@ -194,7 +197,7 @@
 .nav-rail__stories-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 44;
+  z-index: 71;
 }
 
 .nav-rail__stories {
@@ -202,7 +205,7 @@
   left: 64px;
   top: 10px;
   width: 272px;
-  z-index: 46;
+  z-index: 72;
   padding: 10px;
   border-radius: 15px;
   background: rgba(15, 19, 33, .97);

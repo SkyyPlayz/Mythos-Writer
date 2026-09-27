@@ -542,6 +542,29 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
               testIdPrefix="lnas-density"
             />
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11.5, color: '#aebad0' }}>App text size</div>
+              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>
+                Chrome scale {Math.round((S.uiScale ?? 1) * 100)}% (82–118%). Ctrl+Scroll or Ctrl+/−/0 also zoom.
+              </div>
+            </div>
+            <input
+              type="range"
+              min={82}
+              max={118}
+              step={1}
+              value={Math.round((S.uiScale ?? 1) * 100)}
+              aria-label="App text size"
+              data-testid="lnas-ui-scale"
+              onChange={(e) => {
+                const pct = Number(e.target.value);
+                const uiScale = Math.min(1.18, Math.max(0.82, pct / 100));
+                patch({ uiScale });
+              }}
+              style={{ width: 120, accentColor: 'var(--accent, #3d9bff)' }}
+            />
+          </div>
           {onNavRailLabelsChange && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={{ flex: 1 }}>

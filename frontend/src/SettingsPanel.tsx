@@ -30,7 +30,7 @@ import SceneFieldsSection from './components/SettingsPanel/sections/SceneFieldsS
 import SnapshotsSection from './components/SettingsPanel/sections/SnapshotsSection';
 import VersionHistorySection from './components/SettingsPanel/sections/VersionHistorySection';
 import BackupSection from './components/SettingsPanel/sections/BackupSection';
-import ArchiveAgentSection from './components/SettingsPanel/sections/ArchiveAgentSection';
+// S2-6: ArchiveAgentSection removed with Archivist hand.
 import UpdatesSection from './components/SettingsPanel/sections/UpdatesSection';
 import AppearanceSection from './components/SettingsPanel/sections/AppearanceSection';
 import LiquidNeonAppearanceSection from './components/SettingsPanel/sections/LiquidNeonAppearanceSection';
@@ -1029,7 +1029,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
               <JournalSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
 
-              <ArchiveAgentSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
+              {/* S2-6: ArchiveAgentSection removed with Archivist hand. */}
 
               <VoiceSection
                 settings={settings}

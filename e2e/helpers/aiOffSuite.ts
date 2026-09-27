@@ -188,7 +188,7 @@ export async function closeSettingsDialog(page: Page): Promise<void> {
 }
 
 /**
- * Flip the master "AI features" switch inside the (already open) Settings
+ * Flip the master "All AI features" switch inside the (already open) Settings
  * dialog and wait for the immediate-persist toast copy.
  */
 export async function flipMasterToggle(page: Page, to: boolean): Promise<void> {
@@ -196,7 +196,7 @@ export async function flipMasterToggle(page: Page, to: boolean): Promise<void> {
   await dialog.locator('[data-testid="settings-cat-agents"]').click();
   const card = dialog.locator('.ai-master-card');
   await expect(card).toBeVisible({ timeout: 5_000 });
-  const toggle = card.locator('input[role="switch"][aria-label="AI features"]');
+  const toggle = card.locator('input[role="switch"][aria-label="All AI features"]');
   if (await toggle.isChecked() !== to) {
     // Click the label — the checkbox input itself is visually hidden chrome.
     await card.locator('.settings-toggle').click();

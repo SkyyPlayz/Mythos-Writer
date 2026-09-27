@@ -204,7 +204,7 @@ test('SKY-10575: AI off — Brainstorm and Archive tabs hidden, Inspector remain
   }
 });
 
-test('SKY-10575: AI on — all three tabs visible', async () => {
+test('SKY-10575: AI on — Ivy + Idea Board visible (S2-6: no Archive tab)', async () => {
   const fixture = createFixture(true);
   let app: ElectronApplication | undefined;
   try {
@@ -215,8 +215,10 @@ test('SKY-10575: AI on — all three tabs visible', async () => {
     await openTimeline(page);
 
     await expect(page.locator('[data-testid="trp-tab-inspector"]')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('[data-testid="trp-tab-inspector"]')).toHaveText('Ivy');
     await expect(page.locator('[data-testid="trp-tab-brainstorm"]')).toBeVisible({ timeout: 5_000 });
-    await expect(page.locator('[data-testid="trp-tab-archive"]')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('[data-testid="trp-tab-brainstorm"]')).toHaveText('Idea Board');
+    await expect(page.locator('[data-testid="trp-tab-archive"]')).toHaveCount(0);
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);
