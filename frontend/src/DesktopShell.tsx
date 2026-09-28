@@ -6229,6 +6229,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onSectionChange={handleNavModuleChange}
             onOpenAccount={() => setAccountModalOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
+            settingsActive={settingsOpen}
             navItems={navItems}
             collapsed={navRailCollapsed}
             onToggleCollapsed={() => persistNavRailCollapsed(!navRailCollapsed)}

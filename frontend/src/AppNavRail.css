@@ -61,11 +61,9 @@
   outline-offset: 2px;
 }
 
-/* Shared with .nav-rail__vault-tile--active below — both are the prototype's
-   "current-vault tile" gradient look; kept as one selector so the two can't
-   silently drift apart. */
-.nav-rail__brand-glyph,
-.nav-rail__vault-tile--active {
+/* Brand glyph (legacy account entry — OWNER ASK whether A1 removes it; design
+   rail has no brand tile). Active vault tile uses the same gradient recipe. */
+.nav-rail__brand-glyph {
   color: #0b0d17;
   background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
   box-shadow: 0 0 14px -3px var(--g2, rgba(155, 95, 255, .4));
@@ -108,17 +106,25 @@
 /* ── Nav items (prototype 173–178; railBase 3971) ─────────────────────── */
 
 .nav-rail__nav {
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 7px;
+  gap: 6px;
   width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Items themselves flex (09 §3.2); this group eats leftover above the spacer */
 }
 
 .nav-rail--collapsed .nav-rail__nav {
-  gap: 5px;
+  gap: 4px;
+}
+
+/* 09 §3.2: spacer between nav items and vault tiles (no scroll container) */
+.nav-rail__spacer {
+  flex: 1 1 12px;
+  min-height: 4px;
+  width: 100%;
 }
 
 .nav-rail__item {
@@ -163,15 +169,15 @@
   outline-offset: 2px;
 }
 
-/* railActive — 09 §3.2: always slot 1 for every module */
+/* railActive — prototype 9280: slot-1 neon (gs1 .1 / g1 .45) for every module */
 .nav-rail__item--active,
 .nav-rail__item--active.nav-rail__item--slot-1,
 .nav-rail__item--active.nav-rail__item--slot-2,
 .nav-rail__item--active.nav-rail__item--slot-3 {
   color: var(--n1, #00f0ff);
-  background: var(--gs1, rgba(0, 240, 255, .12));
+  background: var(--gs1, rgba(0, 240, 255, .1));
   border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
-  box-shadow: 0 0 18px -4px var(--g1, rgba(0, 240, 255, .4)), inset 0 0 12px var(--gs1, rgba(0, 240, 255, .12));
+  box-shadow: 0 0 18px -4px var(--g1, rgba(0, 240, 255, .45)), inset 0 0 12px var(--gs1, rgba(0, 240, 255, .1));
 }
 
 .nav-rail__item-icon {
@@ -357,22 +363,12 @@
   align-items: center;
   gap: 6px;
   padding-bottom: 2px;
-  /* SKY-11238: stable registration order means the active tile can sit
-     anywhere in the group, so a long list must scroll rather than clip it
-     off the rail (the component scrolls the active tile into view).
-     Scrollbar hidden — a 9px bar would crowd the 30px tiles; same
-     wheel-scroll-without-bar treatment as focus-hide-scrollbars. */
-  max-height: 294px; /* 8 tiles + gaps before scrolling kicks in */
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-
-.nav-rail__vaults::-webkit-scrollbar {
-  display: none;
+  /* A1 / 09 §3.2: no scroll container — spacer above absorbs height */
+  overflow: visible;
 }
 
 .nav-rail--collapsed .nav-rail__vaults {
-  gap: 5px;
+  gap: 6px;
 }
 
 .nav-rail__vault-tile {
@@ -412,58 +408,47 @@
   outline-offset: 2px;
 }
 
-/* prototype vaultTiles st (5829): current vault = the same rainbow-gradient
-   fill the rail already uses for "this is the primary/active surface"
-   (background/color shared with .nav-rail__brand-glyph above).
-   SKY-11377: the shared box-shadow read as a faint blue ring, not a glow —
-   the owner's literal ask was "make the highlight more of a neon glow."
-   Given a dedicated (stronger) shadow here rather than strengthening the
-   shared rule, so the brand mark's subtler look is unaffected. Reuses the
-   existing --neon-glow-strong utility (tokens.css) plus a solid --accent
-   ring for shape at a glance — no new colour, and it inherits that token's
-   existing high-contrast degradation (--accent flattens to a solid,
-   no-glow stroke under [data-contrast="high"]). */
+/* A1 / 09 §3.2 vaultTiles active — grad fill + g2 glow (no double ring) */
 .nav-rail__vault-tile--active {
   cursor: default;
+  color: #0b0d17;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
   border-color: transparent;
-  box-shadow:
-    0 0 0 2px var(--bg-panel, #12141f),
-    0 0 0 3.5px var(--accent, var(--neon-violet, #9b5fff)),
-    var(--neon-glow-strong);
+  box-shadow: 0 0 14px -3px var(--g2, rgba(155, 95, 255, .4));
 }
 
-/* prototype newMythosVaultH tile (HTML 174): dashed "minimized +" affordance.
-   Always visible (not hover-revealed like the prototype's 8px-tall collapsed
-   state) so it's reachable without a pointer — a11y takes priority over the
-   literal prototype pixels here. */
+/* A1 / 09 §3.2 new-vault +: 22×18, radius 6, dashed */
 .nav-rail__vault-add {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
+  width: 22px;
+  height: 18px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   flex: none;
   padding: 0;
   cursor: pointer;
-  color: #586a88;
+  color: #8e9db8;
   background: transparent;
   border: 1px dashed rgba(255, 255, 255, .22);
   font-family: inherit;
-  transition: background var(--dur-hover-in) var(--ease-out),
-    box-shadow var(--dur-hover-in) var(--ease-out),
-    color var(--dur-hover-in) var(--ease-out),
-    transform var(--dur-press) var(--ease-out);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  overflow: hidden;
+  transition: all .18s ease;
 }
 
 .nav-rail--collapsed .nav-rail__vault-add {
-  width: 26px;
-  height: 26px;
+  width: 22px;
+  height: 18px;
 }
 
 .nav-rail__vault-add:hover {
+  border-radius: 8px;
   color: var(--n1, #00f0ff);
   border-color: var(--b1, rgba(0, 240, 255, .5));
+  background: var(--gs1, rgba(0, 240, 255, .08));
 }
 
 .nav-rail__vault-add:focus-visible {
@@ -492,29 +477,30 @@
   background: rgba(255, 255, 255, .09);
 }
 
-/* Settings item (prototype 212–215; railBase-styled) */
+/* A1 / 09 §3.2 Settings — height 50 (slim 38), flex:none */
 .nav-rail__settings {
   width: 60px;
-  height: 58px;
+  height: 50px;
   border-radius: 14px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   padding: 0;
   cursor: pointer;
   color: #8e9db8;
-  border: 1px solid transparent;
+  border: 1px solid rgba(255, 255, 255, .09);
   background: transparent;
   flex: none;
   font-family: inherit;
-  transition: box-shadow var(--dur-hover-in) var(--ease-out), color var(--dur-hover-in) var(--ease-out);
+  transition: box-shadow var(--dur-hover-in) var(--ease-out), color var(--dur-hover-in) var(--ease-out),
+    background var(--dur-hover-in) var(--ease-out), border-color var(--dur-hover-in) var(--ease-out);
 }
 
 .nav-rail--collapsed .nav-rail__settings {
   width: 40px;
-  height: 40px;
+  height: 38px;
   border-radius: 11px;
   gap: 0;
 }
@@ -522,6 +508,15 @@
 .nav-rail__settings:hover {
   background: rgba(255, 255, 255, .06);
   color: #e8eefc;
+  border-color: rgba(255, 255, 255, .18);
+}
+
+/* settingsNavSt when view=settings — same recipe as railActive */
+.nav-rail__settings--active {
+  color: var(--n1, #00f0ff);
+  background: var(--gs1, rgba(0, 240, 255, .1));
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
+  box-shadow: 0 0 18px -4px var(--g1, rgba(0, 240, 255, .45)), inset 0 0 12px var(--gs1, rgba(0, 240, 255, .1));
 }
 
 .nav-rail__settings:focus-visible {

@@ -97,6 +97,42 @@ describe('AppNavRail', () => {
     expect(screen.getByRole('navigation')).not.toHaveClass('nav-rail--collapsed');
   });
 
+  it('renders the flex spacer between nav and vaults (09 §3.2)', () => {
+    const { container } = render(<AppNavRail {...makeProps()} />);
+    expect(container.querySelector('.nav-rail__spacer')).toBeInTheDocument();
+  });
+
+  it('auto-slims when the window is short (prototype railCompact)', () => {
+    const original = window.innerHeight;
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 200 });
+    render(<AppNavRail {...makeProps({ collapsed: false })} />);
+    expect(screen.getByRole('navigation')).toHaveClass('nav-rail--collapsed');
+    expect(screen.getByRole('navigation')).toHaveAttribute(
+      'title',
+      'labels hidden — window is short',
+    );
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: original });
+  });
+
+  it('marks Settings active when settingsActive', () => {
+    render(<AppNavRail {...makeProps({ settingsActive: true })} />);
+    const settings = screen.getByRole('button', { name: 'Open settings' });
+    expect(settings).toHaveClass('nav-rail__settings--active');
+    expect(settings).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('vault + tile is a literal plus (prototype HTML 168)', () => {
+    render(
+      <AppNavRail
+        {...makeProps({
+          vaults: [{ id: '/v', name: 'V', active: true }],
+          onNewVault: vi.fn(),
+        })}
+      />,
+    );
+    expect(screen.getByTestId('nav-rail-vault-add')).toHaveTextContent('+');
+  });
+
   it('hides item labels when collapsed', () => {
     render(<AppNavRail {...makeProps({ collapsed: true })} />);
     expect(screen.queryByText('Story')).not.toBeInTheDocument();

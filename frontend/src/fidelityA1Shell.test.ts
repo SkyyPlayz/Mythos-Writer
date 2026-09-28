@@ -18,8 +18,27 @@ describe('A1 floating rail (09 §3.2)', () => {
     expect(css).not.toMatch(/\.nav-rail\s*\{[^}]*border-radius:\s*0/s);
   });
 
-  it('active nav items collapse to slot-1 neon', () => {
+  it('active nav items collapse to slot-1 neon (gs1 .1 / g1 .45)', () => {
     expect(css).toMatch(/\.nav-rail__item--active[\s\S]*var\(--n1/);
+    expect(css).toMatch(/\.nav-rail__item--active[\s\S]*rgba\(0,\s*240,\s*255,\s*\.1\)/);
+    expect(css).toMatch(/\.nav-rail__item--active[\s\S]*rgba\(0,\s*240,\s*255,\s*\.45\)/);
+  });
+
+  it('vault tiles match design (no scroll, grad active, 22×18 +, settings h50)', () => {
+    expect(css).toMatch(/\.nav-rail__vaults\s*\{[^}]*overflow:\s*visible/s);
+    expect(css).not.toMatch(/\.nav-rail__vaults\s*\{[^}]*max-height:\s*294px/s);
+    expect(css).toMatch(/\.nav-rail__vault-tile--active\s*\{[^}]*var\(--grad/s);
+    expect(css).not.toMatch(/\.nav-rail__vault-tile--active\s*\{[^}]*neon-glow-strong/s);
+    expect(css).toMatch(/\.nav-rail__vault-add\s*\{[^}]*width:\s*22px/s);
+    expect(css).toMatch(/\.nav-rail__vault-add\s*\{[^}]*height:\s*18px/s);
+    expect(css).toMatch(/\.nav-rail__settings\s*\{[^}]*height:\s*50px/s);
+    expect(css).toContain('.nav-rail__spacer');
+    expect(css).toContain('.nav-rail__settings--active');
+  });
+
+  it('auto-slim formula matches prototype railNeeds', () => {
+    const tsx = read('AppNavRail.tsx');
+    expect(tsx).toMatch(/innerHeight\s*<\s*n\s*\*\s*64\s*\+\s*60\s*\+\s*3\s*\*\s*36\s*\+\s*90/);
   });
 });
 

@@ -39,6 +39,8 @@ export interface AppNavRailProps {
   onSectionChange: (moduleId: NavRailModuleId) => void;
   onOpenAccount: () => void;
   onOpenSettings: () => void;
+  /** A1 / prototype settingsNavSt: Settings button uses railActive while open. */
+  settingsActive?: boolean;
   navItems: NavRailItem[];
   collapsed: boolean;
   onToggleCollapsed: () => void;
@@ -252,6 +254,7 @@ export default function AppNavRail({
   onSectionChange,
   onOpenAccount,
   onOpenSettings,
+  settingsActive = false,
   navItems,
   collapsed,
   onToggleCollapsed,
@@ -285,11 +288,25 @@ export default function AppNavRail({
   // SKY-11068: icon-edit picker, opened from the "Set icon" row at the same position.
   const [iconEditFor, setIconEditFor] = useState<{ vaultId: string; x: number; y: number } | null>(null);
 
+  // A1 / prototype 9274–9277: short windows drop labels (railNeeds = n×64+60+3×36+90).
+  const [autoSlim, setAutoSlim] = useState(false);
+  useEffect(() => {
+    const check = () => {
+      const n = Math.max(1, navItems.length);
+      setAutoSlim(window.innerHeight < n * 64 + 60 + 3 * 36 + 90);
+    };
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, [navItems.length]);
+  const slim = collapsed || autoSlim;
+  const autoSlimHint = autoSlim && !collapsed;
+
   // A collapsed (slim) rail only has room for the icon; and when the user
   // hides labels, icons become the only visible affordance — so at least one
   // of the two is always rendered (aria-labels keep every state accessible).
-  const renderIcons = showIcons || collapsed || !showLabels;
-  const renderLabels = !collapsed && showLabels;
+  const renderIcons = showIcons || slim || !showLabels;
+  const renderLabels = !slim && showLabels;
   const storiesEnabled = stories !== undefined;
   const editEnabled = editableItems !== undefined && onEditableItemsChange !== undefined;
 
@@ -444,7 +461,8 @@ export default function AppNavRail({
 
   return (
     <nav
-      className={`nav-rail${collapsed ? ' nav-rail--collapsed' : ''}`}
+      className={`nav-rail${slim ? ' nav-rail--collapsed' : ''}`}
+      title={autoSlimHint ? 'labels hidden — window is short' : undefined}
       aria-label="Main navigation"
     >
       {neonOverlay}
@@ -457,7 +475,7 @@ export default function AppNavRail({
           aria-label="Open account"
         >
           <span className="nav-rail__brand-glyph" aria-hidden="true">M</span>
-          {!collapsed && <span className="nav-rail__brand-label">Mythos</span>}
+          {!slim && <span className="nav-rail__brand-label">Mythos</span>}
         </button>
       </div>
 
@@ -482,7 +500,7 @@ export default function AppNavRail({
               aria-current={active ? 'page' : undefined}
               aria-haspopup={hasStories ? 'true' : undefined}
               aria-expanded={hasStories ? storiesOpen : undefined}
-              title={item.label}
+              title={autoSlimHint ? `${item.label} (labels hidden — window is short)` : item.label}
             >
               {renderIcons && (
                 <span className="nav-rail__item-icon" aria-hidden="true">{Glyph ? <Glyph /> : item.icon}</span>
@@ -494,6 +512,9 @@ export default function AppNavRail({
           );
         })}
       </div>
+
+      {/* A1 / 09 §3.2: flex spacer between nav and vault tiles */}
+      <div className="nav-rail__spacer" aria-hidden="true" />
 
       {/* Stories popover (prototype 179–203) */}
       {storiesEnabled && storiesOpen && (
@@ -580,12 +601,10 @@ export default function AppNavRail({
               className="nav-rail__vault-add"
               onClick={onNewVault}
               aria-label="New Mythos vault"
-              title="New Mythos vault — a folder on disk"
+              title="New Mythos vault — local folder, Dropbox, network drive…"
               data-testid="nav-rail-vault-add"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none" aria-hidden="true">
-                <path d="M12 5v14M5 12h14" />
-              </svg>
+              +
             </button>
           )}
           {vaultMenu && vaults.some((v) => v.id === vaultMenu.vaultId) && (
@@ -618,13 +637,14 @@ export default function AppNavRail({
         <div className="nav-rail__divider" aria-hidden="true" />
         <button
           type="button"
-          className="nav-rail__settings"
+          className={`nav-rail__settings${settingsActive ? ' nav-rail__settings--active' : ''}`}
           onClick={onOpenSettings}
           aria-label="Open settings"
+          aria-current={settingsActive ? 'page' : undefined}
           title="Settings"
         >
           <span className="nav-rail__settings-icon" aria-hidden="true"><SettingsGlyph /></span>
-          {!collapsed && (
+          {!slim && (
             <span className="nav-rail__settings-label">Settings</span>
           )}
         </button>
