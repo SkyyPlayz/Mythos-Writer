@@ -54,7 +54,7 @@ const WORKSPACES: WorkspaceCase[] = [
       page.locator('.ProseMirror').first(),
       grs(page).getByRole('tab', { name: 'Scenes' }),
     ],
-    ai: (page) => [grs(page).getByRole('tab', { name: 'Assistant' })],
+    ai: (page) => [grs(page).getByRole('tab', { name: 'Mythos' })],
   },
   {
     name: 'scene-crafter',
@@ -101,7 +101,7 @@ const WORKSPACES: WorkspaceCase[] = [
     name: 'timeline',
     go: goTimeline,
     core: (page) => [page.locator('[data-testid="timeline-root"]')],
-    ai: (page) => [grs(page).getByRole('tab', { name: 'Assistant' })],
+    ai: (page) => [grs(page).getByRole('tab', { name: 'Mythos' })],
   },
   {
     name: 'vault-graph',
@@ -110,7 +110,7 @@ const WORKSPACES: WorkspaceCase[] = [
       page.locator('#app-tabpanel-vault-graph'),
       page.locator('[data-testid="vault-graph-view"], .vgv-state').first(),
     ],
-    ai: (page) => [grs(page).getByRole('tab', { name: 'Assistant' })],
+    ai: (page) => [grs(page).getByRole('tab', { name: 'Mythos' })],
   },
 ];
 

@@ -101,9 +101,10 @@ export async function installMockChatStream(
 export async function openWritingCoachChat(page: Page): Promise<void> {
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 4_000 });
-  const agentRow = page.locator('[aria-label^="Open Writing Coach chat"]');
-  if (await agentRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await agentRow.click();
+  // Slice B: Writer hand opens WritingAssistantPanel (Coach mode).
+  const writerHand = page.locator('[data-testid="ahp-hand-writer"]');
+  if (await writerHand.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await writerHand.click();
   }
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }

@@ -309,7 +309,7 @@ async function openProductionTeamTab(page: Page): Promise<import('@playwright/te
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 8_000 });
 
-  const betaRow = page.locator('[data-testid="ahp-agent-row-beta-reader"]');
+  const betaRow = page.locator('[data-testid="ahp-hand-analyst"]');
   await expect(betaRow).toBeVisible({ timeout: 8_000 });
   await betaRow.click();
 

@@ -114,6 +114,9 @@ describe('DesktopShell story selection opens the cursor-default scene (SKY-9022 
     render(<App />);
     await screen.findByRole('navigation', { name: 'Main navigation' });
 
+    // Slice B: Scene Analysis lives under Notes & Analysis (not the partner hub).
+    const notesAnalysisTab = await screen.findByTestId('ahp-tab-notes-analysis');
+    fireEvent.click(notesAnalysisTab);
     // Precondition: nothing selected — the Scene Analysis card shows its
     // empty state while the navigator lists the story.
     expect(await screen.findByText('Open a scene to see analysis.')).toBeInTheDocument();
@@ -122,6 +125,9 @@ describe('DesktopShell story selection opens the cursor-default scene (SKY-9022 
     expect(navTitle).toBeTruthy();
 
     fireEvent.click(navTitle!);
+
+    // Stay on Notes & Analysis so Scene Analysis remains mounted.
+    fireEvent.click(await screen.findByTestId('ahp-tab-notes-analysis'));
 
     // The story click resolved and opened the order-sorted first chapter's
     // first scene: the card now renders real rows instead of the empty state.

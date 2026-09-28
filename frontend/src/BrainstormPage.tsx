@@ -2904,6 +2904,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
               }))}
               storyQuestions={[]}
               noteOptions={[]}
+              onAskInChat={(question) => { void submitText(question); }}
               onAppendToNote={async ({ heading, answer }) => {
                 void submitText(`## ${heading}\n\n${answer}`);
               }}

@@ -2774,7 +2774,9 @@ describe('BrainstormPage — M20 idea collections and starter library', () => {
 describe('BrainstormPage — M20 right panel sections', () => {
   it('QUESTIONS FOR YOU lists agent questions; clicking sends one to the chat', async () => {
     render(<BrainstormPage onClose={() => {}} />);
-    expect(screen.queryByTestId('bs-questions-section')).not.toBeInTheDocument();
+    // Slice B: Questions-for-you is always mounted (Agent Activity · Notes · Story).
+    expect(screen.getByTestId('bs-questions-section')).toBeInTheDocument();
+    expect(screen.getByTestId('questions-for-you')).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
       target: { value: 'Tell me about the gate' },
@@ -2784,7 +2786,8 @@ describe('BrainstormPage — M20 right panel sections', () => {
     });
     await simulateStream(['The gate is sealed. Does Kael know Mira took the map? It matters later.']);
 
-    const question = await screen.findByTestId('bs-question-row');
+    fireEvent.click(screen.getByTestId('qfy-subtab-notes'));
+    const question = await screen.findByTestId('qfy-question-nq-0');
     expect(question).toHaveTextContent('Does Kael know Mira took the map?');
 
     await act(async () => {

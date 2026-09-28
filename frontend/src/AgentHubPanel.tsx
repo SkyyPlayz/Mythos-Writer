@@ -373,10 +373,9 @@ function PartnerChatView({
   const [coachBusy, setCoachBusy] = useState(false);
   const [pastOpen, setPastOpen] = useState(false);
 
-  void gettingStartedCard;
-
   return (
     <div className="ahp-partner" data-testid="ahp-partner-view">
+      {gettingStartedCard}
       <PartnerCallChrome
         partnerName={partnerName}
         handBusy={handBusy}

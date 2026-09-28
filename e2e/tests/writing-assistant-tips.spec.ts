@@ -250,10 +250,10 @@ test.beforeAll(async () => {
   // always expanded) is now the sole home for the agent hub.
   await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 6_000 });
 
-  // SKY-6228: right panel is now the agent hub — the Writing Assistant chat
-  // (heartbeat/scan-now) is behind the "Writing Assistant" agent row.
+  // Slice B: partner shell — Writer hand opens WritingAssistantPanel (Coach mode).
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 4_000 });
-  await page.locator('[aria-label^="Open Writing Coach chat"]').click();
+  await expect(page.locator('[data-testid="ahp-partner-view"]')).toBeVisible({ timeout: 4_000 });
+  await page.locator('[data-testid="ahp-hand-writer"]').click();
   // Wait for the WA chat view (WritingAssistantPanel) to render before tests begin.
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
 });

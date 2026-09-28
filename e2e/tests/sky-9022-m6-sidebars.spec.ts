@@ -1,12 +1,7 @@
-// SKY-9022 — EPIC M6: Sidebars to prototype spec, both sides (panel system
-// removed; one Continuity header). Drives the real app and asserts the
-// epic's acceptance checkboxes directly in the DOM:
-//   - Left sidebar renders the three zones and nothing else; no panel
-//     controls exist in the DOM.
-//   - Right sidebar tab order matches the spec; exactly one Continuity
-//     header.
-//   - Fresh profile: tab strip visible immediately; Getting Started is a
-//     card inside Assistant.
+// SKY-9022 — EPIC M6 sidebars, updated for Slice B partner shell:
+//   - Left sidebar three zones unchanged
+//   - Right tabs: <partner> · Suggestions · Scenes · Notes & Analysis
+//   - Partner tab: card + hands (no AGENTS list); Getting Started card inside
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
@@ -103,8 +98,6 @@ test.describe('SKY-9022/M6 — left sidebar (three zones only)', () => {
     app = await launchApp(userData);
     page = await firstWindow(app);
     await expect(page.locator('[data-testid="left-rail"]')).toBeVisible({ timeout: 15_000 });
-    // Zone 1 (story card) is per-story chrome — select the seeded story first,
-    // the same way a writer does from the navigator tree.
     await page.locator('.nav-story-title', { hasText: STORY_TITLE }).click();
     await expect(page.locator('[data-testid="lr-story-card"]')).toBeVisible({ timeout: 8_000 });
   });
@@ -119,38 +112,29 @@ test.describe('SKY-9022/M6 — left sidebar (three zones only)', () => {
     await expect(rail.locator('[data-testid="lr-story-card"]')).toBeVisible();
     await expect(rail.locator('[data-testid="lr-nav-zone"]')).toBeVisible();
     await expect(rail.locator('[data-testid="lr-project-footer"]')).toBeVisible();
-    // Story card: icon, title, "Genre · N words", progress bar, collapse «.
     await expect(rail.locator('.lr-story-icon')).toBeVisible();
     await expect(rail.locator('.lr-story-title')).toBeVisible();
     await expect(rail.locator('.lr-story-meta')).toContainText(/·.*words/);
     await expect(rail.locator('.lr-progress-bar')).toBeVisible();
-    // Navigator: STORY NAVIGATOR label + add + collapse — and ONLY that
-    // header (GAP-3: StoryNavigator's internal "Stories" header is gone).
     await expect(rail.locator('.lr-nav-label')).toHaveText('STORY NAVIGATOR');
     await expect(rail.locator('.lr-nav-add')).toBeVisible();
     await expect(rail.locator('.lr-nav-collapse-btn')).toBeVisible();
     await expect(rail.locator('.nav-header')).toHaveCount(0);
-    // Scene rows: prototype anatomy (GAP-4) — `Scene N · Title` label,
-    // word count, status dot; the old text draft badge is gone.
     const sceneRow = rail.locator('.nav-scene-row').first();
     await expect(sceneRow.locator('.nav-scene-title')).toHaveText('Scene 1 · The Gate');
     await expect(sceneRow.locator('.nav-status-dot')).toBeVisible();
     await expect(rail.locator('.nav-draft-badge')).toHaveCount(0);
-    // Project footer: PROJECT label + Words / Scenes / On Track% trio.
     await expect(rail.locator('.lr-footer-label')).toHaveText('PROJECT');
     const stats = rail.locator('.lr-stat-key');
     await expect(stats).toHaveText(['Words', 'Scenes', 'On Track']);
   });
 
-  // GAP-2 regression guard: the beforeAll story-title click was the exact
-  // repro — the editor opened scene 1 while selectedScene stayed null, so
-  // Scene Analysis sat on its empty state with a scene demonstrably open.
   test('story-title click opens the first scene — Scene Analysis populates', async () => {
     const rail = page.locator('[data-testid="left-rail"]');
-    // The resolved scene is selected in the tree (GAP-4 selection chip)…
     await expect(rail.locator('.nav-scene-row.active .nav-scene-title')).toHaveText('Scene 1 · The Gate');
-    // …and the right sidebar reads the same open scene.
+    // Slice B: Scene Analysis lives under Notes & Analysis.
     const hub = page.locator('[data-testid="agent-hub-panel"]');
+    await hub.getByRole('tab', { name: 'Notes & Analysis' }).click();
     await expect(hub.locator('[data-testid="scene-analysis-rows"]')).toBeVisible({ timeout: 8_000 });
     await expect(hub.locator('.ahp-analysis-row-k', { hasText: 'Word Count' })).toBeVisible();
     await expect(hub.getByText('Open a scene to see analysis.')).toHaveCount(0);
@@ -166,7 +150,7 @@ test.describe('SKY-9022/M6 — left sidebar (three zones only)', () => {
   });
 });
 
-test.describe('SKY-9022/M6 — right sidebar (tab order, single Continuity header)', () => {
+test.describe('SKY-9022/M6 — right sidebar partner shell (Slice B)', () => {
   let tempRoot: string;
   let app: ElectronApplication;
   let page: Page;
@@ -185,78 +169,44 @@ test.describe('SKY-9022/M6 — right sidebar (tab order, single Continuity heade
     fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 
-  test('tab strip is Assistant · Scenes · Notes · References, in that order', async () => {
+  test('tab strip is Mythos · Suggestions · Scenes · Notes & Analysis', async () => {
     const grs = page.locator('[data-testid="global-right-sidebar"]');
     const tabs = grs.getByRole('tab');
-    await expect(tabs).toHaveText(['Assistant', 'Scenes', 'Notes', 'References']);
-    await expect(grs.getByRole('tab', { name: 'Assistant' })).toHaveAttribute('aria-selected', 'true');
+    await expect(tabs).toHaveText(['Mythos', 'Suggestions', 'Scenes', 'Notes & Analysis']);
+    await expect(grs.getByRole('tab', { name: 'Mythos' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('Assistant tab order: AGENTS, Suggestions, Scene Analysis, Continuity, Research Quick Links', async () => {
-    const hub = page.locator('[data-testid="agent-hub-panel"] .ahp-hub');
-    const sectionEyebrows = hub.locator('.ahp-card-eyebrow');
-    await expect(sectionEyebrows.first()).toHaveText('AGENTS', { timeout: 8_000 });
-
-    // Five landmark sections, top to bottom, by their real accessible names
-    // (aria-label on AGENTS/Suggestions/Scene Analysis/Research Quick Links;
-    // the Continuity panel's own PanelHeader title for Continuity).
-    const landmarks: Array<{ label: string; locator: ReturnType<Page['locator']> }> = [
-      { label: 'AGENTS', locator: hub.locator('section[aria-label="Agents"]') },
-      { label: 'Suggestions', locator: hub.locator('section[aria-label="Suggestions"]') },
-      { label: 'SceneAnalysis', locator: hub.locator('section[aria-label="Scene Analysis"]') },
-      { label: 'Continuity', locator: hub.locator('.pc-header-title', { hasText: 'Continuity' }) },
-      { label: 'ResearchQuickLinks', locator: hub.locator('section[aria-label="Research Quick Links"]') },
-    ];
-    const tops: Array<{ label: string; top: number }> = [];
-    for (const { label, locator } of landmarks) {
-      await expect(locator).toBeVisible({ timeout: 8_000 });
-      const box = await locator.boundingBox();
-      if (!box) throw new Error(`${label} has no bounding box`);
-      tops.push({ label, top: box.y });
-    }
-    const order = [...tops].sort((a, b) => a.top - b.top).map((t) => t.label);
-    expect(order).toEqual(['AGENTS', 'Suggestions', 'SceneAnalysis', 'Continuity', 'ResearchQuickLinks']);
+  test('partner tab: card + hands; no AGENTS list / Suggestions hub card', async () => {
+    const hub = page.locator('[data-testid="agent-hub-panel"]');
+    await expect(hub.locator('[data-testid="ahp-partner-view"]')).toBeVisible({ timeout: 8_000 });
+    await expect(hub.locator('[data-testid="partner-card"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="ahp-hand-writer"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="ahp-hand-analyst"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="ahp-hand-archivist"]')).toBeVisible();
+    await expect(hub.locator('section[aria-label="Agents"]')).toHaveCount(0);
+    await expect(hub.locator('[data-testid="ahp-agent-row-writing-assistant"]')).toHaveCount(0);
   });
 
-  // SKY-9022/M6 GAP-1: AGENTS rows are prototype rich cards — a two-line
-  // button (name over dot + status) with a trailing right-chevron.
-  test('AGENTS: three rich cards each render name, status line, and chevron (S2-6: no Archive)', async () => {
-    const agents = page.locator('[data-testid="agent-hub-panel"] section[aria-label="Agents"]');
-    await expect(agents.locator('.ahp-agent-row')).toHaveCount(3);
-    for (const id of ['writing-assistant', 'brainstorm', 'beta-reader']) {
-      const row = agents.locator(`[data-testid="ahp-agent-row-${id}"]`);
-      await expect(row.locator('.ahp-agent-name')).not.toBeEmpty();
-      await expect(row.locator('.ahp-status-dot')).toBeVisible();
-      await expect(row.locator('.ahp-status-text')).not.toBeEmpty();
-      await expect(row.locator('.ahp-agent-chevron')).toBeVisible();
-    }
-    await expect(agents.locator('[data-testid="ahp-agent-row-archive"]')).toHaveCount(0);
+  test('Suggestions tab mounts the full review list', async () => {
+    const hub = page.locator('[data-testid="agent-hub-panel"]');
+    await hub.getByRole('tab', { name: 'Suggestions' }).click();
+    await expect(hub.locator('[data-testid="ahp-suggestions-tab"]')).toBeVisible({ timeout: 8_000 });
+    await expect(hub.locator('.suggestion-review')).toBeVisible({ timeout: 8_000 });
   });
 
-  test('exactly one Continuity header in the DOM', async () => {
+  test('Notes & Analysis includes Scene Analysis + Questions-for-you', async () => {
+    const hub = page.locator('[data-testid="agent-hub-panel"]');
+    await hub.getByRole('tab', { name: 'Notes & Analysis' }).click();
+    await expect(hub.locator('[data-testid="ahp-notes-analysis"]')).toBeVisible({ timeout: 8_000 });
+    await expect(hub.locator('section[aria-label="Scene Analysis"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="questions-for-you"]')).toBeVisible();
+  });
+
+  test('exactly one Continuity header when Notes & Analysis is open', async () => {
     const grs = page.locator('[data-testid="global-right-sidebar"]');
+    await grs.getByRole('tab', { name: 'Notes & Analysis' }).click();
     const headers = grs.locator('.pc-header-title', { hasText: 'Continuity' });
     await expect(headers).toHaveCount(1);
-  });
-
-  // SKY-10057: "See All Suggestions" used to expand a panel-stack entry that
-  // M6's removal of the panel system left with no rendered home — the button
-  // was a same-tab no-op. It now drills into a self-contained Review Inbox
-  // in place, mirroring the AGENTS row → agent chat swap.
-  test('"See All Suggestions" opens the Review Inbox in place and Back returns to the hub', async () => {
-    const hub = page.locator('[data-testid="agent-hub-panel"]');
-    await expect(hub.locator('section[aria-label="Suggestions"]')).toBeVisible({ timeout: 8_000 });
-
-    await hub.getByRole('button', { name: 'See All Suggestions' }).click();
-
-    await expect(hub.locator('.ahp-chat-agent-name', { hasText: 'Review Inbox' })).toBeVisible({ timeout: 8_000 });
-    await expect(hub.locator('.suggestion-review')).toBeVisible();
-    await expect(hub.locator('section[aria-label="Suggestions"]')).toHaveCount(0);
-
-    await hub.getByRole('button', { name: 'Back to agents' }).click();
-
-    await expect(hub.locator('section[aria-label="Suggestions"]')).toBeVisible({ timeout: 8_000 });
-    await expect(hub.locator('.suggestion-review')).toHaveCount(0);
   });
 });
 
@@ -278,26 +228,19 @@ test.describe('SKY-9022/M6 — fresh profile: tab strip + Getting Started card',
     fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 
-  test('tab strip is visible immediately and Getting Started renders as a card inside Assistant', async () => {
+  test('tab strip is visible immediately and Getting Started renders inside partner tab', async () => {
     const grs = page.locator('[data-testid="global-right-sidebar"]');
     await expect(grs).toBeVisible({ timeout: 15_000 });
 
-    // Tab strip visible immediately — never hidden behind Getting Started.
-    await expect(grs.getByRole('tab', { name: 'Assistant' })).toBeVisible({ timeout: 8_000 });
+    await expect(grs.getByRole('tab', { name: 'Mythos' })).toBeVisible({ timeout: 8_000 });
     await expect(grs.getByRole('tab', { name: 'Scenes' })).toBeVisible();
 
-    // Getting Started is the first child of the Assistant hub, not a
-    // separate panel occupying the sidebar in place of the tabs.
-    const hub = grs.locator('[data-testid="agent-hub-panel"] .ahp-hub');
-    await expect(hub.locator('[data-testid="gs-panel"], .gs-card, [class*="getting-started"]').first())
+    const partner = grs.locator('[data-testid="ahp-partner-view"]');
+    await expect(partner.locator('[data-testid="gs-panel"], .gs-card, [class*="getting-started"]').first())
       .toBeVisible({ timeout: 8_000 });
   });
 });
 
-// SKY-10499: a genuinely fresh profile has NO rightSidebarVisible key at all
-// (unlike the seed above, which sets it explicitly). That's the exact
-// condition migrateV1Layout hits on every real first launch, and the one the
-// M6 acceptance check above never actually covered.
 test.describe('SKY-10499 — genuinely fresh profile (rightSidebarVisible unset)', () => {
   let tempRoot: string;
   let app: ElectronApplication;
@@ -321,15 +264,14 @@ test.describe('SKY-10499 — genuinely fresh profile (rightSidebarVisible unset)
     fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 
-  test('tab strip renders, all four tabs are clickable, Getting Started never occupies the panel as gs-aside', async () => {
+  test('tab strip renders, partner tabs are clickable, Getting Started never occupies the panel as gs-aside', async () => {
     const grs = page.locator('[data-testid="global-right-sidebar"]');
     await expect(grs).toBeVisible({ timeout: 15_000 });
 
-    // The standalone Getting Started aside must never exist in the DOM.
     await expect(page.locator('.gs-aside')).toHaveCount(0);
     await expect(page.locator('aside.gs-aside')).toHaveCount(0);
 
-    const tabNames = ['Assistant', 'Scenes', 'Notes', 'References'];
+    const tabNames = ['Mythos', 'Suggestions', 'Scenes', 'Notes & Analysis'];
     for (const name of tabNames) {
       const tab = grs.getByRole('tab', { name });
       await expect(tab).toBeVisible({ timeout: 8_000 });
@@ -337,12 +279,10 @@ test.describe('SKY-10499 — genuinely fresh profile (rightSidebarVisible unset)
       await expect(tab).toHaveAttribute('aria-selected', 'true');
     }
 
-    // Return to Assistant and confirm Getting Started is a descendant of the
-    // Assistant hub, not a sibling panel replacing the tab strip.
-    await grs.getByRole('tab', { name: 'Assistant' }).click();
-    const hub = grs.locator('[data-testid="agent-hub-panel"] .ahp-hub');
+    await grs.getByRole('tab', { name: 'Mythos' }).click();
+    const partner = grs.locator('[data-testid="ahp-partner-view"]');
     await expect(
-      hub.locator('[data-testid="gs-panel"], .gs-card, [class*="getting-started"]').first(),
+      partner.locator('[data-testid="gs-panel"], .gs-card, [class*="getting-started"]').first(),
     ).toBeVisible({ timeout: 8_000 });
   });
 });

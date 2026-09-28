@@ -11,7 +11,7 @@
  *             (Archive + Writing Coach) and one user comment seeded in the
  *             v2 sidecar, toggling the master switch OFF live-hides every
  *             agent surface — gutter cards, anchor underlines, the count
- *             chip, the Assistant tab — while the WRITER'S OWN comment
+ *             chip, the Mythos (partner) tab — while the WRITER'S OWN comment
  *             stays. The sidecar file on disk is byte-identical throughout,
  *             and toggling back ON restores every agent comment intact.
  *
@@ -62,7 +62,7 @@ test('TC-PS-01: master toggle state persists across an app restart, both directi
     await goStoryWriter(page);
 
     const grs = () => page.locator('[data-testid="global-right-sidebar"]');
-    await expect(grs().getByRole('tab', { name: 'Assistant' })).toBeVisible({ timeout: 10_000 });
+    await expect(grs().getByRole('tab', { name: 'Mythos' })).toBeVisible({ timeout: 10_000 });
 
     // Flip OFF through the real Settings UI (immediate-persist toggle).
     await openSettingsDialog(page);
@@ -70,7 +70,7 @@ test('TC-PS-01: master toggle state persists across an app restart, both directi
     await closeSettingsDialog(page);
 
     // Live effect before any restart…
-    await expect(grs().getByRole('tab', { name: 'Assistant' })).toHaveCount(0);
+    await expect(grs().getByRole('tab', { name: 'Mythos' })).toHaveCount(0);
     // …and the write reached disk.
     await expect.poll(() => readAiEnabled(fixture.userData), { timeout: 10_000 }).toBe(false);
 
@@ -80,7 +80,7 @@ test('TC-PS-01: master toggle state persists across an app restart, both directi
     page = await firstSuiteWindow(app);
     await goStoryWriter(page);
     await expect(grs().getByRole('tab', { name: 'Scenes' })).toBeVisible({ timeout: 10_000 });
-    await expect(grs().getByRole('tab', { name: 'Assistant' })).toHaveCount(0);
+    await expect(grs().getByRole('tab', { name: 'Mythos' })).toHaveCount(0);
     await openSettingsDialog(page);
     const toggle = page.locator('[role="dialog"][aria-label="Settings"] input[role="switch"][aria-label="All AI features"]');
     await page.locator('[data-testid="settings-cat-agents"]').click();
@@ -94,7 +94,7 @@ test('TC-PS-01: master toggle state persists across an app restart, both directi
     app = await launchSuiteApp(fixture.userData);
     page = await firstSuiteWindow(app);
     await goStoryWriter(page);
-    await expect(grs().getByRole('tab', { name: 'Assistant' })).toBeVisible({ timeout: 10_000 });
+    await expect(grs().getByRole('tab', { name: 'Mythos' })).toBeVisible({ timeout: 10_000 });
   } finally {
     await closeElectronApp(app);
     cleanupSuiteFixture(fixture);
@@ -225,7 +225,7 @@ test('TC-RT-01: toggle OFF hides agent comments/flags, ON restores them intact; 
     await expect(page.getByTestId('msv-anchor-c-rt-archive')).toBeVisible();
     await expect(page.getByTestId('msv-comments-chip')).toContainText('3');
     const grs = page.locator('[data-testid="global-right-sidebar"]');
-    await expect(grs.getByRole('tab', { name: 'Assistant' })).toBeVisible();
+    await expect(grs.getByRole('tab', { name: 'Mythos' })).toBeVisible();
 
     // Toggle OFF (live — no restart).
     await openSettingsDialog(page);
@@ -240,7 +240,7 @@ test('TC-RT-01: toggle OFF hides agent comments/flags, ON restores them intact; 
     await expect(page.getByTestId('msv-anchor-c-rt-coach')).toHaveCount(0);
     await expect(page.getByTestId('msv-cmt-c-rt-user')).toContainText(USER_TEXT);
     await expect(page.getByTestId('msv-comments-chip')).toContainText('1');
-    await expect(grs.getByRole('tab', { name: 'Assistant' })).toHaveCount(0);
+    await expect(grs.getByRole('tab', { name: 'Mythos' })).toHaveCount(0);
 
     // Hiding is presentation-only: the sidecar is byte-identical.
     expect(fs.readFileSync(sidecarPath, 'utf8')).toBe(sidecarBefore);
@@ -254,7 +254,7 @@ test('TC-RT-01: toggle OFF hides agent comments/flags, ON restores them intact; 
     await expect(page.getByTestId('msv-cmt-c-rt-user')).toContainText(USER_TEXT);
     await expect(page.getByTestId('msv-anchor-c-rt-archive')).toBeVisible();
     await expect(page.getByTestId('msv-comments-chip')).toContainText('3');
-    await expect(grs.getByRole('tab', { name: 'Assistant' })).toBeVisible();
+    await expect(grs.getByRole('tab', { name: 'Mythos' })).toBeVisible();
     expect(fs.readFileSync(sidecarPath, 'utf8')).toBe(sidecarBefore);
   } finally {
     await closeElectronApp(app);
@@ -313,11 +313,11 @@ test('TC-RT-02: toggle OFF hides Brainstorm chat, ON hydrates the prior session 
     app = await launchSuiteApp(fixture.userData);
     const page = await firstSuiteWindow(app);
 
-    // AI-off surface contract: Assistant tab absent, manual tabs present…
+    // AI-off surface contract: Mythos (partner) tab absent, manual tabs present…
     await goStoryWriter(page);
     const grs = page.locator('[data-testid="global-right-sidebar"]');
     await expect(grs.getByRole('tab', { name: 'Scenes' })).toBeVisible({ timeout: 10_000 });
-    await expect(grs.getByRole('tab', { name: 'Assistant' })).toHaveCount(0);
+    await expect(grs.getByRole('tab', { name: 'Mythos' })).toHaveCount(0);
 
     // …and Brainstorm is board-only: no chat mode, no chat input.
     await goBrainstorm(page);
@@ -340,9 +340,9 @@ test('TC-RT-02: toggle OFF hides Brainstorm chat, ON hydrates the prior session 
     ).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('.bs-assistant-bubble', { hasText: BS_AGENT_MARKER })).toBeVisible();
 
-    // Assistant tab reappears on the story surface.
+    // Mythos (partner) tab reappears on the story surface.
     await goStoryWriter(page);
-    await expect(grs.getByRole('tab', { name: 'Assistant' })).toBeVisible({ timeout: 10_000 });
+    await expect(grs.getByRole('tab', { name: 'Mythos' })).toBeVisible({ timeout: 10_000 });
 
     // Display-only gate, on disk too: the transcript file is byte-identical —
     // nothing was regenerated, migrated, or lost across the round trip.

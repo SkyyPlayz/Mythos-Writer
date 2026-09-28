@@ -290,6 +290,9 @@ async function openApp(fixture: Fixture): Promise<{ app: ElectronApplication; pa
   const page = await firstWindow(app);
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
   await expect(page.getByTestId('global-right-sidebar')).toBeVisible({ timeout: 12_000 });
+  // Slice B: Continuity lives under Notes & Analysis (not the partner hub stack).
+  await page.getByTestId('ahp-tab-notes-analysis').click();
+  await expect(page.getByTestId('ahp-notes-analysis')).toBeVisible({ timeout: 8_000 });
   return { app, page };
 }
 
@@ -712,8 +715,8 @@ test('TC-CP-11: a contradiction flagged in a DIFFERENT scene surfaces via the gl
   }
 });
 
-// M12.B3 / S2-6: Archive agent chat hand removed from AGENTS card (video wins).
-// Continuity panel remains on the Assistant stack without an Archive row.
+// M12.B3 / S2-6: Archive agent chat hand removed (no AGENTS list in Slice B).
+// Continuity remains under Notes & Analysis without an Archive chat row.
 test('TC-CP-12: Archive agent chat row is gone; Continuity still reachable without Archivist hand', async () => {
   const fixture = createFixture([{ id: 'inc-chat', severity: 'high' }]);
   let app: ElectronApplication | undefined;
@@ -725,7 +728,7 @@ test('TC-CP-12: Archive agent chat row is gone; Continuity still reachable witho
 
     await expect(sidebar.getByTestId('ahp-agent-row-archive')).toHaveCount(0);
     await expect(sidebar.getByTestId('ahp-archive-chat-input')).toHaveCount(0);
-    // Continuity flags still surface on the Assistant stack without Archive chat.
+    // Continuity flags still surface under Notes & Analysis.
     await expect(sidebar.getByRole('listitem', { name: /high character attribute drift/i })).toBeVisible({ timeout: 8_000 });
   } finally {
     await closeApp(app);

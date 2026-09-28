@@ -119,6 +119,11 @@ describe('DesktopShell scene-link flash highlight (SKY-9729)', () => {
     render(<App />);
 
     await screen.findByRole('navigation', { name: 'Main navigation' });
+    // Slice B: cold load is Editor at Full Book zoom — TipTap wiki links only
+    // mount in the scene-depth BlockEditor slot. Zoom to Scene first so the
+    // [[wiki link]] is in the DOM; the jump still flashes under Full Book default.
+    const sceneZoom = await screen.findByTestId('msv-zoom-scene');
+    fireEvent.click(sceneZoom);
     // SKY-10929: rich mode renders styled link text only — no [[ ]] brackets
     // — so the wiki-link node is found by its data attribute, not its text.
     const wikiLink = await waitFor(() => {

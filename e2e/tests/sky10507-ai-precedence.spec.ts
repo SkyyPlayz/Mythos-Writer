@@ -174,13 +174,14 @@ test('SKY-10507: master OFF + every per-agent ON — master wins, every AI surfa
 
     await selectStoryAndOpenScene(page);
 
-    // Assistant tab (Coach + AGENTS panels + Continuity flags all live
-    // inside it) is entirely absent — not present-but-empty.
+    // Slice B: partner tab (+ Suggestions) is AI chrome — gone when master is off.
     const grs = page.locator('[data-testid="global-right-sidebar"]');
-    await expect(grs.getByRole('tab', { name: 'Assistant' })).toHaveCount(0);
+    await expect(grs.getByRole('tab', { name: 'Mythos' })).toHaveCount(0);
+    await expect(grs.getByRole('tab', { name: 'Suggestions' })).toHaveCount(0);
     await expect(grs.getByRole('tab', { name: 'Scenes' })).toBeVisible();
+    await expect(grs.getByRole('tab', { name: 'Notes & Analysis' })).toBeVisible();
+    await expect(page.locator('[data-testid="ahp-partner-view"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="ahp-agent-row-writing-assistant"]')).toHaveCount(0);
-    await expect(page.locator('[data-testid="ahp-agent-row-archive"]')).toHaveCount(0);
     await expect(page.locator('.cp-flags-label', { hasText: 'CONTINUITY FLAGS' })).toHaveCount(0);
 
     // Brainstorm: chat mode gone, board is the only page (M11b contract) —
@@ -215,18 +216,18 @@ test('SKY-10507: master ON + per-agents disagree — defers to each per-agent en
     await selectStoryAndOpenScene(page);
 
     const grs = page.locator('[data-testid="global-right-sidebar"]');
-    await expect(grs.getByRole('tab', { name: 'Assistant' })).toBeVisible();
+    await expect(grs.getByRole('tab', { name: 'Mythos' })).toBeVisible();
 
-    // AGENTS card: disabled agents say "Disabled"; enabled agents don't.
-    const agentsCard = page.locator('[data-testid="agent-hub-panel"] section[aria-label="Agents"]');
-    await expect(agentsCard.locator('[data-testid="ahp-agent-row-writing-assistant"] .ahp-status-text')).toHaveText('Disabled');
-    // S2-6: Archive Agent hand removed from AGENTS card.
-    await expect(agentsCard.locator('[data-testid="ahp-agent-row-archive"]')).toHaveCount(0);
-    await expect(agentsCard.locator('[data-testid="ahp-agent-row-brainstorm"] .ahp-status-text')).not.toHaveText('Disabled');
-    await expect(agentsCard.locator('[data-testid="ahp-agent-row-beta-reader"] .ahp-status-text')).not.toHaveText('Disabled');
+    // Slice B: one partner face + hands (no AGENTS multi-face card).
+    const hub = page.locator('[data-testid="agent-hub-panel"]');
+    await expect(hub.locator('[data-testid="ahp-partner-view"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="partner-card"]')).toBeVisible();
+    await expect(hub.locator('section[aria-label="Agents"]')).toHaveCount(0);
+    await expect(hub.locator('[data-testid="ahp-hand-writer"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="ahp-hand-analyst"]')).toBeVisible();
 
-    // Continuity: master is ON, so the panel is present (not gone) — but it
-    // reads Archive's OWN disable, going manual with the agent-specific copy.
+    // Continuity lives under Notes & Analysis; Archive's own disable still surfaces.
+    await hub.getByRole('tab', { name: 'Notes & Analysis' }).click();
     const continuityStatus = page.locator('[data-testid="agent-hub-panel"] .cp-status-msg');
     await expect(continuityStatus).toHaveText('Archive Agent is disabled. Enable it in Settings.');
 

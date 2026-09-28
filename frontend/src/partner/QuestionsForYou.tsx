@@ -23,6 +23,8 @@ interface Props {
   /** Known note paths for the ambiguous picker. */
   noteOptions?: Array<{ path: string; title: string }>;
   onAppendToNote?: (args: { notePath: string; heading: string; answer: string }) => void | Promise<void>;
+  /** Optional: click a collapsed question to send it into partner chat (Idea Board). */
+  onAskInChat?: (question: string) => void;
 }
 
 const SUB_TABS: { id: QuestionsSubTab; label: string }[] = [
@@ -37,6 +39,7 @@ export default function QuestionsForYou({
   storyQuestions = [],
   noteOptions = [],
   onAppendToNote,
+  onAskInChat,
 }: Props) {
   const [subTab, setSubTab] = useState<QuestionsSubTab>('activity');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -130,7 +133,14 @@ export default function QuestionsForYou({
               <button
                 type="button"
                 className="qfy-q-summary"
-                onClick={() => handleExpand(q.id)}
+                onClick={() => {
+                  // Idea Board: a collapsed click can send the question into chat.
+                  if (onAskInChat && expandedId !== q.id) {
+                    onAskInChat(q.detail);
+                    return;
+                  }
+                  handleExpand(q.id);
+                }}
                 aria-expanded={expandedId === q.id}
                 data-testid={`qfy-question-${q.id}`}
               >
