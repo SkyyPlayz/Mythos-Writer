@@ -47,8 +47,6 @@ const TOUR_TARGET_BY_MODULE: Partial<Record<NavRailModuleId, string>> = {
 export interface AppNavRailProps {
   activeSection: NavRailModuleId;
   onSectionChange: (moduleId: NavRailModuleId) => void;
-  /** @deprecated A1-Q2 — account opens from title-bar avatar only; prop ignored. */
-  onOpenAccount?: () => void;
   onOpenSettings: () => void;
   /** A1 / prototype settingsNavSt: Settings button uses railActive while open. */
   settingsActive?: boolean;
