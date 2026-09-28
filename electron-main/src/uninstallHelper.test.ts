@@ -11,6 +11,8 @@ import {
   writeUninstallDeletePathList,
   uninstallDeletePathsFile,
   isUnsafeUninstallDeletePath,
+  isAllowedUninstallDeletePath,
+  filterUninstallSidecarLines,
   UNINSTALL_DELETE_PATHS_FILENAME,
 } from './uninstallHelper.js';
 
@@ -299,6 +301,22 @@ describe('resolveUninstallDeletePaths + sidecar writer', () => {
     expect(paths).not.toContain(tmp);
   });
 
+  it('drops registered roots outside the allowlist (e.g. C:\\Windows)', () => {
+    writeVaultSettings(tmp, {
+      vaultRoot: 'C:\\Windows',
+      notesVaultRoot: 'C:\\Users\\Skyy\\Documents',
+      recentProjects: [
+        { name: 'pf', vaultRoot: 'C:\\Program Files\\Poison', notesVaultRoot: 'C:\\Users\\Skyy' },
+      ],
+    });
+    const paths = resolveUninstallDeletePaths(tmp);
+    expect(paths).not.toContain('C:\\Windows');
+    expect(paths).not.toContain('C:\\Users\\Skyy\\Documents');
+    expect(paths).not.toContain('C:\\Program Files\\Poison');
+    expect(paths).not.toContain('C:\\Users\\Skyy');
+    expect(paths).toContain(defaultVaultsParent(tmp));
+  });
+
   it('custom Documents roots from tip keys land in toDelete', () => {
     const story = path.join(tmp, 'Documents', 'MyNovel');
     const notes = path.join(tmp, 'Documents', 'MyNovelNotes');
@@ -332,6 +350,48 @@ describe('resolveUninstallDeletePaths + sidecar writer', () => {
     expect(isUnsafeUninstallDeletePath('C:\\', tmp)).toBe(true);
     expect(isUnsafeUninstallDeletePath('D:/', tmp)).toBe(true);
     expect(isUnsafeUninstallDeletePath(path.join(tmp, 'vaults'), tmp)).toBe(false);
+  });
+
+  it('rejects profile, Documents root, C:\\Windows, and Program Files (allowlist)', () => {
+    expect(isUnsafeUninstallDeletePath('C:\\Users\\Skyy', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('C:\\Users\\Skyy\\', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('C:\\Users', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('C:\\Users\\Skyy\\Documents', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('C:\\Users\\Skyy\\Desktop', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('C:\\Users\\Skyy\\Downloads', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('C:\\Windows', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('C:\\Windows\\System32', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('C:\\Program Files', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('C:\\Program Files\\Mythos Writer', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath(os.homedir(), tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath(path.join(os.homedir(), 'Documents'), tmp)).toBe(true);
+  });
+
+  it('allows userData children and Documents/Desktop/Downloads children', () => {
+    expect(isAllowedUninstallDeletePath(path.join(tmp, 'vaults'), tmp)).toBe(true);
+    expect(isAllowedUninstallDeletePath(path.join(tmp, 'vault-settings.json'), tmp)).toBe(true);
+    expect(isAllowedUninstallDeletePath('C:\\Users\\Skyy\\Documents\\MyNovel', tmp)).toBe(true);
+    expect(isAllowedUninstallDeletePath('C:\\Users\\Skyy\\Documents\\MyNovelNotes', tmp)).toBe(true);
+    expect(isAllowedUninstallDeletePath('C:\\Users\\Skyy\\Desktop\\Vault', tmp)).toBe(true);
+    expect(isAllowedUninstallDeletePath('C:\\Users\\Skyy\\Downloads\\ExportVault', tmp)).toBe(true);
+  });
+
+  it('planted sidecar line outside the allowlist never deletes', () => {
+    const allowed = path.join(tmp, 'vaults');
+    const planted = [
+      'C:\\Windows',
+      'C:\\Windows\\System32\\evil',
+      'C:\\Users\\Skyy',
+      'C:\\Users\\Skyy\\Documents',
+      'C:\\Program Files\\Poison',
+      'D:\\not-on-allowlist',
+    ];
+    const filtered = filterUninstallSidecarLines([allowed, ...planted], tmp);
+    expect(filtered).toEqual([allowed]);
+    for (const p of planted) {
+      expect(filtered).not.toContain(p);
+      expect(isUnsafeUninstallDeletePath(p, tmp)).toBe(true);
+    }
   });
 
   it('writeUninstallDeletePathList is UTF-8 no BOM, one path per line, no userData', () => {

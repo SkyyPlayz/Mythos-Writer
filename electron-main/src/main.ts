@@ -854,7 +854,8 @@ let quitRequested = false;
 app.on('before-quit', () => {
   quitRequested = true;
   // MW-delete-vault: refresh the NSIS sidecar so custom registered roots
-  // survive until the Windows uninstaller FileReads them on No/delete.
+  // survive until the Windows uninstaller FileReads them when the
+  // pre-Uninstall checkbox is opted in (default KEEP).
   try {
     writeUninstallDeletePathList(app.getPath('userData'));
   } catch {

@@ -47,4 +47,24 @@ describe('build/uninstall-vaults.nsh token contract (MW-delete-vault UX lock)', 
     expect(NSH).toMatch(/\$\{If\}\s+\$\{SectionIsSelected\}\s+\$\{SEC_DELETE_MYTHOS_VAULTS\}/);
     expect(NSH).toContain('${EndIf}');
   });
+
+  it('re-checks sidecar lines with prefix + depth allowlist before RMDir', () => {
+    const executable = NSH.replace(/;[^\n]*/g, '');
+    expect(executable).toContain('$WINDIR');
+    expect(executable).toContain('$PROGRAMFILES');
+    expect(executable).toContain('$PROGRAMFILES64');
+    expect(executable).toContain('$DOCUMENTS');
+    expect(executable).toContain('$DESKTOP');
+    expect(executable).toContain('$PROFILE\\Downloads');
+    expect(executable).toContain('$APPDATA\\Mythos Writer');
+    expect(executable).toContain('mythos_al_deny');
+    expect(executable).toContain('uninstall_vault_do_delete');
+    // RMDir of a sidecar $1 only after the allowlist gate.
+    const denyAt = executable.indexOf('mythos_al_deny');
+    const doDeleteAt = executable.indexOf('uninstall_vault_do_delete:');
+    const sidecarRmAt = executable.indexOf('RMDir /r "$1"');
+    expect(denyAt).toBeGreaterThan(-1);
+    expect(doDeleteAt).toBeGreaterThan(denyAt);
+    expect(sidecarRmAt).toBeGreaterThan(doDeleteAt);
+  });
 });
