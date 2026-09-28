@@ -3,8 +3,15 @@ name: Mythos gate auto-merge
 # Tip-SHA-bound fail-closed auto-merge for routine PRs into main.
 # See docs/MERGE_GATE.md. Does not touch Dependabot or release publish.
 # Carve-out PRs never merge without owner `CARVE-OUT APPROVE` on tip.
-# Gate signals (Critic/Shield/Probe) must come from trusted accounts.
-# Shield: latest tip-bound decision must be CLEAR — never merge on BLOCK or missing CLEAR.
+# Gate signals (Critic/Shield/Probe) must come from trusted accounts only
+# (SkyyPlayz, SkyHigh-Mythos-Bot — ignore cursor[bot]).
+#
+# Tokens (case-insensitive; COMMENT reviews OK) — fail beats pass; latest tip-bound wins:
+#   Critic: APPROVE | CHANGES REQUIRED (also CHANGES REQUESTED / CHANGES_REQUESTED)
+#   Shield: CLEAR | BLOCK
+#   Probe:  VERIFY PASS | VERIFY FAIL
+# All three pass tokens must cite the SAME tip SHA. Matchers live in
+# .github/scripts/mythos-gate-signals.js (fixture matrix in *.test.js).
 
 on:
   workflow_run:
@@ -41,6 +48,13 @@ jobs:
         github.event.workflow_run.conclusion == 'success'
       )
     steps:
+      - name: Checkout gate matchers
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            .github/scripts/mythos-gate-signals.js
+          sparse-checkout-cone-mode: false
+
       - name: Evaluate tip-bound Mythos gate and merge if airtight
         uses: actions/github-script@v9
         env:
@@ -50,18 +64,18 @@ jobs:
           # Prefer bot PAT when present (Contents + PRs write); else GITHUB_TOKEN.
           github-token: ${{ secrets.MYTHOS_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
+            const {
+              OWNER_LOGIN,
+              shaInBody,
+              isGateSignalBody,
+              evaluateTipBoundSignals,
+            } = require('./.github/scripts/mythos-gate-signals.js');
+
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const MERGE_MARKER = '<!-- mythos-gate-auto-merge -->';
             const CARVE_STICKY = '<!-- mythos-gate-carve-out -->';
             const CARVE_CHECK_MARKER = '<!-- carve-out-check -->';
-            const OWNER_LOGIN = 'SkyyPlayz';
-            // Gate posts today are authored by the owner account (Paperclip/MCP).
-            // Expand only via PR — fail-closed allowlist.
-            const TRUSTED_GATE_LOGINS = new Set([
-              OWNER_LOGIN,
-              'SkyHigh-Mythos-Bot',
-            ]);
             const REQUIRED_CHECKS = ['ci', 'notes-windows', 'screenshot-check'];
             const CARVE_OUT_PATTERNS = [
               /^\.github\/workflows\//,
@@ -74,60 +88,6 @@ jobs:
 
             function log(msg) { core.info(msg); }
             function skip(reason) { core.info(`SKIP: ${reason}`); }
-
-            function shaInBody(body, headSha) {
-              if (!body || !headSha) return false;
-              const lower = String(body).toLowerCase();
-              const full = headSha.toLowerCase();
-              for (let n = Math.min(40, full.length); n >= 7; n--) {
-                const p = full.slice(0, n);
-                const re = new RegExp(`(^|[^a-f0-9])${p}([^a-f0-9]|$)`, 'i');
-                if (re.test(lower)) return true;
-              }
-              return false;
-            }
-
-            function isGateSignalBody(body) {
-              if (!body) return false;
-              // Include Shield BLOCK so a tip-bound BLOCK re-triggers evaluate and revokes CLEAR.
-              return /approve|clear|block|verify\s+pass|carve-out|changes[_\s-]?requested/i.test(body);
-            }
-
-            function isTrustedGateAuthor(login) {
-              return !!(login && TRUSTED_GATE_LOGINS.has(login));
-            }
-
-            function criticDecision(body) {
-              if (!body) return null;
-              if (/(?:##\s*)?critic\s*:?\s*changes[_\s-]?requested|critic[\s\S]{0,120}changes[_\s-]?requested/i.test(body)) {
-                return 'CHANGES_REQUESTED';
-              }
-              if (/(?:##\s*)?critic\s*:?\s*approve|critic[\s\S]{0,120}approve/i.test(body)) {
-                return 'APPROVE';
-              }
-              return null;
-            }
-
-            function shieldDecision(body) {
-              if (!body) return null;
-              // Fail closed: require Shield near CLEAR/BLOCK (not bare tokens, not far-apart paste).
-              // BLOCK beats CLEAR in the same body so a quote of prior CLEAR cannot override BLOCK.
-              const block = /\bshield\b[\s\S]{0,120}\bblock\b|\bblock\b[\s\S]{0,120}\bshield\b/i.test(body);
-              const clear = /\bshield\b[\s\S]{0,120}\bclear\b|\bclear\b[\s\S]{0,120}\bshield\b/i.test(body);
-              if (block) return 'BLOCK';
-              if (clear) return 'CLEAR';
-              return null;
-            }
-
-            function hasProbePass(body) {
-              // Fail closed: require Probe near VERIFY PASS (not bare "verify pass",
-              // and not Probe + VERIFY PASS scattered far apart in an unrelated paste).
-              return /\bprobe\b[\s\S]{0,120}verify\s+pass|verify\s+pass[\s\S]{0,120}\bprobe\b/i.test(body);
-            }
-
-            function hasCarveOutApprove(body) {
-              return /carve-out\s+approve/i.test(body);
-            }
 
             if (context.eventName === 'issue_comment') {
               const body = context.payload.comment && context.payload.comment.body;
@@ -218,67 +178,29 @@ jobs:
               owner, repo, pull_number: prNumber, per_page: 100,
             });
 
-            // Collect tip-bound trusted signals with timestamps for "latest Critic/Shield wins".
-            const criticEvents = [];
-            const shieldEvents = [];
-            let probeOk = false;
-            let carveOwnerOk = false;
-
-            function consider(body, login, createdAt) {
-              if (!body || !isTrustedGateAuthor(login) || !shaInBody(body, headSha)) return;
-              const decision = criticDecision(body);
-              if (decision) {
-                criticEvents.push({ decision, at: new Date(createdAt).getTime(), login });
-              }
-              const shield = shieldDecision(body);
-              if (shield) {
-                shieldEvents.push({ decision: shield, at: new Date(createdAt).getTime(), login });
-              }
-              if (hasProbePass(body)) probeOk = true;
-              if (login === OWNER_LOGIN && hasCarveOutApprove(body)) carveOwnerOk = true;
-            }
-
+            const items = [];
             for (const c of comments) {
-              consider(c.body, c.user && c.user.login, c.created_at);
+              items.push({
+                body: c.body,
+                login: c.user && c.user.login,
+                createdAt: c.created_at,
+              });
             }
             for (const r of reviews) {
-              const onTip = r.commit_id && (
-                r.commit_id === headSha ||
-                headSha.startsWith(r.commit_id) ||
-                r.commit_id.startsWith(headSha.slice(0, 7))
-              );
-              // Formal GitHub CHANGES_REQUESTED on this tip counts even without SHA in body.
-              if (r.state === 'CHANGES_REQUESTED' && onTip && isTrustedGateAuthor(r.user && r.user.login)) {
-                criticEvents.push({
-                  decision: 'CHANGES_REQUESTED',
-                  at: new Date(r.submitted_at || r.created_at).getTime(),
-                  login: r.user.login,
-                });
-              }
-              consider(r.body, r.user && r.user.login, r.submitted_at || r.created_at);
+              items.push({
+                body: r.body,
+                login: r.user && r.user.login,
+                createdAt: r.submitted_at || r.created_at,
+                commitId: r.commit_id,
+                reviewState: r.state,
+              });
             }
 
-            criticEvents.sort((a, b) => a.at - b.at);
-            const latestCritic = criticEvents.length ? criticEvents[criticEvents.length - 1] : null;
-            if (!latestCritic || latestCritic.decision !== 'APPROVE') {
-              return skip(
-                latestCritic
-                  ? `latest tip-bound Critic decision is ${latestCritic.decision} (not APPROVE)`
-                  : 'no tip-bound Critic APPROVE from trusted author'
-              );
+            const gate = evaluateTipBoundSignals({ headSha, items });
+            if (!gate.allowMerge) {
+              return skip(gate.reasons.join('; ') || 'tip-bound Critic+Shield+Probe not airtight');
             }
-
-            // Fail closed: latest tip-bound Shield must be CLEAR — never merge on BLOCK or missing CLEAR.
-            shieldEvents.sort((a, b) => a.at - b.at);
-            const latestShield = shieldEvents.length ? shieldEvents[shieldEvents.length - 1] : null;
-            if (!latestShield || latestShield.decision !== 'CLEAR') {
-              return skip(
-                latestShield
-                  ? `latest tip-bound Shield decision is ${latestShield.decision} (not CLEAR)`
-                  : 'no tip-bound Shield CLEAR from trusted author'
-              );
-            }
-            if (!probeOk) return skip('no tip-bound Probe VERIFY PASS from trusted author');
+            log(`Tip-bound gate OK: Critic=${gate.critic} Shield=${gate.shield} Probe=${gate.probe}`);
 
             const labels = (pr.labels || []).map((l) => l.name.toLowerCase());
             let carveOut = labels.includes('carve-out');
@@ -301,7 +223,7 @@ jobs:
               }
             }
 
-            if (carveOut && !carveOwnerOk) {
+            if (carveOut && !gate.carveOwnerOk) {
               const stickyBody = [
                 CARVE_STICKY,
                 '## Mythos gate — carve-out blocked',
