@@ -377,9 +377,12 @@ test('SKY-11492: .ln-menu and .ln-select-listbox popups render on the overlay ti
     await clickOutsidePopups(page);
     await expect(treeMenu).toHaveCount(0);
 
-    // 3. `.ln-select-listbox` — the Continuity scan-scope picker in the right sidebar.
+    // 3. `.ln-select-listbox` — Continuity scan-scope picker (Notes & Analysis).
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]').click();
     if (await storyPick.count()) await storyPick.click();
+    // Slice B: Continuity lives under Notes & Analysis, not the partner hub.
+    await page.getByTestId('ahp-tab-notes-analysis').click();
+    await expect(page.getByTestId('ahp-notes-analysis')).toBeVisible({ timeout: 8_000 });
     const picker = page.getByTestId('global-right-sidebar').getByRole('combobox', { name: /scan scope/i });
     await expect(picker).toBeVisible({ timeout: 12_000 });
     await picker.click();
@@ -397,6 +400,8 @@ test('SKY-11809: Escape dismisses DropdownSelect even when focus is outside the 
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]').click();
     const storyPick = page.locator('[data-testid="nav-rail-story-story-1"]');
     if (await storyPick.count()) await storyPick.click();
+    await page.getByTestId('ahp-tab-notes-analysis').click();
+    await expect(page.getByTestId('ahp-notes-analysis')).toBeVisible({ timeout: 8_000 });
     const picker = page.getByTestId('global-right-sidebar').getByRole('combobox', { name: /scan scope/i });
     await expect(picker).toBeVisible({ timeout: 12_000 });
     await picker.click();
