@@ -1,11 +1,13 @@
 .bottom-bar {
   display: flex;
   align-items: center;
-  /* Beta 3 M8: prototype status bar (HTML 2653) */
+  /* A1 / 09 §3.5: status bar + backdrop blur */
   gap: 14px;
   padding: 0 18px;
   height: 30px;
   background: rgba(8, 10, 18, .4);
+  backdrop-filter: blur(var(--blur, 18px));
+  -webkit-backdrop-filter: blur(var(--blur, 18px));
   border-top: 1px solid rgba(255, 255, 255, .05);
   flex-shrink: 0;
   font-size: 11px;

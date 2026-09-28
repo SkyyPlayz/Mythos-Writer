@@ -49,6 +49,11 @@ export interface WindowChromeProps {
   /** "+ Create new Mythos Vault" — legacy ProjectSwitcher parity (SKY-320/SKY-906). */
   onCreateVault?: () => void;
   onReplayOnboarding?: () => void;
+  /** A1 / 09 §3.1: logo · title opens Welcome (vault switch lives on the rail). */
+  onOpenWelcome?: () => void;
+  /** A1 / 09 §3.1: Demo walkthrough toggle (tourBtnSt). */
+  demoOn?: boolean;
+  onToggleDemo?: () => void;
   /** Bell slot — pass <NotificationCenter /> (M5). */
   notificationCenter?: ReactNode;
 }
@@ -149,6 +154,9 @@ export default function WindowChrome({
   onOpenVault,
   onCreateVault,
   onReplayOnboarding,
+  onOpenWelcome,
+  demoOn = false,
+  onToggleDemo,
   notificationCenter,
 }: WindowChromeProps) {
   const [platform, setPlatform] = useState<Platform>(null);
@@ -277,22 +285,33 @@ export default function WindowChrome({
           <WindowControls onClose={handleClose} onMinimize={handleMinimize} onMaximize={handleMaximize} isMac />
         )}
 
-        {/* Project menu — logo · name · chevron (prototype 61–75) */}
-        {/* `project-switcher-btn` / `project-switcher-item` are E2E-compat anchors:
-            sky-906 drives vault create/switch through these legacy selectors. */}
+        {/* A1 / 09 §3.1: logo · name opens Welcome (vault switch is on the rail).
+            Keep project-switcher-btn as a compat anchor for vault flows that still
+            probe the title bar; the click target is Welcome when onOpenWelcome is set. */}
         <div className="wc-project-wrap">
           <button
             type="button"
             ref={projTriggerRef}
             className="wc-project project-switcher-btn"
-            onClick={() => { setProjOpen((o) => { if (!o) loadProjects(); return !o; }); setOpenMenu(null); setAcctOpen(false); }}
-            aria-haspopup="menu"
-            aria-expanded={projOpen}
-            aria-label="Project menu"
+            onClick={() => {
+              if (onOpenWelcome) {
+                setProjOpen(false);
+                onOpenWelcome();
+                return;
+              }
+              setProjOpen((o) => { if (!o) loadProjects(); return !o; });
+              setOpenMenu(null);
+              setAcctOpen(false);
+            }}
+            aria-haspopup={onOpenWelcome ? undefined : 'menu'}
+            aria-expanded={onOpenWelcome ? undefined : projOpen}
+            aria-label={onOpenWelcome ? 'Open welcome' : 'Project menu'}
+            title={onOpenWelcome ? 'Open the welcome & onboarding page' : undefined}
             data-testid="wc-project-trigger"
+            data-tour={onOpenWelcome ? 'welcome-btn' : undefined}
           >
             <img src={logoUrl} alt="" className="wc-logo" />
-            {activeVaultRoot && (
+            {!onOpenWelcome && activeVaultRoot && (
               <VaultIconAvatar
                 icon={vaultIcons[activeVaultRoot]}
                 label={activeStoryTitle || 'Mythos Writer'}
@@ -301,9 +320,11 @@ export default function WindowChrome({
               />
             )}
             <span className="wc-title" aria-hidden="true">Mythos Writer</span>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8e9db8" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+            {!onOpenWelcome && (
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#8e9db8" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+            )}
           </button>
-          {projOpen && (
+          {!onOpenWelcome && projOpen && (
             <div className="wc-popover wc-popover-project" role="menu" onClick={(e) => e.stopPropagation()} data-testid="wc-project-menu">
               {projItems.map((p) => (
                 <div className={p.vaultRoot ? 'wc-pop-row-wrap' : undefined} key={p.t + p.sub}>
@@ -389,6 +410,23 @@ export default function WindowChrome({
               </div>
             ))}
           </div>
+        )}
+
+        {onToggleDemo && (
+          <button
+            type="button"
+            className={`wc-demo-btn${demoOn ? ' wc-demo-btn--on' : ''}`}
+            onClick={() => { setOpenMenu(null); setProjOpen(false); onToggleDemo(); }}
+            aria-pressed={demoOn}
+            title={demoOn ? 'Turn Demo walkthrough off' : 'Start the Demo walkthrough'}
+            data-testid="wc-demo-btn"
+            data-tour="demo-btn"
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            {demoOn ? 'Demo on' : 'Demo'}
+          </button>
         )}
 
         <div style={{ flex: 1 }} />

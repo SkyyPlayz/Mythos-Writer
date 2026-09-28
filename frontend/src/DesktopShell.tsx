@@ -5830,36 +5830,41 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (!aiEnabled && view === 'coach') handleSetView('editor');
   }, [aiEnabled, view, handleSetView]);
 
-  // S2-3: Ctrl+/−/0 and Ctrl+Scroll adjust App text size (uiScale 82–118%).
+  // A1 / 09 §2.5: Ctrl+/−/0 adjust uiScale (.88–1.32, ±0.03); 0 resets dens+scale.
   useEffect(() => {
-    const clampScale = (n: number) => Math.min(1.18, Math.max(0.82, n));
-    const setScale = (nextScale: number) => {
+    const clampScale = (n: number) => Math.min(1.32, Math.max(0.88, n));
+    const patchLn = (patch: Partial<NonNullable<AppSettings['liquidNeonV2']>>, toast?: string) => {
       setAppSettings((prev) => {
         if (!prev) return prev;
-        const cur = prev.liquidNeonV2?.uiScale ?? 1;
-        const uiScale = clampScale(nextScale);
-        if (Math.abs(uiScale - cur) < 0.001) return prev;
         const liquidNeonV2 = {
           ...(prev.liquidNeonV2 ?? {}),
-          uiScale,
+          ...patch,
         } as NonNullable<AppSettings['liquidNeonV2']>;
         const next = { ...prev, liquidNeonV2 };
         window.api.settingsSet(next).catch(() => {});
         return next;
       });
+      if (toast) showLnToast(toast);
     };
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const cur = appSettings?.liquidNeonV2?.uiScale ?? 1;
-      if (e.key === '=' || e.key === '+') { e.preventDefault(); setScale(cur + 0.02); }
-      else if (e.key === '-') { e.preventDefault(); setScale(cur - 0.02); }
-      else if (e.key === '0') { e.preventDefault(); setScale(1); }
+      if (e.key === '=' || e.key === '+' || e.code === 'NumpadAdd') {
+        e.preventDefault();
+        patchLn({ uiScale: clampScale(cur + 0.03) });
+      } else if (e.key === '-' || e.code === 'NumpadSubtract') {
+        e.preventDefault();
+        patchLn({ uiScale: clampScale(cur - 0.03) });
+      } else if (e.key === '0') {
+        e.preventDefault();
+        patchLn({ uiScale: 1, uiDens: 1, density: 'comfortable' }, 'Interface scale reset');
+      }
     };
     const onWheel = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return;
       e.preventDefault();
       const cur = appSettings?.liquidNeonV2?.uiScale ?? 1;
-      setScale(cur + (e.deltaY < 0 ? 0.02 : -0.02));
+      patchLn({ uiScale: clampScale(cur + (e.deltaY < 0 ? 0.03 : -0.03)) });
     };
     window.addEventListener('keydown', onKey);
     window.addEventListener('wheel', onWheel, { passive: false });
@@ -6261,6 +6266,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onReplayOnboarding={() => {
             window.api?.onboardingReplay?.().then(() => window.location.reload()).catch(() => {});
           }}
+          onOpenWelcome={replayOnboardingWizard}
+          demoOn={tourOpen}
+          onToggleDemo={() => setTourOpen((o) => !o)}
           notificationCenter={<NotificationCenter />}
         />
       )}

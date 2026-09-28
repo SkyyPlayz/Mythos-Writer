@@ -1,4 +1,5 @@
-/* SKY-3098 (v0.3): shell body = horizontal flex row (AppNavRail + main-col) */
+/* SKY-3098 (v0.3): shell body = horizontal flex row (AppNavRail + main-col).
+   A1 / 09 §3.2: floating glass cards with 10 px gutter (padding 0 10px 4px). */
 .desktop-shell__body {
   display: flex;
   flex-direction: row;
@@ -7,6 +8,14 @@
   min-height: 0;
   /* GH#643: anchor for the split-pane drop zone overlay */
   position: relative;
+  padding: 0 10px 4px;
+  gap: 0;
+  box-sizing: border-box;
+  /* A1 / 09 §2.5: density × text-size zoom on the body row only */
+  zoom: var(--ln-ui-zoom, 1);
+  /* Lag P0 shared hot-path: isolate compositor work for the zoomed body row */
+  contain: layout style;
+  isolation: isolate;
 }
 
 /* SKY-3098 (v0.3): main column = vertical flex containing WorkspaceTabBar + content */
