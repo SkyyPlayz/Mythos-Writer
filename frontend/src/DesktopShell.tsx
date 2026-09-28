@@ -6275,15 +6275,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         />
       )}
         {/* A2 — Story document tabs move into writing chrome (.shell-center-column).
-            Static pseudo-tabs and Scene Crafter board strips stay under the title bar.
-            Notes strip stays in NotesTabPanel (SKY-10929). */}
+            Scene Crafter board strips (SKY-11069) and any static pseudo-tabs stay
+            under the title bar. Notes strip stays in NotesTabPanel (SKY-10929). */}
         {showTitleBar && (
-          (workspaceStripMode.kind === 'static') ||
-          (workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'story' && boardStripTabs !== null)
-        ) && !(splitWindowEnabled && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'story') && (
+          workspaceStripMode.kind === 'static' ||
+          (workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'board')
+        ) && (
           <WorkspaceTabBar
-            tabs={workspaceStripMode.kind === 'docs' ? (boardStripTabs ?? []) : []}
-            activeTabId={workspaceStripMode.kind === 'docs' && boardStripTabs !== null ? boardStripActiveId : null}
+            tabs={boardStripTabs ?? []}
+            activeTabId={boardStripTabs !== null ? boardStripActiveId : null}
             staticTabLabel={workspaceStripMode.kind === 'static' ? workspaceStripMode.label : undefined}
             onTabSelect={handleWorkspaceTabSelect}
             onTabClose={handleWorkspaceTabClose}

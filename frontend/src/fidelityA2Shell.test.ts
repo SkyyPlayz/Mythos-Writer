@@ -94,3 +94,12 @@ describe('A2 — A1 residual keep', () => {
     expect(shell).not.toMatch(/setDemoOn/);
   });
 });
+
+describe('A2 — Scene Crafter board strip stays under title bar', () => {
+  it('DesktopShell still mounts WorkspaceTabBar for strip === board', () => {
+    const src = read('DesktopShell.tsx');
+    // Guard the A2 chrome move: board strip must not be gated on strip === 'story'.
+    expect(src).toMatch(/workspaceStripMode\.strip === 'board'/);
+    expect(src).toMatch(/boardStripTabs/);
+  });
+});
