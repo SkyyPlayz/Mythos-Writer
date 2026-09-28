@@ -201,7 +201,13 @@ test('FB-04: heading select offers H1-H6 and each level round-trips through the 
       await page.keyboard.press('Enter');
       await page.keyboard.type(`Heading Level ${level}`);
       await headingSelect.selectOption(`Heading ${level}`);
-      await expect(editor.locator(`h${level}`, { hasText: `Heading Level ${level}` })).toBeVisible();
+      const heading = editor.locator(`h${level}`, { hasText: `Heading Level ${level}` });
+      await expect(heading).toBeVisible();
+      // SKY-11761 follow-up: native <select> blur can still emit a late
+      // selectionchange that leaves isActive() on Body Text while the heading
+      // node is already in the DOM (CI flake at Heading 3). Click the heading
+      // so the toolbar select re-reads from a selection inside that node.
+      await heading.click();
       await expect(headingSelect).toHaveValue(`Heading ${level}`);
     }
 
