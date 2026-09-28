@@ -3,12 +3,31 @@ import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
 /**
- * MW-delete-vault — locked NSIS token contract (PLAN §1).
+ * MW-delete-vault — locked NSIS token contract (PLAN draft 3 / owner UX lock).
  * Soft "mentions sidecar" greps are not enough.
+ *
+ * Shipped UX path: pre-Uninstall checkbox via customUnInstallSection
+ * (Section /o = unchecked = KEEP). Post-start Yes/No dialog is NOT used.
  */
 const NSH = readFileSync(resolve(process.cwd(), '../build/uninstall-vaults.nsh'), 'utf-8');
 
-describe('build/uninstall-vaults.nsh token contract (MW-delete-vault)', () => {
+describe('build/uninstall-vaults.nsh token contract (MW-delete-vault UX lock)', () => {
+  it('ships pre-Uninstall checkbox page (customUnInstallSection + Section /o)', () => {
+    expect(NSH).toContain('!macro customUnInstallSection');
+    expect(NSH).toMatch(/Section\s+\/o\s+"un\.Also delete my Mythos vaults \/ writing data"/);
+    expect(NSH).toContain('SEC_DELETE_MYTHOS_VAULTS');
+    expect(NSH).toContain('SectionIsSelected');
+    expect(NSH).toContain('!ifdef BUILD_UNINSTALLER');
+  });
+
+  it('default KEEP — no executable MessageBox / DEFBUTTON polarity on this tip', () => {
+    // Checkbox path shipped; strip comments so a prose mention cannot false-fail.
+    const executable = NSH.replace(/;[^\n]*/g, '');
+    expect(executable).not.toMatch(/\bMessageBox\b/);
+    expect(executable).not.toContain('MB_DEFBUTTON1');
+    expect(NSH).toMatch(/unchecked by default|KEEP/i);
+  });
+
   it('names the sidecar file', () => {
     expect(NSH).toContain('uninstall-delete-paths.txt');
   });
@@ -24,15 +43,8 @@ describe('build/uninstall-vaults.nsh token contract (MW-delete-vault)', () => {
     expect(NSH).toContain('Delete "$APPDATA\\Mythos Writer\\app-settings.json"');
   });
 
-  it('keeps Yes=keep / No=delete polarity (MB_YESNO + MB_DEFBUTTON1)', () => {
-    expect(NSH).toContain('MB_YESNO');
-    expect(NSH).toContain('MB_DEFBUTTON1');
-    expect(NSH).toContain('IDYES uninstall_vault_keep');
-    expect(NSH).toContain('IDNO uninstall_vault_delete');
-  });
-
-  it('dialog copy no longer claims custom locations are skipped', () => {
-    expect(NSH).not.toMatch(/custom locations will not be removed/i);
-    expect(NSH).toMatch(/custom paths/i);
+  it('delete path only runs when checkbox section is selected', () => {
+    expect(NSH).toMatch(/\$\{If\}\s+\$\{SectionIsSelected\}\s+\$\{SEC_DELETE_MYTHOS_VAULTS\}/);
+    expect(NSH).toContain('${EndIf}');
   });
 });

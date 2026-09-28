@@ -1,26 +1,39 @@
-; SKY-2969 / MW-delete-vault — Uninstaller: keep-vaults vs delete-all choice
+; SKY-2969 / MW-delete-vault — Uninstaller: opt-in vault delete (owner UX lock)
 ;
-; Included into the NSIS installer script via electron-builder's nsis.include.
-; The `customUnInstall` macro runs at the end of the uninstall section, after
-; the app binary and shortcuts have been removed.
+; Included via electron-builder nsis.include (shared header, before installer.nsi).
 ;
-; Dialog polarity (LOCKED): MB_YESNO|MB_DEFBUTTON1 — Yes=keep (no-op), No=delete.
-; On delete: FileRead the sidecar the app writes at
+; Owner UX lock (2026-09-28): delete MUST be opt-in. Default = KEEP.
+; Primary UX: pre-Uninstall components page checkbox, unchecked by default
+; ("Also delete my Mythos vaults / writing data").
+;
+; How the checkbox page appears:
+;   - Defining !macro customUnInstallSection makes electron-builder insert
+;     MUI_UNPAGE_COMPONENTS before INSTFILES when BUILD_UNINSTALLER is set
+;     (installer.nsi). Section /o = unchecked = KEEP.
+;   - The Section itself is declared at include-time under BUILD_UNINSTALLER
+;     so ${SEC_DELETE_MYTHOS_VAULTS} exists before customUnInstall expands
+;     inside the main uninstall section (customUnInstallSection is inserted
+;     *after* that section — too late to define the ID).
+;
+; When checked: FileRead sidecar at
 ;   $APPDATA\Mythos Writer\uninstall-delete-paths.txt
-; (UTF-8 no BOM, one absolute path per line — registered vault roots including
-; custom paths + settings files), then always fall back to the default AppData
-; vaults bundle + the two settings files.
+; then always fall back to default AppData vaults + settings deletes.
+;
+; Post-start Yes/No dialog fallback is NOT used — checkbox page is cleanly
+; available via electron-builder's customUnInstallSection hook.
+
+!ifdef BUILD_UNINSTALLER
+  ; /o = unchecked by default → KEEP vaults unless user opts in.
+  Section /o "un.Also delete my Mythos vaults / writing data" SEC_DELETE_MYTHOS_VAULTS
+  SectionEnd
+!endif
+
+; Empty body — presence alone triggers MUI_UNPAGE_COMPONENTS.
+!macro customUnInstallSection
+!macroend
 
 !macro customUnInstall
-  MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON1 \
-    "Keep your Mythos Writer vaults on disk?$\r$\n$\r$\n\
-Your Story Vault and Notes Vault contain your manuscript, notes, and entities.$\r$\n$\r$\n\
-Click Yes to keep your vault files (default).$\r$\n\
-Click No to permanently delete every registered vault — including custom paths the app recorded — plus settings.$\r$\n$\r$\n\
-Keep leaves everything on disk." \
-    IDYES uninstall_vault_keep IDNO uninstall_vault_delete
-
-  uninstall_vault_delete:
+  ${If} ${SectionIsSelected} ${SEC_DELETE_MYTHOS_VAULTS}
     ClearErrors
     FileOpen $0 "$APPDATA\Mythos Writer\uninstall-delete-paths.txt" r
     IfErrors uninstall_vault_fallback
@@ -49,10 +62,6 @@ Keep leaves everything on disk." \
       Delete "$APPDATA\Mythos Writer\vault-settings.json"
       Delete "$APPDATA\Mythos Writer\app-settings.json"
       Delete "$APPDATA\Mythos Writer\uninstall-delete-paths.txt"
-      Goto uninstall_vault_done
-
-  uninstall_vault_keep:
-    ; Leave vault data in place — intentional no-op.
-
-  uninstall_vault_done:
+  ${EndIf}
+  ; Unchecked / not selected — leave vault data in place (default KEEP).
 !macroend
