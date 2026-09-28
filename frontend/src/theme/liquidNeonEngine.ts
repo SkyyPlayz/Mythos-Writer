@@ -108,8 +108,14 @@ export interface LiquidNeonV2Settings {
   /** Button/chip text color (prototype uiBtnCol, 7190). */
   uiBtnCol: string;
   /**
-   * 0.5.4 Slice 2 S2-3: App text / chrome scale (0.82–1.18). Applied as
-   * `--ui-scale` on <html>. Separate from discrete density (comfortable/cozy/compact).
+   * A1 / 09 §2.5: Interface density scale (.82–1.18). Multiplied with uiScale
+   * (text size) onto the body row zoom. Title bar + status bar stay at 100%.
+   */
+  uiDens: number;
+  /**
+   * 0.5.4 Slice 2 S2-3 / A1 §2.5: App text / chrome scale (.88–1.32 design;
+   * kept compatible with prior .82–1.18). Applied with uiDens as body zoom.
+   * Manuscript sheet uses zoom = 1/uiScale so text-size does not resize type.
    */
   uiScale: number;
 }
@@ -140,6 +146,7 @@ export const LIQUID_NEON_V2_DEFAULTS: LiquidNeonV2Settings = {
   reduceMotion: false,
   uiTextCol: '#c8d3e7',
   uiBtnCol: '#cdd8ea',
+  uiDens: 1,
   uiScale: 1,
 };
 
@@ -151,18 +158,23 @@ const AMB_MODES: readonly string[] = ['match', 'snow', 'rise', 'off'];
 const FRAME_ANIMS: readonly string[] = ['off', 'cycle', 'sparkle'];
 
 /**
- * Overlay / `--pop` denser glass opacity (percentage points) for Settings /
- * popups / menus / toasts (Lens AC: denser than panel glass).
- *
- * Mockup `renderVals` `--glass2` recipe:
- *   max(0.50, min(0.97, glassA/100 + 0.16))
- * expressed here in percentage points as `min(96, max(50, glassA + 16))`.
- * Replaces the thinner `glassA + 10` punch so floating chrome stays readable
- * at low slider values without freezing at the old SKY-11491 0.97 constant.
+ * Overlay / `--glass2` denser glass opacity (percentage points) for active
+ * tab fills and cards (09 §2.1):
+ *   clamp(.5, .97, glassA/100 + .16) → min(97, max(50, glassA + 16))
  */
 export function overlayGlassOpacityPercent(glassA: number): number {
   const a = Number.isFinite(glassA) ? glassA : LIQUID_NEON_V2_DEFAULTS.glassA;
-  return Math.min(96, Math.max(50, a + 16));
+  return Math.min(97, Math.max(50, a + 16));
+}
+
+/**
+ * Popover / menu / modal `--pop` opacity (09 §2.1):
+ *   clamp(.86, .99, glassA/100 + .10) → min(99, max(86, glassA + 10))
+ * Default glassA 20 → .86 (was wrongly sharing the thinner glass2 floor).
+ */
+export function popGlassOpacityPercent(glassA: number): number {
+  const a = Number.isFinite(glassA) ? glassA : LIQUID_NEON_V2_DEFAULTS.glassA;
+  return Math.min(99, Math.max(86, a + 10));
 }
 
 /** Verbatim hexA (prototype 3305–3309): #rrggbb + alpha → rgba string, alpha clamped and toFixed(3). */
@@ -460,12 +472,9 @@ export function applyLiquidNeonV2Tokens(
   // on :root's inline value; reduced-transparency intentionally only touches
   // :root's own value (SKY-10908), so per-panel glass stays live either way.
   //
-  // Overlay / --pop denser glass (--glass-fill-overlay): Settings, dialogs,
-  // popovers, menus and toasts. Lens AC: denser than panel glass. Formula
-  // matches mockup --glass2: min(96, max(50, glassA + 16)) — not the thinner
-  // +10 punch and not the SKY-11491 fixed 0.97 recipe. Blur stays the mockup's
-  // fixed 24px in tokens.css (--blur-panel-overlay). Do NOT apply this live
-  // blur to full-page shells (#1598 / P0 jank).
+  // Overlay / --glass2 denser glass (--glass-fill-overlay): active tabs + cards.
+  // 09 §2.1: clamp(.5,.97, glassA/100+.16). Popovers use `--pop` separately
+  // (clamp .86–.99) so menus stay opaque at low glassA.
   //
   // SKY-11787: `--ln-text-backing` is the adaptive contrast floor base panels
   // paint inside their padding box (see theme/textBacking.ts and
@@ -474,14 +483,20 @@ export function applyLiquidNeonV2Tokens(
   // already clears 4.5:1 behind body text resolves to `transparent` and
   // nothing about the panel changes. The glass tokens above stay untouched.
   const overlayA = overlayGlassOpacityPercent(S.glassA);
-  const overlayFill = `rgba(15,19,33,${(overlayA / 100).toFixed(3)})`;
+  const overlayFill = `rgba(21,26,45,${(overlayA / 100).toFixed(3)})`;
+  const popA = popGlassOpacityPercent(S.glassA);
+  const popFill = `rgba(15,19,33,${(popA / 100).toFixed(3)})`;
+  // 09 §2.1: Settings view glass = glassA + 10 (default 20 → .30).
+  const settingsA = Math.min(96, Math.max(0, S.glassA + 10));
+  const settingsFill = `rgba(13,16,28,${(settingsA / 100).toFixed(3)})`;
   const panelGlassTokens: Record<string, string> = {
     '--glass-fill': `rgba(13,16,28,${(S.glassA / 100).toFixed(3)})`,
     '--glass-fill-fallback': 'rgb(13,16,28)',
     '--blur-panel': `${S.blur}px`,
     '--glass-fill-overlay': overlayFill,
-    // Lens AC alias — same denser fill under the mockup's --pop name.
-    '--pop': overlayFill,
+    '--glass2': overlayFill,
+    '--pop': popFill,
+    '--glass-settings': settingsFill,
     '--ln-text-backing': textBackingToken(tokens['--wp'], S.scrim, S.glassA),
   };
   for (const [k, v] of Object.entries(panelGlassTokens)) {
@@ -493,16 +508,23 @@ export function applyLiquidNeonV2Tokens(
   if (!tokens['--btn-text']) el.style.removeProperty('--btn-text');
   // Same reset dance for the wiki-link color override (M28).
   if (!tokens['--wiki-c']) el.style.removeProperty('--wiki-c');
-  // Beta 4 M1 — Interface density: tokens.css shrinks the --space-* /
-  // --ln-card-pad-* scales off this attribute, so paddings change live.
+  // A1 / 09 §2.5 — body-row zoom = uiDens × uiFont (uiScale). Title/status stay 100%.
+  const densRaw = typeof S.uiDens === 'number' && Number.isFinite(S.uiDens) ? S.uiDens : 1;
+  const dens = Math.min(1.18, Math.max(0.82, densRaw));
+  const scaleRaw = typeof S.uiScale === 'number' && Number.isFinite(S.uiScale) ? S.uiScale : 1;
+  const scale = Math.min(1.32, Math.max(0.88, scaleRaw));
+  const bodyZoom = dens * scale;
+  el.style.setProperty('--ui-dens', String(dens));
+  el.style.setProperty('--ui-scale', String(scale));
+  el.style.setProperty('--ln-ui-zoom', String(bodyZoom));
+  el.style.setProperty('--ln-ms-zoom', String(1 / scale));
+  if (!APPLIED_KEYS.includes('--ui-scale')) APPLIED_KEYS.push('--ui-scale');
+  if (!APPLIED_KEYS.includes('--ui-dens')) APPLIED_KEYS.push('--ui-dens');
+  if (!APPLIED_KEYS.includes('--ln-ui-zoom')) APPLIED_KEYS.push('--ln-ui-zoom');
+  if (!APPLIED_KEYS.includes('--ln-ms-zoom')) APPLIED_KEYS.push('--ln-ms-zoom');
+  // Keep discrete density attribute for any remaining consumers during A1.
   if (S.density === 'comfortable') el.removeAttribute('data-ln-density');
   else el.setAttribute('data-ln-density', S.density);
-  // S2-3: App text size / chrome scale (82–118%).
-  const scaleRaw = typeof S.uiScale === 'number' && Number.isFinite(S.uiScale) ? S.uiScale : 1;
-  const scale = Math.min(1.18, Math.max(0.82, scaleRaw));
-  el.style.setProperty('--ui-scale', String(scale));
-  el.style.fontSize = `${(16 * scale).toFixed(2)}px`;
-  if (!APPLIED_KEYS.includes('--ui-scale')) APPLIED_KEYS.push('--ui-scale');
   // Beta 4 M1 — Button text color opt-in hook for Button.css (only when customized).
   if (tokens['--btn-text']) el.setAttribute('data-ln-btn-text', '');
   else el.removeAttribute('data-ln-btn-text');

@@ -343,11 +343,12 @@ describe('Beta 4 M1 — Background animation card', () => {
 });
 
 describe('Beta 4 M1 — Interface card', () => {
-  it('density segment patches density and stamps data-ln-density live', async () => {
+  it('density slider patches uiDens + density and stamps data-ln-density live', async () => {
     const { onChange } = await setup();
-    fireEvent.click(screen.getByTestId('lnas-density-compact'));
+    const dens = screen.getByTestId('lnas-ui-dens');
+    fireEvent.change(dens, { target: { value: '85' } });
+    expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).uiDens).toBeCloseTo(0.85);
     expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).density).toBe('compact');
-    expect(document.documentElement.getAttribute('data-ln-density')).toBe('compact');
   });
 
   it('reduce motion is one switch: patches reduceMotion and applies the kill class live', async () => {

@@ -30,12 +30,12 @@ describe('0.5.4.5 chrome tokens (MW-0545-ui)', () => {
 });
 
 describe('0.5.4.5 dialog / palette motion gates', () => {
-  it('modal enter is center-origin scale ≥ enter-min (no scale(0), no translateY slide)', () => {
+  it('modal enter uses lnFadeUp translateY (09 §2.2) or center-origin scale ≥ enter-min', () => {
     const css = read('components/ui/Dialog.css');
-    expect(css).toContain('transform-origin: center center');
-    expect(css).toContain('scale(var(--scale-enter-min');
+    const hasFade = /lnFadeUp|translateY\(6px\)/.test(css);
+    const hasScale = css.includes('transform-origin: center center') && css.includes('scale(var(--scale-enter-min');
+    expect(hasFade || hasScale).toBe(true);
     expect(css).not.toMatch(/ln-dialog-enter[\s\S]*scale\(0\)/);
-    expect(css).not.toMatch(/ln-dialog-enter[\s\S]*translateY\(20px\)/);
   });
 
   it('command palette (GlobalSearch) has no enter/exit animation', () => {

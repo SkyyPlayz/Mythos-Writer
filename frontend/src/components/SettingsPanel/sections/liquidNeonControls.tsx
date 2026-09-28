@@ -72,7 +72,13 @@ export function NeonSeg<K extends string>({ options, current, onPick, testIdPref
   options: [K, string][]; current: K; onPick: (k: K) => void; testIdPrefix?: string;
 }) {
   return (
-    <div style={{ display: 'flex', padding: 3, borderRadius: 10, background: 'rgba(255,255,255,.05)', border: '1px solid rgba(255,255,255,.08)', gap: 2, width: 'fit-content' }}>
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', padding: 3, borderRadius: 10,
+      background: 'rgba(255,255,255,.05)',
+      border: 'var(--bwh,1px) solid var(--bh,rgba(0,240,255,.25))',
+      boxShadow: 'var(--glowH,none)',
+      gap: 2, width: 'fit-content', maxWidth: '100%',
+    }}>
       {options.map(([k, label]) => (
         <div
           key={k}
@@ -84,7 +90,8 @@ export function NeonSeg<K extends string>({ options, current, onPick, testIdPref
           data-testid={testIdPrefix ? `${testIdPrefix}-${k}` : undefined}
           className={current === k ? undefined : 'lnas-seg-idle'}
           style={{
-            padding: '4px 13px', borderRadius: 8, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap',
+            flex: '1 1 auto', minWidth: 0, padding: '4px 13px', borderRadius: 8, fontSize: 11.5,
+            cursor: 'pointer', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             ...(current === k
               ? { background: 'var(--gs1,rgba(0,240,255,.12))', color: 'var(--n1,#00f0ff)', border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.5))', fontWeight: 600, boxShadow: '0 0 10px -3px var(--g1,rgba(0,240,255,.4))' }
               : { color: '#94a3bd', border: '1px solid transparent' }),

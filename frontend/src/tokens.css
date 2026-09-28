@@ -75,13 +75,14 @@
   --bg-vignette: radial-gradient(120% 120% at 50% 0%, #0d131f 0%, #07090f 55%, #04060c 100%);
   --glass-fill: rgba(13, 16, 28, 0.72);      /* live glass panel fill (phase-2) */
   --glass-fill-fallback: rgba(13, 16, 28, 0.92); /* opaque fallback, no-backdrop-filter */
-  /* SKY-11133: overlay tier — Settings/popups/menus/toasts read this instead
-     of --glass-fill so they stay legible above the Appearance glass slider.
-     Lens AC / 0.5.2: denser than panel — live opacity is
-     min(96, max(50, glassA + 16)) from liquidNeonEngine (mockup --glass2;
-     default glassA 20 → 50%). --pop is the same fill under the mockup alias. */
-  --glass-fill-overlay: rgba(15, 19, 33, 0.50);
-  --pop: var(--glass-fill-overlay);
+  /* SKY-11133: overlay tier — Settings/popups/menus/toasts. 09 §2.1 separates
+     --glass2 (card/tab fill, glassA+16 floor .50) from --pop (popover fill,
+     glassA+10 floor .86). Default glassA 20 → pop .86 / glass2 .50. */
+  --glass-fill-overlay: rgba(21, 26, 45, 0.50);
+  --glass2: var(--glass-fill-overlay);
+  --pop: rgba(15, 19, 33, 0.86);
+  /* 09 §2.1 Settings glass = glassA + 10 (default glassA 20 → .30) */
+  --glass-settings: rgba(13, 16, 28, 0.30);
   /* SKY-11787: adaptive text-backing behind base-panel body copy. Solved from
      the active wallpaper by theme/textBacking.ts — `transparent` (this
      default, i.e. today's rendering) for any wallpaper whose brightest cell
@@ -783,31 +784,15 @@
   --wpsize: cover;
 }
 
-/* ═══ Beta 4 M1 — Interface density (Appearance → Interface; §3 card 7) ═══
-   The v2 theme engine stamps `data-ln-density` on <html> (absent =
-   Comfortable). Spacing tokens shrink so panel/list paddings change LIVE
-   everywhere they are consumed. --space-10/12 are untouched: 40px stays the
-   minimum control target (WCAG 2.5.8 / CF-7). */
+/* A1 / 09 §2.5: density is body-row zoom (uiDens × uiScale), not a spacing
+   swap. The cozy/compact --space-* blocks are gone; card pad tokens stay as
+   soft Appearance hints only (Settings cards still read them). */
 :root[data-ln-density="cozy"] {
-  --space-1: 3px;
-  --space-2: 6px;
-  --space-3: 10px;
-  --space-4: 13px;
-  --space-5: 16px;
-  --space-6: 20px;
-  --space-8: 26px;
   --ln-card-pad-y: 12px;
   --ln-card-pad-x: 14px;
 }
 
 :root[data-ln-density="compact"] {
-  --space-1: 2px;
-  --space-2: 5px;
-  --space-3: 8px;
-  --space-4: 11px;
-  --space-5: 13px;
-  --space-6: 16px;
-  --space-8: 22px;
   --ln-card-pad-y: 9px;
   --ln-card-pad-x: 11px;
 }

@@ -11,6 +11,7 @@ import {
   resetLiquidNeonV2Tokens,
   normalizeLiquidNeonV2,
   overlayGlassOpacityPercent,
+  popGlassOpacityPercent,
   wallpaperCss,
   exportLiquidNeonPreset,
   parseLiquidNeonPreset,
@@ -276,19 +277,17 @@ describe('panel-glass token bridge (SKY-10914)', () => {
   });
 });
 
-/* Lens AC / 0.5.2: Settings / popups / menus / toasts read
- * `--glass-fill-overlay` / `--pop` at min(96, max(50, glassA + 16)) — denser
- * than panel glass (mockup --glass2). Replaces the thinner +10 punch and the
- * SKY-11491 fixed 0.97 recipe. Blur stays the mockup's fixed 24px in tokens.css.
+/* 09 §2.1: --pop uses clamp(.86,.99, glassA/100+.10); --glass2 / overlay stays
+ * glassA+16 floor .50. Default glassA 20 → pop .86 / glass2 .50.
  */
-describe('overlay / --pop denser glass (Lens AC)', () => {
+describe('overlay / --pop denser glass (09 §2.1)', () => {
   const TOKENS_CSS = readFileSync(resolve(__dirname, '../tokens.css'), 'utf8');
   const block = (re: RegExp) => re.exec(TOKENS_CSS)?.[1] ?? '';
 
-  it('tokens.css fallback matches default glassA 20 → 50% floor', () => {
+  it('tokens.css fallback: glass2 .50 floor, pop .86 floor at default glassA 20', () => {
     const root = block(/:root\s*\{([^}]*)\}/);
-    expect(root).toMatch(/--glass-fill-overlay:\s*rgba\(15,\s*19,\s*33,\s*0?\.50\);/);
-    expect(root).toMatch(/--pop:\s*var\(--glass-fill-overlay\);/);
+    expect(root).toMatch(/--glass-fill-overlay:\s*rgba\(21,\s*26,\s*45,\s*0?\.50\);/);
+    expect(root).toMatch(/--pop:\s*rgba\(15,\s*19,\s*33,\s*0?\.86\);/);
     expect(root).toMatch(/--blur-panel-overlay:\s*24px;/);
   });
 
@@ -298,34 +297,49 @@ describe('overlay / --pop denser glass (Lens AC)', () => {
     [34, 50],
     [40, 56],
     [80, 96],
-    [96, 96],
-    [100, 96],
+    [96, 97],
+    [100, 97],
   ] as const)('overlayGlassOpacityPercent(%i) → %i', (glassA, expected) => {
     expect(overlayGlassOpacityPercent(glassA)).toBe(expected);
   });
 
   it.each([
-    [0, 'rgba(15,19,33,0.500)'],
-    [20, 'rgba(15,19,33,0.500)'],
-    [40, 'rgba(15,19,33,0.560)'],
-    [80, 'rgba(15,19,33,0.960)'],
-    [96, 'rgba(15,19,33,0.960)'],
-  ] as const)('engine writes --glass-fill-overlay and --pop for glassA %i', (glassA, fill) => {
+    [0, 86],
+    [20, 86],
+    [76, 86],
+    [80, 90],
+    [89, 99],
+    [100, 99],
+  ] as const)('popGlassOpacityPercent(%i) → %i', (glassA, expected) => {
+    expect(popGlassOpacityPercent(glassA)).toBe(expected);
+  });
+
+  it.each([
+    [0, 'rgba(21,26,45,0.500)', 'rgba(15,19,33,0.860)'],
+    [20, 'rgba(21,26,45,0.500)', 'rgba(15,19,33,0.860)'],
+    [40, 'rgba(21,26,45,0.560)', 'rgba(15,19,33,0.860)'],
+    [80, 'rgba(21,26,45,0.960)', 'rgba(15,19,33,0.900)'],
+  ] as const)('engine writes --glass-fill-overlay and --pop for glassA %i', (glassA, glass2, pop) => {
     const el = document.createElement('div');
     applyLiquidNeonV2Tokens({ glassA, blur: 1 }, COSMIC, el);
-    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe(fill);
-    expect(el.style.getPropertyValue('--pop')).toBe(fill);
-    // Blur stays owned by tokens.css — engine does not write it.
+    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe(glass2);
+    expect(el.style.getPropertyValue('--pop')).toBe(pop);
     expect(el.style.getPropertyValue('--blur-panel-overlay')).toBe('');
   });
 
-  it('panel tier still tracks the raw slider — overlay stays denser above it', () => {
+  it('panel tier still tracks the raw slider — pop stays denser above it', () => {
     const el = document.createElement('div');
     applyLiquidNeonV2Tokens({ glassA: 20, blur: 4 }, COSMIC, el);
     expect(el.style.getPropertyValue('--glass-fill')).toBe('rgba(13,16,28,0.200)');
-    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(15,19,33,0.500)');
-    expect(el.style.getPropertyValue('--pop')).toBe('rgba(15,19,33,0.500)');
+    expect(el.style.getPropertyValue('--glass-fill-overlay')).toBe('rgba(21,26,45,0.500)');
+    expect(el.style.getPropertyValue('--pop')).toBe('rgba(15,19,33,0.860)');
     expect(el.style.getPropertyValue('--blur-panel')).toBe('4px');
+  });
+
+  it('Settings glass is glassA + 10 (09 §2.1)', () => {
+    const el = document.createElement('div');
+    applyLiquidNeonV2Tokens({ glassA: 20, blur: 1 }, COSMIC, el);
+    expect(el.style.getPropertyValue('--glass-settings')).toBe('rgba(13,16,28,0.300)');
   });
 
   it('collapses --page-bg-backdrop-filter to none (0.5.2 P0 jank / pre-blur path)', () => {

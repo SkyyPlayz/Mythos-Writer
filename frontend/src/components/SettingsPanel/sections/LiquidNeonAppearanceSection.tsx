@@ -527,42 +527,63 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
         )}
       </Card>
 
-      {/* §3 card 7 — Interface (prototype 2346–2373; handlers 7018–7020, 7189–7190). */}
+      {/* A1 / 09 §2.5 — Interface density + text-size zoom */}
       <Card title="Interface">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11.5, color: '#aebad0' }}>Interface density</div>
-              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>How much breathing room panels and lists get</div>
+              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>
+                Body zoom {Math.round((S.uiDens ?? 1) * 100)}% — Compact 85 · Cozy 93 · Comfortable 100 · Roomy 112
+              </div>
             </div>
-            <NeonSeg
-              options={[['comfortable', 'Comfortable'], ['cozy', 'Cozy'], ['compact', 'Compact']]}
-              current={S.density}
-              onPick={(k) => { patch({ density: k }); showLnToast('Density — ' + k); }}
-              testIdPrefix="lnas-density"
+            <input
+              type="range"
+              className="lnas-range"
+              min={82}
+              max={118}
+              step={1}
+              value={Math.round((S.uiDens ?? 1) * 100)}
+              aria-label="Interface density"
+              data-testid="lnas-ui-dens"
+              onChange={(e) => {
+                const pct = Number(e.target.value);
+                const uiDens = Math.min(1.18, Math.max(0.82, pct / 100));
+                // Keep discrete density label in sync for legacy consumers.
+                const density = uiDens <= 0.88 ? 'compact' : uiDens <= 0.96 ? 'cozy' : 'comfortable';
+                patch({ uiDens, density });
+              }}
+              style={{
+                width: 140,
+                background: `linear-gradient(to right,var(--n1,#00f0ff) ${(((S.uiDens ?? 1) - 0.82) / 0.36) * 100}%,rgba(255,255,255,.12) ${(((S.uiDens ?? 1) - 0.82) / 0.36) * 100}%)`,
+              }}
             />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 11.5, color: '#aebad0' }}>App text size</div>
               <div style={{ fontSize: 10, color: '#7686a2', marginTop: 1 }}>
-                Chrome scale {Math.round((S.uiScale ?? 1) * 100)}% (82–118%). Ctrl+Scroll or Ctrl+/−/0 also zoom.
+                Menus and panels {Math.round((S.uiScale ?? 1) * 100)}% (88–132%). Manuscript keeps its own size.
               </div>
             </div>
             <input
               type="range"
-              min={82}
-              max={118}
+              className="lnas-range"
+              min={88}
+              max={132}
               step={1}
               value={Math.round((S.uiScale ?? 1) * 100)}
               aria-label="App text size"
               data-testid="lnas-ui-scale"
               onChange={(e) => {
                 const pct = Number(e.target.value);
-                const uiScale = Math.min(1.18, Math.max(0.82, pct / 100));
+                const uiScale = Math.min(1.32, Math.max(0.88, pct / 100));
                 patch({ uiScale });
               }}
-              style={{ width: 120, accentColor: 'var(--accent, #3d9bff)' }}
+              style={{
+                width: 140,
+                background: `linear-gradient(to right,var(--n1,#00f0ff) ${(((S.uiScale ?? 1) - 0.88) / 0.44) * 100}%,rgba(255,255,255,.12) ${(((S.uiScale ?? 1) - 0.88) / 0.44) * 100}%)`,
+              }}
             />
           </div>
           {onNavRailLabelsChange && (

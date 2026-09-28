@@ -17,13 +17,13 @@
  *     (SKY-2157: default parent moved from ~/Mythos/Vaults to app.getPath('userData')/vaults)
  *   - vault-settings.json is rewired to the new pair (Story + Notes)
  *
- * Then drives the multi-vault switcher:
+ * Then drives multi-vault create/switch on the A1 rail (title bar is Welcome):
  *
- *   - opens the switcher, creates a second vault via "+ Create new",
+ *   - creates a second vault via the rail `+` tile,
  *     asserts the disk + recent-projects layout, and confirms the active
  *     project changes
- *   - switches back to the first vault and verifies vault-settings.json
- *     restores the original Story + Notes pair (per-vault state preserved).
+ *   - switches back to the first vault via its rail tile and verifies
+ *     vault-settings.json restores the original Story + Notes pair.
  *
  * Acceptance criteria mapping:
  *   AC1  Clean first-run user can create a default vault with one action
@@ -189,16 +189,13 @@ test('TC-SKY-906-01: default layout creates an empty story/notes vault pair and 
     expect(vaultSettings.vaultRoot).toBe(vaultPair.vaultRoot);
     expect(vaultSettings.notesVaultRoot).toBe(vaultPair.notesVaultRoot);
 
-    // SKY-9262 (P0.5): with no story yet, the switcher has no single-story
-    // title to fall back to, so it labels the vault by its project name (the
-    // vault directory name) instead — ProjectSwitcher's `deriveVaultDisplayName`.
-    await pg.locator('.project-switcher-btn').click();
-    const activeRow = pg
-      .locator('[data-testid="wc-project-menu"] .project-switcher-item')
-      .filter({ has: pg.locator('.wc-active-dot') });
-    await expect(activeRow.locator('.wc-pop-row-title')).toHaveText('My Vault', { timeout: 15_000 });
-    await expect(activeRow.locator('.wc-pop-row-sub')).toHaveText(vaultPair.vaultRoot);
-    await pg.keyboard.press('Escape');
+    // A1 / 09 §3.1: title-bar logo opens Welcome; active vault is the rail tile
+    // (deriveVaultDisplayName → project folder name when there is no story yet).
+    await expect(pg.locator('.nav-rail__vault-tile--active')).toBeVisible({ timeout: 15_000 });
+    await expect(pg.locator('.nav-rail__vault-tile--active')).toHaveAttribute(
+      'aria-label',
+      /Current vault:\s*My Vault/,
+    );
   } finally {
     await app.close().catch(() => {});
   }
@@ -271,13 +268,11 @@ test('TC-SKY-906-03: vault switcher creates a 2nd vault, switches, and switches 
   const app = await launchApp(userData, homeOverride);
   try {
     const pg = await firstWindow(app);
-    // Wait for DesktopShell to render — the project switcher button is part of the toolbar.
-    await pg.locator('.project-switcher-btn').waitFor({ timeout: 30_000 });
-    await pg.locator('.project-switcher-btn').click();
+    // A1: vault create/switch lives on the floating rail (+ tile), not the title bar.
+    await pg.locator('[data-testid="nav-rail-vault-add"]').waitFor({ timeout: 30_000 });
+    await pg.locator('[data-testid="nav-rail-vault-add"]').click();
 
-    // The "+ Create new Mythos Vault" path uses the in-app useTextPrompt modal
-    // (window.prompt is unsupported in Electron). Fill the modal and confirm.
-    await pg.locator('[data-testid="project-switcher-create-new"]').click();
+    // useCreateMythosVaultFlow modal (window.prompt unsupported in Electron).
     await pg.locator('.prompt-modal-input').waitFor({ timeout: 10_000 });
     await pg.locator('.prompt-modal-input').fill('Second');
     await pg.locator('.prompt-modal-ok').click();
@@ -299,12 +294,8 @@ test('TC-SKY-906-03: vault switcher creates a 2nd vault, switches, and switches 
     expect(vaultSettings.recentProjects?.some((p) => p.vaultRoot === firstStory)).toBe(true);
     expect(vaultSettings.recentProjects?.some((p) => p.vaultRoot.endsWith('Second/Stories/Story Vault'))).toBe(true);
 
-    // Switch back to the first vault via the switcher.
-    await pg.locator('.project-switcher-btn').click();
-    // Click the row that matches the first vault path. The switcher renders
-    // one button per recent project; we identify by data-attribute fallback.
-    const firstRow = pg.locator(`.project-switcher-item`).filter({ hasText: 'First' }).first();
-    await firstRow.click();
+    // Switch back to the first vault via the rail tile.
+    await pg.getByRole('button', { name: /Switch to vault First/i }).click();
 
     await expect.poll(
       () => readVaultSettings(userData).vaultRoot,

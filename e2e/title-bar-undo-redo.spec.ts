@@ -114,8 +114,9 @@ test('UR-02: Undo no-ops gracefully when no editor is focused (no throw, app sta
     await openScene(page);
 
     // Blur the editor so no TipTap instance is focused.
-    await page.locator('.wc-project').click();
-    await page.keyboard.press('Escape');
+    // A1: `.wc-project` opens Welcome (onboarding replay) — do not click it to blur.
+    await page.locator('.bottom-bar').click({ position: { x: 8, y: 8 } });
+    await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur?.(); });
 
     await clickEditMenuItem(page, 'Undo');
     // App did not crash — the nav rail (unrelated chrome) is still there.

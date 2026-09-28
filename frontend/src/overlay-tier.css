@@ -12,9 +12,9 @@
      box-shadow: 0 14px 40px rgba(3,5,12,.6),
                  0 0 22px -6px var(--g1, rgba(0,240,255,.4));
 
-   Here the fill comes from `--glass-fill-overlay` / `--pop` (Lens AC: live
-   min(96, max(50, glassA + 16)) from liquidNeonEngine — denser than panel
-   glass) and blur from the fixed `--blur-panel-overlay` (24px). The K8 /
+   A1 / 09 §2.1: fill is `--pop` (clamp .86–.99, glassA+10) — denser than
+   panel glass and distinct from `--glass-fill-overlay` / `--glass2` (card/tab
+   fill, floor .50). Blur from `--blur-panel-overlay` (24px). The K8 /
    reduced-transparency / no-backdrop-filter paths in tokens.css flatten every
    consumer at once.
    The border and glow come
@@ -55,7 +55,7 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .ln-overlay-surface {
-    background: var(--glass-fill-overlay);
+    background: var(--pop);
     backdrop-filter: blur(var(--blur-panel-overlay));
     -webkit-backdrop-filter: blur(var(--blur-panel-overlay));
   }

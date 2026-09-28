@@ -517,6 +517,8 @@
     0 0 var(--gr, 26px) -7px var(--g2, rgba(155, 95, 255, 0.4)),
     0 18px 60px rgba(2, 4, 10, 0.55);
   padding: 64px 84px 90px;
+  /* A1 / 09 §2.5: cancel uiFont so text-size never resizes manuscript type */
+  zoom: var(--ln-ms-zoom, 1);
 }
 
 /* ── page-edge drag handles + width badge (prototype 861–868) ── */
