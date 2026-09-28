@@ -37,7 +37,6 @@ export interface NavRailVault {
 export interface AppNavRailProps {
   activeSection: NavRailModuleId;
   onSectionChange: (moduleId: NavRailModuleId) => void;
-  onOpenAccount: () => void;
   onOpenSettings: () => void;
   /** A1 / prototype settingsNavSt: Settings button uses railActive while open. */
   settingsActive?: boolean;
@@ -252,7 +251,6 @@ function ChevronGlyph({ direction }: { direction: 'up' | 'down' }) {
 export default function AppNavRail({
   activeSection,
   onSectionChange,
-  onOpenAccount,
   onOpenSettings,
   settingsActive = false,
   navItems,
@@ -466,20 +464,8 @@ export default function AppNavRail({
       aria-label="Main navigation"
     >
       {neonOverlay}
-      {/* Mythos brand glyph — opens AccountModal */}
-      <div className="nav-rail__top">
-        <button
-          type="button"
-          className="nav-rail__brand"
-          onClick={onOpenAccount}
-          aria-label="Open account"
-        >
-          <span className="nav-rail__brand-glyph" aria-hidden="true">M</span>
-          {!slim && <span className="nav-rail__brand-label">Mythos</span>}
-        </button>
-      </div>
 
-      {/* Section nav items (prototype 173–178) */}
+      {/* Section nav items (prototype 173–178). A1-Q2: no rail brand — account is title-bar avatar. */}
       <div className="nav-rail__nav" role="group" aria-label="Sections">
         {navItems.map((item, index) => {
           const active = activeSection === item.id;

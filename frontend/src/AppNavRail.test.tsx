@@ -24,7 +24,6 @@ function makeProps(overrides: Partial<Parameters<typeof AppNavRail>[0]> = {}) {
   return {
     activeSection: 'story' as AppTab,
     onSectionChange: vi.fn(),
-    onOpenAccount: vi.fn(),
     onOpenSettings: vi.fn(),
     navItems: NAV_ITEMS,
     collapsed: false,
@@ -47,10 +46,10 @@ describe('AppNavRail', () => {
     expect(screen.getByRole('button', { name: 'Notes' })).toBeInTheDocument();
   });
 
-  it('renders brand and settings buttons', () => {
+  it('renders settings button (no rail brand)', () => {
     render(<AppNavRail {...makeProps()} />);
-    expect(screen.getByRole('button', { name: 'Open account' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open settings' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open account' })).toBeNull();
   });
 
   // ─── Section switch ──────────────────────────────────────────────────────────
@@ -190,13 +189,12 @@ describe('AppNavRail', () => {
     expect(screen.getByRole('button', { name: 'Story' })).toBeInTheDocument();
   });
 
-  // ─── Account modal trigger ───────────────────────────────────────────────────
+  // ─── A1-Q2: no rail brand — account is title-bar avatar only ───────────────
 
-  it('calls onOpenAccount when the brand glyph button is clicked', () => {
-    const onOpenAccount = vi.fn();
-    render(<AppNavRail {...makeProps({ onOpenAccount })} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open account' }));
-    expect(onOpenAccount).toHaveBeenCalledTimes(1);
+  it('does not render a rail brand / Open account control', () => {
+    render(<AppNavRail {...makeProps()} />);
+    expect(screen.queryByRole('button', { name: 'Open account' })).toBeNull();
+    expect(document.querySelector('.nav-rail__brand')).toBeNull();
   });
 
   it('calls onOpenSettings when the settings button is clicked', () => {

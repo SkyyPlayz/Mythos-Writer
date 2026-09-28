@@ -177,7 +177,9 @@ test('capture SKY-11450 overlay tier screenshots', async () => {
     await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toHaveCount(0);
 
     // 2. AccountModal — a `.ln-dialog` consumer, i.e. the shared primitive.
-    await page.getByRole('button', { name: 'Open account' }).click();
+    // A1-Q2: account opens from the title-bar avatar (rail brand removed).
+    await page.getByTestId('wc-avatar').click();
+    await page.getByRole('button', { name: /Account & profile/i }).click();
     const account = page.locator('.ln-dialog');
     await expect(account).toBeVisible({ timeout: 10_000 });
     await page.waitForTimeout(400);
