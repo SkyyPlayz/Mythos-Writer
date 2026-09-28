@@ -90,11 +90,21 @@ describe('A1 engine --pop (09 §2.1)', () => {
   });
 });
 
-describe('A1 Welcome vs Demo (09 §3.1)', () => {
+describe('A1 residual Welcome + Demo (09 §3.1 / §7)', () => {
   const shell = read('DesktopShell.tsx');
-  it('Welcome opens onboarding wizard; Demo toggles TourModal', () => {
-    expect(shell).toMatch(/onOpenWelcome=\{replayOnboardingWizard\}/);
-    expect(shell).toMatch(/onToggleDemo=\{\(\) => setTourOpen/);
-    expect(shell).not.toMatch(/onOpenWelcome=\{\(\) => setTourOpen\(true\)\}/);
+  it('Welcome opens WelcomeOverlay (no onboardingReplay); Demo toggles WalkthroughOverlay', () => {
+    expect(shell).toMatch(/onOpenWelcome=\{\(\) => setWelcomeOpen\(true\)\}/);
+    expect(shell).toMatch(/onToggleDemo=\{\(\) => setDemoOn/);
+    expect(shell).toContain('WelcomeOverlay');
+    expect(shell).toContain('WalkthroughOverlay');
+    expect(shell).not.toMatch(/onOpenWelcome=\{replayOnboardingWizard\}/);
+    expect(shell).not.toMatch(/<TourModal/);
+  });
+
+  it('rail has no brand M; account is title-bar avatar only', () => {
+    const rail = read('AppNavRail.tsx');
+    expect(rail).not.toContain('nav-rail__brand');
+    expect(rail).not.toMatch(/aria-label="Open account"/);
+    expect(shell).toMatch(/onOpenAccount=\{\(\) => setAccountModalOpen\(true\)\}/);
   });
 });

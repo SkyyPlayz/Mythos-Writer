@@ -34,10 +34,21 @@ export interface NavRailVault {
   icon?: VaultIconRef;
 }
 
+/** Prototype data-tour anchors for Demo walkthrough (09 §7 / seed targets). */
+const TOUR_TARGET_BY_MODULE: Partial<Record<NavRailModuleId, string>> = {
+  story: 'rail-editor',
+  notes: 'rail-notes',
+  boards: 'rail-boards',
+  crafter: 'rail-crafter',
+  timeline: 'rail-timeline',
+  'vault-graph': 'rail-graph',
+};
+
 export interface AppNavRailProps {
   activeSection: NavRailModuleId;
   onSectionChange: (moduleId: NavRailModuleId) => void;
-  onOpenAccount: () => void;
+  /** @deprecated A1-Q2 — account opens from title-bar avatar only; prop ignored. */
+  onOpenAccount?: () => void;
   onOpenSettings: () => void;
   /** A1 / prototype settingsNavSt: Settings button uses railActive while open. */
   settingsActive?: boolean;
@@ -252,7 +263,6 @@ function ChevronGlyph({ direction }: { direction: 'up' | 'down' }) {
 export default function AppNavRail({
   activeSection,
   onSectionChange,
-  onOpenAccount,
   onOpenSettings,
   settingsActive = false,
   navItems,
@@ -466,26 +476,15 @@ export default function AppNavRail({
       aria-label="Main navigation"
     >
       {neonOverlay}
-      {/* Mythos brand glyph — opens AccountModal */}
-      <div className="nav-rail__top">
-        <button
-          type="button"
-          className="nav-rail__brand"
-          onClick={onOpenAccount}
-          aria-label="Open account"
-        >
-          <span className="nav-rail__brand-glyph" aria-hidden="true">M</span>
-          {!slim && <span className="nav-rail__brand-label">Mythos</span>}
-        </button>
-      </div>
 
-      {/* Section nav items (prototype 173–178) */}
+      {/* Section nav items (prototype 173–178). A1-Q2: no rail brand — account is title-bar avatar. */}
       <div className="nav-rail__nav" role="group" aria-label="Sections">
         {navItems.map((item, index) => {
           const active = activeSection === item.id;
           const slot = SLOT_BY_MODULE[item.id] ?? 1;
           const hasStories = storiesEnabled && item.id === 'story';
           const Glyph = RAIL_GLYPH_BY_ID[item.id];
+          const tourTarget = TOUR_TARGET_BY_MODULE[item.id];
           return (
             <button
               key={item.id}
@@ -497,6 +496,7 @@ export default function AppNavRail({
               onClick={() => handleItemClick(item)}
               onKeyDown={(e) => handleNavKeyDown(e, index)}
               aria-label={item.label}
+              data-tour={tourTarget}
               aria-current={active ? 'page' : undefined}
               aria-haspopup={hasStories ? 'true' : undefined}
               aria-expanded={hasStories ? storiesOpen : undefined}

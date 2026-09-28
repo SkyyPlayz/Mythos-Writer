@@ -103,7 +103,12 @@ import { loadDraft, undoLoadDraft, type DraftUndoState } from './drafts/loadUndo
 import UpdateBanner from './UpdateBanner';
 import SearchBar from './SearchBar';
 import GlobalSearchPanel from './GlobalSearchPanel';
-import TourModal from './TourModal';
+import WelcomeOverlay, {
+  markWelcomeOverlayDismissed,
+  shouldAutoOpenWelcomeOverlay,
+  type WelcomePathId,
+} from './WelcomeOverlay';
+import WalkthroughOverlay from './walkthrough/WalkthroughOverlay';
 import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
@@ -799,7 +804,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Beta 4 M2: View → Toggle left panel (§4) — a real user toggle, ANDed into
   // showLeftSidebar below (focus/distraction-free rules unchanged).
   const [leftPanelHidden, setLeftPanelHidden] = useState(false);
-  const [tourOpen, setTourOpen] = useState(false);
+  // A1 residual Q1/Q3: Welcome overlay (09 §7) + Demo walkthrough chrome (not TourModal).
+  const [welcomeOpen, setWelcomeOpen] = useState(() => shouldAutoOpenWelcomeOverlay());
+  const [demoOn, setDemoOn] = useState(false);
   // M1 (SKY-9013): 'part' is a first-class depth — viewDepth is the manuscript
   // zoom level directly (the SKY-6010 partZoom flag is gone with it). Until M2
   // lands the Parts data model, part depth renders the story's chapters
@@ -6000,7 +6007,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     { t: 'Toggle focus mode', sub: 'Hide chrome · just the page', run: () => toggleDistractionFree() },
     { t: 'Open appearance settings', sub: 'Theme · glass · neon', run: () => setSettingsOpen(true) },
     { t: 'Export…', sub: 'DOCX · PDF · EPUB', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
-    { t: 'Welcome tour', sub: 'Replay the intro', run: () => setTourOpen(true) },
+    { t: 'Welcome tour', sub: 'Open the welcome overlay', run: () => setWelcomeOpen(true) },
     { t: 'Replay welcome wizard', sub: 'Onboarding, once more — current vault untouched', run: replayOnboardingWizard },
     { t: 'Keyboard shortcuts', sub: 'Every binding at a glance', run: () => setShortcutsOpen(true) },
     { t: 'Prompt history', sub: 'Past agent prompts', run: () => setHistoryOpen(true) },
@@ -6091,7 +6098,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       } },
     ] },
     { label: 'Help', items: [
-      { label: 'Welcome tour', run: () => setTourOpen(true) },
+      { label: 'Welcome tour', run: () => setWelcomeOpen(true) },
       { label: 'Replay welcome wizard…', run: replayOnboardingWizard },
       { label: 'Keyboard shortcuts…', run: () => setShortcutsOpen(true) },
       { label: 'About Mythos Writer', run: () => setSettingsOpen(true) },
@@ -6227,7 +6234,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           <AppNavRail
             activeSection={activeNavModule}
             onSectionChange={handleNavModuleChange}
-            onOpenAccount={() => setAccountModalOpen(true)}
             onOpenSettings={() => setSettingsOpen(true)}
             settingsActive={settingsOpen}
             navItems={navItems}
@@ -6267,9 +6273,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onReplayOnboarding={() => {
             window.api?.onboardingReplay?.().then(() => window.location.reload()).catch(() => {});
           }}
-          onOpenWelcome={replayOnboardingWizard}
-          demoOn={tourOpen}
-          onToggleDemo={() => setTourOpen((o) => !o)}
+          onOpenWelcome={() => setWelcomeOpen(true)}
+          demoOn={demoOn}
+          onToggleDemo={() => setDemoOn((o) => !o)}
           notificationCenter={<NotificationCenter />}
         />
       )}
@@ -6387,8 +6393,37 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {shortcutsOpen && (
         <KeyboardShortcutsDialog onClose={() => setShortcutsOpen(false)} />
       )}
-      {tourOpen && (
-        <TourModal onClose={() => setTourOpen(false)} />
+      {welcomeOpen && (
+        <WelcomeOverlay
+          onSkip={() => {
+            markWelcomeOverlayDismissed();
+            setWelcomeOpen(false);
+          }}
+          onPickPath={(id: WelcomePathId) => {
+            markWelcomeOverlayDismissed();
+            setWelcomeOpen(false);
+            switch (id) {
+              case 'template':
+              case 'blank':
+              case 'restore':
+              case 'import':
+                // Path cards hand off to the existing New Vault flow (no wizard-replay reload).
+                void createMythosVault();
+                break;
+              case 'openin':
+                void openVaultViaPicker();
+                break;
+              default: {
+                const _exhaustive: never = id;
+                void _exhaustive;
+                break;
+              }
+            }
+          }}
+        />
+      )}
+      {demoOn && (
+        <WalkthroughOverlay onClose={() => setDemoOn(false)} />
       )}
       {exportScope && <ExportDialog scope={exportScope} stories={stories} currentChapterId={selectedChapter?.id ?? null} onClose={() => setExportScope(null)} />}
       {templatePickerOpen && (
