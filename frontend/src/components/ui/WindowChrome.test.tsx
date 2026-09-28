@@ -177,6 +177,19 @@ describe('WindowChrome — project menu create-vault parity', () => {
     fireEvent.click(screen.getByTestId('wc-project-trigger'));
     expect(screen.queryByTestId('project-switcher-create-new')).not.toBeInTheDocument();
   });
+
+  it('A1 Welcome wiring: trigger opens Welcome and does not open the project menu', async () => {
+    stubApi('linux');
+    const onOpenWelcome = vi.fn();
+    const onCreateVault = vi.fn();
+    await act(async () => {
+      render(<WindowChrome onOpenWelcome={onOpenWelcome} onCreateVault={onCreateVault} />);
+    });
+    fireEvent.click(screen.getByTestId('wc-project-trigger'));
+    expect(onOpenWelcome).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId('wc-project-menu')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('project-switcher-create-new')).not.toBeInTheDocument();
+  });
 });
 
 // ─── Beta 4 M2 — vault switcher popover: location + stats per vault (§4) ─────
