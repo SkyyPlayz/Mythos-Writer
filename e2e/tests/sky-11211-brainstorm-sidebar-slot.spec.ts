@@ -124,9 +124,12 @@ test('SKY-11211: Brainstorm route via nav rail shows exactly one right sidebar w
   expect(location.insideSidebar).toBe(1);
 
   // The sidebar hosts the brainstorm content from the mockup...
+  // Scope "Agent Activity" to bs-activity-section — Questions-for-you also
+  // has a qfy-subtab-activity tab + empty-state copy with the same phrase.
   const sidebar = sidebars.first();
-  await expect(sidebar.getByTestId('bs-activity-section')).toBeVisible();
-  await expect(sidebar.getByText('Agent Activity')).toBeVisible();
+  const activitySection = sidebar.getByTestId('bs-activity-section');
+  await expect(activitySection).toBeVisible();
+  await expect(activitySection.locator('.bs-activity-title')).toHaveText('Agent Activity');
   await expect(sidebar.getByText('BEHIND THE SCENES')).toBeVisible();
 
   // ...instead of the generic partner panel, which is meaningless here
