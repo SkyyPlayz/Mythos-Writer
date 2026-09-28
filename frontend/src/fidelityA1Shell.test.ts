@@ -40,6 +40,10 @@ describe('A1 floating rail (09 §3.2)', () => {
     const tsx = read('AppNavRail.tsx');
     expect(tsx).toMatch(/innerHeight\s*<\s*n\s*\*\s*64\s*\+\s*60\s*\+\s*3\s*\*\s*36\s*\+\s*90/);
   });
+
+  it('nav group uses display:contents so items flex against the spacer', () => {
+    expect(css).toMatch(/\.nav-rail__nav\s*\{[^}]*display:\s*contents/s);
+  });
 });
 
 describe('A1 title bar Welcome + Demo (09 §3.1)', () => {

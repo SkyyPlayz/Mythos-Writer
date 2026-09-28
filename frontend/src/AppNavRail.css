@@ -103,21 +103,12 @@
   color: #e8eefc;
 }
 
-/* ── Nav items (prototype 173–178; railBase 3971) ─────────────────────── */
+/* ── Nav items (prototype 139–144 / railBase 9279) ───────────────────────
+   display:contents so each item + the spacer are flex children of .nav-rail
+   (prototype has no wrapper — items flex against the spacer directly). */
 
 .nav-rail__nav {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  flex: 1 1 auto;
-  min-height: 0;
-  /* Items themselves flex (09 §3.2); this group eats leftover above the spacer */
-}
-
-.nav-rail--collapsed .nav-rail__nav {
-  gap: 4px;
+  display: contents;
 }
 
 /* 09 §3.2: spacer between nav items and vault tiles (no scroll container) */
