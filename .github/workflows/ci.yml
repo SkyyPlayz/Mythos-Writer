@@ -232,6 +232,9 @@ jobs:
       - name: Test (issue-finder dedupe key, SKY-8741)
         run: node .github/scripts/issue-finder.test.js
 
+      - name: Test (mythos-gate Critic/Shield/Probe tip-bound signals)
+        run: node .github/scripts/mythos-gate-signals.test.js
+
       - name: Upload coverage report
         if: github.event_name != 'pull_request'
         continue-on-error: true
