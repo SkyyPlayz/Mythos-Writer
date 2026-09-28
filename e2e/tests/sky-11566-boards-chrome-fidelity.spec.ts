@@ -134,16 +134,17 @@ test.describe('SKY-11566 — Boards chrome vs the owner mockup', () => {
     const b1 = parseColor(await rootToken(page, '--b1'));
     const b2 = parseColor(await rootToken(page, '--b2'));
 
-    // Fill: the mockup's raised-chrome tier, engine-driven, floored at 50%.
+    // Fill: the mockup's raised-chrome tier (--glass2), engine-driven, floored at 50%.
     expect(pill.fill).toEqual(glass2);
     expect(pill.fill.r).toBe(21);
     expect(pill.fill.g).toBe(26);
     expect(pill.fill.b).toBe(45);
     expect(pill.fill.a).toBeGreaterThanOrEqual(0.5);
 
-    // Not the frozen overlay tier it shipped on — that is the dialog recipe.
-    const overlay = parseColor(await rootToken(page, '--glass-fill-overlay'));
-    expect(pill.fill).not.toEqual(overlay);
+    // A1: --glass-fill-overlay aliases --glass2 (card/tab fill). Dialog/menu
+    // recipe is --pop (.86) — zoom pill must stay on glass2, not --pop.
+    const pop = parseColor(await rootToken(page, '--pop'));
+    expect(pill.fill).not.toEqual(pop);
 
     // Frost: a real 20px, not the 1.25px the tier used to derive.
     expect(pill.backdropFilter).toBe('blur(20px)');
