@@ -4,6 +4,7 @@ name: Mythos gate auto-merge
 # See docs/MERGE_GATE.md. Does not touch Dependabot or release publish.
 # Carve-out PRs never merge without owner `CARVE-OUT APPROVE` on tip.
 # Gate signals (Critic/Shield/Probe) must come from trusted accounts.
+# Shield: latest tip-bound decision must be CLEAR — never merge on BLOCK or missing CLEAR.
 
 on:
   workflow_run:
@@ -88,7 +89,8 @@ jobs:
 
             function isGateSignalBody(body) {
               if (!body) return false;
-              return /approve|clear|verify\s+pass|carve-out|changes[_\s-]?requested/i.test(body);
+              // Include Shield BLOCK so a tip-bound BLOCK re-triggers evaluate and revokes CLEAR.
+              return /approve|clear|block|verify\s+pass|carve-out|changes[_\s-]?requested/i.test(body);
             }
 
             function isTrustedGateAuthor(login) {
@@ -106,9 +108,15 @@ jobs:
               return null;
             }
 
-            function hasShieldClear(body) {
-              // Require Shield role marker + CLEAR (not bare "clear").
-              return /\bshield\b/i.test(body) && /\bclear\b/i.test(body);
+            function shieldDecision(body) {
+              if (!body) return null;
+              // Fail closed: require Shield near CLEAR/BLOCK (not bare tokens, not far-apart paste).
+              // BLOCK beats CLEAR in the same body so a quote of prior CLEAR cannot override BLOCK.
+              const block = /\bshield\b[\s\S]{0,120}\bblock\b|\bblock\b[\s\S]{0,120}\bshield\b/i.test(body);
+              const clear = /\bshield\b[\s\S]{0,120}\bclear\b|\bclear\b[\s\S]{0,120}\bshield\b/i.test(body);
+              if (block) return 'BLOCK';
+              if (clear) return 'CLEAR';
+              return null;
             }
 
             function hasProbePass(body) {
@@ -210,9 +218,9 @@ jobs:
               owner, repo, pull_number: prNumber, per_page: 100,
             });
 
-            // Collect tip-bound trusted signals with timestamps for "latest Critic wins".
+            // Collect tip-bound trusted signals with timestamps for "latest Critic/Shield wins".
             const criticEvents = [];
-            let shieldOk = false;
+            const shieldEvents = [];
             let probeOk = false;
             let carveOwnerOk = false;
 
@@ -222,7 +230,10 @@ jobs:
               if (decision) {
                 criticEvents.push({ decision, at: new Date(createdAt).getTime(), login });
               }
-              if (hasShieldClear(body)) shieldOk = true;
+              const shield = shieldDecision(body);
+              if (shield) {
+                shieldEvents.push({ decision: shield, at: new Date(createdAt).getTime(), login });
+              }
               if (hasProbePass(body)) probeOk = true;
               if (login === OWNER_LOGIN && hasCarveOutApprove(body)) carveOwnerOk = true;
             }
@@ -256,7 +267,17 @@ jobs:
                   : 'no tip-bound Critic APPROVE from trusted author'
               );
             }
-            if (!shieldOk) return skip('no tip-bound Shield CLEAR from trusted author');
+
+            // Fail closed: latest tip-bound Shield must be CLEAR — never merge on BLOCK or missing CLEAR.
+            shieldEvents.sort((a, b) => a.at - b.at);
+            const latestShield = shieldEvents.length ? shieldEvents[shieldEvents.length - 1] : null;
+            if (!latestShield || latestShield.decision !== 'CLEAR') {
+              return skip(
+                latestShield
+                  ? `latest tip-bound Shield decision is ${latestShield.decision} (not CLEAR)`
+                  : 'no tip-bound Shield CLEAR from trusted author'
+              );
+            }
             if (!probeOk) return skip('no tip-bound Probe VERIFY PASS from trusted author');
 
             const labels = (pr.labels || []).map((l) => l.name.toLowerCase());
