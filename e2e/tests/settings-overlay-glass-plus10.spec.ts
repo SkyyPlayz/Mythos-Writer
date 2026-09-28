@@ -1,9 +1,10 @@
 /**
- * settings-overlay-glass-plus10.spec.ts — Lens AC / 0.5.2 denser --pop
+ * settings-overlay-glass-plus10.spec.ts — A1 / 09 §2.1 glass tiers
  *
- * Settings / popups / menus / toasts must paint `--glass-fill-overlay` /
- * `--pop` at min(96, max(50, glassA + 16)) — denser than panel glass
- * (mockup --glass2). At the shipped default glassA=20 that is ≥ 0.50.
+ * At default glassA=20:
+ *   --glass-fill-overlay / --glass2 → clamp(.50,.97, glassA/100+.16) = .50
+ *   --pop                          → clamp(.86,.99, glassA/100+.10) = .86
+ *   --glass-settings               → glassA+10 = .30
  *
  * Run (after `npm run build:electron`):
  *   npx playwright test e2e/tests/settings-overlay-glass-plus10.spec.ts --reporter=list
@@ -57,7 +58,7 @@ function parseAlpha(rgba: string): number {
   return m[1] === undefined ? 1 : Number(m[1]);
 }
 
-test('glassA=20 → overlay/--pop denser than panel (≥ 0.50)', async () => {
+test('glassA=20 → overlay .50, --pop .86, Settings glassA+10', async () => {
   const { tempRoot, userData } = makeTemp(20);
   let app: ElectronApplication | undefined;
   try {
@@ -72,9 +73,20 @@ test('glassA=20 → overlay/--pop denser than panel (≥ 0.50)', async () => {
     const popFill = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--pop').trim(),
     );
+    const settingsFill = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--glass-settings').trim(),
+    );
+
+    // Overlay / glass2 floor (.50) — denser than panel glass, thinner than --pop.
     expect(parseAlpha(tokenFill)).toBeGreaterThanOrEqual(0.5);
     expect(parseAlpha(tokenFill)).toBeLessThanOrEqual(0.501);
-    expect(parseAlpha(popFill)).toBe(parseAlpha(tokenFill));
+    // A1 --pop floor (.86) — menus/toasts stay opaque at low glassA.
+    expect(parseAlpha(popFill)).toBeGreaterThanOrEqual(0.86);
+    expect(parseAlpha(popFill)).toBeLessThanOrEqual(0.861);
+    expect(parseAlpha(popFill)).toBeGreaterThan(parseAlpha(tokenFill));
+    // Settings view glass = glassA + 10 → .30 at default.
+    expect(parseAlpha(settingsFill)).toBeGreaterThanOrEqual(0.3);
+    expect(parseAlpha(settingsFill)).toBeLessThanOrEqual(0.301);
 
     const panelToken = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--glass-fill').trim(),
@@ -86,7 +98,9 @@ test('glassA=20 → overlay/--pop denser than panel (≥ 0.50)', async () => {
     await expect(panel).toBeVisible({ timeout: 10_000 });
 
     const panelBg = await panel.evaluate((el) => getComputedStyle(el).backgroundColor);
-    expect(parseAlpha(panelBg)).toBeGreaterThanOrEqual(0.5);
+    // Settings paints --glass-settings (glassA+10), not the denser overlay tier.
+    expect(parseAlpha(panelBg)).toBeGreaterThanOrEqual(0.3);
+    expect(parseAlpha(panelBg)).toBeLessThanOrEqual(0.31);
   } finally {
     await app?.close().catch(() => undefined);
     fs.rmSync(tempRoot, { recursive: true, force: true });

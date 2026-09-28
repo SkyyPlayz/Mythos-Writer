@@ -44,6 +44,11 @@ describe('A1 floating rail (09 §3.2)', () => {
   it('nav group uses display:contents so items flex against the spacer', () => {
     expect(css).toMatch(/\.nav-rail__nav\s*\{[^}]*display:\s*contents/s);
   });
+
+  it('rail--pop elevates above workspace tabs / title bar', () => {
+    expect(css).toMatch(/\.nav-rail--pop\s*\{[^}]*z-index:\s*70/s);
+    expect(css).toMatch(/\.nav-rail__stories\s*\{[^}]*var\(--pop/s);
+  });
 });
 
 describe('A1 title bar Welcome + Demo (09 §3.1)', () => {

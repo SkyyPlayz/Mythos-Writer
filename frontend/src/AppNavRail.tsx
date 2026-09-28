@@ -461,7 +461,7 @@ export default function AppNavRail({
 
   return (
     <nav
-      className={`nav-rail${slim ? ' nav-rail--collapsed' : ''}`}
+      className={`nav-rail${slim ? ' nav-rail--collapsed' : ''}${storiesOpen || editOpen ? ' nav-rail--pop' : ''}`}
       title={autoSlimHint ? 'labels hidden — window is short' : undefined}
       aria-label="Main navigation"
     >

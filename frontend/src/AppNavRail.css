@@ -30,6 +30,11 @@
   user-select: none;
 }
 
+/* Stories / edit popovers overflow into main-col; elevate above wtb (55) + wc (60). */
+.nav-rail--pop {
+  z-index: 70;
+}
+
 .nav-rail--collapsed {
   width: 54px;
   gap: 4px;
@@ -204,7 +209,7 @@
   z-index: 72;
   padding: 10px;
   border-radius: 15px;
-  background: rgba(15, 19, 33, .97);
+  background: var(--pop, rgba(15, 19, 33, .97));
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));

@@ -133,6 +133,13 @@ describe('AppNavRail', () => {
     expect(screen.getByTestId('nav-rail-vault-add')).toHaveTextContent('+');
   });
 
+  it('elevates z-index (nav-rail--pop) while Stories is open', () => {
+    render(<AppNavRail {...makeProps({ stories: STORIES, onStorySelect: vi.fn() })} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Story' }));
+    expect(screen.getByRole('navigation')).toHaveClass('nav-rail--pop');
+    expect(screen.getByTestId('nav-rail-stories')).toBeInTheDocument();
+  });
+
   it('hides item labels when collapsed', () => {
     render(<AppNavRail {...makeProps({ collapsed: true })} />);
     expect(screen.queryByText('Story')).not.toBeInTheDocument();
