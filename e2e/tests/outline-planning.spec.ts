@@ -140,10 +140,15 @@ async function fillPrompt(pg: Page, response: string): Promise<void> {
 async function openOutlinePanel(pg: Page): Promise<void> {
   const outlinePanel = pg.locator('[data-testid="outline-planning-panel"]');
   if (await outlinePanel.isVisible({ timeout: 500 }).catch(() => false)) return;
-  const newTabBtn = pg.locator('[data-testid="wtb-new-tab-btn"]');
+  // A2 docks the story WorkspaceTabBar in writing chrome (.shell-center-column).
+  // Scope the + picker there so a hidden Notes strip (if mounted) cannot steal the click.
+  const newTabBtn = pg.locator('.shell-center-column [data-testid="wtb-new-tab-btn"]');
   await expect(newTabBtn).toBeVisible({ timeout: 8_000 });
   await newTabBtn.click();
-  await pg.locator('[data-testid="wtb-new-tab-menu-item-outline"]').click();
+  const outlineItem = pg.locator('.shell-center-column [data-testid="wtb-new-tab-menu-item-outline"]');
+  // Menu hangs below the strip; force covers post-reload boot churn that can
+  // keep the popover from reporting "stable" for the full timeout.
+  await outlineItem.click({ force: true, timeout: 8_000 });
   await expect(outlinePanel).toBeVisible({ timeout: 8_000 });
 }
 

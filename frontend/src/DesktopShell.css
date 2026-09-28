@@ -465,7 +465,11 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow: hidden;
+  /* A2 — story WorkspaceTabBar lives here; its + / overflow menus hang below
+     the 38px strip. overflow:hidden clipped those popovers (outline e2e
+     AC-OPL-QA-09). Clip the editor pane instead; keep the glass card radius
+     on the column for the border/background. */
+  overflow: visible;
   /* Beta 3 M8: slot-B glass card (prototype 467) */
   border-radius: 18px;
   background: var(--glass, rgba(13, 16, 28, .72));
@@ -474,6 +478,13 @@
   /* SKY-3618: Lowered from 300px; JS in DesktopShell enforces CENTER_MIN_WIDTH (280px) by
      clamping sidebar display widths. The CSS floor prevents total collapse in edge cases. */
   min-width: 200px;
+}
+
+.shell-center-column > .shell-editor {
+  /* Inherit bottom radii so content still respects the glass card corners. */
+  border-bottom-left-radius: 17px;
+  border-bottom-right-radius: 17px;
+  min-height: 0;
 }
 
 .shell-editor {
