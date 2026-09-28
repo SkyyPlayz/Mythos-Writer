@@ -47,6 +47,30 @@ test('tokens are case-insensitive (COMMENT OK)', () => {
   assert.equal(probeDecision('probe verify fail'), 'VERIFY_FAIL');
 });
 
+test('Critic APPROVE is whole-word — PLAN APPROVED / APPROVED do not match', () => {
+  assert.equal(criticDecision('Critic plan gate — PLAN APPROVED — tip deadbeef'), null);
+  assert.equal(criticDecision('Critic: APPROVED'), null);
+  assert.equal(criticDecision('Critic APPROVED the plan'), null);
+  assert.equal(criticDecision('Critic APPROVE'), 'APPROVE');
+});
+
+test('fixture: tip-bound PLAN APPROVED is not Critic APPROVE → no merge', () => {
+  const result = evaluateTipBoundSignals({
+    headSha: TIP_A,
+    items: [
+      item(`Critic plan gate — PLAN APPROVED — tip ${TIP_A.slice(0, 7)}`, {
+        at: '2026-09-28T12:00:00Z',
+      }),
+      item(`Shield CLEAR tip ${TIP_A.slice(0, 7)}`, { at: '2026-09-28T12:01:00Z' }),
+      item(`Probe VERIFY PASS tip ${TIP_A.slice(0, 7)}`, { at: '2026-09-28T12:02:00Z' }),
+    ],
+  });
+  assert.equal(result.critic, null);
+  assert.equal(result.shield, 'CLEAR');
+  assert.equal(result.probe, 'VERIFY_PASS');
+  assert.equal(result.allowMerge, false);
+});
+
 test('fail beats pass in the same body', () => {
   assert.equal(
     criticDecision('Critic APPROVE\n…also Critic CHANGES REQUIRED'),

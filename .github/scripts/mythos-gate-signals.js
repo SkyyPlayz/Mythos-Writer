@@ -3,7 +3,8 @@
  * Tip-bound Critic / Shield / Probe matchers for mythos-gate-auto-merge.
  *
  * Tokens (case-insensitive; COMMENT reviews OK):
- *   Critic: APPROVE | CHANGES REQUIRED (also CHANGES REQUESTED / CHANGES_REQUESTED)
+ *   Critic: whole-word APPROVE | CHANGES REQUIRED (also CHANGES REQUESTED / CHANGES_REQUESTED)
+ *           — APPROVED / PLAN APPROVED do NOT count as Critic APPROVE
  *   Shield: CLEAR | BLOCK
  *   Probe:  VERIFY PASS | VERIFY FAIL
  *
@@ -72,8 +73,9 @@ function criticDecision(body) {
     /(?:##\s*)?critic\s*:?\s*changes[_\s-]*(?:required|requested)|critic[\s\S]{0,120}changes[_\s-]*(?:required|requested)/i.test(
       body
     );
+  // Whole-word APPROVE only — must not match APPROVED / PLAN APPROVED.
   const approveHit =
-    /(?:##\s*)?critic\s*:?\s*approve|critic[\s\S]{0,120}approve/i.test(body);
+    /(?:##\s*)?critic\s*:?\s*\bapprove\b|critic[\s\S]{0,120}\bapprove\b/i.test(body);
 
   if (changesHit) return 'CHANGES_REQUIRED';
   if (approveHit) return 'APPROVE';

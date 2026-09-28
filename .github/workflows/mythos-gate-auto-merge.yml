@@ -7,11 +7,13 @@ name: Mythos gate auto-merge
 # (SkyyPlayz, SkyHigh-Mythos-Bot — ignore cursor[bot]).
 #
 # Tokens (case-insensitive; COMMENT reviews OK) — fail beats pass; latest tip-bound wins:
-#   Critic: APPROVE | CHANGES REQUIRED (also CHANGES REQUESTED / CHANGES_REQUESTED)
+#   Critic: whole-word APPROVE | CHANGES REQUIRED (also CHANGES REQUESTED / CHANGES_REQUESTED)
+#           — APPROVED / PLAN APPROVED do NOT count as Critic APPROVE
 #   Shield: CLEAR | BLOCK
 #   Probe:  VERIFY PASS | VERIFY FAIL
 # All three pass tokens must cite the SAME tip SHA. Matchers live in
-# .github/scripts/mythos-gate-signals.js (fixture matrix in *.test.js).
+# .github/scripts/mythos-gate-signals.js on **main** only (fixture matrix in *.test.js).
+# Matcher checkout is always pinned to the default branch — never load PR-head matchers.
 
 on:
   workflow_run:
@@ -48,9 +50,12 @@ jobs:
         github.event.workflow_run.conclusion == 'success'
       )
     steps:
-      - name: Checkout gate matchers
+      - name: Checkout gate matchers from main
         uses: actions/checkout@v7
         with:
+          # Pin to main so pull_request evaluate cannot load attacker-controlled
+          # matchers from the PR tip. Fail closed below if the module is absent on main.
+          ref: main
           sparse-checkout: |
             .github/scripts/mythos-gate-signals.js
           sparse-checkout-cone-mode: false
@@ -64,12 +69,28 @@ jobs:
           # Prefer bot PAT when present (Contents + PRs write); else GITHUB_TOKEN.
           github-token: ${{ secrets.MYTHOS_BOT_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
+            const fs = require('fs');
+            const path = require('path');
+            const matcherPath = path.join(
+              process.env.GITHUB_WORKSPACE || process.cwd(),
+              '.github',
+              'scripts',
+              'mythos-gate-signals.js'
+            );
+            // Fail closed: never fall back to PR-tip / empty allow if main lacks matchers.
+            if (!fs.existsSync(matcherPath)) {
+              core.setFailed(
+                `Fail-closed: gate matcher missing on default branch (${matcherPath}). ` +
+                  'Refusing evaluate — will not load PR-head matchers.'
+              );
+              return;
+            }
             const {
               OWNER_LOGIN,
               shaInBody,
               isGateSignalBody,
               evaluateTipBoundSignals,
-            } = require('./.github/scripts/mythos-gate-signals.js');
+            } = require(matcherPath);
 
             const owner = context.repo.owner;
             const repo = context.repo.repo;
