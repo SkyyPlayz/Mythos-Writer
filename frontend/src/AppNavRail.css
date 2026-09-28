@@ -447,18 +447,11 @@
   outline-offset: 2px;
 }
 
-/* ── Bottom: divider + settings + slim toggle (prototype 211–238) ─────── */
+/* ── Bottom: divider + settings + slim toggle (prototype 170–179) ───────
+   display:contents — divider/settings/tools are rail siblings (gap 6/4). */
 
 .nav-rail__bottom {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 7px;
-}
-
-.nav-rail--collapsed .nav-rail__bottom {
-  gap: 5px;
+  display: contents;
 }
 
 /* prototype 211 */
