@@ -76,6 +76,7 @@ import {
   shouldMigrateLegacy,
 } from './vaultWorkspaceTabs';
 import { NAV_RAIL_DEFAULTS, mergeNavConfigItems, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
+import { resolvePartnerDisplayName } from './agents/partnerIdentity';
 // SKY-10712: same pure transform the main process applies to scene files on
 // disk during a rename cascade — used to converge in-memory manuscript state.
 import { rewriteWikiLinksForRename, type WikiLinkRewriteMode } from '@mythos-writer/shared/wikiLinkRename';
@@ -808,7 +809,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // zoom level directly (the SKY-6010 partZoom flag is gone with it). Until M2
   // lands the Parts data model, part depth renders the story's chapters
   // ungrouped (manuscriptModel's implicit single part).
-  const [viewDepth, setViewDepth] = useState<ZoomLevel>('scene');
+  // Slice B SCOPE #9: cold open / story switch lands Editor at Full Book zoom.
+  const [viewDepth, setViewDepth] = useState<ZoomLevel>('book');
   // M3 (SKY-9021): one-shot caret hand-off into ManuscriptView — create-story
   // (and the post-onboarding first open) land the caret in the new scene's
   // empty first paragraph. seq increments per request; the view claims it
@@ -5307,6 +5309,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
             ttsSettings={appSettings?.tts}
             voicePrefs={appSettings?.voice}
+            agentNames={appSettings?.agentNames}
             compact
           />
         );
@@ -6109,10 +6112,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ], [selectedStory, selectedChapter, selectedScene, grsVisible, navRailCollapsed, topBarHidden, handleNavSectionChange, handleGrsVisibilityChange, toggleDistractionFree, persistNavRailCollapsed, toggleTopBar, createStory, createScene, handleTabChange, handleSetView, tabShell.activeTab, handleOpenEntityBrowserStory, handleOpenEntityBrowserNotes, handleOpenOutlineStory]);
 
-  const navItems = useMemo<NavRailItem[]>(
-    () => resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS),
-    [savedNavConfig],
-  );
+  const navItems = useMemo<NavRailItem[]>(() => {
+    const items = resolveNavRailItems(savedNavConfig, NAV_RAIL_DEFAULTS);
+    // Slice B SCOPE #7/#10: rail Partner item shows the renameable partner name.
+    const partnerLabel = resolvePartnerDisplayName(appSettings?.agentNames);
+    return items.map((item) => (
+      item.id === 'brainstorm' ? { ...item, label: partnerLabel } : item
+    ));
+  }, [savedNavConfig, appSettings?.agentNames]);
 
   if (loading) {
     return (
@@ -7223,6 +7230,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             archiveContinuityEnabled={appSettings?.archiveContinuityEnabled ?? true}
             ttsSettings={appSettings?.tts}
             voicePrefs={appSettings?.voice}
+            agentNames={appSettings?.agentNames}
             activeScene={selectedScene}
             activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
             onFirstSubmit={() => checkGettingStartedItem('brainstorm')}
@@ -7530,6 +7538,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
                 ttsSettings={appSettings?.tts}
                 voicePrefs={appSettings?.voice}
+                agentNames={appSettings?.agentNames}
                 compact
               />
             ) : null}

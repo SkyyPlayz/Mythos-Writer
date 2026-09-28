@@ -1,0 +1,205 @@
+/* Slice B — partner card + in-panel call chrome */
+
+.partner-card {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 8px;
+  padding: 12px 12px;
+  border-radius: 13px;
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
+  background:
+    linear-gradient(135deg, rgba(155, 95, 255, 0.12), rgba(0, 240, 255, 0.06)),
+    rgba(13, 16, 28, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.partner-card--on-call {
+  border-color: rgba(0, 240, 255, 0.45);
+  background:
+    linear-gradient(135deg, rgba(0, 240, 255, 0.16), rgba(155, 95, 255, 0.1)),
+    rgba(13, 16, 28, 0.4);
+  box-shadow: 0 0 22px -8px rgba(0, 240, 255, 0.45);
+}
+
+.partner-card--muted .partner-card__status--call {
+  color: #ff6b6b;
+}
+
+.partner-card__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  background: rgba(155, 95, 255, 0.18);
+  border: 1px solid rgba(155, 95, 255, 0.4);
+  color: #d7c4ff;
+  flex-shrink: 0;
+}
+
+.partner-card--on-call .partner-card__avatar {
+  background: rgba(0, 240, 255, 0.16);
+  border-color: rgba(0, 240, 255, 0.45);
+  color: #9ff7ff;
+}
+
+.partner-card__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.partner-card__name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f0f3fc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.partner-card__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: #8e9db8;
+  letter-spacing: 0.02em;
+}
+
+.partner-card__status--call {
+  color: #9ff7ff;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.partner-card__wave {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+}
+
+.partner-card__wave i {
+  display: block;
+  width: 2px;
+  height: 4px;
+  border-radius: 1px;
+  background: #00f0ff;
+  animation: partner-wave 0.7s ease-in-out infinite;
+}
+
+.partner-card__wave i:nth-child(2) { animation-delay: 0.08s; height: 7px; }
+.partner-card__wave i:nth-child(3) { animation-delay: 0.16s; height: 11px; }
+.partner-card__wave i:nth-child(4) { animation-delay: 0.24s; height: 7px; }
+.partner-card__wave i:nth-child(5) { animation-delay: 0.32s; height: 4px; }
+
+@keyframes partner-wave {
+  0%, 100% { transform: scaleY(0.55); opacity: 0.65; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+
+.partner-card__call-btn,
+.partner-card__icon-btn,
+.partner-card__end-btn {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #c8d3e7;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.partner-card__call-btn {
+  width: 34px;
+  height: 34px;
+  color: #00f0ff;
+  border-color: rgba(0, 240, 255, 0.35);
+}
+
+.partner-card__call-btn:hover {
+  background: rgba(0, 240, 255, 0.12);
+}
+
+.partner-card__call-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.partner-card__icon-btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 7px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.partner-card__icon-btn--active {
+  color: #00f0ff;
+  border-color: rgba(0, 240, 255, 0.45);
+  background: rgba(0, 240, 255, 0.12);
+}
+
+.partner-card__icon-btn--mute-on {
+  color: #fff;
+  background: #e04444;
+  border-color: #e04444;
+}
+
+.partner-card__end-btn {
+  height: 30px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffb4b4;
+  border-color: rgba(255, 100, 100, 0.4);
+}
+
+.partner-card__end-btn:hover {
+  background: rgba(224, 68, 68, 0.2);
+}
+
+.partner-card__settings-pop {
+  flex: 1 1 100%;
+  margin-top: 4px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(8, 10, 18, 0.72);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.partner-card__settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  color: #c8d3e7;
+}
+
+.partner-card__settings-row select {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #f0f3fc;
+  font-size: 11px;
+  padding: 4px 8px;
+}
