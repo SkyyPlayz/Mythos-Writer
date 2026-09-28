@@ -763,7 +763,7 @@ import {
 } from './productionRoles.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
 import { backupAppData, restoreAppData } from './backup.js';
-import { cleanUninstall } from './uninstallHelper.js';
+import { cleanUninstall, writeUninstallDeletePathList } from './uninstallHelper.js';
 import { planUninstallRecovery } from './uninstallRecoveryPlan.js';
 import {
   loadBrainstormSettings,
@@ -851,7 +851,16 @@ let quitFlushHandled = false;
 // or the process is left running with zero windows until whatever is
 // waiting on it (e.g. Playwright's app.close()) hits its own timeout.
 let quitRequested = false;
-app.on('before-quit', () => { quitRequested = true; });
+app.on('before-quit', () => {
+  quitRequested = true;
+  // MW-delete-vault: refresh the NSIS sidecar so custom registered roots
+  // survive until the Windows uninstaller FileReads them on No/delete.
+  try {
+    writeUninstallDeletePathList(app.getPath('userData'));
+  } catch {
+    /* sidecar is best-effort — NSIS still falls back to default AppData vaults */
+  }
+});
 
 // SKY-11363: hard, bounded backstop for shutdown (see quitShutdown.ts). The
 // owner hit a Windows app that would not close and had to force-kill it from
@@ -1119,6 +1128,13 @@ function saveVaultSettings(updates: Partial<VaultSettings>): void {
   const current = loadVaultSettings();
   const merged: VaultSettings = { ...current, ...updates };
   fs.writeFileSync(getVaultSettingsPath(), JSON.stringify(merged, null, 2), 'utf-8');
+  // MW-delete-vault: keep uninstall-delete-paths.txt in sync with the registry
+  // the NSIS uninstaller FileReads (tip keys vaultRoot / notesVaultRoot).
+  try {
+    writeUninstallDeletePathList(app.getPath('userData'));
+  } catch {
+    /* sidecar is best-effort */
+  }
 }
 
 const getVaultRoot = () => loadVaultSettings().vaultRoot;

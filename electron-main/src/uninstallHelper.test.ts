@@ -6,6 +6,12 @@ import {
   resolveDeletePaths,
   cleanUninstall,
   defaultVaultsParent,
+  loadRegisteredVaultRoots,
+  resolveUninstallDeletePaths,
+  writeUninstallDeletePathList,
+  uninstallDeletePathsFile,
+  isUnsafeUninstallDeletePath,
+  UNINSTALL_DELETE_PATHS_FILENAME,
 } from './uninstallHelper.js';
 
 // ─── resolveDeletePaths ───
@@ -218,5 +224,177 @@ describe('cleanUninstall', () => {
 
     expect(fs.existsSync(tmp)).toBe(true);
     expect(fs.existsSync(path.join(tmp, 'state.db'))).toBe(true);
+  });
+});
+
+// ─── MW-delete-vault: tip-key registry → NSIS sidecar path list ───
+
+function writeVaultSettings(dir: string, body: unknown): void {
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'vault-settings.json'), JSON.stringify(body), 'utf-8');
+}
+
+describe('loadRegisteredVaultRoots (tip keys only)', () => {
+  let tmp: string;
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-reg-roots-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('returns empty when vault-settings.json is missing', () => {
+    expect(loadRegisteredVaultRoots(tmp)).toEqual([]);
+  });
+
+  it('returns empty on corrupt JSON (safe fallback)', () => {
+    fs.writeFileSync(path.join(tmp, 'vault-settings.json'), '{not json', 'utf-8');
+    expect(loadRegisteredVaultRoots(tmp)).toEqual([]);
+  });
+
+  it('reads top-level vaultRoot / notesVaultRoot only — ignores fictional .root', () => {
+    writeVaultSettings(tmp, {
+      vaultRoot: '/ud/vaults/Story',
+      notesVaultRoot: '/ud/vaults/Notes',
+      root: '/should-never-appear',
+    });
+    expect(loadRegisteredVaultRoots(tmp)).toEqual(['/ud/vaults/Story', '/ud/vaults/Notes']);
+  });
+
+  it('reads recentProjects[].vaultRoot / notesVaultRoot (not .root)', () => {
+    writeVaultSettings(tmp, {
+      vaultRoot: 'C:\\Users\\Skyy\\AppData\\Roaming\\Mythos Writer\\vaults\\Active',
+      recentProjects: [
+        {
+          name: 'Novel',
+          vaultRoot: 'C:\\Users\\Skyy\\Documents\\MyNovel',
+          notesVaultRoot: 'C:\\Users\\Skyy\\Documents\\MyNovelNotes',
+          root: 'C:\\ignored',
+          openedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    const roots = loadRegisteredVaultRoots(tmp);
+    expect(roots).toContain('C:\\Users\\Skyy\\AppData\\Roaming\\Mythos Writer\\vaults\\Active');
+    expect(roots).toContain('C:\\Users\\Skyy\\Documents\\MyNovel');
+    expect(roots).toContain('C:\\Users\\Skyy\\Documents\\MyNovelNotes');
+    expect(roots).not.toContain('C:\\ignored');
+  });
+});
+
+describe('resolveUninstallDeletePaths + sidecar writer', () => {
+  let tmp: string;
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-nsh-paths-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('default-only: missing settings → default vaults parent + settings files', () => {
+    const paths = resolveUninstallDeletePaths(tmp);
+    expect(paths).toContain(defaultVaultsParent(tmp));
+    expect(paths).toContain(path.join(tmp, 'vault-settings.json'));
+    expect(paths).toContain(path.join(tmp, 'app-settings.json'));
+    expect(paths).not.toContain(tmp);
+  });
+
+  it('custom Documents roots from tip keys land in toDelete', () => {
+    const story = path.join(tmp, 'Documents', 'MyNovel');
+    const notes = path.join(tmp, 'Documents', 'MyNovelNotes');
+    writeVaultSettings(tmp, { vaultRoot: story, notesVaultRoot: notes });
+    const paths = resolveUninstallDeletePaths(tmp);
+    expect(paths).toContain(story);
+    expect(paths).toContain(notes);
+    expect(paths).toContain(defaultVaultsParent(tmp));
+  });
+
+  it('mixed: AppData default + recentProjects custom Documents', () => {
+    const active = path.join(tmp, 'vaults', 'Active');
+    const custom = path.join(tmp, 'Documents', 'OtherVault');
+    writeVaultSettings(tmp, {
+      vaultRoot: active,
+      notesVaultRoot: path.join(active, 'Notes'),
+      recentProjects: [
+        { name: 'Other', vaultRoot: custom, notesVaultRoot: custom, openedAt: '2026-01-01T00:00:00.000Z' },
+      ],
+    });
+    const paths = resolveUninstallDeletePaths(tmp);
+    expect(paths).toContain(active);
+    expect(paths).toContain(custom);
+  });
+
+  it('rejects userData, empty, slash, and drive-root-only paths', () => {
+    expect(isUnsafeUninstallDeletePath(tmp, tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('\\', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('/', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('C:\\', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath('D:/', tmp)).toBe(true);
+    expect(isUnsafeUninstallDeletePath(path.join(tmp, 'vaults'), tmp)).toBe(false);
+  });
+
+  it('writeUninstallDeletePathList is UTF-8 no BOM, one path per line, no userData', () => {
+    const custom = path.join(tmp, 'Documents', 'CustomVault');
+    writeVaultSettings(tmp, { vaultRoot: custom, notesVaultRoot: custom });
+    const dest = writeUninstallDeletePathList(tmp);
+    expect(dest).toBe(uninstallDeletePathsFile(tmp));
+    expect(path.basename(dest)).toBe(UNINSTALL_DELETE_PATHS_FILENAME);
+    const buf = fs.readFileSync(dest);
+    expect(buf[0]).not.toBe(0xef);
+    const text = buf.toString('utf8');
+    expect(text).not.toMatch(/^\uFEFF/);
+    const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+    expect(lines).toContain(custom);
+    expect(lines).toContain(defaultVaultsParent(tmp));
+    expect(lines).not.toContain(tmp);
+    expect(new Set(lines).size).toBe(lines.length);
+  });
+});
+
+/**
+ * Windows path-resolution proof for NSIS (Node simulation of the delete
+ * target set). This is NOT the in-app Clear-all-data path and does not
+ * claim the installer is proven from Linux UI.
+ */
+describe('NSIS sidecar path-list resolution (Windows custom roots)', () => {
+  let tmp: string;
+  beforeEach(() => {
+    tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-nsh-win-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('FileRead-equivalent loop includes Windows Documents custom vaults + fallback settings', () => {
+    const winUserData = 'C:\\Users\\Skyy\\AppData\\Roaming\\Mythos Writer';
+    const winStory = 'C:\\Users\\Skyy\\Documents\\MyNovel';
+    const winNotes = 'C:\\Users\\Skyy\\Documents\\MyNovelNotes';
+    writeVaultSettings(tmp, {
+      vaultRoot: winStory,
+      notesVaultRoot: winNotes,
+      recentProjects: [
+        {
+          name: 'MyNovel',
+          vaultRoot: winStory,
+          notesVaultRoot: winNotes,
+          openedAt: '2026-09-28T00:00:00.000Z',
+        },
+      ],
+    });
+
+    const dest = writeUninstallDeletePathList(tmp);
+    const sidecar = fs.readFileSync(dest, 'utf8');
+    // Simulate NSIS FileRead: one line at a time, skip empty, never parse JSON.
+    const nsisTargets = sidecar.split(/\r?\n/).map((l) => l.replace(/\r$/, '')).filter(Boolean);
+
+    expect(nsisTargets).toContain(winStory);
+    expect(nsisTargets).toContain(winNotes);
+    expect(nsisTargets).toContain(path.join(tmp, 'vault-settings.json'));
+    expect(nsisTargets).toContain(path.join(tmp, 'app-settings.json'));
+    expect(nsisTargets).toContain(defaultVaultsParent(tmp));
+    expect(nsisTargets).not.toContain(tmp);
+    expect(nsisTargets).not.toContain(winUserData);
+    expect(nsisTargets.some((p) => /^[A-Za-z]:[\\/]?$/.test(p))).toBe(false);
   });
 });
