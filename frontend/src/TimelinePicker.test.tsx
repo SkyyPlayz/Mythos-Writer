@@ -122,19 +122,16 @@ describe('TimelinePicker', () => {
     expect(onEditCalendar).toHaveBeenCalledTimes(1);
   });
 
-  // ── Demo marker (owner ruling, PR #914) ──
-  // Demo-seeded timelines (source: 'seed') must be visibly labelled so the
-  // user always knows what is demo content and what is their own work.
-
+  // ── Slice A2: Demo placeholder badge removed (Video Bugs) ──
   const DEMO_STORE: TimelinesStore = {
     ...BASE_STORE,
     timelines: [
       { ...BASE_STORE.timelines[0], source: 'seed' },
-      { ...BASE_STORE.timelines[1] }, // user timeline: no marker
+      { ...BASE_STORE.timelines[1] },
     ],
   };
 
-  it('shows a Demo badge on the card when the active timeline is demo-seeded', () => {
+  it('does not show a Demo badge on seed timelines (A2)', () => {
     render(
       <TimelinePicker
         store={DEMO_STORE}
@@ -143,34 +140,10 @@ describe('TimelinePicker', () => {
         onEditCalendar={() => {}}
       />,
     );
-    expect(screen.getByTestId('timeline-demo-badge-active')).toHaveTextContent('Demo');
-  });
-
-  it('shows a Demo badge only on demo-seeded entries in the dropdown', () => {
-    render(
-      <TimelinePicker
-        store={DEMO_STORE}
-        onSelect={() => {}}
-        onNewTimeline={() => {}}
-        onEditCalendar={() => {}}
-      />,
-    );
-    openPicker();
-    expect(screen.getByTestId('timeline-demo-badge-tl-story')).toBeInTheDocument();
-    expect(screen.queryByTestId('timeline-demo-badge-tl-world')).not.toBeInTheDocument();
-  });
-
-  it('shows no Demo badge when no timeline carries the seed marker', () => {
-    render(
-      <TimelinePicker
-        store={BASE_STORE}
-        onSelect={() => {}}
-        onNewTimeline={() => {}}
-        onEditCalendar={() => {}}
-      />,
-    );
-    openPicker();
     expect(screen.queryByTestId('timeline-demo-badge-active')).not.toBeInTheDocument();
+    expect(screen.queryByText('Demo')).not.toBeInTheDocument();
+    openPicker();
     expect(screen.queryByTestId('timeline-demo-badge-tl-story')).not.toBeInTheDocument();
+    expect(screen.queryByText('Demo')).not.toBeInTheDocument();
   });
 });

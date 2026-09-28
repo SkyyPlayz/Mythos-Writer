@@ -40,6 +40,14 @@ body {
   background: var(--bg-app);
   color: #c6d1e5;
   min-height: 100vh;
+  /* A2 — match opaque window clip so square OS frames don't flash sharp content corners. */
+  overflow: hidden;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+  border-radius: 12px;
 }
 
 ::selection {

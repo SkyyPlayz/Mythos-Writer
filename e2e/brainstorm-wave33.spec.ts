@@ -150,7 +150,7 @@ async function ensureBrainstorm(page: Page): Promise<void> {
 
   await page
     .getByRole('navigation', { name: 'Main navigation' })
-    .getByRole('button', { name: 'Idea Board' })
+    .getByRole('button', { name: 'Partner' })
     .click();
   await expect(panel).toBeVisible({ timeout: 8_000 });
 }

@@ -4,16 +4,16 @@
 .lnas-root {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  /* A2 / atlas 09 §6: card stack gap 9 (was 12). */
+  gap: 9px;
 }
 
 .lnas-card {
   border-radius: 15px;
   background: rgba(255, 255, 255, .03);
   border: 1px solid rgba(255, 255, 255, .08);
-  /* Beta 4 M1: density-aware padding (tokens.css data-ln-density blocks) so
-     the Interface density segment visibly changes paddings live. */
-  padding: var(--ln-card-pad-y, 15px) var(--ln-card-pad-x, 17px);
+  /* A2 / atlas 09 §6: default pad 11×13; density tokens still shrink further. */
+  padding: var(--ln-card-pad-y, 11px) var(--ln-card-pad-x, 13px);
 }
 
 .lnas-hover-lift:hover {

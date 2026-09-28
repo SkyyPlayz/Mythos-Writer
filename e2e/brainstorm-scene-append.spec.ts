@@ -232,9 +232,12 @@ test('SKY-8007: Open in writing panel appends real content to the real scene not
   await expect(sceneOption).toBeVisible({ timeout: 4_000 });
   await sceneOption.click();
 
-  // 5. Success navigates the writing panel to the target scene (the toast is
-  //    transient and may already have auto-dismissed by the time we check).
-  await expect(page.getByText(SCENE_TITLE, { exact: false }).first()).toBeVisible({ timeout: 8_000 });
+  // 5. Success navigates Story Writer to the target scene (toast may already
+  //    have auto-dismissed). Avoid bare getByText(SCENE_TITLE).first() — B9
+  //    keeps ManuscriptStructureView mounted with display:none, so a hidden
+  //    .scene-card__title can win .first() and fail toBeVisible.
+  await expect(page.locator('#app-tabpanel-story')).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('.nav-scene-row', { hasText: SCENE_TITLE })).toBeVisible({ timeout: 8_000 });
 
   // 6. The real on-disk state.db must now contain the fact's content for this
   //    scene — proving the write crossed UI -> IPC -> main -> disk with no

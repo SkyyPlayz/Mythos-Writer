@@ -468,6 +468,28 @@
 .tlr-picker-wrap {
   padding: 8px 8px 4px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* A2 — World Context nav trap: Back restores story timeline + navigator aside */
+.tlr-world-back {
+  align-self: flex-start;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .45));
+  background: var(--gs1, rgba(0, 240, 255, .08));
+  color: var(--n1, #00f0ff);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tlr-world-back:hover {
+  background: var(--gs1, rgba(0, 240, 255, .14));
+  color: #fff;
 }
 
 /* M21: modal stub overlay */

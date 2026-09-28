@@ -277,18 +277,19 @@ export const FOCUS_PREFS_DEFAULTS = {
   showSidebarButtons: true, showScrollbars: true, showFileTreeArrows: true,
 };
 
-// Beta 4 M3 (FULL-SPEC §4): the six modules in spec order — Story Writer,
-// Notes Editor, Scene Crafter, Brainstorm, Timeline, Vault Graph. Settings is
-// pinned at the rail bottom and never part of this list.
+// Slice A2 — sidebar default order LOCKED (Skyy): Story Writer · Notes Editor ·
+// Boards · Scene Crafter · Partner · Timeline · Vault Graph. Settings stays
+// pinned at the rail bottom and is never part of this list. Partner keeps the
+// existing `brainstorm` module id (Agent Chat / Idea Board surface).
 export const NAV_RAIL_DEFAULTS: NavRailConfig = {
   items: [
     { id: 'story', enabled: true, label: 'Story Writer', icon: 'story', order: 0 },
     { id: 'notes', enabled: true, label: 'Notes Editor', icon: 'notes', order: 1 },
-    { id: 'crafter', enabled: true, label: 'Scene Crafter', icon: 'crafter', order: 2 },
-    { id: 'brainstorm', enabled: true, label: 'Idea Board', icon: 'brainstorm', order: 3 },
-    { id: 'timeline', enabled: true, label: 'Timeline', icon: 'timeline', order: 4 },
-    { id: 'vault-graph', enabled: true, label: 'Vault Graph', icon: 'vault-graph', order: 5 },
-    { id: 'boards', enabled: true, label: 'Boards', icon: 'boards', order: 6 },
+    { id: 'boards', enabled: true, label: 'Boards', icon: 'boards', order: 2 },
+    { id: 'crafter', enabled: true, label: 'Scene Crafter', icon: 'crafter', order: 3 },
+    { id: 'brainstorm', enabled: true, label: 'Partner', icon: 'brainstorm', order: 4 },
+    { id: 'timeline', enabled: true, label: 'Timeline', icon: 'timeline', order: 5 },
+    { id: 'vault-graph', enabled: true, label: 'Vault Graph', icon: 'vault-graph', order: 6 },
   ],
   collapsedDefault: false,
   showLabels: true,
@@ -306,12 +307,28 @@ const LEGACY_NAV_RAIL_DEFAULT_ITEMS: ReadonlyArray<Pick<NavRailItemConfig, 'id' 
   { id: 'brainstorm', enabled: true, order: 2 },
 ];
 
-/** True when the saved items are exactly the untouched pre-Beta-4 defaults. */
+/**
+ * Pre-A2 Beta 4 default rail (Idea Board label / Boards last). Untouched
+ * installs roll forward to the A2 locked order + Partner label.
+ */
+const PRE_A2_NAV_RAIL_DEFAULT_ITEMS: ReadonlyArray<Pick<NavRailItemConfig, 'id' | 'order' | 'enabled'>> = [
+  { id: 'story', enabled: true, order: 0 },
+  { id: 'notes', enabled: true, order: 1 },
+  { id: 'crafter', enabled: true, order: 2 },
+  { id: 'brainstorm', enabled: true, order: 3 },
+  { id: 'timeline', enabled: true, order: 4 },
+  { id: 'vault-graph', enabled: true, order: 5 },
+  { id: 'boards', enabled: true, order: 6 },
+];
+
+/** True when the saved items are exactly an untouched prior default layout. */
 function isLegacyDefaultNavConfig(saved: NavRailItemConfig[]): boolean {
-  if (saved.length !== LEGACY_NAV_RAIL_DEFAULT_ITEMS.length) return false;
-  return LEGACY_NAV_RAIL_DEFAULT_ITEMS.every((legacy) =>
-    saved.some((s) => s.id === legacy.id && s.order === legacy.order && s.enabled === legacy.enabled),
-  );
+  const matches = (legacy: ReadonlyArray<Pick<NavRailItemConfig, 'id' | 'order' | 'enabled'>>) =>
+    saved.length === legacy.length &&
+    legacy.every((row) =>
+      saved.some((s) => s.id === row.id && s.order === row.order && s.enabled === row.enabled),
+    );
+  return matches(LEGACY_NAV_RAIL_DEFAULT_ITEMS) || matches(PRE_A2_NAV_RAIL_DEFAULT_ITEMS);
 }
 
 /**

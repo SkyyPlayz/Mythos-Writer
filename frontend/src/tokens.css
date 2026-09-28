@@ -144,10 +144,10 @@
   --space-10: 40px;            /* min control target          */
   --space-12: 48px;
 
-  /* Beta 4 M1 — Interface density (Appearance -> Interface, prototype 7020).
-     Liquid Neon settings card padding; the density blocks below shrink it. */
-  --ln-card-pad-y: 15px;
-  --ln-card-pad-x: 17px;
+  /* A2 / atlas 09 §6 — Appearance card padding 11×13 (was 15×17).
+     Density blocks below still shrink cozy/compact further. */
+  --ln-card-pad-y: 11px;
+  --ln-card-pad-x: 13px;
 
   /* ---- 1.5 Type scale (base 16, Inter / system sans) ------------------- */
   --font-sans: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -788,11 +788,11 @@
    swap. The cozy/compact --space-* blocks are gone; card pad tokens stay as
    soft Appearance hints only (Settings cards still read them). */
 :root[data-ln-density="cozy"] {
-  --ln-card-pad-y: 12px;
-  --ln-card-pad-x: 14px;
+  --ln-card-pad-y: 10px;
+  --ln-card-pad-x: 12px;
 }
 
 :root[data-ln-density="compact"] {
-  --ln-card-pad-y: 9px;
-  --ln-card-pad-x: 11px;
+  --ln-card-pad-y: 8px;
+  --ln-card-pad-x: 10px;
 }

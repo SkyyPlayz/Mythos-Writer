@@ -545,7 +545,7 @@ export default function AxisView({
         .then((res) => {
           if (!res.ok) return;
           onStoreChange(res.store);
-          showToast(`Opened “${span.name}” — close view. Switch back from the timeline picker.`);
+          showToast(`Opened “${span.name}” — use ← Back to return to the story timeline.`);
         })
         .catch(() => {});
     },
