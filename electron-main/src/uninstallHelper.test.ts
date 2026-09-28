@@ -13,6 +13,8 @@ import {
   isUnsafeUninstallDeletePath,
   isAllowedUninstallDeletePath,
   filterUninstallSidecarLines,
+  hasDotOrDotDotSegment,
+  normalizeUninstallDeletePath,
   UNINSTALL_DELETE_PATHS_FILENAME,
 } from './uninstallHelper.js';
 
@@ -392,6 +394,39 @@ describe('resolveUninstallDeletePaths + sidecar writer', () => {
       expect(filtered).not.toContain(p);
       expect(isUnsafeUninstallDeletePath(p, tmp)).toBe(true);
     }
+  });
+
+  it('rejects .. / . traversal segments (Shield tip-3 — must not elevate)', () => {
+    const traversals = [
+      'C:\\Users\\Skyy\\Documents\\..\\..\\..\\Windows',
+      'C:\\Users\\Skyy\\Documents\\foo\\..\\..\\..\\Windows',
+      'C:\\Users\\Skyy\\AppData\\Roaming\\Mythos Writer\\..\\..\\',
+      'C:\\Users\\Skyy\\Documents\\vault\\..\\..\\..\\Windows',
+      'C:\\Users\\Skyy\\Documents\\.\\evil',
+      'C:/Users/Skyy/Documents/../../../Windows',
+    ];
+    for (const p of traversals) {
+      expect(hasDotOrDotDotSegment(p)).toBe(true);
+      expect(isUnsafeUninstallDeletePath(p, tmp)).toBe(true);
+      expect(isAllowedUninstallDeletePath(p, tmp)).toBe(false);
+    }
+    // Canonicalize collapses Documents\..\..\..\Windows → C:\Windows
+    expect(normalizeUninstallDeletePath(traversals[0])).toBe('c:\\windows');
+    // Planted sidecar with .. must never survive the filter.
+    const allowed = path.join(tmp, 'vaults');
+    const filtered = filterUninstallSidecarLines([allowed, ...traversals], tmp);
+    expect(filtered).toEqual([allowed]);
+  });
+
+  it('registered tip-key root with .. never lands in resolveUninstallDeletePaths', () => {
+    writeVaultSettings(tmp, {
+      vaultRoot: 'C:\\Users\\Skyy\\Documents\\..\\..\\..\\Windows',
+      notesVaultRoot: 'C:\\Users\\Skyy\\AppData\\Roaming\\Mythos Writer\\..\\..\\',
+    });
+    const paths = resolveUninstallDeletePaths(tmp);
+    expect(paths.every((p) => !hasDotOrDotDotSegment(p))).toBe(true);
+    expect(paths).not.toContain('C:\\Users\\Skyy\\Documents\\..\\..\\..\\Windows');
+    expect(paths).not.toContain('C:\\Windows');
   });
 
   it('writeUninstallDeletePathList is UTF-8 no BOM, one path per line, no userData', () => {
