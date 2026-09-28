@@ -570,6 +570,13 @@ export default function ManuscriptView({
   // selectionToDOM() synchronously once it has already set DOM focus, so it
   // writes the correct (already-updated) selection into the browser in the
   // same tick instead of leaving it to a later, unsynced flush.
+  //
+  // Still: Playwright (and some CI timings) can emit a late selectionchange
+  // from the <select> blur *after* that sync focus — FB-04 flakes at Heading
+  // 3 with h3 in the DOM but isActive() back on Body Text. Pin the
+  // post-command selection and re-assert it on the next frame if a late
+  // selectionchange stole the caret. Prefer setHeading (absolute) over
+  // toggleHeading so a double-fire can't undo the level the user just picked.
   function applySceneStyle(ed: Editor, value: string) {
     if (value === 'Quote') {
       ed.chain().toggleBlockquote().run();
@@ -577,9 +584,27 @@ export default function ManuscriptView({
       ed.chain().setParagraph().run();
     } else {
       const level = Number(value.replace('Heading ', '')) as 1 | 2 | 3 | 4 | 5 | 6;
-      ed.chain().toggleHeading({ level }).run();
+      ed.chain().setHeading({ level }).run();
     }
+    const { from, to } = ed.state.selection;
     ed.view.focus();
+    // Re-pin in case focus() itself shifted the browser caret before
+    // selectionToDOM ran (observed under Electron + native <select>).
+    if (ed.state.selection.from !== from || ed.state.selection.to !== to) {
+      ed.commands.setTextSelection({ from, to });
+    }
+    requestAnimationFrame(() => {
+      if (ed.isDestroyed) return;
+      const stillMatches =
+        (value === 'Quote' && ed.isActive('blockquote')) ||
+        (value === 'Body Text' && !ed.isActive('heading') && !ed.isActive('blockquote')) ||
+        (value.startsWith('Heading ') &&
+          ed.isActive('heading', { level: Number(value.replace('Heading ', '')) }));
+      if (!stillMatches) {
+        ed.commands.setTextSelection({ from, to });
+        ed.view.focus();
+      }
+    });
   }
 
   // SKY-10925: FormatToolbar's list/quote/code toggles carry no msv-toolbar
