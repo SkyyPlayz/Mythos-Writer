@@ -148,10 +148,8 @@ async function ensureBrainstorm(page: Page): Promise<void> {
   const panel = page.locator('#app-tabpanel-brainstorm');
   if (await panel.isVisible({ timeout: 400 }).catch(() => false)) return;
 
-  await page
-    .getByRole('navigation', { name: 'Main navigation' })
-    .getByRole('button', { name: 'Partner' })
-    .click();
+  // Slice B: rail label is the partner display name (default Mythos).
+  await page.locator('[data-testid="nav-rail-brainstorm"]').click();
   await expect(panel).toBeVisible({ timeout: 8_000 });
 }
 

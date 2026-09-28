@@ -139,19 +139,19 @@ async function installCoachChatMock(app: ElectronApplication): Promise<void> {
 
 async function openCoachPage(page: Page): Promise<void> {
   await clickStoryNav(page);
-  // Slice B: Coach strip tab removed — open via Notes & Analysis → View Full Analysis
-  // (same shared coach session / CoachPage destination).
+  // Slice B: Coach strip tab removed — open a scene, then Notes & Analysis →
+  // View Full Analysis (handleOpenCoachPage → view='coach' / CoachPage).
+  await page.locator('[data-testid="story-subview-editor"]').click().catch(() => undefined);
+  await expect(page.locator('.nav-scene-row').first()).toBeVisible({ timeout: 20_000 });
+  const sceneRow = page.locator('.nav-scene-row', { hasText: 'Harbor Scene' });
+  await expect(sceneRow).toBeVisible({ timeout: 8_000 });
+  await sceneRow.click();
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 6_000 });
   await page.locator('[data-testid="ahp-tab-notes-analysis"]').click();
   const viewBtn = page.locator('[data-testid="view-full-analysis"]');
-  if (await viewBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
-    await viewBtn.click();
-  } else {
-    // Fallback: Writer hand still shares the coach session store.
-    await page.locator('[data-testid="ahp-tab-partner"]').click();
-    await page.locator('[data-testid="ahp-hand-writer"]').click();
-  }
-  await expect(page.locator('[data-testid="coach-page"], .writing-assistant-panel, [data-testid="ahp-writer-hand"]').first()).toBeVisible({ timeout: 8_000 });
+  await expect(viewBtn).toBeVisible({ timeout: 8_000 });
+  await viewBtn.click();
+  await expect(page.locator('[data-testid="coach-page"], .coach-title').first()).toBeVisible({ timeout: 8_000 });
 }
 
 /** M13: open the seeded scene in the editor (mirrors writing-assistant.spec.ts). */

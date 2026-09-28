@@ -487,6 +487,7 @@ export default function AppNavRail({
               aria-haspopup={hasStories ? 'true' : undefined}
               aria-expanded={hasStories ? storiesOpen : undefined}
               title={autoSlimHint ? `${item.label} (labels hidden — window is short)` : item.label}
+              data-testid={`nav-rail-${item.id}`}
             >
               {renderIcons && (
                 <span className="nav-rail__item-icon" aria-hidden="true">{Glyph ? <Glyph /> : item.icon}</span>

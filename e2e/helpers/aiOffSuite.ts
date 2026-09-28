@@ -20,7 +20,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { clickStoryNav } from './navGuard';
+import { clickPartnerNav, clickStoryNav } from './navGuard';
 
 export const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 export const STORY_TITLE = 'AI Off Suite Fixture';
@@ -159,7 +159,8 @@ export async function goSceneCrafter(page: Page): Promise<void> {
 }
 
 export async function goBrainstorm(page: Page): Promise<void> {
-  await clickRail(page, 'Partner');
+  // Slice B: rail label is the partner display name (default Mythos), not "Partner".
+  await clickPartnerNav(page);
   await expect(page.locator('[data-testid="bs-collections"]')).toBeVisible({ timeout: 10_000 });
 }
 

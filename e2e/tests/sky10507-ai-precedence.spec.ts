@@ -152,7 +152,7 @@ async function selectStoryAndOpenScene(page: Page): Promise<void> {
 }
 
 async function goToBrainstorm(page: Page): Promise<void> {
-  await page.locator('nav[aria-label="Main navigation"] button[aria-label="Partner"]').click();
+  await page.locator('[data-testid="nav-rail-brainstorm"]').click();
   await expect(page.locator('[data-testid="bs-collections"]')).toBeVisible({ timeout: 10_000 });
 }
 
