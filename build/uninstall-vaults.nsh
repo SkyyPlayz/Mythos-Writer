@@ -21,8 +21,9 @@
 ;
 ; Shield allowlist: each sidecar line is re-checked (prefix + depth) before
 ; RMDir/Delete. Allowed = child of $APPDATA\Mythos Writer, $DOCUMENTS,
-; $DESKTOP, or $PROFILE\Downloads. Denied = $WINDIR / $PROGRAMFILES /
-; $PROGRAMFILES64 prefix, the folder roots themselves, and everything else.
+; $DESKTOP, or $PROFILE\Downloads. Denied = any `.` / `..` path segment
+; (traversal), $WINDIR / $PROGRAMFILES / $PROGRAMFILES64 prefix, the folder
+; roots themselves, and everything else.
 ;
 ; Post-start Yes/No dialog fallback is NOT used — checkbox page is cleanly
 ; available via electron-builder's customUnInstallSection hook.
@@ -54,9 +55,51 @@
       StrCmp $2 "$\r" 0 +2
         StrCpy $1 $1 -1
       StrCmp $1 "" uninstall_vault_read
+      ; Reject `.` / `..` path segments before any allowlist / RMDir
+      ; (Shield tip-3 — Documents\..\..\Windows must not elevate).
+      StrCpy $7 0
+      mythos_trav_scan:
+        StrCpy $4 $1 1 $7
+        StrCmp $4 "" uninstall_vault_trav_ok
+        StrCmp $4 "\" 0 mythos_trav_fwd
+          IntOp $8 $7 + 1
+          StrCpy $4 $1 1 $8
+          StrCmp $4 "." 0 mythos_trav_inc
+            IntOp $8 $8 + 1
+            StrCpy $4 $1 1 $8
+            StrCmp $4 "" uninstall_vault_read
+            StrCmp $4 "\" uninstall_vault_read
+            StrCmp $4 "." 0 mythos_trav_inc
+              IntOp $8 $8 + 1
+              StrCpy $4 $1 1 $8
+              StrCmp $4 "" uninstall_vault_read
+              StrCmp $4 "\" uninstall_vault_read
+              Goto mythos_trav_inc
+        mythos_trav_fwd:
+        ; Same scan for forward-slash form (belt).
+        StrCmp $4 "/" 0 mythos_trav_inc
+          IntOp $8 $7 + 1
+          StrCpy $4 $1 1 $8
+          StrCmp $4 "." 0 mythos_trav_inc
+            IntOp $8 $8 + 1
+            StrCpy $4 $1 1 $8
+            StrCmp $4 "" uninstall_vault_read
+            StrCmp $4 "/" uninstall_vault_read
+            StrCmp $4 "\" uninstall_vault_read
+            StrCmp $4 "." 0 mythos_trav_inc
+              IntOp $8 $8 + 1
+              StrCpy $4 $1 1 $8
+              StrCmp $4 "" uninstall_vault_read
+              StrCmp $4 "/" uninstall_vault_read
+              StrCmp $4 "\" uninstall_vault_read
+        mythos_trav_inc:
+        IntOp $7 $7 + 1
+        Goto mythos_trav_scan
+      uninstall_vault_trav_ok:
       ; Positive allowlist (prefix + depth). Fail closed — planted sidecar
       ; lines outside these prefixes never RMDir/Delete.
       ; Deny: $WINDIR / $PROGRAMFILES / $PROGRAMFILES64 (exact or child).
+      ; Soft: StrCmp is case-insensitive — mixed-case legitimate paths still match.
       StrLen $3 "$WINDIR"
       StrCpy $4 $1 $3
       StrCmp $4 "$WINDIR" uninstall_vault_read 0

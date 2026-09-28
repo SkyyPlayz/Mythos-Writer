@@ -67,4 +67,21 @@ describe('build/uninstall-vaults.nsh token contract (MW-delete-vault UX lock)', 
     expect(doDeleteAt).toBeGreaterThan(denyAt);
     expect(sidecarRmAt).toBeGreaterThan(doDeleteAt);
   });
+
+  it('rejects .. / . path segments before RMDir (Shield tip-3 traversal)', () => {
+    const executable = NSH.replace(/;[^\n]*/g, '');
+    expect(executable).toContain('mythos_trav_scan');
+    expect(executable).toContain('uninstall_vault_trav_ok');
+    // Dot-segment scan must run before do_delete / RMDir "$1".
+    const travAt = executable.indexOf('mythos_trav_scan');
+    const travOkAt = executable.indexOf('uninstall_vault_trav_ok');
+    const doDeleteAt = executable.indexOf('uninstall_vault_do_delete:');
+    const sidecarRmAt = executable.indexOf('RMDir /r "$1"');
+    expect(travAt).toBeGreaterThan(-1);
+    expect(travOkAt).toBeGreaterThan(travAt);
+    expect(doDeleteAt).toBeGreaterThan(travOkAt);
+    expect(sidecarRmAt).toBeGreaterThan(doDeleteAt);
+    // Segment reject: compare against literal "." after a separator.
+    expect(executable).toMatch(/StrCmp \$4 "\."/);
+  });
 });
