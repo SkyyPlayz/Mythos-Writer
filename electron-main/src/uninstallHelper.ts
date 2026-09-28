@@ -10,6 +10,7 @@
 // so callers can surface a note to the user.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 export interface UninstallCleanOptions {
@@ -28,7 +29,7 @@ export interface UninstallCleanResult {
 const VAULTS_SUBDIR = 'vaults';
 const SETTINGS_FILES = ['vault-settings.json', 'app-settings.json'];
 
-/** Sidecar the Windows NSIS uninstaller FileReads on No/delete (MW-delete-vault). */
+/** Sidecar the Windows NSIS uninstaller FileReads when the opt-in checkbox is selected (MW-delete-vault). */
 export const UNINSTALL_DELETE_PATHS_FILENAME = 'uninstall-delete-paths.txt';
 
 export function uninstallDeletePathsFile(userDataPath: string): string {
@@ -79,21 +80,132 @@ export function loadRegisteredVaultRoots(userDataPath: string): string[] {
   return [...new Set(roots)];
 }
 
+/** Lowercase, backslash-normalized, no trailing slash. Windows drive paths stay drive-absolute. */
+export function normalizeUninstallDeletePath(p: string): string {
+  const trimmed = p.trim();
+  if (!trimmed) return '';
+  if (/^[A-Za-z]:[\\/]/.test(trimmed) || /^[A-Za-z]:$/.test(trimmed)) {
+    return trimmed.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+  }
+  try {
+    return path.resolve(trimmed).replace(/[/\\]+$/, '').replace(/\\/g, '/').toLowerCase();
+  } catch {
+    return trimmed.replace(/[/\\]+$/, '').toLowerCase();
+  }
+}
+
+/** True when `child` is `parent` plus at least one extra path segment. */
+export function isStrictPathChild(child: string, parent: string): boolean {
+  const c = normalizeUninstallDeletePath(child);
+  const p = normalizeUninstallDeletePath(parent);
+  if (!c || !p) return false;
+  const sep = c.includes('\\') || p.includes('\\') ? '\\' : '/';
+  const cn = c.replace(/\//g, sep);
+  const pn = p.replace(/\//g, sep);
+  if (cn === pn) return false;
+  return cn.startsWith(pn + sep) && cn.length > pn.length + 1;
+}
+
+const WIN_FORBIDDEN_PREFIXES = [
+  'c:\\windows',
+  'c:\\winnt',
+  'c:\\program files',
+  'c:\\program files (x86)',
+  'c:\\programdata',
+];
+
+/** `X:\Users\<name>\(OneDrive\)?(Documents|Desktop|Downloads)\<child>` */
+const WIN_CONTENT_CHILD_RE =
+  /^[a-z]:\\users\\[^\\]+\\(?:onedrive\\)?(?:documents|desktop|downloads)\\.+/;
+
+function isWindowsForbiddenPrefix(norm: string): boolean {
+  const n = norm.replace(/\//g, '\\');
+  if (n === 'c:\\users') return true;
+  for (const root of WIN_FORBIDDEN_PREFIXES) {
+    if (n === root || n.startsWith(root + '\\')) return true;
+  }
+  return false;
+}
+
+function isWindowsProfileFolder(norm: string): boolean {
+  const n = norm.replace(/\//g, '\\');
+  return /^[a-z]:\\users\\[^\\]+$/.test(n);
+}
+
+function isWindowsContentRoot(norm: string): boolean {
+  const n = norm.replace(/\//g, '\\');
+  return /^[a-z]:\\users\\[^\\]+\\(?:onedrive\\)?(?:documents|desktop|downloads)$/.test(n);
+}
+
+function posixKnownRoots(home: string): string[] {
+  return [
+    path.join(home, 'Documents'),
+    path.join(home, 'Desktop'),
+    path.join(home, 'Downloads'),
+    path.join(home, 'OneDrive', 'Documents'),
+    path.join(home, 'OneDrive', 'Desktop'),
+    path.join(home, 'OneDrive', 'Downloads'),
+  ];
+}
+
 /**
- * True for empty / `\` / `/` / drive-root-only (`C:\`) / userData itself.
- * NSIS must never be handed these.
+ * Positive allowlist (Shield Secure): a path may be deleted only when it is
+ * a **child** of userData, or a **child** of Documents / Desktop / Downloads
+ * (never those folders themselves, never the profile, never Windows /
+ * Program Files / Users root). Fail closed.
+ */
+export function isAllowedUninstallDeletePath(candidate: string, userDataPath: string): boolean {
+  return !isUnsafeUninstallDeletePath(candidate, userDataPath);
+}
+
+/**
+ * True when NSIS / Node must not RMDir or Delete this path.
+ * Empty / `\` / `/` / drive-root / userData itself / profile / Documents root /
+ * C:\Windows / Program Files / anything outside the positive allowlist.
  */
 export function isUnsafeUninstallDeletePath(candidate: string, userDataPath: string): boolean {
   const trimmed = candidate.trim();
   if (!trimmed) return true;
   if (trimmed === path.sep || trimmed === '/' || trimmed === '\\') return true;
   if (/^[A-Za-z]:[\\/]?$/.test(trimmed)) return true;
+
+  const norm = normalizeUninstallDeletePath(trimmed);
+  if (!norm) return true;
+  if (isWindowsForbiddenPrefix(norm)) return true;
+  if (isWindowsProfileFolder(norm)) return true;
+  if (isWindowsContentRoot(norm)) return true;
+
   try {
-    if (path.resolve(trimmed) === path.resolve(userDataPath)) return true;
+    const home = os.homedir();
+    if (home && normalizeUninstallDeletePath(home) === norm) return true;
+    for (const root of posixKnownRoots(home)) {
+      if (normalizeUninstallDeletePath(root) === norm) return true;
+    }
   } catch {
-    return true;
+    /* homedir unavailable — continue with string allowlist */
   }
-  return false;
+
+  if (isStrictPathChild(trimmed, userDataPath)) return false;
+  if (WIN_CONTENT_CHILD_RE.test(norm.replace(/\//g, '\\'))) return false;
+
+  try {
+    const home = os.homedir();
+    if (home && posixKnownRoots(home).some((r) => isStrictPathChild(trimmed, r))) return false;
+  } catch {
+    /* fall through to deny */
+  }
+
+  return true;
+}
+
+/**
+ * NSIS FileRead simulation: drop any sidecar line outside the allowlist
+ * so a planted path cannot elevate an uninstall delete.
+ */
+export function filterUninstallSidecarLines(lines: readonly string[], userDataPath: string): string[] {
+  return lines
+    .map((l) => l.replace(/\r$/, '').trim())
+    .filter((l) => l.length > 0 && !isUnsafeUninstallDeletePath(l, userDataPath));
 }
 
 /**
