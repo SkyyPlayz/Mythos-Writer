@@ -80,12 +80,37 @@ export function loadRegisteredVaultRoots(userDataPath: string): string[] {
   return [...new Set(roots)];
 }
 
-/** Lowercase, backslash-normalized, no trailing slash. Windows drive paths stay drive-absolute. */
+/**
+ * True when the raw path string contains a `.` or `..` segment (any slash form).
+ * Belt-and-suspenders before allowlist — even if canonicalize misses an encoding.
+ */
+export function hasDotOrDotDotSegment(p: string): boolean {
+  const normalized = p.trim().replace(/\//g, '\\');
+  if (!normalized) return false;
+  // Split on backslash; also catch `..` glued after a drive root (`C:..` is invalid
+  // but `C:\..` splits cleanly). Empty segments from leading/trailing seps ignored.
+  return normalized.split('\\').some((seg) => seg === '.' || seg === '..');
+}
+
+/**
+ * Canonicalize for allowlist comparison.
+ * Windows drive paths use `path.win32.resolve` so `Documents\..\..\Windows`
+ * collapses before prefix / strict-child checks (Shield #1632 BLOCK).
+ * Lowercase, backslash-normalized, no trailing slash.
+ */
 export function normalizeUninstallDeletePath(p: string): string {
   const trimmed = p.trim();
   if (!trimmed) return '';
   if (/^[A-Za-z]:[\\/]/.test(trimmed) || /^[A-Za-z]:$/.test(trimmed)) {
-    return trimmed.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+    try {
+      return path.win32
+        .resolve(trimmed)
+        .replace(/\//g, '\\')
+        .replace(/\\+$/, '')
+        .toLowerCase();
+    } catch {
+      return trimmed.replace(/\//g, '\\').replace(/\\+$/, '').toLowerCase();
+    }
   }
   try {
     return path.resolve(trimmed).replace(/[/\\]+$/, '').replace(/\\/g, '/').toLowerCase();
@@ -94,7 +119,7 @@ export function normalizeUninstallDeletePath(p: string): string {
   }
 }
 
-/** True when `child` is `parent` plus at least one extra path segment. */
+/** True when `child` is `parent` plus at least one extra path segment (after canonicalize). */
 export function isStrictPathChild(child: string, parent: string): boolean {
   const c = normalizeUninstallDeletePath(child);
   const p = normalizeUninstallDeletePath(parent);
@@ -161,16 +186,21 @@ export function isAllowedUninstallDeletePath(candidate: string, userDataPath: st
 /**
  * True when NSIS / Node must not RMDir or Delete this path.
  * Empty / `\` / `/` / drive-root / userData itself / profile / Documents root /
- * C:\Windows / Program Files / anything outside the positive allowlist.
+ * C:\Windows / Program Files / `..` / `.` segments / anything outside the
+ * positive allowlist after `path.win32.resolve` canonicalize.
  */
 export function isUnsafeUninstallDeletePath(candidate: string, userDataPath: string): boolean {
   const trimmed = candidate.trim();
   if (!trimmed) return true;
   if (trimmed === path.sep || trimmed === '/' || trimmed === '\\') return true;
   if (/^[A-Za-z]:[\\/]?$/.test(trimmed)) return true;
+  // Reject traversal segments in the raw string before allowlist (belt).
+  if (hasDotOrDotDotSegment(trimmed)) return true;
 
   const norm = normalizeUninstallDeletePath(trimmed);
   if (!norm) return true;
+  // Belt: if canonicalize somehow still left `.` / `..`, deny.
+  if (hasDotOrDotDotSegment(norm)) return true;
   if (isWindowsForbiddenPrefix(norm)) return true;
   if (isWindowsProfileFolder(norm)) return true;
   if (isWindowsContentRoot(norm)) return true;
@@ -185,6 +215,8 @@ export function isUnsafeUninstallDeletePath(candidate: string, userDataPath: str
     /* homedir unavailable — continue with string allowlist */
   }
 
+  // Allowlist compares use canonicalized forms via isStrictPathChild /
+  // WIN_CONTENT_CHILD_RE on `norm` (already win32.resolve'd for drive paths).
   if (isStrictPathChild(trimmed, userDataPath)) return false;
   if (WIN_CONTENT_CHILD_RE.test(norm.replace(/\//g, '\\'))) return false;
 
