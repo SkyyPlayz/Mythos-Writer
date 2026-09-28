@@ -27,7 +27,6 @@ const CONSUMERS: ReadonlyArray<readonly [file: string, localClass: string]> = [
   ['src/KeyboardShortcutsDialog.tsx', 'ksd-dialog'],
   ['src/LayoutManagerDialog.tsx', 'layout-manager-dialog'],
   ['src/PageSetupPopover.tsx', 'page-setup-popover'],
-  ['src/TourModal.tsx', 'tour-modal'],
   ['src/components/NoteTemplateDialog/index.tsx', 'ntd-dialog'],
   ['src/drafts/DraftsPopover.tsx', 'ln-drafts-popover'],
 ];
@@ -43,7 +42,6 @@ const CONSUMER_CSS = [
   'src/KeyboardShortcutsDialog.css',
   'src/LayoutManagerDialog.css',
   'src/PageSetupPopover.css',
-  'src/TourModal.css',
   'src/components/NoteTemplateDialog/NoteTemplateDialog.css',
   'src/drafts/DraftsPopover.css',
   'src/timeline2/Timeline2Modals.css',

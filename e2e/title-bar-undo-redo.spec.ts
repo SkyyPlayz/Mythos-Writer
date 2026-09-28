@@ -114,7 +114,7 @@ test('UR-02: Undo no-ops gracefully when no editor is focused (no throw, app sta
     await openScene(page);
 
     // Blur the editor so no TipTap instance is focused.
-    // A1: `.wc-project` opens Welcome (onboarding replay) — do not click it to blur.
+    // A1 residual: `.wc-project` opens Welcome overlay — do not click it to blur.
     await page.locator('.bottom-bar').click({ position: { x: 8, y: 8 } });
     await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur?.(); });
 

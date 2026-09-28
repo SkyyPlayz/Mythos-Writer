@@ -1,0 +1,130 @@
+/* 09 §7 Welcome overlay — z70, rgba(5,7,13,.72) + blur 14 */
+
+.welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(5, 7, 13, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  overflow-y: auto;
+}
+
+.welcome-overlay__inner {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+
+.welcome-overlay__logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 17px;
+  display: block;
+  box-shadow: 0 0 34px -4px var(--g2, rgba(155, 95, 255, 0.4));
+  border: var(--bw, 1px) solid rgba(255, 255, 255, 0.2);
+}
+
+.welcome-overlay__title {
+  font-family: 'Lora', Georgia, serif;
+  font-size: 30px;
+  font-weight: 600;
+  color: #f0f3fc;
+  margin-top: 16px;
+}
+
+.welcome-overlay__tagline {
+  font-size: 13px;
+  color: #9fb0c8;
+  margin-top: 5px;
+}
+
+.welcome-overlay__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 270px));
+  gap: 12px;
+  justify-content: center;
+  margin-top: 30px;
+  max-width: 1160px;
+  width: 100%;
+}
+
+.welcome-overlay__card {
+  position: relative;
+  padding: 17px 16px;
+  border-radius: 16px;
+  background: var(--glass, rgba(13, 16, 28, 0.72));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.welcome-overlay__card:hover {
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+  box-shadow: 0 0 26px -6px var(--g1, rgba(0, 240, 255, 0.4));
+  transform: translateY(-3px);
+}
+
+.welcome-overlay__chip {
+  position: absolute;
+  top: 13px;
+  right: 13px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  color: #0b0d17;
+  background: var(--n1, #00f0ff);
+  border-radius: 99px;
+  padding: 2.5px 8px;
+  box-shadow: 0 0 12px var(--g1, rgba(0, 240, 255, 0.4));
+}
+
+.welcome-overlay__card-icon {
+  display: inline-flex;
+}
+
+.welcome-overlay__card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #eef2fb;
+  margin-top: 10px;
+}
+
+.welcome-overlay__card-desc {
+  font-size: 11px;
+  color: #8e9db8;
+  line-height: 1.55;
+  margin-top: 5px;
+  min-height: 50px;
+}
+
+.welcome-overlay__card-act {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--n1, #00f0ff);
+  margin-top: 8px;
+}
+
+.welcome-overlay__skip {
+  font-size: 11.5px;
+  color: #8e9db8;
+  margin-top: 26px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+}
+
+.welcome-overlay__skip:hover {
+  color: var(--n1, #00f0ff);
+}

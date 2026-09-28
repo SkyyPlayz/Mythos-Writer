@@ -5,6 +5,7 @@ import VaultNotFoundScreen from './components/VaultNotFoundScreen';
 import FloatingPanelApp from './FloatingPanelApp';
 import MythosMigrationCenter from './migration/MythosMigrationCenter';
 import MythosBootMigrationNotice from './migration/MythosBootMigrationNotice';
+import { requestWelcomeOverlayOnNextShell } from './WelcomeOverlay';
 import './App.css';
 
 type AppRoute =
@@ -90,10 +91,15 @@ function App() {
         <OnboardingWizard
           initialSettings={settings}
           onComplete={(updated) => {
+            // A1 residual Q1: first-run lands on the Welcome overlay (09 §7), not a reload.
+            requestWelcomeOverlayOnNextShell();
             setSettings(updated);
             setView({ kind: 'shell', settings: updated });
           }}
-          onCancel={() => setWizardDismissed(true)}
+          onCancel={() => {
+            requestWelcomeOverlayOnNextShell();
+            setWizardDismissed(true);
+          }}
         />
       </div>
     );

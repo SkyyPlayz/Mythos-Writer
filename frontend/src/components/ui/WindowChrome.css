@@ -118,43 +118,6 @@
   -webkit-app-region: no-drag;
 }
 
-/* A1 / 09 §3.1 Demo toggle (tourBtnSt) */
-.wc-demo-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 24px;
-  padding: 0 10px;
-  margin-left: 8px;
-  border-radius: 8px;
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-  background: transparent;
-  color: var(--n1, #00f0ff);
-  border: var(--bw, 1px) solid color-mix(in srgb, var(--b1, rgba(0, 240, 255, .5)) 90%, transparent);
-  border-color: var(--b1, rgba(0, 240, 255, .45));
-}
-
-.wc-demo-btn:hover {
-  box-shadow: 0 0 13px -3px var(--g1, rgba(0, 240, 255, .4));
-}
-
-.wc-demo-btn--on {
-  background: var(--n1, #00f0ff);
-  color: #0b0d17;
-  border-color: transparent;
-  box-shadow: 0 0 14px -3px color-mix(in srgb, var(--g1, rgba(0, 240, 255, .4)) 100%, transparent);
-  box-shadow: 0 0 14px -3px var(--g1, rgba(0, 240, 255, .7));
-}
-
-.wc-demo-btn:focus-visible {
-  outline: 2px solid var(--focus-ring);
-  outline-offset: 1px;
-}
-
 /* Positioned wrapper — see .wc-project-wrap comment (SKY-6059). */
 .wc-menu-wrap {
   position: relative;

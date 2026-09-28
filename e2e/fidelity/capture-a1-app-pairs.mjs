@@ -85,15 +85,9 @@ for (const { w, h } of VIEWPORTS) {
   await page.screenshot({ path: path.join(OUT, `app-shell-${tag}.png`) });
   console.log(`  shot app-shell-${tag}`);
 
-  const demo = page.locator('[data-testid="wc-demo-btn"]').first();
-  if (await demo.isVisible({ timeout: 1500 }).catch(() => false)) {
-    await demo.click().catch(() => {});
-    await page.waitForTimeout(700);
-    await page.screenshot({ path: path.join(OUT, `app-demo-on-${tag}.png`) });
-    console.log(`  shot app-demo-on-${tag}`);
-  } else {
-    console.log(`  MISS demo btn @ ${tag}`);
-  }
+  // Demo toggle removed from app (A1 residual Owner clarify) — shell shot only.
+  const demoGone = await page.locator('[data-testid="wc-demo-btn"]').count();
+  console.log(`  demo-btn count @ ${tag}: ${demoGone} (expect 0)`);
 
   await app.close();
   for (const p of [fixture.userData, fixture.vaultDir, fixture.notesVaultDir]) {

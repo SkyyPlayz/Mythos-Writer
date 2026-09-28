@@ -51,9 +51,6 @@ export interface WindowChromeProps {
   onReplayOnboarding?: () => void;
   /** A1 / 09 §3.1: logo · title opens Welcome (vault switch lives on the rail). */
   onOpenWelcome?: () => void;
-  /** A1 / 09 §3.1: Demo walkthrough toggle (tourBtnSt). */
-  demoOn?: boolean;
-  onToggleDemo?: () => void;
   /** Bell slot — pass <NotificationCenter /> (M5). */
   notificationCenter?: ReactNode;
 }
@@ -155,8 +152,6 @@ export default function WindowChrome({
   onCreateVault,
   onReplayOnboarding,
   onOpenWelcome,
-  demoOn = false,
-  onToggleDemo,
   notificationCenter,
 }: WindowChromeProps) {
   const [platform, setPlatform] = useState<Platform>(null);
@@ -410,23 +405,6 @@ export default function WindowChrome({
               </div>
             ))}
           </div>
-        )}
-
-        {onToggleDemo && (
-          <button
-            type="button"
-            className={`wc-demo-btn${demoOn ? ' wc-demo-btn--on' : ''}`}
-            onClick={() => { setOpenMenu(null); setProjOpen(false); onToggleDemo(); }}
-            aria-pressed={demoOn}
-            title={demoOn ? 'Turn Demo walkthrough off' : 'Start the Demo walkthrough'}
-            data-testid="wc-demo-btn"
-            data-tour="demo-btn"
-          >
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-            {demoOn ? 'Demo on' : 'Demo'}
-          </button>
         )}
 
         <div style={{ flex: 1 }} />
