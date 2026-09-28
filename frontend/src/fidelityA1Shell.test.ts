@@ -82,6 +82,12 @@ describe('A1 engine --pop (09 §2.1)', () => {
     expect(eng).toContain('--glass-settings');
     expect(eng).toMatch(/glassA \+ 10/);
   });
+
+  it('ln-overlay-surface paints --pop (not glass2 overlay)', () => {
+    const css = read('overlay-tier.css');
+    expect(css).toMatch(/\.ln-overlay-surface\s*\{[^}]*var\(--pop/s);
+    expect(css).not.toMatch(/\.ln-overlay-surface\s*\{[^}]*var\(--glass-fill-overlay/s);
+  });
 });
 
 describe('A1 Welcome vs Demo (09 §3.1)', () => {

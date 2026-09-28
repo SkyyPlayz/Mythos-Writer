@@ -332,8 +332,8 @@ async function popupVsTier(page: Page, selector: string): Promise<{ popup: Popup
 const MENU_SHADOW = /^rgba\(3, 5, 12, 0\.6\) 0px 14px 40px 0px(, rgba\(0, 0, 0, 0\) 0px 0px 22px -6px)?$/;
 
 function expectPopupOnTier({ popup, tier }: { popup: PopupChrome; tier: PopupChrome }): void {
-  // Guard the target first: overlay/--pop denser glass (defaults → 0.50) over blur(24px).
-  expect(tier.backgroundColor).toBe('rgba(15, 19, 33, 0.5)');
+  // A1 / 09 §2.1: menus/popovers paint --pop (default glassA 20 → .86), not glass2.
+  expect(tier.backgroundColor).toBe('rgba(15, 19, 33, 0.86)');
   expect(tier.backdropFilter).toBe('blur(24px)');
   const { boxShadow: popupShadow, ...popupGlass } = popup;
   const { boxShadow: tierShadow, ...tierGlass } = tier;

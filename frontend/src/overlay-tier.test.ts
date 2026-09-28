@@ -55,11 +55,12 @@ function ruleBody(css: string, selector: string): string {
 }
 
 describe('overlay tier — shared chrome', () => {
-  it('reads the SKY-11133 overlay-tier fill and blur, not a flat surface token', () => {
+  it('reads A1 --pop fill and overlay blur, not flat panel glass', () => {
     const supports =
       /@supports \(backdrop-filter: blur\(1px\)\)\s*\{([\s\S]*?)\n\}/.exec(OVERLAY_CSS)?.[1] ?? '';
     const glass = ruleBody(supports, '.ln-overlay-surface');
-    expect(glass).toContain('var(--glass-fill-overlay)');
+    expect(glass).toContain('var(--pop)');
+    expect(glass).not.toContain('var(--glass-fill-overlay)');
     expect(glass).toContain('blur(var(--blur-panel-overlay))');
     expect(glass).toContain('-webkit-backdrop-filter');
   });
