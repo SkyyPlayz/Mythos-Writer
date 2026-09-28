@@ -22,7 +22,6 @@ import {
   buildPresetContext,
 } from './presets';
 import type { PresetAxes, RefinementChip } from './presets';
-import EntriesQuickAdd from './EntriesQuickAdd';
 import {
   COLLECTION_ORDER,
   FACT_CATEGORY,
@@ -2772,19 +2771,6 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
             Named characters, locations and rules are extracted automatically — watch the
             activity feed on the right.
           </div>
-          <EntriesQuickAdd
-            onEntrySaved={(path) => {
-              // SKY-10926: the quick-add save was previously a dead end — nothing
-              // downstream ever learned a new entry existed. Mirror it into the
-              // same real-events activity feed every other vault write reports
-              // through (pushActivity), so the entry is visible immediately.
-              const label = path
-                .replace(/^Entries\//, '')
-                .replace(/\.md$/, '')
-                .replace(/^\d{8}-\d{6}-/, '');
-              pushActivity('note', `Entry captured — “${label || path}”`);
-            }}
-          />
           {compact && proposals.length > 0 && (
             <ProposalCard
               proposals={proposals}

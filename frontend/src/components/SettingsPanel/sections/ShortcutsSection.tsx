@@ -20,11 +20,11 @@ export default function ShortcutsSection() {
               key={entry.action}
               style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 2px', borderBottom: '1px solid rgba(255,255,255,.045)' }}
             >
-              <span style={{ flex: 1, fontSize: 11.5, color: '#c3cee2' }}>{entry.action}</span>
+              <span style={{ flex: 1, fontSize: 14, color: '#c3cee2', lineHeight: 1.45 }}>{entry.action}</span>
               {entry.keys.map((key, i) => (
                 <span key={key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  {i > 0 && <span style={{ fontSize: 10, color: '#7686a2' }}>or</span>}
-                  <kbd className="m24-kbd">{key}</kbd>
+                  {i > 0 && <span style={{ fontSize: 12, color: '#7686a2' }}>or</span>}
+                  <kbd className="m24-kbd m24-kbd--lg">{key}</kbd>
                 </span>
               ))}
             </div>

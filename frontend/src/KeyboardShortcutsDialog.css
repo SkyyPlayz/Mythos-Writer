@@ -30,7 +30,7 @@
 }
 
 .ksd-title {
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   font-weight: 600;
   color: var(--text-primary);
 }
@@ -135,8 +135,8 @@
 }
 
 .ksd-action {
-  padding: 5px 0;
-  font-size: 0.82rem;
+  padding: 6px 0;
+  font-size: 0.95rem;
   color: var(--text-secondary);
   vertical-align: middle;
 }
@@ -146,8 +146,8 @@
   background: var(--bg-base, var(--bg-surface));
   border: 1px solid var(--border-default);
   border-radius: 4px;
-  padding: 1px 6px;
-  font-size: 0.75rem;
+  padding: 2px 8px;
+  font-size: 0.88rem;
   font-family: ui-monospace, 'SFMono-Regular', monospace;
   color: var(--text-primary);
   box-shadow: 0 1px 0 var(--border-default);
@@ -155,7 +155,7 @@
 }
 
 .ksd-or {
-  font-size: 0.72rem;
+  font-size: 0.85rem;
   color: var(--text-muted);
   padding: 0 2px;
 }

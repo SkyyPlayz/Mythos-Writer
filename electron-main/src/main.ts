@@ -8699,11 +8699,17 @@ function createWindow() {
   // windows cripple GPU compositing (PERFORMANCE.md §1); the `No background`
   // wallpaper now renders a plain dark backdrop inside the renderer instead.
   // backgroundColor matches that backdrop so no white flash shows on boot.
+  //
+  // Slice A2 — rounded chrome chase: keep opaque (B4-2) and ask Electron for
+  // OS rounded corners where supported (macOS `roundedCorners`). Windows/Linux
+  // frameless opaque windows often stay square at the OS frame — renderer
+  // clips content via `.desktop-shell` radius; OWNER ASK documents the gap.
   mainWindow = new BrowserWindow({
     ...restoreBounds,
     title: 'Mythos Writer',
     // SKY-3033: Custom Liquid Neon window chrome — renderer provides title bar + controls.
     frame: false,
+    roundedCorners: true,
     backgroundColor: '#07090f',
     webPreferences: secureWebPreferences({ preloadPath }),
   });

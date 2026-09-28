@@ -255,6 +255,10 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
   const [timelinesStore, setTimelinesStore] = useState<TimelinesStore | null>(null);
   const [storeLoading, setStoreLoading] = useState(true);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+  // Slice A2 — World Context nav trap: stash the story timeline we left so
+  // Back can restore TIMELINE NAVIGATOR (aside only mounts for story kind).
+  const storyReturnIdRef = useRef<string | null>(null);
+  const [embeddedReturnId, setEmbeddedReturnId] = useState<string | null>(null);
   const { toast, showToast, clearToast } = useToast();
   // M25 (§1 principle 7): destructive actions get an inline Undo on the toast.
   const [toastAction, setToastAction] = useState<{ label: string; onClick: () => void } | null>(null);
@@ -365,6 +369,34 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
       }
     }).catch(() => {});
   }, [api]);
+
+  // Slice A2 — when leaving a story timeline (World Context embed), remember it
+  // so Back can restore the TIMELINE NAVIGATOR aside.
+  useEffect(() => {
+    if (!timelinesStore) return;
+    const active = timelinesStore.timelines.find((t) => t.id === timelinesStore.activeTimelineId);
+    if (active?.kind === 'story') {
+      storyReturnIdRef.current = active.id;
+      setEmbeddedReturnId(null);
+      return;
+    }
+    if (active && storyReturnIdRef.current) {
+      setEmbeddedReturnId(storyReturnIdRef.current);
+    }
+  }, [timelinesStore]);
+
+  const handleWorldContextBack = useCallback(() => {
+    const target = embeddedReturnId ?? storyReturnIdRef.current;
+    if (!target || typeof api.timelinesSetActive !== 'function') return;
+    api.timelinesSetActive(target).then((res: { ok: boolean; store: TimelinesStore }) => {
+      if (!res.ok) return;
+      setTimelinesStore(res.store);
+      setBookFocus(null);
+      setTlSelection(null);
+      setEmbeddedReturnId(null);
+      notify('Returned to story timeline');
+    }).catch(() => {});
+  }, [api, embeddedReturnId, notify]);
 
   // Prototype `tlNewTimeline` (7216): '+ New timeline' creates one right away
   // (no editor modal) and switches to it.
@@ -1034,6 +1066,17 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
       {/* ── M21: Timeline picker (left panel top) ── */}
       {timelinesStore && (
         <div className="tlr-picker-wrap" data-testid="tlr-picker-wrap">
+          {embeddedReturnId && !isStoryTimeline && (
+            <button
+              type="button"
+              className="tlr-world-back"
+              data-testid="tlr-world-context-back"
+              onClick={handleWorldContextBack}
+              title="Return to the story timeline and restore the navigator"
+            >
+              ← Back to story timeline
+            </button>
+          )}
           <TimelinePicker
             store={timelinesStore}
             onSelect={handleTimelineSelect}

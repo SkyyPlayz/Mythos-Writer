@@ -34,8 +34,17 @@
    inside this column that resolves to the full column height, collapsing all content
    below it to 0px. Override to a fixed tab-bar height matching the old TabBar. */
 .desktop-shell__main-col > .wtb-root {
-  height: 36px;
+  height: 38px;
   flex-shrink: 0;
+}
+
+/* A2 — tabs docked inside writing chrome (center glass card) */
+.shell-center-column > .wtb-root {
+  height: 38px;
+  flex-shrink: 0;
+  /* Sit flush under the center card’s top radius */
+  border-top-left-radius: 17px;
+  border-top-right-radius: 17px;
 }
 
 /* S2-1: document tabs sit immediately under the title bar at the top of the
@@ -49,6 +58,8 @@
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  /* A2 — rounded chrome chase (custom opaque clip; pairs with Electron roundedCorners). */
+  border-radius: 12px;
   background: var(--bg-base);
   /* Background image wallpaper (MYT-613) — layered behind all glass panels.
      --bg-app-image is 'none' (transparent) by default; set by applyLiquidNeonTokens.

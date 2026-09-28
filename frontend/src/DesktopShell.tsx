@@ -376,7 +376,6 @@ export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, se
 
   return (
     <div className="app-menu-bar">
-      <span className="app-menu-brand">Mythos</span>
       <ProjectSwitcher activeVaultRoot={activeVaultRoot} activeStoryTitle={activeStoryTitle} onSwitched={onProjectSwitched} />
       <div className="app-menu-items" ref={fileMenuRef}>
         <div className="app-menu-item">
@@ -6211,7 +6210,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     ? vaultBinding.notesPath
     : vaultBinding.storyPath || activeVaultRoot;
   const activeVaultBadgeMissing = tabShell.activeTab === 'notes' ? !vaultBinding.notesValid : !vaultBinding.storyValid;
-  const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : tabShell.activeTab === 'brainstorm' ? 'Idea Board' : 'Story'} vault: ${activeVaultBadge}`;
+  const activeVaultBadgeLabel = `${tabShell.activeTab === 'notes' ? 'Notes' : tabShell.activeTab === 'brainstorm' ? 'Partner' : 'Story'} vault: ${activeVaultBadge}`;
   const navRailConfig = appSettings?.navConfig;
 
   return (
@@ -6275,21 +6274,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           notificationCenter={<NotificationCenter />}
         />
       )}
-        {/* Beta 4 M4 (§4): document tab strip — Story + Notes views only;
-            static pseudo-tab on Scene Crafter/Entities; hidden on
-            Brainstorm/Timeline/Graph (Settings/Beta are overlays). */}
-        {/* SKY-8907: while the Story split editor is active, pane 1 renders its
-            own copy of this strip (storyDocTabs) — hide the global one so
-            there aren't two.
-            SKY-10929: the Notes strip is never rendered here at all anymore —
-            NotesTabPanel owns it (scoped to its own center pane, not spanning
-            the vault tree / Brainstorm sidebar); see notesDocTabStrip below. */}
-        {showTitleBar && workspaceStripMode.kind !== 'hidden' &&
-          !(splitWindowEnabled && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'story') &&
-          !(workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'notes') && (
+        {/* A2 — Story document tabs move into writing chrome (.shell-center-column).
+            Static pseudo-tabs and Scene Crafter board strips stay under the title bar.
+            Notes strip stays in NotesTabPanel (SKY-10929). */}
+        {showTitleBar && (
+          (workspaceStripMode.kind === 'static') ||
+          (workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'story' && boardStripTabs !== null)
+        ) && !(splitWindowEnabled && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'story') && (
           <WorkspaceTabBar
-            tabs={workspaceStripMode.kind === 'docs' ? (boardStripTabs ?? storyDocTabs) : []}
-            activeTabId={workspaceStripMode.kind === 'docs' ? (boardStripTabs !== null ? boardStripActiveId : activeStoryDocTabId) : null}
+            tabs={workspaceStripMode.kind === 'docs' ? (boardStripTabs ?? []) : []}
+            activeTabId={workspaceStripMode.kind === 'docs' && boardStripTabs !== null ? boardStripActiveId : null}
             staticTabLabel={workspaceStripMode.kind === 'static' ? workspaceStripMode.label : undefined}
             onTabSelect={handleWorkspaceTabSelect}
             onTabClose={handleWorkspaceTabClose}
@@ -6297,18 +6291,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onNewTab={handleNewWorkspaceTab}
             onTabOpenInSplit={handleTabOpenInSplit}
             onTabPopOut={handleTabPopOut}
-            // SKY-11069: board tabs don't split — suppress the payload so the
-            // scene split drop zones never mount for a board tab drag.
             onTabDragStart={(tab) => { if (tab.kind !== 'board') { setTabDragPayload(tab); setTabDragSourcePane(null); } }}
             agentsActive={agentsActive}
             newTabTitle={boardStripTabs !== null ? 'New canvas board' : 'New blank scene — it only saves once you type'}
             newTabPrimaryLabel={boardStripTabs !== null ? 'New board' : 'New scene'}
-            newTabPickerItems={workspaceStripMode.kind === 'docs' && boardStripTabs === null ? [
-              { key: 'entities', label: 'Entity Browser', onSelect: handleOpenEntityBrowserForActiveStrip },
-              // SKY-10019: story-scoped only (mirrors OutlinePlanningPanel's
-              // `story` prop) — no Notes-strip entry, unlike Entity Browser.
-              { key: 'outline', label: 'Outline Planning', onSelect: handleOpenOutlineStory },
-            ] : undefined}
           />
         )}
         {/* SKY-2098: per-tab vault badge */}
@@ -6612,6 +6598,30 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       <div className="shell-center-column">
         {/* Beta 3 M3: slot-B breathing border (prototype brC, delay .8) */}
         <BorderOverlay settings={appSettings?.liquidNeonV2} slot={2} delay={0.8} />
+        {/* A2 — document tabs docked in writing chrome (prototype atlas center panel).
+            SKY-8907: hide when the Story split pane owns its own strip copy.
+            Scene Crafter board strips stay under the title bar (boardStripTabs). */}
+        {showTitleBar && workspaceStripMode.kind === 'docs' && workspaceStripMode.strip === 'story' &&
+          boardStripTabs === null && !splitWindowEnabled && (
+          <WorkspaceTabBar
+            tabs={storyDocTabs}
+            activeTabId={activeStoryDocTabId}
+            onTabSelect={handleWorkspaceTabSelect}
+            onTabClose={handleWorkspaceTabClose}
+            onTabReorder={handleWorkspaceTabReorder}
+            onNewTab={handleNewWorkspaceTab}
+            onTabOpenInSplit={handleTabOpenInSplit}
+            onTabPopOut={handleTabPopOut}
+            onTabDragStart={(tab) => { if (tab.kind !== 'board') { setTabDragPayload(tab); setTabDragSourcePane(null); } }}
+            agentsActive={agentsActive}
+            newTabTitle="New blank scene — it only saves once you type"
+            newTabPrimaryLabel="New scene"
+            newTabPickerItems={[
+              { key: 'entities', label: 'Entity Browser', onSelect: handleOpenEntityBrowserForActiveStrip },
+              { key: 'outline', label: 'Outline Planning', onSelect: handleOpenOutlineStory },
+            ]}
+          />
+        )}
         <div className="shell-editor">
           {/* SKY-1699/SKY-1700: Writing toolbar — split toggle + layout picker.
               SKY-9421 (M1): the DepthSlider that used to special-case scene
