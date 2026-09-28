@@ -1,5 +1,5 @@
-// A1 residual Q1–Q3 proof pairs @ 1440×900 + 1280×720 (Neon Nebula 50 / glass 20).
-// Shots: Welcome overlay · Demo-on walkthrough · rail without brand.
+// A1 residual VERIFY pairs @ 1440×900 + 1280×720 (Neon Nebula 50 / glass 20).
+// Shots: Welcome overlay · rail without brand · shell with Demo gone.
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -93,7 +93,15 @@ for (const { w, h } of VIEWPORTS) {
 
   const tag = `${w}x${h}`;
 
-  // 1) Welcome overlay (title-bar Welcome — no onboardingReplay)
+  // VERIFY: Demo toggle gone
+  const demoCount = await page.locator('[data-testid="wc-demo-btn"]').count();
+  const tourCount = await page.locator('[data-testid="tour-modal"]').count();
+  console.log(`  demo-btn count @ ${tag}: ${demoCount}; tour-modal: ${tourCount}`);
+  if (demoCount !== 0 || tourCount !== 0) {
+    throw new Error(`Demo not removed: demo=${demoCount} tour=${tourCount}`);
+  }
+
+  // 1) Welcome overlay
   const welcomeBtn = page.locator('[data-testid="wc-project-trigger"]').first();
   if (await welcomeBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
     await welcomeBtn.click().catch(() => {});
@@ -105,33 +113,20 @@ for (const { w, h } of VIEWPORTS) {
     if (await skip.isVisible({ timeout: 1000 }).catch(() => false)) {
       await skip.click().catch(() => {});
       await page.waitForTimeout(500);
-    } else {
-      await page.keyboard.press('Escape').catch(() => {});
     }
   } else {
     console.log(`  MISS welcome trigger @ ${tag}`);
   }
 
-  // 2) Demo-on walkthrough bubble + ring
-  const demo = page.locator('[data-testid="wc-demo-btn"]').first();
-  if (await demo.isVisible({ timeout: 1500 }).catch(() => false)) {
-    await demo.click().catch(() => {});
-    await page.waitForTimeout(800);
-    await page.locator('[data-testid="walkthrough-bubble"]').waitFor({ state: 'visible', timeout: 8000 }).catch(() => {});
-    await page.screenshot({ path: path.join(OUT, `demo-walkthrough-${tag}.png`) });
-    console.log(`  shot demo-walkthrough-${tag}`);
-    // turn off for rail shot
-    await demo.click().catch(() => {});
-    await page.waitForTimeout(400);
-  } else {
-    console.log(`  MISS demo btn @ ${tag}`);
-  }
-
-  // 3) Rail without brand M
+  // 2) Rail without brand + shell with Demo gone
   await page.screenshot({ path: path.join(OUT, `rail-no-brand-${tag}.png`) });
   console.log(`  shot rail-no-brand-${tag}`);
   const brandCount = await page.locator('.nav-rail__brand').count();
   console.log(`  rail brand count @ ${tag}: ${brandCount}`);
+  if (brandCount !== 0) throw new Error(`Rail brand still present: ${brandCount}`);
+
+  await page.screenshot({ path: path.join(OUT, `shell-demo-gone-${tag}.png`) });
+  console.log(`  shot shell-demo-gone-${tag}`);
 
   await app.close();
   for (const p of [fixture.userData, fixture.vaultDir, fixture.notesVaultDir]) {
@@ -139,4 +134,4 @@ for (const { w, h } of VIEWPORTS) {
   }
 }
 
-console.log('A1 residual pairs DONE →', OUT);
+console.log('A1 residual VERIFY pairs DONE →', OUT);

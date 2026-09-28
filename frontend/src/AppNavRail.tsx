@@ -34,16 +34,6 @@ export interface NavRailVault {
   icon?: VaultIconRef;
 }
 
-/** Prototype data-tour anchors for Demo walkthrough (09 §7 / seed targets). */
-const TOUR_TARGET_BY_MODULE: Partial<Record<NavRailModuleId, string>> = {
-  story: 'rail-editor',
-  notes: 'rail-notes',
-  boards: 'rail-boards',
-  crafter: 'rail-crafter',
-  timeline: 'rail-timeline',
-  'vault-graph': 'rail-graph',
-};
-
 export interface AppNavRailProps {
   activeSection: NavRailModuleId;
   onSectionChange: (moduleId: NavRailModuleId) => void;
@@ -482,7 +472,6 @@ export default function AppNavRail({
           const slot = SLOT_BY_MODULE[item.id] ?? 1;
           const hasStories = storiesEnabled && item.id === 'story';
           const Glyph = RAIL_GLYPH_BY_ID[item.id];
-          const tourTarget = TOUR_TARGET_BY_MODULE[item.id];
           return (
             <button
               key={item.id}
@@ -494,7 +483,6 @@ export default function AppNavRail({
               onClick={() => handleItemClick(item)}
               onKeyDown={(e) => handleNavKeyDown(e, index)}
               aria-label={item.label}
-              data-tour={tourTarget}
               aria-current={active ? 'page' : undefined}
               aria-haspopup={hasStories ? 'true' : undefined}
               aria-expanded={hasStories ? storiesOpen : undefined}

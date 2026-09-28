@@ -1,7 +1,8 @@
 /**
  * A1 residual Q1 — Welcome overlay contracts from 09 §7.
+ * VERIFY also: Demo / TourModal / walkthrough chrome must not exist.
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
@@ -28,21 +29,11 @@ describe('WelcomeOverlay (09 §7)', () => {
   });
 });
 
-describe('WalkthroughOverlay (09 §7)', () => {
-  const tsx = read('walkthrough/WalkthroughOverlay.tsx');
-  const css = read('walkthrough/WalkthroughOverlay.css');
-  const steps = read('walkthrough/walkthroughSteps.ts');
-
-  it('ships bubble z90 + ring z89 chrome', () => {
-    expect(css).toMatch(/\.walkthrough-bubble\s*\{[^}]*z-index:\s*90/s);
-    expect(css).toMatch(/\.walkthrough-ring\s*\{[^}]*z-index:\s*89/s);
-    expect(css).toContain('lnRing');
-    expect(tsx).toContain('walkthrough-bubble');
-    expect(tsx).toContain('walkthrough-ring');
-  });
-
-  it('loads seed walkthrough steps (45)', () => {
-    expect(steps).toContain('WALKTHROUGH_STEPS');
-    expect(steps.match(/"chapter":/g)?.length).toBe(45);
+describe('Demo removed (Owner clarify)', () => {
+  it('TourModal and walkthrough modules are deleted', () => {
+    expect(existsSync(resolve(SRC, 'TourModal.tsx'))).toBe(false);
+    expect(existsSync(resolve(SRC, 'TourModal.css'))).toBe(false);
+    expect(existsSync(resolve(SRC, 'walkthrough/WalkthroughOverlay.tsx'))).toBe(false);
+    expect(existsSync(resolve(SRC, 'walkthrough/walkthroughSteps.ts'))).toBe(false);
   });
 });

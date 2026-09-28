@@ -108,7 +108,6 @@ import WelcomeOverlay, {
   shouldAutoOpenWelcomeOverlay,
   type WelcomePathId,
 } from './WelcomeOverlay';
-import WalkthroughOverlay from './walkthrough/WalkthroughOverlay';
 import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
@@ -804,9 +803,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Beta 4 M2: View → Toggle left panel (§4) — a real user toggle, ANDed into
   // showLeftSidebar below (focus/distraction-free rules unchanged).
   const [leftPanelHidden, setLeftPanelHidden] = useState(false);
-  // A1 residual Q1/Q3: Welcome overlay (09 §7) + Demo walkthrough chrome (not TourModal).
+  // A1 residual Q1: Welcome overlay (09 §7). Demo toggle removed from this tip.
   const [welcomeOpen, setWelcomeOpen] = useState(() => shouldAutoOpenWelcomeOverlay());
-  const [demoOn, setDemoOn] = useState(false);
   // M1 (SKY-9013): 'part' is a first-class depth — viewDepth is the manuscript
   // zoom level directly (the SKY-6010 partZoom flag is gone with it). Until M2
   // lands the Parts data model, part depth renders the story's chapters
@@ -6274,8 +6272,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             window.api?.onboardingReplay?.().then(() => window.location.reload()).catch(() => {});
           }}
           onOpenWelcome={() => setWelcomeOpen(true)}
-          demoOn={demoOn}
-          onToggleDemo={() => setDemoOn((o) => !o)}
           notificationCenter={<NotificationCenter />}
         />
       )}
@@ -6421,9 +6417,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             }
           }}
         />
-      )}
-      {demoOn && (
-        <WalkthroughOverlay onClose={() => setDemoOn(false)} />
       )}
       {exportScope && <ExportDialog scope={exportScope} stories={stories} currentChapterId={selectedChapter?.id ?? null} onClose={() => setExportScope(null)} />}
       {templatePickerOpen && (

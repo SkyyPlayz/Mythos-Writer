@@ -51,14 +51,14 @@ describe('A1 floating rail (09 §3.2)', () => {
   });
 });
 
-describe('A1 title bar Welcome + Demo (09 §3.1)', () => {
+describe('A1 title bar Welcome (09 §3.1) — Demo removed', () => {
   const tsx = read('components/ui/WindowChrome.tsx');
   const css = read('components/ui/WindowChrome.css');
-  it('exposes Welcome + Demo wiring', () => {
+  it('exposes Welcome wiring; no Demo toggle', () => {
     expect(tsx).toContain('onOpenWelcome');
-    expect(tsx).toContain('onToggleDemo');
-    expect(tsx).toContain('wc-demo-btn');
-    expect(css).toContain('.wc-demo-btn');
+    expect(tsx).not.toContain('onToggleDemo');
+    expect(tsx).not.toContain('wc-demo-btn');
+    expect(css).not.toContain('.wc-demo-btn');
     expect(css).toContain('backdrop-filter: blur(var(--blur');
   });
 });
@@ -90,15 +90,19 @@ describe('A1 engine --pop (09 §2.1)', () => {
   });
 });
 
-describe('A1 residual Welcome + Demo (09 §3.1 / §7)', () => {
+describe('A1 residual VERIFY — Welcome + no rail M + Demo gone', () => {
   const shell = read('DesktopShell.tsx');
-  it('Welcome opens WelcomeOverlay (no onboardingReplay); Demo toggles WalkthroughOverlay', () => {
+  it('Welcome opens WelcomeOverlay (no onboardingReplay)', () => {
     expect(shell).toMatch(/onOpenWelcome=\{\(\) => setWelcomeOpen\(true\)\}/);
-    expect(shell).toMatch(/onToggleDemo=\{\(\) => setDemoOn/);
     expect(shell).toContain('WelcomeOverlay');
-    expect(shell).toContain('WalkthroughOverlay');
     expect(shell).not.toMatch(/onOpenWelcome=\{replayOnboardingWizard\}/);
+  });
+
+  it('Demo toggle / TourModal / WalkthroughOverlay are absent', () => {
+    expect(shell).not.toContain('onToggleDemo');
+    expect(shell).not.toContain('WalkthroughOverlay');
     expect(shell).not.toMatch(/<TourModal/);
+    expect(shell).not.toContain('setDemoOn');
   });
 
   it('rail has no brand M; account is title-bar avatar only', () => {
