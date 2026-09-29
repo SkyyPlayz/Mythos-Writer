@@ -15,8 +15,10 @@ import {
 import { clickStoryNav } from '../helpers/navGuard';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
+// Shield residual: default to os.tmpdir() — never hardcode /cursor/stores/…
+// (local `npm run test:e2e` would EACCES). Set F1_PROOF_OUT for Agent Store.
 const MEDIA = process.env.F1_PROOF_OUT
-  ?? '/cursor/stores/bc-fb92daf9-4bac-4b89-898c-bb6f10dab5c7/media/beta-f1';
+  ?? path.join(os.tmpdir(), 'mythos-f1-proof');
 
 function seedUserData(userData: string, vaultDir: string, notesVaultDir: string): void {
   fs.mkdirSync(userData, { recursive: true });

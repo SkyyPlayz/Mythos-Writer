@@ -6,12 +6,13 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { _electron as electron } from 'playwright';
-import { mainJs as MAIN_JS, requireBuild } from './lib.mjs';
+import { mainJs as MAIN_JS, requireBuild, outDir } from './lib.mjs';
 
 requireBuild();
 
-const OUT = process.env.F1_PROOF_OUT
-  ?? '/cursor/stores/bc-fb92daf9-4bac-4b89-898c-bb6f10dab5c7/media/beta-f1';
+// Shield residual: never hardcode /cursor/stores/… — harness outDir (gitignored)
+// or F1_PROOF_OUT for Agent Store captures when the coordinator sets it.
+const OUT = process.env.F1_PROOF_OUT ?? outDir('beta-f1');
 fs.mkdirSync(OUT, { recursive: true });
 
 const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f1cap-'));

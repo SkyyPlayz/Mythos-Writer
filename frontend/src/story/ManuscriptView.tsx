@@ -1449,7 +1449,7 @@ export default function ManuscriptView({
             <div className="msv-part-heading-label">{b.label}</div>
             <div
               className="msv-part-heading-title"
-              contentEditable={!!onRenamePart}
+              contentEditable={onRenamePart ? 'plaintext-only' : false}
               suppressContentEditableWarning
               spellCheck={false}
               role={onRenamePart ? 'textbox' : undefined}
