@@ -112,36 +112,106 @@ test.describe('F1 beta gate VERIFY', () => {
     const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'f1-ins-v-'));
     const notes = fs.mkdtempSync(path.join(os.tmpdir(), 'f1-ins-n-'));
     seedUserData(userData, vault, notes);
-    const app = await launchApp(userData);
-    try {
-      const page = await waitForBoot(app);
-      await createAndSelectStory(page);
-      // Seed three chapters via File → New chapter (accept dialogs).
-      page.on('dialog', async (d) => {
-        const t = d.type();
-        if (t === 'prompt') await d.accept(`Chapter ${Date.now() % 1000}`);
-        else await d.accept().catch(() => {});
-      });
-      for (let i = 0; i < 2; i += 1) {
-        await page.locator('.wc-menu', { hasText: 'File' }).click();
-        await page.locator('.wc-menu-item', { hasText: 'New chapter' }).click().catch(async () => {
-          await page.keyboard.press('Escape');
+
+    let titlesBefore: string[] = [];
+    {
+      const app = await launchApp(userData);
+      try {
+        const page = await waitForBoot(app);
+        await createAndSelectStory(page);
+        page.on('dialog', async (d) => {
+          const t = d.type();
+          if (t === 'prompt') await d.accept(`Chapter ${Date.now() % 1000}`);
+          else await d.accept().catch(() => {});
         });
-        await page.waitForTimeout(400);
+        for (let i = 0; i < 2; i += 1) {
+          await page.locator('.wc-menu', { hasText: 'File' }).click();
+          await page.locator('.wc-menu-item', { hasText: 'New chapter' }).click().catch(async () => {
+            await page.keyboard.press('Escape');
+          });
+          await page.waitForTimeout(400);
+        }
+        const firstCh = page.locator('.nav-chapter-row, .nav-chapter-title').first();
+        if (await firstCh.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await firstCh.click();
+        }
+        await page.locator('.wc-menu', { hasText: 'File' }).click();
+        await page.locator('.wc-menu-item', { hasText: 'New chapter' }).click().catch(() => {});
+        await page.waitForTimeout(600);
+        titlesBefore = await page.locator('.nav-chapter-title').allTextContents();
+        expect(titlesBefore.length).toBeGreaterThan(0);
+      } finally {
+        await app.close();
       }
-      // Select first chapter in nav if present, then add another.
-      const firstCh = page.locator('.nav-chapter-row, .nav-chapter-title').first();
-      if (await firstCh.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await firstCh.click();
-      }
-      await page.locator('.wc-menu', { hasText: 'File' }).click();
-      await page.locator('.wc-menu-item', { hasText: 'New chapter' }).click().catch(() => {});
-      await page.waitForTimeout(600);
-      // Soft assert: navigator still shows chapters (order renumber unit-covered).
-      const chCount = await page.locator('.nav-chapter-row, .nav-chapter-title').count();
-      expect(chCount).toBeGreaterThan(0);
+    }
+
+    // Reload-order assert: relaunch with same userData/vault.
+    const app2 = await launchApp(userData);
+    try {
+      const page2 = await waitForBoot(app2);
+      await page2.locator('.nav-story-title').first().click().catch(() => {});
+      await page2.waitForTimeout(800);
+      const titlesAfter = await page2.locator('.nav-chapter-title').allTextContents();
+      expect(titlesAfter).toEqual(titlesBefore);
     } finally {
-      await app.close();
+      await app2.close();
+    }
+  });
+
+  test('F1#1 Create Scene → board survives reload', async () => {
+    test.skip(!fs.existsSync(MAIN_JS), 'needs npm run build:electron');
+    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'f1-cs-'));
+    const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'f1-cs-v-'));
+    const notes = fs.mkdtempSync(path.join(os.tmpdir(), 'f1-cs-n-'));
+    seedUserData(userData, vault, notes);
+
+    const findScene = (root: string) => {
+      const walk = (dir: string): string | null => {
+        if (!fs.existsSync(dir)) return null;
+        for (const name of fs.readdirSync(dir)) {
+          const full = path.join(dir, name);
+          const st = fs.statSync(full);
+          if (st.isDirectory()) {
+            const hit = walk(full);
+            if (hit) return hit;
+          } else if (name.endsWith('.md')) {
+            if (fs.readFileSync(full, 'utf-8').includes('Held Tip Scene')) return full;
+          }
+        }
+        return null;
+      };
+      return walk(root);
+    };
+
+    {
+      const app = await launchApp(userData);
+      try {
+        const page = await waitForBoot(app);
+        await createAndSelectStory(page);
+        await page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
+        const titleInput = page.locator('input[placeholder="The next scene…"]');
+        await expect(titleInput).toBeVisible({ timeout: 8_000 });
+        await titleInput.fill('Held Tip Scene');
+        const createBtn = page.getByTestId('sc-create-scene-btn');
+        await expect(createBtn).toBeVisible({ timeout: 5_000 });
+        await createBtn.click();
+        await expect(page.locator('.shell-kanban, .sc-canvas-view, [aria-label^="Canvas board"]')).toBeVisible({
+          timeout: 12_000,
+        });
+        expect(findScene(vault), 'scene must exist on disk before reload').toBeTruthy();
+      } finally {
+        await app.close();
+      }
+    }
+
+    const app2 = await launchApp(userData);
+    try {
+      const page2 = await waitForBoot(app2);
+      expect(findScene(vault), 'scene must persist after reload').toBeTruthy();
+      await page2.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
+      await expect(page2.locator('.shell-kanban, .sc-canvas-view')).toBeVisible({ timeout: 10_000 });
+    } finally {
+      await app2.close();
     }
   });
 

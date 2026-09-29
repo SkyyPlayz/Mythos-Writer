@@ -68,7 +68,7 @@ const api = {
     vaultItems = vaultItems.map((v) => (v.path === itemPath ? { path: to, name: to, isDirectory: v.isDirectory } : v));
     return { renamed: true as const, itemPath: to };
   }),
-  onVaultNotesUpdated: vi.fn(() => () => {}),
+  onVaultNotesUpdated: vi.fn((_cb: (data: { count: number; path?: string }) => void) => () => {}),
   onVaultNotesAssetChanged: vi.fn(() => () => {}),
   // SKY-11189 §7/§8
   notesBoardTrashItems: vi.fn(async (
@@ -335,7 +335,10 @@ describe('SKY-11189 §7/§8 — trash + undo toast + Recently Deleted panel wiri
 });
 
 describe('F1#5 — Boards navigable sidebar', () => {
+  let vaultNotesCb: ((data: { count: number; path?: string }) => void) | null = null;
+
   beforeEach(() => {
+    vaultNotesCb = null;
     vaultItems = [
       { path: 'Characters', name: 'Characters', isDirectory: true },
       { path: 'Characters/Locations', name: 'Locations', isDirectory: true },
@@ -343,6 +346,10 @@ describe('F1#5 — Boards navigable sidebar', () => {
       { path: 'World', name: 'World', isDirectory: true },
       { path: 'Alice.md', name: 'Alice.md', isDirectory: false },
     ];
+    api.onVaultNotesUpdated.mockImplementation((cb: (data: { count: number; path?: string }) => void) => {
+      vaultNotesCb = cb;
+      return () => { vaultNotesCb = null; };
+    });
   });
 
   it('pins Home as the first nav item', async () => {
@@ -356,7 +363,7 @@ describe('F1#5 — Boards navigable sidebar', () => {
 
   it('lists nested folders (auto-expanded so depth-3 is ≤2 clicks)', async () => {
     await mountPanel();
-    // Tree auto-expands on load — Cities (3 levels deep) is one click away.
+    // Tree auto-expands on first load — Cities (3 levels deep) is one click away.
     expect(await screen.findByTestId('boards-nav-folder-Cities')).toBeTruthy();
     expect(screen.getByTestId('boards-nav-folder-Locations')).toBeTruthy();
 
@@ -398,5 +405,52 @@ describe('F1#5 — Boards navigable sidebar', () => {
     await waitFor(() => {
       expect(screen.getByTestId('boards-nav-home').getAttribute('aria-current')).toBe('page');
     });
+  });
+
+  it('H5: note content vault:notes-updated does NOT re-walk listNotesVault', async () => {
+    await mountPanel();
+    await screen.findByTestId('boards-nav-home');
+    const callsAfterMount = api.listNotesVault.mock.calls.length;
+    expect(vaultNotesCb).toBeTruthy();
+    await act(async () => {
+      vaultNotesCb?.({ count: 1, path: 'Alice.md' });
+      await new Promise((r) => setTimeout(r, 120));
+    });
+    expect(api.listNotesVault.mock.calls.length).toBe(callsAfterMount);
+  });
+
+  it('H5: board/folder vault:notes-updated DOES re-walk listNotesVault', async () => {
+    await mountPanel();
+    await screen.findByTestId('boards-nav-home');
+    const callsAfterMount = api.listNotesVault.mock.calls.length;
+    vaultItems = [
+      ...vaultItems,
+      { path: 'NewBoard', name: 'NewBoard', isDirectory: true },
+    ];
+    await act(async () => {
+      vaultNotesCb?.({ count: 1, path: 'NewBoard' });
+      await new Promise((r) => setTimeout(r, 120));
+    });
+    expect(api.listNotesVault.mock.calls.length).toBeGreaterThan(callsAfterMount);
+  });
+
+  it('collapse survives a topology tree refresh', async () => {
+    await mountPanel();
+    await screen.findByTestId('boards-nav-folder-Cities');
+    // Collapse Characters (hides Locations/Cities).
+    fireEvent.click(screen.getByTestId('boards-nav-toggle-Characters'));
+    expect(screen.queryByTestId('boards-nav-folder-Cities')).toBeNull();
+
+    // Topology refresh (new sibling board) must NOT re-expand Characters.
+    vaultItems = [
+      ...vaultItems,
+      { path: 'Extra', name: 'Extra', isDirectory: true },
+    ];
+    await act(async () => {
+      vaultNotesCb?.({ count: 1, path: 'Extra' });
+      await new Promise((r) => setTimeout(r, 120));
+    });
+    expect(screen.queryByTestId('boards-nav-folder-Cities')).toBeNull();
+    expect(await screen.findByTestId('boards-nav-folder-Extra')).toBeTruthy();
   });
 });

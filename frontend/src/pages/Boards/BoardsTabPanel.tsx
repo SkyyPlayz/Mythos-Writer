@@ -17,6 +17,10 @@ import type { BoardItem, BoardTool, BoardFurnitureItemData } from './BoardCanvas
 import type { FurnitureKind } from './boardLod';
 import RecentlyDeletedPanel from './RecentlyDeletedPanel';
 import { useVaultBoard, vaultPathOf } from './useVaultBoard';
+import {
+  collectBoardsNavFolderPaths,
+  shouldBumpNavTreeOnVaultEvent,
+} from './boardsNavTopology';
 import { boardWikiLinks, furnitureAnchorRects } from './boardLinks';
 import type { VaultGraphEdge } from './boardLinks';
 import { searchVaultIndex } from './boardSearch';
@@ -213,17 +217,45 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   const [folderTree, setFolderTree] = useState<BoardsNavFolderNode[]>([]);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
   const [navWidth, setNavWidth] = useState(readBoardsNavWidth);
-  // H5: tree-version — bump on folder/board create/rename/delete so listNotesVault
-  // does NOT re-run on every `items` (card) change from board navigation.
+  // H5: tree-version — bump only on board/folder topology (create/rename/trash),
+  // never on note content saves (Critic/Forge flag). Coalesce call-site + event.
   const [navTreeVersion, setNavTreeVersion] = useState(0);
-  const bumpNavTreeVersion = useCallback(() => setNavTreeVersion((v) => v + 1), []);
+  const bumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bumpNavTreeVersion = useCallback(() => {
+    if (bumpTimerRef.current) clearTimeout(bumpTimerRef.current);
+    bumpTimerRef.current = setTimeout(() => {
+      bumpTimerRef.current = null;
+      setNavTreeVersion((v) => v + 1);
+    }, 80);
+  }, []);
+  useEffect(() => () => {
+    if (bumpTimerRef.current) clearTimeout(bumpTimerRef.current);
+  }, []);
+  const folderTreeRef = useRef<BoardsNavFolderNode[]>([]);
+  // Collapse: auto-expand ALL folders once on first tree load (≤2-click depth-3).
+  // Subsequent refreshes must NOT reset expandedPaths (Forge flag 2).
+  const initialNavExpandDoneRef = useRef(false);
   const navResizeStartXRef = useRef(0);
   const navResizeStartWidthRef = useRef(BOARDS_NAV_DEFAULT);
   // GRS-style resize: live width on a ref during drag; commit React state + persist on mouseup.
   const navWidthLiveRef = useRef(navWidth);
   const navElRef = useRef<HTMLElement | null>(null);
 
-  // Default-expand ancestors of the open board so it stays visible in the tree.
+  // Keep folderTreeRef current for vault-event topology filtering.
+  useEffect(() => {
+    folderTreeRef.current = folderTree;
+  }, [folderTree]);
+
+  // New vault root → reset crumb + allow one-shot auto-expand again.
+  useEffect(() => {
+    initialNavExpandDoneRef.current = false;
+    setExpandedPaths(new Set());
+    setFolderTree([]);
+    setBreadcrumb([HOME_CRUMB]);
+  }, [notesVaultRoot]);
+
+  // Default-expand ancestors of the open board so it stays visible in the tree
+  // (does not re-expand siblings the user collapsed).
   useEffect(() => {
     const ancestors = ancestorFolderPaths(currentFolder);
     if (ancestors.length === 0) return;
@@ -285,11 +317,6 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     setBreadcrumb(breadcrumbForFolder(folderPath));
   }, []);
 
-  // Reset breadcrumb when vault root changes
-  useEffect(() => {
-    setBreadcrumb([HOME_CRUMB]);
-  }, [notesVaultRoot]);
-
   // SKY-11615: external deep-link (a `[[Folder]]` wiki-link click). Keyed on
   // `seq`, not the path, so the same folder can be requested twice.
   const requestSeq = openFolderRequest?.seq;
@@ -318,38 +345,36 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
       if (cancelled || 'error' in res) return;
       const tree = buildBoardsFolderTree(res.items);
       setFolderTree(tree);
-      // F1#5: expand the full tree so a board 3 levels deep is ≤2 clicks
-      // (typically 1 — click the leaf). Collapses remain user-controlled after.
-      const all: string[] = [];
-      const walk = (nodes: BoardsNavFolderNode[]) => {
-        for (const n of nodes) {
-          all.push(n.path);
-          if (n.children.length) walk(n.children);
-        }
-      };
-      walk(tree);
-      if (all.length) setExpandedPaths(new Set(all));
+      // One-shot auto-expand on first load only — never reset collapses on refresh.
+      if (!initialNavExpandDoneRef.current) {
+        initialNavExpandDoneRef.current = true;
+        const all: string[] = [];
+        const walk = (nodes: BoardsNavFolderNode[]) => {
+          for (const n of nodes) {
+            all.push(n.path);
+            if (n.children.length) walk(n.children);
+          }
+        };
+        walk(tree);
+        if (all.length) setExpandedPaths(new Set(all));
+      }
     }).catch(() => { /* non-fatal */ });
     return () => { cancelled = true; };
   }, [notesVaultValid, notesVaultRoot, navTreeVersion]);
 
-  // Bump tree-version on Notes vault topology changes (folder/board create,
-  // rename, delete — notesBoardCreateItem / Rename / Trash push vault:notes-updated).
+  // Bump tree-version only on topology events (board/folder path), never on
+  // note content saves (`*.md`). Explicit create/rename/trash call sites also bump.
   useEffect(() => {
     if (!notesVaultValid) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const onVaultTopology = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        timer = null;
-        bumpNavTreeVersion();
-      }, 80);
+    const onVaultEvent = (data: { count: number; path?: string }) => {
+      const known = collectBoardsNavFolderPaths(folderTreeRef.current);
+      if (!shouldBumpNavTreeOnVaultEvent(data.path, known)) return;
+      bumpNavTreeVersion();
     };
     const unsubs = [
-      window.api.onVaultNotesUpdated?.(onVaultTopology),
+      window.api.onVaultNotesUpdated?.(onVaultEvent),
     ];
     return () => {
-      if (timer) clearTimeout(timer);
       for (const u of unsubs) u?.();
     };
   }, [notesVaultValid, bumpNavTreeVersion]);
@@ -526,6 +551,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     try {
       const { entries } = await window.api.notesBoardTrashItems(currentFolder, targets);
       await reload(true);
+      if (targets.some((t) => t.kind === 'folder')) bumpNavTreeVersion();
       // Restoring the whole batch means restoring every DISTINCT group it
       // touched (a folder target's descendants share its group, but two
       // unrelated top-level targets from one multi-select do not — see
@@ -543,13 +569,27 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
         undo: async () => {
           await Promise.all(restoreIds.map((id) => window.api.notesBoardRestore(id)));
           await reload(true);
+          bumpNavTreeVersion();
         },
       });
       showToast(label, 'info');
     } catch (err) {
       reportActionError(err instanceof Error ? err.message : String(err));
     }
-  }, [items, currentFolder, reload, reportActionError, showToast]);
+  }, [items, currentFolder, reload, reportActionError, showToast, bumpNavTreeVersion]);
+
+  /** H5 call-site: bump nav tree only when a board (folder) is created. */
+  const handleCreateItem = useCallback(async (kind: 'note' | 'folder', x: number, y: number) => {
+    await board.onCreateItem(kind, x, y);
+    if (kind === 'folder') bumpNavTreeVersion();
+  }, [board, bumpNavTreeVersion]);
+
+  /** H5 call-site: bump nav tree when a board (folder) is renamed. */
+  const handleRenameCommit = useCallback(async (itemPath: string, newName: string) => {
+    const wasFolder = items.find((i) => i.path === itemPath)?.kind === 'folder';
+    await board.onRenameCommit(itemPath, newName);
+    if (wasFolder) bumpNavTreeVersion();
+  }, [board, items, bumpNavTreeVersion]);
 
   const handleUndoToast = useCallback(() => {
     clearToast();
@@ -1146,10 +1186,10 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             onEnterBoard={handleEnterBoard}
             onOpenNote={onOpenNote}
             activeTool={board.activeTool}
-            onCreateItem={board.onCreateItem}
+            onCreateItem={handleCreateItem}
             renamingPath={board.renamingPath}
             onRequestRename={board.onRequestRename}
-            onRenameCommit={board.onRenameCommit}
+            onRenameCommit={handleRenameCommit}
             onRenameCancel={board.onRenameCancel}
             onTrashItems={handleTrashItems}
             furniture={furniture}
