@@ -5205,10 +5205,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             }}
             continuityCount={continuityCount}
             onOpenPartnerHistory={() => {
-              setSettingsInitialCategory('agents');
+              setSettingsInitialCategory('writingPartner');
               setSettingsOpenToken((t) => t + 1);
               setSettingsOpen(true);
-              // Defer until Settings › Agents (SessionHistoryViewer) mounts.
+              // Defer until Settings › Writing partner (SessionHistoryViewer) mounts.
               window.setTimeout(() => {
                 window.dispatchEvent(new CustomEvent('mythos:open-session-history', { detail: { agent: 'brainstorm' } }));
               }, 50);
@@ -7329,10 +7329,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           }}
           continuityCount={continuityCount}
           onOpenPartnerHistory={() => {
-            setSettingsInitialCategory('agents');
+            setSettingsInitialCategory('writingPartner');
             setSettingsOpenToken((t) => t + 1);
             setSettingsOpen(true);
-            // Defer until Settings › Agents (SessionHistoryViewer) mounts.
+            // Defer until Settings › Writing partner (SessionHistoryViewer) mounts.
             window.setTimeout(() => {
               window.dispatchEvent(new CustomEvent('mythos:open-session-history', { detail: { agent: 'brainstorm' } }));
             }, 50);
