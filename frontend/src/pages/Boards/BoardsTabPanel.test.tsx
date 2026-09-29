@@ -333,3 +333,55 @@ describe('SKY-11189 §7/§8 — trash + undo toast + Recently Deleted panel wiri
     expect(api.notesBoardEmptyTrash).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('F1#5 — Boards navigable sidebar', () => {
+  beforeEach(() => {
+    vaultItems = [
+      { path: 'Characters', name: 'Characters', isDirectory: true },
+      { path: 'Characters/Locations', name: 'Locations', isDirectory: true },
+      { path: 'Characters/Locations/Cities', name: 'Cities', isDirectory: true },
+      { path: 'World', name: 'World', isDirectory: true },
+      { path: 'Alice.md', name: 'Alice.md', isDirectory: false },
+    ];
+  });
+
+  it('pins Home as the first nav item', async () => {
+    await mountPanel();
+    const home = await screen.findByTestId('boards-nav-home');
+    const nav = home.closest('.boards-tab-panel__left-nav');
+    expect(nav).toBeTruthy();
+    const firstInteractive = nav!.querySelector('button, [role="separator"]');
+    expect(firstInteractive).toBe(home);
+  });
+
+  it('lists nested folders under an expanded parent', async () => {
+    await mountPanel();
+    await screen.findByTestId('boards-nav-folder-Characters');
+    expect(screen.queryByTestId('boards-nav-folder-Locations')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('boards-nav-toggle-Characters'));
+    expect(await screen.findByTestId('boards-nav-folder-Locations')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('boards-nav-toggle-Characters/Locations'));
+    expect(await screen.findByTestId('boards-nav-folder-Cities')).toBeTruthy();
+  });
+
+  it('renders the resize handle', async () => {
+    await mountPanel();
+    expect(await screen.findByTestId('boards-nav-resize')).toBeTruthy();
+  });
+
+  it('Home returns to the hub from a nested board', async () => {
+    await mountPanel();
+    fireEvent.click(await screen.findByTestId('boards-nav-toggle-Characters'));
+    fireEvent.click(await screen.findByTestId('boards-nav-folder-Locations'));
+    await waitFor(() => {
+      expect(screen.getByTestId('boards-nav-folder-Locations').getAttribute('aria-current')).toBe('page');
+    });
+
+    fireEvent.click(screen.getByTestId('boards-nav-home'));
+    await waitFor(() => {
+      expect(screen.getByTestId('boards-nav-home').getAttribute('aria-current')).toBe('page');
+    });
+  });
+});
