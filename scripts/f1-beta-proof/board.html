@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>F1 beta proof board — Structure · Boards · Crafter · Toolbar</title>
+<style>
+  :root {
+    --n1: #00f0ff; --n2: #9b5fff; --b1: rgba(0,240,255,.4); --b2: rgba(155,95,255,.5);
+    --glass2: rgb(21 26 45 / 0.55); --glass-fill-fallback: rgb(13 16 28);
+    --text-muted: #8e9db8; --text-body: #dbe4f5; --panel-topbar-height: 40px;
+    --bw: 1px; --gr: 26px; --g2: rgb(155 95 255 / 0.4);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Segoe UI", system-ui, sans-serif; color: #e6ecf9;
+    background:
+      radial-gradient(ellipse at 20% 10%, rgba(0,240,255,.12), transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(155,95,255,.18), transparent 45%),
+      linear-gradient(160deg, #070a14, #12182a 60%, #0a0e1a);
+    min-height: 100vh;
+  }
+  .stage { display: none; width: 1440px; height: 900px; padding: 24px; position: relative; }
+  .stage.on { display: block; }
+  h1.stage-title { margin: 0 0 16px; font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--n1); opacity: .85; }
+
+  /* Structure empty part */
+  .scene-grid { display: flex; flex-direction: column; gap: 18px; padding: 8px 20px; }
+  .msv-struct-part-header {
+    font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em;
+    opacity: .5; padding: 16px 0 4px; border-radius: 8px; border: 1px solid transparent;
+  }
+  .msv-struct-part-empty { padding: 12px 8px; color: var(--text-muted); font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
+  .chapter-section__header { display: flex; gap: 9px; padding: 4px 6px; align-items: baseline; }
+  .chapter-section__eyebrow { color: var(--n2); font-size: 9.5px; font-weight: 700; letter-spacing: .14em; }
+  .chapter-section__title { font-size: 12.5px; font-weight: 600; }
+  .chapter-section__create-first {
+    background: rgba(0,240,255,.12); border: 1px solid var(--b1); color: #e6ecf9;
+    border-radius: 8px; padding: 6px 12px; cursor: pointer; width: fit-content;
+  }
+  .nav-part-row { display: flex; padding: 6px 10px; border-radius: 7px; background: rgba(255,255,255,.04); margin-bottom: 4px; }
+  .ctx {
+    position: absolute; top: 280px; left: 420px; background: rgba(15,19,33,.95);
+    border: 1px solid rgba(255,255,255,.12); border-radius: 10px; padding: 6px 0; min-width: 160px;
+    box-shadow: 0 12px 40px rgba(0,0,0,.45);
+  }
+  .ctx div { padding: 8px 14px; font-size: 12.5px; }
+  .ctx div:hover { background: rgba(0,240,255,.12); }
+
+  /* Full Book part headers */
+  .msv-part-heading { margin: 28px 0 8px; }
+  .msv-part-heading-label { font-size: 11px; letter-spacing: .16em; color: var(--n2); font-weight: 700; }
+  .msv-part-heading-title { font-size: 28px; font-family: Georgia, serif; outline: none; caret-color: var(--n1); min-height: 1.2em; }
+  .book-page {
+    max-width: 720px; margin: 40px auto; padding: 48px 56px;
+    background: rgba(18,22,38,.55); border-radius: 16px; border: 1px solid rgba(255,255,255,.08);
+    backdrop-filter: blur(12px);
+  }
+
+  /* Boards nav */
+  .boards-tab-panel {
+    --boards-pane-fill: var(--glass2);
+    display: flex; flex-direction: column; height: 820px; border-radius: 18px;
+    border: var(--bw) solid var(--b2); background: var(--boards-pane-fill);
+    box-shadow: 0 0 var(--gr) -7px var(--g2), inset 0 1px 0 rgb(255 255 255 / 0.08);
+    overflow: hidden;
+  }
+  .boards-tab-panel__body { display: flex; flex: 1; min-height: 0; }
+  .boards-tab-panel__left-nav {
+    width: 180px; position: relative; display: flex; flex-direction: column; gap: 2px;
+    padding: 8px 6px; background: rgba(0,0,0,.18); border-right: 1px solid rgba(255,255,255,.07);
+  }
+  .boards-tab-panel__left-nav-item, .boards-nav-folder {
+    display: flex; align-items: center; gap: 7px; width: 100%; padding: 6px 10px;
+    border-radius: 7px; background: none; border: none; color: #c8d3e7; cursor: pointer; font-size: 13px; text-align: left;
+  }
+  .boards-tab-panel__left-nav-item--active, .boards-nav-folder--active { background: rgba(255,255,255,.09); color: #fff; }
+  .boards-nav-children { padding-left: 14px; }
+  .boards-nav-resize {
+    position: absolute; right: 0; top: 0; bottom: 0; width: 4px; cursor: ew-resize;
+    background: rgba(0,240,255,.25);
+  }
+  .boards-tab-panel__main { flex: 1; display: flex; flex-direction: column; }
+  .boards-tab-panel__chrome { display: flex; align-items: center; gap: 8px; padding: 10px 14px; }
+  .boards-tab-panel__search-input {
+    margin-left: auto; width: 220px; padding: 6px 10px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.12); background: rgba(0,240,255,.08); color: #fff;
+  }
+  .boards-canvas-fake { flex: 1; margin: 12px; border-radius: 12px; border: 1px dashed rgba(255,255,255,.15);
+    display: grid; place-items: center; color: var(--text-muted); }
+
+  /* Crafter board */
+  .crafter {
+    height: 820px; border-radius: 16px; border: 1px solid rgba(255,255,255,.1);
+    background: rgba(10,14,24,.55); display: grid; grid-template-columns: 280px 1fr 220px; overflow: hidden;
+  }
+  .crafter-side { padding: 16px; border-right: 1px solid rgba(255,255,255,.08); }
+  .crafter-side h2 { font-size: 12px; letter-spacing: .14em; color: var(--n1); }
+  .card {
+    position: absolute; width: 200px; min-height: 86px; border-radius: 12px;
+    background: rgba(20,25,42,.85); border: 1px solid rgba(0,240,255,.35); padding: 10px 12px; font-size: 12px;
+  }
+  .card.hub { width: 280px; height: 120px; left: 440px; top: 40px; border-color: var(--n2); }
+  .canvas-rel { position: relative; height: 100%; }
+  .sc-ref-col { width: 220px; padding: 12px; border-left: 1px solid rgba(255,255,255,.08); }
+  .sc-ref-col h3 { font-size: 10px; letter-spacing: .14em; color: var(--n1); }
+
+  /* Toolbar */
+  .msv-toolbar {
+    display: flex; align-items: center; gap: 5px; margin: 0 18px;
+    min-height: var(--panel-topbar-height, 40px); box-sizing: border-box;
+    padding: 6px 8px; border-radius: 12px; background: rgba(10,12,22,.5);
+    border: 1px solid rgba(255,255,255,.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .msv-tb-select {
+    height: 26px; background: rgba(255,255,255,.05); border: var(--bw) solid var(--b1);
+    border-radius: 7px; color: #dbe4f5; font-size: 11.5px; padding: 0 6px;
+  }
+  .panel-topbar {
+    height: var(--panel-topbar-height, 40px); display: flex; align-items: center;
+    padding: 0 12px; border-bottom: 1px solid rgba(255,255,255,.08);
+    background: rgba(15,19,33,.55); font-size: 12px; color: var(--text-muted);
+  }
+  .shell-row { display: grid; grid-template-columns: 220px 1fr 260px; height: 780px; gap: 0;
+    border: 1px solid rgba(255,255,255,.1); border-radius: 14px; overflow: hidden; }
+  .shell-col { background: rgba(12,16,28,.45); display: flex; flex-direction: column; }
+</style>
+</head>
+<body>
+  <div id="structure" class="stage on">
+    <h1 class="stage-title">F1#3/#4 Structure — empty Part 2 visible</h1>
+    <div class="scene-grid">
+      <div class="msv-struct-part-header">PART ONE</div>
+      <div class="chapter-section__header">
+        <span class="chapter-section__eyebrow">CHAPTER 1</span>
+        <span class="chapter-section__title">The Reading Room</span>
+      </div>
+      <div class="msv-struct-part-header" data-testid="msv-struct-part-header-p2">PART TWO</div>
+      <div class="msv-struct-part-empty" data-testid="msv-struct-part-empty-p2">
+        <p>No chapters yet.</p>
+        <button class="chapter-section__create-first">+ Add chapter</button>
+      </div>
+    </div>
+    <div class="nav-part-row" style="position:absolute;left:40px;top:520px;width:280px;">▾ Part 2: Untitled</div>
+    <div class="ctx">
+      <div>Rename…</div>
+      <div>Add chapter</div>
+      <div>Add scene</div>
+    </div>
+  </div>
+
+  <div id="fullbook" class="stage">
+    <h1 class="stage-title">F1#4/#7 Full Book — empty part header + inline rename</h1>
+    <div class="book-page">
+      <div class="msv-part-heading">
+        <div class="msv-part-heading-label">PART ONE</div>
+        <div class="msv-part-heading-title" contenteditable="true">The Glass Library</div>
+      </div>
+      <p style="opacity:.7;line-height:1.7">The reading room held its breath…</p>
+      <div class="msv-part-heading">
+        <div class="msv-part-heading-label">PART TWO</div>
+        <div class="msv-part-heading-title" contenteditable="true" data-testid="msv-h1-title-p2"></div>
+      </div>
+      <p style="opacity:.45;font-style:italic">Empty part — header present with zero chapters.</p>
+    </div>
+  </div>
+
+  <div id="boards" class="stage">
+    <h1 class="stage-title">F1#5/#6/#11 Boards — nested nav, Home, resize, search, glass</h1>
+    <div class="boards-tab-panel">
+      <div class="boards-tab-panel__body">
+        <nav class="boards-tab-panel__left-nav" aria-label="Board folders">
+          <button class="boards-tab-panel__left-nav-item boards-tab-panel__left-nav-item--active">⌂ Home</button>
+          <button class="boards-nav-folder">▾ Characters</button>
+          <div class="boards-nav-children">
+            <button class="boards-nav-folder boards-nav-folder--active">Mira</button>
+            <button class="boards-nav-folder">Kael</button>
+          </div>
+          <button class="boards-nav-folder">▸ Locations</button>
+          <button class="boards-nav-folder">▸ Items</button>
+          <div class="boards-nav-resize" data-testid="boards-nav-resize"></div>
+        </nav>
+        <div class="boards-tab-panel__main">
+          <div class="boards-tab-panel__chrome">
+            <span>Home / Characters / Mira</span>
+            <input class="boards-tab-panel__search-input" placeholder="Search boards…" />
+          </div>
+          <div class="boards-canvas-fake">Wallpaper visible through glass pane</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="crafter" class="stage">
+    <h1 class="stage-title">F1#1/#12 Scene Crafter — Create Scene mapped board + narrower right cols</h1>
+    <div class="crafter">
+      <div class="crafter-side">
+        <h2>SETUP</h2>
+        <p style="font-size:13px;opacity:.8">Title: Broken Gate<br/>POV: Mira<br/>Goal: Reach the door<br/>Beats: Knock · Answer</p>
+        <button style="margin-top:12px;padding:8px 14px;border-radius:8px;border:1px solid var(--b1);background:rgba(0,240,255,.15);color:#fff;">Create Scene</button>
+      </div>
+      <div class="canvas-rel">
+        <div class="card hub"><strong>Broken Gate — beats</strong><div style="opacity:.7;margin-top:8px;font-size:11px;">Knock · Answer<br/>Goal: Reach the door</div></div>
+        <div class="card" style="left:130px;top:80px;"><strong>Mira</strong><div style="opacity:.65">POV.</div></div>
+        <div class="card" style="left:100px;top:260px;"><strong>Reach the door</strong><div style="opacity:.65">Goal.</div></div>
+        <div class="card" style="left:450px;top:280px;"><strong>Knock</strong><div style="opacity:.65">Beat.</div></div>
+      </div>
+      <div class="sc-ref-col">
+        <h3>CHARACTERS</h3>
+        <p style="font-size:12px;opacity:.7">Kael</p>
+        <h3>LOCATIONS</h3>
+        <h3>ITEMS</h3>
+        <p style="font-size:11px;opacity:.45;margin-top:24px;">width 220px</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="toolbar" class="stage">
+    <h1 class="stage-title">F1#13 Story toolbar aligns to shared panel top-bar height</h1>
+    <div class="shell-row">
+      <div class="shell-col">
+        <div class="panel-topbar">STORY NAVIGATOR</div>
+        <div style="padding:12px;opacity:.6;font-size:12px;">Part 1 · Chapter 1 · Scene 1</div>
+      </div>
+      <div class="shell-col">
+        <div class="msv-toolbar" data-testid="msv-toolbar">
+          <select class="msv-tb-select"><option>Paragraph</option></select>
+          <select class="msv-tb-select"><option>Lora</option></select>
+          <button class="msv-tb-select">B</button>
+          <button class="msv-tb-select">I</button>
+          <button class="msv-tb-select">U</button>
+        </div>
+        <div style="padding:24px 40px;opacity:.75;line-height:1.7;">Manuscript body…</div>
+      </div>
+      <div class="shell-col">
+        <div class="panel-topbar">AGENT</div>
+        <div style="padding:12px;opacity:.6;font-size:12px;">Unified chat</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    window.__setStage = (id) => {
+      document.querySelectorAll('.stage').forEach((el) => el.classList.remove('on'));
+      const el = document.getElementById(id);
+      if (el) el.classList.add('on');
+    };
+  </script>
+</body>
+</html>
