@@ -744,23 +744,24 @@ describe('TimelineRoot — M25 right panel', () => {
     expect(panel.style.width).toBe('250px');
   });
 
-  it('any canvas selection surfaces Ivy (Inspector), even from Idea Board (AC1/§14.5 / S2-6)', async () => {
+  it('any canvas selection surfaces Inspector, even from partner tab (AC1/§14.5 / Slice E)', async () => {
     await renderRoot();
-    fireEvent.click(screen.getByTestId('trp-tab-brainstorm'));
+    fireEvent.click(screen.getByTestId('trp-tab-partner'));
     await act(async () => {});
-    expect(screen.getByTestId('trp-tab-brainstorm')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('trp-tab-partner')).toHaveAttribute('aria-selected', 'true');
     expect(screen.queryByTestId('trp-tab-archive')).toBeNull();
+    expect(screen.queryByTestId('trp-tab-brainstorm')).toBeNull();
 
     fireEvent.click(screen.getByTestId('mock-axis-select-event'));
     await act(async () => {});
     expect(screen.getByTestId('trp-tab-inspector')).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByTestId('trp-tab-inspector')).toHaveTextContent('Ivy');
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveTextContent('Inspector');
     // ev-1 has no rowId → the key-event editor
     expect(screen.getByTestId('trp-event-editor')).toHaveTextContent('Inciting incident');
     expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-selection', 'event:ev-1');
   });
 
-  it('a spreadsheet row click resolves to the store event and opens Ivy (AC1)', async () => {
+  it('a spreadsheet row click resolves to the store event and opens Inspector (AC1)', async () => {
     const store = makeM21Store();
     store.events.push({ id: 'ev-scene', timelineId: 'tl-story', name: 'The Summons', when: 250, sceneId: 'sc-1' });
     setupApi(store);
@@ -772,13 +773,14 @@ describe('TimelineRoot — M25 right panel', () => {
     expect(screen.getByTestId('trp-event-editor')).toHaveTextContent('The Summons');
   });
 
-  it('S2-6: Archive tab / quick-add surface is gone from the right panel', async () => {
+  it('Slice E: Archive / Idea Board tabs gone; Inspector · partner only', async () => {
     await renderRoot();
     expect(screen.queryByTestId('trp-tab-archive')).toBeNull();
+    expect(screen.queryByTestId('trp-tab-brainstorm')).toBeNull();
     expect(screen.queryByTestId('trp-quickadd-input')).toBeNull();
     expect(screen.queryByTestId('trp-recent-list')).toBeNull();
-    expect(screen.getByTestId('trp-tab-inspector')).toHaveTextContent('Ivy');
-    expect(screen.getByTestId('trp-tab-brainstorm')).toHaveTextContent('Idea Board');
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveTextContent('Inspector');
+    expect(screen.getByTestId('trp-tab-partner')).toBeInTheDocument();
   });
 
   it('Inspector delete is undoable from the toast (§1 principle 7)', async () => {
