@@ -29,6 +29,96 @@ const MIN_SIDEBAR_W = 160;
 const MAX_SIDEBAR_W = 500;
 const RIGHT_SIDEBAR_W = 340;
 
+/** Same key + cap as VaultBrowser RECENT NOTES (M8c / F4#13 keep). */
+const NOTES_RECENT_KEY = 'vb-notes-recent';
+const NOTES_RECENT_MAX = 3;
+
+interface NotesRecentEntry {
+  path: string;
+  at: number;
+}
+
+function readNotesRecent(): NotesRecentEntry[] {
+  try {
+    const raw = localStorage.getItem(NOTES_RECENT_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((entry) => (typeof entry === 'string' ? { path: entry, at: Date.now() } : entry as NotesRecentEntry))
+      .filter((entry): entry is NotesRecentEntry => !!entry && typeof entry.path === 'string')
+      .slice(0, NOTES_RECENT_MAX);
+  } catch {
+    return [];
+  }
+}
+
+function formatNotesRecentTime(atMs: number, nowMs: number): string {
+  const diffSec = Math.max(0, Math.floor((nowMs - atMs) / 1000));
+  if (diffSec < 60) return 'just now';
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+  if (diffSec < 86_400) return `${Math.floor(diffSec / 3600)}h ago`;
+  return `${Math.floor(diffSec / 86_400)}d ago`;
+}
+
+/** F4#13 / F5: Recent notes card for the Notes right Properties column. */
+function NotesRecentNotesCard({
+  onOpenNote,
+}: {
+  onOpenNote?: (path: string) => void;
+}) {
+  const [entries, setEntries] = useState<NotesRecentEntry[]>(() => readNotesRecent());
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const refresh = () => {
+      setEntries(readNotesRecent());
+      setNow(Date.now());
+    };
+    refresh();
+    window.addEventListener('storage', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.removeEventListener('storage', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, []);
+
+  if (entries.length === 0) {
+    return (
+      <section className="notes-right-recent" aria-label="Recent notes" data-testid="notes-right-recent">
+        <div className="notes-right-recent__label">RECENT NOTES</div>
+        <p className="notes-right-recent__empty">Open a note to start a recent list.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="notes-right-recent" aria-label="Recent notes" data-testid="notes-right-recent">
+      <div className="notes-right-recent__label">RECENT NOTES</div>
+      <ul className="notes-right-recent__list" data-testid="notes-right-recent-list">
+        {entries.map((entry) => {
+          const name = entry.path.split('/').pop() ?? entry.path;
+          return (
+            <li key={entry.path} className="notes-right-recent__item">
+              <button
+                type="button"
+                className="notes-right-recent__btn"
+                data-testid={`notes-right-recent-item-${entry.path}`}
+                title={entry.path}
+                onClick={() => onOpenNote?.(entry.path)}
+              >
+                <span className="notes-right-recent__name">{name.replace(/\.md$/i, '')}</span>
+                <span className="notes-right-recent__when">{formatNotesRecentTime(entry.at, now)}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 // SKY-9019 M5: Graph→vault-graph rail, Entities→tab. Notes only has Editor mode.
 const NOTES_SUBVIEWS: { id: NotesSubView; label: string }[] = [
   { id: 'editor', label: 'Editor' },
@@ -845,7 +935,7 @@ export default function NotesTabPanel({
                 ) : effectiveRightTab === 'props' ? (
                   activeNotePath ? (
                     <div className="notes-right-props-scroll" data-testid="notes-right-props">
-                      <NoteProperties key={activeNotePath} path={activeNotePath} />
+                      {/* F4#13 → F5: Backlinks at top, then properties/tags, Recent kept at bottom. */}
                       <Backlinks
                         notePath={activeNotePath}
                         stories={stories}
@@ -853,10 +943,14 @@ export default function NotesTabPanel({
                         onOpenScene={onSelectScene}
                         onOpenBoard={onOpenBoard}
                       />
+                      <NoteProperties key={activeNotePath} path={activeNotePath} />
+                      <NotesRecentNotesCard
+                        onOpenNote={(path) => (onOpenInNewTab ?? onOpenFile)?.(path)}
+                      />
                     </div>
                   ) : (
                     <div className="notes-right-props-empty" data-testid="notes-right-props-empty">
-                      Open a note to see its properties, backlinks, and tags.
+                      Open a note to see its backlinks, properties, and recent notes.
                     </div>
                   )
                 ) : null}
