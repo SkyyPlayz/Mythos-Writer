@@ -189,6 +189,7 @@ async function openPartnerChat(page: Page): Promise<void> {
 
 /** Scope picker interactions to the in-thread MiniAgentChat (not Past chats). */
 function partnerChatRoot(page: Page) {
+  // Unique: UnifiedPartnerChat shell is `ahp-partner-composer`; MiniAgentChat is `ahp-partner-chat`.
   return page.getByTestId('ahp-partner-chat');
 }
 
@@ -348,7 +349,8 @@ test('F3: partner greeting is Mythos on hub chat surface', async () => {
   page = await firstWindow(app);
   await openPartnerChat(page);
   await expect(page.getByTestId('ahp-partner-view')).toBeVisible();
-  // Default partner display name + greeting copy.
+  // Default partner display name + greeting copy (MiniAgentChat surface only).
+  await expect(page.getByTestId('ahp-partner-chat')).toHaveCount(1);
   await expect(page.getByTestId('ahp-partner-chat')).toContainText(/Mythos/i, { timeout: 8_000 });
   await expect(messagesLocator(page)).toContainText(/writing partner/i, { timeout: 8_000 });
   await closeApp(app);
