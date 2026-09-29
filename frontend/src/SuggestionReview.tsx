@@ -456,9 +456,7 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
   // leaves the DOM, so a screen-reader user needs to be told why focus moved.
   const [statusAnnouncement, setStatusAnnouncement] = useState('');
 
-  // Confidence range filter (integer 0–100 representing percent)
-  const [confidenceMin, setConfidenceMin] = useState(0);
-  const [confidenceMax, setConfidenceMax] = useState(100);
+  // F3#11 — confidence range lives in Writing Partner; Audit Trail always loads full range.
   // Keyword search
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -493,12 +491,12 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
   }, []);
 
   // Always-current filter snapshot — avoids stale closures in debounce timer callbacks
-  const filtersRef = useRef({ confidenceMin: 0, confidenceMax: 100, searchQuery: '' });
+  const filtersRef = useRef({ searchQuery: '' });
   useEffect(() => {
-    filtersRef.current = { confidenceMin, confidenceMax, searchQuery };
-  }, [confidenceMin, confidenceMax, searchQuery]);
+    filtersRef.current = { searchQuery };
+  }, [searchQuery]);
 
-  // Guards confidence/search debounce effects from firing before the initial load completes
+  // Guards search debounce effects from firing before the initial load completes
   const initializedRef = useRef(false);
 
   /** Fetches items from IPC with the given confidence + search filters.
@@ -581,22 +579,12 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
     })();
   }, [loadItems]);
 
-  // Confidence range filter: re-fetch after 200ms debounce
+  // Keyword search: re-fetch after 300ms debounce (full confidence range)
   useEffect(() => {
     if (!initializedRef.current) return;
     const timer = setTimeout(() => {
-      const { confidenceMin: min, confidenceMax: max, searchQuery: q } = filtersRef.current;
-      void loadItems({ confMin: min, confMax: max, query: q });
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [confidenceMin, confidenceMax, loadItems]);
-
-  // Keyword search: re-fetch after 300ms debounce
-  useEffect(() => {
-    if (!initializedRef.current) return;
-    const timer = setTimeout(() => {
-      const { confidenceMin: min, confidenceMax: max, searchQuery: q } = filtersRef.current;
-      void loadItems({ confMin: min, confMax: max, query: q });
+      const { searchQuery: q } = filtersRef.current;
+      void loadItems({ confMin: 0, confMax: 100, query: q });
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery, loadItems]);
