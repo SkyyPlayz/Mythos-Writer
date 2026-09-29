@@ -359,6 +359,73 @@ export default function VoiceSection({ settings, setSettings, providerKind, setS
           Requires microphone permission.
         </p>
       </div>
+
+      {/* SKY-2597 / TC-V-09b: partner (brainstorm) voice — kept after Slice C Soft-FAIL
+          removed the four classic agent cards. Independent of the global Voice toggle. */}
+      <div className="settings-field" data-testid="partner-voice-controls">
+        <div className="settings-agent-header">
+          <span className="settings-label">Partner voice input</span>
+          <label className="settings-toggle" htmlFor="brainstorm-voice-enabled">
+            <input
+              id="brainstorm-voice-enabled"
+              type="checkbox"
+              aria-label="Brainstorm Agent voice"
+              checked={settings.agents?.brainstorm?.voiceEnabled ?? false}
+              onChange={(e) => {
+                const checked = e.target.checked;
+                setSettings((p) => ({
+                  ...p,
+                  agents: {
+                    ...p.agents,
+                    brainstorm: { ...p.agents?.brainstorm, voiceEnabled: checked },
+                  },
+                }));
+                setSavedOk(false);
+              }}
+            />
+            <span className="settings-toggle-track" />
+          </label>
+        </div>
+        <p className="settings-hint">Enable the mic on the Writing partner / Partner page.</p>
+        {(settings.agents?.brainstorm?.voiceEnabled ?? false) && (
+          <div className="settings-field settings-field-inline">
+            <label className="settings-label" htmlFor="brainstorm-mic">Microphone</label>
+            <div style={{ display: 'flex', gap: '6px', flex: 1 }}>
+              <select
+                id="brainstorm-mic"
+                className="settings-input settings-select settings-input-sm"
+                style={{ flex: 1 }}
+                value={settings.agents?.brainstorm?.micDeviceId ?? ''}
+                aria-label="Brainstorm Agent microphone"
+                onChange={(e) => {
+                  const val = e.target.value || undefined;
+                  setSettings((p) => ({
+                    ...p,
+                    agents: {
+                      ...p.agents,
+                      brainstorm: { ...p.agents?.brainstorm, micDeviceId: val },
+                    },
+                  }));
+                  setSavedOk(false);
+                }}
+              >
+                <option value="">System default</option>
+                {micDevices.map((d) => (
+                  <option key={d.deviceId} value={d.deviceId}>{d.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="settings-btn"
+                onClick={refreshMicDevices}
+                aria-label="Refresh microphone device list"
+              >
+                Refresh
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
