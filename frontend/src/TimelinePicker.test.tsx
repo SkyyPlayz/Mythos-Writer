@@ -154,4 +154,39 @@ describe('TimelinePicker (F3 hierarchical tree)', () => {
     expect(rows[0]?.childIds).toEqual(expect.arrayContaining(['tl-story', 'tl-world']));
     expect(rows.some((r) => r.timeline.id === 'tl-story' && r.depth === 1)).toBe(true);
   });
+
+  it('F3#6 — seed-shaped Universal-rooted store keeps Universe at depth 0', () => {
+    const seedLike: TimelinesStore = {
+      ...BASE_STORE,
+      timelines: [
+        { ...BASE_STORE.timelines[1], id: 'tl-story', name: 'Story Timeline', kind: 'story', std: undefined },
+        { ...BASE_STORE.timelines[2], id: 'tl-world', name: 'World History', kind: 'world', std: undefined },
+        { ...BASE_STORE.timelines[0], id: 'tl-universe', name: 'Universe Timeline', kind: 'universe', std: undefined },
+      ],
+      spans: [
+        {
+          id: 'span:universe-world',
+          timelineId: 'tl-universe',
+          name: 'World history',
+          startWhen: 0,
+          endWhen: 720,
+          opensTimelineId: 'tl-world',
+        },
+        {
+          id: 'span:universe-story',
+          timelineId: 'tl-universe',
+          name: 'Story arc',
+          startWhen: 2.4,
+          endWhen: 96,
+          opensTimelineId: 'tl-story',
+        },
+      ],
+    };
+    const rows = buildTimelineTreeRows(seedLike, { 'tl-universe': true });
+    expect(rows[0]?.timeline.kind).toBe('universe');
+    expect(rows[0]?.depth).toBe(0);
+    expect(rows.filter((r) => r.depth === 0)).toHaveLength(1);
+    expect(rows.some((r) => r.timeline.kind === 'story' && r.depth === 1)).toBe(true);
+    expect(rows.some((r) => r.timeline.kind === 'world' && r.depth === 1)).toBe(true);
+  });
 });

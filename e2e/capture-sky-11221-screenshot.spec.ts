@@ -209,9 +209,10 @@ test('capture SKY-11221 beta reader consolidation screenshots', async () => {
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 8_000 });
 
-  const betaRow = page.locator('[data-testid="ahp-action-beta-read"]');
-  await expect(betaRow).toBeVisible({ timeout: 8_000 });
-  await betaRow.click();
+  // F3#1 — open Beta Reader Reports overlay via nav (action is in-thread).
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('mythos:nav', { detail: { view: 'beta' } }));
+  });
 
   const betaOverlay = page.locator('.beta-reader-overlay');
   await expect(betaOverlay).toBeVisible({ timeout: 8_000 });

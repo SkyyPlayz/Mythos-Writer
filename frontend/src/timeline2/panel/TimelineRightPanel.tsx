@@ -21,7 +21,7 @@ import type { RecentAutoAdd } from './ArchiveTab';
 import { useMiniAgentChat } from './useMiniAgentChat';
 import MiniAgentChat from './MiniAgentChat';
 import { invokeBrainstorm } from './BrainstormTab';
-import { DEFAULT_PARTNER_DISPLAY_NAME } from '../../agents/partnerIdentity';
+import { DEFAULT_PARTNER_DISPLAY_NAME, PARTNER_SESSION_AGENT } from '../../agents/partnerIdentity';
 import './TimelineRightPanel.css';
 
 export type TimelineRightTab = 'inspector' | 'partner';
@@ -214,7 +214,7 @@ function PartnerTimelineChat({
   archiveBusy: boolean;
   showControls?: boolean;
 }) {
-  const chat = useMiniAgentChat('brainstorm', invokeBrainstorm);
+  const chat = useMiniAgentChat(PARTNER_SESSION_AGENT, invokeBrainstorm);
   const [controlsOpen, setControlsOpen] = useState(false);
 
   return (

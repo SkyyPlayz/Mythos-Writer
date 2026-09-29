@@ -12,6 +12,7 @@ import { useAiEnabled } from './hooks/useAiEnabled';
 import type { NamedAgentId } from './agents/agentIdentity';
 import {
   PARTNER_ACTIONS,
+  PARTNER_SESSION_AGENT,
   resolvePartnerDisplayName,
   type PartnerActionId,
   type PartnerHandId,
@@ -144,7 +145,6 @@ interface Props {
   onSceneNotesChanged?: () => void;
   agentEnablement?: Partial<Record<AgentId, boolean>>;
   continuityCount?: number;
-  gettingStartedCard?: import('react').ReactNode;
   continuityPanel?: import('react').ReactNode;
   continuityItems?: InconsistencyItem[];
   referencesPanel?: import('react').ReactNode;
@@ -177,7 +177,6 @@ export default function AgentHubPanel({
   onSceneNotesChanged,
   agentEnablement: _agentEnablement,
   continuityCount: _continuityCount = 0,
-  gettingStartedCard,
   continuityPanel,
   continuityItems: _continuityItems = [],
   referencesPanel,
@@ -202,7 +201,7 @@ export default function AgentHubPanel({
     setCall({ onCall: false, muted: false, transcriptMode: 'stream', settingsOpen: false });
   }, []);
 
-  const partnerSessionStore = useAgentSessions('brainstorm');
+  const partnerSessionStore = useAgentSessions(PARTNER_SESSION_AGENT);
 
   const TABS: { id: HubTab; label: string }[] = [
     ...(aiEnabled ? [
@@ -236,7 +235,6 @@ export default function AgentHubPanel({
         {activeTab === 'partner' && aiEnabled && (
           <PartnerChatView
             partnerName={partnerName}
-            gettingStartedCard={gettingStartedCard}
             partnerSessionStore={partnerSessionStore}
             call={call}
             onCallChange={setCall}
@@ -287,7 +285,6 @@ export default function AgentHubPanel({
 
 interface PartnerChatViewProps {
   partnerName: string;
-  gettingStartedCard?: import('react').ReactNode;
   partnerSessionStore: ReturnType<typeof useAgentSessions>;
   call: PartnerCallState;
   onCallChange: (next: PartnerCallState) => void;
@@ -312,7 +309,6 @@ interface PartnerChatViewProps {
 
 function PartnerChatView({
   partnerName,
-  gettingStartedCard,
   partnerSessionStore,
   call,
   onCallChange,
@@ -343,13 +339,11 @@ function PartnerChatView({
     ?? heartbeatBusy
     ?? (writerBusy ? 'writer' : brainstormActivity.active ? null : null);
   const [pastOpen, setPastOpen] = useState(false);
+  // Tip cards only — no coach-thread composer. Chat stays on the partner thread.
   const [showWriterTips, setShowWriterTips] = useState(false);
-  const coachSessionStore = useAgentSessions('coach');
-  const [coachBusy, setCoachBusy] = useState(false);
 
   return (
     <div className="ahp-partner" data-testid="ahp-partner-view">
-      {gettingStartedCard}
       <PartnerCallChrome
         partnerName={partnerName}
         handBusy={handBusy}
@@ -383,11 +377,22 @@ function PartnerChatView({
         )}
       </div>
 
-      {showWriterTips ? (
-        <div className="ahp-partner-thread" data-testid="ahp-writer-hand">
+      <div className="ahp-partner-thread" data-testid="ahp-partner-thread">
+        <UnifiedPartnerChat
+          partnerName={partnerName}
+          onCall={call.onCall}
+          handBusy={!!handBusy}
+          scene={scene}
+          story={story}
+          onActionBusy={setActionBusy}
+          onOpenWriterTips={() => setShowWriterTips(true)}
+        />
+      </div>
+
+      {showWriterTips && (
+        <div className="ahp-writer-tips" data-testid="ahp-writer-tips">
           <div className="ahp-hand-header">
-            <span className="ahp-chat-agent-name">Writer · {partnerName}</span>
-            <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" busy={coachBusy} />
+            <span className="ahp-chat-agent-name">Tips · {partnerName}</span>
             <button
               type="button"
               className="ahp-hand-close"
@@ -398,7 +403,7 @@ function PartnerChatView({
             </button>
           </div>
           <WritingAssistantPanel
-            sessionStore={coachSessionStore}
+            hideComposer
             scene={scene}
             enabled={enabled}
             scanIntervalSeconds={scanIntervalSeconds}
@@ -415,19 +420,6 @@ function PartnerChatView({
             autoApplyCategories={autoApplyCategories}
             onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
             displayName={partnerName}
-            onBusyChange={setCoachBusy}
-          />
-        </div>
-      ) : (
-        <div className="ahp-partner-thread" data-testid="ahp-partner-thread">
-          <UnifiedPartnerChat
-            partnerName={partnerName}
-            onCall={call.onCall}
-            handBusy={!!handBusy}
-            scene={scene}
-            story={story}
-            onActionBusy={setActionBusy}
-            onOpenWriterTips={() => setShowWriterTips(true)}
           />
         </div>
       )}
@@ -546,7 +538,7 @@ function UnifiedPartnerChat({
   onActionBusy: (hand: PartnerHandId | null) => void;
   onOpenWriterTips: () => void;
 }) {
-  const chat = useMiniAgentChat('brainstorm', invokeBrainstorm);
+  const chat = useMiniAgentChat(PARTNER_SESSION_AGENT, invokeBrainstorm);
   const [queued, setQueued] = useState<readonly QueuedPartnerMessage[]>(getPartnerMsgQueue());
   const [settingsSnap, setSettingsSnap] = useState<AppSettings | null>(null);
   const [runningAction, setRunningAction] = useState<PartnerActionId | null>(null);
@@ -596,16 +588,6 @@ function UnifiedPartnerChat({
     if (runningAction) return;
     const meta = PARTNER_ACTIONS.find((a) => a.id === action);
     if (!meta) return;
-    // Beta Read opens the Beta Reader overlay (full Reports UI) — same as the
-    // old Analyst hand. Writer Scan opens WritingAssistantPanel tip cards.
-    if (action === 'writer-scan') {
-      onOpenWriterTips();
-      return;
-    }
-    if (action === 'beta-read') {
-      window.dispatchEvent(new CustomEvent('mythos:nav', { detail: { view: 'beta' } }));
-      return;
-    }
     setRunningAction(action);
     onActionBusy(meta.hand);
     try {
@@ -614,6 +596,8 @@ function UnifiedPartnerChat({
         cardTitle: result.cardTitle,
         cardFoot: result.cardFoot,
       });
+      // Tip cards are tip-UI only (no coach composer). Chat stays on the partner thread.
+      if (action === 'writer-scan') onOpenWriterTips();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await chat.postActionResult(meta.label, msg || 'Action failed.');
@@ -814,16 +798,16 @@ const FULL_ANALYSIS_TOAST =
   'Full analysis — computed stats are free & local; the coach’s read uses AI';
 
 function SceneAnalysisCard({ scene, onOpenCoachPage }: { scene: Scene | null; onOpenCoachPage?: () => void }) {
-  const coachStore = useAgentSessions('coach');
+  const partnerStore = useAgentSessions(PARTNER_SESSION_AGENT);
   const coachReadPending = useSceneAnalysisPending();
 
   const metrics = useMemo(() => (scene ? computeSceneMetrics(scene) : null), [scene]);
   const aiRead = useMemo(() => {
-    const card = latestAnalysisCardForScene(coachStore.activeSession?.turns, scene);
+    const card = latestAnalysisCardForScene(partnerStore.activeSession?.turns, scene);
     const map = new Map<string, string>();
     for (const [label, clause] of card?.read ?? []) map.set(label, compactReadValue(clause));
     return map;
-  }, [coachStore.activeSession, scene]);
+  }, [partnerStore.activeSession, scene]);
 
   const handleViewFullAnalysis = useCallback(() => {
     if (!scene) return;

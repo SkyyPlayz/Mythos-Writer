@@ -105,6 +105,22 @@ const STORAGE_KEY_RIGHT_WIDTH = 'timeline:rightPanelWidth';
 const STORAGE_KEY_TL_SYNC = 'timeline:tlSync';
 const STORAGE_KEY_VZOOM = 'timeline:tlVZoom';
 
+/**
+ * F3#5 — first-open board zoom. `Number(null) === 0`, so a missing key used to
+ * clamp to the 40% floor. Treat missing / empty / 0 as unset → 100%.
+ */
+export function readStoredTlVZoom(): number {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_VZOOM);
+    if (raw == null || raw === '') return 100;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n === 0) return 100;
+    return clampVZoom(n);
+  } catch {
+    return 100;
+  }
+}
+
 /** SKY-7956: right panel (Inspector/Brainstorm/Archive) resize clamp — ported
  * from the prototype's app-wide right rail (`rightW`, drag handler Math.max(250,
  * Math.min(430, ...))); default matches the prototype's initial `rightW: 316`. */
@@ -251,13 +267,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
   const [vaultRootKey, setVaultRootKey] = useState('');
   const [tlSync, setTlSync] = useState<Record<string, number>>({});
   const [tlSyncArm, setTlSyncArm] = useState(false);
-  const [tlVZoom, setTlVZoom] = useState(() => {
-    try {
-      const n = Number(localStorage.getItem(STORAGE_KEY_VZOOM));
-      if (Number.isFinite(n)) return clampVZoom(n);
-    } catch { /* ignore */ }
-    return 100;
-  });
+  const [tlVZoom, setTlVZoom] = useState(() => readStoredTlVZoom());
   const [partnerName, setPartnerName] = useState(DEFAULT_PARTNER_DISPLAY_NAME);
 
   // ── M23: toolbar filters + plotline visibility + book focus ──

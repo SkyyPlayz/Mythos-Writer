@@ -34,7 +34,7 @@ export interface MiniAgentChat {
 }
 
 /** History cap sent to the agent — matches the IPC-side history limit. */
-const MAX_HISTORY_TURNS = 20;
+export const MAX_HISTORY_TURNS = 20;
 
 export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniChatInvoke): MiniAgentChat {
   const store = useAgentSessions(agent);

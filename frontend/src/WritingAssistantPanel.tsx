@@ -114,6 +114,11 @@ interface Props {
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
   // dead-wiring-ignore: optional parent sync; AgentHub no longer hosts WA chat (F3 unified agent). FloatingPanel omits it.
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
+  /**
+   * F3#1 — tip-card strip without a hand-specific composer. Chat lives on the
+   * shared partner thread (`PARTNER_SESSION_AGENT` / MiniAgentChat).
+   */
+  hideComposer?: boolean;
   /** Beta 3 M22: renameable agent display name (settings.agentNames.writingAssistant). */
   displayName?: string;
   /**
@@ -192,6 +197,7 @@ export default function WritingAssistantPanel({
   autoApply = false,
   autoApplyCategories,
   onAutoApplyCategoriesChange,
+  hideComposer = false,
   displayName = 'Writing Coach',
   sessionStore,
   onBusyChange,
@@ -998,6 +1004,8 @@ export default function WritingAssistantPanel({
         )}
       </div>
 
+      {!hideComposer && (
+      <>
       <div
         className="writing-assistant-messages"
         role="list"
@@ -1188,6 +1196,8 @@ export default function WritingAssistantPanel({
           )}
         </div>
       </div>
+      </>
+      )}
 
       {showEditor && (
         <PresetEditor

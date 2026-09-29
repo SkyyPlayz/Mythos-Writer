@@ -48,6 +48,7 @@ import IdeaCollectionsPanel, {
 } from './components/BrainstormBoard/IdeaCollectionsPanel';
 import AgentSessionPicker from './components/AgentSessionPicker';
 import { useAgentSessions } from './lib/useAgentSessions';
+import { PARTNER_SESSION_AGENT } from './agents/partnerIdentity';
 import { resolvePartnerDisplayName } from './agents/partnerIdentity';
 import QuestionsForYou from './partner/QuestionsForYou';
 import { PROMPT_MAX_CHARS } from './promptConstants';
@@ -547,7 +548,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   // autoCreate: enabled — don't silently write a Sessions/*.md note into the
   // vault for a disabled agent, or from a hidden/background mount before the
   // user has ever opened Brainstorm (SKY-6945).
-  const sessionStore = useAgentSessions('brainstorm', { autoCreate: enabled });
+  const sessionStore = useAgentSessions(PARTNER_SESSION_AGENT, { autoCreate: enabled });
   const sessionStoreRef = useRef(sessionStore);
   sessionStoreRef.current = sessionStore;
   const syncedSessionIdRef = useRef<string | null>(null);
