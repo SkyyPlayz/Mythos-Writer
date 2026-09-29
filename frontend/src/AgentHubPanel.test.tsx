@@ -100,9 +100,11 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     fireEvent.click(await screen.findByTestId('ahp-action-writer-scan'));
     expect(await screen.findByTestId('ahp-writer-hand')).toBeInTheDocument();
     expect(screen.getAllByTestId('partner-avatar')).toHaveLength(1);
-    // WA PanelHeader (✦ + name) is suppressed under PartnerCallChrome.
+    // WA identity header (✦ + name) is suppressed; cadence/mute controls remain.
     expect(document.querySelector('.wa-panel-header')).toBeNull();
     expect(document.querySelector('.wa-sparkle-icon')).toBeNull();
+    expect(screen.getByTestId('wa-panel-controls')).toBeInTheDocument();
+    expect(document.querySelector('.wa-cadence-select')).not.toBeNull();
   });
 
   it('renames the partner tab from agentNames.brainstorm', () => {

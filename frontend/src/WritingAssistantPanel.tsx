@@ -312,6 +312,34 @@ export default function WritingAssistantPanel({
     });
   }, [scene, visibleTips]);
 
+  const cadenceMuteControls = (
+    <span className="wa-header-controls" onClick={(e) => e.stopPropagation()}>
+      <label className="wa-cadence-label">
+        <span className="wa-cadence-text">Cadence</span>
+        <span className="wa-cadence-icon" aria-hidden="true">⏱</span>
+        <select
+          className="wa-cadence-select"
+          aria-label="Heartbeat cadence"
+          value={cadence}
+          onChange={(event) => void handleCadenceChange(event.target.value as CadenceValue)}
+        >
+          {CADENCE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </label>
+      {/* AC-V-06: session mute toggle */}
+      <button
+        className={`wa-mute-btn${tts.sessionMuted ? ' wa-mute-btn--muted' : ''}`}
+        onClick={() => tts.toggleMute(announce)}
+        aria-label={tts.sessionMuted ? 'Unmute voice playback' : 'Mute voice playback'}
+        aria-pressed={tts.sessionMuted}
+      >
+        {tts.sessionMuted ? 'Unmute' : 'Mute'}
+      </button>
+    </span>
+  );
+
   if (!enabled) {
     return (
       <div className="writing-assistant-panel writing-assistant-disabled">
@@ -369,45 +397,23 @@ export default function WritingAssistantPanel({
         {liveText}
       </span>
 
-      {/* AC-WA-1/2/3: Liquid Neon panel header — F3#4: suppressed when PartnerCallChrome owns identity */}
-      {!suppressPartnerChrome && (
-      <PanelHeader
-        className="wa-panel-header"
-        icon={<span className="wa-sparkle-icon" aria-hidden="true">✦</span>}
-        title={
-          <>
-            {displayName}
-            {scene && <span className="wa-header-context"> — context: <em>{scene.title}</em></span>}
-          </>
-        }
-        actions={
-          <span className="wa-header-controls" onClick={(e) => e.stopPropagation()}>
-            <label className="wa-cadence-label">
-              <span className="wa-cadence-text">Cadence</span>
-              <span className="wa-cadence-icon" aria-hidden="true">⏱</span>
-              <select
-                className="wa-cadence-select"
-                aria-label="Heartbeat cadence"
-                value={cadence}
-                onChange={(event) => void handleCadenceChange(event.target.value as CadenceValue)}
-              >
-                {CADENCE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            {/* AC-V-06: session mute toggle */}
-            <button
-              className={`wa-mute-btn${tts.sessionMuted ? ' wa-mute-btn--muted' : ''}`}
-              onClick={() => tts.toggleMute(announce)}
-              aria-label={tts.sessionMuted ? 'Unmute voice playback' : 'Mute voice playback'}
-              aria-pressed={tts.sessionMuted}
-            >
-              {tts.sessionMuted ? 'Unmute' : 'Mute'}
-            </button>
-          </span>
-        }
-      />
+      {/* Cadence + mute always available. F3#4: under PartnerCallChrome, hide ✦/name only. */}
+      {suppressPartnerChrome ? (
+        <div className="wa-panel-controls" data-testid="wa-panel-controls">
+          {cadenceMuteControls}
+        </div>
+      ) : (
+        <PanelHeader
+          className="wa-panel-header"
+          icon={<span className="wa-sparkle-icon" aria-hidden="true">✦</span>}
+          title={
+            <>
+              {displayName}
+              {scene && <span className="wa-header-context"> — context: <em>{scene.title}</em></span>}
+            </>
+          }
+          actions={cadenceMuteControls}
+        />
       )}
 
       {/* AC-WA-16/17/18/19: Dedicated heartbeat status bar */}
