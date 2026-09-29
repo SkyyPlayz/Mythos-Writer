@@ -596,14 +596,15 @@ function UnifiedPartnerChat({
     if (runningAction) return;
     const meta = PARTNER_ACTIONS.find((a) => a.id === action);
     if (!meta) return;
-    // Writer Scan opens WritingAssistantPanel (tip cards / Scan now) — the
-    // reference surface. Other actions stay in-thread on MiniAgentChat.
+    // Beta Read opens the Beta Reader overlay (full Reports UI) — same as the
+    // old Analyst hand. Writer Scan opens WritingAssistantPanel tip cards.
     if (action === 'writer-scan') {
       onOpenWriterTips();
       return;
     }
     if (action === 'beta-read') {
       window.dispatchEvent(new CustomEvent('mythos:nav', { detail: { view: 'beta' } }));
+      return;
     }
     setRunningAction(action);
     onActionBusy(meta.hand);
