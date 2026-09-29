@@ -951,8 +951,8 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
           // above) already carries its own seed greeting, which appendTurns'
           // materialize() writes as the file's first turn regardless of what
           // is passed in. Drop ANY leading agent turn from the draft — F3
-          // partner greetings differ from legacy "Brainstorm Agent / vault
-          // curator" copy, so exact-string match would double-write (SKY-8894).
+          // partner greetings differ from the legacy vault-curator copy, so
+          // exact-string match would double-write (SKY-8894).
           const hasSeedGreeting = active.turns[0]?.role === 'agent';
           const dedupedTurns = hasSeedGreeting && turns[0]?.role === 'agent'
             ? turns.slice(1)
