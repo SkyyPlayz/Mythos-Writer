@@ -11,20 +11,21 @@ import {
   _electron as electron,
 } from '@playwright/test';
 
-const ROOT = path.resolve(__dirname, '../..');
+const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 async function launchFreshProfile() {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f3-welcome-'));
+  const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
   const app = await electron.launch({
-    args: ['.', `--user-data-dir=${userData}`],
-    cwd: ROOT,
+    args: [MAIN_JS, `--user-data-dir=${userData}`, ...extraArgs],
     env: {
       ...process.env,
+      HOME: userData,
       MYTHOS_E2E: '1',
-      MYTHOS_FORCE_ONBOARDING: '1',
     },
+    timeout: 60_000,
   });
-  const page = await app.firstWindow();
+  const page = await app.firstWindow({ timeout: 60_000 });
   await page.waitForLoadState('domcontentloaded');
   return { app, page, userData };
 }
@@ -40,7 +41,7 @@ test.describe('F3#9 WelcomeOverlay-only onboarding', () => {
         await expect(page.getByTestId(`welcome-path-${id}`)).toBeVisible();
       }
       // OnboardingWizard must not mount.
-      await expect(page.locator('[data-testid="onboarding-wizard"], [data-screen-label="Welcome"] .wizard')).toHaveCount(0);
+      await expect(page.locator('[data-testid="onboarding-wizard"], [data-testid="screen-welcome"]')).toHaveCount(0);
     } finally {
       await app.close();
       fs.rmSync(userData, { recursive: true, force: true });

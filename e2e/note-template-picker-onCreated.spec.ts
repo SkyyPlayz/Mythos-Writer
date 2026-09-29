@@ -225,52 +225,20 @@ test.describe('TC-TP-01: TemplatePicker onCreated wiring', () => {
   });
 
   test('creating a note via the template picker checks off the Getting Started "notes-vault" item live, with no navigation or reload', async () => {
-    // Baseline: blank-mode CTA is reachable, and the checklist item this
-    // test cares about starts unchecked.
+    test.skip(true, 'F3#10: GettingStartedPanel deleted — gs-item-notes-vault no longer mounts.');
+  });
+
+  test('the note is also visible in the Notes Editor tree without a manual reload', async () => {
+    // Still validates TemplatePicker create → Notes tree refresh (independent of GS panel).
     const cta = page.locator('[data-testid="vs-template-cta"]');
     await expect(cta).toBeVisible({ timeout: 10_000 });
-
-    const gsItem = page.locator('[data-testid="gs-item-notes-vault"]');
-    await expect(gsItem).toBeVisible({ timeout: 10_000 });
-    await expect(gsItem).toHaveAttribute('aria-checked', 'false');
-
-    // Open TemplatePicker and create a brand-new blank note — the "create",
-    // not "apply an existing template and bail" path (buildTemplateNote's
-    // 'blank' template writes straight to the notes vault via writeNotesVault).
     await cta.click();
     await expect(page.locator('[data-testid="template-blank"]')).toBeVisible({ timeout: 5_000 });
     await page.locator('[data-testid="template-blank"]').click();
     await page.locator('[data-testid="tp-note-name"]').fill('SKY-10926 Reachability Note');
     await page.locator('[data-testid="tp-apply"]').click();
-
-    // The picker closes on successful create (onApplied fires right after
-    // onCreated in TemplatePicker.tsx's handleApply).
     await expect(page.locator('[data-testid="tp-apply"]')).not.toBeVisible({ timeout: 8_000 });
 
-    // The reachability assertion: without any tab switch, panel reopen, or
-    // app reload, the Getting Started panel's notes-vault item is now done.
-    // This only happens if TemplatePicker's onCreated actually fired the
-    // DesktopShell handler that calls checkGettingStartedItem('notes-vault') —
-    // dead wiring would leave this item (and its aria-checked state) unchanged.
-    await expect(gsItem).toHaveAttribute('aria-checked', 'true', { timeout: 5_000 });
-    await expect(gsItem).toHaveClass(/gs-item--done/);
-
-    // Confirm the note actually landed on disk under the Notes Vault (sanity
-    // check that we exercised the real create path, not a mocked one).
-    // sanitizeVaultName (shared/vaultNameSanitizer.ts) preserves case and
-    // whitespace verbatim — only OS-reserved characters are stripped — so
-    // the file is named exactly after the typed note name.
-    const files = fs.readdirSync(notesVaultDir).filter((f) => f.endsWith('.md'));
-    expect(files).toContain('SKY-10926 Reachability Note.md');
-  });
-
-  test('the note is also visible in the Notes Editor tree without a manual reload', async () => {
-    // Independently exercises the second half of the fix: VaultBrowser's
-    // notesRefreshSignal. Navigating to the Notes Editor tab always mounts a
-    // fresh VaultBrowser (which fetches on mount regardless of this signal),
-    // so this is a softer regression guard — the file must be visible here
-    // whether or not that particular wiring bump matters at this point in
-    // the flow — but it confirms the create path didn't silently fail.
     await page.locator('button.nav-rail__item[aria-label="Notes Editor"]').click();
     await expect(page.locator('[data-testid="vb-notes-vault"]')).toBeVisible({ timeout: 8_000 });
     await expect(
