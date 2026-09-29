@@ -12,13 +12,13 @@
  * produced by the clicks in this test.
  *
  *   1. The renamed preset reads "Neon Nebula"; "No background" is gone.
- *   2. The Theme match tile shows arrows + "1/N" for the default preset.
- *   3. Clicking → moves to "2/N" and repaints the live --wp token on <html>
- *      to the first bundled pack image.
+ *   2. The Theme match tile shows arrows + "2/N" — F2#18 defaults classic
+ *      wpPick to starfield (index 1); index 0 remains cosmic for legacy vaults.
+ *   3. Clicking → moves to "3/N" and repaints --wp to the first bundled pack image.
  *   4. The pick reaches app-settings.json under the per-vault appearance
  *      store (SKY-11237) via the Appearance tab's live persistence.
  *   5. Relaunch: the wallpaper is applied at boot (before Settings opens) and
- *      the tile still reads "2/N" — the choice survives the process boundary.
+ *      the tile still reads "3/N" — the choice survives the process boundary.
  *
  * No IPC mocks. Run (after `npm run build:electron`):
  *   npx playwright test e2e/wallpaper-picker.spec.ts --reporter=list
@@ -119,25 +119,25 @@ test('Theme match arrows cycle the preset wallpapers and the pick survives a rel
   await expect(dialog.locator('[data-testid="lnas-wp-none"]')).toHaveCount(0);
   await expect(dialog.getByText('No background')).toHaveCount(0);
 
-  // 2. Fresh profile: default preset, built-in wallpaper first → "1/N".
+  // 2. Fresh profile (F2#18): Neon Nebula + starfield default → "2/N".
   const count = dialog.locator('[data-testid="lnas-wp-match-count"]');
   await expect(count).toBeVisible();
   const total = Number((await count.textContent())!.split('/')[1]);
-  expect(total).toBeGreaterThan(1);
-  await expect(count).toHaveText(`1/${total}`);
-  expect(await readWp(page)).toContain('cosmic-bg');
+  expect(total).toBeGreaterThan(2);
+  await expect(count).toHaveText(`2/${total}`);
+  expect(await readWp(page)).toContain('radial-gradient(1.6px 1.6px at 12% 22%');
 
-  // 3. Next → second entry (first bundled Neon Nebula image), live repaint.
+  // 3. Next → third entry (first bundled Neon Nebula pack image), live repaint.
   await dialog.locator('[data-testid="lnas-wp-match-next"]').click();
-  await expect(count).toHaveText(`2/${total}`, { timeout: 3_000 });
+  await expect(count).toHaveText(`3/${total}`, { timeout: 3_000 });
   await expect(dialog.locator('[data-testid="lnas-wp-match"]')).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => readWp(page), { timeout: 3_000 }).toContain('classic-1');
 
   // 4. Persisted under the per-vault appearance store (SKY-11237), no Save click.
   await expect.poll(() => {
     const s = readStored(userData);
-    const perVault = Object.values(s.vaultAppearance ?? {}).some((v) => v.liquidNeonV2?.wpPick?.classic === 1);
-    return perVault && s.liquidNeonV2?.wpPick?.classic === 1 && s.liquidNeonV2?.wp === 'match';
+    const perVault = Object.values(s.vaultAppearance ?? {}).some((v) => v.liquidNeonV2?.wpPick?.classic === 2);
+    return perVault && s.liquidNeonV2?.wpPick?.classic === 2 && s.liquidNeonV2?.wp === 'match';
   }, { timeout: 10_000 }).toBe(true);
 
   // 5. Relaunch — the pick is applied at boot and still shown in Settings.
@@ -148,10 +148,10 @@ test('Theme match arrows cycle the preset wallpapers and the pick survives a rel
   await expect.poll(() => readWp(page), { timeout: 10_000 }).toContain('classic-1');
 
   const dialog2 = await openAppearance(page);
-  await expect(dialog2.locator('[data-testid="lnas-wp-match-count"]')).toHaveText(`2/${total}`, { timeout: 5_000 });
+  await expect(dialog2.locator('[data-testid="lnas-wp-match-count"]')).toHaveText(`3/${total}`, { timeout: 5_000 });
 
-  // Previous from index 1 returns to the built-in wallpaper.
+  // Previous from pack index returns to the starfield default (F2#18).
   await dialog2.locator('[data-testid="lnas-wp-match-prev"]').click();
-  await expect(dialog2.locator('[data-testid="lnas-wp-match-count"]')).toHaveText(`1/${total}`, { timeout: 3_000 });
-  await expect.poll(() => readWp(page), { timeout: 3_000 }).toContain('cosmic-bg');
+  await expect(dialog2.locator('[data-testid="lnas-wp-match-count"]')).toHaveText(`2/${total}`, { timeout: 3_000 });
+  await expect.poll(() => readWp(page), { timeout: 3_000 }).toContain('radial-gradient(1.6px 1.6px at 12% 22%');
 });
