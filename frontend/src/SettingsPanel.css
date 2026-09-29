@@ -5,20 +5,28 @@
    role/aria-modal contract, focus trap, and Esc-to-close are unchanged. */
 .settings-overlay {
   position: absolute;
-  inset: 0;
+  /* F2#13 / Probe: leave WindowChrome (44px + 1px hairline) visible — do not
+     cover the top window bar / window controls. */
+  top: var(--shell-titlebar-height, 45px);
+  right: 0;
+  bottom: 0;
+  left: 0;
   /* M4 (§2-B): transparent — the shell's BackgroundStack (wallpaper, particle
      drift, scrim, vignette) stays visible and reads through the glass panel. */
   background: transparent;
   display: flex;
   align-items: stretch;
   justify-content: stretch;
-  z-index: var(--z-modal, 1000);
+  z-index: var(--z-modal);
 }
 
 .settings-panel {
   /* F2#11/#8: translucent Settings glass over BackgroundStack wallpaper.
-     No live backdrop-filter (scroll FPS); alpha stays glassA+10 (.30 default)
-     so e2e backgroundColor checks still read ~0.30. */
+     alpha stays glassA+10 (.30 default) so e2e backgroundColor checks still
+     read ~0.30. Blur lives on this non-scrolling chrome; the scrolling
+     regions (.settings-body / .settings-cat-nav) do not carry their own
+     backdrop-filter and use `contain: paint` instead, so the hot path never
+     recomputes a live blur under scrolling content. */
   background: var(--glass-settings, rgba(13, 16, 28, 0.30));
   border: 1px solid var(--glass-border);
   border-radius: 0;
@@ -30,13 +38,14 @@
   flex-direction: column;
   box-shadow: inset 0 1px 0 var(--glass-highlight);
   contain: layout style;
+  isolation: isolate;
 }
 
 @supports (backdrop-filter: blur(1px)) {
   .settings-panel {
     background: var(--glass-settings, rgba(13, 16, 28, 0.30));
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    backdrop-filter: blur(var(--blur-panel-overlay));
+    -webkit-backdrop-filter: blur(var(--blur-panel-overlay));
   }
 }
 
@@ -253,6 +262,11 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  /* Hot-path: this region scrolls under the panel's blurred glass chrome.
+     It does NOT have its own backdrop-filter (that would re-run a live blur
+     every scroll frame); `contain: paint` isolates its paint/scroll work
+     from the rest of the panel instead. */
+  contain: paint;
 }
 
 .settings-loading {
@@ -1968,7 +1982,9 @@ select.settings-select option {
   border-radius: 14px;
   background: var(--glass-settings, rgba(13, 16, 28, 0.30));
   overflow-y: auto;
-  /* Perf: isolate scroll without nested backdrop-filter */
+  /* Hot-path: scrolling rail with no backdrop-filter of its own (the panel's
+     blur already covers this chrome); `contain: paint` isolates its scroll
+     repaints from the rest of the panel. */
   contain: layout style paint;
 }
 

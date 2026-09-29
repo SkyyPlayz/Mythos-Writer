@@ -62,6 +62,8 @@ interface Props {
   // dead-wiring-ignore: SKY-10926 — see rationale on `mode` above.
   onModeChange?: (mode: NoteViewerMode) => void;
   onWikiLinkClick?: (target: string) => void;
+  /** F2#2: @-mention chip click (Preview + Rich via RichTextEditor). */
+  onEntityClick?: (entityId: string) => void;
   /** SKY-5702: resolvable note/story titles, for unresolved [[link]] styling. */
   resolvedWikiLinkTitles?: ReadonlySet<string>;
   /** M16: stems resolving to story scenes, for gold [[scene link]] styling. */
@@ -129,9 +131,11 @@ function renderInline(
   onWikiLinkClick?: (target: string) => void,
   resolvedTitles?: ReadonlySet<string>,
   sceneTitles?: ReadonlySet<string>,
+  onEntityClick?: (entityId: string) => void,
 ): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[\[[^\]]+\]\])/g;
+  // F2#2: also recognize [Label](entity://id) mention chips in Preview.
+  const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[\[[^\]]+\]\]|\[[^\]]+\]\(entity:\/\/[^)]+\))/g;
   let lastIdx = 0;
   let m: RegExpExecArray | null;
   let key = 0;
@@ -144,7 +148,7 @@ function renderInline(
       nodes.push(<em key={key++}>{tok.slice(1, -1)}</em>);
     } else if (tok.startsWith('`')) {
       nodes.push(<code key={key++}>{tok.slice(1, -1)}</code>);
-    } else {
+    } else if (tok.startsWith('[[')) {
       const target = tok.slice(2, -2);
       // M17: resolved/scene/unresolved styling in preview mode too — same
       // class contract as the rich editor's WikiLinkResolutionExtension.
@@ -168,6 +172,26 @@ function renderInline(
           {tok}
         </button>,
       );
+    } else {
+      const mention = tok.match(/^\[([^\]]+)\]\(entity:\/\/([^)]+)\)$/);
+      if (mention) {
+        const [, label, entityId] = mention;
+        nodes.push(
+          <button
+            key={key++}
+            type="button"
+            className="entity-mention-chip"
+            data-entity-id={entityId}
+            data-entity-label={label}
+            data-testid="note-entity-mention"
+            onClick={() => onEntityClick?.(entityId)}
+          >
+            @{label}
+          </button>,
+        );
+      } else {
+        nodes.push(tok);
+      }
     }
     lastIdx = m.index + m[0].length;
   }
@@ -180,6 +204,7 @@ function renderMarkdownPreview(
   onWikiLinkClick?: (target: string) => void,
   resolvedTitles?: ReadonlySet<string>,
   sceneTitles?: ReadonlySet<string>,
+  onEntityClick?: (entityId: string) => void,
 ): ReactNode {
   // W0.2: preview never renders frontmatter or kanban-settings trailers.
   const body = stripHiddenBlocks(content);
@@ -187,7 +212,7 @@ function renderMarkdownPreview(
   const nodes: ReactNode[] = [];
   let i = 0;
 
-  const inline = (text: string) => renderInline(text, onWikiLinkClick, resolvedTitles, sceneTitles);
+  const inline = (text: string) => renderInline(text, onWikiLinkClick, resolvedTitles, sceneTitles, onEntityClick);
 
   while (i < lines.length) {
     const line = lines[i];
@@ -243,6 +268,7 @@ interface RichEditorProps {
   content: string;
   onChange: (text: string) => void;
   onWikiLinkClick?: (target: string) => void;
+  onEntityClick?: (entityId: string) => void;
   resolvedWikiLinkTitles?: ReadonlySet<string>;
   sceneWikiLinkTitles?: ReadonlySet<string>;
   wikiLinkCandidates?: WikiLinkCandidate[];
@@ -252,7 +278,7 @@ interface RichEditorProps {
 
 // Thin wrapper over the shared core (SKY-3204): Notes rich mode gets the same
 // base extensions (including Underline) and entity @-mention picker as Story.
-function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles, wikiLinkCandidates, fileName, toolbarActions }: RichEditorProps) {
+function NoteRichEditor({ content, onChange, onWikiLinkClick, onEntityClick, resolvedWikiLinkTitles, sceneWikiLinkTitles, wikiLinkCandidates, fileName, toolbarActions }: RichEditorProps) {
   return (
     <div className="note-rich-editor">
       <RichTextEditor
@@ -261,6 +287,7 @@ function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTi
         extraExtensions={NOTE_RICH_EXTENSIONS}
         onChangeMarkdown={onChange}
         onWikiLinkClick={onWikiLinkClick}
+        onEntityClick={onEntityClick}
         resolvedWikiLinkTitles={resolvedWikiLinkTitles}
         sceneWikiLinkTitles={sceneWikiLinkTitles}
         wikiLinkCandidates={wikiLinkCandidates}
@@ -327,6 +354,7 @@ export default function NoteViewer({
   mode: modeProp,
   onModeChange,
   onWikiLinkClick,
+  onEntityClick,
   resolvedWikiLinkTitles,
   sceneWikiLinkTitles,
   wikiLinkCandidates,
@@ -999,6 +1027,7 @@ export default function NoteViewer({
           content={stripHiddenBlocks(content)}
           onChange={handleRichChange}
           onWikiLinkClick={onWikiLinkClick}
+          onEntityClick={onEntityClick}
           resolvedWikiLinkTitles={resolvedWikiLinkTitles}
           sceneWikiLinkTitles={sceneWikiLinkTitles}
           wikiLinkCandidates={wikiLinkCandidates}
@@ -1013,7 +1042,7 @@ export default function NoteViewer({
 
       {mode === 'preview' && (
         <div className="note-viewer-preview" data-testid="note-viewer-preview">
-          {renderMarkdownPreview(content, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles)}
+          {renderMarkdownPreview(content, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles, onEntityClick)}
         </div>
       )}
 

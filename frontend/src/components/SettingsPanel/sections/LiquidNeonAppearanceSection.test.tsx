@@ -100,7 +100,8 @@ describe('LiquidNeonAppearanceSection', () => {
     const defaults = normalizeLiquidNeonV2(undefined);
     const n = matchWallpaperList(defaults, '').length;
     expect(n).toBeGreaterThan(1);
-    // F2#18: fresh default picks classic starfield (index 1).
+    // F2#18/H3: fresh default picks classic starfield, appended as the LAST
+    // cycle entry (after cosmic + the whole pack), so the count pill reads N/N.
     const idx = matchWallpaperIndex(defaults, n) + 1;
     expect(screen.getByTestId('lnas-wp-match-count')).toHaveTextContent(`${idx}/${n}`);
     expect(screen.getByTestId('lnas-wp-match')).toHaveAttribute('aria-label', `Wallpaper: Theme match, ${idx} of ${n}`);
@@ -123,16 +124,17 @@ describe('LiquidNeonAppearanceSection', () => {
   });
 
   it('SKY-11589: arrows step wpPick for the active preset, select match, and repaint --wp', async () => {
-    // Start at cosmic (index 0) with no wpPick so the first Next lands on starfield (F2#18).
+    // Start at cosmic (index 0) with no wpPick so the first Next lands on the
+    // first pack image (H3: classic starfield moved to the LAST cycle entry).
     const { onChange } = await setup({ setKey: 'classic', wp: 'deep', wpPick: {} });
     const list = matchWallpaperList(normalizeLiquidNeonV2({ setKey: 'classic', wpPick: {} }), '');
     fireEvent.click(screen.getByTestId('lnas-wp-match-next'));
     const next = onChange.mock.calls[0][0] as LiquidNeonV2Settings;
     expect(next.wp).toBe('match');
     expect(next.wpPick).toEqual({ classic: 1 });
-    // Index 1 is the classic starfield (gradient — no file url).
-    expect(list[1].url).toBeUndefined();
-    expect(document.documentElement.style.getPropertyValue('--wp')).toContain('radial-gradient');
+    // Index 1 is now the first bundled pack image (has a file url).
+    expect(list[1].url).toBeDefined();
+    expect(document.documentElement.style.getPropertyValue('--wp')).toContain("url('");
     expect(onChange).toHaveBeenCalledTimes(1);
 
     // Previous from index 0 wraps to the last entry (controlled: re-render with the pick).

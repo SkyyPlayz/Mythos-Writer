@@ -2723,10 +2723,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // SKY-9019 M5: each rail item is a first-class destination; no aliases.
   // crafter/timeline route through the story workspace; vault-graph is its own AppTab.
-  const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
-    // Owner punch: Settings is a covering overlay, not a rail module. A
-    // left-rail pick must dismiss it so the destination is visible.
-    setSettingsOpen(false);
+  const pendingRailNavRef = useRef<NavRailModuleId | null>(null);
+  const runNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
     setSettingsInitialCategory('appearance');
     switch (moduleId) {
       case 'crafter':
@@ -2755,6 +2753,35 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         handleNavSectionChange(moduleId);
     }
   }, [handleNavSectionChange, handleSetView, handleTabChange]);
+
+  // H6 / #15: rail-nav must flush Settings via the same handleClose path (not
+  // a bare setSettingsOpen(false) that drops non-Appearance edits).
+  const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
+    if (settingsOpen) {
+      pendingRailNavRef.current = moduleId;
+      const req = (window as Window & { __mythosSettingsRequestClose?: () => void })
+        .__mythosSettingsRequestClose;
+      if (req) {
+        req();
+        return;
+      }
+      setSettingsOpen(false);
+    }
+    pendingRailNavRef.current = null;
+    runNavModuleChange(moduleId);
+  }, [settingsOpen, runNavModuleChange]);
+
+  const handleSettingsClose = useCallback(() => {
+    setSettingsOpen(false);
+    setSettingsInitialCategory('appearance');
+    const pending = pendingRailNavRef.current;
+    pendingRailNavRef.current = null;
+    if (pending) runNavModuleChange(pending);
+  }, [runNavModuleChange]);
+
+  const handleSettingsCloseBlocked = useCallback(() => {
+    pendingRailNavRef.current = null;
+  }, []);
 
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
@@ -4636,7 +4663,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (entity.type === 'character') checkGettingStartedItem('add-character');
   }, [checkGettingStartedItem]);
 
-  // SKY-616: navigate to entity page when user clicks an @-mention chip
+  // SKY-616 / F2#2: navigate to entity page when user clicks an @-mention chip
+  // on every surface (Story hosts EntityDetail; Notes hosts it too; other tabs
+  // switch to Notes so the detail is visible).
   const handleEntityMentionClick = useCallback((entityId: string) => {
     window.api.entityRead(entityId).then((entity) => {
       if (entity) {
@@ -4644,10 +4673,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         setSelectedScene(null);
         setSelectedChapter(null);
         setSelectedStory(null);
+        setOpenedNotePath(null);
         if (entity.type === 'character') checkGettingStartedItem('add-character');
+        const tab = tabShellRef.current.activeTab;
+        if (tab !== 'story' && tab !== 'notes') {
+          handleTabChange('notes');
+          handleNotesSubViewChange('editor');
+        }
       }
     }).catch(() => {});
-  }, [checkGettingStartedItem]);
+  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange]);
 
   // F2#2: global fallback so Notes editors without onEntityClick still navigate.
   useEffect(() => {
@@ -4762,7 +4797,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     })();
   }, [handleNotesSubViewChange, handleTabChange, loadEntities, showWikiLinkToast]);
 
-  // F2#3: one click path for Story + Notes — resolve or create.
+  // F2#3 / Probe: unresolved [[link]] shows a Create/Cancel prompt (no silent create).
+  const [pendingCreateLink, setPendingCreateLink] = useState<string | null>(null);
+
+  // F2#3: one click path for Story + Notes — resolve or prompt-to-create.
   const handleWikiLinkClick = useCallback((target: string) => {
     const resolution = resolveCrossTabLink(target, {
       stories,
@@ -4777,8 +4815,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
       return;
     }
-    createNoteForUnresolvedLink(target);
-  }, [allEntities, allNotePaths, applyCrossTabLinkMatch, createNoteForUnresolvedLink, stories]);
+    setPendingCreateLink(target);
+  }, [allEntities, allNotePaths, applyCrossTabLinkMatch, stories]);
 
   const handleNotesWikiLinkClick = handleWikiLinkClick;
 
@@ -4799,10 +4837,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       open: (target: string) => {
         const match = resolveWikiLinkTarget(target, context);
         if (match) applyCrossTabLinkMatch(match);
-        else createNoteForUnresolvedLink(target);
+        else setPendingCreateLink(target);
       },
     };
-  }, [stories, allEntities, allNotePaths, allFolderPaths, applyCrossTabLinkMatch, createNoteForUnresolvedLink]);
+  }, [stories, allEntities, allNotePaths, allFolderPaths, applyCrossTabLinkMatch]);
 
   // M16: hover-preview resolver — notes read via the vault IPC, scenes from
   // the already-loaded in-memory blocks. Null means "unresolved" and the card
@@ -6338,7 +6376,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           key={settingsOpenToken}
           initialCategory={settingsInitialCategory}
           activeVaultRoot={activeVaultRoot}
-          onClose={() => { setSettingsOpen(false); setSettingsInitialCategory('appearance'); }}
+          onClose={handleSettingsClose}
+          onCloseBlocked={handleSettingsCloseBlocked}
           onSaved={(s) => {
             setAppSettings(s);
             // SKY-11237: apply the saved vault's per-vault appearance, falling back to global.
@@ -7217,6 +7256,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           }}
           onSelectEntity={handleSelectEntityInTab}
           selectedEntityId={selectedEntity?.id ?? null}
+          selectedEntity={selectedEntity}
+          onCloseSelectedEntity={() => setSelectedEntity(null)}
+          onEntityClick={handleEntityMentionClick}
           activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
           onOpenBrainstorm={(seedText) => {
             setBrainstormSeedPrompt(seedText);
@@ -7464,6 +7506,37 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               ))}
             </div>
             <button type="button" onClick={() => setAmbiguousLink(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {pendingCreateLink && (
+        <div className="cross-tab-link-modal" role="dialog" aria-modal="true" aria-label="Create note" data-testid="create-note-prompt">
+          <div className="cross-tab-link-modal__card">
+            <h2>Create note?</h2>
+            <p>
+              No note named &ldquo;{wikiLinkTargetStem(pendingCreateLink)}&rdquo; exists yet.
+              Create it in the Notes Vault?
+            </p>
+            <div className="cross-tab-link-modal__list">
+              <button
+                type="button"
+                data-testid="create-note-confirm"
+                onClick={() => {
+                  const target = pendingCreateLink;
+                  setPendingCreateLink(null);
+                  createNoteForUnresolvedLink(target);
+                }}
+              >
+                Create
+              </button>
+              <button
+                type="button"
+                data-testid="create-note-cancel"
+                onClick={() => setPendingCreateLink(null)}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}

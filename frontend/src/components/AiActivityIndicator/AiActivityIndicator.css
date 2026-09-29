@@ -2,7 +2,7 @@
   position: fixed;
   top: 3rem; /* clears the custom title bar */
   right: 1rem;
-  z-index: 9998; /* just under the toast stack (9999) */
+  z-index: calc(var(--z-toast) - 2); /* just under the toast stack */
   display: flex;
   flex-direction: column;
   gap: 0.4rem;

@@ -269,12 +269,29 @@ test.describe('wiki-links and multi-vault graph', () => {
     await expect(page.locator('[data-testid="msv-sheet"] .block-editor--chromeless .ProseMirror')).toBeVisible({ timeout: 8_000 });
   });
 
-  test('[[NonExistent]] creates a note in the Notes Vault (F2#3)', async () => {
+  test('[[NonExistent]] prompts before create; Cancel leaves no file (F2#3)', async () => {
     await clickStoryWikiLink(page, 'NonExistent');
-    // Unresolved links create+open instead of toasting "No note or scene found".
+    const prompt = page.locator('[data-testid="create-note-prompt"]');
+    await expect(prompt).toBeVisible({ timeout: 5_000 });
+    await page.locator('[data-testid="create-note-cancel"]').click();
+    await expect(prompt).toHaveCount(0);
+    expect(fs.existsSync(path.join(notesVaultDir, 'NonExistent.md'))).toBe(false);
+    await expect(
+      page.locator('[data-testid="app-toast"]').filter({ hasText: 'Created "NonExistent"' }),
+    ).toHaveCount(0);
+  });
+
+  test('[[NonExistent]] Create confirms and opens the new Notes Vault file (F2#3)', async () => {
+    await clickStoryWikiLink(page, 'NonExistent');
+    const prompt = page.locator('[data-testid="create-note-prompt"]');
+    await expect(prompt).toBeVisible({ timeout: 5_000 });
+    await page.locator('[data-testid="create-note-confirm"]').click();
     await expect(
       page.locator('[data-testid="app-toast"]').filter({ hasText: 'Created "NonExistent" in the Notes Vault' }),
     ).toBeVisible({ timeout: 8_000 });
+    await expect.poll(() => fs.existsSync(path.join(notesVaultDir, 'NonExistent.md')), {
+      timeout: 5_000,
+    }).toBe(true);
   });
 
   test('[[Elara|The Hero]] resolves by stripping the alias suffix', async () => {

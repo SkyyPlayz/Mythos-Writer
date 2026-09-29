@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useEditor } from '@tiptap/react';
-import type { AnyExtension, Editor } from '@tiptap/core';
+import type { AnyExtension, Editor, EditorOptions } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { registerActiveEditor, unregisterActiveEditor } from './activeEditorRegistry';
 import TextAlign from '@tiptap/extension-text-align';
@@ -39,6 +39,8 @@ export interface UseRichEditorOptions {
   /** Focus/blur callbacks (forwarded straight to useEditor). */
   onFocus?: ({ editor }: { editor: Editor }) => void;
   onBlur?: ({ editor }: { editor: Editor }) => void;
+  /** TipTap/ProseMirror editorProps (F2#4 drop handling lives here). */
+  editorProps?: EditorOptions['editorProps'];
 }
 
 /**
@@ -68,6 +70,7 @@ export function useRichEditor({
   onSelectionUpdate,
   onFocus,
   onBlur,
+  editorProps,
 }: UseRichEditorOptions): Editor | null {
   const editor = useEditor({
     extensions: [
@@ -84,6 +87,7 @@ export function useRichEditor({
     content,
     editable,
     autofocus,
+    editorProps,
     onUpdate,
     onSelectionUpdate,
     onFocus({ editor }) {

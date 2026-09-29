@@ -77,6 +77,15 @@ class ResizeObserverStub {
 }
 Object.defineProperty(window, 'ResizeObserver', { value: ResizeObserverStub, writable: true, configurable: true });
 
+// jsdom does not implement elementFromPoint/caretPositionFromPoint. ProseMirror's
+// own (non-editorProps) drop/click handling calls `view.posAtCoords`, which reads
+// `document.elementFromPoint` — without a stub, firing a native `drop` event
+// directly on `.ProseMirror` throws (H5: editorProps.handleDrop tests now fire on
+// view.dom instead of an outer wrapper, so this path is reachable in tests).
+if (!document.elementFromPoint) {
+  document.elementFromPoint = () => null;
+}
+
 // jsdom does not implement IntersectionObserver; stub it so components that use it don't throw.
 // Tests that need to exercise intersection callbacks should override this with vi.stubGlobal.
 class IntersectionObserverStub {
