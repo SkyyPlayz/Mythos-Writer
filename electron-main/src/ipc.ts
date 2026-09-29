@@ -2972,6 +2972,8 @@ export interface AppSettings {
   };
   /** Beta 3 M22 / SKY-11411: user renames for the named agents (prototype `agentNames`, HTML 3245). Absent key = default display name. */
   agentNames?: Partial<Record<'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader' | 'alphaReader' | 'storylineConsultant' | 'lineEditor', string>>;
+  /** Slice C — Writing partner / Model & keys prefs (opaque persist; renderer-owned). */
+  writingPartner?: Record<string, unknown>;
   theme: 'dark' | 'high-contrast';
   snapshots?: {
     maxPerScene: number;

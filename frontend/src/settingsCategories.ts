@@ -8,15 +8,11 @@
  * imports SETTINGS_CATEGORIES to drive its category nav instead of maintaining
  * a second, hand-written list (SKY-5694).
  *
- * SKY-10668 (owner request, supersedes the M28 §13/GAP #8 order): the rail
- * follows the prototype rail order top-to-bottom:
- * Appearance · AI Agents · Editor · Vault & Files · Sync & Backup ·
- * Shortcuts · About. `Account & profile` has no prototype counterpart; by
- * owner ruling (Skyy, 2026-08-19, SKY-10668 change 3) it is KEPT and placed
- * last, after About. That placement outranks the prototype (PLAN §0) — a
- * fidelity pass must not flag the eighth entry as a divergence or delete it.
- * Each category carries the prototype's one-line description, shown in the
- * page header.
+ * SKY-10668 + Slice C: rail order top-to-bottom:
+ * Appearance · Writing partner · Model & keys · Editor · Vault & Files ·
+ * Sync & Backup · Shortcuts · About · Account & profile (last by owner ruling).
+ * Slice C renames the old AI Agents page to Model & keys and inserts
+ * Writing partner first under AI.
  */
 
 export type SettingsCategoryId =
@@ -26,6 +22,7 @@ export type SettingsCategoryId =
   | 'sync'
   | 'shortcuts'
   | 'about'
+  | 'writingPartner'
   | 'agents'
   | 'appearance';
 
@@ -54,16 +51,36 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     ],
   },
   {
+    id: 'writingPartner',
+    label: 'Writing partner',
+    description: 'One partner face — personality, hands, heartbeat, and hard bans.',
+    sectionIds: [
+      'section-writing-partner',
+      'section-personality',
+      'section-hands',
+      'section-partner-limits',
+      'section-tools',
+      'section-heartbeat',
+    ],
+  },
+  {
     id: 'agents',
-    label: 'AI Agents',
-    // M11a: prototype 6607 rewrote this one-liner alongside the master switch.
-    description: 'Provider, models and autonomy. Pick an agent in the sidebar for its own page.',
+    label: 'Model & keys',
+    // Slice C: old AI Agents page becomes Model & keys (providers / tools / privacy).
+    description: 'Bring your own AI — providers, models, tools limits, and privacy.',
     sectionIds: [
       'section-ai-master',
       'section-transcript-placement',
+      'section-provider-buckets',
       'section-providers',
+      // Soft-FAIL: AgentsSection.tsx still defines section-agents (unmounted);
+      // production roles ship via ProductionRolesSection.
       'section-api-key',
       'section-agents',
+      'section-production-roles',
+      'section-models',
+      'section-privacy',
+      'section-hands-files',
       'section-autolinker',
       'section-journal',
       'section-voice',

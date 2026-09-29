@@ -85,9 +85,13 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
 // SKY-3230: extended timeout (10 s) for slow CI runners; wait for section to be
 // visible rather than a fixed 100 ms pause so the assertion can start immediately.
 // SKY-5094: PR #768 replaced class/data-testid selectors with role="tab" on .settings-cat-nav__tab.
-// 'General' is no longer a tab — map it to 'Agents' (closest equivalent).
+// Slice C: old AI Agents page label is now "Model & keys" (id stays settings-cat-agents).
 async function navigateSettingsCategory(page: Page, category: string): Promise<void> {
-  const aliasMap: Record<string, string> = { general: 'Agents' };
+  const aliasMap: Record<string, string> = {
+    general: 'Model & keys',
+    agents: 'Model & keys',
+    'ai agents': 'Model & keys',
+  };
   const tabLabel = aliasMap[category.toLowerCase()]
     ?? (category.charAt(0).toUpperCase() + category.slice(1));
   const tab = page.getByRole('tab', { name: tabLabel });

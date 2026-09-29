@@ -585,8 +585,8 @@ test('TC-V-09b: Brainstorm voice toggle controls Brainstorm mic visibility', asy
   await settingsBtn.click({ timeout: 5_000 }).catch(async () => {
     await page.locator('[title*="Settings"], [title*="settings"]').first().click();
   });
-  // SKY-10668: the panel now opens on Appearance — go to the AI Agents page,
-  // which hosts the Brainstorm voice toggle.
+  // Slice C: Partner voice toggle lives on Model & keys › Voice (Soft-FAIL
+  // removed the four classic agent cards that previously hosted it).
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
   await page.locator('[data-testid="settings-cat-agents"]').click();
   const brainstormVoiceToggle = page.locator('#brainstorm-voice-enabled');
@@ -595,7 +595,8 @@ test('TC-V-09b: Brainstorm voice toggle controls Brainstorm mic visibility', asy
   await expect(brainstormVoiceToggle).not.toBeChecked();
   await page.getByRole('button', { name: /save settings/i }).click();
   await expect(page.getByText(/settings saved/i)).toBeVisible({ timeout: 5_000 });
-  await page.getByRole('button', { name: /^cancel$/i }).click();
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await expect(page.locator('.settings-overlay')).toHaveCount(0, { timeout: 3_000 });
 
   await openBrainstorm(page);
   await expect(page.locator('[data-testid="brainstorm-mic-btn"]')).toHaveCount(0);
@@ -603,14 +604,14 @@ test('TC-V-09b: Brainstorm voice toggle controls Brainstorm mic visibility', asy
   await settingsBtn.click({ timeout: 5_000 }).catch(async () => {
     await page.locator('[title*="Settings"], [title*="settings"]').first().click();
   });
-  // SKY-10668: reopened Settings lands on Appearance again — back to AI Agents.
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
   await page.locator('[data-testid="settings-cat-agents"]').click();
   await page.locator('label[for="brainstorm-voice-enabled"] .settings-toggle-track').click();
   await expect(brainstormVoiceToggle).toBeChecked();
   await page.getByRole('button', { name: /save settings/i }).click();
   await expect(page.getByText(/settings saved/i)).toBeVisible({ timeout: 5_000 });
-  await page.getByRole('button', { name: /^cancel$/i }).click();
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await expect(page.locator('.settings-overlay')).toHaveCount(0, { timeout: 3_000 });
 
   await openBrainstorm(page);
   await expect(page.locator('[data-testid="brainstorm-mic-btn"]')).toBeVisible({ timeout: 4_000 });

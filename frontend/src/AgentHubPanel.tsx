@@ -42,6 +42,15 @@ import { invokeBrainstorm } from './timeline2/panel/BrainstormTab';
 import SuggestionReview from './SuggestionReview';
 import PartnerCallChrome, { type PartnerCallState } from './partner/PartnerCallChrome';
 import QuestionsForYou, { type PartnerQuestion } from './partner/QuestionsForYou';
+import {
+  enqueuePartnerMessage,
+  getPartnerHandBusy,
+  getPartnerMsgQueue,
+  setPartnerDrainHandler,
+  subscribePartnerBusy,
+  type QueuedPartnerMessage,
+} from './partner/partnerBusyStore';
+import { resolveWritingPartner } from './partner/partnerSettings';
 import './AgentHubPanel.css';
 
 /** Legacy agent row ids — kept for resolveAgentStatus + hand routing tests. */
@@ -363,13 +372,16 @@ function PartnerChatView({
 }: PartnerChatViewProps) {
   const brainstormActivity = useBrainstormActivity();
   const writerBusy = useAgentRunningEntry('writingAssistant');
-  const handBusy: PartnerHandId | null = writerBusy
-    ? 'writer'
-    : brainstormActivity.active
-      ? null
-      : activeHand === 'writer' || activeHand === 'archivist' || activeHand === 'analyst'
-        ? activeHand
-        : null;
+  const [heartbeatBusy, setHeartbeatBusy] = useState<PartnerHandId | null>(getPartnerHandBusy());
+  useEffect(() => subscribePartnerBusy(() => setHeartbeatBusy(getPartnerHandBusy())), []);
+  const handBusy: PartnerHandId | null = heartbeatBusy
+    ?? (writerBusy
+      ? 'writer'
+      : brainstormActivity.active
+        ? null
+        : activeHand === 'writer' || activeHand === 'archivist' || activeHand === 'analyst'
+          ? activeHand
+          : null);
   const [coachBusy, setCoachBusy] = useState(false);
   const [pastOpen, setPastOpen] = useState(false);
 
@@ -462,23 +474,141 @@ function PartnerChatView({
         </div>
       ) : (
         <div className="ahp-partner-thread" data-testid="ahp-partner-thread">
-          <PartnerBrainstormChat partnerName={partnerName} onCall={call.onCall} />
+          <PartnerBrainstormChat
+            partnerName={partnerName}
+            onCall={call.onCall}
+            handBusy={!!handBusy}
+          />
         </div>
       )}
     </div>
   );
 }
 
-function PartnerBrainstormChat({ partnerName, onCall }: { partnerName: string; onCall: boolean }) {
+function PartnerBrainstormChat({
+  partnerName,
+  onCall,
+  handBusy,
+}: {
+  partnerName: string;
+  onCall: boolean;
+  handBusy: boolean;
+}) {
   const chat = useMiniAgentChat('brainstorm', invokeBrainstorm);
+  const [queued, setQueued] = useState<readonly QueuedPartnerMessage[]>(getPartnerMsgQueue());
+  const [settingsSnap, setSettingsSnap] = useState<AppSettings | null>(null);
+
+  useEffect(() => subscribePartnerBusy(() => setQueued([...getPartnerMsgQueue()])), []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.api?.settingsGet?.().then((s) => {
+      if (!cancelled) setSettingsSnap(s);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    setPartnerDrainHandler((items) => {
+      void (async () => {
+        for (const item of items) {
+          await chat.send(item.text);
+        }
+      })();
+    });
+    return () => setPartnerDrainHandler(null);
+  }, [chat]);
+
+  const partnerPrefs = resolveWritingPartner(settingsSnap ?? undefined);
+  const showClaudeLogin = partnerPrefs.claudeCli === 'login';
+  const webSearchOn = partnerPrefs.webSearch;
+
+  const sendQueuedAware = useCallback(async (prompt: string) => {
+    if (handBusy || getPartnerHandBusy()) {
+      if (enqueuePartnerMessage(prompt)) {
+        setQueued([...getPartnerMsgQueue()]);
+        return;
+      }
+    }
+    await chat.send(prompt);
+  }, [chat, handBusy]);
+
+  const queuedChat = useMemo(() => ({
+    ...chat,
+    send: sendQueuedAware,
+    // Allow composer while heartbeat-busy so messages can enter QUEUED.
+    busy: chat.busy && !handBusy && !getPartnerHandBusy(),
+  }), [chat, sendQueuedAware, handBusy]);
+
   return (
     <div className="ahp-brainstorm-chat ahp-partner-composer" data-testid="ahp-partner-chat">
+      {showClaudeLogin && (
+        <div className="ahp-claude-login" data-testid="ahp-claude-login-card">
+          <div className="ahp-claude-login__title">Log in to Claude to finish setup</div>
+          <div className="ahp-claude-login__actions">
+            <button
+              type="button"
+              className="ahp-claude-login__primary"
+              data-testid="ahp-claude-login"
+              onClick={() => {
+                void window.api?.settingsGet?.().then(async (s) => {
+                  const cur = resolveWritingPartner(s);
+                  const next = {
+                    ...s,
+                    writingPartner: { ...cur, claudeCli: 'ready' as const },
+                  };
+                  await window.api?.settingsSet?.(next);
+                  setSettingsSnap(next);
+                });
+              }}
+            >
+              Log in with Claude
+            </button>
+            <button
+              type="button"
+              className="ahp-claude-login__later"
+              data-testid="ahp-claude-login-later"
+              onClick={() => {
+                void window.api?.settingsGet?.().then(async (s) => {
+                  const cur = resolveWritingPartner(s);
+                  const next = {
+                    ...s,
+                    writingPartner: { ...cur, claudeCli: 'none' as const },
+                  };
+                  await window.api?.settingsSet?.(next);
+                  setSettingsSnap(next);
+                });
+              }}
+            >
+              Later
+            </button>
+          </div>
+          <p className="ahp-claude-login__note">
+            The Claude CLI runs hidden in the background — no terminal, nothing to manage.
+          </p>
+        </div>
+      )}
       <MiniAgentChat
-        chat={chat}
+        chat={queuedChat}
         accent="brainstorm"
         placeholder={onCall ? `Speak or type to ${partnerName}…` : `Message ${partnerName}…`}
         testidPrefix="ahp-partner"
       />
+      {queued.length > 0 && (
+        <div className="ahp-queued" data-testid="ahp-queued-list" aria-label="Queued messages">
+          {queued.map((q) => (
+            <div key={q.id} className="ahp-queued__item" data-testid="ahp-queued-chip">
+              <span className="ahp-queued__tag">QUEUED</span>
+              <span>{q.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {webSearchOn && (
+        <p className="ahp-web-search-chip" data-testid="ahp-web-search-used">
+          Web search used
+        </p>
+      )}
       {onCall && (
         <p className="ahp-voice-hint" data-testid="ahp-voice-hint">
           🎙 VOICE turns appear as ordinary bubbles in this thread.
