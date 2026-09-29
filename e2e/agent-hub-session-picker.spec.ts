@@ -441,12 +441,12 @@ test('F3 Secure bar: docked↔float partner thread syncs both directions', async
   page = await firstWindow(app);
   await openPartnerChat(page);
 
+  // contextBridge freezes window.api — use the product E2E hook instead.
   const stubBrainstorm = async (target: Page) => {
     await target.evaluate(() => {
-      const api = (window as unknown as {
-        api: { agentBrainstorm: (p: string) => Promise<{ text: string }> };
-      }).api;
-      api.agentBrainstorm = async () => ({ text: 'FLOAT_E2E_STUB_REPLY' });
+      (window as unknown as {
+        __MYTHOS_E2E_BRAINSTORM__: () => Promise<{ text: string }>;
+      }).__MYTHOS_E2E_BRAINSTORM__ = async () => ({ text: 'FLOAT_E2E_STUB_REPLY' });
     });
   };
   await stubBrainstorm(page);

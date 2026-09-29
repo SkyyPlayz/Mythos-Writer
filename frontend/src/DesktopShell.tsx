@@ -99,6 +99,7 @@ import type { TimelineWikiLinkApi } from './timeline2/TimelineWikiText';
 import { useTextPrompt } from './useTextPrompt';
 import { useCreateMythosVaultFlow } from './useCreateMythosVaultFlow';
 import SettingsPanel from './components/SettingsPanel';
+import { requestOpenSessionHistory } from './components/SettingsPanel/SessionHistoryViewer';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import { useSceneDrafts, type SceneDraftEntry } from './drafts/useSceneDrafts';
 import { loadDraft, undoLoadDraft, type DraftUndoState } from './drafts/loadUndo';
@@ -5289,9 +5290,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               setSettingsInitialCategory('writingPartner');
               setSettingsOpenToken((t) => t + 1);
               setSettingsOpen(true);
-              // Defer until Settings › Writing partner (SessionHistoryViewer) mounts.
+              // Latch + event — SessionHistoryViewer may mount after this tick.
               window.setTimeout(() => {
-                window.dispatchEvent(new CustomEvent('mythos:open-session-history', { detail: { agent: 'brainstorm' } }));
+                requestOpenSessionHistory('brainstorm');
               }, 50);
             }}
           />
@@ -7500,9 +7501,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             setSettingsInitialCategory('writingPartner');
             setSettingsOpenToken((t) => t + 1);
             setSettingsOpen(true);
-            // Defer until Settings › Writing partner (SessionHistoryViewer) mounts.
+            // Latch + event — SessionHistoryViewer may mount after this tick.
             window.setTimeout(() => {
-              window.dispatchEvent(new CustomEvent('mythos:open-session-history', { detail: { agent: 'brainstorm' } }));
+              requestOpenSessionHistory('brainstorm');
             }, 50);
           }}
           continuityPanel={

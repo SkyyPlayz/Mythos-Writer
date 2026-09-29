@@ -42,10 +42,20 @@ export const invokeArchive: MiniChatInvoke = async (prompt, history) => {
     throw new Error('Archive agent unavailable — check your provider settings.');
   }
   const response = await api.agentArchive(prompt, history);
-  if (response.cardTitle) {
-    return { text: response.text, cardTitle: response.cardTitle, cardFoot: response.cardFoot };
+  // wrapIpcHandler returns `{ error }` instead of throwing.
+  if (response && typeof response === 'object' && 'error' in response
+      && typeof (response as { error?: unknown }).error === 'string') {
+    throw new Error((response as { error: string }).error);
   }
-  return response.text;
+  if (response == null || typeof response !== 'object'
+      || typeof (response as { text?: unknown }).text !== 'string') {
+    throw new Error('Archive agent returned no text.');
+  }
+  const typed = response as { text: string; cardTitle?: string; cardFoot?: string };
+  if (typed.cardTitle) {
+    return { text: typed.text, cardTitle: typed.cardTitle, cardFoot: typed.cardFoot };
+  }
+  return typed.text;
 };
 
 const FLAG_KIND_LABEL: Record<TimelineFlag['kind'], string> = {

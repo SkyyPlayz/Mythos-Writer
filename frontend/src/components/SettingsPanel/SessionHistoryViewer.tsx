@@ -26,21 +26,47 @@ const SESSION_AGENT_KEY: Record<NamedAgentId, string> = {
   betaReader: 'beta-reader',
 };
 
+/**
+ * Latch for "Earlier chats" → Settings history expand.
+ * DesktopShell may dispatch mythos:open-session-history before
+ * SessionHistoryViewer mounts (Settings category paint). The latch ensures
+ * the panel opens even when the CustomEvent is missed.
+ */
+let pendingOpenAgent: string | null = null;
+
+/** Open (or queue-open) the matching SessionHistoryViewer panel. */
+export function requestOpenSessionHistory(agent: string): void {
+  pendingOpenAgent = agent;
+  window.dispatchEvent(
+    new CustomEvent('mythos:open-session-history', { detail: { agent } }),
+  );
+}
+
 function formatDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
+function matchesPending(agentName: NamedAgentId, sessionAgent: string): boolean {
+  return pendingOpenAgent === agentName || pendingOpenAgent === sessionAgent;
+}
+
 export default function SessionHistoryViewer({ agentName }: { agentName: NamedAgentId }) {
-  const [open, setOpen] = useState(false);
+  const sessionAgent = SESSION_AGENT_KEY[agentName];
+  const [open, setOpen] = useState(() => matchesPending(agentName, sessionAgent));
   const [sessions, setSessions] = useState<AgentSessionSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<AgentSessionFile | null>(null);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
 
-  const sessionAgent = SESSION_AGENT_KEY[agentName];
+  // Consume latch on mount (event may have fired before this viewer existed).
+  useEffect(() => {
+    if (!matchesPending(agentName, sessionAgent)) return;
+    pendingOpenAgent = null;
+    setOpen(true);
+  }, [agentName, sessionAgent]);
 
   const loadSessions = useCallback(async () => {
     const api = window.api?.agentSessions;
@@ -58,13 +84,14 @@ export default function SessionHistoryViewer({ agentName }: { agentName: NamedAg
     void loadSessions();
   }, [open, sessions, loadSessions]);
 
-  // F3 — "Earlier chats" from the partner hub opens Settings › Agents history.
+  // F3 — "Earlier chats" from the partner hub opens Settings › Writing partner history.
   useEffect(() => {
     const onOpen = (e: Event) => {
       const detail = (e as CustomEvent<{ agent?: string }>).detail;
       const target = detail?.agent;
       // Partner spine uses brainstorm; only expand the matching viewer.
       if (target && target !== agentName && target !== sessionAgent) return;
+      pendingOpenAgent = null;
       setOpen(true);
     };
     window.addEventListener('mythos:open-session-history', onOpen);
@@ -106,7 +133,8 @@ export default function SessionHistoryViewer({ agentName }: { agentName: NamedAg
           {!error && sessions !== null && sessions.length === 0 && (
             <p className="settings-help-text">No saved conversations yet.</p>
           )}
-          {!error && sessions !== null && sessions.length > 0 && (
+          {/* Always mount the list once loaded so e2e can assert expand even when empty. */}
+          {!error && sessions !== null && (
             <div className="settings-session-history-body">
               <ul
                 className="settings-session-history-list"

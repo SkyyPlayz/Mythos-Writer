@@ -173,7 +173,13 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
       const result = await invoke(trimmed, history);
       if (generationGenRef.current !== gen) return;
       const now = new Date().toISOString();
-      const agentText = typeof result === 'string' ? result : result.text;
+      // Defensive: invoke must return string | { text }. A bare undefined used to
+      // throw "Cannot read properties of undefined (reading 'text')" and skip
+      // appendTurns — so the user bubble never landed in the feed.
+      const agentText = typeof result === 'string' ? result : result?.text;
+      if (typeof agentText !== 'string') {
+        throw new Error('Agent returned no text.');
+      }
       const agentTurn: AgentSessionTurn = { role: 'agent', text: agentText, at: new Date().toISOString() };
       if (typeof result !== 'string') {
         if (result.cardKind) agentTurn.cardKind = result.cardKind;
