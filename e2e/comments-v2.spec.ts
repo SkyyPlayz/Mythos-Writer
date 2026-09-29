@@ -282,6 +282,10 @@ test.describe.serial('Comments v2 (M9) — vault sidecar round-trip', () => {
     await expect(para).toBeVisible({ timeout: 10_000 });
     await para.click({ clickCount: 3 });
 
+    // F4#16: selection alone must not open the composer — explicit Comment arm.
+    await expect(page.getByTestId('msv-selbar')).toHaveCount(0);
+    await page.getByTestId('msv-comment-arm').click();
+
     const selbar = page.getByTestId('msv-selbar');
     await expect(selbar).toBeVisible({ timeout: 5_000 });
     // Composer anatomy: quote + input + Comment + Read-aloud (§5.1).

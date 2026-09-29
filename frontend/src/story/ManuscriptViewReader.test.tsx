@@ -227,12 +227,13 @@ describe('toolbar Read button + gutter Reader card', () => {
 
   it('docks the card above the comment cards when comments are visible', () => {
     renderView();
-    // Create a user comment through the selection bar.
+    // Create a user comment through the selection bar (F4#16: arm first).
     const spy = vi
       .spyOn(window, 'getSelection')
       .mockReturnValue({ toString: () => 'rumor had teeth' } as unknown as Selection);
     fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
     spy.mockRestore();
+    fireEvent.click(screen.getByTestId('msv-comment-arm'));
     fireEvent.change(screen.getByTestId('msv-selbar-input'), { target: { value: 'note' } });
     fireEvent.click(screen.getByTestId('msv-selbar-save'));
 
@@ -480,6 +481,7 @@ describe('selection-bar Read action', () => {
       .mockReturnValue({ toString: () => text } as unknown as Selection);
     fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
     spy.mockRestore();
+    fireEvent.click(screen.getByTestId('msv-comment-arm'));
   }
 
   it('reads exactly the selection once and dismisses the bar', async () => {
