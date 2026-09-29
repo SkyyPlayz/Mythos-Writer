@@ -2464,9 +2464,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [persistTabShell]);
 
   const handleOpenContinuityEntityNote = useCallback((notePath: string) => {
-    setSelectedScene(null);
-    setSelectedChapter(null);
-    setSelectedStory(null);
+    // Open the note in the Notes tab. Do NOT clear the story selection —
+    // the Story tabpanel is keep-mounted (B7); wiping selectedScene would
+    // swap that hidden panel onto a second NoteViewer for the same path
+    // (TC-CP-06 dual `.note-tiptap-content` / double-flush risk).
     setSelectedEntity(null);
     setOpenedNotePath(notePath);
     handleNotesSubViewChange('editor');
@@ -7146,8 +7147,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 // permanently disabling the "Connections" backlink buttons.
                 onOpenEntity={handleEntityMentionClick}
               />
-            ) : openedNotePath ? (
-              // SKY-204: vault note viewer (daily notes and any other .md file)
+            ) : openedNotePath && tabShell.activeTab === 'story' ? (
+              // SKY-204: vault note viewer on the Story tab only. When Notes is
+              // active, NotesTabPanel owns the editor — mounting another
+              // NoteViewer here (keep-mounted display:none) duplicated
+              // `.note-tiptap-content` and could double-flush saves (F1#9).
               <NoteViewer
                 key={openedNotePath}
                 path={openedNotePath}
