@@ -4,7 +4,6 @@ import {
   NOTES_MODE_BY_PATH_KEY,
   NOTES_SHOW_MARKDOWN_KEY,
   NOTES_SHOW_SOURCE_KEY,
-  discardSettingsViewPrefsDraft,
   enabledGearModes,
   readDefaultRichPref,
   readNoteModePref,
@@ -17,7 +16,6 @@ import {
 } from './noteViewPrefs';
 
 afterEach(() => {
-  discardSettingsViewPrefsDraft();
   window.localStorage.removeItem(NOTES_DEFAULT_RICH_KEY);
   window.localStorage.removeItem(NOTES_MODE_BY_PATH_KEY);
   window.localStorage.removeItem(NOTES_SHOW_MARKDOWN_KEY);

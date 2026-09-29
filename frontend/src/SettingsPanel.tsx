@@ -48,10 +48,6 @@ import TelemetrySection from './components/SettingsPanel/sections/TelemetrySecti
 // Beta 3 M24: settings remainder pages (prototype §10) + vault/story import
 import AccountProfileSection from './components/SettingsPanel/sections/AccountProfileSection';
 import EditorSettingsSection from './components/SettingsPanel/sections/EditorSettingsSection';
-import {
-  commitSettingsViewPrefsDraft,
-  discardSettingsViewPrefsDraft,
-} from './noteViewPrefs';
 // Beta 4 M28: manuscript-only appearance cards live on the Editor page (§13)
 import EditorManuscriptSection from './components/SettingsPanel/sections/EditorManuscriptSection';
 import NotesBoardSection from './components/SettingsPanel/sections/NotesBoardSection';
@@ -97,9 +93,8 @@ const SETTINGS_CATS: readonly SettingsCategoryId[] = SETTINGS_CATEGORIES.map((c)
 type SettingsCat = SettingsCategoryId;
 
 export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange, initialCategory, activeVaultRoot }: Props) {
-  // F4 Probe N1: Cancel / Escape / × must not persist staged note-view toggles.
+  // Ivy H3: F2#15 owns save/close. Note-view toggles write immediately (no F4 draft).
   const dismissSettings = useCallback(() => {
-    discardSettingsViewPrefsDraft();
     onClose();
   }, [onClose]);
 
@@ -512,8 +507,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       }
       setSttBinaryToken(null);
       setSttModelToken(null);
-      // F4 Probe N1: persist staged Editor note-view toggles with Save only.
-      commitSettingsViewPrefsDraft();
       setSavedOk(true);
       applyLiquidNeonTokens(lg, bgPreviewUrl);
       applyPageBackgroundTokens(pageBg);

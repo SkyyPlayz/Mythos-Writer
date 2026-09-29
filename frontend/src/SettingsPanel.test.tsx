@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import SettingsPanel from './SettingsPanel';
+import { writeDefaultRichPref } from './noteViewPrefs';
 import { DEFAULT_BG_GRADIENT } from './theme';
 
 const defaultSettings: AppSettings = {
@@ -390,28 +391,38 @@ describe('SettingsPanel', () => {
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 
-  it('Probe N1: Cancel discards staged Source toggle (does not persist to localStorage)', async () => {
+  it('Ivy H3: Source toggle persists immediately; Cancel does not revert it', async () => {
     window.localStorage.removeItem('mythos:notes:showSourceView');
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     fireEvent.click(screen.getByRole('tab', { name: /^editor$/i }));
     await waitFor(() => screen.getByRole('switch', { name: 'Show Source Mode toggle' }));
     fireEvent.click(screen.getByRole('switch', { name: 'Show Source Mode toggle' }));
     expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'true');
+    expect(window.localStorage.getItem('mythos:notes:showSourceView')).toBe('1');
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
     expect(mockOnClose).toHaveBeenCalled();
-    expect(window.localStorage.getItem('mythos:notes:showSourceView')).toBeNull();
+    expect(window.localStorage.getItem('mythos:notes:showSourceView')).toBe('1');
   });
 
-  it('Probe N1: Escape discards staged Always-Rich OFF (does not persist defaultRich=0)', async () => {
+  it('Ivy H3 / Critic H2: remount + Save does not flip gear Always-Rich OFF back ON', async () => {
     window.localStorage.removeItem('mythos:notes:defaultRich');
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    const first = await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     fireEvent.click(screen.getByRole('tab', { name: /^editor$/i }));
     await waitFor(() => screen.getByRole('switch', { name: 'Always open notes in Rich view' }));
-    fireEvent.click(screen.getByRole('switch', { name: 'Always open notes in Rich view' }));
+    // Rail-nav / "this vault" remount: unmount first, then gear write, then reopen.
+    first.unmount();
+    writeDefaultRichPref(false);
+    const second = await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByRole('tab', { name: /^editor$/i }));
+    await waitFor(() => screen.getByRole('switch', { name: 'Always open notes in Rich view' }));
     expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'false');
-    fireEvent.keyDown(document, { key: 'Escape' });
-    expect(mockOnClose).toHaveBeenCalled();
-    expect(window.localStorage.getItem('mythos:notes:defaultRich')).toBeNull();
+    // Save on Model & keys must not rewrite view prefs.
+    fireEvent.click(screen.getByRole('tab', { name: /model & keys/i }));
+    await waitForModelKeys();
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+    expect(window.localStorage.getItem('mythos:notes:defaultRich')).toBe('0');
+    second.unmount();
   });
 
   it('calls onClose when close button is clicked', async () => {

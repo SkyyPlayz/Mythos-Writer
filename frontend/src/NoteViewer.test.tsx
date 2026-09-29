@@ -355,6 +355,20 @@ describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
     expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
   });
 
+  it('suppresses auto-source notice for sticky Source when Always-Rich is ON (CF-11 still lands Source)', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+    writeNoteModePref('Notes/StickySrc.md', 'source');
+    writeDefaultRichPref(true);
+    render(<NoteViewer path="Notes/StickySrc.md" />);
+    // Always-Rich ignores sticky at open → Rich, then CF-11 may downgrade; notice suppressed.
+    await waitFor(() => {
+      const source = screen.queryByLabelText('Edit note: StickySrc.md');
+      const rich = document.querySelector('.note-rich-editor .ProseMirror');
+      expect(source || rich).toBeTruthy();
+    });
+    expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
+  });
+
   it('F4 Probe: Settings Markdown toggle updates already-open note gear live', async () => {
     window.localStorage.removeItem(NOTES_SHOW_MARKDOWN_KEY);
     render(<NoteViewer path="Notes/Test.md" />);

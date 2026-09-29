@@ -1,15 +1,18 @@
 // Beta 3 "Liquid Neon" M24 — Settings → Editor (prototype 1871–1890).
 // Manuscript defaults (autosave snapshot cadence) + behavior toggles, bound to
 // settings.editorPrefs (additive AppSettings field persisted via Save).
-// F4#4: note view prefs — localStorage is SoT. Settings stages toggles in a
-// draft; Save commits via commitSettingsViewPrefsDraft (SettingsPanel).
-// Cancel / Escape / × discard the draft — keys and gear stay unchanged.
-import { useState } from 'react';
+// F4#4 / Ivy H3: note view prefs write localStorage immediately (same as gear).
+// F2#15 owns SettingsPanel save/close — no F4 staging draft.
+import { useEffect, useState } from 'react';
 import { M24Card, M24Slider, M24Toggle } from './M24Controls';
 import {
-  readSettingsViewPrefsDraft,
-  stageSettingsViewPref,
-  type SettingsViewPrefKey,
+  readDefaultRichPref,
+  readShowMarkdownViewPref,
+  readShowSourceViewPref,
+  subscribeNoteViewPrefs,
+  writeDefaultRichPref,
+  writeShowMarkdownViewPref,
+  writeShowSourceViewPref,
 } from '../../../noteViewPrefs';
 import './M24Sections.css';
 
@@ -19,10 +22,8 @@ interface Props {
   setSavedOk: (ok: boolean) => void;
 }
 
-/** Behavior/autosave defaults only — view prefs live in localStorage SoT. */
-type BehaviorPrefs = Omit<EditorPrefs, 'showMarkdownView' | 'showSourceView' | 'alwaysOpenRich'>;
-
-export const EDITOR_PREFS_DEFAULTS: Required<BehaviorPrefs> = {
+/** Behavior/autosave defaults — view prefs are localStorage SoT, not EditorPrefs. */
+export const EDITOR_PREFS_DEFAULTS: Required<EditorPrefs> = {
   autosaveSeconds: 30, // prototype sx.autosave (HTML 3295)
   spellcheck: true,
   smartQuotes: true,
@@ -40,7 +41,7 @@ const BEHAVIOR_TOGGLE_ROWS: {
   { key: 'dictation', label: 'Voice dictation (offline model)' },
 ];
 
-type ViewKey = SettingsViewPrefKey;
+type ViewKey = 'alwaysOpenRich' | 'showMarkdownView' | 'showSourceView';
 
 const VIEW_TOGGLE_ROWS: {
   key: ViewKey;
@@ -64,13 +65,22 @@ const VIEW_TOGGLE_ROWS: {
   },
 ];
 
+function readViewPrefs() {
+  return {
+    alwaysOpenRich: readDefaultRichPref(),
+    showMarkdownView: readShowMarkdownViewPref(),
+    showSourceView: readShowSourceViewPref(),
+  };
+}
+
 export default function EditorSettingsSection({ settings, setSettings, setSavedOk }: Props) {
-  const prefs: Required<BehaviorPrefs> = { ...EDITOR_PREFS_DEFAULTS, ...settings.editorPrefs };
-  // Draft UI — commit only on Settings Save (Probe N1).
-  const [viewPrefs, setViewPrefs] = useState(readSettingsViewPrefsDraft);
+  const prefs: Required<EditorPrefs> = { ...EDITOR_PREFS_DEFAULTS, ...settings.editorPrefs };
+  const [viewPrefs, setViewPrefs] = useState(readViewPrefs);
+
+  useEffect(() => subscribeNoteViewPrefs(() => setViewPrefs(readViewPrefs())), []);
 
   /** Behavior / autosave — never touches view-pref localStorage. */
-  const patchBehavior = (p: Partial<BehaviorPrefs>) => {
+  const patchBehavior = (p: Partial<EditorPrefs>) => {
     setSettings((prev) => ({
       ...prev,
       editorPrefs: { ...EDITOR_PREFS_DEFAULTS, ...prev.editorPrefs, ...p },
@@ -78,11 +88,24 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
     setSavedOk(false);
   };
 
-  /** Stage only — Cancel/Escape must not persist (Probe N1). */
+  /** Immediate localStorage write (Ivy H3 / F2#15) — not gated on Settings Save. */
   const setViewPref = (key: ViewKey, value: boolean) => {
-    stageSettingsViewPref(key, value);
-    setViewPrefs(readSettingsViewPrefsDraft());
-    setSavedOk(false);
+    switch (key) {
+      case 'alwaysOpenRich':
+        writeDefaultRichPref(value);
+        break;
+      case 'showMarkdownView':
+        writeShowMarkdownViewPref(value);
+        break;
+      case 'showSourceView':
+        writeShowSourceViewPref(value);
+        break;
+      default: {
+        const _exhaustive: never = key;
+        void _exhaustive;
+      }
+    }
+    setViewPrefs(readViewPrefs());
   };
 
   return (
@@ -121,7 +144,7 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
       <M24Card title="Note view">
         <div style={{ fontSize: 10.5, color: '#7686a2', marginBottom: 12 }}>
           Rich is the default. Enable Markdown or Source here to show them in the note gear menu.
-          Changes apply when you Save — Cancel leaves them as they were.
+          Changes apply immediately (same as the note gear).
         </div>
         {VIEW_TOGGLE_ROWS.map(({ key, label, hint }) => (
           <div key={key} style={{ padding: '5px 0' }}>

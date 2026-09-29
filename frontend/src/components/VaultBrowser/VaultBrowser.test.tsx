@@ -1683,6 +1683,10 @@ describe('F4#8: search above toolbar', () => {
     expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?height:\s*30px/);
     expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?border-radius:\s*9px/);
     expect(css).toMatch(/rgba\(255,\s*255,\s*255,\s*0?\.05\)/);
+    // Probe soft: narrow header — search input can shrink; chrome does not.
+    expect(css).toMatch(/\.vb-notes-search-input\s*\{[\s\S]*?min-width:\s*0/);
+    expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?flex-shrink:\s*0/);
+    expect(css).toMatch(/\.vb-notes-toolbar\s*\{[\s\S]*?flex-shrink:\s*0/);
   });
 
   it('places search before the notes toolbar in DOM order', async () => {

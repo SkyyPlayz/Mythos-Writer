@@ -370,7 +370,7 @@ export default function NoteViewer({
     modeProp === undefined
       && !previewMode
       && openAtMountRef.current!.mode === 'rich'
-      && readNoteModePref(path) !== 'rich',
+      && openAtMountRef.current!.sticky !== 'rich',
   );
   // Soft 6: sticky Source + Always-Rich ON still CF-11-downgrades, but skip the notice.
   const suppressAutoSourceNoticeRef = useRef(openAtMountRef.current!.sticky === 'source');
