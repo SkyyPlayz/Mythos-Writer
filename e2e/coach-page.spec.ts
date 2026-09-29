@@ -41,6 +41,13 @@ function buildAppSettings(): object {
   return {
     apiKey: 'sk-ant-e2e-coach-page',
     onboardingComplete: true,
+    // F3 P4 — coach send / Full Analysis call refuseUnlessProviderReady('writingAssistant').
+    // Without structural provider, send refuses before IPC mock → no bubble persisted.
+    provider: {
+      kind: 'anthropic',
+      model: 'claude-haiku-4-5-20251001',
+      apiKey: 'sk-ant-e2e-coach-page',
+    },
     agents: {
       writingAssistant: {
         enabled: true,
@@ -134,9 +141,9 @@ async function installCoachChatMock(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ ipcMain }, args) => {
     try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* not registered */ }
     try { ipcMain.removeHandler('agent:brainstorm'); } catch { /* not registered */ }
-    // F3#1 — Coach page chat send uses invokeBrainstorm.
-    ipcMain.handle('agent:brainstorm', async () => ({ text: args.response }));
+    // Probe P4 — Coach page chat + Full Analysis use writingAssistant (never brainstorm).
     ipcMain.handle('agent:writing-assistant', async () => ({ text: args.response }));
+    ipcMain.handle('agent:brainstorm', async () => ({ text: args.response }));
   }, { response: MOCK_COACH_RESPONSE });
 }
 
@@ -231,9 +238,10 @@ test('M12: sending a prompt renders user bubble then coach reply in the feed', a
 
   const input = page.locator('[data-testid="coach-input"]');
   await input.fill('Teach me pacing with my own text please');
-  await input.press('Enter');
+  // Click send — more reliable than Enter when focus/composer churns after Full Analysis open.
+  await page.getByTestId('coach-send').click();
 
-  // Optimistic user bubble
+  // Optimistic user bubble (then persisted once mock WA IPC returns)
   await expect(page.locator('.coach-bubble--user', { hasText: 'Teach me pacing with my own text please' }).last())
     .toBeVisible({ timeout: 5_000 });
 
@@ -245,10 +253,10 @@ test('M12: sending a prompt renders user bubble then coach reply in the feed', a
 test('M12 §14.6: Coach page and right-panel Coach chat share ONE conversation', async () => {
   await openCoachPage(page);
 
-  // Slice B: Writer hand opens the shared coach session in the partner panel.
+  // Slice B / N4-A: partner tips strip always mounts WA — open Partner tab only.
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 6_000 });
   await page.locator('[data-testid="ahp-tab-partner"]').click();
-  await page.locator('[data-testid="ahp-action-writer-scan"]').click();
+  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 
   // F3#1 — same partner thread: exchange from Coach page is in hub MiniAgentChat.
@@ -298,12 +306,19 @@ test('M13 acceptance: with AI failing, View Full Analysis still lands a computed
 });
 
 test('M13 §14.7: Full Analysis opens in Coach with COMPUTED vs COACH\'S READ sections', async () => {
-  // Analysis AI read still uses writing-assistant; chat send is brainstorm (F3#1).
+  // P4 — both chat send and Full Analysis AI read use writingAssistant.
+  // Route by prompt shape so free chat still gets the lesson mock.
   await app!.evaluate(({ ipcMain }, args) => {
     try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* not registered */ }
     try { ipcMain.removeHandler('agent:brainstorm'); } catch { /* not registered */ }
+    ipcMain.handle('agent:writing-assistant', async (_evt: unknown, prompt: unknown) => {
+      const text = typeof prompt === 'string' ? prompt : '';
+      if (text.includes('Respond with ONLY a JSON object')) {
+        return { text: args.analysisResponse };
+      }
+      return { text: args.chatResponse };
+    });
     ipcMain.handle('agent:brainstorm', async () => ({ text: args.chatResponse }));
-    ipcMain.handle('agent:writing-assistant', async () => ({ text: args.analysisResponse }));
   }, {
     chatResponse: MOCK_COACH_RESPONSE,
     analysisResponse: JSON.stringify({
@@ -322,7 +337,7 @@ test('M13 §14.7: Full Analysis opens in Coach with COMPUTED vs COACH\'S READ se
   await openCoachPage(page);
   const input = page.locator('[data-testid="coach-input"]');
   await input.fill('One more question about pacing');
-  await input.press('Enter');
+  await page.getByTestId('coach-send').click();
   await expect(page.locator('.coach-bubble--user', { hasText: 'One more question about pacing' }).last())
     .toBeVisible({ timeout: 8_000 });
   await expect(page.locator('.coach-bubble--coach', { hasText: MOCK_COACH_RESPONSE }).last())
