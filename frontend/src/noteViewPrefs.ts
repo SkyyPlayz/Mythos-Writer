@@ -110,6 +110,50 @@ export function writeShowSourceViewPref(on: boolean): void {
   notifyNoteViewPrefsChanged();
 }
 
+/**
+ * Settings → Editor view-pref draft (Probe N1).
+ * Toggles stage here; `commitSettingsViewPrefsDraft` runs on Save;
+ * `discardSettingsViewPrefsDraft` runs on Cancel / Escape / ×.
+ * Gear menu still writes localStorage immediately (intentional choice).
+ */
+export type SettingsViewPrefKey = 'alwaysOpenRich' | 'showMarkdownView' | 'showSourceView';
+export type SettingsViewPrefsDraft = Record<SettingsViewPrefKey, boolean>;
+
+let settingsViewDraft: SettingsViewPrefsDraft | null = null;
+
+function snapshotViewPrefsFromStorage(): SettingsViewPrefsDraft {
+  return {
+    alwaysOpenRich: readDefaultRichPref(),
+    showMarkdownView: readShowMarkdownViewPref(),
+    showSourceView: readShowSourceViewPref(),
+  };
+}
+
+export function readSettingsViewPrefsDraft(): SettingsViewPrefsDraft {
+  if (!settingsViewDraft) settingsViewDraft = snapshotViewPrefsFromStorage();
+  return { ...settingsViewDraft };
+}
+
+export function stageSettingsViewPref(key: SettingsViewPrefKey, value: boolean): void {
+  if (!settingsViewDraft) settingsViewDraft = snapshotViewPrefsFromStorage();
+  settingsViewDraft = { ...settingsViewDraft, [key]: value };
+}
+
+/** Flush staged Settings view prefs to localStorage SoT (call from Settings Save). */
+export function commitSettingsViewPrefsDraft(): void {
+  if (!settingsViewDraft) return;
+  const d = settingsViewDraft;
+  settingsViewDraft = null;
+  writeDefaultRichPref(d.alwaysOpenRich);
+  writeShowMarkdownViewPref(d.showMarkdownView);
+  writeShowSourceViewPref(d.showSourceView);
+}
+
+/** Drop staged Settings view prefs without writing (Cancel / Escape / ×). */
+export function discardSettingsViewPrefsDraft(): void {
+  settingsViewDraft = null;
+}
+
 export function readNoteModePref(path: string): StickyNoteMode | null {
   try {
     const raw = window.localStorage.getItem(NOTES_MODE_BY_PATH_KEY);
@@ -138,16 +182,6 @@ export function writeNoteModePref(path: string, mode: StickyNoteMode): void {
     }
     map[path] = mode;
     window.localStorage.setItem(NOTES_MODE_BY_PATH_KEY, JSON.stringify(map));
-  } catch {
-    /* ignore */
-  }
-  notifyNoteViewPrefsChanged();
-}
-
-/** Clears every sticky per-note mode (legacy helper; Always-Rich no longer wipes). */
-export function clearAllNoteModePrefs(): void {
-  try {
-    window.localStorage.removeItem(NOTES_MODE_BY_PATH_KEY);
   } catch {
     /* ignore */
   }

@@ -1670,6 +1670,21 @@ describe('M16: collapse all', () => {
 });
 
 describe('F4#8: search above toolbar', () => {
+  it('Probe N2: search has magnifier and prototype box contract in CSS', async () => {
+    render(<VaultBrowser {...baseProps} />);
+    expect(await screen.findByTestId('vb-search-magnifier')).toBeTruthy();
+    const search = screen.getByTestId('vb-notes-search');
+    expect(search.compareDocumentPosition(screen.getByTestId('vb-notes-toolbar'))
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // CSS contract (jsdom won't compute): 30px / 9px / neon — asserted via ?raw.
+    const cssMod = await import('./VaultBrowser.css?raw');
+    const css = (cssMod as { default: string }).default;
+    expect(css.length).toBeGreaterThan(100);
+    expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?height:\s*30px/);
+    expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?border-radius:\s*9px/);
+    expect(css).toMatch(/rgba\(255,\s*255,\s*255,\s*0?\.05\)/);
+  });
+
   it('places search before the notes toolbar in DOM order', async () => {
     await renderNotesVaultWithItems([{ path: 'a.md', name: 'a.md', isDirectory: false, modifiedAt: '' }]);
     const search = screen.getByTestId('vb-notes-search');

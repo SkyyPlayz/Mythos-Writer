@@ -410,31 +410,39 @@
 }
 
 /* M16: toolbar */
+/* F4#8 / Probe N2: bordered 5-icon toolbar (Liquid Neon HTML ~312–318). */
 .vb-notes-toolbar {
   display: flex;
   align-items: center;
-  padding: 4px 6px 4px 8px;
-  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  margin: 0 12px 8px;
+  padding: 3px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   flex-shrink: 0;
   gap: 2px;
 }
 
 .vb-toolbar-btn {
+  flex: 1;
+  height: 24px;
   background: none;
   border: none;
   cursor: pointer;
-  color: var(--text-muted, rgba(255,255,255,0.5));
+  color: #8e9db8;
   font-size: 0.8rem;
-  padding: 2px 5px;
-  border-radius: var(--radius-xs, 3px);
+  padding: 0;
+  border-radius: 7px;
   line-height: 1;
-  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: color 80ms ease, background 80ms ease;
 }
 
 .vb-toolbar-btn:hover {
-  color: var(--text-header, #fff);
-  background: var(--glass-highlight, rgba(255,255,255,0.06));
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .vb-toolbar-btn--active {
@@ -442,33 +450,50 @@
   background: rgba(0, 240, 255, 0.08);
 }
 
-/* M16: search */
+/* F4#8 / Probe N2: search box (Liquid Neon HTML ~308–311) — 30px / 9px / neon. */
 .vb-notes-search {
   display: flex;
   align-items: center;
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--glass-border, rgba(255,255,255,0.08));
+  margin: 0 12px 10px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, 0.2));
+  box-shadow: var(--glowH, none);
   flex-shrink: 0;
-  gap: 4px;
+  gap: 7px;
+}
+
+.vb-notes-search:hover,
+.vb-notes-search:focus-within {
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+.vb-notes-search-icon {
+  flex-shrink: 0;
+  display: block;
 }
 
 .vb-notes-search-input {
   flex: 1;
-  background: var(--input-bg, rgba(255,255,255,0.06));
-  border: 1px solid var(--glass-border, rgba(255,255,255,0.1));
-  border-radius: var(--radius-xs, 3px);
-  color: var(--text-primary, #fff);
-  font-size: 0.75rem;
-  padding: 3px 6px;
+  min-width: 0;
+  height: 100%;
+  background: none;
+  border: none;
+  border-radius: 0;
+  color: #dbe4f5;
+  font-size: 11.5px;
+  padding: 0;
   outline: none;
 }
 
 .vb-notes-search-input::placeholder {
-  color: var(--text-muted, rgba(255,255,255,0.35));
+  color: var(--text-muted, rgba(255, 255, 255, 0.35));
 }
 
 .vb-notes-search-input:focus {
-  border-color: var(--accent, #00f0ff);
+  border-color: transparent;
 }
 
 .vb-notes-search-clear {

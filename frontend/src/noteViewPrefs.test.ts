@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   NOTES_DEFAULT_RICH_KEY,
   NOTES_MODE_BY_PATH_KEY,
   NOTES_SHOW_MARKDOWN_KEY,
   NOTES_SHOW_SOURCE_KEY,
-  clearAllNoteModePrefs,
+  discardSettingsViewPrefsDraft,
   enabledGearModes,
   readDefaultRichPref,
   readNoteModePref,
@@ -17,6 +17,7 @@ import {
 } from './noteViewPrefs';
 
 afterEach(() => {
+  discardSettingsViewPrefsDraft();
   window.localStorage.removeItem(NOTES_DEFAULT_RICH_KEY);
   window.localStorage.removeItem(NOTES_MODE_BY_PATH_KEY);
   window.localStorage.removeItem(NOTES_SHOW_MARKDOWN_KEY);
@@ -65,6 +66,19 @@ describe('noteViewPrefs (F4#4)', () => {
     expect(readNoteModePref('Notes/Old.md')).toBe('source');
   });
 
+  it('Probe fail 3: seeded prefs survive vi.resetModules + re-import (no import-time wipe)', async () => {
+    window.localStorage.setItem(NOTES_DEFAULT_RICH_KEY, '0');
+    window.localStorage.setItem(
+      NOTES_MODE_BY_PATH_KEY,
+      JSON.stringify({ 'Notes/Old.md': 'source' }),
+    );
+    vi.resetModules();
+    const fresh = await import('./noteViewPrefs');
+    expect(window.localStorage.getItem(NOTES_DEFAULT_RICH_KEY)).toBe('0');
+    expect(fresh.readDefaultRichPref()).toBe(false);
+    expect(fresh.readNoteModePref('Notes/Old.md')).toBe('source');
+  });
+
   it('Always-Rich ON opens Rich ignoring sticky; sticky stays stored', () => {
     writeNoteModePref('Notes/A.md', 'source');
     writeDefaultRichPref(true);
@@ -86,12 +100,6 @@ describe('noteViewPrefs (F4#4)', () => {
     expect(readShowMarkdownViewPref()).toBe(true);
     expect(readDefaultRichPref()).toBe(false);
     expect(readNoteModePref('Notes/A.md')).toBe('markdown');
-  });
-
-  it('clearAllNoteModePrefs wipes the sticky map', () => {
-    writeNoteModePref('Notes/A.md', 'markdown');
-    clearAllNoteModePrefs();
-    expect(readNoteModePref('Notes/A.md')).toBeNull();
   });
 
   it('subscribeNoteViewPrefs fires on same-tab writes', () => {

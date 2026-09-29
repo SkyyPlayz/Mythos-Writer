@@ -1179,8 +1179,23 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           </>
         )}
       </div>
-      {/* F4#8 / prototype: search sits ABOVE the toolbar (Liquid Neon HTML ~308–318). */}
+      {/* F4#8 / Probe N2: search ABOVE toolbar (Liquid Neon HTML ~308–318). */}
       <div className="vb-notes-search" data-testid="vb-notes-search">
+        <svg
+          className="vb-notes-search-icon"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#8e9db8"
+          strokeWidth="2"
+          strokeLinecap="round"
+          aria-hidden="true"
+          data-testid="vb-search-magnifier"
+        >
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="M20.5 20.5L16 16" />
+        </svg>
         <input
           className="vb-notes-search-input"
           type="text"
@@ -1379,8 +1394,6 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
         onClose={() => setDialogOpen(false)}
         onCreated={handleNoteCreated}
       />
-      {/* Backlinks stay after Recent in the left explorer (F4#13 right-sidebar
-          order is F5 NotesTabPanel — do not reorder here). */}
       {selected && !selected.endsWith('/') && selected.endsWith('.md') && (
         <BacklinksPane notePath={selected} onOpen={handleOpen} />
       )}

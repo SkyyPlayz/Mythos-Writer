@@ -1,17 +1,15 @@
 // Beta 3 "Liquid Neon" M24 — Settings → Editor (prototype 1871–1890).
 // Manuscript defaults (autosave snapshot cadence) + behavior toggles, bound to
 // settings.editorPrefs (additive AppSettings field persisted via Save).
-// F4#4: note view prefs — localStorage is SoT. Gear and Settings both read/write
-// the same keys. No editorPrefs mirror/hydrate for view prefs.
+// F4#4: note view prefs — localStorage is SoT. Settings stages toggles in a
+// draft; Save commits via commitSettingsViewPrefsDraft (SettingsPanel).
+// Cancel / Escape / × discard the draft — keys and gear stay unchanged.
 import { useState } from 'react';
 import { M24Card, M24Slider, M24Toggle } from './M24Controls';
 import {
-  readDefaultRichPref,
-  readShowMarkdownViewPref,
-  readShowSourceViewPref,
-  writeDefaultRichPref,
-  writeShowMarkdownViewPref,
-  writeShowSourceViewPref,
+  readSettingsViewPrefsDraft,
+  stageSettingsViewPref,
+  type SettingsViewPrefKey,
 } from '../../../noteViewPrefs';
 import './M24Sections.css';
 
@@ -21,15 +19,15 @@ interface Props {
   setSavedOk: (ok: boolean) => void;
 }
 
-export const EDITOR_PREFS_DEFAULTS: Required<EditorPrefs> = {
+/** Behavior/autosave defaults only — view prefs live in localStorage SoT. */
+type BehaviorPrefs = Omit<EditorPrefs, 'showMarkdownView' | 'showSourceView' | 'alwaysOpenRich'>;
+
+export const EDITOR_PREFS_DEFAULTS: Required<BehaviorPrefs> = {
   autosaveSeconds: 30, // prototype sx.autosave (HTML 3295)
   spellcheck: true,
   smartQuotes: true,
   dimFocus: true,
   dictation: false,
-  showMarkdownView: false,
-  showSourceView: false,
-  alwaysOpenRich: true,
 };
 
 const BEHAVIOR_TOGGLE_ROWS: {
@@ -42,7 +40,7 @@ const BEHAVIOR_TOGGLE_ROWS: {
   { key: 'dictation', label: 'Voice dictation (offline model)' },
 ];
 
-type ViewKey = 'showMarkdownView' | 'showSourceView' | 'alwaysOpenRich';
+type ViewKey = SettingsViewPrefKey;
 
 const VIEW_TOGGLE_ROWS: {
   key: ViewKey;
@@ -66,40 +64,13 @@ const VIEW_TOGGLE_ROWS: {
   },
 ];
 
-function readViewPrefsFromStorage(): Record<ViewKey, boolean> {
-  return {
-    alwaysOpenRich: readDefaultRichPref(),
-    showMarkdownView: readShowMarkdownViewPref(),
-    showSourceView: readShowSourceViewPref(),
-  };
-}
-
-/** Write one view key into localStorage SoT (gear reads the same keys). */
-function writeViewPref(key: ViewKey, value: boolean): void {
-  if (key === 'alwaysOpenRich') {
-    // Keep sticky modes stored — resolve ignores them while Always-Rich is ON.
-    writeDefaultRichPref(value);
-    return;
-  }
-  if (key === 'showMarkdownView') {
-    writeShowMarkdownViewPref(value);
-    return;
-  }
-  if (key === 'showSourceView') {
-    writeShowSourceViewPref(value);
-    return;
-  }
-  const _exhaustive: never = key;
-  void _exhaustive;
-}
-
 export default function EditorSettingsSection({ settings, setSettings, setSavedOk }: Props) {
-  const prefs: Required<EditorPrefs> = { ...EDITOR_PREFS_DEFAULTS, ...settings.editorPrefs };
-  // Plain useState — re-read on each view-toggle write via setViewPrefs.
-  const [viewPrefs, setViewPrefs] = useState(readViewPrefsFromStorage);
+  const prefs: Required<BehaviorPrefs> = { ...EDITOR_PREFS_DEFAULTS, ...settings.editorPrefs };
+  // Draft UI — commit only on Settings Save (Probe N1).
+  const [viewPrefs, setViewPrefs] = useState(readSettingsViewPrefsDraft);
 
   /** Behavior / autosave — never touches view-pref localStorage. */
-  const patchBehavior = (p: Partial<EditorPrefs>) => {
+  const patchBehavior = (p: Partial<BehaviorPrefs>) => {
     setSettings((prev) => ({
       ...prev,
       editorPrefs: { ...EDITOR_PREFS_DEFAULTS, ...prev.editorPrefs, ...p },
@@ -107,10 +78,10 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
     setSavedOk(false);
   };
 
-  /** View toggles — localStorage SoT only (no editorPrefs mirror). */
+  /** Stage only — Cancel/Escape must not persist (Probe N1). */
   const setViewPref = (key: ViewKey, value: boolean) => {
-    writeViewPref(key, value);
-    setViewPrefs(readViewPrefsFromStorage());
+    stageSettingsViewPref(key, value);
+    setViewPrefs(readSettingsViewPrefsDraft());
     setSavedOk(false);
   };
 
@@ -150,6 +121,7 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
       <M24Card title="Note view">
         <div style={{ fontSize: 10.5, color: '#7686a2', marginBottom: 12 }}>
           Rich is the default. Enable Markdown or Source here to show them in the note gear menu.
+          Changes apply when you Save — Cancel leaves them as they were.
         </div>
         {VIEW_TOGGLE_ROWS.map(({ key, label, hint }) => (
           <div key={key} style={{ padding: '5px 0' }}>

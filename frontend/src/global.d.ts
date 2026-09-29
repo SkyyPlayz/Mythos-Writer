@@ -539,8 +539,8 @@ interface EditorPrefs {
   showSourceView?: boolean;
   /**
    * F4#4: newly opened notes (no sticky per-note choice) land in Rich.
-   * Default true. Mirrored to localStorage so NoteViewer can read it without
-   * a Settings prop chain through the shell.
+   * Default true. Canonical store is localStorage (`mythos:notes:defaultRich`);
+   * this field is unused / legacy on AppSettings.
    */
   alwaysOpenRich?: boolean;
 }

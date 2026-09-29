@@ -342,34 +342,38 @@ export default function NoteViewer({
   // Live SoT for gear — Settings writes localStorage and notifies subscribers.
   const [showMarkdown, setShowMarkdown] = useState(readShowMarkdownViewPref);
   const [showSource, setShowSource] = useState(readShowSourceViewPref);
-  const [stickyMode, setStickyMode] = useState(() => readNoteModePref(path));
-
-  useEffect(() => {
-    setStickyMode(readNoteModePref(path));
-  }, [path]);
 
   // F4#4 Probe: gear ↔ Settings live sync (same-tab pub-sub + cross-tab storage).
   useEffect(() => subscribeNoteViewPrefs(() => {
     setDefaultRich(readDefaultRichPref());
     setShowMarkdown(readShowMarkdownViewPref());
     setShowSource(readShowSourceViewPref());
-    setStickyMode(readNoteModePref(path));
-  }), [path]);
+  }), []);
 
   // F4#4 / Critic H1: Always-Rich ON → Rich at open (sticky kept for OFF restore).
-  const resolvedMode: NoteViewerMode = resolveNoteOpenMode({
-    path,
-    modeProp: modeProp ?? null,
-    previewMode,
-    defaultRich,
-  });
-  const [mode, setMode] = useState<NoteViewerMode>(resolvedMode);
-  // True while the initial mode came from Always-Rich / default (not an explicit
-  // prop) — the fidelity guard then downgrades silently on load (CF-11).
-  // When Always-Rich is OFF and sticky Source is deliberate, skip the notice.
+  // Mount-only resolve — avoid re-parsing modeByPath on every keystroke (Critic soft).
+  const openAtMountRef = useRef<{ mode: NoteViewerMode; sticky: StickyNoteMode | null } | null>(null);
+  if (openAtMountRef.current === null) {
+    openAtMountRef.current = {
+      mode: resolveNoteOpenMode({
+        path,
+        modeProp: modeProp ?? null,
+        previewMode,
+        defaultRich: readDefaultRichPref(),
+      }),
+      sticky: readNoteModePref(path),
+    };
+  }
+  const [mode, setMode] = useState<NoteViewerMode>(() => openAtMountRef.current!.mode);
+  // Critic H3 / Ivy: sticky 'rich' ("Open in Rich anyway") skips CF-11 downgrade.
   const pendingPrefRichRef = useRef(
-    modeProp === undefined && !previewMode && resolvedMode === 'rich',
+    modeProp === undefined
+      && !previewMode
+      && openAtMountRef.current!.mode === 'rich'
+      && readNoteModePref(path) !== 'rich',
   );
+  // Soft 6: sticky Source + Always-Rich ON still CF-11-downgrades, but skip the notice.
+  const suppressAutoSourceNoticeRef = useRef(openAtMountRef.current!.sticky === 'source');
 
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -440,7 +444,7 @@ export default function NoteViewer({
       previewMode,
       defaultRich,
     }));
-  }, [previewMode, modeProp, path, stickyMode, defaultRich]);
+  }, [previewMode, modeProp, path, defaultRich]);
 
   useEffect(() => {
     setLoading(true);
@@ -457,7 +461,9 @@ export default function NoteViewer({
           const lossy = detectLossyFeatures(stripHiddenBlocks(r.content));
           if (lossy.length > 0) {
             applyModeRef.current('source');
-            setAutoSourceNotice(lossy);
+            if (!suppressAutoSourceNoticeRef.current) {
+              setAutoSourceNotice(lossy);
+            }
           }
         }
       })

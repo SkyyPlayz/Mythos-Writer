@@ -390,6 +390,30 @@ describe('SettingsPanel', () => {
     expect(mockOnClose).toHaveBeenCalledTimes(1);
   });
 
+  it('Probe N1: Cancel discards staged Source toggle (does not persist to localStorage)', async () => {
+    window.localStorage.removeItem('mythos:notes:showSourceView');
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByRole('tab', { name: /^editor$/i }));
+    await waitFor(() => screen.getByRole('switch', { name: 'Show Source Mode toggle' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Source Mode toggle' }));
+    expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
+    expect(mockOnClose).toHaveBeenCalled();
+    expect(window.localStorage.getItem('mythos:notes:showSourceView')).toBeNull();
+  });
+
+  it('Probe N1: Escape discards staged Always-Rich OFF (does not persist defaultRich=0)', async () => {
+    window.localStorage.removeItem('mythos:notes:defaultRich');
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByRole('tab', { name: /^editor$/i }));
+    await waitFor(() => screen.getByRole('switch', { name: 'Always open notes in Rich view' }));
+    fireEvent.click(screen.getByRole('switch', { name: 'Always open notes in Rich view' }));
+    expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'false');
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(mockOnClose).toHaveBeenCalled();
+    expect(window.localStorage.getItem('mythos:notes:defaultRich')).toBeNull();
+  });
+
   it('calls onClose when close button is clicked', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByLabelText(/close settings/i));

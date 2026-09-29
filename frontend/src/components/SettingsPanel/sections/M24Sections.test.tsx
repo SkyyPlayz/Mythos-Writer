@@ -2,12 +2,21 @@
 // A11y contract (SKY-814): every slider carries an aria-label; the settings
 // e2e grabs the FIRST range input in each tabpanel, so that label must exist.
 import { render, screen, fireEvent, act } from '@testing-library/react';
+import { afterEach } from 'vitest';
 import AccountProfileSection from './AccountProfileSection';
 import EditorSettingsSection, { EDITOR_PREFS_DEFAULTS } from './EditorSettingsSection';
 import SyncBackupSection from './SyncBackupSection';
 import ShortcutsSection from './ShortcutsSection';
 import AboutSection from './AboutSection';
 import { buildShortcutGroups, MOD } from '../../../shortcuts';
+import {
+  commitSettingsViewPrefsDraft,
+  discardSettingsViewPrefsDraft,
+} from '../../../noteViewPrefs';
+
+afterEach(() => {
+  discardSettingsViewPrefsDraft();
+});
 
 const baseSettings: AppSettings = {
   apiKey: '',
@@ -107,14 +116,15 @@ describe('EditorSettingsSection', () => {
     expect(updater(baseSettings).editorPrefs?.spellcheck).toBe(false);
   });
 
-  it('F4#4: Note view toggles write localStorage SoT (not editorPrefs)', () => {
+  it('F4#4 / Probe N1: Note view toggles stage only (no localStorage until Save commit)', () => {
     window.localStorage.removeItem('mythos:notes:showMarkdownView');
     render(<EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
     expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByRole('switch', { name: 'Show Markdown view toggle' }));
-    expect(window.localStorage.getItem('mythos:notes:showMarkdownView')).toBe('1');
+    // Staged in UI — must NOT write SoT until Settings Save commits the draft.
+    expect(window.localStorage.getItem('mythos:notes:showMarkdownView')).toBeNull();
     expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'true');
   });
 
@@ -139,9 +149,27 @@ describe('EditorSettingsSection', () => {
     );
     render(<EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
     fireEvent.click(screen.getByRole('switch', { name: 'Always open notes in Rich view' }));
+    commitSettingsViewPrefsDraft();
     expect(window.localStorage.getItem('mythos:notes:modeByPath')).toBe(
       JSON.stringify({ 'Notes/Keep.md': 'source' }),
     );
+  });
+
+  it('Probe N1: commit writes staged Markdown; discard leaves SoT untouched', () => {
+    window.localStorage.removeItem('mythos:notes:showMarkdownView');
+    const { unmount } = render(
+      <EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />,
+    );
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Markdown view toggle' }));
+    expect(window.localStorage.getItem('mythos:notes:showMarkdownView')).toBeNull();
+    discardSettingsViewPrefsDraft();
+    expect(window.localStorage.getItem('mythos:notes:showMarkdownView')).toBeNull();
+    unmount();
+    // Fresh mount + Save commit path.
+    render(<EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Markdown view toggle' }));
+    commitSettingsViewPrefsDraft();
+    expect(window.localStorage.getItem('mythos:notes:showMarkdownView')).toBe('1');
   });
 
   it('F4 Probe: remounting Settings does not silently flip saved Markdown/Source off', () => {
@@ -153,7 +181,6 @@ describe('EditorSettingsSection', () => {
     expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'true');
     unmount();
-    // Simulate Cancel / reopen — no hydrate from editorPrefs; localStorage SoT holds.
     render(<EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
     expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'true');

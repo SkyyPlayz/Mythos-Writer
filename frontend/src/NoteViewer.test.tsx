@@ -252,6 +252,26 @@ describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
     expect(readNoteModePref('Notes/Legacy.md')).toBe('source');
   });
 
+  it('Critic H3: sticky Rich + lossy content reopens Rich with no auto-source notice (Always-Rich ON)', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+    writeNoteModePref('Notes/Lossy.md', 'rich');
+    writeDefaultRichPref(true);
+    render(<NoteViewer path="Notes/Lossy.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
+    expect(readNoteModePref('Notes/Lossy.md')).toBe('rich');
+  });
+
+  it('Critic H3: sticky Rich + lossy content reopens Rich with no notice (Always-Rich OFF)', async () => {
+    readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
+    writeNoteModePref('Notes/Lossy.md', 'rich');
+    writeDefaultRichPref(false);
+    render(<NoteViewer path="Notes/Lossy.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
+    expect(screen.queryByLabelText('Edit note: Lossy.md')).toBeNull();
+  });
+
   it('F4#4: turning Always-Rich ON keeps sticky stored (no wipe)', async () => {
     const { unmount } = render(<NoteViewer path="Notes/Test.md" />);
     await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
