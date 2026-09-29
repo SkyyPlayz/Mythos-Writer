@@ -1,17 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import BetaReaderPage from './BetaReaderPage';
 import { commentsStore } from '../comments';
 import { __resetAgentSessionStores } from '../lib/useAgentSessions';
 import type { Story, Chapter, Scene } from '../types';
-
-type TokenHandler = (data: { streamId: string; token: string }) => void;
-type EndHandler = (data: { streamId: string }) => void;
-type ErrorHandler = (data: { streamId: string; message: string }) => void;
-
-let tokenCb: TokenHandler | null = null;
-let endCb: EndHandler | null = null;
-let errorCb: ErrorHandler | null = null;
 
 function makeScene(): Scene {
   return {
@@ -55,26 +47,23 @@ const REPORT: BetaReport = {
 const mockBetaReportList = vi.fn();
 const mockBetaReportGet = vi.fn();
 const mockBetaReportRun = vi.fn();
-const mockStreamStart = vi.fn();
-const mockStreamAck = vi.fn();
 
 function buildApi(overrides: Record<string, unknown> = {}) {
   return {
     betaReportList: mockBetaReportList,
     betaReportGet: mockBetaReportGet,
     betaReportRun: mockBetaReportRun,
-    streamStart: mockStreamStart,
-    streamAck: mockStreamAck,
-    onStreamToken: (cb: TokenHandler) => { tokenCb = cb; return () => { tokenCb = null; }; },
-    onStreamEnd: (cb: EndHandler) => { endCb = cb; return () => { endCb = null; }; },
-    onStreamError: (cb: ErrorHandler) => { errorCb = cb; return () => { errorCb = null; }; },
+    streamStart: vi.fn().mockResolvedValue({ streamId: 'unused' }),
+    streamAck: vi.fn(),
+    onStreamToken: () => () => {},
+    onStreamEnd: () => () => {},
+    onStreamError: () => () => {},
     ...overrides,
   };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  tokenCb = null; endCb = null; errorCb = null;
   mockBetaReportList.mockResolvedValue({ reports: [] });
   mockBetaReportGet.mockResolvedValue({ report: null });
   __resetAgentSessionStores();
