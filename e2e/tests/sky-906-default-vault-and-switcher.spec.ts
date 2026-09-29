@@ -142,6 +142,8 @@ async function completeBlankVaultCreation(pg: Page): Promise<void> {
   await expect(pg.getByTestId('welcome-overlay')).toBeVisible({ timeout: 30_000 });
   await pg.getByTestId('welcome-path-blank').click();
   await expect(pg.locator('#create-vault-name')).toBeVisible({ timeout: 15_000 });
+  // Explicit name — createVaultFromOptions default is "My MythosVault", not "My Vault".
+  await pg.locator('#create-vault-name').fill('My Vault');
   await pg.getByTestId('create-vault-submit').click();
   await Promise.race([
     pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 }),

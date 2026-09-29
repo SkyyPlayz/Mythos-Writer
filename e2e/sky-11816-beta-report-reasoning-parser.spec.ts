@@ -279,7 +279,7 @@ async function openScene(pg: Page, sceneTitle: string): Promise<void> {
 async function openReportsPanel(pg: Page): Promise<import('@playwright/test').Locator> {
   const hubPanel = pg.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 8_000 });
-  const betaRow = pg.locator('[data-testid="ahp-hand-analyst"]');
+  const betaRow = pg.locator('[data-testid="ahp-action-beta-read"]');
   await expect(betaRow).toBeVisible({ timeout: 8_000 });
   await betaRow.click();
   const overlay = pg.locator('.beta-reader-overlay');

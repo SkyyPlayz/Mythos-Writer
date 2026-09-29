@@ -224,7 +224,7 @@ test('SKY-10507: master ON + per-agents disagree — defers to each per-agent en
     await expect(hub.locator('[data-testid="partner-card"]')).toBeVisible();
     await expect(hub.locator('section[aria-label="Agents"]')).toHaveCount(0);
     await expect(hub.locator('[data-testid="ahp-hand-writer"]')).toBeVisible();
-    await expect(hub.locator('[data-testid="ahp-hand-analyst"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="ahp-action-beta-read"]')).toBeVisible();
 
     // Continuity lives under Notes & Analysis; Archive's own disable still surfaces.
     await hub.getByRole('tab', { name: 'Notes & Analysis' }).click();

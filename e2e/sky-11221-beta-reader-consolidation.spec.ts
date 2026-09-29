@@ -307,7 +307,7 @@ test('TC-SKY11221-01: Beta Reader row -> BetaReaderPage -> Run produces a real r
   await expect(hubPanel).toBeVisible({ timeout: 8_000 });
 
   // Slice B: Analyst hand opens Beta Reader (page kept).
-  const analystHand = page.locator('[data-testid="ahp-hand-analyst"]');
+  const analystHand = page.locator('[data-testid="ahp-action-beta-read"]');
   await expect(analystHand).toBeVisible({ timeout: 8_000 });
   await analystHand.click();
 
@@ -343,7 +343,7 @@ test('TC-SKY11221-01: Beta Reader row -> BetaReaderPage -> Run produces a real r
 // ─── TC-SKY11221-02: "beta read this scene" is a normal Writing Coach turn ────
 
 test('TC-SKY11221-02: "beta read this scene" in Writing Coach chat runs a normal turn, no .br-panel intercept', async () => {
-  const waRow = page.locator('[data-testid="ahp-hand-writer"]');
+  const waRow = page.locator('[data-testid="ahp-action-writer-scan"]');
   if (await waRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
     await waRow.click();
   }

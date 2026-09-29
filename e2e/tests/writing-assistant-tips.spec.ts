@@ -250,10 +250,10 @@ test.beforeAll(async () => {
   // always expanded) is now the sole home for the agent hub.
   await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 6_000 });
 
-  // Slice B: partner shell — Writer hand opens WritingAssistantPanel (Coach mode).
+  // Slice F3: Writer Scan action opens WritingAssistantPanel (tip cards / Scan now).
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 4_000 });
   await expect(page.locator('[data-testid="ahp-partner-view"]')).toBeVisible({ timeout: 4_000 });
-  await page.locator('[data-testid="ahp-hand-writer"]').click();
+  await page.locator('[data-testid="ahp-action-writer-scan"]').click();
   // Wait for the WA chat view (WritingAssistantPanel) to render before tests begin.
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
 });

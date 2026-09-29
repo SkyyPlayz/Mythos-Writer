@@ -245,7 +245,7 @@ test('M12 §14.6: Coach page and right-panel Coach chat share ONE conversation',
   // Slice B: Writer hand opens the shared coach session in the partner panel.
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 6_000 });
   await page.locator('[data-testid="ahp-tab-partner"]').click();
-  await page.locator('[data-testid="ahp-hand-writer"]').click();
+  await page.locator('[data-testid="ahp-action-writer-scan"]').click();
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 
   // The exchange sent from the COACH PAGE is visible in the PANEL chat.

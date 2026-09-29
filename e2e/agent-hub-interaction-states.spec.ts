@@ -163,7 +163,7 @@ async function openAgentsHub(page: Page): Promise<void> {
     await closeWriter.click();
   }
   await page.locator('[data-testid="ahp-tab-partner"]').click().catch(() => undefined);
-  await expect(page.locator('[data-testid="ahp-hand-writer"]')).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('[data-testid="ahp-action-writer-scan"]')).toBeVisible({ timeout: 8_000 });
 }
 
 /** Opens the Writing Coach mini-chat from the AGENTS list, expanding it out
@@ -188,7 +188,7 @@ async function settleIntoView(page: Page, target: ReturnType<Page['locator']>): 
 }
 
 async function openWritingCoachChat(page: Page): Promise<void> {
-  await page.locator('[data-testid="ahp-hand-writer"]').click();
+  await page.locator('[data-testid="ahp-action-writer-scan"]').click();
   await settleIntoView(page, page.locator('[aria-label="Writing coach prompt"]'));
 }
 
@@ -283,7 +283,7 @@ test('keyboard: Enter opens the Writer hand from a focused partner hand chip, an
   await openAgentsHub(page);
 
   // Slice B: AGENTS rows are gone — Writer is a partner hand chip.
-  const writerHand = page.locator('[data-testid="ahp-hand-writer"]');
+  const writerHand = page.locator('[data-testid="ahp-action-writer-scan"]');
   await expect(writerHand).toBeVisible({ timeout: 8_000 });
   await writerHand.focus();
   await page.keyboard.press('Enter');
