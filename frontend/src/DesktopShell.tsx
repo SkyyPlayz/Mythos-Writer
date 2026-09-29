@@ -5325,6 +5325,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [
     stories, selectedScene, selectedEntity, selectedChapter, selectedStory,
     handleSelectScene, setViewDepth, createStory, createChapter, createScene,
+    createChapterInPart, handleRenamePart,
     handleReorderScenes, setTemplatePickerOpen, handleSelectEntity,
     gettingStartedProgress, persistGettingStartedProgress,
     handleOpenSceneByPath, handleOpenGraphScene, setExportScope, appSettings,
