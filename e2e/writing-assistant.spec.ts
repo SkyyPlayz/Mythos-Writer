@@ -402,6 +402,11 @@ async function openWritingAssistantAgentRow(page: Page): Promise<void> {
   await page.locator('[data-testid="ahp-tab-partner"]').click().catch(() => undefined);
   await expect(page.getByTestId('ahp-partner-view')).toBeVisible({ timeout: 8_000 });
   await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
+  // Belt: if a prior tip left WA on the AC-WA-20 icon, expand it.
+  const openCoach = page.getByRole('button', { name: /open writing coach/i });
+  if (await openCoach.isVisible().catch(() => false)) {
+    await openCoach.evaluate((el) => (el as HTMLButtonElement).click());
+  }
 }
 
 async function openWritingAssistantWithScene(page: Page): Promise<void> {

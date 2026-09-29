@@ -418,6 +418,7 @@ function PartnerChatView({
             autoApplyCategories={autoApplyCategories}
             onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
             displayName={partnerName}
+            allowNarrowCollapse={false}
           />
         </div>
       )}

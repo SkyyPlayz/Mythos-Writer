@@ -66,6 +66,12 @@ interface Props {
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   /** Beta 3 M22: renameable agent display name (settings.agentNames.writingAssistant). */
   displayName?: string;
+  /**
+   * AC-WA-20 narrow collapse (&lt;280px → icon). Hub tips strip (N4-A) must stay
+   * expanded — a zero/late ResizeObserver tick otherwise latches the icon forever.
+   * Default true for standalone / float-out.
+   */
+  allowNarrowCollapse?: boolean;
 }
 
 const CADENCE_OPTIONS = [
@@ -130,6 +136,7 @@ export default function WritingAssistantPanel({
   autoApplyCategories,
   onAutoApplyCategoriesChange,
   displayName = 'Writing Coach',
+  allowNarrowCollapse = true,
 }: Props) {
   const aiMasterOn = useAiEnabled();
   const [showRubric, setShowRubric] = useState(false);
@@ -196,18 +203,25 @@ export default function WritingAssistantPanel({
     return normalized.filter((tip) => !suppressedTipKeys.has(tipSuppressKey(tip, scene)));
   }, [scheduledResult, scene, suppressedTipKeys]);
 
-  // Collapse when panel root width < 280px (AC-WA-20)
+  // Collapse when panel root width < 280px (AC-WA-20). Skip when hub tips
+  // strip embeds the panel expanded (N4-A). Ignore width 0 so a pre-layout
+  // tick cannot latch the icon-only root (which then measures ~40px forever).
   useEffect(() => {
+    if (!allowNarrowCollapse) {
+      setCollapsed(false);
+      return;
+    }
     if (typeof ResizeObserver === 'undefined') return;
     const el = panelRootRef.current;
     if (!el) return;
     const obs = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width ?? el.offsetWidth;
+      if (width <= 0) return;
       setCollapsed(width < 280);
     });
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [allowNarrowCollapse]);
 
   // Escape key closes overlay (AC-WA-22)
   useEffect(() => {
