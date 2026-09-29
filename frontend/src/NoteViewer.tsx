@@ -338,9 +338,6 @@ export default function NoteViewer({
   voicePrefs,
 }: Props) {
   const [defaultRich, setDefaultRich] = useState(readDefaultRichPref);
-  // F4#4: Markdown / Source stay hidden until Settings enables them.
-  const [showMarkdownView, setShowMarkdownView] = useState(readShowMarkdownViewPref);
-  const [showSourceView, setShowSourceView] = useState(readShowSourceViewPref);
   // SKY-10929: this note's own remembered mode, if it was ever explicitly
   // switched — takes priority over the global default below.
   const stickyMode = useMemo(() => readNoteModePref(path), [path]);
@@ -711,15 +708,6 @@ export default function NoteViewer({
     });
   }, []);
 
-  // Re-read Settings-bridged view prefs when the gear opens (Settings may have
-  // changed them while this note stayed mounted).
-  useEffect(() => {
-    if (!gearOpen) return;
-    setShowMarkdownView(readShowMarkdownViewPref());
-    setShowSourceView(readShowSourceViewPref());
-    setDefaultRich(readDefaultRichPref());
-  }, [gearOpen]);
-
   // SKY-11244: this note's own reader — same engine as the Story Editor
   // (readerEngine.ts), fed this note's visible body (frontmatter / hidden
   // trailers stripped, same text Rich mode renders). The toolbar Read icon
@@ -843,9 +831,9 @@ export default function NoteViewer({
           {gearOpen && (
             <NoteViewGearMenu
               mode={mode === 'preview' ? 'preview' : (mode as StickyNoteMode)}
-              defaultRich={defaultRich}
-              showMarkdown={showMarkdownView}
-              showSource={showSourceView}
+              defaultRich={readDefaultRichPref()}
+              showMarkdown={readShowMarkdownViewPref()}
+              showSource={readShowSourceViewPref()}
               onModeClick={(m) => handleModeClick(m)}
               onToggleDefaultRich={toggleDefaultRich}
               onClose={() => setGearOpen(false)}
