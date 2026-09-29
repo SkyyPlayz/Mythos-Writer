@@ -73,6 +73,15 @@ async function openSceneCrafter(page: Page): Promise<void> {
   await page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
 }
 
+/** Structure is a Story Writer sub-view — not a main-nav rail item. */
+async function openStructureSubview(page: Page): Promise<void> {
+  await clickStoryNav(page);
+  const structureTab = page.getByTestId('story-subview-structure');
+  await expect(structureTab).toBeVisible({ timeout: 8_000 });
+  await structureTab.click();
+  await expect(structureTab).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+}
+
 /** The Scene Crafter strip's tabs (pinned Setup + one per open board). */
 function stripTabs(page: Page) {
   return page.locator('[role="tablist"][aria-label="Workspace tabs"] [role="tab"]');
@@ -235,9 +244,9 @@ test('F1#1: Create Scene form → Structure + board persist on SAME userData rel
       // repro: 1 shell-kanban containing 1 canvas-board after Create Scene.
       await expect(page.getByTestId('canvas-board')).toBeVisible({ timeout: 12_000 });
 
-      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Structure"]').click().catch(async () => {
-        await page.getByRole('button', { name: /Structure/i }).first().click();
-      });
+      // Create Scene leaves us on Scene Crafter (sub-view bar hidden). Open
+      // Story Writer → Structure sub-tab to assert the scene title.
+      await openStructureSubview(page);
       await expect(page.getByText(sceneTitle).first()).toBeVisible({ timeout: 10_000 });
     } finally {
       await app.close();
@@ -247,9 +256,7 @@ test('F1#1: Create Scene form → Structure + board persist on SAME userData rel
   const app2 = await launchApp(userData);
   try {
     const page2 = await waitForBoot(app2);
-    await page2.locator('nav[aria-label="Main navigation"] button[aria-label="Structure"]').click().catch(async () => {
-      await page2.getByRole('button', { name: /Structure/i }).first().click();
-    });
+    await openStructureSubview(page2);
     await expect(page2.getByText(sceneTitle).first()).toBeVisible({ timeout: 10_000 });
     await openSceneCrafter(page2);
     // Prefer active board; fall back to Setup gallery (board tab may not restore).
