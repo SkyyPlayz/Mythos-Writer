@@ -3,7 +3,7 @@
 // prototype is the spec: card layouts, copy, and computed style strings are
 // ported verbatim; controls bind to settings.liquidNeonV2 and apply live via
 // the v2 token engine, persisting through the panel's normal Save flow.
-import { useMemo, useRef, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import {
   applyLiquidNeonV2Tokens,
   exportLiquidNeonPreset,
@@ -18,6 +18,14 @@ import {
   type LiquidNeonV2Settings,
   type LiquidNeonWallpaperKey,
 } from '../../../theme/liquidNeonEngine';
+import {
+  clampUiDens,
+  commitUiDensity,
+  previewUiDensity,
+  registerDensityBridge,
+  UI_DENS_MAX,
+  UI_DENS_MIN,
+} from '../../../lib/uiDensity';
 import { onActivateKey, NeonToggle, NeonSlider, NeonSeg, NeonCard as Card, hdrBtnSt } from './liquidNeonControls';
 import {
   LIQUID_NEON_PRESETS,
@@ -46,6 +54,9 @@ interface Props {
 export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, setSavedOk, navRailLabels, onNavRailLabelsChange }: Props) {
   const S = useMemo(() => normalizeLiquidNeonV2(liquidNeonV2), [liquidNeonV2]);
   const importFileRef = useRef<HTMLInputElement>(null);
+  // F2#9: local drag preview so the thumb moves without committing React every tick.
+  const [dragDens, setDragDens] = useState<number | null>(null);
+  const displayDens = dragDens ?? (S.uiDens ?? 1);
 
   const patch = (p: Partial<LiquidNeonV2Settings>) => {
     const next: LiquidNeonV2Settings = { ...S, ...p };
@@ -53,6 +64,19 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
     applyLiquidNeonV2Tokens(next, cosmicBgUrl); // live preview
     setSavedOk(false);
   };
+
+  // While this section is mounted, own the density bridge so Ctrl+wheel + slider share one path.
+  useEffect(() => {
+    registerDensityBridge({
+      getSettings: () => normalizeLiquidNeonV2(liquidNeonV2),
+      cosmicBgUrl,
+      commit: (next) => {
+        onChange(next);
+        setSavedOk(false);
+      },
+    });
+    return () => registerDensityBridge(null);
+  }, [liquidNeonV2, onChange, setSavedOk]);
 
   // ── Beta 4 M1: preset import/export (§3; prototype 7191–7192) ──────────────
 
@@ -130,14 +154,15 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
           background: 'rgba(255,255,255,.03)', transition: 'all .18s ease',
           border: active ? `1px solid ${hexA(v.c[0], .7)}` : '1px solid rgba(255,255,255,.08)',
           boxShadow: active ? `0 0 20px -5px ${hexA(v.c[0], .5)}` : undefined,
+          overflow: 'hidden',
         }}
       >
         <div style={{ height: 7, borderRadius: 6, background: `linear-gradient(120deg,${v.c.join(',')})`, boxShadow: `0 0 12px -2px ${hexA(v.c[1], .55)}`, marginBottom: 9 }} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 11.5, fontWeight: 600, color: '#e6ecf9' }}>{v.name}</span>
-          <span style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, minWidth: 0 }}>
+          <span style={{ fontSize: 11.5, fontWeight: 600, color: '#e6ecf9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v.name}</span>
+          <span style={{ display: 'flex', gap: 3, flexShrink: 0, overflow: 'hidden', maxWidth: '50%' }}>
             {v.c.map((c, i) => (
-              <span key={i} style={{ width: 11, height: 11, borderRadius: '50%', background: c, boxShadow: `0 0 8px ${hexA(c, .5)}` }} />
+              <span key={i} style={{ width: 9, height: 9, borderRadius: '50%', background: c, boxShadow: `0 0 8px ${hexA(c, .5)}`, flexShrink: 0 }} />
             ))}
           </span>
         </div>
@@ -540,22 +565,32 @@ export default function LiquidNeonAppearanceSection({ liquidNeonV2, onChange, se
             <input
               type="range"
               className="lnas-range"
-              min={82}
-              max={118}
+              min={Math.round(UI_DENS_MIN * 100)}
+              max={Math.round(UI_DENS_MAX * 100)}
               step={1}
-              value={Math.round((S.uiDens ?? 1) * 100)}
+              value={Math.round(displayDens * 100)}
               aria-label="Interface density"
               data-testid="lnas-ui-dens"
               onChange={(e) => {
+                // F2#9: rAF preview while dragging — commit on pointer-up.
                 const pct = Number(e.target.value);
-                const uiDens = Math.min(1.18, Math.max(0.82, pct / 100));
-                // Keep discrete density label in sync for legacy consumers.
-                const density = uiDens <= 0.88 ? 'compact' : uiDens <= 0.96 ? 'cozy' : 'comfortable';
-                patch({ uiDens, density });
+                const uiDens = clampUiDens(pct / 100);
+                setDragDens(uiDens);
+                previewUiDensity(uiDens);
+              }}
+              onPointerUp={() => {
+                if (dragDens == null) return;
+                commitUiDensity(dragDens);
+                setDragDens(null);
+              }}
+              onKeyUp={() => {
+                if (dragDens == null) return;
+                commitUiDensity(dragDens);
+                setDragDens(null);
               }}
               style={{
                 width: 140,
-                background: `linear-gradient(to right,var(--n1,#00f0ff) ${(((S.uiDens ?? 1) - 0.82) / 0.36) * 100}%,rgba(255,255,255,.12) ${(((S.uiDens ?? 1) - 0.82) / 0.36) * 100}%)`,
+                background: `linear-gradient(to right,var(--n1,#00f0ff) ${((displayDens - UI_DENS_MIN) / (UI_DENS_MAX - UI_DENS_MIN)) * 100}%,rgba(255,255,255,.12) ${((displayDens - UI_DENS_MIN) / (UI_DENS_MAX - UI_DENS_MIN)) * 100}%)`,
               }}
             />
           </div>

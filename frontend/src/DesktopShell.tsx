@@ -3,7 +3,10 @@ import type { Editor } from '@tiptap/core';
 import { useToast } from './hooks/useToast';
 import { useAiEnabled } from './hooks/useAiEnabled';
 import { useNavigationHistory, type NavigationLocation, type PersistedNavHistory } from './hooks/useNavigationHistory';
+import { useCtrlScrollDensity } from './hooks/useCtrlScrollDensity';
 import { useVaultIcons, type VaultIconSetInput } from './hooks/useVaultIcons';
+import { setEntityMentionNavigateHandler } from './lib/entityMentionNavigate';
+import { registerDensityBridge } from './lib/uiDensity';
 import { Toast } from './components/Toast/Toast';
 import { AiActivityIndicator } from './components/AiActivityIndicator/AiActivityIndicator';
 import type { Story, Part, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
@@ -4704,6 +4707,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }).catch(() => {});
   }, [checkGettingStartedItem]);
 
+  // F2#2: global fallback so Notes editors without onEntityClick still navigate.
+  useEffect(() => {
+    setEntityMentionNavigateHandler(handleEntityMentionClick);
+    return () => setEntityMentionNavigateHandler(null);
+  }, [handleEntityMentionClick]);
+
   const applyCrossTabLinkMatch = useCallback((match: CrossTabLinkMatch) => {
     setAmbiguousLink(null);
     if (match.kind === 'scene') {
@@ -4759,20 +4768,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleTabChange('notes');
   }, [handleSelectScene, handleTabChange, handleNotesSubViewChange, handleSetView, setViewDepth]);
 
-  const handleWikiLinkClick = useCallback((target: string) => {
-    const resolution = resolveCrossTabLink(target, {
-      stories,
-      entities: allEntities,
-      notePaths: allNotePaths,
-      onNotify: showWikiLinkToast,
-    });
-    if (resolution.status === 'single') {
-      applyCrossTabLinkMatch(resolution.matches[0]);
-    } else if (resolution.status === 'ambiguous') {
-      setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
-    }
-  }, [allEntities, allNotePaths, applyCrossTabLinkMatch, showWikiLinkToast, stories]);
-
   // SKY-5702: normalized cross-vault title index feeding the editors'
   // resolved/unresolved [[wiki link]] styling, plus the flat candidate list
   // for the `[[` autocomplete popup. Both rebuilt only when the underlying
@@ -4792,10 +4787,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     [stories],
   );
 
-  // M16: an unresolved [[link]] CREATES the note in the Notes Vault (Obsidian
-  // parity, plan §M16 "unresolved click creates the note") and opens it.
-  // Shared by the notes editor and, since SKY-11615, the Timeline — the story
-  // editor keeps its warn-toast behavior instead.
+  // M16 / F2#3: an unresolved [[link]] CREATES the note in the Notes Vault
+  // (Obsidian parity) and opens it — shared by Story, Notes, and Timeline.
   const createNoteForUnresolvedLink = useCallback((target: string) => {
     const newNotePath = notePathForUnresolvedLink(target);
     if (!newNotePath) return;
@@ -4827,9 +4820,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     })();
   }, [handleNotesSubViewChange, handleTabChange, loadEntities, showWikiLinkToast]);
 
-  // M16: notes-editor wiki-link click — same resolution as the story editor,
-  // but unresolved creates the note instead of only toasting.
-  const handleNotesWikiLinkClick = useCallback((target: string) => {
+  // F2#3: one click path for Story + Notes — resolve or create.
+  const handleWikiLinkClick = useCallback((target: string) => {
     const resolution = resolveCrossTabLink(target, {
       stories,
       entities: allEntities,
@@ -4844,7 +4836,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       return;
     }
     createNoteForUnresolvedLink(target);
-  }, [stories, allEntities, allNotePaths, applyCrossTabLinkMatch, createNoteForUnresolvedLink]);
+  }, [allEntities, allNotePaths, applyCrossTabLinkMatch, createNoteForUnresolvedLink, stories]);
+
+  const handleNotesWikiLinkClick = handleWikiLinkClick;
 
   // SKY-11615: the Timeline's [[wiki links]] resolve one target in the product
   // order (scene → chapter → note → folder) rather than opening the ambiguity
@@ -5997,6 +5991,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [aiEnabled, view, handleSetView]);
 
   // A1 / 09 §2.5: Ctrl+/−/0 adjust uiScale (.88–1.32, ±0.03); 0 resets dens+scale.
+  // F2#17: Ctrl+wheel density lives in useCtrlScrollDensity (same setter as F2#9).
   useEffect(() => {
     const clampScale = (n: number) => Math.min(1.32, Math.max(0.88, n));
     const patchLn = (patch: Partial<NonNullable<AppSettings['liquidNeonV2']>>, toast?: string) => {
@@ -6008,6 +6003,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         } as NonNullable<AppSettings['liquidNeonV2']>;
         const next = { ...prev, liquidNeonV2 };
         window.api.settingsSet(next).catch(() => {});
+        void applyLiquidNeonV2Theme(liquidNeonV2);
         return next;
       });
       if (toast) showLnToast(toast);
@@ -6026,19 +6022,32 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         patchLn({ uiScale: 1, uiDens: 1, density: 'comfortable' }, 'Interface scale reset');
       }
     };
-    const onWheel = (e: WheelEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      e.preventDefault();
-      const cur = appSettings?.liquidNeonV2?.uiScale ?? 1;
-      patchLn({ uiScale: clampScale(cur + (e.deltaY < 0 ? 0.03 : -0.03)) });
-    };
     window.addEventListener('keydown', onKey);
-    window.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('wheel', onWheel);
     };
   }, [appSettings?.liquidNeonV2?.uiScale]);
+
+  // F2#9/#17: shell-owned density bridge when Settings is closed.
+  // Appearance section re-registers while open so slider + Ctrl+wheel share one path.
+  useEffect(() => {
+    if (settingsOpen) return;
+    registerDensityBridge({
+      getSettings: () => normalizeLiquidNeonV2(appSettings?.liquidNeonV2),
+      cosmicBgUrl,
+      commit: (next) => {
+        setAppSettings((prev) => {
+          if (!prev) return prev;
+          const updated = { ...prev, liquidNeonV2: next };
+          window.api.settingsSet(updated).catch(() => {});
+          return updated;
+        });
+      },
+    });
+    return () => registerDensityBridge(null);
+  }, [appSettings?.liquidNeonV2, settingsOpen]);
+
+  useCtrlScrollDensity(true);
 
   const manuscriptToolbarActions = useMemo(() => ({
     onDictate: handleToolbarDictate,
@@ -6707,6 +6716,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         </div>
       )}
       {activeDockedTabId === null && view === 'editor' && <div className="shell-panels">
+      <div className="shell-panels__row">
       {/* Left rail */}
       {showLeftSidebar && (
         <div className="shell-left" style={{ width: clampedLeftWidth }}>
@@ -7223,23 +7233,25 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             )
           )}
         </div>
-        {showBottomBar && (
-          <BottomBar
-            selectedScene={selectedScene}
-            selectedChapter={selectedChapter}
-            selectedStory={selectedStory}
-            onNavigateScene={handleNavigateScene}
-            activeNotePath={openedNotePath}
-            activeNoteWordCount={openedNoteWordCount}
-            isVoiceActive={voiceActive}
-            splitWordCounts={splitWordCounts}
-            pageWidthPx={selectedScene
-              ? (pagePrefs.customWidthPx ?? STORY_PAGE_PRESET_WIDTHS[pagePrefs.sizePreset] ?? 680)
-              : null}
-          />
-        )}
+        {/* F2#16: BottomBar moved out of center column — spans full shell-panels width */}
       </div>
+      </div>{/* end shell-panels__row */}
 
+      {showBottomBar && (
+        <BottomBar
+          selectedScene={selectedScene}
+          selectedChapter={selectedChapter}
+          selectedStory={selectedStory}
+          onNavigateScene={handleNavigateScene}
+          activeNotePath={openedNotePath}
+          activeNoteWordCount={openedNoteWordCount}
+          isVoiceActive={voiceActive}
+          splitWordCounts={splitWordCounts}
+          pageWidthPx={selectedScene
+            ? (pagePrefs.customWidthPx ?? STORY_PAGE_PRESET_WIDTHS[pagePrefs.sizePreset] ?? 680)
+            : null}
+        />
+      )}
       </div>}{/* end shell-panels */}
       </div>{/* end app-tabpanel-story */}
       {/* SKY-2096: Notes tabpanel — full layout (vault tree + editor + Brainstorm sidebar) */}

@@ -15,6 +15,7 @@ import { WIKI_LINK_RESOLUTION_META } from './WikiLinkResolutionExtension';
 import type { EntityEntry } from './types';
 import { useRichEditor, getEditorMarkdown } from './lib/useRichEditor';
 import { registerQuitFlusher } from './lib/flushBeforeQuit';
+import { navigateEntityMention } from './lib/entityMentionNavigate';
 import FormatToolbar, { type FormatToolbarActions } from './FormatToolbar';
 import './EntityMention.css';
 import './WikiLinkPicker.css';
@@ -24,6 +25,18 @@ const INACTIVE_WIKI_LINK: WikiLinkPickerState = { active: false, query: '', from
 const EMPTY_WIKI_LINK_CANDIDATES: WikiLinkCandidate[] = [];
 
 const CHANGE_DEBOUNCE_MS = 800;
+
+/** F2#4: map an explorer drag payload (vault-relative path) to a wiki-link title. */
+export function wikiTitleFromDroppedPath(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.includes('\n') || /^https?:\/\//i.test(trimmed)) return null;
+  const normalized = trimmed.replace(/\\/g, '/');
+  const looksLikePath = normalized.includes('/') || /\.(md|markdown|txt)$/i.test(normalized);
+  if (!looksLikePath && trimmed.length > 120) return null;
+  const leaf = normalized.split('/').pop() ?? normalized;
+  const title = leaf.replace(/\.(md|markdown|txt)$/i, '').trim();
+  return title || null;
+}
 
 export interface RichTextEditorProps {
   /** Initial Markdown content. Read once at editor creation — remount (key) to reload. */
@@ -404,7 +417,9 @@ export default function RichTextEditor({
       const entityId = chip.dataset.entityId;
       if (entityId) {
         e.preventDefault();
-        onEntityClickRef.current?.(entityId);
+        // F2#2: prop wins; else global shell handler (Notes surfaces omit the prop).
+        if (onEntityClickRef.current) onEntityClickRef.current(entityId);
+        else navigateEntityMention(entityId);
         return;
       }
     }
@@ -429,6 +444,37 @@ export default function RichTextEditor({
       }
     }
   }, [editor, plainTextWikiLinkFallback]);
+
+  // F2#4: drag a note path from the explorer (text/plain) → insert [[Note]] at drop.
+  const handleEditorDragOver = useCallback((e: React.DragEvent) => {
+    if (editable === false) return;
+    const types = e.dataTransfer?.types;
+    if (!types || (![...types].includes('text/plain') && ![...types].includes('Files'))) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  }, [editable]);
+
+  const handleEditorDrop = useCallback((e: React.DragEvent) => {
+    if (!editor || editor.isDestroyed) return;
+    const raw = e.dataTransfer.getData('text/plain')?.trim();
+    if (!raw) return;
+    const title = wikiTitleFromDroppedPath(raw);
+    if (!title) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const nodeType = editor.schema.nodes.wikiLink;
+    if (!nodeType) return;
+    let pos = editor.state.selection.from;
+    try {
+      const coords = { left: e.clientX, top: e.clientY };
+      pos = editor.view.posAtCoords(coords)?.pos ?? pos;
+    } catch {
+      // jsdom / headless: posAtCoords may throw — insert at selection.
+    }
+    const node = nodeType.create({ target: title });
+    editor.view.dispatch(editor.state.tr.insert(pos, node));
+    editor.view.focus();
+  }, [editor]);
 
   // Compute picker position from the @-trigger doc position.
   let pickerTop = 0;
@@ -470,6 +516,8 @@ export default function RichTextEditor({
         style={{ position: 'relative' }}
         onKeyDownCapture={handlePickerKeyDown}
         onClickCapture={handleEditorClick}
+        onDragOver={handleEditorDragOver}
+        onDrop={handleEditorDrop}
         onMouseOver={onWrapMouseOver}
         onMouseLeave={onWrapMouseLeave}
         aria-label={wrapAriaLabel}

@@ -1,6 +1,12 @@
 import React from 'react';
 import './PanelChrome.css';
 
+/** F2#12 — re-export shared top-bar metrics for F1 Story toolbar consumers. */
+export {
+  PANEL_TOP_BAR_HEIGHT_PX,
+  PANEL_TOP_BAR_HEIGHT_VAR,
+} from '../../lib/panelChromeMetrics';
+
 interface PanelChromeProps {
   children: React.ReactNode;
   className?: string;

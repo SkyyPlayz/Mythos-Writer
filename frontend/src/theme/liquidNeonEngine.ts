@@ -128,6 +128,8 @@ export const LIQUID_NEON_V2_DEFAULTS: LiquidNeonV2Settings = {
   glassA: 20,
   blur: 1,
   wp: 'match',
+  /** F2#18: fresh profiles land on classic starfield (index 1); index 0 stays cosmic for existing vaults with no wpPick. */
+  wpPick: { classic: 1 },
   scrim: 10,
   reduceGlow: false,
   animGlow: false,
@@ -242,14 +244,20 @@ export interface MatchWallpaper {
 /**
  * The full Theme-match cycle for the active preset: the built-in wallpaper
  * first (Neon Nebula → `cosmicUrl`; other presets → starfield), then the
- * bundled pack in manifest order. `custom` palettes have only the starfield.
+ * bundled pack. Classic also includes the starfield as index 1 so fresh
+ * profiles can default to it via `wpPick` without changing what index 0
+ * means for existing vaults (F2#18).
  */
 export function matchWallpaperList(s: LiquidNeonV2Settings, cosmicUrl: string): MatchWallpaper[] {
-  const builtIn: MatchWallpaper = s.setKey === 'classic'
-    ? { css: "url('" + cosmicUrl + "')", position: 'center', url: cosmicUrl }
-    : { css: starfieldCss(s.slots), position: 'center' };
+  const starfield: MatchWallpaper = { css: starfieldCss(s.slots), position: 'center' };
+  const builtIns: MatchWallpaper[] = s.setKey === 'classic'
+    ? [
+        { css: "url('" + cosmicUrl + "')", position: 'center', url: cosmicUrl },
+        starfield,
+      ]
+    : [starfield];
   const pack = packWallpapers(s.setKey).map((e: WallpaperEntry): MatchWallpaper => ({ css: "url('" + e.url + "')", position: e.position, url: e.url }));
-  return [builtIn, ...pack];
+  return [...builtIns, ...pack];
 }
 
 /** Wrapped index into `matchWallpaperList` for the active preset (mockup 7194). */

@@ -12,11 +12,18 @@
   display: flex;
   align-items: stretch;
   justify-content: stretch;
-  z-index: 1000;
+  z-index: var(--z-modal, 1000);
 }
 
 .settings-panel {
-  background: var(--glass-fill-fallback);
+  /* F2#11 glass + F2#8 perf: tint over pre-blurred wallpaper — no live
+     backdrop-filter on the scrolling Settings surface (same see-through
+     read without compositor tax on every scroll). */
+  background:
+    linear-gradient(var(--glass-settings, rgba(13, 16, 28, 0.30)), var(--glass-settings, rgba(13, 16, 28, 0.30))),
+    var(--wp-blur, var(--wp, none));
+  background-size: cover;
+  background-position: var(--wppos, center);
   border: 1px solid var(--glass-border);
   border-radius: 0;
   width: 100%;
@@ -26,15 +33,19 @@
   display: flex;
   flex-direction: column;
   box-shadow: inset 0 1px 0 var(--glass-highlight);
+  contain: layout style;
 }
 
 @supports (backdrop-filter: blur(1px)) {
   .settings-panel {
-    /* A1 / 09 §2.1: Settings view glass = glassA + 10 (default → .30), not
-       the denser --glass2 / overlay card fill. */
-    background: var(--glass-settings, rgba(13, 16, 28, 0.30));
-    backdrop-filter: blur(var(--blur-panel-overlay));
-    -webkit-backdrop-filter: blur(var(--blur-panel-overlay));
+    /* Keep glass-settings fill; live blur removed — pre-blur wallpaper above. */
+    background:
+      linear-gradient(var(--glass-settings, rgba(13, 16, 28, 0.30)), var(--glass-settings, rgba(13, 16, 28, 0.30))),
+      var(--wp-blur, var(--wp, none));
+    background-size: cover;
+    background-position: var(--wppos, center);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 }
 
@@ -1956,23 +1967,28 @@ select.settings-select option {
 .settings-cat-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  width: 190px;
+  gap: 4px;
+  /* F2#13: size up Settings side menu + own bordered glass card */
+  width: 220px;
   flex-shrink: 0;
-  padding: 12px 10px;
-  border-right: 1px solid var(--border-default, rgba(255,255,255,0.1));
-  background: var(--bg-panel, rgba(18,18,28,0.95));
+  padding: 14px 12px;
+  margin: 10px 0 10px 10px;
+  border: 1px solid var(--glass-rim, rgba(255,255,255,0.12));
+  border-radius: 14px;
+  background: var(--glass-settings, rgba(13, 16, 28, 0.30));
   overflow-y: auto;
+  /* Perf: isolate scroll without nested backdrop-filter */
+  contain: layout style paint;
 }
 
 .settings-cat-nav__tab {
-  padding: 8px 12px;
+  padding: 10px 12px;
   background: none;
   border: 1px solid transparent;
   border-radius: 9px;
   color: var(--text-muted, rgba(255,255,255,0.45));
   cursor: pointer;
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-align: left;
@@ -2000,7 +2016,7 @@ select.settings-select option {
 
 @media (max-width: 720px) {
   .settings-cat-nav {
-    width: 130px;
+    width: 150px;
   }
 }
 

@@ -93,10 +93,7 @@ const SETTINGS_CATS: readonly SettingsCategoryId[] = SETTINGS_CATEGORIES.map((c)
 type SettingsCat = SettingsCategoryId;
 
 export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange, initialCategory, activeVaultRoot }: Props) {
-  // Ivy H3: F2#15 owns save/close. Note-view toggles write immediately (no F4 draft).
-  const dismissSettings = useCallback(() => {
-    onClose();
-  }, [onClose]);
+  // Ivy H3: F2#15 owns save/close (handleClose below). Note-view toggles write immediately (no F4 draft).
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -116,7 +113,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -367,13 +364,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     }
   }, [lg.softnessContrast]);
 
-  // Close main dialog on Escape when the inner popover is not open (ARIA APG dialog pattern)
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !lgAdvancedOpen) dismissSettings(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [dismissSettings, lgAdvancedOpen]);
-
   // Focus trap in popover
   useEffect(() => {
     if (!lgAdvancedOpen) return;
@@ -518,6 +508,25 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     }
   }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, pageBg, navConfig, onSaved, buildAgentProviderConfig, sttBinaryToken, sttModelToken, activeVaultRoot]);
 
+  // F2#15: persist on exit (no Save button). Appearance already live-persists;
+  // other tabs flush through the same handleSave path when the panel closes.
+  const handleClose = useCallback(() => {
+    if (!apiKeyError) {
+      void handleSave().finally(() => onClose());
+      return;
+    }
+    onClose();
+  }, [apiKeyError, handleSave, onClose]);
+
+  // F2#15: Escape also auto-saves (replaces the early onClose-only listener).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !lgAdvancedOpen) handleClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [handleClose, lgAdvancedOpen]);
+
   // SKY-9: persist vault paths in a separate round-trip from settingsSet so
   // a misconfigured path can't block API-key edits, and so the main side can
   // re-seed both vault dirs in the same call (vault:setPaths handler does
@@ -556,7 +565,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   );
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) dismissSettings();
+    if (e.target === e.currentTarget) void handleClose();
   };
 
   const handleDialogKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -789,11 +798,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               // overlay or focus-trap cannot swallow the dismiss.
               e.preventDefault();
               e.stopPropagation();
-              dismissSettings();
+              handleClose();
             }}
             // Keyboard activation of <button> fires click, not pointerdown —
             // keep both; double-fire from a real pointer is harmless.
-            onClick={dismissSettings}
+            onClick={handleClose}
           >
             ✕
           </button>
@@ -1107,20 +1116,12 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
         </div>
 
-        {/* M4 (§2-B): the Appearance tab applies + persists live, so it has no
-            Cancel/Save footer — only a persist-failure alert when one occurs.
-            Tabs with credentials or destructive actions keep explicit save. */}
-        {settingsCategory === 'appearance' ? (
-          saveError && (
-            <div className="settings-footer">
-              <p className="settings-error-msg" role="alert">{saveError}</p>
-            </div>
-          )
-        ) : (
+        {/* F2#15: no Save button — all categories auto-save on exit.
+            Appearance still live-persists; footer only shows status / debug. */}
+        {(saveError || savedOk || import.meta.env.VITE_MYTHOS_DEV === '1') && (
         <div className="settings-footer">
           {saveError && <p className="settings-error-msg" role="alert">{saveError}</p>}
           {savedOk && <p className="settings-saved-msg" aria-live="polite">Settings saved.</p>}
-          {/* SKY-12.4: debug reset — only rendered when MYTHOS_DEV=1 is set in the dev environment */}
           {import.meta.env.VITE_MYTHOS_DEV === '1' && (
             <div className="settings-debug-section">
               <h3 className="settings-section-title">Developer</h3>
@@ -1139,18 +1140,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               </button>
             </div>
           )}
-          <div className="settings-footer-actions">
-            <button type="button" className="settings-btn settings-btn-cancel" onClick={dismissSettings}>Cancel</button>
-            <button
-              type="button"
-              className="settings-btn settings-btn-save"
-              onClick={handleSave}
-              disabled={saving || !!apiKeyError}
-              aria-label="Save settings"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          </div>
         </div>
         )}
       </div>

@@ -21,9 +21,10 @@ describe('matchesWikiLinkQuery', () => {
 });
 
 describe('buildWikiLinkPickerItems', () => {
-  it('returns no items for an empty query, regardless of candidates', () => {
+  it('lists leading candidates for an empty query so [[ alone is usable (F2#1)', () => {
     expect(buildWikiLinkPickerItems([], '')).toEqual([]);
-    expect(buildWikiLinkPickerItems([candidate()], '')).toEqual([]);
+    const items = buildWikiLinkPickerItems([candidate()], '');
+    expect(items).toEqual([{ type: 'candidate', candidate: candidate() }]);
   });
 
   it('filters candidates by a case-insensitive substring match on title', () => {
@@ -48,8 +49,9 @@ describe('buildWikiLinkPickerItems', () => {
     expect(items.every((i) => i.type === 'candidate')).toBe(true);
   });
 
-  it('returns no items for a blank/whitespace query', () => {
-    expect(buildWikiLinkPickerItems([candidate()], '   ')).toEqual([]);
+  it('treats blank/whitespace like an empty query (leading candidates)', () => {
+    const items = buildWikiLinkPickerItems([candidate()], '   ');
+    expect(items).toEqual([{ type: 'candidate', candidate: candidate() }]);
   });
 
   it('caps matched candidates at 8 results, still appending "create" after the cap', () => {
