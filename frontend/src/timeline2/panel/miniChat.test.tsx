@@ -158,6 +158,21 @@ describe('Brainstorm tab (AC4, AC8)', () => {
     await flush();
     expect(screen.getByTestId('trp-brainstorm-chat-error')).toHaveTextContent('Provider not configured');
   });
+
+  it('surfaces wrapIpcHandler { error } envelopes instead of crashing on .text', async () => {
+    installMockApi({ agent: 'brainstorm' });
+    (window.api as unknown as Record<string, unknown>).agentBrainstorm = vi.fn(() =>
+      Promise.resolve({ error: 'No API key configured.' }),
+    );
+    render(<BrainstormTab {...brainstormProps()} />);
+    await flush();
+    fireEvent.change(screen.getByTestId('trp-brainstorm-chat-input'), { target: { value: 'hi' } });
+    fireEvent.click(screen.getByTestId('trp-brainstorm-chat-send'));
+    await flush();
+    expect(screen.getByTestId('trp-brainstorm-chat-error')).toHaveTextContent('No API key configured.');
+    // User turn must not vanish behind a TypeError — feed stays coherent.
+    expect(screen.queryByText(/Cannot read properties of undefined/i)).not.toBeInTheDocument();
+  });
 });
 
 const archiveProps = () => ({

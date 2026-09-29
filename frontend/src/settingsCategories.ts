@@ -61,6 +61,9 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-partner-limits',
       'section-tools',
       'section-heartbeat',
+      // F3 — Earlier chats / SessionHistoryViewer on Writing partner
+      // (AgentsSection unmounted; partner spine sessions are brainstorm).
+      'section-partner-history',
     ],
   },
   {

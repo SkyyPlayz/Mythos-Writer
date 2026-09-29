@@ -2,7 +2,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import SessionHistoryViewer from './SessionHistoryViewer';
+import SessionHistoryViewer, { requestOpenSessionHistory } from './SessionHistoryViewer';
 
 const mockList = vi.fn();
 const mockRead = vi.fn();
@@ -64,6 +64,15 @@ describe('SessionHistoryViewer (SKY-10954)', () => {
     mockList.mockResolvedValue({ sessions: [] });
     await openViewer('archive');
     expect(await screen.findByText(/no saved conversations/i)).toBeInTheDocument();
+    // List stays mounted (empty) so Earlier-chats e2e can assert expand.
+    expect(screen.getByTestId('session-history-list-archive')).toBeInTheDocument();
+  });
+
+  it('opens from mythos:open-session-history even when event fires before mount', async () => {
+    requestOpenSessionHistory('brainstorm');
+    render(<SessionHistoryViewer agentName="brainstorm" />);
+    await waitFor(() => expect(mockList).toHaveBeenCalledWith('brainstorm'));
+    expect(screen.getByTestId('session-history-list-brainstorm')).toBeInTheDocument();
   });
 
   it('selecting a session loads and renders its transcript read-only', async () => {

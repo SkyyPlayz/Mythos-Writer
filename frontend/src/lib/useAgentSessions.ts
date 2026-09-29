@@ -382,11 +382,35 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
   if (typeof window !== 'undefined' && typeof window.api?.onPartnerThreadChanged === 'function') {
     window.api.onPartnerThreadChanged(() => {
       void (async () => {
-        await refresh();
-        const id = store.state.activeSessionId;
+        const list = (await refresh()) ?? [];
         const api = getApi();
-        if (!id || !api || typeof api.read !== 'function') return;
-        if (pending && id === pending.id) return;
+        if (!api || typeof api.read !== 'function') return;
+
+        // Float-out race: this window may still hold an in-memory pending
+        // greeting while the dock window already materialized + appended turns.
+        // Drop the phantom and adopt the newest disk session so the marker lands.
+        if (pending && list.length > 0) {
+          const dropId = pending.id;
+          pending = null;
+          const newest = list[0]!;
+          set({
+            sessions: list.filter((s) => s.id !== dropId),
+            activeSessionId: newest.id,
+            activeSession: null,
+          });
+          try {
+            const { session } = await api.read(newest.id);
+            if (session && store.state.activeSessionId === newest.id) {
+              set({ activeSession: session });
+            }
+          } catch {
+            /* degrade silently */
+          }
+          return;
+        }
+
+        const id = store.state.activeSessionId;
+        if (!id || (pending && id === pending.id)) return;
         try {
           const { session } = await api.read(id);
           if (session && store.state.activeSessionId === id) {
