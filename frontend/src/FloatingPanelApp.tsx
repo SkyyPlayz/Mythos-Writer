@@ -50,7 +50,6 @@ function PartnerWritingFloat({ settings }: { settings: AppSettings | null }) {
   return (
     <div className="fpa-partner-float" data-testid="fpa-partner-writing">
       <WritingAssistantPanel
-        hideComposer
         scene={null}
         enabled={settings?.agents?.writingAssistant?.enabled ?? true}
         scanIntervalSeconds={settings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}

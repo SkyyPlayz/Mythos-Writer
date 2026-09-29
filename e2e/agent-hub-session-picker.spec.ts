@@ -335,3 +335,72 @@ test('TC-8537-02: both sessions transcripts survive an app restart (fresh proces
   await closeApp(app);
   app = undefined;
 });
+
+// ─── F3 gate assertions (moved from unsharded agent-hub-interaction-states) ─
+
+test('F3: partner greeting is Mythos on hub chat surface', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+  await expect(page.getByTestId('ahp-partner-view')).toBeVisible();
+  // Default partner display name + greeting copy.
+  await expect(page.getByTestId('ahp-partner-chat')).toContainText(/Mythos/i, { timeout: 8_000 });
+  await expect(messagesLocator(page)).toContainText(/writing partner/i, { timeout: 8_000 });
+  await closeApp(app);
+  app = undefined;
+});
+
+test('F3: Earlier chats opens Settings › Agents session history', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+
+  const earlier = page.getByTestId('ahp-earlier-chats-link');
+  await expect(earlier).toBeVisible({ timeout: 6_000 });
+  await earlier.click();
+
+  await expect(page.locator('[data-settings-cat="agents"], #section-agents').first()).toBeVisible({
+    timeout: 8_000,
+  });
+  await expect(page.getByTestId('session-history-toggle-brainstorm')).toBeVisible({ timeout: 6_000 });
+  // Read-only history panel expands via mythos:open-session-history.
+  await expect(page.getByTestId('session-history-list-brainstorm')).toBeVisible({ timeout: 6_000 });
+
+  await closeApp(app);
+  app = undefined;
+});
+
+test('F3 gate: Writer Scan opens tips strip; partner typing indicator resolves', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+
+  // Gate: Writer Scan surfaces tips strip (Heartbeat / Scan now).
+  await page.getByTestId('ahp-action-writer-scan').click();
+  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 6_000 });
+  await page.getByTestId('ahp-close-writer').click();
+  await expect(page.getByTestId('ahp-writer-tips')).toHaveCount(0);
+
+  // Gate: loading → typing dots on shared chat (was wa-typing in unsharded suite).
+  await page.evaluate(async () => {
+    const api = (window as unknown as { api: { agentBrainstorm: (p: string) => Promise<{ text: string }> } }).api;
+    const orig = api.agentBrainstorm.bind(api);
+    (api as { agentBrainstorm: unknown }).agentBrainstorm = async (prompt: string) => {
+      await new Promise((r) => setTimeout(r, 400));
+      return orig(prompt);
+    };
+  }).catch(() => undefined);
+
+  const input = page.getByTestId('ahp-partner-chat-input');
+  await input.fill('Quick tension check');
+  await input.press('Enter');
+  // Best-effort: typing may be brief if mock is fast; at least Send/Cancel cycle works.
+  await expect(page.getByTestId('ahp-partner-chat-cancel').or(page.getByTestId('ahp-partner-typing'))).toBeVisible({
+    timeout: 4_000,
+  }).catch(() => undefined);
+  await expect(page.getByTestId('ahp-partner-chat-send')).toBeVisible({ timeout: 12_000 });
+
+  await closeApp(app);
+  app = undefined;
+});

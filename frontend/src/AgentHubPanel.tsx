@@ -54,6 +54,7 @@ import {
 } from './partner/partnerBusyStore';
 import { resolveWritingPartner } from './partner/partnerSettings';
 import { refuseUnlessProviderReady } from './agents/coachInvoke';
+import { buildBetaReadSourceText, type BetaScopeOption } from './beta/textAssembly';
 import './AgentHubPanel.css';
 
 /** Legacy agent row ids — kept for resolveAgentStatus + hand routing tests. */
@@ -149,6 +150,8 @@ interface Props {
   continuityPanel?: import('react').ReactNode;
   continuityItems?: InconsistencyItem[];
   referencesPanel?: import('react').ReactNode;
+  /** Opens Settings › Agents (partner session history — read-only). */
+  onOpenPartnerHistory?: () => void;
 }
 
 export default function AgentHubPanel({
@@ -181,6 +184,7 @@ export default function AgentHubPanel({
   continuityPanel,
   continuityItems: _continuityItems = [],
   referencesPanel,
+  onOpenPartnerHistory,
 }: Props) {
   const aiEnabled = useAiEnabled();
   const partnerName = resolvePartnerDisplayName(agentNames);
@@ -256,6 +260,7 @@ export default function AgentHubPanel({
             autoApply={autoApply}
             autoApplyCategories={autoApplyCategories}
             onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
+            onOpenPartnerHistory={onOpenPartnerHistory}
           />
         )}
         {activeTab === 'suggestions' && aiEnabled && (
@@ -306,6 +311,7 @@ interface PartnerChatViewProps {
   autoApply: boolean;
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
+  onOpenPartnerHistory?: () => void;
 }
 
 function PartnerChatView({
@@ -330,6 +336,7 @@ function PartnerChatView({
   autoApply,
   autoApplyCategories,
   onAutoApplyCategoriesChange,
+  onOpenPartnerHistory,
 }: PartnerChatViewProps) {
   const brainstormActivity = useBrainstormActivity();
   const writerBusy = useAgentRunningEntry('writingAssistant');
@@ -340,8 +347,8 @@ function PartnerChatView({
     ?? heartbeatBusy
     ?? (writerBusy ? 'writer' : brainstormActivity.active ? null : null);
   const [pastOpen, setPastOpen] = useState(false);
-  // Tip cards only — no coach-thread composer. Chat stays on the partner thread.
-  const [showWriterTips, setShowWriterTips] = useState(false);
+  // Tip cards always mounted (N4-A tips-only WA); chat stays on the partner thread.
+  const [showWriterTips, setShowWriterTips] = useState(true);
 
   return (
     <div className="ahp-partner" data-testid="ahp-partner-view">
@@ -353,21 +360,22 @@ function PartnerChatView({
         onEndCall={onEndCall}
       />
 
-      <div className="ahp-past-chats" data-testid="ahp-past-chats">
+      <div className="ahp-earlier-chats" data-testid="ahp-earlier-chats">
         <button
           type="button"
-          className="ahp-past-chats__toggle"
-          aria-expanded={pastOpen}
-          onClick={() => setPastOpen((o) => !o)}
-          data-testid="ahp-past-chats-toggle"
+          className="ahp-earlier-chats__link"
+          data-testid="ahp-earlier-chats-link"
+          onClick={() => {
+            if (onOpenPartnerHistory) {
+              onOpenPartnerHistory();
+              return;
+            }
+            setPastOpen((o) => !o);
+          }}
         >
-          <span>Past chats &amp; calls</span>
-          <span className="ahp-past-chats__count">
-            {partnerSessionStore.sessions.length} thread{partnerSessionStore.sessions.length === 1 ? '' : 's'}
-          </span>
-          <span aria-hidden="true">{pastOpen ? '▾' : '▸'}</span>
+          Earlier chats
         </button>
-        {pastOpen && (
+        {pastOpen && !onOpenPartnerHistory && (
           <div className="ahp-past-chats__menu" data-testid="ahp-past-chats-menu">
             <AgentSessionPicker
               store={partnerSessionStore}
@@ -404,7 +412,6 @@ function PartnerChatView({
             </button>
           </div>
           <WritingAssistantPanel
-            hideComposer
             scene={scene}
             enabled={enabled}
             scanIntervalSeconds={scanIntervalSeconds}
@@ -426,13 +433,6 @@ function PartnerChatView({
       )}
     </div>
   );
-}
-
-function sceneProse(scene: Scene | null): string {
-  if (!scene) return '';
-  const blocks = (scene as { blocks?: Array<{ content?: string }> }).blocks;
-  if (!Array.isArray(blocks)) return '';
-  return blocks.map((b) => b.content ?? '').filter(Boolean).join('\n\n');
 }
 
 /** Exported for provider-routing unit tests (Probe P4). */
@@ -473,16 +473,40 @@ export async function runPartnerAction(
       if (typeof api?.betaReportRun !== 'function') {
         return { text: 'Beta Read is unavailable in this build.', cardTitle: 'Beta Read' };
       }
-      const prose = sceneProse(ctx.scene) || ctx.story.title || '';
-      const scope: BetaReportScope = ctx.scene
+      // N3: assemble marker-wrapped manuscript; empty → inline notice, NO IPC.
+      const scope: BetaScopeOption = ctx.scene
         ? { kind: 'scene', id: ctx.scene.id, label: `Scene: ${ctx.scene.title}` }
         : { kind: 'story', id: ctx.story.id, label: 'Full story' };
+      let sourceText = buildBetaReadSourceText(scope, ctx.story);
+      // Live scene may not be in the story tree yet — assemble from open scene.
+      if (!sourceText.trim() && ctx.scene) {
+        const body = (ctx.scene.blocks ?? [])
+          .map((b) => b.content ?? '')
+          .filter(Boolean)
+          .join('\n\n');
+        if (body.trim()) {
+          const title = ctx.scene.title.replace(/"/g, "'");
+          sourceText = `<<SCENE id="${ctx.scene.id}" title="${title}">>\n${body}\n<</SCENE>>`;
+        }
+      }
+      if (!sourceText.trim()) {
+        return {
+          text: 'Nothing to read — the selected scope has no scene prose yet.',
+          cardTitle: 'Beta Read',
+          cardFoot: ctx.story.title,
+        };
+      }
       const focus: BetaReportFocus = { pacing: true, clarity: true, character: true, plot: true };
+      const reportScope: BetaReportScope = {
+        kind: scope.kind,
+        id: scope.id,
+        label: scope.label,
+      };
       const res = await api.betaReportRun({
         storyId: ctx.story.id,
-        scope,
+        scope: reportScope,
         focus,
-        text: prose,
+        text: sourceText,
       });
       if ('error' in res && res.error) {
         return { text: res.error, cardTitle: 'Beta Read' };
@@ -491,7 +515,7 @@ export async function runPartnerAction(
       const summary = report
         ? (report.feedback?.trim()
           || `Overall ${report.overall.verdict} (${report.overall.score}). ${report.categories.map((c) => `${c.label}: ${c.verdict}`).join(' · ')}`)
-        : 'Beta read finished — open the Beta Reader page for the full report.';
+        : 'Beta read finished — open Reports for the full write-up.';
       return { text: summary, cardTitle: 'Beta Read', cardFoot: ctx.story.title };
     }
     case 'writer-scan': {
@@ -503,7 +527,18 @@ export async function runPartnerAction(
       if (typeof api?.writingAssistantScanNow !== 'function') {
         return { text: 'Writer Scan is unavailable in this build.', cardTitle: 'Writer Scan' };
       }
-      const prose = sceneProse(ctx.scene);
+      const blocks = (ctx.scene as { blocks?: Array<{ content?: string }> }).blocks;
+      const prose = Array.isArray(blocks)
+        ? blocks.map((b) => b.content ?? '').filter(Boolean).join('\n\n')
+        : '';
+      // Soft: empty-scene guard — no IPC when there's nothing to scan.
+      if (!prose.trim()) {
+        return {
+          text: 'This scene has no prose yet — add some text, then run Writer Scan.',
+          cardTitle: 'Writer Scan',
+          cardFoot: ctx.scene.title,
+        };
+      }
       const res = await api.writingAssistantScanNow({
         sceneId: ctx.scene.id,
         prose,
@@ -603,12 +638,12 @@ function UnifiedPartnerChat({
         cardFoot: result.cardFoot,
         cardKind: result.cardTitle ? 'action' : undefined,
       });
-      // Tip cards are tip-UI only (no coach composer). Chat stays on the partner thread.
-      if (action === 'writer-scan') onOpenWriterTips();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await chat.postActionResult(meta.label, msg || 'Action failed.');
     } finally {
+      // Always surface tips strip for Writer Scan (Scan now / Heartbeat), even on refuse/error.
+      if (action === 'writer-scan') onOpenWriterTips();
       setRunningAction(null);
       onActionBusy(null);
     }

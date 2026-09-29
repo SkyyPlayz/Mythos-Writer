@@ -58,6 +58,19 @@ export default function SessionHistoryViewer({ agentName }: { agentName: NamedAg
     void loadSessions();
   }, [open, sessions, loadSessions]);
 
+  // F3 — "Earlier chats" from the partner hub opens Settings › Agents history.
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const detail = (e as CustomEvent<{ agent?: string }>).detail;
+      const target = detail?.agent;
+      // Partner spine uses brainstorm; only expand the matching viewer.
+      if (target && target !== agentName && target !== sessionAgent) return;
+      setOpen(true);
+    };
+    window.addEventListener('mythos:open-session-history', onOpen);
+    return () => window.removeEventListener('mythos:open-session-history', onOpen);
+  }, [agentName, sessionAgent]);
+
   const selectSession = useCallback(async (id: string) => {
     setSelectedId(id);
     setTranscript(null);

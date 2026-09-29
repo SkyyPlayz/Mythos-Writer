@@ -167,6 +167,29 @@ describe('F3 provider privacy — per-action routing', () => {
     expect(out.text).toContain('Local beta feedback');
   });
 
+  it('N3: empty Beta Read source text → inline notice, no betaReportRun IPC', async () => {
+    const { betaReportRun } = installApi(localCloudSettings());
+    const emptyScene = {
+      ...scene,
+      blocks: [{ id: 'b1', type: 'prose' as const, content: '   ', order: 0, updatedAt: '2026-01-01T00:00:00.000Z' }],
+    };
+    const out = await runPartnerAction('beta-read', { scene: emptyScene, story });
+    expect(betaReportRun).not.toHaveBeenCalled();
+    expect(out.cardTitle).toBe('Beta Read');
+    expect(out.text).toMatch(/nothing to read/i);
+  });
+
+  it('N3 soft: empty-scene Writer Scan → notice, no scan IPC', async () => {
+    const { writingAssistantScanNow } = installApi(localCloudSettings());
+    const emptyScene = {
+      ...scene,
+      blocks: [{ id: 'b1', type: 'prose' as const, content: '', order: 0, updatedAt: '2026-01-01T00:00:00.000Z' }],
+    };
+    const out = await runPartnerAction('writer-scan', { scene: emptyScene, story });
+    expect(writingAssistantScanNow).not.toHaveBeenCalled();
+    expect(out.text).toMatch(/no prose/i);
+  });
+
   it('Full Analysis never calls agentBrainstorm', async () => {
     const { agentBrainstorm, agentWritingAssistant } = installApi(localCloudSettings());
     await runFullSceneAnalysis(scene);
