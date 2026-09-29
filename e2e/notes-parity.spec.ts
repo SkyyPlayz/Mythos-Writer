@@ -365,8 +365,8 @@ test('F2#12 real side/middle panel top bars are 36px (±1)', async () => {
       expect(Math.abs(h - 36), `${sel} height ${h}`).toBeLessThanOrEqual(1);
     }
 
-    // Notes shell bars.
-    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+    // Notes shell bars. (Probe fold typo: label is "Notes Editor", not "Notes".)
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
     await expect(page.locator('.notes-tab-panel, .notes-tab-toolbar').first()).toBeVisible({ timeout: 8_000 });
     const notesBars = await page.evaluate(() => {
       const sel = [
