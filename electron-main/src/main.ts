@@ -1192,12 +1192,13 @@ const getNotesVaultRoot = () =>
   notesRootForStoryVault(getVaultRoot())
   ?? loadVaultSettings().notesVaultRoot
   ?? defaultNotesVaultRoot();
-// SKY-10952 / F5 Shield: Agent Vault only exists as a sibling inside a v2
-// MythosVault root. Fail closed on legacy vaults — never fall back to Notes
-// Vault (Clear memory / agentsVault:* must not reach Notes Vault).
-const getAgentVaultRoot = (): string | null => {
+// SKY-10952: Agent Vault lives as a sibling inside a v2 MythosVault root.
+// Legacy twin-root vaults keep sessions/boards under Notes Vault/Sessions/
+// (pre-existing brainstorm/coach path). F5 Shield fail-closed applies to
+// agentsVault:* via resolveKeysDir — Clear memory never reaches Notes Vault.
+const getAgentVaultRoot = (): string => {
   const mythosRoot = mythosRootForStoryVault(getVaultRoot());
-  return mythosRoot !== null ? agentVaultRootFor(mythosRoot) : null;
+  return mythosRoot !== null ? agentVaultRootFor(mythosRoot) : getNotesVaultRoot();
 };
 
 /**
@@ -6755,17 +6756,13 @@ const handlers: IpcHandlers = {
   // supplies the serialized body.
   [IPC_CHANNELS.BRAINSTORM_BOARD_READ]: (): BrainstormBoardReadResponse => {
     ensureNotesVaultDir();
-    const agentRoot = getAgentVaultRoot();
-    if (!agentRoot) return { error: 'No Mythos vault open' };
-    return readBrainstormBoard(agentRoot);
+    return readBrainstormBoard(getAgentVaultRoot());
   },
   [IPC_CHANNELS.BRAINSTORM_BOARD_WRITE]: (
     payload: BrainstormBoardWritePayload,
   ): BrainstormBoardWriteResponse => {
     ensureNotesVaultDir();
-    const agentRoot = getAgentVaultRoot();
-    if (!agentRoot) return { error: 'No Mythos vault open' };
-    return writeBrainstormBoard(agentRoot, payload.content);
+    return writeBrainstormBoard(getAgentVaultRoot(), payload.content);
   },
   // SKY-11192: retire the old board model by turning its cards into real
   // notes. Renderer-triggered rather than run at boot, because it only makes
@@ -8725,42 +8722,21 @@ const handlers: IpcHandlers = {
   // SKY-6228: M15 — agent chat sessions. Handler logic lives in
   // agentSessionsIpc.ts so it is unit-testable against a real temp-dir vault
   // (PR #917 review, B1/B2).
-  [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) => {
-    const agentRoot = getAgentVaultRoot();
-    if (!agentRoot) return { sessions: [] };
-    return handleAgentSessionList(agentRoot, payload);
-  },
+  [IPC_CHANNELS.AGENT_SESSION_LIST]: (payload: AgentSessionListPayload) =>
+    handleAgentSessionList(getAgentVaultRoot(), payload),
   // M20: hydrate one session’s full turn history (Brainstorm session switch)
-  [IPC_CHANNELS.AGENT_SESSION_READ]: (payload: AgentSessionReadPayload) => {
-    const agentRoot = getAgentVaultRoot();
-    if (!agentRoot) return { session: null };
-    return handleAgentSessionRead(agentRoot, payload);
-  },
-  [IPC_CHANNELS.AGENT_SESSION_CREATE]: (payload: AgentSessionCreatePayload) => {
-    const agentRoot = getAgentVaultRoot();
-    if (!agentRoot) throw new SafeIpcError('No Mythos vault open');
-    return handleAgentSessionCreate(agentRoot, payload);
-  },
-  [IPC_CHANNELS.AGENT_SESSION_RENAME]: (payload: AgentSessionRenamePayload) => {
-    const agentRoot = getAgentVaultRoot();
-    if (!agentRoot) throw new SafeIpcError('No Mythos vault open');
-    return handleAgentSessionRename(agentRoot, payload);
-  },
-  [IPC_CHANNELS.AGENT_SESSION_DUPLICATE]: (payload: AgentSessionDuplicatePayload) => {
-    const agentRoot = getAgentVaultRoot();
-    if (!agentRoot) throw new SafeIpcError('No Mythos vault open');
-    return handleAgentSessionDuplicate(agentRoot, payload);
-  },
-  [IPC_CHANNELS.AGENT_SESSION_DELETE]: (payload: AgentSessionDeletePayload) => {
-    const agentRoot = getAgentVaultRoot();
-    if (!agentRoot) throw new SafeIpcError('No Mythos vault open');
-    return handleAgentSessionDelete(agentRoot, payload);
-  },
-  [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) => {
-    const agentRoot = getAgentVaultRoot();
-    if (!agentRoot) throw new SafeIpcError('No Mythos vault open');
-    return handleAgentSessionAppendTurns(agentRoot, payload);
-  },
+  [IPC_CHANNELS.AGENT_SESSION_READ]: (payload: AgentSessionReadPayload) =>
+    handleAgentSessionRead(getAgentVaultRoot(), payload),
+  [IPC_CHANNELS.AGENT_SESSION_CREATE]: (payload: AgentSessionCreatePayload) =>
+    handleAgentSessionCreate(getAgentVaultRoot(), payload),
+  [IPC_CHANNELS.AGENT_SESSION_RENAME]: (payload: AgentSessionRenamePayload) =>
+    handleAgentSessionRename(getAgentVaultRoot(), payload),
+  [IPC_CHANNELS.AGENT_SESSION_DUPLICATE]: (payload: AgentSessionDuplicatePayload) =>
+    handleAgentSessionDuplicate(getAgentVaultRoot(), payload),
+  [IPC_CHANNELS.AGENT_SESSION_DELETE]: (payload: AgentSessionDeletePayload) =>
+    handleAgentSessionDelete(getAgentVaultRoot(), payload),
+  [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) =>
+    handleAgentSessionAppendTurns(getAgentVaultRoot(), payload),
 };
 
 // ─── Panel popout windows (SKY-1686) ───
