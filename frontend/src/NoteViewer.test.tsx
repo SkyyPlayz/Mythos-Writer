@@ -239,6 +239,19 @@ describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
     expect(readNoteModePref('Notes/Sticky.md')).toBe('source');
   });
 
+  it('Probe fail 3: upgrade preserves defaultRich=0 and sticky Source together', async () => {
+    window.localStorage.setItem(NOTES_DEFAULT_RICH_KEY, '0');
+    window.localStorage.setItem(
+      NOTES_MODE_BY_PATH_KEY,
+      JSON.stringify({ 'Notes/Legacy.md': 'source' }),
+    );
+    render(<NoteViewer path="Notes/Legacy.md" />);
+    const textarea = await screen.findByLabelText('Edit note: Legacy.md');
+    expect(textarea.tagName).toBe('TEXTAREA');
+    expect(window.localStorage.getItem(NOTES_DEFAULT_RICH_KEY)).toBe('0');
+    expect(readNoteModePref('Notes/Legacy.md')).toBe('source');
+  });
+
   it('F4#4: turning Always-Rich ON keeps sticky stored (no wipe)', async () => {
     const { unmount } = render(<NoteViewer path="Notes/Test.md" />);
     await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());

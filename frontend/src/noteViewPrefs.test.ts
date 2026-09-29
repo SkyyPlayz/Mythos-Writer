@@ -47,13 +47,21 @@ describe('noteViewPrefs (F4#4)', () => {
     ).toEqual(['rich', 'source']);
   });
 
-  it('seeded modeByPath and defaultRich=0 survive (no migration wipe)', () => {
-    writeDefaultRichPref(false);
-    writeNoteModePref('Notes/Old.md', 'source');
+  it('Probe fail 3: seeded defaultRich=0 AND sticky Source both survive upgrade', () => {
+    // Raw pre-upgrade localStorage (deliberate user choices — Ivy rule).
+    window.localStorage.setItem(NOTES_DEFAULT_RICH_KEY, '0');
+    window.localStorage.setItem(
+      NOTES_MODE_BY_PATH_KEY,
+      JSON.stringify({ 'Notes/Old.md': 'source' }),
+    );
+    // Fresh-session reads after loading new code — no migration wipe/rewrite.
+    expect(window.localStorage.getItem(NOTES_DEFAULT_RICH_KEY)).toBe('0');
     expect(readDefaultRichPref()).toBe(false);
     expect(readNoteModePref('Notes/Old.md')).toBe('source');
-    // Re-read after a "fresh session" simulation — nothing rewrites prefs.
-    expect(readDefaultRichPref()).toBe(false);
+    expect(resolveNoteOpenMode({ path: 'Notes/Old.md' })).toBe('source');
+    // Touches that used to wipe must leave both intact.
+    writeShowMarkdownViewPref(true);
+    expect(window.localStorage.getItem(NOTES_DEFAULT_RICH_KEY)).toBe('0');
     expect(readNoteModePref('Notes/Old.md')).toBe('source');
   });
 
