@@ -11,11 +11,15 @@ const scene: Scene = {
 
 let notesGet: ReturnType<typeof vi.fn>;
 let notesSet: ReturnType<typeof vi.fn>;
+let notesTierContext: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   notesGet = vi.fn().mockResolvedValue({ content: `First note${SCENE_NOTE_SEPARATOR}Second note` });
   notesSet = vi.fn().mockResolvedValue({ saved: true });
-  (window as unknown as { api: unknown }).api = { notesGet, notesSet };
+  notesTierContext = vi.fn().mockResolvedValue({
+    ok: true, bookId: 's1', partId: 'p1', chapterId: 'ch1', sceneId: 'sc1',
+  });
+  (window as unknown as { api: unknown }).api = { notesGet, notesSet, notesTierContext };
 });
 
 describe('SceneNotesPanel (M9b, SKY-9823)', () => {
@@ -108,5 +112,59 @@ describe('SceneNotesPanel (M9b, SKY-9823)', () => {
   it('shows the empty state when no scene is selected', () => {
     render(<SceneNotesPanel scene={null} />);
     expect(screen.getByText('Select a scene to add notes.')).toBeInTheDocument();
+  });
+});
+
+describe('SceneNotesPanel F5 notes per tier', () => {
+  it('renders Book/Part/Chapter/Scene tier tabs', async () => {
+    render(<SceneNotesPanel scene={scene} />);
+    await screen.findByTestId('snp-tiers');
+    expect(screen.getByTestId('snp-tier-book')).toBeInTheDocument();
+    expect(screen.getByTestId('snp-tier-part')).toBeInTheDocument();
+    expect(screen.getByTestId('snp-tier-chapter')).toBeInTheDocument();
+    expect(screen.getByTestId('snp-tier-scene')).toBeInTheDocument();
+  });
+
+  it('switching to Book loads and persists under book:<storyId>', async () => {
+    notesGet.mockImplementation(async (key: string) => {
+      if (key === 'book:s1') return { content: 'Book-level note' };
+      return { content: `First note${SCENE_NOTE_SEPARATOR}Second note` };
+    });
+    render(<SceneNotesPanel scene={scene} />);
+    await screen.findByText('First note');
+    fireEvent.click(screen.getByTestId('snp-tier-book'));
+    expect(await screen.findByText('Book-level note')).toBeInTheDocument();
+    expect(screen.getByText('BOOK NOTES')).toBeInTheDocument();
+    expect(notesGet).toHaveBeenCalledWith('book:s1');
+
+    fireEvent.change(screen.getByLabelText('New book note'), { target: { value: 'Outline beat' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(notesSet).toHaveBeenCalledWith(
+      'book:s1',
+      ['Book-level note', 'Outline beat'].join(SCENE_NOTE_SEPARATOR),
+    );
+  });
+
+  it('Part tier uses resolved partId from notesTierContext', async () => {
+    notesGet.mockImplementation(async (key: string) => {
+      if (key === 'part:p1') return { content: 'Part note' };
+      return { content: '' };
+    });
+    render(<SceneNotesPanel scene={scene} />);
+    await waitFor(() => expect(notesTierContext).toHaveBeenCalledWith('sc1'));
+    await waitFor(() => expect(screen.getByTestId('snp-tier-part')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('snp-tier-part'));
+    expect(await screen.findByText('Part note')).toBeInTheDocument();
+    expect(notesGet).toHaveBeenCalledWith('part:p1');
+  });
+
+  it('Chapter tier persists under chapter:<chapterId>', async () => {
+    notesGet.mockResolvedValue({ content: '' });
+    render(<SceneNotesPanel scene={scene} />);
+    fireEvent.click(screen.getByTestId('snp-tier-chapter'));
+    await waitFor(() => expect(notesGet).toHaveBeenCalledWith('chapter:ch1'));
+    fireEvent.change(screen.getByLabelText('New chapter note'), { target: { value: 'Ch note' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(notesSet).toHaveBeenCalledWith('chapter:ch1', 'Ch note');
   });
 });

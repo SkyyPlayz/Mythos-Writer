@@ -1960,9 +1960,32 @@ interface Window {
     notesTagList: () => Promise<{ tags: NotesTagEntry[] }>;
     notesTagRename: (oldTag: string, newTag: string) => Promise<{ affectedFiles: number }>;
     notesTagMerge: (sourceTag: string, targetTag: string) => Promise<{ affectedFiles: number }>;
-    // SKY-55: per-scene notes
+    // SKY-55: per-scene / per-tier notes (sceneId may be a tier-prefixed node key)
     notesGet?: (sceneId: string) => Promise<{ content: string }>;
     notesSet?: (sceneId: string, content: string) => Promise<{ saved: boolean }>;
+    notesTierContext?: (sceneId: string) => Promise<{
+      ok: boolean;
+      bookId?: string | null;
+      partId?: string | null;
+      chapterId?: string | null;
+      sceneId?: string | null;
+      error?: string;
+    }>;
+    // F5: Models & Keys file ops (sandboxed to Agent Vault / keys dir)
+    modelKeysLocation?: () => Promise<{
+      ok: boolean;
+      path?: string;
+      name?: string;
+      files?: number;
+      chips?: string[];
+      scope?: string;
+      error?: string;
+    }>;
+    modelKeysReveal?: () => Promise<{ opened: boolean; error?: string }>;
+    modelKeysOpen?: () => Promise<{ opened: boolean; error?: string }>;
+    modelKeysClearMemory?: () => Promise<{ ok: boolean; removed?: string[]; error?: string }>;
+    modelKeysMoveValidate?: (destPath: string) => Promise<{ ok: boolean; dest?: string; error?: string }>;
+    modelKeysMovePick?: () => Promise<{ ok: boolean; dest?: string; cancelled?: boolean; error?: string; message?: string }>;
     // SKY-1391: brainstorm → writing-panel bridge
     sceneAppendBrainstormNote?: (sceneId: string, content: string) => Promise<{ appended: boolean }>;
 

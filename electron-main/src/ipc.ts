@@ -503,6 +503,15 @@ export const IPC_CHANNELS = {
   // SKY-55: per-scene notes
   NOTES_GET: 'notes:get',
   NOTES_SET: 'notes:set',
+  /** F5: resolve book/part/chapter/scene ids for the notes-per-tier pane. */
+  NOTES_TIER_CONTEXT: 'notes:tierContext',
+  /** F5: Models & Keys file ops (sandboxed to Agent Vault / keys dir). */
+  MODEL_KEYS_LOCATION: 'modelKeys:location',
+  MODEL_KEYS_REVEAL: 'modelKeys:reveal',
+  MODEL_KEYS_OPEN: 'modelKeys:open',
+  MODEL_KEYS_CLEAR_MEMORY: 'modelKeys:clearMemory',
+  MODEL_KEYS_MOVE_VALIDATE: 'modelKeys:moveValidate',
+  MODEL_KEYS_MOVE_PICK: 'modelKeys:movePick',
   // SKY-158: Tag & cross-reference system
   TAGS_LIST: 'tags:list',
   TAGS_UPSERT: 'tags:upsert',
@@ -1127,6 +1136,13 @@ export interface IpcHandlers {
   // SKY-55: per-scene notes
   [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => NotesGetResponse;
   [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => NotesSetResponse;
+  [IPC_CHANNELS.NOTES_TIER_CONTEXT]: (payload: NotesTierContextPayload) => NotesTierContextResponse;
+  [IPC_CHANNELS.MODEL_KEYS_LOCATION]: (payload?: never) => ModelKeysLocationResponse;
+  [IPC_CHANNELS.MODEL_KEYS_REVEAL]: (payload?: never) => Promise<{ opened: boolean; error?: string }>;
+  [IPC_CHANNELS.MODEL_KEYS_OPEN]: (payload?: never) => Promise<{ opened: boolean; error?: string }>;
+  [IPC_CHANNELS.MODEL_KEYS_CLEAR_MEMORY]: (payload?: never) => { ok: boolean; removed?: string[]; error?: string };
+  [IPC_CHANNELS.MODEL_KEYS_MOVE_VALIDATE]: (payload: { destPath: string }) => { ok: boolean; dest?: string; error?: string };
+  [IPC_CHANNELS.MODEL_KEYS_MOVE_PICK]: (payload?: never) => Promise<{ ok: boolean; dest?: string; cancelled?: boolean; error?: string; message?: string }>;
 
   // SKY-158: Tag & cross-reference system
   [IPC_CHANNELS.TAGS_LIST]: (payload: never) => TagsListResponse;
@@ -5479,6 +5495,27 @@ export interface NotesGetPayload { sceneId: string }
 export interface NotesGetResponse { content: string }
 export interface NotesSetPayload { sceneId: string; content: string }
 export interface NotesSetResponse { saved: boolean }
+
+/** F5: ancestry for notes-per-tier (book / part / chapter / scene). */
+export interface NotesTierContextPayload { sceneId: string }
+export interface NotesTierContextResponse {
+  ok: boolean;
+  bookId?: string | null;
+  partId?: string | null;
+  chapterId?: string | null;
+  sceneId?: string | null;
+  error?: string;
+}
+
+export interface ModelKeysLocationResponse {
+  ok: boolean;
+  path?: string;
+  name?: string;
+  files?: number;
+  chips?: string[];
+  scope?: string;
+  error?: string;
+}
 
 // ─── SKY-1391: brainstorm → writing-panel bridge ───
 // Appends `content` to the scene's note field (stored in SQLite notes table).

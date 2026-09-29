@@ -530,6 +530,12 @@ import {
   syncPartnerIdentityToFile,
 } from './mythosFormat/agentsVaultPartner.js';
 import {
+  getModelKeysLocation,
+  clearModelKeysMemory,
+  resolveKeysDir,
+  validateModelKeysMoveTarget,
+} from './modelKeysFiles.js';
+import {
   addCrossVaultLink,
   getVaultAccess,
   loadVaultLinkingState,
@@ -3025,7 +3031,7 @@ const handlers: IpcHandlers = {
     return result;
   },
 
-  // SKY-55: per-scene notes
+  // SKY-55: per-scene / per-tier notes (sceneId is the opaque store key)
   [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => {
     ensureVaultDir();
     const content = getNoteBySceneId(payload.sceneId);
@@ -3035,6 +3041,101 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     upsertNote(payload.sceneId, payload.content);
     return { saved: true };
+  },
+  // F5: resolve book/part/chapter/scene ids for the notes-per-tier pane
+  [IPC_CHANNELS.NOTES_TIER_CONTEXT]: (payload: { sceneId: string }) => {
+    ensureVaultDir();
+    const sceneId = typeof payload?.sceneId === 'string' ? payload.sceneId.trim() : '';
+    if (!sceneId || sceneId.includes('\0') || sceneId.includes('..')) {
+      return { ok: false as const, error: 'Invalid scene id' };
+    }
+    const manifest = readManifest(getManifestPath());
+    for (const story of manifest.stories ?? []) {
+      for (const chapter of story.chapters ?? []) {
+        const hit = (chapter.scenes ?? []).some((s: { id: string }) => s.id === sceneId);
+        if (!hit) continue;
+        let partId: string | null = null;
+        for (const part of story.parts ?? []) {
+          if ((part.chapters ?? []).some((c: { id: string }) => c.id === chapter.id)) {
+            partId = part.id;
+            break;
+          }
+        }
+        return {
+          ok: true as const,
+          bookId: story.id,
+          partId,
+          chapterId: chapter.id,
+          sceneId,
+        };
+      }
+    }
+    return { ok: false as const, error: 'Scene not found' };
+  },
+
+  // F5: Models & Keys file ops — sandboxed to Agent Vault (keys dir)
+  [IPC_CHANNELS.MODEL_KEYS_LOCATION]: () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    try {
+      const mythos = tryReadMythosFile(mythosRoot);
+      return getModelKeysLocation(mythosRoot, mythos?.name ?? 'This vault');
+    } catch (e) {
+      return { ok: false as const, error: (e as Error).message };
+    }
+  },
+  [IPC_CHANNELS.MODEL_KEYS_REVEAL]: async () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { opened: false, error: 'No Mythos vault open' };
+    try {
+      const keysDir = resolveKeysDir(mythosRoot);
+      shell.showItemInFolder(keysDir);
+      return { opened: true };
+    } catch (e) {
+      return { opened: false, error: (e as Error).message };
+    }
+  },
+  [IPC_CHANNELS.MODEL_KEYS_OPEN]: async () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { opened: false, error: 'No Mythos vault open' };
+    try {
+      const keysDir = resolveKeysDir(mythosRoot);
+      const err = await shell.openPath(keysDir);
+      return { opened: !err, ...(err ? { error: err } : {}) };
+    } catch (e) {
+      return { opened: false, error: (e as Error).message };
+    }
+  },
+  [IPC_CHANNELS.MODEL_KEYS_CLEAR_MEMORY]: () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    return clearModelKeysMemory(mythosRoot);
+  },
+  [IPC_CHANNELS.MODEL_KEYS_MOVE_VALIDATE]: (payload: { destPath: string }) => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    return validateModelKeysMoveTarget(mythosRoot, payload?.destPath ?? '');
+  },
+  [IPC_CHANNELS.MODEL_KEYS_MOVE_PICK]: async () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    const result = await dialog.showOpenDialog({
+      title: 'Choose destination for Agent Vault move',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || !result.filePaths[0]) {
+      return { ok: false as const, cancelled: true };
+    }
+    const validated = validateModelKeysMoveTarget(mythosRoot, result.filePaths[0]);
+    if (!validated.ok) return { ok: false as const, error: validated.error };
+    // Agent Vault travels with the Mythos vault — validated dest is recorded for the user.
+    // Actual relocation is via Vaults › Move (whole vault); we never copy identity files
+    // to an arbitrary folder from this surface (would break the sandboxed keys-dir contract).
+    return {
+      ok: true as const,
+      dest: validated.dest,
+      message: 'Agent Vault moves with the Mythos vault — use Vaults › Move for the whole vault.',
+    };
   },
 
   // SKY-1391: brainstorm → writing-panel bridge

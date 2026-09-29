@@ -3,7 +3,7 @@
  * Three provider buckets + Claude connect stubs + models + privacy.
  * No four per-agent Settings cards as Writing partner primary.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PARTNER_HANDS } from '../agents/partnerIdentity';
 import {
   COMING_SOON_PROVIDERS,
@@ -166,6 +166,39 @@ export default function ModelKeysSection({
   const needsUrl = selected === 'ollama' || selected === 'lmstudio' || selected === 'llamacpp' || selected === 'openrouter';
   const needsKey =
     selected === 'openrouter' || selected === 'paste-key' || (selected === 'claude' && cli === 'ready');
+
+  // F5: Models & Keys — Hands & files (location / Reveal / Open / Clear / Move)
+  const [keysLoc, setKeysLoc] = useState<{
+    path: string;
+    name: string;
+    files: number;
+    chips: string[];
+    scope: string;
+  } | null>(null);
+  const [keysBusy, setKeysBusy] = useState(false);
+  const [keysStatus, setKeysStatus] = useState<string | null>(null);
+  const [keysError, setKeysError] = useState<string | null>(null);
+  const [confirmClearKeys, setConfirmClearKeys] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      window.api?.modelKeysLocation?.()
+        .then((res) => {
+          if (cancelled || !res?.ok || !res.path) return;
+          setKeysLoc({
+            path: res.path,
+            name: res.name ?? 'Agent Vault',
+            files: res.files ?? 0,
+            chips: res.chips ?? [],
+            scope: res.scope ?? 'This vault',
+          });
+        })
+        .catch(() => { /* non-fatal */ });
+    };
+    refresh();
+    return () => { cancelled = true; };
+  }, []);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -466,7 +499,7 @@ export default function ModelKeysSection({
         <h3 className="settings-section-title" id="section-hands-files">Hands &amp; files</h3>
         <p className="settings-hint">
           Your partner works through three built-in hands — Writer, Analyst, Archivist. The partner’s name and voice
-          live under <strong>Writing partner</strong>. Identity vault files wait for a later tip.
+          live under <strong>Writing partner</strong>. Identity and memory files live in the Agent Vault below.
         </p>
         <div className="mk-hands">
           {PARTNER_HANDS.map((h) => {
@@ -483,6 +516,169 @@ export default function ModelKeysSection({
               </div>
             );
           })}
+        </div>
+
+        <div className="mk-keys-files" data-testid="mk-keys-files">
+          <div className="mk-keys-files__title-row">
+            <span className="mk-keys-files__title">{keysLoc?.name ?? 'Agent Vault'}</span>
+            <span className="mk-keys-files__scope" data-testid="mk-keys-scope">
+              {keysLoc?.scope ?? 'This vault'}
+            </span>
+          </div>
+          <p className="settings-hint">
+            Partner identity and hand files live here. Clear memory removes chat/session artifacts and keeps
+            partner.md · writer.md · analyst.md · archivist.md.
+          </p>
+          <div className="mk-keys-files__path-row">
+            <span
+              className="mk-keys-files__path"
+              title={keysLoc?.path}
+              data-testid="mk-keys-path"
+            >
+              {keysLoc?.path ?? '—'}
+            </span>
+            <button
+              type="button"
+              className="settings-btn settings-btn-secondary"
+              data-testid="mk-keys-reveal"
+              disabled={keysBusy || !keysLoc}
+              onClick={() => {
+                setKeysBusy(true);
+                setKeysError(null);
+                void window.api?.modelKeysReveal?.()
+                  .then((res) => {
+                    if (res && !res.opened) setKeysError(res.error || 'Could not reveal folder');
+                  })
+                  .catch((e: unknown) => setKeysError(e instanceof Error ? e.message : 'Reveal failed'))
+                  .finally(() => setKeysBusy(false));
+              }}
+            >
+              Reveal
+            </button>
+            <button
+              type="button"
+              className="settings-btn settings-btn-secondary"
+              data-testid="mk-keys-open"
+              disabled={keysBusy || !keysLoc}
+              onClick={() => {
+                setKeysBusy(true);
+                setKeysError(null);
+                void window.api?.modelKeysOpen?.()
+                  .then((res) => {
+                    if (res && !res.opened) setKeysError(res.error || 'Could not open folder');
+                  })
+                  .catch((e: unknown) => setKeysError(e instanceof Error ? e.message : 'Open failed'))
+                  .finally(() => setKeysBusy(false));
+              }}
+            >
+              Open
+            </button>
+          </div>
+          <div className="mk-keys-files__chips">
+            {(keysLoc?.chips ?? ['partner.md', 'Writer', 'Analyst', 'Archivist']).map((c) => (
+              <span key={c} className="mk-keys-files__chip">{c}</span>
+            ))}
+            {keysLoc ? (
+              <span className="mk-keys-files__chip" data-testid="mk-keys-file-count">
+                {keysLoc.files} files
+              </span>
+            ) : null}
+          </div>
+          <div className="mk-keys-files__actions">
+            {!confirmClearKeys ? (
+              <button
+                type="button"
+                className="mk-keys-files__danger"
+                data-testid="mk-keys-clear"
+                disabled={keysBusy}
+                onClick={() => setConfirmClearKeys(true)}
+              >
+                Clear memory
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="mk-keys-files__danger mk-keys-files__danger--confirm"
+                  data-testid="mk-keys-clear-confirm"
+                  disabled={keysBusy}
+                  onClick={() => {
+                    setKeysBusy(true);
+                    setKeysError(null);
+                    setKeysStatus(null);
+                    void window.api?.modelKeysClearMemory?.()
+                      .then((res) => {
+                        if (!res?.ok) {
+                          setKeysError(res?.error || 'Clear failed');
+                        } else {
+                          setKeysStatus(`Cleared agent memory (${res.removed?.length ?? 0} items). Partner files kept.`);
+                          setConfirmClearKeys(false);
+                          showToast('Agent memory cleared');
+                          void window.api?.modelKeysLocation?.().then((loc) => {
+                            if (loc?.ok && loc.path) {
+                              setKeysLoc({
+                                path: loc.path,
+                                name: loc.name ?? 'Agent Vault',
+                                files: loc.files ?? 0,
+                                chips: loc.chips ?? [],
+                                scope: loc.scope ?? 'This vault',
+                              });
+                            }
+                          });
+                        }
+                      })
+                      .catch((e: unknown) => setKeysError(e instanceof Error ? e.message : 'Clear failed'))
+                      .finally(() => setKeysBusy(false));
+                  }}
+                >
+                  Confirm clear
+                </button>
+                <button
+                  type="button"
+                  className="settings-btn settings-btn-secondary"
+                  data-testid="mk-keys-clear-cancel"
+                  disabled={keysBusy}
+                  onClick={() => setConfirmClearKeys(false)}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              className="settings-btn settings-btn-secondary"
+              data-testid="mk-keys-move"
+              disabled={keysBusy}
+              onClick={() => {
+                setKeysBusy(true);
+                setKeysError(null);
+                setKeysStatus(null);
+                void window.api?.modelKeysMovePick?.()
+                  .then((res) => {
+                    if (res?.cancelled) return;
+                    if (!res?.ok) {
+                      setKeysError(res?.error || 'Move validation failed');
+                      return;
+                    }
+                    setKeysStatus(
+                      res.message
+                        || `Destination validated (${res.dest}). Agent Vault moves with the Mythos vault — use Vaults › Move.`,
+                    );
+                    showToast('Move destination validated');
+                  })
+                  .catch((e: unknown) => setKeysError(e instanceof Error ? e.message : 'Move failed'))
+                  .finally(() => setKeysBusy(false));
+              }}
+            >
+              Move…
+            </button>
+          </div>
+          {keysStatus && (
+            <p className="settings-hint" data-testid="mk-keys-status">{keysStatus}</p>
+          )}
+          {keysError && (
+            <p className="settings-error-msg" role="alert" data-testid="mk-keys-error">{keysError}</p>
+          )}
         </div>
       </section>
 
