@@ -1,9 +1,10 @@
-// F5 — Models & Keys file ops (location / Reveal / Open / Clear / Move).
+// F5 — Models & Keys file ops (location / Reveal / Open / Clear memory).
 //
 // All filesystem work is sandboxed to the app's Agent Vault ("keys dir" for
 // partner identity + hand files under the open Mythos vault). Renderer never
-// supplies absolute paths for reveal/open/clear; Move only accepts a dialog-
-// picked destination that passes containment checks.
+// supplies absolute paths for reveal/open/clear. Relocation is whole-vault via
+// MoveVaultWizard (Agent Vault travels with the Mythos vault) — no separate
+// modelKeys move IPC.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -89,53 +90,4 @@ export function clearModelKeysMemory(mythosRoot: string): {
 } | { ok: false; error: string } {
   resolveKeysDir(mythosRoot); // sandbox gate
   return clearAgentMemory(mythosRoot);
-}
-
-/**
- * Validate a Move destination. Rejects traversal, null bytes, and destinations
- * that would nest the keys dir inside itself. Does not perform the move —
- * Agent Vault travels with the Mythos vault; this gate exists so the UI can
- * confirm the chosen folder is a real, writable directory outside the keys dir.
- */
-export function validateModelKeysMoveTarget(
-  mythosRoot: string,
-  destPath: string,
-): { ok: true; dest: string } | { ok: false; error: string } {
-  if (typeof destPath !== 'string' || !destPath.trim()) {
-    return { ok: false, error: 'Destination required' };
-  }
-  if (destPath.includes('\0') || /(?:%2e){2}/i.test(destPath) || /^\.\.($|[\\/])|[\\/]\.\.($|[\\/])/.test(destPath)) {
-    return { ok: false, error: 'Path traversal denied' };
-  }
-  let keysDir: string;
-  try {
-    keysDir = resolveKeysDir(mythosRoot);
-  } catch (e) {
-    return { ok: false, error: (e as Error).message };
-  }
-  const dest = path.resolve(destPath.trim());
-  let destReal: string;
-  try {
-    destReal = fs.realpathSync.native(dest);
-  } catch {
-    return { ok: false, error: 'Destination does not exist' };
-  }
-  let st: fs.Stats;
-  try {
-    st = fs.statSync(destReal);
-  } catch {
-    return { ok: false, error: 'Destination is not accessible' };
-  }
-  if (!st.isDirectory()) {
-    return { ok: false, error: 'Destination must be a folder' };
-  }
-  // Refuse moving into the keys dir itself (would nest / clobber identity files).
-  if (isInsideKeysDir(keysDir, destReal)) {
-    return { ok: false, error: 'Destination cannot be inside the keys directory' };
-  }
-  // Refuse the keys dir as destination.
-  if (realpathOrSelf(keysDir) === destReal) {
-    return { ok: false, error: 'Destination cannot be the keys directory' };
-  }
-  return { ok: true, dest: destReal };
 }

@@ -34,6 +34,11 @@ interface ModelKeysSectionProps {
   showApiKey: boolean;
   setShowApiKey: (v: boolean) => void;
   setSavedOk: (ok: boolean) => void;
+  /**
+   * F5#3: open the existing whole-vault MoveVaultWizard (Agent Vault lives
+   * inside the Mythos vault — keys/memory relocate with it).
+   */
+  onMoveVault?: () => void;
 }
 
 function patchPartner(
@@ -154,6 +159,7 @@ export default function ModelKeysSection({
   showApiKey,
   setShowApiKey,
   setSavedOk,
+  onMoveVault,
 }: ModelKeysSectionProps) {
   const partner = resolveWritingPartner(settings);
   const selected = partner.modelKeysProvider;
@@ -167,7 +173,7 @@ export default function ModelKeysSection({
   const needsKey =
     selected === 'openrouter' || selected === 'paste-key' || (selected === 'claude' && cli === 'ready');
 
-  // F5: Models & Keys — Hands & files (location / Reveal / Open / Clear / Move)
+  // F5: Models & Keys — Hands & files (location / Reveal / Open / Clear / Move vault…)
   const [keysLoc, setKeysLoc] = useState<{
     path: string;
     name: string;
@@ -648,31 +654,20 @@ export default function ModelKeysSection({
               type="button"
               className="settings-btn settings-btn-secondary"
               data-testid="mk-keys-move"
-              disabled={keysBusy}
+              disabled={keysBusy || !onMoveVault}
+              title="Move the whole Mythos vault (Agent Vault moves with it)"
               onClick={() => {
-                setKeysBusy(true);
                 setKeysError(null);
                 setKeysStatus(null);
-                void window.api?.modelKeysMovePick?.()
-                  .then((res) => {
-                    if (res?.cancelled) return;
-                    if (!res?.ok) {
-                      setKeysError(res?.error || 'Move validation failed');
-                      return;
-                    }
-                    setKeysStatus(
-                      res.message
-                        || `Destination validated (${res.dest}). Agent Vault moves with the Mythos vault — use Vaults › Move.`,
-                    );
-                    showToast('Move destination validated');
-                  })
-                  .catch((e: unknown) => setKeysError(e instanceof Error ? e.message : 'Move failed'))
-                  .finally(() => setKeysBusy(false));
+                onMoveVault?.();
               }}
             >
-              Move…
+              Move vault…
             </button>
           </div>
+          <p className="settings-hint" data-testid="mk-keys-move-hint">
+            Keys and memory move with the vault.
+          </p>
           {keysStatus && (
             <p className="settings-hint" data-testid="mk-keys-status">{keysStatus}</p>
           )}

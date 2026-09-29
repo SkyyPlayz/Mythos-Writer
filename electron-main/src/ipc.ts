@@ -510,8 +510,6 @@ export const IPC_CHANNELS = {
   MODEL_KEYS_REVEAL: 'modelKeys:reveal',
   MODEL_KEYS_OPEN: 'modelKeys:open',
   MODEL_KEYS_CLEAR_MEMORY: 'modelKeys:clearMemory',
-  MODEL_KEYS_MOVE_VALIDATE: 'modelKeys:moveValidate',
-  MODEL_KEYS_MOVE_PICK: 'modelKeys:movePick',
   // SKY-158: Tag & cross-reference system
   TAGS_LIST: 'tags:list',
   TAGS_UPSERT: 'tags:upsert',
@@ -1141,8 +1139,6 @@ export interface IpcHandlers {
   [IPC_CHANNELS.MODEL_KEYS_REVEAL]: (payload?: never) => Promise<{ opened: boolean; error?: string }>;
   [IPC_CHANNELS.MODEL_KEYS_OPEN]: (payload?: never) => Promise<{ opened: boolean; error?: string }>;
   [IPC_CHANNELS.MODEL_KEYS_CLEAR_MEMORY]: (payload?: never) => { ok: boolean; removed?: string[]; error?: string };
-  [IPC_CHANNELS.MODEL_KEYS_MOVE_VALIDATE]: (payload: { destPath: string }) => { ok: boolean; dest?: string; error?: string };
-  [IPC_CHANNELS.MODEL_KEYS_MOVE_PICK]: (payload?: never) => Promise<{ ok: boolean; dest?: string; cancelled?: boolean; error?: string; message?: string }>;
 
   // SKY-158: Tag & cross-reference system
   [IPC_CHANNELS.TAGS_LIST]: (payload: never) => TagsListResponse;

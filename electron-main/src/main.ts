@@ -533,7 +533,6 @@ import {
   getModelKeysLocation,
   clearModelKeysMemory,
   resolveKeysDir,
-  validateModelKeysMoveTarget,
 } from './modelKeysFiles.js';
 import {
   addCrossVaultLink,
@@ -3110,32 +3109,6 @@ const handlers: IpcHandlers = {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
     if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
     return clearModelKeysMemory(mythosRoot);
-  },
-  [IPC_CHANNELS.MODEL_KEYS_MOVE_VALIDATE]: (payload: { destPath: string }) => {
-    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
-    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
-    return validateModelKeysMoveTarget(mythosRoot, payload?.destPath ?? '');
-  },
-  [IPC_CHANNELS.MODEL_KEYS_MOVE_PICK]: async () => {
-    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
-    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
-    const result = await dialog.showOpenDialog({
-      title: 'Choose destination for Agent Vault move',
-      properties: ['openDirectory', 'createDirectory'],
-    });
-    if (result.canceled || !result.filePaths[0]) {
-      return { ok: false as const, cancelled: true };
-    }
-    const validated = validateModelKeysMoveTarget(mythosRoot, result.filePaths[0]);
-    if (!validated.ok) return { ok: false as const, error: validated.error };
-    // Agent Vault travels with the Mythos vault — validated dest is recorded for the user.
-    // Actual relocation is via Vaults › Move (whole vault); we never copy identity files
-    // to an arbitrary folder from this surface (would break the sandboxed keys-dir contract).
-    return {
-      ok: true as const,
-      dest: validated.dest,
-      message: 'Agent Vault moves with the Mythos vault — use Vaults › Move for the whole vault.',
-    };
   },
 
   // SKY-1391: brainstorm → writing-panel bridge

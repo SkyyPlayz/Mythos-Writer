@@ -1,5 +1,5 @@
 /**
- * F5 — Models & Keys Hands & files UI (location / Reveal / Open / Clear / Move).
+ * F5 — Models & Keys Hands & files UI (location / Reveal / Open / Clear / Move vault…).
  */
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -26,7 +26,7 @@ describe('ModelKeysSection F5 Hands & files', () => {
   let modelKeysReveal: ReturnType<typeof vi.fn>;
   let modelKeysOpen: ReturnType<typeof vi.fn>;
   let modelKeysClearMemory: ReturnType<typeof vi.fn>;
-  let modelKeysMovePick: ReturnType<typeof vi.fn>;
+  let onMoveVault: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     modelKeysLocation = vi.fn().mockResolvedValue({
@@ -40,21 +40,16 @@ describe('ModelKeysSection F5 Hands & files', () => {
     modelKeysReveal = vi.fn().mockResolvedValue({ opened: true });
     modelKeysOpen = vi.fn().mockResolvedValue({ opened: true });
     modelKeysClearMemory = vi.fn().mockResolvedValue({ ok: true, removed: ['Sessions'] });
-    modelKeysMovePick = vi.fn().mockResolvedValue({
-      ok: true,
-      dest: '/tmp/dest',
-      message: 'Agent Vault moves with the Mythos vault — use Vaults › Move for the whole vault.',
-    });
+    onMoveVault = vi.fn();
     (window as unknown as { api: unknown }).api = {
       modelKeysLocation,
       modelKeysReveal,
       modelKeysOpen,
       modelKeysClearMemory,
-      modelKeysMovePick,
     };
   });
 
-  function renderSection() {
+  function renderSection(props: { onMoveVault?: () => void } = {}) {
     return render(
       <ModelKeysSection
         settings={baseSettings()}
@@ -71,6 +66,7 @@ describe('ModelKeysSection F5 Hands & files', () => {
         showApiKey={false}
         setShowApiKey={vi.fn()}
         setSavedOk={vi.fn()}
+        onMoveVault={props.onMoveVault ?? onMoveVault}
       />,
     );
   }
@@ -101,19 +97,37 @@ describe('ModelKeysSection F5 Hands & files', () => {
     expect(await screen.findByTestId('mk-keys-status')).toHaveTextContent(/Cleared agent memory/);
   });
 
-  it('Move… validates destination via IPC', async () => {
+  it('Move vault… opens the existing MoveVaultWizard via onMoveVault', async () => {
     renderSection();
     await screen.findByTestId('mk-keys-path');
+    expect(screen.getByTestId('mk-keys-move')).toHaveTextContent('Move vault…');
+    expect(screen.getByTestId('mk-keys-move-hint')).toHaveTextContent(
+      'Keys and memory move with the vault.',
+    );
     fireEvent.click(screen.getByTestId('mk-keys-move'));
-    await waitFor(() => expect(modelKeysMovePick).toHaveBeenCalled());
-    expect(await screen.findByTestId('mk-keys-status')).toHaveTextContent(/Vaults › Move/);
+    expect(onMoveVault).toHaveBeenCalledTimes(1);
   });
 
-  it('Move… surfaces validation errors', async () => {
-    modelKeysMovePick.mockResolvedValue({ ok: false, error: 'Path traversal denied' });
-    renderSection();
+  it('Move vault… is disabled when onMoveVault is omitted', async () => {
+    render(
+      <ModelKeysSection
+        settings={baseSettings()}
+        setSettings={vi.fn()}
+        onTestConnection={vi.fn()}
+        testStatus="idle"
+        testMsg=""
+        providerApiKey=""
+        setProviderApiKey={vi.fn()}
+        providerApiKeyDirty={false}
+        setProviderApiKeyDirty={vi.fn()}
+        providerBaseUrl=""
+        setProviderBaseUrl={vi.fn()}
+        showApiKey={false}
+        setShowApiKey={vi.fn()}
+        setSavedOk={vi.fn()}
+      />,
+    );
     await screen.findByTestId('mk-keys-path');
-    fireEvent.click(screen.getByTestId('mk-keys-move'));
-    expect(await screen.findByTestId('mk-keys-error')).toHaveTextContent('Path traversal denied');
+    expect(screen.getByTestId('mk-keys-move')).toBeDisabled();
   });
 });

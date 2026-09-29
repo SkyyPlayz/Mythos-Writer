@@ -1984,8 +1984,6 @@ interface Window {
     modelKeysReveal?: () => Promise<{ opened: boolean; error?: string }>;
     modelKeysOpen?: () => Promise<{ opened: boolean; error?: string }>;
     modelKeysClearMemory?: () => Promise<{ ok: boolean; removed?: string[]; error?: string }>;
-    modelKeysMoveValidate?: (destPath: string) => Promise<{ ok: boolean; dest?: string; error?: string }>;
-    modelKeysMovePick?: () => Promise<{ ok: boolean; dest?: string; cancelled?: boolean; error?: string; message?: string }>;
     // SKY-1391: brainstorm → writing-panel bridge
     sceneAppendBrainstormNote?: (sceneId: string, content: string) => Promise<{ appended: boolean }>;
 

@@ -936,8 +936,6 @@ contextBridge.exposeInMainWorld('api', {
   modelKeysReveal: () => ipcRenderer.invoke('modelKeys:reveal'),
   modelKeysOpen: () => ipcRenderer.invoke('modelKeys:open'),
   modelKeysClearMemory: () => ipcRenderer.invoke('modelKeys:clearMemory'),
-  modelKeysMoveValidate: (destPath: string) => ipcRenderer.invoke('modelKeys:moveValidate', { destPath }),
-  modelKeysMovePick: () => ipcRenderer.invoke('modelKeys:movePick'),
   // SKY-1391/SKY-1393: brainstorm → writing-panel bridge
   sceneAppendBrainstormNote: (sceneId: string, content: string) =>
     ipcRenderer.invoke('scene:appendBrainstormNote', { sceneId, content }),

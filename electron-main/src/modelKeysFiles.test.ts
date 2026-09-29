@@ -7,7 +7,6 @@ import {
   getModelKeysLocation,
   isInsideKeysDir,
   resolveKeysDir,
-  validateModelKeysMoveTarget,
 } from './modelKeysFiles.js';
 import { AGENT_VAULT_DIRNAME } from './mythosFormat/mythosJson.js';
 import { AGENTS_PARTNER_FILES } from './mythosFormat/agentsVaultPartner.js';
@@ -64,25 +63,5 @@ describe('modelKeysFiles (F5 sandbox)', () => {
       expect(fs.existsSync(path.join(keysDir, f))).toBe(true);
     }
     expect(fs.existsSync(sessions)).toBe(false);
-  });
-
-  it('validateModelKeysMoveTarget rejects traversal and keys-dir nesting', () => {
-    const keysDir = resolveKeysDir(mythosRoot);
-    const outside = path.join(tmp, 'dest');
-    fs.mkdirSync(outside);
-
-    expect(validateModelKeysMoveTarget(mythosRoot, '').ok).toBe(false);
-    expect(validateModelKeysMoveTarget(mythosRoot, '../escape').ok).toBe(false);
-    expect(validateModelKeysMoveTarget(mythosRoot, keysDir).ok).toBe(false);
-    expect(validateModelKeysMoveTarget(mythosRoot, path.join(keysDir, 'nested')).ok).toBe(false);
-
-    const ok = validateModelKeysMoveTarget(mythosRoot, outside);
-    expect(ok.ok).toBe(true);
-    if (ok.ok) expect(ok.dest).toBe(fs.realpathSync.native(outside));
-  });
-
-  it('validateModelKeysMoveTarget rejects null-byte and encoded ..', () => {
-    expect(validateModelKeysMoveTarget(mythosRoot, 'a\0b').ok).toBe(false);
-    expect(validateModelKeysMoveTarget(mythosRoot, '%2e%2e/secret').ok).toBe(false);
   });
 });
