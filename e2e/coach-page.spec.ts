@@ -298,12 +298,15 @@ test('M13 acceptance: with AI failing, View Full Analysis still lands a computed
 });
 
 test('M13 §14.7: Full Analysis opens in Coach with COMPUTED vs COACH\'S READ sections', async () => {
-  // The coach agent now answers the dedicated analysis prompt with valid JSON.
+  // Analysis AI read still uses writing-assistant; chat send is brainstorm (F3#1).
   await app!.evaluate(({ ipcMain }, args) => {
     try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* not registered */ }
-    ipcMain.handle('agent:writing-assistant', async () => ({ text: args.response }));
+    try { ipcMain.removeHandler('agent:brainstorm'); } catch { /* not registered */ }
+    ipcMain.handle('agent:brainstorm', async () => ({ text: args.chatResponse }));
+    ipcMain.handle('agent:writing-assistant', async () => ({ text: args.analysisResponse }));
   }, {
-    response: JSON.stringify({
+    chatResponse: MOCK_COACH_RESPONSE,
+    analysisResponse: JSON.stringify({
       purpose: 'Story progression — commits the crew to the fog',
       tension: 'Rising — builds from the first bell',
       pacing: 'Medium — slows at the quay',
@@ -322,7 +325,7 @@ test('M13 §14.7: Full Analysis opens in Coach with COMPUTED vs COACH\'S READ se
   await input.press('Enter');
   await expect(page.locator('.coach-bubble--user', { hasText: 'One more question about pacing' }).last())
     .toBeVisible({ timeout: 8_000 });
-  await expect(page.locator('.coach-bubble--coach', { hasText: 'builds from the first bell' }).last())
+  await expect(page.locator('.coach-bubble--coach', { hasText: MOCK_COACH_RESPONSE }).last())
     .toBeVisible({ timeout: 10_000 });
 
   await openSceneAnalysisCard(page);
