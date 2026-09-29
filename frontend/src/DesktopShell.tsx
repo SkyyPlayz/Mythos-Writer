@@ -1,8 +1,14 @@
-import { useState, useEffect, useCallback, useRef, useMemo, useReducer, type ReactNode } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useReducer, type ReactNode } from 'react';
 import type { Editor } from '@tiptap/core';
 import { useToast } from './hooks/useToast';
 import { useAiEnabled } from './hooks/useAiEnabled';
-import { useNavigationHistory, type NavigationLocation, type PersistedNavHistory } from './hooks/useNavigationHistory';
+import {
+  useNavigationHistory,
+  findLastStoryEditorLocation,
+  isStoryEditorLocation,
+  type NavigationLocation,
+  type PersistedNavHistory,
+} from './hooks/useNavigationHistory';
 import { useCtrlScrollDensity } from './hooks/useCtrlScrollDensity';
 import { useVaultIcons, type VaultIconSetInput } from './hooks/useVaultIcons';
 import { isSafeEntityMentionId, setEntityMentionNavigateHandler } from './lib/entityMentionNavigate';
@@ -723,6 +729,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // exists (no effect indirection needed — see appApiRef-style assignments
   // elsewhere in this file).
   const navHistoryHydrateRef = useRef<(persisted: PersistedNavHistory | null | undefined) => void>(() => {});
+  // F2#7: Story Writer rail click restores last story-editor location. The
+  // handler sits above useNavigationHistory in the file, so restore goes
+  // through a ref assigned once applyNavLocation exists (same pattern as
+  // navHistoryHydrateRef).
+  const restoreLastStoryFromRailRef = useRef<() => boolean>(() => false);
+  // Pending scroll to apply in useLayoutEffect on the paint that reveals
+  // the story editor — avoids a blank/scrolled-to-top first frame.
+  const pendingStoryEditorScrollRef = useRef<number | null>(null);
+  // Keep ManuscriptView mounted (display:none) after first editor visit so
+  // Crafter/Timeline → Story Writer does not remount into a blank frame.
+  const [keepStoryEditorMounted, setKeepStoryEditorMounted] = useState(false);
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
@@ -2746,7 +2763,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       case 'boards':
         handleTabChange('boards');
         break;
-      case 'story':
+      case 'story': {
+        // F2#7: restore last story-editor scene + scroll when leaving another
+        // surface (Notes/Boards/Crafter/Timeline/…). No-op when already on the
+        // story editor (rail still toggles the Stories popover).
+        if (restoreLastStoryFromRailRef.current()) break;
         handleNavSectionChange('story');
         // Scene Crafter and Timeline have their own rail items — Story Writer
         // always lands on the editor sub-view.
@@ -2754,6 +2775,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           handleSetView('editor');
         }
         break;
+      }
       default:
         handleNavSectionChange(moduleId);
     }
@@ -5034,7 +5056,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     // Restore scroll once the newly-applied location's content has actually
     // painted — a double rAF gives async-mounted content (BlockEditor's
     // TipTap init, NoteViewer's load) a tick to land in the DOM first.
+    //
+    // F2#7: also stash a pending story-editor scroll and apply immediately
+    // when the keep-alive `.msv-page` is already in the DOM (hidden), so the
+    // first visible paint after "Back to story" is already at the right
+    // offset (no blank/jump frame).
     const { scrollTop: targetScrollTop, tab: targetTab, splitWindowEnabled: targetSplit, focusedPane: targetPane } = loc;
+    if (targetTab === 'story' && loc.view === 'editor') {
+      pendingStoryEditorScrollRef.current = targetScrollTop;
+      const el = targetSplit
+        ? document.querySelector<HTMLElement>(`[data-testid="split-pane-${targetPane}"] .spe-content`)
+        : document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+      if (el) el.scrollTop = targetScrollTop;
+    }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         let el: HTMLElement | null = null;
@@ -5051,6 +5085,39 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       });
     });
   }, [findSceneLocation, allEntities, handleSelectEntity, handleTabChange, handleSetView, handleNotesSubViewChange, handleSelectScene, handleWorkspaceTabSelect]);
+
+  // F2#7: Story Writer rail — restore last story-editor location (scene + scroll).
+  restoreLastStoryFromRailRef.current = () => {
+    // Already on Story Writer editor: leave alone (Stories popover still toggles).
+    if (
+      tabShellRef.current.activeTab === 'story' &&
+      tabShellRef.current.storySubView === 'editor'
+    ) {
+      return false;
+    }
+    const last = findLastStoryEditorLocation(navHistory.getSnapshot());
+    if (!last || !isStoryEditorLocation(last)) return false;
+    applyNavLocation(last);
+    return true;
+  };
+
+  // F2#7: apply pending story scroll in the same layout pass that reveals the
+  // editor, so first paint after the rail click shows story content at the
+  // restored offset (not a blank/top frame then a jump).
+  useLayoutEffect(() => {
+    if (tabShell.activeTab !== 'story' || view !== 'editor') return;
+    const pending = pendingStoryEditorScrollRef.current;
+    if (pending == null) return;
+    pendingStoryEditorScrollRef.current = null;
+    const el = splitWindowEnabled
+      ? document.querySelector<HTMLElement>(`[data-testid="split-pane-${focusedPane}"] .spe-content`)
+      : document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+    if (el) el.scrollTop = pending;
+  }, [tabShell.activeTab, view, splitWindowEnabled, focusedPane]);
+
+  useEffect(() => {
+    if (view === 'editor') setKeepStoryEditorMounted(true);
+  }, [view]);
 
   // Returns true only when history actually had somewhere to go — lets
   // ManuscriptView's Alt+←/→ handler fall back to its own scene/chapter
@@ -6601,7 +6668,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           />
         </div>
       )}
-      {activeDockedTabId === null && view === 'editor' && <div className="shell-panels">
+      {activeDockedTabId === null && (view === 'editor' || keepStoryEditorMounted) && (
+      <div
+        className="shell-panels"
+        data-testid="shell-panels-story-editor"
+        aria-hidden={view !== 'editor'}
+        style={view !== 'editor' ? { display: 'none' } : undefined}
+      >
       <div className="shell-panels__row">
       {/* Left rail */}
       {showLeftSidebar && (
@@ -7134,7 +7207,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             : null}
         />
       )}
-      </div>}{/* end shell-panels */}
+      </div>
+      )}{/* end shell-panels (F2#7 keep-alive when view !== editor) */}
       </div>{/* end app-tabpanel-story */}
       {/* SKY-2096: Notes tabpanel — full layout (vault tree + editor + Brainstorm sidebar) */}
       {tabShell.activeTab === 'notes' && !vaultBinding.notesValid && (

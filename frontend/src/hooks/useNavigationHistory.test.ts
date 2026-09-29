@@ -2,7 +2,14 @@
 import { renderHook } from '@testing-library/react';
 import { act } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
-import { useNavigationHistory, type NavigationLocation, type PersistedNavHistory } from './useNavigationHistory';
+import {
+  useNavigationHistory,
+  findLastStoryEditorLocation,
+  isStoryEditorLocation,
+  type NavigationLocation,
+  type PersistedNavHistory,
+} from './useNavigationHistory';
+
 
 function makeLocation(overrides: Partial<NavigationLocation> = {}): NavigationLocation {
   return {
@@ -239,3 +246,53 @@ describe('useNavigationHistory', () => {
     expect(result.current.getSnapshot().index).toBe(1);
   });
 });
+
+describe('findLastStoryEditorLocation (F2#7 Back to story)', () => {
+  it('returns null for an empty stack', () => {
+    expect(findLastStoryEditorLocation({ stack: [], index: 0 })).toBeNull();
+  });
+
+  it('returns null when no story-editor entry exists', () => {
+    const snap: PersistedNavHistory = {
+      stack: [
+        makeLocation({ tab: 'notes', view: 'editor', sceneId: null, notePath: '/a.md' }),
+        makeLocation({ tab: 'story', view: 'kanban', sceneId: 'scene-1' }),
+      ],
+      index: 1,
+    };
+    expect(findLastStoryEditorLocation(snap)).toBeNull();
+    expect(isStoryEditorLocation(snap.stack[1]!)).toBe(false);
+  });
+
+  it('restores the most recent story-editor stop behind the current index, including scrollTop', () => {
+    const editorA = makeLocation({ sceneId: 'scene-a', scrollTop: 120 });
+    const editorB = makeLocation({ sceneId: 'scene-b', scrollTop: 480 });
+    const notes = makeLocation({ tab: 'notes', sceneId: null, notePath: '/n.md', scrollTop: 0 });
+    const snap: PersistedNavHistory = {
+      stack: [editorA, editorB, notes],
+      index: 2,
+    };
+    const found = findLastStoryEditorLocation(snap);
+    expect(found?.sceneId).toBe('scene-b');
+    expect(found?.scrollTop).toBe(480);
+    expect(isStoryEditorLocation(found!)).toBe(true);
+  });
+
+  it('ignores forward (discarded) history past index', () => {
+    const editorOld = makeLocation({ sceneId: 'scene-old', scrollTop: 10 });
+    const notes = makeLocation({ tab: 'notes', sceneId: null, notePath: '/n.md' });
+    const editorForward = makeLocation({ sceneId: 'scene-fwd', scrollTop: 999 });
+    const snap: PersistedNavHistory = {
+      stack: [editorOld, notes, editorForward],
+      index: 1,
+    };
+    expect(findLastStoryEditorLocation(snap)?.sceneId).toBe('scene-old');
+  });
+
+  it('returns the current entry when already on the story editor', () => {
+    const editor = makeLocation({ sceneId: 'scene-1', scrollTop: 55 });
+    const snap: PersistedNavHistory = { stack: [editor], index: 0 };
+    expect(findLastStoryEditorLocation(snap)).toEqual(editor);
+  });
+});
+
