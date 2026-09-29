@@ -53,6 +53,7 @@ import {
   type QueuedPartnerMessage,
 } from './partner/partnerBusyStore';
 import { resolveWritingPartner } from './partner/partnerSettings';
+import { refuseUnlessProviderReady } from './agents/coachInvoke';
 import './AgentHubPanel.css';
 
 /** Legacy agent row ids — kept for resolveAgentStatus + hand routing tests. */
@@ -434,7 +435,8 @@ function sceneProse(scene: Scene | null): string {
   return blocks.map((b) => b.content ?? '').filter(Boolean).join('\n\n');
 }
 
-async function runPartnerAction(
+/** Exported for provider-routing unit tests (Probe P4). */
+export async function runPartnerAction(
   action: PartnerActionId,
   ctx: { scene: Scene | null; story: Story | null },
 ): Promise<{ text: string; cardTitle?: string; cardFoot?: string }> {
@@ -463,6 +465,8 @@ async function runPartnerAction(
       };
     }
     case 'beta-read': {
+      // Ivy / Probe P4 — betaReader provider only; refuse before IPC; never brainstorm.
+      await refuseUnlessProviderReady('betaReader');
       if (!ctx.story) {
         return { text: 'Open a story first, then run Beta Read.', cardTitle: 'Beta Read' };
       }
@@ -491,6 +495,8 @@ async function runPartnerAction(
       return { text: summary, cardTitle: 'Beta Read', cardFoot: ctx.story.title };
     }
     case 'writer-scan': {
+      // Ivy / Probe P4 — writingAssistant provider only; refuse before IPC; never brainstorm.
+      await refuseUnlessProviderReady('writingAssistant');
       if (!ctx.scene) {
         return { text: 'Open a scene first, then run Writer Scan.', cardTitle: 'Writer Scan' };
       }
@@ -595,6 +601,7 @@ function UnifiedPartnerChat({
       await chat.postActionResult(meta.label, result.text, {
         cardTitle: result.cardTitle,
         cardFoot: result.cardFoot,
+        cardKind: result.cardTitle ? 'action' : undefined,
       });
       // Tip cards are tip-UI only (no coach composer). Chat stays on the partner thread.
       if (action === 'writer-scan') onOpenWriterTips();

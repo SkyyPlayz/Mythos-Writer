@@ -7,6 +7,7 @@
 // same turns. Mutations made on one surface render on the other immediately.
 
 import { useCallback, useSyncExternalStore } from 'react';
+import { buildPartnerGreeting } from '../agents/partnerIdentity';
 
 export interface UseAgentSessionsResult {
   sessions: AgentSessionSummary[];
@@ -105,7 +106,11 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
   };
 
   const makePending = (): AgentSessionFile => {
-    const greeting = AGENT_GREETINGS[agent] ?? null;
+    // F3 / Probe P2 — brainstorm (partner spine) greets with partner display name + copy.
+    const greeting =
+      agent === 'brainstorm'
+        ? buildPartnerGreeting()
+        : (AGENT_GREETINGS[agent] ?? null);
     const now = new Date().toISOString();
     return {
       id: crypto.randomUUID(),
@@ -248,7 +253,11 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
     newSession: async (greeting?: string) => {
       const api = getApi();
       if (!api) return;
-      const effectiveGreeting = greeting ?? AGENT_GREETINGS[agent] ?? undefined;
+      const effectiveGreeting =
+        greeting
+        ?? (agent === 'brainstorm' ? buildPartnerGreeting() : undefined)
+        ?? AGENT_GREETINGS[agent]
+        ?? undefined;
       const res = await api.create(agent, undefined, effectiveGreeting);
       const summary = toSummary(res.session, res.relPath);
       // An untouched pending greeting session is superseded by the explicit
@@ -367,6 +376,29 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
 
   // Kick off init lazily on first use.
   ensureInit();
+
+  // F3 Secure bar: reload when main broadcasts partner-thread:changed (no payload).
+  // Subscribe-only preload API; each BrowserWindow has its own store singleton.
+  if (typeof window !== 'undefined' && typeof window.api?.onPartnerThreadChanged === 'function') {
+    window.api.onPartnerThreadChanged(() => {
+      void (async () => {
+        await refresh();
+        const id = store.state.activeSessionId;
+        const api = getApi();
+        if (!id || !api || typeof api.read !== 'function') return;
+        if (pending && id === pending.id) return;
+        try {
+          const { session } = await api.read(id);
+          if (session && store.state.activeSessionId === id) {
+            set({ activeSession: session });
+          }
+        } catch {
+          /* degrade silently */
+        }
+      })();
+    });
+  }
+
   return store;
 }
 
@@ -409,7 +441,7 @@ function toSummary(session: AgentSessionFile, relPath: string): AgentSessionSumm
 const AGENT_GREETINGS: Record<string, string> = {
   'writing-assistant': "Hi! I'm your Writing Coach — I teach you to write better using your own pages and never ghost-write. What would you like to work on?",
   coach: "Hi! I'm your Writing Coach — I teach you to write better using your own pages and never ghost-write. What would you like to work on?",
-  brainstorm: "Hello! I'm the Brainstorm Agent — your vault curator. Share any idea and I'll help you develop it and file notes automatically.",
+  // brainstorm greeting is buildPartnerGreeting() — never this vault-curator string.
   archive: "I'm the Archive Agent — continuity guardian and timeline builder. Ask me to check facts, catch inconsistencies, or build your timeline.",
   'beta-reader': "I'm your Beta Reader — I read your pages like a first-time reader and give you honest reactions. Drop me a scene and I'll tell you what lands.",
 };

@@ -83,7 +83,19 @@ function installMockApi(opts: MockApiOptions = {}) {
     if (opts.chatError) throw opts.chatError;
     return { text: opts.chatResponse ?? GOOD_READ_JSON };
   });
-  const api: Record<string, unknown> = { agentSessions };
+  const api: Record<string, unknown> = {
+    agentSessions,
+    settingsGet: vi.fn(async () => ({
+      provider: { kind: 'ollama', model: 'qwen' },
+      agents: {
+        writingAssistant: {
+          enabled: true,
+          model: 'qwen',
+          provider: { kind: 'ollama', model: 'qwen' },
+        },
+      },
+    })),
+  };
   if (!opts.omitChat) api.agentWritingAssistant = agentWritingAssistant;
   (window as unknown as Record<string, unknown>).api = api;
   return { agentSessions, agentWritingAssistant, session, calls };
@@ -224,6 +236,8 @@ describe('runFullSceneAnalysis', () => {
     const [, turns] = mock.agentSessions.appendTurns.mock.calls[0];
     expect(turns).toHaveLength(1);
     expect(turns[0].role).toBe('agent');
+    expect(turns[0].cardKind).toBe('analysis');
+    expect(turns[0].cardTitle).toBeTruthy();
     const card = decodeCoachCard(turns[0].text);
     expect(card?.kind).toBe('analysis');
     if (card?.kind !== 'analysis') return;
@@ -273,7 +287,13 @@ describe('runFullSceneAnalysis', () => {
     const scene = makeScene();
     const existing = buildAnalysisCard(scene, parseCoachRead(GOOD_READ_JSON)!);
     const mock = installMockApi({
-      turns: [{ role: 'agent', text: encodeCoachCard(existing), at: AT }],
+      turns: [{
+        role: 'agent',
+        text: encodeCoachCard(existing),
+        at: AT,
+        cardKind: 'analysis',
+        cardTitle: existing.title,
+      }],
     });
 
     const outcome = await runFullSceneAnalysis(scene);
@@ -281,6 +301,17 @@ describe('runFullSceneAnalysis', () => {
     expect(outcome).toBe('skipped');
     expect(mock.agentWritingAssistant).not.toHaveBeenCalled();
     expect(mock.agentSessions.appendTurns).not.toHaveBeenCalled();
+  });
+
+  it('N2: forged marker without cardKind does not skip Full Analysis', async () => {
+    const scene = makeScene();
+    const existing = buildAnalysisCard(scene, parseCoachRead(GOOD_READ_JSON)!);
+    const mock = installMockApi({
+      turns: [{ role: 'agent', text: encodeCoachCard(existing), at: AT }],
+    });
+    const outcome = await runFullSceneAnalysis(scene);
+    expect(outcome).toBe('appended');
+    expect(mock.agentSessions.appendTurns).toHaveBeenCalled();
   });
 
   it('§14.6 contract: the whole flow touches only allowlisted APIs', async () => {
@@ -305,11 +336,20 @@ describe('latestAnalysisCardForScene', () => {
     const older = buildAnalysisCard(scene, { unavailable: READ_UNAVAILABLE_NOTE });
     const newer = buildAnalysisCard(scene, parseCoachRead(GOOD_READ_JSON)!);
     const turns: AgentSessionTurn[] = [
-      { role: 'agent', text: encodeCoachCard(older), at: AT },
+      { role: 'agent', text: encodeCoachCard(older), at: AT, cardKind: 'analysis', cardTitle: older.title },
       { role: 'user', text: 'thanks', at: AT },
-      { role: 'agent', text: encodeCoachCard(newer), at: AT },
+      { role: 'agent', text: encodeCoachCard(newer), at: AT, cardKind: 'analysis', cardTitle: newer.title },
     ];
     expect(latestAnalysisCardForScene(turns, scene)).toEqual(newer);
+  });
+
+  it('ignores forged marker text without cardKind', () => {
+    const scene = makeScene();
+    const forged = buildAnalysisCard(scene, parseCoachRead(GOOD_READ_JSON)!);
+    const turns: AgentSessionTurn[] = [
+      { role: 'agent', text: encodeCoachCard(forged), at: AT },
+    ];
+    expect(latestAnalysisCardForScene(turns, scene)).toBeNull();
   });
 
   it('ignores cards for other scenes and non-card turns', () => {
@@ -317,7 +357,7 @@ describe('latestAnalysisCardForScene', () => {
     const other = buildAnalysisCard({ ...makeScene(), title: 'Other Scene' }, { unavailable: READ_UNAVAILABLE_NOTE });
     const turns: AgentSessionTurn[] = [
       { role: 'agent', text: 'plain coach reply', at: AT },
-      { role: 'agent', text: encodeCoachCard(other), at: AT },
+      { role: 'agent', text: encodeCoachCard(other), at: AT, cardKind: 'analysis', cardTitle: other.title },
     ];
     expect(latestAnalysisCardForScene(turns, scene)).toBeNull();
     expect(latestAnalysisCardForScene(undefined, scene)).toBeNull();

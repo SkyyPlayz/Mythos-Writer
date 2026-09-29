@@ -10,12 +10,38 @@ import { resolveAgentDisplayName } from './agentIdentity';
 export const DEFAULT_PARTNER_DISPLAY_NAME = 'Mythos';
 
 /**
- * F3#1 — every chat surface (hub, Timeline partner tab, Coach page, Beta chat,
- * WA float-out, Brainstorm page) reads/writes this single session-store key.
- * Send path is always `invokeBrainstorm` / `agentBrainstorm` — never coach or
- * beta-reader IPC.
+ * F3#1 — Shared session-store key for partner chat surfaces that hydrate the
+ * unified thread: Agent Hub, Timeline partner tab, Coach page, Beta chat.
+ *
+ * Send paths (do not quietly merge):
+ * - Hub / Timeline / Beta MiniAgentChat → `invokeBrainstorm` / `agentBrainstorm`
+ * - Coach page free-text → `agentWritingAssistant` (writingAssistant provider)
+ * - Full Analysis → `agentWritingAssistant`
+ * - Writer Scan / Beta Read actions → their own scan/report IPC
+ * - BrainstormPage board chat still uses `streamStart` (own path; session key shared)
+ *
+ * Float-out (`panelFloat('writing-assistant')`) reloads the partner thread via
+ * the Secure-bar `partner-thread:changed` broadcast (no payload) — each
+ * BrowserWindow keeps its own module singleton store and refreshes on that event.
  */
 export const PARTNER_SESSION_AGENT = 'brainstorm' as const;
+
+/** Cached rename for pending-session greetings (updated when settings load). */
+let cachedPartnerDisplayName = DEFAULT_PARTNER_DISPLAY_NAME;
+
+/** Call when AppSettings load/change so new partner sessions greet with the rename. */
+export function setPartnerGreetingName(name: string | null | undefined): void {
+  const trimmed = name?.trim();
+  cachedPartnerDisplayName = trimmed || DEFAULT_PARTNER_DISPLAY_NAME;
+}
+
+/**
+ * Partner-facing greeting (Probe P2) — never "Brainstorm Agent / vault curator".
+ */
+export function buildPartnerGreeting(displayName?: string): string {
+  const name = (displayName?.trim() || cachedPartnerDisplayName || DEFAULT_PARTNER_DISPLAY_NAME).trim();
+  return `Hi! I'm ${name} — your writing partner. Ask about craft, timeline, or notes — or run Update Timeline, Beta Read, or Writer Scan from the actions above.`;
+}
 
 /** Hands still used for busy/status routing behind the single partner face. */
 export type PartnerHandId = 'writer' | 'analyst' | 'archivist';
