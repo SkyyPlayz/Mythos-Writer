@@ -202,7 +202,10 @@ test('TC-PROV-02: Test connection with mocked local provider shows success', asy
   await page.click('.settings-close');
 });
 
-test('TC-PROV-03: "Use different provider for this agent" toggle shows inline provider form', async () => {
+// Slice C Soft-FAIL: four classic per-agent Settings cards (and their
+// "Use different provider" overrides) are unmounted. Hand models live on
+// Writing partner; provider buckets live on Model & keys.
+test.skip('TC-PROV-03: "Use different provider for this agent" toggle shows inline provider form', async () => {
   // Open settings
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
@@ -234,7 +237,7 @@ test('TC-PROV-03: "Use different provider for this agent" toggle shows inline pr
   await page.click('.settings-close');
 });
 
-test('TC-PROV-04: Non-Anthropic global provider shows text input for per-agent model', async () => {
+test.skip('TC-PROV-04: Non-Anthropic global provider shows text input for per-agent model', async () => {
   // App was seeded with Ollama → per-agent model should be text input
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
@@ -360,7 +363,8 @@ test('TC-PROV-07: legacy API Key section only renders for providers that need on
   await page.click('.settings-close');
 });
 
-test('TC-PROV-08: no-override agent Model field inherits & live-tracks the provider Default model', async () => {
+// Slice C Soft-FAIL: Writing Coach per-agent Model field removed with AgentsSection.
+test.skip('TC-PROV-08: no-override agent Model field inherits & live-tracks the provider Default model', async () => {
   await page.locator('.app-menu-gear-btn').click();
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
   // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.

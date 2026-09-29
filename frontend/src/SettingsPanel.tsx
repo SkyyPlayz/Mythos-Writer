@@ -25,6 +25,7 @@ import VaultHealthSection from './components/SettingsPanel/sections/VaultHealthS
 import AutoLinkerSection from './components/SettingsPanel/sections/AutoLinkerSection';
 import WritingPartnerSection from './partner/WritingPartnerSection';
 import ModelKeysSection from './partner/ModelKeysSection';
+import ProductionRolesSection from './partner/ProductionRolesSection';
 import VaultAutoLinkerSection from './components/SettingsPanel/sections/VaultAutoLinkerSection';
 import JournalSection from './components/SettingsPanel/sections/JournalSection';
 import SceneFieldsSection from './components/SettingsPanel/sections/SceneFieldsSection';
@@ -915,6 +916,18 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   setSavedOk={setSavedOk}
                 />
               )}
+
+              {/* Soft-FAIL: four classic agent cards stay unmounted. Production
+                  roles remain so SKY-11412 / Beta Reader Production Team work. */}
+              <ProductionRolesSection
+                settings={settings}
+                setSettings={setSettings}
+                providerKind={providerKind}
+                providerModel={providerModel}
+                modelList={modelList}
+                modelListStatus={modelListStatus}
+                setSavedOk={setSavedOk}
+              />
 
               <AutoLinkerSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
 

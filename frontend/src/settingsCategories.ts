@@ -72,10 +72,11 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-ai-master',
       'section-transcript-placement',
       'section-providers',
-      // Legacy section files still define these ids (AgentsSection/ApiKeySection);
-      // Soft-FAIL hides the four-agent cards from the Model & keys primary UI.
+      // Soft-FAIL: AgentsSection.tsx still defines section-agents (unmounted);
+      // production roles ship via ProductionRolesSection.
       'section-api-key',
       'section-agents',
+      'section-production-roles',
       'section-models',
       'section-privacy',
       'section-hands-files',
