@@ -51,9 +51,11 @@
 }
 
 .dtb-tab--active {
-  background: var(--border-default);
-  border-color: var(--border-strong);
+  /* F4#7: full-outline active state (parity with WorkspaceTabBar neon border). */
+  background: var(--glass2, rgba(21, 26, 45, 0.88));
+  border-color: var(--b1, rgba(0, 240, 255, 0.5));
   color: var(--text-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--neon-cyan, #00f0ff) 35%, transparent);
 }
 
 /* Group drop target highlight (AC-T-03) */

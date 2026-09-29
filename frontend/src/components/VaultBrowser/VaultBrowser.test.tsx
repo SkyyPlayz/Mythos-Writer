@@ -1661,6 +1661,21 @@ describe('M16: collapse all', () => {
     fireEvent.click(screen.getByTestId('vb-btn-collapse-all'));
     await waitFor(() => expect(screen.queryByTestId('vb-row-folder/note.md')).not.toBeInTheDocument());
   });
+
+  it('F4#10: collapse/expand-all header icons are ↑ and ↓', async () => {
+    await renderNotesVaultWithItems([]);
+    expect(screen.getByTestId('vb-btn-collapse-all')).toHaveTextContent('↑');
+    expect(screen.getByTestId('vb-btn-expand-all')).toHaveTextContent('↓');
+  });
+});
+
+describe('F4#8/#13: search above toolbar; Backlinks before Recent', () => {
+  it('places search before the notes toolbar in DOM order', async () => {
+    await renderNotesVaultWithItems([{ path: 'a.md', name: 'a.md', isDirectory: false, modifiedAt: '' }]);
+    const search = screen.getByTestId('vb-notes-search');
+    const toolbar = screen.getByTestId('vb-notes-toolbar');
+    expect(search.compareDocumentPosition(toolbar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
 
 describe('M16: search filter', () => {

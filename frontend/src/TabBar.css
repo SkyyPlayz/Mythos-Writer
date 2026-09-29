@@ -58,19 +58,13 @@
 .tab-bar__tab--active {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
+  /* F4#7: full-outline active state (replaces underline bar). */
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
 .tab-bar__tab--active::after {
-  content: '';
-  position: absolute;
-  bottom: -1px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 60%;
-  height: 2px;
-  background: var(--accent);
-  border-radius: 2px 2px 0 0;
-  box-shadow: var(--neon-glow);
+  content: none;
 }
 
 .tab-bar__icon {

@@ -7,6 +7,7 @@
 
 import { useCallback, useId, useRef } from 'react';
 import {
+  FONT_STEP_DEFAULT,
   FONT_STEP_MAX,
   FONT_STEP_MIN,
   PAGE_MARGIN_MIN,
@@ -26,6 +27,17 @@ import type { LiquidNeonPageCfg } from './theme/liquidNeonEngine';
 import './PageSetupPopover.css';
 
 export type PageStyle = LiquidNeonPageCfg['mode'];
+
+/** F4#15: page zoom presets as % of the default font step (12 = 100%). */
+const PAGE_ZOOM_PRESETS: Array<{ label: string; step: number }> = [
+  { label: '75%', step: Math.max(FONT_STEP_MIN, Math.round(FONT_STEP_DEFAULT * 0.75)) },
+  { label: '100%', step: FONT_STEP_DEFAULT },
+  { label: '125%', step: Math.min(FONT_STEP_MAX, Math.round(FONT_STEP_DEFAULT * 1.25)) },
+];
+
+function zoomPercentFromStep(step: number): number {
+  return Math.round((step / FONT_STEP_DEFAULT) * 100);
+}
 
 const PAGE_STYLE_OPTIONS: Array<{ key: PageStyle; label: string; description: string }> = [
   { key: 'neon',    label: 'Neon',           description: 'Glowing text on dark background' },
@@ -301,6 +313,36 @@ export default function PageSetupPopover({
               aria-valuetext={`${fontStep}`}
             />
             <span className="page-setup-popover__slider-val" aria-hidden="true">{fontStep}</span>
+          </div>
+          {/* F4#15: discoverable page zoom (default 100% = FONT_STEP_DEFAULT). */}
+          <div className="page-setup-popover__row" data-testid="page-setup-zoom">
+            <span className="page-setup-popover__label" id={`${fontSizeId}-zoom-label`}>
+              Zoom
+            </span>
+            <div
+              className="page-setup-popover__zoom-group"
+              role="group"
+              aria-labelledby={`${fontSizeId}-zoom-label`}
+            >
+              {PAGE_ZOOM_PRESETS.map(({ label, step }) => (
+                <button
+                  key={label}
+                  type="button"
+                  className={
+                    'page-setup-popover__zoom-btn' +
+                    (fontStep === step ? ' page-setup-popover__zoom-btn--active' : '')
+                  }
+                  aria-pressed={fontStep === step}
+                  data-testid={`page-setup-zoom-${label.replace('%', '')}`}
+                  onClick={() => setFontStep(step)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <span className="page-setup-popover__slider-val" aria-hidden="true">
+              {zoomPercentFromStep(fontStep)}%
+            </span>
           </div>
           <div className="page-setup-popover__row">
             <label className="page-setup-popover__toggle" htmlFor={dropCapId}>

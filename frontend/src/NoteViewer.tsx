@@ -24,9 +24,25 @@ import type { TtsEngineSettings, TtsVoicePrefs } from './hooks/useTtsPlayer';
 import { NoteCoverBadge } from './components/NoteCoverBadge';
 import { invalidateNoteThumbs } from './lib/noteThumbnails';
 import { registerQuitFlusher } from './lib/flushBeforeQuit';
+import NoteViewGearMenu from './NoteViewGearMenu';
+import {
+  NOTES_DEFAULT_RICH_KEY,
+  NOTES_MODE_BY_PATH_KEY,
+  clearAllNoteModePrefs,
+  readDefaultRichPref,
+  readNoteModePref,
+  readShowMarkdownViewPref,
+  readShowSourceViewPref,
+  writeDefaultRichPref,
+  writeNoteModePref,
+  type StickyNoteMode,
+} from './noteViewPrefs';
 import './NoteViewer.css';
 
 export type NoteViewerMode = 'source' | 'rich' | 'markdown' | 'preview';
+
+// Re-export storage keys for existing NoteViewer tests / callers.
+export { NOTES_DEFAULT_RICH_KEY, NOTES_MODE_BY_PATH_KEY };
 
 interface Props {
   path: string;
@@ -68,57 +84,6 @@ interface Props {
   /** SKY-11244: stored voice prefs (AppSettings.voice) seed the reader's
    * speed/voice. */
   voicePrefs?: TtsVoicePrefs;
-}
-
-// ---------------------------------------------------------------------------
-// M17: "always open rich" preference (gear menu toggle)
-// ---------------------------------------------------------------------------
-
-export const NOTES_DEFAULT_RICH_KEY = 'mythos:notes:defaultRich';
-// SKY-10929: per-note sticky view mode — once a note has been explicitly
-// switched, it reopens in that mode regardless of the global default below.
-export const NOTES_MODE_BY_PATH_KEY = 'mythos:notes:modeByPath';
-type StickyMode = 'rich' | 'markdown' | 'source';
-
-function readDefaultRichPref(): boolean {
-  try {
-    // SKY-10929: Rich is the out-of-the-box default — an explicit '0' is the
-    // only way to opt out (readMissing → true), matching the toggle default.
-    return window.localStorage.getItem(NOTES_DEFAULT_RICH_KEY) !== '0';
-  } catch {
-    return true;
-  }
-}
-
-function writeDefaultRichPref(on: boolean): void {
-  try {
-    if (on) window.localStorage.removeItem(NOTES_DEFAULT_RICH_KEY);
-    else window.localStorage.setItem(NOTES_DEFAULT_RICH_KEY, '0');
-  } catch {
-    // storage unavailable — the toggle still works for this session
-  }
-}
-
-function readNoteModePref(path: string): StickyMode | null {
-  try {
-    const raw = window.localStorage.getItem(NOTES_MODE_BY_PATH_KEY);
-    if (!raw) return null;
-    const map = JSON.parse(raw) as Record<string, StickyMode>;
-    return map[path] ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function writeNoteModePref(path: string, mode: StickyMode): void {
-  try {
-    const raw = window.localStorage.getItem(NOTES_MODE_BY_PATH_KEY);
-    const map = raw ? (JSON.parse(raw) as Record<string, StickyMode>) : {};
-    map[path] = mode;
-    window.localStorage.setItem(NOTES_MODE_BY_PATH_KEY, JSON.stringify(map));
-  } catch {
-    // storage unavailable — the choice still works for this session
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -356,14 +321,6 @@ function FidelityWarning({ features, onEditInSource, onOpenRichAnyway }: Fidelit
 // NoteViewer
 // ---------------------------------------------------------------------------
 
-// M17 gear menu (prototype gearItems): the three spec views. The legacy
-// read-only Preview stays reachable via Ctrl+E / the previewMode prop only.
-const GEAR_MODES: Array<{ mode: NoteViewerMode; label: string }> = [
-  { mode: 'rich', label: 'Rich Text' },
-  { mode: 'markdown', label: 'Markdown' },
-  { mode: 'source', label: 'Source Mode' },
-];
-
 export default function NoteViewer({
   path,
   mode: modeProp,
@@ -381,6 +338,9 @@ export default function NoteViewer({
   voicePrefs,
 }: Props) {
   const [defaultRich, setDefaultRich] = useState(readDefaultRichPref);
+  // F4#4: Markdown / Source stay hidden until Settings enables them.
+  const [showMarkdownView, setShowMarkdownView] = useState(readShowMarkdownViewPref);
+  const [showSourceView, setShowSourceView] = useState(readShowSourceViewPref);
   // SKY-10929: this note's own remembered mode, if it was ever explicitly
   // switched — takes priority over the global default below.
   const stickyMode = useMemo(() => readNoteModePref(path), [path]);
@@ -744,9 +704,21 @@ export default function NoteViewer({
     setDefaultRich((prev) => {
       const next = !prev;
       writeDefaultRichPref(next);
+      // F4#4: turning Always-open-Rich ON must clear sticky per-note modes so
+      // the setting actually applies (video 20:37 — toggle on but ignored).
+      if (next) clearAllNoteModePrefs();
       return next;
     });
   }, []);
+
+  // Re-read Settings-bridged view prefs when the gear opens (Settings may have
+  // changed them while this note stayed mounted).
+  useEffect(() => {
+    if (!gearOpen) return;
+    setShowMarkdownView(readShowMarkdownViewPref());
+    setShowSourceView(readShowSourceViewPref());
+    setDefaultRich(readDefaultRichPref());
+  }, [gearOpen]);
 
   // SKY-11244: this note's own reader — same engine as the Story Editor
   // (readerEngine.ts), fed this note's visible body (frontmatter / hidden
@@ -869,64 +841,16 @@ export default function NoteViewer({
             </svg>
           </button>
           {gearOpen && (
-            <>
-              <div className="note-gear-backdrop" onClick={() => setGearOpen(false)} />
-              <div
-                className="note-gear-menu"
-                role="menu"
-                aria-label="View options"
-                data-testid="note-gear-menu"
-                onKeyDown={(e) => { if (e.key === 'Escape') setGearOpen(false); }}
-              >
-                <div className="note-gear-heading" aria-hidden="true">VIEW AS</div>
-                <div className="note-mode-group" role="group" aria-label="Editor mode">
-                  {GEAR_MODES.map(({ mode: m, label }) => (
-                    <button
-                      key={m}
-                      type="button"
-                      role="menuitemradio"
-                      aria-checked={mode === m}
-                      className={`note-viewer-mode${mode === m ? ' active' : ''}`}
-                      data-testid={`note-gear-mode-${m}`}
-                      onClick={() => handleModeClick(m)}
-                    >
-                      <span className="note-gear-dot" aria-hidden="true" />
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                <div className="note-gear-divider" aria-hidden="true" />
-                <button
-                  type="button"
-                  role="menuitemcheckbox"
-                  aria-checked={defaultRich}
-                  className="note-gear-toggle-row"
-                  data-testid="note-default-rich-toggle"
-                  onClick={toggleDefaultRich}
-                >
-                  <span className="note-gear-toggle-label">Always open notes in Rich view</span>
-                  <span className={`note-gear-pill${defaultRich ? ' on' : ''}`} aria-hidden="true">
-                    <span className="note-gear-knob" />
-                  </span>
-                </button>
-                <div className="note-gear-divider" aria-hidden="true" />
-                {/* SKY-10929: the app is 100% local — this only copies the
-                    note's vault-relative path, never a primary "Share" action. */}
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="note-viewer-mode"
-                  data-testid="note-copy-path-btn"
-                  onClick={() => { setGearOpen(false); handleCopyPath(); }}
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <rect x="7" y="7" width="12" height="14" rx="2" />
-                    <path d="M5 15V4a1 1 0 0 1 1-1h9" />
-                  </svg>
-                  Copy path
-                </button>
-              </div>
-            </>
+            <NoteViewGearMenu
+              mode={mode === 'preview' ? 'preview' : (mode as StickyNoteMode)}
+              defaultRich={defaultRich}
+              showMarkdown={showMarkdownView}
+              showSource={showSourceView}
+              onModeClick={(m) => handleModeClick(m)}
+              onToggleDefaultRich={toggleDefaultRich}
+              onClose={() => setGearOpen(false)}
+              onCopyPath={handleCopyPath}
+            />
           )}
         </div>
         {onClose && (

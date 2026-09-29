@@ -53,6 +53,12 @@ type Listener = () => void;
  * Session-scoped visibility flags (prototype state 3242:
  * `showComments:true / commentsInFocus:false`). Deliberately NOT persisted —
  * the prototype resets them per session and they are pure view preferences.
+ *
+ * F4#16 (video 07:08 stray comment popup): selection/open UI lives in
+ * `story/CommentSelectionBar.tsx` + `ManuscriptView` (F1-owned). This store
+ * only holds the showComments flag; changing the default here does not stop
+ * selection-bar popups. Repro attempt documented in the F4 PR — handoff to F1
+ * if the popup still appears with showComments gated in ManuscriptView.
  */
 export interface CommentsUiState {
   /** Master toggle — the doc-header/zoombar comments chip. */

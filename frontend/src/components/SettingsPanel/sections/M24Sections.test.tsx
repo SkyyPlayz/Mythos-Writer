@@ -106,6 +106,17 @@ describe('EditorSettingsSection', () => {
     const updater = setSettings.mock.calls[0][0] as (p: AppSettings) => AppSettings;
     expect(updater(baseSettings).editorPrefs?.spellcheck).toBe(false);
   });
+
+  it('F4#4: Note view toggles default Rich-only and enable Markdown via Settings', () => {
+    const setSettings = vi.fn();
+    render(<EditorSettingsSection settings={baseSettings} setSettings={setSettings} setSavedOk={vi.fn()} />);
+    expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Markdown view toggle' }));
+    const updater = setSettings.mock.calls[0][0] as (p: AppSettings) => AppSettings;
+    expect(updater(baseSettings).editorPrefs?.showMarkdownView).toBe(true);
+  });
 });
 
 // ── Import another vault / Import a story ─────────────────────────────────────

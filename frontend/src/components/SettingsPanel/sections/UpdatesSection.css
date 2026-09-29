@@ -1,0 +1,16 @@
+/* F4#11 — tighten Update Channel vertical alignment under Appearance. */
+.updates-section {
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.updates-section__field {
+  margin-top: 4px;
+}
+
+.updates-section__radios {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 6px;
+}

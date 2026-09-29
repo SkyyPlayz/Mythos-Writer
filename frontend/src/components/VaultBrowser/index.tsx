@@ -1179,7 +1179,30 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           </>
         )}
       </div>
-      {/* M16: 5-button toolbar */}
+      {/* F4#8 / prototype: search sits ABOVE the toolbar (Liquid Neon HTML ~308–318). */}
+      <div className="vb-notes-search" data-testid="vb-notes-search">
+        <input
+          className="vb-notes-search-input"
+          type="text"
+          placeholder="Search notes…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          aria-label="Search notes"
+          data-testid="vb-search-input"
+        />
+        {searchQuery && (
+          <button
+            className="vb-notes-search-clear"
+            onClick={() => setSearchQuery('')}
+            aria-label="Clear search"
+            data-testid="vb-search-clear"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {/* F4#9/#10: toolbar order matches prototype (new / folder / sort / reveal /
+          collapse↑ / expand↓). Separate ↑↓ icons per video 15:34. */}
       <div className="vb-notes-toolbar" data-testid="vb-notes-toolbar">
         <button
           className="vb-toolbar-btn"
@@ -1225,7 +1248,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           aria-label="Collapse all"
           data-testid="vb-btn-collapse-all"
         >
-          ⊟
+          ↑
         </button>
         <button
           className="vb-toolbar-btn"
@@ -1234,30 +1257,8 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           aria-label="Expand all"
           data-testid="vb-btn-expand-all"
         >
-          ⊞
+          ↓
         </button>
-      </div>
-      {/* M16: search field */}
-      <div className="vb-notes-search" data-testid="vb-notes-search">
-        <input
-          className="vb-notes-search-input"
-          type="text"
-          placeholder="Search notes…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label="Search notes"
-          data-testid="vb-search-input"
-        />
-        {searchQuery && (
-          <button
-            className="vb-notes-search-clear"
-            onClick={() => setSearchQuery('')}
-            aria-label="Clear search"
-            data-testid="vb-search-clear"
-          >
-            ×
-          </button>
-        )}
       </div>
       <TagPane activeTag={activeTag} onTagFilter={onTagFilter} />
       {allNotesItems.length === 0 ? (
@@ -1323,6 +1324,10 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           Drop here to move to vault root
         </div>
       )}
+      {/* F4#13: Backlinks above Recent (video 23:45 — Backlinks to top, keep Recent). */}
+      {selected && !selected.endsWith('/') && selected.endsWith('.md') && (
+        <BacklinksPane notePath={selected} onOpen={handleOpen} />
+      )}
       {/* M8c (SKY-9335): RECENT NOTES — three most-recently-opened notes,
           relative timestamps, drawn note glyph. Prototype §M8 item 2. */}
       {recentEntries.length > 0 && (
@@ -1379,9 +1384,6 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
         onClose={() => setDialogOpen(false)}
         onCreated={handleNoteCreated}
       />
-      {selected && !selected.endsWith('/') && selected.endsWith('.md') && (
-        <BacklinksPane notePath={selected} onOpen={handleOpen} />
-      )}
       <Toast message={toast?.message ?? null} level={toast?.level} />
       {/* SKY-10712: rename-cascade summary with one-shot Undo. Pinned to its
           own third slot: the lower two are shared with the vault error toast,

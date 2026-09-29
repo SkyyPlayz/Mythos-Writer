@@ -527,6 +527,22 @@ interface EditorPrefs {
   dimFocus?: boolean;
   /** Voice dictation (offline model). */
   dictation?: boolean;
+  /**
+   * F4#4: offer Markdown in the note view gear. Default off — Rich only
+   * until the writer opts in via Settings → Editor.
+   */
+  showMarkdownView?: boolean;
+  /**
+   * F4#4: offer Source Mode in the note view gear. Default off — Rich only
+   * until the writer opts in via Settings → Editor.
+   */
+  showSourceView?: boolean;
+  /**
+   * F4#4: newly opened notes (no sticky per-note choice) land in Rich.
+   * Default true. Mirrored to localStorage so NoteViewer can read it without
+   * a Settings prop chain through the shell.
+   */
+  alwaysOpenRich?: boolean;
 }
 
 /** Beta 3 M24 — Settings → Vault & Files import flows. */

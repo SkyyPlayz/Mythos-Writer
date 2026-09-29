@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import StructuralBreadcrumb from './StructuralBreadcrumb';
 import './DocHeader.css';
 
 const ZOOM_OPTIONS = [
@@ -68,17 +69,8 @@ export default function DocHeader({
           ))}
         </div>
 
-        {/* Breadcrumb */}
-        {breadcrumb.length > 0 && (
-          <nav className="doc-header__breadcrumb" aria-label="Document breadcrumb">
-            {breadcrumb.map((crumb, i) => (
-              <span key={i} className="doc-header__breadcrumb-item">
-                {i > 0 && <span className="doc-header__breadcrumb-sep" aria-hidden="true"> &rsaquo; </span>}
-                {crumb}
-              </span>
-            ))}
-          </nav>
-        )}
+        {/* F4#6/#7: StructuralBreadcrumb — root-last truncate + outline current */}
+        <StructuralBreadcrumb crumbs={breadcrumb} />
       </div>
 
       {/* Center zone */}

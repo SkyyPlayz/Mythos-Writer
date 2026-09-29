@@ -1,6 +1,12 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import NoteViewer, { NOTES_DEFAULT_RICH_KEY, NOTES_MODE_BY_PATH_KEY } from './NoteViewer';
+import {
+  NOTES_SHOW_MARKDOWN_KEY,
+  NOTES_SHOW_SOURCE_KEY,
+  writeShowMarkdownViewPref,
+  writeShowSourceViewPref,
+} from './noteViewPrefs';
 import { runQuitFlushers, __resetQuitFlushers } from './lib/flushBeforeQuit';
 
 const readNotesVault = vi.fn();
@@ -22,6 +28,9 @@ beforeEach(() => {
   entityList.mockResolvedValue({ entities: [] });
   noteBacklinks.mockResolvedValue({ backlinks: [] });
   (window as unknown as { api: unknown }).api = { readNotesVault, writeNotesVault, readVault, writeVault, entityList, noteBacklinks };
+  // F4#4: enable Markdown/Source for legacy mode-switch tests (default is Rich-only).
+  writeShowMarkdownViewPref(true);
+  writeShowSourceViewPref(true);
 });
 
 afterEach(() => {
@@ -30,6 +39,8 @@ afterEach(() => {
   // SKY-10929: per-note sticky mode — clear so one test's explicit switch
   // never leaks into a later test reusing the same note path.
   window.localStorage.removeItem(NOTES_MODE_BY_PATH_KEY);
+  window.localStorage.removeItem(NOTES_SHOW_MARKDOWN_KEY);
+  window.localStorage.removeItem(NOTES_SHOW_SOURCE_KEY);
 });
 
 // M17: mode switching lives in the gear "View options" popover (prototype
@@ -192,6 +203,36 @@ describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
     render(<NoteViewer path="Notes/Other.md" />);
     await screen.findByLabelText('Edit note: Other.md');
     expect(document.querySelector('.note-rich-editor .ProseMirror')).toBeNull();
+  });
+
+  it('F4#4: gear defaults to Rich-only when Markdown/Source prefs are off', async () => {
+    window.localStorage.removeItem(NOTES_SHOW_MARKDOWN_KEY);
+    window.localStorage.removeItem(NOTES_SHOW_SOURCE_KEY);
+    render(<NoteViewer path="Notes/Test.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+
+    fireEvent.click(screen.getByTestId('note-gear-btn'));
+    expect(await screen.findByTestId('note-gear-mode-rich')).toBeTruthy();
+    expect(screen.queryByTestId('note-gear-mode-markdown')).toBeNull();
+    expect(screen.queryByTestId('note-gear-mode-source')).toBeNull();
+  });
+
+  it('F4#4: turning Always-open-Rich ON clears sticky modes so the setting applies', async () => {
+    const { unmount } = render(<NoteViewer path="Notes/Test.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    await pickMode('Source Mode');
+    expect(window.localStorage.getItem(NOTES_MODE_BY_PATH_KEY)).toContain('Notes/Test.md');
+
+    fireEvent.click(screen.getByTestId('note-gear-btn'));
+    const toggle = await screen.findByTestId('note-default-rich-toggle');
+    // Toggle off then on — ON path clears sticky.
+    fireEvent.click(toggle); // off
+    fireEvent.click(toggle); // on → clears sticky
+    expect(window.localStorage.getItem(NOTES_MODE_BY_PATH_KEY)).toBeNull();
+    unmount();
+
+    render(<NoteViewer path="Notes/Test.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
   });
 
   it('always-rich default falls back to Source (no modal) when the note is lossy — CF-11', async () => {
