@@ -46,6 +46,10 @@ function seedUserData(userData: string, vaultDir: string): void {
   const appSettings = {
     apiKey: '',
     onboardingComplete: true,
+    // F3#11 — inbox view-filter floor comes from Writing Partner confidence.
+    // Hesitant (0.5) keeps bulk/wiki seed rows visible; product default Confident
+    // (0.85) would hide the lower buckets and AC-EPIC-4's 0.82 wiki row.
+    writingPartner: { confidence: 'Hesitant' },
     agents: {
       writingAssistant: {
         enabled: false,
@@ -609,7 +613,8 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
     await page.evaluate(async () => {
       const api = (window as any).api;
       const agents = ['writing-assistant', 'brainstorm', 'archive'] as const;
-      const confidenceByBucket = [0.95, 0.86, 0.72, 0.61, 0.48];
+      // Lowest bucket must clear Hesitant (0.5) inbox floor from seedUserData.
+      const confidenceByBucket = [0.95, 0.86, 0.72, 0.61, 0.55];
       for (let i = 0; i < 105; i++) {
         const padded = String(i).padStart(3, '0');
         const agent = agents[i % agents.length];
