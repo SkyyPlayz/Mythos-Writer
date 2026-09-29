@@ -5132,6 +5132,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // mirrors Entity Browser's current one, see handleTabOpenInSplit above).
   const activeStoryTabIsOutline = storyDocTabs.find((t) => t.id === activeStoryDocTabId)?.kind === 'outline';
 
+  // F1#3/#7/#8: refs avoid TDZ — createChapterInPart / handleRenamePart are
+  // declared below (after other manuscript handlers) but StoryNavigator needs
+  // them here. Assign `.current` right after each useCallback definition.
+  const createChapterInPartRef = useRef<((storyId: string, partId: string) => void) | null>(null);
+  const handleRenamePartRef = useRef<((partId: string, nextTitle?: string) => void | Promise<void>) | null>(null);
+
   // SKY-1695: Renders any sidebar panel's content. Both sidebars call this so
   // panels render correctly regardless of which sidebar they live in.
   const renderSidebarPanel = useCallback((id: SidebarPanelId): ReactNode => {
@@ -5160,8 +5166,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             showTemplateCta={showTemplateCta}
             onTemplateCtaClick={() => setTemplatePickerOpen(true)}
             onPromoteSceneNote={handlePromoteSceneNote}
-            onRenamePart={(partId) => { void handleRenamePart(partId); }}
-            onCreateChapterInPart={createChapterInPart}
+            onRenamePart={(partId) => { void handleRenamePartRef.current?.(partId); }}
+            onCreateChapterInPart={(storyId, partId) => { createChapterInPartRef.current?.(storyId, partId); }}
           />
         );
       case 'entities':
@@ -5325,7 +5331,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [
     stories, selectedScene, selectedEntity, selectedChapter, selectedStory,
     handleSelectScene, setViewDepth, createStory, createChapter, createScene,
-    createChapterInPart, handleRenamePart,
     handleReorderScenes, setTemplatePickerOpen, handleSelectEntity,
     gettingStartedProgress, persistGettingStartedProgress,
     handleOpenSceneByPath, handleOpenGraphScene, setExportScope, appSettings,
@@ -5468,6 +5473,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest(stories.map((s) => (s.id === storyId ? updated : s)));
     if (selectedStory?.id === storyId) refreshManuscriptSelection(updated);
   }, [stories, updateManifest, requestText, selectedStory, refreshManuscriptSelection]);
+  createChapterInPartRef.current = createChapterInPart;
 
   /** F1#3: drag a chapter onto a part header. */
   const handleMoveChapterToPart = useCallback((storyId: string, chapterId: string, targetPartId: string) => {
@@ -5748,6 +5754,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest(stories.map((st) => (st.id === updated.id ? updated : st)));
     if (selectedStory?.id === updated.id) refreshManuscriptSelection(updated);
   }, [stories, selectedStory, updateManifest, requestText, refreshManuscriptSelection]);
+  handleRenamePartRef.current = handleRenamePart;
 
   // M3 (SKY-9021): row-3 inline story rename (Full Book / Part depth title =
   // story title). TitleRow reverts empties/normalizes before committing here.

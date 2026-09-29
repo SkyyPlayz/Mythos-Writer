@@ -207,10 +207,10 @@
   align-items: center;
   gap: 5px;
   margin: 0 18px;
-  /* F1#13: consume F2#12 shared panel top-bar height (planned 40px). Do not
-     invent a second bar height — F2 owns the token; this falls back until
-     F2 lands `--panel-topbar-height`. */
-  min-height: var(--panel-topbar-height, 40px);
+  /* F1#13: consume F2#12 shared panel top-bar height (36px). Do not invent a
+     second bar height — F2 owns `--panel-top-bar-height` / PANEL_TOP_BAR_HEIGHT_PX;
+     fallback matches until F2 merges. */
+  min-height: var(--panel-top-bar-height, 36px);
   box-sizing: border-box;
   padding: 6px 8px;
   border-radius: 12px;
