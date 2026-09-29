@@ -653,7 +653,7 @@ function UnifiedPartnerChat({
   }, [runningAction, onActionBusy, scene, story, chat, onOpenWriterTips]);
 
   return (
-    {/* Outer shell owns actions/composer chrome; MiniAgentChat owns `ahp-partner-chat`. */}
+    // Outer shell owns actions/composer chrome; MiniAgentChat owns `ahp-partner-chat`.
     <div className="ahp-brainstorm-chat ahp-partner-composer" data-testid="ahp-partner-composer">
       <div className="ahp-actions" role="group" aria-label="Partner actions">
         {PARTNER_ACTIONS.map((a) => (
