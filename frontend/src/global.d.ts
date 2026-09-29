@@ -613,6 +613,8 @@ interface AppSettings {
     claudeCli?: 'none' | 'installing' | 'login' | 'ready';
     claudeCliMode?: 'app' | 'cli';
     telemetryLevel?: 'off' | 'crash' | 'usage';
+    /** F3#11 — Hesitant | Cautious | Balanced | Confident | Bold */
+    confidence?: 'Hesitant' | 'Cautious' | 'Balanced' | 'Confident' | 'Bold';
   };
   /** Dark-only (MYT-517). 'high-contrast' is the WCAG accessibility overlay,
    *  not a separate palette. Legacy 'light'/'system' values normalize to 'dark'. */

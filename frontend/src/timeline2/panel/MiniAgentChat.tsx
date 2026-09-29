@@ -16,11 +16,27 @@ export interface MiniAgentChatProps {
   accent: 'brainstorm' | 'archive';
   placeholder: string;
   testidPrefix: string;
-  /** Optional partner display name shown once in the chat head (F3 — no duplicate avatars). */
+  /**
+   * F3#4 — partner identity in the chat head.
+   * - `primary`: one avatar + name (Timeline / surfaces without PartnerCallChrome)
+   * - omit / undefined: no identity row (PartnerCallChrome already owns avatar+name)
+   */
   partnerName?: string;
+  /** Glyph for the single avatar when `partnerName` is set. */
+  partnerAvatar?: string;
+  /** When false, never render avatar/name (chrome lives elsewhere). Default: true if partnerName. */
+  showIdentity?: boolean;
 }
 
-export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix, partnerName }: MiniAgentChatProps) {
+export default function MiniAgentChat({
+  chat,
+  accent,
+  placeholder,
+  testidPrefix,
+  partnerName,
+  partnerAvatar = '✦',
+  showIdentity,
+}: MiniAgentChatProps) {
   const [draft, setDraft] = useState('');
   const feedRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -35,10 +51,21 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix,
     void chat.send(text);
   };
 
+  const identityOn = showIdentity !== false && !!partnerName;
+
   return (
     <div className={`trp-chat trp-chat--${accent}`} data-testid={`${testidPrefix}-chat`}>
       <div className="trp-chat-head">
-        <span className="trp-label">{partnerName ? partnerName.toUpperCase() : 'CHAT'}</span>
+        {identityOn ? (
+          <span className="trp-chat-identity" data-testid={`${testidPrefix}-identity`}>
+            <span className="trp-chat-avatar" data-testid="partner-avatar" aria-hidden="true">
+              {partnerAvatar}
+            </span>
+            <span className="trp-label">{partnerName.toUpperCase()}</span>
+          </span>
+        ) : (
+          <span className="trp-label">CHAT</span>
+        )}
         <AgentSessionPicker store={chat.store} className="trp-chat-sessions" busy={chat.busy} />
       </div>
       <div className="trp-chat-feed" data-testid={`${testidPrefix}-chat-feed`} ref={feedRef}>

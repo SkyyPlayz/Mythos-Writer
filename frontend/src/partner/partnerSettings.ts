@@ -27,6 +27,57 @@ export type ClaudeCliState = 'none' | 'installing' | 'login' | 'ready';
 export type ClaudeCliMode = 'app' | 'cli';
 export type TelemetryLevel = 'off' | 'crash' | 'usage';
 
+/**
+ * F3#11 — Writing Partner confidence slider labels (near bottom of Settings).
+ * Default **Confident** maps to the historic 0.85 auto-apply threshold.
+ */
+export type PartnerConfidenceLabel =
+  | 'Hesitant'
+  | 'Cautious'
+  | 'Balanced'
+  | 'Confident'
+  | 'Bold';
+
+export const PARTNER_CONFIDENCE_LEVELS: readonly PartnerConfidenceLabel[] = [
+  'Hesitant',
+  'Cautious',
+  'Balanced',
+  'Confident',
+  'Bold',
+] as const;
+
+/** Numeric thresholds partner hands read via agents.*.confidenceThreshold. */
+export const PARTNER_CONFIDENCE_THRESHOLDS: Record<PartnerConfidenceLabel, number> = {
+  Hesitant: 0.5,
+  Cautious: 0.65,
+  Balanced: 0.75,
+  Confident: 0.85,
+  Bold: 0.95,
+};
+
+export const DEFAULT_PARTNER_CONFIDENCE: PartnerConfidenceLabel = 'Confident';
+
+export function confidenceLabelFromThreshold(value: number): PartnerConfidenceLabel {
+  let best: PartnerConfidenceLabel = DEFAULT_PARTNER_CONFIDENCE;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const label of PARTNER_CONFIDENCE_LEVELS) {
+    const dist = Math.abs(PARTNER_CONFIDENCE_THRESHOLDS[label] - value);
+    if (dist < bestDist) {
+      best = label;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+export function resolvePartnerConfidence(
+  settings: AppSettings | undefined,
+): { label: PartnerConfidenceLabel; threshold: number } {
+  const partner = resolveWritingPartner(settings);
+  const label = partner.confidence;
+  return { label, threshold: PARTNER_CONFIDENCE_THRESHOLDS[label] };
+}
+
 /** UI provider pick for Model & keys buckets (maps to engine kinds where live). */
 export type ModelKeysProviderId =
   | 'claude'
@@ -71,6 +122,8 @@ export interface WritingPartnerSettings {
   claudeCliMode: ClaudeCliMode;
   /** Help improve Mythos — Don't send is default. */
   telemetryLevel: TelemetryLevel;
+  /** F3#11 — suggestion auto-apply confidence; default Confident (0.85). */
+  confidence: PartnerConfidenceLabel;
 }
 
 export const DEFAULT_WRITING_PARTNER: WritingPartnerSettings = {
@@ -102,6 +155,7 @@ export const DEFAULT_WRITING_PARTNER: WritingPartnerSettings = {
   claudeCli: 'none',
   claudeCliMode: 'app',
   telemetryLevel: 'off',
+  confidence: DEFAULT_PARTNER_CONFIDENCE,
 };
 
 export const PARTNER_ICON_OPTIONS: readonly PartnerIconId[] = [
@@ -199,11 +253,22 @@ export const COMING_SOON_PROVIDERS = new Set<ModelKeysProviderId>([
 export function resolveWritingPartner(settings: AppSettings | undefined): WritingPartnerSettings {
   const raw = settings?.writingPartner;
   if (!raw) return { ...DEFAULT_WRITING_PARTNER, heartbeat: { ...DEFAULT_WRITING_PARTNER.heartbeat } };
-  return {
+  const merged = {
     ...DEFAULT_WRITING_PARTNER,
     ...(raw as Partial<WritingPartnerSettings>),
     heartbeat: { ...DEFAULT_WRITING_PARTNER.heartbeat, ...(raw.heartbeat ?? {}) },
   };
+  const conf = (raw as Partial<WritingPartnerSettings>).confidence;
+  if (conf && (PARTNER_CONFIDENCE_LEVELS as readonly string[]).includes(conf)) {
+    merged.confidence = conf;
+  } else if (typeof (settings?.agents?.brainstorm as { confidenceThreshold?: number } | undefined)?.confidenceThreshold === 'number') {
+    merged.confidence = confidenceLabelFromThreshold(
+      (settings!.agents!.brainstorm as { confidenceThreshold: number }).confidenceThreshold,
+    );
+  } else {
+    merged.confidence = DEFAULT_PARTNER_CONFIDENCE;
+  }
+  return merged;
 }
 
 /** Scope a saved model to the active provider list; fall back to provider default. */

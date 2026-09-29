@@ -53,6 +53,38 @@ describe('WritingPartnerSection', () => {
     expect(setAgentDisplayName).toHaveBeenCalledWith('brainstorm', 'Athena');
   });
 
+  it('F3#11: confidence slider defaults to Confident and syncs hand thresholds', () => {
+    let latest: AppSettings = baseSettings;
+    const setSettings = vi.fn((updater: AppSettings | ((prev: AppSettings) => AppSettings)) => {
+      latest = typeof updater === 'function' ? updater(latest) : updater;
+    });
+    const { rerender } = render(
+      <WritingPartnerSection
+        settings={latest}
+        setSettings={setSettings}
+        setAgentDisplayName={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('wp-confidence-value')).toHaveTextContent('Confident');
+    expect(screen.getByTestId('wp-confidence-threshold')).toHaveTextContent('0.85');
+
+    fireEvent.change(screen.getByTestId('wp-confidence-slider'), { target: { value: '1' } });
+    expect(setSettings).toHaveBeenCalled();
+    expect(latest.writingPartner?.confidence).toBe('Cautious');
+    expect(latest.agents?.brainstorm?.confidenceThreshold).toBeCloseTo(0.65);
+    expect(latest.agents?.writingAssistant?.confidenceThreshold).toBeCloseTo(0.65);
+
+    rerender(
+      <WritingPartnerSection
+        settings={latest}
+        setSettings={setSettings}
+        setAgentDisplayName={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('wp-confidence-value')).toHaveTextContent('Cautious');
+    expect(screen.getByTestId('wp-confidence-threshold')).toHaveTextContent('0.65');
+  });
+
   it('F3: mounts partner Session history (brainstorm) for Earlier chats', () => {
     render(
       <WritingPartnerSection

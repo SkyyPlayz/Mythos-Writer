@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import logoUrl from './assets/logo.png';
+import { mapWelcomeSetupError } from './welcomeSetupError';
 import './WelcomeOverlay.css';
 
 export type WelcomePathId = 'template' | 'blank' | 'import' | 'restore' | 'openin';
@@ -118,22 +119,37 @@ export function requestWelcomeOverlayOnNextShell(): void {
 
 interface WelcomeOverlayProps {
   onSkip: () => void;
-  onPickPath: (id: WelcomePathId) => void;
+  /** May be async — overlay stays up until the parent closes it on success. */
+  onPickPath: (id: WelcomePathId) => void | Promise<void>;
   /**
    * F3#9 — first-run vault setup: hide Skip so the path cards are the only
    * way forward (vault setup is not bypassable).
    */
   requireVaultSetup?: boolean;
+  /**
+   * F3#9 security residual — shown when vault creation/import fails after the
+   * path modal closes; cancel leaves the overlay up with no error.
+   */
+  setupError?: string | null;
+  /** Disable path cards while the create-vault modal is in flight. */
+  setupBusy?: boolean;
 }
 
 /** 09 §7 Welcome overlay — z70 path picker (Template · Blank · Import · Restore · Open Obsidian). */
-export default function WelcomeOverlay({ onSkip, onPickPath, requireVaultSetup = false }: WelcomeOverlayProps) {
+export default function WelcomeOverlay({
+  onSkip,
+  onPickPath,
+  requireVaultSetup = false,
+  setupError = null,
+  setupBusy = false,
+}: WelcomeOverlayProps) {
   return (
     <div
       className="welcome-overlay"
       data-testid="welcome-overlay"
       data-screen-label="Welcome"
       data-require-vault={requireVaultSetup ? 'true' : undefined}
+      data-setup-busy={setupBusy ? 'true' : undefined}
       role="dialog"
       aria-modal="true"
       aria-label="Welcome to Mythos Writer"
@@ -143,6 +159,13 @@ export default function WelcomeOverlay({ onSkip, onPickPath, requireVaultSetup =
         <div className="welcome-overlay__title">Mythos Writer</div>
         <div className="welcome-overlay__tagline">Write the world before you write the book.</div>
 
+        {setupError ? (
+          <p className="welcome-overlay__error" role="alert" data-testid="welcome-setup-error">
+            {/* Plain text only — never HTML. Mapper strips paths/stacks. */}
+            {mapWelcomeSetupError(setupError)}
+          </p>
+        ) : null}
+
         <div className="welcome-overlay__grid" role="group" aria-label="Choose how to get started">
           {PATH_CARDS.map((card) => (
             <button
@@ -150,7 +173,8 @@ export default function WelcomeOverlay({ onSkip, onPickPath, requireVaultSetup =
               type="button"
               className="welcome-overlay__card"
               data-testid={`welcome-path-${card.id}`}
-              onClick={() => onPickPath(card.id)}
+              disabled={setupBusy}
+              onClick={() => { void onPickPath(card.id); }}
             >
               {card.chip ? <span className="welcome-overlay__chip">{card.chip}</span> : null}
               <span className="welcome-overlay__card-icon">{card.icon}</span>

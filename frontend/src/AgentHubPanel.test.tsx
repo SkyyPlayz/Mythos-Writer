@@ -56,6 +56,8 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     expect(screen.queryByTestId('ahp-hand-writer')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ahp-hand-analyst')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ahp-hand-archivist')).not.toBeInTheDocument();
+    // F3#4 — exactly one partner avatar on the hub surface (PartnerCallChrome).
+    expect(screen.getAllByTestId('partner-avatar')).toHaveLength(1);
   });
 
   it('action buttons post results into the unified partner thread', async () => {
@@ -79,6 +81,28 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     render(<AgentHubPanel scene={null} />);
     fireEvent.click(await screen.findByTestId('ahp-action-update-timeline'));
     await waitFor(() => expect(timelineRebuild).toHaveBeenCalled());
+  });
+
+  it('F3#4: Writer Scan keeps a single partner avatar (suppresses WA header)', async () => {
+    (window as any).api = {
+      ...(window as any).api,
+      agentSessions: {
+        list: vi.fn().mockResolvedValue({ sessions: [{ id: 's1', title: 'Chat', updatedAt: new Date().toISOString() }] }),
+        get: vi.fn().mockResolvedValue({ id: 's1', title: 'Chat', turns: [], createdAt: '', updatedAt: '' }),
+        create: vi.fn().mockResolvedValue({ id: 's1', title: 'Chat', turns: [], createdAt: '', updatedAt: '' }),
+        appendTurns: vi.fn().mockResolvedValue({ ok: true }),
+        rename: vi.fn().mockResolvedValue({ ok: true }),
+        duplicate: vi.fn().mockResolvedValue({ id: 's2' }),
+        delete: vi.fn().mockResolvedValue({ ok: true }),
+      },
+    };
+    render(<AgentHubPanel scene={null} />);
+    fireEvent.click(await screen.findByTestId('ahp-action-writer-scan'));
+    expect(await screen.findByTestId('ahp-writer-hand')).toBeInTheDocument();
+    expect(screen.getAllByTestId('partner-avatar')).toHaveLength(1);
+    // WA PanelHeader (✦ + name) is suppressed under PartnerCallChrome.
+    expect(document.querySelector('.wa-panel-header')).toBeNull();
+    expect(document.querySelector('.wa-sparkle-icon')).toBeNull();
   });
 
   it('renames the partner tab from agentNames.brainstorm', () => {

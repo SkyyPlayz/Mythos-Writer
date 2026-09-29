@@ -5,11 +5,13 @@ import FloatingPanelApp from './FloatingPanelApp';
 import MythosMigrationCenter from './migration/MythosMigrationCenter';
 import MythosBootMigrationNotice from './migration/MythosBootMigrationNotice';
 import { requestWelcomeOverlayOnNextShell } from './WelcomeOverlay';
+import WelcomeFirstRun from './WelcomeFirstRun';
 import './App.css';
 
 type AppRoute =
   | { kind: 'loading' }
   | { kind: 'missing-vault'; settings: AppSettings; vaultPath?: string }
+  | { kind: 'first-run'; settings: AppSettings }
   | { kind: 'shell'; settings: AppSettings };
 
 type VaultValidationResult = {
@@ -41,11 +43,10 @@ function App() {
       if (cancelled) return;
       setSettings(nextSettings);
 
-      // F3#9 — WelcomeOverlay is the only first-run onboarding. Force it open
-      // when onboarding is incomplete; vault setup runs through path cards.
+      // F3#9 security residual — incomplete onboarding mounts WelcomeFirstRun
+      // only (no DesktopShell). Overlay stays until vault create succeeds.
       if (!nextSettings.onboardingComplete) {
-        requestWelcomeOverlayOnNextShell();
-        setView({ kind: 'shell', settings: nextSettings });
+        setView({ kind: 'first-run', settings: nextSettings });
         return;
       }
 
@@ -85,6 +86,18 @@ function App() {
     return <div className="root-layout" />;
   }
 
+  if (view.kind === 'first-run') {
+    return (
+      <WelcomeFirstRun
+        settings={view.settings}
+        onComplete={(next) => {
+          setSettings(next);
+          setView({ kind: 'shell', settings: next });
+        }}
+      />
+    );
+  }
+
   if (view.kind === 'missing-vault') {
     return (
       <div className="root-layout">
@@ -96,7 +109,7 @@ function App() {
             const next = { ...view.settings, onboardingComplete: false };
             setSettings(next);
             void window.api?.settingsSet?.(next);
-            setView({ kind: 'shell', settings: next });
+            setView({ kind: 'first-run', settings: next });
           }}
           onOpenSettings={() => setView({ kind: 'shell', settings: view.settings })}
           onQuit={() => { void window.api.appQuit?.(); }}
@@ -106,7 +119,7 @@ function App() {
   }
 
   return (
-    <div className="root-layout">
+    <div className="root-layout" data-testid="app-shell-root" data-shell-mounted="true">
       <DesktopShell initialSettings={'settings' in view ? view.settings : undefined} />
       {/* SKY-10390: the v0.4 → MythosVault upgrade migrates silently now —
           no on-screen choice. MythosMigrationCenter still mounts here to

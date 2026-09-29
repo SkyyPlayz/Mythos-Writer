@@ -843,16 +843,6 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
     }
   };
 
-  const handleMinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = Number(e.target.value);
-    setConfidenceMin(Math.min(v, confidenceMax));
-  };
-
-  const handleMaxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = Number(e.target.value);
-    setConfidenceMax(Math.max(v, confidenceMin));
-  };
-
   const proposed = items.filter((s) => s.status === 'proposed');
 
   const matchesVault = (s: UnifiedSuggestion) => {
@@ -901,12 +891,9 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
   const showVaultFilter = availableVaults && availableVaults.length > 1;
   const selectedSuggestion = selectedId ? items.find((s) => s.id === selectedId) ?? null : null;
 
-  // Whether any confidence or keyword filter is active (drives empty-state copy)
-  const hasActiveFilter =
-    confidenceMin > 0 || confidenceMax < 100 || searchQuery.trim().length > 0;
-
-  // Boost min-handle z-index when near max so the user can drag it leftward
-  const minHandleZIndex = confidenceMin >= confidenceMax - 5 ? 2 : 1;
+  // Whether any keyword filter is active (drives empty-state copy).
+  // F3#11 — confidence range filter removed from Audit Trail (Writing Partner owns it).
+  const hasActiveFilter = searchQuery.trim().length > 0;
 
   if (loading) {
     return (
@@ -984,54 +971,8 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
         </div>
       )}
 
-      {/* Filters: confidence slider + keyword search + agent chips */}
+      {/* Filters: keyword search + agent chips (F3#11 — confidence slider moved to Settings › Writing Partner) */}
       <div className="sr-filters" role="group" aria-label="Suggestion filters" ref={filterRef}>
-        {/* Confidence range slider */}
-        <div className="sr-confidence-filter" role="group" aria-label="Filter by confidence">
-          <div className="sr-confidence-filter-header">
-            <span className="sr-filter-label">Confidence</span>
-            <span className="sr-confidence-values" aria-live="polite">
-              {confidenceMin}%&ndash;{confidenceMax}%
-            </span>
-          </div>
-          <div className="sr-range-container">
-            <div className="sr-range-track">
-              <div
-                className="sr-range-fill"
-                style={{ left: `${confidenceMin}%`, right: `${100 - confidenceMax}%` }}
-              />
-            </div>
-            <input
-              type="range"
-              className="sr-range-input"
-              min={0}
-              max={100}
-              step={1}
-              value={confidenceMin}
-              onChange={handleMinChange}
-              aria-label="Minimum confidence"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={confidenceMin}
-              style={{ zIndex: minHandleZIndex }}
-            />
-            <input
-              type="range"
-              className="sr-range-input"
-              min={0}
-              max={100}
-              step={1}
-              value={confidenceMax}
-              onChange={handleMaxChange}
-              aria-label="Maximum confidence"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={confidenceMax}
-              style={{ zIndex: minHandleZIndex === 2 ? 1 : 2 }}
-            />
-          </div>
-        </div>
-
         {/* Keyword search */}
         <div className="sr-search-wrapper">
           <input

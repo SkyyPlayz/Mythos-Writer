@@ -67,7 +67,7 @@ export default function PartnerCallChrome({
         data-testid="partner-card"
         aria-label={`${partnerName} partner card`}
       >
-        <span className="partner-card__avatar" aria-hidden="true">{avatar}</span>
+        <span className="partner-card__avatar" data-testid="partner-avatar" aria-hidden="true">{avatar}</span>
         <div className="partner-card__meta">
           <span className="partner-card__name">{partnerName}</span>
           <span className="partner-card__status" data-testid="partner-card-status">
@@ -94,7 +94,7 @@ export default function PartnerCallChrome({
       data-on-call="true"
       aria-label={`${partnerName} on a call`}
     >
-      <span className="partner-card__avatar" aria-hidden="true">{avatar}</span>
+      <span className="partner-card__avatar" data-testid="partner-avatar" aria-hidden="true">{avatar}</span>
       <div className="partner-card__meta">
         <span className="partner-card__name">{partnerName}</span>
         <span className="partner-card__status partner-card__status--call" data-testid="partner-card-status">

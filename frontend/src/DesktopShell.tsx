@@ -109,6 +109,7 @@ import WelcomeOverlay, {
   shouldAutoOpenWelcomeOverlay,
   type WelcomePathId,
 } from './WelcomeOverlay';
+import { mapWelcomeSetupError } from './welcomeSetupError';
 import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
@@ -804,6 +805,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [leftPanelHidden, setLeftPanelHidden] = useState(false);
   // A1 residual Q1: Welcome overlay (09 §7). Demo toggle removed from this tip.
   const [welcomeOpen, setWelcomeOpen] = useState(() => shouldAutoOpenWelcomeOverlay());
+  /** F3#9 residual — inline error when vault create fails from WelcomeOverlay. */
+  const [welcomeSetupError, setWelcomeSetupError] = useState<string | null>(null);
+  const [welcomeSetupBusy, setWelcomeSetupBusy] = useState(false);
   // M1 (SKY-9013): 'part' is a first-class depth — viewDepth is the manuscript
   // zoom level directly (the SKY-6010 partZoom flag is gone with it). Until M2
   // lands the Parts data model, part depth renders the story's chapters
@@ -5965,7 +5969,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, []);
 
   // F3#9 — OnboardingWizard deleted; WelcomeOverlay is the only first-run.
-  // Import-notes-vault opens the Welcome import path (no wizard replay).
+  // Import-notes-vault: keep overlay open until create settles (cancel → stay).
   useEffect(() => {
     const handler = () => {
       void createMythosVault('import');
@@ -6178,6 +6182,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     inFocusOrDF && !focusPrefs.showScrollbars && 'focus-hide-scrollbars',
     inFocusOrDF && !focusPrefs.showFileTreeArrows && 'focus-hide-tree-arrows',
   ].filter(Boolean).join(' ');
+  // e2e / F3#9: shell presence probe (WelcomeFirstRun never mounts this).
 
   const activeVaultBadge = tabShell.activeTab === 'notes'
     ? (vaultBinding.notesValid ? labelFromPath(vaultBinding.notesPath) : 'No Notes vault')
@@ -6193,7 +6198,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   return (
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
-    <div className={shellClasses}>
+    <div className={shellClasses} data-testid="desktop-shell">
       {/* Beta 3 Liquid Neon (M2): wallpaper + ambience + scrim + vignette,
           behind every glass panel (prototype HTML 45–54). */}
       <BackgroundStack settings={appSettings?.liquidNeonV2} />
@@ -6353,29 +6358,45 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       {welcomeOpen && (
         <WelcomeOverlay
           requireVaultSetup={!(appSettings?.onboardingComplete === true)}
+          setupError={welcomeSetupError}
+          setupBusy={welcomeSetupBusy}
           onSkip={() => {
             // First-run vault setup cannot skip (requireVaultSetup hides the button).
             if (appSettings?.onboardingComplete !== true) return;
             markWelcomeOverlayDismissed();
             setWelcomeOpen(false);
+            setWelcomeSetupError(null);
           }}
-          onPickPath={(id: WelcomePathId) => {
-            markWelcomeOverlayDismissed();
-            setWelcomeOpen(false);
-            switch (id) {
-              case 'template':
-              case 'blank':
-              case 'restore':
-              case 'import':
-              case 'openin':
-                // Slice D / F3#9: Welcome five-path → shared New Vault modal.
-                void createMythosVault(id);
-                break;
-              default: {
-                const _exhaustive: never = id;
-                void _exhaustive;
-                break;
+          onPickPath={async (id: WelcomePathId) => {
+            // F3#9 security residual — do NOT close the overlay until create
+            // settles successfully. Cancel leaves the overlay up.
+            setWelcomeSetupError(null);
+            setWelcomeSetupBusy(true);
+            try {
+              let outcome: 'created' | 'cancelled' = 'cancelled';
+              switch (id) {
+                case 'template':
+                case 'blank':
+                case 'restore':
+                case 'import':
+                case 'openin':
+                  outcome = await createMythosVault(id);
+                  break;
+                default: {
+                  const _exhaustive: never = id;
+                  void _exhaustive;
+                  break;
+                }
               }
+              if (outcome === 'created') {
+                markWelcomeOverlayDismissed();
+                setWelcomeOpen(false);
+                setWelcomeSetupError(null);
+              }
+            } catch (err) {
+              setWelcomeSetupError(mapWelcomeSetupError(err));
+            } finally {
+              setWelcomeSetupBusy(false);
             }
           }}
         />

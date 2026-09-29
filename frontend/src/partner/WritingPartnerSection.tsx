@@ -20,10 +20,14 @@ import {
   BUILTIN_TOOLS,
   HAND_LIMITS,
   HEARTBEAT_ROWS,
+  PARTNER_CONFIDENCE_LEVELS,
+  PARTNER_CONFIDENCE_THRESHOLDS,
   PARTNER_ICON_OPTIONS,
   modelsForProvider,
+  resolvePartnerConfidence,
   resolveWritingPartner,
   scopedModel,
+  type PartnerConfidenceLabel,
   type PartnerIconId,
   type WritingPartnerSettings,
 } from './partnerSettings';
@@ -57,6 +61,39 @@ function patchPartner(
   setSettings((prev) => {
     const cur = resolveWritingPartner(prev);
     return { ...prev, writingPartner: { ...cur, ...patch } };
+  });
+}
+
+/** Persist confidence on writingPartner AND sync every hand's confidenceThreshold. */
+function patchPartnerConfidence(
+  setSettings: React.Dispatch<React.SetStateAction<AppSettings>>,
+  label: PartnerConfidenceLabel,
+): void {
+  const threshold = PARTNER_CONFIDENCE_THRESHOLDS[label];
+  setSettings((prev) => {
+    const cur = resolveWritingPartner(prev);
+    const agents = prev.agents
+      ? {
+          ...prev.agents,
+          writingAssistant: prev.agents.writingAssistant
+            ? { ...prev.agents.writingAssistant, confidenceThreshold: threshold }
+            : prev.agents.writingAssistant,
+          brainstorm: prev.agents.brainstorm
+            ? { ...prev.agents.brainstorm, confidenceThreshold: threshold }
+            : prev.agents.brainstorm,
+          archive: prev.agents.archive
+            ? { ...prev.agents.archive, confidenceThreshold: threshold }
+            : prev.agents.archive,
+          betaReader: prev.agents.betaReader
+            ? { ...prev.agents.betaReader, confidenceThreshold: threshold }
+            : prev.agents.betaReader,
+        }
+      : prev.agents;
+    return {
+      ...prev,
+      writingPartner: { ...cur, confidence: label },
+      agents,
+    };
   });
 }
 
@@ -483,6 +520,44 @@ export default function WritingPartnerSection({
             );
           })}
         </div>
+      </section>
+
+      <section
+        className="settings-section wp-card"
+        aria-labelledby="section-wp-confidence"
+        data-testid="wp-confidence"
+      >
+        <h3 className="settings-section-title" id="section-wp-confidence">Confidence</h3>
+        <p className="settings-hint">
+          How sure {partnerName} must be before auto-applying a suggestion. Default is Confident.
+          Below the bar, suggestions land in the inbox for review.
+        </p>
+        <div className="settings-slider-row" data-testid="wp-confidence-row">
+          <label className="wp-label" htmlFor="wp-confidence-slider">LEVEL</label>
+          <input
+            id="wp-confidence-slider"
+            className="settings-slider"
+            type="range"
+            min={0}
+            max={PARTNER_CONFIDENCE_LEVELS.length - 1}
+            step={1}
+            value={PARTNER_CONFIDENCE_LEVELS.indexOf(partner.confidence)}
+            aria-label="Partner confidence"
+            aria-valuetext={partner.confidence}
+            data-testid="wp-confidence-slider"
+            onChange={(e) => {
+              const idx = Number(e.target.value);
+              const label = PARTNER_CONFIDENCE_LEVELS[idx] ?? 'Confident';
+              patchPartnerConfidence(setSettings, label);
+            }}
+          />
+          <span className="settings-slider-value" data-testid="wp-confidence-value">
+            {partner.confidence}
+          </span>
+        </div>
+        <p className="settings-hint" data-testid="wp-confidence-threshold">
+          Threshold {resolvePartnerConfidence(settings).threshold.toFixed(2)} · read by every partner hand
+        </p>
       </section>
 
       {/* F3 — Earlier chats opens Settings › Writing partner session history

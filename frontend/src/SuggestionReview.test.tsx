@@ -988,24 +988,8 @@ describe('SuggestionReview — SLICE-2: confidence slider + keyword search (AC-S
     setApi({ suggestionsSearch: mockSuggestionsSearch });
   });
 
-  it('AC-S2-1: min slider at 80% hides suggestions with confidence < 0.80', async () => {
-    render(<SuggestionReview />);
-    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
-
-    const minSlider = screen.getByRole('slider', { name: /minimum confidence/i });
-    fireEvent.change(minSlider, { target: { value: '80' } });
-
-    // sug-2 has confidence 0.70 — should disappear after the 200ms debounce
-    await waitFor(
-      () =>
-        expect(
-          screen.queryByText('Hero motivation needs clarification.'),
-        ).not.toBeInTheDocument(),
-      { timeout: 1000 },
-    );
-    // sug-1 (0.85) and sug-3 (0.92) remain
-    expect(screen.getByText('Pacing is slow in the opening.')).toBeInTheDocument();
-    expect(screen.getByText('Tower was destroyed in ch2 but appears in ch5.')).toBeInTheDocument();
+  it.skip('AC-S2-1: min slider at 80% hides suggestions with confidence < 0.80 — F3#11 moved to Writing Partner', () => {
+    // Confidence range filter removed from Audit Trail (F3#11).
   });
 
   it('AC-S2-2: typing in search shows only matching suggestions', async () => {
@@ -1060,9 +1044,8 @@ describe('SuggestionReview — SLICE-2: confidence slider + keyword search (AC-S
     render(<SuggestionReview />);
     await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
 
-    // Set confidence to 99% — nothing has confidence >= 0.99
-    const minSlider = screen.getByRole('slider', { name: /minimum confidence/i });
-    fireEvent.change(minSlider, { target: { value: '99' } });
+    const searchInput = screen.getByRole('searchbox', { name: /search suggestions/i });
+    fireEvent.change(searchInput, { target: { value: 'zzzz-no-match' } });
 
     await waitFor(
       () =>
@@ -1071,62 +1054,11 @@ describe('SuggestionReview — SLICE-2: confidence slider + keyword search (AC-S
     );
   });
 
-  it('AC-S2-5: confidence + search active simultaneously narrow the list', async () => {
-    render(<SuggestionReview />);
-    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
-
-    // Set min confidence to 80% (excludes sug-2 at 0.70)
-    const minSlider = screen.getByRole('slider', { name: /minimum confidence/i });
-    fireEvent.change(minSlider, { target: { value: '80' } });
-    await waitFor(
-      () =>
-        expect(
-          screen.queryByText('Hero motivation needs clarification.'),
-        ).not.toBeInTheDocument(),
-      { timeout: 1000 },
-    );
-
-    // Additionally search for "pacing" (should leave only sug-1 at 0.85)
-    const searchInput = screen.getByRole('searchbox', { name: /search suggestions/i });
-    fireEvent.change(searchInput, { target: { value: 'pacing' } });
-
-    await waitFor(
-      () =>
-        expect(
-          screen.queryByText('Tower was destroyed in ch2 but appears in ch5.'),
-        ).not.toBeInTheDocument(),
-      { timeout: 1000 },
-    );
-    expect(screen.getByText('Pacing is slow in the opening.')).toBeInTheDocument();
-    // Verify suggestionsSearch received confidence params too
-    expect(mockSuggestionsSearch).toHaveBeenCalledWith(
-      expect.objectContaining({ query: 'pacing', confidenceMin: 0.8 }),
-    );
+  it.skip('AC-S2-5: confidence + search active simultaneously — F3#11 moved to Writing Partner', () => {
+    // Confidence range filter removed from Audit Trail (F3#11).
   });
 
-  it('AC-S2-6: both slider handles are keyboard-accessible with correct ARIA attributes', async () => {
-    render(<SuggestionReview />);
-    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
-
-    const minSlider = screen.getByRole('slider', { name: /minimum confidence/i });
-    const maxSlider = screen.getByRole('slider', { name: /maximum confidence/i });
-
-    // Both handles exist and are focusable (not tabIndex=-1)
-    expect(minSlider).toBeInTheDocument();
-    expect(maxSlider).toBeInTheDocument();
-    expect(minSlider).not.toHaveAttribute('tabIndex', '-1');
-    expect(maxSlider).not.toHaveAttribute('tabIndex', '-1');
-
-    // Both have correct ARIA range attributes
-    expect(minSlider).toHaveAttribute('aria-valuemin', '0');
-    expect(minSlider).toHaveAttribute('aria-valuemax', '100');
-    expect(minSlider).toHaveAttribute('aria-valuenow', '0');
-    expect(maxSlider).toHaveAttribute('aria-valuemin', '0');
-    expect(maxSlider).toHaveAttribute('aria-valuemax', '100');
-    expect(maxSlider).toHaveAttribute('aria-valuenow', '100');
-
-    // Arrow key (right) on min slider advances its value by 1
-    fireEvent.change(minSlider, { target: { value: '10' } });
-    await waitFor(() => expect(minSlider).toHaveAttribute('aria-valuenow', '10'));
+  it.skip('AC-S2-6: both slider handles keyboard-accessible — F3#11 moved to Writing Partner', () => {
+    // Confidence range filter removed from Audit Trail (F3#11).
   });
 });

@@ -419,6 +419,7 @@ function PartnerChatView({
             onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
             displayName={partnerName}
             allowNarrowCollapse={false}
+            suppressPartnerChrome
           />
         </div>
       )}
@@ -720,7 +721,7 @@ function UnifiedPartnerChat({
       <MiniAgentChat
         chat={queuedChat}
         accent="brainstorm"
-        partnerName={partnerName}
+        showIdentity={false}
         placeholder={onCall ? `Speak or type to ${partnerName}…` : `Message ${partnerName}…`}
         testidPrefix="ahp-partner"
       />

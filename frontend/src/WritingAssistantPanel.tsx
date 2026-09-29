@@ -72,6 +72,11 @@ interface Props {
    * Default true for standalone / float-out.
    */
   allowNarrowCollapse?: boolean;
+  /**
+   * F3#4 — when embedded under PartnerCallChrome, hide the ✦ + name header so
+   * only one partner avatar/name shows on the surface.
+   */
+  suppressPartnerChrome?: boolean;
 }
 
 const CADENCE_OPTIONS = [
@@ -137,6 +142,7 @@ export default function WritingAssistantPanel({
   onAutoApplyCategoriesChange,
   displayName = 'Writing Coach',
   allowNarrowCollapse = true,
+  suppressPartnerChrome = false,
 }: Props) {
   const aiMasterOn = useAiEnabled();
   const [showRubric, setShowRubric] = useState(false);
@@ -363,7 +369,8 @@ export default function WritingAssistantPanel({
         {liveText}
       </span>
 
-      {/* AC-WA-1/2/3: Liquid Neon panel header */}
+      {/* AC-WA-1/2/3: Liquid Neon panel header — F3#4: suppressed when PartnerCallChrome owns identity */}
+      {!suppressPartnerChrome && (
       <PanelHeader
         className="wa-panel-header"
         icon={<span className="wa-sparkle-icon" aria-hidden="true">✦</span>}
@@ -401,6 +408,7 @@ export default function WritingAssistantPanel({
           </span>
         }
       />
+      )}
 
       {/* AC-WA-16/17/18/19: Dedicated heartbeat status bar */}
       <div

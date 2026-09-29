@@ -223,6 +223,7 @@ function PartnerTimelineChat({
         chat={chat}
         accent="brainstorm"
         partnerName={partnerName}
+        showIdentity
         placeholder={`Message ${partnerName}…`}
         testidPrefix="trp-partner"
       />
