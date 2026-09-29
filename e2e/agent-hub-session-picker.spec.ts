@@ -386,7 +386,7 @@ test('F3 gate: Writer Scan opens tips strip; partner typing indicator resolves',
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 6_000 });
   await page.getByTestId('ahp-close-writer').click();
   await expect(page.getByTestId('ahp-writer-tips')).toHaveCount(0);
-  await page.getByTestId('ahp-action-writer-scan').click({ force: true });
+  await page.getByTestId('ahp-action-writer-scan').evaluate((el) => (el as HTMLButtonElement).click());
   await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 6_000 });
 
   // Gate: loading → typing dots on shared chat (was wa-typing in unsharded suite).

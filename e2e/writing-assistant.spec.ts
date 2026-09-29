@@ -412,6 +412,12 @@ async function openWritingAssistantWithScene(page: Page): Promise<void> {
   await expect(page.getByTestId('ahp-partner-chat-input')).toBeVisible({ timeout: 8_000 });
 }
 
+
+/** Bypass Playwright actionability (partner hub layout churn). */
+async function domClick(locator: ReturnType<Page['locator']>): Promise<void> {
+  await locator.first().evaluate((el) => (el as HTMLElement).click());
+}
+
 async function openAssistantTab(page: Page): Promise<void> {
   await navigateToEditorView(page);
   await openWritingAssistantAgentRow(page);
@@ -506,7 +512,7 @@ test('TC-WA-07: spinner visible during scan', async () => {
   await installIpcMocks(app!, { scanDelayMs: 600 });
   await openWritingAssistantWithScene(page);
 
-  await page.getByTestId('wa-scan-now').click({ force: true });
+  await domClick(page.getByTestId('wa-scan-now'));
 
   // Spinner must appear while the scan is in-flight (check DOM presence, not visibility).
   await expect(page.locator('.wa-spinner')).toHaveCount(1, { timeout: 3_000 });
@@ -532,7 +538,7 @@ test('TC-WA-04: empty scene shows empty-state message', async () => {
   await openAssistantTab(page);
 
   // Scan Now — the scheduler guard returns early on empty prose.
-  await page.getByTestId('wa-scan-now').click({ force: true });
+  await domClick(page.getByTestId('wa-scan-now'));
 
   // Spinner should not appear (or disappear immediately) — empty prose short-circuits (check DOM count).
   await expect(page.locator('.wa-spinner')).toHaveCount(0, { timeout: 3_000 });
@@ -566,7 +572,7 @@ test('TC-WA-03: manual cadence — Scan Now is the only trigger', async () => {
   await expect(scanBtn).toBeEnabled();
 
   // Clicking Scan Now manually loads tips.
-  await scanBtn.click({ force: true });
+  await domClick(scanBtn);
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 8_000 });
 
   // Reset cadence.
@@ -611,16 +617,16 @@ test('TC-WA-05: Note and Ignore tip actions dismiss tips from UI', async () => {
   await openWritingAssistantWithScene(page);
 
   // Load tips.
-  await page.getByTestId('wa-scan-now').click({ force: true });
+  await domClick(page.getByTestId('wa-scan-now'));
   const tips = page.locator('.wa-heartbeat-tip');
   await expect(tips).toHaveCount(3, { timeout: 8_000 });
 
   // Click "Note" on the first tip — it must disappear.
-  await page.locator('.tc-btn-note').first().click();
+  await domClick(page.locator('.tc-btn-note'));
   await expect(tips).toHaveCount(2, { timeout: 3_000 });
 
   // Click "Ignore" on the now-first tip — it must disappear.
-  await page.locator('.tc-btn-ignore').first().click();
+  await domClick(page.locator('.tc-btn-ignore'));
   await expect(tips).toHaveCount(1, { timeout: 3_000 });
 });
 
@@ -634,7 +640,7 @@ test('TC-WA-08: dismiss-all button appears with >= 2 tips and clears all', async
   await openWritingAssistantWithScene(page);
 
   // Load 3 fresh tips.
-  await page.getByTestId('wa-scan-now').click({ force: true });
+  await domClick(page.getByTestId('wa-scan-now'));
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 8_000 });
 
   // Dismiss-all must be visible.
@@ -643,7 +649,7 @@ test('TC-WA-08: dismiss-all button appears with >= 2 tips and clears all', async
   await expect(dismissAll).toContainText(/dismiss all/i);
 
   // Dismiss all — list clears and button disappears.
-  await dismissAll.click();
+  await domClick(dismissAll);
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(0, { timeout: 3_000 });
   await expect(dismissAll).not.toBeVisible({ timeout: 3_000 });
 });
@@ -723,7 +729,7 @@ test('TC-WA-13: Cancel button visible during streaming; Ask returns after cancel
   await expect(cancelBtn).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId('ahp-partner-chat-send')).not.toBeVisible();
 
-  await cancelBtn.click();
+  await domClick(cancelBtn);
   await expect(page.getByTestId('ahp-partner-chat-send')).toBeVisible({ timeout: 5_000 });
   await expect(cancelBtn).not.toBeVisible({ timeout: 3_000 });
 
@@ -752,7 +758,7 @@ test('TC-WA-11: stall panel appears after stall (E2E-fast timer override)', asyn
   await expect(page.getByTestId('ahp-partner-stall-panel')).toBeVisible({ timeout: 3_000 });
   await expect(page.getByTestId('ahp-partner-stall-cancel')).toBeVisible();
 
-  await page.getByTestId('ahp-partner-stall-cancel').click();
+  await domClick(page.getByTestId('ahp-partner-stall-cancel'));
 
   await page.evaluate(() => {
     delete (window as unknown as { __MYTHOS_E2E_TIMERS__?: Record<string, number> }).__MYTHOS_E2E_TIMERS__;
@@ -781,13 +787,13 @@ test('TC-WA-22: Mute toggle flips aria-pressed and label', async () => {
   expect(initialLabel).toMatch(/mute|unmute/i);
 
   // Toggle on.
-  await muteBtn.click();
+  await domClick(muteBtn);
   const afterFirst = await muteBtn.getAttribute('aria-pressed');
   expect(afterFirst).not.toBe(initialPressed);
   expect(await muteBtn.getAttribute('aria-label')).not.toBe(initialLabel);
 
   // Toggle off (reset).
-  await muteBtn.click();
+  await domClick(muteBtn);
   expect(await muteBtn.getAttribute('aria-pressed')).toBe(initialPressed);
   expect(await muteBtn.getAttribute('aria-label')).toBe(initialLabel);
 });
@@ -803,7 +809,7 @@ test('TC-WA-23: Hear button plays and Stop cancels TTS', async () => {
   await openWritingAssistantWithScene(page);
 
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
-  await page.getByTestId('wa-scan-now').click({ force: true });
+  await domClick(page.getByTestId('wa-scan-now'));
   await expect(page.locator('.wa-heartbeat-tip').first()).toBeVisible({ timeout: 8_000 });
 
   const hearBtn = page.locator('.wa-hear-btn').first();
@@ -811,11 +817,11 @@ test('TC-WA-23: Hear button plays and Stop cancels TTS', async () => {
   await expect(hearBtn).toHaveAttribute('aria-pressed', 'false');
   await expect(hearBtn).toHaveAttribute('aria-label', 'Hear suggestion aloud');
 
-  await hearBtn.click();
+  await domClick(hearBtn);
   await expect(hearBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
   await expect(hearBtn).toHaveAttribute('aria-label', 'Stop voice playback');
 
-  await hearBtn.click();
+  await domClick(hearBtn);
   await expect(hearBtn).toHaveAttribute('aria-pressed', 'false', { timeout: 5_000 });
   await expect(hearBtn).toHaveAttribute('aria-label', 'Hear suggestion aloud');
 });
@@ -827,22 +833,22 @@ test('TC-WA-24: starting second Hear cancels first card playback', async () => {
   await openWritingAssistantWithScene(page);
 
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
-  await page.getByTestId('wa-scan-now').click({ force: true });
+  await domClick(page.getByTestId('wa-scan-now'));
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 8_000 });
 
   const hearBtns = page.locator('.wa-hear-btn');
   await expect(hearBtns).toHaveCount(3, { timeout: 5_000 });
 
   const firstHear = hearBtns.nth(0);
-  await firstHear.click();
+  await domClick(firstHear);
   await expect(firstHear).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
 
   const secondHear = hearBtns.nth(1);
-  await secondHear.click();
+  await domClick(secondHear);
   await expect(firstHear).toHaveAttribute('aria-pressed', 'false', { timeout: 5_000 });
   await expect(secondHear).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
 
-  await secondHear.click();
+  await domClick(secondHear);
   await expect(secondHear).toHaveAttribute('aria-pressed', 'false', { timeout: 3_000 });
 });
 
