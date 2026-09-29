@@ -122,11 +122,28 @@
   -webkit-user-select: none;
   /* Host for F4 StructuralBreadcrumb — let it own truncate/outline. */
   flex: 1;
-  max-width: min(560px, 45vw);
+  /* Wider than the pre-mount 45vw slot so book › ch › scene fits at CI widths. */
+  max-width: min(720px, 55vw);
 }
 
 .msv-crumbs .struct-breadcrumb {
   width: 100%;
+}
+
+/*
+ * F4 StructuralBreadcrumb sets leaf flex-shrink:2 (truncate current first).
+ * In the zoombar host that clips the active scene name to a zero-paint box
+ * (Playwright "hidden") — keep the current crumb readable without forking
+ * the F4 component file.
+ */
+.msv-crumbs .struct-breadcrumb__item--current {
+  flex-shrink: 0 !important;
+  overflow: visible;
+}
+
+.msv-crumbs .struct-breadcrumb__item--current .struct-breadcrumb__label {
+  overflow: visible;
+  text-overflow: unset;
 }
 
 .msv-flex-spacer {
