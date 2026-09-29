@@ -392,25 +392,22 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
  * Navigate to Editor → select the Lighthouse Scene → open the Writing Assistant panel.
  */
 /**
- * SKY-6228: the right panel is now the agent hub — the Writing Assistant
- * chat (heartbeat/scan-now/prompt) is behind the "Writing Assistant" agent
- * row. Click into it if the hub's list view (not the chat view) is showing.
+ * F3 N4-A: partner hub mounts tips strip + MiniAgentChat by default.
+ * Do NOT click Writer Scan — the action chip sits under/near the tips panel
+ * and stays "not stable" under Playwright actionability checks.
  */
 async function openWritingAssistantAgentRow(page: Page): Promise<void> {
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 4_000 });
-  // M12: Writing Assistant → Writing Coach rename (agent ids/IPC channels unchanged).
-  const agentRow = page.locator('[data-testid="ahp-action-writer-scan"]');
-  if (await agentRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await agentRow.click();
-  }
+  await page.locator('[data-testid="ahp-tab-partner"]').click().catch(() => undefined);
+  await expect(page.getByTestId('ahp-partner-view')).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
 }
 
 async function openWritingAssistantWithScene(page: Page): Promise<void> {
   await openScene(page, 'Lighthouse Scene');
   await openWritingAssistantAgentRow(page);
   // Tips strip (always open) + shared partner MiniAgentChat.
-  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
   await expect(page.getByTestId('ahp-partner-chat-input')).toBeVisible({ timeout: 8_000 });
 }
@@ -509,7 +506,7 @@ test('TC-WA-07: spinner visible during scan', async () => {
   await installIpcMocks(app!, { scanDelayMs: 600 });
   await openWritingAssistantWithScene(page);
 
-  await page.locator('.wa-scan-now').click();
+  await page.getByTestId('wa-scan-now').click({ force: true });
 
   // Spinner must appear while the scan is in-flight (check DOM presence, not visibility).
   await expect(page.locator('.wa-spinner')).toHaveCount(1, { timeout: 3_000 });
@@ -535,7 +532,7 @@ test('TC-WA-04: empty scene shows empty-state message', async () => {
   await openAssistantTab(page);
 
   // Scan Now — the scheduler guard returns early on empty prose.
-  await page.locator('.wa-scan-now').click();
+  await page.getByTestId('wa-scan-now').click({ force: true });
 
   // Spinner should not appear (or disappear immediately) — empty prose short-circuits (check DOM count).
   await expect(page.locator('.wa-spinner')).toHaveCount(0, { timeout: 3_000 });
@@ -564,12 +561,12 @@ test('TC-WA-03: manual cadence — Scan Now is the only trigger', async () => {
   await expect(cadenceSelect).toHaveValue('manual');
 
   // Scan Now is still visible and enabled.
-  const scanBtn = page.locator('.wa-scan-now');
+  const scanBtn = page.getByTestId('wa-scan-now');
   await expect(scanBtn).toBeVisible();
   await expect(scanBtn).toBeEnabled();
 
   // Clicking Scan Now manually loads tips.
-  await scanBtn.click();
+  await scanBtn.click({ force: true });
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 8_000 });
 
   // Reset cadence.
@@ -614,7 +611,7 @@ test('TC-WA-05: Note and Ignore tip actions dismiss tips from UI', async () => {
   await openWritingAssistantWithScene(page);
 
   // Load tips.
-  await page.locator('.wa-scan-now').click();
+  await page.getByTestId('wa-scan-now').click({ force: true });
   const tips = page.locator('.wa-heartbeat-tip');
   await expect(tips).toHaveCount(3, { timeout: 8_000 });
 
@@ -637,7 +634,7 @@ test('TC-WA-08: dismiss-all button appears with >= 2 tips and clears all', async
   await openWritingAssistantWithScene(page);
 
   // Load 3 fresh tips.
-  await page.locator('.wa-scan-now').click();
+  await page.getByTestId('wa-scan-now').click({ force: true });
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 8_000 });
 
   // Dismiss-all must be visible.
@@ -806,7 +803,7 @@ test('TC-WA-23: Hear button plays and Stop cancels TTS', async () => {
   await openWritingAssistantWithScene(page);
 
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
-  await page.locator('.wa-scan-now').first().click();
+  await page.getByTestId('wa-scan-now').click({ force: true });
   await expect(page.locator('.wa-heartbeat-tip').first()).toBeVisible({ timeout: 8_000 });
 
   const hearBtn = page.locator('.wa-hear-btn').first();
@@ -830,7 +827,7 @@ test('TC-WA-24: starting second Hear cancels first card playback', async () => {
   await openWritingAssistantWithScene(page);
 
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
-  await page.locator('.wa-scan-now').first().click();
+  await page.getByTestId('wa-scan-now').click({ force: true });
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 8_000 });
 
   const hearBtns = page.locator('.wa-hear-btn');

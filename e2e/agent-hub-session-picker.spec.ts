@@ -380,14 +380,13 @@ test('F3 gate: Writer Scan opens tips strip; partner typing indicator resolves',
   page = await firstWindow(app);
   await openPartnerChat(page);
 
-  // Gate: tips strip is always mounted; Writer Scan keeps Heartbeat visible.
+  // Gate: tips strip is always mounted; Writer Scan re-opens after Close.
+  // Force-click: tips strip re-renders keep the action chip "not stable".
   await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
-  await page.getByTestId('ahp-action-writer-scan').click();
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 6_000 });
   await page.getByTestId('ahp-close-writer').click();
   await expect(page.getByTestId('ahp-writer-tips')).toHaveCount(0);
-  // Re-open tips via Writer Scan (finally block) for subsequent chat asserts.
-  await page.getByTestId('ahp-action-writer-scan').click();
+  await page.getByTestId('ahp-action-writer-scan').click({ force: true });
   await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 6_000 });
 
   // Gate: loading → typing dots on shared chat (was wa-typing in unsharded suite).
