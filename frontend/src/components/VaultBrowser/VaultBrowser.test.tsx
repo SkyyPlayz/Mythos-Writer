@@ -1669,33 +1669,14 @@ describe('M16: collapse all', () => {
   });
 });
 
-describe('F4#8/#13: search above toolbar; Backlinks before Recent', () => {
+describe('F4#8: search above toolbar', () => {
   it('places search before the notes toolbar in DOM order', async () => {
     await renderNotesVaultWithItems([{ path: 'a.md', name: 'a.md', isDirectory: false, modifiedAt: '' }]);
     const search = screen.getByTestId('vb-notes-search');
     const toolbar = screen.getByTestId('vb-notes-toolbar');
     expect(search.compareDocumentPosition(toolbar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
-
-  it('places Backlinks above Recent Notes in DOM order', async () => {
-    localStorage.removeItem('vb-notes-recent');
-    const apiMock = (window as unknown as { api: Record<string, unknown> }).api;
-    apiMock.noteBacklinks = vi.fn().mockResolvedValue({
-      backlinks: [{ path: 'other.md', name: 'other', snippet: 'ref' }],
-    });
-    const { onOpenFile } = await renderNotesVaultWithItems([
-      { path: 'note.md', name: 'note.md', isDirectory: false, modifiedAt: '' },
-    ]);
-    await waitFor(() => expect(screen.getByTestId('vb-row-note.md')).toBeInTheDocument());
-    // Open the note so Recent + BacklinksPane both mount.
-    await act(async () => { fireEvent.click(screen.getByTestId('vb-row-note.md')); });
-    expect(onOpenFile).toHaveBeenCalledWith('note.md');
-    await waitFor(() => expect(screen.getByTestId('vb-backlinks')).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByTestId('vb-recent')).toBeInTheDocument());
-    const backlinks = screen.getByTestId('vb-backlinks');
-    const recent = screen.getByTestId('vb-recent');
-    expect(backlinks.compareDocumentPosition(recent) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
+  // F4#13 Backlinks→Recent order ownership moved to F5 (#1648) — no duplicate DOM-order assertion here.
 });
 
 describe('M16: search filter', () => {
