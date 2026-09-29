@@ -6,6 +6,7 @@ import type { FlatRow } from './treeUtils';
 import { NodeIcon } from '../../NodeIcon';
 import type { VaultIconEntry } from '../../iconUtils';
 import { FolderIcon, FileIcon } from './TreeIcons';
+import { VAULT_NOTE_DRAG_MIME } from '../../vaultNoteDrag';
 
 // M15: 28px matches the Liquid Neon prototype tree row (12px type + 5.5px×2 padding).
 const ITEM_HEIGHT = 28;
@@ -211,6 +212,8 @@ function Row({
       title={isEditing ? undefined : node.path}
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = 'move';
+        // Shield R3: editor only accepts this MIME for [[Note]] drops.
+        e.dataTransfer.setData(VAULT_NOTE_DRAG_MIME, node.path);
         e.dataTransfer.setData('text/plain', node.path);
         onDragStart(node.path);
       }}

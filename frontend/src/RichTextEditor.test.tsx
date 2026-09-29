@@ -8,9 +8,13 @@
 //   4. wiki-link clicks delegate to the caller
 //   5. debounced onChange, suppressed initial change, flush-on-unmount
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent, createEvent } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
-import RichTextEditor, { wikiTitleFromDroppedPath } from './RichTextEditor';
+import RichTextEditor, {
+  VAULT_NOTE_DRAG_MIME,
+  sanitizeWikiLinkTitle,
+  wikiTitleFromDroppedPath,
+} from './RichTextEditor';
 import { WikiLinkHintExtension } from './WikiLinkHintExtension';
 import { AutoLinkerExtension } from './AutoLinkerExtension';
 import { getEditorMarkdown } from './lib/useRichEditor';
@@ -58,6 +62,15 @@ async function mountCore(
   );
   await waitFor(() => expect(editor).not.toBeNull());
   return { editor: editor as unknown as Editor, unmount };
+}
+
+async function mountCoreForDrop(
+  props: Partial<React.ComponentProps<typeof RichTextEditor>> = {},
+): Promise<MountResult & { wrap: HTMLElement }> {
+  const result = await mountCore({ wrapClassName: 'rte-drop-wrap', ...props });
+  const wrap = document.querySelector('.rte-drop-wrap') as HTMLElement;
+  expect(wrap).toBeTruthy();
+  return { ...result, wrap };
 }
 
 function extensionNames(editor: Editor): string[] {
@@ -368,6 +381,88 @@ describe('RichTextEditor wiki-link delegation', () => {
     expect(wikiTitleFromDroppedPath('Notes/Locations/Harbor.md')).toBe('Harbor');
     expect(wikiTitleFromDroppedPath('https://example.com')).toBeNull();
     expect(wikiTitleFromDroppedPath('two\nlines')).toBeNull();
+  });
+
+  it('Shield R2: sanitizes ]] | # out of dropped titles', () => {
+    expect(sanitizeWikiLinkTitle('Harbor]]|#x')).toBe('Harborx');
+    expect(wikiTitleFromDroppedPath('Notes/foo]]bar|#.md')).toBe('foobar');
+    expect(sanitizeWikiLinkTitle(']]|#')).toBeNull();
+  });
+});
+
+describe('RichTextEditor explorer drop (Shield R1/R3)', () => {
+  function makeDataTransfer(partial: {
+    types: string[];
+    getData?: (type: string) => string;
+  }) {
+    return {
+      types: partial.types,
+      dropEffect: '',
+      getData: partial.getData ?? (() => ''),
+    };
+  }
+
+  function dropOnWrap(
+    wrap: HTMLElement,
+    dataTransfer: ReturnType<typeof makeDataTransfer>,
+    opts?: { alreadyPrevented?: boolean },
+  ) {
+    const event = createEvent.drop(wrap, { dataTransfer });
+    if (opts?.alreadyPrevented) {
+      Object.defineProperty(event, 'defaultPrevented', { get: () => true });
+    }
+    fireEvent(wrap, event);
+    return event;
+  }
+
+  it('R3: plain-text / in-editor drag does not insert a wiki link', async () => {
+    const { editor, wrap, unmount } = await mountCoreForDrop({ content: 'Hello world\n' });
+    const before = getEditorMarkdown(editor);
+    dropOnWrap(wrap, makeDataTransfer({
+      types: ['text/plain'],
+      getData: () => 'Selected text',
+    }));
+    expect(getEditorMarkdown(editor)).toBe(before);
+    expect(getEditorMarkdown(editor)).not.toContain('[[Selected text]]');
+    unmount();
+  });
+
+  it('R3: explorer MIME drop inserts [[Note]]', async () => {
+    const { editor, wrap, unmount } = await mountCoreForDrop({ content: 'Drop here\n' });
+    dropOnWrap(wrap, makeDataTransfer({
+      types: [VAULT_NOTE_DRAG_MIME, 'text/plain'],
+      getData: (type: string) => (
+        type === VAULT_NOTE_DRAG_MIME || type === 'text/plain'
+          ? 'Notes/Locations/Harbor.md'
+          : ''
+      ),
+    }));
+    await waitFor(() => {
+      expect(getEditorMarkdown(editor)).toMatch(/\[\[Harbor\]\]/);
+    });
+    unmount();
+  });
+
+  it('R3: respects defaultPrevented (no link insert)', async () => {
+    const { editor, wrap, unmount } = await mountCoreForDrop({ content: 'Drop here\n' });
+    const before = getEditorMarkdown(editor);
+    dropOnWrap(
+      wrap,
+      makeDataTransfer({
+        types: [VAULT_NOTE_DRAG_MIME, 'text/plain'],
+        getData: () => 'Notes/Harbor.md',
+      }),
+      { alreadyPrevented: true },
+    );
+    expect(getEditorMarkdown(editor)).toBe(before);
+    unmount();
+  });
+
+  it('R1: Files in types preventDefault so OS drop cannot navigate', async () => {
+    const { wrap, unmount } = await mountCoreForDrop({ content: 'x\n' });
+    const event = dropOnWrap(wrap, makeDataTransfer({ types: ['Files'] }));
+    expect(event.defaultPrevented).toBe(true);
+    unmount();
   });
 });
 

@@ -494,22 +494,28 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     }
   }, [sttBinaryToken, sttModelToken]);
 
-  // F2#15: persist on exit (no Save button). Dismiss immediately; flush without
-  // local saving/savedOk state so unmounting/close does not trip act() warnings.
+  // F2#15 + Shield R4: auto-save on exit. Keep panel open + inline plain-text
+  // error (no paths/stacks) when apiKeyError is set or save-on-close fails.
+  const closeSaveInFlight = useRef(false);
   const handleClose = useCallback(() => {
-    onClose();
-    if (apiKeyError) return;
+    if (apiKeyError) {
+      setSaveError('Fix the API key before closing.');
+      return;
+    }
+    if (closeSaveInFlight.current) return;
+    closeSaveInFlight.current = true;
+    setSaveError(null);
     const payload = buildSettingsPayload();
     void writeSettingsPayload(payload)
       .then(() => {
-        // No local setState here — panel is dismissing; tokens were already
-        // included in writeSettingsPayload.
         applyLiquidNeonTokens(lg, bgPreviewUrl);
         applyPageBackgroundTokens(pageBg);
         onSaved?.(payload);
+        onClose();
       })
       .catch(() => {
-        /* dismiss already happened; failures surface on next open via reload */
+        closeSaveInFlight.current = false;
+        setSaveError("Couldn't save settings. Try again.");
       });
   }, [apiKeyError, buildSettingsPayload, writeSettingsPayload, lg, bgPreviewUrl, pageBg, onSaved, onClose]);
 
