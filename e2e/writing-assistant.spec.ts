@@ -387,11 +387,18 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
 async function openWritingAssistantAgentRow(page: Page): Promise<void> {
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 4_000 });
+  // Hand chips live on the Partner tab — ensure it is selected.
+  const partnerTab = page.locator('[data-testid="ahp-tab-partner"]');
+  if (await partnerTab.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await partnerTab.click();
+  }
+  // Writer chip toggles: a second click closes the panel. Ensure-open only.
+  const panel = page.locator('.writing-assistant-panel');
+  if (await panel.count() > 0) return;
   // M12: Writing Assistant → Writing Coach rename (agent ids/IPC channels unchanged).
   const agentRow = page.locator('[data-testid="ahp-hand-writer"]');
-  if (await agentRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await agentRow.click();
-  }
+  await expect(agentRow).toBeVisible({ timeout: 4_000 });
+  await agentRow.click();
 }
 
 async function openWritingAssistantWithScene(page: Page): Promise<void> {

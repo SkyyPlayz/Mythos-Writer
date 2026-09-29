@@ -9,23 +9,27 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  /* W0.3: host for @container wrap of .pc-header at ≤320px. */
+  container-type: inline-size;
+  container-name: pc-chrome;
 }
 
 .pc-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* F2#12 min bar height + W0.3: wrap/grow at 280–320px so actions don't clip. */
-  flex-wrap: wrap;
+  /* F2#12: real panel top bars are 36px (±1). W0.3 wrap/grow only inside a
+     narrow container (≤320px) — see @container rule below. */
+  flex-wrap: nowrap;
   gap: var(--space-2);
   padding: 0 var(--space-3);
   min-height: var(--panel-top-bar-height, 36px);
-  height: auto;
-  max-height: none;
+  height: var(--panel-top-bar-height, 36px);
+  max-height: var(--panel-top-bar-height, 36px);
   box-sizing: border-box;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 
 .pc-header-start {
@@ -77,8 +81,8 @@
 .pc-header-actions {
   display: flex;
   align-items: center;
-  /* W0.3: wrap + shrink so actions stay reachable at 280–320px. */
-  flex-wrap: wrap;
+  /* Default: single-row 36px bar (F2#12). Wrap enabled under @container ≤320. */
+  flex-wrap: nowrap;
   justify-content: flex-end;
   gap: var(--space-2);
   flex-shrink: 1;
@@ -98,4 +102,17 @@
   padding: var(--space-2) var(--space-3);
   border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
+}
+
+/* W0.3: at narrow panel widths, let the header wrap instead of clipping. */
+@container pc-chrome (max-width: 320px) {
+  .pc-header {
+    flex-wrap: wrap;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  .pc-header-actions {
+    flex-wrap: wrap;
+  }
 }

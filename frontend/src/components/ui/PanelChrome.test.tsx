@@ -154,15 +154,16 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(btn).not.toHaveAttribute('tabindex', '-1');
   });
 
-  // W0.3 / Critic #6: real CSS contract — wrap + shrink at narrow widths.
-  it('W0.3: header/actions wrap and shrink (no clip at 280–320px)', () => {
+  // W0.3 / Critic #6: narrow panels wrap via @container; default stays 36px (F2#12).
+  it('W0.3: header/actions wrap under @container ≤320px; default is 36px bar', () => {
     const header = PANEL_CSS.match(/\.pc-header\s*\{([^}]*)\}/);
     const actions = PANEL_CSS.match(/\.pc-header-actions\s*\{([^}]*)\}/);
-    expect(header?.[1] ?? '').toContain('flex-wrap: wrap');
     expect(header?.[1] ?? '').toContain('min-height: var(--panel-top-bar-height');
-    expect(header?.[1] ?? '').toMatch(/max-height:\s*none/);
-    expect(actions?.[1] ?? '').toContain('flex-wrap: wrap');
+    expect(header?.[1] ?? '').toContain('height: var(--panel-top-bar-height');
+    expect(header?.[1] ?? '').toContain('flex-wrap: nowrap');
     expect(actions?.[1] ?? '').toContain('flex-shrink: 1');
     expect(actions?.[1] ?? '').toContain('min-width: 0');
+    expect(PANEL_CSS).toMatch(/@container\s+pc-chrome\s*\(max-width:\s*320px\)/);
+    expect(PANEL_CSS).toMatch(/container-type:\s*inline-size/);
   });
 });
