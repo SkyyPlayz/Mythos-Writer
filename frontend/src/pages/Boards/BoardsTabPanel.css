@@ -543,7 +543,7 @@
   bottom: 0;
   width: 4px;
   cursor: ew-resize;
-  z-index: 10;
+  /* No z-index literal — option A (F2 owns z scale). Last absolute child paints on top. */
 }
 
 .boards-tab-panel__left-nav-resize:hover {

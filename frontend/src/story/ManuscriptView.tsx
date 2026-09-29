@@ -1681,7 +1681,10 @@ export default function ManuscriptView({
   };
 
   return (
-    <div className={`msv-root${dragPara ? ' msv-root--dragging-para' : ''}`} data-testid="msv-root">
+    <div
+      className={`msv-root${dragPara ? ' msv-root--dragging-para' : ''}${resolveDropCapEnabled(pagePrefs) ? ' msv-root--dropcap' : ''}`}
+      data-testid="msv-root"
+    >
       {/* M1 row 3 (SKY-9013): depth-invariant title row (prototype 897–948). */}
       <TitleRow
         story={story}

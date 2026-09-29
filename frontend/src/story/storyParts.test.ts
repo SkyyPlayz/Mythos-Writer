@@ -145,6 +145,40 @@ describe('storyParts', () => {
       expect(updated.parts![1].chapters.map((c) => c.id)).toEqual(['ch2']);
       expect(updated.chapters.map((c) => c.id)).toEqual(['ch1', 'ch2']);
     });
+
+    it('F1#9: insert-after renumbers order so new chapter is not last by sort', () => {
+      const ch1 = mkChapter('ch1', 'Ch1', 0);
+      const ch2 = mkChapter('ch2', 'Ch2', 1);
+      const ch3 = mkChapter('ch3', 'Ch3', 2);
+      const part = mkPart('pA', 'Part One', 0, [ch1, ch2, ch3]);
+      const story = mkStory({ chapters: [ch1, ch2, ch3], parts: [part] });
+      // Simulate createChapter's stale max-order assignment (length === 3).
+      const newbie = mkChapter('chNew', 'Inserted', 3);
+      const updated = insertChapterIntoPart(story, 'pA', newbie, 'ch1');
+      expect(updated.parts![0].chapters.map((c) => c.id)).toEqual(['ch1', 'chNew', 'ch2', 'ch3']);
+      expect(updated.parts![0].chapters.map((c) => c.order)).toEqual([0, 1, 2, 3]);
+      expect(updated.chapters.map((c) => c.id)).toEqual(['ch1', 'chNew', 'ch2', 'ch3']);
+    });
+
+    it('F1#3: move across parts renumbers both sides', () => {
+      const partA = mkPart('pA', 'Part One', 0, [
+        mkChapter('ch1', 'Ch1', 0),
+        mkChapter('ch2', 'Ch2', 5), // stale order
+      ]);
+      const partB = mkPart('pB', 'Part Two', 1, [mkChapter('ch3', 'Ch3', 0)]);
+      const story = mkStory({
+        chapters: [...partA.chapters, ...partB.chapters],
+        parts: [partA, partB],
+      });
+      const updated = moveChapterToPart(story, 'ch2', 'pB');
+      expect(updated.parts![0].chapters.map((c) => ({ id: c.id, order: c.order }))).toEqual([
+        { id: 'ch1', order: 0 },
+      ]);
+      expect(updated.parts![1].chapters.map((c) => ({ id: c.id, order: c.order }))).toEqual([
+        { id: 'ch3', order: 0 },
+        { id: 'ch2', order: 1 },
+      ]);
+    });
   });
 
   describe('mapAllChapters', () => {

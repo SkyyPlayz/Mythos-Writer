@@ -78,19 +78,25 @@ export function updateChapterOwner(
   return withPartChapters(reconciled, part.id, updater(part.chapters));
 }
 
+/** Reassign contiguous `order` 0..n-1 so every view that sorts on it matches array position. */
+function renumberChapterOrders(chapters: Chapter[]): Chapter[] {
+  return chapters.map((c, i) => (c.order === i ? c : { ...c, order: i }));
+}
+
 /** Append a new chapter to the end of the story — targets the last (order-sorted) part. */
 export function appendChapterToStory(story: Story, chapter: Chapter): Story {
   const reconciled = reconcileParts(story);
   const parts = [...(reconciled.parts ?? [])].sort((a, b) => a.order - b.order);
   const target = parts[parts.length - 1];
   if (!target) return reconciled;
-  return withPartChapters(reconciled, target.id, [...target.chapters, chapter]);
+  return withPartChapters(reconciled, target.id, renumberChapterOrders([...target.chapters, chapter]));
 }
 
 /**
  * F1#3/#9: append (or insert) a chapter into a specific part. When
  * `insertAfterChapterId` is set, the new chapter lands immediately after that
- * sibling; otherwise it appends to the part.
+ * sibling; otherwise it appends to the part. Always renumbers `order` so the
+ * new chapter does not keep a stale max-order and render last.
  */
 export function insertChapterIntoPart(
   story: Story,
@@ -106,15 +112,17 @@ export function insertChapterIntoPart(
     const idx = chapters.findIndex((c) => c.id === insertAfterChapterId);
     if (idx >= 0) {
       chapters.splice(idx + 1, 0, chapter);
-      return withPartChapters(reconciled, partId, chapters);
+      return withPartChapters(reconciled, partId, renumberChapterOrders(chapters));
     }
   }
-  return withPartChapters(reconciled, partId, [...chapters, chapter]);
+  return withPartChapters(reconciled, partId, renumberChapterOrders([...chapters, chapter]));
 }
 
 /**
  * F1#3: move a chapter from its current part into `targetPartId` (appended).
  * No-op when the chapter is already in that part or either id is missing.
+ * Renumbers both source and target parts so cross-part moves don't leave
+ * stale `order` values.
  */
 export function moveChapterToPart(story: Story, chapterId: string, targetPartId: string): Story {
   const reconciled = reconcileParts(story);
@@ -124,8 +132,8 @@ export function moveChapterToPart(story: Story, chapterId: string, targetPartId:
   if (source.id === target.id) return story;
   const chapter = source.chapters.find((c) => c.id === chapterId);
   if (!chapter) return story;
-  const without = source.chapters.filter((c) => c.id !== chapterId);
-  const withChapter = [...target.chapters, chapter];
+  const without = renumberChapterOrders(source.chapters.filter((c) => c.id !== chapterId));
+  const withChapter = renumberChapterOrders([...target.chapters, chapter]);
   const parts = (reconciled.parts ?? []).map((p) => {
     if (p.id === source.id) return { ...p, chapters: without };
     if (p.id === target.id) return { ...p, chapters: withChapter };

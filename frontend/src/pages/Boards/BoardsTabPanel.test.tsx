@@ -354,16 +354,31 @@ describe('F1#5 — Boards navigable sidebar', () => {
     expect(firstInteractive).toBe(home);
   });
 
-  it('lists nested folders under an expanded parent', async () => {
+  it('lists nested folders (auto-expanded so depth-3 is ≤2 clicks)', async () => {
     await mountPanel();
-    await screen.findByTestId('boards-nav-folder-Characters');
-    expect(screen.queryByTestId('boards-nav-folder-Locations')).toBeNull();
-
-    fireEvent.click(screen.getByTestId('boards-nav-toggle-Characters'));
-    expect(await screen.findByTestId('boards-nav-folder-Locations')).toBeTruthy();
-
-    fireEvent.click(screen.getByTestId('boards-nav-toggle-Characters/Locations'));
+    // Tree auto-expands on load — Cities (3 levels deep) is one click away.
     expect(await screen.findByTestId('boards-nav-folder-Cities')).toBeTruthy();
+    expect(screen.getByTestId('boards-nav-folder-Locations')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('boards-nav-folder-Cities'));
+    await waitFor(() => {
+      expect(screen.getByTestId('boards-nav-folder-Cities').getAttribute('aria-current')).toBe('page');
+    });
+  });
+
+  it('F1#5: depth-3 board reachable in ≤2 clicks from Home', async () => {
+    await mountPanel();
+    await screen.findByTestId('boards-nav-home');
+    // Auto-expand means leaf is already visible — 1 click.
+    fireEvent.click(await screen.findByTestId('boards-nav-folder-Cities'));
+    await waitFor(() => {
+      expect(screen.getByTestId('boards-nav-folder-Cities').getAttribute('aria-current')).toBe('page');
+    });
+    // Home is still one click back (no dead end).
+    fireEvent.click(screen.getByTestId('boards-nav-home'));
+    await waitFor(() => {
+      expect(screen.getByTestId('boards-nav-home').getAttribute('aria-current')).toBe('page');
+    });
   });
 
   it('renders the resize handle', async () => {
@@ -373,7 +388,7 @@ describe('F1#5 — Boards navigable sidebar', () => {
 
   it('Home returns to the hub from a nested board', async () => {
     await mountPanel();
-    fireEvent.click(await screen.findByTestId('boards-nav-toggle-Characters'));
+    // Tree is auto-expanded — Locations is already visible.
     fireEvent.click(await screen.findByTestId('boards-nav-folder-Locations'));
     await waitFor(() => {
       expect(screen.getByTestId('boards-nav-folder-Locations').getAttribute('aria-current')).toBe('page');

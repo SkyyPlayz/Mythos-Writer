@@ -37,6 +37,7 @@ import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
 import { cursorChapter, cursorDefaultScene, cycleDraftState, draftStateLabel, isSimpleSinglePart, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
 import { appendChapterToStory, findOwningPart, insertChapterIntoPart, mapAllChapters, moveChapterToPart, reconcileParts, syncChaptersFromParts, updateChapterOwner } from './story/storyParts';
+import { resolveOpenBoardStoryId } from './openBoardStory';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import { runQuitFlushers, trackQuitCriticalWrite } from './lib/flushBeforeQuit';
@@ -4172,8 +4173,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // fresh draft board — focuses its existing tab or appends a new one, and
   // routes to the Scene Crafter view where the board strip lives.
   const handleOpenBoard = useCallback((board: { id: string; name: string }) => {
-    if (!selectedStory) return;
-    const storyId = selectedStory.id;
+    // F1#2: match SceneCrafterPage's `selectedStory ?? stories[0]` fallback.
+    const storyId = resolveOpenBoardStoryId(selectedStory, stories);
+    if (!storyId) return;
     handleTabChange('story');
     handleSetView('kanban');
     setBoardDocTabs((prev) => {
@@ -4182,7 +4184,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       persistDocTabs({ board: { tabs: result.tabs, activeId: result.activeId } });
       return result.tabs;
     });
-  }, [selectedStory, handleTabChange, handleSetView, persistDocTabs]);
+  }, [selectedStory, stories, handleTabChange, handleSetView, persistDocTabs]);
 
   // Disk truth arrived from SceneCrafterPage's board load — drop tabs whose
   // board file is gone, refresh renamed titles (mirrors reconcileSceneTabs).
