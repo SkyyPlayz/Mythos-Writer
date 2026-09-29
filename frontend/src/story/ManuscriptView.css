@@ -12,6 +12,10 @@
   flex: 1;
   min-height: 0;
   min-width: 0;
+  /* F1#13 bridge until F2#12 lands `--panel-top-bar-height` in tokens.css
+     (PANEL_TOP_BAR_HEIGHT_PX = 36). Same name + value so merge wires cleanly;
+     drop this local declare after F2 merges if :root already provides it. */
+  --panel-top-bar-height: 36px;
 }
 
 /* ── zoom bar (prototype 717–741) ── */
