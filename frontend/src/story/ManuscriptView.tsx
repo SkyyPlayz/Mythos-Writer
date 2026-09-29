@@ -89,6 +89,7 @@ import CommentSelectionBar from './CommentSelectionBar';
 import CommentsGutter from './CommentsGutter';
 import CommentOpenCard from './CommentOpenCard';
 import ParagraphRow from './ParagraphRow';
+import StructuralBreadcrumb from '../StructuralBreadcrumb';
 import { buildEntityTerms, type AutoLinkerMode } from '../AutoLinkerExtension';
 import {
   applyAllAutoLinkHints,
@@ -1791,39 +1792,14 @@ export default function ManuscriptView({
             {CHEVRON_RIGHT(11)}
           </button>
         </div>
-        <nav className="msv-crumbs" aria-label="Breadcrumbs" data-testid="msv-crumbs" data-msv-chrome="true">
-          {crumbs.map((c, i) => (
-            <span
-              key={`${c.cursor.zoom}-${c.label}`}
-              className={`msv-crumb-item${i === 0 ? ' msv-crumb-item--root' : ''}`}
-            >
-              <button
-                type="button"
-                className={`msv-crumb${i === crumbs.length - 1 ? ' msv-crumb--current' : ''}`}
-                data-testid={`msv-crumb-${i}`}
-                onClick={() => onCursorChange(c.cursor)}
-              >
-                {c.label}
-              </button>
-              {i < crumbs.length - 1 && (
-                <svg
-                  width="9"
-                  height="9"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#586a88"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="msv-crumb-sep"
-                  aria-hidden="true"
-                >
-                  <path d="M9 6l6 6-6 6" />
-                </svg>
-              )}
-            </span>
-          ))}
-        </nav>
+        {/* F4#6 live home: mount F4 StructuralBreadcrumb (no fork) — path data
+            from manuscriptModel.breadcrumbs (incl. live part crumb). */}
+        <div className="msv-crumbs" data-testid="msv-crumbs" data-msv-chrome="true">
+          <StructuralBreadcrumb
+            crumbs={crumbs.map((c) => c.label)}
+            aria-label="Breadcrumbs"
+          />
+        </div>
         <div className="msv-flex-spacer" />
         {/* W0.4 (GAP P0#4): the zoombar's duplicate Read chip is gone — the
             single Read button lives right-aligned on the format toolbar below

@@ -49,6 +49,16 @@
     background: none; border: 1px solid transparent;
   }
   .msv-zoom-opt--active { color: #e6ecf9; background: rgba(0,240,255,.12); border-color: var(--b1); }
+  
+  .struct-breadcrumb { display:flex; align-items:center; min-width:0; max-width:100%; overflow:hidden; font-size:11.5px; color:#8e9db8; width:100%; }
+  .struct-breadcrumb__item { display:inline-flex; align-items:center; min-width:0; overflow:hidden; }
+  .struct-breadcrumb__item--root { flex-shrink:0; min-width:2.5em; }
+  .struct-breadcrumb__label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
+  .struct-breadcrumb__sep { flex:none; opacity:.55; padding:0 1px; }
+  .struct-breadcrumb__item--current .struct-breadcrumb__label {
+    color:#eef2fb; font-weight:600; border:1px solid rgba(0,240,255,.45); border-radius:5px; padding:1px 6px;
+  }
+
   .msv-crumbs { display: flex; align-items: center; gap: 6px; font-size: 11.5px; min-width: 0; overflow: hidden; max-width: 520px; }
   .msv-crumb-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex-shrink: 2; }
   .msv-crumb-item--root { flex-shrink: 1; }
@@ -113,12 +123,25 @@
           <span class="msv-zoom-opt">Chapter</span>
           <span class="msv-zoom-opt msv-zoom-opt--active">Scene</span>
         </div>
-        <nav class="msv-crumbs" aria-label="Breadcrumbs" data-msv-chrome="true">
-          <span class="msv-crumb-item msv-crumb-item--root"><button class="msv-crumb" type="button">The Last City of Veynn</button><span class="msv-crumb-sep">›</span></span>
-          <span class="msv-crumb-item"><button class="msv-crumb" type="button">Embers Rising</button><span class="msv-crumb-sep">›</span></span>
-          <span class="msv-crumb-item"><button class="msv-crumb" type="button">Ch. 2: Fractures</button><span class="msv-crumb-sep">›</span></span>
-          <span class="msv-crumb-item"><button class="msv-crumb msv-crumb--current" type="button">The Smuggler's Bargain</button></span>
-        </nav>
+        <div class="msv-crumbs" aria-label="Breadcrumbs" data-msv-chrome="true" data-testid="msv-crumbs">
+          <nav class="struct-breadcrumb" aria-label="Breadcrumbs" data-testid="struct-breadcrumb">
+            <span class="struct-breadcrumb__item struct-breadcrumb__item--root" data-testid="struct-breadcrumb-root" style="flex-shrink:0" title="The Last City of Veynn">
+              <span class="struct-breadcrumb__label">The Last City of Veynn</span>
+            </span>
+            <span class="struct-breadcrumb__item" style="flex-shrink:1" title="Embers Rising">
+              <span class="struct-breadcrumb__sep" aria-hidden="true"> › </span>
+              <span class="struct-breadcrumb__label">Embers Rising</span>
+            </span>
+            <span class="struct-breadcrumb__item" style="flex-shrink:1" title="Ch. 2: Fractures">
+              <span class="struct-breadcrumb__sep" aria-hidden="true"> › </span>
+              <span class="struct-breadcrumb__label">Ch. 2: Fractures</span>
+            </span>
+            <span class="struct-breadcrumb__item struct-breadcrumb__item--current" style="flex-shrink:2" aria-current="location" title="The Smuggler's Bargain">
+              <span class="struct-breadcrumb__sep" aria-hidden="true"> › </span>
+              <span class="struct-breadcrumb__label">The Smuggler's Bargain</span>
+            </span>
+          </nav>
+        </div>
       </div>
       <div class="msv-toolbar" data-msv-chrome="true">
         <span class="msv-tb-chip">Body Text</span><span class="msv-tb-chip">B</span><span class="msv-tb-chip">I</span><span class="msv-tb-chip">U</span>
@@ -127,7 +150,7 @@
         <div class="msv-sheet">
           <div class="msv-para-text" contenteditable="true">Kael dealt cards slowly.</div>
           <span class="badge">Root crumb truncates last</span>
-          <p class="note">Multi-part trail: book › part › Ch. N: title › scene. `.msv-crumb-item--root` has lower flex-shrink so the book title yields last.</p>
+          <p class="note">Live mount: F4 `StructuralBreadcrumb` inside `msv-crumbs`. Path from manuscriptModel.breadcrumbs (book › part › Ch. N › scene). Root truncates last.</p>
         </div>
       </div>
     </div>
@@ -146,9 +169,9 @@
           <span class="msv-zoom-opt">Full Book</span>
           <span class="msv-zoom-opt msv-zoom-opt--active">Scene</span>
         </div>
-        <nav class="msv-crumbs" data-msv-chrome="true">
-          <span class="msv-crumb-item msv-crumb-item--root"><button class="msv-crumb" type="button">The Last City of Veynn</button></span>
-        </nav>
+        <div class="msv-crumbs" data-msv-chrome="true">
+          <nav class="struct-breadcrumb"><span class="struct-breadcrumb__item struct-breadcrumb__item--root" style="flex-shrink:0"><span class="struct-breadcrumb__label">The Last City of Veynn</span></span></nav>
+        </div>
       </div>
       <div class="msv-page">
         <div class="msv-selbar-wrap">
@@ -173,10 +196,12 @@
           <span class="msv-zoom-opt msv-zoom-opt--active">Chapter</span>
           <span class="msv-zoom-opt">Scene</span>
         </div>
-        <nav class="msv-crumbs" data-msv-chrome="true">
-          <span class="msv-crumb-item msv-crumb-item--root"><button class="msv-crumb" type="button">The Last City of Veynn</button><span class="msv-crumb-sep">›</span></span>
-          <span class="msv-crumb-item"><button class="msv-crumb msv-crumb--current" type="button">Ch. 1: The Quiet Before</button></span>
-        </nav>
+        <div class="msv-crumbs" data-msv-chrome="true">
+          <nav class="struct-breadcrumb">
+            <span class="struct-breadcrumb__item struct-breadcrumb__item--root" style="flex-shrink:0"><span class="struct-breadcrumb__label">The Last City of Veynn</span></span>
+            <span class="struct-breadcrumb__item struct-breadcrumb__item--current" style="flex-shrink:2" aria-current="location"><span class="struct-breadcrumb__sep"> › </span><span class="struct-breadcrumb__label">Ch. 1: The Quiet Before</span></span>
+          </nav>
+        </div>
       </div>
       <div class="msv-toolbar" data-msv-chrome="true">
         <span class="msv-tb-chip">Body Text</span><span class="msv-tb-chip">B</span><span class="msv-tb-chip">I</span>
