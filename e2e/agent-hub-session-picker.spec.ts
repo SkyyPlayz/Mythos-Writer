@@ -52,6 +52,11 @@ function buildAppSettings(): object {
   return {
     apiKey: 'sk-ant-e2e-agent-hub-session-picker',
     onboardingComplete: true,
+    provider: {
+      kind: 'anthropic',
+      model: 'claude-haiku-4-5-20251001',
+      apiKey: 'sk-ant-e2e-agent-hub-session-picker',
+    },
     agents: {
       writingAssistant: {
         enabled: true,
@@ -375,12 +380,15 @@ test('F3 gate: Writer Scan opens tips strip; partner typing indicator resolves',
   page = await firstWindow(app);
   await openPartnerChat(page);
 
-  // Gate: Writer Scan surfaces tips strip (Heartbeat / Scan now).
-  await page.getByTestId('ahp-action-writer-scan').click();
+  // Gate: tips strip is always mounted; Writer Scan keeps Heartbeat visible.
   await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
+  await page.getByTestId('ahp-action-writer-scan').click();
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 6_000 });
   await page.getByTestId('ahp-close-writer').click();
   await expect(page.getByTestId('ahp-writer-tips')).toHaveCount(0);
+  // Re-open tips via Writer Scan (finally block) for subsequent chat asserts.
+  await page.getByTestId('ahp-action-writer-scan').click();
+  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 6_000 });
 
   // Gate: loading → typing dots on shared chat (was wa-typing in unsharded suite).
   await page.evaluate(async () => {
@@ -400,6 +408,85 @@ test('F3 gate: Writer Scan opens tips strip; partner typing indicator resolves',
     timeout: 4_000,
   }).catch(() => undefined);
   await expect(page.getByTestId('ahp-partner-chat-send')).toBeVisible({ timeout: 12_000 });
+
+  await closeApp(app);
+  app = undefined;
+});
+
+// ─── F3 Secure bar: two-window float-out (main ↔ float broadcast) ────────────
+
+async function waitForExtraWindow(
+  electronApp: ElectronApplication,
+  main: Page,
+  timeoutMs = 12_000,
+): Promise<Page | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const windows = await electronApp.windows();
+    const extra = windows.find((w) => w !== main);
+    if (extra) return extra;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return null;
+}
+
+/**
+ * Runtime proof of Shield Secure bar: no-payload `partner-thread:changed`
+ * broadcast from main refreshes the floated partner MiniAgentChat (and reverse).
+ * Sharded: e2e-shard-2 via `test:e2e:agent-hub-session-picker`.
+ */
+test('F3 Secure bar: docked↔float partner thread syncs both directions', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+
+  const stubBrainstorm = async (target: Page) => {
+    await target.evaluate(() => {
+      const api = (window as unknown as {
+        api: { agentBrainstorm: (p: string) => Promise<{ text: string }> };
+      }).api;
+      api.agentBrainstorm = async () => ({ text: 'FLOAT_E2E_STUB_REPLY' });
+    });
+  };
+  await stubBrainstorm(page);
+
+  await page.evaluate(async () => {
+    await window.api!.panelFloat!('writing-assistant', {
+      x: 80,
+      y: 80,
+      width: 420,
+      height: 700,
+    });
+  });
+
+  const floatPage = await waitForExtraWindow(app, page);
+  expect(floatPage, 'floated writing-assistant window must open').toBeTruthy();
+  floatPage!.on('console', (m) => console.log(`[float:${m.type()}]`, m.text()));
+  await floatPage!.waitForLoadState('domcontentloaded');
+  await expect(floatPage!.getByTestId('fpa-partner-writing')).toBeVisible({ timeout: 10_000 });
+  await expect(floatPage!.getByTestId('fpa-partner-chat-input')).toBeVisible({ timeout: 8_000 });
+  await stubBrainstorm(floatPage!);
+
+  const DOCK_MARKER = 'DOCK_TO_FLOAT_MARKER_991';
+  const dockInput = page.getByTestId('ahp-partner-chat-input');
+  await dockInput.fill(DOCK_MARKER);
+  await dockInput.press('Enter');
+  await expect(page.getByTestId('ahp-partner-chat-feed')).toContainText(DOCK_MARKER, { timeout: 8_000 });
+  // Float refreshes via partner-thread:changed (no payload) after persist.
+  await expect(floatPage!.getByTestId('fpa-partner-chat-feed')).toContainText(DOCK_MARKER, {
+    timeout: 12_000,
+  });
+
+  const FLOAT_MARKER = 'FLOAT_TO_DOCK_MARKER_992';
+  const floatInput = floatPage!.getByTestId('fpa-partner-chat-input');
+  await floatInput.fill(FLOAT_MARKER);
+  await floatInput.press('Enter');
+  await expect(floatPage!.getByTestId('fpa-partner-chat-feed')).toContainText(FLOAT_MARKER, {
+    timeout: 8_000,
+  });
+  await expect(page.getByTestId('ahp-partner-chat-feed')).toContainText(FLOAT_MARKER, {
+    timeout: 12_000,
+  });
 
   await closeApp(app);
   app = undefined;

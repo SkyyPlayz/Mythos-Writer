@@ -68,6 +68,11 @@ function buildAppSettings(waEnabled = true): object {
   return {
     apiKey: 'sk-ant-e2e-writing-assistant',
     onboardingComplete: true,
+    provider: {
+      kind: 'anthropic',
+      model: 'claude-haiku-4-5-20251001',
+      apiKey: 'sk-ant-e2e-writing-assistant',
+    },
     agents: {
       writingAssistant: {
         enabled: waEnabled,

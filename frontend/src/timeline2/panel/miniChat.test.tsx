@@ -277,13 +277,13 @@ describe('MiniAgentChat — card messages (SKY-8886)', () => {
         })),
         create: vi.fn(async () => ({
           session: { id: 'bs-s1', agent: 'brainstorm', turns: [
-            { role: 'agent', text: 'Timeline has 4 eras.', at: AT, cardTitle: 'Timeline Summary', cardFoot: '4 eras · 12 events' },
+            { role: 'agent', text: 'Timeline has 4 eras.', at: AT, cardTitle: 'Timeline Summary', cardFoot: '4 eras · 12 events', cardKind: 'action' },
           ], startedAt: AT, updatedAt: AT },
           relPath: 'Sessions/x.md',
         })),
         read: vi.fn(async () => ({
           session: { id: 'bs-s1', agent: 'brainstorm', turns: [
-            { role: 'agent', text: 'Timeline has 4 eras.', at: AT, cardTitle: 'Timeline Summary', cardFoot: '4 eras · 12 events' },
+            { role: 'agent', text: 'Timeline has 4 eras.', at: AT, cardTitle: 'Timeline Summary', cardFoot: '4 eras · 12 events', cardKind: 'action' },
           ], startedAt: AT, updatedAt: AT },
         })),
         rename: vi.fn(async () => ({ ok: true })),
