@@ -593,9 +593,8 @@ test('TC-V-09b: Brainstorm voice toggle controls Brainstorm mic visibility', asy
   await expect(brainstormVoiceToggle).toBeChecked({ timeout: 6_000 });
   await page.locator('label[for="brainstorm-voice-enabled"] .settings-toggle-track').click();
   await expect(brainstormVoiceToggle).not.toBeChecked();
-  await page.getByRole('button', { name: /save settings/i }).click();
-  await expect(page.getByText(/settings saved/i)).toBeVisible({ timeout: 5_000 });
-  await page.getByRole('button', { name: 'Close settings' }).click();
+  // F2#15: auto-save on close
+  await page.getByRole('button', { name: /close settings/i }).click();
   await expect(page.locator('.settings-overlay')).toHaveCount(0, { timeout: 3_000 });
 
   await openBrainstorm(page);
@@ -608,9 +607,7 @@ test('TC-V-09b: Brainstorm voice toggle controls Brainstorm mic visibility', asy
   await page.locator('[data-testid="settings-cat-agents"]').click();
   await page.locator('label[for="brainstorm-voice-enabled"] .settings-toggle-track').click();
   await expect(brainstormVoiceToggle).toBeChecked();
-  await page.getByRole('button', { name: /save settings/i }).click();
-  await expect(page.getByText(/settings saved/i)).toBeVisible({ timeout: 5_000 });
-  await page.getByRole('button', { name: 'Close settings' }).click();
+  await page.getByRole('button', { name: /close settings/i }).click();
   await expect(page.locator('.settings-overlay')).toHaveCount(0, { timeout: 3_000 });
 
   await openBrainstorm(page);

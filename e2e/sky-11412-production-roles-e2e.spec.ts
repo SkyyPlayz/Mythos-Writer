@@ -385,16 +385,21 @@ test('TC-SKY11412-01: Settings > AI Agents — Alpha Reader and Storyline Consul
   await page.locator('[data-testid="storyline-consultant-agent-card"] .settings-toggle-track').click();
   await expect(storylineToggle).toBeChecked();
 
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Settings saved.')).toBeVisible({ timeout: 5_000 });
-  await page.click('.settings-close');
+  // F2#15: auto-save on close (no Save button)
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await expect(page.locator('.settings-overlay')).toHaveCount(0, { timeout: 5_000 });
 
   // Real settings:set -> saveAppSettings -> fs.writeFileSync round trip —
   // assert the change landed on disk, not just in the DOM.
+  await expect.poll(() => {
+    const stored = JSON.parse(fs.readFileSync(path.join(userData, 'app-settings.json'), 'utf-8')) as {
+      agents: { alphaReader?: { enabled: boolean } };
+    };
+    return stored.agents.alphaReader?.enabled;
+  }, { timeout: 10_000 }).toBe(true);
   const stored = JSON.parse(fs.readFileSync(path.join(userData, 'app-settings.json'), 'utf-8')) as {
     agents: { alphaReader?: { enabled: boolean }; storylineConsultant?: { enabled: boolean }; lineEditor?: { enabled: boolean } };
   };
-  expect(stored.agents.alphaReader?.enabled).toBe(true);
   expect(stored.agents.storylineConsultant?.enabled).toBe(true);
   expect(stored.agents.lineEditor?.enabled).toBe(false);
 });

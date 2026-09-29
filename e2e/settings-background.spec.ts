@@ -150,12 +150,8 @@ test('TC-SKY-3219-01: Save preserves background image path in stored settings', 
   // explicit-save flow under test lives on the AI Agents page.
   await page.locator('[data-testid="settings-cat-agents"]').click();
 
-  // Click Save without changing anything.
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Settings saved.')).toBeVisible({ timeout: 5_000 });
-
-  // Close Settings.
-  await page.keyboard.press('Escape');
+  // F2#15: close auto-saves (no Save button).
+  await page.getByRole('button', { name: 'Close settings' }).click();
   await expect(page.locator('[role="dialog"][aria-label="Settings"]')).not.toBeVisible({ timeout: 2_000 });
 
   // Verify app-settings.json still has the correct background path.
@@ -184,11 +180,8 @@ test('TC-SKY-3219-02: Save does not reset --bg-app-image CSS variable to default
   // SKY-10668: the panel now opens on Appearance (no Save footer) — the
   // explicit-save flow under test lives on the AI Agents page.
   await page.locator('[data-testid="settings-cat-agents"]').click();
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Settings saved.')).toBeVisible({ timeout: 5_000 });
-
-  // Close Settings.
-  await page.keyboard.press('Escape');
+  // F2#15: close auto-saves (no Save button).
+  await page.getByRole('button', { name: 'Close settings' }).click();
   await expect(page.locator('[role="dialog"][aria-label="Settings"]')).not.toBeVisible({ timeout: 2_000 });
 
   // Allow async onSaved → loadBgImage → applyLiquidNeonTokens to complete.

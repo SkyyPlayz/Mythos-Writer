@@ -113,7 +113,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -495,27 +494,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     }
   }, [sttBinaryToken, sttModelToken]);
 
-  const handleSave = useCallback(async () => {
-    if (apiKeyError) return;
-    setSaving(true);
-    setSaveError(null);
-    setSavedOk(false);
-    try {
-      const payload = buildSettingsPayload();
-      await writeSettingsPayload(payload);
-      setSttBinaryToken(null);
-      setSttModelToken(null);
-      setSavedOk(true);
-      applyLiquidNeonTokens(lg, bgPreviewUrl);
-      applyPageBackgroundTokens(pageBg);
-      onSaved?.(payload);
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Failed to save settings.');
-    } finally {
-      setSaving(false);
-    }
-  }, [apiKeyError, buildSettingsPayload, writeSettingsPayload, lg, bgPreviewUrl, pageBg, onSaved]);
-
   // F2#15: persist on exit (no Save button). Dismiss immediately; flush without
   // local saving/savedOk state so unmounting/close does not trip act() warnings.
   const handleClose = useCallback(() => {
@@ -524,6 +502,8 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     const payload = buildSettingsPayload();
     void writeSettingsPayload(payload)
       .then(() => {
+        // No local setState here — panel is dismissing; tokens were already
+        // included in writeSettingsPayload.
         applyLiquidNeonTokens(lg, bgPreviewUrl);
         applyPageBackgroundTokens(pageBg);
         onSaved?.(payload);
