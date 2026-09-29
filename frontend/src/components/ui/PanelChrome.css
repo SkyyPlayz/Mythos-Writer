@@ -21,9 +21,10 @@
   flex-wrap: wrap;
   gap: var(--space-2);
   padding: 0 var(--space-3);
-  /* F2#12: shared top-bar height for alignment with Story toolbar (F1#13) */
+  /* F2#12: shared top-bar metric as min-height (not a hard clip). Fixed
+     `height: 36px` crushed Brainstorm's Agent Chat|Board segment into the
+     layout below so `.bs-collections` intercepted clicks (e2e TC-M20/TC-RT). */
   min-height: var(--panel-top-bar-height, 36px);
-  height: var(--panel-top-bar-height, 36px);
   box-sizing: border-box;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;

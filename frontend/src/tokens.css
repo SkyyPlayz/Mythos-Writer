@@ -73,7 +73,9 @@
   --bg-vignette-alpha: 0.4;    /* vignette overlay strength */
   --bg-base: #07090f;          /* app shell / canvas — deep charcoal, not black */
   --bg-vignette: radial-gradient(120% 120% at 50% 0%, #0d131f 0%, #07090f 55%, #04060c 100%);
-  --glass-fill: rgba(13, 16, 28, 0.20);      /* default glassA 20 — matches engine */
+  /* Pre-engine fallback stays dense; liquidNeonEngine overwrites to glassA/100. */
+  --glass-fill: rgba(13, 16, 28, 0.72);
+
   --glass-fill-fallback: rgba(13, 16, 28, 0.92); /* opaque fallback, no-backdrop-filter */
   /* SKY-11133: overlay tier — Settings/popups/menus/toasts. 09 §2.1 separates
      --glass2 (card/tab fill, glassA+16 floor .50) from --pop (popover fill,
