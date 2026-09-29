@@ -1949,11 +1949,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // click), then jump the panel to that vault's settings.
   const handleVaultOpenSettings = useCallback((vaultId: string) => {
     switchToVault(vaultId).then(() => {
-      // Navigate in place — SettingsPanel syncs initialCategory via useEffect.
-      setSettingsInitialCategory('vaults');
+      // Soft: repeating "Settings → this vault" while Settings is already
+      // open must not yank the user onto the Vault tab — only jump there
+      // when opening Settings fresh.
+      if (!settingsOpen) setSettingsInitialCategory('vaults');
       setSettingsOpen(true);
     });
-  }, [switchToVault]);
+  }, [switchToVault, settingsOpen]);
 
   const persistManifest = useCallback(async (m: Manifest) => {
     try {
@@ -2464,12 +2466,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [persistTabShell]);
 
   const handleOpenContinuityEntityNote = useCallback((notePath: string) => {
-    // F2 CI-FIX / TC-CP-06: keep Story selection when Notes takes the note.
-    // Story tabpanel is keep-mounted (B7); clearing selectedScene while
-    // openedNotePath is set mounts a second NoteViewer in the hidden Story
-    // panel → dual `.note-tiptap-content` (strict-mode) + double-flush risk.
-    // Same root cause F1 gate at 80c88bfc — expect converge-on-rebase, not a
-    // behavioral fork (do not cherry-pick that hunk; this is F2's own fix).
+    // Critic r3 TC-CP-06: restore scene clears. Keeping the scene made
+    // applyNavLocation restore sceneId first (handleSelectScene clears the
+    // note) so Back landed on empty Notes. F1 owns keep-scene + notePath
+    // re-apply (H1 / ba5e8718). F2 keeps only the Story NoteViewer gate
+    // below vs dual viewer.
+    setSelectedScene(null);
+    setSelectedChapter(null);
+    setSelectedStory(null);
     setSelectedEntity(null);
     setOpenedNotePath(notePath);
     handleNotesSubViewChange('editor');

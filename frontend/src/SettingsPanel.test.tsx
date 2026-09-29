@@ -2773,4 +2773,46 @@ describe('SKY-3218 nav-bar configuration', () => {
     expect(mockVaultGetPaths.mock.calls.length).toBeGreaterThan(callsAfterFirst);
     expect(screen.queryByText('/vaults/First/Story Vault')).not.toBeInTheDocument();
   });
+
+  // Critic r3 #3: activeVaultRoot change must not wipe unsaved Model & keys edits.
+  it('Critic #3: vault switch while open preserves unsaved Model & keys edits', async () => {
+    mockSettingsGet.mockResolvedValue({
+      ...defaultSettings,
+      vaultAppearance: {
+        '/vaults/alpha': { theme: 'dark' },
+        '/vaults/beta': { theme: 'sepia' },
+      },
+    });
+
+    const { rerender } = await renderSettings(
+      <SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/alpha" />,
+    );
+    await waitForModelKeys();
+
+    // Unsaved edit on Model & keys (crash-report telemetry toggle).
+    fireEvent.click(screen.getByTestId('mk-telemetry-crash'));
+    expect(screen.getByTestId('mk-telemetry-crash')).toBeChecked();
+
+    rerender(
+      <SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/beta" />,
+    );
+
+    // Stay on Model & keys — the parked edit must survive the vault switch.
+    fireEvent.click(screen.getByRole('tab', { name: /model & keys/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('mk-telemetry-crash')).toBeChecked();
+    });
+  });
+
+  it('Critic #3: DesktopShell must not remount Settings via key on vault switch', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'DesktopShell.tsx'),
+      'utf8',
+    );
+    const block = src.match(/\{settingsOpen && \(\s*<SettingsPanel[\s\S]*?\/>\s*\)\}/);
+    expect(block?.[0] ?? '').toBeTruthy();
+    expect(block![0]).not.toMatch(/\bkey=\{/);
+  });
 });

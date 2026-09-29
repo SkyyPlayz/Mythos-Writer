@@ -352,17 +352,23 @@ test('F2#12 real side/middle panel top bars are 36px (±1)', async () => {
       const token = getComputedStyle(document.documentElement)
         .getPropertyValue('--panel-top-bar-height').trim();
       const sel = ['.lr-nav-header', '.shell-editor-toolbar', '.grs-topbar', '.pc-header'];
-      const heights: Record<string, number | null> = {};
+      const heights: Record<string, number[]> = {};
       for (const s of sel) {
-        const el = document.querySelector(s);
-        heights[s] = el ? Math.round(el.getBoundingClientRect().height) : null;
+        heights[s] = [...document.querySelectorAll(s)].map(
+          (el) => Math.round(el.getBoundingClientRect().height),
+        );
       }
       return { token, heights };
     });
     expect(storyBars.token).toBe('36px');
-    for (const [sel, h] of Object.entries(storyBars.heights)) {
-      if (h === null) continue; // absent in this layout is ok
-      expect(Math.abs(h - 36), `${sel} height ${h}`).toBeLessThanOrEqual(1);
+    // Soft Critic: require the Story-side bars that always mount; check EVERY match.
+    for (const required of ['.lr-nav-header', '.shell-editor-toolbar'] as const) {
+      expect(storyBars.heights[required].length, `${required} missing`).toBeGreaterThan(0);
+    }
+    for (const [sel, hs] of Object.entries(storyBars.heights)) {
+      for (const h of hs) {
+        expect(Math.abs(h - 36), `${sel} height ${h}`).toBeLessThanOrEqual(1);
+      }
     }
 
     // Notes shell bars. (Probe fold typo: label is "Notes Editor", not "Notes".)
@@ -376,16 +382,134 @@ test('F2#12 real side/middle panel top bars are 36px (±1)', async () => {
         '.notes-right-sidebar-header',
         '.pc-header',
       ];
-      const heights: Record<string, number | null> = {};
+      const heights: Record<string, number[]> = {};
       for (const s of sel) {
-        const el = document.querySelector(s);
-        heights[s] = el ? Math.round(el.getBoundingClientRect().height) : null;
+        heights[s] = [...document.querySelectorAll(s)].map(
+          (el) => Math.round(el.getBoundingClientRect().height),
+        );
       }
       return heights;
     });
-    for (const [sel, h] of Object.entries(notesBars)) {
-      if (h === null) continue;
-      expect(Math.abs(h - 36), `${sel} height ${h}`).toBeLessThanOrEqual(1);
+    for (const required of ['.notes-tab-toolbar', '.notes-sidebar-header'] as const) {
+      expect(notesBars[required].length, `${required} missing`).toBeGreaterThan(0);
+    }
+    for (const [sel, hs] of Object.entries(notesBars)) {
+      for (const h of hs) {
+        expect(Math.abs(h - 36), `${sel} height ${h}`).toBeLessThanOrEqual(1);
+      }
+    }
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
+
+// Critic r3 #6 / N7: at 280px the @container wrap on .pc-header-host must keep
+// title width > 0, no overlaps, and action controls visible (main-clean).
+test('F2 W0.3 / Critic #6: .pc-header + in-scope bars clean at 280px', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+
+    // Open Notes → Brainstorm so a real .pc-header (Back + title + switch) mounts.
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+    await expect(page.locator('.notes-tab-panel, .notes-tab-toolbar').first()).toBeVisible({ timeout: 8_000 });
+    const brainstormTab = page.locator(
+      'button[aria-label="Brainstorm"], [data-testid="notes-subview-brainstorm"], button:has-text("Brainstorm")',
+    ).first();
+    if (await brainstormTab.count()) {
+      await brainstormTab.click();
+    }
+
+    const report = await page.evaluate(() => {
+      const BAR_SELS = [
+        '.lr-nav-header',
+        '.shell-editor-toolbar',
+        '.grs-topbar',
+        '.notes-tab-toolbar',
+        '.notes-sidebar-header',
+        '.vb-notes-header',
+        '.notes-right-sidebar-header',
+        '.pc-header',
+      ];
+
+      function overlaps(a: DOMRect, b: DOMRect): boolean {
+        return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+      }
+
+      const results: Array<{
+        sel: string;
+        width: number;
+        titleWidth: number | null;
+        switchVisible: boolean | null;
+        overlap: boolean;
+      }> = [];
+
+      for (const sel of BAR_SELS) {
+        for (const el of document.querySelectorAll<HTMLElement>(sel)) {
+          // Force the bar's container to 280px so @container / wrap can fire.
+          const host = (el.closest('.pc-header-host') as HTMLElement | null) ?? el;
+          const prev = host.style.width;
+          host.style.width = '280px';
+          host.style.minWidth = '280px';
+          host.style.maxWidth = '280px';
+          // Force layout.
+          void host.offsetWidth;
+
+          const rect = el.getBoundingClientRect();
+          const title = el.querySelector('.pc-header-title') as HTMLElement | null;
+          const titleWidth = title ? title.getBoundingClientRect().width : null;
+          const actions = el.querySelector('.pc-header-actions');
+          const switchVisible = actions
+            ? (() => {
+              const r = actions.getBoundingClientRect();
+              return r.width > 0 && r.height > 0;
+            })()
+            : null;
+
+          // Overlap check among direct interactive children of the header row.
+          const kids = [...el.querySelectorAll<HTMLElement>('button, [role="tab"], .pc-header-title, select')];
+          let overlap = false;
+          for (let i = 0; i < kids.length; i++) {
+            const ri = kids[i].getBoundingClientRect();
+            if (ri.width < 1 || ri.height < 1) continue;
+            for (let j = i + 1; j < kids.length; j++) {
+              const rj = kids[j].getBoundingClientRect();
+              if (rj.width < 1 || rj.height < 1) continue;
+              // Same flex row only — ignore wrapped second-row siblings.
+              if (Math.abs(ri.top - rj.top) > 4) continue;
+              if (overlaps(ri, rj)) { overlap = true; break; }
+            }
+            if (overlap) break;
+          }
+
+          results.push({
+            sel,
+            width: Math.round(rect.width),
+            titleWidth: titleWidth === null ? null : Math.round(titleWidth),
+            switchVisible,
+            overlap,
+          });
+
+          host.style.width = prev;
+          host.style.minWidth = '';
+          host.style.maxWidth = '';
+        }
+      }
+      return results;
+    });
+
+    // At least the Notes toolbar + a pc-header (Brainstorm) should be present.
+    expect(report.some((r) => r.sel === '.notes-tab-toolbar')).toBe(true);
+
+    for (const r of report) {
+      expect(r.overlap, `${r.sel} overlaps at 280px`).toBe(false);
+      if (r.titleWidth !== null) {
+        expect(r.titleWidth, `${r.sel} title width`).toBeGreaterThan(0);
+      }
+      if (r.switchVisible !== null) {
+        expect(r.switchVisible, `${r.sel} actions/switch visible`).toBe(true);
+      }
     }
   } finally {
     await app.close().catch(() => undefined);

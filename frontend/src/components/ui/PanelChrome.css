@@ -9,9 +9,16 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  /* W0.3: host for @container wrap of .pc-header at ≤320px. */
+}
+
+/* Critic #6 / N7: real rendered ancestor for @container wrap. Production
+   mounts PanelHeader without PanelChrome, so container cannot live only on
+   .pc-chrome. Host width drives the ≤320px wrap below. */
+.pc-header-host {
   container-type: inline-size;
   container-name: pc-chrome;
+  width: 100%;
+  min-width: 0;
 }
 
 .pc-header {
