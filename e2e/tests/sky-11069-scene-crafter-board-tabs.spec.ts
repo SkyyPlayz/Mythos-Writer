@@ -230,7 +230,10 @@ test('F1#1: Create Scene form → Structure + board persist on SAME userData rel
       const createBtn = page.getByTestId('sc-create-scene-btn');
       await expect(createBtn).toBeVisible({ timeout: 5_000 });
       await createBtn.click();
-      await expect(page.locator('.shell-kanban, [data-testid="canvas-board"]')).toBeVisible({ timeout: 12_000 });
+      // Active board only — `.shell-kanban` is the parent wrapper; OR-ing it with
+      // `[data-testid=canvas-board]` matches parent+child (strict-mode ×2). App
+      // repro: 1 shell-kanban containing 1 canvas-board after Create Scene.
+      await expect(page.getByTestId('canvas-board')).toBeVisible({ timeout: 12_000 });
 
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Structure"]').click().catch(async () => {
         await page.getByRole('button', { name: /Structure/i }).first().click();
@@ -249,9 +252,10 @@ test('F1#1: Create Scene form → Structure + board persist on SAME userData rel
     });
     await expect(page2.getByText(sceneTitle).first()).toBeVisible({ timeout: 10_000 });
     await openSceneCrafter(page2);
-    await expect(page2.locator('.shell-kanban, [data-testid="canvas-board"], [data-testid="crafter-board-list"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    // Prefer active board; fall back to Setup gallery (board tab may not restore).
+    await expect(
+      page2.getByTestId('canvas-board').or(page2.getByTestId('crafter-board-list')),
+    ).toBeVisible({ timeout: 10_000 });
   } finally {
     await app2.close();
   }

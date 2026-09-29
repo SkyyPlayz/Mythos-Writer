@@ -201,6 +201,9 @@ test('AC-SV-05: Story Writer rail click lands on the editor after a Notes round-
 });
 
 // ─── F1 gate tests (moved from f1-beta-gate → e2e-shard-1 / test:e2e:story-tab-subview) ───
+// STALE from shard move: original f1-beta-gate always File→New story before
+// touching msv-*. App repro on tip 999cfb79: no story → msv-root/toolbar/add-chapter
+// count 0; after New story → all 1. N1/H5 not implicated.
 
 async function answerTextPrompt(p: Page, text: string): Promise<void> {
   const input = p.locator('.prompt-modal-input');
@@ -209,8 +212,22 @@ async function answerTextPrompt(p: Page, text: string): Promise<void> {
   await p.locator('.prompt-modal-ok').click();
 }
 
+/** Restore the original gate's createAndSelectStory → Story Writer path. */
+async function ensureStoryManuscript(p: Page): Promise<void> {
+  await clickStoryNav(p);
+  if (await p.getByTestId('msv-toolbar').isVisible({ timeout: 1_500 }).catch(() => false)) return;
+  await p.locator('.wc-menu', { hasText: 'File' }).click();
+  await p.locator('.wc-menu-item', { hasText: 'New story' }).click();
+  await expect(p.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
+  await p.locator('.nav-story-title').first().click();
+  await p.keyboard.press('Escape').catch(() => {});
+  await clickStoryNav(p);
+  await expect(p.getByTestId('msv-toolbar')).toBeVisible({ timeout: 10_000 });
+}
+
 test('F1#13: msv-toolbar computed height is 36px', async () => {
   test.skip(!fs.existsSync(MAIN_JS), 'needs build');
+  await ensureStoryManuscript(page);
   const tb = page.getByTestId('msv-toolbar');
   await expect(tb).toBeVisible({ timeout: 10_000 });
   const h = await tb.evaluate((el) => Math.round(el.getBoundingClientRect().height));
@@ -219,6 +236,7 @@ test('F1#13: msv-toolbar computed height is 36px', async () => {
 
 test('F1#10: dropcap gated off — ::first-letter float none when class absent', async () => {
   test.skip(!fs.existsSync(MAIN_JS), 'needs build');
+  await ensureStoryManuscript(page);
   const root = page.getByTestId('msv-root');
   await expect(root).toBeVisible({ timeout: 10_000 });
   expect(await root.getAttribute('class')).not.toContain('msv-root--dropcap');
@@ -241,6 +259,7 @@ test('F1#10: dropcap gated off — ::first-letter float none when class absent',
 test('F1#9: + Chapter via in-app modal keeps order across reload', async () => {
   test.setTimeout(120_000);
   test.skip(!fs.existsSync(MAIN_JS), 'needs build');
+  await ensureStoryManuscript(page);
   // Use toolbar + Chapter (real in-app path — File→New chapter does not exist).
   await page.getByTestId('msv-add-chapter').click();
   await answerTextPrompt(page, 'Chapter Alpha');
