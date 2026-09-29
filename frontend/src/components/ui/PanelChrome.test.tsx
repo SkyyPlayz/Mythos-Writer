@@ -124,14 +124,19 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(m?.[1] ?? '').toContain('var(--text-muted)');
   });
 
-  it('panel surface uses --bg-panel token (token-driven in high-contrast)', () => {
+  it('panel surface uses translucent glass tokens (F2#11)', () => {
     const m = PANEL_CSS.match(/\.pc-chrome\s*\{([^}]*)\}/);
-    expect(m?.[1] ?? '').toContain('var(--bg-panel)');
+    expect(m?.[1] ?? '').toContain('var(--glass-panel-bg');
   });
 
-  it('border uses --border-subtle token', () => {
+  it('border uses glass rim / border-subtle (F2#11)', () => {
     const m = PANEL_CSS.match(/\.pc-chrome\s*\{([^}]*)\}/);
-    expect(m?.[1] ?? '').toContain('var(--border-subtle)');
+    expect(m?.[1] ?? '').toMatch(/var\(--glass-rim|--border-subtle/);
+  });
+
+  it('header uses shared --panel-top-bar-height (F2#12)', () => {
+    const header = PANEL_CSS.match(/\.pc-header\s*\{([^}]*)\}/);
+    expect(header?.[1] ?? '').toContain('var(--panel-top-bar-height');
   });
 
   it('buttons in the actions slot are naturally focusable via Tab', () => {
