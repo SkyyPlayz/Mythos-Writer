@@ -441,60 +441,68 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   }, [agentOverrides, settings.agents]);
 
 
+  const buildSettingsPayload = useCallback((): AppSettings => {
+    const providerDef = PROVIDER_OPTIONS.find((p) => p.value === providerKind)!;
+    const provider: AppSettings['provider'] = {
+      kind: providerKind,
+      model: providerModel,
+      ...(providerDef.needsKey ? { apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? '') } : {}),
+      ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
+      ...(settings.provider?.kind === providerKind && settings.provider.capabilities ? { capabilities: settings.provider.capabilities } : {}),
+    };
+    // SKY-11237: build the updated per-vault appearance entry for the active
+    // vault and merge it into the existing vaultAppearance map.
+    const vaultAppearanceUpdate: AppSettings['vaultAppearance'] = activeVaultRoot
+      ? {
+          ...(settings.vaultAppearance ?? {}),
+          [activeVaultRoot]: {
+            ...(settings.vaultAppearance?.[activeVaultRoot] ?? {}),
+            theme: settings.theme,
+            liquidNeon: lg,
+            ...(settings.liquidNeonV2 !== undefined ? { liquidNeonV2: settings.liquidNeonV2 } : {}),
+          },
+        }
+      : settings.vaultAppearance;
+
+    return {
+      ...settings,
+      apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
+      provider,
+      liquidNeon: lg,
+      pageBackground: pageBg,
+      navConfig,
+      telemetry: { enabled: telemetryEnabled, sessionId: settings.telemetry?.sessionId ?? '' },
+      ...(vaultAppearanceUpdate !== undefined ? { vaultAppearance: vaultAppearanceUpdate } : {}),
+      agents: {
+        ...settings.agents,
+        writingAssistant: { ...settings.agents.writingAssistant, provider: buildAgentProviderConfig('writingAssistant') },
+        brainstorm: { ...settings.agents.brainstorm, provider: buildAgentProviderConfig('brainstorm') },
+        archive: { ...settings.agents.archive, provider: buildAgentProviderConfig('archive') },
+        betaReader: { ...(settings.agents.betaReader ?? BETA_READER_DEFAULTS), provider: buildAgentProviderConfig('betaReader') },
+      },
+    };
+  }, [settings, apiKeyInput, apiKeyDirty, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, pageBg, navConfig, buildAgentProviderConfig, activeVaultRoot]);
+
+  const writeSettingsPayload = useCallback(async (payload: AppSettings) => {
+    const voiceTokens: Parameters<typeof window.api.settingsSet>[1] = {
+      ...(sttBinaryToken ? { sttBinaryToken } : {}),
+      ...(sttModelToken ? { sttModelToken } : {}),
+    };
+    if (Object.keys(voiceTokens).length > 0) {
+      await window.api.settingsSet(payload, voiceTokens);
+    } else {
+      await window.api.settingsSet(payload);
+    }
+  }, [sttBinaryToken, sttModelToken]);
+
   const handleSave = useCallback(async () => {
     if (apiKeyError) return;
     setSaving(true);
     setSaveError(null);
     setSavedOk(false);
     try {
-      const providerDef = PROVIDER_OPTIONS.find((p) => p.value === providerKind)!;
-      const provider: AppSettings['provider'] = {
-        kind: providerKind,
-        model: providerModel,
-        ...(providerDef.needsKey ? { apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? '') } : {}),
-        ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
-        ...(settings.provider?.kind === providerKind && settings.provider.capabilities ? { capabilities: settings.provider.capabilities } : {}),
-      };
-      // SKY-11237: build the updated per-vault appearance entry for the active
-      // vault and merge it into the existing vaultAppearance map.
-      const vaultAppearanceUpdate: AppSettings['vaultAppearance'] = activeVaultRoot
-        ? {
-            ...(settings.vaultAppearance ?? {}),
-            [activeVaultRoot]: {
-              ...(settings.vaultAppearance?.[activeVaultRoot] ?? {}),
-              theme: settings.theme,
-              liquidNeon: lg,
-              ...(settings.liquidNeonV2 !== undefined ? { liquidNeonV2: settings.liquidNeonV2 } : {}),
-            },
-          }
-        : settings.vaultAppearance;
-
-      const payload: AppSettings = {
-        ...settings,
-        apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
-        provider,
-        liquidNeon: lg,
-        pageBackground: pageBg,
-        navConfig,
-        telemetry: { enabled: telemetryEnabled, sessionId: settings.telemetry?.sessionId ?? '' },
-        ...(vaultAppearanceUpdate !== undefined ? { vaultAppearance: vaultAppearanceUpdate } : {}),
-        agents: {
-          ...settings.agents,
-          writingAssistant: { ...settings.agents.writingAssistant, provider: buildAgentProviderConfig('writingAssistant') },
-          brainstorm: { ...settings.agents.brainstorm, provider: buildAgentProviderConfig('brainstorm') },
-          archive: { ...settings.agents.archive, provider: buildAgentProviderConfig('archive') },
-          betaReader: { ...(settings.agents.betaReader ?? BETA_READER_DEFAULTS), provider: buildAgentProviderConfig('betaReader') },
-        },
-      };
-      const voiceTokens: Parameters<typeof window.api.settingsSet>[1] = {
-        ...(sttBinaryToken ? { sttBinaryToken } : {}),
-        ...(sttModelToken ? { sttModelToken } : {}),
-      };
-      if (Object.keys(voiceTokens).length > 0) {
-        await window.api.settingsSet(payload, voiceTokens);
-      } else {
-        await window.api.settingsSet(payload);
-      }
+      const payload = buildSettingsPayload();
+      await writeSettingsPayload(payload);
       setSttBinaryToken(null);
       setSttModelToken(null);
       setSavedOk(true);
@@ -506,17 +514,24 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     } finally {
       setSaving(false);
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, pageBg, navConfig, onSaved, buildAgentProviderConfig, sttBinaryToken, sttModelToken, activeVaultRoot]);
+  }, [apiKeyError, buildSettingsPayload, writeSettingsPayload, lg, bgPreviewUrl, pageBg, onSaved]);
 
-  // F2#15: persist on exit (no Save button). Appearance already live-persists;
-  // other tabs flush through the same handleSave path when the panel closes.
+  // F2#15: persist on exit (no Save button). Dismiss immediately; flush without
+  // local saving/savedOk state so unmounting/close does not trip act() warnings.
   const handleClose = useCallback(() => {
-    if (!apiKeyError) {
-      void handleSave().finally(() => onClose());
-      return;
-    }
     onClose();
-  }, [apiKeyError, handleSave, onClose]);
+    if (apiKeyError) return;
+    const payload = buildSettingsPayload();
+    void writeSettingsPayload(payload)
+      .then(() => {
+        applyLiquidNeonTokens(lg, bgPreviewUrl);
+        applyPageBackgroundTokens(pageBg);
+        onSaved?.(payload);
+      })
+      .catch(() => {
+        /* dismiss already happened; failures surface on next open via reload */
+      });
+  }, [apiKeyError, buildSettingsPayload, writeSettingsPayload, lg, bgPreviewUrl, pageBg, onSaved, onClose]);
 
   // F2#15: Escape also auto-saves (replaces the early onClose-only listener).
   useEffect(() => {

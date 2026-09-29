@@ -269,9 +269,12 @@ test.describe('wiki-links and multi-vault graph', () => {
     await expect(page.locator('[data-testid="msv-sheet"] .block-editor--chromeless .ProseMirror')).toBeVisible({ timeout: 8_000 });
   });
 
-  test('[[NonExistent]] shows an unresolved wiki-link toast', async () => {
+  test('[[NonExistent]] creates a note in the Notes Vault (F2#3)', async () => {
     await clickStoryWikiLink(page, 'NonExistent');
-    await expect(page.locator('[data-testid="app-toast"]').filter({ hasText: 'No note or scene found' })).toBeVisible({ timeout: 8_000 });
+    // Unresolved links create+open instead of toasting "No note or scene found".
+    await expect(
+      page.locator('[data-testid="app-toast"]').filter({ hasText: 'Created "NonExistent" in the Notes Vault' }),
+    ).toBeVisible({ timeout: 8_000 });
   });
 
   test('[[Elara|The Hero]] resolves by stripping the alias suffix', async () => {

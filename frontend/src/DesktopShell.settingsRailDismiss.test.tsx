@@ -7,7 +7,7 @@
  * tree's extra IPC; handleNavModuleChange is the same closer for every rail id.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, act, waitFor } from '@testing-library/react';
 import App from './App';
 
 const NOW = '2026-08-01T00:00:00.000Z';
@@ -87,8 +87,16 @@ describe('DesktopShell Settings dismiss on rail nav (owner punch)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
     expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
 
-    fireEvent.pointerDown(screen.getByTestId('settings-close'));
+    // F2#15: close flushes settings in the background (onSaved → shell state);
+    // wrap so the post-dismiss persist resolves inside act.
+    await act(async () => {
+      fireEvent.pointerDown(screen.getByTestId('settings-close'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
-    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
+    });
   });
 });
