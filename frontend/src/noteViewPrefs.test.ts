@@ -40,6 +40,12 @@ describe('noteViewPrefs (F4#4)', () => {
     ]);
   });
 
+  it('always includes the current mode even when Settings-gated off', () => {
+    expect(
+      enabledGearModes({ showMarkdown: false, showSource: false, currentMode: 'source' }).map((m) => m.mode),
+    ).toEqual(['rich', 'source']);
+  });
+
   it('syncNoteViewPrefsFromSettings writes bridge keys and clears sticky when Always-Rich turns on', () => {
     writeNoteModePref('Notes/A.md', 'source');
     writeDefaultRichPref(false);

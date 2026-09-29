@@ -29,7 +29,7 @@ export default function NoteViewGearMenu({
   onClose,
   onCopyPath,
 }: NoteViewGearMenuProps): ReactElement {
-  const modes = enabledGearModes({ showMarkdown, showSource });
+  const modes = enabledGearModes({ showMarkdown, showSource, currentMode: mode });
 
   return (
     <>

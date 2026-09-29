@@ -103,15 +103,19 @@ export const NOTE_GEAR_MODE_DEFS: Array<{ mode: NoteGearMode; label: string }> =
   { mode: 'source', label: 'Source Mode' },
 ];
 
-/** Modes shown in the gear: Rich always; Markdown/Source only when enabled. */
+/** Modes shown in the gear: Rich always; Markdown/Source when enabled or current. */
 export function enabledGearModes(opts?: {
   showMarkdown?: boolean;
   showSource?: boolean;
+  /** Always include the mode the note is currently in (even if Settings-gated off). */
+  currentMode?: NoteGearMode | 'preview' | string;
 }): Array<{ mode: NoteGearMode; label: string }> {
   const showMarkdown = opts?.showMarkdown ?? readShowMarkdownViewPref();
   const showSource = opts?.showSource ?? readShowSourceViewPref();
+  const current = opts?.currentMode;
   return NOTE_GEAR_MODE_DEFS.filter(({ mode }) => {
     if (mode === 'rich') return true;
+    if (mode === current) return true;
     if (mode === 'markdown') return showMarkdown;
     if (mode === 'source') return showSource;
     const _exhaustive: never = mode;
