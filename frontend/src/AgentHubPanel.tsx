@@ -386,18 +386,8 @@ function PartnerChatView({
         )}
       </div>
 
-      <div className="ahp-partner-thread" data-testid="ahp-partner-thread">
-        <UnifiedPartnerChat
-          partnerName={partnerName}
-          onCall={call.onCall}
-          handBusy={!!handBusy}
-          scene={scene}
-          story={story}
-          onActionBusy={setActionBusy}
-          onOpenWriterTips={() => setShowWriterTips(true)}
-        />
-      </div>
-
+      {/* Tips above the chat thread so Scan now / tip cards stay in-viewport
+          (thread was flex:1 and pushed the strip below the sidebar fold). */}
       {showWriterTips && (
         <div className="ahp-writer-tips" data-testid="ahp-writer-tips">
           <div className="ahp-hand-header">
@@ -431,6 +421,18 @@ function PartnerChatView({
           />
         </div>
       )}
+
+      <div className="ahp-partner-thread" data-testid="ahp-partner-thread">
+        <UnifiedPartnerChat
+          partnerName={partnerName}
+          onCall={call.onCall}
+          handBusy={!!handBusy}
+          scene={scene}
+          story={story}
+          onActionBusy={setActionBusy}
+          onOpenWriterTips={() => setShowWriterTips(true)}
+        />
+      </div>
     </div>
   );
 }
