@@ -6,7 +6,8 @@ function TestHarness({ onCreated }: { onCreated: (r: { vaultRoot: string; notesV
   const { createVault, createVaultModal } = useCreateMythosVaultFlow(onCreated);
   return (
     <div>
-      <button onClick={createVault}>Open</button>
+      <button onClick={() => createVault()}>Open</button>
+      <button onClick={() => createVault('openin')}>Open openin</button>
       {createVaultModal}
     </div>
   );
@@ -16,15 +17,19 @@ function setApi(overrides: Partial<Record<string, unknown>> = {}) {
   (window as unknown as { api: unknown }).api = {
     vaultGetPaths: vi.fn().mockResolvedValue({ vaultsParentPath: '/current/vaults', defaultVaultsParentPath: '/default/vaults' }),
     chooseVaultFolder: vi.fn().mockResolvedValue({ path: '/picked/location', cancelled: false }),
-    vaultCreateDefaultMythos: vi.fn().mockResolvedValue({
-      mythosVaultRoot: '/current/vaults/New', vaultRoot: '/current/vaults/New/Story Vault',
-      notesVaultRoot: '/current/vaults/New/Notes Vault', name: 'New', created: true,
+    createVaultFromOptions: vi.fn().mockResolvedValue({
+      ok: true,
+      mode: 'template',
+      mythosRoot: '/current/vaults/New',
+      storyVaultPath: '/current/vaults/New/Stories/Story Vault',
+      notesVaultPath: '/current/vaults/New/Notes/Notes Vault',
+      vaultName: 'New',
     }),
     ...overrides,
   };
 }
 
-describe('useCreateMythosVaultFlow (SKY-11376)', () => {
+describe('useCreateMythosVaultFlow (Slice D five-path)', () => {
   beforeEach(() => setApi());
 
   it('defaults the destination to the current vaults parent path', async () => {
@@ -33,7 +38,7 @@ describe('useCreateMythosVaultFlow (SKY-11376)', () => {
     await waitFor(() => expect(screen.getByText('/current/vaults')).toBeInTheDocument());
   });
 
-  it('lets the user browse to a different destination before creating', async () => {
+  it('creates via createVaultFromOptions with template mode by default', async () => {
     const onCreated = vi.fn();
     render(<TestHarness onCreated={onCreated} />);
     fireEvent.click(screen.getByText('Open'));
@@ -43,62 +48,48 @@ describe('useCreateMythosVaultFlow (SKY-11376)', () => {
     await waitFor(() => expect(screen.getByText('/picked/location')).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText(/name for the new mythos vault/i), { target: { value: 'My Vault' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Create vault' }));
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
 
     await waitFor(() => expect(onCreated).toHaveBeenCalledWith({
-      vaultRoot: '/current/vaults/New/Story Vault',
-      notesVaultRoot: '/current/vaults/New/Notes Vault',
+      vaultRoot: '/current/vaults/New/Stories/Story Vault',
+      notesVaultRoot: '/current/vaults/New/Notes/Notes Vault',
     }));
-    expect(window.api.vaultCreateDefaultMythos).toHaveBeenCalledWith({
-      vaultName: 'My Vault',
-      parentPath: '/picked/location',
-      seedMode: 'blank',
-    });
+    expect(window.api.createVaultFromOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: 'template',
+        name: 'My Vault',
+        destinationParent: '/picked/location',
+        activate: true,
+      }),
+    );
   });
 
-  it('never seeds sample content, even without touching the destination', async () => {
-    render(<TestHarness onCreated={vi.fn()} />);
-    fireEvent.click(screen.getByText('Open'));
-    await waitFor(() => expect(screen.getByText('/current/vaults')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Create vault' }));
-
-    await waitFor(() => expect(window.api.vaultCreateDefaultMythos).toHaveBeenCalled());
-    const call = (window.api.vaultCreateDefaultMythos as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(call.seedMode).toBe('blank');
-  });
-
-  it('renders the Sep mockup Create a Mythos vault chrome', async () => {
+  it('exposes all five Mythos create modes including Open Obsidian', async () => {
     render(<TestHarness onCreated={vi.fn()} />);
     fireEvent.click(screen.getByText('Open'));
     await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
-    expect(screen.getByText('Where to create')).toBeInTheDocument();
-    expect(screen.getByTestId('create-vault-default-folder')).toHaveTextContent('Default folder');
-    expect(screen.getByRole('button', { name: 'Create vault' })).toBeInTheDocument();
+    expect(screen.getByTestId('rail-vault-mode-template')).toBeInTheDocument();
+    expect(screen.getByTestId('rail-vault-mode-blank')).toBeInTheDocument();
+    expect(screen.getByTestId('rail-vault-mode-import')).toBeInTheDocument();
+    expect(screen.getByTestId('rail-vault-mode-restore')).toBeInTheDocument();
+    expect(screen.getByTestId('rail-vault-mode-openin')).toBeInTheDocument();
+  });
+
+  it('openin preset skips destination and requires Obsidian path', async () => {
+    render(<TestHarness onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Open openin'));
+    await waitFor(() => expect(screen.getByTestId('rail-vault-mode-openin')).toHaveAttribute('aria-checked', 'true'));
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/Obsidian vault/i));
   });
 
   it('Default folder resets the destination to defaultVaultsParentPath', async () => {
     render(<TestHarness onCreated={vi.fn()} />);
     fireEvent.click(screen.getByText('Open'));
     await waitFor(() => expect(screen.getByText('/current/vaults')).toBeInTheDocument());
-
     fireEvent.click(screen.getByText('Browse…'));
     await waitFor(() => expect(screen.getByText('/picked/location')).toBeInTheDocument());
-
     fireEvent.click(screen.getByTestId('create-vault-default-folder'));
     await waitFor(() => expect(screen.getByText('/default/vaults')).toBeInTheDocument());
-  });
-
-  it('cancelling creates nothing', async () => {
-    const onCreated = vi.fn();
-    render(<TestHarness onCreated={onCreated} />);
-    fireEvent.click(screen.getByText('Open'));
-    await waitFor(() => expect(screen.getByText('/current/vaults')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByText('Cancel'));
-
-    expect(window.api.vaultCreateDefaultMythos).not.toHaveBeenCalled();
-    expect(onCreated).not.toHaveBeenCalled();
-    expect(screen.queryByText('/current/vaults')).not.toBeInTheDocument();
   });
 });

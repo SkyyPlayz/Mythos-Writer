@@ -6396,11 +6396,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               case 'blank':
               case 'restore':
               case 'import':
-                // Path cards hand off to the existing New Vault flow (no wizard-replay reload).
-                void createMythosVault();
-                break;
               case 'openin':
-                void openVaultViaPicker();
+                // Slice D: Welcome five-path → shared New Vault modal with matching mode.
+                // No wizard-replay; openin is in-place (not generic folder open).
+                void createMythosVault(id);
                 break;
               default: {
                 const _exhaustive: never = id;

@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Slice D fidelity board — Neon Nebula 50 / glass 20</title>
+<style>
+  :root {
+    --neon-intensity: 50;
+    --glass: 20;
+    --n1: #00f0ff;
+    --n2: #9b5fff;
+    --b1: rgba(0,240,255,.4);
+    --green: #57ff9a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: "Segoe UI", system-ui, sans-serif; color: #dbe4f5; }
+  body {
+    background:
+      radial-gradient(1200px 700px at 20% 10%, rgba(155,95,255,0.28), transparent 60%),
+      radial-gradient(900px 600px at 80% 30%, rgba(0,240,255,0.16), transparent 55%),
+      linear-gradient(180deg, #0a0d1a, #070912 70%);
+  }
+  .shell { display: grid; grid-template-columns: 190px 1fr; height: 100vh; }
+  .rail {
+    padding: 14px 10px; border-right: 1px solid rgba(255,255,255,0.08);
+    background: rgba(8,10,18,0.4); backdrop-filter: blur(calc(var(--glass) * 1px));
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .rail .brand { font-size: 11px; font-weight: 700; color: #eef2fb; margin-bottom: 8px; letter-spacing: .04em; }
+  .rail button {
+    text-align: left; border: 1px solid transparent; background: transparent; color: #8e9db8;
+    border-radius: 10px; padding: 8px 10px; font-size: 12px; font-weight: 650; cursor: pointer;
+  }
+  .rail button.active {
+    color: #eef2fb; border-color: rgba(0,240,255,0.4); background: rgba(0,240,255,0.1);
+  }
+  .rail .add {
+    margin-top: auto; border: 1px dashed rgba(255,255,255,.2); color: #8e9db8;
+  }
+  .body { padding: 16px 18px; overflow: auto; }
+  .page { display: none; }
+  .page.on { display: block; }
+  .page-title { font-size: 18px; font-weight: 700; color: #eef2fb; }
+  .page-sub { font-size: 12px; color: #8e9db8; margin: 4px 0 14px; }
+  .card {
+    border-radius: 15px; background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(0,240,255,0.2); padding: 11px 13px; margin-bottom: 9px;
+    backdrop-filter: blur(calc(var(--glass) * 1px));
+  }
+  .h { font-size: 12.5px; font-weight: 600; color: #eef2fb; margin-bottom: 3px; }
+  .hint { font-size: 10.5px; color: #7686a2; margin-bottom: 8px; line-height: 1.5; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .chip {
+    font-size: 9px; font-weight: 700; border-radius: 6px; padding: 2px 7px;
+    border: 1px solid rgba(255,255,255,.16); color: #aebad0;
+  }
+  .chip.soon { color: #ffd319; border-color: rgba(255,211,25,.45); }
+  .chip.in { color: var(--n1); border-color: rgba(0,240,255,.45); background: rgba(0,240,255,.09); }
+  .chip.green { color: var(--green); border: 1px dashed var(--green); }
+  .mode {
+    display: block; width: 100%; text-align: left; margin-bottom: 6px;
+    padding: 9px 11px; border-radius: 12px; border: 1px solid rgba(255,255,255,.1);
+    background: rgba(255,255,255,.03); color: #dbe4f5; cursor: pointer;
+  }
+  .mode.on { border-color: rgba(0,240,255,.5); background: rgba(0,240,255,.08); }
+  .mode .t { font-size: 12px; font-weight: 600; }
+  .mode .d { font-size: 10px; color: #7686a2; margin-top: 2px; }
+  .cols { display: flex; gap: 14px; position: relative; }
+  .col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .iv {
+    display: flex; align-items: center; gap: 8px; padding: 9px 11px; border-radius: 12px;
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.08);
+  }
+  .iv.borrowed { background: rgba(87,255,154,.06); border: 1px dashed var(--green); }
+  .access { font-size: 9px; font-weight: 700; border-radius: 6px; padding: 2px 6px; border: 1px solid rgba(255,255,255,.16); color: #aebad0; }
+  .access.ro { color: #ffd319; border-color: rgba(255,211,25,.45); }
+  .dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(255,255,255,.35); background: #00f0ff; flex: none; }
+  .welcome-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+  .wcard {
+    position: relative; padding: 14px; border-radius: 14px; border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.03); min-height: 140px;
+  }
+  .wcard .chip { position: absolute; top: 10px; right: 10px; }
+  .worlds { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .world { padding: 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.03); }
+  .world h4 { margin: 0 0 6px; font-size: 13px; color: #eef2fb; }
+  .world p { margin: 0; font-size: 11px; color: #8e9db8; line-height: 1.45; }
+  .btn {
+    height: 26px; padding: 0 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.13);
+    color: #c3cee2; font-size: 10px; font-weight: 600; background: transparent; cursor: pointer;
+  }
+  .btn.danger { border-color: rgba(255,107,138,.4); color: #ff6b8a; }
+  .path {
+    flex: 1; min-width: 0; font-size: 9.5px; font-family: ui-monospace, monospace;
+    background: rgba(8,10,18,.5); border: 1px solid rgba(255,255,255,.09);
+    border-radius: 8px; padding: 5px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  svg.conn { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="shell" data-testid="d-fidelity-board" data-neon-intensity="50" data-glass="20">
+  <aside class="rail" data-testid="nav-rail">
+    <div class="brand">Mythos Writer</div>
+    <button type="button" class="active" data-page="vaults" onclick="setPage('vaults')">Vault &amp; Files</button>
+    <button type="button" data-page="sync" onclick="setPage('sync')">Sync &amp; Backup</button>
+    <button type="button" data-page="agents" onclick="setPage('agents')">Agents Vault</button>
+    <button type="button" data-page="railnv" onclick="setPage('railnv')">New Vault (rail)</button>
+    <button type="button" data-page="welcome" onclick="setPage('welcome')">Welcome 5-path</button>
+    <button type="button" data-page="cross" onclick="setPage('cross')">Cross-link</button>
+    <button type="button" data-page="seeds" onclick="setPage('seeds')">Seed worlds</button>
+    <button type="button" class="add" data-testid="nav-rail__vault-add" onclick="setPage('railnv')">+ New Vault</button>
+  </aside>
+  <main class="body">
+    <section class="page on" id="page-vaults" data-screen-label="Vault & Files">
+      <div class="page-title">Vault &amp; Files</div>
+      <div class="page-sub">Vaults folder · Mythos cards · Notes/Story columns — wrap, never sideways-scroll.</div>
+      <div class="card" data-testid="vaults-folder-card">
+        <div class="row"><span class="h" style="flex:1">Vaults folder</span><span class="chip in">2</span></div>
+        <div class="hint">All vaults live inside this folder. Moving it moves them all.</div>
+        <div class="row"><span class="path">/Users/skyy/Mythos Vaults</span><button class="btn" type="button">Open folder</button><button class="btn" type="button">Move…</button></div>
+      </div>
+      <div class="card">
+        <div class="h">Mythos vaults</div>
+        <div class="hint">One folder holding any number of Notes and Story Vaults. Each vault keeps its own theme.</div>
+        <div class="iv" style="margin-top:8px"><div style="flex:1"><strong>Mythos Vault</strong><div class="hint" style="margin:0">2 notes · 1 story vault · Veynn</div></div><span class="chip in">Current</span></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-sync" data-screen-label="Sync & Backup">
+      <div class="page-title">Sync &amp; Backup</div>
+      <div class="page-sub">Coming soon chrome only — no live cloud Sync backend.</div>
+      <div class="card" data-testid="sync-cloud-card">
+        <div class="row">
+          <div style="flex:1"><div class="h">Cloud sync</div><div class="hint" style="margin:0">End-to-end encrypted. Conflicts keep both versions.</div></div>
+          <div style="width:40px;height:22px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.06);opacity:.7"></div>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <span style="font-size:11.5px;color:#aebad0;width:70px">Provider</span>
+          <select disabled style="height:28px;background:rgba(255,255,255,.05);border:1px solid var(--b1);border-radius:8px;color:#dbe4f5;padding:0 8px"><option>Mythos Cloud</option></select>
+          <span class="chip soon" data-testid="sync-coming-soon">COMING SOON</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="h">Backup &amp; restore points</div>
+        <div class="hint">Local app-data backup only — vault markdown stays in your folders.</div>
+        <div class="row"><button class="btn" type="button">Back up now…</button><button class="btn" type="button">Restore from backup…</button></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-agents" data-screen-label="Agents Vault">
+      <div class="page-title">Agent Vault</div>
+      <div class="page-sub">partner.md · writer.md · analyst.md · archivist.md — Reveal / Clear / Move</div>
+      <div class="card" data-testid="agents-vault-card">
+        <div class="row"><div class="h" style="flex:1">Agent Vault</div><span class="chip" style="color:var(--n2);border-color:rgba(155,95,255,.45)">Mythos Vault</span></div>
+        <div class="hint">Everything the agents write lives here — one per Mythos vault.</div>
+        <div style="padding:11px 12px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(155,95,255,.35)">
+          <div class="h">Agents</div>
+          <div class="hint">4 identity files · Sessions cleared separately</div>
+          <div class="row" style="margin-top:7px"><span class="path">…/Mythos Vault/Agent Vault</span><button class="btn" type="button" data-testid="agents-reveal">Reveal</button></div>
+          <div class="row" style="margin-top:8px">
+            <span class="chip">partner.md</span><span class="chip">Writer</span><span class="chip">Analyst</span><span class="chip">Archivist</span>
+          </div>
+          <div class="row" style="margin-top:9px;padding-top:9px;border-top:1px solid rgba(255,255,255,.07)">
+            <button class="btn danger" type="button" data-testid="agents-clear">Clear agent memory</button>
+            <button class="btn" type="button" data-testid="agents-move">Move…</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-railnv" data-screen-label="New Vault rail">
+      <div class="page-title">New Vault — rail (+)</div>
+      <div class="page-sub">Five-path: Template · Blank · Import · Restore · Open Obsidian vault in Mythos</div>
+      <div class="card" data-testid="rail-new-vault">
+        <button class="mode on" type="button"><div class="t">From template <span class="chip in">RECOMMENDED</span></div><div class="d">Ready Notes + Story shape</div></button>
+        <button class="mode" type="button"><div class="t">Start blank</div><div class="d">Empty Story + Notes</div></button>
+        <button class="mode" type="button"><div class="t">Import existing</div><div class="d">Copy in — source untouched</div></button>
+        <button class="mode" type="button"><div class="t">Restore from backup</div><div class="d">Local snapshot · Cloud Coming soon</div></button>
+        <button class="mode" type="button" data-testid="rail-openin"><div class="t">Open Obsidian vault in Mythos <span class="chip in">IN PLACE</span></div><div class="d">Notes Vault stays; Mythos files beside it</div></button>
+      </div>
+    </section>
+
+    <section class="page" id="page-welcome" data-screen-label="Welcome">
+      <div class="page-title">Welcome</div>
+      <div class="page-sub">Same five paths as rail — Welcome stays a one-shot overlay.</div>
+      <div class="welcome-grid" data-testid="welcome-five-path">
+        <div class="wcard"><span class="chip in">RECOMMENDED</span><div class="h">Start from a template</div><div class="hint">Ready structure</div></div>
+        <div class="wcard"><div class="h">Start blank</div><div class="hint">Build as you go</div></div>
+        <div class="wcard"><div class="h">Import vault</div><div class="hint">Dry-run first</div></div>
+        <div class="wcard"><div class="h">Restore from backup</div><div class="hint">Local snapshot</div></div>
+        <div class="wcard" data-testid="welcome-openin"><span class="chip in">IN PLACE</span><div class="h">Open Obsidian vault in Mythos</div><div class="hint">Notes in place · Story beside</div></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-cross" data-screen-label="Cross-vault link">
+      <div class="page-title">Cross-Mythos linking</div>
+      <div class="page-sub">Green tint #57ff9a · dashed border · from &lt;vault&gt; chip · green dashed connector</div>
+      <div class="card">
+        <div class="cols" style="min-height:120px">
+          <svg class="conn" viewBox="0 0 400 120" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M 180 40 C 200 40, 200 90, 220 90" fill="none" stroke="#57ff9a" stroke-width="1.6" stroke-dasharray="5 4" data-testid="cross-connector"/>
+          </svg>
+          <div class="col">
+            <div class="iv borrowed" data-testid="borrowed-notes">
+              <div style="flex:1"><div class="row"><strong>Private Notes</strong><span class="chip green" data-testid="from-chip">from Shared Worlds</span></div></div>
+              <span class="access">Read &amp; write</span>
+              <span class="dot"></span>
+            </div>
+          </div>
+          <div class="col">
+            <div class="iv">
+              <span class="dot"></span>
+              <div style="flex:1"><strong>Veynn Novels</strong></div>
+              <span class="access ro">Read only</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" id="page-seeds" data-screen-label="Seed worlds">
+      <div class="page-title">Seed worlds (content only)</div>
+      <div class="page-sub">Two distinguishable packs — content only; guided product chrome stays stripped.</div>
+      <div class="worlds" data-testid="seed-worlds">
+        <div class="world" data-testid="seed-veynn">
+          <h4>Mythos Vault → Veynn</h4>
+          <p>The Last City of Veynn · The Ninth Bell · Mira · Kael · Sunken Gate</p>
+        </div>
+        <div class="world" data-testid="seed-caerwyn">
+          <h4>Shared Worlds → Caerwyn</h4>
+          <p>The Hollow Crown · Saltwater Letters · Teodric · Maelis · Bone Court</p>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+<script>
+  window.__setPage = function(id) {
+    document.querySelectorAll('.page').forEach((el) => el.classList.toggle('on', el.id === 'page-' + id));
+    document.querySelectorAll('.rail button[data-page]').forEach((b) => b.classList.toggle('active', b.getAttribute('data-page') === id));
+  };
+  function setPage(id) { window.__setPage(id); }
+</script>
+</body>
+</html>

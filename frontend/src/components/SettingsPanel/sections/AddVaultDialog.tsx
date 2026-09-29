@@ -140,9 +140,13 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
       // UI 'template' selection becomes an empty blank story vault.
       const displayName = name.trim() || (kind === 'notes' ? 'Notes' : 'Story');
       const importSourcePath = mode === 'import' ? importSrcPath.trim() : undefined;
+      // Inner NV/SV create only supports template|blank|import (Slice D five-path is Mythos-only).
+      const notesMode: 'template' | 'blank' | 'import' =
+        mode === 'blank' || mode === 'import' || mode === 'template' ? mode : 'template';
+      const storyMode: 'blank' | 'import' = mode === 'import' ? 'import' : 'blank';
       if (kind === 'notes') {
         const res = await window.api?.notesVaultRegistryCreate?.({
-          mode,
+          mode: notesMode,
           displayName,
           importSourcePath,
         });
@@ -150,7 +154,7 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
         showLnToast(`Notes vault "${res.entry.displayName}" added`);
       } else {
         const res = await window.api?.storyVaultRegistryCreate?.({
-          mode: mode === 'template' ? 'blank' : mode,
+          mode: storyMode,
           displayName,
           importSourcePath,
         });

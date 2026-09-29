@@ -501,7 +501,7 @@ import {
   type SeedRegistry,
 } from './vaultSeeding.js';
 // Beta 4 M5 — MythosVault (v2) format + version gate + migration wizard.
-import { resolveManifestPath, mythosRootForStoryVault, resolveMythosVaultRoot, agentVaultRootFor } from './mythosFormat/mythosJson.js';
+import { resolveManifestPath, mythosRootForStoryVault, resolveMythosVaultRoot, agentVaultRootFor, tryReadMythosFile } from './mythosFormat/mythosJson.js';
 import { migrateSessionsToAgentVault } from './mythosFormat/agentSessions.js';
 import {
   readBrainstormBoard,
@@ -521,6 +521,24 @@ import {
 } from './mythosFormat/v2Manifest.js';
 import { createMythosVault, ensureMythosV2SeedMarker } from './mythosFormat/createVault.js';
 import { createVaultFromOptions } from './mythosFormat/createVaultFromOptions.js';
+import { migrateVaultToMultiInner } from './mythosFormat/migrateMultiInner.js';
+import {
+  clearAgentMemory,
+  ensureAgentsPartnerFiles,
+  listAgentsVaultStats,
+  parsePartnerIdentityFromFile,
+  syncPartnerIdentityToFile,
+} from './mythosFormat/agentsVaultPartner.js';
+import {
+  addCrossVaultLink,
+  getVaultAccess,
+  loadVaultLinkingState,
+  removeCrossVaultLink,
+  setVaultAccess,
+  type VaultAccessMode,
+} from './mythosFormat/vaultAccess.js';
+import { applyBothSeedWorlds } from './mythosFormat/seedPackApply.js';
+import { restoreStoryState, stashStoryState } from './mythosFormat/storyStateStash.js';
 // SKY-11058: notes vault registry
 import {
   ensureNotesVaultRegistry,
@@ -1385,6 +1403,8 @@ function ensureVaultDir() {
     // recorded at CREATION time (or adopted here for pre-marker v2 vaults).
     // Demo seeding never runs on open (W0.1 rule).
     ensureMythosV2SeedMarker(mythosRoot);
+    // Slice D: multi-inner + Agents Vault partner files without wipe.
+    try { migrateVaultToMultiInner(mythosRoot); } catch { /* non-fatal */ }
     // SKY-10952: one-shot per-vault move of any pre-existing
     // Notes Vault/Sessions/ onto the new Agent Vault/Sessions/ sibling. Cheap
     // no-op once migrated (single existsSync check).
@@ -3293,7 +3313,7 @@ const handlers: IpcHandlers = {
   [IPC_CHANNELS.VAULT_CREATE_FROM_OPTIONS]: async (
     payload: VaultCreateFromOptionsPayload,
   ): Promise<VaultCreateFromOptionsResponse> => {
-    const { mode, destinationParent, name, exactName, defaultTheme, importSources, activate } = payload ?? {};
+    const { mode, destinationParent, name, exactName, defaultTheme, importSources, openinPath, activate } = payload ?? {};
 
     // Resolve the parent: explicit (~-expanded) or the default Mythos Vaults
     // parent, mirroring quick-start so a caller with no chosen location works.
@@ -3307,6 +3327,10 @@ const handlers: IpcHandlers = {
       ? defaultTheme
       : undefined;
 
+    const openinResolved = openinPath?.trim()
+      ? openinPath.trim().replace(/^~/, app.getPath('home'))
+      : undefined;
+
     const created = await createVaultFromOptions({
       destinationParent: destinationParentResolved,
       ...(name?.trim() ? { name: name.trim() } : {}),
@@ -3314,6 +3338,7 @@ const handlers: IpcHandlers = {
       mode,
       ...(safeTheme ? { defaultTheme: safeTheme } : {}),
       ...(importSources ? { importSources } : {}),
+      ...(openinResolved ? { openinPath: openinResolved } : {}),
     });
     if (!created.ok) return { ok: false, error: created.error };
 
@@ -3357,6 +3382,133 @@ const handlers: IpcHandlers = {
       vaultName: created.vaultName,
       ...(created.importTally ? { importTally: created.importTally } : {}),
     };
+  },
+
+  // Slice D — Agents Vault + vaultAccess + seed + migrate + stash
+  [IPC_CHANNELS.AGENTS_VAULT_ENSURE]: () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    const ensured = ensureAgentsPartnerFiles(mythosRoot);
+    return { ok: true as const, created: ensured.created, agentVaultPath: ensured.agentVaultPath };
+  },
+  [IPC_CHANNELS.AGENTS_VAULT_STATS]: () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    const mythos = tryReadMythosFile(mythosRoot);
+    const stats = listAgentsVaultStats(mythosRoot);
+    return { ok: true as const, ...stats, scope: mythos?.name ?? 'This vault' };
+  },
+  [IPC_CHANNELS.AGENTS_VAULT_CLEAR_MEMORY]: () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    return clearAgentMemory(mythosRoot);
+  },
+  [IPC_CHANNELS.AGENTS_VAULT_REVEAL]: async () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { opened: false, error: 'No Mythos vault open' };
+    const stats = listAgentsVaultStats(mythosRoot);
+    const err = await shell.openPath(stats.path);
+    return { opened: !err, ...(err ? { error: err } : {}) };
+  },
+  [IPC_CHANNELS.AGENTS_VAULT_SYNC_PARTNER]: (payload: { name?: string; icon?: string }) => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    const name = typeof payload?.name === 'string' ? payload.name.trim().slice(0, 64) : 'Mythos';
+    const icon = typeof payload?.icon === 'string' ? payload.icon.trim().slice(0, 32) : 'sparkle';
+    syncPartnerIdentityToFile(mythosRoot, { name: name || 'Mythos', icon: icon || 'sparkle' });
+    return { ok: true as const };
+  },
+  [IPC_CHANNELS.AGENTS_VAULT_READ_PARTNER]: () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    ensureAgentsPartnerFiles(mythosRoot);
+    return { ok: true as const, ...parsePartnerIdentityFromFile(mythosRoot) };
+  },
+  [IPC_CHANNELS.VAULT_ACCESS_GET]: () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    const mythos = tryReadMythosFile(mythosRoot);
+    return { ok: true as const, mythosId: mythos?.id ?? null, ...loadVaultLinkingState(mythosRoot) };
+  },
+  [IPC_CHANNELS.VAULT_ACCESS_SET]: (payload: {
+    mythosId: string; kind: 'notes' | 'story'; vaultId: string; mode: VaultAccessMode;
+  }) => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    if (!payload?.mythosId || !payload?.vaultId || (payload.mode !== 'rw' && payload.mode !== 'ro')) {
+      return { ok: false as const, error: 'Invalid vaultAccess payload' };
+    }
+    if (payload.kind !== 'notes' && payload.kind !== 'story') {
+      return { ok: false as const, error: 'Invalid kind' };
+    }
+    // Enforce read-only blocks at write sites via getVaultAccess; this only persists.
+    void getVaultAccess(mythosRoot, payload.mythosId, payload.kind, payload.vaultId);
+    const state = setVaultAccess(mythosRoot, payload.mythosId, payload.kind, payload.vaultId, payload.mode);
+    return { ok: true as const, ...state };
+  },
+  [IPC_CHANNELS.VAULT_CROSS_LINK_ADD]: (payload: {
+    homeMythosId: string;
+    notes: { mythosId: string; vaultId: string; label: string; mythosName: string };
+    story: { mythosId: string; vaultId: string; label: string; mythosName: string };
+  }) => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    if (!payload?.homeMythosId || !payload.notes?.vaultId || !payload.story?.vaultId) {
+      return { ok: false as const, error: 'Invalid cross-link payload' };
+    }
+    const state = addCrossVaultLink(mythosRoot, payload);
+    return { ok: true as const, ...state };
+  },
+  [IPC_CHANNELS.VAULT_CROSS_LINK_REMOVE]: (payload: { linkId: string }) => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    if (!payload?.linkId) return { ok: false as const, error: 'linkId required' };
+    return { ok: true as const, ...removeCrossVaultLink(mythosRoot, payload.linkId) };
+  },
+  [IPC_CHANNELS.VAULT_SEED_APPLY_BOTH]: async (payload?: { destinationParent?: string }) => {
+    const parent = payload?.destinationParent?.trim()
+      ? payload.destinationParent.trim().replace(/^~/, app.getPath('home'))
+      : defaultMythosVaultsParent();
+    if (!path.isAbsolute(parent)) return { ok: false as const, error: 'destinationParent must be absolute' };
+    const result = applyBothSeedWorlds(parent);
+    if (!result.ok) return result;
+    for (const w of result.worlds) {
+      if (w.ok) addToRecentProjects(w.storyVaultPath, w.notesVaultPath);
+    }
+    return result;
+  },
+  [IPC_CHANNELS.VAULT_MIGRATE_MULTI_INNER]: () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    return migrateVaultToMultiInner(mythosRoot);
+  },
+  [IPC_CHANNELS.STORY_STASH_SAVE]: (payload: {
+    vaultId: string; storyId: string; lanes?: { plotlineIds?: string[] }; manuscriptTabs?: unknown;
+  }) => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
+    if (!payload?.vaultId || !payload?.storyId) return { ok: false as const, error: 'vaultId and storyId required' };
+    stashStoryState(mythosRoot, {
+      vaultId: payload.vaultId,
+      storyId: payload.storyId,
+      lanes: payload.lanes,
+      manuscriptTabs: payload.manuscriptTabs,
+    });
+    return { ok: true as const };
+  },
+  [IPC_CHANNELS.STORY_STASH_RESTORE]: (payload: {
+    vaultId: string; storyId: string; seedPlotlineIds?: string[];
+  }) => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { ok: false as const, entry: null };
+    if (!payload?.vaultId || !payload?.storyId) return { ok: false as const, entry: null };
+    const entry = restoreStoryState(
+      mythosRoot,
+      payload.vaultId,
+      payload.storyId,
+      Array.isArray(payload.seedPlotlineIds) ? payload.seedPlotlineIds : [],
+    );
+    return { ok: true as const, entry };
   },
 
   // SKY-627 / SKY-906: extended onboarding handler — orchestrates vault creation, first-scene setup,
@@ -7634,11 +7786,17 @@ const handlers: IpcHandlers = {
     // storyVaultRootFor() always resolved the literal "Story Vault" dirname
     // regardless of which entry was active (a lying control).
     const newVaultRoot = storyVaultAbsPath(mythosRoot, entry);
-    saveVaultSettings({ vaultRoot: newVaultRoot });
+    const notesRoot = getNotesVaultRoot();
+    saveVaultSettings({ vaultRoot: newVaultRoot, notesVaultRoot: notesRoot });
     stopVaultWatcher().catch(() => {}).finally(() => {
       startVaultWatcher(newVaultRoot, notifyVaultChanged).catch(() => {});
     });
     mainWindow?.webContents.send('storyVaultRegistry:changed');
+    // Slice D video fix: shell must reload stories/manuscript after Story Vault swap.
+    mainWindow?.webContents.send('project:switched', {
+      vaultRoot: newVaultRoot,
+      notesVaultRoot: notesRoot,
+    });
     return { entry };
   },
 

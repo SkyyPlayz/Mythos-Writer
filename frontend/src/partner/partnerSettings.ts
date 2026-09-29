@@ -1,7 +1,7 @@
 /**
  * Slice C — Writing partner + Model & keys settings shape.
  * Identity name/icon bind the existing B partner store (agentNames.brainstorm).
- * partner.md / Agents Vault hand files remain NON-GOAL (Slice D).
+ * Slice D: Settings also syncs name/icon to Agents Vault partner.md.
  */
 
 import type {

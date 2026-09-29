@@ -434,7 +434,24 @@ export const IPC_CHANNELS = {
   // the option set (template / blank / import) is identical; only each caller's
   // surrounding chrome differs. Wraps createVaultFromOptions (destination
   // resolution + template seeding + Obsidian-parity blank + import copy).
+  // Slice D extends Mythos create with restore + openin.
   VAULT_CREATE_FROM_OPTIONS: 'vault:create-from-options',
+
+  // Slice D — Agents Vault partner files, Clear memory, seed worlds, access/links, migrate.
+  AGENTS_VAULT_ENSURE: 'agentsVault:ensure',
+  AGENTS_VAULT_STATS: 'agentsVault:stats',
+  AGENTS_VAULT_CLEAR_MEMORY: 'agentsVault:clearMemory',
+  AGENTS_VAULT_REVEAL: 'agentsVault:reveal',
+  AGENTS_VAULT_SYNC_PARTNER: 'agentsVault:syncPartner',
+  AGENTS_VAULT_READ_PARTNER: 'agentsVault:readPartner',
+  VAULT_ACCESS_GET: 'vaultAccess:getState',
+  VAULT_ACCESS_SET: 'vaultAccess:set',
+  VAULT_CROSS_LINK_ADD: 'vaultAccess:addCrossLink',
+  VAULT_CROSS_LINK_REMOVE: 'vaultAccess:removeCrossLink',
+  VAULT_SEED_APPLY_BOTH: 'vault:seed-apply-both',
+  VAULT_MIGRATE_MULTI_INNER: 'vault:migrate-multi-inner',
+  STORY_STASH_SAVE: 'storyStash:save',
+  STORY_STASH_RESTORE: 'storyStash:restore',
 
   // SKY-12.4: first-run onboarding completion flag. Called by the wizard's
   // onComplete handler to persist onboardingComplete=true. Thin channel so
@@ -1043,6 +1060,37 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_LOAD_SAMPLE_TWO_VAULT]: (payload: VaultLoadSampleTwoVaultPayload) => Promise<VaultLoadSampleTwoVaultResponse>;
   // SKY-11151 shared creation primitive — one channel for all three callers.
   [IPC_CHANNELS.VAULT_CREATE_FROM_OPTIONS]: (payload: VaultCreateFromOptionsPayload) => Promise<VaultCreateFromOptionsResponse>;
+  // Slice D
+  [IPC_CHANNELS.AGENTS_VAULT_ENSURE]: (payload?: never) => { ok: boolean; created?: string[]; agentVaultPath?: string; error?: string };
+  [IPC_CHANNELS.AGENTS_VAULT_STATS]: (payload?: never) => {
+    ok: boolean; path?: string; name?: string; files?: number; chips?: string[]; scope?: string; error?: string;
+  };
+  [IPC_CHANNELS.AGENTS_VAULT_CLEAR_MEMORY]: (payload?: never) => { ok: boolean; removed?: string[]; error?: string };
+  [IPC_CHANNELS.AGENTS_VAULT_REVEAL]: (payload?: never) => Promise<{ opened: boolean; error?: string }>;
+  [IPC_CHANNELS.AGENTS_VAULT_SYNC_PARTNER]: (payload: { name?: string; icon?: string }) => { ok: boolean; error?: string };
+  [IPC_CHANNELS.AGENTS_VAULT_READ_PARTNER]: (payload?: never) => { ok: boolean; name?: string | null; icon?: string | null; error?: string };
+  [IPC_CHANNELS.VAULT_ACCESS_GET]: (payload?: never) => {
+    ok: boolean; mythosId?: string | null; vaultAccess?: Record<string, 'rw' | 'ro'>; crossLinks?: unknown[]; error?: string;
+  };
+  [IPC_CHANNELS.VAULT_ACCESS_SET]: (payload: {
+    mythosId: string; kind: 'notes' | 'story'; vaultId: string; mode: 'rw' | 'ro';
+  }) => { ok: boolean; vaultAccess?: Record<string, 'rw' | 'ro'>; crossLinks?: unknown[]; error?: string };
+  [IPC_CHANNELS.VAULT_CROSS_LINK_ADD]: (payload: {
+    homeMythosId: string;
+    notes: { mythosId: string; vaultId: string; label: string; mythosName: string };
+    story: { mythosId: string; vaultId: string; label: string; mythosName: string };
+  }) => { ok: boolean; vaultAccess?: Record<string, 'rw' | 'ro'>; crossLinks?: unknown[]; error?: string };
+  [IPC_CHANNELS.VAULT_CROSS_LINK_REMOVE]: (payload: { linkId: string }) => {
+    ok: boolean; vaultAccess?: Record<string, 'rw' | 'ro'>; crossLinks?: unknown[]; error?: string;
+  };
+  [IPC_CHANNELS.VAULT_SEED_APPLY_BOTH]: (payload?: { destinationParent?: string }) => Promise<unknown>;
+  [IPC_CHANNELS.VAULT_MIGRATE_MULTI_INNER]: (payload?: never) => unknown;
+  [IPC_CHANNELS.STORY_STASH_SAVE]: (payload: {
+    vaultId: string; storyId: string; lanes?: { plotlineIds?: string[] }; manuscriptTabs?: unknown;
+  }) => { ok: boolean; error?: string };
+  [IPC_CHANNELS.STORY_STASH_RESTORE]: (payload: {
+    vaultId: string; storyId: string; seedPlotlineIds?: string[];
+  }) => { ok: boolean; entry: unknown };
   // SKY-627: extended payload — orchestrates vault creation + first-scene setup
   [IPC_CHANNELS.ONBOARDING_COMPLETE]: (payload: OnboardingCompletePayload) => Promise<OnboardingCompleteResponse>;
   [IPC_CHANNELS.ONBOARDING_RESET]: (payload?: { hard?: boolean }) => { ok: true };
@@ -4649,8 +4697,8 @@ export interface VaultCreateFromOptionsSource {
 }
 
 export interface VaultCreateFromOptionsPayload {
-  /** Which of the three creation options the caller picked. */
-  mode: 'template' | 'blank' | 'import';
+  /** Creation option — Slice D Mythos five-path includes restore + openin. */
+  mode: 'template' | 'blank' | 'import' | 'restore' | 'openin';
   /**
    * Parent directory the new MythosVault folder is created under. Absolute or
    * `~`-prefixed. Omitted → the default Mythos Vaults parent (so a caller with
@@ -4665,6 +4713,8 @@ export interface VaultCreateFromOptionsPayload {
   defaultTheme?: string;
   /** Required for `import` mode — at least one side; the other stays blank. */
   importSources?: VaultCreateFromOptionsSource[];
+  /** Absolute Obsidian/Markdown folder for `openin` (in-place Notes Vault). */
+  openinPath?: string;
   /**
    * When true, make the freshly created vault the active one (persist paths,
    * start watchers, add to recents) — first-run wants this; Settings
@@ -4676,7 +4726,7 @@ export interface VaultCreateFromOptionsPayload {
 
 export interface VaultCreateFromOptionsResponse {
   ok: boolean;
-  mode?: 'template' | 'blank' | 'import';
+  mode?: 'template' | 'blank' | 'import' | 'restore' | 'openin';
   mythosRoot?: string;
   storyVaultPath?: string;
   notesVaultPath?: string;
