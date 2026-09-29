@@ -357,7 +357,7 @@ test('F3: partner greeting is Mythos on hub chat surface', async () => {
   app = undefined;
 });
 
-test('F3: Earlier chats opens Settings › Agents session history', async () => {
+test('F3: Earlier chats opens Settings › Writing partner session history', async () => {
   app = await launchApp(userData);
   page = await firstWindow(app);
   await openPartnerChat(page);
@@ -366,12 +366,12 @@ test('F3: Earlier chats opens Settings › Agents session history', async () => 
   await expect(earlier).toBeVisible({ timeout: 6_000 });
   await earlier.click();
 
-  await expect(page.locator('[data-settings-cat="agents"], #section-agents').first()).toBeVisible({
-    timeout: 8_000,
-  });
+  // Slice C: AgentsSection unmounted — history lives on Writing partner.
+  await expect(page.getByTestId('writing-partner-page')).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole('tab', { name: 'Writing partner' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('session-history-toggle-brainstorm')).toBeVisible({ timeout: 6_000 });
   // Read-only history panel expands via mythos:open-session-history.
-  await expect(page.getByTestId('session-history-list-brainstorm')).toBeVisible({ timeout: 6_000 });
+  await expect(page.getByTestId('session-history-list-brainstorm')).toBeVisible({ timeout: 8_000 });
 
   await closeApp(app);
   app = undefined;

@@ -52,4 +52,16 @@ describe('WritingPartnerSection', () => {
     fireEvent.change(screen.getByTestId('wp-name'), { target: { value: 'Athena' } });
     expect(setAgentDisplayName).toHaveBeenCalledWith('brainstorm', 'Athena');
   });
+
+  it('F3: mounts partner Session history (brainstorm) for Earlier chats', () => {
+    render(
+      <WritingPartnerSection
+        settings={baseSettings}
+        setSettings={vi.fn()}
+        setAgentDisplayName={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('wp-session-history')).toBeInTheDocument();
+    expect(screen.getByTestId('session-history-toggle-brainstorm')).toBeInTheDocument();
+  });
 });
