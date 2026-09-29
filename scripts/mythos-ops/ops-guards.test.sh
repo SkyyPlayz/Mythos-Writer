@@ -146,6 +146,163 @@ gh() {
 }
 assert_eq file-blip unknown "$(workflow_file_state mythos-token-audit.yml)"
 
+# 2026-09-29 canary 36584459444: newest completed was skipped, a success
+# existed the same hour, and `--status success --limit 1` returned the
+# 31h-old run. Selection must use primary-list order.
+incident='[
+  {"conclusion":"skipped","status":"completed","createdAt":"2026-09-29T14:40:31Z","updatedAt":"2026-09-29T14:40:42Z","url":"https://github.com/SkyyPlayz/Mythos-Writer/actions/runs/36584431883"},
+  {"conclusion":"success","status":"completed","createdAt":"2026-09-29T14:30:39Z","updatedAt":"2026-09-29T14:30:54Z","url":"https://github.com/SkyyPlayz/Mythos-Writer/actions/runs/36583205363"},
+  {"conclusion":"success","status":"completed","createdAt":"2026-09-28T06:58:29Z","updatedAt":"2026-09-28T06:58:42Z","url":"https://github.com/SkyyPlayz/Mythos-Writer/actions/runs/36389147752"}
+]'
+pick=$(printf '%s' "$incident" | pick_hygiene_runs)
+assert_eq incident-latest-skipped skipped "$(printf '%s' "$pick" | jq -r '.latest.conclusion')"
+assert_eq incident-newest-success 36583205363 "$(printf '%s' "$pick" | jq -r '.success.url | split("/") | last')"
+canary_now=$(date -u -d '2026-09-29T14:40:45Z' +%s)
+incident_age=$(age_hours '2026-09-29T14:30:54Z' "$canary_now")
+assert_eq incident-verdict-ok ok "$(verdict_hygiene present 1 skipped 0 1 "$incident_age" 26)"
+stale_age=$(age_hours '2026-09-28T06:58:42Z' "$canary_now")
+assert_eq incident-stale-would-fail fail "$(verdict_hygiene present 1 skipped 0 1 "$stale_age" 26)"
+
+# Keeping an old success is what makes real silence a fail. Dropping it
+# would look like bootstrap and WARN.
+assert_eq silence-kept-old-success fail "$(verdict_hygiene present 1 failure 1 1 "$stale_age" 26)"
+
+inflight='[
+  {"conclusion":"","status":"in_progress","createdAt":"2026-09-29T14:45:20Z","updatedAt":"2026-09-29T14:45:20Z","url":"https://example.test/new"},
+  {"conclusion":"skipped","status":"completed","createdAt":"2026-09-29T14:40:31Z","updatedAt":"2026-09-29T14:40:42Z","url":"https://example.test/skip"},
+  {"conclusion":"success","status":"completed","createdAt":"2026-09-29T14:30:39Z","updatedAt":"2026-09-29T14:30:54Z","url":"https://example.test/ok"}
+]'
+pick=$(printf '%s' "$inflight" | pick_hygiene_runs)
+assert_eq inflight-latest-completed skipped "$(printf '%s' "$pick" | jq -r '.latest.conclusion')"
+assert_eq inflight-success ok "$(printf '%s' "$pick" | jq -r '.success.url | split("/") | last')"
+
+empty_pick=$(printf '%s' '[]' | pick_hygiene_runs)
+assert_eq empty-latest null "$(printf '%s' "$empty_pick" | jq -r '.latest')"
+assert_eq empty-success null "$(printf '%s' "$empty_pick" | jq -r '.success')"
+
+if printf '%s' '{"workflow_runs":[]}' | pick_hygiene_runs >/dev/null 2>/tmp/ops-guards-pick-bad.txt; then
+  echo "FAIL pick-rejects-object" >&2
+  fail=1
+else
+  echo "ok pick-rejects-object"
+fi
+
+health_yml="${ROOT}/../../.github/workflows/mythos-ops-health.yml"
+# Comments may name the broken flag. A non-comment use is the regression.
+if grep -nE -- '--status([ =]|$)|\?status=success|status=success' "$health_yml" | grep -vE '^[0-9]+:[[:space:]]*#' | grep -q .; then
+  echo "FAIL health-yml-no-status-success-filter" >&2
+  grep -nE -- '--status([ =]|$)|\?status=success|status=success' "$health_yml" | grep -vE '^[0-9]+:[[:space:]]*#' >&2 || true
+  fail=1
+else
+  echo "ok health-yml-no-status-success-filter"
+fi
+if ! grep -F 'list_workflow_runs_until_success' "$health_yml" >/dev/null; then
+  echo "FAIL health-yml-uses-primary-list" >&2
+  fail=1
+else
+  echo "ok health-yml-uses-primary-list"
+fi
+
+: > /tmp/ops-guards-pages.txt
+gh() {
+  printf '%s\n' "$*" >> /tmp/ops-guards-pages.txt
+  case "$*" in
+    *'status='*|*'--status'*)
+      echo "status filter must not be used: $*" >&2
+      return 1
+      ;;
+    *'&page=1&'*)
+      printf '%s' '{"workflow_runs":[
+        {"conclusion":"skipped","status":"completed","created_at":"2026-09-29T14:40:31Z","updated_at":"2026-09-29T14:40:42Z","html_url":"https://github.com/SkyyPlayz/Mythos-Writer/actions/runs/36584431883"},
+        {"conclusion":"success","status":"completed","created_at":"2026-09-29T14:30:39Z","updated_at":"2026-09-29T14:30:54Z","html_url":"https://github.com/SkyyPlayz/Mythos-Writer/actions/runs/36583205363"},
+        {"conclusion":"success","status":"completed","created_at":"2026-09-28T06:58:29Z","updated_at":"2026-09-28T06:58:42Z","html_url":"https://github.com/SkyyPlayz/Mythos-Writer/actions/runs/36389147752"}
+      ]}'
+      ;;
+    *)
+      echo "unexpected page: $*" >&2
+      return 1
+      ;;
+  esac
+}
+out=$(list_workflow_runs_until_success SkyyPlayz/Mythos-Writer mythos-pr-hygiene.yml)
+assert_eq primary-list-one-page 1 "$(wc -l < /tmp/ops-guards-pages.txt | tr -d ' ')"
+pick=$(printf '%s' "$out" | pick_hygiene_runs)
+assert_eq primary-list-picks-fresh-success 36583205363 "$(printf '%s' "$pick" | jq -r '.success.url | split("/") | last')"
+if grep -q 'status=' /tmp/ops-guards-pages.txt; then
+  echo "FAIL primary-list-query-has-status" >&2
+  fail=1
+else
+  echo "ok primary-list-query-has-no-status"
+fi
+
+: > /tmp/ops-guards-pages.txt
+gh() {
+  printf '%s\n' "$*" >> /tmp/ops-guards-pages.txt
+  case "$*" in
+    *'&page=1&'*)
+      jq -nc '{workflow_runs: [range(100) | {conclusion:"skipped", status:"completed", created_at:"2026-09-29T14:00:00Z", updated_at:"2026-09-29T14:00:00Z", html_url:"https://github.com/SkyyPlayz/Mythos-Writer/actions/runs/1"}]}'
+      ;;
+    *'&page=2&'*)
+      printf '%s' '{"workflow_runs":[{"conclusion":"success","status":"completed","created_at":"2026-09-28T06:58:29Z","updated_at":"2026-09-28T06:58:42Z","html_url":"https://github.com/SkyyPlayz/Mythos-Writer/actions/runs/36389147752"}]}'
+      ;;
+    *)
+      echo "unexpected page: $*" >&2
+      return 1
+      ;;
+  esac
+}
+out=$(list_workflow_runs_until_success SkyyPlayz/Mythos-Writer mythos-pr-hygiene.yml)
+assert_eq scan-past-skips-pages 2 "$(wc -l < /tmp/ops-guards-pages.txt | tr -d ' ')"
+pick=$(printf '%s' "$out" | pick_hygiene_runs)
+assert_eq scan-past-skips-finds-old-success 36389147752 "$(printf '%s' "$pick" | jq -r '.success.url | split("/") | last')"
+assert_eq scan-past-skips-latest-skipped skipped "$(printf '%s' "$pick" | jq -r '.latest.conclusion')"
+
+: > /tmp/ops-guards-pages.txt
+gh() {
+  printf '%s\n' "$*" >> /tmp/ops-guards-pages.txt
+  jq -nc '{workflow_runs: [range(100) | {conclusion:"failure", status:"completed", created_at:"2026-09-29T14:00:00Z", updated_at:"2026-09-29T14:00:00Z", html_url:"https://github.com/SkyyPlayz/Mythos-Writer/actions/runs/9"}]}'
+}
+set +e
+trunc=$(list_workflow_runs_until_success SkyyPlayz/Mythos-Writer mythos-pr-hygiene.yml 1 2>/dev/null)
+trunc_rc=$?
+set -e
+assert_eq truncated-scan-rc 2 "$trunc_rc"
+assert_eq truncated-scan-stdout "" "$(printf '%s' "$trunc" | tr -d '[:space:]')"
+assert_eq truncated-scan-one-page 1 "$(wc -l < /tmp/ops-guards-pages.txt | tr -d ' ')"
+
+gh() {
+  printf '%s' '{"message":"Not Found"}'
+  return 0
+}
+set +e
+bad=$(list_workflow_runs_until_success SkyyPlayz/Mythos-Writer mythos-pr-hygiene.yml 1 2>/dev/null)
+bad_rc=$?
+set -e
+assert_eq bad-payload-rc 1 "$bad_rc"
+
+gh() {
+  return 1
+}
+set +e
+api=$(list_workflow_runs_until_success SkyyPlayz/Mythos-Writer mythos-pr-hygiene.yml 2>/dev/null)
+api_rc=$?
+set -e
+assert_eq api-fail-rc 1 "$api_rc"
+
+set +e
+list_workflow_runs_until_success "" mythos-pr-hygiene.yml >/dev/null
+args_rc=$?
+set -e
+assert_eq missing-repo-rc 1 "$args_rc"
+
+gh() {
+  printf '%s' '{"workflow_runs":[{"conclusion":"failure","status":"completed","created_at":"2026-09-29T14:00:00Z","updated_at":"2026-09-29T14:00:00Z","html_url":"https://example.test/only"}]}'
+}
+out=$(list_workflow_runs_until_success SkyyPlayz/Mythos-Writer mythos-pr-hygiene.yml)
+pick=$(printf '%s' "$out" | pick_hygiene_runs)
+assert_eq bootstrap-no-success null "$(printf '%s' "$pick" | jq -r '.success')"
+assert_eq bootstrap-latest-failure failure "$(printf '%s' "$pick" | jq -r '.latest.conclusion')"
+
 if [ "$fail" -ne 0 ]; then
   echo "ops-guards tests failed" >&2
   exit 1
