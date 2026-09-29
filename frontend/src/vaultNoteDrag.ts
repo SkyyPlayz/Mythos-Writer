@@ -6,7 +6,7 @@ export const VAULT_NOTE_DRAG_MIME = 'application/x-mythos-vault-note';
  * (Shield R2: `]]` `|` `#` / brackets).
  */
 export function sanitizeWikiLinkTitle(title: string): string | null {
-  const cleaned = title.replace(/[\[\]|#]/g, '').trim();
+  const cleaned = title.replace(/[[\]|#]/g, '').trim();
   return cleaned || null;
 }
 
