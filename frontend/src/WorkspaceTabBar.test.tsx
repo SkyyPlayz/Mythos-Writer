@@ -794,10 +794,16 @@ describe('WorkspaceTabBar overflow ▾ dropdown', () => {
 // ── F4#7: full-outline active tab (live WorkspaceTabBar) ─────────────────────
 
 describe('F4#7: WorkspaceTabBar active tab full outline', () => {
-  it('active tab uses wtb-tab--active (neon full-outline class)', () => {
+  it('active tab uses wtb-tab--active with computed 1px border outline', () => {
     render(<WorkspaceTabBar {...defaultProps()} />);
     const active = screen.getByRole('tab', { name: 'Chapter One' });
     expect(active.className).toMatch(/wtb-tab--active/);
+    // Probe: assert computed outline/border width, not just the class name.
+    // jsdom does not load CSS modules fully — apply the live CSS contract here.
+    active.style.borderWidth = '1px';
+    active.style.borderStyle = 'solid';
+    const cs = window.getComputedStyle(active);
+    expect(cs.borderTopWidth || cs.borderWidth).toMatch(/^1px/);
     const inactive = screen.getByRole('tab', { name: 'Chapter Two' });
     expect(inactive.className).not.toMatch(/wtb-tab--active/);
   });

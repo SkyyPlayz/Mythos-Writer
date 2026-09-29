@@ -4,17 +4,13 @@ import {
   NOTES_MODE_BY_PATH_KEY,
   NOTES_SHOW_MARKDOWN_KEY,
   NOTES_SHOW_SOURCE_KEY,
-  NOTES_VIEW_PREFS_VERSION,
-  NOTES_VIEW_PREFS_VERSION_KEY,
   clearAllNoteModePrefs,
   enabledGearModes,
-  ensureNoteViewPrefsReady,
-  hydrateShowModesFromSettings,
-  migrateNoteViewPrefsToV2,
   readDefaultRichPref,
   readNoteModePref,
   readShowMarkdownViewPref,
-  readShowSourceViewPref,
+  resolveNoteOpenMode,
+  subscribeNoteViewPrefs,
   writeDefaultRichPref,
   writeNoteModePref,
   writeShowMarkdownViewPref,
@@ -25,12 +21,10 @@ afterEach(() => {
   window.localStorage.removeItem(NOTES_MODE_BY_PATH_KEY);
   window.localStorage.removeItem(NOTES_SHOW_MARKDOWN_KEY);
   window.localStorage.removeItem(NOTES_SHOW_SOURCE_KEY);
-  window.localStorage.removeItem(NOTES_VIEW_PREFS_VERSION_KEY);
 });
 
 describe('noteViewPrefs (F4#4)', () => {
   it('defaults to Rich-only gear modes (Markdown/Source hidden)', () => {
-    window.localStorage.setItem(NOTES_VIEW_PREFS_VERSION_KEY, String(NOTES_VIEW_PREFS_VERSION));
     const modes = enabledGearModes();
     expect(modes.map((m) => m.mode)).toEqual(['rich']);
   });
@@ -53,16 +47,31 @@ describe('noteViewPrefs (F4#4)', () => {
     ).toEqual(['rich', 'source']);
   });
 
-  it('Always-Rich write clears sticky; Markdown-only write does not', () => {
+  it('seeded modeByPath and defaultRich=0 survive (no migration wipe)', () => {
+    writeDefaultRichPref(false);
+    writeNoteModePref('Notes/Old.md', 'source');
+    expect(readDefaultRichPref()).toBe(false);
+    expect(readNoteModePref('Notes/Old.md')).toBe('source');
+    // Re-read after a "fresh session" simulation — nothing rewrites prefs.
+    expect(readDefaultRichPref()).toBe(false);
+    expect(readNoteModePref('Notes/Old.md')).toBe('source');
+  });
+
+  it('Always-Rich ON opens Rich ignoring sticky; sticky stays stored', () => {
+    writeNoteModePref('Notes/A.md', 'source');
+    writeDefaultRichPref(true);
+    expect(resolveNoteOpenMode({ path: 'Notes/A.md', defaultRich: true })).toBe('rich');
+    expect(readNoteModePref('Notes/A.md')).toBe('source');
+  });
+
+  it('Always-Rich OFF restores sticky Source', () => {
     writeNoteModePref('Notes/A.md', 'source');
     writeDefaultRichPref(false);
-    expect(readDefaultRichPref()).toBe(false);
+    expect(resolveNoteOpenMode({ path: 'Notes/A.md', defaultRich: false })).toBe('source');
+    expect(readNoteModePref('Notes/A.md')).toBe('source');
+  });
 
-    writeDefaultRichPref(true);
-    clearAllNoteModePrefs();
-    expect(readDefaultRichPref()).toBe(true);
-    expect(readNoteModePref('Notes/A.md')).toBeNull();
-
+  it('Markdown-only write does not clear sticky or overwrite Rich opt-out', () => {
     writeNoteModePref('Notes/A.md', 'markdown');
     writeDefaultRichPref(false);
     writeShowMarkdownViewPref(true);
@@ -76,40 +85,13 @@ describe('noteViewPrefs (F4#4)', () => {
     clearAllNoteModePrefs();
     expect(readNoteModePref('Notes/A.md')).toBeNull();
   });
-});
 
-describe('migrateNoteViewPrefsToV2 (F4 gate — existing users → Rich)', () => {
-  it('seeds pre-F4 keys → Rich after migration, and runs once', () => {
+  it('subscribeNoteViewPrefs fires on same-tab writes', () => {
+    let n = 0;
+    const unsub = subscribeNoteViewPrefs(() => { n += 1; });
+    writeShowMarkdownViewPref(true);
     writeDefaultRichPref(false);
-    writeNoteModePref('Notes/Old.md', 'source');
-    expect(readDefaultRichPref()).toBe(false);
-    expect(readNoteModePref('Notes/Old.md')).toBe('source');
-
-    expect(migrateNoteViewPrefsToV2()).toBe(true);
-    expect(readDefaultRichPref()).toBe(true);
-    expect(readNoteModePref('Notes/Old.md')).toBeNull();
-    expect(window.localStorage.getItem(NOTES_VIEW_PREFS_VERSION_KEY)).toBe(String(NOTES_VIEW_PREFS_VERSION));
-
-    writeDefaultRichPref(false);
-    writeNoteModePref('Notes/Keep.md', 'markdown');
-    expect(migrateNoteViewPrefsToV2()).toBe(false);
-    expect(readDefaultRichPref()).toBe(false);
-    expect(readNoteModePref('Notes/Keep.md')).toBe('markdown');
-  });
-
-  it('ensureNoteViewPrefsReady hydrates showMarkdown/showSource from AppSettings', () => {
-    window.localStorage.setItem(NOTES_VIEW_PREFS_VERSION_KEY, String(NOTES_VIEW_PREFS_VERSION));
-    expect(readShowMarkdownViewPref()).toBe(false);
-    ensureNoteViewPrefsReady({ showMarkdownView: true, showSourceView: true });
-    expect(readShowMarkdownViewPref()).toBe(true);
-    expect(readShowSourceViewPref()).toBe(true);
-  });
-
-  it('hydrateShowModesFromSettings does not touch alwaysOpenRich', () => {
-    window.localStorage.setItem(NOTES_VIEW_PREFS_VERSION_KEY, String(NOTES_VIEW_PREFS_VERSION));
-    writeDefaultRichPref(false);
-    hydrateShowModesFromSettings({ showMarkdownView: true });
-    expect(readDefaultRichPref()).toBe(false);
-    expect(readShowMarkdownViewPref()).toBe(true);
+    expect(n).toBeGreaterThanOrEqual(2);
+    unsub();
   });
 });

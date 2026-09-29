@@ -28,12 +28,12 @@ import NoteViewGearMenu from './NoteViewGearMenu';
 import {
   NOTES_DEFAULT_RICH_KEY,
   NOTES_MODE_BY_PATH_KEY,
-  clearAllNoteModePrefs,
-  ensureNoteViewPrefsReady,
   readDefaultRichPref,
   readNoteModePref,
   readShowMarkdownViewPref,
   readShowSourceViewPref,
+  resolveNoteOpenMode,
+  subscribeNoteViewPrefs,
   writeDefaultRichPref,
   writeNoteModePref,
   type StickyNoteMode,
@@ -338,29 +338,38 @@ export default function NoteViewer({
   ttsSettings,
   voicePrefs,
 }: Props) {
-  const [defaultRich, setDefaultRich] = useState(() => {
-    ensureNoteViewPrefsReady();
-    return readDefaultRichPref();
-  });
-  // Re-run migrate + hydrate on mount (idempotent) so a late Settings load
-  // still pushes showMarkdown/showSource into the gear bridge.
-  useEffect(() => {
-    ensureNoteViewPrefsReady();
-    setDefaultRich(readDefaultRichPref());
-  }, []);
-  // SKY-10929: this note's own remembered mode, if it was ever explicitly
-  // switched — takes priority over the global default below.
-  const stickyMode = useMemo(() => readNoteModePref(path), [path]);
+  const [defaultRich, setDefaultRich] = useState(readDefaultRichPref);
+  // Live SoT for gear — Settings writes localStorage and notifies subscribers.
+  const [showMarkdown, setShowMarkdown] = useState(readShowMarkdownViewPref);
+  const [showSource, setShowSource] = useState(readShowSourceViewPref);
+  const [stickyMode, setStickyMode] = useState(() => readNoteModePref(path));
 
-  // Resolve mode from new prop, legacy previewMode bool, this note's sticky
-  // choice, or the M17 "always open rich" default (Rich unless opted out).
-  const resolvedMode: NoteViewerMode =
-    modeProp ?? (previewMode ? 'preview' : (stickyMode ?? (defaultRich ? 'rich' : 'source')));
+  useEffect(() => {
+    setStickyMode(readNoteModePref(path));
+  }, [path]);
+
+  // F4#4 Probe: gear ↔ Settings live sync (same-tab pub-sub + cross-tab storage).
+  useEffect(() => subscribeNoteViewPrefs(() => {
+    setDefaultRich(readDefaultRichPref());
+    setShowMarkdown(readShowMarkdownViewPref());
+    setShowSource(readShowSourceViewPref());
+    setStickyMode(readNoteModePref(path));
+  }), [path]);
+
+  // F4#4 / Critic H1: Always-Rich ON → Rich at open (sticky kept for OFF restore).
+  const resolvedMode: NoteViewerMode = resolveNoteOpenMode({
+    path,
+    modeProp: modeProp ?? null,
+    previewMode,
+    defaultRich,
+  });
   const [mode, setMode] = useState<NoteViewerMode>(resolvedMode);
-  // True while the initial mode came from the default (not an explicit prop
-  // or a remembered per-note choice) — the fidelity guard then downgrades
-  // silently on load rather than risk a surprise data loss (CF-11).
-  const pendingPrefRichRef = useRef(modeProp === undefined && !previewMode && !stickyMode && resolvedMode === 'rich');
+  // True while the initial mode came from Always-Rich / default (not an explicit
+  // prop) — the fidelity guard then downgrades silently on load (CF-11).
+  // When Always-Rich is OFF and sticky Source is deliberate, skip the notice.
+  const pendingPrefRichRef = useRef(
+    modeProp === undefined && !previewMode && resolvedMode === 'rich',
+  );
 
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(true);
@@ -425,8 +434,13 @@ export default function NoteViewer({
     if (previewMode === prevPreviewModeRef.current) return;
     prevPreviewModeRef.current = previewMode;
     if (modeProp !== undefined) return;
-    setMode(previewMode ? 'preview' : (stickyMode ?? (defaultRich ? 'rich' : 'source')));
-  }, [previewMode, modeProp, stickyMode, defaultRich]);
+    setMode(resolveNoteOpenMode({
+      path,
+      modeProp: modeProp ?? null,
+      previewMode,
+      defaultRich,
+    }));
+  }, [previewMode, modeProp, path, stickyMode, defaultRich]);
 
   useEffect(() => {
     setLoading(true);
@@ -710,10 +724,8 @@ export default function NoteViewer({
   const toggleDefaultRich = useCallback(() => {
     setDefaultRich((prev) => {
       const next = !prev;
+      // Keep sticky stored — resolve ignores it while Always-Rich is ON.
       writeDefaultRichPref(next);
-      // F4#4: turning Always-open-Rich ON must clear sticky per-note modes so
-      // the setting actually applies (video 20:37 — toggle on but ignored).
-      if (next) clearAllNoteModePrefs();
       return next;
     });
   }, []);
@@ -843,8 +855,8 @@ export default function NoteViewer({
             <NoteViewGearMenu
               mode={mode === 'preview' ? 'preview' : (mode as StickyNoteMode)}
               defaultRich={defaultRich}
-              showMarkdown={readShowMarkdownViewPref()}
-              showSource={readShowSourceViewPref()}
+              showMarkdown={showMarkdown}
+              showSource={showSource}
               onModeClick={(m) => handleModeClick(m)}
               onToggleDefaultRich={toggleDefaultRich}
               onClose={() => setGearOpen(false)}

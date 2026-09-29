@@ -1201,8 +1201,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           </button>
         )}
       </div>
-      {/* F4#10: toolbar (new / folder / sort / reveal / collapse↑ / expand↓).
-          #9 button relocation is OWNER ASK (video 13:05 ambiguous) — parked. */}
+      {/* F4#10: toolbar (new / folder / sort / reveal / collapse↑ / expand↓). */}
       <div className="vb-notes-toolbar" data-testid="vb-notes-toolbar">
         <button
           className="vb-toolbar-btn"
@@ -1324,10 +1323,6 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           Drop here to move to vault root
         </div>
       )}
-      {/* F4#13: Backlinks above Recent (video 23:45 — Backlinks to top, keep Recent). */}
-      {selected && !selected.endsWith('/') && selected.endsWith('.md') && (
-        <BacklinksPane notePath={selected} onOpen={handleOpen} />
-      )}
       {/* M8c (SKY-9335): RECENT NOTES — three most-recently-opened notes,
           relative timestamps, drawn note glyph. Prototype §M8 item 2. */}
       {recentEntries.length > 0 && (
@@ -1384,6 +1379,11 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
         onClose={() => setDialogOpen(false)}
         onCreated={handleNoteCreated}
       />
+      {/* Backlinks stay after Recent in the left explorer (F4#13 right-sidebar
+          order is F5 NotesTabPanel — do not reorder here). */}
+      {selected && !selected.endsWith('/') && selected.endsWith('.md') && (
+        <BacklinksPane notePath={selected} onOpen={handleOpen} />
+      )}
       <Toast message={toast?.message ?? null} level={toast?.level} />
       {/* SKY-10712: rename-cascade summary with one-shot Undo. Pinned to its
           own third slot: the lower two are shared with the vault error toast,

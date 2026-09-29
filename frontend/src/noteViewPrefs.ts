@@ -3,22 +3,57 @@
  * NoteViewer gear menu).
  *
  * Source of truth: **localStorage** (`mythos:notes:*`). Gear and Settings both
- * read/write these keys directly — there is no per-`patch()` bridge that syncs
- * every Editor control into localStorage. Settings mirrors into `editorPrefs`
- * on view-toggle change for Save; on mount, saved showMarkdown/showSource are
- * hydrated into localStorage so the gear matches after a restart.
+ * read/write these keys directly. Writes notify same-tab subscribers so an
+ * already-open note's gear updates without remount. No editorPrefs mirror,
+ * no one-time migration/wipe.
  */
 
 export const NOTES_DEFAULT_RICH_KEY = 'mythos:notes:defaultRich';
 export const NOTES_MODE_BY_PATH_KEY = 'mythos:notes:modeByPath';
 export const NOTES_SHOW_MARKDOWN_KEY = 'mythos:notes:showMarkdownView';
 export const NOTES_SHOW_SOURCE_KEY = 'mythos:notes:showSourceView';
-/** Versioned one-time migration flag (F4 gate: existing users → Rich). */
-export const NOTES_VIEW_PREFS_VERSION_KEY = 'mythos:notes:viewPrefsV';
-export const NOTES_VIEW_PREFS_VERSION = 2;
+
+/** Dispatched on `window` after any same-tab note-view pref write. */
+export const NOTES_VIEW_PREFS_CHANGED_EVENT = 'mythos:notes:viewPrefsChanged';
 
 export type StickyNoteMode = 'rich' | 'markdown' | 'source';
 export type NoteGearMode = StickyNoteMode;
+
+const STICKY_MODES: readonly StickyNoteMode[] = ['rich', 'markdown', 'source'];
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === 'object' && !Array.isArray(v);
+}
+
+function notifyNoteViewPrefsChanged(): void {
+  try {
+    window.dispatchEvent(new Event(NOTES_VIEW_PREFS_CHANGED_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Subscribe to same-tab + cross-tab view-pref changes. Returns unsubscribe. */
+export function subscribeNoteViewPrefs(listener: () => void): () => void {
+  const onCustom = () => listener();
+  const onStorage = (e: StorageEvent) => {
+    if (
+      e.key === NOTES_DEFAULT_RICH_KEY
+      || e.key === NOTES_SHOW_MARKDOWN_KEY
+      || e.key === NOTES_SHOW_SOURCE_KEY
+      || e.key === NOTES_MODE_BY_PATH_KEY
+      || e.key === null
+    ) {
+      listener();
+    }
+  };
+  window.addEventListener(NOTES_VIEW_PREFS_CHANGED_EVENT, onCustom);
+  window.addEventListener('storage', onStorage);
+  return () => {
+    window.removeEventListener(NOTES_VIEW_PREFS_CHANGED_EVENT, onCustom);
+    window.removeEventListener('storage', onStorage);
+  };
+}
 
 export function readDefaultRichPref(): boolean {
   try {
@@ -36,6 +71,7 @@ export function writeDefaultRichPref(on: boolean): void {
   } catch {
     // storage unavailable — session toggle still works via React state
   }
+  notifyNoteViewPrefsChanged();
 }
 
 export function readShowMarkdownViewPref(): boolean {
@@ -53,6 +89,7 @@ export function writeShowMarkdownViewPref(on: boolean): void {
   } catch {
     /* ignore */
   }
+  notifyNoteViewPrefsChanged();
 }
 
 export function readShowSourceViewPref(): boolean {
@@ -70,14 +107,20 @@ export function writeShowSourceViewPref(on: boolean): void {
   } catch {
     /* ignore */
   }
+  notifyNoteViewPrefsChanged();
 }
 
 export function readNoteModePref(path: string): StickyNoteMode | null {
   try {
     const raw = window.localStorage.getItem(NOTES_MODE_BY_PATH_KEY);
     if (!raw) return null;
-    const map = JSON.parse(raw) as Record<string, StickyNoteMode>;
-    return map[path] ?? null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isPlainObject(parsed)) return null;
+    if (!Object.prototype.hasOwnProperty.call(parsed, path)) return null;
+    const v = parsed[path];
+    if (typeof v !== 'string') return null;
+    if (!(STICKY_MODES as readonly string[]).includes(v)) return null;
+    return v as StickyNoteMode;
   } catch {
     return null;
   }
@@ -86,67 +129,48 @@ export function readNoteModePref(path: string): StickyNoteMode | null {
 export function writeNoteModePref(path: string, mode: StickyNoteMode): void {
   try {
     const raw = window.localStorage.getItem(NOTES_MODE_BY_PATH_KEY);
-    const map = raw ? (JSON.parse(raw) as Record<string, StickyNoteMode>) : {};
+    let map: Record<string, StickyNoteMode> = {};
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      if (isPlainObject(parsed)) {
+        map = parsed as Record<string, StickyNoteMode>;
+      }
+    }
     map[path] = mode;
     window.localStorage.setItem(NOTES_MODE_BY_PATH_KEY, JSON.stringify(map));
   } catch {
     /* ignore */
   }
+  notifyNoteViewPrefsChanged();
 }
 
-/** Clears every sticky per-note mode so "Always open in Rich" can apply. */
+/** Clears every sticky per-note mode (legacy helper; Always-Rich no longer wipes). */
 export function clearAllNoteModePrefs(): void {
   try {
     window.localStorage.removeItem(NOTES_MODE_BY_PATH_KEY);
   } catch {
     /* ignore */
   }
+  notifyNoteViewPrefsChanged();
 }
 
 /**
- * One-time migration (viewPrefsV → 2): force Rich default and clear sticky
- * Source/Markdown per-note modes for EXISTING users. Idempotent — returns
- * true only when the migration actually ran.
+ * Resolve the open mode for a note.
+ * When Always-Rich is ON, sticky per-path modes are ignored at open (but left
+ * stored so turning Always-Rich OFF restores them). Never rewrites defaultRich='0'.
  */
-export function migrateNoteViewPrefsToV2(): boolean {
-  try {
-    const raw = window.localStorage.getItem(NOTES_VIEW_PREFS_VERSION_KEY);
-    const v = raw == null || raw === '' ? 0 : Number(raw);
-    if (Number.isFinite(v) && v >= NOTES_VIEW_PREFS_VERSION) return false;
-    writeDefaultRichPref(true);
-    clearAllNoteModePrefs();
-    window.localStorage.setItem(NOTES_VIEW_PREFS_VERSION_KEY, String(NOTES_VIEW_PREFS_VERSION));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Push saved AppSettings Markdown/Source enablement into localStorage so the
- * gear matches Settings after a restart. Does not touch alwaysOpenRich
- * (localStorage is SoT after migrateNoteViewPrefsToV2).
- */
-export function hydrateShowModesFromSettings(ep?: {
-  showMarkdownView?: boolean;
-  showSourceView?: boolean;
-} | null): void {
-  if (!ep) return;
-  if (ep.showMarkdownView !== undefined) {
-    writeShowMarkdownViewPref(!!ep.showMarkdownView);
-  }
-  if (ep.showSourceView !== undefined) {
-    writeShowSourceViewPref(!!ep.showSourceView);
-  }
-}
-
-/** Run migration then hydrate show-mode flags. Call on NoteViewer / Settings mount. */
-export function ensureNoteViewPrefsReady(ep?: {
-  showMarkdownView?: boolean;
-  showSourceView?: boolean;
-} | null): void {
-  migrateNoteViewPrefsToV2();
-  hydrateShowModesFromSettings(ep);
+export function resolveNoteOpenMode(opts: {
+  path: string;
+  modeProp?: StickyNoteMode | 'preview' | null;
+  previewMode?: boolean;
+  defaultRich?: boolean;
+}): StickyNoteMode | 'preview' {
+  if (opts.modeProp) return opts.modeProp;
+  if (opts.previewMode) return 'preview';
+  const alwaysRich = opts.defaultRich ?? readDefaultRichPref();
+  if (alwaysRich) return 'rich';
+  const sticky = readNoteModePref(opts.path);
+  return sticky ?? 'source';
 }
 
 export const NOTE_GEAR_MODE_DEFS: Array<{ mode: NoteGearMode; label: string }> = [

@@ -2,13 +2,10 @@
 // Manuscript defaults (autosave snapshot cadence) + behavior toggles, bound to
 // settings.editorPrefs (additive AppSettings field persisted via Save).
 // F4#4: note view prefs — localStorage is SoT. Gear and Settings both read/write
-// the same keys. No per-patch() sync into localStorage (behavior edits never
-// touch view prefs). Mount hydrates showMarkdown/showSource from AppSettings.
-import { useEffect, useState } from 'react';
+// the same keys. No editorPrefs mirror/hydrate for view prefs.
+import { useState } from 'react';
 import { M24Card, M24Slider, M24Toggle } from './M24Controls';
 import {
-  clearAllNoteModePrefs,
-  ensureNoteViewPrefsReady,
   readDefaultRichPref,
   readShowMarkdownViewPref,
   readShowSourceViewPref,
@@ -55,7 +52,7 @@ const VIEW_TOGGLE_ROWS: {
   {
     key: 'alwaysOpenRich',
     label: 'Always open notes in Rich view',
-    hint: 'Clears per-note sticky modes so new opens follow this setting.',
+    hint: 'When on, notes open in Rich (sticky per-note modes stay stored for when this is off).',
   },
   {
     key: 'showMarkdownView',
@@ -80,8 +77,8 @@ function readViewPrefsFromStorage(): Record<ViewKey, boolean> {
 /** Write one view key into localStorage SoT (gear reads the same keys). */
 function writeViewPref(key: ViewKey, value: boolean): void {
   if (key === 'alwaysOpenRich') {
+    // Keep sticky modes stored — resolve ignores them while Always-Rich is ON.
     writeDefaultRichPref(value);
-    if (value) clearAllNoteModePrefs();
     return;
   }
   if (key === 'showMarkdownView') {
@@ -98,26 +95,8 @@ function writeViewPref(key: ViewKey, value: boolean): void {
 
 export default function EditorSettingsSection({ settings, setSettings, setSavedOk }: Props) {
   const prefs: Required<EditorPrefs> = { ...EDITOR_PREFS_DEFAULTS, ...settings.editorPrefs };
-  const [viewTick, setViewTick] = useState(0);
-  const viewPrefs = readViewPrefsFromStorage();
-  void viewTick;
-
-  useEffect(() => {
-    ensureNoteViewPrefsReady(settings.editorPrefs);
-    // Mirror localStorage SoT into editorPrefs so Save persists gear agreement.
-    setSettings((prev) => ({
-      ...prev,
-      editorPrefs: {
-        ...EDITOR_PREFS_DEFAULTS,
-        ...prev.editorPrefs,
-        alwaysOpenRich: readDefaultRichPref(),
-        showMarkdownView: readShowMarkdownViewPref(),
-        showSourceView: readShowSourceViewPref(),
-      },
-    }));
-    setViewTick((t) => t + 1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only hydrate
-  }, []);
+  // Plain useState — re-read on each view-toggle write via setViewPrefs.
+  const [viewPrefs, setViewPrefs] = useState(readViewPrefsFromStorage);
 
   /** Behavior / autosave — never touches view-pref localStorage. */
   const patchBehavior = (p: Partial<EditorPrefs>) => {
@@ -128,14 +107,10 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
     setSavedOk(false);
   };
 
-  /** View toggles — write localStorage SoT + mirror into editorPrefs. No patch()-sync. */
+  /** View toggles — localStorage SoT only (no editorPrefs mirror). */
   const setViewPref = (key: ViewKey, value: boolean) => {
     writeViewPref(key, value);
-    setSettings((prev) => ({
-      ...prev,
-      editorPrefs: { ...EDITOR_PREFS_DEFAULTS, ...prev.editorPrefs, [key]: value },
-    }));
-    setViewTick((t) => t + 1);
+    setViewPrefs(readViewPrefsFromStorage());
     setSavedOk(false);
   };
 

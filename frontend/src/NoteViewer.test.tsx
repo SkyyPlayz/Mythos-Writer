@@ -4,8 +4,9 @@ import NoteViewer, { NOTES_DEFAULT_RICH_KEY, NOTES_MODE_BY_PATH_KEY } from './No
 import {
   NOTES_SHOW_MARKDOWN_KEY,
   NOTES_SHOW_SOURCE_KEY,
-  NOTES_VIEW_PREFS_VERSION,
-  NOTES_VIEW_PREFS_VERSION_KEY,
+  readNoteModePref,
+  writeDefaultRichPref,
+  writeNoteModePref,
   writeShowMarkdownViewPref,
   writeShowSourceViewPref,
 } from './noteViewPrefs';
@@ -30,8 +31,6 @@ beforeEach(() => {
   entityList.mockResolvedValue({ entities: [] });
   noteBacklinks.mockResolvedValue({ backlinks: [] });
   (window as unknown as { api: unknown }).api = { readNotesVault, writeNotesVault, readVault, writeVault, entityList, noteBacklinks };
-  // Skip the one-time F4 migration so per-test sticky / defaultRich seeds stick.
-  window.localStorage.setItem(NOTES_VIEW_PREFS_VERSION_KEY, String(NOTES_VIEW_PREFS_VERSION));
   // F4#4: enable Markdown/Source for legacy mode-switch tests (default is Rich-only).
   writeShowMarkdownViewPref(true);
   writeShowSourceViewPref(true);
@@ -45,7 +44,6 @@ afterEach(() => {
   window.localStorage.removeItem(NOTES_MODE_BY_PATH_KEY);
   window.localStorage.removeItem(NOTES_SHOW_MARKDOWN_KEY);
   window.localStorage.removeItem(NOTES_SHOW_SOURCE_KEY);
-  window.localStorage.removeItem(NOTES_VIEW_PREFS_VERSION_KEY);
 });
 
 // M17: mode switching lives in the gear "View options" popover (prototype
@@ -173,10 +171,11 @@ describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
 
     await pickMode('Markdown');
     expect(screen.getByLabelText('Edit note: Test.md')).toBeTruthy();
+    // Sticky applies when Always-Rich is OFF (ON ignores sticky at open).
+    await act(async () => { writeDefaultRichPref(false); });
     unmount();
 
-    // Re-mounting the SAME note (e.g. the user closed and reopened the tab)
-    // honours the remembered choice instead of the Rich default.
+    // Re-mounting the SAME note honours sticky Markdown.
     render(<NoteViewer path="Notes/Test.md" />);
     await screen.findByLabelText('Edit note: Test.md');
     expect(document.querySelector('.note-rich-editor .ProseMirror')).toBeNull();
@@ -222,7 +221,25 @@ describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
     expect(screen.queryByTestId('note-gear-mode-source')).toBeNull();
   });
 
-  it('F4#4: turning Always-open-Rich ON clears sticky modes so the setting applies', async () => {
+  it('F4#4: Always-Rich ON opens Rich ignoring sticky; sticky stays stored', async () => {
+    writeNoteModePref('Notes/Sticky.md', 'source');
+    writeDefaultRichPref(true);
+    render(<NoteViewer path="Notes/Sticky.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByLabelText('Edit note: Sticky.md')).toBeNull();
+    expect(readNoteModePref('Notes/Sticky.md')).toBe('source');
+  });
+
+  it('F4#4: Always-Rich OFF restores sticky Source', async () => {
+    writeNoteModePref('Notes/Sticky.md', 'source');
+    writeDefaultRichPref(false);
+    render(<NoteViewer path="Notes/Sticky.md" />);
+    const textarea = await screen.findByLabelText('Edit note: Sticky.md');
+    expect(textarea.tagName).toBe('TEXTAREA');
+    expect(readNoteModePref('Notes/Sticky.md')).toBe('source');
+  });
+
+  it('F4#4: turning Always-Rich ON keeps sticky stored (no wipe)', async () => {
     const { unmount } = render(<NoteViewer path="Notes/Test.md" />);
     await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
     await pickMode('Source Mode');
@@ -230,30 +247,10 @@ describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
 
     fireEvent.click(screen.getByTestId('note-gear-btn'));
     const toggle = await screen.findByTestId('note-default-rich-toggle');
-    // Toggle off then on — ON path clears sticky.
     fireEvent.click(toggle); // off
-    fireEvent.click(toggle); // on → clears sticky
-    expect(window.localStorage.getItem(NOTES_MODE_BY_PATH_KEY)).toBeNull();
+    fireEvent.click(toggle); // on — sticky must remain
+    expect(readNoteModePref('Notes/Test.md')).toBe('source');
     unmount();
-
-    render(<NoteViewer path="Notes/Test.md" />);
-    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
-  });
-
-  it('F4 gate: pre-F4 saved Source sticky opens Rich after viewPrefsV migration', async () => {
-    window.localStorage.removeItem(NOTES_VIEW_PREFS_VERSION_KEY);
-    window.localStorage.setItem(NOTES_DEFAULT_RICH_KEY, '0');
-    window.localStorage.setItem(
-      NOTES_MODE_BY_PATH_KEY,
-      JSON.stringify({ 'Notes/Legacy.md': 'source' }),
-    );
-    // Module/ensure path runs migrate on mount → Rich, sticky cleared.
-    const { migrateNoteViewPrefsToV2 } = await import('./noteViewPrefs');
-    expect(migrateNoteViewPrefsToV2()).toBe(true);
-    render(<NoteViewer path="Notes/Legacy.md" />);
-    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
-    expect(screen.queryByLabelText('Edit note: Legacy.md')).toBeNull();
-    expect(window.localStorage.getItem(NOTES_MODE_BY_PATH_KEY)).toBeNull();
   });
 
 
@@ -307,22 +304,47 @@ describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
     expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
   });
 
-  it('does not show the auto-downgrade notice for a note reopened via its own sticky Source choice', async () => {
+  it('does not show the auto-downgrade notice for a note reopened via sticky Source when Always-Rich is OFF', async () => {
     readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
     const { unmount } = render(<NoteViewer path="Notes/Table.md" />);
     await screen.findByTestId('note-auto-source-notice');
 
-    // Explicitly confirming Source via the fidelity dialog ("Edit in Source")
-    // makes the choice sticky — the next open is an intentional choice, not
-    // an auto-downgrade, so the notice must not reappear.
+    // Explicit Source via fidelity dialog is sticky. With Always-Rich OFF,
+    // sticky Source is honored — intentional choice, not auto-downgrade.
     fireEvent.click(screen.getByText('Open in Rich anyway')); // opens the fidelity dialog
     fireEvent.click(await screen.findByText('Edit in Source (safe)'));
+    await act(async () => { writeDefaultRichPref(false); });
     unmount();
 
     readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
     render(<NoteViewer path="Notes/Table.md" />);
     await screen.findByLabelText('Edit note: Table.md');
     expect(screen.queryByTestId('note-auto-source-notice')).toBeNull();
+  });
+
+  it('F4 Probe: Settings Markdown toggle updates already-open note gear live', async () => {
+    window.localStorage.removeItem(NOTES_SHOW_MARKDOWN_KEY);
+    render(<NoteViewer path="Notes/Test.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+
+    fireEvent.click(screen.getByTestId('note-gear-btn'));
+    expect(screen.queryByTestId('note-gear-mode-markdown')).toBeNull();
+    fireEvent.click(document.querySelector('.note-gear-backdrop')!);
+
+    await act(async () => { writeShowMarkdownViewPref(true); });
+
+    fireEvent.click(screen.getByTestId('note-gear-btn'));
+    expect(await screen.findByTestId('note-gear-mode-markdown')).toBeTruthy();
+  });
+
+  it('F4 Probe: startup shows Markdown in gear from localStorage without Settings', async () => {
+    writeShowMarkdownViewPref(true);
+    writeShowSourceViewPref(false);
+    render(<NoteViewer path="Notes/Test.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    fireEvent.click(screen.getByTestId('note-gear-btn'));
+    expect(await screen.findByTestId('note-gear-mode-markdown')).toBeTruthy();
+    expect(screen.queryByTestId('note-gear-mode-source')).toBeNull();
   });
 
   // SKY-11434: a multi-line-body or foldable callout was the only genuinely
