@@ -1,0 +1,31 @@
+/**
+ * Slice C — walkthrough shell min bar (z-tier only).
+ * Overlay tiers from 08 §8 / prototype: dim 88 · ring 89 · bubble 90.
+ * No Demo toggle / coach-mark bubble UI on this tip (full demo rebuild later).
+ */
+
+:root {
+  --z-walkthrough-dim: 88;
+  --z-walkthrough-ring: 89;
+  --z-walkthrough-bubble: 90;
+}
+
+/* Reserved shell slots — unused until fidelity-demo-rebuild. pointer-events none. */
+.walkthrough-shell-dim {
+  position: fixed;
+  z-index: var(--z-walkthrough-dim);
+  pointer-events: none;
+}
+
+.walkthrough-shell-ring {
+  position: fixed;
+  z-index: var(--z-walkthrough-ring);
+  pointer-events: none;
+}
+
+.walkthrough-shell-bubble {
+  position: fixed;
+  z-index: var(--z-walkthrough-bubble);
+  pointer-events: none;
+  width: 272px;
+}

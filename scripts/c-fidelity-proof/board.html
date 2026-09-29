@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Slice C fidelity board — Neon Nebula 50 / glass 20</title>
+<style>
+  :root {
+    --neon-intensity: 50;
+    --glass: 20;
+    --n1: #00f0ff;
+    --b1: rgba(0,240,255,.4);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: "Segoe UI", Inter, system-ui, sans-serif; color: #dbe4f5; }
+  body {
+    background:
+      radial-gradient(1200px 700px at 20% 10%, rgba(155,95,255,0.28), transparent 60%),
+      radial-gradient(900px 600px at 80% 30%, rgba(0,240,255,0.16), transparent 55%),
+      radial-gradient(800px 500px at 50% 90%, rgba(255,77,255,0.12), transparent 50%),
+      linear-gradient(180deg, #0a0d1a, #070912 70%);
+  }
+  .shell { display: grid; grid-template-columns: 180px 1fr; height: 100vh; }
+  .rail {
+    padding: 14px 10px; border-right: 1px solid rgba(255,255,255,0.08);
+    background: rgba(8,10,18,0.4); backdrop-filter: blur(calc(var(--glass) * 1px));
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .rail button {
+    text-align: left; border: 1px solid transparent; background: transparent; color: #8e9db8;
+    border-radius: 10px; padding: 8px 10px; font-size: 12px; font-weight: 650; cursor: pointer;
+  }
+  .rail button.active {
+    color: #eef2fb; border-color: rgba(0,240,255,0.4); background: rgba(0,240,255,0.1);
+  }
+  .body { padding: 16px 18px; overflow: auto; }
+  .page-title { font-size: 18px; font-weight: 700; color: #eef2fb; }
+  .page-sub { font-size: 12px; color: #8e9db8; margin: 4px 0 14px; }
+  .card {
+    border-radius: 15px; background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(0,240,255,0.2); padding: 11px 13px; margin-bottom: 9px;
+    backdrop-filter: blur(calc(var(--glass) * 1px));
+  }
+  .h { font-size: 12.5px; font-weight: 600; color: #eef2fb; margin-bottom: 3px; }
+  .hint { font-size: 10.5px; color: #7686a2; margin-bottom: 8px; line-height: 1.5; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+  .label { font-size: 9.5px; font-weight: 700; letter-spacing: .12em; color: #7686a2; }
+  input, select {
+    height: 30px; background: rgba(255,255,255,.05); border: 1px solid var(--b1);
+    border-radius: 9px; color: #eef2fb; font-size: 12px; padding: 0 10px;
+  }
+  .chips { display: flex; gap: 4px; flex-wrap: wrap; }
+  .chip {
+    padding: 4px 9px; border-radius: 8px; border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.03); color: #c3cee2; font-size: 11px;
+  }
+  .chip.on { background: rgba(0,240,255,.12); border-color: rgba(0,240,255,.5); color: #eef2fb; font-weight: 600; }
+  .grid2 { display: flex; flex-wrap: wrap; gap: 12px 18px; }
+  .left { flex: 1 1 300px; display: flex; flex-direction: column; gap: 9px; }
+  .behavior {
+    flex: 1 1 260px; padding: 11px 13px; border-radius: 11px;
+    background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.08);
+  }
+  .beh-label { font-size: 8.5px; font-weight: 700; letter-spacing: .13em; color: #7686a2; }
+  .hands { display: flex; flex-wrap: wrap; gap: 8px; }
+  .hand {
+    flex: 1 1 180px; padding: 11px 12px; border-radius: 12px;
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.09);
+  }
+  .dot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; margin-right: 6px; }
+  .limit { font-size: 9.5px; color: #ff9db4; margin-top: 6px; }
+  .hb-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 10px; border-radius: 11px; background: rgba(255,255,255,.025);
+    border: 1px solid rgba(255,255,255,.07); margin-bottom: 6px;
+  }
+  .run {
+    height: 24px; padding: 0 10px; border-radius: 8px; border: 1px solid rgba(0,240,255,.45);
+    color: var(--n1); font-size: 10.5px; font-weight: 600; background: transparent;
+  }
+  .bucket {
+    padding: 11px 12px; border-radius: 12px; margin-bottom: 9px;
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.11);
+  }
+  .bucket-label { font-size: 9.5px; font-weight: 700; letter-spacing: .13em; color: #8e9db8; }
+  .provs { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 8px; }
+  .prov {
+    flex: 1 1 150px; padding: 9px 11px; border-radius: 11px; text-align: left;
+    background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.1);
+  }
+  .prov.on {
+    background: rgba(0,240,255,.09); border-color: rgba(0,240,255,.55);
+    box-shadow: 0 0 15px -6px rgba(0,240,255,.5);
+  }
+  .prov.soon { opacity: .6; }
+  .status { font-size: 9.5px; margin-top: 4px; color: #ffd98a; }
+  .status.good { color: #8ee6b0; }
+  .radio {
+    display: flex; gap: 10px; padding: 9px 11px; border-radius: 11px;
+    border: 1px solid rgba(255,255,255,.1); margin-bottom: 7px;
+  }
+  .radio.on { border-color: rgba(0,240,255,.45); background: rgba(0,240,255,.08); }
+  .queued {
+    margin-top: 10px; padding: 6px 9px; border-radius: 9px;
+    border: 1px dashed rgba(0,240,255,.35); display: flex; gap: 7px; align-items: center;
+  }
+  .qtag {
+    font-size: 8.5px; font-weight: 800; letter-spacing: .1em; color: var(--n1);
+    padding: 1px 5px; border-radius: 4px; border: 1px solid rgba(0,240,255,.45);
+  }
+  .claude-login {
+    margin-top: 10px; padding: 11px 12px; border-radius: 12px;
+    background: rgba(255,178,122,.08); border: 1px solid rgba(255,178,122,.45);
+  }
+  .hidden { display: none !important; }
+  .zmap {
+    position: fixed; right: 12px; bottom: 12px; padding: 8px 10px; border-radius: 10px;
+    background: rgba(15,19,33,.9); border: 1px solid rgba(255,255,255,.12); font-size: 10px; color: #8e9db8;
+  }
+</style>
+</head>
+<body>
+  <div class="shell">
+    <nav class="rail" aria-label="Settings categories">
+      <button type="button" data-page="appearance">Appearance</button>
+      <button type="button" class="active" data-page="partner" id="tab-partner">Writing partner</button>
+      <button type="button" data-page="model" id="tab-model">Model &amp; keys</button>
+      <button type="button" data-page="editor">Editor</button>
+      <button type="button" data-page="queued" id="tab-queued">Partner chat</button>
+    </nav>
+    <main class="body">
+      <section id="page-partner">
+        <div class="page-title">Writing partner</div>
+        <div class="page-sub">One partner face — personality, hands, heartbeat, and hard bans.</div>
+        <div class="card" data-screen-label="Partner Settings">
+          <div class="row">
+            <div style="width:44px;height:44px;border-radius:14px;background:linear-gradient(120deg,#00f0ff,#9b5fff,#ff4dff);display:flex;align-items:center;justify-content:center;color:#0b0d17">✦</div>
+            <div><div class="label">NAME</div><input value="Mythos" style="width:200px" /></div>
+            <div><div class="label">MODEL</div><select><option>claude-sonnet-4-5</option></select></div>
+          </div>
+        </div>
+        <div class="card" data-screen-label="Personality">
+          <div class="h">Personality defaults</div>
+          <div class="hint">Shipping defaults — panel copy left, behavior spec right.</div>
+          <div class="grid2">
+            <div class="left">
+              <div>
+                <div style="font-size:11.5px;color:#aebad0;margin-bottom:4px">Tone</div>
+                <div class="chips"><span class="chip on">Kind + firm</span><span class="chip">Gentle</span><span class="chip">Blunt</span></div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;color:#aebad0;margin-bottom:4px">Teaching style</div>
+                <div class="chips">
+                  <span class="chip">Socratic</span>
+                  <span class="chip">Guided practice</span>
+                  <span class="chip">Feynman</span>
+                  <span class="chip">Just tell me</span>
+                  <span class="chip on">Adaptive DEFAULT</span>
+                </div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;color:#aebad0;margin-bottom:4px">Ambient presence</div>
+                <div class="chips"><span class="chip on">Quiet</span><span class="chip">Chatty</span><span class="chip">Silent</span></div>
+              </div>
+              <div>
+                <div style="font-size:11.5px;color:#aebad0;margin-bottom:4px">Verbosity</div>
+                <div class="chips"><span class="chip">Brief</span><span class="chip on">Balanced</span><span class="chip">Thorough</span></div>
+              </div>
+            </div>
+            <aside class="behavior" data-screen-label="Trait behavior">
+              <div class="beh-label">TEACHING STYLE</div>
+              <div style="margin-top:4px;font-weight:600;color:#eef2fb">Adaptive <span style="font-size:8px;color:var(--n1);border:1px solid var(--b1);padding:1px 5px;border-radius:4px">DEFAULT</span></div>
+              <div class="hint" style="margin-top:3px">Picks the right approach based on what you’re working on.</div>
+              <div class="beh-label" style="margin-top:9px">BEHAVIOR</div>
+              <div class="hint">Infer task type → Socratic / Guided practice / Feynman / Just tell me.</div>
+              <div class="hint">State the pick once, switch silently mid-session.</div>
+              <div class="hint">User never sees the dial.</div>
+            </aside>
+          </div>
+        </div>
+        <div class="card">
+          <div class="h">Three built-in hands</div>
+          <div class="hands">
+            <div class="hand"><span class="dot" style="background:#9b5fff"></span><b>Writer</b><div class="hint">Prose that lands in notes.</div><div class="limit">Notes-only by default.</div></div>
+            <div class="hand"><span class="dot" style="background:#8ad9ff"></span><b>Analyst</b><div class="hint">Reads → reports only.</div><div class="limit">No silent writes.</div></div>
+            <div class="hand"><span class="dot" style="background:#ffd319"></span><b>Archivist</b><div class="hint">Timeline tooling.</div><div class="limit">Not a second persona.</div></div>
+          </div>
+        </div>
+        <div class="card" data-screen-label="Heartbeat">
+          <div class="h">Heartbeat automations</div>
+          <div class="hb-row">
+            <div style="flex:1"><b>Vault cleanup</b><div class="hint">Near-duplicates + link rewire chrome — Run now → busy + QUEUED only.</div></div>
+            <button class="run" type="button">Run now</button>
+          </div>
+          <div class="hb-row">
+            <div style="flex:1"><b>Continuity / beta-style read</b><div class="hint">Pinned as suggestions.</div></div>
+            <button class="run" type="button">Run now</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-model" class="hidden">
+        <div class="page-title">Model &amp; keys</div>
+        <div class="page-sub">Bring your own AI — providers, models, tools limits, and privacy.</div>
+        <div class="card" data-screen-label="Provider Connect">
+          <div class="label">PROVIDER CONFIGURATION</div>
+          <div class="hint">Bring your own AI. A Mythos subscription is <b style="color:#c3cee2">not</b> a Claude — or any other — AI subscription: you connect your own login or key.</div>
+          <div class="bucket">
+            <div class="bucket-label">USE MY SUBSCRIPTION (CLI)</div>
+            <div class="hint">Log in with an account you already pay for. Mythos never resells it.</div>
+            <div class="provs">
+              <div class="prov on"><b>Claude</b><div class="status">Not installed</div></div>
+              <div class="prov soon"><b>OpenAI Codex</b><div class="status">Coming soon</div></div>
+              <div class="prov soon"><b>Google Gemini</b><div class="status">Coming soon</div></div>
+              <div class="prov soon"><b>GitHub Copilot</b><div class="status">Coming soon</div></div>
+              <div class="prov soon"><b>Cursor</b><div class="status">Coming soon</div></div>
+            </div>
+          </div>
+          <div class="bucket">
+            <div class="bucket-label">API KEY / CREDITS</div>
+            <div class="hint">Uses API credits — different from a subscription login.</div>
+            <div class="provs">
+              <div class="prov"><b>OpenRouter</b><div class="status">Key needed</div></div>
+              <div class="prov"><b>Paste key (OpenAI-compatible)</b><div class="status">Key needed</div></div>
+            </div>
+          </div>
+          <div class="bucket">
+            <div class="bucket-label">ON THIS COMPUTER</div>
+            <div class="hint">Runs on your own hardware. Nothing is sent anywhere.</div>
+            <div class="provs">
+              <div class="prov"><b>Ollama</b><div class="status good">Local</div></div>
+              <div class="prov"><b>LM Studio</b><div class="status good">Local</div></div>
+              <div class="prov"><b>llama.cpp</b><div class="status good">Local</div></div>
+            </div>
+          </div>
+          <div class="claude-login" data-screen-label="Install Claude foreshadow">
+            <b>Claude · Not installed</b>
+            <div class="hint" style="margin-top:6px">Install confirm → Installing… → partner-chat login card → Connected. OAuth / Desktop = Coming soon.</div>
+            <div class="row" style="margin-top:8px">
+              <span class="chip soon">Sign in with Claude (OAuth) PRIMARY</span>
+              <span class="chip soon">Use Claude Desktop</span>
+            </div>
+          </div>
+        </div>
+        <div class="card" data-screen-label="Tools">
+          <div class="h">Tools Mythos ships <span style="float:right;color:#4ade80;font-size:9.5px">● Running sandboxed</span></div>
+          <div class="hands">
+            <div class="hand"><b>Vault search</b><div class="hint">BUILT-IN</div></div>
+            <div class="hand"><b>Scene card</b><div class="hint">BUILT-IN</div></div>
+            <div class="hand"><b>Continuity flag</b><div class="hint">BUILT-IN</div></div>
+            <div class="hand"><b>Timeline note</b><div class="hint">BUILT-IN</div></div>
+          </div>
+        </div>
+        <div class="card" data-screen-label="Privacy">
+          <div class="h">Help improve Mythos</div>
+          <div class="hint">Always opt-in. Nothing is sent unless you pick it here.</div>
+          <div class="radio on"><b>Don’t send anything</b> — default</div>
+          <div class="radio"><b>Crash reports only</b></div>
+          <div class="radio"><b>Anonymous usage metadata</b></div>
+          <div class="row" style="margin-top:10px"><button class="run" type="button">Report this chat…</button></div>
+        </div>
+        <div class="card">
+          <div class="h">Hands &amp; files</div>
+          <div class="hint">Three hands — not four per-agent Settings cards. Name/voice live under Writing partner.</div>
+          <div class="hands">
+            <div class="hand"><span class="dot" style="background:#9b5fff"></span>Writer · HAND</div>
+            <div class="hand"><span class="dot" style="background:#8ad9ff"></span>Analyst · HAND</div>
+            <div class="hand"><span class="dot" style="background:#ffd319"></span>Archivist · HAND</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-queued" class="hidden">
+        <div class="page-title">Partner chat — Mid-task QUEUED</div>
+        <div class="page-sub">While a hand runs, messages tag QUEUED and drain in order.</div>
+        <div class="card">
+          <div class="h">Mythos · Archivist is working — messages queue</div>
+          <div class="claude-login">
+            <b>Log in to Claude to finish setup</b>
+            <div class="row" style="margin-top:8px">
+              <button class="run" type="button" style="background:linear-gradient(120deg,#00f0ff,#9b5fff);color:#0b0d17;border:none">Log in with Claude</button>
+              <button class="run" type="button">Later</button>
+            </div>
+            <div class="hint" style="margin-top:8px">The Claude CLI runs hidden in the background — no terminal, nothing to manage.</div>
+          </div>
+          <div class="queued"><span class="qtag">QUEUED</span> Check the Sunken Gate note for duplicates</div>
+          <div class="queued"><span class="qtag">QUEUED</span> Then refresh story questions</div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="zmap">walkthrough z-tier: dim 88 · ring 89 · bubble 90 · Getting Started reachable · Soft-FAIL CLEAR</div>
+  <script>
+    const pages = {
+      partner: document.getElementById('page-partner'),
+      model: document.getElementById('page-model'),
+      queued: document.getElementById('page-queued'),
+    };
+    window.__setPage = (id) => {
+      for (const [k, el] of Object.entries(pages)) {
+        if (!el) continue;
+        el.classList.toggle('hidden', k !== id);
+      }
+      document.querySelectorAll('.rail button').forEach((b) => {
+        b.classList.toggle('active', b.dataset.page === id || (id === 'partner' && b.dataset.page === 'partner'));
+      });
+      if (id === 'model') document.getElementById('tab-model').classList.add('active');
+      if (id === 'queued') document.getElementById('tab-queued').classList.add('active');
+    };
+    document.querySelectorAll('.rail button').forEach((b) => {
+      b.addEventListener('click', () => {
+        const id = b.dataset.page;
+        if (id === 'appearance' || id === 'editor') return;
+        window.__setPage(id === 'partner' ? 'partner' : id);
+      });
+    });
+  </script>
+</body>
+</html>

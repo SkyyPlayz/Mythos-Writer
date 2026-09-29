@@ -7,6 +7,8 @@ import './tokens.css';
 // the tokens it reads, so it always precedes component stylesheets in the CSS
 // bundle and a component can still override geometry at equal specificity.
 import './overlay-tier.css';
+// Slice C — walkthrough z-tier shell (88–90); no Demo/TourModal/coach-mark UI.
+import './walkthrough/walkthroughShell.css';
 // 0.5.4.5 concentric / press / frequency-gate chrome (MW-0545-ui).
 import './chrome-0545.css';
 import './index.css';

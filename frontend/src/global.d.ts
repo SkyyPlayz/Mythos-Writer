@@ -578,6 +578,36 @@ interface AppSettings {
   };
   /** Beta 3 M22 / SKY-11411: user renames for the named agents. Absent key = default display name. */
   agentNames?: Partial<Record<'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader' | 'alphaReader' | 'storylineConsultant' | 'lineEditor', string>>;
+  /**
+   * Slice C — Writing partner + Model & keys prefs (personality, heartbeat chrome,
+   * provider buckets, Claude CLI stubs, privacy radios). Identity name still lives
+   * on agentNames.brainstorm (B partner store). partner.md vault files = Slice D.
+   */
+  writingPartner?: {
+    icon?: 'sparkle' | 'feather' | 'moon' | 'star' | 'eye' | 'compass' | 'flame' | 'gem';
+    tone?: string;
+    teach?: string;
+    register?: string;
+    ambient?: string;
+    verbosity?: string;
+    memory?: boolean;
+    craft?: boolean;
+    initiative?: boolean;
+    modelPartner?: string;
+    modelWriter?: string;
+    modelAnalyst?: string;
+    modelArchivist?: string;
+    webSearch?: boolean;
+    claudeMemory?: boolean;
+    inventTools?: boolean;
+    customToolsOff?: boolean;
+    heartbeatOn?: boolean;
+    heartbeat?: Partial<Record<'dedupe' | 'continuity' | 'questions' | 'timeline', boolean>>;
+    modelKeysProvider?: string;
+    claudeCli?: 'none' | 'installing' | 'login' | 'ready';
+    claudeCliMode?: 'app' | 'cli';
+    telemetryLevel?: 'off' | 'crash' | 'usage';
+  };
   /** Dark-only (MYT-517). 'high-contrast' is the WCAG accessibility overlay,
    *  not a separate palette. Legacy 'light'/'system' values normalize to 'dark'. */
   theme: 'dark' | 'high-contrast';

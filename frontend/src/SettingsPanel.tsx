@@ -22,8 +22,9 @@ import ApiKeySection from './components/SettingsPanel/sections/ApiKeySection';
 import AccountSection from './components/SettingsPanel/sections/AccountSection';
 import VaultPathsSection from './components/SettingsPanel/sections/VaultPathsSection';
 import VaultHealthSection from './components/SettingsPanel/sections/VaultHealthSection';
-import AgentsSection from './components/SettingsPanel/sections/AgentsSection';
 import AutoLinkerSection from './components/SettingsPanel/sections/AutoLinkerSection';
+import WritingPartnerSection from './partner/WritingPartnerSection';
+import ModelKeysSection from './partner/ModelKeysSection';
 import VaultAutoLinkerSection from './components/SettingsPanel/sections/VaultAutoLinkerSection';
 import JournalSection from './components/SettingsPanel/sections/JournalSection';
 import SceneFieldsSection from './components/SettingsPanel/sections/SceneFieldsSection';
@@ -112,7 +113,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [savedOk, setSavedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [micDevices, setMicDevices] = useState<MicDevice[]>([]);
+  const [, setMicDevices] = useState<MicDevice[]>([]);
 
   // SKY-9: Vault paths state. `vaults` mirrors the persisted Story Vault +
   // Notes Vault roots; `vaultsDirty` flags an unsaved local edit so the Save
@@ -143,12 +144,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     brainstorm: { ...DEFAULT_AGENT_OVERRIDE },
     archive: { ...DEFAULT_AGENT_OVERRIDE },
     betaReader: { ...DEFAULT_AGENT_OVERRIDE },
-  });
-  const [agentTestStatus, setAgentTestStatus] = useState<Record<AgentName, TestConnectionStatus>>({
-    writingAssistant: 'idle', brainstorm: 'idle', archive: 'idle', betaReader: 'idle',
-  });
-  const [agentTestMsg, setAgentTestMsg] = useState<Record<AgentName, string>>({
-    writingAssistant: '', brainstorm: '', archive: '', betaReader: '',
   });
   // Security warning: non-localhost endpoint confirmation. Not currently wired
   // to a producer (kept for parity with the pre-SKY-5694 monolith — no
@@ -398,12 +393,15 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
   const refreshMicDevices = useCallback(() => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
-    navigator.mediaDevices.enumerateDevices().then((devices) => {
-      const mics = devices
-        .filter((d) => d.kind === 'audioinput')
-        .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
-      setMicDevices(mics);
-    }).catch(() => {});
+    void Promise.resolve(navigator.mediaDevices.enumerateDevices())
+      .then((devices) => {
+        if (!Array.isArray(devices)) return;
+        const mics = devices
+          .filter((d) => d.kind === 'audioinput')
+          .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
+        setMicDevices(mics);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => { refreshMicDevices(); }, [refreshMicDevices]);
@@ -421,23 +419,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const keyIsConfigured = Boolean(settings.apiKey);
   const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput, providerKind) : null;
 
-  // Beta 3 M22: NonNullable so the optional betaReader slot is editable with
-  // the same generic setter (the slot is normalized present at settings load).
-  const setAgentField = useCallback(<A extends keyof AppSettings['agents'], K extends keyof NonNullable<AppSettings['agents'][A]>>(
-    agent: A,
-    field: K,
-    value: NonNullable<AppSettings['agents'][A]>[K],
-  ) => {
-    setSettings((prev) => ({
-      ...prev,
-      agents: {
-        ...prev.agents,
-        [agent]: { ...(prev.agents[agent] ?? BETA_READER_DEFAULTS), [field]: value },
-      },
-    }));
-    setSavedOk(false);
-  }, []);
-
   // Beta 3 M22: agent renames (prototype agentNames, HTML 3245). Empty input
   // clears the override so the default display name comes back.
   const setAgentDisplayName = useCallback((agent: AgentName, name: string) => {
@@ -446,63 +427,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       if (name.trim()) next[agent] = name;
       else delete next[agent];
       return { ...prev, agentNames: next };
-    });
-    setSavedOk(false);
-  }, []);
-
-  // SKY-908 — single source of truth for per-category auto-apply edits.
-  // On first edit, materialises a full map seeded with the current enabled
-  // state so the persisted JSON is unambiguous (no implicit "all enabled"
-  // shorthand once the user has expressed an opinion).
-  const setCategoryAutoApply = useCallback((
-    agent: keyof AppSettings['agents'],
-    category: SuggestionCategory,
-    enabled: boolean,
-  ) => {
-    setSettings((prev) => {
-      const current = prev.agents[agent] ?? BETA_READER_DEFAULTS;
-      const existing = current.autoApplyCategories ?? {};
-      const seeded: Record<SuggestionCategory, boolean> = {
-        'punctuation': existing.punctuation ?? true,
-        'spelling': existing.spelling ?? true,
-        'grammar': existing.grammar ?? true,
-        'sentence-structure': existing['sentence-structure'] ?? true,
-        'style-tone': existing['style-tone'] ?? true,
-        'other': existing.other ?? true,
-      };
-      seeded[category] = enabled;
-      return {
-        ...prev,
-        agents: {
-          ...prev.agents,
-          [agent]: { ...current, autoApplyCategories: seeded },
-        },
-      };
-    });
-    setSavedOk(false);
-  }, []);
-
-  // Beta 4 M28 (B4-8) — per-category certainty slider. At/above the threshold
-  // a suggestion auto-applies (snapshot-first); below it, it lands in the
-  // suggestion inbox. Only the edited key is materialised; absent keys fall
-  // back to the agent's confidenceThreshold in the evaluator.
-  const setCategoryAutoApplyThreshold = useCallback((
-    agent: keyof AppSettings['agents'],
-    category: SuggestionCategory,
-    threshold: number,
-  ) => {
-    setSettings((prev) => {
-      const current = prev.agents[agent] ?? BETA_READER_DEFAULTS;
-      return {
-        ...prev,
-        agents: {
-          ...prev.agents,
-          [agent]: {
-            ...current,
-            autoApplyThresholds: { ...(current.autoApplyThresholds ?? {}), [category]: threshold },
-          },
-        },
-      };
     });
     setSavedOk(false);
   }, []);
@@ -694,42 +618,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       setTestConnectionMsg(e instanceof Error ? e.message : 'Connection failed');
     }
   }, [providerKind, providerApiKey, providerApiKeyDirty, providerBaseUrl, providerModel, settings.provider?.apiKey]);
-
-  const handleAgentTestConnection = useCallback(async (agentName: AgentName) => {
-    setAgentTestStatus((prev) => ({ ...prev, [agentName]: 'testing' }));
-    setAgentTestMsg((prev) => ({ ...prev, [agentName]: '' }));
-    const ov = agentOverrides[agentName];
-    try {
-      const result = await window.api.settingsTestConnection({
-        kind: ov.kind,
-        apiKey: ov.apiKeyDirty ? ov.apiKey : (settings.agents[agentName]?.provider?.apiKey ?? ''),
-        baseUrl: ov.baseUrl || undefined,
-        model: ov.model,
-      });
-      if (result?.ok) {
-        setAgentTestStatus((prev) => ({ ...prev, [agentName]: 'ok' }));
-        setAgentTestMsg((prev) => ({ ...prev, [agentName]: 'Connection successful' }));
-      } else {
-        setAgentTestStatus((prev) => ({ ...prev, [agentName]: 'error' }));
-        setAgentTestMsg((prev) => ({ ...prev, [agentName]: result?.error ?? 'Connection failed' }));
-      }
-    } catch (e) {
-      setAgentTestStatus((prev) => ({ ...prev, [agentName]: 'error' }));
-      setAgentTestMsg((prev) => ({ ...prev, [agentName]: e instanceof Error ? e.message : 'Connection failed' }));
-    }
-  }, [agentOverrides, settings.agents]);
-
-  const setAgentOverride = useCallback(<K extends keyof AgentOverrideState>(
-    agentName: AgentName,
-    field: K,
-    value: AgentOverrideState[K],
-  ) => {
-    setAgentOverrides((prev) => ({
-      ...prev,
-      [agentName]: { ...prev[agentName], [field]: value },
-    }));
-    setSavedOk(false);
-  }, []);
 
   // ── Liquid Neon helpers ──────────────────────────────────────────────────
 
@@ -942,12 +830,20 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               {SETTINGS_CATEGORIES.find((c) => c.id === settingsCategory)?.label}
             </div>
             <p className="settings-page-header__sub">
-              {/* M11a: manual mode swaps the AI Agents one-liner (prototype 6607). */}
+              {/* Slice C: Model & keys manual-mode one-liner. */}
               {settingsCategory === 'agents' && !aiMasterOn
                 ? 'AI is switched off — every tool is manual. Turn it back on to configure provider, models and autonomy.'
                 : SETTINGS_CATEGORIES.find((c) => c.id === settingsCategory)?.description}
             </p>
           </header>
+
+          {settingsCategory === 'writingPartner' && (
+            <WritingPartnerSection
+              settings={settings}
+              setSettings={setSettings}
+              setAgentDisplayName={setAgentDisplayName}
+            />
+          )}
 
           {settingsCategory === 'agents' && (
             <>
@@ -956,6 +852,26 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               <AiMasterSection settings={settings} setSettings={setSettings} />
               {aiMasterOn && (
               <>
+              {/* Slice C: Model & keys — three buckets + Claude stubs + privacy.
+                  Soft-FAIL: no four per-agent Settings cards as Writing partner primary. */}
+              <ModelKeysSection
+                settings={settings}
+                setSettings={setSettings}
+                onTestConnection={handleTestConnection}
+                testStatus={testConnectionStatus}
+                testMsg={testConnectionMsg}
+                providerApiKey={providerApiKey}
+                setProviderApiKey={setProviderApiKey}
+                providerApiKeyDirty={providerApiKeyDirty}
+                setProviderApiKeyDirty={setProviderApiKeyDirty}
+                providerBaseUrl={providerBaseUrl}
+                setProviderBaseUrl={setProviderBaseUrl}
+                showApiKey={showApiKey}
+                setShowApiKey={setShowApiKey}
+                setSavedOk={setSavedOk}
+              />
+
+              {/* Legacy provider fields — still drive save/test wiring; bucket UI above is primary. */}
               <ProviderSection
                 providerKind={providerKind}
                 setProviderKind={setProviderKind}
@@ -985,11 +901,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 setModelListError={setModelListError}
               />
 
-              {/* SKY-11219: this legacy key is Anthropic/OpenAI/custom-only
-                  (ProviderSection already hides its own key field for
-                  providers that need none) — showing it for a keyless local
-                  provider like LM Studio/Ollama falsely implies a cloud key
-                  is required. */}
               {PROVIDER_OPTIONS.find((p) => p.value === providerKind)?.needsKey && (
                 <ApiKeySection
                   providerKind={providerKind}
@@ -1005,31 +916,9 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 />
               )}
 
-              <AgentsSection
-                settings={settings}
-                setSettings={setSettings}
-                providerKind={providerKind}
-                providerModel={providerModel}
-                modelList={modelList}
-                modelListStatus={modelListStatus}
-                agentOverrides={agentOverrides}
-                agentTestStatus={agentTestStatus}
-                agentTestMsg={agentTestMsg}
-                setAgentField={setAgentField}
-                setCategoryAutoApply={setCategoryAutoApply}
-                setCategoryAutoApplyThreshold={setCategoryAutoApplyThreshold}
-                setAgentOverride={setAgentOverride}
-                onAgentTest={handleAgentTestConnection}
-                micDevices={micDevices}
-                refreshMicDevices={refreshMicDevices}
-                setAgentDisplayName={setAgentDisplayName}
-              />
-
               <AutoLinkerSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
 
               <JournalSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
-
-              {/* S2-6: ArchiveAgentSection removed with Archivist hand. */}
 
               <VoiceSection
                 settings={settings}

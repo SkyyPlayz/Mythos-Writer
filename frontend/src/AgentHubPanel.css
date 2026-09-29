@@ -746,6 +746,95 @@
   color: #8e9db8;
 }
 
+/* Slice C — Claude connect login card + Mid-task QUEUED */
+.ahp-claude-login {
+  margin: 8px 10px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: rgba(255, 178, 122, 0.08);
+  border: 1px solid rgba(255, 178, 122, 0.45);
+  animation: lnFadeUp 0.18s ease;
+}
+
+.ahp-claude-login__title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #eef2fb;
+}
+
+.ahp-claude-login__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.ahp-claude-login__primary {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: none;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  color: #0b0d17;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ahp-claude-login__later {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: transparent;
+  color: #aebad0;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ahp-claude-login__note {
+  margin: 8px 0 0;
+  font-size: 9.5px;
+  color: #7686a2;
+  line-height: 1.45;
+}
+
+.ahp-queued {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 10px 0;
+}
+
+.ahp-queued__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 6px 9px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed rgba(0, 240, 255, 0.35);
+  font-size: 11.5px;
+  color: #dbe4f5;
+}
+
+.ahp-queued__tag {
+  flex: none;
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--n1, #00f0ff);
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid var(--b1, rgba(0, 240, 255, 0.45));
+}
+
+.ahp-web-search-chip {
+  margin: 4px 12px 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #8ee6b0;
+}
+
 .ahp-suggestions-tab,
 .ahp-notes-analysis {
   display: flex;

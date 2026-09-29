@@ -15,12 +15,15 @@ export default function VoiceSection({ settings, setSettings, providerKind, setS
 
   const refreshMicDevices = useCallback(() => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
-    navigator.mediaDevices.enumerateDevices().then((devices) => {
-      const mics = devices
-        .filter((d) => d.kind === 'audioinput')
-        .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
-      setMicDevices(mics);
-    }).catch(() => {});
+    void Promise.resolve(navigator.mediaDevices.enumerateDevices())
+      .then((devices) => {
+        if (!Array.isArray(devices)) return;
+        const mics = devices
+          .filter((d) => d.kind === 'audioinput')
+          .map((d, i) => ({ deviceId: d.deviceId, label: d.label || `Microphone ${i + 1}` }));
+        setMicDevices(mics);
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => { refreshMicDevices(); }, [refreshMicDevices]);

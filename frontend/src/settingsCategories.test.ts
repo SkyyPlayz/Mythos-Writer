@@ -16,11 +16,16 @@ import {
 // Sections were extracted to components/SettingsPanel/sections/ (SKY-3216/D2).
 // The test now scans all source files that contribute to the rendered output.
 const SECTION_DIR = resolve(__dirname, 'components/SettingsPanel/sections');
+const PARTNER_DIR = resolve(__dirname, 'partner');
 const SOURCE_FILES = [
   resolve(__dirname, 'SettingsPanel.tsx'),
   ...readdirSync(SECTION_DIR)
     .filter((f) => f.endsWith('.tsx') || f.endsWith('.ts'))
     .map((f) => resolve(SECTION_DIR, f)),
+  // Slice C — Writing partner / Model & keys live under frontend/src/partner/
+  ...readdirSync(PARTNER_DIR)
+    .filter((f) => f.endsWith('.tsx') || f.endsWith('.ts'))
+    .map((f) => resolve(PARTNER_DIR, f)),
 ];
 
 const RENDERED_IDS = new Set<string>();
@@ -41,9 +46,10 @@ describe('SETTINGS_CATEGORIES registry (SKY-3215)', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('SKY-10668: rail order matches the prototype, account last by owner ruling', () => {
+  it('Slice C: rail order Writing partner + Model & keys, account last', () => {
     expect(SETTINGS_CATEGORIES.map((c) => c.id)).toEqual([
       'appearance',
+      'writingPartner',
       'agents',
       'editor',
       'vaults',
@@ -54,6 +60,12 @@ describe('SETTINGS_CATEGORIES registry (SKY-3215)', () => {
       // (Skyy, 2026-08-19, SKY-10668 change 3).
       'account',
     ]);
+  });
+
+  it('Slice C: AI Agents label becomes Model & keys; Writing partner present', () => {
+    expect(SETTINGS_CATEGORIES.find((c) => c.id === 'agents')?.label).toBe('Model & keys');
+    expect(SETTINGS_CATEGORIES.find((c) => c.id === 'writingPartner')?.label).toBe('Writing partner');
+    expect(SETTINGS_CATEGORIES.some((c) => c.label === 'AI Agents')).toBe(false);
   });
 
   it('has no duplicate section ids across categories', () => {
