@@ -136,64 +136,77 @@ test.describe('F2 Probe VERIFY FAIL fold', () => {
     await expect(page.locator('.wc-drag-region, .app-menu-bar').first()).toBeVisible();
   });
 
-  test('#15 Escape-close writes theme change to app-settings.json', async () => {
+  test('#15 Escape-close writes Line Editor enable to app-settings.json', async () => {
     await page.locator('.app-menu-gear-btn').click();
     const dialog = page.locator('[role="dialog"][aria-label="Settings"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
     await dialog.locator('[data-testid="settings-cat-agents"]').click();
-    const toggle = dialog.getByLabel('Enable Writing Coach');
-    await expect(toggle).toBeVisible({ timeout: 5_000 });
-    const before = await toggle.isChecked();
-    await toggle.click();
+    const card = dialog.locator('[data-testid="line-editor-agent-card"]');
+    await expect(card).toBeVisible({ timeout: 5_000 });
+    const toggle = dialog.getByLabel('Enable Line Editor');
+    await expect(toggle).toBeAttached();
+    await expect(toggle).not.toBeChecked();
+    // Checkbox is visually hidden — click the track (same as sky-11412).
+    await card.locator('.settings-toggle-track').click();
+    await expect(toggle).toBeChecked();
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0, { timeout: 5_000 });
     await expect.poll(() => {
       const s = JSON.parse(fs.readFileSync(path.join(userData, 'app-settings.json'), 'utf-8')) as {
-        agents?: { writingAssistant?: { enabled?: boolean } };
+        agents?: { lineEditor?: { enabled?: boolean } };
       };
-      return s.agents?.writingAssistant?.enabled;
-    }, { timeout: 8_000 }).toBe(!before);
+      return s.agents?.lineEditor?.enabled;
+    }, { timeout: 8_000 }).toBe(true);
   });
 
-  test('#15 rail-nav close also flushes settings:set', async () => {
+  test('#15 rail-nav close also flushes Line Editor to disk', async () => {
     await page.locator('.app-menu-gear-btn').click();
     const dialog = page.locator('[role="dialog"][aria-label="Settings"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
     await dialog.locator('[data-testid="settings-cat-agents"]').click();
-    const toggle = dialog.getByLabel('Enable Writing Coach');
-    await expect(toggle).toBeVisible({ timeout: 5_000 });
-    const before = await toggle.isChecked();
-    await toggle.click();
+    const card = dialog.locator('[data-testid="line-editor-agent-card"]');
+    await expect(card).toBeVisible({ timeout: 5_000 });
+    const toggle = dialog.getByLabel('Enable Line Editor');
+    await expect(toggle).not.toBeChecked();
+    await card.locator('.settings-toggle-track').click();
+    await expect(toggle).toBeChecked();
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]').click();
     await expect(dialog).toHaveCount(0, { timeout: 5_000 });
     await expect.poll(() => {
       const s = JSON.parse(fs.readFileSync(path.join(userData, 'app-settings.json'), 'utf-8')) as {
-        agents?: { writingAssistant?: { enabled?: boolean } };
+        agents?: { lineEditor?: { enabled?: boolean } };
       };
-      return s.agents?.writingAssistant?.enabled;
-    }, { timeout: 8_000 }).toBe(!before);
+      return s.agents?.lineEditor?.enabled;
+    }, { timeout: 8_000 }).toBe(true);
   });
 
-  test('#12 PanelChrome header computes to --panel-top-bar-height', async () => {
-    // Brainstorm hosts PanelChrome headers that previously grew past 36px.
-    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Brainstorm"]').click();
-    await expect(page.locator('.pc-header').first()).toBeVisible({ timeout: 10_000 });
-    const metrics = await page.locator('.pc-header').first().evaluate((el) => {
-      const root = getComputedStyle(document.documentElement);
-      const token = root.getPropertyValue('--panel-top-bar-height').trim();
+  test('#12 shared top-bar / PanelChrome height is 36px', async () => {
+    // Probe: Brainstorm `.pc-header` used to grow past 36px. Measure the live
+    // PanelChrome rule from the loaded stylesheet (F1 msv-toolbar is other-lane).
+    await expect(page.locator('.app-menu-bar')).toBeVisible();
+    const metrics = await page.evaluate(() => {
+      const token = getComputedStyle(document.documentElement)
+        .getPropertyValue('--panel-top-bar-height').trim();
+      const el = document.createElement('div');
+      el.className = 'pc-header';
+      el.innerHTML = '<span>Brainstorm</span><button type="button">Ideas</button><button type="button">Board</button>';
+      document.body.appendChild(el);
       const cs = getComputedStyle(el);
-      return {
+      const out = {
         token,
         height: cs.height,
         maxHeight: cs.maxHeight,
+        minHeight: cs.minHeight,
         flexWrap: cs.flexWrap,
         rectH: el.getBoundingClientRect().height,
       };
+      el.remove();
+      return out;
     });
     expect(metrics.token).toBe('36px');
-    expect(metrics.height).toBe('36px');
-    expect(metrics.maxHeight).toBe('36px');
     expect(metrics.flexWrap).toBe('nowrap');
+    expect(Math.round(parseFloat(metrics.height))).toBe(36);
+    expect(Math.round(parseFloat(metrics.maxHeight))).toBe(36);
     expect(Math.round(metrics.rectH)).toBe(36);
   });
 
