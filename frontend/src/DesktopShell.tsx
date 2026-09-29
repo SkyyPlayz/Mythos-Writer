@@ -1953,11 +1953,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // click), then jump the panel to that vault's settings.
   const handleVaultOpenSettings = useCallback((vaultId: string) => {
     switchToVault(vaultId).then(() => {
-      // Navigate in place — SettingsPanel syncs initialCategory via useEffect.
-      setSettingsInitialCategory('vaults');
+      // Soft: repeating "Settings → this vault" while Settings is already
+      // open must not yank the user onto the Vault tab — only jump there
+      // when opening Settings fresh.
+      if (!settingsOpen) setSettingsInitialCategory('vaults');
       setSettingsOpen(true);
     });
-  }, [switchToVault]);
+  }, [switchToVault, settingsOpen]);
 
   const persistManifest = useCallback(async (m: Manifest) => {
     try {

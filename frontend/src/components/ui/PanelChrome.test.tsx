@@ -154,16 +154,31 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(btn).not.toHaveAttribute('tabindex', '-1');
   });
 
-  // W0.3 / Critic #6: narrow panels wrap via @container; default stays 36px (F2#12).
+  // W0.3 / Critic #6: narrow panels wrap via @container on .pc-header-host
+  // (production never mounts .pc-chrome); default stays 36px (F2#12).
   it('W0.3: header/actions wrap under @container ≤320px; default is 36px bar', () => {
     const header = PANEL_CSS.match(/\.pc-header\s*\{([^}]*)\}/);
     const actions = PANEL_CSS.match(/\.pc-header-actions\s*\{([^}]*)\}/);
+    const host = PANEL_CSS.match(/\.pc-header-host\s*\{([^}]*)\}/);
     expect(header?.[1] ?? '').toContain('min-height: var(--panel-top-bar-height');
     expect(header?.[1] ?? '').toContain('height: var(--panel-top-bar-height');
     expect(header?.[1] ?? '').toContain('flex-wrap: nowrap');
     expect(actions?.[1] ?? '').toContain('flex-shrink: 1');
     expect(actions?.[1] ?? '').toContain('min-width: 0');
+    expect(host?.[1] ?? '').toContain('container-type: inline-size');
+    expect(host?.[1] ?? '').toContain('container-name: pc-chrome');
     expect(PANEL_CSS).toMatch(/@container\s+pc-chrome\s*\(max-width:\s*320px\)/);
-    expect(PANEL_CSS).toMatch(/container-type:\s*inline-size/);
+    // Container must NOT live only on unrendered .pc-chrome.
+    const chrome = PANEL_CSS.match(/\.pc-chrome\s*\{([^}]*)\}/);
+    expect(chrome?.[1] ?? '').not.toContain('container-type');
+  });
+
+  it('renders pc-header-host as the @container ancestor of .pc-header', () => {
+    render(<PanelHeader title="Brainstorm Center" actions={<button>Switch</button>} />);
+    const host = document.querySelector('.pc-header-host');
+    const header = document.querySelector('.pc-header');
+    expect(host).toBeTruthy();
+    expect(header).toBeTruthy();
+    expect(host!.contains(header!)).toBe(true);
   });
 });

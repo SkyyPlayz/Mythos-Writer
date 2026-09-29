@@ -91,6 +91,9 @@ interface Props {
   activeVaultRoot?: string;
 }
 
+/** Shield 5(a) / N2: exact fixed string the main process returns on appDataCleared. */
+export const APP_DATA_CLEARED_MESSAGE = 'App data was cleared — restart Mythos Writer to continue.';
+
 const SETTINGS_CATS: readonly SettingsCategoryId[] = SETTINGS_CATEGORIES.map((c) => c.id);
 type SettingsCat = SettingsCategoryId;
 
@@ -238,8 +241,15 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
   const [bgPreviewUrl, setBgPreviewUrl] = useState<string | null>(null);
   const [resetConfirm, setResetConfirm] = useState(false);
 
+  // Critic r3 #3: full settingsGet hydrate once on mount. When activeVaultRoot
+  // changes while Settings stays open, only overlay Appearance for the new
+  // vault — never clobber unsaved Model & keys / provider / agent edits.
+  const settingsHydratedRef = useRef(false);
+
   useEffect(() => {
+    let cancelled = false;
     window.api.settingsGet().then((rawSettings) => {
+      if (cancelled) return;
       // Beta 3 M22: betaReader is optional in the AppSettings type (pre-M22
       // files); normalize once at load so the panel can index it directly.
       let s: AppSettings = rawSettings.agents.betaReader
@@ -267,33 +277,52 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
       const vaultApp: VaultAppearanceSettings | undefined =
         activeVaultRoot ? s.vaultAppearance?.[activeVaultRoot] : undefined;
 
-      // Overlay vault-specific appearance onto the settings state so the
-      // Appearance section shows values for the current vault, not globals.
       const effectiveTheme = vaultApp?.theme ?? s.theme;
       const effectiveLiquidNeonV2 = vaultApp?.liquidNeonV2 ?? s.liquidNeonV2;
+      const effectiveLiquidNeon = vaultApp?.liquidNeon ?? s.liquidNeon;
+
+      const applyAppearanceOverlay = () => {
+        if (effectiveLiquidNeon) {
+          const raw = effectiveLiquidNeon;
+          // SKY-3219 / GH#612: infer bgMode:'image' for legacy settings with a
+          // stored file path but no explicit bgMode field.
+          const bgModeOverride: Partial<LiquidNeonPrefs> =
+            (raw.background && raw.background !== 'default' && !raw.bgMode)
+              ? { bgMode: 'image' }
+              : {};
+          setLg({ ...LG_DEFAULTS, ...raw, ...bgModeOverride });
+          const bg = raw.background;
+          if (bg && bg !== 'default') {
+            window.api.loadBgImage?.(bg)
+              .then((res: { dataUrl: string | null }) => { if (!cancelled && res?.dataUrl) setBgPreviewUrl(res.dataUrl); })
+              .catch(() => {});
+          } else {
+            setBgPreviewUrl(null);
+          }
+        }
+      };
+
+      if (settingsHydratedRef.current) {
+        // Vault switch mid-open: Appearance only — preserve dirty Model & keys.
+        setSettings((prev) => ({
+          ...prev,
+          theme: effectiveTheme,
+          ...(effectiveLiquidNeonV2 !== undefined ? { liquidNeonV2: effectiveLiquidNeonV2 } : {}),
+          vaultAppearance: s.vaultAppearance ?? prev.vaultAppearance,
+        }));
+        applyAppearanceOverlay();
+        return;
+      }
+
+      // Overlay vault-specific appearance onto the settings state so the
+      // Appearance section shows values for the current vault, not globals.
       setSettings({
         ...s,
         theme: effectiveTheme,
         ...(effectiveLiquidNeonV2 !== undefined ? { liquidNeonV2: effectiveLiquidNeonV2 } : {}),
       });
+      applyAppearanceOverlay();
 
-      const effectiveLiquidNeon = vaultApp?.liquidNeon ?? s.liquidNeon;
-      if (effectiveLiquidNeon) {
-        const raw = effectiveLiquidNeon;
-        // SKY-3219 / GH#612: infer bgMode:'image' for legacy settings with a
-        // stored file path but no explicit bgMode field.
-        const bgModeOverride: Partial<LiquidNeonPrefs> =
-          (raw.background && raw.background !== 'default' && !raw.bgMode)
-            ? { bgMode: 'image' }
-            : {};
-        setLg({ ...LG_DEFAULTS, ...raw, ...bgModeOverride });
-        const bg = raw.background;
-        if (bg && bg !== 'default') {
-          window.api.loadBgImage?.(bg)
-            .then((res: { dataUrl: string | null }) => { if (res?.dataUrl) setBgPreviewUrl(res.dataUrl); })
-            .catch(() => {});
-        }
-      }
       if (s.provider) {
         setProviderKind(s.provider.kind as ProviderKind);
         setProviderBaseUrl(s.provider.baseUrl ?? '');
@@ -330,15 +359,14 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
           ? { ...s.navConfig, items: mergeNavConfigItems(s.navConfig.items, NAV_RAIL_DEFAULTS.items) }
           : NAV_RAIL_DEFAULTS,
       );
+      settingsHydratedRef.current = true;
       setLoading(false);
     }).catch(() => {
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     });
-    // SKY-11237: activeVaultRoot is read above to overlay per-vault appearance
-    // onto the loaded settings, so a change in the active vault must re-run the
-    // load. In practice the panel opens per-vault and this prop is stable for
-    // the dialog's lifetime, so this is a no-op at runtime — but including it
-    // keeps the overlay honest if the active vault ever changes while mounted.
+    return () => { cancelled = true; };
+    // SKY-11237 / Critic #3: activeVaultRoot re-runs for Appearance overlay only
+    // after first hydrate (see settingsHydratedRef branch above).
   }, [fetchModels, activeVaultRoot]);
 
   // SKY-1902: Move focus into the dialog once content has loaded. The mount-time
@@ -513,7 +541,7 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
     ) {
       const errMsg = typeof result.error === 'string' ? result.error.trim() : '';
       // Shield 5(a): appDataCleared uses this exact fixed string.
-      if (errMsg === 'App data was cleared — restart Mythos Writer to continue.') {
+      if (errMsg === APP_DATA_CLEARED_MESSAGE) {
         throw new Error(errMsg);
       }
       // URL / voice / STT-TTS and other saved:false refusals — fixed generic copy.
@@ -554,7 +582,7 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
         // Other save failures (thrown stacks/paths) stay on the generic copy.
         const msg = err instanceof Error ? err.message : '';
         setSaveError(
-          msg === 'App data was cleared — restart Mythos Writer to continue.'
+          msg === APP_DATA_CLEARED_MESSAGE
             ? msg
             : "Couldn't save settings. Try again.",
         );
@@ -802,7 +830,7 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
       setSaveError(
-        msg === 'App data was cleared — restart Mythos Writer to continue.'
+        msg === APP_DATA_CLEARED_MESSAGE
           ? msg
           : "Couldn't save settings. Try again.",
       );
