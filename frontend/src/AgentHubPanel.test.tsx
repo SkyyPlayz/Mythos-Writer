@@ -46,7 +46,8 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     expect(screen.queryByTestId('ahp-agent-row-brainstorm')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ahp-agent-row-beta-reader')).not.toBeInTheDocument();
     expect(await screen.findByTestId('partner-card')).toBeInTheDocument();
-    expect(screen.getByTestId('ahp-past-chats')).toBeInTheDocument();
+    expect(screen.getByTestId('ahp-earlier-chats')).toBeInTheDocument();
+    expect(screen.getByTestId('ahp-writer-tips')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-action-update-timeline')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-action-beta-read')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-action-writer-scan')).toBeInTheDocument();

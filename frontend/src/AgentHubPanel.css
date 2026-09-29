@@ -636,33 +636,27 @@
   min-height: 100%;
 }
 
-.ahp-past-chats {
+.ahp-earlier-chats {
   margin: 0 8px;
 }
 
-.ahp-past-chats__toggle {
-  width: 100%;
-  display: flex;
+.ahp-earlier-chats__link {
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  color: #c8d3e7;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: #8e9db8;
+  font-size: 12px;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  text-decoration: underline;
+  text-underline-offset: 2px;
   cursor: pointer;
 }
 
-.ahp-past-chats__count {
-  margin-left: auto;
-  color: #8e9db8;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
+.ahp-earlier-chats__link:hover {
+  color: #c8d3e7;
 }
 
 .ahp-past-chats__menu {
@@ -671,6 +665,12 @@
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(8, 10, 18, 0.55);
+}
+
+.ahp-writer-tips {
+  margin: 0 8px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .ahp-actions,

@@ -5285,6 +5285,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               'beta-reader': appSettings?.agents?.betaReader?.enabled ?? true,
             }}
             continuityCount={continuityCount}
+            onOpenPartnerHistory={() => {
+              setSettingsInitialCategory('agents');
+              setSettingsOpenToken((t) => t + 1);
+              setSettingsOpen(true);
+              window.dispatchEvent(new CustomEvent('mythos:open-session-history', { detail: { agent: 'brainstorm' } }));
+            }}
           />
         );
       case 'archive-continuity':
@@ -7487,6 +7493,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             'beta-reader': appSettings?.agents?.betaReader?.enabled ?? true,
           }}
           continuityCount={continuityCount}
+          onOpenPartnerHistory={() => {
+            setSettingsInitialCategory('agents');
+            setSettingsOpenToken((t) => t + 1);
+            setSettingsOpen(true);
+            window.dispatchEvent(new CustomEvent('mythos:open-session-history', { detail: { agent: 'brainstorm' } }));
+          }}
           continuityPanel={
             <ContinuityPanel
               scene={activeSceneForSidebar}
