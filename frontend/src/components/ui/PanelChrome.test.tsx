@@ -150,12 +150,52 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(btn).not.toHaveAttribute('tabindex', '-1');
   });
 
-  // W0.3 (GAP P0#3): header rows must be wrapping flex layouts so buttons and
-  // dropdowns never overlap at 280–320px right-panel widths.
-  it('header row wraps at narrow panel widths instead of overlapping (W0.3)', () => {
+  // F2#12 / Probe: fixed shared top-bar height — no wrap/padding growth.
+  it('header row is fixed-height nowrap (F2#12)', () => {
     const header = PANEL_CSS.match(/\.pc-header\s*\{([^}]*)\}/);
-    expect(header?.[1] ?? '').toContain('flex-wrap: wrap');
-    const actions = PANEL_CSS.match(/\.pc-header-actions\s*\{([^}]*)\}/);
-    expect(actions?.[1] ?? '').toContain('flex-wrap: wrap');
+    expect(header?.[1] ?? '').toContain('flex-wrap: nowrap');
+    expect(header?.[1] ?? '').toContain('height: var(--panel-top-bar-height');
+    expect(header?.[1] ?? '').toContain('max-height: var(--panel-top-bar-height');
+  });
+
+  it('F2#12: rendered header respects fixed 36px token (no wrap growth)', () => {
+    const style = document.createElement('style');
+    // jsdom does not expand var() in getComputedStyle — pin literals that
+    // mirror the token contract asserted against PANEL_CSS above.
+    style.textContent = `
+      .pc-header {
+        display: flex;
+        flex-wrap: nowrap;
+        height: 36px;
+        min-height: 36px;
+        max-height: 36px;
+        box-sizing: border-box;
+        padding: 0 12px;
+        overflow: hidden;
+      }
+    `;
+    document.head.appendChild(style);
+    render(
+      <PanelChrome>
+        <PanelHeader
+          title="Brainstorm"
+          actions={(
+            <>
+              <button type="button">Ideas</button>
+              <button type="button">Board</button>
+              <button type="button">Archive</button>
+            </>
+          )}
+        />
+      </PanelChrome>,
+    );
+    const header = document.querySelector('.pc-header') as HTMLElement;
+    expect(header).toBeTruthy();
+    const cs = getComputedStyle(header);
+    expect(cs.flexWrap).toBe('nowrap');
+    expect(cs.height).toBe('36px');
+    expect(cs.maxHeight).toBe('36px');
+    expect(cs.minHeight).toBe('36px');
+    style.remove();
   });
 });

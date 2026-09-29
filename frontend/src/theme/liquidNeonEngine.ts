@@ -128,8 +128,13 @@ export const LIQUID_NEON_V2_DEFAULTS: LiquidNeonV2Settings = {
   glassA: 20,
   blur: 1,
   wp: 'match',
-  /** F2#18: fresh profiles land on classic starfield (index 1); index 0 stays cosmic for existing vaults with no wpPick. */
-  wpPick: { classic: 1 },
+  /**
+   * F2#18/H3: fresh profiles land on the classic starfield, which is now the
+   * LAST entry of the cycle (after cosmic + the whole pack) — see
+   * `classicStarfieldPickIndex`. Existing vaults with a stored `{classic:1}`
+   * still resolve to the first pack image, unchanged.
+   */
+  wpPick: { classic: classicStarfieldPickIndex() },
   scrim: 10,
   reduceGlow: false,
   animGlow: false,
@@ -244,20 +249,29 @@ export interface MatchWallpaper {
 /**
  * The full Theme-match cycle for the active preset: the built-in wallpaper
  * first (Neon Nebula → `cosmicUrl`; other presets → starfield), then the
- * bundled pack. Classic also includes the starfield as index 1 so fresh
- * profiles can default to it via `wpPick` without changing what index 0
- * means for existing vaults (F2#18).
+ * bundled pack. Classic appends the starfield again AFTER the pack (last
+ * index) so fresh profiles can default to it via `wpPick` without disturbing
+ * the pack's own index positions — index 1 through `pack.length` stay the
+ * bundled pack images for existing vaults with a stored pick (F2#18/H3).
  */
 export function matchWallpaperList(s: LiquidNeonV2Settings, cosmicUrl: string): MatchWallpaper[] {
   const starfield: MatchWallpaper = { css: starfieldCss(s.slots), position: 'center' };
-  const builtIns: MatchWallpaper[] = s.setKey === 'classic'
-    ? [
-        { css: "url('" + cosmicUrl + "')", position: 'center', url: cosmicUrl },
-        starfield,
-      ]
-    : [starfield];
   const pack = packWallpapers(s.setKey).map((e: WallpaperEntry): MatchWallpaper => ({ css: "url('" + e.url + "')", position: e.position, url: e.url }));
-  return [...builtIns, ...pack];
+  if (s.setKey === 'classic') {
+    return [{ css: "url('" + cosmicUrl + "')", position: 'center', url: cosmicUrl }, ...pack, starfield];
+  }
+  return [starfield, ...pack];
+}
+
+/**
+ * The index of the classic starfield entry in `matchWallpaperList` — appended
+ * after cosmic (index 0) and the whole bundled pack, so it's `1 + pack.length`
+ * (H3). Used as the fresh-profile `wpPick.classic` default so new vaults land
+ * on the starfield without touching what `{classic:1}` resolves to for
+ * existing vaults (the first pack image, F2#18).
+ */
+export function classicStarfieldPickIndex(): number {
+  return 1 + packWallpapers('classic').length;
 }
 
 /** Wrapped index into `matchWallpaperList` for the active preset (mockup 7194). */

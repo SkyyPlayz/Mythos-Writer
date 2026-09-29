@@ -79,6 +79,8 @@ import './SettingsPanel.css';
 
 interface Props {
   onClose: () => void;
+  /** H6: rail-nav pending destination should be cleared when flush is blocked. */
+  onCloseBlocked?: () => void;
   onSaved?: (settings: AppSettings) => void;
   focusPrefs?: FocusPrefs;
   onFocusPrefsChange?: (prefs: FocusPrefs) => void;
@@ -92,7 +94,7 @@ interface Props {
 const SETTINGS_CATS: readonly SettingsCategoryId[] = SETTINGS_CATEGORIES.map((c) => c.id);
 type SettingsCat = SettingsCategoryId;
 
-export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange, initialCategory, activeVaultRoot }: Props) {
+export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusPrefs, onFocusPrefsChange, initialCategory, activeVaultRoot }: Props) {
   // Ivy H3: F2#15 owns save/close (handleClose below). Note-view toggles write immediately (no F4 draft).
 
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -494,30 +496,50 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     }
   }, [sttBinaryToken, sttModelToken]);
 
-  // F2#15 + Shield R4: auto-save on exit. Keep panel open + inline plain-text
-  // error (no paths/stacks) when apiKeyError is set or save-on-close fails.
+  // F2#15 + Shield R4 / H6: one exit flush (close / Escape / rail-nav).
+  // Keep open + plain-text error on save fail. Invalid key: save everything
+  // else, hold the bad key, keep open with inline error.
   const closeSaveInFlight = useRef(false);
   const handleClose = useCallback(() => {
-    if (apiKeyError) {
-      setSaveError('Fix the API key before closing.');
-      return;
-    }
     if (closeSaveInFlight.current) return;
     closeSaveInFlight.current = true;
     setSaveError(null);
     const payload = buildSettingsPayload();
+    const heldBadKey = Boolean(apiKeyError);
+    if (heldBadKey) {
+      // Persist the rest of the payload with the last good key.
+      payload.apiKey = settings.apiKey;
+    }
     void writeSettingsPayload(payload)
       .then(() => {
         applyLiquidNeonTokens(lg, bgPreviewUrl);
         applyPageBackgroundTokens(pageBg);
         onSaved?.(payload);
+        if (heldBadKey) {
+          closeSaveInFlight.current = false;
+          setSaveError('API key not saved — fix it before closing.');
+          onCloseBlocked?.();
+          return;
+        }
         onClose();
       })
       .catch(() => {
         closeSaveInFlight.current = false;
         setSaveError("Couldn't save settings. Try again.");
+        onCloseBlocked?.();
       });
-  }, [apiKeyError, buildSettingsPayload, writeSettingsPayload, lg, bgPreviewUrl, pageBg, onSaved, onClose]);
+  }, [apiKeyError, settings.apiKey, buildSettingsPayload, writeSettingsPayload, lg, bgPreviewUrl, pageBg, onSaved, onClose, onCloseBlocked]);
+
+  // Expose the same flush to DesktopShell rail-nav (must not skip save).
+  useEffect(() => {
+    const w = window as Window & { __mythosSettingsRequestClose?: () => void };
+    w.__mythosSettingsRequestClose = handleClose;
+    return () => {
+      if (w.__mythosSettingsRequestClose === handleClose) {
+        delete w.__mythosSettingsRequestClose;
+      }
+    };
+  }, [handleClose]);
 
   // F2#15: Escape also auto-saves (replaces the early onClose-only listener).
   useEffect(() => {

@@ -158,7 +158,9 @@
   --z-dropdown: 100;
   --z-popover: 200;
   --z-modal: 1000;
-  --z-toast: 1100;
+  /* Above every overlay literal (SceneHistory 10000, TagPane 9999, …);
+     menu/drag stay above toast. */
+  --z-toast: 11000;
   --z-menu: 12000;
   --z-drag: 12100;
   --z-max: 12200;

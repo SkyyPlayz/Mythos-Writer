@@ -6,22 +6,19 @@
 import { useEffect } from 'react';
 import {
   densFromWheelDelta,
-  getRegisteredDensity,
+  getPendingOrRegisteredDensity,
   previewAndScheduleCommit,
 } from '../lib/uiDensity';
 
+/** Real canvas roots (Probe/Critic H4) — dead selectors removed. */
 const CANVAS_ZOOM_SELECTOR = [
-  '[data-timeline-canvas]',
-  '[data-realm-canvas]',
-  '[data-boards-canvas]',
-  '.timeline2-root',
-  '.vault-graph-view',
-  '.board-canvas',
-  '.brainstorm-board',
+  '.ax-root',
+  '.board-canvas__root',
+  '.vgv-root',
   '.msv-sheet',
 ].join(',');
 
-function isCanvasZoomTarget(target: EventTarget | null): boolean {
+export function isCanvasZoomTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;
   return Boolean(target.closest(CANVAS_ZOOM_SELECTOR));
 }
@@ -32,17 +29,16 @@ export function useCtrlScrollDensity(enabled = true): void {
 
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey && !e.metaKey) return;
+      // Canvas zoom handlers preventDefault first — dens must not steal.
+      if (e.defaultPrevented) return;
       if (isCanvasZoomTarget(e.target)) return;
-      // Don't steal browser zoom inside Settings range inputs while focused.
       if (e.target instanceof HTMLInputElement && e.target.type === 'range') return;
 
       e.preventDefault();
-      const next = densFromWheelDelta(getRegisteredDensity(), e.deltaY);
+      const next = densFromWheelDelta(getPendingOrRegisteredDensity(), e.deltaY);
       previewAndScheduleCommit(next);
     };
 
-    // Bubble phase (not capture): let canvas zoom handlers win first; dens only
-    // when the event reaches window without being handled by a canvas.
     window.addEventListener('wheel', onWheel, { passive: false });
     return () => window.removeEventListener('wheel', onWheel);
   }, [enabled]);

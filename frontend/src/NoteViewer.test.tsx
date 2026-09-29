@@ -81,6 +81,37 @@ describe('NoteViewer cross-tab links', () => {
     expect(onWikiLinkClick).toHaveBeenCalledWith('Scene: Chapter One/Opening Scene');
   });
 
+  it('F2#2: Preview renders entity:// mention chips and Rich opens without fidelity warn', async () => {
+    const onEntityClick = vi.fn();
+    readNotesVault.mockResolvedValue({
+      content: 'Ask [Elara](entity://char-elara) about the harbor.\n',
+    });
+    render(
+      <NoteViewer
+        path="Notes/Mention.md"
+        previewMode
+        onEntityClick={onEntityClick}
+      />,
+    );
+    const chip = await screen.findByTestId('note-entity-mention');
+    expect(chip).toHaveTextContent('@Elara');
+    fireEvent.click(chip);
+    expect(onEntityClick).toHaveBeenCalledWith('char-elara');
+
+    // Switch to Rich — mention must not trip "Rich mode may lose content".
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('note-gear-btn'));
+    });
+    const rich = await screen.findByRole('menuitemradio', { name: /Rich Text/i });
+    await act(async () => {
+      fireEvent.click(rich);
+    });
+    expect(screen.queryByText(/Rich mode may lose content/i)).toBeNull();
+    await waitFor(() => {
+      expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull();
+    });
+  });
+
   it('flushes note content when the tab-aware save event fires', async () => {
     render(<NoteViewer path="Notes/Test.md" mode="source" />);
 

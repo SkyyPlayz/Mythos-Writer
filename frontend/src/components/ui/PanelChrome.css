@@ -3,31 +3,36 @@
 .pc-chrome {
   display: flex;
   flex-direction: column;
-  /* F2#11: translucent glass fill (no extra backdrop-filter — wallpaper shows
-     through; avoids stacking live blurs that tank scroll FPS). */
+  /* F2#11 / H1: translucent glass fill + design blur (PanelChrome primitive). */
   background: var(--glass-panel-bg, var(--glass, rgba(13, 16, 28, 0.20)));
   border: 1px solid var(--glass-rim, var(--border-subtle));
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
+@supports (backdrop-filter: blur(1px)) {
+  .pc-chrome {
+    backdrop-filter: blur(var(--blur-panel));
+    -webkit-backdrop-filter: blur(var(--blur-panel));
+  }
+}
+
 .pc-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* W0.3 (GAP P0#3): header rows wrap at narrow right-panel widths
-     (280–320px) instead of overlapping — buttons never collide with
-     dropdowns/titles. */
-  flex-wrap: wrap;
+  /* F2#12 / Probe: shared top-bar is a fixed height — no wrap, no padding
+     growth. Brainstorm segments must fit inside PANEL_TOP_BAR_HEIGHT_PX. */
+  flex-wrap: nowrap;
   gap: var(--space-2);
   padding: 0 var(--space-3);
-  /* F2#12: shared top-bar metric as min-height (not a hard clip). Fixed
-     `height: 36px` crushed Brainstorm's Agent Chat|Board segment into the
-     layout below so `.bs-collections` intercepted clicks (e2e TC-M20/TC-RT). */
+  height: var(--panel-top-bar-height, 36px);
   min-height: var(--panel-top-bar-height, 36px);
+  max-height: var(--panel-top-bar-height, 36px);
   box-sizing: border-box;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 .pc-header-start {
@@ -92,6 +97,9 @@
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+  /* Hot-path: scrolls under the chrome's blur without its own
+     backdrop-filter; contain isolates its paint/scroll work. */
+  contain: paint;
 }
 
 .pc-footer {

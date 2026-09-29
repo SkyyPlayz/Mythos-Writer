@@ -49,8 +49,10 @@
 /* ── [[ ]] autocomplete picker dropdown ──────────────────────────────── */
 
 .wiki-link-picker {
-  position: absolute;
-  z-index: 200;
+  /* F2#10 / Probe: portaled to document.body — fixed + popover tier escapes
+     desktop-shell__body stacking (msv-page / edge panels). */
+  position: fixed;
+  z-index: var(--z-popover);
   list-style: none;
   margin: 0;
   padding: 4px 0;

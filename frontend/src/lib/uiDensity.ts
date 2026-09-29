@@ -53,6 +53,13 @@ export function getRegisteredDensity(): number {
   return clampUiDens(bridge?.getSettings().uiDens ?? 1);
 }
 
+/** Pending preview/commit wins so a wheel burst steps multiple times (H4). */
+export function getPendingOrRegisteredDensity(): number {
+  if (pendingCommit != null) return clampUiDens(pendingCommit);
+  if (pendingPreview != null) return clampUiDens(pendingPreview);
+  return getRegisteredDensity();
+}
+
 function applyPreviewTokens(uiDens: number): void {
   if (!bridge) return;
   const base = bridge.getSettings();

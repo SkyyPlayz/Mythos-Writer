@@ -68,23 +68,69 @@ beforeEach(() => {
 });
 
 describe('DesktopShell Settings dismiss on rail nav (owner punch)', () => {
+  function openSettings() {
+    // App menu gear + AppNavRail both expose "Open settings" — prefer the menu gear.
+    const gear = document.querySelector('.app-menu-gear-btn') as HTMLElement | null;
+    if (gear) {
+      fireEvent.click(gear);
+      return;
+    }
+    fireEvent.click(screen.getAllByRole('button', { name: 'Open settings' })[0]);
+  }
+
+  function clickRail(name: string) {
+    const btn = document.querySelector(
+      `nav[aria-label="Main navigation"] button[aria-label="${name}"]`,
+    ) as HTMLElement | null;
+    if (!btn) throw new Error(`rail button not found: ${name}`);
+    fireEvent.click(btn);
+  }
+
   it('closes Settings when a left-rail module is clicked', async () => {
     render(<App />);
     await screen.findByRole('navigation', { name: 'Main navigation' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
+    openSettings();
     expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Vault Graph' }));
+    await act(async () => {
+      clickRail('Vault Graph');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
 
-    expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('F2#15/H6: rail close flushes settings:set (same path as Escape/X)', async () => {
+    const api = makeMockApi();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = api;
+    render(<App />);
+    await screen.findByRole('navigation', { name: 'Main navigation' });
+
+    openSettings();
+    expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+
+    await act(async () => {
+      clickRail('Vault Graph');
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
+    });
+    expect(api.settingsSet).toHaveBeenCalled();
   });
 
   it('closes Settings when the header X is pressed', async () => {
     render(<App />);
     await screen.findByRole('navigation', { name: 'Main navigation' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open settings' }));
+    openSettings();
     expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
 
     // F2#15: close flushes settings in the background (onSaved → shell state);

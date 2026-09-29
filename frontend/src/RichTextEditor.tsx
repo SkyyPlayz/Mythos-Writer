@@ -4,6 +4,7 @@
 // scaffolding. Surface-specific behaviour (draft states, tri-mode, page chrome, …)
 // lives in the thin wrappers.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { EditorContent } from '@tiptap/react';
 import type { AnyExtension, Editor } from '@tiptap/core';
 import { EntityMention } from './EntityMentionExtension';
@@ -17,38 +18,21 @@ import { useRichEditor, getEditorMarkdown } from './lib/useRichEditor';
 import { registerQuitFlusher } from './lib/flushBeforeQuit';
 import { navigateEntityMention } from './lib/entityMentionNavigate';
 import FormatToolbar, { type FormatToolbarActions } from './FormatToolbar';
-import { VAULT_NOTE_DRAG_MIME } from './vaultNoteDrag';
+import { handleVaultNoteDragOver, handleVaultNoteDrop } from './lib/vaultNoteDrop';
 import './EntityMention.css';
 import './WikiLinkPicker.css';
 
-export { VAULT_NOTE_DRAG_MIME } from './vaultNoteDrag';
+export {
+  VAULT_NOTE_DRAG_MIME,
+  sanitizeWikiLinkTitle,
+  wikiTitleFromDroppedPath,
+} from './vaultNoteDrag';
 
 const INACTIVE_MENTION: MentionPickerState = { active: false, query: '', from: 0, to: 0 };
 const INACTIVE_WIKI_LINK: WikiLinkPickerState = { active: false, query: '', from: 0, to: 0 };
 const EMPTY_WIKI_LINK_CANDIDATES: WikiLinkCandidate[] = [];
 
 const CHANGE_DEBOUNCE_MS = 800;
-
-/**
- * Strip wiki-link delimiter chars so a dropped filename cannot corrupt `[[title]]`
- * (Shield R2: `]]` `|` `#` / brackets).
- */
-export function sanitizeWikiLinkTitle(title: string): string | null {
-  const cleaned = title.replace(/[\[\]|#]/g, '').trim();
-  return cleaned || null;
-}
-
-/** F2#4: map an explorer drag payload (vault-relative path) to a wiki-link title. */
-export function wikiTitleFromDroppedPath(raw: string): string | null {
-  const trimmed = raw.trim();
-  if (!trimmed || trimmed.includes('\n') || /^https?:\/\//i.test(trimmed)) return null;
-  const normalized = trimmed.replace(/\\/g, '/');
-  const looksLikePath = normalized.includes('/') || /\.(md|markdown|txt)$/i.test(normalized);
-  if (!looksLikePath && trimmed.length > 120) return null;
-  const leaf = normalized.split('/').pop() ?? normalized;
-  const title = leaf.replace(/\.(md|markdown|txt)$/i, '').trim();
-  return sanitizeWikiLinkTitle(title);
-}
 
 export interface RichTextEditorProps {
   /** Initial Markdown content. Read once at editor creation — remount (key) to reload. */
@@ -255,6 +239,13 @@ export default function RichTextEditor({
     editable,
     autofocus,
     extraExtensions: [...(extraExtensions ?? []), EntityMention, EntityMentionPickerExtension, WikiLinkPickerExtension],
+    // H5 / R1–R3: explorer drop lives in ProseMirror handleDrop (not React onDrop).
+    editorProps: {
+      handleDrop: handleVaultNoteDrop,
+      handleDOMEvents: {
+        dragover: handleVaultNoteDragOver,
+      },
+    },
     onUpdate({ editor: ed }) {
       syncMentionState(ed);
       syncWikiLinkState(ed);
@@ -457,65 +448,16 @@ export default function RichTextEditor({
     }
   }, [editor, plainTextWikiLinkFallback]);
 
-  // F2#4 + Shield R1/R3: explorer MIME → [[Note]]; Files → preventDefault only;
-  // plain text / in-editor drags do not insert links.
-  const handleEditorDragOver = useCallback((e: React.DragEvent) => {
-    if (editable === false) return;
-    if (e.defaultPrevented) return;
-    const types = e.dataTransfer?.types ? [...e.dataTransfer.types] : [];
-    const hasExplorer = types.includes(VAULT_NOTE_DRAG_MIME);
-    const hasFiles = types.includes('Files');
-    if (!hasExplorer && !hasFiles) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = hasExplorer ? 'copy' : 'none';
-  }, [editable]);
-
-  const handleEditorDrop = useCallback((e: React.DragEvent) => {
-    if (!editor || editor.isDestroyed) return;
-    if (e.defaultPrevented) return;
-    const types = e.dataTransfer?.types ? [...e.dataTransfer.types] : [];
-    // R1: OS file drops must not navigate the window.
-    if (types.includes('Files')) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    // R3: only the explorer's own MIME creates a wiki link.
-    if (!types.includes(VAULT_NOTE_DRAG_MIME)) return;
-    const raw = (
-      e.dataTransfer.getData(VAULT_NOTE_DRAG_MIME) || e.dataTransfer.getData('text/plain') || ''
-    ).trim();
-    if (!raw) return;
-    const title = wikiTitleFromDroppedPath(raw);
-    if (!title) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const nodeType = editor.schema.nodes.wikiLink;
-    if (!nodeType) return;
-    let pos = editor.state.selection.from;
-    try {
-      const coords = { left: e.clientX, top: e.clientY };
-      pos = editor.view.posAtCoords(coords)?.pos ?? pos;
-    } catch {
-      // jsdom / headless: posAtCoords may throw — insert at selection.
-    }
-    const node = nodeType.create({ target: title });
-    editor.view.dispatch(editor.state.tr.insert(pos, node));
-    editor.view.focus();
-  }, [editor]);
-
-  // Compute picker position from the @-trigger doc position.
+  // Compute picker position in viewport coords (portaled to document.body — F2#10).
   let pickerTop = 0;
   let pickerLeft = 0;
-  // The [[ picker takes priority when both triggers are somehow active at once
-  // (matches the keyboard-handling priority above).
   const showWikiLinkPicker = wikiLinkState.active && !wikiLinkSuppressed;
   const showPicker = !showWikiLinkPicker && mentionState.active && !mentionSuppressed;
-  if (showPicker && editor && innerWrapRef.current) {
+  if (showPicker && editor) {
     try {
       const coords = editor.view.coordsAtPos(mentionState.from);
-      const wrapRect = innerWrapRef.current.getBoundingClientRect();
-      pickerTop = coords.bottom - wrapRect.top + 4;
-      pickerLeft = coords.left - wrapRect.left;
+      pickerTop = coords.bottom + 4;
+      pickerLeft = coords.left;
     } catch {
       // coordsAtPos can throw if position is out of range; ignore
     }
@@ -523,12 +465,11 @@ export default function RichTextEditor({
 
   let wikiPickerTop = 0;
   let wikiPickerLeft = 0;
-  if (showWikiLinkPicker && editor && innerWrapRef.current) {
+  if (showWikiLinkPicker && editor) {
     try {
       const coords = editor.view.coordsAtPos(wikiLinkState.from);
-      const wrapRect = innerWrapRef.current.getBoundingClientRect();
-      wikiPickerTop = coords.bottom - wrapRect.top + 4;
-      wikiPickerLeft = coords.left - wrapRect.left;
+      wikiPickerTop = coords.bottom + 4;
+      wikiPickerLeft = coords.left;
     } catch {
       // coordsAtPos can throw if position is out of range; ignore
     }
@@ -543,35 +484,35 @@ export default function RichTextEditor({
         style={{ position: 'relative' }}
         onKeyDownCapture={handlePickerKeyDown}
         onClickCapture={handleEditorClick}
-        onDragOver={handleEditorDragOver}
-        onDrop={handleEditorDrop}
         onMouseOver={onWrapMouseOver}
         onMouseLeave={onWrapMouseLeave}
         aria-label={wrapAriaLabel}
       >
         {children}
-        {showPicker && (
-          <EntityMentionPicker
-            entities={entities}
-            query={mentionState.query}
-            top={pickerTop}
-            left={pickerLeft}
-            selectedIndex={mentionSelectedIndex}
-            onSelect={insertEntityMention}
-          />
-        )}
-        {showWikiLinkPicker && (
-          <WikiLinkPicker
-            items={wikiLinkItems}
-            query={wikiLinkState.query}
-            top={wikiPickerTop}
-            left={wikiPickerLeft}
-            selectedIndex={wikiLinkSelectedIndex}
-            onSelect={insertWikiLinkItem}
-          />
-        )}
         <EditorContent editor={editor} className={contentClassName} />
       </div>
+      {showPicker && createPortal(
+        <EntityMentionPicker
+          entities={entities}
+          query={mentionState.query}
+          top={pickerTop}
+          left={pickerLeft}
+          selectedIndex={mentionSelectedIndex}
+          onSelect={insertEntityMention}
+        />,
+        document.body,
+      )}
+      {showWikiLinkPicker && createPortal(
+        <WikiLinkPicker
+          items={wikiLinkItems}
+          query={wikiLinkState.query}
+          top={wikiPickerTop}
+          left={wikiPickerLeft}
+          selectedIndex={wikiLinkSelectedIndex}
+          onSelect={insertWikiLinkItem}
+        />,
+        document.body,
+      )}
     </>
   );
 }

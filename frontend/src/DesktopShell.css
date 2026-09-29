@@ -26,8 +26,11 @@
   overflow: hidden;
   min-width: 0;
   /* M28: anchors the full-view Settings workspace (.settings-overlay is
-     position:absolute inset:0 so the nav rail stays visible beside it). */
+     position:absolute under the title bar so the nav rail + WindowChrome stay
+     visible). */
   position: relative;
+  /* WindowChrome .wc-drag-region 44px + .wc-hairline 1px */
+  --shell-titlebar-height: 45px;
 }
 
 /* SKY-3098 fix: WorkspaceTabBar uses height:100% (correct for flex-row context) but
@@ -654,7 +657,7 @@
   padding: 0.6rem 1.1rem;
   font-size: 0.85rem;
   box-shadow: var(--elev-1);
-  z-index: var(--z-toast, 1100);
+  z-index: var(--z-toast);
   white-space: nowrap;
   pointer-events: none;
   animation: budget-toast-in var(--dur-hover-in) var(--ease-out);
@@ -801,7 +804,7 @@
   padding: 0.5rem 1rem;
   font-size: 0.82rem;
   box-shadow: var(--elev-1);
-  z-index: var(--z-toast, 1100);
+  z-index: var(--z-toast);
   white-space: nowrap;
   pointer-events: none;
   animation: budget-toast-in var(--dur-hover-in) var(--ease-out);
@@ -812,7 +815,7 @@
   position: fixed;
   top: 48px;
   right: 16px;
-  z-index: var(--z-toast, 1100);
+  z-index: var(--z-toast);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1142,7 +1145,7 @@
   align-items: center;
   justify-content: center;
   background: var(--scrim);
-  z-index: 1000;
+  z-index: var(--z-modal);
 }
 .prompt-modal {
   display: flex;
@@ -1405,7 +1408,7 @@
 .cross-tab-link-modal {
   position: fixed;
   inset: 0;
-  z-index: 1000;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;

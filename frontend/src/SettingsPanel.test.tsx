@@ -364,17 +364,19 @@ describe('SettingsPanel', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/must start with sk-ant-/i);
   });
 
-  it('Shield R4: apiKeyError keeps Settings open on close (no dismiss, no persist)', async () => {
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+  it('Shield R4/H6: apiKeyError keeps Settings open; persists everything except the bad key', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
     await waitForModelKeys();
 
     fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'bad-key' } });
     fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
 
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
     expect(mockOnClose).not.toHaveBeenCalled();
-    expect(mockSettingsSet).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: /settings/i })).toBeInTheDocument();
-    expect(screen.getByText(/fix the api key before closing/i)).toBeInTheDocument();
+    expect(screen.getByText(/api key not saved/i)).toBeInTheDocument();
+    // Bad key must not be written — last good (empty default) is held.
+    expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ apiKey: '' }));
   });
 
   it('Shield R4: save-on-close failure keeps Settings open with inline error', async () => {
@@ -962,6 +964,15 @@ describe('SettingsPanel', () => {
     await waitForModelKeys();
 
     fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('F2#15/H6: Escape flushes settings via settings:set (disk path)', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+    await waitForModelKeys();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+    expect(mockOnSaved).toHaveBeenCalled();
     await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
   });
 
@@ -2643,9 +2654,11 @@ describe('SKY-3218 nav-bar configuration', () => {
 
       const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
       expect(saved.liquidNeonV2?.wp).toBe('match');
-      expect(saved.liquidNeonV2?.wpPick).toEqual({ classic: 2 });
+      // F2#18/H3: fresh profile defaults to the appended starfield (last index);
+      // Next wraps to cosmic (index 0).
+      expect(saved.liquidNeonV2?.wpPick).toEqual({ classic: 0 });
       // SKY-11237 store gets the same slice, so the pick survives a relaunch per vault.
-      expect(saved.vaultAppearance?.['/vaults/alpha']?.liquidNeonV2?.wpPick).toEqual({ classic: 2 });
+      expect(saved.vaultAppearance?.['/vaults/alpha']?.liquidNeonV2?.wpPick).toEqual({ classic: 0 });
       expect(saved.vaultAppearance?.['/vaults/alpha']?.theme).toBe(saved.theme);
     });
   });
