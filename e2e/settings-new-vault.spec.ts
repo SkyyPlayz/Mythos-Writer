@@ -60,6 +60,19 @@ function listVisibleFilesDeep(dir: string): string[] {
   return out.sort();
 }
 
+/** Slice D Agents Vault identity files (partner.md + hands) are vault machinery,
+ *  not Notes/Story user content or the Veynn demo seed. */
+const AGENTS_VAULT_IDENTITY = new Set([
+  'Agent Vault/partner.md',
+  'Agent Vault/writer.md',
+  'Agent Vault/analyst.md',
+  'Agent Vault/archivist.md',
+]);
+
+function listUserContentFilesDeep(dir: string): string[] {
+  return listVisibleFilesDeep(dir).filter((f) => !AGENTS_VAULT_IDENTITY.has(f));
+}
+
 const TEMPLATE_NOTES_FOLDERS = ['Characters', 'Locations', 'Plot', 'Research', 'Stories', 'Worldbuilding'];
 
 async function openMythosVaultsSection(page: import('@playwright/test').Page): Promise<void> {
@@ -110,11 +123,14 @@ test('SKY-10401: create a second vault from Settings (blank = empty), then switc
     expect(fs.statSync(newStoryRoot).isDirectory()).toBe(true);
     expect(fs.statSync(newNotesRoot).isDirectory()).toBe(true);
 
-    // Create blank = empty vault. No template folders, no files, no demo content.
+    // Create blank = empty Notes/Story. Agents Vault identity files (Slice D) are allowed.
     expect(listVisibleEntries(newNotesRoot)).toEqual([]);
     expect(listVisibleFilesDeep(newNotesRoot)).toEqual([]);
     expect(listVisibleFilesDeep(newStoryRoot)).toEqual([]);
-    expect(listVisibleFilesDeep(newRoot).join('\n')).not.toMatch(/Veynn|Kael Thorne|Project Bible|idea-library/);
+    expect(listUserContentFilesDeep(newRoot).join('\n')).not.toMatch(/Veynn|Kael Thorne|Project Bible|idea-library/);
+    for (const idFile of AGENTS_VAULT_IDENTITY) {
+      expect(listVisibleFilesDeep(newRoot)).toContain(idFile);
+    }
 
     // activate:false — the active vault must be untouched until the user accepts.
     expect(readVaultSettings(userData).vaultRoot).toBe(storyVault);
@@ -159,13 +175,16 @@ test('SKY-11452 / SKY-11141 §3a: "Start blank" from Settings creates nothing us
     expect(fs.existsSync(path.join(newRoot, 'mythos.json')), `${when}: mythos.json`).toBe(true);
     expect(listVisibleEntries(newNotesRoot), `${when}: Notes Vault must be empty`).toEqual([]);
     expect(listVisibleEntries(newStoryRoot), `${when}: Story Vault must be empty`).toEqual([]);
-    // Root-level JSON (mythos.json, settings.json, …) is vault machinery; the
-    // demo seed shows up as files INSIDE folders (Notes Vault/Characters/…,
-    // Story Vault/The Last City of Veynn/…, Brainstorm/idea-library.json).
+    // Root-level JSON + Slice D Agents Vault identity files are vault machinery.
+    // Demo seed would show as Notes Vault/Characters/…, Story Vault/The Last
+    // City of Veynn/…, Brainstorm/idea-library.json — those must stay absent.
     expect(
-      listVisibleFilesDeep(newRoot).filter((f) => f.includes('/')),
-      `${when}: no user-visible files inside any folder`,
+      listUserContentFilesDeep(newRoot).filter((f) => f.includes('/')),
+      `${when}: no user-content files inside Notes/Story (Agents Vault identity OK)`,
     ).toEqual([]);
+    for (const idFile of AGENTS_VAULT_IDENTITY) {
+      expect(listVisibleFilesDeep(newRoot), `${when}: ${idFile}`).toContain(idFile);
+    }
   };
 
   const app = await launchApp(userData);
