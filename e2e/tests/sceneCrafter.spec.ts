@@ -51,6 +51,7 @@ import {
 import { noteTestId } from '../helpers/notesPanel';
 import { clickStoryNav } from '../helpers/navGuard';
 import { installDraftStreamMock, generateMockDraft } from '../helpers/draftStreamMock';
+import { enableNoteViewModes } from '../helpers/noteViewPrefs';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -953,6 +954,7 @@ test.describe('SKY-11049 item 7 — POV vault-wide character fallback (fresh pro
     await dismissMigrationPromptIfPresent(localPage);
     await localPage.locator('[data-testid^="vb-row-"]', { hasText: 'Kael Thorne' }).first().click();
     await expect(noteTestId(localPage, 'note-gear-btn')).toBeVisible({ timeout: 8_000 });
+    await enableNoteViewModes(localPage, ['source']);
     await noteTestId(localPage, 'note-gear-btn').click();
     await expect(localPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
     await localPage.locator('[data-testid="note-gear-mode-source"]').click();
@@ -1046,6 +1048,7 @@ test.describe('SKY-11072 — Scene Crafter vault-reference columns (fresh profil
     await dismissMigrationPromptIfPresent(localPage);
     await localPage.locator('[data-testid^="vb-row-"]', { hasText: 'Mira Veynn' }).first().click();
     await expect(noteTestId(localPage, 'note-gear-btn')).toBeVisible({ timeout: 8_000 });
+    await enableNoteViewModes(localPage, ['source']);
     await noteTestId(localPage, 'note-gear-btn').click();
     await expect(localPage.locator('[data-testid="note-gear-menu"]')).toBeVisible();
     await localPage.locator('[data-testid="note-gear-mode-source"]').click();

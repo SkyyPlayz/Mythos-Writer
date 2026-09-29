@@ -1,0 +1,49 @@
+/* F4#6/#7 — structural breadcrumb: root-last truncate + full-outline current. */
+
+.struct-breadcrumb {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--text-secondary, #8e9db8);
+  gap: 0;
+}
+
+.struct-breadcrumb__item {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.struct-breadcrumb__item--root {
+  /* Root truncates last: tiny shrink + cap so a long title can't starve leaves. */
+  flex-shrink: 0.01;
+  min-width: 2.5em;
+  max-width: 40%;
+}
+
+.struct-breadcrumb__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.struct-breadcrumb__sep {
+  flex: none;
+  opacity: 0.55;
+  padding: 0 1px;
+}
+
+.struct-breadcrumb__item--current .struct-breadcrumb__label {
+  color: var(--text-primary, #eef2fb);
+  font-weight: 600;
+  /* F4#7: full outline instead of underline. */
+  border: 1px solid color-mix(in srgb, var(--accent, #00f0ff) 45%, transparent);
+  border-radius: 5px;
+  padding: 1px 6px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent, #00f0ff) 18%, transparent);
+}

@@ -6,7 +6,6 @@
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import WorkspaceTabBar from './WorkspaceTabBar';
-
 function makeTab(id: string, title: string, kind: WorkspaceTabKind = 'story-editor'): WorkspaceTab {
   return { id, kind, title, icon: 'X' };
 }
@@ -788,5 +787,28 @@ describe('WorkspaceTabBar overflow ▾ dropdown', () => {
     }
 
     vi.unstubAllGlobals();
+  });
+});
+
+// ── F4#7: full-outline active tab (live WorkspaceTabBar) ─────────────────────
+
+describe('F4#7: WorkspaceTabBar active tab full outline', () => {
+  it('active tab CSS ?raw has 1px border on all sides (H4 — fails on CSS revert)', async () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    const active = screen.getByRole('tab', { name: 'Chapter One' });
+    expect(active.className).toMatch(/wtb-tab--active/);
+    // Critic/Probe H4: real stylesheet via ?raw — goes red if outline CSS reverts
+    // to main (border-bottom: none) or is set to border: none.
+    const mod = await import('./WorkspaceTabBar.css?raw');
+    const wtbCss = typeof mod.default === 'string' ? mod.default : '';
+    expect(wtbCss.length).toBeGreaterThan(100);
+    expect(wtbCss).toMatch(/\.wtb-tab--active[\s\S]*?border:\s*var\(--bw,\s*1px\)\s+solid/);
+    expect(wtbCss).not.toMatch(/\.wtb-tab--active[\s\S]{0,200}?border:\s*none\b/);
+    // Active rule must not strip the bottom edge (main/docked tabs did).
+    const activeBlock = wtbCss.match(/\.wtb-tab--active\s*,\s*\.wtb-tab--active:hover\s*\{[^}]+\}/);
+    expect(activeBlock?.[0] ?? '').toMatch(/border-bottom-color:/);
+    expect(activeBlock?.[0] ?? '').not.toMatch(/border-bottom:\s*none/);
+    const inactive = screen.getByRole('tab', { name: 'Chapter Two' });
+    expect(inactive.className).not.toMatch(/wtb-tab--active/);
   });
 });

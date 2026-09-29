@@ -1661,6 +1661,41 @@ describe('M16: collapse all', () => {
     fireEvent.click(screen.getByTestId('vb-btn-collapse-all'));
     await waitFor(() => expect(screen.queryByTestId('vb-row-folder/note.md')).not.toBeInTheDocument());
   });
+
+  it('F4#10: collapse/expand-all header icons are ↑ and ↓', async () => {
+    await renderNotesVaultWithItems([]);
+    expect(screen.getByTestId('vb-btn-collapse-all')).toHaveTextContent('↑');
+    expect(screen.getByTestId('vb-btn-expand-all')).toHaveTextContent('↓');
+  });
+});
+
+describe('F4#8: search above toolbar', () => {
+  it('Probe N2: search has magnifier and prototype box contract in CSS', async () => {
+    render(<VaultBrowser {...baseProps} />);
+    expect(await screen.findByTestId('vb-search-magnifier')).toBeTruthy();
+    const search = screen.getByTestId('vb-notes-search');
+    expect(search.compareDocumentPosition(screen.getByTestId('vb-notes-toolbar'))
+      & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // CSS contract (jsdom won't compute): 30px / 9px / neon — asserted via ?raw.
+    const cssMod = await import('./VaultBrowser.css?raw');
+    const css = (cssMod as { default: string }).default;
+    expect(css.length).toBeGreaterThan(100);
+    expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?height:\s*30px/);
+    expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?border-radius:\s*9px/);
+    expect(css).toMatch(/rgba\(255,\s*255,\s*255,\s*0?\.05\)/);
+    // Probe soft: narrow header — search input can shrink; chrome does not.
+    expect(css).toMatch(/\.vb-notes-search-input\s*\{[\s\S]*?min-width:\s*0/);
+    expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?flex-shrink:\s*0/);
+    expect(css).toMatch(/\.vb-notes-toolbar\s*\{[\s\S]*?flex-shrink:\s*0/);
+  });
+
+  it('places search before the notes toolbar in DOM order', async () => {
+    await renderNotesVaultWithItems([{ path: 'a.md', name: 'a.md', isDirectory: false, modifiedAt: '' }]);
+    const search = screen.getByTestId('vb-notes-search');
+    const toolbar = screen.getByTestId('vb-notes-toolbar');
+    expect(search.compareDocumentPosition(toolbar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+  // F4#13 Backlinks→Recent order ownership moved to F5 (#1648) — no duplicate DOM-order assertion here.
 });
 
 describe('M16: search filter', () => {

@@ -166,4 +166,21 @@ describe('PageSetupPopover', () => {
     fireEvent.click(screen.getByLabelText('Drop cap'));
     expect(onPrefsChange).toHaveBeenCalledWith(expect.objectContaining({ dropCapEnabled: true }));
   });
+
+  it('F4#15: Zoom presets default to 100% and adjust fontSizeStep', () => {
+    const onPrefsChange = vi.fn();
+    render(<PageSetupPopover {...defaultProps} onPrefsChange={onPrefsChange} />);
+    expect(screen.getByTestId('page-setup-zoom')).toBeInTheDocument();
+    const zoom100 = screen.getByTestId('page-setup-zoom-100');
+    expect(zoom100).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByTestId('page-setup-zoom-125'));
+    expect(onPrefsChange).toHaveBeenCalledWith(expect.objectContaining({ fontSizeStep: 15 }));
+  });
+
+  it('F4#15: 75% zoom preset sets fontSizeStep to 9', () => {
+    const onPrefsChange = vi.fn();
+    render(<PageSetupPopover {...defaultProps} onPrefsChange={onPrefsChange} />);
+    fireEvent.click(screen.getByTestId('page-setup-zoom-75'));
+    expect(onPrefsChange).toHaveBeenCalledWith(expect.objectContaining({ fontSizeStep: 9 }));
+  });
 });

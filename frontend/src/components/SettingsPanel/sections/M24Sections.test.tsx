@@ -8,6 +8,7 @@ import SyncBackupSection from './SyncBackupSection';
 import ShortcutsSection from './ShortcutsSection';
 import AboutSection from './AboutSection';
 import { buildShortcutGroups, MOD } from '../../../shortcuts';
+import { writeDefaultRichPref } from '../../../noteViewPrefs';
 
 const baseSettings: AppSettings = {
   apiKey: '',
@@ -103,8 +104,82 @@ describe('EditorSettingsSection', () => {
     const setSettings = vi.fn();
     render(<EditorSettingsSection settings={baseSettings} setSettings={setSettings} setSavedOk={vi.fn()} />);
     fireEvent.click(screen.getByRole('switch', { name: 'Spellcheck while typing' }));
-    const updater = setSettings.mock.calls[0][0] as (p: AppSettings) => AppSettings;
+    const updater = setSettings.mock.calls.at(-1)![0] as (p: AppSettings) => AppSettings;
     expect(updater(baseSettings).editorPrefs?.spellcheck).toBe(false);
+  });
+
+  it('Ivy H3: Note view toggles write localStorage immediately (no Settings draft)', () => {
+    window.localStorage.removeItem('mythos:notes:showMarkdownView');
+    render(<EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
+    expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(screen.getByRole('switch', { name: 'Show Markdown view toggle' }));
+    expect(window.localStorage.getItem('mythos:notes:showMarkdownView')).toBe('1');
+    expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('H1: spellcheck toggle leaves sticky note view modes intact', () => {
+    window.localStorage.setItem(
+      'mythos:notes:modeByPath',
+      JSON.stringify({ 'Notes/Keep.md': 'source' }),
+    );
+    const setSettings = vi.fn();
+    render(<EditorSettingsSection settings={baseSettings} setSettings={setSettings} setSavedOk={vi.fn()} />);
+    fireEvent.click(screen.getByRole('switch', { name: 'Spellcheck while typing' }));
+    fireEvent.change(screen.getByLabelText('Autosave snapshot every'), { target: { value: '45' } });
+    expect(window.localStorage.getItem('mythos:notes:modeByPath')).toBe(
+      JSON.stringify({ 'Notes/Keep.md': 'source' }),
+    );
+  });
+
+  it('F4: Always-Rich Settings toggle does not wipe sticky modes', () => {
+    window.localStorage.setItem(
+      'mythos:notes:modeByPath',
+      JSON.stringify({ 'Notes/Keep.md': 'source' }),
+    );
+    render(<EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
+    fireEvent.click(screen.getByRole('switch', { name: 'Always open notes in Rich view' }));
+    expect(window.localStorage.getItem('mythos:notes:defaultRich')).toBe('0');
+    expect(window.localStorage.getItem('mythos:notes:modeByPath')).toBe(
+      JSON.stringify({ 'Notes/Keep.md': 'source' }),
+    );
+  });
+
+  it('Ivy H3 / Critic H2: remount after gear Always-Rich OFF never flips it back ON', () => {
+    window.localStorage.removeItem('mythos:notes:defaultRich');
+    const first = render(
+      <EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />,
+    );
+    expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'true');
+    // Simulate note-gear write while Settings is open, then rail-nav / "this vault" remount.
+    // Unmount first so the subscribe callback cannot fire into an unmounted tree (act warning).
+    first.unmount();
+    writeDefaultRichPref(false);
+    const second = render(
+      <EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />,
+    );
+    expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'false');
+    expect(window.localStorage.getItem('mythos:notes:defaultRich')).toBe('0');
+    second.unmount();
+  });
+
+  it('F4 Probe: remounting Settings does not silently flip saved Markdown/Source off', () => {
+    window.localStorage.setItem('mythos:notes:showMarkdownView', '1');
+    window.localStorage.setItem('mythos:notes:showSourceView', '1');
+    const first = render(
+      <EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />,
+    );
+    expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'true');
+    first.unmount();
+    const second = render(
+      <EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />,
+    );
+    expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'true');
+    expect(window.localStorage.getItem('mythos:notes:showMarkdownView')).toBe('1');
+    second.unmount();
   });
 });
 

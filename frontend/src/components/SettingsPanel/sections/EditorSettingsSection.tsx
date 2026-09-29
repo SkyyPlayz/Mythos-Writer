@@ -1,9 +1,19 @@
 // Beta 3 "Liquid Neon" M24 — Settings → Editor (prototype 1871–1890).
 // Manuscript defaults (autosave snapshot cadence) + behavior toggles, bound to
 // settings.editorPrefs (additive AppSettings field persisted via Save).
-// Consumers (spellcheck flag on the editor surface, dictation gate) read the
-// persisted prefs; page width intentionally lives in the editor toolbar (M10).
+// F4#4 / Ivy H3: note view prefs write localStorage immediately (same as gear).
+// F2#15 owns SettingsPanel save/close — no F4 staging draft.
+import { useEffect, useState } from 'react';
 import { M24Card, M24Slider, M24Toggle } from './M24Controls';
+import {
+  readDefaultRichPref,
+  readShowMarkdownViewPref,
+  readShowSourceViewPref,
+  subscribeNoteViewPrefs,
+  writeDefaultRichPref,
+  writeShowMarkdownViewPref,
+  writeShowSourceViewPref,
+} from '../../../noteViewPrefs';
 import './M24Sections.css';
 
 interface Props {
@@ -12,6 +22,7 @@ interface Props {
   setSavedOk: (ok: boolean) => void;
 }
 
+/** Behavior/autosave defaults — view prefs are localStorage SoT, not EditorPrefs. */
 export const EDITOR_PREFS_DEFAULTS: Required<EditorPrefs> = {
   autosaveSeconds: 30, // prototype sx.autosave (HTML 3295)
   spellcheck: true,
@@ -20,19 +31,81 @@ export const EDITOR_PREFS_DEFAULTS: Required<EditorPrefs> = {
   dictation: false,
 };
 
-const TOGGLE_ROWS: { key: keyof Omit<Required<EditorPrefs>, 'autosaveSeconds'>; label: string }[] = [
+const BEHAVIOR_TOGGLE_ROWS: {
+  key: keyof Pick<Required<EditorPrefs>, 'spellcheck' | 'smartQuotes' | 'dimFocus' | 'dictation'>;
+  label: string;
+}[] = [
   { key: 'spellcheck', label: 'Spellcheck while typing' },
   { key: 'smartQuotes', label: 'Smart quotes & dashes' },
   { key: 'dimFocus', label: 'Focus mode dims window chrome' },
   { key: 'dictation', label: 'Voice dictation (offline model)' },
 ];
 
+type ViewKey = 'alwaysOpenRich' | 'showMarkdownView' | 'showSourceView';
+
+const VIEW_TOGGLE_ROWS: {
+  key: ViewKey;
+  label: string;
+  hint?: string;
+}[] = [
+  {
+    key: 'alwaysOpenRich',
+    label: 'Always open notes in Rich view',
+    hint: 'When on, notes open in Rich (sticky per-note modes stay stored for when this is off).',
+  },
+  {
+    key: 'showMarkdownView',
+    label: 'Show Markdown view toggle',
+    hint: 'Off by default — only Rich appears in the note gear until enabled.',
+  },
+  {
+    key: 'showSourceView',
+    label: 'Show Source Mode toggle',
+    hint: 'Off by default — only Rich appears in the note gear until enabled.',
+  },
+];
+
+function readViewPrefs() {
+  return {
+    alwaysOpenRich: readDefaultRichPref(),
+    showMarkdownView: readShowMarkdownViewPref(),
+    showSourceView: readShowSourceViewPref(),
+  };
+}
+
 export default function EditorSettingsSection({ settings, setSettings, setSavedOk }: Props) {
   const prefs: Required<EditorPrefs> = { ...EDITOR_PREFS_DEFAULTS, ...settings.editorPrefs };
+  const [viewPrefs, setViewPrefs] = useState(readViewPrefs);
 
-  const patch = (p: Partial<EditorPrefs>) => {
-    setSettings((prev) => ({ ...prev, editorPrefs: { ...EDITOR_PREFS_DEFAULTS, ...prev.editorPrefs, ...p } }));
+  useEffect(() => subscribeNoteViewPrefs(() => setViewPrefs(readViewPrefs())), []);
+
+  /** Behavior / autosave — never touches view-pref localStorage. */
+  const patchBehavior = (p: Partial<EditorPrefs>) => {
+    setSettings((prev) => ({
+      ...prev,
+      editorPrefs: { ...EDITOR_PREFS_DEFAULTS, ...prev.editorPrefs, ...p },
+    }));
     setSavedOk(false);
+  };
+
+  /** Immediate localStorage write (Ivy H3 / F2#15) — not gated on Settings Save. */
+  const setViewPref = (key: ViewKey, value: boolean) => {
+    switch (key) {
+      case 'alwaysOpenRich':
+        writeDefaultRichPref(value);
+        break;
+      case 'showMarkdownView':
+        writeShowMarkdownViewPref(value);
+        break;
+      case 'showSourceView':
+        writeShowSourceViewPref(value);
+        break;
+      default: {
+        const _exhaustive: never = key;
+        void _exhaustive;
+      }
+    }
+    setViewPrefs(readViewPrefs());
   };
 
   return (
@@ -49,21 +122,44 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
           min={5}
           max={120}
           unit="s"
-          onChange={(v) => patch({ autosaveSeconds: v })}
+          onChange={(v) => patchBehavior({ autosaveSeconds: v })}
           testId="editor-autosave-slider"
         />
       </M24Card>
 
       <M24Card title="Behavior">
-        {TOGGLE_ROWS.map(({ key, label }) => (
+        {BEHAVIOR_TOGGLE_ROWS.map(({ key, label }) => (
           <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0' }}>
             <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>{label}</span>
             <M24Toggle
               on={prefs[key]}
               label={label}
               testId={`editor-toggle-${key}`}
-              onClick={() => patch({ [key]: !prefs[key] })}
+              onClick={() => patchBehavior({ [key]: !prefs[key] })}
             />
+          </div>
+        ))}
+      </M24Card>
+
+      <M24Card title="Note view">
+        <div style={{ fontSize: 10.5, color: '#7686a2', marginBottom: 12 }}>
+          Rich is the default. Enable Markdown or Source here to show them in the note gear menu.
+          Changes apply immediately (same as the note gear).
+        </div>
+        {VIEW_TOGGLE_ROWS.map(({ key, label, hint }) => (
+          <div key={key} style={{ padding: '5px 0' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>{label}</span>
+              <M24Toggle
+                on={viewPrefs[key]}
+                label={label}
+                testId={`editor-toggle-${key}`}
+                onClick={() => setViewPref(key, !viewPrefs[key])}
+              />
+            </div>
+            {hint ? (
+              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 4, paddingRight: 48 }}>{hint}</div>
+            ) : null}
           </div>
         ))}
       </M24Card>

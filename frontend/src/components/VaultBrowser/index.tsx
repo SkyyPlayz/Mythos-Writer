@@ -1179,7 +1179,44 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           </>
         )}
       </div>
-      {/* M16: 5-button toolbar */}
+      {/* F4#8 / Probe N2: search ABOVE toolbar (Liquid Neon HTML ~308–318). */}
+      <div className="vb-notes-search" data-testid="vb-notes-search">
+        <svg
+          className="vb-notes-search-icon"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#8e9db8"
+          strokeWidth="2"
+          strokeLinecap="round"
+          aria-hidden="true"
+          data-testid="vb-search-magnifier"
+        >
+          <circle cx="11" cy="11" r="6.5" />
+          <path d="M20.5 20.5L16 16" />
+        </svg>
+        <input
+          className="vb-notes-search-input"
+          type="text"
+          placeholder="Search notes…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          aria-label="Search notes"
+          data-testid="vb-search-input"
+        />
+        {searchQuery && (
+          <button
+            className="vb-notes-search-clear"
+            onClick={() => setSearchQuery('')}
+            aria-label="Clear search"
+            data-testid="vb-search-clear"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {/* F4#10: toolbar (new / folder / sort / reveal / collapse↑ / expand↓). */}
       <div className="vb-notes-toolbar" data-testid="vb-notes-toolbar">
         <button
           className="vb-toolbar-btn"
@@ -1225,7 +1262,7 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           aria-label="Collapse all"
           data-testid="vb-btn-collapse-all"
         >
-          ⊟
+          ↑
         </button>
         <button
           className="vb-toolbar-btn"
@@ -1234,30 +1271,8 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           aria-label="Expand all"
           data-testid="vb-btn-expand-all"
         >
-          ⊞
+          ↓
         </button>
-      </div>
-      {/* M16: search field */}
-      <div className="vb-notes-search" data-testid="vb-notes-search">
-        <input
-          className="vb-notes-search-input"
-          type="text"
-          placeholder="Search notes…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          aria-label="Search notes"
-          data-testid="vb-search-input"
-        />
-        {searchQuery && (
-          <button
-            className="vb-notes-search-clear"
-            onClick={() => setSearchQuery('')}
-            aria-label="Clear search"
-            data-testid="vb-search-clear"
-          >
-            ×
-          </button>
-        )}
       </div>
       <TagPane activeTag={activeTag} onTagFilter={onTagFilter} />
       {allNotesItems.length === 0 ? (

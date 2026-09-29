@@ -111,15 +111,17 @@
   color: rgb(219, 228, 245); /* #dbe4f5 */
 }
 
-/* Active tab (prototype 4040–4041): glass fill + --b1 neon border + up-glow */
+/* Active tab (prototype 4040–4041 / F4#7 live WorkspaceTabBar): neon full outline */
 .wtb-tab--active,
 .wtb-tab--active:hover {
   height: 31px;
   background: var(--glass2, rgba(21, 26, 45, .88));
   color: rgb(238, 242, 251); /* #eef2fb */
   border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, .5));
-  border-bottom: none;
-  box-shadow: 0 -8px 22px -10px var(--g1, rgba(0, 240, 255, .4));
+  border-bottom-color: var(--b1, rgba(0, 240, 255, .5));
+  box-shadow:
+    0 -8px 22px -10px var(--g1, rgba(0, 240, 255, .4)),
+    0 0 0 1px color-mix(in srgb, var(--b1, rgba(0, 240, 255, .5)) 35%, transparent);
 }
 
 .wtb-tab:focus-visible {

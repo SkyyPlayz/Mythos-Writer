@@ -1,16 +1,24 @@
+import './UpdatesSection.css';
+
 interface UpdatesSectionProps {
   settings: AppSettings;
   setSettings: React.Dispatch<React.SetStateAction<AppSettings>>;
   setSavedOk: (ok: boolean) => void;
 }
 
+/** F4#11: Update channel radios — top-aligned field block for Appearance. */
 export default function UpdatesSection({ settings, setSettings, setSavedOk }: UpdatesSectionProps) {
   return (
-    <section className="settings-section" aria-labelledby="section-updates" data-settings-cat="appearance">
+    <section
+      className="settings-section updates-section"
+      aria-labelledby="section-updates"
+      data-settings-cat="appearance"
+      data-testid="updates-section"
+    >
       <h3 className="settings-section-title" id="section-updates">Updates</h3>
-      <div className="settings-field">
+      <div className="settings-field updates-section__field">
         <label className="settings-label">Update Channel</label>
-        <div className="settings-radio-group" role="radiogroup" aria-label="Update channel">
+        <div className="settings-radio-group updates-section__radios" role="radiogroup" aria-label="Update channel">
           {(['stable', 'beta'] as const).map((ch) => (
             <label key={ch} className="settings-radio-label">
               <input

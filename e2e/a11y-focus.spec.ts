@@ -165,38 +165,31 @@ test('TC-A11Y-01: Notes Vault toolbar buttons are keyboard-focusable via Tab', a
   await expect(page.locator('[data-testid="vb-btn-sort"]')).toBeFocused();
 });
 
-// ─── TC-A11Y-02: Search field reachable by Tab past the toolbar ──────────────
+// ─── TC-A11Y-02: Search field reachable in tab order (above toolbar) ─────────
 //
-// Verifies that Tab navigation past the toolbar reaches the notes search
-// input, confirming VaultBrowser content beyond the toolbar is part of the
-// natural tab order.
+// F4#8: search sits ABOVE the notes toolbar (prototype Liquid Neon). Verify
+// the search input is in the natural tab order and Tab from it reaches the
+// toolbar's New-note control.
 
-test('TC-A11Y-02: Tab past the toolbar reaches the notes search input', async () => {
+test('TC-A11Y-02: Tab from notes search reaches the toolbar New note button', async () => {
   await openVaultPanel(page);
 
+  const searchInput = page.locator('[data-testid="vb-search-input"]');
   const newNoteBtn = page.locator('[data-testid="vb-btn-new-note"]');
 
-  // Same anchor-then-settle as TC-A11Y-01: a late async re-focus (editor
-  // data finishing load) can steal focus right after we set it, so verify
-  // it survives a settle window before starting the Tab traversal.
   await expect(async () => {
-    await newNoteBtn.focus();
+    await searchInput.focus();
     await page.waitForTimeout(200);
     const active = await page.evaluate(
       () => (document.activeElement as HTMLElement | null)?.dataset?.testid
         ?? document.activeElement?.tagName ?? 'none',
     );
-    expect(active, `focus stolen by: ${active}`).toBe('vb-btn-new-note');
+    expect(active, `focus stolen by: ${active}`).toBe('vb-search-input');
   }).toPass({ timeout: 15_000 });
 
-  await page.keyboard.press('Tab'); // → New folder btn
-  await page.keyboard.press('Tab'); // → Sort btn
-  await page.keyboard.press('Tab'); // → Auto-reveal btn
-  await page.keyboard.press('Tab'); // → Collapse all btn
-  await page.keyboard.press('Tab'); // → Expand all btn
-  await page.keyboard.press('Tab'); // → search input
+  await page.keyboard.press('Tab'); // → New note (first toolbar button)
 
-  await expect(page.locator('[data-testid="vb-search-input"]')).toBeFocused();
+  await expect(newNoteBtn).toBeFocused();
 });
 
 // ─── TC-A11Y-03: Right sidebar landmark name/role ─────────────────────────────

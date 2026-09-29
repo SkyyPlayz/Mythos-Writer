@@ -93,6 +93,11 @@ const SETTINGS_CATS: readonly SettingsCategoryId[] = SETTINGS_CATEGORIES.map((c)
 type SettingsCat = SettingsCategoryId;
 
 export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange, initialCategory, activeVaultRoot }: Props) {
+  // Ivy H3: F2#15 owns save/close. Note-view toggles write immediately (no F4 draft).
+  const dismissSettings = useCallback(() => {
+    onClose();
+  }, [onClose]);
+
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -364,10 +369,10 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
   // Close main dialog on Escape when the inner popover is not open (ARIA APG dialog pattern)
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !lgAdvancedOpen) onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !lgAdvancedOpen) dismissSettings(); };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onClose, lgAdvancedOpen]);
+  }, [dismissSettings, lgAdvancedOpen]);
 
   // Focus trap in popover
   useEffect(() => {
@@ -551,7 +556,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   );
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) onClose();
+    if (e.target === e.currentTarget) dismissSettings();
   };
 
   const handleDialogKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -784,11 +789,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               // overlay or focus-trap cannot swallow the dismiss.
               e.preventDefault();
               e.stopPropagation();
-              onClose();
+              dismissSettings();
             }}
             // Keyboard activation of <button> fires click, not pointerdown —
             // keep both; double-fire from a real pointer is harmless.
-            onClick={onClose}
+            onClick={dismissSettings}
           >
             ✕
           </button>
@@ -1135,7 +1140,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
             </div>
           )}
           <div className="settings-footer-actions">
-            <button type="button" className="settings-btn settings-btn-cancel" onClick={onClose}>Cancel</button>
+            <button type="button" className="settings-btn settings-btn-cancel" onClick={dismissSettings}>Cancel</button>
             <button
               type="button"
               className="settings-btn settings-btn-save"
