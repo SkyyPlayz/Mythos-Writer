@@ -84,9 +84,14 @@ export default function SceneNotesPanel({
     // Clear stale part before IPC returns so a Part-tab write cannot land on
     // the previous scene's part — but stay on the Part tab while pending (H3).
     setResolvedPartId(null);
+    const tierCtx = window.api.notesTierContext;
+    if (!tierCtx) {
+      setPartPending(false);
+      return;
+    }
     setPartPending(true);
     let cancelled = false;
-    window.api.notesTierContext?.(scene.id)
+    tierCtx(scene.id)
       .then((res) => {
         if (cancelled) return;
         setPartPending(false);
@@ -118,9 +123,14 @@ export default function SceneNotesPanel({
     const loadKey = `${storeKey}:${refreshToken}`;
     if (loadKey === loadedKeyRef.current) return;
     loadedKeyRef.current = loadKey;
+    const notesGet = window.api.notesGet;
+    if (!notesGet) {
+      setNotes([]);
+      return;
+    }
     const load = async () => {
       try {
-        const res = await window.api.notesGet?.(storeKey);
+        const res = await notesGet(storeKey);
         let content = res?.content ?? '';
         // H2: old-key fallback — bare `part:Part N` still loads under scoped ids.
         if (
@@ -130,7 +140,7 @@ export default function SceneNotesPanel({
         ) {
           const legacy = legacyBarePartStoreKey(resolvedPartId);
           if (legacy && legacy !== storeKey) {
-            const legacyRes = await window.api.notesGet?.(legacy);
+            const legacyRes = await notesGet(legacy);
             if (legacyRes?.content?.trim()) content = legacyRes.content;
           }
         }
