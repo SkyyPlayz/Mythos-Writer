@@ -237,16 +237,14 @@ export default function RichTextEditor({
       if (!initializedRef.current) return;
       if (postMountRef.current) userEditedRef.current = true;
       if (changeTimerRef.current) clearTimeout(changeTimerRef.current);
-      // Capture callbacks at schedule time (when the user typed), not at flush.
-      // A deferred flush after selection moves must still write to the scene
-      // that was open when this edit was armed — never the newly selected one.
-      const onBeforeFlush = onBeforeFlushRef.current;
-      const onChangeMarkdown = onChangeMarkdownRef.current;
+      // Read callbacks at flush time — editors are keyed by scene id, so a
+      // remount arms a fresh debounce. Schedule-time capture would freeze
+      // layout callbacks (e.g. leftWidth) up to 800ms stale (Critic H2).
       const flush = () => {
         pendingFlushRef.current = null;
         changeTimerRef.current = null;
-        onBeforeFlush?.(ed);
-        onChangeMarkdown?.(getEditorMarkdown(ed));
+        onBeforeFlushRef.current?.(ed);
+        onChangeMarkdownRef.current?.(getEditorMarkdown(ed));
       };
       pendingFlushRef.current = flush;
       changeTimerRef.current = setTimeout(flush, debounceMs);

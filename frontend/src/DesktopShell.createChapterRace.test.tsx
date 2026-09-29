@@ -1,6 +1,5 @@
-// F1#9 root-fix break-tests (must RED on tip 999cfb79, GREEN after storiesRef
-// + schedule-time ID capture). Covers: add-chapter race, Shield delete-drop,
-// Probe switch-story retarget.
+// F1#9 root-fix + Critic r3 H1–H4 break-tests.
+// Core race tests must RED on tip 999cfb79; H1–H4 RED on tip 80c88bfc.
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, act, cleanup } from '@testing-library/react';
@@ -36,6 +35,8 @@ const CH_A = 'ch-a';
 const CH_B = 'ch-b';
 const SCENE_A = 'scene-a';
 const SCENE_B = 'scene-b';
+const PART_A = 'part-a';
+const NOTE_PATH = 'Characters/Mira.md';
 
 function makeScene(storyId: string, chapterId: string, id: string, title: string, content: string, order: number) {
   return {
@@ -63,7 +64,13 @@ function makeChapter(storyId: string, id: string, title: string, scenes: ReturnT
   };
 }
 
-function makeStory(id: string, title: string, chapters: ReturnType<typeof makeChapter>[]) {
+function makeStory(
+  id: string,
+  title: string,
+  chapters: ReturnType<typeof makeChapter>[],
+  partTitle = '',
+  partId = `part-${id}`,
+) {
   return {
     id,
     title,
@@ -72,8 +79,8 @@ function makeStory(id: string, title: string, chapters: ReturnType<typeof makeCh
     updatedAt: NOW,
     chapters,
     parts: [{
-      id: `part-${id}`,
-      title: '',
+      id: partId,
+      title: partTitle,
       order: 0,
       note: [],
       chapters,
@@ -119,6 +126,25 @@ function makeSingleStoryManifest() {
   };
 }
 
+/** Two chapters under one named part — Structure move + createChapterInPart. */
+function makeTwoChapterNamedPartManifest() {
+  const chA = makeChapter(STORY_A, CH_A, 'Chapter One', [
+    makeScene(STORY_A, CH_A, SCENE_A, 'Scene One', 'Seed prose.', 0),
+  ], 0);
+  const chB = makeChapter(STORY_A, CH_B, 'Chapter Two', [
+    makeScene(STORY_A, CH_B, SCENE_B, 'Scene Two', 'Other seed.', 0),
+  ], 1);
+  return {
+    version: '1',
+    vaultRoot: '/tmp',
+    stories: [makeStory(STORY_A, 'Race Story', [chA, chB], 'Part One', PART_A)],
+    entities: [],
+    suggestions: [],
+    scenes: [],
+    chapters: [],
+  };
+}
+
 type Manifest = ReturnType<typeof makeSingleStoryManifest>;
 
 function makeMockApi(manifest: Manifest, openSceneId = SCENE_A) {
@@ -152,6 +178,28 @@ function makeMockApi(manifest: Manifest, openSceneId = SCENE_A) {
     onArchiveContScanResult: () => () => {},
     onArchiveContScanError: () => () => {},
     snapshotSave: vi.fn().mockResolvedValue({}),
+    listNotesVault: vi.fn().mockResolvedValue({
+      items: [{ path: NOTE_PATH, type: 'file', name: 'Mira.md' }],
+    }),
+    readNotesVault: vi.fn().mockResolvedValue({ path: NOTE_PATH, content: '# Mira\n\nA character.' }),
+    writeNotesVault: vi.fn().mockResolvedValue({ path: NOTE_PATH, bytes: 10 }),
+    notesVaultReadIcons: vi.fn().mockResolvedValue({}),
+    noteBacklinks: vi.fn().mockResolvedValue({ backlinks: [] }),
+    notesTagList: vi.fn().mockResolvedValue({ tags: [] }),
+    projectList: vi.fn().mockResolvedValue({
+      projects: [],
+      activeNotesVaultRoot: '/tmp/mythos-notes-vault',
+    }),
+    continuitySearch: vi.fn().mockResolvedValue({
+      results: [{
+        name: 'Mira',
+        aliases: [],
+        type: 'character',
+        path: NOTE_PATH,
+        excerpt: 'A character.',
+      }],
+    }),
+    continuityMatchSelection: vi.fn().mockResolvedValue({ match: null }),
     /** Test helper: last persisted manifest (debounced save lands in writeManifest). */
     _liveManifest: () => liveManifest,
   };
@@ -163,6 +211,12 @@ async function submitPrompt(text: string): Promise<void> {
   fireEvent.change(input, { target: { value: text } });
   fireEvent.keyDown(input, { key: 'Enter' });
   await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+}
+
+/** Open the title prompt but leave it open (H4: flush while modal is up). */
+async function openPromptDialog(): Promise<HTMLInputElement> {
+  const dialog = await screen.findByRole('dialog');
+  return dialog.querySelector('.prompt-modal-input') as HTMLInputElement;
 }
 
 async function mountSceneEditor(): Promise<BlockEditorApi> {
@@ -196,11 +250,24 @@ function sceneContent(manifest: Manifest, storyId: string, sceneId: string): str
   return scene.blocks?.map((b) => b.content).join('\n\n') ?? '';
 }
 
+function sceneChapterId(manifest: Manifest, storyId: string, sceneId: string): string | null {
+  const story = manifest.stories.find((s) => s.id === storyId);
+  if (!story) return null;
+  for (const ch of story.parts?.[0]?.chapters ?? story.chapters ?? []) {
+    if ((ch.scenes ?? []).some((sc) => sc.id === sceneId)) return ch.id;
+  }
+  return null;
+}
+
 /** Advance past RichTextEditor's 800ms debounce (+ buffer). */
 async function flushEditorDebounce(): Promise<void> {
   await act(async () => {
     vi.advanceTimersByTime(1000);
   });
+}
+
+async function drainManifestSave(): Promise<void> {
+  await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
 }
 
 describe('DesktopShell deferred editor save (F1#9 root fix)', () => {
@@ -237,7 +304,7 @@ describe('DesktopShell deferred editor save (F1#9 root fix)', () => {
     vi.useRealTimers();
 
     // Drain debounced manifest save (900ms scheduleManifestSave).
-    await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+    await drainManifestSave();
 
     await waitFor(() => {
       const man = api._liveManifest();
@@ -272,7 +339,7 @@ describe('DesktopShell deferred editor save (F1#9 root fix)', () => {
 
     await flushEditorDebounce();
     vi.useRealTimers();
-    await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+    await drainManifestSave();
 
     await waitFor(() => {
       const man = api._liveManifest();
@@ -322,7 +389,7 @@ describe('DesktopShell deferred editor save (F1#9 root fix)', () => {
 
     await flushEditorDebounce();
     vi.useRealTimers();
-    await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+    await drainManifestSave();
 
     await waitFor(() => {
       const man = api._liveManifest();
@@ -335,6 +402,167 @@ describe('DesktopShell deferred editor save (F1#9 root fix)', () => {
     // Probe: late save must not reset the live selection back to Story A.
     expect(document.querySelector('.nav-scene-row.active')?.textContent).toMatch(/Scene B/);
   });
+
+  it('H1) Back after Continuity View full note restores the note (not empty Notes)', async () => {
+    const api = makeMockApi(makeTwoStoryManifest());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = api;
+    render(<App />);
+    await mountSceneEditor();
+
+    // Focus mode → Continuity Peek (Ctrl/Cmd+Shift+K).
+    fireEvent.click(await screen.findByTestId('writing-mode-focus'));
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'K', ctrlKey: true, shiftKey: true });
+    });
+    const peek = await screen.findByRole('dialog', { name: 'Continuity Peek' });
+    const search = peek.querySelector('.continuity-search-input') as HTMLInputElement;
+    expect(search).toBeTruthy();
+    fireEvent.change(search, { target: { value: 'Mira' } });
+    await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+    const viewNote = await screen.findByRole('button', { name: /View full note: Mira/i });
+    fireEvent.click(viewNote);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('note-title')).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('notes-editor-placeholder')).toBeNull();
+
+    // Exit focus so the story navigator is available, then switch story
+    // (handleSelectScene clears notePath).
+    fireEvent.click(await screen.findByTestId('writing-mode-normal'));
+    fireEvent.click(await screen.findByTestId('nav-rail-story'));
+    fireEvent.click(await screen.findByText('Story Beta'));
+    await waitFor(() => {
+      expect(document.querySelector('.nav-scene-row.active')?.textContent).toMatch(/Scene B/);
+    });
+
+    // Back via Alt+← (ManuscriptView → onHistoryAltArrow → tryGoBack).
+    // May need two steps if nav-rail-story pushed an intermediate entry.
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true });
+    });
+    if (!screen.queryByTestId('note-title')) {
+      await act(async () => {
+        fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true });
+      });
+    }
+
+    await waitFor(() => {
+      expect(screen.getByTestId('note-title')).toBeInTheDocument();
+      expect(screen.queryByTestId('notes-editor-placeholder')).toBeNull();
+    });
+  });
+
+  it('H3) type, move scene to another chapter, save fires — text lands under new chapter', async () => {
+    const api = makeMockApi(makeTwoChapterNamedPartManifest());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = api;
+    render(<App />);
+    const editor = await mountSceneEditor();
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await act(async () => {
+      editor.insertText('Survives the move.');
+    });
+    await act(async () => { vi.advanceTimersByTime(200); });
+
+    // Structure → List view: drag Scene One onto Chapter Two header.
+    fireEvent.click(await screen.findByTestId('story-subview-structure'));
+    fireEvent.click(await screen.findByTitle(/List view/i));
+    const alpha = await screen.findByRole('treeitem', { name: /Scene: Scene One/i });
+    const ch2Header = screen.getByText('CHAPTER 2').closest('.list-chapter__header');
+    expect(ch2Header).toBeTruthy();
+    const dataTransfer = {
+      setData: vi.fn(),
+      getData: vi.fn(() => SCENE_A),
+      effectAllowed: '',
+      dropEffect: '',
+    };
+    fireEvent.dragStart(alpha, { dataTransfer });
+    fireEvent.dragOver(ch2Header!, { dataTransfer });
+    fireEvent.drop(ch2Header!, { dataTransfer });
+
+    await waitFor(() => {
+      expect(sceneChapterId(api._liveManifest(), STORY_A, SCENE_A)).toBe(CH_B);
+    });
+
+    await flushEditorDebounce();
+    vi.useRealTimers();
+    await drainManifestSave();
+
+    await waitFor(() => {
+      const man = api._liveManifest();
+      expect(sceneChapterId(man, STORY_A, SCENE_A)).toBe(CH_B);
+      expect(sceneContent(man, STORY_A, SCENE_A)).toContain('Survives the move.');
+    });
+    // Disk write must have happened (tip 80c88bfc silently dropped → 0 writes).
+    const movedWrites = (api.writeVault as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => typeof c[1] === 'string' && (c[1] as string).includes('Survives the move.'),
+    );
+    expect(movedWrites.length).toBeGreaterThan(0);
+  });
+
+  it('H4a) type then + Part while debounce pending — part + typed text survive', async () => {
+    const api = makeMockApi(makeSingleStoryManifest());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = api;
+    render(<App />);
+    const editor = await mountSceneEditor();
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await act(async () => {
+      editor.insertText('Typed before part.');
+    });
+    await act(async () => { vi.advanceTimersByTime(200); });
+
+    // + Part is on the scene-zoom toolbar — editor stays mounted with debounce armed.
+    fireEvent.click(screen.getByTestId('msv-add-part'));
+    await openPromptDialog();
+    await flushEditorDebounce();
+    vi.useRealTimers();
+    await submitPrompt('Part Race');
+    await drainManifestSave();
+
+    await waitFor(() => {
+      const man = api._liveManifest();
+      const story = man.stories.find((s) => s.id === STORY_A)!;
+      expect(story.parts?.[0]?.title).toBe('Part Race');
+      expect(sceneContent(man, STORY_A, SCENE_A)).toContain('Typed before part.');
+    });
+  });
+
+  it('H4b) type then add-chapter-in-part while debounce pending — chapter + text survive', async () => {
+    const api = makeMockApi(makeTwoChapterNamedPartManifest());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = api;
+    render(<App />);
+    const editor = await mountSceneEditor();
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await act(async () => {
+      editor.insertText('Typed before in-part chapter.');
+    });
+    await act(async () => { vi.advanceTimersByTime(200); });
+
+    // Part context menu → Add chapter (createChapterInPart); editor stays mounted.
+    const partRow = await screen.findByTestId(`nav-part-${PART_A}`);
+    fireEvent.contextMenu(partRow.querySelector('.nav-part-row') ?? partRow);
+    const addChapter = await screen.findByRole('menuitem', { name: /Add chapter/i });
+    fireEvent.click(addChapter);
+
+    await openPromptDialog();
+    await flushEditorDebounce();
+    vi.useRealTimers();
+    await submitPrompt('Chapter In Part');
+    await drainManifestSave();
+
+    await waitFor(() => {
+      const man = api._liveManifest();
+      expect(chapterTitles(man)).toEqual(
+        expect.arrayContaining(['Chapter One', 'Chapter Two', 'Chapter In Part']),
+      );
+      expect(sceneContent(man, STORY_A, SCENE_A)).toContain('Typed before in-part chapter.');
+    });
+  });
 });
-
-

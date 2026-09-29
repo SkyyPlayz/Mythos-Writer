@@ -709,7 +709,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const { requestText, promptModal } = useTextPrompt();
   const [manifest, setManifest] = useState<Manifest | null>(null);
   const [stories, setStories] = useState<Story[]>([]);
-  // SKY-2966: stable ref so navigator sync callbacks don't re-subscribe on every render
+  // SKY-2966 / Critic soft: keep storiesRef in sync during render for non-
+  // updateManifest writers (loadVault), and also inside updateManifest's
+  // functional setStories so two flushes in the same tick see each other.
   const storiesRef = useRef<Story[]>([]);
   storiesRef.current = stories;
   // SKY-10916: loadVault (defined below, before the nav-history hook itself
@@ -2006,7 +2008,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [persistManifest]);
 
   const updateManifest = useCallback((updatedStories: Story[], updatedLayout?: LayoutPrefs) => {
-    setStories(updatedStories);
+    // Critic soft: publish into storiesRef inside the functional update so a
+    // second flush in the same tick (before re-render) reads this write.
+    setStories(() => {
+      storiesRef.current = updatedStories;
+      return updatedStories;
+    });
     if (!manifest) return;
     const updated: Manifest = {
       ...manifest,
@@ -3255,9 +3262,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, []);
 
   /**
-   * F1#9 / Shield / Probe: apply editor blocks to a CAPTURED story/chapter/scene
-   * id triple. Merges onto storiesRef (latest), DROPS if the target was deleted,
-   * and never resets the live selection to the flushed scene.
+   * F1#9 / Shield / Probe: apply editor blocks to a CAPTURED story/scene id.
+   * chapterId is a hint for provisional scenes only — after moveScene the
+   * open scene may live under a different chapter, so we look up by sceneId
+   * anywhere in the story and DROP only if that id is gone (Critic H3).
+   * Merges onto storiesRef (latest); never resets live selection to the flush.
    */
   const applySceneBlocks = useCallback((
     storyId: string,
@@ -3268,19 +3277,29 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const latest = storiesRef.current;
     const story = latest.find((s) => s.id === storyId);
     if (!story) return; // Shield: target story gone — drop the save
-    const chapter =
-      story.chapters.find((c) => c.id === chapterId)
-      ?? (story.parts ?? []).flatMap((p) => p.chapters).find((c) => c.id === chapterId);
-    if (!chapter) return; // Shield: target chapter gone — drop
-    const existing = chapter.scenes.find((sc) => sc.id === sceneId);
+    const allChapters = [
+      ...story.chapters,
+      ...(story.parts ?? []).flatMap((p) => p.chapters),
+    ];
+    // Dedup by id — story.chapters mirrors parts[].chapters after sync.
+    const chaptersById = new Map<string, Chapter>();
+    for (const ch of allChapters) chaptersById.set(ch.id, ch);
+    const chapterList = [...chaptersById.values()];
+    let chapter = chapterList.find((c) => c.scenes.some((sc) => sc.id === sceneId));
     const isProvisional = provisionalScene?.sceneId === sceneId;
+    if (!chapter && isProvisional) {
+      chapter = chapterList.find((c) => c.id === chapterId);
+    }
+    if (!chapter) return; // Shield: scene id gone (and not provisional) — drop
+    const targetChapterId = chapter.id;
+    const existing = chapter.scenes.find((sc) => sc.id === sceneId);
     if (!existing && !isProvisional) return; // Shield: target scene gone — drop
     const base = existing ?? {
       id: sceneId,
       title: '',
-      path: `stories/${storyId}/chapters/${chapterId}/scenes/${sceneId}.md`,
+      path: `stories/${storyId}/chapters/${targetChapterId}/scenes/${sceneId}.md`,
       order: chapter.scenes.length,
-      chapterId,
+      chapterId: targetChapterId,
       storyId,
       blocks: [],
       createdAt: now(),
@@ -3291,9 +3310,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (isProvisional && !content.trim()) return;
 
     const updatedStories = latest.map((s) =>
-      s.id !== storyId ? s : updateChapterOwner(s, chapterId, (chapters) =>
+      s.id !== storyId ? s : updateChapterOwner(s, targetChapterId, (chapters) =>
         chapters.map((ch) =>
-          ch.id !== chapterId ? ch : {
+          ch.id !== targetChapterId ? ch : {
             ...ch,
             scenes: isProvisional
               ? [...ch.scenes, updatedScene]
@@ -3310,15 +3329,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (editedStory) {
       setSelectedStory((prev) => (prev?.id === storyId ? editedStory : prev));
       setSelectedChapter((prev) => {
-        if (!prev || prev.id !== chapterId) return prev;
-        return editedStory.chapters.find((ch) => ch.id === chapterId) ?? prev;
+        if (!prev || prev.id !== targetChapterId) return prev;
+        return editedStory.chapters.find((ch) => ch.id === targetChapterId) ?? prev;
       });
       setSelectedScene((prev) => (prev?.id === sceneId ? updatedScene : prev));
       setPane2Scene((prev) => (prev?.id === sceneId ? updatedScene : prev));
       setPane2Story((prev) => (prev?.id === storyId ? editedStory : prev));
       setPane2Chapter((prev) => {
-        if (!prev || prev.id !== chapterId) return prev;
-        return editedStory.chapters.find((ch) => ch.id === chapterId) ?? prev;
+        if (!prev || prev.id !== targetChapterId) return prev;
+        return editedStory.chapters.find((ch) => ch.id === targetChapterId) ?? prev;
       });
     }
     persistSceneMarkdown(updatedScene);
@@ -5004,6 +5023,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (loc.sceneId) {
       const found = findSceneLocation(loc.sceneId);
       if (found) handleSelectScene(found.scene, found.chapter, found.story);
+      // Critic H1: "View full note" keeps the scene, so history may hold both
+      // sceneId and notePath. handleSelectScene clears openedNotePath — restore
+      // it after the scene so Back/Forward lands on the note, not empty Notes.
+      if (loc.notePath) setOpenedNotePath(loc.notePath);
     } else if (loc.entityId) {
       const cached = allEntities.find((e) => e.id === loc.entityId);
       if (cached) {
@@ -5524,9 +5547,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const createChapterInPart = useCallback(async (storyId: string, partId: string) => {
     const title = await requestText('Chapter title:');
     if (!title?.trim()) return;
-    const id = generateId();
-    const story = stories.find((s) => s.id === storyId);
+    // Critic H4: re-read after the modal — a deferred editor save may have
+    // landed while the prompt was open.
+    const latest = storiesRef.current;
+    const story = latest.find((s) => s.id === storyId);
     if (!story) return;
+    const id = generateId();
     const chapter: Chapter = {
       id, title: title.trim(),
       path: `stories/${storyId}/chapters/${id}`,
@@ -5534,9 +5560,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       scenes: [], createdAt: now(), updatedAt: now(),
     };
     const updated = insertChapterIntoPart(story, partId, chapter);
-    updateManifest(stories.map((s) => (s.id === storyId ? updated : s)));
+    updateManifest(latest.map((s) => (s.id === storyId ? updated : s)));
     if (selectedStory?.id === storyId) refreshManuscriptSelection(updated);
-  }, [stories, updateManifest, requestText, selectedStory, refreshManuscriptSelection]);
+  }, [updateManifest, requestText, selectedStory, refreshManuscriptSelection]);
   createChapterInPartRef.current = createChapterInPart;
 
   /** F1#3: drag a chapter onto a part header. */
@@ -5797,8 +5823,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   /** F1#7/#8: rename a part from Structure navigator / Full Book header. */
   const handleRenamePart = useCallback(async (partId: string, nextTitle?: string) => {
-    const story = stories.find((s) => (s.parts ?? []).some((p) => p.id === partId))
+    const resolveStory = () =>
+      storiesRef.current.find((s) => (s.parts ?? []).some((p) => p.id === partId))
       ?? (selectedStory && (selectedStory.parts ?? []).some((p) => p.id === partId) ? selectedStory : null);
+    let story = resolveStory();
     if (!story) return;
     const part = (story.parts ?? []).find((p) => p.id === partId);
     if (!part) return;
@@ -5810,14 +5838,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     } else {
       title = title.trim();
     }
+    // Critic H4: merge onto post-await storiesRef so a save during the modal
+    // is not reverted when we write the rename.
+    const latest = storiesRef.current;
+    const storyId = story.id;
+    story = latest.find((s) => s.id === storyId) ?? story;
     const reconciled = reconcileParts(story);
     const updatedParts = (reconciled.parts ?? []).map((p) =>
       p.id === partId ? { ...p, title, updatedAt: now() } : p
     );
     const updated = syncChaptersFromParts({ ...reconciled, parts: updatedParts });
-    updateManifest(stories.map((st) => (st.id === updated.id ? updated : st)));
+    updateManifest(latest.map((st) => (st.id === updated.id ? updated : st)));
     if (selectedStory?.id === updated.id) refreshManuscriptSelection(updated);
-  }, [stories, selectedStory, updateManifest, requestText, refreshManuscriptSelection]);
+  }, [selectedStory, updateManifest, requestText, refreshManuscriptSelection]);
   handleRenamePartRef.current = handleRenamePart;
 
   // M3 (SKY-9021): row-3 inline story rename (Full Book / Part depth title =
@@ -5835,20 +5868,28 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // part" and story.parts becomes the mutation authority (see storyParts.ts).
   const handleAddPart = useCallback(async () => {
     if (!selectedStory) return;
-    // F1#9: merge onto storiesRef so a deferred editor save is not clobbered.
-    const latest = storiesRef.current;
-    const selected = latest.find((st) => st.id === selectedStory.id) ?? selectedStory;
-    const reconciled = reconcileParts(selected);
-    const parts = reconciled.parts ?? [];
-    if (isSimpleSinglePart(reconciled)) {
+    const storyId = selectedStory.id;
+    // Decide the prompt path from a pre-await snapshot, then re-read
+    // storiesRef after the modal (Critic H4 / F1#9).
+    const pre = storiesRef.current.find((st) => st.id === storyId) ?? selectedStory;
+    const preReconciled = reconcileParts(pre);
+    if (isSimpleSinglePart(preReconciled)) {
       const title = await requestText('Part title:');
       if (!title?.trim()) return;
+      const latest = storiesRef.current;
+      const selected = latest.find((st) => st.id === storyId) ?? pre;
+      const reconciled = reconcileParts(selected);
+      const parts = reconciled.parts ?? [];
       const updatedParts = parts.map((p, i) => (i === 0 ? { ...p, title: title.trim(), updatedAt: now() } : p));
       const updated = syncChaptersFromParts({ ...reconciled, parts: updatedParts });
       updateManifest(latest.map((st) => (st.id === updated.id ? updated : st)));
       refreshManuscriptSelection(updated);
       return;
     }
+    const latest = storiesRef.current;
+    const selected = latest.find((st) => st.id === storyId) ?? selectedStory;
+    const reconciled = reconcileParts(selected);
+    const parts = reconciled.parts ?? [];
     const newPart: Part = {
       id: generateId(), title: '', order: parts.length, note: [], chapters: [],
       createdAt: now(), updatedAt: now(),
