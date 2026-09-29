@@ -417,6 +417,7 @@ export default function BetaReaderPage({ story, chapter, scene, agentNames, prod
               chat={partnerChat}
               accent="brainstorm"
               partnerName={partnerName}
+              showIdentity={false}
               placeholder={`Message ${partnerName}…`}
               testidPrefix="beta-partner"
             />

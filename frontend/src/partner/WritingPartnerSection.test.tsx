@@ -6,9 +6,10 @@ const baseSettings = {
   apiKey: '',
   theme: 'dark' as const,
   agents: {
-    writingAssistant: { enabled: true, model: '', scanIntervalSeconds: 60 },
-    brainstorm: { enabled: true, model: '' },
-    archive: { enabled: true, model: '', continuityCheckIntervalSeconds: 60 },
+    writingAssistant: { enabled: true, model: '', scanIntervalSeconds: 60, confidenceThreshold: 0.9 },
+    brainstorm: { enabled: true, model: '', confidenceThreshold: 0.9 },
+    archive: { enabled: true, model: '', continuityCheckIntervalSeconds: 60, confidenceThreshold: 0.9 },
+    betaReader: { enabled: true, model: '', confidenceThreshold: 0.9 },
   },
   agentNames: {},
 } as unknown as AppSettings;
@@ -53,7 +54,7 @@ describe('WritingPartnerSection', () => {
     expect(setAgentDisplayName).toHaveBeenCalledWith('brainstorm', 'Athena');
   });
 
-  it('F3#11: confidence slider defaults to Confident and syncs hand thresholds', () => {
+  it('F3#11: confidence slider defaults to Confident and never writes agent thresholds', () => {
     let latest: AppSettings = baseSettings;
     const setSettings = vi.fn((updater: AppSettings | ((prev: AppSettings) => AppSettings)) => {
       latest = typeof updater === 'function' ? updater(latest) : updater;
@@ -71,8 +72,11 @@ describe('WritingPartnerSection', () => {
     fireEvent.change(screen.getByTestId('wp-confidence-slider'), { target: { value: '1' } });
     expect(setSettings).toHaveBeenCalled();
     expect(latest.writingPartner?.confidence).toBe('Cautious');
-    expect(latest.agents?.brainstorm?.confidenceThreshold).toBeCloseTo(0.65);
-    expect(latest.agents?.writingAssistant?.confidenceThreshold).toBeCloseTo(0.65);
+    // Agents sliders remain sole editors of per-hand auto-apply thresholds.
+    expect(latest.agents?.brainstorm?.confidenceThreshold).toBeCloseTo(0.9);
+    expect(latest.agents?.writingAssistant?.confidenceThreshold).toBeCloseTo(0.9);
+    expect(latest.agents?.archive?.confidenceThreshold).toBeCloseTo(0.9);
+    expect(latest.agents?.betaReader?.confidenceThreshold).toBeCloseTo(0.9);
 
     rerender(
       <WritingPartnerSection

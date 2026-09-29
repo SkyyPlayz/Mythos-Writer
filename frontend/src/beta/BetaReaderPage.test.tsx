@@ -208,6 +208,8 @@ describe('BetaReaderPage — Chat page (F3#1 shared partner thread)', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /chat/i }));
     expect(screen.getByTestId('beta-partner-chat')).toBeInTheDocument();
+    // Page header owns identity — chat must not add a second partner-avatar.
+    expect(screen.queryAllByTestId('partner-avatar')).toHaveLength(0);
     const input = screen.getByTestId('beta-partner-chat-input');
     fireEvent.change(input, { target: { value: 'How did chapter 2 land?' } });
     fireEvent.click(screen.getByTestId('beta-partner-chat-send'));

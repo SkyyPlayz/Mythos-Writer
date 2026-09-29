@@ -4,7 +4,6 @@ import VaultNotFoundScreen from './components/VaultNotFoundScreen';
 import FloatingPanelApp from './FloatingPanelApp';
 import MythosMigrationCenter from './migration/MythosMigrationCenter';
 import MythosBootMigrationNotice from './migration/MythosBootMigrationNotice';
-import { requestWelcomeOverlayOnNextShell } from './WelcomeOverlay';
 import WelcomeFirstRun from './WelcomeFirstRun';
 import './App.css';
 
@@ -104,8 +103,7 @@ function App() {
         <VaultNotFoundScreen
           vaultPath={view.vaultPath}
           onRerunWizard={() => {
-            // F3#9 — reopen WelcomeOverlay vault setup (no OnboardingWizard).
-            requestWelcomeOverlayOnNextShell();
+            // F3#9 — route to WelcomeFirstRun only (no sessionStorage double-open).
             const next = { ...view.settings, onboardingComplete: false };
             setSettings(next);
             void window.api?.settingsSet?.(next);

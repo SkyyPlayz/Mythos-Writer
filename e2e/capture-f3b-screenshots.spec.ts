@@ -16,10 +16,13 @@ import {
 import { clickStoryNav } from './helpers/navGuard';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
-const OUT_DIR = path.resolve(
-  '/cursor/stores/bc-fb92daf9-4bac-4b89-898c-bb6f10dab5c7/media/beta-f3b',
-);
-const ARTIFACTS = path.resolve('/opt/cursor/artifacts/beta-f3b');
+/** Shield residual: never hardcode agent-store / artifacts paths. */
+const OUT_DIR = process.env.MYTHOS_CAPTURE_DIR
+  ? path.resolve(process.env.MYTHOS_CAPTURE_DIR)
+  : path.join(os.tmpdir(), 'mythos-f3b-capture');
+const ARTIFACTS = process.env.MYTHOS_CAPTURE_ARTIFACTS
+  ? path.resolve(process.env.MYTHOS_CAPTURE_ARTIFACTS)
+  : path.join(os.tmpdir(), 'mythos-f3b-artifacts');
 
 const STORY_ID = 'f3b-story-0001';
 const CHAPTER_ID = 'f3b-chapter-0001';
@@ -180,8 +183,14 @@ test.describe('F3b VERIFY screenshots 1440×900', () => {
       await shot(page, 'f3b-welcome-create-modal-1440x900');
 
       await page.getByTestId('create-vault-cancel').click();
+      await expect(page.getByRole('dialog', { name: 'Create a Mythos vault' })).toHaveCount(0);
       await expect(page.getByTestId('welcome-overlay')).toBeVisible();
       await expect(page.getByTestId('desktop-shell')).toHaveCount(0);
+      // Wait for setupBusy clear + card opacity transition (cards not dimmed).
+      await expect(page.getByTestId('welcome-overlay')).not.toHaveAttribute('data-setup-busy', 'true');
+      const templateCard = page.getByTestId('welcome-path-template');
+      await expect(templateCard).toBeEnabled();
+      await expect(templateCard).toHaveCSS('opacity', '1');
       await shot(page, 'f3b-welcome-after-cancel-1440x900');
     } finally {
       await app.close();

@@ -6,6 +6,7 @@ import SuggestionDetailPane, {
 } from './SuggestionDetailPane';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
+import { inboxConfidenceFilterPct } from './partner/partnerSettings';
 import './SuggestionReview.css';
 
 /** §8: brief grace window during which a dismiss can still be undone. */
@@ -434,9 +435,15 @@ function AuditRow({
 interface Props {
   onOpenVaultPath?: (path: string) => void;
   availableVaults?: string[];
+  /** Optional override of Settings › Writing Partner inbox floor (0–100). Tests only. */
+  confidenceMinPct?: number;
 }
 
-export default function SuggestionReview({ onOpenVaultPath, availableVaults }: Props) {
+export default function SuggestionReview({
+  onOpenVaultPath,
+  availableVaults,
+  confidenceMinPct,
+}: Props) {
   const [items, setItems] = useState<UnifiedSuggestion[]>([]);
   const [agentFilter, setAgentFilter] = useState<AgentFilter>('all');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -447,6 +454,11 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
   const [rollingBackIds, setRollingBackIds] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // F3#11 MOVE — view filter from Settings › Writing Partner (default Confident = 85).
+  const [confidenceMin, setConfidenceMin] = useState(
+    () => (typeof confidenceMinPct === 'number' ? confidenceMinPct : 85),
+  );
+  const confidenceMax = 100;
   // §3: per-row accept/reject/ignore failures — the row stays put, never
   // silently dropped (a failed accept must not be confused with a dismiss).
   const [rowErrors, setRowErrors] = useState<
@@ -456,12 +468,28 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
   // leaves the DOM, so a screen-reader user needs to be told why focus moved.
   const [statusAnnouncement, setStatusAnnouncement] = useState('');
 
-  // F3#11 — confidence range lives in Writing Partner; Audit Trail always loads full range.
   // Keyword search
   const [searchQuery, setSearchQuery] = useState('');
 
   const filterRef = useRef<HTMLDivElement>(null);
   const lastFocusedRowRef = useRef<HTMLElement | null>(null);
+
+  // Sync floor from Settings › Writing Partner (or controlled test prop).
+  useEffect(() => {
+    if (typeof confidenceMinPct === 'number') {
+      setConfidenceMin(confidenceMinPct);
+      return;
+    }
+    let cancelled = false;
+    void window.api?.settingsGet?.()
+      .then((settings) => {
+        if (cancelled) return;
+        const { confMin } = inboxConfidenceFilterPct(settings);
+        setConfidenceMin(confMin);
+      })
+      .catch(() => { /* keep default Confident floor */ });
+    return () => { cancelled = true; };
+  }, [confidenceMinPct]);
 
   // §4: focus-to-next-row after accept/dismiss — never lost to document.body.
   const rowElsRef = useRef<Map<string, HTMLElement>>(new Map());
@@ -491,10 +519,10 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
   }, []);
 
   // Always-current filter snapshot — avoids stale closures in debounce timer callbacks
-  const filtersRef = useRef({ searchQuery: '' });
+  const filtersRef = useRef({ confidenceMin: 85, confidenceMax: 100, searchQuery: '' });
   useEffect(() => {
-    filtersRef.current = { searchQuery };
-  }, [searchQuery]);
+    filtersRef.current = { confidenceMin, confidenceMax, searchQuery };
+  }, [confidenceMin, confidenceMax, searchQuery]);
 
   // Guards search debounce effects from firing before the initial load completes
   const initializedRef = useRef(false);
@@ -571,20 +599,27 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
     [],
   );
 
-  // Initial fetch on mount
+  // Initial + confidence-floor fetch (Settings › Writing Partner view filter)
   useEffect(() => {
     (async () => {
-      await loadItems({ confMin: 0, confMax: 100, query: '', isInitial: true });
+      await loadItems({
+        confMin: confidenceMin,
+        confMax: confidenceMax,
+        query: searchQuery,
+        isInitial: !initializedRef.current,
+      });
       initializedRef.current = true;
     })();
-  }, [loadItems]);
+    // searchQuery handled by the debounced effect below — only re-run on floor changes here after init
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadItems, confidenceMin, confidenceMax]);
 
-  // Keyword search: re-fetch after 300ms debounce (full confidence range)
+  // Keyword search: re-fetch after 300ms debounce (keeps Settings confidence floor)
   useEffect(() => {
     if (!initializedRef.current) return;
     const timer = setTimeout(() => {
-      const { searchQuery: q } = filtersRef.current;
-      void loadItems({ confMin: 0, confMax: 100, query: q });
+      const { confidenceMin: min, confidenceMax: max, searchQuery: q } = filtersRef.current;
+      void loadItems({ confMin: min, confMax: max, query: q });
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery, loadItems]);
@@ -879,8 +914,8 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
   const showVaultFilter = availableVaults && availableVaults.length > 1;
   const selectedSuggestion = selectedId ? items.find((s) => s.id === selectedId) ?? null : null;
 
-  // Whether any keyword filter is active (drives empty-state copy).
-  // F3#11 — confidence range filter removed from Audit Trail (Writing Partner owns it).
+  // Keyword search is the only in-panel "active filter" for empty-state copy.
+  // Settings › Writing Partner confidence floor is ambient (always applied).
   const hasActiveFilter = searchQuery.trim().length > 0;
 
   if (loading) {
@@ -959,7 +994,7 @@ export default function SuggestionReview({ onOpenVaultPath, availableVaults }: P
         </div>
       )}
 
-      {/* Filters: keyword search + agent chips (F3#11 — confidence slider moved to Settings › Writing Partner) */}
+      {/* Filters: keyword search + agent chips (confidence floor from Settings › Writing Partner) */}
       <div className="sr-filters" role="group" aria-label="Suggestion filters" ref={filterRef}>
         {/* Keyword search */}
         <div className="sr-search-wrapper">

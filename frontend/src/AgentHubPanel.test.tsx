@@ -86,9 +86,22 @@ describe('AgentHubPanel — Slice B partner shell', () => {
   it('F3#4: Writer Scan keeps a single partner avatar (suppresses WA header)', async () => {
     (window as any).api = {
       ...(window as any).api,
+      // Provider gate (F3 Secure) — WA must resolve before tips strip opens.
+      settingsGet: vi.fn().mockResolvedValue({
+        provider: { kind: 'ollama', model: 'qwen-local' },
+        agents: {
+          writingAssistant: {
+            enabled: true,
+            model: 'qwen-local',
+            provider: { kind: 'ollama', model: 'qwen-local' },
+          },
+        },
+      }),
+      writingAssistantScanNow: vi.fn().mockResolvedValue({ tips: ['Tighten the opener.'] }),
       agentSessions: {
         list: vi.fn().mockResolvedValue({ sessions: [{ id: 's1', title: 'Chat', updatedAt: new Date().toISOString() }] }),
         get: vi.fn().mockResolvedValue({ id: 's1', title: 'Chat', turns: [], createdAt: '', updatedAt: '' }),
+        read: vi.fn().mockResolvedValue({ session: { id: 's1', agent: 'brainstorm', title: 'Chat', turns: [], startedAt: '', updatedAt: '' } }),
         create: vi.fn().mockResolvedValue({ id: 's1', title: 'Chat', turns: [], createdAt: '', updatedAt: '' }),
         appendTurns: vi.fn().mockResolvedValue({ ok: true }),
         rename: vi.fn().mockResolvedValue({ ok: true }),
@@ -96,9 +109,9 @@ describe('AgentHubPanel — Slice B partner shell', () => {
         delete: vi.fn().mockResolvedValue({ ok: true }),
       },
     };
-    render(<AgentHubPanel scene={null} />);
+    render(<AgentHubPanel scene={makeScene()} />);
     fireEvent.click(await screen.findByTestId('ahp-action-writer-scan'));
-    expect(await screen.findByTestId('ahp-writer-hand')).toBeInTheDocument();
+    expect(await screen.findByTestId('ahp-writer-tips')).toBeInTheDocument();
     expect(screen.getAllByTestId('partner-avatar')).toHaveLength(1);
     // WA identity header (✦ + name) is suppressed; cadence/mute controls remain.
     expect(document.querySelector('.wa-panel-header')).toBeNull();

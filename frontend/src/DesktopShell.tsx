@@ -6182,7 +6182,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     inFocusOrDF && !focusPrefs.showScrollbars && 'focus-hide-scrollbars',
     inFocusOrDF && !focusPrefs.showFileTreeArrows && 'focus-hide-tree-arrows',
   ].filter(Boolean).join(' ');
-  // e2e / F3#9: shell presence probe (WelcomeFirstRun never mounts this).
 
   const activeVaultBadge = tabShell.activeTab === 'notes'
     ? (vaultBinding.notesValid ? labelFromPath(vaultBinding.notesPath) : 'No Notes vault')

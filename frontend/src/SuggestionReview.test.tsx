@@ -90,6 +90,8 @@ function setApi(overrides: Record<string, unknown> = {}) {
     suggestionsIgnore: mockSuggestionsIgnore,
     suggestionsRollback: mockSuggestionsRollback,
     auditList: mockAuditList,
+    // Hesitant floor (0.50) keeps legacy suite fixtures visible; Confident is tested below.
+    settingsGet: vi.fn().mockResolvedValue({ writingPartner: { confidence: 'Hesitant' } }),
     ...overrides,
   };
 }
@@ -952,7 +954,7 @@ const toDbRow = (s: UnifiedSuggestion) => ({
   category: s.category,
 });
 
-describe('SuggestionReview — SLICE-2: confidence slider + keyword search (AC-S2)', () => {
+describe('SuggestionReview — SLICE-2: confidence floor + keyword search (AC-S2)', () => {
   const mockSuggestionsSearch = vi.fn();
 
   beforeEach(() => {
@@ -988,8 +990,42 @@ describe('SuggestionReview — SLICE-2: confidence slider + keyword search (AC-S
     setApi({ suggestionsSearch: mockSuggestionsSearch });
   });
 
-  it.skip('AC-S2-1: min slider at 80% hides suggestions with confidence < 0.80 — F3#11 moved to Writing Partner', () => {
-    // Confidence range filter removed from Audit Trail (F3#11).
+  it('AC-S2-1: default Confident floor hides suggestions below 0.85', async () => {
+    const { rerender } = render(<SuggestionReview confidenceMinPct={50} />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+    expect(screen.getByText('Hero motivation needs clarification.')).toBeInTheDocument();
+
+    // Move Settings slider → Confident (0.85): inbox re-filters.
+    rerender(<SuggestionReview confidenceMinPct={85} />);
+    await waitFor(() => {
+      expect(screen.queryByText('Hero motivation needs clarification.')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Pacing is slow in the opening.')).toBeInTheDocument();
+    expect(screen.getByText('Tower was destroyed in ch2 but appears in ch5.')).toBeInTheDocument();
+    expect(mockSuggestionsUnifiedList).toHaveBeenCalledWith(
+      expect.objectContaining({ confidenceMin: 0.85 }),
+    );
+  });
+
+  it('AC-S2-1b: settingsGet Confident filters inbox without prop override', async () => {
+    setApi({
+      settingsGet: vi.fn().mockResolvedValue({ writingPartner: { confidence: 'Confident' } }),
+      suggestionsSearch: mockSuggestionsSearch,
+    });
+    mockSuggestionsUnifiedList.mockImplementation(
+      async (opts: Record<string, unknown> = {}) => {
+        const confMin = (opts.confidenceMin as number) ?? 0;
+        const confMax = (opts.confidenceMax as number) ?? 1;
+        const filtered = mockUnifiedSuggestions.filter(
+          (s) => s.confidence >= confMin && s.confidence <= confMax,
+        );
+        return { items: filtered, totalCount: filtered.length, countByAgent: {}, countByKind: {} };
+      },
+    );
+    render(<SuggestionReview />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+    expect(screen.queryByText('Hero motivation needs clarification.')).not.toBeInTheDocument();
+    expect(screen.getByText('Tower was destroyed in ch2 but appears in ch5.')).toBeInTheDocument();
   });
 
   it('AC-S2-2: typing in search shows only matching suggestions', async () => {
@@ -1054,11 +1090,23 @@ describe('SuggestionReview — SLICE-2: confidence slider + keyword search (AC-S
     );
   });
 
-  it.skip('AC-S2-5: confidence + search active simultaneously — F3#11 moved to Writing Partner', () => {
-    // Confidence range filter removed from Audit Trail (F3#11).
-  });
+  it('AC-S2-5: confidence floor + search active simultaneously', async () => {
+    render(<SuggestionReview confidenceMinPct={80} />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
 
-  it.skip('AC-S2-6: both slider handles keyboard-accessible — F3#11 moved to Writing Partner', () => {
-    // Confidence range filter removed from Audit Trail (F3#11).
+    const searchInput = screen.getByRole('searchbox', { name: /search suggestions/i });
+    fireEvent.change(searchInput, { target: { value: 'tower' } });
+
+    // Tower was already visible at the 80% floor — wait until search removes Pacing.
+    await waitFor(
+      () => {
+        expect(screen.getByText('Tower was destroyed in ch2 but appears in ch5.')).toBeInTheDocument();
+        expect(screen.queryByText('Pacing is slow in the opening.')).not.toBeInTheDocument();
+      },
+      { timeout: 1000 },
+    );
+    expect(mockSuggestionsSearch).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'tower', confidenceMin: 0.8 }),
+    );
   });
 });

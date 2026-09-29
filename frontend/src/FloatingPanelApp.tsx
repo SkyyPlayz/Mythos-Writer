@@ -40,6 +40,42 @@ interface FloatingPanelAppProps {
   panelId: string;
 }
 
+// ── Partner float (F3#1 — shared brainstorm thread, tips-only WA strip) ─────
+// One partner avatar only: WA chrome suppressed; MiniAgentChat owns identity.
+
+function PartnerWritingFloat({ settings }: { settings: AppSettings | null }) {
+  const chat = useMiniAgentChat(PARTNER_SESSION_AGENT, invokeBrainstorm);
+  const partnerName = resolvePartnerDisplayName(settings?.agentNames) || DEFAULT_PARTNER_DISPLAY_NAME;
+  return (
+    <div className="fpa-partner-float" data-testid="fpa-partner-writing">
+      <WritingAssistantPanel
+        hideComposer
+        suppressPartnerChrome
+        scene={null}
+        enabled={settings?.agents?.writingAssistant?.enabled ?? true}
+        scanIntervalSeconds={settings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
+        waScanInterval={settings?.waScanInterval}
+        cadenceTrigger={settings?.agents?.writingAssistant?.cadenceTrigger}
+        idleHeartbeatConstantInterval={settings?.agents?.writingAssistant?.idleHeartbeatConstantInterval}
+        idleDebounceSeconds={settings?.agents?.writingAssistant?.idleDebounceSeconds}
+        isActive={true}
+        isPageFocused={true}
+        ttsSettings={settings?.tts}
+        voicePrefs={settings?.voice}
+        displayName={partnerName}
+      />
+      <MiniAgentChat
+        chat={chat}
+        accent="brainstorm"
+        partnerName={partnerName}
+        showIdentity
+        placeholder={`Message ${partnerName}…`}
+        testidPrefix="fpa-partner"
+      />
+    </div>
+  );
+}
+
 // ── Component ──────────────────────────────────────────────────────────────────
 
 // ── Partner float (F3#1 — shared brainstorm thread, tips-only WA strip) ─────

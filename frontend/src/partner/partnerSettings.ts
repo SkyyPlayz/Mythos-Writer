@@ -78,6 +78,14 @@ export function resolvePartnerConfidence(
   return { label, threshold: PARTNER_CONFIDENCE_THRESHOLDS[label] };
 }
 
+/** Suggestions inbox view-filter range (percent) from Settings › Writing Partner. */
+export function inboxConfidenceFilterPct(
+  settings: AppSettings | undefined,
+): { confMin: number; confMax: number } {
+  const { threshold } = resolvePartnerConfidence(settings);
+  return { confMin: Math.round(threshold * 100), confMax: 100 };
+}
+
 /** UI provider pick for Model & keys buckets (maps to engine kinds where live). */
 export type ModelKeysProviderId =
   | 'claude'

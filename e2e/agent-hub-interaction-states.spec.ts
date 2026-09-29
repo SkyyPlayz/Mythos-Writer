@@ -289,11 +289,12 @@ test('keyboard: Enter opens the Writer hand from a focused partner hand chip, an
   await writerHand.focus();
   await page.keyboard.press('Enter');
 
-  await settleIntoView(page, page.locator('[data-testid="ahp-writer-hand"]'));
+  await settleIntoView(page, page.locator('[data-testid="ahp-writer-tips"]'));
+  // Tips strip opens beside the shared partner thread (composer stays on the thread).
   await expect(page.getByTestId('ahp-partner-chat-input')).toBeVisible({ timeout: 8_000 });
 
   await page.locator('[data-testid="ahp-close-writer"]').click();
-  await expect(page.locator('[data-testid="ahp-writer-hand"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="ahp-writer-tips"]')).toHaveCount(0);
   await expect(page.locator('[data-testid="ahp-partner-thread"]')).toBeVisible();
   await expect(writerHand).toBeVisible();
 });

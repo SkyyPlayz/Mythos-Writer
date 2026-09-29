@@ -16,15 +16,15 @@ export interface MiniAgentChatProps {
   accent: 'brainstorm' | 'archive';
   placeholder: string;
   testidPrefix: string;
-  /**
-   * F3#4 — partner identity in the chat head.
-   * - `primary`: one avatar + name (Timeline / surfaces without PartnerCallChrome)
-   * - omit / undefined: no identity row (PartnerCallChrome already owns avatar+name)
-   */
+  /** Partner display name for the chat head label when `showIdentity` is on. */
   partnerName?: string;
-  /** Glyph for the single avatar when `partnerName` is set. */
+  /** Glyph for the single avatar when identity is shown. */
   partnerAvatar?: string;
-  /** When false, never render avatar/name (chrome lives elsewhere). Default: true if partnerName. */
+  /**
+   * Opt-in avatar + name row. Default off so surfaces with outer chrome
+   * (PartnerCallChrome, Beta Reader header, WA float tips) never double up.
+   * Pass `showIdentity` only when this chat owns the single partner avatar.
+   */
   showIdentity?: boolean;
 }
 
@@ -35,7 +35,7 @@ export default function MiniAgentChat({
   testidPrefix,
   partnerName,
   partnerAvatar = '✦',
-  showIdentity,
+  showIdentity = false,
 }: MiniAgentChatProps) {
   const [draft, setDraft] = useState('');
   const feedRef = useRef<HTMLDivElement>(null);
@@ -51,7 +51,7 @@ export default function MiniAgentChat({
     void chat.send(text);
   };
 
-  const identityOn = showIdentity !== false && !!partnerName;
+  const identityOn = showIdentity === true && !!partnerName;
 
   return (
     <div className={`trp-chat trp-chat--${accent}`} data-testid={`${testidPrefix}-chat`}>

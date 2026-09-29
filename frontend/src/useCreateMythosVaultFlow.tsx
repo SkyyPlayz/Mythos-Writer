@@ -131,14 +131,19 @@ export function useCreateMythosVaultFlow(
         setError('Could not create the vault. Check the folder and try again.');
         return;
       }
-      setOpen(false);
+      // Await onCreated before closing — if settingsSet rejects, keep the modal
+      // open with inline error and re-enable cards (busy cleared in finally).
       await onCreatedRef.current({
         vaultRoot: result.storyVaultPath ?? result.mythosRoot ?? '',
         notesVaultRoot: result.notesVaultPath ?? '',
       });
+      setOpen(false);
       settle('created');
     } catch {
       setError('Could not create the vault. Check the folder and try again.');
+      // Unblock the createVault waiter so WelcomeFirstRun setupBusy clears;
+      // modal stays open with the inline error (one reachable error path).
+      settle('cancelled');
     } finally {
       setBusy(false);
     }
