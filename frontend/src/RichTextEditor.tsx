@@ -17,14 +17,26 @@ import { useRichEditor, getEditorMarkdown } from './lib/useRichEditor';
 import { registerQuitFlusher } from './lib/flushBeforeQuit';
 import { navigateEntityMention } from './lib/entityMentionNavigate';
 import FormatToolbar, { type FormatToolbarActions } from './FormatToolbar';
+import { VAULT_NOTE_DRAG_MIME } from './vaultNoteDrag';
 import './EntityMention.css';
 import './WikiLinkPicker.css';
+
+export { VAULT_NOTE_DRAG_MIME } from './vaultNoteDrag';
 
 const INACTIVE_MENTION: MentionPickerState = { active: false, query: '', from: 0, to: 0 };
 const INACTIVE_WIKI_LINK: WikiLinkPickerState = { active: false, query: '', from: 0, to: 0 };
 const EMPTY_WIKI_LINK_CANDIDATES: WikiLinkCandidate[] = [];
 
 const CHANGE_DEBOUNCE_MS = 800;
+
+/**
+ * Strip wiki-link delimiter chars so a dropped filename cannot corrupt `[[title]]`
+ * (Shield R2: `]]` `|` `#` / brackets).
+ */
+export function sanitizeWikiLinkTitle(title: string): string | null {
+  const cleaned = title.replace(/[\[\]|#]/g, '').trim();
+  return cleaned || null;
+}
 
 /** F2#4: map an explorer drag payload (vault-relative path) to a wiki-link title. */
 export function wikiTitleFromDroppedPath(raw: string): string | null {
@@ -35,7 +47,7 @@ export function wikiTitleFromDroppedPath(raw: string): string | null {
   if (!looksLikePath && trimmed.length > 120) return null;
   const leaf = normalized.split('/').pop() ?? normalized;
   const title = leaf.replace(/\.(md|markdown|txt)$/i, '').trim();
-  return title || null;
+  return sanitizeWikiLinkTitle(title);
 }
 
 export interface RichTextEditorProps {
@@ -445,18 +457,33 @@ export default function RichTextEditor({
     }
   }, [editor, plainTextWikiLinkFallback]);
 
-  // F2#4: drag a note path from the explorer (text/plain) → insert [[Note]] at drop.
+  // F2#4 + Shield R1/R3: explorer MIME → [[Note]]; Files → preventDefault only;
+  // plain text / in-editor drags do not insert links.
   const handleEditorDragOver = useCallback((e: React.DragEvent) => {
     if (editable === false) return;
-    const types = e.dataTransfer?.types;
-    if (!types || (![...types].includes('text/plain') && ![...types].includes('Files'))) return;
+    if (e.defaultPrevented) return;
+    const types = e.dataTransfer?.types ? [...e.dataTransfer.types] : [];
+    const hasExplorer = types.includes(VAULT_NOTE_DRAG_MIME);
+    const hasFiles = types.includes('Files');
+    if (!hasExplorer && !hasFiles) return;
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+    e.dataTransfer.dropEffect = hasExplorer ? 'copy' : 'none';
   }, [editable]);
 
   const handleEditorDrop = useCallback((e: React.DragEvent) => {
     if (!editor || editor.isDestroyed) return;
-    const raw = e.dataTransfer.getData('text/plain')?.trim();
+    if (e.defaultPrevented) return;
+    const types = e.dataTransfer?.types ? [...e.dataTransfer.types] : [];
+    // R1: OS file drops must not navigate the window.
+    if (types.includes('Files')) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    // R3: only the explorer's own MIME creates a wiki link.
+    if (!types.includes(VAULT_NOTE_DRAG_MIME)) return;
+    const raw = (
+      e.dataTransfer.getData(VAULT_NOTE_DRAG_MIME) || e.dataTransfer.getData('text/plain') || ''
+    ).trim();
     if (!raw) return;
     const title = wikiTitleFromDroppedPath(raw);
     if (!title) return;

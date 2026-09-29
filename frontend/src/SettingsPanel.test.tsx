@@ -353,6 +353,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
     expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }));
     expect(mockOnSaved).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }));
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
   });
 
   it('shows inline validation error for bad API key', async () => {
@@ -361,10 +362,35 @@ describe('SettingsPanel', () => {
 
     fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'bad-key' } });
     expect(screen.getByRole('alert')).toHaveTextContent(/must start with sk-ant-/i);
-    // F2#15: no Save button — close still works, but persist is skipped while invalid.
+  });
+
+  it('Shield R4: apiKeyError keeps Settings open on close (no dismiss, no persist)', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitForModelKeys();
+
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'bad-key' } });
     fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
-    expect(mockOnClose).toHaveBeenCalledTimes(1);
+
+    expect(mockOnClose).not.toHaveBeenCalled();
     expect(mockSettingsSet).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: /settings/i })).toBeInTheDocument();
+    expect(screen.getByText(/fix the api key before closing/i)).toBeInTheDocument();
+  });
+
+  it('Shield R4: save-on-close failure keeps Settings open with inline error', async () => {
+    mockSettingsSet.mockRejectedValueOnce(new Error('/secret/path blew up\nstack'));
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+    await waitForModelKeys();
+
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/couldn't save settings/i)).toBeInTheDocument();
+    });
+    expect(mockOnClose).not.toHaveBeenCalled();
+    expect(mockOnSaved).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: /settings/i })).toBeInTheDocument();
+    expect(screen.queryByText(/secret\/path/i)).not.toBeInTheDocument();
   });
 
   it('accepts a valid sk-ant- key without validation error', async () => {
@@ -388,7 +414,7 @@ describe('SettingsPanel', () => {
     await waitForModelKeys();
 
     fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
-    expect(mockOnClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
   });
 
   it('Ivy H3: Source toggle persists immediately; Cancel does not revert it', async () => {
@@ -430,7 +456,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByLabelText(/close settings/i));
 
     fireEvent.pointerDown(screen.getByLabelText(/close settings/i));
-    expect(mockOnClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
   });
 
   it('calls onClose on click so keyboard Enter/Space still dismiss', async () => {
@@ -438,7 +464,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByLabelText(/close settings/i));
 
     fireEvent.click(screen.getByLabelText(/close settings/i));
-    expect(mockOnClose).toHaveBeenCalled();
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalled());
   });
 
   it('toggles API key visibility', async () => {
@@ -477,10 +503,13 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitFor(() => screen.getByRole('button', { name: /close settings/i }));
 
-    // F2#15: exit flush is silent (panel dismisses); failure is still attempted.
+    // Shield R4: keep open + plain-text error (no dismiss on failure).
     fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
-    expect(mockOnClose).toHaveBeenCalledTimes(1);
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(screen.getByText(/couldn't save settings/i)).toBeInTheDocument();
+    });
+    expect(mockOnClose).not.toHaveBeenCalled();
   });
 
   // ── MYT-146 acceptance criteria ──
@@ -933,7 +962,7 @@ describe('SettingsPanel', () => {
     await waitForModelKeys();
 
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(mockOnClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
   });
 
   it('does not close the main dialog when Escape is pressed while the Advanced popover is open', async () => {
