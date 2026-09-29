@@ -26,7 +26,7 @@ describe('ModelKeysSection F5 Hands & files', () => {
   let modelKeysReveal: ReturnType<typeof vi.fn>;
   let modelKeysOpen: ReturnType<typeof vi.fn>;
   let modelKeysClearMemory: ReturnType<typeof vi.fn>;
-  let onMoveVault: ReturnType<typeof vi.fn>;
+  let onMoveVault: ReturnType<typeof vi.fn<() => void>>;
 
   beforeEach(() => {
     modelKeysLocation = vi.fn().mockResolvedValue({
@@ -40,7 +40,7 @@ describe('ModelKeysSection F5 Hands & files', () => {
     modelKeysReveal = vi.fn().mockResolvedValue({ opened: true });
     modelKeysOpen = vi.fn().mockResolvedValue({ opened: true });
     modelKeysClearMemory = vi.fn().mockResolvedValue({ ok: true, removed: ['Sessions'] });
-    onMoveVault = vi.fn();
+    onMoveVault = vi.fn<() => void>();
     (window as unknown as { api: unknown }).api = {
       modelKeysLocation,
       modelKeysReveal,
@@ -49,7 +49,7 @@ describe('ModelKeysSection F5 Hands & files', () => {
     };
   });
 
-  function renderSection(props: { onMoveVault?: () => void } = {}) {
+  function renderSection() {
     return render(
       <ModelKeysSection
         settings={baseSettings()}
@@ -66,7 +66,7 @@ describe('ModelKeysSection F5 Hands & files', () => {
         showApiKey={false}
         setShowApiKey={vi.fn()}
         setSavedOk={vi.fn()}
-        onMoveVault={props.onMoveVault ?? onMoveVault}
+        onMoveVault={onMoveVault}
       />,
     );
   }
