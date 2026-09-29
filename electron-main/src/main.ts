@@ -3208,6 +3208,11 @@ const handlers: IpcHandlers = {
     return legacy.found ? { ...masked, legacyVaultDetected: true, legacyVaultPath: legacy.legacyRoot } : masked;
   },
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
+    // SKY-8882: post-"Delete Everything" the app is drained until restart —
+    // refuse SETTINGS_SET so F2#15 exit-flush cannot rewrite app-settings.json.
+    if (appDataCleared) {
+      return { saved: false, error: 'App data was cleared — restart Mythos Writer to continue.' };
+    }
     const startedAt = Date.now();
     const current = loadAppSettings();
     // Reconcile masked API key fields (apiKey, voice.openaiApiKey) — when the
@@ -9464,6 +9469,12 @@ function loadAppSettings(): AppSettings {
 }
 
 function saveAppSettings(settings: AppSettings): void {
+  // SKY-8882 / TC-MV-05: after Delete Everything, refuse every rewrite of
+  // app-settings.json. F2#15 one-exit Settings flush (Escape / rail dismiss)
+  // and SETTINGS_GET's onboardingComplete backfill would otherwise resurrect
+  // the file the clean-uninstall just removed — same class of bug as the
+  // old ensureVaultDir() finally that re-seeded vaults.
+  if (appDataCleared) return;
   // MYT-777: never persist plaintext API keys to app-settings.json. Route
   // secret-shaped fields into the encrypted store and write the cleared
   // payload to disk. If the store is unavailable, still strip the fields so
