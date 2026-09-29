@@ -348,7 +348,7 @@ test('SKY-11186 ZOOM-1: the zoom-out limit is named on the button and adjustable
     await expect(stop20).toBeVisible({ timeout: 8_000 });
     await stop20.click();
     await expect(stop20).toHaveAttribute('aria-checked', 'true');
-    await page.locator('button[aria-label="Save settings"]').click();
+    await page.locator('button[aria-label="Close settings"]').click();
     await expect.poll(() => {
       const settings = JSON.parse(fs.readFileSync(path.join(userData, 'app-settings.json'), 'utf-8'));
       return settings.notesBoard?.minZoom;

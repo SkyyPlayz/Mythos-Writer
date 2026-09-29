@@ -359,9 +359,9 @@ test.skip('TC-LMP-06 / AC-9: upgrade preserves old model settings while using gl
   await expect(brainstorm).toContainText('Using global provider (OpenAI)');
   await expect(brainstorm.getByLabel('Brainstorm Agent model')).toHaveValue('claude-opus-4-7');
 
-  await page.getByLabel('Save settings').click();
-  await expect(page.getByLabel('Save settings')).toHaveText('Save');
+  // F2#15: close auto-saves
   await page.getByLabel('Close settings').click();
+  await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toHaveCount(0, { timeout: 5_000 });
 
   await openSettings(page);
   const reopenedBrainstorm = agentCard(page, 'Brainstorm Agent');
