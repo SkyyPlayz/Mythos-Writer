@@ -8,14 +8,15 @@
 //      clause, + takeaway + drill). When AI is disabled, unconfigured, or the
 //      call fails, the card carries an honest `readNote` instead — the
 //      computed section still renders in full (M13 acceptance).
-//   3. The finished card is appended as ONE agent turn to the shared `coach`
-//      session store, so the Coach page feed and the right-panel Coach chat
-//      both see it (§5.2 single conversation).
+//   3. The finished card is appended as ONE agent turn to the shared partner
+//      session store (`PARTNER_SESSION_AGENT`), so every chat surface sees it.
 //
 // Agent contract (§2, §14.6): this module ASKS the coach for judgment text and
 // persists a card — there is no code path that writes prose into the
 // manuscript. Locked by coachNoGhostwriting.test.ts (this file lives in the
-// scanned coach directory on purpose).
+// scanned coach directory on purpose). The AI read still uses
+// `agentWritingAssistant` as a dedicated action (not the chat send path —
+// chat send stays `invokeBrainstorm` only).
 
 import { useSyncExternalStore } from 'react';
 import type { Scene } from '../types';
@@ -24,6 +25,7 @@ import {
   computedAnalysisRows,
 } from '../analysis/computedSceneMetrics';
 import { getAgentSessionStore } from '../lib/useAgentSessions';
+import { PARTNER_SESSION_AGENT } from '../agents/partnerIdentity';
 import {
   decodeCoachCard,
   encodeCoachCard,
@@ -216,7 +218,7 @@ export type SceneAnalysisOutcome = 'appended' | 'skipped';
 export async function runFullSceneAnalysis(scene: Scene): Promise<SceneAnalysisOutcome> {
   if (analysisPending) return 'skipped';
 
-  const store = getAgentSessionStore('coach');
+  const store = getAgentSessionStore(PARTNER_SESSION_AGENT);
   await whenStoreReady(store);
 
   const turns = store.getSnapshot().activeSession?.turns ?? [];

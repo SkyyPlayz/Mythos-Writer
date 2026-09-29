@@ -108,7 +108,13 @@ function App() {
   return (
     <div className="root-layout">
       <DesktopShell initialSettings={'settings' in view ? view.settings : undefined} />
+      {/* SKY-10390: the v0.4 → MythosVault upgrade migrates silently now —
+          no on-screen choice. MythosMigrationCenter still mounts here to
+          keep the wizard machinery reachable for a future explicit trigger,
+          but nothing dispatches it on boot. */}
       <MythosMigrationCenter />
+      {/* SKY-10405: failed boot-time silent migration — visible error,
+          original vault stays open. Renders nothing on a clean boot. */}
       <MythosBootMigrationNotice />
     </div>
   );

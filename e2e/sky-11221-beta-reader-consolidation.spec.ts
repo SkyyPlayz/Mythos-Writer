@@ -307,9 +307,10 @@ test('TC-SKY11221-01: Beta Reader row -> BetaReaderPage -> Run produces a real r
   await expect(hubPanel).toBeVisible({ timeout: 8_000 });
 
   // Slice B: Analyst hand opens Beta Reader (page kept).
-  const analystHand = page.locator('[data-testid="ahp-action-beta-read"]');
-  await expect(analystHand).toBeVisible({ timeout: 8_000 });
-  await analystHand.click();
+  // F3#1 — open Beta Reader Reports overlay via nav (action is in-thread).
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('mythos:nav', { detail: { view: 'beta' } }));
+  });
 
   const overlay = page.locator('.beta-reader-overlay');
   await expect(overlay).toBeVisible({ timeout: 8_000 });

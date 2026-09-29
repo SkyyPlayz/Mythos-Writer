@@ -9,6 +9,14 @@ import { resolveAgentDisplayName } from './agentIdentity';
 /** Fallback when the user has not renamed the partner in Settings. */
 export const DEFAULT_PARTNER_DISPLAY_NAME = 'Mythos';
 
+/**
+ * F3#1 — every chat surface (hub, Timeline partner tab, Coach page, Beta chat,
+ * WA float-out, Brainstorm page) reads/writes this single session-store key.
+ * Send path is always `invokeBrainstorm` / `agentBrainstorm` — never coach or
+ * beta-reader IPC.
+ */
+export const PARTNER_SESSION_AGENT = 'brainstorm' as const;
+
 /** Hands still used for busy/status routing behind the single partner face. */
 export type PartnerHandId = 'writer' | 'analyst' | 'archivist';
 

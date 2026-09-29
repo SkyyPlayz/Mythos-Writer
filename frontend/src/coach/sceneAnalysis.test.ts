@@ -57,8 +57,8 @@ interface MockApiOptions {
 
 function installMockApi(opts: MockApiOptions = {}) {
   const session: AgentSessionFile = {
-    id: 'coach-s1',
-    agent: 'coach',
+    id: 'partner-s1',
+    agent: 'brainstorm',
     title: 'Lesson thread',
     startedAt: AT,
     updatedAt: AT,
@@ -66,7 +66,7 @@ function installMockApi(opts: MockApiOptions = {}) {
   };
   const calls: string[] = [];
   const agentSessions = {
-    list: vi.fn(async () => { calls.push('agentSessions.list'); return { sessions: [{ id: session.id, agent: 'coach', title: session.title, startedAt: AT, updatedAt: AT, turnCount: session.turns.length, relPath: 'Sessions/x.md' }] }; }),
+    list: vi.fn(async () => { calls.push('agentSessions.list'); return { sessions: [{ id: session.id, agent: 'brainstorm', title: session.title, startedAt: AT, updatedAt: AT, turnCount: session.turns.length, relPath: 'Sessions/x.md' }] }; }),
     create: vi.fn(async () => { calls.push('agentSessions.create'); return { session, relPath: 'Sessions/x.md' }; }),
     rename: vi.fn(async () => ({ ok: true })),
     duplicate: vi.fn(async () => ({ session, relPath: 'Sessions/x.md' })),

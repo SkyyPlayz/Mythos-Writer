@@ -309,9 +309,10 @@ async function openProductionTeamTab(page: Page): Promise<import('@playwright/te
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 8_000 });
 
-  const betaRow = page.locator('[data-testid="ahp-action-beta-read"]');
-  await expect(betaRow).toBeVisible({ timeout: 8_000 });
-  await betaRow.click();
+  // F3#1 — open Beta Reader Reports overlay via nav (action is in-thread).
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('mythos:nav', { detail: { view: 'beta' } }));
+  });
 
   const overlay = page.locator('.beta-reader-overlay');
   await expect(overlay).toBeVisible({ timeout: 8_000 });

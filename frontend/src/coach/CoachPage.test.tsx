@@ -47,14 +47,14 @@ interface MockApiOptions {
   turns?: AgentSessionTurn[];
   suggestions?: unknown[];
   chatResponse?: string;
-  /** When true, agentWritingAssistant stays pending until resolveChat() is called. */
+  /** When true, agentBrainstorm stays pending until resolveChat() is called. */
   deferChat?: boolean;
 }
 
 function installMockApi(opts: MockApiOptions = {}) {
   const session: AgentSessionFile = {
     id: 'coach-s1',
-    agent: 'coach',
+    agent: 'brainstorm',
     title: 'Lesson thread',
     startedAt: AT,
     updatedAt: AT,
@@ -62,7 +62,7 @@ function installMockApi(opts: MockApiOptions = {}) {
   };
   const calls: string[] = [];
   const agentSessions = {
-    list: vi.fn(async () => { calls.push('agentSessions.list'); return { sessions: [{ id: session.id, agent: 'coach', title: session.title, startedAt: AT, updatedAt: AT, turnCount: session.turns.length, relPath: 'Sessions/x.md' }] }; }),
+    list: vi.fn(async () => { calls.push('agentSessions.list'); return { sessions: [{ id: session.id, agent: 'brainstorm', title: session.title, startedAt: AT, updatedAt: AT, turnCount: session.turns.length, relPath: 'Sessions/x.md' }] }; }),
     create: vi.fn(async () => { calls.push('agentSessions.create'); return { session, relPath: 'Sessions/x.md' }; }),
     rename: vi.fn(async () => ({ ok: true })),
     duplicate: vi.fn(async () => ({ session, relPath: 'Sessions/x.md' })),
@@ -78,8 +78,8 @@ function installMockApi(opts: MockApiOptions = {}) {
   const chatText = opts.chatResponse ?? 'Pacing is rhythm — look at your paragraph lengths.';
   const api = {
     agentSessions,
-    agentWritingAssistant: vi.fn(() => {
-      calls.push('agentWritingAssistant');
+    agentBrainstorm: vi.fn(() => {
+      calls.push('agentBrainstorm');
       if (opts.deferChat) {
         return new Promise<{ text: string }>((resolve) => {
           resolveChat = () => resolve({ text: chatText });
@@ -108,12 +108,12 @@ beforeEach(() => {
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe('CoachPage (§5.2)', () => {
-  it('renders header: Writing Coach title, never-ghost-writes sub, skill chips, footer', async () => {
+  it('renders header: partner title, never-ghost-writes sub, skill chips, footer', async () => {
     installMockApi();
     render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
     await flush();
 
-    expect(screen.getByText('Writing Coach')).toBeInTheDocument();
+    expect(screen.getByText('Mythos')).toBeInTheDocument();
     expect(screen.getByText(/never ghost-writes/)).toBeInTheDocument();
     // 3 skill chips
     expect(screen.getByText('Dialogue')).toBeInTheDocument();
@@ -128,14 +128,14 @@ describe('CoachPage (§5.2)', () => {
     expect(screen.getByText('Give me a 10-minute writing drill')).toBeInTheDocument();
   });
 
-  it('honours the agent rename (settings.agentNames.writingAssistant)', async () => {
+  it('honours the partner rename (settings.agentNames.brainstorm)', async () => {
     installMockApi();
     render(
       <CoachPage
         scene={null}
         story={null}
         currentChapterId={null}
-        agentNames={{ writingAssistant: 'Professor Quill' }}
+        agentNames={{ brainstorm: 'Professor Quill' }}
       />,
     );
     await flush();
@@ -195,9 +195,9 @@ describe('CoachPage (§5.2)', () => {
     const [, turns] = mock.agentSessions.appendTurns.mock.calls[0];
     expect(turns.map((t: AgentSessionTurn) => t.role)).toEqual(['user', 'agent']);
     expect(turns[0].text).toBe('My opening feels slow — what should I learn?');
-    expect(mock.api.agentWritingAssistant).toHaveBeenCalledWith(
+    expect(mock.api.agentBrainstorm).toHaveBeenCalledWith(
       'My opening feels slow — what should I learn?',
-      undefined,
+      expect.any(Array),
     );
     expect(screen.queryByTestId('coach-typing')).not.toBeInTheDocument();
     expect(screen.getByText(/Pacing is rhythm/)).toBeInTheDocument();
@@ -242,10 +242,12 @@ describe('CoachPage (§5.2)', () => {
     });
     await flush();
 
-    expect(api.agentWritingAssistant).toHaveBeenCalledWith(
-      'Review my scene',
-      expect.stringContaining('The stairwell yawned like a throat.'),
+    expect(api.agentBrainstorm).toHaveBeenCalledWith(
+      expect.stringContaining('Review my scene'),
+      expect.any(Array),
     );
+    const firstArg = (api.agentBrainstorm as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
+    expect(firstArg).toContain('Into the Undercity');
   });
 
   it('chips send their prompt directly (prototype coachChips)', async () => {
@@ -349,7 +351,7 @@ describe('CoachPage (§5.2)', () => {
 
     const allowed = new Set([
       'agentSessions.list', 'agentSessions.create', 'agentSessions.read', 'agentSessions.appendTurns',
-      'agentWritingAssistant', 'suggestionsUnifiedList',
+      'agentBrainstorm', 'suggestionsUnifiedList',
     ]);
     for (const call of calls) {
       expect(allowed.has(call), `Coach page called ${call} — outside the no-ghost-write allowlist`).toBe(true);

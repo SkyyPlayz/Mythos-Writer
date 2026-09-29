@@ -933,7 +933,12 @@ describe('VaultGraphView M21 vault graph v2', () => {
     // F3#8 — Fit frames content (not hard-reset to 100%).
     const afterFit = pct.textContent ?? '';
     expect(afterFit).toMatch(/%$/);
-    expect(Number.parseInt(afterFit, 10)).toBeGreaterThan(0);
+    const fitPct = Number.parseInt(afterFit, 10);
+    expect(fitPct).toBeGreaterThan(0);
+    // Fit must change the camera from the known 118% zoom-in step (or stay a
+    // real framing value — never a no-op empty / NaN label).
+    expect(Number.isFinite(fitPct)).toBe(true);
+    expect(afterFit).not.toBe('');
   });
 
   it('M26: Fit resets the viewport but keeps the selection and its node card', async () => {

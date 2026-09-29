@@ -277,6 +277,23 @@ describe('readTimelinesStore — demo seed for genuinely new vaults', () => {
     expect(store.timelines).toHaveLength(3);
     expect(store.spans.filter((s) => s.opensTimelineId).length).toBeGreaterThan(0);
   });
+
+  it('F3#6 — Universal is the root; World + Story hang under it', () => {
+    const store = createSeedTimelinesStore('2026-01-01T00:00:00Z');
+    const universe = store.timelines.find((t) => t.kind === 'universe');
+    const world = store.timelines.find((t) => t.kind === 'world');
+    const story = store.timelines.find((t) => t.kind === 'story');
+    expect(universe).toBeTruthy();
+    expect(world).toBeTruthy();
+    expect(story).toBeTruthy();
+    const childIds = store.spans
+      .filter((s) => s.timelineId === universe!.id && s.opensTimelineId)
+      .map((s) => s.opensTimelineId);
+    expect(childIds).toEqual(expect.arrayContaining([world!.id, story!.id]));
+    // No inverted Story→World→Universe chain.
+    expect(store.spans.some((s) => s.timelineId === story!.id && s.opensTimelineId === world!.id)).toBe(false);
+    expect(store.spans.some((s) => s.timelineId === world!.id && s.opensTimelineId === universe!.id)).toBe(false);
+  });
 });
 
 // ─── Atomic write + backup + corrupt-file recovery ───────────────────────────

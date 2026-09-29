@@ -5957,10 +5957,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Import-notes-vault opens the Welcome import path (no wizard replay).
   useEffect(() => {
     const handler = () => {
-      setWelcomeOpen(true);
-      // Prefer import path via create flow once overlay is confirmed.
       void createMythosVault('import');
-      setWelcomeOpen(false);
     };
     window.addEventListener('mythos:import-notes-vault', handler);
     return () => window.removeEventListener('mythos:import-notes-vault', handler);
@@ -7321,7 +7318,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             'beta-reader': appSettings?.agents?.betaReader?.enabled ?? true,
           }}
           continuityCount={continuityCount}
-          gettingStartedCard={undefined}
           continuityPanel={
             <ContinuityPanel
               scene={activeSceneForSidebar}
