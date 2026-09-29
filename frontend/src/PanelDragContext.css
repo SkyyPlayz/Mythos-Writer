@@ -22,7 +22,7 @@
   user-select: none;
   pointer-events: none;
   will-change: transform;
-  z-index: 9000;
+  z-index: var(--z-drag, 12100);
   white-space: nowrap;
 }
 

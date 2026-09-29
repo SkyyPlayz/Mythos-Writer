@@ -77,8 +77,8 @@ describe('token computation at prototype defaults (Neon Nebula, intensity 50 →
     expect(t['--ln-scrim']).toBe('0.1');
   });
 
-  it('classic + match wallpaper uses the cosmic asset, cover-sized', () => {
-    expect(t['--wp']).toBe("url('/assets/cosmic-bg.webp')");
+  it('classic + match wallpaper defaults to starfield (F2#18 wpPick classic:1)', () => {
+    expect(t['--wp']).toContain('radial-gradient(1.6px 1.6px at 12% 22%');
     expect(t['--wpsize']).toBe('cover');
   });
 
@@ -147,20 +147,23 @@ describe('Theme match wallpaper cycle (SKY-11589)', () => {
   const classic = normalizeLiquidNeonV2({ setKey: 'classic' });
   const aurora = normalizeLiquidNeonV2({ setKey: 'aurora', slots: [...LIQUID_NEON_PRESETS.aurora.c] });
 
-  it('index 0 is the built-in wallpaper: cosmic for Neon Nebula, starfield elsewhere', () => {
+  it('index 0 is cosmic for Neon Nebula; starfield is index 1 (F2#18 default pick); aurora stays starfield@0', () => {
     expect(matchWallpaperList(classic, COSMIC)[0].css).toBe("url('/assets/cosmic-bg.webp')");
+    expect(matchWallpaperList(classic, COSMIC)[1].css).toContain('radial-gradient(1.6px 1.6px at 12% 22%');
     expect(matchWallpaperList(aurora, COSMIC)[0].css).toContain('radial-gradient(1.6px 1.6px at 12% 22%');
     expect(matchWallpaperList(aurora, COSMIC)[0].url).toBeUndefined();
   });
 
-  it('the pack follows the built-in, in manifest order, for every preset', () => {
+  it('the pack follows the built-ins, in manifest order, for every preset', () => {
     for (const key of Object.keys(LIQUID_NEON_PRESETS) as (keyof typeof LIQUID_NEON_PRESETS)[]) {
       const s = normalizeLiquidNeonV2({ setKey: key, slots: [...LIQUID_NEON_PRESETS[key].c] });
       const list = matchWallpaperList(s, COSMIC);
       const pack = packWallpapers(key);
       expect(pack.length, `${key} ships pack wallpapers`).toBeGreaterThan(0);
-      expect(list).toHaveLength(pack.length + 1);
-      pack.forEach((e, i) => expect(list[i + 1].css).toBe("url('" + e.url + "')"));
+      // F2#18: classic has cosmic + starfield built-ins; others have starfield only.
+      const builtInCount = key === 'classic' ? 2 : 1;
+      expect(list).toHaveLength(pack.length + builtInCount);
+      pack.forEach((e, i) => expect(list[i + builtInCount].css).toBe("url('" + e.url + "')"));
     }
   });
 

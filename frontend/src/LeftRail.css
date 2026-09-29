@@ -70,10 +70,13 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 6px;
+  padding: 0 6px;
   background: var(--bg-inset);
   flex-shrink: 0;
-  min-height: 32px;
+  /* F2#12: align with shared panel top-bar height */
+  min-height: var(--panel-top-bar-height, 36px);
+  height: var(--panel-top-bar-height, 36px);
+  box-sizing: border-box;
 }
 
 .lr-panel-collapse-btn {

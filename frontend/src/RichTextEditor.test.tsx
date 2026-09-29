@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
-import RichTextEditor from './RichTextEditor';
+import RichTextEditor, { wikiTitleFromDroppedPath } from './RichTextEditor';
 import { WikiLinkHintExtension } from './WikiLinkHintExtension';
 import { AutoLinkerExtension } from './AutoLinkerExtension';
 import { getEditorMarkdown } from './lib/useRichEditor';
@@ -349,6 +349,25 @@ describe('RichTextEditor wiki-link delegation', () => {
 
     expect(onEntityClick).toHaveBeenCalledWith('char-elara');
     unmount();
+  });
+
+  it('F2#2: entity-chip clicks fall back to entityMentionNavigate when prop omitted', async () => {
+    const { setEntityMentionNavigateHandler } = await import('./lib/entityMentionNavigate');
+    const handler = vi.fn();
+    setEntityMentionNavigateHandler(handler);
+    const { unmount } = await mountCore({
+      content: 'Ask <span data-entity-id="char-elara" data-entity-label="Elara" class="entity-mention-chip">@Elara</span> about it.\n',
+    });
+    fireEvent.click(document.querySelector('.entity-mention-chip') as Element);
+    expect(handler).toHaveBeenCalledWith('char-elara');
+    setEntityMentionNavigateHandler(null);
+    unmount();
+  });
+
+  it('F2#4: dropped explorer paths map to wiki titles', () => {
+    expect(wikiTitleFromDroppedPath('Notes/Locations/Harbor.md')).toBe('Harbor');
+    expect(wikiTitleFromDroppedPath('https://example.com')).toBeNull();
+    expect(wikiTitleFromDroppedPath('two\nlines')).toBeNull();
   });
 });
 
