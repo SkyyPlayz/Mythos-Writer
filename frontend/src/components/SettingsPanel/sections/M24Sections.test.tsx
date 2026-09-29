@@ -174,16 +174,10 @@ describe('AboutSection', () => {
     expect(screen.getByTestId('about-update-status').textContent).toContain('0.4.0');
   });
 
-  // Beta 4 M29 (AC7): "Replay welcome tour" must use the every-build replay
-  // channel, not the MYTHOS_DEV-only debug reset that no-ops in production.
-  it('replays the onboarding wizard via onboardingReplay, not the debug reset', async () => {
-    const reload = vi.fn();
-    Object.defineProperty(window, 'location', { value: { ...window.location, reload }, writable: true });
+  // F3#9 — Replay welcome tour / wizard reopen removed (WelcomeOverlay-only).
+  it('does not expose a Replay welcome tour reopen button', async () => {
     render(<AboutSection />);
     await flush();
-    fireEvent.click(screen.getByTestId('about-replay-tour'));
-    await flush();
-    expect(mockOnboardingReplay).toHaveBeenCalled();
-    expect(reload).toHaveBeenCalled();
+    expect(screen.queryByTestId('about-replay-tour')).not.toBeInTheDocument();
   });
 });

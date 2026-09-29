@@ -597,6 +597,27 @@
   display: flex;
 }
 
+.tlr-left-sidebar {
+  width: 220px;
+  flex: none;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 8px 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tlr-left-sidebar .tlr-focus {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
 .tlr-content-row .tlr-body {
   flex: 1;
   min-width: 0;

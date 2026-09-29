@@ -673,13 +673,15 @@
   background: rgba(8, 10, 18, 0.55);
 }
 
+.ahp-actions,
 .ahp-hands {
   display: flex;
   gap: 6px;
-  margin: 0 8px;
+  margin: 0 8px 8px;
   flex-wrap: wrap;
 }
 
+.ahp-action-chip,
 .ahp-hand-chip {
   flex: 1 1 auto;
   min-width: 0;
@@ -694,9 +696,15 @@
   cursor: pointer;
 }
 
+.ahp-action-chip--busy,
 .ahp-hand-chip--active {
   box-shadow: 0 0 14px -4px color-mix(in srgb, var(--hand-color, #fff) 55%, transparent);
   color: #fff;
+}
+
+.ahp-action-chip:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .ahp-partner-thread {

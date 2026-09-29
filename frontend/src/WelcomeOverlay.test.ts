@@ -19,11 +19,12 @@ describe('WelcomeOverlay (09 §7)', () => {
     expect(css).toContain('rgba(5, 7, 13, 0.72)');
   });
 
-  it('exposes five paths + Skip', () => {
+  it('exposes five paths; Skip optional when vault setup required', () => {
     for (const id of ['template', 'blank', 'import', 'restore', 'openin'] as const) {
       expect(tsx).toContain(`id: '${id}'`);
     }
     expect(tsx).toContain('welcome-path-${card.id}');
+    expect(tsx).toContain('requireVaultSetup');
     expect(tsx).toContain('Skip — continue to the app →');
     expect(tsx).toContain('welcome-skip');
   });

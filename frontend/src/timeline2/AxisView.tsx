@@ -195,8 +195,8 @@ export default function AxisView({
   const [localStore, setLocalStore] = useState<TimelinesStore>(store);
   useEffect(() => { setLocalStore(store); }, [store]);
 
-  const [zoomSeg, setZoomSeg] = useState<AxisZoomSeg>('Year');
-  const [zoomX, setZoomX] = useState(1);
+  const [zoomSeg, setZoomSeg] = useState<AxisZoomSeg>('Month');
+  const [zoomX, setZoomX] = useState(1.25);
   // M25: controlled when TimelineRoot passes `selection` (the right-panel
   // Inspector edits it); the internal state keeps older callers working.
   const [internalSelection, setInternalSelection] = useState<AxisSelection | null>(null);
@@ -793,6 +793,29 @@ export default function AxisView({
               {seg}
             </button>
           ))}
+        </div>
+        <div className="ax-zoom-x" role="group" aria-label="Time axis zoom" data-testid="ax-zoom-x">
+          <button
+            type="button"
+            className="ax-zoom-x-btn"
+            aria-label="Zoom time axis out"
+            data-testid="ax-zoom-out"
+            onClick={() => setZoomX((x) => applyWheelZoom(x, 1))}
+          >
+            −
+          </button>
+          <span className="ax-zoom-x-pct" data-testid="ax-zoom-pct" title="Ctrl+scroll over the axis also zooms">
+            {Math.round(zoomX * 100)}%
+          </span>
+          <button
+            type="button"
+            className="ax-zoom-x-btn"
+            aria-label="Zoom time axis in"
+            data-testid="ax-zoom-in"
+            onClick={() => setZoomX((x) => applyWheelZoom(x, -1))}
+          >
+            +
+          </button>
         </div>
       </div>
 

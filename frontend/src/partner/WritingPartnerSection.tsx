@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import {
   PARTNER_HANDS,
+  DEFAULT_PARTNER_DISPLAY_NAME,
   resolvePartnerDisplayName,
   type PartnerHandId,
 } from '../agents/partnerIdentity';
@@ -100,7 +101,7 @@ export default function WritingPartnerSection({
 
   // Slice D: bind Settings identity ↔ Agents Vault partner.md (file is source on disk).
   useEffect(() => {
-    const name = settings.agentNames?.brainstorm?.trim() || 'Mythos';
+    const name = settings.agentNames?.brainstorm?.trim() || DEFAULT_PARTNER_DISPLAY_NAME;
     const icon = partner.icon;
     void window.api?.agentsVaultSyncPartner?.({ name, icon });
   }, [settings.agentNames?.brainstorm, partner.icon]);
@@ -120,7 +121,7 @@ export default function WritingPartnerSection({
               className="settings-input"
               data-testid="wp-name"
               value={settings.agentNames?.brainstorm ?? ''}
-              placeholder="Mythos"
+              placeholder={DEFAULT_PARTNER_DISPLAY_NAME}
               maxLength={64}
               onChange={(e) => setAgentDisplayName('brainstorm', e.target.value)}
             />

@@ -112,6 +112,7 @@ interface Props {
   idleDebounceSeconds?: number;
   autoApply?: boolean;
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
+  // dead-wiring-ignore: optional parent sync; AgentHub no longer hosts WA chat (F3 unified agent). FloatingPanel omits it.
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   /** Beta 3 M22: renameable agent display name (settings.agentNames.writingAssistant). */
   displayName?: string;
@@ -124,7 +125,8 @@ interface Props {
   sessionStore?: UseAgentSessionsResult;
   /** SKY-7076: fires whenever a coach reply is in flight, so a parent hosting
    *  the session picker (e.g. AgentHubPanel) can disable session switching for
-   *  the duration — pinning already keeps data correct even if this is missed. */
+   *  the duration — pinning already keeps data correct even if this is missed.
+   *  dead-wiring-ignore: AgentHub no longer embeds WA (F3); retained for Coach hosts. */
   onBusyChange?: (busy: boolean) => void;
 }
 

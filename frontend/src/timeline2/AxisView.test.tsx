@@ -94,6 +94,7 @@ describe('AxisView — rendering', () => {
     });
     setupApi(wide);
     render(<AxisView store={wide} onStoreChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('ax-zoom-Year'));
     const ticks = screen.getAllByTestId('ax-tick');
     expect(ticks.some((t) => / EC$/.test(t.textContent ?? ''))).toBe(true);
   });
@@ -108,10 +109,12 @@ describe('AxisView — zoom', () => {
 
   it('zoom segment sets the canvas min-width (Day → 5400px)', () => {
     render(<AxisView store={store} onStoreChange={() => {}} />);
-    expect(screen.getByTestId('ax-canvas').getAttribute('data-min-width')).toBe('');
+    // F3#5 — default Month @ 125% already applies a min-width.
+    expect(screen.getByTestId('ax-zoom-Month')).toHaveAttribute('aria-pressed', 'true');
+    expect(Number(screen.getByTestId('ax-canvas').getAttribute('data-min-width'))).toBeGreaterThan(0);
     fireEvent.click(screen.getByTestId('ax-zoom-Day'));
-    expect(screen.getByTestId('ax-canvas').getAttribute('data-min-width')).toBe('5400');
-    expect(screen.getByTestId('ax-canvas').style.minWidth).toBe('5400px');
+    expect(screen.getByTestId('ax-canvas').getAttribute('data-min-width')).toBe('6750');
+    expect(screen.getByTestId('ax-canvas').style.minWidth).toBe('6750px');
   });
 
   it('deeper zoom re-labels ticks down to hours (§14.4 step 5)', () => {
@@ -128,12 +131,29 @@ describe('AxisView — zoom', () => {
 
   it('Ctrl+scroll grows the canvas; plain scroll does not', () => {
     render(<AxisView store={store} onStoreChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('ax-zoom-Year'));
     const scroll = screen.getByTestId('ax-scroll');
+    // Zoom out to floor, then ensure plain scroll does nothing while Ctrl+scroll grows.
+    const out = screen.getByTestId('ax-zoom-out');
+    for (let i = 0; i < 30; i++) fireEvent.click(out);
+    const beforePlain = screen.getByTestId('ax-canvas').getAttribute('data-min-width');
     fireEvent.wheel(scroll, { deltaY: -100 });
-    expect(screen.getByTestId('ax-canvas').getAttribute('data-min-width')).toBe('');
-    fireEvent.wheel(scroll, { ctrlKey: true, deltaY: -100 });
-    // 1100 × 1.13 = 1243
-    expect(screen.getByTestId('ax-canvas').getAttribute('data-min-width')).toBe('1243');
+    expect(screen.getByTestId('ax-canvas').getAttribute('data-min-width')).toBe(beforePlain);
+    for (let i = 0; i < 20; i++) {
+      fireEvent.wheel(scroll, { ctrlKey: true, deltaY: -100 });
+    }
+    const after = screen.getByTestId('ax-canvas').getAttribute('data-min-width');
+    expect(Number(after)).toBeGreaterThan(Number(beforePlain || '0'));
+  });
+
+  it('exposes discoverable ± time-axis zoom controls', () => {
+    render(<AxisView store={store} onStoreChange={() => {}} />);
+    expect(screen.getByTestId('ax-zoom-x')).toBeInTheDocument();
+    expect(screen.getByTestId('ax-zoom-in')).toBeInTheDocument();
+    expect(screen.getByTestId('ax-zoom-out')).toBeInTheDocument();
+    const before = screen.getByTestId('ax-zoom-pct').textContent;
+    fireEvent.click(screen.getByTestId('ax-zoom-in'));
+    expect(screen.getByTestId('ax-zoom-pct').textContent).not.toBe(before);
   });
 });
 
