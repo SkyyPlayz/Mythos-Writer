@@ -235,7 +235,7 @@ test('capture SKY-11221 beta reader consolidation screenshots', async () => {
   }
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 
-  const input = page.getByRole('textbox', { name: 'Writing coach prompt' });
+  const input = page.getByTestId('ahp-partner-chat-input');
   await expect(input).toBeVisible({ timeout: 5_000 });
   await expect(input).toBeEnabled({ timeout: 5_000 });
   await expect(async () => {
@@ -247,7 +247,7 @@ test('capture SKY-11221 beta reader consolidation screenshots', async () => {
   // No beta-read intercept UI exists any more — this must never appear.
   await expect(page.locator('.br-panel')).toHaveCount(0);
 
-  const assistantReply = page.locator('.wa-message-assistant', { hasText: MOCK_CHAT_RESPONSE });
+  const assistantReply = page.locator('.trp-bubble--agent', { hasText: MOCK_CHAT_RESPONSE });
   await expect(assistantReply).toBeVisible({ timeout: 8_000 });
   await expect(page.locator('.br-panel')).toHaveCount(0);
   await page.waitForTimeout(300);

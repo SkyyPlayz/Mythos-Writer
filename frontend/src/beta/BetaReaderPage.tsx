@@ -412,7 +412,7 @@ export default function BetaReaderPage({ story, chapter, scene, agentNames, prod
           </div>
         )}
         {tab === 'chat' && (
-          <div className="beta-chat-page" data-testid="beta-partner-chat">
+          <div className="beta-chat-page" data-testid="beta-partner-chat-wrap">
             <MiniAgentChat
               chat={partnerChat}
               accent="brainstorm"
