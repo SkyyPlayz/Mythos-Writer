@@ -324,8 +324,11 @@ test('NP-06 (M17): wiki-link hover preview renders; unresolved link creates the 
     await expect(page.locator('[data-testid="wiki-link-hover-unresolved"]')).toBeVisible({ timeout: 5_000 });
     await page.mouse.move(0, 0);
 
-    // Create-on-click: the note is written to the vault and opened.
+    // F2#3: unresolved click opens the create prompt; Create writes + opens.
     await unresolved.click();
+    const prompt = page.locator('[data-testid="create-note-prompt"]');
+    await expect(prompt).toBeVisible({ timeout: 5_000 });
+    await page.locator('[data-testid="create-note-confirm"]').click();
     await expect(notesPanel(page).locator('.note-breadcrumb-item--current', { hasText: 'Lost Civilization' })).toBeVisible({ timeout: 8_000 });
     expect(fs.existsSync(path.join(notesDir, 'Lost Civilization.md'))).toBe(true);
     expect(fs.readFileSync(path.join(notesDir, 'Lost Civilization.md'), 'utf-8')).toContain('# Lost Civilization');
