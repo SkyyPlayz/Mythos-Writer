@@ -505,11 +505,11 @@ export const IPC_CHANNELS = {
   NOTES_SET: 'notes:set',
   /** F5: resolve book/part/chapter/scene ids for the notes-per-tier pane. */
   NOTES_TIER_CONTEXT: 'notes:tierContext',
-  /** F5: Models & Keys file ops (sandboxed to Agent Vault / keys dir). */
-  MODEL_KEYS_LOCATION: 'modelKeys:location',
-  MODEL_KEYS_REVEAL: 'modelKeys:reveal',
-  MODEL_KEYS_OPEN: 'modelKeys:open',
-  MODEL_KEYS_CLEAR_MEMORY: 'modelKeys:clearMemory',
+  /**
+   * F5 Critic Path A: sole new modelKeys channel — Reveal via showItemInFolder.
+   * Location / Clear / Open reuse agentsVault:* (no duplicate primitive).
+   */
+  MODEL_KEYS_SHOW_ITEM_IN_FOLDER: 'modelKeys:showItemInFolder',
   // SKY-158: Tag & cross-reference system
   TAGS_LIST: 'tags:list',
   TAGS_UPSERT: 'tags:upsert',
@@ -1135,10 +1135,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => NotesGetResponse;
   [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => NotesSetResponse;
   [IPC_CHANNELS.NOTES_TIER_CONTEXT]: (payload: NotesTierContextPayload) => NotesTierContextResponse;
-  [IPC_CHANNELS.MODEL_KEYS_LOCATION]: (payload?: never) => ModelKeysLocationResponse;
-  [IPC_CHANNELS.MODEL_KEYS_REVEAL]: (payload?: never) => Promise<{ opened: boolean; error?: string }>;
-  [IPC_CHANNELS.MODEL_KEYS_OPEN]: (payload?: never) => Promise<{ opened: boolean; error?: string }>;
-  [IPC_CHANNELS.MODEL_KEYS_CLEAR_MEMORY]: (payload?: never) => { ok: boolean; removed?: string[]; error?: string };
+  [IPC_CHANNELS.MODEL_KEYS_SHOW_ITEM_IN_FOLDER]: (payload?: never) => Promise<{ opened: boolean; error?: string }>;
 
   // SKY-158: Tag & cross-reference system
   [IPC_CHANNELS.TAGS_LIST]: (payload: never) => TagsListResponse;
@@ -5500,16 +5497,6 @@ export interface NotesTierContextResponse {
   partId?: string | null;
   chapterId?: string | null;
   sceneId?: string | null;
-  error?: string;
-}
-
-export interface ModelKeysLocationResponse {
-  ok: boolean;
-  path?: string;
-  name?: string;
-  files?: number;
-  chips?: string[];
-  scope?: string;
   error?: string;
 }
 

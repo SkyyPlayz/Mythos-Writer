@@ -158,6 +158,29 @@ describe('SceneNotesPanel F5 notes per tier', () => {
     expect(notesGet).toHaveBeenCalledWith('part:p1');
   });
 
+  it('resets resolvedPartId to null on scene switch until tierContext returns', async () => {
+    let resolveCtx!: (v: unknown) => void;
+    notesTierContext.mockImplementation(
+      () => new Promise((resolve) => { resolveCtx = resolve; }),
+    );
+    const { rerender } = render(<SceneNotesPanel scene={scene} />);
+    // First scene's context still pending — Part must stay disabled (null part).
+    expect(screen.getByTestId('snp-tier-part')).toBeDisabled();
+    resolveCtx({ ok: true, bookId: 's1', partId: 'p1', chapterId: 'ch1', sceneId: 'sc1' });
+    await waitFor(() => expect(screen.getByTestId('snp-tier-part')).not.toBeDisabled());
+
+    const scene2 = { ...scene, id: 'sc2', chapterId: 'ch2' } as Scene;
+    let resolveCtx2!: (v: unknown) => void;
+    notesTierContext.mockImplementation(
+      () => new Promise((resolve) => { resolveCtx2 = resolve; }),
+    );
+    rerender(<SceneNotesPanel scene={scene2} />);
+    // Critic soft: must not keep p1 while sc2 context is in flight.
+    expect(screen.getByTestId('snp-tier-part')).toBeDisabled();
+    resolveCtx2({ ok: true, bookId: 's1', partId: 'p2', chapterId: 'ch2', sceneId: 'sc2' });
+    await waitFor(() => expect(screen.getByTestId('snp-tier-part')).not.toBeDisabled());
+  });
+
   it('Chapter tier persists under chapter:<chapterId>', async () => {
     notesGet.mockResolvedValue({ content: '' });
     render(<SceneNotesPanel scene={scene} />);

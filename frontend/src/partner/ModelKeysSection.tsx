@@ -173,7 +173,7 @@ export default function ModelKeysSection({
   const needsKey =
     selected === 'openrouter' || selected === 'paste-key' || (selected === 'claude' && cli === 'ready');
 
-  // F5: Models & Keys — Hands & files (location / Reveal / Open / Clear / Move vault…)
+  // F5 Critic Path A: Hands & files via existing agentsVault:* (+ one showItemInFolder)
   const [keysLoc, setKeysLoc] = useState<{
     path: string;
     name: string;
@@ -189,9 +189,17 @@ export default function ModelKeysSection({
   useEffect(() => {
     let cancelled = false;
     const refresh = () => {
-      window.api?.modelKeysLocation?.()
+      void window.api?.agentsVaultEnsure?.().catch(() => { /* non-fatal */ });
+      window.api?.agentsVaultStats?.()
         .then((res) => {
-          if (cancelled || !res?.ok || !res.path) return;
+          if (cancelled) return;
+          // Fail closed: no Mythos root → plain inline error (not silently disabled).
+          if (!res?.ok || !res.path) {
+            setKeysLoc(null);
+            setKeysError(res?.error || 'No Mythos vault open');
+            return;
+          }
+          setKeysError(null);
           setKeysLoc({
             path: res.path,
             name: res.name ?? 'Agent Vault',
@@ -200,10 +208,20 @@ export default function ModelKeysSection({
             scope: res.scope ?? 'This vault',
           });
         })
-        .catch(() => { /* non-fatal */ });
+        .catch((e: unknown) => {
+          if (cancelled) return;
+          setKeysLoc(null);
+          setKeysError(e instanceof Error ? e.message : 'No Mythos vault open');
+        });
     };
     refresh();
-    return () => { cancelled = true; };
+    // Soft: refresh path after vault move / remount focus
+    const onFocus = () => { refresh(); };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+    };
   }, []);
 
   const showToast = (msg: string) => {
@@ -532,8 +550,8 @@ export default function ModelKeysSection({
             </span>
           </div>
           <p className="settings-hint">
-            Partner identity and hand files live here. Clear memory removes chat/session artifacts and keeps
-            partner.md · writer.md · analyst.md · archivist.md.
+            Partner identity and hand files live here. Clear memory also deletes Sessions/ and
+            Boards/brainstorm.board.json, and keeps partner.md · writer.md · analyst.md · archivist.md.
           </p>
           <div className="mk-keys-files__path-row">
             <span
@@ -551,7 +569,7 @@ export default function ModelKeysSection({
               onClick={() => {
                 setKeysBusy(true);
                 setKeysError(null);
-                void window.api?.modelKeysReveal?.()
+                void window.api?.modelKeysShowItemInFolder?.()
                   .then((res) => {
                     if (res && !res.opened) setKeysError(res.error || 'Could not reveal folder');
                   })
@@ -569,7 +587,7 @@ export default function ModelKeysSection({
               onClick={() => {
                 setKeysBusy(true);
                 setKeysError(null);
-                void window.api?.modelKeysOpen?.()
+                void window.api?.agentsVaultReveal?.()
                   .then((res) => {
                     if (res && !res.opened) setKeysError(res.error || 'Could not open folder');
                   })
@@ -612,7 +630,7 @@ export default function ModelKeysSection({
                     setKeysBusy(true);
                     setKeysError(null);
                     setKeysStatus(null);
-                    void window.api?.modelKeysClearMemory?.()
+                    void window.api?.agentsVaultClearMemory?.()
                       .then((res) => {
                         if (!res?.ok) {
                           setKeysError(res?.error || 'Clear failed');
@@ -620,7 +638,7 @@ export default function ModelKeysSection({
                           setKeysStatus(`Cleared agent memory (${res.removed?.length ?? 0} items). Partner files kept.`);
                           setConfirmClearKeys(false);
                           showToast('Agent memory cleared');
-                          void window.api?.modelKeysLocation?.().then((loc) => {
+                          void window.api?.agentsVaultStats?.().then((loc) => {
                             if (loc?.ok && loc.path) {
                               setKeysLoc({
                                 path: loc.path,
@@ -655,7 +673,7 @@ export default function ModelKeysSection({
               className="settings-btn settings-btn-secondary"
               data-testid="mk-keys-move"
               disabled={keysBusy || !onMoveVault}
-              title="Move the whole Mythos vault (Agent Vault moves with it)"
+              title="Moves the Story Vault folder only — Agent Vault is a sibling and stays put"
               onClick={() => {
                 setKeysError(null);
                 setKeysStatus(null);
@@ -666,7 +684,8 @@ export default function ModelKeysSection({
             </button>
           </div>
           <p className="settings-hint" data-testid="mk-keys-move-hint">
-            Keys and memory move with the vault.
+            Move relocates the Story Vault only. Agent Vault (keys &amp; memory) is a sibling
+            under the Mythos root and does not move with this action.
           </p>
           {keysStatus && (
             <p className="settings-hint" data-testid="mk-keys-status">{keysStatus}</p>

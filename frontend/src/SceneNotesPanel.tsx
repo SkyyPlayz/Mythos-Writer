@@ -75,6 +75,9 @@ export default function SceneNotesPanel({
       setResolvedPartId(partIdProp);
       return;
     }
+    // Critic soft: clear stale part before IPC returns so a Part-tab note
+    // during a scene switch cannot land on the previous scene's part.
+    setResolvedPartId(null);
     let cancelled = false;
     window.api.notesTierContext?.(scene.id)
       .then((res) => {

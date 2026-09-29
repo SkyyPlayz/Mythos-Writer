@@ -1971,19 +1971,8 @@ interface Window {
       sceneId?: string | null;
       error?: string;
     }>;
-    // F5: Models & Keys file ops (sandboxed to Agent Vault / keys dir)
-    modelKeysLocation?: () => Promise<{
-      ok: boolean;
-      path?: string;
-      name?: string;
-      files?: number;
-      chips?: string[];
-      scope?: string;
-      error?: string;
-    }>;
-    modelKeysReveal?: () => Promise<{ opened: boolean; error?: string }>;
-    modelKeysOpen?: () => Promise<{ opened: boolean; error?: string }>;
-    modelKeysClearMemory?: () => Promise<{ ok: boolean; removed?: string[]; error?: string }>;
+    // F5 Critic Path A: sole new channel (Reveal). Location/Clear/Open → agentsVault:*
+    modelKeysShowItemInFolder?: () => Promise<{ opened: boolean; error?: string }>;
     // SKY-1391: brainstorm → writing-panel bridge
     sceneAppendBrainstormNote?: (sceneId: string, content: string) => Promise<{ appended: boolean }>;
 

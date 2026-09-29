@@ -46,6 +46,70 @@ export function partnerFilePath(mythosRoot: string, file: string): string {
   return path.join(agentsPartnerDir(mythosRoot), file);
 }
 
+function realpathOrSelf(p: string): string {
+  try {
+    return fs.realpathSync.native(p);
+  } catch {
+    return path.resolve(p);
+  }
+}
+
+/**
+ * Shield R1: refuse a symlinked / file / escaped Agent Vault *before* writing
+ * identity defaults (used by ensureAgentsPartnerFiles and resolveKeysDir).
+ */
+export function assertAgentVaultPathSafe(mythosRoot: string, agentRoot: string): void {
+  let st: fs.Stats;
+  try {
+    st = fs.lstatSync(agentRoot);
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw e;
+  }
+  if (st.isSymbolicLink()) {
+    throw new Error('Agent Vault must not be a symlink');
+  }
+  if (st.isFile()) {
+    throw new Error('Agent Vault must be a directory');
+  }
+  const mythosReal = realpathOrSelf(path.resolve(mythosRoot));
+  const agentReal = realpathOrSelf(agentRoot);
+  // Separator-anchored prefix: blocks sibling-prefix escapes
+  // (`…/Agent Vault-evil` must not pass a check for `…/Agent Vault`).
+  if (agentReal !== mythosReal && !agentReal.startsWith(mythosReal + path.sep)) {
+    throw new Error('Agent Vault escaped vault root');
+  }
+}
+
+/**
+ * Shield containment gate for every agentsVault:* file op (and Model Keys).
+ * Validates mythosRoot, refuses symlink/file/escape **before** ensure writes,
+ * then ensures identity defaults and re-checks after.
+ */
+export function resolveKeysDir(mythosRoot: string):
+  | { ok: true; keysDir: string }
+  | { ok: false; error: string } {
+  if (!mythosRoot || typeof mythosRoot !== 'string') {
+    return { ok: false, error: 'No Mythos vault open' };
+  }
+  if (
+    mythosRoot.includes('\0')
+    || /(?:%2e){2}/i.test(mythosRoot)
+    || /(?:^|[\\/])\.\.(?:[\\/]|$)/.test(mythosRoot)
+  ) {
+    return { ok: false, error: 'Invalid vault path' };
+  }
+  const agentRoot = agentsPartnerDir(mythosRoot);
+  try {
+    assertAgentVaultPathSafe(mythosRoot, agentRoot);
+    ensureAgentsPartnerFiles(mythosRoot);
+    assertAgentVaultPathSafe(mythosRoot, agentRoot);
+    return { ok: true, keysDir: agentRoot };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message || 'Agent Vault path rejected' };
+  }
+}
+
 /** Ensure Agent Vault exists and partner/hand identity files are present (never wipe). */
 export function ensureAgentsPartnerFiles(mythosRoot: string): {
   ok: true;
@@ -53,6 +117,8 @@ export function ensureAgentsPartnerFiles(mythosRoot: string): {
   agentVaultPath: string;
 } {
   const agentRoot = agentsPartnerDir(mythosRoot);
+  // Shield R1: lstat + refuse symlink/file/escape before mkdir / default writes.
+  assertAgentVaultPathSafe(mythosRoot, agentRoot);
   fs.mkdirSync(agentRoot, { recursive: true });
   const created: string[] = [];
   for (const file of AGENTS_PARTNER_FILES) {
@@ -133,11 +199,10 @@ export function clearAgentMemory(mythosRoot: string): {
   ok: true;
   removed: string[];
 } | { ok: false; error: string } {
-  const agentRoot = agentsPartnerDir(mythosRoot);
-  if (!fs.existsSync(agentRoot)) {
-    ensureAgentsPartnerFiles(mythosRoot);
-    return { ok: true, removed: [] };
-  }
+  // Fail closed: never operate outside a contained Agent Vault (no Notes Vault).
+  const gated = resolveKeysDir(mythosRoot);
+  if (!gated.ok) return { ok: false, error: gated.error };
+  const agentRoot = gated.keysDir;
   const keep = new Set<string>(AGENTS_PARTNER_FILES);
   const removed: string[] = [];
   try {
@@ -154,14 +219,14 @@ export function clearAgentMemory(mythosRoot: string): {
   }
 }
 
-export function listAgentsVaultStats(mythosRoot: string): {
-  path: string;
-  name: string;
-  files: number;
-  chips: string[];
-} {
-  const agentRoot = agentsPartnerDir(mythosRoot);
-  ensureAgentsPartnerFiles(mythosRoot);
+export type AgentsVaultStats =
+  | { ok: true; path: string; name: string; files: number; chips: string[] }
+  | { ok: false; error: string };
+
+export function listAgentsVaultStats(mythosRoot: string): AgentsVaultStats {
+  const gated = resolveKeysDir(mythosRoot);
+  if (!gated.ok) return { ok: false, error: gated.error };
+  const agentRoot = gated.keysDir;
   let files = 0;
   const walk = (dir: string): void => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -177,6 +242,7 @@ export function listAgentsVaultStats(mythosRoot: string): {
   const chips: string[] = ['partner.md', 'Writer', 'Analyst', 'Archivist'];
   if (fs.existsSync(path.join(agentRoot, 'Sessions'))) chips.push('Chat history');
   return {
+    ok: true,
     path: agentRoot,
     name: AGENT_VAULT_DIRNAME,
     files,
