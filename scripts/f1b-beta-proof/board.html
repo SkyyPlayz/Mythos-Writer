@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>F1b beta proof — crumbs · comment arm · chrome</title>
+<style>
+  :root {
+    --n1: #00f0ff; --n2: #9b5fff; --b1: rgba(0,240,255,.4);
+    --text-muted: #8e9db8; --panel-top-bar-height: 36px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "Segoe UI", system-ui, sans-serif; color: #e6ecf9;
+    background:
+      radial-gradient(ellipse at 20% 10%, rgba(0,240,255,.12), transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(155,95,255,.18), transparent 45%),
+      linear-gradient(160deg, #070a14, #12182a 60%, #0a0e1a);
+    min-height: 100vh;
+  }
+  .stage { display: none; width: 1440px; height: 900px; padding: 24px; position: relative; }
+  .stage.on { display: block; }
+  h1.stage-title { margin: 0 0 16px; font-size: 14px; letter-spacing: .12em; text-transform: uppercase; color: var(--n1); opacity: .85; }
+
+  .msv-root {
+    display: flex; flex-direction: column; height: 820px;
+    border-radius: 16px; border: 1px solid rgba(255,255,255,.1);
+    background: rgba(13,16,28,.72); overflow: hidden;
+  }
+  .msv-title-row {
+    display: flex; align-items: center; gap: 12px; padding: 10px 18px;
+    border-bottom: 1px solid rgba(255,255,255,.06); min-height: 44px;
+  }
+  .msv-scope-chip { font-size: 10px; letter-spacing: .14em; color: var(--n2); font-weight: 700; }
+  .msv-scope-title { font-size: 16px; font-weight: 600; }
+  .msv-comments-chip {
+    margin-left: auto; padding: 4px 10px; border-radius: 9px; font-size: 11.5px;
+    border: 1px solid rgba(0,240,255,.35); color: #aebad0; background: transparent;
+  }
+  .msv-zoombar {
+    display: flex; align-items: center; gap: 10px; padding: 10px 18px 11px;
+    user-select: none; border-bottom: 1px solid rgba(255,255,255,.05);
+  }
+  .msv-zoom-seg {
+    display: flex; padding: 3px; border-radius: 10px;
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08); gap: 2px;
+  }
+  .msv-zoom-opt {
+    padding: 4px 13px; border-radius: 8px; font-size: 11.5px; color: #94a3bd;
+    background: none; border: 1px solid transparent;
+  }
+  .msv-zoom-opt--active { color: #e6ecf9; background: rgba(0,240,255,.12); border-color: var(--b1); }
+  .msv-crumbs { display: flex; align-items: center; gap: 6px; font-size: 11.5px; min-width: 0; overflow: hidden; max-width: 520px; }
+  .msv-crumb-item { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex-shrink: 2; }
+  .msv-crumb-item--root { flex-shrink: 1; }
+  .msv-crumb {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%;
+    color: #8e9db8; background: none; border: none; padding: 0; font-size: 11.5px; font-family: inherit;
+  }
+  .msv-crumb--current { color: #e6ecf9; font-weight: 600; }
+  .msv-crumb-sep { color: #586a88; flex: none; }
+  .msv-toolbar {
+    display: flex; align-items: center; gap: 5px; margin: 8px 18px; min-height: var(--panel-top-bar-height);
+    padding: 6px 8px; border-radius: 12px; background: rgba(10,12,22,.5);
+    border: 1px solid rgba(255,255,255,.08); user-select: none;
+  }
+  .msv-tb-chip { padding: 4px 10px; border-radius: 8px; font-size: 11px; color: #94a3bd; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); }
+  .msv-page { flex: 1; overflow: auto; padding: 20px 40px; position: relative; }
+  .msv-sheet {
+    max-width: 720px; margin: 0 auto; padding: 40px 48px;
+    background: rgba(18,22,38,.55); border-radius: 16px; border: 1px solid rgba(255,255,255,.08);
+  }
+  .msv-para-text {
+    font-size: 15px; line-height: 1.75; color: #dbe4f5; margin: 0 0 14px;
+    outline: none; min-height: 1.2em;
+  }
+  .msv-selbar-wrap { position: sticky; top: 0; z-index: 20; display: flex; justify-content: center; padding: 0 0 10px; }
+  .msv-comment-arm {
+    padding: 6px 14px; border-radius: 10px; background: rgb(255,211,25); color: #0b0d17;
+    font-size: 11px; font-weight: 700; border: none; cursor: pointer;
+    box-shadow: 0 8px 24px rgba(3,5,12,.5), 0 0 14px -4px rgba(255,211,25,.45);
+  }
+  .msv-selbar {
+    display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px;
+    background: rgba(15,19,33,.97); border: 1px solid rgb(255,211,25);
+    box-shadow: 0 8px 30px rgba(3,5,12,.6), 0 0 18px -5px rgba(255,211,25,.5); max-width: 92%;
+  }
+  .msv-selbar-quote { font-size: 10.5px; color: #8e9db8; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-style: italic; }
+  .msv-selbar-input {
+    width: 190px; height: 26px; background: rgba(255,255,255,.05);
+    border: 1px solid rgba(0,240,255,.4); border-radius: 8px; color: #dbe4f5; font-size: 11px; padding: 0 9px;
+  }
+  .msv-selbar-save { padding: 4px 11px; border-radius: 8px; background: rgb(255,211,25); color: #0b0d17; font-size: 10.5px; font-weight: 700; border: none; }
+  .badge {
+    display: inline-block; margin-top: 12px; padding: 4px 10px; border-radius: 999px;
+    font-size: 11px; color: #0b0d17; background: var(--n1); font-weight: 700;
+  }
+  .note { margin-top: 10px; font-size: 12px; color: var(--text-muted); max-width: 640px; }
+</style>
+</head>
+<body>
+  <div id="stage-crumbs" class="stage">
+    <h1 class="stage-title">F4#6 — live part · chapter · scene crumbs</h1>
+    <div class="msv-root">
+      <div class="msv-title-row">
+        <span class="msv-scope-chip">SCENE</span>
+        <span class="msv-scope-title">The Smuggler's Bargain</span>
+        <button class="msv-comments-chip" type="button">💬 0</button>
+      </div>
+      <div class="msv-zoombar" data-msv-chrome="true">
+        <div class="msv-zoom-seg">
+          <span class="msv-zoom-opt">Full Book</span>
+          <span class="msv-zoom-opt">Part</span>
+          <span class="msv-zoom-opt">Chapter</span>
+          <span class="msv-zoom-opt msv-zoom-opt--active">Scene</span>
+        </div>
+        <nav class="msv-crumbs" aria-label="Breadcrumbs" data-msv-chrome="true">
+          <span class="msv-crumb-item msv-crumb-item--root"><button class="msv-crumb" type="button">The Last City of Veynn</button><span class="msv-crumb-sep">›</span></span>
+          <span class="msv-crumb-item"><button class="msv-crumb" type="button">Embers Rising</button><span class="msv-crumb-sep">›</span></span>
+          <span class="msv-crumb-item"><button class="msv-crumb" type="button">Ch. 2: Fractures</button><span class="msv-crumb-sep">›</span></span>
+          <span class="msv-crumb-item"><button class="msv-crumb msv-crumb--current" type="button">The Smuggler's Bargain</button></span>
+        </nav>
+      </div>
+      <div class="msv-toolbar" data-msv-chrome="true">
+        <span class="msv-tb-chip">Body Text</span><span class="msv-tb-chip">B</span><span class="msv-tb-chip">I</span><span class="msv-tb-chip">U</span>
+      </div>
+      <div class="msv-page">
+        <div class="msv-sheet">
+          <div class="msv-para-text" contenteditable="true">Kael dealt cards slowly.</div>
+          <span class="badge">Root crumb truncates last</span>
+          <p class="note">Multi-part trail: book › part › Ch. N: title › scene. `.msv-crumb-item--root` has lower flex-shrink so the book title yields last.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="stage-comment-arm" class="stage">
+    <h1 class="stage-title">F4#16 — explicit Comment arm (no stray popup)</h1>
+    <div class="msv-root">
+      <div class="msv-title-row">
+        <span class="msv-scope-chip">SCENE</span>
+        <span class="msv-scope-title">A City in Shadows</span>
+        <button class="msv-comments-chip" type="button">💬 0</button>
+      </div>
+      <div class="msv-zoombar" data-msv-chrome="true">
+        <div class="msv-zoom-seg">
+          <span class="msv-zoom-opt">Full Book</span>
+          <span class="msv-zoom-opt msv-zoom-opt--active">Scene</span>
+        </div>
+        <nav class="msv-crumbs" data-msv-chrome="true">
+          <span class="msv-crumb-item msv-crumb-item--root"><button class="msv-crumb" type="button">The Last City of Veynn</button></span>
+        </nav>
+      </div>
+      <div class="msv-page">
+        <div class="msv-selbar-wrap">
+          <button class="msv-comment-arm" type="button" data-testid="msv-comment-arm">Comment</button>
+        </div>
+        <div class="msv-sheet">
+          <div class="msv-para-text" contenteditable="true">By morning the <mark style="background:rgba(255,211,25,.2);">rumor had teeth</mark>.</div>
+          <span class="badge">Selection alone ≠ composer</span>
+          <p class="note">Drag / double-click only shows the compact Comment arm. Full `msv-selbar` opens after this explicit click.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="stage-chrome" class="stage">
+    <h1 class="stage-title">F2#5 — nav chrome outside contenteditable</h1>
+    <div class="msv-root">
+      <div class="msv-zoombar" data-msv-chrome="true">
+        <div class="msv-zoom-seg">
+          <span class="msv-zoom-opt">Full Book</span>
+          <span class="msv-zoom-opt">Part</span>
+          <span class="msv-zoom-opt msv-zoom-opt--active">Chapter</span>
+          <span class="msv-zoom-opt">Scene</span>
+        </div>
+        <nav class="msv-crumbs" data-msv-chrome="true">
+          <span class="msv-crumb-item msv-crumb-item--root"><button class="msv-crumb" type="button">The Last City of Veynn</button><span class="msv-crumb-sep">›</span></span>
+          <span class="msv-crumb-item"><button class="msv-crumb msv-crumb--current" type="button">Ch. 1: The Quiet Before</button></span>
+        </nav>
+      </div>
+      <div class="msv-toolbar" data-msv-chrome="true">
+        <span class="msv-tb-chip">Body Text</span><span class="msv-tb-chip">B</span><span class="msv-tb-chip">I</span>
+      </div>
+      <div class="msv-page">
+        <div class="msv-sheet" data-testid="msv-sheet">
+          <div class="msv-para-text" contenteditable="true">Mira counted the bells. The harbor lanterns guttered.</div>
+          <div class="msv-para-text" contenteditable="true">Getting out would be another story.</div>
+          <span class="badge">Editables contain zero nav nodes</span>
+          <p class="note">Zoombar / crumbs / toolbar carry `data-msv-chrome` + `user-select:none` and sit outside `.msv-sheet`. Unit asserts no chrome descendants inside contenteditables.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="stage-composer" class="stage">
+    <h1 class="stage-title">F4#16 — composer after explicit arm</h1>
+    <div class="msv-root">
+      <div class="msv-page" style="padding-top:40px">
+        <div class="msv-selbar-wrap">
+          <div class="msv-selbar" data-testid="msv-selbar">
+            <span class="msv-selbar-quote">"rumor had teeth"</span>
+            <input class="msv-selbar-input" placeholder="Comment on this…" value="" />
+            <button class="msv-selbar-save" type="button">Comment</button>
+          </div>
+        </div>
+        <div class="msv-sheet">
+          <div class="msv-para-text" contenteditable="true">By morning the rumor had teeth.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  window.__setStage = (id) => {
+    document.querySelectorAll('.stage').forEach((el) => el.classList.remove('on'));
+    const el = document.getElementById('stage-' + id);
+    if (el) el.classList.add('on');
+  };
+  window.__setStage('crumbs');
+</script>
+</body>
+</html>
