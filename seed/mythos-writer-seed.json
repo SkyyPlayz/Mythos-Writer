@@ -1,0 +1,6226 @@
+{
+  "exportedAt": "2026-09-19T01:51:39.214Z",
+  "source": "Mythos Writer design prototype v2.3",
+  "packs": {
+    "mythos": {
+      "world": "Veynn",
+      "axis": [
+        8380,
+        8800
+      ],
+      "months": [
+        "Frostmere",
+        "Thawtide",
+        "Greenrise",
+        "Bloomfall",
+        "Highsun",
+        "Emberwane",
+        "Goldreap",
+        "Duskfall",
+        "Rainmoor",
+        "Lastlight",
+        "Ironnight",
+        "Deepwinter"
+      ],
+      "ntab": "gate",
+      "ntabs": [
+        "gate",
+        "mira",
+        "veynn"
+      ],
+      "vault": [
+        {
+          "id": "wb",
+          "label": "Worldbuilding",
+          "kids": [
+            {
+              "id": "loc",
+              "label": "Locations",
+              "count": 12,
+              "files": [
+                {
+                  "id": "veynn",
+                  "label": "The Last City of Veynn"
+                },
+                {
+                  "id": "gate",
+                  "label": "The Sunken Gate"
+                },
+                {
+                  "id": "ember",
+                  "label": "Emberfall Ruins"
+                },
+                {
+                  "id": "mire",
+                  "label": "The Mirewood"
+                }
+              ]
+            },
+            {
+              "id": "fac",
+              "label": "Factions",
+              "count": 8,
+              "files": [
+                {
+                  "id": "ward",
+                  "label": "Ward Violet"
+                },
+                {
+                  "id": "council",
+                  "label": "The Council"
+                }
+              ]
+            },
+            {
+              "id": "hist",
+              "label": "History",
+              "count": 14,
+              "files": [
+                {
+                  "id": "drown",
+                  "label": "The Drowning of the Coast"
+                }
+              ]
+            },
+            {
+              "id": "lore",
+              "label": "Lore & Myth",
+              "count": 10,
+              "files": [
+                {
+                  "id": "dlight",
+                  "label": "Drownlight"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "chars",
+          "label": "Characters",
+          "count": 24,
+          "files": [
+            {
+              "id": "mira",
+              "label": "Mira Veynn"
+            },
+            {
+              "id": "kael",
+              "label": "Kael Thorne"
+            },
+            {
+              "id": "broker",
+              "label": "The Broker"
+            }
+          ]
+        },
+        {
+          "id": "plot",
+          "label": "Plot & Story",
+          "count": 18,
+          "files": [
+            {
+              "id": "bible",
+              "label": "Project Bible"
+            }
+          ]
+        },
+        {
+          "id": "res",
+          "label": "Research",
+          "count": 9,
+          "files": []
+        },
+        {
+          "id": "fx",
+          "label": "Feature Examples",
+          "count": 0,
+          "kids": [],
+          "files": []
+        },
+        {
+          "id": "ses",
+          "label": "Sessions",
+          "count": 15,
+          "files": []
+        }
+      ],
+      "notes": {
+        "gate": {
+          "title": "The Sunken Gate",
+          "crumbs": [
+            "Worldbuilding",
+            "Locations",
+            "The Sunken Gate"
+          ],
+          "thumb": {
+            "t": "The gate at low tide"
+          },
+          "tags": [
+            {
+              "t": "location",
+              "c": "#2fe6c8"
+            },
+            {
+              "t": "underworld",
+              "c": "#9b5fff"
+            },
+            {
+              "t": "ruins",
+              "c": "#ff4dff"
+            },
+            {
+              "t": "ancient",
+              "c": "#3d9bff"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "An ancient floodgate built by a lost civilization to control the tides of the [[Great Deep]]. Now half-buried in silt and coral, it is said to lead to passages beneath the sea and into forgotten halls where the drownlight still burns."
+            },
+            {
+              "k": "callout",
+              "title": "Legend",
+              "text": "Sailors speak of a hum that rises from the depths on still nights — a sound like voices, or a city dreaming."
+            },
+            {
+              "k": "h2",
+              "text": "Architecture"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "Massive stone arches encrusted with coral and black algae",
+                "Gate mechanisms of unknown metal, engraved with wave-like glyphs",
+                "Faint blue glow emanates from cracks in the stone at low tide"
+              ]
+            },
+            {
+              "k": "h2",
+              "text": "Current State"
+            },
+            {
+              "k": "p",
+              "text": "The upper courtyard is accessible at low tide, which is when [[Mira Veynn]] first reaches it in [[Into the Undercity]]. The inner passage is blocked by a collapsed portcullis. Strange marine growth reacts to light."
+            }
+          ],
+          "md": "---\ntype: location\nregion: the-drowned-coast\ndanger: high\n---\n\nAn ancient floodgate built by a lost civilization to control the tides of the [[Great Deep]]. Now half-buried in silt and coral, it is said to lead to passages beneath the sea and into forgotten halls where the [[Drownlight]] still burns.\n\n> [!legend]\n> Sailors speak of a hum that rises from the depths on still nights — a sound like voices, or a city dreaming.\n\n## Architecture\n\n- Massive stone arches encrusted with coral and black algae\n- Gate mechanisms of unknown metal, engraved with wave-like glyphs\n- Faint blue glow emanates from cracks in the stone at low tide\n\n## Current State\n\nThe upper courtyard is accessible at low tide, which is when [[Mira Veynn]] first reaches it in [[Into the Undercity]]. The inner passage is blocked by a collapsed portcullis. Strange marine growth reacts to light.\n\n## Linked Notes\n\n[[The Great Deep]] · [[Drownlight]] · [[Lost Civilization]] · [[Tide Mechanics]]",
+          "props": [
+            [
+              "Type",
+              "Location"
+            ],
+            [
+              "Region",
+              "The Drowned Coast"
+            ],
+            [
+              "Environment",
+              "Coastal / Underwater"
+            ],
+            [
+              "Discovered",
+              "1023 AG"
+            ],
+            [
+              "Status",
+              "Partially Explored"
+            ],
+            [
+              "Danger Level",
+              "High",
+              "#ff4d88"
+            ],
+            [
+              "Importance",
+              "★★★★☆"
+            ],
+            [
+              "Created",
+              "May 12, 2025"
+            ],
+            [
+              "Updated",
+              "May 20, 2025"
+            ]
+          ],
+          "backlinks": [
+            {
+              "t": "The Last City of Veynn",
+              "d": "…trade routes that once connected to the Sunken Gate."
+            },
+            {
+              "t": "Tide Mechanics",
+              "d": "…extreme low tides near the Sunken Gate allow brief access to…"
+            },
+            {
+              "t": "Mira Veynn",
+              "d": "Mira found an old map fragment near the Sunken Gate."
+            }
+          ],
+          "words": "312 words",
+          "chars": "1,892 characters"
+        },
+        "mira": {
+          "title": "Mira Veynn",
+          "crumbs": [
+            "Characters",
+            "Mira Veynn"
+          ],
+          "tags": [
+            {
+              "t": "character",
+              "c": "#00f0ff"
+            },
+            {
+              "t": "protagonist",
+              "c": "#9b5fff"
+            },
+            {
+              "t": "pov",
+              "c": "#3d9bff"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "Reluctant heir of a drowned bloodline, born in [[The Last City of Veynn|Veynn]]. Nineteen years counting bells in the upper city; one night answering them. Resourceful, haunted, determined — she reads rooms the way sailors read weather, and trusts neither."
+            },
+            {
+              "k": "callout",
+              "title": "Voice",
+              "text": "Dry, watchful, allergic to ceremony. She jokes exactly once per crisis."
+            },
+            {
+              "k": "img",
+              "text": "Mira on the bell stair — costume reference"
+            },
+            {
+              "k": "h2",
+              "text": "Arc"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "Reluctant Heir → Leader",
+                "Learns the seal at [[The Sunken Gate]] recognizes her blood",
+                "Chooses the city over the crown"
+              ]
+            },
+            {
+              "k": "h2",
+              "text": "Relationships"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "[[Kael Thorne]] — smuggler, reluctant ally",
+                "[[The Broker]] — always watching",
+                "[[Liora Ashen]] — the one who knew her mother"
+              ]
+            }
+          ],
+          "md": "---\ntype: character\nrole: protagonist\n---\n\nReluctant heir of a drowned bloodline. Resourceful, haunted, determined.\n\n## Arc\n\n- Reluctant Heir → Leader\n- Learns the seal at [[The Sunken Gate]] recognizes her blood\n- Chooses the city over the crown\n\n## Relationships\n\n[[Kael Thorne]] · [[The Broker]] · [[Liora Ashen]]",
+          "props": [
+            [
+              "Type",
+              "Character"
+            ],
+            [
+              "Role",
+              "Protagonist"
+            ],
+            [
+              "POV",
+              "Third Limited"
+            ],
+            [
+              "Age",
+              "19"
+            ],
+            [
+              "Affiliation",
+              "None (yet)"
+            ],
+            [
+              "Status",
+              "Active"
+            ],
+            [
+              "Importance",
+              "★★★★★"
+            ],
+            [
+              "Created",
+              "Apr 2, 2025"
+            ],
+            [
+              "Updated",
+              "Jun 28, 2026"
+            ]
+          ],
+          "backlinks": [
+            {
+              "t": "Into the Undercity",
+              "d": "Mira’s lantern cast a trembling circle of light…"
+            },
+            {
+              "t": "The Sunken Gate",
+              "d": "…and it recognized her."
+            }
+          ],
+          "words": "164 words",
+          "chars": "1,015 characters"
+        },
+        "kael": {
+          "title": "Kael Thorne",
+          "crumbs": [
+            "Characters",
+            "Kael Thorne"
+          ],
+          "thumb": {
+            "t": "Kael on the tide stair — costume reference",
+            "src": "assets/thumbs/kael.png"
+          },
+          "tags": [
+            {
+              "t": "character",
+              "c": "#00f0ff"
+            },
+            {
+              "t": "ally",
+              "c": "#2fe6c8"
+            },
+            {
+              "t": "smuggler",
+              "c": "#ffd319"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "Runs cargo nobody logs through the drowned wards of [[The Last City of Veynn|Veynn]]. Witty, guarded, a survivor by trade — he counts exits the way [[Mira Veynn]] counts bells. Owes a favour he has never named."
+            },
+            {
+              "k": "callout",
+              "title": "Voice",
+              "text": "Deflects with a joke, then answers honestly one beat later. Never says the word “friend”."
+            },
+            {
+              "k": "h2",
+              "text": "Arc"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "Hired Hand → Reluctant Ally → Redeemed",
+                "The bargain in [[The Smuggler’s Bargain]] comes due",
+                "Chooses Mira over the debt"
+              ]
+            },
+            {
+              "k": "h2",
+              "text": "Relationships"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "[[Mira Veynn]] — reluctant alliance, then trust",
+                "[[The Broker]] — old debt, open rivalry",
+                "[[The Undercity]] — knows every flooded route"
+              ]
+            }
+          ],
+          "md": "---\ntype: character\nrole: ally\n---\n\nSmuggler of the drowned wards. Witty, guarded, survivor.\n\n## Arc\n\n- Hired Hand → Reluctant Ally → Redeemed\n- The bargain in [[The Smuggler’s Bargain]] comes due\n- Chooses Mira over the debt\n\n## Relationships\n\n[[Mira Veynn]] · [[The Broker]] · [[The Undercity]]",
+          "props": [
+            [
+              "Type",
+              "Character"
+            ],
+            [
+              "Role",
+              "Ally"
+            ],
+            [
+              "POV",
+              "Third Limited"
+            ],
+            [
+              "Age",
+              "27"
+            ],
+            [
+              "Affiliation",
+              "None — owes The Broker"
+            ],
+            [
+              "Status",
+              "Active"
+            ],
+            [
+              "Importance",
+              "★★★★"
+            ],
+            [
+              "Created",
+              "Apr 9, 2025"
+            ],
+            [
+              "Updated",
+              "Jul 3, 2026"
+            ]
+          ],
+          "backlinks": [
+            {
+              "t": "The Smuggler’s Bargain",
+              "d": "…the price was never coin."
+            },
+            {
+              "t": "Betrayal at Dusk",
+              "d": "Kael revealed as enemy — the bargain comes due."
+            }
+          ],
+          "words": "138 words",
+          "chars": "871 characters"
+        },
+        "veynn": {
+          "title": "World: Veynn",
+          "crumbs": [
+            "Worldbuilding",
+            "Locations",
+            "The Last City of Veynn"
+          ],
+          "thumb": {
+            "t": "Veynn from the sea wall"
+          },
+          "tags": [
+            {
+              "t": "location",
+              "c": "#2fe6c8"
+            },
+            {
+              "t": "city",
+              "c": "#3d9bff"
+            },
+            {
+              "t": "hub",
+              "c": "#9b5fff"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "The last standing city of the Drowned Coast — a vertical sprawl of terraces, bell towers, and salt-stained marble stacked above its own sunken districts. Above: council law. Below: older law, and the tide-locked mouth of [[The Sunken Gate]]. Its most careful thief is [[Mira Veynn]]; its least official district is [[Ward Violet]]."
+            },
+            {
+              "k": "callout",
+              "title": "Rule of the city",
+              "text": "Nothing in Veynn is ever truly lost. It is only owed to someone else."
+            },
+            {
+              "k": "h2",
+              "text": "Districts"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "The Upper Terraces — council seats, watchtowers, the nine bells",
+                "Ward Violet — the district that officially does not exist",
+                "The Undercity — drowned streets, stacked walkways, market of tongues"
+              ]
+            }
+          ],
+          "md": "---\ntype: location\nkind: city\n---\n\nThe last standing city of the Drowned Coast.\n\n## Districts\n\n- The Upper Terraces\n- Ward Violet\n- The Undercity",
+          "props": [
+            [
+              "Type",
+              "Location"
+            ],
+            [
+              "Kind",
+              "City / Hub"
+            ],
+            [
+              "Population",
+              "~210,000"
+            ],
+            [
+              "Founded",
+              "312 AG"
+            ],
+            [
+              "Status",
+              "Thriving (officially)"
+            ],
+            [
+              "Danger Level",
+              "Medium",
+              "#ffd319"
+            ],
+            [
+              "Importance",
+              "★★★★★"
+            ],
+            [
+              "Created",
+              "Mar 30, 2025"
+            ],
+            [
+              "Updated",
+              "Jun 12, 2026"
+            ]
+          ],
+          "backlinks": [
+            {
+              "t": "The Sunken Gate",
+              "d": "…trade routes that once connected…"
+            },
+            {
+              "t": "Ward Violet",
+              "d": "…its loyalty belongs to whoever remembers the old names."
+            }
+          ],
+          "words": "221 words",
+          "chars": "1,377 characters"
+        }
+      },
+      "tl": {
+        "timelines": [
+          {
+            "id": "story",
+            "name": "The Last City of Veynn",
+            "kind": "Story timeline · 3 books",
+            "axis": [
+              8695,
+              8748
+            ]
+          },
+          {
+            "id": "world",
+            "name": "World of Veynn",
+            "kind": "World timeline",
+            "axis": [
+              8380,
+              8800
+            ]
+          },
+          {
+            "id": "universe",
+            "name": "Universe — The Great Cycle",
+            "kind": "Universe timeline · sets the standard",
+            "axis": [
+              0,
+              9200
+            ]
+          },
+          {
+            "id": "aethis",
+            "name": "Aethis — The Tide World",
+            "kind": "World timeline · tidal calendar",
+            "axis": [
+              8380,
+              8800
+            ],
+            "cal": {
+              "months": 8,
+              "dpm": 44,
+              "hpd": 19
+            },
+            "ep": 1894,
+            "epName": "First Tidefall"
+          },
+          {
+            "id": "kharan",
+            "name": "Kharan — The Long Desert",
+            "kind": "World timeline · three great seasons",
+            "axis": [
+              8380,
+              8800
+            ],
+            "cal": {
+              "months": 3,
+              "dpm": 122,
+              "hpd": 26
+            },
+            "ep": -847,
+            "epName": "The Glassing"
+          },
+          {
+            "id": "sollen",
+            "name": "Sollen Reach — The Shattered Moons",
+            "kind": "World timeline · moon-count calendar",
+            "axis": [
+              8380,
+              8800
+            ],
+            "cal": {
+              "months": 18,
+              "dpm": 20,
+              "hpd": 31
+            },
+            "ep": -2447,
+            "epName": "The Shatter"
+          },
+          {
+            "id": "kepler",
+            "name": "Kepler's Reach — Landfall Colony",
+            "kind": "World timeline · long-year colony",
+            "axis": [
+              0,
+              1250
+            ],
+            "cal": {
+              "months": 10,
+              "dpm": 72,
+              "hpd": 24
+            },
+            "ep": 3470,
+            "epName": "Landfall"
+          }
+        ],
+        "spans": {
+          "story": [
+            {
+              "t": "BOOK ONE: EMBERS RISING",
+              "from": 8700,
+              "to": 8716,
+              "c": 0
+            },
+            {
+              "t": "BOOK TWO: VEIL OF SHADOWS",
+              "from": 8716,
+              "to": 8733,
+              "c": 1
+            },
+            {
+              "t": "BOOK THREE: THE LAST RECKONING",
+              "from": 8733,
+              "to": 8745,
+              "c": 2
+            }
+          ],
+          "world": [
+            {
+              "t": "The Drowning of the First City",
+              "from": 8460,
+              "to": 8482,
+              "c": 2
+            },
+            {
+              "t": "Age of the Wardens",
+              "from": 8500,
+              "to": 8655,
+              "c": 3
+            },
+            {
+              "t": "The Silent Century",
+              "from": 8655,
+              "to": 8692,
+              "c": 4
+            },
+            {
+              "t": "The Last City of Veynn",
+              "from": 8695,
+              "to": 8748,
+              "c": 0,
+              "open": "story"
+            }
+          ],
+          "universe": [
+            {
+              "t": "The Shaping of the Worlds",
+              "from": 0,
+              "to": 900,
+              "c": 5
+            },
+            {
+              "t": "The First Peoples",
+              "from": 1400,
+              "to": 3600,
+              "c": 3
+            },
+            {
+              "t": "The Sundering",
+              "from": 4300,
+              "to": 4520,
+              "c": 2
+            },
+            {
+              "t": "“The Lamplighter’s Debt” — short story",
+              "from": 6100,
+              "to": 6140,
+              "c": 1
+            },
+            {
+              "t": "World of Veynn",
+              "from": 8380,
+              "to": 8800,
+              "c": 0,
+              "open": "world"
+            },
+            {
+              "t": "Aethis — The Tide World",
+              "from": 8380,
+              "to": 8800,
+              "c": 4,
+              "open": "aethis"
+            },
+            {
+              "t": "Kharan — The Long Desert",
+              "from": 8380,
+              "to": 8800,
+              "c": 6,
+              "open": "kharan"
+            },
+            {
+              "t": "Sollen Reach — The Shattered Moons",
+              "from": 8380,
+              "to": 8800,
+              "c": 1,
+              "open": "sollen"
+            },
+            {
+              "t": "Kepler's Reach — Landfall Colony",
+              "from": 3470,
+              "to": 5970,
+              "c": 5,
+              "open": "kepler"
+            }
+          ],
+          "aethis": [
+            {
+              "t": "The Drowning of the First City",
+              "from": 8460,
+              "to": 8482,
+              "c": 2
+            },
+            {
+              "t": "The Tidewardens",
+              "from": 8500,
+              "to": 8690,
+              "c": 3
+            },
+            {
+              "t": "The Long Flood",
+              "from": 8560,
+              "to": 8700,
+              "c": 0
+            }
+          ],
+          "kharan": [
+            {
+              "t": "The Glassing",
+              "from": 8402,
+              "to": 8418,
+              "c": 6
+            },
+            {
+              "t": "The Caravan Kings",
+              "from": 8480,
+              "to": 8660,
+              "c": 4
+            },
+            {
+              "t": "The Well Wars",
+              "from": 8640,
+              "to": 8770,
+              "c": 2
+            }
+          ],
+          "sollen": [
+            {
+              "t": "The Shatter",
+              "from": 8514,
+              "to": 8520,
+              "c": 2
+            },
+            {
+              "t": "The Moon Count Begins",
+              "from": 8520,
+              "to": 8800,
+              "c": 1
+            }
+          ],
+          "kepler": [
+            {
+              "t": "Landfall",
+              "from": 0,
+              "to": 30,
+              "c": 0
+            },
+            {
+              "t": "The Long Winter Protocol",
+              "from": 210,
+              "to": 480,
+              "c": 5
+            },
+            {
+              "t": "Atmosphere Stable",
+              "from": 760,
+              "to": 1250,
+              "c": 4
+            }
+          ]
+        },
+        "eras": {
+          "story": [
+            {
+              "t": "AGE OF ASH",
+              "from": 8695,
+              "to": 8710,
+              "c": 6
+            },
+            {
+              "t": "THE VEIL",
+              "from": 8710,
+              "to": 8730,
+              "c": 4
+            },
+            {
+              "t": "RECKONING",
+              "from": 8730,
+              "to": 8748,
+              "c": 2
+            }
+          ],
+          "world": [
+            {
+              "t": "THE OLD WORLD",
+              "from": 8380,
+              "to": 8500,
+              "c": 5
+            },
+            {
+              "t": "WARDEN AGE",
+              "from": 8500,
+              "to": 8692,
+              "c": 3
+            },
+            {
+              "t": "THE LAST AGE",
+              "from": 8692,
+              "to": 8800,
+              "c": 0
+            }
+          ],
+          "universe": [
+            {
+              "t": "CREATION",
+              "from": 0,
+              "to": 1400,
+              "c": 5
+            },
+            {
+              "t": "THE LONG DAWN",
+              "from": 1400,
+              "to": 4300,
+              "c": 3
+            },
+            {
+              "t": "AFTER THE SUNDERING",
+              "from": 4520,
+              "to": 9200,
+              "c": 2
+            }
+          ],
+          "aethis": [
+            {
+              "t": "THE DROWNED CENTURIES",
+              "from": 8380,
+              "to": 8600,
+              "c": 5
+            },
+            {
+              "t": "THE RECEDING",
+              "from": 8600,
+              "to": 8800,
+              "c": 4
+            }
+          ],
+          "kharan": [
+            {
+              "t": "THE GLASS WASTE",
+              "from": 8380,
+              "to": 8640,
+              "c": 3
+            },
+            {
+              "t": "THE WELL WARS",
+              "from": 8640,
+              "to": 8800,
+              "c": 6
+            }
+          ],
+          "sollen": [
+            {
+              "t": "BEFORE THE SHATTER",
+              "from": 8380,
+              "to": 8520,
+              "c": 1
+            },
+            {
+              "t": "THE MOON COUNT",
+              "from": 8520,
+              "to": 8800,
+              "c": 2
+            }
+          ],
+          "kepler": [
+            {
+              "t": "FIRST GENERATION",
+              "from": 0,
+              "to": 400,
+              "c": 0
+            },
+            {
+              "t": "THE TERRAFORM YEARS",
+              "from": 400,
+              "to": 900,
+              "c": 4
+            },
+            {
+              "t": "THE SECOND WAVE",
+              "from": 900,
+              "to": 1250,
+              "c": 2
+            }
+          ]
+        },
+        "crows": {
+          "story": [
+            {
+              "name": "MAGIC SATURATION",
+              "items": [
+                {
+                  "t": "Stable",
+                  "from": 8695,
+                  "to": 8725,
+                  "c": 4
+                },
+                {
+                  "t": "Running wild",
+                  "from": 8725,
+                  "to": 8748,
+                  "c": 2
+                }
+              ]
+            }
+          ],
+          "world": [],
+          "universe": [],
+          "aethis": [
+            {
+              "name": "TIDE HEIGHT",
+              "items": [
+                {
+                  "t": "Low water",
+                  "from": 8400,
+                  "to": 8560,
+                  "c": 5
+                },
+                {
+                  "t": "The Long Flood",
+                  "from": 8560,
+                  "to": 8700,
+                  "c": 0
+                }
+              ]
+            }
+          ],
+          "kharan": [],
+          "sollen": [],
+          "kepler": []
+        }
+      },
+      "stories": [
+        {
+          "id": "veynn",
+          "svault": "Veynn Novels",
+          "axis": [
+            8695,
+            8748
+          ],
+          "boards": [
+            {
+              "name": "Into the Undercity — scene board",
+              "cards": [
+                [
+                  "Into the Undercity — beats",
+                  "Stairwell like a throat · Kael’s warning · lantern circle · the market of tongues · the Broker’s map fragment.",
+                  "✦",
+                  1,
+                  440,
+                  40,
+                  280,
+                  120
+                ],
+                [
+                  "Mira Veynn",
+                  "POV. Counts exits like bells.",
+                  "MV",
+                  0,
+                  130,
+                  80,
+                  0,
+                  0,
+                  "mira"
+                ],
+                [
+                  "Kael Thorne",
+                  "“It forgets them.”",
+                  "KT",
+                  0,
+                  100,
+                  260,
+                  0,
+                  0,
+                  "kael"
+                ],
+                [
+                  "The Undercity",
+                  "Stacked walkways · sigils that glow.",
+                  "U",
+                  1,
+                  790,
+                  80,
+                  0,
+                  0,
+                  "veynn"
+                ],
+                [
+                  "The Broker",
+                  "Somewhere in the sprawl.",
+                  "B",
+                  2,
+                  810,
+                  260
+                ],
+                [
+                  "Map fragment",
+                  "Redraws at low tide.",
+                  "MF",
+                  3,
+                  1090,
+                  170
+                ]
+              ],
+              "links": [
+                [
+                  0,
+                  1
+                ],
+                [
+                  0,
+                  3
+                ],
+                [
+                  1,
+                  2
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  5
+                ]
+              ]
+            },
+            {
+              "name": "The Sunken Gate — scene board",
+              "cards": [
+                [
+                  "The Sunken Gate — beats",
+                  "Low tide · the courtyard · the seal recognizes her · it is glad.",
+                  "✹",
+                  1,
+                  440,
+                  40,
+                  280,
+                  110
+                ],
+                [
+                  "Mira Veynn",
+                  "Not that it could break — that it would be glad.",
+                  "MV",
+                  0,
+                  130,
+                  90,
+                  0,
+                  0,
+                  "mira"
+                ],
+                [
+                  "The Sunken Gate",
+                  "Opens at low tide. Recognizes her blood.",
+                  "SG",
+                  1,
+                  800,
+                  90,
+                  0,
+                  0,
+                  "gate"
+                ],
+                [
+                  "Drownlight",
+                  "Steady for 800 years. Blinking.",
+                  "DL",
+                  3,
+                  800,
+                  270
+                ],
+                [
+                  "Tide table",
+                  "Low = courtyard · High = sealed",
+                  "TT",
+                  4,
+                  440,
+                  250
+                ]
+              ],
+              "links": [
+                [
+                  0,
+                  1
+                ],
+                [
+                  0,
+                  2
+                ],
+                [
+                  2,
+                  3
+                ],
+                [
+                  0,
+                  4
+                ]
+              ]
+            }
+          ],
+          "pov": "Mira Veynn",
+          "loc": "City of Veynn",
+          "name": "The Last City of Veynn",
+          "sub": "Epic Fantasy · Dark & Gritty · Third Limited",
+          "words": "102,451 words",
+          "pct": 87,
+          "book": [
+            {
+              "t": "Ash and Oath",
+              "label": "PART ONE",
+              "intro": [
+                "They say the city drowned twice: once in water, once in the forgetting. Every ledger, every oath, every debt was rewritten by the survivors — which is to say, by the liars.",
+                "— from the Harbor Annals, author unrecorded"
+              ],
+              "chapters": [
+                {
+                  "t": "The Quiet Before",
+                  "n": 1,
+                  "intro": [
+                    "I have kept the ninth bell silent for nineteen years. Tonight it rings, and I find I cannot remember whether I am its keeper or its prisoner. — journal of the Watcher of the Sunken Gate, final entry"
+                  ],
+                  "scenes": [
+                    {
+                      "t": "The Watcher's Call",
+                      "status": "done",
+                      "paras": [
+                        "Mira Veynn had counted the bells of the upper city for nineteen years, and never once had they rung at dusk. Tonight they rang nine times, slow and uneven, like a hand unsure of its own strength.",
+                        "From the watchtower window she saw the harbor lanterns gutter in a wind that did not touch the flags. Somewhere below, in the salt-dark of the lower quarter, a summons was waiting for her with her name misspelled and her fate spelled exactly right."
+                      ]
+                    },
+                    {
+                      "t": "A City in Shadows",
+                      "status": "done",
+                      "paras": [
+                        "By morning the rumor had grown teeth. The Watcher of the Sunken Gate had gone silent, and the Council pretended not to notice, which is how Mira knew it mattered.",
+                        "She traded her cloak for a worse one, her name for no name at all, and went down into the streets where the city kept its honest business — the kind that never saw daylight and never lied about it."
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "t": "Fractures",
+                  "n": 2,
+                  "scenes": [
+                    {
+                      "t": "The Smuggler's Bargain",
+                      "status": "done",
+                      "paras": [
+                        "Kael dealt cards the way other men made confessions — slowly, and only when cornered. \"Passage through Ward Violet costs more than coin,\" he said. \"It costs a favor. And favors compound.\"",
+                        "Mira slid the brass token across the table. His smile faltered for exactly one heartbeat, which from Kael was as good as a scream."
+                      ]
+                    },
+                    {
+                      "t": "Into the Undercity",
+                      "status": "draft",
+                      "drop": true,
+                      "paras": [
+                        "The stairwell yawned like a throat carved into the belly of the city. Damp air rolled up from below, thick with the smell of rot, smoke, and something metallic — like old coins left too long in a gutter.",
+                        "Kael tightened his hood and signaled for Mira to move first.",
+                        "\"Stay close,\" he whispered. \"The Undercity doesn’t just swallow the unwary. It forgets them.\"",
+                        "Mira’s lantern cast a trembling circle of light across the slick stone steps. Water dripped from unseen pipes somewhere below, each drop echoing like a slow heartbeat. The deeper they descended, the more the sound of the surface faded — until the city above was nothing but a memory.",
+                        "At the bottom, the passage opened into a maze of narrow alleys and stacked walkways. Tattered awnings hung between leaning buildings. Strange sigils glowed faintly on walls. Vendors called out in languages Kael didn’t recognize.",
+                        "A boy darted past them, barefoot, clutching a stolen loaf. A guard laughed and let him go.",
+                        "\"You were right,\" Mira murmured. \"This place has its own rules.\"",
+                        "Kael nodded. Somewhere in this sprawl was the Smuggler’s Broker — and the map fragment they needed to reach the Sunken Gate.",
+                        "Finding it would be the easy part. Getting out would be another story."
+                      ]
+                    },
+                    {
+                      "t": "The Broken Gate",
+                      "status": "todo",
+                      "paras": [
+                        "The Broker’s map ended at a door that was not on any map, which Mira decided was either very good or very fatal.",
+                        "Beyond it, stone gave way to older stone, and the air began to hum — low and patient, like a city dreaming with its eyes open."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "t": "Embers Rising",
+              "label": "PART TWO",
+              "chapters": [
+                {
+                  "t": "Whispers of Rebellion",
+                  "n": 3,
+                  "scenes": [
+                    {
+                      "t": "Ward Violet",
+                      "status": "draft",
+                      "paras": [
+                        "Ward Violet did not exist. Everyone agreed on this, especially the people who lived there.",
+                        "Its lamps burned violet-blue against ordinance, its walls carried messages that rearranged themselves by morning, and its loyalty belonged to whoever remembered the old names."
+                      ]
+                    },
+                    {
+                      "t": "The Deep Awakens",
+                      "status": "todo",
+                      "paras": [
+                        "The first tremor came at low tide. The second came with a sound no one could describe without whispering.",
+                        "In the lower caverns, the drownlight — steady for eight hundred years — began, very slowly, to blink."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "t": "The Last Reckoning",
+              "label": "PART THREE",
+              "chapters": [
+                {
+                  "t": "Blood and Bone",
+                  "n": 4,
+                  "scenes": [
+                    {
+                      "t": "The Sunken Gate",
+                      "status": "todo",
+                      "paras": [
+                        "The Gate had waited under the sea for longer than the city had a name, and it recognized her.",
+                        "That was the part no one had warned Mira about — not that the seal could break, but that it would be glad."
+                      ]
+                    },
+                    {
+                      "t": "The Last Stand",
+                      "status": "todo",
+                      "paras": [
+                        "Veynn burned its lanterns one final time, all of them, every window and every wall — not as a signal of surrender, but so the deep would see exactly who it was dealing with.",
+                        "Fire or heart of Veynn. In the end, the choice was the same choice it had always been."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "events": [
+            {
+              "t": "The Watcher's Call",
+              "ch": "Ch. 1",
+              "when": 8710,
+              "d": "[[Mira Veynn]] receives a mysterious summons that changes everything. Written as [[The Watcher’s Call]].",
+              "icon": "✦"
+            },
+            {
+              "t": "First Descent",
+              "ch": "Ch. 7",
+              "when": 8712,
+              "d": "The party enters the Undercity for the first time — see [[Into the Undercity]] and the ward map in [[The Last City of Veynn]].",
+              "icon": "◈"
+            },
+            {
+              "t": "The Sunken Gate",
+              "ch": "Ch. 18",
+              "when": 8739.222222222223,
+              "d": "Ancient seal broken at [[The Sunken Gate]]. Something stirs in the deep.",
+              "icon": "✹",
+              "detail": {
+                "book": "Book Two: Veil of Shadows",
+                "date": "3rd Day of Deepwinter, Year 873",
+                "loc": "Undercity — Sunken Gate",
+                "pov": "Mira Veynn",
+                "sum": "Ancient seal broken at [[The Sunken Gate]]. Something stirs in the deep. [[Mira Veynn]] gains access to forbidden knowledge — and a greater danger beyond.",
+                "impact": [
+                  "World Shifting",
+                  "Party Progression"
+                ]
+              }
+            },
+            {
+              "t": "Betrayal at Dusk",
+              "ch": "Ch. 23",
+              "when": 8731,
+              "d": "[[Kael Thorne]] revealed as enemy — the bargain struck in [[The Smuggler’s Bargain]] comes due. The party splits.",
+              "icon": "◉"
+            },
+            {
+              "t": "The Crown of Ash",
+              "ch": "Ch. 31",
+              "when": 8500,
+              "flash": true,
+              "d": "The truth of the royal line — and its buried curse. Revealed in Ch. 31, but the events date to Year 850.",
+              "icon": "✷"
+            },
+            {
+              "t": "The Last Stand",
+              "ch": "Ch. 45",
+              "when": 8740,
+              "d": "Fire or heart of Veynn decided in the end.",
+              "icon": "✶"
+            }
+          ],
+          "editorDocs": {
+            "s4": {
+              "label": "Into the Undercity",
+              "go": {
+                "zoom": "scene",
+                "pp": 0,
+                "cc": 1,
+                "ss": 1
+              }
+            },
+            "s3": {
+              "label": "The Smuggler's Bargain",
+              "go": {
+                "zoom": "scene",
+                "pp": 0,
+                "cc": 1,
+                "ss": 0
+              }
+            },
+            "ch3": {
+              "label": "Whispers of Rebellion",
+              "go": {
+                "zoom": "chapter",
+                "pp": 1,
+                "cc": 0,
+                "ss": 0
+              }
+            }
+          },
+          "treeOpen": {
+            "p0": true,
+            "p1": true,
+            "p2": false,
+            "c0-0": false,
+            "c0-1": true,
+            "c1-0": false,
+            "c2-0": false
+          },
+          "lanes": {
+            "arcs": [
+              {
+                "t": "I. The Call to Leave",
+                "c": 1,
+                "from": 8700,
+                "to": 8716
+              },
+              {
+                "t": "II. Into the Shadows",
+                "c": 5,
+                "from": 8716,
+                "to": 8726
+              },
+              {
+                "t": "III. The Gathering Storm",
+                "c": 4,
+                "from": 8726,
+                "to": 8736
+              },
+              {
+                "t": "IV. The Last Reckoning",
+                "c": 2,
+                "from": 8736,
+                "to": 8745
+              }
+            ],
+            "journeys": [
+              {
+                "t": "Mira Veynn",
+                "sub": "Reluctant Heir → Leader",
+                "c": 0,
+                "from": 8700,
+                "to": null
+              },
+              {
+                "t": "Kael Thorne",
+                "sub": "Haunted Guardian → Redeemed",
+                "c": 5,
+                "from": 8702,
+                "to": null
+              },
+              {
+                "t": "Liora Ashen",
+                "sub": "Seeker → Believer",
+                "c": 4,
+                "from": 8710,
+                "to": 8736
+              },
+              {
+                "t": "The Smuggler",
+                "sub": "Survivor → Legend",
+                "c": 2,
+                "from": 8716,
+                "to": 8730
+              }
+            ],
+            "world": [
+              {
+                "t": "Festival of Lanterns",
+                "day": "Day 3",
+                "d": "City-wide celebration at the surface.",
+                "c": 6,
+                "when": 8703
+              },
+              {
+                "t": "Ashfall",
+                "day": "Day 9",
+                "d": "Strange ash rains from the sky for three days.",
+                "c": 3,
+                "when": 8712
+              },
+              {
+                "t": "Tide of Silence",
+                "day": "Day 19",
+                "d": "The lower caverns fall eerily quiet.",
+                "c": 4,
+                "when": 8721
+              },
+              {
+                "t": "The Deep Awakens",
+                "day": "Day 26",
+                "d": "Creatures of old return to the Undercity.",
+                "c": 1,
+                "when": 8733
+              },
+              {
+                "t": "Eclipse Convergence",
+                "day": "Day 32",
+                "d": "Three moons align. Magic runs wild.",
+                "c": 2,
+                "when": 8742
+              }
+            ],
+            "themes": [
+              {
+                "t": "Identity & Destiny",
+                "c": 1
+              },
+              {
+                "t": "Trust & Betrayal",
+                "c": 7
+              },
+              {
+                "t": "Power & Corruption",
+                "c": 8
+              },
+              {
+                "t": "Sacrifice & Legacy",
+                "c": 2
+              }
+            ]
+          },
+          "plot": {
+            "plotlines": [
+              {
+                "id": "main",
+                "name": "Main Plot",
+                "c": 0
+              },
+              {
+                "id": "mira",
+                "name": "Mira’s Arc",
+                "c": 1
+              },
+              {
+                "id": "kael",
+                "name": "Kael’s Arc",
+                "c": 4
+              },
+              {
+                "id": "broker",
+                "name": "The Broker Threat",
+                "c": 2
+              },
+              {
+                "id": "myst",
+                "name": "Undercity Mystery",
+                "c": 3
+              }
+            ],
+            "cards": [
+              {
+                "id": "k1",
+                "pl": "main",
+                "ch": 1,
+                "t": "The Quiet Before",
+                "d": "Life on the Upper Terraces — and the first crack in it.",
+                "w": true
+              },
+              {
+                "id": "k2",
+                "pl": "main",
+                "ch": 2,
+                "t": "Fractures",
+                "d": "The descent begins. Ward Violet’s price is named.",
+                "w": true
+              },
+              {
+                "id": "k3",
+                "pl": "main",
+                "ch": 4,
+                "t": "The Broken Gate",
+                "d": "The gate refuses Mira — it remembers her bloodline."
+              },
+              {
+                "id": "k4",
+                "pl": "main",
+                "ch": 7,
+                "t": "First Descent",
+                "d": "The party enters the Undercity for the first time."
+              },
+              {
+                "id": "k5",
+                "pl": "main",
+                "ch": 9,
+                "t": "Council of Ash",
+                "d": "The surface powers pick a side. The wrong one."
+              },
+              {
+                "id": "k6",
+                "pl": "main",
+                "ch": 12,
+                "t": "The Sunken Gate",
+                "d": "Ancient seal broken. Something stirs in the deep."
+              },
+              {
+                "id": "k7",
+                "pl": "mira",
+                "ch": 1,
+                "t": "A summons at dawn",
+                "d": "The Watcher’s call — and why she almost refuses.",
+                "w": true
+              },
+              {
+                "id": "k8",
+                "pl": "mira",
+                "ch": 3,
+                "t": "The stolen map",
+                "d": "What Mira took, and what taking it cost."
+              },
+              {
+                "id": "k9",
+                "pl": "mira",
+                "ch": 7,
+                "t": "Down the throat of the city",
+                "d": "Mira leads where even Kael won’t."
+              },
+              {
+                "id": "k10",
+                "pl": "mira",
+                "ch": 10,
+                "t": "The price of memory",
+                "d": "She trades a remembering she can’t spare."
+              },
+              {
+                "id": "k11",
+                "pl": "kael",
+                "ch": 2,
+                "t": "Smuggler’s bargain",
+                "d": "Passage through Ward Violet costs a favor.",
+                "w": true
+              },
+              {
+                "id": "k12",
+                "pl": "kael",
+                "ch": 5,
+                "t": "Debts come due",
+                "d": "An old creditor surfaces at the worst moment."
+              },
+              {
+                "id": "k13",
+                "pl": "kael",
+                "ch": 8,
+                "t": "The Lamplighter strikes",
+                "d": "Kael’s rival closes the smuggling routes."
+              },
+              {
+                "id": "k14",
+                "pl": "broker",
+                "ch": 3,
+                "t": "A favor, compounding",
+                "d": "The Broker’s ledger gains a new page."
+              },
+              {
+                "id": "k15",
+                "pl": "broker",
+                "ch": 6,
+                "t": "Eyes in Ward Violet",
+                "d": "Every checkpoint reports to the same desk."
+              },
+              {
+                "id": "k16",
+                "pl": "broker",
+                "ch": 11,
+                "t": "The trap closes",
+                "d": "The favors were the map all along."
+              },
+              {
+                "id": "k17",
+                "pl": "myst",
+                "ch": 4,
+                "t": "Tide mechanics",
+                "d": "The inner passage opens only at low tide."
+              },
+              {
+                "id": "k18",
+                "pl": "myst",
+                "ch": 8,
+                "t": "The second bell",
+                "d": "A bell that rings for no hour on any clock."
+              },
+              {
+                "id": "k19",
+                "pl": "myst",
+                "ch": 12,
+                "t": "What the city forgets",
+                "d": "Erasure as mercy — and as weapon."
+              }
+            ]
+          },
+          "crafter": {
+            "pov": "Mira (Third Limited)",
+            "len": "Medium",
+            "status": "idle",
+            "beats": [
+              "Cold open on the sealed door",
+              "Kael stalls the patrol",
+              "The hum answers Mira’s blood"
+            ],
+            "tones": {
+              "Tense": true,
+              "Mystery": true
+            },
+            "title": "The Broken Gate",
+            "goal": "Reach the door that isn't on any map — before the patrol cycles back.",
+            "conflict": "The Broker's price is a memory Mira can't spare."
+          }
+        },
+        {
+          "id": "bell",
+          "svault": "Veynn Novels",
+          "axis": [
+            8316,
+            8331
+          ],
+          "boards": [
+            {
+              "name": "The Foundry Below — scene board",
+              "cards": [
+                [
+                  "The Foundry Below — beats",
+                  "Drowned foundry still working · furnace light · “You’re late. By about nineteen years.”",
+                  "◈",
+                  1,
+                  440,
+                  40,
+                  280,
+                  110
+                ],
+                [
+                  "Ysolde Veynn",
+                  "POV. Knows a held breath when she hears one.",
+                  "YV",
+                  0,
+                  130,
+                  90
+                ],
+                [
+                  "The Bellwright",
+                  "Casting nothing. Waiting.",
+                  "BW",
+                  0,
+                  130,
+                  270
+                ],
+                [
+                  "The Ninth Mould",
+                  "A memory with a tongue.",
+                  "NM",
+                  3,
+                  800,
+                  90
+                ],
+                [
+                  "The Sunken Gate",
+                  "Listening through the metal.",
+                  "SG",
+                  1,
+                  800,
+                  270,
+                  0,
+                  0,
+                  "gate"
+                ]
+              ],
+              "links": [
+                [
+                  0,
+                  1
+                ],
+                [
+                  0,
+                  2
+                ],
+                [
+                  0,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ]
+              ]
+            },
+            {
+              "name": "The Ninth Bell — scene board",
+              "cards": [
+                [
+                  "The Ninth Bell — beats",
+                  "It rang once · the tide turned · the Gate answered · too late and exactly on time.",
+                  "✹",
+                  1,
+                  440,
+                  40,
+                  280,
+                  110
+                ],
+                [
+                  "Ysolde Veynn",
+                  "Daughter on her hip.",
+                  "YV",
+                  0,
+                  130,
+                  90
+                ],
+                [
+                  "Mira (child)",
+                  "It will be the daughter.",
+                  "M",
+                  0,
+                  130,
+                  270,
+                  0,
+                  0,
+                  "mira"
+                ],
+                [
+                  "The Bell Stair",
+                  "Felt the answer through the stone.",
+                  "BS",
+                  1,
+                  800,
+                  90,
+                  0,
+                  0,
+                  "veynn"
+                ],
+                [
+                  "The Keeper’s Oath",
+                  "Nineteen years.",
+                  "KO",
+                  4,
+                  800,
+                  270
+                ]
+              ],
+              "links": [
+                [
+                  0,
+                  1
+                ],
+                [
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  3
+                ],
+                [
+                  0,
+                  4
+                ]
+              ]
+            }
+          ],
+          "plans": [
+            {
+              "id": "pl1",
+              "t": "Plan — The Ninth Mould",
+              "d": "Foundry → mould → the Council’s fine"
+            },
+            {
+              "id": "pl2",
+              "t": "Plan — The Ringing",
+              "d": "Dusk → the Gate answers → the oath"
+            }
+          ],
+          "crafter": {
+            "pov": "Ysolde (Third Limited)",
+            "beats": [
+              "The mould is cold",
+              "The bellwright names the price",
+              "The sea listens through the metal"
+            ],
+            "title": "What a Bell Remembers",
+            "goal": "Persuade the ninth bell to take a shape it was given once before.",
+            "conflict": "The bellwright wants a promise Ysolde cannot make for her daughter."
+          },
+          "pov": "Ysolde Veynn",
+          "loc": "The Bell Stair, Veynn",
+          "plot": {
+            "plotlines": [
+              {
+                "id": "main",
+                "name": "Main Plot",
+                "c": 0
+              },
+              {
+                "id": "ys",
+                "name": "Ysolde’s Arc",
+                "c": 1
+              },
+              {
+                "id": "gate",
+                "name": "The Gate Listens",
+                "c": 3
+              }
+            ],
+            "cards": [
+              {
+                "id": "nb1",
+                "pl": "main",
+                "ch": 1,
+                "t": "The Silent Hour",
+                "d": "Eight bells and a held breath.",
+                "w": true
+              },
+              {
+                "id": "nb2",
+                "pl": "main",
+                "ch": 2,
+                "t": "The Ninth Mould",
+                "d": "A bell is a memory with a tongue.",
+                "w": true
+              },
+              {
+                "id": "nb3",
+                "pl": "main",
+                "ch": 3,
+                "t": "Dusk",
+                "d": "It rang once."
+              },
+              {
+                "id": "nb4",
+                "pl": "ys",
+                "ch": 2,
+                "t": "Two fines, framed",
+                "d": "How women deal with councils."
+              },
+              {
+                "id": "nb5",
+                "pl": "gate",
+                "ch": 3,
+                "t": "The Gate answers",
+                "d": "Seed of everything in the sequel."
+              }
+            ]
+          },
+          "lanes": {
+            "arcs": [
+              {
+                "t": "I. The Silent Hour",
+                "c": 1,
+                "from": 8318,
+                "to": 8323
+              },
+              {
+                "t": "II. The Casting",
+                "c": 5,
+                "from": 8323,
+                "to": 8327
+              },
+              {
+                "t": "III. The Ringing",
+                "c": 4,
+                "from": 8327,
+                "to": 8330
+              }
+            ],
+            "journeys": [
+              {
+                "t": "Ysolde Veynn",
+                "sub": "Bell-counter → Keeper",
+                "c": 0,
+                "from": 8318,
+                "to": null
+              },
+              {
+                "t": "The Bellwright",
+                "sub": "Waiting → Spent",
+                "c": 5,
+                "from": 8320,
+                "to": 8329
+              },
+              {
+                "t": "Mira Veynn (child)",
+                "sub": "On the hip → the daughter",
+                "c": 2,
+                "from": 8324,
+                "to": null
+              }
+            ],
+            "world": [
+              {
+                "t": "The Quiet Hour kept",
+                "day": "Dusk",
+                "d": "The Council’s silent hour observed city-wide.",
+                "c": 6,
+                "when": 8319
+              },
+              {
+                "t": "Spring tide",
+                "day": "Day 40",
+                "d": "The lowest water in a decade; the foundry stair dries.",
+                "c": 3,
+                "when": 8322
+              },
+              {
+                "t": "First ringing",
+                "day": "Day 9, Lastlight",
+                "d": "The Gate answers from below.",
+                "c": 0,
+                "when": 8326
+              }
+            ],
+            "themes": [
+              {
+                "t": "Silence & Memory",
+                "c": 1
+              },
+              {
+                "t": "Mothers & Daughters",
+                "c": 7
+              },
+              {
+                "t": "What a City Owes",
+                "c": 2
+              }
+            ]
+          },
+          "name": "The Ninth Bell",
+          "sub": "Novella · Same world, forty years earlier · Third Limited",
+          "words": "18,940 words",
+          "pct": 34,
+          "book": [
+            {
+              "t": "The Casting",
+              "label": "PART ONE",
+              "intro": [
+                "Before the nine bells there were eight, and before the eight there was a woman who could not sleep for the silence.",
+                "— Harbor Annals, marginalia"
+              ],
+              "chapters": [
+                {
+                  "t": "The Silent Hour",
+                  "n": 1,
+                  "scenes": [
+                    {
+                      "t": "Eight Bells",
+                      "status": "done",
+                      "paras": [
+                        "Ysolde Veynn counted the bells of the upper city because her mother had, and because there were eight of them, and eight was a number that had never sat right with her. Eight left a gap at dusk where the tide turned and nothing marked it.",
+                        "The Council had a name for the gap. They called it the Quiet Hour and pretended it was a courtesy to the dead. Ysolde, who had spent forty years listening to it, knew a held breath when she heard one."
+                      ]
+                    },
+                    {
+                      "t": "The Foundry Below",
+                      "status": "done",
+                      "paras": [
+                        "The bell-foundry had been drowned with the rest of the lower city and had gone on working anyway, in the way of Veynn, on a schedule no one above admitted to keeping.",
+                        "She found the bellwright by the light of his own furnace, casting nothing, waiting. \"You’re late,\" he said. \"By about nineteen years.\""
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "t": "The Ninth Mould",
+                  "n": 2,
+                  "scenes": [
+                    {
+                      "t": "What a Bell Remembers",
+                      "status": "draft",
+                      "paras": [
+                        "A bell, the bellwright said, is a memory with a tongue. You do not cast it. You persuade it. And the ninth bell had been persuaded once already, long ago, by whoever had built the Gate.",
+                        "Ysolde touched the cold mould and felt, faintly, the sea on the other side of it, listening."
+                      ]
+                    },
+                    {
+                      "t": "The Council’s Objection",
+                      "status": "todo",
+                      "paras": [
+                        "The Council forbade the casting in the usual manner — politely, in writing, with a fine attached and a second fine for reading the first one aloud.",
+                        "Ysolde paid both and had the receipt framed. Her daughter, who was two, would grow up thinking this was how all women dealt with councils. In Veynn, she would be right."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "t": "The Ringing",
+              "label": "PART TWO",
+              "chapters": [
+                {
+                  "t": "Dusk",
+                  "n": 3,
+                  "scenes": [
+                    {
+                      "t": "The Ninth Bell",
+                      "status": "todo",
+                      "paras": [
+                        "It rang once. The tide turned. Somewhere very far down, a gate that had waited under the sea for longer than the city had a name heard its own voice for the first time in eight hundred years, and answered.",
+                        "Ysolde, on the bell stair with her daughter on her hip, felt the answer through the stone and understood — too late, and exactly on time — what she had done."
+                      ]
+                    },
+                    {
+                      "t": "The Keeper’s Oath",
+                      "status": "todo",
+                      "paras": [
+                        "They made her the bell’s keeper, since she was the one who had woken it. Nineteen years, they said, and then it would be someone else’s. She looked at the child on her hip and said nothing.",
+                        "The Watcher of the Sunken Gate wrote one line in his journal that night: it will be the daughter. He did not write which one he was afraid for."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "events": [
+            {
+              "t": "Eight Bells",
+              "ch": "Ch. 1",
+              "when": 8320,
+              "d": "[[Ysolde Veynn]] hears the Quiet Hour for what it is. Written as [[Eight Bells]].",
+              "icon": "✦"
+            },
+            {
+              "t": "The Foundry Below",
+              "ch": "Ch. 1",
+              "when": 8321,
+              "d": "The drowned foundry is still working. The bellwright has been waiting nineteen years.",
+              "icon": "◈"
+            },
+            {
+              "t": "The Council’s Objection",
+              "ch": "Ch. 2",
+              "when": 8324,
+              "d": "Two fines, one receipt, framed. See [[The Council]].",
+              "icon": "◉"
+            },
+            {
+              "t": "The Ninth Bell",
+              "ch": "Ch. 3",
+              "when": 8326,
+              "d": "First ringing. [[The Sunken Gate]] answers from below — the seed of everything in [[The Last City of Veynn]].",
+              "icon": "✹",
+              "detail": {
+                "book": "The Ninth Bell",
+                "date": "9th Day of Lastlight, Year 832",
+                "loc": "The Bell Stair, Veynn",
+                "pov": "Ysolde Veynn",
+                "sum": "First ringing of the ninth bell. The Gate answers. Ysolde is named its keeper for nineteen years.",
+                "impact": [
+                  "World Shifting"
+                ]
+              }
+            },
+            {
+              "t": "The Keeper’s Oath",
+              "ch": "Ch. 3",
+              "when": 8327,
+              "d": "Nineteen years. It will be the daughter.",
+              "icon": "✶"
+            }
+          ],
+          "editorDocs": {
+            "b1": {
+              "label": "Eight Bells",
+              "go": {
+                "zoom": "scene",
+                "pp": 0,
+                "cc": 0,
+                "ss": 0
+              }
+            },
+            "b2": {
+              "label": "What a Bell Remembers",
+              "go": {
+                "zoom": "scene",
+                "pp": 0,
+                "cc": 1,
+                "ss": 0
+              }
+            }
+          },
+          "treeOpen": {
+            "p0": true,
+            "p1": true,
+            "c0-0": true,
+            "c0-1": true,
+            "c1-0": false
+          }
+        }
+      ]
+    },
+    "aether": {
+      "world": "Caerwyn",
+      "axis": [
+        2000,
+        3200
+      ],
+      "months": [
+        "Thawmoon",
+        "Seedfall",
+        "Highgreen",
+        "Ashfall",
+        "Bonemonth",
+        "Deepfrost"
+      ],
+      "ntab": "keep",
+      "ntabs": [
+        "keep",
+        "teo",
+        "rite"
+      ],
+      "vault": [
+        {
+          "id": "wb",
+          "label": "World of Caerwyn",
+          "kids": [
+            {
+              "id": "loc",
+              "label": "Places",
+              "count": 7,
+              "files": [
+                {
+                  "id": "keep",
+                  "label": "Caerwyn Keep"
+                },
+                {
+                  "id": "grey",
+                  "label": "Greywater"
+                },
+                {
+                  "id": "oriel",
+                  "label": "Mount Oriel"
+                },
+                {
+                  "id": "ossroad",
+                  "label": "The Ossuary Road"
+                }
+              ]
+            },
+            {
+              "id": "fac",
+              "label": "Factions",
+              "count": 4,
+              "files": [
+                {
+                  "id": "bonecourt",
+                  "label": "The Bone Court"
+                },
+                {
+                  "id": "saltguild",
+                  "label": "The Salt Guild"
+                }
+              ]
+            },
+            {
+              "id": "hist",
+              "label": "History",
+              "count": 6,
+              "files": [
+                {
+                  "id": "crowning",
+                  "label": "The Crowning of the Dead"
+                },
+                {
+                  "id": "drownedp",
+                  "label": "The Drowned Prince"
+                }
+              ]
+            },
+            {
+              "id": "lore",
+              "label": "Lore",
+              "count": 5,
+              "files": [
+                {
+                  "id": "rite",
+                  "label": "The Hollow Rite"
+                },
+                {
+                  "id": "silence",
+                  "label": "Silence as Assent"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "chars",
+          "label": "Characters",
+          "count": 11,
+          "files": [
+            {
+              "id": "teo",
+              "label": "Teodric Vale"
+            },
+            {
+              "id": "maelis",
+              "label": "Queen Maelis"
+            },
+            {
+              "id": "ilse",
+              "label": "Ilse Marrow"
+            },
+            {
+              "id": "dray",
+              "label": "Lord Casimir Dray"
+            },
+            {
+              "id": "aurel",
+              "label": "Aurel Marrow"
+            }
+          ]
+        },
+        {
+          "id": "plot",
+          "label": "Plot & Story",
+          "count": 9,
+          "files": [
+            {
+              "id": "bible1",
+              "label": "Caerwyn Bible"
+            },
+            {
+              "id": "letters-plan",
+              "label": "Letters — sequence plan"
+            }
+          ]
+        },
+        {
+          "id": "res",
+          "label": "Research",
+          "count": 4,
+          "files": [
+            {
+              "id": "ossuaries",
+              "label": "Real ossuaries — Sedlec, Paris"
+            }
+          ]
+        },
+        {
+          "id": "ses",
+          "label": "Sessions",
+          "count": 6,
+          "files": []
+        }
+      ],
+      "noteVaults": {
+        "n2": {
+          "ntab": "scr1",
+          "ntabs": [
+            "scr1"
+          ],
+          "vault": [
+            {
+              "id": "priv",
+              "label": "Private",
+              "count": 3,
+              "files": [
+                {
+                  "id": "scr1",
+                  "label": "Scratch — Dray’s motive"
+                },
+                {
+                  "id": "scr2",
+                  "label": "Draft — the seventh cut"
+                },
+                {
+                  "id": "scr3",
+                  "label": "Reader notes — co-writer"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "notes": {
+        "keep": {
+          "title": "Caerwyn Keep",
+          "crumbs": [
+            "World of Caerwyn",
+            "Places",
+            "Caerwyn Keep"
+          ],
+          "thumb": {
+            "t": "The Keep above the ossuary terraces"
+          },
+          "tags": [
+            {
+              "t": "location",
+              "c": "#2fe6c8"
+            },
+            {
+              "t": "seat-of-power",
+              "c": "#ff6b8a"
+            },
+            {
+              "t": "mountain",
+              "c": "#3d9bff"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "A fortress cut into the shoulder of Mount Oriel, where the living rule from a throne room built directly above the crypts of every king who came before. In Caerwyn the dead are not buried — they are seated. [[The Bone Court]] convenes in their presence, and [[Queen Maelis]] answers to them first."
+            },
+            {
+              "k": "callout",
+              "title": "Law of the Keep",
+              "text": "No decree is read aloud until it has been read to the Hollow Kings below. Silence from the crypt is assent. Anything else is not."
+            },
+            {
+              "k": "h2",
+              "text": "Levels"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "The Ossuary Terraces — seven tiers of seated kings, oldest lowest",
+                "The Wardens’ Gallery — where [[Teodric Vale]] keeps the keys and the count",
+                "The Living Hall — court, throne, and the only windows in the Keep"
+              ]
+            },
+            {
+              "k": "h2",
+              "text": "In the stories"
+            },
+            {
+              "k": "p",
+              "text": "The setting of [[The Hollow Crown]]; remembered from exile in [[Saltwater Letters]], where Ilse can still describe the smell of the terraces from memory."
+            }
+          ],
+          "md": "---\ntype: location\nregion: mount-oriel\n---\n\nA fortress cut into the shoulder of Mount Oriel, where the living rule from a throne room built above the crypts of every king before.",
+          "props": [
+            [
+              "Type",
+              "Location"
+            ],
+            [
+              "Region",
+              "Mount Oriel"
+            ],
+            [
+              "Founded",
+              "1 HR"
+            ],
+            [
+              "Status",
+              "Seat of the Bone Court"
+            ],
+            [
+              "Danger Level",
+              "Political",
+              "#ffd319"
+            ],
+            [
+              "Importance",
+              "★★★★★"
+            ],
+            [
+              "Created",
+              "Jan 14, 2026"
+            ],
+            [
+              "Updated",
+              "Aug 30, 2026"
+            ]
+          ],
+          "backlinks": [
+            {
+              "t": "The Bone Court",
+              "d": "…convenes on the third terrace, beneath the Living Hall."
+            },
+            {
+              "t": "Teodric Vale",
+              "d": "Warden of the Keep’s lower levels."
+            }
+          ],
+          "words": "208 words",
+          "chars": "1,240 characters"
+        },
+        "teo": {
+          "title": "Teodric Vale",
+          "crumbs": [
+            "Characters",
+            "Teodric Vale"
+          ],
+          "tags": [
+            {
+              "t": "character",
+              "c": "#00f0ff"
+            },
+            {
+              "t": "protagonist",
+              "c": "#9b5fff"
+            },
+            {
+              "t": "pov",
+              "c": "#3d9bff"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "Bone-warden of [[Caerwyn Keep]] — the man who counts the kings each dawn and reports that none have moved. Forty-one, patient, unpromoted by choice. He has spent twenty years being the least interesting person in the Keep, which is the only reason he is still alive."
+            },
+            {
+              "k": "callout",
+              "title": "Voice",
+              "text": "Speaks in inventories. Notices what is missing before what is present. Has never once said the word “afraid” and is afraid of almost everything."
+            },
+            {
+              "k": "h2",
+              "text": "Arc"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "Keeper of the count → the one who breaks it",
+                "Discovers a king who has moved",
+                "Chooses the living over the seated"
+              ]
+            },
+            {
+              "k": "h2",
+              "text": "Relationships"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "[[Queen Maelis]] — the only sovereign who learned his name",
+                "[[The Bone Court]] — employer, and eventually the accused",
+                "[[Ilse Marrow]] — the scribe who wrote his testimony into exile"
+              ]
+            }
+          ],
+          "md": "---\ntype: character\nrole: protagonist\n---\n\nBone-warden of Caerwyn Keep. Patient, exact, unpromoted by choice.",
+          "props": [
+            [
+              "Type",
+              "Character"
+            ],
+            [
+              "Role",
+              "Protagonist"
+            ],
+            [
+              "POV",
+              "Third Limited"
+            ],
+            [
+              "Age",
+              "41"
+            ],
+            [
+              "Affiliation",
+              "The Wardens"
+            ],
+            [
+              "Status",
+              "Active"
+            ],
+            [
+              "Importance",
+              "★★★★★"
+            ],
+            [
+              "Created",
+              "Jan 20, 2026"
+            ],
+            [
+              "Updated",
+              "Sep 2, 2026"
+            ]
+          ],
+          "backlinks": [
+            {
+              "t": "The Count at Dawn",
+              "d": "Teodric counted forty kings, and then he counted again."
+            },
+            {
+              "t": "Queen Maelis",
+              "d": "…asked the warden his name, which no queen had done."
+            }
+          ],
+          "words": "171 words",
+          "chars": "1,012 characters"
+        },
+        "maelis": {
+          "title": "Queen Maelis",
+          "crumbs": [
+            "Characters",
+            "Queen Maelis"
+          ],
+          "thumb": {
+            "t": "Maelis in the Living Hall — costume study"
+          },
+          "tags": [
+            {
+              "t": "character",
+              "c": "#00f0ff"
+            },
+            {
+              "t": "sovereign",
+              "c": "#ffd319"
+            },
+            {
+              "t": "exiled",
+              "c": "#ff6b8a"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "Third queen of the Hollow line, crowned at nineteen over the objections of forty seated ancestors. Sharp, exhausted, allergic to ceremony she cannot use. In [[The Hollow Crown]] she rules; in [[Saltwater Letters]] she is a rumor on a beach, and her scribe [[Ilse Marrow]] carries what remains of her court in a tin box."
+            },
+            {
+              "k": "h2",
+              "text": "What she wants"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "To pass one law the dead did not approve",
+                "To find out which of the Hollow Kings is still listening",
+                "Later: to be forgotten well"
+              ]
+            }
+          ],
+          "md": "---\ntype: character\nrole: sovereign\n---\n\nThird queen of the Hollow line.",
+          "props": [
+            [
+              "Type",
+              "Character"
+            ],
+            [
+              "Role",
+              "Sovereign / Exile"
+            ],
+            [
+              "Age",
+              "26"
+            ],
+            [
+              "Affiliation",
+              "The Bone Court (deposed)"
+            ],
+            [
+              "Status",
+              "Exiled — Greywater"
+            ],
+            [
+              "Importance",
+              "★★★★"
+            ],
+            [
+              "Created",
+              "Feb 2, 2026"
+            ],
+            [
+              "Updated",
+              "Aug 11, 2026"
+            ]
+          ],
+          "backlinks": [
+            {
+              "t": "Saltwater Letters",
+              "d": "…the Queen is well, if you can call this well."
+            },
+            {
+              "t": "The Hollow Rite",
+              "d": "Maelis refused the rite twice."
+            }
+          ],
+          "words": "132 words",
+          "chars": "790 characters"
+        },
+        "ilse": {
+          "title": "Ilse Marrow",
+          "crumbs": [
+            "Characters",
+            "Ilse Marrow"
+          ],
+          "tags": [
+            {
+              "t": "character",
+              "c": "#00f0ff"
+            },
+            {
+              "t": "narrator",
+              "c": "#9b5fff"
+            },
+            {
+              "t": "scribe",
+              "c": "#2fe6c8"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "Court scribe, then exile’s scribe. The first-person voice of [[Saltwater Letters]] — every chapter is a letter she writes to her brother Aurel, still inside [[Caerwyn Keep]]. She is honest with him about everything except how much she misses the mountain."
+            },
+            {
+              "k": "callout",
+              "title": "Voice",
+              "text": "Lyrical, precise, funny by accident. Describes weather when she means feelings. Numbers her letters and lies about the count."
+            },
+            {
+              "k": "h2",
+              "text": "Relationships"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "[[Queen Maelis]] — mistress, then friend, then charge",
+                "[[Teodric Vale]] — she took down his testimony the night the count broke",
+                "Aurel Marrow — brother, bone-warden apprentice, recipient of every letter"
+              ]
+            }
+          ],
+          "md": "---\ntype: character\nrole: narrator\n---\n\nCourt scribe turned exile’s scribe. First-person voice of Saltwater Letters.",
+          "props": [
+            [
+              "Type",
+              "Character"
+            ],
+            [
+              "Role",
+              "Narrator"
+            ],
+            [
+              "POV",
+              "First Person · Epistolary"
+            ],
+            [
+              "Age",
+              "31"
+            ],
+            [
+              "Affiliation",
+              "Greywater exiles"
+            ],
+            [
+              "Status",
+              "Active"
+            ],
+            [
+              "Importance",
+              "★★★★"
+            ],
+            [
+              "Created",
+              "Mar 3, 2026"
+            ],
+            [
+              "Updated",
+              "Sep 9, 2026"
+            ]
+          ],
+          "backlinks": [
+            {
+              "t": "Letter the First",
+              "d": "Aurel — the sea is nothing like they told us."
+            }
+          ],
+          "words": "148 words",
+          "chars": "902 characters"
+        },
+        "bonecourt": {
+          "title": "The Bone Court",
+          "crumbs": [
+            "World of Caerwyn",
+            "Factions",
+            "The Bone Court"
+          ],
+          "tags": [
+            {
+              "t": "faction",
+              "c": "#ff6b8a"
+            },
+            {
+              "t": "government",
+              "c": "#ffd319"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "The governing council of Caerwyn: nine living lords who sit on the third ossuary terrace and speak on behalf of the seated kings. In practice, whoever controls the crypt keys controls the silence — and silence is assent. [[Teodric Vale]] holds the keys. This is the plot of [[The Hollow Crown]]."
+            },
+            {
+              "k": "h2",
+              "text": "Members of note"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "Lord Casimir Dray — Speaker for the Dead, antagonist",
+                "Lady Orsolya Venn — keeps the ledgers, keeps her own counsel",
+                "The Empty Seat — reserved for the next king to die"
+              ]
+            }
+          ],
+          "md": "---\ntype: faction\n---\n\nNine living lords who speak for the seated kings.",
+          "props": [
+            [
+              "Type",
+              "Faction"
+            ],
+            [
+              "Seat",
+              "Third Ossuary Terrace"
+            ],
+            [
+              "Members",
+              "9 (one seat empty)"
+            ],
+            [
+              "Danger Level",
+              "High",
+              "#ff4d88"
+            ],
+            [
+              "Importance",
+              "★★★★"
+            ],
+            [
+              "Created",
+              "Jan 28, 2026"
+            ],
+            [
+              "Updated",
+              "Jul 19, 2026"
+            ]
+          ],
+          "backlinks": [
+            {
+              "t": "Caerwyn Keep",
+              "d": "…convenes in their presence."
+            },
+            {
+              "t": "Teodric Vale",
+              "d": "employer, and eventually the accused"
+            }
+          ],
+          "words": "117 words",
+          "chars": "702 characters"
+        },
+        "rite": {
+          "title": "The Hollow Rite",
+          "crumbs": [
+            "World of Caerwyn",
+            "Lore",
+            "The Hollow Rite"
+          ],
+          "thumb": {
+            "t": "Rite diagram — the seven cuts"
+          },
+          "tags": [
+            {
+              "t": "lore",
+              "c": "#9b5fff"
+            },
+            {
+              "t": "ritual",
+              "c": "#ff4dff"
+            },
+            {
+              "t": "death",
+              "c": "#8fa3bd"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "When a sovereign of Caerwyn dies, the body is hollowed, dressed, and seated on the next empty terrace of [[Caerwyn Keep]]. The rite takes seven days and seven cuts. A hollowed king is said to retain one thing: the ability to refuse. No one alive has heard a refusal. [[Queen Maelis]] has declined the rite for herself twice, in writing."
+            },
+            {
+              "k": "callout",
+              "title": "The question the books turn on",
+              "text": "If the dead can refuse and never have — are they agreeing, or is someone answering for them?"
+            },
+            {
+              "k": "h2",
+              "text": "Known exceptions"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "The Drowned Prince (year 212 HR) — body never recovered; an empty chair is seated in his place",
+                "The Greywater exiles — buried at sea, deliberately, as protest"
+              ]
+            }
+          ],
+          "md": "---\ntype: lore\n---\n\nSeven days, seven cuts, one retained ability: to refuse.",
+          "props": [
+            [
+              "Type",
+              "Lore"
+            ],
+            [
+              "Origin",
+              "Year 1 HR"
+            ],
+            [
+              "Practised by",
+              "The Bone Court"
+            ],
+            [
+              "Importance",
+              "★★★★★"
+            ],
+            [
+              "Created",
+              "Jan 16, 2026"
+            ],
+            [
+              "Updated",
+              "Aug 24, 2026"
+            ]
+          ],
+          "backlinks": [
+            {
+              "t": "Queen Maelis",
+              "d": "refused the rite twice"
+            },
+            {
+              "t": "The Count at Dawn",
+              "d": "…the thirty-first king had turned his head."
+            }
+          ],
+          "words": "156 words",
+          "chars": "944 characters"
+        },
+        "grey": {
+          "title": "Greywater",
+          "crumbs": [
+            "World of Caerwyn",
+            "Places",
+            "Greywater"
+          ],
+          "tags": [
+            {
+              "t": "location",
+              "c": "#2fe6c8"
+            },
+            {
+              "t": "coast",
+              "c": "#3d9bff"
+            },
+            {
+              "t": "exile",
+              "c": "#ff6b8a"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "A shingle beach and a row of salt-warped huts at the bottom of the world, three weeks’ sail from any mountain. Caerwyn sends its inconvenient living here. The setting of [[Saltwater Letters]], where [[Ilse Marrow]] learns that the sea keeps no crypts and asks no one’s permission."
+            },
+            {
+              "k": "h2",
+              "text": "Features"
+            },
+            {
+              "k": "ul",
+              "items": [
+                "The Tide Post — where letters go out, twice a season, if the boat comes",
+                "The Salt Guild sheds — the only employer",
+                "The Queen’s hut — indistinguishable from the others, on purpose"
+              ]
+            }
+          ],
+          "md": "---\ntype: location\nregion: the-low-coast\n---\n\nA shingle beach at the bottom of the world. Caerwyn sends its inconvenient living here.",
+          "props": [
+            [
+              "Type",
+              "Location"
+            ],
+            [
+              "Region",
+              "The Low Coast"
+            ],
+            [
+              "Population",
+              "~140 exiles"
+            ],
+            [
+              "Status",
+              "Penal settlement"
+            ],
+            [
+              "Danger Level",
+              "Low (weather: high)",
+              "#ffd319"
+            ],
+            [
+              "Importance",
+              "★★★★"
+            ],
+            [
+              "Created",
+              "Mar 1, 2026"
+            ],
+            [
+              "Updated",
+              "Sep 9, 2026"
+            ]
+          ],
+          "backlinks": [
+            {
+              "t": "Saltwater Letters",
+              "d": "Letter the First"
+            },
+            {
+              "t": "Queen Maelis",
+              "d": "Exiled — Greywater"
+            }
+          ],
+          "words": "121 words",
+          "chars": "733 characters"
+        },
+        "scr1": {
+          "title": "Scratch — Dray’s motive",
+          "crumbs": [
+            "Private",
+            "Scratch — Dray’s motive"
+          ],
+          "tags": [
+            {
+              "t": "private",
+              "c": "#8fa3bd"
+            },
+            {
+              "t": "scratch",
+              "c": "#ffd319"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "Not power. Dray already has power. He speaks for the dead because he is terrified of what they would say if anyone else listened. Every “silence is assent” is a man holding a door shut."
+            },
+            {
+              "k": "callout",
+              "title": "Co-writer",
+              "text": "Agreed — but seed it in Ch. 2, not Ch. 4. — R."
+            }
+          ],
+          "md": "---\ntype: scratch\n---\n\nNot power. He is holding a door shut.",
+          "props": [
+            [
+              "Type",
+              "Scratch"
+            ],
+            [
+              "Visibility",
+              "Private"
+            ],
+            [
+              "Created",
+              "Aug 2, 2026"
+            ]
+          ],
+          "backlinks": [],
+          "words": "58 words",
+          "chars": "331 characters"
+        },
+        "scr2": {
+          "title": "Draft — the seventh cut",
+          "crumbs": [
+            "Private",
+            "Draft — the seventh cut"
+          ],
+          "tags": [
+            {
+              "t": "private",
+              "c": "#8fa3bd"
+            },
+            {
+              "t": "draft",
+              "c": "#9b5fff"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "p",
+              "text": "The seventh cut is the one that is not made. The rite ends with the knife set down. That is what “retains the ability to refuse” means — the body is left one thing undone."
+            }
+          ],
+          "md": "---\ntype: draft\n---\n\nThe seventh cut is the one that is not made.",
+          "props": [
+            [
+              "Type",
+              "Draft"
+            ],
+            [
+              "Visibility",
+              "Private"
+            ],
+            [
+              "Created",
+              "Aug 9, 2026"
+            ]
+          ],
+          "backlinks": [],
+          "words": "44 words",
+          "chars": "246 characters"
+        },
+        "scr3": {
+          "title": "Reader notes — co-writer",
+          "crumbs": [
+            "Private",
+            "Reader notes — co-writer"
+          ],
+          "tags": [
+            {
+              "t": "private",
+              "c": "#8fa3bd"
+            },
+            {
+              "t": "feedback",
+              "c": "#2fe6c8"
+            }
+          ],
+          "blocks": [
+            {
+              "k": "ul",
+              "items": [
+                "Ch. 1: “Forty” lands. Keep the second count.",
+                "Ch. 2: Dray needs one human beat before the levy.",
+                "Letters: the shell is the best thing in the book. Do not explain it."
+              ]
+            }
+          ],
+          "md": "---\ntype: feedback\n---\n\n- Keep the second count.",
+          "props": [
+            [
+              "Type",
+              "Feedback"
+            ],
+            [
+              "From",
+              "R."
+            ],
+            [
+              "Created",
+              "Sep 1, 2026"
+            ]
+          ],
+          "backlinks": [],
+          "words": "39 words",
+          "chars": "212 characters"
+        }
+      },
+      "flags": [
+        {
+          "title": "Count disagrees",
+          "src": "Story ↔ Vault",
+          "text": "Scene “Forty” counts forty seated kings; note “Caerwyn Keep” lists seven terraces of six — forty-two seats."
+        },
+        {
+          "title": "Rite duration",
+          "src": "Vault internal",
+          "text": "“The Hollow Rite” says seven days; “The Crowning of the Dead” describes a nine-day vigil for the first king."
+        },
+        {
+          "title": "Letter numbering",
+          "src": "Story",
+          "text": "Ilse calls the last letter “the fourteenth, and it is the twelfth” — but only eleven letters precede it in the manuscript. Intentional? Flag kept open."
+        }
+      ],
+      "chips": [
+        "What does a hollowed king still hear?",
+        "Ilse lies about the letter count — why?",
+        "The sea takes chairs, never people"
+      ],
+      "prompts": [
+        [
+          "Deepen the Bone Court",
+          "Just now"
+        ],
+        [
+          "Teodric’s fear",
+          "Used 2d ago"
+        ],
+        [
+          "Raise the stakes at Greywater",
+          "Used 6d ago"
+        ]
+      ],
+      "agent": {
+        "rapport": "Give Teodric and Maelis one exchange that is not about the count.",
+        "suggAll": [
+          {
+            "t": "Lady Orsolya Venn",
+            "d": "Keeps the ledgers",
+            "type": 0,
+            "av": "OV"
+          },
+          {
+            "t": "Aurel Marrow",
+            "d": "The one who replies",
+            "type": 0,
+            "av": "AM"
+          },
+          {
+            "t": "The Ossuary Road",
+            "d": "Seven tiers, oldest lowest",
+            "type": 1,
+            "av": "OR"
+          },
+          {
+            "t": "The Tide Post",
+            "d": "Twice a season, if the boat comes",
+            "type": 1,
+            "av": "TP"
+          },
+          {
+            "t": "The Wardens’ Ledger",
+            "d": "Numbers, not observations",
+            "type": 2,
+            "av": "WL"
+          },
+          {
+            "t": "The Seven Cuts",
+            "d": "The rite’s anatomy",
+            "type": 2,
+            "av": "SC"
+          }
+        ],
+        "agQ": [
+          "Which king turned first — and does Teodric know?",
+          "Is Dray lying, or just the loudest silence?",
+          "What does the sea do with the chairs?"
+        ],
+        "agNeeds": [
+          {
+            "t": "Lord Casimir Dray",
+            "s": "mentioned 9× — stub only",
+            "kind": "NEEDS WORK"
+          },
+          {
+            "t": "The Salt Guild",
+            "s": "mentioned in Letters — no note yet",
+            "kind": "MISSING"
+          },
+          {
+            "t": "Aurel Marrow",
+            "s": "recipient of every letter — 1 line",
+            "kind": "NEEDS WORK"
+          },
+          {
+            "t": "The Empty Seat",
+            "s": "conflicts with the Drowned Prince note",
+            "kind": "NEEDS WORK"
+          }
+        ]
+      },
+      "graph": {
+        "nodes": [
+          {
+            "id": "teo",
+            "label": "Teodric Vale",
+            "cat": 0,
+            "x": 380,
+            "y": 210,
+            "r": 30
+          },
+          {
+            "id": "maelis",
+            "label": "Queen Maelis",
+            "cat": 0,
+            "x": 250,
+            "y": 330,
+            "r": 26
+          },
+          {
+            "id": "ilse",
+            "label": "Ilse Marrow",
+            "cat": 0,
+            "x": 190,
+            "y": 150,
+            "r": 22
+          },
+          {
+            "id": "dray",
+            "label": "Lord Casimir Dray",
+            "cat": 0,
+            "x": 520,
+            "y": 350,
+            "r": 24
+          },
+          {
+            "id": "aurel",
+            "label": "Aurel Marrow",
+            "cat": 0,
+            "x": 120,
+            "y": 260,
+            "r": 17
+          },
+          {
+            "id": "keep",
+            "label": "Caerwyn Keep",
+            "cat": 1,
+            "x": 620,
+            "y": 150,
+            "r": 30
+          },
+          {
+            "id": "grey",
+            "label": "Greywater",
+            "cat": 1,
+            "x": 730,
+            "y": 300,
+            "r": 25
+          },
+          {
+            "id": "oriel",
+            "label": "Mount Oriel",
+            "cat": 1,
+            "x": 850,
+            "y": 170,
+            "r": 20
+          },
+          {
+            "id": "ossroad",
+            "label": "The Ossuary Road",
+            "cat": 1,
+            "x": 620,
+            "y": 470,
+            "r": 20
+          },
+          {
+            "id": "bonecourt",
+            "label": "The Bone Court",
+            "cat": 2,
+            "x": 400,
+            "y": 520,
+            "r": 23
+          },
+          {
+            "id": "saltguild",
+            "label": "The Salt Guild",
+            "cat": 2,
+            "x": 880,
+            "y": 440,
+            "r": 19
+          },
+          {
+            "id": "ledger",
+            "label": "The Wardens’ Ledger",
+            "cat": 3,
+            "x": 330,
+            "y": 400,
+            "r": 17
+          },
+          {
+            "id": "chairs",
+            "label": "The Queen’s Chairs",
+            "cat": 3,
+            "x": 860,
+            "y": 560,
+            "r": 17
+          },
+          {
+            "id": "rite",
+            "label": "The Hollow Rite",
+            "cat": 4,
+            "x": 700,
+            "y": 580,
+            "r": 22
+          },
+          {
+            "id": "silence",
+            "label": "Silence as Assent",
+            "cat": 4,
+            "x": 150,
+            "y": 470,
+            "r": 19
+          },
+          {
+            "id": "crowning",
+            "label": "The Crowning of the Dead",
+            "cat": 6,
+            "x": 890,
+            "y": 90,
+            "r": 21
+          },
+          {
+            "id": "drownedp",
+            "label": "The Drowned Prince",
+            "cat": 6,
+            "x": 770,
+            "y": 55,
+            "r": 17
+          }
+        ],
+        "edges": [
+          [
+            "teo",
+            "keep"
+          ],
+          [
+            "teo",
+            "ledger"
+          ],
+          [
+            "teo",
+            "maelis"
+          ],
+          [
+            "teo",
+            "bonecourt"
+          ],
+          [
+            "teo",
+            "ilse"
+          ],
+          [
+            "maelis",
+            "keep"
+          ],
+          [
+            "maelis",
+            "grey"
+          ],
+          [
+            "maelis",
+            "chairs"
+          ],
+          [
+            "maelis",
+            "rite"
+          ],
+          [
+            "ilse",
+            "grey"
+          ],
+          [
+            "ilse",
+            "aurel"
+          ],
+          [
+            "ilse",
+            "saltguild"
+          ],
+          [
+            "dray",
+            "bonecourt"
+          ],
+          [
+            "dray",
+            "silence"
+          ],
+          [
+            "dray",
+            "ledger"
+          ],
+          [
+            "aurel",
+            "keep"
+          ],
+          [
+            "keep",
+            "oriel"
+          ],
+          [
+            "keep",
+            "ossroad"
+          ],
+          [
+            "keep",
+            "rite"
+          ],
+          [
+            "bonecourt",
+            "silence"
+          ],
+          [
+            "bonecourt",
+            "keep"
+          ],
+          [
+            "grey",
+            "saltguild"
+          ],
+          [
+            "grey",
+            "chairs"
+          ],
+          [
+            "rite",
+            "crowning"
+          ],
+          [
+            "crowning",
+            "drownedp"
+          ],
+          [
+            "drownedp",
+            "ossroad"
+          ],
+          [
+            "silence",
+            "rite"
+          ]
+        ],
+        "blurbs": {
+          "teo": "Protagonist. Bone-warden who counts the kings — patient, exact, unpromoted by choice.",
+          "maelis": "Third queen of the Hollow line; later a rumor on a beach.",
+          "ilse": "Court scribe turned exile’s scribe. Narrator of Saltwater Letters.",
+          "dray": "Speaker for the Dead. Constant, and without permission.",
+          "keep": "Fortress above the crypts of every king before.",
+          "grey": "Shingle beach at the bottom of the world. Where the inconvenient living go.",
+          "rite": "Seven days, seven cuts, one retained ability: to refuse.",
+          "silence": "The constitutional fiction the whole realm runs on.",
+          "bonecourt": "Nine living lords who speak for forty seated kings."
+        }
+      },
+      "tl": {
+        "timelines": [
+          {
+            "id": "story",
+            "name": "The Hollow Crown",
+            "kind": "Story timeline · 2 parts",
+            "axis": [
+              3105,
+              3123
+            ]
+          },
+          {
+            "id": "world",
+            "name": "World of Caerwyn",
+            "kind": "World timeline · six-month mountain calendar",
+            "axis": [
+              2000,
+              3200
+            ],
+            "cal": {
+              "months": 6,
+              "dpm": 60,
+              "hpd": 24
+            },
+            "era": "HR",
+            "ep": 0,
+            "epName": "The First Seating"
+          },
+          {
+            "id": "universe",
+            "name": "Universe — The Long Turning",
+            "kind": "Universe timeline · sets the standard",
+            "axis": [
+              0,
+              4000
+            ]
+          },
+          {
+            "id": "saltsea",
+            "name": "The Salt Sea — the exiles’ reckoning",
+            "kind": "World timeline · four-tide calendar",
+            "axis": [
+              0,
+              420
+            ],
+            "cal": {
+              "months": 4,
+              "dpm": 90,
+              "hpd": 24
+            },
+            "ep": 2900,
+            "epName": "First Boat"
+          },
+          {
+            "id": "ember",
+            "name": "Emberhold — the forge cities",
+            "kind": "World timeline · long-day calendar",
+            "axis": [
+              0,
+              1800
+            ],
+            "cal": {
+              "months": 10,
+              "dpm": 36,
+              "hpd": 30
+            },
+            "ep": 1300,
+            "epName": "The Kindling"
+          }
+        ],
+        "spans": {
+          "story": [
+            {
+              "t": "PART ONE: THE COUNT",
+              "from": 3108,
+              "to": 3114,
+              "c": 0
+            },
+            {
+              "t": "PART TWO: REFUSAL",
+              "from": 3114,
+              "to": 3120,
+              "c": 1
+            }
+          ],
+          "world": [
+            {
+              "t": "The First Seating",
+              "from": 2000,
+              "to": 2030,
+              "c": 5
+            },
+            {
+              "t": "The Age of Forty Kings",
+              "from": 2120,
+              "to": 3100,
+              "c": 3
+            },
+            {
+              "t": "The Hollow Crown",
+              "from": 3105,
+              "to": 3123,
+              "c": 0,
+              "open": "story"
+            },
+            {
+              "t": "The Greywater Exile",
+              "from": 3130,
+              "to": 3160,
+              "c": 2
+            }
+          ],
+          "universe": [
+            {
+              "t": "The Long Turning begins",
+              "from": 0,
+              "to": 600,
+              "c": 5
+            },
+            {
+              "t": "The Mountain Peoples",
+              "from": 900,
+              "to": 1900,
+              "c": 3
+            },
+            {
+              "t": "World of Caerwyn",
+              "from": 2000,
+              "to": 3200,
+              "c": 0,
+              "open": "world"
+            },
+            {
+              "t": "The Salt Sea",
+              "from": 2900,
+              "to": 3320,
+              "c": 4,
+              "open": "saltsea"
+            },
+            {
+              "t": "Emberhold",
+              "from": 1300,
+              "to": 3100,
+              "c": 6,
+              "open": "ember"
+            }
+          ],
+          "saltsea": [
+            {
+              "t": "First Boat",
+              "from": 0,
+              "to": 12,
+              "c": 0
+            },
+            {
+              "t": "The Tide Posts",
+              "from": 60,
+              "to": 300,
+              "c": 4
+            },
+            {
+              "t": "Greywater settled",
+              "from": 230,
+              "to": 420,
+              "c": 2
+            }
+          ],
+          "ember": [
+            {
+              "t": "The Kindling",
+              "from": 0,
+              "to": 40,
+              "c": 6
+            },
+            {
+              "t": "Guild of Forges",
+              "from": 400,
+              "to": 1300,
+              "c": 3
+            },
+            {
+              "t": "The Cold Century",
+              "from": 1500,
+              "to": 1800,
+              "c": 1
+            }
+          ]
+        },
+        "eras": {
+          "story": [
+            {
+              "t": "ASHFALL",
+              "from": 3105,
+              "to": 3113,
+              "c": 6
+            },
+            {
+              "t": "BONEMONTH",
+              "from": 3113,
+              "to": 3119,
+              "c": 4
+            },
+            {
+              "t": "DEEPFROST",
+              "from": 3119,
+              "to": 3123,
+              "c": 2
+            }
+          ],
+          "world": [
+            {
+              "t": "THE SEATING",
+              "from": 2000,
+              "to": 2120,
+              "c": 5
+            },
+            {
+              "t": "THE FORTY",
+              "from": 2120,
+              "to": 3105,
+              "c": 3
+            },
+            {
+              "t": "AFTER THE REFUSAL",
+              "from": 3119,
+              "to": 3200,
+              "c": 0
+            }
+          ],
+          "universe": [
+            {
+              "t": "FIRST TURN",
+              "from": 0,
+              "to": 900,
+              "c": 5
+            },
+            {
+              "t": "THE PEOPLING",
+              "from": 900,
+              "to": 2000,
+              "c": 3
+            },
+            {
+              "t": "THE CROWNED AGE",
+              "from": 2000,
+              "to": 4000,
+              "c": 2
+            }
+          ],
+          "saltsea": [
+            {
+              "t": "OPEN WATER",
+              "from": 0,
+              "to": 230,
+              "c": 4
+            },
+            {
+              "t": "THE SETTLING",
+              "from": 230,
+              "to": 420,
+              "c": 2
+            }
+          ],
+          "ember": [
+            {
+              "t": "HOT YEARS",
+              "from": 0,
+              "to": 1500,
+              "c": 6
+            },
+            {
+              "t": "COLD CENTURY",
+              "from": 1500,
+              "to": 1800,
+              "c": 1
+            }
+          ]
+        },
+        "crows": {
+          "story": [
+            {
+              "name": "CRYPT SILENCE",
+              "items": [
+                {
+                  "t": "Total",
+                  "from": 3105,
+                  "to": 3116,
+                  "c": 4
+                },
+                {
+                  "t": "Broken",
+                  "from": 3116,
+                  "to": 3123,
+                  "c": 2
+                }
+              ]
+            }
+          ],
+          "world": [],
+          "universe": [],
+          "saltsea": [
+            {
+              "name": "CHAIRS LEFT",
+              "items": [
+                {
+                  "t": "Six",
+                  "from": 230,
+                  "to": 300,
+                  "c": 5
+                },
+                {
+                  "t": "One",
+                  "from": 300,
+                  "to": 420,
+                  "c": 0
+                }
+              ]
+            }
+          ],
+          "ember": []
+        }
+      },
+      "bs": {
+        "data": [
+          {
+            "key": "beats",
+            "title": "STORY BEATS",
+            "color": 0,
+            "cards": [
+              {
+                "t": "The Count Breaks",
+                "d": "Thirty-nine. The pen goes dry.",
+                "chips": [
+                  "Chapter 3",
+                  "Plot"
+                ]
+              },
+              {
+                "t": "A Queen Learns a Name",
+                "d": "No sovereign has asked before.",
+                "chips": [
+                  "Chapter 2",
+                  "Character"
+                ]
+              },
+              {
+                "t": "The Rite Refused",
+                "d": "Forty refusals at once.",
+                "chips": [
+                  "Chapter 4",
+                  "Climax"
+                ]
+              }
+            ]
+          },
+          {
+            "key": "rel",
+            "title": "CHARACTER RELATIONSHIPS",
+            "color": 1,
+            "cards": [
+              {
+                "t": "Teodric Vale",
+                "d": "Warden — patient, exact, afraid of everything.",
+                "chips": [
+                  "Answers to → Maelis"
+                ],
+                "av": "TV"
+              },
+              {
+                "t": "Queen Maelis",
+                "d": "Sovereign — sharp, exhausted.",
+                "chips": [
+                  "Opposed by → Dray"
+                ],
+                "av": "QM"
+              },
+              {
+                "t": "Ilse Marrow",
+                "d": "Scribe — lyrical, numbers her lies.",
+                "chips": [
+                  "Writes to → Aurel"
+                ],
+                "av": "IM"
+              }
+            ]
+          },
+          {
+            "key": "world",
+            "title": "WORLDBUILDING CLUSTERS",
+            "color": 1,
+            "cards": [
+              {
+                "t": "The Seated Dead",
+                "d": "Forty kings, one crypt, no burials.",
+                "chips": [
+                  "7 ideas"
+                ]
+              },
+              {
+                "t": "Silence as Law",
+                "d": "Assent by default. Who answers for them?",
+                "chips": [
+                  "5 ideas"
+                ]
+              },
+              {
+                "t": "The Low Coast",
+                "d": "Where the sea keeps no crypts.",
+                "chips": [
+                  "4 ideas"
+                ]
+              }
+            ]
+          },
+          {
+            "key": "theme",
+            "title": "THEMATIC IDEAS",
+            "color": 3,
+            "cards": [
+              {
+                "t": "Counting as Faith",
+                "d": "A number that has never been interesting.",
+                "chips": [
+                  "Theme"
+                ]
+              },
+              {
+                "t": "Refusal",
+                "d": "The one thing the dead retain.",
+                "chips": [
+                  "Theme"
+                ]
+              }
+            ]
+          },
+          {
+            "key": "loose",
+            "title": "LOOSE IDEAS",
+            "color": 2,
+            "cards": [
+              {
+                "t": "A chair that faces the mountain",
+                "d": "Set at low tide, on purpose.",
+                "chips": [
+                  "Loose"
+                ]
+              },
+              {
+                "t": "A plaque spelled correctly",
+                "d": "For a seat he never takes.",
+                "chips": [
+                  "Loose"
+                ]
+              }
+            ]
+          },
+          {
+            "key": "trope",
+            "title": "TROPES",
+            "color": 3,
+            "cards": []
+          }
+        ],
+        "pool": {
+          "beats": [
+            {
+              "t": "The Ledger Changes Hands",
+              "d": "Dray wants it; the Queen gets it.",
+              "chips": [
+                "Chapter 3",
+                "Plot"
+              ]
+            },
+            {
+              "t": "Letter Sent Wet",
+              "d": "Three seasons late, read eleven times.",
+              "chips": [
+                "Letters",
+                "Plot"
+              ]
+            },
+            {
+              "t": "Midpoint Reversal",
+              "d": "What they were chasing was the wrong prize.",
+              "chips": [
+                "Starter",
+                "Structure"
+              ]
+            }
+          ],
+          "trope": [
+            {
+              "t": "The Reluctant Witness",
+              "d": "Saw it. Wrote it down. Wants no part of it.",
+              "chips": [
+                "Starter",
+                "Trope"
+              ]
+            },
+            {
+              "t": "The Court in Exile",
+              "d": "Ceremony with none of the furniture.",
+              "chips": [
+                "Starter",
+                "Trope"
+              ]
+            },
+            {
+              "t": "Enemies to Allies",
+              "d": "Forced cooperation curdles into trust.",
+              "chips": [
+                "Starter",
+                "Trope"
+              ]
+            }
+          ],
+          "rel": [
+            {
+              "t": "Lady Orsolya Venn",
+              "d": "Keeps the ledgers, keeps her own counsel.",
+              "chips": [
+                "Ally?"
+              ],
+              "av": "OV"
+            },
+            {
+              "t": "The Boatman",
+              "d": "Will not carry letters addressed to the Keep.",
+              "chips": [
+                "Gatekeeper"
+              ],
+              "av": "B"
+            }
+          ],
+          "world": [
+            {
+              "t": "Seven Cuts",
+              "d": "The rite’s anatomy, terrace by terrace.",
+              "chips": [
+                "Rules"
+              ]
+            },
+            {
+              "t": "The Tide Post",
+              "d": "Twice a season, if the boat comes.",
+              "chips": [
+                "Place"
+              ]
+            },
+            {
+              "t": "The Empty Chair",
+              "d": "Seated for a prince the sea kept.",
+              "chips": [
+                "Mystery"
+              ]
+            }
+          ],
+          "theme": [
+            {
+              "t": "Who Answers for the Dead",
+              "d": "Assent, or ventriloquism?",
+              "chips": [
+                "Theme"
+              ]
+            },
+            {
+              "t": "Being Forgotten Well",
+              "d": "The exile’s last ambition.",
+              "chips": [
+                "Theme"
+              ]
+            },
+            {
+              "t": "Found Family",
+              "d": "The family you choose vs. the one that chose you.",
+              "chips": [
+                "Starter",
+                "Theme"
+              ]
+            }
+          ],
+          "loose": [
+            {
+              "t": "A crown with nothing inside it",
+              "d": "Literal, then not.",
+              "chips": [
+                "Loose"
+              ]
+            },
+            {
+              "t": "Salt as wages",
+              "d": "Funny until you try to buy bread.",
+              "chips": [
+                "Loose"
+              ]
+            },
+            {
+              "t": "A letter delivered 20 years late",
+              "d": "Who sent it — and why now?",
+              "chips": [
+                "Starter",
+                "Spark"
+              ]
+            }
+          ]
+        }
+      },
+      "bd": {
+        "root": [
+          {
+            "id": "sd7",
+            "k": "line",
+            "from": "v:wb",
+            "to": "v:chars",
+            "label": "who sits where",
+            "color": null
+          }
+        ],
+        "wb": [
+          {
+            "id": "sw1",
+            "k": "column",
+            "title": "Open questions",
+            "x": 1140,
+            "y": 44,
+            "items": [
+              {
+                "t": "Which king turned first?"
+              },
+              {
+                "t": "What does the sea do with the chairs?"
+              }
+            ]
+          },
+          {
+            "id": "sw2",
+            "k": "line",
+            "from": "v:loc",
+            "to": "v:hist",
+            "label": "212 HR",
+            "color": null
+          }
+        ],
+        "chars": [
+          {
+            "id": "sc1",
+            "k": "check",
+            "title": "Before Part Two",
+            "x": 900,
+            "y": 40,
+            "items": [
+              {
+                "t": "Name the empty seat",
+                "done": true
+              },
+              {
+                "t": "Decide what Dray hears",
+                "done": false
+              }
+            ]
+          }
+        ]
+      },
+      "stories": [
+        {
+          "id": "crown",
+          "svault": "Tidewrights",
+          "axis": [
+            3105,
+            3123
+          ],
+          "boards": [
+            {
+              "name": "Forty — scene board",
+              "cards": [
+                [
+                  "Forty — beats",
+                  "Dawn count · the light falls wrong · count again · the thirty-first has turned his head · write forty.",
+                  "✦",
+                  1,
+                  440,
+                  40,
+                  280,
+                  120
+                ],
+                [
+                  "Teodric Vale",
+                  "POV. Speaks in inventories.",
+                  "TV",
+                  0,
+                  130,
+                  80,
+                  0,
+                  0,
+                  "teo"
+                ],
+                [
+                  "The Wardens’ Ledger",
+                  "Numbers, not observations.",
+                  "WL",
+                  3,
+                  100,
+                  260
+                ],
+                [
+                  "Third Ossuary Terrace",
+                  "Oldest lowest.",
+                  "OT",
+                  1,
+                  790,
+                  80,
+                  0,
+                  0,
+                  "keep"
+                ],
+                [
+                  "The thirty-first king",
+                  "Facing the door now.",
+                  "31",
+                  2,
+                  810,
+                  260
+                ],
+                [
+                  "The Hollow Rite",
+                  "Retains one thing: refusal.",
+                  "HR",
+                  4,
+                  1090,
+                  170,
+                  0,
+                  0,
+                  "rite"
+                ]
+              ],
+              "links": [
+                [
+                  0,
+                  1
+                ],
+                [
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ],
+                [
+                  4,
+                  5
+                ]
+              ]
+            },
+            {
+              "name": "Speaker for the Dead — scene board",
+              "cards": [
+                [
+                  "Speaker for the Dead — beats",
+                  "Dray speaks for the moon · the grain levy · “silence is assent” · Teodric looks at his boots.",
+                  "◉",
+                  1,
+                  440,
+                  40,
+                  280,
+                  110
+                ],
+                [
+                  "Lord Casimir Dray",
+                  "Constantly, and without permission.",
+                  "CD",
+                  0,
+                  130,
+                  90
+                ],
+                [
+                  "Queen Maelis",
+                  "One law the dead did not approve.",
+                  "QM",
+                  0,
+                  130,
+                  270,
+                  0,
+                  0,
+                  "maelis"
+                ],
+                [
+                  "The Bone Court",
+                  "Nine lords, one empty seat.",
+                  "BC",
+                  2,
+                  800,
+                  90,
+                  0,
+                  0,
+                  "bonecourt"
+                ],
+                [
+                  "Silence as Assent",
+                  "Who answers for them?",
+                  "SA",
+                  4,
+                  800,
+                  270
+                ]
+              ],
+              "links": [
+                [
+                  0,
+                  1
+                ],
+                [
+                  0,
+                  2
+                ],
+                [
+                  1,
+                  3
+                ],
+                [
+                  3,
+                  4
+                ]
+              ]
+            }
+          ],
+          "plans": [
+            {
+              "id": "pl1",
+              "t": "Plan — The Count",
+              "d": "Forty → thirty-nine → refusal"
+            },
+            {
+              "id": "pl2",
+              "t": "Plan — Dray’s silence",
+              "d": "Levy → ledger → the door"
+            }
+          ],
+          "crafter": {
+            "pov": "Teodric (Third Limited)",
+            "beats": [
+              "Dawn on the third terrace",
+              "The ledger, the margin, the lie",
+              "Dray asks for the count"
+            ],
+            "title": "What Silence Costs",
+            "goal": "Get the ledger to the Queen before the Bone Court sits.",
+            "conflict": "Dray already knows the count is thirty-nine — and wants it in writing."
+          },
+          "pov": "Teodric Vale",
+          "loc": "Caerwyn Keep",
+          "plot": {
+            "plotlines": [
+              {
+                "id": "main",
+                "name": "Main Plot",
+                "c": 0
+              },
+              {
+                "id": "count",
+                "name": "Teodric’s Count",
+                "c": 1
+              },
+              {
+                "id": "law",
+                "name": "Maelis’s Law",
+                "c": 2
+              },
+              {
+                "id": "dray",
+                "name": "Dray’s Silence",
+                "c": 3
+              }
+            ],
+            "cards": [
+              {
+                "id": "hc1",
+                "pl": "main",
+                "ch": 1,
+                "t": "The Count at Dawn",
+                "d": "Forty. Then forty again.",
+                "w": true
+              },
+              {
+                "id": "hc2",
+                "pl": "main",
+                "ch": 2,
+                "t": "The Living Hall",
+                "d": "A queen learns a name.",
+                "w": true
+              },
+              {
+                "id": "hc3",
+                "pl": "main",
+                "ch": 3,
+                "t": "The Empty Seat",
+                "d": "Thirty-nine."
+              },
+              {
+                "id": "hc4",
+                "pl": "main",
+                "ch": 4,
+                "t": "The Hollow Crown",
+                "d": "Forty refusals at once."
+              },
+              {
+                "id": "hc5",
+                "pl": "count",
+                "ch": 1,
+                "t": "He is facing the door",
+                "d": "Margin note no one reads.",
+                "w": true
+              },
+              {
+                "id": "hc6",
+                "pl": "law",
+                "ch": 2,
+                "t": "One law the dead did not approve",
+                "d": "The grain levy."
+              },
+              {
+                "id": "hc7",
+                "pl": "dray",
+                "ch": 2,
+                "t": "Silence is assent",
+                "d": "Speaking for the moon.",
+                "w": true
+              },
+              {
+                "id": "hc8",
+                "pl": "dray",
+                "ch": 3,
+                "t": "Dray wants the ledger",
+                "d": "The same betrayal, twice."
+              }
+            ]
+          },
+          "lanes": {
+            "arcs": [
+              {
+                "t": "I. The Count",
+                "c": 1,
+                "from": 3108,
+                "to": 3114
+              },
+              {
+                "t": "II. Refusal",
+                "c": 5,
+                "from": 3114,
+                "to": 3120
+              }
+            ],
+            "journeys": [
+              {
+                "t": "Teodric Vale",
+                "sub": "Keeper of the count → the one who breaks it",
+                "c": 0,
+                "from": 3108,
+                "to": null
+              },
+              {
+                "t": "Queen Maelis",
+                "sub": "Sovereign → exile",
+                "c": 5,
+                "from": 3108,
+                "to": null
+              },
+              {
+                "t": "Lord Casimir Dray",
+                "sub": "Speaker for the Dead → silenced",
+                "c": 2,
+                "from": 3109,
+                "to": 3120
+              }
+            ],
+            "world": [
+              {
+                "t": "Ashfall levy read",
+                "day": "Ashfall 9",
+                "d": "The grain levy is read to the crypt. Silence.",
+                "c": 6,
+                "when": 3110
+              },
+              {
+                "t": "Bonemonth vigil",
+                "day": "Bonemonth 1",
+                "d": "Seven nights of lamps on the ossuary terraces.",
+                "c": 3,
+                "when": 3115
+              },
+              {
+                "t": "The Refusal",
+                "day": "Deepfrost 3",
+                "d": "Forty kings refuse at once. A door.",
+                "c": 0,
+                "when": 3119
+              }
+            ],
+            "themes": [
+              {
+                "t": "Silence as Assent",
+                "c": 1
+              },
+              {
+                "t": "The Weight of the Dead",
+                "c": 7
+              },
+              {
+                "t": "Counting as Faith",
+                "c": 8
+              }
+            ]
+          },
+          "name": "The Hollow Crown",
+          "sub": "Co-written · Dark Fantasy · Third Limited",
+          "words": "61,208 words",
+          "pct": 41,
+          "book": [
+            {
+              "t": "The Count",
+              "label": "PART ONE",
+              "intro": [
+                "Forty kings sit beneath Caerwyn. Every dawn a man counts them. Every dawn the number is the same. This is the entire constitution of the realm.",
+                "— from the Wardens’ Primer, third edition"
+              ],
+              "chapters": [
+                {
+                  "t": "The Count at Dawn",
+                  "n": 1,
+                  "scenes": [
+                    {
+                      "t": "Forty",
+                      "status": "done",
+                      "paras": [
+                        "Teodric Vale had counted the kings of Caerwyn every dawn for twenty years, and the number had never once been interesting. Forty. Forty seated, forty silent, forty crowned in bone and dressed in the colours they had died in.",
+                        "On the ninth day of Ashfall he counted forty, and then, because the light on the third terrace fell wrong, he counted again. Forty. He wrote it in the ledger. He did not write that the thirty-first king had turned his head."
+                      ]
+                    },
+                    {
+                      "t": "The Ledger",
+                      "status": "done",
+                      "paras": [
+                        "A warden’s ledger records numbers, not observations. Teodric had been told this on his first day by a man who was now seated on the fifth terrace, and he had believed it for two decades because believing it was restful.",
+                        "He turned the ledger to a fresh page and wrote, in the margin where no one looked: he is facing the door now."
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "t": "The Living Hall",
+                  "n": 2,
+                  "scenes": [
+                    {
+                      "t": "A Queen Learns a Name",
+                      "status": "done",
+                      "paras": [
+                        "\"You are the one who counts,\" said Queen Maelis, and Teodric understood that she had not asked a question, and that he was expected to answer it anyway.",
+                        "\"Every dawn, Majesty.\" \"And are they all still there?\" He thought of the thirty-first king. \"Every one of them is exactly where he was placed,\" he said, which was true of thirty-nine."
+                      ]
+                    },
+                    {
+                      "t": "Speaker for the Dead",
+                      "status": "draft",
+                      "paras": [
+                        "Lord Casimir Dray spoke for the kings the way a tide speaks for the moon: constantly, and without permission. \"The crypt is silent on the matter of the grain levy,\" he announced, \"and silence is assent.\"",
+                        "The Bone Court murmured. Teodric, standing where wardens stood, looked at his boots and thought about which door the thirty-first king was facing, and what was on the other side of it."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "t": "Refusal",
+              "label": "PART TWO",
+              "chapters": [
+                {
+                  "t": "The Empty Seat",
+                  "n": 3,
+                  "scenes": [
+                    {
+                      "t": "Thirty-Nine",
+                      "status": "draft",
+                      "paras": [
+                        "The morning the count came to thirty-nine, Teodric stood on the third terrace for a long time with the ledger open and the pen dry.",
+                        "The thirty-first chair was not empty. It was occupied by exactly what had always occupied it. But the king who had sat there was, in some way Teodric had no word for, no longer in attendance."
+                      ]
+                    },
+                    {
+                      "t": "What Silence Costs",
+                      "status": "todo",
+                      "paras": [
+                        "Dray wanted the ledger. The Queen wanted the truth. Teodric wanted, with a purity that surprised him, to have been born a farmer.",
+                        "He gave the Queen the ledger and Dray the truth, and discovered that in Caerwyn those were the same betrayal."
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "t": "The Hollow Crown",
+                  "n": 4,
+                  "scenes": [
+                    {
+                      "t": "The Rite Refused",
+                      "status": "todo",
+                      "paras": [
+                        "The kings had always been able to refuse. Everyone knew it the way everyone knew the mountain was tall — as a fact that required nothing of them.",
+                        "What no one had considered was what forty refusals at once would sound like, or that the sound would be a door."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "events": [
+            {
+              "t": "The Count at Dawn",
+              "ch": "Ch. 1",
+              "when": 3110,
+              "d": "[[Teodric Vale]] counts forty kings. The thirty-first has turned his head. See [[The Hollow Rite]].",
+              "icon": "✦"
+            },
+            {
+              "t": "A Queen Learns a Name",
+              "ch": "Ch. 2",
+              "when": 3112,
+              "d": "[[Queen Maelis]] asks the warden his name. No queen has done this.",
+              "icon": "◈"
+            },
+            {
+              "t": "Silence Is Assent",
+              "ch": "Ch. 2",
+              "when": 3113,
+              "d": "Lord Dray speaks for the dead on the grain levy. [[The Bone Court]] murmurs.",
+              "icon": "◉",
+              "detail": {
+                "book": "The Hollow Crown",
+                "date": "4th of Bonemonth, Year 311 HR",
+                "loc": "Third Ossuary Terrace, Caerwyn Keep",
+                "pov": "Teodric Vale",
+                "sum": "Dray declares the crypt silent on the levy. Teodric wonders which door the thirty-first king is facing.",
+                "impact": [
+                  "Story Progression"
+                ]
+              }
+            },
+            {
+              "t": "Thirty-Nine",
+              "ch": "Ch. 3",
+              "when": 3116,
+              "d": "The count breaks. A king is no longer in attendance.",
+              "icon": "✹"
+            },
+            {
+              "t": "The Crowning of the Dead",
+              "ch": "Ch. 4",
+              "when": 2120,
+              "flash": true,
+              "d": "The founding rite, year 212 HR — the Drowned Prince’s empty chair. Revealed late; happens early.",
+              "icon": "✷"
+            },
+            {
+              "t": "The Rite Refused",
+              "ch": "Ch. 4",
+              "when": 3119,
+              "d": "Forty refusals at once. The sound is a door.",
+              "icon": "✶"
+            }
+          ],
+          "editorDocs": {
+            "k1": {
+              "label": "Forty",
+              "go": {
+                "zoom": "scene",
+                "pp": 0,
+                "cc": 0,
+                "ss": 0
+              }
+            },
+            "k2": {
+              "label": "Speaker for the Dead",
+              "go": {
+                "zoom": "scene",
+                "pp": 0,
+                "cc": 1,
+                "ss": 1
+              }
+            },
+            "kch3": {
+              "label": "The Empty Seat",
+              "go": {
+                "zoom": "chapter",
+                "pp": 1,
+                "cc": 0,
+                "ss": 0
+              }
+            }
+          },
+          "treeOpen": {
+            "p0": true,
+            "p1": true,
+            "c0-0": true,
+            "c0-1": true,
+            "c1-0": false,
+            "c1-1": false
+          }
+        },
+        {
+          "id": "letters",
+          "svault": "Salt & Silver",
+          "axis": [
+            3114,
+            3153
+          ],
+          "boards": [
+            {
+              "name": "Letter the First — scene board",
+              "cards": [
+                [
+                  "Letter the First — beats",
+                  "The sea sighs · it takes things at night · the Queen’s second-best chair · “It never asks.”",
+                  "✦",
+                  1,
+                  440,
+                  40,
+                  280,
+                  110
+                ],
+                [
+                  "Ilse Marrow",
+                  "Narrator. Numbers her lies.",
+                  "IM",
+                  0,
+                  130,
+                  90,
+                  0,
+                  0,
+                  "ilse"
+                ],
+                [
+                  "Queen Maelis",
+                  "First-best chair, watching the water.",
+                  "QM",
+                  0,
+                  130,
+                  270,
+                  0,
+                  0,
+                  "maelis"
+                ],
+                [
+                  "Greywater",
+                  "Shingle, huts, the Tide Post.",
+                  "GW",
+                  1,
+                  800,
+                  90,
+                  0,
+                  0,
+                  "grey"
+                ],
+                [
+                  "Aurel Marrow",
+                  "Recipient. Inside the Keep.",
+                  "AM",
+                  0,
+                  800,
+                  270
+                ]
+              ],
+              "links": [
+                [
+                  0,
+                  1
+                ],
+                [
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  3
+                ],
+                [
+                  1,
+                  4
+                ]
+              ]
+            },
+            {
+              "name": "The Last Chair — scene board",
+              "cards": [
+                [
+                  "The Last Chair — beats",
+                  "One chair left · walked down the shingle at low tide · facing the mountain · “Let them count that.”",
+                  "✶",
+                  1,
+                  440,
+                  40,
+                  280,
+                  110
+                ],
+                [
+                  "Queen Maelis",
+                  "Skirts soaked, face dry.",
+                  "QM",
+                  0,
+                  130,
+                  90,
+                  0,
+                  0,
+                  "maelis"
+                ],
+                [
+                  "The Queen’s Chairs",
+                  "Six, then one, then none.",
+                  "QC",
+                  3,
+                  130,
+                  270
+                ],
+                [
+                  "Mount Oriel",
+                  "Faced from the water.",
+                  "MO",
+                  1,
+                  800,
+                  90
+                ],
+                [
+                  "Letter the fourteenth",
+                  "And it is the twelfth.",
+                  "14",
+                  4,
+                  800,
+                  270
+                ]
+              ],
+              "links": [
+                [
+                  0,
+                  1
+                ],
+                [
+                  1,
+                  2
+                ],
+                [
+                  0,
+                  3
+                ],
+                [
+                  0,
+                  4
+                ]
+              ]
+            }
+          ],
+          "plans": [
+            {
+              "id": "pl1",
+              "t": "Plan — Letters I–IX",
+              "d": "Outbound · numbered wrong on purpose"
+            },
+            {
+              "id": "pl2",
+              "t": "Plan — The chairs",
+              "d": "Second-best → the last one, facing the mountain"
+            }
+          ],
+          "crafter": {
+            "pov": "Ilse (First Person)",
+            "beats": [
+              "The boat is late",
+              "A letter numbered wrong on purpose",
+              "The Queen comes back smelling of tar"
+            ],
+            "title": "Letter the Seventh",
+            "goal": "Tell Aurel the truth about the chairs without telling him the truth about the Queen.",
+            "conflict": "The boatman reads everything. So does the sea."
+          },
+          "pov": "Ilse Marrow",
+          "loc": "Greywater",
+          "plot": {
+            "plotlines": [
+              {
+                "id": "out",
+                "name": "Outbound letters",
+                "c": 0
+              },
+              {
+                "id": "in",
+                "name": "Inbound replies",
+                "c": 1
+              },
+              {
+                "id": "chairs",
+                "name": "The Chairs",
+                "c": 3
+              }
+            ],
+            "cards": [
+              {
+                "id": "sl1",
+                "pl": "out",
+                "ch": 1,
+                "t": "Letter the First",
+                "d": "The sea is nothing like they told us.",
+                "w": true
+              },
+              {
+                "id": "sl2",
+                "pl": "out",
+                "ch": 2,
+                "t": "Letter the Fourth",
+                "d": "What the warden said, in long hand.",
+                "w": true
+              },
+              {
+                "id": "sl3",
+                "pl": "in",
+                "ch": 3,
+                "t": "Your reply came wet",
+                "d": "Eleven readings; no answer."
+              },
+              {
+                "id": "sl4",
+                "pl": "chairs",
+                "ch": 1,
+                "t": "Second-best chair",
+                "d": "Taken in the night.",
+                "w": true
+              },
+              {
+                "id": "sl5",
+                "pl": "chairs",
+                "ch": 3,
+                "t": "The last chair",
+                "d": "Facing the mountain."
+              }
+            ]
+          },
+          "lanes": {
+            "arcs": [
+              {
+                "t": "Outbound",
+                "c": 1,
+                "from": 3138,
+                "to": 3145
+              },
+              {
+                "t": "Inbound",
+                "c": 5,
+                "from": 3145,
+                "to": 3151
+              }
+            ],
+            "journeys": [
+              {
+                "t": "Ilse Marrow",
+                "sub": "Court scribe → exile’s scribe",
+                "c": 0,
+                "from": 3138,
+                "to": null
+              },
+              {
+                "t": "Queen Maelis",
+                "sub": "Exile → forgotten well",
+                "c": 5,
+                "from": 3138,
+                "to": null
+              },
+              {
+                "t": "Aurel Marrow",
+                "sub": "Apprentice → the one who replies",
+                "c": 2,
+                "from": 3140,
+                "to": null
+              }
+            ],
+            "world": [
+              {
+                "t": "Boat day",
+                "day": "Thawmoon 2",
+                "d": "The tide post opens; letters go out.",
+                "c": 6,
+                "when": 3141
+              },
+              {
+                "t": "Storm season",
+                "day": "Seedfall",
+                "d": "Three chairs to the water in one week.",
+                "c": 3,
+                "when": 3144
+              },
+              {
+                "t": "Last chair",
+                "day": "Thawmoon 2, 315 HR",
+                "d": "Set facing the mountain at low tide.",
+                "c": 0,
+                "when": 3149
+              }
+            ],
+            "themes": [
+              {
+                "t": "Distance & Address",
+                "c": 1
+              },
+              {
+                "t": "The Sea Never Asks",
+                "c": 7
+              },
+              {
+                "t": "Counting Wrong on Purpose",
+                "c": 2
+              }
+            ]
+          },
+          "name": "Saltwater Letters",
+          "sub": "Novella · Same world, after the fall · First Person, epistolary",
+          "words": "22,730 words",
+          "pct": 52,
+          "book": [
+            {
+              "t": "Outbound",
+              "label": "LETTERS I–IX",
+              "intro": [
+                "Aurel — I have numbered these so you will know when one is missing. I have also lied about the numbers, so you will not know how many. Forgive me both.",
+                "— Ilse"
+              ],
+              "chapters": [
+                {
+                  "t": "Letter the First",
+                  "n": 1,
+                  "scenes": [
+                    {
+                      "t": "The Sea Is Nothing Like They Told Us",
+                      "status": "done",
+                      "paras": [
+                        "Aurel — The sea is nothing like they told us. It does not roar. It sighs, all day, like a bored courtier, and then at night it comes up the shingle and takes things: a boot, a bucket, the Queen’s second-best chair.",
+                        "She is well. If you can call this well. She sits on the first-best chair and watches the water and says, every evening, \"It never asks,\" and I write it down because that is what I am for."
+                      ]
+                    },
+                    {
+                      "t": "The Tide Post",
+                      "status": "done",
+                      "paras": [
+                        "The boat comes twice a season. The man who rows it will not take letters addressed to the Keep, so this is addressed to a bone-warden’s apprentice at a mountain, which is where you live, and is not the Keep, and he is satisfied.",
+                        "I have put a shell in with this one. It is not for you. It is proof that I am somewhere."
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "t": "Letter the Fourth",
+                  "n": 2,
+                  "scenes": [
+                    {
+                      "t": "What the Warden Said",
+                      "status": "draft",
+                      "paras": [
+                        "You asked what Teodric Vale told me the night the count broke. I took it down in shorthand; here is the long hand. He said the kings had turned. He said all of them. He said it the way you used to report the weather — embarrassed to be the one bringing it.",
+                        "Then he asked me to spell his name correctly in the record, because he expected to be seated soon and wanted the plaque right. I spelled it correctly. He is not seated. Nor, I think, will he be."
+                      ]
+                    },
+                    {
+                      "t": "The Salt Guild",
+                      "status": "draft",
+                      "paras": [
+                        "I have taken work in the sheds. The Guild pays in salt, which is funny until you try to buy bread with it. The Queen has taken work too, and will not say where, and comes back smelling of tar.",
+                        "The sea took another chair last night. We are running out of chairs, Aurel, and I am beginning to think that is the point."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "t": "Inbound",
+              "label": "LETTERS X–XIV",
+              "chapters": [
+                {
+                  "t": "Letter the Eleventh",
+                  "n": 3,
+                  "scenes": [
+                    {
+                      "t": "Your Reply Came Wet",
+                      "status": "todo",
+                      "paras": [
+                        "Your reply came wet and three seasons late, and I have dried it on a rock and read it eleven times and I am not going to answer the question in it, because you already know.",
+                        "Yes. She would go back. Yes. I would go with her. No. Neither of us will say so aloud, because the sea is listening, and the sea never asks, and I have grown to love that about it."
+                      ]
+                    },
+                    {
+                      "t": "The Last Chair",
+                      "status": "todo",
+                      "paras": [
+                        "There is one chair left. She has given it to the water on purpose — walked it down the shingle at low tide and set it facing the mountain and come back with her skirts soaked and her face dry.",
+                        "\"Let them count that,\" she said. I wrote it down. I always write it down. This is letter the fourteenth, and it is the twelfth."
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "events": [
+            {
+              "t": "Letter the First",
+              "ch": "Ch. 1",
+              "when": 3140,
+              "d": "[[Ilse Marrow]] writes from [[Greywater]]. The sea is nothing like they told us.",
+              "icon": "✦"
+            },
+            {
+              "t": "The Tide Post",
+              "ch": "Ch. 1",
+              "when": 3141,
+              "d": "The boat comes twice a season. A shell as proof of somewhere.",
+              "icon": "◈"
+            },
+            {
+              "t": "What the Warden Said",
+              "ch": "Ch. 2",
+              "when": 3118,
+              "flash": true,
+              "d": "The night the count broke, retold — [[Teodric Vale]]’s testimony in long hand.",
+              "icon": "✷"
+            },
+            {
+              "t": "The Salt Guild",
+              "ch": "Ch. 2",
+              "when": 3143,
+              "d": "[[Queen Maelis]] takes work and will not say where. Chairs are running out.",
+              "icon": "◉"
+            },
+            {
+              "t": "The Last Chair",
+              "ch": "Ch. 3",
+              "when": 3149,
+              "d": "Walked into the sea at low tide, facing the mountain. Let them count that.",
+              "icon": "✶",
+              "detail": {
+                "book": "Saltwater Letters",
+                "date": "2nd of Thawmoon, Year 315 HR",
+                "loc": "Greywater shingle",
+                "pov": "Ilse Marrow",
+                "sum": "Maelis gives the last chair to the water. Ilse writes it down: letter the fourteenth, and it is the twelfth.",
+                "impact": [
+                  "Character Turn"
+                ]
+              }
+            }
+          ],
+          "editorDocs": {
+            "l1": {
+              "label": "The Sea Is Nothing Like They Told Us",
+              "go": {
+                "zoom": "scene",
+                "pp": 0,
+                "cc": 0,
+                "ss": 0
+              }
+            },
+            "l2": {
+              "label": "What the Warden Said",
+              "go": {
+                "zoom": "scene",
+                "pp": 0,
+                "cc": 1,
+                "ss": 0
+              }
+            }
+          },
+          "treeOpen": {
+            "p0": true,
+            "p1": false,
+            "c0-0": true,
+            "c0-1": true
+          }
+        }
+      ]
+    }
+  },
+  "plotTemplates": [
+    {
+      "name": "Three-Act Structure",
+      "beats": [
+        [
+          1,
+          "Setup"
+        ],
+        [
+          3,
+          "Inciting Incident"
+        ],
+        [
+          4,
+          "Plot Point One"
+        ],
+        [
+          6,
+          "Midpoint"
+        ],
+        [
+          9,
+          "Plot Point Two"
+        ],
+        [
+          11,
+          "Climax"
+        ],
+        [
+          12,
+          "Resolution"
+        ]
+      ]
+    },
+    {
+      "name": "Save the Cat",
+      "beats": [
+        [
+          1,
+          "Opening Image"
+        ],
+        [
+          2,
+          "Theme Stated"
+        ],
+        [
+          3,
+          "Catalyst"
+        ],
+        [
+          4,
+          "Break into Two"
+        ],
+        [
+          6,
+          "Midpoint"
+        ],
+        [
+          8,
+          "All Is Lost"
+        ],
+        [
+          10,
+          "Break into Three"
+        ],
+        [
+          12,
+          "Final Image"
+        ]
+      ]
+    },
+    {
+      "name": "Hero’s Journey",
+      "beats": [
+        [
+          1,
+          "Ordinary World"
+        ],
+        [
+          2,
+          "Call to Adventure"
+        ],
+        [
+          3,
+          "Refusal of the Call"
+        ],
+        [
+          4,
+          "Crossing the Threshold"
+        ],
+        [
+          6,
+          "Tests & Allies"
+        ],
+        [
+          8,
+          "The Ordeal"
+        ],
+        [
+          10,
+          "The Road Back"
+        ],
+        [
+          12,
+          "Return with the Elixir"
+        ]
+      ]
+    }
+  ],
+  "crafterDraftVeynn": [
+    "The door was not on any map, and it knew it. Mira ran her palm along the seam where stone met older stone, and the hum rose to meet her — low, patient, familiar in a way that made her stomach drop.",
+    "Behind her, Kael laughed at something the patrol sergeant said, too loud and half a beat too late. He was buying her seconds and spending them badly.",
+    "“Open, then,” she whispered — not to the door, but to the blood that already knew the way. The seam breathed. Somewhere below, the drownlight blinked."
+  ],
+  "crafterVaultColsVeynn": [
+    {
+      "title": "CHARACTERS",
+      "color": 0,
+      "cards": [
+        {
+          "t": "Mira Veynn",
+          "d": "Reluctant heir — resourceful, haunted.",
+          "id": "mira",
+          "av": "MV"
+        },
+        {
+          "t": "Kael Thorne",
+          "d": "Smuggler — witty, guarded, survivor.",
+          "id": null,
+          "av": "KT"
+        },
+        {
+          "t": "The Broker",
+          "d": "Antagonist — elusive, always watching.",
+          "id": null,
+          "av": "B"
+        }
+      ]
+    },
+    {
+      "title": "LOCATIONS",
+      "color": 1,
+      "cards": [
+        {
+          "t": "The Undercity",
+          "d": "Drowned streets, stacked walkways.",
+          "id": null,
+          "av": "U"
+        },
+        {
+          "t": "The Sunken Gate",
+          "d": "Ancient floodgate. Opens at low tide.",
+          "id": "gate",
+          "av": "SG"
+        }
+      ]
+    },
+    {
+      "title": "ITEMS & SYSTEMS",
+      "color": 3,
+      "cards": [
+        {
+          "t": "Map Fragment",
+          "d": "Redraws itself at low tide.",
+          "id": null,
+          "av": "MF"
+        },
+        {
+          "t": "Drownlight",
+          "d": "Burns underwater. Misbehaves near flame.",
+          "id": null,
+          "av": "DL"
+        },
+        {
+          "t": "Tide Mechanics",
+          "d": "The rules by which the deep breathes.",
+          "id": null,
+          "av": "TM"
+        }
+      ]
+    }
+  ],
+  "graphCategories": [
+    {
+      "label": "Characters",
+      "color": "#00f0ff"
+    },
+    {
+      "label": "Locations",
+      "color": "#9b5fff"
+    },
+    {
+      "label": "Factions",
+      "color": "#ff4dff"
+    },
+    {
+      "label": "Items",
+      "color": "#ff9a3d"
+    },
+    {
+      "label": "Systems",
+      "color": "#2fe6c8"
+    },
+    {
+      "label": "Story",
+      "color": "#ffd319"
+    },
+    {
+      "label": "History / Lore",
+      "color": "#e0b3ff"
+    }
+  ],
+  "themePresets": {
+    "classic": {
+      "name": "Neon Nebula",
+      "c": [
+        "#00f0ff",
+        "#9b5fff",
+        "#ff4dff",
+        "#ff9a3d",
+        "#2fe6c8",
+        "#3d9bff"
+      ]
+    },
+    "aurora": {
+      "name": "Aurora",
+      "c": [
+        "#34ffc8",
+        "#00d4ff",
+        "#a78bfa",
+        "#ffd97a",
+        "#5f8bff",
+        "#8ad9ff"
+      ]
+    },
+    "cyber": {
+      "name": "Cyberpunk",
+      "c": [
+        "#ff2d95",
+        "#ffd319",
+        "#00e5ff",
+        "#b4ff39",
+        "#8a5cff",
+        "#ff6b4d"
+      ]
+    },
+    "sunset": {
+      "name": "Sunset Coast",
+      "c": [
+        "#ff9a3d",
+        "#ff4d88",
+        "#b06bff",
+        "#ffd319",
+        "#ff6b4d",
+        "#ffe680"
+      ]
+    },
+    "ice": {
+      "name": "Ice Mono",
+      "c": [
+        "#7ae7ff",
+        "#00c8f0",
+        "#3d9bff",
+        "#9fd0ff",
+        "#5f7dff",
+        "#c9e6ff"
+      ]
+    },
+    "ember": {
+      "name": "Emberfall",
+      "c": [
+        "#ff6b4d",
+        "#ffd319",
+        "#ff2d95",
+        "#ff9a3d",
+        "#b06bff",
+        "#ffe680"
+      ]
+    },
+    "verdant": {
+      "name": "Verdant Reach",
+      "c": [
+        "#a3ff57",
+        "#2fe6c8",
+        "#00d4ff",
+        "#ffd97a",
+        "#57ff9a",
+        "#8ad9ff"
+      ]
+    },
+    "royal": {
+      "name": "Royal Arcana",
+      "c": [
+        "#c86bff",
+        "#7a5cff",
+        "#ff4dff",
+        "#ffd319",
+        "#5f8bff",
+        "#ff9ad5"
+      ]
+    },
+    "noir": {
+      "name": "Noir Rose",
+      "c": [
+        "#ff5f8f",
+        "#8a9bff",
+        "#ffd319",
+        "#ff9a3d",
+        "#5fffe0",
+        "#c86bff"
+      ]
+    },
+    "winter": {
+      "name": "Winterlight",
+      "c": [
+        "#eaf6ff",
+        "#9fd4ff",
+        "#6fa8ff",
+        "#cfeaff",
+        "#8fc0f0",
+        "#dff0ff"
+      ]
+    }
+  },
+  "appearanceDefaults": {
+    "intensity": 50,
+    "customWp": null,
+    "glassA": 20,
+    "blur": 1,
+    "wp": "match",
+    "scrim": 10,
+    "reduceGlow": false,
+    "animGlow": true,
+    "glowW": 1,
+    "glowR": 60,
+    "frameAnim": "off",
+    "frameSpeed": 12,
+    "pageCfg": {
+      "mode": "neon",
+      "bg": "#0a0d18",
+      "op": 66,
+      "blur": 0
+    },
+    "txtCfg": {
+      "head": "#f0f3fc",
+      "body": "#c8d3e7",
+      "split": false,
+      "nHead": "#f0f3fc",
+      "nBody": "#c8d3e7"
+    },
+    "ambMode": "match",
+    "uiTextCol": "#c8d3e7",
+    "uiBtnCol": "#cdd8ea"
+  },
+  "swatches": [
+    "#00f0ff",
+    "#34ffc8",
+    "#3d9bff",
+    "#9b5fff",
+    "#c86bff",
+    "#ff4dff",
+    "#ff2d95",
+    "#ff6b4d",
+    "#ffd319",
+    "#a3ff57",
+    "#eaf2ff"
+  ],
+  "vaultIconSet": [
+    [
+      "book",
+      "Book",
+      "<path d=\"M4 5.5A2 2 0 0 1 6 3.5h12v17H6a2 2 0 0 0-2 2z\"></path><path d=\"M18 16.5H6a2 2 0 0 0-2 2\"></path>"
+    ],
+    [
+      "scroll",
+      "Scroll",
+      "<path d=\"M6 4h10a2 2 0 0 1 2 2v12a2 2 0 0 0 2 2H8a2 2 0 0 1-2-2z\"></path><path d=\"M9 8h6M9 12h6\"></path>"
+    ],
+    [
+      "feather",
+      "Feather",
+      "<path d=\"M19 4.5c0 6-4.5 10.5-10.5 10.5H5.5L19 4.5z\"></path><path d=\"M5 20l7-7\"></path>"
+    ],
+    [
+      "crown",
+      "Crown",
+      "<path d=\"M3.5 8l3.5 3.5L12 5l5 6.5L20.5 8l-1.5 11h-14z\"></path>"
+    ],
+    [
+      "sword",
+      "Sword",
+      "<path d=\"M14.5 3.5h6v6L10 20l-3-3z\"></path><path d=\"M4 20l3.5-3.5\"></path>"
+    ],
+    [
+      "shield",
+      "Shield",
+      "<path d=\"M12 3.5l7.5 2.5v6c0 4.5-3 7.5-7.5 9-4.5-1.5-7.5-4.5-7.5-9V6z\"></path>"
+    ],
+    [
+      "map",
+      "Map",
+      "<path d=\"M3.5 6.5l5.5-2 6 2 5.5-2v13l-5.5 2-6-2-5.5 2z\"></path><path d=\"M9 4.5v13M15 6.5v13\"></path>"
+    ],
+    [
+      "compass",
+      "Compass",
+      "<circle cx=\"12\" cy=\"12\" r=\"8.5\"></circle><path d=\"M15.5 8.5l-2 5-5 2 2-5z\"></path>"
+    ],
+    [
+      "castle",
+      "Castle",
+      "<path d=\"M4 20V8l3 2V6l3 2 2-3 2 3 3-2v4l3-2v12z\"></path><path d=\"M10.5 20v-5h3v5\"></path>"
+    ],
+    [
+      "mountain",
+      "Mountain",
+      "<path d=\"M3 19l6.5-11 4 6 2.5-3.5L21 19z\"></path>"
+    ],
+    [
+      "wave",
+      "Water",
+      "<path d=\"M3 9c3-3 6 3 9 0s6-3 9 0\"></path><path d=\"M3 15c3-3 6 3 9 0s6-3 9 0\"></path>"
+    ],
+    [
+      "flame",
+      "Flame",
+      "<path d=\"M12 3.5c4 5 6 7 6 10.5a6 6 0 0 1-12 0C6 10.5 8 8.5 12 3.5z\"></path>"
+    ],
+    [
+      "moon",
+      "Moon",
+      "<path d=\"M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z\"></path>"
+    ],
+    [
+      "star",
+      "Star",
+      "<path d=\"M12 3.5l2.8 5.8 6.2.9-4.5 4.4 1.1 6.4L12 18l-5.6 3 1.1-6.4L3 10.2l6.2-.9z\"></path>"
+    ],
+    [
+      "eye",
+      "Eye",
+      "<path d=\"M2.5 12S6 6.5 12 6.5 21.5 12 21.5 12 18 17.5 12 17.5 2.5 12 2.5 12z\"></path><circle cx=\"12\" cy=\"12\" r=\"2.8\"></circle>"
+    ],
+    [
+      "key",
+      "Key",
+      "<circle cx=\"8\" cy=\"8\" r=\"4.2\"></circle><path d=\"M11 11l9 9M17 17l2-2M14.5 14.5l2-2\"></path>"
+    ],
+    [
+      "mask",
+      "Mask",
+      "<path d=\"M4 6.5h16v5a9 9 0 0 1-8 9 9 9 0 0 1-8-9z\"></path><path d=\"M8.5 11h1M14.5 11h1\"></path>"
+    ],
+    [
+      "potion",
+      "Potion",
+      "<path d=\"M10 3.5h4v4l3.5 6a5.5 5.5 0 0 1-11 0L10 7.5z\"></path><path d=\"M7 14h10\"></path>"
+    ],
+    [
+      "tree",
+      "Tree",
+      "<path d=\"M12 3.5L7 11h10z\"></path><path d=\"M12 8L6.5 16h11z\"></path><path d=\"M12 16v4.5\"></path>"
+    ],
+    [
+      "ship",
+      "Ship",
+      "<path d=\"M4 13.5h16l-2.5 6h-11z\"></path><path d=\"M12 13.5V4l6 5.5h-6\"></path>"
+    ],
+    [
+      "skull",
+      "Skull",
+      "<path d=\"M5 11a7 7 0 0 1 14 0v3l-2 1.5v3H7v-3L5 14z\"></path><circle cx=\"9.5\" cy=\"11\" r=\"1.4\"></circle><circle cx=\"14.5\" cy=\"11\" r=\"1.4\"></circle>"
+    ],
+    [
+      "gem",
+      "Gem",
+      "<path d=\"M7 4h10l4 6-9 10-9-10z\"></path><path d=\"M3 10h18M9 4l-2 6 5 10 5-10-2-6\"></path>"
+    ],
+    [
+      "bell",
+      "Bell",
+      "<path d=\"M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2H4.5z\"></path><path d=\"M10 19.5a2 2 0 0 0 4 0\"></path>"
+    ],
+    [
+      "hourglass",
+      "Hourglass",
+      "<path d=\"M7 3.5h10L12 11l5 7.5v2H7v-2L12 11z\"></path>"
+    ]
+  ],
+  "iconColors": [
+    "#00f0ff",
+    "#9b5fff",
+    "#ff4dff",
+    "#2fe6c8",
+    "#ffd319",
+    "#ff6b8a",
+    "#3d9bff",
+    "#8fa3bd"
+  ],
+  "agentFiles": [
+    "agent.md",
+    "instructions.md",
+    "learning.md",
+    "soul.md"
+  ],
+  "agentChatSeeds": {
+    "writing": [
+      {
+        "who": "bot",
+        "text": "I’m tuned to Dark & Gritty at a moderate cadence. Ask me to tighten, expand, or rework anything in this scene."
+      }
+    ],
+    "brainstorm": [
+      {
+        "who": "bot",
+        "text": "I can search or grow your vault without leaving the page. Try: “what do we know about…” and name any note in this vault."
+      }
+    ],
+    "beta": [
+      {
+        "who": "bot",
+        "text": "I read Chapter 2 the way a first-time reader would. Overall: gripped through the descent — one pacing dip at the market crowd."
+      },
+      {
+        "who": "issue",
+        "sev": "LOVED",
+        "sevC": "#8ad9ff",
+        "kind": "Ch.2 · Sc.4",
+        "title": "“It forgets them.”",
+        "text": "This line lands hard. Do not touch it. The dread carries the next three paragraphs for free.",
+        "chips": [
+          "Keep",
+          "Quote-worthy"
+        ]
+      },
+      {
+        "who": "issue",
+        "sev": "PACING",
+        "sevC": "#ffd319",
+        "kind": "Ch.2 · Sc.4",
+        "title": "Market crowd beat runs long",
+        "text": "Three sentences of vendors before the boy steals the loaf — I skimmed. Consider cutting one.",
+        "chips": [
+          "Skimmed here",
+          "Minor"
+        ]
+      }
+    ],
+    "archive": [
+      {
+        "who": "bot",
+        "text": "Last scan — 4m ago. 28 scenes and 124 notes checked; 2 continuity flags are open."
+      },
+      {
+        "who": "issue",
+        "sev": "HIGH",
+        "sevC": "#ff4d88",
+        "kind": "Story ↔ Vault",
+        "title": "Tide rule conflict",
+        "text": "Scene 4 enters the Gate at high tide, but note “The Sunken Gate” says the inner passage opens only at low tide.",
+        "chips": [
+          "Scene 4",
+          "The Sunken Gate"
+        ]
+      },
+      {
+        "who": "issue",
+        "sev": "MEDIUM",
+        "sevC": "#ffd319",
+        "kind": "Story internal",
+        "title": "Lantern continuity",
+        "text": "Mira’s lantern is oil-lit in Chapter 1 but described as crystal-lit in Chapter 2.",
+        "chips": [
+          "Ch.1 · Sc.2",
+          "Ch.2 · Sc.4"
+        ]
+      }
+    ]
+  },
+  "agentNames": {
+    "writing": "Mythos",
+    "brainstorm": "Mythos",
+    "archive": "Mythos",
+    "beta": "Mythos"
+  },
+  "agentVaults": {
+    "mythos": {
+      "name": "Agents",
+      "files": 214,
+      "mb": "38.2 MB",
+      "chips": [
+        "Chat history",
+        "Continuity index",
+        "Embeddings",
+        "Suggestions"
+      ]
+    },
+    "aether": {
+      "name": "Agents",
+      "files": 96,
+      "mb": "14.7 MB",
+      "chips": [
+        "Chat history",
+        "Continuity index",
+        "Embeddings"
+      ]
+    }
+  },
+  "tensionDefaults": [
+    30,
+    38,
+    34,
+    48,
+    44,
+    58,
+    52,
+    66,
+    74,
+    68,
+    86,
+    96
+  ],
+  "partnerDefaults": {
+    "name": "Mythos",
+    "icon": "sparkle",
+    "tone": "Kind + firm",
+    "teach": "Socratic",
+    "register": "Dual",
+    "ambient": "Quiet",
+    "memory": true,
+    "craft": true,
+    "initiative": true,
+    "voice": "Aria (natural)",
+    "speed": 1,
+    "autoLang": true
+  },
+  "walkthroughSteps": [
+    {
+      "chapter": "Story",
+      "target": "demo-btn",
+      "alt": null,
+      "text": "Hi! I’m your guide. I point, you tap. Nothing gets locked — wander off any time and tap Demo to hide me.",
+      "advanceOnClick": false,
+      "side": "bottom"
+    },
+    {
+      "chapter": "Story",
+      "target": "rail-editor",
+      "alt": null,
+      "text": "First stop: the Story Writer. Tap it.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Story",
+      "target": "ssub-editor",
+      "alt": null,
+      "text": "The Editor — where the words happen. Tap Editor.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Story",
+      "target": "ed-page",
+      "alt": null,
+      "text": "Type anywhere on the page. Now the trick: type [[ and a name — a search pops up and the name becomes a live link. Try [[Mira]].",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Partner",
+      "target": "rtab-Agent",
+      "alt": null,
+      "text": "Meet Mythos, your writing partner: coach, beta reader and continuity checker in one. Tap the tab.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Partner",
+      "target": "wa-input",
+      "alt": null,
+      "text": "Chat with Mythos about anything — ask questions, get writing advice, talk worldbuilding and future plans.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Partner",
+      "target": "wa-call",
+      "alt": null,
+      "text": "Rather talk? Start a voice call — same thread, same partner, stays right here.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Partner",
+      "target": "rtab-Suggestions",
+      "alt": null,
+      "text": "Suggestions: everything Mythos noticed, pinned to the exact line. Tap the tab.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Partner",
+      "target": "rtab-Notes & Analysis",
+      "alt": null,
+      "text": "Notes & Analysis: references, scene analysis and the vault’s open questions. Tap it.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Partner",
+      "target": "ed-comments",
+      "alt": null,
+      "text": "Margin comments — yours and Mythos’s — live behind this chip. Tap it.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Story",
+      "target": "zoom-book",
+      "alt": null,
+      "text": "Zoom levels! Full Book shows the whole manuscript on one scroll. Tap it.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Story",
+      "target": "zoom-part",
+      "alt": null,
+      "text": "Part — one act at a time. Tap Part.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Story",
+      "target": "zoom-chapter",
+      "alt": null,
+      "text": "Chapter — one chapter, all its scenes. Tap Chapter.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Story",
+      "target": "zoom-scene",
+      "alt": null,
+      "text": "Scene — one scene, nothing else. Tap Scene.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Story",
+      "target": "ssub-book",
+      "alt": null,
+      "text": "Book — a compiled read-through, front to back. Tap Book.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Story",
+      "target": "ssub-structure",
+      "alt": null,
+      "text": "Structure — your book as cards. Tap Structure.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Story",
+      "target": "struct-cards",
+      "alt": null,
+      "text": "Every card is a scene, colour = status. Drag one into another chapter — the manuscript reorders itself.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Story",
+      "target": "struct-list",
+      "alt": null,
+      "text": "Prefer a list? Same scenes, tighter. Tap List.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Story",
+      "target": "ssub-strip",
+      "alt": null,
+      "text": "Draft first? Outline first? Whole-book-at-once? These are all just views of one manuscript. Pick whatever fits how you write.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Notes & Boards",
+      "target": "rail-notes",
+      "alt": null,
+      "text": "Now the world bible. Tap Notes.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Notes & Boards",
+      "target": "notes-tree",
+      "alt": null,
+      "text": "Plain Markdown files: characters, places, factions. Got an Obsidian vault? It drops straight in.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Notes & Boards",
+      "target": "note-title",
+      "alt": null,
+      "text": "Every note has properties, tags and backlinks — it knows who mentions it.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Notes & Boards",
+      "target": "ntab-agent",
+      "alt": null,
+      "text": "Mythos reads along here too — ask what the vault knows. Tap the tab.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Notes & Boards",
+      "target": "rail-boards",
+      "alt": null,
+      "text": "Boards next. Tap it.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Notes & Boards",
+      "target": "boards-hub",
+      "alt": null,
+      "text": "Here’s the secret: a board card IS the note. Edit either side and both update. Same files, different view.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Notes & Boards",
+      "target": "board-canvas",
+      "alt": "boards-hub",
+      "text": "Right-click the canvas → New card. Drag it. Link two cards — that link shows up in backlinks and the graph.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Crafter",
+      "target": "rail-crafter",
+      "alt": null,
+      "text": "Stuck on a scene? Scene Crafter. Tap it.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Crafter",
+      "target": "cf-setup",
+      "alt": null,
+      "text": "Scene setup: title, POV, goal, conflict. Fill in what you know — blanks are fine.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Crafter",
+      "target": "cf-gen",
+      "alt": null,
+      "text": "Generate: Mythos turns your summary + plan cards into a beat board. You write the prose. Give it a go.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Timeline",
+      "target": "rail-timeline",
+      "alt": null,
+      "text": "Time travel. Tap Timeline.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Timeline",
+      "target": "tl-board",
+      "alt": null,
+      "text": "Every world on one axis, each with its own calendar and year length. Ctrl + scroll to zoom from centuries to hours.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Timeline",
+      "target": "tl-zoom",
+      "alt": null,
+      "text": "Tall stack? Zoom the whole board out here.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Timeline",
+      "target": "tl-sync",
+      "alt": null,
+      "text": "Drop a sync line: one instant, read in every world’s own calendar. Tap, then click the axis.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Timeline",
+      "target": "tl-today",
+      "alt": null,
+      "text": "Today jumps to wherever you’re writing right now.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Graph",
+      "target": "rail-graph",
+      "alt": null,
+      "text": "Last big one. Tap Graph.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Graph",
+      "target": "g-node",
+      "alt": null,
+      "text": "Every [[link]] you typed became an edge. Click a node to see the sentence it came from.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Graph",
+      "target": "g-relayout",
+      "alt": null,
+      "text": "Shake it out — tap Re-layout.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Settings",
+      "target": "set-appearance",
+      "alt": null,
+      "text": "Make it yours. Settings › Appearance — tap it.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Settings",
+      "target": "set-theme",
+      "alt": null,
+      "text": "Themes: curated neon sets or build your own. Each vault can wear its own colours so you always know where you are.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Settings",
+      "target": "set-wp",
+      "alt": null,
+      "text": "Wallpaper sits behind the glass. Theme match follows your palette.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Settings",
+      "target": "set-partner",
+      "alt": null,
+      "text": "Writing partner: rename Mythos, pick a voice, and set how bold the suggestions get. Tap it.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Settings",
+      "target": "set-agents",
+      "alt": null,
+      "text": "Model & keys: bring your own Claude key. Your words stay on your machine. Tap it.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Settings",
+      "target": "set-vault",
+      "alt": null,
+      "text": "Vault & Files — tap it.",
+      "advanceOnClick": true,
+      "side": "auto"
+    },
+    {
+      "chapter": "Settings",
+      "target": "vault-link",
+      "alt": null,
+      "text": "A Mythos vault holds Notes Vaults + Story Vaults. This chain links a story to notes — even in another Mythos vault (green). Read & write or Read only.",
+      "advanceOnClick": false,
+      "side": "auto"
+    },
+    {
+      "chapter": "Settings",
+      "target": "demo-btn",
+      "alt": null,
+      "text": "That’s the tour! Mythos bends to your process — outline-first, draft-first, worldbuild-forever. Almost every style (there are always oddballs). Tap Demo to hide me.",
+      "advanceOnClick": false,
+      "side": "bottom"
+    }
+  ]
+}

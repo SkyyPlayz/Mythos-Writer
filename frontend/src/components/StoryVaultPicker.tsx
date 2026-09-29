@@ -77,7 +77,9 @@ export default function StoryVaultPicker() {
       // Deliberately no setActive here — a freshly created vault becomes
       // active only when the user explicitly switches to it (mirrors
       // NotesVaultPicker's create-doesn't-activate behavior).
+      // Slice D: always refresh list after create (video swap/add refresh).
       await window.api?.storyVaultRegistryCreate?.({ displayName: name.trim() });
+      await load();
       return;
     }
 
@@ -106,6 +108,10 @@ export default function StoryVaultPicker() {
       setSwitching(true);
       try {
         await window.api?.storyVaultRegistrySetActive?.(targetId);
+        // Slice D video fix: refresh picker + notify shell so manuscript/stories
+        // list does not stay stale after a Story Vault swap.
+        await load();
+        window.dispatchEvent(new CustomEvent('mythos:story-vault-swapped', { detail: { id: targetId } }));
       } finally {
         setSwitching(false);
       }

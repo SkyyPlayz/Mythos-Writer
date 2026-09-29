@@ -30,6 +30,7 @@ import { VEYNN_SEED_LAYOUT, writeVeynnSeed } from './veynnSeed.js';
 import { VAULT_REGISTRY_VERSION } from './vaultRegistry.js';
 import { writeNotesVaultRegistry } from './notesVaultRegistry.js';
 import { writeStoryVaultRegistry } from './storyVaultRegistry.js';
+import { ensureAgentsPartnerFiles } from './agentsVaultPartner.js';
 
 export interface CreateMythosVaultOptions {
   /** Vault display/folder name. Collision-suffixed unless `exactName`. */
@@ -150,6 +151,9 @@ export function createMythosVault(
     // the folder is non-empty so a retry lands in a fresh sibling folder
     // instead of double-seeding this one.
     recordSeedDecision(mythosRoot, seedDemo ? 'default' : 'blank');
+
+    // Slice D: partner.md + Writer/Analyst/Archivist hand files under Agent Vault.
+    ensureAgentsPartnerFiles(mythosRoot);
 
     return {
       ok: true,

@@ -47,13 +47,16 @@ import {
 import { importObsidianToVaultDir } from '../obsidianImporter.js';
 import { parseDocxBuffer } from '../docxImporter.js';
 import { materializeDocxAsStoryFolder } from './docxStoryImport.js';
+import { adoptObsidianVaultInPlace } from './adoptObsidianInPlace.js';
+import { ensureAgentsPartnerFiles } from './agentsVaultPartner.js';
 
-/** The three creation options, identical wherever the primitive is invoked. */
-export type VaultCreationMode = 'template' | 'blank' | 'import';
+/** Slice D five-path set for Mythos create (rail + Welcome). Inner NV/SV keep template/blank/import. */
+export type VaultCreationMode = 'template' | 'blank' | 'import' | 'restore' | 'openin';
 
 /** Seed-layout provenance tags recorded in mythos.json for each mode. */
 export const TEMPLATE_SEED_LAYOUT = 'template@SKY-11151';
 export const IMPORT_SEED_LAYOUT = 'import@SKY-11151';
+export const RESTORE_SEED_LAYOUT = 'restore@SliceD';
 
 /**
  * The RECOMMENDED template's ready-shape: empty top-level folders in the
@@ -86,12 +89,14 @@ export interface CreateVaultFromOptionsInput {
   name?: string;
   /** Skip unique-name suffixing (destination chosen explicitly by the user). */
   exactName?: boolean;
-  /** Which of the three creation options the caller picked. */
+  /** Which creation option the caller picked (5-path for Mythos). */
   mode: VaultCreationMode;
   /** Per-vault default theme token (validated by the caller). */
   defaultTheme?: string;
   /** Required for `import` mode — at least one side; the other stays blank. */
   importSources?: VaultImportSource[];
+  /** Absolute Obsidian/Markdown folder for `openin` (in-place Notes Vault). */
+  openinPath?: string;
 }
 
 export interface ImportTally {
@@ -154,13 +159,36 @@ function writeTemplateSkeleton(mythosRoot: string): void {
 export async function createVaultFromOptions(
   input: CreateVaultFromOptionsInput,
 ): Promise<CreateVaultFromOptionsResult> {
-  const { destinationParent, name, exactName, mode, defaultTheme, importSources } = input;
+  const { destinationParent, name, exactName, mode, defaultTheme, importSources, openinPath } = input;
+
+  const known: VaultCreationMode[] = ['template', 'blank', 'import', 'restore', 'openin'];
+  if (!known.includes(mode)) {
+    return { ok: false, error: `Unknown creation mode: ${String(mode)}` };
+  }
+
+  // Slice D: Open Obsidian vault in Mythos — in place (never copy).
+  if (mode === 'openin') {
+    const src = (openinPath ?? importSources?.find((s) => s.kind === 'notes')?.srcPath ?? '').trim();
+    if (!src || !path.isAbsolute(src)) {
+      return { ok: false, error: 'openin mode requires an absolute Obsidian vault path' };
+    }
+    const adopted = adoptObsidianVaultInPlace(src, {
+      ...(name ? { vaultName: name } : {}),
+      ...(defaultTheme ? { defaultTheme } : {}),
+    });
+    if (!adopted.ok) return { ok: false, error: adopted.error };
+    return {
+      ok: true,
+      mode,
+      mythosRoot: adopted.mythosRoot,
+      storyVaultPath: adopted.storyVaultPath,
+      notesVaultPath: adopted.notesVaultPath,
+      vaultName: adopted.vaultName,
+    };
+  }
 
   if (!path.isAbsolute(destinationParent)) {
     return { ok: false, error: 'destinationParent: must be an absolute path' };
-  }
-  if (mode !== 'template' && mode !== 'blank' && mode !== 'import') {
-    return { ok: false, error: `Unknown creation mode: ${String(mode)}` };
   }
   if (mode === 'import') {
     const sources = (importSources ?? []).filter((s) => s && s.srcPath?.trim());
@@ -179,6 +207,7 @@ export async function createVaultFromOptions(
     ...(defaultTheme ? { defaultTheme } : {}),
   });
   if (!created.ok) return { ok: false, error: created.error };
+  ensureAgentsPartnerFiles(created.mythosRoot);
 
   const base = {
     mode,
@@ -195,13 +224,23 @@ export async function createVaultFromOptions(
     return { ok: true, ...base };
   }
 
+  if (mode === 'restore') {
+    // Local snapshot restore: if a source folder is provided, copy as import;
+    // otherwise scaffold blank vault tagged restore (Cloud restore = Coming soon chrome).
+    const restoreSources = (importSources ?? []).filter((s) => s && s.srcPath?.trim());
+    if (restoreSources.length === 0) {
+      retagSeedLayout(created.mythosRoot, RESTORE_SEED_LAYOUT);
+      return { ok: true, ...base };
+    }
+  }
+
   if (mode === 'template') {
     writeTemplateSkeleton(created.mythosRoot);
     retagSeedLayout(created.mythosRoot, TEMPLATE_SEED_LAYOUT);
     return { ok: true, ...base };
   }
 
-  // mode === 'import'
+  // mode === 'import' | restore-with-sources
   const sources = (importSources ?? []).filter((s) => s && s.srcPath?.trim());
   const tally: ImportTally = { imported: 0, skipped: 0, sourceCount: 0, warnings: [] };
   const errors: string[] = [];
@@ -232,7 +271,7 @@ export async function createVaultFromOptions(
       }
     }
   }
-  retagSeedLayout(created.mythosRoot, IMPORT_SEED_LAYOUT);
+  retagSeedLayout(created.mythosRoot, mode === 'restore' ? RESTORE_SEED_LAYOUT : IMPORT_SEED_LAYOUT);
 
   // SKY-11814 (AC3): a folder with nothing this importer could use must say
   // so — never report plain success for an import that landed zero content.

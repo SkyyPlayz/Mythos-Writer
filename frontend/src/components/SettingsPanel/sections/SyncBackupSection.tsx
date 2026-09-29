@@ -73,8 +73,67 @@ export default function SyncBackupSection({ vaults, onMoveVault }: Props) {
   }, []);
 
   return (
-    <section className="settings-section m24-root" aria-labelledby="section-sync-backup" data-settings-cat="sync">
+    <section
+      className="settings-section m24-root"
+      aria-labelledby="section-sync-backup"
+      data-settings-cat="sync"
+      data-testid="sync-backup-section"
+      data-screen-label="Sync & Backup"
+    >
       <h3 className="settings-section-title" id="section-sync-backup">Sync &amp; Backup</h3>
+
+      {/* Slice D: Coming soon chrome only — Soft-FAIL invent live cloud Sync backends. */}
+      <M24Card title="Cloud sync">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, color: '#eef2fb' }}>Cloud sync</div>
+            <div style={{ fontSize: 11, color: '#8e9db8', marginTop: 2 }}>
+              End-to-end encrypted. Conflicts keep both versions.
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={false}
+            aria-disabled="true"
+            disabled
+            data-testid="sync-cloud-toggle"
+            title="Coming soon"
+            style={{
+              width: 40, height: 22, borderRadius: 999, border: '1px solid rgba(255,255,255,.16)',
+              background: 'rgba(255,255,255,.06)', cursor: 'not-allowed', opacity: 0.7,
+            }}
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11.5, color: '#aebad0', width: 70, flex: 'none' }}>Provider</span>
+          <select
+            disabled
+            data-testid="sync-cloud-provider"
+            style={{
+              width: 190, height: 28, background: 'rgba(255,255,255,.05)',
+              border: 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.4))', borderRadius: 8,
+              color: '#dbe4f5', fontSize: 11.5, padding: '0 8px', cursor: 'not-allowed',
+            }}
+            defaultValue="mythos-cloud"
+          >
+            <option value="mythos-cloud">Mythos Cloud</option>
+          </select>
+          <span
+            data-testid="sync-coming-soon"
+            style={{
+              fontSize: 8.5, fontWeight: 700, letterSpacing: '0.09em', flex: 'none',
+              borderRadius: 5, padding: '2px 7px', color: '#ffd319',
+              border: '1px solid rgba(255,211,25,.45)',
+            }}
+          >
+            COMING SOON
+          </span>
+        </div>
+        <p className="settings-hint" style={{ marginTop: 8 }}>
+          Local-first: nothing is uploaded. Cloud sync is chrome only until an owner unlocks a real backend.
+        </p>
+      </M24Card>
 
       <M24Card title="Vault location">
         <div style={{ fontSize: 11, color: '#8e9db8' }}>

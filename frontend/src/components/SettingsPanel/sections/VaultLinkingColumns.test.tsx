@@ -47,6 +47,10 @@ beforeEach(() => {
       vaultSurfaceUnhide: mockUnhide,
       onNotesVaultRegistryChanged: () => () => {},
       onStoryVaultRegistryChanged: () => () => {},
+      vaultAccessGetState: vi.fn().mockResolvedValue({
+        ok: true, mythosId: 'mid', vaultAccess: {}, crossLinks: [],
+      }),
+      vaultAccessSet: vi.fn().mockResolvedValue({ ok: true, vaultAccess: {}, crossLinks: [] }),
     },
     writable: true,
     configurable: true,

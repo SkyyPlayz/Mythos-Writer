@@ -10,7 +10,8 @@
 // the SKY-11151 primitive scaffolds (docs/vault-creation-primitive.md).
 import './VaultCreateModePicker.css';
 
-export type VaultCreateMode = 'template' | 'blank' | 'import';
+/** Slice D Mythos five-path includes restore + openin; inner NV/SV stay at three. */
+export type VaultCreateMode = 'template' | 'blank' | 'import' | 'restore' | 'openin';
 export type VaultCreateKind = 'notes' | 'story' | 'mythos';
 
 interface ModeOption {
@@ -18,6 +19,7 @@ interface ModeOption {
   label: string;
   desc: string;
   recommended?: boolean;
+  chip?: string;
 }
 
 export const VAULT_CREATE_MODES: Record<VaultCreateKind, ModeOption[]> = {
@@ -64,7 +66,18 @@ export const VAULT_CREATE_MODES: Record<VaultCreateKind, ModeOption[]> = {
     {
       key: 'import',
       label: 'Import existing',
-      desc: 'Copy an Obsidian vault or plain Markdown folder in as the Notes Vault, and/or a Markdown story folder as the Story Vault. The source is never touched.',
+      desc: 'Copy an Obsidian vault or plain Markdown folder in as the Notes Vault, and/or a Markdown story folder as the Story Vault. The source is never touched. Linked in place never applies here — use Open Obsidian for in-place.',
+    },
+    {
+      key: 'restore',
+      label: 'Restore from backup',
+      desc: 'Bring back a local snapshot. Mythos Cloud restore stays Coming soon.',
+    },
+    {
+      key: 'openin',
+      label: 'Open Obsidian vault in Mythos',
+      desc: 'Keep your Obsidian vault where it is. It becomes the Notes Vault; Mythos adds a Story Vault and its own files beside it.',
+      chip: 'IN PLACE',
     },
   ],
 };
@@ -96,6 +109,7 @@ export default function VaultCreateModePicker({ kind, value, onChange, disabled,
             <span className="vcm-mode__dot" aria-hidden="true" />
             <span className="vcm-mode__label">{m.label}</span>
             {m.recommended && <span className="vcm-mode__tag">RECOMMENDED</span>}
+            {m.chip && <span className="vcm-mode__tag" data-testid={`${testIdPrefix}-${m.key}-chip`}>{m.chip}</span>}
           </span>
           <span className="vcm-mode__desc">{m.desc}</span>
         </button>

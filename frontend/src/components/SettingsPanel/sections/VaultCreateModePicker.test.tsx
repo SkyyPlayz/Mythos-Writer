@@ -1,21 +1,22 @@
-// SKY-11151 / SKY-11452 — the shared template / blank / import radiogroup.
+// SKY-11151 / SKY-11452 / Slice D — shared create-mode radiogroup.
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import VaultCreateModePicker, { VAULT_CREATE_MODES } from './VaultCreateModePicker';
 
 describe('VaultCreateModePicker', () => {
-  it('renders the same three options for every kind, template marked RECOMMENDED', () => {
-    for (const kind of ['notes', 'story', 'mythos'] as const) {
-      expect(VAULT_CREATE_MODES[kind].map((m) => m.key)).toEqual(['template', 'blank', 'import']);
-      expect(VAULT_CREATE_MODES[kind].filter((m) => m.recommended).map((m) => m.key)).toEqual(['template']);
-    }
+  it('keeps notes/story at three options; mythos has Slice D five-path', () => {
+    expect(VAULT_CREATE_MODES.notes.map((m) => m.key)).toEqual(['template', 'blank', 'import']);
+    expect(VAULT_CREATE_MODES.story.map((m) => m.key)).toEqual(['template', 'blank', 'import']);
+    expect(VAULT_CREATE_MODES.mythos.map((m) => m.key)).toEqual([
+      'template', 'blank', 'import', 'restore', 'openin',
+    ]);
+    expect(VAULT_CREATE_MODES.mythos.filter((m) => m.recommended).map((m) => m.key)).toEqual(['template']);
     render(<VaultCreateModePicker kind="mythos" value="template" onChange={vi.fn()} testIdPrefix="pick" />);
     const radios = screen.getAllByRole('radio');
-    expect(radios).toHaveLength(3);
+    expect(radios).toHaveLength(5);
     expect(screen.getByTestId('pick-template')).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByTestId('pick-template').textContent).toContain('RECOMMENDED');
-    expect(screen.getByTestId('pick-blank')).toHaveAttribute('aria-checked', 'false');
-    // The mythos copy must never promise sample content (§3 removed it).
+    expect(screen.getByTestId('pick-openin')).toBeInTheDocument();
+    expect(screen.getByTestId('pick-openin-chip')).toHaveTextContent('IN PLACE');
     expect(screen.getByRole('radiogroup', { name: 'How to start' }).textContent).not.toMatch(/Veynn|demo|sample/i);
   });
 

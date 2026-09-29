@@ -1,8 +1,9 @@
 /**
  * Slice C — Settings › Writing partner.
- * Identity binds B partner store (agentNames.brainstorm). No partner.md vault files.
+ * Identity binds B partner store (agentNames.brainstorm).
+ * Slice D: also syncs name/icon to Agents Vault partner.md.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   PARTNER_HANDS,
   resolvePartnerDisplayName,
@@ -96,6 +97,13 @@ export default function WritingPartnerSection({
   };
 
   const toolsPath = '<vault>\\.mythos\\tools';
+
+  // Slice D: bind Settings identity ↔ Agents Vault partner.md (file is source on disk).
+  useEffect(() => {
+    const name = settings.agentNames?.brainstorm?.trim() || 'Mythos';
+    const icon = partner.icon;
+    void window.api?.agentsVaultSyncPartner?.({ name, icon });
+  }, [settings.agentNames?.brainstorm, partner.icon]);
 
   return (
     <div className="wp-settings" data-testid="writing-partner-page">

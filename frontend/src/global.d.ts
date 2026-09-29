@@ -1645,16 +1645,17 @@ interface Window {
     // SKY-11151: THE shared vault-creation primitive — one surface for first run,
     // New Mythos vault…, and Settings Add vault… (template / blank / import).
     createVaultFromOptions: (payload: {
-      mode: 'template' | 'blank' | 'import';
+      mode: 'template' | 'blank' | 'import' | 'restore' | 'openin';
       destinationParent?: string;
       name?: string;
       exactName?: boolean;
       defaultTheme?: string;
       importSources?: { kind: 'notes' | 'story'; srcPath: string }[];
+      openinPath?: string;
       activate?: boolean;
     }) => Promise<{
       ok: boolean;
-      mode?: 'template' | 'blank' | 'import';
+      mode?: 'template' | 'blank' | 'import' | 'restore' | 'openin';
       mythosRoot?: string;
       storyVaultPath?: string;
       notesVaultPath?: string;
@@ -1662,6 +1663,37 @@ interface Window {
       importTally?: { imported: number; skipped: number; sourceCount: number; warnings: string[] };
       error?: string;
     }>;
+    // Slice D
+    agentsVaultEnsure: () => Promise<{ ok: boolean; created?: string[]; agentVaultPath?: string; error?: string }>;
+    agentsVaultStats: () => Promise<{
+      ok: boolean; path?: string; name?: string; files?: number; chips?: string[]; scope?: string; error?: string;
+    }>;
+    agentsVaultClearMemory: () => Promise<{ ok: boolean; removed?: string[]; error?: string }>;
+    agentsVaultReveal: () => Promise<{ opened: boolean; error?: string }>;
+    agentsVaultSyncPartner: (payload: { name?: string; icon?: string }) => Promise<{ ok: boolean; error?: string }>;
+    agentsVaultReadPartner: () => Promise<{ ok: boolean; name?: string | null; icon?: string | null; error?: string }>;
+    vaultAccessGetState: () => Promise<{
+      ok: boolean; mythosId?: string | null; vaultAccess?: Record<string, 'rw' | 'ro'>; crossLinks?: unknown[]; error?: string;
+    }>;
+    vaultAccessSet: (payload: {
+      mythosId: string; kind: 'notes' | 'story'; vaultId: string; mode: 'rw' | 'ro';
+    }) => Promise<{ ok: boolean; vaultAccess?: Record<string, 'rw' | 'ro'>; crossLinks?: unknown[]; error?: string }>;
+    vaultCrossLinkAdd: (payload: {
+      homeMythosId: string;
+      notes: { mythosId: string; vaultId: string; label: string; mythosName: string };
+      story: { mythosId: string; vaultId: string; label: string; mythosName: string };
+    }) => Promise<{ ok: boolean; vaultAccess?: Record<string, 'rw' | 'ro'>; crossLinks?: unknown[]; error?: string }>;
+    vaultCrossLinkRemove: (payload: { linkId: string }) => Promise<{
+      ok: boolean; vaultAccess?: Record<string, 'rw' | 'ro'>; crossLinks?: unknown[]; error?: string;
+    }>;
+    vaultSeedApplyBoth: (payload?: { destinationParent?: string }) => Promise<unknown>;
+    vaultMigrateMultiInner: () => Promise<unknown>;
+    storyStashSave: (payload: {
+      vaultId: string; storyId: string; lanes?: { plotlineIds?: string[] }; manuscriptTabs?: unknown;
+    }) => Promise<{ ok: boolean; error?: string }>;
+    storyStashRestore: (payload: {
+      vaultId: string; storyId: string; seedPlotlineIds?: string[];
+    }) => Promise<{ ok: boolean; entry: unknown }>;
     // SKY-627: orchestrates vault creation + first-scene setup during onboarding
     onboardingComplete: (payload?: {
       startMode: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';

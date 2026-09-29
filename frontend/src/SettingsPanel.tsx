@@ -39,6 +39,7 @@ import LiquidNeonAppearanceSection from './components/SettingsPanel/sections/Liq
 import MythosVaultsSection from './components/SettingsPanel/sections/MythosVaultsSection';
 import VaultsFolderSection from './components/SettingsPanel/sections/VaultsFolderSection';
 import VaultLinkingColumns from './components/SettingsPanel/sections/VaultLinkingColumns';
+import AgentsVaultSection from './components/SettingsPanel/sections/AgentsVaultSection';
 import PageAppearanceSection from './components/SettingsPanel/sections/PageAppearanceSection';
 import NavConfigSection from './components/SettingsPanel/sections/NavConfigSection';
 import FocusModeSection from './components/SettingsPanel/sections/FocusModeSection';
@@ -964,6 +965,8 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                   of SKY-11152's "+ Add Notes Vault"/"+ Add Story Vault"
                   dialogs (still reused here, kind='notes'/'story'). */}
               <VaultLinkingColumns />
+
+              <AgentsVaultSection />
 
               <VaultPathsSection
                 vaults={vaults}

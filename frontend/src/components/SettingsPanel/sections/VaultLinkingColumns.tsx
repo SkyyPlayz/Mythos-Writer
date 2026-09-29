@@ -31,6 +31,10 @@ interface StoryVaultEntry {
 }
 
 type DotSelection = { side: 'notes' | 'story'; id: string } | null;
+type AccessMode = 'rw' | 'ro';
+
+/** Cross-Mythos borrowed vault green (prototype / Slice D Soft-FAIL). */
+export const CROSS_VAULT_GREEN = '#57ff9a';
 
 const columnSt = { display: 'flex', flexDirection: 'column' as const, gap: 8, flex: 1, minWidth: 0 };
 
@@ -40,11 +44,28 @@ export function pairLinePath(from: { x: number; y: number }, to: { x: number; y:
   return `M ${from.x} ${from.y} C ${mx} ${from.y}, ${mx} ${to.y}, ${to.x} ${to.y}`;
 }
 
-const cardSt = (current: boolean): CSSProperties => ({
+const cardSt = (current: boolean, borrowed = false): CSSProperties => ({
   display: 'flex', alignItems: 'center', gap: 10, padding: '9px 11px', borderRadius: 12,
-  background: 'rgba(255,255,255,.03)',
-  border: current ? 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.45))' : '1px solid rgba(255,255,255,.08)',
+  background: borrowed ? 'rgba(87,255,154,.06)' : 'rgba(255,255,255,.03)',
+  border: borrowed
+    ? `1px dashed ${CROSS_VAULT_GREEN}`
+    : current
+      ? 'var(--bw,1px) solid var(--b1,rgba(0,240,255,.45))'
+      : '1px solid rgba(255,255,255,.08)',
   cursor: current ? 'default' : 'pointer',
+});
+
+const accessChipSt = (mode: AccessMode): CSSProperties => ({
+  fontSize: 9,
+  fontWeight: 700,
+  letterSpacing: '0.04em',
+  flex: 'none',
+  borderRadius: 6,
+  padding: '2px 6px',
+  cursor: 'pointer',
+  color: mode === 'ro' ? '#ffd319' : '#aebad0',
+  border: mode === 'ro' ? '1px solid rgba(255,211,25,.45)' : '1px solid rgba(255,255,255,.16)',
+  background: 'transparent',
 });
 
 const dotSt = (paired: boolean, selected: boolean): CSSProperties => ({
@@ -72,8 +93,40 @@ export default function VaultLinkingColumns() {
   const [addDialogKind, setAddDialogKind] = useState<AddVaultKind | null>(null);
   const [showHiddenNotes, setShowHiddenNotes] = useState(false);
   const [showHiddenStory, setShowHiddenStory] = useState(false);
+  const [mythosId, setMythosId] = useState<string | null>(null);
+  const [vaultAccess, setVaultAccess] = useState<Record<string, AccessMode>>({});
+  const [crossLinks, setCrossLinks] = useState<Array<{
+    id: string;
+    notes: { mythosId: string; vaultId: string; label: string; mythosName: string };
+    story: { mythosId: string; vaultId: string; label: string; mythosName: string };
+  }>>([]);
 
   const { pending, busy: switching, requestGatedSwitch, confirm: confirmSwitch, cancel: cancelSwitch } = useNotesVaultLinkGate();
+
+  const loadAccess = useCallback(() => {
+    window.api?.vaultAccessGetState?.()
+      .then((res) => {
+        if (!res?.ok) return;
+        setMythosId(res.mythosId ?? null);
+        setVaultAccess((res.vaultAccess as Record<string, AccessMode>) ?? {});
+        setCrossLinks((res.crossLinks as typeof crossLinks) ?? []);
+      })
+      .catch(() => { /* non-fatal */ });
+  }, []);
+
+  const accessFor = useCallback((kind: 'notes' | 'story', id: string): AccessMode => {
+    if (!mythosId) return 'rw';
+    return vaultAccess[`${mythosId}:${kind}:${id}`] ?? 'rw';
+  }, [mythosId, vaultAccess]);
+
+  const toggleAccess = useCallback(async (kind: 'notes' | 'story', id: string) => {
+    if (!mythosId) return;
+    const next: AccessMode = accessFor(kind, id) === 'rw' ? 'ro' : 'rw';
+    const res = await window.api?.vaultAccessSet?.({ mythosId, kind, vaultId: id, mode: next });
+    if (res?.ok) {
+      setVaultAccess((res.vaultAccess as Record<string, AccessMode>) ?? {});
+    }
+  }, [mythosId, accessFor]);
 
   const loadLists = useCallback(() => {
     window.api?.notesVaultRegistryList?.()
@@ -90,7 +143,8 @@ export default function VaultLinkingColumns() {
         setActiveStoryId(res.activeId);
       })
       .catch(() => { /* non-fatal */ });
-  }, []);
+    loadAccess();
+  }, [loadAccess]);
 
   const refreshHidden = useCallback(() => {
     window.api?.vaultSurfaceListHidden?.()
@@ -264,17 +318,25 @@ export default function VaultLinkingColumns() {
           height="100%"
           style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'visible' }}
         >
-          {pairPaths.map((p) => (
-            <path
-              key={`${p.notesId}-${p.storyId}`}
-              data-testid={`vault-pair-line-${p.storyId}`}
-              d={p.d}
-              fill="none"
-              stroke="var(--n1, #00f0ff)"
-              strokeWidth="1.4"
-              strokeOpacity="0.55"
-            />
-          ))}
+          {pairPaths.map((p) => {
+            const isCross = crossLinks.some(
+              (xl) => xl.story.vaultId === p.storyId && xl.notes.vaultId === p.notesId
+                && (xl.notes.mythosId !== mythosId || xl.story.mythosId !== mythosId),
+            );
+            return (
+              <path
+                key={`${p.notesId}-${p.storyId}`}
+                data-testid={`vault-pair-line-${p.storyId}`}
+                data-cross-link={isCross ? 'true' : 'false'}
+                d={p.d}
+                fill="none"
+                stroke={isCross ? CROSS_VAULT_GREEN : 'var(--n1, #00f0ff)'}
+                strokeWidth="1.4"
+                strokeOpacity="0.75"
+                strokeDasharray={isCross ? '5 4' : undefined}
+              />
+            );
+          })}
         </svg>
         <div style={columnSt}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -303,22 +365,47 @@ export default function VaultLinkingColumns() {
           {visibleNotes.map((n) => {
             const current = n.id === activeNotesId;
             const linked = linkedStoryNamesFor(n.id);
+            const access = accessFor('notes', n.id);
+            const borrowedXl = crossLinks.find((xl) => xl.notes.vaultId === n.id && xl.notes.mythosId !== mythosId);
             return (
               <div
                 key={n.id}
                 role="button"
                 tabIndex={0}
                 data-testid={`notes-vault-card-${n.id}`}
-                style={cardSt(current)}
+                data-borrowed={borrowedXl ? 'true' : 'false'}
+                style={cardSt(current, Boolean(borrowedXl))}
                 onClick={() => { void onNotesCardClick(n); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void onNotesCardClick(n); } }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#e6ecf9' }}>{n.displayName}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#e6ecf9' }}>{n.displayName}</span>
+                    {borrowedXl && (
+                      <span
+                        data-testid={`from-chip-notes-${n.id}`}
+                        style={{
+                          fontSize: 9, fontWeight: 700, color: CROSS_VAULT_GREEN,
+                          border: `1px dashed ${CROSS_VAULT_GREEN}`, borderRadius: 6, padding: '1px 6px',
+                        }}
+                      >
+                        {`from ${borrowedXl.notes.mythosName}`}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ fontSize: 10, color: '#7686a2', marginTop: 2 }}>
                     {linked.length > 0 ? `Linked to: ${linked.join(', ')}` : 'Not linked'}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  data-testid={`vault-access-notes-${n.id}`}
+                  title={access === 'rw' ? 'Read & write — click for Read only' : 'Read only — click for Read & write'}
+                  style={accessChipSt(access)}
+                  onClick={(e) => { e.stopPropagation(); void toggleAccess('notes', n.id); }}
+                >
+                  {access === 'rw' ? 'Read & write' : 'Read only'}
+                </button>
                 {current && (
                   <span style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--n1,#00f0ff)', flex: 'none' }}>Current</span>
                 )}
@@ -392,13 +479,16 @@ export default function VaultLinkingColumns() {
             const current = s.id === activeStoryId;
             const pairedNotes = notesVaults.find((n) => n.id === s.pairedNotesVaultId);
             const pairedNotesHidden = pairedNotes != null && hiddenPaths.includes(notesAbsPath(pairedNotes));
+            const access = accessFor('story', s.id);
+            const borrowedXl = crossLinks.find((xl) => xl.story.vaultId === s.id && xl.story.mythosId !== mythosId);
             return (
               <div
                 key={s.id}
                 role="button"
                 tabIndex={0}
                 data-testid={`story-vault-card-${s.id}`}
-                style={cardSt(current)}
+                data-borrowed={borrowedXl ? 'true' : 'false'}
+                style={cardSt(current, Boolean(borrowedXl))}
                 onClick={() => { void onStoryCardClick(s); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void onStoryCardClick(s); } }}
               >
@@ -412,7 +502,20 @@ export default function VaultLinkingColumns() {
                   onClick={(e) => { e.stopPropagation(); onDotClick('story', s.id); }}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: '#e6ecf9' }}>{s.displayName}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: '#e6ecf9' }}>{s.displayName}</span>
+                    {borrowedXl && (
+                      <span
+                        data-testid={`from-chip-story-${s.id}`}
+                        style={{
+                          fontSize: 9, fontWeight: 700, color: CROSS_VAULT_GREEN,
+                          border: `1px dashed ${CROSS_VAULT_GREEN}`, borderRadius: 6, padding: '1px 6px',
+                        }}
+                      >
+                        {`from ${borrowedXl.story.mythosName}`}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ fontSize: 10, color: '#7686a2', marginTop: 2 }}>
                     {pairedNotes ? `Linked to: ${pairedNotes.displayName}` : 'Not linked'}
                     {pairedNotesHidden && (
@@ -427,6 +530,15 @@ export default function VaultLinkingColumns() {
                     )}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  data-testid={`vault-access-story-${s.id}`}
+                  title={access === 'rw' ? 'Read & write — click for Read only' : 'Read only — click for Read & write'}
+                  style={accessChipSt(access)}
+                  onClick={(e) => { e.stopPropagation(); void toggleAccess('story', s.id); }}
+                >
+                  {access === 'rw' ? 'Read & write' : 'Read only'}
+                </button>
                 {current && (
                   <span style={{ fontSize: 9.5, fontWeight: 600, color: 'var(--n1,#00f0ff)', flex: 'none' }}>Current</span>
                 )}

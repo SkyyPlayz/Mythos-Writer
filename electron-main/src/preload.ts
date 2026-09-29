@@ -61,14 +61,41 @@ contextBridge.exposeInMainWorld('api', {
   // set (template / blank / import) is identical, only the caller's chrome
   // differs. `activate` opts into making the new vault the open one.
   createVaultFromOptions: (payload: {
-    mode: 'template' | 'blank' | 'import';
+    mode: 'template' | 'blank' | 'import' | 'restore' | 'openin';
     destinationParent?: string;
     name?: string;
     exactName?: boolean;
     defaultTheme?: string;
     importSources?: { kind: 'notes' | 'story'; srcPath: string }[];
+    openinPath?: string;
     activate?: boolean;
   }) => ipcRenderer.invoke('vault:create-from-options', payload),
+  // Slice D
+  agentsVaultEnsure: () => ipcRenderer.invoke('agentsVault:ensure'),
+  agentsVaultStats: () => ipcRenderer.invoke('agentsVault:stats'),
+  agentsVaultClearMemory: () => ipcRenderer.invoke('agentsVault:clearMemory'),
+  agentsVaultReveal: () => ipcRenderer.invoke('agentsVault:reveal'),
+  agentsVaultSyncPartner: (payload: { name?: string; icon?: string }) =>
+    ipcRenderer.invoke('agentsVault:syncPartner', payload),
+  agentsVaultReadPartner: () => ipcRenderer.invoke('agentsVault:readPartner'),
+  vaultAccessGetState: () => ipcRenderer.invoke('vaultAccess:getState'),
+  vaultAccessSet: (payload: { mythosId: string; kind: 'notes' | 'story'; vaultId: string; mode: 'rw' | 'ro' }) =>
+    ipcRenderer.invoke('vaultAccess:set', payload),
+  vaultCrossLinkAdd: (payload: {
+    homeMythosId: string;
+    notes: { mythosId: string; vaultId: string; label: string; mythosName: string };
+    story: { mythosId: string; vaultId: string; label: string; mythosName: string };
+  }) => ipcRenderer.invoke('vaultAccess:addCrossLink', payload),
+  vaultCrossLinkRemove: (payload: { linkId: string }) =>
+    ipcRenderer.invoke('vaultAccess:removeCrossLink', payload),
+  vaultSeedApplyBoth: (payload?: { destinationParent?: string }) =>
+    ipcRenderer.invoke('vault:seed-apply-both', payload ?? {}),
+  vaultMigrateMultiInner: () => ipcRenderer.invoke('vault:migrate-multi-inner'),
+  storyStashSave: (payload: {
+    vaultId: string; storyId: string; lanes?: { plotlineIds?: string[] }; manuscriptTabs?: unknown;
+  }) => ipcRenderer.invoke('storyStash:save', payload),
+  storyStashRestore: (payload: { vaultId: string; storyId: string; seedPlotlineIds?: string[] }) =>
+    ipcRenderer.invoke('storyStash:restore', payload),
   // SKY-627: extended onboarding orchestration — creates vault + first scene.
   onboardingComplete: (payload?: { startMode: string; storyTitle?: string; authorName?: string; vaultParentPath?: string; templateId?: string; vaultName?: string; customTemplate?: 'recommended' | 'blank'; genre?: string; themeKey?: string }) =>
     ipcRenderer.invoke('onboarding:complete', payload ?? {}),
