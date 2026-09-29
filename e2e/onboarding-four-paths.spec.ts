@@ -25,11 +25,14 @@ import {
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
-async function launchFreshApp(userData: string): Promise<ElectronApplication> {
+async function launchFreshApp(
+  userData: string,
+  env?: Record<string, string>,
+): Promise<ElectronApplication> {
   const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
   return electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, ...extraArgs],
-    env: { ...process.env, HOME: userData, MYTHOS_E2E: '1', MYTHOS_FORCE_ONBOARDING: '1' },
+    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...extraArgs],
+    env: { ...process.env, HOME: userData, ...env },
     timeout: 60_000,
   });
 }

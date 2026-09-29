@@ -6503,10 +6503,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {welcomeOpen && (
         <WelcomeOverlay
-          requireVaultSetup={!(appSettings?.onboardingComplete ?? true)}
+          requireVaultSetup={!(appSettings?.onboardingComplete === true)}
           onSkip={() => {
             // First-run vault setup cannot skip (requireVaultSetup hides the button).
-            if (!(appSettings?.onboardingComplete ?? true)) return;
+            if (appSettings?.onboardingComplete !== true) return;
             markWelcomeOverlayDismissed();
             setWelcomeOpen(false);
           }}
