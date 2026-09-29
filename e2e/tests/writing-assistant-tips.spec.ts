@@ -45,6 +45,12 @@ function seedUserData(userData: string, vaultDir: string): void {
     onboardingComplete: true,
     waScanInterval: 'manual' as const,
     rightSidebarVisible: true,
+    // F3 provider gate (`refuseUnlessProviderReady`) needs structural provider.
+    provider: {
+      kind: 'anthropic',
+      model: 'claude-sonnet-4-6',
+      apiKey: 'sk-ant-test-key-for-e2e',
+    },
     agents: {
       writingAssistant: {
         enabled: true,
@@ -250,11 +256,11 @@ test.beforeAll(async () => {
   // always expanded) is now the sole home for the agent hub.
   await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 6_000 });
 
-  // Slice F3: Writer Scan action opens WritingAssistantPanel (tip cards / Scan now).
+  // Slice F3 / N4-A: tips strip is always mounted on the partner view (no
+  // Writer Scan click required — action chips can sit under the tips panel).
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 4_000 });
   await expect(page.locator('[data-testid="ahp-partner-view"]')).toBeVisible({ timeout: 4_000 });
-  await page.locator('[data-testid="ahp-action-writer-scan"]').click();
-  // Wait for the WA chat view (WritingAssistantPanel) to render before tests begin.
+  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
 });
 

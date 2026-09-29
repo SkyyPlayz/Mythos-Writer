@@ -68,6 +68,16 @@ describe('AgentHubPanel — F3#1 / H1 in-thread partner actions', () => {
       suggestionsUnifiedList: vi.fn().mockResolvedValue({ items: [], totalCount: 0 }),
       suggestionsSearch: vi.fn().mockResolvedValue({ suggestions: [] }),
       agentSessions: mockSessionsApi(),
+      // N3/P4 provider gate — Beta Read / Writer Scan refuse without this.
+      settingsGet: vi.fn().mockResolvedValue({
+        provider: { kind: 'anthropic', model: 'claude-haiku', apiKey: 'sk-test' },
+        agents: {
+          writingAssistant: { enabled: true, model: 'claude-haiku' },
+          brainstorm: { enabled: true, model: 'claude-haiku' },
+          archive: { enabled: true, model: 'claude-haiku' },
+          betaReader: { enabled: true, model: 'claude-haiku' },
+        },
+      }),
     };
   });
   afterEach(() => {
