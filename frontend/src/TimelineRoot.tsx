@@ -93,7 +93,7 @@ import {
   type PovSceneInput,
   type TimelineShowFilter,
 } from './timeline2/axis/storyLanes';
-import { resolvePartnerDisplayName } from './agents/partnerIdentity';
+import { resolvePartnerDisplayName, DEFAULT_PARTNER_DISPLAY_NAME } from './agents/partnerIdentity';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
 import './TimelineRoot.css';
@@ -258,7 +258,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
     } catch { /* ignore */ }
     return 100;
   });
-  const [partnerName, setPartnerName] = useState('Mythos');
+  const [partnerName, setPartnerName] = useState(DEFAULT_PARTNER_DISPLAY_NAME);
 
   // ── M23: toolbar filters + plotline visibility + book focus ──
   const [viewFilter, setViewFilter] = useState<string>('Story Structure');
@@ -1197,29 +1197,6 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
 
   return (
     <div className="tlr-root" data-testid="timeline-root">
-      {/* ── M21: Timeline picker (left panel top) ── */}
-      {timelinesStore && (
-        <div className="tlr-picker-wrap" data-testid="tlr-picker-wrap">
-          {embeddedReturnId && !isStoryTimeline && (
-            <button
-              type="button"
-              className="tlr-world-back"
-              data-testid="tlr-world-context-back"
-              onClick={handleWorldContextBack}
-              title="Return to the story timeline and restore the navigator"
-            >
-              ← Back to story timeline
-            </button>
-          )}
-          <TimelinePicker
-            store={timelinesStore}
-            onSelect={handleTimelineSelect}
-            onNewTimeline={handleNewTimeline}
-            onEditCalendar={handleEditCalendar}
-          />
-        </div>
-      )}
-
       {/* ── Header: 7-mode segment + legend + filters + Templates + Today ── */}
       <div
         className="tlr-header"
@@ -1441,71 +1418,26 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
       )}
 
       <div className="tlr-content-row">
-        <div className="tlr-body">
-          {/* ── M25 (design §4): Error banner — last-known-good stays live. ── */}
-          {isLanesMode && aeonError && (
-            <div className="tlr-error-banner" role="alert" data-testid="tlr-error-banner">
-              <span>Couldn&apos;t reach the Archive Agent — showing the last synced timeline.</span>
+        {timelinesStore && (
+          <div className="tlr-left-sidebar" data-testid="tlr-left-sidebar">
+            {embeddedReturnId && !isStoryTimeline && (
               <button
                 type="button"
-                className="tlr-banner-btn"
-                onClick={() => setAeonRetry((n) => n + 1)}
-                data-testid="tlr-error-retry"
+                className="tlr-world-back"
+                data-testid="tlr-world-context-back"
+                onClick={handleWorldContextBack}
+                title="Return to the story timeline and restore the navigator"
               >
-                Retry
+                ← Back to story timeline
               </button>
-            </div>
-          )}
-          {/* ── M25 (design §4): Syncing strip — never blocks interaction. ── */}
-          {isLanesMode && autoSyncing && (
-            <div className="tlr-sync-strip" data-testid="tlr-sync-strip">
-              <span className="tlr-sync-dot" aria-hidden="true" />
-              <span aria-live="polite">
-                Archive Agent is syncing this timeline from your manuscript — content stays
-                interactive while it works.
-              </span>
-            </div>
-          )}
-
-          {/* ── M23: Progress / Structure — axis lane rows (§8.4) ── */}
-          {isLanesMode && storeLoading && (
-            <div className="tlr-skeleton" role="status" aria-label="Loading timeline" data-testid="tlr-skeleton">
-              <div className="tlr-skeleton-bar" />
-              <div className="tlr-skeleton-bar" />
-              <div className="tlr-skeleton-bar" />
-            </div>
-          )}
-          {isLanesMode && !storeLoading && timelinesStore && showEmptyState && (
-            <div className="tlr-state" data-testid="tlr-empty-state">
-              <h2>No events yet</h2>
-              <p>
-                The Archive Agent builds this timeline from your notes and scenes — or start
-                placing spans and events by hand.
-              </p>
-              <div className="tlr-state-actions">
-                <button
-                  type="button"
-                  className="tlr-state-btn tlr-state-btn--primary"
-                  onClick={handleRunArchiveNow}
-                  data-testid="tlr-run-archive"
-                >
-                  Run Archive Agent now
-                </button>
-                <button
-                  type="button"
-                  className="tlr-state-btn"
-                  onClick={handleStartEmpty}
-                  data-testid="tlr-start-empty"
-                >
-                  Start empty
-                </button>
-              </div>
-            </div>
-          )}
-          {isLanesMode && !storeLoading && timelinesStore && !showEmptyState && (
-            <div className="tlr-lanes-wrap" data-testid="tlr-lanes-wrap">
-              {isStoryTimeline && (
-                <aside className="tlr-aside" data-testid="tlr-aside" aria-label="Timeline focus">
+            )}
+            <TimelinePicker
+              store={timelinesStore}
+              onSelect={handleTimelineSelect}
+              onNewTimeline={handleNewTimeline}
+              onEditCalendar={handleEditCalendar}
+              focusSection={isStoryTimeline ? (
+                <div className="tlr-focus" data-testid="tlr-aside" aria-label="Timeline focus">
                   <div className="tlr-aside-head tlr-aside-head--top" data-testid="tl-navigator-head">
                     TIMELINE NAVIGATOR
                   </div>
@@ -1582,8 +1514,74 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
                       </div>
                     );
                   })}
-                </aside>
-              )}
+                </div>
+              ) : undefined}
+            />
+          </div>
+        )}
+        <div className="tlr-body">
+          {/* ── M25 (design §4): Error banner — last-known-good stays live. ── */}
+          {isLanesMode && aeonError && (
+            <div className="tlr-error-banner" role="alert" data-testid="tlr-error-banner">
+              <span>Couldn&apos;t reach the Archive Agent — showing the last synced timeline.</span>
+              <button
+                type="button"
+                className="tlr-banner-btn"
+                onClick={() => setAeonRetry((n) => n + 1)}
+                data-testid="tlr-error-retry"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+          {/* ── M25 (design §4): Syncing strip — never blocks interaction. ── */}
+          {isLanesMode && autoSyncing && (
+            <div className="tlr-sync-strip" data-testid="tlr-sync-strip">
+              <span className="tlr-sync-dot" aria-hidden="true" />
+              <span aria-live="polite">
+                Archive Agent is syncing this timeline from your manuscript — content stays
+                interactive while it works.
+              </span>
+            </div>
+          )}
+
+          {/* ── M23: Progress / Structure — axis lane rows (§8.4) ── */}
+          {isLanesMode && storeLoading && (
+            <div className="tlr-skeleton" role="status" aria-label="Loading timeline" data-testid="tlr-skeleton">
+              <div className="tlr-skeleton-bar" />
+              <div className="tlr-skeleton-bar" />
+              <div className="tlr-skeleton-bar" />
+            </div>
+          )}
+          {isLanesMode && !storeLoading && timelinesStore && showEmptyState && (
+            <div className="tlr-state" data-testid="tlr-empty-state">
+              <h2>No events yet</h2>
+              <p>
+                The Archive Agent builds this timeline from your notes and scenes — or start
+                placing spans and events by hand.
+              </p>
+              <div className="tlr-state-actions">
+                <button
+                  type="button"
+                  className="tlr-state-btn tlr-state-btn--primary"
+                  onClick={handleRunArchiveNow}
+                  data-testid="tlr-run-archive"
+                >
+                  Run Archive Agent now
+                </button>
+                <button
+                  type="button"
+                  className="tlr-state-btn"
+                  onClick={handleStartEmpty}
+                  data-testid="tlr-start-empty"
+                >
+                  Start empty
+                </button>
+              </div>
+            </div>
+          )}
+          {isLanesMode && !storeLoading && timelinesStore && !showEmptyState && (
+            <div className="tlr-lanes-wrap" data-testid="tlr-lanes-wrap">
               <AxisView
                 store={timelinesStore}
                 onStoreChange={setTimelinesStore}

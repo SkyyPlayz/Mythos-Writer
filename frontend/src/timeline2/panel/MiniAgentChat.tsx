@@ -16,9 +16,11 @@ export interface MiniAgentChatProps {
   accent: 'brainstorm' | 'archive';
   placeholder: string;
   testidPrefix: string;
+  /** Optional partner display name shown once in the chat head (F3 — no duplicate avatars). */
+  partnerName?: string;
 }
 
-export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix }: MiniAgentChatProps) {
+export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix, partnerName }: MiniAgentChatProps) {
   const [draft, setDraft] = useState('');
   const feedRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -36,7 +38,7 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix 
   return (
     <div className={`trp-chat trp-chat--${accent}`} data-testid={`${testidPrefix}-chat`}>
       <div className="trp-chat-head">
-        <span className="trp-label">CHAT</span>
+        <span className="trp-label">{partnerName ? partnerName.toUpperCase() : 'CHAT'}</span>
         <AgentSessionPicker store={chat.store} className="trp-chat-sessions" busy={chat.busy} />
       </div>
       <div className="trp-chat-feed" data-testid={`${testidPrefix}-chat-feed`} ref={feedRef}>

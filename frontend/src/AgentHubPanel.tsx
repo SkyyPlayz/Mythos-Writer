@@ -1,19 +1,19 @@
-// Slice B — Unified Writing Partner shell (replaces four-agent hub).
+// Slice F3 — Unified Writing Partner shell.
 // Right-panel tabs: <name> · Suggestions · Scenes · Notes & Analysis
-// Partner tab: card + Past chats & calls + thread + glass composer.
-// Hands (Writer / Analyst / Archivist) keep engines; no AGENTS multi-face card.
+// Partner tab: one agent chat everywhere + action buttons (Update Timeline /
+// Beta Read / Writer Scan). Hands keep engines; no persona chat chips.
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Scene, Story } from './types';
 import { useAgentSessions } from './lib/useAgentSessions';
 import AgentSessionPicker from './components/AgentSessionPicker';
-import WritingAssistantPanel from './WritingAssistantPanel';
 import ScenesPanel from './ScenesPanel';
 import { useAiEnabled } from './hooks/useAiEnabled';
 import type { NamedAgentId } from './agents/agentIdentity';
 import {
-  PARTNER_HANDS,
+  PARTNER_ACTIONS,
   resolvePartnerDisplayName,
+  type PartnerActionId,
   type PartnerHandId,
 } from './agents/partnerIdentity';
 import { useAgentRunningEntry } from './agents/aiActivity';
@@ -154,31 +154,31 @@ export default function AgentHubPanel({
   story = null,
   onOpenScenesFull,
   onOpenSceneNote,
-  enabled = true,
-  scanIntervalSeconds = 60,
-  waScanInterval,
-  isActive = true,
-  isPageFocused,
-  voiceEnabled = false,
-  ttsSettings,
-  voicePrefs,
-  cadenceTrigger,
-  idleHeartbeatConstantInterval,
-  idleDebounceSeconds,
-  autoApply = false,
-  autoApplyCategories,
-  onAutoApplyCategoriesChange,
+  enabled: _enabled = true,
+  scanIntervalSeconds: _scanIntervalSeconds = 60,
+  waScanInterval: _waScanInterval,
+  isActive: _isActive = true,
+  isPageFocused: _isPageFocused,
+  voiceEnabled: _voiceEnabled = false,
+  ttsSettings: _ttsSettings,
+  voicePrefs: _voicePrefs,
+  cadenceTrigger: _cadenceTrigger,
+  idleHeartbeatConstantInterval: _idleHeartbeatConstantInterval,
+  idleDebounceSeconds: _idleDebounceSeconds,
+  autoApply: _autoApply = false,
+  autoApplyCategories: _autoApplyCategories,
+  onAutoApplyCategoriesChange: _onAutoApplyCategoriesChange,
   agentNames,
   onOpenVaultPath,
   onOpenCoachPage,
   sceneNotesRefresh,
   onPromoteSceneNote,
   onSceneNotesChanged,
-  agentEnablement,
-  continuityCount = 0,
+  agentEnablement: _agentEnablement,
+  continuityCount: _continuityCount = 0,
   gettingStartedCard,
   continuityPanel,
-  continuityItems = [],
+  continuityItems: _continuityItems = [],
   referencesPanel,
 }: Props) {
   const aiEnabled = useAiEnabled();
@@ -191,7 +191,6 @@ export default function AgentHubPanel({
     if (!aiEnabled) setActiveTabState((cur) => (cur === 'partner' || cur === 'suggestions' ? 'scenes' : cur));
   }, [aiEnabled]);
 
-  const [activeHand, setActiveHand] = useState<PartnerHandId | null>(null);
   const [call, setCall] = useState<PartnerCallState>({
     onCall: false,
     muted: false,
@@ -203,23 +202,6 @@ export default function AgentHubPanel({
   }, []);
 
   const partnerSessionStore = useAgentSessions('brainstorm');
-  const coachSessionStore = useAgentSessions('coach');
-
-  const handleHand = useCallback((hand: PartnerHandId) => {
-    if (hand === 'analyst') {
-      window.dispatchEvent(new CustomEvent('mythos:nav', { detail: { view: 'beta' } }));
-      return;
-    }
-    if (hand === 'writer') {
-      setActiveHand((cur) => (cur === 'writer' ? null : 'writer'));
-      return;
-    }
-    // Archivist: surface continuity in Notes & Analysis (engine kept; no face).
-    setActiveHand(null);
-    setActiveTab('notes-analysis');
-  }, [setActiveTab]);
-
-  const closeWriterHand = useCallback(() => setActiveHand(null), []);
 
   const TABS: { id: HubTab; label: string }[] = [
     ...(aiEnabled ? [
@@ -253,35 +235,13 @@ export default function AgentHubPanel({
         {activeTab === 'partner' && aiEnabled && (
           <PartnerChatView
             partnerName={partnerName}
-            agentNames={agentNames}
-            agentEnablement={agentEnablement}
-            continuityCount={continuityCount}
             gettingStartedCard={gettingStartedCard}
             partnerSessionStore={partnerSessionStore}
-            coachSessionStore={coachSessionStore}
-            activeHand={activeHand}
-            onHand={handleHand}
-            onCloseWriter={closeWriterHand}
             call={call}
             onCallChange={setCall}
             onEndCall={endCall}
             scene={scene}
-            enabled={enabled}
-            scanIntervalSeconds={scanIntervalSeconds}
-            waScanInterval={waScanInterval}
-            isActive={isActive}
-            isPageFocused={isPageFocused}
-            voiceEnabled={voiceEnabled}
-            ttsSettings={ttsSettings}
-            voicePrefs={voicePrefs}
-            cadenceTrigger={cadenceTrigger}
-            idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
-            idleDebounceSeconds={idleDebounceSeconds}
-            autoApply={autoApply}
-            autoApplyCategories={autoApplyCategories}
-            onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
-            continuityPanel={continuityPanel}
-            continuityItems={continuityItems}
+            story={story}
           />
         )}
         {activeTab === 'suggestions' && aiEnabled && (
@@ -308,81 +268,37 @@ export default function AgentHubPanel({
   );
 }
 
-// ── Partner chat-first view ─────────────────────────────────────────────────
+// ── Partner chat-first view (F3 unified agent) ─────────────────────────────
 
 interface PartnerChatViewProps {
   partnerName: string;
-  agentNames?: Partial<Record<NamedAgentId, string>>;
-  agentEnablement?: Partial<Record<AgentId, boolean>>;
-  continuityCount: number;
   gettingStartedCard?: import('react').ReactNode;
   partnerSessionStore: ReturnType<typeof useAgentSessions>;
-  coachSessionStore: ReturnType<typeof useAgentSessions>;
-  activeHand: PartnerHandId | null;
-  onHand: (hand: PartnerHandId) => void;
-  onCloseWriter: () => void;
   call: PartnerCallState;
   onCallChange: (next: PartnerCallState) => void;
   onEndCall: () => void;
   scene: Scene | null;
-  enabled: boolean;
-  scanIntervalSeconds: number;
-  waScanInterval?: number | 'on-save' | 'manual';
-  isActive: boolean;
-  isPageFocused?: boolean;
-  voiceEnabled: boolean;
-  ttsSettings?: TtsEngineSettings;
-  voicePrefs?: import('./hooks/useTtsPlayer').TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
-  cadenceTrigger?: 'on_save' | 'idle_heartbeat';
-  idleHeartbeatConstantInterval?: boolean;
-  idleDebounceSeconds?: number;
-  autoApply: boolean;
-  autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
-  onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
-  continuityPanel?: import('react').ReactNode;
-  continuityItems?: InconsistencyItem[];
+  story: Story | null;
 }
 
 function PartnerChatView({
   partnerName,
   gettingStartedCard,
   partnerSessionStore,
-  coachSessionStore,
-  activeHand,
-  onHand,
-  onCloseWriter,
   call,
   onCallChange,
   onEndCall,
   scene,
-  enabled,
-  scanIntervalSeconds,
-  waScanInterval,
-  isActive,
-  isPageFocused,
-  voiceEnabled,
-  ttsSettings,
-  voicePrefs,
-  cadenceTrigger,
-  idleHeartbeatConstantInterval,
-  idleDebounceSeconds,
-  autoApply,
-  autoApplyCategories,
-  onAutoApplyCategoriesChange,
+  story,
 }: PartnerChatViewProps) {
   const brainstormActivity = useBrainstormActivity();
   const writerBusy = useAgentRunningEntry('writingAssistant');
   const [heartbeatBusy, setHeartbeatBusy] = useState<PartnerHandId | null>(getPartnerHandBusy());
   useEffect(() => subscribePartnerBusy(() => setHeartbeatBusy(getPartnerHandBusy())), []);
-  const handBusy: PartnerHandId | null = heartbeatBusy
-    ?? (writerBusy
-      ? 'writer'
-      : brainstormActivity.active
-        ? null
-        : activeHand === 'writer' || activeHand === 'archivist' || activeHand === 'analyst'
-          ? activeHand
-          : null);
-  const [coachBusy, setCoachBusy] = useState(false);
+  const [actionBusy, setActionBusy] = useState<PartnerHandId | null>(null);
+  const handBusy: PartnerHandId | null = actionBusy
+    ?? heartbeatBusy
+    ?? (writerBusy ? 'writer' : brainstormActivity.active ? null : null);
   const [pastOpen, setPastOpen] = useState(false);
 
   return (
@@ -421,82 +337,133 @@ function PartnerChatView({
         )}
       </div>
 
-      <div className="ahp-hands" role="group" aria-label="Partner hands">
-        {PARTNER_HANDS.map((h) => (
-          <button
-            key={h.id}
-            type="button"
-            className={`ahp-hand-chip${activeHand === h.id ? ' ahp-hand-chip--active' : ''}`}
-            style={{ '--hand-color': h.color } as React.CSSProperties}
-            data-testid={`ahp-hand-${h.id}`}
-            title={h.description}
-            onClick={() => onHand(h.id)}
-          >
-            {h.label}
-          </button>
-        ))}
+      <div className="ahp-partner-thread" data-testid="ahp-partner-thread">
+        <UnifiedPartnerChat
+          partnerName={partnerName}
+          onCall={call.onCall}
+          handBusy={!!handBusy}
+          scene={scene}
+          story={story}
+          onActionBusy={setActionBusy}
+        />
       </div>
-
-      {activeHand === 'writer' ? (
-        <div className="ahp-partner-thread" data-testid="ahp-writer-hand">
-          <div className="ahp-hand-header">
-            <span className="ahp-chat-agent-name">Writer · {partnerName}</span>
-            <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" busy={coachBusy} />
-            <button
-              type="button"
-              className="ahp-hand-close"
-              data-testid="ahp-close-writer"
-              onClick={onCloseWriter}
-            >
-              Close
-            </button>
-          </div>
-          <WritingAssistantPanel
-            sessionStore={coachSessionStore}
-            scene={scene}
-            enabled={enabled}
-            scanIntervalSeconds={scanIntervalSeconds}
-            waScanInterval={waScanInterval}
-            isActive={isActive}
-            isPageFocused={isPageFocused}
-            voiceEnabled={voiceEnabled}
-            ttsSettings={ttsSettings}
-            voicePrefs={voicePrefs}
-            cadenceTrigger={cadenceTrigger}
-            idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
-            idleDebounceSeconds={idleDebounceSeconds}
-            autoApply={autoApply}
-            autoApplyCategories={autoApplyCategories}
-            onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
-            displayName={partnerName}
-            onBusyChange={setCoachBusy}
-          />
-        </div>
-      ) : (
-        <div className="ahp-partner-thread" data-testid="ahp-partner-thread">
-          <PartnerBrainstormChat
-            partnerName={partnerName}
-            onCall={call.onCall}
-            handBusy={!!handBusy}
-          />
-        </div>
-      )}
     </div>
   );
 }
 
-function PartnerBrainstormChat({
+function sceneProse(scene: Scene | null): string {
+  if (!scene) return '';
+  const blocks = (scene as { blocks?: Array<{ content?: string }> }).blocks;
+  if (!Array.isArray(blocks)) return '';
+  return blocks.map((b) => b.content ?? '').filter(Boolean).join('\n\n');
+}
+
+async function runPartnerAction(
+  action: PartnerActionId,
+  ctx: { scene: Scene | null; story: Story | null },
+): Promise<{ text: string; cardTitle?: string; cardFoot?: string }> {
+  const api = window.api;
+  switch (action) {
+    case 'update-timeline': {
+      if (typeof api?.timelineRebuild !== 'function') {
+        return { text: 'Timeline rebuild is unavailable in this build.', cardTitle: 'Update Timeline' };
+      }
+      const res = await api.timelineRebuild();
+      if (!res.ok) {
+        return { text: res.reason ?? 'Could not update the timeline.', cardTitle: 'Update Timeline' };
+      }
+      const r = res.report;
+      if (!r) {
+        return { text: 'Timeline updated from your notes and manuscript.', cardTitle: 'Update Timeline' };
+      }
+      const changed = r.eventsAdded + r.eventsUpdated + r.eventsRemoved;
+      const text = changed === 0
+        ? `Timeline already up to date — read ${r.scenesRead} scene${r.scenesRead === 1 ? '' : 's'}.`
+        : `Added ${r.eventsAdded}, updated ${r.eventsUpdated}, removed ${r.eventsRemoved} from ${r.scenesRead} scene${r.scenesRead === 1 ? '' : 's'}. Written beats marked done where detected.`;
+      return {
+        text,
+        cardTitle: 'Update Timeline',
+        cardFoot: `${r.eventsAdded}+ · ${r.eventsUpdated}~ · ${r.eventsRemoved}−`,
+      };
+    }
+    case 'beta-read': {
+      if (!ctx.story) {
+        return { text: 'Open a story first, then run Beta Read.', cardTitle: 'Beta Read' };
+      }
+      if (typeof api?.betaReportRun !== 'function') {
+        return { text: 'Beta Read is unavailable in this build.', cardTitle: 'Beta Read' };
+      }
+      const prose = sceneProse(ctx.scene) || ctx.story.title || '';
+      const scope: BetaReportScope = ctx.scene
+        ? { kind: 'scene', id: ctx.scene.id, label: `Scene: ${ctx.scene.title}` }
+        : { kind: 'story', id: ctx.story.id, label: 'Full story' };
+      const focus: BetaReportFocus = { pacing: true, clarity: true, character: true, plot: true };
+      const res = await api.betaReportRun({
+        storyId: ctx.story.id,
+        scope,
+        focus,
+        text: prose,
+      });
+      if ('error' in res && res.error) {
+        return { text: res.error, cardTitle: 'Beta Read' };
+      }
+      const report = 'report' in res ? res.report : null;
+      const summary = report
+        ? (report.feedback?.trim()
+          || `Overall ${report.overall.verdict} (${report.overall.score}). ${report.categories.map((c) => `${c.label}: ${c.verdict}`).join(' · ')}`)
+        : 'Beta read finished — open the Beta Reader page for the full report.';
+      return { text: summary, cardTitle: 'Beta Read', cardFoot: ctx.story.title };
+    }
+    case 'writer-scan': {
+      if (!ctx.scene) {
+        return { text: 'Open a scene first, then run Writer Scan.', cardTitle: 'Writer Scan' };
+      }
+      if (typeof api?.writingAssistantScanNow !== 'function') {
+        return { text: 'Writer Scan is unavailable in this build.', cardTitle: 'Writer Scan' };
+      }
+      const prose = sceneProse(ctx.scene);
+      const res = await api.writingAssistantScanNow({
+        sceneId: ctx.scene.id,
+        prose,
+        scenePath: ctx.scene.path ?? '',
+      });
+      const tips = Array.isArray(res.tips) ? res.tips : [];
+      const lines = tips.map((t) => (typeof t === 'string' ? t : (t as { text?: string }).text ?? String(t)));
+      const text = lines.length > 0
+        ? lines.slice(0, 12).join('\n• ').replace(/^/, '• ')
+        : 'Scan finished — no craft notes this pass.';
+      return {
+        text,
+        cardTitle: 'Writer Scan',
+        cardFoot: ctx.scene.title,
+      };
+    }
+    default: {
+      const _exhaustive: never = action;
+      return _exhaustive;
+    }
+  }
+}
+
+function UnifiedPartnerChat({
   partnerName,
   onCall,
   handBusy,
+  scene,
+  story,
+  onActionBusy,
 }: {
   partnerName: string;
   onCall: boolean;
   handBusy: boolean;
+  scene: Scene | null;
+  story: Story | null;
+  onActionBusy: (hand: PartnerHandId | null) => void;
 }) {
   const chat = useMiniAgentChat('brainstorm', invokeBrainstorm);
   const [queued, setQueued] = useState<readonly QueuedPartnerMessage[]>(getPartnerMsgQueue());
   const [settingsSnap, setSettingsSnap] = useState<AppSettings | null>(null);
+  const [runningAction, setRunningAction] = useState<PartnerActionId | null>(null);
 
   useEffect(() => subscribePartnerBusy(() => setQueued([...getPartnerMsgQueue()])), []);
 
@@ -536,12 +503,48 @@ function PartnerBrainstormChat({
   const queuedChat = useMemo(() => ({
     ...chat,
     send: sendQueuedAware,
-    // Allow composer while heartbeat-busy so messages can enter QUEUED.
-    busy: chat.busy && !handBusy && !getPartnerHandBusy(),
-  }), [chat, sendQueuedAware, handBusy]);
+    busy: (chat.busy && !handBusy && !getPartnerHandBusy()) || runningAction !== null,
+  }), [chat, sendQueuedAware, handBusy, runningAction]);
+
+  const runAction = useCallback(async (action: PartnerActionId) => {
+    if (runningAction) return;
+    const meta = PARTNER_ACTIONS.find((a) => a.id === action);
+    if (!meta) return;
+    setRunningAction(action);
+    onActionBusy(meta.hand);
+    try {
+      const result = await runPartnerAction(action, { scene, story });
+      await chat.postActionResult(meta.label, result.text, {
+        cardTitle: result.cardTitle,
+        cardFoot: result.cardFoot,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await chat.postActionResult(meta.label, msg || 'Action failed.');
+    } finally {
+      setRunningAction(null);
+      onActionBusy(null);
+    }
+  }, [runningAction, onActionBusy, scene, story, chat]);
 
   return (
     <div className="ahp-brainstorm-chat ahp-partner-composer" data-testid="ahp-partner-chat">
+      <div className="ahp-actions" role="group" aria-label="Partner actions">
+        {PARTNER_ACTIONS.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            className={`ahp-action-chip${runningAction === a.id ? ' ahp-action-chip--busy' : ''}`}
+            style={{ '--hand-color': a.color } as React.CSSProperties}
+            data-testid={`ahp-action-${a.id}`}
+            title={a.description}
+            disabled={runningAction !== null}
+            onClick={() => { void runAction(a.id); }}
+          >
+            {runningAction === a.id ? `${a.label}…` : a.label}
+          </button>
+        ))}
+      </div>
       {showClaudeLogin && (
         <div className="ahp-claude-login" data-testid="ahp-claude-login-card">
           <div className="ahp-claude-login__title">Log in to Claude to finish setup</div>
@@ -591,6 +594,7 @@ function PartnerBrainstormChat({
       <MiniAgentChat
         chat={queuedChat}
         accent="brainstorm"
+        partnerName={partnerName}
         placeholder={onCall ? `Speak or type to ${partnerName}…` : `Message ${partnerName}…`}
         testidPrefix="ahp-partner"
       />

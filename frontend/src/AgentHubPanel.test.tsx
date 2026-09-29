@@ -47,9 +47,35 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     expect(screen.queryByTestId('ahp-agent-row-beta-reader')).not.toBeInTheDocument();
     expect(await screen.findByTestId('partner-card')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-past-chats')).toBeInTheDocument();
-    expect(screen.getByTestId('ahp-hand-writer')).toBeInTheDocument();
-    expect(screen.getByTestId('ahp-hand-analyst')).toBeInTheDocument();
-    expect(screen.getByTestId('ahp-hand-archivist')).toBeInTheDocument();
+    expect(screen.getByTestId('ahp-action-update-timeline')).toBeInTheDocument();
+    expect(screen.getByTestId('ahp-action-beta-read')).toBeInTheDocument();
+    expect(screen.getByTestId('ahp-action-writer-scan')).toBeInTheDocument();
+    expect(screen.queryByTestId('ahp-hand-writer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ahp-hand-analyst')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ahp-hand-archivist')).not.toBeInTheDocument();
+  });
+
+  it('action buttons post results into the unified partner thread', async () => {
+    const timelineRebuild = vi.fn().mockResolvedValue({
+      ok: true,
+      report: { eventsAdded: 2, eventsUpdated: 1, eventsRemoved: 0, scenesRead: 3, missingSceneIds: [] },
+    });
+    (window as any).api = {
+      ...(window as any).api,
+      timelineRebuild,
+      agentSessions: {
+        list: vi.fn().mockResolvedValue({ sessions: [{ id: 's1', title: 'Chat', updatedAt: new Date().toISOString() }] }),
+        get: vi.fn().mockResolvedValue({ id: 's1', title: 'Chat', turns: [], createdAt: '', updatedAt: '' }),
+        create: vi.fn().mockResolvedValue({ id: 's1', title: 'Chat', turns: [], createdAt: '', updatedAt: '' }),
+        appendTurns: vi.fn().mockResolvedValue({ ok: true }),
+        rename: vi.fn().mockResolvedValue({ ok: true }),
+        duplicate: vi.fn().mockResolvedValue({ id: 's2' }),
+        delete: vi.fn().mockResolvedValue({ ok: true }),
+      },
+    };
+    render(<AgentHubPanel scene={null} />);
+    fireEvent.click(await screen.findByTestId('ahp-action-update-timeline'));
+    await waitFor(() => expect(timelineRebuild).toHaveBeenCalled());
   });
 
   it('renames the partner tab from agentNames.brainstorm', () => {
@@ -109,15 +135,19 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     });
   });
 
-  it('Analyst hand navigates to Beta Reader page', () => {
-    const nav = vi.fn();
-    window.addEventListener('mythos:nav', nav as EventListener);
+  it('Update Timeline action runs via the unified partner (no persona hand chips)', async () => {
+    const timelineRebuild = vi.fn().mockResolvedValue({
+      ok: true,
+      report: { eventsAdded: 1, eventsUpdated: 0, eventsRemoved: 0, scenesRead: 1, missingSceneIds: [] },
+    });
+    (window as any).api = {
+      ...(window as any).api,
+      timelineRebuild,
+    };
     render(<AgentHubPanel scene={null} />);
-    fireEvent.click(screen.getByTestId('ahp-hand-analyst'));
-    expect(nav).toHaveBeenCalled();
-    const detail = (nav.mock.calls[0][0] as CustomEvent).detail;
-    expect(detail).toEqual({ view: 'beta' });
-    window.removeEventListener('mythos:nav', nav as EventListener);
+    expect(screen.queryByTestId('ahp-hand-analyst')).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByTestId('ahp-action-update-timeline'));
+    await waitFor(() => expect(timelineRebuild).toHaveBeenCalled());
   });
 });
 

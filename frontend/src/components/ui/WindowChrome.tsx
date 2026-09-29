@@ -48,7 +48,6 @@ export interface WindowChromeProps {
   onOpenVault?: () => void;
   /** "+ Create new Mythos Vault" — legacy ProjectSwitcher parity (SKY-320/SKY-906). */
   onCreateVault?: () => void;
-  onReplayOnboarding?: () => void;
   /** A1 / 09 §3.1: logo · title opens Welcome (vault switch lives on the rail). */
   onOpenWelcome?: () => void;
   /** Bell slot — pass <NotificationCenter /> (M5). */
@@ -150,7 +149,6 @@ export default function WindowChrome({
   onNewStory,
   onOpenVault,
   onCreateVault,
-  onReplayOnboarding,
   onOpenWelcome,
   notificationCenter,
 }: WindowChromeProps) {
@@ -268,7 +266,6 @@ export default function WindowChrome({
     ...(onOpenVault ? [{ t: 'Open vault…', sub: 'Bring in an existing folder', pick: () => { setProjOpen(false); onOpenVault(); } }] : []),
     // Beta 4 M2: spec label "New Mythos vault…"; testid stays for sky-906 E2E.
     ...(onCreateVault ? [{ t: 'New Mythos vault…', sub: 'Fresh Story + Notes pair', testId: 'project-switcher-create-new', pick: () => { setProjOpen(false); onCreateVault(); } }] : []),
-    ...(onReplayOnboarding ? [{ t: 'Replay onboarding', sub: 'The welcome wizard, once more', pick: () => { setProjOpen(false); onReplayOnboarding(); } }] : []),
   ];
 
   return (

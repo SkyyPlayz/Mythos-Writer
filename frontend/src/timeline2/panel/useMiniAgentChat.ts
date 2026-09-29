@@ -22,6 +22,15 @@ export interface MiniAgentChat {
   busy: boolean;
   error: string | null;
   send: (prompt: string) => Promise<void>;
+  /**
+   * F3 — drop a completed action (Update Timeline / Beta Read / Writer Scan)
+   * into the shared thread without going through the chat invoke path.
+   */
+  postActionResult: (
+    userLabel: string,
+    agentText: string,
+    extras?: { cardTitle?: string; cardFoot?: string },
+  ) => Promise<void>;
 }
 
 /** History cap sent to the agent — matches the IPC-side history limit. */
@@ -70,6 +79,27 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
     }
   }, [pendingPrompt, store, invoke]);
 
+  const postActionResult = useCallback(async (
+    userLabel: string,
+    agentText: string,
+    extras?: { cardTitle?: string; cardFoot?: string },
+  ) => {
+    const now = new Date().toISOString();
+    const agentTurn: AgentSessionTurn = {
+      role: 'agent',
+      text: agentText,
+      at: now,
+    };
+    if (extras?.cardTitle) {
+      agentTurn.cardTitle = extras.cardTitle;
+      if (extras.cardFoot) agentTurn.cardFoot = extras.cardFoot;
+    }
+    await store.appendTurns([
+      { role: 'user', text: userLabel, at: now },
+      agentTurn,
+    ]);
+  }, [store]);
+
   return {
     store,
     messages: store.activeSession?.turns ?? [],
@@ -77,5 +107,6 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
     busy: pendingPrompt !== null,
     error,
     send,
+    postActionResult,
   };
 }
