@@ -257,27 +257,89 @@ test('F1#10: dropcap gated off — ::first-letter float none when class absent',
 });
 
 test('F1#9: + Chapter via in-app modal keeps order across reload', async () => {
-  test.setTimeout(120_000);
+  // Self-contained relaunch (own userData) — proves createChapter × editor-flush
+  // race does not wipe chapters from nav or manifest.
+  test.setTimeout(180_000);
   test.skip(!fs.existsSync(MAIN_JS), 'needs build');
-  await ensureStoryManuscript(page);
-  // Use toolbar + Chapter (real in-app path — File→New chapter does not exist).
-  await page.getByTestId('msv-add-chapter').click();
-  await answerTextPrompt(page, 'Chapter Alpha');
-  await page.getByTestId('msv-add-chapter').click();
-  await answerTextPrompt(page, 'Chapter Bravo');
-  await page.getByTestId('msv-add-chapter').click();
-  await answerTextPrompt(page, 'Chapter Charlie');
-  await page.waitForTimeout(500);
-  const titlesBefore = (await page.locator('.nav-chapter-title').allTextContents()).map((t) => t.trim()).filter(Boolean);
-  // Expect chronological add order (selection moves to newest after each add).
-  expect(titlesBefore.filter((t) => /Alpha|Bravo|Charlie/.test(t))).toEqual(
-    expect.arrayContaining(['Chapter Alpha', 'Chapter Bravo', 'Chapter Charlie']),
-  );
-  const idx = (name: string) => titlesBefore.findIndex((t) => t.includes(name));
-  expect(idx('Alpha')).toBeLessThan(idx('Bravo'));
-  expect(idx('Bravo')).toBeLessThan(idx('Charlie'));
+  const ownUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f1-9-'));
+  const ownVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f1-9-v-'));
+  seedUserData(ownUserData, ownVault);
 
-  // Persist path: settings already on disk via app; relaunch same userData from beforeAll.
-  // story-tab-subview uses module-level page/app — capture titles then soft-check navigator still lists them.
-  expect(titlesBefore.length).toBeGreaterThanOrEqual(3);
+  let titlesBefore: string[] = [];
+  {
+    const ownApp = await launchApp(ownUserData);
+    try {
+      const p = await firstWindow(ownApp);
+      await expect(p.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+      await p.locator('.wc-menu', { hasText: 'File' }).click();
+      await p.locator('.wc-menu-item', { hasText: 'New story' }).click();
+      await expect(p.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
+      await p.locator('.nav-story-title').first().click();
+      await p.keyboard.press('Escape').catch(() => {});
+      await clickStoryNav(p);
+      await expect(p.getByTestId('msv-toolbar')).toBeVisible({ timeout: 10_000 });
+
+      // Type then add chapters quickly — the unmount flush must not wipe them.
+      const editor = p.locator('.ProseMirror, [contenteditable="true"]').first();
+      if (await editor.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await editor.click();
+        await p.keyboard.type('Race seed prose.');
+      }
+      await p.getByTestId('msv-add-chapter').click();
+      await answerTextPrompt(p, 'Chapter Alpha');
+      await p.getByTestId('msv-add-chapter').click();
+      await answerTextPrompt(p, 'Chapter Bravo');
+      await p.getByTestId('msv-add-chapter').click();
+      await answerTextPrompt(p, 'Chapter Charlie');
+      await p.waitForTimeout(1200);
+
+      titlesBefore = (await p.locator('.nav-chapter-title').allTextContents()).map((t) => t.trim()).filter(Boolean);
+      expect(titlesBefore.filter((t) => /Alpha|Bravo|Charlie/.test(t))).toEqual(
+        expect.arrayContaining(['Chapter Alpha', 'Chapter Bravo', 'Chapter Charlie']),
+      );
+      const idx = (name: string) => titlesBefore.findIndex((t) => t.includes(name));
+      expect(idx('Alpha')).toBeLessThan(idx('Bravo'));
+      expect(idx('Bravo')).toBeLessThan(idx('Charlie'));
+
+      // Disk: manifest must list the three chapters in chrono order.
+      await expect.poll(() => {
+        try {
+          const man = JSON.parse(fs.readFileSync(path.join(ownVault, 'manifest.json'), 'utf-8'));
+          const story = man.stories?.[0];
+          const ch = (story?.parts?.[0]?.chapters ?? story?.chapters ?? []) as Array<{ title?: string; order?: number }>;
+          return ch
+            .slice()
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+            .map((c) => c.title ?? '')
+            .filter((t) => /Alpha|Bravo|Charlie/.test(t));
+        } catch {
+          return [];
+        }
+      }).toEqual(['Chapter Alpha', 'Chapter Bravo', 'Chapter Charlie']);
+    } finally {
+      await ownApp.close();
+    }
+  }
+
+  const ownApp2 = await launchApp(ownUserData);
+  try {
+    const p2 = await firstWindow(ownApp2);
+    await expect(p2.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+    await clickStoryNav(p2);
+    await expect(p2.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
+    await p2.locator('.nav-story-title').first().click();
+    await p2.keyboard.press('Escape').catch(() => {});
+    await expect(p2.locator('.nav-chapter-title').first()).toBeVisible({ timeout: 8_000 });
+    const titlesAfter = (await p2.locator('.nav-chapter-title').allTextContents()).map((t) => t.trim()).filter(Boolean);
+    expect(titlesAfter.filter((t) => /Alpha|Bravo|Charlie/.test(t))).toEqual(
+      expect.arrayContaining(['Chapter Alpha', 'Chapter Bravo', 'Chapter Charlie']),
+    );
+    const idx = (name: string) => titlesAfter.findIndex((t) => t.includes(name));
+    expect(idx('Alpha')).toBeLessThan(idx('Bravo'));
+    expect(idx('Bravo')).toBeLessThan(idx('Charlie'));
+  } finally {
+    await ownApp2.close();
+    fs.rmSync(ownUserData, { recursive: true, force: true });
+    fs.rmSync(ownVault, { recursive: true, force: true });
+  }
 });

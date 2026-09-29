@@ -3253,62 +3253,75 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
   }, []);
 
-  // SKY-1699: Pane 2 blocks change handler — mirrors handleBlocksChange for pane 2's scene.
-  const handlePane2BlocksChange = useCallback((blocks: Block[]) => {
-    if (!pane2Scene || !pane2Chapter || !pane2Story) return;
-    const updatedScene: Scene = { ...pane2Scene, blocks, updatedAt: now() };
-    setPane2Scene(updatedScene);
-    const updatedStories = stories.map((story) =>
-      story.id !== pane2Story.id ? story : updateChapterOwner(story, pane2Chapter.id, (chapters) =>
-        chapters.map((ch) =>
-          ch.id !== pane2Chapter.id ? ch : {
-            ...ch,
-            scenes: ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
-          }
-        )
-      )
-    );
-    updateManifest(updatedStories);
-    persistSceneMarkdown(updatedScene);
-  }, [pane2Scene, pane2Chapter, pane2Story, stories, updateManifest, persistSceneMarkdown]);
-
-  const handleBlocksChange = useCallback((blocks: Block[]) => {
-    if (!selectedScene || !selectedChapter || !selectedStory) return;
-    const updatedScene: Scene = { ...selectedScene, blocks, updatedAt: now() };
-    setSelectedScene(updatedScene);
+  /**
+   * F1#9 / Shield / Probe: apply editor blocks to a CAPTURED story/chapter/scene
+   * id triple. Merges onto storiesRef (latest), DROPS if the target was deleted,
+   * and never resets the live selection to the flushed scene.
+   */
+  const applySceneBlocks = useCallback((
+    storyId: string,
+    chapterId: string,
+    sceneId: string,
+    blocks: Block[],
+  ) => {
+    const latest = storiesRef.current;
+    const story = latest.find((s) => s.id === storyId);
+    if (!story) return; // Shield: target story gone — drop the save
+    const chapter =
+      story.chapters.find((c) => c.id === chapterId)
+      ?? (story.parts ?? []).flatMap((p) => p.chapters).find((c) => c.id === chapterId);
+    if (!chapter) return; // Shield: target chapter gone — drop
+    const existing = chapter.scenes.find((sc) => sc.id === sceneId);
+    const isProvisional = provisionalScene?.sceneId === sceneId;
+    if (!existing && !isProvisional) return; // Shield: target scene gone — drop
+    const base = existing ?? {
+      id: sceneId,
+      title: '',
+      path: `stories/${storyId}/chapters/${chapterId}/scenes/${sceneId}.md`,
+      order: chapter.scenes.length,
+      chapterId,
+      storyId,
+      blocks: [],
+      createdAt: now(),
+      updatedAt: now(),
+    };
+    const updatedScene: Scene = { ...base, blocks, updatedAt: now() };
     const content = blocks.map((b) => b.content).join('\n\n');
-    // Beta 4 M4 (§1.5): a provisional scene lives only in editor state until
-    // the first real keystroke; while it's still empty, nothing persists.
-    const isProvisional = provisionalScene?.sceneId === updatedScene.id;
     if (isProvisional && !content.trim()) return;
-    const updatedStories = stories.map((story) =>
-      story.id !== selectedStory.id ? story : updateChapterOwner(story, selectedChapter.id, (chapters) =>
+
+    const updatedStories = latest.map((s) =>
+      s.id !== storyId ? s : updateChapterOwner(s, chapterId, (chapters) =>
         chapters.map((ch) =>
-          ch.id !== selectedChapter.id ? ch : {
+          ch.id !== chapterId ? ch : {
             ...ch,
-            // Committing a provisional scene appends it to its chapter;
-            // ordinary edits replace the stored scene in place.
             scenes: isProvisional
               ? [...ch.scenes, updatedScene]
-              : ch.scenes.map((sc) => sc.id !== updatedScene.id ? sc : updatedScene),
+              : ch.scenes.map((sc) => (sc.id !== sceneId ? sc : updatedScene)),
           }
         )
       )
     );
     updateManifest(updatedStories);
-    // SKY-9404 (M1-S4): ManuscriptView's title-row word count (scopeWords)
-    // reads story.chapters[].scenes[].blocks off the `story` prop, not off
-    // selectedScene — updateManifest alone doesn't refresh selectedStory
-    // (same class of bug as SKY-8587 for paragraph edits), so live typing
-    // left the title row's word count stuck at its initial value.
-    const editedStory = updatedStories.find((st) => st.id === selectedStory.id);
+
+    // Refresh selection objects only when still on this target — never snap
+    // back after createChapter / switch-story moved selection away.
+    const editedStory = updatedStories.find((st) => st.id === storyId);
     if (editedStory) {
-      setSelectedStory(editedStory);
-      setSelectedChapter((prev) => (prev ? editedStory.chapters.find((ch) => ch.id === prev.id) ?? prev : prev));
+      setSelectedStory((prev) => (prev?.id === storyId ? editedStory : prev));
+      setSelectedChapter((prev) => {
+        if (!prev || prev.id !== chapterId) return prev;
+        return editedStory.chapters.find((ch) => ch.id === chapterId) ?? prev;
+      });
+      setSelectedScene((prev) => (prev?.id === sceneId ? updatedScene : prev));
+      setPane2Scene((prev) => (prev?.id === sceneId ? updatedScene : prev));
+      setPane2Story((prev) => (prev?.id === storyId ? editedStory : prev));
+      setPane2Chapter((prev) => {
+        if (!prev || prev.id !== chapterId) return prev;
+        return editedStory.chapters.find((ch) => ch.id === chapterId) ?? prev;
+      });
     }
     persistSceneMarkdown(updatedScene);
     if (isProvisional && provisionalScene) {
-      // The scene is real now — its tab stops being provisional.
       const committedTabs = storyDocTabs.map((t) =>
         t.id === provisionalScene.tabId ? { ...t, provisional: undefined } : t,
       );
@@ -3318,16 +3331,30 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
     if (content.trim()) {
       checkGettingStartedItem('write-scene');
-      setSeenEmptySceneHints((prev) => new Set(prev).add(selectedScene.id));
+      setSeenEmptySceneHints((prev) => new Set(prev).add(sceneId));
     }
-    window.api.snapshotSave?.(selectedScene.id, content).catch(() => {});
-    // Flash "Saved" in the distraction-free status bar ~1200ms after the last edit
+    window.api.snapshotSave?.(sceneId, content).catch(() => {});
     if (saveIndicatorTimer.current) clearTimeout(saveIndicatorTimer.current);
     saveIndicatorTimer.current = setTimeout(() => {
       setSaveState('saved');
       saveIndicatorTimer.current = setTimeout(() => setSaveState('idle'), 1500);
     }, 1200);
-  }, [selectedScene, selectedChapter, selectedStory, stories, updateManifest, persistSceneMarkdown, checkGettingStartedItem, provisionalScene, storyDocTabs, persistDocTabs]);
+  }, [updateManifest, persistSceneMarkdown, checkGettingStartedItem, provisionalScene, storyDocTabs, persistDocTabs]);
+
+  // SKY-1699: Pane 2 blocks change — bind pane2 ids at render so a deferred
+  // flush still targets the pane2 scene that was open when the user typed.
+  const handlePane2BlocksChange = useCallback((blocks: Block[]) => {
+    if (!pane2Scene || !pane2Chapter || !pane2Story) return;
+    applySceneBlocks(pane2Story.id, pane2Chapter.id, pane2Scene.id, blocks);
+  }, [pane2Scene, pane2Chapter, pane2Story, applySceneBlocks]);
+
+  // Bind selected ids into the callback identity. BlockEditor + RichTextEditor
+  // snapshot this function when arming the debounce / on unmount flush, so a
+  // later selection change cannot retarget the write (Probe switch-story).
+  const handleBlocksChange = useCallback((blocks: Block[]) => {
+    if (!selectedScene || !selectedChapter || !selectedStory) return;
+    applySceneBlocks(selectedStory.id, selectedChapter.id, selectedScene.id, blocks);
+  }, [selectedScene, selectedChapter, selectedStory, applySceneBlocks]);
 
   // ─── Beta 4 M10: Drafts v2 — load draft with exact undo (CF-4) ─────────────
 
@@ -3467,7 +3494,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const title = await requestText('Chapter title:');
     if (!title?.trim()) return;
     const id = generateId();
-    const story = stories.find((s) => s.id === storyId);
+    // F1#9: read storiesRef so a concurrent deferred editor save that already
+    // landed in the ref is not wiped by this map over a stale render closure.
+    const latest = storiesRef.current;
+    const story = latest.find((s) => s.id === storyId);
     const chapter: Chapter = {
       id, title: title.trim(),
       path: `stories/${storyId}/chapters/${id}`,
@@ -3477,7 +3507,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     // F1#9: insert after the selected chapter (same part) when that chapter
     // belongs to this story; otherwise append to the last part.
     const holder: { story: Story | null } = { story: null };
-    updateManifest(stories.map((s) => {
+    updateManifest(latest.map((s) => {
       if (s.id !== storyId) return s;
       let updated: Story;
       if (selectedChapter && selectedStory?.id === storyId) {
@@ -3505,7 +3535,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       setSelectedChapter(owned);
       setSelectedScene(owned.scenes[0] ?? null);
     }
-  }, [stories, updateManifest, requestText, selectedChapter, selectedStory]);
+  }, [updateManifest, requestText, selectedChapter, selectedStory]);
 
   const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
     setSelectedScene(scene);
@@ -3579,7 +3609,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const title = await requestText('Scene title:');
     if (!title?.trim()) return;
     const id = generateId();
-    const story = stories.find((s) => s.id === storyId)!;
+    const latest = storiesRef.current;
+    const story = latest.find((s) => s.id === storyId)!;
     const chapter = story.chapters.find((c) => c.id === chapterId)!;
     const scene: Scene = {
       id, title: title.trim(),
@@ -3588,7 +3619,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       blocks: [], draftState: 'in-progress',
       createdAt: now(), updatedAt: now(),
     };
-    updateManifest(stories.map((s) =>
+    updateManifest(latest.map((s) =>
       s.id !== storyId ? s : updateChapterOwner(s, chapterId, (chapters) =>
         chapters.map((ch) => (ch.id !== chapterId ? ch : { ...ch, scenes: [...ch.scenes, scene] }))
       )
@@ -3597,7 +3628,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleSelectScene(scene, chapter, story);
     setViewDepth('scene');
     window.api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
-  }, [stories, updateManifest, requestText, handleSelectScene, setViewDepth]);
+  }, [updateManifest, requestText, handleSelectScene, setViewDepth]);
 
   // SKY-11213: Scene Crafter "Create Scene" — creates a scene directly from
   // Setup fields without an AI draft. Uses the active story/chapter context.
@@ -3612,7 +3643,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const createSceneFromSetup = useCallback(async (setup: CrafterSetup) => {
     if (!selectedStory) throw new Error('No story selected.');
     const rawTitle = setup.title.trim() || 'Untitled Scene';
-    const latestStory = stories.find((s) => s.id === selectedStory.id) ?? selectedStory;
+    // F1#9: prefer storiesRef so a deferred editor save is not clobbered.
+    const latestStory = storiesRef.current.find((s) => s.id === selectedStory.id) ?? selectedStory;
     let workingStory = latestStory;
     let chapter: Chapter;
     if (workingStory.chapters.length === 0) {
@@ -3649,7 +3681,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     workingStory = updateChapterOwner(workingStory, chapter.id, (chapters) =>
       chapters.map((ch) => (ch.id !== chapter.id ? ch : { ...ch, scenes: [...ch.scenes, scene] }))
     );
-    updateManifest(stories.map((s) => (s.id === workingStory.id ? workingStory : s)));
+    updateManifest(storiesRef.current.map((s) => (s.id === workingStory.id ? workingStory : s)));
     // Scene Crafter: Create Scene → stay on kanban. SceneCrafterPage owns the
     // form→board mapping (F1#1) and opens the board after this resolves —
     // do not fire empty createBoardActionRef here (that produced "Board N").
@@ -3658,7 +3690,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     // Select the scene so Structure / Scenes sidebar see it immediately.
     handleSelectScene(scene, { ...chapter, scenes: [...chapter.scenes, scene] }, workingStory);
     window.api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
-  }, [stories, selectedStory, selectedChapter, updateManifest, handleSelectScene, handleTabChange, handleSetView]);
+  }, [selectedStory, selectedChapter, updateManifest, handleSelectScene, handleTabChange, handleSetView]);
 
   // SKY-10917: Story Navigator right-click "Delete scene…" — the tree had no
   // remove path at all before this. Scoped to story.chapters like
@@ -3667,18 +3699,23 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // don't reach — StoryNavigator only offers this menu item on the
   // simple-single-part render branch so it never no-ops silently.
   const deleteScene = useCallback(async (storyId: string, chapterId: string, sceneId: string) => {
-    const story = stories.find((s) => s.id === storyId);
-    const chapter = story?.chapters.find((c) => c.id === chapterId);
+    // F1#9 Shield: mutate via storiesRef + updateChapterOwner so parts[] and
+    // chapters stay synced — a chapters-only filter left the scene alive in
+    // parts and let a deferred save / relaunch resurrect it.
+    const latest = storiesRef.current;
+    const story = latest.find((s) => s.id === storyId);
+    const chapter =
+      story?.chapters.find((c) => c.id === chapterId)
+      ?? (story?.parts ?? []).flatMap((p) => p.chapters).find((c) => c.id === chapterId);
     const scene = chapter?.scenes.find((sc) => sc.id === sceneId);
     if (!story || !chapter || !scene) return;
     if (!window.confirm(`Delete "${scene.title || 'Untitled Scene'}"? This cannot be undone.`)) return;
-    const updatedStories = stories.map((s) =>
-      s.id !== storyId ? s : {
-        ...s,
-        chapters: s.chapters.map((ch) =>
+    const updatedStories = latest.map((s) =>
+      s.id !== storyId ? s : updateChapterOwner(s, chapterId, (chapters) =>
+        chapters.map((ch) =>
           ch.id !== chapterId ? ch : { ...ch, scenes: ch.scenes.filter((sc) => sc.id !== sceneId) }
-        ),
-      }
+        )
+      )
     );
     updateManifest(updatedStories);
     window.api?.deleteVault?.(scene.path).catch(() => {});
@@ -3693,17 +3730,22 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       editorApiRef.current?.focus();
     }
     showLnToast(`Deleted "${scene.title || 'Untitled Scene'}"`);
-  }, [stories, updateManifest, selectedScene, selectedStory]);
+  }, [updateManifest, selectedScene, selectedStory]);
 
   const deleteChapter = useCallback(async (storyId: string, chapterId: string) => {
-    const story = stories.find((s) => s.id === storyId);
-    const chapter = story?.chapters.find((c) => c.id === chapterId);
+    const latest = storiesRef.current;
+    const story = latest.find((s) => s.id === storyId);
+    const chapter =
+      story?.chapters.find((c) => c.id === chapterId)
+      ?? (story?.parts ?? []).flatMap((p) => p.chapters).find((c) => c.id === chapterId);
     if (!story || !chapter) return;
     const sceneCount = chapter.scenes.length;
     const warn = sceneCount > 0 ? ` and its ${sceneCount} scene${sceneCount === 1 ? '' : 's'}` : '';
     if (!window.confirm(`Delete "${chapter.title || 'Untitled Chapter'}"${warn}? This cannot be undone.`)) return;
-    const updatedStories = stories.map((s) =>
-      s.id !== storyId ? s : { ...s, chapters: s.chapters.filter((c) => c.id !== chapterId) }
+    const updatedStories = latest.map((s) =>
+      s.id !== storyId ? s : updateChapterOwner(s, chapterId, (chapters) =>
+        chapters.filter((c) => c.id !== chapterId)
+      )
     );
     updateManifest(updatedStories);
     await Promise.all(chapter.scenes.map((sc) => window.api?.deleteVault?.(sc.path).catch(() => {})));
@@ -3715,7 +3757,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       setSelectedScene(null);
     }
     showLnToast(`Deleted "${chapter.title || 'Untitled Chapter'}"`);
-  }, [stories, updateManifest, selectedChapter, selectedStory]);
+  }, [updateManifest, selectedChapter, selectedStory]);
 
   // M3 (SKY-9021): create story → instantly writable. ONE transaction builds
   // story + Part 1 (title: "", the v3 single-untitled-part shape) + Chapter 1
@@ -5792,14 +5834,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // part" and story.parts becomes the mutation authority (see storyParts.ts).
   const handleAddPart = useCallback(async () => {
     if (!selectedStory) return;
-    const reconciled = reconcileParts(selectedStory);
+    // F1#9: merge onto storiesRef so a deferred editor save is not clobbered.
+    const latest = storiesRef.current;
+    const selected = latest.find((st) => st.id === selectedStory.id) ?? selectedStory;
+    const reconciled = reconcileParts(selected);
     const parts = reconciled.parts ?? [];
     if (isSimpleSinglePart(reconciled)) {
       const title = await requestText('Part title:');
       if (!title?.trim()) return;
       const updatedParts = parts.map((p, i) => (i === 0 ? { ...p, title: title.trim(), updatedAt: now() } : p));
       const updated = syncChaptersFromParts({ ...reconciled, parts: updatedParts });
-      updateManifest(stories.map((st) => (st.id === updated.id ? updated : st)));
+      updateManifest(latest.map((st) => (st.id === updated.id ? updated : st)));
       refreshManuscriptSelection(updated);
       return;
     }
@@ -5808,9 +5853,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       createdAt: now(), updatedAt: now(),
     };
     const updated = syncChaptersFromParts({ ...reconciled, parts: [...parts, newPart] });
-    updateManifest(stories.map((st) => (st.id === updated.id ? updated : st)));
+    updateManifest(latest.map((st) => (st.id === updated.id ? updated : st)));
     refreshManuscriptSelection(updated);
-  }, [selectedStory, stories, updateManifest, requestText, refreshManuscriptSelection]);
+  }, [selectedStory, updateManifest, requestText, refreshManuscriptSelection]);
 
   // M2: edit/create the part note. Empty text with no existing note is a
   // no-op — never persist an empty epigraph the UI has no way to re-open.

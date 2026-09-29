@@ -143,8 +143,6 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   autoLinkerModeRef.current = autoLinkerMode;
   // Flag to break the auto-link → onUpdate → auto-link cycle
   const applyingAutoLinksRef = useRef(false);
-  const onBlocksChangeRef = useRef(onBlocksChange);
-  onBlocksChangeRef.current = onBlocksChange;
   const blockIdRef = useRef(scene.blocks[0]?.id ?? crypto.randomUUID());
   const onEditorReadyRef = useRef(onEditorReady);
   onEditorReadyRef.current = onEditorReady;
@@ -189,15 +187,18 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
     applyingAutoLinksRef.current = false;
   }, []);
 
+  // Close over this mount's onBlocksChange — RichTextEditor snapshots the
+  // callback when arming the 800ms debounce, so a flush after selection moves
+  // still targets the scene that was open when the user typed (F1#9).
   const handleChangeMarkdown = useCallback((markdown: string) => {
-    onBlocksChangeRef.current([{
+    onBlocksChange([{
       id: blockIdRef.current,
       type: 'prose',
       content: markdown,
       order: 0,
       updatedAt: new Date().toISOString(),
     }]);
-  }, []);
+  }, [onBlocksChange]);
 
   const handleSelectionUpdate = useCallback((ed: Editor) => {
     const { from, to } = ed.state.selection;

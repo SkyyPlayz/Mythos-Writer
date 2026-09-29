@@ -73,15 +73,6 @@ async function openSceneCrafter(page: Page): Promise<void> {
   await page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();
 }
 
-/** Structure is a Story Writer sub-view — not a main-nav rail item. */
-async function openStructureSubview(page: Page): Promise<void> {
-  await clickStoryNav(page);
-  const structureTab = page.getByTestId('story-subview-structure');
-  await expect(structureTab).toBeVisible({ timeout: 8_000 });
-  await structureTab.click();
-  await expect(structureTab).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
-}
-
 /** The Scene Crafter strip's tabs (pinned Setup + one per open board). */
 function stripTabs(page: Page) {
   return page.locator('[role="tablist"][aria-label="Workspace tabs"] [role="tab"]');
@@ -239,15 +230,12 @@ test('F1#1: Create Scene form → Structure + board persist on SAME userData rel
       const createBtn = page.getByTestId('sc-create-scene-btn');
       await expect(createBtn).toBeVisible({ timeout: 5_000 });
       await createBtn.click();
-      // Active board only — `.shell-kanban` is the parent wrapper; OR-ing it with
-      // `[data-testid=canvas-board]` matches parent+child (strict-mode ×2). App
-      // repro: 1 shell-kanban containing 1 canvas-board after Create Scene.
       await expect(page.getByTestId('canvas-board')).toBeVisible({ timeout: 12_000 });
-
-      // Create Scene leaves us on Scene Crafter (sub-view bar hidden). Open
-      // Story Writer → Structure sub-tab to assert the scene title.
-      await openStructureSubview(page);
-      await expect(page.getByText(sceneTitle).first()).toBeVisible({ timeout: 10_000 });
+      await expect(stripTabs(page)).toHaveCount(2);
+      await expect(stripTabs(page).nth(1)).toHaveAttribute('aria-selected', 'true');
+      await clickStoryNav(page);
+      await page.getByTestId('story-subview-structure').click();
+      await expect(page.locator('.shell-structure').getByText(sceneTitle)).toBeVisible({ timeout: 10_000 });
     } finally {
       await app.close();
     }
@@ -256,13 +244,18 @@ test('F1#1: Create Scene form → Structure + board persist on SAME userData rel
   const app2 = await launchApp(userData);
   try {
     const page2 = await waitForBoot(app2);
-    await openStructureSubview(page2);
-    await expect(page2.getByText(sceneTitle).first()).toBeVisible({ timeout: 10_000 });
+    // Story selection doesn't survive relaunch without a saved scene cursor — reselect it.
+    await clickStoryNav(page2);
+    await page2.getByTestId('story-subview-editor').click();
+    await expect(page2.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
+    await page2.locator('.nav-story-title').first().click();
+    await page2.keyboard.press('Escape');
+    await page2.getByTestId('story-subview-structure').click();
+    await expect(page2.locator('.shell-structure').getByText(sceneTitle)).toBeVisible({ timeout: 10_000 });
     await openSceneCrafter(page2);
-    // Prefer active board; fall back to Setup gallery (board tab may not restore).
-    await expect(
-      page2.getByTestId('canvas-board').or(page2.getByTestId('crafter-board-list')),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(stripTabs(page2)).toHaveCount(2, { timeout: 8_000 });
+    await expect(stripTabs(page2).nth(1)).toHaveAttribute('aria-selected', 'true');
+    await expect(page2.getByTestId('canvas-board')).toBeVisible({ timeout: 10_000 });
   } finally {
     await app2.close();
   }
