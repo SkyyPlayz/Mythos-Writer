@@ -41,7 +41,9 @@ export function useCtrlScrollDensity(enabled = true): void {
       previewAndScheduleCommit(next);
     };
 
-    window.addEventListener('wheel', onWheel, { passive: false, capture: true });
-    return () => window.removeEventListener('wheel', onWheel, true);
+    // Bubble phase (not capture): let canvas zoom handlers win first; dens only
+    // when the event reaches window without being handled by a canvas.
+    window.addEventListener('wheel', onWheel, { passive: false });
+    return () => window.removeEventListener('wheel', onWheel);
   }, [enabled]);
 }
