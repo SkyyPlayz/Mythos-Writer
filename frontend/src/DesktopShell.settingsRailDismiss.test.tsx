@@ -104,8 +104,20 @@ describe('DesktopShell Settings dismiss on rail nav (owner punch)', () => {
     });
   });
 
-  it('F2#15/H6: rail close flushes settings:set (same path as Escape/X)', async () => {
+  it('F2#15/H6: rail close flushes changed payload (goes red if flush skipped)', async () => {
     const api = makeMockApi();
+    api.settingsGet = () => Promise.resolve({
+      onboardingComplete: true,
+      rightSidebarVisible: true,
+      theme: 'dark',
+      agents: {
+        writingAssistant: { enabled: false },
+        brainstorm: { enabled: false },
+        archive: { enabled: false },
+        lineEditor: { enabled: false },
+      },
+    });
+    api.settingsSet = vi.fn().mockResolvedValue({ saved: true });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).api = api;
     render(<App />);
@@ -113,6 +125,22 @@ describe('DesktopShell Settings dismiss on rail nav (owner punch)', () => {
 
     openSettings();
     expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+
+    // Mutate a non-Appearance field so the flush payload differs from load.
+    await act(async () => {
+      const agentsTab = await screen.findByTestId('settings-cat-agents');
+      fireEvent.click(agentsTab);
+      await Promise.resolve();
+    });
+    const card = await screen.findByTestId('line-editor-agent-card');
+    await act(async () => {
+      fireEvent.click(card.querySelector('.settings-toggle-track') as Element);
+      await Promise.resolve();
+    });
+
+    // N3 / Critic H6: count before/after — bare close (B10) must go red.
+    const callsBefore = api.settingsSet.mock.calls.length;
+    api.settingsSet.mockClear();
 
     await act(async () => {
       clickRail('Vault Graph');
@@ -123,7 +151,15 @@ describe('DesktopShell Settings dismiss on rail nav (owner punch)', () => {
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
     });
-    expect(api.settingsSet).toHaveBeenCalled();
+    // Must carry the toggled field — not just any settingsSet from boot writes.
+    expect(api.settingsSet.mock.calls.length).toBeGreaterThan(0);
+    const payloads = api.settingsSet.mock.calls.map(
+      (c) => c[0] as { agents?: { lineEditor?: { enabled?: boolean } } },
+    );
+    expect(
+      payloads.some((p) => p?.agents?.lineEditor?.enabled === true),
+      `expected settingsSet with lineEditor.enabled after rail close (callsBefore=${callsBefore})`,
+    ).toBe(true);
   });
 
   it('closes Settings when the header X is pressed', async () => {

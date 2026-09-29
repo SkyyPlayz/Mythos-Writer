@@ -22,6 +22,7 @@ const mockChooseVaultFolder = vi.fn();
 const mockProviderListModels = vi.fn();
 const mockVoicePickBinary = vi.fn();
 const mockOnClose = vi.fn();
+const mockOnCloseBlocked = vi.fn();
 const mockOnSaved = vi.fn();
 const mockTemplateList = vi.fn();
 const mockTemplateSaveAs = vi.fn();
@@ -393,6 +394,70 @@ describe('SettingsPanel', () => {
     expect(mockOnSaved).not.toHaveBeenCalled();
     expect(screen.getByRole('dialog', { name: /settings/i })).toBeInTheDocument();
     expect(screen.queryByText(/secret\/path/i)).not.toBeInTheDocument();
+  });
+
+  it('Shield/Ivy condition 3: SETTINGS_SET {saved:false,error} keeps open + fixed alert + onCloseBlocked', async () => {
+    mockSettingsSet.mockResolvedValueOnce({
+      saved: false,
+      error: 'App data was cleared — restart Mythos Writer to continue.',
+    });
+    await renderSettings(
+      <SettingsPanel onClose={mockOnClose} onCloseBlocked={mockOnCloseBlocked} onSaved={mockOnSaved} />,
+    );
+    await waitForModelKeys();
+
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+
+    await waitFor(() => {
+      // Shield 5(a): exact fixed string (Ivy delta).
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'App data was cleared — restart Mythos Writer to continue.',
+      );
+    });
+    expect(mockOnClose).not.toHaveBeenCalled();
+    expect(mockOnCloseBlocked).toHaveBeenCalled();
+    expect(mockOnSaved).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: /settings/i })).toBeInTheDocument();
+  });
+
+  it('Shield/Ivy condition 3: SETTINGS_SET error string alone (no saved:false) also blocks close', async () => {
+    mockSettingsSet.mockResolvedValueOnce({
+      error: 'App data was cleared — restart Mythos Writer to continue.',
+    });
+    await renderSettings(
+      <SettingsPanel onClose={mockOnClose} onCloseBlocked={mockOnCloseBlocked} onSaved={mockOnSaved} />,
+    );
+    await waitForModelKeys();
+
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'App data was cleared — restart Mythos Writer to continue.',
+      );
+    });
+    expect(mockOnClose).not.toHaveBeenCalled();
+    expect(mockOnCloseBlocked).toHaveBeenCalled();
+  });
+
+  it('Critic: URL/voice validation saved:false keeps open with generic inline error', async () => {
+    mockSettingsSet.mockResolvedValueOnce({
+      saved: false,
+      error: 'provider.baseUrl: URL must use http or https',
+    });
+    await renderSettings(
+      <SettingsPanel onClose={mockOnClose} onCloseBlocked={mockOnCloseBlocked} onSaved={mockOnSaved} />,
+    );
+    await waitForModelKeys();
+
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/couldn't save settings/i);
+    });
+    expect(screen.queryByText(/provider\.baseUrl/i)).not.toBeInTheDocument();
+    expect(mockOnClose).not.toHaveBeenCalled();
+    expect(mockOnCloseBlocked).toHaveBeenCalled();
   });
 
   it('accepts a valid sk-ant- key without validation error', async () => {

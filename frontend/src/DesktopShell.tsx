@@ -5,7 +5,7 @@ import { useAiEnabled } from './hooks/useAiEnabled';
 import { useNavigationHistory, type NavigationLocation, type PersistedNavHistory } from './hooks/useNavigationHistory';
 import { useCtrlScrollDensity } from './hooks/useCtrlScrollDensity';
 import { useVaultIcons, type VaultIconSetInput } from './hooks/useVaultIcons';
-import { setEntityMentionNavigateHandler } from './lib/entityMentionNavigate';
+import { isSafeEntityMentionId, setEntityMentionNavigateHandler } from './lib/entityMentionNavigate';
 import { registerDensityBridge } from './lib/uiDensity';
 import { Toast } from './components/Toast/Toast';
 import { AiActivityIndicator } from './components/AiActivityIndicator/AiActivityIndicator';
@@ -88,6 +88,7 @@ import { rewriteWikiLinksForRename, type WikiLinkRewriteMode } from '@mythos-wri
 import AccountModal from './AccountModal';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
+import CreateNotePrompt from './CreateNotePrompt';
 import NoteViewer from './NoteViewer';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
@@ -756,12 +757,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [settingsOpen, setSettingsOpen] = useState(false);
   // SKY-11048: which Settings category to open to — a vault tile's
   // "Settings → this vault" context-menu action jumps straight to Vault & Files.
-  // `settingsOpenToken` is bumped on every such jump and used as SettingsPanel's
-  // `key` so it remounts (and re-reads initialCategory) even when the panel is
-  // already open on a different category — plain state alone wouldn't: the
-  // panel only consumes `initialCategory` once, via a useState initializer.
+  // Critic H6: category navigates in place via initialCategory + useEffect —
+  // do NOT remount Settings (key bump discarded unsaved edits).
   const [settingsInitialCategory, setSettingsInitialCategory] = useState<SettingsCategoryId>('appearance');
-  const [settingsOpenToken, setSettingsOpenToken] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   // SKY-11048: nav-rail vault tiles — every registered Mythos vault, always
   // fetched (even a lone vault renders a tile + the `+` tile). The raw list
@@ -1955,8 +1953,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // click), then jump the panel to that vault's settings.
   const handleVaultOpenSettings = useCallback((vaultId: string) => {
     switchToVault(vaultId).then(() => {
+      // Navigate in place — SettingsPanel syncs initialCategory via useEffect.
       setSettingsInitialCategory('vaults');
-      setSettingsOpenToken((t) => t + 1);
       setSettingsOpen(true);
     });
   }, [switchToVault]);
@@ -4400,6 +4398,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       handleTabChange('notes');
       handleNotesSubViewChange('editor');
       if (noteTab.kind === 'note' && noteTab.docPath) {
+        // F2#2 / Critic: note tab selection must show the note, not EntityDetail.
+        setSelectedEntity(null);
         setOpenedNotePath(noteTab.docPath);
       } else if (noteTab.kind === 'entities') {
         // SKY-9920: same reasoning as the story branch above — clear
@@ -4721,10 +4721,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (entity.type === 'character') checkGettingStartedItem('add-character');
   }, [checkGettingStartedItem]);
 
-  // SKY-616 / F2#2: navigate to entity page when user clicks an @-mention chip
-  // on every surface (Story hosts EntityDetail; Notes hosts it too; other tabs
-  // switch to Notes so the detail is visible).
+  // SKY-616 / F2#2: @-mention → EntityDetail on Story. Notes EntityDetail host
+  // pulled to F5 (Ivy override) — from Notes/other tabs, switch to Story.
+  // Shield N4: entity ID only via entityRead — never openExternal / window.open / URL.
   const handleEntityMentionClick = useCallback((entityId: string) => {
+    if (!isSafeEntityMentionId(entityId)) return;
     window.api.entityRead(entityId).then((entity) => {
       if (entity) {
         setSelectedEntity(entity);
@@ -4733,14 +4734,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         setSelectedStory(null);
         setOpenedNotePath(null);
         if (entity.type === 'character') checkGettingStartedItem('add-character');
-        const tab = tabShellRef.current.activeTab;
-        if (tab !== 'story' && tab !== 'notes') {
-          handleTabChange('notes');
-          handleNotesSubViewChange('editor');
+        if (tabShellRef.current.activeTab !== 'story') {
+          handleTabChange('story');
+          setView('editor');
         }
       }
     }).catch(() => {});
-  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange]);
+  }, [checkGettingStartedItem, handleTabChange]);
 
   // F2#2: global fallback so Notes editors without onEntityClick still navigate.
   useEffect(() => {
@@ -6532,7 +6532,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {settingsOpen && (
         <SettingsPanel
-          key={settingsOpenToken}
           initialCategory={settingsInitialCategory}
           activeVaultRoot={activeVaultRoot}
           onClose={handleSettingsClose}
@@ -7380,6 +7379,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onCreateChapter={createChapter}
           onCreateScene={createScene}
           onOpenFile={(path) => {
+            // F2#2 / Critic: clear EntityDetail host so the note viewer shows.
+            setSelectedEntity(null);
             setOpenedNotePath(path);
             handleNotesSubViewChange('editor');
           }}
@@ -7424,9 +7425,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           }}
           onSelectEntity={handleSelectEntityInTab}
           selectedEntityId={selectedEntity?.id ?? null}
-          selectedEntity={selectedEntity}
-          onCloseSelectedEntity={() => setSelectedEntity(null)}
-          onEntityClick={handleEntityMentionClick}
           activeStorySlug={selectedStory ? selectedStory.path.split(/[\\/]/).filter(Boolean).pop() ?? null : null}
           onOpenBrainstorm={(seedText) => {
             setBrainstormSeedPrompt(seedText);
@@ -7678,35 +7676,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         </div>
       )}
       {pendingCreateLink && (
-        <div className="cross-tab-link-modal" role="dialog" aria-modal="true" aria-label="Create note" data-testid="create-note-prompt">
-          <div className="cross-tab-link-modal__card">
-            <h2>Create note?</h2>
-            <p>
-              No note named &ldquo;{wikiLinkTargetStem(pendingCreateLink)}&rdquo; exists yet.
-              Create it in the Notes Vault?
-            </p>
-            <div className="cross-tab-link-modal__list">
-              <button
-                type="button"
-                data-testid="create-note-confirm"
-                onClick={() => {
-                  const target = pendingCreateLink;
-                  setPendingCreateLink(null);
-                  createNoteForUnresolvedLink(target);
-                }}
-              >
-                Create
-              </button>
-              <button
-                type="button"
-                data-testid="create-note-cancel"
-                onClick={() => setPendingCreateLink(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
+        <CreateNotePrompt
+          noteName={wikiLinkTargetStem(pendingCreateLink)}
+          onConfirm={() => {
+            const target = pendingCreateLink;
+            setPendingCreateLink(null);
+            createNoteForUnresolvedLink(target);
+          }}
+          onCancel={() => setPendingCreateLink(null)}
+        />
       )}
       <AiActivityIndicator />
       <Toast message={budgetToastState?.message ?? null} level={budgetToastState?.level} />

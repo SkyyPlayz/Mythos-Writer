@@ -3,36 +3,29 @@
 .pc-chrome {
   display: flex;
   flex-direction: column;
-  /* F2#11 / H1: translucent glass fill + design blur (PanelChrome primitive). */
-  background: var(--glass-panel-bg, var(--glass, rgba(13, 16, 28, 0.20)));
-  border: 1px solid var(--glass-rim, var(--border-subtle));
+  /* Ivy: no live glass/blur on this unrendered wrapper (Critic #5) — solid
+     panel chrome only. Blur/glass belongs on real surfaces with numbers. */
+  background: var(--bg-panel, var(--bg-elevated, #141824));
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   overflow: hidden;
-}
-
-@supports (backdrop-filter: blur(1px)) {
-  .pc-chrome {
-    backdrop-filter: blur(var(--blur-panel));
-    -webkit-backdrop-filter: blur(var(--blur-panel));
-  }
 }
 
 .pc-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  /* F2#12 / Probe: shared top-bar is a fixed height — no wrap, no padding
-     growth. Brainstorm segments must fit inside PANEL_TOP_BAR_HEIGHT_PX. */
-  flex-wrap: nowrap;
+  /* F2#12 min bar height + W0.3: wrap/grow at 280–320px so actions don't clip. */
+  flex-wrap: wrap;
   gap: var(--space-2);
   padding: 0 var(--space-3);
-  height: var(--panel-top-bar-height, 36px);
   min-height: var(--panel-top-bar-height, 36px);
-  max-height: var(--panel-top-bar-height, 36px);
+  height: auto;
+  max-height: none;
   box-sizing: border-box;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .pc-header-start {
@@ -84,22 +77,18 @@
 .pc-header-actions {
   display: flex;
   align-items: center;
-  /* W0.3: action clusters wrap within their own row when the panel is
-     narrower than their combined width (e.g. preset chip + mute + download
-     at 280px). */
+  /* W0.3: wrap + shrink so actions stay reachable at 280–320px. */
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-2);
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
 }
 
 .pc-body {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
-  /* Hot-path: scrolls under the chrome's blur without its own
-     backdrop-filter; contain isolates its paint/scroll work. */
-  contain: paint;
 }
 
 .pc-footer {

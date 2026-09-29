@@ -92,8 +92,8 @@ export default function AccountProfileSection({ settings, setSettings, setSavedO
           </div>
         ))}
         <p className="settings-hint" style={{ marginTop: 10 }}>
-          Your pen name is used on exports and by the agents when they address you. It saves with the
-          Save button below.
+          Your pen name is used on exports and by the agents when they address you. It saves when you
+          close Settings.
         </p>
       </div>
 

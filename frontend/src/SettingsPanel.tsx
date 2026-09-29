@@ -222,6 +222,12 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
   // prototype (SKY-10668 owner request) — safe with the live-persist debounce
   // because appearanceLiveReady consumes the load commit (see below).
   const [settingsCategory, setSettingsCategory] = useState<SettingsCat>(initialCategory ?? 'appearance');
+
+  // Critic H6: navigate category in place when parent updates initialCategory
+  // (e.g. "Settings → this vault") — do not remount via key (loses unsaved edits).
+  useEffect(() => {
+    if (initialCategory) setSettingsCategory(initialCategory);
+  }, [initialCategory]);
   const settingsCatNavRef = useRef<HTMLElement>(null);
 
   // SKY-3218: Nav-bar configuration
@@ -489,10 +495,23 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
       ...(sttBinaryToken ? { sttBinaryToken } : {}),
       ...(sttModelToken ? { sttModelToken } : {}),
     };
-    if (Object.keys(voiceTokens).length > 0) {
-      await window.api.settingsSet(payload, voiceTokens);
-    } else {
-      await window.api.settingsSet(payload);
+    const result = Object.keys(voiceTokens).length > 0
+      ? await window.api.settingsSet(payload, voiceTokens)
+      : await window.api.settingsSet(payload);
+    // Critic/Shield: IPC resolves even on refusal (saved:false, URL/voice/TTS
+    // validation errors, appDataCleared). Never treat as success.
+    if (
+      result
+      && typeof result === 'object'
+      && (result.saved === false || (typeof result.error === 'string' && result.error.length > 0))
+    ) {
+      const errMsg = typeof result.error === 'string' ? result.error.trim() : '';
+      // Shield 5(a): appDataCleared uses this exact fixed string.
+      if (errMsg === 'App data was cleared — restart Mythos Writer to continue.') {
+        throw new Error(errMsg);
+      }
+      // URL / voice / STT-TTS and other saved:false refusals — fixed generic copy.
+      throw new Error('SETTINGS_SAVE_REJECTED');
     }
   }, [sttBinaryToken, sttModelToken]);
 
@@ -523,9 +542,16 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
         }
         onClose();
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         closeSaveInFlight.current = false;
-        setSaveError("Couldn't save settings. Try again.");
+        // Shield 5(a): appDataCleared refusal uses the exact fixed string.
+        // Other save failures (thrown stacks/paths) stay on the generic copy.
+        const msg = err instanceof Error ? err.message : '';
+        setSaveError(
+          msg === 'App data was cleared — restart Mythos Writer to continue.'
+            ? msg
+            : "Couldn't save settings. Try again.",
+        );
         onCloseBlocked?.();
       });
   }, [apiKeyError, settings.apiKey, buildSettingsPayload, writeSettingsPayload, lg, bgPreviewUrl, pageBg, onSaved, onClose, onCloseBlocked]);
@@ -764,13 +790,18 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
         telemetry: { enabled: telemetryEnabled, sessionId: base.telemetry?.sessionId ?? '' },
         ...(vaultAppearance !== undefined ? { vaultAppearance } : {}),
       };
-      await window.api.settingsSet(payload);
+      await writeSettingsPayload(payload);
       setSaveError(null);
       onSaved?.(payload);
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Failed to save settings.');
+      const msg = e instanceof Error ? e.message : '';
+      setSaveError(
+        msg === 'App data was cleared — restart Mythos Writer to continue.'
+          ? msg
+          : "Couldn't save settings. Try again.",
+      );
     }
-  }, [settings.theme, settings.liquidNeonV2, settings.updateChannel, settings.vaultAppearance, activeVaultRoot, lg, pageBg, navConfig, telemetryEnabled, onSaved]);
+  }, [settings.theme, settings.liquidNeonV2, settings.updateChannel, settings.vaultAppearance, activeVaultRoot, lg, pageBg, navConfig, telemetryEnabled, onSaved, writeSettingsPayload]);
 
   // Write-guard for the live-persist debounce. The load hydration commits in
   // one batch with setLoading(false), so the first post-load run of the effect

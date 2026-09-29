@@ -9,7 +9,6 @@ import EntityBrowser from './EntityBrowser';
 import BrainstormPage from './BrainstormPage';
 import ContinuityPanel from './ContinuityPanel';
 import NoteViewer from './NoteViewer';
-import EntityDetail from './EntityDetail';
 import type { FormatToolbarActions } from './FormatToolbar';
 import NoteSplitPane, { NotesPaneTabStrip } from './NoteSplitPane';
 import { makeNoteTab, upsertNoteTab, upsertEntityBrowserTab } from './workspaceDocTabs';
@@ -122,10 +121,6 @@ export interface NotesTabPanelProps {
   // Entity browser
   onSelectEntity: (entity: EntityEntry) => void;
   selectedEntityId: string | null;
-  /** F2#2: full entity for EntityDetail host on Notes (mention click). */
-  selectedEntity?: EntityEntry | null;
-  onCloseSelectedEntity?: () => void;
-  onEntityClick?: (entityId: string) => void;
   /** SKY-3201: open the standalone Brainstorm tab seeded with the given text. */
   onOpenBrainstorm?: (seedText: string) => void;
   /** M8d: note-editor Read/Dictate toolbar buttons — reuses the app's TTS/voice pipeline. */
@@ -200,9 +195,6 @@ export default function NotesTabPanel({
   activeTabIsEntityBrowser,
   onSelectEntity,
   selectedEntityId,
-  selectedEntity = null,
-  onCloseSelectedEntity,
-  onEntityClick,
   onOpenBrainstorm,
   noteToolbarActions,
   liquidNeonV2,
@@ -574,17 +566,7 @@ export default function NotesTabPanel({
               Omitted while split: each split pane already owns its own
               strip (NotesPaneTabStrip, below). */}
           {!noteSplitActive && docTabStrip}
-          {notesSubView === 'editor' && !activeTabIsEntityBrowser && selectedEntity && !noteSplitActive && (
-            <EntityDetail
-              key={selectedEntity.id}
-              entity={selectedEntity}
-              onClose={() => onCloseSelectedEntity?.()}
-              onUpdated={(updated) => onSelectEntity(updated)}
-              onDeleted={() => onCloseSelectedEntity?.()}
-              onOpenEntity={onEntityClick}
-            />
-          )}
-          {notesSubView === 'editor' && !activeTabIsEntityBrowser && !selectedEntity && activeNotePath && !noteSplitActive && (
+          {notesSubView === 'editor' && !activeTabIsEntityBrowser && activeNotePath && !noteSplitActive && (
             <NoteViewer
               key={activeNotePath}
               path={activeNotePath}
@@ -592,7 +574,6 @@ export default function NotesTabPanel({
               onPreviewModeChange={onActiveNotePreviewChange}
               onWordCountChange={onActiveNoteWordCountChange}
               onWikiLinkClick={onWikiLinkClick}
-              onEntityClick={onEntityClick}
               resolvedWikiLinkTitles={resolvedWikiLinkTitles}
               sceneWikiLinkTitles={sceneWikiLinkTitles}
               wikiLinkCandidates={wikiLinkCandidates}

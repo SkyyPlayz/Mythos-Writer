@@ -20,6 +20,7 @@ function seedProject(userData: string, storyVaultDir: string, notesVaultDir: str
   fs.mkdirSync(userData, { recursive: true });
   fs.mkdirSync(path.join(storyVaultDir, 'Test Story', 'Manuscript', 'Chapter One'), { recursive: true });
   fs.mkdirSync(path.join(notesVaultDir, 'Characters'), { recursive: true });
+  fs.mkdirSync(path.join(notesVaultDir, 'Locations'), { recursive: true });
   fs.mkdirSync(path.join(notesVaultDir, 'Notes'), { recursive: true });
 
   fs.writeFileSync(
@@ -121,6 +122,12 @@ function seedProject(userData: string, storyVaultDir: string, notesVaultDir: str
   fs.writeFileSync(
     path.join(notesVaultDir, 'Notes', 'Scene Links.md'),
     '# Scene Links\n\nJump to [[Scene One]]. Another edge to [[Elara]].',
+    'utf-8',
+  );
+  // F2#4 drop target — explorer MIME inserts [[Harbor]] into the Story editor.
+  fs.writeFileSync(
+    path.join(notesVaultDir, 'Locations', 'Harbor.md'),
+    '# Harbor\n\nA place.\n',
     'utf-8',
   );
 }
@@ -309,5 +316,75 @@ test.describe('wiki-links and multi-vault graph', () => {
     await expect(page.locator('[data-testid="vault-graph-scope-notes"]')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: /Select note Elara/i })).toBeVisible({ timeout: 10_000 });
     await expect(page.locator(`[data-testid="vault-node-${STORY_NODE_ID}"]`)).toHaveCount(0);
+  });
+
+  // ── F2 Probe fold (was e2e/f2-probe-verify.spec.ts — unsharded) ──────────
+
+  test('F2#10 @ mention picker is portaled, fixed, and above shell panels', async () => {
+    await openScene(page);
+    const editor = page.locator('[data-testid="msv-sheet"] .ProseMirror').first();
+    await editor.click();
+    await editor.press('End');
+    await editor.press('Enter');
+    await editor.type('@Ela');
+    const picker = page.locator('.entity-mention-picker');
+    await expect(picker).toBeVisible({ timeout: 5_000 });
+    const info = await picker.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return {
+        parentIsBody: el.parentElement === document.body,
+        position: cs.position,
+        zIndex: cs.zIndex,
+        visible: cs.visibility !== 'hidden' && cs.display !== 'none',
+        rect: el.getBoundingClientRect().toJSON() as { width: number; height: number },
+      };
+    });
+    expect(info.parentIsBody).toBe(true);
+    expect(info.position).toBe('fixed');
+    expect(info.visible).toBe(true);
+    expect(Number(info.zIndex)).toBeGreaterThanOrEqual(200);
+    expect(info.rect.width).toBeGreaterThan(40);
+    expect(info.rect.height).toBeGreaterThan(20);
+  });
+
+  test('F2#4 explorer MIME drop into Story editor inserts [[Harbor]]', async () => {
+    const mime = 'application/x-mythos-vault-note';
+    await openScene(page);
+    const editor = page.locator('[data-testid="msv-sheet"] .ProseMirror').first();
+    await editor.click();
+    await editor.evaluate((el, dropMime) => {
+      const dt = new DataTransfer();
+      dt.setData(dropMime, 'Locations/Harbor.md');
+      dt.setData('text/plain', 'Locations/Harbor.md');
+      const rect = el.getBoundingClientRect();
+      const x = rect.left + Math.min(40, rect.width / 2);
+      const y = rect.top + Math.min(20, rect.height / 2);
+      el.dispatchEvent(new DragEvent('dragover', {
+        bubbles: true, cancelable: true, dataTransfer: dt, clientX: x, clientY: y,
+      }));
+      el.dispatchEvent(new DragEvent('drop', {
+        bubbles: true, cancelable: true, dataTransfer: dt, clientX: x, clientY: y,
+      }));
+    }, mime);
+    await expect(editor.locator('[data-wiki-link="Harbor"]')).toBeVisible({ timeout: 5_000 });
+  });
+
+  test('F2 N4: @mention chip click navigates while Story editor is focused', async () => {
+    await openScene(page);
+    const editor = page.locator('[data-testid="msv-sheet"] .ProseMirror').first();
+    await editor.click();
+    await editor.press('End');
+    await editor.press('Enter');
+    await editor.type('@Ela');
+    const picker = page.locator('.entity-mention-picker');
+    await expect(picker).toBeVisible({ timeout: 5_000 });
+    await page.keyboard.press('Enter');
+    const chip = editor.locator('.entity-mention-chip').last();
+    await expect(chip).toBeVisible({ timeout: 5_000 });
+    // Keep focus in the editor (the Probe FAIL state), then click the chip.
+    await editor.focus();
+    await chip.click();
+    await expect(page.locator('.entity-detail')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('.entity-detail')).toContainText(/Elara/i);
   });
 });

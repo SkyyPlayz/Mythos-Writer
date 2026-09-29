@@ -16,7 +16,9 @@ import { WIKI_LINK_RESOLUTION_META } from './WikiLinkResolutionExtension';
 import type { EntityEntry } from './types';
 import { useRichEditor, getEditorMarkdown } from './lib/useRichEditor';
 import { registerQuitFlusher } from './lib/flushBeforeQuit';
-import { navigateEntityMention } from './lib/entityMentionNavigate';
+import { isSafeEntityMentionId, navigateEntityMention } from './lib/entityMentionNavigate';
+import type { EditorView } from '@tiptap/pm/view';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import FormatToolbar, { type FormatToolbarActions } from './FormatToolbar';
 import { handleVaultNoteDragOver, handleVaultNoteDrop } from './lib/vaultNoteDrop';
 import './EntityMention.css';
@@ -234,14 +236,40 @@ export default function RichTextEditor({
     setWikiLinkState(ws);
   }, []);
 
+  /** N4: chip click navigates even when the editor has focus (ProseMirror path). */
+  const activateEntityMention = useCallback((entityId: string | undefined | null) => {
+    if (!entityId || !isSafeEntityMentionId(entityId)) return false;
+    // Shield N4: in-app by entity ID only — prop or global shell handler.
+    if (onEntityClickRef.current) onEntityClickRef.current(entityId);
+    else navigateEntityMention(entityId);
+    return true;
+  }, []);
+
+  const handleEntityMentionClickOn = useCallback((
+    _view: EditorView,
+    _pos: number,
+    node: ProseMirrorNode,
+    _nodePos: number,
+    event: Event,
+    _direct: boolean,
+  ) => {
+    if (node.type.name !== 'entityMention') return false;
+    const entityId = String(node.attrs.entityId ?? '');
+    if (!activateEntityMention(entityId)) return false;
+    if ('preventDefault' in event) event.preventDefault();
+    return true;
+  }, [activateEntityMention]);
+
   const editor = useRichEditor({
     content,
     editable,
     autofocus,
     extraExtensions: [...(extraExtensions ?? []), EntityMention, EntityMentionPickerExtension, WikiLinkPickerExtension],
     // H5 / R1–R3: explorer drop lives in ProseMirror handleDrop (not React onDrop).
+    // N4: handleClickOn so chip clicks work while the editor is focused.
     editorProps: {
       handleDrop: handleVaultNoteDrop,
+      handleClickOn: handleEntityMentionClickOn,
       handleDOMEvents: {
         dragover: handleVaultNoteDragOver,
       },
@@ -412,17 +440,21 @@ export default function RichTextEditor({
     }
   }, [mentionState, mentionSuppressed, entities, mentionSelectedIndex, insertEntityMention, wikiLinkState, wikiLinkSuppressed, wikiLinkItems, wikiLinkSelectedIndex, insertWikiLinkItem]);
 
-  // Event delegation for entity-chip and wiki-link clicks.
+  // Event delegation for entity-chip and wiki-link clicks (capture + handleClickOn).
   const handleEditorClick = useCallback((e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     const chip = target.closest('.entity-mention-chip') as HTMLElement | null;
     if (chip) {
       const entityId = chip.dataset.entityId;
+      if (activateEntityMention(entityId)) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      // Forged / unsafe id — swallow so nothing navigates outside the app.
       if (entityId) {
         e.preventDefault();
-        // F2#2: prop wins; else global shell handler (Notes surfaces omit the prop).
-        if (onEntityClickRef.current) onEntityClickRef.current(entityId);
-        else navigateEntityMention(entityId);
+        e.stopPropagation();
         return;
       }
     }
@@ -446,7 +478,7 @@ export default function RichTextEditor({
         }
       }
     }
-  }, [editor, plainTextWikiLinkFallback]);
+  }, [editor, plainTextWikiLinkFallback, activateEntityMention]);
 
   // Compute picker position in viewport coords (portaled to document.body — F2#10).
   let pickerTop = 0;

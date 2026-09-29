@@ -10,14 +10,13 @@ export function sanitizeWikiLinkTitle(title: string): string | null {
   return cleaned || null;
 }
 
-/** F2#4 / H5: map an explorer drag payload (vault-relative path) to a wiki-link title. */
+/** F2#4 / H5 / N6: map an explorer drag payload (vault-relative path) to a wiki-link title. */
 export function wikiTitleFromDroppedPath(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed || trimmed.includes('\n') || /^https?:\/\//i.test(trimmed)) return null;
-  const normalized = trimmed.replace(/\\/g, '/');
-  // Path-shaped only — bare short text must not become [[title]].
-  const looksLikePath = normalized.includes('/') || /\.(md|markdown|txt)$/i.test(normalized);
-  if (!looksLikePath) return null;
+  const normalized = trimmed.replace(/\\/g, '/').replace(/\/+$/, '');
+  // Note files only — folder paths (no note extension) must insert nothing.
+  if (!/\.(md|markdown|txt)$/i.test(normalized)) return null;
   const leaf = normalized.split('/').pop() ?? normalized;
   const title = leaf.replace(/\.(md|markdown|txt)$/i, '').trim();
   return sanitizeWikiLinkTitle(title);
