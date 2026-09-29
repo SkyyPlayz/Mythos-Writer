@@ -21,3 +21,14 @@ export async function clickStoryNav(page: Page): Promise<void> {
     await expect(backdrop).toHaveCount(0);
   }
 }
+
+/**
+ * Slice B: rail Partner item shows the renameable partner display name
+ * (default "Mythos"), not the static "Partner"/"Brainstorm" label. Prefer
+ * the stable module id testid over aria-label.
+ */
+export async function clickPartnerNav(page: Page): Promise<void> {
+  const btn = page.locator('[data-testid="nav-rail-brainstorm"]');
+  await expect(btn).toBeVisible({ timeout: 10_000 });
+  await btn.click();
+}

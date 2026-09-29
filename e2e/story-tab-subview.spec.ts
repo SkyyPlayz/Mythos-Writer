@@ -134,18 +134,19 @@ test('AC-SV-02: Story sub-view bar is visible', async () => {
   await expect(bar).toBeVisible({ timeout: 5_000 });
 });
 
-// ─── AC-SV-03: Default sub-view is Editor; exactly four tabs ─────────────────
-// SKY-9019/M5: Scene Crafter and Timeline are rail destinations only —
-// exactly four tabs remain in the strip: Editor, Coach, Structure, Book.
+// ─── AC-SV-03: Default sub-view is Editor; Editor · Book · Structure ─────────
+// Slice B: Coach removed from the strip (Coach = Writer hand on the partner).
 
-test('AC-SV-03: Editor sub-view is selected by default; strip has exactly four tabs', async () => {
+test('AC-SV-03: Editor sub-view is selected by default; strip has exactly three tabs', async () => {
   const editorTab = page.locator('[data-testid="story-subview-editor"]');
   await expect(editorTab).toBeVisible({ timeout: 5_000 });
   await expect(editorTab).toHaveAttribute('aria-selected', 'true');
 
-  // Exactly four tabs — Scene Crafter and Timeline removed from strip.
   const allTabs = page.locator('[data-testid="story-subview-bar"] [role="tab"]');
-  await expect(allTabs).toHaveCount(4);
+  await expect(allTabs).toHaveCount(3);
+  await expect(page.locator('[data-testid="story-subview-book"]')).toBeVisible();
+  await expect(page.locator('[data-testid="story-subview-structure"]')).toBeVisible();
+  await expect(page.locator('[data-testid="story-subview-coach"]')).toHaveCount(0);
 
   // Scene Crafter and Timeline must NOT be in the sub-tab strip (rail only).
   await expect(page.locator('[data-testid="story-subview-kanban"]')).toHaveCount(0);

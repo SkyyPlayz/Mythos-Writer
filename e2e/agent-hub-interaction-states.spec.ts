@@ -151,18 +151,19 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
   await sceneRow.click();
 }
 
-/** Opens the right-panel Agent Hub's AGENTS list (backs out of chat if needed). */
+/** Opens the right-panel partner shell (backs out of Writer hand if needed). */
 async function openAgentsHub(page: Page): Promise<void> {
   // A previous test may have left AC-WA-20's mini-chat overlay open — its
   // backdrop intercepts every subsequent click until dismissed (AC-WA-22).
   if (await page.locator('.wa-overlay-backdrop').isVisible({ timeout: 1_000 }).catch(() => false)) {
     await page.keyboard.press('Escape');
   }
-  const backBtn = page.locator('.ahp-back-btn');
-  if (await backBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await backBtn.click();
+  const closeWriter = page.locator('[data-testid="ahp-close-writer"]');
+  if (await closeWriter.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await closeWriter.click();
   }
-  await expect(page.locator('[data-testid="ahp-agent-row-writing-assistant"]')).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="ahp-tab-partner"]').click().catch(() => undefined);
+  await expect(page.locator('[data-testid="ahp-hand-writer"]')).toBeVisible({ timeout: 8_000 });
 }
 
 /** Opens the Writing Coach mini-chat from the AGENTS list, expanding it out
@@ -187,7 +188,7 @@ async function settleIntoView(page: Page, target: ReturnType<Page['locator']>): 
 }
 
 async function openWritingCoachChat(page: Page): Promise<void> {
-  await page.locator('[aria-label^="Open Writing Coach chat"]').click();
+  await page.locator('[data-testid="ahp-hand-writer"]').click();
   await settleIntoView(page, page.locator('[aria-label="Writing coach prompt"]'));
 }
 
@@ -277,23 +278,23 @@ test('error state: a failed chat request keeps the user message, shows an inline
 
 // ── Keyboard nav + focus-return ──────────────────────────────────────────────
 
-test('keyboard: Enter opens the Writing Coach chat from a focused AGENTS row, and Back returns focus to that row', async () => {
+test('keyboard: Enter opens the Writer hand from a focused partner hand chip, and Close returns to partner chat', async () => {
   await mockCoachChatIpc(app!, 'succeed');
   await openAgentsHub(page);
 
-  const agentRow = page.locator('[data-testid="ahp-agent-row-writing-assistant"]');
-  await agentRow.focus();
+  // Slice B: AGENTS rows are gone — Writer is a partner hand chip.
+  const writerHand = page.locator('[data-testid="ahp-hand-writer"]');
+  await expect(writerHand).toBeVisible({ timeout: 8_000 });
+  await writerHand.focus();
   await page.keyboard.press('Enter');
 
-  await settleIntoView(page, page.locator('.ahp-back-btn'));
+  await settleIntoView(page, page.locator('[data-testid="ahp-writer-hand"]'));
+  await expect(page.locator('[aria-label="Writing coach prompt"]')).toBeVisible({ timeout: 8_000 });
 
-  // Back button is the first focusable element inside the chat view (§4).
-  const backBtn = page.locator('.ahp-back-btn');
-  await expect(backBtn).toBeVisible();
-  await backBtn.click();
-
-  // Focus lands back on the AGENTS row just exited — not the top of the panel.
-  await expect(page.locator('[data-testid="ahp-agent-row-writing-assistant"]')).toBeFocused({ timeout: 3_000 });
+  await page.locator('[data-testid="ahp-close-writer"]').click();
+  await expect(page.locator('[data-testid="ahp-writer-hand"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="ahp-partner-thread"]')).toBeVisible();
+  await expect(writerHand).toBeVisible();
 });
 
 // ── Regression guard ─────────────────────────────────────────────────────────

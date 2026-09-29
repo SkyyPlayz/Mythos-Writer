@@ -48,6 +48,8 @@ import IdeaCollectionsPanel, {
 } from './components/BrainstormBoard/IdeaCollectionsPanel';
 import AgentSessionPicker from './components/AgentSessionPicker';
 import { useAgentSessions } from './lib/useAgentSessions';
+import { resolvePartnerDisplayName } from './agents/partnerIdentity';
+import QuestionsForYou from './partner/QuestionsForYou';
 import { PROMPT_MAX_CHARS } from './promptConstants';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
@@ -412,6 +414,8 @@ interface Props {
   boardMinZoom?: number;
   /** SKY-11192: show a vault folder in the Notes Board tab (the `Open` link). */
   onOpenBoardFolder?: (folderPath: string) => void;
+  /** Slice B: partner display name (rename sync). */
+  agentNames?: Partial<Record<import('./agents/agentIdentity').NamedAgentId, string>>;
 }
 
 const MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
@@ -425,7 +429,8 @@ const MIC_ICONS: Record<VoiceDictationState, string> = {
   idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
 };
 
-export default function BrainstormPage({ onClose, enabled = true, onOpenSettings, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false, inputPlaceholder = 'Ask about your story — characters, plot, world-building…', unifiedBoard = false, notesVaultValid = false, boardMinZoom, onOpenBoardFolder }: Props) {
+export default function BrainstormPage({ onClose, enabled = true, onOpenSettings, onFirstSubmit, onNavigateToEntity, onNavigateToScene, voiceEnabled = false, archiveContinuityEnabled = false, activeScene = null, compact = false, seedPrompt, ttsSettings, voicePrefs, curatorGreeting = false, inputPlaceholder = 'Ask about your story — characters, plot, world-building…', unifiedBoard = false, notesVaultValid = false, boardMinZoom, onOpenBoardFolder, agentNames }: Props) {
+  const partnerName = resolvePartnerDisplayName(agentNames);
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<Message[]>([]);
   const [facts, setFacts] = useState<DetectedFact[]>([]);
@@ -2300,11 +2305,11 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
         title={
           effectiveMode === 'chat' && !compact ? (
             <span className="bs-title-row">
-              Brainstorm Agent
+              {partnerName}
               {/* M20 (§7.2 + §11): session dropdown pill on the shared store. */}
               <AgentSessionPicker store={sessionStore} className="bs-session-pill" />
             </span>
-          ) : effectiveMode === 'chat' ? 'Brainstorm Agent' : 'Brainstorm Center'
+          ) : effectiveMode === 'chat' ? partnerName : `${partnerName} · Idea Board`
         }
         subtitle={
           effectiveMode === 'chat'
@@ -2883,26 +2888,28 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
             </div>
           </div>
 
-          {/* M20 (§7.2): QUESTIONS FOR YOU — click sends the question to the chat. */}
-          {openQuestions.length > 0 && (
-            <div className="bs-questions-section" data-testid="bs-questions-section">
-              <div className="bs-side-label">QUESTIONS FOR YOU</div>
-              {openQuestions.map((question) => (
-                <button
-                  key={question}
-                  type="button"
-                  className="bs-question-row"
-                  title="Answer it in the chat"
-                  onClick={() => void submitText(question)}
-                  disabled={loading}
-                  data-testid="bs-question-row"
-                >
-                  <span className="bs-question-mark" aria-hidden="true">?</span>
-                  <span>{question}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          {/* Slice B: Questions-for-you with Agent Activity · Notes · Story sub-tabs. */}
+          <div className="bs-questions-section" data-testid="bs-questions-section">
+            <QuestionsForYou
+              activityItems={activity.slice(0, 8).map((entry) => ({
+                id: entry.id,
+                text: entry.text,
+              }))}
+              notesQuestions={openQuestions.map((q, i) => ({
+                id: `nq-${i}`,
+                heading: q.length > 48 ? `${q.slice(0, 48)}…` : q,
+                detail: q,
+                targetNotePath: null,
+                source: 'notes' as const,
+              }))}
+              storyQuestions={[]}
+              noteOptions={[]}
+              onAskInChat={(question) => { void submitText(question); }}
+              onAppendToNote={async ({ heading, answer }) => {
+                void submitText(`## ${heading}\n\n${answer}`);
+              }}
+            />
+          </div>
 
           {/* M20 (§7.2): NOTES THAT NEED WORK — MISSING / NEEDS WORK chips;
               clicking sends a drafting prompt into the chat. */}

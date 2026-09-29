@@ -1,8 +1,7 @@
-// SKY-6228: M15 — Right panel agent hub (§5.6).
-// Tabs: Assistant · Scenes · Notes · References
-// Assistant tab: AGENTS card (compact rows → in-panel chat), Suggestions card, Scene Analysis card.
-// Beta 4 M13 (§5.4): the Scene Analysis card computes local metrics for the
-// open scene and `View Full Analysis` posts the full card into the Coach page.
+// Slice B — Unified Writing Partner shell (replaces four-agent hub).
+// Right-panel tabs: <name> · Suggestions · Scenes · Notes & Analysis
+// Partner tab: card + Past chats & calls + thread + glass composer.
+// Hands (Writer / Analyst / Archivist) keep engines; no AGENTS multi-face card.
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Scene, Story } from './types';
@@ -11,13 +10,16 @@ import AgentSessionPicker from './components/AgentSessionPicker';
 import WritingAssistantPanel from './WritingAssistantPanel';
 import ScenesPanel from './ScenesPanel';
 import { useAiEnabled } from './hooks/useAiEnabled';
-import { resolveAgentDisplayName } from './agents/agentIdentity';
 import type { NamedAgentId } from './agents/agentIdentity';
-import { useAgentRunningEntry, useAgentRecentTerminal } from './agents/aiActivity';
+import {
+  PARTNER_HANDS,
+  resolvePartnerDisplayName,
+  type PartnerHandId,
+} from './agents/partnerIdentity';
+import { useAgentRunningEntry } from './agents/aiActivity';
 import { useBrainstormActivity } from './agents/brainstormActivity';
 import type { BrainstormActivitySnapshot } from './agents/brainstormActivity';
 import type { TtsEngineSettings } from './hooks/useTtsPlayer';
-import { AGENT_LABELS, type UnifiedSuggestion } from './SuggestionDetailPane';
 import {
   computeSceneMetrics,
   formatWordCount,
@@ -38,89 +40,37 @@ import { useMiniAgentChat } from './timeline2/panel/useMiniAgentChat';
 import MiniAgentChat from './timeline2/panel/MiniAgentChat';
 import { invokeBrainstorm } from './timeline2/panel/BrainstormTab';
 import SuggestionReview from './SuggestionReview';
+import PartnerCallChrome, { type PartnerCallState } from './partner/PartnerCallChrome';
+import QuestionsForYou, { type PartnerQuestion } from './partner/QuestionsForYou';
 import './AgentHubPanel.css';
 
-const SUGGESTION_POLL_MS = 30_000;
-const SUGGESTION_PREVIEW_LIMIT = 3;
-
-type HubTab = 'assistant' | 'scenes' | 'notes' | 'references';
-/** SKY-9022/M6: the four AGENTS-card rows (kebab ids match suggestion sourceAgent). */
+/** Legacy agent row ids — kept for resolveAgentStatus + hand routing tests. */
 export type AgentId = 'writing-assistant' | 'brainstorm' | 'archive' | 'beta-reader';
-type ActiveAgent = AgentId | null;
 
-interface AgentDef {
-  id: AgentId;
-  agentKey: NamedAgentId;
-  label: string;
-  description: string;
-  color: string;
-}
-
-const AGENT_DEFS: AgentDef[] = [
-  {
-    id: 'writing-assistant',
-    agentKey: 'writingAssistant',
-    label: 'Writing Coach',
-    description: 'Teaches you to write better using your own pages — never ghost-writes.',
-    color: '#00f0ff',
-  },
-  {
-    id: 'brainstorm',
-    agentKey: 'brainstorm',
-    label: 'Brainstorm Agent',
-    description: 'Curates your vault, extracts facts, and develops ideas with you.',
-    color: '#9b5fff',
-  },
-  // S2-6: Archivist / Archive Agent hand removed from partner IA (video wins).
-  // Continuity still surfaces via Continuity panel; Timeline Archive tab gone.
-  {
-    id: 'beta-reader',
-    agentKey: 'betaReader',
-    label: 'Beta Reader',
-    description: 'Reads your pages like a first-time reader and leaves honest reactions.',
-    color: '#8ad9ff',
-  },
-];
-
-// ── Live AGENTS-card statuses (SKY-9022/M6 GAP-1) ───────────────────────────
-//
-// Honest wiring only — every status is a state this surface can actually
-// observe (no fake demo data). Precedence: Disabled > '{n} new' > live status.
+type HubTab = 'partner' | 'suggestions' | 'scenes' | 'notes-analysis';
 
 type AgentStatusDot = 'idle' | 'watching' | 'attention' | 'disabled';
 
 interface AgentStatus {
   text: string;
   dot: AgentStatusDot;
-  /** Brainstorm's watching dot pulses (prototype 6398) — only while genuinely
-   *  active (SKY-11214: a real session with no error), never merely enabled. */
   pulse: boolean;
 }
 
+/** Status helper retained for hand/engine surfaces + unit tests. */
 export function resolveAgentStatus(
   agentId: AgentId,
   { enabled, pendingCount, continuityCount, activeEntry, recentTerminal, brainstormActivity }: {
     enabled: boolean;
     pendingCount: number;
     continuityCount: number;
-    /** SKY-11223: this agent's running request from the shared AiActivityRegistry, if any. */
     activeEntry: AiActivityEntry | null;
-    /** SKY-11223: this agent's most recently finished request, while still within its visible window. */
     recentTerminal: AiActivityTerminalEvent | null;
-    /** SKY-11214: real fact-extraction activity, fed by BrainstormPage via the
-     *  brainstormActivity module store (see AgentRow, which subscribes). Only
-     *  meaningful for 'brainstorm' — every other agent ignores it. */
     brainstormActivity: BrainstormActivitySnapshot;
   },
 ): AgentStatus {
-  // GAP-6: a disabled agent says so — and suppresses the '{n} new' override
-  // (its chat view surfaces the same disabled state on click-through).
   if (!enabled) return { text: 'Disabled', dot: 'disabled', pulse: false };
-  // §9 attention override: pending suggestions from this agent are waiting.
   if (pendingCount > 0) return { text: `${pendingCount} new`, dot: 'attention', pulse: false };
-  // SKY-11223: a real in-flight request from the shared registry beats every
-  // signal below — it's the most immediate truth ("is this agent doing
-  // network work right now") and applies to all four agents uniformly.
   if (activeEntry) {
     return { text: `Working — ${activeEntry.surfaceLabel}`, dot: 'watching', pulse: true };
   }
@@ -132,12 +82,6 @@ export function resolveAgentStatus(
   }
   switch (agentId) {
     case 'brainstorm': {
-      // SKY-11214: between requests, the registry alone goes quiet — but a
-      // brainstorm session tracks its own facts-extracted count, which is
-      // real activity the owner explicitly asked to see (AC2/AC5: "reuse the
-      // real counters that already exist"). This is honest status for the
-      // idle-between-messages window the registry can't see, layered below
-      // SKY-11223's in-flight/error/empty signals rather than replacing them.
       if (brainstormActivity.hasError) {
         return { text: 'Needs attention — check the session', dot: 'attention', pulse: false };
       }
@@ -155,7 +99,6 @@ export function resolveAgentStatus(
       };
     }
     case 'archive':
-      // Live open-flag count fed from ContinuityPanel via DesktopShell.
       return continuityCount > 0
         ? { text: `${continuityCount} flag${continuityCount === 1 ? '' : 's'} open`, dot: 'attention', pulse: false }
         : { text: 'Ready', dot: 'idle', pulse: false };
@@ -166,13 +109,8 @@ export function resolveAgentStatus(
 
 interface Props {
   scene: Scene | null;
-  /** M9c/M6: drives the Scenes tab's canvas-board list. */
   story?: Story | null;
-  /** M9c/M6: Scenes tab empty-state + "Open full" → Scene Crafter.
-   * SKY-11069: carries the previewed board (null = none) so the shell can
-   * open it in its own Scene Crafter tab. */
   onOpenScenesFull?: (board: { id: string; name: string } | null) => void;
-  /** M9c/M6: Scenes tab canvas board note links. */
   onOpenSceneNote?: (notePath: string) => void;
   enabled?: boolean;
   scanIntervalSeconds?: number;
@@ -189,41 +127,16 @@ interface Props {
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   agentNames?: Partial<Record<NamedAgentId, string>>;
-  /** SKY-10057: notified when the Review Inbox drill-down opens (side-effect hook — the
-   *  drill-down itself is rendered internally, this is not the render target).
-   *  dead-wiring-ignore (SKY-10926): the Review Inbox drill-down is fully self-contained
-   *  (SuggestionPreviewCard -> handleOpenInbox -> internal `inboxOpen` state, see
-   *  AgentHubPanel.test.tsx "SKY-10057: drills into a self-contained Review Inbox in
-   *  place"); this is an optional outward notification for a future caller, not the
-   *  mechanism that makes "See All Suggestions" work today. */
-  onOpenSuggestionInbox?: () => void;
-  /** SKY-10057: opens a suggestion's target file — passed through to the
-   *  in-panel Review Inbox drill-down (SuggestionReview). */
   onOpenVaultPath?: (path: string) => void;
-  /** M13: `View Full Analysis` navigates to the Writing Coach page (§5.4). */
   onOpenCoachPage?: () => void;
-  /** M9b (SKY-9823): pass-throughs for the Notes tab's SceneNotesPanel. */
   sceneNotesRefresh?: number;
   onPromoteSceneNote?: (payload: SceneNoteDragPayload) => void;
   onSceneNotesChanged?: () => void;
-  /** SKY-9022/M6 (GAP-6): per-agent enablement from Settings
-   *  (`agents.<key>.enabled ?? true`). Distinct from `enabled`, which means
-   *  "Writing Assistant scanning enabled" and feeds WritingAssistantPanel.
-   *  Absent key or absent prop = enabled (fresh-profile default). */
   agentEnablement?: Partial<Record<AgentId, boolean>>;
-  /** SKY-9022/M6 (GAP-1): live open continuity-flag count — drives the
-   *  Archive row's '{n} flags open' status. Fed by ContinuityPanel's
-   *  onCountChange via DesktopShell. */
   continuityCount?: number;
-  /** M6: Rendered at top of the Assistant tab hub view — Getting Started card. */
   gettingStartedCard?: import('react').ReactNode;
-  /** M6: Rendered after SceneAnalysisCard — the Continuity section. */
   continuityPanel?: import('react').ReactNode;
-  /** M12.B3 (SKY-10738): the Archive agent's current continuity flags, fed by
-   *  ContinuityPanel's onItemsChange via DesktopShell — drives the Archive
-   *  chat view's composer quick-action chips (dynamic, not static). */
   continuityItems?: InconsistencyItem[];
-  /** M9a (SKY-9822): Rendered inside the References tab — wiki-link auto-collection. */
   referencesPanel?: import('react').ReactNode;
 }
 
@@ -247,7 +160,6 @@ export default function AgentHubPanel({
   autoApplyCategories,
   onAutoApplyCategoriesChange,
   agentNames,
-  onOpenSuggestionInbox,
   onOpenVaultPath,
   onOpenCoachPage,
   sceneNotesRefresh,
@@ -260,414 +172,414 @@ export default function AgentHubPanel({
   continuityItems = [],
   referencesPanel,
 }: Props) {
-  // R11/M11a/M11b: master AI toggle off removes the Assistant tab (AGENTS,
-  // Suggestions, Scene Analysis, Continuity, Getting Started all live inside
-  // it) — "right panel collapses cleanly, no dead bands." Scenes/Notes/
-  // References are utility tabs, not AI, and stay either way.
   const aiEnabled = useAiEnabled();
-  const [activeTab, setActiveTabState] = useState<HubTab>('assistant');
+  const partnerName = resolvePartnerDisplayName(agentNames);
+  const [activeTab, setActiveTabState] = useState<HubTab>('partner');
   const setActiveTab = useCallback((tab: HubTab) => {
-    setActiveTabState(tab === 'assistant' && !aiEnabled ? 'scenes' : tab);
+    setActiveTabState(tab === 'partner' && !aiEnabled ? 'scenes' : tab);
   }, [aiEnabled]);
   useEffect(() => {
-    if (!aiEnabled) setActiveTabState((cur) => (cur === 'assistant' ? 'scenes' : cur));
+    if (!aiEnabled) setActiveTabState((cur) => (cur === 'partner' || cur === 'suggestions' ? 'scenes' : cur));
   }, [aiEnabled]);
-  const [activeAgent, setActiveAgent] = useState<ActiveAgent>(null);
 
-  // SKY-10057: "See All Suggestions" drills into a self-contained Review
-  // Inbox in place — mirrors the AgentHubView <-> AgentChatView swap above.
-  // The panel-stack home this used to expand (SKY-6321's setGrsPanels) was
-  // removed by M6 with no replacement, leaving the button a same-tab no-op.
-  const [inboxOpen, setInboxOpen] = useState(false);
-  const handleOpenInbox = useCallback(() => {
-    setInboxOpen(true);
-    onOpenSuggestionInbox?.();
-  }, [onOpenSuggestionInbox]);
-  const handleInboxBack = useCallback(() => setInboxOpen(false), []);
+  const [activeHand, setActiveHand] = useState<PartnerHandId | null>(null);
+  const [call, setCall] = useState<PartnerCallState>({
+    onCall: false,
+    muted: false,
+    transcriptMode: 'stream',
+    settingsOpen: false,
+  });
+  const endCall = useCallback(() => {
+    setCall({ onCall: false, muted: false, transcriptMode: 'stream', settingsOpen: false });
+  }, []);
 
+  const partnerSessionStore = useAgentSessions('brainstorm');
   const coachSessionStore = useAgentSessions('coach');
 
-  const handleAgentClick = useCallback((id: ActiveAgent) => {
-    if (id === 'beta-reader') {
-      // Beta Reader view is M27 — route to the beta view
+  const handleHand = useCallback((hand: PartnerHandId) => {
+    if (hand === 'analyst') {
       window.dispatchEvent(new CustomEvent('mythos:nav', { detail: { view: 'beta' } }));
       return;
     }
-    setActiveAgent(id);
-  }, []);
-
-  // §4: focus returns to the AGENTS row for the agent just exited, not the
-  // top of the panel — the row unmounts/remounts across this transition
-  // (AgentHubView <-> AgentChatView swap the whole subtree), so a captured
-  // element ref would go stale; look the row up fresh by testid instead.
-  const handleBack = useCallback(() => {
-    const exitingAgentId = activeAgent;
-    setActiveAgent(null);
-    if (exitingAgentId) {
-      requestAnimationFrame(() => {
-        document.querySelector<HTMLElement>(`[data-testid="ahp-agent-row-${exitingAgentId}"]`)?.focus();
-      });
+    if (hand === 'writer') {
+      setActiveHand((cur) => (cur === 'writer' ? null : 'writer'));
+      return;
     }
-  }, [activeAgent]);
+    // Archivist: surface continuity in Notes & Analysis (engine kept; no face).
+    setActiveHand(null);
+    setActiveTab('notes-analysis');
+  }, [setActiveTab]);
 
-  // M11b surface contract: "Assistant" tab is AI-bearing chrome — gone when
-  // the master toggle is off. Scenes/Notes/References stay either way.
+  const closeWriterHand = useCallback(() => setActiveHand(null), []);
+
   const TABS: { id: HubTab; label: string }[] = [
-    ...(aiEnabled ? [{ id: 'assistant' as const, label: 'Assistant' }] : []),
+    ...(aiEnabled ? [
+      { id: 'partner' as const, label: partnerName },
+      { id: 'suggestions' as const, label: 'Suggestions' },
+    ] : []),
     { id: 'scenes', label: 'Scenes' },
-    { id: 'notes', label: 'Notes' },
-    { id: 'references', label: 'References' },
+    { id: 'notes-analysis', label: 'Notes & Analysis' },
   ];
 
   return (
-    <div className="ahp-root" data-testid="agent-hub-panel">
+    <div className="ahp-root" data-testid="agent-hub-panel" data-partner-shell="true">
       <nav className="ahp-tabs" aria-label="Right panel tabs">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
             className={`ahp-tab${activeTab === t.id ? ' ahp-tab--active' : ''}`}
-            onClick={() => { setActiveTab(t.id); setActiveAgent(null); setInboxOpen(false); }}
+            onClick={() => { setActiveTab(t.id); }}
             aria-selected={activeTab === t.id}
             role="tab"
+            data-testid={`ahp-tab-${t.id}`}
+            title={t.label}
           >
-            {t.label}
+            <span className="ahp-tab-label">{t.label}</span>
           </button>
         ))}
       </nav>
 
       <div className="ahp-body">
-        {activeTab === 'assistant' && aiEnabled && (
-          inboxOpen
-            ? <ReviewInboxView onBack={handleInboxBack} onOpenVaultPath={onOpenVaultPath} />
-          : activeAgent
-            ? <AgentChatView
-                agentId={activeAgent}
-                agentDef={AGENT_DEFS.find((a) => a.id === activeAgent)!}
-                agentNames={agentNames}
-                coachSessionStore={coachSessionStore}
-                onBack={handleBack}
-                scene={scene}
-                enabled={enabled}
-                scanIntervalSeconds={scanIntervalSeconds}
-                waScanInterval={waScanInterval}
-                isActive={isActive}
-                isPageFocused={isPageFocused}
-                voiceEnabled={voiceEnabled}
-                ttsSettings={ttsSettings}
-                voicePrefs={voicePrefs}
-                cadenceTrigger={cadenceTrigger}
-                idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
-                idleDebounceSeconds={idleDebounceSeconds}
-                autoApply={autoApply}
-                autoApplyCategories={autoApplyCategories}
-                onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
-                continuityPanel={continuityPanel}
-                continuityItems={continuityItems}
-              />
-            : <AgentHubView
-                agentDefs={AGENT_DEFS}
-                agentNames={agentNames}
-                agentEnablement={agentEnablement}
-                continuityCount={continuityCount}
-                onAgentClick={handleAgentClick}
-                scene={scene}
-                onOpenSuggestionInbox={handleOpenInbox}
-                onOpenCoachPage={onOpenCoachPage}
-                gettingStartedCard={gettingStartedCard}
-                continuityPanel={continuityPanel}
-              />
+        {activeTab === 'partner' && aiEnabled && (
+          <PartnerChatView
+            partnerName={partnerName}
+            agentNames={agentNames}
+            agentEnablement={agentEnablement}
+            continuityCount={continuityCount}
+            gettingStartedCard={gettingStartedCard}
+            partnerSessionStore={partnerSessionStore}
+            coachSessionStore={coachSessionStore}
+            activeHand={activeHand}
+            onHand={handleHand}
+            onCloseWriter={closeWriterHand}
+            call={call}
+            onCallChange={setCall}
+            onEndCall={endCall}
+            scene={scene}
+            enabled={enabled}
+            scanIntervalSeconds={scanIntervalSeconds}
+            waScanInterval={waScanInterval}
+            isActive={isActive}
+            isPageFocused={isPageFocused}
+            voiceEnabled={voiceEnabled}
+            ttsSettings={ttsSettings}
+            voicePrefs={voicePrefs}
+            cadenceTrigger={cadenceTrigger}
+            idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
+            idleDebounceSeconds={idleDebounceSeconds}
+            autoApply={autoApply}
+            autoApplyCategories={autoApplyCategories}
+            onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
+            continuityPanel={continuityPanel}
+            continuityItems={continuityItems}
+          />
+        )}
+        {activeTab === 'suggestions' && aiEnabled && (
+          <div className="ahp-suggestions-tab" data-testid="ahp-suggestions-tab">
+            <SuggestionReview onOpenVaultPath={onOpenVaultPath} />
+          </div>
         )}
         {activeTab === 'scenes' && (
           <ScenesPanel story={story} onOpenFull={onOpenScenesFull ?? (() => {})} onOpenNote={onOpenSceneNote} />
         )}
-        {activeTab === 'notes' && (
-          <SceneNotesPanel
+        {activeTab === 'notes-analysis' && (
+          <NotesAndAnalysisTab
             scene={scene}
-            refreshToken={sceneNotesRefresh}
-            onPromoteNote={onPromoteSceneNote}
-            onNotesChanged={onSceneNotesChanged}
+            onOpenCoachPage={onOpenCoachPage}
+            referencesPanel={referencesPanel}
+            continuityPanel={continuityPanel}
+            sceneNotesRefresh={sceneNotesRefresh}
+            onPromoteSceneNote={onPromoteSceneNote}
+            onSceneNotesChanged={onSceneNotesChanged}
           />
         )}
-        {activeTab === 'references' && <ReferencesTab referencesPanel={referencesPanel} />}
       </div>
     </div>
   );
 }
 
-// ── Research Quick Links card (M6) ──────────────────────────────────────────
+// ── Partner chat-first view ─────────────────────────────────────────────────
 
-function ResearchQuickLinksCard() {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <section className="ahp-card ahp-card--collapsible" aria-label="Research Quick Links">
-      <button
-        className="ahp-collapsible-header"
-        onClick={() => setExpanded((e) => !e)}
-        aria-expanded={expanded}
-        type="button"
-      >
-        <span className="ahp-card-eyebrow">RESEARCH QUICK LINKS</span>
-        <span className="ahp-collapse-chevron" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
-      </button>
-      {expanded && (
-        <div className="ahp-quick-links-body">
-          <p className="ahp-stub-text">Quick links to research sources — contents in M9.</p>
-        </div>
-      )}
-    </section>
-  );
-}
-
-// ── Agent hub view (compact rows) ──────────────────────────────────────────
-
-interface AgentHubViewProps {
-  agentDefs: AgentDef[];
+interface PartnerChatViewProps {
+  partnerName: string;
   agentNames?: Partial<Record<NamedAgentId, string>>;
   agentEnablement?: Partial<Record<AgentId, boolean>>;
   continuityCount: number;
-  onAgentClick: (id: ActiveAgent) => void;
-  scene: Scene | null;
-  onOpenSuggestionInbox?: () => void;
-  onOpenCoachPage?: () => void;
   gettingStartedCard?: import('react').ReactNode;
+  partnerSessionStore: ReturnType<typeof useAgentSessions>;
+  coachSessionStore: ReturnType<typeof useAgentSessions>;
+  activeHand: PartnerHandId | null;
+  onHand: (hand: PartnerHandId) => void;
+  onCloseWriter: () => void;
+  call: PartnerCallState;
+  onCallChange: (next: PartnerCallState) => void;
+  onEndCall: () => void;
+  scene: Scene | null;
+  enabled: boolean;
+  scanIntervalSeconds: number;
+  waScanInterval?: number | 'on-save' | 'manual';
+  isActive: boolean;
+  isPageFocused?: boolean;
+  voiceEnabled: boolean;
+  ttsSettings?: TtsEngineSettings;
+  voicePrefs?: import('./hooks/useTtsPlayer').TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
+  cadenceTrigger?: 'on_save' | 'idle_heartbeat';
+  idleHeartbeatConstantInterval?: boolean;
+  idleDebounceSeconds?: number;
+  autoApply: boolean;
+  autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
+  onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   continuityPanel?: import('react').ReactNode;
+  continuityItems?: InconsistencyItem[];
 }
 
-function AgentHubView({ agentDefs, agentNames, agentEnablement, continuityCount, onAgentClick, scene, onOpenSuggestionInbox, onOpenCoachPage, gettingStartedCard, continuityPanel }: AgentHubViewProps) {
-  // §9: lifted here (rather than owned inside SuggestionPreviewCard) so the
-  // AGENTS card can derive each row's "needs attention" count from the same
-  // poll instead of a second one.
-  const { items, totalCount, loading } = useSuggestionPreview(SUGGESTION_PREVIEW_LIMIT);
-  const pendingByAgent = useMemo(() => {
-    const counts: Partial<Record<string, number>> = {};
-    for (const s of items) counts[s.sourceAgent] = (counts[s.sourceAgent] ?? 0) + 1;
-    return counts;
-  }, [items]);
-  // SKY-11214: subscribed once here (not per-row) and passed down like
-  // continuityCount — only the brainstorm row reads it.
+function PartnerChatView({
+  partnerName,
+  gettingStartedCard,
+  partnerSessionStore,
+  coachSessionStore,
+  activeHand,
+  onHand,
+  onCloseWriter,
+  call,
+  onCallChange,
+  onEndCall,
+  scene,
+  enabled,
+  scanIntervalSeconds,
+  waScanInterval,
+  isActive,
+  isPageFocused,
+  voiceEnabled,
+  ttsSettings,
+  voicePrefs,
+  cadenceTrigger,
+  idleHeartbeatConstantInterval,
+  idleDebounceSeconds,
+  autoApply,
+  autoApplyCategories,
+  onAutoApplyCategoriesChange,
+}: PartnerChatViewProps) {
   const brainstormActivity = useBrainstormActivity();
+  const writerBusy = useAgentRunningEntry('writingAssistant');
+  const handBusy: PartnerHandId | null = writerBusy
+    ? 'writer'
+    : brainstormActivity.active
+      ? null
+      : activeHand === 'writer' || activeHand === 'archivist' || activeHand === 'analyst'
+        ? activeHand
+        : null;
+  const [coachBusy, setCoachBusy] = useState(false);
+  const [pastOpen, setPastOpen] = useState(false);
 
   return (
-    <div className="ahp-hub">
+    <div className="ahp-partner" data-testid="ahp-partner-view">
       {gettingStartedCard}
-      {/* AGENTS card */}
-      <section className="ahp-card" aria-label="Agents">
-        <header className="ahp-card-header">
-          <span className="ahp-card-eyebrow">AGENTS</span>
-        </header>
-        <div className="ahp-agent-rows" role="list">
-          {agentDefs.map((def) => (
-            <AgentRow
-              key={def.id}
-              def={def}
-              displayName={resolveAgentDisplayName(def.agentKey, agentNames)}
-              onClick={() => onAgentClick(def.id)}
-              pendingCount={pendingByAgent[def.id] ?? 0}
-              enabled={agentEnablement?.[def.id] ?? true}
-              continuityCount={continuityCount}
-              brainstormActivity={brainstormActivity}
-            />
-          ))}
-        </div>
-      </section>
-
-      {/* Suggestions card — preview 3 rows + See All */}
-      <SuggestionPreviewCard
-        items={items}
-        totalCount={totalCount}
-        loading={loading}
-        onOpenSuggestionInbox={onOpenSuggestionInbox}
+      <PartnerCallChrome
+        partnerName={partnerName}
+        handBusy={handBusy}
+        call={call}
+        onCallChange={onCallChange}
+        onEndCall={onEndCall}
       />
 
-      {/* Scene Analysis card — M13 computes the values locally (§5.4) */}
-      <SceneAnalysisCard scene={scene} onOpenCoachPage={onOpenCoachPage} />
-      {continuityPanel}
-      <ResearchQuickLinksCard />
+      <div className="ahp-past-chats" data-testid="ahp-past-chats">
+        <button
+          type="button"
+          className="ahp-past-chats__toggle"
+          aria-expanded={pastOpen}
+          onClick={() => setPastOpen((o) => !o)}
+          data-testid="ahp-past-chats-toggle"
+        >
+          <span>Past chats &amp; calls</span>
+          <span className="ahp-past-chats__count">
+            {partnerSessionStore.sessions.length} thread{partnerSessionStore.sessions.length === 1 ? '' : 's'}
+          </span>
+          <span aria-hidden="true">{pastOpen ? '▾' : '▸'}</span>
+        </button>
+        {pastOpen && (
+          <div className="ahp-past-chats__menu" data-testid="ahp-past-chats-menu">
+            <AgentSessionPicker
+              store={partnerSessionStore}
+              className="ahp-session-pill ahp-session-pill--dropdown"
+              busy={false}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="ahp-hands" role="group" aria-label="Partner hands">
+        {PARTNER_HANDS.map((h) => (
+          <button
+            key={h.id}
+            type="button"
+            className={`ahp-hand-chip${activeHand === h.id ? ' ahp-hand-chip--active' : ''}`}
+            style={{ '--hand-color': h.color } as React.CSSProperties}
+            data-testid={`ahp-hand-${h.id}`}
+            title={h.description}
+            onClick={() => onHand(h.id)}
+          >
+            {h.label}
+          </button>
+        ))}
+      </div>
+
+      {activeHand === 'writer' ? (
+        <div className="ahp-partner-thread" data-testid="ahp-writer-hand">
+          <div className="ahp-hand-header">
+            <span className="ahp-chat-agent-name">Writer · {partnerName}</span>
+            <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" busy={coachBusy} />
+            <button
+              type="button"
+              className="ahp-hand-close"
+              data-testid="ahp-close-writer"
+              onClick={onCloseWriter}
+            >
+              Close
+            </button>
+          </div>
+          <WritingAssistantPanel
+            sessionStore={coachSessionStore}
+            scene={scene}
+            enabled={enabled}
+            scanIntervalSeconds={scanIntervalSeconds}
+            waScanInterval={waScanInterval}
+            isActive={isActive}
+            isPageFocused={isPageFocused}
+            voiceEnabled={voiceEnabled}
+            ttsSettings={ttsSettings}
+            voicePrefs={voicePrefs}
+            cadenceTrigger={cadenceTrigger}
+            idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
+            idleDebounceSeconds={idleDebounceSeconds}
+            autoApply={autoApply}
+            autoApplyCategories={autoApplyCategories}
+            onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
+            displayName={partnerName}
+            onBusyChange={setCoachBusy}
+          />
+        </div>
+      ) : (
+        <div className="ahp-partner-thread" data-testid="ahp-partner-thread">
+          <PartnerBrainstormChat partnerName={partnerName} onCall={call.onCall} />
+        </div>
+      )}
     </div>
   );
 }
 
-interface AgentRowProps {
-  def: AgentDef;
-  displayName: string;
-  onClick: () => void;
-  /** §9: pending suggestions from this agent — drives the "needs attention"
-   *  status (Beta 4 ships text chat only, not background autonomy, so idle
-   *  vs. needs-attention is the state this surface can actually observe). */
-  pendingCount?: number;
-  /** GAP-6: this agent's Settings enablement (`agents.<key>.enabled ?? true`). */
-  enabled?: boolean;
-  /** GAP-1: live open continuity-flag count (Archive row only). */
-  continuityCount?: number;
-  /** SKY-11214: live brainstorm-session activity (Brainstorm row only) —
-   *  fed by BrainstormPage via the brainstormActivity module store, read
-   *  once in AgentHubView and passed down like continuityCount. */
-  brainstormActivity: BrainstormActivitySnapshot;
-}
-
-function AgentRow({ def, displayName, onClick, pendingCount = 0, enabled = true, continuityCount = 0, brainstormActivity }: AgentRowProps) {
-  // SKY-11223: def.agentKey (NamedAgentId) and AiActivityAgentId are the same
-  // camelCase agent-id space by construction — no translation needed.
-  const activeEntry = useAgentRunningEntry(def.agentKey);
-  const recentTerminal = useAgentRecentTerminal(def.agentKey);
-  const status = resolveAgentStatus(def.id, { enabled, pendingCount, continuityCount, activeEntry, recentTerminal, brainstormActivity });
-  // SKY-3941: the row is a button — its accessible name carries name + status
-  // so a status change is announced with the agent it belongs to.
-  const ariaStatus = status.dot === 'attention' && pendingCount > 0
-    ? `${pendingCount} new suggestion${pendingCount === 1 ? '' : 's'}`
-    : status.text;
-
+function PartnerBrainstormChat({ partnerName, onCall }: { partnerName: string; onCall: boolean }) {
+  const chat = useMiniAgentChat('brainstorm', invokeBrainstorm);
   return (
-    <button
-      type="button"
-      className="ahp-agent-row"
-      data-testid={`ahp-agent-row-${def.id}`}
-      onClick={onClick}
-      aria-label={`Open ${displayName} chat — ${ariaStatus}`}
-      title={def.description}
-      role="listitem"
-      style={{ '--agent-color': def.color } as React.CSSProperties}
-    >
-      <span className="ahp-agent-tile" aria-hidden="true">
-        <AgentIcon agentId={def.id} />
-      </span>
-      <span className="ahp-agent-text">
-        <span className="ahp-agent-name">{displayName}</span>
-        <span className="ahp-agent-status">
-          <span
-            className={`ahp-status-dot ahp-status-dot--${status.dot}${status.pulse ? ' ahp-status-dot--pulse' : ''}`}
-            aria-hidden="true"
-          />
-          <span className="ahp-status-text">{status.text}</span>
-        </span>
-      </span>
-      {/* Prototype 3030: trailing right-chevron. */}
-      <svg
-        className="ahp-agent-chevron"
-        width="11"
-        height="11"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden="true"
-      >
-        <path d="M9 6l6 6-6 6" />
-      </svg>
-    </button>
+    <div className="ahp-brainstorm-chat ahp-partner-composer" data-testid="ahp-partner-chat">
+      <MiniAgentChat
+        chat={chat}
+        accent="brainstorm"
+        placeholder={onCall ? `Speak or type to ${partnerName}…` : `Message ${partnerName}…`}
+        testidPrefix="ahp-partner"
+      />
+      {onCall && (
+        <p className="ahp-voice-hint" data-testid="ahp-voice-hint">
+          🎙 VOICE turns appear as ordinary bubbles in this thread.
+        </p>
+      )}
+    </div>
   );
 }
 
-function AgentIcon({ agentId }: { agentId: ActiveAgent }) {
-  switch (agentId) {
-    case 'writing-assistant': return <span aria-hidden="true">🎓</span>;
-    case 'brainstorm': return <span aria-hidden="true">💡</span>;
-    case 'archive': return <span aria-hidden="true">📚</span>;
-    case 'beta-reader': return <span aria-hidden="true">👁</span>;
-    default: return <span aria-hidden="true">🤖</span>;
-  }
-}
+// ── Notes & Analysis ────────────────────────────────────────────────────────
 
-// ── Suggestions preview card ────────────────────────────────────────────────
+function NotesAndAnalysisTab({
+  scene,
+  onOpenCoachPage,
+  referencesPanel,
+  continuityPanel,
+  sceneNotesRefresh,
+  onPromoteSceneNote,
+  onSceneNotesChanged,
+}: {
+  scene: Scene | null;
+  onOpenCoachPage?: () => void;
+  referencesPanel?: import('react').ReactNode;
+  continuityPanel?: import('react').ReactNode;
+  sceneNotesRefresh?: number;
+  onPromoteSceneNote?: (payload: SceneNoteDragPayload) => void;
+  onSceneNotesChanged?: () => void;
+}) {
+  // Seed empty-state-friendly placeholders so Questions-for-you sub-tabs are
+  // reachable for fidelity proof; live vault-gap wiring can replace these.
+  const demoNotesQs: PartnerQuestion[] = useMemo(() => ([
+    {
+      id: 'nq-gap-1',
+      heading: 'Who holds the key?',
+      detail: 'A notes gap mentioned a key without naming the holder. Clarify for the vault.',
+      targetNotePath: null,
+      source: 'notes',
+    },
+  ]), []);
+  const demoStoryQs: PartnerQuestion[] = useMemo(() => ([
+    {
+      id: 'sq-1',
+      heading: 'What changes after the reveal?',
+      detail: 'Open story question — answer appends to the chosen note.',
+      targetNotePath: 'Notes/Story questions.md',
+      source: 'story',
+    },
+  ]), []);
 
-/** Polls the M13 unified suggestion feed for a top-N preview + live count. */
-function useSuggestionPreview(limit: number) {
-  const [items, setItems] = useState<UnifiedSuggestion[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  // Only the very first fetch shows a skeleton (Doherty Threshold, §2) —
-  // subsequent 30s polls update in place without re-showing a loading state.
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
+  const handleAppend = useCallback(async ({ notePath, heading, answer }: { notePath: string; heading: string; answer: string }) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const api = (window as any).api;
-    if (typeof api?.suggestionsUnifiedList !== 'function') {
-      setLoading(false);
+    const block = `\n\n## ${heading}\n\n${answer}\n`;
+    if (typeof api?.notesAppend === 'function') {
+      await api.notesAppend({ path: notePath, content: block });
       return;
     }
-    let cancelled = false;
-    const poll = () => {
-      (api.suggestionsUnifiedList({ status: 'proposed', limit }) as Promise<{ items?: UnifiedSuggestion[]; totalCount?: number }>)
-        .then((r) => {
-          if (cancelled) return;
-          setItems(r.items ?? []);
-          setTotalCount(r.totalCount ?? (r.items?.length ?? 0));
-        })
-        .catch(() => {})
-        .finally(() => { if (!cancelled) setLoading(false); });
-    };
-    poll();
-    const id = window.setInterval(poll, SUGGESTION_POLL_MS);
-    return () => { cancelled = true; window.clearInterval(id); };
-  }, [limit]);
+    if (typeof api?.vaultAppendText === 'function') {
+      await api.vaultAppendText({ path: notePath, text: block });
+      return;
+    }
+    // Soft path for tests / missing IPC — surface success via toast only.
+    showLnToast(`Answer ready for ${notePath}`);
+  }, []);
 
-  return { items, totalCount, loading };
-}
-
-interface SuggestionPreviewCardProps {
-  items: UnifiedSuggestion[];
-  totalCount: number;
-  loading: boolean;
-  onOpenSuggestionInbox?: () => void;
-}
-
-function SuggestionPreviewCard({ items, totalCount, loading, onOpenSuggestionInbox }: SuggestionPreviewCardProps) {
   return (
-    <section className="ahp-card" aria-label="Suggestions">
-      <header className="ahp-card-header">
-        <span className="ahp-card-eyebrow">
-          SUGGESTIONS
-          {/* Prototype 3040–3043 order: source badge, then count chip. */}
-          <span className="ahp-badge ahp-badge--coach">WRITING COACH</span>
-          {totalCount > 0 && (
-            <span className="ahp-badge ahp-badge--count" aria-label={`${totalCount} pending`}>
-              {totalCount}
-            </span>
-          )}
-        </span>
-      </header>
-      {loading ? (
-        <div className="ahp-skeleton-rows" role="status" aria-label="Loading suggestions" data-testid="ahp-suggestions-skeleton">
-          <div className="ahp-skeleton-bar" />
-          <div className="ahp-skeleton-bar" />
-          <div className="ahp-skeleton-bar" />
-        </div>
-      ) : items.length === 0 ? (
-        <p className="ahp-suggestion-empty">No suggestions right now — the team&apos;s watching.</p>
-      ) : (
-        <ul className="ahp-suggestion-rows" role="list">
-          {items.map((s) => (
-            <li key={s.id} className="ahp-suggestion-row">
-              <span className="ahp-suggestion-agent">{AGENT_LABELS[s.sourceAgent] ?? s.sourceAgent}</span>
-              <span className="ahp-suggestion-rationale">{s.rationale}</span>
-              <span className="ahp-suggestion-confidence">{Math.round(s.confidence * 100)}%</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <button
-        type="button"
-        className="ahp-see-all-btn"
-        onClick={() => onOpenSuggestionInbox?.()}
-      >
-        See All Suggestions
-      </button>
-    </section>
+    <div className="ahp-notes-analysis" data-testid="ahp-notes-analysis">
+      <SceneAnalysisCard scene={scene} onOpenCoachPage={onOpenCoachPage} />
+      <QuestionsForYou
+        notesQuestions={demoNotesQs}
+        storyQuestions={demoStoryQs}
+        activityItems={[
+          { id: 'act-ready', text: 'Partner ready — hands idle', at: 'now' },
+        ]}
+        noteOptions={[
+          { path: 'Notes/Characters.md', title: 'Characters' },
+          { path: 'Notes/Story questions.md', title: 'Story questions' },
+        ]}
+        onAppendToNote={handleAppend}
+      />
+      <section className="ahp-card" aria-label="References">
+        <header className="ahp-card-header">
+          <span className="ahp-card-eyebrow">REFERENCES</span>
+        </header>
+        {referencesPanel ?? (
+          <p className="ahp-stub-text">Wiki link targets appear here.</p>
+        )}
+      </section>
+      <SceneNotesPanel
+        scene={scene}
+        refreshToken={sceneNotesRefresh}
+        onPromoteNote={onPromoteSceneNote}
+        onNotesChanged={onSceneNotesChanged}
+      />
+      {continuityPanel}
+    </div>
   );
 }
 
-// ── Scene Analysis card (M13 — §5.4) ────────────────────────────────────────
-//
-// Rows per prototype 5848: Purpose · Tension · Pacing · POV · Word Count ·
-// Read Time. Word count / read time / pacing / POV are computed locally and
-// always available. Purpose and Tension are judgment calls — they surface the
-// newest Coach's Read for this scene (shared coach session) and honestly show
-// a dash until a Full Analysis has run.
+// ── Scene Analysis card (moved into Notes & Analysis) ───────────────────────
 
-/** Prototype toast (HTML 7266). */
 const FULL_ANALYSIS_TOAST =
   'Full analysis — computed stats are free & local; the coach’s read uses AI';
 
@@ -685,9 +597,6 @@ function SceneAnalysisCard({ scene, onOpenCoachPage }: { scene: Scene | null; on
 
   const handleViewFullAnalysis = useCallback(() => {
     if (!scene) return;
-    // Fire-and-forget: the card lands in the shared coach conversation when
-    // the computed metrics (instant) + AI read (or its honest unavailable
-    // state) are assembled. Navigation happens immediately.
     void runFullSceneAnalysis(scene);
     showLnToast(FULL_ANALYSIS_TOAST);
     onOpenCoachPage?.();
@@ -713,9 +622,7 @@ function SceneAnalysisCard({ scene, onOpenCoachPage }: { scene: Scene | null; on
         </span>
       </header>
       {!scene || !metrics ? (
-        <p className="ahp-analysis-placeholder">
-          Open a scene to see analysis.
-        </p>
+        <p className="ahp-analysis-placeholder">Open a scene to see analysis.</p>
       ) : metrics.words === 0 ? (
         <p className="ahp-analysis-placeholder">
           Write a little, then check back — analysis needs some text to work with.
@@ -744,7 +651,7 @@ function SceneAnalysisCard({ scene, onOpenCoachPage }: { scene: Scene | null; on
             type="button"
             className="ahp-view-analysis-btn"
             data-testid="view-full-analysis"
-            title="Opens a full breakdown in the Writing Coach"
+            title="Opens a full breakdown via the Writer hand"
             onClick={handleViewFullAnalysis}
           >
             View Full Analysis
@@ -752,190 +659,5 @@ function SceneAnalysisCard({ scene, onOpenCoachPage }: { scene: Scene | null; on
         </>
       )}
     </section>
-  );
-}
-
-// ── In-panel chat view ──────────────────────────────────────────────────────
-
-interface AgentChatViewProps {
-  agentId: ActiveAgent;
-  agentDef: AgentDef;
-  agentNames?: Partial<Record<NamedAgentId, string>>;
-  coachSessionStore: ReturnType<typeof useAgentSessions>;
-  onBack: () => void;
-  scene: Scene | null;
-  enabled: boolean;
-  scanIntervalSeconds: number;
-  waScanInterval?: number | 'on-save' | 'manual';
-  isActive: boolean;
-  isPageFocused?: boolean;
-  voiceEnabled: boolean;
-  ttsSettings?: TtsEngineSettings;
-  voicePrefs?: import('./hooks/useTtsPlayer').TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
-  cadenceTrigger?: 'on_save' | 'idle_heartbeat';
-  idleHeartbeatConstantInterval?: boolean;
-  idleDebounceSeconds?: number;
-  autoApply: boolean;
-  autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
-  onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
-  /** M12.B3 (SKY-10738): Archive agent's chat panel — the redesigned
-   *  Continuity panel + composer quick-action chips + mini chat. */
-  continuityPanel?: import('react').ReactNode;
-  continuityItems?: InconsistencyItem[];
-}
-
-function AgentChatView({
-  agentId,
-  agentDef,
-  agentNames,
-  coachSessionStore,
-  onBack,
-  scene,
-  enabled,
-  scanIntervalSeconds,
-  waScanInterval,
-  isActive,
-  isPageFocused,
-  voiceEnabled,
-  ttsSettings,
-  voicePrefs,
-  cadenceTrigger,
-  idleHeartbeatConstantInterval,
-  idleDebounceSeconds,
-  autoApply,
-  autoApplyCategories,
-  onAutoApplyCategoriesChange,
-}: AgentChatViewProps) {
-  const displayName = resolveAgentDisplayName(agentDef.agentKey, agentNames);
-  // SKY-7076: mirror WritingAssistantPanel's generation state so this
-  // surface's picker is disabled during generation too, not just Coach's.
-  const [coachBusy, setCoachBusy] = useState(false);
-
-  return (
-    <div className="ahp-chat-view">
-      <div className="ahp-chat-header">
-        <button
-          type="button"
-          className="ahp-back-btn"
-          onClick={onBack}
-          aria-label="Back to agents"
-        >
-          ‹ Back
-        </button>
-        <span
-          className="ahp-chat-agent-tile"
-          style={{ '--agent-color': agentDef.color } as React.CSSProperties}
-          aria-hidden="true"
-        >
-          <AgentIcon agentId={agentId} />
-        </span>
-        <span className="ahp-chat-agent-name">{displayName}</span>
-        {/* M12.B3: Archive owns its own session pill inside MiniAgentChat
-            (its own agent session, not Coach's) — this header pill is
-            Writing Coach-only. */}
-        {agentId === 'writing-assistant' && (
-          <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" busy={coachBusy} />
-        )}
-      </div>
-
-      {/* Writing Coach uses the existing panel; M12 wires it onto the SHARED
-          coach session store so this mini chat and the Coach page render one
-          conversation (§5.2/§5.6). */}
-      {agentId === 'writing-assistant' && (
-        <WritingAssistantPanel
-          sessionStore={coachSessionStore}
-          scene={scene}
-          enabled={enabled}
-          scanIntervalSeconds={scanIntervalSeconds}
-          waScanInterval={waScanInterval}
-          isActive={isActive}
-          isPageFocused={isPageFocused}
-          voiceEnabled={voiceEnabled}
-          ttsSettings={ttsSettings}
-          voicePrefs={voicePrefs}
-          cadenceTrigger={cadenceTrigger}
-          idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
-          idleDebounceSeconds={idleDebounceSeconds}
-          autoApply={autoApply}
-          autoApplyCategories={autoApplyCategories}
-          onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
-          displayName={displayName}
-          onBusyChange={setCoachBusy}
-        />
-      )}
-
-      {/* S2-6: Archive Agent chat body removed with Archivist hand. */}
-
-      {/* SKY-11224: Brainstorm's chat backend already existed (BrainstormTab's
-          invokeBrainstorm, shared session) — this row just never rendered it. */}
-      {agentId === 'brainstorm' && <BrainstormChatBody />}
-
-      {agentId !== 'writing-assistant' && agentId !== 'brainstorm' && (
-        <div className="ahp-chat-placeholder">
-          <p className="ahp-chat-coming-soon">{displayName} chat coming soon.</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Brainstorm Agent chat body (SKY-11224) ──────────────────────────────────
-// Mini chat on the shared Brainstorm agent session — same backend BrainstormTab
-// and BrainstormPage already use, just wired into this row for the first time.
-
-function BrainstormChatBody() {
-  const chat = useMiniAgentChat('brainstorm', invokeBrainstorm);
-  return (
-    <div className="ahp-brainstorm-chat">
-      <MiniAgentChat chat={chat} accent="brainstorm" placeholder="Ask the Brainstorm agent…" testidPrefix="ahp-brainstorm" />
-    </div>
-  );
-}
-
-// ── Review Inbox drill-down (SKY-10057) ─────────────────────────────────────
-//
-// "See All Suggestions" used to expand a panel-stack entry that M6 removed
-// from rendering; this renders the same SuggestionReview inbox (filters,
-// accept/reject/ignore, audit trail) in place, mirroring the AgentChatView
-// back-navigation pattern above.
-
-function ReviewInboxView({
-  onBack,
-  onOpenVaultPath,
-}: {
-  onBack: () => void;
-  onOpenVaultPath?: (path: string) => void;
-}) {
-  return (
-    <div className="ahp-chat-view">
-      <div className="ahp-chat-header">
-        <button
-          type="button"
-          className="ahp-back-btn"
-          onClick={onBack}
-          aria-label="Back to agents"
-        >
-          ‹ Back
-        </button>
-        <span className="ahp-chat-agent-name">Review Inbox</span>
-      </div>
-      <SuggestionReview onOpenVaultPath={onOpenVaultPath} />
-    </div>
-  );
-}
-
-// ── Stub tabs ───────────────────────────────────────────────────────────────
-
-// M9a (SKY-9822): the real References tab content (ReferencesPanel — wiki-link
-// auto-collection, typed roles, unresolved state) is passed in from
-// DesktopShell via `referencesPanel`, the same slot pattern M6 uses for
-// `continuityPanel`. Falls back to the pre-M9a stub when unset (e.g. in tests
-// that mount AgentHubPanel standalone).
-function ReferencesTab({ referencesPanel }: { referencesPanel?: import('react').ReactNode }) {
-  if (referencesPanel) return <>{referencesPanel}</>;
-  return (
-    <div className="ahp-stub-tab">
-      <p className="ahp-stub-label">Wiki link targets — coming soon.</p>
-    </div>
   );
 }

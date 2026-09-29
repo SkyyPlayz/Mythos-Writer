@@ -825,23 +825,27 @@
   border-color: var(--danger, #f87171);
 }
 
+/* Slice B SCOPE #6: glass composer (match Brainstorm / design — not opaque slab). */
 .writing-assistant-input {
   width: 100%;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
-  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.05);
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.4));
+  border-radius: 13px;
+  color: rgb(219, 228, 245);
   font-size: 0.85rem;
-  line-height: 1.5;
-  padding: 8px 10px;
+  line-height: 1.55;
+  padding: 10px 12px;
   resize: none;
   font-family: inherit;
   box-sizing: border-box;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .writing-assistant-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow: 0 0 16px -4px var(--g2, rgba(155, 95, 255, 0.4));
 }
 
 .writing-assistant-input::placeholder {

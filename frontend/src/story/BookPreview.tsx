@@ -75,11 +75,16 @@ interface CommentCardState {
   y: number;
 }
 
+// Slice B: partner-attributed kinds fall back to Mythos (caller may pass
+// a live partner name via comment.author; this is the no-author residual).
 const KIND_AUTHOR_FALLBACK: Record<string, string> = {
   user: 'You',
-  writing: 'Writing Coach',
-  archive: 'Archive Agent',
-  beta: 'Beta Reader',
+  writing: 'Mythos',
+  archive: 'Mythos',
+  beta: 'Mythos',
+  coach: 'Mythos',
+  brainstorm: 'Mythos',
+  partner: 'Mythos',
 };
 
 // M2 (SKY-9017): true when the story has no parts or exactly one untitled part.

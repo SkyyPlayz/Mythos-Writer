@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Slice B fidelity board — Neon Nebula 50 / glass 20</title>
+<style>
+  :root {
+    --neon-intensity: 50;
+    --glass: 20;
+    --bg0: #070912;
+    --cyan: #00f0ff;
+    --mag: #ff4dff;
+    --purp: #9b5fff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; font-family: "Segoe UI", Inter, system-ui, sans-serif; color: #dbe4f5; }
+  body {
+    background:
+      radial-gradient(1200px 700px at 20% 10%, rgba(155,95,255,0.28), transparent 60%),
+      radial-gradient(900px 600px at 80% 30%, rgba(0,240,255,0.16), transparent 55%),
+      radial-gradient(800px 500px at 50% 90%, rgba(255,77,255,0.12), transparent 50%),
+      linear-gradient(180deg, #0a0d1a, #070912 70%);
+  }
+  .shell { display: grid; grid-template-columns: 56px 1fr 340px; height: 100vh; gap: 0; }
+  .rail {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: 12px 0; border-right: 1px solid rgba(255,255,255,0.08);
+    background: rgba(8,10,18,0.35); backdrop-filter: blur(calc(var(--glass) * 1px));
+  }
+  .rail-item {
+    width: 42px; min-height: 42px; border-radius: 12px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 2px; font-size: 9px; color: #8e9db8;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .rail-item.active { color: var(--cyan); border-color: rgba(0,240,255,0.45); box-shadow: 0 0 16px -6px var(--cyan); }
+  .rail-item.partner { color: #d7c4ff; border-color: rgba(155,95,255,0.45); }
+  .main { display: flex; flex-direction: column; min-width: 0; }
+  .story-strip {
+    display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    background: rgba(13,16,28,0.4); backdrop-filter: blur(calc(var(--glass) * 1px));
+  }
+  .seg { display: flex; gap: 4px; margin: 0 auto; }
+  .seg button {
+    border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.03);
+    color: #8e9db8; border-radius: 9px; padding: 6px 14px; font-weight: 650; font-size: 12px;
+  }
+  .seg button.active { color: #fff; border-color: rgba(0,240,255,0.45); background: rgba(0,240,255,0.12); }
+  .editor {
+    flex: 1; margin: 12px; border-radius: 14px; border: 1px solid rgba(155,95,255,0.35);
+    background: rgba(13,16,28,0.45); backdrop-filter: blur(calc(var(--glass) * 1px));
+    box-shadow: 0 0 28px -12px rgba(155,95,255,0.45); padding: 18px;
+  }
+  .zoom { display: flex; gap: 6px; margin-bottom: 14px; }
+  .zoom span {
+    font-size: 11px; padding: 4px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); color: #8e9db8;
+  }
+  .zoom span.active { color: var(--cyan); border-color: rgba(0,240,255,0.4); background: rgba(0,240,255,0.1); }
+  .book-title { font-family: Georgia, "EB Garamond", serif; font-size: 2.2em; margin: 8px 0 4px; }
+  .book-label { font-size: 10px; letter-spacing: 0.14em; color: #8e9db8; }
+  .right {
+    border-left: 1px solid rgba(255,77,255,0.2);
+    background: rgba(10,12,22,0.45); backdrop-filter: blur(calc(var(--glass) * 1px));
+    display: flex; flex-direction: column; min-width: 0;
+  }
+  .tabs { display: flex; gap: 0; padding: 0 8px; border-bottom: 1px solid rgba(255,77,255,0.18); }
+  .tab {
+    flex: 1 1 auto; min-width: 0; background: none; border: none; border-bottom: 2px solid transparent;
+    color: #8e9db8; font-size: 11px; font-weight: 650; padding: 8px 8px 6px; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tab.active { color: #f0f3fc; border-bottom-color: var(--mag); }
+  .panel { padding: 8px 0 12px; overflow: auto; flex: 1; }
+  .partner-card {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 8px; padding: 12px;
+    border-radius: 13px; border: 1px solid rgba(255,255,255,0.1);
+    background: linear-gradient(135deg, rgba(155,95,255,0.12), rgba(0,240,255,0.06)), rgba(13,16,28,0.35);
+  }
+  .partner-card.on-call {
+    border-color: rgba(0,240,255,0.45);
+    background: linear-gradient(135deg, rgba(0,240,255,0.16), rgba(155,95,255,0.1)), rgba(13,16,28,0.4);
+    box-shadow: 0 0 22px -8px rgba(0,240,255,0.45);
+  }
+  .avatar {
+    width: 36px; height: 36px; border-radius: 11px; display: flex; align-items: center; justify-content: center;
+    background: rgba(155,95,255,0.18); border: 1px solid rgba(155,95,255,0.4); color: #d7c4ff;
+  }
+  .meta { flex: 1; min-width: 0; }
+  .name { font-weight: 700; font-size: 13px; }
+  .status { font-size: 10.5px; color: #8e9db8; }
+  .status.call { color: #9ff7ff; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; font-size: 10px; }
+  .call-actions { display: flex; gap: 6px; }
+  .btn {
+    border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: #c8d3e7;
+    border-radius: 10px; height: 30px; padding: 0 9px; font-size: 11px; font-weight: 700;
+  }
+  .btn.mute { background: #e04444; border-color: #e04444; color: #fff; }
+  .btn.end { color: #ffb4b4; border-color: rgba(255,100,100,0.4); }
+  .past {
+    margin: 8px; padding: 7px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.03); font-size: 11px; font-weight: 650; letter-spacing: 0.04em;
+    text-transform: uppercase; display: flex; justify-content: space-between;
+  }
+  .hands { display: flex; gap: 6px; margin: 0 8px 8px; }
+  .hand {
+    flex: 1; border-radius: 999px; border: 1px solid rgba(155,95,255,0.35); background: rgba(155,95,255,0.1);
+    color: #dbe4f5; font-size: 10.5px; font-weight: 700; padding: 5px 8px; text-align: center;
+  }
+  .thread {
+    margin: 0 8px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.07);
+    background: rgba(255,255,255,0.02); padding: 10px; min-height: 160px;
+  }
+  .bubble { font-size: 12px; margin: 0 0 8px; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,0.04); }
+  .bubble.voice::before { content: "🎙 VOICE · "; color: var(--cyan); font-size: 10px; font-weight: 700; }
+  .composer {
+    margin: 8px; min-height: 64px; border-radius: 13px; padding: 10px 12px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(155,95,255,0.4);
+    backdrop-filter: blur(10px); color: #dbe4f5; font-size: 12.5px; box-shadow: 0 0 16px -4px rgba(155,95,255,0.35);
+  }
+  .card {
+    margin: 0 8px 8px; padding: 10px 12px; border-radius: 13px;
+    border: 1px solid rgba(255,255,255,0.07); background: rgba(13,16,28,0.5);
+  }
+  .eyebrow { font-size: 9.5px; font-weight: 700; letter-spacing: 0.12em; color: #8e9db8; margin-bottom: 8px; }
+  .subtabs { display: flex; gap: 4px; margin-bottom: 8px; }
+  .subtab {
+    flex: 1; border-radius: 9px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.03);
+    color: #8e9db8; font-size: 10px; font-weight: 600; padding: 6px 6px; text-align: center;
+  }
+  .subtab.active { color: #9ff7ff; border-color: rgba(0,240,255,0.4); background: rgba(0,240,255,0.1); }
+  .sug-row { display: flex; gap: 8px; font-size: 11.5px; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+  .chip { font-size: 9px; font-weight: 700; color: var(--cyan); border: 1px solid rgba(0,240,255,0.3); border-radius: 99px; padding: 1px 6px; }
+  .partner-page {
+    display: none; position: absolute; inset: 0; background: inherit; z-index: 5;
+    grid-template-rows: auto 1fr; padding: 16px 20px;
+  }
+  body[data-view="partner"] .shell { display: none; }
+  body[data-view="partner"] .partner-page { display: grid; }
+  .page-seg { display: inline-flex; gap: 4px; margin-bottom: 12px; }
+  .badge { position: fixed; top: 8px; right: 10px; font-size: 10px; color: #8e9db8; z-index: 9; }
+  .no-agents { color: #7dffb2; font-size: 11px; margin: 0 8px 8px; }
+</style>
+</head>
+<body data-view="story" data-surface="partner-panel">
+  <div class="badge">Neon Nebula 50 · glass 20 · Slice B proof</div>
+
+  <div class="shell" id="story-shell">
+    <aside class="rail" aria-label="Nav rail">
+      <div class="rail-item active">✍<span>Story</span></div>
+      <div class="rail-item">📝<span>Notes</span></div>
+      <div class="rail-item">▦<span>Boards</span></div>
+      <div class="rail-item">🎬<span>Crafter</span></div>
+      <div class="rail-item partner" id="rail-partner">✦<span id="rail-partner-label">Mythos</span></div>
+      <div class="rail-item">⏱<span>Timeline</span></div>
+      <div class="rail-item">◈<span>Graph</span></div>
+    </aside>
+    <section class="main">
+      <div class="story-strip" data-testid="story-subview-bar">
+        <span style="font-size:11px;color:#8e9db8">Story Vault · Proof</span>
+        <div class="seg" role="tablist" aria-label="Story view">
+          <button class="active">Editor</button>
+          <button>Book</button>
+          <button>Structure</button>
+        </div>
+      </div>
+      <div class="editor">
+        <div class="zoom">
+          <span class="active">Full Book</span>
+          <span>Part</span>
+          <span>Chapter</span>
+          <span>Scene</span>
+        </div>
+        <div class="book-label">THE BOOK</div>
+        <div class="book-title">A2 Fidelity Proof</div>
+        <hr style="border:none;border-top:1px solid rgba(255,255,255,0.12);margin:12px 0 16px" />
+        <p style="color:#c8d3e7;line-height:1.6;max-width:42em">
+          Default load lands Editor at Full Book zoom. Coach tab is gone from the story strip.
+          Entry chrome stays stripped; no walkthrough toggle and no rail brand mark in this tip.
+        </p>
+      </div>
+    </section>
+    <aside class="right" id="right-panel">
+      <nav class="tabs" aria-label="Right panel tabs">
+        <button class="tab active" data-tab="partner">Mythos</button>
+        <button class="tab" data-tab="suggestions">Suggestions</button>
+        <button class="tab" data-tab="scenes">Scenes</button>
+        <button class="tab" data-tab="notes">Notes &amp; Analysis</button>
+      </nav>
+      <div class="panel" id="panel-partner">
+        <div class="partner-card" id="partner-card">
+          <div class="avatar">✦</div>
+          <div class="meta">
+            <div class="name">Mythos</div>
+            <div class="status" id="partner-status">Listening quietly · memory on</div>
+          </div>
+          <button class="btn" id="start-call" aria-label="Start call">🎙</button>
+        </div>
+        <div class="past"><span>Past chats &amp; calls</span><span>2 threads ▾</span></div>
+        <div class="hands">
+          <div class="hand">Writer</div>
+          <div class="hand">Analyst</div>
+          <div class="hand">Archivist</div>
+        </div>
+        <p class="no-agents">✓ No AGENTS list · no Suggestions card in hub</p>
+        <div class="thread">
+          <div class="bubble">Tell me what you're writing today.</div>
+          <div class="bubble voice">I'm opening the Full Book view.</div>
+        </div>
+        <div class="composer">Message Mythos…</div>
+      </div>
+      <div class="panel" id="panel-suggestions" hidden>
+        <div class="card">
+          <div class="eyebrow">SUGGESTIONS · FULL LIST</div>
+          <div class="sug-row"><span class="chip">CONTINUITY</span><span>Name of the key-holder is unclear.</span></div>
+          <div class="sug-row"><span class="chip">CRAFT</span><span>Tighten the opening beat.</span></div>
+          <div class="sug-row"><span class="chip">READ</span><span>Hook lands late — consider front-loading stakes.</span></div>
+        </div>
+      </div>
+      <div class="panel" id="panel-scenes" hidden>
+        <div class="card"><div class="eyebrow">SCENES</div><p style="font-size:12px;color:#8e9db8">Scene board mini stays here.</p></div>
+      </div>
+      <div class="panel" id="panel-notes" hidden>
+        <div class="card">
+          <div class="eyebrow">SCENE ANALYSIS</div>
+          <div style="font-size:12px;line-height:1.7">Purpose — · Tension — · Pacing Balanced · POV Close 3rd · Word Count 42 · Read Time &lt;1 min</div>
+        </div>
+        <div class="card">
+          <div class="eyebrow">QUESTIONS FOR YOU</div>
+          <div class="subtabs">
+            <div class="subtab active">Agent Activity</div>
+            <div class="subtab">Notes Questions</div>
+            <div class="subtab">Story Questions</div>
+          </div>
+          <p style="font-size:12px;color:#c8d3e7">Partner ready — hands idle</p>
+          <p style="font-size:11px;color:#8e9db8">Answer on card → appends to note; asks Which note? when ambiguous.</p>
+        </div>
+        <div class="card"><div class="eyebrow">REFERENCES</div><p style="font-size:12px;color:#8e9db8">Wiki link targets merge here.</p></div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="partner-page" id="partner-page">
+    <div>
+      <h1 style="margin:0 0 8px;font-size:22px">Mythos</h1>
+      <div class="page-seg seg">
+        <button class="active">Agent Chat</button>
+        <button>Idea Board</button>
+      </div>
+      <p style="color:#8e9db8;font-size:12px;margin:0 0 12px">No four-agent faces / AGENTS card on this page.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:240px 1fr 300px;gap:12px;min-height:0">
+      <div class="card"><div class="eyebrow">IDEA COLLECTIONS</div><p style="font-size:12px">Characters · Locations · Items</p></div>
+      <div class="card">
+        <div class="eyebrow">AGENT CHAT</div>
+        <div class="composer" style="margin:0">Message Mythos…</div>
+      </div>
+      <div class="card">
+        <div class="eyebrow">QUESTIONS FOR YOU</div>
+        <div class="subtabs">
+          <div class="subtab active">Agent Activity</div>
+          <div class="subtab">Notes Questions</div>
+          <div class="subtab">Story Questions</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tabs = document.querySelectorAll('.tab');
+    const panels = {
+      partner: document.getElementById('panel-partner'),
+      suggestions: document.getElementById('panel-suggestions'),
+      scenes: document.getElementById('panel-scenes'),
+      notes: document.getElementById('panel-notes'),
+    };
+    tabs.forEach((t) => t.addEventListener('click', () => {
+      tabs.forEach((x) => x.classList.remove('active'));
+      t.classList.add('active');
+      Object.values(panels).forEach((p) => { p.hidden = true; });
+      panels[t.dataset.tab].hidden = false;
+      document.body.dataset.surface = t.dataset.tab === 'partner' ? 'partner-panel'
+        : t.dataset.tab === 'suggestions' ? 'suggestions'
+        : t.dataset.tab === 'notes' ? 'notes-analysis'
+        : 'scenes';
+    }));
+    document.getElementById('start-call').addEventListener('click', () => {
+      const card = document.getElementById('partner-card');
+      card.classList.add('on-call');
+      card.innerHTML = `
+        <div class="avatar">✦</div>
+        <div class="meta"><div class="name">Mythos</div><div class="status call">LISTENING</div></div>
+        <div class="call-actions">
+          <button class="btn">Tx</button>
+          <button class="btn mute">Mute</button>
+          <button class="btn">⚙</button>
+          <button class="btn end" id="end-call">End</button>
+        </div>`;
+      document.body.dataset.surface = 'call-chrome';
+      document.getElementById('end-call').onclick = () => location.reload();
+    });
+    window.__setView = (v) => { document.body.dataset.view = v; document.body.dataset.surface = v === 'partner' ? 'partner-rail' : document.body.dataset.surface; };
+    window.__setTab = (id) => document.querySelector(`.tab[data-tab="${id}"]`)?.click();
+    window.__startCall = () => document.getElementById('start-call').click();
+  </script>
+</body>
+</html>

@@ -40,6 +40,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { clickPartnerNav } from '../helpers/navGuard';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const SIDECAR = '.mythos-board.json';
@@ -119,7 +120,8 @@ const navBtn = (page: Page, label: string) =>
 
 /** Open the Brainstorm tab and land on its Board page. */
 async function openBrainstormBoard(page: Page): Promise<void> {
-  await navBtn(page, 'Partner').click();
+  // Slice B: rail label is the partner display name (default Mythos), not "Partner".
+  await clickPartnerNav(page);
   // The Agent Chat | Board segment is only rendered when both pages are
   // reachable; with AI off Brainstorm opens straight onto the Board page.
   const boardSeg = page.locator('[data-testid="bsc-mode-board"]');

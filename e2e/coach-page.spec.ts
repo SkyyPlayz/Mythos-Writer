@@ -139,8 +139,19 @@ async function installCoachChatMock(app: ElectronApplication): Promise<void> {
 
 async function openCoachPage(page: Page): Promise<void> {
   await clickStoryNav(page);
-  await page.locator('[data-testid="story-subview-coach"]').click();
-  await expect(page.locator('[data-testid="coach-page"]')).toBeVisible({ timeout: 8_000 });
+  // Slice B: Coach strip tab removed — open a scene, then Notes & Analysis →
+  // View Full Analysis (handleOpenCoachPage → view='coach' / CoachPage).
+  await page.locator('[data-testid="story-subview-editor"]').click().catch(() => undefined);
+  await expect(page.locator('.nav-scene-row').first()).toBeVisible({ timeout: 20_000 });
+  const sceneRow = page.locator('.nav-scene-row', { hasText: 'Harbor Scene' });
+  await expect(sceneRow).toBeVisible({ timeout: 8_000 });
+  await sceneRow.click();
+  await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 6_000 });
+  await page.locator('[data-testid="ahp-tab-notes-analysis"]').click();
+  const viewBtn = page.locator('[data-testid="view-full-analysis"]');
+  await expect(viewBtn).toBeVisible({ timeout: 8_000 });
+  await viewBtn.click();
+  await expect(page.locator('[data-testid="coach-page"], .coach-title').first()).toBeVisible({ timeout: 8_000 });
 }
 
 /** M13: open the seeded scene in the editor (mirrors writing-assistant.spec.ts). */
@@ -159,11 +170,8 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
  *  tab; there is no collapse toggle anymore. */
 async function openSceneAnalysisCard(page: Page): Promise<void> {
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 6_000 });
-  // A previous test may have left the hub inside an agent chat view.
-  const backBtn = page.locator('.ahp-back-btn');
-  if (await backBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await backBtn.click();
-  }
+  // Slice B: Scene Analysis lives under Notes & Analysis.
+  await page.locator('[data-testid="ahp-tab-notes-analysis"]').click();
   await expect(page.locator('[data-testid="view-full-analysis"]')).toBeVisible({ timeout: 8_000 });
 }
 
@@ -234,15 +242,10 @@ test('M12: sending a prompt renders user bubble then coach reply in the feed', a
 test('M12 §14.6: Coach page and right-panel Coach chat share ONE conversation', async () => {
   await openCoachPage(page);
 
-  // Open the right-panel agent hub → Writing Coach chat.
-  // SKY-9022/M6: panel-stack removed — the always-expanded Assistant tab hosts
-  // the AGENTS card; the Writing Coach row swaps the hub for its chat view.
+  // Slice B: Writer hand opens the shared coach session in the partner panel.
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 6_000 });
-  const backBtn = page.locator('.ahp-back-btn');
-  if (await backBtn.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await backBtn.click();
-  }
-  await page.locator('[data-testid="ahp-agent-row-writing-assistant"]').click();
+  await page.locator('[data-testid="ahp-tab-partner"]').click();
+  await page.locator('[data-testid="ahp-hand-writer"]').click();
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 
   // The exchange sent from the COACH PAGE is visible in the PANEL chat.

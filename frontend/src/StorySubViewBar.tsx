@@ -2,36 +2,35 @@
 // SKY-3626: Writing mode (N/F/E) removed from here; lives in the center editor toolbar now.
 import './StorySubViewBar.css';
 
-// SKY-9019/M5: Scene Crafter and Timeline are standalone rail destinations; they
-// no longer appear as sub-tabs (spec item 3, acceptance criterion #3).
+// Slice B: Story strip = Editor · Book · Structure only.
+// Coach = Writer hand mode on the partner; Beta Reader reached from partner.
 type StorySubView = 'editor' | 'coach' | 'structure' | 'book';
 
 interface StorySubViewBarProps {
   activeSubView: string;
   onSubViewChange: (view: StorySubView) => void;
   vaultName: string;
-  /** SKY-10573: Coach sub-tab is AI-bearing chrome — hidden when the master AI toggle is off. */
+  /** Kept for call-site compat; Coach tab is removed regardless (Slice B). */
   aiEnabled: boolean;
 }
 
 const SUB_VIEWS: { id: StorySubView; label: string }[] = [
   { id: 'editor', label: 'Editor' },
-  // Beta 4 M12 (§5 / §5.2): the Writing Coach's page is a Story sub-tab.
-  { id: 'coach', label: 'Coach' },
-  { id: 'structure', label: 'Structure' },
   { id: 'book', label: 'Book' },
+  { id: 'structure', label: 'Structure' },
 ];
 
 export default function StorySubViewBar({
   activeSubView,
   onSubViewChange,
   vaultName,
-  aiEnabled,
+  aiEnabled: _aiEnabled,
 }: StorySubViewBarProps) {
-  const subViews = aiEnabled ? SUB_VIEWS : SUB_VIEWS.filter((sv) => sv.id !== 'coach');
+  void _aiEnabled;
+  // Legacy 'coach' sub-view → treat Editor as selected in the strip.
+  const selected = activeSubView === 'coach' ? 'editor' : activeSubView;
   return (
     <div className="story-subview-bar" data-testid="story-subview-bar">
-      {/* Left: Vault badge */}
       <div className="story-subview-bar__vault">
         <span className="story-subview-bar__vault-label" aria-label="Story Vault">
           Story Vault
@@ -43,21 +42,20 @@ export default function StorySubViewBar({
         )}
       </div>
 
-      {/* Center: Sub-view toggle group */}
       <div
         role="tablist"
         aria-label="Story view"
         className="story-subview-bar__tabs"
       >
-        {subViews.map((sv) => (
+        {SUB_VIEWS.map((sv) => (
           <button
             key={sv.id}
             role="tab"
             id={`story-subview-tab-${sv.id}`}
-            aria-selected={activeSubView === sv.id}
+            aria-selected={selected === sv.id}
             aria-controls="app-tabpanel-story"
-            tabIndex={activeSubView === sv.id ? 0 : -1}
-            className={`story-subview-bar__tab${activeSubView === sv.id ? ' story-subview-bar__tab--active' : ''}`}
+            tabIndex={selected === sv.id ? 0 : -1}
+            className={`story-subview-bar__tab${selected === sv.id ? ' story-subview-bar__tab--active' : ''}`}
             onClick={() => onSubViewChange(sv.id)}
             data-testid={`story-subview-${sv.id}`}
           >

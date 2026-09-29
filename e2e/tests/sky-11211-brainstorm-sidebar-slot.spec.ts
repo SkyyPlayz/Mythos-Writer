@@ -112,7 +112,7 @@ test.afterAll(async () => {
 
 test('SKY-11211: Brainstorm route via nav rail shows exactly one right sidebar with brainstorm content', async () => {
   // Real nav-rail click — not the Ctrl+3 shortcut, not a mocked route.
-  await page.getByRole('group', { name: 'Sections' }).getByRole('button', { name: 'Partner' }).click();
+  await page.locator('[data-testid="nav-rail-brainstorm"]').click();
   const panel = page.locator('#app-tabpanel-brainstorm');
   await expect(panel).toBeVisible({ timeout: 10_000 });
 
@@ -124,18 +124,21 @@ test('SKY-11211: Brainstorm route via nav rail shows exactly one right sidebar w
   expect(location.insideSidebar).toBe(1);
 
   // The sidebar hosts the brainstorm content from the mockup...
+  // Scope "Agent Activity" to bs-activity-section — Questions-for-you also
+  // has a qfy-subtab-activity tab + empty-state copy with the same phrase.
   const sidebar = sidebars.first();
-  await expect(sidebar.getByTestId('bs-activity-section')).toBeVisible();
-  await expect(sidebar.getByText('Agent Activity')).toBeVisible();
+  const activitySection = sidebar.getByTestId('bs-activity-section');
+  await expect(activitySection).toBeVisible();
+  await expect(activitySection.locator('.bs-activity-title')).toHaveText('Agent Activity');
   await expect(sidebar.getByText('BEHIND THE SCENES')).toBeVisible();
 
-  // ...instead of the generic Assistant panel, which is meaningless here
+  // ...instead of the generic partner panel, which is meaningless here
   // (Scene Analysis needs an open scene; there is none on Brainstorm).
-  await expect(sidebar.getByRole('tab', { name: 'Assistant' })).toHaveCount(0);
+  await expect(sidebar.getByRole('tab', { name: 'Mythos' })).toHaveCount(0);
   await expect(sidebar.locator('[aria-label="Scene Analysis"]')).toHaveCount(0);
 });
 
-test('SKY-11211: leaving Brainstorm restores the standard Assistant sidebar', async () => {
+test('SKY-11211: leaving Brainstorm restores the standard partner sidebar', async () => {
   await page.getByRole('group', { name: 'Sections' }).getByRole('button', { name: 'Story Writer' }).click();
   await expect(page.locator('#app-tabpanel-story')).toBeVisible({ timeout: 10_000 });
 
@@ -146,6 +149,6 @@ test('SKY-11211: leaving Brainstorm restores the standard Assistant sidebar', as
   expect(location.totalVisible).toBe(0);
 
   const sidebar = sidebars.first();
-  await expect(sidebar.getByRole('tab', { name: 'Assistant' })).toBeVisible();
+  await expect(sidebar.getByRole('tab', { name: 'Mythos' })).toBeVisible();
   await expect(sidebar.getByTestId('bs-activity-section')).toHaveCount(0);
 });
