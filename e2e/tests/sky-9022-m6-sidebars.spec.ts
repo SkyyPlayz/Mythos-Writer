@@ -176,13 +176,16 @@ test.describe('SKY-9022/M6 — right sidebar partner shell (Slice B)', () => {
     await expect(grs.getByRole('tab', { name: 'Mythos' })).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('partner tab: card + hands; no AGENTS list / Suggestions hub card', async () => {
+  test('partner tab: card + action buttons; no AGENTS list / Suggestions hub card', async () => {
     const hub = page.locator('[data-testid="agent-hub-panel"]');
     await expect(hub.locator('[data-testid="ahp-partner-view"]')).toBeVisible({ timeout: 8_000 });
     await expect(hub.locator('[data-testid="partner-card"]')).toBeVisible();
-    await expect(hub.locator('[data-testid="ahp-hand-writer"]')).toBeVisible();
-    await expect(hub.locator('[data-testid="ahp-hand-analyst"]')).toBeVisible();
-    await expect(hub.locator('[data-testid="ahp-hand-archivist"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="ahp-action-update-timeline"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="ahp-action-beta-read"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="ahp-action-writer-scan"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="ahp-hand-writer"]')).toHaveCount(0);
+    await expect(hub.locator('[data-testid="ahp-hand-analyst"]')).toHaveCount(0);
+    await expect(hub.locator('[data-testid="ahp-hand-archivist"]')).toHaveCount(0);
     await expect(hub.locator('section[aria-label="Agents"]')).toHaveCount(0);
     await expect(hub.locator('[data-testid="ahp-agent-row-writing-assistant"]')).toHaveCount(0);
   });
@@ -228,7 +231,7 @@ test.describe('SKY-9022/M6 — fresh profile: tab strip + Getting Started card',
     fs.rmSync(tempRoot, { recursive: true, force: true });
   });
 
-  test('tab strip is visible immediately and Getting Started renders inside partner tab', async () => {
+  test('tab strip is visible immediately; Getting Started panel deleted (F3#10)', async () => {
     const grs = page.locator('[data-testid="global-right-sidebar"]');
     await expect(grs).toBeVisible({ timeout: 15_000 });
 
@@ -236,8 +239,8 @@ test.describe('SKY-9022/M6 — fresh profile: tab strip + Getting Started card',
     await expect(grs.getByRole('tab', { name: 'Scenes' })).toBeVisible();
 
     const partner = grs.locator('[data-testid="ahp-partner-view"]');
-    await expect(partner.locator('[data-testid="gs-panel"], .gs-card, [class*="getting-started"]').first())
-      .toBeVisible({ timeout: 8_000 });
+    await expect(partner).toBeVisible({ timeout: 8_000 });
+    await expect(partner.locator('[data-testid="gs-panel"]')).toHaveCount(0);
   });
 });
 
@@ -281,8 +284,8 @@ test.describe('SKY-10499 — genuinely fresh profile (rightSidebarVisible unset)
 
     await grs.getByRole('tab', { name: 'Mythos' }).click();
     const partner = grs.locator('[data-testid="ahp-partner-view"]');
-    await expect(
-      partner.locator('[data-testid="gs-panel"], .gs-card, [class*="getting-started"]').first(),
-    ).toBeVisible({ timeout: 8_000 });
+    await expect(partner).toBeVisible({ timeout: 8_000 });
+    // F3#10: GettingStartedPanel deleted — never mount as gs-aside or gs-panel.
+    await expect(partner.locator('[data-testid="gs-panel"]')).toHaveCount(0);
   });
 });

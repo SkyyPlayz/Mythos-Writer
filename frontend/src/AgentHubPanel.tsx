@@ -40,6 +40,7 @@ import { useMiniAgentChat } from './timeline2/panel/useMiniAgentChat';
 import MiniAgentChat from './timeline2/panel/MiniAgentChat';
 import { invokeBrainstorm } from './timeline2/panel/BrainstormTab';
 import SuggestionReview from './SuggestionReview';
+import WritingAssistantPanel from './WritingAssistantPanel';
 import PartnerCallChrome, { type PartnerCallState } from './partner/PartnerCallChrome';
 import QuestionsForYou, { type PartnerQuestion } from './partner/QuestionsForYou';
 import {
@@ -154,20 +155,20 @@ export default function AgentHubPanel({
   story = null,
   onOpenScenesFull,
   onOpenSceneNote,
-  enabled: _enabled = true,
-  scanIntervalSeconds: _scanIntervalSeconds = 60,
-  waScanInterval: _waScanInterval,
-  isActive: _isActive = true,
-  isPageFocused: _isPageFocused,
-  voiceEnabled: _voiceEnabled = false,
-  ttsSettings: _ttsSettings,
-  voicePrefs: _voicePrefs,
-  cadenceTrigger: _cadenceTrigger,
-  idleHeartbeatConstantInterval: _idleHeartbeatConstantInterval,
-  idleDebounceSeconds: _idleDebounceSeconds,
-  autoApply: _autoApply = false,
-  autoApplyCategories: _autoApplyCategories,
-  onAutoApplyCategoriesChange: _onAutoApplyCategoriesChange,
+  enabled = true,
+  scanIntervalSeconds = 60,
+  waScanInterval,
+  isActive = true,
+  isPageFocused,
+  voiceEnabled = false,
+  ttsSettings,
+  voicePrefs,
+  cadenceTrigger,
+  idleHeartbeatConstantInterval,
+  idleDebounceSeconds,
+  autoApply = false,
+  autoApplyCategories,
+  onAutoApplyCategoriesChange,
   agentNames,
   onOpenVaultPath,
   onOpenCoachPage,
@@ -242,6 +243,20 @@ export default function AgentHubPanel({
             onEndCall={endCall}
             scene={scene}
             story={story}
+            enabled={enabled}
+            scanIntervalSeconds={scanIntervalSeconds}
+            waScanInterval={waScanInterval}
+            isActive={isActive}
+            isPageFocused={isPageFocused}
+            voiceEnabled={voiceEnabled}
+            ttsSettings={ttsSettings}
+            voicePrefs={voicePrefs}
+            cadenceTrigger={cadenceTrigger}
+            idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
+            idleDebounceSeconds={idleDebounceSeconds}
+            autoApply={autoApply}
+            autoApplyCategories={autoApplyCategories}
+            onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
           />
         )}
         {activeTab === 'suggestions' && aiEnabled && (
@@ -279,6 +294,20 @@ interface PartnerChatViewProps {
   onEndCall: () => void;
   scene: Scene | null;
   story: Story | null;
+  enabled: boolean;
+  scanIntervalSeconds: number;
+  waScanInterval?: number | 'on-save' | 'manual';
+  isActive: boolean;
+  isPageFocused?: boolean;
+  voiceEnabled: boolean;
+  ttsSettings?: TtsEngineSettings;
+  voicePrefs?: import('./hooks/useTtsPlayer').TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
+  cadenceTrigger?: 'on_save' | 'idle_heartbeat';
+  idleHeartbeatConstantInterval?: boolean;
+  idleDebounceSeconds?: number;
+  autoApply: boolean;
+  autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
+  onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
 }
 
 function PartnerChatView({
@@ -290,6 +319,20 @@ function PartnerChatView({
   onEndCall,
   scene,
   story,
+  enabled,
+  scanIntervalSeconds,
+  waScanInterval,
+  isActive,
+  isPageFocused,
+  voiceEnabled,
+  ttsSettings,
+  voicePrefs,
+  cadenceTrigger,
+  idleHeartbeatConstantInterval,
+  idleDebounceSeconds,
+  autoApply,
+  autoApplyCategories,
+  onAutoApplyCategoriesChange,
 }: PartnerChatViewProps) {
   const brainstormActivity = useBrainstormActivity();
   const writerBusy = useAgentRunningEntry('writingAssistant');
@@ -300,6 +343,9 @@ function PartnerChatView({
     ?? heartbeatBusy
     ?? (writerBusy ? 'writer' : brainstormActivity.active ? null : null);
   const [pastOpen, setPastOpen] = useState(false);
+  const [showWriterTips, setShowWriterTips] = useState(false);
+  const coachSessionStore = useAgentSessions('coach');
+  const [coachBusy, setCoachBusy] = useState(false);
 
   return (
     <div className="ahp-partner" data-testid="ahp-partner-view">
@@ -337,16 +383,54 @@ function PartnerChatView({
         )}
       </div>
 
-      <div className="ahp-partner-thread" data-testid="ahp-partner-thread">
-        <UnifiedPartnerChat
-          partnerName={partnerName}
-          onCall={call.onCall}
-          handBusy={!!handBusy}
-          scene={scene}
-          story={story}
-          onActionBusy={setActionBusy}
-        />
-      </div>
+      {showWriterTips ? (
+        <div className="ahp-partner-thread" data-testid="ahp-writer-hand">
+          <div className="ahp-hand-header">
+            <span className="ahp-chat-agent-name">Writer · {partnerName}</span>
+            <AgentSessionPicker store={coachSessionStore} className="ahp-session-pill" busy={coachBusy} />
+            <button
+              type="button"
+              className="ahp-hand-close"
+              data-testid="ahp-close-writer"
+              onClick={() => setShowWriterTips(false)}
+            >
+              Close
+            </button>
+          </div>
+          <WritingAssistantPanel
+            sessionStore={coachSessionStore}
+            scene={scene}
+            enabled={enabled}
+            scanIntervalSeconds={scanIntervalSeconds}
+            waScanInterval={waScanInterval}
+            isActive={isActive}
+            isPageFocused={isPageFocused}
+            voiceEnabled={voiceEnabled}
+            ttsSettings={ttsSettings}
+            voicePrefs={voicePrefs}
+            cadenceTrigger={cadenceTrigger}
+            idleHeartbeatConstantInterval={idleHeartbeatConstantInterval}
+            idleDebounceSeconds={idleDebounceSeconds}
+            autoApply={autoApply}
+            autoApplyCategories={autoApplyCategories}
+            onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
+            displayName={partnerName}
+            onBusyChange={setCoachBusy}
+          />
+        </div>
+      ) : (
+        <div className="ahp-partner-thread" data-testid="ahp-partner-thread">
+          <UnifiedPartnerChat
+            partnerName={partnerName}
+            onCall={call.onCall}
+            handBusy={!!handBusy}
+            scene={scene}
+            story={story}
+            onActionBusy={setActionBusy}
+            onOpenWriterTips={() => setShowWriterTips(true)}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -452,6 +536,7 @@ function UnifiedPartnerChat({
   scene,
   story,
   onActionBusy,
+  onOpenWriterTips,
 }: {
   partnerName: string;
   onCall: boolean;
@@ -459,6 +544,7 @@ function UnifiedPartnerChat({
   scene: Scene | null;
   story: Story | null;
   onActionBusy: (hand: PartnerHandId | null) => void;
+  onOpenWriterTips: () => void;
 }) {
   const chat = useMiniAgentChat('brainstorm', invokeBrainstorm);
   const [queued, setQueued] = useState<readonly QueuedPartnerMessage[]>(getPartnerMsgQueue());
@@ -510,6 +596,15 @@ function UnifiedPartnerChat({
     if (runningAction) return;
     const meta = PARTNER_ACTIONS.find((a) => a.id === action);
     if (!meta) return;
+    // Writer Scan opens WritingAssistantPanel (tip cards / Scan now) — the
+    // reference surface. Other actions stay in-thread on MiniAgentChat.
+    if (action === 'writer-scan') {
+      onOpenWriterTips();
+      return;
+    }
+    if (action === 'beta-read') {
+      window.dispatchEvent(new CustomEvent('mythos:nav', { detail: { view: 'beta' } }));
+    }
     setRunningAction(action);
     onActionBusy(meta.hand);
     try {
@@ -525,7 +620,7 @@ function UnifiedPartnerChat({
       setRunningAction(null);
       onActionBusy(null);
     }
-  }, [runningAction, onActionBusy, scene, story, chat]);
+  }, [runningAction, onActionBusy, scene, story, chat, onOpenWriterTips]);
 
   return (
     <div className="ahp-brainstorm-chat ahp-partner-composer" data-testid="ahp-partner-chat">

@@ -282,7 +282,7 @@ async function openAssistantPanel(page: Page): Promise<void> {
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();
 
-  const agentRow = page.locator('[data-testid="ahp-hand-writer"]');
+  const agentRow = page.locator('[data-testid="ahp-action-writer-scan"]');
   if (await agentRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
     await agentRow.click();
   }
