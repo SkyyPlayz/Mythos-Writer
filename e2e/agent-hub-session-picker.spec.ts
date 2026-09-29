@@ -1,16 +1,17 @@
 /**
  * agent-hub-session-picker.spec.ts — SKY-8537 (GH #960)
  *
- * Real-path E2E for the Agent Hub session picker on the Writing Coach
- * surface: switching the picker between two sessions must render each
- * session's own persisted transcript (not the previous session's, not a
- * blank one), and that separation must survive an app restart — the whole
- * chain is exercised through the REAL (unmocked) `agentSessions` IPC
- * bridge: renderer -> preload -> electron-main handlers -> Sessions/*.md
- * files on disk. No Anthropic/chat IPC is mocked; turns are seeded via the
- * same `agentSessions.appendTurns` / `create` / `rename` calls the app
- * itself uses, so this proves the production read/hydrate/persist path,
- * not a UI-only illusion.
+ * Real-path E2E for the Agent Hub session picker on the unified partner
+ * chat surface (F3#1 — `PARTNER_SESSION_AGENT` / brainstorm): switching
+ * the picker between two sessions must render each session's own
+ * persisted transcript (not the previous session's, not a blank one), and
+ * that separation must survive an app restart — the whole chain is
+ * exercised through the REAL (unmocked) `agentSessions` IPC bridge:
+ * renderer -> preload -> electron-main handlers -> Sessions/*.md files on
+ * disk. No Anthropic/chat IPC is mocked; turns are seeded via the same
+ * `agentSessions.appendTurns` / `create` / `rename` calls the app itself
+ * uses, so this proves the production read/hydrate/persist path, not a
+ * UI-only illusion.
  *
  * GH #960 was filed against `62b943bf` (pre-M12/SKY-7112/SKY-7113); the
  * session store hook (frontend/src/lib/useAgentSessions.ts) and the
@@ -64,7 +65,7 @@ function buildAppSettings(): object {
         maxTokensPerDay: 500_000,
         waScanInterval: 'manual',
       },
-      brainstorm: { enabled: false, model: 'claude-haiku-4-5-20251001', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
+      brainstorm: { enabled: true, model: 'claude-haiku-4-5-20251001', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
       archive: { enabled: false, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
     },
     theme: 'dark',
@@ -171,56 +172,60 @@ async function navigateToEditorView(page: Page): Promise<void> {
   await page.locator('[data-testid="story-subview-editor"]').click();
 }
 
-/** Expand the Writing Coach GRS panel and open the in-panel chat (mirrors writing-assistant.spec.ts). */
-async function openWritingCoachChat(page: Page): Promise<void> {
+/** Open the Agent Hub partner MiniAgentChat (F3#1 shared partner thread). */
+async function openPartnerChat(page: Page): Promise<void> {
   await navigateToEditorView(page);
 
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="ahp-tab-partner"]').click().catch(() => undefined);
+  await expect(page.getByTestId('ahp-partner-chat-input')).toBeVisible({ timeout: 8_000 });
+}
 
-  // A previous run may have left the hub inside the chat view already.
-  const agentRow = page.locator('[data-testid="ahp-action-writer-scan"]');
-  if (await agentRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await agentRow.click();
-  }
-  await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
+/** Scope picker interactions to the in-thread MiniAgentChat (not Past chats). */
+function partnerChatRoot(page: Page) {
+  return page.getByTestId('ahp-partner-chat');
 }
 
 // ─── Session picker helpers ─────────────────────────────────────────────────────
 
 async function openPicker(page: Page): Promise<void> {
-  const pill = page.locator('.asp-pill');
+  const root = partnerChatRoot(page);
+  const pill = root.locator('.asp-pill');
   if ((await pill.getAttribute('aria-expanded')) !== 'true') {
     await pill.click();
   }
-  await expect(page.locator('.asp-dropdown')).toBeVisible({ timeout: 4_000 });
+  await expect(root.locator('.asp-dropdown')).toBeVisible({ timeout: 4_000 });
 }
 
 async function renameActiveSession(page: Page, newTitle: string): Promise<void> {
+  const root = partnerChatRoot(page);
   await openPicker(page);
-  const activeRow = page.locator('.asp-row--active');
+  const activeRow = root.locator('.asp-row--active');
   await activeRow.getByTitle('Rename').click();
-  const input = page.locator('.asp-rename-input');
+  const input = root.locator('.asp-rename-input');
   await expect(input).toBeVisible({ timeout: 2_000 });
   await input.fill(newTitle);
   await input.press('Enter');
-  await expect(page.locator('.asp-pill-label')).toHaveText(newTitle, { timeout: 4_000 });
+  await expect(root.locator('.asp-pill-label')).toHaveText(newTitle, { timeout: 4_000 });
 }
 
 async function startNewChat(page: Page): Promise<void> {
+  const root = partnerChatRoot(page);
   await openPicker(page);
-  await page.locator('.asp-new-btn').click();
+  await root.locator('.asp-new-btn').click();
 }
 
 async function switchToSession(page: Page, title: string): Promise<void> {
+  const root = partnerChatRoot(page);
   await openPicker(page);
-  await page.locator('.asp-row', { hasText: title }).locator('.asp-row-label').click();
-  await expect(page.locator('.asp-pill-label')).toHaveText(title, { timeout: 4_000 });
+  await root.locator('.asp-row', { hasText: title }).locator('.asp-row-label').click();
+  await expect(root.locator('.asp-pill-label')).toHaveText(title, { timeout: 4_000 });
 }
 
-/** Real IPC round-trip (renderer -> preload -> main -> vault disk), same call the app itself makes. */
-async function listCoachSessions(page: Page): Promise<Array<{ id: string; title?: string }>> {
-  const { sessions } = await page.evaluate(() => window.api!.agentSessions!.list('coach'));
+/** Real IPC round-trip — partner sessions live under brainstorm (PARTNER_SESSION_AGENT). */
+async function listPartnerSessions(page: Page): Promise<Array<{ id: string; title?: string }>> {
+  const { sessions } = await page.evaluate(() => window.api!.agentSessions!.list('brainstorm'));
   return sessions;
 }
 
@@ -236,7 +241,7 @@ async function appendMarkerTurn(page: Page, sessionId: string, text: string): Pr
 }
 
 function messagesLocator(page: Page) {
-  return page.locator('.writing-assistant-messages');
+  return page.getByTestId('ahp-partner-chat-feed');
 }
 
 // ─── Test lifecycle ───────────────────────────────────────────────────────────
@@ -262,23 +267,22 @@ test.afterAll(async () => {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-test('TC-8537-01: the picker switches between two Writing Coach sessions and each renders its own real (vault-file) transcript', async () => {
+test('TC-8537-01: the picker switches between two partner sessions and each renders its own real (vault-file) transcript', async () => {
   app = await launchApp(userData);
   page = await firstWindow(app);
-  await openWritingCoachChat(page);
+  await openPartnerChat(page);
 
   // The store auto-creates one session on first mount. Name it, then seed a
-  // marker turn straight through the real appendTurns IPC (the same call
-  // WritingAssistantPanel makes when a reply finishes) so this proves the
+  // marker turn straight through the real appendTurns IPC so this proves the
   // read path independently of any chat UI.
   await renameActiveSession(page, ALPHA_TITLE);
-  const alphaId = (await listCoachSessions(page)).find((s) => s.title === ALPHA_TITLE)!.id;
+  const alphaId = (await listPartnerSessions(page)).find((s) => s.title === ALPHA_TITLE)!.id;
   await appendMarkerTurn(page, alphaId, ALPHA_MARKER);
 
   // "+ New chat" creates and switches to a second session.
   await startNewChat(page);
   await renameActiveSession(page, BETA_TITLE);
-  const betaId = (await listCoachSessions(page)).find((s) => s.title === BETA_TITLE)!.id;
+  const betaId = (await listPartnerSessions(page)).find((s) => s.title === BETA_TITLE)!.id;
   await appendMarkerTurn(page, betaId, BETA_MARKER);
 
   // Switching TO Alpha must hydrate ALPHA's turns from disk (written above
@@ -313,14 +317,14 @@ test('TC-8537-01: the picker switches between two Writing Coach sessions and eac
 test('TC-8537-02: both sessions transcripts survive an app restart (fresh process reads real vault files)', async () => {
   app = await launchApp(userData);
   page = await firstWindow(app);
-  await openWritingCoachChat(page);
+  await openPartnerChat(page);
 
   // Beta was updated last (its marker was appended after Alpha's), so a
   // fresh store picks it as the initial session — its transcript must come
   // straight off disk with no manual switch, proving persistence across
   // reopening without relying on which session happens to be "active".
   await expect(messagesLocator(page)).toContainText(BETA_MARKER, { timeout: 8_000 });
-  await expect(page.locator('.asp-pill-label')).toHaveText(BETA_TITLE);
+  await expect(partnerChatRoot(page).locator('.asp-pill-label')).toHaveText(BETA_TITLE);
 
   // Switching to Alpha in this brand-new process (which has never read
   // Alpha's file before) must still hydrate its real persisted content.
