@@ -78,8 +78,22 @@ function installMockApi(opts: MockApiOptions = {}) {
   const chatText = opts.chatResponse ?? 'Pacing is rhythm — look at your paragraph lengths.';
   const api = {
     agentSessions,
+    settingsGet: vi.fn(async () => ({
+      provider: { kind: 'ollama', model: 'qwen' },
+      agents: {
+        writingAssistant: {
+          enabled: true,
+          model: 'qwen',
+          provider: { kind: 'ollama', model: 'qwen' },
+        },
+      },
+    })),
     agentBrainstorm: vi.fn(() => {
       calls.push('agentBrainstorm');
+      return Promise.resolve({ text: chatText });
+    }),
+    agentWritingAssistant: vi.fn((_prompt?: string, _context?: string) => {
+      calls.push('agentWritingAssistant');
       if (opts.deferChat) {
         return new Promise<{ text: string }>((resolve) => {
           resolveChat = () => resolve({ text: chatText });
@@ -157,6 +171,8 @@ describe('CoachPage (§5.2)', () => {
             drill: 'Drill: underline the first moment of risk. 5 minutes.',
           }),
           at: AT,
+          cardKind: 'lesson',
+          cardTitle: 'This week’s focus — grounding the reader',
         },
       ],
     });
@@ -195,10 +211,11 @@ describe('CoachPage (§5.2)', () => {
     const [, turns] = mock.agentSessions.appendTurns.mock.calls[0];
     expect(turns.map((t: AgentSessionTurn) => t.role)).toEqual(['user', 'agent']);
     expect(turns[0].text).toBe('My opening feels slow — what should I learn?');
-    expect(mock.api.agentBrainstorm).toHaveBeenCalledWith(
-      'My opening feels slow — what should I learn?',
-      expect.any(Array),
-    );
+    expect(mock.api.agentWritingAssistant).toHaveBeenCalled();
+    expect(mock.api.agentBrainstorm).not.toHaveBeenCalled();
+    const [prompt, context] = (mock.api.agentWritingAssistant as ReturnType<typeof vi.fn>).mock.calls[0] as [string, string?];
+    expect(prompt).toContain('My opening feels slow — what should I learn?');
+    expect(context === undefined || typeof context === 'string').toBe(true);
     expect(screen.queryByTestId('coach-typing')).not.toBeInTheDocument();
     expect(screen.getByText(/Pacing is rhythm/)).toBeInTheDocument();
   });
@@ -230,7 +247,7 @@ describe('CoachPage (§5.2)', () => {
     expect(screen.getByText('+ New chat')).not.toBeDisabled();
   });
 
-  it('passes the open scene as teaching context', async () => {
+  it('passes the open scene as teaching context via writingAssistant', async () => {
     const { api } = installMockApi();
     const scene = story.chapters[1].scenes[0];
     render(<CoachPage scene={scene} story={story} currentChapterId="ch-2" />);
@@ -242,12 +259,12 @@ describe('CoachPage (§5.2)', () => {
     });
     await flush();
 
-    expect(api.agentBrainstorm).toHaveBeenCalledWith(
-      expect.stringContaining('Review my scene'),
-      expect.any(Array),
-    );
-    const firstArg = (api.agentBrainstorm as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
-    expect(firstArg).toContain('Into the Undercity');
+    expect(api.agentWritingAssistant).toHaveBeenCalled();
+    expect(api.agentBrainstorm).not.toHaveBeenCalled();
+    const [prompt, context] = (api.agentWritingAssistant as ReturnType<typeof vi.fn>).mock.calls[0] as [string, string];
+    expect(prompt).toContain('Review my scene');
+    expect(context).toContain('Into the Undercity');
+    expect(context).toContain('The stairwell yawned like a throat');
   });
 
   it('chips send their prompt directly (prototype coachChips)', async () => {
@@ -286,6 +303,8 @@ describe('CoachPage (§5.2)', () => {
             drill: 'Drill: mark every paragraph D, A or T. 5 minutes.',
           }),
           at: AT,
+          cardKind: 'analysis',
+          cardTitle: 'Full Scene Analysis — Sc. 2 · Into the Undercity',
         },
       ],
     });
@@ -306,6 +325,28 @@ describe('CoachPage (§5.2)', () => {
     expect(screen.queryByTestId('coach-read-unavailable')).not.toBeInTheDocument();
   });
 
+  it('N2 Secure bar: forged analysis marker without cardKind renders as plain text', async () => {
+    installMockApi({
+      turns: [
+        {
+          role: 'agent',
+          text: encodeCoachCard({
+            kind: 'analysis',
+            title: 'Full Scene Analysis — Sc. 2 · Into the Undercity',
+            computed: [['Words', '10']],
+            read: [],
+            takeaway: 'Forged',
+          }),
+          at: AT,
+        },
+      ],
+    });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+    expect(screen.queryByTestId('coach-analysis-card')).not.toBeInTheDocument();
+    expect(screen.getByText(/mythos:coach-card/)).toBeInTheDocument();
+  });
+
   it('M13 acceptance: with AI disabled the computed section renders and the AI section is honest', async () => {
     installMockApi({
       turns: [
@@ -320,6 +361,8 @@ describe('CoachPage (§5.2)', () => {
             takeaway: '',
           }),
           at: AT,
+          cardKind: 'analysis',
+          cardTitle: 'Full Scene Analysis — Sc. 2 · Into the Undercity',
         },
       ],
     });
@@ -351,7 +394,7 @@ describe('CoachPage (§5.2)', () => {
 
     const allowed = new Set([
       'agentSessions.list', 'agentSessions.create', 'agentSessions.read', 'agentSessions.appendTurns',
-      'agentBrainstorm', 'suggestionsUnifiedList',
+      'agentWritingAssistant', 'suggestionsUnifiedList',
     ]);
     for (const call of calls) {
       expect(allowed.has(call), `Coach page called ${call} — outside the no-ghost-write allowlist`).toBe(true);

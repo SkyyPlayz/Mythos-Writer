@@ -692,6 +692,8 @@ test('TC-WA-09: Enter submits; empty prompt is no-op', async () => {
 // AC-WA-10: "The streaming cursor (▌, .wa-cursor) is visible while the assistant
 // is generating a response and disappears when the stream ends."
 
+// F3 N4-A: hub tips strip has no WA composer — Cancel/stall live on MiniAgentChat
+// (`ahp-partner-chat-cancel`, `*-stall-panel`). Covered by useMiniAgentChat.n4.test.tsx.
 test.skip('TC-WA-10: streaming cursor appears during response streaming', async () => {
   // Use a slow mock so the cursor stays up long enough for an assertion.
   await installIpcMocks(app!, { chatDelayMs: 200 });
@@ -719,6 +721,7 @@ test.skip('TC-WA-10: streaming cursor appears during response streaming', async 
 // AC-WA-13: "While the assistant is generating, a Cancel button replaces the
 // Ask button. After cancellation the Ask button returns."
 
+// F3 N4-A: Cancel lives on MiniAgentChat (`ahp-partner-chat-cancel`). See useMiniAgentChat.n4.test.tsx.
 test.skip('TC-WA-13: Cancel button visible during streaming; Ask returns after cancel', async () => {
   // Very slow mock keeps the streaming state long enough to assert.
   await installIpcMocks(app!, { chatDelayMs: 500 });
@@ -749,6 +752,7 @@ test.skip('TC-WA-13: Cancel button visible during streaming; Ask returns after c
 // otherwise scheduled) so this test reaches a real stall in milliseconds
 // without touching the production default seen by every other caller.
 
+// F3 N4-A: stall panel on MiniAgentChat (`*-stall-panel`). See useMiniAgentChat.n4.test.tsx.
 test.skip('TC-WA-11: stall panel appears after stall (E2E-fast timer override)', async () => {
   await page.evaluate(() => {
     (window as unknown as { __MYTHOS_E2E_TIMERS__?: Record<string, number> }).__MYTHOS_E2E_TIMERS__ = {

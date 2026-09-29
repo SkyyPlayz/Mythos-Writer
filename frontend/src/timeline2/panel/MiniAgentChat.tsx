@@ -43,7 +43,9 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix,
       </div>
       <div className="trp-chat-feed" data-testid={`${testidPrefix}-chat-feed`} ref={feedRef}>
         {chat.messages.map((turn, i) => (
-          turn.role !== 'user' && turn.cardTitle ? (
+          // N2 Secure bar: render card chrome only when structural cardKind is set
+          // by a trusted writer — never text-marker / cardTitle alone.
+          turn.role !== 'user' && turn.cardKind && turn.cardTitle ? (
             <div
               key={`${turn.at}-${i}`}
               className={`trp-msg-card trp-msg-card--${accent}`}
@@ -72,6 +74,19 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix,
             </div>
           </>
         )}
+        {chat.stalled && chat.busy && (
+          <div className="trp-stall-panel" role="status" data-testid={`${testidPrefix}-stall-panel`}>
+            <p>Still working — this is taking longer than usual.</p>
+            <button
+              type="button"
+              className="trp-stall-cancel"
+              onClick={() => chat.cancel()}
+              data-testid={`${testidPrefix}-stall-cancel`}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
         {chat.error && (
           <div className="trp-chat-error" role="alert" data-testid={`${testidPrefix}-chat-error`}>
             {chat.error}
@@ -87,16 +102,28 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix,
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           aria-label={placeholder}
           data-testid={`${testidPrefix}-chat-input`}
+          disabled={chat.busy}
         />
-        <button
-          type="button"
-          className="trp-chat-send"
-          onClick={submit}
-          disabled={chat.busy || !draft.trim()}
-          data-testid={`${testidPrefix}-chat-send`}
-        >
-          Send
-        </button>
+        {chat.busy ? (
+          <button
+            type="button"
+            className="trp-chat-cancel"
+            onClick={() => chat.cancel()}
+            data-testid={`${testidPrefix}-chat-cancel`}
+          >
+            Cancel
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="trp-chat-send"
+            onClick={submit}
+            disabled={!draft.trim()}
+            data-testid={`${testidPrefix}-chat-send`}
+          >
+            Send
+          </button>
+        )}
       </div>
     </div>
   );

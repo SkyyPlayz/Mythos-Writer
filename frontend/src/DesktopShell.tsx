@@ -78,7 +78,7 @@ import {
   shouldMigrateLegacy,
 } from './vaultWorkspaceTabs';
 import { NAV_RAIL_DEFAULTS, mergeNavConfigItems, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
-import { resolvePartnerDisplayName } from './agents/partnerIdentity';
+import { resolvePartnerDisplayName, setPartnerGreetingName } from './agents/partnerIdentity';
 // SKY-10712: same pure transform the main process applies to scene files on
 // disk during a rename cascade — used to converge in-memory manuscript state.
 import { rewriteWikiLinksForRename, type WikiLinkRewriteMode } from '@mythos-writer/shared/wikiLinkRename';
@@ -1494,6 +1494,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
       if (s) {
         setAppSettings(s);
+        setPartnerGreetingName(resolvePartnerDisplayName(s.agentNames));
         // SKY-10916: hydrate the nav history stack from the last session.
         // One-shot (hydrate no-ops after the first call) — see its own
         // comment for why this doesn't try to suppress the next auto-push.

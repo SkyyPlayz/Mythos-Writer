@@ -14,12 +14,12 @@
 // Agent contract (§2, §14.6): this module ASKS the coach for judgment text and
 // persists a card — there is no code path that writes prose into the
 // manuscript. Locked by coachNoGhostwriting.test.ts (this file lives in the
-// scanned coach directory on purpose). The AI read still uses
-// `agentWritingAssistant` as a dedicated action (not the chat send path —
-// chat send stays `invokeBrainstorm` only).
+// scanned coach directory on purpose). The AI read uses
+// `agentWritingAssistant` (writingAssistant provider) — never brainstorm.
 
 import { useSyncExternalStore } from 'react';
 import type { Scene } from '../types';
+import { refuseUnlessProviderReady } from '../agents/coachInvoke';
 import {
   computeSceneMetrics,
   computedAnalysisRows,
@@ -223,7 +223,7 @@ export async function runFullSceneAnalysis(scene: Scene): Promise<SceneAnalysisO
 
   const turns = store.getSnapshot().activeSession?.turns ?? [];
   const last = turns[turns.length - 1];
-  if (last && last.role === 'agent') {
+  if (last && last.role === 'agent' && last.cardKind === 'analysis') {
     const card = decodeCoachCard(last.text);
     if (card?.kind === 'analysis' && card.title === buildSceneAnalysisTitle(scene)) {
       return 'skipped';
@@ -233,6 +233,24 @@ export async function runFullSceneAnalysis(scene: Scene): Promise<SceneAnalysisO
   setAnalysisPending(true);
   try {
     let ai: CoachReadResult | { unavailable: string };
+    try {
+      await refuseUnlessProviderReady('writingAssistant');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      ai = { unavailable: msg || READ_UNAVAILABLE_NOTE };
+      const card = buildAnalysisCard(scene, ai);
+      // N2: structural cardKind — only Full Analysis itself sets this.
+      await store.actions.appendTurns([
+        {
+          role: 'agent',
+          text: encodeCoachCard(card),
+          at: new Date().toISOString(),
+          cardKind: 'analysis',
+          cardTitle: card.title,
+        },
+      ]);
+      return 'appended';
+    }
     const ask = window.api?.agentWritingAssistant;
     if (typeof ask !== 'function') {
       ai = { unavailable: READ_UNAVAILABLE_NOTE };
@@ -248,7 +266,13 @@ export async function runFullSceneAnalysis(scene: Scene): Promise<SceneAnalysisO
     }
     const card = buildAnalysisCard(scene, ai);
     await store.actions.appendTurns([
-      { role: 'agent', text: encodeCoachCard(card), at: new Date().toISOString() },
+      {
+        role: 'agent',
+        text: encodeCoachCard(card),
+        at: new Date().toISOString(),
+        cardKind: 'analysis',
+        cardTitle: card.title,
+      },
     ]);
     return 'appended';
   } finally {
@@ -271,7 +295,7 @@ export function latestAnalysisCardForScene(
   const title = buildSceneAnalysisTitle(scene);
   for (let i = turns.length - 1; i >= 0; i--) {
     const turn = turns[i];
-    if (turn.role !== 'agent') continue;
+    if (turn.role !== 'agent' || turn.cardKind !== 'analysis') continue;
     const card = decodeCoachCard(turn.text);
     if (card?.kind === 'analysis' && card.title === title) return card;
   }
