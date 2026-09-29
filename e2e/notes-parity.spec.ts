@@ -7,6 +7,7 @@ import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { notesPanel, noteTestId, noteViewer } from './helpers/notesPanel';
+import { enableNoteViewModes } from './helpers/noteViewPrefs';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -51,6 +52,10 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
 
 /** M17: mode switching moved into the gear "View options" popover. */
 async function switchNoteMode(page: Page, mode: 'rich' | 'markdown' | 'source'): Promise<void> {
+  // F4#4: Markdown/Source are Settings-gated — enable before opening the gear.
+  if (mode === 'markdown' || mode === 'source') {
+    await enableNoteViewModes(page, [mode]);
+  }
   await noteTestId(page, 'note-gear-btn').click();
   await expect(page.locator('[data-testid="note-gear-menu"]')).toBeVisible();
   await page.locator(`[data-testid="note-gear-mode-${mode}"]`).click();

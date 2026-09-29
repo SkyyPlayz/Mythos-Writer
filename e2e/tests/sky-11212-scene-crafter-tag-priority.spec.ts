@@ -42,6 +42,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { noteTestId } from '../helpers/notesPanel';
+import { enableNoteViewModes } from '../helpers/noteViewPrefs';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -180,6 +181,7 @@ async function createTaggedNote(
   await dismissMigrationPromptIfPresent(pg);
   await pg.locator('[data-testid^="vb-row-"]', { hasText: title }).first().click();
   await expect(noteTestId(pg, 'note-gear-btn')).toBeVisible({ timeout: 8_000 });
+  await enableNoteViewModes(pg, ['source']);
   await noteTestId(pg, 'note-gear-btn').click();
   await expect(pg.locator('[data-testid="note-gear-menu"]')).toBeVisible();
   await pg.locator('[data-testid="note-gear-mode-source"]').click();
