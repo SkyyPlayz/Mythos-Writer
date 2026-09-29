@@ -784,6 +784,11 @@ import { backupAppData, restoreAppData } from './backup.js';
 import { cleanUninstall, writeUninstallDeletePathList } from './uninstallHelper.js';
 import { planUninstallRecovery } from './uninstallRecoveryPlan.js';
 import {
+  isAppDataCleared,
+  markAppDataCleared,
+  settingsWriteBlockedReason,
+} from './appDataClearedState.js';
+import {
   loadBrainstormSettings,
   setCategoryRouting,
   resolveDestination,
@@ -1367,10 +1372,7 @@ function shouldInitializeVaultsOnStartup(): boolean {
   });
 }
 
-// SKY-8882: set once "Delete Everything" (APP_CLEAN_UNINSTALL) has removed the
-// vaults. While true, the ensure* scaffolders refuse to run so no later IPC
-// call silently resurrects a seeded vault before the user restarts the app.
-let appDataCleared = false;
+// SKY-8882 / Ivy: session flag lives in appDataClearedState.ts (in-memory only).
 
 // SKY-10730: bring the background job queue up for a vault right after its DB
 // opens. Idempotent per root (like openDb); requeues + resumes jobs that were
@@ -1392,7 +1394,7 @@ function initJobServiceForVault(vaultRoot: string): void {
 }
 
 function ensureVaultDir() {
-  if (appDataCleared) {
+  if (isAppDataCleared()) {
     throw new Error('App data was cleared — restart Mythos Writer to continue.');
   }
   const vaultRoot = getVaultRoot();
@@ -1569,7 +1571,7 @@ function persistBrainstormSuggestion(
 }
 
 function ensureNotesVaultDir() {
-  if (appDataCleared) {
+  if (isAppDataCleared()) {
     throw new Error('App data was cleared — restart Mythos Writer to continue.');
   }
   // M5: the Notes Vault half of a MythosVault v2 never receives the SKY-15
@@ -3208,10 +3210,11 @@ const handlers: IpcHandlers = {
     return legacy.found ? { ...masked, legacyVaultDetected: true, legacyVaultPath: legacy.legacyRoot } : masked;
   },
   [IPC_CHANNELS.SETTINGS_SET]: (payload: SettingsSetPayload) => {
-    // SKY-8882: post-"Delete Everything" the app is drained until restart —
-    // refuse SETTINGS_SET so F2#15 exit-flush cannot rewrite app-settings.json.
-    if (appDataCleared) {
-      return { saved: false, error: 'App data was cleared — restart Mythos Writer to continue.' };
+    // Ivy: settings write-path ONLY — refuse SETTINGS_SET while the session
+    // drain flag is set (F2#15 exit-flush must not rewrite app-settings.json).
+    const blocked = settingsWriteBlockedReason();
+    if (blocked) {
+      return { saved: false, error: blocked };
     }
     const startedAt = Date.now();
     const current = loadAppSettings();
@@ -7182,7 +7185,8 @@ const handlers: IpcHandlers = {
       // Both sides are gone. Do NOT re-open/re-scaffold anything — the old
       // `finally { ensureVaultDir() }` here recreated a seeded vault right
       // after deleting it. The app stays in this drained state until restart.
-      appDataCleared = true;
+      // Flag only — uninstallHelper / delete paths (#1633) are untouched.
+      markAppDataCleared();
     }
     return { cancelled: false, ...result };
   },
@@ -9469,12 +9473,9 @@ function loadAppSettings(): AppSettings {
 }
 
 function saveAppSettings(settings: AppSettings): void {
-  // SKY-8882 / TC-MV-05: after Delete Everything, refuse every rewrite of
-  // app-settings.json. F2#15 one-exit Settings flush (Escape / rail dismiss)
-  // and SETTINGS_GET's onboardingComplete backfill would otherwise resurrect
-  // the file the clean-uninstall just removed — same class of bug as the
-  // old ensureVaultDir() finally that re-seeded vaults.
-  if (appDataCleared) return;
+  // Ivy / TC-MV-05: settings write-path gate — refuse disk rewrite while the
+  // session drain flag is set (does not block delete or quit).
+  if (isAppDataCleared()) return;
   // MYT-777: never persist plaintext API keys to app-settings.json. Route
   // secret-shaped fields into the encrypted store and write the cleared
   // payload to disk. If the store is unavailable, still strip the fields so

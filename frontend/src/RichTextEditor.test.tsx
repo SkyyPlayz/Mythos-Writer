@@ -12,6 +12,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import type { Editor } from '@tiptap/core';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import RichTextEditor, {
   VAULT_NOTE_DRAG_MIME,
   sanitizeWikiLinkTitle,
@@ -408,10 +409,58 @@ describe('RichTextEditor wiki-link delegation', () => {
     expect(wikiTitleFromDroppedPath('two\nlines')).toBeNull();
   });
 
+  it('N6: folder paths insert nothing (no note extension)', () => {
+    expect(wikiTitleFromDroppedPath('Notes/Sub')).toBeNull();
+    expect(wikiTitleFromDroppedPath('Locations/')).toBeNull();
+    expect(wikiTitleFromDroppedPath('Harbor')).toBeNull();
+  });
+
   it('Shield R2: sanitizes ]] | # out of dropped titles', () => {
     expect(sanitizeWikiLinkTitle('Harbor]]|#x')).toBe('Harborx');
     expect(wikiTitleFromDroppedPath('Notes/foo]]bar|#.md')).toBe('foobar');
     expect(sanitizeWikiLinkTitle(']]|#')).toBeNull();
+  });
+
+  it('Shield N4: forged entity-chip with URL id does not navigate unsafely', async () => {
+    const onEntityClick = vi.fn();
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    const { unmount } = await mountCore({
+      content: 'Ask <span data-entity-id="https://evil.example/x" data-entity-label="Evil" class="entity-mention-chip">@Evil</span> about it.\n',
+      onEntityClick,
+    });
+    fireEvent.click(document.querySelector('.entity-mention-chip') as Element);
+    expect(onEntityClick).not.toHaveBeenCalled();
+    expect(openSpy).not.toHaveBeenCalled();
+    openSpy.mockRestore();
+    unmount();
+  });
+
+  it('N4: ProseMirror handleClickOn navigates entityMention (focused-editor path)', async () => {
+    const onEntityClick = vi.fn();
+    const { editor, unmount } = await mountCore({
+      content: 'Ask <span data-entity-id="char-elara" data-entity-label="Elara" class="entity-mention-chip">@Elara</span> about it.\n',
+      onEntityClick,
+    });
+    // Simulate the focused-editor path Probe failed on: ProseMirror handleClickOn
+    // (React capture alone is insufficient when the view owns the click).
+    let mentionPos = -1;
+    let mentionNode: ProseMirrorNode | null = null;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'entityMention') {
+        mentionPos = pos;
+        mentionNode = node;
+        return false;
+      }
+      return true;
+    });
+    expect(mentionNode).not.toBeNull();
+    const fakeEvent = new MouseEvent('click', { bubbles: true, cancelable: true });
+    const handled = editor.view.someProp('handleClickOn', (f) =>
+      f(editor.view, mentionPos, mentionNode!, mentionPos, fakeEvent, true),
+    );
+    expect(handled).toBe(true);
+    expect(onEntityClick).toHaveBeenCalledWith('char-elara');
+    unmount();
   });
 });
 

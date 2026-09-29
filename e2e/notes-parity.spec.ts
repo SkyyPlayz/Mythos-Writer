@@ -336,3 +336,58 @@ test('NP-06 (M17): wiki-link hover preview renders; unresolved link creates the 
     await app.close().catch(() => undefined);
   }
 });
+
+// ── F2 Probe N1 fold — #12 into notes-parity (e2e-shard-4) ───────────────────
+// Measures REAL rendered bars (±1px). OOS: window/OS frame, workspace tabs,
+// bottom/status, dialog/popover headers, Story msv-toolbar (F1#13).
+
+test('F2#12 real side/middle panel top bars are 36px (±1)', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+
+    // Story shell bars (side + middle; not msv-toolbar).
+    const storyBars = await page.evaluate(() => {
+      const token = getComputedStyle(document.documentElement)
+        .getPropertyValue('--panel-top-bar-height').trim();
+      const sel = ['.lr-nav-header', '.shell-editor-toolbar', '.grs-topbar', '.pc-header'];
+      const heights: Record<string, number | null> = {};
+      for (const s of sel) {
+        const el = document.querySelector(s);
+        heights[s] = el ? Math.round(el.getBoundingClientRect().height) : null;
+      }
+      return { token, heights };
+    });
+    expect(storyBars.token).toBe('36px');
+    for (const [sel, h] of Object.entries(storyBars.heights)) {
+      if (h === null) continue; // absent in this layout is ok
+      expect(Math.abs(h - 36), `${sel} height ${h}`).toBeLessThanOrEqual(1);
+    }
+
+    // Notes shell bars.
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes"]').click();
+    await expect(page.locator('.notes-tab-panel, .notes-tab-toolbar').first()).toBeVisible({ timeout: 8_000 });
+    const notesBars = await page.evaluate(() => {
+      const sel = [
+        '.notes-tab-toolbar',
+        '.notes-sidebar-header',
+        '.vb-notes-header',
+        '.notes-right-sidebar-header',
+        '.pc-header',
+      ];
+      const heights: Record<string, number | null> = {};
+      for (const s of sel) {
+        const el = document.querySelector(s);
+        heights[s] = el ? Math.round(el.getBoundingClientRect().height) : null;
+      }
+      return heights;
+    });
+    for (const [sel, h] of Object.entries(notesBars)) {
+      if (h === null) continue;
+      expect(Math.abs(h - 36), `${sel} height ${h}`).toBeLessThanOrEqual(1);
+    }
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
