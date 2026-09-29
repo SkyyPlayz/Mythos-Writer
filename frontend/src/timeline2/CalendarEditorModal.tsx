@@ -4,6 +4,9 @@
 //
 // 0.5.3 multi-calendar (SKY-11698 §6): epoch, era, conversion table, live
 // ratio note for non-standard timelines.
+//
+// Slice E (03 §3): Year ratio vs parent is DERIVED — NOT STORED; INHERITED /
+// OVERRIDDEN badges; typing the ratio toasts and does not persist.
 import { useMemo } from 'react';
 import type { TimelineCalendar, TimelineDefinition } from '../timelinesTypes';
 import {
@@ -29,6 +32,12 @@ export interface CalendarEditorModalProps {
   stdCalendar?: TimelineCalendar;
   /** Era suffix of the standard timeline (e.g. "EC"). */
   stdEra?: string;
+  /** Parent / embedding timeline name for the derived-ratio note. */
+  parentName?: string;
+  /** True when this timeline follows the parent calendar (no override). */
+  inherited?: boolean;
+  /** Toast hook — used when the user tries to type the derived ratio. */
+  showToast?: (message: string, level?: 'info' | 'warn' | 'error') => void;
   /** Called when the user changes epoch, epName, era, or std. */
   onMultiCalChange?: (patch: Partial<Pick<TimelineDefinition, 'ep' | 'epName' | 'era' | 'std'>>) => void;
 }
@@ -58,6 +67,9 @@ export default function CalendarEditorModal({
   timeline,
   stdCalendar,
   stdEra,
+  parentName,
+  inherited = false,
+  showToast,
   onMultiCalChange,
 }: CalendarEditorModalProps) {
   const commitField = (key: (typeof FIELD_ROWS)[number]['key'], raw: string) => {
@@ -73,6 +85,15 @@ export default function CalendarEditorModal({
   const localHpy = hoursPerYear(safeCal);
   const stdHpy = hoursPerYear(safeStdCal);
   const resolvedStdEra = stdEra || 'EC';
+  const ratioLabel = `×${ratio % 1 === 0 ? ratio.toFixed(0) : ratio.toFixed(ratio < 10 ? 2 : 1)}`;
+  const parentLabel = parentName?.trim() || 'parent / universal calendar';
+
+  const warnDerivedRatio = () => {
+    showToast?.(
+      'The year ratio is derived, not stored — change months, days or hours and it follows. Typing a ratio here would give you two truths.',
+      'warn',
+    );
+  };
 
   const conversionTable = useMemo(() => {
     if (!timeline || isStd || !stdCalendar) return null;
@@ -99,6 +120,15 @@ export default function CalendarEditorModal({
           <path d="M3 10h18M8 3v4M16 3v4" />
         </svg>
         <span className="t2m-title">Calendar — {timelineName}</span>
+        {showMultiCal && (
+          <span
+            className={`t2m-cal-badge${inherited ? '' : ' t2m-cal-badge--overridden'}`}
+            data-testid={inherited ? 'cem-badge-inherited' : 'cem-badge-overridden'}
+            title={inherited ? 'Following its parent — edit any field to give this timeline its own' : 'This timeline owns its own calendar'}
+          >
+            {inherited ? 'INHERITED' : 'OVERRIDDEN'}
+          </span>
+        )}
         <button type="button" className="t2m-close" onClick={onClose} aria-label="Close" data-testid="cem-close">
           ✕
         </button>
@@ -124,13 +154,33 @@ export default function CalendarEditorModal({
         ))}
       </div>
 
-      {/* Multi-calendar: ratio note */}
+      {/* Slice E: Year ratio vs parent — derived read-only, never stored */}
       {showMultiCal && !isStd && (
-        <div className="t2m-note" data-testid="cem-ratio-note">
-          One local year = <b>{ratio.toFixed(ratio === Math.round(ratio) ? 1 : 3)} standard year{ratio === 1 ? '' : 's'}</b>
-          {' · '}{localHpy} local hours vs {stdHpy} standard
-          {safeCal.hoursPerDay !== safeStdCal.hoursPerDay &&
-            ` · a local day is ${safeCal.hoursPerDay}h against the standard ${safeStdCal.hoursPerDay}h`}
+        <div className="t2m-cal-ratio" data-testid="cem-derived-ratio">
+          <div className="t2m-cal-row">
+            <span className="t2m-cal-label">
+              Year ratio vs parent
+              <span className="t2m-cal-derived-eyebrow">DERIVED — NOT STORED</span>
+            </span>
+            <input
+              className="t2m-field-input t2m-cal-input t2m-cal-input--derived"
+              value={ratioLabel}
+              readOnly
+              onChange={warnDerivedRatio}
+              onKeyDown={warnDerivedRatio}
+              onFocus={warnDerivedRatio}
+              title="Derived from months × days × hours — edit those instead"
+              aria-label="Year ratio vs parent (derived, not stored)"
+              data-testid="cem-ratio-input"
+            />
+          </div>
+          <div className="t2m-note" data-testid="cem-ratio-note">
+            Derived from {safeCal.monthsPerYear} × {safeCal.daysPerMonth} × {safeCal.hoursPerDay}h
+            against {parentLabel} — months, days and hours are the source of truth.
+            {' · '}{localHpy} local hours vs {stdHpy} standard
+            {safeCal.hoursPerDay !== safeStdCal.hoursPerDay &&
+              ` · a local day is ${safeCal.hoursPerDay}h against the standard ${safeStdCal.hoursPerDay}h`}
+          </div>
         </div>
       )}
 

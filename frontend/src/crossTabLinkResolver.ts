@@ -346,6 +346,8 @@ export interface WikiLinkTitleIndexContext {
   stories: Story[];
   entities: EntityEntry[];
   notePaths?: string[];
+  /** Slice E — board card titles + freeform titles for [[ autocomplete. */
+  boardCardTitles?: ReadonlyArray<string>;
 }
 
 /**
@@ -365,12 +367,17 @@ export function buildWikiLinkTitleIndex(context: WikiLinkTitleIndexContext): Set
     titles.add(basenameNoExt(notePath));
   }
   for (const story of context.stories) {
+    if (story.title?.trim()) titles.add(normalize(story.title));
     for (const chapter of story.chapters) {
+      if (chapter.title?.trim()) titles.add(normalize(chapter.title));
       for (const scene of chapter.scenes) {
         titles.add(normalize(scene.title));
         titles.add(basenameNoExt(scene.path));
       }
     }
+  }
+  for (const cardTitle of context.boardCardTitles ?? []) {
+    if (cardTitle.trim()) titles.add(normalize(cardTitle));
   }
   return titles;
 }
@@ -408,11 +415,21 @@ export function buildWikiLinkCandidates(context: WikiLinkTitleIndexContext): Wik
     candidates.push({ key: `note:${notePath}`, title, kind: 'other', vault: 'notes' });
   }
   for (const story of context.stories) {
+    if (story.title?.trim() && !seenStems.has(normalize(story.title))) {
+      seenStems.add(normalize(story.title));
+      candidates.push({ key: `story:${story.id}`, title: story.title, kind: 'other', vault: 'story' });
+    }
     for (const chapter of story.chapters) {
       for (const scene of chapter.scenes) {
         candidates.push({ key: `scene:${scene.id}`, title: scene.title, kind: 'scene', vault: 'story' });
       }
     }
+  }
+  for (const cardTitle of context.boardCardTitles ?? []) {
+    const stem = normalize(cardTitle);
+    if (!stem || seenStems.has(stem)) continue;
+    seenStems.add(stem);
+    candidates.push({ key: `board:${stem}`, title: cardTitle, kind: 'other', vault: 'notes' });
   }
 
   return candidates;

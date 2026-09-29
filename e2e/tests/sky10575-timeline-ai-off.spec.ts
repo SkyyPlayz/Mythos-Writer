@@ -192,10 +192,9 @@ test('SKY-10575: AI off — Brainstorm and Archive tabs hidden, Inspector remain
 
     await openTimeline(page);
 
-    // Inspector tab must be present.
+    // Slice E: Inspector · partner always present; no Archivist / Idea Board tabs.
     await expect(page.locator('[data-testid="trp-tab-inspector"]')).toBeVisible({ timeout: 5_000 });
-
-    // Brainstorm and Archive tabs must be absent when AI is off.
+    await expect(page.locator('[data-testid="trp-tab-partner"]')).toBeVisible({ timeout: 5_000 });
     await expect(page.locator('[data-testid="trp-tab-brainstorm"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="trp-tab-archive"]')).toHaveCount(0);
   } finally {
@@ -204,7 +203,7 @@ test('SKY-10575: AI off — Brainstorm and Archive tabs hidden, Inspector remain
   }
 });
 
-test('SKY-10575: AI on — Ivy + Idea Board visible (S2-6: no Archive tab)', async () => {
+test('SKY-10575: AI on — Inspector · partner only (Slice E: no Archive / Idea Board tabs)', async () => {
   const fixture = createFixture(true);
   let app: ElectronApplication | undefined;
   try {
@@ -215,9 +214,9 @@ test('SKY-10575: AI on — Ivy + Idea Board visible (S2-6: no Archive tab)', asy
     await openTimeline(page);
 
     await expect(page.locator('[data-testid="trp-tab-inspector"]')).toBeVisible({ timeout: 5_000 });
-    await expect(page.locator('[data-testid="trp-tab-inspector"]')).toHaveText('Ivy');
-    await expect(page.locator('[data-testid="trp-tab-brainstorm"]')).toBeVisible({ timeout: 5_000 });
-    await expect(page.locator('[data-testid="trp-tab-brainstorm"]')).toHaveText('Idea Board');
+    await expect(page.locator('[data-testid="trp-tab-inspector"]')).toHaveText('Inspector');
+    await expect(page.locator('[data-testid="trp-tab-partner"]')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('[data-testid="trp-tab-brainstorm"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="trp-tab-archive"]')).toHaveCount(0);
   } finally {
     await closeApp(app);

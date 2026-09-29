@@ -393,17 +393,29 @@ export function applyPageBackgroundTokens(
   root.style.setProperty('--page-bg-blur', `${p.blur}px`);
   root.style.setProperty('--page-bg-glow', (p.glowIntensity / 100).toFixed(3));
   root.setAttribute('data-page-preset', p.preset);
+  // Slice E — opacity 0% renders nothing (no shadow/inset/border); Neon frame OK.
+  if (p.opacity <= 0) {
+    root.setAttribute('data-page-opacity', '0');
+    root.style.setProperty('--page-bg-fill', 'transparent');
+    root.style.setProperty('--page-bg-glow-color', 'transparent');
+    root.style.setProperty('--page-bg-sheet-border', 'transparent');
+    root.style.setProperty('--page-bg-sheet-shadow', 'none');
+  } else {
+    root.removeAttribute('data-page-opacity');
+    root.style.removeProperty('--page-bg-sheet-border');
+    root.style.removeProperty('--page-bg-sheet-shadow');
+  }
 
   // Computed glow shadow color — used directly in CSS box-shadow
   const [gr, gg, gb] = PAGE_BG_GLOW_RGB[p.preset] ?? PAGE_BG_GLOW_RGB['liquid-neon'];
-  const glowAlpha = (p.glowIntensity / 100 * 0.3).toFixed(3);
+  const glowAlpha = p.opacity <= 0 ? '0' : (p.glowIntensity / 100 * 0.3).toFixed(3);
   root.style.setProperty('--page-bg-glow-color', `rgba(${gr},${gg},${gb},${glowAlpha})`);
 
   // Glass backdrop-filter: only on glass presets.
   // W0.5 (PERFORMANCE §2): the page is the single persistent surface still
   // allowed a live backdrop-filter; --page-bg-backdrop-filter collapses to
   // `none` (no backdrop root at all) whenever it would be a no-op blur.
-  if (GLASS_PRESETS.has(p.preset)) {
+  if (GLASS_PRESETS.has(p.preset) && p.opacity > 0) {
     root.style.setProperty('--page-bg-backdrop-blur', `${p.blur}px`);
     root.style.setProperty('--page-bg-backdrop-filter', p.blur > 0 ? `blur(${p.blur}px)` : 'none');
   } else {

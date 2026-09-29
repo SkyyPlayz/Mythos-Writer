@@ -79,6 +79,7 @@ import {
 } from './timeline2/panel/quickAdd';
 import { deriveAxisDomain } from './timeline2/axis/domain';
 import { safeCalendar, formatWhen, roundWhen, whenSpanToDays, resolveStdCalendar } from './timeline2/axis/calendarCodec';
+import { clampVZoom } from './timeline2/axis/stamps';
 import { bookChapterRanges, chapterWhen, plotCardWhen, sortedBooks } from './timeline2/axis/chapters';
 import { laneColor } from './timeline2/axis/palette';
 import {
@@ -92,6 +93,7 @@ import {
   type PovSceneInput,
   type TimelineShowFilter,
 } from './timeline2/axis/storyLanes';
+import { resolvePartnerDisplayName } from './agents/partnerIdentity';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
 import './TimelineRoot.css';
@@ -99,6 +101,9 @@ import './TimelineRoot.css';
 const STORAGE_KEY_MODE = 'timeline:viewMode';
 const STORAGE_KEY_GROUP = 'timeline:groupBy';
 const STORAGE_KEY_RIGHT_WIDTH = 'timeline:rightPanelWidth';
+/** Slice E — per-vault sync lines (`tlSync[timelineId]`). */
+const STORAGE_KEY_TL_SYNC = 'timeline:tlSync';
+const STORAGE_KEY_VZOOM = 'timeline:tlVZoom';
 
 /** SKY-7956: right panel (Inspector/Brainstorm/Archive) resize clamp — ported
  * from the prototype's app-wide right rail (`rightW`, drag handler Math.max(250,
@@ -242,6 +247,19 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
   // Bumped by the "Today" jump; the axis view selects/scrolls to "current".
   const [todaySignal, setTodaySignal] = useState(0);
 
+  // ── Slice E: sync playhead + vertical board zoom (vault-scoped sync map) ──
+  const [vaultRootKey, setVaultRootKey] = useState('');
+  const [tlSync, setTlSync] = useState<Record<string, number>>({});
+  const [tlSyncArm, setTlSyncArm] = useState(false);
+  const [tlVZoom, setTlVZoom] = useState(() => {
+    try {
+      const n = Number(localStorage.getItem(STORAGE_KEY_VZOOM));
+      if (Number.isFinite(n)) return clampVZoom(n);
+    } catch { /* ignore */ }
+    return 100;
+  });
+  const [partnerName, setPartnerName] = useState('Mythos');
+
   // ── M23: toolbar filters + plotline visibility + book focus ──
   const [viewFilter, setViewFilter] = useState<string>('Story Structure');
   const [showFilter, setShowFilter] = useState<TimelineShowFilter>('All Events');
@@ -358,6 +376,68 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
     }).catch(() => { /* non-fatal: picker hidden */ })
       .finally(() => setStoreLoading(false));
   }, [api]);
+
+  // Slice E — vault-scoped tlSync + partner display name for Inspector · <partner>.
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const root = typeof api.getVaultRoot === 'function'
+          ? (await api.getVaultRoot()).vaultRoot
+          : '';
+        if (cancelled) return;
+        setVaultRootKey(root || '');
+        const raw = localStorage.getItem(`${STORAGE_KEY_TL_SYNC}:${root || 'default'}`);
+        if (raw) {
+          const parsed = JSON.parse(raw) as Record<string, number>;
+          if (parsed && typeof parsed === 'object') setTlSync(parsed);
+          else setTlSync({});
+        } else {
+          setTlSync({});
+        }
+        setTlSyncArm(false);
+      } catch {
+        if (!cancelled) setTlSync({});
+      }
+      try {
+        const settings = typeof api.settingsGet === 'function' ? await api.settingsGet() : null;
+        if (!cancelled) {
+          setPartnerName(resolvePartnerDisplayName(settings?.agentNames));
+        }
+      } catch {
+        /* keep Mythos */
+      }
+    };
+    void load();
+    const unsub = typeof api.onProjectSwitched === 'function'
+      ? api.onProjectSwitched(() => {
+          // Soft-FAIL: vault switch must not leak prior vault's sync lines.
+          setTlSync({});
+          setTlSyncArm(false);
+          setStoreLoading(true);
+          if (typeof api.timelinesGetStore === 'function') {
+            api.timelinesGetStore().then((res: { store: TimelinesStore }) => {
+              setTimelinesStore(res.store);
+            }).catch(() => {})
+              .finally(() => setStoreLoading(false));
+          } else {
+            setStoreLoading(false);
+          }
+          void load();
+        })
+      : undefined;
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [api]);
+
+  const persistTlSync = useCallback((next: Record<string, number>) => {
+    setTlSync(next);
+    try {
+      localStorage.setItem(`${STORAGE_KEY_TL_SYNC}:${vaultRootKey || 'default'}`, JSON.stringify(next));
+    } catch { /* ignore quota */ }
+  }, [vaultRootKey]);
 
   const handleTimelineSelect = useCallback((timelineId: string) => {
     if (typeof api.timelinesSetActive !== 'function') return;
@@ -582,6 +662,60 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
       return next;
     });
     setTodaySignal(n => n + 1);
+  }, []);
+
+  const syncTimelineId = timelinesStore?.activeTimelineId ?? '';
+  const syncWhen = syncTimelineId ? (tlSync[syncTimelineId] ?? null) : null;
+  const syncHas = syncWhen != null && Number.isFinite(syncWhen);
+
+  const handleSyncBtn = useCallback(() => {
+    if (tlSyncArm) {
+      setTlSyncArm(false);
+      return;
+    }
+    if (syncHas && syncTimelineId) {
+      const next = { ...tlSync };
+      delete next[syncTimelineId];
+      persistTlSync(next);
+      setTlSyncArm(false);
+      notify('Sync line cleared');
+      return;
+    }
+    setTlSyncArm(true);
+    notify('Click anywhere on the time axis to drop the sync line');
+  }, [tlSyncArm, syncHas, syncTimelineId, tlSync, persistTlSync, notify]);
+
+  const handleSyncPlace = useCallback((when: number) => {
+    if (!syncTimelineId) return;
+    persistTlSync({ ...tlSync, [syncTimelineId]: when });
+    setTlSyncArm(false);
+    notify('Sync line dropped — drag the handle to move it, × to clear');
+  }, [syncTimelineId, tlSync, persistTlSync, notify]);
+
+  const handleSyncMove = useCallback((when: number) => {
+    if (!syncTimelineId) return;
+    persistTlSync({ ...tlSync, [syncTimelineId]: when });
+  }, [syncTimelineId, tlSync, persistTlSync]);
+
+  const handleSyncClear = useCallback(() => {
+    if (!syncTimelineId) return;
+    const next = { ...tlSync };
+    delete next[syncTimelineId];
+    persistTlSync(next);
+    notify('Sync line cleared');
+  }, [syncTimelineId, tlSync, persistTlSync, notify]);
+
+  const bumpVZoom = useCallback((delta: number) => {
+    setTlVZoom((prev) => {
+      const next = clampVZoom(prev + delta);
+      try { localStorage.setItem(STORAGE_KEY_VZOOM, String(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  const resetVZoom = useCallback(() => {
+    setTlVZoom(100);
+    try { localStorage.setItem(STORAGE_KEY_VZOOM, '100'); } catch { /* ignore */ }
   }, []);
 
   const isLanesMode = viewMode === 'progress' || viewMode === 'structure';
@@ -1134,8 +1268,8 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
           <button
             type="button"
             className="tlr-flag-badge"
-            onClick={() => setRightTab('archive')}
-            title="Archive Agent flags — contradictions, gaps and order skips. Click to review."
+            onClick={() => setRightTab('partner')}
+            title="Partner Archivist flags — contradictions, gaps and order skips. Click to review."
             data-testid="tl-flag-badge"
           >
             <span className="tlr-flag-badge-dot" aria-hidden="true" />
@@ -1255,6 +1389,32 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
         >
           Today
         </button>
+
+        {/* Slice E — vertical board zoom 40–160% */}
+        {isLanesMode && (
+          <div className="tlr-vzoom" role="group" aria-label="Board zoom" data-testid="tl-vzoom">
+            <button type="button" className="tlr-vzoom-btn" onClick={() => bumpVZoom(-10)} aria-label="Zoom out" data-testid="tl-vzoom-out">−</button>
+            <button type="button" className="tlr-vzoom-pct" onClick={resetVZoom} title="Reset to 100%" data-testid="tl-vzoom-pct">{tlVZoom}%</button>
+            <button type="button" className="tlr-vzoom-btn" onClick={() => bumpVZoom(10)} aria-label="Zoom in" data-testid="tl-vzoom-in">+</button>
+          </div>
+        )}
+
+        {/* Slice E — Drop sync line (armed-only place) */}
+        {isLanesMode && (
+          <button
+            type="button"
+            className={`tlr-sync-btn${tlSyncArm ? ' tlr-sync-btn--armed' : ''}${syncHas && !tlSyncArm ? ' tlr-sync-btn--placed' : ''}`}
+            onClick={handleSyncBtn}
+            title="Drop one vertical line across every world row — it reads the same instant in each world's own calendar"
+            data-testid="tl-sync-btn"
+            data-tour="tl-sync"
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
+              <path d="M12 3v18M7 6.5h10M7 17.5h10" />
+            </svg>
+            {tlSyncArm ? 'Click the axis…' : syncHas ? 'Clear sync line' : 'Drop sync line'}
+          </button>
+        )}
       </div>
 
       {/* M22: per-timeline calendar editor (prototype 3738–3772) */}
@@ -1267,6 +1427,15 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
           timeline={activeTimeline}
           stdCalendar={stdCalendar}
           stdEra={timelinesStore?.timelines.find((t) => t.std)?.era}
+          parentName={timelinesStore?.timelines.find((t) => t.std)?.name}
+          inherited={
+            activeTimeline.calendar.preset === 'standard'
+            && activeTimeline.calendar.monthsPerYear === (stdCalendar?.monthsPerYear ?? 12)
+            && activeTimeline.calendar.daysPerMonth === (stdCalendar?.daysPerMonth ?? 30)
+            && activeTimeline.calendar.hoursPerDay === (stdCalendar?.hoursPerDay ?? 24)
+            && !activeTimeline.std
+          }
+          showToast={notify}
           onMultiCalChange={handleMultiCalChange}
         />
       )}
@@ -1429,6 +1598,12 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
                 onSelectionChange={handleSelectionChange}
                 flaggedItemIds={flaggedItemIds}
                 jumpTarget={jumpTarget}
+                vZoomPct={tlVZoom}
+                syncWhen={syncWhen}
+                syncArmed={tlSyncArm}
+                onSyncPlace={handleSyncPlace}
+                onSyncMove={handleSyncMove}
+                onSyncClear={handleSyncClear}
               />
             </div>
           )}
@@ -1532,7 +1707,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
           />
         )}
 
-        {/* ── M25: right panel — Inspector · Brainstorm · Archive (§8.6) ── */}
+        {/* ── Slice E: right panel — Inspector · <partner> only (Archivist tab gone) ── */}
         {timelinesStore && activeTimeline && (
           <TimelineRightPanel
             width={rightPanelWidth}
@@ -1542,6 +1717,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
             onSelectionChange={handleSelectionChange}
             tab={rightTab}
             onTabChange={setRightTab}
+            partnerName={partnerName}
             chapterLabels={axisChapters.map((ch) => ch.label)}
             whenForChapter={whenForChapter}
             onLocalMutate={mutateLocalItem}

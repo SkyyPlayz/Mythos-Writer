@@ -150,7 +150,8 @@ describe('AxisView — auto-stacking', () => {
     render(<AxisView store={store} onStoreChange={() => {}} />);
     const row = screen.getByTestId('ax-events-row');
     expect(row.getAttribute('data-lane-count')).toBe('3');
-    expect(row.style.height).toBe(`${(3 - 1) * 92 + 96}px`);
+    // Slice E: key-event lane pitch 112px (was 92).
+    expect(row.style.height).toBe(`${(3 - 1) * 112 + 118}px`);
     const lanes = ['ev-1', 'ev-2', 'ev-3'].map((id) =>
       screen.getByTestId(`ax-event-${id}`).getAttribute('data-lane'),
     );

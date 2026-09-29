@@ -255,7 +255,40 @@
   pointer-events: none;
 }
 
-/* ── Event cards (6692: 215px, r13, 92px lanes) ── */
+/* Slice E — vertical board zoom wrapper (CSS zoom; sync + drag scale together) */
+.ax-lanes-wrap {
+  position: relative;
+}
+
+/* Slice E v2.4.1 — open-range ghost tail (1/8 plotted) */
+.ax-span-ghost {
+  position: absolute;
+  height: 70px;
+  border-radius: 0 11px 11px 0;
+  border-style: dashed;
+  border-width: 1px 1px 1px 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.ax-span-ghost-lbl {
+  position: absolute;
+  left: 50%;
+  top: 29px;
+  transform: translateX(-50%);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.ax-span--embed {
+  height: 70px;
+}
+
+/* ── Event cards (Slice E: 112px lane pitch for dual stamps) ── */
 .ax-event {
   position: absolute;
   transform: translateX(-50%);
@@ -605,7 +638,7 @@
   text-overflow: ellipsis;
 }
 
-/* ── WORLD (6700: 180px chips, r11, 56px lanes) ── */
+/* ── WORLD (Slice E: 74px lane pitch for dual stamps) ── */
 .ax-world-chip {
   position: absolute;
   transform: translateX(-50%);

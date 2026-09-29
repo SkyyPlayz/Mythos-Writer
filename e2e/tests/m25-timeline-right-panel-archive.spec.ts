@@ -267,7 +267,7 @@ function readTimelinesStore(vaultDir: string): { events: Array<{ id: string; nam
 
 // ─── AC-M25-01: any click surfaces Inspector (§14.5) ─────────────────────────
 
-test('AC-M25-01: clicking a timeline item surfaces the Inspector (Ivy) tab even when Idea Board was open', async () => {
+test('AC-M25-01: clicking a timeline item surfaces Inspector even when partner tab was open', async () => {
   const fixture = createFixture();
   let app: ElectronApplication | undefined;
   try {
@@ -277,10 +277,11 @@ test('AC-M25-01: clicking a timeline item surfaces the Inspector (Ivy) tab even 
 
     await openTimeline(page);
 
-    // S2-6: Archive tab removed — open Idea Board instead.
+    // Slice E: Archive / Idea Board tabs gone — open partner hand instead.
     await expect(page.locator('[data-testid="trp-tab-archive"]')).toHaveCount(0);
-    await page.locator('[data-testid="trp-tab-brainstorm"]').click();
-    await expect(page.locator('[data-testid="trp-tab-brainstorm"]')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('[data-testid="trp-tab-brainstorm"]')).toHaveCount(0);
+    await page.locator('[data-testid="trp-tab-partner"]').click();
+    await expect(page.locator('[data-testid="trp-tab-partner"]')).toHaveAttribute('aria-selected', 'true');
 
     // Select the seeded event on the axis/spreadsheet — whichever timeline
     // item row renders it. Progress mode is the M23 default.
@@ -288,9 +289,9 @@ test('AC-M25-01: clicking a timeline item surfaces the Inspector (Ivy) tab even 
     await expect(eventLocator).toBeVisible({ timeout: 8_000 });
     await eventLocator.click();
 
-    // §14.5: selection forces Ivy (Inspector) open.
+    // §14.5: selection forces Inspector open.
     await expect(page.locator('[data-testid="trp-tab-inspector"]')).toHaveAttribute('aria-selected', 'true', { timeout: 6_000 });
-    await expect(page.locator('[data-testid="trp-tab-inspector"]')).toHaveText('Ivy');
+    await expect(page.locator('[data-testid="trp-tab-inspector"]')).toHaveText('Inspector');
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);

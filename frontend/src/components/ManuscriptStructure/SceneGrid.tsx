@@ -5,6 +5,19 @@ import type { BeatAssignments } from './BeatSheetSidebar';
 import { ALL_BEATS, type BeatTemplate } from './BEAT_STRUCTURE';
 import './SceneGrid.css';
 
+const CARD_MIN_KEY = 'mythos-msv-card-min-v1';
+const CARD_MIN_DEFAULT = 218;
+const CARD_MIN_LO = 160;
+const CARD_MIN_HI = 360;
+
+function readCardMin(): number {
+  try {
+    const n = Number(localStorage.getItem(CARD_MIN_KEY));
+    if (Number.isFinite(n)) return Math.max(CARD_MIN_LO, Math.min(CARD_MIN_HI, n));
+  } catch { /* ignore */ }
+  return CARD_MIN_DEFAULT;
+}
+
 interface DragState {
   sceneId: string;
   chapterId: string;
@@ -91,6 +104,7 @@ export function SceneGrid({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [reorderState, setReorderState] = useState<ReorderState | null>(null);
   const [collapsedChapters, setCollapsedChapters] = useState<Set<string>>(new Set());
+  const [cardMin, setCardMin] = useState(readCardMin);
 
   const handleDragStart = useCallback(
     (e: React.DragEvent, scene: Scene, chapter: Chapter) => {
@@ -277,8 +291,40 @@ export function SceneGrid({
       className="scene-grid"
       role="listbox"
       aria-label={`Scenes in ${story.title}`}
+      style={{ ['--msv-card-min' as string]: `${cardMin}px` }}
       onClick={contextMenu ? closeContextMenu : undefined}
     >
+      <div className="scene-grid__resize" data-testid="msv-card-resize">
+        <label htmlFor="msv-card-min">
+          Card size
+          <input
+            id="msv-card-min"
+            type="range"
+            min={CARD_MIN_LO}
+            max={CARD_MIN_HI}
+            step={8}
+            value={cardMin}
+            aria-valuetext={`${cardMin}px`}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              setCardMin(next);
+              try { localStorage.setItem(CARD_MIN_KEY, String(next)); } catch { /* ignore */ }
+            }}
+            data-testid="msv-card-min-slider"
+          />
+        </label>
+        <button
+          type="button"
+          className="scene-grid__resize-reset"
+          onClick={() => {
+            setCardMin(CARD_MIN_DEFAULT);
+            try { localStorage.setItem(CARD_MIN_KEY, String(CARD_MIN_DEFAULT)); } catch { /* ignore */ }
+          }}
+          data-testid="msv-card-min-reset"
+        >
+          {cardMin}px
+        </button>
+      </div>
       {chapterEntries.map(({ partId, partIdx, chapter, chapterIdx }, entryIdx) => {
         const isFirstInPart =
           !simple &&

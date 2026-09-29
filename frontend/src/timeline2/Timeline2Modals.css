@@ -179,6 +179,43 @@
   font-size: 12px;
 }
 
+/* Slice E — INHERITED (grey) / OVERRIDDEN (slot-B purple) badges */
+.t2m-cal-badge {
+  flex: none;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  color: #7686a2;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 5px;
+  padding: 2px 5px;
+}
+
+.t2m-cal-badge--overridden {
+  color: var(--n2, #9b5fff);
+  border-color: var(--b2, rgba(155, 95, 255, 0.55));
+}
+
+.t2m-cal-derived-eyebrow {
+  display: block;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  color: #586a88;
+  margin-top: 1px;
+}
+
+.t2m-cal-input--derived {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  color: #8e9db8;
+  cursor: not-allowed;
+}
+
+.t2m-cal-ratio {
+  margin-bottom: 13px;
+}
+
 .t2m-presets {
   display: flex;
   gap: 7px;

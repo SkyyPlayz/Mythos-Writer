@@ -1174,11 +1174,13 @@ test.describe('SKY-9877 — TIMELINE NAVIGATOR fidelity (rail-timeline)', () => 
 // 0.5.4 Slice 2 S2-6: Archivist / Archive Timeline tab is gone (video wins).
 // Keep a single regression that the Archive tab + chat input stay absent.
 
-test.describe('Archive Agent chat — SKY-8886 (removed S2-6)', () => {
+test.describe('Archive Agent chat — SKY-8886 (removed S2-6 / Slice E)', () => {
   test('archive tab and chat input are absent from Timeline right panel', async () => {
     await expect(page.locator('[data-testid="trp-tab-inspector"]')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('[data-testid="trp-tab-inspector"]')).toHaveText('Ivy');
+    await expect(page.locator('[data-testid="trp-tab-inspector"]')).toHaveText('Inspector');
+    await expect(page.locator('[data-testid="trp-tab-partner"]')).toBeVisible();
     await expect(page.locator('[data-testid="trp-tab-archive"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="trp-tab-brainstorm"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="trp-archive-chat-input"]')).toHaveCount(0);
   });
 });
