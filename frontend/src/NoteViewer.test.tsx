@@ -11,6 +11,7 @@ import {
   writeShowSourceViewPref,
 } from './noteViewPrefs';
 import { runQuitFlushers, __resetQuitFlushers } from './lib/flushBeforeQuit';
+import { setEntityMentionNavigateHandler } from './lib/entityMentionNavigate';
 
 const readNotesVault = vi.fn();
 const writeNotesVault = vi.fn();
@@ -38,6 +39,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setEntityMentionNavigateHandler(null);
   window.localStorage.removeItem(NOTES_DEFAULT_RICH_KEY);
   // SKY-10929: per-note sticky mode — clear so one test's explicit switch
   // never leaks into a later test reusing the same note path.
@@ -83,6 +85,7 @@ describe('NoteViewer cross-tab links', () => {
 
   it('F2#2: Preview renders entity:// mention chips and Rich opens without fidelity warn', async () => {
     const onEntityClick = vi.fn();
+    setEntityMentionNavigateHandler(onEntityClick);
     readNotesVault.mockResolvedValue({
       content: 'Ask [Elara](entity://char-elara) about the harbor.\n',
     });
@@ -90,7 +93,6 @@ describe('NoteViewer cross-tab links', () => {
       <NoteViewer
         path="Notes/Mention.md"
         previewMode
-        onEntityClick={onEntityClick}
       />,
     );
     const chip = await screen.findByTestId('note-entity-mention');

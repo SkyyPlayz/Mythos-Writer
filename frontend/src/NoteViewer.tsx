@@ -38,6 +38,7 @@ import {
   writeNoteModePref,
   type StickyNoteMode,
 } from './noteViewPrefs';
+import { navigateEntityMention } from './lib/entityMentionNavigate';
 import './NoteViewer.css';
 
 export type NoteViewerMode = 'source' | 'rich' | 'markdown' | 'preview';
@@ -62,8 +63,6 @@ interface Props {
   // dead-wiring-ignore: SKY-10926 — see rationale on `mode` above.
   onModeChange?: (mode: NoteViewerMode) => void;
   onWikiLinkClick?: (target: string) => void;
-  /** F2#2: @-mention chip click (Preview + Rich via RichTextEditor). */
-  onEntityClick?: (entityId: string) => void;
   /** SKY-5702: resolvable note/story titles, for unresolved [[link]] styling. */
   resolvedWikiLinkTitles?: ReadonlySet<string>;
   /** M16: stems resolving to story scenes, for gold [[scene link]] styling. */
@@ -131,7 +130,6 @@ function renderInline(
   onWikiLinkClick?: (target: string) => void,
   resolvedTitles?: ReadonlySet<string>,
   sceneTitles?: ReadonlySet<string>,
-  onEntityClick?: (entityId: string) => void,
 ): ReactNode[] {
   const nodes: ReactNode[] = [];
   // F2#2: also recognize [Label](entity://id) mention chips in Preview.
@@ -184,7 +182,9 @@ function renderInline(
             data-entity-id={entityId}
             data-entity-label={label}
             data-testid="note-entity-mention"
-            onClick={() => onEntityClick?.(entityId)}
+            // F2 N4 / Ivy: in-app navigate by entity id (global shell handler).
+            // No NoteViewer.onEntityClick prop — dead-wiring; F5 may re-add.
+            onClick={() => navigateEntityMention(entityId)}
           >
             @{label}
           </button>,
@@ -204,7 +204,6 @@ function renderMarkdownPreview(
   onWikiLinkClick?: (target: string) => void,
   resolvedTitles?: ReadonlySet<string>,
   sceneTitles?: ReadonlySet<string>,
-  onEntityClick?: (entityId: string) => void,
 ): ReactNode {
   // W0.2: preview never renders frontmatter or kanban-settings trailers.
   const body = stripHiddenBlocks(content);
@@ -212,7 +211,7 @@ function renderMarkdownPreview(
   const nodes: ReactNode[] = [];
   let i = 0;
 
-  const inline = (text: string) => renderInline(text, onWikiLinkClick, resolvedTitles, sceneTitles, onEntityClick);
+  const inline = (text: string) => renderInline(text, onWikiLinkClick, resolvedTitles, sceneTitles);
 
   while (i < lines.length) {
     const line = lines[i];
@@ -268,7 +267,6 @@ interface RichEditorProps {
   content: string;
   onChange: (text: string) => void;
   onWikiLinkClick?: (target: string) => void;
-  onEntityClick?: (entityId: string) => void;
   resolvedWikiLinkTitles?: ReadonlySet<string>;
   sceneWikiLinkTitles?: ReadonlySet<string>;
   wikiLinkCandidates?: WikiLinkCandidate[];
@@ -278,7 +276,8 @@ interface RichEditorProps {
 
 // Thin wrapper over the shared core (SKY-3204): Notes rich mode gets the same
 // base extensions (including Underline) and entity @-mention picker as Story.
-function NoteRichEditor({ content, onChange, onWikiLinkClick, onEntityClick, resolvedWikiLinkTitles, sceneWikiLinkTitles, wikiLinkCandidates, fileName, toolbarActions }: RichEditorProps) {
+// F2 N4: omit onEntityClick — RichTextEditor falls back to navigateEntityMention.
+function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles, wikiLinkCandidates, fileName, toolbarActions }: RichEditorProps) {
   return (
     <div className="note-rich-editor">
       <RichTextEditor
@@ -287,7 +286,6 @@ function NoteRichEditor({ content, onChange, onWikiLinkClick, onEntityClick, res
         extraExtensions={NOTE_RICH_EXTENSIONS}
         onChangeMarkdown={onChange}
         onWikiLinkClick={onWikiLinkClick}
-        onEntityClick={onEntityClick}
         resolvedWikiLinkTitles={resolvedWikiLinkTitles}
         sceneWikiLinkTitles={sceneWikiLinkTitles}
         wikiLinkCandidates={wikiLinkCandidates}
@@ -354,7 +352,6 @@ export default function NoteViewer({
   mode: modeProp,
   onModeChange,
   onWikiLinkClick,
-  onEntityClick,
   resolvedWikiLinkTitles,
   sceneWikiLinkTitles,
   wikiLinkCandidates,
@@ -1027,7 +1024,6 @@ export default function NoteViewer({
           content={stripHiddenBlocks(content)}
           onChange={handleRichChange}
           onWikiLinkClick={onWikiLinkClick}
-          onEntityClick={onEntityClick}
           resolvedWikiLinkTitles={resolvedWikiLinkTitles}
           sceneWikiLinkTitles={sceneWikiLinkTitles}
           wikiLinkCandidates={wikiLinkCandidates}
@@ -1042,7 +1038,7 @@ export default function NoteViewer({
 
       {mode === 'preview' && (
         <div className="note-viewer-preview" data-testid="note-viewer-preview">
-          {renderMarkdownPreview(content, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles, onEntityClick)}
+          {renderMarkdownPreview(content, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles)}
         </div>
       )}
 

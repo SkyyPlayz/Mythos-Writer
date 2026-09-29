@@ -180,6 +180,15 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     });
   }, [refreshVaults, refreshActiveRoot]);
 
+  // Critic H6: Settings no longer remounts on "Settings → this vault", so an
+  // external rail switch must refresh the card highlight without remount.
+  useEffect(() => {
+    if (!window.api?.onProjectSwitched) return;
+    return window.api.onProjectSwitched((data: { vaultRoot: string }) => {
+      if (data?.vaultRoot) setActiveRoot(data.vaultRoot);
+    });
+  }, []);
+
   useEffect(() => {
     if (createOpen && createStep === 'details') createNameRef.current?.focus();
   }, [createOpen, createStep]);

@@ -2727,4 +2727,50 @@ describe('SKY-3218 nav-bar configuration', () => {
       expect(saved.vaultAppearance?.['/vaults/alpha']?.theme).toBe(saved.theme);
     });
   });
+
+  // Critic H6 / TC-SKY-11048-01: no Settings remount on "Settings → this vault",
+  // so vault paths must refresh when activeVaultRoot changes in place.
+  it('H6: vault path display refreshes when activeVaultRoot changes without remount', async () => {
+    mockVaultGetPaths
+      .mockResolvedValueOnce({
+        storyVaultPath: '/vaults/First/Story Vault',
+        notesVaultPath: '/vaults/First/Notes Vault',
+      })
+      .mockResolvedValueOnce({
+        storyVaultPath: '/vaults/Second/Story Vault',
+        notesVaultPath: '/vaults/Second/Notes Vault',
+      });
+
+    const { rerender } = await renderSettingsOnDefault(
+      <SettingsPanel
+        onClose={mockOnClose}
+        initialCategory="vaults"
+        activeVaultRoot="/vaults/First/Story Vault"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('/vaults/First/Story Vault')).toBeInTheDocument();
+    });
+    const callsAfterFirst = mockVaultGetPaths.mock.calls.length;
+    expect(callsAfterFirst).toBeGreaterThanOrEqual(1);
+
+    // Further mount-effect churn must still resolve to First until root changes.
+    mockVaultGetPaths.mockResolvedValue({
+      storyVaultPath: '/vaults/Second/Story Vault',
+      notesVaultPath: '/vaults/Second/Notes Vault',
+    });
+
+    rerender(
+      <SettingsPanel
+        onClose={mockOnClose}
+        initialCategory="vaults"
+        activeVaultRoot="/vaults/Second/Story Vault"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('/vaults/Second/Story Vault')).toBeInTheDocument();
+    });
+    expect(mockVaultGetPaths.mock.calls.length).toBeGreaterThan(callsAfterFirst);
+    expect(screen.queryByText('/vaults/First/Story Vault')).not.toBeInTheDocument();
+  });
 });

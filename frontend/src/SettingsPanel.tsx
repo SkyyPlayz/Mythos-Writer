@@ -380,16 +380,22 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
     first?.focus();
   }, [lgAdvancedOpen]);
 
-  // SKY-9: load currently-persisted vault paths once on mount. The IPC
-  // resolves any unset path to its computed default (Option A) so the input
-  // always shows the value that's actually in effect.
+  // SKY-9 / Critic H6: load vault paths on mount AND when activeVaultRoot
+  // changes while Settings stays open (no remount). Skip when the user has
+  // unsaved local path edits so we don't clobber them mid-edit.
+  const vaultsDirtyRef = useRef(vaultsDirty);
+  vaultsDirtyRef.current = vaultsDirty;
   useEffect(() => {
+    let cancelled = false;
+    if (vaultsDirtyRef.current) return;
     window.api.vaultGetPaths().then((paths) => {
+      if (cancelled || vaultsDirtyRef.current) return;
       setVaults(paths);
     }).catch(() => {
       // non-fatal — leave inputs blank; user can still pick folders
     });
-  }, []);
+    return () => { cancelled = true; };
+  }, [activeVaultRoot]);
 
   const handleMoveVault = useCallback(() => {
     setShowMoveWizard(true);
