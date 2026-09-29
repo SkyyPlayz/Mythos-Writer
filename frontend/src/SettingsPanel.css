@@ -16,14 +16,10 @@
 }
 
 .settings-panel {
-  /* F2#11 glass + F2#8 perf: tint over pre-blurred wallpaper — no live
-     backdrop-filter on the scrolling Settings surface (same see-through
-     read without compositor tax on every scroll). */
-  background:
-    linear-gradient(var(--glass-settings, rgba(13, 16, 28, 0.30)), var(--glass-settings, rgba(13, 16, 28, 0.30))),
-    var(--wp-blur, var(--wp, none));
-  background-size: cover;
-  background-position: var(--wppos, center);
+  /* F2#11/#8: translucent Settings glass over BackgroundStack wallpaper.
+     No live backdrop-filter (scroll FPS); alpha stays glassA+10 (.30 default)
+     so e2e backgroundColor checks still read ~0.30. */
+  background: var(--glass-settings, rgba(13, 16, 28, 0.30));
   border: 1px solid var(--glass-border);
   border-radius: 0;
   width: 100%;
@@ -38,12 +34,7 @@
 
 @supports (backdrop-filter: blur(1px)) {
   .settings-panel {
-    /* Keep glass-settings fill; live blur removed — pre-blur wallpaper above. */
-    background:
-      linear-gradient(var(--glass-settings, rgba(13, 16, 28, 0.30)), var(--glass-settings, rgba(13, 16, 28, 0.30))),
-      var(--wp-blur, var(--wp, none));
-    background-size: cover;
-    background-position: var(--wppos, center);
+    background: var(--glass-settings, rgba(13, 16, 28, 0.30));
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
