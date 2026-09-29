@@ -25,7 +25,7 @@
 // lanes 20px with 3.5px glow lines (6087–6091), world chips 180px / lane 56
 // (6700–6706), progress grey grayscale(.92) brightness(.82) opacity .55
 // (6036), book-focus dim opacity .28 grayscale(.6) (6042), toasts verbatim.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   TimelinesStore,
   TimelineDefinition,
@@ -45,6 +45,11 @@ import {
   resolveStdCalendar,
   toStandard,
 } from './axis/calendarCodec';
+import {
+  GHOST_TAIL_RATIO,
+  dualStampsFor,
+  ghostLabelForWidth,
+} from './axis/stamps';
 import { AXIS_ZOOM_SEGS, axisPct, axisPctL, generateTicks, type AxisZoomSeg } from './axis/ticks';
 import { applyWheelZoom, canvasMinWidth } from './axis/zoom';
 import { characterLanePolicy, stackPoints, stackSpans } from './axis/lanes';
@@ -90,7 +95,13 @@ import {
 import { useToast } from '../hooks/useToast';
 import { Toast } from '../components/Toast/Toast';
 import type { TimelineSelection, TimelineSelectableType } from './panel/selection';
+import DualStampChips from './DualStampChips';
+import SyncLineOverlay from './SyncLineOverlay';
 import './AxisView.css';
+
+/** Slice E lane pitches (03 §7): key-event 112px; world-event 74px. */
+const KEY_EVENT_LANE_PITCH = 112;
+const WORLD_EVENT_LANE_PITCH = 74;
 
 type SelectableType = TimelineSelectableType;
 type AxisSelection = TimelineSelection;
@@ -135,6 +146,15 @@ export interface AxisViewProps {
   /** Flag-card "Jump" — scrolls the canvas to the item with this id; `n`
    *  bumps so repeated jumps to the same id still fire. */
   jumpTarget?: { id: string; n: number } | null;
+  /** Slice E — vertical board zoom percent (40–160). */
+  vZoomPct?: number;
+  /** Slice E — sync playhead when for the active timeline (null = none). */
+  syncWhen?: number | null;
+  /** Slice E — armed-only sync placement. */
+  syncArmed?: boolean;
+  onSyncPlace?: (when: number) => void;
+  onSyncMove?: (when: number) => void;
+  onSyncClear?: () => void;
 }
 
 function newItemId(prefix: string): string {
@@ -163,6 +183,12 @@ export default function AxisView({
   onSelectionChange,
   flaggedItemIds,
   jumpTarget = null,
+  vZoomPct = 100,
+  syncWhen = null,
+  syncArmed = false,
+  onSyncPlace,
+  onSyncMove,
+  onSyncClear,
 }: AxisViewProps) {
   // Local working copy: dragging mutates this for 60fps feedback; persistence
   // flows through IPC and comes back via onStoreChange → props.
@@ -784,6 +810,26 @@ export default function AxisView({
             data-testid="ax-canvas"
             data-min-width={minWidth ?? ''}
           >
+            {/* Slice E — CSS zoom on lanes wrapper so sync overlay + drag scale together */}
+            <div
+              className="ax-lanes-wrap"
+              style={{ zoom: vZoomPct / 100 }}
+              data-testid="ax-lanes-wrap"
+              data-vzoom={vZoomPct}
+            >
+            {onSyncPlace && onSyncMove && onSyncClear && (
+              <SyncLineOverlay
+                store={localStore}
+                active={active}
+                win0={t0}
+                win1={t1}
+                syncWhen={syncWhen}
+                armed={syncArmed}
+                onPlace={onSyncPlace}
+                onMove={onSyncMove}
+                onClear={onSyncClear}
+              />
+            )}
             {/* ── ERAS bar + tick labels ── */}
             <div className="ax-row">
               <button
@@ -894,15 +940,26 @@ export default function AxisView({
                     }
                     return `${calendarSignature(embedTl.calendar)} · ×${r.toFixed(r === Math.round(r) ? 0 : 2)}`;
                   })();
+                  // Slice E v2.4.1 — ghost tail = 1/8 of plotted width (not 34%/~1/3).
+                  const plottedPct = Math.max(4, rightPct - leftPct);
+                  const ghostPct = embedded ? plottedPct * GHOST_TAIL_RATIO : 0;
+                  const ghostHidden = !embedded || rightPct >= 100 || leftPct > 100;
+                  const ghostClampPct = ghostHidden
+                    ? 0
+                    : Math.min(ghostPct, Math.max(0, 100 - rightPct));
+                  // Approximate px for label thresholds (axis ~900px track).
+                  const ghostPxApprox = (ghostClampPct / 100) * 900;
+                  const ghostLbl = ghostHidden ? '' : ghostLabelForWidth(ghostPxApprox);
                   return (
+                    <Fragment key={span.id}>
                     <div
-                      key={span.id}
-                      className={`ax-span${flagCls(span.id)}`}
+                      className={`ax-span${flagCls(span.id)}${embedded ? ' ax-span--embed' : ''}`}
                       style={{
                         left: `${leftPct}%`,
-                        width: `${Math.max(4, rightPct - leftPct)}%`,
+                        width: `${plottedPct}%`,
                         top: `${lane * 50}px`,
-                        background: hexA(col, 0.08),
+                        height: embedded ? 70 : undefined,
+                        background: hexA(col, embedded ? 0.13 : 0.08),
                         border: `1px ${embedded ? 'dashed' : 'solid'} ${hexA(col, 0.5)}`,
                         boxShadow: `inset 0 0 18px ${hexA(col, 0.05)}`,
                         ...greyStyle(false, !focusedBook || span.id === focusedBook.id),
@@ -961,6 +1018,28 @@ export default function AxisView({
                         {embedded ? embedSub : formatWhen(span.startWhen, calendar, t0)}
                       </div>
                     </div>
+                    {embedded && ghostClampPct > 0 && (
+                      <div
+                        className="ax-span-ghost"
+                        style={{
+                          left: `${rightPct}%`,
+                          width: `${ghostClampPct}%`,
+                          top: `${lane * 50}px`,
+                          borderColor: hexA(col, 0.4),
+                          background: `repeating-linear-gradient(125deg, ${hexA(col, 0.07)} 0 6px, transparent 6px 13px)`,
+                        }}
+                        data-testid={`ax-span-ghost-${span.id}`}
+                        data-ghost-ratio={GHOST_TAIL_RATIO}
+                        aria-hidden
+                      >
+                        {ghostLbl && (
+                          <span className="ax-span-ghost-lbl" style={{ color: hexA(col, 0.8) }} data-testid={`ax-ghost-lbl-${span.id}`}>
+                            {ghostLbl}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    </Fragment>
                   );
                 })}
               </div>
@@ -1137,9 +1216,10 @@ export default function AxisView({
               <div
                 className="ax-row-content ax-events"
                 ref={setRowRef('events')}
-                style={{ height: `${(stackedEvents.laneCount - 1) * 92 + 96}px` }}
+                style={{ height: `${(stackedEvents.laneCount - 1) * KEY_EVENT_LANE_PITCH + (KEY_EVENT_LANE_PITCH + 6)}px` }}
                 data-testid="ax-events-row"
                 data-lane-count={stackedEvents.laneCount}
+                data-lane-pitch={KEY_EVENT_LANE_PITCH}
               >
                 {gridlines}
                 {stackedEvents.items.map(({ item: event, leftPct, lane }) => {
@@ -1149,13 +1229,14 @@ export default function AxisView({
                   // The selection outline owns the card's border treatment, so
                   // the reference ring only paints when unselected (mockup 8601).
                   const ringTone = selected ? null : wikiRefRingTone(refBadges);
+                  const stamps = dualStampsFor(event.when, active, localStore.timelines, true, t0);
                   return (
                     <div
                       key={event.id}
                       className={`ax-event${selected ? ' ax-event--selected' : ''}${ringTone ? ` ax-event--refs-${ringTone}` : ''}${flagCls(event.id)}`}
                       style={{
                         left: `${leftPct}%`,
-                        top: `${lane * 92}px`,
+                        top: `${lane * KEY_EVENT_LANE_PITCH}px`,
                         ...(flash && !selected
                           ? { border: '1px dashed rgba(255,211,25,.5)' }
                           : {}),
@@ -1186,6 +1267,11 @@ export default function AxisView({
                           </span>
                         )}
                       </div>
+                      <DualStampChips
+                        local={stamps.local}
+                        standard={stamps.standard}
+                        testId={`ax-event-stamps-${event.id}`}
+                      />
                       {event.summary && (
                         <TimelineWikiText
                           className="ax-event-desc"
@@ -1350,21 +1436,23 @@ export default function AxisView({
                 <div
                   className="ax-row-content ax-world"
                   ref={setRowRef('world')}
-                  style={{ height: `${(stackedWorld.laneCount - 1) * 56 + 56}px` }}
+                  style={{ height: `${(stackedWorld.laneCount - 1) * WORLD_EVENT_LANE_PITCH + WORLD_EVENT_LANE_PITCH}px` }}
                   data-testid="ax-world-row"
                   data-lane-count={stackedWorld.laneCount}
+                  data-lane-pitch={WORLD_EVENT_LANE_PITCH}
                 >
                   {gridlines}
                   {stackedWorld.items.map(({ item: event, leftPct, lane }, i) => {
                     const col = laneColor(i);
                     const day = safeDecodeWhen(event.when, calendar, t0);
+                    const stamps = dualStampsFor(event.when, active, localStore.timelines, false, t0);
                     return (
                       <div
                         key={event.id}
                         className={`ax-world-chip${flagCls(event.id)}`}
                         style={{
                           left: `${leftPct}%`,
-                          top: `${lane * 56}px`,
+                          top: `${lane * WORLD_EVENT_LANE_PITCH}px`,
                           border: `1px solid ${hexA(col, 0.4)}`,
                           ...selRing('event', event.id, col),
                         }}
@@ -1379,6 +1467,11 @@ export default function AxisView({
                           {`Y${day.year} · D${day.day}`}
                         </div>
                         <div className="ax-world-title">{event.name}</div>
+                        <DualStampChips
+                          local={stamps.local}
+                          standard={stamps.standard}
+                          testId={`ax-world-stamps-${event.id}`}
+                        />
                       </div>
                     );
                   })}
@@ -1503,6 +1596,7 @@ export default function AxisView({
             <button type="button" className="ax-add-crow" onClick={addCustomRow} data-testid="ax-add-crow">
               + Custom row
             </button>
+            </div>{/* ax-lanes-wrap */}
           </div>
         </div>
 

@@ -116,11 +116,41 @@
   outline-offset: 2px;
 }
 
-/* ─── Card grid (prototype 575: auto-fill minmax(218px,1fr), 10px gap) ─── */
+/* ─── Card grid (Slice E: resizable via --msv-card-min; default 218px) ─── */
+
+.scene-grid__resize {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: #aebad0;
+}
+
+.scene-grid__resize label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.scene-grid__resize input[type='range'] {
+  width: 120px;
+}
+
+.scene-grid__resize-reset {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  color: #dbe4f5;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  cursor: pointer;
+}
 
 .chapter-section__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(218px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--msv-card-min, 218px), 1fr));
   gap: 10px;
   align-content: flex-start;
 }

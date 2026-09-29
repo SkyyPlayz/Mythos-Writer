@@ -1,0 +1,29 @@
+.tl-stamps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.tl-stamp {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 8.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 2px 5px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+.tl-stamp--local {
+  color: #cdd8ea;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tl-stamp--std {
+  color: var(--n1, #00f0ff);
+  background: var(--gs1, rgba(0, 240, 255, 0.1));
+  border: 1px solid var(--b1, rgba(0, 240, 255, 0.35));
+}

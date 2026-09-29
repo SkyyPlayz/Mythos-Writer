@@ -19,9 +19,11 @@ import type {
 } from '../../timelinesTypes';
 import type { InspectorTarget, TimelineSelectableType } from './selection';
 import { formatWhen, roundWhen, whenPerYear } from '../axis/calendarCodec';
+import { dualStampsFor } from '../axis/stamps';
 import { LANE_PALETTE } from '../axis/palette';
 import { DraftNumberInput, DraftTextInput } from './DraftInput';
 import { TimelineWikiText } from '../TimelineWikiText';
+import DualStampChips from '../DualStampChips';
 
 type AnyItem = TimelineEra | TimelineSpan | TimelineEvent;
 
@@ -352,13 +354,20 @@ function LaneItemEditor(props: InspectorTabProps & { target: Extract<InspectorTa
 /* ── Event editor (prototype evDetail / tlEvEd, 3408–3460) ── */
 
 function EventEditor(props: InspectorTabProps & { event: TimelineEvent }) {
-  const { event, calendar, fallbackWhen, onLocalMutate, onPersist, onDelete, onOpenExactTime, onClose } = props;
+  const {
+    event, calendar, fallbackWhen, onLocalMutate, onPersist, onDelete, onOpenExactTime, onClose,
+    timelines, activeTimelineId,
+  } = props;
   const [editing, setEditing] = useState(false);
   const save = (next: TimelineEvent) => {
     onLocalMutate('event', next);
     onPersist('event', next);
   };
   const whenLabel = formatWhen(event.when, calendar, fallbackWhen);
+  const activeTl = timelines.find((t) => t.id === activeTimelineId) ?? timelines[0];
+  const stamps = activeTl
+    ? dualStampsFor(event.when, activeTl, timelines, true, fallbackWhen)
+    : null;
   const impactChips = (event.impact ?? '')
     .split(',')
     .map((chip) => chip.trim())
@@ -485,6 +494,33 @@ function EventEditor(props: InspectorTabProps & { event: TimelineEvent }) {
               <div className="trp-static-row"><span>Chapter</span><span>Ch. {event.chapter}</span></div>
             )}
             <div className="trp-static-row"><span>Date</span><span>{whenLabel}</span></div>
+            {stamps && (
+              stamps.isStandardTimeline ? (
+                <div className="trp-static-row" data-testid="trp-event-std-stamp">
+                  <span>Standard stamp</span>
+                  <span>{stamps.standard}</span>
+                </div>
+              ) : (
+                <>
+                  <div className="trp-static-row" data-testid="trp-event-local-stamp">
+                    <span>Local stamp</span>
+                    <span>{stamps.local}</span>
+                  </div>
+                  <div className="trp-static-row" data-testid="trp-event-std-stamp">
+                    <span>Standard stamp</span>
+                    <span>{stamps.standard}</span>
+                  </div>
+                </>
+              )
+            )}
+            {stamps && (
+              <DualStampChips
+                local={stamps.local}
+                standard={stamps.standard}
+                standardOnly={stamps.isStandardTimeline}
+                testId="trp-event-dual-stamps"
+              />
+            )}
             {event.location && (
               <div className="trp-static-row"><span>Location</span><span>{event.location}</span></div>
             )}

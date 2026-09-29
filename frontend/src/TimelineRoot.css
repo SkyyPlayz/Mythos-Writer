@@ -171,6 +171,82 @@
   color: #fff;
 }
 
+/* Slice E — vertical board zoom pill */
+.tlr-vzoom {
+  display: flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  gap: 2px;
+}
+
+.tlr-vzoom-btn {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: #aebad0;
+  cursor: pointer;
+  border-radius: 7px;
+  font-size: 14px;
+  line-height: 1;
+  font: inherit;
+}
+
+.tlr-vzoom-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.tlr-vzoom-pct {
+  min-width: 36px;
+  border: none;
+  background: transparent;
+  color: #dbe4f5;
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.tlr-vzoom-pct:hover {
+  color: #fff;
+}
+
+/* Slice E — Drop sync line pill */
+.tlr-sync-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: none;
+  color: #cdd8ea;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tlr-sync-btn--armed {
+  background: var(--n1, #00f0ff);
+  color: #0b0d17;
+  border-color: transparent;
+  box-shadow: 0 0 16px -3px var(--n1, #00f0ff);
+}
+
+.tlr-sync-btn--placed {
+  color: #ff9db4;
+  border-color: rgba(255, 157, 180, 0.45);
+}
+
 /* ═══ Beta 4 M23 — toolbar filters, Templates ▾, left focus panel ═══ */
 
 /* Filter selects (prototype 1938–1945) */

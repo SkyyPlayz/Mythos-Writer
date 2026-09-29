@@ -1,10 +1,7 @@
-// Beta 4 M25 — Timeline right panel (§8.6): tabs Inspector · Brainstorm ·
-// Archive. Any click on a timeline item selects into the Inspector tab
-// (§14.5) — TimelineRoot owns the selection and forces this tab open on
-// select. This panel hosts the exact-time picker and calendar editor modals
-// for the Inspector's editors (absorbing AxisView's M22 mini inspector).
-import { useState, useEffect } from 'react';
-import { useAiEnabled } from '../../hooks/useAiEnabled';
+// Beta 4 M25 — Timeline right panel (§8.6).
+// Slice E / 03 v2.4.1: tabs are **Inspector · <partner name>** only.
+// Separate Archivist tab is gone; Idea Board lives under Boards (not Timeline).
+import { useState } from 'react';
 import type {
   TimelineDefinition,
   TimelineEra,
@@ -20,19 +17,12 @@ import { plotlineRows } from '../axis/storyLanes';
 import ExactTimeModal from '../ExactTimeModal';
 import CalendarEditorModal from '../CalendarEditorModal';
 import InspectorTab from './InspectorTab';
-import BrainstormTab from './BrainstormTab';
 import type { RecentAutoAdd } from './ArchiveTab';
 import './TimelineRightPanel.css';
 
-export type TimelineRightTab = 'inspector' | 'brainstorm' | 'archive';
+export type TimelineRightTab = 'inspector' | 'partner';
 
 type AnyItem = TimelineEra | TimelineSpan | TimelineEvent;
-
-const ALL_TABS: { value: TimelineRightTab; label: string; requiresAi?: true }[] = [
-  { value: 'inspector', label: 'Ivy' },
-  { value: 'brainstorm', label: 'Idea Board', requiresAi: true },
-  // S2-6: Archivist / Archive tab removed — Ivy (Inspector) remains.
-];
 
 export interface TimelineRightPanelProps {
   /** SKY-7956: panel width in px, clamped by the caller to the prototype's 250-430 range. */
@@ -43,6 +33,8 @@ export interface TimelineRightPanelProps {
   onSelectionChange: (selection: TimelineSelection | null) => void;
   tab: TimelineRightTab;
   onTabChange: (tab: TimelineRightTab) => void;
+  /** Slice E — Writing partner display name for the partner tab label. */
+  partnerName?: string;
   /** Ordered chapter labels (scene-card CHAPTER select). */
   chapterLabels: string[];
   /** Re-plot a card onto a chapter's date (0-based index). */
@@ -55,10 +47,9 @@ export interface TimelineRightPanelProps {
     presetLabel?: string,
   ) => void;
   showToast: (message: string, level?: 'info' | 'warn' | 'error') => void;
-  // ── Brainstorm tab ──
   /** Jump to a NEEDS-FILLING-OUT / flag target on the canvas. */
   onJumpTo: (itemId: string) => void;
-  // ── Archive tab ──
+  // ── Archive hand (lives inside partner; no separate Archivist tab) ──
   flags: TimelineFlag[];
   recentAutoAdds: RecentAutoAdd[];
   onQuickAdd: (text: string) => Promise<void>;
@@ -67,8 +58,7 @@ export interface TimelineRightPanelProps {
   archiveBusy: boolean;
   /** SKY-10876 M12.B4b: "Rebuild my timeline" command (manuscript-driven). */
   onRebuildTimeline?: () => void;
-  /** SKY-10876: true only while the rebuild (not the quick-add) is in flight,
-   *  so the Rebuild button owns the "Rebuilding…" verb by itself. */
+  /** SKY-10876: true only while the rebuild (not the quick-add) is in flight. */
   rebuilding?: boolean;
 }
 
@@ -81,17 +71,13 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
     tab,
     onTabChange,
     onCalendarChange,
+    partnerName = 'Mythos',
   } = props;
 
-  const aiEnabled = useAiEnabled();
-  const visibleTabs = ALL_TABS.filter((t) => !t.requiresAi || aiEnabled);
-
-  // Redirect to Ivy (Inspector) if the active tab becomes unavailable when AI is toggled off.
-  useEffect(() => {
-    if (!aiEnabled && (tab === 'brainstorm' || tab === 'archive')) {
-      onTabChange('inspector');
-    }
-  }, [aiEnabled, tab, onTabChange]);
+  const tabs: { value: TimelineRightTab; label: string }[] = [
+    { value: 'inspector', label: 'Inspector' },
+    { value: 'partner', label: partnerName },
+  ];
 
   const [exactTimeOpen, setExactTimeOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
@@ -108,7 +94,6 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
       props.onLocalMutate('event', next);
       props.onPersist('event', next);
     } else if (target.type !== 'event' && result.startWhen != null && result.endWhen != null) {
-      // The store rejects end ≤ start — keep at least one tick apart.
       const endWhen =
         result.endWhen > result.startWhen ? result.endWhen : roundWhen(result.startWhen + 0.1);
       const next = {
@@ -131,7 +116,7 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
       data-testid="timeline-right-panel"
     >
       <div className="trp-tabs" role="tablist" aria-label="Timeline panel tabs">
-        {visibleTabs.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.value}
             type="button"
@@ -164,10 +149,41 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
             onClose={() => onSelectionChange(null)}
           />
         )}
-        {tab === 'brainstorm' && (
-          <BrainstormTab store={store} activeTimelineId={activeTimeline.id} onJumpTo={props.onJumpTo} showToast={props.showToast} />
+        {tab === 'partner' && (
+          <div className="trp-partner-hand" data-testid="trp-partner-panel">
+            <p className="trp-partner-note">
+              {partnerName}&apos;s Archivist hand owns the needs-fleshing-out queue.
+              Open the partner panel from the shell to chat — Idea Board lives under Boards.
+            </p>
+            {props.flags.length > 0 && (
+              <div className="trp-partner-flags" data-testid="trp-partner-flags">
+                <div className="trp-section-label">FLAGS</div>
+                {props.flags.slice(0, 8).map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className="trp-flag-row"
+                    onClick={() => props.onJumpTo(f.affectedItemId || f.id)}
+                    data-testid={`trp-flag-${f.id}`}
+                  >
+                    {f.description || f.anchor || f.id}
+                  </button>
+                ))}
+              </div>
+            )}
+            {props.onRebuildTimeline && (
+              <button
+                type="button"
+                className="trp-rebuild"
+                onClick={props.onRebuildTimeline}
+                disabled={props.rebuilding || props.archiveBusy}
+                data-testid="trp-rebuild"
+              >
+                {props.rebuilding ? 'Rebuilding…' : 'Rebuild my timeline'}
+              </button>
+            )}
+          </div>
         )}
-        {/* S2-6: Archive tab body removed with Archivist. */}
       </div>
 
       {exactTimeOpen && target && (

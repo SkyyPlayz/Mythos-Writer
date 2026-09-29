@@ -3,7 +3,7 @@
 // pin the tab strip, the three Inspector editors, and the exact-time →
 // calendar-editor modal chain (AC2).
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import { setAiEnabled, __resetAiEnabledForTests } from '../../hooks/useAiEnabled';
 import type { TimelinesStore } from '../../timelinesTypes';
@@ -73,16 +73,17 @@ beforeEach(() => {
 });
 afterEach(() => cleanup());
 
-describe('tab strip (§8.6 / S2-6)', () => {
-  it('renders Ivy + Idea Board tabs and reports switches', () => {
-    const props = makeProps();
+describe('tab strip (Slice E / 03 v2.4.1)', () => {
+  it('renders Inspector · partner tabs only — no Archivist / Idea Board', () => {
+    const props = makeProps({ partnerName: 'Mythos' });
     render(<TimelineRightPanel {...props} />);
     expect(screen.getByTestId('trp-tab-inspector')).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByTestId('trp-tab-inspector')).toHaveTextContent('Ivy');
-    expect(screen.getByTestId('trp-tab-brainstorm')).toHaveTextContent('Idea Board');
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveTextContent('Inspector');
+    expect(screen.getByTestId('trp-tab-partner')).toHaveTextContent('Mythos');
     expect(screen.queryByTestId('trp-tab-archive')).toBeNull();
-    fireEvent.click(screen.getByTestId('trp-tab-brainstorm'));
-    expect(props.onTabChange).toHaveBeenCalledWith('brainstorm');
+    expect(screen.queryByTestId('trp-tab-brainstorm')).toBeNull();
+    fireEvent.click(screen.getByTestId('trp-tab-partner'));
+    expect(props.onTabChange).toHaveBeenCalledWith('partner');
   });
 
   it('Inspector with nothing selected explains itself', () => {
@@ -234,44 +235,24 @@ describe('scene-card editor', () => {
   });
 });
 
-describe('AI master toggle gating (M11c / S2-6)', () => {
-  it('shows Ivy + Idea Board when AI is enabled (no Archive tab)', () => {
+describe('Slice E Soft-FAIL: no Archivist / Idea Board tabs on Timeline', () => {
+  it('keeps Inspector · partner regardless of AI toggle', () => {
     setAiEnabled(true);
-    render(<TimelineRightPanel {...makeProps()} />);
-    expect(screen.getByTestId('trp-tab-inspector')).toHaveTextContent('Ivy');
-    expect(screen.getByTestId('trp-tab-brainstorm')).toHaveTextContent('Idea Board');
+    render(<TimelineRightPanel {...makeProps({ partnerName: 'Mythos' })} />);
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveTextContent('Inspector');
+    expect(screen.getByTestId('trp-tab-partner')).toHaveTextContent('Mythos');
     expect(screen.queryByTestId('trp-tab-archive')).toBeNull();
-  });
-
-  it('hides Idea Board when AI is disabled; Ivy remains', () => {
-    setAiEnabled(false);
-    render(<TimelineRightPanel {...makeProps()} />);
-    expect(screen.getByTestId('trp-tab-inspector')).toBeInTheDocument();
     expect(screen.queryByTestId('trp-tab-brainstorm')).toBeNull();
-    expect(screen.queryByTestId('trp-tab-archive')).toBeNull();
+    cleanup();
+    setAiEnabled(false);
+    render(<TimelineRightPanel {...makeProps({ partnerName: 'Mythos' })} />);
+    expect(screen.getByTestId('trp-tab-inspector')).toBeInTheDocument();
+    expect(screen.getByTestId('trp-tab-partner')).toBeInTheDocument();
+    expect(screen.queryByTestId('trp-tab-brainstorm')).toBeNull();
   });
 
-  it('redirects to Ivy when AI is toggled off while Idea Board is active', () => {
-    setAiEnabled(true);
-    const props = makeProps({ tab: 'brainstorm' });
-    render(<TimelineRightPanel {...props} />);
-    act(() => setAiEnabled(false));
-    expect(props.onTabChange).toHaveBeenCalledWith('inspector');
-  });
-
-  it('redirects to Ivy when a stale Archive tab is active and AI is toggled off', () => {
-    setAiEnabled(true);
-    const props = makeProps({ tab: 'archive' });
-    render(<TimelineRightPanel {...props} />);
-    act(() => setAiEnabled(false));
-    expect(props.onTabChange).toHaveBeenCalledWith('inspector');
-  });
-
-  it('does not redirect when Ivy is active and AI is toggled off', () => {
-    setAiEnabled(true);
-    const props = makeProps({ tab: 'inspector' });
-    render(<TimelineRightPanel {...props} />);
-    act(() => setAiEnabled(false));
-    expect(props.onTabChange).not.toHaveBeenCalled();
+  it('partner tab body notes Idea Board lives under Boards', () => {
+    render(<TimelineRightPanel {...makeProps({ tab: 'partner', partnerName: 'Mythos' })} />);
+    expect(screen.getByTestId('trp-partner-panel')).toHaveTextContent(/Idea Board lives under Boards/);
   });
 });

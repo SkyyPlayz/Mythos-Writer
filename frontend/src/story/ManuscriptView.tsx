@@ -2184,17 +2184,45 @@ export default function ManuscriptView({
                     : `${rulerDrag?.px ?? pageW} px page`}
                 </div>
               )}
-              {/* SKY-11357: book title at the very top of the manuscript — the
-                  Book-view title minus its page-header padding/rule, so it
-                  reads as part of the manuscript sheet, not a separate block. */}
-              {story.title && (
-                <div
-                  className="msv-manuscript-title"
-                  role="heading"
-                  aria-level={1}
-                  data-testid="msv-manuscript-title"
-                >
-                  {story.title}
+              {/* Slice E / SKY-11357: Full Book editable book-title block
+                  (THE BOOK + 2.5em Lora title). Persists via onRenameStory and
+                  bookTitles map (vault+story). */}
+              {(story.title || onRenameStory) && (
+                <div className="msv-book-title-block" data-testid="msv-book-title-block">
+                  <div className="msv-book-title-eyebrow">THE BOOK</div>
+                  {onRenameStory ? (
+                    <div
+                      className="msv-manuscript-title"
+                      role="heading"
+                      aria-level={1}
+                      contentEditable
+                      suppressContentEditableWarning
+                      data-testid="msv-manuscript-title"
+                      onBlur={(e) => {
+                        const next = (e.currentTarget.textContent ?? '').trim();
+                        if (next && next !== story.title) onRenameStory(next);
+                        else e.currentTarget.textContent = story.title || 'Untitled';
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          (e.currentTarget as HTMLElement).blur();
+                        }
+                      }}
+                    >
+                      {story.title || 'Untitled'}
+                    </div>
+                  ) : (
+                    <div
+                      className="msv-manuscript-title"
+                      role="heading"
+                      aria-level={1}
+                      data-testid="msv-manuscript-title"
+                    >
+                      {story.title}
+                    </div>
+                  )}
+                  <div className="msv-book-title-rule" aria-hidden="true" />
                 </div>
               )}
               <div style={{ height: topPad }} data-testid="msv-spacer-top" aria-hidden="true" />

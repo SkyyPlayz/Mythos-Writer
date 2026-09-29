@@ -510,15 +510,24 @@
 
 .msv-sheet {
   position: relative;
-  background: rgba(10, 13, 24, 0.66);
-  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.5));
+  background: var(--page-bg-fill, rgba(10, 13, 24, 0.66));
+  border: var(--bw, 1px) solid var(--page-bg-sheet-border, var(--b2, rgba(155, 95, 255, 0.5)));
   border-radius: 12px;
-  box-shadow:
+  box-shadow: var(
+    --page-bg-sheet-shadow,
     0 0 var(--gr, 26px) -7px var(--g2, rgba(155, 95, 255, 0.4)),
-    0 18px 60px rgba(2, 4, 10, 0.55);
+    0 18px 60px rgba(2, 4, 10, 0.55)
+  );
   padding: 64px 84px 90px;
   /* A1 / 09 §2.5: cancel uiFont so text-size never resizes manuscript type */
   zoom: var(--ln-ms-zoom, 1);
+}
+
+/* Slice E: opacity 0% — no fill/shadow/inset/border; Neon frame tokens may still tint via --bw */
+:root[data-page-opacity='0'] .msv-sheet {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 /* ── page-edge drag handles + width badge (prototype 861–868) ── */
@@ -898,13 +907,39 @@
       book title outranks every part in the document. Own msv-* class so
       Book view's book-preview__* rules stay untouched. ── */
 
+.msv-book-title-block {
+  text-align: center;
+  margin: 0 0 1.1em;
+}
+
+.msv-book-title-eyebrow {
+  font-size: 0.68em;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  color: #8e9db8;
+  margin-bottom: 0.35em;
+}
+
 .msv-manuscript-title {
   text-align: center;
-  font-size: 2.2em;
+  font-family: 'Lora', Georgia, serif;
+  font-size: 2.5em;
   font-weight: 600;
   color: var(--txH, #eef2fb);
   line-height: 1.2;
-  margin: 0 0 0.5em;
+  margin: 0;
+  outline: none;
+}
+
+.msv-manuscript-title:focus {
+  box-shadow: inset 0 -1px 0 var(--b1, rgba(0, 240, 255, 0.45));
+}
+
+.msv-book-title-rule {
+  height: 1px;
+  margin: 0.7em auto 0;
+  max-width: 42%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.28), transparent);
 }
 
 /* ── M2 (SKY-9017): Part heading (H1), chapter/part epigraph, note affordance ── */
