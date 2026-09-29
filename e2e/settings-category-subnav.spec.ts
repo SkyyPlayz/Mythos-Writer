@@ -114,13 +114,14 @@ test.afterEach(async () => {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-test('SKY-10668: renders the 8-category sub-nav in prototype order, account last', async () => {
-  // Owner-requested prototype order (SKY-10668); `Account & profile` is kept
-  // and placed last by owner ruling (Skyy, 2026-08-19).
+test('SKY-10668: renders the Settings sub-nav in Slice C order, account last', async () => {
+  // Slice C: AI Agents → Writing partner + Model & keys. Account & profile
+  // stays last by owner ruling (Skyy, 2026-08-19, SKY-10668 change 3).
   const tabs = page.locator('.settings-cat-nav [role="tab"]');
   await expect(tabs).toHaveText([
     'Appearance',
-    'AI Agents',
+    'Writing partner',
+    'Model & keys',
     'Editor',
     'Vault & Files',
     'Sync & Backup',
@@ -173,7 +174,7 @@ test('category tabs are keyboard reachable and activatable via arrow keys', asyn
   const nav = page.locator('.settings-cat-nav');
   await expect(nav).toHaveAttribute('role', 'tablist');
 
-  // Activate AI Agents (index 1), then arrow-right to Editor (index 2).
+  // Activate Model & keys, then arrow-right to Editor (next sibling).
   const agentsTab = page.locator('[data-testid="settings-cat-agents"]');
   await agentsTab.click();
   await agentsTab.focus();

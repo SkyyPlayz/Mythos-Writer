@@ -196,11 +196,13 @@ export default function ModelKeysSection({
     <div className="mk-settings" data-testid="model-keys-page">
       <section
         className="settings-section mk-card"
-        aria-labelledby="section-providers"
+        aria-labelledby="section-provider-buckets"
         data-settings-cat="agents"
         data-testid="mk-provider-buckets"
       >
-        <h3 className="settings-section-title" id="section-providers">PROVIDER CONFIGURATION</h3>
+        {/* Distinct id from legacy ProviderSection (section-providers) so E2E
+            getByRole('heading', { name: 'Provider Configuration' }) stays unique. */}
+        <h3 className="settings-section-title" id="section-provider-buckets">PROVIDER BUCKETS</h3>
         <p className="mk-honest" data-testid="mk-byo-copy">
           Bring your own AI. A Mythos subscription is <strong>not</strong> a Claude — or any other — AI
           subscription: you connect your own login or key. Your vault and manuscript stay on this computer.

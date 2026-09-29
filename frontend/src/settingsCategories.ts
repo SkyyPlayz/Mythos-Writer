@@ -71,6 +71,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     sectionIds: [
       'section-ai-master',
       'section-transcript-placement',
+      'section-provider-buckets',
       'section-providers',
       // Soft-FAIL: AgentsSection.tsx still defines section-agents (unmounted);
       // production roles ship via ProductionRolesSection.
