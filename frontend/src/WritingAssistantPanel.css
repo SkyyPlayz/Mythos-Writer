@@ -19,13 +19,11 @@
   border-radius: var(--radius-lg, 12px);
 }
 
-/* AC-WA-2: Liquid Neon panel header — layout from PanelChrome (.pc-header) */
+/* AC-WA-2: Liquid Neon panel header — layout from PanelChrome (.pc-header).
+   F2#12: horizontal pad only so the shared 36px top-bar height holds. */
 .writing-assistant-header,
-/* W0.3 (GAP P0#3): prototype right-panel spacing — 12px padding, 8px gaps
-   (gap comes from .pc-header). Rows wrap at 280–320px so the header
-   controls never overlap the title. */
 .wa-panel-header {
-  padding: 12px 12px 8px;
+  padding: 0 12px;
 }
 
 .wa-sparkle-icon {

@@ -2464,9 +2464,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [persistTabShell]);
 
   const handleOpenContinuityEntityNote = useCallback((notePath: string) => {
-    setSelectedScene(null);
-    setSelectedChapter(null);
-    setSelectedStory(null);
+    // F2 CI-FIX / TC-CP-06: keep Story selection when Notes takes the note.
+    // Story tabpanel is keep-mounted (B7); clearing selectedScene while
+    // openedNotePath is set mounts a second NoteViewer in the hidden Story
+    // panel → dual `.note-tiptap-content` (strict-mode) + double-flush risk.
+    // Same root cause F1 gate at 80c88bfc — expect converge-on-rebase, not a
+    // behavioral fork (do not cherry-pick that hunk; this is F2's own fix).
     setSelectedEntity(null);
     setOpenedNotePath(notePath);
     handleNotesSubViewChange('editor');
@@ -7059,8 +7062,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 // permanently disabling the "Connections" backlink buttons.
                 onOpenEntity={handleEntityMentionClick}
               />
-            ) : openedNotePath ? (
-              // SKY-204: vault note viewer (daily notes and any other .md file)
+            ) : openedNotePath && tabShell.activeTab === 'story' ? (
+              // SKY-204: Story-tab vault note only. NotesTabPanel owns the
+              // editor on the Notes tab — a keep-mounted Story NoteViewer for
+              // the same path duplicates `.note-tiptap-content` (TC-CP-06).
+              // F1 80c88bfc has the same gate; rebase should converge.
               <NoteViewer
                 key={openedNotePath}
                 path={openedNotePath}
