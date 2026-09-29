@@ -737,6 +737,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Pending scroll to apply in useLayoutEffect on the paint that reveals
   // the story editor — avoids a blank/scrolled-to-top first frame.
   const pendingStoryEditorScrollRef = useRef<number | null>(null);
+  // Live last story-editor stop (incl. scroll). Updated while the editor is
+  // visible and frozen *before* tab/view leave — nav-history's push-effect
+  // freezes scroll too late (after display:none), which zeroes scrollTop.
+  const lastStoryEditorLocRef = useRef<NavigationLocation | null>(null);
   // Keep ManuscriptView mounted (display:none) after first editor visit so
   // Crafter/Timeline → Story Writer does not remount into a blank frame.
   const [keepStoryEditorMounted, setKeepStoryEditorMounted] = useState(false);
@@ -2205,6 +2209,22 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, []);
 
   const handleTabChange = useCallback((tab: AppTab) => {
+    // F2#7: freeze story-editor scroll BEFORE the story panel goes
+    // display:none (which zeroes scrollTop in Chromium before nav-history
+    // can capture it).
+    if (
+      tab !== 'story' &&
+      tabShellRef.current.activeTab === 'story' &&
+      tabShellRef.current.storySubView === 'editor'
+    ) {
+      const el = document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+      if (el && lastStoryEditorLocRef.current) {
+        lastStoryEditorLocRef.current = {
+          ...lastStoryEditorLocRef.current,
+          scrollTop: el.scrollTop,
+        };
+      }
+    }
     if (tab !== 'brainstorm') {
       setBrainstormSeedPrompt(null);
     }
@@ -2460,6 +2480,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-1698: Selecting a built-in view clears any active docked tab (they're mutually exclusive).
   // SKY-2094: also persists story sub-view to tab shell state.
   const handleSetView = useCallback((v: StorySubView) => {
+    // F2#7: freeze scroll before unhiding Crafter/Timeline over the keep-alive
+    // editor (display:none zeros scrollTop).
+    if (
+      v !== 'editor' &&
+      tabShellRef.current.activeTab === 'story' &&
+      tabShellRef.current.storySubView === 'editor'
+    ) {
+      const el = document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+      if (el && lastStoryEditorLocRef.current) {
+        lastStoryEditorLocRef.current = {
+          ...lastStoryEditorLocRef.current,
+          scrollTop: el.scrollTop,
+        };
+      }
+    }
     setView(v);
     setActiveDockedTabId(null);
     const next = { ...tabShellRef.current, storySubView: v };
@@ -5095,11 +5130,36 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     ) {
       return false;
     }
-    const last = findLastStoryEditorLocation(navHistory.getSnapshot());
+    const remembered = lastStoryEditorLocRef.current;
+    const fromHistory = findLastStoryEditorLocation(navHistory.getSnapshot());
+    // Prefer the live freeze (correct scrollTop); fall back to nav-history.
+    const last = remembered && isStoryEditorLocation(remembered)
+      ? remembered
+      : fromHistory;
     if (!last || !isStoryEditorLocation(last)) return false;
     applyNavLocation(last);
     return true;
   };
+
+  // F2#7: track live story-editor location + scroll while visible.
+  useLayoutEffect(() => {
+    if (tabShell.activeTab !== 'story' || view !== 'editor') return;
+    const el = splitWindowEnabled
+      ? document.querySelector<HTMLElement>(`[data-testid="split-pane-${focusedPane}"] .spe-content`)
+      : document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+    if (!el) return;
+    const capture = () => {
+      lastStoryEditorLocRef.current = {
+        ...currentNavLocation,
+        scrollTop: el.scrollTop,
+      };
+    };
+    capture();
+    el.addEventListener('scroll', capture, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', capture);
+    };
+  }, [tabShell.activeTab, view, splitWindowEnabled, focusedPane, currentNavLocation]);
 
   // F2#7: apply pending story scroll in the same layout pass that reveals the
   // editor, so first paint after the rail click shows story content at the

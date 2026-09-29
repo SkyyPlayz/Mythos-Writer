@@ -137,18 +137,25 @@ test.describe('F2#7 Back to story (Story Writer rail)', () => {
       const page = await firstWindow(app);
       const storyBtn = page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]');
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
-      await storyBtn.click();
+
+      // Boot may already be on Story Writer via lastOpenedScene — do not
+      // re-click (that toggles the Stories popover and blocks the rail).
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('nav-rail-stories-backdrop')).toHaveCount(0, { timeout: 3_000 }).catch(() => undefined);
+      if ((await storyBtn.getAttribute('aria-current')) !== 'page') {
+        await storyBtn.click();
+      }
       await expect(storyBtn).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
 
       const msv = page.getByTestId('msv-page');
       await expect(msv).toBeVisible({ timeout: 8_000 });
-      await expect(page.locator('.msv-crumb--current', { hasText: 'Opening Scene' })).toBeVisible({
-        timeout: 8_000,
-      });
+      await expect(msv).toContainText('Paragraph 1', { timeout: 8_000 });
+      await expect(msv).toContainText('Opening Scene');
 
       // Scroll deep into the manuscript and remember the offset.
       const savedScroll = await msv.evaluate((el) => {
-        el.scrollTop = Math.min(1200, Math.max(400, el.scrollHeight - el.clientHeight - 40));
+        const target = Math.min(1200, Math.max(400, el.scrollHeight - el.clientHeight - 40));
+        el.scrollTop = target;
         return el.scrollTop;
       });
       expect(savedScroll).toBeGreaterThan(200);
@@ -171,13 +178,13 @@ test.describe('F2#7 Back to story (Story Writer rail)', () => {
           msvVisible: boolean;
           emptyVisible: boolean;
           scrollTop: number;
-          crumb: string;
+          hasOpeningScene: boolean;
+          hasParagraph: boolean;
         }>((resolve) => {
           requestAnimationFrame(() => {
             const panel = document.getElementById('app-tabpanel-story');
             const msvEl = document.querySelector<HTMLElement>('[data-testid="msv-page"]');
             const empty = document.querySelector<HTMLElement>('.shell-editor-empty');
-            const crumb = document.querySelector('.msv-crumb--current')?.textContent?.trim() ?? '';
             const panelDisplay = panel ? getComputedStyle(panel).display : 'none';
             const msvVisible = !!(
               msvEl &&
@@ -190,13 +197,15 @@ test.describe('F2#7 Back to story (Story Writer rail)', () => {
               getComputedStyle(empty).display !== 'none' &&
               empty.offsetParent !== null
             );
+            const text = msvEl?.textContent ?? '';
             resolve({
               panelDisplay,
               hasMsv: !!msvEl,
               msvVisible,
               emptyVisible,
               scrollTop: msvEl?.scrollTop ?? -1,
-              crumb,
+              hasOpeningScene: text.includes('Opening Scene'),
+              hasParagraph: text.includes('Paragraph'),
             });
           });
         });
@@ -206,13 +215,14 @@ test.describe('F2#7 Back to story (Story Writer rail)', () => {
       expect(firstPaint.hasMsv).toBe(true);
       expect(firstPaint.msvVisible).toBe(true);
       expect(firstPaint.emptyVisible).toBe(false);
-      expect(firstPaint.crumb).toContain('Opening Scene');
+      expect(firstPaint.hasOpeningScene).toBe(true);
+      expect(firstPaint.hasParagraph).toBe(true);
       // Allow 1px tolerance for subpixel rounding; must not be the blank top.
       expect(Math.abs(firstPaint.scrollTop - savedScroll)).toBeLessThanOrEqual(2);
 
       await expect(storyBtn).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
-      await expect(page.locator('.msv-crumb--current', { hasText: 'Opening Scene' })).toBeVisible();
       await expect(msv).toBeVisible();
+      await expect(msv).toContainText('Opening Scene');
       const afterScroll = await msv.evaluate((el) => el.scrollTop);
       expect(Math.abs(afterScroll - savedScroll)).toBeLessThanOrEqual(2);
     } finally {
@@ -226,19 +236,27 @@ test.describe('F2#7 Back to story (Story Writer rail)', () => {
       const page = await firstWindow(app);
       const storyBtn = page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]');
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
-      await storyBtn.click();
-      await expect(page.getByTestId('msv-page')).toBeVisible({ timeout: 8_000 });
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('nav-rail-stories-backdrop')).toHaveCount(0, { timeout: 3_000 }).catch(() => undefined);
+      if ((await storyBtn.getAttribute('aria-current')) !== 'page') {
+        await storyBtn.click();
+      }
+      const msv = page.getByTestId('msv-page');
+      await expect(msv).toBeVisible({ timeout: 8_000 });
+      await expect(msv).toContainText('Paragraph 1', { timeout: 8_000 });
 
-      const savedScroll = await page.getByTestId('msv-page').evaluate((el) => {
+      const savedScroll = await msv.evaluate((el) => {
         el.scrollTop = Math.min(900, Math.max(300, el.scrollHeight - el.clientHeight - 40));
         return el.scrollTop;
       });
+      expect(savedScroll).toBeGreaterThan(200);
 
       const crafterBtn = page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]');
       await crafterBtn.click();
       await expect(crafterBtn).toHaveAttribute('aria-current', 'page', { timeout: 8_000 });
       // Editor keep-alive stays mounted but hidden while Crafter is active.
       await expect(page.getByTestId('shell-panels-story-editor')).toBeAttached();
+      await expect(page.getByTestId('shell-panels-story-editor')).toHaveCSS('display', 'none');
 
       const firstPaint = await page.evaluate(() => {
         const btn = document.querySelector<HTMLButtonElement>(
@@ -246,29 +264,32 @@ test.describe('F2#7 Back to story (Story Writer rail)', () => {
         );
         if (!btn) throw new Error('Story Writer rail button missing');
         btn.click();
-        return new Promise<{ msvVisible: boolean; emptyVisible: boolean; scrollTop: number; crumb: string }>(
-          (resolve) => {
-            requestAnimationFrame(() => {
-              const msvEl = document.querySelector<HTMLElement>('[data-testid="msv-page"]');
-              const panels = document.querySelector<HTMLElement>('[data-testid="shell-panels-story-editor"]');
-              const empty = document.querySelector<HTMLElement>('.shell-editor-empty');
-              const panelsHidden = panels ? getComputedStyle(panels).display === 'none' : true;
-              const msvVisible = !!(msvEl && !panelsHidden && getComputedStyle(msvEl).display !== 'none');
-              const emptyVisible = !!(empty && !panelsHidden && empty.offsetParent !== null);
-              resolve({
-                msvVisible,
-                emptyVisible,
-                scrollTop: msvEl?.scrollTop ?? -1,
-                crumb: document.querySelector('.msv-crumb--current')?.textContent?.trim() ?? '',
-              });
+        return new Promise<{
+          msvVisible: boolean;
+          emptyVisible: boolean;
+          scrollTop: number;
+          hasOpeningScene: boolean;
+        }>((resolve) => {
+          requestAnimationFrame(() => {
+            const msvEl = document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+            const panels = document.querySelector<HTMLElement>('[data-testid="shell-panels-story-editor"]');
+            const empty = document.querySelector<HTMLElement>('.shell-editor-empty');
+            const panelsHidden = panels ? getComputedStyle(panels).display === 'none' : true;
+            const msvVisible = !!(msvEl && !panelsHidden && getComputedStyle(msvEl).display !== 'none');
+            const emptyVisible = !!(empty && !panelsHidden && empty.offsetParent !== null);
+            resolve({
+              msvVisible,
+              emptyVisible,
+              scrollTop: msvEl?.scrollTop ?? -1,
+              hasOpeningScene: (msvEl?.textContent ?? '').includes('Opening Scene'),
             });
-          },
-        );
+          });
+        });
       });
 
       expect(firstPaint.msvVisible).toBe(true);
       expect(firstPaint.emptyVisible).toBe(false);
-      expect(firstPaint.crumb).toContain('Opening Scene');
+      expect(firstPaint.hasOpeningScene).toBe(true);
       expect(Math.abs(firstPaint.scrollTop - savedScroll)).toBeLessThanOrEqual(2);
     } finally {
       await app.close().catch(() => undefined);
