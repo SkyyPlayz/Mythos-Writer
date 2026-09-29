@@ -181,6 +181,60 @@ describe('SceneNotesPanel F5 notes per tier', () => {
     await waitFor(() => expect(screen.getByTestId('snp-tier-part')).not.toBeDisabled());
   });
 
+  it('stays on Part while tierContext pending after scene switch (H3)', async () => {
+    notesGet.mockImplementation(async (key: string) => {
+      if (key === 'part:s1/Part 1') return { content: 'Part one note' };
+      if (key === 'part:s1/Part 2') return { content: 'Part two note' };
+      return { content: '' };
+    });
+    notesTierContext.mockResolvedValue({
+      ok: true, bookId: 's1', partId: 's1/Part 1', chapterId: 'ch1', sceneId: 'sc1',
+    });
+    const { rerender } = render(<SceneNotesPanel scene={scene} />);
+    await waitFor(() => expect(screen.getByTestId('snp-tier-part')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('snp-tier-part'));
+    expect(await screen.findByText('Part one note')).toBeInTheDocument();
+    expect(screen.getByTestId('snp-tier-part')).toHaveAttribute('aria-selected', 'true');
+
+    let resolveCtx2!: (v: unknown) => void;
+    notesTierContext.mockImplementation(
+      () => new Promise((resolve) => { resolveCtx2 = resolve; }),
+    );
+    const scene2 = { ...scene, id: 'sc2', chapterId: 'ch2' } as Scene;
+    rerender(<SceneNotesPanel scene={scene2} />);
+
+    // Must NOT snap to Scene while Part context is pending.
+    expect(screen.getByTestId('snp-tier-part')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('snp-tier-scene')).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByText('PART NOTES')).toBeInTheDocument();
+    // Add disabled while pending (no store key yet).
+    fireEvent.change(screen.getByLabelText('New part note'), { target: { value: 'pending write' } });
+    expect(screen.getByRole('button', { name: 'Add' })).toBeDisabled();
+
+    resolveCtx2({
+      ok: true, bookId: 's1', partId: 's1/Part 2', chapterId: 'ch2', sceneId: 'sc2',
+    });
+    await waitFor(() => expect(screen.getByTestId('snp-tier-part')).not.toBeDisabled());
+    expect(screen.getByTestId('snp-tier-part')).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByText('Part two note')).toBeInTheDocument();
+  });
+
+  it('loads legacy bare part:Part N under book-scoped partId (H2 fallback)', async () => {
+    notesGet.mockImplementation(async (key: string) => {
+      if (key === 'part:Part 1') return { content: 'Legacy part note' };
+      return { content: '' };
+    });
+    notesTierContext.mockResolvedValue({
+      ok: true, bookId: 's1', partId: 's1/Part 1', chapterId: 'ch1', sceneId: 'sc1',
+    });
+    render(<SceneNotesPanel scene={scene} />);
+    await waitFor(() => expect(screen.getByTestId('snp-tier-part')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('snp-tier-part'));
+    expect(await screen.findByText('Legacy part note')).toBeInTheDocument();
+    expect(notesGet).toHaveBeenCalledWith('part:s1/Part 1');
+    expect(notesGet).toHaveBeenCalledWith('part:Part 1');
+  });
+
   it('Chapter tier persists under chapter:<chapterId>', async () => {
     notesGet.mockResolvedValue({ content: '' });
     render(<SceneNotesPanel scene={scene} />);

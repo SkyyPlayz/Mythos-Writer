@@ -122,14 +122,51 @@ describe('agentsVaultPartner (Slice D)', () => {
     const sessions = path.join(gated.keysDir, 'Sessions');
     fs.mkdirSync(sessions, { recursive: true });
     fs.writeFileSync(path.join(sessions, 'x.md'), 'x');
-    // Notes Vault sibling must not be touched by clear
-    const notesSibling = path.join(created.mythosRoot, 'Notes Vault');
+    // Notes Vault sibling must not be touched by clear (grouped path)
+    const notesSibling = created.notesVaultPath;
     fs.mkdirSync(notesSibling, { recursive: true });
-    fs.writeFileSync(path.join(notesSibling, 'keep.md'), 'keep');
+    fs.writeFileSync(path.join(notesSibling, 'Keep.md'), 'keep');
     const cleared = clearAgentMemory(created.mythosRoot);
     expect(cleared.ok).toBe(true);
-    expect(fs.existsSync(path.join(notesSibling, 'keep.md'))).toBe(true);
+    expect(fs.existsSync(path.join(notesSibling, 'Keep.md'))).toBe(true);
     expect(fs.existsSync(sessions)).toBe(false);
+  });
+
+  it('Shield HARD: in-root Agent Vault → Notes Vault symlink refuses resolve+clear', () => {
+    const created = createMythosVault(tmp, { name: 'SymIn', seedDemo: false, exactName: true });
+    if (!created.ok) throw new Error(created.error);
+    const notesVault = created.notesVaultPath;
+    fs.mkdirSync(notesVault, { recursive: true });
+    fs.writeFileSync(path.join(notesVault, 'Keep.md'), 'keep-me');
+    const notesSessions = path.join(notesVault, 'Sessions');
+    fs.mkdirSync(notesSessions, { recursive: true });
+    fs.writeFileSync(path.join(notesSessions, 'canary.md'), 'session-body');
+
+    const agentPath = path.join(created.mythosRoot, AGENT_VAULT_DIRNAME);
+    fs.rmSync(agentPath, { recursive: true, force: true });
+    try {
+      // Relative in-root link (Probe: Agent Vault → Notes Vault).
+      const relTarget = path.relative(created.mythosRoot, notesVault);
+      if (process.platform === 'win32') {
+        fs.symlinkSync(notesVault, agentPath, 'junction');
+      } else {
+        fs.symlinkSync(relTarget, agentPath);
+      }
+    } catch {
+      return; // environment cannot create reparse points
+    }
+
+    const gated = resolveKeysDir(created.mythosRoot);
+    expect(gated.ok).toBe(false);
+    if (!gated.ok) expect(gated.error).toMatch(/symlink/i);
+
+    const cleared = clearAgentMemory(created.mythosRoot);
+    expect(cleared.ok).toBe(false);
+    if (!cleared.ok) expect(cleared.error).toMatch(/symlink/i);
+
+    // Notes Vault must survive — red if refusal OR clear gate is removed.
+    expect(fs.readFileSync(path.join(notesVault, 'Keep.md'), 'utf-8')).toBe('keep-me');
+    expect(fs.existsSync(path.join(notesSessions, 'canary.md'))).toBe(true);
   });
 });
 

@@ -22,7 +22,6 @@ function baseSettings(): AppSettings {
 }
 
 describe('ModelKeysSection F5 Hands & files (Path A)', () => {
-  let agentsVaultEnsure: ReturnType<typeof vi.fn>;
   let agentsVaultStats: ReturnType<typeof vi.fn>;
   let agentsVaultReveal: ReturnType<typeof vi.fn>;
   let agentsVaultClearMemory: ReturnType<typeof vi.fn>;
@@ -30,7 +29,6 @@ describe('ModelKeysSection F5 Hands & files (Path A)', () => {
   let onMoveVault: ReturnType<typeof vi.fn<() => void>>;
 
   beforeEach(() => {
-    agentsVaultEnsure = vi.fn().mockResolvedValue({ ok: true, created: [] });
     agentsVaultStats = vi.fn().mockResolvedValue({
       ok: true,
       path: '/vault/Agent Vault',
@@ -44,7 +42,6 @@ describe('ModelKeysSection F5 Hands & files (Path A)', () => {
     modelKeysShowItemInFolder = vi.fn().mockResolvedValue({ opened: true });
     onMoveVault = vi.fn<() => void>();
     (window as unknown as { api: unknown }).api = {
-      agentsVaultEnsure,
       agentsVaultStats,
       agentsVaultReveal,
       agentsVaultClearMemory,
@@ -79,7 +76,6 @@ describe('ModelKeysSection F5 Hands & files (Path A)', () => {
     expect(await screen.findByTestId('mk-keys-path')).toHaveTextContent('/vault/Agent Vault');
     expect(screen.getByTestId('mk-keys-scope')).toHaveTextContent('Test Vault');
     expect(screen.getByTestId('mk-keys-file-count')).toHaveTextContent('4 files');
-    expect(agentsVaultEnsure).toHaveBeenCalled();
     expect(agentsVaultStats).toHaveBeenCalled();
   });
 
@@ -109,6 +105,24 @@ describe('ModelKeysSection F5 Hands & files (Path A)', () => {
     expect(await screen.findByTestId('mk-keys-status')).toHaveTextContent(/Cleared agent memory/);
   });
 
+  it('Clear memory is disabled when Agent Vault is unavailable', async () => {
+    agentsVaultStats.mockResolvedValue({ ok: false, error: 'No Mythos vault open' });
+    renderSection();
+    await screen.findByTestId('mk-keys-error');
+    expect(screen.getByTestId('mk-keys-clear')).toBeDisabled();
+  });
+
+  it('refused Clear resets out of Confirm state', async () => {
+    renderSection();
+    await screen.findByTestId('mk-keys-path');
+    agentsVaultClearMemory.mockResolvedValueOnce({ ok: false, error: 'No Mythos vault open' });
+    fireEvent.click(screen.getByTestId('mk-keys-clear'));
+    fireEvent.click(screen.getByTestId('mk-keys-clear-confirm'));
+    expect(await screen.findByTestId('mk-keys-error')).toHaveTextContent('No Mythos vault open');
+    expect(screen.queryByTestId('mk-keys-clear-confirm')).not.toBeInTheDocument();
+    expect(screen.getByTestId('mk-keys-clear')).toBeInTheDocument();
+  });
+
   it('Move vault… opens MoveVaultWizard via onMoveVault', async () => {
     renderSection();
     await screen.findByTestId('mk-keys-path');
@@ -117,12 +131,36 @@ describe('ModelKeysSection F5 Hands & files (Path A)', () => {
     expect(onMoveVault).toHaveBeenCalledTimes(1);
   });
 
+  it('Move vault… is disabled without onMoveVault', async () => {
+    render(
+      <ModelKeysSection
+        settings={baseSettings()}
+        setSettings={vi.fn()}
+        onTestConnection={vi.fn()}
+        testStatus="idle"
+        testMsg=""
+        providerApiKey=""
+        setProviderApiKey={vi.fn()}
+        providerApiKeyDirty={false}
+        setProviderApiKeyDirty={vi.fn()}
+        providerBaseUrl=""
+        setProviderBaseUrl={vi.fn()}
+        showApiKey={false}
+        setShowApiKey={vi.fn()}
+        setSavedOk={vi.fn()}
+      />,
+    );
+    await screen.findByTestId('mk-keys-path');
+    expect(screen.getByTestId('mk-keys-move')).toBeDisabled();
+  });
+
   it('Move copy states Story Vault only — Agent Vault sibling does not move', async () => {
     renderSection();
     await screen.findByTestId('mk-keys-path');
     const hint = screen.getByTestId('mk-keys-move-hint');
     expect(hint).toHaveTextContent(/Story Vault only/i);
     expect(hint).toHaveTextContent(/sibling/i);
+    expect(hint).toHaveTextContent(/identity/i);
     expect(hint).not.toHaveTextContent(/Keys and memory move with the vault/);
   });
 

@@ -29,7 +29,7 @@ export type TierManifest = {
   stories?: TierStory[];
 };
 
-/** Extract "Part N" from a v2 canonical chapter path. */
+/** Extract bare "Part N" from a v2 canonical chapter path. */
 export function partIdFromChapterPath(chapterPath: string | undefined): string | null {
   if (!chapterPath || typeof chapterPath !== 'string') return null;
   const segments = chapterPath.split(/[\\/]/).filter(Boolean);
@@ -37,6 +37,19 @@ export function partIdFromChapterPath(chapterPath: string | undefined): string |
     if (isPartDirName(seg)) return seg;
   }
   return null;
+}
+
+/**
+ * Critic H2 / Probe: scope v2 "Part N" ids per book so Part notes do not
+ * collide across stories that share the same folder name.
+ * Legacy `story.parts[].id` values are left as-is (already unique).
+ */
+export function scopedPartIdForBook(bookId: string, barePartId: string): string {
+  const book = bookId.trim();
+  const bare = barePartId.trim();
+  if (!book || !bare) return bare;
+  if (bare.startsWith(`${book}/`)) return bare;
+  return `${book}/${bare}`;
 }
 
 /**
@@ -65,7 +78,8 @@ export function resolveNotesTierFromManifest(
         }
       }
       if (!partId) {
-        partId = partIdFromChapterPath(chapter.path);
+        const bare = partIdFromChapterPath(chapter.path);
+        partId = bare ? scopedPartIdForBook(story.id, bare) : null;
       }
 
       return {

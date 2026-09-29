@@ -35,8 +35,9 @@ interface ModelKeysSectionProps {
   setShowApiKey: (v: boolean) => void;
   setSavedOk: (ok: boolean) => void;
   /**
-   * F5#3: open the existing whole-vault MoveVaultWizard (Agent Vault lives
-   * inside the Mythos vault — keys/memory relocate with it).
+   * F5#3: open the existing whole-vault MoveVaultWizard. Only the Story Vault
+   * folder moves; Agent Vault (identity & memory) is a Mythos-root sibling and
+   * stays put. API keys live in userData secrets.json and never move.
    */
   onMoveVault?: () => void;
 }
@@ -189,13 +190,15 @@ export default function ModelKeysSection({
   useEffect(() => {
     let cancelled = false;
     const refresh = () => {
-      void window.api?.agentsVaultEnsure?.().catch(() => { /* non-fatal */ });
+      // resolveKeysDir (via stats) already ensures identity files — no separate
+      // agentsVaultEnsure on every focus (Critic soft).
       window.api?.agentsVaultStats?.()
         .then((res) => {
           if (cancelled) return;
           // Fail closed: no Mythos root → plain inline error (not silently disabled).
           if (!res?.ok || !res.path) {
             setKeysLoc(null);
+            setConfirmClearKeys(false);
             setKeysError(res?.error || 'No Mythos vault open');
             return;
           }
@@ -211,6 +214,7 @@ export default function ModelKeysSection({
         .catch((e: unknown) => {
           if (cancelled) return;
           setKeysLoc(null);
+          setConfirmClearKeys(false);
           setKeysError(e instanceof Error ? e.message : 'No Mythos vault open');
         });
     };
@@ -614,7 +618,7 @@ export default function ModelKeysSection({
                 type="button"
                 className="mk-keys-files__danger"
                 data-testid="mk-keys-clear"
-                disabled={keysBusy}
+                disabled={keysBusy || !keysLoc}
                 onClick={() => setConfirmClearKeys(true)}
               >
                 Clear memory
@@ -625,7 +629,7 @@ export default function ModelKeysSection({
                   type="button"
                   className="mk-keys-files__danger mk-keys-files__danger--confirm"
                   data-testid="mk-keys-clear-confirm"
-                  disabled={keysBusy}
+                  disabled={keysBusy || !keysLoc}
                   onClick={() => {
                     setKeysBusy(true);
                     setKeysError(null);
@@ -634,6 +638,8 @@ export default function ModelKeysSection({
                       .then((res) => {
                         if (!res?.ok) {
                           setKeysError(res?.error || 'Clear failed');
+                          // Probe soft: leave Confirm after a refused clear.
+                          setConfirmClearKeys(false);
                         } else {
                           setKeysStatus(`Cleared agent memory (${res.removed?.length ?? 0} items). Partner files kept.`);
                           setConfirmClearKeys(false);
@@ -651,7 +657,10 @@ export default function ModelKeysSection({
                           });
                         }
                       })
-                      .catch((e: unknown) => setKeysError(e instanceof Error ? e.message : 'Clear failed'))
+                      .catch((e: unknown) => {
+                        setKeysError(e instanceof Error ? e.message : 'Clear failed');
+                        setConfirmClearKeys(false);
+                      })
                       .finally(() => setKeysBusy(false));
                   }}
                 >
@@ -684,8 +693,9 @@ export default function ModelKeysSection({
             </button>
           </div>
           <p className="settings-hint" data-testid="mk-keys-move-hint">
-            Move relocates the Story Vault only. Agent Vault (keys &amp; memory) is a sibling
-            under the Mythos root and does not move with this action.
+            Move relocates the Story Vault only. Agent Vault (identity &amp; memory) is a sibling
+            under the Mythos root and does not move with this action. API keys stay in app
+            secrets and are unrelated to the vault folder.
           </p>
           {keysStatus && (
             <p className="settings-hint" data-testid="mk-keys-status">{keysStatus}</p>

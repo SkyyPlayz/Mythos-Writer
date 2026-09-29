@@ -7,6 +7,7 @@ import {
   parseSceneNotes,
   serializeSceneNotes,
   noteStoreKeyForTier,
+  legacyBarePartStoreKey,
   type NoteTier,
   type NoteTierIds,
   type SceneNoteDragPayload,
@@ -59,34 +60,44 @@ export default function SceneNotesPanel({
   const [draft, setDraft] = useState('');
   const [tier, setTier] = useState<NoteTier>('scene');
   const [resolvedPartId, setResolvedPartId] = useState<string | null>(partIdProp);
+  /** Critic H3: true while notesTierContext is in flight after a scene switch. */
+  const [partPending, setPartPending] = useState(false);
   const loadedKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     setResolvedPartId(partIdProp);
+    if (partIdProp) setPartPending(false);
   }, [partIdProp]);
 
   // Resolve part id from manifest when parent didn't pass one (no DesktopShell hunk).
   useEffect(() => {
     if (!scene?.id) {
       setResolvedPartId(partIdProp);
+      setPartPending(false);
       return;
     }
     if (partIdProp) {
       setResolvedPartId(partIdProp);
+      setPartPending(false);
       return;
     }
-    // Critic soft: clear stale part before IPC returns so a Part-tab note
-    // during a scene switch cannot land on the previous scene's part.
+    // Clear stale part before IPC returns so a Part-tab write cannot land on
+    // the previous scene's part — but stay on the Part tab while pending (H3).
     setResolvedPartId(null);
+    setPartPending(true);
     let cancelled = false;
     window.api.notesTierContext?.(scene.id)
       .then((res) => {
         if (cancelled) return;
+        setPartPending(false);
         if (res?.ok && res.partId) setResolvedPartId(res.partId);
         else setResolvedPartId(null);
       })
       .catch(() => {
-        if (!cancelled) setResolvedPartId(null);
+        if (!cancelled) {
+          setPartPending(false);
+          setResolvedPartId(null);
+        }
       });
     return () => { cancelled = true; };
   }, [scene?.id, partIdProp]);
@@ -107,17 +118,38 @@ export default function SceneNotesPanel({
     const loadKey = `${storeKey}:${refreshToken}`;
     if (loadKey === loadedKeyRef.current) return;
     loadedKeyRef.current = loadKey;
-    window.api.notesGet?.(storeKey).then((res) => {
-      if (loadedKeyRef.current === loadKey) setNotes(parseSceneNotes(res.content));
-    }).catch(() => {});
-  }, [scene, storeKey, refreshToken]);
+    const load = async () => {
+      try {
+        const res = await window.api.notesGet?.(storeKey);
+        let content = res?.content ?? '';
+        // H2: old-key fallback — bare `part:Part N` still loads under scoped ids.
+        if (
+          tier === 'part'
+          && resolvedPartId
+          && !content.trim()
+        ) {
+          const legacy = legacyBarePartStoreKey(resolvedPartId);
+          if (legacy && legacy !== storeKey) {
+            const legacyRes = await window.api.notesGet?.(legacy);
+            if (legacyRes?.content?.trim()) content = legacyRes.content;
+          }
+        }
+        if (loadedKeyRef.current === loadKey) setNotes(parseSceneNotes(content));
+      } catch {
+        /* non-fatal */
+      }
+    };
+    void load();
+  }, [scene, storeKey, refreshToken, tier, resolvedPartId]);
 
-  // When the active tier becomes unavailable, fall back to scene.
+  // When the active tier becomes unavailable, fall back to scene — but stay on
+  // Part while tier context is still pending (Critic H3).
   useEffect(() => {
+    if (partPending && tier === 'part') return;
     if (!noteStoreKeyForTier(tier, tierIds) && tierIds.sceneId) {
       setTier('scene');
     }
-  }, [tier, tierIds]);
+  }, [tier, tierIds, partPending]);
 
   const persist = (nodeKey: string, next: string[]) => {
     setNotes(next);
@@ -128,7 +160,7 @@ export default function SceneNotesPanel({
 
   const addNote = () => {
     const text = draft.trim();
-    if (!text || !storeKey) return;
+    if (!text || !storeKey || partPending) return;
     persist(storeKey, [...notes, text]);
     setDraft('');
   };
@@ -171,6 +203,7 @@ export default function SceneNotesPanel({
   const promoteHint = tier === 'scene'
     ? 'Pinned to this scene — promote a note to the vault by dragging it onto the navigator.'
     : `Pinned to this ${NOTE_TIER_LABELS[tier].toLowerCase()} — separate from the manuscript body.`;
+  const addDisabled = !draft.trim() || !storeKey || partPending;
 
   return (
     <div className="snp-root" data-testid="snp-root">
@@ -193,7 +226,13 @@ export default function SceneNotesPanel({
               disabled={!available}
               className={`snp-tier${on ? ' snp-tier--on' : ''}`}
               data-testid={`snp-tier-${t}`}
-              title={available ? `${NOTE_TIER_LABELS[t]} notes` : `${NOTE_TIER_LABELS[t]} not in context`}
+              title={
+                t === 'part' && partPending && on
+                  ? 'Resolving part…'
+                  : available
+                    ? `${NOTE_TIER_LABELS[t]} notes`
+                    : `${NOTE_TIER_LABELS[t]} not in context`
+              }
               onClick={() => setTier(t)}
             >
               {NOTE_TIER_LABELS[t]}
@@ -240,7 +279,7 @@ export default function SceneNotesPanel({
           placeholder={`Jot a ${NOTE_TIER_LABELS[tier].toLowerCase()} note…`}
           aria-label={`New ${NOTE_TIER_LABELS[tier].toLowerCase()} note`}
         />
-        <button className="snp-add-btn" onClick={addNote} disabled={!draft.trim() || !storeKey}>
+        <button className="snp-add-btn" onClick={addNote} disabled={addDisabled}>
           Add
         </button>
       </div>

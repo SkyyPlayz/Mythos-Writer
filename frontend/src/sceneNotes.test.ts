@@ -7,6 +7,7 @@ import {
   buildPromotedSceneNoteContent,
   buildNoteStoreKey,
   noteStoreKeyForTier,
+  legacyBarePartStoreKey,
   NOTE_TIERS,
 } from './sceneNotes';
 
@@ -51,6 +52,20 @@ describe('F5 note store keys per tier', () => {
     expect(buildNoteStoreKey('book', 'story-1')).toBe('book:story-1');
     expect(buildNoteStoreKey('part', 'part-1')).toBe('part:part-1');
     expect(buildNoteStoreKey('chapter', 'ch-1')).toBe('chapter:ch-1');
+  });
+
+  it('book-scoped Part ids produce distinct store keys (H2)', () => {
+    const glass = { bookId: 'glass-tide', partId: 'glass-tide/Part 1', chapterId: 'c1', sceneId: 's1' };
+    const salt = { bookId: 'salt-crown', partId: 'salt-crown/Part 1', chapterId: 'c2', sceneId: 's2' };
+    expect(noteStoreKeyForTier('part', glass)).toBe('part:glass-tide/Part 1');
+    expect(noteStoreKeyForTier('part', salt)).toBe('part:salt-crown/Part 1');
+    expect(noteStoreKeyForTier('part', glass)).not.toBe(noteStoreKeyForTier('part', salt));
+  });
+
+  it('legacyBarePartStoreKey falls back to bare Part N', () => {
+    expect(legacyBarePartStoreKey('glass-tide/Part 1')).toBe('part:Part 1');
+    expect(legacyBarePartStoreKey('Part 1')).toBeNull();
+    expect(legacyBarePartStoreKey('p-uuid')).toBeNull();
   });
 
   it('noteStoreKeyForTier returns null when the tier id is missing', () => {

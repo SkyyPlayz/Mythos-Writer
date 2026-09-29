@@ -11,12 +11,20 @@ import {
   partIdFromChapterPath,
   resolveNotesTierFromManifest,
   runNotesTierContext,
+  scopedPartIdForBook,
 } from './notesTierContext.js';
 
 describe('partIdFromChapterPath', () => {
   it('extracts Part N from a v2 chapter path', () => {
     expect(partIdFromChapterPath('My Story/Part 2/Chapter 01')).toBe('Part 2');
     expect(partIdFromChapterPath('My Story/Chapter 01')).toBeNull();
+  });
+});
+
+describe('scopedPartIdForBook (Critic H2)', () => {
+  it('prefixes bare Part N with the book id', () => {
+    expect(scopedPartIdForBook('glass-tide', 'Part 1')).toBe('glass-tide/Part 1');
+    expect(scopedPartIdForBook('glass-tide', 'glass-tide/Part 1')).toBe('glass-tide/Part 1');
   });
 });
 
@@ -133,13 +141,61 @@ describe('resolveNotesTierFromManifest — seeded 2-part v2 vault (no mocked par
 
     const p1 = resolveNotesTierFromManifest(manifest, 'scene-in-part-1');
     expect(p1.ok).toBe(true);
-    expect(p1.partId).toBe('Part 1');
+    expect(p1.partId).toBe('two-part-book/Part 1');
     expect(p1.bookId).toBe('two-part-book');
     expect(p1.chapterId).toBeTruthy();
 
     const p2 = resolveNotesTierFromManifest(manifest, 'scene-in-part-2');
     expect(p2.ok).toBe(true);
-    expect(p2.partId).toBe('Part 2');
+    expect(p2.partId).toBe('two-part-book/Part 2');
     expect(p2.bookId).toBe('two-part-book');
+  });
+
+  it('two books with Part 1 get different scoped partIds (H2 red-on-revert)', () => {
+    const created = createMythosVault(tmp, { name: 'TwoBook', seedDemo: false, exactName: true });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+
+    for (const book of [
+      { folder: 'Glass Tide', id: 'glass-tide', scene: 'sc-glass' },
+      { folder: 'Salt Crown', id: 'salt-crown', scene: 'sc-salt' },
+    ] as const) {
+      const storyAbs = path.join(created.storyVaultPath, book.folder);
+      const chAbs = path.join(storyAbs, 'Part 1', 'Chapter 01');
+      fs.mkdirSync(chAbs, { recursive: true });
+      fs.writeFileSync(
+        path.join(chAbs, 'Scene 01.md'),
+        serializeV2SceneFile({
+          id: book.scene,
+          title: `${book.folder} Scene`,
+          status: 'draft',
+          prose: 'body',
+        }),
+      );
+      fs.writeFileSync(
+        path.join(storyAbs, 'book.md'),
+        serializeBookFile({
+          id: book.id,
+          title: book.folder,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          spine: [
+            {
+              dir: 'Part 1',
+              chapters: [{ dir: 'Chapter 01', id: `ch-${book.id}`, title: 'Ch1' }],
+            },
+          ],
+        }),
+      );
+    }
+
+    const manifest = scanMythosStoryVault(created.mythosRoot);
+    const glass = resolveNotesTierFromManifest(manifest, 'sc-glass');
+    const salt = resolveNotesTierFromManifest(manifest, 'sc-salt');
+    expect(glass.ok).toBe(true);
+    expect(salt.ok).toBe(true);
+    expect(glass.partId).toBe('glass-tide/Part 1');
+    expect(salt.partId).toBe('salt-crown/Part 1');
+    expect(glass.partId).not.toBe(salt.partId);
   });
 });
