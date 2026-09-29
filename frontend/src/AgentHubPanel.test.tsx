@@ -48,6 +48,8 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     expect(await screen.findByTestId('partner-card')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-earlier-chats')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-writer-tips')).toBeInTheDocument();
+    // N4-A: tips strip keeps WA expanded (no AC-WA-20 icon latch).
+    expect(screen.getByLabelText('Heartbeat panel')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-action-update-timeline')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-action-beta-read')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-action-writer-scan')).toBeInTheDocument();

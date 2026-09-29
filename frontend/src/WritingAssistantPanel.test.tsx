@@ -517,6 +517,33 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
     expect(screen.queryByRole('complementary', { name: /writing coach/i })).not.toBeInTheDocument();
   });
 
+  it('N4-A hub embed: allowNarrowCollapse=false keeps Heartbeat panel under <280px', async () => {
+    let observerCallback: ResizeObserverCallback | null = null;
+    class MockResizeObserver {
+      constructor(cb: ResizeObserverCallback) { observerCallback = cb; }
+      observe() {}
+      disconnect() {}
+    }
+    window.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+
+    render(
+      <WritingAssistantPanel scene={mockScene} isActive={true} allowNarrowCollapse={false} />,
+    );
+
+    await act(async () => {
+      observerCallback?.([
+        { contentRect: { width: 200 } } as unknown as ResizeObserverEntry,
+      ], {} as ResizeObserver);
+      // Pre-layout 0-width must not latch either.
+      observerCallback?.([
+        { contentRect: { width: 0 } } as unknown as ResizeObserverEntry,
+      ], {} as ResizeObserver);
+    });
+
+    expect(screen.queryByRole('button', { name: /open writing coach/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Heartbeat panel')).toBeInTheDocument();
+  });
+
   it('AC25: clicking collapsed badge opens overlay panel', async () => {
     let observerCallback: ResizeObserverCallback | null = null;
     class MockResizeObserver {

@@ -261,6 +261,11 @@ test.beforeAll(async () => {
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 4_000 });
   await expect(page.locator('[data-testid="ahp-partner-view"]')).toBeVisible({ timeout: 4_000 });
   await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
+  // Belt: expand AC-WA-20 icon if a pre-layout ResizeObserver latched it.
+  const openCoach = page.getByRole('button', { name: /open writing coach/i });
+  if (await openCoach.isVisible().catch(() => false)) {
+    await openCoach.evaluate((el) => (el as HTMLButtonElement).click());
+  }
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
 });
 
