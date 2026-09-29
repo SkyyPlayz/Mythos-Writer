@@ -30,6 +30,9 @@ interface Props {
   onRenameScene?: (sceneId: string) => void;
   onDeleteChapter?: (storyId: string, chapterId: string) => void;
   onDeleteScene?: (storyId: string, chapterId: string, sceneId: string) => void;
+  /** F1#7/#8: pass-through to StoryNavigator part context menu. */
+  onRenamePart?: (partId: string) => void;
+  onCreateChapterInPart?: (storyId: string, partId: string) => void;
   sidebarCollapsed: boolean;
   onToggleCollapsed: () => void;
 }
@@ -58,6 +61,8 @@ export default function LeftRail({
   onRenameScene,
   onDeleteChapter,
   onDeleteScene,
+  onRenamePart,
+  onCreateChapterInPart,
   sidebarCollapsed,
   onToggleCollapsed,
 }: Props) {
@@ -195,6 +200,8 @@ export default function LeftRail({
               onRenameScene={onRenameScene}
               onDeleteChapter={onDeleteChapter}
               onDeleteScene={onDeleteScene}
+              onRenamePart={onRenamePart}
+              onCreateChapterInPart={onCreateChapterInPart}
               hideHeader
             />
           </div>

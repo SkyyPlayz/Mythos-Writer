@@ -156,6 +156,8 @@ export interface ManuscriptViewProps {
   onRenameScene?: (sceneId: string, title: string) => void;
   /** M8: inline chapter-heading rename. */
   onRenameChapter?: (chapterId: string, title: string) => void;
+  /** F1#7: inline part-heading rename (Full Book / Structure headers). */
+  onRenamePart?: (partId: string, title: string) => void;
   /** M3 (SKY-9021): inline story rename — row 3's title at book/part depth. */
   onRenameStory?: (title: string) => void;
   /**
@@ -442,6 +444,7 @@ export default function ManuscriptView({
   onRemoveParagraph,
   onRenameScene,
   onRenameChapter,
+  onRenamePart,
   onRenameStory,
   inlineTitleRename = false,
   caretRequest,
@@ -1440,10 +1443,37 @@ export default function ManuscriptView({
     switch (b.kind) {
       case 'h1':
         // M2 (SKY-9017): Part heading — emitted only for multi-part stories.
+        // F1#7: click title → inline rename (Enter/blur commits, Esc cancels).
         return (
           <div key={b.id} className="msv-part-heading" role="heading" aria-level={1} data-testid={`msv-h1-${b.partId}`}>
             <div className="msv-part-heading-label">{b.label}</div>
-            {b.title && <div className="msv-part-heading-title">{b.title}</div>}
+            <div
+              className="msv-part-heading-title"
+              contentEditable={!!onRenamePart}
+              suppressContentEditableWarning
+              spellCheck={false}
+              role={onRenamePart ? 'textbox' : undefined}
+              aria-label={onRenamePart ? 'Part title — Enter commits, Esc cancels' : undefined}
+              data-testid={`msv-h1-title-${b.partId}`}
+              onBlur={(e: ReactFocusEvent<HTMLElement>) => {
+                if (!onRenamePart) return;
+                const next = e.currentTarget.textContent?.trim() ?? '';
+                if (next !== (b.title ?? '')) onRenamePart(b.partId, next);
+              }}
+              onKeyDown={(e: ReactKeyboardEvent<HTMLElement>) => {
+                if (!onRenamePart) return;
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  e.currentTarget.textContent = b.title ?? '';
+                  e.currentTarget.blur();
+                }
+              }}
+            >
+              {b.title || (onRenamePart ? '' : null)}
+            </div>
           </div>
         );
       case 'note-slot': {

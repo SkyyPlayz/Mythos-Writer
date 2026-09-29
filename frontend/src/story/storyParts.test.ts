@@ -7,7 +7,9 @@ import type { Chapter, Part, Story } from '../types';
 import {
   appendChapterToStory,
   findOwningPart,
+  insertChapterIntoPart,
   mapAllChapters,
+  moveChapterToPart,
   syncChaptersFromParts,
   updateChapterOwner,
 } from './storyParts';
@@ -121,6 +123,27 @@ describe('storyParts', () => {
       expect(updated.parts![0].chapters.map((c) => c.id)).toEqual(['ch1']);
       expect(updated.parts![1].chapters.map((c) => c.id)).toEqual(['ch2', 'ch3']);
       expect(updated.chapters.map((c) => c.id)).toEqual(['ch1', 'ch2', 'ch3']);
+    });
+  });
+
+  describe('moveChapterToPart / insertChapterIntoPart (F1#3)', () => {
+    it('moves a chapter into an empty part', () => {
+      const partA = mkPart('pA', 'Part One', 0, [mkChapter('ch1', 'Ch1', 0), mkChapter('ch2', 'Ch2', 1)]);
+      const partB = mkPart('pB', 'Part Two', 1, []);
+      const story = mkStory({ chapters: [...partA.chapters], parts: [partA, partB] });
+      const updated = moveChapterToPart(story, 'ch2', 'pB');
+      expect(updated.parts![0].chapters.map((c) => c.id)).toEqual(['ch1']);
+      expect(updated.parts![1].chapters.map((c) => c.id)).toEqual(['ch2']);
+      expect(updated.chapters.map((c) => c.id)).toEqual(['ch1', 'ch2']);
+    });
+
+    it('inserts a new chapter into a specific empty part', () => {
+      const partA = mkPart('pA', 'Part One', 0, [mkChapter('ch1', 'Ch1', 0)]);
+      const partB = mkPart('pB', 'Part Two', 1, []);
+      const story = mkStory({ chapters: [...partA.chapters], parts: [partA, partB] });
+      const updated = insertChapterIntoPart(story, 'pB', mkChapter('ch2', 'Ch2', 0));
+      expect(updated.parts![1].chapters.map((c) => c.id)).toEqual(['ch2']);
+      expect(updated.chapters.map((c) => c.id)).toEqual(['ch1', 'ch2']);
     });
   });
 

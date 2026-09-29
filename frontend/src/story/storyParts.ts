@@ -87,6 +87,53 @@ export function appendChapterToStory(story: Story, chapter: Chapter): Story {
   return withPartChapters(reconciled, target.id, [...target.chapters, chapter]);
 }
 
+/**
+ * F1#3/#9: append (or insert) a chapter into a specific part. When
+ * `insertAfterChapterId` is set, the new chapter lands immediately after that
+ * sibling; otherwise it appends to the part.
+ */
+export function insertChapterIntoPart(
+  story: Story,
+  partId: string,
+  chapter: Chapter,
+  insertAfterChapterId?: string | null,
+): Story {
+  const reconciled = reconcileParts(story);
+  const part = (reconciled.parts ?? []).find((p) => p.id === partId);
+  if (!part) return reconciled;
+  const chapters = [...part.chapters];
+  if (insertAfterChapterId) {
+    const idx = chapters.findIndex((c) => c.id === insertAfterChapterId);
+    if (idx >= 0) {
+      chapters.splice(idx + 1, 0, chapter);
+      return withPartChapters(reconciled, partId, chapters);
+    }
+  }
+  return withPartChapters(reconciled, partId, [...chapters, chapter]);
+}
+
+/**
+ * F1#3: move a chapter from its current part into `targetPartId` (appended).
+ * No-op when the chapter is already in that part or either id is missing.
+ */
+export function moveChapterToPart(story: Story, chapterId: string, targetPartId: string): Story {
+  const reconciled = reconcileParts(story);
+  const source = (reconciled.parts ?? []).find((p) => p.chapters.some((c) => c.id === chapterId));
+  const target = (reconciled.parts ?? []).find((p) => p.id === targetPartId);
+  if (!source || !target) return story;
+  if (source.id === target.id) return story;
+  const chapter = source.chapters.find((c) => c.id === chapterId);
+  if (!chapter) return story;
+  const without = source.chapters.filter((c) => c.id !== chapterId);
+  const withChapter = [...target.chapters, chapter];
+  const parts = (reconciled.parts ?? []).map((p) => {
+    if (p.id === source.id) return { ...p, chapters: without };
+    if (p.id === target.id) return { ...p, chapters: withChapter };
+    return p;
+  });
+  return syncChaptersFromParts({ ...reconciled, parts });
+}
+
 /** Apply `patch` to every chapter across every part (e.g. a state-only convergence rewrite). */
 export function mapAllChapters(story: Story, patch: (chapter: Chapter) => Chapter): Story {
   const reconciled = reconcileParts(story);

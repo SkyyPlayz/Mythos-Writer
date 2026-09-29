@@ -36,7 +36,7 @@ import NotificationCenter from './NotificationCenter';
 import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
 import { cursorChapter, cursorDefaultScene, cycleDraftState, draftStateLabel, isSimpleSinglePart, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
-import { appendChapterToStory, mapAllChapters, reconcileParts, syncChaptersFromParts, updateChapterOwner } from './story/storyParts';
+import { appendChapterToStory, findOwningPart, insertChapterIntoPart, mapAllChapters, moveChapterToPart, reconcileParts, syncChaptersFromParts, updateChapterOwner } from './story/storyParts';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
 import { runQuitFlushers, trackQuitCriticalWrite } from './lib/flushBeforeQuit';
@@ -3466,16 +3466,26 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const title = await requestText('Chapter title:');
     if (!title?.trim()) return;
     const id = generateId();
+    const story = stories.find((s) => s.id === storyId);
     const chapter: Chapter = {
       id, title: title.trim(),
       path: `stories/${storyId}/chapters/${id}`,
-      order: stories.find((s) => s.id === storyId)?.chapters.length ?? 0,
+      order: story?.chapters.length ?? 0,
       scenes: [], createdAt: now(), updatedAt: now(),
     };
-    updateManifest(stories.map((s) =>
-      s.id !== storyId ? s : appendChapterToStory(s, chapter)
-    ));
-  }, [stories, updateManifest, requestText]);
+    // F1#9: insert after the selected chapter (same part) when that chapter
+    // belongs to this story; otherwise append to the last part.
+    updateManifest(stories.map((s) => {
+      if (s.id !== storyId) return s;
+      if (selectedChapter && selectedStory?.id === storyId) {
+        const owner = findOwningPart(s, selectedChapter.id);
+        if (owner) {
+          return insertChapterIntoPart(s, owner.id, chapter, selectedChapter.id);
+        }
+      }
+      return appendChapterToStory(s, chapter);
+    }));
+  }, [stories, updateManifest, requestText, selectedChapter, selectedStory]);
 
   const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
     setSelectedScene(scene);
@@ -3620,18 +3630,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       chapters.map((ch) => (ch.id !== chapter.id ? ch : { ...ch, scenes: [...ch.scenes, scene] }))
     );
     updateManifest(stories.map((s) => (s.id === workingStory.id ? workingStory : s)));
-    // Scene Crafter: Create Scene → auto node board (video lock).
-    // Stay on the Scene Crafter canvas view (kanban) and open a new board for
-    // the created scene. handleOpenBoard navigates to 'kanban' for us.
-    // The board creation is triggered via the registered action (SceneCrafterPage owns it).
+    // Scene Crafter: Create Scene → stay on kanban. SceneCrafterPage owns the
+    // form→board mapping (F1#1) and opens the board after this resolves —
+    // do not fire empty createBoardActionRef here (that produced "Board N").
     handleTabChange('story');
     handleSetView('kanban');
-    // After navigation, trigger board creation for the new scene.
-    // Small defer so SceneCrafterPage is mounted with the updated story.
-    setTimeout(() => {
-      createBoardActionRef.current?.();
-    }, 100);
-    // Also select the scene so the board's scene context is correct.
+    // Select the scene so Structure / Scenes sidebar see it immediately.
     handleSelectScene(scene, { ...chapter, scenes: [...chapter.scenes, scene] }, workingStory);
     window.api?.writeVault?.(scene.path, blocksToMarkdown(scene)).catch(() => {});
   }, [stories, selectedStory, selectedChapter, updateManifest, handleSelectScene, handleTabChange, handleSetView]);
@@ -5156,6 +5160,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             showTemplateCta={showTemplateCta}
             onTemplateCtaClick={() => setTemplatePickerOpen(true)}
             onPromoteSceneNote={handlePromoteSceneNote}
+            onRenamePart={(partId) => { void handleRenamePart(partId); }}
+            onCreateChapterInPart={createChapterInPart}
           />
         );
       case 'entities':
@@ -5444,6 +5450,34 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     );
   }, []);
 
+  /** F1#3: create a chapter inside a specific (possibly empty) part. */
+  const createChapterInPart = useCallback(async (storyId: string, partId: string) => {
+    const title = await requestText('Chapter title:');
+    if (!title?.trim()) return;
+    const id = generateId();
+    const story = stories.find((s) => s.id === storyId);
+    if (!story) return;
+    const chapter: Chapter = {
+      id, title: title.trim(),
+      path: `stories/${storyId}/chapters/${id}`,
+      order: story.chapters.length,
+      scenes: [], createdAt: now(), updatedAt: now(),
+    };
+    const updated = insertChapterIntoPart(story, partId, chapter);
+    updateManifest(stories.map((s) => (s.id === storyId ? updated : s)));
+    if (selectedStory?.id === storyId) refreshManuscriptSelection(updated);
+  }, [stories, updateManifest, requestText, selectedStory, refreshManuscriptSelection]);
+
+  /** F1#3: drag a chapter onto a part header. */
+  const handleMoveChapterToPart = useCallback((storyId: string, chapterId: string, targetPartId: string) => {
+    const story = stories.find((s) => s.id === storyId);
+    if (!story) return;
+    const updated = moveChapterToPart(story, chapterId, targetPartId);
+    if (updated === story) return;
+    updateManifest(stories.map((s) => (s.id === storyId ? updated : s)));
+    if (selectedStory?.id === storyId) refreshManuscriptSelection(updated);
+  }, [stories, updateManifest, selectedStory, refreshManuscriptSelection]);
+
   // manuscriptModel.ts's pure split/merge/remove/rename fns only ever
   // rewrite `.chapters` (they predate the Part tier) — their output's
   // `.parts` is the same stale reference the input story had. This injects
@@ -5689,6 +5723,30 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     updateManifest(stories.map((st) => (st.id === renamed.id ? renamed : st)));
     refreshManuscriptSelection(renamed);
   }, [stories, updateManifest, requestText, refreshManuscriptSelection]);
+
+  /** F1#7/#8: rename a part from Structure navigator / Full Book header. */
+  const handleRenamePart = useCallback(async (partId: string, nextTitle?: string) => {
+    const story = stories.find((s) => (s.parts ?? []).some((p) => p.id === partId))
+      ?? (selectedStory && (selectedStory.parts ?? []).some((p) => p.id === partId) ? selectedStory : null);
+    if (!story) return;
+    const part = (story.parts ?? []).find((p) => p.id === partId);
+    if (!part) return;
+    let title = nextTitle;
+    if (title === undefined) {
+      const typed = await requestText('Part title:', part.title);
+      if (typed === null || typed === undefined) return;
+      title = typed.trim();
+    } else {
+      title = title.trim();
+    }
+    const reconciled = reconcileParts(story);
+    const updatedParts = (reconciled.parts ?? []).map((p) =>
+      p.id === partId ? { ...p, title, updatedAt: now() } : p
+    );
+    const updated = syncChaptersFromParts({ ...reconciled, parts: updatedParts });
+    updateManifest(stories.map((st) => (st.id === updated.id ? updated : st)));
+    if (selectedStory?.id === updated.id) refreshManuscriptSelection(updated);
+  }, [stories, selectedStory, updateManifest, requestText, refreshManuscriptSelection]);
 
   // M3 (SKY-9021): row-3 inline story rename (Full Book / Part depth title =
   // story title). TitleRow reverts empties/normalizes before committing here.
@@ -6524,6 +6582,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onMoveScene={handleMoveScene}
             onCreateScene={createScene}
             onCreateChapter={createChapter}
+            onCreateChapterInPart={createChapterInPart}
+            onMoveChapterToPart={handleMoveChapterToPart}
             vaultRoot={activeVaultRoot}
           />
         </div>
@@ -6573,6 +6633,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onRenameScene={handleContextRenameScene}
             onDeleteChapter={deleteChapter}
             onDeleteScene={deleteScene}
+            onRenamePart={(partId) => { void handleRenamePart(partId); }}
+            onCreateChapterInPart={createChapterInPart}
             sidebarCollapsed={leftSidebarLayout.sidebarCollapsed}
             onToggleCollapsed={() => persistLeftSidebarLayout({ ...leftSidebarLayout, sidebarCollapsed: !leftSidebarLayout.sidebarCollapsed })}
           />
@@ -6873,6 +6935,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onRemoveParagraph={handleManuscriptRemoveParagraph}
                   onRenameScene={handleManuscriptRenameScene}
                   onRenameChapter={handleManuscriptRenameChapter}
+                  onRenamePart={(partId, title) => { void handleRenamePart(partId, title); }}
                   onRenameStory={handleManuscriptRenameStory}
                   inlineTitleRename
                   caretRequest={manuscriptCaretRequest}
