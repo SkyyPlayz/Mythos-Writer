@@ -188,8 +188,9 @@ async function settleIntoView(page: Page, target: ReturnType<Page['locator']>): 
 }
 
 async function openWritingCoachChat(page: Page): Promise<void> {
-  await page.locator('[data-testid="ahp-action-writer-scan"]').click();
-  await settleIntoView(page, page.locator('[aria-label="Writing coach prompt"]'));
+  // F3#1 — partner MiniAgentChat is always the hub composer.
+  await page.locator('[data-testid="ahp-tab-partner"]').click().catch(() => undefined);
+  await settleIntoView(page, page.getByTestId('ahp-partner-chat-input'));
 }
 
 let userData: string;
@@ -236,7 +237,7 @@ test('loading state: typing-dots appear while the coach reply is in flight, then
   await openAgentsHub(page);
   await openWritingCoachChat(page);
 
-  const input = page.locator('[aria-label="Writing coach prompt"]');
+  const input = page.getByTestId('ahp-partner-chat-input');
   await input.fill('How can I raise the tension here?');
   await input.press('Enter');
 
@@ -256,7 +257,7 @@ test('error state: a failed chat request keeps the user message, shows an inline
   await openAgentsHub(page);
   await openWritingCoachChat(page);
 
-  const input = page.locator('[aria-label="Writing coach prompt"]');
+  const input = page.getByTestId('ahp-partner-chat-input');
   await input.fill('Give me feedback on the pacing');
   await input.press('Enter');
 
@@ -289,7 +290,7 @@ test('keyboard: Enter opens the Writer hand from a focused partner hand chip, an
   await page.keyboard.press('Enter');
 
   await settleIntoView(page, page.locator('[data-testid="ahp-writer-hand"]'));
-  await expect(page.locator('[aria-label="Writing coach prompt"]')).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByTestId('ahp-partner-chat-input')).toBeVisible({ timeout: 8_000 });
 
   await page.locator('[data-testid="ahp-close-writer"]').click();
   await expect(page.locator('[data-testid="ahp-writer-hand"]')).toHaveCount(0);

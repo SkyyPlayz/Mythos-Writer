@@ -54,7 +54,7 @@ function buildAppSettings(): object {
         maxTokensPerDay: 500_000,
         waScanInterval: 'manual',
       },
-      brainstorm: { enabled: false, model: 'claude-haiku-4-5-20251001', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
+      brainstorm: { enabled: true, model: 'claude-haiku-4-5-20251001', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
       archive: { enabled: false, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
     },
     theme: 'dark',
@@ -133,6 +133,9 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
 async function installCoachChatMock(app: ElectronApplication): Promise<void> {
   await app.evaluate(({ ipcMain }, args) => {
     try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* not registered */ }
+    try { ipcMain.removeHandler('agent:brainstorm'); } catch { /* not registered */ }
+    // F3#1 — Coach page chat send uses invokeBrainstorm.
+    ipcMain.handle('agent:brainstorm', async () => ({ text: args.response }));
     ipcMain.handle('agent:writing-assistant', async () => ({ text: args.response }));
   }, { response: MOCK_COACH_RESPONSE });
 }
@@ -203,7 +206,7 @@ test('M12: Coach sub-tab renders the Writing Coach page per §5.2', async () => 
   await openCoachPage(page);
 
   // Header: title + agent-contract sub-line
-  await expect(page.locator('.coach-title')).toHaveText('Writing Coach');
+  await expect(page.locator('.coach-title')).toHaveText('Mythos');
   await expect(page.locator('.coach-sub')).toContainText('never ghost-writes');
 
   // 3 skill chips
@@ -248,11 +251,13 @@ test('M12 §14.6: Coach page and right-panel Coach chat share ONE conversation',
   await page.locator('[data-testid="ahp-action-writer-scan"]').click();
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 
-  // The exchange sent from the COACH PAGE is visible in the PANEL chat.
-  await expect(page.locator('.wa-user-bubble', { hasText: 'Teach me pacing with my own text please' }).last())
-    .toBeVisible({ timeout: 8_000 });
-  await expect(page.locator('.wa-assistant-bubble', { hasText: MOCK_COACH_RESPONSE }).last())
-    .toBeVisible({ timeout: 8_000 });
+  // F3#1 — same partner thread: exchange from Coach page is in hub MiniAgentChat.
+  await expect(page.locator('[data-testid="ahp-partner-chat-feed"] .trp-bubble--user', {
+    hasText: 'Teach me pacing with my own text please',
+  }).last()).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('[data-testid="ahp-partner-chat-feed"] .trp-bubble--agent', {
+    hasText: MOCK_COACH_RESPONSE,
+  }).last()).toBeVisible({ timeout: 8_000 });
 });
 
 // ── M13 — Scene Analysis (§5.4, §14.7) ──────────────────────────────────────

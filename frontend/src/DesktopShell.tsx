@@ -7547,11 +7547,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         </div>
       )}
 
-      {/* SKY-10499: Getting Started only ever renders as the gettingStartedCard
-           inside AgentHubPanel's Assistant tab (see the GlobalRightSidebar render
-           above). It must never stand alone as a full-height aside in place of the
-           tab strip — migrateV1Layout now defaults rightSidebarVisible to true, so
-           GRS (and with it the tab strip) is present on every fresh profile. */}
+      {/* GettingStartedPanel deleted in F3#10 — first-run checklist no longer mounts. */}
       </div>{/* end shell-main-row (SKY-5592: outer row wrapping all tabs + GRS) */}
       </RightSidebarSlotProvider>
       {ambiguousLink && (
