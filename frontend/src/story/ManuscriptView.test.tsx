@@ -1119,20 +1119,15 @@ describe('M8 — drop cap on the first scene paragraph', () => {
     expect(screen.getByTestId('msv-root').className).not.toContain('msv-root--dropcap');
   });
 
-  it('F1#10: scene editor has no dropcap root class by default (gates BlockEditor CSS)', () => {
-    renderView({ cursor: cur('scene', 0, 0), pagePrefs: { dropCapEnabled: false } });
-    const root = screen.getByTestId('msv-root');
-    expect(root.className).not.toContain('msv-root--dropcap');
-    // CSS override selector relies on :not(.msv-root--dropcap).
-    expect(root.querySelector('.block-editor--chromeless')).toBeNull(); // paragraphs path; class gate still present
-  });
+  it('F1#10: msv-root--dropcap class tracks pagePrefs (gates BlockEditor CSS)', () => {
+    const { rerender, props } = renderView({
+      cursor: cur('scene', 0, 0),
+      pagePrefs: { dropCapEnabled: false },
+    });
+    expect(screen.getByTestId('msv-root').className).not.toContain('msv-root--dropcap');
 
-  it('F1#13: toolbar renders at panel-top-bar height (36px)', () => {
-    renderView();
-    const tb = screen.getByTestId('msv-toolbar');
-    // jsdom does not compute CSS — assert the height contract is on the style sheet.
-    // Runtime pixel proof is the real-app screenshot / e2e computed-height check.
-    expect(tb).toBeTruthy();
+    rerender(<ManuscriptView {...props} pagePrefs={{ dropCapEnabled: true }} />);
+    expect(screen.getByTestId('msv-root').className).toContain('msv-root--dropcap');
   });
 });
 

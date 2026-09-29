@@ -235,6 +235,8 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   // Collapse: auto-expand ALL folders once on first tree load (≤2-click depth-3).
   // Subsequent refreshes must NOT reset expandedPaths (Forge flag 2).
   const initialNavExpandDoneRef = useRef(false);
+  /** Folder paths ever seen in the nav tree — used to auto-expand only newcomers. */
+  const knownNavPathsRef = useRef<Set<string>>(new Set());
   const navResizeStartXRef = useRef(0);
   const navResizeStartWidthRef = useRef(BOARDS_NAV_DEFAULT);
   // GRS-style resize: live width on a ref during drag; commit React state + persist on mouseup.
@@ -249,6 +251,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   // New vault root → reset crumb + allow one-shot auto-expand again.
   useEffect(() => {
     initialNavExpandDoneRef.current = false;
+    knownNavPathsRef.current = new Set();
     setExpandedPaths(new Set());
     setFolderTree([]);
     setBreadcrumb([HOME_CRUMB]);
@@ -273,8 +276,8 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   }, [currentFolder]);
 
   const handleNavResizeMouseDown = useCallback((e: ReactMouseEvent) => {
-    // Adopt GRS / shell separator resize pattern (option A — no new z-index,
-    // no forked helper): pointer → window mousemove/mouseup; style during drag.
+    // Adopt Notes/GRS separator resize pattern (option A — no new z-index):
+    // pointer → window mousemove/mouseup; style during drag; persist on mouseup.
     e.preventDefault();
     navResizeStartXRef.current = e.clientX;
     navResizeStartWidthRef.current = navWidthLiveRef.current;
@@ -297,6 +300,29 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     };
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
+  }, []);
+
+  /** Match NotesTabPanel separator: ArrowLeft/Right ±8, Home/End clamp; persist on each key. */
+  const handleNavResizeKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const apply = (next: number) => {
+      navWidthLiveRef.current = next;
+      if (navElRef.current) navElRef.current.style.width = `${next}px`;
+      setNavWidth(next);
+      persistBoardsNavWidth(next);
+    };
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      apply(Math.min(BOARDS_NAV_MAX, navWidthLiveRef.current + 8));
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      apply(Math.max(BOARDS_NAV_MIN, navWidthLiveRef.current - 8));
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      apply(BOARDS_NAV_MIN);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      apply(BOARDS_NAV_MAX);
+    }
   }, []);
 
   // Keep live ref in sync when width changes from outside drag (restore / clamp).
@@ -345,18 +371,30 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
       if (cancelled || 'error' in res) return;
       const tree = buildBoardsFolderTree(res.items);
       setFolderTree(tree);
-      // One-shot auto-expand on first load only — never reset collapses on refresh.
+      // Critic B: auto-expand once per vault root; later refreshes only add
+      // newly seen paths (never re-expand a user-collapsed folder).
+      const all: string[] = [];
+      const walk = (nodes: BoardsNavFolderNode[]) => {
+        for (const n of nodes) {
+          all.push(n.path);
+          if (n.children.length) walk(n.children);
+        }
+      };
+      walk(tree);
       if (!initialNavExpandDoneRef.current) {
         initialNavExpandDoneRef.current = true;
-        const all: string[] = [];
-        const walk = (nodes: BoardsNavFolderNode[]) => {
-          for (const n of nodes) {
-            all.push(n.path);
-            if (n.children.length) walk(n.children);
-          }
-        };
-        walk(tree);
+        knownNavPathsRef.current = new Set(all);
         if (all.length) setExpandedPaths(new Set(all));
+      } else {
+        const newcomers = all.filter((p) => !knownNavPathsRef.current.has(p));
+        knownNavPathsRef.current = new Set(all);
+        if (newcomers.length) {
+          setExpandedPaths((prev) => {
+            const next = new Set(prev);
+            for (const p of newcomers) next.add(p);
+            return next;
+          });
+        }
       }
     }).catch(() => { /* non-fatal */ });
     return () => { cancelled = true; };
@@ -912,7 +950,9 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
           className="boards-tab-panel__left-nav-resize"
           data-testid="boards-nav-resize"
           onMouseDown={handleNavResizeMouseDown}
+          onKeyDown={handleNavResizeKeyDown}
           role="separator"
+          tabIndex={0}
           aria-orientation="vertical"
           aria-label="Resize boards sidebar"
           aria-valuenow={Math.round(navWidth)}

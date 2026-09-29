@@ -176,3 +176,83 @@ test('SKY-11069: BOARDS gallery → board tabs → focus-existing → restart pe
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
 });
+
+// ─── F1 beta gate (moved from f1-beta-gate.spec.ts → e2e-shard-4 / test:e2e:scene-crafter) ───
+
+test('F1#2: New board with NO story selected opens tab aria-selected=true', async () => {
+  test.setTimeout(120_000);
+  test.skip(!fs.existsSync(MAIN_JS), 'needs npm run build:electron');
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f1-nb-'));
+  const userData = path.join(tempRoot, 'userData');
+  const vaultDir = path.join(tempRoot, 'story-vault');
+  const notesVaultDir = path.join(tempRoot, 'notes-vault');
+  seedUserData(userData, vaultDir, notesVaultDir);
+  const app = await launchApp(userData);
+  try {
+    const page = await waitForBoot(app);
+    // Create a story so stories[0] exists, but do NOT select it (F1#2 fix path).
+    await page.locator('.wc-menu', { hasText: 'File' }).click();
+    await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
+    await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
+    // Click vault header / empty area to clear selection if any.
+    await page.keyboard.press('Escape').catch(() => {});
+    await openSceneCrafter(page);
+    await expect(page.getByTestId('crafter-new-board')).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId('crafter-new-board').click();
+    await expect(page.getByTestId('canvas-board')).toBeVisible({ timeout: 10_000 });
+    const boardTab = stripTabs(page).filter({ hasText: /Board/i }).last();
+    await expect(boardTab).toHaveAttribute('aria-selected', 'true');
+  } finally {
+    await app.close();
+  }
+});
+
+test('F1#1: Create Scene form → Structure + board persist on SAME userData relaunch', async () => {
+  test.setTimeout(180_000);
+  test.skip(!fs.existsSync(MAIN_JS), 'needs npm run build:electron');
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f1-cs-'));
+  const userData = path.join(tempRoot, 'userData');
+  const vaultDir = path.join(tempRoot, 'story-vault');
+  const notesVaultDir = path.join(tempRoot, 'notes-vault');
+  seedUserData(userData, vaultDir, notesVaultDir);
+  const sceneTitle = 'Held Tip Scene';
+
+  {
+    const app = await launchApp(userData);
+    try {
+      const page = await waitForBoot(app);
+      await createAndSelectStory(page);
+      await openSceneCrafter(page);
+      const titleInput = page.locator('input[placeholder="The next scene…"]');
+      await expect(titleInput).toBeVisible({ timeout: 8_000 });
+      await titleInput.fill(sceneTitle);
+      // Probe: assert Create Scene control exists (no silent skip).
+      const createBtn = page.getByTestId('sc-create-scene-btn');
+      await expect(createBtn).toBeVisible({ timeout: 5_000 });
+      await createBtn.click();
+      await expect(page.locator('.shell-kanban, [data-testid="canvas-board"]')).toBeVisible({ timeout: 12_000 });
+
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Structure"]').click().catch(async () => {
+        await page.getByRole('button', { name: /Structure/i }).first().click();
+      });
+      await expect(page.getByText(sceneTitle).first()).toBeVisible({ timeout: 10_000 });
+    } finally {
+      await app.close();
+    }
+  }
+
+  const app2 = await launchApp(userData);
+  try {
+    const page2 = await waitForBoot(app2);
+    await page2.locator('nav[aria-label="Main navigation"] button[aria-label="Structure"]').click().catch(async () => {
+      await page2.getByRole('button', { name: /Structure/i }).first().click();
+    });
+    await expect(page2.getByText(sceneTitle).first()).toBeVisible({ timeout: 10_000 });
+    await openSceneCrafter(page2);
+    await expect(page2.locator('.shell-kanban, [data-testid="canvas-board"], [data-testid="crafter-board-list"]')).toBeVisible({
+      timeout: 10_000,
+    });
+  } finally {
+    await app2.close();
+  }
+});

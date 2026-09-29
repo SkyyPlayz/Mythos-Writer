@@ -407,13 +407,13 @@ describe('F1#5 — Boards navigable sidebar', () => {
     });
   });
 
-  it('H5: note content vault:notes-updated does NOT re-walk listNotesVault', async () => {
+  it('H5: Characters/note.md content save does NOT re-walk listNotesVault', async () => {
     await mountPanel();
     await screen.findByTestId('boards-nav-home');
     const callsAfterMount = api.listNotesVault.mock.calls.length;
     expect(vaultNotesCb).toBeTruthy();
     await act(async () => {
-      vaultNotesCb?.({ count: 1, path: 'Alice.md' });
+      vaultNotesCb?.({ count: 1, path: 'Characters/note.md' });
       await new Promise((r) => setTimeout(r, 120));
     });
     expect(api.listNotesVault.mock.calls.length).toBe(callsAfterMount);
@@ -434,14 +434,25 @@ describe('F1#5 — Boards navigable sidebar', () => {
     expect(api.listNotesVault.mock.calls.length).toBeGreaterThan(callsAfterMount);
   });
 
-  it('collapse survives a topology tree refresh', async () => {
+  it('renders the resize handle with tabIndex and keyboard arrows (Notes separator parity)', async () => {
+    await mountPanel();
+    const resize = await screen.findByTestId('boards-nav-resize');
+    expect(resize.getAttribute('tabindex')).toBe('0');
+    expect(resize.getAttribute('role')).toBe('separator');
+    const nav = document.querySelector('.boards-tab-panel__left-nav') as HTMLElement;
+    const before = nav.style.width || '180px';
+    fireEvent.keyDown(resize, { key: 'ArrowRight' });
+    await waitFor(() => {
+      expect(nav.style.width).not.toBe(before);
+    });
+  });
+
+  it('collapse survives a folder-event tree refresh', async () => {
     await mountPanel();
     await screen.findByTestId('boards-nav-folder-Cities');
-    // Collapse Characters (hides Locations/Cities).
     fireEvent.click(screen.getByTestId('boards-nav-toggle-Characters'));
     expect(screen.queryByTestId('boards-nav-folder-Cities')).toBeNull();
 
-    // Topology refresh (new sibling board) must NOT re-expand Characters.
     vaultItems = [
       ...vaultItems,
       { path: 'Extra', name: 'Extra', isDirectory: true },

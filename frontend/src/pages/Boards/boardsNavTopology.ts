@@ -1,7 +1,7 @@
 /**
  * F1 H5 — when should Boards left-nav bump `navTreeVersion` (re-walk
- * `listNotesVault('')`)? Topology only: board/folder create, rename, delete.
- * Note content saves must NEVER trigger a full vault walk.
+ * `listNotesVault('')`)? Topology only. Note content / asset saves must NEVER
+ * trigger a full vault walk (Critic A / Forge).
  */
 
 /** Collect every folder path in a boards nav tree. */
@@ -22,20 +22,18 @@ export function collectBoardsNavFolderPaths(
 /**
  * True when a `vault:notes-updated` payload should refresh the boards folder tree.
  *
- * - Note paths (`*.md`) → false (content save / note rename — tree unchanged).
- * - Missing / empty path → false (rely on explicit create/rename/trash call sites).
- * - Directory (board) path → true when new/missing from the known tree, or always
- *   for any non-note path (create / rename / trash of boards).
+ * Bump on: untargeted event (no path), known-folder path, or extension-less path.
+ * Never on `.md` or other asset paths (`.png`, etc.).
  */
 export function shouldBumpNavTreeOnVaultEvent(
   path: string | undefined,
   knownDirPaths: ReadonlySet<string>,
 ): boolean {
-  if (!path || !path.trim()) return false;
+  if (!path || !path.trim()) return true; // untargeted — topology may have changed off-canvas
   const norm = path.replace(/\\/g, '/');
   if (/\.md$/i.test(norm)) return false;
-  // Board/folder path — topology. "New/missing" covers first sight of a folder;
-  // known dirs still bump (rename/delete notifications reuse the folder path).
-  if (!knownDirPaths.has(norm)) return true;
-  return true;
+  if (knownDirPaths.has(norm)) return true;
+  const base = norm.split('/').pop() ?? '';
+  if (/\.[a-z0-9]+$/i.test(base)) return false; // asset with extension
+  return true; // extension-less → board/folder path
 }

@@ -10,14 +10,19 @@ describe('F1 H5 boardsNavTopology', () => {
     expect(shouldBumpNavTreeOnVaultEvent('World/lore.md', new Set())).toBe(false);
   });
 
-  it('never bumps when path is missing (call sites own those mutations)', () => {
-    expect(shouldBumpNavTreeOnVaultEvent(undefined, known)).toBe(false);
-    expect(shouldBumpNavTreeOnVaultEvent('', known)).toBe(false);
+  it('never bumps on asset paths with extensions', () => {
+    expect(shouldBumpNavTreeOnVaultEvent('cover.png', known)).toBe(false);
+    expect(shouldBumpNavTreeOnVaultEvent('Characters/map.webp', known)).toBe(false);
   });
 
-  it('bumps on board/folder paths (new or known)', () => {
-    expect(shouldBumpNavTreeOnVaultEvent('New board', known)).toBe(true);
+  it('bumps on untargeted events (no path) — call sites / watcher unlink', () => {
+    expect(shouldBumpNavTreeOnVaultEvent(undefined, known)).toBe(true);
+    expect(shouldBumpNavTreeOnVaultEvent('', known)).toBe(true);
+  });
+
+  it('bumps on known-folder and extension-less board paths', () => {
     expect(shouldBumpNavTreeOnVaultEvent('Characters', known)).toBe(true);
+    expect(shouldBumpNavTreeOnVaultEvent('New board', known)).toBe(true);
     expect(shouldBumpNavTreeOnVaultEvent('Characters/Locations/Cities', known)).toBe(true);
   });
 

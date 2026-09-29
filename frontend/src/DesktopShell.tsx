@@ -3476,16 +3476,35 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     };
     // F1#9: insert after the selected chapter (same part) when that chapter
     // belongs to this story; otherwise append to the last part.
+    const holder: { story: Story | null } = { story: null };
     updateManifest(stories.map((s) => {
       if (s.id !== storyId) return s;
+      let updated: Story;
       if (selectedChapter && selectedStory?.id === storyId) {
         const owner = findOwningPart(s, selectedChapter.id);
         if (owner) {
-          return insertChapterIntoPart(s, owner.id, chapter, selectedChapter.id);
+          updated = insertChapterIntoPart(s, owner.id, chapter, selectedChapter.id);
+        } else {
+          updated = appendChapterToStory(s, chapter);
         }
+      } else {
+        updated = appendChapterToStory(s, chapter);
       }
-      return appendChapterToStory(s, chapter);
+      holder.story = updated;
+      return updated;
     }));
+    // Probe: select the newly added chapter so repeated File/+ Chapter adds
+    // keep chronological order (avoid Alpha→Charlie→Bravo reverse inserts).
+    const storyAfter = holder.story;
+    const owned = storyAfter
+      ? (storyAfter.parts ?? []).flatMap((p) => p.chapters).find((c) => c.id === id)
+        ?? storyAfter.chapters.find((c) => c.id === id)
+      : undefined;
+    if (owned && storyAfter) {
+      setSelectedStory(storyAfter);
+      setSelectedChapter(owned);
+      setSelectedScene(owned.scenes[0] ?? null);
+    }
   }, [stories, updateManifest, requestText, selectedChapter, selectedStory]);
 
   const handleSelectScene = useCallback((scene: Scene, chapter: Chapter, story: Story) => {
