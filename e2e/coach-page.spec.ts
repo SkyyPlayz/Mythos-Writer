@@ -307,13 +307,21 @@ test('M13 acceptance: with AI failing, View Full Analysis still lands a computed
 
 test('M13 §14.7: Full Analysis opens in Coach with COMPUTED vs COACH\'S READ sections', async () => {
   // P4 — both chat send and Full Analysis AI read use writingAssistant.
+  // Preload invokes `agent:writing-assistant` with `{ prompt, context }` (not a bare string).
   // Route by prompt shape so free chat still gets the lesson mock.
   await app!.evaluate(({ ipcMain }, args) => {
     try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* not registered */ }
     try { ipcMain.removeHandler('agent:brainstorm'); } catch { /* not registered */ }
-    ipcMain.handle('agent:writing-assistant', async (_evt: unknown, prompt: unknown) => {
-      const text = typeof prompt === 'string' ? prompt : '';
-      if (text.includes('Respond with ONLY a JSON object')) {
+    ipcMain.handle('agent:writing-assistant', async (_evt: unknown, payload: unknown) => {
+      const promptText = (() => {
+        if (typeof payload === 'string') return payload;
+        if (payload && typeof payload === 'object' && 'prompt' in payload) {
+          const p = (payload as { prompt?: unknown }).prompt;
+          return typeof p === 'string' ? p : '';
+        }
+        return '';
+      })();
+      if (promptText.includes('Respond with ONLY a JSON object')) {
         return { text: args.analysisResponse };
       }
       return { text: args.chatResponse };
