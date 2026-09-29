@@ -103,7 +103,7 @@ describe('EditorSettingsSection', () => {
     const setSettings = vi.fn();
     render(<EditorSettingsSection settings={baseSettings} setSettings={setSettings} setSavedOk={vi.fn()} />);
     fireEvent.click(screen.getByRole('switch', { name: 'Spellcheck while typing' }));
-    const updater = setSettings.mock.calls[0][0] as (p: AppSettings) => AppSettings;
+    const updater = setSettings.mock.calls.at(-1)![0] as (p: AppSettings) => AppSettings;
     expect(updater(baseSettings).editorPrefs?.spellcheck).toBe(false);
   });
 
@@ -114,8 +114,23 @@ describe('EditorSettingsSection', () => {
     expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'true');
     fireEvent.click(screen.getByRole('switch', { name: 'Show Markdown view toggle' }));
-    const updater = setSettings.mock.calls[0][0] as (p: AppSettings) => AppSettings;
+    const updater = setSettings.mock.calls.at(-1)![0] as (p: AppSettings) => AppSettings;
     expect(updater(baseSettings).editorPrefs?.showMarkdownView).toBe(true);
+  });
+
+  it('H1: spellcheck toggle leaves sticky note view modes intact', () => {
+    window.localStorage.setItem(
+      'mythos:notes:modeByPath',
+      JSON.stringify({ 'Notes/Keep.md': 'source' }),
+    );
+    window.localStorage.setItem('mythos:notes:viewPrefsV', '2');
+    const setSettings = vi.fn();
+    render(<EditorSettingsSection settings={baseSettings} setSettings={setSettings} setSavedOk={vi.fn()} />);
+    fireEvent.click(screen.getByRole('switch', { name: 'Spellcheck while typing' }));
+    fireEvent.change(screen.getByLabelText('Autosave snapshot every'), { target: { value: '45' } });
+    expect(window.localStorage.getItem('mythos:notes:modeByPath')).toBe(
+      JSON.stringify({ 'Notes/Keep.md': 'source' }),
+    );
   });
 });
 

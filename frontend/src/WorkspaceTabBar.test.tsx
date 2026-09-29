@@ -790,3 +790,15 @@ describe('WorkspaceTabBar overflow ▾ dropdown', () => {
     vi.unstubAllGlobals();
   });
 });
+
+// ── F4#7: full-outline active tab (live WorkspaceTabBar) ─────────────────────
+
+describe('F4#7: WorkspaceTabBar active tab full outline', () => {
+  it('active tab uses wtb-tab--active (neon full-outline class)', () => {
+    render(<WorkspaceTabBar {...defaultProps()} />);
+    const active = screen.getByRole('tab', { name: 'Chapter One' });
+    expect(active.className).toMatch(/wtb-tab--active/);
+    const inactive = screen.getByRole('tab', { name: 'Chapter Two' });
+    expect(inactive.className).not.toMatch(/wtb-tab--active/);
+  });
+});

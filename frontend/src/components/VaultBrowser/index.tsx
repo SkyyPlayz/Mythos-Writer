@@ -1201,8 +1201,8 @@ function NotesVault({ items, onOpenFile, onReload, onContextChange, activeTag, o
           </button>
         )}
       </div>
-      {/* F4#9/#10: toolbar order matches prototype (new / folder / sort / reveal /
-          collapse↑ / expand↓). Separate ↑↓ icons per video 15:34. */}
+      {/* F4#10: toolbar (new / folder / sort / reveal / collapse↑ / expand↓).
+          #9 button relocation is OWNER ASK (video 13:05 ambiguous) — parked. */}
       <div className="vb-notes-toolbar" data-testid="vb-notes-toolbar">
         <button
           className="vb-toolbar-btn"

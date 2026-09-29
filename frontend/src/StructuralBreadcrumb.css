@@ -19,9 +19,10 @@
 }
 
 .struct-breadcrumb__item--root {
-  /* Root shrinks last — keep book title visible under narrow widths. */
-  flex-shrink: 0;
+  /* Root truncates last: tiny shrink + cap so a long title can't starve leaves. */
+  flex-shrink: 0.01;
   min-width: 2.5em;
+  max-width: 40%;
 }
 
 .struct-breadcrumb__label {

@@ -14,13 +14,13 @@ describe('StructuralBreadcrumb (F4#6/#7)', () => {
     expect(nav.textContent).toContain('Scene A');
   });
 
-  it('marks the root crumb and gives it flex-shrink 0 (truncate last)', () => {
+  it('marks the root crumb and shrinks it last (tiny flex-shrink vs leaf)', () => {
     render(<StructuralBreadcrumb crumbs={['Root Book', 'Ch. 1', 'Opening']} />);
     const root = screen.getByTestId('struct-breadcrumb-root');
     expect(root).toHaveClass('struct-breadcrumb__item--root');
-    expect(root.style.flexShrink).toBe('0');
-    const leaf = screen.getByTestId('struct-breadcrumb-item-2');
-    expect(Number(leaf.style.flexShrink)).toBeGreaterThan(0);
+    expect(Number(root.style.flexShrink)).toBeLessThan(Number(
+      screen.getByTestId('struct-breadcrumb-item-2').style.flexShrink,
+    ));
   });
 
   it('applies full-outline current class on the active crumb', () => {

@@ -1,12 +1,21 @@
 // Beta 3 "Liquid Neon" M24 — Settings → Editor (prototype 1871–1890).
 // Manuscript defaults (autosave snapshot cadence) + behavior toggles, bound to
 // settings.editorPrefs (additive AppSettings field persisted via Save).
-// Consumers (spellcheck flag on the editor surface, dictation gate) read the
-// persisted prefs; page width intentionally lives in the editor toolbar (M10).
-// F4#4: note view toggles (Markdown/Source enablement + Always open in Rich)
-// live here and bridge to NoteViewer via localStorage (no DesktopShell mount).
+// F4#4: note view prefs — localStorage is SoT. Gear and Settings both read/write
+// the same keys. No per-patch() sync into localStorage (behavior edits never
+// touch view prefs). Mount hydrates showMarkdown/showSource from AppSettings.
+import { useEffect, useState } from 'react';
 import { M24Card, M24Slider, M24Toggle } from './M24Controls';
-import { syncNoteViewPrefsFromSettings } from '../../../noteViewPrefs';
+import {
+  clearAllNoteModePrefs,
+  ensureNoteViewPrefsReady,
+  readDefaultRichPref,
+  readShowMarkdownViewPref,
+  readShowSourceViewPref,
+  writeDefaultRichPref,
+  writeShowMarkdownViewPref,
+  writeShowSourceViewPref,
+} from '../../../noteViewPrefs';
 import './M24Sections.css';
 
 interface Props {
@@ -36,8 +45,10 @@ const BEHAVIOR_TOGGLE_ROWS: {
   { key: 'dictation', label: 'Voice dictation (offline model)' },
 ];
 
+type ViewKey = 'showMarkdownView' | 'showSourceView' | 'alwaysOpenRich';
+
 const VIEW_TOGGLE_ROWS: {
-  key: keyof Pick<Required<EditorPrefs>, 'showMarkdownView' | 'showSourceView' | 'alwaysOpenRich'>;
+  key: ViewKey;
   label: string;
   hint?: string;
 }[] = [
@@ -58,17 +69,73 @@ const VIEW_TOGGLE_ROWS: {
   },
 ];
 
+function readViewPrefsFromStorage(): Record<ViewKey, boolean> {
+  return {
+    alwaysOpenRich: readDefaultRichPref(),
+    showMarkdownView: readShowMarkdownViewPref(),
+    showSourceView: readShowSourceViewPref(),
+  };
+}
+
+/** Write one view key into localStorage SoT (gear reads the same keys). */
+function writeViewPref(key: ViewKey, value: boolean): void {
+  if (key === 'alwaysOpenRich') {
+    writeDefaultRichPref(value);
+    if (value) clearAllNoteModePrefs();
+    return;
+  }
+  if (key === 'showMarkdownView') {
+    writeShowMarkdownViewPref(value);
+    return;
+  }
+  if (key === 'showSourceView') {
+    writeShowSourceViewPref(value);
+    return;
+  }
+  const _exhaustive: never = key;
+  void _exhaustive;
+}
+
 export default function EditorSettingsSection({ settings, setSettings, setSavedOk }: Props) {
   const prefs: Required<EditorPrefs> = { ...EDITOR_PREFS_DEFAULTS, ...settings.editorPrefs };
+  const [viewTick, setViewTick] = useState(0);
+  const viewPrefs = readViewPrefsFromStorage();
+  void viewTick;
 
-  const patch = (p: Partial<EditorPrefs>) => {
-    const next = { ...EDITOR_PREFS_DEFAULTS, ...settings.editorPrefs, ...p };
-    setSettings((prev) => ({ ...prev, editorPrefs: { ...EDITOR_PREFS_DEFAULTS, ...prev.editorPrefs, ...p } }));
-    syncNoteViewPrefsFromSettings({
-      alwaysOpenRich: next.alwaysOpenRich,
-      showMarkdownView: next.showMarkdownView,
-      showSourceView: next.showSourceView,
-    });
+  useEffect(() => {
+    ensureNoteViewPrefsReady(settings.editorPrefs);
+    // Mirror localStorage SoT into editorPrefs so Save persists gear agreement.
+    setSettings((prev) => ({
+      ...prev,
+      editorPrefs: {
+        ...EDITOR_PREFS_DEFAULTS,
+        ...prev.editorPrefs,
+        alwaysOpenRich: readDefaultRichPref(),
+        showMarkdownView: readShowMarkdownViewPref(),
+        showSourceView: readShowSourceViewPref(),
+      },
+    }));
+    setViewTick((t) => t + 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only hydrate
+  }, []);
+
+  /** Behavior / autosave — never touches view-pref localStorage. */
+  const patchBehavior = (p: Partial<EditorPrefs>) => {
+    setSettings((prev) => ({
+      ...prev,
+      editorPrefs: { ...EDITOR_PREFS_DEFAULTS, ...prev.editorPrefs, ...p },
+    }));
+    setSavedOk(false);
+  };
+
+  /** View toggles — write localStorage SoT + mirror into editorPrefs. No patch()-sync. */
+  const setViewPref = (key: ViewKey, value: boolean) => {
+    writeViewPref(key, value);
+    setSettings((prev) => ({
+      ...prev,
+      editorPrefs: { ...EDITOR_PREFS_DEFAULTS, ...prev.editorPrefs, [key]: value },
+    }));
+    setViewTick((t) => t + 1);
     setSavedOk(false);
   };
 
@@ -86,7 +153,7 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
           min={5}
           max={120}
           unit="s"
-          onChange={(v) => patch({ autosaveSeconds: v })}
+          onChange={(v) => patchBehavior({ autosaveSeconds: v })}
           testId="editor-autosave-slider"
         />
       </M24Card>
@@ -99,7 +166,7 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
               on={prefs[key]}
               label={label}
               testId={`editor-toggle-${key}`}
-              onClick={() => patch({ [key]: !prefs[key] })}
+              onClick={() => patchBehavior({ [key]: !prefs[key] })}
             />
           </div>
         ))}
@@ -114,10 +181,10 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>{label}</span>
               <M24Toggle
-                on={prefs[key]}
+                on={viewPrefs[key]}
                 label={label}
                 testId={`editor-toggle-${key}`}
-                onClick={() => patch({ [key]: !prefs[key] })}
+                onClick={() => setViewPref(key, !viewPrefs[key])}
               />
             </div>
             {hint ? (

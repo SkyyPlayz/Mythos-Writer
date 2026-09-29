@@ -29,6 +29,7 @@ import {
   NOTES_DEFAULT_RICH_KEY,
   NOTES_MODE_BY_PATH_KEY,
   clearAllNoteModePrefs,
+  ensureNoteViewPrefsReady,
   readDefaultRichPref,
   readNoteModePref,
   readShowMarkdownViewPref,
@@ -337,7 +338,16 @@ export default function NoteViewer({
   ttsSettings,
   voicePrefs,
 }: Props) {
-  const [defaultRich, setDefaultRich] = useState(readDefaultRichPref);
+  const [defaultRich, setDefaultRich] = useState(() => {
+    ensureNoteViewPrefsReady();
+    return readDefaultRichPref();
+  });
+  // Re-run migrate + hydrate on mount (idempotent) so a late Settings load
+  // still pushes showMarkdown/showSource into the gear bridge.
+  useEffect(() => {
+    ensureNoteViewPrefsReady();
+    setDefaultRich(readDefaultRichPref());
+  }, []);
   // SKY-10929: this note's own remembered mode, if it was ever explicitly
   // switched — takes priority over the global default below.
   const stickyMode = useMemo(() => readNoteModePref(path), [path]);
@@ -772,7 +782,8 @@ export default function NoteViewer({
         </div>
       )}
       <div className="note-viewer-toolbar">
-        {/* M8d: breadcrumb (prototype `noteCrumbs`) — folder path + note title. */}
+        {/* M8d: breadcrumb (prototype `noteCrumbs`) — folder path + note title.
+            F4 StructuralBreadcrumb mounts in F1 `msv-crumbs` (not here). */}
         <nav className="note-breadcrumb" aria-label="Note path" data-testid="note-breadcrumb">
           {breadcrumbItems.map((crumb, i) => (
             <span
@@ -831,7 +842,7 @@ export default function NoteViewer({
           {gearOpen && (
             <NoteViewGearMenu
               mode={mode === 'preview' ? 'preview' : (mode as StickyNoteMode)}
-              defaultRich={readDefaultRichPref()}
+              defaultRich={defaultRich}
               showMarkdown={readShowMarkdownViewPref()}
               showSource={readShowSourceViewPref()}
               onModeClick={(m) => handleModeClick(m)}

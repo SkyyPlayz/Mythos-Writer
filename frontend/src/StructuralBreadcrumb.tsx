@@ -30,8 +30,8 @@ export default function StructuralBreadcrumb({
       {crumbs.map((crumb, i) => {
         const isRoot = i === 0;
         const isCurrent = i === active;
-        // flex-shrink: root = 0 (truncate last); middle/leaf shrink first.
-        const shrink = isRoot ? 0 : i === crumbs.length - 1 ? 2 : 1;
+        // flex-shrink: root tiny (truncate last); middle/leaf shrink first.
+        const shrink = isRoot ? 0.01 : i === crumbs.length - 1 ? 2 : 1;
         return (
           <span
             key={`${i}-${crumb}`}

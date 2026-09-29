@@ -176,4 +176,11 @@ describe('PageSetupPopover', () => {
     fireEvent.click(screen.getByTestId('page-setup-zoom-125'));
     expect(onPrefsChange).toHaveBeenCalledWith(expect.objectContaining({ fontSizeStep: 15 }));
   });
+
+  it('F4#15: 75% zoom preset sets fontSizeStep to 9', () => {
+    const onPrefsChange = vi.fn();
+    render(<PageSetupPopover {...defaultProps} onPrefsChange={onPrefsChange} />);
+    fireEvent.click(screen.getByTestId('page-setup-zoom-75'));
+    expect(onPrefsChange).toHaveBeenCalledWith(expect.objectContaining({ fontSizeStep: 9 }));
+  });
 });

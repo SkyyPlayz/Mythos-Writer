@@ -4,6 +4,8 @@ import NoteViewer, { NOTES_DEFAULT_RICH_KEY, NOTES_MODE_BY_PATH_KEY } from './No
 import {
   NOTES_SHOW_MARKDOWN_KEY,
   NOTES_SHOW_SOURCE_KEY,
+  NOTES_VIEW_PREFS_VERSION,
+  NOTES_VIEW_PREFS_VERSION_KEY,
   writeShowMarkdownViewPref,
   writeShowSourceViewPref,
 } from './noteViewPrefs';
@@ -28,6 +30,8 @@ beforeEach(() => {
   entityList.mockResolvedValue({ entities: [] });
   noteBacklinks.mockResolvedValue({ backlinks: [] });
   (window as unknown as { api: unknown }).api = { readNotesVault, writeNotesVault, readVault, writeVault, entityList, noteBacklinks };
+  // Skip the one-time F4 migration so per-test sticky / defaultRich seeds stick.
+  window.localStorage.setItem(NOTES_VIEW_PREFS_VERSION_KEY, String(NOTES_VIEW_PREFS_VERSION));
   // F4#4: enable Markdown/Source for legacy mode-switch tests (default is Rich-only).
   writeShowMarkdownViewPref(true);
   writeShowSourceViewPref(true);
@@ -41,6 +45,7 @@ afterEach(() => {
   window.localStorage.removeItem(NOTES_MODE_BY_PATH_KEY);
   window.localStorage.removeItem(NOTES_SHOW_MARKDOWN_KEY);
   window.localStorage.removeItem(NOTES_SHOW_SOURCE_KEY);
+  window.localStorage.removeItem(NOTES_VIEW_PREFS_VERSION_KEY);
 });
 
 // M17: mode switching lives in the gear "View options" popover (prototype
@@ -234,6 +239,23 @@ describe('NoteViewer SKY-10929 default mode + sticky per-note choice', () => {
     render(<NoteViewer path="Notes/Test.md" />);
     await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
   });
+
+  it('F4 gate: pre-F4 saved Source sticky opens Rich after viewPrefsV migration', async () => {
+    window.localStorage.removeItem(NOTES_VIEW_PREFS_VERSION_KEY);
+    window.localStorage.setItem(NOTES_DEFAULT_RICH_KEY, '0');
+    window.localStorage.setItem(
+      NOTES_MODE_BY_PATH_KEY,
+      JSON.stringify({ 'Notes/Legacy.md': 'source' }),
+    );
+    // Module/ensure path runs migrate on mount → Rich, sticky cleared.
+    const { migrateNoteViewPrefsToV2 } = await import('./noteViewPrefs');
+    expect(migrateNoteViewPrefsToV2()).toBe(true);
+    render(<NoteViewer path="Notes/Legacy.md" />);
+    await waitFor(() => expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull());
+    expect(screen.queryByLabelText('Edit note: Legacy.md')).toBeNull();
+    expect(window.localStorage.getItem(NOTES_MODE_BY_PATH_KEY)).toBeNull();
+  });
+
 
   it('always-rich default falls back to Source (no modal) when the note is lossy — CF-11', async () => {
     readNotesVault.mockResolvedValue({ content: '| A | B |\n|---|---|\n| 1 | 2 |' });
