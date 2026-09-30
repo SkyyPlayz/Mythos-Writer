@@ -550,6 +550,11 @@ interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
   /**
+   * Ephemeral from settings:get — main reports whether ANTHROPIC_API_KEY is set
+   * in the main process env. Boolean only; never the key. Not persisted.
+   */
+  anthropicEnvKeyPresent?: boolean;
+  /**
    * M11a (SKY-9160): master AI switch — manual mode. Absent means enabled.
    * Master off beats every per-agent enable; master on defers to them.
    */

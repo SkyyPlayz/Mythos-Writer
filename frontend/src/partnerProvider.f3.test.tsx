@@ -155,12 +155,17 @@ describe('F3 provider privacy — per-action routing', () => {
     expect(() => assertAgentProviderReady(s, 'writingAssistant')).not.toThrow();
   });
 
-  it('Critic hard 5: accepts ANTHROPIC_API_KEY env when settings.apiKey empty', () => {
-    const prev = process.env.ANTHROPIC_API_KEY;
-    process.env.ANTHROPIC_API_KEY = 'sk-env-key';
+  it('Critic hard 5: accepts main-reported anthropicEnvKeyPresent when settings.apiKey empty', () => {
+    // Renderer must use the settings:get boolean — not process.env (sandbox /
+    // contextIsolation / no vite define). Stubbing process away proves the
+    // gate does not depend on a renderer-side env read.
+    const realProcess = globalThis.process;
+    // @ts-expect-error intentional red-on-revert probe: no process in renderer
+    delete globalThis.process;
     try {
       const s = {
         apiKey: '',
+        anthropicEnvKeyPresent: true,
         provider: undefined,
         agents: {
           writingAssistant: { enabled: true, model: '' },
@@ -170,6 +175,28 @@ describe('F3 provider privacy — per-action routing', () => {
       } as unknown as AppSettings;
       expect(resolveAgentProvider(s, 'writingAssistant')?.kind).toBe('anthropic');
       expect(() => assertAgentProviderReady(s, 'betaReader')).not.toThrow();
+    } finally {
+      globalThis.process = realProcess;
+    }
+  });
+
+  it('Critic hard 5: env-only without anthropicEnvKeyPresent refuses (no renderer process.env)', () => {
+    const prev = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = 'sk-env-key-only-in-process';
+    try {
+      const s = {
+        apiKey: '',
+        anthropicEnvKeyPresent: false,
+        provider: undefined,
+        agents: {
+          writingAssistant: { enabled: true, model: '' },
+          brainstorm: { enabled: true, model: 'x' },
+          archive: { enabled: true, model: 'x' },
+        },
+      } as unknown as AppSettings;
+      // If the gate still read process.env, this would wrongly resolve.
+      expect(resolveAgentProvider(s, 'writingAssistant')).toBeNull();
+      expect(() => assertAgentProviderReady(s, 'writingAssistant')).toThrow(PartnerProviderRefuseError);
     } finally {
       if (prev === undefined) delete process.env.ANTHROPIC_API_KEY;
       else process.env.ANTHROPIC_API_KEY = prev;

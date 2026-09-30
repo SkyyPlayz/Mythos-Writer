@@ -5,8 +5,10 @@
 // resolve. NEVER quietly fall back to the brainstorm provider.
 //
 // Critic hard 5: mirror main's `buildGlobalProviderConfig` — legacy
-// `settings.apiKey` and `ANTHROPIC_API_KEY` still count as a resolvable
-// Anthropic global when `settings.provider` is absent.
+// `settings.apiKey` and main's ANTHROPIC_API_KEY env (via settings.anthropicEnvKeyPresent
+// boolean from settings:get) still count as a resolvable Anthropic global when
+// `settings.provider` is absent. Renderer must NOT read process.env — sandbox /
+// contextIsolation / no vite define make that branch always false in the app.
 
 import type { ProviderKind } from '../components/SettingsPanel/settingsPanelTypes';
 
@@ -33,20 +35,11 @@ interface AgentProviderSlice {
   provider?: { kind?: string; model?: string; apiKey?: string; baseUrl?: string } | null;
 }
 
-function readAnthropicEnvKey(): string | undefined {
-  try {
-    const key = (typeof process !== 'undefined' ? process.env?.ANTHROPIC_API_KEY : undefined) ?? undefined;
-    return typeof key === 'string' && key.trim() ? key.trim() : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-/** True when legacy settings.apiKey or ANTHROPIC_API_KEY can serve Anthropic. */
+/** True when legacy settings.apiKey or main-reported env key can serve Anthropic. */
 export function hasLegacyAnthropicKey(settings: AppSettings | null | undefined): boolean {
   if (!settings) return false;
   const fromSettings = typeof settings.apiKey === 'string' && settings.apiKey.trim().length > 0;
-  return fromSettings || Boolean(readAnthropicEnvKey());
+  return fromSettings || settings.anthropicEnvKeyPresent === true;
 }
 
 /** Resolve the effective provider kind/model for an agent slot (override → global → legacy). */

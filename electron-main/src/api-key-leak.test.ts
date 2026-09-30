@@ -159,6 +159,19 @@ describe('maskSettingsForRenderer — apiKey field (MYT-143)', () => {
 
     expect(masked.recentVaultParentPaths).toEqual(['/vaults/A', '/vaults/B']);
   });
+
+  it('stamps anthropicEnvKeyPresent as a boolean only (never the key value)', () => {
+    const prev = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-env-secret-must-not-cross-ipc';
+    try {
+      const masked = maskSettingsForRenderer(settingsFixture({ apiKey: '' }));
+      expect(masked.anthropicEnvKeyPresent).toBe(true);
+      expect(JSON.stringify(masked)).not.toContain('sk-ant-env-secret-must-not-cross-ipc');
+    } finally {
+      if (prev === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = prev;
+    }
+  });
 });
 
 describe('maskSettingsForRenderer — voice.openaiApiKey field (MYT-424)', () => {
