@@ -348,13 +348,14 @@ test('SKY-11186 ZOOM-1: the zoom-out limit is named on the button and adjustable
     await expect(stop20).toBeVisible({ timeout: 8_000 });
     await stop20.click();
     await expect(stop20).toHaveAttribute('aria-checked', 'true');
-    await page.locator('button[aria-label="Save settings"]').click();
+    // F2#15: Close is the one-exit save — wait for the overlay to unmount
+    // after flush. Do not click Close a second time (races mid-dismiss).
+    await page.locator('[data-testid="settings-close"]').click();
+    await expect(page.locator('.settings-overlay')).toHaveCount(0, { timeout: 8_000 });
     await expect.poll(() => {
       const settings = JSON.parse(fs.readFileSync(path.join(userData, 'app-settings.json'), 'utf-8'));
       return settings.notesBoard?.minZoom;
     }, { timeout: 10_000 }).toBe(20);
-    const closeSettings = page.locator('button[aria-label="Close settings"]');
-    if (await closeSettings.isVisible().catch(() => false)) await closeSettings.click();
 
     // Back on the board the floor moved: 40% is no longer the stop.
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();

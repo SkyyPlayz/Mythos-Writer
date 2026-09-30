@@ -129,6 +129,33 @@ export interface UseNavigationHistoryResult {
   version: number;
 }
 
+/** True when the location is the Story Writer manuscript editor (not Crafter/Timeline/…). */
+export function isStoryEditorLocation(loc: NavigationLocation): boolean {
+  return loc.tab === 'story' && loc.view === 'editor';
+}
+
+/**
+ * F2#7 — last Story Writer editor stop (scene + frozen scrollTop) for the
+ * top-left Story Writer rail item ("Back to story").
+ *
+ * Walks backward from `index` so we restore the most recently *visited*
+ * editor stop, not a discarded forward entry. Returns null when the stack
+ * has never recorded a story-editor location (caller falls back to a plain
+ * tab switch).
+ */
+export function findLastStoryEditorLocation(
+  snapshot: PersistedNavHistory,
+): NavigationLocation | null {
+  const { stack, index } = snapshot;
+  if (stack.length === 0) return null;
+  const start = Math.min(Math.max(index, 0), stack.length - 1);
+  for (let i = start; i >= 0; i -= 1) {
+    const loc = stack[i];
+    if (loc && isStoryEditorLocation(loc)) return loc;
+  }
+  return null;
+}
+
 export function useNavigationHistory(
   location: NavigationLocation,
   getScrollTop: () => number,

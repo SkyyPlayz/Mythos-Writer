@@ -22,6 +22,7 @@ const mockChooseVaultFolder = vi.fn();
 const mockProviderListModels = vi.fn();
 const mockVoicePickBinary = vi.fn();
 const mockOnClose = vi.fn();
+const mockOnCloseBlocked = vi.fn();
 const mockOnSaved = vi.fn();
 const mockTemplateList = vi.fn();
 const mockTemplateSaveAs = vi.fn();
@@ -51,7 +52,7 @@ async function flushAsyncEffects() {
 async function renderSettings(ui: ReactElement) {
   const result = render(ui);
   await flushAsyncEffects();
-  const agentsTab = await screen.findByRole('tab', { name: /model & keys/i });
+  const agentsTab = await screen.findByTestId('settings-cat-agents');
   fireEvent.click(agentsTab);
   await flushAsyncEffects();
   return result;
@@ -344,16 +345,16 @@ describe('SettingsPanel', () => {
     await waitFor(() => expect(document.activeElement).toBe(closeButton));
   });
 
-  it('saves settings to IPC when Save is clicked', async () => {
+  it('saves settings to IPC when Settings is closed (F2#15)', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
     await waitForModelKeys();
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
 
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
     expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }));
-    expect(screen.getByText(/settings saved/i)).toBeInTheDocument();
     expect(mockOnSaved).toHaveBeenCalledWith(expect.objectContaining({ theme: 'dark' }));
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
   });
 
   it('shows inline validation error for bad API key', async () => {
@@ -362,16 +363,109 @@ describe('SettingsPanel', () => {
 
     fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'bad-key' } });
     expect(screen.getByRole('alert')).toHaveTextContent(/must start with sk-ant-/i);
-    expect(screen.getByRole('button', { name: /save settings/i })).toBeDisabled();
   });
 
-  it('accepts a valid sk-ant- key and enables Save', async () => {
+  it('Shield R4/H6: apiKeyError keeps Settings open; persists everything except the bad key', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+    await waitForModelKeys();
+
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'bad-key' } });
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+    expect(mockOnClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: /settings/i })).toBeInTheDocument();
+    expect(screen.getByText(/api key not saved/i)).toBeInTheDocument();
+    // Bad key must not be written — last good (empty default) is held.
+    expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ apiKey: '' }));
+  });
+
+  it('Shield R4: save-on-close failure keeps Settings open with inline error', async () => {
+    mockSettingsSet.mockRejectedValueOnce(new Error('/secret/path blew up\nstack'));
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+    await waitForModelKeys();
+
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/couldn't save settings/i)).toBeInTheDocument();
+    });
+    expect(mockOnClose).not.toHaveBeenCalled();
+    expect(mockOnSaved).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: /settings/i })).toBeInTheDocument();
+    expect(screen.queryByText(/secret\/path/i)).not.toBeInTheDocument();
+  });
+
+  it('Shield/Ivy condition 3: SETTINGS_SET {saved:false,error} keeps open + fixed alert + onCloseBlocked', async () => {
+    mockSettingsSet.mockResolvedValueOnce({
+      saved: false,
+      error: 'App data was cleared — restart Mythos Writer to continue.',
+    });
+    await renderSettings(
+      <SettingsPanel onClose={mockOnClose} onCloseBlocked={mockOnCloseBlocked} onSaved={mockOnSaved} />,
+    );
+    await waitForModelKeys();
+
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+
+    await waitFor(() => {
+      // Shield 5(a): exact fixed string (Ivy delta).
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'App data was cleared — restart Mythos Writer to continue.',
+      );
+    });
+    expect(mockOnClose).not.toHaveBeenCalled();
+    expect(mockOnCloseBlocked).toHaveBeenCalled();
+    expect(mockOnSaved).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: /settings/i })).toBeInTheDocument();
+  });
+
+  it('Shield/Ivy condition 3: SETTINGS_SET error string alone (no saved:false) also blocks close', async () => {
+    mockSettingsSet.mockResolvedValueOnce({
+      error: 'App data was cleared — restart Mythos Writer to continue.',
+    });
+    await renderSettings(
+      <SettingsPanel onClose={mockOnClose} onCloseBlocked={mockOnCloseBlocked} onSaved={mockOnSaved} />,
+    );
+    await waitForModelKeys();
+
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'App data was cleared — restart Mythos Writer to continue.',
+      );
+    });
+    expect(mockOnClose).not.toHaveBeenCalled();
+    expect(mockOnCloseBlocked).toHaveBeenCalled();
+  });
+
+  it('Critic: URL/voice validation saved:false keeps open with generic inline error', async () => {
+    mockSettingsSet.mockResolvedValueOnce({
+      saved: false,
+      error: 'provider.baseUrl: URL must use http or https',
+    });
+    await renderSettings(
+      <SettingsPanel onClose={mockOnClose} onCloseBlocked={mockOnCloseBlocked} onSaved={mockOnSaved} />,
+    );
+    await waitForModelKeys();
+
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/couldn't save settings/i);
+    });
+    expect(screen.queryByText(/provider\.baseUrl/i)).not.toBeInTheDocument();
+    expect(mockOnClose).not.toHaveBeenCalled();
+    expect(mockOnCloseBlocked).toHaveBeenCalled();
+  });
+
+  it('accepts a valid sk-ant- key without validation error', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitForModelKeys();
 
     fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'sk-ant-validkey' } });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /save settings/i })).not.toBeDisabled();
   });
 
   it('allows empty API key (falls back to env var)', async () => {
@@ -380,18 +474,17 @@ describe('SettingsPanel', () => {
 
     // Empty key is valid — no error
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /save settings/i })).not.toBeDisabled();
   });
 
-  it('calls onClose when Cancel is clicked', async () => {
+  it('calls onClose when header close is used as dismiss (F2#15)', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitForModelKeys();
 
-    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
-    expect(mockOnClose).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
   });
 
-  it('Ivy H3: Source toggle persists immediately; Cancel does not revert it', async () => {
+  it('Ivy H3: Source toggle persists immediately; close does not revert it', async () => {
     window.localStorage.removeItem('mythos:notes:showSourceView');
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     fireEvent.click(screen.getByRole('tab', { name: /^editor$/i }));
@@ -399,12 +492,13 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('switch', { name: 'Show Source Mode toggle' }));
     expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'true');
     expect(window.localStorage.getItem('mythos:notes:showSourceView')).toBe('1');
-    fireEvent.click(screen.getByRole('button', { name: /cancel/i }));
-    expect(mockOnClose).toHaveBeenCalled();
+    // F2#15: no Cancel — dismiss via close (save-on-close); view prefs already live.
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalled());
     expect(window.localStorage.getItem('mythos:notes:showSourceView')).toBe('1');
   });
 
-  it('Ivy H3 / Critic H2: remount + Save does not flip gear Always-Rich OFF back ON', async () => {
+  it('Ivy H3 / Critic H2: remount + exit-save does not flip gear Always-Rich OFF back ON', async () => {
     window.localStorage.removeItem('mythos:notes:defaultRich');
     const first = await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     fireEvent.click(screen.getByRole('tab', { name: /^editor$/i }));
@@ -416,10 +510,10 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: /^editor$/i }));
     await waitFor(() => screen.getByRole('switch', { name: 'Always open notes in Rich view' }));
     expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'false');
-    // Save on Model & keys must not rewrite view prefs.
+    // F2#15: Model & keys flush on close must not rewrite view prefs.
     fireEvent.click(screen.getByRole('tab', { name: /model & keys/i }));
     await waitForModelKeys();
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
     expect(window.localStorage.getItem('mythos:notes:defaultRich')).toBe('0');
     second.unmount();
@@ -430,7 +524,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByLabelText(/close settings/i));
 
     fireEvent.pointerDown(screen.getByLabelText(/close settings/i));
-    expect(mockOnClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
   });
 
   it('calls onClose on click so keyboard Enter/Space still dismiss', async () => {
@@ -438,7 +532,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByLabelText(/close settings/i));
 
     fireEvent.click(screen.getByLabelText(/close settings/i));
-    expect(mockOnClose).toHaveBeenCalled();
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalled());
   });
 
   it('toggles API key visibility', async () => {
@@ -465,7 +559,7 @@ describe('SettingsPanel', () => {
     fireEvent.click(toggle);
     expect(toggle.checked).toBe(false);
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -475,10 +569,15 @@ describe('SettingsPanel', () => {
   it('shows error when save fails', async () => {
     mockSettingsSet.mockRejectedValueOnce(new Error('Disk full'));
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => screen.getByRole('button', { name: /close settings/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/disk full/i));
+    // Shield R4: keep open + plain-text error (no dismiss on failure).
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+    await waitFor(() => {
+      expect(screen.getByText(/couldn't save settings/i)).toBeInTheDocument();
+    });
+    expect(mockOnClose).not.toHaveBeenCalled();
   });
 
   // ── MYT-146 acceptance criteria ──
@@ -493,9 +592,9 @@ describe('SettingsPanel', () => {
     const masked = 'sk-ant-...9876';
     mockSettingsGet.mockResolvedValueOnce({ ...defaultSettings, apiKey: masked });
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => screen.getByRole('button', { name: /close settings/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
     expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ apiKey: masked }));
   });
@@ -506,7 +605,7 @@ describe('SettingsPanel', () => {
     await waitForModelKeys();
 
     fireEvent.change(screen.getByLabelText(/anthropic api key/i), { target: { value: 'sk-ant-brandnew' } });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
     expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ apiKey: 'sk-ant-brandnew' }));
   });
@@ -521,7 +620,7 @@ describe('SettingsPanel', () => {
     fireEvent.change(input, { target: { value: 'sk-ant-temp' } });
     fireEvent.change(input, { target: { value: '' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
     expect(mockSettingsSet).toHaveBeenCalledWith(expect.objectContaining({ apiKey: '' }));
   });
@@ -566,7 +665,7 @@ describe('SettingsPanel', () => {
       target: { value: 'claude-haiku-4-5-20251001' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -590,7 +689,7 @@ describe('SettingsPanel', () => {
       target: { value: '10' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -640,7 +739,7 @@ describe('SettingsPanel', () => {
       target: { value: '0.6' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -684,7 +783,7 @@ describe('SettingsPanel', () => {
     const select = await screen.findByTestId('wiki-autonomy-select');
 
     await changeAndFlush(select, 'auto');
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -710,7 +809,7 @@ describe('SettingsPanel', () => {
 
     await act(async () => { fireEvent.click(spellingToggle); });
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -764,7 +863,7 @@ describe('SettingsPanel', () => {
     await waitForModelKeys();
 
     fireEvent.click(screen.getByRole('checkbox', { name: /brainstorm agent voice/i }));
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -791,7 +890,7 @@ describe('SettingsPanel', () => {
     fireEvent.change(screen.getByLabelText(/brainstorm agent microphone/i), {
       target: { value: 'device-abc' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -816,7 +915,7 @@ describe('SettingsPanel', () => {
     const input = document.getElementById('wa-max-tokens-day') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '2000000' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -849,7 +948,7 @@ describe('SettingsPanel', () => {
       target: { value: '0.75' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -931,7 +1030,16 @@ describe('SettingsPanel', () => {
     await waitForModelKeys();
 
     fireEvent.keyDown(document, { key: 'Escape' });
-    expect(mockOnClose).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
+  });
+
+  it('F2#15/H6: Escape flushes settings via settings:set (disk path)', async () => {
+    await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
+    await waitForModelKeys();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+    expect(mockOnSaved).toHaveBeenCalled();
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
   });
 
   it('does not close the main dialog when Escape is pressed while the Advanced popover is open', async () => {
@@ -969,7 +1077,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -1020,7 +1128,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByLabelText(/stt input language/i));
 
     fireEvent.change(screen.getByLabelText(/stt input language/i), { target: { value: 'fr-FR' } });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -1050,7 +1158,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByLabelText(/tts voice identifier/i));
 
     fireEvent.change(screen.getByLabelText(/tts voice identifier/i), { target: { value: 'alloy' } });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -1070,7 +1178,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByLabelText(/tts volume/i));
 
     fireEvent.change(screen.getByLabelText(/tts volume/i), { target: { value: '0.6' } });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -1090,7 +1198,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByLabelText(/tts speech rate/i));
 
     fireEvent.change(screen.getByLabelText(/tts speech rate/i), { target: { value: '1.5' } });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -1122,7 +1230,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByRole('checkbox', { name: /start microphone muted/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /start microphone muted/i }));
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -1140,7 +1248,7 @@ describe('SettingsPanel', () => {
     fireEvent.change(screen.getByLabelText(/tts speech rate/i), { target: { value: '1.2' } });
     fireEvent.click(screen.getByRole('checkbox', { name: /start microphone muted/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -1203,7 +1311,7 @@ describe('SettingsPanel', () => {
     expect((screen.getByLabelText(/stt binary path/i) as HTMLInputElement).value).toBe('/usr/local/bin/whisper-cli');
     expect((screen.getByLabelText(/stt model path/i) as HTMLInputElement).value).toBe('/home/test/models/ggml-tiny.en.bin');
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const [savedPayload, savedTokens] = mockSettingsSet.mock.calls[0];
@@ -1352,7 +1460,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByTestId('wa-category-toggles'));
 
     fireEvent.change(screen.getByTestId('wa-cat-grammar-threshold'), { target: { value: '0.95' } });
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -1411,7 +1519,7 @@ describe('SettingsPanel', () => {
     await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
 
     await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'openai');
-    await clickAndFlush(screen.getByRole('button', { name: /save settings/i }));
+    await clickAndFlush(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -1682,7 +1790,7 @@ describe('SettingsPanel', () => {
 
     await changeAndFlush(screen.getByRole('combobox', { name: /writing coach model/i }), 'model-b');
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -1915,7 +2023,7 @@ describe.skip('Per-agent provider override (SKY-2440) — Slice C: AgentsSection
     const modelSelect = screen.getByRole('combobox', { name: /model for writingAssistant/i }) as HTMLSelectElement;
     fireEvent.change(modelSelect, { target: { value: 'claude-opus-4-7' } });
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -1928,9 +2036,9 @@ describe.skip('Per-agent provider override (SKY-2440) — Slice C: AgentsSection
   // AC-MP-08 — per-agent override undefined when disabled
   it('AC-MP-08: disabled override results in undefined provider in saved settings', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => screen.getByRole('button', { name: /close settings/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -2039,9 +2147,9 @@ describe.skip('Per-agent provider override (SKY-2440) — Slice C: AgentsSection
     });
 
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('button', { name: /save settings/i }));
+    await waitFor(() => screen.getByRole('button', { name: /close settings/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -2140,7 +2248,7 @@ describe.skip('Per-agent provider override (SKY-2440) — Slice C: AgentsSection
       target: { value: 'claude-opus-4-7' },
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
     const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
@@ -2246,19 +2354,14 @@ describe('Settings dialog keyboard navigation (SKY-1969)', () => {
     expect(focusable.indexOf(providerSelect)).toBeLessThan(focusable.indexOf(apiKeyInput));
   });
 
-  it('Cancel button comes before Save button in tab order', async () => {
+  it('F2#15: Save/Cancel footer is gone; close control remains focusable', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitForModelKeys();
 
-    const dialog = document.querySelector('.settings-panel')!;
-    const focusable = Array.from(
-      dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')
-    ).filter((el) => !(el as HTMLInputElement).disabled);
-
-    const cancelBtn = screen.getByRole('button', { name: /cancel/i });
-    const saveBtn = screen.getByRole('button', { name: /save settings/i });
-
-    expect(focusable.indexOf(cancelBtn)).toBeLessThan(focusable.indexOf(saveBtn));
+    expect(screen.queryByRole('button', { name: /save settings/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^cancel$/i })).not.toBeInTheDocument();
+    const closeBtn = screen.getByRole('button', { name: /close settings/i });
+    expect(closeBtn).toBeInTheDocument();
   });
 
   it.skip('all interactive controls in the dialog have accessible names', async () => {
@@ -2329,7 +2432,7 @@ describe('Background image persistence (SKY-2963)', () => {
     await waitFor(() => expect(mockLoadBgImage).toHaveBeenCalledWith(bgPath));
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+      fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     });
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
 
@@ -2343,7 +2446,7 @@ describe('Background image persistence (SKY-2963)', () => {
     await waitFor(() => expect(mockLoadBgImage).toHaveBeenCalledWith(bgPath));
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+      fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     });
     await waitFor(() => expect(mockOnSaved).toHaveBeenCalled());
 
@@ -2396,7 +2499,7 @@ describe('Save preserves background image — legacy no-bgMode migration (SKY-32
     await waitFor(() => expect(mockLoadBgImage).toHaveBeenCalledWith(bgPath));
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+      fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     });
     await waitFor(() => expect(mockOnSaved).toHaveBeenCalled());
 
@@ -2465,7 +2568,7 @@ describe('SKY-3218 nav-bar configuration', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />);
 
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+      fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
     });
     await waitFor(() => expect(mockOnSaved).toHaveBeenCalled());
 
@@ -2553,18 +2656,20 @@ describe('SKY-3218 nav-bar configuration', () => {
   // ── M4 (§2-B): Appearance tab applies + persists live, footer removed ──
 
   describe('M4: Appearance live-apply', () => {
-    it('hides the Cancel/Save footer on the Appearance tab only', async () => {
+    it('F2#15: Cancel/Save footer is gone on every tab (auto-save on exit)', async () => {
       await renderSettings(<SettingsPanel onClose={mockOnClose} />);
       await waitForModelKeys();
 
-      expect(screen.getByRole('button', { name: /save settings/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /save settings/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^cancel$/i })).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('tab', { name: /appearance/i }));
       expect(screen.queryByRole('button', { name: /save settings/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /^cancel$/i })).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
-      expect(screen.getByRole('button', { name: /save settings/i })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /save settings/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /close settings/i })).toBeInTheDocument();
     });
 
     it('SKY-10668: does not write settings when merely opening the panel (defaults to Appearance)', async () => {
@@ -2615,10 +2720,100 @@ describe('SKY-3218 nav-bar configuration', () => {
 
       const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
       expect(saved.liquidNeonV2?.wp).toBe('match');
-      expect(saved.liquidNeonV2?.wpPick).toEqual({ classic: 1 });
+      // F2#18/H3: fresh profile defaults to the appended starfield (last index);
+      // Next wraps to cosmic (index 0).
+      expect(saved.liquidNeonV2?.wpPick).toEqual({ classic: 0 });
       // SKY-11237 store gets the same slice, so the pick survives a relaunch per vault.
-      expect(saved.vaultAppearance?.['/vaults/alpha']?.liquidNeonV2?.wpPick).toEqual({ classic: 1 });
+      expect(saved.vaultAppearance?.['/vaults/alpha']?.liquidNeonV2?.wpPick).toEqual({ classic: 0 });
       expect(saved.vaultAppearance?.['/vaults/alpha']?.theme).toBe(saved.theme);
     });
+  });
+
+  // Critic H6 / TC-SKY-11048-01: no Settings remount on "Settings → this vault",
+  // so vault paths must refresh when activeVaultRoot changes in place.
+  it('H6: vault path display refreshes when activeVaultRoot changes without remount', async () => {
+    mockVaultGetPaths
+      .mockResolvedValueOnce({
+        storyVaultPath: '/vaults/First/Story Vault',
+        notesVaultPath: '/vaults/First/Notes Vault',
+      })
+      .mockResolvedValueOnce({
+        storyVaultPath: '/vaults/Second/Story Vault',
+        notesVaultPath: '/vaults/Second/Notes Vault',
+      });
+
+    const { rerender } = await renderSettingsOnDefault(
+      <SettingsPanel
+        onClose={mockOnClose}
+        initialCategory="vaults"
+        activeVaultRoot="/vaults/First/Story Vault"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('/vaults/First/Story Vault')).toBeInTheDocument();
+    });
+    const callsAfterFirst = mockVaultGetPaths.mock.calls.length;
+    expect(callsAfterFirst).toBeGreaterThanOrEqual(1);
+
+    // Further mount-effect churn must still resolve to First until root changes.
+    mockVaultGetPaths.mockResolvedValue({
+      storyVaultPath: '/vaults/Second/Story Vault',
+      notesVaultPath: '/vaults/Second/Notes Vault',
+    });
+
+    rerender(
+      <SettingsPanel
+        onClose={mockOnClose}
+        initialCategory="vaults"
+        activeVaultRoot="/vaults/Second/Story Vault"
+      />,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('/vaults/Second/Story Vault')).toBeInTheDocument();
+    });
+    expect(mockVaultGetPaths.mock.calls.length).toBeGreaterThan(callsAfterFirst);
+    expect(screen.queryByText('/vaults/First/Story Vault')).not.toBeInTheDocument();
+  });
+
+  // Critic r3 #3: activeVaultRoot change must not wipe unsaved Model & keys edits.
+  it('Critic #3: vault switch while open preserves unsaved Model & keys edits', async () => {
+    mockSettingsGet.mockResolvedValue({
+      ...defaultSettings,
+      vaultAppearance: {
+        '/vaults/alpha': { theme: 'dark' },
+        '/vaults/beta': { theme: 'sepia' },
+      },
+    });
+
+    const { rerender } = await renderSettings(
+      <SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/alpha" />,
+    );
+    await waitForModelKeys();
+
+    // Unsaved edit on Model & keys (crash-report telemetry toggle).
+    fireEvent.click(screen.getByTestId('mk-telemetry-crash'));
+    expect(screen.getByTestId('mk-telemetry-crash')).toBeChecked();
+
+    rerender(
+      <SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/beta" />,
+    );
+
+    // Stay on Model & keys — the parked edit must survive the vault switch.
+    fireEvent.click(screen.getByRole('tab', { name: /model & keys/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('mk-telemetry-crash')).toBeChecked();
+    });
+  });
+
+  it('Critic #3: DesktopShell must not remount Settings via key on vault switch', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const src = fs.readFileSync(
+      path.resolve(__dirname, 'DesktopShell.tsx'),
+      'utf8',
+    );
+    const block = src.match(/\{settingsOpen && \(\s*<SettingsPanel[\s\S]*?\/>\s*\)\}/);
+    expect(block?.[0] ?? '').toBeTruthy();
+    expect(block![0]).not.toMatch(/\bkey=\{/);
   });
 });

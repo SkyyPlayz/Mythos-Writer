@@ -11,6 +11,8 @@
   border-radius: var(--radius-sm);
   padding: var(--space-1) 0;
   min-width: 192px;
+  /* F2#10: sit above panels/modals via shared z scale */
+  z-index: var(--z-menu, 12000);
   animation: ln-menu-in var(--dur-popover, var(--dur-hover-in)) var(--ease-out) both;
   outline: none;
   transform-origin: top center;

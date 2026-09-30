@@ -11,6 +11,7 @@ import {
   writeShowSourceViewPref,
 } from './noteViewPrefs';
 import { runQuitFlushers, __resetQuitFlushers } from './lib/flushBeforeQuit';
+import { setEntityMentionNavigateHandler } from './lib/entityMentionNavigate';
 
 const readNotesVault = vi.fn();
 const writeNotesVault = vi.fn();
@@ -38,6 +39,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  setEntityMentionNavigateHandler(null);
   window.localStorage.removeItem(NOTES_DEFAULT_RICH_KEY);
   // SKY-10929: per-note sticky mode — clear so one test's explicit switch
   // never leaks into a later test reusing the same note path.
@@ -79,6 +81,37 @@ describe('NoteViewer cross-tab links', () => {
     fireEvent.click(await screen.findByRole('button', { name: '[[Scene: Chapter One/Opening Scene]]' }));
 
     expect(onWikiLinkClick).toHaveBeenCalledWith('Scene: Chapter One/Opening Scene');
+  });
+
+  it('F2#2: Preview renders entity:// mention chips and Rich opens without fidelity warn', async () => {
+    const onEntityClick = vi.fn();
+    setEntityMentionNavigateHandler(onEntityClick);
+    readNotesVault.mockResolvedValue({
+      content: 'Ask [Elara](entity://char-elara) about the harbor.\n',
+    });
+    render(
+      <NoteViewer
+        path="Notes/Mention.md"
+        previewMode
+      />,
+    );
+    const chip = await screen.findByTestId('note-entity-mention');
+    expect(chip).toHaveTextContent('@Elara');
+    fireEvent.click(chip);
+    expect(onEntityClick).toHaveBeenCalledWith('char-elara');
+
+    // Switch to Rich — mention must not trip "Rich mode may lose content".
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('note-gear-btn'));
+    });
+    const rich = await screen.findByRole('menuitemradio', { name: /Rich Text/i });
+    await act(async () => {
+      fireEvent.click(rich);
+    });
+    expect(screen.queryByText(/Rich mode may lose content/i)).toBeNull();
+    await waitFor(() => {
+      expect(document.querySelector('.note-rich-editor .ProseMirror')).not.toBeNull();
+    });
   });
 
   it('flushes note content when the tab-aware save event fires', async () => {

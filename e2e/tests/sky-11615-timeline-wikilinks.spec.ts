@@ -337,13 +337,18 @@ test('TC-TWL-06: a folder link opens the Boards view on that folder', async () =
   await expect(page.locator('.boards-tab-panel__breadcrumb-btn', { hasText: 'Lore' })).toBeVisible();
 });
 
-test('TC-TWL-07: an unresolved link creates the note in the Notes Vault and opens it', async () => {
+test('TC-TWL-07: an unresolved link prompts, then Create writes the note and opens it', async () => {
   const created = path.join(notesVaultDir, `${UNRESOLVED_NAME}.md`);
   expect(fs.existsSync(created)).toBe(false);
 
   await backToTimeline(page);
   await selectEvent(page);
   await detailSummary(page).locator(`[data-target="${UNRESOLVED_NAME}"]`).click();
+
+  // F2#3: unresolved links confirm before creating (no silent create).
+  const prompt = page.locator('[data-testid="create-note-prompt"]');
+  await expect(prompt).toBeVisible({ timeout: 5_000 });
+  await page.locator('[data-testid="create-note-confirm"]').click();
 
   await expect.poll(() => fs.existsSync(created), { timeout: 10_000 }).toBe(true);
   expect(fs.readFileSync(created, 'utf-8')).toContain(`# ${UNRESOLVED_NAME}`);

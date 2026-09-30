@@ -32,10 +32,17 @@ export function matchesWikiLinkQuery(candidate: WikiLinkCandidate, query: string
  * unresolved title is always one Enter-press away. Deduped against an
  * exact-title match so re-selecting an existing note never offers to
  * "create" a duplicate.
+ *
+ * F2#1: empty query still lists the first candidates so typing `[[` alone
+ * opens a usable picker (Enter inserts the selected candidate).
  */
 export function buildWikiLinkPickerItems(candidates: WikiLinkCandidate[], query: string): WikiLinkPickerItem[] {
   const trimmed = query.trim();
-  if (!trimmed) return [];
+  if (!trimmed) {
+    return candidates
+      .slice(0, MAX_RESULTS)
+      .map((candidate) => ({ type: 'candidate' as const, candidate }));
+  }
 
   const matched = candidates.filter((c) => matchesWikiLinkQuery(c, trimmed));
   const items: WikiLinkPickerItem[] = matched
@@ -66,8 +73,10 @@ export default function WikiLinkPicker({ items, query, top, left, selectedIndex,
       role="listbox"
       aria-label="Wiki link suggestions"
     >
-      {!query.trim() || items.length === 0 ? (
-        <li className="wiki-link-picker-empty">Type to search notes and story scenes…</li>
+      {items.length === 0 ? (
+        <li className="wiki-link-picker-empty">
+          {query.trim() ? 'No matches — keep typing to create…' : 'Type to search notes and story scenes…'}
+        </li>
       ) : (
         items.map((item, i) => {
           const key = item.type === 'candidate' ? item.candidate.key : `create:${item.title}`;

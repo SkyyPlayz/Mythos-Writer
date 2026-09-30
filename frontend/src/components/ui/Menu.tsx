@@ -154,7 +154,7 @@ export function Menu({
       aria-label={ariaLabel}
       data-testid={testId}
       onKeyDown={handleKeyDown}
-      style={{ position: 'fixed', zIndex: 9999 }}
+      style={{ position: 'fixed' }}
     >
       {items.map((item) => (
         <div key={item.id}>

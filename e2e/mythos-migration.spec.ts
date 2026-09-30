@@ -277,10 +277,35 @@ test('TC-MV-05: Delete Everything removes the vaults and nothing resurrects them
     expect(fs.existsSync(path.join(userData, 'vault-settings.json'))).toBe(false);
     expect(fs.existsSync(path.join(userData, 'app-settings.json'))).toBe(false);
 
+    // Shield/Ivy/N2: F2#15 close-flush must NOT silently dismiss Settings after
+    // wipe. Main returns {saved:false,error}; UI keeps dialog open + fixed alert
+    // and leaves app-settings.json absent. RED if renderer OR main guard removed.
+    const CLEARED = 'App data was cleared — restart Mythos Writer to continue.';
+    await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toBeVisible();
+    // ✕ close
+    await page.locator('[data-testid="settings-close"]').click();
+    await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(page.getByRole('alert').filter({ hasText: CLEARED })).toBeVisible({
+      timeout: 5_000,
+    });
+    expect(fs.existsSync(path.join(userData, 'app-settings.json'))).toBe(false);
+    // Escape close (same gate)
+    await page.keyboard.press('Escape');
+    await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toBeVisible({
+      timeout: 5_000,
+    });
+    await expect(page.getByRole('alert').filter({ hasText: CLEARED })).toBeVisible({
+      timeout: 5_000,
+    });
+    expect(fs.existsSync(path.join(userData, 'app-settings.json'))).toBe(false);
+
     // …and STAY gone: the old handler's finally{ensureVaultDir()} used to
     // re-scaffold a seeded vault immediately after deleting it.
     await page.waitForTimeout(2_500);
     expect(fs.existsSync(path.join(userData, 'vaults'))).toBe(false);
+    expect(fs.existsSync(path.join(userData, 'app-settings.json'))).toBe(false);
   } finally {
     const proc = app.process();
     await Promise.race([

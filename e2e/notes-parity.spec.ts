@@ -324,11 +324,204 @@ test('NP-06 (M17): wiki-link hover preview renders; unresolved link creates the 
     await expect(page.locator('[data-testid="wiki-link-hover-unresolved"]')).toBeVisible({ timeout: 5_000 });
     await page.mouse.move(0, 0);
 
-    // Create-on-click: the note is written to the vault and opened.
+    // F2#3: unresolved click opens the create prompt; Create writes + opens.
     await unresolved.click();
+    const prompt = page.locator('[data-testid="create-note-prompt"]');
+    await expect(prompt).toBeVisible({ timeout: 5_000 });
+    await page.locator('[data-testid="create-note-confirm"]').click();
     await expect(notesPanel(page).locator('.note-breadcrumb-item--current', { hasText: 'Lost Civilization' })).toBeVisible({ timeout: 8_000 });
     expect(fs.existsSync(path.join(notesDir, 'Lost Civilization.md'))).toBe(true);
     expect(fs.readFileSync(path.join(notesDir, 'Lost Civilization.md'), 'utf-8')).toContain('# Lost Civilization');
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
+
+// ── F2 Probe N1 fold — #12 into notes-parity (e2e-shard-4) ───────────────────
+// Measures REAL rendered bars (±1px). OOS: window/OS frame, workspace tabs,
+// bottom/status, dialog/popover headers, Story msv-toolbar (F1#13).
+
+test('F2#12 real side/middle panel top bars are 36px (±1)', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+
+    // Story shell bars (side + middle; not msv-toolbar).
+    // All matches, but only laid-out (clientHeight>0): Story B7 keep-mounts
+    // with display:none under Notes → zero-height .pc-header ghosts otherwise.
+    const storyBars = await page.evaluate(() => {
+      const token = getComputedStyle(document.documentElement)
+        .getPropertyValue('--panel-top-bar-height').trim();
+      const sel = ['.lr-nav-header', '.shell-editor-toolbar', '.grs-topbar', '.pc-header'];
+      const heights: Record<string, number[]> = {};
+      for (const s of sel) {
+        heights[s] = [...document.querySelectorAll(s)]
+          .filter((el) => (el as HTMLElement).clientHeight > 0)
+          .map((el) => Math.round(el.getBoundingClientRect().height));
+      }
+      return { token, heights };
+    });
+    expect(storyBars.token).toBe('36px');
+    // Soft Critic: require the Story-side bars that always mount; check EVERY laid-out match.
+    for (const required of ['.lr-nav-header', '.shell-editor-toolbar'] as const) {
+      expect(storyBars.heights[required].length, `${required} missing`).toBeGreaterThan(0);
+    }
+    for (const [sel, hs] of Object.entries(storyBars.heights)) {
+      for (const h of hs) {
+        expect(Math.abs(h - 36), `${sel} height ${h}`).toBeLessThanOrEqual(1);
+      }
+    }
+
+    // Notes shell bars. (Probe fold typo: label is "Notes Editor", not "Notes".)
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+    await expect(page.locator('.notes-tab-panel, .notes-tab-toolbar').first()).toBeVisible({ timeout: 8_000 });
+    const notesBars = await page.evaluate(() => {
+      const sel = [
+        '.notes-tab-toolbar',
+        '.notes-sidebar-header',
+        '.vb-notes-header',
+        '.notes-right-sidebar-header',
+        '.pc-header',
+      ];
+      const heights: Record<string, number[]> = {};
+      for (const s of sel) {
+        heights[s] = [...document.querySelectorAll(s)]
+          .filter((el) => (el as HTMLElement).clientHeight > 0)
+          .map((el) => Math.round(el.getBoundingClientRect().height));
+      }
+      return heights;
+    });
+    for (const required of ['.notes-tab-toolbar', '.notes-sidebar-header'] as const) {
+      expect(notesBars[required].length, `${required} missing`).toBeGreaterThan(0);
+    }
+    for (const [sel, hs] of Object.entries(notesBars)) {
+      for (const h of hs) {
+        expect(Math.abs(h - 36), `${sel} height ${h}`).toBeLessThanOrEqual(1);
+      }
+    }
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
+
+// Critic r3 #6 / N7: at 280px the @container wrap on .pc-header-host must keep
+// title width > 0, no overlaps, and action controls visible (main-clean).
+test('F2 W0.3 / Critic #6: .pc-header + in-scope bars clean at 280px', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+
+    // Standalone Brainstorm (nav-rail) mounts the full non-compact PanelHeader
+    // with Agent Chat / Board switch + .pc-header-host @container. Notes embeds
+    // compact Brainstorm without that switch; NotesSubView is editor-only.
+    await page.locator('[data-testid="nav-rail-brainstorm"]').click();
+    await expect(page.locator('[aria-labelledby="app-tab-brainstorm"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('.pc-header-host .pc-header').first()).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('.pc-header .pc-header-actions button, .pc-header [role="switch"]').first())
+      .toBeVisible({ timeout: 8_000 });
+
+    const report = await page.evaluate(() => {
+      const BAR_SELS = [
+        '.lr-nav-header',
+        '.shell-editor-toolbar',
+        '.grs-topbar',
+        '.notes-tab-toolbar',
+        '.notes-sidebar-header',
+        '.vb-notes-header',
+        '.notes-right-sidebar-header',
+        '.pc-header',
+      ];
+
+      function overlaps(a: DOMRect, b: DOMRect): boolean {
+        return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+      }
+
+      const results: Array<{
+        sel: string;
+        width: number;
+        titleWidth: number | null;
+        switchVisible: boolean | null;
+        overlap: boolean;
+      }> = [];
+
+      for (const sel of BAR_SELS) {
+        for (const el of document.querySelectorAll<HTMLElement>(sel)) {
+          // Skip keep-mounted display:none ghosts (Story B7 under other tabs).
+          if (el.clientHeight <= 0) continue;
+
+          // Force the bar's container to 280px so @container / wrap can fire.
+          const host = (el.closest('.pc-header-host') as HTMLElement | null) ?? el;
+          const prev = host.style.width;
+          host.style.width = '280px';
+          host.style.minWidth = '280px';
+          host.style.maxWidth = '280px';
+          // Force layout.
+          void host.offsetWidth;
+
+          const rect = el.getBoundingClientRect();
+          const title = el.querySelector('.pc-header-title') as HTMLElement | null;
+          const titleWidth = title ? title.getBoundingClientRect().width : null;
+          const actions = el.querySelector('.pc-header-actions');
+          // Empty actions box (compact Notes Brainstorm) — treat as N/A.
+          const switchVisible = actions && actions.querySelector('button, [role="switch"], [role="tab"], select')
+            ? (() => {
+              const r = actions.getBoundingClientRect();
+              return r.width > 0 && r.height > 0;
+            })()
+            : null;
+
+          // Overlap among laid-out controls on the same row. Skip ancestor/
+          // descendant pairs (e.g. session pill inside .pc-header-title) —
+          // those always share a box; Critic cares about sibling collisions
+          // (Back vs title vs Agent Chat/Board switch).
+          const kids = [...el.querySelectorAll<HTMLElement>('button, [role="tab"], .pc-header-title, select')];
+          let overlap = false;
+          for (let i = 0; i < kids.length; i++) {
+            const ri = kids[i].getBoundingClientRect();
+            if (ri.width < 1 || ri.height < 1) continue;
+            for (let j = i + 1; j < kids.length; j++) {
+              if (kids[i].contains(kids[j]) || kids[j].contains(kids[i])) continue;
+              const rj = kids[j].getBoundingClientRect();
+              if (rj.width < 1 || rj.height < 1) continue;
+              // Same flex row only — ignore wrapped second-row siblings.
+              if (Math.abs(ri.top - rj.top) > 4) continue;
+              if (overlaps(ri, rj)) { overlap = true; break; }
+            }
+            if (overlap) break;
+          }
+
+          results.push({
+            sel,
+            width: Math.round(rect.width),
+            titleWidth: titleWidth === null ? null : Math.round(titleWidth),
+            switchVisible,
+            overlap,
+          });
+
+          host.style.width = prev;
+          host.style.minWidth = '';
+          host.style.maxWidth = '';
+        }
+      }
+      return results;
+    });
+
+    // Hard #6: a real laid-out .pc-header with title + switch at 280px.
+    expect(report.some((r) => r.sel === '.pc-header')).toBe(true);
+    expect(report.some((r) => r.sel === '.pc-header' && (r.titleWidth ?? 0) > 0)).toBe(true);
+    expect(report.some((r) => r.sel === '.pc-header' && r.switchVisible === true)).toBe(true);
+
+    for (const r of report) {
+      expect(r.overlap, `${r.sel} overlaps at 280px`).toBe(false);
+      if (r.titleWidth !== null) {
+        expect(r.titleWidth, `${r.sel} title width`).toBeGreaterThan(0);
+      }
+      if (r.switchVisible !== null) {
+        expect(r.switchVisible, `${r.sel} actions/switch visible`).toBe(true);
+      }
+    }
   } finally {
     await app.close().catch(() => undefined);
   }

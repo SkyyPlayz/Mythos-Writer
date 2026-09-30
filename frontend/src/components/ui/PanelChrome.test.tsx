@@ -124,14 +124,23 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(m?.[1] ?? '').toContain('var(--text-muted)');
   });
 
-  it('panel surface uses --bg-panel token (token-driven in high-contrast)', () => {
+  it('panel surface has no live glass/blur (Ivy — Critic #5)', () => {
     const m = PANEL_CSS.match(/\.pc-chrome\s*\{([^}]*)\}/);
-    expect(m?.[1] ?? '').toContain('var(--bg-panel)');
+    const block = m?.[1] ?? '';
+    expect(block).not.toContain('backdrop-filter');
+    expect(block).not.toContain('--glass-panel-bg');
+    expect(PANEL_CSS).not.toMatch(/\.pc-chrome\s*\{[^}]*backdrop-filter/);
+    expect(PANEL_CSS).not.toMatch(/@supports\s*\(backdrop-filter/);
   });
 
-  it('border uses --border-subtle token', () => {
+  it('border uses --border-subtle', () => {
     const m = PANEL_CSS.match(/\.pc-chrome\s*\{([^}]*)\}/);
-    expect(m?.[1] ?? '').toContain('var(--border-subtle)');
+    expect(m?.[1] ?? '').toContain('--border-subtle');
+  });
+
+  it('header uses shared --panel-top-bar-height min (F2#12)', () => {
+    const header = PANEL_CSS.match(/\.pc-header\s*\{([^}]*)\}/);
+    expect(header?.[1] ?? '').toContain('min-height: var(--panel-top-bar-height');
   });
 
   it('buttons in the actions slot are naturally focusable via Tab', () => {
@@ -145,12 +154,35 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(btn).not.toHaveAttribute('tabindex', '-1');
   });
 
-  // W0.3 (GAP P0#3): header rows must be wrapping flex layouts so buttons and
-  // dropdowns never overlap at 280–320px right-panel widths.
-  it('header row wraps at narrow panel widths instead of overlapping (W0.3)', () => {
+  // W0.3 / Critic #6: narrow panels wrap via @container on .pc-header-host
+  // (production never mounts .pc-chrome); default stays 36px (F2#12).
+  it('W0.3: header/actions wrap under @container ≤320px; default is 36px bar', () => {
     const header = PANEL_CSS.match(/\.pc-header\s*\{([^}]*)\}/);
-    expect(header?.[1] ?? '').toContain('flex-wrap: wrap');
     const actions = PANEL_CSS.match(/\.pc-header-actions\s*\{([^}]*)\}/);
-    expect(actions?.[1] ?? '').toContain('flex-wrap: wrap');
+    const host = PANEL_CSS.match(/\.pc-header-host\s*\{([^}]*)\}/);
+    expect(header?.[1] ?? '').toContain('min-height: var(--panel-top-bar-height');
+    expect(header?.[1] ?? '').toContain('height: var(--panel-top-bar-height');
+    expect(header?.[1] ?? '').toContain('flex-wrap: nowrap');
+    expect(actions?.[1] ?? '').toContain('flex-shrink: 1');
+    expect(actions?.[1] ?? '').toContain('min-width: 0');
+    expect(host?.[1] ?? '').toContain('container-type: inline-size');
+    expect(host?.[1] ?? '').toContain('container-name: pc-chrome');
+    expect(PANEL_CSS).toMatch(/@container\s+pc-chrome\s*\(max-width:\s*320px\)/);
+    // Narrow: actions take a full second row so they cannot collide with title.
+    expect(PANEL_CSS).toMatch(
+      /@container\s+pc-chrome\s*\(max-width:\s*320px\)[\s\S]*\.pc-header-actions\s*\{[\s\S]*flex:\s*1\s+1\s+100%/,
+    );
+    // Container must NOT live only on unrendered .pc-chrome.
+    const chrome = PANEL_CSS.match(/\.pc-chrome\s*\{([^}]*)\}/);
+    expect(chrome?.[1] ?? '').not.toContain('container-type');
+  });
+
+  it('renders pc-header-host as the @container ancestor of .pc-header', () => {
+    render(<PanelHeader title="Brainstorm Center" actions={<button>Switch</button>} />);
+    const host = document.querySelector('.pc-header-host');
+    const header = document.querySelector('.pc-header');
+    expect(host).toBeTruthy();
+    expect(header).toBeTruthy();
+    expect(host!.contains(header!)).toBe(true);
   });
 });

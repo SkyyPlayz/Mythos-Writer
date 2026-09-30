@@ -38,6 +38,7 @@ import {
   writeNoteModePref,
   type StickyNoteMode,
 } from './noteViewPrefs';
+import { navigateEntityMention } from './lib/entityMentionNavigate';
 import './NoteViewer.css';
 
 export type NoteViewerMode = 'source' | 'rich' | 'markdown' | 'preview';
@@ -131,7 +132,8 @@ function renderInline(
   sceneTitles?: ReadonlySet<string>,
 ): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[\[[^\]]+\]\])/g;
+  // F2#2: also recognize [Label](entity://id) mention chips in Preview.
+  const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[\[[^\]]+\]\]|\[[^\]]+\]\(entity:\/\/[^)]+\))/g;
   let lastIdx = 0;
   let m: RegExpExecArray | null;
   let key = 0;
@@ -144,7 +146,7 @@ function renderInline(
       nodes.push(<em key={key++}>{tok.slice(1, -1)}</em>);
     } else if (tok.startsWith('`')) {
       nodes.push(<code key={key++}>{tok.slice(1, -1)}</code>);
-    } else {
+    } else if (tok.startsWith('[[')) {
       const target = tok.slice(2, -2);
       // M17: resolved/scene/unresolved styling in preview mode too — same
       // class contract as the rich editor's WikiLinkResolutionExtension.
@@ -168,6 +170,28 @@ function renderInline(
           {tok}
         </button>,
       );
+    } else {
+      const mention = tok.match(/^\[([^\]]+)\]\(entity:\/\/([^)]+)\)$/);
+      if (mention) {
+        const [, label, entityId] = mention;
+        nodes.push(
+          <button
+            key={key++}
+            type="button"
+            className="entity-mention-chip"
+            data-entity-id={entityId}
+            data-entity-label={label}
+            data-testid="note-entity-mention"
+            // F2 N4 / Ivy: in-app navigate by entity id (global shell handler).
+            // No NoteViewer.onEntityClick prop — dead-wiring; F5 may re-add.
+            onClick={() => navigateEntityMention(entityId)}
+          >
+            @{label}
+          </button>,
+        );
+      } else {
+        nodes.push(tok);
+      }
     }
     lastIdx = m.index + m[0].length;
   }
@@ -252,6 +276,7 @@ interface RichEditorProps {
 
 // Thin wrapper over the shared core (SKY-3204): Notes rich mode gets the same
 // base extensions (including Underline) and entity @-mention picker as Story.
+// F2 N4: omit onEntityClick — RichTextEditor falls back to navigateEntityMention.
 function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles, wikiLinkCandidates, fileName, toolbarActions }: RichEditorProps) {
   return (
     <div className="note-rich-editor">

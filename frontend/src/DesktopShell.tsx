@@ -1,9 +1,18 @@
-import { useState, useEffect, useCallback, useRef, useMemo, useReducer, type ReactNode } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo, useReducer, type ReactNode } from 'react';
 import type { Editor } from '@tiptap/core';
 import { useToast } from './hooks/useToast';
 import { useAiEnabled } from './hooks/useAiEnabled';
-import { useNavigationHistory, type NavigationLocation, type PersistedNavHistory } from './hooks/useNavigationHistory';
+import {
+  useNavigationHistory,
+  findLastStoryEditorLocation,
+  isStoryEditorLocation,
+  type NavigationLocation,
+  type PersistedNavHistory,
+} from './hooks/useNavigationHistory';
+import { useCtrlScrollDensity } from './hooks/useCtrlScrollDensity';
 import { useVaultIcons, type VaultIconSetInput } from './hooks/useVaultIcons';
+import { isSafeEntityMentionId, setEntityMentionNavigateHandler } from './lib/entityMentionNavigate';
+import { registerDensityBridge } from './lib/uiDensity';
 import { Toast } from './components/Toast/Toast';
 import { AiActivityIndicator } from './components/AiActivityIndicator/AiActivityIndicator';
 import type { Story, Part, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
@@ -83,6 +92,7 @@ import { rewriteWikiLinksForRename, type WikiLinkRewriteMode } from '@mythos-wri
 import AccountModal from './AccountModal';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
+import CreateNotePrompt from './CreateNotePrompt';
 import NoteViewer from './NoteViewer';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
@@ -719,6 +729,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // exists (no effect indirection needed — see appApiRef-style assignments
   // elsewhere in this file).
   const navHistoryHydrateRef = useRef<(persisted: PersistedNavHistory | null | undefined) => void>(() => {});
+  // F2#7: Story Writer rail click restores last story-editor location. The
+  // handler sits above useNavigationHistory in the file, so restore goes
+  // through a ref assigned once applyNavLocation exists (same pattern as
+  // navHistoryHydrateRef).
+  const restoreLastStoryFromRailRef = useRef<() => boolean>(() => false);
+  // Pending scroll to apply in useLayoutEffect on the paint that reveals
+  // the story editor — avoids a blank/scrolled-to-top first frame.
+  const pendingStoryEditorScrollRef = useRef<number | null>(null);
+  // Live last story-editor stop (incl. scroll). Updated while the editor is
+  // visible and frozen *before* tab/view leave — nav-history's push-effect
+  // freezes scroll too late (after display:none), which zeroes scrollTop.
+  const lastStoryEditorLocRef = useRef<NavigationLocation | null>(null);
+  // Keep ManuscriptView mounted (display:none) after first editor visit so
+  // Crafter/Timeline → Story Writer does not remount into a blank frame.
+  const [keepStoryEditorMounted, setKeepStoryEditorMounted] = useState(false);
   const [selectedScene, setSelectedScene] = useState<Scene | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
   const [selectedStory, setSelectedStory] = useState<Story | null>(null);
@@ -749,12 +774,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [settingsOpen, setSettingsOpen] = useState(false);
   // SKY-11048: which Settings category to open to — a vault tile's
   // "Settings → this vault" context-menu action jumps straight to Vault & Files.
-  // `settingsOpenToken` is bumped on every such jump and used as SettingsPanel's
-  // `key` so it remounts (and re-reads initialCategory) even when the panel is
-  // already open on a different category — plain state alone wouldn't: the
-  // panel only consumes `initialCategory` once, via a useState initializer.
+  // Critic H6: category navigates in place via initialCategory + useEffect —
+  // do NOT remount Settings (key bump discarded unsaved edits).
   const [settingsInitialCategory, setSettingsInitialCategory] = useState<SettingsCategoryId>('appearance');
-  const [settingsOpenToken, setSettingsOpenToken] = useState(0);
   const [historyOpen, setHistoryOpen] = useState(false);
   // SKY-11048: nav-rail vault tiles — every registered Mythos vault, always
   // fetched (even a lone vault renders a tile + the `+` tile). The raw list
@@ -1948,8 +1970,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // click), then jump the panel to that vault's settings.
   const handleVaultOpenSettings = useCallback((vaultId: string) => {
     switchToVault(vaultId).then(() => {
+      // Navigate in place — SettingsPanel syncs initialCategory via useEffect.
+      // (Vault-tab soft "don't jump when already open" deferred — collides with
+      // TC-SKY-11048-01 / main contract; needs Ivy's call.)
       setSettingsInitialCategory('vaults');
-      setSettingsOpenToken((t) => t + 1);
       setSettingsOpen(true);
     });
   }, [switchToVault]);
@@ -2185,6 +2209,22 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, []);
 
   const handleTabChange = useCallback((tab: AppTab) => {
+    // F2#7: freeze story-editor scroll BEFORE the story panel goes
+    // display:none (which zeroes scrollTop in Chromium before nav-history
+    // can capture it).
+    if (
+      tab !== 'story' &&
+      tabShellRef.current.activeTab === 'story' &&
+      tabShellRef.current.storySubView === 'editor'
+    ) {
+      const el = document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+      if (el && lastStoryEditorLocRef.current) {
+        lastStoryEditorLocRef.current = {
+          ...lastStoryEditorLocRef.current,
+          scrollTop: el.scrollTop,
+        };
+      }
+    }
     if (tab !== 'brainstorm') {
       setBrainstormSeedPrompt(null);
     }
@@ -2440,6 +2480,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-1698: Selecting a built-in view clears any active docked tab (they're mutually exclusive).
   // SKY-2094: also persists story sub-view to tab shell state.
   const handleSetView = useCallback((v: StorySubView) => {
+    // F2#7: freeze scroll before unhiding Crafter/Timeline over the keep-alive
+    // editor (display:none zeros scrollTop).
+    if (
+      v !== 'editor' &&
+      tabShellRef.current.activeTab === 'story' &&
+      tabShellRef.current.storySubView === 'editor'
+    ) {
+      const el = document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+      if (el && lastStoryEditorLocRef.current) {
+        lastStoryEditorLocRef.current = {
+          ...lastStoryEditorLocRef.current,
+          scrollTop: el.scrollTop,
+        };
+      }
+    }
     setView(v);
     setActiveDockedTabId(null);
     const next = { ...tabShellRef.current, storySubView: v };
@@ -2463,6 +2518,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [persistTabShell]);
 
   const handleOpenContinuityEntityNote = useCallback((notePath: string) => {
+    // Critic r3 TC-CP-06: restore scene clears. Keeping the scene made
+    // applyNavLocation restore sceneId first (handleSelectScene clears the
+    // note) so Back landed on empty Notes. F1 owns keep-scene + notePath
+    // re-apply (H1 / ba5e8718). F2 keeps only the Story NoteViewer gate
+    // below vs dual viewer.
     setSelectedScene(null);
     setSelectedChapter(null);
     setSelectedStory(null);
@@ -2720,10 +2780,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // SKY-9019 M5: each rail item is a first-class destination; no aliases.
   // crafter/timeline route through the story workspace; vault-graph is its own AppTab.
-  const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
-    // Owner punch: Settings is a covering overlay, not a rail module. A
-    // left-rail pick must dismiss it so the destination is visible.
-    setSettingsOpen(false);
+  const pendingRailNavRef = useRef<NavRailModuleId | null>(null);
+  const runNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
     setSettingsInitialCategory('appearance');
     switch (moduleId) {
       case 'crafter':
@@ -2740,7 +2798,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       case 'boards':
         handleTabChange('boards');
         break;
-      case 'story':
+      case 'story': {
+        // F2#7: restore last story-editor scene + scroll when leaving another
+        // surface (Notes/Boards/Crafter/Timeline/…). No-op when already on the
+        // story editor (rail still toggles the Stories popover).
+        if (restoreLastStoryFromRailRef.current()) break;
         handleNavSectionChange('story');
         // Scene Crafter and Timeline have their own rail items — Story Writer
         // always lands on the editor sub-view.
@@ -2748,10 +2810,40 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           handleSetView('editor');
         }
         break;
+      }
       default:
         handleNavSectionChange(moduleId);
     }
   }, [handleNavSectionChange, handleSetView, handleTabChange]);
+
+  // H6 / #15: rail-nav must flush Settings via the same handleClose path (not
+  // a bare setSettingsOpen(false) that drops non-Appearance edits).
+  const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
+    if (settingsOpen) {
+      pendingRailNavRef.current = moduleId;
+      const req = (window as Window & { __mythosSettingsRequestClose?: () => void })
+        .__mythosSettingsRequestClose;
+      if (req) {
+        req();
+        return;
+      }
+      setSettingsOpen(false);
+    }
+    pendingRailNavRef.current = null;
+    runNavModuleChange(moduleId);
+  }, [settingsOpen, runNavModuleChange]);
+
+  const handleSettingsClose = useCallback(() => {
+    setSettingsOpen(false);
+    setSettingsInitialCategory('appearance');
+    const pending = pendingRailNavRef.current;
+    pendingRailNavRef.current = null;
+    if (pending) runNavModuleChange(pending);
+  }, [runNavModuleChange]);
+
+  const handleSettingsCloseBlocked = useCallback(() => {
+    pendingRailNavRef.current = null;
+  }, []);
 
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
@@ -3274,7 +3366,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const handleBlocksChange = useCallback((blocks: Block[]) => {
     if (!selectedScene || !selectedChapter || !selectedStory) return;
     const updatedScene: Scene = { ...selectedScene, blocks, updatedAt: now() };
-    setSelectedScene(updatedScene);
+    // N4 / Probe: flush-on-unmount after @mention click must NOT resurrect
+    // selectedScene/selectedStory — that hides EntityDetail (story branch wins).
+    setSelectedScene((prev) => (prev?.id === updatedScene.id ? updatedScene : prev));
     const content = blocks.map((b) => b.content).join('\n\n');
     // Beta 4 M4 (§1.5): a provisional scene lives only in editor state until
     // the first real keystroke; while it's still empty, nothing persists.
@@ -3302,7 +3396,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     // left the title row's word count stuck at its initial value.
     const editedStory = updatedStories.find((st) => st.id === selectedStory.id);
     if (editedStory) {
-      setSelectedStory(editedStory);
+      setSelectedStory((prev) => (prev?.id === editedStory.id ? editedStory : prev));
       setSelectedChapter((prev) => (prev ? editedStory.chapters.find((ch) => ch.id === prev.id) ?? prev : prev));
     }
     persistSceneMarkdown(updatedScene);
@@ -4312,6 +4406,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       handleTabChange('notes');
       handleNotesSubViewChange('editor');
       if (noteTab.kind === 'note' && noteTab.docPath) {
+        // F2#2 / Critic: note tab selection must show the note, not EntityDetail.
+        setSelectedEntity(null);
         setOpenedNotePath(noteTab.docPath);
       } else if (noteTab.kind === 'entities') {
         // SKY-9920: same reasoning as the story branch above — clear
@@ -4633,18 +4729,32 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (entity.type === 'character') checkGettingStartedItem('add-character');
   }, [checkGettingStartedItem]);
 
-  // SKY-616: navigate to entity page when user clicks an @-mention chip
+  // SKY-616 / F2#2: @-mention → EntityDetail on Story. Notes EntityDetail host
+  // pulled to F5 (Ivy override) — from Notes/other tabs, switch to Story.
+  // Shield N4: entity ID only via entityRead — never openExternal / window.open / URL.
   const handleEntityMentionClick = useCallback((entityId: string) => {
+    if (!isSafeEntityMentionId(entityId)) return;
     window.api.entityRead(entityId).then((entity) => {
       if (entity) {
         setSelectedEntity(entity);
         setSelectedScene(null);
         setSelectedChapter(null);
         setSelectedStory(null);
+        setOpenedNotePath(null);
         if (entity.type === 'character') checkGettingStartedItem('add-character');
+        if (tabShellRef.current.activeTab !== 'story') {
+          handleTabChange('story');
+          setView('editor');
+        }
       }
     }).catch(() => {});
-  }, [checkGettingStartedItem]);
+  }, [checkGettingStartedItem, handleTabChange]);
+
+  // F2#2: global fallback so Notes editors without onEntityClick still navigate.
+  useEffect(() => {
+    setEntityMentionNavigateHandler(handleEntityMentionClick);
+    return () => setEntityMentionNavigateHandler(null);
+  }, [handleEntityMentionClick]);
 
   const applyCrossTabLinkMatch = useCallback((match: CrossTabLinkMatch) => {
     setAmbiguousLink(null);
@@ -4701,20 +4811,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleTabChange('notes');
   }, [handleSelectScene, handleTabChange, handleNotesSubViewChange, handleSetView, setViewDepth]);
 
-  const handleWikiLinkClick = useCallback((target: string) => {
-    const resolution = resolveCrossTabLink(target, {
-      stories,
-      entities: allEntities,
-      notePaths: allNotePaths,
-      onNotify: showWikiLinkToast,
-    });
-    if (resolution.status === 'single') {
-      applyCrossTabLinkMatch(resolution.matches[0]);
-    } else if (resolution.status === 'ambiguous') {
-      setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
-    }
-  }, [allEntities, allNotePaths, applyCrossTabLinkMatch, showWikiLinkToast, stories]);
-
   // SKY-5702: normalized cross-vault title index feeding the editors'
   // resolved/unresolved [[wiki link]] styling, plus the flat candidate list
   // for the `[[` autocomplete popup. Both rebuilt only when the underlying
@@ -4734,10 +4830,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     [stories],
   );
 
-  // M16: an unresolved [[link]] CREATES the note in the Notes Vault (Obsidian
-  // parity, plan §M16 "unresolved click creates the note") and opens it.
-  // Shared by the notes editor and, since SKY-11615, the Timeline — the story
-  // editor keeps its warn-toast behavior instead.
+  // M16 / F2#3: an unresolved [[link]] CREATES the note in the Notes Vault
+  // (Obsidian parity) and opens it — shared by Story, Notes, and Timeline.
   const createNoteForUnresolvedLink = useCallback((target: string) => {
     const newNotePath = notePathForUnresolvedLink(target);
     if (!newNotePath) return;
@@ -4769,9 +4863,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     })();
   }, [handleNotesSubViewChange, handleTabChange, loadEntities, showWikiLinkToast]);
 
-  // M16: notes-editor wiki-link click — same resolution as the story editor,
-  // but unresolved creates the note instead of only toasting.
-  const handleNotesWikiLinkClick = useCallback((target: string) => {
+  // F2#3 / Probe: unresolved [[link]] shows a Create/Cancel prompt (no silent create).
+  const [pendingCreateLink, setPendingCreateLink] = useState<string | null>(null);
+
+  // F2#3: one click path for Story + Notes — resolve or prompt-to-create.
+  const handleWikiLinkClick = useCallback((target: string) => {
     const resolution = resolveCrossTabLink(target, {
       stories,
       entities: allEntities,
@@ -4785,8 +4881,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
       return;
     }
-    createNoteForUnresolvedLink(target);
-  }, [stories, allEntities, allNotePaths, applyCrossTabLinkMatch, createNoteForUnresolvedLink]);
+    setPendingCreateLink(target);
+  }, [allEntities, allNotePaths, applyCrossTabLinkMatch, stories]);
+
+  const handleNotesWikiLinkClick = handleWikiLinkClick;
 
   // SKY-11615: the Timeline's [[wiki links]] resolve one target in the product
   // order (scene → chapter → note → folder) rather than opening the ambiguity
@@ -4805,10 +4903,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       open: (target: string) => {
         const match = resolveWikiLinkTarget(target, context);
         if (match) applyCrossTabLinkMatch(match);
-        else createNoteForUnresolvedLink(target);
+        else setPendingCreateLink(target);
       },
     };
-  }, [stories, allEntities, allNotePaths, allFolderPaths, applyCrossTabLinkMatch, createNoteForUnresolvedLink]);
+  }, [stories, allEntities, allNotePaths, allFolderPaths, applyCrossTabLinkMatch]);
 
   // M16: hover-preview resolver — notes read via the vault IPC, scenes from
   // the already-loaded in-memory blocks. Null means "unresolved" and the card
@@ -4993,7 +5091,19 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     // Restore scroll once the newly-applied location's content has actually
     // painted — a double rAF gives async-mounted content (BlockEditor's
     // TipTap init, NoteViewer's load) a tick to land in the DOM first.
+    //
+    // F2#7: also stash a pending story-editor scroll and apply immediately
+    // when the keep-alive `.msv-page` is already in the DOM (hidden), so the
+    // first visible paint after "Back to story" is already at the right
+    // offset (no blank/jump frame).
     const { scrollTop: targetScrollTop, tab: targetTab, splitWindowEnabled: targetSplit, focusedPane: targetPane } = loc;
+    if (targetTab === 'story' && loc.view === 'editor') {
+      pendingStoryEditorScrollRef.current = targetScrollTop;
+      const el = targetSplit
+        ? document.querySelector<HTMLElement>(`[data-testid="split-pane-${targetPane}"] .spe-content`)
+        : document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+      if (el) el.scrollTop = targetScrollTop;
+    }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         let el: HTMLElement | null = null;
@@ -5010,6 +5120,64 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       });
     });
   }, [findSceneLocation, allEntities, handleSelectEntity, handleTabChange, handleSetView, handleNotesSubViewChange, handleSelectScene, handleWorkspaceTabSelect]);
+
+  // F2#7: Story Writer rail — restore last story-editor location (scene + scroll).
+  restoreLastStoryFromRailRef.current = () => {
+    // Already on Story Writer editor: leave alone (Stories popover still toggles).
+    if (
+      tabShellRef.current.activeTab === 'story' &&
+      tabShellRef.current.storySubView === 'editor'
+    ) {
+      return false;
+    }
+    const remembered = lastStoryEditorLocRef.current;
+    const fromHistory = findLastStoryEditorLocation(navHistory.getSnapshot());
+    // Prefer the live freeze (correct scrollTop); fall back to nav-history.
+    const last = remembered && isStoryEditorLocation(remembered)
+      ? remembered
+      : fromHistory;
+    if (!last || !isStoryEditorLocation(last)) return false;
+    applyNavLocation(last);
+    return true;
+  };
+
+  // F2#7: track live story-editor location + scroll while visible.
+  useLayoutEffect(() => {
+    if (tabShell.activeTab !== 'story' || view !== 'editor') return;
+    const el = splitWindowEnabled
+      ? document.querySelector<HTMLElement>(`[data-testid="split-pane-${focusedPane}"] .spe-content`)
+      : document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+    if (!el) return;
+    const capture = () => {
+      lastStoryEditorLocRef.current = {
+        ...currentNavLocation,
+        scrollTop: el.scrollTop,
+      };
+    };
+    capture();
+    el.addEventListener('scroll', capture, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', capture);
+    };
+  }, [tabShell.activeTab, view, splitWindowEnabled, focusedPane, currentNavLocation]);
+
+  // F2#7: apply pending story scroll in the same layout pass that reveals the
+  // editor, so first paint after the rail click shows story content at the
+  // restored offset (not a blank/top frame then a jump).
+  useLayoutEffect(() => {
+    if (tabShell.activeTab !== 'story' || view !== 'editor') return;
+    const pending = pendingStoryEditorScrollRef.current;
+    if (pending == null) return;
+    pendingStoryEditorScrollRef.current = null;
+    const el = splitWindowEnabled
+      ? document.querySelector<HTMLElement>(`[data-testid="split-pane-${focusedPane}"] .spe-content`)
+      : document.querySelector<HTMLElement>('[data-testid="msv-page"]');
+    if (el) el.scrollTop = pending;
+  }, [tabShell.activeTab, view, splitWindowEnabled, focusedPane]);
+
+  useEffect(() => {
+    if (view === 'editor') setKeepStoryEditorMounted(true);
+  }, [view]);
 
   // Returns true only when history actually had somewhere to go — lets
   // ManuscriptView's Alt+←/→ handler fall back to its own scene/chapter
@@ -5838,6 +6006,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [aiEnabled, view, handleSetView]);
 
   // A1 / 09 §2.5: Ctrl+/−/0 adjust uiScale (.88–1.32, ±0.03); 0 resets dens+scale.
+  // F2#17: Ctrl+wheel density lives in useCtrlScrollDensity (same setter as F2#9).
   useEffect(() => {
     const clampScale = (n: number) => Math.min(1.32, Math.max(0.88, n));
     const patchLn = (patch: Partial<NonNullable<AppSettings['liquidNeonV2']>>, toast?: string) => {
@@ -5849,6 +6018,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         } as NonNullable<AppSettings['liquidNeonV2']>;
         const next = { ...prev, liquidNeonV2 };
         window.api.settingsSet(next).catch(() => {});
+        void applyLiquidNeonV2Theme(liquidNeonV2);
         return next;
       });
       if (toast) showLnToast(toast);
@@ -5867,19 +6037,32 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         patchLn({ uiScale: 1, uiDens: 1, density: 'comfortable' }, 'Interface scale reset');
       }
     };
-    const onWheel = (e: WheelEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      e.preventDefault();
-      const cur = appSettings?.liquidNeonV2?.uiScale ?? 1;
-      patchLn({ uiScale: clampScale(cur + (e.deltaY < 0 ? 0.03 : -0.03)) });
-    };
     window.addEventListener('keydown', onKey);
-    window.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('wheel', onWheel);
     };
   }, [appSettings?.liquidNeonV2?.uiScale]);
+
+  // F2#9/#17: shell-owned density bridge when Settings is closed.
+  // Appearance section re-registers while open so slider + Ctrl+wheel share one path.
+  useEffect(() => {
+    if (settingsOpen) return;
+    registerDensityBridge({
+      getSettings: () => normalizeLiquidNeonV2(appSettings?.liquidNeonV2),
+      cosmicBgUrl,
+      commit: (next) => {
+        setAppSettings((prev) => {
+          if (!prev) return prev;
+          const updated = { ...prev, liquidNeonV2: next };
+          window.api.settingsSet(updated).catch(() => {});
+          return updated;
+        });
+      },
+    });
+    return () => registerDensityBridge(null);
+  }, [appSettings?.liquidNeonV2, settingsOpen]);
+
+  useCtrlScrollDensity(true);
 
   const manuscriptToolbarActions = useMemo(() => ({
     onDictate: handleToolbarDictate,
@@ -6326,10 +6509,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {settingsOpen && (
         <SettingsPanel
-          key={settingsOpenToken}
           initialCategory={settingsInitialCategory}
           activeVaultRoot={activeVaultRoot}
-          onClose={() => { setSettingsOpen(false); setSettingsInitialCategory('appearance'); }}
+          onClose={handleSettingsClose}
+          onCloseBlocked={handleSettingsCloseBlocked}
           onSaved={(s) => {
             setAppSettings(s);
             // SKY-11237: apply the saved vault's per-vault appearance, falling back to global.
@@ -6545,7 +6728,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           />
         </div>
       )}
-      {activeDockedTabId === null && view === 'editor' && <div className="shell-panels">
+      {activeDockedTabId === null && (view === 'editor' || keepStoryEditorMounted) && (
+      <div
+        className="shell-panels"
+        data-testid="shell-panels-story-editor"
+        aria-hidden={view !== 'editor'}
+        // F2#7 keep-alive: display:none + aria-hidden still leave descendants in
+        // Playwright's getByLabel tree (e.g. BottomBar "word goal" vs Scene
+        // Crafter GOAL). `inert` removes the hidden editor chrome from a11y.
+        {...(view !== 'editor' ? { inert: '' } : {})}
+        style={view !== 'editor' ? { display: 'none' } : undefined}
+      >
+      <div className="shell-panels__row">
       {/* Left rail */}
       {showLeftSidebar && (
         <div className="shell-left" style={{ width: clampedLeftWidth }}>
@@ -7009,8 +7203,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                 // permanently disabling the "Connections" backlink buttons.
                 onOpenEntity={handleEntityMentionClick}
               />
-            ) : openedNotePath ? (
-              // SKY-204: vault note viewer (daily notes and any other .md file)
+            ) : openedNotePath && tabShell.activeTab === 'story' ? (
+              // SKY-204: Story-tab vault note only. NotesTabPanel owns the
+              // editor on the Notes tab — a keep-mounted Story NoteViewer for
+              // the same path duplicates `.note-tiptap-content` (TC-CP-06).
+              // F1 80c88bfc has the same gate; rebase should converge.
               <NoteViewer
                 key={openedNotePath}
                 path={openedNotePath}
@@ -7055,24 +7252,30 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             )
           )}
         </div>
-        {showBottomBar && (
-          <BottomBar
-            selectedScene={selectedScene}
-            selectedChapter={selectedChapter}
-            selectedStory={selectedStory}
-            onNavigateScene={handleNavigateScene}
-            activeNotePath={openedNotePath}
-            activeNoteWordCount={openedNoteWordCount}
-            isVoiceActive={voiceActive}
-            splitWordCounts={splitWordCounts}
-            pageWidthPx={selectedScene
-              ? (pagePrefs.customWidthPx ?? STORY_PAGE_PRESET_WIDTHS[pagePrefs.sizePreset] ?? 680)
-              : null}
-          />
-        )}
+        {/* F2#16: BottomBar moved out of center column — spans full shell-panels width */}
       </div>
+      </div>{/* end shell-panels__row */}
 
-      </div>}{/* end shell-panels */}
+      {/* F2#7: BottomBar is editor-only chrome — omit it while keep-alive is
+          hidden so its "word goal" aria-label cannot collide with Scene
+          Crafter's GOAL field (SKY-8435). */}
+      {showBottomBar && view === 'editor' && (
+        <BottomBar
+          selectedScene={selectedScene}
+          selectedChapter={selectedChapter}
+          selectedStory={selectedStory}
+          onNavigateScene={handleNavigateScene}
+          activeNotePath={openedNotePath}
+          activeNoteWordCount={openedNoteWordCount}
+          isVoiceActive={voiceActive}
+          splitWordCounts={splitWordCounts}
+          pageWidthPx={selectedScene
+            ? (pagePrefs.customWidthPx ?? STORY_PAGE_PRESET_WIDTHS[pagePrefs.sizePreset] ?? 680)
+            : null}
+        />
+      )}
+      </div>
+      )}{/* end shell-panels (F2#7 keep-alive when view !== editor) */}
       </div>{/* end app-tabpanel-story */}
       {/* SKY-2096: Notes tabpanel — full layout (vault tree + editor + Brainstorm sidebar) */}
       {tabShell.activeTab === 'notes' && !vaultBinding.notesValid && (
@@ -7161,6 +7364,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onCreateChapter={createChapter}
           onCreateScene={createScene}
           onOpenFile={(path) => {
+            // F2#2 / Critic: clear EntityDetail host so the note viewer shows.
+            setSelectedEntity(null);
             setOpenedNotePath(path);
             handleNotesSubViewChange('editor');
           }}
@@ -7454,6 +7659,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             <button type="button" onClick={() => setAmbiguousLink(null)}>Cancel</button>
           </div>
         </div>
+      )}
+      {pendingCreateLink && (
+        <CreateNotePrompt
+          noteName={wikiLinkTargetStem(pendingCreateLink)}
+          onConfirm={() => {
+            const target = pendingCreateLink;
+            setPendingCreateLink(null);
+            createNoteForUnresolvedLink(target);
+          }}
+          onCancel={() => setPendingCreateLink(null)}
+        />
       )}
       <AiActivityIndicator />
       <Toast message={budgetToastState?.message ?? null} level={budgetToastState?.level} />

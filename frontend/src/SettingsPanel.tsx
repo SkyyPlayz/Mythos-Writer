@@ -79,6 +79,8 @@ import './SettingsPanel.css';
 
 interface Props {
   onClose: () => void;
+  /** H6: rail-nav pending destination should be cleared when flush is blocked. */
+  onCloseBlocked?: () => void;
   onSaved?: (settings: AppSettings) => void;
   focusPrefs?: FocusPrefs;
   onFocusPrefsChange?: (prefs: FocusPrefs) => void;
@@ -89,14 +91,14 @@ interface Props {
   activeVaultRoot?: string;
 }
 
+/** Shield 5(a) / N2: exact fixed string the main process returns on appDataCleared. */
+export const APP_DATA_CLEARED_MESSAGE = 'App data was cleared — restart Mythos Writer to continue.';
+
 const SETTINGS_CATS: readonly SettingsCategoryId[] = SETTINGS_CATEGORIES.map((c) => c.id);
 type SettingsCat = SettingsCategoryId;
 
-export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPrefsChange, initialCategory, activeVaultRoot }: Props) {
-  // Ivy H3: F2#15 owns save/close. Note-view toggles write immediately (no F4 draft).
-  const dismissSettings = useCallback(() => {
-    onClose();
-  }, [onClose]);
+export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusPrefs, onFocusPrefsChange, initialCategory, activeVaultRoot }: Props) {
+  // Ivy H3: F2#15 owns save/close (handleClose below). Note-view toggles write immediately (no F4 draft).
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -116,7 +118,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [savedOk, setSavedOk] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -224,6 +225,12 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   // prototype (SKY-10668 owner request) — safe with the live-persist debounce
   // because appearanceLiveReady consumes the load commit (see below).
   const [settingsCategory, setSettingsCategory] = useState<SettingsCat>(initialCategory ?? 'appearance');
+
+  // Critic H6: navigate category in place when parent updates initialCategory
+  // (e.g. "Settings → this vault") — do not remount via key (loses unsaved edits).
+  useEffect(() => {
+    if (initialCategory) setSettingsCategory(initialCategory);
+  }, [initialCategory]);
   const settingsCatNavRef = useRef<HTMLElement>(null);
 
   // SKY-3218: Nav-bar configuration
@@ -234,8 +241,15 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   const [bgPreviewUrl, setBgPreviewUrl] = useState<string | null>(null);
   const [resetConfirm, setResetConfirm] = useState(false);
 
+  // Critic r3 #3: full settingsGet hydrate once on mount. When activeVaultRoot
+  // changes while Settings stays open, only overlay Appearance for the new
+  // vault — never clobber unsaved Model & keys / provider / agent edits.
+  const settingsHydratedRef = useRef(false);
+
   useEffect(() => {
+    let cancelled = false;
     window.api.settingsGet().then((rawSettings) => {
+      if (cancelled) return;
       // Beta 3 M22: betaReader is optional in the AppSettings type (pre-M22
       // files); normalize once at load so the panel can index it directly.
       let s: AppSettings = rawSettings.agents.betaReader
@@ -263,33 +277,52 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
       const vaultApp: VaultAppearanceSettings | undefined =
         activeVaultRoot ? s.vaultAppearance?.[activeVaultRoot] : undefined;
 
-      // Overlay vault-specific appearance onto the settings state so the
-      // Appearance section shows values for the current vault, not globals.
       const effectiveTheme = vaultApp?.theme ?? s.theme;
       const effectiveLiquidNeonV2 = vaultApp?.liquidNeonV2 ?? s.liquidNeonV2;
+      const effectiveLiquidNeon = vaultApp?.liquidNeon ?? s.liquidNeon;
+
+      const applyAppearanceOverlay = () => {
+        if (effectiveLiquidNeon) {
+          const raw = effectiveLiquidNeon;
+          // SKY-3219 / GH#612: infer bgMode:'image' for legacy settings with a
+          // stored file path but no explicit bgMode field.
+          const bgModeOverride: Partial<LiquidNeonPrefs> =
+            (raw.background && raw.background !== 'default' && !raw.bgMode)
+              ? { bgMode: 'image' }
+              : {};
+          setLg({ ...LG_DEFAULTS, ...raw, ...bgModeOverride });
+          const bg = raw.background;
+          if (bg && bg !== 'default') {
+            window.api.loadBgImage?.(bg)
+              .then((res: { dataUrl: string | null }) => { if (!cancelled && res?.dataUrl) setBgPreviewUrl(res.dataUrl); })
+              .catch(() => {});
+          } else {
+            setBgPreviewUrl(null);
+          }
+        }
+      };
+
+      if (settingsHydratedRef.current) {
+        // Vault switch mid-open: Appearance only — preserve dirty Model & keys.
+        setSettings((prev) => ({
+          ...prev,
+          theme: effectiveTheme,
+          ...(effectiveLiquidNeonV2 !== undefined ? { liquidNeonV2: effectiveLiquidNeonV2 } : {}),
+          vaultAppearance: s.vaultAppearance ?? prev.vaultAppearance,
+        }));
+        applyAppearanceOverlay();
+        return;
+      }
+
+      // Overlay vault-specific appearance onto the settings state so the
+      // Appearance section shows values for the current vault, not globals.
       setSettings({
         ...s,
         theme: effectiveTheme,
         ...(effectiveLiquidNeonV2 !== undefined ? { liquidNeonV2: effectiveLiquidNeonV2 } : {}),
       });
+      applyAppearanceOverlay();
 
-      const effectiveLiquidNeon = vaultApp?.liquidNeon ?? s.liquidNeon;
-      if (effectiveLiquidNeon) {
-        const raw = effectiveLiquidNeon;
-        // SKY-3219 / GH#612: infer bgMode:'image' for legacy settings with a
-        // stored file path but no explicit bgMode field.
-        const bgModeOverride: Partial<LiquidNeonPrefs> =
-          (raw.background && raw.background !== 'default' && !raw.bgMode)
-            ? { bgMode: 'image' }
-            : {};
-        setLg({ ...LG_DEFAULTS, ...raw, ...bgModeOverride });
-        const bg = raw.background;
-        if (bg && bg !== 'default') {
-          window.api.loadBgImage?.(bg)
-            .then((res: { dataUrl: string | null }) => { if (res?.dataUrl) setBgPreviewUrl(res.dataUrl); })
-            .catch(() => {});
-        }
-      }
       if (s.provider) {
         setProviderKind(s.provider.kind as ProviderKind);
         setProviderBaseUrl(s.provider.baseUrl ?? '');
@@ -326,15 +359,14 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
           ? { ...s.navConfig, items: mergeNavConfigItems(s.navConfig.items, NAV_RAIL_DEFAULTS.items) }
           : NAV_RAIL_DEFAULTS,
       );
+      settingsHydratedRef.current = true;
       setLoading(false);
     }).catch(() => {
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     });
-    // SKY-11237: activeVaultRoot is read above to overlay per-vault appearance
-    // onto the loaded settings, so a change in the active vault must re-run the
-    // load. In practice the panel opens per-vault and this prop is stable for
-    // the dialog's lifetime, so this is a no-op at runtime — but including it
-    // keeps the overlay honest if the active vault ever changes while mounted.
+    return () => { cancelled = true; };
+    // SKY-11237 / Critic #3: activeVaultRoot re-runs for Appearance overlay only
+    // after first hydrate (see settingsHydratedRef branch above).
   }, [fetchModels, activeVaultRoot]);
 
   // SKY-1902: Move focus into the dialog once content has loaded. The mount-time
@@ -367,13 +399,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     }
   }, [lg.softnessContrast]);
 
-  // Close main dialog on Escape when the inner popover is not open (ARIA APG dialog pattern)
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !lgAdvancedOpen) dismissSettings(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [dismissSettings, lgAdvancedOpen]);
-
   // Focus trap in popover
   useEffect(() => {
     if (!lgAdvancedOpen) return;
@@ -383,16 +408,22 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
     first?.focus();
   }, [lgAdvancedOpen]);
 
-  // SKY-9: load currently-persisted vault paths once on mount. The IPC
-  // resolves any unset path to its computed default (Option A) so the input
-  // always shows the value that's actually in effect.
+  // SKY-9 / Critic H6: load vault paths on mount AND when activeVaultRoot
+  // changes while Settings stays open (no remount). Skip when the user has
+  // unsaved local path edits so we don't clobber them mid-edit.
+  const vaultsDirtyRef = useRef(vaultsDirty);
+  vaultsDirtyRef.current = vaultsDirty;
   useEffect(() => {
+    let cancelled = false;
+    if (vaultsDirtyRef.current) return;
     window.api.vaultGetPaths().then((paths) => {
+      if (cancelled || vaultsDirtyRef.current) return;
       setVaults(paths);
     }).catch(() => {
       // non-fatal — leave inputs blank; user can still pick folders
     });
-  }, []);
+    return () => { cancelled = true; };
+  }, [activeVaultRoot]);
 
   const handleMoveVault = useCallback(() => {
     setShowMoveWizard(true);
@@ -451,72 +482,133 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   }, [agentOverrides, settings.agents]);
 
 
-  const handleSave = useCallback(async () => {
-    if (apiKeyError) return;
-    setSaving(true);
-    setSaveError(null);
-    setSavedOk(false);
-    try {
-      const providerDef = PROVIDER_OPTIONS.find((p) => p.value === providerKind)!;
-      const provider: AppSettings['provider'] = {
-        kind: providerKind,
-        model: providerModel,
-        ...(providerDef.needsKey ? { apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? '') } : {}),
-        ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
-        ...(settings.provider?.kind === providerKind && settings.provider.capabilities ? { capabilities: settings.provider.capabilities } : {}),
-      };
-      // SKY-11237: build the updated per-vault appearance entry for the active
-      // vault and merge it into the existing vaultAppearance map.
-      const vaultAppearanceUpdate: AppSettings['vaultAppearance'] = activeVaultRoot
-        ? {
-            ...(settings.vaultAppearance ?? {}),
-            [activeVaultRoot]: {
-              ...(settings.vaultAppearance?.[activeVaultRoot] ?? {}),
-              theme: settings.theme,
-              liquidNeon: lg,
-              ...(settings.liquidNeonV2 !== undefined ? { liquidNeonV2: settings.liquidNeonV2 } : {}),
-            },
-          }
-        : settings.vaultAppearance;
+  const buildSettingsPayload = useCallback((): AppSettings => {
+    const providerDef = PROVIDER_OPTIONS.find((p) => p.value === providerKind)!;
+    const provider: AppSettings['provider'] = {
+      kind: providerKind,
+      model: providerModel,
+      ...(providerDef.needsKey ? { apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? '') } : {}),
+      ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
+      ...(settings.provider?.kind === providerKind && settings.provider.capabilities ? { capabilities: settings.provider.capabilities } : {}),
+    };
+    // SKY-11237: build the updated per-vault appearance entry for the active
+    // vault and merge it into the existing vaultAppearance map.
+    const vaultAppearanceUpdate: AppSettings['vaultAppearance'] = activeVaultRoot
+      ? {
+          ...(settings.vaultAppearance ?? {}),
+          [activeVaultRoot]: {
+            ...(settings.vaultAppearance?.[activeVaultRoot] ?? {}),
+            theme: settings.theme,
+            liquidNeon: lg,
+            ...(settings.liquidNeonV2 !== undefined ? { liquidNeonV2: settings.liquidNeonV2 } : {}),
+          },
+        }
+      : settings.vaultAppearance;
 
-      const payload: AppSettings = {
-        ...settings,
-        apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
-        provider,
-        liquidNeon: lg,
-        pageBackground: pageBg,
-        navConfig,
-        telemetry: { enabled: telemetryEnabled, sessionId: settings.telemetry?.sessionId ?? '' },
-        ...(vaultAppearanceUpdate !== undefined ? { vaultAppearance: vaultAppearanceUpdate } : {}),
-        agents: {
-          ...settings.agents,
-          writingAssistant: { ...settings.agents.writingAssistant, provider: buildAgentProviderConfig('writingAssistant') },
-          brainstorm: { ...settings.agents.brainstorm, provider: buildAgentProviderConfig('brainstorm') },
-          archive: { ...settings.agents.archive, provider: buildAgentProviderConfig('archive') },
-          betaReader: { ...(settings.agents.betaReader ?? BETA_READER_DEFAULTS), provider: buildAgentProviderConfig('betaReader') },
-        },
-      };
-      const voiceTokens: Parameters<typeof window.api.settingsSet>[1] = {
-        ...(sttBinaryToken ? { sttBinaryToken } : {}),
-        ...(sttModelToken ? { sttModelToken } : {}),
-      };
-      if (Object.keys(voiceTokens).length > 0) {
-        await window.api.settingsSet(payload, voiceTokens);
-      } else {
-        await window.api.settingsSet(payload);
+    return {
+      ...settings,
+      apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
+      provider,
+      liquidNeon: lg,
+      pageBackground: pageBg,
+      navConfig,
+      telemetry: { enabled: telemetryEnabled, sessionId: settings.telemetry?.sessionId ?? '' },
+      ...(vaultAppearanceUpdate !== undefined ? { vaultAppearance: vaultAppearanceUpdate } : {}),
+      agents: {
+        ...settings.agents,
+        writingAssistant: { ...settings.agents.writingAssistant, provider: buildAgentProviderConfig('writingAssistant') },
+        brainstorm: { ...settings.agents.brainstorm, provider: buildAgentProviderConfig('brainstorm') },
+        archive: { ...settings.agents.archive, provider: buildAgentProviderConfig('archive') },
+        betaReader: { ...(settings.agents.betaReader ?? BETA_READER_DEFAULTS), provider: buildAgentProviderConfig('betaReader') },
+      },
+    };
+  }, [settings, apiKeyInput, apiKeyDirty, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, pageBg, navConfig, buildAgentProviderConfig, activeVaultRoot]);
+
+  const writeSettingsPayload = useCallback(async (payload: AppSettings) => {
+    const voiceTokens: Parameters<typeof window.api.settingsSet>[1] = {
+      ...(sttBinaryToken ? { sttBinaryToken } : {}),
+      ...(sttModelToken ? { sttModelToken } : {}),
+    };
+    const result = Object.keys(voiceTokens).length > 0
+      ? await window.api.settingsSet(payload, voiceTokens)
+      : await window.api.settingsSet(payload);
+    // Critic/Shield: IPC resolves even on refusal (saved:false, URL/voice/TTS
+    // validation errors, appDataCleared). Never treat as success.
+    if (
+      result
+      && typeof result === 'object'
+      && (result.saved === false || (typeof result.error === 'string' && result.error.length > 0))
+    ) {
+      const errMsg = typeof result.error === 'string' ? result.error.trim() : '';
+      // Shield 5(a): appDataCleared uses this exact fixed string.
+      if (errMsg === APP_DATA_CLEARED_MESSAGE) {
+        throw new Error(errMsg);
       }
-      setSttBinaryToken(null);
-      setSttModelToken(null);
-      setSavedOk(true);
-      applyLiquidNeonTokens(lg, bgPreviewUrl);
-      applyPageBackgroundTokens(pageBg);
-      onSaved?.(payload);
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Failed to save settings.');
-    } finally {
-      setSaving(false);
+      // URL / voice / STT-TTS and other saved:false refusals — fixed generic copy.
+      throw new Error('SETTINGS_SAVE_REJECTED');
     }
-  }, [settings, apiKeyInput, apiKeyDirty, apiKeyError, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, bgPreviewUrl, pageBg, navConfig, onSaved, buildAgentProviderConfig, sttBinaryToken, sttModelToken, activeVaultRoot]);
+  }, [sttBinaryToken, sttModelToken]);
+
+  // F2#15 + Shield R4 / H6: one exit flush (close / Escape / rail-nav).
+  // Keep open + plain-text error on save fail. Invalid key: save everything
+  // else, hold the bad key, keep open with inline error.
+  const closeSaveInFlight = useRef(false);
+  const handleClose = useCallback(() => {
+    if (closeSaveInFlight.current) return;
+    closeSaveInFlight.current = true;
+    setSaveError(null);
+    const payload = buildSettingsPayload();
+    const heldBadKey = Boolean(apiKeyError);
+    if (heldBadKey) {
+      // Persist the rest of the payload with the last good key.
+      payload.apiKey = settings.apiKey;
+    }
+    void writeSettingsPayload(payload)
+      .then(() => {
+        applyLiquidNeonTokens(lg, bgPreviewUrl);
+        applyPageBackgroundTokens(pageBg);
+        onSaved?.(payload);
+        if (heldBadKey) {
+          closeSaveInFlight.current = false;
+          setSaveError('API key not saved — fix it before closing.');
+          onCloseBlocked?.();
+          return;
+        }
+        onClose();
+      })
+      .catch((err: unknown) => {
+        closeSaveInFlight.current = false;
+        // Shield 5(a): appDataCleared refusal uses the exact fixed string.
+        // Other save failures (thrown stacks/paths) stay on the generic copy.
+        const msg = err instanceof Error ? err.message : '';
+        setSaveError(
+          msg === APP_DATA_CLEARED_MESSAGE
+            ? msg
+            : "Couldn't save settings. Try again.",
+        );
+        onCloseBlocked?.();
+      });
+  }, [apiKeyError, settings.apiKey, buildSettingsPayload, writeSettingsPayload, lg, bgPreviewUrl, pageBg, onSaved, onClose, onCloseBlocked]);
+
+  // Expose the same flush to DesktopShell rail-nav (must not skip save).
+  useEffect(() => {
+    const w = window as Window & { __mythosSettingsRequestClose?: () => void };
+    w.__mythosSettingsRequestClose = handleClose;
+    return () => {
+      if (w.__mythosSettingsRequestClose === handleClose) {
+        delete w.__mythosSettingsRequestClose;
+      }
+    };
+  }, [handleClose]);
+
+  // F2#15: Escape also auto-saves (replaces the early onClose-only listener).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !lgAdvancedOpen) handleClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [handleClose, lgAdvancedOpen]);
 
   // SKY-9: persist vault paths in a separate round-trip from settingsSet so
   // a misconfigured path can't block API-key edits, and so the main side can
@@ -556,7 +648,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
   );
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) dismissSettings();
+    if (e.target === e.currentTarget) void handleClose();
   };
 
   const handleDialogKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -732,13 +824,18 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
         telemetry: { enabled: telemetryEnabled, sessionId: base.telemetry?.sessionId ?? '' },
         ...(vaultAppearance !== undefined ? { vaultAppearance } : {}),
       };
-      await window.api.settingsSet(payload);
+      await writeSettingsPayload(payload);
       setSaveError(null);
       onSaved?.(payload);
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Failed to save settings.');
+      const msg = e instanceof Error ? e.message : '';
+      setSaveError(
+        msg === APP_DATA_CLEARED_MESSAGE
+          ? msg
+          : "Couldn't save settings. Try again.",
+      );
     }
-  }, [settings.theme, settings.liquidNeonV2, settings.updateChannel, settings.vaultAppearance, activeVaultRoot, lg, pageBg, navConfig, telemetryEnabled, onSaved]);
+  }, [settings.theme, settings.liquidNeonV2, settings.updateChannel, settings.vaultAppearance, activeVaultRoot, lg, pageBg, navConfig, telemetryEnabled, onSaved, writeSettingsPayload]);
 
   // Write-guard for the live-persist debounce. The load hydration commits in
   // one batch with setLoading(false), so the first post-load run of the effect
@@ -789,11 +886,11 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               // overlay or focus-trap cannot swallow the dismiss.
               e.preventDefault();
               e.stopPropagation();
-              dismissSettings();
+              handleClose();
             }}
             // Keyboard activation of <button> fires click, not pointerdown —
             // keep both; double-fire from a real pointer is harmless.
-            onClick={dismissSettings}
+            onClick={handleClose}
           >
             ✕
           </button>
@@ -1107,20 +1204,12 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
 
         </div>
 
-        {/* M4 (§2-B): the Appearance tab applies + persists live, so it has no
-            Cancel/Save footer — only a persist-failure alert when one occurs.
-            Tabs with credentials or destructive actions keep explicit save. */}
-        {settingsCategory === 'appearance' ? (
-          saveError && (
-            <div className="settings-footer">
-              <p className="settings-error-msg" role="alert">{saveError}</p>
-            </div>
-          )
-        ) : (
+        {/* F2#15: no Save button — all categories auto-save on exit.
+            Appearance still live-persists; footer only shows status / debug. */}
+        {(saveError || savedOk || import.meta.env.VITE_MYTHOS_DEV === '1') && (
         <div className="settings-footer">
           {saveError && <p className="settings-error-msg" role="alert">{saveError}</p>}
           {savedOk && <p className="settings-saved-msg" aria-live="polite">Settings saved.</p>}
-          {/* SKY-12.4: debug reset — only rendered when MYTHOS_DEV=1 is set in the dev environment */}
           {import.meta.env.VITE_MYTHOS_DEV === '1' && (
             <div className="settings-debug-section">
               <h3 className="settings-section-title">Developer</h3>
@@ -1139,18 +1228,6 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
               </button>
             </div>
           )}
-          <div className="settings-footer-actions">
-            <button type="button" className="settings-btn settings-btn-cancel" onClick={dismissSettings}>Cancel</button>
-            <button
-              type="button"
-              className="settings-btn settings-btn-save"
-              onClick={handleSave}
-              disabled={saving || !!apiKeyError}
-              aria-label="Save settings"
-            >
-              {saving ? 'Saving…' : 'Save'}
-            </button>
-          </div>
         </div>
         )}
       </div>
