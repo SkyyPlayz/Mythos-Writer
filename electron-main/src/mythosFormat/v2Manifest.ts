@@ -187,7 +187,7 @@ function collectChapterScenes(
     if (ao !== null && bo !== null && ao !== bo) return ao - bo;
     if (ao !== null && bo === null) return -1;
     if (ao === null && bo !== null) return 1;
-    return codePointCompare(a.fileName, b.fileName);
+    return a.fileName.localeCompare(b.fileName);
   });
   return out;
 }
@@ -662,21 +662,36 @@ export function scanMythosStoryVault(
   provisional.forEach((s, si) => {
     const storyDec = storyFinal.get(si)!;
     const bookReplacements = new Map<string, string>();
+    const chapterFolders: Array<{
+      partDir: string;
+      chapterDir: string;
+      oldId: string;
+      newId: string;
+    }> = [];
     if (storyDec.lost && storyDec.finalId !== s.claimedId) {
       bookReplacements.set(s.claimedId, storyDec.finalId);
     }
     for (const [oldId, newId] of storyDec.chapterIdMap) {
       bookReplacements.set(oldId, newId);
     }
-    // Also pick up chapter id changes recorded only in chapterFinalId.
+    // Folder-scoped chapter id changes — only loser slots are rewritten in the spine.
     s.chapters.forEach((c, ci) => {
       const finalCh = chapterFinalId.get(chKey(si, ci)) ?? c.claimedId;
-      if (finalCh !== c.claimedId) bookReplacements.set(c.claimedId, finalCh);
+      if (finalCh !== c.claimedId) {
+        bookReplacements.set(c.claimedId, finalCh);
+        chapterFolders.push({
+          partDir: c.partDir,
+          chapterDir: c.chapterDir,
+          oldId: c.claimedId,
+          newId: finalCh,
+        });
+      }
     });
 
-    if (bookReplacements.size > 0 && s.bookRaw) {
+    if ((bookReplacements.size > 0 || chapterFolders.length > 0) && s.bookRaw) {
       const next = surgicalReplaceBookIds(s.bookRaw, bookReplacements, {
         expectFrontmatterStoryId: storyDec.lost ? s.claimedId : undefined,
+        chapterFolders,
       });
       if (next !== null && next !== s.bookRaw) {
         writeReIdFile(s.bookPath, next);
@@ -786,8 +801,9 @@ export function scanMythosStoryVault(
 }
 
 /**
- * Boot-only orchestration: rebuild cache when it holds duplicate ids.
- * Memoized per vaultRoot for the session; failures leave the cache untouched.
+ * Boot-only orchestration: rebuild cache when it holds duplicate ids **or**
+ * when an untracked story folder with `book.md` is present (Probe H4).
+ * Memoized per mythosRoot for the session; failures leave the cache untouched.
  */
 export function rebuildCacheIfDuplicated(mythosRoot: string, cachePath: string): void {
   rebuildCacheIfDuplicatedCore(
@@ -798,6 +814,13 @@ export function rebuildCacheIfDuplicated(mythosRoot: string, cachePath: string):
       writeManifestRaw(p, m);
     },
     ensureActiveStoryVaultPath,
+    () => {
+      try {
+        return new Set(readMythosFile(mythosRoot).stories.map((s) => s.folder));
+      } catch {
+        return new Set();
+      }
+    },
   );
 }
 

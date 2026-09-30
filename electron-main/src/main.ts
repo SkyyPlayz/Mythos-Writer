@@ -1426,9 +1426,9 @@ function ensureVaultDir() {
         writeManifestRaw(cachePath, defaultManifest(vaultRoot));
       }
     } else {
-      // F6: if a prior cache already holds duplicate story/chapter/scene ids
-      // (Finder-copied folders scanned before dedupe shipped), rebuild once
-      // per session. Shared hunk with F2 at ensureVaultDir top (appDataCleared).
+      // F6: rebuild once per session when the cache holds duplicate ids OR the
+      // story vault has an untracked folder with book.md (warm-cache Finder-copy).
+      // Shared hunk with F2 at ensureVaultDir top (appDataCleared).
       rebuildCacheIfDuplicated(mythosRoot, cachePath);
     }
     try {

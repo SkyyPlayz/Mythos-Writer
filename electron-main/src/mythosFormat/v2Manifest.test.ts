@@ -8,6 +8,8 @@ import { VEYNN_STORY_FOLDER, writeVeynnSeed } from './veynnSeed.js';
 import {
   _clearDetectionCache,
   resolveManifestPath,
+  readMythosFile,
+  writeMythosFile,
 } from './mythosJson.js';
 import {
   scanMythosStoryVault,
@@ -18,10 +20,12 @@ import {
 import {
   surgicalReplaceSceneFrontmatterId,
   surgicalReplaceBookIds,
+  rebuildCacheIfDuplicated as rebuildCacheIfDuplicatedCore,
 } from './v2IdDedupe.js';
 import { writeManifest } from '../vault.js';
 import { parseBookFile } from './bookFile.js';
 import { parseV2SceneFile, isSceneFileName } from './sceneFiles.js';
+import { syncCanonicalFromManifest } from './v2Manifest.js';
 
 let tmp: string;
 
@@ -102,29 +106,47 @@ describe('F6 ID dedupe — story folder copy', () => {
 });
 
 describe('F6 ID dedupe — bad cache / winner rules', () => {
-  it('cache with both: original first in mythos.json keeps id (not last-one-wins)', () => {
+  it('2: two-tracked — original first in mythos.json keeps id (tracked order)', () => {
     const result = createMythosVault(tmp, { name: 'BadCache' });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    const copyFolder = `${VEYNN_STORY_FOLDER} copy`;
+    // Copy sorts BEFORE original by code-point ("AAA…" < "The…") so without
+    // tracked mythos.json order the wrong story would win.
+    const copyFolder = 'AAA Tracked Copy';
     fs.cpSync(
       path.join(result.storyVaultPath, VEYNN_STORY_FOLDER),
       path.join(result.storyVaultPath, copyFolder),
       { recursive: true },
     );
-    // Build a poisoned cache: both stories share the original id, copy listed second.
+    const origBookPath = path.join(result.storyVaultPath, VEYNN_STORY_FOLDER, 'book.md');
+    const copyBookPath = path.join(result.storyVaultPath, copyFolder, 'book.md');
+    // Keep shared story id on disk.
+    fs.writeFileSync(copyBookPath, fs.readFileSync(origBookPath, 'utf-8'));
+
+    const mythos = readMythosFile(result.mythosRoot);
+    const shared = mythos.stories[0]?.id ?? parseBookFile(fs.readFileSync(origBookPath, 'utf-8')).id;
+    // Track BOTH: original first, copy second — rule 2 picks first tracked.
+    writeMythosFile(result.mythosRoot, {
+      ...mythos,
+      stories: [
+        { ...mythos.stories[0], id: shared, folder: VEYNN_STORY_FOLDER },
+        {
+          id: shared,
+          title: copyFolder,
+          folder: copyFolder,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+
+    // Ambiguous prior cache (same id at two paths) → rule 1 skips → tracked order.
     const poisoned = scanMythosStoryVault(result.mythosRoot);
-    // Re-poison: force both to same id as if pre-dedupe scan wrote the cache.
-    const shared = poisoned.stories[0].id;
     for (const s of poisoned.stories) s.id = shared;
     const cachePath = resolveManifestPath(result.storyVaultPath);
     fs.mkdirSync(path.dirname(cachePath), { recursive: true });
     writeManifest(cachePath, poisoned);
-
-    // Wipe book write-backs so we re-decide from poisoned cache + disk.
-    // Disk still has duplicate book ids from the first scan write-back — restore copy book to shared id.
-    const origBookPath = path.join(result.storyVaultPath, VEYNN_STORY_FOLDER, 'book.md');
-    const copyBookPath = path.join(result.storyVaultPath, copyFolder, 'book.md');
+    // Restore shared book ids (first scan may have write-back).
     fs.writeFileSync(copyBookPath, fs.readFileSync(origBookPath, 'utf-8'));
 
     const after = scanMythosStoryVault(result.mythosRoot);
@@ -136,7 +158,7 @@ describe('F6 ID dedupe — bad cache / winner rules', () => {
 });
 
 describe('F6 ID dedupe — cross-story chapter copy', () => {
-  it('3a with cache: original keeps chapter/scene ids', () => {
+  it('3a with cache: prior-cache path keeps original (tracked earlier target would otherwise win)', () => {
     const result = createMythosVault(tmp, { name: 'CrossA' });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -144,10 +166,10 @@ describe('F6 ID dedupe — cross-story chapter copy', () => {
     const origCh = first.stories[0].chapters[0];
     const origChId = origCh.id;
     const origSceneIds = origCh.scenes.map((s) => s.id);
-    // Warm cache at original paths.
     writeManifest(resolveManifestPath(result.storyVaultPath), first);
 
-    // Earlier story (code-point before Veynn) receives a chapter copy + spine entry.
+    // Earlier TRACKED story receives the chapter copy + spine entry with same id.
+    // Without rule 1, both in-spine → story order would give the earlier target the id.
     const earlier = 'AAA Earlier';
     const earlierAbs = path.join(result.storyVaultPath, earlier);
     fs.mkdirSync(path.join(earlierAbs, 'Part 1'), { recursive: true });
@@ -178,26 +200,46 @@ describe('F6 ID dedupe — cross-story chapter copy', () => {
         '',
       ].join('\n'),
     );
+    const mythos = readMythosFile(result.mythosRoot);
+    writeMythosFile(result.mythosRoot, {
+      ...mythos,
+      stories: [
+        {
+          id: 'earlier-story',
+          title: earlier,
+          folder: earlier,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+        ...mythos.stories,
+      ],
+    });
 
     const after = scanMythosStoryVault(result.mythosRoot);
     const veynn = after.stories.find((s) => s.path === VEYNN_STORY_FOLDER)!;
     const aaa = after.stories.find((s) => s.path === earlier)!;
-    expect(veynn.chapters[0].id).toBe(origChId);
+    expect(veynn.chapters.find((c) => c.path.endsWith('Chapter 01'))!.id).toBe(origChId);
     expect(aaa.chapters[0].id).not.toBe(origChId);
-    expect(veynn.chapters[0].scenes.map((s) => s.id)).toEqual(origSceneIds);
+    expect(
+      veynn.chapters.find((c) => c.path.endsWith('Chapter 01'))!.scenes.map((s) => s.id),
+    ).toEqual(origSceneIds);
   });
 
-  it('3b no cache: spine signal keeps original across two back-to-back rebuilds', () => {
+  it('3b no cache: spine signal keeps original scenes across two rebuilds with sync', () => {
     const result = createMythosVault(tmp, { name: 'CrossB' });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const first = scanMythosStoryVault(result.mythosRoot);
     const origCh = first.stories[0].chapters[0];
     const origChId = origCh.id;
-    // No cache.
+    const origSceneIds = origCh.scenes.map((s) => s.id);
     const cachePath = resolveManifestPath(result.storyVaultPath);
     fs.rmSync(path.dirname(cachePath), { recursive: true, force: true });
 
+    // Earlier TRACKED target gets the scene files but NOT a spine entry for that
+    // chapter (inOwnSpine=false). Scene frontmatter still shares ids with Veynn.
+    // Spine signal on the parent chapter → original keeps scene ids. Without it,
+    // story order would give the earlier target the scene ids.
     const earlier = 'AAA Earlier';
     const earlierAbs = path.join(result.storyVaultPath, earlier);
     fs.mkdirSync(path.join(earlierAbs, 'Part 1'), { recursive: true });
@@ -206,11 +248,6 @@ describe('F6 ID dedupe — cross-story chapter copy', () => {
       path.join(earlierAbs, 'Part 1', 'Chapter 01'),
       { recursive: true },
     );
-    // Copy is in earlier spine; original still in Veynn spine → both inOwnSpine;
-    // without cache, story order (mythos.json first) keeps Veynn when both tracked…
-    // Make earlier UNtracked so spine signal on original (tracked+spine) vs copy:
-    // original in spine of own story; copy also in spine of earlier — both have spine.
-    // Per rule 3: spine then story order. Tracked Veynn is first in mythos order.
     fs.writeFileSync(
       path.join(earlierAbs, 'book.md'),
       [
@@ -223,22 +260,36 @@ describe('F6 ID dedupe — cross-story chapter copy', () => {
         '# AAA Earlier',
         '',
         '<!-- mythos:spine',
-        JSON.stringify([
-          {
-            dir: 'Part 1',
-            chapters: [{ dir: 'Chapter 01', id: origChId, title: origCh.title }],
-          },
-        ]),
+        JSON.stringify([{ dir: 'Part 1', chapters: [] }]),
         '-->',
         '',
       ].join('\n'),
     );
+    const mythos = readMythosFile(result.mythosRoot);
+    writeMythosFile(result.mythosRoot, {
+      ...mythos,
+      stories: [
+        {
+          id: 'earlier-story',
+          title: earlier,
+          folder: earlier,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+        ...mythos.stories,
+      ],
+    });
 
     const a = scanMythosStoryVault(result.mythosRoot);
+    syncCanonicalFromManifest(result.mythosRoot, a);
     const b = scanMythosStoryVault(result.mythosRoot);
     for (const m of [a, b]) {
       const veynn = m.stories.find((s) => s.path === VEYNN_STORY_FOLDER)!;
-      expect(veynn.chapters.find((c) => c.path.endsWith('Chapter 01'))!.id).toBe(origChId);
+      const aaa = m.stories.find((s) => s.path === earlier)!;
+      const vCh = veynn.chapters.find((c) => c.path.endsWith('Chapter 01'))!;
+      expect(vCh.id).toBe(origChId);
+      expect(vCh.scenes.map((s) => s.id)).toEqual(origSceneIds);
+      expect(aaa.chapters[0].scenes.map((s) => s.id)).not.toEqual(origSceneIds);
     }
   });
 
@@ -247,7 +298,6 @@ describe('F6 ID dedupe — cross-story chapter copy', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     writeVeynnSeed(result.mythosRoot);
-    // Build two stories with identical fallback chapter ids and empty spines.
     const mk = (folder: string, storyId: string) => {
       const abs = path.join(result.storyVaultPath, folder);
       fs.mkdirSync(path.join(abs, 'Part 1', 'Chapter 01'), { recursive: true });
@@ -260,8 +310,6 @@ describe('F6 ID dedupe — cross-story chapter copy', () => {
         '---\nid: shared-scene\ntitle: S\nstatus: draft\n---\ntext',
       );
     };
-    // Same story id → same fallback chapter id shape after we force shared story id via book.
-    // Use identical chapter fallback by giving both the SAME story id in book.md (duplicate stories).
     mk('Story A', 'shared-story');
     mk('Story B', 'shared-story');
     const cachePath = resolveManifestPath(result.storyVaultPath);
@@ -270,7 +318,6 @@ describe('F6 ID dedupe — cross-story chapter copy', () => {
     const after = scanMythosStoryVault(result.mythosRoot);
     const a = after.stories.find((s) => s.path === 'Story A')!;
     const b = after.stories.find((s) => s.path === 'Story B')!;
-    // Untracked sort by code point: "Story A" < "Story B" → A wins story id.
     expect(a.id).toBe('shared-story');
     expect(b.id).not.toBe('shared-story');
     expect(a.chapters[0].id).not.toBe(b.chapters[0].id);
@@ -278,7 +325,35 @@ describe('F6 ID dedupe — cross-story chapter copy', () => {
 });
 
 describe('F6 ID dedupe — within-story conflict copy', () => {
-  it('canonical name beats non-canonical; two chapters can each hold Scene 01.md', () => {
+  it('4 no-cache: canonical name beats non-canonical (not prior-cache)', () => {
+    const result = createMythosVault(tmp, { name: 'WithinNoCache' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Ensure no prior cache so rule 1 cannot decide.
+    const cachePath = resolveManifestPath(result.storyVaultPath);
+    fs.rmSync(path.dirname(cachePath), { recursive: true, force: true });
+
+    const chDir = path.join(result.storyVaultPath, VEYNN_STORY_FOLDER, 'Part 1', 'Chapter 01');
+    const canon = path.join(chDir, 'Scene 01.md');
+    const conflict = path.join(chDir, 'Scene 01 copy.md');
+    fs.copyFileSync(canon, conflict);
+    expect(isSceneFileName('Scene 01.md')).toBe(true);
+    expect(isSceneFileName('Scene 01 copy.md')).toBe(false);
+
+    // Capture BEFORE scan — write-back on the loser would otherwise hide a
+    // wrong winner (both sides would compare equal to the post-write id).
+    const origId = parseV2SceneFile(fs.readFileSync(canon, 'utf-8')).id;
+    // Code-point alone would prefer "Scene 01 copy.md" (space < '.') — canonical must win.
+    const after = scanMythosStoryVault(result.mythosRoot);
+    const scenes = after.stories.find((s) => s.path === VEYNN_STORY_FOLDER)!.chapters[0].scenes;
+    const canonScene = scenes.find((s) => s.path.endsWith('Scene 01.md'))!;
+    const copyScene = scenes.find((s) => s.path.endsWith('Scene 01 copy.md'))!;
+    expect(canonScene.id).toBe(origId);
+    expect(copyScene.id).not.toBe(origId);
+    expect(parseV2SceneFile(fs.readFileSync(canon, 'utf-8')).id).toBe(origId);
+  });
+
+  it('4 with cache: canonical still holds; two chapters each hold Scene 01.md', () => {
     const result = createMythosVault(tmp, { name: 'Within' });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -288,24 +363,75 @@ describe('F6 ID dedupe — within-story conflict copy', () => {
     const canon = path.join(chDir, 'Scene 01.md');
     const conflict = path.join(chDir, 'Scene 01 copy.md');
     fs.copyFileSync(canon, conflict);
-    expect(isSceneFileName('Scene 01.md')).toBe(true);
-    expect(isSceneFileName('Scene 01 copy.md')).toBe(false);
+    // Capture BEFORE scan (Probe: post-scan read hid wrong winners).
+    const origId = parseV2SceneFile(fs.readFileSync(canon, 'utf-8')).id;
 
     const after = scanMythosStoryVault(result.mythosRoot);
-    const scenes = after.stories
-      .find((s) => s.path === VEYNN_STORY_FOLDER)!
-      .chapters[0].scenes.filter((s) => s.title === parseV2SceneFile(fs.readFileSync(canon, 'utf-8')).title || s.path.endsWith('Scene 01.md') || s.path.endsWith('Scene 01 copy.md'));
+    const scenes = after.stories.find((s) => s.path === VEYNN_STORY_FOLDER)!.chapters[0].scenes;
     const canonScene = scenes.find((s) => s.path.endsWith('Scene 01.md'))!;
     const copyScene = scenes.find((s) => s.path.endsWith('Scene 01 copy.md'))!;
-    const origId = parseV2SceneFile(fs.readFileSync(canon, 'utf-8')).id;
-    // After write-back, canon keeps original; conflict has new id.
-    expect(parseV2SceneFile(fs.readFileSync(canon, 'utf-8')).id).toBe(origId);
     expect(canonScene.id).toBe(origId);
     expect(copyScene.id).not.toBe(origId);
-
-    // Two chapters each holding Scene 01.md — unique within vault after dedupe of cross-copy only.
     const ch2 = after.stories.find((s) => s.path === VEYNN_STORY_FOLDER)!.chapters[1];
     expect(ch2.scenes.some((s) => s.path.endsWith('Scene 01.md'))).toBe(true);
+  });
+});
+
+describe('F6 display sort (Probe H2)', () => {
+  it('unnumbered scene names keep localeCompare order (not code-point)', () => {
+    const result = createMythosVault(tmp, { name: 'SortH2', seedDemo: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    writeVeynnSeed(result.mythosRoot);
+    const story = 'Sort Story';
+    const chDir = path.join(result.storyVaultPath, story, 'Part 1', 'Chapter 01');
+    fs.mkdirSync(chDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(result.storyVaultPath, story, 'book.md'),
+      [
+        '---',
+        'id: sort-story',
+        'title: Sort Story',
+        'createdAt: 2026-01-01T00:00:00.000Z',
+        'updatedAt: 2026-01-01T00:00:00.000Z',
+        '---',
+        '# Sort Story',
+        '',
+        '<!-- mythos:spine',
+        JSON.stringify([{ dir: 'Part 1', chapters: [{ dir: 'Chapter 01', id: 'ch-sort', title: 'C' }] }]),
+        '-->',
+        '',
+      ].join('\n'),
+    );
+    // Probe repro names — localeCompare → apple, Banana, Épilogue, zebra
+    // code-point would yield Banana, apple, zebra, Épilogue.
+    const names = ['apple notes.md', 'Banana notes.md', 'Épilogue draft.md', 'zebra.md'];
+    for (const name of names) {
+      fs.writeFileSync(
+        path.join(chDir, name),
+        `---\nid: ${name}\ntitle: ${name}\nstatus: draft\n---\nbody\n`,
+      );
+    }
+    writeMythosFile(result.mythosRoot, {
+      ...readMythosFile(result.mythosRoot),
+      stories: [
+        {
+          id: 'sort-story',
+          title: story,
+          folder: story,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    const after = scanMythosStoryVault(result.mythosRoot);
+    const titles = after.stories
+      .find((s) => s.path === story)!
+      .chapters[0].scenes.map((s) => path.basename(s.path));
+    const expected = [...names].sort((a, b) => a.localeCompare(b));
+    expect(titles).toEqual(expected);
+    // Explicit pin against code-point order Probe saw on the frozen tip.
+    expect(titles).not.toEqual([...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
   });
 });
 
@@ -363,7 +489,7 @@ describe('F6 surgical write-back', () => {
     ]);
     const bookNext = surgicalReplaceBookIds(book, map, { expectFrontmatterStoryId: 'story-old' })!;
     expect(bookNext).toContain('id: story-new');
-    expect(bookNext).toContain('"id" : "ch-new"');
+    expect(bookNext).toMatch(/"id"\s*:\s*"ch-new"/);
     expect(bookNext).not.toContain('ch-old');
 
     // Fallbacks shaped like storyId-Part-1-Chapter-01 must match as WHOLE values only.
@@ -378,6 +504,142 @@ describe('F6 surgical write-back', () => {
     expect(fbNext).toContain('story-new-Part-1-Chapter-01');
     // Must not have mangled a longer substring incorrectly.
     expect(fbNext.match(/story-old/g)).toBeNull();
+
+    // Critic Hard 1: JSON-escaped spine id → refuse entire write (no partial story-id write).
+    const escapedBook = [
+      '---',
+      'id: story-old',
+      'title: S',
+      'createdAt: 2026-01-01T00:00:00.000Z',
+      'updatedAt: 2026-01-01T00:00:00.000Z',
+      '---',
+      '# S',
+      '',
+      '<!-- mythos:spine',
+      // Parsed id is ch"old; raw form is JSON-escaped so a naive regex misses it.
+      '[{"dir":"Part 1","chapters":[{"dir":"Chapter 01","id":"ch\\"old","title":"C"}]}]',
+      '-->',
+      '',
+    ].join('\n');
+    const escMap = new Map([
+      ['story-old', 'story-new'],
+      ['ch"old', 'ch-new'],
+    ]);
+    expect(surgicalReplaceBookIds(escapedBook, escMap, { expectFrontmatterStoryId: 'story-old' })).toBeNull();
+
+    // Map path with duplicate spine ids → refuse (ambiguous without folder scope).
+    const dupSpineBook = [
+      '---',
+      'id: story-old',
+      'title: S',
+      'createdAt: 2026-01-01T00:00:00.000Z',
+      'updatedAt: 2026-01-01T00:00:00.000Z',
+      '---',
+      '# S',
+      '',
+      '<!-- mythos:spine',
+      JSON.stringify([
+        {
+          dir: 'Part 1',
+          chapters: [
+            { dir: 'Chapter 01', id: 'ch-old', title: 'C1' },
+            { dir: 'Chapter 02', id: 'ch-old', title: 'C2' },
+          ],
+        },
+      ]),
+      '-->',
+      '',
+    ].join('\n');
+    const dupMap = new Map([
+      ['story-old', 'story-new'],
+      ['ch-old', 'ch-new'],
+    ]);
+    expect(surgicalReplaceBookIds(dupSpineBook, dupMap, { expectFrontmatterStoryId: 'story-old' })).toBeNull();
+
+    // Folder-scoped: only the loser chapter slot is rewritten; winner keeps id.
+    const loserOnly = surgicalReplaceBookIds(dupSpineBook, new Map(), {
+      chapterFolders: [
+        { partDir: 'Part 1', chapterDir: 'Chapter 02', oldId: 'ch-old', newId: 'ch-loser' },
+      ],
+    })!;
+    expect(loserOnly).toContain('"id":"ch-loser"');
+    expect(loserOnly).toContain('"id":"ch-old"'); // winner Chapter 01 untouched
+    const spineJson = loserOnly.slice(
+      loserOnly.indexOf('<!-- mythos:spine') + '<!-- mythos:spine'.length,
+      loserOnly.indexOf('-->'),
+    );
+    const parsedSpine = JSON.parse(spineJson.trim());
+    expect(parsedSpine[0].chapters[0].id).toBe('ch-old');
+    expect(parsedSpine[0].chapters[1].id).toBe('ch-loser');
+  });
+
+  it('duplicate spine chapter id: winner id stable across repeated scans', () => {
+    const result = createMythosVault(tmp, { name: 'DupSpineStable', seedDemo: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    writeVeynnSeed(result.mythosRoot);
+    const story = 'Dup Spine';
+    const abs = path.join(result.storyVaultPath, story);
+    fs.mkdirSync(path.join(abs, 'Part 1', 'Chapter 01'), { recursive: true });
+    fs.mkdirSync(path.join(abs, 'Part 1', 'Chapter 02'), { recursive: true });
+    const shared = 'shared-ch-id';
+    fs.writeFileSync(
+      path.join(abs, 'book.md'),
+      [
+        '---',
+        'id: dup-spine-story',
+        'title: Dup Spine',
+        'createdAt: 2026-01-01T00:00:00.000Z',
+        'updatedAt: 2026-01-01T00:00:00.000Z',
+        '---',
+        '# Dup Spine',
+        '',
+        '<!-- mythos:spine',
+        JSON.stringify([
+          {
+            dir: 'Part 1',
+            chapters: [
+              { dir: 'Chapter 01', id: shared, title: 'C1' },
+              { dir: 'Chapter 02', id: shared, title: 'C2' },
+            ],
+          },
+        ]),
+        '-->',
+        '',
+      ].join('\n'),
+    );
+    fs.writeFileSync(
+      path.join(abs, 'Part 1', 'Chapter 01', 'Scene 01.md'),
+      '---\nid: sc-a\ntitle: A\nstatus: draft\n---\na\n',
+    );
+    fs.writeFileSync(
+      path.join(abs, 'Part 1', 'Chapter 02', 'Scene 01.md'),
+      '---\nid: sc-b\ntitle: B\nstatus: draft\n---\nb\n',
+    );
+    writeMythosFile(result.mythosRoot, {
+      ...readMythosFile(result.mythosRoot),
+      stories: [
+        {
+          id: 'dup-spine-story',
+          title: story,
+          folder: story,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    const a = scanMythosStoryVault(result.mythosRoot);
+    const b = scanMythosStoryVault(result.mythosRoot);
+    const c = scanMythosStoryVault(result.mythosRoot);
+    const chIds = (m: typeof a) =>
+      m.stories
+        .find((s) => s.path === story)!
+        .chapters.map((ch) => ch.id);
+    // Winner (Chapter 01, earlier in story order) keeps shared; loser reminted once then stable.
+    expect(chIds(a)[0]).toBe(shared);
+    expect(chIds(a)[1]).not.toBe(shared);
+    expect(chIds(b)).toEqual(chIds(a));
+    expect(chIds(c)).toEqual(chIds(a));
   });
 });
 
@@ -498,7 +760,7 @@ describe('F6 manifestHasDuplicateIds + rebuildCacheIfDuplicated', () => {
     // Memo short-circuits before read — file stays poisoned (or whatever we wrote).
     expect(manifestHasDuplicateIds(JSON.parse(fs.readFileSync(cachePath, 'utf-8')))).toBe(true);
 
-    // keep-on-throw: clear memo, make scan throw by removing mythos.json briefly.
+    // keep-on-throw (scan throws before write): cache stays untouched.
     _clearDupBootMemoForTests();
     writeManifest(cachePath, poisoned);
     const mythosPath = path.join(result.mythosRoot, 'mythos.json');
@@ -508,5 +770,55 @@ describe('F6 manifestHasDuplicateIds + rebuildCacheIfDuplicated', () => {
     rebuildCacheIfDuplicated(result.mythosRoot, cachePath);
     expect(fs.readFileSync(cachePath).equals(poisonedBytes)).toBe(true);
     fs.writeFileSync(mythosPath, mythosBak);
+
+    // keep-on-throw restore path: writeCache partial-writes then throws → bytes restored.
+    _clearDupBootMemoForTests();
+    writeManifest(cachePath, poisoned);
+    const beforeRestore = fs.readFileSync(cachePath);
+    rebuildCacheIfDuplicatedCore(
+      result.mythosRoot,
+      cachePath,
+      () => ({ stories: [] } as never),
+      (p) => {
+        fs.writeFileSync(p, '{"partial');
+        throw new Error('disk');
+      },
+      () => result.storyVaultPath,
+    );
+    expect(fs.readFileSync(cachePath).equals(beforeRestore)).toBe(true);
+  });
+
+  it('Probe H4: warm clean cache + untracked book.md folder → boot rescan shows copy', () => {
+    const result = createMythosVault(tmp, { name: 'WarmH4' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Warm clean cache (unique ids, only tracked story).
+    const warm = scanMythosStoryVault(result.mythosRoot);
+    expect(warm.stories).toHaveLength(1);
+    const cachePath = resolveManifestPath(result.storyVaultPath);
+    writeManifest(cachePath, warm);
+    expect(manifestHasDuplicateIds(JSON.parse(fs.readFileSync(cachePath, 'utf-8')))).toBe(false);
+
+    // Finder-copy AFTER cache warm — copy is invisible without H4 rescan.
+    const copyFolder = `${VEYNN_STORY_FOLDER} copy`;
+    fs.cpSync(
+      path.join(result.storyVaultPath, VEYNN_STORY_FOLDER),
+      path.join(result.storyVaultPath, copyFolder),
+      { recursive: true },
+    );
+
+    _clearDupBootMemoForTests();
+    rebuildCacheIfDuplicated(result.mythosRoot, cachePath);
+    const after = JSON.parse(fs.readFileSync(cachePath, 'utf-8'));
+    expect(after.stories.map((s: { path: string }) => s.path).sort()).toEqual(
+      [VEYNN_STORY_FOLDER, copyFolder].sort(),
+    );
+    expect(manifestHasDuplicateIds(after)).toBe(false);
+    const copyEntry = after.stories.find((s: { path: string }) => s.path === copyFolder)!;
+    const origEntry = after.stories.find((s: { path: string }) => s.path === VEYNN_STORY_FOLDER)!;
+    expect(copyEntry.id).not.toBe(origEntry.id);
+    // Disk write-back re-IDed the copy book.
+    const copyBook = fs.readFileSync(path.join(result.storyVaultPath, copyFolder, 'book.md'), 'utf-8');
+    expect(copyBook).not.toContain(`id: ${origEntry.id}`);
   });
 });
