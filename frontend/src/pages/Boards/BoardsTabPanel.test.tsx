@@ -68,7 +68,7 @@ const api = {
     vaultItems = vaultItems.map((v) => (v.path === itemPath ? { path: to, name: to, isDirectory: v.isDirectory } : v));
     return { renamed: true as const, itemPath: to };
   }),
-  onVaultNotesUpdated: vi.fn(() => () => {}),
+  onVaultNotesUpdated: vi.fn((_cb: (data: { count: number; path?: string }) => void) => () => {}),
   onVaultNotesAssetChanged: vi.fn(() => () => {}),
   // SKY-11189 §7/§8
   notesBoardTrashItems: vi.fn(async (
@@ -331,5 +331,137 @@ describe('SKY-11189 §7/§8 — trash + undo toast + Recently Deleted panel wiri
     const emptyBtn = await screen.findByRole('button', { name: 'Empty' });
     await act(async () => { fireEvent.click(emptyBtn); });
     expect(api.notesBoardEmptyTrash).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('F1#5 — Boards navigable sidebar', () => {
+  let vaultNotesCb: ((data: { count: number; path?: string }) => void) | null = null;
+
+  beforeEach(() => {
+    vaultNotesCb = null;
+    vaultItems = [
+      { path: 'Characters', name: 'Characters', isDirectory: true },
+      { path: 'Characters/Locations', name: 'Locations', isDirectory: true },
+      { path: 'Characters/Locations/Cities', name: 'Cities', isDirectory: true },
+      { path: 'World', name: 'World', isDirectory: true },
+      { path: 'Alice.md', name: 'Alice.md', isDirectory: false },
+    ];
+    api.onVaultNotesUpdated.mockImplementation((cb: (data: { count: number; path?: string }) => void) => {
+      vaultNotesCb = cb;
+      return () => { vaultNotesCb = null; };
+    });
+  });
+
+  it('pins Home as the first nav item', async () => {
+    await mountPanel();
+    const home = await screen.findByTestId('boards-nav-home');
+    const nav = home.closest('.boards-tab-panel__left-nav');
+    expect(nav).toBeTruthy();
+    const firstInteractive = nav!.querySelector('button, [role="separator"]');
+    expect(firstInteractive).toBe(home);
+  });
+
+  it('lists nested folders (auto-expanded so depth-3 is ≤2 clicks)', async () => {
+    await mountPanel();
+    // Tree auto-expands on first load — Cities (3 levels deep) is one click away.
+    expect(await screen.findByTestId('boards-nav-folder-Cities')).toBeTruthy();
+    expect(screen.getByTestId('boards-nav-folder-Locations')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('boards-nav-folder-Cities'));
+    await waitFor(() => {
+      expect(screen.getByTestId('boards-nav-folder-Cities').getAttribute('aria-current')).toBe('page');
+    });
+  });
+
+  it('F1#5: depth-3 board reachable in ≤2 clicks from Home', async () => {
+    await mountPanel();
+    await screen.findByTestId('boards-nav-home');
+    // Auto-expand means leaf is already visible — 1 click.
+    fireEvent.click(await screen.findByTestId('boards-nav-folder-Cities'));
+    await waitFor(() => {
+      expect(screen.getByTestId('boards-nav-folder-Cities').getAttribute('aria-current')).toBe('page');
+    });
+    // Home is still one click back (no dead end).
+    fireEvent.click(screen.getByTestId('boards-nav-home'));
+    await waitFor(() => {
+      expect(screen.getByTestId('boards-nav-home').getAttribute('aria-current')).toBe('page');
+    });
+  });
+
+  it('renders the resize handle', async () => {
+    await mountPanel();
+    expect(await screen.findByTestId('boards-nav-resize')).toBeTruthy();
+  });
+
+  it('Home returns to the hub from a nested board', async () => {
+    await mountPanel();
+    // Tree is auto-expanded — Locations is already visible.
+    fireEvent.click(await screen.findByTestId('boards-nav-folder-Locations'));
+    await waitFor(() => {
+      expect(screen.getByTestId('boards-nav-folder-Locations').getAttribute('aria-current')).toBe('page');
+    });
+
+    fireEvent.click(screen.getByTestId('boards-nav-home'));
+    await waitFor(() => {
+      expect(screen.getByTestId('boards-nav-home').getAttribute('aria-current')).toBe('page');
+    });
+  });
+
+  it('H5: Characters/note.md content save does NOT re-walk listNotesVault', async () => {
+    await mountPanel();
+    await screen.findByTestId('boards-nav-home');
+    const callsAfterMount = api.listNotesVault.mock.calls.length;
+    expect(vaultNotesCb).toBeTruthy();
+    await act(async () => {
+      vaultNotesCb?.({ count: 1, path: 'Characters/note.md' });
+      await new Promise((r) => setTimeout(r, 120));
+    });
+    expect(api.listNotesVault.mock.calls.length).toBe(callsAfterMount);
+  });
+
+  it('H5: board/folder vault:notes-updated DOES re-walk listNotesVault', async () => {
+    await mountPanel();
+    await screen.findByTestId('boards-nav-home');
+    const callsAfterMount = api.listNotesVault.mock.calls.length;
+    vaultItems = [
+      ...vaultItems,
+      { path: 'NewBoard', name: 'NewBoard', isDirectory: true },
+    ];
+    await act(async () => {
+      vaultNotesCb?.({ count: 1, path: 'NewBoard' });
+      await new Promise((r) => setTimeout(r, 120));
+    });
+    expect(api.listNotesVault.mock.calls.length).toBeGreaterThan(callsAfterMount);
+  });
+
+  it('renders the resize handle with tabIndex and keyboard arrows (Notes separator parity)', async () => {
+    await mountPanel();
+    const resize = await screen.findByTestId('boards-nav-resize');
+    expect(resize.getAttribute('tabindex')).toBe('0');
+    expect(resize.getAttribute('role')).toBe('separator');
+    const nav = document.querySelector('.boards-tab-panel__left-nav') as HTMLElement;
+    const before = nav.style.width || '180px';
+    fireEvent.keyDown(resize, { key: 'ArrowRight' });
+    await waitFor(() => {
+      expect(nav.style.width).not.toBe(before);
+    });
+  });
+
+  it('collapse survives a folder-event tree refresh', async () => {
+    await mountPanel();
+    await screen.findByTestId('boards-nav-folder-Cities');
+    fireEvent.click(screen.getByTestId('boards-nav-toggle-Characters'));
+    expect(screen.queryByTestId('boards-nav-folder-Cities')).toBeNull();
+
+    vaultItems = [
+      ...vaultItems,
+      { path: 'Extra', name: 'Extra', isDirectory: true },
+    ];
+    await act(async () => {
+      vaultNotesCb?.({ count: 1, path: 'Extra' });
+      await new Promise((r) => setTimeout(r, 120));
+    });
+    expect(screen.queryByTestId('boards-nav-folder-Cities')).toBeNull();
+    expect(await screen.findByTestId('boards-nav-folder-Extra')).toBeTruthy();
   });
 });

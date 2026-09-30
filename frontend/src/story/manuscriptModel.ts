@@ -257,15 +257,28 @@ export function buildBlocks(
   const { zoom } = cursor;
   const simple = isSimpleSinglePart(story);
 
-  // Build a flat list of { chapter, globalChapterIndex, partId? } respecting parts order
-  interface ChapterSlot { chapter: Chapter; globalCi: number; partId?: string; partIdx?: number }
+  // Build a flat list of { chapter, globalChapterIndex, partId? } respecting parts order.
+  // F1#3/#4: empty parts still participate so Full Book / Structure can show them.
+  interface ChapterSlot {
+    chapter: Chapter | null;
+    globalCi: number;
+    partId?: string;
+    partIdx?: number;
+    /** True when this slot is an empty-part sentinel (no chapters). */
+    emptyPart?: boolean;
+  }
   const chapterSlots: ChapterSlot[] = [];
   if (simple) {
     orderedChapters(story).forEach((c, ci) => chapterSlots.push({ chapter: c, globalCi: ci }));
   } else {
     let gci = 0;
     orderedParts(story).forEach((p, pi) => {
-      [...p.chapters].sort((a, b) => a.order - b.order).forEach((c) => {
+      const chapters = [...p.chapters].sort((a, b) => a.order - b.order);
+      if (chapters.length === 0) {
+        chapterSlots.push({ chapter: null, globalCi: -1, partId: p.id, partIdx: pi, emptyPart: true });
+        return;
+      }
+      chapters.forEach((c) => {
         chapterSlots.push({ chapter: c, globalCi: gci++, partId: p.id, partIdx: pi });
       });
     });
@@ -274,7 +287,34 @@ export function buildBlocks(
   // When not simple, track the last-emitted part to know when to emit H1+part-note
   let lastPartId: string | undefined;
 
-  chapterSlots.forEach(({ chapter: c, globalCi: ci, partId, partIdx }) => {
+  chapterSlots.forEach(({ chapter: c, globalCi: ci, partId, partIdx, emptyPart }) => {
+    // F1#4: empty part — emit H1 + note-slot only (no chapters/scenes).
+    if (emptyPart && partId && partIdx !== undefined) {
+      if (zoom === 'chapter' || zoom === 'scene') return;
+      if (partId === lastPartId) return;
+      const part = story.parts!.find((p) => p.id === partId);
+      if (part) {
+        blocks.push({
+          kind: 'h1',
+          id: `h1-${part.id}`,
+          partId: part.id,
+          label: partLabel(partIdx),
+          title: part.title,
+          note: part.note,
+        });
+        blocks.push({
+          kind: 'note-slot',
+          id: `note-part-${part.id}`,
+          slotKind: 'part',
+          partId: part.id,
+          note: part.note,
+        });
+      }
+      lastPartId = partId;
+      return;
+    }
+
+    if (!c) return;
     if ((zoom === 'chapter' || zoom === 'scene') && ci !== cursor.chapter) return;
 
     // M2: emit H1 + part-note-slot when we enter a new part (book/part depth only)

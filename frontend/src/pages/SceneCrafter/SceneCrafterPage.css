@@ -1079,8 +1079,9 @@
    Inline in the .sc-columns scroller after Scene Draft, per the prototype.
    Each column carries its canvas slot color (spec §5) as --ref-c, with the
    prototype's band gradient blending toward the next slot (--ref-c2). */
+/* F1#12: Scene Crafter right vault-ref columns a bit smaller (video 33:26). */
 .sc-ref-col {
-  width: 250px;
+  width: 220px;
   flex: none;
   gap: 9px;
   /* SKY-11448: the mockup column (dc.html line 1524) — 14px radius, 2px

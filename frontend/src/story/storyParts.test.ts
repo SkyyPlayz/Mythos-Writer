@@ -7,10 +7,13 @@ import type { Chapter, Part, Story } from '../types';
 import {
   appendChapterToStory,
   findOwningPart,
+  insertChapterIntoPart,
   mapAllChapters,
+  moveChapterToPart,
   syncChaptersFromParts,
   updateChapterOwner,
 } from './storyParts';
+import { orderedChapters } from './manuscriptModel';
 
 const NOW = '2026-08-19T00:00:00.000Z';
 
@@ -121,6 +124,114 @@ describe('storyParts', () => {
       expect(updated.parts![0].chapters.map((c) => c.id)).toEqual(['ch1']);
       expect(updated.parts![1].chapters.map((c) => c.id)).toEqual(['ch2', 'ch3']);
       expect(updated.chapters.map((c) => c.id)).toEqual(['ch1', 'ch2', 'ch3']);
+    });
+  });
+
+  describe('moveChapterToPart / insertChapterIntoPart (F1#3)', () => {
+    it('moves a chapter into an empty part', () => {
+      const partA = mkPart('pA', 'Part One', 0, [mkChapter('ch1', 'Ch1', 0), mkChapter('ch2', 'Ch2', 1)]);
+      const partB = mkPart('pB', 'Part Two', 1, []);
+      const story = mkStory({ chapters: [...partA.chapters], parts: [partA, partB] });
+      const updated = moveChapterToPart(story, 'ch2', 'pB');
+      expect(updated.parts![0].chapters.map((c) => c.id)).toEqual(['ch1']);
+      expect(updated.parts![1].chapters.map((c) => c.id)).toEqual(['ch2']);
+      expect(updated.chapters.map((c) => c.id)).toEqual(['ch1', 'ch2']);
+    });
+
+    it('inserts a new chapter into a specific empty part', () => {
+      const partA = mkPart('pA', 'Part One', 0, [mkChapter('ch1', 'Ch1', 0)]);
+      const partB = mkPart('pB', 'Part Two', 1, []);
+      const story = mkStory({ chapters: [...partA.chapters], parts: [partA, partB] });
+      const updated = insertChapterIntoPart(story, 'pB', mkChapter('ch2', 'Ch2', 0));
+      expect(updated.parts![1].chapters.map((c) => c.id)).toEqual(['ch2']);
+      expect(updated.chapters.map((c) => c.id)).toEqual(['ch1', 'ch2']);
+    });
+
+    it('F1#9: insert-after renumbers order so new chapter is not last by sort', () => {
+      const ch1 = mkChapter('ch1', 'Ch1', 0);
+      const ch2 = mkChapter('ch2', 'Ch2', 1);
+      const ch3 = mkChapter('ch3', 'Ch3', 2);
+      const part = mkPart('pA', 'Part One', 0, [ch1, ch2, ch3]);
+      const story = mkStory({ chapters: [ch1, ch2, ch3], parts: [part] });
+      // Simulate createChapter's stale max-order assignment (length === 3).
+      const newbie = mkChapter('chNew', 'Inserted', 3);
+      const updated = insertChapterIntoPart(story, 'pA', newbie, 'ch1');
+      expect(updated.parts![0].chapters.map((c) => c.id)).toEqual(['ch1', 'chNew', 'ch2', 'ch3']);
+      expect(updated.parts![0].chapters.map((c) => c.order)).toEqual([0, 1, 2, 3]);
+      expect(updated.chapters.map((c) => c.id)).toEqual(['ch1', 'chNew', 'ch2', 'ch3']);
+    });
+
+    it('Critic N1: move across parts renumbers story-wide (not per-part 0..n)', () => {
+      const partA = mkPart('pA', 'Part One', 0, [
+        mkChapter('ch1', 'Ch1', 0),
+        mkChapter('ch2', 'Ch2', 5), // stale order
+      ]);
+      const partB = mkPart('pB', 'Part Two', 1, [mkChapter('ch3', 'Ch3', 0)]);
+      const story = mkStory({
+        chapters: [...partA.chapters, ...partB.chapters],
+        parts: [partA, partB],
+      });
+      const updated = moveChapterToPart(story, 'ch2', 'pB');
+      // Story-wide: A[ch1] then B[ch3, ch2] → orders 0,1,2
+      expect(updated.parts![0].chapters.map((c) => ({ id: c.id, order: c.order }))).toEqual([
+        { id: 'ch1', order: 0 },
+      ]);
+      expect(updated.parts![1].chapters.map((c) => ({ id: c.id, order: c.order }))).toEqual([
+        { id: 'ch3', order: 1 },
+        { id: 'ch2', order: 2 },
+      ]);
+      expect([...updated.chapters].sort((a, b) => a.order - b.order).map((c) => c.id)).toEqual([
+        'ch1', 'ch3', 'ch2',
+      ]);
+    });
+
+    it('Critic N1: insert into Part 2 keeps flat orderedChapters = parts-flattened', () => {
+      const a1 = mkChapter('a1', 'A1', 0);
+      const a2 = mkChapter('a2', 'A2', 1);
+      const b1 = mkChapter('b1', 'B1', 2);
+      const b2 = mkChapter('b2', 'B2', 3);
+      const partA = mkPart('pA', 'Act One', 0, [a1, a2]);
+      const partB = mkPart('pB', 'Act Two', 1, [b1, b2]);
+      const story = mkStory({
+        chapters: [a1, a2, b1, b2],
+        parts: [partA, partB],
+      });
+      const newbie = mkChapter('bNew', 'Bnew', 99);
+      const updated = insertChapterIntoPart(story, 'pB', newbie, 'b1');
+      const flatIds = updated.parts!
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .flatMap((p) => p.chapters)
+        .map((c) => c.id);
+      expect(flatIds).toEqual(['a1', 'a2', 'b1', 'bNew', 'b2']);
+      expect(orderedChapters(updated).map((c) => c.id)).toEqual(flatIds);
+      const orders = updated.chapters.map((c) => c.order);
+      expect(new Set(orders).size).toBe(orders.length);
+      expect([...orders].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4]);
+    });
+
+    it('Critic N1 / Probe: append + insert-after + cross-part move keep unique story-wide order', () => {
+      const a1 = mkChapter('a1', 'A1', 0);
+      const a2 = mkChapter('a2', 'A2', 1);
+      const b1 = mkChapter('b1', 'B1', 2);
+      const partA = mkPart('pA', 'Act One', 0, [a1, a2]);
+      const partB = mkPart('pB', 'Act Two', 1, [b1]);
+      let story = mkStory({ chapters: [a1, a2, b1], parts: [partA, partB] });
+
+      // Append into last part
+      story = appendChapterToStory(story, mkChapter('b2', 'B2', 99));
+      expect(orderedChapters(story).map((c) => c.id)).toEqual(['a1', 'a2', 'b1', 'b2']);
+
+      // Insert-after in Part 2
+      story = insertChapterIntoPart(story, 'pB', mkChapter('bNew', 'Bnew', 99), 'b1');
+      expect(orderedChapters(story).map((c) => c.id)).toEqual(['a1', 'a2', 'b1', 'bNew', 'b2']);
+
+      // Cross-part drag a2 → Part 2
+      story = moveChapterToPart(story, 'a2', 'pB');
+      expect(orderedChapters(story).map((c) => c.id)).toEqual(['a1', 'b1', 'bNew', 'b2', 'a2']);
+      const orders = story.chapters.map((c) => c.order);
+      expect(new Set(orders).size).toBe(orders.length);
+      expect(orders).toEqual(orderedChapters(story).map((c) => c.order));
     });
   });
 

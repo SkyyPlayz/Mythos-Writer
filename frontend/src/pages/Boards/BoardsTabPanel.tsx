@@ -11,12 +11,16 @@
  * the canvas owns the geometry; nothing new is written to Store B.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import BoardCanvas from './BoardCanvas';
 import type { BoardItem, BoardTool, BoardFurnitureItemData } from './BoardCanvas';
 import type { FurnitureKind } from './boardLod';
 import RecentlyDeletedPanel from './RecentlyDeletedPanel';
 import { useVaultBoard, vaultPathOf } from './useVaultBoard';
+import {
+  collectBoardsNavFolderPaths,
+  shouldBumpNavTreeOnVaultEvent,
+} from './boardsNavTopology';
 import { boardWikiLinks, furnitureAnchorRects } from './boardLinks';
 import type { VaultGraphEdge } from './boardLinks';
 import { searchVaultIndex } from './boardSearch';
@@ -126,26 +130,218 @@ const TOOLS: ReadonlyArray<{ id: BoardTool; label: string; title: string }> = [
   { id: 'board', label: 'Board', title: 'Board tool — click the canvas to create a board' },
 ];
 
+/** F1#5: folder node in the Boards left-nav tree. */
+export interface BoardsNavFolderNode {
+  name: string;
+  path: string;
+  children: BoardsNavFolderNode[];
+}
+
+/**
+ * F1#5: build a nested folder tree from a recursive `listNotesVault('')`
+ * listing. Path depth (`a/b/c`) determines nesting; directories only.
+ */
+export function buildBoardsFolderTree(
+  items: Array<{ name: string; path: string; isDirectory: boolean }>,
+): BoardsNavFolderNode[] {
+  const dirs = items.filter((item) => item.isDirectory);
+  const byPath = new Map<string, BoardsNavFolderNode>();
+  for (const d of dirs) {
+    byPath.set(d.path, { name: d.name, path: d.path, children: [] });
+  }
+  const roots: BoardsNavFolderNode[] = [];
+  for (const d of dirs) {
+    const node = byPath.get(d.path)!;
+    const slash = d.path.lastIndexOf('/');
+    if (slash === -1) {
+      roots.push(node);
+      continue;
+    }
+    const parent = byPath.get(d.path.slice(0, slash));
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+  }
+  const sortNodes = (nodes: BoardsNavFolderNode[]) => {
+    nodes.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    for (const n of nodes) sortNodes(n.children);
+  };
+  sortNodes(roots);
+  return roots;
+}
+
+/** Ancestor folder paths of `folderPath` (excludes the leaf itself). */
+function ancestorFolderPaths(folderPath: string): string[] {
+  if (!folderPath) return [];
+  const parts = folderPath.split('/').filter(Boolean);
+  const out: string[] = [];
+  let acc = '';
+  for (let i = 0; i < parts.length - 1; i++) {
+    acc = acc ? `${acc}/${parts[i]}` : parts[i]!;
+    out.push(acc);
+  }
+  return out;
+}
+
+const BOARDS_NAV_WIDTH_KEY = 'mythos-boards-nav-width-v1';
+const BOARDS_NAV_MIN = 140;
+const BOARDS_NAV_MAX = 360;
+const BOARDS_NAV_DEFAULT = 180;
+
+function readBoardsNavWidth(): number {
+  try {
+    const raw = localStorage.getItem(BOARDS_NAV_WIDTH_KEY);
+    if (raw == null) return BOARDS_NAV_DEFAULT;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return BOARDS_NAV_DEFAULT;
+    return Math.max(BOARDS_NAV_MIN, Math.min(BOARDS_NAV_MAX, n));
+  } catch {
+    return BOARDS_NAV_DEFAULT;
+  }
+}
+
+function persistBoardsNavWidth(width: number): void {
+  try {
+    localStorage.setItem(BOARDS_NAV_WIDTH_KEY, String(width));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
 export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoom, openFolderRequest, onOpenNote, notePaths }: BoardsTabPanelProps) {
   // Breadcrumb stack — bottom is home (vault root), top is current board
   const [breadcrumb, setBreadcrumb] = useState<BreadcrumbEntry[]>([HOME_CRUMB]);
 
   const currentFolder = breadcrumb[breadcrumb.length - 1].folderPath;
 
-  // B1/Pack B: left nav — fetch vault root folder list for persistent sidebar
-  const [rootFolders, setRootFolders] = useState<Array<{ name: string; path: string }>>([]);
-  useEffect(() => {
-    if (!notesVaultValid) return;
-    window.api.listNotesVault?.('').then((res: { items: Array<{ name: string; path: string; isDirectory: boolean }> } | { error: string }) => {
-      if ('error' in res) return;
-      setRootFolders(res.items.filter((item) => item.isDirectory).map((item) => ({ name: item.name, path: item.path })));
-    }).catch(() => { /* non-fatal */ });
-  }, [notesVaultValid, notesVaultRoot]);
+  // F1#5: left nav — nested folder tree + resizable width
+  const [folderTree, setFolderTree] = useState<BoardsNavFolderNode[]>([]);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set());
+  const [navWidth, setNavWidth] = useState(readBoardsNavWidth);
+  // H5: tree-version — bump only on board/folder topology (create/rename/trash),
+  // never on note content saves (Critic/Forge flag). Coalesce call-site + event.
+  const [navTreeVersion, setNavTreeVersion] = useState(0);
+  const bumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const bumpNavTreeVersion = useCallback(() => {
+    if (bumpTimerRef.current) clearTimeout(bumpTimerRef.current);
+    bumpTimerRef.current = setTimeout(() => {
+      bumpTimerRef.current = null;
+      setNavTreeVersion((v) => v + 1);
+    }, 80);
+  }, []);
+  useEffect(() => () => {
+    if (bumpTimerRef.current) clearTimeout(bumpTimerRef.current);
+  }, []);
+  const folderTreeRef = useRef<BoardsNavFolderNode[]>([]);
+  // Collapse: auto-expand ALL folders once on first tree load (≤2-click depth-3).
+  // Subsequent refreshes must NOT reset expandedPaths (Forge flag 2).
+  const initialNavExpandDoneRef = useRef(false);
+  /** Folder paths ever seen in the nav tree — used to auto-expand only newcomers. */
+  const knownNavPathsRef = useRef<Set<string>>(new Set());
+  const navResizeStartXRef = useRef(0);
+  const navResizeStartWidthRef = useRef(BOARDS_NAV_DEFAULT);
+  // GRS-style resize: live width on a ref during drag; commit React state + persist on mouseup.
+  const navWidthLiveRef = useRef(navWidth);
+  const navElRef = useRef<HTMLElement | null>(null);
 
-  // Reset breadcrumb when vault root changes
+  // Keep folderTreeRef current for vault-event topology filtering.
   useEffect(() => {
+    folderTreeRef.current = folderTree;
+  }, [folderTree]);
+
+  // New vault root → reset crumb + allow one-shot auto-expand again.
+  useEffect(() => {
+    initialNavExpandDoneRef.current = false;
+    knownNavPathsRef.current = new Set();
+    setExpandedPaths(new Set());
+    setFolderTree([]);
     setBreadcrumb([HOME_CRUMB]);
   }, [notesVaultRoot]);
+
+  // Default-expand ancestors of the open board so it stays visible in the tree
+  // (does not re-expand siblings the user collapsed).
+  useEffect(() => {
+    const ancestors = ancestorFolderPaths(currentFolder);
+    if (ancestors.length === 0) return;
+    setExpandedPaths((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const p of ancestors) {
+        if (!next.has(p)) {
+          next.add(p);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [currentFolder]);
+
+  const handleNavResizeMouseDown = useCallback((e: ReactMouseEvent) => {
+    // Adopt Notes/GRS separator resize pattern (option A — no new z-index):
+    // pointer → window mousemove/mouseup; style during drag; persist on mouseup.
+    e.preventDefault();
+    navResizeStartXRef.current = e.clientX;
+    navResizeStartWidthRef.current = navWidthLiveRef.current;
+
+    const onMouseMove = (mv: MouseEvent) => {
+      const delta = mv.clientX - navResizeStartXRef.current;
+      const next = Math.max(
+        BOARDS_NAV_MIN,
+        Math.min(BOARDS_NAV_MAX, navResizeStartWidthRef.current + delta),
+      );
+      navWidthLiveRef.current = next;
+      if (navElRef.current) navElRef.current.style.width = `${next}px`;
+    };
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+      const finalW = navWidthLiveRef.current;
+      setNavWidth(finalW);
+      persistBoardsNavWidth(finalW);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  }, []);
+
+  /** Match NotesTabPanel separator: ArrowLeft/Right ±8, Home/End clamp; persist on each key. */
+  const handleNavResizeKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const apply = (next: number) => {
+      navWidthLiveRef.current = next;
+      if (navElRef.current) navElRef.current.style.width = `${next}px`;
+      setNavWidth(next);
+      persistBoardsNavWidth(next);
+    };
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      apply(Math.min(BOARDS_NAV_MAX, navWidthLiveRef.current + 8));
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      apply(Math.max(BOARDS_NAV_MIN, navWidthLiveRef.current - 8));
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      apply(BOARDS_NAV_MIN);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      apply(BOARDS_NAV_MAX);
+    }
+  }, []);
+
+  // Keep live ref in sync when width changes from outside drag (restore / clamp).
+  useEffect(() => {
+    navWidthLiveRef.current = navWidth;
+  }, [navWidth]);
+
+  const toggleFolderExpanded = useCallback((path: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const navigateToFolder = useCallback((folderPath: string) => {
+    setBreadcrumb(breadcrumbForFolder(folderPath));
+  }, []);
 
   // SKY-11615: external deep-link (a `[[Folder]]` wiki-link click). Keyed on
   // `seq`, not the path, so the same folder can be requested twice.
@@ -164,6 +360,62 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   // canvas must not differ); the furniture TOOLBAR below is this tab's chrome.
   const board = useVaultBoard(currentFolder, notesVaultValid);
   const { items, furniture, setFurniture, iconMap, setIconMap, reload, reportActionError } = board;
+
+  // Refresh the nav tree on vault root / validity / tree-version only.
+  // Do NOT depend on `items` — that re-ran listNotesVault('') (full vault walk)
+  // on every board navigation and silent card reload (Critic H5).
+  useEffect(() => {
+    if (!notesVaultValid) return;
+    let cancelled = false;
+    window.api.listNotesVault?.('').then((res: { items: Array<{ name: string; path: string; isDirectory: boolean }> } | { error: string }) => {
+      if (cancelled || 'error' in res) return;
+      const tree = buildBoardsFolderTree(res.items);
+      setFolderTree(tree);
+      // Critic B: auto-expand once per vault root; later refreshes only add
+      // newly seen paths (never re-expand a user-collapsed folder).
+      const all: string[] = [];
+      const walk = (nodes: BoardsNavFolderNode[]) => {
+        for (const n of nodes) {
+          all.push(n.path);
+          if (n.children.length) walk(n.children);
+        }
+      };
+      walk(tree);
+      if (!initialNavExpandDoneRef.current) {
+        initialNavExpandDoneRef.current = true;
+        knownNavPathsRef.current = new Set(all);
+        if (all.length) setExpandedPaths(new Set(all));
+      } else {
+        const newcomers = all.filter((p) => !knownNavPathsRef.current.has(p));
+        knownNavPathsRef.current = new Set(all);
+        if (newcomers.length) {
+          setExpandedPaths((prev) => {
+            const next = new Set(prev);
+            for (const p of newcomers) next.add(p);
+            return next;
+          });
+        }
+      }
+    }).catch(() => { /* non-fatal */ });
+    return () => { cancelled = true; };
+  }, [notesVaultValid, notesVaultRoot, navTreeVersion]);
+
+  // Bump tree-version only on topology events (board/folder path), never on
+  // note content saves (`*.md`). Explicit create/rename/trash call sites also bump.
+  useEffect(() => {
+    if (!notesVaultValid) return;
+    const onVaultEvent = (data: { count: number; path?: string }) => {
+      const known = collectBoardsNavFolderPaths(folderTreeRef.current);
+      if (!shouldBumpNavTreeOnVaultEvent(data.path, known)) return;
+      bumpNavTreeVersion();
+    };
+    const unsubs = [
+      window.api.onVaultNotesUpdated?.(onVaultEvent),
+    ];
+    return () => {
+      for (const u of unsubs) u?.();
+    };
+  }, [notesVaultValid, bumpNavTreeVersion]);
 
   // ── SKY-11191 §10: wiki-link overlay + minimap ──────────────────────────
   //
@@ -337,6 +589,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     try {
       const { entries } = await window.api.notesBoardTrashItems(currentFolder, targets);
       await reload(true);
+      if (targets.some((t) => t.kind === 'folder')) bumpNavTreeVersion();
       // Restoring the whole batch means restoring every DISTINCT group it
       // touched (a folder target's descendants share its group, but two
       // unrelated top-level targets from one multi-select do not — see
@@ -354,13 +607,27 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
         undo: async () => {
           await Promise.all(restoreIds.map((id) => window.api.notesBoardRestore(id)));
           await reload(true);
+          bumpNavTreeVersion();
         },
       });
       showToast(label, 'info');
     } catch (err) {
       reportActionError(err instanceof Error ? err.message : String(err));
     }
-  }, [items, currentFolder, reload, reportActionError, showToast]);
+  }, [items, currentFolder, reload, reportActionError, showToast, bumpNavTreeVersion]);
+
+  /** H5 call-site: bump nav tree only when a board (folder) is created. */
+  const handleCreateItem = useCallback(async (kind: 'note' | 'folder', x: number, y: number) => {
+    await board.onCreateItem(kind, x, y);
+    if (kind === 'folder') bumpNavTreeVersion();
+  }, [board, bumpNavTreeVersion]);
+
+  /** H5 call-site: bump nav tree when a board (folder) is renamed. */
+  const handleRenameCommit = useCallback(async (itemPath: string, newName: string) => {
+    const wasFolder = items.find((i) => i.path === itemPath)?.kind === 'folder';
+    await board.onRenameCommit(itemPath, newName);
+    if (wasFolder) bumpNavTreeVersion();
+  }, [board, items, bumpNavTreeVersion]);
 
   const handleUndoToast = useCallback(() => {
     clearToast();
@@ -586,6 +853,70 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     setBreadcrumb((prev) => prev.slice(0, index + 1));
   }, []);
 
+  const renderFolderNode = (node: BoardsNavFolderNode, depth: number): ReactNode => {
+    const hasChildren = node.children.length > 0;
+    const expanded = expandedPaths.has(node.path);
+    const isActive = currentFolder === node.path;
+    const isAncestor = currentFolder.startsWith(`${node.path}/`);
+    return (
+      <div key={node.path} className="boards-tab-panel__left-nav-branch">
+        <div
+          className="boards-tab-panel__left-nav-row"
+          style={{ paddingLeft: `${6 + depth * 12}px` }}
+        >
+          {hasChildren ? (
+            <button
+              type="button"
+              className="boards-tab-panel__left-nav-toggle"
+              aria-expanded={expanded}
+              aria-label={expanded ? `Collapse ${node.name}` : `Expand ${node.name}`}
+              data-testid={`boards-nav-toggle-${node.path}`}
+              onClick={() => toggleFolderExpanded(node.path)}
+            >
+              <svg
+                className={
+                  'boards-tab-panel__left-nav-chevron' +
+                  (expanded ? ' boards-tab-panel__left-nav-chevron--open' : '')
+                }
+                width="10"
+                height="10"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <polyline points="9 6 15 12 9 18" />
+              </svg>
+            </button>
+          ) : (
+            <span className="boards-tab-panel__left-nav-toggle-spacer" aria-hidden="true" />
+          )}
+          <button
+            type="button"
+            className={
+              'boards-tab-panel__left-nav-item' +
+              (isActive ? ' boards-tab-panel__left-nav-item--active' : '') +
+              (isAncestor ? ' boards-tab-panel__left-nav-item--ancestor' : '')
+            }
+            onClick={() => navigateToFolder(node.path)}
+            aria-current={isActive ? 'page' : undefined}
+            data-testid={`boards-nav-folder-${node.name}`}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            {node.name}
+          </button>
+        </div>
+        {hasChildren && expanded && (
+          <div className="boards-tab-panel__left-nav-children" role="group" aria-label={`${node.name} boards`}>
+            {node.children.map((child) => renderFolderNode(child, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   if (!notesVaultValid) {
     return (
       <div className="boards-tab-panel__empty" role="main" aria-label="Boards">
@@ -596,11 +927,17 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
 
   return (
     <div className="boards-tab-panel" role="main" aria-label="Boards">
-      {/* B Pack: left nav sidebar — Home + vault root folders */}
+      {/* F1#5: left nav — Home pinned, nested collapsible folders, resizable */}
       <div className="boards-tab-panel__body">
-      <nav className="boards-tab-panel__left-nav" aria-label="Board folders">
+      <nav
+        ref={navElRef}
+        className="boards-tab-panel__left-nav"
+        aria-label="Board folders"
+        style={{ width: navWidth }}
+      >
         <button
-          className={`boards-tab-panel__left-nav-item${currentFolder === '' ? ' boards-tab-panel__left-nav-item--active' : ''}`}
+          type="button"
+          className={`boards-tab-panel__left-nav-item boards-tab-panel__left-nav-item--home${currentFolder === '' ? ' boards-tab-panel__left-nav-item--active' : ''}`}
           onClick={() => setBreadcrumb([HOME_CRUMB])}
           aria-current={currentFolder === '' ? 'page' : undefined}
           data-testid="boards-nav-home"
@@ -608,18 +945,20 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           Home
         </button>
-        {rootFolders.map((folder) => (
-          <button
-            key={folder.path}
-            className={`boards-tab-panel__left-nav-item${currentFolder === folder.path ? ' boards-tab-panel__left-nav-item--active' : ''}`}
-            onClick={() => setBreadcrumb(breadcrumbForFolder(folder.path))}
-            aria-current={currentFolder === folder.path ? 'page' : undefined}
-            data-testid={`boards-nav-folder-${folder.name}`}
-          >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-            {folder.name}
-          </button>
-        ))}
+        {folderTree.map((folder) => renderFolderNode(folder, 0))}
+        <div
+          className="boards-tab-panel__left-nav-resize"
+          data-testid="boards-nav-resize"
+          onMouseDown={handleNavResizeMouseDown}
+          onKeyDown={handleNavResizeKeyDown}
+          role="separator"
+          tabIndex={0}
+          aria-orientation="vertical"
+          aria-label="Resize boards sidebar"
+          aria-valuenow={Math.round(navWidth)}
+          aria-valuemin={BOARDS_NAV_MIN}
+          aria-valuemax={BOARDS_NAV_MAX}
+        />
       </nav>
       <div className="boards-tab-panel__main">
       {/*
@@ -887,10 +1226,10 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             onEnterBoard={handleEnterBoard}
             onOpenNote={onOpenNote}
             activeTool={board.activeTool}
-            onCreateItem={board.onCreateItem}
+            onCreateItem={handleCreateItem}
             renamingPath={board.renamingPath}
             onRequestRename={board.onRequestRename}
-            onRenameCommit={board.onRenameCommit}
+            onRenameCommit={handleRenameCommit}
             onRenameCancel={board.onRenameCancel}
             onTrashItems={handleTrashItems}
             furniture={furniture}
