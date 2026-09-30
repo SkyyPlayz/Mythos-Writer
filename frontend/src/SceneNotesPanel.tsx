@@ -7,7 +7,6 @@ import {
   parseSceneNotes,
   serializeSceneNotes,
   noteStoreKeyForTier,
-  legacyBarePartStoreKey,
   type NoteTier,
   type NoteTierIds,
   type SceneNoteDragPayload,
@@ -131,26 +130,14 @@ export default function SceneNotesPanel({
     const load = async () => {
       try {
         const res = await notesGet(storeKey);
-        let content = res?.content ?? '';
-        // H2: old-key fallback — bare `part:Part N` still loads under scoped ids.
-        if (
-          tier === 'part'
-          && resolvedPartId
-          && !content.trim()
-        ) {
-          const legacy = legacyBarePartStoreKey(resolvedPartId);
-          if (legacy && legacy !== storeKey) {
-            const legacyRes = await notesGet(legacy);
-            if (legacyRes?.content?.trim()) content = legacyRes.content;
-          }
-        }
+        const content = res?.content ?? '';
         if (loadedKeyRef.current === loadKey) setNotes(parseSceneNotes(content));
       } catch {
         /* non-fatal */
       }
     };
     void load();
-  }, [scene, storeKey, refreshToken, tier, resolvedPartId]);
+  }, [scene, storeKey, refreshToken, tier]);
 
   // When the active tier becomes unavailable, fall back to scene — but stay on
   // Part while tier context is still pending (Critic H3).

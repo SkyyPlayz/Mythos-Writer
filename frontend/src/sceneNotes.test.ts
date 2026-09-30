@@ -7,7 +7,6 @@ import {
   buildPromotedSceneNoteContent,
   buildNoteStoreKey,
   noteStoreKeyForTier,
-  legacyBarePartStoreKey,
   NOTE_TIERS,
 } from './sceneNotes';
 
@@ -60,12 +59,6 @@ describe('F5 note store keys per tier', () => {
     expect(noteStoreKeyForTier('part', glass)).toBe('part:glass-tide/Part 1');
     expect(noteStoreKeyForTier('part', salt)).toBe('part:salt-crown/Part 1');
     expect(noteStoreKeyForTier('part', glass)).not.toBe(noteStoreKeyForTier('part', salt));
-  });
-
-  it('legacyBarePartStoreKey falls back to bare Part N', () => {
-    expect(legacyBarePartStoreKey('glass-tide/Part 1')).toBe('part:Part 1');
-    expect(legacyBarePartStoreKey('Part 1')).toBeNull();
-    expect(legacyBarePartStoreKey('p-uuid')).toBeNull();
   });
 
   it('noteStoreKeyForTier returns null when the tier id is missing', () => {

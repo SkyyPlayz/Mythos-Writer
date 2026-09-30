@@ -219,7 +219,7 @@ describe('SceneNotesPanel F5 notes per tier', () => {
     expect(await screen.findByText('Part two note')).toBeInTheDocument();
   });
 
-  it('loads legacy bare part:Part N under book-scoped partId (H2 fallback)', async () => {
+  it('never reads bare part:Part N under book-scoped partId (Ruling 12)', async () => {
     notesGet.mockImplementation(async (key: string) => {
       if (key === 'part:Part 1') return { content: 'Legacy part note' };
       return { content: '' };
@@ -230,9 +230,93 @@ describe('SceneNotesPanel F5 notes per tier', () => {
     render(<SceneNotesPanel scene={scene} />);
     await waitFor(() => expect(screen.getByTestId('snp-tier-part')).not.toBeDisabled());
     fireEvent.click(screen.getByTestId('snp-tier-part'));
-    expect(await screen.findByText('Legacy part note')).toBeInTheDocument();
-    expect(notesGet).toHaveBeenCalledWith('part:s1/Part 1');
-    expect(notesGet).toHaveBeenCalledWith('part:Part 1');
+    await waitFor(() => expect(notesGet).toHaveBeenCalledWith('part:s1/Part 1'));
+    expect(notesGet).not.toHaveBeenCalledWith('part:Part 1');
+    expect(screen.queryByText('Legacy part note')).not.toBeInTheDocument();
+  });
+
+  it('A: deleted Part note stays deleted after reload (bare legacy must not resurface)', async () => {
+    // Leave bare legacy value in the store untouched — prove by not removing it.
+    const BARE_KEY = 'part:Part 1';
+    const BARE_VALUE = 'Deleted part note that must stay gone';
+    const SCOPED_KEY = 'part:s1/Part 1';
+    const store = new Map<string, string>([
+      [BARE_KEY, BARE_VALUE],
+      [SCOPED_KEY, ''], // user deleted the scoped Part note
+    ]);
+    notesGet.mockImplementation(async (key: string) => ({ content: store.get(key) ?? '' }));
+    notesSet.mockImplementation(async (key: string, content: string) => {
+      store.set(key, content);
+      return { saved: true };
+    });
+    notesTierContext.mockResolvedValue({
+      ok: true, bookId: 's1', partId: 's1/Part 1', chapterId: 'ch1', sceneId: 'sc1',
+    });
+    const { rerender } = render(<SceneNotesPanel scene={scene} refreshToken={0} />);
+    await waitFor(() => expect(screen.getByTestId('snp-tier-part')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('snp-tier-part'));
+    await waitFor(() => expect(notesGet).toHaveBeenCalledWith(SCOPED_KEY));
+    expect(notesGet).not.toHaveBeenCalledWith(BARE_KEY);
+    expect(screen.queryByText(BARE_VALUE)).not.toBeInTheDocument();
+
+    // Reload (refreshToken bump) — bare key still must not resurface.
+    notesGet.mockClear();
+    notesSet.mockClear();
+    rerender(<SceneNotesPanel scene={scene} refreshToken={1} />);
+    await waitFor(() => expect(notesGet).toHaveBeenCalledWith(SCOPED_KEY));
+    expect(notesGet).not.toHaveBeenCalledWith(BARE_KEY);
+    expect(screen.queryByText(BARE_VALUE)).not.toBeInTheDocument();
+
+    // Guard: bare key left in place, unchanged — no write/delete/rename.
+    expect(store.has(BARE_KEY)).toBe(true);
+    expect(store.get(BARE_KEY)).toBe(BARE_VALUE);
+    expect(notesSet).not.toHaveBeenCalledWith(BARE_KEY, expect.anything());
+    for (const [key] of notesSet.mock.calls) {
+      expect(key).not.toBe(BARE_KEY);
+      expect(String(key)).not.toMatch(/^part:Part \d+$/i);
+    }
+  });
+
+  it('B: Part note under Book A never shows under Book B with same Part name', async () => {
+    const bookAScene = {
+      ...scene,
+      id: 'sc-a',
+      storyId: 'bookA',
+      chapterId: 'ch-a',
+    } as Scene;
+    const bookBScene = {
+      ...scene,
+      id: 'sc-b',
+      storyId: 'bookB',
+      chapterId: 'ch-b',
+    } as Scene;
+
+    notesGet.mockImplementation(async (key: string) => {
+      if (key === 'part:bookA/Part 1') return { content: 'Book A part note' };
+      if (key === 'part:Part 1') return { content: 'Book A part note' }; // bare leak bait
+      if (key === 'part:bookB/Part 1') return { content: '' };
+      return { content: '' };
+    });
+    notesTierContext.mockResolvedValue({
+      ok: true, bookId: 'bookA', partId: 'bookA/Part 1', chapterId: 'ch-a', sceneId: 'sc-a',
+    });
+    const { rerender } = render(<SceneNotesPanel scene={bookAScene} />);
+    await waitFor(() => expect(screen.getByTestId('snp-tier-part')).not.toBeDisabled());
+    fireEvent.click(screen.getByTestId('snp-tier-part'));
+    expect(await screen.findByText('Book A part note')).toBeInTheDocument();
+    expect(notesGet).toHaveBeenCalledWith('part:bookA/Part 1');
+
+    notesGet.mockClear();
+    notesTierContext.mockResolvedValue({
+      ok: true, bookId: 'bookB', partId: 'bookB/Part 1', chapterId: 'ch-b', sceneId: 'sc-b',
+    });
+    rerender(<SceneNotesPanel scene={bookBScene} />);
+    await waitFor(() => expect(screen.getByTestId('snp-tier-part')).not.toBeDisabled());
+    // Stay on Part (already selected) — load Book B scoped key only.
+    await waitFor(() => expect(notesGet).toHaveBeenCalledWith('part:bookB/Part 1'));
+    expect(notesGet).not.toHaveBeenCalledWith('part:Part 1');
+    expect(notesGet).not.toHaveBeenCalledWith('part:bookA/Part 1');
+    expect(screen.queryByText('Book A part note')).not.toBeInTheDocument();
   });
 
   it('Chapter tier persists under chapter:<chapterId>', async () => {

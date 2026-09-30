@@ -73,20 +73,6 @@ export function noteStoreKeyForTier(tier: NoteTier, ids: NoteTierIds): string | 
   }
 }
 
-/**
- * Pre-H2 Part notes used bare `part:Part N`. When the active part id is
- * book-scoped (`bookId/Part N`), return the legacy bare key for a read
- * fallback so existing single-book notes still load. Writes use the scoped key.
- */
-export function legacyBarePartStoreKey(scopedPartId: string): string | null {
-  const trimmed = scopedPartId.trim();
-  const slash = trimmed.lastIndexOf('/');
-  if (slash <= 0) return null;
-  const bare = trimmed.slice(slash + 1);
-  if (!/^Part \d+$/i.test(bare)) return null;
-  return buildNoteStoreKey('part', bare);
-}
-
 export function parseSceneNotes(content: string): string[] {
   if (!content.trim()) return [];
   return content
