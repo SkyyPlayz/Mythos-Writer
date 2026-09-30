@@ -12,7 +12,25 @@ import {
   resolveKeysDir,
   syncPartnerIdentityToFile,
 } from './agentsVaultPartner.js';
-import { AGENT_VAULT_DIRNAME } from './mythosJson.js';
+import {
+  AGENT_VAULT_DIRNAME,
+  NOTES_VAULT_DIRNAME,
+  STORY_VAULT_DIRNAME,
+  mythosRootForStoryVault,
+} from './mythosJson.js';
+
+/**
+ * Mirrors main.ts `agentsVault:clearMemory` handler:
+ * mythosRootForStoryVault(getVaultRoot()) → early return or clearAgentMemory.
+ * Test-only stand-in so we can drive the IPC path without booting Electron.
+ */
+function invokeAgentsVaultClearMemoryIpc(storyVaultRoot: string):
+  | { ok: true; removed: string[] }
+  | { ok: false; error: string } {
+  const mythosRoot = mythosRootForStoryVault(storyVaultRoot);
+  if (!mythosRoot) return { ok: false, error: 'No Mythos vault open' };
+  return clearAgentMemory(mythosRoot);
+}
 
 describe('agentsVaultPartner (Slice D)', () => {
   let tmp: string;
@@ -167,6 +185,61 @@ describe('agentsVaultPartner (Slice D)', () => {
     // Notes Vault must survive — red if refusal OR clear gate is removed.
     expect(fs.readFileSync(path.join(notesVault, 'Keep.md'), 'utf-8')).toBe('keep-me');
     expect(fs.existsSync(path.join(notesSessions, 'canary.md'))).toBe(true);
+  });
+
+  it('legacy twin-root: agentsVault:clearMemory IPC fails closed; Notes Vault survives (red if clear gate removed)', () => {
+    // Pre-v2 twin-root: Story Vault + Notes Vault siblings, no mythos.json.
+    // Sessions/boards live under Notes Vault (getAgentVaultRoot fallback).
+    const legacyRoot = path.join(tmp, 'Legacy');
+    const storyVault = path.join(legacyRoot, STORY_VAULT_DIRNAME);
+    const notesVault = path.join(legacyRoot, NOTES_VAULT_DIRNAME);
+    fs.mkdirSync(storyVault, { recursive: true });
+    fs.mkdirSync(path.join(notesVault, 'Sessions'), { recursive: true });
+    fs.mkdirSync(path.join(notesVault, 'Boards'), { recursive: true });
+    fs.writeFileSync(
+      path.join(storyVault, 'manifest.json'),
+      JSON.stringify({ version: 1, stories: [] }),
+    );
+    fs.writeFileSync(path.join(notesVault, 'Keep.md'), 'keep-me');
+    fs.writeFileSync(path.join(notesVault, 'Sessions', 'CANARY-session.md'), 'session-body');
+    fs.writeFileSync(path.join(notesVault, 'Boards', 'brainstorm.board.json'), '{"cards":[]}');
+    fs.writeFileSync(path.join(notesVault, 'Boards', 'CANARY-board.txt'), 'board-canary');
+
+    expect(mythosRootForStoryVault(storyVault)).toBeNull();
+
+    // Drive agentsVault:clearMemory IPC path — fail closed, never touch Notes.
+    const ipcResult = invokeAgentsVaultClearMemoryIpc(storyVault);
+    expect(ipcResult.ok).toBe(false);
+    if (!ipcResult.ok) expect(ipcResult.error).toMatch(/No Mythos vault open/i);
+
+    // Hazard pin: Agent Vault → Notes Vault at the twin-root parent. If Clear
+    // ever receives this parent (or the clearAgentMemory gate at :203-205 is
+    // removed while following the symlink), Sessions/Boards would be wiped.
+    const agentPath = path.join(legacyRoot, AGENT_VAULT_DIRNAME);
+    try {
+      if (process.platform === 'win32') {
+        fs.symlinkSync(notesVault, agentPath, 'junction');
+      } else {
+        fs.symlinkSync(path.relative(legacyRoot, notesVault), agentPath);
+      }
+    } catch {
+      // Still assert IPC-path Notes survival below when reparse points fail.
+      expect(fs.readFileSync(path.join(notesVault, 'Keep.md'), 'utf-8')).toBe('keep-me');
+      expect(fs.existsSync(path.join(notesVault, 'Sessions', 'CANARY-session.md'))).toBe(true);
+      return;
+    }
+
+    const cleared = clearAgentMemory(legacyRoot);
+    expect(cleared.ok).toBe(false);
+    if (!cleared.ok) expect(cleared.error).toMatch(/symlink/i);
+
+    // Notes Vault must survive both the IPC early-return and the gated clear.
+    expect(fs.readFileSync(path.join(notesVault, 'Keep.md'), 'utf-8')).toBe('keep-me');
+    expect(fs.existsSync(path.join(notesVault, 'Sessions', 'CANARY-session.md'))).toBe(true);
+    expect(fs.readFileSync(path.join(notesVault, 'Boards', 'brainstorm.board.json'), 'utf-8')).toBe(
+      '{"cards":[]}',
+    );
+    expect(fs.existsSync(path.join(notesVault, 'Boards', 'CANARY-board.txt'))).toBe(true);
   });
 });
 
