@@ -590,13 +590,45 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
       });
   }, [apiKeyError, settings.apiKey, buildSettingsPayload, writeSettingsPayload, lg, bgPreviewUrl, pageBg, onSaved, onClose, onCloseBlocked]);
 
-  // Expose the same flush to DesktopShell rail-nav (must not skip save).
+  // Expose close + save-without-close flush to DesktopShell.
+  // Probe H1: vault switch awaits __mythosSettingsFlush before loadVault
+  // unmounts this panel (Settings must stay under .desktop-shell__main-col).
+  const flushSave = useCallback((): Promise<boolean> => {
+    // Always read the latest builder — vault-switch may call flush in the same
+    // tick as a Model & keys edit, before this callback identity refreshes.
+    const payload = buildSettingsPayload();
+    const heldBadKey = Boolean(apiKeyError);
+    if (heldBadKey) {
+      payload.apiKey = settings.apiKey;
+    }
+    return writeSettingsPayload(payload)
+      .then(() => {
+        applyLiquidNeonTokens(lg, bgPreviewUrl);
+        applyPageBackgroundTokens(pageBg);
+        onSaved?.(payload);
+        return true;
+      })
+      .catch(() => false);
+  }, [apiKeyError, settings.apiKey, buildSettingsPayload, writeSettingsPayload, lg, bgPreviewUrl, pageBg, onSaved]);
+
+  // Probe H1: keep window flush pointer on a ref so DesktopShell always invokes
+  // the latest flushSave even when the effect hasn't re-run yet this tick.
+  const flushSaveRef = useRef(flushSave);
+  flushSaveRef.current = flushSave;
+
   useEffect(() => {
-    const w = window as Window & { __mythosSettingsRequestClose?: () => void };
+    const w = window as Window & {
+      __mythosSettingsRequestClose?: () => void;
+      __mythosSettingsFlush?: () => Promise<boolean>;
+    };
     w.__mythosSettingsRequestClose = handleClose;
+    w.__mythosSettingsFlush = () => flushSaveRef.current();
     return () => {
       if (w.__mythosSettingsRequestClose === handleClose) {
         delete w.__mythosSettingsRequestClose;
+      }
+      if (w.__mythosSettingsFlush) {
+        delete w.__mythosSettingsFlush;
       }
     };
   }, [handleClose]);

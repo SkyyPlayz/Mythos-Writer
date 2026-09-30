@@ -177,6 +177,25 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(chrome?.[1] ?? '').not.toContain('container-type');
   });
 
+  // Probe H2: Brainstorm non-compact must wrap through 1100 so mid widths
+  // (400/500/600) never crush the title or overlap controls.
+  // Critic hard 3: standalone Brainstorm is exempt from the 36px clamp.
+  it('Probe H2 / Critic hard 3: Brainstorm .pc-header exempt + wraps ≤1100px', () => {
+    expect(PANEL_CSS).toMatch(
+      /\.pc-header\.brainstorm-header:not\(\.brainstorm-header--compact\)\s*\{[\s\S]*max-height:\s*none/,
+    );
+    expect(PANEL_CSS).toMatch(
+      /\.pc-header\.brainstorm-header:not\(\.brainstorm-header--compact\)\s*\{[\s\S]*overflow:\s*visible/,
+    );
+    expect(PANEL_CSS).toMatch(
+      /\.pc-header\.brainstorm-header:not\(\.brainstorm-header--compact\)\s+\.pc-header-title-group\s*\{[\s\S]*min-width:\s*3rem/,
+    );
+    expect(PANEL_CSS).toMatch(/@container\s+pc-chrome\s*\(max-width:\s*1100px\)/);
+    expect(PANEL_CSS).toMatch(
+      /@container\s+pc-chrome\s*\(max-width:\s*1100px\)[\s\S]*\.pc-header\.brainstorm-header:not\(\.brainstorm-header--compact\)\s+\.pc-header-actions\s*\{[\s\S]*flex:\s*1\s+1\s+100%/,
+    );
+  });
+
   it('renders pc-header-host as the @container ancestor of .pc-header', () => {
     render(<PanelHeader title="Brainstorm Center" actions={<button>Switch</button>} />);
     const host = document.querySelector('.pc-header-host');

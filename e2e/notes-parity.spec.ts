@@ -405,122 +405,209 @@ test('F2#12 real side/middle panel top bars are 36px (±1)', async () => {
   }
 });
 
-// Critic r3 #6 / N7: at 280px the @container wrap on .pc-header-host must keep
-// title width > 0, no overlaps, and action controls visible (main-clean).
-test('F2 W0.3 / Critic #6: .pc-header + in-scope bars clean at 280px', async () => {
+// Critic r3 #6 / N7 + Probe H2 + Critic hard 1/3:
+// Measure Story, Notes, AND Brainstorm tabs so the seven non-pc bars are not
+// skipped via clientHeight<=0 ghosts. Require ≥1 laid-out match per selector.
+// Overlap set includes input + [role=switch]; no "different row" skip; every
+// control must stay inside its bar. Brainstorm host widths: 280/400/500/600
+// plus Critic hard 3 guards at 700 and 1000 (no clip, title > 0).
+test('F2 W0.3 / Critic #6 / Probe H2 / Critic hard 1+3: bars clean across tabs', async () => {
   const app = await launchApp(userData);
   try {
     const page = await firstWindow(app);
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
-    // Standalone Brainstorm (nav-rail) mounts the full non-compact PanelHeader
-    // with Agent Chat / Board switch + .pc-header-host @container. Notes embeds
-    // compact Brainstorm without that switch; NotesSubView is editor-only.
+    const STORY_SELS = [
+      '.lr-nav-header',
+      '.shell-editor-toolbar',
+      '.grs-topbar',
+      '.pc-header',
+    ] as const;
+    const NOTES_SELS = [
+      '.notes-tab-toolbar',
+      '.notes-sidebar-header',
+      '.vb-notes-header',
+      '.notes-right-sidebar-header',
+      '.pc-header',
+    ] as const;
+    const BRAINSTORM_SELS = ['.pc-header'] as const;
+    const ALL_NON_PC = [
+      '.lr-nav-header',
+      '.shell-editor-toolbar',
+      '.grs-topbar',
+      '.notes-tab-toolbar',
+      '.notes-sidebar-header',
+      '.vb-notes-header',
+      '.notes-right-sidebar-header',
+    ] as const;
+
+    type BarReport = {
+      sel: string;
+      titleWidth: number | null;
+      switchVisible: boolean | null;
+      overlap: boolean;
+      controlOutside: boolean;
+      clipped: boolean;
+    };
+
+    async function measure(sels: readonly string[], width: number): Promise<BarReport[]> {
+      return page.evaluate(({ selectors, hostWidth }) => {
+        function overlaps(a: DOMRect, b: DOMRect): boolean {
+          return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+        }
+        function inside(child: DOMRect, bar: DOMRect): boolean {
+          return (
+            child.left >= bar.left - 1
+            && child.right <= bar.right + 1
+            && child.top >= bar.top - 1
+            && child.bottom <= bar.bottom + 1
+          );
+        }
+
+        const results: BarReport[] = [];
+        for (const sel of selectors) {
+          for (const el of document.querySelectorAll<HTMLElement>(sel)) {
+            // Skip keep-mounted display:none ghosts (Story B7 under other tabs).
+            if (el.clientHeight <= 0) continue;
+
+            const host = (el.closest('.pc-header-host') as HTMLElement | null) ?? el;
+            const prevW = host.style.width;
+            const prevMin = host.style.minWidth;
+            const prevMax = host.style.maxWidth;
+            host.style.width = `${hostWidth}px`;
+            host.style.minWidth = `${hostWidth}px`;
+            host.style.maxWidth = `${hostWidth}px`;
+            void host.offsetWidth;
+
+            const rect = el.getBoundingClientRect();
+            const title = el.querySelector('.pc-header-title') as HTMLElement | null;
+            const titleWidth = title ? title.getBoundingClientRect().width : null;
+            const titleGroup = el.querySelector('.pc-header-title-group') as HTMLElement | null;
+            const tg = titleGroup?.getBoundingClientRect();
+            // Critic hard 3: title group must not be clipped by max-height/overflow.
+            const clipped = Boolean(
+              tg && (tg.bottom > rect.bottom + 1 || tg.top < rect.top - 1),
+            );
+            const actions = el.querySelector('.pc-header-actions');
+            const switchVisible = actions && actions.querySelector(
+              'button, [role="switch"], [role="tab"], select, input',
+            )
+              ? (() => {
+                const r = actions.getBoundingClientRect();
+                return r.width > 0 && r.height > 0;
+              })()
+              : null;
+
+            // Critic hard 1: include [role=switch] + input; NO different-row skip.
+            const kids = [...el.querySelectorAll<HTMLElement>(
+              'button, [role="tab"], [role="switch"], .pc-header-title, select, input',
+            )];
+            let overlap = false;
+            let controlOutside = false;
+            for (let i = 0; i < kids.length; i++) {
+              const ri = kids[i].getBoundingClientRect();
+              if (ri.width < 1 || ri.height < 1) continue;
+              if (!inside(ri, rect)) controlOutside = true;
+              for (let j = i + 1; j < kids.length; j++) {
+                if (kids[i].contains(kids[j]) || kids[j].contains(kids[i])) continue;
+                const rj = kids[j].getBoundingClientRect();
+                if (rj.width < 1 || rj.height < 1) continue;
+                if (overlaps(ri, rj)) { overlap = true; break; }
+              }
+              if (overlap) break;
+            }
+
+            results.push({
+              sel,
+              titleWidth: titleWidth === null ? null : Math.round(titleWidth),
+              switchVisible,
+              overlap,
+              controlOutside,
+              clipped,
+            });
+
+            host.style.width = prevW;
+            host.style.minWidth = prevMin;
+            host.style.maxWidth = prevMax;
+          }
+        }
+        return results;
+      }, { selectors: [...sels], hostWidth: width });
+    }
+
+    function assertClean(report: BarReport[], sels: readonly string[], width: number, opts?: { requirePc?: boolean }) {
+      for (const sel of sels) {
+        expect(
+          report.some((r) => r.sel === sel),
+          `${sel} missing laid-out match at ${width}px`,
+        ).toBe(true);
+      }
+      if (opts?.requirePc) {
+        expect(
+          report.some((r) => r.sel === '.pc-header' && (r.titleWidth ?? 0) > 0),
+          `pc-header title 0 at ${width}px`,
+        ).toBe(true);
+        expect(
+          report.some((r) => r.sel === '.pc-header' && r.switchVisible === true),
+          `pc-header actions missing at ${width}px`,
+        ).toBe(true);
+      }
+      for (const r of report) {
+        expect(r.overlap, `${r.sel} overlaps at ${width}px`).toBe(false);
+        expect(r.controlOutside, `${r.sel} control outside bar at ${width}px`).toBe(false);
+        expect(r.clipped, `${r.sel} title clipped at ${width}px`).toBe(false);
+        if (r.titleWidth !== null) {
+          expect(r.titleWidth, `${r.sel} title width at ${width}px`).toBeGreaterThan(0);
+        }
+      }
+    }
+
+    // ── Story tab @ 280 ──────────────────────────────────────────────────
+    // Default boot lands on Story Writer.
+    await expect(page.locator('.lr-nav-header, .shell-editor-toolbar').first()).toBeVisible({ timeout: 8_000 });
+    const story280 = await measure(STORY_SELS, 280);
+    assertClean(story280, STORY_SELS.filter((s) => s !== '.pc-header'), 280);
+    // Continuity/GRS .pc-header may or may not be present; when laid out, clean.
+    for (const r of story280.filter((x) => x.sel === '.pc-header')) {
+      expect(r.overlap).toBe(false);
+      expect(r.controlOutside).toBe(false);
+      expect(r.clipped).toBe(false);
+    }
+
+    // ── Notes tab @ 280 ──────────────────────────────────────────────────
+    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+    await expect(page.locator('.notes-tab-panel, .notes-tab-toolbar').first()).toBeVisible({ timeout: 8_000 });
+    const notes280 = await measure(NOTES_SELS, 280);
+    assertClean(
+      notes280,
+      NOTES_SELS.filter((s) => s !== '.pc-header'),
+      280,
+    );
+    for (const r of notes280.filter((x) => x.sel === '.pc-header')) {
+      expect(r.overlap).toBe(false);
+      expect(r.controlOutside).toBe(false);
+      expect(r.clipped).toBe(false);
+    }
+
+    // Critic hard 1: every one of the seven non-pc bars must have been
+    // measured across Story + Notes (not skipped as zero-height ghosts).
+    const seenNonPc = new Set(
+      [...story280, ...notes280].map((r) => r.sel).filter((s) => (ALL_NON_PC as readonly string[]).includes(s)),
+    );
+    for (const sel of ALL_NON_PC) {
+      expect(seenNonPc.has(sel), `non-pc bar never measured: ${sel}`).toBe(true);
+    }
+
+    // ── Brainstorm @ 280/400/500/600/700/1000 ────────────────────────────
     await page.locator('[data-testid="nav-rail-brainstorm"]').click();
     await expect(page.locator('[aria-labelledby="app-tab-brainstorm"]')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('.pc-header-host .pc-header').first()).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('.pc-header-host .pc-header.brainstorm-header').first()).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('.pc-header .pc-header-actions button, .pc-header [role="switch"]').first())
       .toBeVisible({ timeout: 8_000 });
 
-    const report = await page.evaluate(() => {
-      const BAR_SELS = [
-        '.lr-nav-header',
-        '.shell-editor-toolbar',
-        '.grs-topbar',
-        '.notes-tab-toolbar',
-        '.notes-sidebar-header',
-        '.vb-notes-header',
-        '.notes-right-sidebar-header',
-        '.pc-header',
-      ];
-
-      function overlaps(a: DOMRect, b: DOMRect): boolean {
-        return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
-      }
-
-      const results: Array<{
-        sel: string;
-        width: number;
-        titleWidth: number | null;
-        switchVisible: boolean | null;
-        overlap: boolean;
-      }> = [];
-
-      for (const sel of BAR_SELS) {
-        for (const el of document.querySelectorAll<HTMLElement>(sel)) {
-          // Skip keep-mounted display:none ghosts (Story B7 under other tabs).
-          if (el.clientHeight <= 0) continue;
-
-          // Force the bar's container to 280px so @container / wrap can fire.
-          const host = (el.closest('.pc-header-host') as HTMLElement | null) ?? el;
-          const prev = host.style.width;
-          host.style.width = '280px';
-          host.style.minWidth = '280px';
-          host.style.maxWidth = '280px';
-          // Force layout.
-          void host.offsetWidth;
-
-          const rect = el.getBoundingClientRect();
-          const title = el.querySelector('.pc-header-title') as HTMLElement | null;
-          const titleWidth = title ? title.getBoundingClientRect().width : null;
-          const actions = el.querySelector('.pc-header-actions');
-          // Empty actions box (compact Notes Brainstorm) — treat as N/A.
-          const switchVisible = actions && actions.querySelector('button, [role="switch"], [role="tab"], select')
-            ? (() => {
-              const r = actions.getBoundingClientRect();
-              return r.width > 0 && r.height > 0;
-            })()
-            : null;
-
-          // Overlap among laid-out controls on the same row. Skip ancestor/
-          // descendant pairs (e.g. session pill inside .pc-header-title) —
-          // those always share a box; Critic cares about sibling collisions
-          // (Back vs title vs Agent Chat/Board switch).
-          const kids = [...el.querySelectorAll<HTMLElement>('button, [role="tab"], .pc-header-title, select')];
-          let overlap = false;
-          for (let i = 0; i < kids.length; i++) {
-            const ri = kids[i].getBoundingClientRect();
-            if (ri.width < 1 || ri.height < 1) continue;
-            for (let j = i + 1; j < kids.length; j++) {
-              if (kids[i].contains(kids[j]) || kids[j].contains(kids[i])) continue;
-              const rj = kids[j].getBoundingClientRect();
-              if (rj.width < 1 || rj.height < 1) continue;
-              // Same flex row only — ignore wrapped second-row siblings.
-              if (Math.abs(ri.top - rj.top) > 4) continue;
-              if (overlaps(ri, rj)) { overlap = true; break; }
-            }
-            if (overlap) break;
-          }
-
-          results.push({
-            sel,
-            width: Math.round(rect.width),
-            titleWidth: titleWidth === null ? null : Math.round(titleWidth),
-            switchVisible,
-            overlap,
-          });
-
-          host.style.width = prev;
-          host.style.minWidth = '';
-          host.style.maxWidth = '';
-        }
-      }
-      return results;
-    });
-
-    // Hard #6: a real laid-out .pc-header with title + switch at 280px.
-    expect(report.some((r) => r.sel === '.pc-header')).toBe(true);
-    expect(report.some((r) => r.sel === '.pc-header' && (r.titleWidth ?? 0) > 0)).toBe(true);
-    expect(report.some((r) => r.sel === '.pc-header' && r.switchVisible === true)).toBe(true);
-
-    for (const r of report) {
-      expect(r.overlap, `${r.sel} overlaps at 280px`).toBe(false);
-      if (r.titleWidth !== null) {
-        expect(r.titleWidth, `${r.sel} title width`).toBeGreaterThan(0);
-      }
-      if (r.switchVisible !== null) {
-        expect(r.switchVisible, `${r.sel} actions/switch visible`).toBe(true);
-      }
+    for (const hostWidth of [280, 400, 500, 600, 700, 1000] as const) {
+      const report = await measure(BRAINSTORM_SELS, hostWidth);
+      assertClean(report, BRAINSTORM_SELS, hostWidth, { requirePc: true });
     }
   } finally {
     await app.close().catch(() => undefined);

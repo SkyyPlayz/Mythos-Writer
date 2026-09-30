@@ -139,3 +139,43 @@
     min-width: 0;
   }
 }
+
+/* Critic hard 3 + Probe H2: standalone Brainstorm page header (non-compact) is
+   exempt from the F2#12 36px clamp — title+subtitle is ~50px and main renders
+   it fully. Compact sidebar Brainstorm keeps the 36px bar. Always unlock
+   height/overflow; wrap/stack actions through 1100 so Back never overlaps the
+   mode switch (~330–880) and title never collapses to 0. */
+.pc-header.brainstorm-header:not(.brainstorm-header--compact) {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  height: auto;
+  max-height: none;
+  min-height: var(--panel-top-bar-height, 36px);
+  overflow: visible;
+  row-gap: var(--space-2);
+}
+
+.pc-header.brainstorm-header:not(.brainstorm-header--compact) .pc-header-title-group {
+  flex: 1 1 auto;
+  min-width: 3rem;
+}
+
+.pc-header.brainstorm-header:not(.brainstorm-header--compact) .pc-header-actions {
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+@container pc-chrome (max-width: 1100px) {
+  .pc-header.brainstorm-header:not(.brainstorm-header--compact) .pc-header-start {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .pc-header.brainstorm-header:not(.brainstorm-header--compact) .pc-header-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    min-width: 0;
+  }
+}

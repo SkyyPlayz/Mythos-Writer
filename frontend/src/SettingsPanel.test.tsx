@@ -2775,7 +2775,9 @@ describe('SKY-3218 nav-bar configuration', () => {
     expect(screen.queryByText('/vaults/First/Story Vault')).not.toBeInTheDocument();
   });
 
-  // Critic r3 #3: activeVaultRoot change must not wipe unsaved Model & keys edits.
+  // Critic r3 #3 + Probe H1 + Critic hard 2: activeVaultRoot change must not
+  // wipe unsaved Model & keys edits. Flush twice after rerender so a forced-off
+  // overlay goes RED; assert the close payload keeps the edit.
   it('Critic #3: vault switch while open preserves unsaved Model & keys edits', async () => {
     mockSettingsGet.mockResolvedValue({
       ...defaultSettings,
@@ -2794,15 +2796,31 @@ describe('SKY-3218 nav-bar configuration', () => {
     fireEvent.click(screen.getByTestId('mk-telemetry-crash'));
     expect(screen.getByTestId('mk-telemetry-crash')).toBeChecked();
 
+    mockSettingsSet.mockClear();
     rerender(
       <SettingsPanel onClose={mockOnClose} activeVaultRoot="/vaults/beta" />,
     );
 
+    // Critic hard 2: flush the vault-B settingsGet before asserting (vacuous
+    // without this — pass-before-resolve stayed green with the fix disabled).
+    await flushAsyncEffects();
+    await flushAsyncEffects();
+
     // Stay on Model & keys — the parked edit must survive the vault switch.
     fireEvent.click(screen.getByRole('tab', { name: /model & keys/i }));
-    await waitFor(() => {
-      expect(screen.getByTestId('mk-telemetry-crash')).toBeChecked();
-    });
+    await waitForModelKeys();
+    expect(screen.getByTestId('mk-telemetry-crash')).toBeChecked();
+
+    // Close payload must keep the crash-reports edit (goes red with overlay off).
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+    const payloads = mockSettingsSet.mock.calls.map(
+      (c) => c[0] as { writingPartner?: { telemetryLevel?: string }; telemetry?: { enabled?: boolean } },
+    );
+    expect(
+      payloads.some((p) => p?.writingPartner?.telemetryLevel === 'crash'),
+      'close payload must keep writingPartner.telemetryLevel=crash after vault switch',
+    ).toBe(true);
   });
 
   it('Critic #3: DesktopShell must not remount Settings via key on vault switch', async () => {
@@ -2812,6 +2830,9 @@ describe('SKY-3218 nav-bar configuration', () => {
       path.resolve(__dirname, 'DesktopShell.tsx'),
       'utf8',
     );
+    // Probe H1: flush-before-switch + Settings stays under main-col (no remount key).
+    expect(src).toMatch(/__mythosSettingsFlush/);
+    expect(src).toMatch(/flushOpenSettings/);
     const block = src.match(/\{settingsOpen && \(\s*<SettingsPanel[\s\S]*?\/>\s*\)\}/);
     expect(block?.[0] ?? '').toBeTruthy();
     expect(block![0]).not.toMatch(/\bkey=\{/);

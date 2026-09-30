@@ -1840,34 +1840,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     active: p.vaultRoot === activeVaultRoot,
   }));
 
-  // Handle project switches pushed from main process
-  useEffect(() => {
-    if (!window.api?.onProjectSwitched) return;
-    const unsub = window.api.onProjectSwitched((data: { vaultRoot: string }) => {
-      vaultSwitchGenRef.current += 1; // SKY-11379: supersede any in-flight loadVault
-      pendingVaultThemeRootRef.current = data.vaultRoot; // Beta 4 M1: per-vault theme
-      activeVaultRootRef.current = data.vaultRoot; // SKY-11236: key persists to the new vault at once
-      setActiveVaultRoot(data.vaultRoot);
-      // Reset selection state and reload vault content
-      setSelectedScene(null);
-      setSelectedChapter(null);
-      setSelectedStory(null);
-      setSelectedEntity(null);
-      // SKY-11236: clear the open-note pointer too. Otherwise the "opening a
-      // note surfaces its tab" effect re-adds the OUTGOING vault's note tab
-      // right after loadVault clears the strip — resurrecting the very leak
-      // this fix removes (its note doesn't exist in the incoming vault).
-      setOpenedNotePath(null);
-      // SKY-130: allow restore to fire again for the new project
-      sceneRestoreAttemptedRef.current = false;
-      loadVault();
-      loadVaults();
-      notifyMythosActiveVaultChanged(); // SKY-8882: re-probe migration status for the new vault
-    });
-    return () => unsub?.();
-  }, [loadVault, loadVaults]);
+  const settingsOpenRef = useRef(settingsOpen);
+  settingsOpenRef.current = settingsOpen;
 
-  const handleProjectSwitched = useCallback((vaultRoot: string) => {
+  const applyProjectSwitched = useCallback((vaultRoot: string) => {
     vaultSwitchGenRef.current += 1; // SKY-11379: supersede any in-flight loadVault
     pendingVaultThemeRootRef.current = vaultRoot; // Beta 4 M1: per-vault theme
     activeVaultRootRef.current = vaultRoot; // SKY-11236: key persists to the new vault at once
@@ -1887,22 +1863,61 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     notifyMythosActiveVaultChanged(); // SKY-8882: re-probe migration status for the new vault
   }, [loadVault, loadVaults]);
 
+  // Probe H1: when Settings is open, flush to disk before loadVault unmounts it.
+  const handleProjectSwitched = useCallback((vaultRoot: string) => {
+    if (!settingsOpenRef.current) {
+      applyProjectSwitched(vaultRoot);
+      return;
+    }
+    const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
+      .__mythosSettingsFlush;
+    if (!flush) {
+      applyProjectSwitched(vaultRoot);
+      return;
+    }
+    void flush().finally(() => { applyProjectSwitched(vaultRoot); });
+  }, [applyProjectSwitched]);
+
+  // Handle project switches pushed from main process — must go through
+  // handleProjectSwitched so open Settings flushes before loadVault unmounts it.
+  useEffect(() => {
+    if (!window.api?.onProjectSwitched) return;
+    const unsub = window.api.onProjectSwitched((data: { vaultRoot: string }) => {
+      handleProjectSwitched(data.vaultRoot);
+    });
+    return () => unsub?.();
+  }, [handleProjectSwitched]);
+
   // SKY-11048: switch through the exact same IPC call + completion handler
   // WindowChrome's project menu uses (window.api.projectSwitch →
   // handleProjectSwitched) — no second switch path. Resolves once the vault
   // is active (no-op if it already is) so callers can chain follow-up work
   // (SKY-11086: e.g. opening Settings) onto the *target* vault, not whatever
   // was active when the action was invoked.
+  // Probe H1: flush open Settings BEFORE projectSwitch/loadVault. Loading
+  // unmounts SettingsPanel (must stay inside .desktop-shell__main-col so the
+  // nav rail stays clickable — M28 absolute overlay). Awaiting the flush
+  // persists Model & keys edits to disk so the remount's settingsGet rehydrates
+  // them; settingsHydratedRef still protects mid-open Appearance-only overlays.
+  const flushOpenSettings = useCallback(async (): Promise<void> => {
+    if (!settingsOpen) return;
+    const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
+      .__mythosSettingsFlush;
+    if (flush) await flush();
+  }, [settingsOpen]);
+
   const switchToVault = useCallback((vaultId: string): Promise<void> => {
     if (vaultId === activeVaultRoot) return Promise.resolve();
     const entry = navRailProjects.find((p) => p.vaultRoot === vaultId);
-    return (
+    // Already flushed above — call applyProjectSwitched directly (not
+    // handleProjectSwitched, which would flush again and defer).
+    return flushOpenSettings().then(() => (
       window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot)
-        .then((res) => { if (res?.switched) handleProjectSwitched(vaultId); })
+        .then((res) => { if (res?.switched) applyProjectSwitched(vaultId); })
         .catch(() => { /* switch failed — caller proceeds against whatever is active */ })
       ?? Promise.resolve()
-    );
-  }, [activeVaultRoot, navRailProjects, handleProjectSwitched]);
+    ));
+  }, [activeVaultRoot, navRailProjects, applyProjectSwitched, flushOpenSettings]);
 
   const handleVaultTileSelect = useCallback((vaultId: string) => {
     switchToVault(vaultId);
