@@ -1,14 +1,17 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createMythosVault } from './createVault.js';
 import {
   AGENTS_PARTNER_FILES,
+  AGENTS_VAULT_CLEAR_MEMORY_CHANNEL,
   assertAgentVaultPathSafe,
   clearAgentMemory,
+  createAgentsVaultClearMemoryHandler,
   ensureAgentsPartnerFiles,
   parsePartnerIdentityFromFile,
+  registerAgentsVaultClearMemoryHandler,
   resolveKeysDir,
   syncPartnerIdentityToFile,
 } from './agentsVaultPartner.js';
@@ -18,19 +21,6 @@ import {
   STORY_VAULT_DIRNAME,
   mythosRootForStoryVault,
 } from './mythosJson.js';
-
-/**
- * Mirrors main.ts `agentsVault:clearMemory` handler:
- * mythosRootForStoryVault(getVaultRoot()) → early return or clearAgentMemory.
- * Test-only stand-in so we can drive the IPC path without booting Electron.
- */
-function invokeAgentsVaultClearMemoryIpc(storyVaultRoot: string):
-  | { ok: true; removed: string[] }
-  | { ok: false; error: string } {
-  const mythosRoot = mythosRootForStoryVault(storyVaultRoot);
-  if (!mythosRoot) return { ok: false, error: 'No Mythos vault open' };
-  return clearAgentMemory(mythosRoot);
-}
 
 describe('agentsVaultPartner (Slice D)', () => {
   let tmp: string;
@@ -187,6 +177,14 @@ describe('agentsVaultPartner (Slice D)', () => {
     expect(fs.existsSync(path.join(notesSessions, 'canary.md'))).toBe(true);
   });
 
+  it('registerAgentsVaultClearMemoryHandler passes the same function reference to ipcMain.handle', () => {
+    const ipcHandle = vi.fn();
+    const handler = registerAgentsVaultClearMemoryHandler(() => path.join(tmp, 'unused'), ipcHandle);
+    expect(ipcHandle).toHaveBeenCalledTimes(1);
+    expect(ipcHandle).toHaveBeenCalledWith(AGENTS_VAULT_CLEAR_MEMORY_CHANNEL, handler);
+    expect(ipcHandle.mock.calls[0][1]).toBe(handler);
+  });
+
   it('legacy twin-root: agentsVault:clearMemory IPC fails closed; Notes Vault survives (red if clear gate removed)', () => {
     // Pre-v2 twin-root: Story Vault + Notes Vault siblings, no mythos.json.
     // Sessions/boards live under Notes Vault (getAgentVaultRoot fallback).
@@ -207,33 +205,35 @@ describe('agentsVaultPartner (Slice D)', () => {
 
     expect(mythosRootForStoryVault(storyVault)).toBeNull();
 
-    // Drive agentsVault:clearMemory IPC path — fail closed, never touch Notes.
-    const ipcResult = invokeAgentsVaultClearMemoryIpc(storyVault);
+    // Drive the exported IPC handler (same fn main registers on ipcMain.handle).
+    const handleClear = createAgentsVaultClearMemoryHandler(() => storyVault);
+    const ipcResult = handleClear();
     expect(ipcResult.ok).toBe(false);
     if (!ipcResult.ok) expect(ipcResult.error).toMatch(/No Mythos vault open/i);
 
     // Hazard pin: Agent Vault → Notes Vault at the twin-root parent. If Clear
-    // ever receives this parent (or the clearAgentMemory gate at :203-205 is
-    // removed while following the symlink), Sessions/Boards would be wiped.
+    // ever receives this parent (or the clearAgentMemory gate is removed while
+    // following the symlink), Sessions/Boards would be wiped.
     const agentPath = path.join(legacyRoot, AGENT_VAULT_DIRNAME);
+    let linked = false;
     try {
       if (process.platform === 'win32') {
         fs.symlinkSync(notesVault, agentPath, 'junction');
       } else {
         fs.symlinkSync(path.relative(legacyRoot, notesVault), agentPath);
       }
+      linked = true;
     } catch {
-      // Still assert IPC-path Notes survival below when reparse points fail.
-      expect(fs.readFileSync(path.join(notesVault, 'Keep.md'), 'utf-8')).toBe('keep-me');
-      expect(fs.existsSync(path.join(notesVault, 'Sessions', 'CANARY-session.md'))).toBe(true);
-      return;
+      // Skip gate-revert pin cleanly when the environment cannot create reparse points.
     }
 
-    const cleared = clearAgentMemory(legacyRoot);
-    expect(cleared.ok).toBe(false);
-    if (!cleared.ok) expect(cleared.error).toMatch(/symlink/i);
+    if (linked) {
+      const cleared = clearAgentMemory(legacyRoot);
+      expect(cleared.ok).toBe(false);
+      if (!cleared.ok) expect(cleared.error).toMatch(/symlink/i);
+    }
 
-    // Notes Vault must survive both the IPC early-return and the gated clear.
+    // Notes Vault must survive the IPC early-return (and gated clear when linked).
     expect(fs.readFileSync(path.join(notesVault, 'Keep.md'), 'utf-8')).toBe('keep-me');
     expect(fs.existsSync(path.join(notesVault, 'Sessions', 'CANARY-session.md'))).toBe(true);
     expect(fs.readFileSync(path.join(notesVault, 'Boards', 'brainstorm.board.json'), 'utf-8')).toBe(
