@@ -169,8 +169,9 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(host?.[1] ?? '').toContain('container-name: pc-chrome');
     expect(PANEL_CSS).toMatch(/@container\s+pc-chrome\s*\(max-width:\s*320px\)/);
     // Narrow: actions take a full second row so they cannot collide with title.
-    const narrow = PANEL_CSS.match(/@container\s+pc-chrome\s*\(max-width:\s*320px\)\s*\{([\s\S]*?)\n\}/);
-    expect(narrow?.[1] ?? '').toContain('flex: 1 1 100%');
+    expect(PANEL_CSS).toMatch(
+      /@container\s+pc-chrome\s*\(max-width:\s*320px\)[\s\S]*\.pc-header-actions\s*\{[\s\S]*flex:\s*1\s+1\s+100%/,
+    );
     // Container must NOT live only on unrendered .pc-chrome.
     const chrome = PANEL_CSS.match(/\.pc-chrome\s*\{([^}]*)\}/);
     expect(chrome?.[1] ?? '').not.toContain('container-type');
