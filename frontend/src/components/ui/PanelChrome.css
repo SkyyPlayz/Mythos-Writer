@@ -111,15 +111,31 @@
   flex-shrink: 0;
 }
 
-/* W0.3: at narrow panel widths, let the header wrap instead of clipping. */
+/* W0.3 / Critic #6: at ≤320px, stack start + actions on separate rows so
+   Back/title never collide with mode-switch / selects (main-clean at 280px). */
 @container pc-chrome (max-width: 320px) {
   .pc-header {
     flex-wrap: wrap;
+    align-items: flex-start;
     height: auto;
     max-height: none;
     overflow: visible;
+    row-gap: var(--space-2);
+  }
+  .pc-header-start {
+    flex: 1 1 auto;
+    min-width: 0;
+    /* Prefer full first row when actions need the second. */
+    max-width: 100%;
+  }
+  .pc-header-title-group {
+    flex: 1 1 auto;
+    min-width: 0;
   }
   .pc-header-actions {
+    flex: 1 1 100%;
     flex-wrap: wrap;
+    justify-content: flex-start;
+    min-width: 0;
   }
 }

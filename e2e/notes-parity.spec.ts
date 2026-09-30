@@ -472,13 +472,17 @@ test('F2 W0.3 / Critic #6: .pc-header + in-scope bars clean at 280px', async () 
             })()
             : null;
 
-          // Overlap check among direct interactive children of the header row.
+          // Overlap among laid-out controls on the same row. Skip ancestor/
+          // descendant pairs (e.g. session pill inside .pc-header-title) —
+          // those always share a box; Critic cares about sibling collisions
+          // (Back vs title vs Agent Chat/Board switch).
           const kids = [...el.querySelectorAll<HTMLElement>('button, [role="tab"], .pc-header-title, select')];
           let overlap = false;
           for (let i = 0; i < kids.length; i++) {
             const ri = kids[i].getBoundingClientRect();
             if (ri.width < 1 || ri.height < 1) continue;
             for (let j = i + 1; j < kids.length; j++) {
+              if (kids[i].contains(kids[j]) || kids[j].contains(kids[i])) continue;
               const rj = kids[j].getBoundingClientRect();
               if (rj.width < 1 || rj.height < 1) continue;
               // Same flex row only — ignore wrapped second-row siblings.
