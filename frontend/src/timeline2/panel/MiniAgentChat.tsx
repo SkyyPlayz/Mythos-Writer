@@ -4,7 +4,11 @@
 // "sessions everywhere" contract holds in the timeline too.
 import { useEffect, useRef, useState } from 'react';
 import AgentSessionPicker from '../../components/AgentSessionPicker';
-import { miniCardBodyText } from '../../coach/coachMessages';
+import {
+  collapseCoachMessage,
+  mainFormatCoachDisplayCard,
+  miniCardBodyText,
+} from '../../coach/coachMessages';
 import type { MiniAgentChat as MiniAgentChatState } from './useMiniAgentChat';
 // M12.B3 (SKY-10738): self-import — this component is now also mounted
 // outside Timeline2 (AgentHubPanel's Archive chat view), which doesn't load
@@ -55,28 +59,49 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix,
         <AgentSessionPicker store={chat.store} className="trp-chat-sessions" busy={chat.busy} />
       </div>
       <div className="trp-chat-feed" data-testid={`${testidPrefix}-chat-feed`} ref={feedRef}>
-        {chat.messages.map((turn, i) => (
-          // N2 Secure bar: card chrome only for whitelisted structural cardKind
-          // + cardTitle. cardTitle alone (forged) stays a plain bubble.
-          isTrustedCardTurn(turn) ? (
-            <div
-              key={`${turn.at}-${i}`}
-              className={`trp-msg-card trp-msg-card--${accent}`}
-              data-testid={`${testidPrefix}-card-${i}`}
-            >
-              <div className="trp-msg-card-title">{turn.cardTitle}</div>
-              <div className="trp-msg-card-text">{miniCardBodyText(turn)}</div>
-              {turn.cardFoot && <div className="trp-msg-card-foot">{turn.cardFoot}</div>}
-            </div>
-          ) : (
+        {chat.messages.map((turn, i) => {
+          // N2 Secure bar: full action-card chrome only for whitelisted
+          // structural cardKind + cardTitle. cardTitle alone (forged) stays plain.
+          if (isTrustedCardTurn(turn)) {
+            return (
+              <div
+                key={`${turn.at}-${i}`}
+                className={`trp-msg-card trp-msg-card--${accent}`}
+                data-testid={`${testidPrefix}-card-${i}`}
+              >
+                <div className="trp-msg-card-title">{turn.cardTitle}</div>
+                <div className="trp-msg-card-text">{miniCardBodyText(turn)}</div>
+                {turn.cardFoot && <div className="trp-msg-card-foot">{turn.cardFoot}</div>}
+              </div>
+            );
+          }
+          // Probe HARD 1: main-format coach-card (marker+JSON, no cardKind) →
+          // read-only display card — never raw marker/JSON, never action buttons.
+          const display = mainFormatCoachDisplayCard(turn);
+          if (display) {
+            return (
+              <div
+                key={`${turn.at}-${i}`}
+                className={`trp-msg-card trp-msg-card--${accent} trp-msg-card--readonly`}
+                data-testid={`${testidPrefix}-display-card-${i}`}
+                data-readonly-card="true"
+              >
+                <div className="trp-msg-card-title">{display.title}</div>
+                <div className="trp-msg-card-text">
+                  {collapseCoachMessage({ ...display, at: turn.at })}
+                </div>
+              </div>
+            );
+          }
+          return (
             <div
               key={`${turn.at}-${i}`}
               className={`trp-bubble trp-bubble--${turn.role === 'user' ? 'user' : 'agent'}`}
             >
               {turn.text}
             </div>
-          )
-        ))}
+          );
+        })}
         {chat.pendingPrompt !== null && (
           <>
             <div className="trp-bubble trp-bubble--user">{chat.pendingPrompt}</div>

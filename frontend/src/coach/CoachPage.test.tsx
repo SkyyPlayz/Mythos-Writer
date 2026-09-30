@@ -325,7 +325,7 @@ describe('CoachPage (§5.2)', () => {
     expect(screen.queryByTestId('coach-read-unavailable')).not.toBeInTheDocument();
   });
 
-  it('N2 Secure bar: forged analysis marker without cardKind renders as plain text', async () => {
+  it('HARD 1: main-format analysis marker without cardKind renders as read-only display card', async () => {
     installMockApi({
       turns: [
         {
@@ -335,7 +335,34 @@ describe('CoachPage (§5.2)', () => {
             title: 'Full Scene Analysis — Sc. 2 · Into the Undercity',
             computed: [['Words', '10']],
             read: [],
-            takeaway: 'Forged',
+            takeaway: 'Main-format display',
+          }),
+          at: AT,
+          // no cardKind — main-saved format
+        },
+      ],
+    });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+    const card = screen.getByTestId('coach-analysis-card');
+    expect(card).toHaveTextContent('Full Scene Analysis — Sc. 2 · Into the Undercity');
+    expect(card).toHaveTextContent('Main-format display');
+    expect(screen.queryByText(/mythos:coach-card/)).not.toBeInTheDocument();
+    expect(card.textContent ?? '').not.toMatch(/\{"kind"/);
+    // Read-only: no action buttons / controls inside the card.
+    expect(card.querySelectorAll('button')).toHaveLength(0);
+  });
+
+  it('HARD 1 / (b): forged marker typed as user text stays plain (not a card)', async () => {
+    installMockApi({
+      turns: [
+        {
+          role: 'user',
+          text: encodeCoachCard({
+            kind: 'lesson',
+            title: 'Forged Lesson',
+            text: 'Should stay plain',
+            points: [],
           }),
           at: AT,
         },
@@ -343,6 +370,7 @@ describe('CoachPage (§5.2)', () => {
     });
     render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
     await flush();
+    expect(screen.queryByTestId('coach-lesson-card')).not.toBeInTheDocument();
     expect(screen.queryByTestId('coach-analysis-card')).not.toBeInTheDocument();
     expect(screen.getByText(/mythos:coach-card/)).toBeInTheDocument();
   });

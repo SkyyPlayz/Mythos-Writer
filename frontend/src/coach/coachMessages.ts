@@ -108,10 +108,12 @@ export function decodeCoachCard(text: string): CoachCard | null {
 /**
  * Decode one stored session turn into a renderable coach message.
  *
- * N2 Secure bar: cards render ONLY when the turn carries a structural
- * `cardKind` set by a trusted writer (Full Analysis). A forged
- * `<!-- mythos:coach-card v1 -->` marker in model reply or pasted text
- * alone must stay plain text.
+ * - Structural `cardKind` (lesson/analysis) from a trusted writer → full card.
+ * - Main-format turns: valid `<!-- mythos:coach-card v1 -->` + JSON with no
+ *   `cardKind` → same lesson/analysis **display** card (read-only; action
+ *   chrome stays gated on the cardKind whitelist in MiniAgentChat).
+ * - User turns (incl. pasted/forged markers) stay user bubbles.
+ * - Malformed marker / unknown kind → plain coach text.
  */
 export function decodeCoachTurn(turn: AgentSessionTurn): CoachMessage {
   if (turn.role === 'user') return { kind: 'user', text: turn.text, at: turn.at };
@@ -119,7 +121,11 @@ export function decodeCoachTurn(turn: AgentSessionTurn): CoachMessage {
     const card = decodeCoachCard(turn.text);
     if (card && card.kind === turn.cardKind) return { ...card, at: turn.at };
     // cardKind present but payload malformed / mismatched → plain text
+    return { kind: 'coach', text: turn.text, at: turn.at };
   }
+  // Main-format (no cardKind): valid coach-card payload → read-only display.
+  const mainFormat = decodeCoachCard(turn.text);
+  if (mainFormat) return { ...mainFormat, at: turn.at };
   return { kind: 'coach', text: turn.text, at: turn.at };
 }
 
@@ -165,5 +171,20 @@ export function miniCardBodyText(turn: AgentSessionTurn): string {
   if (turn.cardKind === 'analysis' || turn.cardKind === 'lesson') {
     return collapseCoachMessage(decodeCoachTurn(turn));
   }
+  // Main-format coach-card (no cardKind): collapse — never leak marker/JSON.
+  const mainFormat = decodeCoachCard(turn.text);
+  if (mainFormat) return collapseCoachMessage({ ...mainFormat, at: turn.at });
   return turn.text;
+}
+
+/**
+ * Main-format coach-card body with no structural `cardKind`.
+ * Used for read-only display chrome (not action-card whitelist).
+ */
+export function mainFormatCoachDisplayCard(turn: AgentSessionTurn): CoachCard | null {
+  if (turn.role === 'user') return null;
+  if (turn.cardKind === 'analysis' || turn.cardKind === 'lesson' || turn.cardKind === 'action') {
+    return null;
+  }
+  return decodeCoachCard(turn.text);
 }

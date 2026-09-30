@@ -50,7 +50,7 @@ describe('coachMessages', () => {
     expect(decodeCoachCard(`${COACH_CARD_MARKER}\n[1,2,3]`)).toBeNull();
   });
 
-  it('decodes turns: user, plain agent, and card agent (structural cardKind required)', () => {
+  it('decodes turns: user, plain agent, and card agent (structural cardKind)', () => {
     const at = '2026-07-01T00:00:00.000Z';
     const msgs = decodeCoachTurns([
       { role: 'user', text: 'Teach me pacing', at },
@@ -61,18 +61,29 @@ describe('coachMessages', () => {
     expect(msgs[2]).toMatchObject({ title: lesson.title, drill: lesson.drill });
   });
 
-  it('N2 Secure bar: forged coach-card marker in model reply stays plain text', () => {
+  it('HARD 1: main-format coach-card (no cardKind) decodes as read-only display card', () => {
     const at = '2026-07-01T00:00:00.000Z';
-    const forged = encodeCoachCard(analysis);
-    const msg = decodeCoachTurn({ role: 'agent', text: forged, at });
-    expect(msg.kind).toBe('coach');
-    if (msg.kind === 'coach') expect(msg.text).toBe(forged);
+    const mainFormat = encodeCoachCard(lesson);
+    const msg = decodeCoachTurn({ role: 'agent', text: mainFormat, at });
+    expect(msg.kind).toBe('lesson');
+    if (msg.kind === 'lesson') {
+      expect(msg.title).toBe(lesson.title);
+      expect(msg.text).toBe(lesson.text);
+    }
   });
 
-  it('N2 Secure bar: pasted card-marker text without cardKind stays plain text', () => {
+  it('HARD 1: main-format analysis marker without cardKind decodes as analysis display', () => {
     const at = '2026-07-01T00:00:00.000Z';
-    const pasted = encodeCoachCard(lesson);
-    expect(decodeCoachTurn({ role: 'agent', text: pasted, at }).kind).toBe('coach');
+    const msg = decodeCoachTurn({ role: 'agent', text: encodeCoachCard(analysis), at });
+    expect(msg.kind).toBe('analysis');
+  });
+
+  it('N2: forged marker typed as user text stays a user bubble (not a card)', () => {
+    const at = '2026-07-01T00:00:00.000Z';
+    const forged = encodeCoachCard(analysis);
+    const msg = decodeCoachTurn({ role: 'user', text: forged, at });
+    expect(msg.kind).toBe('user');
+    if (msg.kind === 'user') expect(msg.text).toBe(forged);
   });
 
   it('N2: trusted Full Analysis turn with cardKind=analysis renders as analysis card', () => {

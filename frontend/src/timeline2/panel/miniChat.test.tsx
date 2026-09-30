@@ -470,6 +470,59 @@ describe('MiniAgentChat — card messages (SKY-8886)', () => {
     expect(body).toContain('Lean into the quay fog');
   });
 
+  it('HARD 1: main-format coach-card (no cardKind) renders read-only display card, not raw JSON', async () => {
+    const { encodeCoachCard } = await import('../../coach/coachMessages');
+    const encoded = encodeCoachCard({
+      kind: 'lesson',
+      title: 'Lesson — grounding',
+      text: 'Anchor place fast.',
+      points: ['one'],
+      drill: 'Drill: 5 minutes.',
+    });
+    const api = {
+      agentSessions: {
+        list: vi.fn(async () => ({
+          sessions: [{ id: 'bs-s1', agent: 'brainstorm', title: 'T', startedAt: AT, updatedAt: AT, turnCount: 1, relPath: 'Sessions/x.md' }],
+        })),
+        create: vi.fn(async () => ({
+          session: {
+            id: 'bs-s1',
+            agent: 'brainstorm',
+            turns: [{ role: 'agent', text: encoded, at: AT }],
+            startedAt: AT,
+            updatedAt: AT,
+          },
+          relPath: 'Sessions/x.md',
+        })),
+        read: vi.fn(async () => ({
+          session: {
+            id: 'bs-s1',
+            agent: 'brainstorm',
+            turns: [{ role: 'agent', text: encoded, at: AT }],
+            startedAt: AT,
+            updatedAt: AT,
+          },
+        })),
+        rename: vi.fn(async () => ({ ok: true })),
+        duplicate: vi.fn(async () => ({ session: { id: 'bs-s1', agent: 'brainstorm', turns: [], startedAt: AT, updatedAt: AT }, relPath: 'Sessions/x.md' })),
+        delete: vi.fn(async () => ({ ok: true })),
+        appendTurns: vi.fn(async () => ({ session: null })),
+      },
+      agentBrainstorm: vi.fn(async () => ({ text: 'ok' })),
+    };
+    Object.defineProperty(window, 'api', { value: api, writable: true, configurable: true });
+    render(<BrainstormTab store={makeStore()} activeTimelineId="tl-1" onJumpTo={vi.fn()} showToast={vi.fn()} />);
+    await flush();
+
+    const card = document.querySelector('[data-testid="trp-brainstorm-display-card-0"]');
+    expect(card).toBeInTheDocument();
+    expect(card).toHaveAttribute('data-readonly-card', 'true');
+    expect(card?.textContent ?? '').not.toContain('mythos:coach-card');
+    expect(card?.textContent ?? '').not.toMatch(/\{"kind"/);
+    expect(card?.textContent ?? '').toContain('Lesson — grounding');
+    expect(card?.querySelectorAll('button')).toHaveLength(0);
+  });
+
   it('persists card metadata (cardTitle + cardFoot) when agent returns structured result (SKY-8886)', async () => {
     const session: AgentSessionFile = {
       id: 'arc-s1',
