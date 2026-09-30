@@ -515,6 +515,7 @@ import {
 import {
   scanMythosStoryVault,
   syncCanonicalFromManifest,
+  rebuildCacheIfDuplicated,
   nextV2ChapterRelPath,
   nextV2SceneRelPath,
   isCanonicalV2ChapterPath,
@@ -1424,6 +1425,11 @@ function ensureVaultDir() {
       } catch {
         writeManifestRaw(cachePath, defaultManifest(vaultRoot));
       }
+    } else {
+      // F6: if a prior cache already holds duplicate story/chapter/scene ids
+      // (Finder-copied folders scanned before dedupe shipped), rebuild once
+      // per session. Shared hunk with F2 at ensureVaultDir top (appDataCleared).
+      rebuildCacheIfDuplicated(mythosRoot, cachePath);
     }
     try {
       const { versions: vRetention } = loadAppSettings();
