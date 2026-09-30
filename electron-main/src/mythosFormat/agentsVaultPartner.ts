@@ -227,14 +227,19 @@ export type AgentsVaultClearMemoryResult =
   | { ok: true; removed: string[] }
   | { ok: false; error: string };
 
+export type AgentsVaultClearMemoryHandler = () => AgentsVaultClearMemoryResult;
+
 /**
- * IPC handler for `agentsVault:clearMemory` — byte-for-byte the former main.ts
- * body (mythosRootForStoryVault → clearAgentMemory + sanitizeIpcError).
- * The returned function is registered directly on ipcMain.handle (same reference).
+ * IPC handler body for `agentsVault:clearMemory`.
+ * Extracted from main.ts for testability: mythosRootForStoryVault →
+ * clearAgentMemory, with sanitizeIpcError on failure paths (explicit retained
+ * behavior — clearAgentMemory itself is still gated by resolveKeysDir).
+ * Wire through the handlers map → setupIpcMain so the shared top-frame guard
+ * applies; do not register this function on ipcMain.handle directly.
  */
 export function createAgentsVaultClearMemoryHandler(
   getVaultRoot: () => string,
-): () => AgentsVaultClearMemoryResult {
+): AgentsVaultClearMemoryHandler {
   return function handleAgentsVaultClearMemory(): AgentsVaultClearMemoryResult {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
     if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
@@ -254,19 +259,6 @@ export function createAgentsVaultClearMemoryHandler(
       };
     }
   };
-}
-
-/**
- * Registers the Clear-memory handler via the provided ipcMain.handle binder.
- * Returns the same function reference that was registered (for identity asserts).
- */
-export function registerAgentsVaultClearMemoryHandler(
-  getVaultRoot: () => string,
-  ipcHandle: (channel: string, listener: () => AgentsVaultClearMemoryResult) => void,
-): () => AgentsVaultClearMemoryResult {
-  const handler = createAgentsVaultClearMemoryHandler(getVaultRoot);
-  ipcHandle(AGENTS_VAULT_CLEAR_MEMORY_CHANNEL, handler);
-  return handler;
 }
 
 export type AgentsVaultStats =

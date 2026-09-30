@@ -1159,8 +1159,8 @@ function saveVaultSettings(updates: Partial<VaultSettings>): void {
 }
 
 const getVaultRoot = () => loadVaultSettings().vaultRoot;
-// agentsVault:clearMemory — extracted handler registered directly on ipcMain.handle
-// (same function reference; stub in handlers map satisfies IpcHandlers like CONTINUITY_CHECK).
+// agentsVault:clearMemory — extracted body wired through the handlers map
+// (setupIpcMain applies the shared top-frame guard).
 const handleAgentsVaultClearMemory = createAgentsVaultClearMemoryHandler(getVaultRoot);
 // M5 VERSION GATE: v0.4 vaults keep `manifest.json` at the Story Vault root;
 // MythosVault v2 vaults (mythos.json beside the Story Vault) route the legacy
@@ -3476,11 +3476,7 @@ const handlers: IpcHandlers = {
       };
     }
   },
-  // Stub: real handler is handleAgentsVaultClearMemory, registered via
-  // ipcMain.handle after setupIpcMain (same reference — no wrapper).
-  [IPC_CHANNELS.AGENTS_VAULT_CLEAR_MEMORY]: (): { ok: false; error: string } => {
-    return { ok: false as const, error: 'Clear memory handler not armed' };
-  },
+  [IPC_CHANNELS.AGENTS_VAULT_CLEAR_MEMORY]: handleAgentsVaultClearMemory,
   [IPC_CHANNELS.AGENTS_VAULT_REVEAL]: async () => {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
     if (!mythosRoot) return { opened: false, error: 'No Mythos vault open' };
@@ -11993,9 +11989,6 @@ app.whenReady().then(async () => {
   } catch (e) {
     console.error('[boot] setupIpcMain failed — continuing to window creation:', e);
   }
-  // Replace Clear-memory stub with the extracted handler (same reference, no wrapper).
-  ipcMain.removeHandler(IPC_CHANNELS.AGENTS_VAULT_CLEAR_MEMORY);
-  ipcMain.handle(IPC_CHANNELS.AGENTS_VAULT_CLEAR_MEMORY, handleAgentsVaultClearMemory);
   registerAgentCancelHandlers();
   registerBrainstormExtractionHandlers();
   registerBrainstormHandler();
