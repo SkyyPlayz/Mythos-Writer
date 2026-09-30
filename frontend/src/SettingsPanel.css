@@ -593,6 +593,21 @@ select.settings-select option {
   margin: 0;
 }
 
+/* Shield/Ivy: vault-switch flush failure — Retry or Switch anyway (no trap). */
+.settings-flush-switch-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.settings-flush-switch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .settings-saved-msg {
   font-size: 0.78rem;
   color: var(--state-success);

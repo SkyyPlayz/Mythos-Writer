@@ -3,6 +3,7 @@ import { useAgentActivity } from './agents/agentActivity';
 import { setBrainstormActivity, IDLE_BRAINSTORM_ACTIVITY } from './agents/brainstormActivity';
 import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
+import { Menu } from './components/ui/Menu';
 import { EmptyState } from './components/EmptyState/EmptyState';
 import { IdeaCard } from './components/BrainstormCard/IdeaCard';
 import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
@@ -437,6 +438,10 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [alertText, setAlertText] = useState('');
+  // Ivy: compact header overflow (⋯) hosts Download when the inline chip
+  // cannot fit (@container ≤400 / W0.3 @280) — never hide Download.
+  const [headerOverflowOpen, setHeaderOverflowOpen] = useState(false);
+  const headerOverflowRef = useRef<HTMLButtonElement>(null);
   // Beta 3 M22: brainstorm streaming lights the workspace tab strip's agents chip.
   useAgentActivity(loading);
   // Stable refs so the hook callbacks can reference values declared later in the component.
@@ -2428,16 +2433,49 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
               >
                 {tts.sessionMuted ? 'Unmute' : 'Mute'}
               </button>
+              {/* Ivy: Download never disappears. Standalone + compact-wide = inline.
+                  Compact ≤400 (incl. W0.3 @280): inline hidden via CSS; same action
+                  lives in the ⋯ overflow menu (same pattern as standalone overflow). */}
               {messages.length > 0 && (
-                <button
-                  className="brainstorm-download-btn"
-                  onClick={handleDownload}
-                  aria-label="Download session as markdown"
-                  type="button"
-                  title="Download session as Markdown"
-                >
-                  Download
-                </button>
+                <>
+                  <button
+                    className={`brainstorm-download-btn${compact ? ' brainstorm-download-btn--compact-inline' : ''}`}
+                    onClick={handleDownload}
+                    aria-label="Download session as markdown"
+                    type="button"
+                    title="Download session as Markdown"
+                    data-testid="brainstorm-download-inline"
+                  >
+                    Download
+                  </button>
+                  {compact && (
+                    <>
+                      <button
+                        ref={headerOverflowRef}
+                        type="button"
+                        className="brainstorm-header-overflow-btn"
+                        aria-label="More header actions"
+                        aria-haspopup="menu"
+                        aria-expanded={headerOverflowOpen}
+                        data-testid="brainstorm-header-overflow"
+                        onClick={() => setHeaderOverflowOpen((v) => !v)}
+                      >
+                        ⋯
+                      </button>
+                      <Menu
+                        open={headerOverflowOpen}
+                        onClose={() => setHeaderOverflowOpen(false)}
+                        onAction={(id) => {
+                          if (id === 'download') handleDownload();
+                        }}
+                        items={[{ id: 'download', label: 'Download' }]}
+                        anchorEl={headerOverflowRef.current}
+                        aria-label="Brainstorm header actions"
+                        data-testid="brainstorm-header-overflow-menu"
+                      />
+                    </>
+                  )}
+                </>
               )}
               <button
                 className="brainstorm-new-session-btn"

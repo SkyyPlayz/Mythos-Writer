@@ -1,7 +1,8 @@
-// Critic r3 TC-CP-06: Back after Continuity "View full note" must restore the
-// note (not empty Notes). F2 restores scene clears in handleOpenContinuityEntityNote
-// and relies on the Story NoteViewer gate; keep-scene + applyNavLocation notePath
-// re-apply is F1's H1.
+// Critic soft (CHANGES 5372647419) + r3 TC-CP-06: Continuity nav history —
+// Back after "View full note" restores the note (not empty Notes); Forward
+// returns to the scene you left. F2 restores scene clears in
+// handleOpenContinuityEntityNote and relies on the Story NoteViewer gate;
+// keep-scene + applyNavLocation notePath re-apply is F1's H1.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, act, cleanup } from '@testing-library/react';
 import App from './App';
@@ -134,7 +135,7 @@ describe('DesktopShell Continuity nav (Critic r3 TC-CP-06)', () => {
     cleanup();
   });
 
-  it('TC-CP-06: Back after Continuity View full note restores the note (not empty Notes)', async () => {
+  it('TC-CP-06: Back after Continuity View full note restores the note; Forward returns to scene', async () => {
     render(<App />);
     await screen.findByRole('navigation', { name: 'Main navigation' });
     await screen.findByTestId('msv-root');
@@ -178,6 +179,26 @@ describe('DesktopShell Continuity nav (Critic r3 TC-CP-06)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('note-title')).toBeInTheDocument();
       expect(screen.queryByTestId('notes-editor-placeholder')).toBeNull();
+    });
+
+    // Critic soft: Forward (Alt+→) must leave the restored note — not a no-op.
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true });
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('note-title')).toBeNull();
+    });
+    // One more Forward if the first only undid a rail push.
+    if (!document.querySelector('.nav-scene-row.active')) {
+      await act(async () => {
+        fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true });
+      });
+    }
+    await waitFor(() => {
+      expect(
+        document.querySelector('.nav-scene-row.active'),
+        'Forward must land on a story scene after leaving the note',
+      ).toBeTruthy();
     });
   });
 });

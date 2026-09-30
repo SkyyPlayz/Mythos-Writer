@@ -64,10 +64,10 @@
 /* Layout from PanelChrome (.pc-header); spacing/typography ported from the
  * Liquid Neon prototype header (design-handoff/prototype, lines 1312–1316). */
 .brainstorm-header {
-  /* F2#12: keep shared 36px panel top-bar; horizontal pad only (vertical
-     pad was blowing the bar to ~137px under height:auto). */
-  padding: 0 12px;
-  gap: 8px;
+  /* Ivy tip-form / main parity for standalone (≥701): restore main padding
+     so header height matches main at 1000/1440. Compact overrides below. */
+  padding: 14px 20px 12px;
+  gap: 12px;
   /* SKY-11047: was a flat --bg-bar opaque strip, painted a second solid
      layer over .brainstorm-page's own (now glass) background — same fix
      shape as NoteViewer's toolbar (SKY-10929): let the page glass read
@@ -76,10 +76,66 @@
   border-bottom: 1px solid var(--glass-border);
 }
 
-/* W0.3 (GAP P0#3): compact sidebar contexts share the 36px bar. */
+/* Ivy GO (b) / Critic hard 2: compact Notes Agent uses main's 12px pad (not
+   the zero-vertical F2#12 strip) so title+subtitle stay readable when unclamped.
+   Tighter action chrome; Download never hidden — ≤400 moves it into ⋯ overflow
+   so preset+Mute+New Session (+ ⋯) fit inside the bar at 280/340. */
 .brainstorm-header--compact {
-  padding: 0 12px;
+  padding: 12px;
   gap: 8px;
+}
+
+.brainstorm-header--compact .brainstorm-header-actions {
+  gap: 4px;
+}
+
+.brainstorm-header--compact .brainstorm-mute-btn,
+.brainstorm-header--compact .brainstorm-download-btn,
+.brainstorm-header--compact .brainstorm-new-session-btn,
+.brainstorm-header--compact .brainstorm-header-overflow-btn {
+  padding: 4px 6px;
+  font-size: 0.72rem;
+}
+
+.brainstorm-header--compact .brainstorm-back-btn {
+  padding: 4px 8px;
+}
+
+.brainstorm-header-overflow-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 1.75rem;
+  line-height: 1;
+}
+
+.brainstorm-header-overflow-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.brainstorm-header-overflow-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+/* Compact ≤400 (natural/340 sidebar + W0.3 @280): Download → ⋯ menu.
+   Wider compact hosts keep inline Download; standalone never uses ⋯. */
+@container pc-chrome (max-width: 400px) {
+  .brainstorm-header--compact .brainstorm-download-btn--compact-inline {
+    display: none;
+  }
+  .brainstorm-header--compact .brainstorm-header-overflow-btn {
+    display: inline-flex;
+  }
 }
 
 .brainstorm-header .pc-header-title {

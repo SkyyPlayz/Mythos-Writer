@@ -2837,4 +2837,38 @@ describe('SKY-3218 nav-bar configuration', () => {
     expect(block?.[0] ?? '').toBeTruthy();
     expect(block![0]).not.toMatch(/\bkey=\{/);
   });
+
+  // Ivy tip-form follow-up 2: flush cleanup must match requestClose ownership —
+  // only delete if this panel's own function is still installed. Goes RED when
+  // cleanup blindly `delete`s (fast close/reopen installs a newer flush first).
+  it('__mythosSettingsFlush cleanup only deletes this panel\'s own pointer', async () => {
+    const { unmount } = await renderSettingsOnDefault(
+      <SettingsPanel onClose={mockOnClose} />,
+    );
+    await flushAsyncEffects();
+    const w = window as Window & { __mythosSettingsFlush?: () => Promise<boolean> };
+    expect(typeof w.__mythosSettingsFlush).toBe('function');
+
+    // Simulate a newer panel claiming the pointer before this one cleans up
+    // (fast close → reopen race).
+    const newerFlush = vi.fn().mockResolvedValue(true);
+    w.__mythosSettingsFlush = newerFlush;
+
+    unmount();
+    expect(
+      w.__mythosSettingsFlush,
+      'unmount must not delete a newer panel\'s __mythosSettingsFlush',
+    ).toBe(newerFlush);
+  });
+
+  it('__mythosSettingsFlush cleanup clears when pointer is still this panel\'s', async () => {
+    const { unmount } = await renderSettingsOnDefault(
+      <SettingsPanel onClose={mockOnClose} />,
+    );
+    await flushAsyncEffects();
+    const w = window as Window & { __mythosSettingsFlush?: () => Promise<boolean> };
+    expect(typeof w.__mythosSettingsFlush).toBe('function');
+    unmount();
+    expect(w.__mythosSettingsFlush).toBeUndefined();
+  });
 });

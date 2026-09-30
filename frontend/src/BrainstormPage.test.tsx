@@ -1,8 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS, VAULT_ROOT_SENTINEL } from './BrainstormPage';
 import { __resetAgentSessionStores } from './lib/useAgentSessions';
 import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
 import { brainstormActivitySnapshot, resetBrainstormActivityForTests, IDLE_BRAINSTORM_ACTIVITY } from './agents/brainstormActivity';
+
+const BRAINSTORM_TSX = readFileSync(resolve(process.cwd(), 'src/BrainstormPage.tsx'), 'utf-8');
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
@@ -880,6 +884,61 @@ describe('Draft persistence', () => {
     expect(mockClick).toHaveBeenCalled();
     expect(mockRevokeObjectURL).toHaveBeenCalled();
 
+    mockClick.mockRestore();
+  });
+
+  // Ivy: Download must never be gated on !compact (feature loss vs main).
+  it('Ivy: compact Download is never hidden behind !compact (source + overflow)', () => {
+    // RED if `messages.length > 0 && !compact` is restored.
+    expect(BRAINSTORM_TSX).not.toMatch(
+      /messages\.length\s*>\s*0\s*&&\s*!compact/,
+    );
+
+    const draft = {
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [
+        { role: 'user', text: 'A question' },
+        { role: 'assistant', text: 'An answer' },
+      ],
+      facts: [],
+    };
+    localStorage.setItem('brainstorm:draft', JSON.stringify(draft));
+    render(<BrainstormPage onClose={() => {}} compact />);
+
+    expect(screen.getByTestId('brainstorm-download-inline')).toBeInTheDocument();
+    expect(screen.getByTestId('brainstorm-header-overflow')).toBeInTheDocument();
+  });
+
+  it('Ivy: compact overflow menu Download triggers the same export path', () => {
+    const mockCreateObjectURL = vi.fn().mockReturnValue('blob:mock-url');
+    const mockRevokeObjectURL = vi.fn();
+    global.URL.createObjectURL = mockCreateObjectURL;
+    global.URL.revokeObjectURL = mockRevokeObjectURL;
+    const mockClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    const draft = {
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [
+        { role: 'user', text: 'My question' },
+        { role: 'assistant', text: 'My answer' },
+      ],
+      facts: [],
+    };
+    localStorage.setItem('brainstorm:draft', JSON.stringify(draft));
+    render(<BrainstormPage onClose={() => {}} compact />);
+
+    fireEvent.click(screen.getByTestId('brainstorm-header-overflow'));
+    fireEvent.click(screen.getByTestId('menu-item-download'));
+
+    expect(mockCreateObjectURL).toHaveBeenCalled();
+    const blob = mockCreateObjectURL.mock.calls[0][0] as Blob;
+    expect(blob.type).toBe('text/markdown');
+    expect(mockClick).toHaveBeenCalled();
+    expect(mockRevokeObjectURL).toHaveBeenCalled();
     mockClick.mockRestore();
   });
 

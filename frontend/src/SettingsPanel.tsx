@@ -89,6 +89,12 @@ interface Props {
   initialCategory?: SettingsCategoryId;
   /** SKY-11237: active vault root path — used to scope appearance settings per-vault. */
   activeVaultRoot?: string;
+  /**
+   * Shield/Ivy: when a vault-switch flush failed/refused, DesktopShell parks the
+   * switch and passes this so the footer offers Retry / Switch anyway — never
+   * trap the user and never discard silently.
+   */
+  onFlushSwitchChoice?: (choice: 'retry' | 'switch-anyway') => void;
 }
 
 /** Shield 5(a) / N2: exact fixed string the main process returns on appDataCleared. */
@@ -97,7 +103,16 @@ export const APP_DATA_CLEARED_MESSAGE = 'App data was cleared — restart Mythos
 const SETTINGS_CATS: readonly SettingsCategoryId[] = SETTINGS_CATEGORIES.map((c) => c.id);
 type SettingsCat = SettingsCategoryId;
 
-export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusPrefs, onFocusPrefsChange, initialCategory, activeVaultRoot }: Props) {
+export default function SettingsPanel({
+  onClose,
+  onCloseBlocked,
+  onSaved,
+  focusPrefs,
+  onFocusPrefsChange,
+  initialCategory,
+  activeVaultRoot,
+  onFlushSwitchChoice,
+}: Props) {
   // Ivy H3: F2#15 owns save/close (handleClose below). Note-view toggles write immediately (no F4 draft).
 
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -593,6 +608,11 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
   // Expose close + save-without-close flush to DesktopShell.
   // Probe H1: vault switch awaits __mythosSettingsFlush before loadVault
   // unmounts this panel (Settings must stay under .desktop-shell__main-col).
+  // Shield/Ivy: failures surface saveError and return false so DesktopShell
+  // parks the switch and offers Retry / Switch anyway (no silent discard).
+  // Bad API key: save the rest with the last good key (same as close), return
+  // false, and show the choice — typed key is discarded only if user picks
+  // Switch anyway.
   const flushSave = useCallback((): Promise<boolean> => {
     // Always read the latest builder — vault-switch may call flush in the same
     // tick as a Model & keys edit, before this callback identity refreshes.
@@ -606,9 +626,24 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
         applyLiquidNeonTokens(lg, bgPreviewUrl);
         applyPageBackgroundTokens(pageBg);
         onSaved?.(payload);
+        if (heldBadKey) {
+          setSaveError(
+            'API key not saved — fix it and Retry, or Switch anyway to discard the typed key.',
+          );
+          return false;
+        }
+        setSaveError(null);
         return true;
       })
-      .catch(() => false);
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : '';
+        setSaveError(
+          msg === APP_DATA_CLEARED_MESSAGE
+            ? msg
+            : "Couldn't save settings. Try again.",
+        );
+        return false;
+      });
   }, [apiKeyError, settings.apiKey, buildSettingsPayload, writeSettingsPayload, lg, bgPreviewUrl, pageBg, onSaved]);
 
   // Probe H1: keep window flush pointer on a ref so DesktopShell always invokes
@@ -622,12 +657,16 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
       __mythosSettingsFlush?: () => Promise<boolean>;
     };
     w.__mythosSettingsRequestClose = handleClose;
-    w.__mythosSettingsFlush = () => flushSaveRef.current();
+    // Own the flush pointer the same way as requestClose: cleanup must only
+    // delete if this panel's function is still installed (fast close/reopen
+    // can install a newer panel's flush before this effect cleans up).
+    const flushFn = () => flushSaveRef.current();
+    w.__mythosSettingsFlush = flushFn;
     return () => {
       if (w.__mythosSettingsRequestClose === handleClose) {
         delete w.__mythosSettingsRequestClose;
       }
-      if (w.__mythosSettingsFlush) {
+      if (w.__mythosSettingsFlush === flushFn) {
         delete w.__mythosSettingsFlush;
       }
     };
@@ -1237,10 +1276,35 @@ export default function SettingsPanel({ onClose, onCloseBlocked, onSaved, focusP
         </div>
 
         {/* F2#15: no Save button — all categories auto-save on exit.
-            Appearance still live-persists; footer only shows status / debug. */}
+            Appearance still live-persists; footer only shows status / debug.
+            Shield/Ivy: vault-switch flush failure adds Retry / Switch anyway. */}
         {(saveError || savedOk || import.meta.env.VITE_MYTHOS_DEV === '1') && (
         <div className="settings-footer">
-          {saveError && <p className="settings-error-msg" role="alert">{saveError}</p>}
+          {saveError && (
+            <div className="settings-flush-switch-error" data-testid="settings-flush-switch-error">
+              <p className="settings-error-msg" role="alert">{saveError}</p>
+              {onFlushSwitchChoice && (
+                <div className="settings-flush-switch-actions">
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-secondary"
+                    data-testid="settings-flush-retry"
+                    onClick={() => onFlushSwitchChoice('retry')}
+                  >
+                    Retry
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-btn settings-btn-cancel"
+                    data-testid="settings-flush-switch-anyway"
+                    onClick={() => onFlushSwitchChoice('switch-anyway')}
+                  >
+                    Switch anyway — discard unsaved settings
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {savedOk && <p className="settings-saved-msg" aria-live="polite">Settings saved.</p>}
           {import.meta.env.VITE_MYTHOS_DEV === '1' && (
             <div className="settings-debug-section">

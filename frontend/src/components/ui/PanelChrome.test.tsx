@@ -177,23 +177,49 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(chrome?.[1] ?? '').not.toContain('container-type');
   });
 
-  // Probe H2: Brainstorm non-compact must wrap through 1100 so mid widths
-  // (400/500/600) never crush the title or overlap controls.
-  // Critic hard 3: standalone Brainstorm is exempt from the 36px clamp.
-  it('Probe H2 / Critic hard 3: Brainstorm .pc-header exempt + wraps ≤1100px', () => {
+  // Probe H2 / Ivy GO (b) / Critic hard 2+3: ALL Brainstorm headers (incl.
+  // compact Notes Agent) exempt from 36px clamp; wrap below 701; ≥701 one row.
+  it('Probe H2 / Critic hard 2+3: Brainstorm .pc-header (incl compact) exempt + wraps ≤700px', () => {
+    // Ivy (b): compact must NOT be carved out of the exemption.
     expect(PANEL_CSS).toMatch(
-      /\.pc-header\.brainstorm-header:not\(\.brainstorm-header--compact\)\s*\{[\s\S]*max-height:\s*none/,
+      /\.pc-header\.brainstorm-header\s*\{[\s\S]*max-height:\s*none/,
     );
     expect(PANEL_CSS).toMatch(
-      /\.pc-header\.brainstorm-header:not\(\.brainstorm-header--compact\)\s*\{[\s\S]*overflow:\s*visible/,
+      /\.pc-header\.brainstorm-header\s*\{[\s\S]*overflow:\s*visible/,
+    );
+    expect(PANEL_CSS).not.toMatch(
+      /\.pc-header\.brainstorm-header:not\(\.brainstorm-header--compact\)/,
     );
     expect(PANEL_CSS).toMatch(
-      /\.pc-header\.brainstorm-header:not\(\.brainstorm-header--compact\)\s+\.pc-header-title-group\s*\{[\s\S]*min-width:\s*3rem/,
+      /\.pc-header\.brainstorm-header\s+\.pc-header-title-group\s*\{[\s\S]*min-width:\s*3rem/,
     );
-    expect(PANEL_CSS).toMatch(/@container\s+pc-chrome\s*\(max-width:\s*1100px\)/);
+    expect(PANEL_CSS).toMatch(/@container\s+pc-chrome\s*\(max-width:\s*700px\)/);
     expect(PANEL_CSS).toMatch(
-      /@container\s+pc-chrome\s*\(max-width:\s*1100px\)[\s\S]*\.pc-header\.brainstorm-header:not\(\.brainstorm-header--compact\)\s+\.pc-header-actions\s*\{[\s\S]*flex:\s*1\s+1\s+100%/,
+      /@container\s+pc-chrome\s*\(max-width:\s*700px\)[\s\S]*\.pc-header\.brainstorm-header\s+\.pc-header-actions\s*\{[\s\S]*flex:\s*1\s+1\s+100%/,
     );
+    // Compact Notes Agent: main-height packing (no forced full actions row;
+    // start flex-basis 0% so 500px stays one row like main; ≤400 forces
+    // start min-width so ≤340 wraps to ~107 with title visible).
+    expect(PANEL_CSS).toMatch(
+      /\.pc-header\.brainstorm-header\.brainstorm-header--compact\s+\.pc-header-actions\s*\{[\s\S]*flex:\s*0\s+0\s+auto/,
+    );
+    expect(PANEL_CSS).toMatch(
+      /\.pc-header\.brainstorm-header\.brainstorm-header--compact\s+\.pc-header-actions\s*\{[\s\S]*flex-wrap:\s*nowrap/,
+    );
+    expect(PANEL_CSS).not.toMatch(
+      /\.pc-header\.brainstorm-header\.brainstorm-header--compact\s+\.pc-header-actions\s*\{[\s\S]*overflow-x:\s*auto/,
+    );
+    expect(PANEL_CSS).toMatch(
+      /\.pc-header\.brainstorm-header\.brainstorm-header--compact\s+\.pc-header-start\s*\{[\s\S]*flex:\s*1\s+1\s+0%/,
+    );
+    expect(PANEL_CSS).toMatch(
+      /\.pc-header\.brainstorm-header\.brainstorm-header--compact\s+\.pc-header-title-group\s*\{[\s\S]*min-width:\s*3rem/,
+    );
+    expect(PANEL_CSS).toMatch(
+      /@container\s+pc-chrome\s*\(max-width:\s*400px\)[\s\S]*\.pc-header\.brainstorm-header\.brainstorm-header--compact\s+\.pc-header-start\s*\{[\s\S]*min-width:\s*7rem/,
+    );
+    // ≥701 must stay one row (no 1100 wrap that forced a second actions row).
+    expect(PANEL_CSS).not.toMatch(/@container\s+pc-chrome\s*\(max-width:\s*1100px\)/);
   });
 
   it('renders pc-header-host as the @container ancestor of .pc-header', () => {

@@ -760,6 +760,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Critic H6: category navigates in place via initialCategory + useEffect —
   // do NOT remount Settings (key bump discarded unsaved edits).
   const [settingsInitialCategory, setSettingsInitialCategory] = useState<SettingsCategoryId>('appearance');
+  // Shield/Ivy: park vault switch when Settings flush fails — Retry / Switch anyway.
+  const [pendingVaultSwitch, setPendingVaultSwitch] = useState<{
+    vaultRoot: string;
+    source: 'tile' | 'announce';
+  } | null>(null);
+  const pendingVaultSwitchRef = useRef(pendingVaultSwitch);
+  pendingVaultSwitchRef.current = pendingVaultSwitch;
   const [historyOpen, setHistoryOpen] = useState(false);
   // SKY-11048: nav-rail vault tiles — every registered Mythos vault, always
   // fetched (even a lone vault renders a tile + the `+` tile). The raw list
@@ -1863,7 +1870,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     notifyMythosActiveVaultChanged(); // SKY-8882: re-probe migration status for the new vault
   }, [loadVault, loadVaults]);
 
-  // Probe H1: when Settings is open, flush to disk before loadVault unmounts it.
+  // Probe H1 + Shield/Ivy: when Settings is open, flush before loadVault.
+  // flush false → park switch; keep Settings open; Retry / Switch anyway.
   const handleProjectSwitched = useCallback((vaultRoot: string) => {
     if (!settingsOpenRef.current) {
       applyProjectSwitched(vaultRoot);
@@ -1875,7 +1883,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       applyProjectSwitched(vaultRoot);
       return;
     }
-    void flush().finally(() => { applyProjectSwitched(vaultRoot); });
+    void flush().then((ok) => {
+      if (ok) {
+        setPendingVaultSwitch(null);
+        applyProjectSwitched(vaultRoot);
+        return;
+      }
+      setPendingVaultSwitch({ vaultRoot, source: 'announce' });
+    });
   }, [applyProjectSwitched]);
 
   // Handle project switches pushed from main process — must go through
@@ -1899,25 +1914,62 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // nav rail stays clickable — M28 absolute overlay). Awaiting the flush
   // persists Model & keys edits to disk so the remount's settingsGet rehydrates
   // them; settingsHydratedRef still protects mid-open Appearance-only overlays.
-  const flushOpenSettings = useCallback(async (): Promise<void> => {
-    if (!settingsOpen) return;
+  // Shield/Ivy: returns false when flush refused — caller must NOT switch.
+  const flushOpenSettings = useCallback(async (): Promise<boolean> => {
+    if (!settingsOpen) return true;
     const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
       .__mythosSettingsFlush;
-    if (flush) await flush();
+    if (!flush) return true;
+    return flush();
   }, [settingsOpen]);
 
-  const switchToVault = useCallback((vaultId: string): Promise<void> => {
-    if (vaultId === activeVaultRoot) return Promise.resolve();
+  const completeVaultSwitch = useCallback(async (
+    vaultId: string,
+    source: 'tile' | 'announce',
+  ): Promise<void> => {
+    if (source === 'announce') {
+      applyProjectSwitched(vaultId);
+      return;
+    }
     const entry = navRailProjects.find((p) => p.vaultRoot === vaultId);
-    // Already flushed above — call applyProjectSwitched directly (not
-    // handleProjectSwitched, which would flush again and defer).
-    return flushOpenSettings().then(() => (
-      window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot)
-        .then((res) => { if (res?.switched) applyProjectSwitched(vaultId); })
-        .catch(() => { /* switch failed — caller proceeds against whatever is active */ })
-      ?? Promise.resolve()
-    ));
-  }, [activeVaultRoot, navRailProjects, applyProjectSwitched, flushOpenSettings]);
+    await (window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot)
+      .then((res) => { if (res?.switched) applyProjectSwitched(vaultId); })
+      .catch(() => { /* switch failed — stay on current vault */ })
+      ?? Promise.resolve());
+  }, [navRailProjects, applyProjectSwitched]);
+
+  const switchToVault = useCallback(async (vaultId: string): Promise<void> => {
+    if (vaultId === activeVaultRoot) return;
+    const ok = await flushOpenSettings();
+    if (!ok) {
+      setPendingVaultSwitch({ vaultRoot: vaultId, source: 'tile' });
+      return;
+    }
+    setPendingVaultSwitch(null);
+    // Already flushed — apply via projectSwitch (not handleProjectSwitched).
+    await completeVaultSwitch(vaultId, 'tile');
+  }, [activeVaultRoot, flushOpenSettings, completeVaultSwitch]);
+
+  const handleFlushSwitchChoice = useCallback(async (choice: 'retry' | 'switch-anyway') => {
+    const pending = pendingVaultSwitchRef.current;
+    if (!pending) return;
+    if (choice === 'switch-anyway') {
+      // Discard unsaved: close Settings without flush, then switch. Plain notice.
+      setPendingVaultSwitch(null);
+      settingsOpenRef.current = false;
+      setSettingsOpen(false);
+      showLnToast('Switched vault — unsaved settings were discarded.');
+      await completeVaultSwitch(pending.vaultRoot, pending.source);
+      return;
+    }
+    // Retry — re-run flush; switch only on success.
+    const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
+      .__mythosSettingsFlush;
+    const ok = flush ? await flush() : true;
+    if (!ok) return;
+    setPendingVaultSwitch(null);
+    await completeVaultSwitch(pending.vaultRoot, pending.source);
+  }, [completeVaultSwitch]);
 
   const handleVaultTileSelect = useCallback((vaultId: string) => {
     switchToVault(vaultId);
@@ -6553,6 +6605,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           activeVaultRoot={activeVaultRoot}
           onClose={handleSettingsClose}
           onCloseBlocked={handleSettingsCloseBlocked}
+          onFlushSwitchChoice={pendingVaultSwitch ? handleFlushSwitchChoice : undefined}
           onSaved={(s) => {
             setAppSettings(s);
             // SKY-11237: apply the saved vault's per-vault appearance, falling back to global.

@@ -140,42 +140,98 @@
   }
 }
 
-/* Critic hard 3 + Probe H2: standalone Brainstorm page header (non-compact) is
-   exempt from the F2#12 36px clamp — title+subtitle is ~50px and main renders
-   it fully. Compact sidebar Brainstorm keeps the 36px bar. Always unlock
-   height/overflow; wrap/stack actions through 1100 so Back never overlaps the
-   mode switch (~330–880) and title never collapses to 0. */
-.pc-header.brainstorm-header:not(.brainstorm-header--compact) {
-  flex-wrap: wrap;
-  align-items: flex-start;
+/* Critic hard 2/3 + Probe H2 / Ivy GO (b): ALL Brainstorm headers (standalone
+   AND compact Notes Agent) are exempt from the F2#12 36px clamp. Compact at
+   ~340px AI-on was clipping title/subtitle and letting the preset cover ← Back;
+   main shows ~107px readable (2-row). ≥701px stays ONE action row (~77px
+   standalone); if actions won't fit, they overflow horizontally (no second
+   row). <701 standalone may wrap; title min-width 3rem; no Back/preset
+   overlaps. Compact packing overrides below match main heights per width. */
+.pc-header.brainstorm-header {
+  flex-wrap: nowrap;
+  align-items: center;
   height: auto;
   max-height: none;
   min-height: var(--panel-top-bar-height, 36px);
   overflow: visible;
-  row-gap: var(--space-2);
 }
 
-.pc-header.brainstorm-header:not(.brainstorm-header--compact) .pc-header-title-group {
+.pc-header.brainstorm-header .pc-header-title-group {
   flex: 1 1 auto;
   min-width: 3rem;
 }
 
-.pc-header.brainstorm-header:not(.brainstorm-header--compact) .pc-header-actions {
-  flex-wrap: wrap;
+.pc-header.brainstorm-header .pc-header-actions {
+  flex-wrap: nowrap;
   flex-shrink: 0;
   min-width: 0;
+  /* ≥701 one-row rule: secondary actions may clip/scroll rather than wrap. */
+  overflow-x: auto;
 }
 
-@container pc-chrome (max-width: 1100px) {
-  .pc-header.brainstorm-header:not(.brainstorm-header--compact) .pc-header-start {
+@container pc-chrome (max-width: 700px) {
+  .pc-header.brainstorm-header {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: var(--space-2);
+  }
+  .pc-header.brainstorm-header .pc-header-start {
     flex: 1 1 auto;
     min-width: 0;
     max-width: 100%;
   }
-  .pc-header.brainstorm-header:not(.brainstorm-header--compact) .pc-header-actions {
+  .pc-header.brainstorm-header .pc-header-actions {
     flex: 1 1 100%;
     flex-wrap: wrap;
     justify-content: flex-start;
     min-width: 0;
+    overflow-x: visible;
+  }
+}
+
+/* Compact Notes Agent: match main packing heights (Electron: 107 @ ≤340,
+   75 @ 500/700). Standalone ≤700 still forces a full actions row above;
+   compact must NOT — main keeps the preset+Mute+Download cluster on one
+   row and only wraps start/actions when they cannot share a row. Overrides
+   the ≤700 rule via higher specificity.
+   Critical: start uses flex-basis 0% (main's `flex: 1`) so the title group
+   can shrink/ellipsis and keep actions on the same row at 500px.
+   Actions stay nowrap but must fit inside the bar (no overflow-x scroll —
+   that left New Session outside getBoundingClientRect and failed e2e).
+   Download is never hidden: ≤400 moves it into BrainstormPage's ⋯ overflow. */
+.pc-header.brainstorm-header.brainstorm-header--compact {
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: var(--space-2);
+}
+
+.pc-header.brainstorm-header.brainstorm-header--compact .pc-header-start {
+  flex: 1 1 0%;
+  min-width: 0;
+  max-width: none;
+}
+
+.pc-header.brainstorm-header.brainstorm-header--compact .pc-header-title-group {
+  flex: 1 1 auto;
+  min-width: 3rem;
+}
+
+.pc-header.brainstorm-header.brainstorm-header--compact .pc-header-actions {
+  /* flex-basis auto + no grow: wider hosts share one row (main 75 @500/700).
+     Tighter BrainstormPage compact button pad keeps New Session inside. */
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  min-width: 0;
+  max-width: 100%;
+  overflow: visible;
+  gap: 4px;
+}
+
+/* ≤400: force start min so Back+title cannot crush beside actions — wraps
+   to main's ~107 two-row pack at natural/340. Wider hosts stay one row (75). */
+@container pc-chrome (max-width: 400px) {
+  .pc-header.brainstorm-header.brainstorm-header--compact .pc-header-start {
+    min-width: 7rem;
   }
 }
