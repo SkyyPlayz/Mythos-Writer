@@ -5,6 +5,9 @@ import {
   serializeSceneNotes,
   promotedSceneNoteName,
   buildPromotedSceneNoteContent,
+  buildNoteStoreKey,
+  noteStoreKeyForTier,
+  NOTE_TIERS,
 } from './sceneNotes';
 
 describe('parseSceneNotes / serializeSceneNotes', () => {
@@ -36,6 +39,38 @@ describe('parseSceneNotes / serializeSceneNotes', () => {
       'One',
       'Two',
     ]);
+  });
+});
+
+describe('F5 note store keys per tier', () => {
+  it('scene keys stay bare UUIDs (brainstorm bridge compat)', () => {
+    expect(buildNoteStoreKey('scene', 'sc1')).toBe('sc1');
+  });
+
+  it('book/part/chapter use a stable prefix', () => {
+    expect(buildNoteStoreKey('book', 'story-1')).toBe('book:story-1');
+    expect(buildNoteStoreKey('part', 'part-1')).toBe('part:part-1');
+    expect(buildNoteStoreKey('chapter', 'ch-1')).toBe('chapter:ch-1');
+  });
+
+  it('book-scoped Part ids produce distinct store keys (H2)', () => {
+    const glass = { bookId: 'glass-tide', partId: 'glass-tide/Part 1', chapterId: 'c1', sceneId: 's1' };
+    const salt = { bookId: 'salt-crown', partId: 'salt-crown/Part 1', chapterId: 'c2', sceneId: 's2' };
+    expect(noteStoreKeyForTier('part', glass)).toBe('part:glass-tide/Part 1');
+    expect(noteStoreKeyForTier('part', salt)).toBe('part:salt-crown/Part 1');
+    expect(noteStoreKeyForTier('part', glass)).not.toBe(noteStoreKeyForTier('part', salt));
+  });
+
+  it('noteStoreKeyForTier returns null when the tier id is missing', () => {
+    const ids = { bookId: 'b1', partId: null, chapterId: 'c1', sceneId: 's1' };
+    expect(noteStoreKeyForTier('book', ids)).toBe('book:b1');
+    expect(noteStoreKeyForTier('part', ids)).toBeNull();
+    expect(noteStoreKeyForTier('chapter', ids)).toBe('chapter:c1');
+    expect(noteStoreKeyForTier('scene', ids)).toBe('s1');
+  });
+
+  it('exposes all four tiers in order', () => {
+    expect([...NOTE_TIERS]).toEqual(['book', 'part', 'chapter', 'scene']);
   });
 });
 

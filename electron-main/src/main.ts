@@ -524,12 +524,14 @@ import { createMythosVault, ensureMythosV2SeedMarker } from './mythosFormat/crea
 import { createVaultFromOptions } from './mythosFormat/createVaultFromOptions.js';
 import { migrateVaultToMultiInner } from './mythosFormat/migrateMultiInner.js';
 import {
-  clearAgentMemory,
+  createAgentsVaultClearMemoryHandler,
   ensureAgentsPartnerFiles,
   listAgentsVaultStats,
   parsePartnerIdentityFromFile,
+  resolveKeysDir,
   syncPartnerIdentityToFile,
 } from './mythosFormat/agentsVaultPartner.js';
+import { runNotesTierContext } from './notesTierContext.js';
 import {
   addCrossVaultLink,
   getVaultAccess,
@@ -1158,6 +1160,9 @@ function saveVaultSettings(updates: Partial<VaultSettings>): void {
 }
 
 const getVaultRoot = () => loadVaultSettings().vaultRoot;
+// agentsVault:clearMemory — extracted body wired through the handlers map
+// (setupIpcMain applies the shared top-frame guard).
+const handleAgentsVaultClearMemory = createAgentsVaultClearMemoryHandler(getVaultRoot);
 // M5 VERSION GATE: v0.4 vaults keep `manifest.json` at the Story Vault root;
 // MythosVault v2 vaults (mythos.json beside the Story Vault) route the legacy
 // manifest to a regenerable cache under `.mythos/` — canonical structure
@@ -1191,10 +1196,11 @@ const getNotesVaultRoot = () =>
   notesRootForStoryVault(getVaultRoot())
   ?? loadVaultSettings().notesVaultRoot
   ?? defaultNotesVaultRoot();
-// SKY-10952: Agent Vault only exists as a sibling inside a v2 MythosVault
-// root. Legacy (twin-root) vaults have no Agent Vault — sessions there keep
-// living under Notes Vault/Sessions/ (pre-existing behavior, out of scope).
-const getAgentVaultRoot = () => {
+// SKY-10952: Agent Vault lives as a sibling inside a v2 MythosVault root.
+// Legacy twin-root vaults keep sessions/boards under Notes Vault/Sessions/
+// (pre-existing brainstorm/coach path). F5 Shield fail-closed applies to
+// agentsVault:* via resolveKeysDir — Clear memory never reaches Notes Vault.
+const getAgentVaultRoot = (): string => {
   const mythosRoot = mythosRootForStoryVault(getVaultRoot());
   return mythosRoot !== null ? agentVaultRootFor(mythosRoot) : getNotesVaultRoot();
 };
@@ -3031,7 +3037,7 @@ const handlers: IpcHandlers = {
     return result;
   },
 
-  // SKY-55: per-scene notes
+  // SKY-55: per-scene / per-tier notes (sceneId is the opaque store key)
   [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => {
     ensureVaultDir();
     const content = getNoteBySceneId(payload.sceneId);
@@ -3041,6 +3047,43 @@ const handlers: IpcHandlers = {
     ensureVaultDir();
     upsertNote(payload.sceneId, payload.content);
     return { saved: true };
+  },
+  // F5: resolve book/part/chapter/scene ids for the notes-per-tier pane
+  [IPC_CHANNELS.NOTES_TIER_CONTEXT]: (payload: { sceneId: string }) => {
+    ensureVaultDir();
+    const sceneId = typeof payload?.sceneId === 'string' ? payload.sceneId.trim() : '';
+    return runNotesTierContext(
+      sceneId,
+      () => readManifest(getManifestPath()),
+      (err) => sanitizeIpcError(IPC_CHANNELS.NOTES_TIER_CONTEXT, err),
+    );
+  },
+
+  // F5 Critic Path A: sole new modelKeys channel — showItemInFolder (no payload).
+  // Location / Clear / Open reuse agentsVault:* on the same Agent Vault folder.
+  [IPC_CHANNELS.MODEL_KEYS_SHOW_ITEM_IN_FOLDER]: async () => {
+    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
+    if (!mythosRoot) return { opened: false, error: 'No Mythos vault open' };
+    try {
+      const gated = resolveKeysDir(mythosRoot);
+      if (!gated.ok) {
+        return {
+          opened: false,
+          error: sanitizeIpcError(
+            IPC_CHANNELS.MODEL_KEYS_SHOW_ITEM_IN_FOLDER,
+            new Error(gated.error),
+          ).error,
+        };
+      }
+      shell.showItemInFolder(gated.keysDir);
+      return { opened: true };
+    } catch (e) {
+      // Shield R2: never forward raw FS paths to the renderer
+      return {
+        opened: false,
+        error: sanitizeIpcError(IPC_CHANNELS.MODEL_KEYS_SHOW_ITEM_IN_FOLDER, e).error,
+      };
+    }
   },
 
   // SKY-1391: brainstorm → writing-panel bridge
@@ -3391,44 +3434,115 @@ const handlers: IpcHandlers = {
   },
 
   // Slice D — Agents Vault + vaultAccess + seed + migrate + stash
+  // F5 Shield: every agentsVault:* file op goes through resolveKeysDir first.
   [IPC_CHANNELS.AGENTS_VAULT_ENSURE]: () => {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
     if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
-    const ensured = ensureAgentsPartnerFiles(mythosRoot);
-    return { ok: true as const, created: ensured.created, agentVaultPath: ensured.agentVaultPath };
+    try {
+      const gated = resolveKeysDir(mythosRoot);
+      if (!gated.ok) {
+        return {
+          ok: false as const,
+          error: sanitizeIpcError(IPC_CHANNELS.AGENTS_VAULT_ENSURE, new Error(gated.error)).error,
+        };
+      }
+      const ensured = ensureAgentsPartnerFiles(mythosRoot);
+      return { ok: true as const, created: ensured.created, agentVaultPath: ensured.agentVaultPath };
+    } catch (e) {
+      return {
+        ok: false as const,
+        error: sanitizeIpcError(IPC_CHANNELS.AGENTS_VAULT_ENSURE, e).error,
+      };
+    }
   },
   [IPC_CHANNELS.AGENTS_VAULT_STATS]: () => {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
     if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
-    const mythos = tryReadMythosFile(mythosRoot);
-    const stats = listAgentsVaultStats(mythosRoot);
-    return { ok: true as const, ...stats, scope: mythos?.name ?? 'This vault' };
+    try {
+      const mythos = tryReadMythosFile(mythosRoot);
+      const stats = listAgentsVaultStats(mythosRoot);
+      if (!stats.ok) {
+        return {
+          ok: false as const,
+          error: sanitizeIpcError(IPC_CHANNELS.AGENTS_VAULT_STATS, new Error(stats.error)).error,
+        };
+      }
+      return {
+        ok: true as const,
+        path: stats.path,
+        name: stats.name,
+        files: stats.files,
+        chips: stats.chips,
+        scope: mythos?.name ?? 'This vault',
+      };
+    } catch (e) {
+      return {
+        ok: false as const,
+        error: sanitizeIpcError(IPC_CHANNELS.AGENTS_VAULT_STATS, e).error,
+      };
+    }
   },
-  [IPC_CHANNELS.AGENTS_VAULT_CLEAR_MEMORY]: () => {
-    const mythosRoot = mythosRootForStoryVault(getVaultRoot());
-    if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
-    return clearAgentMemory(mythosRoot);
-  },
+  [IPC_CHANNELS.AGENTS_VAULT_CLEAR_MEMORY]: handleAgentsVaultClearMemory,
   [IPC_CHANNELS.AGENTS_VAULT_REVEAL]: async () => {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
     if (!mythosRoot) return { opened: false, error: 'No Mythos vault open' };
-    const stats = listAgentsVaultStats(mythosRoot);
-    const err = await shell.openPath(stats.path);
-    return { opened: !err, ...(err ? { error: err } : {}) };
+    try {
+      const gated = resolveKeysDir(mythosRoot);
+      if (!gated.ok) {
+        return {
+          opened: false,
+          error: sanitizeIpcError(IPC_CHANNELS.AGENTS_VAULT_REVEAL, new Error(gated.error)).error,
+        };
+      }
+      const err = await shell.openPath(gated.keysDir);
+      return { opened: !err, ...(err ? { error: err } : {}) };
+    } catch (e) {
+      return {
+        opened: false,
+        error: sanitizeIpcError(IPC_CHANNELS.AGENTS_VAULT_REVEAL, e).error,
+      };
+    }
   },
   [IPC_CHANNELS.AGENTS_VAULT_SYNC_PARTNER]: (payload: { name?: string; icon?: string }) => {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
     if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
-    const name = typeof payload?.name === 'string' ? payload.name.trim().slice(0, 64) : 'Mythos';
-    const icon = typeof payload?.icon === 'string' ? payload.icon.trim().slice(0, 32) : 'sparkle';
-    syncPartnerIdentityToFile(mythosRoot, { name: name || 'Mythos', icon: icon || 'sparkle' });
-    return { ok: true as const };
+    try {
+      const gated = resolveKeysDir(mythosRoot);
+      if (!gated.ok) {
+        return {
+          ok: false as const,
+          error: sanitizeIpcError(IPC_CHANNELS.AGENTS_VAULT_SYNC_PARTNER, new Error(gated.error)).error,
+        };
+      }
+      const name = typeof payload?.name === 'string' ? payload.name.trim().slice(0, 64) : 'Mythos';
+      const icon = typeof payload?.icon === 'string' ? payload.icon.trim().slice(0, 32) : 'sparkle';
+      syncPartnerIdentityToFile(mythosRoot, { name: name || 'Mythos', icon: icon || 'sparkle' });
+      return { ok: true as const };
+    } catch (e) {
+      return {
+        ok: false as const,
+        error: sanitizeIpcError(IPC_CHANNELS.AGENTS_VAULT_SYNC_PARTNER, e).error,
+      };
+    }
   },
   [IPC_CHANNELS.AGENTS_VAULT_READ_PARTNER]: () => {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
     if (!mythosRoot) return { ok: false as const, error: 'No Mythos vault open' };
-    ensureAgentsPartnerFiles(mythosRoot);
-    return { ok: true as const, ...parsePartnerIdentityFromFile(mythosRoot) };
+    try {
+      const gated = resolveKeysDir(mythosRoot);
+      if (!gated.ok) {
+        return {
+          ok: false as const,
+          error: sanitizeIpcError(IPC_CHANNELS.AGENTS_VAULT_READ_PARTNER, new Error(gated.error)).error,
+        };
+      }
+      return { ok: true as const, ...parsePartnerIdentityFromFile(mythosRoot) };
+    } catch (e) {
+      return {
+        ok: false as const,
+        error: sanitizeIpcError(IPC_CHANNELS.AGENTS_VAULT_READ_PARTNER, e).error,
+      };
+    }
   },
   [IPC_CHANNELS.VAULT_ACCESS_GET]: () => {
     const mythosRoot = mythosRootForStoryVault(getVaultRoot());
