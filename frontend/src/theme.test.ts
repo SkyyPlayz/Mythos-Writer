@@ -452,6 +452,15 @@ describe('NotesTabPanel.css page-background (SKY-2102)', () => {
   it('notes-tab-center forces near-opaque surface under prefers-contrast: more', () => {
     expect(notesTabCss).toMatch(/prefers-contrast:\s*more/);
   });
+  // Probe N2 / Ivy H1: exact crop bar needs prototype frost behind search.
+  it('notes-tab-sidebar-left has blur(1px) saturate(1.5) for N2 crop parity', () => {
+    expect(notesTabCss).toMatch(
+      /\.notes-tab-sidebar-left\s*\{[^}]*backdrop-filter:\s*blur\(\s*1px\s*\)\s+saturate\(\s*1\.5\s*\)/,
+    );
+    expect(notesTabCss).toMatch(
+      /\.notes-tab-sidebar-left\s*\{[^}]*-webkit-backdrop-filter:\s*blur\(\s*1px\s*\)\s+saturate\(\s*1\.5\s*\)/,
+    );
+  });
 });
 
 // ─── SKY-2962: background scrim (Light↔Dark slider) wiring ───────────────────

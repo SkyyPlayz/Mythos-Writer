@@ -112,6 +112,10 @@
 @supports (backdrop-filter: blur(1px)) {
   .notes-tab-sidebar-left {
     background: var(--glass-panel-bg);
+    /* Probe N2 / Ivy H1: exact crop bar — prototype Notes panel frost behind
+       the translucent search box (blur(1px) saturate(1.5)). */
+    backdrop-filter: blur(1px) saturate(1.5);
+    -webkit-backdrop-filter: blur(1px) saturate(1.5);
   }
 }
 

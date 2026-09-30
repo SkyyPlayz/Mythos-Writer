@@ -1687,16 +1687,20 @@ describe('F4#8: search above toolbar', () => {
     expect(css).toMatch(/\.vb-notes-search-input\s*\{[\s\S]*?min-width:\s*0/);
     expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?flex-shrink:\s*0/);
     expect(css).toMatch(/\.vb-notes-toolbar\s*\{[\s\S]*?flex-shrink:\s*0/);
-    // Probe N2 fix-forward: input font/padding/placeholder + hover-only neon border.
-    expect(css).toMatch(/\.vb-notes-search-input\s*\{[\s\S]*?font-family:\s*inherit/);
+    // Probe N2 / Ivy H2–H3: exact Inter stack; padding/placeholder; resting --bh
+    // stays on hover (rendered prototype); no focus-within border flip.
+    expect(css).toMatch(
+      /\.vb-notes-search-input\s*\{[\s\S]*?font-family:\s*Inter,\s*system-ui,\s*sans-serif/,
+    );
+    expect(css).not.toMatch(/\.vb-notes-search-input\s*\{[\s\S]*?font-family:\s*inherit/);
     expect(css).toMatch(/\.vb-notes-search-input\s*\{[\s\S]*?padding:\s*1px\s+2px/);
     expect(css).toMatch(/\.vb-notes-search-input::placeholder\s*\{[\s\S]*?color:\s*rgb\(\s*117\s*,\s*117\s*,\s*117\s*\)/);
     // Default box uses neon --bh (goes red if swapped for grey).
     expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?border:[^;]*var\(--bh/);
     expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?border:[^;]*rgba\(\s*0\s*,\s*240\s*,\s*255/);
-    // Hover-only b1 neon — focus-within must NOT share the border-color rule.
-    expect(css).toMatch(/\.vb-notes-search:hover\s*\{[\s\S]*?border-color:\s*var\(--b1/);
-    expect(css).toMatch(/\.vb-notes-search:hover\s*\{[\s\S]*?rgba\(\s*0\s*,\s*240\s*,\s*255/);
+    // Ivy H3: red if hover (or focus-within) switches border to full --b1.
+    expect(css).not.toMatch(/\.vb-notes-search:hover\s*\{[\s\S]*?border-color:\s*var\(--b1/);
+    expect(css).not.toMatch(/\.vb-notes-search:hover\s*\{[\s\S]*?border-color:\s*rgba\(\s*0\s*,\s*240\s*,\s*255/);
     expect(css).not.toMatch(/\.vb-notes-search:focus-within\s*\{[\s\S]*?border-color/);
     expect(css).not.toMatch(/\.vb-notes-search:hover\s*,\s*\.vb-notes-search:focus-within/);
   });
