@@ -40,6 +40,10 @@ interface Props {
   onRenameScene?: (sceneId: string) => void;
   onDeleteChapter?: (storyId: string, chapterId: string) => void;
   onDeleteScene?: (storyId: string, chapterId: string, sceneId: string) => void;
+  /** F1#7/#8: rename a part (inline / context menu). */
+  onRenamePart?: (partId: string) => void;
+  /** F1#8: add a chapter under a specific part. */
+  onCreateChapterInPart?: (storyId: string, partId: string) => void;
 }
 
 export default function StoryNavigator({
@@ -61,6 +65,8 @@ export default function StoryNavigator({
   onRenameScene,
   onDeleteChapter,
   onDeleteScene,
+  onRenamePart,
+  onCreateChapterInPart,
 }: Props) {
   const [expandedStories, setExpandedStories] = useState<Set<string>>(new Set(stories.map((s) => s.id)));
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
@@ -140,12 +146,15 @@ export default function StoryNavigator({
     return result;
   }, [stories]);
 
-  // Auto-expand newly created stories/chapters so their children are visible
+  // Auto-expand newly created stories/chapters/parts so their children are visible
   // immediately (otherwise a just-created chapter/scene stays hidden under a
   // collapsed parent). Only acts on ids not seen before, so user collapses stick.
   const seenStoryIds = useRef<Set<string>>(new Set(stories.map((s) => s.id)));
   const seenChapterIds = useRef<Set<string>>(
     new Set(stories.flatMap((s) => s.chapters.map((c) => c.id)))
+  );
+  const seenPartIds = useRef<Set<string>>(
+    new Set(stories.flatMap((s) => s.parts?.map((p) => p.id) ?? []))
   );
   useEffect(() => {
     const newStoryIds = stories
@@ -154,6 +163,9 @@ export default function StoryNavigator({
     const newChapterIds = stories
       .flatMap((s) => s.chapters.map((c) => c.id))
       .filter((id) => !seenChapterIds.current.has(id));
+    const newPartIds = stories
+      .flatMap((s) => s.parts?.map((p) => p.id) ?? [])
+      .filter((id) => !seenPartIds.current.has(id));
     if (newStoryIds.length) {
       setExpandedStories((prev) => {
         const next = new Set(prev);
@@ -169,6 +181,14 @@ export default function StoryNavigator({
         return next;
       });
       newChapterIds.forEach((id) => seenChapterIds.current.add(id));
+    }
+    if (newPartIds.length) {
+      setExpandedParts((prev) => {
+        const next = new Set(prev);
+        newPartIds.forEach((id) => next.add(id));
+        return next;
+      });
+      newPartIds.forEach((id) => seenPartIds.current.add(id));
     }
   }, [stories]);
 
@@ -293,6 +313,34 @@ export default function StoryNavigator({
     items: MenuItemDef[];
     onAction: (id: string) => void;
   } | null>(null);
+
+  const openPartMenu = (e: React.MouseEvent, part: Part, story: Story) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const items: MenuItemDef[] = [
+      { id: 'rename', label: 'Rename…' },
+      { id: 'add-chapter', label: 'Add chapter' },
+    ];
+    // Add scene only when the part already has a chapter to host it.
+    const firstChapter = [...part.chapters].sort((a, b) => a.order - b.order)[0];
+    if (firstChapter) {
+      items.push({ id: 'add-scene', label: 'Add scene' });
+    }
+    setCtxMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items,
+      onAction: (id) => {
+        if (id === 'rename') onRenamePart?.(part.id);
+        else if (id === 'add-chapter') {
+          if (onCreateChapterInPart) onCreateChapterInPart(story.id, part.id);
+          else onCreateChapter(story.id);
+        } else if (id === 'add-scene' && firstChapter) {
+          onCreateScene(story.id, firstChapter.id);
+        }
+      },
+    });
+  };
 
   const openStoryMenu = (e: React.MouseEvent, story: Story) => {
     e.preventDefault();
@@ -513,8 +561,11 @@ export default function StoryNavigator({
 
             {expandedStories.has(story.id) && !isSimpleSinglePart(story) &&
               [...(story.parts ?? [])].sort((a, b) => a.order - b.order).map((part: Part, partIdx) => (
-                <div key={part.id} className="nav-part">
-                  <div className="nav-part-row">
+                <div key={part.id} className="nav-part" data-testid={`nav-part-${part.id}`}>
+                  <div
+                    className="nav-part-row"
+                    onContextMenu={(e) => openPartMenu(e, part, story)}
+                  >
                     <button
                       className="nav-part-toggle"
                       aria-expanded={expandedParts.has(part.id)}

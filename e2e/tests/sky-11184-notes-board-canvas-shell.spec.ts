@@ -487,3 +487,66 @@ test('SKY-11336: nested boards address correctly at depth 2 and persist there', 
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
 });
+
+// ─── F1#5 boards nav width persist (moved → e2e-shard-2 / test:e2e:notes-board-canvas) ───
+
+test('F1#5: boards nav width drag persists across SAME userData relaunch', async () => {
+  test.setTimeout(120_000);
+  test.skip(!fs.existsSync(MAIN_JS), 'needs npm run build:electron');
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'f1-w-'));
+  const vault = fs.mkdtempSync(path.join(os.tmpdir(), 'f1-w-v-'));
+  const notes = fs.mkdtempSync(path.join(os.tmpdir(), 'f1-w-n-'));
+  fs.mkdirSync(userData, { recursive: true });
+  fs.writeFileSync(path.join(userData, 'app-settings.json'), JSON.stringify({ onboardingComplete: true, theme: 'dark' }, null, 2));
+  fs.writeFileSync(path.join(userData, 'vault-settings.json'), JSON.stringify({ vaultRoot: vault, notesVaultRoot: notes }, null, 2));
+
+  let widthAfter = 0;
+  {
+    const app = await electron.launch({
+      args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...((process.platform !== 'darwin' && !process.env.DISPLAY) ? ['--headless'] : [])],
+      timeout: 60_000,
+    });
+    try {
+      const page = await app.firstWindow();
+      await page.waitForLoadState('domcontentloaded');
+      await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.locator('.wc-menu', { hasText: 'File' }).click();
+      await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
+      await page.locator('.nav-story-title').first().click().catch(() => {});
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();
+      const resize = page.getByTestId('boards-nav-resize');
+      await expect(resize).toBeVisible({ timeout: 10_000 });
+      await expect(resize).toHaveAttribute('tabindex', '0');
+      const nav = page.locator('.boards-tab-panel__left-nav');
+      const box = await resize.boundingBox();
+      expect(box).toBeTruthy();
+      await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(box!.x + 80, box!.y + box!.height / 2, { steps: 8 });
+      await page.mouse.up();
+      await page.waitForTimeout(200);
+      widthAfter = await nav.evaluate((el) => Math.round(el.getBoundingClientRect().width));
+      expect(widthAfter).toBeGreaterThan(180);
+    } finally {
+      await app.close();
+    }
+  }
+
+  const app2 = await electron.launch({
+    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', ...((process.platform !== 'darwin' && !process.env.DISPLAY) ? ['--headless'] : [])],
+    timeout: 60_000,
+  });
+  try {
+    const page2 = await app2.firstWindow();
+    await page2.waitForLoadState('domcontentloaded');
+    await expect(page2.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+    await page2.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();
+    const nav2 = page2.locator('.boards-tab-panel__left-nav');
+    await expect(nav2).toBeVisible({ timeout: 10_000 });
+    const widthReload = await nav2.evaluate((el) => Math.round(el.getBoundingClientRect().width));
+    expect(widthReload).toBe(widthAfter);
+  } finally {
+    await app2.close();
+  }
+});

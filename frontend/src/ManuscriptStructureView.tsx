@@ -29,6 +29,10 @@ interface ManuscriptStructureViewProps {
   ) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
   onCreateChapter: (storyId: string) => void;
+  /** F1#3: create a chapter inside a specific part. */
+  onCreateChapterInPart?: (storyId: string, partId: string) => void;
+  /** F1#3: move a chapter into another part. */
+  onMoveChapterToPart?: (storyId: string, chapterId: string, targetPartId: string) => void;
   /** Vault root used to scope beat assignment persistence */
   vaultRoot: string;
 }
@@ -52,6 +56,8 @@ export default function ManuscriptStructureView({
   onMoveScene,
   onCreateScene,
   onCreateChapter,
+  onCreateChapterInPart,
+  onMoveChapterToPart,
   vaultRoot,
 }: ManuscriptStructureViewProps): ReactElement {
   const [viewMode, setViewMode] = useState<ManuscriptViewMode>(loadViewMode);
@@ -298,6 +304,8 @@ export default function ManuscriptStructureView({
                 onReorderScenes={handleReorderScenes}
                 onMoveScene={handleMoveScene}
                 onCreateScene={onCreateScene}
+                onCreateChapterInPart={onCreateChapterInPart}
+                onMoveChapterToPart={onMoveChapterToPart}
                 onBeatAssign={handleBeatAssign}
                 announce={announce}
               />

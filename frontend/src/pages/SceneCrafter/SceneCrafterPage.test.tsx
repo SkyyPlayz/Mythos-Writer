@@ -877,12 +877,18 @@ describe('SceneCrafterPage — SKY-11213 Create Scene from Setup', () => {
 
   it('calls onCreateSceneFromSetup with current setup when clicked', async () => {
     const onCreateSceneFromSetup = vi.fn().mockResolvedValue(undefined);
+    const onOpenBoard = vi.fn();
+    (window as unknown as { api: unknown }).api = makeApi({
+      listNotesVault: vi.fn().mockResolvedValue({ items: [] }),
+      writeNotesVault: vi.fn().mockResolvedValue({ path: 'Boards/x.canvas.json' }),
+    });
     render(
       <SceneCrafterPage
         story={STORY}
         onOpenNote={vi.fn()}
         onOpenScene={vi.fn()}
         onCreateSceneFromSetup={onCreateSceneFromSetup}
+        onOpenBoard={onOpenBoard}
       />
     );
     await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
@@ -894,6 +900,48 @@ describe('SceneCrafterPage — SKY-11213 Create Scene from Setup', () => {
     const [setup] = (onCreateSceneFromSetup as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(setup).toHaveProperty('title');
     expect(setup).toHaveProperty('beats');
+    // F1#1: form-mapped board is opened after scene create
+    await waitFor(() => expect(onOpenBoard).toHaveBeenCalledTimes(1));
+    expect(onOpenBoard.mock.calls[0][0].name).toMatch(/board/i);
+  });
+
+  it('F1#1: Create Scene board includes mapped cards from setup fields', async () => {
+    const onCreateSceneFromSetup = vi.fn().mockResolvedValue(undefined);
+    const onOpenBoard = vi.fn();
+    const writeNotesVault = vi.fn().mockResolvedValue({ path: 'Boards/x.canvas.json' });
+    (window as unknown as { api: unknown }).api = makeApi({
+      listNotesVault: vi.fn().mockResolvedValue({ items: [] }),
+      writeNotesVault,
+    });
+    render(
+      <SceneCrafterPage
+        story={STORY}
+        onOpenNote={vi.fn()}
+        onOpenScene={vi.fn()}
+        onCreateSceneFromSetup={onCreateSceneFromSetup}
+        onOpenBoard={onOpenBoard}
+      />
+    );
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument());
+
+    const titleInput = screen.getByLabelText(/scene title/i);
+    await act(async () => {
+      fireEvent.change(titleInput, { target: { value: 'Broken Gate' } });
+    });
+    const goalInput = screen.queryByLabelText(/goal/i) ?? screen.queryByPlaceholderText(/goal/i);
+    if (goalInput) {
+      await act(async () => {
+        fireEvent.change(goalInput, { target: { value: 'Reach the door' } });
+      });
+    }
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /create scene/i })); });
+    await waitFor(() => expect(writeNotesVault).toHaveBeenCalled());
+    const [, content] = writeNotesVault.mock.calls[0] as [string, string];
+    const parsed = JSON.parse(content) as { nodes?: Array<{ text?: string }> };
+    const texts = (parsed.nodes ?? []).map((n) => n.text ?? '').join('\n');
+    expect(texts).toMatch(/Broken Gate/);
+    await waitFor(() => expect(onOpenBoard).toHaveBeenCalled());
   });
 
   it('shows error text when onCreateSceneFromSetup rejects', async () => {

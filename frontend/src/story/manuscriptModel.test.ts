@@ -316,6 +316,25 @@ describe('buildBlocks', () => {
     ]);
   });
 
+  it('F1#4: emits H1 + note-slot for empty parts (zero chapters)', () => {
+    const parted = mkStory();
+    const [ch1] = parted.chapters;
+    parted.parts = [
+      { id: 'p1', title: 'Part One', order: 0, note: [], chapters: [ch1], createdAt: NOW, updatedAt: NOW },
+      { id: 'p2', title: 'Part Two', order: 1, note: [], chapters: [], createdAt: NOW, updatedAt: NOW },
+    ];
+    parted.chapters = [ch1];
+    const heads = buildBlocks(parted, cur('book'), NONE)
+      .filter((b) => b.kind === 'h1' || b.kind === 'h2' || b.kind === 'note-slot')
+      .map((b) => `${b.kind}:${b.id}`);
+    expect(heads).toContain('h1:h1-p2');
+    expect(heads).toContain('note-slot:note-part-p2');
+    // Empty part still ordered after Part One's content
+    const p2Idx = heads.indexOf('h1:h1-p2');
+    const p1Idx = heads.indexOf('h1:h1-p1');
+    expect(p2Idx).toBeGreaterThan(p1Idx);
+  });
+
   it('scopes chapter zoom to the cursor chapter, including its H2 (SKY-11356: note-slot follows H2)', () => {
     const blocks = buildBlocks(story, cur('chapter', 1), NONE);
     // SKY-11356: the chapter's note-slot sits directly after its H2 at chapter depth

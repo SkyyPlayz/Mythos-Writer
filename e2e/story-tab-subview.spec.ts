@@ -199,3 +199,147 @@ test('AC-SV-05: Story Writer rail click lands on the editor after a Notes round-
   const editorTab = page.locator('[data-testid="story-subview-editor"]');
   await expect(editorTab).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
 });
+
+// ─── F1 gate tests (moved from f1-beta-gate → e2e-shard-1 / test:e2e:story-tab-subview) ───
+// STALE from shard move: original f1-beta-gate always File→New story before
+// touching msv-*. App repro on tip 999cfb79: no story → msv-root/toolbar/add-chapter
+// count 0; after New story → all 1. N1/H5 not implicated.
+
+async function answerTextPrompt(p: Page, text: string): Promise<void> {
+  const input = p.locator('.prompt-modal-input');
+  await expect(input).toBeVisible({ timeout: 5_000 });
+  await input.fill(text);
+  await p.locator('.prompt-modal-ok').click();
+}
+
+/** Restore the original gate's createAndSelectStory → Story Writer path. */
+async function ensureStoryManuscript(p: Page): Promise<void> {
+  await clickStoryNav(p);
+  if (await p.getByTestId('msv-toolbar').isVisible({ timeout: 1_500 }).catch(() => false)) return;
+  await p.locator('.wc-menu', { hasText: 'File' }).click();
+  await p.locator('.wc-menu-item', { hasText: 'New story' }).click();
+  await expect(p.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
+  await p.locator('.nav-story-title').first().click();
+  await p.keyboard.press('Escape').catch(() => {});
+  await clickStoryNav(p);
+  await expect(p.getByTestId('msv-toolbar')).toBeVisible({ timeout: 10_000 });
+}
+
+test('F1#13: msv-toolbar computed height is 36px', async () => {
+  test.skip(!fs.existsSync(MAIN_JS), 'needs build');
+  await ensureStoryManuscript(page);
+  const tb = page.getByTestId('msv-toolbar');
+  await expect(tb).toBeVisible({ timeout: 10_000 });
+  const h = await tb.evaluate((el) => Math.round(el.getBoundingClientRect().height));
+  expect(h).toBe(36);
+});
+
+test('F1#10: dropcap gated off — ::first-letter float none when class absent', async () => {
+  test.skip(!fs.existsSync(MAIN_JS), 'needs build');
+  await ensureStoryManuscript(page);
+  const root = page.getByTestId('msv-root');
+  await expect(root).toBeVisible({ timeout: 10_000 });
+  expect(await root.getAttribute('class')).not.toContain('msv-root--dropcap');
+  await page.getByRole('button', { name: /^Scene$/i }).click().catch(() => {});
+  await page.waitForTimeout(400);
+  const editor = page.locator('.block-editor--chromeless .ProseMirror, .ProseMirror').first();
+  if (await editor.isVisible({ timeout: 2_000 }).catch(() => false)) {
+    await editor.click();
+    await page.keyboard.type('Once upon a time the gates closed.');
+    await page.waitForTimeout(200);
+    const float = await page.evaluate(() => {
+      const p = document.querySelector('.msv-root:not(.msv-root--dropcap) .ProseMirror > p:first-child')
+        ?? document.querySelector('.ProseMirror > p:first-child');
+      return p ? getComputedStyle(p, '::first-letter').float : null;
+    });
+    expect(float).toBe('none');
+  }
+});
+
+test('F1#9: + Chapter via in-app modal keeps order across reload', async () => {
+  // Self-contained relaunch (own userData) — proves createChapter × editor-flush
+  // race does not wipe chapters from nav or manifest.
+  test.setTimeout(180_000);
+  test.skip(!fs.existsSync(MAIN_JS), 'needs build');
+  const ownUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f1-9-'));
+  const ownVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f1-9-v-'));
+  seedUserData(ownUserData, ownVault);
+
+  let titlesBefore: string[] = [];
+  {
+    const ownApp = await launchApp(ownUserData);
+    try {
+      const p = await firstWindow(ownApp);
+      await expect(p.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+      await p.locator('.wc-menu', { hasText: 'File' }).click();
+      await p.locator('.wc-menu-item', { hasText: 'New story' }).click();
+      await expect(p.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
+      await p.locator('.nav-story-title').first().click();
+      await p.keyboard.press('Escape').catch(() => {});
+      await clickStoryNav(p);
+      await expect(p.getByTestId('msv-toolbar')).toBeVisible({ timeout: 10_000 });
+
+      // Type then add chapters quickly — the unmount flush must not wipe them.
+      const editor = p.locator('.ProseMirror, [contenteditable="true"]').first();
+      if (await editor.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await editor.click();
+        await p.keyboard.type('Race seed prose.');
+      }
+      await p.getByTestId('msv-add-chapter').click();
+      await answerTextPrompt(p, 'Chapter Alpha');
+      await p.getByTestId('msv-add-chapter').click();
+      await answerTextPrompt(p, 'Chapter Bravo');
+      await p.getByTestId('msv-add-chapter').click();
+      await answerTextPrompt(p, 'Chapter Charlie');
+      await p.waitForTimeout(1200);
+
+      titlesBefore = (await p.locator('.nav-chapter-title').allTextContents()).map((t) => t.trim()).filter(Boolean);
+      expect(titlesBefore.filter((t) => /Alpha|Bravo|Charlie/.test(t))).toEqual(
+        expect.arrayContaining(['Chapter Alpha', 'Chapter Bravo', 'Chapter Charlie']),
+      );
+      const idx = (name: string) => titlesBefore.findIndex((t) => t.includes(name));
+      expect(idx('Alpha')).toBeLessThan(idx('Bravo'));
+      expect(idx('Bravo')).toBeLessThan(idx('Charlie'));
+
+      // Disk: manifest must list the three chapters in chrono order.
+      await expect.poll(() => {
+        try {
+          const man = JSON.parse(fs.readFileSync(path.join(ownVault, 'manifest.json'), 'utf-8'));
+          const story = man.stories?.[0];
+          const ch = (story?.parts?.[0]?.chapters ?? story?.chapters ?? []) as Array<{ title?: string; order?: number }>;
+          return ch
+            .slice()
+            .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+            .map((c) => c.title ?? '')
+            .filter((t) => /Alpha|Bravo|Charlie/.test(t));
+        } catch {
+          return [];
+        }
+      }).toEqual(['Chapter Alpha', 'Chapter Bravo', 'Chapter Charlie']);
+    } finally {
+      await ownApp.close();
+    }
+  }
+
+  const ownApp2 = await launchApp(ownUserData);
+  try {
+    const p2 = await firstWindow(ownApp2);
+    await expect(p2.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+    await clickStoryNav(p2);
+    await expect(p2.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
+    await p2.locator('.nav-story-title').first().click();
+    await p2.keyboard.press('Escape').catch(() => {});
+    await expect(p2.locator('.nav-chapter-title').first()).toBeVisible({ timeout: 8_000 });
+    const titlesAfter = (await p2.locator('.nav-chapter-title').allTextContents()).map((t) => t.trim()).filter(Boolean);
+    expect(titlesAfter.filter((t) => /Alpha|Bravo|Charlie/.test(t))).toEqual(
+      expect.arrayContaining(['Chapter Alpha', 'Chapter Bravo', 'Chapter Charlie']),
+    );
+    const idx = (name: string) => titlesAfter.findIndex((t) => t.includes(name));
+    expect(idx('Alpha')).toBeLessThan(idx('Bravo'));
+    expect(idx('Bravo')).toBeLessThan(idx('Charlie'));
+  } finally {
+    await ownApp2.close();
+    fs.rmSync(ownUserData, { recursive: true, force: true });
+    fs.rmSync(ownVault, { recursive: true, force: true });
+  }
+});

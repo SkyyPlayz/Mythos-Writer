@@ -10,9 +10,11 @@ import {
   buildDraftPrompt,
   cardSeedFromSuggested,
   castCardsFromSuggested,
+  composeCreateSceneBoard,
   composeDraftBoard,
   composeDraftPassCard,
   craftedSceneNote,
+  chosenCardsFromSetup,
   defaultCrafterSetup,
   filterSuggested,
   groupSuggested,
@@ -555,5 +557,38 @@ describe('legacyBeatsFromLanes (SKY-11072 instruction 3 — no beat data lost)',
       { name: 'Outline', cards: [] },
       { name: 'Draft', cards: [] },
     ])).toEqual([]);
+  });
+});
+
+describe('composeCreateSceneBoard / chosenCardsFromSetup (F1#1)', () => {
+  it('maps goal, conflict, length, beats, tones, and addedRefs onto board cards', () => {
+    const setup: CrafterSetup = {
+      ...defaultCrafterSetup(),
+      title: 'Cold Open',
+      pov: 'Mira',
+      goal: 'Reach the gate',
+      conflict: 'The Broker waits',
+      len: 'Custom',
+      customLen: '900 words',
+      beats: ['Knock', 'Answer'],
+      tones: { Tense: true, Mystery: false },
+      addedRefs: { characters: ['Characters/Kael'], locations: [], items: [] },
+    };
+    const chosen = chosenCardsFromSetup(setup);
+    expect(chosen.map((c) => c.title)).toEqual([
+      'Reach the gate',
+      'The Broker waits',
+      'Target: 900 words',
+      'Knock',
+      'Answer',
+      'Tense',
+      'Kael',
+    ]);
+    const board = composeCreateSceneBoard(setup, 1, 'b-create');
+    expect(board.name).toBe('Cold Open — board 1');
+    expect(board.cards[0].t).toBe('Cold Open — beats');
+    expect(board.cards.map((c) => c.t)).toContain('Mira');
+    expect(board.cards.map((c) => c.t)).toContain('Knock');
+    expect(board.cards.find((c) => c.nid === 'Characters/Kael')).toBeTruthy();
   });
 });

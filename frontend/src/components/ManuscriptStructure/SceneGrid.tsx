@@ -26,7 +26,8 @@ interface DragState {
 
 type DropTarget =
   | { kind: 'before'; chapterId: string; sceneId: string }
-  | { kind: 'append'; chapterId: string };
+  | { kind: 'append'; chapterId: string }
+  | { kind: 'part'; partId: string };
 
 interface ContextMenuState {
   sceneId: string;
@@ -58,6 +59,10 @@ interface SceneGridProps {
     insertBeforeSceneId: string | null,
   ) => void;
   onCreateScene: (storyId: string, chapterId: string) => void;
+  /** F1#3: create a chapter inside a specific part (empty-part drop / add). */
+  onCreateChapterInPart?: (storyId: string, partId: string) => void;
+  /** F1#3: move a chapter into another part (drag chapter onto part header). */
+  onMoveChapterToPart?: (storyId: string, chapterId: string, targetPartId: string) => void;
   onBeatAssign: (sceneId: string, beatId: string | null) => void;
   announce: (msg: string) => void;
 }
@@ -96,10 +101,13 @@ export function SceneGrid({
   onReorderScenes,
   onMoveScene,
   onCreateScene,
+  onCreateChapterInPart,
+  onMoveChapterToPart,
   onBeatAssign,
   announce,
 }: SceneGridProps): ReactElement {
   const [dragState, setDragState] = useState<DragState | null>(null);
+  const [chapterDragId, setChapterDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [reorderState, setReorderState] = useState<ReorderState | null>(null);
@@ -110,13 +118,22 @@ export function SceneGrid({
     (e: React.DragEvent, scene: Scene, chapter: Chapter) => {
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', scene.id);
+      setChapterDragId(null);
       setDragState({ sceneId: scene.id, chapterId: chapter.id, storyId: story.id });
     },
     [story.id],
   );
 
+  const handleChapterDragStart = useCallback((e: React.DragEvent, chapterId: string) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', `chapter:${chapterId}`);
+    setDragState(null);
+    setChapterDragId(chapterId);
+  }, []);
+
   const handleDragEnd = useCallback(() => {
     setDragState(null);
+    setChapterDragId(null);
     setDropTarget(null);
   }, []);
 
@@ -259,32 +276,71 @@ export function SceneGrid({
     });
   };
 
-  if (story.chapters.length === 0) {
+  const handlePartDragOver = useCallback(
+    (e: React.DragEvent, partId: string) => {
+      if (!chapterDragId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setDropTarget({ kind: 'part', partId });
+    },
+    [chapterDragId],
+  );
+
+  const handlePartDrop = useCallback(
+    (e: React.DragEvent, partId: string) => {
+      e.preventDefault();
+      if (!chapterDragId || !onMoveChapterToPart) {
+        setChapterDragId(null);
+        setDropTarget(null);
+        return;
+      }
+      onMoveChapterToPart(story.id, chapterDragId, partId);
+      announce('Chapter moved to part');
+      setChapterDragId(null);
+      setDropTarget(null);
+    },
+    [chapterDragId, onMoveChapterToPart, story.id, announce],
+  );
+
+  const simple = isSimpleSinglePart(story);
+  const hasAnyChapter =
+    story.chapters.length > 0 ||
+    (story.parts ?? []).some((p) => p.chapters.length > 0);
+  const hasParts = !simple && (story.parts?.length ?? 0) > 0;
+
+  // F1#3/#4: empty parts still render (header + empty drop zone).
+  type ChapterEntry =
+    | { kind: 'chapter'; partId?: string; partIdx?: number; chapter: Chapter; chapterIdx: number }
+    | { kind: 'empty-part'; partId: string; partIdx: number; partTitle: string };
+  const chapterEntries: ChapterEntry[] = simple
+    ? story.chapters
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .map((chapter, chapterIdx) => ({ kind: 'chapter' as const, chapter, chapterIdx }))
+    : (story.parts ?? [])
+        .slice()
+        .sort((a, b) => a.order - b.order)
+        .flatMap((part, partIdx): ChapterEntry[] => {
+          const chapters = part.chapters.slice().sort((a, b) => a.order - b.order);
+          if (chapters.length === 0) {
+            return [{ kind: 'empty-part', partId: part.id, partIdx, partTitle: part.title }];
+          }
+          return chapters.map((chapter, chapterIdx) => ({
+            kind: 'chapter' as const,
+            partId: part.id,
+            partIdx,
+            chapter,
+            chapterIdx,
+          }));
+        });
+
+  if (!hasAnyChapter && !hasParts) {
     return (
       <div className="scene-grid scene-grid--empty">
         <p className="scene-grid__empty-msg">No chapters yet.</p>
       </div>
     );
   }
-
-  const simple = isSimpleSinglePart(story);
-
-  // Build a flat list of { part?, partIdx, chapter, chapterIdx } for rendering
-  type ChapterEntry = { partId?: string; partIdx?: number; chapter: Chapter; chapterIdx: number };
-  const chapterEntries: ChapterEntry[] = simple
-    ? story.chapters
-        .slice()
-        .sort((a, b) => a.order - b.order)
-        .map((chapter, chapterIdx) => ({ chapter, chapterIdx }))
-    : (story.parts ?? [])
-        .slice()
-        .sort((a, b) => a.order - b.order)
-        .flatMap((part, partIdx) =>
-          part.chapters
-            .slice()
-            .sort((a, b) => a.order - b.order)
-            .map((chapter, chapterIdx) => ({ partId: part.id, partIdx, chapter, chapterIdx })),
-        );
 
   return (
     <div
@@ -325,27 +381,78 @@ export function SceneGrid({
           {cardMin}px
         </button>
       </div>
-      {chapterEntries.map(({ partId, partIdx, chapter, chapterIdx }, entryIdx) => {
+      {chapterEntries.map((entry, entryIdx) => {
+        if (entry.kind === 'empty-part') {
+          const isPartDrop =
+            dropTarget?.kind === 'part' && dropTarget.partId === entry.partId;
+          return (
+            <div key={`empty-${entry.partId}`} data-testid={`msv-struct-part-${entry.partId}`}>
+              <div
+                className={`msv-struct-part-header${isPartDrop ? ' msv-struct-part-header--drop' : ''}`}
+                data-testid={`msv-struct-part-header-${entry.partId}`}
+                onDragOver={(e) => handlePartDragOver(e, entry.partId)}
+                onDrop={(e) => handlePartDrop(e, entry.partId)}
+                onDragLeave={handleDragLeave}
+              >
+                PART {partOrdinal(entry.partIdx + 1)}
+                {entry.partTitle ? `: ${entry.partTitle}` : ''}
+              </div>
+              <div className="msv-struct-part-empty" data-testid={`msv-struct-part-empty-${entry.partId}`}>
+                <p>No chapters yet.</p>
+                {onCreateChapterInPart && (
+                  <button
+                    type="button"
+                    className="chapter-section__create-first"
+                    onClick={() => onCreateChapterInPart(story.id, entry.partId)}
+                    data-testid={`msv-struct-add-chapter-${entry.partId}`}
+                  >
+                    + Add chapter
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        }
+
+        const { partId, partIdx, chapter, chapterIdx } = entry;
         const isFirstInPart =
           !simple &&
           partId !== undefined &&
-          (entryIdx === 0 || chapterEntries[entryIdx - 1].partId !== partId);
-          const isCollapsed = collapsedChapters.has(chapter.id);
-          const sortedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
-          const totalWords = computeChapterWords(chapter);
-          const isChapterDropTarget =
-            dropTarget?.kind === 'append' && dropTarget.chapterId === chapter.id;
+          (entryIdx === 0 ||
+            chapterEntries[entryIdx - 1].kind === 'empty-part' ||
+            (chapterEntries[entryIdx - 1].kind === 'chapter' &&
+              chapterEntries[entryIdx - 1].partId !== partId));
+        const isCollapsed = collapsedChapters.has(chapter.id);
+        const sortedScenes = [...chapter.scenes].sort((a, b) => a.order - b.order);
+        const totalWords = computeChapterWords(chapter);
+        const isChapterDropTarget =
+          dropTarget?.kind === 'append' && dropTarget.chapterId === chapter.id;
+        const isPartDrop =
+          partId !== undefined &&
+          dropTarget?.kind === 'part' &&
+          dropTarget.partId === partId;
 
           return (
             <div key={`${partId ?? 'flat'}-${chapter.id}`}>
-              {isFirstInPart && partIdx !== undefined && (
-                <div className="msv-struct-part-header">PART {partOrdinal(partIdx + 1)}</div>
+              {isFirstInPart && partIdx !== undefined && partId && (
+                <div
+                  className={`msv-struct-part-header${isPartDrop ? ' msv-struct-part-header--drop' : ''}`}
+                  data-testid={`msv-struct-part-header-${partId}`}
+                  onDragOver={(e) => handlePartDragOver(e, partId)}
+                  onDrop={(e) => handlePartDrop(e, partId)}
+                  onDragLeave={handleDragLeave}
+                >
+                  PART {partOrdinal(partIdx + 1)}
+                </div>
               )}
             <section
               className={`chapter-section${isChapterDropTarget ? ' chapter-section--drop-target' : ''}`}
             >
               <div
                 className="chapter-section__header"
+                draggable={!!onMoveChapterToPart}
+                onDragStart={(e) => handleChapterDragStart(e, chapter.id)}
+                onDragEnd={handleDragEnd}
                 onDragOver={(e) => handleDragOverChapterHeader(e, chapter)}
                 onDrop={(e) => handleDrop(e, chapter, null)}
                 onDragLeave={handleDragLeave}
