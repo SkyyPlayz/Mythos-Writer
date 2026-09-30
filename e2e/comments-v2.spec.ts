@@ -282,8 +282,10 @@ test.describe.serial('Comments v2 (M9) — vault sidecar round-trip', () => {
     await expect(para).toBeVisible({ timeout: 10_000 });
     await para.click({ clickCount: 3 });
 
-    // F4#16: selection alone must not open the composer — explicit Comment arm.
+    // F4#16 gate (e2e-shard-2 / test:e2e:comments): selection alone must not
+    // open the composer — Comment arm appears first; composer opens on click.
     await expect(page.getByTestId('msv-selbar')).toHaveCount(0);
+    await expect(page.getByTestId('msv-comment-arm')).toBeVisible({ timeout: 5_000 });
     await page.getByTestId('msv-comment-arm').click();
 
     const selbar = page.getByTestId('msv-selbar');
