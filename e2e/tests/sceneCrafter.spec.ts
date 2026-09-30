@@ -756,13 +756,52 @@ async function dragSuggestedCardOntoCanvas(view: Locator, cardTitle: string): Pr
 }
 
 /**
- * Opens the "Cold Open" board seeded by AC-SC-17 and returns locators scoped
- * to the canvas-board *view* — the editor's Scenes-tab mini canvas also
- * renders a `[data-testid="canvas-board"]` in read-only mode, so an unscoped
+ * Ensure the AC-SC-17 "Cold Open" canvas board exists on disk for story A.
+ * Playwright restarts the worker after a prior test failure and re-runs
+ * beforeAll without AC-SC-17, so SKY-9878 must not depend on that seed
+ * surviving in-process — re-seed when missing, then open Setup.
+ */
+async function ensureColdOpenBoardFixture(pg: Page): Promise<void> {
+  const boardsDir = path.join(notesVaultDir, 'Boards', storySlug);
+  const boardFile = path.join(boardsDir, 'Cold Open — board 1.canvas.json');
+  if (!fs.existsSync(boardFile)) {
+    fs.mkdirSync(boardsDir, { recursive: true });
+    const boardJson = {
+      nodes: [
+        { id: 'b1-0', type: 'text', x: 440, y: 40, width: 280, height: 120, text: 'Cold Open — beats\n\nStep through the gate' },
+        { id: 'b1-firstpass', type: 'text', x: 440, y: 220, width: 320, height: 220, text: 'Cold Open — first pass\n\nShe reached the sealed door and stopped.\n\n— 7 words' },
+      ],
+      edges: [{ id: 'edge-0', fromNode: 'b1-0', toNode: 'b1-firstpass' }],
+    };
+    fs.writeFileSync(boardFile, JSON.stringify(boardJson, null, 2));
+  }
+  await clickStoryNav(pg);
+  await pg.locator('[data-testid="story-subview-editor"]').click();
+  const storyRow = pg.locator('.nav-story-title').first();
+  if (await storyRow.isVisible().catch(() => false)) {
+    await storyRow.click();
+  }
+  await openBoardView(pg);
+}
+
+/**
+ * Opens the "Cold Open" board (AC-SC-17 fixture, re-seeded if the worker
+ * restarted) and returns locators scoped to the canvas-board *view* — the
+ * editor's Scenes-tab mini canvas also renders a
+ * `[data-testid="canvas-board"]` in read-only mode, so an unscoped
  * page-wide lookup is a strict-mode double match whenever that panel is open.
  */
 async function openColdOpenBoard(pg: Page): Promise<{ view: Locator; stage: Locator }> {
-  await pg.locator('.sc-board-row', { hasText: 'Cold Open' }).click();
+  await ensureColdOpenBoardFixture(pg);
+  const coldTab = pg.locator(
+    '[role="tablist"][aria-label="Workspace tabs"] [role="tab"]',
+    { hasText: 'Cold Open' },
+  );
+  if (await coldTab.isVisible().catch(() => false)) {
+    await coldTab.click();
+  } else {
+    await pg.locator('.sc-board-row', { hasText: 'Cold Open' }).click();
+  }
   const view = pg.locator('.sc-canvas-view');
   await expect(view.getByTestId('canvas-board')).toBeVisible({ timeout: 8_000 });
   return { view, stage: view.getByTestId('canvas-stage') };
@@ -774,7 +813,6 @@ test('SKY-9878: rail renders CHARACTERS/LOCATIONS/ITEMS & SYSTEMS, click-to-add 
   fs.mkdirSync(path.join(notesVaultDir, 'Items & Systems'), { recursive: true });
   fs.writeFileSync(path.join(notesVaultDir, 'Items & Systems', 'Brass Token.md'), 'The Broker’s marker.');
 
-  await reloadBoardView(page);
   const { view, stage } = await openColdOpenBoard(page);
 
   const suggested = view.locator('.sc-suggest');
@@ -797,14 +835,12 @@ test('SKY-9878: rail renders CHARACTERS/LOCATIONS/ITEMS & SYSTEMS, click-to-add 
   expect(await stage.locator('.cvb-card').count()).toBe(beforeDrag + 1);
 
   // Both cards persisted to the real .canvas.json on disk (survives a reload).
-  await reloadBoardView(page);
   const { stage: stageAfterReload } = await openColdOpenBoard(page);
   await expect(stageAfterReload.locator('.cvb-card', { hasText: 'Mira Veynn' })).toBeVisible();
   await expect(stageAfterReload.locator('.cvb-card', { hasText: 'Brass Token' })).toBeVisible();
 });
 
 test('SKY-9878: a vault write while the canvas rail is open restocks it with no manual refresh', async () => {
-  await reloadBoardView(page);
   const { view } = await openColdOpenBoard(page);
   const suggested = view.locator('.sc-suggest');
   await expect(suggested.getByText('The Sunken Gate')).toHaveCount(0);

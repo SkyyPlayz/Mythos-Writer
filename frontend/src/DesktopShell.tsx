@@ -6733,6 +6733,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         className="shell-panels"
         data-testid="shell-panels-story-editor"
         aria-hidden={view !== 'editor'}
+        // F2#7 keep-alive: display:none + aria-hidden still leave descendants in
+        // Playwright's getByLabel tree (e.g. BottomBar "word goal" vs Scene
+        // Crafter GOAL). `inert` removes the hidden editor chrome from a11y.
+        {...(view !== 'editor' ? { inert: '' } : {})}
         style={view !== 'editor' ? { display: 'none' } : undefined}
       >
       <div className="shell-panels__row">
@@ -7252,7 +7256,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       </div>
       </div>{/* end shell-panels__row */}
 
-      {showBottomBar && (
+      {/* F2#7: BottomBar is editor-only chrome — omit it while keep-alive is
+          hidden so its "word goal" aria-label cannot collide with Scene
+          Crafter's GOAL field (SKY-8435). */}
+      {showBottomBar && view === 'editor' && (
         <BottomBar
           selectedScene={selectedScene}
           selectedChapter={selectedChapter}
