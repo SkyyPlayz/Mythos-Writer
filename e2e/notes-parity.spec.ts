@@ -348,20 +348,22 @@ test('F2#12 real side/middle panel top bars are 36px (±1)', async () => {
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
     // Story shell bars (side + middle; not msv-toolbar).
+    // All matches, but only laid-out (clientHeight>0): Story B7 keep-mounts
+    // with display:none under Notes → zero-height .pc-header ghosts otherwise.
     const storyBars = await page.evaluate(() => {
       const token = getComputedStyle(document.documentElement)
         .getPropertyValue('--panel-top-bar-height').trim();
       const sel = ['.lr-nav-header', '.shell-editor-toolbar', '.grs-topbar', '.pc-header'];
       const heights: Record<string, number[]> = {};
       for (const s of sel) {
-        heights[s] = [...document.querySelectorAll(s)].map(
-          (el) => Math.round(el.getBoundingClientRect().height),
-        );
+        heights[s] = [...document.querySelectorAll(s)]
+          .filter((el) => (el as HTMLElement).clientHeight > 0)
+          .map((el) => Math.round(el.getBoundingClientRect().height));
       }
       return { token, heights };
     });
     expect(storyBars.token).toBe('36px');
-    // Soft Critic: require the Story-side bars that always mount; check EVERY match.
+    // Soft Critic: require the Story-side bars that always mount; check EVERY laid-out match.
     for (const required of ['.lr-nav-header', '.shell-editor-toolbar'] as const) {
       expect(storyBars.heights[required].length, `${required} missing`).toBeGreaterThan(0);
     }
@@ -384,9 +386,9 @@ test('F2#12 real side/middle panel top bars are 36px (±1)', async () => {
       ];
       const heights: Record<string, number[]> = {};
       for (const s of sel) {
-        heights[s] = [...document.querySelectorAll(s)].map(
-          (el) => Math.round(el.getBoundingClientRect().height),
-        );
+        heights[s] = [...document.querySelectorAll(s)]
+          .filter((el) => (el as HTMLElement).clientHeight > 0)
+          .map((el) => Math.round(el.getBoundingClientRect().height));
       }
       return heights;
     });
@@ -411,15 +413,14 @@ test('F2 W0.3 / Critic #6: .pc-header + in-scope bars clean at 280px', async () 
     const page = await firstWindow(app);
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
-    // Open Notes → Brainstorm so a real .pc-header (Back + title + switch) mounts.
-    await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
-    await expect(page.locator('.notes-tab-panel, .notes-tab-toolbar').first()).toBeVisible({ timeout: 8_000 });
-    const brainstormTab = page.locator(
-      'button[aria-label="Brainstorm"], [data-testid="notes-subview-brainstorm"], button:has-text("Brainstorm")',
-    ).first();
-    if (await brainstormTab.count()) {
-      await brainstormTab.click();
-    }
+    // Standalone Brainstorm (nav-rail) mounts the full non-compact PanelHeader
+    // with Agent Chat / Board switch + .pc-header-host @container. Notes embeds
+    // compact Brainstorm without that switch; NotesSubView is editor-only.
+    await page.locator('[data-testid="nav-rail-brainstorm"]').click();
+    await expect(page.locator('[aria-labelledby="app-tab-brainstorm"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('.pc-header-host .pc-header').first()).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('.pc-header .pc-header-actions button, .pc-header [role="switch"]').first())
+      .toBeVisible({ timeout: 8_000 });
 
     const report = await page.evaluate(() => {
       const BAR_SELS = [
@@ -447,6 +448,9 @@ test('F2 W0.3 / Critic #6: .pc-header + in-scope bars clean at 280px', async () 
 
       for (const sel of BAR_SELS) {
         for (const el of document.querySelectorAll<HTMLElement>(sel)) {
+          // Skip keep-mounted display:none ghosts (Story B7 under other tabs).
+          if (el.clientHeight <= 0) continue;
+
           // Force the bar's container to 280px so @container / wrap can fire.
           const host = (el.closest('.pc-header-host') as HTMLElement | null) ?? el;
           const prev = host.style.width;
@@ -460,7 +464,8 @@ test('F2 W0.3 / Critic #6: .pc-header + in-scope bars clean at 280px', async () 
           const title = el.querySelector('.pc-header-title') as HTMLElement | null;
           const titleWidth = title ? title.getBoundingClientRect().width : null;
           const actions = el.querySelector('.pc-header-actions');
-          const switchVisible = actions
+          // Empty actions box (compact Notes Brainstorm) — treat as N/A.
+          const switchVisible = actions && actions.querySelector('button, [role="switch"], [role="tab"], select')
             ? (() => {
               const r = actions.getBoundingClientRect();
               return r.width > 0 && r.height > 0;
@@ -499,8 +504,10 @@ test('F2 W0.3 / Critic #6: .pc-header + in-scope bars clean at 280px', async () 
       return results;
     });
 
-    // At least the Notes toolbar + a pc-header (Brainstorm) should be present.
-    expect(report.some((r) => r.sel === '.notes-tab-toolbar')).toBe(true);
+    // Hard #6: a real laid-out .pc-header with title + switch at 280px.
+    expect(report.some((r) => r.sel === '.pc-header')).toBe(true);
+    expect(report.some((r) => r.sel === '.pc-header' && (r.titleWidth ?? 0) > 0)).toBe(true);
+    expect(report.some((r) => r.sel === '.pc-header' && r.switchVisible === true)).toBe(true);
 
     for (const r of report) {
       expect(r.overlap, `${r.sel} overlaps at 280px`).toBe(false);
