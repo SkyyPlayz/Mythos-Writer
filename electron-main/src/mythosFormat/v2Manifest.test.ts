@@ -26,6 +26,7 @@ import { writeManifest } from '../vault.js';
 import { parseBookFile } from './bookFile.js';
 import { parseV2SceneFile, isSceneFileName } from './sceneFiles.js';
 import { syncCanonicalFromManifest } from './v2Manifest.js';
+import { resolveNotesTierFromManifest } from '../notesTierContext.js';
 
 let tmp: string;
 
@@ -102,6 +103,103 @@ describe('F6 ID dedupe — story folder copy', () => {
       fs.readFileSync(path.join(result.storyVaultPath, copyFolder, 'book.md'), 'utf-8'),
     );
     expect(copyBook.id).toBe(copy.id);
+  });
+
+  it('out-of-spine chapter folder: copy rebuilt twice keeps story+chapter ids; F5 note resolves', () => {
+    // Critic follow-up: an out-of-spine chapter folder must not refuse the whole
+    // book.md write. Without the fromSpine filter, ids churn across rebuilds and
+    // F5 notes attached to the copy's first minted ids are orphaned.
+    const result = createMythosVault(tmp, { name: 'OutOfSpineCopy', seedDemo: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const story = 'Spine Plus Extra';
+    const abs = path.join(result.storyVaultPath, story);
+    fs.mkdirSync(path.join(abs, 'Part 1', 'Chapter 01'), { recursive: true });
+    // Chapter 02 exists on disk but is intentionally absent from the spine.
+    fs.mkdirSync(path.join(abs, 'Part 1', 'Chapter 02'), { recursive: true });
+    fs.writeFileSync(
+      path.join(abs, 'book.md'),
+      [
+        '---',
+        'id: oos-story',
+        'title: Spine Plus Extra',
+        'createdAt: 2026-01-01T00:00:00.000Z',
+        'updatedAt: 2026-01-01T00:00:00.000Z',
+        '---',
+        '# Spine Plus Extra',
+        '',
+        '<!-- mythos:spine',
+        JSON.stringify([
+          {
+            dir: 'Part 1',
+            chapters: [{ dir: 'Chapter 01', id: 'oos-ch-spine', title: 'In Spine' }],
+          },
+        ]),
+        '-->',
+        '',
+      ].join('\n'),
+    );
+    fs.writeFileSync(
+      path.join(abs, 'Part 1', 'Chapter 01', 'Scene 01.md'),
+      '---\nid: oos-sc-1\ntitle: S1\nstatus: draft\n---\nprose\n',
+    );
+    fs.writeFileSync(
+      path.join(abs, 'Part 1', 'Chapter 02', 'Scene 01.md'),
+      '---\nid: oos-sc-extra\ntitle: Extra\nstatus: draft\n---\nextra\n',
+    );
+    writeMythosFile(result.mythosRoot, {
+      ...readMythosFile(result.mythosRoot),
+      stories: [
+        {
+          id: 'oos-story',
+          title: story,
+          folder: story,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+
+    const copyFolder = `${story} copy`;
+    fs.cpSync(abs, path.join(result.storyVaultPath, copyFolder), { recursive: true });
+
+    // Two rebuilds BEFORE syncCanonicalFromManifest — ids must stabilize on disk.
+    const first = scanMythosStoryVault(result.mythosRoot);
+    const second = scanMythosStoryVault(result.mythosRoot);
+
+    const copy1 = first.stories.find((s) => s.path === copyFolder)!;
+    const copy2 = second.stories.find((s) => s.path === copyFolder)!;
+    expect(copy1).toBeTruthy();
+    expect(copy2).toBeTruthy();
+    expect(copy1.id).not.toBe('oos-story');
+    expect(copy2.id).toBe(copy1.id);
+    expect(copy2.chapters.map((c) => c.id)).toEqual(copy1.chapters.map((c) => c.id));
+    expect(copy2.chapters.flatMap((c) => c.scenes.map((sc) => sc.id))).toEqual(
+      copy1.chapters.flatMap((c) => c.scenes.map((sc) => sc.id)),
+    );
+
+    // Disk book.md must have accepted the surgical write (not refused).
+    const copyBook = parseBookFile(
+      fs.readFileSync(path.join(result.storyVaultPath, copyFolder, 'book.md'), 'utf-8'),
+    );
+    expect(copyBook.id).toBe(copy1.id);
+    expect(copyBook.spine[0].chapters[0].id).toBe(
+      copy1.chapters.find((c) => c.path.endsWith('Chapter 01'))!.id,
+    );
+
+    // F5 note on the copy: resolve against first-rebuild scene id after second rebuild.
+    const copySceneId = copy1.chapters
+      .find((c) => c.path.endsWith('Chapter 01'))!
+      .scenes[0].id;
+    const tier1 = resolveNotesTierFromManifest(first, copySceneId);
+    const tier2 = resolveNotesTierFromManifest(second, copySceneId);
+    expect(tier1.ok).toBe(true);
+    expect(tier2.ok).toBe(true);
+    if (!tier1.ok || !tier2.ok) return;
+    expect(tier2.bookId).toBe(tier1.bookId);
+    expect(tier2.chapterId).toBe(tier1.chapterId);
+    expect(tier2.bookId).toBe(copy1.id);
   });
 });
 

@@ -675,10 +675,14 @@ export function scanMythosStoryVault(
       bookReplacements.set(oldId, newId);
     }
     // Folder-scoped chapter id changes — only loser slots are rewritten in the spine.
+    // Out-of-spine chapter folders must NOT enter chapterFolders: surgicalReplaceBookIds
+    // refuses the whole book.md write when a folder is missing from the spine, which
+    // would re-mint story/chapter ids on every rebuild until sync (F5 notes orphan).
     s.chapters.forEach((c, ci) => {
       const finalCh = chapterFinalId.get(chKey(si, ci)) ?? c.claimedId;
       if (finalCh !== c.claimedId) {
         bookReplacements.set(c.claimedId, finalCh);
+        if (!c.fromSpine) return;
         chapterFolders.push({
           partDir: c.partDir,
           chapterDir: c.chapterDir,
