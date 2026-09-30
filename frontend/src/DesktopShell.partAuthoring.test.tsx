@@ -158,7 +158,9 @@ describe('DesktopShell Part/note authoring (SKY-10923)', () => {
     // real Part exists — this was the path silently broken before the fix.
     fireEvent.click(screen.getByTestId('msv-add-chapter'));
     await submitPrompt('Chapter Two');
-    expect(await screen.findByText('Chapter Two')).toBeInTheDocument();
+    // Scope to the manuscript chapter h2 title — nav + keep-mounted Structure
+    // also surface the same title after createChapter selects the new chapter.
+    expect(await screen.findByText('Chapter Two', { selector: '.msv-h2-title' })).toBeInTheDocument();
     // The original chapter is still visible — the new chapter didn't
     // replace/orphan it.
     expect(screen.getByTestId(`msv-h2-${CHAPTER_ID}`)).toBeInTheDocument();

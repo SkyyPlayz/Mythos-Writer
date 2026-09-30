@@ -1103,17 +1103,31 @@ describe('M8 — drop cap on the first scene paragraph', () => {
       pagePrefs: { dropCapEnabled: true },
     });
     expect(screen.getByTestId('msv-para-s1-b0').className).toContain('msv-para-text--dropcap');
+    expect(screen.getByTestId('msv-root').className).toContain('msv-root--dropcap');
 
     rerender(<ManuscriptView {...props} pagePrefs={{ dropCapEnabled: false }} />);
     expect(screen.getByTestId('msv-para-s1-b0').className).not.toContain(
       'msv-para-text--dropcap'
     );
+    expect(screen.getByTestId('msv-root').className).not.toContain('msv-root--dropcap');
 
     // Default (field absent) is off — matches STORY_PAGE_DEFAULTS.dropCapEnabled.
     rerender(<ManuscriptView {...props} pagePrefs={{}} />);
     expect(screen.getByTestId('msv-para-s1-b0').className).not.toContain(
       'msv-para-text--dropcap'
     );
+    expect(screen.getByTestId('msv-root').className).not.toContain('msv-root--dropcap');
+  });
+
+  it('F1#10: msv-root--dropcap class tracks pagePrefs (gates BlockEditor CSS)', () => {
+    const { rerender, props } = renderView({
+      cursor: cur('scene', 0, 0),
+      pagePrefs: { dropCapEnabled: false },
+    });
+    expect(screen.getByTestId('msv-root').className).not.toContain('msv-root--dropcap');
+
+    rerender(<ManuscriptView {...props} pagePrefs={{ dropCapEnabled: true }} />);
+    expect(screen.getByTestId('msv-root').className).toContain('msv-root--dropcap');
   });
 });
 

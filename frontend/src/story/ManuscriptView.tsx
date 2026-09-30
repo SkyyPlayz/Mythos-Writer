@@ -156,6 +156,8 @@ export interface ManuscriptViewProps {
   onRenameScene?: (sceneId: string, title: string) => void;
   /** M8: inline chapter-heading rename. */
   onRenameChapter?: (chapterId: string, title: string) => void;
+  /** F1#7: inline part-heading rename (Full Book / Structure headers). */
+  onRenamePart?: (partId: string, title: string) => void;
   /** M3 (SKY-9021): inline story rename — row 3's title at book/part depth. */
   onRenameStory?: (title: string) => void;
   /**
@@ -261,6 +263,12 @@ export interface ManuscriptViewProps {
    * back to the stepper. Absent → stepper-only (legacy behavior).
    */
   onHistoryAltArrow?: (direction: 'back' | 'forward') => boolean;
+  /**
+   * When false, Alt+←/→ is ignored here. Required because the Story tabpanel
+   * is keep-mounted (display:none) — its window keydown listener would otherwise
+   * double-fire with DesktopShell's Notes-tab handler (Probe H1 Forward).
+   */
+  altArrowActive?: boolean;
 }
 
 /** SKY-9404: Drafts v2 data + handlers, moved from the deleted scene branch. */
@@ -442,6 +450,7 @@ export default function ManuscriptView({
   onRemoveParagraph,
   onRenameScene,
   onRenameChapter,
+  onRenamePart,
   onRenameStory,
   inlineTitleRename = false,
   caretRequest,
@@ -470,6 +479,7 @@ export default function ManuscriptView({
   sceneEditor,
   edgeNav,
   onHistoryAltArrow,
+  altArrowActive = true,
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -825,6 +835,9 @@ export default function ManuscriptView({
       // even at 'book' zoom where the stepper itself is a no-op) — falls
       // back to the stepper only when there's nothing to go back/forward to.
       if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        // Story tabpanel is keep-mounted — skip when another app tab owns the
+        // surface so DesktopShell's Alt+←/→ handler is the only one that fires.
+        if (!altArrowActive) return;
         e.preventDefault();
         const direction = e.key === 'ArrowRight' ? 'forward' : 'back';
         const active = document.activeElement;
@@ -847,7 +860,7 @@ export default function ManuscriptView({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cursor, onCursorChange, step, onHistoryAltArrow]);
+  }, [cursor, onCursorChange, step, onHistoryAltArrow, altArrowActive]);
 
   // M8 §14.2 "drag state can't get stuck": abandoned grip drags (mouseup
   // outside any paragraph), Escape, and losing window focus all clear it.
@@ -1440,10 +1453,37 @@ export default function ManuscriptView({
     switch (b.kind) {
       case 'h1':
         // M2 (SKY-9017): Part heading — emitted only for multi-part stories.
+        // F1#7: click title → inline rename (Enter/blur commits, Esc cancels).
         return (
           <div key={b.id} className="msv-part-heading" role="heading" aria-level={1} data-testid={`msv-h1-${b.partId}`}>
             <div className="msv-part-heading-label">{b.label}</div>
-            {b.title && <div className="msv-part-heading-title">{b.title}</div>}
+            <div
+              className="msv-part-heading-title"
+              contentEditable={onRenamePart ? 'plaintext-only' : false}
+              suppressContentEditableWarning
+              spellCheck={false}
+              role={onRenamePart ? 'textbox' : undefined}
+              aria-label={onRenamePart ? 'Part title — Enter commits, Esc cancels' : undefined}
+              data-testid={`msv-h1-title-${b.partId}`}
+              onBlur={(e: ReactFocusEvent<HTMLElement>) => {
+                if (!onRenamePart) return;
+                const next = e.currentTarget.textContent?.trim() ?? '';
+                if (next !== (b.title ?? '')) onRenamePart(b.partId, next);
+              }}
+              onKeyDown={(e: ReactKeyboardEvent<HTMLElement>) => {
+                if (!onRenamePart) return;
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  e.currentTarget.textContent = b.title ?? '';
+                  e.currentTarget.blur();
+                }
+              }}
+            >
+              {b.title || (onRenamePart ? '' : null)}
+            </div>
           </div>
         );
       case 'note-slot': {
@@ -1651,7 +1691,10 @@ export default function ManuscriptView({
   };
 
   return (
-    <div className={`msv-root${dragPara ? ' msv-root--dragging-para' : ''}`} data-testid="msv-root">
+    <div
+      className={`msv-root${dragPara ? ' msv-root--dragging-para' : ''}${resolveDropCapEnabled(pagePrefs) ? ' msv-root--dropcap' : ''}`}
+      data-testid="msv-root"
+    >
       {/* M1 row 3 (SKY-9013): depth-invariant title row (prototype 897–948). */}
       <TitleRow
         story={story}

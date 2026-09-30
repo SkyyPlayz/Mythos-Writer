@@ -12,6 +12,22 @@
   flex: 1;
   min-height: 0;
   min-width: 0;
+  /* F1#13 bridge until F2#12 lands `--panel-top-bar-height` in tokens.css
+     (PANEL_TOP_BAR_HEIGHT_PX = 36). Same name + value so merge wires cleanly;
+     drop this local declare after F2 merges if :root already provides it. */
+  --panel-top-bar-height: 36px;
+}
+
+/* F1#10: BlockEditor.css still paints an ungated drop cap on the chromeless
+   scene editor. Gate it from F1-owned CSS — only when .msv-root--dropcap is set
+   (resolveDropCapEnabled). Do NOT edit BlockEditor.css (F2-owned). */
+.msv-root:not(.msv-root--dropcap) .block-editor--chromeless .tiptap-content .ProseMirror > p:first-child::first-letter {
+  float: none;
+  font-size: inherit;
+  line-height: inherit;
+  padding: 0;
+  font-weight: inherit;
+  color: inherit;
 }
 
 /* ── zoom bar (prototype 717–741) ── */
@@ -207,7 +223,14 @@
   align-items: center;
   gap: 5px;
   margin: 0 18px;
-  padding: 6px 8px;
+  /* F1#13: RENDER at F2#12 shared height (36px). height+max-height (not only
+     min-height) — prior 40px chrome (26px controls + 6px×2 pad + 1px×2 border)
+     was taller than side/middle top bars. Trim pad to 4px so 26+8+2 = 36. */
+  height: var(--panel-top-bar-height, 36px);
+  min-height: var(--panel-top-bar-height, 36px);
+  max-height: var(--panel-top-bar-height, 36px);
+  box-sizing: border-box;
+  padding: 4px 8px;
   border-radius: 12px;
   background: rgba(10, 12, 22, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.08);

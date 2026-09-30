@@ -489,6 +489,50 @@ function setupSummary(setup: CrafterSetup): string {
 }
 
 /**
+ * Build ChosenCards from Create Scene form fields (F1#1 mapping):
+ * goal / conflict → one card each; len → target-length card; beats[] → beat
+ * cards in order; tones → a tone-tags card; addedRefs → linked vault cards
+ * (removedRefs excluded). POV is handled by composeDraftBoard itself.
+ */
+export function chosenCardsFromSetup(setup: CrafterSetup): ChosenCard[] {
+  const chosen: ChosenCard[] = [];
+  const goal = setup.goal.trim();
+  if (goal) chosen.push({ title: goal, desc: 'Goal.', nid: null });
+  const conflict = setup.conflict.trim();
+  if (conflict) chosen.push({ title: conflict, desc: 'Conflict.', nid: null });
+  const length = setup.len === 'Custom' ? (setup.customLen.trim() || 'Custom') : setup.len;
+  chosen.push({ title: `Target: ${length}`, desc: 'Length.', nid: null });
+  for (const beat of setup.beats) {
+    const trimmed = beat.trim();
+    if (trimmed) chosen.push({ title: trimmed, desc: 'Beat.', nid: null });
+  }
+  const tones = CRAFTER_TONES.filter((tone) => setup.tones[tone]);
+  if (tones.length > 0) {
+    chosen.push({ title: tones.join(', '), desc: 'Tone.', nid: null });
+  }
+  for (const key of VAULT_REF_COLUMN_KEYS) {
+    for (const nid of setup.addedRefs[key] ?? []) {
+      const leaf = nid.split(/[\\/]/).pop() ?? nid;
+      const title = leaf.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ').trim() || nid;
+      chosen.push({ title, desc: key, nid });
+    }
+  }
+  return chosen;
+}
+
+/**
+ * Compose a Create Scene board from form fields (F1#1). Board name uses the
+ * scene title; cards come from chosenCardsFromSetup + POV.
+ */
+export function composeCreateSceneBoard(
+  setup: CrafterSetup,
+  boardNumber: number,
+  id: string = 'b' + Date.now(),
+): CanvasBoardData {
+  return composeDraftBoard(setup, chosenCardsFromSetup(setup), boardNumber, id);
+}
+
+/**
  * Compose the scene setup + chosen cards into a canvas board.
  *
  * Layout mirrors the prototype's draftBoard(): a `<title> — beats` hub card at
