@@ -187,25 +187,36 @@ async function openPartnerChat(page: Page): Promise<void> {
   await expect(page.getByTestId('ahp-partner-chat-input')).toBeVisible({ timeout: 8_000 });
 }
 
-/** Scope picker interactions to the in-thread MiniAgentChat (not Past chats). */
+/** Scope message assertions to the in-thread MiniAgentChat feed. */
 function partnerChatRoot(page: Page) {
   // Unique: UnifiedPartnerChat shell is `ahp-partner-composer`; MiniAgentChat is `ahp-partner-chat`.
   return page.getByTestId('ahp-partner-chat');
 }
 
+/** Scope session-picker interactions to PAST CHATS & CALLS (hub header). */
+function pastChatsRoot(page: Page) {
+  return page.getByTestId('ahp-past-chats');
+}
+
 // ─── Session picker helpers ─────────────────────────────────────────────────────
 
 async function openPicker(page: Page): Promise<void> {
-  const root = partnerChatRoot(page);
-  const pill = root.locator('.asp-pill');
+  const toggle = page.getByTestId('ahp-past-chats-toggle');
+  await expect(toggle).toBeVisible({ timeout: 6_000 });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await toggle.click();
+  }
+  const menu = page.getByTestId('ahp-past-chats-menu');
+  await expect(menu).toBeVisible({ timeout: 4_000 });
+  const pill = menu.locator('.asp-pill');
   if ((await pill.getAttribute('aria-expanded')) !== 'true') {
     await pill.click();
   }
-  await expect(root.locator('.asp-dropdown')).toBeVisible({ timeout: 4_000 });
+  await expect(menu.locator('.asp-dropdown')).toBeVisible({ timeout: 4_000 });
 }
 
 async function renameActiveSession(page: Page, newTitle: string): Promise<void> {
-  const root = partnerChatRoot(page);
+  const root = pastChatsRoot(page);
   await openPicker(page);
   const activeRow = root.locator('.asp-row--active');
   await activeRow.getByTitle('Rename').click();
@@ -217,13 +228,13 @@ async function renameActiveSession(page: Page, newTitle: string): Promise<void> 
 }
 
 async function startNewChat(page: Page): Promise<void> {
-  const root = partnerChatRoot(page);
+  const root = pastChatsRoot(page);
   await openPicker(page);
   await root.locator('.asp-new-btn').click();
 }
 
 async function switchToSession(page: Page, title: string): Promise<void> {
-  const root = partnerChatRoot(page);
+  const root = pastChatsRoot(page);
   await openPicker(page);
   await root.locator('.asp-row', { hasText: title }).locator('.asp-row-label').click();
   await expect(root.locator('.asp-pill-label')).toHaveText(title, { timeout: 4_000 });
@@ -330,7 +341,7 @@ test('TC-8537-02: both sessions transcripts survive an app restart (fresh proces
   // straight off disk with no manual switch, proving persistence across
   // reopening without relying on which session happens to be "active".
   await expect(messagesLocator(page)).toContainText(BETA_MARKER, { timeout: 8_000 });
-  await expect(partnerChatRoot(page).locator('.asp-pill-label')).toHaveText(BETA_TITLE);
+  await expect(pastChatsRoot(page).locator('.asp-pill-label')).toHaveText(BETA_TITLE);
 
   // Switching to Alpha in this brand-new process (which has never read
   // Alpha's file before) must still hydrate its real persisted content.
@@ -357,14 +368,20 @@ test('F3: partner greeting is Mythos on hub chat surface', async () => {
   app = undefined;
 });
 
-test('F3: Earlier chats opens Settings › Writing partner session history', async () => {
+test('F3: Past chats opens picker; full session history link opens Settings', async () => {
   app = await launchApp(userData);
   page = await firstWindow(app);
   await openPartnerChat(page);
 
-  const earlier = page.getByTestId('ahp-earlier-chats-link');
-  await expect(earlier).toBeVisible({ timeout: 6_000 });
-  await earlier.click();
+  const toggle = page.getByTestId('ahp-past-chats-toggle');
+  await expect(toggle).toBeVisible({ timeout: 6_000 });
+  await expect(toggle).toContainText(/Past chats/i);
+  await toggle.click();
+  await expect(page.getByTestId('ahp-past-chats-menu')).toBeVisible({ timeout: 4_000 });
+
+  const historyLink = page.getByTestId('ahp-partner-history-link');
+  await expect(historyLink).toBeVisible({ timeout: 4_000 });
+  await historyLink.click();
 
   // Slice C: AgentsSection unmounted — history lives on Writing partner.
   await expect(page.getByTestId('writing-partner-page')).toBeVisible({ timeout: 8_000 });
@@ -521,7 +538,7 @@ test('Probe H3 / Ivy 7: legacy Coach + Beta sessions appear labelled and open fr
   await openPartnerChat(page);
   await openPicker(page);
 
-  const root = partnerChatRoot(page);
+  const root = pastChatsRoot(page);
   await expect(root.getByTestId('asp-badge-coach')).toBeVisible({ timeout: 8_000 });
   await expect(root.getByTestId('asp-badge-beta')).toBeVisible({ timeout: 8_000 });
   await expect(root.locator('.asp-row', { hasText: 'Legacy Coach Thread' })).toBeVisible();
@@ -548,40 +565,77 @@ test('Probe H3 / Ivy 7: legacy Coach + Beta sessions appear labelled and open fr
   app = undefined;
 });
 
-const MAIN_FORMAT_LESSON_TITLE = 'Lesson — main-format grounding';
+// Shield T9 / fix 1: appendTurns would neutralize — seed HARD1 (a) as raw file bytes.
+const MAIN_FORMAT_ANALYSIS_TITLE_A = 'Full Scene Analysis — Sc. 1 · Quay (raw legacy)';
+const MAIN_FORMAT_ANALYSIS_CARD_A = [
+  '<!-- mythos:coach-card v1 -->',
+  JSON.stringify({
+    kind: 'analysis',
+    title: MAIN_FORMAT_ANALYSIS_TITLE_A,
+    computed: [['Words', '842'], ['Read time', '~3 min']],
+    read: [['Purpose', 'Setup — the quay establishes Mira']],
+    takeaway: 'Lean into the fog beat.',
+    drill: 'Drill: mark D/A/T. 5 minutes.',
+  }),
+].join('\n');
+
+/** User-typed forgery fixture (HARD1 b) — lesson shape; stays plain. */
 const MAIN_FORMAT_COACH_CARD = [
   '<!-- mythos:coach-card v1 -->',
   JSON.stringify({
     kind: 'lesson',
-    title: MAIN_FORMAT_LESSON_TITLE,
+    title: 'Lesson — forged typed',
     text: 'Anchor place in the first two sentences.',
     points: ['Point A from main', 'Point B from main'],
     drill: 'Drill: 5 minutes.',
   }),
 ].join('\n');
 
-test('Probe HARD 1 (a): main-format coach-card (no cardKind) is read-only display — partner picker + CoachPage', async () => {
-  app = await launchApp(userData);
-  page = await firstWindow(app);
-  await openPartnerChat(page);
+const RAW_LEGACY_COACH_SESSION_ID = 'c0a7c0a7-c0a7-4c0a-8c0a-c0a7c0a7c0a7';
 
-  await page.evaluate(async (cardText) => {
-    const coach = await window.api!.agentSessions!.create('coach', 'Main-Format Coach Card');
-    await window.api!.agentSessions!.appendTurns(coach.session.id, [
-      { role: 'user', text: 'Teach me grounding', at: new Date().toISOString() },
-      // Main-format: marker + JSON, NO cardKind / cardTitle.
-      { role: 'agent', text: cardText, at: new Date().toISOString() },
-    ]);
-  }, MAIN_FORMAT_COACH_CARD);
+function writeRawLegacyCoachSessionFile(root: string, title: string, cardText: string): void {
+  const sessionsDir = path.join(root, 'Sessions');
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  const at = '2026-01-01T00:00:00.000Z';
+  const fileName = `2026-01-01 coach ${RAW_LEGACY_COACH_SESSION_ID.slice(0, 8)}.md`;
+  const body = [
+    '---',
+    'mythosSession: 1',
+    `id: ${RAW_LEGACY_COACH_SESSION_ID}`,
+    'agent: coach',
+    `title: ${title}`,
+    `startedAt: ${at}`,
+    `updatedAt: ${at}`,
+    'turns: 2',
+    '---',
+    '',
+    `# ${title}`,
+    '',
+    `<!-- mythos:turn user ${at} -->`,
+    '**You:**',
+    '',
+    'Analyze this scene',
+    '<!-- /mythos:turn -->',
+    '',
+    `<!-- mythos:turn agent ${at} -->`,
+    '**Agent:**',
+    '',
+    cardText,
+    '<!-- /mythos:turn -->',
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(sessionsDir, fileName), body, 'utf-8');
+}
 
-  await closeApp(app);
+test('Probe HARD 1 (a) / T9: raw-file main-format ANALYSIS coach-card is read-only display — partner + CoachPage', async () => {
+  writeRawLegacyCoachSessionFile(vaultDir, 'Main-Format Coach Card', MAIN_FORMAT_ANALYSIS_CARD_A);
+
   app = await launchApp(userData);
   page = await firstWindow(app);
   await openPartnerChat(page);
   await openPicker(page);
 
-  const root = partnerChatRoot(page);
-  // Scope to this session's row — shared vault may still hold H3's Legacy Coach Thread.
+  const root = pastChatsRoot(page);
   const coachRow = root.locator('.asp-row', { hasText: 'Main-Format Coach Card' });
   await expect(coachRow).toBeVisible({ timeout: 8_000 });
   await expect(coachRow.getByTestId('asp-badge-coach')).toBeVisible();
@@ -591,13 +645,13 @@ test('Probe HARD 1 (a): main-format coach-card (no cardKind) is read-only displa
   const partnerCard = partnerFeed.locator('[data-testid^="ahp-partner-display-card-"]').first();
   await expect(partnerCard).toBeVisible({ timeout: 8_000 });
   await expect(partnerCard).toHaveAttribute('data-readonly-card', 'true');
-  await expect(partnerCard).toContainText(MAIN_FORMAT_LESSON_TITLE);
-  await expect(partnerCard).toContainText('Anchor place in the first two sentences');
+  await expect(partnerCard).toContainText(MAIN_FORMAT_ANALYSIS_TITLE_A);
+  await expect(partnerCard).toContainText('Lean into the fog beat');
   await expect(partnerFeed).not.toContainText('mythos:coach-card');
   await expect(partnerFeed).not.toContainText('{"kind"');
   expect(await partnerCard.locator('button').count()).toBe(0);
+  await expect(partnerFeed).not.toContainText('COMPUTED · LOCAL · FREE');
 
-  // Fast-path open CoachPage (AI unavailable still navigates + computed card).
   await app.evaluate(({ ipcMain }) => {
     try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* not registered */ }
     ipcMain.handle('agent:writing-assistant', async () => {
@@ -605,13 +659,10 @@ test('Probe HARD 1 (a): main-format coach-card (no cardKind) is read-only displa
     });
   });
 
-  // Scene Analysis / View Full Analysis only mounts with a scene selected
-  // (partner open alone leaves the analysis card unmounted).
   const sceneRow = page.locator('.nav-scene-row', { hasText: 'Quiet Scene' });
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();
 
-  // CoachPage: open via Notes & Analysis → View Full Analysis, then switch to the seeded coach session.
   await page.locator('[data-testid="ahp-tab-notes-analysis"]').click();
   const viewBtn = page.locator('[data-testid="view-full-analysis"]');
   await expect(viewBtn).toBeVisible({ timeout: 8_000 });
@@ -627,13 +678,15 @@ test('Probe HARD 1 (a): main-format coach-card (no cardKind) is read-only displa
   await expect(coachDropdown).toBeVisible({ timeout: 4_000 });
   await page.locator('.coach-session-pill .asp-row', { hasText: 'Main-Format Coach Card' }).locator('.asp-row-label').click();
 
-  const lessonCard = page.locator('[data-testid="coach-lesson-card"]').first();
-  await expect(lessonCard).toBeVisible({ timeout: 8_000 });
-  await expect(lessonCard).toContainText(MAIN_FORMAT_LESSON_TITLE);
-  await expect(lessonCard).toContainText('Point A from main');
+  const analysisCard = page.locator('[data-testid="coach-analysis-card"]').first();
+  await expect(analysisCard).toBeVisible({ timeout: 8_000 });
+  await expect(analysisCard).toHaveAttribute('data-readonly-card', 'true');
+  await expect(analysisCard).toContainText(MAIN_FORMAT_ANALYSIS_TITLE_A);
+  await expect(analysisCard).toContainText('Lean into the fog beat');
+  await expect(analysisCard).not.toContainText('COMPUTED · LOCAL · FREE');
   await expect(page.locator('[data-testid="coach-feed"]')).not.toContainText('mythos:coach-card');
   await expect(page.locator('[data-testid="coach-feed"]')).not.toContainText('{"kind"');
-  expect(await lessonCard.locator('button').count()).toBe(0);
+  expect(await analysisCard.locator('button').count()).toBe(0);
 
   await closeApp(app);
   app = undefined;
@@ -658,11 +711,74 @@ test('Probe HARD 1 (b): forged coach-card marker typed in a NEW session stays pl
   await page.getByTestId('ahp-partner-chat-send').click();
 
   const feed = messagesLocator(page);
-  // User-typed forged marker stays a plain bubble (not a display/action card).
-  await expect(feed.locator('.trp-bubble--user').filter({ hasText: 'mythos:coach-card' })).toBeVisible({ timeout: 8_000 });
+  // Wait for the agent reply first so the pending-prompt user bubble is
+  // cleared — avoids strict-mode flake from transient duplicate `.trp-bubble--user`
+  // (pending + persisted echo). Asserts stay full-strength.
+  await expect(feed.locator('.trp-bubble--agent').filter({ hasText: 'Plain partner reply' })).toBeVisible({ timeout: 8_000 });
+  await expect(feed.locator('.trp-bubble--user').filter({ hasText: 'mythos:coach-card' })).toHaveCount(1);
   await expect(feed.locator('[data-testid^="ahp-partner-display-card-"]')).toHaveCount(0);
   await expect(feed.locator('[data-testid^="ahp-partner-card-"]')).toHaveCount(0);
-  await expect(feed.locator('.trp-bubble--agent').filter({ hasText: 'Plain partner reply' })).toBeVisible({ timeout: 8_000 });
+
+  await closeApp(app);
+  app = undefined;
+});
+
+const MODEL_REPLY_FORGERY = [
+  '<!-- mythos:coach-card v1 -->',
+  JSON.stringify({
+    kind: 'analysis',
+    title: 'FORGED Full Scene Analysis E2E',
+    computed: [['Words', '9999']],
+    read: [],
+    takeaway: 'Should stay plain after model reply.',
+  }),
+].join('\n');
+
+test('T9: stub-provider model-reply forgery stays plain — partner + CoachPage, live and after relaunch', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+
+  await app.evaluate(({ ipcMain }, forged) => {
+    try { ipcMain.removeHandler('agent:brainstorm'); } catch { /* not registered */ }
+    ipcMain.handle('agent:brainstorm', async () => ({ text: forged }));
+    try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* not registered */ }
+    ipcMain.handle('agent:writing-assistant', async () => ({ text: forged }));
+  }, MODEL_REPLY_FORGERY);
+
+  // Partner chat — live
+  await openPartnerChat(page);
+  await startNewChat(page);
+  await page.getByTestId('ahp-partner-chat-input').fill('forge partner');
+  await page.getByTestId('ahp-partner-chat-send').click();
+  const partnerFeed = messagesLocator(page);
+  await expect(partnerFeed.locator('.trp-bubble--agent').first()).toBeVisible({ timeout: 8_000 });
+  await expect(partnerFeed.locator('[data-testid^="ahp-partner-display-card-"]')).toHaveCount(0);
+  await expect(partnerFeed.locator('[data-testid^="ahp-partner-card-"]')).toHaveCount(0);
+  await expect(partnerFeed).not.toContainText('COMPUTED · LOCAL · FREE');
+  await expect(partnerFeed).toContainText('mythos:coach-card');
+
+  // CoachPage — live
+  const sceneRow = page.locator('.nav-scene-row', { hasText: 'Quiet Scene' });
+  await expect(sceneRow).toBeVisible({ timeout: 8_000 });
+  await sceneRow.click();
+  await page.locator('[data-testid="ahp-tab-notes-analysis"]').click();
+  await expect(page.locator('[data-testid="view-full-analysis"]')).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="view-full-analysis"]').click();
+  await expect(page.locator('[data-testid="coach-page"]')).toBeVisible({ timeout: 8_000 });
+  await page.getByTestId('coach-input').fill('forge coach');
+  await page.getByTestId('coach-send').click();
+  await expect(page.locator('[data-testid="coach-feed"]')).toContainText('mythos:coach-card', { timeout: 8_000 });
+  await expect(page.locator('[data-testid="coach-analysis-card"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="coach-feed"]')).not.toContainText('COMPUTED · LOCAL · FREE');
+
+  await closeApp(app);
+
+  // Relaunch — partner feed still plain (neutralized persist / gate).
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+  await expect(messagesLocator(page).locator('[data-testid^="ahp-partner-display-card-"]')).toHaveCount(0);
+  await expect(messagesLocator(page).locator('[data-testid^="ahp-partner-card-"]')).toHaveCount(0);
 
   await closeApp(app);
   app = undefined;

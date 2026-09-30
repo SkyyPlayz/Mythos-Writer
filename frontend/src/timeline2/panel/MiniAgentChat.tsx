@@ -5,9 +5,10 @@
 import { useEffect, useRef, useState } from 'react';
 import AgentSessionPicker from '../../components/AgentSessionPicker';
 import {
-  collapseCoachMessage,
+  displayCardBodyText,
   mainFormatCoachDisplayCard,
   miniCardBodyText,
+  neutralizeLeadingCoachCardMarker,
 } from '../../coach/coachMessages';
 import type { MiniAgentChat as MiniAgentChatState } from './useMiniAgentChat';
 // M12.B3 (SKY-10738): self-import — this component is now also mounted
@@ -35,11 +36,21 @@ export interface MiniAgentChatProps {
   testidPrefix: string;
   /** Optional partner display name shown once in the chat head (F3 — no duplicate avatars). */
   partnerName?: string;
+  /** When true, hide the in-chat session pill (hub owns PAST CHATS & CALLS picker). */
+  hideSessionPicker?: boolean;
 }
 
-export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix, partnerName }: MiniAgentChatProps) {
+export default function MiniAgentChat({
+  chat,
+  accent,
+  placeholder,
+  testidPrefix,
+  partnerName,
+  hideSessionPicker = false,
+}: MiniAgentChatProps) {
   const [draft, setDraft] = useState('');
   const feedRef = useRef<HTMLDivElement>(null);
+  const sessionAgent = chat.store.activeSession?.agent;
   useEffect(() => {
     const el = feedRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -56,7 +67,9 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix,
     <div className={`trp-chat trp-chat--${accent}`} data-testid={`${testidPrefix}-chat`}>
       <div className="trp-chat-head">
         <span className="trp-label">{partnerName ? partnerName.toUpperCase() : 'CHAT'}</span>
-        <AgentSessionPicker store={chat.store} className="trp-chat-sessions" busy={chat.busy} />
+        {!hideSessionPicker && (
+          <AgentSessionPicker store={chat.store} className="trp-chat-sessions" busy={chat.busy} />
+        )}
       </div>
       <div className="trp-chat-feed" data-testid={`${testidPrefix}-chat-feed`} ref={feedRef}>
         {chat.messages.map((turn, i) => {
@@ -70,14 +83,16 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix,
                 data-testid={`${testidPrefix}-card-${i}`}
               >
                 <div className="trp-msg-card-title">{turn.cardTitle}</div>
-                <div className="trp-msg-card-text">{miniCardBodyText(turn)}</div>
+                <div className="trp-msg-card-text">
+                  {miniCardBodyText(turn, { sessionAgent })}
+                </div>
                 {turn.cardFoot && <div className="trp-msg-card-foot">{turn.cardFoot}</div>}
               </div>
             );
           }
-          // Probe HARD 1: main-format coach-card (marker+JSON, no cardKind) →
-          // read-only display card — never raw marker/JSON, never action buttons.
-          const display = mainFormatCoachDisplayCard(turn);
+          // Probe HARD 1: main-format coach-card (no cardKind) → read-only
+          // display **only** for legacy coach-agent sessions (HARD 1(c)(ii)).
+          const display = mainFormatCoachDisplayCard(turn, sessionAgent);
           if (display) {
             return (
               <div
@@ -87,18 +102,20 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix,
                 data-readonly-card="true"
               >
                 <div className="trp-msg-card-title">{display.title}</div>
-                <div className="trp-msg-card-text">
-                  {collapseCoachMessage({ ...display, at: turn.at })}
-                </div>
+                <div className="trp-msg-card-text">{displayCardBodyText(display)}</div>
               </div>
             );
           }
+          // HARD 1(c)(i): neutralize leading marker before render (plain bubble).
+          const bubbleText = turn.role === 'agent' && !turn.cardKind
+            ? neutralizeLeadingCoachCardMarker(turn.text)
+            : turn.text;
           return (
             <div
               key={`${turn.at}-${i}`}
               className={`trp-bubble trp-bubble--${turn.role === 'user' ? 'user' : 'agent'}`}
             >
-              {turn.text}
+              {bubbleText}
             </div>
           );
         })}

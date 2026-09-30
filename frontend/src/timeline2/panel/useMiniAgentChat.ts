@@ -8,7 +8,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useAgentSessions, type UseAgentSessionsResult } from '../../lib/useAgentSessions';
 import { cancelAiActivity } from '../../agents/aiActivity';
-import { historyContentForModel } from '../../coach/coachMessages';
+import { historyContentForModel, neutralizeLeadingCoachCardMarker } from '../../coach/coachMessages';
 
 export type MiniChatInvoke = (
   prompt: string,
@@ -185,7 +185,7 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
       .slice(-MAX_HISTORY_TURNS)
       .map((t) => ({
         role: t.role === 'agent' ? ('assistant' as const) : ('user' as const),
-        content: historyContentForModel(t),
+        content: historyContentForModel(t, { sessionAgent: store.activeSession?.agent }),
       }));
 
     try {
@@ -195,17 +195,26 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
       // Defensive: invoke must return string | { text }. A bare undefined used to
       // throw "Cannot read properties of undefined (reading 'text')" and skip
       // appendTurns — so the user bubble never landed in the feed.
-      const agentText = typeof result === 'string' ? result : result?.text;
-      if (typeof agentText !== 'string') {
+      const agentTextRaw = typeof result === 'string' ? result : result?.text;
+      if (typeof agentTextRaw !== 'string') {
         throw new Error('Agent returned no text.');
       }
-      const agentTurn: AgentSessionTurn = { role: 'agent', text: agentText, at: new Date().toISOString() };
+      const agentTurn: AgentSessionTurn = {
+        role: 'agent',
+        text: agentTextRaw,
+        at: new Date().toISOString(),
+      };
       if (typeof result !== 'string') {
         if (result.cardKind) agentTurn.cardKind = result.cardKind;
         if (result.cardTitle) {
           agentTurn.cardTitle = result.cardTitle;
           if (result.cardFoot) agentTurn.cardFoot = result.cardFoot;
         }
+      }
+      // HARD 1(c)(i): neutralize leading coach-card marker before persist when
+      // there is no structural cardKind (trusted writers set cardKind).
+      if (!agentTurn.cardKind) {
+        agentTurn.text = neutralizeLeadingCoachCardMarker(agentTurn.text);
       }
       await store.appendTurns([
         { role: 'user', text: trimmed, at: now },
@@ -236,7 +245,7 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
     const now = new Date().toISOString();
     const agentTurn: AgentSessionTurn = {
       role: 'agent',
-      text: agentText,
+      text: extras?.cardKind ? agentText : neutralizeLeadingCoachCardMarker(agentText),
       at: now,
     };
     if (extras?.cardKind) agentTurn.cardKind = extras.cardKind;

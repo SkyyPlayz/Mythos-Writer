@@ -3,7 +3,11 @@ import type { Scene } from '../types';
 import { useAgentSessions, type UseAgentSessionsResult } from '../lib/useAgentSessions';
 import { PARTNER_SESSION_AGENT } from '../agents/partnerIdentity';
 import { buildFullSceneContext, makeCoachInvoke, turnsToCoachHistory } from '../agents/coachInvoke';
-import { decodeCoachTurns, type CoachMessage } from './coachMessages';
+import {
+  decodeCoachTurns,
+  neutralizeLeadingCoachCardMarker,
+  type CoachMessage,
+} from './coachMessages';
 
 export interface CoachConversation {
   /** Shared session store — feed the session pill with this. */
@@ -24,7 +28,11 @@ export function useCoachConversation(scene: Scene | null): CoachConversation {
   const [error, setError] = useState<string | null>(null);
 
   const turns = store.activeSession?.turns;
-  const messages = useMemo(() => decodeCoachTurns(turns ?? []), [turns]);
+  const sessionAgent = store.activeSession?.agent;
+  const messages = useMemo(
+    () => decodeCoachTurns(turns ?? [], { sessionAgent }),
+    [turns, sessionAgent],
+  );
 
   const invoke = useMemo(
     () => makeCoachInvoke(() => buildFullSceneContext(scene)),
@@ -47,7 +55,9 @@ export function useCoachConversation(scene: Scene | null): CoachConversation {
     try {
       // Probe P4 — writingAssistant provider + full scene context (never brainstorm).
       const result = await invoke(trimmed, history);
-      const agentText = typeof result === 'string' ? result : result.text;
+      const rawAgent = typeof result === 'string' ? result : result.text;
+      // HARD 1(c)(i): neutralize leading coach-card marker before persist.
+      const agentText = neutralizeLeadingCoachCardMarker(rawAgent);
       const now = new Date().toISOString();
       await store.appendTurns([
         { role: 'user', text: trimmed, at: now },

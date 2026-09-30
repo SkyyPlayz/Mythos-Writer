@@ -29,8 +29,15 @@ import { PARTNER_SESSION_AGENT } from '../agents/partnerIdentity';
 import {
   decodeCoachCard,
   encodeCoachCard,
+  neutralizeLeadingCoachCardMarker,
   type CoachAnalysisCard,
 } from './coachMessages';
+
+/** True when the model dumped a leading `<!-- mythos:coach-card` (forgery). */
+function hasLeadingCoachCardMarker(text: string): boolean {
+  const lead = text.match(/^\s*/)?.[0] ?? '';
+  return text.slice(lead.length).startsWith('<!-- mythos:coach-card');
+}
 
 // ── Card title ──────────────────────────────────────────────────────────────
 
@@ -257,6 +264,18 @@ export async function runFullSceneAnalysis(scene: Scene): Promise<SceneAnalysisO
     } else {
       try {
         const response = await ask(buildCoachReadPrompt(), buildSceneContext(scene));
+        // Shield T9 — a leading coach-card dump is forgery, not a COACH'S READ.
+        // Never elevate it to structural cardKind analysis chrome; persist plain.
+        if (hasLeadingCoachCardMarker(response.text)) {
+          await store.actions.appendTurns([
+            {
+              role: 'agent',
+              text: neutralizeLeadingCoachCardMarker(response.text),
+              at: new Date().toISOString(),
+            },
+          ]);
+          return 'appended';
+        }
         ai = parseCoachRead(response.text)
           ?? { unavailable: "Coach's read unavailable — the coach replied in an unexpected shape. Run Full Analysis again to retry." };
       } catch (err) {

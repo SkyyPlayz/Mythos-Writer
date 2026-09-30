@@ -86,15 +86,27 @@ export function turnsToCoachHistory(
  * Coach chat invoke — writingAssistant provider. Caller supplies scene context
  * separately via the closure below.
  */
+/** Slot pin (Shield batch R4) — Coach free-text always uses writingAssistant. */
+export const COACH_INVOKE_PROVIDER_SLOT: PartnerLlmAgent = 'writingAssistant';
+
 export function makeCoachInvoke(getSceneContext: () => string | undefined): MiniChatInvoke {
   return async (prompt, history) => {
-    await refuseUnlessProviderReady('writingAssistant');
+    await refuseUnlessProviderReady(COACH_INVOKE_PROVIDER_SLOT);
     const api = window.api;
     if (typeof api?.agentWritingAssistant !== 'function') {
       throw new Error('Writing Coach unavailable — check your provider settings.');
     }
     const composed = buildCoachInvokePrompt(prompt, history);
     const response = await api.agentWritingAssistant(composed, getSceneContext());
-    return response.text;
+    // Residual 6 / Shield batch — wrapIpcHandler may return `{ error }` instead of throwing.
+    if (response && typeof response === 'object' && 'error' in response
+        && typeof (response as { error?: unknown }).error === 'string') {
+      throw new Error((response as { error: string }).error);
+    }
+    if (response == null || typeof response !== 'object'
+        || typeof (response as { text?: unknown }).text !== 'string') {
+      throw new Error('Writing Coach returned no text.');
+    }
+    return (response as { text: string }).text;
   };
 }

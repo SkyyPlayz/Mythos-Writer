@@ -813,6 +813,21 @@
   margin-top: 5px;
 }
 
+/* HARD 1 — main-format / legacy display cards: distinct from trusted chrome */
+.trp-msg-card--readonly {
+  background: rgba(13, 16, 28, 0.45);
+  border-color: rgba(255, 255, 255, 0.14);
+  border-style: dashed;
+  opacity: 0.92;
+}
+.trp-msg-card--readonly .trp-msg-card-title {
+  color: #a8b4cc;
+  font-weight: 650;
+}
+.trp-msg-card--readonly .trp-msg-card-text {
+  color: #9aa8c0;
+}
+
 .trp-chat-input-row {
   display: flex;
   gap: 6px;

@@ -661,12 +661,63 @@
   color: #c8d3e7;
 }
 
+/* Proto magenta header card — PAST CHATS & CALLS thread picker */
+.ahp-past-chats {
+  margin: 0 8px;
+}
+
+.ahp-past-chats__toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 13px;
+  border: 1px solid rgb(255, 77, 255);
+  background: rgba(255, 77, 255, 0.31);
+  color: #f5e9ff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.ahp-past-chats__count {
+  margin-left: auto;
+  color: rgba(245, 233, 255, 0.85);
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 10.5px;
+}
+
 .ahp-past-chats__menu {
   margin-top: 6px;
   padding: 8px;
   border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 77, 255, 0.35);
   background: rgba(8, 10, 18, 0.55);
+}
+
+.ahp-past-chats__history-link {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #c8a0ff;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ahp-past-chats__history-link:hover {
+  background: rgba(255, 77, 255, 0.12);
+  color: #ff9dff;
 }
 
 .ahp-writer-tips {

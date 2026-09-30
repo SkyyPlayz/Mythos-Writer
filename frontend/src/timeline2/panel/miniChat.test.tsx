@@ -470,14 +470,207 @@ describe('MiniAgentChat — card messages (SKY-8886)', () => {
     expect(body).toContain('Lean into the quay fog');
   });
 
-  it('HARD 1: main-format coach-card (no cardKind) renders read-only display card, not raw JSON', async () => {
+  it('HARD 1 / T7: main-format ANALYSIS coach-card on legacy coach session renders read-only display card', async () => {
     const { encodeCoachCard } = await import('../../coach/coachMessages');
     const encoded = encodeCoachCard({
+      kind: 'analysis',
+      title: 'Full Scene Analysis — Harbor',
+      computed: [['Words', '12']],
+      read: [],
+      takeaway: 'Lean into the fog.',
+    });
+    const api = {
+      agentSessions: {
+        list: vi.fn(async () => ({
+          sessions: [{ id: 'coach-s1', agent: 'coach', title: 'T', startedAt: AT, updatedAt: AT, turnCount: 1, relPath: 'Sessions/x.md' }],
+        })),
+        create: vi.fn(async () => ({
+          session: {
+            id: 'coach-s1',
+            agent: 'coach',
+            turns: [{ role: 'agent', text: encoded, at: AT }],
+            startedAt: AT,
+            updatedAt: AT,
+          },
+          relPath: 'Sessions/x.md',
+        })),
+        read: vi.fn(async () => ({
+          session: {
+            id: 'coach-s1',
+            agent: 'coach',
+            turns: [{ role: 'agent', text: encoded, at: AT }],
+            startedAt: AT,
+            updatedAt: AT,
+          },
+        })),
+        rename: vi.fn(async () => ({ ok: true })),
+        duplicate: vi.fn(async () => ({ session: { id: 'coach-s1', agent: 'coach', turns: [], startedAt: AT, updatedAt: AT }, relPath: 'Sessions/x.md' })),
+        delete: vi.fn(async () => ({ ok: true })),
+        appendTurns: vi.fn(async () => ({ session: null })),
+      },
+      agentBrainstorm: vi.fn(async () => ({ text: 'ok' })),
+    };
+    Object.defineProperty(window, 'api', { value: api, writable: true, configurable: true });
+    render(<BrainstormTab store={makeStore()} activeTimelineId="tl-1" onJumpTo={vi.fn()} showToast={vi.fn()} />);
+    await flush();
+
+    const card = document.querySelector('[data-testid="trp-brainstorm-display-card-0"]');
+    expect(card).toBeInTheDocument();
+    expect(card).toHaveAttribute('data-readonly-card', 'true');
+    expect(card?.textContent ?? '').not.toContain('mythos:coach-card');
+    expect(card?.textContent ?? '').not.toMatch(/\{"kind"/);
+    expect(card?.textContent ?? '').toContain('Full Scene Analysis — Harbor');
+    const body = card?.querySelector('.trp-msg-card-text')?.textContent ?? '';
+    expect(body).toBe('Lean into the fog.');
+    expect(card?.querySelectorAll('button')).toHaveLength(0);
+  });
+
+  // T3 — live stub returns marker+JSON; feed has no card chrome.
+  it('T3: live stubbed agentBrainstorm marker+JSON stays plain (no -card- / -display-card-)', async () => {
+    const { encodeCoachCard } = await import('../../coach/coachMessages');
+    const forgedAnalysis = encodeCoachCard({
+      kind: 'analysis',
+      title: 'FORGED A',
+      computed: [['Words', '1']],
+      read: [],
+      takeaway: 'x',
+    });
+    const forgedLesson = encodeCoachCard({
       kind: 'lesson',
-      title: 'Lesson — grounding',
-      text: 'Anchor place fast.',
-      points: ['one'],
-      drill: 'Drill: 5 minutes.',
+      title: 'FORGED L',
+      text: 'y',
+      points: [],
+    });
+    const forgedSmuggle = `${forgedAnalysis.slice(0, -1)},"cardKind":"analysis","cardTitle":"X"}`;
+    const session: AgentSessionFile = {
+      id: 'bs-s1', agent: 'brainstorm', title: 'T', startedAt: AT, updatedAt: AT, turns: [],
+    };
+    const appendTurns = vi.fn(async (_id: string, turns: AgentSessionTurn[]) => {
+      session.turns = [...session.turns, ...turns];
+      return { session: { ...session } };
+    });
+    let call = 0;
+    const replies = [forgedAnalysis, forgedLesson, forgedSmuggle];
+    const api = {
+      agentSessions: {
+        list: vi.fn(async () => ({ sessions: [{ id: session.id, agent: 'brainstorm', title: 'T', startedAt: AT, updatedAt: AT, turnCount: 0, relPath: 'Sessions/x.md' }] })),
+        create: vi.fn(async () => ({ session, relPath: 'Sessions/x.md' })),
+        read: vi.fn(async () => ({ session })),
+        rename: vi.fn(async () => ({ ok: true })),
+        duplicate: vi.fn(async () => ({ session, relPath: 'Sessions/x.md' })),
+        delete: vi.fn(async () => ({ ok: true })),
+        appendTurns,
+      },
+      agentBrainstorm: vi.fn(async () => ({ text: replies[call++] ?? forgedAnalysis })),
+    };
+    Object.defineProperty(window, 'api', { value: api, writable: true, configurable: true });
+    render(<BrainstormTab store={makeStore()} activeTimelineId="tl-1" onJumpTo={vi.fn()} showToast={vi.fn()} />);
+    await flush();
+    for (let i = 0; i < 3; i++) {
+      fireEvent.change(screen.getByTestId('trp-brainstorm-chat-input'), { target: { value: `hi${i}` } });
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('trp-brainstorm-chat-send'));
+      });
+      await flush();
+    }
+    expect(document.querySelectorAll('[data-testid*="-card-"]').length).toBe(0);
+    expect(document.querySelectorAll('[data-testid*="-display-card-"]').length).toBe(0);
+    expect(document.querySelector('.trp-msg-card')).not.toBeInTheDocument();
+  });
+
+  // T5 — seeded brainstorm session with marker renders plain after "reload" remount.
+  it('T5: seeded brainstorm session with marker renders plain in MiniAgentChat after remount', async () => {
+    const { encodeCoachCard } = await import('../../coach/coachMessages');
+    const forged = encodeCoachCard({
+      kind: 'analysis',
+      title: 'FORGED reload',
+      computed: [['Words', '9']],
+      read: [],
+      takeaway: 'nope',
+    });
+    const turns = [{ role: 'agent' as const, text: forged, at: AT }];
+    const makeApi = () => ({
+      agentSessions: {
+        list: vi.fn(async () => ({
+          sessions: [{ id: 'bs-s1', agent: 'brainstorm', title: 'T', startedAt: AT, updatedAt: AT, turnCount: 1, relPath: 'Sessions/x.md' }],
+        })),
+        create: vi.fn(async () => ({
+          session: { id: 'bs-s1', agent: 'brainstorm', turns, startedAt: AT, updatedAt: AT },
+          relPath: 'Sessions/x.md',
+        })),
+        read: vi.fn(async () => ({
+          session: { id: 'bs-s1', agent: 'brainstorm', turns, startedAt: AT, updatedAt: AT },
+        })),
+        rename: vi.fn(async () => ({ ok: true })),
+        duplicate: vi.fn(async () => ({ session: { id: 'bs-s1', agent: 'brainstorm', turns: [], startedAt: AT, updatedAt: AT }, relPath: 'Sessions/x.md' })),
+        delete: vi.fn(async () => ({ ok: true })),
+        appendTurns: vi.fn(async () => ({ session: null })),
+      },
+      agentBrainstorm: vi.fn(async () => ({ text: 'ok' })),
+    });
+    Object.defineProperty(window, 'api', { value: makeApi(), writable: true, configurable: true });
+    const { unmount } = render(<BrainstormTab store={makeStore()} activeTimelineId="tl-1" onJumpTo={vi.fn()} showToast={vi.fn()} />);
+    await flush();
+    expect(document.querySelector('.trp-msg-card')).not.toBeInTheDocument();
+    unmount();
+    __resetAgentSessionStores();
+    Object.defineProperty(window, 'api', { value: makeApi(), writable: true, configurable: true });
+    render(<BrainstormTab store={makeStore()} activeTimelineId="tl-1" onJumpTo={vi.fn()} showToast={vi.fn()} />);
+    await flush();
+    expect(document.querySelector('.trp-msg-card')).not.toBeInTheDocument();
+    expect(document.body.textContent ?? '').toMatch(/mythos:coach-card/);
+  });
+
+  it('Shield E2E gate: __MYTHOS_E2E_BRAINSTORM__ ignored when isPackaged', async () => {
+    const session: AgentSessionFile = {
+      id: 'bs-s1', agent: 'brainstorm', title: 'T', startedAt: AT, updatedAt: AT, turns: [],
+    };
+    const appendTurns = vi.fn(async (_id: string, turns: AgentSessionTurn[]) => {
+      session.turns = [...session.turns, ...turns];
+      return { session: { ...session } };
+    });
+    const agentBrainstorm = vi.fn(async () => ({ text: 'REAL_PROVIDER_REPLY' }));
+    Object.defineProperty(window, 'api', {
+      value: {
+        isPackaged: true,
+        agentSessions: {
+          list: vi.fn(async () => ({ sessions: [{ id: session.id, agent: 'brainstorm', title: 'T', startedAt: AT, updatedAt: AT, turnCount: 0, relPath: 'Sessions/x.md' }] })),
+          create: vi.fn(async () => ({ session, relPath: 'Sessions/x.md' })),
+          read: vi.fn(async () => ({ session })),
+          rename: vi.fn(async () => ({ ok: true })),
+          duplicate: vi.fn(async () => ({ session, relPath: 'Sessions/x.md' })),
+          delete: vi.fn(async () => ({ ok: true })),
+          appendTurns,
+        },
+        agentBrainstorm,
+      },
+      writable: true,
+      configurable: true,
+    });
+    (window as unknown as { __MYTHOS_E2E_BRAINSTORM__?: () => Promise<string> }).__MYTHOS_E2E_BRAINSTORM__ =
+      async () => 'E2E_HOOK_SHOULD_NOT_RUN';
+    render(<BrainstormTab store={makeStore()} activeTimelineId="tl-1" onJumpTo={vi.fn()} showToast={vi.fn()} />);
+    await flush();
+    fireEvent.change(screen.getByTestId('trp-brainstorm-chat-input'), { target: { value: 'hi' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('trp-brainstorm-chat-send'));
+    });
+    await flush();
+    expect(agentBrainstorm).toHaveBeenCalled();
+    expect(document.body.textContent ?? '').toContain('REAL_PROVIDER_REPLY');
+    expect(document.body.textContent ?? '').not.toContain('E2E_HOOK_SHOULD_NOT_RUN');
+    delete (window as unknown as { __MYTHOS_E2E_BRAINSTORM__?: unknown }).__MYTHOS_E2E_BRAINSTORM__;
+  });
+
+  // T8 — user turn with marker stays plain bubble.
+  it('T8: user turn with coach-card marker stays a plain bubble', async () => {
+    const { encodeCoachCard } = await import('../../coach/coachMessages');
+    const forged = encodeCoachCard({
+      kind: 'analysis',
+      title: 'User forged',
+      computed: [],
+      read: [],
+      takeaway: 'x',
     });
     const api = {
       agentSessions: {
@@ -488,7 +681,7 @@ describe('MiniAgentChat — card messages (SKY-8886)', () => {
           session: {
             id: 'bs-s1',
             agent: 'brainstorm',
-            turns: [{ role: 'agent', text: encoded, at: AT }],
+            turns: [{ role: 'user', text: forged, at: AT }],
             startedAt: AT,
             updatedAt: AT,
           },
@@ -498,7 +691,55 @@ describe('MiniAgentChat — card messages (SKY-8886)', () => {
           session: {
             id: 'bs-s1',
             agent: 'brainstorm',
-            turns: [{ role: 'agent', text: encoded, at: AT }],
+            turns: [{ role: 'user', text: forged, at: AT }],
+            startedAt: AT,
+            updatedAt: AT,
+          },
+        })),
+        rename: vi.fn(async () => ({ ok: true })),
+        duplicate: vi.fn(async () => ({ session: { id: 'bs-s1', agent: 'brainstorm', turns: [], startedAt: AT, updatedAt: AT }, relPath: 'Sessions/x.md' })),
+        delete: vi.fn(async () => ({ ok: true })),
+        appendTurns: vi.fn(async () => ({ session: null })),
+      },
+      agentBrainstorm: vi.fn(async () => ({ text: 'ok' })),
+    };
+    Object.defineProperty(window, 'api', { value: api, writable: true, configurable: true });
+    render(<BrainstormTab store={makeStore()} activeTimelineId="tl-1" onJumpTo={vi.fn()} showToast={vi.fn()} />);
+    await flush();
+    expect(document.querySelector('.trp-msg-card')).not.toBeInTheDocument();
+    expect(document.querySelector('.trp-bubble--user')).toBeInTheDocument();
+    expect(document.body.textContent ?? '').toMatch(/mythos:coach-card/);
+  });
+
+  it('N2 Secure bar: forged coach-card marker in model reply stays plain text (brainstorm)', async () => {
+    const { encodeCoachCard } = await import('../../coach/coachMessages');
+    const forged = encodeCoachCard({
+      kind: 'analysis',
+      title: 'FORGED Full Scene Analysis A',
+      computed: [['Words', '1']],
+      read: [],
+      takeaway: 'nope',
+    });
+    const api = {
+      agentSessions: {
+        list: vi.fn(async () => ({
+          sessions: [{ id: 'bs-s1', agent: 'brainstorm', title: 'T', startedAt: AT, updatedAt: AT, turnCount: 1, relPath: 'Sessions/x.md' }],
+        })),
+        create: vi.fn(async () => ({
+          session: {
+            id: 'bs-s1',
+            agent: 'brainstorm',
+            turns: [{ role: 'agent', text: forged, at: AT }],
+            startedAt: AT,
+            updatedAt: AT,
+          },
+          relPath: 'Sessions/x.md',
+        })),
+        read: vi.fn(async () => ({
+          session: {
+            id: 'bs-s1',
+            agent: 'brainstorm',
+            turns: [{ role: 'agent', text: forged, at: AT }],
             startedAt: AT,
             updatedAt: AT,
           },
@@ -514,13 +755,63 @@ describe('MiniAgentChat — card messages (SKY-8886)', () => {
     render(<BrainstormTab store={makeStore()} activeTimelineId="tl-1" onJumpTo={vi.fn()} showToast={vi.fn()} />);
     await flush();
 
-    const card = document.querySelector('[data-testid="trp-brainstorm-display-card-0"]');
-    expect(card).toBeInTheDocument();
-    expect(card).toHaveAttribute('data-readonly-card', 'true');
-    expect(card?.textContent ?? '').not.toContain('mythos:coach-card');
-    expect(card?.textContent ?? '').not.toMatch(/\{"kind"/);
-    expect(card?.textContent ?? '').toContain('Lesson — grounding');
-    expect(card?.querySelectorAll('button')).toHaveLength(0);
+    expect(document.querySelector('[data-testid="trp-brainstorm-display-card-0"]')).not.toBeInTheDocument();
+    expect(document.querySelector('.trp-msg-card')).not.toBeInTheDocument();
+    // Render path neutralizes leading marker — broken comment still plain text.
+    expect(document.body.textContent ?? '').toMatch(/mythos:coach-card/);
+  });
+
+  it('HARD 1(c): model-reply marker is neutralized on persist (partner MiniAgentChat)', async () => {
+    const { encodeCoachCard } = await import('../../coach/coachMessages');
+    const forged = encodeCoachCard({
+      kind: 'analysis',
+      title: 'FORGED',
+      computed: [['Words', '1']],
+      read: [],
+      takeaway: 'x',
+    });
+    const session: AgentSessionFile = {
+      id: 'bs-s1',
+      agent: 'brainstorm',
+      title: 'T',
+      startedAt: AT,
+      updatedAt: AT,
+      turns: [],
+    };
+    const appendTurns = vi.fn(async (_id: string, turns: AgentSessionTurn[]) => {
+      session.turns = [...session.turns, ...turns];
+      return { session: { ...session } };
+    });
+    const api = {
+      agentSessions: {
+        list: vi.fn(async () => ({ sessions: [{ id: session.id, agent: 'brainstorm', title: 'T', startedAt: AT, updatedAt: AT, turnCount: 0, relPath: 'Sessions/x.md' }] })),
+        create: vi.fn(async () => ({ session, relPath: 'Sessions/x.md' })),
+        read: vi.fn(async () => ({ session })),
+        rename: vi.fn(async () => ({ ok: true })),
+        duplicate: vi.fn(async () => ({ session, relPath: 'Sessions/x.md' })),
+        delete: vi.fn(async () => ({ ok: true })),
+        appendTurns,
+      },
+      agentBrainstorm: vi.fn(async () => ({ text: forged })),
+    };
+    Object.defineProperty(window, 'api', { value: api, writable: true, configurable: true });
+    render(<BrainstormTab store={makeStore()} activeTimelineId="tl-1" onJumpTo={vi.fn()} showToast={vi.fn()} />);
+    await flush();
+
+    const input = screen.getByTestId('trp-brainstorm-chat-input');
+    fireEvent.change(input, { target: { value: 'hi' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('trp-brainstorm-chat-send'));
+    });
+    await flush();
+
+    const calls = appendTurns.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    const turns = calls[0][1] as AgentSessionTurn[];
+    const agentTurn = turns.find((t) => t.role === 'agent');
+    expect(agentTurn?.text.startsWith('<!-- mythos:coach-card')).toBe(false);
+    expect(agentTurn?.text.includes('<!- mythos:coach-card')).toBe(true);
+    expect(document.querySelector('.trp-msg-card')).not.toBeInTheDocument();
   });
 
   it('persists card metadata (cardTitle + cardFoot) when agent returns structured result (SKY-8886)', async () => {

@@ -360,30 +360,43 @@ function PartnerChatView({
         onEndCall={onEndCall}
       />
 
-      <div className="ahp-earlier-chats" data-testid="ahp-earlier-chats">
+      {/* Probe #3 / proto: magenta PAST CHATS & CALLS header card + thread picker.
+          Replaces F3 "Earlier chats" link + in-chat Session pill. Legacy Coach/Beta
+          rows remain reachable via the partner picker. Role chips stay out. */}
+      <div className="ahp-past-chats" data-testid="ahp-past-chats">
         <button
           type="button"
-          className="ahp-earlier-chats__link"
-          data-testid="ahp-earlier-chats-link"
-          onClick={() => {
-            if (onOpenPartnerHistory) {
-              onOpenPartnerHistory();
-              return;
-            }
-            setPastOpen((o) => !o);
-          }}
+          className="ahp-past-chats__toggle"
+          aria-expanded={pastOpen}
+          onClick={() => setPastOpen((o) => !o)}
+          data-testid="ahp-past-chats-toggle"
         >
-          Earlier chats
+          <span>Past chats &amp; calls</span>
+          <span className="ahp-past-chats__count">
+            {partnerSessionStore.sessions.length} thread{partnerSessionStore.sessions.length === 1 ? '' : 's'}
+          </span>
+          <span aria-hidden="true">{pastOpen ? '▾' : '▸'}</span>
         </button>
-        {pastOpen && !onOpenPartnerHistory && (
-          <div className="ahp-past-chats__menu" data-testid="ahp-past-chats-menu">
-            <AgentSessionPicker
-              store={partnerSessionStore}
-              className="ahp-session-pill ahp-session-pill--dropdown"
-              busy={false}
-            />
-          </div>
-        )}
+        {/* Always mount the session pill (active title) — Path 1 main kept an
+            always-visible Writer-hand pill; Probe #3 moved that contract here.
+            Toggle still expands the history link; picker dropdown is its own. */}
+        <div className="ahp-past-chats__menu" data-testid="ahp-past-chats-menu">
+          <AgentSessionPicker
+            store={partnerSessionStore}
+            className="ahp-session-pill ahp-session-pill--dropdown"
+            busy={false}
+          />
+          {pastOpen && onOpenPartnerHistory && (
+            <button
+              type="button"
+              className="ahp-past-chats__history-link"
+              data-testid="ahp-partner-history-link"
+              onClick={() => onOpenPartnerHistory()}
+            >
+              Open full session history…
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tips above the chat thread so Scan now / tip cards stay in-viewport
@@ -731,6 +744,7 @@ function UnifiedPartnerChat({
         partnerName={partnerName}
         placeholder={onCall ? `Speak or type to ${partnerName}…` : `Message ${partnerName}…`}
         testidPrefix="ahp-partner"
+        hideSessionPicker
       />
       {queued.length > 0 && (
         <div className="ahp-queued" data-testid="ahp-queued-list" aria-label="Queued messages">

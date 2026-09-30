@@ -46,7 +46,11 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     expect(screen.queryByTestId('ahp-agent-row-brainstorm')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ahp-agent-row-beta-reader')).not.toBeInTheDocument();
     expect(await screen.findByTestId('partner-card')).toBeInTheDocument();
-    expect(screen.getByTestId('ahp-earlier-chats')).toBeInTheDocument();
+    expect(screen.getByTestId('ahp-past-chats')).toBeInTheDocument();
+    expect(screen.getByTestId('ahp-past-chats-toggle')).toHaveTextContent(/Past chats/i);
+    // Active session pill stays mounted without expanding Past chats (TC-8537-02).
+    expect(screen.getByTestId('ahp-past-chats-menu')).toBeInTheDocument();
+    expect(screen.getByTestId('ahp-past-chats').querySelector('.asp-pill-label')).toBeTruthy();
     expect(screen.getByTestId('ahp-writer-tips')).toBeInTheDocument();
     // N4-A: tips strip keeps WA expanded (no AC-WA-20 icon latch).
     expect(screen.getByLabelText('Heartbeat panel')).toBeInTheDocument();

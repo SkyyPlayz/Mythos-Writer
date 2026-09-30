@@ -18,10 +18,11 @@ export interface BrainstormTabProps {
 export const invokeBrainstorm: MiniChatInvoke = async (prompt, history) => {
   // E2E hook — contextBridge freezes window.api methods, so Playwright cannot
   // reassign agentBrainstorm. Mirror __MYTHOS_E2E_TIMERS__ for float/dock sync.
+  // Shield batch residual 5 — never honour this hook in packaged production builds.
   const e2eInvoke = (window as unknown as {
     __MYTHOS_E2E_BRAINSTORM__?: MiniChatInvoke;
   }).__MYTHOS_E2E_BRAINSTORM__;
-  if (typeof e2eInvoke === 'function') {
+  if (typeof e2eInvoke === 'function' && window.api?.isPackaged !== true) {
     return e2eInvoke(prompt, history);
   }
 

@@ -174,6 +174,23 @@ describe('maskSettingsForRenderer — apiKey field (MYT-143)', () => {
   });
 });
 
+// E3 / Shield residual 12 — pin save-time strip of anthropicEnvKeyPresent.
+describe('reconcileSettingsFromRenderer — strip anthropicEnvKeyPresent (Shield E3)', () => {
+  it('never persists anthropicEnvKeyPresent from an incoming renderer echo', () => {
+    const stored = settingsFixture({ apiKey: FAKE_API_KEY });
+    const incoming = {
+      ...stored,
+      apiKey: maskApiKey(stored.apiKey),
+      anthropicEnvKeyPresent: true,
+    } as AppSettings;
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(
+      Object.prototype.hasOwnProperty.call(reconciled, 'anthropicEnvKeyPresent'),
+    ).toBe(false);
+    expect((reconciled as { anthropicEnvKeyPresent?: boolean }).anthropicEnvKeyPresent).toBeUndefined();
+  });
+});
+
 describe('maskSettingsForRenderer — voice.openaiApiKey field (MYT-424)', () => {
   it('masks voice.openaiApiKey before returning it to the renderer', () => {
     const masked = maskSettingsForRenderer(

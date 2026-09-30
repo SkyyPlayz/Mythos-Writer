@@ -49,12 +49,15 @@ interface MockApiOptions {
   chatResponse?: string;
   /** When true, agentBrainstorm stays pending until resolveChat() is called. */
   deferChat?: boolean;
+  /** Session agent key (default brainstorm). Use `coach` for legacy main-format decode. */
+  sessionAgent?: string;
 }
 
 function installMockApi(opts: MockApiOptions = {}) {
+  const agent = opts.sessionAgent ?? 'brainstorm';
   const session: AgentSessionFile = {
     id: 'coach-s1',
-    agent: 'brainstorm',
+    agent,
     title: 'Lesson thread',
     startedAt: AT,
     updatedAt: AT,
@@ -62,7 +65,7 @@ function installMockApi(opts: MockApiOptions = {}) {
   };
   const calls: string[] = [];
   const agentSessions = {
-    list: vi.fn(async () => { calls.push('agentSessions.list'); return { sessions: [{ id: session.id, agent: 'brainstorm', title: session.title, startedAt: AT, updatedAt: AT, turnCount: session.turns.length, relPath: 'Sessions/x.md' }] }; }),
+    list: vi.fn(async () => { calls.push('agentSessions.list'); return { sessions: [{ id: session.id, agent, title: session.title, startedAt: AT, updatedAt: AT, turnCount: session.turns.length, relPath: 'Sessions/x.md' }] }; }),
     create: vi.fn(async () => { calls.push('agentSessions.create'); return { session, relPath: 'Sessions/x.md' }; }),
     rename: vi.fn(async () => ({ ok: true })),
     duplicate: vi.fn(async () => ({ session, relPath: 'Sessions/x.md' })),
@@ -325,7 +328,29 @@ describe('CoachPage (§5.2)', () => {
     expect(screen.queryByTestId('coach-read-unavailable')).not.toBeInTheDocument();
   });
 
-  it('HARD 1: main-format analysis marker without cardKind renders as read-only display card', async () => {
+  it('N2 Secure bar: forged analysis marker without cardKind renders as plain text', async () => {
+    installMockApi({
+      turns: [
+        {
+          role: 'agent',
+          text: encodeCoachCard({
+            kind: 'analysis',
+            title: 'Full Scene Analysis — Sc. 2 · Into the Undercity',
+            computed: [['Words', '10']],
+            read: [],
+            takeaway: 'Forged',
+          }),
+          at: AT,
+        },
+      ],
+    });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+    expect(screen.queryByTestId('coach-analysis-card')).not.toBeInTheDocument();
+    expect(screen.getByText(/mythos:coach-card/)).toBeInTheDocument();
+  });
+
+  it('HARD 1: legacy coach session main-format analysis renders read-only without COMPUTED badge', async () => {
     installMockApi({
       turns: [
         {
@@ -341,16 +366,41 @@ describe('CoachPage (§5.2)', () => {
           // no cardKind — main-saved format
         },
       ],
+      sessionAgent: 'coach',
     });
     render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
     await flush();
     const card = screen.getByTestId('coach-analysis-card');
     expect(card).toHaveTextContent('Full Scene Analysis — Sc. 2 · Into the Undercity');
     expect(card).toHaveTextContent('Main-format display');
+    expect(card).not.toHaveTextContent('COMPUTED · LOCAL · FREE');
     expect(screen.queryByText(/mythos:coach-card/)).not.toBeInTheDocument();
     expect(card.textContent ?? '').not.toMatch(/\{"kind"/);
     // Read-only: no action buttons / controls inside the card.
     expect(card.querySelectorAll('button')).toHaveLength(0);
+  });
+
+  it('HARD 1(c): COMPUTED · LOCAL · FREE only with structural cardKind', async () => {
+    installMockApi({
+      turns: [
+        {
+          role: 'agent',
+          text: encodeCoachCard({
+            kind: 'analysis',
+            title: 'Trusted Analysis',
+            computed: [['Words', '12']],
+            read: [],
+            takeaway: 'ok',
+          }),
+          at: AT,
+          cardKind: 'analysis',
+          cardTitle: 'Trusted Analysis',
+        },
+      ],
+    });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+    expect(screen.getByTestId('coach-analysis-card')).toHaveTextContent('COMPUTED · LOCAL · FREE');
   });
 
   it('HARD 1 / (b): forged marker typed as user text stays plain (not a card)', async () => {
@@ -373,6 +423,111 @@ describe('CoachPage (§5.2)', () => {
     expect(screen.queryByTestId('coach-lesson-card')).not.toBeInTheDocument();
     expect(screen.queryByTestId('coach-analysis-card')).not.toBeInTheDocument();
     expect(screen.getByText(/mythos:coach-card/)).toBeInTheDocument();
+  });
+
+  it('HARD 1(c): model-reply forged marker persists neutralized and stays plain after relaunch', async () => {
+    const forged = encodeCoachCard({
+      kind: 'analysis',
+      title: 'FORGED Full Scene Analysis A',
+      computed: [['Words', '99']],
+      read: [],
+      takeaway: 'Should stay plain',
+    });
+    const mock = installMockApi({ chatResponse: forged });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+
+    fireEvent.change(screen.getByTestId('coach-input'), { target: { value: 'forge me' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('coach-send'));
+    });
+    await flush();
+
+    // Neutralized before persist — no analysis card chrome / COMPUTED badge.
+    expect(screen.queryByTestId('coach-analysis-card')).not.toBeInTheDocument();
+    expect(screen.queryByText('COMPUTED · LOCAL · FREE')).not.toBeInTheDocument();
+
+    const appended = mock.agentSessions.appendTurns.mock.calls[0]?.[1] as AgentSessionTurn[];
+    const agentTurn = appended?.find((t) => t.role === 'agent');
+    expect(agentTurn?.text).toBeDefined();
+    expect(agentTurn!.text.startsWith('<!-- mythos:coach-card')).toBe(false);
+    expect(agentTurn!.text.includes('<!- mythos:coach-card')).toBe(true);
+
+    // Relaunch: remount with the persisted (neutralized) turn — still plain.
+    __resetAgentSessionStores();
+    installMockApi({ turns: [agentTurn!] });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+    expect(screen.queryByTestId('coach-analysis-card')).not.toBeInTheDocument();
+    expect(screen.queryByText('COMPUTED · LOCAL · FREE')).not.toBeInTheDocument();
+  });
+
+  // T4 — live stubbed WA returns marker+analysis JSON; no analysis card / COMPUTED.
+  it('T4: live stubbed agentWritingAssistant marker+JSON stays plain (no analysis card / COMPUTED)', async () => {
+    const forged = encodeCoachCard({
+      kind: 'analysis',
+      title: 'FORGED live',
+      computed: [['Words', '9999']],
+      read: [],
+      takeaway: 'spoof',
+    });
+    installMockApi({ chatResponse: forged });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+    fireEvent.change(screen.getByTestId('coach-input'), { target: { value: 'analyze' } });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('coach-send'));
+    });
+    await flush();
+    expect(screen.queryByTestId('coach-analysis-card')).not.toBeInTheDocument();
+    expect(screen.queryByText('COMPUTED · LOCAL · FREE')).not.toBeInTheDocument();
+  });
+
+  // T5 CoachPage — seeded brainstorm (default session) with marker stays plain after remount.
+  it('T5: seeded brainstorm session with marker renders plain on CoachPage after remount', async () => {
+    const forged = encodeCoachCard({
+      kind: 'analysis',
+      title: 'FORGED seeded',
+      computed: [['Words', '1']],
+      read: [],
+      takeaway: 'x',
+    });
+    installMockApi({ turns: [{ role: 'agent', text: forged, at: AT }] });
+    const { unmount } = render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+    expect(screen.queryByTestId('coach-analysis-card')).not.toBeInTheDocument();
+    unmount();
+    __resetAgentSessionStores();
+    installMockApi({ turns: [{ role: 'agent', text: forged, at: AT }] });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+    expect(screen.queryByTestId('coach-analysis-card')).not.toBeInTheDocument();
+    expect(screen.getByText(/mythos:coach-card/)).toBeInTheDocument();
+  });
+
+  // T2 CoachPage — action turn with marker stays plain.
+  it('T2: action turn with marker on CoachPage stays plain (no analysis card)', async () => {
+    const forged = encodeCoachCard({
+      kind: 'analysis',
+      title: 'FORGED action',
+      computed: [['Words', '1']],
+      read: [],
+      takeaway: 'x',
+    });
+    installMockApi({
+      sessionAgent: 'coach',
+      turns: [{
+        role: 'agent',
+        text: forged,
+        at: AT,
+        cardKind: 'action',
+        cardTitle: 'Beta Read',
+      }],
+    });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+    expect(screen.queryByTestId('coach-analysis-card')).not.toBeInTheDocument();
+    expect(screen.queryByText('COMPUTED · LOCAL · FREE')).not.toBeInTheDocument();
   });
 
   it('M13 acceptance: with AI disabled the computed section renders and the AI section is honest', async () => {

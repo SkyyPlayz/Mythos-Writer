@@ -316,13 +316,21 @@ function CoachFeedMessage({ message }: { message: CoachMessage }) {
     );
   }
   // analysis (§5.4 — M13 fills the data; M12 ships the renderer)
+  // HARD 1(c): COMPUTED · LOCAL · FREE + full analysis chrome only when trusted
+  // (structural cardKind). Legacy main-format display stays read-only without the badge.
   return (
-    <div className="coach-analysis-card" data-testid="coach-analysis-card">
+    <div
+      className={`coach-analysis-card${message.trusted ? '' : ' coach-analysis-card--readonly'}`}
+      data-testid="coach-analysis-card"
+      data-readonly-card={message.trusted ? undefined : 'true'}
+    >
       <div className="coach-analysis-title">{message.title}</div>
-      <div className="coach-analysis-badge-row">
-        <span className="coach-badge coach-badge--computed">COMPUTED · LOCAL · FREE</span>
-        <span className="coach-badge-note">no AI needed</span>
-      </div>
+      {message.trusted && (
+        <div className="coach-analysis-badge-row">
+          <span className="coach-badge coach-badge--computed">COMPUTED · LOCAL · FREE</span>
+          <span className="coach-badge-note">no AI needed</span>
+        </div>
+      )}
       <div className="coach-analysis-grid">
         {message.computed.map(([k, v]) => (
           <div key={k} className="coach-analysis-stat">
@@ -331,10 +339,12 @@ function CoachFeedMessage({ message }: { message: CoachMessage }) {
           </div>
         ))}
       </div>
-      <div className="coach-analysis-badge-row">
-        <span className="coach-badge coach-badge--read">COACH&#39;S READ · AI</span>
-        <span className="coach-badge-note">judgment calls — needs a model</span>
-      </div>
+      {message.trusted && (
+        <div className="coach-analysis-badge-row">
+          <span className="coach-badge coach-badge--read">COACH&#39;S READ · AI</span>
+          <span className="coach-badge-note">judgment calls — needs a model</span>
+        </div>
+      )}
       {message.read.length > 0 && (
         <div className="coach-analysis-reads">
           {message.read.map(([k, v]) => (

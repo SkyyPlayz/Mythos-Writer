@@ -72,6 +72,8 @@ export interface AgentSessionSummary {
 const TURN_OPEN_RE = /^<!-- mythos:turn (user|agent) ([^>]*?) -->$/;
 const TURN_CLOSE = '<!-- /mythos:turn -->';
 const CARD_META_RE = /^<!-- mythos:card-meta (\{.*\}) -->$/;
+/** Leading coach-card HTML-comment prefix (with or without `v1`). */
+const COACH_CARD_MARKER_PREFIX = '<!-- mythos:coach-card';
 
 /** Neutralize fence / card-meta lines embedded in turn text so they stay body. */
 function escapeTurnBodyMarkers(text: string): string {
@@ -86,6 +88,18 @@ function escapeTurnBodyMarkers(text: string): string {
       return line;
     })
     .join('\n');
+}
+
+/**
+ * Shield HARD fix 1 — break a leading coach-card marker (`<!--` → `<!-`) on
+ * append / create-greeting writes when `cardKind` is not analysis/lesson.
+ * Read + duplicate must leave legacy marker bytes unchanged.
+ */
+export function escapeLeadingCoachCardMarkerText(text: string): string {
+  const lead = text.match(/^\s*/)?.[0] ?? '';
+  const rest = text.slice(lead.length);
+  if (!rest.startsWith(COACH_CARD_MARKER_PREFIX)) return text;
+  return `${lead}${rest.replace('<!--', '<!-')}`;
 }
 
 function sanitizeCardKind(value: unknown): SessionTurn['cardKind'] | undefined {
@@ -105,6 +119,17 @@ export function sanitizeSessionTurn(turn: SessionTurn): SessionTurn {
   return next;
 }
 
+/**
+ * Append / create-greeting write sanitizer: whitelist cardKind, then escape a
+ * leading coach-card marker unless the turn is a trusted analysis/lesson card.
+ * Not used by duplicate / createSession bulk copies / read.
+ */
+export function sanitizeIncomingWriteTurn(turn: SessionTurn): SessionTurn {
+  const next = sanitizeSessionTurn(turn);
+  if (next.cardKind === 'analysis' || next.cardKind === 'lesson') return next;
+  return { ...next, text: escapeLeadingCoachCardMarkerText(next.text) };
+}
+
 export function sessionsDir(notesVaultRoot: string): string {
   return path.join(notesVaultRoot, SESSIONS_DIRNAME);
 }
@@ -117,16 +142,19 @@ function sessionFileName(session: { startedAt: string; agent: string; id: string
 }
 
 export function serializeSessionFile(session: AgentSessionFile): string {
+  const safeTitle = session.title ? session.title.replace(/[\r\n]+/g, ' ') : undefined;
   const fm: Record<string, unknown> = {
     mythosSession: 1,
     id: session.id,
     agent: session.agent,
-    ...(session.title ? { title: session.title.replace(/[\r\n]+/g, ' ') } : {}),
+    ...(safeTitle ? { title: safeTitle } : {}),
     startedAt: session.startedAt,
     updatedAt: session.updatedAt,
     turns: session.turns.length,
   };
-  const body: string[] = [`# ${session.title ?? `${session.agent} session`}`, ''];
+  // Residual 11 — strip newlines in the `# title` heading (not only frontmatter).
+  const headingTitle = (safeTitle ?? `${session.agent} session`).replace(/[\r\n]+/g, ' ');
+  const body: string[] = [`# ${headingTitle}`, ''];
   for (const turn of session.turns) {
     const safe = sanitizeSessionTurn(turn);
     body.push(`<!-- mythos:turn ${safe.role} ${safe.at} -->`);
@@ -272,7 +300,8 @@ export function appendTurns(
   const found = findSessionFile(notesVaultRoot, sessionId);
   if (!found) return null;
   const session = found.session;
-  session.turns.push(...turns.map(sanitizeSessionTurn));
+  // Shield HARD fix 1 — escape leading coach-card marker on append (not duplicate/read).
+  session.turns.push(...turns.map(sanitizeIncomingWriteTurn));
   session.updatedAt = new Date().toISOString();
   writeFileAtomic(path.join(notesVaultRoot, found.relPath), serializeSessionFile(session));
   return session;

@@ -12,6 +12,7 @@ import {
   readSession,
   findSessionFile,
   serializeSessionFile,
+  sanitizeIncomingWriteTurn,
 } from './mythosFormat/agentSessions.js';
 import { writeFileAtomic } from './vault.js';
 import type {
@@ -58,8 +59,16 @@ export function handleAgentSessionCreate(
   notesRoot: string,
   payload: AgentSessionCreatePayload,
 ): AgentSessionCreateResponse {
+  // Shield HARD fix 1 — escape leading coach-card marker on create greeting only.
+  // Duplicate uses createSession with copied turns and must keep legacy markers.
   const firstTurn = payload.greeting
-    ? [{ role: 'agent' as const, text: payload.greeting, at: new Date().toISOString() }]
+    ? [
+        sanitizeIncomingWriteTurn({
+          role: 'agent' as const,
+          text: payload.greeting,
+          at: new Date().toISOString(),
+        }),
+      ]
     : [];
   // SKY-9028: honour a renderer-supplied id ONLY in UUID shape — the id is
   // written into frontmatter and (sanitized) into the file name, so free-form
