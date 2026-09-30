@@ -573,6 +573,60 @@ describe('F6 surgical write-back', () => {
     expect(parsedSpine[0].chapters[1].id).toBe('ch-loser');
   });
 
+  it('loser rewrite preserves fence when chapter title contains -->', () => {
+    // bookFile writes titles with `-->` escaped as `--\u003e`; JSON.parse decodes
+    // that back to raw `-->`. Re-serializing without the same escape truncates
+    // the spine fence (extra fence-close inside the title JSON string).
+    const arrowTitle = 'A --> B';
+    const spinePayload = [
+      {
+        dir: 'Part 1',
+        chapters: [
+          { dir: 'Chapter 01', id: 'ch-old', title: arrowTitle },
+          { dir: 'Chapter 02', id: 'ch-keep', title: 'Safe' },
+        ],
+      },
+    ];
+    const escapedSpine = JSON.stringify(spinePayload).replace(/-->/g, '--\\u003e');
+    expect(escapedSpine).toContain('--\\u003e');
+    expect(escapedSpine).not.toContain('-->');
+
+    const book = [
+      '---',
+      'id: story-old',
+      'title: S',
+      'createdAt: 2026-01-01T00:00:00.000Z',
+      'updatedAt: 2026-01-01T00:00:00.000Z',
+      '---',
+      '# S',
+      '',
+      '<!-- mythos:spine',
+      escapedSpine,
+      '-->',
+      '',
+    ].join('\n');
+    expect((book.match(/-->/g) ?? []).length).toBe(1);
+
+    const next = surgicalReplaceBookIds(book, new Map(), {
+      chapterFolders: [
+        { partDir: 'Part 1', chapterDir: 'Chapter 01', oldId: 'ch-old', newId: 'ch-loser' },
+      ],
+    })!;
+    expect(next).not.toBeNull();
+    expect((next.match(/-->/g) ?? []).length).toBe(1);
+
+    const fenceOpen = '<!-- mythos:spine';
+    const afterOpen = next.indexOf(fenceOpen) + fenceOpen.length;
+    const end = next.indexOf('-->', afterOpen);
+    const spineJson = next.slice(afterOpen, end).trim();
+    const parsed = JSON.parse(spineJson) as Array<{
+      chapters: Array<{ id: string; title: string }>;
+    }>;
+    expect(parsed[0].chapters[0].id).toBe('ch-loser');
+    expect(parsed[0].chapters[0].title).toBe(arrowTitle);
+    expect(parsed[0].chapters[1].id).toBe('ch-keep');
+  });
+
   it('duplicate spine chapter id: winner id stable across repeated scans', () => {
     const result = createMythosVault(tmp, { name: 'DupSpineStable', seedDemo: false });
     expect(result.ok).toBe(true);

@@ -7,6 +7,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import type { Manifest, StoryEntry, ChapterEntry, SceneEntry } from '../ipc.js';
 import { writeFileAtomic, markSelfWrite } from '../vault.js';
+import { stringifySpineJson } from './bookFile.js';
 import { resolveManifestPath } from './mythosJson.js';
 import { isSceneFileName } from './sceneFiles.js';
 
@@ -328,7 +329,7 @@ export function surgicalReplaceBookIds(
   }
 
   if (work.length === 0) {
-    return frontmatterApplied ? out : out;
+    return out;
   }
 
   for (const item of work) {
@@ -357,7 +358,7 @@ export function surgicalReplaceBookIds(
 
   const leading = spineRaw.match(/^\s*/)?.[0] ?? '';
   const trailing = spineRaw.match(/\s*$/)?.[0] ?? '';
-  const spine = `${leading}${JSON.stringify(spineArr)}${trailing}`;
+  const spine = `${leading}${stringifySpineJson(spineArr)}${trailing}`;
   return out.slice(0, afterOpen) + spine + out.slice(end);
 }
 
