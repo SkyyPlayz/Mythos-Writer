@@ -808,8 +808,12 @@ async function openColdOpenBoard(pg: Page): Promise<{ view: Locator; stage: Loca
 }
 
 test('SKY-9878: rail renders CHARACTERS/LOCATIONS/ITEMS & SYSTEMS, click-to-add and drag-to-add both place a card', async () => {
+  // Seed all three rail groups here — Playwright restarts the worker after a
+  // prior failure and re-runs beforeAll without AC-SC-15's Locations note.
   fs.mkdirSync(path.join(notesVaultDir, 'Characters'), { recursive: true });
   fs.writeFileSync(path.join(notesVaultDir, 'Characters', 'Mira Veynn.md'), 'POV. Dread first, wonder second.');
+  fs.mkdirSync(path.join(notesVaultDir, 'Locations'), { recursive: true });
+  fs.writeFileSync(path.join(notesVaultDir, 'Locations', 'Ward Violet.md'), 'The district that doesn\'t exist.');
   fs.mkdirSync(path.join(notesVaultDir, 'Items & Systems'), { recursive: true });
   fs.writeFileSync(path.join(notesVaultDir, 'Items & Systems', 'Brass Token.md'), 'The Broker’s marker.');
 
@@ -847,6 +851,7 @@ test('SKY-9878: a vault write while the canvas rail is open restocks it with no 
 
   // Real cross-boundary write: chokidar picks it up, main pushes
   // vault:notes-updated, the rail refetches — no reload/re-navigation here.
+  fs.mkdirSync(path.join(notesVaultDir, 'Locations'), { recursive: true });
   fs.writeFileSync(path.join(notesVaultDir, 'Locations', 'The Sunken Gate.md'), 'An ancient floodgate.');
 
   await expect(suggested.getByText('The Sunken Gate')).toBeVisible({ timeout: 8_000 });
