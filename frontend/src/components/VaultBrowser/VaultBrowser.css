@@ -476,7 +476,8 @@
 .vb-notes-search-input {
   flex: 1;
   min-width: 0;
-  height: 100%;
+  /* Ivy named-cause: proto input is content-sized (~16px), not stretched;
+     vertically centered by .vb-notes-search align-items:center. */
   background: none;
   border: none;
   border-radius: 0;

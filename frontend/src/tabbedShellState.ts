@@ -26,7 +26,9 @@ export const DEFAULT_TABBED_SHELL_STATE: TabbedShellState = {
   storySubView: 'editor',
   notesSubView: 'editor',
   storySidebarWidth: 240,
-  notesSidebarWidth: 240,
+  /* Ivy named-cause: proto Notes leftW default is 268 (Liquid Neon.dc.html).
+     240 made .vb-notes-search 215px vs proto 242px and skewed hairline glow. */
+  notesSidebarWidth: 268,
   storySidebarCollapsed: false,
   notesSidebarCollapsed: false,
 };

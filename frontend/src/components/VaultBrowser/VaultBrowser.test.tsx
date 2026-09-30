@@ -1695,6 +1695,11 @@ describe('F4#8: search above toolbar', () => {
     expect(css).not.toMatch(/\.vb-notes-search-input\s*\{[\s\S]*?font-family:\s*inherit/);
     expect(css).toMatch(/\.vb-notes-search-input\s*\{[\s\S]*?padding:\s*1px\s+2px/);
     expect(css).toMatch(/\.vb-notes-search-input::placeholder\s*\{[\s\S]*?color:\s*rgb\(\s*117\s*,\s*117\s*,\s*117\s*\)/);
+    // Ivy named-cause: proto input is content-sized (no height:100%).
+    {
+      const m = css.match(/\.vb-notes-search-input\s*\{([^}]*)\}/);
+      expect(m?.[1] ?? '').not.toMatch(/height:\s*100%/);
+    }
     // Default box uses neon --bh (goes red if swapped for grey).
     expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?border:[^;]*var\(--bh/);
     expect(css).toMatch(/\.vb-notes-search\s*\{[\s\S]*?border:[^;]*rgba\(\s*0\s*,\s*240\s*,\s*255/);

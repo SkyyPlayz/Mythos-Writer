@@ -453,12 +453,27 @@ describe('NotesTabPanel.css page-background (SKY-2102)', () => {
     expect(notesTabCss).toMatch(/prefers-contrast:\s*more/);
   });
   // Probe N2 / Ivy H1: exact crop bar needs prototype frost behind search.
+  // Anchor unprefixed `backdrop-filter` (after `{`/`;`/whitespace) so the
+  // match cannot land inside `-webkit-backdrop-filter` (HARD: drop-unprefixed-only → red).
   it('notes-tab-sidebar-left has blur(1px) saturate(1.5) for N2 crop parity', () => {
     expect(notesTabCss).toMatch(
-      /\.notes-tab-sidebar-left\s*\{[^}]*backdrop-filter:\s*blur\(\s*1px\s*\)\s+saturate\(\s*1\.5\s*\)/,
+      /\.notes-tab-sidebar-left\s*\{[^}]*[{;\s]backdrop-filter:\s*blur\(\s*1px\s*\)\s+saturate\(\s*1\.5\s*\)/,
     );
     expect(notesTabCss).toMatch(
       /\.notes-tab-sidebar-left\s*\{[^}]*-webkit-backdrop-filter:\s*blur\(\s*1px\s*\)\s+saturate\(\s*1\.5\s*\)/,
+    );
+  });
+  // Ivy (1): local --glass-panel-bg restate on .notes-tab-sidebar-left only
+  // (Notes CSS). Goes red if the translucent restate is removed (F2 tokens untouched).
+  it('notes-tab-sidebar-left restates --glass-panel-bg to rgba(13,16,28,0.2) for N2 surface', () => {
+    expect(notesTabCss).toMatch(
+      /\.notes-tab-sidebar-left\s*\{[^}]*--glass-panel-bg:\s*rgba\(\s*13\s*,\s*16\s*,\s*28\s*,\s*0\.2\s*\)/,
+    );
+  });
+  // Ivy named-cause: softener was compensation — must NOT override --glowH.
+  it('notes-tab-sidebar-left does not override vb-notes-search box-shadow (proto uses --glowH)', () => {
+    expect(notesTabCss).not.toMatch(
+      /\.notes-tab-sidebar-left\s+\.vb-notes-search\s*\{[^}]*box-shadow:/,
     );
   });
 });
