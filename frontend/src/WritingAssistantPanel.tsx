@@ -199,7 +199,8 @@ export default function WritingAssistantPanel({
   }, [cadence, runScan]);
 
   const visibleTips = useMemo(() => {
-    const normalized = scheduledResult?.tips.map((tip, index) => normalizeTip(tip, index, scene)) ?? [];
+    // Probe H1 — tips may be undefined when main returns a sanitized {error} envelope.
+    const normalized = scheduledResult?.tips?.map((tip, index) => normalizeTip(tip, index, scene)) ?? [];
     return normalized.filter((tip) => !suppressedTipKeys.has(tipSuppressKey(tip, scene)));
   }, [scheduledResult, scene, suppressedTipKeys]);
 

@@ -178,17 +178,108 @@ describe('F3#1 shared partner thread + history cap', () => {
 
     expect(agentWritingAssistant).toHaveBeenCalled();
     expect(agentBrainstorm).not.toHaveBeenCalled();
-    // Prompt folds capped history; context carries full scene prose.
     const [prompt, context] = agentWritingAssistant.mock.calls[0] as [string, string | undefined];
     expect(context).toContain('Fog rolled in from the quay');
-    expect(prompt).toContain('final coach prompt');
-    expect(prompt).toContain(`coach-agent-${OVER_CAP_EXCHANGES - 1}`);
-    // Folded history is capped — uncapped would include coach-user-0.
+
+    // Shield S1 — pin exact window + order (split on blank lines).
+    const entries = prompt.split(/\n\n/);
+    expect(entries).toHaveLength(MAX_HISTORY_TURNS + 1);
+    expect(entries[0]).toBe(`User: coach-user-${OVER_CAP_EXCHANGES - MAX_HISTORY_TURNS / 2}`);
+    expect(entries[19]).toBe(`Coach: coach-agent-${OVER_CAP_EXCHANGES - 1}`);
+    expect(entries[20]).toBe('User: final coach prompt');
     expect(prompt).not.toContain('coach-user-0');
   });
 
   it('invokeBrainstorm is the hub/timeline chat send path (re-export smoke)', () => {
     expect(typeof invokeBrainstorm).toBe('function');
     expect(MAX_HISTORY_TURNS).toBe(20);
+  });
+
+  it('Ivy hard 7: legacy coach + beta-reader sessions appear in partner picker and open', async () => {
+    const coachSession: AgentSessionFile = {
+      id: 'legacy-coach-1',
+      agent: 'coach',
+      title: 'Old Coach thread',
+      turns: [
+        { role: 'user', text: 'How is pacing?', at: '2026-01-01T00:00:00.000Z' },
+        { role: 'agent', text: 'Tighten the middle.', at: '2026-01-01T00:01:00.000Z' },
+      ],
+      startedAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:01:00.000Z',
+    };
+    const betaSession: AgentSessionFile = {
+      id: 'legacy-beta-1',
+      agent: 'beta-reader',
+      title: 'Old Beta thread',
+      turns: [{ role: 'agent', text: 'Felt rushed at the end.', at: '2026-01-02T00:00:00.000Z' }],
+      startedAt: '2026-01-02T00:00:00.000Z',
+      updatedAt: '2026-01-02T00:00:00.000Z',
+    };
+    const archiveOnly: AgentSessionSummary = {
+      id: 'archive-only',
+      agent: 'archive',
+      title: 'Archive chat',
+      startedAt: '2026-01-03T00:00:00.000Z',
+      updatedAt: '2026-01-03T00:00:00.000Z',
+      turnCount: 1,
+      relPath: 'Sessions/archive.md',
+    };
+    const allSummaries: AgentSessionSummary[] = [
+      {
+        id: coachSession.id,
+        agent: 'coach',
+        title: coachSession.title,
+        startedAt: coachSession.startedAt,
+        updatedAt: coachSession.updatedAt,
+        turnCount: coachSession.turns.length,
+        relPath: 'Sessions/coach.md',
+      },
+      {
+        id: betaSession.id,
+        agent: 'beta-reader',
+        title: betaSession.title,
+        startedAt: betaSession.startedAt,
+        updatedAt: betaSession.updatedAt,
+        turnCount: betaSession.turns.length,
+        relPath: 'Sessions/beta.md',
+      },
+      archiveOnly,
+    ];
+    const files: Record<string, AgentSessionFile> = {
+      [coachSession.id]: coachSession,
+      [betaSession.id]: betaSession,
+    };
+    (window as unknown as { api: Record<string, unknown> }).api = {
+      agentSessions: {
+        list: vi.fn(async (agent?: string) => ({
+          sessions: agent
+            ? allSummaries.filter((s) => s.agent === agent)
+            : allSummaries,
+        })),
+        read: vi.fn(async (id: string) => ({ session: files[id] ?? null })),
+        create: vi.fn(),
+        appendTurns: vi.fn(),
+        rename: vi.fn().mockResolvedValue({ ok: true }),
+        duplicate: vi.fn(),
+        delete: vi.fn().mockResolvedValue({ ok: true }),
+      },
+    };
+    __resetAgentSessionStores();
+
+    const { result } = renderHook(() => useAgentSessions(PARTNER_SESSION_AGENT));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const ids = result.current.sessions.map((s) => s.id);
+    expect(ids).toContain('legacy-coach-1');
+    expect(ids).toContain('legacy-beta-1');
+    expect(ids).not.toContain('archive-only');
+
+    await act(async () => {
+      await result.current.switchSession('legacy-coach-1');
+    });
+    expect(result.current.activeSessionId).toBe('legacy-coach-1');
+    expect(result.current.activeSession?.turns[1]?.text).toBe('Tighten the middle.');
+    // Disk agent key unchanged — no migrate/rename.
+    expect(result.current.activeSession?.agent).toBe('coach');
   });
 });

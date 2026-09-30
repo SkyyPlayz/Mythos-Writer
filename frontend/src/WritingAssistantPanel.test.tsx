@@ -30,6 +30,20 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     voiceSpeakCancel: mockVoiceSpeakCancel,
     onVoiceSpeakDone: mockOnVoiceSpeakDone,
     onVoiceSpeakError: mockOnVoiceSpeakError,
+    // Probe H1 gate — refuseUnlessProviderReady needs a resolvable WA provider.
+    settingsGet: vi.fn().mockResolvedValue({
+      apiKey: 'sk-test',
+      provider: { kind: 'anthropic', model: 'claude-haiku' },
+      agents: {
+        writingAssistant: {
+          enabled: true,
+          model: 'claude-haiku',
+          provider: { kind: 'anthropic', model: 'claude-haiku' },
+        },
+        brainstorm: { enabled: true, model: 'x' },
+        archive: { enabled: true, model: 'x' },
+      },
+    }),
     ...overrides,
   };
 }

@@ -5,10 +5,12 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { __resetAgentSessionStores } from './lib/useAgentSessions';
+import { __resetAgentSessionStores, getAgentSessionStore } from './lib/useAgentSessions';
 import { useCoachConversation } from './coach/useCoachConversation';
 import { runPartnerAction } from './AgentHubPanel';
 import { runFullSceneAnalysis } from './coach/sceneAnalysis';
+import { decodeCoachCard } from './coach/coachMessages';
+import { PARTNER_SESSION_AGENT } from './agents/partnerIdentity';
 import {
   assertAgentProviderReady,
   PartnerProviderRefuseError,
@@ -137,6 +139,43 @@ describe('F3 provider privacy — per-action routing', () => {
     expect(() => assertAgentProviderReady(s, 'writingAssistant')).toThrow(PartnerProviderRefuseError);
   });
 
+  it('Critic hard 5: accepts legacy settings.apiKey when provider block is absent', () => {
+    const s = {
+      apiKey: 'sk-legacy-from-secrets',
+      provider: undefined,
+      agents: {
+        writingAssistant: { enabled: true, model: '' },
+        brainstorm: { enabled: true, model: 'x' },
+        archive: { enabled: true, model: 'x' },
+      },
+    } as unknown as AppSettings;
+    const resolved = resolveAgentProvider(s, 'writingAssistant');
+    expect(resolved?.kind).toBe('anthropic');
+    expect(resolved?.model).toBeTruthy();
+    expect(() => assertAgentProviderReady(s, 'writingAssistant')).not.toThrow();
+  });
+
+  it('Critic hard 5: accepts ANTHROPIC_API_KEY env when settings.apiKey empty', () => {
+    const prev = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = 'sk-env-key';
+    try {
+      const s = {
+        apiKey: '',
+        provider: undefined,
+        agents: {
+          writingAssistant: { enabled: true, model: '' },
+          brainstorm: { enabled: true, model: 'x' },
+          archive: { enabled: true, model: 'x' },
+        },
+      } as unknown as AppSettings;
+      expect(resolveAgentProvider(s, 'writingAssistant')?.kind).toBe('anthropic');
+      expect(() => assertAgentProviderReady(s, 'betaReader')).not.toThrow();
+    } finally {
+      if (prev === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = prev;
+    }
+  });
+
   it('Coach chat (local WA) never calls agentBrainstorm when brainstorm is cloud', async () => {
     const { agentBrainstorm, agentWritingAssistant } = installApi(localCloudSettings());
     const { result } = renderHook(() => useCoachConversation(scene));
@@ -213,5 +252,69 @@ describe('F3 provider privacy — per-action routing', () => {
     });
     expect(agentBrainstorm).not.toHaveBeenCalled();
     expect(agentWritingAssistant).toHaveBeenCalled();
+  });
+});
+
+function noProviderSettings(): AppSettings {
+  return {
+    apiKey: '',
+    provider: undefined,
+    agents: {
+      writingAssistant: { enabled: true, model: '' },
+      brainstorm: { enabled: true, model: 'x' },
+      archive: { enabled: true, model: 'x' },
+      betaReader: { enabled: true, model: '' },
+    },
+  } as unknown as AppSettings;
+}
+
+describe('Probe H2 — per-call-site refuseUnlessProviderReady (red on revert)', () => {
+  beforeEach(() => {
+    __resetAgentSessionStores();
+  });
+  afterEach(() => {
+    delete (window as unknown as { api?: unknown }).api;
+  });
+
+  it('Writer Scan call site refuses with no provider and makes 0 scan IPC', async () => {
+    const { writingAssistantScanNow, agentBrainstorm, betaReportRun } = installApi(noProviderSettings());
+    await expect(runPartnerAction('writer-scan', { scene, story })).rejects.toThrow(/Cannot run this action|no provider/i);
+    expect(writingAssistantScanNow).not.toHaveBeenCalled();
+    expect(agentBrainstorm).not.toHaveBeenCalled();
+    expect(betaReportRun).not.toHaveBeenCalled();
+  });
+
+  it('Beta Read call site refuses with no provider and makes 0 beta IPC', async () => {
+    const { betaReportRun, agentBrainstorm, writingAssistantScanNow } = installApi(noProviderSettings());
+    await expect(runPartnerAction('beta-read', { scene, story })).rejects.toThrow(/Cannot run this action|no provider/i);
+    expect(betaReportRun).not.toHaveBeenCalled();
+    expect(agentBrainstorm).not.toHaveBeenCalled();
+    expect(writingAssistantScanNow).not.toHaveBeenCalled();
+  });
+
+  it('Full Analysis call site refuses with no provider and makes 0 WA IPC', async () => {
+    const { agentWritingAssistant, agentBrainstorm } = installApi(noProviderSettings());
+    // Full Analysis appends an unavailable card rather than throwing — refuse path still blocks IPC.
+    const outcome = await runFullSceneAnalysis(scene);
+    expect(outcome).toBe('appended');
+    expect(agentWritingAssistant).not.toHaveBeenCalled();
+    expect(agentBrainstorm).not.toHaveBeenCalled();
+    const turns = getAgentSessionStore(PARTNER_SESSION_AGENT).getSnapshot().activeSession?.turns ?? [];
+    const analysis = turns.find((t) => t.cardKind === 'analysis');
+    expect(analysis).toBeTruthy();
+    const card = decodeCoachCard(analysis!.text);
+    expect(card && 'readNote' in card ? card.readNote : '').toMatch(/Cannot run this action|no provider/i);
+  });
+
+  it('Coach invoke call site refuses with no provider and makes 0 WA IPC', async () => {
+    const { agentWritingAssistant, agentBrainstorm } = installApi(noProviderSettings());
+    const { result } = renderHook(() => useCoachConversation(scene));
+    await waitFor(() => expect(result.current.store.loading).toBe(false));
+    await act(async () => {
+      await result.current.send('How is the pacing?');
+    });
+    expect(agentWritingAssistant).not.toHaveBeenCalled();
+    expect(agentBrainstorm).not.toHaveBeenCalled();
+    expect(result.current.error).toMatch(/Cannot run this action|no provider/i);
   });
 });

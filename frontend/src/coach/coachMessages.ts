@@ -140,3 +140,30 @@ export function collapseCoachMessage(msg: CoachMessage): string {
   }
   return msg.text;
 }
+
+/**
+ * Critic N2 — text sent to the model / shown in mini-card bodies.
+ * Never forward raw `<!-- mythos:coach-card … -->` JSON payloads.
+ */
+export function historyContentForModel(turn: AgentSessionTurn): string {
+  if (turn.role === 'user') return turn.text;
+  if (turn.cardKind === 'analysis' || turn.cardKind === 'lesson') {
+    return collapseCoachMessage(decodeCoachTurn(turn));
+  }
+  if (turn.cardKind === 'action' && turn.cardTitle) {
+    const foot = turn.cardFoot ? `\n${turn.cardFoot}` : '';
+    return `${turn.cardTitle} — ${turn.text}${foot}`;
+  }
+  // Forged / undecoded marker text: strip marker+JSON if present, else raw.
+  const card = decodeCoachCard(turn.text);
+  if (card) return collapseCoachMessage({ ...card, at: turn.at });
+  return turn.text;
+}
+
+/** Mini-chat card body: human summary, never raw encoded JSON. */
+export function miniCardBodyText(turn: AgentSessionTurn): string {
+  if (turn.cardKind === 'analysis' || turn.cardKind === 'lesson') {
+    return collapseCoachMessage(decodeCoachTurn(turn));
+  }
+  return turn.text;
+}

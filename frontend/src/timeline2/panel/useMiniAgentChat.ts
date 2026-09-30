@@ -8,6 +8,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useAgentSessions, type UseAgentSessionsResult } from '../../lib/useAgentSessions';
 import { cancelAiActivity } from '../../agents/aiActivity';
+import { historyContentForModel } from '../../coach/coachMessages';
 
 export type MiniChatInvoke = (
   prompt: string,
@@ -74,6 +75,7 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streamStartUnsubRef = useRef<(() => void) | null>(null);
+  const chunkUnsubRef = useRef<(() => void) | null>(null);
 
   const clearTimers = useCallback(() => {
     if (stallTimerRef.current) {
@@ -91,13 +93,19 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
     streamStartUnsubRef.current = null;
   }, []);
 
+  const clearChunkSub = useCallback(() => {
+    chunkUnsubRef.current?.();
+    chunkUnsubRef.current = null;
+  }, []);
+
   const resetInFlight = useCallback(() => {
     clearTimers();
     clearStreamStartSub();
+    clearChunkSub();
     mainRequestIdRef.current = null;
     setPendingPrompt(null);
     setStalled(false);
-  }, [clearTimers, clearStreamStartSub]);
+  }, [clearTimers, clearStreamStartSub, clearChunkSub]);
 
   const scheduleStallTimers = useCallback((gen: number) => {
     clearTimers();
@@ -109,6 +117,7 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
     hardTimerRef.current = setTimeout(() => {
       if (generationGenRef.current !== gen) return;
       // N4: stall timeout aborts in MAIN (provider stream stops), not UI-only.
+      // Critic hard 2: abort ONLY this chat's stream-start request id.
       abortInMain(mainRequestIdRef.current);
       generationGenRef.current += 1;
       resetInFlight();
@@ -118,7 +127,7 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
 
   const cancel = useCallback(() => {
     if (pendingPrompt === null) return;
-    // N4: Cancel must abort the request in MAIN.
+    // N4: Cancel must abort the request in MAIN — bound to THIS chat's id.
     abortInMain(mainRequestIdRef.current);
     generationGenRef.current += 1;
     resetInFlight();
@@ -136,8 +145,10 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
     const gen = generationGenRef.current;
     mainRequestIdRef.current = null;
 
-    // Capture main-issued requestId from stream-start so Cancel/stall can abort.
+    // Capture main-issued requestId from stream-start so Cancel/stall can abort
+    // ONLY this job (Critic hard 2 — do not take newest app-wide activity).
     clearStreamStartSub();
+    clearChunkSub();
     const onStart =
       agent === 'brainstorm'
         ? window.api?.onBrainstormStreamStart
@@ -149,12 +160,19 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
         }
       });
     }
-    // Also watch the unified activity registry (covers archive / WA / brainstorm).
-    const unsubActivity = window.api?.onAiActivityUpdate?.((entries) => {
-      if (generationGenRef.current !== gen) return;
-      const latest = entries[entries.length - 1];
-      if (latest?.requestId) mainRequestIdRef.current = latest.requestId;
-    });
+
+    // Critic hard 3: re-arm stall/hard timers on every streamed chunk.
+    const onChunk =
+      agent === 'brainstorm'
+        ? window.api?.onBrainstormChunk
+        : window.api?.onWritingAssistantChunk;
+    if (typeof onChunk === 'function') {
+      chunkUnsubRef.current = onChunk(() => {
+        if (generationGenRef.current !== gen) return;
+        setStalled(false);
+        scheduleStallTimers(gen);
+      });
+    }
 
     scheduleStallTimers(gen);
 
@@ -162,11 +180,12 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
     // if the user switches sessions before the reply lands, the turns still
     // belong to the session they were asked from.
     const originSessionId = store.activeSessionId ?? undefined;
+    // Critic N2: never send raw card JSON / markers as model history.
     const history = (store.activeSession?.turns ?? [])
       .slice(-MAX_HISTORY_TURNS)
       .map((t) => ({
         role: t.role === 'agent' ? ('assistant' as const) : ('user' as const),
-        content: t.text,
+        content: historyContentForModel(t),
       }));
 
     try {
@@ -199,15 +218,15 @@ export function useMiniAgentChat(agent: 'brainstorm' | 'archive', invoke: MiniCh
       // if we already reset — but gen match means we didn't cancel.
       setError(msg || 'Agent unavailable — check your provider settings.');
     } finally {
-      unsubActivity?.();
       if (generationGenRef.current === gen) {
         resetInFlight();
       } else {
         clearStreamStartSub();
+        clearChunkSub();
         clearTimers();
       }
     }
-  }, [pendingPrompt, store, invoke, agent, scheduleStallTimers, resetInFlight, clearStreamStartSub, clearTimers]);
+  }, [pendingPrompt, store, invoke, agent, scheduleStallTimers, resetInFlight, clearStreamStartSub, clearChunkSub, clearTimers]);
 
   const postActionResult = useCallback(async (
     userLabel: string,

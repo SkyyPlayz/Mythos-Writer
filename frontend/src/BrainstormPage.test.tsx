@@ -2939,7 +2939,7 @@ describe('BrainstormPage — M20 shared session store', () => {
     await act(async () => {
       render(<BrainstormPage onClose={() => {}} />);
     });
-    await waitFor(() => expect(sessionApi.list).toHaveBeenCalledWith('brainstorm'));
+    await waitFor(() => expect(sessionApi.list).toHaveBeenCalledWith());
 
     fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
       target: { value: 'A market where memories are traded' },
@@ -3135,7 +3135,7 @@ describe('BrainstormPage — M20 shared session store', () => {
     await act(async () => {
       render(<BrainstormPage onClose={() => {}} />);
     });
-    await waitFor(() => expect(sessionApi.list).toHaveBeenCalledWith('brainstorm'));
+    await waitFor(() => expect(sessionApi.list).toHaveBeenCalledWith());
 
     fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
       target: { value: 'A market where memories are traded' },
@@ -3156,7 +3156,7 @@ describe('BrainstormPage — M20 shared session store', () => {
     await act(async () => {
       render(<BrainstormPage onClose={() => {}} />);
     });
-    await waitFor(() => expect(sessionApi.list).toHaveBeenCalledWith('brainstorm'));
+    await waitFor(() => expect(sessionApi.list).toHaveBeenCalledWith());
 
     fireEvent.change(screen.getByLabelText(/brainstorm prompt/i), {
       target: { value: 'A market where memories are traded' },

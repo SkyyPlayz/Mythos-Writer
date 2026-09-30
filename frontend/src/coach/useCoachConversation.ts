@@ -2,8 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import type { Scene } from '../types';
 import { useAgentSessions, type UseAgentSessionsResult } from '../lib/useAgentSessions';
 import { PARTNER_SESSION_AGENT } from '../agents/partnerIdentity';
-import { buildFullSceneContext, makeCoachInvoke } from '../agents/coachInvoke';
-import { MAX_HISTORY_TURNS } from '../timeline2/panel/useMiniAgentChat';
+import { buildFullSceneContext, makeCoachInvoke, turnsToCoachHistory } from '../agents/coachInvoke';
 import { decodeCoachTurns, type CoachMessage } from './coachMessages';
 
 export interface CoachConversation {
@@ -42,12 +41,8 @@ export function useCoachConversation(scene: Scene | null): CoachConversation {
     // switches sessions before the reply comes back, the turns still belong
     // in the session they were asked from, never wherever the picker lands.
     const originSessionId = store.activeSessionId ?? undefined;
-    const history = (store.activeSession?.turns ?? [])
-      .slice(-MAX_HISTORY_TURNS)
-      .map((t) => ({
-        role: t.role === 'agent' ? ('assistant' as const) : ('user' as const),
-        content: t.text,
-      }));
+    // Cap + strip raw card JSON before folding into the WA prompt (Critic N2 / N1).
+    const history = turnsToCoachHistory(store.activeSession?.turns ?? []);
 
     try {
       // Probe P4 — writingAssistant provider + full scene context (never brainstorm).

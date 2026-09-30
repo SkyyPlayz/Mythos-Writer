@@ -136,6 +136,18 @@
   white-space: nowrap;
 }
 
+.asp-legacy-badge {
+  flex-shrink: 0;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8ad9ff;
+  border: 1px solid rgba(138, 217, 255, 0.35);
+  border-radius: 4px;
+  padding: 1px 5px;
+  line-height: 1.3;
+}
+
 .asp-row-count {
   font-size: 10px;
   color: #8e9db8;

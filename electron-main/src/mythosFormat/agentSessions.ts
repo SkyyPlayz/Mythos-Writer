@@ -73,6 +73,38 @@ const TURN_OPEN_RE = /^<!-- mythos:turn (user|agent) ([^>]*?) -->$/;
 const TURN_CLOSE = '<!-- /mythos:turn -->';
 const CARD_META_RE = /^<!-- mythos:card-meta (\{.*\}) -->$/;
 
+/** Neutralize fence / card-meta lines embedded in turn text so they stay body. */
+function escapeTurnBodyMarkers(text: string): string {
+  const withoutClose = text.split(TURN_CLOSE).join('<!- /mythos:turn ->');
+  return withoutClose
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (TURN_OPEN_RE.test(trimmed) || CARD_META_RE.test(trimmed)) {
+        return line.replace('<!--', '<!-');
+      }
+      return line;
+    })
+    .join('\n');
+}
+
+function sanitizeCardKind(value: unknown): SessionTurn['cardKind'] | undefined {
+  if (value === 'analysis' || value === 'lesson' || value === 'action') return value;
+  return undefined;
+}
+
+/** Drop unknown cardKind values before they reach the in-memory session echo. */
+export function sanitizeSessionTurn(turn: SessionTurn): SessionTurn {
+  const kind = sanitizeCardKind(turn.cardKind);
+  const next: SessionTurn = { role: turn.role, text: turn.text, at: turn.at };
+  if (kind) next.cardKind = kind;
+  if (turn.cardTitle) {
+    next.cardTitle = turn.cardTitle;
+    if (turn.cardFoot) next.cardFoot = turn.cardFoot;
+  }
+  return next;
+}
+
 export function sessionsDir(notesVaultRoot: string): string {
   return path.join(notesVaultRoot, SESSIONS_DIRNAME);
 }
@@ -96,17 +128,18 @@ export function serializeSessionFile(session: AgentSessionFile): string {
   };
   const body: string[] = [`# ${session.title ?? `${session.agent} session`}`, ''];
   for (const turn of session.turns) {
-    body.push(`<!-- mythos:turn ${turn.role} ${turn.at} -->`);
-    if (turn.cardTitle || turn.cardKind) {
+    const safe = sanitizeSessionTurn(turn);
+    body.push(`<!-- mythos:turn ${safe.role} ${safe.at} -->`);
+    if (safe.cardTitle || safe.cardKind) {
       const meta: Record<string, string> = {};
-      if (turn.cardTitle) meta.cardTitle = turn.cardTitle;
-      if (turn.cardFoot) meta.cardFoot = turn.cardFoot;
-      if (turn.cardKind) meta.cardKind = turn.cardKind;
+      if (safe.cardTitle) meta.cardTitle = safe.cardTitle;
+      if (safe.cardFoot) meta.cardFoot = safe.cardFoot;
+      if (safe.cardKind) meta.cardKind = safe.cardKind;
       body.push(`<!-- mythos:card-meta ${JSON.stringify(meta)} -->`);
     }
-    body.push(turn.role === 'user' ? '**You:**' : '**Agent:**', '');
-    // Guard the fence: a literal close marker inside a turn would truncate it.
-    body.push(turn.text.split(TURN_CLOSE).join('<!- /mythos:turn ->'));
+    body.push(safe.role === 'user' ? '**You:**' : '**Agent:**', '');
+    // Guard fences: close / open / card-meta lines inside text must not parse as structure.
+    body.push(escapeTurnBodyMarkers(safe.text));
     body.push(TURN_CLOSE, '');
   }
   return serializeFrontmatter(fm, body.join('\n'));
@@ -126,30 +159,39 @@ export function parseSessionFile(raw: string, relPath = ''): AgentSessionFile | 
     cardTitle?: string;
     cardFoot?: string;
     cardKind?: SessionTurn['cardKind'];
+    /** True once any non-meta body line has been accepted — blocks late card-meta. */
+    bodyStarted: boolean;
   } | null = null;
   for (const line of lines) {
     const open = TURN_OPEN_RE.exec(line.trim());
     if (open) {
-      current = { role: open[1] as 'user' | 'agent', at: open[2].trim(), buf: [] };
+      // Mid-turn open markers are forged body text — do not start a new turn.
+      if (current) {
+        current.buf.push(line);
+        current.bodyStarted = true;
+        continue;
+      }
+      current = {
+        role: open[1] as 'user' | 'agent',
+        at: open[2].trim(),
+        buf: [],
+        bodyStarted: false,
+      };
       continue;
     }
-    if (current) {
+    if (current && !current.bodyStarted) {
       const cardMeta = CARD_META_RE.exec(line.trim());
       if (cardMeta) {
         try {
           const parsed = JSON.parse(cardMeta[1]) as Record<string, unknown>;
           if (typeof parsed.cardTitle === 'string') current.cardTitle = parsed.cardTitle;
           if (typeof parsed.cardFoot === 'string') current.cardFoot = parsed.cardFoot;
-          if (
-            parsed.cardKind === 'analysis' ||
-            parsed.cardKind === 'lesson' ||
-            parsed.cardKind === 'action'
-          ) {
-            current.cardKind = parsed.cardKind;
-          }
+          const kind = sanitizeCardKind(parsed.cardKind);
+          if (kind) current.cardKind = kind;
         } catch {
           // malformed card-meta line — ignore, degrade to plain bubble
         }
+        // Structural meta only immediately after turn-open (before first body line).
         continue;
       }
     }
@@ -171,7 +213,10 @@ export function parseSessionFile(raw: string, relPath = ''): AgentSessionFile | 
       current = null;
       continue;
     }
-    if (current) current.buf.push(line);
+    if (current) {
+      current.buf.push(line);
+      current.bodyStarted = true;
+    }
   }
   return {
     id,
@@ -211,7 +256,7 @@ export function createSession(
     ...(opts.title ? { title: opts.title } : {}),
     startedAt,
     updatedAt: startedAt,
-    turns: opts.turns ?? [],
+    turns: (opts.turns ?? []).map(sanitizeSessionTurn),
   };
   const relPath = path.posix.join(SESSIONS_DIRNAME, sessionFileName(session));
   writeFileAtomic(path.join(notesVaultRoot, relPath), serializeSessionFile(session));
@@ -227,7 +272,7 @@ export function appendTurns(
   const found = findSessionFile(notesVaultRoot, sessionId);
   if (!found) return null;
   const session = found.session;
-  session.turns.push(...turns);
+  session.turns.push(...turns.map(sanitizeSessionTurn));
   session.updatedAt = new Date().toISOString();
   writeFileAtomic(path.join(notesVaultRoot, found.relPath), serializeSessionFile(session));
   return session;

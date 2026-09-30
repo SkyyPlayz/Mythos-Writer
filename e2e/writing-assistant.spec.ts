@@ -402,11 +402,6 @@ async function openWritingAssistantAgentRow(page: Page): Promise<void> {
   await page.locator('[data-testid="ahp-tab-partner"]').click().catch(() => undefined);
   await expect(page.getByTestId('ahp-partner-view')).toBeVisible({ timeout: 8_000 });
   await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
-  // Belt: if a prior tip left WA on the AC-WA-20 icon, expand it.
-  const openCoach = page.getByRole('button', { name: /open writing coach/i });
-  if (await openCoach.isVisible().catch(() => false)) {
-    await openCoach.evaluate((el) => (el as HTMLButtonElement).click());
-  }
 }
 
 async function openWritingAssistantWithScene(page: Page): Promise<void> {
@@ -418,10 +413,6 @@ async function openWritingAssistantWithScene(page: Page): Promise<void> {
 }
 
 
-/** Bypass Playwright actionability (partner hub layout churn). */
-async function domClick(locator: ReturnType<Page['locator']>): Promise<void> {
-  await locator.first().evaluate((el) => (el as HTMLElement).click());
-}
 
 async function openAssistantTab(page: Page): Promise<void> {
   await navigateToEditorView(page);
@@ -517,7 +508,7 @@ test('TC-WA-07: spinner visible during scan', async () => {
   await installIpcMocks(app!, { scanDelayMs: 600 });
   await openWritingAssistantWithScene(page);
 
-  await domClick(page.getByTestId('wa-scan-now'));
+  await page.getByTestId('wa-scan-now').click();
 
   // Spinner must appear while the scan is in-flight (check DOM presence, not visibility).
   await expect(page.locator('.wa-spinner')).toHaveCount(1, { timeout: 3_000 });
@@ -543,7 +534,7 @@ test('TC-WA-04: empty scene shows empty-state message', async () => {
   await openAssistantTab(page);
 
   // Scan Now — the scheduler guard returns early on empty prose.
-  await domClick(page.getByTestId('wa-scan-now'));
+  await page.getByTestId('wa-scan-now').click();
 
   // Spinner should not appear (or disappear immediately) — empty prose short-circuits (check DOM count).
   await expect(page.locator('.wa-spinner')).toHaveCount(0, { timeout: 3_000 });
@@ -577,7 +568,7 @@ test('TC-WA-03: manual cadence — Scan Now is the only trigger', async () => {
   await expect(scanBtn).toBeEnabled();
 
   // Clicking Scan Now manually loads tips.
-  await domClick(scanBtn);
+  await scanBtn.click();
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 8_000 });
 
   // Reset cadence.
@@ -622,16 +613,16 @@ test('TC-WA-05: Note and Ignore tip actions dismiss tips from UI', async () => {
   await openWritingAssistantWithScene(page);
 
   // Load tips.
-  await domClick(page.getByTestId('wa-scan-now'));
+  await page.getByTestId('wa-scan-now').click();
   const tips = page.locator('.wa-heartbeat-tip');
   await expect(tips).toHaveCount(3, { timeout: 8_000 });
 
   // Click "Note" on the first tip — it must disappear.
-  await domClick(page.locator('.tc-btn-note'));
+  await page.locator('.tc-btn-note').first().click();
   await expect(tips).toHaveCount(2, { timeout: 3_000 });
 
   // Click "Ignore" on the now-first tip — it must disappear.
-  await domClick(page.locator('.tc-btn-ignore'));
+  await page.locator('.tc-btn-ignore').first().click();
   await expect(tips).toHaveCount(1, { timeout: 3_000 });
 });
 
@@ -645,7 +636,7 @@ test('TC-WA-08: dismiss-all button appears with >= 2 tips and clears all', async
   await openWritingAssistantWithScene(page);
 
   // Load 3 fresh tips.
-  await domClick(page.getByTestId('wa-scan-now'));
+  await page.getByTestId('wa-scan-now').click();
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 8_000 });
 
   // Dismiss-all must be visible.
@@ -654,7 +645,7 @@ test('TC-WA-08: dismiss-all button appears with >= 2 tips and clears all', async
   await expect(dismissAll).toContainText(/dismiss all/i);
 
   // Dismiss all — list clears and button disappears.
-  await domClick(dismissAll);
+  await dismissAll.click();
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(0, { timeout: 3_000 });
   await expect(dismissAll).not.toBeVisible({ timeout: 3_000 });
 });
@@ -734,7 +725,7 @@ test('TC-WA-13: Cancel button visible during streaming; Ask returns after cancel
   await expect(cancelBtn).toBeVisible({ timeout: 5_000 });
   await expect(page.getByTestId('ahp-partner-chat-send')).not.toBeVisible();
 
-  await domClick(cancelBtn);
+  await cancelBtn.click();
   await expect(page.getByTestId('ahp-partner-chat-send')).toBeVisible({ timeout: 5_000 });
   await expect(cancelBtn).not.toBeVisible({ timeout: 3_000 });
 
@@ -763,7 +754,7 @@ test('TC-WA-11: stall panel appears after stall (E2E-fast timer override)', asyn
   await expect(page.getByTestId('ahp-partner-stall-panel')).toBeVisible({ timeout: 3_000 });
   await expect(page.getByTestId('ahp-partner-stall-cancel')).toBeVisible();
 
-  await domClick(page.getByTestId('ahp-partner-stall-cancel'));
+  await page.getByTestId('ahp-partner-stall-cancel').click();
 
   await page.evaluate(() => {
     delete (window as unknown as { __MYTHOS_E2E_TIMERS__?: Record<string, number> }).__MYTHOS_E2E_TIMERS__;
@@ -792,13 +783,13 @@ test('TC-WA-22: Mute toggle flips aria-pressed and label', async () => {
   expect(initialLabel).toMatch(/mute|unmute/i);
 
   // Toggle on.
-  await domClick(muteBtn);
+  await muteBtn.click();
   const afterFirst = await muteBtn.getAttribute('aria-pressed');
   expect(afterFirst).not.toBe(initialPressed);
   expect(await muteBtn.getAttribute('aria-label')).not.toBe(initialLabel);
 
   // Toggle off (reset).
-  await domClick(muteBtn);
+  await muteBtn.click();
   expect(await muteBtn.getAttribute('aria-pressed')).toBe(initialPressed);
   expect(await muteBtn.getAttribute('aria-label')).toBe(initialLabel);
 });
@@ -814,7 +805,7 @@ test('TC-WA-23: Hear button plays and Stop cancels TTS', async () => {
   await openWritingAssistantWithScene(page);
 
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
-  await domClick(page.getByTestId('wa-scan-now'));
+  await page.getByTestId('wa-scan-now').click();
   await expect(page.locator('.wa-heartbeat-tip').first()).toBeVisible({ timeout: 8_000 });
 
   const hearBtn = page.locator('.wa-hear-btn').first();
@@ -822,11 +813,11 @@ test('TC-WA-23: Hear button plays and Stop cancels TTS', async () => {
   await expect(hearBtn).toHaveAttribute('aria-pressed', 'false');
   await expect(hearBtn).toHaveAttribute('aria-label', 'Hear suggestion aloud');
 
-  await domClick(hearBtn);
+  await hearBtn.click();
   await expect(hearBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
   await expect(hearBtn).toHaveAttribute('aria-label', 'Stop voice playback');
 
-  await domClick(hearBtn);
+  await hearBtn.click();
   await expect(hearBtn).toHaveAttribute('aria-pressed', 'false', { timeout: 5_000 });
   await expect(hearBtn).toHaveAttribute('aria-label', 'Hear suggestion aloud');
 });
@@ -838,22 +829,22 @@ test('TC-WA-24: starting second Hear cancels first card playback', async () => {
   await openWritingAssistantWithScene(page);
 
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
-  await domClick(page.getByTestId('wa-scan-now'));
+  await page.getByTestId('wa-scan-now').click();
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 8_000 });
 
   const hearBtns = page.locator('.wa-hear-btn');
   await expect(hearBtns).toHaveCount(3, { timeout: 5_000 });
 
   const firstHear = hearBtns.nth(0);
-  await domClick(firstHear);
+  await firstHear.click();
   await expect(firstHear).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
 
   const secondHear = hearBtns.nth(1);
-  await domClick(secondHear);
+  await secondHear.click();
   await expect(firstHear).toHaveAttribute('aria-pressed', 'false', { timeout: 5_000 });
   await expect(secondHear).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
 
-  await domClick(secondHear);
+  await secondHear.click();
   await expect(secondHear).toHaveAttribute('aria-pressed', 'false', { timeout: 3_000 });
 });
 
@@ -1035,5 +1026,65 @@ test.describe('AC-WA-27: Writing Coach cadence persists to disk (real IPC)', () 
       fs.readFileSync(path.join(persistUserData, 'app-settings.json'), 'utf-8'),
     ) as { waScanInterval?: string };
     expect(stored.waScanInterval).toBe('on-save');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Probe H1 — Scan now with no provider must refuse (no black-screen crash)
+// ════════════════════════════════════════════════════════════════════════════
+
+test.describe('Probe H1: Scan now without provider', () => {
+  let bareUserData: string;
+  let bareVault: string;
+  let bareApp: ElectronApplication | undefined;
+  let barePage: Page;
+
+  test.beforeAll(async () => {
+    bareUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-noprovider-'));
+    bareVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-noprovider-vault-'));
+    seedUserData(bareUserData, bareVault);
+    // Strip provider + legacy key so the renderer gate refuses.
+    const settingsPath = path.join(bareUserData, 'app-settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>;
+    settings.apiKey = '';
+    delete settings.provider;
+    const agents = settings.agents as Record<string, Record<string, unknown>>;
+    if (agents?.writingAssistant) {
+      delete agents.writingAssistant.provider;
+      agents.writingAssistant.model = '';
+    }
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+
+    bareApp = await launchApp(bareUserData);
+    barePage = await firstWindow(bareApp);
+    await expect(barePage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+  });
+
+  test.afterAll(async () => {
+    const proc = bareApp?.process();
+    await Promise.race([
+      bareApp?.close().catch(() => undefined) ?? Promise.resolve(),
+      new Promise<void>((r) => setTimeout(r, 5_000)),
+    ]);
+    try {
+      if (proc && !proc.killed) proc.kill('SIGKILL');
+    } catch { /* already exited */ }
+    fs.rmSync(bareUserData, { recursive: true, force: true });
+    fs.rmSync(bareVault, { recursive: true, force: true });
+  });
+
+  test('Scan now with no provider shows refusal and keeps the app mounted', async () => {
+    await openWritingAssistantWithScene(barePage);
+    await expect(barePage.locator('[data-testid="agent-hub-panel"]')).toBeVisible();
+    await barePage.getByTestId('wa-scan-now').click();
+    // Refusal surfaces on the scan-error alert (and status bar); assert the alert once.
+    const refusal = barePage.locator('.wa-scan-error');
+    await expect(refusal).toBeVisible({ timeout: 8_000 });
+    await expect(refusal).toContainText(
+      /Cannot run this action|no provider|provider settings/i,
+    );
+    // App still mounted — no black-screen crash from tips.map(undefined).
+    await expect(barePage.locator('[data-testid="agent-hub-panel"]')).toBeVisible();
+    await expect(barePage.locator('.app-menu-bar')).toBeVisible();
   });
 });

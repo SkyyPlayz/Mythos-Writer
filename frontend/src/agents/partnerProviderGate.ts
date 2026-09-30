@@ -3,10 +3,17 @@
 // provider. Shared partner thread only stores result text — never provider
 // config or keys. Refuse before any request when the action's provider cannot
 // resolve. NEVER quietly fall back to the brainstorm provider.
+//
+// Critic hard 5: mirror main's `buildGlobalProviderConfig` — legacy
+// `settings.apiKey` and `ANTHROPIC_API_KEY` still count as a resolvable
+// Anthropic global when `settings.provider` is absent.
 
 import type { ProviderKind } from '../components/SettingsPanel/settingsPanelTypes';
 
 export type PartnerLlmAgent = 'writingAssistant' | 'betaReader' | 'brainstorm';
+
+/** Same default model main uses for the legacy apiKey / env-key path. */
+export const LEGACY_ANTHROPIC_MODEL = 'claude-haiku-4-5-20251001';
 
 const LOCAL_KINDS = new Set<string>(['ollama', 'lmstudio', 'llamacpp']);
 
@@ -26,7 +33,23 @@ interface AgentProviderSlice {
   provider?: { kind?: string; model?: string; apiKey?: string; baseUrl?: string } | null;
 }
 
-/** Resolve the effective provider kind/model for an agent slot (override → global). */
+function readAnthropicEnvKey(): string | undefined {
+  try {
+    const key = (typeof process !== 'undefined' ? process.env?.ANTHROPIC_API_KEY : undefined) ?? undefined;
+    return typeof key === 'string' && key.trim() ? key.trim() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** True when legacy settings.apiKey or ANTHROPIC_API_KEY can serve Anthropic. */
+export function hasLegacyAnthropicKey(settings: AppSettings | null | undefined): boolean {
+  if (!settings) return false;
+  const fromSettings = typeof settings.apiKey === 'string' && settings.apiKey.trim().length > 0;
+  return fromSettings || Boolean(readAnthropicEnvKey());
+}
+
+/** Resolve the effective provider kind/model for an agent slot (override → global → legacy). */
 export function resolveAgentProvider(
   settings: AppSettings | null | undefined,
   agent: PartnerLlmAgent,
@@ -44,6 +67,10 @@ export function resolveAgentProvider(
   const global = settings.provider;
   if (global?.kind && global.model) {
     return { kind: global.kind, model: slot?.model || global.model };
+  }
+  // Legacy path — mirrors electron-main buildGlobalProviderConfig.
+  if (hasLegacyAnthropicKey(settings)) {
+    return { kind: 'anthropic', model: slot?.model || LEGACY_ANTHROPIC_MODEL };
   }
   return null;
 }

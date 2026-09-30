@@ -7,7 +7,38 @@
 // same turns. Mutations made on one surface render on the other immediately.
 
 import { useCallback, useSyncExternalStore } from 'react';
-import { buildPartnerGreeting } from '../agents/partnerIdentity';
+import { buildPartnerGreeting, PARTNER_SESSION_AGENT } from '../agents/partnerIdentity';
+
+/**
+ * Legacy agent keys whose vault sessions must appear in the unified partner
+ * picker (Ivy hard 7). Listed and opened as-is — never migrated/renamed.
+ */
+export const PARTNER_LEGACY_SESSION_AGENTS = [
+  'coach',
+  'writing-assistant',
+  'beta-reader',
+] as const;
+
+const PARTNER_PICKER_AGENTS = new Set<string>([
+  PARTNER_SESSION_AGENT,
+  ...PARTNER_LEGACY_SESSION_AGENTS,
+]);
+
+async function listSessionsForStore(
+  api: AgentSessionsApi,
+  agent: string,
+): Promise<AgentSessionSummary[]> {
+  if (agent !== PARTNER_SESSION_AGENT) {
+    const { sessions } = await api.list(agent);
+    return sessions;
+  }
+  // One list IPC (unfiltered), then keep brainstorm + legacy Coach/WA/Beta.
+  // Do not migrate or rewrite files — only surface them in the picker.
+  const { sessions } = await api.list();
+  return sessions
+    .filter((s) => PARTNER_PICKER_AGENTS.has(s.agent))
+    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+}
 
 export interface UseAgentSessionsResult {
   sessions: AgentSessionSummary[];
@@ -184,7 +215,7 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
     const api = getApi();
     if (!api) return undefined;
     try {
-      const { sessions: list } = await api.list(agent);
+      const list = await listSessionsForStore(api, agent);
       // The pending session is invisible to the vault listing; keep it first
       // (it is the newest) so pickers don't drop the active conversation.
       set({ sessions: pending ? [toSummary(pending, ''), ...list] : list });
@@ -199,7 +230,7 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
     if (!api) { set({ loading: false }); return; }
     set({ loading: true });
     try {
-      const { sessions: list } = await api.list(agent);
+      const list = await listSessionsForStore(api, agent);
       set({ sessions: list });
       if (list.length > 0) {
         set({ activeSessionId: list[0].id });

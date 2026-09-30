@@ -547,6 +547,14 @@ export async function runPartnerAction(
         prose,
         scenePath: ctx.scene.path ?? '',
       });
+      // Main sanitizes thrown errors to `{ error }` envelopes (wrapIpcHandler).
+      if (res && typeof res === 'object' && 'error' in res && (res as { error?: unknown }).error) {
+        return {
+          text: String((res as { error: unknown }).error) || 'Writer Scan failed. Please retry.',
+          cardTitle: 'Writer Scan',
+          cardFoot: ctx.scene.title,
+        };
+      }
       const tips = Array.isArray(res.tips) ? res.tips : [];
       const lines = tips.map((t) => (typeof t === 'string' ? t : (t as { text?: string }).text ?? String(t)));
       const text = lines.length > 0

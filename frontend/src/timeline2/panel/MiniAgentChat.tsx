@@ -4,11 +4,24 @@
 // "sessions everywhere" contract holds in the timeline too.
 import { useEffect, useRef, useState } from 'react';
 import AgentSessionPicker from '../../components/AgentSessionPicker';
+import { miniCardBodyText } from '../../coach/coachMessages';
 import type { MiniAgentChat as MiniAgentChatState } from './useMiniAgentChat';
 // M12.B3 (SKY-10738): self-import — this component is now also mounted
 // outside Timeline2 (AgentHubPanel's Archive chat view), which doesn't load
 // TimelineRightPanel.css itself.
 import './TimelineRightPanel.css';
+
+/** Structural kinds that may render as trp-msg-card chrome (N2 / Shield). */
+const CARD_KIND_WHITELIST = new Set(['analysis', 'lesson', 'action']);
+
+function isTrustedCardTurn(turn: AgentSessionTurn): boolean {
+  return Boolean(
+    turn.role !== 'user'
+    && turn.cardKind
+    && CARD_KIND_WHITELIST.has(turn.cardKind)
+    && turn.cardTitle,
+  );
+}
 
 export interface MiniAgentChatProps {
   chat: MiniAgentChatState;
@@ -43,16 +56,16 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix,
       </div>
       <div className="trp-chat-feed" data-testid={`${testidPrefix}-chat-feed`} ref={feedRef}>
         {chat.messages.map((turn, i) => (
-          // N2 Secure bar: render card chrome only when structural cardKind is set
-          // by a trusted writer — never text-marker / cardTitle alone.
-          turn.role !== 'user' && turn.cardKind && turn.cardTitle ? (
+          // N2 Secure bar: card chrome only for whitelisted structural cardKind
+          // + cardTitle. cardTitle alone (forged) stays a plain bubble.
+          isTrustedCardTurn(turn) ? (
             <div
               key={`${turn.at}-${i}`}
               className={`trp-msg-card trp-msg-card--${accent}`}
               data-testid={`${testidPrefix}-card-${i}`}
             >
               <div className="trp-msg-card-title">{turn.cardTitle}</div>
-              <div className="trp-msg-card-text">{turn.text}</div>
+              <div className="trp-msg-card-text">{miniCardBodyText(turn)}</div>
               {turn.cardFoot && <div className="trp-msg-card-foot">{turn.cardFoot}</div>}
             </div>
           ) : (

@@ -388,7 +388,7 @@ test('F3 gate: Writer Scan opens tips strip; partner typing indicator resolves',
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 6_000 });
   await page.getByTestId('ahp-close-writer').click();
   await expect(page.getByTestId('ahp-writer-tips')).toHaveCount(0);
-  await page.getByTestId('ahp-action-writer-scan').evaluate((el) => (el as HTMLButtonElement).click());
+  await page.getByTestId('ahp-action-writer-scan').click();
   await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 6_000 });
 
   // Gate: loading → typing dots on shared chat (was wa-typing in unsharded suite).
@@ -488,6 +488,61 @@ test('F3 Secure bar: docked↔float partner thread syncs both directions', async
   await expect(page.getByTestId('ahp-partner-chat-feed')).toContainText(FLOAT_MARKER, {
     timeout: 12_000,
   });
+
+  await closeApp(app);
+  app = undefined;
+});
+
+test('Probe H3 / Ivy 7: legacy Coach + Beta sessions appear labelled and open from partner picker', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+
+  const COACH_MARKER = 'LEGACY_COACH_TURN_MARKER_441';
+  const BETA_MARKER_LEGACY = 'LEGACY_BETA_TURN_MARKER_442';
+
+  // Seed main-format sessions on disk via real IPC — no migrate/rename.
+  await page.evaluate(async ({ coachMarker, betaMarker }) => {
+    const coach = await window.api!.agentSessions!.create('coach', 'Legacy Coach Thread');
+    await window.api!.agentSessions!.appendTurns(coach.session.id, [
+      { role: 'user', text: 'How is pacing?', at: new Date().toISOString() },
+      { role: 'agent', text: coachMarker, at: new Date().toISOString() },
+    ]);
+    const beta = await window.api!.agentSessions!.create('beta-reader', 'Legacy Beta Thread');
+    await window.api!.agentSessions!.appendTurns(beta.session.id, [
+      { role: 'agent', text: betaMarker, at: new Date().toISOString() },
+    ]);
+  }, { coachMarker: COACH_MARKER, betaMarker: BETA_MARKER_LEGACY });
+
+  // Force the partner store to reload from disk (picker lists on init).
+  await closeApp(app);
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+  await openPicker(page);
+
+  const root = partnerChatRoot(page);
+  await expect(root.getByTestId('asp-badge-coach')).toBeVisible({ timeout: 8_000 });
+  await expect(root.getByTestId('asp-badge-beta')).toBeVisible({ timeout: 8_000 });
+  await expect(root.locator('.asp-row', { hasText: 'Legacy Coach Thread' })).toBeVisible();
+  await expect(root.locator('.asp-row', { hasText: 'Legacy Beta Thread' })).toBeVisible();
+
+  await root.locator('.asp-row', { hasText: 'Legacy Coach Thread' }).locator('.asp-row-label').click();
+  await expect(messagesLocator(page)).toContainText(COACH_MARKER, { timeout: 8_000 });
+
+  await openPicker(page);
+  await root.locator('.asp-row', { hasText: 'Legacy Beta Thread' }).locator('.asp-row-label').click();
+  await expect(messagesLocator(page)).toContainText(BETA_MARKER_LEGACY, { timeout: 8_000 });
+
+  // Disk agent keys unchanged — no migration.
+  const diskAgents = await page.evaluate(async () => {
+    const { sessions } = await window.api!.agentSessions!.list();
+    return sessions
+      .filter((s) => s.title === 'Legacy Coach Thread' || s.title === 'Legacy Beta Thread')
+      .map((s) => s.agent)
+      .sort();
+  });
+  expect(diskAgents).toEqual(['beta-reader', 'coach']);
 
   await closeApp(app);
   app = undefined;

@@ -8,6 +8,13 @@ import {
   assertAgentProviderReady,
   type PartnerLlmAgent,
 } from './partnerProviderGate';
+import { historyContentForModel } from '../coach/coachMessages';
+
+/**
+ * Main rejects agent prompts over 32_000 chars (`MAX_AGENT_PROMPT_LENGTH`).
+ * Leave a small margin for separators / the final "User: …" line.
+ */
+export const COACH_PROMPT_CHAR_BUDGET = 31_500;
 
 export function formatHistoryForWritingAssistant(
   history: { role: 'user' | 'assistant'; content: string }[],
@@ -19,13 +26,25 @@ export function formatHistoryForWritingAssistant(
     .join('\n\n');
 }
 
+/**
+ * Fold capped history into the WA prompt, then trim oldest turns until the
+ * composed prompt stays under `COACH_PROMPT_CHAR_BUDGET` (Critic hard 4 / N1).
+ */
 export function buildCoachInvokePrompt(
   userPrompt: string,
   history: { role: 'user' | 'assistant'; content: string }[],
+  budget: number = COACH_PROMPT_CHAR_BUDGET,
 ): string {
-  const prior = formatHistoryForWritingAssistant(history);
-  if (!prior) return userPrompt;
-  return `${prior}\n\nUser: ${userPrompt}`;
+  let turns = history.slice(-MAX_HISTORY_TURNS);
+  const suffix = turns.length === 0 ? userPrompt : `\n\nUser: ${userPrompt}`;
+  let composed = userPrompt;
+  while (turns.length > 0) {
+    const prior = formatHistoryForWritingAssistant(turns);
+    composed = prior ? `${prior}${suffix}` : userPrompt;
+    if (composed.length <= budget) return composed;
+    turns = turns.slice(1);
+  }
+  return userPrompt;
 }
 
 /** Full scene prose for WA `context` (not title-only). */
@@ -49,6 +68,18 @@ export async function loadSettingsForProviderGate(): Promise<AppSettings | null>
 export async function refuseUnlessProviderReady(agent: PartnerLlmAgent): Promise<void> {
   const settings = await loadSettingsForProviderGate();
   assertAgentProviderReady(settings, agent);
+}
+
+/**
+ * Map persisted turns → model history, stripping raw card JSON (Critic N2).
+ */
+export function turnsToCoachHistory(
+  turns: readonly AgentSessionTurn[],
+): { role: 'user' | 'assistant'; content: string }[] {
+  return turns.slice(-MAX_HISTORY_TURNS).map((t) => ({
+    role: t.role === 'agent' ? ('assistant' as const) : ('user' as const),
+    content: historyContentForModel(t),
+  }));
 }
 
 /**
