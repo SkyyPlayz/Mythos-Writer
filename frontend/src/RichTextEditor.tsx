@@ -237,9 +237,6 @@ export default function RichTextEditor({
       if (!initializedRef.current) return;
       if (postMountRef.current) userEditedRef.current = true;
       if (changeTimerRef.current) clearTimeout(changeTimerRef.current);
-      // Read callbacks at flush time — editors are keyed by scene id, so a
-      // remount arms a fresh debounce. Schedule-time capture would freeze
-      // layout callbacks (e.g. leftWidth) up to 800ms stale (Critic H2).
       const flush = () => {
         pendingFlushRef.current = null;
         changeTimerRef.current = null;

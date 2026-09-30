@@ -398,6 +398,29 @@ test('TC-CP-06: entity card shows required fields and View full note opens the n
   await openSeededScene(page);
 });
 
+test('TC-CP-06b: View full note → Back → Forward restores the note (Probe H1)', async () => {
+  await ensureFocusMode(page);
+  await replaceSceneText(page, 'Marcus');
+  await selectWholeEditor(page);
+  await openContinuityWithShortcut(page);
+  const card = page.locator('.entity-card', { hasText: 'Marcus' }).first();
+  await expect(card).toBeVisible({ timeout: 8_000 });
+  await card.getByRole('button', { name: 'View full note: Marcus' }).click();
+  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' })).toHaveAttribute('aria-current', 'page', { timeout: 6_000 });
+  await expect(page.locator('.note-tiptap-content')).toContainText('Marcus is a principled cartographer', { timeout: 8_000 });
+  await expect(page.getByTestId('notes-editor-placeholder')).toHaveCount(0);
+
+  // Back → scene (Story tab). Forward must re-open the note, not empty Notes.
+  await page.keyboard.press('Alt+ArrowLeft');
+  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Story' })).toHaveAttribute('aria-current', 'page', { timeout: 6_000 });
+  await expect(page.locator('.ProseMirror').first()).toBeVisible({ timeout: 6_000 });
+
+  await page.keyboard.press('Alt+ArrowRight');
+  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' })).toHaveAttribute('aria-current', 'page', { timeout: 6_000 });
+  await expect(page.locator('.note-tiptap-content')).toContainText('Marcus is a principled cartographer', { timeout: 8_000 });
+  await expect(page.getByTestId('notes-editor-placeholder')).toHaveCount(0);
+});
+
 test('TC-CP-07: manual search returns partial-name matches and clicking a result loads its card', async () => {
   await openContinuityWithShortcut(page);
   const search = page.locator('input[aria-label="Search entities in Notes Vault"]');

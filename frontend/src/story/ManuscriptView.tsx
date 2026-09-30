@@ -263,6 +263,12 @@ export interface ManuscriptViewProps {
    * back to the stepper. Absent → stepper-only (legacy behavior).
    */
   onHistoryAltArrow?: (direction: 'back' | 'forward') => boolean;
+  /**
+   * When false, Alt+←/→ is ignored here. Required because the Story tabpanel
+   * is keep-mounted (display:none) — its window keydown listener would otherwise
+   * double-fire with DesktopShell's Notes-tab handler (Probe H1 Forward).
+   */
+  altArrowActive?: boolean;
 }
 
 /** SKY-9404: Drafts v2 data + handlers, moved from the deleted scene branch. */
@@ -473,6 +479,7 @@ export default function ManuscriptView({
   sceneEditor,
   edgeNav,
   onHistoryAltArrow,
+  altArrowActive = true,
 }: ManuscriptViewProps) {
   // Per-heading fold state, keyed by chapter/scene id (prototype `collapsed`).
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -828,6 +835,9 @@ export default function ManuscriptView({
       // even at 'book' zoom where the stepper itself is a no-op) — falls
       // back to the stepper only when there's nothing to go back/forward to.
       if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        // Story tabpanel is keep-mounted — skip when another app tab owns the
+        // surface so DesktopShell's Alt+←/→ handler is the only one that fires.
+        if (!altArrowActive) return;
         e.preventDefault();
         const direction = e.key === 'ArrowRight' ? 'forward' : 'back';
         const active = document.activeElement;
@@ -850,7 +860,7 @@ export default function ManuscriptView({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cursor, onCursorChange, step, onHistoryAltArrow]);
+  }, [cursor, onCursorChange, step, onHistoryAltArrow, altArrowActive]);
 
   // M8 §14.2 "drag state can't get stuck": abandoned grip drags (mouseup
   // outside any paragraph), Escape, and losing window focus all clear it.

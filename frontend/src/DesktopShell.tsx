@@ -37,6 +37,7 @@ import { pushNotification } from './notificationStore';
 import ManuscriptView from './story/ManuscriptView';
 import { cursorChapter, cursorDefaultScene, cycleDraftState, draftStateLabel, isSimpleSinglePart, mergeParagraphUp, moveParagraph, removeEmptyParagraph, renameChapter, renameScene, splitParagraph, type ManuscriptCursor, type ParagraphRef, type ZoomLevel } from './story/manuscriptModel';
 import { appendChapterToStory, findOwningPart, insertChapterIntoPart, mapAllChapters, moveChapterToPart, reconcileParts, syncChaptersFromParts, updateChapterOwner } from './story/storyParts';
+import { mergeSceneBlocksIntoStories } from './story/applySceneBlocks';
 import { resolveOpenBoardStoryId } from './openBoardStory';
 import type { WindowChromeMenu } from './components/ui/WindowChrome';
 import { getActiveEditor } from './lib/activeEditorRegistry';
@@ -3267,6 +3268,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
    * open scene may live under a different chapter, so we look up by sceneId
    * anywhere in the story and DROP only if that id is gone (Critic H3).
    * Merges onto storiesRef (latest); never resets live selection to the flush.
+   * Story scoping lives in mergeSceneBlocksIntoStories (pure; Shield-tested).
    */
   const applySceneBlocks = useCallback((
     storyId: string,
@@ -3275,52 +3277,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     blocks: Block[],
   ) => {
     const latest = storiesRef.current;
-    const story = latest.find((s) => s.id === storyId);
-    if (!story) return; // Shield: target story gone — drop the save
-    const allChapters = [
-      ...story.chapters,
-      ...(story.parts ?? []).flatMap((p) => p.chapters),
-    ];
-    // Dedup by id — story.chapters mirrors parts[].chapters after sync.
-    const chaptersById = new Map<string, Chapter>();
-    for (const ch of allChapters) chaptersById.set(ch.id, ch);
-    const chapterList = [...chaptersById.values()];
-    let chapter = chapterList.find((c) => c.scenes.some((sc) => sc.id === sceneId));
     const isProvisional = provisionalScene?.sceneId === sceneId;
-    if (!chapter && isProvisional) {
-      chapter = chapterList.find((c) => c.id === chapterId);
-    }
-    if (!chapter) return; // Shield: scene id gone (and not provisional) — drop
-    const targetChapterId = chapter.id;
-    const existing = chapter.scenes.find((sc) => sc.id === sceneId);
-    if (!existing && !isProvisional) return; // Shield: target scene gone — drop
-    const base = existing ?? {
-      id: sceneId,
-      title: '',
-      path: `stories/${storyId}/chapters/${targetChapterId}/scenes/${sceneId}.md`,
-      order: chapter.scenes.length,
-      chapterId: targetChapterId,
+    const merged = mergeSceneBlocksIntoStories(
+      latest,
       storyId,
-      blocks: [],
-      createdAt: now(),
-      updatedAt: now(),
-    };
-    const updatedScene: Scene = { ...base, blocks, updatedAt: now() };
-    const content = blocks.map((b) => b.content).join('\n\n');
-    if (isProvisional && !content.trim()) return;
-
-    const updatedStories = latest.map((s) =>
-      s.id !== storyId ? s : updateChapterOwner(s, targetChapterId, (chapters) =>
-        chapters.map((ch) =>
-          ch.id !== targetChapterId ? ch : {
-            ...ch,
-            scenes: isProvisional
-              ? [...ch.scenes, updatedScene]
-              : ch.scenes.map((sc) => (sc.id !== sceneId ? sc : updatedScene)),
-          }
-        )
-      )
+      chapterId,
+      sceneId,
+      blocks,
+      { isProvisional, now },
     );
+    if (!merged) return; // Shield: story/scene gone — drop the save
+    const { stories: updatedStories, updatedScene, targetChapterId } = merged;
+    const content = blocks.map((b) => b.content).join('\n\n');
     updateManifest(updatedStories);
 
     // Refresh selection objects only when still on this target — never snap
@@ -3849,7 +3817,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     toChapterId: string,
     insertBeforeSceneId: string | null,
   ) => {
-    const updatedStories = stories.map((s) => {
+    // Critic/Bugbot: read storiesRef so a deferred editor flush that already
+    // published newer blocks is not clobbered by this move (same class as H4).
+    const latest = storiesRef.current;
+    const updatedStories = latest.map((s) => {
       if (s.id !== storyId) return s;
       const fromChapter = s.chapters.find((c) => c.id === fromChapterId);
       if (!fromChapter) return s;
@@ -3886,7 +3857,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       return next;
     });
     updateManifest(updatedStories);
-  }, [stories, updateManifest]);
+  }, [updateManifest]);
 
   // Beta 4 M1: the SKY-127 data-context window-ring effect is deleted with the
   // html frame ring (§3: no neon window frame ring around the app).
@@ -5022,10 +4993,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const applyNavLocation = useCallback((loc: NavigationLocation) => {
     if (loc.sceneId) {
       const found = findSceneLocation(loc.sceneId);
-      if (found) handleSelectScene(found.scene, found.chapter, found.story);
-      // Critic H1: "View full note" keeps the scene, so history may hold both
-      // sceneId and notePath. handleSelectScene clears openedNotePath — restore
-      // it after the scene so Back/Forward lands on the note, not empty Notes.
+      if (found) {
+        if (loc.notePath) {
+          // Continuity "View full note" keeps the scene under the note.
+          // Do NOT call handleSelectScene here: it clears openedNotePath and
+          // focuses the (keep-mounted) story editor via setTimeout(0), which
+          // in the real Electron app clears the restored note after Forward
+          // (Probe H1 — jsdom does not reproduce the focus steal).
+          setSelectedScene(found.scene);
+          setSelectedChapter(found.chapter);
+          setSelectedStory(found.story);
+          setSelectedEntity(null);
+        } else {
+          handleSelectScene(found.scene, found.chapter, found.story);
+        }
+      }
       if (loc.notePath) setOpenedNotePath(loc.notePath);
     } else if (loc.entityId) {
       const cached = allEntities.find((e) => e.id === loc.entityId);
@@ -5567,13 +5549,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   /** F1#3: drag a chapter onto a part header. */
   const handleMoveChapterToPart = useCallback((storyId: string, chapterId: string, targetPartId: string) => {
-    const story = stories.find((s) => s.id === storyId);
+    // Critic/Bugbot: read storiesRef so a deferred editor flush is not lost
+    // when this drop handler maps a stale render-captured `stories` snapshot.
+    const latest = storiesRef.current;
+    const story = latest.find((s) => s.id === storyId);
     if (!story) return;
     const updated = moveChapterToPart(story, chapterId, targetPartId);
     if (updated === story) return;
-    updateManifest(stories.map((s) => (s.id === storyId ? updated : s)));
+    updateManifest(latest.map((s) => (s.id === storyId ? updated : s)));
     if (selectedStory?.id === storyId) refreshManuscriptSelection(updated);
-  }, [stories, updateManifest, selectedStory, refreshManuscriptSelection]);
+  }, [updateManifest, selectedStory, refreshManuscriptSelection]);
 
   // manuscriptModel.ts's pure split/merge/remove/rename fns only ever
   // rewrite `.chapters` (they predate the Part tier) — their output's
@@ -7171,6 +7156,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                     onNext: handleDepthNext,
                   }}
                   onHistoryAltArrow={(dir) => (dir === 'back' ? tryGoBack() : tryGoForward())}
+                  altArrowActive={tabShell.activeTab === 'story' && view === 'editor'}
                 />
               </div>
             ) : selectedEntity ? (

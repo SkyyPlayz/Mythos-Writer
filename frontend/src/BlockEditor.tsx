@@ -143,8 +143,6 @@ export default function BlockEditor({ scene, onBlocksChange, onDraftStateChange,
   autoLinkerModeRef.current = autoLinkerMode;
   // Flag to break the auto-link → onUpdate → auto-link cycle
   const applyingAutoLinksRef = useRef(false);
-  // Flush-time ref — DesktopShell binds scene ids in handleBlocksChange /
-  // handlePane2BlocksChange; editors are keyed by scene so remount retargets.
   const onBlocksChangeRef = useRef(onBlocksChange);
   onBlocksChangeRef.current = onBlocksChange;
   const blockIdRef = useRef(scene.blocks[0]?.id ?? crypto.randomUUID());

@@ -26,6 +26,8 @@ vi.mock('./BlockEditor', async () => {
 });
 
 import App from './App';
+import { mergeSceneBlocksIntoStories } from './story/applySceneBlocks';
+import type { Block, Story } from './types';
 
 const NOW = '2026-09-29T00:00:00.000Z';
 
@@ -145,6 +147,51 @@ function makeTwoChapterNamedPartManifest() {
   };
 }
 
+/** Two parts: Part One holds both chapters; Part Two is empty (drop target). */
+function makeTwoPartManifest() {
+  const chA = makeChapter(STORY_A, CH_A, 'Chapter One', [
+    makeScene(STORY_A, CH_A, SCENE_A, 'Scene One', 'Seed prose.', 0),
+  ], 0);
+  const chB = makeChapter(STORY_A, CH_B, 'Chapter Two', [
+    makeScene(STORY_A, CH_B, SCENE_B, 'Scene Two', 'Other seed.', 0),
+  ], 1);
+  const partA = {
+    id: PART_A,
+    title: 'Part One',
+    order: 0,
+    note: [],
+    chapters: [chA, chB],
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+  const partB = {
+    id: 'part-b',
+    title: '',
+    order: 1,
+    note: [],
+    chapters: [] as ReturnType<typeof makeChapter>[],
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+  return {
+    version: '1',
+    vaultRoot: '/tmp',
+    stories: [{
+      id: STORY_A,
+      title: 'Race Story',
+      path: `stories/${STORY_A}`,
+      createdAt: NOW,
+      updatedAt: NOW,
+      chapters: [chA, chB],
+      parts: [partA, partB],
+    }],
+    entities: [],
+    suggestions: [],
+    scenes: [],
+    chapters: [],
+  };
+}
+
 type Manifest = ReturnType<typeof makeSingleStoryManifest>;
 
 function makeMockApi(manifest: Manifest, openSceneId = SCENE_A) {
@@ -171,6 +218,7 @@ function makeMockApi(manifest: Manifest, openSceneId = SCENE_A) {
     writeVault,
     deleteVault,
     onVaultFileChanged: () => () => {},
+    onNavigatorManifestChanged: (_cb: () => void) => () => {},
     entityList: vi.fn().mockResolvedValue({ entities: [] }),
     sessionSaveScene: vi.fn().mockResolvedValue({ saved: true }),
     archiveListContinuity: () => Promise.resolve({ items: [] }),
@@ -203,6 +251,29 @@ function makeMockApi(manifest: Manifest, openSceneId = SCENE_A) {
     /** Test helper: last persisted manifest (debounced save lands in writeManifest). */
     _liveManifest: () => liveManifest,
   };
+}
+
+/**
+ * Same-scene-id fixture for the Shield collision bar.
+ * B is listed FIRST so `stories.find(hasScene(sharedId))` hits B and
+ * corrupts it — that is the mutation that must turn this test red.
+ * (Do not boot DesktopShell with this shape: duplicate scene ids hang the
+ * renderer — pre-existing residual, out of scope.)
+ */
+function makeSameSceneIdStories(): Story[] {
+  const sharedId = 'shared-scene-id';
+  const chB = makeChapter(STORY_B, CH_B, 'Chapter B', [
+    makeScene(STORY_B, CH_B, sharedId, 'Scene B', 'Seed B.', 0),
+  ], 0);
+  const chA = makeChapter(STORY_A, CH_A, 'Chapter A', [
+    makeScene(STORY_A, CH_A, sharedId, 'Scene A', 'Seed A.', 0),
+  ], 0);
+  // Fixture helpers above use stringly block types for the race harness;
+  // cast once at the boundary into the helper's Story[].
+  return [
+    makeStory(STORY_B, 'Story Beta', [chB]),
+    makeStory(STORY_A, 'Story Alpha', [chA]),
+  ] as Story[];
 }
 
 async function submitPrompt(text: string): Promise<void> {
@@ -240,8 +311,17 @@ function chapterTitles(manifest: Manifest, storyId = STORY_A): string[] {
 function sceneFromManifest(manifest: Manifest, storyId: string, sceneId: string) {
   const story = manifest.stories.find((s) => s.id === storyId);
   if (!story) return null;
-  const scenes = (story.parts?.[0]?.chapters ?? story.chapters ?? []).flatMap((c) => c.scenes ?? []);
-  return scenes.find((sc) => sc.id === sceneId) ?? null;
+  const chapters = story.parts?.length
+    ? story.parts.flatMap((p) => p.chapters ?? [])
+    : (story.chapters ?? []);
+  // Dedup by id — story.chapters mirrors parts[].chapters after sync.
+  const byId = new Map<string, (typeof chapters)[number]>();
+  for (const ch of chapters) byId.set(ch.id, ch);
+  for (const ch of byId.values()) {
+    const scene = (ch.scenes ?? []).find((sc) => sc.id === sceneId);
+    if (scene) return scene;
+  }
+  return null;
 }
 
 function sceneContent(manifest: Manifest, storyId: string, sceneId: string): string | null {
@@ -253,7 +333,12 @@ function sceneContent(manifest: Manifest, storyId: string, sceneId: string): str
 function sceneChapterId(manifest: Manifest, storyId: string, sceneId: string): string | null {
   const story = manifest.stories.find((s) => s.id === storyId);
   if (!story) return null;
-  for (const ch of story.parts?.[0]?.chapters ?? story.chapters ?? []) {
+  const chapters = story.parts?.length
+    ? story.parts.flatMap((p) => p.chapters ?? [])
+    : (story.chapters ?? []);
+  const byId = new Map<string, (typeof chapters)[number]>();
+  for (const ch of chapters) byId.set(ch.id, ch);
+  for (const ch of byId.values()) {
     if ((ch.scenes ?? []).some((sc) => sc.id === sceneId)) return ch.id;
   }
   return null;
@@ -403,7 +488,7 @@ describe('DesktopShell deferred editor save (F1#9 root fix)', () => {
     expect(document.querySelector('.nav-scene-row.active')?.textContent).toMatch(/Scene B/);
   });
 
-  it('H1) Back after Continuity View full note restores the note (not empty Notes)', async () => {
+  it('H1) Back and Forward after Continuity View full note restore the note (not empty Notes)', async () => {
     const api = makeMockApi(makeTwoStoryManifest());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).api = api;
@@ -452,22 +537,34 @@ describe('DesktopShell deferred editor save (F1#9 root fix)', () => {
       expect(screen.getByTestId('note-title')).toBeInTheDocument();
       expect(screen.queryByTestId('notes-editor-placeholder')).toBeNull();
     });
+
+    // Probe H1 Forward: leave the note (Back to scene), then Forward must
+    // restore the note again — not an empty Notes placeholder.
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true });
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId('note-title')).toBeNull();
+    });
+    await act(async () => {
+      fireEvent.keyDown(window, { key: 'ArrowRight', altKey: true });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('note-title')).toBeInTheDocument();
+      expect(screen.queryByTestId('notes-editor-placeholder')).toBeNull();
+    });
   });
 
-  it('H3) type, move scene to another chapter, save fires — text lands under new chapter', async () => {
+  it('H3) move open scene, then type — text lands under new chapter', async () => {
     const api = makeMockApi(makeTwoChapterNamedPartManifest());
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).api = api;
-    render(<App />);
-    const editor = await mountSceneEditor();
+    const { unmount } = render(<App />);
+    await mountSceneEditor();
 
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    await act(async () => {
-      editor.insertText('Survives the move.');
-    });
-    await act(async () => { vi.advanceTimersByTime(200); });
-
-    // Structure → List view: drag Scene One onto Chapter Two header.
+    // Structure → List view: drag Scene One onto Chapter Two BEFORE typing
+    // (Probe: typing before the move flushes on Structure unmount and stays
+    // green with H3 hunks reverted — type AFTER like Critic's moveDrop).
     fireEvent.click(await screen.findByTestId('story-subview-structure'));
     fireEvent.click(await screen.findByTitle(/List view/i));
     const alpha = await screen.findByRole('treeitem', { name: /Scene: Scene One/i });
@@ -487,20 +584,93 @@ describe('DesktopShell deferred editor save (F1#9 root fix)', () => {
       expect(sceneChapterId(api._liveManifest(), STORY_A, SCENE_A)).toBe(CH_B);
     });
 
+    // Relaunch against the post-move manifest so the editor mounts on the
+    // scene under Chapter Two (jsdom TipTap does not reliably remount after
+    // Structure↔Editor). Typing then saving must still find the scene by id
+    // (H3) — a chapterId-only lookup against the old chapter goes red.
+    unmount();
+    cleanup();
+    lastEditorApi = null;
+    const api2 = makeMockApi(api._liveManifest(), SCENE_A);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = api2;
+    render(<App />);
+    const editor = await mountSceneEditor();
+    await act(async () => {
+      editor.insertText('After move text.');
+    });
+    // Real timers: TipTap debounce is 800ms — avoid fake-timer quirks after relaunch.
+    await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
+    await drainManifestSave();
+
+    await waitFor(() => {
+      const man = api2._liveManifest();
+      expect(sceneChapterId(man, STORY_A, SCENE_A)).toBe(CH_B);
+      expect(sceneContent(man, STORY_A, SCENE_A)).toContain('After move text.');
+    });
+    const movedWrites = (api2.writeVault as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => typeof c[1] === 'string' && (c[1] as string).includes('After move text.'),
+    );
+    expect(movedWrites.length).toBeGreaterThan(0);
+  });
+
+  it('Shield collision) same scene id in A and B — late save from A does not touch B', async () => {
+    // Pure helper bar (MUST go RED when applySceneBlocks / mergeSceneBlocks
+    // stops scoping by storyId). Booting DesktopShell with duplicate scene
+    // ids hangs the renderer — out of scope — so same-id lives here + in
+    // applySceneBlocks.test.ts; shell A→B below uses unique ids + fake timers.
+    const sharedId = 'shared-scene-id';
+    const stories = makeSameSceneIdStories();
+    expect(stories[0]!.id).toBe(STORY_B); // B-first: global find hits wrong story
+    const blocks: Block[] = [
+      { id: 'b-collide', type: 'prose', content: 'Typed in A only.', order: 0, updatedAt: NOW },
+    ];
+    const merged = mergeSceneBlocksIntoStories(
+      stories, STORY_A, CH_A, sharedId, blocks, { now: () => NOW },
+    );
+    expect(merged).not.toBeNull();
+    const contentOf = (list: Story[], storyId: string) => {
+      const story = list.find((s) => s.id === storyId)!;
+      const scene = story.chapters.flatMap((c) => c.scenes).find((sc) => sc.id === sharedId)!;
+      return scene.blocks.map((b) => b.content).join('\n\n');
+    };
+    expect(contentOf(merged!.stories, STORY_A)).toContain('Typed in A only.');
+    expect(contentOf(merged!.stories, STORY_B)).toBe('Seed B.');
+    expect(merged!.stories.find((s) => s.id === STORY_B)).toBe(stories[0]);
+
+    // Fake-timer A→B companion (unique ids — no renderer hang).
+    const api = makeMockApi(makeTwoStoryManifest());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = api;
+    render(<App />);
+    const editor = await mountSceneEditor();
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const writesBefore = (api.writeVault as ReturnType<typeof vi.fn>).mock.calls.length;
+    await act(async () => {
+      editor.insertText('Collision typed in A.');
+    });
+    await act(async () => { vi.advanceTimersByTime(200); });
+
+    fireEvent.click(await screen.findByText('Story Beta'));
+    await waitFor(() => {
+      expect(document.querySelector('.nav-scene-row.active')?.textContent).toMatch(/Scene B/);
+    });
+
     await flushEditorDebounce();
     vi.useRealTimers();
     await drainManifestSave();
 
     await waitFor(() => {
       const man = api._liveManifest();
-      expect(sceneChapterId(man, STORY_A, SCENE_A)).toBe(CH_B);
-      expect(sceneContent(man, STORY_A, SCENE_A)).toContain('Survives the move.');
+      expect(sceneContent(man, STORY_A, SCENE_A)).toContain('Collision typed in A.');
+      expect(sceneContent(man, STORY_B, SCENE_B)).toBe('Seed B.');
     });
-    // Disk write must have happened (tip 80c88bfc silently dropped → 0 writes).
-    const movedWrites = (api.writeVault as ReturnType<typeof vi.fn>).mock.calls.filter(
-      (c) => typeof c[1] === 'string' && (c[1] as string).includes('Survives the move.'),
-    );
-    expect(movedWrites.length).toBeGreaterThan(0);
+    const bWrites = (api.writeVault as ReturnType<typeof vi.fn>).mock.calls
+      .slice(writesBefore)
+      .filter((c) => typeof c[0] === 'string' && (c[0] as string).includes(`stories/${STORY_B}/`)
+        && typeof c[1] === 'string' && (c[1] as string).includes('Collision typed in A.'));
+    expect(bWrites.length).toBe(0);
   });
 
   it('H4a) type then + Part while debounce pending — part + typed text survive', async () => {
@@ -563,6 +733,118 @@ describe('DesktopShell deferred editor save (F1#9 root fix)', () => {
         expect.arrayContaining(['Chapter One', 'Chapter Two', 'Chapter In Part']),
       );
       expect(sceneContent(man, STORY_A, SCENE_A)).toContain('Typed before in-part chapter.');
+    });
+  });
+
+  it('H4 rename) type then rename part while debounce pending — rename + text survive', async () => {
+    const api = makeMockApi(makeTwoChapterNamedPartManifest());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = api;
+    render(<App />);
+    const editor = await mountSceneEditor();
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await act(async () => {
+      editor.insertText('Typed before rename.');
+    });
+    await act(async () => { vi.advanceTimersByTime(200); });
+
+    const partRow = await screen.findByTestId(`nav-part-${PART_A}`);
+    fireEvent.contextMenu(partRow.querySelector('.nav-part-row') ?? partRow);
+    const rename = await screen.findByRole('menuitem', { name: /Rename/i });
+    fireEvent.click(rename);
+
+    await openPromptDialog();
+    await flushEditorDebounce();
+    vi.useRealTimers();
+    await submitPrompt('Renamed Part');
+    await drainManifestSave();
+
+    await waitFor(() => {
+      const man = api._liveManifest();
+      const story = man.stories.find((s) => s.id === STORY_A)!;
+      expect(story.parts?.[0]?.title).toBe('Renamed Part');
+      expect(sceneContent(man, STORY_A, SCENE_A)).toContain('Typed before rename.');
+    });
+  });
+
+  it('moveScene) flush then move while stories closure is stale — typed text survives', async () => {
+    const api = makeMockApi(makeTwoChapterNamedPartManifest());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = api;
+    render(<App />);
+    const editor = await mountSceneEditor();
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await act(async () => {
+      editor.insertText('Survives moveScene.');
+    });
+    // Let the deferred save publish into storiesRef before the drop maps stories.
+    await flushEditorDebounce();
+    vi.useRealTimers();
+
+    fireEvent.click(await screen.findByTestId('story-subview-structure'));
+    fireEvent.click(await screen.findByTitle(/List view/i));
+    const alpha = await screen.findByRole('treeitem', { name: /Scene: Scene One/i });
+    const ch2Header = screen.getByText('CHAPTER 2').closest('.list-chapter__header');
+    expect(ch2Header).toBeTruthy();
+    const dataTransfer = {
+      setData: vi.fn(),
+      getData: vi.fn(() => SCENE_A),
+      effectAllowed: '',
+      dropEffect: '',
+    };
+    fireEvent.dragStart(alpha, { dataTransfer });
+    fireEvent.dragOver(ch2Header!, { dataTransfer });
+    fireEvent.drop(ch2Header!, { dataTransfer });
+    await drainManifestSave();
+
+    await waitFor(() => {
+      const man = api._liveManifest();
+      expect(sceneChapterId(man, STORY_A, SCENE_A)).toBe(CH_B);
+      expect(sceneContent(man, STORY_A, SCENE_A)).toContain('Survives moveScene.');
+    });
+  });
+
+  it('moveChapterToPart) flush then drop chapter on part — typed text survives', async () => {
+    const api = makeMockApi(makeTwoPartManifest());
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = api;
+    render(<App />);
+    const editor = await mountSceneEditor();
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await act(async () => {
+      editor.insertText('Survives chapter→part.');
+    });
+    await flushEditorDebounce();
+    vi.useRealTimers();
+
+    fireEvent.click(await screen.findByTestId('story-subview-structure'));
+    // Prior tests may leave Structure on List view (persisted) — part drops
+    // live on the SceneGrid, so force Grid.
+    const gridBtn = screen.queryByTitle(/Grid view/i);
+    if (gridBtn) fireEvent.click(gridBtn);
+    await screen.findByTestId('msv-struct-part-header-part-b');
+    const ch1Title = screen.getByRole('heading', { name: 'Chapter One' });
+    const ch1Header = ch1Title.closest('.chapter-section__header');
+    expect(ch1Header).toBeTruthy();
+    const partHeader = screen.getByTestId('msv-struct-part-header-part-b');
+    const dataTransfer = {
+      setData: vi.fn(),
+      getData: vi.fn(() => CH_A),
+      effectAllowed: 'move',
+      dropEffect: '',
+    };
+    fireEvent.dragStart(ch1Header!, { dataTransfer });
+    fireEvent.dragOver(partHeader, { dataTransfer });
+    fireEvent.drop(partHeader, { dataTransfer });
+    await drainManifestSave();
+
+    await waitFor(() => {
+      const content = sceneContent(api._liveManifest(), STORY_A, SCENE_A);
+      expect(content).toBeTruthy();
+      expect(content).toContain('Survives chapter→part.');
     });
   });
 });
