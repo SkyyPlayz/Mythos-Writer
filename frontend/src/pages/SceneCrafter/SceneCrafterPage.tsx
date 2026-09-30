@@ -14,6 +14,7 @@ import {
   buildDraftPrompt,
   cardSeedFromSuggested,
   castCardsFromSuggested,
+  composeCreateSceneBoard,
   composeDraftBoard,
   composeDraftPassCard,
   defaultCrafterSetup,
@@ -596,13 +597,21 @@ export default function SceneCrafterPage({
     startDraftStream();
   }
 
-  /** SKY-11213: Create a real scene directly from Setup — no AI draft needed. */
+  /** SKY-11213 / F1#1: create the manuscript scene, then a form-mapped board. */
   async function handleCreateSceneFromSetup() {
     if (!onCreateSceneFromSetup || creatingScene) return;
     setCreateSceneError(null);
     setCreatingScene(true);
     try {
       await onCreateSceneFromSetup(setup);
+      // Form→board mapping lives here (F1 owns SceneCrafter). Shell only
+      // persists the scene + navigates to kanban.
+      const seedId = 'b' + Date.now();
+      const composed = composeCreateSceneBoard(setup, boards.length + 1, seedId);
+      const next = { ...composed, id: boardFilePath(storySlug, composed.name) };
+      setBoards((prev) => [...prev, next]);
+      await persistBoard(next);
+      onOpenBoard?.({ id: next.id, name: next.name });
     } catch (err) {
       setCreateSceneError(err instanceof Error ? err.message : 'Failed to create scene.');
     } finally {
