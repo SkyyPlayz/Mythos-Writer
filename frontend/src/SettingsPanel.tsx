@@ -876,6 +876,7 @@ export default function SettingsPanel({ onClose, onSaved, focusPrefs, onFocusPre
                 showApiKey={showApiKey}
                 setShowApiKey={setShowApiKey}
                 setSavedOk={setSavedOk}
+                onMoveVault={handleMoveVault}
               />
 
               {/* Legacy provider fields — still drive save/test wiring; bucket UI above is primary. */}

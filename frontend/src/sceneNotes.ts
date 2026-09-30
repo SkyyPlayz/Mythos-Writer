@@ -6,6 +6,10 @@
 // with a `\n---\n` separator, so that separator IS the list format: this module
 // parses the stored string into note cards and serializes cards back. Legacy
 // free-text content round-trips as a single card.
+//
+// F5 (beta 0.5.6): book / part / chapter / scene each get their own store key.
+// Scene keeps the bare UUID key so the brainstorm append bridge stays in sync;
+// higher tiers use a `tier:<id>` prefix in the same SQLite column.
 
 import { sanitizeVaultName } from '@mythos-writer/shared/vaultNameSanitizer';
 
@@ -14,11 +18,59 @@ export const SCENE_NOTE_SEPARATOR = '\n---\n';
 /** dataTransfer MIME for dragging a scene note onto the story navigator. */
 export const SCENE_NOTE_DRAG_MIME = 'application/x-mythos-scene-note';
 
+/** Structural tiers that own a private notes pane (apart from manuscript body). */
+export type NoteTier = 'book' | 'part' | 'chapter' | 'scene';
+
+export const NOTE_TIERS: readonly NoteTier[] = ['book', 'part', 'chapter', 'scene'] as const;
+
+export const NOTE_TIER_LABELS: Record<NoteTier, string> = {
+  book: 'Book',
+  part: 'Part',
+  chapter: 'Chapter',
+  scene: 'Scene',
+};
+
 export interface SceneNoteDragPayload {
   sceneId: string;
   /** Index of the note within the scene's parsed note list at drag time. */
   index: number;
   text: string;
+}
+
+export interface NoteTierIds {
+  bookId: string | null;
+  partId: string | null;
+  chapterId: string | null;
+  sceneId: string | null;
+}
+
+/**
+ * Store key for `notes:get` / `notes:set`. Scene stays a bare UUID (legacy +
+ * brainstorm bridge); book/part/chapter use a stable prefix.
+ */
+export function buildNoteStoreKey(tier: NoteTier, id: string): string {
+  const trimmed = id.trim();
+  if (!trimmed) throw new Error('note store key requires a non-empty id');
+  if (tier === 'scene') return trimmed;
+  return `${tier}:${trimmed}`;
+}
+
+/** Resolve the store key for a tier given the current structural ids. */
+export function noteStoreKeyForTier(tier: NoteTier, ids: NoteTierIds): string | null {
+  switch (tier) {
+    case 'book':
+      return ids.bookId ? buildNoteStoreKey('book', ids.bookId) : null;
+    case 'part':
+      return ids.partId ? buildNoteStoreKey('part', ids.partId) : null;
+    case 'chapter':
+      return ids.chapterId ? buildNoteStoreKey('chapter', ids.chapterId) : null;
+    case 'scene':
+      return ids.sceneId ? buildNoteStoreKey('scene', ids.sceneId) : null;
+    default: {
+      const _exhaustive: never = tier;
+      return _exhaustive;
+    }
+  }
 }
 
 export function parseSceneNotes(content: string): string[] {
