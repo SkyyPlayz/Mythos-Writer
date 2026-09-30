@@ -87,6 +87,12 @@ function stubApi(overrides: Record<string, unknown> = {}) {
     notesTagMerge: vi.fn().mockResolvedValue({ affectedFiles: 0 }),
     notesVaultReadIcons: vi.fn().mockResolvedValue({}),
     notesVaultSetIcon: vi.fn().mockResolvedValue({ path: '', icon: null }),
+    // F5 SceneNotesPanel — settle tierContext/notesGet so a11y tests don't trip act()
+    notesGet: vi.fn().mockResolvedValue({ content: '' }),
+    notesSet: vi.fn().mockResolvedValue({ saved: true }),
+    notesTierContext: vi.fn().mockResolvedValue({
+      ok: true, bookId: 's1', partId: null, chapterId: 'ch1', sceneId: 'sc1',
+    }),
     vaultReadIcons: vi.fn().mockResolvedValue({}),
     iconReadSvg: vi.fn().mockResolvedValue({ svg: null }),
     outline: {
@@ -438,12 +444,17 @@ describe('Accessibility — SceneNotesPanel (WCAG 4.1.2)', () => {
     expect(results).toHaveNoViolations();
   });
 
-  it('with scene — note list and add input have accessible labels', () => {
+  it('with scene — note list and add input have accessible labels', async () => {
     const scene = {
       id: 'sc1', title: 'Scene 1', path: '/s/ch1/sc1', order: 0,
       chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '',
     };
     const { container } = render(<SceneNotesPanel scene={scene as any} />);
+    // Flush H3 notesTierContext / notesGet microtasks before asserting.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     const list = container.querySelector('ul.snp-list');
     expect(list?.getAttribute('aria-label')).toBe('Scene notes');
     const input = container.querySelector('input.snp-input');
@@ -456,6 +467,10 @@ describe('Accessibility — SceneNotesPanel (WCAG 4.1.2)', () => {
       chapterId: 'ch1', storyId: 's1', blocks: [], createdAt: '', updatedAt: '',
     };
     const { container } = render(<SceneNotesPanel scene={scene as any} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });

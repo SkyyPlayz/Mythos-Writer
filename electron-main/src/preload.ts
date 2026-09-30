@@ -927,9 +927,12 @@ contextBridge.exposeInMainWorld('api', {
   goalsResetStreak: () => ipcRenderer.invoke('goals:resetStreak', undefined),
 
 
-  // SKY-55: per-scene notes
+  // SKY-55: per-scene notes (node key may be bare scene UUID or tier-prefixed)
   notesGet: (sceneId: string) => ipcRenderer.invoke('notes:get', { sceneId }),
   notesSet: (sceneId: string, content: string) => ipcRenderer.invoke('notes:set', { sceneId, content }),
+  notesTierContext: (sceneId: string) => ipcRenderer.invoke('notes:tierContext', { sceneId }),
+  // F5 Critic Path A: Reveal only — location/clear/open use agentsVault:*
+  modelKeysShowItemInFolder: () => ipcRenderer.invoke('modelKeys:showItemInFolder'),
   // SKY-1391/SKY-1393: brainstorm → writing-panel bridge
   sceneAppendBrainstormNote: (sceneId: string, content: string) =>
     ipcRenderer.invoke('scene:appendBrainstormNote', { sceneId, content }),

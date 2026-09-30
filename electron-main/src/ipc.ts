@@ -503,6 +503,13 @@ export const IPC_CHANNELS = {
   // SKY-55: per-scene notes
   NOTES_GET: 'notes:get',
   NOTES_SET: 'notes:set',
+  /** F5: resolve book/part/chapter/scene ids for the notes-per-tier pane. */
+  NOTES_TIER_CONTEXT: 'notes:tierContext',
+  /**
+   * F5 Critic Path A: sole new modelKeys channel — Reveal via showItemInFolder.
+   * Location / Clear / Open reuse agentsVault:* (no duplicate primitive).
+   */
+  MODEL_KEYS_SHOW_ITEM_IN_FOLDER: 'modelKeys:showItemInFolder',
   // SKY-158: Tag & cross-reference system
   TAGS_LIST: 'tags:list',
   TAGS_UPSERT: 'tags:upsert',
@@ -1129,6 +1136,8 @@ export interface IpcHandlers {
   // SKY-55: per-scene notes
   [IPC_CHANNELS.NOTES_GET]: (payload: NotesGetPayload) => NotesGetResponse;
   [IPC_CHANNELS.NOTES_SET]: (payload: NotesSetPayload) => NotesSetResponse;
+  [IPC_CHANNELS.NOTES_TIER_CONTEXT]: (payload: NotesTierContextPayload) => NotesTierContextResponse;
+  [IPC_CHANNELS.MODEL_KEYS_SHOW_ITEM_IN_FOLDER]: (payload?: never) => Promise<{ opened: boolean; error?: string }>;
 
   // SKY-158: Tag & cross-reference system
   [IPC_CHANNELS.TAGS_LIST]: (payload: never) => TagsListResponse;
@@ -5486,6 +5495,17 @@ export interface NotesGetPayload { sceneId: string }
 export interface NotesGetResponse { content: string }
 export interface NotesSetPayload { sceneId: string; content: string }
 export interface NotesSetResponse { saved: boolean }
+
+/** F5: ancestry for notes-per-tier (book / part / chapter / scene). */
+export interface NotesTierContextPayload { sceneId: string }
+export interface NotesTierContextResponse {
+  ok: boolean;
+  bookId?: string | null;
+  partId?: string | null;
+  chapterId?: string | null;
+  sceneId?: string | null;
+  error?: string;
+}
 
 // ─── SKY-1391: brainstorm → writing-panel bridge ───
 // Appends `content` to the scene's note field (stored in SQLite notes table).

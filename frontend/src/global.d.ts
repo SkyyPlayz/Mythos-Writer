@@ -1977,9 +1977,19 @@ interface Window {
     notesTagList: () => Promise<{ tags: NotesTagEntry[] }>;
     notesTagRename: (oldTag: string, newTag: string) => Promise<{ affectedFiles: number }>;
     notesTagMerge: (sourceTag: string, targetTag: string) => Promise<{ affectedFiles: number }>;
-    // SKY-55: per-scene notes
+    // SKY-55: per-scene / per-tier notes (sceneId may be a tier-prefixed node key)
     notesGet?: (sceneId: string) => Promise<{ content: string }>;
     notesSet?: (sceneId: string, content: string) => Promise<{ saved: boolean }>;
+    notesTierContext?: (sceneId: string) => Promise<{
+      ok: boolean;
+      bookId?: string | null;
+      partId?: string | null;
+      chapterId?: string | null;
+      sceneId?: string | null;
+      error?: string;
+    }>;
+    // F5 Critic Path A: sole new channel (Reveal). Location/Clear/Open → agentsVault:*
+    modelKeysShowItemInFolder?: () => Promise<{ opened: boolean; error?: string }>;
     // SKY-1391: brainstorm → writing-panel bridge
     sceneAppendBrainstormNote?: (sceneId: string, content: string) => Promise<{ appended: boolean }>;
 
