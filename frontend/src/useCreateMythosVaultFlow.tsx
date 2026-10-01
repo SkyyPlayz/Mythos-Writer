@@ -4,6 +4,15 @@ import VaultCreateModePicker, {
   type VaultCreateMode,
 } from './components/SettingsPanel/sections/VaultCreateModePicker';
 
+export type CreateMythosVaultFlowOptions = {
+  /**
+   * When false, scaffold without activating on main — caller must flush-then
+   * switch (Shield: Settings open must not see main commit first). Default true
+   * keeps legacy auto-activate for callers that already flush via onCreated.
+   */
+  activate?: boolean;
+};
+
 /**
  * Slice D — "Create a Mythos vault" modal shared by nav-rail "+" and
  * Welcome path handoff. Five-path: Template / Blank / Import / Restore /
@@ -11,10 +20,12 @@ import VaultCreateModePicker, {
  */
 export function useCreateMythosVaultFlow(
   onCreated: (result: { vaultRoot: string; notesVaultRoot: string }) => void | Promise<void>,
+  options?: CreateMythosVaultFlowOptions,
 ): {
   createVault: (presetMode?: VaultCreateMode) => void;
   createVaultModal: React.ReactNode;
 } {
+  const activate = options?.activate !== false;
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [dest, setDest] = useState('');
@@ -98,7 +109,7 @@ export function useCreateMythosVaultFlow(
           mode === 'import' || (mode === 'restore' && importNotesSrc.trim())
             ? [{ kind: 'notes' as const, srcPath: importNotesSrc.trim() }]
             : undefined,
-        activate: true,
+        activate,
       });
       if (!result || !result.ok) {
         setError(`Could not create vault: ${result?.error ?? 'unknown error'}`);
@@ -114,7 +125,7 @@ export function useCreateMythosVaultFlow(
     } finally {
       setBusy(false);
     }
-  }, [name, dest, mode, openinPath, importNotesSrc]);
+  }, [name, dest, mode, openinPath, importNotesSrc, activate]);
 
   const createVaultModal = (
     <Dialog

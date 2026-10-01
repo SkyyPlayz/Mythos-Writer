@@ -163,10 +163,16 @@
 }
 
 /* Ivy ruling 4: start group (Back + title) has a floor — cannot collapse
-   under actions. Title truncates with ellipsis; Back is never covered. */
+   under actions. Use a rem floor (not min-content): min-content locks the
+   intrinsic Session+title width and blocks ellipsis, so the start group
+   overlaps mode seg / ⋯ at 701–1000. Title truncates; Back stays hit-able. */
 .pc-header.brainstorm-header .pc-header-start {
   flex: 1 1 auto;
-  min-width: min-content;
+  min-width: 7rem;
+}
+
+.pc-header.brainstorm-header .pc-header-icon {
+  flex-shrink: 0;
 }
 
 .pc-header.brainstorm-header .pc-header-actions {

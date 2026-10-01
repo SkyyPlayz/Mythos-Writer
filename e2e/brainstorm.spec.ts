@@ -739,8 +739,8 @@ test('TC-M20-03: chat-page Board toggle stacks the canvas under the chat', async
   // The card placed in TC-M20-01 shows on the stacked canvas too (one board).
   await expect(page.locator('.bsb-card', { hasText: 'Midpoint Reversal' })).toBeVisible();
 
-  // Toggle back off for any subsequent chat assertions.
-  await page.locator('[data-testid="bs-chat-board-toggle"]').click();
+  // Toggle back off for any subsequent chat assertions (⋯ when ≤999).
+  await clickChatBoardToggle(page);
   expect(await page.locator('[data-testid="bsc-board"]').count()).toBe(0);
 });
 

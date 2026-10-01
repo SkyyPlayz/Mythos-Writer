@@ -417,6 +417,22 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
     await waitFor(() => expect(screen.queryByTestId('mvs-create-done')).not.toBeInTheDocument());
   });
 
+  it('Switch to it prefers __mythosRequestVaultSwitch (flush-first) over bare projectSwitch', async () => {
+    const req = vi.fn().mockResolvedValue(true);
+    (window as Window & { __mythosRequestVaultSwitch?: typeof req }).__mythosRequestVaultSwitch = req;
+    try {
+      await openCreateForm();
+      fireEvent.click(screen.getByTestId('mvs-create-confirm'));
+      await waitFor(() => expect(screen.getByTestId('mvs-create-done')).toBeInTheDocument());
+      fireEvent.click(screen.getByTestId('mvs-create-switch'));
+      await waitFor(() => expect(req).toHaveBeenCalledWith(`${NEW_ROOT}/Story Vault`));
+      expect(mockProjectSwitch).not.toHaveBeenCalled();
+      await waitFor(() => expect(screen.queryByTestId('mvs-create-done')).not.toBeInTheDocument());
+    } finally {
+      delete (window as Window & { __mythosRequestVaultSwitch?: typeof req }).__mythosRequestVaultSwitch;
+    }
+  });
+
   it('Not now dismisses the offer without switching; the vault stays in the list', async () => {
     await openCreateForm();
     fireEvent.click(screen.getByTestId('mvs-create-confirm'));

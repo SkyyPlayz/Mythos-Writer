@@ -772,6 +772,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Ivy R6: while rolling main back after a premature announce, ignore the
   // rollback's own project:switched broadcast so we do not re-enter park/apply.
   const suppressProjectAnnounceRef = useRef(false);
+  // Shield: serialize renderer projectSwitch calls so Rollback(A) cannot race
+  // Retry/Switch-anyway/Close → projectSwitch(B). Chain settles before park chrome.
+  const vaultSwitchSerialRef = useRef<Promise<void>>(Promise.resolve());
+  const enqueueVaultSwitchOp = useCallback((op: () => Promise<void>): Promise<void> => {
+    const next = vaultSwitchSerialRef.current.then(op, op);
+    vaultSwitchSerialRef.current = next.then(() => undefined, () => undefined);
+    return next;
+  }, []);
   const [historyOpen, setHistoryOpen] = useState(false);
   // SKY-11048: nav-rail vault tiles — every registered Mythos vault, always
   // fetched (even a lone vault renders a tile + the `+` tile). The raw list
@@ -1879,10 +1887,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // loadVault. flush false → park; if main already moved (announce), roll it
   // back so UI and vault-settings.json stay on the ORIGINAL vault until Retry
   // / Switch anyway / successful Close-save completes the switch.
+  // Shield: check rollback result; park chrome only after rollback settles;
+  // if main refuses (recents allowlist), follow main — never leave UI/main split.
   const handleProjectSwitched = useCallback((vaultRoot: string) => {
     if (suppressProjectAnnounceRef.current) return;
-    // Probe NH1 / Ivy: ignore a broadcast for the vault we are already on —
-    // never park a "switch" to the current vault (failed-Close re-assert race).
+    // Guard (b) line 1 — Probe NH1 / Ivy: ignore a broadcast for the vault we
+    // are already on — never park a "switch" to the current vault.
     if (vaultRoot === activeVaultRootRef.current) return;
     if (!settingsOpenRef.current) {
       applyProjectSwitched(vaultRoot);
@@ -1895,27 +1905,51 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       return;
     }
     const originalRoot = activeVaultRootRef.current;
+    const originalNotes = navRailProjects.find((p) => p.vaultRoot === originalRoot)?.notesVaultRoot;
     void flush().then(async (ok) => {
       if (ok) {
         setPendingVaultSwitch(null);
         applyProjectSwitched(vaultRoot);
         return;
       }
-      // Never park a switch to the current vault (same-root announce after
-      // Close-blocked re-assert must not revive Retry / Switch anyway).
+      // Guard (b) line 2 — same-root announce after Close-blocked re-assert
+      // must not revive Retry / Switch anyway (pinned; both lines required).
       if (vaultRoot === activeVaultRootRef.current || vaultRoot === originalRoot) return;
-      // Park target; keep Settings open. Main may already be on vaultRoot —
-      // roll it back so New Story / getVaultRoot match the renderer.
-      setPendingVaultSwitch({ vaultRoot, source: 'announce' });
-      if (originalRoot && originalRoot !== vaultRoot && window.api?.projectSwitch) {
-        suppressProjectAnnounceRef.current = true;
-        try {
-          await window.api.projectSwitch(originalRoot);
-        } catch { /* stay parked; renderer still on original */ }
-        suppressProjectAnnounceRef.current = false;
-      }
+      // Roll main back BEFORE park chrome so Retry / Switch anyway / Close
+      // cannot race an in-flight projectSwitch(original).
+      await enqueueVaultSwitchOp(async () => {
+        let mainMatchesUi = true;
+        if (originalRoot && originalRoot !== vaultRoot && window.api?.projectSwitch) {
+          suppressProjectAnnounceRef.current = true;
+          try {
+            const res = await window.api.projectSwitch(originalRoot, originalNotes);
+            const after = await window.api.getVaultRoot?.().catch(() => null);
+            const mainNow = after?.vaultRoot;
+            if (!res?.switched || (mainNow != null && mainNow !== originalRoot)) {
+              mainMatchesUi = false;
+              if (mainNow && mainNow !== activeVaultRootRef.current) {
+                applyProjectSwitched(mainNow);
+              }
+              showLnToast('Could not restore the previous vault after a failed settings save.');
+            }
+          } catch {
+            mainMatchesUi = false;
+            const after = await window.api.getVaultRoot?.().catch(() => null);
+            if (after?.vaultRoot && after.vaultRoot !== activeVaultRootRef.current) {
+              applyProjectSwitched(after.vaultRoot);
+            }
+            showLnToast('Could not restore the previous vault after a failed settings save.');
+          } finally {
+            suppressProjectAnnounceRef.current = false;
+          }
+        }
+        // Only offer Retry / Switch anyway when UI and main agree on original.
+        if (mainMatchesUi) {
+          setPendingVaultSwitch({ vaultRoot, source: 'announce' });
+        }
+      });
     });
-  }, [applyProjectSwitched]);
+  }, [applyProjectSwitched, enqueueVaultSwitchOp, navRailProjects]);
 
   // Handle project switches pushed from main process — must go through
   // handleProjectSwitched so open Settings flushes before loadVault unmounts it.
@@ -1953,7 +1987,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     vaultId: string,
     _source: 'tile' | 'announce',
     storyVaultId?: string,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     // Story-vault picker park: finish via registry setActive (broadcasts
     // project:switched). Mythos vault / tile / announce: projectSwitch.
     if (storyVaultId && window.api?.storyVaultRegistrySetActive) {
@@ -1963,20 +1997,29 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         const root = await window.api.getVaultRoot?.();
         const next = root?.vaultRoot ?? vaultId;
         applyProjectSwitched(next);
+        return true;
       } catch { /* stay on current vault */ }
-      return;
+      return false;
     }
     // Always projectSwitch — announce-park rolls main back to the original, so
     // Retry / Switch anyway / Close-save must re-commit the target on main.
     const entry = navRailProjects.find((p) => p.vaultRoot === vaultId);
-    await (window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot)
-      .then((res) => { if (res?.switched) applyProjectSwitched(vaultId); })
-      .catch(() => { /* switch failed — stay on current vault */ })
-      ?? Promise.resolve());
+    try {
+      const res = await window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot);
+      if (res?.switched) {
+        applyProjectSwitched(vaultId);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
   }, [navRailProjects, applyProjectSwitched]);
 
   const switchToVault = useCallback(async (vaultId: string): Promise<boolean> => {
     if (vaultId === activeVaultRoot) return true;
+    // Wait out any in-flight announce rollback before parking or switching.
+    await vaultSwitchSerialRef.current;
     const ok = await flushOpenSettings();
     if (!ok) {
       setPendingVaultSwitch({ vaultRoot: vaultId, source: 'tile' });
@@ -1984,8 +2027,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     }
     setPendingVaultSwitch(null);
     // Already flushed — apply via projectSwitch (not handleProjectSwitched).
-    await completeVaultSwitch(vaultId, 'tile');
-    return true;
+    // Return the real projectSwitch result (Copilot/Shield: not always true).
+    return completeVaultSwitch(vaultId, 'tile');
   }, [activeVaultRoot, flushOpenSettings, completeVaultSwitch]);
 
   // Ivy R6: Vault & Files cards use flush-then-switch; StoryVaultPicker parks
@@ -2010,16 +2053,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [switchToVault]);
 
   const handleFlushSwitchChoice = useCallback(async (choice: 'retry' | 'switch-anyway') => {
+    // Shield: do not complete while announce rollback is still running.
+    await vaultSwitchSerialRef.current;
     const pending = pendingVaultSwitchRef.current;
     if (!pending) return;
     if (choice === 'switch-anyway') {
       // Discard unsaved: close Settings without flush, then switch. Plain notice.
       // (Ivy: do NOT toast discard on ordinary Close — only Switch anyway.)
+      // Toast waits until the switch settles (Shield batch / r6 carry-over).
       setPendingVaultSwitch(null);
       settingsOpenRef.current = false;
       setSettingsOpen(false);
+      await enqueueVaultSwitchOp(async () => {
+        await completeVaultSwitch(pending.vaultRoot, pending.source, pending.storyVaultId);
+      });
       showLnToast('Switched vault — unsaved settings were discarded.');
-      await completeVaultSwitch(pending.vaultRoot, pending.source, pending.storyVaultId);
       return;
     }
     // Retry — re-run flush; switch only on success. Must call flush again
@@ -2029,8 +2077,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const ok = flush ? await flush() : true;
     if (!ok) return;
     setPendingVaultSwitch(null);
-    await completeVaultSwitch(pending.vaultRoot, pending.source, pending.storyVaultId);
-  }, [completeVaultSwitch]);
+    await enqueueVaultSwitchOp(async () => {
+      await completeVaultSwitch(pending.vaultRoot, pending.source, pending.storyVaultId);
+    });
+  }, [completeVaultSwitch, enqueueVaultSwitchOp]);
 
   const handleVaultTileSelect = useCallback((vaultId: string) => {
     void switchToVault(vaultId);
@@ -2920,14 +2970,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     pendingRailNavRef.current = null;
     if (vaultPending) {
       setPendingVaultSwitch(null);
-      void completeVaultSwitch(
-        vaultPending.vaultRoot,
-        vaultPending.source,
-        vaultPending.storyVaultId,
-      );
+      void vaultSwitchSerialRef.current.then(() => enqueueVaultSwitchOp(async () => {
+        await completeVaultSwitch(
+          vaultPending.vaultRoot,
+          vaultPending.source,
+          vaultPending.storyVaultId,
+        );
+      }));
     }
     if (pending) runNavModuleChange(pending);
-  }, [runNavModuleChange, completeVaultSwitch]);
+  }, [runNavModuleChange, completeVaultSwitch, enqueueVaultSwitchOp]);
 
   const handleSettingsCloseBlocked = useCallback(() => {
     pendingRailNavRef.current = null;
@@ -2944,12 +2996,26 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const originalRoot = activeVaultRootRef.current;
     if (!originalRoot || !window.api?.projectSwitch) return;
     // Announce park already rolled main back; re-assert so vault-settings.json
-    // cannot drift if rollback raced. Same-root broadcasts are ignored above.
-    suppressProjectAnnounceRef.current = true;
-    void window.api.projectSwitch(originalRoot)
-      .catch(() => { /* keep renderer on original */ })
-      .finally(() => { suppressProjectAnnounceRef.current = false; });
-  }, []);
+    // cannot drift if rollback raced. Check the result — if main refuses
+    // (recents allowlist), follow main so New Story cannot write wrong-vault.
+    const originalNotes = navRailProjects.find((p) => p.vaultRoot === originalRoot)?.notesVaultRoot;
+    void enqueueVaultSwitchOp(async () => {
+      suppressProjectAnnounceRef.current = true;
+      try {
+        const res = await window.api!.projectSwitch!(originalRoot, originalNotes);
+        const after = await window.api!.getVaultRoot?.().catch(() => null);
+        const mainNow = after?.vaultRoot;
+        if (!res?.switched || (mainNow != null && mainNow !== originalRoot)) {
+          if (mainNow && mainNow !== activeVaultRootRef.current) {
+            applyProjectSwitched(mainNow);
+          }
+        }
+      } catch { /* keep renderer on original when getVaultRoot agrees */ }
+      finally {
+        suppressProjectAnnounceRef.current = false;
+      }
+    });
+  }, [applyProjectSwitched, enqueueVaultSwitchOp, navRailProjects]);
 
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
@@ -3633,21 +3699,26 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // ProjectSwitcher's "+ Create new Mythos Vault" flow. SKY-11376: name +
   // destination now come from useCreateMythosVaultFlow's modal (shared with
   // ProjectSwitcher.tsx so the two entry points can't drift again).
+  // Shield: activate:false + switchToVault so Settings flush runs before main moves.
   const { createVault: createMythosVault, createVaultModal } = useCreateMythosVaultFlow(
-    useCallback(({ vaultRoot }) => { handleProjectSwitched(vaultRoot); }, [handleProjectSwitched]),
+    useCallback(({ vaultRoot }) => { void switchToVault(vaultRoot); }, [switchToVault]),
+    { activate: false },
   );
 
   // Title-bar "Open vault…" — the legacy switcher's "Open Other Folder…".
   const openVaultViaPicker = useCallback(async () => {
     try {
+      // Shield: flush before vault:open-folder commits main.
+      const ok = await flushOpenSettings();
+      if (!ok) return;
       const result = await window.api?.openVaultFolder?.();
       if (!result?.cancelled && result?.vaultRoot) {
-        handleProjectSwitched(result.vaultRoot);
+        await switchToVault(result.vaultRoot);
       } else if (result?.error) {
         alert(result.error);
       }
     } catch { /* non-fatal */ }
-  }, [handleProjectSwitched]);
+  }, [flushOpenSettings, switchToVault]);
 
   const handleContinueOnboarding = useCallback(() => {
     const updated = { ...(appSettings ?? {}), onboardingComplete: false } as AppSettings;

@@ -1997,11 +1997,14 @@
   min-width: 0;
 }
 
-/* Header title row: title text + session dropdown pill (prototype line 1589). */
+/* Header title row: title text + session dropdown pill (prototype line 1589).
+   min-width:0 lets the title ellipsis inside the start-group 7rem floor. */
 .bs-title-row {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .bs-title-row .bs-session-pill .asp-pill {

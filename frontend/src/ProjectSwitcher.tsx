@@ -17,7 +17,8 @@ interface Props {
    *  exactly one story. Labels the workspace with what the user is writing
    *  instead of the on-disk vault directory name. */
   activeStoryTitle?: string;
-  onSwitched: (vaultRoot: string) => void;
+  /** May return false when flush-then-switch parks (Settings refuse). */
+  onSwitched: (vaultRoot: string) => void | boolean | Promise<void | boolean>;
 }
 
 // SKY-320: parent folder of `<Mythos Vault>/Story Vault/` is the user-facing
@@ -152,9 +153,10 @@ export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onS
     // Ivy Probe R6: do NOT call projectSwitch here. Main must not commit a
     // vault switch until DesktopShell flushes open Settings (or the user picks
     // Switch anyway). Parent onSwitched is switchToVault — flush-then-switch.
-    // Create / Open Other still call onSwitched after main has already moved.
     try {
-      await Promise.resolve(onSwitched(entry.vaultRoot));
+      const switched = await Promise.resolve(onSwitched(entry.vaultRoot));
+      // Shield/Copilot: do not update notes root while the switch is parked.
+      if (switched === false) return;
       if (typeof entry.notesVaultRoot === 'string') {
         setActiveNotesVaultRoot(entry.notesVaultRoot);
       }
@@ -166,9 +168,17 @@ export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onS
   const handleOpenOther = useCallback(async () => {
     setOpen(false);
     try {
+      // Shield: flush open Settings BEFORE vault:open-folder commits main.
+      // If the save refuses, abort — we do not yet know a park target.
+      const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
+        .__mythosSettingsFlush;
+      if (flush) {
+        const ok = await flush();
+        if (!ok) return;
+      }
       const result = await window.api?.openVaultFolder?.();
       if (!result?.cancelled && result?.vaultRoot) {
-        onSwitched(result.vaultRoot);
+        await Promise.resolve(onSwitched(result.vaultRoot));
       } else if (result?.error) {
         alert(result.error);
       }
@@ -180,13 +190,13 @@ export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onS
   // modal (shared with DesktopShell.tsx so the two entry points can't drift
   // again — this one used to skip the location picker and always seed the
   // sample story).
+  // Shield: activate:false + flush-then-switch so main never commits first.
   const { createVault: handleCreateNewMythosVault, createVaultModal } = useCreateMythosVaultFlow(
     useCallback(async ({ vaultRoot }) => {
-      // Main already persisted settings + added to recents; tell App to
-      // reload so the new Story Vault becomes the active surface.
-      onSwitched(vaultRoot);
-      await loadProjects();
+      const switched = await Promise.resolve(onSwitched(vaultRoot));
+      if (switched !== false) await loadProjects();
     }, [loadProjects, onSwitched]),
+    { activate: false },
   );
 
   const handleBtnClick = () => {

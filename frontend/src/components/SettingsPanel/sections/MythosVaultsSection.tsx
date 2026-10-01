@@ -379,8 +379,22 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     setCreateBusy(true);
     setCreateError(null);
     try {
-      const res = await window.api?.projectSwitch?.(createdVault.vaultRoot, createdVault.notesVaultRoot);
-      if (res?.switched) {
+      // Shield: flush-first via DesktopShell — never projectSwitch while
+      // Settings has unsaved edits (main must not commit ahead of a refuse).
+      const req = (window as Window & {
+        __mythosRequestVaultSwitch?: (vaultRoot: string) => Promise<boolean>;
+      }).__mythosRequestVaultSwitch;
+      let switched = false;
+      if (req) {
+        switched = await req(createdVault.vaultRoot);
+      } else {
+        const res = await window.api?.projectSwitch?.(
+          createdVault.vaultRoot,
+          createdVault.notesVaultRoot,
+        );
+        switched = Boolean(res?.switched);
+      }
+      if (switched) {
         setActiveRoot(createdVault.vaultRoot);
         setCreatedVault(null);
       } else {

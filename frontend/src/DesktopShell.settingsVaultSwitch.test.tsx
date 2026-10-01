@@ -123,8 +123,8 @@ function makeMockApi() {
     settingsSet: settingsSetMock,
     projectList: () => Promise.resolve({
       projects: [
-        { vaultRoot: VAULT_A, name: 'Alpha', openedAt: '' },
-        { vaultRoot: VAULT_B, name: 'Bravo', openedAt: '' },
+        { vaultRoot: VAULT_A, name: 'Alpha', openedAt: '', notesVaultRoot: '/notes-a' },
+        { vaultRoot: VAULT_B, name: 'Bravo', openedAt: '', notesVaultRoot: '/notes-b' },
       ],
     }),
     projectSwitch: projectSwitchMock,
@@ -543,9 +543,12 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
       expect(projectSwitchMock).toHaveBeenCalled();
     });
     expect(projectSwitchMock.mock.calls[0][0]).toBe(VAULT_B);
-    expect(screen.getByTestId('ln-toast')).toHaveTextContent(
-      /unsaved settings were discarded/i,
-    );
+    // Toast waits until switch settles (Shield batch).
+    await waitFor(() => {
+      expect(screen.getByTestId('ln-toast')).toHaveTextContent(
+        /unsaved settings were discarded/i,
+      );
+    });
   });
 
   // (d) Retry → re-runs save and switches on success
@@ -634,6 +637,13 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     // Ivy R6: announce park must roll main back; Close completes or cancels.
     expect(src).toMatch(/suppressProjectAnnounceRef/);
     expect(src).toMatch(/vaultPending/);
+    // Shield: serialize switches; check rollback results; pass original notes.
+    expect(src).toMatch(/enqueueVaultSwitchOp/);
+    expect(src).toMatch(/originalNotes/);
+    // Guard (b): both same-vault lines pinned (N6/N7 each alone left 0 red).
+    expect(src).toMatch(
+      /if \(vaultRoot === activeVaultRootRef\.current\) return;[\s\S]*if \(vaultRoot === activeVaultRootRef\.current \|\| vaultRoot === originalRoot\) return;/,
+    );
   });
 
   // HARD — announce path (no tile): onProjectSwitched with Settings open + edit.
@@ -754,6 +764,13 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     await waitFor(() => {
       expect(mainRoot).toBe(VAULT_A);
     });
+    // Shield batch: rollback must pass the original notes pairing.
+    expect(
+      projectSwitchMock.mock.calls.some(
+        (c) => c[0] === VAULT_A && c[1] === '/notes-a',
+      ),
+      'rollback must projectSwitch(original, originalNotes)',
+    ).toBe(true);
     projectSwitchMock.mockClear();
 
     // Retry flush now succeeds → completeVaultSwitch must re-commit target on main.
@@ -777,6 +794,204 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     });
     await waitFor(() => expect(mainRoot).toBe(VAULT_B));
     expect(screen.getByTestId(`nav-rail-vault-tile-${VAULT_B}`)).toHaveAttribute('aria-current', 'page');
+  });
+
+  // Shield N2: Switch anyway on announce park must re-commit main (not UI-only).
+  it('HARD: parked announce Switch anyway re-commits main to B (N2)', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    mainRoot = VAULT_B;
+    await act(async () => {
+      onProjectSwitchedCb?.({ vaultRoot: VAULT_B });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByTestId('settings-flush-switch-anyway')).toBeInTheDocument());
+    await waitFor(() => expect(mainRoot).toBe(VAULT_A));
+    projectSwitchMock.mockClear();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-switch-anyway'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(
+        projectSwitchMock.mock.calls.some((c) => c[0] === VAULT_B),
+        'Switch anyway after announce-park must projectSwitch to B (N2 RED if UI-only)',
+      ).toBe(true);
+    });
+    await waitFor(() => expect(mainRoot).toBe(VAULT_B));
+    expect(screen.getByTestId(`nav-rail-vault-tile-${VAULT_B}`)).toHaveAttribute('aria-current', 'page');
+    await waitFor(() => {
+      expect(screen.getByTestId('ln-toast')).toHaveTextContent(/unsaved settings were discarded/i);
+    });
+  });
+
+  // Shield N3: fix key + Escape/Close on announce park must complete to B.
+  it('HARD: parked announce Escape completes to B when key fixed (N3)', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    await openModelKeys();
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
+      target: { value: 'bad-key' },
+    });
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+
+    mainRoot = VAULT_B;
+    await act(async () => {
+      onProjectSwitchedCb?.({ vaultRoot: VAULT_B });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument());
+    await waitFor(() => expect(mainRoot).toBe(VAULT_A));
+    projectSwitchMock.mockClear();
+
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
+      target: { value: '' },
+    });
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(
+        projectSwitchMock.mock.calls.some((c) => c[0] === VAULT_B),
+        'Escape after announce-park must projectSwitch to B (N3 RED if Close skips complete)',
+      ).toBe(true);
+    });
+    await waitFor(() => expect(mainRoot).toBe(VAULT_B));
+    expect(screen.getByTestId(`nav-rail-vault-tile-${VAULT_B}`)).toHaveAttribute('aria-current', 'page');
+  });
+
+  // Shield finding 1 / V6c: refused rollback must not leave UI on A while main on B.
+  it('HARD: refused announce rollback follows main — UI matches getVaultRoot (V6c)', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    projectSwitchMock.mockImplementation(async (vaultRoot: string) => {
+      if (vaultRoot === VAULT_A) {
+        return { switched: false, error: 'not in recent-projects allowlist' };
+      }
+      mainRoot = vaultRoot;
+      if (announceOnSwitch) onProjectSwitchedCb?.({ vaultRoot });
+      return { switched: true };
+    });
+
+    mainRoot = VAULT_B;
+    await act(async () => {
+      onProjectSwitchedCb?.({ vaultRoot: VAULT_B });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(`nav-rail-vault-tile-${VAULT_B}`),
+        'UI must follow main when rollback is refused — New Story writes here',
+      ).toHaveAttribute('aria-current', 'page');
+    });
+    expect(mainRoot).toBe(VAULT_B);
+    const root = await window.api.getVaultRoot();
+    expect(root?.vaultRoot).toBe(VAULT_B);
+    expect(screen.queryByTestId('settings-flush-retry')).not.toBeInTheDocument();
+  });
+
+  // Shield finding 2 / V7: park chrome only after rollback; Switch anyway agrees.
+  it('HARD: delayed rollback then Switch anyway — main and UI agree (V7)', async () => {
+    let releaseRollback!: () => void;
+    const rollbackHeld = new Promise<void>((resolve) => {
+      releaseRollback = resolve;
+    });
+
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    projectSwitchMock.mockImplementation(async (vaultRoot: string) => {
+      if (vaultRoot === VAULT_A) {
+        await rollbackHeld;
+        mainRoot = VAULT_A;
+        return { switched: true };
+      }
+      mainRoot = vaultRoot;
+      if (announceOnSwitch) onProjectSwitchedCb?.({ vaultRoot });
+      return { switched: true };
+    });
+
+    mainRoot = VAULT_B;
+    await act(async () => {
+      onProjectSwitchedCb?.({ vaultRoot: VAULT_B });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Park chrome must wait for rollback — overlapping Switch anyway is blocked.
+    expect(screen.queryByTestId('settings-flush-retry')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-flush-switch-anyway')).not.toBeInTheDocument();
+
+    await act(async () => {
+      releaseRollback();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByTestId('settings-flush-switch-anyway')).toBeInTheDocument());
+    expect(mainRoot).toBe(VAULT_A);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-switch-anyway'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(mainRoot).toBe(VAULT_B));
+    expect(screen.getByTestId(`nav-rail-vault-tile-${VAULT_B}`)).toHaveAttribute('aria-current', 'page');
+  });
+
+  it('__mythosRequestVaultSwitch returns false when projectSwitch refuses', async () => {
+    announceOnSwitch = false;
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    projectSwitchMock.mockResolvedValue({ switched: false, error: 'refused' });
+
+    const req = (window as Window & {
+      __mythosRequestVaultSwitch?: (r: string) => Promise<boolean>;
+    }).__mythosRequestVaultSwitch;
+    expect(req).toBeTruthy();
+    let result = true;
+    await act(async () => {
+      result = await req!(VAULT_B);
+    });
+    expect(result, 'must return false when projectSwitch refuses (not true)').toBe(false);
+    expect(screen.getByTestId(`nav-rail-vault-tile-${VAULT_A}`)).toHaveAttribute('aria-current', 'page');
+    expect(mainRoot).toBe(VAULT_A);
   });
 
   // Ivy R6 — Close with parked switch: save now succeeds → complete switch.

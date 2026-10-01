@@ -193,9 +193,13 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(PANEL_CSS).toMatch(
       /\.pc-header\.brainstorm-header\s+\.pc-header-title-group\s*\{[\s\S]*min-width:\s*3rem/,
     );
-    // Ivy ruling 4: start group floor — Back+title cannot collapse under actions.
+    // Ivy ruling 4: start group floor — rem floor (not min-content) so title
+    // can ellipsis; [^}]* keeps the compact ≤400 7rem rule from false-greening.
     expect(PANEL_CSS).toMatch(
-      /\.pc-header\.brainstorm-header\s+\.pc-header-start\s*\{[\s\S]*min-width:\s*min-content/,
+      /\.pc-header\.brainstorm-header\s+\.pc-header-start\s*\{[^}]*min-width:\s*7rem/,
+    );
+    expect(PANEL_CSS).not.toMatch(
+      /\.pc-header\.brainstorm-header\s+\.pc-header-start\s*\{[^}]*min-width:\s*min-content/,
     );
     expect(PANEL_CSS).toMatch(/@container\s+pc-chrome\s*\(max-width:\s*700px\)/);
     expect(PANEL_CSS).toMatch(

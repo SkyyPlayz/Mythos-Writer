@@ -64,6 +64,25 @@ describe('useCreateMythosVaultFlow (Slice D five-path)', () => {
     );
   });
 
+  it('activate:false scaffolds without committing main (Shield flush-first create)', async () => {
+    function Harness() {
+      const { createVault, createVaultModal } = useCreateMythosVaultFlow(vi.fn(), { activate: false });
+      return (
+        <>
+          <button type="button" onClick={() => createVault()}>Open</button>
+          {createVaultModal}
+        </>
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByText('Open'));
+    await waitFor(() => expect(screen.getByText('/current/vaults')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+    await waitFor(() => expect(window.api.createVaultFromOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ activate: false }),
+    ));
+  });
+
   it('exposes all five Mythos create modes including Open Obsidian', async () => {
     render(<TestHarness onCreated={vi.fn()} />);
     fireEvent.click(screen.getByText('Open'));
