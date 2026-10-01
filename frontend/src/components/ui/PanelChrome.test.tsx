@@ -201,6 +201,16 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(PANEL_CSS).not.toMatch(
       /\.pc-header\.brainstorm-header\s+\.pc-header-start\s*\{[^}]*min-width:\s*min-content/,
     );
+    // flex-basis 0% + overflow:hidden — title ellipsizes; never covers actions.
+    expect(PANEL_CSS).toMatch(
+      /\.pc-header\.brainstorm-header\s+\.pc-header-start\s*\{[^}]*flex:\s*1\s+1\s+0%/,
+    );
+    expect(PANEL_CSS).toMatch(
+      /\.pc-header\.brainstorm-header\s+\.pc-header-start\s*\{[^}]*overflow:\s*hidden/,
+    );
+    expect(PANEL_CSS).toMatch(
+      /\.pc-header\.brainstorm-header\s+\.pc-header-actions\s*\{[^}]*flex:\s*0\s+0\s+auto/,
+    );
     expect(PANEL_CSS).toMatch(/@container\s+pc-chrome\s*\(max-width:\s*700px\)/);
     expect(PANEL_CSS).toMatch(
       /@container\s+pc-chrome\s*\(max-width:\s*700px\)[\s\S]*\.pc-header\.brainstorm-header\s+\.pc-header-actions\s*\{[\s\S]*flex:\s*1\s+1\s+100%/,

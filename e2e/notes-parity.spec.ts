@@ -717,13 +717,16 @@ test('F2 W0.3 / Critic #6 / Probe H2 / Critic hard 1+3: bars clean across tabs',
 
     // ── Brainstorm @ 280/400/500/600/700/1000 (+ one-row @ 701–1440) ─────
     await page.locator('[data-testid="nav-rail-brainstorm"]').click();
-    await expect(page.locator('[aria-labelledby="app-tab-brainstorm"]')).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('.pc-header-host .pc-header.brainstorm-header').first()).toBeVisible({ timeout: 8_000 });
-    // Ivy ruling 4: mode seg may be display:none @≤999 (⋯ instead) — wait on Mute /
-    // New Session which stay visible, not the first actions button.
-    await expect(page.locator(
-      '.pc-header.brainstorm-header .brainstorm-mute-btn, .pc-header.brainstorm-header .brainstorm-new-session-btn',
-    ).first()).toBeVisible({ timeout: 8_000 });
+    const bsPanelHeights = page.locator('#app-tabpanel-brainstorm');
+    await expect(bsPanelHeights).toBeVisible({ timeout: 8_000 });
+    await expect(
+      bsPanelHeights.locator('.pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)'),
+    ).toBeVisible({ timeout: 8_000 });
+    // Ivy ruling 4: mode seg may be display:none @≤999 (⋯ instead) — wait on
+    // New Session (always present; avoid multi-match mute|new-session).
+    await expect(
+      bsPanelHeights.getByRole('button', { name: 'New Session' }),
+    ).toBeVisible({ timeout: 8_000 });
 
     for (const hostWidth of [280, 400, 500, 600, 700, 1000] as const) {
       const report = await measure(BRAINSTORM_SELS, hostWidth);
@@ -736,7 +739,7 @@ test('F2 W0.3 / Critic #6 / Probe H2 / Critic hard 1+3: bars clean across tabs',
     async function measureStandaloneHeights(widths: readonly number[]): Promise<HeightReport[]> {
       return page.evaluate((ws) => {
         const el = document.querySelector(
-          '.pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)',
+          '#app-tabpanel-brainstorm .pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)',
         ) as HTMLElement | null;
         if (!el) return ws.map((width) => ({ width, height: 0, oneRow: false, titleWidth: 0 }));
         const host = (el.closest('.pc-header-host') as HTMLElement | null) ?? el;
@@ -826,12 +829,16 @@ test('Ivy ruling 4: standalone chat+board no overlap at 701–1000 + Back hit-te
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
 
     await page.locator('[data-testid="nav-rail-brainstorm"]').click();
-    await expect(page.locator('.pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)').first())
-      .toBeVisible({ timeout: 8_000 });
-    // Chat is default when AI is on — Mute stays visible; mode seg may be in ⋯.
-    await expect(page.locator(
-      '.pc-header.brainstorm-header:not(.brainstorm-header--compact) .brainstorm-mute-btn',
-    ).first()).toBeVisible({ timeout: 5_000 });
+    // Keep-alive: scope to standalone tab — never compact GRS/split clones.
+    const bsPanel = page.locator('#app-tabpanel-brainstorm');
+    await expect(bsPanel).toBeVisible({ timeout: 8_000 });
+    await expect(
+      bsPanel.locator('.pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)'),
+    ).toBeVisible({ timeout: 8_000 });
+    // Chat is default when AI is on — New Session stays visible; mode seg may be in ⋯.
+    await expect(
+      bsPanel.getByRole('button', { name: 'New Session' }),
+    ).toBeVisible({ timeout: 5_000 });
 
     type ModeReport = {
       width: number;
@@ -848,15 +855,17 @@ test('Ivy ruling 4: standalone chat+board no overlap at 701–1000 + Back hit-te
 
     async function measureMode(width: number, mode: 'chat' | 'board'): Promise<ModeReport> {
       // Ensure the requested mode without relying on viewport (⋯ vs inline).
-      const inlineSeg = page.locator('[data-testid="bsc-mode-seg-inline"]');
-      const overflowBtn = page.locator('[data-testid="brainstorm-header-overflow-standalone"]');
+      const inlineSeg = bsPanel.locator('[data-testid="bsc-mode-seg-inline"]');
+      const overflowBtn = bsPanel.locator('[data-testid="brainstorm-header-overflow-standalone"]');
       if (await inlineSeg.isVisible().catch(() => false)) {
-        await page.locator(`[data-testid="bsc-mode-seg-inline"] [data-testid="bsc-mode-${mode}"]`).click();
+        await bsPanel.locator(`[data-testid="bsc-mode-seg-inline"] [data-testid="bsc-mode-${mode}"]`).click();
       } else if (await overflowBtn.isVisible().catch(() => false)) {
         const menu = page.locator('[data-testid="brainstorm-header-overflow-standalone-menu"]');
         if (!(await menu.isVisible().catch(() => false))) await overflowBtn.click();
         await expect(menu).toBeVisible({ timeout: 3_000 });
-        await page.locator(`[data-testid="bsc-mode-${mode}"]:visible`).click();
+        await page
+          .locator(`[data-testid="brainstorm-header-overflow-standalone-menu"] [data-testid="bsc-mode-${mode}"]`)
+          .click();
         // Menu closes after choice; wait a tick for layout.
         await expect(menu).toBeHidden({ timeout: 3_000 }).catch(() => undefined);
       }
@@ -866,7 +875,7 @@ test('Ivy ruling 4: standalone chat+board no overlap at 701–1000 + Back hit-te
           return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
         }
         const el = document.querySelector(
-          '.pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)',
+          '#app-tabpanel-brainstorm .pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)',
         ) as HTMLElement | null;
         if (!el) {
           return {

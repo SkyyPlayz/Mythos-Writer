@@ -163,12 +163,14 @@
 }
 
 /* Ivy ruling 4: start group (Back + title) has a floor — cannot collapse
-   under actions. Use a rem floor (not min-content): min-content locks the
-   intrinsic Session+title width and blocks ellipsis, so the start group
-   overlaps mode seg / ⋯ at 701–1000. Title truncates; Back stays hit-able. */
+   under actions. Rem floor (not min-content): min-content locks intrinsic
+   Session+title width and blocks ellipsis. flex-basis 0% + overflow:hidden
+   lets the title ellipsis into free space so start never paints over mode
+   seg / ⋯ (CI TC-M20 / sky10507). Actions keep content width (flex: 0 0 auto). */
 .pc-header.brainstorm-header .pc-header-start {
-  flex: 1 1 auto;
+  flex: 1 1 0%;
   min-width: 7rem;
+  overflow: hidden;
 }
 
 .pc-header.brainstorm-header .pc-header-icon {
@@ -176,11 +178,12 @@
 }
 
 .pc-header.brainstorm-header .pc-header-actions {
+  flex: 0 0 auto;
   flex-wrap: nowrap;
-  flex-shrink: 1;
   min-width: 0;
-  /* ≥701 one-row: shrink/ellipsis rather than overlapping Back/title.
-     Mode seg (+ board chrome) moves to ⋯ at ≤999 (BrainstormPage.css). */
+  position: relative;
+  z-index: 1;
+  /* ≥701 one-row: start ellipsizes; mode seg (+ board chrome) → ⋯ at ≤999. */
   overflow-x: auto;
 }
 

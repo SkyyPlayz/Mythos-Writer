@@ -7,48 +7,36 @@
  * toBeVisible() fails unless tests open ⋯. These helpers keep the same
  * mode-control contract without undoing the overflow packing.
  *
- * Scope to `.brainstorm-page:visible` so B7/B9 keep-alive clones
- * (display:none) cannot steal clicks or false-positive visibility.
+ * Keep-alive: GlobalRightSidebar / workspace-split also mount compact
+ * `.brainstorm-page` instances. Always scope to `#app-tabpanel-brainstorm`
+ * (standalone tab only) — never `.brainstorm-page:visible` + `.first()`.
  */
 import { expect, type Locator, type Page } from '@playwright/test';
 
 export type BrainstormMode = 'chat' | 'board';
 
-function brainstormRoot(page: Page): Locator {
-  return page.locator('.brainstorm-page:visible').first();
-}
-
-/** True when the element's center is hit-testable (not covered by start-group). */
-async function isCenterClickable(locator: Locator): Promise<boolean> {
-  return locator.evaluate((el) => {
-    const r = el.getBoundingClientRect();
-    if (r.width < 1 || r.height < 1) return false;
-    const mid = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-    return !!mid && (mid === el || el.contains(mid));
-  }).catch(() => false);
+/** Standalone Brainstorm tab panel (not compact Notes Agent / split clones). */
+export function brainstormPanel(page: Page): Locator {
+  return page.locator('#app-tabpanel-brainstorm');
 }
 
 /** Open ⋯ when the inline mode seg is hidden. Returns placement. */
 export async function revealBrainstormModeControls(
   page: Page,
 ): Promise<'inline' | 'overflow'> {
-  const root = brainstormRoot(page);
-  await expect(root, 'visible brainstorm page').toBeVisible({ timeout: 8_000 });
+  const panel = brainstormPanel(page);
+  await expect(panel, 'standalone brainstorm tab panel').toBeVisible({ timeout: 8_000 });
 
-  const inlineSeg = root.locator('[data-testid="bsc-mode-seg-inline"]');
-  if (await inlineSeg.isVisible().catch(() => false)) {
-    // Ruling-4 overlap fallout: min-content start-group can cover the seg
-    // while Playwright still reports visible — prefer overflow then.
-    if (await isCenterClickable(inlineSeg)) return 'inline';
-  }
+  const inlineSeg = panel.locator('[data-testid="bsc-mode-seg-inline"]');
+  if (await inlineSeg.isVisible().catch(() => false)) return 'inline';
 
-  const overflow = root.locator('[data-testid="brainstorm-header-overflow-standalone"]');
+  const overflow = panel.locator('[data-testid="brainstorm-header-overflow-standalone"]');
   await expect(
     overflow,
     'standalone ⋯ must expose mode controls when inline seg is hidden (≤999)',
   ).toBeVisible({ timeout: 8_000 });
 
-  // Menu portals to document body — do not scope under .brainstorm-page.
+  // Menu portals to document body — do not scope under the panel.
   const menu = page.locator('[data-testid="brainstorm-header-overflow-standalone-menu"]');
   if (!(await menu.isVisible().catch(() => false))) {
     await overflow.click();
@@ -62,10 +50,17 @@ export async function expectBrainstormModeVisible(
   page: Page,
   mode: BrainstormMode,
 ): Promise<void> {
-  await revealBrainstormModeControls(page);
+  const placement = await revealBrainstormModeControls(page);
+  if (placement === 'inline') {
+    await expect(
+      brainstormPanel(page).locator(`[data-testid="bsc-mode-seg-inline"] [data-testid="bsc-mode-${mode}"]`),
+      `bsc-mode-${mode} must be visible inline`,
+    ).toBeVisible({ timeout: 5_000 });
+    return;
+  }
   await expect(
-    page.locator(`[data-testid="bsc-mode-${mode}"]:visible`),
-    `bsc-mode-${mode} must be visible inline or in standalone ⋯ menu`,
+    page.locator(`[data-testid="brainstorm-header-overflow-standalone-menu"] [data-testid="bsc-mode-${mode}"]`),
+    `bsc-mode-${mode} must be visible in standalone ⋯ menu`,
   ).toBeVisible({ timeout: 5_000 });
 }
 
@@ -74,25 +69,29 @@ export async function clickBrainstormMode(
   page: Page,
   mode: BrainstormMode,
 ): Promise<void> {
-  const root = brainstormRoot(page);
+  const panel = brainstormPanel(page);
   const placement = await revealBrainstormModeControls(page);
   if (placement === 'inline') {
-    await root.locator(`[data-testid="bsc-mode-seg-inline"] [data-testid="bsc-mode-${mode}"]`).click();
+    await panel.locator(`[data-testid="bsc-mode-seg-inline"] [data-testid="bsc-mode-${mode}"]`).click();
     return;
   }
-  await page.locator(`[data-testid="bsc-mode-${mode}"]:visible`).click();
+  await page
+    .locator(`[data-testid="brainstorm-header-overflow-standalone-menu"] [data-testid="bsc-mode-${mode}"]`)
+    .click();
 }
 
 /** Chat-page "Idea Board under chat" toggle — inline or ⋯ menu item. */
 export async function clickChatBoardToggle(page: Page): Promise<void> {
-  const root = brainstormRoot(page);
-  const inline = root.locator('[data-testid="bs-chat-board-toggle"]');
-  if (await inline.isVisible().catch(() => false) && await isCenterClickable(inline)) {
+  const panel = brainstormPanel(page);
+  const inline = panel.locator('[data-testid="bs-chat-board-toggle"]');
+  if (await inline.isVisible().catch(() => false)) {
     await inline.click();
     return;
   }
   await revealBrainstormModeControls(page);
-  const menuToggle = page.locator('[data-testid="menu-item-board-toggle"]:visible');
+  const menuToggle = page.locator(
+    '[data-testid="brainstorm-header-overflow-standalone-menu"] [data-testid="menu-item-board-toggle"]',
+  );
   await expect(menuToggle, 'board toggle must be in standalone ⋯ when inline is hidden')
     .toBeVisible({ timeout: 5_000 });
   await menuToggle.click();

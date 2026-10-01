@@ -132,12 +132,17 @@ async function walkAndAssert(aiOn: boolean): Promise<void> {
         if (aiOn) {
           await expectBrainstormModeVisible(page, 'chat');
         } else {
+          // AI off → single Board page (R11). Mode chat / inline seg gone.
+          // Ruling 4 still mounts board-chrome ⋯ (+Idea / search) — that is
+          // not AI chrome, so do not assert overflow count 0.
+          const bsPanel = page.locator('#app-tabpanel-brainstorm');
           await expect(
-            page.locator('[data-testid="bsc-mode-chat"]'),
+            bsPanel.locator('[data-testid="bsc-mode-chat"]'),
             'brainstorm: mode chat must be gone with master OFF',
           ).toHaveCount(0);
           await expect(
-            page.locator('[data-testid="brainstorm-header-overflow-standalone"]'),
+            bsPanel.locator('[data-testid="bsc-mode-seg-inline"]'),
+            'brainstorm: no dead single-option mode seg with master OFF',
           ).toHaveCount(0);
         }
       }

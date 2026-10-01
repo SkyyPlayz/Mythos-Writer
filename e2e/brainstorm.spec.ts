@@ -670,7 +670,7 @@ test('TC-M20-01: Board page shows one canvas; starter library places ideas', asy
   // Placing jumps to the Board page with the card on the ONE canvas.
   // aria-pressed is on the (possibly CSS-hidden) inline seg control.
   await expect(
-    page.locator('[data-testid="bsc-mode-seg-inline"] [data-testid="bsc-mode-board"]'),
+    page.locator('#app-tabpanel-brainstorm [data-testid="bsc-mode-seg-inline"] [data-testid="bsc-mode-board"]'),
   ).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('[data-testid="bsc-board"]')).toBeVisible();
   const card = page.locator('.bsb-card', { hasText: 'Midpoint Reversal' });
