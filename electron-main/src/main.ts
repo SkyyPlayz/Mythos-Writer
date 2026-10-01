@@ -515,6 +515,7 @@ import {
 import {
   scanMythosStoryVault,
   syncCanonicalFromManifest,
+  rebuildCacheIfDuplicated,
   nextV2ChapterRelPath,
   nextV2SceneRelPath,
   isCanonicalV2ChapterPath,
@@ -1430,6 +1431,11 @@ function ensureVaultDir() {
       } catch {
         writeManifestRaw(cachePath, defaultManifest(vaultRoot));
       }
+    } else {
+      // F6: rebuild once per session when the cache holds duplicate ids OR the
+      // story vault has an untracked folder with book.md (warm-cache Finder-copy).
+      // Shared hunk with F2 at ensureVaultDir top (appDataCleared).
+      rebuildCacheIfDuplicated(mythosRoot, cachePath);
     }
     try {
       const { versions: vRetention } = loadAppSettings();
