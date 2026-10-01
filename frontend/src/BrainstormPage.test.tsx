@@ -898,6 +898,17 @@ describe('Draft persistence', () => {
     );
   });
 
+  // Shield / Ivy GO: .bs-title-row must shrink inside the start-group 7rem floor
+  // (RED if min-width:0 / max-width:100% revert with the f385b3de title-row block).
+  it('Shield: .bs-title-row pins min-width:0 and max-width:100%', () => {
+    expect(BRAINSTORM_CSS).toMatch(
+      /\.bs-title-row\s*\{[^}]*min-width:\s*0/,
+    );
+    expect(BRAINSTORM_CSS).toMatch(
+      /\.bs-title-row\s*\{[^}]*max-width:\s*100%/,
+    );
+  });
+
   // Ivy: Download must never be gated on !compact (feature loss vs main).
   it('Ivy: compact Download is never hidden behind !compact (source + overflow)', () => {
     // RED if `messages.length > 0 && !compact` is restored.
