@@ -548,14 +548,16 @@ export default function SettingsPanel({
       const disk = await window.api.settingsGet();
       const withOnboarding: AppSettings = { ...payload };
       // Prefer disk onboarding* always — panel does not own these keys.
-      // Soft: null-guard — `'x' in disk` throws when settingsGet returns null.
-      if (disk != null && typeof disk === 'object') {
-        if ('onboardingComplete' in disk) {
-          withOnboarding.onboardingComplete = disk.onboardingComplete;
-        }
-        if ('onboardingStartMode' in disk) {
-          withOnboarding.onboardingStartMode = disk.onboardingStartMode;
-        }
+      // Fail closed: null/non-object disk must not write the mount snapshot
+      // over main's onboarding* (Shield null-guard).
+      if (disk == null || typeof disk !== 'object') {
+        throw new Error('SETTINGS_DISK_UNAVAILABLE');
+      }
+      if ('onboardingComplete' in disk) {
+        withOnboarding.onboardingComplete = disk.onboardingComplete;
+      }
+      if ('onboardingStartMode' in disk) {
+        withOnboarding.onboardingStartMode = disk.onboardingStartMode;
       }
       const voiceTokens: Parameters<typeof window.api.settingsSet>[1] = {
         ...(sttBinaryToken ? { sttBinaryToken } : {}),

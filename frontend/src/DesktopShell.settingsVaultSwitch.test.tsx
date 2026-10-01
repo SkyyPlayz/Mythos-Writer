@@ -1625,13 +1625,12 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
 
   it('HARD source: C7b panel flush get→set on settingsWriteSerial chain', () => {
     const panel = readFileSync(resolve(__dirname, 'SettingsPanel.tsx'), 'utf8');
-    const flow = readFileSync(resolve(__dirname, 'useCreateMythosVaultFlow.tsx'), 'utf8');
     const serial = readFileSync(resolve(__dirname, 'settingsWriteSerial.ts'), 'utf8');
     expect(serial).toMatch(/settingsWriteChain\.then\(op,\s*op\)/);
-    expect(panel).toMatch(/enqueueSettingsWrite\(async \(\) => \{/);
-    expect(panel).toMatch(/const disk = await window\.api\.settingsGet\(\);/);
-    expect(panel).toMatch(/withOnboarding\.onboardingStartMode = disk\.onboardingStartMode/);
-    expect(flow).toMatch(/await enqueueSettingsWrite\(async \(\) => \{/);
+    // writeSettingsPayload: get→set must stay on enqueueSettingsWrite (not a loose flow match).
+    expect(panel).toMatch(
+      /const writeSettingsPayload = useCallback\(async \(payload: AppSettings\): Promise<AppSettings> => \{[\s\S]*?return enqueueSettingsWrite\(async \(\) => \{\s*const disk = await window\.api\.settingsGet\(\);[\s\S]*?withOnboarding\.onboardingStartMode = disk\.onboardingStartMode/,
+    );
   });
 
   it('HARD source: vaultSwitchSerialRef.then(op, op) serialization (V7)', () => {
@@ -1915,8 +1914,10 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
 
   it('HARD: shell create activate:false + flush-first (G8 / G8f)', async () => {
     const src = readFileSync(resolve(__dirname, 'DesktopShell.tsx'), 'utf8');
-    // G8: activate:false (options may also carry onOnboardingSynced).
-    expect(src).toMatch(/useCreateMythosVaultFlow\([\s\S]*?activate:\s*false/);
+    // G8: options object must carry activate:false (not a comment).
+    expect(src).toMatch(
+      /useCreateMythosVaultFlow\([\s\S]*?\{\s*activate:\s*false,\s*onOnboardingSynced:\s*syncOnboardingIntoAppSettings\s*\}/,
+    );
     expect(src).toMatch(/await switchToVault\(vaultRoot\)/);
     expect(src).not.toMatch(
       /useCreateMythosVaultFlow\(\s*useCallback\([\s\S]*?handleProjectSwitched\(vaultRoot\)/,
@@ -1964,8 +1965,10 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     const src = readFileSync(resolve(__dirname, 'DesktopShell.tsx'), 'utf8');
     expect(src).toMatch(/onPickPath=\{\(id: WelcomePathId\) => \{/);
     expect(src).toMatch(/void createMythosVault\(id\)/);
-    // Single shell hook — Welcome and rail+ share activate:false.
-    expect(src).toMatch(/activate:\s*false/);
+    // Single shell hook — Welcome and rail+ share activate:false options object.
+    expect(src).toMatch(
+      /useCreateMythosVaultFlow\([\s\S]*?\{\s*activate:\s*false,\s*onOnboardingSynced:\s*syncOnboardingIntoAppSettings\s*\}/,
+    );
     expect(src).toMatch(/onOnboardingSynced:\s*syncOnboardingIntoAppSettings/);
   });
 
@@ -2712,18 +2715,29 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     );
     expect(flow).toMatch(/onOnboardingSyncedRef\.current\?\.\(patch\)/);
     expect(flow).not.toMatch(/onOnboardingSyncedRef\.current\?\.\(\{[\s\S]*?\.\.\.\s*\(?\s*disk/);
-    // M5b: shell must assign onboarding* explicitly — not ...(patch as any).
-    expect(shell).toMatch(/onboardingComplete:\s*patch\.onboardingComplete/);
-    expect(shell).not.toMatch(/\.\.\.\s*\(patch\s+as\s+any\)/);
+    // M5b: within syncOnboardingIntoAppSettings only — reject whole-patch spreads
+    // (...patch / ...(patch) / ...(patch as any)), not property-keyed ...(patch.x).
+    const syncSlice = shell.match(
+      /const syncOnboardingIntoAppSettings = useCallback\(\(patch:[\s\S]*?\}, \[\]\);/,
+    );
+    expect(syncSlice?.[0], 'syncOnboardingIntoAppSettings must exist').toBeTruthy();
+    expect(syncSlice![0]).not.toMatch(
+      /\.\.\.\s*(?:patch\b(?!\.)|\(\s*patch(?:\s+as\s+any)?\s*\))/,
+    );
+    expect(syncSlice![0]).toMatch(/onboardingComplete:\s*patch\.onboardingComplete/);
   });
 
-  it('M8: null settingsGet during panel write does not throw; onboarding* unchanged', async () => {
-    // M8: null-guard replaced with `if (true)` → `'onboardingComplete' in disk` throws.
+  it('M8: null settingsGet during panel write fails closed — no settingsSet, error shown', async () => {
+    // Mount snapshot blank (+ crash edit); disk then becomes template so a
+    // fail-open write would clobber template with blank. Null get must refuse
+    // the write, keep the panel open with edits, skip onSaved, and show copy.
     persisted = { ...basePersisted(), onboardingStartMode: 'blank', onboardingComplete: true };
     render(<App />);
     await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
-    openSettings();
-    expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    await openModelKeysAndClickCrash();
+    expect(screen.getByTestId('mk-telemetry-crash')).toHaveAttribute('aria-checked', 'true');
+
+    persisted = { ...persisted, onboardingStartMode: 'template' };
 
     let nullOnce = true;
     const api = window.api as { settingsGet: () => Promise<Persisted | null> };
@@ -2737,11 +2751,30 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
 
     settingsSetMock.mockClear();
     await triggerSettingsClose('close');
-    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
-    expect(screen.queryByText(/Couldn't save settings/i)).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText("Couldn't save settings. Try again.")).toBeInTheDocument(),
+    );
+    expect(
+      settingsSetMock.mock.calls.length,
+      'M8 RED — null disk must not call settingsSet (fail-open)',
+    ).toBe(0);
     expect(
       persisted.onboardingStartMode,
-      'M8 RED — null disk threw or erased onboarding during panel write',
-    ).toBe('blank');
+      'M8 RED — null disk wrote mount snapshot over disk onboarding*',
+    ).toBe('template');
+    // Panel stays open; unsaved crash edit intact; onSaved did not land in shell.
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    expect(
+      screen.getByTestId('mk-telemetry-crash'),
+      'M8 RED — null-path Close must keep unsaved edits in the form',
+    ).toHaveAttribute('aria-checked', 'true');
+    settingsSetMock.mockClear();
+    const hide = await screen.findByRole('button', { name: /Hide right sidebar/i });
+    fireEvent.click(hide);
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+    expect(
+      crashPayloadSeen(),
+      'M8 RED — onSaved must not fire on null-path Close (shell must not hold crash)',
+    ).toBe(false);
   });
 });
