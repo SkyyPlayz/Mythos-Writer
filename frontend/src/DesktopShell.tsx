@@ -78,7 +78,7 @@ import {
   shouldMigrateLegacy,
 } from './vaultWorkspaceTabs';
 import { NAV_RAIL_DEFAULTS, mergeNavConfigItems, resolveNavRailItems } from './components/SettingsPanel/settingsPanelTypes';
-import { resolvePartnerDisplayName } from './agents/partnerIdentity';
+import { resolvePartnerDisplayName, setPartnerGreetingName } from './agents/partnerIdentity';
 // SKY-10712: same pure transform the main process applies to scene files on
 // disk during a rename cascade — used to converge in-memory manuscript state.
 import { rewriteWikiLinksForRename, type WikiLinkRewriteMode } from '@mythos-writer/shared/wikiLinkRename';
@@ -98,8 +98,8 @@ import TimelineRoot from './TimelineRoot';
 import type { TimelineWikiLinkApi } from './timeline2/TimelineWikiText';
 import { useTextPrompt } from './useTextPrompt';
 import { useCreateMythosVaultFlow } from './useCreateMythosVaultFlow';
-import { WIZARD_OPEN_IMPORT_STEP_KEY } from './OnboardingWizard';
 import SettingsPanel from './components/SettingsPanel';
+import { requestOpenSessionHistory } from './components/SettingsPanel/SessionHistoryViewer';
 import PromptHistoryPanel from './PromptHistoryPanel';
 import { useSceneDrafts, type SceneDraftEntry } from './drafts/useSceneDrafts';
 import { loadDraft, undoLoadDraft, type DraftUndoState } from './drafts/loadUndo';
@@ -111,6 +111,7 @@ import WelcomeOverlay, {
   shouldAutoOpenWelcomeOverlay,
   type WelcomePathId,
 } from './WelcomeOverlay';
+import { mapWelcomeSetupError } from './welcomeSetupError';
 import PaneTip from './PaneTip';
 import BetaReadMargin from './BetaReadMargin';
 import { useAgentsActive, useAgentActivity } from './agents/agentActivity';
@@ -133,7 +134,6 @@ import {
 import TemplatePicker from './TemplatePicker';
 import GlobalRightSidebar, { DEFAULT_PANELS, type PanelConfig } from './GlobalRightSidebar';
 import { RightSidebarSlotProvider } from './RightSidebarSlot';
-import GettingStartedPanel from './components/GettingStartedPanel/GettingStartedPanel';
 import { PanelDragProvider } from './PanelDragContext';
 import type { DragSidebar } from './PanelDragContext';
 import SplitEditorPane from './SplitEditorPane';
@@ -809,6 +809,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [leftPanelHidden, setLeftPanelHidden] = useState(false);
   // A1 residual Q1: Welcome overlay (09 §7). Demo toggle removed from this tip.
   const [welcomeOpen, setWelcomeOpen] = useState(() => shouldAutoOpenWelcomeOverlay());
+  /** F3#9 residual — inline error when vault create fails from WelcomeOverlay. */
+  const [welcomeSetupError, setWelcomeSetupError] = useState<string | null>(null);
+  const [welcomeSetupBusy, setWelcomeSetupBusy] = useState(false);
   // M1 (SKY-9013): 'part' is a first-class depth — viewDepth is the manuscript
   // zoom level directly (the SKY-6010 partZoom flag is gone with it). Until M2
   // lands the Parts data model, part depth renders the story's chapters
@@ -1056,16 +1059,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       return updated;
     });
   }, []);
-
-  const handleDismissGettingStarted = useCallback(() => {
-    if (!gettingStartedProgress) return;
-    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'DISMISS' }));
-  }, [gettingStartedProgress, persistGettingStartedProgress]);
-
-  const handleToggleGsCollapsed = useCallback(() => {
-    if (!gettingStartedProgress) return;
-    persistGettingStartedProgress(gettingStartedReducer(gettingStartedProgress, { type: 'TOGGLE_COLLAPSE' }));
-  }, [gettingStartedProgress, persistGettingStartedProgress]);
 
   const checkGettingStartedItem = useCallback((itemId: GettingStartedItemId) => {
     setGettingStartedProgress((prev) => {
@@ -1506,6 +1499,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
       if (s) {
         setAppSettings(s);
+        setPartnerGreetingName(resolvePartnerDisplayName(s.agentNames));
         // SKY-10916: hydrate the nav history stack from the last session.
         // One-shot (hydrate no-ops after the first call) — see its own
         // comment for why this doesn't try to suppress the next auto-push.
@@ -2484,28 +2478,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     checkGettingStartedItem('notes-vault');
   }, [checkGettingStartedItem, handleNotesSubViewChange, handleTabChange]);
 
-  const handleGettingStartedAction = useCallback((itemId: GettingStartedItemId) => {
-    checkGettingStartedItem(itemId);
-    if (itemId === 'brainstorm') {
-      handleTabChange('notes');
-      return;
-    }
-    if (itemId === 'notes-vault') {
-      handleNotesSubViewChange('editor');
-      handleTabChange('notes');
-      return;
-    }
-    if (itemId === 'add-character') {
-      handleTabChange('notes');
-      return;
-    }
-    if (itemId === 'write-scene') {
-      handleSetView('editor');
-      handleTabChange('story');
-      if (!selectedScene) editorApiRef.current?.focus();
-    }
-  }, [checkGettingStartedItem, handleTabChange, handleNotesSubViewChange, handleSetView, selectedScene]);
-
   // SKY-2096: Notes left-sidebar width + collapsed state.
   const handleNotesSidebarWidthChange = useCallback((w: number) => {
     const next = { ...tabShellRef.current, notesSidebarWidth: w };
@@ -3446,7 +3418,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // destination now come from useCreateMythosVaultFlow's modal (shared with
   // ProjectSwitcher.tsx so the two entry points can't drift again).
   const { createVault: createMythosVault, createVaultModal } = useCreateMythosVaultFlow(
-    useCallback(({ vaultRoot }) => { handleProjectSwitched(vaultRoot); }, [handleProjectSwitched]),
+    useCallback(({ vaultRoot }) => {
+      handleProjectSwitched(vaultRoot);
+      // F3#9 — vault setup via WelcomeOverlay completes first-run onboarding.
+      setAppSettings((prev) => {
+        if (!prev || prev.onboardingComplete) return prev;
+        const next = { ...prev, onboardingComplete: true };
+        void window.api?.settingsSet?.(next);
+        return next;
+      });
+    }, [handleProjectSwitched]),
   );
 
   // Title-bar "Open vault…" — the legacy switcher's "Open Other Folder…".
@@ -5309,6 +5290,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               'beta-reader': appSettings?.agents?.betaReader?.enabled ?? true,
             }}
             continuityCount={continuityCount}
+            onOpenPartnerHistory={() => {
+              setSettingsInitialCategory('writingPartner');
+              setSettingsOpenToken((t) => t + 1);
+              setSettingsOpen(true);
+              // Latch + event — SessionHistoryViewer may mount after this tick.
+              window.setTimeout(() => {
+                requestOpenSessionHistory('brainstorm');
+              }, 50);
+            }}
           />
         );
       case 'archive-continuity':
@@ -6137,28 +6127,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     });
   }, []);
 
-  // Beta 4 M29 (AC7): "Replay wizard" — shared by the project menu, Help
-  // menu, and command palette. Uses the every-build replay channel, never
-  // the MYTHOS_DEV-only debug reset, so the current vault stays put.
-  const replayOnboardingWizard = useCallback(() => {
-    window.api?.onboardingReplay?.().then(() => window.location.reload()).catch(() => {});
-  }, []);
-
-  // SKY-11058: NotesVaultPicker's "Import a vault…" (dispatched from
-  // NotesTabPanel — same no-callback-prop CustomEvent pattern as
-  // 'mythos:nav') reuses the wizard-replay path but lands on the Import
-  // screen: the sessionStorage flag survives the replay reload and
-  // OnboardingWizard consumes it on mount to open step-import directly.
+  // F3#9 — OnboardingWizard deleted; WelcomeOverlay is the only first-run.
+  // Import-notes-vault: keep overlay open until create settles (cancel → stay).
   useEffect(() => {
     const handler = () => {
-      try {
-        sessionStorage.setItem(WIZARD_OPEN_IMPORT_STEP_KEY, '1');
-      } catch { /* non-fatal — wizard just opens on its landing screen */ }
-      replayOnboardingWizard();
+      void createMythosVault('import');
     };
     window.addEventListener('mythos:import-notes-vault', handler);
     return () => window.removeEventListener('mythos:import-notes-vault', handler);
-  }, [replayOnboardingWizard]);
+  }, [createMythosVault]);
 
   // Beta 3 M5: command palette entries (prototype cmdIndex 3900-3913) — the
   // Ctrl-K panel lists these above the vault search hits.
@@ -6167,7 +6144,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     { t: 'Open appearance settings', sub: 'Theme · glass · neon', run: () => setSettingsOpen(true) },
     { t: 'Export…', sub: 'DOCX · PDF · EPUB', run: () => { if (selectedStory) setExportScope({ kind: 'story', storyId: selectedStory.id }); else showLnToast('Select a story first to export.'); } },
     { t: 'Welcome tour', sub: 'Open the welcome overlay', run: () => setWelcomeOpen(true) },
-    { t: 'Replay welcome wizard', sub: 'Onboarding, once more — current vault untouched', run: replayOnboardingWizard },
     { t: 'Keyboard shortcuts', sub: 'Every binding at a glance', run: () => setShortcutsOpen(true) },
     { t: 'Prompt history', sub: 'Past agent prompts', run: () => setHistoryOpen(true) },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -6258,7 +6234,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     ] },
     { label: 'Help', items: [
       { label: 'Welcome tour', run: () => setWelcomeOpen(true) },
-      { label: 'Replay welcome wizard…', run: replayOnboardingWizard },
       { label: 'Keyboard shortcuts…', run: () => setShortcutsOpen(true) },
       { label: 'About Mythos Writer', run: () => setSettingsOpen(true) },
       { label: 'Check for updates', run: () => {
@@ -6381,7 +6356,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   return (
     <PanelDragProvider onDrop={handlePanelDrop} onFloatDrop={handleFloatPanel} onTabBarDrop={handleTabBarDrop} onTabGroupDrop={handleTabGroupDrop}>
-    <div className={shellClasses}>
+    <div className={shellClasses} data-testid="desktop-shell">
       {/* Beta 3 Liquid Neon (M2): wallpaper + ambience + scrim + vignette,
           behind every glass panel (prototype HTML 45–54). */}
       <BackgroundStack settings={appSettings?.liquidNeonV2} />
@@ -6433,9 +6408,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onNewStory={() => { void createStory(); }}
           onOpenVault={() => { void openVaultViaPicker(); }}
           onCreateVault={() => { void createMythosVault(); }}
-          onReplayOnboarding={() => {
-            window.api?.onboardingReplay?.().then(() => window.location.reload()).catch(() => {});
-          }}
           onOpenWelcome={() => setWelcomeOpen(true)}
           notificationCenter={<NotificationCenter />}
         />
@@ -6543,28 +6515,46 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {welcomeOpen && (
         <WelcomeOverlay
+          requireVaultSetup={!(appSettings?.onboardingComplete === true)}
+          setupError={welcomeSetupError}
+          setupBusy={welcomeSetupBusy}
           onSkip={() => {
+            // First-run vault setup cannot skip (requireVaultSetup hides the button).
+            if (appSettings?.onboardingComplete !== true) return;
             markWelcomeOverlayDismissed();
             setWelcomeOpen(false);
+            setWelcomeSetupError(null);
           }}
-          onPickPath={(id: WelcomePathId) => {
-            markWelcomeOverlayDismissed();
-            setWelcomeOpen(false);
-            switch (id) {
-              case 'template':
-              case 'blank':
-              case 'restore':
-              case 'import':
-              case 'openin':
-                // Slice D: Welcome five-path → shared New Vault modal with matching mode.
-                // No wizard-replay; openin is in-place (not generic folder open).
-                void createMythosVault(id);
-                break;
-              default: {
-                const _exhaustive: never = id;
-                void _exhaustive;
-                break;
+          onPickPath={async (id: WelcomePathId) => {
+            // F3#9 security residual — do NOT close the overlay until create
+            // settles successfully. Cancel leaves the overlay up.
+            setWelcomeSetupError(null);
+            setWelcomeSetupBusy(true);
+            try {
+              let outcome: 'created' | 'cancelled' = 'cancelled';
+              switch (id) {
+                case 'template':
+                case 'blank':
+                case 'restore':
+                case 'import':
+                case 'openin':
+                  outcome = await createMythosVault(id);
+                  break;
+                default: {
+                  const _exhaustive: never = id;
+                  void _exhaustive;
+                  break;
+                }
               }
+              if (outcome === 'created') {
+                markWelcomeOverlayDismissed();
+                setWelcomeOpen(false);
+                setWelcomeSetupError(null);
+              }
+            } catch (err) {
+              setWelcomeSetupError(mapWelcomeSetupError(err));
+            } finally {
+              setWelcomeSetupBusy(false);
             }
           }}
         />
@@ -7527,14 +7517,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             'beta-reader': appSettings?.agents?.betaReader?.enabled ?? true,
           }}
           continuityCount={continuityCount}
-          gettingStartedCard={isGettingStartedVisible(gettingStartedProgress) ? (
-            <GettingStartedPanel
-              progress={gettingStartedProgress!}
-              onAction={handleGettingStartedAction}
-              onDismiss={handleDismissGettingStarted}
-              onToggleCollapse={handleToggleGsCollapsed}
-            />
-          ) : undefined}
+          onOpenPartnerHistory={() => {
+            setSettingsInitialCategory('writingPartner');
+            setSettingsOpenToken((t) => t + 1);
+            setSettingsOpen(true);
+            // Latch + event — SessionHistoryViewer may mount after this tick.
+            window.setTimeout(() => {
+              requestOpenSessionHistory('brainstorm');
+            }, 50);
+          }}
           continuityPanel={
             <ContinuityPanel
               scene={activeSceneForSidebar}
@@ -7596,11 +7587,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         </div>
       )}
 
-      {/* SKY-10499: Getting Started only ever renders as the gettingStartedCard
-           inside AgentHubPanel's Assistant tab (see the GlobalRightSidebar render
-           above). It must never stand alone as a full-height aside in place of the
-           tab strip — migrateV1Layout now defaults rightSidebarVisible to true, so
-           GRS (and with it the tab strip) is present on every fresh profile. */}
+      {/* GettingStartedPanel deleted in F3#10 — first-run checklist no longer mounts. */}
       </div>{/* end shell-main-row (SKY-5592: outer row wrapping all tabs + GRS) */}
       </RightSidebarSlotProvider>
       {ambiguousLink && (

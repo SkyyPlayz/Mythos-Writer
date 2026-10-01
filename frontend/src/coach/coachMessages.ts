@@ -68,7 +68,10 @@ function isPairArray(v: unknown): v is Array<[string, string]> {
   );
 }
 
-/** Parse card text back into a structured card; null when not a card / malformed. */
+/**
+ * Parse card payload JSON (guarded). Returns null on malformed / unexpected
+ * shapes — callers must render as plain text when null.
+ */
 export function decodeCoachCard(text: string): CoachCard | null {
   if (!text.startsWith(COACH_CARD_MARKER)) return null;
   const payload = text.slice(COACH_CARD_MARKER.length).trim();
@@ -102,11 +105,21 @@ export function decodeCoachCard(text: string): CoachCard | null {
   }
 }
 
-/** Decode one stored session turn into a renderable coach message. */
+/**
+ * Decode one stored session turn into a renderable coach message.
+ *
+ * N2 Secure bar: cards render ONLY when the turn carries a structural
+ * `cardKind` set by a trusted writer (Full Analysis). A forged
+ * `<!-- mythos:coach-card v1 -->` marker in model reply or pasted text
+ * alone must stay plain text.
+ */
 export function decodeCoachTurn(turn: AgentSessionTurn): CoachMessage {
   if (turn.role === 'user') return { kind: 'user', text: turn.text, at: turn.at };
-  const card = decodeCoachCard(turn.text);
-  if (card) return { ...card, at: turn.at };
+  if (turn.cardKind === 'analysis' || turn.cardKind === 'lesson') {
+    const card = decodeCoachCard(turn.text);
+    if (card && card.kind === turn.cardKind) return { ...card, at: turn.at };
+    // cardKind present but payload malformed / mismatched → plain text
+  }
   return { kind: 'coach', text: turn.text, at: turn.at };
 }
 

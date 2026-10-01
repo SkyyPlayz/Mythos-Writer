@@ -3046,13 +3046,16 @@ describe('BrainstormPage — M20 shared session store', () => {
   // user's real message, migrating it verbatim double-writes the greeting —
   // once from materialize()'s seed, once from the migrated turns.
   it('does not double-write the greeting when migrating a restored draft into a still-pending session', async () => {
-    const GREETING = "Hello! I'm the Brainstorm Agent — your vault curator. Share any idea and I'll help you develop it and file notes automatically.";
+    // Legacy draft may still carry the pre-F3 vault-curator greeting; the
+    // session store seeds buildPartnerGreeting() — migration must drop the
+    // draft's leading agent turn either way (not exact-string match).
+    const LEGACY_GREETING = "Hello! I'm the Brainstorm Agent — your vault curator. Share any idea and I'll help you develop it and file notes automatically.";
     localStorage.setItem('brainstorm:draft', JSON.stringify({
       v: 2,
       savedAt: new Date().toISOString(),
       prompt: '',
       messages: [
-        { role: 'assistant', text: GREETING },
+        { role: 'assistant', text: LEGACY_GREETING },
         { role: 'user', text: 'A pirate who fears water' },
       ],
       facts: [],
@@ -3092,9 +3095,10 @@ describe('BrainstormPage — M20 shared session store', () => {
     const [, migratedTurns] = sessionApi.appendTurns.mock.calls[0];
     // The greeting must not be re-sent — only the real user turn migrates.
     expect(migratedTurns).toMatchObject([{ role: 'user', text: 'A pirate who fears water' }]);
-    // On disk, the greeting appears exactly once.
-    const greetingCount = onDisk!.turns.filter((t) => t.text === GREETING).length;
-    expect(greetingCount).toBe(1);
+    // Seed greeting (partner copy) once; legacy vault-curator text never lands.
+    expect(onDisk!.turns.filter((t) => t.role === 'agent')).toHaveLength(1);
+    expect(onDisk!.turns.some((t) => t.text === LEGACY_GREETING)).toBe(false);
+    expect(onDisk!.turns.some((t) => t.role === 'user' && t.text === 'A pirate who fears water')).toBe(true);
   });
 
   // SKY-6930: a passive mount (compact panel opened, never typed in) hydrates

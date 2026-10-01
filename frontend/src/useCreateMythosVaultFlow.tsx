@@ -4,15 +4,22 @@ import VaultCreateModePicker, {
   type VaultCreateMode,
 } from './components/SettingsPanel/sections/VaultCreateModePicker';
 
+/** Settled outcome of the create-vault modal (F3#9 security residual). */
+export type CreateVaultOutcome = 'created' | 'cancelled';
+
 /**
  * Slice D — "Create a Mythos vault" modal shared by nav-rail "+" and
  * Welcome path handoff. Five-path: Template / Blank / Import / Restore /
  * Open Obsidian vault in Mythos. Uses createVaultFromOptions (not blank-only).
+ *
+ * F3#9 residual: `createVault` returns a Promise that resolves only when the
+ * modal is dismissed (cancel) or creation succeeds — callers keep WelcomeOverlay
+ * open until `'created'`.
  */
 export function useCreateMythosVaultFlow(
   onCreated: (result: { vaultRoot: string; notesVaultRoot: string }) => void | Promise<void>,
 ): {
-  createVault: (presetMode?: VaultCreateMode) => void;
+  createVault: (presetMode?: VaultCreateMode) => Promise<CreateVaultOutcome>;
   createVaultModal: React.ReactNode;
 } {
   const [open, setOpen] = useState(false);
@@ -26,8 +33,22 @@ export function useCreateMythosVaultFlow(
   const [error, setError] = useState<string | null>(null);
   const onCreatedRef = useRef(onCreated);
   onCreatedRef.current = onCreated;
+  const pendingRef = useRef<{
+    resolve: (outcome: CreateVaultOutcome) => void;
+  } | null>(null);
+
+  const settle = useCallback((outcome: CreateVaultOutcome) => {
+    const pending = pendingRef.current;
+    pendingRef.current = null;
+    pending?.resolve(outcome);
+  }, []);
 
   const createVault = useCallback((presetMode?: VaultCreateMode) => {
+    // Supersede any in-flight waiter (e.g. double-click).
+    if (pendingRef.current) {
+      pendingRef.current.resolve('cancelled');
+      pendingRef.current = null;
+    }
     setName('');
     setError(null);
     setOpeninPath('');
@@ -40,12 +61,17 @@ export function useCreateMythosVaultFlow(
       setDest(current);
       setDefaultFolder(fallback);
     }).catch(() => { /* non-fatal */ });
+
+    return new Promise<CreateVaultOutcome>((resolve) => {
+      pendingRef.current = { resolve };
+    });
   }, []);
 
   const close = useCallback(() => {
     if (busy) return;
     setOpen(false);
-  }, [busy]);
+    settle('cancelled');
+  }, [busy, settle]);
 
   const browse = useCallback(async () => {
     const res = await window.api?.chooseVaultFolder?.('Choose where to create the new vault', dest || undefined);
@@ -101,20 +127,27 @@ export function useCreateMythosVaultFlow(
         activate: true,
       });
       if (!result || !result.ok) {
-        setError(`Could not create vault: ${result?.error ?? 'unknown error'}`);
+        // Short fixed copy — never forward backend error strings (may include paths).
+        setError('Could not create the vault. Check the folder and try again.');
         return;
       }
-      setOpen(false);
+      // Await onCreated before closing — if settingsSet rejects, keep the modal
+      // open with inline error and re-enable cards (busy cleared in finally).
       await onCreatedRef.current({
         vaultRoot: result.storyVaultPath ?? result.mythosRoot ?? '',
         notesVaultRoot: result.notesVaultPath ?? '',
       });
-    } catch (err) {
-      setError(`Create failed: ${(err as Error).message}`);
+      setOpen(false);
+      settle('created');
+    } catch {
+      setError('Could not create the vault. Check the folder and try again.');
+      // Unblock the createVault waiter so WelcomeFirstRun setupBusy clears;
+      // modal stays open with the inline error (one reachable error path).
+      settle('cancelled');
     } finally {
       setBusy(false);
     }
-  }, [name, dest, mode, openinPath, importNotesSrc]);
+  }, [name, dest, mode, openinPath, importNotesSrc, settle]);
 
   const createVaultModal = (
     <Dialog
@@ -183,10 +216,10 @@ export function useCreateMythosVaultFlow(
               </button>
             </div>
             <div className="create-vault-dest-row">
-              <span id="create-vault-dest" className="create-vault-dest-path" title={dest || undefined}>
+              <span id="create-vault-dest" className="create-vault-dest-path" data-testid="create-vault-dest-path" title={dest || undefined}>
                 {dest || 'Choose a folder…'}
               </span>
-              <button type="button" className="create-vault-browse-btn" onClick={() => void browse()} disabled={busy}>
+              <button type="button" className="create-vault-browse-btn" onClick={() => void browse()} disabled={busy} data-testid="create-vault-browse">
                 Browse&hellip;
               </button>
             </div>
@@ -210,7 +243,13 @@ export function useCreateMythosVaultFlow(
         {error && <p className="create-vault-error" role="alert">{error}</p>}
       </DialogBody>
       <DialogFooter className="prompt-modal-actions">
-        <button type="button" className="prompt-modal-cancel" onClick={close} disabled={busy}>
+        <button
+          type="button"
+          className="prompt-modal-cancel"
+          onClick={close}
+          disabled={busy}
+          data-testid="create-vault-cancel"
+        >
           Cancel
         </button>
         <button type="button" className="prompt-modal-ok" onClick={() => void submit()} disabled={busy} data-testid="create-vault-submit">

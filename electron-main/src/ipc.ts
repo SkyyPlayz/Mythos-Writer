@@ -764,6 +764,8 @@ export const IPC_CHANNELS = {
   AGENT_SESSION_DUPLICATE: 'agentSession:duplicate',
   AGENT_SESSION_DELETE: 'agentSession:delete',
   AGENT_SESSION_APPEND_TURNS: 'agentSession:appendTurns',
+  /** F3 Secure bar — main→app-windows only, NO payload. Fired after a turn is persisted. */
+  PARTNER_THREAD_CHANGED: 'partner-thread:changed',
 
   // SKY-10730 M12.1: background job queue (worker-thread scan/extraction passes)
   JOBS_ENQUEUE: 'jobs:enqueue',

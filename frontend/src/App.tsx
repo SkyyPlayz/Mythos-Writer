@@ -1,17 +1,16 @@
 import { useState, useEffect } from 'react';
 import DesktopShell from './DesktopShell';
-import OnboardingWizard from './OnboardingWizard';
 import VaultNotFoundScreen from './components/VaultNotFoundScreen';
 import FloatingPanelApp from './FloatingPanelApp';
 import MythosMigrationCenter from './migration/MythosMigrationCenter';
 import MythosBootMigrationNotice from './migration/MythosBootMigrationNotice';
-import { requestWelcomeOverlayOnNextShell } from './WelcomeOverlay';
+import WelcomeFirstRun from './WelcomeFirstRun';
 import './App.css';
 
 type AppRoute =
   | { kind: 'loading' }
-  | { kind: 'wizard'; settings: AppSettings }
   | { kind: 'missing-vault'; settings: AppSettings; vaultPath?: string }
+  | { kind: 'first-run'; settings: AppSettings }
   | { kind: 'shell'; settings: AppSettings };
 
 type VaultValidationResult = {
@@ -29,7 +28,6 @@ function isVaultPathValid(result: VaultValidationResult): boolean {
 function App() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [view, setView] = useState<AppRoute>({ kind: 'loading' });
-  const [wizardDismissed, setWizardDismissed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,8 +42,10 @@ function App() {
       if (cancelled) return;
       setSettings(nextSettings);
 
+      // F3#9 security residual — incomplete onboarding mounts WelcomeFirstRun
+      // only (no DesktopShell). Overlay stays until vault create succeeds.
       if (!nextSettings.onboardingComplete) {
-        setView({ kind: 'wizard', settings: nextSettings });
+        setView({ kind: 'first-run', settings: nextSettings });
         return;
       }
 
@@ -85,23 +85,15 @@ function App() {
     return <div className="root-layout" />;
   }
 
-  if ((view.kind === 'wizard' || !settings.onboardingComplete) && !wizardDismissed) {
+  if (view.kind === 'first-run') {
     return (
-      <div className="root-layout">
-        <OnboardingWizard
-          initialSettings={settings}
-          onComplete={(updated) => {
-            // A1 residual Q1: first-run lands on the Welcome overlay (09 §7), not a reload.
-            requestWelcomeOverlayOnNextShell();
-            setSettings(updated);
-            setView({ kind: 'shell', settings: updated });
-          }}
-          onCancel={() => {
-            requestWelcomeOverlayOnNextShell();
-            setWizardDismissed(true);
-          }}
-        />
-      </div>
+      <WelcomeFirstRun
+        settings={view.settings}
+        onComplete={(next) => {
+          setSettings(next);
+          setView({ kind: 'shell', settings: next });
+        }}
+      />
     );
   }
 
@@ -111,10 +103,11 @@ function App() {
         <VaultNotFoundScreen
           vaultPath={view.vaultPath}
           onRerunWizard={() => {
-            const wizardSettings = { ...view.settings, onboardingComplete: false };
-            setSettings(wizardSettings);
-            setWizardDismissed(false);
-            setView({ kind: 'wizard', settings: wizardSettings });
+            // F3#9 — route to WelcomeFirstRun only (no sessionStorage double-open).
+            const next = { ...view.settings, onboardingComplete: false };
+            setSettings(next);
+            void window.api?.settingsSet?.(next);
+            setView({ kind: 'first-run', settings: next });
           }}
           onOpenSettings={() => setView({ kind: 'shell', settings: view.settings })}
           onQuit={() => { void window.api.appQuit?.(); }}
@@ -124,7 +117,7 @@ function App() {
   }
 
   return (
-    <div className="root-layout">
+    <div className="root-layout" data-testid="app-shell-root" data-shell-mounted="true">
       <DesktopShell initialSettings={'settings' in view ? view.settings : undefined} />
       {/* SKY-10390: the v0.4 → MythosVault upgrade migrates silently now —
           no on-screen choice. MythosMigrationCenter still mounts here to

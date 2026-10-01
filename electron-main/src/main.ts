@@ -8726,8 +8726,12 @@ const handlers: IpcHandlers = {
     handleAgentSessionDuplicate(getAgentVaultRoot(), payload),
   [IPC_CHANNELS.AGENT_SESSION_DELETE]: (payload: AgentSessionDeletePayload) =>
     handleAgentSessionDelete(getAgentVaultRoot(), payload),
-  [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) =>
-    handleAgentSessionAppendTurns(getAgentVaultRoot(), payload),
+  [IPC_CHANNELS.AGENT_SESSION_APPEND_TURNS]: (payload: AgentSessionAppendTurnsPayload) => {
+    const res = handleAgentSessionAppendTurns(getAgentVaultRoot(), payload);
+    // F3 Secure bar: fire only after persist succeeds. No renderer notify IPC.
+    if (res.session) broadcastPartnerThreadChanged();
+    return res;
+  },
 };
 
 // ─── Panel popout windows (SKY-1686) ───
@@ -8788,6 +8792,22 @@ interface FloatingWindowState {
 }
 
 const floatingPanelWindows = new Map<string, FloatingWindowState>();
+
+/**
+ * F3 Secure bar — main→own app windows only (main + float-out BrowserWindows),
+ * NO payload (no turn text, session id, or provider). Never broadcast to all
+ * webContents. Called only after agentSession:appendTurns persists a turn.
+ */
+function broadcastPartnerThreadChanged(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(IPC_CHANNELS.PARTNER_THREAD_CHANGED);
+  }
+  for (const [, state] of floatingPanelWindows) {
+    if (!state.win.isDestroyed()) {
+      state.win.webContents.send(IPC_CHANNELS.PARTNER_THREAD_CHANGED);
+    }
+  }
+}
 
 const FLOAT_MIN_WIDTH = 200;
 const FLOAT_MIN_HEIGHT = 150;

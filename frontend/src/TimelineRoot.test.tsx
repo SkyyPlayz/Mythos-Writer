@@ -591,7 +591,6 @@ describe('TimelineRoot — picker + calendar editor', () => {
   it('Edit calendar… opens the M22 calendar editor and persists preset picks', async () => {
     const api = setupApi();
     await renderRoot();
-    fireEvent.click(await screen.findByRole('button', { name: /Active timeline:/i }));
     fireEvent.click(screen.getByTestId('timeline-edit-calendar'));
     expect(screen.getByTestId('calendar-editor-modal')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('cem-preset-aeon-13'));
@@ -608,7 +607,6 @@ describe('TimelineRoot — picker + calendar editor', () => {
   it('+ New timeline creates one immediately and switches to it (prototype tlNewTimeline)', async () => {
     const api = setupApi();
     await renderRoot();
-    fireEvent.click(await screen.findByRole('button', { name: /Active timeline:/i }));
     fireEvent.click(screen.getByTestId('timeline-new'));
     await act(async () => {});
     expect(api.timelinesUpsert).toHaveBeenCalledWith({ name: 'New Timeline', kind: 'custom' });

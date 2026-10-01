@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import {
   PARTNER_HANDS,
+  DEFAULT_PARTNER_DISPLAY_NAME,
   resolvePartnerDisplayName,
   type PartnerHandId,
 } from '../agents/partnerIdentity';
@@ -19,14 +20,17 @@ import {
   BUILTIN_TOOLS,
   HAND_LIMITS,
   HEARTBEAT_ROWS,
+  PARTNER_CONFIDENCE_LEVELS,
   PARTNER_ICON_OPTIONS,
   modelsForProvider,
+  resolvePartnerConfidence,
   resolveWritingPartner,
   scopedModel,
   type PartnerIconId,
   type WritingPartnerSettings,
 } from './partnerSettings';
 import { runHeartbeatAutomationStub } from './partnerBusyStore';
+import SessionHistoryViewer from '../components/SettingsPanel/SessionHistoryViewer';
 import './WritingPartnerSection.css';
 
 const TRAIT_ORDER: PartnerTraitKey[] = ['tone', 'teach', 'register', 'ambient', 'verbosity'];
@@ -100,7 +104,7 @@ export default function WritingPartnerSection({
 
   // Slice D: bind Settings identity ↔ Agents Vault partner.md (file is source on disk).
   useEffect(() => {
-    const name = settings.agentNames?.brainstorm?.trim() || 'Mythos';
+    const name = settings.agentNames?.brainstorm?.trim() || DEFAULT_PARTNER_DISPLAY_NAME;
     const icon = partner.icon;
     void window.api?.agentsVaultSyncPartner?.({ name, icon });
   }, [settings.agentNames?.brainstorm, partner.icon]);
@@ -120,7 +124,7 @@ export default function WritingPartnerSection({
               className="settings-input"
               data-testid="wp-name"
               value={settings.agentNames?.brainstorm ?? ''}
-              placeholder="Mythos"
+              placeholder={DEFAULT_PARTNER_DISPLAY_NAME}
               maxLength={64}
               onChange={(e) => setAgentDisplayName('brainstorm', e.target.value)}
             />
@@ -481,6 +485,52 @@ export default function WritingPartnerSection({
             );
           })}
         </div>
+      </section>
+
+      <section
+        className="settings-section wp-card"
+        aria-labelledby="section-wp-confidence"
+        data-testid="wp-confidence"
+      >
+        <h3 className="settings-section-title" id="section-wp-confidence">Confidence</h3>
+        <p className="settings-hint">
+          View filter for the Suggestions inbox — hide rows below this bar. Default is Confident.
+          Per-agent auto-apply thresholds stay under Agents (this slider never writes them).
+        </p>
+        <div className="settings-slider-row" data-testid="wp-confidence-row">
+          <label className="wp-label" htmlFor="wp-confidence-slider">LEVEL</label>
+          <input
+            id="wp-confidence-slider"
+            className="settings-slider"
+            type="range"
+            min={0}
+            max={PARTNER_CONFIDENCE_LEVELS.length - 1}
+            step={1}
+            value={PARTNER_CONFIDENCE_LEVELS.indexOf(partner.confidence)}
+            aria-label="Partner confidence"
+            aria-valuetext={partner.confidence}
+            data-testid="wp-confidence-slider"
+            onChange={(e) => {
+              const idx = Number(e.target.value);
+              const label = PARTNER_CONFIDENCE_LEVELS[idx] ?? 'Confident';
+              patchPartner(setSettings, { confidence: label });
+            }}
+          />
+          <span className="settings-slider-value" data-testid="wp-confidence-value">
+            {partner.confidence}
+          </span>
+        </div>
+        <p className="settings-hint" data-testid="wp-confidence-threshold">
+          Inbox floor {resolvePartnerConfidence(settings).threshold.toFixed(2)} · Suggestions view filter only
+        </p>
+      </section>
+
+      {/* F3 — Earlier chats opens Settings › Writing partner session history
+          (AgentsSection is unmounted; partner spine sessions are brainstorm). */}
+      <section className="settings-section wp-card" aria-labelledby="section-partner-history" data-testid="wp-session-history">
+        <h3 className="settings-section-title" id="section-partner-history">Earlier chats</h3>
+        <p className="settings-hint">Read-only history of partner conversations saved in this vault.</p>
+        <SessionHistoryViewer agentName="brainstorm" />
       </section>
     </div>
   );

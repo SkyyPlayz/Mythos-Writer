@@ -574,6 +574,49 @@ describe('agent session files', () => {
     expect(read?.turns[0].cardTitle).toBeUndefined();
   });
 
+  it('F3 N2: cardKind round-trips; malformed card-meta JSON degrades to plain bubble', () => {
+    const { session } = createSession(tmp, {
+      agent: 'brainstorm',
+      turns: [
+        {
+          role: 'agent',
+          at: '2026-01-01T00:00:00.000Z',
+          text: 'trusted analysis body',
+          cardKind: 'analysis',
+          cardTitle: 'Full Scene Analysis',
+        },
+      ],
+    });
+    const read = readSession(tmp, session.id);
+    expect(read?.turns[0].cardKind).toBe('analysis');
+    expect(read?.turns[0].cardTitle).toBe('Full Scene Analysis');
+
+    // Regex matches but JSON.parse throws — ignore meta, keep text.
+    const raw = [
+      '---',
+      'mythosSession: 1',
+      'id: bad-meta-1',
+      'agent: brainstorm',
+      'startedAt: 2026-01-01T00:00:00.000Z',
+      'updatedAt: 2026-01-01T00:00:00.000Z',
+      'turns: 1',
+      '---',
+      '',
+      '# session',
+      '',
+      '<!-- mythos:turn agent 2026-01-01T00:00:00.000Z -->',
+      '<!-- mythos:card-meta {bad} -->',
+      '**Agent:**',
+      '',
+      'plain after bad meta',
+      '<!-- /mythos:turn -->',
+      '',
+    ].join('\n');
+    const parsed = parseSessionFile(raw);
+    expect(parsed?.turns[0].cardKind).toBeUndefined();
+    expect(parsed?.turns[0].text).toBe('plain after bad meta');
+  });
+
   it('SKY-8886: agent turns without card metadata round-trip as plain bubbles', () => {
     const { session } = createSession(tmp, {
       agent: 'brainstorm',

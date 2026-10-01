@@ -1,17 +1,9 @@
-// Beta 4 M12 — the Coach page's conversation logic (§5.2).
-//
-// Built on the SHARED `coach` agent-session store (useAgentSessions), so the
-// Coach page feed and the right-panel Coach chat render one conversation.
-//
-// Agent contract (§2, §14.6): the Writing Coach teaches — it NEVER writes
-// manuscript prose. This hook's only side effects are (1) asking the coach
-// agent for advisory text and (2) appending turns to the vault session file.
-// There is deliberately no code path here that touches scenes, blocks, or any
-// manuscript write surface, and coachNoGhostwriting.test.ts locks that.
-
 import { useCallback, useMemo, useState } from 'react';
 import type { Scene } from '../types';
 import { useAgentSessions, type UseAgentSessionsResult } from '../lib/useAgentSessions';
+import { PARTNER_SESSION_AGENT } from '../agents/partnerIdentity';
+import { buildFullSceneContext, makeCoachInvoke } from '../agents/coachInvoke';
+import { MAX_HISTORY_TURNS } from '../timeline2/panel/useMiniAgentChat';
 import { decodeCoachTurns, type CoachMessage } from './coachMessages';
 
 export interface CoachConversation {
@@ -23,17 +15,22 @@ export interface CoachConversation {
   pendingPrompt: string | null;
   busy: boolean;
   error: string | null;
-  /** Send a prompt to the coach and persist the exchange to the session. */
+  /** Send a prompt to the Writing Coach provider and persist to the partner session. */
   send: (prompt: string) => Promise<void>;
 }
 
 export function useCoachConversation(scene: Scene | null): CoachConversation {
-  const store = useAgentSessions('coach');
+  const store = useAgentSessions(PARTNER_SESSION_AGENT);
   const [pendingPrompt, setPendingPrompt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const turns = store.activeSession?.turns;
   const messages = useMemo(() => decodeCoachTurns(turns ?? []), [turns]);
+
+  const invoke = useMemo(
+    () => makeCoachInvoke(() => buildFullSceneContext(scene)),
+    [scene],
+  );
 
   const send = useCallback(async (prompt: string) => {
     const trimmed = prompt.trim();
@@ -45,25 +42,29 @@ export function useCoachConversation(scene: Scene | null): CoachConversation {
     // switches sessions before the reply comes back, the turns still belong
     // in the session they were asked from, never wherever the picker lands.
     const originSessionId = store.activeSessionId ?? undefined;
-
-    const sceneContext = scene
-      ? `Scene: "${scene.title}"\n\n${scene.blocks.map((b) => b.content).join('\n\n')}`
-      : undefined;
+    const history = (store.activeSession?.turns ?? [])
+      .slice(-MAX_HISTORY_TURNS)
+      .map((t) => ({
+        role: t.role === 'agent' ? ('assistant' as const) : ('user' as const),
+        content: t.text,
+      }));
 
     try {
-      const response = await window.api.agentWritingAssistant(trimmed, sceneContext);
+      // Probe P4 — writingAssistant provider + full scene context (never brainstorm).
+      const result = await invoke(trimmed, history);
+      const agentText = typeof result === 'string' ? result : result.text;
       const now = new Date().toISOString();
       await store.appendTurns([
         { role: 'user', text: trimmed, at: now },
-        { role: 'agent', text: response.text, at: new Date().toISOString() },
+        { role: 'agent', text: agentText, at: new Date().toISOString() },
       ], originSessionId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg || 'Coach unavailable — check your provider settings.');
+      setError(msg || 'Partner unavailable — check your provider settings.');
     } finally {
       setPendingPrompt(null);
     }
-  }, [pendingPrompt, scene, store]);
+  }, [pendingPrompt, store, invoke]);
 
   return {
     store,

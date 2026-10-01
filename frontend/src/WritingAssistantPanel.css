@@ -28,6 +28,13 @@
   padding: 12px 12px 8px;
 }
 
+/* F3#4 — cadence/mute row when PartnerCallChrome owns identity (no ✦ header). */
+.wa-panel-controls {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 12px 4px;
+}
+
 .wa-sparkle-icon {
   color: var(--color-accent-cyan, #00f5ff);
   font-size: 0.9rem;

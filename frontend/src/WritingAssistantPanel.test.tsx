@@ -1,11 +1,10 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import WritingAssistantPanel, { STALL_WARNING_MS, HARD_TIMEOUT_MS } from './WritingAssistantPanel';
+import WritingAssistantPanel from './WritingAssistantPanel';
 import type { Scene } from './types';
-import type { UseAgentSessionsResult } from './lib/useAgentSessions';
 
 const mockAgentWritingAssistant = vi.fn();
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const mockOnWritingAssistantChunk = vi.fn<any>(() => vi.fn()); // returns unsub fn
+const mockOnWritingAssistantChunk = vi.fn<any>(() => vi.fn());
 const mockWritingScan = vi.fn();
 const mockWritingAssistantCadenceChange = vi.fn();
 const mockWritingAssistantTipDecision = vi.fn();
@@ -59,93 +58,29 @@ function makeScene(id: string, title: string, content: string): Scene {
   };
 }
 
+const mockScene = {
+  id: 's1',
+  title: 'The Heist',
+  blocks: [{ id: 'b1', type: 'prose' as const, order: 0, content: 'The airship docked silently.', updatedAt: '' }],
+  draftState: 'in-progress' as const,
+  order: 0,
+  path: '/stories/ch1/scene1.md',
+  createdAt: '',
+  updatedAt: '',
+};
+
 describe('WritingAssistantPanel', () => {
-  it('renders prompt textarea and disabled Ask button initially', () => {
+  it('renders tip strip without Ask composer (N4-A)', () => {
     render(<WritingAssistantPanel scene={null} />);
-    expect(screen.getByLabelText(/writing coach prompt/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^ask$/i })).toBeDisabled();
+    expect(screen.getByLabelText(/heartbeat panel/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/writing coach prompt/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^ask$/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/open a scene to scan/i)).toBeInTheDocument();
   });
 
-  it('enables the button once prompt is non-empty', () => {
+  it('disables Scan now when no scene is open', () => {
     render(<WritingAssistantPanel scene={null} />);
-    const input = screen.getByLabelText(/writing coach prompt/i);
-    fireEvent.change(input, { target: { value: 'How can I make this scene more tense?' } });
-    expect(screen.getByRole('button', { name: /^ask$/i })).not.toBeDisabled();
-  });
-
-  it('displays Claude response after ask and shows Accept/Dismiss buttons', async () => {
-    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Try adding a ticking clock.' });
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'How to add tension?' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/writing coach response/i)).toBeInTheDocument();
-    });
-    expect(screen.getByLabelText(/writing coach response/i)).toHaveTextContent('Try adding a ticking clock.');
-    expect(screen.getByRole('button', { name: /^apply:/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^reject:/i })).toBeInTheDocument();
-  });
-
-  it('marks suggestion as accepted when Accept is clicked', async () => {
-    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Use shorter sentences.' });
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Pacing advice?' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => screen.getByRole('button', { name: /^apply:/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^apply:/i }));
-
-    expect(screen.getByText(/^Applied/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /^apply:/i })).not.toBeInTheDocument();
-  });
-
-  it('marks suggestion as dismissed when Dismiss is clicked', async () => {
-    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Cut the adverbs.' });
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Style advice?' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => screen.getByRole('button', { name: /^reject:/i }));
-    fireEvent.click(screen.getByRole('button', { name: /^reject:/i }));
-
-    expect(screen.getByText(/^Rejected/)).toBeInTheDocument();
-  });
-
-  it('passes scene context to IPC when a scene is selected', async () => {
-    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Some advice.' });
-
-    const scene = {
-      id: 's1',
-      title: 'The Heist',
-      blocks: [{ id: 'b1', type: 'prose' as const, order: 0, content: 'The airship docked.', updatedAt: '' }],
-      draftState: 'in-progress' as const,
-      order: 0,
-      path: '/scene.md',
-      createdAt: '',
-      updatedAt: '',
-    };
-
-    render(<WritingAssistantPanel scene={scene} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'what happens next?' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalled());
-    const [prompt, context] = mockAgentWritingAssistant.mock.calls[0];
-    expect(prompt).toBe('what happens next?');
-    expect(context).toContain('The Heist');
-    expect(context).toContain('The airship docked.');
+    expect(screen.getByRole('button', { name: /^scan now$/i })).toBeDisabled();
   });
 
   it('pushes scene switches to the scheduler backend and Scan now uses the new scene', async () => {
@@ -191,265 +126,7 @@ describe('WritingAssistantPanel', () => {
       });
     });
   });
-
-  it('shows an error message when the IPC call rejects', async () => {
-    mockAgentWritingAssistant.mockRejectedValueOnce(new Error('ANTHROPIC_API_KEY is not set.'));
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'test' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('ANTHROPIC_API_KEY is not set.');
-    });
-    expect(screen.queryByLabelText(/writing coach response/i)).not.toBeInTheDocument();
-  });
-
-  it('does not modify scene content — no vault write', async () => {
-    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'New ideas here.' });
-
-    const mockWriteVault = vi.fn();
-    (window as unknown as { api: unknown }).api = makeApi({ writeVault: mockWriteVault });
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'ideas' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => screen.getByLabelText(/writing coach response/i));
-    expect(mockWriteVault).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    {
-      label: 'auth failure (bad API key)',
-      message: 'Authentication error — check your API key in Settings.',
-    },
-    {
-      label: 'rate limit exceeded',
-      message: 'Rate limit reached — try again shortly.',
-    },
-    {
-      label: 'model not found / invalid request',
-      message: 'Invalid request — check the model and input parameters.',
-    },
-    {
-      label: 'network failure',
-      message: 'Network error — check your connection and try again.',
-    },
-  ])('shows user-friendly error for provider rejection: $label', async ({ message }) => {
-    mockAgentWritingAssistant.mockRejectedValueOnce(new Error(message));
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'test prompt' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent(message);
-    });
-    expect(screen.queryByLabelText(/writing coach response/i)).not.toBeInTheDocument();
-  });
-
-  it('§3: keeps the user message visible on failure, and Retry re-sends without duplicating it', async () => {
-    mockAgentWritingAssistant.mockRejectedValueOnce(new Error('Network error — check your connection and try again.'));
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Tell me a story' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument();
-    });
-    // The failed request's user bubble was never rolled back.
-    expect(screen.getAllByText('Tell me a story')).toHaveLength(1);
-
-    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Once upon a time.' });
-    fireEvent.click(screen.getByRole('button', { name: /^retry$/i }));
-
-    await waitFor(() => {
-      expect(screen.getByLabelText(/writing coach response/i)).toHaveTextContent('Once upon a time.');
-    });
-    // Still exactly one copy of the user's message — retry didn't duplicate it.
-    expect(screen.getAllByText('Tell me a story')).toHaveLength(1);
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
 });
-
-// ---------------------------------------------------------------------------
-// Cancel + stall + hard-timeout tests (AC #1, #2, #3)
-// ---------------------------------------------------------------------------
-describe('WritingAssistantPanel — cancel and stall UX', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it('shows Cancel button while a generation is in flight', async () => {
-    mockAgentWritingAssistant.mockImplementationOnce(
-      () => new Promise<{ text: string }>(() => {}), // never resolves
-    );
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'keep going' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /cancel generation/i })).toBeInTheDocument(),
-    );
-    // Ask button should be gone while loading
-    expect(screen.queryByRole('button', { name: /^ask$/i })).not.toBeInTheDocument();
-  });
-
-  it('cancelling clears the partial bubble and shows confirmation toast', async () => {
-    let resolveRequest: ((value: { text: string }) => void) | null = null;
-    mockAgentWritingAssistant.mockImplementationOnce(
-      () => new Promise<{ text: string }>((resolve) => { resolveRequest = resolve; }),
-    );
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'keep going' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /cancel generation/i })).toBeInTheDocument(),
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: /cancel generation/i }));
-
-    // Ask button returns; error toast confirms cancellation
-    expect(screen.getByRole('button', { name: /^ask$/i })).toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent('Generation cancelled. You can retry now.');
-    expect(screen.queryByLabelText(/writing coach response/i)).not.toBeInTheDocument();
-
-    // Late response arriving after cancel must be ignored
-    resolveRequest!({ text: 'late response should be ignored' });
-    await waitFor(() =>
-      expect(screen.queryByText(/late response should be ignored/i)).not.toBeInTheDocument(),
-    );
-  });
-
-  it('shows stall panel (not an abort) after STALL_WARNING_MS with no tokens', async () => {
-    vi.useFakeTimers();
-    mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'test stall path' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    // Before timeout: no stall panel
-    expect(screen.queryByLabelText(/generation stalled/i)).not.toBeInTheDocument();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(STALL_WARNING_MS);
-    });
-
-    // Stall panel appears — but generation is still running (no error alert)
-    expect(screen.getByLabelText(/generation stalled/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /retry generation/i })).toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    // Both the stall panel and the input area show cancel buttons
-    const cancelBtns = screen.getAllByRole('button', { name: /cancel generation/i });
-    expect(cancelBtns.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('stall panel cancel button aborts and shows cancellation toast', async () => {
-    vi.useFakeTimers();
-    mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'test stall cancel' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(STALL_WARNING_MS);
-    });
-
-    // Click Cancel inside the stall panel
-    const cancelBtns = screen.getAllByRole('button', { name: /cancel generation/i });
-    fireEvent.click(cancelBtns[0]);
-
-    expect(screen.getByRole('alert')).toHaveTextContent('Generation cancelled. You can retry now.');
-    expect(screen.queryByLabelText(/generation stalled/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^ask$/i })).toBeInTheDocument();
-  });
-
-  it('hard timeout at HARD_TIMEOUT_MS auto-aborts with recoverable error (no stall panel first needed)', async () => {
-    vi.useFakeTimers();
-    mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'test hard timeout' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(HARD_TIMEOUT_MS);
-    });
-
-    // Hard timeout fires: error alert, no stall panel, Ask button restored
-    expect(screen.getByRole('alert')).toHaveTextContent(/timed out/i);
-    expect(screen.queryByLabelText(/generation stalled/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^ask$/i })).toBeInTheDocument();
-  });
-
-  it('stall timers reset on each incoming token so fast streams never stall', async () => {
-    vi.useFakeTimers();
-    let emitChunk: ((chunk: string) => void) | null = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mockOnWritingAssistantChunk as any).mockImplementationOnce((cb: (chunk: string) => void) => {
-      emitChunk = cb;
-      return () => {};
-    });
-    mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'slow but steady' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    // Emit a token every 15 s (under the 20 s stall threshold) for 3 cycles
-    for (let i = 0; i < 3; i++) {
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(15_000);
-      });
-      act(() => { emitChunk?.('word '); });
-    }
-
-    // After 45 s of tokens arriving every 15 s, no stall panel
-    expect(screen.queryByLabelText(/generation stalled/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Heartbeat scheduler tests (pre-existing, unchanged)
-// ---------------------------------------------------------------------------
-const mockScene = {
-  id: 's1',
-  title: 'The Heist',
-  blocks: [{ id: 'b1', type: 'prose' as const, order: 0, content: 'The airship docked silently.', updatedAt: '' }],
-  draftState: 'in-progress' as const,
-  order: 0,
-  path: '/stories/ch1/scene1.md',
-  createdAt: '',
-  updatedAt: '',
-};
 
 describe('WritingAssistantPanel — heartbeat scheduler', () => {
   beforeEach(() => {
@@ -476,7 +153,6 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     expect(screen.getByText('Use shorter sentences.')).toBeInTheDocument();
     expect(screen.getByText('Add sensory detail.')).toBeInTheDocument();
   });
-
 
   it('calls writingScan with scene prose and path', async () => {
     mockWritingScan.mockResolvedValue({ tips: ['Tip.'], scannedAt: new Date().toISOString() });
@@ -542,6 +218,8 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     await act(async () => { vi.advanceTimersByTime(10_000); });
 
     expect(screen.getByLabelText(/heartbeat status/i)).toBeInTheDocument();
+    expect(screen.getByTestId('wa-scan-now-cta')).toBeInTheDocument();
+    expect(document.querySelector('.wa-heartbeat-empty')).toBeTruthy();
   });
 
   it('updates tips after a second scan tick', async () => {
@@ -731,7 +409,6 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
     expect(screen.getByText('Tip from first scene.')).toBeInTheDocument();
 
-    // Navigate to second scene — stale tips must clear immediately
     await act(async () => {
       rerender(<WritingAssistantPanel scene={scene2} scanIntervalSeconds={10} isActive={true} />);
     });
@@ -760,16 +437,13 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
       <WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />,
     );
 
-    // Trigger scan; hold it in-flight
     await act(async () => { vi.advanceTimersByTime(10_000); });
 
-    // Navigate away — stale scanning state must clear
     await act(async () => {
       rerender(<WritingAssistantPanel scene={scene2} scanIntervalSeconds={10} isActive={true} />);
     });
     expect(document.querySelector('.wa-spinner')).toBeNull();
 
-    // Resolve the held scan — stale guard must prevent any UI update
     await act(async () => {
       resolveHeld({ tips: ['stale tip'], scannedAt: new Date().toISOString() });
     });
@@ -778,9 +452,6 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// SKY-2623: empty state, error state, mobile collapse (AC8, AC9, AC18, AC24, AC25)
-// ---------------------------------------------------------------------------
 describe('WritingAssistantPanel — empty state, error state & mobile collapse (SKY-2623)', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -797,7 +468,6 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
     await act(async () => { vi.advanceTimersByTime(10_000); });
 
     expect(screen.getByText(/your work is looking great|no suggestions yet/i)).toBeInTheDocument();
-    // Multiple "Scan now" buttons may exist (header + empty-state CTA); at least one must be present
     expect(screen.getAllByRole('button', { name: /scan now/i }).length).toBeGreaterThan(0);
   });
 
@@ -805,7 +475,6 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
     mockWritingScan.mockRejectedValueOnce(new Error('Provider unavailable'));
     render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={10} isActive={true} />);
 
-    // advanceTimersByTimeAsync flushes both the timer AND the rejected promise resolution
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
 
     expect(screen.getByRole('alert')).toBeInTheDocument();
@@ -818,7 +487,6 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
 
     render(<WritingAssistantPanel scene={mockScene} scanIntervalSeconds={60} isActive={true} />);
 
-    // Click the first "Scan now" button in the header (calls writingAssistantScanNow)
     await act(async () => {
       fireEvent.click(screen.getAllByRole('button', { name: /scan now/i })[0]);
     });
@@ -849,6 +517,33 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
     expect(screen.queryByRole('complementary', { name: /writing coach/i })).not.toBeInTheDocument();
   });
 
+  it('N4-A hub embed: allowNarrowCollapse=false keeps Heartbeat panel under <280px', async () => {
+    let observerCallback: ResizeObserverCallback | null = null;
+    class MockResizeObserver {
+      constructor(cb: ResizeObserverCallback) { observerCallback = cb; }
+      observe() {}
+      disconnect() {}
+    }
+    window.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
+
+    render(
+      <WritingAssistantPanel scene={mockScene} isActive={true} allowNarrowCollapse={false} />,
+    );
+
+    await act(async () => {
+      observerCallback?.([
+        { contentRect: { width: 200 } } as unknown as ResizeObserverEntry,
+      ], {} as ResizeObserver);
+      // Pre-layout 0-width must not latch either.
+      observerCallback?.([
+        { contentRect: { width: 0 } } as unknown as ResizeObserverEntry,
+      ], {} as ResizeObserver);
+    });
+
+    expect(screen.queryByRole('button', { name: /open writing coach/i })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Heartbeat panel')).toBeInTheDocument();
+  });
+
   it('AC25: clicking collapsed badge opens overlay panel', async () => {
     let observerCallback: ResizeObserverCallback | null = null;
     class MockResizeObserver {
@@ -872,16 +567,10 @@ describe('WritingAssistantPanel — empty state, error state & mobile collapse (
   });
 });
 
-// ---------------------------------------------------------------------------
-// TTS playback tests (AC-V-06, AC-V-07, AC-V-08, AC-V-10, AC-V-11)
-// ---------------------------------------------------------------------------
 describe('WritingAssistantPanel — TTS voice controls', () => {
-  // Pass configured Piper settings so tests exercise the IPC path (voiceSpeak).
-  // The OS-speechSynthesis fallback path is covered by useTtsPlayer.test.ts.
   const piperSettings = { enabled: true, provider: 'local' as const, localBinaryPath: '/piper' };
 
   beforeEach(() => {
-    // rAF-based useLiveAnnounce needs synchronous stub so act() drains it.
     vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => { fn(0); return 0; });
   });
 
@@ -889,14 +578,23 @@ describe('WritingAssistantPanel — TTS voice controls', () => {
     vi.unstubAllGlobals();
   });
 
-  async function renderWithSuggestion(text = 'Try shorter sentences.') {
-    mockAgentWritingAssistant.mockResolvedValueOnce({ text });
-    render(<WritingAssistantPanel scene={null} ttsSettings={piperSettings} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'advice?' },
+  async function renderWithTip(text = 'Try shorter sentences.') {
+    mockWritingAssistantScanNow.mockResolvedValue({
+      tips: [{ id: 'tip-hear-1', text, category: 'clarity' }],
+      scannedAt: new Date().toISOString(),
     });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-    await waitFor(() => screen.getByRole('button', { name: /hear suggestion aloud/i }));
+    render(
+      <WritingAssistantPanel
+        scene={mockScene}
+        ttsSettings={piperSettings}
+        waScanInterval="manual"
+        isActive
+      />,
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: /scan now/i })[0]);
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /hear suggestion aloud/i })).toBeInTheDocument();
+    });
   }
 
   it('AC-V-06: mute button is present in the header', () => {
@@ -915,21 +613,21 @@ describe('WritingAssistantPanel — TTS voice controls', () => {
     expect(screen.getByRole('button', { name: /unmute voice playback/i })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('AC-V-07: Hear button appears on a completed suggestion card', async () => {
-    await renderWithSuggestion();
+  it('AC-V-07: Hear button appears on a tip card', async () => {
+    await renderWithTip();
     expect(screen.getByRole('button', { name: /hear suggestion aloud/i })).toBeInTheDocument();
+    expect(document.querySelector('.wa-hear-btn')).toBeInTheDocument();
   });
 
-  it('AC-V-07: clicking Hear calls voiceSpeak with the card text', async () => {
-    await renderWithSuggestion('Try shorter sentences.');
+  it('AC-V-07: clicking Hear calls voiceSpeak with the tip text', async () => {
+    await renderWithTip('Try shorter sentences.');
     fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
     expect(mockVoiceSpeak).toHaveBeenCalledWith('Try shorter sentences.');
   });
 
   it('AC-V-07: button switches to Stop while playing', async () => {
-    await renderWithSuggestion();
+    await renderWithTip();
     fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
-    // voiceSpeak resolves next tick — button shows stop immediately (optimistic)
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /stop voice playback/i })).toBeInTheDocument();
     });
@@ -944,11 +642,10 @@ describe('WritingAssistantPanel — TTS voice controls', () => {
       return () => {};
     });
 
-    await renderWithSuggestion();
+    await renderWithTip();
     fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
     await waitFor(() => screen.getByRole('button', { name: /stop voice playback/i }));
 
-    // speakId is 'speak-1' per default mock
     await act(async () => { fireDone({ speakId: 'speak-1' }); });
 
     expect(screen.getByRole('button', { name: /hear suggestion aloud/i })).toBeInTheDocument();
@@ -956,7 +653,7 @@ describe('WritingAssistantPanel — TTS voice controls', () => {
   });
 
   it('AC-V-07: clicking Stop cancels playback via voiceSpeakCancel', async () => {
-    await renderWithSuggestion();
+    await renderWithTip();
     fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
     await waitFor(() => screen.getByRole('button', { name: /stop voice playback/i }));
     fireEvent.click(screen.getByRole('button', { name: /stop voice playback/i }));
@@ -964,16 +661,14 @@ describe('WritingAssistantPanel — TTS voice controls', () => {
   });
 
   it('AC-V-08: clicking Hear while session is muted does NOT call voiceSpeak', async () => {
-    await renderWithSuggestion();
-    // Mute first
+    await renderWithTip();
     fireEvent.click(screen.getByRole('button', { name: /mute voice playback/i }));
-    // Then click Hear — should be a no-op
     fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
     expect(mockVoiceSpeak).not.toHaveBeenCalled();
   });
 
   it('AC-V-08: muting while playing calls voiceSpeakCancel and resets button', async () => {
-    await renderWithSuggestion();
+    await renderWithTip();
     fireEvent.click(screen.getByRole('button', { name: /hear suggestion aloud/i }));
     await waitFor(() => screen.getByRole('button', { name: /stop voice playback/i }));
 
@@ -988,278 +683,6 @@ describe('WritingAssistantPanel — TTS voice controls', () => {
   it('AC-V-10: live region is always in the DOM', () => {
     render(<WritingAssistantPanel scene={null} />);
     expect(screen.getByRole('status')).toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Streaming bubble (AC-WA-09, AC-WA-10, AC-WA-13)
-// ---------------------------------------------------------------------------
-describe('WritingAssistantPanel — streaming bubble (AC-WA-09/10/13)', () => {
-  it('AC-WA-09: Enter (no Shift) submits; Shift+Enter does not; empty prompt is a no-op', async () => {
-    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Response.' });
-
-    render(<WritingAssistantPanel scene={null} />);
-    const textarea = screen.getByLabelText(/writing coach prompt/i);
-
-    // Empty prompt — Enter should be a no-op
-    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
-    expect(mockAgentWritingAssistant).not.toHaveBeenCalled();
-
-    // Shift+Enter should not submit
-    fireEvent.change(textarea, { target: { value: 'Test prompt' } });
-    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });
-    expect(mockAgentWritingAssistant).not.toHaveBeenCalled();
-
-    // Enter without Shift should submit
-    fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
-    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(1));
-    expect(mockAgentWritingAssistant.mock.calls[0][0]).toBe('Test prompt');
-  });
-
-  it('AC-WA-10: streaming chunks accumulate in the assistant bubble and cursor glyph appears', async () => {
-    let emitChunk: ((chunk: string) => void) | null = null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (mockOnWritingAssistantChunk as any).mockImplementationOnce((cb: (chunk: string) => void) => {
-      emitChunk = cb;
-      return () => {};
-    });
-    // Stays pending so we can observe the streaming state
-    mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Tell me a story' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    // Before the first chunk: typing-dots indicator, not an empty cursor bubble (§2).
-    await waitFor(() =>
-      expect(screen.getByTestId('wa-typing')).toBeInTheDocument(),
-    );
-    expect(screen.queryByLabelText(/writing coach response/i)).not.toBeInTheDocument();
-
-    // Chunks accumulate in the bubble
-    act(() => { emitChunk?.('Once '); });
-    act(() => { emitChunk?.('upon '); });
-    act(() => { emitChunk?.('a time.'); });
-
-    expect(screen.getByLabelText(/writing coach response/i)).toHaveTextContent('Once upon a time.');
-    // Cursor still present — still streaming
-    expect(document.querySelector('.wa-cursor')).toBeInTheDocument();
-  });
-
-  it('AC-WA-10: cursor glyph disappears once streaming completes', async () => {
-    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Done.' });
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Finish it' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() =>
-      expect(screen.getByLabelText(/writing coach response/i)).toHaveTextContent('Done.'),
-    );
-    // No cursor after streaming finishes
-    expect(document.querySelector('.wa-cursor')).not.toBeInTheDocument();
-  });
-
-  it('AC-WA-13: Cancel button replaces Ask during streaming; Ask returns after cancel', async () => {
-    mockAgentWritingAssistant.mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Keep going' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    // Ask button gone, Cancel appears
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: /cancel generation/i })).toBeInTheDocument(),
-    );
-    expect(screen.queryByRole('button', { name: /^ask$/i })).not.toBeInTheDocument();
-
-    // Cancel restores Ask button
-    fireEvent.click(screen.getByRole('button', { name: /cancel generation/i }));
-    expect(screen.getByRole('button', { name: /^ask$/i })).toBeInTheDocument();
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Preset context (AC-WA-15)
-// ---------------------------------------------------------------------------
-describe('WritingAssistantPanel — preset context (AC-WA-15)', () => {
-  it('includes the active preset style guide in the request context', async () => {
-    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Some advice.' });
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'How should I write this?' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalled());
-    const [, context] = mockAgentWritingAssistant.mock.calls[0];
-    // Default preset is Epic Fantasy: tone = Serious
-    expect(context).toContain('[Writing style:');
-    expect(context).toContain('Genre: Fantasy');
-    expect(context).toContain('Tone: Serious');
-  });
-
-  it('AC-WA-15: changing preset updates the context sent with the next request', async () => {
-    mockAgentWritingAssistant
-      .mockResolvedValueOnce({ text: 'Fantasy advice.' })
-      .mockResolvedValueOnce({ text: 'Romance advice.' });
-
-    render(<WritingAssistantPanel scene={null} />);
-
-    // First ask — default preset (Epic Fantasy, tone=Serious)
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Tell me about the scene.' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(1));
-    const [, firstContext] = mockAgentWritingAssistant.mock.calls[0];
-    expect(firstContext).toContain('Genre: Fantasy');
-
-    // Switch to Modern Romance preset via the dropdown
-    fireEvent.click(
-      screen.getByRole('button', { name: /writing preset:.*click to change/i }),
-    );
-    const romanceItem = await screen.findByRole('option', { name: /modern romance/i });
-    fireEvent.click(romanceItem);
-
-    // Second ask — preset should now be Modern Romance
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'What next?' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(2));
-    const [, secondContext] = mockAgentWritingAssistant.mock.calls[1];
-    expect(secondContext).toContain('Genre: Romance');
-    expect(secondContext).toContain('Tone: Warm');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Refinement chips (AC-WA-16)
-// ---------------------------------------------------------------------------
-describe('WritingAssistantPanel — refinement chips (AC-WA-16)', () => {
-  beforeEach(() => {
-    // Clear sessionStorage so preset selection from prior tests doesn't bleed in
-    sessionStorage.clear();
-  });
-
-  it('refinement chips appear after a completed response', async () => {
-    mockAgentWritingAssistant.mockResolvedValueOnce({ text: 'Initial response.' });
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Write something.' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() =>
-      expect(screen.getByLabelText(/refinement options/i)).toBeInTheDocument(),
-    );
-    // At least the +warmer chip should be present
-    expect(screen.getByLabelText(/refine: warmer/i)).toBeInTheDocument();
-  });
-
-  it('AC-WA-16: clicking a refinement chip adjusts axes and fires a re-ask', async () => {
-    mockAgentWritingAssistant
-      .mockResolvedValueOnce({ text: 'Initial response.' })
-      .mockResolvedValueOnce({ text: 'Warmer response.' });
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Tell me about this scene.' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => screen.getByLabelText(/refine: warmer/i));
-    fireEvent.click(screen.getByLabelText(/refine: warmer/i));
-
-    // Re-ask is fired with the adjusted tone in the new context
-    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(2));
-    const [reAskPrompt, reAskContext] = mockAgentWritingAssistant.mock.calls[1];
-    // Re-uses same prompt text
-    expect(reAskPrompt).toBe('Tell me about this scene.');
-    // Default Epic Fantasy has tone=serious; +warmer shifts to balanced
-    expect(reAskContext).toContain('Tone: Balanced');
-  });
-
-  it('AC-WA-16: active chip is marked aria-pressed=true during the re-ask', async () => {
-    // Keep the re-ask pending so we can observe aria-pressed during streaming
-    mockAgentWritingAssistant
-      .mockResolvedValueOnce({ text: 'Response.' })
-      .mockImplementationOnce(() => new Promise<{ text: string }>(() => {}));
-
-    render(<WritingAssistantPanel scene={null} />);
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Anything.' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    await waitFor(() => screen.getByLabelText(/refine: warmer/i));
-    const warmerChip = screen.getByLabelText(/refine: warmer/i);
-    expect(warmerChip).toHaveAttribute('aria-pressed', 'false');
-
-    fireEvent.click(warmerChip);
-    // While the re-ask is streaming, the chip should be marked active
-    await waitFor(() => expect(mockAgentWritingAssistant).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(warmerChip).toHaveAttribute('aria-pressed', 'true'));
-  });
-});
-
-describe('WritingAssistantPanel — STT mic button (AC-WA-25)', () => {
-  it('AC-WA-25: mic button absent when voiceEnabled is not passed', () => {
-    render(<WritingAssistantPanel scene={null} />);
-    expect(screen.queryByRole('button', { name: /start voice input/i })).not.toBeInTheDocument();
-  });
-
-  it('AC-WA-25: mic button absent when voiceEnabled={false}', () => {
-    render(<WritingAssistantPanel scene={null} voiceEnabled={false} />);
-    expect(screen.queryByRole('button', { name: /start voice input/i })).not.toBeInTheDocument();
-  });
-
-  it('AC-WA-25: mic button present and aria-pressed=false when voiceEnabled={true}', () => {
-    render(<WritingAssistantPanel scene={null} voiceEnabled />);
-    const micBtn = screen.getByRole('button', { name: /start voice input/i });
-    expect(micBtn).toBeInTheDocument();
-    expect(micBtn).toHaveAttribute('aria-pressed', 'false');
-  });
-
-  it('SKY-3189: uses MediaRecorder path in packaged mode — SpeechRecognition is never used', async () => {
-    let webSpeechConstructed = false;
-    class MockRecognition {
-      constructor() { webSpeechConstructed = true; }
-      start() {}
-    }
-    class MockMR {
-      static isTypeSupported = vi.fn(() => false);
-      state: 'inactive' | 'recording' = 'inactive';
-      ondataavailable: ((e: { data: Blob }) => void) | null = null;
-      onstop: (() => void) | null = null;
-      start() { this.state = 'recording'; }
-      stop() {}
-    }
-    const mockGetUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [{ stop: vi.fn() }] });
-    Object.defineProperty(global.navigator, 'mediaDevices', {
-      value: { getUserMedia: mockGetUserMedia },
-      writable: true, configurable: true,
-    });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (global as any).MediaRecorder = MockMR;
-    (window as unknown as { SpeechRecognition: unknown }).SpeechRecognition = MockRecognition;
-    (window as unknown as { api: unknown }).api = makeApi({ isPackaged: true });
-    render(<WritingAssistantPanel scene={null} voiceEnabled />);
-    fireEvent.click(screen.getByRole('button', { name: /start voice input/i }));
-    await waitFor(() => expect(mockGetUserMedia).toHaveBeenCalled());
-    expect(webSpeechConstructed).toBe(false);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    delete (global as any).MediaRecorder;
-    delete (window as unknown as { SpeechRecognition?: unknown }).SpeechRecognition;
   });
 });
 
@@ -1355,203 +778,5 @@ describe('WritingAssistantPanel — per-category auto-apply (SKY-2979)', () => {
     render(<WritingAssistantPanel scene={null} autoApply autoApplyCategories={{}} />);
     const pill = screen.getByRole('button', { name: /auto-apply spelling/i });
     expect(() => fireEvent.click(pill)).not.toThrow();
-  });
-});
-
-// SKY-7076 (gh-960 gap): the local in-flight message buffer must never
-// survive a session switch — otherwise a still-generating (or failed)
-// exchange's bubbles visually follow the user into whatever session they
-// land on next, including a brand new one.
-describe('WritingAssistantPanel — session-switch isolation (SKY-7076)', () => {
-  function makeStore(overrides: Partial<UseAgentSessionsResult> = {}): UseAgentSessionsResult {
-    return {
-      sessions: [],
-      activeSession: null,
-      activeSessionId: 's1',
-      loading: false,
-      switchSession: vi.fn(),
-      newSession: vi.fn(),
-      renameSession: vi.fn(),
-      duplicateSession: vi.fn(),
-      deleteSession: vi.fn(),
-      appendTurns: vi.fn().mockResolvedValue(undefined),
-      refresh: vi.fn(),
-      ...overrides,
-    };
-  }
-
-  it('clears the local in-flight buffer when the active session changes', async () => {
-    let resolveReply!: (v: { text: string }) => void;
-    mockAgentWritingAssistant.mockReturnValueOnce(new Promise((r) => { resolveReply = r; }));
-
-    const store = makeStore({ activeSessionId: 's1' });
-    const { rerender } = render(
-      <WritingAssistantPanel scene={null} sessionStore={store} />,
-    );
-
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'How do I raise the stakes here?' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    // The optimistic user bubble renders immediately, before the agent reply
-    // resolves — this is the in-flight state a session switch must not leak.
-    expect(await screen.findByText('How do I raise the stakes here?')).toBeInTheDocument();
-
-    // Simulate the user switching sessions (e.g. via AgentSessionPicker)
-    // while the reply is still generating.
-    const nextStore = makeStore({ activeSessionId: 's2' });
-    rerender(<WritingAssistantPanel scene={null} sessionStore={nextStore} />);
-
-    await waitFor(() => {
-      expect(screen.queryByText('How do I raise the stakes here?')).not.toBeInTheDocument();
-    });
-
-    // Resolve the stale request afterward — it must not repopulate the
-    // buffer now that the session has moved on.
-    await act(async () => {
-      resolveReply({ text: 'Try cutting to the consequence first.' });
-      await Promise.resolve();
-    });
-    expect(screen.queryByText('Try cutting to the consequence first.')).not.toBeInTheDocument();
-  });
-
-  it('does not clear the buffer on re-render when the session stays the same', async () => {
-    // Kept in flight deliberately — the component clears the local buffer
-    // once the exchange completes and persists (by design, once it's in the
-    // store). This test isolates the re-render-only path, not completion.
-    mockAgentWritingAssistant.mockReturnValueOnce(new Promise(() => {}));
-
-    const store = makeStore({ activeSessionId: 's1' });
-    const { rerender } = render(
-      <WritingAssistantPanel scene={null} sessionStore={store} />,
-    );
-
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Keep this one' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-    expect(await screen.findByText('Keep this one')).toBeInTheDocument();
-
-    // Re-render with the SAME session id (e.g. an unrelated prop changing) —
-    // the in-flight bubble must survive.
-    rerender(<WritingAssistantPanel scene={null} sessionStore={{ ...store }} />);
-    expect(screen.getByText('Keep this one')).toBeInTheDocument();
-  });
-
-  it('pins the completed exchange to the session it was asked from, not the one on screen when it resolves', async () => {
-    let resolveReply!: (v: { text: string }) => void;
-    mockAgentWritingAssistant.mockReturnValueOnce(new Promise((r) => { resolveReply = r; }));
-
-    const appendTurns = vi.fn().mockResolvedValue(undefined);
-    const store = makeStore({ activeSessionId: 's1', appendTurns });
-    render(<WritingAssistantPanel scene={null} sessionStore={store} />);
-
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Pin me to s1' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-    await screen.findByText('Pin me to s1');
-
-    // The store's activeSessionId moves to s2 while the request is still in
-    // flight (module-singleton store — same object, mutated live).
-    store.activeSessionId = 's2';
-
-    await act(async () => {
-      resolveReply({ text: 'Reply for s1' });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(appendTurns).toHaveBeenCalledWith(
-      expect.anything(),
-      's1',
-    );
-  });
-});
-
-// SKY-7113: session-store isolation. `sessionStore` is the shared coach
-// session store (useAgentSessions); these tests drive the prop directly so
-// they can simulate a session switch mid-flight without depending on the
-// real vault IPC. AgentHubPanel.test.tsx covers the same behaviour through
-// the real hook + picker UI end to end.
-describe('WritingAssistantPanel — session store isolation (SKY-7113)', () => {
-  function makeSessionStore(
-    overrides: Partial<import('./lib/useAgentSessions').UseAgentSessionsResult> = {},
-  ): import('./lib/useAgentSessions').UseAgentSessionsResult {
-    return {
-      sessions: [],
-      activeSession: null,
-      activeSessionId: null,
-      loading: false,
-      switchSession: vi.fn(),
-      newSession: vi.fn(),
-      renameSession: vi.fn(),
-      duplicateSession: vi.fn(),
-      deleteSession: vi.fn(),
-      appendTurns: vi.fn().mockResolvedValue(undefined),
-      refresh: vi.fn(),
-      ...overrides,
-    };
-  }
-
-  it('hydrates the panel from a session that already has persisted turns', () => {
-    const store = makeSessionStore({
-      activeSessionId: 'session-a',
-      activeSession: {
-        id: 'session-a',
-        agent: 'coach',
-        title: 'Session A',
-        startedAt: '2026-01-01T00:00:00.000Z',
-        updatedAt: '2026-01-01T00:00:00.000Z',
-        turns: [
-          { role: 'user', text: 'Hi from A', at: '2026-01-01T00:00:00.000Z' },
-          { role: 'agent', text: 'Hello A', at: '2026-01-01T00:00:01.000Z' },
-        ],
-      },
-    });
-
-    render(<WritingAssistantPanel scene={null} sessionStore={store} />);
-
-    expect(screen.getByText('Hi from A')).toBeInTheDocument();
-    expect(screen.getByText('Hello A')).toBeInTheDocument();
-  });
-
-  it('clears the in-flight local buffer and drops a stale reply when the active session changes underneath it', async () => {
-    let resolveAsk!: (value: { text: string }) => void;
-    mockAgentWritingAssistant.mockReturnValueOnce(
-      new Promise((resolve) => { resolveAsk = resolve; }),
-    );
-
-    const appendTurnsA = vi.fn().mockResolvedValue(undefined);
-    const storeA = makeSessionStore({ activeSessionId: 'session-a', appendTurns: appendTurnsA });
-
-    const { rerender } = render(<WritingAssistantPanel scene={null} sessionStore={storeA} />);
-
-    fireEvent.change(screen.getByLabelText(/writing coach prompt/i), {
-      target: { value: 'Question for session A' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^ask$/i }));
-
-    // The optimistic user bubble + streaming placeholder render immediately.
-    expect(await screen.findByText('Question for session A')).toBeInTheDocument();
-
-    // User switches to a different session while the request is still in flight.
-    const appendTurnsB = vi.fn().mockResolvedValue(undefined);
-    const storeB = makeSessionStore({ activeSessionId: 'session-b', appendTurns: appendTurnsB });
-    rerender(<WritingAssistantPanel scene={null} sessionStore={storeB} />);
-
-    expect(screen.queryByText('Question for session A')).not.toBeInTheDocument();
-
-    // The stale response now resolves — it must not be persisted anywhere.
-    await act(async () => {
-      resolveAsk({ text: 'Late reply meant for session A' });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(screen.queryByText('Late reply meant for session A')).not.toBeInTheDocument();
-    expect(appendTurnsA).not.toHaveBeenCalled();
-    expect(appendTurnsB).not.toHaveBeenCalled();
   });
 });

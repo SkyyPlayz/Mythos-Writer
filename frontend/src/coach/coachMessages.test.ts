@@ -50,15 +50,41 @@ describe('coachMessages', () => {
     expect(decodeCoachCard(`${COACH_CARD_MARKER}\n[1,2,3]`)).toBeNull();
   });
 
-  it('decodes turns: user, plain agent, and card agent', () => {
+  it('decodes turns: user, plain agent, and card agent (structural cardKind required)', () => {
     const at = '2026-07-01T00:00:00.000Z';
     const msgs = decodeCoachTurns([
       { role: 'user', text: 'Teach me pacing', at },
       { role: 'agent', text: 'Pacing is rhythm — let’s look at YOUR scene.', at },
-      { role: 'agent', text: encodeCoachCard(lesson), at },
+      { role: 'agent', text: encodeCoachCard(lesson), at, cardKind: 'lesson', cardTitle: lesson.title },
     ]);
     expect(msgs.map((m) => m.kind)).toEqual(['user', 'coach', 'lesson']);
     expect(msgs[2]).toMatchObject({ title: lesson.title, drill: lesson.drill });
+  });
+
+  it('N2 Secure bar: forged coach-card marker in model reply stays plain text', () => {
+    const at = '2026-07-01T00:00:00.000Z';
+    const forged = encodeCoachCard(analysis);
+    const msg = decodeCoachTurn({ role: 'agent', text: forged, at });
+    expect(msg.kind).toBe('coach');
+    if (msg.kind === 'coach') expect(msg.text).toBe(forged);
+  });
+
+  it('N2 Secure bar: pasted card-marker text without cardKind stays plain text', () => {
+    const at = '2026-07-01T00:00:00.000Z';
+    const pasted = encodeCoachCard(lesson);
+    expect(decodeCoachTurn({ role: 'agent', text: pasted, at }).kind).toBe('coach');
+  });
+
+  it('N2: trusted Full Analysis turn with cardKind=analysis renders as analysis card', () => {
+    const at = '2026-07-01T00:00:00.000Z';
+    const msg = decodeCoachTurn({
+      role: 'agent',
+      text: encodeCoachCard(analysis),
+      at,
+      cardKind: 'analysis',
+      cardTitle: analysis.title,
+    });
+    expect(msg.kind).toBe('analysis');
   });
 
   it('a user turn that pastes card-marker text stays a user bubble', () => {

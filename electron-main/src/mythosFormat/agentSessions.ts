@@ -41,6 +41,12 @@ export interface SessionTurn {
   /** Present when this agent turn should render as a structured card. */
   cardTitle?: string;
   cardFoot?: string;
+  /**
+   * Structural card kind set only by trusted writers (Full Analysis / partner
+   * actions). Untrusted text that merely looks like an encoded card must NOT
+   * set this — MiniAgentChat renders cards only when cardKind is present.
+   */
+  cardKind?: 'analysis' | 'lesson' | 'action';
 }
 
 export interface AgentSessionFile {
@@ -91,9 +97,11 @@ export function serializeSessionFile(session: AgentSessionFile): string {
   const body: string[] = [`# ${session.title ?? `${session.agent} session`}`, ''];
   for (const turn of session.turns) {
     body.push(`<!-- mythos:turn ${turn.role} ${turn.at} -->`);
-    if (turn.cardTitle) {
-      const meta: Record<string, string> = { cardTitle: turn.cardTitle };
+    if (turn.cardTitle || turn.cardKind) {
+      const meta: Record<string, string> = {};
+      if (turn.cardTitle) meta.cardTitle = turn.cardTitle;
       if (turn.cardFoot) meta.cardFoot = turn.cardFoot;
+      if (turn.cardKind) meta.cardKind = turn.cardKind;
       body.push(`<!-- mythos:card-meta ${JSON.stringify(meta)} -->`);
     }
     body.push(turn.role === 'user' ? '**You:**' : '**Agent:**', '');
@@ -111,7 +119,14 @@ export function parseSessionFile(raw: string, relPath = ''): AgentSessionFile | 
   if (!id) return null;
   const turns: SessionTurn[] = [];
   const lines = prose.split('\n');
-  let current: { role: 'user' | 'agent'; at: string; buf: string[]; cardTitle?: string; cardFoot?: string } | null = null;
+  let current: {
+    role: 'user' | 'agent';
+    at: string;
+    buf: string[];
+    cardTitle?: string;
+    cardFoot?: string;
+    cardKind?: SessionTurn['cardKind'];
+  } | null = null;
   for (const line of lines) {
     const open = TURN_OPEN_RE.exec(line.trim());
     if (open) {
@@ -122,9 +137,16 @@ export function parseSessionFile(raw: string, relPath = ''): AgentSessionFile | 
       const cardMeta = CARD_META_RE.exec(line.trim());
       if (cardMeta) {
         try {
-          const parsed = JSON.parse(cardMeta[1]) as Record<string, string>;
+          const parsed = JSON.parse(cardMeta[1]) as Record<string, unknown>;
           if (typeof parsed.cardTitle === 'string') current.cardTitle = parsed.cardTitle;
           if (typeof parsed.cardFoot === 'string') current.cardFoot = parsed.cardFoot;
+          if (
+            parsed.cardKind === 'analysis' ||
+            parsed.cardKind === 'lesson' ||
+            parsed.cardKind === 'action'
+          ) {
+            current.cardKind = parsed.cardKind;
+          }
         } catch {
           // malformed card-meta line — ignore, degrade to plain bubble
         }
@@ -139,6 +161,7 @@ export function parseSessionFile(raw: string, relPath = ''): AgentSessionFile | 
         while (buf.length > 0 && buf[0].trim() === '') buf.shift();
         while (buf.length > 0 && buf[buf.length - 1].trim() === '') buf.pop();
         const turn: SessionTurn = { role: current.role, at: current.at, text: buf.join('\n') };
+        if (current.cardKind) turn.cardKind = current.cardKind;
         if (current.cardTitle) {
           turn.cardTitle = current.cardTitle;
           if (current.cardFoot) turn.cardFoot = current.cardFoot;

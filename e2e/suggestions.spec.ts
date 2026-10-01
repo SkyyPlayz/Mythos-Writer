@@ -46,6 +46,10 @@ function seedUserData(userData: string, vaultDir: string): void {
   const appSettings = {
     apiKey: '',
     onboardingComplete: true,
+    // F3#11 — inbox view-filter floor comes from Writing Partner confidence.
+    // Hesitant (0.5) keeps bulk/wiki seed rows visible; product default Confident
+    // (0.85) would hide the lower buckets and AC-EPIC-4's 0.82 wiki row.
+    writingPartner: { confidence: 'Hesitant' },
     agents: {
       writingAssistant: {
         enabled: false,
@@ -594,18 +598,8 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
     page = await openReviewWindow(app!, mainPage);
   }
 
-  async function setMinimumConfidence(value: number): Promise<void> {
-    await page.locator('input[aria-label="Minimum confidence"]').evaluate((el, nextValue) => {
-      const input = el as HTMLInputElement;
-      const valueSetter = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
-        'value',
-      )?.set;
-      valueSetter?.call(input, String(nextValue));
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-    }, value);
-  }
+  // F3#11 — confidence range filter removed from Audit Trail / Review Inbox
+  // (lives in Settings › Writing Partner). TC-S-07 no longer drives min slider.
 
   test.beforeAll(async () => {
     userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-sug-ui-'));
@@ -619,7 +613,8 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
     await page.evaluate(async () => {
       const api = (window as any).api;
       const agents = ['writing-assistant', 'brainstorm', 'archive'] as const;
-      const confidenceByBucket = [0.95, 0.86, 0.72, 0.61, 0.48];
+      // Lowest bucket must clear Hesitant (0.5) inbox floor from seedUserData.
+      const confidenceByBucket = [0.95, 0.86, 0.72, 0.61, 0.55];
       for (let i = 0; i < 105; i++) {
         const padded = String(i).padStart(3, '0');
         const agent = agents[i % agents.length];
@@ -682,7 +677,7 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
     expect(Date.now() - startedAt).toBeLessThan(2_000);
   });
 
-  test('TC-S-07: filters by agent, confidence range, and target-path search', async () => {
+  test('TC-S-07: filters by agent and target-path search', async () => {
     await openReviewTab();
 
     await page.getByRole('button', { name: /Writing Coach, \d+ pending/ }).click();
@@ -690,13 +685,10 @@ test.describe.serial('Suggestion Review comprehensive UI E2E (TC-S-06/07/08/09)'
     await expect(page.locator('.sr-row', { hasText: 'from brainstorm' }).first()).not.toBeVisible();
 
     await page.locator('.sr-filter-chips').getByRole('button', { name: /^All,/ }).click();
-    await setMinimumConfidence(90);
-    await expect(page.locator('.sr-row', { hasText: 'Bulk QA suggestion 001' })).not.toBeVisible({
-      timeout: 1_000,
-    });
-    await expect(page.locator('.sr-row', { hasText: 'Bulk QA suggestion 000' })).toBeVisible();
+    // F3#11 — confidence dual-range removed from Review Inbox.
+    await expect(page.locator('input[aria-label="Minimum confidence"]')).toHaveCount(0);
+    await expect(page.locator('input[aria-label="Maximum confidence"]')).toHaveCount(0);
 
-    await setMinimumConfidence(0);
     const searchInput = page.getByRole('searchbox', { name: /search suggestions/i });
     await searchInput.fill('target042');
     await expect(page.locator('.sr-row', { hasText: 'Bulk QA suggestion 042' })).toBeVisible({

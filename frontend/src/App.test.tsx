@@ -41,7 +41,7 @@ beforeEach(() => {
 });
 
 describe('App — onboarding gate (SKY-152)', () => {
-  it('shows wizard when onboardingComplete is false', async () => {
+  it('shows WelcomeOverlay when onboardingComplete is false', async () => {
     (window as any).api = makeMockApi({
       settingsGet: () => Promise.resolve({ onboardingComplete: false }),
       pickFolder: vi.fn().mockResolvedValue({ vaultRoot: null, cancelled: true, registrationToken: null }),
@@ -57,10 +57,14 @@ describe('App — onboarding gate (SKY-152)', () => {
       writeNotesVault: vi.fn(),
     });
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId('gs-overlay')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('welcome-overlay')).toBeInTheDocument());
+    // Shield residual: first-run never mounts DesktopShell.
+    expect(screen.queryByTestId('desktop-shell')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('app-shell-root')).not.toBeInTheDocument();
+    expect(screen.getByTestId('welcome-first-run')).toHaveAttribute('data-shell-mounted', 'false');
   });
 
-  it('shows Getting Started cards on first launch', async () => {
+  it('shows WelcomeOverlay path cards on first launch', async () => {
     (window as any).api = makeMockApi({
       settingsGet: () => Promise.resolve({ onboardingComplete: false }),
       pickFolder: vi.fn().mockResolvedValue({ vaultRoot: null, cancelled: true, registrationToken: null }),
@@ -76,7 +80,9 @@ describe('App — onboarding gate (SKY-152)', () => {
       writeNotesVault: vi.fn(),
     });
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId('screen-welcome')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('welcome-overlay')).toBeInTheDocument());
+    expect(screen.getByTestId('welcome-path-template')).toBeInTheDocument();
+    expect(screen.getByTestId('welcome-path-blank')).toBeInTheDocument();
   });
 
   it('bypasses wizard when onboardingComplete is true (existing vault)', async () => {
@@ -107,6 +113,29 @@ describe('App — onboarding gate (SKY-152)', () => {
     expect(screen.getByRole('button', { name: 'Re-run setup' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Open Settings' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Quit' })).toBeInTheDocument();
+  });
+
+  it('Re-run setup shows exactly one Welcome (no sessionStorage double-open)', async () => {
+    (window as any).api = makeMockApi({
+      vaultGetPaths: vi.fn().mockResolvedValue({
+        storyVaultPath: '/Volumes/Cloud/Mythos/Story Vault',
+        notesVaultPath: '/Volumes/Cloud/Mythos/Notes Vault',
+        vaultsParentPath: '/Volumes/Cloud/Mythos',
+        defaultVaultsParentPath: '/Volumes/Cloud/Mythos',
+      }),
+      validatePath: vi.fn().mockResolvedValue({ exists: false, isEmpty: true, writable: false }),
+      settingsSet: vi.fn().mockResolvedValue({}),
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Vault not found' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Re-run setup' }));
+
+    await waitFor(() => expect(screen.getByTestId('welcome-overlay')).toBeInTheDocument());
+    expect(screen.getAllByTestId('welcome-overlay')).toHaveLength(1);
+    expect(screen.getByTestId('welcome-first-run')).toBeInTheDocument();
+    expect(screen.queryByTestId('desktop-shell')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('app-shell-root')).not.toBeInTheDocument();
   });
 
   it('opens the shell when only the Notes vault is valid and shows the Story empty state', async () => {

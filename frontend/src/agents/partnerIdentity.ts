@@ -1,16 +1,52 @@
-// Slice B — unified Writing Partner identity.
-// One renameable partner face (default Mythos); three hands stay behind it.
-// Display name is stored on settings.agentNames.brainstorm (spine) until
-// Settings › Writing partner (Slice C) owns a dedicated key.
+// Slice F3 — unified Writing Partner identity.
+// One renameable partner face; action buttons (Update Timeline / Beta Read /
+// Writer Scan) replace the old Writer/Analyst/Archivist persona chips.
+// Display name is stored on settings.agentNames.brainstorm (spine).
 
 import type { NamedAgentId } from './agentIdentity';
 import { resolveAgentDisplayName } from './agentIdentity';
 
+/** Fallback when the user has not renamed the partner in Settings. */
 export const DEFAULT_PARTNER_DISPLAY_NAME = 'Mythos';
 
-/** Hands routed behind the single partner face (engines kept). */
+/**
+ * F3#1 — Shared session-store key for partner chat surfaces that hydrate the
+ * unified thread: Agent Hub, Timeline partner tab, Coach page, Beta chat.
+ *
+ * Send paths (do not quietly merge):
+ * - Hub / Timeline / Beta MiniAgentChat → `invokeBrainstorm` / `agentBrainstorm`
+ * - Coach page free-text → `agentWritingAssistant` (writingAssistant provider)
+ * - Full Analysis → `agentWritingAssistant`
+ * - Writer Scan / Beta Read actions → their own scan/report IPC
+ * - BrainstormPage board chat still uses `streamStart` (own path; session key shared)
+ *
+ * Float-out (`panelFloat('writing-assistant')`) reloads the partner thread via
+ * the Secure-bar `partner-thread:changed` broadcast (no payload) — each
+ * BrowserWindow keeps its own module singleton store and refreshes on that event.
+ */
+export const PARTNER_SESSION_AGENT = 'brainstorm' as const;
+
+/** Cached rename for pending-session greetings (updated when settings load). */
+let cachedPartnerDisplayName = DEFAULT_PARTNER_DISPLAY_NAME;
+
+/** Call when AppSettings load/change so new partner sessions greet with the rename. */
+export function setPartnerGreetingName(name: string | null | undefined): void {
+  const trimmed = name?.trim();
+  cachedPartnerDisplayName = trimmed || DEFAULT_PARTNER_DISPLAY_NAME;
+}
+
+/**
+ * Partner-facing greeting (Probe P2) — never "Brainstorm Agent / vault curator".
+ */
+export function buildPartnerGreeting(displayName?: string): string {
+  const name = (displayName?.trim() || cachedPartnerDisplayName || DEFAULT_PARTNER_DISPLAY_NAME).trim();
+  return `Hi! I'm ${name} — your writing partner. Ask about craft, timeline, or notes — or run Update Timeline, Beta Read, or Writer Scan from the actions above.`;
+}
+
+/** Hands still used for busy/status routing behind the single partner face. */
 export type PartnerHandId = 'writer' | 'analyst' | 'archivist';
 
+/** Engine metadata (Settings / Model Keys); not shown as persona chat chips. */
 export const PARTNER_HANDS: ReadonlyArray<{
   id: PartnerHandId;
   label: string;
@@ -42,9 +78,43 @@ export const PARTNER_HANDS: ReadonlyArray<{
   },
 ];
 
+/** F3#3 — action buttons that replace persona chips in the hub. */
+export type PartnerActionId = 'update-timeline' | 'beta-read' | 'writer-scan';
+
+export const PARTNER_ACTIONS: ReadonlyArray<{
+  id: PartnerActionId;
+  label: string;
+  /** Engine hand that runs the action. */
+  hand: PartnerHandId;
+  description: string;
+  color: string;
+}> = [
+  {
+    id: 'update-timeline',
+    label: 'Update Timeline',
+    hand: 'archivist',
+    description: 'Scan notes → add new timeline items; mark written as done.',
+    color: '#f5d76e',
+  },
+  {
+    id: 'beta-read',
+    label: 'Beta Read',
+    hand: 'analyst',
+    description: 'Run a beta read and show the report in this thread.',
+    color: '#8ad9ff',
+  },
+  {
+    id: 'writer-scan',
+    label: 'Writer Scan',
+    hand: 'writer',
+    description: 'Scan the active scene for craft notes in this thread.',
+    color: '#9b5fff',
+  },
+];
+
 /**
  * Resolve the Writing Partner display name.
- * Prefer an explicit brainstorm (spine) rename; otherwise Mythos.
+ * Prefer an explicit brainstorm (spine) rename; otherwise the default.
  */
 export function resolvePartnerDisplayName(
   agentNames?: Partial<Record<NamedAgentId, string>>,

@@ -13,6 +13,10 @@ import SuggestionReview from './SuggestionReview';
 import ProgressDashboard from './ProgressDashboard';
 import VaultGraphView from './VaultGraphView';
 import StoryTimeline from './StoryTimeline';
+import { PARTNER_SESSION_AGENT, resolvePartnerDisplayName, DEFAULT_PARTNER_DISPLAY_NAME } from './agents/partnerIdentity';
+import { useMiniAgentChat } from './timeline2/panel/useMiniAgentChat';
+import MiniAgentChat from './timeline2/panel/MiniAgentChat';
+import { invokeBrainstorm } from './timeline2/panel/BrainstormTab';
 import './FloatingPanelApp.css';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
@@ -37,6 +41,41 @@ interface FloatingPanelAppProps {
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
+
+// ── Partner float (F3#1 — shared brainstorm thread, tips-only WA strip) ─────
+// One partner avatar only: WA chrome suppressed; MiniAgentChat owns identity.
+
+function PartnerWritingFloat({ settings }: { settings: AppSettings | null }) {
+  const chat = useMiniAgentChat(PARTNER_SESSION_AGENT, invokeBrainstorm);
+  const partnerName = resolvePartnerDisplayName(settings?.agentNames) || DEFAULT_PARTNER_DISPLAY_NAME;
+  return (
+    <div className="fpa-partner-float" data-testid="fpa-partner-writing">
+      <WritingAssistantPanel
+        suppressPartnerChrome
+        scene={null}
+        enabled={settings?.agents?.writingAssistant?.enabled ?? true}
+        scanIntervalSeconds={settings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
+        waScanInterval={settings?.waScanInterval}
+        cadenceTrigger={settings?.agents?.writingAssistant?.cadenceTrigger}
+        idleHeartbeatConstantInterval={settings?.agents?.writingAssistant?.idleHeartbeatConstantInterval}
+        idleDebounceSeconds={settings?.agents?.writingAssistant?.idleDebounceSeconds}
+        isActive={true}
+        isPageFocused={true}
+        ttsSettings={settings?.tts}
+        voicePrefs={settings?.voice}
+        displayName={partnerName}
+      />
+      <MiniAgentChat
+        chat={chat}
+        accent="brainstorm"
+        partnerName={partnerName}
+        showIdentity
+        placeholder={`Message ${partnerName}…`}
+        testidPrefix="fpa-partner"
+      />
+    </div>
+  );
+}
 
 export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -254,21 +293,7 @@ export default function FloatingPanelApp({ panelId }: FloatingPanelAppProps) {
   const renderContent = () => {
     switch (panelId) {
       case 'writing-assistant':
-        return (
-          <WritingAssistantPanel
-            scene={null}
-            enabled={settings?.agents?.writingAssistant?.enabled ?? true}
-            scanIntervalSeconds={settings?.agents?.writingAssistant?.scanIntervalSeconds ?? 30}
-            waScanInterval={settings?.waScanInterval}
-            cadenceTrigger={settings?.agents?.writingAssistant?.cadenceTrigger}
-            idleHeartbeatConstantInterval={settings?.agents?.writingAssistant?.idleHeartbeatConstantInterval}
-            idleDebounceSeconds={settings?.agents?.writingAssistant?.idleDebounceSeconds}
-            isActive={true}
-            isPageFocused={true}
-            ttsSettings={settings?.tts}
-            voicePrefs={settings?.voice}
-          />
-        );
+        return <PartnerWritingFloat settings={settings} />;
       case 'archive-continuity':
         return (
           <ContinuityPanel

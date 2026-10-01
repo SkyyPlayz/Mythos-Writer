@@ -11,7 +11,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act, screen, fireEvent, waitFor } from '@testing-library/react';
 import FloatingPanelApp from './FloatingPanelApp';
 
-vi.mock('./WritingAssistantPanel', () => ({ default: () => <div data-testid="wa-panel" /> }));
+vi.mock('./WritingAssistantPanel', () => ({
+  default: ({ suppressPartnerChrome }: { suppressPartnerChrome?: boolean }) => (
+    <div data-testid="wa-panel" data-suppress-chrome={suppressPartnerChrome ? 'true' : undefined}>
+      {/* Float-out must suppress WA chrome so only MiniAgentChat owns partner-avatar. */}
+      {!suppressPartnerChrome && <span data-testid="partner-avatar">✦</span>}
+    </div>
+  ),
+}));
 vi.mock('./ContinuityPanel', () => ({ default: () => <div data-testid="cont-panel" /> }));
 vi.mock('./ScenePreviewPanel', () => ({ default: () => <div data-testid="sp-panel" /> }));
 // StoryNavigator intentionally not mocked — SKY-5154 tests need the real component
@@ -64,6 +71,15 @@ const baseManifest = {
 };
 
 function makeApi(overrides: Record<string, unknown> = {}) {
+  const session = {
+    id: 's1',
+    agent: 'brainstorm',
+    title: 'Chat',
+    turns: [] as unknown[],
+    startedAt: '2026-01-01T00:00:00.000Z',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
   return {
     settingsGet: () => Promise.resolve({ theme: 'dark', onboardingComplete: true }),
     readManifest: () => Promise.resolve(structuredClone(baseManifest)),
@@ -74,6 +90,18 @@ function makeApi(overrides: Record<string, unknown> = {}) {
     navigatorSelectScene: vi.fn().mockResolvedValue(undefined),
     navigatorReportManifest: vi.fn().mockResolvedValue(undefined),
     onPanelFloatPinChanged: vi.fn().mockReturnValue(() => {}),
+    agentBrainstorm: vi.fn().mockResolvedValue({ text: 'ok' }),
+    agentSessions: {
+      list: vi.fn().mockResolvedValue({
+        sessions: [{ id: 's1', agent: 'brainstorm', title: 'Chat', startedAt: session.startedAt, updatedAt: session.updatedAt, turnCount: 0, relPath: 'Sessions/x.md' }],
+      }),
+      read: vi.fn().mockResolvedValue({ session }),
+      create: vi.fn().mockResolvedValue({ session, relPath: 'Sessions/x.md' }),
+      appendTurns: vi.fn().mockResolvedValue({ session }),
+      rename: vi.fn().mockResolvedValue({ ok: true }),
+      duplicate: vi.fn().mockResolvedValue({ session }),
+      delete: vi.fn().mockResolvedValue({ ok: true }),
+    },
     ...overrides,
   };
 }
@@ -282,6 +310,15 @@ describe('FloatingPanelApp — vault-graph pop-out navigation (GH #650)', () => 
     await waitFor(() => expect(screen.getByTestId('vg-panel')).toBeInTheDocument());
 
     expect(vaultGraphMock.lastProps?.onOpenNote).toBeUndefined();
+  });
+});
+
+describe('FloatingPanelApp — partner float-out (F3#1 / F3#4)', () => {
+  it('shows exactly one partner-avatar (WA chrome suppressed)', async () => {
+    render(<FloatingPanelApp panelId="writing-assistant" />);
+    await waitFor(() => expect(screen.getByTestId('fpa-partner-writing')).toBeInTheDocument());
+    expect(screen.getByTestId('wa-panel')).toHaveAttribute('data-suppress-chrome', 'true');
+    expect(screen.getAllByTestId('partner-avatar')).toHaveLength(1);
   });
 });
 

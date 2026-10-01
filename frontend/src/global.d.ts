@@ -69,6 +69,12 @@ interface AgentSessionTurn {
   /** Present when the agent turn should render as a structured card. */
   cardTitle?: string;
   cardFoot?: string;
+  /**
+   * Structural card kind set only by trusted writers (Full Analysis / partner
+   * actions). Untrusted text that merely looks like an encoded card must NOT
+   * set this — renderers show cards only when cardKind is present.
+   */
+  cardKind?: 'analysis' | 'lesson' | 'action';
 }
 interface AgentSessionFile {
   id: string;
@@ -607,6 +613,8 @@ interface AppSettings {
     claudeCli?: 'none' | 'installing' | 'login' | 'ready';
     claudeCliMode?: 'app' | 'cli';
     telemetryLevel?: 'off' | 'crash' | 'usage';
+    /** F3#11 — Hesitant | Cautious | Balanced | Confident | Bold */
+    confidence?: 'Hesitant' | 'Cautious' | 'Balanced' | 'Confident' | 'Bold';
   };
   /** Dark-only (MYT-517). 'high-contrast' is the WCAG accessibility overlay,
    *  not a separate palette. Legacy 'light'/'system' values normalize to 'dark'. */
@@ -1874,6 +1882,12 @@ interface Window {
     onAiActivityUpdate: (cb: (entries: AiActivityEntry[]) => void) => () => void;
     onAiActivityTerminal: (cb: (event: AiActivityTerminalEvent) => void) => () => void;
     cancelAiActivity: (requestId: string) => void;
+
+    /**
+     * F3 Secure bar — subscribe-only to main→windows partner-thread:changed
+     * (no payload). Returns unsubscribe. Never exposes raw ipcRenderer.
+     */
+    onPartnerThreadChanged: (cb: () => void) => () => void;
 
     // Voice IO (MYT-205)
     voiceStart: (micDeviceId?: string) => Promise<unknown>;

@@ -223,17 +223,15 @@ test.describe('TC-PO-01: Getting Started panel', () => {
   });
 
   test('panel renders in the right sidebar after first launch', async () => {
-    await expect(page.locator('[data-testid="gs-panel"]')).toBeVisible({ timeout: 8_000 });
+    test.skip(true, 'F3#10: GettingStartedPanel deleted; WelcomeOverlay is the only first-run surface.');
   });
 
   test('panel shows 4 checklist items', async () => {
-    const items = page.locator('[data-testid^="gs-item-"]');
-    await expect(items).toHaveCount(4, { timeout: 6_000 });
+    test.skip(true, 'F3#10: GettingStartedPanel deleted.');
   });
 
   test('dismiss button (×) hides the panel', async () => {
-    await page.locator('[data-testid="gs-dismiss"]').click();
-    await expect(page.locator('[data-testid="gs-panel"]')).not.toBeVisible({ timeout: 4_000 });
+    test.skip(true, 'F3#10: GettingStartedPanel deleted.');
   });
 });
 

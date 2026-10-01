@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Scene, Story } from '../types';
 import type { NamedAgentId } from '../agents/agentIdentity';
-import { resolveAgentDisplayName } from '../agents/agentIdentity';
+import { resolvePartnerDisplayName } from '../agents/partnerIdentity';
 import AgentSessionPicker from '../components/AgentSessionPicker';
 import type { UnifiedSuggestion } from '../SuggestionDetailPane';
 import { useCoachConversation } from './useCoachConversation';
@@ -79,7 +79,7 @@ export default function CoachPage({ scene, story, currentChapterId, agentNames }
   const feedRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const displayName = resolveAgentDisplayName('writingAssistant', agentNames);
+  const displayName = resolvePartnerDisplayName(agentNames);
 
   const railSuggestions = useCoachRailSuggestions();
   const groups = useMemo(

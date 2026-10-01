@@ -90,6 +90,8 @@ function setApi(overrides: Record<string, unknown> = {}) {
     suggestionsIgnore: mockSuggestionsIgnore,
     suggestionsRollback: mockSuggestionsRollback,
     auditList: mockAuditList,
+    // Hesitant floor (0.50) keeps legacy suite fixtures visible; Confident is tested below.
+    settingsGet: vi.fn().mockResolvedValue({ writingPartner: { confidence: 'Hesitant' } }),
     ...overrides,
   };
 }
@@ -952,7 +954,7 @@ const toDbRow = (s: UnifiedSuggestion) => ({
   category: s.category,
 });
 
-describe('SuggestionReview — SLICE-2: confidence slider + keyword search (AC-S2)', () => {
+describe('SuggestionReview — SLICE-2: confidence floor + keyword search (AC-S2)', () => {
   const mockSuggestionsSearch = vi.fn();
 
   beforeEach(() => {
@@ -988,23 +990,41 @@ describe('SuggestionReview — SLICE-2: confidence slider + keyword search (AC-S
     setApi({ suggestionsSearch: mockSuggestionsSearch });
   });
 
-  it('AC-S2-1: min slider at 80% hides suggestions with confidence < 0.80', async () => {
+  it('AC-S2-1: default Confident floor hides suggestions below 0.85', async () => {
+    const { rerender } = render(<SuggestionReview confidenceMinPct={50} />);
+    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
+    expect(screen.getByText('Hero motivation needs clarification.')).toBeInTheDocument();
+
+    // Move Settings slider → Confident (0.85): inbox re-filters.
+    rerender(<SuggestionReview confidenceMinPct={85} />);
+    await waitFor(() => {
+      expect(screen.queryByText('Hero motivation needs clarification.')).not.toBeInTheDocument();
+    });
+    expect(screen.getByText('Pacing is slow in the opening.')).toBeInTheDocument();
+    expect(screen.getByText('Tower was destroyed in ch2 but appears in ch5.')).toBeInTheDocument();
+    expect(mockSuggestionsUnifiedList).toHaveBeenCalledWith(
+      expect.objectContaining({ confidenceMin: 0.85 }),
+    );
+  });
+
+  it('AC-S2-1b: settingsGet Confident filters inbox without prop override', async () => {
+    setApi({
+      settingsGet: vi.fn().mockResolvedValue({ writingPartner: { confidence: 'Confident' } }),
+      suggestionsSearch: mockSuggestionsSearch,
+    });
+    mockSuggestionsUnifiedList.mockImplementation(
+      async (opts: Record<string, unknown> = {}) => {
+        const confMin = (opts.confidenceMin as number) ?? 0;
+        const confMax = (opts.confidenceMax as number) ?? 1;
+        const filtered = mockUnifiedSuggestions.filter(
+          (s) => s.confidence >= confMin && s.confidence <= confMax,
+        );
+        return { items: filtered, totalCount: filtered.length, countByAgent: {}, countByKind: {} };
+      },
+    );
     render(<SuggestionReview />);
     await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
-
-    const minSlider = screen.getByRole('slider', { name: /minimum confidence/i });
-    fireEvent.change(minSlider, { target: { value: '80' } });
-
-    // sug-2 has confidence 0.70 — should disappear after the 200ms debounce
-    await waitFor(
-      () =>
-        expect(
-          screen.queryByText('Hero motivation needs clarification.'),
-        ).not.toBeInTheDocument(),
-      { timeout: 1000 },
-    );
-    // sug-1 (0.85) and sug-3 (0.92) remain
-    expect(screen.getByText('Pacing is slow in the opening.')).toBeInTheDocument();
+    expect(screen.queryByText('Hero motivation needs clarification.')).not.toBeInTheDocument();
     expect(screen.getByText('Tower was destroyed in ch2 but appears in ch5.')).toBeInTheDocument();
   });
 
@@ -1060,9 +1080,8 @@ describe('SuggestionReview — SLICE-2: confidence slider + keyword search (AC-S
     render(<SuggestionReview />);
     await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
 
-    // Set confidence to 99% — nothing has confidence >= 0.99
-    const minSlider = screen.getByRole('slider', { name: /minimum confidence/i });
-    fireEvent.change(minSlider, { target: { value: '99' } });
+    const searchInput = screen.getByRole('searchbox', { name: /search suggestions/i });
+    fireEvent.change(searchInput, { target: { value: 'zzzz-no-match' } });
 
     await waitFor(
       () =>
@@ -1071,62 +1090,23 @@ describe('SuggestionReview — SLICE-2: confidence slider + keyword search (AC-S
     );
   });
 
-  it('AC-S2-5: confidence + search active simultaneously narrow the list', async () => {
-    render(<SuggestionReview />);
+  it('AC-S2-5: confidence floor + search active simultaneously', async () => {
+    render(<SuggestionReview confidenceMinPct={80} />);
     await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
 
-    // Set min confidence to 80% (excludes sug-2 at 0.70)
-    const minSlider = screen.getByRole('slider', { name: /minimum confidence/i });
-    fireEvent.change(minSlider, { target: { value: '80' } });
-    await waitFor(
-      () =>
-        expect(
-          screen.queryByText('Hero motivation needs clarification.'),
-        ).not.toBeInTheDocument(),
-      { timeout: 1000 },
-    );
-
-    // Additionally search for "pacing" (should leave only sug-1 at 0.85)
     const searchInput = screen.getByRole('searchbox', { name: /search suggestions/i });
-    fireEvent.change(searchInput, { target: { value: 'pacing' } });
+    fireEvent.change(searchInput, { target: { value: 'tower' } });
 
+    // Tower was already visible at the 80% floor — wait until search removes Pacing.
     await waitFor(
-      () =>
-        expect(
-          screen.queryByText('Tower was destroyed in ch2 but appears in ch5.'),
-        ).not.toBeInTheDocument(),
+      () => {
+        expect(screen.getByText('Tower was destroyed in ch2 but appears in ch5.')).toBeInTheDocument();
+        expect(screen.queryByText('Pacing is slow in the opening.')).not.toBeInTheDocument();
+      },
       { timeout: 1000 },
     );
-    expect(screen.getByText('Pacing is slow in the opening.')).toBeInTheDocument();
-    // Verify suggestionsSearch received confidence params too
     expect(mockSuggestionsSearch).toHaveBeenCalledWith(
-      expect.objectContaining({ query: 'pacing', confidenceMin: 0.8 }),
+      expect.objectContaining({ query: 'tower', confidenceMin: 0.8 }),
     );
-  });
-
-  it('AC-S2-6: both slider handles are keyboard-accessible with correct ARIA attributes', async () => {
-    render(<SuggestionReview />);
-    await waitFor(() => screen.getByText('Pacing is slow in the opening.'));
-
-    const minSlider = screen.getByRole('slider', { name: /minimum confidence/i });
-    const maxSlider = screen.getByRole('slider', { name: /maximum confidence/i });
-
-    // Both handles exist and are focusable (not tabIndex=-1)
-    expect(minSlider).toBeInTheDocument();
-    expect(maxSlider).toBeInTheDocument();
-    expect(minSlider).not.toHaveAttribute('tabIndex', '-1');
-    expect(maxSlider).not.toHaveAttribute('tabIndex', '-1');
-
-    // Both have correct ARIA range attributes
-    expect(minSlider).toHaveAttribute('aria-valuemin', '0');
-    expect(minSlider).toHaveAttribute('aria-valuemax', '100');
-    expect(minSlider).toHaveAttribute('aria-valuenow', '0');
-    expect(maxSlider).toHaveAttribute('aria-valuemin', '0');
-    expect(maxSlider).toHaveAttribute('aria-valuemax', '100');
-    expect(maxSlider).toHaveAttribute('aria-valuenow', '100');
-
-    // Arrow key (right) on min slider advances its value by 1
-    fireEvent.change(minSlider, { target: { value: '10' } });
-    await waitFor(() => expect(minSlider).toHaveAttribute('aria-valuenow', '10'));
   });
 });

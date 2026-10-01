@@ -1,12 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { useAgentActivity } from './agents/agentActivity';
-import { prefersReducedMotion } from './lib/reducedMotion';
 import './WritingAssistantPanel.css';
-import type { UseAgentSessionsResult } from './lib/useAgentSessions';
-import { decodeCoachTurns, collapseCoachMessage } from './coach/coachMessages';
-import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
-import { SuggestionCard } from './SuggestionCard';
 import type { Scene } from './types';
 import { useLiveAnnounce } from './hooks/useLiveAnnounce';
 import { useWritingScheduler } from './hooks/useWritingScheduler';
@@ -16,62 +11,17 @@ import { useTtsPlayer, type TtsEngineSettings } from './hooks/useTtsPlayer';
 import PresetSelector from './components/PresetSelector';
 import PresetEditor from './components/PresetEditor';
 import PresetBrowser from './components/PresetBrowser';
-import RefinementChips from './components/RefinementChips';
 import QualityRubric from './components/QualityRubric';
 import {
-  getEffectiveAxes,
-  buildPresetContext,
   loadSessionPreset,
   saveSessionPreset,
-  DEFAULT_PRESET_ID,
 } from './presets';
-import type { PresetAxes, RefinementChip } from './presets';
+import type { PresetAxes } from './presets';
 import { useAiEnabled } from './hooks/useAiEnabled';
 
+/** Retained for e2e / MiniAgentChat parity callers that still import from this module. */
 export const STALL_WARNING_MS = 20_000;
 export const HARD_TIMEOUT_MS = 90_000;
-
-/**
- * E2E-only override for the two timers above. e2e/writing-assistant.spec.ts
- * (TC-WA-11) sets `window.__MYTHOS_E2E_TIMERS__` via `page.evaluate()` before
- * triggering a stall so CI can reach a real stall/hard-timeout without a real
- * 20-90s wait. Nothing outside that spec ever sets this global, so production
- * and every other test always see the real constants.
- */
-function getEffectiveTimerMs(constant: number, key: 'stallWarningMs' | 'hardTimeoutMs'): number {
-  const override = (window as unknown as { __MYTHOS_E2E_TIMERS__?: Partial<Record<string, number>> })
-    .__MYTHOS_E2E_TIMERS__?.[key];
-  return typeof override === 'number' && override > 0 ? override : constant;
-}
-
-const WA_MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
-  idle: 'Start voice input',
-  listening: 'Stop voice input',
-  processing: 'Processing speech…',
-  error: 'Voice error — click to retry',
-};
-
-interface WritingAssistantSuggestion {
-  id: string;
-  source_agent: 'writing-assistant';
-  text: string;
-  confidence: number;
-  rationale: string;
-  timestamp: string;
-  status: 'proposed' | 'accepted' | 'rejected';
-  decidedAt?: string;
-}
-
-interface Message {
-  role: 'user' | 'assistant';
-  text: string;
-  streaming?: boolean;
-  suggestion?: WritingAssistantSuggestion;
-  /** M12: lesson/analysis cards collapse to `title — text` in the mini (panel) view. */
-  mini?: { title: string; text: string };
-  /** M12: session-turn timestamp for store-derived messages (decoration key). */
-  turnAt?: string;
-}
 
 const SUGGESTION_CATEGORY_ORDER: SuggestionCategory[] = [
   'punctuation', 'spelling', 'grammar', 'sentence-structure', 'style-tone', 'other',
@@ -101,31 +51,32 @@ interface Props {
   waScanInterval?: number | 'on-save' | 'manual';
   isActive?: boolean;
   isPageFocused?: boolean;
-  /** AC-WA-25: show STT microphone button in input area only when true. Off by default. */
+  /** @deprecated Composer removed (N4-A); retained so callers compile until cleaned. */
   voiceEnabled?: boolean;
   /** G2: TTS engine config. When absent or unconfigured, OS speechSynthesis is used as default. */
   ttsSettings?: TtsEngineSettings;
-  /** Part G: user voice prefs (volume/rate/voiceId/persistentMute + mic/language). Field names match VoiceSettings — pass appSettings.voice straight through. */
+  /** Part G: user voice prefs (volume/rate/voiceId/persistentMute + mic/language). */
   voicePrefs?: import('./hooks/useTtsPlayer').TtsVoicePrefs & { micDeviceId?: string; inputLanguage?: string };
   cadenceTrigger?: 'on_save' | 'idle_heartbeat';
   idleHeartbeatConstantInterval?: boolean;
   idleDebounceSeconds?: number;
   autoApply?: boolean;
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
+  // dead-wiring-ignore: optional parent sync; AgentHub no longer hosts WA chat (F3 unified agent).
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   /** Beta 3 M22: renameable agent display name (settings.agentNames.writingAssistant). */
   displayName?: string;
   /**
-   * Beta 4 M12 (§5.2/§5.6): the SHARED `coach` session store. When present, the
-   * chat feed renders the persisted conversation (one store shared with the
-   * Coach page) and completed exchanges are appended to it. Lesson/analysis
-   * card messages collapse to `title — text` in this mini view.
+   * AC-WA-20 narrow collapse (&lt;280px → icon). Hub tips strip (N4-A) must stay
+   * expanded — a zero/late ResizeObserver tick otherwise latches the icon forever.
+   * Default true for standalone / float-out.
    */
-  sessionStore?: UseAgentSessionsResult;
-  /** SKY-7076: fires whenever a coach reply is in flight, so a parent hosting
-   *  the session picker (e.g. AgentHubPanel) can disable session switching for
-   *  the duration — pinning already keeps data correct even if this is missed. */
-  onBusyChange?: (busy: boolean) => void;
+  allowNarrowCollapse?: boolean;
+  /**
+   * F3#4 — when embedded under PartnerCallChrome, hide the ✦ + name header so
+   * only one partner avatar/name shows on the surface.
+   */
+  suppressPartnerChrome?: boolean;
 }
 
 const CADENCE_OPTIONS = [
@@ -181,7 +132,6 @@ export default function WritingAssistantPanel({
   scanIntervalSeconds = 60,
   waScanInterval,
   isActive = true,
-  voiceEnabled = false,
   ttsSettings,
   voicePrefs,
   cadenceTrigger,
@@ -191,22 +141,13 @@ export default function WritingAssistantPanel({
   autoApplyCategories,
   onAutoApplyCategoriesChange,
   displayName = 'Writing Coach',
-  sessionStore,
-  onBusyChange,
+  allowNarrowCollapse = true,
+  suppressPartnerChrome = false,
 }: Props) {
   const aiMasterOn = useAiEnabled();
-  const [prompt, setPrompt] = useState('');
-  const [messages, setMessages] = useState<Message[]>([]);
-  // M12: suggestion-card decorations for store-derived messages, keyed by the
-  // agent turn's timestamp. Exchanges sent from THIS panel keep their cards.
-  const [turnSuggestions, setTurnSuggestions] = useState<Record<string, WritingAssistantSuggestion>>({});
-  const [loading, setLoading] = useState(false);
-  const [stalled, setStalled] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [showRubric, setShowRubric] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [showBrowser, setShowBrowser] = useState(false);
-  const [activeRefinementId, setActiveRefinementId] = useState<string | null>(null);
   const [cadence, setCadence] = useState<CadenceValue>(() => toCadenceValue(waScanInterval ?? scanIntervalSeconds));
   const [cadenceTouched, setCadenceTouched] = useState(false);
   const [suppressedTipKeys, setSuppressedTipKeys] = useState<Set<string>>(() => new Set());
@@ -221,80 +162,8 @@ export default function WritingAssistantPanel({
     () => loadSessionPreset().overrides,
   );
 
-  const effectiveAxes = useMemo(
-    () => getEffectiveAxes(presetId, presetOverrides),
-    [presetId, presetOverrides],
-  );
-
-  const unsubscribeRef = useRef<(() => void) | null>(null);
-  const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const requestIdRef = useRef(0);
-  const lastPromptRef = useRef('');
   const { announce, liveText } = useLiveAnnounce();
-
   const tts = useTtsPlayer(ttsSettings, voicePrefs);
-
-
-
-  // ── M12: ONE conversation store shared with the Coach page (§5.2/§5.6) ────
-  // Persisted turns render first; the local `messages` buffer only carries the
-  // in-flight exchange (it is flushed into the store on completion). Lesson &
-  // analysis cards collapse to `title — text` in this mini view.
-  const storeTurns = sessionStore?.activeSession?.turns;
-  const storeMessages = useMemo<Message[]>(() => {
-    if (!storeTurns) return [];
-    return decodeCoachTurns(storeTurns).map((m, idx): Message => {
-      if (m.kind === 'user') return { role: 'user', text: m.text, turnAt: m.at };
-      if (m.kind === 'coach') {
-        // SKY-10092: turn 0 is always the session's auto-greeting when one
-        // exists — a coach turn can never legitimately open a session, since
-        // the user always speaks first for any real exchange. The greeting's
-        // `at` is stamped independently (electron-main's session-create
-        // handler), so at millisecond resolution it can coincidentally equal
-        // a real suggestion's timestamp and wrongly decorate the greeting
-        // bubble with that suggestion's card/Hear button. Never look one up
-        // for turn 0.
-        const suggestion = idx === 0 ? undefined : turnSuggestions[m.at];
-        return { role: 'assistant', text: m.text, turnAt: m.at, suggestion };
-      }
-      const text = m.kind === 'lesson' ? m.text : m.takeaway;
-      return {
-        role: 'assistant',
-        text: collapseCoachMessage(m),
-        mini: { title: m.title, text },
-        turnAt: m.at,
-      };
-    });
-  }, [storeTurns, turnSuggestions]);
-
-  // SKY-10092: the local buffer is cleared only after `sessionStore.appendTurns`
-  // resolves (see handleSubmit), and that's an awaited async call — so there's a
-  // render window where `storeTurns` has already picked up an exchange but the
-  // local copy hasn't been cleared yet. Both share the same turnAt once stamped
-  // (see handleSubmit), so drop any local message already represented in the
-  // store to avoid rendering — and double-counting cards for — the same turn.
-  const storeTurnAts = new Set(storeMessages.map((m) => m.turnAt).filter(Boolean));
-  const localOnlyMessages = sessionStore
-    ? messages.filter((m) => !m.turnAt || !storeTurnAts.has(m.turnAt))
-    : messages;
-  const renderedMessages = sessionStore ? [...storeMessages, ...localOnlyMessages] : messages;
-
-  // SKY-7076: the local buffer only ever holds THIS session's in-flight
-  // exchange. Without this, a failed/still-generating exchange's bubbles
-  // (and their turnSuggestions decorations) would visually follow the user
-  // into whatever session they switch to next ("+ New chat" included).
-  const activeSessionIdForReset = sessionStore?.activeSessionId ?? null;
-  useEffect(() => {
-    setMessages([]);
-    setTurnSuggestions({});
-  }, [activeSessionIdForReset]);
-
-  // SKY-7076: let a parent hosting the session picker (AgentHubPanel) disable
-  // session switching while a reply is generating.
-  useEffect(() => {
-    onBusyChange?.(loading);
-  }, [loading, onBusyChange]);
 
   const initialScanIntervalSeconds = typeof waScanInterval === 'number' ? waScanInterval : scanIntervalSeconds;
   const effectiveScanIntervalSeconds = !cadenceTouched || cadence === 'on-save' || cadence === 'manual'
@@ -313,9 +182,8 @@ export default function WritingAssistantPanel({
     idleDebounceSeconds,
   });
 
-  // Beta 3 M22: chat streaming, beta-read scans and writing scans all light
-  // the workspace tab strip's agents chip while running.
-  useAgentActivity(loading || scanning);
+  // Beta 3 M22: writing scans light the workspace tab strip's agents chip.
+  useAgentActivity(scanning);
 
   useEffect(() => {
     window.api.writingAssistantSetActiveScene?.({
@@ -341,54 +209,25 @@ export default function WritingAssistantPanel({
     return normalized.filter((tip) => !suppressedTipKeys.has(tipSuppressKey(tip, scene)));
   }, [scheduledResult, scene, suppressedTipKeys]);
 
-  const clearStreamResources = useCallback(() => {
-    unsubscribeRef.current?.();
-    unsubscribeRef.current = null;
-    if (stallTimerRef.current) {
-      clearTimeout(stallTimerRef.current);
-      stallTimerRef.current = null;
+  // Collapse when panel root width < 280px (AC-WA-20). Skip when hub tips
+  // strip embeds the panel expanded (N4-A). Ignore width 0 so a pre-layout
+  // tick cannot latch the icon-only root (which then measures ~40px forever).
+  useEffect(() => {
+    if (!allowNarrowCollapse) {
+      setCollapsed(false);
+      return;
     }
-    if (hardTimerRef.current) {
-      clearTimeout(hardTimerRef.current);
-      hardTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      clearStreamResources();
-    };
-  }, [clearStreamResources]);
-
-  // SKY-7113: switching the active Coach session (or starting a new chat)
-  // must not leak this panel's in-flight local buffer into the newly active
-  // session's view, and a reply that was still streaming for the PREVIOUS
-  // session must never be flushed onto the session the user switched to.
-  // Bumping requestIdRef aborts any in-flight `ask()` at its next await point
-  // (see the `requestIdRef.current !== requestId` guards below), so a stale
-  // response is dropped instead of being persisted to the wrong session.
-  useEffect(() => {
-    requestIdRef.current += 1;
-    clearStreamResources();
-    setMessages([]);
-    setTurnSuggestions({});
-    setLoading(false);
-    setStalled(false);
-    setError(null);
-  }, [sessionStore?.activeSessionId, clearStreamResources]);
-
-  // Collapse when panel root width < 280px (AC-WA-20)
-  useEffect(() => {
     if (typeof ResizeObserver === 'undefined') return;
     const el = panelRootRef.current;
     if (!el) return;
     const obs = new ResizeObserver((entries) => {
       const width = entries[0]?.contentRect.width ?? el.offsetWidth;
+      if (width <= 0) return;
       setCollapsed(width < 280);
     });
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [allowNarrowCollapse]);
 
   // Escape key closes overlay (AC-WA-22)
   useEffect(() => {
@@ -400,251 +239,29 @@ export default function WritingAssistantPanel({
     return () => document.removeEventListener('keydown', handler);
   }, [overlayOpen]);
 
-  const removePendingAssistantBubble = (prev: Message[]) => {
-    const updated = [...prev];
-    const last = updated[updated.length - 1];
-    if (last?.role === 'assistant' && last.streaming) {
-      updated.pop();
-    }
-    return updated;
-  };
-
-  const scheduleStallTimers = useCallback((requestId: number) => {
-    if (stallTimerRef.current) clearTimeout(stallTimerRef.current);
-    if (hardTimerRef.current) clearTimeout(hardTimerRef.current);
-
-    stallTimerRef.current = setTimeout(() => {
-      if (requestIdRef.current !== requestId) return;
-      setStalled(true);
-      announce('Generation is taking longer than expected. You can retry or cancel.');
-    }, getEffectiveTimerMs(STALL_WARNING_MS, 'stallWarningMs'));
-
-    hardTimerRef.current = setTimeout(() => {
-      if (requestIdRef.current !== requestId) return;
-      requestIdRef.current += 1;
-      clearStreamResources();
-      setMessages((prev) => removePendingAssistantBubble(prev));
-      setLoading(false);
-      setStalled(false);
-      const timeoutMessage = 'Generation timed out. The network or provider may be slow — please retry.';
-      setError(timeoutMessage);
-      announce(timeoutMessage);
-    }, getEffectiveTimerMs(HARD_TIMEOUT_MS, 'hardTimeoutMs'));
-  }, [announce, clearStreamResources]);
-
-  const cancelGeneration = useCallback(() => {
-    if (!loading) return;
-    requestIdRef.current += 1;
-    clearStreamResources();
-    setMessages((prev) => removePendingAssistantBubble(prev));
-    setLoading(false);
-    setStalled(false);
-    const msg = 'Generation cancelled. You can retry now.';
-    setError(msg);
-    announce(msg);
-  }, [announce, clearStreamResources, loading]);
-
-  const ask = useCallback(async (overridePrompt?: string, overrideAxes?: PresetAxes) => {
-    const trimmed = (overridePrompt ?? prompt).trim();
-    if (!trimmed || loading) return;
-
-    requestIdRef.current += 1;
-    const requestId = requestIdRef.current;
-    lastPromptRef.current = trimmed;
-    const userAt = new Date().toISOString();
-    // SKY-7076: pin this exchange to whatever session is active RIGHT NOW —
-    // if the user switches away before the reply resolves, it must still be
-    // written to the session it was asked from, not wherever they land.
-    const originSessionId = sessionStore?.activeSessionId ?? undefined;
-
-    setLoading(true);
-    setStalled(false);
-    setError(null);
-    // Don't clear the active refinement chip for refinement re-asks — keep it highlighted during streaming
-    if (!overridePrompt) setActiveRefinementId(null);
-    if (!overridePrompt) setPrompt('');
-    announce('Generating response…');
-
-    // SKY-10092: stamp the eventual turn timestamp on the local bubble now
-    // (not just once the store flush resolves) so renderedMessages can dedupe
-    // local vs. store-derived copies of the same exchange by turnAt below —
-    // otherwise the async gap between appending the suggestion locally and
-    // `sessionStore.appendTurns` resolving lets both render at once, e.g.
-    // producing a phantom extra .wa-hear-btn (TC-WA-24).
-    const userMsg: Message = { role: 'user', text: trimmed, turnAt: userAt };
-    const assistantMsg: Message = { role: 'assistant', text: '', streaming: true };
-
-    setMessages((prev) => {
-      const base = overridePrompt ? removePendingAssistantBubble(prev) : prev;
-      return [...base, userMsg, assistantMsg];
-    });
-
-    const styleGuide = buildPresetContext(overrideAxes ?? effectiveAxes);
-    const sceneText = scene
-      ? `Scene: "${scene.title}"\n\n${scene.blocks.map((b) => b.content).join('\n\n')}`
-      : undefined;
-    const context = [styleGuide, sceneText].filter(Boolean).join('\n\n') || undefined;
-
-    // Subscribe to streaming chunks before invoking
-    clearStreamResources();
-    unsubscribeRef.current = window.api.onWritingAssistantChunk((chunk) => {
-      if (requestIdRef.current !== requestId) return;
-      // Reset stall timers on each received token
-      setStalled(false);
-      scheduleStallTimers(requestId);
-      setMessages((prev) => {
-        const updated = [...prev];
-        const last = updated[updated.length - 1];
-        if (last?.role === 'assistant' && last.streaming) {
-          updated[updated.length - 1] = { ...last, text: last.text + chunk };
-        }
-        return updated;
-      });
-    });
-    scheduleStallTimers(requestId);
-
-    try {
-      const response = await window.api.agentWritingAssistant(trimmed, context);
-      if (requestIdRef.current !== requestId) return;
-
-      const suggestion: WritingAssistantSuggestion = {
-        id: `wa-${Date.now()}`,
-        source_agent: 'writing-assistant',
-        text: response.text,
-        confidence: 0.85,
-        rationale: 'User-requested writing advice',
-        timestamp: new Date().toISOString(),
-        status: 'proposed',
-      };
-
-      setMessages((prev) => {
-        const updated = [...prev];
-        const last = updated[updated.length - 1];
-        if (last?.role === 'assistant') {
-          updated[updated.length - 1] = {
-            ...last, text: response.text, streaming: false, suggestion, turnAt: suggestion.timestamp,
-          };
-        }
-        return updated;
-      });
-      announce('Response ready.');
-
-      // M12: flush the completed exchange into the shared coach session store
-      // (one conversation with the Coach page). The suggestion-card decoration
-      // stays attached to the persisted agent turn via its timestamp.
-      if (sessionStore) {
-        try {
-          setTurnSuggestions((prev) => ({ ...prev, [suggestion.timestamp]: suggestion }));
-          await sessionStore.appendTurns([
-            { role: 'user', text: trimmed, at: userAt },
-            { role: 'agent', text: response.text, at: suggestion.timestamp },
-          ], originSessionId);
-          if (requestIdRef.current === requestId) setMessages([]);
-        } catch {
-          // Vault unavailable — keep the local bubbles as a fallback.
-        }
-      }
-    } catch (err) {
-      if (requestIdRef.current !== requestId) return;
-      const msg = err instanceof Error ? err.message : String(err);
-      setMessages((prev) => prev.slice(0, -1)); // remove the empty assistant bubble
-      const errorMsg = msg || 'AI unavailable — check your API key in settings.';
-      setError(errorMsg);
-      announce(`Error: ${errorMsg}`);
-    } finally {
-      if (requestIdRef.current === requestId) {
-        clearStreamResources();
-        setLoading(false);
-        setStalled(false);
-      }
-    }
-  }, [announce, clearStreamResources, effectiveAxes, loading, prompt, scene, scheduleStallTimers, sessionStore]);
-
-  const retryGeneration = useCallback(() => {
-    const retryPrompt = lastPromptRef.current;
-    if (!retryPrompt) return;
-    requestIdRef.current += 1;
-    clearStreamResources();
-    setStalled(false);
-    setLoading(false);
-    ask(retryPrompt);
-  }, [ask, clearStreamResources]);
-
-  // §3: retry after a failed request (as opposed to a stall) — the failed
-  // prompt's user bubble is already in the feed (never rolled back), so drop
-  // it here before re-asking so `ask()` doesn't render it twice.
-  const retryFailedMessage = useCallback(() => {
-    const retryPrompt = lastPromptRef.current;
-    if (!retryPrompt) return;
-    setMessages((prev) => {
-      const last = prev[prev.length - 1];
-      return last?.role === 'user' && last.text === retryPrompt ? prev.slice(0, -1) : prev;
-    });
-    ask(retryPrompt);
-  }, [ask]);
-
-  const handleRefine = useCallback((chip: RefinementChip) => {
-    const adjusted = chip.adjustAxes(effectiveAxes);
-    const newOverrides = { ...presetOverrides, ...adjusted };
-    const newAxes = getEffectiveAxes(presetId, newOverrides);
-    setPresetOverrides(newOverrides);
-    saveSessionPreset(presetId, newOverrides);
-    setActiveRefinementId(chip.id);
-    const lastUserMsg = lastPromptRef.current;
-    if (lastUserMsg) {
-      // Pass freshly computed axes directly — state update is async so ask's
-      // closure would otherwise see the stale effectiveAxes value
-      ask(lastUserMsg, newAxes);
-    }
-  }, [ask, effectiveAxes, presetId, presetOverrides]);
-
   const handlePresetSelect = useCallback((id: string) => {
     setPresetId(id);
     setPresetOverrides({});
     saveSessionPreset(id, {});
   }, []);
 
-  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      ask();
-    }
-  };
-
-  const applySuggestionStatus = (id: string, status: 'accepted' | 'rejected') => {
-    const decidedAt = new Date().toISOString();
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.suggestion?.id === id
-          ? { ...m, suggestion: { ...m.suggestion, status, decidedAt } }
-          : m,
-      ),
-    );
-    // M12: store-derived messages carry their card via turnSuggestions.
-    setTurnSuggestions((prev) => {
-      const entry = Object.entries(prev).find(([, s]) => s.id === id);
-      if (!entry) return prev;
-      return { ...prev, [entry[0]]: { ...entry[1], status, decidedAt } };
-    });
-  };
-
   const handleCadenceChange = useCallback(async (value: CadenceValue) => {
     setCadence(value);
     setCadenceTouched(true);
-    const waScanInterval = value === 'on-save' || value === 'manual' ? value : Number(value);
+    const nextInterval = value === 'on-save' || value === 'manual' ? value : Number(value);
     try {
-      await window.api.writingAssistantCadenceChange({ waScanInterval });
+      await window.api.writingAssistantCadenceChange({ waScanInterval: nextInterval });
       announce('Writing Coach cadence updated.');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg || 'Could not update Writing Coach cadence.');
+      announce(msg || 'Could not update Writing Coach cadence.');
     }
   }, [announce]);
 
   const handleScanNow = useCallback(async () => {
-    setError(null);
+    if (!scene) return;
     await runScan(true);
-  }, [runScan]);
+  }, [runScan, scene]);
 
   const handleCategoryToggle = useCallback((category: SuggestionCategory) => {
     const existing = autoApplyCategories ?? {};
@@ -683,9 +300,9 @@ export default function WritingAssistantPanel({
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      setError(msg || 'Could not save tip decision.');
+      announce(msg || 'Could not save tip decision.');
     }
-  }, [scene, visibleTips]);
+  }, [announce, scene, visibleTips]);
 
   const dismissAllTips = useCallback(() => {
     setSuppressedTipKeys((prev) => {
@@ -695,34 +312,33 @@ export default function WritingAssistantPanel({
     });
   }, [scene, visibleTips]);
 
-  // ── AC-WA-25: STT voice input (single-shot via voice:transcribe IPC) ────────
-  const waVoiceTranscriptRef = useRef<(text: string) => void>(() => { /* filled after announce */ });
-  const waVoiceErrorRef = useRef<(msg: string) => void>(() => { /* filled after announce */ });
-  const { state: waVoiceState, start: startWaVoiceDictation, stop: stopWaVoiceDictation } =
-    useVoiceDictation({
-      onTranscript: useCallback((text: string) => { waVoiceTranscriptRef.current(text); }, []),
-      onError: useCallback((msg: string) => { waVoiceErrorRef.current(msg); }, []),
-      micDeviceId: voicePrefs?.micDeviceId,
-      inputLanguage: voicePrefs?.inputLanguage,
-    });
-  // Wire refs now that announce and setPrompt are in scope.
-  waVoiceTranscriptRef.current = (text: string) => {
-    setPrompt((prev) => (prev ? `${prev} ${text}` : text));
-    announce(`Transcribed: ${text}`);
-  };
-  waVoiceErrorRef.current = (msg: string) => {
-    announce(`Voice error: ${msg}`);
-  };
-
-  const handleWaMicToggle = useCallback(() => {
-    if (waVoiceState === 'idle') void startWaVoiceDictation();
-    else if (waVoiceState === 'listening') stopWaVoiceDictation();
-    else if (waVoiceState === 'error') void startWaVoiceDictation();
-    // processing: ignore clicks
-  }, [waVoiceState, startWaVoiceDictation, stopWaVoiceDictation]);
-  // ──────────────────────────────────────────────────────────────────────────
-
-  const messagesRef = useRef<HTMLDivElement>(null);
+  const cadenceMuteControls = (
+    <span className="wa-header-controls" onClick={(e) => e.stopPropagation()}>
+      <label className="wa-cadence-label">
+        <span className="wa-cadence-text">Cadence</span>
+        <span className="wa-cadence-icon" aria-hidden="true">⏱</span>
+        <select
+          className="wa-cadence-select"
+          aria-label="Heartbeat cadence"
+          value={cadence}
+          onChange={(event) => void handleCadenceChange(event.target.value as CadenceValue)}
+        >
+          {CADENCE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </label>
+      {/* AC-V-06: session mute toggle */}
+      <button
+        className={`wa-mute-btn${tts.sessionMuted ? ' wa-mute-btn--muted' : ''}`}
+        onClick={() => tts.toggleMute(announce)}
+        aria-label={tts.sessionMuted ? 'Unmute voice playback' : 'Mute voice playback'}
+        aria-pressed={tts.sessionMuted}
+      >
+        {tts.sessionMuted ? 'Unmute' : 'Mute'}
+      </button>
+    </span>
+  );
 
   if (!enabled) {
     return (
@@ -731,20 +347,6 @@ export default function WritingAssistantPanel({
       </div>
     );
   }
-
-  const handleMessagesKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-    const container = messagesRef.current;
-    if (!container) return;
-    const cards = Array.from(container.querySelectorAll<HTMLElement>('.wa-suggestion-card'));
-    if (cards.length === 0) return;
-    const focused = document.activeElement as HTMLElement;
-    const idx = cards.indexOf(focused);
-    if (idx === -1) return;
-    e.preventDefault();
-    const next = e.key === 'ArrowDown' ? cards[idx + 1] : cards[idx - 1];
-    next?.focus();
-  };
 
   const pendingCount = visibleTips.length;
 
@@ -795,44 +397,24 @@ export default function WritingAssistantPanel({
         {liveText}
       </span>
 
-      {/* AC-WA-1/2/3: Liquid Neon panel header */}
-      <PanelHeader
-        className="wa-panel-header"
-        icon={<span className="wa-sparkle-icon" aria-hidden="true">✦</span>}
-        title={
-          <>
-            {displayName}
-            {scene && <span className="wa-header-context"> — context: <em>{scene.title}</em></span>}
-          </>
-        }
-        actions={
-          <span className="wa-header-controls" onClick={(e) => e.stopPropagation()}>
-            <label className="wa-cadence-label">
-              <span className="wa-cadence-text">Cadence</span>
-              <span className="wa-cadence-icon" aria-hidden="true">⏱</span>
-              <select
-                className="wa-cadence-select"
-                aria-label="Heartbeat cadence"
-                value={cadence}
-                onChange={(event) => void handleCadenceChange(event.target.value as CadenceValue)}
-              >
-                {CADENCE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            {/* AC-V-06: session mute toggle */}
-            <button
-              className={`wa-mute-btn${tts.sessionMuted ? ' wa-mute-btn--muted' : ''}`}
-              onClick={() => tts.toggleMute(announce)}
-              aria-label={tts.sessionMuted ? 'Unmute voice playback' : 'Mute voice playback'}
-              aria-pressed={tts.sessionMuted}
-            >
-              {tts.sessionMuted ? 'Unmute' : 'Mute'}
-            </button>
-          </span>
-        }
-      />
+      {/* Cadence + mute always available. F3#4: under PartnerCallChrome, hide ✦/name only. */}
+      {suppressPartnerChrome ? (
+        <div className="wa-panel-controls" data-testid="wa-panel-controls">
+          {cadenceMuteControls}
+        </div>
+      ) : (
+        <PanelHeader
+          className="wa-panel-header"
+          icon={<span className="wa-sparkle-icon" aria-hidden="true">✦</span>}
+          title={
+            <>
+              {displayName}
+              {scene && <span className="wa-header-context"> — context: <em>{scene.title}</em></span>}
+            </>
+          }
+          actions={cadenceMuteControls}
+        />
+      )}
 
       {/* AC-WA-16/17/18/19: Dedicated heartbeat status bar */}
       <div
@@ -913,6 +495,7 @@ export default function WritingAssistantPanel({
           <button
             type="button"
             className="wa-scan-now"
+            data-testid="wa-scan-now"
             onClick={() => void handleScanNow()}
             disabled={!scene || scanning}
             aria-label="Scan now"
@@ -939,7 +522,7 @@ export default function WritingAssistantPanel({
               type="button"
               className="wa-scan-now"
               onClick={() => void handleScanNow()}
-              disabled={scanning}
+              disabled={!scene || scanning}
               aria-label="Retry scan"
             >
               Retry
@@ -950,6 +533,12 @@ export default function WritingAssistantPanel({
           {visibleTips.length === 0 && !scheduledScanError ? (
             scanning ? (
               <p className="wa-heartbeat-empty">Scanning this scene for quick writing tips…</p>
+            ) : !scene ? (
+              <div className="wa-empty-state wa-heartbeat-empty" role="note">
+                <span className="wa-empty-icon" aria-hidden="true">✨</span>
+                <p className="wa-empty-heading">Open a scene to scan</p>
+                <p className="wa-empty-subtext">Heartbeat tips need an active scene.</p>
+              </div>
             ) : (
               <div className="wa-empty-state wa-heartbeat-empty" role="note">
                 <span className="wa-empty-icon" aria-hidden="true">✨</span>
@@ -970,23 +559,41 @@ export default function WritingAssistantPanel({
               </div>
             )
           ) : (
-            visibleTips.map((tip) => (
-              <div key={tipSuppressKey(tip, scene)} className="wa-heartbeat-tip">
-                <TipCard
-                  tip={tip}
-                  onNote={(tipId) => void applyTipDecision(tipId, 'noted')}
-                  onIgnore={(tipId) => void applyTipDecision(tipId, 'ignored')}
-                  onReport={setReportConfirmTipId}
-                />
-                {reportConfirmTipId === tip.id && (
-                  <div className="tc-report-confirm" role="alert">
-                    <span>Report this tip?</span>
-                    <button type="button" onClick={() => void applyTipDecision(tip.id, 'reported')}>Report</button>
-                    <button type="button" onClick={() => setReportConfirmTipId(null)}>Cancel</button>
-                  </div>
-                )}
-              </div>
-            ))
+            visibleTips.map((tip) => {
+              const isPlaying = tts.playingCardId === tip.id;
+              return (
+                <div key={tipSuppressKey(tip, scene)} className="wa-heartbeat-tip">
+                  <TipCard
+                    tip={tip}
+                    onNote={(tipId) => void applyTipDecision(tipId, 'noted')}
+                    onIgnore={(tipId) => void applyTipDecision(tipId, 'ignored')}
+                    onReport={setReportConfirmTipId}
+                  />
+                  <button
+                    type="button"
+                    className={`wa-hear-btn${isPlaying ? ' wa-hear-btn--playing' : ''}`}
+                    onClick={() => {
+                      if (isPlaying) {
+                        tts.cancelCurrent(announce);
+                      } else {
+                        tts.speakCard(tip.text, tip.id, announce);
+                      }
+                    }}
+                    aria-label={isPlaying ? 'Stop voice playback' : 'Hear suggestion aloud'}
+                    aria-pressed={isPlaying}
+                  >
+                    {isPlaying ? '■ Stop' : '▶ Hear'}
+                  </button>
+                  {reportConfirmTipId === tip.id && (
+                    <div className="tc-report-confirm" role="alert">
+                      <span>Report this tip?</span>
+                      <button type="button" onClick={() => void applyTipDecision(tip.id, 'reported')}>Report</button>
+                      <button type="button" onClick={() => setReportConfirmTipId(null)}>Cancel</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
         {visibleTips.length >= 2 && (
@@ -994,197 +601,6 @@ export default function WritingAssistantPanel({
             Dismiss all ({visibleTips.length})
           </button>
         )}
-      </div>
-
-      <div
-        className="writing-assistant-messages"
-        role="list"
-        ref={messagesRef}
-        onKeyDown={handleMessagesKeyDown}
-      >
-        {renderedMessages.map((msg, i) => (
-          <div
-            key={msg.turnAt ?? `local-${i}`}
-            className={`wa-message wa-message-${msg.role}`}
-            role="listitem"
-          >
-            {msg.role === 'user' ? (
-              <div className="wa-user-bubble">{msg.text}</div>
-            ) : msg.mini ? (
-              /* M12 (§5.6): lesson/analysis cards collapse to `title — text` in the mini view */
-              <div className="wa-assistant-bubble wa-lesson-mini" data-testid="wa-lesson-mini">
-                <span className="wa-lesson-mini-title">{msg.mini.title}</span>
-                {' — '}
-                <span className="wa-lesson-mini-text">{msg.mini.text}</span>
-              </div>
-            ) : msg.streaming && msg.text === '' ? (
-              /* §2: typing-dots the instant the request goes out — before the
-                 first chunk lands there's nothing to show but "still working". */
-              <div className="wa-assistant-bubble wa-typing" data-testid="wa-typing" aria-label="Writing coach is responding">
-                {prefersReducedMotion() ? (
-                  <span className="wa-typing-label">Thinking&hellip;</span>
-                ) : (
-                  <>
-                    <span className="wa-typing-dot" />
-                    <span className="wa-typing-dot wa-typing-dot--d2" />
-                    <span className="wa-typing-dot wa-typing-dot--d3" />
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="wa-assistant-bubble">
-                <div
-                  className={`wa-assistant-text${msg.streaming ? ' wa-streaming' : ''}`}
-                  aria-label="Writing coach response"
-                >
-                  {msg.text}
-                  {msg.streaming && <span className="wa-cursor" aria-hidden="true">&#x258c;</span>}
-                </div>
-                {!msg.streaming && msg.suggestion && (
-                  <>
-                    <SuggestionCard
-                      suggestion={msg.suggestion}
-                      onApply={(id) => applySuggestionStatus(id, 'accepted')}
-                      onReject={(id) => applySuggestionStatus(id, 'rejected')}
-                    />
-                    {/* AC-V-07: per-card TTS button; one card plays at a time */}
-                    {msg.suggestion.status === 'proposed' && (() => {
-                      const sid = msg.suggestion!.id;
-                      const isPlaying = tts.playingCardId === sid;
-                      return (
-                        <button
-                          className={`wa-hear-btn${isPlaying ? ' wa-hear-btn--playing' : ''}`}
-                          onClick={() => {
-                            if (isPlaying) {
-                              tts.cancelCurrent(announce);
-                            } else {
-                              tts.speakCard(msg.text, sid, announce);
-                            }
-                          }}
-                          aria-label={isPlaying ? 'Stop voice playback' : 'Hear suggestion aloud'}
-                          aria-pressed={isPlaying}
-                        >
-                          {isPlaying ? '■ Stop' : '▶ Hear'}
-                        </button>
-                      );
-                    })()}
-                    {msg.suggestion.status === 'proposed' && (
-                      <RefinementChips
-                        effectiveAxes={effectiveAxes}
-                        onRefine={handleRefine}
-                        disabled={loading}
-                        activeChipId={activeRefinementId}
-                      />
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-
-      </div>
-
-      {renderedMessages.length === 0 && !error && presetId === DEFAULT_PRESET_ID && (
-        <div className="writing-assistant-empty wa-first-visit-tip" role="note" aria-label="Genre preset tip">
-          <span className="wa-tip-icon" aria-hidden="true">💡</span>
-          <span className="wa-tip-body">
-            <strong>Tip:</strong> Choose a genre preset to shape how suggestions sound.{' '}
-            E.g., &ldquo;Epic Fantasy&rdquo; favors morally complex scenarios.{' '}
-          </span>
-          <button
-            className="wa-tip-browse-btn"
-            onClick={() => setShowBrowser(true)}
-            type="button"
-          >
-            Show Presets
-          </button>
-        </div>
-      )}
-      {renderedMessages.length === 0 && !error && presetId !== DEFAULT_PRESET_ID && (
-        <div className="writing-assistant-empty">
-          Ask for writing advice — pacing, voice, clarity, what to try next.
-        </div>
-      )}
-
-      {stalled && loading && (
-        <div className="wa-stall-panel" role="status" aria-label="Generation stalled">
-          <p className="wa-stall-message">
-            This is taking longer than expected. The network or AI provider may be slow.
-          </p>
-          <div className="wa-stall-actions">
-            <button
-              className="wa-btn wa-btn-retry"
-              onClick={retryGeneration}
-              aria-label="Retry generation"
-            >
-              Retry
-            </button>
-            <button
-              className="wa-btn wa-btn-cancel"
-              onClick={cancelGeneration}
-              aria-label="Cancel generation"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {error && (
-        <div className="writing-assistant-error" role="alert">
-          <span className="wa-error-icon" aria-hidden="true">⚠</span>
-          <span className="wa-error-text">{error}</span>
-          <button type="button" className="wa-error-retry-btn" onClick={retryFailedMessage}>
-            Retry
-          </button>
-        </div>
-      )}
-
-      <div className="writing-assistant-input-area">
-        <textarea
-          className="writing-assistant-input"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          onKeyDown={handleKey}
-          placeholder="How can I make this scene more tense?"
-          rows={3}
-          disabled={loading}
-          aria-label="Writing coach prompt"
-        />
-        <div className="wa-input-actions">
-          {/* AC-WA-25: microphone button — only shown when voice is enabled in Settings */}
-          {voiceEnabled && (
-            <button
-              type="button"
-              className={`wa-mic-btn wa-mic-btn--${waVoiceState}`}
-              onClick={handleWaMicToggle}
-              aria-label={WA_MIC_ARIA_LABELS[waVoiceState]}
-              aria-pressed={waVoiceState !== 'idle'}
-              disabled={waVoiceState === 'processing'}
-            >
-              🎤
-            </button>
-          )}
-          {loading ? (
-            <button
-              className="writing-assistant-btn wa-btn-cancel-inline"
-              onClick={cancelGeneration}
-              aria-label="Cancel generation"
-            >
-              Cancel
-            </button>
-          ) : (
-            <button
-              className="writing-assistant-btn"
-              onClick={() => ask()}
-              disabled={!prompt.trim()}
-              aria-label="Ask"
-            >
-              Ask
-            </button>
-          )}
-        </div>
       </div>
 
       {showEditor && (
