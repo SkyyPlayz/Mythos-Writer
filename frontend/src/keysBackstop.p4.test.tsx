@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import MythosVaultsSection from './components/SettingsPanel/sections/MythosVaultsSection';
 import { resetLiquidNeonV2Tokens } from './theme/liquidNeonEngine';
+import { __resetSettingsWriteSerialForTests } from './settingsWriteSerial';
 
 const VAULT_A = '/vaults/Alpha/Story Vault';
 const VAULT_B = '/vaults/Beta/Story Vault';
@@ -22,8 +23,18 @@ const mockProjectStats = vi.fn();
 const mockProjectNameSet = vi.fn();
 const mockVaultSurfaceListHidden = vi.fn();
 
+const diskSettings = {
+  apiKey: DISK_MASK,
+  provider: { kind: 'anthropic', model: 'x', apiKey: DISK_MASK },
+  agents: {},
+  theme: 'dark',
+  vaultThemes: {},
+  vaultDisplayNames: {},
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
+  __resetSettingsWriteSerialForTests();
   mockProjectList.mockResolvedValue({
     projects: [
       { vaultRoot: VAULT_A, mythosVaultRoot: '/vaults/Alpha', notesVaultRoot: '/vaults/Alpha/Notes Vault', name: 'Alpha', openedAt: '' },
@@ -34,14 +45,7 @@ beforeEach(() => {
   mockProjectStats.mockResolvedValue({ stats: [] });
   mockVaultSurfaceListHidden.mockResolvedValue({ hiddenVaultRoots: [] });
   mockProjectNameSet.mockResolvedValue({ ok: true, name: 'Renamed' });
-  mockSettingsGet.mockResolvedValue({
-    apiKey: DISK_MASK,
-    provider: { kind: 'anthropic', model: 'x', apiKey: DISK_MASK },
-    agents: {},
-    theme: 'dark',
-    vaultThemes: {},
-    vaultDisplayNames: {},
-  });
+  mockSettingsGet.mockResolvedValue({ ...diskSettings, provider: { ...diskSettings.provider } });
   mockSettingsSet.mockResolvedValue({ saved: true });
   Object.defineProperty(window, 'api', {
     value: {
@@ -62,6 +66,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetLiquidNeonV2Tokens();
+  __resetSettingsWriteSerialForTests();
 });
 
 describe('P4 — MythosVaultsSection fresh-get write chain', () => {
@@ -90,6 +95,11 @@ describe('P4 — MythosVaultsSection fresh-get write chain', () => {
     expect(payload.provider?.apiKey).toBe(DISK_MASK);
     expect(payload.apiKey).not.toBe(STALE_PANEL_MASK);
     expect(payload.vaultThemes?.[VAULT_B]).toBe('ice');
+    // Exact: disk object + only the edited vaultThemes field.
+    expect(payload).toEqual({
+      ...diskSettings,
+      vaultThemes: { [VAULT_B]: 'ice' },
+    });
     // Disk raw never appears — only the masked get result.
     expect(JSON.stringify(payload)).not.toContain(DISK_KEY);
   });
@@ -119,5 +129,10 @@ describe('P4 — MythosVaultsSection fresh-get write chain', () => {
     expect(payload.apiKey).toBe(DISK_MASK);
     expect(payload.provider?.apiKey).toBe(DISK_MASK);
     expect(payload.vaultDisplayNames?.[VAULT_A]).toBe('Renamed Alpha');
+    // Exact: disk object + only the edited vaultDisplayNames field.
+    expect(payload).toEqual({
+      ...diskSettings,
+      vaultDisplayNames: { [VAULT_A]: 'Renamed Alpha' },
+    });
   });
 });

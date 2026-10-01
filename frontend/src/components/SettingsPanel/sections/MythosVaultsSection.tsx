@@ -30,6 +30,7 @@ import { VaultIconEditMenu } from '../../ui/VaultIconEditMenu';
 import VaultOverflowMenu from './VaultOverflowMenu';
 import Dialog, { DialogBody, DialogFooter, DialogHeader } from '../../ui/Dialog';
 import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
+import { enqueueSettingsWrite } from '../../../settingsWriteSerial';
 
 interface VaultEntry {
   vaultRoot: string;
@@ -111,9 +112,6 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   // `mythosVaultRoot` (SKY-11882: resolved by main, not guessed here).
   const [hiddenPaths, setHiddenPaths] = useState<string[]>([]);
   const [showHidden, setShowHidden] = useState(false);
-  // Serialize theme/rename persists: round-trip settingsGet → settingsSet so
-  // panel-held masked key previews never overwrite disk (AiMasterSection pattern).
-  const persistChain = useRef<Promise<void>>(Promise.resolve());
 
   const refreshVaults = useCallback(() => {
     window.api?.projectList?.()
@@ -205,8 +203,9 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   /** Prototype themeChange (7112–7120): store the vault's default; when it is
    *  the CURRENT vault, also apply it live. Persisted immediately so a vault
    *  switch applies the stored default without needing a panel Save first.
-   *  Write chain uses a fresh settingsGet() so mount-time masked key previews
-   *  in panel state cannot clobber disk keys. */
+   *  Shared enqueueSettingsWrite + fresh settingsGet() so mount-time masked
+   *  key previews in panel state cannot clobber disk keys, and vault writes
+   *  cannot interleave with Settings flush get/set. */
   const onThemeChange = useCallback((v: VaultEntry, key: string) => {
     const preset = LIQUID_NEON_PRESETS[key as LiquidNeonPresetKey];
     if (!preset) return;
@@ -218,25 +217,24 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
           wp: 'match',
         }
       : null;
+    if (ln) applyLiquidNeonV2Tokens(ln, cosmicBgUrl);
     setSettings((prev) => {
       const vaultThemes = { ...(prev.vaultThemes ?? {}), [v.vaultRoot]: key };
       let next: AppSettings = { ...prev, vaultThemes };
-      if (ln) {
-        next = { ...next, liquidNeonV2: ln };
-        applyLiquidNeonV2Tokens(ln, cosmicBgUrl);
-      }
+      if (ln) next = { ...next, liquidNeonV2: ln };
       return next;
     });
     setSavedOk(false);
-    const run = persistChain.current.then(async () => {
+    // Same shared chain as SettingsPanel flush + create-flow C7 — never nest
+    // enqueue inside an enqueued op; get/set stay back-to-back in this op.
+    enqueueSettingsWrite(async () => {
       const stored = await window.api?.settingsGet?.();
       if (!stored) return;
       const vaultThemes = { ...(stored.vaultThemes ?? {}), [v.vaultRoot]: key };
       let payload: AppSettings = { ...stored, vaultThemes };
       if (ln) payload = { ...payload, liquidNeonV2: ln };
       await window.api?.settingsSet?.(payload);
-    });
-    persistChain.current = run.catch(() => undefined);
+    }).catch(() => undefined);
     showLnToast(deriveVaultDisplayName(v) + ' default theme — ' + preset.name);
   }, [settings.liquidNeonV2, activeRoot, setSettings, setSavedOk]);
 
@@ -453,7 +451,8 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
    *  (displayNameFor above still prefers it, so the UI updates immediately
    *  and legacy v0.4 vaults — which can't hold mythos.json — still rename).
    *  Empty submissions are ignored (revert to the previous name, no write).
-   *  Persist via fresh settingsGet() so panel-held masked keys never overwrite disk. */
+   *  Persist via shared enqueueSettingsWrite + fresh settingsGet() so panel-held
+   *  masked keys never overwrite disk and writes cannot interleave with flush. */
   const commitRename = useCallback((v: VaultEntry) => {
     const trimmed = renameValue.trim();
     setRenameFor(null);
@@ -463,13 +462,12 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
       vaultDisplayNames: { ...(prev.vaultDisplayNames ?? {}), [v.vaultRoot]: trimmed },
     }));
     setSavedOk(false);
-    const run = persistChain.current.then(async () => {
+    enqueueSettingsWrite(async () => {
       const stored = await window.api?.settingsGet?.();
       if (!stored) return;
       const vaultDisplayNames = { ...(stored.vaultDisplayNames ?? {}), [v.vaultRoot]: trimmed };
       await window.api?.settingsSet?.({ ...stored, vaultDisplayNames });
-    });
-    persistChain.current = run.catch(() => undefined);
+    }).catch(() => undefined);
     window.api?.projectNameSet?.({ vaultRoot: v.vaultRoot, name: trimmed })
       .catch(() => { /* non-fatal — the settings-cache write above still renders the new name */ });
   }, [renameValue, setSettings, setSavedOk]);
