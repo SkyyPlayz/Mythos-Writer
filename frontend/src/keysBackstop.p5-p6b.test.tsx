@@ -1,11 +1,16 @@
 /**
  * P5 — paste masked preview into Model & keys → inline error; field not dirty.
  * P6b — keyReentryPaths for provider.apiKey → missing + re-enter line.
+ * S6 — same paste + re-enter coverage for legacy apiKey, ProviderSection, and
+ *       per-agent AgentProviderSection inputs (voice/STT/TTS have no key inputs).
  */
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import ModelKeysSection from './partner/ModelKeysSection';
+import ApiKeySection from './components/SettingsPanel/sections/ApiKeySection';
+import AgentProviderSection from './components/SettingsPanel/AgentProviderSection';
 import { MASKED_API_KEY_PREVIEW_MESSAGE } from './lib/maskedApiKeyPreview';
+import { DEFAULT_AGENT_OVERRIDE } from './components/SettingsPanel/settingsPanelTypes';
 
 function baseSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
@@ -93,5 +98,89 @@ describe('P6b — keyReentryPaths shows re-enter line', () => {
     expect(screen.getByTestId('mk-api-key-reentry')).toHaveTextContent('Please re-enter your key.');
     expect(screen.getByTestId('mk-api-key-missing')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('mk-api-key-reentry')).toBeInTheDocument());
+  });
+});
+
+describe('S6 — legacy apiKey field group', () => {
+  it('apiKey in keyReentryPaths → Please re-enter your key (S3 legacy line)', () => {
+    const setApiKeyInput = vi.fn();
+    const setApiKeyDirty = vi.fn();
+    const setSavedOk = vi.fn();
+    render(
+      <ApiKeySection
+        providerKind="anthropic"
+        apiKeyInput=""
+        setApiKeyInput={setApiKeyInput}
+        apiKeyDirty={false}
+        setApiKeyDirty={setApiKeyDirty}
+        showApiKey={false}
+        setShowApiKey={vi.fn()}
+        keyIsConfigured={false}
+        apiKeyError={null}
+        setSavedOk={setSavedOk}
+        keyReentryPaths={['apiKey']}
+      />,
+    );
+    expect(screen.getByTestId('legacy-api-key-reentry')).toHaveTextContent('Please re-enter your key.');
+  });
+
+  it('paste mask into legacy apiKey → inline error; field not dirty', () => {
+    const setApiKeyInput = vi.fn();
+    const setApiKeyDirty = vi.fn();
+    const setSavedOk = vi.fn();
+    render(
+      <ApiKeySection
+        providerKind="anthropic"
+        apiKeyInput=""
+        setApiKeyInput={setApiKeyInput}
+        apiKeyDirty={false}
+        setApiKeyDirty={setApiKeyDirty}
+        showApiKey={false}
+        setShowApiKey={vi.fn()}
+        keyIsConfigured={false}
+        apiKeyError={null}
+        setSavedOk={setSavedOk}
+      />,
+    );
+    fireEvent.change(document.getElementById('api-key-input') as HTMLInputElement, {
+      target: { value: 'sk-ant-...ABCD' },
+    });
+    expect(screen.getByTestId('legacy-api-key-mask-error')).toHaveTextContent(MASKED_API_KEY_PREVIEW_MESSAGE);
+    expect(setApiKeyInput).not.toHaveBeenCalled();
+    expect(setApiKeyDirty).not.toHaveBeenCalled();
+    expect(setSavedOk).not.toHaveBeenCalled();
+  });
+});
+
+describe('S6 — per-agent key field group', () => {
+  it('agents.writingAssistant.provider.apiKey flagged → re-enter line; paste mask refused', () => {
+    const onChange = vi.fn();
+    const override = {
+      ...DEFAULT_AGENT_OVERRIDE,
+      enabled: true,
+      kind: 'anthropic' as const,
+      apiKey: '',
+      apiKeyDirty: false,
+    };
+    render(
+      <AgentProviderSection
+        agentName="writingAssistant"
+        idPrefix="wa"
+        globalProviderKind="anthropic"
+        override={override}
+        savedApiKey=""
+        testStatus="idle"
+        testMsg=""
+        onChange={onChange}
+        onTest={vi.fn()}
+        keyReentryPaths={['agents.writingAssistant.provider.apiKey']}
+      />,
+    );
+    expect(screen.getByTestId('wa-api-key-reentry')).toHaveTextContent('Please re-enter your key.');
+    fireEvent.change(screen.getByLabelText('API key for writingAssistant'), {
+      target: { value: 'sk-ant-...WXYZ' },
+    });
+    expect(screen.getByTestId('wa-api-key-mask-error')).toHaveTextContent(MASKED_API_KEY_PREVIEW_MESSAGE);
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

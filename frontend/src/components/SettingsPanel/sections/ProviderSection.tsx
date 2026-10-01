@@ -8,6 +8,10 @@ import {
   type TestConnectionStatus,
   type ModelListStatus,
 } from '../settingsPanelTypes';
+import {
+  looksLikeMaskedApiKeyPreview,
+  MASKED_API_KEY_PREVIEW_MESSAGE,
+} from '../../../lib/maskedApiKeyPreview';
 
 interface ProviderSectionProps {
   providerKind: ProviderKind;
@@ -40,6 +44,8 @@ interface ProviderSectionProps {
    *  block (select/refresh-models/loading/error) — used by the wizard's
    *  trimmed WizardProviderStep, which leaves model selection to Settings. */
   hideModelField?: boolean;
+  /** Heal-on-read re-entry paths from main (path names only). */
+  keyReentryPaths?: string[];
 }
 
 export default function ProviderSection({
@@ -70,11 +76,14 @@ export default function ProviderSection({
   setModelListStatus,
   setModelListError,
   hideModelField,
+  keyReentryPaths,
 }: ProviderSectionProps) {
   // Beta 4 M28 (B4-6 / B4-10): OAuth login buttons ship in connect-later
   // state — clicking explains what account linking will do when it lands and
   // stores no credentials. Tracks which provider's explainer is open.
   const [oauthExplainerFor, setOauthExplainerFor] = useState<ProviderKind | null>(null);
+  const [pasteMaskError, setPasteMaskError] = useState<string | null>(null);
+  const needsReentry = (keyReentryPaths ?? []).includes('provider.apiKey');
 
   // SKY-11219 (AC-4): re-fetch the model list a beat after the user edits the
   // Base URL by hand — switching providers already auto-fetches immediately
@@ -171,17 +180,39 @@ export default function ProviderSection({
                 <div className="settings-input-row">
                   <input
                     id="provider-api-key"
-                    className="settings-input"
+                    className={`settings-input${pasteMaskError ? ' settings-input-error' : ''}`}
                     type="password"
                     value={providerApiKey}
-                    placeholder={savedProviderApiKey ? 'Key configured — enter a new key to replace' : 'Paste API key…'}
+                    placeholder={savedProviderApiKey && !needsReentry ? 'Key configured — enter a new key to replace' : 'Paste API key…'}
                     autoComplete="off"
                     spellCheck={false}
                     aria-label="Provider API key"
-                    onChange={(e) => { setProviderApiKey(e.target.value); setProviderApiKeyDirty(true); setTestConnectionStatus('idle'); setSavedOk(false); }}
+                    aria-invalid={pasteMaskError ? 'true' : 'false'}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      if (looksLikeMaskedApiKeyPreview(next)) {
+                        setPasteMaskError(MASKED_API_KEY_PREVIEW_MESSAGE);
+                        return;
+                      }
+                      setPasteMaskError(null);
+                      setProviderApiKey(next);
+                      setProviderApiKeyDirty(true);
+                      setTestConnectionStatus('idle');
+                      setSavedOk(false);
+                    }}
                   />
                 </div>
-                {!providerApiKeyDirty && savedProviderApiKey && (
+                {pasteMaskError && (
+                  <p className="settings-error-msg" role="alert" data-testid="provider-api-key-mask-error">
+                    {pasteMaskError}
+                  </p>
+                )}
+                {needsReentry && !pasteMaskError && (
+                  <p className="settings-error-msg" role="status" data-testid="provider-api-key-reentry">
+                    Please re-enter your key.
+                  </p>
+                )}
+                {!providerApiKeyDirty && savedProviderApiKey && !needsReentry && (
                   <p className="settings-hint" data-testid="provider-key-configured-hint">Key is already configured.</p>
                 )}
               </div>

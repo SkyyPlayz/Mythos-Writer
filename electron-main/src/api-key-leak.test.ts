@@ -24,6 +24,13 @@ import {
   setKeyField,
   type KeyFieldPath,
 } from './settings-masking.js';
+import {
+  SETTINGS_DEFAULTS,
+  loadAppSettingsFrom,
+  saveAppSettingsTo,
+  buildGlobalProviderConfig,
+  getProviderConfigForAgentFrom,
+} from './appSettingsLoad.js';
 import { SecretsStore, type SafeStorageLike } from './secrets/store.js';
 import { persistSecretsAndStripSettings, migrateSecretsFromSettingsFile } from './secrets/migration.js';
 
@@ -737,6 +744,77 @@ function seedMaskOnPath(settings: AppSettings, path: KeyFieldPath, mask: string)
   return setKeyField(settings, path, mask);
 }
 
+/** Secret-store id for KEY_FIELD_PATHS entries that hydrate via SecretsStore. */
+const SECRET_ID_BY_PATH: Partial<Record<KeyFieldPath, string>> = {
+  apiKey: 'anthropic.apiKey',
+  'provider.apiKey': 'provider.apiKey',
+  'voice.openaiApiKey': 'voice.openaiApiKey',
+  'stt.cloudApiKey': 'stt.cloudApiKey',
+  'tts.cloudApiKey': 'tts.cloudApiKey',
+  'agents.writingAssistant.provider.apiKey': 'provider.writingAssistant.apiKey',
+  'agents.brainstorm.provider.apiKey': 'provider.brainstorm.apiKey',
+  'agents.archive.provider.apiKey': 'provider.archive.apiKey',
+  'agents.betaReader.provider.apiKey': 'provider.betaReader.apiKey',
+  // alphaReader / storylineConsultant / lineEditor stay on disk (no secret id yet).
+};
+
+/** Disk fixture with provider stubs so hydrate can overlay agent keys; migration already done. */
+function loaderDiskFixture(): AppSettings {
+  const provider = { kind: 'anthropic' as const, model: 'claude-haiku-4-5-20251001', apiKey: '' };
+  return {
+    ...SETTINGS_DEFAULTS,
+    slice2AutonomyOffMigrated: true,
+    apiKey: '',
+    provider: { ...provider },
+    voice: { enabled: false, cloudFallback: false, openaiApiKey: '', ttsVoiceId: 'kokoro:nicole' },
+    stt: { enabled: true, provider: 'cloud', cloudApiKey: '' },
+    tts: { enabled: true, provider: 'cloud', cloudApiKey: '' },
+    agents: {
+      writingAssistant: { ...SETTINGS_DEFAULTS.agents.writingAssistant, provider: { ...provider } },
+      brainstorm: { ...SETTINGS_DEFAULTS.agents.brainstorm, provider: { ...provider } },
+      archive: { ...SETTINGS_DEFAULTS.agents.archive, provider: { ...provider } },
+      betaReader: { ...(SETTINGS_DEFAULTS.agents.betaReader as NonNullable<AppSettings['agents']['betaReader']>), provider: { ...provider } },
+      alphaReader: { ...(SETTINGS_DEFAULTS.agents.alphaReader as NonNullable<AppSettings['agents']['alphaReader']>), provider: { ...provider } },
+      storylineConsultant: { ...(SETTINGS_DEFAULTS.agents.storylineConsultant as NonNullable<AppSettings['agents']['storylineConsultant']>), provider: { ...provider } },
+      lineEditor: { ...(SETTINGS_DEFAULTS.agents.lineEditor as NonNullable<AppSettings['agents']['lineEditor']>), provider: { ...provider } },
+    },
+  };
+}
+
+function seedMaskForLoader(
+  settingsPath: string,
+  store: SecretsStore,
+  path: KeyFieldPath,
+  mask: string,
+): void {
+  let disk = loaderDiskFixture();
+  const secretId = SECRET_ID_BY_PATH[path];
+  if (secretId) {
+    store.set(secretId, mask);
+    // Disk keeps empty secret-shaped fields (post-migration shape).
+  } else {
+    disk = setKeyField(disk, path, mask);
+  }
+  fs.writeFileSync(settingsPath, JSON.stringify(disk, null, 2), 'utf-8');
+}
+
+function providerLookupSeesEmpty(loaded: AppSettings, path: KeyFieldPath): void {
+  expect(getKeyField(loaded, path), path).toBe('');
+  if (path === 'provider.apiKey' || path === 'apiKey') {
+    const cfg = buildGlobalProviderConfig(loaded);
+    // With provider stub present, global config reads provider.apiKey; both healed paths are ''.
+    expect(cfg.apiKey ?? '', `provider lookup ${path}`).toBe('');
+    return;
+  }
+  const agentMatch = /^agents\.(writingAssistant|brainstorm|archive|betaReader|alphaReader|storylineConsultant|lineEditor)\.provider\.apiKey$/.exec(path);
+  if (agentMatch) {
+    const agent = agentMatch[1] as 'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader' | 'alphaReader' | 'storylineConsultant' | 'lineEditor';
+    const cfg = getProviderConfigForAgentFrom(loaded, agent);
+    expect(cfg.apiKey ?? '', `agent lookup ${path}`).toBe('');
+  }
+  // voice/stt/tts: no LLM provider config — field emptiness above is the pin.
+}
+
 describe('P1 — KEY_FIELD_PATHS backstop (keys carve-out)', () => {
   it('iterates KEY_FIELD_PATHS: stored K2 + incoming maskApiKey(K1) keeps K2', () => {
     const stored = fullKeyFixture(K2);
@@ -935,24 +1013,35 @@ describe('P3 — IPC SETTINGS_SET sequence keeps K2', () => {
 });
 
 describe('P6 — heal-on-read iterates KEY_FIELD_PATHS', () => {
-  it('stored mask per field → load heals to empty + flag; no write; next save stores empty', () => {
-    const writer = { writes: 0 };
-    const g = globalThis as unknown as { __mythosHealWrite?: () => void; __mythosHealWrote?: boolean };
-    g.__mythosHealWrite = () => { writer.writes += 1; };
-    g.__mythosHealWrote = false;
-    try {
-      for (const path of KEY_FIELD_PATHS) {
-        const mask = maskApiKey(K1);
-        let seeded = settingsFixture({ apiKey: '' });
-        seeded = seedMaskOnPath(seeded, path, mask);
-        const healed = healMaskedKeyFields(seeded);
-        // Heal is pure — no disk write / no write-on-read hook.
-        expect(writer.writes).toBe(0);
-        expect(g.__mythosHealWrote).toBe(false);
+  it('stored mask per field → real loader heals to empty + flag; no write; next save stores empty', () => {
+    for (const path of KEY_FIELD_PATHS) {
+      const { store, settingsPath } = mkStore();
+      const mask = maskApiKey(K1);
+      seedMaskForLoader(settingsPath, store, path, mask);
+      const bytesBefore = fs.readFileSync(settingsPath);
+      const mtimeBefore = fs.statSync(settingsPath).mtimeMs;
+
+      const writeSpy = vi.spyOn(fs, 'writeFileSync');
+      const renameSpy = vi.spyOn(fs, 'renameSync');
+      const setSpy = vi.spyOn(store, 'set');
+      const deleteSpy = vi.spyOn(store, 'delete');
+      try {
+        // Match main: loadAppSettingsFrom(..., saveAppSettings) so K15
+        // (persist on heal) is caught by the real write spies.
+        const persist = (s: AppSettings) => saveAppSettingsTo(settingsPath, () => store, s);
+        const healed = loadAppSettingsFrom(settingsPath, () => store, persist);
+        // H2: heal-on-read must not write disk or secrets.
+        expect(writeSpy, path).not.toHaveBeenCalled();
+        expect(renameSpy, path).not.toHaveBeenCalled();
+        expect(setSpy, path).not.toHaveBeenCalled();
+        expect(deleteSpy, path).not.toHaveBeenCalled();
+        expect(fs.readFileSync(settingsPath)).toEqual(bytesBefore);
+        expect(fs.statSync(settingsPath).mtimeMs).toBe(mtimeBefore);
+        // H1: field empty + re-entry path flagged.
         expect(getKeyField(healed, path), path).toBe('');
         expect(healed.keyReentryPaths, path).toContain(path);
-        // Provider lookup sees empty.
-        expect(getKeyField(healed, path)).toBe('');
+        // Real provider lookup on loader output sees empty.
+        providerLookupSeesEmpty(healed, path);
         // Next normal save stores ''.
         const afterSave = reconcileSettingsFromRenderer(
           { ...maskSettingsForRenderer(healed), ...(path === 'apiKey' ? { apiKey: '' } : {}) },
@@ -960,10 +1049,12 @@ describe('P6 — heal-on-read iterates KEY_FIELD_PATHS', () => {
         );
         expect(getKeyField(afterSave, path), `save ${path}`).toBe('');
         expect(afterSave).not.toHaveProperty('keyReentryPaths');
+      } finally {
+        writeSpy.mockRestore();
+        renameSpy.mockRestore();
+        setSpy.mockRestore();
+        deleteSpy.mockRestore();
       }
-    } finally {
-      delete g.__mythosHealWrite;
-      delete g.__mythosHealWrote;
     }
   });
 
@@ -984,19 +1075,19 @@ describe('P6 — heal-on-read iterates KEY_FIELD_PATHS', () => {
     expect(again.keyReentryPaths).toContain('provider.apiKey');
   });
 
-  it('S2: migration-path seed (plaintext mask → secrets) then heal', () => {
+  it('S2: migration-path seed (plaintext mask → secrets) then heal via real loader', () => {
     const { store, settingsPath } = mkStore();
-    const plaintext = settingsFixture({
+    const plaintext = {
+      ...loaderDiskFixture(),
+      slice2AutonomyOffMigrated: true,
       apiKey: maskApiKey(K1),
-      provider: { kind: 'anthropic', model: 'x', apiKey: maskApiKey(K1) },
-    });
+      provider: { kind: 'anthropic' as const, model: 'x', apiKey: maskApiKey(K1) },
+    };
     fs.writeFileSync(settingsPath, JSON.stringify(plaintext, null, 2), 'utf-8');
     const migrated = migrateSecretsFromSettingsFile(settingsPath, store);
     expect(migrated.migrated).toBe(true);
-    // Decrypt/hydrate then heal (never heal the encrypted blob).
-    const base = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as AppSettings;
-    const hydrated = { ...base, apiKey: store.get('anthropic.apiKey') ?? '', provider: { ...(base.provider as { kind: 'anthropic'; model: string; apiKey?: string }), apiKey: store.get('provider.apiKey') ?? '' } };
-    const healed = healMaskedKeyFields(hydrated as AppSettings);
+    // Real loader: decrypt/hydrate then heal (never heal the encrypted blob).
+    const healed = loadAppSettingsFrom(settingsPath, () => store);
     expect(healed.apiKey).toBe('');
     expect(healed.provider?.apiKey).toBe('');
     expect(healed.keyReentryPaths).toEqual(expect.arrayContaining(['apiKey', 'provider.apiKey']));
@@ -1006,13 +1097,16 @@ describe('P6 — heal-on-read iterates KEY_FIELD_PATHS', () => {
     const prev = process.env.ANTHROPIC_API_KEY;
     process.env.ANTHROPIC_API_KEY = 'sk-ant-env-fallback-must-not-be-logged';
     try {
-      const seeded = seedMaskOnPath(settingsFixture({ apiKey: maskApiKey(K1) }), 'apiKey', maskApiKey(K1));
-      const healed = healMaskedKeyFields(seeded);
+      const { store, settingsPath } = mkStore();
+      seedMaskForLoader(settingsPath, store, 'apiKey', maskApiKey(K1));
+      const healed = loadAppSettingsFrom(settingsPath, () => store);
       expect(healed.apiKey).toBe('');
       expect(healed.keyReentryPaths).toContain('apiKey');
       const masked = maskSettingsForRenderer(healed);
       expect(masked.anthropicEnvKeyPresent).toBe(true);
       expect(masked.keyReentryPaths).toContain('apiKey');
+      // S6 / S3 legacy apiKey: renderer receives the re-enter path for the line.
+      expect(masked.keyReentryPaths).toEqual(expect.arrayContaining(['apiKey']));
       expect(JSON.stringify(masked)).not.toContain('sk-ant-env-fallback-must-not-be-logged');
     } finally {
       if (prev === undefined) delete process.env.ANTHROPIC_API_KEY;
@@ -1031,5 +1125,50 @@ describe('P6a — keyReentryPaths never saved', () => {
     const reconciled = reconcileSettingsFromRenderer(incoming, stored);
     expect(reconciled).not.toHaveProperty('keyReentryPaths');
     expect(reconciled.apiKey).toBe(K2);
+  });
+});
+
+describe('S4 — saveAppSettings strips keyReentryPaths (H3)', () => {
+  it('real saver: settings with keyReentryPaths → written JSON has no keyReentryPaths', () => {
+    const { store, settingsPath } = mkStore();
+    const base = loaderDiskFixture();
+    fs.writeFileSync(settingsPath, JSON.stringify(base, null, 2), 'utf-8');
+    const withFlag: AppSettings = {
+      ...base,
+      wikiAutonomy: 'off',
+      keyReentryPaths: ['apiKey', 'provider.apiKey', 'agents.writingAssistant.provider.apiKey'],
+    };
+    saveAppSettingsTo(settingsPath, () => store, withFlag);
+    const written = fs.readFileSync(settingsPath, 'utf-8');
+    expect(written).not.toContain('keyReentryPaths');
+    const parsed = JSON.parse(written) as AppSettings;
+    expect(parsed).not.toHaveProperty('keyReentryPaths');
+    expect(parsed.wikiAutonomy).toBe('off');
+  });
+});
+
+describe('K17 source — main.ts delegates to loadAppSettingsFrom + saveAppSettingsTo', () => {
+  it('loadAppSettings / saveAppSettings delegate; SETTINGS_GET and provider lookup read loadAppSettings()', () => {
+    const mainSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'main.ts'),
+      'utf-8',
+    );
+    // Thin wrapper only — body lives in appSettingsLoad.ts.
+    expect(mainSrc).toMatch(
+      /function loadAppSettings\(\):\s*AppSettings\s*\{[\s\S]*?return loadAppSettingsFrom\([\s\S]*?getAppSettingsPath\(\)[\s\S]*?getSecretsStore[\s\S]*?saveAppSettings[\s\S]*?\}/,
+    );
+    expect(mainSrc).toMatch(
+      /function saveAppSettings\([\s\S]*?saveAppSettingsTo\([\s\S]*?getAppSettingsPath\(\)[\s\S]*?getSecretsStore/,
+    );
+    // Bypassing the extracted loader (inlining heal/hydrate in main) must go red.
+    const loadFn = mainSrc.match(/function loadAppSettings\(\):\s*AppSettings\s*\{[\s\S]*?\n\}/);
+    expect(loadFn?.[0] ?? '').not.toContain('healMaskedKeyFields');
+    expect(loadFn?.[0] ?? '').not.toContain('hydrateSecretsIntoSettings');
+    // SETTINGS_GET reads through loadAppSettings().
+    expect(mainSrc).toMatch(/\[IPC_CHANNELS\.SETTINGS_GET\][\s\S]*?loadAppSettings\(\)/);
+    // Provider lookup loads then delegates to extracted helper.
+    expect(mainSrc).toMatch(
+      /function getProviderConfigForAgent\([\s\S]*?return getProviderConfigForAgentFrom\(loadAppSettings\(\)/,
+    );
   });
 });

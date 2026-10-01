@@ -470,7 +470,7 @@ export default function SettingsPanel({
     return () => window.removeEventListener('settings:navigate', handleSettingsNavigate);
   }, []);
 
-  const keyIsConfigured = Boolean(settings.apiKey);
+  const keyIsConfigured = Boolean(settings.apiKey) && !(settings.keyReentryPaths ?? []).includes('apiKey');
   const apiKeyError = apiKeyDirty ? validateApiKey(apiKeyInput, providerKind) : null;
 
   // Beta 3 M22: agent renames (prototype agentNames, HTML 3245). Empty input
@@ -1099,6 +1099,7 @@ export default function SettingsPanel({
                 setModelList={setModelList}
                 setModelListStatus={setModelListStatus}
                 setModelListError={setModelListError}
+                keyReentryPaths={settings.keyReentryPaths}
               />
 
               {PROVIDER_OPTIONS.find((p) => p.value === providerKind)?.needsKey && (
@@ -1113,6 +1114,7 @@ export default function SettingsPanel({
                   keyIsConfigured={keyIsConfigured}
                   apiKeyError={apiKeyError}
                   setSavedOk={setSavedOk}
+                  keyReentryPaths={settings.keyReentryPaths}
                 />
               )}
 

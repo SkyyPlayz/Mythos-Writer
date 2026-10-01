@@ -366,6 +366,7 @@ export default function AgentsSection({
             testMsg={agentTestMsg.writingAssistant}
             onChange={(field, value) => setAgentOverride('writingAssistant', field, value)}
             onTest={() => onAgentTest('writingAssistant')}
+            keyReentryPaths={settings.keyReentryPaths}
           />
           <fieldset className="settings-fieldset">
             <legend className="settings-label">Scan cadence</legend>
@@ -575,6 +576,7 @@ export default function AgentsSection({
             testMsg={agentTestMsg.brainstorm}
             onChange={(field, value) => setAgentOverride('brainstorm', field, value)}
             onTest={() => onAgentTest('brainstorm')}
+            keyReentryPaths={settings.keyReentryPaths}
           />
           <div className="settings-field settings-field-inline">
             <label className="settings-label" htmlFor="brainstorm-heartbeat">Heartbeat interval (min)</label>
@@ -760,6 +762,7 @@ export default function AgentsSection({
             testMsg={agentTestMsg.betaReader}
             onChange={(field, value) => setAgentOverride('betaReader', field, value)}
             onTest={() => onAgentTest('betaReader')}
+            keyReentryPaths={settings.keyReentryPaths}
           />
           <div className="settings-field settings-field-inline">
             <label className="settings-label" htmlFor="beta-reader-heartbeat">Heartbeat interval (min)</label>

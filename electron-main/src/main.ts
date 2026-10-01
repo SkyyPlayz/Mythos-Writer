@@ -635,7 +635,6 @@ import {
 // SKY-10405 — boot-time silent v0.4 → MythosVault migration (owner ruling SKY-10390).
 import { runBootMythosMigration } from './migration/bootMigration.js';
 import { filterNotesListing, storyVaultRelPrefix } from './notesListing.js';
-import { migrateVoicePushToTalk, type LegacyVoiceSettings } from './voiceSettingsMigration.js';
 import { openManifest, ManifestMigrationError, SCHEMA_VERSION } from './manifest.js';
 import { assertValidManifest } from './manifestValidate.js';
 import {
@@ -716,19 +715,24 @@ import {
 import { registerVoiceHandlers } from './voice.js';
 import type { KokoroAssets } from './kokoro.js';
 import {
-  healMaskedKeyFields,
   maskSettingsForRenderer,
   reconcileSettingsFromRenderer,
 } from './settings-masking.js';
+import {
+  SETTINGS_DEFAULTS,
+  loadAppSettingsFrom,
+  saveAppSettingsTo,
+  buildGlobalProviderConfig,
+  getProviderConfigForAgentFrom,
+  getOptionalAgentSettings,
+  isOptionalAgentKey,
+  type OptionalAgentKey,
+} from './appSettingsLoad.js';
 import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
 import { restartVaultRuntime } from './vaultRuntimeRestart.js';
 import { resolveVaultImportCollisions } from './vaultImportConflict.js';
 import { initSecretsStore, getSecretsStore } from './secrets/index.js';
-import {
-  hydrateSecretsIntoSettings,
-  migrateSecretsFromSettingsFile,
-  persistSecretsAndStripSettings,
-} from './secrets/migration.js';
+import { migrateSecretsFromSettingsFile } from './secrets/migration.js';
 import { indexDocument, buildFullIndex, searchVault, planFtsUpdate, indexSceneFromDisk, refreshEntityIndex } from './search.js';
 import { buildEpub } from './epub.js';
 import { buildDocx } from './docx.js';
@@ -751,7 +755,7 @@ import {
 import { checkIntegrity, rebuildManifest as rebuildVaultManifest } from './vaultIntegrity.js';
 import { collectProjectStats } from './projectStats.js';
 import { collectProjectIcons, setProjectIcon, setProjectName } from './projectIcons.js';
-import { streamFromProvider, validateBaseUrl, listModels, providerConfigForAgent, anthropicThinkingParam, setAiMasterGate, TokenBudgetExhaustedError, type ProviderConfig } from './provider.js';
+import { streamFromProvider, validateBaseUrl, listModels, anthropicThinkingParam, setAiMasterGate, TokenBudgetExhaustedError, type ProviderConfig } from './provider.js';
 import {
   configureTelemetry,
   generateSessionId,
@@ -9367,93 +9371,8 @@ function initAutoUpdater() {
 }
 
 // ─── App settings persistence ───
-
-const AGENT_BUDGET_DEFAULTS = {
-  autoApply: false,
-  confidenceThreshold: 0.85,
-  maxTokensPerHour: 100_000,
-  maxSuggestionsPerHour: 50,
-  heartbeatIntervalMinutes: 5,
-  maxTokensPerDay: 500_000,
-  // MYT-343: per-agent config additions
-  autoApplyThreshold: 0.85,
-  requestsPerMinute: 60,
-  // SKY-321 shipped these all ON; Beta 4 M28 (B4-8, binding owner decision)
-  // flips the default: every auto-apply category toggle ships OFF until the
-  // user opts in. Vaults that already saved an explicit map keep their values.
-  autoApplyCategories: {
-    punctuation: false,
-    spelling: false,
-    grammar: false,
-    'sentence-structure': false,
-    'style-tone': false,
-    other: false,
-  } as Record<import('./ipc.js').SuggestionCategory, boolean>,
-};
-
-const SETTINGS_DEFAULTS: AppSettings = {
-  apiKey: '',
-  // M11a (SKY-9160): master AI switch — default on; off = manual mode.
-  ai: { enabled: true },
-  waScanInterval: 'on-save',
-  waEnabled: true,
-  waModel: null,
-  waCadenceTrigger: 'on_save',
-  waIdleHeartbeatConstantInterval: false,
-  waIdleDebounceSeconds: 30,
-  agents: {
-    // SKY-11355: '' means "use the provider's Default model" — resolved by
-    // getProviderConfigForAgent()'s `agentSettings.model || undefined` fallthrough.
-    // A hardcoded Anthropic model name here silently overrode local providers
-    // (LM Studio/Ollama/etc. would be asked for a model they don't have).
-    writingAssistant: { enabled: true, model: '', scanIntervalSeconds: 60, cadenceTrigger: 'on_save', idleHeartbeatConstantInterval: false, idleDebounceSeconds: 30, ...AGENT_BUDGET_DEFAULTS },
-    brainstorm: { enabled: true, model: '', ...AGENT_BUDGET_DEFAULTS },
-    archive: {
-      enabled: true,
-      model: '',
-      continuityCheckIntervalSeconds: 60,
-      sceneCrafterSuggestions: { enabled: false, cadence: 1800 },
-      ...AGENT_BUDGET_DEFAULTS,
-    },
-    // Beta 3 M22: fourth named agent — reader-eye chapter reads → margin comments.
-    betaReader: { enabled: true, model: '', ...AGENT_BUDGET_DEFAULTS },
-    // SKY-11411 (SKY-10741 M12.B6): production-team roles. All default OFF (AC1)
-    // — a fresh install never starts calling a provider for these until the
-    // author opts in from Settings > AI Agents.
-    alphaReader: { enabled: false, model: '', ...AGENT_BUDGET_DEFAULTS },
-    storylineConsultant: { enabled: false, model: '', ...AGENT_BUDGET_DEFAULTS },
-    lineEditor: { enabled: false, model: '', ...AGENT_BUDGET_DEFAULTS },
-  },
-  // SKY-11241 (AC1): the reader's first voice should be the good one — Kokoro
-  // ships bundled and in-process (SKY-11243), so it needs no setup step to be
-  // the fresh-install default. Only applied when no settings file (or no
-  // `voice` block) exists yet; an install that already saved `voice` keeps
-  // whatever ttsVoiceId (or its absence) it already has.
-  voice: { enabled: false, cloudFallback: false, ttsVoiceId: 'kokoro:nicole' },
-  theme: 'dark',
-  snapshots: { maxPerScene: 100, maxAgeDays: 30 },
-  updateChannel: 'stable',
-  // SKY-10878 M12.B5b: default the self-building wiki to "always ask" so it
-  // never writes to the vault without author approval.
-  wikiAutonomy: 'ask',
-  archiveContinuityEnabled: true,
-  archiveScanOnSave: true,
-  archiveScanScope: 'active_scene',
-  archiveScanInterval: null,
-  archiveMinSeverity: 'low',
-  archiveCheckCharacterDrift: true,
-  archiveCheckLocationMismatch: true,
-  archiveCheckFactualContradict: true,
-  archiveScanBudget: 8000,
-  archiveStoryEditConsentGiven: false,
-  // SKY-11186: Notes Board zoom-out limit — the spec §6 default; a visible
-  // performance setting (owner ruling 4), adjustable in Settings → Editor.
-  notesBoard: { minZoom: 40 },
-  // rightSidebarVisible/Width/Panels are intentionally absent from defaults so
-  // DesktopShell keeps grsVisible=undefined until the user explicitly opens the
-  // new global sidebar. This prevents the old per-view RightSidebar and the new
-  // GlobalRightSidebar from rendering simultaneously (duplicate WritingAssistantPanel).
-};
+// SETTINGS_DEFAULTS + loadAppSettingsFrom + provider lookup live in
+// appSettingsLoad.ts so heal-on-read pins hit the real loader without Electron.
 
 /** Maps source_agent DB value → settings key. Unknown agents have no budget enforcement. */
 const SOURCE_AGENT_TO_SETTINGS_KEY: Record<string, keyof AppSettings['agents']> = {
@@ -9473,21 +9392,6 @@ function getBetaReaderSettings(settings: AppSettings): NonNullable<AppSettings['
     ?? (SETTINGS_DEFAULTS.agents.betaReader as NonNullable<AppSettings['agents']['betaReader']>);
 }
 
-/**
- * SKY-11411: the production-team roles share betaReader's optional shape
- * ({ enabled; model; provider? } & AgentBudgetSettings) and, like it, may be
- * absent on pre-SKY-11411 settings files — resolve them against the default-OFF
- * defaults so callers always get a concrete settings object.
- */
-type OptionalAgentKey = 'betaReader' | 'alphaReader' | 'storylineConsultant' | 'lineEditor';
-function getOptionalAgentSettings(
-  settings: AppSettings,
-  key: OptionalAgentKey,
-): NonNullable<AppSettings['agents'][OptionalAgentKey]> {
-  return (settings.agents[key]
-    ?? SETTINGS_DEFAULTS.agents[key]) as NonNullable<AppSettings['agents'][OptionalAgentKey]>;
-}
-
 function getAppSettingsPath(): string {
   return path.join(app.getPath('userData'), 'app-settings.json');
 }
@@ -9501,145 +9405,16 @@ function isAiMasterEnabled(settings?: AppSettings): boolean {
   return (settings ?? loadAppSettings()).ai?.enabled !== false;
 }
 
+/** Delegates to loadAppSettingsFrom — heal-on-read + hydrate live there (H1). */
 function loadAppSettings(): AppSettings {
-  const settingsPath = getAppSettingsPath();
-  let base: AppSettings;
-  if (fs.existsSync(settingsPath)) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings> & { liquidGlass?: AppSettings['liquidNeon'] };
-      type AgentsRaw = Partial<AppSettings['agents']>;
-      const rawAgents: AgentsRaw = (raw.agents as AgentsRaw | undefined) ?? {};
-      // One-shot migration: legacy key liquidGlass → liquidNeon (MYT-814)
-      const liquidNeon = raw.liquidNeon ?? raw.liquidGlass;
-      base = {
-        ...SETTINGS_DEFAULTS,
-        ...raw,
-        ...(liquidNeon ? { liquidNeon } : {}),
-        agents: {
-          writingAssistant: { ...SETTINGS_DEFAULTS.agents.writingAssistant, ...(rawAgents.writingAssistant ?? {}) },
-          brainstorm: { ...SETTINGS_DEFAULTS.agents.brainstorm, ...(rawAgents.brainstorm ?? {}) },
-          archive: { ...SETTINGS_DEFAULTS.agents.archive, ...(rawAgents.archive ?? {}) },
-          // Beta 3 M22: back-fill for pre-M22 settings files (key absent on disk).
-          betaReader: { ...(SETTINGS_DEFAULTS.agents.betaReader as NonNullable<AppSettings['agents']['betaReader']>), ...(rawAgents.betaReader ?? {}) },
-          // SKY-11411: back-fill the production-team roles for pre-SKY-11411 files
-          // (keys absent on disk) so getProviderConfigForAgent / the run handler
-          // always see a full, default-OFF settings object.
-          alphaReader: { ...(SETTINGS_DEFAULTS.agents.alphaReader as NonNullable<AppSettings['agents']['alphaReader']>), ...(rawAgents.alphaReader ?? {}) },
-          storylineConsultant: { ...(SETTINGS_DEFAULTS.agents.storylineConsultant as NonNullable<AppSettings['agents']['storylineConsultant']>), ...(rawAgents.storylineConsultant ?? {}) },
-          lineEditor: { ...(SETTINGS_DEFAULTS.agents.lineEditor as NonNullable<AppSettings['agents']['lineEditor']>), ...(rawAgents.lineEditor ?? {}) },
-        },
-      };
-      // Migration AC-CAD-12: existing installs without cadenceTrigger default to idle_heartbeat to preserve prior behavior
-      if (rawAgents.writingAssistant && !(rawAgents.writingAssistant as unknown as Record<string, unknown>).cadenceTrigger) {
-        base.agents.writingAssistant.cadenceTrigger = 'idle_heartbeat';
-        base.agents.writingAssistant.idleHeartbeatConstantInterval = true;
-      }
-      // Beta 4 M28 (B4-8) back-compat: SETTINGS_DEFAULTS now carries an
-      // explicit all-false autoApplyCategories map (every toggle OFF by
-      // default). An agent that already had autoApply=true on disk but no
-      // per-category map predates the map — injecting the all-false default
-      // would silently disable a working setup, so drop the injected map and
-      // let the evaluator's legacy "absent map ⇒ all enabled" semantics keep
-      // their behavior. Fresh installs and opted-out agents keep the all-OFF map.
-      for (const agentKey of ['writingAssistant', 'brainstorm', 'archive', 'betaReader'] as const) {
-        const rawAgent = rawAgents[agentKey] as unknown as Record<string, unknown> | undefined;
-        if (rawAgent && rawAgent.autoApply === true && !('autoApplyCategories' in rawAgent)) {
-          delete (base.agents[agentKey] as unknown as Record<string, unknown>).autoApplyCategories;
-        }
-      }
-      // 0.5.4 Slice 2 S2-5 (path A): one-time migrate every auto-apply Autonomy
-      // setting (incl. Grammar category) to OFF on first open of this build.
-      // Do not preserve prior on values. Fresh installs already default off.
-      if (!base.slice2AutonomyOffMigrated) {
-        const offCats = { ...AGENT_BUDGET_DEFAULTS.autoApplyCategories };
-        for (const agentKey of [
-          'writingAssistant', 'brainstorm', 'archive', 'betaReader',
-          'alphaReader', 'storylineConsultant', 'lineEditor',
-        ] as const) {
-          const agent = base.agents[agentKey];
-          if (!agent) continue;
-          (base.agents as Record<string, typeof agent>)[agentKey] = {
-            ...agent,
-            autoApply: false,
-            autoApplyCategories: { ...offCats },
-          };
-        }
-        base.slice2AutonomyOffMigrated = true;
-        try {
-          // Persist the one-shot migrate immediately so a subsequent load
-          // does not re-apply and so prior autoApply:true never comes back.
-          saveAppSettings(base);
-        } catch {
-          /* first-open migrate is best-effort; next Write will carry the flag */
-        }
-      }
-      // SKY-11355: pre-fix installs may have 'claude-sonnet-4-6' baked into an
-      // agent's saved settings (the old hardcoded default). That value is only
-      // meaningful on Anthropic — on any other effective provider (global or
-      // the agent's own override) it silently broke the agent. Migrate it to
-      // '' (use the provider's Default model) so upgrading users get a working
-      // agent instead of carrying the stale value forward forever.
-      for (const agentKey of ['writingAssistant', 'brainstorm', 'archive', 'betaReader'] as const) {
-        const rawAgent = rawAgents[agentKey] as unknown as { model?: string; provider?: { kind?: string } } | undefined;
-        if (rawAgent?.model !== 'claude-sonnet-4-6') continue;
-        const effectiveKind = rawAgent.provider?.kind ?? raw.provider?.kind ?? 'anthropic';
-        if (effectiveKind !== 'anthropic') {
-          (base.agents[agentKey] as { model: string }).model = '';
-        }
-      }
-      // SKY-2627: back-fill flat wa* fields for existing installs that predate this field set.
-      // waModel is intentionally NOT back-filled: null means "use global model" — the spec default.
-      const rawRecord = raw as Record<string, unknown>;
-      if (!('waEnabled' in rawRecord)) base.waEnabled = base.agents.writingAssistant.enabled;
-      if (!('waCadenceTrigger' in rawRecord)) base.waCadenceTrigger = base.agents.writingAssistant.cadenceTrigger ?? 'on_save';
-      if (!('waIdleHeartbeatConstantInterval' in rawRecord)) base.waIdleHeartbeatConstantInterval = base.agents.writingAssistant.idleHeartbeatConstantInterval ?? false;
-      if (!('waIdleDebounceSeconds' in rawRecord)) base.waIdleDebounceSeconds = base.agents.writingAssistant.idleDebounceSeconds ?? 30;
-      // SKY-7771: back-fill voice.voiceMode from the legacy pushToTalkMode
-      // checkbox and drop the duplicate key (see voiceSettingsMigration.ts).
-      base.voice = migrateVoicePushToTalk(base.voice as LegacyVoiceSettings | undefined);
-    } catch {
-      base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
-    }
-  } else {
-    base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
-  }
-  // MYT-777: overlay decrypted credentials from the SecretsStore so the rest
-  // of the main-process code keeps reading settings.apiKey / provider.apiKey /
-  // voice.openaiApiKey unchanged. The on-disk JSON file holds empty strings
-  // for those fields after the one-shot migration in app-ready.
-  // Heal-on-read (H1): after decrypt/hydrate, clear any stored masked preview
-  // in memory only (no write). Same loader backs SETTINGS_GET and provider
-  // lookup (getProviderConfigForAgent / buildGlobalProviderConfig).
-  try {
-    return healMaskedKeyFields(hydrateSecretsIntoSettings(base, getSecretsStore()));
-  } catch {
-    // Store not yet initialized (very early boot path). Caller will see the
-    // post-migration empty key strings; the env-var fallback in
-    // buildGlobalProviderConfig still serves as a last resort for CLI/CI scenarios.
-    return healMaskedKeyFields(base);
-  }
+  return loadAppSettingsFrom(getAppSettingsPath(), getSecretsStore, saveAppSettings);
 }
 
 function saveAppSettings(settings: AppSettings): void {
-  // Ivy / TC-MV-05: settings write-path gate — refuse disk rewrite while the
-  // session drain flag is set (does not block delete or quit).
-  if (isAppDataCleared()) return;
-  // MYT-777: never persist plaintext API keys to app-settings.json. Route
-  // secret-shaped fields into the encrypted store and write the cleared
-  // payload to disk. If the store is unavailable, still strip the fields so
-  // we never regress to plaintext-at-rest.
-  let toWrite: AppSettings = settings;
-  try {
-    toWrite = persistSecretsAndStripSettings(settings, getSecretsStore());
-  } catch {
-    toWrite = {
-      ...settings,
-      apiKey: '',
-      ...(settings.provider ? { provider: { ...settings.provider, apiKey: '' } } : {}),
-      ...(settings.voice ? { voice: { ...settings.voice, openaiApiKey: '' } } : {}),
-    };
-  }
-  fs.writeFileSync(getAppSettingsPath(), JSON.stringify(toWrite, null, 2), 'utf-8');
+  // Ivy / TC-MV-05 + S4: strip keyReentryPaths before write — see saveAppSettingsTo.
+  saveAppSettingsTo(getAppSettingsPath(), getSecretsStore, settings, {
+    isCleared: isAppDataCleared,
+  });
 }
 
 // ─── Telemetry bootstrap ───────────────────────────────────────────────────
@@ -9661,60 +9436,18 @@ function initTelemetry(): void {
 // without booting electron. See settings-masking.ts.
 
 // ─── Provider config helpers (SKY-683) ───
-// All LLM calls now go through streamFromProvider. These helpers construct the
-// correct ProviderConfig from AppSettings for each call site.
-// MYT-777: settings.apiKey is hydrated from the encrypted secrets store; the
-// process.env.ANTHROPIC_API_KEY fallback is kept as a dev/CI escape hatch.
-
-/** Build a ProviderConfig from the global provider settings (or legacy apiKey field). */
-function buildGlobalProviderConfig(settings: AppSettings): ProviderConfig {
-  if (settings.provider) {
-    return {
-      kind: settings.provider.kind,
-      model: settings.provider.model,
-      baseUrl: settings.provider.baseUrl ?? undefined,
-      apiKey: settings.provider.apiKey ?? undefined,
-    };
-  }
-  // Legacy path: Anthropic key from settings.apiKey (hydrated from SecretsStore) or env.
-  const apiKey = settings.apiKey || process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('No API key configured. Add one in Settings or set ANTHROPIC_API_KEY to enable AI features.');
-  }
-  return {
-    kind: 'anthropic',
-    model: 'claude-haiku-4-5-20251001',
-    apiKey,
-  };
-}
+// Bodies live in appSettingsLoad.ts; main loads settings then delegates.
+// SETTINGS_GET and every agent call site still go through loadAppSettings().
 
 /**
  * Build a ProviderConfig for a named agent slot.
  * Uses the per-agent provider override when set; falls back to the global provider.
  * Key-inheritance: same kind + no agent API key → inherit the global API key (SKY-1511).
  */
-const OPTIONAL_AGENT_KEYS: readonly OptionalAgentKey[] = ['betaReader', 'alphaReader', 'storylineConsultant', 'lineEditor'];
-function isOptionalAgentKey(name: string): name is OptionalAgentKey {
-  return (OPTIONAL_AGENT_KEYS as readonly string[]).includes(name);
-}
-
 function getProviderConfigForAgent(
   agentName: 'brainstorm' | 'writingAssistant' | 'archive' | OptionalAgentKey,
 ): ProviderConfig {
-  const settings = loadAppSettings();
-  const agentSettings = isOptionalAgentKey(agentName)
-    ? getOptionalAgentSettings(settings, agentName)
-    : settings.agents[agentName];
-  const global = buildGlobalProviderConfig(settings);
-  const agentProvider = agentSettings.provider
-    ? {
-        kind: agentSettings.provider.kind,
-        model: agentSettings.provider.model,
-        baseUrl: agentSettings.provider.baseUrl ?? undefined,
-        apiKey: agentSettings.provider.apiKey ?? undefined,
-      }
-    : undefined;
-  return providerConfigForAgent(global, agentSettings.model || undefined, agentProvider);
+  return getProviderConfigForAgentFrom(loadAppSettings(), agentName);
 }
 
 // ─── Agent payload validation limits (RISK-4 / SKY-701) ───
