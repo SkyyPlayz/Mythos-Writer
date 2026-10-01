@@ -55,6 +55,7 @@ import SyncBackupSection from './components/SettingsPanel/sections/SyncBackupSec
 import ShortcutsSection from './components/SettingsPanel/sections/ShortcutsSection';
 import AboutSection from './components/SettingsPanel/sections/AboutSection';
 import { SETTINGS_CATEGORIES, type SettingsCategoryId } from './settingsCategories';
+import { enqueueSettingsWrite } from './settingsWriteSerial';
 import {
   DEFAULTS,
   DEFAULT_AGENT_OVERRIDE,
@@ -540,28 +541,42 @@ export default function SettingsPanel({
   }, [settings, apiKeyInput, apiKeyDirty, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, pageBg, navConfig, buildAgentProviderConfig, activeVaultRoot]);
 
   const writeSettingsPayload = useCallback(async (payload: AppSettings) => {
-    const voiceTokens: Parameters<typeof window.api.settingsSet>[1] = {
-      ...(sttBinaryToken ? { sttBinaryToken } : {}),
-      ...(sttModelToken ? { sttModelToken } : {}),
-    };
-    const result = Object.keys(voiceTokens).length > 0
-      ? await window.api.settingsSet(payload, voiceTokens)
-      : await window.api.settingsSet(payload);
-    // Critic/Shield: IPC resolves even on refusal (saved:false, URL/voice/TTS
-    // validation errors, appDataCleared). Never treat as success.
-    if (
-      result
-      && typeof result === 'object'
-      && (result.saved === false || (typeof result.error === 'string' && result.error.length > 0))
-    ) {
-      const errMsg = typeof result.error === 'string' ? result.error.trim() : '';
-      // Shield 5(a): appDataCleared uses this exact fixed string.
-      if (errMsg === APP_DATA_CLEARED_MESSAGE) {
-        throw new Error(errMsg);
+    // C7(b): settings:set is full-replace. Read main's CURRENT onboarding*
+    // right before set (not the mount snapshot), and keep get→set back-to-back
+    // on the shared write chain so C7's create-flow write cannot land in a gap.
+    return enqueueSettingsWrite(async () => {
+      const disk = await window.api.settingsGet();
+      const withOnboarding: AppSettings = { ...payload };
+      // Prefer disk onboarding* always — panel does not own these keys.
+      if ('onboardingComplete' in disk) {
+        withOnboarding.onboardingComplete = disk.onboardingComplete;
       }
-      // URL / voice / STT-TTS and other saved:false refusals — fixed generic copy.
-      throw new Error('SETTINGS_SAVE_REJECTED');
-    }
+      if ('onboardingStartMode' in disk) {
+        withOnboarding.onboardingStartMode = disk.onboardingStartMode;
+      }
+      const voiceTokens: Parameters<typeof window.api.settingsSet>[1] = {
+        ...(sttBinaryToken ? { sttBinaryToken } : {}),
+        ...(sttModelToken ? { sttModelToken } : {}),
+      };
+      const result = Object.keys(voiceTokens).length > 0
+        ? await window.api.settingsSet(withOnboarding, voiceTokens)
+        : await window.api.settingsSet(withOnboarding);
+      // Critic/Shield: IPC resolves even on refusal (saved:false, URL/voice/TTS
+      // validation errors, appDataCleared). Never treat as success.
+      if (
+        result
+        && typeof result === 'object'
+        && (result.saved === false || (typeof result.error === 'string' && result.error.length > 0))
+      ) {
+        const errMsg = typeof result.error === 'string' ? result.error.trim() : '';
+        // Shield 5(a): appDataCleared uses this exact fixed string.
+        if (errMsg === APP_DATA_CLEARED_MESSAGE) {
+          throw new Error(errMsg);
+        }
+        // URL / voice / STT-TTS and other saved:false refusals — fixed generic copy.
+        throw new Error('SETTINGS_SAVE_REJECTED');
+      }
+    });
   }, [sttBinaryToken, sttModelToken]);
 
   // F2#15 + Shield R4 / H6: one exit flush (close / Escape / rail-nav).

@@ -3668,17 +3668,21 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // destination now come from useCreateMythosVaultFlow's modal (shared with
   // ProjectSwitcher.tsx so the two entry points can't drift again).
   // Shield: activate:false + switchToVault so Settings flush runs before main moves.
+  // C7 / Probe: await switchToVault so the hook's onboardingStartMode write lands
+  // AFTER the Settings flush settles (settings:set is full-replace).
   const { createVault: createMythosVault, createVaultModal } = useCreateMythosVaultFlow(
-    useCallback(({ vaultRoot }) => {
+    useCallback(async ({ vaultRoot }) => {
       // F2 Shield: flush-first via switchToVault (not bare handleProjectSwitched).
-      void switchToVault(vaultRoot);
-      // Probe C7 — hook already persisted onboardingComplete + onboardingStartMode.
+      await switchToVault(vaultRoot);
+      // Probe C7 — hook persists onboarding* AFTER this returns.
       // Never settingsSet here: stale renderer prev used to overwrite mode with null ~3ms later.
-      // Sync UI only from a fresh settingsGet.
-      void window.api?.settingsGet?.().then((fresh) => {
-        if (!fresh) return;
-        setAppSettings((prev) => ({ ...(prev ?? {}), ...fresh } as AppSettings));
-      }).catch(() => {});
+      // Sync UI only from a fresh settingsGet (after the awaited switch/flush).
+      try {
+        const fresh = await window.api?.settingsGet?.();
+        if (fresh) {
+          setAppSettings((prev) => ({ ...(prev ?? {}), ...fresh } as AppSettings));
+        }
+      } catch { /* non-fatal */ }
     }, [switchToVault]),
     { activate: false },
   );
@@ -3697,6 +3701,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       }
     } catch { /* non-fatal */ }
   }, [flushOpenSettings, switchToVault]);
+
+  // Shield G8d pin hook — title-bar Open vault… is Welcome-replaced in the
+  // chrome; tests invoke the same callback the chrome wires to onOpenVault.
+  useEffect(() => {
+    const w = window as Window & { __mythosOpenVaultViaPicker?: () => Promise<void> };
+    w.__mythosOpenVaultViaPicker = () => openVaultViaPicker();
+    return () => {
+      if (w.__mythosOpenVaultViaPicker) delete w.__mythosOpenVaultViaPicker;
+    };
+  }, [openVaultViaPicker]);
 
   const handleContinueOnboarding = useCallback(() => {
     const updated = { ...(appSettings ?? {}), onboardingComplete: false } as AppSettings;

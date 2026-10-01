@@ -910,10 +910,14 @@ describe('Draft persistence', () => {
   });
 
   /**
-   * Ivy GO held pin (product already on tip via f385b3de): AI-off Board-only
-   * standalone header still mounts ⋯ (≤999 CSS), and opening it exposes Idea +
-   * Search ideas. Mode aria-checked is asserted under AI-on (see note below).
+   * Ivy GO / Critic H8-1: AI-off Board-only standalone header still mounts ⋯
+   * (≤999 CSS); Idea Board must be aria-checked=true (effectiveMode, not mode).
    * Leave sky10604 AI-off overflow e2e skip alone.
+   *
+   * Seg buttons (className / aria-pressed): same effectiveMode fix applied, but
+   * no reachable product state renders the inline seg with a mode/effectiveMode
+   * mismatch (AI off → visibleModes.length===1 → seg hidden; AI on → equal).
+   * No separate seg pin — see Ivy amendment report.
    */
   describe('Ivy ruling 4: AI-off Board-only standalone overflow', () => {
     afterEach(() => {
@@ -948,10 +952,9 @@ describe('Draft persistence', () => {
       const menu = screen.getByTestId('brainstorm-header-overflow-standalone-menu');
       expect(menu).toBeInTheDocument();
 
-      // Note: AI-off still lists bsc-mode-board in ⋯, but checked uses `mode`
-      // (default 'chat') not effectiveMode ('board'), so aria-checked stays
-      // false here — assert checked under AI-on in the sibling test below.
-      expect(within(menu).getByTestId('bsc-mode-board')).toBeInTheDocument();
+      // H8-1 HARD: Idea Board is the active effectiveMode — must be checked.
+      // RED if overflow `checked:` uses `mode === m` again (mode stays 'chat').
+      expect(within(menu).getByTestId('bsc-mode-board')).toHaveAttribute('aria-checked', 'true');
 
       // Idea in ⋯ → addLooseIdea observable: "New idea" card + toast.
       fireEvent.click(within(menu).getByTestId('bsc-add-idea'));
@@ -972,8 +975,6 @@ describe('Draft persistence', () => {
     });
 
     it('AI-on: overflow mode items carry aria-checked for the active mode', () => {
-      // AI-off Board-only keeps mode state at 'chat' while effectiveMode is
-      // 'board', so checked cannot be asserted meaningfully there.
       seedSearchIdeas();
       render(<BrainstormPage onClose={() => {}} />);
 
@@ -987,6 +988,17 @@ describe('Draft persistence', () => {
       const menuBoard = screen.getByTestId('brainstorm-header-overflow-standalone-menu');
       expect(within(menuBoard).getByTestId('bsc-mode-board')).toHaveAttribute('aria-checked', 'true');
       expect(within(menuBoard).getByTestId('bsc-mode-chat')).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('H8-1 source: overflow + seg use effectiveMode (not mode) for checked/pressed', () => {
+      // RED if either site reverts to `mode === m`.
+      expect(BRAINSTORM_TSX).toMatch(/checked:\s*effectiveMode\s*===\s*m/);
+      expect(BRAINSTORM_TSX).not.toMatch(/checked:\s*mode\s*===\s*m/);
+      expect(BRAINSTORM_TSX).toMatch(
+        /className=\{`bsc-seg-btn\$\{effectiveMode === m \? ' bsc-seg-btn--active' : ''\}`\}/,
+      );
+      expect(BRAINSTORM_TSX).toMatch(/aria-pressed=\{effectiveMode === m\}/);
+      expect(BRAINSTORM_TSX).not.toMatch(/aria-pressed=\{mode === m\}/);
     });
   });
 

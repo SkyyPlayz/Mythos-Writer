@@ -2342,8 +2342,8 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                   <button
                     key={m}
                     type="button"
-                    className={`bsc-seg-btn${mode === m ? ' bsc-seg-btn--active' : ''}`}
-                    aria-pressed={mode === m}
+                    className={`bsc-seg-btn${effectiveMode === m ? ' bsc-seg-btn--active' : ''}`}
+                    aria-pressed={effectiveMode === m}
                     onClick={() => setMode(m)}
                     data-testid={`bsc-mode-${m}`}
                   >
@@ -2403,7 +2403,9 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                     ...visibleModes.map((m) => ({
                       id: `mode-${m}`,
                       label: MODE_LABELS[m],
-                      checked: mode === m,
+                      // H8-1: AI-off forces effectiveMode=board while mode may
+                      // still be 'chat' — check the mode the UI actually shows.
+                      checked: effectiveMode === m,
                       // Same testids as the inline seg so e2e can assert
                       // reachability after opening ⋯ @≤999 (ruling 4).
                       testId: `bsc-mode-${m}`,

@@ -3,6 +3,7 @@ import Dialog, { DialogBody, DialogFooter, DialogHeader } from './components/ui/
 import VaultCreateModePicker, {
   type VaultCreateMode,
 } from './components/SettingsPanel/sections/VaultCreateModePicker';
+import { enqueueSettingsWrite } from './settingsWriteSerial';
 
 export type CreateMythosVaultFlowOptions = {
   /**
@@ -220,14 +221,18 @@ export function useCreateMythosVaultFlow(
         notesVaultRoot: result.notesVaultPath ?? '',
       });
       try {
-        const cur = await window.api?.settingsGet?.();
-        if (cur) {
-          await window.api?.settingsSet?.({
-            ...cur,
-            onboardingComplete: true,
-            onboardingStartMode: startMode,
-          });
-        }
+        // C7(b): same serialized write chain as Settings flush get→set so a
+        // concurrent panel flush cannot full-replace over this start mode.
+        await enqueueSettingsWrite(async () => {
+          const cur = await window.api?.settingsGet?.();
+          if (cur) {
+            await window.api?.settingsSet?.({
+              ...cur,
+              onboardingComplete: true,
+              onboardingStartMode: startMode,
+            });
+          }
+        });
       } catch { /* non-fatal */ }
     } catch (err) {
       setError(`Create failed: ${(err as Error).message}`);
