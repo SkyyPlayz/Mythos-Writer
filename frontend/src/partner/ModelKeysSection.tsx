@@ -16,6 +16,10 @@ import {
   type TelemetryLevel,
   type WritingPartnerSettings,
 } from './partnerSettings';
+import {
+  looksLikeMaskedApiKeyPreview,
+  MASKED_API_KEY_PREVIEW_MESSAGE,
+} from '../lib/maskedApiKeyPreview';
 import './ModelKeysSection.css';
 
 interface ModelKeysSectionProps {
@@ -168,8 +172,10 @@ export default function ModelKeysSection({
   const [installOpen, setInstallOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [pasteMaskError, setPasteMaskError] = useState<string | null>(null);
   const modelOpts = modelsForProvider(selected);
-  const hasKey = !!(providerApiKey.trim() || settings.provider?.apiKey);
+  const needsReentry = (settings.keyReentryPaths ?? []).includes('provider.apiKey');
+  const hasKey = !needsReentry && !!(providerApiKey.trim() || settings.provider?.apiKey);
   const needsUrl = selected === 'ollama' || selected === 'lmstudio' || selected === 'llamacpp' || selected === 'openrouter';
   const needsKey =
     selected === 'openrouter' || selected === 'paste-key' || (selected === 'claude' && cli === 'ready');
@@ -404,16 +410,25 @@ export default function ModelKeysSection({
             <div className="wp-label">API KEY</div>
             <div className="mk-key-row">
               <input
-                className="settings-input"
+                className={`settings-input${pasteMaskError ? ' settings-input-error' : ''}`}
                 type={showApiKey ? 'text' : 'password'}
                 value={providerApiKey}
                 placeholder={selected === 'openrouter' ? 'sk-or-v1-…' : 'sk-…'}
                 onChange={(e) => {
-                  setProviderApiKey(e.target.value);
+                  const next = e.target.value;
+                  if (looksLikeMaskedApiKeyPreview(next)) {
+                    setPasteMaskError(MASKED_API_KEY_PREVIEW_MESSAGE);
+                    // Field stays not-dirty; value unchanged — nothing sent on Save/Close.
+                    return;
+                  }
+                  setPasteMaskError(null);
+                  setProviderApiKey(next);
                   setProviderApiKeyDirty(true);
                   setSavedOk(false);
                 }}
                 aria-label="API key"
+                aria-invalid={pasteMaskError ? 'true' : 'false'}
+                aria-describedby={pasteMaskError ? 'mk-api-key-error' : undefined}
               />
               <button
                 type="button"
@@ -423,6 +438,19 @@ export default function ModelKeysSection({
                 {showApiKey ? 'Hide' : 'Show'}
               </button>
             </div>
+            {pasteMaskError && (
+              <p className="settings-error-msg" id="mk-api-key-error" role="alert" data-testid="mk-api-key-mask-error">
+                {pasteMaskError}
+              </p>
+            )}
+            {needsReentry && !pasteMaskError && (
+              <p className="settings-error-msg" role="status" data-testid="mk-api-key-reentry">
+                Please re-enter your key.
+              </p>
+            )}
+            {!hasKey && needsReentry && (
+              <p className="settings-hint" data-testid="mk-api-key-missing">Key missing — please re-enter.</p>
+            )}
             <p className="settings-hint">Stored locally on this machine. Mythos never resells access.</p>
           </div>
         )}

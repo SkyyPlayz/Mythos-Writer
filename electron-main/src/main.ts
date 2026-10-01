@@ -715,7 +715,11 @@ import {
 } from './autoLinker/index.js';
 import { registerVoiceHandlers } from './voice.js';
 import type { KokoroAssets } from './kokoro.js';
-import { maskSettingsForRenderer, reconcileSettingsFromRenderer } from './settings-masking.js';
+import {
+  healMaskedKeyFields,
+  maskSettingsForRenderer,
+  reconcileSettingsFromRenderer,
+} from './settings-masking.js';
 import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
 import { restartVaultRuntime } from './vaultRuntimeRestart.js';
 import { resolveVaultImportCollisions } from './vaultImportConflict.js';
@@ -9603,13 +9607,16 @@ function loadAppSettings(): AppSettings {
   // of the main-process code keeps reading settings.apiKey / provider.apiKey /
   // voice.openaiApiKey unchanged. The on-disk JSON file holds empty strings
   // for those fields after the one-shot migration in app-ready.
+  // Heal-on-read (H1): after decrypt/hydrate, clear any stored masked preview
+  // in memory only (no write). Same loader backs SETTINGS_GET and provider
+  // lookup (getProviderConfigForAgent / buildGlobalProviderConfig).
   try {
-    return hydrateSecretsIntoSettings(base, getSecretsStore());
+    return healMaskedKeyFields(hydrateSecretsIntoSettings(base, getSecretsStore()));
   } catch {
     // Store not yet initialized (very early boot path). Caller will see the
     // post-migration empty key strings; the env-var fallback in
     // buildGlobalProviderConfig still serves as a last resort for CLI/CI scenarios.
-    return base;
+    return healMaskedKeyFields(base);
   }
 }
 

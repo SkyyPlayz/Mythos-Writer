@@ -16,6 +16,7 @@ const mockProjectList = vi.fn();
 const mockGetVaultRoot = vi.fn();
 const mockProjectSwitch = vi.fn();
 const mockSettingsSet = vi.fn();
+const mockSettingsGet = vi.fn();
 const mockProjectNameSet = vi.fn();
 const mockVaultGetPaths = vi.fn();
 const mockChooseVaultFolder = vi.fn();
@@ -42,6 +43,7 @@ beforeEach(() => {
   mockGetVaultRoot.mockResolvedValue({ vaultRoot: VAULT_A });
   mockProjectSwitch.mockResolvedValue({ switched: true });
   mockSettingsSet.mockResolvedValue({ saved: true });
+  mockSettingsGet.mockResolvedValue(baseSettings);
   mockProjectNameSet.mockResolvedValue({ ok: true, name: 'Renamed' });
   mockVaultGetPaths.mockResolvedValue({
     storyVaultPath: VAULT_A,
@@ -79,6 +81,7 @@ beforeEach(() => {
       getVaultRoot: mockGetVaultRoot,
       projectSwitch: mockProjectSwitch,
       settingsSet: mockSettingsSet,
+      settingsGet: mockSettingsGet,
       projectNameSet: mockProjectNameSet,
       vaultGetPaths: mockVaultGetPaths,
       chooseVaultFolder: mockChooseVaultFolder,
@@ -163,10 +166,14 @@ describe('MythosVaultsSection (Beta 4 M1)', () => {
     const { setSettings, setSavedOk } = await setup();
     fireEvent.change(screen.getByTestId(`mvs-theme-${VAULT_B}`), { target: { value: 'ice' } });
     expect(setSettings).toHaveBeenCalledTimes(1);
-    const next = setSettings.mock.calls[0][0] as AppSettings;
+    const updater = setSettings.mock.calls[0][0] as (prev: AppSettings) => AppSettings;
+    const next = typeof updater === 'function' ? updater(baseSettings) : updater;
     expect(next.vaultThemes).toEqual({ [VAULT_B]: 'ice' });
     expect(next.liquidNeonV2).toBeUndefined(); // current theme untouched
-    expect(mockSettingsSet).toHaveBeenCalledWith(next); // applies on switch without a panel Save
+    await waitFor(() => expect(mockSettingsGet).toHaveBeenCalled());
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+    const payload = mockSettingsSet.mock.calls[0][0] as AppSettings;
+    expect(payload.vaultThemes).toEqual({ [VAULT_B]: 'ice' });
     expect(setSavedOk).toHaveBeenCalledWith(false);
     expect(screen.getByTestId('ln-toast').textContent).toContain('default theme — Ice Mono');
   });
@@ -174,7 +181,8 @@ describe('MythosVaultsSection (Beta 4 M1)', () => {
   it('choosing a theme for the CURRENT vault also applies it live (setKey+slots+wp match)', async () => {
     const { setSettings } = await setup();
     fireEvent.change(screen.getByTestId(`mvs-theme-${VAULT_A}`), { target: { value: 'ember' } });
-    const next = setSettings.mock.calls[0][0] as AppSettings;
+    const updater = setSettings.mock.calls[0][0] as (prev: AppSettings) => AppSettings;
+    const next = typeof updater === 'function' ? updater(baseSettings) : updater;
     expect(next.vaultThemes).toEqual({ [VAULT_A]: 'ember' });
     expect(next.liquidNeonV2?.setKey).toBe('ember');
     expect(next.liquidNeonV2?.slots).toEqual([...LIQUID_NEON_PRESETS.ember.c]);
@@ -497,9 +505,13 @@ describe('MythosVaultsSection — inline rename (SKY-11154 §4, AC-VS-02)', () =
     fireEvent.change(input, { target: { value: 'Renamed Alpha' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(setSettings).toHaveBeenCalled();
-    const next = setSettings.mock.calls[setSettings.mock.calls.length - 1][0] as AppSettings;
+    const updater = setSettings.mock.calls[setSettings.mock.calls.length - 1][0] as (prev: AppSettings) => AppSettings;
+    const next = typeof updater === 'function' ? updater(baseSettings) : updater;
     expect(next.vaultDisplayNames).toEqual({ [VAULT_A]: 'Renamed Alpha' });
-    expect(mockSettingsSet).toHaveBeenCalledWith(next);
+    await waitFor(() => expect(mockSettingsGet).toHaveBeenCalled());
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+    const payload = mockSettingsSet.mock.calls[0][0] as AppSettings;
+    expect(payload.vaultDisplayNames).toEqual({ [VAULT_A]: 'Renamed Alpha' });
     expect(screen.queryByTestId(`mvs-rename-input-${VAULT_A}`)).not.toBeInTheDocument();
   });
 
@@ -530,7 +542,8 @@ describe('MythosVaultsSection — inline rename (SKY-11154 §4, AC-VS-02)', () =
     fireEvent.change(input, { target: { value: 'Via Blur' } });
     fireEvent.blur(input);
     expect(setSettings).toHaveBeenCalled();
-    const next = setSettings.mock.calls[0][0] as AppSettings;
+    const updater = setSettings.mock.calls[0][0] as (prev: AppSettings) => AppSettings;
+    const next = typeof updater === 'function' ? updater(baseSettings) : updater;
     expect(next.vaultDisplayNames).toEqual({ [VAULT_A]: 'Via Blur' });
   });
 

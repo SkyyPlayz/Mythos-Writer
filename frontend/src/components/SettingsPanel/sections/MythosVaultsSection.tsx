@@ -111,6 +111,9 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   // `mythosVaultRoot` (SKY-11882: resolved by main, not guessed here).
   const [hiddenPaths, setHiddenPaths] = useState<string[]>([]);
   const [showHidden, setShowHidden] = useState(false);
+  // Serialize theme/rename persists: round-trip settingsGet → settingsSet so
+  // panel-held masked key previews never overwrite disk (AiMasterSection pattern).
+  const persistChain = useRef<Promise<void>>(Promise.resolve());
 
   const refreshVaults = useCallback(() => {
     window.api?.projectList?.()
@@ -201,27 +204,41 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
 
   /** Prototype themeChange (7112–7120): store the vault's default; when it is
    *  the CURRENT vault, also apply it live. Persisted immediately so a vault
-   *  switch applies the stored default without needing a panel Save first. */
+   *  switch applies the stored default without needing a panel Save first.
+   *  Write chain uses a fresh settingsGet() so mount-time masked key previews
+   *  in panel state cannot clobber disk keys. */
   const onThemeChange = useCallback((v: VaultEntry, key: string) => {
     const preset = LIQUID_NEON_PRESETS[key as LiquidNeonPresetKey];
     if (!preset) return;
-    const vaultThemes = { ...(settings.vaultThemes ?? {}), [v.vaultRoot]: key };
-    let next: AppSettings = { ...settings, vaultThemes };
-    if (v.vaultRoot === activeRoot) {
-      const ln: LiquidNeonV2Settings = {
-        ...normalizeLiquidNeonV2(settings.liquidNeonV2),
-        setKey: preset.key,
-        slots: [...preset.c] as LiquidNeonV2Settings['slots'],
-        wp: 'match',
-      };
-      next = { ...next, liquidNeonV2: ln };
-      applyLiquidNeonV2Tokens(ln, cosmicBgUrl);
-    }
-    setSettings(next);
+    const ln: LiquidNeonV2Settings | null = v.vaultRoot === activeRoot
+      ? {
+          ...normalizeLiquidNeonV2(settings.liquidNeonV2),
+          setKey: preset.key,
+          slots: [...preset.c] as LiquidNeonV2Settings['slots'],
+          wp: 'match',
+        }
+      : null;
+    setSettings((prev) => {
+      const vaultThemes = { ...(prev.vaultThemes ?? {}), [v.vaultRoot]: key };
+      let next: AppSettings = { ...prev, vaultThemes };
+      if (ln) {
+        next = { ...next, liquidNeonV2: ln };
+        applyLiquidNeonV2Tokens(ln, cosmicBgUrl);
+      }
+      return next;
+    });
     setSavedOk(false);
-    window.api?.settingsSet?.(next).catch(() => { /* panel Save still persists */ });
+    const run = persistChain.current.then(async () => {
+      const stored = await window.api?.settingsGet?.();
+      if (!stored) return;
+      const vaultThemes = { ...(stored.vaultThemes ?? {}), [v.vaultRoot]: key };
+      let payload: AppSettings = { ...stored, vaultThemes };
+      if (ln) payload = { ...payload, liquidNeonV2: ln };
+      await window.api?.settingsSet?.(payload);
+    });
+    persistChain.current = run.catch(() => undefined);
     showLnToast(deriveVaultDisplayName(v) + ' default theme — ' + preset.name);
-  }, [settings, activeRoot, setSettings, setSavedOk]);
+  }, [settings.liquidNeonV2, activeRoot, setSettings, setSavedOk]);
 
   /** Prototype cardH (7111): click anywhere on a non-current card switches.
    *  Ivy R6: go through DesktopShell's flush-then-switch (`__mythosRequestVaultSwitch`)
@@ -435,19 +452,27 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
    *  profile. settings.vaultDisplayNames is kept in lockstep as a read cache
    *  (displayNameFor above still prefers it, so the UI updates immediately
    *  and legacy v0.4 vaults — which can't hold mythos.json — still rename).
-   *  Empty submissions are ignored (revert to the previous name, no write). */
+   *  Empty submissions are ignored (revert to the previous name, no write).
+   *  Persist via fresh settingsGet() so panel-held masked keys never overwrite disk. */
   const commitRename = useCallback((v: VaultEntry) => {
     const trimmed = renameValue.trim();
     setRenameFor(null);
     if (!trimmed) return;
-    const vaultDisplayNames = { ...(settings.vaultDisplayNames ?? {}), [v.vaultRoot]: trimmed };
-    const next: AppSettings = { ...settings, vaultDisplayNames };
-    setSettings(next);
+    setSettings((prev) => ({
+      ...prev,
+      vaultDisplayNames: { ...(prev.vaultDisplayNames ?? {}), [v.vaultRoot]: trimmed },
+    }));
     setSavedOk(false);
-    window.api?.settingsSet?.(next).catch(() => { /* panel Save still persists */ });
+    const run = persistChain.current.then(async () => {
+      const stored = await window.api?.settingsGet?.();
+      if (!stored) return;
+      const vaultDisplayNames = { ...(stored.vaultDisplayNames ?? {}), [v.vaultRoot]: trimmed };
+      await window.api?.settingsSet?.({ ...stored, vaultDisplayNames });
+    });
+    persistChain.current = run.catch(() => undefined);
     window.api?.projectNameSet?.({ vaultRoot: v.vaultRoot, name: trimmed })
       .catch(() => { /* non-fatal — the settings-cache write above still renders the new name */ });
-  }, [renameValue, settings, setSettings, setSavedOk]);
+  }, [renameValue, setSettings, setSavedOk]);
 
   const onUnhide = useCallback((vaultRoot: string) => {
     window.api?.vaultSurfaceUnhide?.(vaultRoot)
