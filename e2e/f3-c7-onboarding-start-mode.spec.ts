@@ -1,7 +1,8 @@
 /**
  * Probe C7 — onboardingStartMode on disk after Template / Blank / Import.
  * Reads app-settings.json for real (settings write not mocked). Relaunch check.
- * H10-1: blank path also clicks nav-rail then relaunches (shell writers must not erase).
+ * H10-1: blank path unconditionally clicks nav-rail + GRS hide (shell writers),
+ * returns to Story Writer, then asserts CTA + disk blank.
  */
 import path from 'path';
 import os from 'os';
@@ -93,24 +94,28 @@ test.describe('C7 onboardingStartMode on disk', () => {
       await expect(page.locator('.app-menu-bar, .desktop-shell').first()).toBeVisible({ timeout: 45_000 });
       await expectStartMode(userData, 'blank');
       expect(readStartMode(userData)).not.toBe('template');
-      // H10-1: a few nav-rail clicks (shell full-object writers) must not erase blank.
-      const notes = page.getByRole('button', { name: /^Notes$/i }).first();
-      if (await notes.isVisible().catch(() => false)) {
-        await notes.click();
-        await page.waitForTimeout(200);
-      }
-      const story = page.getByRole('button', { name: /^Story$/i }).first();
-      if (await story.isVisible().catch(() => false)) {
-        await story.click();
-        await page.waitForTimeout(200);
-      }
-      const boards = page.getByRole('button', { name: /^Boards$/i }).first();
-      if (await boards.isVisible().catch(() => false)) {
-        await boards.click();
-        await page.waitForTimeout(200);
-      }
+      // H10-1: nav-rail clicks are shell writers — assert visible then click
+      // (never isVisible()-guarded no-ops). Labels are "Notes Editor" / "Story Writer".
+      const nav = page.locator('nav[aria-label="Main navigation"]');
+      const notes = nav.getByRole('button', { name: 'Notes Editor' });
+      await expect(notes).toBeVisible({ timeout: 15_000 });
+      await notes.click();
+      await page.waitForTimeout(200);
+      const boards = nav.getByRole('button', { name: 'Boards' });
+      await expect(boards).toBeVisible({ timeout: 15_000 });
+      await boards.click();
+      await page.waitForTimeout(200);
+      const story = nav.getByRole('button', { name: 'Story Writer' });
+      await expect(story).toBeVisible({ timeout: 15_000 });
+      await story.click();
+      await page.waitForTimeout(200);
+      // Definite shell full-object writer (GRS visibility) before disk assert.
+      const hideSidebar = page.getByRole('button', { name: /Hide right sidebar/i });
+      await expect(hideSidebar).toBeVisible({ timeout: 15_000 });
+      await hideSidebar.click();
+      await page.waitForTimeout(300);
       await expectStartMode(userData, 'blank');
-      // In-session CTA for blank start mode.
+      // CTA lives in StoryNavigator — must be back on Story Writer (above).
       await expect(page.getByTestId('vs-template-cta')).toBeVisible({ timeout: 15_000 });
     } finally {
       await app.close().catch(() => {});

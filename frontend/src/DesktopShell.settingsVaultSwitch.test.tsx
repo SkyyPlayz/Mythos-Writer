@@ -2507,4 +2507,241 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
       'Shield RED at 48f05422 — onSaved(payload) left shell on template; GRS hide wrote it back',
     ).toBe('blank');
   });
+
+  // ─── r11 uncaught mutants M3 / M4 / M5 / M5b / M8 ───
+
+  it('M3: Retry flush onSaved(written) — shell write keeps blank without Close', async () => {
+    // M3: flushSave `.then` uses onSaved(payload) (mount snapshot) instead of written.
+    // Must drive Retry itself — Close's onSaved(written) must not mask the mutant.
+    // Hold projectSwitch after Retry so loadVault cannot rehydrate disk and mask
+    // onSaved; then shell-write (GRS hide) while the shell still holds that value.
+    persisted = { ...basePersisted(), onboardingStartMode: 'template' };
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+
+    settingsSetMock.mockImplementation(async () => ({ saved: false, error: 'disk full' }));
+    await clickVaultTile(VAULT_B);
+    await waitFor(() => expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument());
+
+    persisted = { ...persisted, onboardingStartMode: 'blank', onboardingComplete: true };
+
+    settingsSetMock.mockImplementation(async (next: Persisted) => {
+      persisted = { ...next };
+      return { saved: true };
+    });
+
+    let releaseSwitch: (() => void) | null = null;
+    projectSwitchMock.mockImplementation(
+      () => new Promise<{ switched: boolean }>((resolve) => {
+        releaseSwitch = () => {
+          mainRoot = VAULT_B;
+          resolve({ switched: true });
+        };
+      }),
+    );
+
+    settingsSetMock.mockClear();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-retry'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+    expect(
+      (settingsSetMock.mock.calls[0][0] as Persisted).onboardingStartMode,
+      'Retry flush must write disk-overlaid blank',
+    ).toBe('blank');
+    await waitFor(() => expect(projectSwitchMock).toHaveBeenCalled());
+
+    // No Close — shell must hold post-overlay blank from Retry onSaved(written).
+    settingsSetMock.mockClear();
+    const hide = await screen.findByRole('button', { name: /Hide right sidebar/i });
+    await act(async () => {
+      fireEvent.click(hide);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+    expect(
+      persisted.onboardingStartMode,
+      'M3 RED — Retry onSaved(payload) left shell on template; GRS hide wrote it back',
+    ).toBe('blank');
+
+    await act(async () => {
+      releaseSwitch?.();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  });
+
+  it('M4: Appearance onSaved(written) after Blank — shell write keeps blank', async () => {
+    // M4: Appearance live persist calls onSaved(payload) instead of written.
+    // Disk stays blank after Blank create. The Appearance base settingsGet is
+    // forced stale (template) while writeSettingsPayload's disk get stays blank
+    // — tip onSaved(written) keeps the shell on blank; mutant onSaved(payload)
+    // stashes template and a later shell full-object write erases blank.
+    persisted = { ...basePersisted(), onboardingStartMode: 'template', theme: 'dark' };
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    fireEvent.click(screen.getByTestId('nav-rail-vault-add'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('rail-vault-mode-blank'));
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+    await waitFor(() => expect(persisted.onboardingStartMode).toBe('blank'));
+
+    openSettings();
+    expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument());
+    // Let the post-hydrate appearanceLiveReady seed settle — no live write yet.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 450));
+    });
+
+    const api = window.api as { settingsGet: () => Promise<Persisted> };
+    const origGet = api.settingsGet.bind(api);
+    let staleBaseOnce = true;
+    api.settingsGet = async () => {
+      if (staleBaseOnce) {
+        staleBaseOnce = false;
+        // Appearance persistAppearanceLive base snapshot — stale vs disk.
+        return { ...persisted, onboardingStartMode: 'template' as const };
+      }
+      return { ...persisted };
+    };
+
+    settingsSetMock.mockClear();
+    fireEvent.click(screen.getByRole('radio', { name: /High contrast/i }));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 600));
+    });
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+    // Disk overlay must have kept the Appearance settingsSet on blank.
+    expect(
+      (settingsSetMock.mock.calls[0][0] as Persisted).onboardingStartMode,
+      'Appearance writeSettingsPayload must overlay disk blank',
+    ).toBe('blank');
+    api.settingsGet = origGet;
+
+    settingsSetMock.mockClear();
+    const hide = await screen.findByRole('button', { name: /Hide right sidebar/i });
+    fireEvent.click(hide);
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+    expect(
+      persisted.onboardingStartMode,
+      'M4 RED — Appearance onSaved(payload) stashed template; shell write erased blank',
+    ).toBe('blank');
+  });
+
+  it('M5/M5b: resync patch is onboarding*-only — shell write keeps pre-sync apiKey+theme', async () => {
+    // M5: hook forwards whole disk via onOnboardingSynced({ ...disk, ...patch }).
+    // M5b: shell syncOnboardingIntoAppSettings spreads ...(patch as any) into prev.
+    // Existing Secure pin stays green under both (settingsSet mask→real). This pin
+    // asserts the shell-written payload itself.
+    const REAL_KEY = 'sk-real-secret-value';
+    const MASK = '••••';
+    persisted = {
+      ...basePersisted(),
+      apiKey: REAL_KEY,
+      theme: 'dark',
+      onboardingStartMode: 'template',
+    };
+
+    let c7Written = false;
+    settingsSetMock.mockImplementation(async (next: Persisted) => {
+      if (next.onboardingStartMode === 'blank' && next.onboardingComplete === true) {
+        c7Written = true;
+      }
+      if (settingsSetFullReplace) {
+        persisted = { ...next };
+      } else {
+        persisted = { ...persisted, ...next };
+      }
+      return { saved: true };
+    });
+
+    const api = window.api as { settingsGet: () => Promise<Persisted> };
+    api.settingsGet = () => {
+      if (c7Written) {
+        // H10-1 sync read: masked secret + a key that differs from the shell copy.
+        return Promise.resolve({
+          ...persisted,
+          apiKey: MASK,
+          theme: 'high-contrast',
+        });
+      }
+      // Pre-C7 (incl. onCreated): real values so shell holds REAL+dark beforehand.
+      return Promise.resolve({ ...persisted });
+    };
+
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    fireEvent.click(screen.getByTestId('nav-rail-vault-add'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('rail-vault-mode-blank'));
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+    await waitFor(() => expect(persisted.onboardingStartMode).toBe('blank'));
+
+    settingsSetMock.mockClear();
+    const hide = await screen.findByRole('button', { name: /Hide right sidebar/i });
+    fireEvent.click(hide);
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+
+    const written = settingsSetMock.mock.calls[settingsSetMock.mock.calls.length - 1][0] as Persisted;
+    expect(
+      written.apiKey,
+      'M5/M5b RED — shell wrote disk masked apiKey after whole-disk sync',
+    ).toBe(REAL_KEY);
+    expect(
+      written.theme,
+      'M5/M5b RED — shell wrote disk theme after ...(patch) spread',
+    ).toBe('dark');
+    expect(written.onboardingStartMode).toBe('blank');
+  });
+
+  it('HARD source: M5 sync patch keys are only onboardingComplete + onboardingStartMode', () => {
+    const flow = readFileSync(resolve(__dirname, 'useCreateMythosVaultFlow.tsx'), 'utf8');
+    const shell = readFileSync(resolve(__dirname, 'DesktopShell.tsx'), 'utf8');
+    expect(flow).toMatch(
+      /const patch: OnboardingSyncPatch = \{\s*onboardingComplete:[\s\S]*?onboardingStartMode:[\s\S]*?\};/,
+    );
+    expect(flow).toMatch(/onOnboardingSyncedRef\.current\?\.\(patch\)/);
+    expect(flow).not.toMatch(/onOnboardingSyncedRef\.current\?\.\(\{[\s\S]*?\.\.\.\s*\(?\s*disk/);
+    // M5b: shell must assign onboarding* explicitly — not ...(patch as any).
+    expect(shell).toMatch(/onboardingComplete:\s*patch\.onboardingComplete/);
+    expect(shell).not.toMatch(/\.\.\.\s*\(patch\s+as\s+any\)/);
+  });
+
+  it('M8: null settingsGet during panel write does not throw; onboarding* unchanged', async () => {
+    // M8: null-guard replaced with `if (true)` → `'onboardingComplete' in disk` throws.
+    persisted = { ...basePersisted(), onboardingStartMode: 'blank', onboardingComplete: true };
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    openSettings();
+    expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+
+    let nullOnce = true;
+    const api = window.api as { settingsGet: () => Promise<Persisted | null> };
+    api.settingsGet = () => {
+      if (nullOnce) {
+        nullOnce = false;
+        return Promise.resolve(null);
+      }
+      return Promise.resolve({ ...persisted });
+    };
+
+    settingsSetMock.mockClear();
+    await triggerSettingsClose('close');
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+    expect(screen.queryByText(/Couldn't save settings/i)).not.toBeInTheDocument();
+    expect(
+      persisted.onboardingStartMode,
+      'M8 RED — null disk threw or erased onboarding during panel write',
+    ).toBe('blank');
+  });
 });
