@@ -215,9 +215,11 @@ test('Ivy R6 NH1: close-fail keeps crash edit; no Retry; main stays Second', asy
     await crash.click();
     await expect(crash).toHaveAttribute('aria-checked', 'true');
 
-    // Refuse SETTINGS_SET on Close (Probe packaged repro: chmod 444).
-    const settingsFile = path.join(userData, 'app-settings.json');
-    fs.chmodSync(settingsFile, 0o444);
+    // Refuse SETTINGS_SET on Close. KEYS-B atomic writes rename a same-dir temp
+    // over app-settings.json, so a read-only target file no longer blocks the
+    // save — make the userData directory non-writable so temp create (`wx`) fails.
+    const userDataMode = fs.statSync(userData).mode & 0o777;
+    fs.chmodSync(userData, 0o555);
 
     await page.locator(`[data-testid="nav-rail-vault-tile-${firstStory}"]`).click();
     await expect(page.locator('[data-testid="settings-flush-retry"]')).toBeVisible({ timeout: 8_000 });
@@ -235,8 +237,9 @@ test('Ivy R6 NH1: close-fail keeps crash edit; no Retry; main stays Second', asy
     await expect(page.locator('[data-testid="mk-telemetry-crash"]')).toHaveAttribute('aria-checked', 'true');
 
     // Restore writable so a later Close can persist (unit covers the write assert).
-    fs.chmodSync(settingsFile, 0o644);
+    fs.chmodSync(userData, userDataMode || 0o755);
   } finally {
+    try { fs.chmodSync(userData, 0o755); } catch { /* cleanup */ }
     try { fs.chmodSync(path.join(userData, 'app-settings.json'), 0o644); } catch { /* cleanup */ }
     await app.close().catch(() => undefined);
   }

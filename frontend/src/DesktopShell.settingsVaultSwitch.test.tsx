@@ -2837,6 +2837,9 @@ describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
       ...basePersisted(),
       apiKey: K2,
       provider: { kind: 'anthropic', model: 'x', apiKey: K2 },
+      // Path-derived names are vault-a/vault-b; pin display names so rename
+      // double-clicks the real Alpha/Bravo labels on Mythos vaults cards.
+      vaultDisplayNames: { [VAULT_A]: 'Alpha', [VAULT_B]: 'Bravo' },
     } as unknown as Persisted;
     wireRealReconcile();
     render(<App />);
@@ -2845,12 +2848,16 @@ describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
     expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
   }
 
-  async function themeRenameAndShellWrite() {
+  async function themeRenameAndShellWrite(): Promise<boolean> {
     // Mid-open vault switch
     await clickVaultTile(VAULT_B);
     await waitFor(() => expect(mainRoot).toBe(VAULT_B));
 
     await openVaultsCategory();
+    // DEBUG
+    const cards = screen.queryAllByTestId(/mvs-card-/);
+    // eslint-disable-next-line no-console
+    console.log('CARDS', cards.map(c => ({ id: c.getAttribute('data-testid'), text: c.textContent?.slice(0,120) })));
     const themeSel = screen.queryByTestId(`mvs-theme-${VAULT_A}`) ?? screen.getByTestId(`mvs-theme-${VAULT_B}`);
     fireEvent.change(themeSel, { target: { value: 'ice' } });
     await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
@@ -2869,20 +2876,39 @@ describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
       })).toBe(true),
     );
 
+    // Capture before clear: dirty Model & keys paste must have reached settingsSet as raw K2.
+    const pastedK2ReachedSet = settingsSetMock.mock.calls.some((c) => {
+      const p = c[0] as { provider?: { apiKey?: string }; apiKey?: string };
+      return p.provider?.apiKey === K2 || p.apiKey === K2;
+    });
+
     settingsSetMock.mockClear();
     const hide = await screen.findByRole('button', { name: /Hide right sidebar/i });
     fireEvent.click(hide);
     await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
     assertRawK2('after theme/rename/shell');
+    return pastedK2ReachedSet;
+  }
+
+  async function pasteK2ViaModelKeysPanel() {
+    // KEYS-B: open Model & keys first so getByLabelText finds the real
+    // aria-label (no soft-skip). Default provider is Claude (no key field) —
+    // select Paste key so mk-api-key mounts, then paste through the real panel.
+    await goModelKeysTab();
+    fireEvent.click(await screen.findByTestId('mk-prov-paste-key'));
+    await waitFor(() => expect(screen.getByTestId('mk-api-key')).toBeInTheDocument());
+    const keyInput = screen.getByLabelText('API key');
+    fireEvent.change(keyInput, { target: { value: K2 } });
+    expect(keyInput).toHaveValue(K2);
   }
 
   it('Close then relaunch: apiKey and provider.apiKey stay raw K2', async () => {
     await seedK2AndOpenSettings();
     // Paste K2 into Model & keys (dirty) then flush — already seeded on disk;
-    // ensure UI path also sends K2 when dirty. KEYS-B: no `if (el)` soft-skip.
-    const keyInput = screen.getByLabelText('API key');
-    fireEvent.change(keyInput, { target: { value: K2 } });
-    await themeRenameAndShellWrite();
+    // ensure UI path also sends K2 when dirty.
+    await pasteK2ViaModelKeysPanel();
+    const pastedK2ReachedSet = await themeRenameAndShellWrite();
+    expect(pastedK2ReachedSet).toBe(true);
 
     await triggerSettingsClose('close');
     cleanup();
@@ -2898,9 +2924,9 @@ describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
 
   it('unmount without Close then relaunch: keys stay raw K2', async () => {
     await seedK2AndOpenSettings();
-    const keyInput = screen.getByLabelText('API key');
-    fireEvent.change(keyInput, { target: { value: K2 } });
-    await themeRenameAndShellWrite();
+    await pasteK2ViaModelKeysPanel();
+    const pastedK2ReachedSet = await themeRenameAndShellWrite();
+    expect(pastedK2ReachedSet).toBe(true);
     cleanup(); // unmount without Close
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).api = makeMockApi();

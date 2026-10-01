@@ -7,6 +7,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import JSZip from 'jszip';
 import type { AppSettings } from './ipc.js';
 import {
   SETTINGS_DEFAULTS,
@@ -675,6 +676,64 @@ describe('PB9 / PB9b / PB9c — pre-hydrate / pre-init JSON-only (D5 + Ivy)', ()
     expect(restoreSrc).toMatch(/loadAppSettingsFrom\(settingsPath, opts\.getStore\)/);
     // No live call — comments may mention saveAppSettingsTo as the K-B16 hazard.
     expect(restoreSrc).not.toMatch(/saveAppSettingsTo\s*\(/);
+    // afterExtract must live in `finally` (pre-KEYS-B ensureVaultDir parity).
+    expect(restoreSrc).toMatch(/} finally \{[\s\S]*?opts\.afterExtract\?\.\(\)/);
+  });
+
+  it('PB9b(d): throwing restore still runs afterExtract; error propagates', async () => {
+    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-d-ud-'));
+    const storyVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-d-sv-'));
+    const notesVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-pb9b-d-nv-'));
+    const secretsPath = path.join(userData, 'secrets.json');
+    const store = new SecretsStore({ filePath: secretsPath, safeStorage: makeSafeStorage(true) });
+
+    let afterExtractCalls = 0;
+    const missingArchive = path.join(userData, 'does-not-exist.mwbackup');
+
+    await expect(
+      restoreAppDataAndReloadSettings({
+        archivePath: missingArchive,
+        userDataPath: userData,
+        storyVaultRoot: storyVault,
+        notesVaultRoot: notesVault,
+        overwrite: true,
+        getStore: () => store,
+        afterExtract: () => {
+          afterExtractCalls += 1;
+        },
+      }),
+    ).rejects.toThrow(/Archive not found/);
+
+    expect(afterExtractCalls).toBe(1);
+
+    // Bad archive: valid zip missing header.json (backup.ts:140).
+    afterExtractCalls = 0;
+    const zip = new JSZip();
+    zip.file('readme.txt', 'no header');
+    const badArchive = path.join(userData, 'bad.mwbackup');
+    fs.writeFileSync(badArchive, await zip.generateAsync({ type: 'nodebuffer' }));
+
+    await expect(
+      restoreAppDataAndReloadSettings({
+        archivePath: badArchive,
+        userDataPath: userData,
+        storyVaultRoot: storyVault,
+        notesVaultRoot: notesVault,
+        overwrite: true,
+        getStore: () => store,
+        afterExtract: () => {
+          afterExtractCalls += 1;
+        },
+      }),
+    ).rejects.toThrow(/missing header\.json/);
+    expect(afterExtractCalls).toBe(1);
+
+    // Source pin: mutant that moves afterExtract out of finally must fail.
+    const restoreSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'appRestore.ts'),
+      'utf-8',
+    );
+    expect(restoreSrc).toMatch(/} finally \{[\s\S]*?opts\.afterExtract\?\.\(\)/);
   });
 
   it('PB9c: pre-init load (slice2 missing) + init + migrate + load keeps all 12', () => {

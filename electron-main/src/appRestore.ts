@@ -5,6 +5,11 @@
  * resolves. Restore itself only writes archive bytes (never the secret store).
  * The post-restore `loadAppSettingsFrom` may run the slice2 flag write — that
  * path is JSON-only under S-B11 so stored keys survive a pre-0.5.4 archive.
+ *
+ * Pre-KEYS-B main ran `try { restoreAppData(...) } finally { ensureVaultDir(); }`
+ * so ensureVaultDir ran even when restore threw. afterExtract must stay in a
+ * `finally` for the same parity (missing archive, bad header, schema mismatch,
+ * zip-slip).
  */
 
 import path from 'path';
@@ -21,8 +26,9 @@ export interface RestoreAppDataAndReloadOptions extends RestoreOptions {
    */
   settingsPath?: string;
   /**
-   * Called after restore extracts files and before settings reload — mirrors
-   * main's `finally { ensureVaultDir() }` so pins exercise the same order.
+   * Called after restore attempts extract — mirrors main's
+   * `finally { ensureVaultDir() }` so it runs on throw too. Settings reload
+   * stays gated on `result.restored` after a successful restore.
    */
   afterExtract?: () => void;
 }
@@ -38,23 +44,26 @@ export interface RestoreAppDataAndReloadOptions extends RestoreOptions {
 export async function restoreAppDataAndReloadSettings(
   opts: RestoreAppDataAndReloadOptions,
 ): Promise<RestoreResult> {
-  const result = await restoreAppData({
-    archivePath: opts.archivePath,
-    userDataPath: opts.userDataPath,
-    storyVaultRoot: opts.storyVaultRoot,
-    notesVaultRoot: opts.notesVaultRoot,
-    overwrite: opts.overwrite,
-  });
-
-  // Always run the post-restore side (main's finally), even when restore
-  // returned requiresConfirmation / not restored — main's finally always runs.
+  let result: RestoreResult | undefined;
   try {
-    opts.afterExtract?.();
-  } catch {
-    /* ensureVaultDir may throw when app data cleared; match main best-effort */
+    result = await restoreAppData({
+      archivePath: opts.archivePath,
+      userDataPath: opts.userDataPath,
+      storyVaultRoot: opts.storyVaultRoot,
+      notesVaultRoot: opts.notesVaultRoot,
+      overwrite: opts.overwrite,
+    });
+  } finally {
+    // Parity with pre-KEYS-B `finally { ensureVaultDir() }` — runs on throw too.
+    try {
+      opts.afterExtract?.();
+    } catch {
+      /* ensureVaultDir may throw when app data cleared; match main best-effort */
+    }
   }
 
-  if (result.restored) {
+  // Restore threw → exception already rethrown after finally; result is set.
+  if (result!.restored) {
     const settingsPath =
       opts.settingsPath ?? path.join(opts.userDataPath, 'app-settings.json');
     // S-B11: loadAppSettingsFrom writes the slice2 flag JSON-only when needed.
@@ -63,5 +72,5 @@ export async function restoreAppDataAndReloadSettings(
     loadAppSettingsFrom(settingsPath, opts.getStore);
   }
 
-  return result;
+  return result!;
 }
