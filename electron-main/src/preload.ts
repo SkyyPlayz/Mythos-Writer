@@ -1382,8 +1382,23 @@ contextBridge.exposeInMainWorld('api', {
       ipcRenderer.invoke('agentSession:duplicate', { sessionId }),
     delete: (sessionId: string) =>
       ipcRenderer.invoke('agentSession:delete', { sessionId }),
-    appendTurns: (sessionId: string, turns: Array<{ role: 'user' | 'agent'; text: string; at: string }>) =>
+    appendTurns: (sessionId: string, turns: Array<{
+      role: 'user' | 'agent';
+      text: string;
+      at: string;
+      cardTitle?: string;
+      cardFoot?: string;
+      cardKind?: 'analysis' | 'lesson' | 'action';
+    }>) =>
       ipcRenderer.invoke('agentSession:appendTurns', { sessionId, turns }),
+  },
+
+  // F3 Secure bar — subscribe-only (unsubscribe return). Never expose raw ipcRenderer.
+  // Main fires partner-thread:changed with NO payload after a turn is persisted.
+  onPartnerThreadChanged: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('partner-thread:changed', handler);
+    return () => ipcRenderer.removeListener('partner-thread:changed', handler);
   },
 
   // SKY-10730 M12.1: background job queue — whole-vault scan passes run on a

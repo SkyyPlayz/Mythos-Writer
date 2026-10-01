@@ -149,6 +149,15 @@
   padding: 14px 16px;
 }
 
+/* A6 — main-saved LESSON (no cardKind): read-only chrome, never COMPUTED badge */
+.coach-lesson-card--readonly {
+  border-style: dashed;
+  border-color: rgba(155, 95, 255, 0.35);
+  box-shadow: none;
+  background: rgba(155, 95, 255, 0.04);
+  opacity: 0.94;
+}
+
 .coach-lesson-title {
   font-size: 12.5px;
   font-weight: 700;
@@ -211,6 +220,14 @@
   border: var(--bw, 1px) solid var(--b1, rgba(0, 240, 255, 0.45));
   box-shadow: 0 0 18px -8px var(--g1, rgba(0, 240, 255, 0.4));
   padding: 14px 16px;
+}
+
+.coach-analysis-card--readonly {
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow: none;
+  background: rgba(9, 11, 20, 0.4);
+  opacity: 0.94;
 }
 
 .coach-analysis-title {

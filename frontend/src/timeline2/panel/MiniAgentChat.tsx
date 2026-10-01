@@ -2,13 +2,43 @@
 // "both side-tab mini chats send/receive"). Bubbles + typing dots + input on
 // a shared agent session (M15), topped with the session pill so the §11
 // "sessions everywhere" contract holds in the timeline too.
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AgentSessionPicker from '../../components/AgentSessionPicker';
+import {
+  displayCardBodyText,
+  mainFormatCoachDisplayCard,
+  miniCardBodyText,
+  neutralizeLeadingCoachCardMarker,
+} from '../../coach/coachMessages';
+import { useVoiceDictation, type VoiceDictationState } from '../../lib/useVoiceDictation';
 import type { MiniAgentChat as MiniAgentChatState } from './useMiniAgentChat';
 // M12.B3 (SKY-10738): self-import — this component is now also mounted
 // outside Timeline2 (AgentHubPanel's Archive chat view), which doesn't load
 // TimelineRightPanel.css itself.
 import './TimelineRightPanel.css';
+
+/** Structural kinds that may render as trp-msg-card chrome (N2 / Shield). */
+const CARD_KIND_WHITELIST = new Set(['analysis', 'lesson', 'action']);
+
+const MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
+  idle: 'Start voice input',
+  listening: 'Stop voice input — listening',
+  processing: 'Processing speech…',
+  error: 'Voice error — click to retry',
+};
+
+const MIC_ICONS: Record<VoiceDictationState, string> = {
+  idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
+};
+
+function isTrustedCardTurn(turn: AgentSessionTurn): boolean {
+  return Boolean(
+    turn.role !== 'user'
+    && turn.cardKind
+    && CARD_KIND_WHITELIST.has(turn.cardKind)
+    && turn.cardTitle,
+  );
+}
 
 export interface MiniAgentChatProps {
   chat: MiniAgentChatState;
@@ -16,11 +46,42 @@ export interface MiniAgentChatProps {
   accent: 'brainstorm' | 'archive';
   placeholder: string;
   testidPrefix: string;
+  /** Optional partner display name shown once in the chat head (F3 — no duplicate avatars). */
+  partnerName?: string;
+  /** When true, hide the in-chat session pill (hub owns PAST CHATS & CALLS picker). */
+  hideSessionPicker?: boolean;
+  /** Main-parity composer dictation (BrainstormPage mic pattern). */
+  voiceEnabled?: boolean;
+  voicePrefs?: { micDeviceId?: string; inputLanguage?: string };
 }
 
-export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix }: MiniAgentChatProps) {
+export default function MiniAgentChat({
+  chat,
+  accent,
+  placeholder,
+  testidPrefix,
+  partnerName,
+  hideSessionPicker = false,
+  voiceEnabled = false,
+  voicePrefs,
+}: MiniAgentChatProps) {
   const [draft, setDraft] = useState('');
   const feedRef = useRef<HTMLDivElement>(null);
+  const sessionAgent = chat.store.activeSession?.agent;
+  const appendTranscript = useCallback((text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    setDraft((prev) => (prev.trim() ? `${prev.trim()} ${t}` : t));
+  }, []);
+  const { state: voiceState, start: startVoice, stop: stopVoice } = useVoiceDictation({
+    onTranscript: appendTranscript,
+    micDeviceId: voicePrefs?.micDeviceId,
+    inputLanguage: voicePrefs?.inputLanguage,
+  });
+  const handleMicToggle = useCallback(() => {
+    if (voiceState === 'idle' || voiceState === 'error') void startVoice();
+    else if (voiceState === 'listening') stopVoice();
+  }, [voiceState, startVoice, stopVoice]);
   useEffect(() => {
     const el = feedRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -36,30 +97,69 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix 
   return (
     <div className={`trp-chat trp-chat--${accent}`} data-testid={`${testidPrefix}-chat`}>
       <div className="trp-chat-head">
-        <span className="trp-label">CHAT</span>
-        <AgentSessionPicker store={chat.store} className="trp-chat-sessions" busy={chat.busy} />
+        <span className="trp-label">{partnerName ? partnerName.toUpperCase() : 'CHAT'}</span>
+        {!hideSessionPicker && (
+          <AgentSessionPicker store={chat.store} className="trp-chat-sessions" busy={chat.busy} />
+        )}
       </div>
       <div className="trp-chat-feed" data-testid={`${testidPrefix}-chat-feed`} ref={feedRef}>
-        {chat.messages.map((turn, i) => (
-          turn.role !== 'user' && turn.cardTitle ? (
-            <div
-              key={`${turn.at}-${i}`}
-              className={`trp-msg-card trp-msg-card--${accent}`}
-              data-testid={`${testidPrefix}-card-${i}`}
-            >
-              <div className="trp-msg-card-title">{turn.cardTitle}</div>
-              <div className="trp-msg-card-text">{turn.text}</div>
-              {turn.cardFoot && <div className="trp-msg-card-foot">{turn.cardFoot}</div>}
-            </div>
-          ) : (
+        {chat.messages.map((turn, i) => {
+          // N2 Secure bar: full action-card chrome only for whitelisted
+          // structural cardKind + cardTitle. cardTitle alone (forged) stays plain.
+          if (isTrustedCardTurn(turn)) {
+            return (
+              <div
+                key={`${turn.at}-${i}`}
+                className={`trp-msg-card trp-msg-card--${accent}`}
+                data-testid={`${testidPrefix}-card-${i}`}
+              >
+                <div className="trp-msg-card-title">{turn.cardTitle}</div>
+                <div className="trp-msg-card-text">
+                  {miniCardBodyText(turn, { sessionAgent })}
+                </div>
+                {turn.cardFoot && <div className="trp-msg-card-foot">{turn.cardFoot}</div>}
+              </div>
+            );
+          }
+          // Probe HARD 1: main-format coach-card (no cardKind) → read-only
+          // display **only** for legacy coach-agent sessions (HARD 1(c)(ii)).
+          const display = mainFormatCoachDisplayCard(turn, sessionAgent);
+          if (display) {
+            return (
+              <div
+                key={`${turn.at}-${i}`}
+                className={`trp-msg-card trp-msg-card--${accent} trp-msg-card--readonly`}
+                data-testid={`${testidPrefix}-display-card-${i}`}
+                data-readonly-card="true"
+              >
+                <div className="trp-msg-card-title">{display.title}</div>
+                <div className="trp-msg-card-text">{displayCardBodyText(display)}</div>
+                {display.kind === 'lesson' && display.points.length > 0 && (
+                  <ul className="trp-msg-card-points">
+                    {display.points.map((p) => (
+                      <li key={p}>{p}</li>
+                    ))}
+                  </ul>
+                )}
+                {display.kind === 'lesson' && display.drill && (
+                  <div className="trp-msg-card-foot">{display.drill}</div>
+                )}
+              </div>
+            );
+          }
+          // HARD 1(c)(i): neutralize leading marker before render (plain bubble).
+          const bubbleText = turn.role === 'agent' && !turn.cardKind
+            ? neutralizeLeadingCoachCardMarker(turn.text)
+            : turn.text;
+          return (
             <div
               key={`${turn.at}-${i}`}
               className={`trp-bubble trp-bubble--${turn.role === 'user' ? 'user' : 'agent'}`}
             >
-              {turn.text}
+              {bubbleText}
             </div>
-          )
-        ))}
+          );
+        })}
         {chat.pendingPrompt !== null && (
           <>
             <div className="trp-bubble trp-bubble--user">{chat.pendingPrompt}</div>
@@ -70,6 +170,19 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix 
             </div>
           </>
         )}
+        {chat.stalled && chat.busy && (
+          <div className="trp-stall-panel" role="status" data-testid={`${testidPrefix}-stall-panel`}>
+            <p>Still working — this is taking longer than usual.</p>
+            <button
+              type="button"
+              className="trp-stall-cancel"
+              onClick={() => chat.cancel()}
+              data-testid={`${testidPrefix}-stall-cancel`}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
         {chat.error && (
           <div className="trp-chat-error" role="alert" data-testid={`${testidPrefix}-chat-error`}>
             {chat.error}
@@ -77,6 +190,20 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix 
         )}
       </div>
       <div className="trp-chat-input-row">
+        {voiceEnabled && (
+          <button
+            type="button"
+            className={`trp-chat-mic trp-chat-mic--${voiceState}${voiceState === 'listening' ? ' trp-chat-mic--recording' : ''}`}
+            onClick={handleMicToggle}
+            aria-label={MIC_ARIA_LABELS[voiceState]}
+            aria-pressed={voiceState !== 'idle'}
+            disabled={voiceState === 'processing' || chat.busy}
+            title={MIC_ARIA_LABELS[voiceState]}
+            data-testid={`${testidPrefix}-mic-btn`}
+          >
+            {MIC_ICONS[voiceState]}
+          </button>
+        )}
         <input
           className="trp-chat-input"
           value={draft}
@@ -85,16 +212,28 @@ export default function MiniAgentChat({ chat, accent, placeholder, testidPrefix 
           onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
           aria-label={placeholder}
           data-testid={`${testidPrefix}-chat-input`}
+          disabled={chat.busy}
         />
-        <button
-          type="button"
-          className="trp-chat-send"
-          onClick={submit}
-          disabled={chat.busy || !draft.trim()}
-          data-testid={`${testidPrefix}-chat-send`}
-        >
-          Send
-        </button>
+        {chat.busy ? (
+          <button
+            type="button"
+            className="trp-chat-cancel"
+            onClick={() => chat.cancel()}
+            data-testid={`${testidPrefix}-chat-cancel`}
+          >
+            Cancel
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="trp-chat-send"
+            onClick={submit}
+            disabled={!draft.trim()}
+            data-testid={`${testidPrefix}-chat-send`}
+          >
+            Send
+          </button>
+        )}
       </div>
     </div>
   );

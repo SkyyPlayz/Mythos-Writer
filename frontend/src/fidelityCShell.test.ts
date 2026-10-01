@@ -84,9 +84,9 @@ describe('C — walkthrough shell min bar z-tier 88–90', () => {
   });
 });
 
-describe('C — Getting Started reachable; A1/A2/B keep', () => {
-  it('GettingStartedPanel still exists', () => {
-    expect(fs.existsSync(path.join(here, 'components/GettingStartedPanel/GettingStartedPanel.tsx'))).toBe(true);
+describe('C — Getting Started removed (F3#10); A1/A2/B keep', () => {
+  it('GettingStartedPanel is deleted (F3 cleanup)', () => {
+    expect(fs.existsSync(path.join(here, 'components/GettingStartedPanel/GettingStartedPanel.tsx'))).toBe(false);
   });
 
   it('Quick Entry / rail brand M stay absent', () => {
@@ -95,12 +95,13 @@ describe('C — Getting Started reachable; A1/A2/B keep', () => {
     expect(rail).not.toMatch(/>M</);
   });
 
-  it('partner shell still one face + three hands', () => {
+  it('partner shell still one face + action buttons (no persona hand chips)', () => {
     const hub = read('AgentHubPanel.tsx');
     expect(hub).toMatch(/data-partner-shell|ahp-partner/);
-    expect(hub).toMatch(/ahp-hand-\$\{h\.id\}/);
+    expect(hub).toMatch(/ahp-action-\$\{a\.id\}/);
     expect(hub).toMatch(/QUEUED/);
     expect(hub).not.toMatch(/aria-label="Agents"/);
+    expect(hub).not.toMatch(/ahp-hand-\$\{h\.id\}/);
   });
 });
 

@@ -41,6 +41,12 @@ export interface SessionTurn {
   /** Present when this agent turn should render as a structured card. */
   cardTitle?: string;
   cardFoot?: string;
+  /**
+   * Structural card kind set only by trusted writers (Full Analysis / partner
+   * actions). Untrusted text that merely looks like an encoded card must NOT
+   * set this — MiniAgentChat renders cards only when cardKind is present.
+   */
+  cardKind?: 'analysis' | 'lesson' | 'action';
 }
 
 export interface AgentSessionFile {
@@ -66,6 +72,63 @@ export interface AgentSessionSummary {
 const TURN_OPEN_RE = /^<!-- mythos:turn (user|agent) ([^>]*?) -->$/;
 const TURN_CLOSE = '<!-- /mythos:turn -->';
 const CARD_META_RE = /^<!-- mythos:card-meta (\{.*\}) -->$/;
+/** Leading coach-card HTML-comment prefix (with or without `v1`). */
+const COACH_CARD_MARKER_PREFIX = '<!-- mythos:coach-card';
+
+/** Neutralize fence / card-meta lines embedded in turn text so they stay body. */
+function escapeTurnBodyMarkers(text: string): string {
+  const withoutClose = text.split(TURN_CLOSE).join('<!- /mythos:turn ->');
+  return withoutClose
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (TURN_OPEN_RE.test(trimmed) || CARD_META_RE.test(trimmed)) {
+        return line.replace('<!--', '<!-');
+      }
+      return line;
+    })
+    .join('\n');
+}
+
+/**
+ * Shield HARD fix 1 — break a leading coach-card marker (`<!--` → `<!-`) on
+ * append / create-greeting writes when `cardKind` is not analysis/lesson.
+ * Read + duplicate must leave legacy marker bytes unchanged.
+ */
+export function escapeLeadingCoachCardMarkerText(text: string): string {
+  const lead = text.match(/^\s*/)?.[0] ?? '';
+  const rest = text.slice(lead.length);
+  if (!rest.startsWith(COACH_CARD_MARKER_PREFIX)) return text;
+  return `${lead}${rest.replace('<!--', '<!-')}`;
+}
+
+function sanitizeCardKind(value: unknown): SessionTurn['cardKind'] | undefined {
+  if (value === 'analysis' || value === 'lesson' || value === 'action') return value;
+  return undefined;
+}
+
+/** Drop unknown cardKind values before they reach the in-memory session echo. */
+export function sanitizeSessionTurn(turn: SessionTurn): SessionTurn {
+  const kind = sanitizeCardKind(turn.cardKind);
+  const next: SessionTurn = { role: turn.role, text: turn.text, at: turn.at };
+  if (kind) next.cardKind = kind;
+  if (turn.cardTitle) {
+    next.cardTitle = turn.cardTitle;
+    if (turn.cardFoot) next.cardFoot = turn.cardFoot;
+  }
+  return next;
+}
+
+/**
+ * Append / create-greeting write sanitizer: whitelist cardKind, then escape a
+ * leading coach-card marker unless the turn is a trusted analysis/lesson card.
+ * Not used by duplicate / createSession bulk copies / read.
+ */
+export function sanitizeIncomingWriteTurn(turn: SessionTurn): SessionTurn {
+  const next = sanitizeSessionTurn(turn);
+  if (next.cardKind === 'analysis' || next.cardKind === 'lesson') return next;
+  return { ...next, text: escapeLeadingCoachCardMarkerText(next.text) };
+}
 
 export function sessionsDir(notesVaultRoot: string): string {
   return path.join(notesVaultRoot, SESSIONS_DIRNAME);
@@ -79,26 +142,32 @@ function sessionFileName(session: { startedAt: string; agent: string; id: string
 }
 
 export function serializeSessionFile(session: AgentSessionFile): string {
+  const safeTitle = session.title ? session.title.replace(/[\r\n]+/g, ' ') : undefined;
   const fm: Record<string, unknown> = {
     mythosSession: 1,
     id: session.id,
     agent: session.agent,
-    ...(session.title ? { title: session.title.replace(/[\r\n]+/g, ' ') } : {}),
+    ...(safeTitle ? { title: safeTitle } : {}),
     startedAt: session.startedAt,
     updatedAt: session.updatedAt,
     turns: session.turns.length,
   };
-  const body: string[] = [`# ${session.title ?? `${session.agent} session`}`, ''];
+  // Residual 11 — strip newlines in the `# title` heading (not only frontmatter).
+  const headingTitle = (safeTitle ?? `${session.agent} session`).replace(/[\r\n]+/g, ' ');
+  const body: string[] = [`# ${headingTitle}`, ''];
   for (const turn of session.turns) {
-    body.push(`<!-- mythos:turn ${turn.role} ${turn.at} -->`);
-    if (turn.cardTitle) {
-      const meta: Record<string, string> = { cardTitle: turn.cardTitle };
-      if (turn.cardFoot) meta.cardFoot = turn.cardFoot;
+    const safe = sanitizeSessionTurn(turn);
+    body.push(`<!-- mythos:turn ${safe.role} ${safe.at} -->`);
+    if (safe.cardTitle || safe.cardKind) {
+      const meta: Record<string, string> = {};
+      if (safe.cardTitle) meta.cardTitle = safe.cardTitle;
+      if (safe.cardFoot) meta.cardFoot = safe.cardFoot;
+      if (safe.cardKind) meta.cardKind = safe.cardKind;
       body.push(`<!-- mythos:card-meta ${JSON.stringify(meta)} -->`);
     }
-    body.push(turn.role === 'user' ? '**You:**' : '**Agent:**', '');
-    // Guard the fence: a literal close marker inside a turn would truncate it.
-    body.push(turn.text.split(TURN_CLOSE).join('<!- /mythos:turn ->'));
+    body.push(safe.role === 'user' ? '**You:**' : '**Agent:**', '');
+    // Guard fences: close / open / card-meta lines inside text must not parse as structure.
+    body.push(escapeTurnBodyMarkers(safe.text));
     body.push(TURN_CLOSE, '');
   }
   return serializeFrontmatter(fm, body.join('\n'));
@@ -111,23 +180,46 @@ export function parseSessionFile(raw: string, relPath = ''): AgentSessionFile | 
   if (!id) return null;
   const turns: SessionTurn[] = [];
   const lines = prose.split('\n');
-  let current: { role: 'user' | 'agent'; at: string; buf: string[]; cardTitle?: string; cardFoot?: string } | null = null;
+  let current: {
+    role: 'user' | 'agent';
+    at: string;
+    buf: string[];
+    cardTitle?: string;
+    cardFoot?: string;
+    cardKind?: SessionTurn['cardKind'];
+    /** True once any non-meta body line has been accepted — blocks late card-meta. */
+    bodyStarted: boolean;
+  } | null = null;
   for (const line of lines) {
     const open = TURN_OPEN_RE.exec(line.trim());
     if (open) {
-      current = { role: open[1] as 'user' | 'agent', at: open[2].trim(), buf: [] };
+      // Mid-turn open markers are forged body text — do not start a new turn.
+      if (current) {
+        current.buf.push(line);
+        current.bodyStarted = true;
+        continue;
+      }
+      current = {
+        role: open[1] as 'user' | 'agent',
+        at: open[2].trim(),
+        buf: [],
+        bodyStarted: false,
+      };
       continue;
     }
-    if (current) {
+    if (current && !current.bodyStarted) {
       const cardMeta = CARD_META_RE.exec(line.trim());
       if (cardMeta) {
         try {
-          const parsed = JSON.parse(cardMeta[1]) as Record<string, string>;
+          const parsed = JSON.parse(cardMeta[1]) as Record<string, unknown>;
           if (typeof parsed.cardTitle === 'string') current.cardTitle = parsed.cardTitle;
           if (typeof parsed.cardFoot === 'string') current.cardFoot = parsed.cardFoot;
+          const kind = sanitizeCardKind(parsed.cardKind);
+          if (kind) current.cardKind = kind;
         } catch {
           // malformed card-meta line — ignore, degrade to plain bubble
         }
+        // Structural meta only immediately after turn-open (before first body line).
         continue;
       }
     }
@@ -139,6 +231,7 @@ export function parseSessionFile(raw: string, relPath = ''): AgentSessionFile | 
         while (buf.length > 0 && buf[0].trim() === '') buf.shift();
         while (buf.length > 0 && buf[buf.length - 1].trim() === '') buf.pop();
         const turn: SessionTurn = { role: current.role, at: current.at, text: buf.join('\n') };
+        if (current.cardKind) turn.cardKind = current.cardKind;
         if (current.cardTitle) {
           turn.cardTitle = current.cardTitle;
           if (current.cardFoot) turn.cardFoot = current.cardFoot;
@@ -148,7 +241,10 @@ export function parseSessionFile(raw: string, relPath = ''): AgentSessionFile | 
       current = null;
       continue;
     }
-    if (current) current.buf.push(line);
+    if (current) {
+      current.buf.push(line);
+      current.bodyStarted = true;
+    }
   }
   return {
     id,
@@ -188,7 +284,7 @@ export function createSession(
     ...(opts.title ? { title: opts.title } : {}),
     startedAt,
     updatedAt: startedAt,
-    turns: opts.turns ?? [],
+    turns: (opts.turns ?? []).map(sanitizeSessionTurn),
   };
   const relPath = path.posix.join(SESSIONS_DIRNAME, sessionFileName(session));
   writeFileAtomic(path.join(notesVaultRoot, relPath), serializeSessionFile(session));
@@ -204,7 +300,8 @@ export function appendTurns(
   const found = findSessionFile(notesVaultRoot, sessionId);
   if (!found) return null;
   const session = found.session;
-  session.turns.push(...turns);
+  // Shield HARD fix 1 — escape leading coach-card marker on append (not duplicate/read).
+  session.turns.push(...turns.map(sanitizeIncomingWriteTurn));
   session.updatedAt = new Date().toISOString();
   writeFileAtomic(path.join(notesVaultRoot, found.relPath), serializeSessionFile(session));
   return session;

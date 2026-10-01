@@ -764,6 +764,8 @@ export const IPC_CHANNELS = {
   AGENT_SESSION_DUPLICATE: 'agentSession:duplicate',
   AGENT_SESSION_DELETE: 'agentSession:delete',
   AGENT_SESSION_APPEND_TURNS: 'agentSession:appendTurns',
+  /** F3 Secure bar — main→app-windows only, NO payload. Fired after a turn is persisted. */
+  PARTNER_THREAD_CHANGED: 'partner-thread:changed',
 
   // SKY-10730 M12.1: background job queue (worker-thread scan/extraction passes)
   JOBS_ENQUEUE: 'jobs:enqueue',
@@ -2993,6 +2995,11 @@ export interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
   /**
+   * Ephemeral (settings:get only): main reports whether process.env.ANTHROPIC_API_KEY
+   * is non-empty. Boolean only — never the key value. Not persisted.
+   */
+  anthropicEnvKeyPresent?: boolean;
+  /**
    * M11a (SKY-9160): master AI switch — manual mode. Optional so pre-M11
    * settings files remain valid; absent means enabled. Master off beats every
    * per-agent enable; master on defers to per-agent settings.
@@ -3047,7 +3054,7 @@ export interface AppSettings {
   legacyVaultDismissed?: boolean;
   legacyVaultPath?: string;
   /** SKY-1188: first-run path used to seed post-onboarding guidance. */
-  onboardingStartMode?: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+  onboardingStartMode?: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
   /** Beta 3 M25: genre preset picked in the welcome wizard's guided setup (renderer-owned). */
   onboardingGenre?: string;
   /** SKY-2005: save-location recents shown by onboarding v2. Newest last, max 5. */
@@ -3057,7 +3064,7 @@ export interface AppSettings {
   /** SKY-1188: persisted post-onboarding checklist state. */
   gettingStartedProgress?: {
     firstSeenAt?: string;
-    onboardingStartMode?: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+    onboardingStartMode?: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
     dismissed: boolean;
     collapsed?: boolean;
     completedItems: Array<'write-scene' | 'add-character' | 'brainstorm' | 'notes-vault'>;
@@ -3217,7 +3224,7 @@ export interface LastOpenedScene {
 export interface OnboardingCompletePayload {
   /** M29: 'start-fresh' creates a MythosVault v2 with the Veynn demo seed at a
    *  chosen location; 'quick-start' does the same at the default location. */
-  startMode: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import-obsidian';
+  startMode: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
   /** Required for blank / template modes. Optional for default-mythos-vault
    *  (defaults to "My First Story" — a renamable seed). */
   storyTitle?: string;

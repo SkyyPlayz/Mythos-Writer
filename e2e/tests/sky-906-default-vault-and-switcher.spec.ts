@@ -135,21 +135,20 @@ async function firstWindow(app: ElectronApplication): Promise<Page> {
   return pg;
 }
 
-// SKY-11152/SKY-11151: the first-run wizard is now three cards on
-// screen-welcome — template (RECOMMENDED) / blank / import. "Start blank"
-// (card-start-blank) goes straight to screen-name with no intermediate
-// genre/theme/provider steps (those, and the old Quick Start one-click link,
-// were retired by the rewrite — see OnboardingWizard.tsx's `pickMode`).
-// Accepting the default name (the "My Vault" placeholder) and default
-// location exercises the same "one action, sane defaults" path AC1 covers.
+// F3#9: OnboardingWizard deleted. First-run is WelcomeOverlay → path card →
+// Create Mythos vault modal (useCreateMythosVaultFlow). "Start blank" opens
+// the modal with mode=blank; empty name uses the default "My Vault".
 async function completeBlankVaultCreation(pg: Page): Promise<void> {
-  await expect(pg.locator('[data-testid="screen-welcome"]')).toBeVisible({ timeout: 30_000 });
-  await pg.locator('[data-testid="card-start-blank"]').click();
-  await expect(pg.locator('[data-testid="screen-name"]')).toBeVisible({ timeout: 8_000 });
-  await pg.locator('[data-testid="step3-open-vault"]').click();
+  await expect(pg.getByTestId('welcome-overlay')).toBeVisible({ timeout: 30_000 });
+  await pg.getByTestId('welcome-path-blank').click();
+  await expect(pg.locator('#create-vault-name')).toBeVisible({ timeout: 15_000 });
+  // Explicit name — createVaultFromOptions default is "My MythosVault", not "My Vault".
+  await pg.locator('#create-vault-name').fill('My Vault');
+  await pg.getByTestId('create-vault-submit').click();
   await Promise.race([
     pg.locator('[data-testid="gs-overlay"]').waitFor({ state: 'detached', timeout: 30_000 }),
     pg.locator('.app-menu-bar').waitFor({ state: 'visible', timeout: 30_000 }),
+    pg.locator('.desktop-shell, .shell-root').waitFor({ state: 'visible', timeout: 30_000 }),
   ]);
 }
 

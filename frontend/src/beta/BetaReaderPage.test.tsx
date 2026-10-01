@@ -1,16 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import BetaReaderPage from './BetaReaderPage';
 import { commentsStore } from '../comments';
+import { __resetAgentSessionStores } from '../lib/useAgentSessions';
 import type { Story, Chapter, Scene } from '../types';
-
-type TokenHandler = (data: { streamId: string; token: string }) => void;
-type EndHandler = (data: { streamId: string }) => void;
-type ErrorHandler = (data: { streamId: string; message: string }) => void;
-
-let tokenCb: TokenHandler | null = null;
-let endCb: EndHandler | null = null;
-let errorCb: ErrorHandler | null = null;
 
 function makeScene(): Scene {
   return {
@@ -54,29 +47,52 @@ const REPORT: BetaReport = {
 const mockBetaReportList = vi.fn();
 const mockBetaReportGet = vi.fn();
 const mockBetaReportRun = vi.fn();
-const mockStreamStart = vi.fn();
-const mockStreamAck = vi.fn();
 
 function buildApi(overrides: Record<string, unknown> = {}) {
   return {
     betaReportList: mockBetaReportList,
     betaReportGet: mockBetaReportGet,
     betaReportRun: mockBetaReportRun,
-    streamStart: mockStreamStart,
-    streamAck: mockStreamAck,
-    onStreamToken: (cb: TokenHandler) => { tokenCb = cb; return () => { tokenCb = null; }; },
-    onStreamEnd: (cb: EndHandler) => { endCb = cb; return () => { endCb = null; }; },
-    onStreamError: (cb: ErrorHandler) => { errorCb = cb; return () => { errorCb = null; }; },
+    streamStart: vi.fn().mockResolvedValue({ streamId: 'unused' }),
+    streamAck: vi.fn(),
+    onStreamToken: () => () => {},
+    onStreamEnd: () => () => {},
+    onStreamError: () => () => {},
     ...overrides,
   };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  tokenCb = null; endCb = null; errorCb = null;
   mockBetaReportList.mockResolvedValue({ reports: [] });
   mockBetaReportGet.mockResolvedValue({ report: null });
-  (window as unknown as { api: unknown }).api = buildApi();
+  __resetAgentSessionStores();
+  const session = {
+    id: 's1',
+    agent: 'brainstorm',
+    title: 'Chat',
+    turns: [] as AgentSessionTurn[],
+    startedAt: '2026-01-01T00:00:00.000Z',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+  (window as unknown as { api: unknown }).api = buildApi({
+    agentBrainstorm: vi.fn().mockResolvedValue({ text: 'It landed well!' }),
+    agentSessions: {
+      list: vi.fn().mockResolvedValue({
+        sessions: [{ id: 's1', agent: 'brainstorm', title: 'Chat', startedAt: session.startedAt, updatedAt: session.updatedAt, turnCount: 0, relPath: 'Sessions/x.md' }],
+      }),
+      read: vi.fn().mockResolvedValue({ session }),
+      create: vi.fn().mockResolvedValue({ session, relPath: 'Sessions/x.md' }),
+      appendTurns: vi.fn().mockImplementation(async (_id: string, turns: AgentSessionTurn[]) => {
+        session.turns = [...session.turns, ...turns];
+        return { session: { ...session } };
+      }),
+      rename: vi.fn().mockResolvedValue({ ok: true }),
+      duplicate: vi.fn().mockResolvedValue({ session, relPath: 'Sessions/x.md' }),
+      delete: vi.fn().mockResolvedValue({ ok: true }),
+    },
+  });
 });
 
 afterEach(() => {
@@ -186,48 +202,38 @@ describe('BetaReaderPage — Reports page', () => {
   });
 });
 
-describe('BetaReaderPage — Chat page', () => {
-  it('renders the session picker and streams a reply to a sent message', async () => {
-    mockStreamStart.mockResolvedValue({ streamId: 'stream-1' });
+describe('BetaReaderPage — Chat page (F3#1 shared partner thread)', () => {
+  it('renders MiniAgentChat on the partner thread and sends via agentBrainstorm', async () => {
     await renderPage();
 
     fireEvent.click(screen.getByRole('tab', { name: /chat/i }));
-    const input = screen.getByLabelText(/message the beta reader/i);
+    expect(screen.getByTestId('beta-partner-chat')).toBeInTheDocument();
+    const input = screen.getByTestId('beta-partner-chat-input');
     fireEvent.change(input, { target: { value: 'How did chapter 2 land?' } });
-    fireEvent.click(screen.getByRole('button', { name: /send/i }));
+    fireEvent.click(screen.getByTestId('beta-partner-chat-send'));
 
-    await waitFor(() => expect(mockStreamStart).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(tokenCb).not.toBeNull());
-
-    await act(async () => {
-      tokenCb?.({ streamId: 'stream-1', token: 'It landed ' });
-      tokenCb?.({ streamId: 'stream-1', token: 'well!' });
-      endCb?.({ streamId: 'stream-1' });
-    });
-
+    const api = (window as unknown as { api: { agentBrainstorm: ReturnType<typeof vi.fn> } }).api;
+    await waitFor(() => expect(api.agentBrainstorm).toHaveBeenCalled());
+    expect(await screen.findByText('How did chapter 2 land?')).toBeInTheDocument();
     expect(await screen.findByText('It landed well!')).toBeInTheDocument();
-    expect(screen.getByText('How did chapter 2 land?')).toBeInTheDocument();
   });
 
-  it('sends a chip prompt directly without typing', async () => {
-    mockStreamStart.mockResolvedValue({ streamId: 'stream-2' });
+  it('Send stays disabled for an empty draft', async () => {
     await renderPage();
     fireEvent.click(screen.getByRole('tab', { name: /chat/i }));
-
-    fireEvent.click(screen.getByText('Where did you get bored?'));
-    await waitFor(() => expect(mockStreamStart).toHaveBeenCalledTimes(1));
-    expect(mockStreamStart.mock.calls[0][0].messages.at(-1)).toEqual({ role: 'user', content: 'Where did you get bored?' });
+    expect(screen.getByTestId('beta-partner-chat-send')).toBeDisabled();
+    fireEvent.change(screen.getByTestId('beta-partner-chat-input'), { target: { value: 'hi' } });
+    expect(screen.getByTestId('beta-partner-chat-send')).not.toBeDisabled();
   });
 
-  it('surfaces a stream error without crashing', async () => {
-    mockStreamStart.mockResolvedValue({ streamId: 'stream-3' });
+  it('surfaces a brainstorm error without crashing', async () => {
+    const api = (window as unknown as { api: { agentBrainstorm: ReturnType<typeof vi.fn> } }).api;
+    api.agentBrainstorm = vi.fn().mockRejectedValue(new Error('No API key configured.'));
     await renderPage();
     fireEvent.click(screen.getByRole('tab', { name: /chat/i }));
-    fireEvent.change(screen.getByLabelText(/message the beta reader/i), { target: { value: 'hi' } });
-    fireEvent.click(screen.getByRole('button', { name: /send/i }));
-    await waitFor(() => expect(errorCb).not.toBeNull());
-    act(() => errorCb?.({ streamId: 'stream-3', message: 'No API key configured.' }));
-    expect(await screen.findByText(/no api key configured/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('beta-partner-chat-input'), { target: { value: 'hi' } });
+    fireEvent.click(screen.getByTestId('beta-partner-chat-send'));
+    expect(await screen.findByTestId('beta-partner-chat-error')).toHaveTextContent(/no api key configured/i);
   });
 });
 

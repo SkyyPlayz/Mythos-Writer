@@ -37,12 +37,6 @@ export default function AboutSection() {
     }
   };
 
-  const replayTour = () => {
-    window.api?.onboardingReplay?.()
-      .then(() => window.location.reload())
-      .catch(() => {});
-  };
-
   return (
     <section className="settings-section m24-root" aria-labelledby="section-about" data-settings-cat="about">
       <h3 className="settings-section-title" id="section-about">About</h3>
@@ -73,9 +67,6 @@ export default function AboutSection() {
               data-testid="about-check-updates"
             >
               {update.kind === 'checking' ? 'Checking…' : 'Check for updates'}
-            </button>
-            <button type="button" className="m24-btn" onClick={replayTour} data-testid="about-replay-tour">
-              Replay welcome tour
             </button>
           </div>
           {update.kind === 'available' && (

@@ -119,15 +119,23 @@ export function requestWelcomeOverlayOnNextShell(): void {
 interface WelcomeOverlayProps {
   onSkip: () => void;
   onPickPath: (id: WelcomePathId) => void;
+  /**
+   * First-run marker (`data-require-vault`). Probe #33 — Skip stays visible;
+   * this flag no longer gates the Skip button.
+   */
+  requireVaultSetup?: boolean;
 }
 
 /** 09 §7 Welcome overlay — z70 path picker (Template · Blank · Import · Restore · Open Obsidian). */
-export default function WelcomeOverlay({ onSkip, onPickPath }: WelcomeOverlayProps) {
+export default function WelcomeOverlay({ onSkip, onPickPath, requireVaultSetup = false }: WelcomeOverlayProps) {
+  // Probe #33 — Skip always visible (main parity). requireVaultSetup only
+  // marks data-require-vault for first-run detection; it never hides Skip.
   return (
     <div
       className="welcome-overlay"
       data-testid="welcome-overlay"
       data-screen-label="Welcome"
+      data-require-vault={requireVaultSetup ? 'true' : undefined}
       role="dialog"
       aria-modal="true"
       aria-label="Welcome to Mythos Writer"

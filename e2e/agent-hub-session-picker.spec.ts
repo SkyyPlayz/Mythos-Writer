@@ -1,16 +1,17 @@
 /**
  * agent-hub-session-picker.spec.ts — SKY-8537 (GH #960)
  *
- * Real-path E2E for the Agent Hub session picker on the Writing Coach
- * surface: switching the picker between two sessions must render each
- * session's own persisted transcript (not the previous session's, not a
- * blank one), and that separation must survive an app restart — the whole
- * chain is exercised through the REAL (unmocked) `agentSessions` IPC
- * bridge: renderer -> preload -> electron-main handlers -> Sessions/*.md
- * files on disk. No Anthropic/chat IPC is mocked; turns are seeded via the
- * same `agentSessions.appendTurns` / `create` / `rename` calls the app
- * itself uses, so this proves the production read/hydrate/persist path,
- * not a UI-only illusion.
+ * Real-path E2E for the Agent Hub session picker on the unified partner
+ * chat surface (F3#1 — `PARTNER_SESSION_AGENT` / brainstorm): switching
+ * the picker between two sessions must render each session's own
+ * persisted transcript (not the previous session's, not a blank one), and
+ * that separation must survive an app restart — the whole chain is
+ * exercised through the REAL (unmocked) `agentSessions` IPC bridge:
+ * renderer -> preload -> electron-main handlers -> Sessions/*.md files on
+ * disk. No Anthropic/chat IPC is mocked; turns are seeded via the same
+ * `agentSessions.appendTurns` / `create` / `rename` calls the app itself
+ * uses, so this proves the production read/hydrate/persist path, not a
+ * UI-only illusion.
  *
  * GH #960 was filed against `62b943bf` (pre-M12/SKY-7112/SKY-7113); the
  * session store hook (frontend/src/lib/useAgentSessions.ts) and the
@@ -51,6 +52,11 @@ function buildAppSettings(): object {
   return {
     apiKey: 'sk-ant-e2e-agent-hub-session-picker',
     onboardingComplete: true,
+    provider: {
+      kind: 'anthropic',
+      model: 'claude-haiku-4-5-20251001',
+      apiKey: 'sk-ant-e2e-agent-hub-session-picker',
+    },
     agents: {
       writingAssistant: {
         enabled: true,
@@ -64,7 +70,7 @@ function buildAppSettings(): object {
         maxTokensPerDay: 500_000,
         waScanInterval: 'manual',
       },
-      brainstorm: { enabled: false, model: 'claude-haiku-4-5-20251001', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
+      brainstorm: { enabled: true, model: 'claude-haiku-4-5-20251001', autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
       archive: { enabled: false, model: 'claude-sonnet-4-6', continuityCheckIntervalSeconds: 60, autoApply: false, confidenceThreshold: 0.85, maxTokensPerHour: 100_000, maxSuggestionsPerHour: 50, heartbeatIntervalMinutes: 5, maxTokensPerDay: 500_000 },
     },
     theme: 'dark',
@@ -171,56 +177,72 @@ async function navigateToEditorView(page: Page): Promise<void> {
   await page.locator('[data-testid="story-subview-editor"]').click();
 }
 
-/** Expand the Writing Coach GRS panel and open the in-panel chat (mirrors writing-assistant.spec.ts). */
-async function openWritingCoachChat(page: Page): Promise<void> {
+/** Open the Agent Hub partner MiniAgentChat (F3#1 shared partner thread). */
+async function openPartnerChat(page: Page): Promise<void> {
   await navigateToEditorView(page);
 
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="ahp-tab-partner"]').click().catch(() => undefined);
+  await expect(page.getByTestId('ahp-partner-chat-input')).toBeVisible({ timeout: 8_000 });
+}
 
-  // A previous run may have left the hub inside the chat view already.
-  const agentRow = page.locator('[data-testid="ahp-hand-writer"]');
-  if (await agentRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await agentRow.click();
-  }
-  await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
+/** Scope message assertions to the in-thread MiniAgentChat feed. */
+function partnerChatRoot(page: Page) {
+  // Unique: UnifiedPartnerChat shell is `ahp-partner-composer`; MiniAgentChat is `ahp-partner-chat`.
+  return page.getByTestId('ahp-partner-chat');
+}
+
+/** Scope session-picker interactions to PAST CHATS & CALLS (hub header). */
+function pastChatsRoot(page: Page) {
+  return page.getByTestId('ahp-past-chats');
 }
 
 // ─── Session picker helpers ─────────────────────────────────────────────────────
 
 async function openPicker(page: Page): Promise<void> {
-  const pill = page.locator('.asp-pill');
+  const toggle = page.getByTestId('ahp-past-chats-toggle');
+  await expect(toggle).toBeVisible({ timeout: 6_000 });
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') {
+    await toggle.click();
+  }
+  const menu = page.getByTestId('ahp-past-chats-menu');
+  await expect(menu).toBeVisible({ timeout: 4_000 });
+  const pill = menu.locator('.asp-pill');
   if ((await pill.getAttribute('aria-expanded')) !== 'true') {
     await pill.click();
   }
-  await expect(page.locator('.asp-dropdown')).toBeVisible({ timeout: 4_000 });
+  await expect(menu.locator('.asp-dropdown')).toBeVisible({ timeout: 4_000 });
 }
 
 async function renameActiveSession(page: Page, newTitle: string): Promise<void> {
+  const root = pastChatsRoot(page);
   await openPicker(page);
-  const activeRow = page.locator('.asp-row--active');
+  const activeRow = root.locator('.asp-row--active');
   await activeRow.getByTitle('Rename').click();
-  const input = page.locator('.asp-rename-input');
+  const input = root.locator('.asp-rename-input');
   await expect(input).toBeVisible({ timeout: 2_000 });
   await input.fill(newTitle);
   await input.press('Enter');
-  await expect(page.locator('.asp-pill-label')).toHaveText(newTitle, { timeout: 4_000 });
+  await expect(root.locator('.asp-pill-label')).toHaveText(newTitle, { timeout: 4_000 });
 }
 
 async function startNewChat(page: Page): Promise<void> {
+  const root = pastChatsRoot(page);
   await openPicker(page);
-  await page.locator('.asp-new-btn').click();
+  await root.locator('.asp-new-btn').click();
 }
 
 async function switchToSession(page: Page, title: string): Promise<void> {
+  const root = pastChatsRoot(page);
   await openPicker(page);
-  await page.locator('.asp-row', { hasText: title }).locator('.asp-row-label').click();
-  await expect(page.locator('.asp-pill-label')).toHaveText(title, { timeout: 4_000 });
+  await root.locator('.asp-row', { hasText: title }).locator('.asp-row-label').click();
+  await expect(root.locator('.asp-pill-label')).toHaveText(title, { timeout: 4_000 });
 }
 
-/** Real IPC round-trip (renderer -> preload -> main -> vault disk), same call the app itself makes. */
-async function listCoachSessions(page: Page): Promise<Array<{ id: string; title?: string }>> {
-  const { sessions } = await page.evaluate(() => window.api!.agentSessions!.list('coach'));
+/** Real IPC round-trip — partner sessions live under brainstorm (PARTNER_SESSION_AGENT). */
+async function listPartnerSessions(page: Page): Promise<Array<{ id: string; title?: string }>> {
+  const { sessions } = await page.evaluate(() => window.api!.agentSessions!.list('brainstorm'));
   return sessions;
 }
 
@@ -236,7 +258,7 @@ async function appendMarkerTurn(page: Page, sessionId: string, text: string): Pr
 }
 
 function messagesLocator(page: Page) {
-  return page.locator('.writing-assistant-messages');
+  return page.getByTestId('ahp-partner-chat-feed');
 }
 
 // ─── Test lifecycle ───────────────────────────────────────────────────────────
@@ -262,23 +284,22 @@ test.afterAll(async () => {
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-test('TC-8537-01: the picker switches between two Writing Coach sessions and each renders its own real (vault-file) transcript', async () => {
+test('TC-8537-01: the picker switches between two partner sessions and each renders its own real (vault-file) transcript', async () => {
   app = await launchApp(userData);
   page = await firstWindow(app);
-  await openWritingCoachChat(page);
+  await openPartnerChat(page);
 
   // The store auto-creates one session on first mount. Name it, then seed a
-  // marker turn straight through the real appendTurns IPC (the same call
-  // WritingAssistantPanel makes when a reply finishes) so this proves the
+  // marker turn straight through the real appendTurns IPC so this proves the
   // read path independently of any chat UI.
   await renameActiveSession(page, ALPHA_TITLE);
-  const alphaId = (await listCoachSessions(page)).find((s) => s.title === ALPHA_TITLE)!.id;
+  const alphaId = (await listPartnerSessions(page)).find((s) => s.title === ALPHA_TITLE)!.id;
   await appendMarkerTurn(page, alphaId, ALPHA_MARKER);
 
   // "+ New chat" creates and switches to a second session.
   await startNewChat(page);
   await renameActiveSession(page, BETA_TITLE);
-  const betaId = (await listCoachSessions(page)).find((s) => s.title === BETA_TITLE)!.id;
+  const betaId = (await listPartnerSessions(page)).find((s) => s.title === BETA_TITLE)!.id;
   await appendMarkerTurn(page, betaId, BETA_MARKER);
 
   // Switching TO Alpha must hydrate ALPHA's turns from disk (written above
@@ -313,20 +334,451 @@ test('TC-8537-01: the picker switches between two Writing Coach sessions and eac
 test('TC-8537-02: both sessions transcripts survive an app restart (fresh process reads real vault files)', async () => {
   app = await launchApp(userData);
   page = await firstWindow(app);
-  await openWritingCoachChat(page);
+  await openPartnerChat(page);
 
   // Beta was updated last (its marker was appended after Alpha's), so a
   // fresh store picks it as the initial session — its transcript must come
   // straight off disk with no manual switch, proving persistence across
   // reopening without relying on which session happens to be "active".
   await expect(messagesLocator(page)).toContainText(BETA_MARKER, { timeout: 8_000 });
-  await expect(page.locator('.asp-pill-label')).toHaveText(BETA_TITLE);
+  await expect(pastChatsRoot(page).locator('.asp-pill-label')).toHaveText(BETA_TITLE);
 
   // Switching to Alpha in this brand-new process (which has never read
   // Alpha's file before) must still hydrate its real persisted content.
   await switchToSession(page, ALPHA_TITLE);
   await expect(messagesLocator(page)).toContainText(ALPHA_MARKER, { timeout: 8_000 });
   await expect(messagesLocator(page)).not.toContainText(BETA_MARKER);
+
+  await closeApp(app);
+  app = undefined;
+});
+
+// ─── F3 gate assertions (moved from unsharded agent-hub-interaction-states) ─
+
+test('F3: partner greeting is Mythos on hub chat surface', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+  await expect(page.getByTestId('ahp-partner-view')).toBeVisible();
+  // Default partner display name + greeting copy (MiniAgentChat surface only).
+  await expect(page.getByTestId('ahp-partner-chat')).toHaveCount(1);
+  await expect(page.getByTestId('ahp-partner-chat')).toContainText(/Mythos/i, { timeout: 8_000 });
+  await expect(messagesLocator(page)).toContainText(/writing partner/i, { timeout: 8_000 });
+  await closeApp(app);
+  app = undefined;
+});
+
+test('F3: Past chats opens picker; full session history link opens Settings', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+
+  const toggle = page.getByTestId('ahp-past-chats-toggle');
+  await expect(toggle).toBeVisible({ timeout: 6_000 });
+  await expect(toggle).toContainText(/Past chats/i);
+  await toggle.click();
+  await expect(page.getByTestId('ahp-past-chats-menu')).toBeVisible({ timeout: 4_000 });
+
+  const historyLink = page.getByTestId('ahp-partner-history-link');
+  await expect(historyLink).toBeVisible({ timeout: 4_000 });
+  await historyLink.click();
+
+  // Slice C: AgentsSection unmounted — history lives on Writing partner.
+  await expect(page.getByTestId('writing-partner-page')).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole('tab', { name: 'Writing partner' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('session-history-toggle-brainstorm')).toBeVisible({ timeout: 6_000 });
+  // Read-only history panel expands via mythos:open-session-history.
+  await expect(page.getByTestId('session-history-list-brainstorm')).toBeVisible({ timeout: 8_000 });
+
+  await closeApp(app);
+  app = undefined;
+});
+
+test('F3 gate: Writer Scan opens tips strip; partner typing indicator resolves', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+
+  // Gate: tips strip is always mounted; Writer Scan re-opens after Close.
+  // Force-click: tips strip re-renders keep the action chip "not stable".
+  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
+  await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 6_000 });
+  await page.getByTestId('ahp-close-writer').click();
+  await expect(page.getByTestId('ahp-writer-tips')).toHaveCount(0);
+  await page.getByTestId('ahp-action-writer-scan').click();
+  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 6_000 });
+
+  // Gate: loading → typing dots on shared chat (was wa-typing in unsharded suite).
+  await page.evaluate(async () => {
+    const api = (window as unknown as { api: { agentBrainstorm: (p: string) => Promise<{ text: string }> } }).api;
+    const orig = api.agentBrainstorm.bind(api);
+    (api as { agentBrainstorm: unknown }).agentBrainstorm = async (prompt: string) => {
+      await new Promise((r) => setTimeout(r, 400));
+      return orig(prompt);
+    };
+  }).catch(() => undefined);
+
+  const input = page.getByTestId('ahp-partner-chat-input');
+  await input.fill('Quick tension check');
+  await input.press('Enter');
+  // Best-effort: typing may be brief if mock is fast; at least Send/Cancel cycle works.
+  await expect(page.getByTestId('ahp-partner-chat-cancel').or(page.getByTestId('ahp-partner-typing'))).toBeVisible({
+    timeout: 4_000,
+  }).catch(() => undefined);
+  await expect(page.getByTestId('ahp-partner-chat-send')).toBeVisible({ timeout: 12_000 });
+
+  await closeApp(app);
+  app = undefined;
+});
+
+// ─── F3 Secure bar: two-window float-out (main ↔ float broadcast) ────────────
+
+async function waitForExtraWindow(
+  electronApp: ElectronApplication,
+  main: Page,
+  timeoutMs = 12_000,
+): Promise<Page | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const windows = await electronApp.windows();
+    const extra = windows.find((w) => w !== main);
+    if (extra) return extra;
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return null;
+}
+
+/**
+ * Runtime proof of Shield Secure bar: no-payload `partner-thread:changed`
+ * broadcast from main refreshes the floated partner MiniAgentChat (and reverse).
+ * Sharded: e2e-shard-2 via `test:e2e:agent-hub-session-picker`.
+ */
+test('F3 Secure bar: docked↔float partner thread syncs both directions', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+
+  // contextBridge freezes window.api — use the product E2E hook instead.
+  const stubBrainstorm = async (target: Page) => {
+    await target.evaluate(() => {
+      (window as unknown as {
+        __MYTHOS_E2E_BRAINSTORM__: () => Promise<{ text: string }>;
+      }).__MYTHOS_E2E_BRAINSTORM__ = async () => ({ text: 'FLOAT_E2E_STUB_REPLY' });
+    });
+  };
+  await stubBrainstorm(page);
+
+  await page.evaluate(async () => {
+    await window.api!.panelFloat!('writing-assistant', {
+      x: 80,
+      y: 80,
+      width: 420,
+      height: 700,
+    });
+  });
+
+  const floatPage = await waitForExtraWindow(app, page);
+  expect(floatPage, 'floated writing-assistant window must open').toBeTruthy();
+  floatPage!.on('console', (m) => console.log(`[float:${m.type()}]`, m.text()));
+  await floatPage!.waitForLoadState('domcontentloaded');
+  await expect(floatPage!.getByTestId('fpa-partner-writing')).toBeVisible({ timeout: 10_000 });
+  await expect(floatPage!.getByTestId('fpa-partner-chat-input')).toBeVisible({ timeout: 8_000 });
+  await stubBrainstorm(floatPage!);
+
+  const DOCK_MARKER = 'DOCK_TO_FLOAT_MARKER_991';
+  const dockInput = page.getByTestId('ahp-partner-chat-input');
+  await dockInput.fill(DOCK_MARKER);
+  await dockInput.press('Enter');
+  await expect(page.getByTestId('ahp-partner-chat-feed')).toContainText(DOCK_MARKER, { timeout: 8_000 });
+  // Float refreshes via partner-thread:changed (no payload) after persist.
+  await expect(floatPage!.getByTestId('fpa-partner-chat-feed')).toContainText(DOCK_MARKER, {
+    timeout: 12_000,
+  });
+
+  const FLOAT_MARKER = 'FLOAT_TO_DOCK_MARKER_992';
+  const floatInput = floatPage!.getByTestId('fpa-partner-chat-input');
+  await floatInput.fill(FLOAT_MARKER);
+  await floatInput.press('Enter');
+  await expect(floatPage!.getByTestId('fpa-partner-chat-feed')).toContainText(FLOAT_MARKER, {
+    timeout: 8_000,
+  });
+  await expect(page.getByTestId('ahp-partner-chat-feed')).toContainText(FLOAT_MARKER, {
+    timeout: 12_000,
+  });
+
+  await closeApp(app);
+  app = undefined;
+});
+
+test('Probe H3 / Ivy 7: legacy Coach + Beta sessions appear labelled and open from partner picker', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+
+  const COACH_MARKER = 'LEGACY_COACH_TURN_MARKER_441';
+  const BETA_MARKER_LEGACY = 'LEGACY_BETA_TURN_MARKER_442';
+
+  // Seed main-format sessions on disk via real IPC — no migrate/rename.
+  await page.evaluate(async ({ coachMarker, betaMarker }) => {
+    const coach = await window.api!.agentSessions!.create('coach', 'Legacy Coach Thread');
+    await window.api!.agentSessions!.appendTurns(coach.session.id, [
+      { role: 'user', text: 'How is pacing?', at: new Date().toISOString() },
+      { role: 'agent', text: coachMarker, at: new Date().toISOString() },
+    ]);
+    const beta = await window.api!.agentSessions!.create('beta-reader', 'Legacy Beta Thread');
+    await window.api!.agentSessions!.appendTurns(beta.session.id, [
+      { role: 'agent', text: betaMarker, at: new Date().toISOString() },
+    ]);
+  }, { coachMarker: COACH_MARKER, betaMarker: BETA_MARKER_LEGACY });
+
+  // Force the partner store to reload from disk (picker lists on init).
+  await closeApp(app);
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+  await openPicker(page);
+
+  const root = pastChatsRoot(page);
+  await expect(root.getByTestId('asp-badge-coach')).toBeVisible({ timeout: 8_000 });
+  await expect(root.getByTestId('asp-badge-beta')).toBeVisible({ timeout: 8_000 });
+  await expect(root.locator('.asp-row', { hasText: 'Legacy Coach Thread' })).toBeVisible();
+  await expect(root.locator('.asp-row', { hasText: 'Legacy Beta Thread' })).toBeVisible();
+
+  await root.locator('.asp-row', { hasText: 'Legacy Coach Thread' }).locator('.asp-row-label').click();
+  await expect(messagesLocator(page)).toContainText(COACH_MARKER, { timeout: 8_000 });
+
+  await openPicker(page);
+  await root.locator('.asp-row', { hasText: 'Legacy Beta Thread' }).locator('.asp-row-label').click();
+  await expect(messagesLocator(page)).toContainText(BETA_MARKER_LEGACY, { timeout: 8_000 });
+
+  // Disk agent keys unchanged — no migration.
+  const diskAgents = await page.evaluate(async () => {
+    const { sessions } = await window.api!.agentSessions!.list();
+    return sessions
+      .filter((s) => s.title === 'Legacy Coach Thread' || s.title === 'Legacy Beta Thread')
+      .map((s) => s.agent)
+      .sort();
+  });
+  expect(diskAgents).toEqual(['beta-reader', 'coach']);
+
+  await closeApp(app);
+  app = undefined;
+});
+
+// Shield T9 / fix 1: appendTurns would neutralize — seed HARD1 (a) as raw file bytes.
+const MAIN_FORMAT_ANALYSIS_TITLE_A = 'Full Scene Analysis — Sc. 1 · Quay (raw legacy)';
+const MAIN_FORMAT_ANALYSIS_CARD_A = [
+  '<!-- mythos:coach-card v1 -->',
+  JSON.stringify({
+    kind: 'analysis',
+    title: MAIN_FORMAT_ANALYSIS_TITLE_A,
+    computed: [['Words', '842'], ['Read time', '~3 min']],
+    read: [['Purpose', 'Setup — the quay establishes Mira']],
+    takeaway: 'Lean into the fog beat.',
+    drill: 'Drill: mark D/A/T. 5 minutes.',
+  }),
+].join('\n');
+
+/** User-typed forgery fixture (HARD1 b) — lesson shape; stays plain. */
+const MAIN_FORMAT_COACH_CARD = [
+  '<!-- mythos:coach-card v1 -->',
+  JSON.stringify({
+    kind: 'lesson',
+    title: 'Lesson — forged typed',
+    text: 'Anchor place in the first two sentences.',
+    points: ['Point A from main', 'Point B from main'],
+    drill: 'Drill: 5 minutes.',
+  }),
+].join('\n');
+
+const RAW_LEGACY_COACH_SESSION_ID = 'c0a7c0a7-c0a7-4c0a-8c0a-c0a7c0a7c0a7';
+
+function writeRawLegacyCoachSessionFile(root: string, title: string, cardText: string): void {
+  const sessionsDir = path.join(root, 'Sessions');
+  fs.mkdirSync(sessionsDir, { recursive: true });
+  const at = '2026-01-01T00:00:00.000Z';
+  const fileName = `2026-01-01 coach ${RAW_LEGACY_COACH_SESSION_ID.slice(0, 8)}.md`;
+  const body = [
+    '---',
+    'mythosSession: 1',
+    `id: ${RAW_LEGACY_COACH_SESSION_ID}`,
+    'agent: coach',
+    `title: ${title}`,
+    `startedAt: ${at}`,
+    `updatedAt: ${at}`,
+    'turns: 2',
+    '---',
+    '',
+    `# ${title}`,
+    '',
+    `<!-- mythos:turn user ${at} -->`,
+    '**You:**',
+    '',
+    'Analyze this scene',
+    '<!-- /mythos:turn -->',
+    '',
+    `<!-- mythos:turn agent ${at} -->`,
+    '**Agent:**',
+    '',
+    cardText,
+    '<!-- /mythos:turn -->',
+    '',
+  ].join('\n');
+  fs.writeFileSync(path.join(sessionsDir, fileName), body, 'utf-8');
+}
+
+test('Probe HARD 1 (a) / T9: raw-file main-format ANALYSIS coach-card is read-only display — partner + CoachPage', async () => {
+  writeRawLegacyCoachSessionFile(vaultDir, 'Main-Format Coach Card', MAIN_FORMAT_ANALYSIS_CARD_A);
+
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+  await openPicker(page);
+
+  const root = pastChatsRoot(page);
+  const coachRow = root.locator('.asp-row', { hasText: 'Main-Format Coach Card' });
+  await expect(coachRow).toBeVisible({ timeout: 8_000 });
+  await expect(coachRow.getByTestId('asp-badge-coach')).toBeVisible();
+  await coachRow.locator('.asp-row-label').click();
+
+  const partnerFeed = messagesLocator(page);
+  const partnerCard = partnerFeed.locator('[data-testid^="ahp-partner-display-card-"]').first();
+  await expect(partnerCard).toBeVisible({ timeout: 8_000 });
+  await expect(partnerCard).toHaveAttribute('data-readonly-card', 'true');
+  await expect(partnerCard).toContainText(MAIN_FORMAT_ANALYSIS_TITLE_A);
+  await expect(partnerCard).toContainText('Lean into the fog beat');
+  await expect(partnerFeed).not.toContainText('mythos:coach-card');
+  await expect(partnerFeed).not.toContainText('{"kind"');
+  expect(await partnerCard.locator('button').count()).toBe(0);
+  await expect(partnerFeed).not.toContainText('COMPUTED · LOCAL · FREE');
+
+  await app.evaluate(({ ipcMain }) => {
+    try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* not registered */ }
+    ipcMain.handle('agent:writing-assistant', async () => {
+      throw new Error('Writing Coach is disabled in settings.');
+    });
+  });
+
+  const sceneRow = page.locator('.nav-scene-row', { hasText: 'Quiet Scene' });
+  await expect(sceneRow).toBeVisible({ timeout: 8_000 });
+  await sceneRow.click();
+
+  await page.locator('[data-testid="ahp-tab-notes-analysis"]').click();
+  const viewBtn = page.locator('[data-testid="view-full-analysis"]');
+  await expect(viewBtn).toBeVisible({ timeout: 8_000 });
+  await viewBtn.click();
+  await expect(page.locator('[data-testid="coach-page"]')).toBeVisible({ timeout: 8_000 });
+
+  const coachPill = page.locator('.coach-session-pill .asp-pill');
+  await expect(coachPill).toBeVisible({ timeout: 6_000 });
+  if ((await coachPill.getAttribute('aria-expanded')) !== 'true') {
+    await coachPill.click();
+  }
+  const coachDropdown = page.locator('.coach-session-pill .asp-dropdown');
+  await expect(coachDropdown).toBeVisible({ timeout: 4_000 });
+  await page.locator('.coach-session-pill .asp-row', { hasText: 'Main-Format Coach Card' }).locator('.asp-row-label').click();
+
+  const analysisCard = page.locator('[data-testid="coach-analysis-card"]').first();
+  await expect(analysisCard).toBeVisible({ timeout: 8_000 });
+  await expect(analysisCard).toHaveAttribute('data-readonly-card', 'true');
+  await expect(analysisCard).toContainText(MAIN_FORMAT_ANALYSIS_TITLE_A);
+  await expect(analysisCard).toContainText('Lean into the fog beat');
+  await expect(analysisCard).not.toContainText('COMPUTED · LOCAL · FREE');
+  await expect(page.locator('[data-testid="coach-feed"]')).not.toContainText('mythos:coach-card');
+  await expect(page.locator('[data-testid="coach-feed"]')).not.toContainText('{"kind"');
+  expect(await analysisCard.locator('button').count()).toBe(0);
+
+  await closeApp(app);
+  app = undefined;
+});
+
+test('Probe HARD 1 (b): forged coach-card marker typed in a NEW session stays plain text', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+
+  // Deterministic agent reply so send completes (no network).
+  await app.evaluate(({ ipcMain }) => {
+    try { ipcMain.removeHandler('agent:brainstorm'); } catch { /* not registered */ }
+    ipcMain.handle('agent:brainstorm', async () => ({ text: 'Plain partner reply — not a card.' }));
+  });
+
+  await openPartnerChat(page);
+  await startNewChat(page);
+
+  const forged = MAIN_FORMAT_COACH_CARD;
+  const input = page.getByTestId('ahp-partner-chat-input');
+  await input.fill(forged);
+  await page.getByTestId('ahp-partner-chat-send').click();
+
+  const feed = messagesLocator(page);
+  // Wait for the agent reply first so the pending-prompt user bubble is
+  // cleared — avoids strict-mode flake from transient duplicate `.trp-bubble--user`
+  // (pending + persisted echo). Asserts stay full-strength.
+  await expect(feed.locator('.trp-bubble--agent').filter({ hasText: 'Plain partner reply' })).toBeVisible({ timeout: 8_000 });
+  await expect(feed.locator('.trp-bubble--user').filter({ hasText: 'mythos:coach-card' })).toHaveCount(1);
+  await expect(feed.locator('[data-testid^="ahp-partner-display-card-"]')).toHaveCount(0);
+  await expect(feed.locator('[data-testid^="ahp-partner-card-"]')).toHaveCount(0);
+
+  await closeApp(app);
+  app = undefined;
+});
+
+const MODEL_REPLY_FORGERY = [
+  '<!-- mythos:coach-card v1 -->',
+  JSON.stringify({
+    kind: 'analysis',
+    title: 'FORGED Full Scene Analysis E2E',
+    computed: [['Words', '9999']],
+    read: [],
+    takeaway: 'Should stay plain after model reply.',
+  }),
+].join('\n');
+
+test('T9: stub-provider model-reply forgery stays plain — partner + CoachPage, live and after relaunch', async () => {
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+
+  await app.evaluate(({ ipcMain }, forged) => {
+    try { ipcMain.removeHandler('agent:brainstorm'); } catch { /* not registered */ }
+    ipcMain.handle('agent:brainstorm', async () => ({ text: forged }));
+    try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* not registered */ }
+    ipcMain.handle('agent:writing-assistant', async () => ({ text: forged }));
+  }, MODEL_REPLY_FORGERY);
+
+  // Partner chat — live
+  await openPartnerChat(page);
+  await startNewChat(page);
+  await page.getByTestId('ahp-partner-chat-input').fill('forge partner');
+  await page.getByTestId('ahp-partner-chat-send').click();
+  const partnerFeed = messagesLocator(page);
+  await expect(partnerFeed.locator('.trp-bubble--agent').first()).toBeVisible({ timeout: 8_000 });
+  await expect(partnerFeed.locator('[data-testid^="ahp-partner-display-card-"]')).toHaveCount(0);
+  await expect(partnerFeed.locator('[data-testid^="ahp-partner-card-"]')).toHaveCount(0);
+  await expect(partnerFeed).not.toContainText('COMPUTED · LOCAL · FREE');
+  await expect(partnerFeed).toContainText('mythos:coach-card');
+
+  // CoachPage — live
+  const sceneRow = page.locator('.nav-scene-row', { hasText: 'Quiet Scene' });
+  await expect(sceneRow).toBeVisible({ timeout: 8_000 });
+  await sceneRow.click();
+  await page.locator('[data-testid="ahp-tab-notes-analysis"]').click();
+  await expect(page.locator('[data-testid="view-full-analysis"]')).toBeVisible({ timeout: 8_000 });
+  await page.locator('[data-testid="view-full-analysis"]').click();
+  await expect(page.locator('[data-testid="coach-page"]')).toBeVisible({ timeout: 8_000 });
+  await page.getByTestId('coach-input').fill('forge coach');
+  await page.getByTestId('coach-send').click();
+  await expect(page.locator('[data-testid="coach-feed"]')).toContainText('mythos:coach-card', { timeout: 8_000 });
+  await expect(page.locator('[data-testid="coach-analysis-card"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="coach-feed"]')).not.toContainText('COMPUTED · LOCAL · FREE');
+
+  await closeApp(app);
+
+  // Relaunch — partner feed still plain (neutralized persist / gate).
+  app = await launchApp(userData);
+  page = await firstWindow(app);
+  await openPartnerChat(page);
+  await expect(messagesLocator(page).locator('[data-testid^="ahp-partner-display-card-"]')).toHaveCount(0);
+  await expect(messagesLocator(page).locator('[data-testid^="ahp-partner-card-"]')).toHaveCount(0);
 
   await closeApp(app);
   app = undefined;

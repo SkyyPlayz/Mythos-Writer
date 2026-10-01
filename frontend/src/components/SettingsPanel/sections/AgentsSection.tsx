@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import AgentProviderSection from '../AgentProviderSection';
 import AutoApplyCategoryToggles from '../AutoApplyCategoryToggles';
-import PersonaViewer from '../PersonaViewer';
 import SessionHistoryViewer from '../SessionHistoryViewer';
 import {
   MODEL_OPTIONS,
@@ -535,7 +534,6 @@ export default function AgentsSection({
             />
           </div>
         </div>
-        <PersonaViewer agentName="writingAssistant" />
         <SessionHistoryViewer agentName="writingAssistant" />
       </div>
 
@@ -717,7 +715,6 @@ export default function AgentsSection({
           {/* SKY-20: per-category routing memory for Blank-mode vaults. */}
           <BrainstormRoutingPanel />
         </div>
-        <PersonaViewer agentName="brainstorm" />
         <SessionHistoryViewer agentName="brainstorm" />
       </div>
 
@@ -854,7 +851,6 @@ export default function AgentsSection({
             />
           </div>
         </div>
-        <PersonaViewer agentName="betaReader" />
         <SessionHistoryViewer agentName="betaReader" />
       </div>
 

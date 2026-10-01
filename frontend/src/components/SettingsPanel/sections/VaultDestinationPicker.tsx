@@ -11,7 +11,8 @@ interface VaultDestinationPickerProps {
   path: string;
   placeholder: string;
   onBrowse: () => void | Promise<void>;
-  /** Onboarding variant only — the path input is editable via this callback. */
+  /** Onboarding variant only — the path input is editable via this callback.
+   *  dead-wiring-ignore: OnboardingWizard deleted (F3#9); Settings callers use m24 read-only. */
   onChange?: (path: string) => void;
   disabled?: boolean;
   ariaLabel?: string;

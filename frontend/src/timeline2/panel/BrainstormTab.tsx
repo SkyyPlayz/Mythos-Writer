@@ -16,15 +16,36 @@ export interface BrainstormTabProps {
 }
 
 export const invokeBrainstorm: MiniChatInvoke = async (prompt, history) => {
+  // E2E hook — contextBridge freezes window.api methods, so Playwright cannot
+  // reassign agentBrainstorm. Mirror __MYTHOS_E2E_TIMERS__ for float/dock sync.
+  // Shield batch residual 5 — never honour this hook in packaged production builds.
+  const e2eInvoke = (window as unknown as {
+    __MYTHOS_E2E_BRAINSTORM__?: MiniChatInvoke;
+  }).__MYTHOS_E2E_BRAINSTORM__;
+  if (typeof e2eInvoke === 'function' && window.api?.isPackaged !== true) {
+    return e2eInvoke(prompt, history);
+  }
+
   const api = window.api;
   if (typeof api?.agentBrainstorm !== 'function') {
     throw new Error('Brainstorm agent unavailable — check your provider settings.');
   }
   const response = await api.agentBrainstorm(prompt, history);
-  if (response.cardTitle) {
-    return { text: response.text, cardTitle: response.cardTitle, cardFoot: response.cardFoot };
+  // wrapIpcHandler returns `{ error }` instead of throwing — never treat that
+  // as a successful turn (was: response.text → undefined → crash on .text).
+  if (response && typeof response === 'object' && 'error' in response
+      && typeof (response as { error?: unknown }).error === 'string') {
+    throw new Error((response as { error: string }).error);
   }
-  return response.text;
+  if (response == null || typeof response !== 'object'
+      || typeof (response as { text?: unknown }).text !== 'string') {
+    throw new Error('Brainstorm agent returned no text.');
+  }
+  const typed = response as { text: string; cardTitle?: string; cardFoot?: string };
+  if (typed.cardTitle) {
+    return { text: typed.text, cardTitle: typed.cardTitle, cardFoot: typed.cardFoot };
+  }
+  return typed.text;
 };
 
 /** Compact timeline digest the structure action hands the agent. */

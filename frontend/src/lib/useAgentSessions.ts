@@ -7,6 +7,38 @@
 // same turns. Mutations made on one surface render on the other immediately.
 
 import { useCallback, useSyncExternalStore } from 'react';
+import { buildPartnerGreeting, PARTNER_SESSION_AGENT } from '../agents/partnerIdentity';
+
+/**
+ * Legacy agent keys whose vault sessions must appear in the unified partner
+ * picker (Ivy hard 7). Listed and opened as-is — never migrated/renamed.
+ */
+export const PARTNER_LEGACY_SESSION_AGENTS = [
+  'coach',
+  'writing-assistant',
+  'beta-reader',
+] as const;
+
+const PARTNER_PICKER_AGENTS = new Set<string>([
+  PARTNER_SESSION_AGENT,
+  ...PARTNER_LEGACY_SESSION_AGENTS,
+]);
+
+async function listSessionsForStore(
+  api: AgentSessionsApi,
+  agent: string,
+): Promise<AgentSessionSummary[]> {
+  if (agent !== PARTNER_SESSION_AGENT) {
+    const { sessions } = await api.list(agent);
+    return sessions;
+  }
+  // One list IPC (unfiltered), then keep brainstorm + legacy Coach/WA/Beta.
+  // Do not migrate or rewrite files — only surface them in the picker.
+  const { sessions } = await api.list();
+  return sessions
+    .filter((s) => PARTNER_PICKER_AGENTS.has(s.agent))
+    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
+}
 
 export interface UseAgentSessionsResult {
   sessions: AgentSessionSummary[];
@@ -105,7 +137,11 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
   };
 
   const makePending = (): AgentSessionFile => {
-    const greeting = AGENT_GREETINGS[agent] ?? null;
+    // F3 / Probe P2 — brainstorm (partner spine) greets with partner display name + copy.
+    const greeting =
+      agent === 'brainstorm'
+        ? buildPartnerGreeting()
+        : (AGENT_GREETINGS[agent] ?? null);
     const now = new Date().toISOString();
     return {
       id: crypto.randomUUID(),
@@ -179,7 +215,7 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
     const api = getApi();
     if (!api) return undefined;
     try {
-      const { sessions: list } = await api.list(agent);
+      const list = await listSessionsForStore(api, agent);
       // The pending session is invisible to the vault listing; keep it first
       // (it is the newest) so pickers don't drop the active conversation.
       set({ sessions: pending ? [toSummary(pending, ''), ...list] : list });
@@ -194,7 +230,7 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
     if (!api) { set({ loading: false }); return; }
     set({ loading: true });
     try {
-      const { sessions: list } = await api.list(agent);
+      const list = await listSessionsForStore(api, agent);
       set({ sessions: list });
       if (list.length > 0) {
         set({ activeSessionId: list[0].id });
@@ -248,7 +284,11 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
     newSession: async (greeting?: string) => {
       const api = getApi();
       if (!api) return;
-      const effectiveGreeting = greeting ?? AGENT_GREETINGS[agent] ?? undefined;
+      const effectiveGreeting =
+        greeting
+        ?? (agent === 'brainstorm' ? buildPartnerGreeting() : undefined)
+        ?? AGENT_GREETINGS[agent]
+        ?? undefined;
       const res = await api.create(agent, undefined, effectiveGreeting);
       const summary = toSummary(res.session, res.relPath);
       // An untouched pending greeting session is superseded by the explicit
@@ -367,6 +407,53 @@ function createStore(agent: string, autoCreate: boolean): AgentSessionStore {
 
   // Kick off init lazily on first use.
   ensureInit();
+
+  // F3 Secure bar: reload when main broadcasts partner-thread:changed (no payload).
+  // Subscribe-only preload API; each BrowserWindow has its own store singleton.
+  if (typeof window !== 'undefined' && typeof window.api?.onPartnerThreadChanged === 'function') {
+    window.api.onPartnerThreadChanged(() => {
+      void (async () => {
+        const list = (await refresh()) ?? [];
+        const api = getApi();
+        if (!api || typeof api.read !== 'function') return;
+
+        // Float-out race: this window may still hold an in-memory pending
+        // greeting while the dock window already materialized + appended turns.
+        // Drop the phantom and adopt the newest disk session so the marker lands.
+        if (pending && list.length > 0) {
+          const dropId = pending.id;
+          pending = null;
+          const newest = list[0]!;
+          set({
+            sessions: list.filter((s) => s.id !== dropId),
+            activeSessionId: newest.id,
+            activeSession: null,
+          });
+          try {
+            const { session } = await api.read(newest.id);
+            if (session && store.state.activeSessionId === newest.id) {
+              set({ activeSession: session });
+            }
+          } catch {
+            /* degrade silently */
+          }
+          return;
+        }
+
+        const id = store.state.activeSessionId;
+        if (!id || (pending && id === pending.id)) return;
+        try {
+          const { session } = await api.read(id);
+          if (session && store.state.activeSessionId === id) {
+            set({ activeSession: session });
+          }
+        } catch {
+          /* degrade silently */
+        }
+      })();
+    });
+  }
+
   return store;
 }
 
@@ -409,7 +496,7 @@ function toSummary(session: AgentSessionFile, relPath: string): AgentSessionSumm
 const AGENT_GREETINGS: Record<string, string> = {
   'writing-assistant': "Hi! I'm your Writing Coach — I teach you to write better using your own pages and never ghost-write. What would you like to work on?",
   coach: "Hi! I'm your Writing Coach — I teach you to write better using your own pages and never ghost-write. What would you like to work on?",
-  brainstorm: "Hello! I'm the Brainstorm Agent — your vault curator. Share any idea and I'll help you develop it and file notes automatically.",
+  // brainstorm greeting is buildPartnerGreeting() — never this vault-curator string.
   archive: "I'm the Archive Agent — continuity guardian and timeline builder. Ask me to check facts, catch inconsistencies, or build your timeline.",
   'beta-reader': "I'm your Beta Reader — I read your pages like a first-time reader and give you honest reactions. Drop me a scene and I'll tell you what lands.",
 };

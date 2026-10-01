@@ -209,9 +209,10 @@ test('capture SKY-11221 beta reader consolidation screenshots', async () => {
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 8_000 });
 
-  const betaRow = page.locator('[data-testid="ahp-hand-analyst"]');
-  await expect(betaRow).toBeVisible({ timeout: 8_000 });
-  await betaRow.click();
+  // F3#1 — open Beta Reader Reports overlay via nav (action is in-thread).
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('mythos:nav', { detail: { view: 'beta' } }));
+  });
 
   const betaOverlay = page.locator('.beta-reader-overlay');
   await expect(betaOverlay).toBeVisible({ timeout: 8_000 });
@@ -228,13 +229,13 @@ test('capture SKY-11221 beta reader consolidation screenshots', async () => {
 
   // ── 2. Writing Assistant chat: "beta read this scene" is now just a
   //    normal assistant turn — no second engine, no `.br-panel` intercept. ──
-  const waRow = page.locator('[data-testid="ahp-hand-writer"]');
+  const waRow = page.locator('[data-testid="ahp-action-writer-scan"]');
   if (await waRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
     await waRow.click();
   }
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 
-  const input = page.getByRole('textbox', { name: 'Writing coach prompt' });
+  const input = page.getByTestId('ahp-partner-chat-input');
   await expect(input).toBeVisible({ timeout: 5_000 });
   await expect(input).toBeEnabled({ timeout: 5_000 });
   await expect(async () => {
@@ -246,7 +247,7 @@ test('capture SKY-11221 beta reader consolidation screenshots', async () => {
   // No beta-read intercept UI exists any more — this must never appear.
   await expect(page.locator('.br-panel')).toHaveCount(0);
 
-  const assistantReply = page.locator('.wa-message-assistant', { hasText: MOCK_CHAT_RESPONSE });
+  const assistantReply = page.locator('.trp-bubble--agent', { hasText: MOCK_CHAT_RESPONSE });
   await expect(assistantReply).toBeVisible({ timeout: 8_000 });
   await expect(page.locator('.br-panel')).toHaveCount(0);
   await page.waitForTimeout(300);

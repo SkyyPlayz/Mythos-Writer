@@ -224,10 +224,11 @@ describe('Accessibility — WritingAssistantPanel (Writing Coach sidebar)', () =
     expect(panel?.getAttribute('aria-label')).toBe('Writing Coach');
   });
 
-  it('AC-WA-23: message list has role=list', () => {
+  it('AC-WA-23: heartbeat tips strip is present (composer removed — N4-A)', () => {
     const { container } = render(<WritingAssistantPanel scene={null} />);
-    const list = container.querySelector('.writing-assistant-messages[role="list"]');
-    expect(list).not.toBeNull();
+    const tips = container.querySelector('.wa-heartbeat-tips[aria-label="Heartbeat panel"]');
+    expect(tips).not.toBeNull();
+    expect(container.querySelector('.writing-assistant-messages')).toBeNull();
   });
 
   // AC-WA-24: focus indicators — live region is always present
