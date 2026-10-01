@@ -295,7 +295,12 @@
 .vb-notes-header {
   display: flex;
   align-items: center;
-  padding: 14px 14px 10px;
+  /* F2#12 / N7: side-panel top bar on shared 36px token */
+  min-height: var(--panel-top-bar-height, 36px);
+  height: var(--panel-top-bar-height, 36px);
+  max-height: var(--panel-top-bar-height, 36px);
+  padding: 0 14px;
+  box-sizing: border-box;
   position: relative;
   flex-shrink: 0;
 }

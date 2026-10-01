@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import './Menu.css';
 
@@ -9,6 +9,13 @@ export interface MenuItemDef {
   destructive?: boolean;
   /** When true, a separator line is rendered above this item. */
   separator?: boolean;
+  /** Optional stable test id (defaults to `menu-item-${id}`). */
+  testId?: string;
+  /**
+   * When set, item is a checkable menuitem (radio/checkbox semantics) and
+   * exposes `aria-checked`. Used by Brainstorm header ⋯ mode / toggle items.
+   */
+  checked?: boolean;
 }
 
 export interface MenuProps {
@@ -22,6 +29,8 @@ export interface MenuProps {
   position?: { x: number; y: number };
   /** Extra class(es) appended to `.ln-menu` for scoped visual variants. */
   className?: string;
+  /** Optional content rendered above the item list (e.g. search field). */
+  leading?: ReactNode;
   'aria-label'?: string;
   'data-testid'?: string;
 }
@@ -42,6 +51,7 @@ export function Menu({
   anchorEl,
   position,
   className,
+  leading,
   'aria-label': ariaLabel,
   'data-testid': testId,
 }: MenuProps) {
@@ -154,8 +164,9 @@ export function Menu({
       aria-label={ariaLabel}
       data-testid={testId}
       onKeyDown={handleKeyDown}
-      style={{ position: 'fixed', zIndex: 9999 }}
+      style={{ position: 'fixed' }}
     >
+      {leading}
       {items.map((item) => (
         <div key={item.id}>
           {item.separator && (
@@ -172,13 +183,16 @@ export function Menu({
             ]
               .filter(Boolean)
               .join(' ')}
-            role="menuitem"
+            role={item.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}
             type="button"
             disabled={item.disabled}
-            data-testid={`menu-item-${item.id}`}
+            aria-checked={item.checked === undefined ? undefined : item.checked}
+            data-testid={item.testId ?? `menu-item-${item.id}`}
             onClick={() => {
               onAction(item.id);
               onClose();
+              // Restore focus to the trigger after a choice (Escape already does).
+              triggerRef.current?.focus();
             }}
           >
             {item.label}

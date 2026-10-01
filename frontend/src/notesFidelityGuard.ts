@@ -174,12 +174,18 @@ function maskCode(content: string): string {
  */
 const HTML_TAG_RE = /<\/?([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>]*)?\/?>/g;
 
-/** True when the content carries raw HTML other than `<u>` (SKY-3204). */
+/** True when the content carries raw HTML other than `<u>` (SKY-3204)
+ *  and entity-mention chips (`span[data-entity-id]` — F2#2 round-trip). */
 function hasRawHtml(content: string): boolean {
   for (const m of content.matchAll(HTML_TAG_RE)) {
+    const tag = m[1].toLowerCase();
     // The Underline exception is case-insensitive and attribute-tolerant:
     // `<U>`, `<u class="x">` and `</u>` all round-trip losslessly.
-    if (m[1].toLowerCase() !== 'u') return true;
+    if (tag === 'u') continue;
+    // Entity mention chips parse via EntityMention.parseHTML / entity:// markdown.
+    // Opening tags carry data-entity-id; closing </span> must also be exempt.
+    if (tag === 'span' && (m[0].startsWith('</') || /data-entity-id\s*=/.test(m[0]))) continue;
+    return true;
   }
   return false;
 }

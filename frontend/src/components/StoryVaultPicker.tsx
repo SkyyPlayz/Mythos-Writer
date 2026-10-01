@@ -102,9 +102,21 @@ export default function StoryVaultPicker() {
     if (id.startsWith('switch:')) {
       const targetId = id.slice('switch:'.length);
       if (targetId === activeId) return;
-      // No pre-switch confirmation dialog: unlike notes vaults, story vaults
-      // don't carry [[wikilink]] resolution state — a plain switch mirrors
-      // storyVaultRegistry:setActive's own no-preview IPC surface.
+      // Ivy R6: flush open Settings before main commits (storyVaultRegistrySetActive
+      // broadcasts project:switched). On refuse, park via DesktopShell so the
+      // same Retry / Switch anyway chrome as nav-rail tiles appears — main
+      // must not stay on the target until save succeeds or Switch anyway.
+      const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
+        .__mythosSettingsFlush;
+      if (flush) {
+        const ok = await flush();
+        if (!ok) {
+          (window as Window & {
+            __mythosParkVaultSwitch?: (vaultRoot: string) => void;
+          }).__mythosParkVaultSwitch?.(targetId);
+          return;
+        }
+      }
       setSwitching(true);
       try {
         await window.api?.storyVaultRegistrySetActive?.(targetId);

@@ -3,6 +3,28 @@ import Dialog, { DialogBody, DialogFooter, DialogHeader } from './components/ui/
 import VaultCreateModePicker, {
   type VaultCreateMode,
 } from './components/SettingsPanel/sections/VaultCreateModePicker';
+import { enqueueSettingsWrite } from './settingsWriteSerial';
+
+/** H10-1 / Secure: only these keys may be merged into the shell's appSettings copy. */
+export type OnboardingSyncPatch = {
+  onboardingComplete: boolean;
+  onboardingStartMode: NonNullable<AppSettings['onboardingStartMode']> | null;
+};
+
+export type CreateMythosVaultFlowOptions = {
+  /**
+   * When false, scaffold without activating on main — caller must flush-then
+   * switch (Shield: Settings open must not see main commit first). Default true
+   * keeps legacy auto-activate for callers that already flush via onCreated.
+   */
+  activate?: boolean;
+  /**
+   * H10-1: after the C7 write, called from the NEXT enqueueSettingsWrite op
+   * (never nested inside the write op — Critic guardrail A deadlock).
+   * Caller must merge ONLY onboarding* into shell appSettings (Secure bar).
+   */
+  onOnboardingSynced?: (patch: OnboardingSyncPatch) => void;
+};
 
 type DryRunPreview = {
   markdownCount: number;
@@ -24,10 +46,12 @@ type ImportSlot = 'notes' | 'story';
  */
 export function useCreateMythosVaultFlow(
   onCreated: (result: { vaultRoot: string; notesVaultRoot: string }) => void | Promise<void>,
+  options?: CreateMythosVaultFlowOptions,
 ): {
   createVault: (presetMode?: VaultCreateMode) => void;
   createVaultModal: React.ReactNode;
 } {
+  const activate = options?.activate !== false;
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [dest, setDest] = useState('');
@@ -44,6 +68,8 @@ export function useCreateMythosVaultFlow(
   const [cancelConfirm, setCancelConfirm] = useState(false);
   const onCreatedRef = useRef(onCreated);
   onCreatedRef.current = onCreated;
+  const onOnboardingSyncedRef = useRef(options?.onOnboardingSynced);
+  onOnboardingSyncedRef.current = options?.onOnboardingSynced;
 
   const dirty = Boolean(
     name.trim()
@@ -186,41 +212,61 @@ export function useCreateMythosVaultFlow(
         destinationParent: mode === 'openin' ? undefined : (dest || undefined),
         openinPath: mode === 'openin' ? openinPath.trim() : undefined,
         importSources: importSources.length > 0 ? importSources : undefined,
-        activate: true,
+        activate,
       });
       if (!result || !result.ok) {
         setError(`Could not create vault: ${result?.error ?? 'unknown error'}`);
         return;
       }
       // C7 — persist start mode so relaunch / Getting Started match the path.
+      // AFTER onCreated/switchToVault: activate:false flush-first can rewrite
+      // settings from an open SettingsPanel mount snapshot and would clobber
+      // onboardingStartMode if we wrote it before the switch flush.
       const startMode =
         mode === 'template' ? 'template'
           : mode === 'blank' ? 'blank'
             : mode === 'import' || mode === 'restore' ? 'import'
               : mode === 'openin' ? 'open-existing'
                 : 'template';
-      try {
-        const cur = await window.api?.settingsGet?.();
-        if (cur) {
-          await window.api?.settingsSet?.({
-            ...cur,
-            onboardingComplete: true,
-            onboardingStartMode: startMode,
-          });
-        }
-      } catch { /* non-fatal */ }
       setOpen(false);
       reset();
       await onCreatedRef.current({
         vaultRoot: result.storyVaultPath ?? result.mythosRoot ?? '',
         notesVaultRoot: result.notesVaultPath ?? '',
       });
+      try {
+        // C7(b): same serialized write chain as Settings flush get→set so a
+        // concurrent panel flush cannot full-replace over this start mode.
+        await enqueueSettingsWrite(async () => {
+          const cur = await window.api?.settingsGet?.();
+          if (cur) {
+            await window.api?.settingsSet?.({
+              ...cur,
+              onboardingComplete: true,
+              onboardingStartMode: startMode,
+            });
+          }
+        });
+        // H10-1 / Critic guardrail A: enqueue shell sync as the NEXT op on the
+        // chain (awaited after the write returns). Never nest
+        // `await enqueueSettingsWrite` inside the write op — that deadlocks.
+        // Secure: read disk, then pass ONLY onboarding* — never whole settingsGet.
+        await enqueueSettingsWrite(async () => {
+          const disk = await window.api?.settingsGet?.();
+          if (!disk) return;
+          const patch: OnboardingSyncPatch = {
+            onboardingComplete: disk.onboardingComplete === true,
+            onboardingStartMode: disk.onboardingStartMode ?? null,
+          };
+          onOnboardingSyncedRef.current?.(patch);
+        });
+      } catch { /* non-fatal */ }
     } catch (err) {
       setError(`Create failed: ${(err as Error).message}`);
     } finally {
       setBusy(false);
     }
-  }, [name, dest, mode, openinPath, importNotesSrc, importStorySrc, notesPreview, storyPreview, reset]);
+  }, [name, dest, mode, openinPath, importNotesSrc, importStorySrc, notesPreview, storyPreview, reset, activate]);
 
   const renderPreview = (label: string, preview: DryRunPreview | null, testId: string) => {
     if (!preview) return null;

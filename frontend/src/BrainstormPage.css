@@ -64,6 +64,8 @@
 /* Layout from PanelChrome (.pc-header); spacing/typography ported from the
  * Liquid Neon prototype header (design-handoff/prototype, lines 1312–1316). */
 .brainstorm-header {
+  /* Ivy tip-form / main parity for standalone (≥701): restore main padding
+     so header height matches main at 1000/1440. Compact overrides below. */
   padding: 14px 20px 12px;
   gap: 12px;
   /* SKY-11047: was a flat --bg-bar opaque strip, painted a second solid
@@ -74,19 +76,95 @@
   border-bottom: 1px solid var(--glass-border);
 }
 
-/* W0.3 (GAP P0#3): compact sidebar contexts (notes-tab agent panel) use the
- * prototype right-panel spacing — 12px padding, 8px gaps. Combined with the
- * wrapping .pc-header rows, the ← Back button and the genre preset dropdown
- * never overlap at 280–320px panel widths. */
+/* Ivy GO (b) / Critic hard 2: compact Notes Agent uses main's 12px pad (not
+   the zero-vertical F2#12 strip) so title+subtitle stay readable when unclamped.
+   Tighter action chrome; Download never hidden — ≤400 moves it into ⋯ overflow
+   so preset+Mute+New Session (+ ⋯) fit inside the bar at 280/340. */
 .brainstorm-header--compact {
   padding: 12px;
   gap: 8px;
+}
+
+.brainstorm-header--compact .brainstorm-header-actions {
+  gap: 4px;
+}
+
+.brainstorm-header--compact .brainstorm-mute-btn,
+.brainstorm-header--compact .brainstorm-download-btn,
+.brainstorm-header--compact .brainstorm-new-session-btn,
+.brainstorm-header--compact .brainstorm-header-overflow-btn {
+  padding: 4px 6px;
+  font-size: 0.72rem;
+}
+
+.brainstorm-header--compact .brainstorm-back-btn {
+  padding: 4px 8px;
+}
+
+.brainstorm-header-overflow-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 1.75rem;
+  line-height: 1;
+}
+
+.brainstorm-header-overflow-btn:hover {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.brainstorm-header-overflow-btn:focus-visible {
+  outline: 2px solid var(--focus-ring, #00f0ff);
+  outline-offset: 2px;
+}
+
+/* Compact ≤400 (natural/340 sidebar + W0.3 @280): Download → ⋯ menu.
+   Wider compact hosts keep inline Download. */
+@container pc-chrome (max-width: 400px) {
+  .brainstorm-header--compact .brainstorm-download-btn--compact-inline {
+    display: none;
+  }
+  .brainstorm-header--compact .brainstorm-header-overflow-btn:not(.brainstorm-header-overflow-btn--standalone) {
+    display: inline-flex;
+  }
+}
+
+/* Ivy ruling 4 (amended): standalone @≤999 — mode seg, board toggle, and
+   board + Idea / search → ⋯ so Back / title / Session / ⋯ never overlap at
+   701–999 (chat + board, AI on or off). ≥1000 keeps controls inline. */
+.brainstorm-header-overflow-btn--standalone {
+  display: none;
+}
+
+@container pc-chrome (max-width: 999px) {
+  .brainstorm-header:not(.brainstorm-header--compact) .bsc-seg--standalone-inline,
+  .brainstorm-header:not(.brainstorm-header--compact) .bs-board-toggle-wrap--standalone-inline,
+  .brainstorm-header:not(.brainstorm-header--compact) .bsc-add-idea-btn--standalone-inline,
+  .brainstorm-header:not(.brainstorm-header--compact) .bsc-search--standalone-inline {
+    display: none;
+  }
+  .brainstorm-header:not(.brainstorm-header--compact) .brainstorm-header-overflow-btn--standalone {
+    display: inline-flex;
+  }
 }
 
 .brainstorm-header .pc-header-title {
   font-family: 'Lora', Georgia, serif;
   font-size: 21px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
   color: rgb(240, 243, 252); /* prototype #f0f3fc */
 }
 
@@ -1737,6 +1815,13 @@
   border-color: var(--b1, rgba(0, 240, 255, 0.5));
 }
 
+/* Board search inside standalone ⋯ (≤999) — full menu width. */
+.ln-menu .bsc-search--overflow {
+  width: auto;
+  margin: 6px 8px 4px;
+  min-width: 180px;
+}
+
 /* ── Agent activity feed (prototype right panel, lines 2468–2496) ── */
 .bs-activity-section {
   flex-shrink: 0;
@@ -1912,11 +1997,14 @@
   min-width: 0;
 }
 
-/* Header title row: title text + session dropdown pill (prototype line 1589). */
+/* Header title row: title text + session dropdown pill (prototype line 1589).
+   min-width:0 lets the title ellipsis inside the start-group 7rem floor. */
 .bs-title-row {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .bs-title-row .bs-session-pill .asp-pill {

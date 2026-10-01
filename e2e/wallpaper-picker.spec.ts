@@ -12,9 +12,11 @@
  * produced by the clicks in this test.
  *
  *   1. The renamed preset reads "Neon Nebula"; "No background" is gone.
- *   2. The Theme match tile shows arrows + "1/N" for the default preset.
- *   3. Clicking → moves to "2/N" and repaints the live --wp token on <html>
- *      to the first bundled pack image.
+ *   2. The Theme match tile shows arrows + "N/N" — F2#18/H3 defaults classic
+ *      wpPick to the starfield, appended as the LAST cycle entry (after cosmic
+ *      + the whole bundled pack); index 0 remains cosmic for legacy vaults.
+ *   3. Clicking Next wraps to "1/N" (cosmic), then Next again moves to "2/N"
+ *      and repaints --wp to the first bundled pack image.
  *   4. The pick reaches app-settings.json under the per-vault appearance
  *      store (SKY-11237) via the Appearance tab's live persistence.
  *   5. Relaunch: the wallpaper is applied at boot (before Settings opens) and
@@ -119,15 +121,22 @@ test('Theme match arrows cycle the preset wallpapers and the pick survives a rel
   await expect(dialog.locator('[data-testid="lnas-wp-none"]')).toHaveCount(0);
   await expect(dialog.getByText('No background')).toHaveCount(0);
 
-  // 2. Fresh profile: default preset, built-in wallpaper first → "1/N".
+  // 2. Fresh profile (F2#18/H3): Neon Nebula + starfield default, appended as
+  // the LAST cycle entry (after cosmic + the whole pack) → "N/N".
   const count = dialog.locator('[data-testid="lnas-wp-match-count"]');
   await expect(count).toBeVisible();
   const total = Number((await count.textContent())!.split('/')[1]);
-  expect(total).toBeGreaterThan(1);
-  await expect(count).toHaveText(`1/${total}`);
-  expect(await readWp(page)).toContain('cosmic-bg');
+  expect(total).toBeGreaterThan(2);
+  await expect(count).toHaveText(`${total}/${total}`);
+  expect(await readWp(page)).toContain('radial-gradient(1.6px 1.6px at 12% 22%');
 
-  // 3. Next → second entry (first bundled Neon Nebula image), live repaint.
+  // 3a. Next wraps from the starfield (last) back to cosmic (first, index 0).
+  await dialog.locator('[data-testid="lnas-wp-match-next"]').click();
+  await expect(count).toHaveText(`1/${total}`, { timeout: 3_000 });
+  await expect.poll(() => readWp(page), { timeout: 3_000 }).toContain("url('");
+  expect(await readWp(page)).not.toContain('classic-1');
+
+  // 3b. Next again → second entry (first bundled Neon Nebula pack image), live repaint.
   await dialog.locator('[data-testid="lnas-wp-match-next"]').click();
   await expect(count).toHaveText(`2/${total}`, { timeout: 3_000 });
   await expect(dialog.locator('[data-testid="lnas-wp-match"]')).toHaveAttribute('aria-pressed', 'true');
@@ -150,8 +159,8 @@ test('Theme match arrows cycle the preset wallpapers and the pick survives a rel
   const dialog2 = await openAppearance(page);
   await expect(dialog2.locator('[data-testid="lnas-wp-match-count"]')).toHaveText(`2/${total}`, { timeout: 5_000 });
 
-  // Previous from index 1 returns to the built-in wallpaper.
+  // Previous from the first pack index returns to cosmic (index 0), not the starfield.
   await dialog2.locator('[data-testid="lnas-wp-match-prev"]').click();
   await expect(dialog2.locator('[data-testid="lnas-wp-match-count"]')).toHaveText(`1/${total}`, { timeout: 3_000 });
-  await expect.poll(() => readWp(page), { timeout: 3_000 }).toContain('cosmic-bg');
+  await expect.poll(() => readWp(page), { timeout: 3_000 }).toContain("url('");
 });

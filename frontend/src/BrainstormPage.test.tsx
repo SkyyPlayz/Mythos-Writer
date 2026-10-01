@@ -1,8 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import BrainstormPage, { STALL_TIMEOUT_MS, HARD_TIMEOUT_MS, VAULT_ROOT_SENTINEL } from './BrainstormPage';
 import { __resetAgentSessionStores } from './lib/useAgentSessions';
 import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
 import { brainstormActivitySnapshot, resetBrainstormActivityForTests, IDLE_BRAINSTORM_ACTIVITY } from './agents/brainstormActivity';
+
+const BRAINSTORM_TSX = readFileSync(resolve(process.cwd(), 'src/BrainstormPage.tsx'), 'utf-8');
+const BRAINSTORM_CSS = readFileSync(resolve(process.cwd(), 'src/BrainstormPage.css'), 'utf-8');
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
@@ -880,6 +885,175 @@ describe('Draft persistence', () => {
     expect(mockClick).toHaveBeenCalled();
     expect(mockRevokeObjectURL).toHaveBeenCalled();
 
+    mockClick.mockRestore();
+  });
+
+  // Ivy ruling 4: standalone ⋯ breakpoint is ≤999 (not the old ≤900 cut-off).
+  it('Ivy ruling 4: standalone overflow @container max-width is 999px', () => {
+    expect(BRAINSTORM_CSS).toMatch(
+      /@container\s+pc-chrome\s*\(max-width:\s*999px\)[\s\S]*brainstorm-header-overflow-btn--standalone/,
+    );
+    expect(BRAINSTORM_CSS).not.toMatch(
+      /@container\s+pc-chrome\s*\(max-width:\s*900px\)[\s\S]*brainstorm-header-overflow-btn--standalone/,
+    );
+  });
+
+  // Shield / Ivy GO: .bs-title-row must shrink inside the start-group 7rem floor
+  // (RED if min-width:0 / max-width:100% revert with the f385b3de title-row block).
+  it('Shield: .bs-title-row pins min-width:0 and max-width:100%', () => {
+    expect(BRAINSTORM_CSS).toMatch(
+      /\.bs-title-row\s*\{[^}]*min-width:\s*0/,
+    );
+    expect(BRAINSTORM_CSS).toMatch(
+      /\.bs-title-row\s*\{[^}]*max-width:\s*100%/,
+    );
+  });
+
+  /**
+   * Ivy GO / Critic H8-1: AI-off Board-only standalone header still mounts ⋯
+   * (≤999 CSS); Idea Board must be aria-checked=true (effectiveMode, not mode).
+   * Leave sky10604 AI-off overflow e2e skip alone.
+   *
+   * Seg buttons (className / aria-pressed): same effectiveMode fix applied, but
+   * no reachable product state renders the inline seg with a mode/effectiveMode
+   * mismatch (AI off → visibleModes.length===1 → seg hidden; AI on → equal).
+   * No separate seg pin — see Ivy amendment report.
+   */
+  describe('Ivy ruling 4: AI-off Board-only standalone overflow', () => {
+    afterEach(() => {
+      __resetAiEnabledForTests();
+    });
+
+    function seedSearchIdeas() {
+      localStorage.setItem('brainstorm:draft', JSON.stringify({
+        v: 2,
+        savedAt: new Date().toISOString(),
+        prompt: '',
+        messages: [],
+        facts: [
+          { id: 'fact-a', type: 'character', name: 'Aria Voss', content: 'A young sorceress', savedStatus: 'saved', createdAt: 1000 },
+          { id: 'fact-b', type: 'character', name: 'Kael Thorne', content: 'A guarded smuggler', savedStatus: 'saved', createdAt: 1001 },
+          { id: 'fact-c', type: 'location', name: 'Dark Cave', content: 'An underground cavern', savedStatus: 'saved', createdAt: 1002 },
+        ],
+      }));
+    }
+
+    it('renders standalone ⋯; Idea creates a loose card; Search filters', () => {
+      setAiEnabled(false);
+      seedSearchIdeas();
+      render(<BrainstormPage onClose={() => {}} />);
+
+      // Board-only (AI off) — no chat seg; ⋯ still mounts for board chrome @≤999.
+      expect(screen.queryByTestId('bsc-mode-chat')).not.toBeInTheDocument();
+      const overflowBtn = screen.getByTestId('brainstorm-header-overflow-standalone');
+      expect(overflowBtn).toBeInTheDocument();
+
+      fireEvent.click(overflowBtn);
+      const menu = screen.getByTestId('brainstorm-header-overflow-standalone-menu');
+      expect(menu).toBeInTheDocument();
+
+      // H8-1 HARD: Idea Board is the active effectiveMode — must be checked.
+      // RED if overflow `checked:` uses `mode === m` again (mode stays 'chat').
+      expect(within(menu).getByTestId('bsc-mode-board')).toHaveAttribute('aria-checked', 'true');
+
+      // Idea in ⋯ → addLooseIdea observable: "New idea" card + toast.
+      fireEvent.click(within(menu).getByTestId('bsc-add-idea'));
+      const board = within(screen.getByTestId('bsc-board'));
+      expect(board.getByText('New idea')).toBeInTheDocument();
+      expect(board.getByText('Drag me anywhere — expand me with the Agent chat.')).toBeInTheDocument();
+      expect(screen.getByText('Idea captured — landed near Loose Ideas')).toBeInTheDocument();
+
+      // Re-open ⋯ — Search ideas input filters the canvas.
+      fireEvent.click(screen.getByTestId('brainstorm-header-overflow-standalone'));
+      const menuAgain = screen.getByTestId('brainstorm-header-overflow-standalone-menu');
+      const search = within(menuAgain).getByTestId('bsc-search-input');
+      expect(search).toHaveAttribute('aria-label', 'Search ideas');
+      fireEvent.change(search, { target: { value: 'aria' } });
+      expect(screen.getByTestId('bsc-card-fact-a')).toBeInTheDocument();
+      expect(screen.queryByTestId('bsc-card-fact-b')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('bsc-card-fact-c')).not.toBeInTheDocument();
+    });
+
+    it('AI-on: overflow mode items carry aria-checked for the active mode', () => {
+      seedSearchIdeas();
+      render(<BrainstormPage onClose={() => {}} />);
+
+      fireEvent.click(screen.getByTestId('brainstorm-header-overflow-standalone'));
+      const menu = screen.getByTestId('brainstorm-header-overflow-standalone-menu');
+      expect(within(menu).getByTestId('bsc-mode-chat')).toHaveAttribute('aria-checked', 'true');
+      expect(within(menu).getByTestId('bsc-mode-board')).toHaveAttribute('aria-checked', 'false');
+
+      fireEvent.click(within(menu).getByTestId('bsc-mode-board'));
+      fireEvent.click(screen.getByTestId('brainstorm-header-overflow-standalone'));
+      const menuBoard = screen.getByTestId('brainstorm-header-overflow-standalone-menu');
+      expect(within(menuBoard).getByTestId('bsc-mode-board')).toHaveAttribute('aria-checked', 'true');
+      expect(within(menuBoard).getByTestId('bsc-mode-chat')).toHaveAttribute('aria-checked', 'false');
+    });
+
+    it('H8-1 source: overflow + seg use effectiveMode (not mode) for checked/pressed', () => {
+      // RED if either site reverts to `mode === m`.
+      expect(BRAINSTORM_TSX).toMatch(/checked:\s*effectiveMode\s*===\s*m/);
+      expect(BRAINSTORM_TSX).not.toMatch(/checked:\s*mode\s*===\s*m/);
+      expect(BRAINSTORM_TSX).toMatch(
+        /className=\{`bsc-seg-btn\$\{effectiveMode === m \? ' bsc-seg-btn--active' : ''\}`\}/,
+      );
+      expect(BRAINSTORM_TSX).toMatch(/aria-pressed=\{effectiveMode === m\}/);
+      expect(BRAINSTORM_TSX).not.toMatch(/aria-pressed=\{mode === m\}/);
+    });
+  });
+
+  // Ivy: Download must never be gated on !compact (feature loss vs main).
+  it('Ivy: compact Download is never hidden behind !compact (source + overflow)', () => {
+    // RED if `messages.length > 0 && !compact` is restored.
+    expect(BRAINSTORM_TSX).not.toMatch(
+      /messages\.length\s*>\s*0\s*&&\s*!compact/,
+    );
+
+    const draft = {
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [
+        { role: 'user', text: 'A question' },
+        { role: 'assistant', text: 'An answer' },
+      ],
+      facts: [],
+    };
+    localStorage.setItem('brainstorm:draft', JSON.stringify(draft));
+    render(<BrainstormPage onClose={() => {}} compact />);
+
+    expect(screen.getByTestId('brainstorm-download-inline')).toBeInTheDocument();
+    expect(screen.getByTestId('brainstorm-header-overflow')).toBeInTheDocument();
+  });
+
+  it('Ivy: compact overflow menu Download triggers the same export path', () => {
+    const mockCreateObjectURL = vi.fn().mockReturnValue('blob:mock-url');
+    const mockRevokeObjectURL = vi.fn();
+    global.URL.createObjectURL = mockCreateObjectURL;
+    global.URL.revokeObjectURL = mockRevokeObjectURL;
+    const mockClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    const draft = {
+      v: 2,
+      savedAt: new Date().toISOString(),
+      prompt: '',
+      messages: [
+        { role: 'user', text: 'My question' },
+        { role: 'assistant', text: 'My answer' },
+      ],
+      facts: [],
+    };
+    localStorage.setItem('brainstorm:draft', JSON.stringify(draft));
+    render(<BrainstormPage onClose={() => {}} compact />);
+
+    fireEvent.click(screen.getByTestId('brainstorm-header-overflow'));
+    fireEvent.click(screen.getByTestId('menu-item-download'));
+
+    expect(mockCreateObjectURL).toHaveBeenCalled();
+    const blob = mockCreateObjectURL.mock.calls[0][0] as Blob;
+    expect(blob.type).toBe('text/markdown');
+    expect(mockClick).toHaveBeenCalled();
+    expect(mockRevokeObjectURL).toHaveBeenCalled();
     mockClick.mockRestore();
   });
 

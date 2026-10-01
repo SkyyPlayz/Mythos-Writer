@@ -3,6 +3,7 @@ import { useAgentActivity } from './agents/agentActivity';
 import { setBrainstormActivity, IDLE_BRAINSTORM_ACTIVITY } from './agents/brainstormActivity';
 import { useVoiceDictation, type VoiceDictationState } from './lib/useVoiceDictation';
 import { PanelHeader } from './components/ui/PanelChrome';
+import { Menu } from './components/ui/Menu';
 import { EmptyState } from './components/EmptyState/EmptyState';
 import { IdeaCard } from './components/BrainstormCard/IdeaCard';
 import { IdeaDetailDrawer } from './components/BrainstormCard/IdeaDetailDrawer';
@@ -438,6 +439,11 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [alertText, setAlertText] = useState('');
+  // Ivy ruling 4: header ⋯ — compact Download @≤400; standalone mode seg +
+  // board toggle (+ board Idea/search) @≤999 (no Back/title/Session/⋯ overlap
+  // @701–999 chat+board). ≥1000 keeps controls inline.
+  const [headerOverflowOpen, setHeaderOverflowOpen] = useState(false);
+  const headerOverflowRef = useRef<HTMLButtonElement>(null);
   // Beta 3 M22: brainstorm streaming lights the workspace tab strip's agents chip.
   useAgentActivity(loading);
   // Stable refs so the hook callbacks can reference values declared later in the component.
@@ -2326,13 +2332,18 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                 chat fits, and when AI is off there is only the one manual
                 Board page left to show (R11 — no dead single-option toggle). */}
             {!compact && visibleModes.length > 1 && (
-              <div className="bsc-seg" role="group" aria-label="Brainstorm page">
+              <div
+                className="bsc-seg bsc-seg--standalone-inline"
+                role="group"
+                aria-label="Brainstorm page"
+                data-testid="bsc-mode-seg-inline"
+              >
                 {visibleModes.map((m) => (
                   <button
                     key={m}
                     type="button"
-                    className={`bsc-seg-btn${mode === m ? ' bsc-seg-btn--active' : ''}`}
-                    aria-pressed={mode === m}
+                    className={`bsc-seg-btn${effectiveMode === m ? ' bsc-seg-btn--active' : ''}`}
+                    aria-pressed={effectiveMode === m}
                     onClick={() => setMode(m)}
                     data-testid={`bsc-mode-${m}`}
                   >
@@ -2344,7 +2355,10 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
             {/* M20: chat-page Board toggle — stacks the canvas under the chat
                 with a drag-bar height (prototype bsBoardToggle). */}
             {!compact && effectiveMode === 'chat' && (
-              <div className="bs-board-toggle-wrap" title="Show the Idea Board below the chat">
+              <div
+                className="bs-board-toggle-wrap bs-board-toggle-wrap--standalone-inline"
+                title="Show the Idea Board below the chat"
+              >
                 <span>Idea Board</span>
                 <button
                   type="button"
@@ -2358,6 +2372,82 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                   <span className="bs-board-toggle-knob" aria-hidden="true" />
                 </button>
               </div>
+            )}
+            {/* Ivy ruling 4: standalone ≤999 — mode seg + board toggle (+ board
+                + Idea / search) move into ⋯ so Back / title / Session / ⋯ never
+                overlap @701–999. Show ⋯ whenever modes>1 OR board chrome exists. */}
+            {!compact && (visibleModes.length > 1 || (!unifiedBoard && effectiveMode === 'board')) && (
+              <>
+                <button
+                  ref={headerOverflowRef}
+                  type="button"
+                  className="brainstorm-header-overflow-btn brainstorm-header-overflow-btn--standalone"
+                  aria-label="More header actions"
+                  aria-haspopup="menu"
+                  aria-expanded={headerOverflowOpen}
+                  data-testid="brainstorm-header-overflow-standalone"
+                  onClick={() => setHeaderOverflowOpen((v) => !v)}
+                >
+                  ⋯
+                </button>
+                <Menu
+                  open={headerOverflowOpen}
+                  onClose={() => setHeaderOverflowOpen(false)}
+                  onAction={(id) => {
+                    if (id === 'mode-chat') setMode('chat');
+                    else if (id === 'mode-board') setMode('board');
+                    else if (id === 'board-toggle') setChatBoardOpen((v) => !v);
+                    else if (id === 'add-idea') addLooseIdea();
+                  }}
+                  items={[
+                    ...visibleModes.map((m) => ({
+                      id: `mode-${m}`,
+                      label: MODE_LABELS[m],
+                      // H8-1: AI-off forces effectiveMode=board while mode may
+                      // still be 'chat' — check the mode the UI actually shows.
+                      checked: effectiveMode === m,
+                      // Same testids as the inline seg so e2e can assert
+                      // reachability after opening ⋯ @≤999 (ruling 4).
+                      testId: `bsc-mode-${m}`,
+                    })),
+                    ...(effectiveMode === 'chat'
+                      ? [{
+                          id: 'board-toggle',
+                          label: chatBoardOpen ? 'Hide Idea Board under chat' : 'Show Idea Board under chat',
+                          checked: chatBoardOpen,
+                        }]
+                      : []),
+                    ...(!unifiedBoard && effectiveMode === 'board'
+                      ? [{
+                          id: 'add-idea',
+                          label: 'Idea',
+                          separator: visibleModes.length > 0,
+                          testId: 'bsc-add-idea',
+                        }]
+                      : []),
+                  ]}
+                  leading={
+                    !unifiedBoard && effectiveMode === 'board' ? (
+                      <div className="bsc-search bsc-search--overflow" role="search">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                          <circle cx="11" cy="11" r="6.5" />
+                          <path d="M20.5 20.5L16 16" />
+                        </svg>
+                        <input
+                          value={ideaQuery}
+                          onChange={(e) => setIdeaQuery(e.target.value)}
+                          placeholder="Search ideas…"
+                          aria-label="Search ideas"
+                          data-testid="bsc-search-input"
+                        />
+                      </div>
+                    ) : undefined
+                  }
+                  anchorEl={headerOverflowRef.current}
+                  aria-label="Brainstorm header actions"
+                  data-testid="brainstorm-header-overflow-standalone-menu"
+                />
+              </>
             )}
             {/* M19: live extraction badge (prototype lines 1330–1335) — shown
                 while a reply is streaming and facts may be extracted. */}
@@ -2377,12 +2467,15 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
               creates a real note instead of a card. `Search ideas…` filters
               only the legacy canvas — search over a vault-backed board is
               SKY-11191's, not something to fake here with a dead input.
+
+              Ivy ruling 4: at ≤999 these also live in ⋯ (CSS hides the inline
+              copies); ≥1000 keeps them inline beside Mute / New Session.
             */}
             {!compact && !unifiedBoard && effectiveMode === 'board' && (
               <>
                 <button
                   type="button"
-                  className="bsc-add-idea-btn"
+                  className="bsc-add-idea-btn bsc-add-idea-btn--standalone-inline"
                   onClick={addLooseIdea}
                   data-testid="bsc-add-idea"
                 >
@@ -2391,7 +2484,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                   </svg>
                   Idea
                 </button>
-                <div className="bsc-search">
+                <div className="bsc-search bsc-search--standalone-inline">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                     <circle cx="11" cy="11" r="6.5" />
                     <path d="M20.5 20.5L16 16" />
@@ -2429,16 +2522,49 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
               >
                 {tts.sessionMuted ? 'Unmute' : 'Mute'}
               </button>
+              {/* Ivy: Download never disappears. Standalone + compact-wide = inline.
+                  Compact ≤400 (incl. W0.3 @280): inline hidden via CSS; same action
+                  lives in the ⋯ overflow menu (same pattern as standalone overflow). */}
               {messages.length > 0 && (
-                <button
-                  className="brainstorm-download-btn"
-                  onClick={handleDownload}
-                  aria-label="Download session as markdown"
-                  type="button"
-                  title="Download session as Markdown"
-                >
-                  Download
-                </button>
+                <>
+                  <button
+                    className={`brainstorm-download-btn${compact ? ' brainstorm-download-btn--compact-inline' : ''}`}
+                    onClick={handleDownload}
+                    aria-label="Download session as markdown"
+                    type="button"
+                    title="Download session as Markdown"
+                    data-testid="brainstorm-download-inline"
+                  >
+                    Download
+                  </button>
+                  {compact && (
+                    <>
+                      <button
+                        ref={headerOverflowRef}
+                        type="button"
+                        className="brainstorm-header-overflow-btn"
+                        aria-label="More header actions"
+                        aria-haspopup="menu"
+                        aria-expanded={headerOverflowOpen}
+                        data-testid="brainstorm-header-overflow"
+                        onClick={() => setHeaderOverflowOpen((v) => !v)}
+                      >
+                        ⋯
+                      </button>
+                      <Menu
+                        open={headerOverflowOpen}
+                        onClose={() => setHeaderOverflowOpen(false)}
+                        onAction={(id) => {
+                          if (id === 'download') handleDownload();
+                        }}
+                        items={[{ id: 'download', label: 'Download' }]}
+                        anchorEl={headerOverflowRef.current}
+                        aria-label="Brainstorm header actions"
+                        data-testid="brainstorm-header-overflow-menu"
+                      />
+                    </>
+                  )}
+                </>
               )}
               <button
                 className="brainstorm-new-session-btn"

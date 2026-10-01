@@ -48,4 +48,13 @@ describe('WritingAssistantPanel Liquid Neon CSS', () => {
     expect(m![1]).toContain('flex-wrap: wrap');
     expect(m![1]).toContain('gap: 4px 8px');
   });
+
+  // F2#12: Cadence/Mute stay on one row inside the 36px .pc-header (tips nest).
+  it('F2#12: .wa-header-controls stay nowrap (no second-row wrap inside 36px bar)', () => {
+    const css = readSrcCss('WritingAssistantPanel.css');
+    const m = css.match(/\.wa-header-controls\s*\{([^}]*)\}/);
+    expect(m).not.toBeNull();
+    expect(m![1]).toContain('flex-wrap: nowrap');
+    expect(m![1]).not.toMatch(/flex-wrap:\s*wrap\b/);
+  });
 });

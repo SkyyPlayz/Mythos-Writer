@@ -3,7 +3,10 @@ import type { Editor } from '@tiptap/core';
 import { useToast } from './hooks/useToast';
 import { useAiEnabled } from './hooks/useAiEnabled';
 import { useNavigationHistory, type NavigationLocation, type PersistedNavHistory } from './hooks/useNavigationHistory';
+import { useCtrlScrollDensity } from './hooks/useCtrlScrollDensity';
 import { useVaultIcons, type VaultIconSetInput } from './hooks/useVaultIcons';
+import { isSafeEntityMentionId, setEntityMentionNavigateHandler } from './lib/entityMentionNavigate';
+import { registerDensityBridge } from './lib/uiDensity';
 import { Toast } from './components/Toast/Toast';
 import { AiActivityIndicator } from './components/AiActivityIndicator/AiActivityIndicator';
 import type { Story, Part, Chapter, Scene, Block, Manifest, DraftState, LayoutPrefs, EntityEntry, WritingMode, FocusPrefs } from './types';
@@ -85,6 +88,7 @@ import { rewriteWikiLinksForRename, type WikiLinkRewriteMode } from '@mythos-wri
 import AccountModal from './AccountModal';
 import BottomBar from './BottomBar';
 import BlockEditor, { type BlockEditorApi } from './BlockEditor';
+import CreateNotePrompt from './CreateNotePrompt';
 import NoteViewer from './NoteViewer';
 import type { WLSuggestion } from './WikiLinkHintExtension';
 import EntityDetail from './EntityDetail';
@@ -326,6 +330,11 @@ interface AppMenuBarProps {
   /** SKY-9262 (P0.5): single-story vaults label the switcher with the story title. */
   activeStoryTitle?: string;
   onProjectSwitched: (vaultRoot: string) => void;
+  /** H10-1: ProjectSwitcher create path — merge only onboarding* into shell. */
+  onOnboardingSynced?: (patch: {
+    onboardingComplete: boolean;
+    onboardingStartMode: AppSettings['onboardingStartMode'] | null;
+  }) => void;
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
   /** SKY-3207 (B4): toggle the top bar hidden state. */
@@ -337,7 +346,7 @@ interface AppMenuBarProps {
 }
 
 // SKY-2964: writing-mode selector removed from AppMenuBar — canonical controls live in StorySubViewBar (above the page)
-export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, activeStoryTitle, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport }: AppMenuBarProps) {
+export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, activeStoryTitle, onProjectSwitched, onOnboardingSynced, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -378,7 +387,12 @@ export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, se
 
   return (
     <div className="app-menu-bar">
-      <ProjectSwitcher activeVaultRoot={activeVaultRoot} activeStoryTitle={activeStoryTitle} onSwitched={onProjectSwitched} />
+      <ProjectSwitcher
+        activeVaultRoot={activeVaultRoot}
+        activeStoryTitle={activeStoryTitle}
+        onSwitched={onProjectSwitched}
+        onOnboardingSynced={onOnboardingSynced}
+      />
       <div className="app-menu-items" ref={fileMenuRef}>
         <div className="app-menu-item">
           <button
@@ -752,12 +766,29 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [settingsOpen, setSettingsOpen] = useState(false);
   // SKY-11048: which Settings category to open to — a vault tile's
   // "Settings → this vault" context-menu action jumps straight to Vault & Files.
-  // `settingsOpenToken` is bumped on every such jump and used as SettingsPanel's
-  // `key` so it remounts (and re-reads initialCategory) even when the panel is
-  // already open on a different category — plain state alone wouldn't: the
-  // panel only consumes `initialCategory` once, via a useState initializer.
+  // Critic H6: category navigates in place via initialCategory + useEffect —
+  // do NOT remount Settings (key bump discarded unsaved edits).
   const [settingsInitialCategory, setSettingsInitialCategory] = useState<SettingsCategoryId>('appearance');
-  const [settingsOpenToken, setSettingsOpenToken] = useState(0);
+  // Shield/Ivy: park vault switch when Settings flush fails — Retry / Switch anyway.
+  // storyVaultId set when StoryVaultPicker parks (registry setActive, not projectSwitch).
+  const [pendingVaultSwitch, setPendingVaultSwitch] = useState<{
+    vaultRoot: string;
+    source: 'tile' | 'announce';
+    storyVaultId?: string;
+  } | null>(null);
+  const pendingVaultSwitchRef = useRef(pendingVaultSwitch);
+  pendingVaultSwitchRef.current = pendingVaultSwitch;
+  // Ivy R6: while rolling main back after a premature announce, ignore the
+  // rollback's own project:switched broadcast so we do not re-enter park/apply.
+  const suppressProjectAnnounceRef = useRef(false);
+  // Shield: serialize renderer projectSwitch calls so Rollback(A) cannot race
+  // Retry/Switch-anyway/Close → projectSwitch(B). Chain settles before park chrome.
+  const vaultSwitchSerialRef = useRef<Promise<void>>(Promise.resolve());
+  const enqueueVaultSwitchOp = useCallback((op: () => Promise<void>): Promise<void> => {
+    const next = vaultSwitchSerialRef.current.then(op, op);
+    vaultSwitchSerialRef.current = next.then(() => undefined, () => undefined);
+    return next;
+  }, []);
   const [historyOpen, setHistoryOpen] = useState(false);
   // SKY-11048: nav-rail vault tiles — every registered Mythos vault, always
   // fetched (even a lone vault renders a tile + the `+` tile). The raw list
@@ -1829,34 +1860,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     active: p.vaultRoot === activeVaultRoot,
   }));
 
-  // Handle project switches pushed from main process
-  useEffect(() => {
-    if (!window.api?.onProjectSwitched) return;
-    const unsub = window.api.onProjectSwitched((data: { vaultRoot: string }) => {
-      vaultSwitchGenRef.current += 1; // SKY-11379: supersede any in-flight loadVault
-      pendingVaultThemeRootRef.current = data.vaultRoot; // Beta 4 M1: per-vault theme
-      activeVaultRootRef.current = data.vaultRoot; // SKY-11236: key persists to the new vault at once
-      setActiveVaultRoot(data.vaultRoot);
-      // Reset selection state and reload vault content
-      setSelectedScene(null);
-      setSelectedChapter(null);
-      setSelectedStory(null);
-      setSelectedEntity(null);
-      // SKY-11236: clear the open-note pointer too. Otherwise the "opening a
-      // note surfaces its tab" effect re-adds the OUTGOING vault's note tab
-      // right after loadVault clears the strip — resurrecting the very leak
-      // this fix removes (its note doesn't exist in the incoming vault).
-      setOpenedNotePath(null);
-      // SKY-130: allow restore to fire again for the new project
-      sceneRestoreAttemptedRef.current = false;
-      loadVault();
-      loadVaults();
-      notifyMythosActiveVaultChanged(); // SKY-8882: re-probe migration status for the new vault
-    });
-    return () => unsub?.();
-  }, [loadVault, loadVaults]);
+  const settingsOpenRef = useRef(settingsOpen);
+  settingsOpenRef.current = settingsOpen;
 
-  const handleProjectSwitched = useCallback((vaultRoot: string) => {
+  const applyProjectSwitched = useCallback((vaultRoot: string) => {
     vaultSwitchGenRef.current += 1; // SKY-11379: supersede any in-flight loadVault
     pendingVaultThemeRootRef.current = vaultRoot; // Beta 4 M1: per-vault theme
     activeVaultRootRef.current = vaultRoot; // SKY-11236: key persists to the new vault at once
@@ -1876,25 +1883,207 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     notifyMythosActiveVaultChanged(); // SKY-8882: re-probe migration status for the new vault
   }, [loadVault, loadVaults]);
 
+  // Probe H1 + Shield/Ivy + Ivy R6: when Settings is open, flush before
+  // loadVault. flush false → park; if main already moved (announce), roll it
+  // back so UI and vault-settings.json stay on the ORIGINAL vault until Retry
+  // / Switch anyway / successful Close-save completes the switch.
+  // Shield: check rollback result; park chrome only after rollback settles;
+  // if main refuses (recents allowlist), follow main — never leave UI/main split.
+  const handleProjectSwitched = useCallback((vaultRoot: string) => {
+    if (suppressProjectAnnounceRef.current) return;
+    // Guard (b) line 1 — Probe NH1 / Ivy: ignore a broadcast for the vault we
+    // are already on — never park a "switch" to the current vault.
+    if (vaultRoot === activeVaultRootRef.current) return;
+    if (!settingsOpenRef.current) {
+      applyProjectSwitched(vaultRoot);
+      return;
+    }
+    const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
+      .__mythosSettingsFlush;
+    if (!flush) {
+      applyProjectSwitched(vaultRoot);
+      return;
+    }
+    const originalRoot = activeVaultRootRef.current;
+    const originalNotes = navRailProjects.find((p) => p.vaultRoot === originalRoot)?.notesVaultRoot;
+    void flush().then(async (ok) => {
+      if (ok) {
+        setPendingVaultSwitch(null);
+        applyProjectSwitched(vaultRoot);
+        return;
+      }
+      // Guard (b) line 2 — same-root announce after Close-blocked re-assert
+      // must not revive Retry / Switch anyway (pinned; both lines required).
+      if (vaultRoot === activeVaultRootRef.current || vaultRoot === originalRoot) return;
+      // Roll main back BEFORE park chrome so Retry / Switch anyway / Close
+      // cannot race an in-flight projectSwitch(original).
+      await enqueueVaultSwitchOp(async () => {
+        let mainMatchesUi = true;
+        if (originalRoot && originalRoot !== vaultRoot && window.api?.projectSwitch) {
+          suppressProjectAnnounceRef.current = true;
+          try {
+            const res = await window.api.projectSwitch(originalRoot, originalNotes);
+            const after = await window.api.getVaultRoot?.().catch(() => null);
+            const mainNow = after?.vaultRoot;
+            if (!res?.switched || (mainNow != null && mainNow !== originalRoot)) {
+              mainMatchesUi = false;
+              if (mainNow && mainNow !== activeVaultRootRef.current) {
+                applyProjectSwitched(mainNow);
+              }
+              showLnToast('Could not restore the previous vault after a failed settings save.');
+            }
+          } catch {
+            mainMatchesUi = false;
+            const after = await window.api.getVaultRoot?.().catch(() => null);
+            if (after?.vaultRoot && after.vaultRoot !== activeVaultRootRef.current) {
+              applyProjectSwitched(after.vaultRoot);
+            }
+            showLnToast('Could not restore the previous vault after a failed settings save.');
+          } finally {
+            suppressProjectAnnounceRef.current = false;
+          }
+        }
+        // Only offer Retry / Switch anyway when UI and main agree on original.
+        if (mainMatchesUi) {
+          setPendingVaultSwitch({ vaultRoot, source: 'announce' });
+        }
+      });
+    });
+  }, [applyProjectSwitched, enqueueVaultSwitchOp, navRailProjects]);
+
+  // Handle project switches pushed from main process — must go through
+  // handleProjectSwitched so open Settings flushes before loadVault unmounts it.
+  useEffect(() => {
+    if (!window.api?.onProjectSwitched) return;
+    const unsub = window.api.onProjectSwitched((data: { vaultRoot: string }) => {
+      handleProjectSwitched(data.vaultRoot);
+    });
+    return () => unsub?.();
+  }, [handleProjectSwitched]);
+
   // SKY-11048: switch through the exact same IPC call + completion handler
   // WindowChrome's project menu uses (window.api.projectSwitch →
   // handleProjectSwitched) — no second switch path. Resolves once the vault
   // is active (no-op if it already is) so callers can chain follow-up work
   // (SKY-11086: e.g. opening Settings) onto the *target* vault, not whatever
   // was active when the action was invoked.
-  const switchToVault = useCallback((vaultId: string): Promise<void> => {
-    if (vaultId === activeVaultRoot) return Promise.resolve();
+  // Probe H1: flush open Settings BEFORE projectSwitch/loadVault. Loading
+  // unmounts SettingsPanel (must stay inside .desktop-shell__main-col so the
+  // nav rail stays clickable — M28 absolute overlay). Awaiting the flush
+  // persists Model & keys edits to disk so the remount's settingsGet rehydrates
+  // them; settingsHydratedRef still protects mid-open Appearance-only overlays.
+  // Shield/Ivy: returns false when flush refused — caller must NOT switch.
+  // Ivy R6: ProjectSwitcher list clicks also use switchToVault (no premature
+  // projectSwitch) so main never commits ahead of a refused settings save.
+  const flushOpenSettings = useCallback(async (): Promise<boolean> => {
+    if (!settingsOpen) return true;
+    const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
+      .__mythosSettingsFlush;
+    if (!flush) return true;
+    return flush();
+  }, [settingsOpen]);
+
+  const completeVaultSwitch = useCallback(async (
+    vaultId: string,
+    _source: 'tile' | 'announce',
+    storyVaultId?: string,
+  ): Promise<boolean> => {
+    // Story-vault picker park: finish via registry setActive (broadcasts
+    // project:switched). Mythos vault / tile / announce: projectSwitch.
+    if (storyVaultId && window.api?.storyVaultRegistrySetActive) {
+      try {
+        await window.api.storyVaultRegistrySetActive(storyVaultId);
+        // Main already broadcast; apply renderer to whatever getVaultRoot says.
+        const root = await window.api.getVaultRoot?.();
+        const next = root?.vaultRoot ?? vaultId;
+        applyProjectSwitched(next);
+        return true;
+      } catch { /* stay on current vault */ }
+      return false;
+    }
+    // Always projectSwitch — announce-park rolls main back to the original, so
+    // Retry / Switch anyway / Close-save must re-commit the target on main.
     const entry = navRailProjects.find((p) => p.vaultRoot === vaultId);
-    return (
-      window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot)
-        .then((res) => { if (res?.switched) handleProjectSwitched(vaultId); })
-        .catch(() => { /* switch failed — caller proceeds against whatever is active */ })
-      ?? Promise.resolve()
-    );
-  }, [activeVaultRoot, navRailProjects, handleProjectSwitched]);
+    try {
+      const res = await window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot);
+      if (res?.switched) {
+        applyProjectSwitched(vaultId);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }, [navRailProjects, applyProjectSwitched]);
+
+  const switchToVault = useCallback(async (vaultId: string): Promise<boolean> => {
+    if (vaultId === activeVaultRoot) return true;
+    // Wait out any in-flight announce rollback before parking or switching.
+    await vaultSwitchSerialRef.current;
+    const ok = await flushOpenSettings();
+    if (!ok) {
+      setPendingVaultSwitch({ vaultRoot: vaultId, source: 'tile' });
+      return false;
+    }
+    setPendingVaultSwitch(null);
+    // Already flushed — apply via projectSwitch (not handleProjectSwitched).
+    // Return the real projectSwitch result (Copilot/Shield: not always true).
+    return completeVaultSwitch(vaultId, 'tile');
+  }, [activeVaultRoot, flushOpenSettings, completeVaultSwitch]);
+
+  // Ivy R6: Vault & Files cards use flush-then-switch; StoryVaultPicker parks
+  // here on refused flush so Retry / Switch anyway match the tile chrome.
+  useEffect(() => {
+    const w = window as Window & {
+      __mythosRequestVaultSwitch?: (vaultRoot: string) => Promise<boolean>;
+      __mythosParkVaultSwitch?: (vaultRootOrStoryId: string) => void;
+    };
+    w.__mythosRequestVaultSwitch = (vaultRoot: string) => switchToVault(vaultRoot);
+    w.__mythosParkVaultSwitch = (storyVaultId: string) => {
+      setPendingVaultSwitch({
+        vaultRoot: storyVaultId,
+        source: 'tile',
+        storyVaultId,
+      });
+    };
+    return () => {
+      if (w.__mythosRequestVaultSwitch) delete w.__mythosRequestVaultSwitch;
+      if (w.__mythosParkVaultSwitch) delete w.__mythosParkVaultSwitch;
+    };
+  }, [switchToVault]);
+
+  const handleFlushSwitchChoice = useCallback(async (choice: 'retry' | 'switch-anyway') => {
+    // Shield: do not complete while announce rollback is still running.
+    await vaultSwitchSerialRef.current;
+    const pending = pendingVaultSwitchRef.current;
+    if (!pending) return;
+    if (choice === 'switch-anyway') {
+      // Discard unsaved: close Settings without flush, then switch. Plain notice.
+      // (Ivy: do NOT toast discard on ordinary Close — only Switch anyway.)
+      // Toast waits until the switch settles (Shield batch / r6 carry-over).
+      setPendingVaultSwitch(null);
+      settingsOpenRef.current = false;
+      setSettingsOpen(false);
+      await enqueueVaultSwitchOp(async () => {
+        await completeVaultSwitch(pending.vaultRoot, pending.source, pending.storyVaultId);
+      });
+      showLnToast('Switched vault — unsaved settings were discarded.');
+      return;
+    }
+    // Retry — re-run flush; switch only on success. Must call flush again
+    // (RED if Retry only projectSwitch / apply without re-saving).
+    const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
+      .__mythosSettingsFlush;
+    const ok = flush ? await flush() : true;
+    if (!ok) return;
+    setPendingVaultSwitch(null);
+    await enqueueVaultSwitchOp(async () => {
+      await completeVaultSwitch(pending.vaultRoot, pending.source, pending.storyVaultId);
+    });
+  }, [completeVaultSwitch, enqueueVaultSwitchOp]);
 
   const handleVaultTileSelect = useCallback((vaultId: string) => {
-    switchToVault(vaultId);
+    void switchToVault(vaultId);
   }, [switchToVault]);
 
   // Both handlers below only touch `appSettings` (a per-vault override layered
@@ -1942,8 +2131,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // click), then jump the panel to that vault's settings.
   const handleVaultOpenSettings = useCallback((vaultId: string) => {
     switchToVault(vaultId).then(() => {
+      // Navigate in place — SettingsPanel syncs initialCategory via useEffect.
+      // (Vault-tab soft "don't jump when already open" deferred — collides with
+      // TC-SKY-11048-01 / main contract; needs Ivy's call.)
       setSettingsInitialCategory('vaults');
-      setSettingsOpenToken((t) => t + 1);
       setSettingsOpen(true);
     });
   }, [switchToVault]);
@@ -2698,10 +2889,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // SKY-9019 M5: each rail item is a first-class destination; no aliases.
   // crafter/timeline route through the story workspace; vault-graph is its own AppTab.
-  const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
-    // Owner punch: Settings is a covering overlay, not a rail module. A
-    // left-rail pick must dismiss it so the destination is visible.
-    setSettingsOpen(false);
+  const pendingRailNavRef = useRef<NavRailModuleId | null>(null);
+  const runNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
     setSettingsInitialCategory('appearance');
     switch (moduleId) {
       case 'crafter':
@@ -2730,6 +2919,81 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         handleNavSectionChange(moduleId);
     }
   }, [handleNavSectionChange, handleSetView, handleTabChange]);
+
+  // H6 / #15: rail-nav must flush Settings via the same handleClose path (not
+  // a bare setSettingsOpen(false) that drops non-Appearance edits).
+  const handleNavModuleChange = useCallback((moduleId: NavRailModuleId) => {
+    if (settingsOpen) {
+      pendingRailNavRef.current = moduleId;
+      const req = (window as Window & { __mythosSettingsRequestClose?: () => void })
+        .__mythosSettingsRequestClose;
+      if (req) {
+        req();
+        return;
+      }
+      setSettingsOpen(false);
+    }
+    pendingRailNavRef.current = null;
+    runNavModuleChange(moduleId);
+  }, [settingsOpen, runNavModuleChange]);
+
+  const handleSettingsClose = useCallback(() => {
+    // Ivy R6: Close already re-ran save (SettingsPanel handleClose). If a
+    // vault switch was parked and the save now succeeded → complete it.
+    // Do NOT show Switch-anyway discard toast here (Ivy rejects that).
+    const vaultPending = pendingVaultSwitchRef.current;
+    setSettingsOpen(false);
+    setSettingsInitialCategory('appearance');
+    const pending = pendingRailNavRef.current;
+    pendingRailNavRef.current = null;
+    if (vaultPending) {
+      setPendingVaultSwitch(null);
+      void vaultSwitchSerialRef.current.then(() => enqueueVaultSwitchOp(async () => {
+        await completeVaultSwitch(
+          vaultPending.vaultRoot,
+          vaultPending.source,
+          vaultPending.storyVaultId,
+        );
+      }));
+    }
+    if (pending) runNavModuleChange(pending);
+  }, [runNavModuleChange, completeVaultSwitch, enqueueVaultSwitchOp]);
+
+  const handleSettingsCloseBlocked = useCallback(() => {
+    pendingRailNavRef.current = null;
+    // Ivy R6: Close save still failing with a parked switch → cancel the
+    // switch (tile or announce); keep ORIGINAL vault; edits intact. Also
+    // clears parked tile so a later failure can't offer stale Retry.
+    const vaultPending = pendingVaultSwitchRef.current;
+    if (!vaultPending) return;
+    setPendingVaultSwitch(null);
+    // Probe NH1: tile / picker park never moved main — skip re-assert.
+    // Re-switching the current vault broadcasts project:switched and can
+    // fake-re-park Retry / Switch anyway after cancel.
+    if (vaultPending.source === 'tile') return;
+    const originalRoot = activeVaultRootRef.current;
+    if (!originalRoot || !window.api?.projectSwitch) return;
+    // Announce park already rolled main back; re-assert so vault-settings.json
+    // cannot drift if rollback raced. Check the result — if main refuses
+    // (recents allowlist), follow main so New Story cannot write wrong-vault.
+    const originalNotes = navRailProjects.find((p) => p.vaultRoot === originalRoot)?.notesVaultRoot;
+    void enqueueVaultSwitchOp(async () => {
+      suppressProjectAnnounceRef.current = true;
+      try {
+        const res = await window.api!.projectSwitch!(originalRoot, originalNotes);
+        const after = await window.api!.getVaultRoot?.().catch(() => null);
+        const mainNow = after?.vaultRoot;
+        if (!res?.switched || (mainNow != null && mainNow !== originalRoot)) {
+          if (mainNow && mainNow !== activeVaultRootRef.current) {
+            applyProjectSwitched(mainNow);
+          }
+        }
+      } catch { /* keep renderer on original when getVaultRoot agrees */ }
+      finally {
+        suppressProjectAnnounceRef.current = false;
+      }
+    });
+  }, [applyProjectSwitched, enqueueVaultSwitchOp, navRailProjects]);
 
   // ─── Writing mode keyboard shortcuts ───
   useEffect(() => {
@@ -3413,30 +3677,69 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // ProjectSwitcher's "+ Create new Mythos Vault" flow. SKY-11376: name +
   // destination now come from useCreateMythosVaultFlow's modal (shared with
   // ProjectSwitcher.tsx so the two entry points can't drift again).
+  // Shield: activate:false + switchToVault so Settings flush runs before main moves.
+  // C7 / Probe: await switchToVault so the hook's onboardingStartMode write lands
+  // AFTER the Settings flush settles (settings:set is full-replace).
+  // H10-1: onOnboardingSynced merges ONLY onboarding* (next serial op; Secure bar).
+  const syncOnboardingIntoAppSettings = useCallback((patch: {
+    onboardingComplete: boolean;
+    onboardingStartMode: AppSettings['onboardingStartMode'] | null;
+  }) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        onboardingComplete: patch.onboardingComplete,
+        ...(patch.onboardingStartMode !== undefined
+          ? { onboardingStartMode: patch.onboardingStartMode ?? undefined }
+          : {}),
+      };
+    });
+  }, []);
   const { createVault: createMythosVault, createVaultModal } = useCreateMythosVaultFlow(
-    useCallback(({ vaultRoot }) => {
-      handleProjectSwitched(vaultRoot);
-      // Probe C7 — hook already persisted onboardingComplete + onboardingStartMode.
+    useCallback(async ({ vaultRoot }) => {
+      // F2 Shield: flush-first via switchToVault (not bare handleProjectSwitched).
+      await switchToVault(vaultRoot);
+      // Probe C7 — hook persists onboarding* AFTER this returns.
       // Never settingsSet here: stale renderer prev used to overwrite mode with null ~3ms later.
-      // Sync UI only from a fresh settingsGet.
-      void window.api?.settingsGet?.().then((fresh) => {
-        if (!fresh) return;
-        setAppSettings((prev) => ({ ...(prev ?? {}), ...fresh } as AppSettings));
-      }).catch(() => {});
-    }, [handleProjectSwitched]),
+      // Sync UI only from a fresh settingsGet (after the awaited switch/flush).
+      // Secure note: full merge can copy masked secrets; H10-1 overlays only onboarding*.
+      try {
+        const fresh = await window.api?.settingsGet?.();
+        if (fresh) {
+          setAppSettings((prev) => ({ ...(prev ?? {}), ...fresh } as AppSettings));
+        }
+      } catch { /* non-fatal */ }
+    }, [switchToVault]),
+    { activate: false, onOnboardingSynced: syncOnboardingIntoAppSettings },
   );
 
   // Title-bar "Open vault…" — the legacy switcher's "Open Other Folder…".
   const openVaultViaPicker = useCallback(async () => {
     try {
+      // Shield: flush before vault:open-folder commits main.
+      const ok = await flushOpenSettings();
+      if (!ok) return;
       const result = await window.api?.openVaultFolder?.();
       if (!result?.cancelled && result?.vaultRoot) {
-        handleProjectSwitched(result.vaultRoot);
+        await switchToVault(result.vaultRoot);
       } else if (result?.error) {
         alert(result.error);
       }
     } catch { /* non-fatal */ }
-  }, [handleProjectSwitched]);
+  }, [flushOpenSettings, switchToVault]);
+
+  // Shield G8d pin hook — title-bar Open vault… is Welcome-replaced in the
+  // chrome; tests invoke the same callback the chrome wires to onOpenVault.
+  // Critic soft: install only in the Vitest/test environment — never production.
+  useEffect(() => {
+    if (import.meta.env.MODE !== 'test') return;
+    const w = window as Window & { __mythosOpenVaultViaPicker?: () => Promise<void> };
+    w.__mythosOpenVaultViaPicker = () => openVaultViaPicker();
+    return () => {
+      if (w.__mythosOpenVaultViaPicker) delete w.__mythosOpenVaultViaPicker;
+    };
+  }, [openVaultViaPicker]);
 
   const handleContinueOnboarding = useCallback(() => {
     const updated = { ...(appSettings ?? {}), onboardingComplete: false } as AppSettings;
@@ -4347,6 +4650,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       handleTabChange('notes');
       handleNotesSubViewChange('editor');
       if (noteTab.kind === 'note' && noteTab.docPath) {
+        // F2#2 / Critic: note tab selection must show the note, not EntityDetail.
+        setSelectedEntity(null);
         setOpenedNotePath(noteTab.docPath);
       } else if (noteTab.kind === 'entities') {
         // SKY-9920: same reasoning as the story branch above — clear
@@ -4668,18 +4973,32 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     if (entity.type === 'character') checkGettingStartedItem('add-character');
   }, [checkGettingStartedItem]);
 
-  // SKY-616: navigate to entity page when user clicks an @-mention chip
+  // SKY-616 / F2#2: @-mention → EntityDetail on Story. Notes EntityDetail host
+  // pulled to F5 (Ivy override) — from Notes/other tabs, switch to Story.
+  // Shield N4: entity ID only via entityRead — never openExternal / window.open / URL.
   const handleEntityMentionClick = useCallback((entityId: string) => {
+    if (!isSafeEntityMentionId(entityId)) return;
     window.api.entityRead(entityId).then((entity) => {
       if (entity) {
         setSelectedEntity(entity);
         setSelectedScene(null);
         setSelectedChapter(null);
         setSelectedStory(null);
+        setOpenedNotePath(null);
         if (entity.type === 'character') checkGettingStartedItem('add-character');
+        if (tabShellRef.current.activeTab !== 'story') {
+          handleTabChange('story');
+          setView('editor');
+        }
       }
     }).catch(() => {});
-  }, [checkGettingStartedItem]);
+  }, [checkGettingStartedItem, handleTabChange]);
+
+  // F2#2: global fallback so Notes editors without onEntityClick still navigate.
+  useEffect(() => {
+    setEntityMentionNavigateHandler(handleEntityMentionClick);
+    return () => setEntityMentionNavigateHandler(null);
+  }, [handleEntityMentionClick]);
 
   const applyCrossTabLinkMatch = useCallback((match: CrossTabLinkMatch) => {
     setAmbiguousLink(null);
@@ -4736,20 +5055,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     handleTabChange('notes');
   }, [handleSelectScene, handleTabChange, handleNotesSubViewChange, handleSetView, setViewDepth]);
 
-  const handleWikiLinkClick = useCallback((target: string) => {
-    const resolution = resolveCrossTabLink(target, {
-      stories,
-      entities: allEntities,
-      notePaths: allNotePaths,
-      onNotify: showWikiLinkToast,
-    });
-    if (resolution.status === 'single') {
-      applyCrossTabLinkMatch(resolution.matches[0]);
-    } else if (resolution.status === 'ambiguous') {
-      setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
-    }
-  }, [allEntities, allNotePaths, applyCrossTabLinkMatch, showWikiLinkToast, stories]);
-
   // SKY-5702: normalized cross-vault title index feeding the editors'
   // resolved/unresolved [[wiki link]] styling, plus the flat candidate list
   // for the `[[` autocomplete popup. Both rebuilt only when the underlying
@@ -4769,10 +5074,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     [stories],
   );
 
-  // M16: an unresolved [[link]] CREATES the note in the Notes Vault (Obsidian
-  // parity, plan §M16 "unresolved click creates the note") and opens it.
-  // Shared by the notes editor and, since SKY-11615, the Timeline — the story
-  // editor keeps its warn-toast behavior instead.
+  // M16 / F2#3: an unresolved [[link]] CREATES the note in the Notes Vault
+  // (Obsidian parity) and opens it — shared by Story, Notes, and Timeline.
   const createNoteForUnresolvedLink = useCallback((target: string) => {
     const newNotePath = notePathForUnresolvedLink(target);
     if (!newNotePath) return;
@@ -4804,9 +5107,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     })();
   }, [handleNotesSubViewChange, handleTabChange, loadEntities, showWikiLinkToast]);
 
-  // M16: notes-editor wiki-link click — same resolution as the story editor,
-  // but unresolved creates the note instead of only toasting.
-  const handleNotesWikiLinkClick = useCallback((target: string) => {
+  // F2#3 / Probe: unresolved [[link]] shows a Create/Cancel prompt (no silent create).
+  const [pendingCreateLink, setPendingCreateLink] = useState<string | null>(null);
+
+  // F2#3: one click path for Story + Notes — resolve or prompt-to-create.
+  const handleWikiLinkClick = useCallback((target: string) => {
     const resolution = resolveCrossTabLink(target, {
       stories,
       entities: allEntities,
@@ -4820,8 +5125,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       setAmbiguousLink({ rawTarget: resolution.rawTarget, matches: resolution.matches });
       return;
     }
-    createNoteForUnresolvedLink(target);
-  }, [stories, allEntities, allNotePaths, applyCrossTabLinkMatch, createNoteForUnresolvedLink]);
+    setPendingCreateLink(target);
+  }, [allEntities, allNotePaths, applyCrossTabLinkMatch, stories]);
+
+  const handleNotesWikiLinkClick = handleWikiLinkClick;
 
   // SKY-11615: the Timeline's [[wiki links]] resolve one target in the product
   // order (scene → chapter → note → folder) rather than opening the ambiguity
@@ -4840,10 +5147,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       open: (target: string) => {
         const match = resolveWikiLinkTarget(target, context);
         if (match) applyCrossTabLinkMatch(match);
-        else createNoteForUnresolvedLink(target);
+        else setPendingCreateLink(target);
       },
     };
-  }, [stories, allEntities, allNotePaths, allFolderPaths, applyCrossTabLinkMatch, createNoteForUnresolvedLink]);
+  }, [stories, allEntities, allNotePaths, allFolderPaths, applyCrossTabLinkMatch]);
 
   // M16: hover-preview resolver — notes read via the vault IPC, scenes from
   // the already-loaded in-memory blocks. Null means "unresolved" and the card
@@ -5287,8 +5594,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             }}
             continuityCount={continuityCount}
             onOpenPartnerHistory={() => {
+              // Critic H6: navigate in place via initialCategory (no Settings remount).
               setSettingsInitialCategory('writingPartner');
-              setSettingsOpenToken((t) => t + 1);
               setSettingsOpen(true);
               // Latch + event — SessionHistoryViewer may mount after this tick.
               window.setTimeout(() => {
@@ -5983,6 +6290,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [aiEnabled, view, handleSetView]);
 
   // A1 / 09 §2.5: Ctrl+/−/0 adjust uiScale (.88–1.32, ±0.03); 0 resets dens+scale.
+  // F2#17: Ctrl+wheel density lives in useCtrlScrollDensity (same setter as F2#9).
   useEffect(() => {
     const clampScale = (n: number) => Math.min(1.32, Math.max(0.88, n));
     const patchLn = (patch: Partial<NonNullable<AppSettings['liquidNeonV2']>>, toast?: string) => {
@@ -5994,6 +6302,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         } as NonNullable<AppSettings['liquidNeonV2']>;
         const next = { ...prev, liquidNeonV2 };
         window.api.settingsSet(next).catch(() => {});
+        void applyLiquidNeonV2Theme(liquidNeonV2);
         return next;
       });
       if (toast) showLnToast(toast);
@@ -6012,19 +6321,32 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         patchLn({ uiScale: 1, uiDens: 1, density: 'comfortable' }, 'Interface scale reset');
       }
     };
-    const onWheel = (e: WheelEvent) => {
-      if (!(e.ctrlKey || e.metaKey)) return;
-      e.preventDefault();
-      const cur = appSettings?.liquidNeonV2?.uiScale ?? 1;
-      patchLn({ uiScale: clampScale(cur + (e.deltaY < 0 ? 0.03 : -0.03)) });
-    };
     window.addEventListener('keydown', onKey);
-    window.addEventListener('wheel', onWheel, { passive: false });
     return () => {
       window.removeEventListener('keydown', onKey);
-      window.removeEventListener('wheel', onWheel);
     };
   }, [appSettings?.liquidNeonV2?.uiScale]);
+
+  // F2#9/#17: shell-owned density bridge when Settings is closed.
+  // Appearance section re-registers while open so slider + Ctrl+wheel share one path.
+  useEffect(() => {
+    if (settingsOpen) return;
+    registerDensityBridge({
+      getSettings: () => normalizeLiquidNeonV2(appSettings?.liquidNeonV2),
+      cosmicBgUrl,
+      commit: (next) => {
+        setAppSettings((prev) => {
+          if (!prev) return prev;
+          const updated = { ...prev, liquidNeonV2: next };
+          window.api.settingsSet(updated).catch(() => {});
+          return updated;
+        });
+      },
+    });
+    return () => registerDensityBridge(null);
+  }, [appSettings?.liquidNeonV2, settingsOpen]);
+
+  useCtrlScrollDensity(true);
 
   const manuscriptToolbarActions = useMemo(() => ({
     onDictate: handleToolbarDictate,
@@ -6400,7 +6722,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onOpenAccount={() => setAccountModalOpen(true)}
           activeVaultRoot={activeVaultRoot}
           activeStoryTitle={deriveSingleStoryTitle(stories)}
-          onProjectSwitched={handleProjectSwitched}
+          // Ivy R6: list clicks flush-then-switch (never projectSwitch first).
+          // Create / Open Other still land here after main has already moved —
+          // switchToVault re-flushes if Settings is open, then projectSwitch.
+          onProjectSwitched={(vaultRoot) => { void switchToVault(vaultRoot); }}
           onNewStory={() => { void createStory(); }}
           onOpenVault={() => { void openVaultViaPicker(); }}
           onCreateVault={() => { void createMythosVault(); }}
@@ -6453,10 +6778,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {settingsOpen && (
         <SettingsPanel
-          key={settingsOpenToken}
           initialCategory={settingsInitialCategory}
           activeVaultRoot={activeVaultRoot}
-          onClose={() => { setSettingsOpen(false); setSettingsInitialCategory('appearance'); }}
+          onClose={handleSettingsClose}
+          onCloseBlocked={handleSettingsCloseBlocked}
+          onFlushSwitchChoice={pendingVaultSwitch ? handleFlushSwitchChoice : undefined}
           onSaved={(s) => {
             setAppSettings(s);
             // SKY-11237: apply the saved vault's per-vault appearance, falling back to global.
@@ -6684,6 +7010,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         </div>
       )}
       {activeDockedTabId === null && view === 'editor' && <div className="shell-panels">
+      <div className="shell-panels__row">
       {/* Left rail */}
       {showLeftSidebar && (
         <div className="shell-left" style={{ width: clampedLeftWidth }}>
@@ -7200,23 +7527,25 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             )
           )}
         </div>
-        {showBottomBar && (
-          <BottomBar
-            selectedScene={selectedScene}
-            selectedChapter={selectedChapter}
-            selectedStory={selectedStory}
-            onNavigateScene={handleNavigateScene}
-            activeNotePath={openedNotePath}
-            activeNoteWordCount={openedNoteWordCount}
-            isVoiceActive={voiceActive}
-            splitWordCounts={splitWordCounts}
-            pageWidthPx={selectedScene
-              ? (pagePrefs.customWidthPx ?? STORY_PAGE_PRESET_WIDTHS[pagePrefs.sizePreset] ?? 680)
-              : null}
-          />
-        )}
+        {/* F2#16: BottomBar moved out of center column — spans full shell-panels width */}
       </div>
+      </div>{/* end shell-panels__row */}
 
+      {showBottomBar && (
+        <BottomBar
+          selectedScene={selectedScene}
+          selectedChapter={selectedChapter}
+          selectedStory={selectedStory}
+          onNavigateScene={handleNavigateScene}
+          activeNotePath={openedNotePath}
+          activeNoteWordCount={openedNoteWordCount}
+          isVoiceActive={voiceActive}
+          splitWordCounts={splitWordCounts}
+          pageWidthPx={selectedScene
+            ? (pagePrefs.customWidthPx ?? STORY_PAGE_PRESET_WIDTHS[pagePrefs.sizePreset] ?? 680)
+            : null}
+        />
+      )}
       </div>}{/* end shell-panels */}
       </div>{/* end app-tabpanel-story */}
       {/* SKY-2096: Notes tabpanel — full layout (vault tree + editor + Brainstorm sidebar) */}
@@ -7306,6 +7635,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onCreateChapter={createChapter}
           onCreateScene={createScene}
           onOpenFile={(path) => {
+            // F2#2 / Critic: clear EntityDetail host so the note viewer shows.
+            setSelectedEntity(null);
             setOpenedNotePath(path);
             handleNotesSubViewChange('editor');
           }}
@@ -7505,8 +7836,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           }}
           continuityCount={continuityCount}
           onOpenPartnerHistory={() => {
+            // Critic H6: navigate in place via initialCategory (no Settings remount).
             setSettingsInitialCategory('writingPartner');
-            setSettingsOpenToken((t) => t + 1);
             setSettingsOpen(true);
             // Latch + event — SessionHistoryViewer may mount after this tick.
             window.setTimeout(() => {
@@ -7596,6 +7927,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             <button type="button" onClick={() => setAmbiguousLink(null)}>Cancel</button>
           </div>
         </div>
+      )}
+      {pendingCreateLink && (
+        <CreateNotePrompt
+          noteName={wikiLinkTargetStem(pendingCreateLink)}
+          onConfirm={() => {
+            const target = pendingCreateLink;
+            setPendingCreateLink(null);
+            createNoteForUnresolvedLink(target);
+          }}
+          onCancel={() => setPendingCreateLink(null)}
+        />
       )}
       <AiActivityIndicator />
       <Toast message={budgetToastState?.message ?? null} level={budgetToastState?.level} />

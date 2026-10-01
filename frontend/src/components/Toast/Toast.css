@@ -16,7 +16,7 @@
   padding: 0.55rem 1rem;
   font-size: 0.84rem;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  z-index: 9999;
+  z-index: var(--z-toast);
   white-space: nowrap;
   pointer-events: none;
   animation: app-toast-in var(--dur-popover, 160ms) var(--ease-out) both;

@@ -34,6 +34,7 @@ import os from 'os';
 import fs from 'fs';
 import { test, expect, type ElectronApplication, type Page } from '@playwright/test';
 import { closeElectronApp, removeTempDirs } from '../helpers/electronTeardown';
+import { clickBrainstormMode, expectBrainstormModeVisible } from '../helpers/brainstormChrome';
 import {
   createSuiteFixture,
   cleanupSuiteFixture,
@@ -331,10 +332,9 @@ test('TC-RT-02: toggle OFF hides Brainstorm chat, ON hydrates the prior session 
 
     // Chat mode is back — reactively, same process — and it hydrates the
     // PRE-EXISTING session transcript, proving the off state displayed
-    // nothing but deleted nothing.
-    const chatModeBtn = page.locator('[data-testid="bsc-mode-chat"]');
-    await expect(chatModeBtn).toBeVisible({ timeout: 10_000 });
-    await chatModeBtn.click();
+    // nothing but deleted nothing. Ivy R6: open ⋯ when mode lives there.
+    await expectBrainstormModeVisible(page, 'chat');
+    await clickBrainstormMode(page, 'chat');
     await expect(
       page.locator('.bs-user-bubble', { hasText: BS_USER_MARKER }),
     ).toBeVisible({ timeout: 10_000 });

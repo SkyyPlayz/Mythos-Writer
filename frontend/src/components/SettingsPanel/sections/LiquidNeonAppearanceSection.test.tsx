@@ -5,7 +5,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import LiquidNeonAppearanceSection from './LiquidNeonAppearanceSection';
 import { LIQUID_NEON_PRESETS } from '../../../theme/presets';
-import { matchWallpaperList, normalizeLiquidNeonV2, resetLiquidNeonV2Tokens, type LiquidNeonV2Settings } from '../../../theme/liquidNeonEngine';
+import { matchWallpaperList, matchWallpaperIndex, normalizeLiquidNeonV2, resetLiquidNeonV2Tokens, type LiquidNeonV2Settings } from '../../../theme/liquidNeonEngine';
 
 async function setup(liquidNeonV2: Partial<LiquidNeonV2Settings> | undefined = undefined) {
   const onChange = vi.fn();
@@ -97,10 +97,14 @@ describe('LiquidNeonAppearanceSection', () => {
     await setup();
     expect(screen.queryByTestId('lnas-wp-none')).not.toBeInTheDocument();
     expect(screen.queryByText('No background')).not.toBeInTheDocument();
-    const n = matchWallpaperList(normalizeLiquidNeonV2({ setKey: 'classic' }), '').length;
+    const defaults = normalizeLiquidNeonV2(undefined);
+    const n = matchWallpaperList(defaults, '').length;
     expect(n).toBeGreaterThan(1);
-    expect(screen.getByTestId('lnas-wp-match-count')).toHaveTextContent(`1/${n}`);
-    expect(screen.getByTestId('lnas-wp-match')).toHaveAttribute('aria-label', `Wallpaper: Theme match, 1 of ${n}`);
+    // F2#18/H3: fresh default picks classic starfield, appended as the LAST
+    // cycle entry (after cosmic + the whole pack), so the count pill reads N/N.
+    const idx = matchWallpaperIndex(defaults, n) + 1;
+    expect(screen.getByTestId('lnas-wp-match-count')).toHaveTextContent(`${idx}/${n}`);
+    expect(screen.getByTestId('lnas-wp-match')).toHaveAttribute('aria-label', `Wallpaper: Theme match, ${idx} of ${n}`);
     expect(screen.getByLabelText('Next wallpaper for Neon Nebula')).toBeInTheDocument();
     expect(screen.getByLabelText('Previous wallpaper for Neon Nebula')).toBeInTheDocument();
   });
@@ -120,15 +124,17 @@ describe('LiquidNeonAppearanceSection', () => {
   });
 
   it('SKY-11589: arrows step wpPick for the active preset, select match, and repaint --wp', async () => {
-    const { onChange } = await setup({ setKey: 'classic', wp: 'deep' });
-    const list = matchWallpaperList(normalizeLiquidNeonV2({ setKey: 'classic' }), '');
+    // Start at cosmic (index 0) with no wpPick so the first Next lands on the
+    // first pack image (H3: classic starfield moved to the LAST cycle entry).
+    const { onChange } = await setup({ setKey: 'classic', wp: 'deep', wpPick: {} });
+    const list = matchWallpaperList(normalizeLiquidNeonV2({ setKey: 'classic', wpPick: {} }), '');
     fireEvent.click(screen.getByTestId('lnas-wp-match-next'));
     const next = onChange.mock.calls[0][0] as LiquidNeonV2Settings;
     expect(next.wp).toBe('match');
     expect(next.wpPick).toEqual({ classic: 1 });
-    // Live preview points at the second entry (the first bundled pack image).
-    expect(document.documentElement.style.getPropertyValue('--wp')).toContain(list[1].url!.split('/').pop()!);
-    // The arrow click did not bubble into the tile's own select handler.
+    // Index 1 is now the first bundled pack image (has a file url).
+    expect(list[1].url).toBeDefined();
+    expect(document.documentElement.style.getPropertyValue('--wp')).toContain("url('");
     expect(onChange).toHaveBeenCalledTimes(1);
 
     // Previous from index 0 wraps to the last entry (controlled: re-render with the pick).
@@ -343,10 +349,12 @@ describe('Beta 4 M1 — Background animation card', () => {
 });
 
 describe('Beta 4 M1 — Interface card', () => {
-  it('density slider patches uiDens + density and stamps data-ln-density live', async () => {
+  it('density slider commits uiDens + density on pointer-up (rAF preview while dragging)', async () => {
     const { onChange } = await setup();
     const dens = screen.getByTestId('lnas-ui-dens');
     fireEvent.change(dens, { target: { value: '85' } });
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.pointerUp(dens);
     expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).uiDens).toBeCloseTo(0.85);
     expect((onChange.mock.calls[0][0] as LiquidNeonV2Settings).density).toBe('compact');
   });

@@ -311,19 +311,22 @@ test('TC-PROV-06: Save persists global provider config to app-settings.json on d
   const modelInput = page.getByLabel('Default model for this provider');
   await modelInput.fill('e2e-persisted-model');
 
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Settings saved.')).toBeVisible({ timeout: 5_000 });
-
-  // Close settings
-  await page.click('.settings-close');
+  // F2#15: auto-save on exit (no Save button)
+  await page.getByRole('button', { name: 'Close settings' }).click();
+  await expect(page.locator('.settings-overlay')).toHaveCount(0, { timeout: 5_000 });
 
   // Assert the change actually landed on disk, not just in the DOM.
+  await expect.poll(() => {
+    const stored = JSON.parse(fs.readFileSync(path.join(userData, 'app-settings.json'), 'utf-8')) as {
+      provider?: { kind?: string; baseUrl?: string; model?: string };
+    };
+    return stored.provider?.model;
+  }, { timeout: 10_000 }).toBe('e2e-persisted-model');
   const stored = JSON.parse(fs.readFileSync(path.join(userData, 'app-settings.json'), 'utf-8')) as {
     provider?: { kind?: string; baseUrl?: string; model?: string };
   };
   expect(stored.provider?.kind).toBe('lmstudio');
   expect(stored.provider?.baseUrl).toBe('http://127.0.0.1:9999/v1');
-  expect(stored.provider?.model).toBe('e2e-persisted-model');
 });
 
 // ─── TC-PROV-07/08: SKY-11219 provider-adaptive settings ──────────────────────

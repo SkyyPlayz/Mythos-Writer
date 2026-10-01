@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { renderHook } from '@testing-library/react';
@@ -10,6 +12,8 @@ import {
 import { useTreeState } from './useTreeState';
 import VaultBrowser from './index';
 import type { Story } from '../../types';
+
+const VIRTUAL_TREE_SRC = readFileSync(resolve(__dirname, 'VirtualTree.tsx'), 'utf-8');
 
 // ─── ResizeObserver stub (jsdom has no layout engine; react-window v2 uses it
 //     internally to measure the list container) ───
@@ -736,6 +740,15 @@ async function renderNotesTree() {
   // Flush any remaining async state updates from the initial render
   await act(async () => {});
 }
+
+describe('VirtualTree N6 note-drag MIME (Shield R3)', () => {
+  it('sets VAULT_NOTE_DRAG_MIME only when !node.isDirectory', () => {
+    // Folder rows must not advertise the explorer note MIME (Probe N6).
+    expect(VIRTUAL_TREE_SRC).toMatch(
+      /if\s*\(\s*!node\.isDirectory\s*\)\s*\{\s*e\.dataTransfer\.setData\(\s*VAULT_NOTE_DRAG_MIME/,
+    );
+  });
+});
 
 describe('VirtualTree ARIA attributes', () => {
   beforeEach(() => {

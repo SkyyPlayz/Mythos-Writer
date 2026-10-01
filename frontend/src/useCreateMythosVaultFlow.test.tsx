@@ -75,6 +75,25 @@ describe('useCreateMythosVaultFlow (Slice D five-path)', () => {
     );
   });
 
+  it('activate:false scaffolds without committing main (Shield flush-first create)', async () => {
+    function Harness() {
+      const { createVault, createVaultModal } = useCreateMythosVaultFlow(vi.fn(), { activate: false });
+      return (
+        <>
+          <button type="button" onClick={() => createVault()}>Open</button>
+          {createVaultModal}
+        </>
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByText('Open'));
+    await waitFor(() => expect(screen.getByText('/current/vaults')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+    await waitFor(() => expect(window.api.createVaultFromOptions).toHaveBeenCalledWith(
+      expect.objectContaining({ activate: false }),
+    ));
+  });
+
   it('exposes all five Mythos create modes including Open Obsidian', async () => {
     render(<TestHarness onCreated={vi.fn()} />);
     fireEvent.click(screen.getByText('Open'));
@@ -138,6 +157,26 @@ describe('useCreateMythosVaultFlow (Slice D five-path)', () => {
     await waitFor(() => expect(window.api.settingsSet).toHaveBeenCalledWith(
       expect.objectContaining({ onboardingStartMode: 'template', onboardingComplete: true }),
     ));
+  });
+
+  it('C7: startMode settingsSet runs AFTER onCreated (Shield flush cannot clobber)', async () => {
+    const order: string[] = [];
+    const onCreated = vi.fn(async () => { order.push('onCreated'); });
+    const settingsSet = window.api.settingsSet as ReturnType<typeof vi.fn>;
+    settingsSet.mockImplementation(async () => {
+      order.push('settingsSet');
+      return { saved: true };
+    });
+    render(<TestHarness onCreated={onCreated} />);
+    fireEvent.click(screen.getByText('Open'));
+    await waitFor(() => expect(screen.getByText('/current/vaults')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    await waitFor(() => expect(settingsSet).toHaveBeenCalledWith(
+      expect.objectContaining({ onboardingStartMode: 'template', onboardingComplete: true }),
+    ));
+    expect(order.indexOf('onCreated')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('settingsSet')).toBeGreaterThan(order.indexOf('onCreated'));
   });
 
   it('C7: blank create persists onboardingStartMode=blank (RED if wrong mode mutant)', async () => {

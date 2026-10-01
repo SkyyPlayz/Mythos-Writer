@@ -34,6 +34,12 @@ describe('detectLossyFeatures — LC-2 fidelity guard', () => {
     expect(detectLossyFeatures(md)).toEqual([]);
   });
 
+  it('F2#2: does NOT flag entity-mention chip spans (Rich round-trip)', () => {
+    const md = 'Ask <span data-entity-id="char-elara" data-entity-label="Elara" class="entity-mention-chip">@Elara</span> about it.';
+    expect(detectLossyFeatures(md)).toEqual([]);
+    expect(detectLossyFeatures('Hello [Elara](entity://char-elara).')).toEqual([]);
+  });
+
   it('still flags other tags starting with u (e.g. <ul>) as raw HTML', () => {
     const md = 'A list <ul><li>item</li></ul> in HTML.';
     expect(detectLossyFeatures(md).map((f) => f.key)).toContain('rawHtml');

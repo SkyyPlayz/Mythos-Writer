@@ -270,6 +270,11 @@ test.describe('UN-05: wikilink-to-create with an emoji target', () => {
     await expect(unresolved).toHaveClass(/wiki-link-unresolved/);
     await unresolved.click();
 
+    // F2#3: unresolved click opens the create prompt; Create writes + opens.
+    const prompt = wlPage.locator('[data-testid="create-note-prompt"]');
+    await expect(prompt).toBeVisible({ timeout: 5_000 });
+    await wlPage.locator('[data-testid="create-note-confirm"]').click();
+
     // M8d replaced .note-viewer-filename with a breadcrumb nav.
     await expect(
       noteTestId(wlPage, 'note-breadcrumb').locator('.note-breadcrumb-item--current', { hasText: EMOJI_WIKILINK_TARGET }),

@@ -150,12 +150,8 @@ test('TC-SKY-3219-01: Save preserves background image path in stored settings', 
   // explicit-save flow under test lives on the AI Agents page.
   await page.locator('[data-testid="settings-cat-agents"]').click();
 
-  // Click Save without changing anything.
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Settings saved.')).toBeVisible({ timeout: 5_000 });
-
-  // Close Settings.
-  await page.keyboard.press('Escape');
+  // F2#15: close auto-saves (no Save button).
+  await page.getByRole('button', { name: 'Close settings' }).click();
   await expect(page.locator('[role="dialog"][aria-label="Settings"]')).not.toBeVisible({ timeout: 2_000 });
 
   // Verify app-settings.json still has the correct background path.
@@ -184,11 +180,8 @@ test('TC-SKY-3219-02: Save does not reset --bg-app-image CSS variable to default
   // SKY-10668: the panel now opens on Appearance (no Save footer) — the
   // explicit-save flow under test lives on the AI Agents page.
   await page.locator('[data-testid="settings-cat-agents"]').click();
-  await page.getByRole('button', { name: 'Save settings' }).click();
-  await expect(page.getByText('Settings saved.')).toBeVisible({ timeout: 5_000 });
-
-  // Close Settings.
-  await page.keyboard.press('Escape');
+  // F2#15: close auto-saves (no Save button).
+  await page.getByRole('button', { name: 'Close settings' }).click();
   await expect(page.locator('[role="dialog"][aria-label="Settings"]')).not.toBeVisible({ timeout: 2_000 });
 
   // Allow async onSaved → loadBgImage → applyLiquidNeonTokens to complete.
@@ -200,4 +193,109 @@ test('TC-SKY-3219-02: Save does not reset --bg-app-image CSS variable to default
   // After save, the background must still be a data URL — not the default gradient.
   expect(bgAfter, 'background image was reset to gradient after Save (SKY-3219 regression)').not.toContain(DEFAULT_GRADIENT_MARKER);
   expect(bgAfter).toContain('data:');
+});
+
+// ── F2 Probe N1 fold — #13/#15 into settings-background (e2e-shard-1) ─────────
+
+function seedF2ChromeUserData(userDataDir: string, storyDir: string, notesDir: string): void {
+  fs.mkdirSync(userDataDir, { recursive: true });
+  fs.mkdirSync(storyDir, { recursive: true });
+  fs.mkdirSync(notesDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(userDataDir, 'app-settings.json'),
+    JSON.stringify({
+      onboardingComplete: true,
+      onboardingStartMode: 'skip',
+      theme: 'dark',
+      agents: {
+        writingAssistant: { enabled: false },
+        brainstorm: { enabled: false },
+        archive: { enabled: false },
+        lineEditor: { enabled: false },
+      },
+      snapshots: { maxPerScene: 100, maxAgeDays: 30 },
+    }, null, 2),
+  );
+  fs.writeFileSync(
+    path.join(userDataDir, 'vault-settings.json'),
+    JSON.stringify({ vaultRoot: storyDir, notesVaultRoot: notesDir }, null, 2),
+  );
+}
+
+async function enableLineEditorAndClose(
+  pg: Page,
+  userDataDir: string,
+  close: 'escape' | 'rail',
+): Promise<void> {
+  await pg.locator('.app-menu-gear-btn').click();
+  const dialog = pg.locator('[role="dialog"][aria-label="Settings"]');
+  await expect(dialog).toBeVisible({ timeout: 5_000 });
+  await dialog.locator('[data-testid="settings-cat-agents"]').click();
+  const card = dialog.locator('[data-testid="line-editor-agent-card"]');
+  await expect(card).toBeVisible({ timeout: 5_000 });
+  const toggle = dialog.getByLabel('Enable Line Editor');
+  await expect(toggle).toBeAttached();
+  await expect(toggle).not.toBeChecked();
+  await card.locator('.settings-toggle-track').click();
+  await expect(toggle).toBeChecked();
+  if (close === 'escape') {
+    await pg.keyboard.press('Escape');
+  } else {
+    await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Vault Graph"]').click();
+  }
+  await expect(dialog).toHaveCount(0, { timeout: 5_000 });
+  await expect.poll(() => {
+    const s = JSON.parse(fs.readFileSync(path.join(userDataDir, 'app-settings.json'), 'utf-8')) as {
+      agents?: { lineEditor?: { enabled?: boolean } };
+    };
+    return s.agents?.lineEditor?.enabled;
+  }, { timeout: 8_000 }).toBe(true);
+}
+
+test.describe('F2 Probe fold (#13 · #15) — e2e-shard-1', () => {
+  test.setTimeout(90_000);
+
+  let root: string;
+  let ud: string;
+  let f2App: ElectronApplication;
+  let f2Page: Page;
+
+  test.beforeEach(async () => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f2-sbg-'));
+    ud = path.join(root, 'user-data');
+    const story = path.join(root, 'story');
+    const notes = path.join(root, 'notes');
+    seedF2ChromeUserData(ud, story, notes);
+    f2App = await launchApp(ud);
+    f2Page = await firstWindow(f2App);
+    await expect(f2Page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+  });
+
+  test.afterEach(async () => {
+    await f2App?.close().catch(() => {});
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  test('F2#13 Settings overlay leaves WindowChrome visible', async () => {
+    await f2Page.locator('.app-menu-gear-btn').click();
+    const dialog = f2Page.locator('[role="dialog"][aria-label="Settings"]');
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+    const overlay = f2Page.locator('.settings-overlay');
+    await expect(overlay).toBeVisible();
+    const top = await overlay.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { top: cs.top, rectTop: el.getBoundingClientRect().top };
+    });
+    expect(parseFloat(top.top)).toBeGreaterThanOrEqual(44);
+    expect(top.rectTop).toBeGreaterThanOrEqual(44);
+    await expect(f2Page.locator('.wc-drag-region, .app-menu-bar').first()).toBeVisible();
+  });
+
+  test('F2#15 Escape-close writes Line Editor enable to app-settings.json', async () => {
+    await enableLineEditorAndClose(f2Page, ud, 'escape');
+  });
+
+  test('F2#15 rail-nav close also flushes Line Editor to disk', async () => {
+    await enableLineEditorAndClose(f2Page, ud, 'rail');
+  });
 });

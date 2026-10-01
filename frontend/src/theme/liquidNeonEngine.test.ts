@@ -19,6 +19,7 @@ import {
   matchWallpaperList,
   matchWallpaperIndex,
   stepMatchWallpaper,
+  classicStarfieldPickIndex,
   LIQUID_NEON_V2_DEFAULTS,
   type LiquidNeonV2Settings,
 } from './liquidNeonEngine';
@@ -77,8 +78,8 @@ describe('token computation at prototype defaults (Neon Nebula, intensity 50 →
     expect(t['--ln-scrim']).toBe('0.1');
   });
 
-  it('classic + match wallpaper uses the cosmic asset, cover-sized', () => {
-    expect(t['--wp']).toBe("url('/assets/cosmic-bg.webp')");
+  it('classic + match wallpaper defaults to starfield (F2#18/H3: last cycle entry, after cosmic + pack)', () => {
+    expect(t['--wp']).toContain('radial-gradient(1.6px 1.6px at 12% 22%');
     expect(t['--wpsize']).toBe('cover');
   });
 
@@ -147,20 +148,38 @@ describe('Theme match wallpaper cycle (SKY-11589)', () => {
   const classic = normalizeLiquidNeonV2({ setKey: 'classic' });
   const aurora = normalizeLiquidNeonV2({ setKey: 'aurora', slots: [...LIQUID_NEON_PRESETS.aurora.c] });
 
-  it('index 0 is the built-in wallpaper: cosmic for Neon Nebula, starfield elsewhere', () => {
-    expect(matchWallpaperList(classic, COSMIC)[0].css).toBe("url('/assets/cosmic-bg.webp')");
+  it('classicStarfieldPickIndex is 1 + the classic pack length (H3: last cycle entry)', () => {
+    const n = matchWallpaperList(classic, COSMIC).length;
+    expect(classicStarfieldPickIndex()).toBe(1 + packWallpapers('classic').length);
+    expect(classicStarfieldPickIndex()).toBe(n - 1);
+    expect(LIQUID_NEON_V2_DEFAULTS.wpPick).toEqual({ classic: classicStarfieldPickIndex() });
+  });
+
+  it('index 0 is cosmic for Neon Nebula; classic starfield is APPENDED after the pack (H3); aurora stays starfield@0', () => {
+    const list = matchWallpaperList(classic, COSMIC);
+    expect(list[0].css).toBe("url('/assets/cosmic-bg.webp')");
+    expect(list[1].css).not.toContain('radial-gradient(1.6px 1.6px at 12% 22%');
+    expect(list[list.length - 1].css).toContain('radial-gradient(1.6px 1.6px at 12% 22%');
     expect(matchWallpaperList(aurora, COSMIC)[0].css).toContain('radial-gradient(1.6px 1.6px at 12% 22%');
     expect(matchWallpaperList(aurora, COSMIC)[0].url).toBeUndefined();
   });
 
-  it('the pack follows the built-in, in manifest order, for every preset', () => {
+  it('the pack follows the built-ins, in manifest order, for every preset; classic starfield is last', () => {
     for (const key of Object.keys(LIQUID_NEON_PRESETS) as (keyof typeof LIQUID_NEON_PRESETS)[]) {
       const s = normalizeLiquidNeonV2({ setKey: key, slots: [...LIQUID_NEON_PRESETS[key].c] });
       const list = matchWallpaperList(s, COSMIC);
       const pack = packWallpapers(key);
       expect(pack.length, `${key} ships pack wallpapers`).toBeGreaterThan(0);
-      expect(list).toHaveLength(pack.length + 1);
-      pack.forEach((e, i) => expect(list[i + 1].css).toBe("url('" + e.url + "')"));
+      // H3: classic has cosmic (index 0), then the pack, then starfield appended last.
+      // Other presets have starfield first (index 0), then the pack.
+      const builtInCount = key === 'classic' ? 2 : 1;
+      expect(list).toHaveLength(pack.length + builtInCount);
+      if (key === 'classic') {
+        pack.forEach((e, i) => expect(list[i + 1].css).toBe("url('" + e.url + "')"));
+        expect(list[list.length - 1].css).toContain('radial-gradient(1.6px 1.6px at 12% 22%');
+      } else {
+        pack.forEach((e, i) => expect(list[i + builtInCount].css).toBe("url('" + e.url + "')"));
+      }
     }
   });
 

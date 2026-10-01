@@ -467,9 +467,11 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-}
-
-.shell-editor-toolbar {
+  /* F2#12 / N7: middle-panel top bar on shared 36px token (not msv-toolbar — F1) */
+  min-height: var(--panel-top-bar-height, 36px);
+  height: var(--panel-top-bar-height, 36px);
+  max-height: var(--panel-top-bar-height, 36px);
+  box-sizing: border-box;
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-bar);
   padding-right: var(--space-2);

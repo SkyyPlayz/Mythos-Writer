@@ -20,6 +20,7 @@
 
 import { test, expect, type ElectronApplication, type Page, type Locator } from '@playwright/test';
 import { closeElectronApp } from '../helpers/electronTeardown';
+import { expectBrainstormModeVisible } from '../helpers/brainstormChrome';
 import {
   createSuiteFixture,
   cleanupSuiteFixture,
@@ -91,9 +92,9 @@ const WORKSPACES: WorkspaceCase[] = [
     name: 'brainstorm',
     go: goBrainstorm,
     core: (page) => [page.locator('[data-testid="bs-collections"]')],
-    // M11b: chat mode (and the chat/board mode switch) exist only with AI on.
+    // M11b: chat composer only with AI on. Mode switch assert uses
+    // expectBrainstormModeVisible in the walk (Ivy R6 ⋯ @≤900).
     ai: (page) => [
-      page.locator('[data-testid="bsc-mode-chat"]'),
       page.locator('.brainstorm-input'),
     ],
   },
@@ -126,6 +127,24 @@ async function walkAndAssert(aiOn: boolean): Promise<void> {
       for (const core of ws.core(page)) {
         await expect(core, `${ws.name}: core layout must survive AI ${aiOn ? 'on' : 'off'}`)
           .toBeVisible({ timeout: 10_000 });
+      }
+      if (ws.name === 'brainstorm') {
+        if (aiOn) {
+          await expectBrainstormModeVisible(page, 'chat');
+        } else {
+          // AI off → single Board page (R11). Mode chat / inline seg gone.
+          // Ruling 4 still mounts board-chrome ⋯ (+Idea / search) — that is
+          // not AI chrome, so do not assert overflow count 0.
+          const bsPanel = page.locator('#app-tabpanel-brainstorm');
+          await expect(
+            bsPanel.locator('[data-testid="bsc-mode-chat"]'),
+            'brainstorm: mode chat must be gone with master OFF',
+          ).toHaveCount(0);
+          await expect(
+            bsPanel.locator('[data-testid="bsc-mode-seg-inline"]'),
+            'brainstorm: no dead single-option mode seg with master OFF',
+          ).toHaveCount(0);
+        }
       }
       for (const ai of ws.ai(page)) {
         if (aiOn) {

@@ -5,18 +5,29 @@
    role/aria-modal contract, focus trap, and Esc-to-close are unchanged. */
 .settings-overlay {
   position: absolute;
-  inset: 0;
+  /* F2#13 / Probe: leave WindowChrome (44px + 1px hairline) visible — do not
+     cover the top window bar / window controls. */
+  top: var(--shell-titlebar-height, 45px);
+  right: 0;
+  bottom: 0;
+  left: 0;
   /* M4 (§2-B): transparent — the shell's BackgroundStack (wallpaper, particle
      drift, scrim, vignette) stays visible and reads through the glass panel. */
   background: transparent;
   display: flex;
   align-items: stretch;
   justify-content: stretch;
-  z-index: 1000;
+  z-index: var(--z-modal);
 }
 
 .settings-panel {
-  background: var(--glass-fill-fallback);
+  /* F2#11/#8: translucent Settings glass over BackgroundStack wallpaper.
+     alpha stays glassA+10 (.30 default) so e2e backgroundColor checks still
+     read ~0.30. Blur lives on this non-scrolling chrome; the scrolling
+     regions (.settings-body / .settings-cat-nav) do not carry their own
+     backdrop-filter and use `contain: paint` instead, so the hot path never
+     recomputes a live blur under scrolling content. */
+  background: var(--glass-settings, rgba(13, 16, 28, 0.30));
   border: 1px solid var(--glass-border);
   border-radius: 0;
   width: 100%;
@@ -26,12 +37,12 @@
   display: flex;
   flex-direction: column;
   box-shadow: inset 0 1px 0 var(--glass-highlight);
+  contain: layout style;
+  isolation: isolate;
 }
 
 @supports (backdrop-filter: blur(1px)) {
   .settings-panel {
-    /* A1 / 09 §2.1: Settings view glass = glassA + 10 (default → .30), not
-       the denser --glass2 / overlay card fill. */
     background: var(--glass-settings, rgba(13, 16, 28, 0.30));
     backdrop-filter: blur(var(--blur-panel-overlay));
     -webkit-backdrop-filter: blur(var(--blur-panel-overlay));
@@ -251,6 +262,11 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  /* Hot-path: this region scrolls under the panel's blurred glass chrome.
+     It does NOT have its own backdrop-filter (that would re-run a live blur
+     every scroll frame); `contain: paint` isolates its paint/scroll work
+     from the rest of the panel instead. */
+  contain: paint;
 }
 
 .settings-loading {
@@ -575,6 +591,21 @@ select.settings-select option {
   font-size: 0.78rem;
   color: var(--state-danger);
   margin: 0;
+}
+
+/* Shield/Ivy: vault-switch flush failure — Retry or Switch anyway (no trap). */
+.settings-flush-switch-error {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.settings-flush-switch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .settings-saved-msg {
@@ -1146,7 +1177,7 @@ select.settings-select option {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1100;
+  z-index: var(--z-modal);
 }
 
 .lg-popover {
@@ -1956,23 +1987,30 @@ select.settings-select option {
 .settings-cat-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  width: 190px;
+  gap: 4px;
+  /* F2#13: size up Settings side menu + own bordered glass card */
+  width: 220px;
   flex-shrink: 0;
-  padding: 12px 10px;
-  border-right: 1px solid var(--border-default, rgba(255,255,255,0.1));
-  background: var(--bg-panel, rgba(18,18,28,0.95));
+  padding: 14px 12px;
+  margin: 10px 0 10px 10px;
+  border: 1px solid var(--glass-rim, rgba(255,255,255,0.12));
+  border-radius: 14px;
+  background: var(--glass-settings, rgba(13, 16, 28, 0.30));
   overflow-y: auto;
+  /* Hot-path: scrolling rail with no backdrop-filter of its own (the panel's
+     blur already covers this chrome); `contain: paint` isolates its scroll
+     repaints from the rest of the panel. */
+  contain: layout style paint;
 }
 
 .settings-cat-nav__tab {
-  padding: 8px 12px;
+  padding: 10px 12px;
   background: none;
   border: 1px solid transparent;
   border-radius: 9px;
   color: var(--text-muted, rgba(255,255,255,0.45));
   cursor: pointer;
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   font-weight: 600;
   letter-spacing: 0.02em;
   text-align: left;
@@ -2000,7 +2038,7 @@ select.settings-select option {
 
 @media (max-width: 720px) {
   .settings-cat-nav {
-    width: 130px;
+    width: 150px;
   }
 }
 

@@ -107,9 +107,7 @@ async function enableUnifiedBoard(page: Page): Promise<void> {
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
 
-  // Some Settings categories persist on an explicit Save; others apply live.
-  const save = page.getByRole('button', { name: 'Save settings' });
-  if (await save.isVisible().catch(() => false)) await save.click();
+  // F2#15: persist on exit (Escape / close)
 
   await page.keyboard.press('Escape');
   await expect(dialog).toHaveCount(0, { timeout: 8_000 });

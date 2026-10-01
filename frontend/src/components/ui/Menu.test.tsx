@@ -98,6 +98,32 @@ describe('Menu', () => {
       expect(onClose).toHaveBeenCalledOnce();
     });
 
+    it('restores focus to the anchor trigger after a choice', () => {
+      const trigger = document.createElement('button');
+      trigger.textContent = 'Open';
+      document.body.appendChild(trigger);
+      trigger.focus();
+      expect(trigger).toHaveFocus();
+      const onClose = vi.fn();
+      renderMenu({ onClose, anchorEl: trigger, open: true });
+      fireEvent.click(screen.getByTestId('menu-item-edit'));
+      expect(onClose).toHaveBeenCalledOnce();
+      expect(trigger).toHaveFocus();
+      trigger.remove();
+    });
+
+    it('exposes aria-checked on checkable items', () => {
+      renderMenu({
+        items: [
+          { id: 'chat', label: 'Agent Chat', checked: true, testId: 'bsc-mode-chat' },
+          { id: 'board', label: 'Idea Board', checked: false, testId: 'bsc-mode-board' },
+        ],
+      });
+      expect(screen.getByTestId('bsc-mode-chat')).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByTestId('bsc-mode-board')).toHaveAttribute('aria-checked', 'false');
+      expect(screen.getByTestId('bsc-mode-chat')).toHaveAttribute('role', 'menuitemcheckbox');
+    });
+
     it('does not call onAction when disabled item is clicked', () => {
       const onAction = vi.fn();
       renderMenu({ onAction });
