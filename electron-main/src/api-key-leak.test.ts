@@ -1164,11 +1164,127 @@ describe('K17 source — main.ts delegates to loadAppSettingsFrom + saveAppSetti
     const loadFn = mainSrc.match(/function loadAppSettings\(\):\s*AppSettings\s*\{[\s\S]*?\n\}/);
     expect(loadFn?.[0] ?? '').not.toContain('healMaskedKeyFields');
     expect(loadFn?.[0] ?? '').not.toContain('hydrateSecretsIntoSettings');
+    // R4-L: held-flag lifecycle stays in appSettingsLoad — wrappers stay thin.
+    expect(loadFn?.[0] ?? '').not.toContain('keyReentryPaths');
+    expect(loadFn?.[0] ?? '').not.toContain('heldKeyReentry');
+    const saveFn = mainSrc.match(/function saveAppSettings\([\s\S]*?\n\}/);
+    expect(saveFn?.[0] ?? '').not.toContain('healMaskedKeyFields');
+    expect(saveFn?.[0] ?? '').not.toContain('heldKeyReentry');
+    expect(saveFn?.[0] ?? '').not.toContain('clearHeldFlags');
     // SETTINGS_GET reads through loadAppSettings().
     expect(mainSrc).toMatch(/\[IPC_CHANNELS\.SETTINGS_GET\][\s\S]*?loadAppSettings\(\)/);
     // Provider lookup loads then delegates to extracted helper.
     expect(mainSrc).toMatch(
       /function getProviderConfigForAgent\([\s\S]*?return getProviderConfigForAgentFrom\(loadAppSettings\(\)/,
     );
+  });
+});
+
+describe('K20 — R4-L boot re-send keeps held keyReentryPaths', () => {
+  const PATH_A = 'apiKey' as const;
+  const PATH_B = 'provider.apiKey' as const;
+
+  function seedTwoMasks(settingsPath: string, store: SecretsStore): void {
+    const disk = loaderDiskFixture();
+    store.set('anthropic.apiKey', maskApiKey(K1));
+    store.set('provider.apiKey', maskApiKey(K1));
+    fs.writeFileSync(settingsPath, JSON.stringify(disk, null, 2), 'utf-8');
+  }
+
+  function assertBytesClean(settingsPath: string): void {
+    const written = fs.readFileSync(settingsPath, 'utf-8');
+    expect(written).not.toContain('keyReentryPaths');
+    expect(written).not.toMatch(/sk-ant-\.\.\./);
+    const parsed = JSON.parse(written) as AppSettings;
+    expect(parsed).not.toHaveProperty('keyReentryPaths');
+  }
+
+  it('masked renderer boot write: both flags survive; bytes have no mask and no keyReentryPaths', () => {
+    const { store, settingsPath } = mkStore();
+    seedTwoMasks(settingsPath, store);
+    const loaded = loadAppSettingsFrom(settingsPath, () => store);
+    expect(loaded.keyReentryPaths).toEqual(expect.arrayContaining([PATH_A, PATH_B]));
+    expect(getKeyField(loaded, PATH_A)).toBe('');
+    expect(getKeyField(loaded, PATH_B)).toBe('');
+
+    // Model SETTINGS_GET → renderer boot settingsSet of the masked view.
+    const rendererView = maskSettingsForRenderer(loaded);
+    expect(rendererView.keyReentryPaths).toEqual(expect.arrayContaining([PATH_A, PATH_B]));
+    const reconciled = reconcileSettingsFromRenderer(rendererView, loaded);
+    expect(reconciled).not.toHaveProperty('keyReentryPaths');
+    saveAppSettingsTo(settingsPath, () => store, reconciled);
+
+    assertBytesClean(settingsPath);
+    const again = loadAppSettingsFrom(settingsPath, () => store);
+    expect(again.keyReentryPaths).toEqual(expect.arrayContaining([PATH_A, PATH_B]));
+    expect(getKeyField(again, PATH_A)).toBe('');
+    expect(getKeyField(again, PATH_B)).toBe('');
+  });
+
+  it('blank-key boot write variant: both flags survive; bytes clean', () => {
+    const { store, settingsPath } = mkStore();
+    seedTwoMasks(settingsPath, store);
+    const loaded = loadAppSettingsFrom(settingsPath, () => store);
+    expect(loaded.keyReentryPaths).toEqual(expect.arrayContaining([PATH_A, PATH_B]));
+
+    // Renderer may echo blanks for healed fields (mask of '' is '').
+    let blanked = maskSettingsForRenderer(loaded);
+    blanked = setKeyField(blanked, PATH_A, '');
+    blanked = setKeyField(blanked, PATH_B, '');
+    const reconciled = reconcileSettingsFromRenderer(blanked, loaded);
+    saveAppSettingsTo(settingsPath, () => store, reconciled);
+
+    assertBytesClean(settingsPath);
+    const again = loadAppSettingsFrom(settingsPath, () => store);
+    expect(again.keyReentryPaths).toEqual(expect.arrayContaining([PATH_A, PATH_B]));
+  });
+});
+
+describe('K21 — R4-L real key clears one path; mask save does not', () => {
+  const PATH_A = 'apiKey' as const;
+  const PATH_B = 'provider.apiKey' as const;
+
+  it('real key on A clears A only; mask on B leaves B flagged; store holds A', () => {
+    const { store, settingsPath } = mkStore();
+    const disk = loaderDiskFixture();
+    store.set('anthropic.apiKey', maskApiKey(K1));
+    store.set('provider.apiKey', maskApiKey(K1));
+    fs.writeFileSync(settingsPath, JSON.stringify(disk, null, 2), 'utf-8');
+
+    const loaded = loadAppSettingsFrom(settingsPath, () => store);
+    expect(loaded.keyReentryPaths).toEqual(expect.arrayContaining([PATH_A, PATH_B]));
+
+    // Save a real key on path A only (blank B — unrelated / still flagged).
+    let withRealA = setKeyField(loaded, PATH_A, K2);
+    withRealA = setKeyField(withRealA, PATH_B, '');
+    const { keyReentryPaths: _drop, ...sansFlag } = withRealA;
+    void _drop;
+    saveAppSettingsTo(settingsPath, () => store, sansFlag as AppSettings);
+
+    const afterA = loadAppSettingsFrom(settingsPath, () => store);
+    expect(afterA.keyReentryPaths ?? []).not.toContain(PATH_A);
+    expect(afterA.keyReentryPaths).toContain(PATH_B);
+    expect(getKeyField(afterA, PATH_A)).toBe(K2);
+    expect(store.get('anthropic.apiKey')).toBe(K2);
+
+    // Mask-valued save on B must not clear B; saver coerces mask → '' (no mask
+    // on disk). Load again without a heal re-seed — flag survives via carry-forward.
+    const maskB = maskApiKey(K1);
+    let withMaskB = setKeyField(afterA, PATH_B, maskB);
+    const { keyReentryPaths: _drop2, ...sansFlag2 } = withMaskB;
+    void _drop2;
+    saveAppSettingsTo(settingsPath, () => store, sansFlag2 as AppSettings);
+
+    const written = fs.readFileSync(settingsPath, 'utf-8');
+    expect(written).not.toContain('keyReentryPaths');
+    expect(written).not.toContain(maskB);
+    expect(store.get('provider.apiKey')).toBeNull();
+
+    const afterMask = loadAppSettingsFrom(settingsPath, () => store);
+    expect(afterMask.keyReentryPaths).toContain(PATH_B);
+    expect(afterMask.keyReentryPaths ?? []).not.toContain(PATH_A);
+    expect(getKeyField(afterMask, PATH_A)).toBe(K2);
+    expect(store.get('anthropic.apiKey')).toBe(K2);
+    expect(getKeyField(afterMask, PATH_B) ?? '').toBe('');
   });
 });

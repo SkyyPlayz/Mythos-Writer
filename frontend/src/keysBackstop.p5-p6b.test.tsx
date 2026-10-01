@@ -8,6 +8,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import ModelKeysSection from './partner/ModelKeysSection';
 import ApiKeySection from './components/SettingsPanel/sections/ApiKeySection';
+import ProviderSection from './components/SettingsPanel/sections/ProviderSection';
 import AgentProviderSection from './components/SettingsPanel/AgentProviderSection';
 import { MASKED_API_KEY_PREVIEW_MESSAGE } from './lib/maskedApiKeyPreview';
 import { DEFAULT_AGENT_OVERRIDE } from './components/SettingsPanel/settingsPanelTypes';
@@ -182,5 +183,70 @@ describe('S6 — per-agent key field group', () => {
     });
     expect(screen.getByTestId('wa-api-key-mask-error')).toHaveTextContent(MASKED_API_KEY_PREVIEW_MESSAGE);
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('S6 — ProviderSection group', () => {
+  function renderProvider(opts: {
+    keyReentryPaths?: string[];
+    providerApiKey?: string;
+    savedProviderApiKey?: string;
+    setProviderApiKey?: (v: string) => void;
+    setProviderApiKeyDirty?: (v: boolean) => void;
+  } = {}) {
+    const setProviderApiKey = opts.setProviderApiKey ?? vi.fn<(v: string) => void>();
+    const setProviderApiKeyDirty = opts.setProviderApiKeyDirty ?? vi.fn<(v: boolean) => void>();
+    render(
+      <ProviderSection
+        providerKind="anthropic"
+        setProviderKind={vi.fn()}
+        providerApiKey={opts.providerApiKey ?? ''}
+        setProviderApiKey={setProviderApiKey}
+        providerApiKeyDirty={false}
+        setProviderApiKeyDirty={setProviderApiKeyDirty}
+        providerBaseUrl=""
+        setProviderBaseUrl={vi.fn()}
+        providerModel=""
+        setProviderModel={vi.fn()}
+        savedProviderApiKey={opts.savedProviderApiKey ?? ''}
+        testStatus="idle"
+        testMsg=""
+        onTest={vi.fn()}
+        modelList={[]}
+        modelListStatus="idle"
+        modelListError={null}
+        useCustomInput={false}
+        setUseCustomInput={vi.fn()}
+        onFetchModels={vi.fn()}
+        setSavedOk={vi.fn()}
+        activeProviderSupportsVoice={false}
+        setTestConnectionStatus={vi.fn()}
+        setModelList={vi.fn()}
+        setModelListStatus={vi.fn()}
+        setModelListError={vi.fn()}
+        keyReentryPaths={opts.keyReentryPaths}
+      />,
+    );
+    return { setProviderApiKey, setProviderApiKeyDirty };
+  }
+
+  it('(a) provider.apiKey in keyReentryPaths → Please re-enter your key; configured hint hidden', () => {
+    renderProvider({
+      keyReentryPaths: ['provider.apiKey'],
+      // Would otherwise show "Key is already configured" if re-entry were dead.
+      savedProviderApiKey: 'sk-ant-...ABCD',
+    });
+    expect(screen.getByTestId('provider-api-key-reentry')).toHaveTextContent('Please re-enter your key.');
+    expect(screen.queryByTestId('provider-key-configured-hint')).not.toBeInTheDocument();
+  });
+
+  it('(b) paste mask → MASKED_API_KEY_PREVIEW_MESSAGE; provider key not dirty/saved', () => {
+    const { setProviderApiKey, setProviderApiKeyDirty } = renderProvider();
+    fireEvent.change(screen.getByLabelText('Provider API key'), {
+      target: { value: 'sk-ant-...ABCD' },
+    });
+    expect(screen.getByTestId('provider-api-key-mask-error')).toHaveTextContent(MASKED_API_KEY_PREVIEW_MESSAGE);
+    expect(setProviderApiKey).not.toHaveBeenCalled();
+    expect(setProviderApiKeyDirty).not.toHaveBeenCalled();
   });
 });

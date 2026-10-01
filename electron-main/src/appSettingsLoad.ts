@@ -13,9 +13,76 @@ import { providerConfigForAgent, type ProviderConfig } from './provider.js';
 import { hydrateSecretsIntoSettings, persistSecretsAndStripSettings } from './secrets/migration.js';
 import type { SecretsStore } from './secrets/store.js';
 import {
+  getKeyField,
   healMaskedKeyFields,
+  isMaskedPreview,
+  KEY_FIELD_PATHS,
+  setKeyField,
+  type KeyFieldPath,
 } from './settings-masking.js';
 import { migrateVoicePushToTalk, type LegacyVoiceSettings } from './voiceSettingsMigration.js';
+
+/** Drop ephemeral keyReentryPaths — never reaches JSON or secrets (S4 / H3 / K18). */
+function stripKeyReentryPaths(settings: AppSettings): AppSettings {
+  if (!('keyReentryPaths' in settings)) return settings;
+  const { keyReentryPaths: _drop, ...rest } = settings;
+  void _drop;
+  return rest;
+}
+
+/**
+ * R4-L: main owns keyReentryPaths in memory (never on disk / K18).
+ * Seeded from heal-on-read; survive boot re-send and unrelated full-object
+ * saves; clear one path only when that path is saved with a non-empty
+ * non-mask value. Keyed by settingsPath so temp-file pins stay isolated.
+ */
+const heldKeyReentryBySettingsPath = new Map<string, Set<string>>();
+
+function heldKeyReentryFor(settingsPath: string): Set<string> {
+  let held = heldKeyReentryBySettingsPath.get(settingsPath);
+  if (!held) {
+    held = new Set();
+    heldKeyReentryBySettingsPath.set(settingsPath, held);
+  }
+  return held;
+}
+
+/** Attach held + newly healed re-entry paths onto a loaded settings object. */
+function withHeldKeyReentryPaths(settingsPath: string, settings: AppSettings): AppSettings {
+  const held = heldKeyReentryFor(settingsPath);
+  for (const path of settings.keyReentryPaths ?? []) {
+    held.add(path);
+  }
+  const stripped = stripKeyReentryPaths(settings);
+  if (held.size === 0) return stripped;
+  return { ...stripped, keyReentryPaths: [...held] };
+}
+
+/**
+ * Clear held flags only for paths whose saved value is a real key
+ * (non-empty and not isMaskedPreview). Blank / mask / absent leave the flag.
+ * Also force mask-shaped values to '' so they never reach JSON/secrets (no
+ * K19 retention — H2 heal-to-empty on the write path).
+ */
+function applyHeldFlagLifecycle(
+  settingsPath: string,
+  settings: AppSettings,
+): AppSettings {
+  const held = heldKeyReentryFor(settingsPath);
+  let out = settings;
+  for (const path of KEY_FIELD_PATHS) {
+    const val = getKeyField(out, path as KeyFieldPath);
+    if (typeof val === 'string' && isMaskedPreview(val)) {
+      // Never persist a mask; leave the re-entry flag alone.
+      out = setKeyField(out, path as KeyFieldPath, '');
+      continue;
+    }
+    if (held.has(path) && typeof val === 'string' && val.length > 0) {
+      held.delete(path);
+    }
+  }
+  return out;
+}
 
 export const AGENT_BUDGET_DEFAULTS = {
   autoApply: false,
@@ -243,13 +310,18 @@ export function loadAppSettingsFrom(
   // Heal-on-read (H1): after decrypt/hydrate, clear any stored masked preview
   // in memory only (no write). Same loader backs SETTINGS_GET and provider
   // lookup (getProviderConfigForAgent / buildGlobalProviderConfig).
+  // R4-L: seed/merge held keyReentryPaths so SETTINGS_GET keeps flags after
+  // boot re-send writes healed '' to disk (H2 — still no write on read).
   try {
-    return healMaskedKeyFields(hydrateSecretsIntoSettings(base, getStore()));
+    return withHeldKeyReentryPaths(
+      settingsPath,
+      healMaskedKeyFields(hydrateSecretsIntoSettings(base, getStore())),
+    );
   } catch {
     // Store not yet initialized (very early boot path). Caller will see the
     // post-migration empty key strings; the env-var fallback in
     // buildGlobalProviderConfig still serves as a last resort for CLI/CI scenarios.
-    return healMaskedKeyFields(base);
+    return withHeldKeyReentryPaths(settingsPath, healMaskedKeyFields(base));
   }
 }
 
@@ -298,18 +370,13 @@ export function getProviderConfigForAgentFrom(
   return providerConfigForAgent(global, agentSettings.model || undefined, agentProvider);
 }
 
-/** Drop ephemeral keyReentryPaths — never reaches JSON or secrets (S4 / H3). */
-function stripKeyReentryPaths(settings: AppSettings): AppSettings {
-  if (!('keyReentryPaths' in settings)) return settings;
-  const { keyReentryPaths: _drop, ...rest } = settings;
-  void _drop;
-  return rest;
-}
-
 /**
- * Real settings saver body (S4). main.ts's saveAppSettings delegates here.
- * Strips keyReentryPaths before JSON / secrets write. H2 stands: healed `''`
- * may be written on the next normal save; re-enter flag may clear early (Ivy).
+ * Real settings saver body (S4 + R4-L). main.ts's saveAppSettings delegates here.
+ * Always strips incoming keyReentryPaths before JSON / secrets write (K18 —
+ * written bytes never contain the flag or a mask). Main keeps held flags in
+ * memory: a path clears only when this save carries a non-empty non-mask value
+ * for that path. Boot re-sends, blank saves, mask-valued saves, and unrelated
+ * full-object writes leave flags intact. H2 stands (disk may heal to '').
  */
 export function saveAppSettingsTo(
   settingsPath: string,
@@ -319,7 +386,10 @@ export function saveAppSettingsTo(
 ): void {
   if (opts?.isCleared?.()) return;
 
-  let outgoing = stripKeyReentryPaths(settings);
+  // R4-L: ignore any renderer-supplied keyReentryPaths; update held from values.
+  // Mask-shaped values coerce to '' before persist (still no mask on disk).
+  const lifecycleApplied = applyHeldFlagLifecycle(settingsPath, settings);
+  let outgoing = stripKeyReentryPaths(lifecycleApplied);
 
   let toWrite: AppSettings = outgoing;
   try {

@@ -9411,7 +9411,7 @@ function loadAppSettings(): AppSettings {
 }
 
 function saveAppSettings(settings: AppSettings): void {
-  // Ivy / TC-MV-05 + S4: strip keyReentryPaths before write — see saveAppSettingsTo.
+  // Ivy / TC-MV-05 + S4 / R4-L: strip + held-flag lifecycle live in saveAppSettingsTo.
   saveAppSettingsTo(getAppSettingsPath(), getSecretsStore, settings, {
     isCleared: isAppDataCleared,
   });
