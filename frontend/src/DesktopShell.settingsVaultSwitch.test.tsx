@@ -1915,7 +1915,8 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
 
   it('HARD: shell create activate:false + flush-first (G8 / G8f)', async () => {
     const src = readFileSync(resolve(__dirname, 'DesktopShell.tsx'), 'utf8');
-    expect(src).toMatch(/useCreateMythosVaultFlow\([\s\S]*?\{ activate: false \}/);
+    // G8: activate:false (options may also carry onOnboardingSynced).
+    expect(src).toMatch(/useCreateMythosVaultFlow\([\s\S]*?activate:\s*false/);
     expect(src).toMatch(/await switchToVault\(vaultRoot\)/);
     expect(src).not.toMatch(
       /useCreateMythosVaultFlow\(\s*useCallback\([\s\S]*?handleProjectSwitched\(vaultRoot\)/,
@@ -1964,7 +1965,8 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     expect(src).toMatch(/onPickPath=\{\(id: WelcomePathId\) => \{/);
     expect(src).toMatch(/void createMythosVault\(id\)/);
     // Single shell hook — Welcome and rail+ share activate:false.
-    expect(src).toMatch(/\{ activate: false \}/);
+    expect(src).toMatch(/activate:\s*false/);
+    expect(src).toMatch(/onOnboardingSynced:\s*syncOnboardingIntoAppSettings/);
   });
 
   it('HARD: openVaultViaPicker flush-first — refused save skips openVaultFolder (G8d)', async () => {
@@ -2237,6 +2239,272 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     expect(
       persisted.onboardingStartMode,
       'joint (c): blank must survive Close after create when both C7a+C7b hold',
+    ).toBe('blank');
+  });
+
+  // ─── H10-1 / Probe HARD 2d / Shield onSaved / Critic guardrails A+B ───
+
+  it('HARD source: H10-1 enqueue-next onboarding sync (no nested await enqueue)', () => {
+    const flow = readFileSync(resolve(__dirname, 'useCreateMythosVaultFlow.tsx'), 'utf8');
+    const shell = readFileSync(resolve(__dirname, 'DesktopShell.tsx'), 'utf8');
+    // Write op closes, THEN a second enqueue for sync (Critic A — not nested).
+    expect(flow).toMatch(
+      /onboardingStartMode: startMode,[\s\S]*?\}\);[\s\S]*?\/\/ H10-1[\s\S]*?await enqueueSettingsWrite\(async \(\) => \{[\s\S]*?onOnboardingSyncedRef/,
+    );
+    expect(shell).toMatch(/onOnboardingSynced:\s*syncOnboardingIntoAppSettings/);
+    // Secure: sync merges only onboarding* keys.
+    expect(shell).toMatch(/onboardingComplete:\s*patch\.onboardingComplete/);
+    expect(shell).toMatch(/onboardingStartMode:\s*patch\.onboardingStartMode/);
+  });
+
+  it('HARD source: SettingsPanel onSaved receives post-overlay written object', () => {
+    const panel = readFileSync(resolve(__dirname, 'SettingsPanel.tsx'), 'utf8');
+    expect(panel).toMatch(/return withOnboarding;/);
+    expect(panel).toMatch(/\.then\(\(written\) => \{[\s\S]*?onSaved\?\.\(written\)/);
+    // Must not call onSaved with the pre-overlay payload variable at Close/flush.
+    expect(panel).not.toMatch(/\.then\(\(\) => \{[\s\S]*?onSaved\?\.\(payload\)/);
+  });
+
+  it('HARD source soft: onCreated settingsGet after await switchToVault order', () => {
+    const src = readFileSync(resolve(__dirname, 'DesktopShell.tsx'), 'utf8');
+    expect(src).toMatch(
+      /await switchToVault\(vaultRoot\);[\s\S]*?const fresh = await window\.api\?\.settingsGet/,
+    );
+  });
+
+  it('HARD source soft: flush-choice awaits vaultSwitchSerialRef', () => {
+    const src = readFileSync(resolve(__dirname, 'DesktopShell.tsx'), 'utf8');
+    expect(src).toMatch(
+      /handleFlushSwitchChoice = useCallback\(async \(choice[\s\S]*?await vaultSwitchSerialRef\.current;/,
+    );
+  });
+
+  it('HARD source soft: __mythosOpenVaultViaPicker gated to test MODE', () => {
+    const src = readFileSync(resolve(__dirname, 'DesktopShell.tsx'), 'utf8');
+    expect(src).toMatch(/import\.meta\.env\.MODE !== 'test'/);
+    expect(src).toMatch(/__mythosOpenVaultViaPicker/);
+  });
+
+  it('H10-1: create Blank then shell full-object write keeps onboardingStartMode blank', async () => {
+    // Probe HARD 2d / Critic H10-1 — RED at 48f05422 without post-C7 shell sync.
+    persisted = { ...basePersisted(), onboardingStartMode: 'template' };
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    createVaultFromOptionsMock.mockClear();
+    fireEvent.click(screen.getByTestId('nav-rail-vault-add'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('rail-vault-mode-blank'));
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+    await waitFor(() => expect(createVaultFromOptionsMock).toHaveBeenCalled());
+    await waitFor(() => expect(persisted.onboardingStartMode).toBe('blank'));
+
+    // Shell full-object write (vault rename) must carry blank, not template.
+    settingsSetMock.mockClear();
+    const tile = screen.getByTestId('nav-rail-vault-tile-/vault-new');
+    fireEvent.contextMenu(tile);
+    const rename = await screen.findByRole('menuitem', { name: /^Rename$/i });
+    fireEvent.click(rename);
+    const prompt = await screen.findByRole('dialog', { name: /Rename vault/i });
+    const input = within(prompt).getByRole('textbox');
+    fireEvent.change(input, { target: { value: 'Renamed New' } });
+    fireEvent.click(within(prompt).getByRole('button', { name: /^OK$/i }));
+
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+    expect(
+      persisted.onboardingStartMode,
+      'H10-1 RED at 48f05422 — shell rename wrote stale template over blank',
+    ).toBe('blank');
+    await waitFor(() => expect(screen.getByTestId('vs-template-cta')).toBeInTheDocument());
+  });
+
+  it('H10-1: Welcome Blank — in-session template CTA after create+sync', async () => {
+    // Probe HARD 2d — CTA count 0 at 48f05422; 1 when shell holds blank.
+    // Must not wait on the navHistory 500ms settingsGet debounce (that can
+    // falsely hydrate blank from disk after C7). Force an immediate shell
+    // full-object write; without H10-1 sync it erases blank and CTA stays gone.
+    persisted = {
+      ...basePersisted(),
+      onboardingComplete: false,
+      onboardingStartMode: null,
+    };
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('welcome-overlay')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('welcome-path-blank'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+    await waitFor(() => expect(persisted.onboardingStartMode).toBe('blank'));
+
+    settingsSetMock.mockClear();
+    const hide = screen.queryByRole('button', { name: /Hide right sidebar/i });
+    if (hide) {
+      fireEvent.click(hide);
+      await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+    } else {
+      // GRS not yet visible — tip of nav rail / tab shell write instead.
+      const notes = screen.queryByRole('button', { name: /^Notes$/i });
+      if (notes) fireEvent.click(notes);
+      await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+    }
+    expect(
+      persisted.onboardingStartMode,
+      'Welcome Blank RED at 48f05422 — shell write erased blank before CTA sync',
+    ).toBe('blank');
+    await waitFor(() => expect(screen.getByTestId('vs-template-cta')).toBeInTheDocument());
+  });
+
+  it('H10-1 Secure: resync merges only onboarding* — masked secret survives shell write', async () => {
+    const REAL_KEY = 'sk-real-secret-value';
+    const MASK = '••••••••';
+    persisted = {
+      ...basePersisted(),
+      apiKey: REAL_KEY,
+      onboardingStartMode: 'template',
+      theme: 'dark',
+    };
+    // settingsGet always returns a masked view (main's secret placeholder).
+    const api = window.api as {
+      settingsGet: () => Promise<Persisted>;
+    };
+    api.settingsGet = () => Promise.resolve({
+      ...persisted,
+      apiKey: persisted.apiKey ? MASK : '',
+    });
+    // Main keeps the real key when the renderer echoes the mask.
+    settingsSetMock.mockImplementation(async (next: Persisted) => {
+      const apiKey = next.apiKey === MASK ? persisted.apiKey : next.apiKey;
+      if (settingsSetFullReplace) {
+        persisted = { ...next, apiKey };
+      } else {
+        persisted = { ...persisted, ...next, apiKey };
+      }
+      return { saved: true };
+    });
+
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    const beforeKeys = { ...persisted };
+
+    fireEvent.click(screen.getByTestId('nav-rail-vault-add'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('rail-vault-mode-blank'));
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+    await waitFor(() => expect(persisted.onboardingStartMode).toBe('blank'));
+
+    settingsSetMock.mockClear();
+    // Shell full-object write via GRS hide — must not persist the mask.
+    const hide = await screen.findByRole('button', { name: /Hide right sidebar/i });
+    fireEvent.click(hide);
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+
+    expect(persisted.apiKey, 'Secure RED if shell stored masked placeholder').toBe(REAL_KEY);
+    expect(persisted.onboardingStartMode).toBe('blank');
+    // Aside from onboarding*, theme and other non-GRS keys stay put.
+    expect(persisted.theme).toBe(beforeKeys.theme);
+  });
+
+  it('H10-1 Critic A: create+sync completes with Settings open (no hang)', async () => {
+    persisted = { ...basePersisted(), onboardingStartMode: 'template' };
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    openSettings();
+    expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+
+    createVaultFromOptionsMock.mockClear();
+    fireEvent.click(screen.getByTestId('nav-rail-vault-add'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('rail-vault-mode-blank'));
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+
+    // Bounded — RED if sync nested-awaits the chain (deadlock).
+    await waitFor(
+      () => expect(persisted.onboardingStartMode).toBe('blank'),
+      { timeout: 5_000 },
+    );
+    await waitFor(() => expect(screen.getByTestId('vs-template-cta')).toBeInTheDocument(), {
+      timeout: 5_000,
+    });
+  });
+
+  it('H10-1 Critic A: create+sync completes with vault switch in flight (no hang)', async () => {
+    persisted = { ...basePersisted(), onboardingStartMode: 'template' };
+    let releaseSwitch!: () => void;
+    const switchHeld = new Promise<void>((resolve) => {
+      releaseSwitch = resolve;
+    });
+
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    projectSwitchMock.mockImplementation(async (vaultRoot: string) => {
+      if (vaultRoot === '/vault-new') {
+        await switchHeld;
+      }
+      mainRoot = vaultRoot;
+      if (announceOnSwitch) onProjectSwitchedCb?.({ vaultRoot });
+      return { switched: true };
+    });
+
+    fireEvent.click(screen.getByTestId('nav-rail-vault-add'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('rail-vault-mode-blank'));
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+
+    await waitFor(() => expect(projectSwitchMock).toHaveBeenCalled());
+    await act(async () => {
+      releaseSwitch();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(
+      () => expect(persisted.onboardingStartMode).toBe('blank'),
+      { timeout: 5_000 },
+    );
+  });
+
+  it('Shield: park→Retry→Close→hide GRS — onSaved post-overlay keeps blank', async () => {
+    // Shield stale onSaved — RED at 48f05422 when onSaved gets pre-overlay payload.
+    persisted = { ...basePersisted(), onboardingStartMode: 'template' };
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+
+    settingsSetMock.mockImplementation(async () => ({ saved: false, error: 'disk full' }));
+    await clickVaultTile(VAULT_B);
+    await waitFor(() => expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument());
+
+    // C7 blank on disk while parked; panel mount snapshot remains template.
+    persisted = { ...persisted, onboardingStartMode: 'blank', onboardingComplete: true };
+
+    settingsSetMock.mockImplementation(async (next: Persisted) => {
+      persisted = { ...next };
+      return { saved: true };
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-retry'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(mainRoot).toBe(VAULT_B));
+    expect(persisted.onboardingStartMode).toBe('blank');
+
+    // Close Settings — onSaved must receive post-overlay blank, not template.
+    settingsSetMock.mockClear();
+    await triggerSettingsClose('close');
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+    expect(persisted.onboardingStartMode).toBe('blank');
+
+    // Shell full-object write (hide right sidebar) must not restore template.
+    settingsSetMock.mockClear();
+    const hide = await screen.findByRole('button', { name: /Hide right sidebar/i });
+    fireEvent.click(hide);
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+    expect(
+      persisted.onboardingStartMode,
+      'Shield RED at 48f05422 — onSaved(payload) left shell on template; GRS hide wrote it back',
     ).toBe('blank');
   });
 });

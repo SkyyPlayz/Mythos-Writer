@@ -1,6 +1,7 @@
 /**
  * Probe C7 — onboardingStartMode on disk after Template / Blank / Import.
  * Reads app-settings.json for real (settings write not mocked). Relaunch check.
+ * H10-1: blank path also clicks nav-rail then relaunches (shell writers must not erase).
  */
 import path from 'path';
 import os from 'os';
@@ -92,8 +93,36 @@ test.describe('C7 onboardingStartMode on disk', () => {
       await expect(page.locator('.app-menu-bar, .desktop-shell').first()).toBeVisible({ timeout: 45_000 });
       await expectStartMode(userData, 'blank');
       expect(readStartMode(userData)).not.toBe('template');
+      // H10-1: a few nav-rail clicks (shell full-object writers) must not erase blank.
+      const notes = page.getByRole('button', { name: /^Notes$/i }).first();
+      if (await notes.isVisible().catch(() => false)) {
+        await notes.click();
+        await page.waitForTimeout(200);
+      }
+      const story = page.getByRole('button', { name: /^Story$/i }).first();
+      if (await story.isVisible().catch(() => false)) {
+        await story.click();
+        await page.waitForTimeout(200);
+      }
+      const boards = page.getByRole('button', { name: /^Boards$/i }).first();
+      if (await boards.isVisible().catch(() => false)) {
+        await boards.click();
+        await page.waitForTimeout(200);
+      }
+      await expectStartMode(userData, 'blank');
+      // In-session CTA for blank start mode.
+      await expect(page.getByTestId('vs-template-cta')).toBeVisible({ timeout: 15_000 });
     } finally {
       await app.close().catch(() => {});
+    }
+    // Relaunch — blank still on disk after shell writers.
+    const app2 = await launchFresh(userData);
+    try {
+      const page = await firstWindow(app2);
+      await expectStartMode(userData, 'blank');
+      await expect(page.getByTestId('welcome-overlay')).toHaveCount(0);
+    } finally {
+      await app2.close().catch(() => {});
       fs.rmSync(userData, { recursive: true, force: true });
     }
   });

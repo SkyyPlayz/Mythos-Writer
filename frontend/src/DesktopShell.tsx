@@ -330,6 +330,11 @@ interface AppMenuBarProps {
   /** SKY-9262 (P0.5): single-story vaults label the switcher with the story title. */
   activeStoryTitle?: string;
   onProjectSwitched: (vaultRoot: string) => void;
+  /** H10-1: ProjectSwitcher create path — merge only onboarding* into shell. */
+  onOnboardingSynced?: (patch: {
+    onboardingComplete: boolean;
+    onboardingStartMode: AppSettings['onboardingStartMode'] | null;
+  }) => void;
   onOpenKeyboardShortcuts: () => void;
   onToggleDistractionFree: () => void;
   /** SKY-3207 (B4): toggle the top bar hidden state. */
@@ -341,7 +346,7 @@ interface AppMenuBarProps {
 }
 
 // SKY-2964: writing-mode selector removed from AppMenuBar — canonical controls live in StorySubViewBar (above the page)
-export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, activeStoryTitle, onProjectSwitched, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport }: AppMenuBarProps) {
+export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, selectedStoryId, activeVaultRoot, activeStoryTitle, onProjectSwitched, onOnboardingSynced, onOpenKeyboardShortcuts, onToggleDistractionFree, onToggleTopBar, topBarHidden, onOpenTour, onOpenExport }: AppMenuBarProps) {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
   const helpMenuRef = useRef<HTMLDivElement>(null);
@@ -382,7 +387,12 @@ export function AppMenuBar({ onOpenSettings, onOpenHistory, onSearchNavigate, se
 
   return (
     <div className="app-menu-bar">
-      <ProjectSwitcher activeVaultRoot={activeVaultRoot} activeStoryTitle={activeStoryTitle} onSwitched={onProjectSwitched} />
+      <ProjectSwitcher
+        activeVaultRoot={activeVaultRoot}
+        activeStoryTitle={activeStoryTitle}
+        onSwitched={onProjectSwitched}
+        onOnboardingSynced={onOnboardingSynced}
+      />
       <div className="app-menu-items" ref={fileMenuRef}>
         <div className="app-menu-item">
           <button
@@ -3670,6 +3680,22 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Shield: activate:false + switchToVault so Settings flush runs before main moves.
   // C7 / Probe: await switchToVault so the hook's onboardingStartMode write lands
   // AFTER the Settings flush settles (settings:set is full-replace).
+  // H10-1: onOnboardingSynced merges ONLY onboarding* (next serial op; Secure bar).
+  const syncOnboardingIntoAppSettings = useCallback((patch: {
+    onboardingComplete: boolean;
+    onboardingStartMode: AppSettings['onboardingStartMode'] | null;
+  }) => {
+    setAppSettings((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        onboardingComplete: patch.onboardingComplete,
+        ...(patch.onboardingStartMode !== undefined
+          ? { onboardingStartMode: patch.onboardingStartMode ?? undefined }
+          : {}),
+      };
+    });
+  }, []);
   const { createVault: createMythosVault, createVaultModal } = useCreateMythosVaultFlow(
     useCallback(async ({ vaultRoot }) => {
       // F2 Shield: flush-first via switchToVault (not bare handleProjectSwitched).
@@ -3677,6 +3703,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       // Probe C7 — hook persists onboarding* AFTER this returns.
       // Never settingsSet here: stale renderer prev used to overwrite mode with null ~3ms later.
       // Sync UI only from a fresh settingsGet (after the awaited switch/flush).
+      // Secure note: full merge can copy masked secrets; H10-1 overlays only onboarding*.
       try {
         const fresh = await window.api?.settingsGet?.();
         if (fresh) {
@@ -3684,7 +3711,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         }
       } catch { /* non-fatal */ }
     }, [switchToVault]),
-    { activate: false },
+    { activate: false, onOnboardingSynced: syncOnboardingIntoAppSettings },
   );
 
   // Title-bar "Open vault…" — the legacy switcher's "Open Other Folder…".
@@ -3704,7 +3731,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // Shield G8d pin hook — title-bar Open vault… is Welcome-replaced in the
   // chrome; tests invoke the same callback the chrome wires to onOpenVault.
+  // Critic soft: install only in the Vitest/test environment — never production.
   useEffect(() => {
+    if (import.meta.env.MODE !== 'test') return;
     const w = window as Window & { __mythosOpenVaultViaPicker?: () => Promise<void> };
     w.__mythosOpenVaultViaPicker = () => openVaultViaPicker();
     return () => {

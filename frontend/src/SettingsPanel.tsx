@@ -540,7 +540,7 @@ export default function SettingsPanel({
     };
   }, [settings, apiKeyInput, apiKeyDirty, providerKind, providerModel, providerApiKey, providerApiKeyDirty, providerBaseUrl, telemetryEnabled, lg, pageBg, navConfig, buildAgentProviderConfig, activeVaultRoot]);
 
-  const writeSettingsPayload = useCallback(async (payload: AppSettings) => {
+  const writeSettingsPayload = useCallback(async (payload: AppSettings): Promise<AppSettings> => {
     // C7(b): settings:set is full-replace. Read main's CURRENT onboarding*
     // right before set (not the mount snapshot), and keep get→set back-to-back
     // on the shared write chain so C7's create-flow write cannot land in a gap.
@@ -548,11 +548,14 @@ export default function SettingsPanel({
       const disk = await window.api.settingsGet();
       const withOnboarding: AppSettings = { ...payload };
       // Prefer disk onboarding* always — panel does not own these keys.
-      if ('onboardingComplete' in disk) {
-        withOnboarding.onboardingComplete = disk.onboardingComplete;
-      }
-      if ('onboardingStartMode' in disk) {
-        withOnboarding.onboardingStartMode = disk.onboardingStartMode;
+      // Soft: null-guard — `'x' in disk` throws when settingsGet returns null.
+      if (disk != null && typeof disk === 'object') {
+        if ('onboardingComplete' in disk) {
+          withOnboarding.onboardingComplete = disk.onboardingComplete;
+        }
+        if ('onboardingStartMode' in disk) {
+          withOnboarding.onboardingStartMode = disk.onboardingStartMode;
+        }
       }
       const voiceTokens: Parameters<typeof window.api.settingsSet>[1] = {
         ...(sttBinaryToken ? { sttBinaryToken } : {}),
@@ -576,6 +579,9 @@ export default function SettingsPanel({
         // URL / voice / STT-TTS and other saved:false refusals — fixed generic copy.
         throw new Error('SETTINGS_SAVE_REJECTED');
       }
+      // Shield stale onSaved: return the merged object that was written so
+      // DesktopShell setAppSettings does not store mount-snapshot onboarding*.
+      return withOnboarding;
     });
   }, [sttBinaryToken, sttModelToken]);
 
@@ -594,10 +600,10 @@ export default function SettingsPanel({
       payload.apiKey = settings.apiKey;
     }
     void writeSettingsPayload(payload)
-      .then(() => {
+      .then((written) => {
         applyLiquidNeonTokens(lg, bgPreviewUrl);
         applyPageBackgroundTokens(pageBg);
-        onSaved?.(payload);
+        onSaved?.(written);
         if (heldBadKey) {
           closeSaveInFlight.current = false;
           setSaveError('API key not saved — fix it before closing.');
@@ -637,10 +643,10 @@ export default function SettingsPanel({
       payload.apiKey = settings.apiKey;
     }
     return writeSettingsPayload(payload)
-      .then(() => {
+      .then((written) => {
         applyLiquidNeonTokens(lg, bgPreviewUrl);
         applyPageBackgroundTokens(pageBg);
-        onSaved?.(payload);
+        onSaved?.(written);
         if (heldBadKey) {
           setSaveError(
             'API key not saved — fix it and Retry, or Switch anyway to discard the typed key.',
@@ -910,9 +916,10 @@ export default function SettingsPanel({
         telemetry: { enabled: telemetryEnabled, sessionId: base.telemetry?.sessionId ?? '' },
         ...(vaultAppearance !== undefined ? { vaultAppearance } : {}),
       };
-      await writeSettingsPayload(payload);
-      setSaveError(null);
-      onSaved?.(payload);
+      await writeSettingsPayload(payload).then((written) => {
+        setSaveError(null);
+        onSaved?.(written);
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : '';
       setSaveError(

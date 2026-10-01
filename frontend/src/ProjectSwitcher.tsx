@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { truncatePath, type TruncatePathOptions } from './utils/truncatePath';
-import { useCreateMythosVaultFlow } from './useCreateMythosVaultFlow';
+import { useCreateMythosVaultFlow, type OnboardingSyncPatch } from './useCreateMythosVaultFlow';
 import './ProjectSwitcher.css';
 
 interface ProjectEntry {
@@ -19,6 +19,8 @@ interface Props {
   activeStoryTitle?: string;
   /** May return false when flush-then-switch parks (Settings refuse). */
   onSwitched: (vaultRoot: string) => void | boolean | Promise<void | boolean>;
+  /** H10-1: merge ONLY onboarding* into DesktopShell appSettings after C7. */
+  onOnboardingSynced?: (patch: OnboardingSyncPatch) => void;
 }
 
 // SKY-320: parent folder of `<Mythos Vault>/Story Vault/` is the user-facing
@@ -76,7 +78,7 @@ export function deriveSingleStoryTitle(
   return title || undefined;
 }
 
-export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onSwitched }: Props) {
+export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onSwitched, onOnboardingSynced }: Props) {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
   const [activeNotesVaultRoot, setActiveNotesVaultRoot] = useState<string | undefined>(undefined);
@@ -196,7 +198,7 @@ export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onS
       const switched = await Promise.resolve(onSwitched(vaultRoot));
       if (switched !== false) await loadProjects();
     }, [loadProjects, onSwitched]),
-    { activate: false },
+    { activate: false, onOnboardingSynced },
   );
 
   const handleBtnClick = () => {

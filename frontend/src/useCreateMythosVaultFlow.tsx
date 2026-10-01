@@ -5,6 +5,12 @@ import VaultCreateModePicker, {
 } from './components/SettingsPanel/sections/VaultCreateModePicker';
 import { enqueueSettingsWrite } from './settingsWriteSerial';
 
+/** H10-1 / Secure: only these keys may be merged into the shell's appSettings copy. */
+export type OnboardingSyncPatch = {
+  onboardingComplete: boolean;
+  onboardingStartMode: NonNullable<AppSettings['onboardingStartMode']> | null;
+};
+
 export type CreateMythosVaultFlowOptions = {
   /**
    * When false, scaffold without activating on main — caller must flush-then
@@ -12,6 +18,12 @@ export type CreateMythosVaultFlowOptions = {
    * keeps legacy auto-activate for callers that already flush via onCreated.
    */
   activate?: boolean;
+  /**
+   * H10-1: after the C7 write, called from the NEXT enqueueSettingsWrite op
+   * (never nested inside the write op — Critic guardrail A deadlock).
+   * Caller must merge ONLY onboarding* into shell appSettings (Secure bar).
+   */
+  onOnboardingSynced?: (patch: OnboardingSyncPatch) => void;
 };
 
 type DryRunPreview = {
@@ -56,6 +68,8 @@ export function useCreateMythosVaultFlow(
   const [cancelConfirm, setCancelConfirm] = useState(false);
   const onCreatedRef = useRef(onCreated);
   onCreatedRef.current = onCreated;
+  const onOnboardingSyncedRef = useRef(options?.onOnboardingSynced);
+  onOnboardingSyncedRef.current = options?.onOnboardingSynced;
 
   const dirty = Boolean(
     name.trim()
@@ -232,6 +246,19 @@ export function useCreateMythosVaultFlow(
               onboardingStartMode: startMode,
             });
           }
+        });
+        // H10-1 / Critic guardrail A: enqueue shell sync as the NEXT op on the
+        // chain (awaited after the write returns). Never nest
+        // `await enqueueSettingsWrite` inside the write op — that deadlocks.
+        // Secure: read disk, then pass ONLY onboarding* — never whole settingsGet.
+        await enqueueSettingsWrite(async () => {
+          const disk = await window.api?.settingsGet?.();
+          if (!disk) return;
+          const patch: OnboardingSyncPatch = {
+            onboardingComplete: disk.onboardingComplete === true,
+            onboardingStartMode: disk.onboardingStartMode ?? null,
+          };
+          onOnboardingSyncedRef.current?.(patch);
         });
       } catch { /* non-fatal */ }
     } catch (err) {
