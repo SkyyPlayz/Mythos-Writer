@@ -6,6 +6,10 @@ import {
   PROVIDER_OPTIONS, LISTABLE_PROVIDERS, DEFAULT_BASE_URLS, MODEL_OPTIONS,
   modelListErrorCopy, isLocalhostUrl,
 } from './settingsPanelTypes';
+import {
+  looksLikeMaskedApiKeyPreview,
+  MASKED_API_KEY_PREVIEW_MESSAGE,
+} from '../../lib/maskedApiKeyPreview';
 
 interface Props {
   agentName: AgentName;
@@ -17,6 +21,9 @@ interface Props {
   testMsg: string;
   onChange: <K extends keyof AgentOverrideState>(field: K, value: AgentOverrideState[K]) => void;
   onTest: () => void;
+  /** KEY_FIELD_PATHS entry for this agent's provider.apiKey, when flagged for re-entry. */
+  reentryPath?: string;
+  keyReentryPaths?: string[];
 }
 
 export default function AgentProviderSection({
@@ -29,6 +36,8 @@ export default function AgentProviderSection({
   testMsg,
   onChange,
   onTest,
+  reentryPath,
+  keyReentryPaths,
 }: Props) {
   const activeKind = override.enabled ? override.kind : globalProviderKind;
   const activeDef = PROVIDER_OPTIONS.find((p) => p.value === activeKind)!;
@@ -37,6 +46,9 @@ export default function AgentProviderSection({
   const [modelListStatus, setModelListStatus] = useState<ModelListStatus>('idle');
   const [modelListError, setModelListError] = useState<string | null>(null);
   const [useCustomInput, setUseCustomInput] = useState(false);
+  const [pasteMaskError, setPasteMaskError] = useState<string | null>(null);
+  const path = reentryPath ?? `agents.${agentName}.provider.apiKey`;
+  const needsReentry = (keyReentryPaths ?? []).includes(path);
 
   const fetchModels = useCallback(async (kind: ProviderKind, baseUrl: string) => {
     if (!LISTABLE_PROVIDERS.has(kind)) {
@@ -129,14 +141,34 @@ export default function AgentProviderSection({
               <label className="settings-label" htmlFor={`${idPrefix}-api-key`}>API Key</label>
               <input
                 id={`${idPrefix}-api-key`}
-                className="settings-input settings-input-sm"
+                className={`settings-input settings-input-sm${pasteMaskError ? ' settings-input-error' : ''}`}
                 type="password"
                 value={override.apiKey}
-                placeholder={savedApiKey ? 'Key configured — enter new key to replace' : 'Paste API key…'}
+                placeholder={savedApiKey && !needsReentry ? 'Key configured — enter new key to replace' : 'Paste API key…'}
                 aria-label={`API key for ${agentName}`}
-                onChange={(e) => { onChange('apiKey', e.target.value); onChange('apiKeyDirty', true); }}
+                aria-invalid={pasteMaskError ? 'true' : 'false'}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  if (looksLikeMaskedApiKeyPreview(next)) {
+                    setPasteMaskError(MASKED_API_KEY_PREVIEW_MESSAGE);
+                    return;
+                  }
+                  setPasteMaskError(null);
+                  onChange('apiKey', next);
+                  onChange('apiKeyDirty', true);
+                }}
               />
-              {!override.apiKeyDirty && savedApiKey && (
+              {pasteMaskError && (
+                <p className="settings-error-msg" role="alert" data-testid={`${idPrefix}-api-key-mask-error`}>
+                  {pasteMaskError}
+                </p>
+              )}
+              {needsReentry && !pasteMaskError && (
+                <p className="settings-error-msg" role="status" data-testid={`${idPrefix}-api-key-reentry`}>
+                  Please re-enter your key.
+                </p>
+              )}
+              {!override.apiKeyDirty && savedApiKey && !needsReentry && (
                 <p className="settings-hint">Key is already configured.</p>
               )}
             </div>

@@ -16,7 +16,7 @@
  * switch silently and never trap the user.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, screen, within, fireEvent, act, waitFor, cleanup } from '@testing-library/react';
 import App from './App';
 import ProjectSwitcher from './ProjectSwitcher';
 import {
@@ -28,6 +28,23 @@ import { resolve } from 'node:path';
 
 const VAULT_A = '/vault-a';
 const VAULT_B = '/vault-b';
+const K2_KEY = 'sk-ant-CurrentStoredKeyBBBB222222222222222222222222';
+
+/** Runtime-only load of electron-main masking (non-literal import keeps it out of frontend tsc). */
+async function loadMainMasking(): Promise<{
+  maskApiKey: (k: string | null | undefined) => string;
+  maskSettingsForRenderer: (s: unknown) => unknown;
+  reconcileSettingsFromRenderer: (incoming: unknown, stored: unknown) => unknown;
+}> {
+  const { pathToFileURL } = await import('node:url');
+  const abs = resolve(__dirname, '../../electron-main/src/settings-masking.ts');
+  const href = pathToFileURL(abs).href;
+  return import(href) as Promise<{
+    maskApiKey: (k: string | null | undefined) => string;
+    maskSettingsForRenderer: (s: unknown) => unknown;
+    reconcileSettingsFromRenderer: (incoming: unknown, stored: unknown) => unknown;
+  }>;
+}
 
 type Persisted = {
   onboardingComplete: boolean;
@@ -35,6 +52,7 @@ type Persisted = {
   rightSidebarVisible: boolean;
   theme: string;
   apiKey?: string;
+  provider?: { kind: string; model: string; apiKey?: string };
   agents: {
     writingAssistant: { enabled: boolean };
     brainstorm: { enabled: boolean };
@@ -43,6 +61,8 @@ type Persisted = {
   };
   writingPartner?: { telemetryLevel?: string };
   telemetry?: { enabled?: boolean; sessionId?: string };
+  vaultThemes?: Record<string, string>;
+  vaultDisplayNames?: Record<string, string>;
 };
 
 const STORY_VAULT_A = 'story-a';
@@ -2776,5 +2796,124 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
       crashPayloadSeen(),
       'M8 RED — onSaved must not fire on null-path Close (shell must not hold crash)',
     ).toBe(false);
+  });
+});
+
+describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
+  const K2 = K2_KEY;
+  let maskApiKey: (k: string | null | undefined) => string;
+  let maskSettingsForRenderer: (s: unknown) => unknown;
+  let reconcileSettingsFromRenderer: (incoming: unknown, stored: unknown) => unknown;
+
+  beforeEach(async () => {
+    const mod = await loadMainMasking();
+    maskApiKey = mod.maskApiKey;
+    maskSettingsForRenderer = mod.maskSettingsForRenderer;
+    reconcileSettingsFromRenderer = mod.reconcileSettingsFromRenderer;
+  });
+
+  function wireRealReconcile() {
+    const api = window.api as unknown as {
+      settingsGet: () => Promise<Persisted>;
+      settingsSet: (next: Persisted) => Promise<{ saved: boolean }>;
+    };
+    api.settingsGet = () =>
+      Promise.resolve(maskSettingsForRenderer(persisted) as Persisted);
+    settingsSetMock.mockImplementation(async (next: Persisted) => {
+      persisted = reconcileSettingsFromRenderer(next, persisted) as Persisted;
+      return { saved: true };
+    });
+  }
+
+  function assertRawK2(label: string) {
+    expect(persisted.apiKey, `${label} apiKey`).toBe(K2);
+    expect((persisted as { provider?: { apiKey?: string } }).provider?.apiKey, `${label} provider`).toBe(K2);
+    expect(persisted.apiKey).not.toMatch(/^sk-ant-\.\.\./);
+    expect(JSON.stringify(persisted)).not.toMatch(/"apiKey"\s*:\s*"sk-ant-\.\.\./);
+  }
+
+  async function seedK2AndOpenSettings() {
+    persisted = {
+      ...basePersisted(),
+      apiKey: K2,
+      provider: { kind: 'anthropic', model: 'x', apiKey: K2 },
+    } as unknown as Persisted;
+    wireRealReconcile();
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    openSettings();
+    expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+  }
+
+  async function themeRenameAndShellWrite() {
+    // Mid-open vault switch
+    await clickVaultTile(VAULT_B);
+    await waitFor(() => expect(mainRoot).toBe(VAULT_B));
+
+    await openVaultsCategory();
+    const themeSel = screen.queryByTestId(`mvs-theme-${VAULT_A}`) ?? screen.getByTestId(`mvs-theme-${VAULT_B}`);
+    fireEvent.change(themeSel, { target: { value: 'ice' } });
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+
+    const nameEl = screen.queryByText('Alpha') ?? screen.queryByText('Bravo');
+    if (nameEl) {
+      fireEvent.doubleClick(nameEl);
+      const renameInput = screen.queryByTestId(`mvs-rename-input-${VAULT_A}`)
+        ?? screen.queryByTestId(`mvs-rename-input-${VAULT_B}`);
+      if (renameInput) {
+        fireEvent.change(renameInput, { target: { value: 'Renamed Vault' } });
+        fireEvent.keyDown(renameInput, { key: 'Enter' });
+        await waitFor(() =>
+          expect(settingsSetMock.mock.calls.some((c) => {
+            const p = c[0] as { vaultDisplayNames?: Record<string, string> };
+            return p.vaultDisplayNames && Object.values(p.vaultDisplayNames).includes('Renamed Vault');
+          })).toBe(true),
+        );
+      }
+    }
+
+    settingsSetMock.mockClear();
+    const hide = await screen.findByRole('button', { name: /Hide right sidebar/i });
+    fireEvent.click(hide);
+    await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
+    assertRawK2('after theme/rename/shell');
+  }
+
+  it('Close then relaunch: apiKey and provider.apiKey stay raw K2', async () => {
+    await seedK2AndOpenSettings();
+    // Paste K2 into Model & keys (dirty) then flush — already seeded on disk;
+    // ensure UI path also sends K2 when dirty.
+    const keyInput = screen.queryByLabelText('API key');
+    if (keyInput) {
+      fireEvent.change(keyInput, { target: { value: K2 } });
+    }
+    await themeRenameAndShellWrite();
+
+    await triggerSettingsClose('close');
+    cleanup();
+    // Relaunch with same persisted + reconcile wiring
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = makeMockApi();
+    wireRealReconcile();
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    assertRawK2('Close+relaunch');
+    expect(maskApiKey(K2)).toMatch(/^sk-ant-\.\.\./);
+  });
+
+  it('unmount without Close then relaunch: keys stay raw K2', async () => {
+    await seedK2AndOpenSettings();
+    const keyInput = screen.queryByLabelText('API key');
+    if (keyInput) {
+      fireEvent.change(keyInput, { target: { value: K2 } });
+    }
+    await themeRenameAndShellWrite();
+    cleanup(); // unmount without Close
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (window as any).api = makeMockApi();
+    wireRealReconcile();
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    assertRawK2('unmount+relaunch');
   });
 });

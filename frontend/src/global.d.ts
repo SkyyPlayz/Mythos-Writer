@@ -555,6 +555,11 @@ interface AppSettings {
    */
   anthropicEnvKeyPresent?: boolean;
   /**
+   * Ephemeral from settings:get — path names of key fields heal-on-read cleared
+   * (masked preview was stored). Never values. Not persisted.
+   */
+  keyReentryPaths?: string[];
+  /**
    * M11a (SKY-9160): master AI switch — manual mode. Absent means enabled.
    * Master off beats every per-agent enable; master on defers to them.
    */

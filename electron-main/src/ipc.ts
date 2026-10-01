@@ -3000,6 +3000,12 @@ export interface AppSettings {
    */
   anthropicEnvKeyPresent?: boolean;
   /**
+   * Ephemeral (settings:get / in-memory load only): KEY_FIELD_PATHS entries that
+   * heal-on-read cleared because a masked preview was stored. Path names only —
+   * never key values. Stripped on SETTINGS_SET; not persisted to disk.
+   */
+  keyReentryPaths?: string[];
+  /**
    * M11a (SKY-9160): master AI switch — manual mode. Optional so pre-M11
    * settings files remain valid; absent means enabled. Master off beats every
    * per-agent enable; master on defers to per-agent settings.

@@ -6,6 +6,10 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import MythosVaultsSection from './MythosVaultsSection';
 import { LIQUID_NEON_PRESETS } from '../../../theme/presets';
 import { resetLiquidNeonV2Tokens } from '../../../theme/liquidNeonEngine';
+import {
+  enqueueSettingsWrite,
+  __resetSettingsWriteSerialForTests,
+} from '../../../settingsWriteSerial';
 
 const VAULT_A = '/vaults/Alpha/Story Vault';
 const VAULT_B = '/vaults/Beta/Story Vault';
@@ -16,6 +20,7 @@ const mockProjectList = vi.fn();
 const mockGetVaultRoot = vi.fn();
 const mockProjectSwitch = vi.fn();
 const mockSettingsSet = vi.fn();
+const mockSettingsGet = vi.fn();
 const mockProjectNameSet = vi.fn();
 const mockVaultGetPaths = vi.fn();
 const mockChooseVaultFolder = vi.fn();
@@ -33,6 +38,7 @@ const baseSettings = { apiKey: '', agents: {}, theme: 'dark' } as unknown as App
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __resetSettingsWriteSerialForTests();
   mockProjectList.mockResolvedValue({
     projects: [
       { vaultRoot: VAULT_A, mythosVaultRoot: '/vaults/Alpha', notesVaultRoot: '/vaults/Alpha/Notes Vault', name: 'Alpha', openedAt: '' },
@@ -42,6 +48,7 @@ beforeEach(() => {
   mockGetVaultRoot.mockResolvedValue({ vaultRoot: VAULT_A });
   mockProjectSwitch.mockResolvedValue({ switched: true });
   mockSettingsSet.mockResolvedValue({ saved: true });
+  mockSettingsGet.mockResolvedValue(baseSettings);
   mockProjectNameSet.mockResolvedValue({ ok: true, name: 'Renamed' });
   mockVaultGetPaths.mockResolvedValue({
     storyVaultPath: VAULT_A,
@@ -79,6 +86,7 @@ beforeEach(() => {
       getVaultRoot: mockGetVaultRoot,
       projectSwitch: mockProjectSwitch,
       settingsSet: mockSettingsSet,
+      settingsGet: mockSettingsGet,
       projectNameSet: mockProjectNameSet,
       vaultGetPaths: mockVaultGetPaths,
       chooseVaultFolder: mockChooseVaultFolder,
@@ -98,6 +106,7 @@ beforeEach(() => {
 
 afterEach(() => {
   resetLiquidNeonV2Tokens();
+  __resetSettingsWriteSerialForTests();
   document.querySelectorAll('[data-testid="ln-toast"]').forEach((n) => n.remove());
 });
 
@@ -163,10 +172,16 @@ describe('MythosVaultsSection (Beta 4 M1)', () => {
     const { setSettings, setSavedOk } = await setup();
     fireEvent.change(screen.getByTestId(`mvs-theme-${VAULT_B}`), { target: { value: 'ice' } });
     expect(setSettings).toHaveBeenCalledTimes(1);
-    const next = setSettings.mock.calls[0][0] as AppSettings;
+    const updater = setSettings.mock.calls[0][0] as (prev: AppSettings) => AppSettings;
+    const next = typeof updater === 'function' ? updater(baseSettings) : updater;
     expect(next.vaultThemes).toEqual({ [VAULT_B]: 'ice' });
     expect(next.liquidNeonV2).toBeUndefined(); // current theme untouched
-    expect(mockSettingsSet).toHaveBeenCalledWith(next); // applies on switch without a panel Save
+    await waitFor(() => expect(mockSettingsGet).toHaveBeenCalled());
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+    expect(mockSettingsSet).toHaveBeenCalledWith({
+      ...baseSettings,
+      vaultThemes: { [VAULT_B]: 'ice' },
+    });
     expect(setSavedOk).toHaveBeenCalledWith(false);
     expect(screen.getByTestId('ln-toast').textContent).toContain('default theme — Ice Mono');
   });
@@ -174,13 +189,64 @@ describe('MythosVaultsSection (Beta 4 M1)', () => {
   it('choosing a theme for the CURRENT vault also applies it live (setKey+slots+wp match)', async () => {
     const { setSettings } = await setup();
     fireEvent.change(screen.getByTestId(`mvs-theme-${VAULT_A}`), { target: { value: 'ember' } });
-    const next = setSettings.mock.calls[0][0] as AppSettings;
+    const updater = setSettings.mock.calls[0][0] as (prev: AppSettings) => AppSettings;
+    const next = typeof updater === 'function' ? updater(baseSettings) : updater;
     expect(next.vaultThemes).toEqual({ [VAULT_A]: 'ember' });
     expect(next.liquidNeonV2?.setKey).toBe('ember');
     expect(next.liquidNeonV2?.slots).toEqual([...LIQUID_NEON_PRESETS.ember.c]);
     expect(next.liquidNeonV2?.wp).toBe('match');
     // Live token apply hit the document root with Emberfall's slot A.
     expect(document.documentElement.style.getPropertyValue('--n1')).toBe('#ff6b4d');
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+    // Exact payload: disk + vaultThemes + liquidNeonV2 only (each field own write).
+    expect(mockSettingsSet).toHaveBeenCalledWith({
+      ...baseSettings,
+      vaultThemes: { [VAULT_A]: 'ember' },
+      liquidNeonV2: next.liquidNeonV2,
+    });
+  });
+
+  // K4 (re-pointed): theme/rename must use shared enqueueSettingsWrite — not a
+  // local persistChain, and not a bare settingsGet/set. Block the shared chain
+  // with a pending op; vault theme must not touch get/set until the block resolves.
+  it('K4: vault theme write waits on shared enqueueSettingsWrite until blocker resolves', async () => {
+    let releaseBlock!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      releaseBlock = resolve;
+    });
+    const blockOp = enqueueSettingsWrite(async () => {
+      await blocked;
+    });
+
+    await setup();
+    mockSettingsGet.mockClear();
+    mockSettingsSet.mockClear();
+
+    fireEvent.change(screen.getByTestId(`mvs-theme-${VAULT_B}`), { target: { value: 'ice' } });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    expect(
+      mockSettingsGet,
+      'K4 RED if theme write left shared enqueue (local chain or direct get)',
+    ).not.toHaveBeenCalled();
+    expect(
+      mockSettingsSet,
+      'K4 RED if theme write left shared enqueue (local chain or direct set)',
+    ).not.toHaveBeenCalled();
+
+    releaseBlock();
+    await blockOp;
+    await waitFor(() => expect(mockSettingsGet).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mockSettingsSet).toHaveBeenCalledWith({
+        ...baseSettings,
+        vaultThemes: { [VAULT_B]: 'ice' },
+      }),
+    );
   });
 
   it('clicking a non-current card switches vaults (theme applies via the switch push)', async () => {
@@ -497,9 +563,15 @@ describe('MythosVaultsSection — inline rename (SKY-11154 §4, AC-VS-02)', () =
     fireEvent.change(input, { target: { value: 'Renamed Alpha' } });
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(setSettings).toHaveBeenCalled();
-    const next = setSettings.mock.calls[setSettings.mock.calls.length - 1][0] as AppSettings;
+    const updater = setSettings.mock.calls[setSettings.mock.calls.length - 1][0] as (prev: AppSettings) => AppSettings;
+    const next = typeof updater === 'function' ? updater(baseSettings) : updater;
     expect(next.vaultDisplayNames).toEqual({ [VAULT_A]: 'Renamed Alpha' });
-    expect(mockSettingsSet).toHaveBeenCalledWith(next);
+    await waitFor(() => expect(mockSettingsGet).toHaveBeenCalled());
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+    expect(mockSettingsSet).toHaveBeenCalledWith({
+      ...baseSettings,
+      vaultDisplayNames: { [VAULT_A]: 'Renamed Alpha' },
+    });
     expect(screen.queryByTestId(`mvs-rename-input-${VAULT_A}`)).not.toBeInTheDocument();
   });
 
@@ -530,7 +602,8 @@ describe('MythosVaultsSection — inline rename (SKY-11154 §4, AC-VS-02)', () =
     fireEvent.change(input, { target: { value: 'Via Blur' } });
     fireEvent.blur(input);
     expect(setSettings).toHaveBeenCalled();
-    const next = setSettings.mock.calls[0][0] as AppSettings;
+    const updater = setSettings.mock.calls[0][0] as (prev: AppSettings) => AppSettings;
+    const next = typeof updater === 'function' ? updater(baseSettings) : updater;
     expect(next.vaultDisplayNames).toEqual({ [VAULT_A]: 'Via Blur' });
   });
 

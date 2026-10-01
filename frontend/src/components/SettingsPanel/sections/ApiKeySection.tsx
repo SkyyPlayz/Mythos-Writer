@@ -1,4 +1,9 @@
+import { useState } from 'react';
 import { PROVIDER_OPTIONS, type ProviderKind } from '../settingsPanelTypes';
+import {
+  looksLikeMaskedApiKeyPreview,
+  MASKED_API_KEY_PREVIEW_MESSAGE,
+} from '../../../lib/maskedApiKeyPreview';
 
 interface ApiKeySectionProps {
   providerKind: ProviderKind;
@@ -11,6 +16,8 @@ interface ApiKeySectionProps {
   keyIsConfigured: boolean;
   apiKeyError: string | null;
   setSavedOk: (ok: boolean) => void;
+  /** Heal-on-read re-entry paths from main (path names only). */
+  keyReentryPaths?: string[];
 }
 
 // SKY-11219: this legacy top-level key predates per-provider config (SKY-683)
@@ -29,6 +36,7 @@ export default function ApiKeySection({
   keyIsConfigured,
   apiKeyError,
   setSavedOk,
+  keyReentryPaths,
 }: ApiKeySectionProps) {
   // Strip the parenthetical qualifier ("Anthropic (Claude)" -> "Anthropic",
   // "OpenAI" unchanged) — the full PROVIDER_OPTIONS label is meant for the
@@ -37,6 +45,10 @@ export default function ApiKeySection({
   const hint = providerKind === 'anthropic'
     ? 'Used by all AI agents. Falls back to the ANTHROPIC_API_KEY environment variable if left empty.'
     : 'Used by all AI agents unless overridden per-agent below.';
+  const needsReentry = (keyReentryPaths ?? []).includes('apiKey');
+  const showConfigured = !apiKeyDirty && keyIsConfigured && !needsReentry;
+  const [pasteMaskError, setPasteMaskError] = useState<string | null>(null);
+
   return (
     <section className="settings-section" aria-labelledby="section-api-key" data-settings-cat="agents">
       <h3 className="settings-section-title" id="section-api-key">API Key</h3>
@@ -45,13 +57,23 @@ export default function ApiKeySection({
         <div className="settings-input-row">
           <input
             id="api-key-input"
-            className={`settings-input${apiKeyError ? ' settings-input-error' : ''}`}
+            className={`settings-input${apiKeyError || pasteMaskError ? ' settings-input-error' : ''}`}
             type={showApiKey ? 'text' : 'password'}
             value={apiKeyInput}
-            onChange={(e) => { setApiKeyInput(e.target.value); setApiKeyDirty(true); setSavedOk(false); }}
-            placeholder={keyIsConfigured ? 'Key configured — enter a new key to replace' : (providerKind === 'anthropic' ? 'sk-ant-…' : 'Paste API key…')}
-            aria-invalid={apiKeyError ? 'true' : 'false'}
-            aria-describedby={apiKeyError ? 'api-key-error api-key-hint' : 'api-key-hint'}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (looksLikeMaskedApiKeyPreview(next)) {
+                setPasteMaskError(MASKED_API_KEY_PREVIEW_MESSAGE);
+                return;
+              }
+              setPasteMaskError(null);
+              setApiKeyInput(next);
+              setApiKeyDirty(true);
+              setSavedOk(false);
+            }}
+            placeholder={keyIsConfigured && !needsReentry ? 'Key configured — enter a new key to replace' : (providerKind === 'anthropic' ? 'sk-ant-…' : 'Paste API key…')}
+            aria-invalid={apiKeyError || pasteMaskError ? 'true' : 'false'}
+            aria-describedby={apiKeyError || pasteMaskError ? 'api-key-error api-key-hint' : 'api-key-hint'}
             autoComplete="off"
             spellCheck={false}
           />
@@ -64,10 +86,20 @@ export default function ApiKeySection({
             {showApiKey ? 'Hide' : 'Show'}
           </button>
         </div>
-        {apiKeyError && (
+        {pasteMaskError && (
+          <p className="settings-error-msg" id="api-key-error" role="alert" data-testid="legacy-api-key-mask-error">
+            {pasteMaskError}
+          </p>
+        )}
+        {apiKeyError && !pasteMaskError && (
           <p className="settings-error-msg" id="api-key-error" role="alert">{apiKeyError}</p>
         )}
-        {!apiKeyDirty && keyIsConfigured && (
+        {needsReentry && !pasteMaskError && (
+          <p className="settings-error-msg" role="status" data-testid="legacy-api-key-reentry">
+            Please re-enter your key.
+          </p>
+        )}
+        {showConfigured && (
           <p className="settings-hint" data-testid="key-configured-hint">Key is already configured.</p>
         )}
         <p className="settings-hint" id="api-key-hint">{hint}</p>
