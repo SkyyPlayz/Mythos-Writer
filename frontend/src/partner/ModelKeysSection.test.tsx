@@ -88,9 +88,12 @@ describe('ModelKeysSection F5 Hands & files (Path A)', () => {
 
   it('Reveal uses modelKeysShowItemInFolder; Open uses agentsVaultReveal', async () => {
     renderSection();
-    await screen.findByTestId('mk-keys-path');
+    // mk-keys-path mounts immediately with "—" while agentsVaultStats is in flight;
+    // Reveal/Open stay disabled until keysLoc resolves — wait for enabled before click.
+    await waitFor(() => expect(screen.getByTestId('mk-keys-reveal')).toBeEnabled());
     fireEvent.click(screen.getByTestId('mk-keys-reveal'));
     await waitFor(() => expect(modelKeysShowItemInFolder).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByTestId('mk-keys-open')).toBeEnabled());
     fireEvent.click(screen.getByTestId('mk-keys-open'));
     await waitFor(() => expect(agentsVaultReveal).toHaveBeenCalled());
   });
