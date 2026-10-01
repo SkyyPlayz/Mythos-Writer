@@ -32,6 +32,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { clickStoryNav } from '../helpers/navGuard';
+import { expectBrainstormModeVisible } from '../helpers/brainstormChrome';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const STORY_TITLE = 'AI Precedence Fixture';
@@ -232,8 +233,9 @@ test('SKY-10507: master ON + per-agents disagree — defers to each per-agent en
     await expect(continuityStatus).toHaveText('Archive Agent is disabled. Enable it in Settings.');
 
     // Brainstorm chat is live — its own per-agent enable is true.
+    // Ivy R6: @≤900 mode seg is in ⋯ — helper opens overflow when needed.
     await goToBrainstorm(page);
-    await expect(page.locator('[data-testid="bsc-mode-chat"]')).toBeVisible();
+    await expectBrainstormModeVisible(page, 'chat');
     await expect(page.locator('.brainstorm-input')).toBeVisible();
 
     // Scene Crafter rail credits the Brainstorm Agent — its own enable is true.

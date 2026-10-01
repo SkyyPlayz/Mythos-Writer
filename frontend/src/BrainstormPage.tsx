@@ -2399,6 +2399,9 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                     ...visibleModes.map((m) => ({
                       id: `mode-${m}`,
                       label: mode === m ? `✓ ${MODE_LABELS[m]}` : MODE_LABELS[m],
+                      // Same testids as the inline seg so e2e can assert
+                      // reachability after opening ⋯ @≤900 (Ivy R6).
+                      testId: `bsc-mode-${m}`,
                     })),
                     ...(effectiveMode === 'chat'
                       ? [{

@@ -22,6 +22,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { clickBrainstormMode, expectBrainstormModeVisible } from '../helpers/brainstormChrome';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
@@ -156,12 +157,13 @@ test('SKY-9876: AI on (control) — Agent Chat tab and Board-page agent panel pr
 
     await goToBrainstorm(page);
 
-    await expect(page.locator('[data-testid="bsc-mode-chat"]')).toBeVisible();
-    await expect(page.locator('[data-testid="bsc-mode-board"]')).toBeVisible();
+    // Ivy R6: mode seg may be in ⋯ @≤900 — assert reachability, not bare inline.
+    await expectBrainstormModeVisible(page, 'chat');
+    await expectBrainstormModeVisible(page, 'board');
     await expect(page.locator('.brainstorm-input')).toBeVisible();
     await expect(page.locator('.preset-selector-chip')).toBeVisible();
 
-    await page.locator('[data-testid="bsc-mode-board"]').click();
+    await clickBrainstormMode(page, 'board');
     await expect(page.locator('[data-testid="bs-board-side"]')).toBeVisible();
   } finally {
     await closeApp(app);

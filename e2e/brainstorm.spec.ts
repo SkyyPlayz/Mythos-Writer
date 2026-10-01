@@ -32,6 +32,11 @@ import {
   type Page,
 } from '@playwright/test';
 import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
+import {
+  clickBrainstormMode,
+  clickChatBoardToggle,
+  expectBrainstormModeVisible,
+} from './helpers/brainstormChrome';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -643,8 +648,9 @@ test('TC-M20-01: Board page shows one canvas; starter library places ideas', asy
   await openBrainstormPanel();
 
   // B4-4: Map / Clusters pages no longer exist.
-  await expect(page.locator('[data-testid="bsc-mode-chat"]')).toBeVisible();
-  await expect(page.locator('[data-testid="bsc-mode-board"]')).toBeVisible();
+  // Ivy R6: @≤900 mode controls live in ⋯ — assert reachable (not bare inline).
+  await expectBrainstormModeVisible(page, 'chat');
+  await expectBrainstormModeVisible(page, 'board');
   expect(await page.locator('[data-testid="bsc-mode-map"]').count()).toBe(0);
   expect(await page.locator('[data-testid="bsc-mode-clusters"]').count()).toBe(0);
 
@@ -662,7 +668,10 @@ test('TC-M20-01: Board page shows one canvas; starter library places ideas', asy
   await starterRow.click();
 
   // Placing jumps to the Board page with the card on the ONE canvas.
-  await expect(page.locator('[data-testid="bsc-mode-board"]')).toHaveAttribute('aria-pressed', 'true');
+  // aria-pressed is on the (possibly CSS-hidden) inline seg control.
+  await expect(
+    page.locator('[data-testid="bsc-mode-seg-inline"] [data-testid="bsc-mode-board"]'),
+  ).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('[data-testid="bsc-board"]')).toBeVisible();
   const card = page.locator('.bsb-card', { hasText: 'Midpoint Reversal' });
   await expect(card).toBeVisible();
@@ -718,11 +727,11 @@ test('TC-M20-02: dragged card position persists to Boards/brainstorm.board.json'
 // (with a drag-bar) without leaving the chat.
 
 test('TC-M20-03: chat-page Board toggle stacks the canvas under the chat', async () => {
-  await page.locator('[data-testid="bsc-mode-chat"]').click();
+  await clickBrainstormMode(page, 'chat');
   await expect(page.locator('.brainstorm-input')).toBeVisible();
   expect(await page.locator('[data-testid="bsc-board"]').count()).toBe(0);
 
-  await page.locator('[data-testid="bs-chat-board-toggle"]').click();
+  await clickChatBoardToggle(page);
   await expect(page.locator('[data-testid="bsc-board"]')).toBeVisible();
   await expect(page.locator('[data-testid="bs-board-resize"]')).toBeVisible();
   // Still on the chat page — the composer stays live.

@@ -9,6 +9,8 @@ export interface MenuItemDef {
   destructive?: boolean;
   /** When true, a separator line is rendered above this item. */
   separator?: boolean;
+  /** Optional stable test id (defaults to `menu-item-${id}`). */
+  testId?: string;
 }
 
 export interface MenuProps {
@@ -175,7 +177,7 @@ export function Menu({
             role="menuitem"
             type="button"
             disabled={item.disabled}
-            data-testid={`menu-item-${item.id}`}
+            data-testid={item.testId ?? `menu-item-${item.id}`}
             onClick={() => {
               onAction(item.id);
               onClose();
