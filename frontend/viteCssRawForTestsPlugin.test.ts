@@ -44,9 +44,12 @@ describe('cssRawForTestsPlugin (Shield BLOCK 5357119278)', () => {
   });
 
   // Shield (5): three refusal cases — go red if containment/allow-set is reverted.
+  // Target a REAL file outside frontend/ (plugin CSS). A missing path can fail
+  // realpath before the jail check, keeping this green even with the jail disabled.
   it('refuses relative traversal outside frontend/', () => {
     const { resolve } = bindHooks();
-    expect(resolve('../../../../tmp/x.css?raw', importer)).toBeNull();
+    const outsideCss = '../../plugin/Liquid-Neon-Companion/styles.css?raw';
+    expect(resolve(outsideCss, importer)).toBeNull();
   });
 
   it('refuses absolute path outside frontend/', () => {

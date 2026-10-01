@@ -1044,6 +1044,7 @@ export default function SettingsPanel({
                 showApiKey={showApiKey}
                 setShowApiKey={setShowApiKey}
                 setSavedOk={setSavedOk}
+                onMoveVault={handleMoveVault}
               />
 
               {/* Legacy provider fields — still drive save/test wiring; bucket UI above is primary. */}
