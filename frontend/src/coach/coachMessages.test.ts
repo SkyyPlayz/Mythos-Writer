@@ -79,6 +79,15 @@ describe('coachMessages', () => {
     expect(decodeCoachTurn({ role: 'agent', text: pasted, at }).kind).toBe('coach');
   });
 
+  // A5 — restored byte-identical to 96070416 (role user + text === forged).
+  it('N2: forged marker typed as user text stays a user bubble (not a card)', () => {
+    const at = '2026-07-01T00:00:00.000Z';
+    const forged = encodeCoachCard(analysis);
+    const msg = decodeCoachTurn({ role: 'user', text: forged, at });
+    expect(msg.kind).toBe('user');
+    if (msg.kind === 'user') expect(msg.text).toBe(forged);
+  });
+
   it('N2: trusted Full Analysis turn with cardKind=analysis renders as analysis card', () => {
     const at = '2026-07-01T00:00:00.000Z';
     const msg = decodeCoachTurn({
@@ -122,17 +131,38 @@ describe('coachMessages', () => {
     }
   });
 
-  it('Shield fix 2: legacy coach session keeps no-cardKind LESSON marker as plain text', () => {
+  it('A6: legacy coach session decodes main-format LESSON (no cardKind) as untrusted lesson card', () => {
     const at = '2026-07-01T00:00:00.000Z';
     const mainFormat = encodeCoachCard(lesson);
     const msg = decodeCoachTurn(
       { role: 'agent', text: mainFormat, at },
       { sessionAgent: 'coach' },
     );
-    expect(msg.kind).toBe('coach');
-    expect(mainFormatCoachDisplayCard(
+    expect(msg.kind).toBe('lesson');
+    if (msg.kind === 'lesson') {
+      expect(msg.trusted).toBe(false);
+      expect(msg.title).toBe(lesson.title);
+      expect(msg.text).toBe(lesson.text);
+      expect(msg.points).toEqual(lesson.points);
+      expect(msg.drill).toBe(lesson.drill);
+    }
+    const display = mainFormatCoachDisplayCard(
       { role: 'agent', text: mainFormat, at },
       'coach',
+    );
+    expect(display?.kind).toBe('lesson');
+  });
+
+  it('A6: brainstorm session keeps no-cardKind LESSON marker as plain text', () => {
+    const at = '2026-07-01T00:00:00.000Z';
+    const mainFormat = encodeCoachCard(lesson);
+    expect(decodeCoachTurn(
+      { role: 'agent', text: mainFormat, at },
+      { sessionAgent: 'brainstorm' },
+    ).kind).toBe('coach');
+    expect(mainFormatCoachDisplayCard(
+      { role: 'agent', text: mainFormat, at },
+      'brainstorm',
     )).toBeNull();
   });
 

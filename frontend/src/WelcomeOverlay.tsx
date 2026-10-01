@@ -120,14 +120,16 @@ interface WelcomeOverlayProps {
   onSkip: () => void;
   onPickPath: (id: WelcomePathId) => void;
   /**
-   * F3#9 — first-run vault setup: hide Skip so the path cards are the only
-   * way forward (vault setup is not bypassable).
+   * First-run marker (`data-require-vault`). Probe #33 — Skip stays visible;
+   * this flag no longer gates the Skip button.
    */
   requireVaultSetup?: boolean;
 }
 
 /** 09 §7 Welcome overlay — z70 path picker (Template · Blank · Import · Restore · Open Obsidian). */
 export default function WelcomeOverlay({ onSkip, onPickPath, requireVaultSetup = false }: WelcomeOverlayProps) {
+  // Probe #33 — Skip always visible (main parity). requireVaultSetup only
+  // marks data-require-vault for first-run detection; it never hides Skip.
   return (
     <div
       className="welcome-overlay"
@@ -161,16 +163,14 @@ export default function WelcomeOverlay({ onSkip, onPickPath, requireVaultSetup =
           ))}
         </div>
 
-        {!requireVaultSetup && (
-          <button
-            type="button"
-            className="welcome-overlay__skip"
-            data-testid="welcome-skip"
-            onClick={onSkip}
-          >
-            Skip — continue to the app →
-          </button>
-        )}
+        <button
+          type="button"
+          className="welcome-overlay__skip"
+          data-testid="welcome-skip"
+          onClick={onSkip}
+        >
+          Skip — continue to the app →
+        </button>
       </div>
     </div>
   );

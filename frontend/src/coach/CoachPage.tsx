@@ -298,7 +298,11 @@ function CoachFeedMessage({ message }: { message: CoachMessage }) {
   }
   if (message.kind === 'lesson') {
     return (
-      <div className="coach-lesson-card" data-testid="coach-lesson-card">
+      <div
+        className={`coach-lesson-card${message.trusted ? '' : ' coach-lesson-card--readonly'}`}
+        data-testid="coach-lesson-card"
+        data-readonly-card={message.trusted ? undefined : 'true'}
+      >
         <div className="coach-lesson-title">{message.title}</div>
         <div className="coach-lesson-text">{message.text}</div>
         {message.points.length > 0 && (

@@ -836,8 +836,8 @@ function CategoryChip({ chipKey, label, active, onToggle, onShowOnly, onShowAll 
   );
 }
 
-function isNodeInViewport(
-  node: PositionedNode,
+export function isNodeInViewport(
+  node: { x: number; y: number },
   pan: { x: number; y: number },
   zoom: number,
   viewW: number,
@@ -856,11 +856,18 @@ function isNodeInViewport(
   );
 }
 
-/** F3#8 — zoom/pan so node bounds fill ~85% of the graph viewBox. */
+/** Inspector column width reserved so Fit leaves the selected node uncovered. */
+export const GRAPH_INSPECTOR_RESERVE_PX = 248;
+
+/**
+ * F3#8 / Probe B — zoom/pan so node bounds fill the graph viewBox.
+ * Fit never exceeds 100% zoom; right side leaves room for the inspector.
+ */
 export function computeFitCamera(
   nodes: Array<{ x: number; y: number; radius?: number }>,
   extentW: number,
   extentH: number,
+  opts?: { reserveRightPx?: number },
 ): { zoom: number; pan: { x: number; y: number } } {
   if (nodes.length === 0) return { zoom: 1, pan: { x: 0, y: 0 } };
   let minX = Infinity;
@@ -876,18 +883,23 @@ export function computeFitCamera(
   }
   const contentW = Math.max(1, maxX - minX);
   const contentH = Math.max(1, maxY - minY);
+  const reserve = opts?.reserveRightPx ?? GRAPH_INSPECTOR_RESERVE_PX;
+  const usableW = Math.max(1, extentW - reserve);
   const margin = 0.85;
+  // Fit never past 100% — Probe B / Ivy.
   const zoom = clampValue(
     ZOOM_MIN,
-    ZOOM_MAX,
-    Math.min((extentW * margin) / contentW, (extentH * margin) / contentH),
+    1,
+    Math.min((usableW * margin) / contentW, (extentH * margin) / contentH),
   );
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
+  // Bias pan left so content sits in the non-inspector band.
+  const viewCenterX = usableW / 2;
   return {
     zoom,
     pan: {
-      x: zoom * (extentW / 2 - cx),
+      x: zoom * (viewCenterX - cx),
       y: zoom * (extentH / 2 - cy),
     },
   };

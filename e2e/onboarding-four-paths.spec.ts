@@ -65,14 +65,15 @@ async function createVaultViaWelcomePath(
 }
 
 test.describe('F3#9 WelcomeOverlay first-run (replaces OnboardingWizard ACs)', () => {
-  test('AC-OB-01′: WelcomeOverlay shows five path cards; vault setup not skippable', async () => {
+  test('AC-OB-01′: WelcomeOverlay shows five path cards; Skip always visible (#33)', async () => {
     const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-4path-01-'));
     const app = await launchFreshApp(userData);
     try {
       const page = await firstWindow(app);
       await expect(page.getByTestId('welcome-overlay')).toBeVisible({ timeout: 60_000 });
       await expect(page.getByTestId('welcome-overlay')).toHaveAttribute('data-require-vault', 'true');
-      await expect(page.getByTestId('welcome-skip')).toHaveCount(0);
+      await expect(page.getByTestId('welcome-skip')).toBeVisible();
+      await expect(page.getByTestId('welcome-skip')).toHaveText(/Skip — continue to the app/);
       for (const id of ['template', 'blank', 'import', 'restore', 'openin'] as const) {
         await expect(page.getByTestId(`welcome-path-${id}`)).toBeVisible();
       }

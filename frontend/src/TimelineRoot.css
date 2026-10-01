@@ -598,15 +598,20 @@
 }
 
 .tlr-left-sidebar {
-  width: 220px;
+  width: 268px;
   flex: none;
   min-height: 0;
   overflow-y: auto;
-  padding: 8px 8px 12px;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  margin: 8px 0 12px 8px;
+  padding: 12px 10px 14px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* Probe #17/#19 — proto glass card */
+  background: rgba(13, 16, 28, 0.2);
+  border: 1px solid rgba(155, 95, 255, 0.55);
+  border-radius: 18px;
+  border-right: 1px solid rgba(155, 95, 255, 0.55);
 }
 
 .tlr-left-sidebar .tlr-focus {

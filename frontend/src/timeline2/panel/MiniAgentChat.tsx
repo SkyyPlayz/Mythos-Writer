@@ -2,7 +2,7 @@
 // "both side-tab mini chats send/receive"). Bubbles + typing dots + input on
 // a shared agent session (M15), topped with the session pill so the §11
 // "sessions everywhere" contract holds in the timeline too.
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AgentSessionPicker from '../../components/AgentSessionPicker';
 import {
   displayCardBodyText,
@@ -10,6 +10,7 @@ import {
   miniCardBodyText,
   neutralizeLeadingCoachCardMarker,
 } from '../../coach/coachMessages';
+import { useVoiceDictation, type VoiceDictationState } from '../../lib/useVoiceDictation';
 import type { MiniAgentChat as MiniAgentChatState } from './useMiniAgentChat';
 // M12.B3 (SKY-10738): self-import — this component is now also mounted
 // outside Timeline2 (AgentHubPanel's Archive chat view), which doesn't load
@@ -18,6 +19,17 @@ import './TimelineRightPanel.css';
 
 /** Structural kinds that may render as trp-msg-card chrome (N2 / Shield). */
 const CARD_KIND_WHITELIST = new Set(['analysis', 'lesson', 'action']);
+
+const MIC_ARIA_LABELS: Record<VoiceDictationState, string> = {
+  idle: 'Start voice input',
+  listening: 'Stop voice input — listening',
+  processing: 'Processing speech…',
+  error: 'Voice error — click to retry',
+};
+
+const MIC_ICONS: Record<VoiceDictationState, string> = {
+  idle: '🎤', listening: '🎤', processing: '⏳', error: '⚠',
+};
 
 function isTrustedCardTurn(turn: AgentSessionTurn): boolean {
   return Boolean(
@@ -38,6 +50,9 @@ export interface MiniAgentChatProps {
   partnerName?: string;
   /** When true, hide the in-chat session pill (hub owns PAST CHATS & CALLS picker). */
   hideSessionPicker?: boolean;
+  /** Main-parity composer dictation (BrainstormPage mic pattern). */
+  voiceEnabled?: boolean;
+  voicePrefs?: { micDeviceId?: string; inputLanguage?: string };
 }
 
 export default function MiniAgentChat({
@@ -47,10 +62,26 @@ export default function MiniAgentChat({
   testidPrefix,
   partnerName,
   hideSessionPicker = false,
+  voiceEnabled = false,
+  voicePrefs,
 }: MiniAgentChatProps) {
   const [draft, setDraft] = useState('');
   const feedRef = useRef<HTMLDivElement>(null);
   const sessionAgent = chat.store.activeSession?.agent;
+  const appendTranscript = useCallback((text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    setDraft((prev) => (prev.trim() ? `${prev.trim()} ${t}` : t));
+  }, []);
+  const { state: voiceState, start: startVoice, stop: stopVoice } = useVoiceDictation({
+    onTranscript: appendTranscript,
+    micDeviceId: voicePrefs?.micDeviceId,
+    inputLanguage: voicePrefs?.inputLanguage,
+  });
+  const handleMicToggle = useCallback(() => {
+    if (voiceState === 'idle' || voiceState === 'error') void startVoice();
+    else if (voiceState === 'listening') stopVoice();
+  }, [voiceState, startVoice, stopVoice]);
   useEffect(() => {
     const el = feedRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -103,6 +134,16 @@ export default function MiniAgentChat({
               >
                 <div className="trp-msg-card-title">{display.title}</div>
                 <div className="trp-msg-card-text">{displayCardBodyText(display)}</div>
+                {display.kind === 'lesson' && display.points.length > 0 && (
+                  <ul className="trp-msg-card-points">
+                    {display.points.map((p) => (
+                      <li key={p}>{p}</li>
+                    ))}
+                  </ul>
+                )}
+                {display.kind === 'lesson' && display.drill && (
+                  <div className="trp-msg-card-foot">{display.drill}</div>
+                )}
               </div>
             );
           }
@@ -149,6 +190,20 @@ export default function MiniAgentChat({
         )}
       </div>
       <div className="trp-chat-input-row">
+        {voiceEnabled && (
+          <button
+            type="button"
+            className={`trp-chat-mic trp-chat-mic--${voiceState}${voiceState === 'listening' ? ' trp-chat-mic--recording' : ''}`}
+            onClick={handleMicToggle}
+            aria-label={MIC_ARIA_LABELS[voiceState]}
+            aria-pressed={voiceState !== 'idle'}
+            disabled={voiceState === 'processing' || chat.busy}
+            title={MIC_ARIA_LABELS[voiceState]}
+            data-testid={`${testidPrefix}-mic-btn`}
+          >
+            {MIC_ICONS[voiceState]}
+          </button>
+        )}
         <input
           className="trp-chat-input"
           value={draft}

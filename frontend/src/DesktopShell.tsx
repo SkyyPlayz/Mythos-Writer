@@ -6513,10 +6513,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         <WelcomeOverlay
           requireVaultSetup={!(appSettings?.onboardingComplete === true)}
           onSkip={() => {
-            // First-run vault setup cannot skip (requireVaultSetup hides the button).
-            if (appSettings?.onboardingComplete !== true) return;
+            // Probe #33 / main parity — Skip always visible; persist so relaunch
+            // does not bounce back to Welcome with no vault.
             markWelcomeOverlayDismissed();
             setWelcomeOpen(false);
+            const next = {
+              ...(appSettings ?? {}),
+              onboardingComplete: true,
+              onboardingStartMode: 'skip' as const,
+            };
+            setAppSettings(next as AppSettings);
+            void window.api?.settingsSet?.(next as AppSettings);
           }}
           onPickPath={(id: WelcomePathId) => {
             markWelcomeOverlayDismissed();

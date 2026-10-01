@@ -38,15 +38,15 @@ interface Props {
 // "New vault…" renders, so the three choices can't drift between surfaces.
 type CreateMode = VaultCreateMode;
 
-// Preview-only copy, matching the design's nvTemplateTree()/nvTree (HTML
-// 6224-6233, 9000-9004). Informational: createVaultFromOptions' `template`
-// mode (SKY-11151 TEMPLATE_NOTES_SKELETON) really does create these six
-// top-level Notes folders, but it does not seed the per-folder example tag
-// chips shown here (Protagonists/Antagonists/... etc), and there is no
-// backend support yet for a Story-side Act I/II/III chapter spine — both are
-// descriptive "what this will look like" previews, same as the design intends
-// (a still-empty vault, "ready to fill"/"ready to write"). A follow-up ticket
-// owns actually seeding either.
+type DryRunPreview = {
+  markdownCount: number;
+  attachmentCount: number;
+  totalFiles: number;
+  topLevelFolders: string[];
+  sampleFiles: string[];
+};
+
+/** Template-mode still shows a static skeleton; import uses real dry-run (C4). */
 const NOTES_PREVIEW_TREE: { label: string; kids: string[] }[] = [
   { label: 'Characters', kids: ['Protagonists', 'Antagonists', 'Supporting'] },
   { label: 'Locations', kids: ['Cities', 'Wilds', 'Interiors'] },
@@ -71,6 +71,7 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
   const [name, setName] = useState('');
   const [mode, setMode] = useState<CreateMode>('template');
   const [importSrcPath, setImportSrcPath] = useState('');
+  const [dryRun, setDryRun] = useState<DryRunPreview | null>(null);
   const [mythosRoot, setMythosRoot] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -82,6 +83,7 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
     setName('');
     setMode('template');
     setImportSrcPath('');
+    setDryRun(null);
     setError('');
     setBusy(false);
     window.api?.vaultGetPaths?.().then((paths) => {
@@ -106,13 +108,24 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
 
   async function browseImportSource() {
     setBusy(true);
+    setDryRun(null);
     try {
       const res = await window.api?.chooseVaultFolder?.(
         kind === 'notes'
           ? 'Select an Obsidian or Markdown notes folder'
           : 'Select a Scrivener project, Word or Markdown story folder',
       );
-      if (res && !res.cancelled && res.path) setImportSrcPath(res.path);
+      if (res && !res.cancelled && res.path) {
+        setImportSrcPath(res.path);
+        // C4 — real dry-run before any write; Create stays disabled until report lands.
+        const preview = await window.api?.dryRunObsidianImport?.(res.path, kind);
+        if (!preview || preview.error || !preview.preview) {
+          setError(preview?.error ?? 'Dry-run failed.');
+          return;
+        }
+        setDryRun(preview.preview);
+        setError('');
+      }
     } finally {
       setBusy(false);
     }
@@ -126,6 +139,10 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
     }
     if (mode === 'import' && !importSrcPath.trim()) {
       setError('Choose a folder to import from.');
+      return;
+    }
+    if (mode === 'import' && !dryRun) {
+      setError('Wait for the dry-run report before creating.');
       return;
     }
     setBusy(true);
@@ -242,7 +259,24 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
             />
             <p className="avd-hint">
               Folder structure, note bodies and [[wiki-links]] come across as-is. Nothing is moved or modified at the source.
+              A dry-run report appears before anything is written.
             </p>
+            {dryRun && (
+              <div className="avd-dryrun" data-testid={`avd-dryrun-${kind}`}>
+                <div className="avd-preview__label">DRY-RUN — NOTHING WRITTEN YET</div>
+                <ul>
+                  <li data-testid={`avd-dryrun-md-${kind}`}>{dryRun.markdownCount} markdown</li>
+                  <li data-testid={`avd-dryrun-att-${kind}`}>{dryRun.attachmentCount} attachments</li>
+                  <li data-testid={`avd-dryrun-total-${kind}`}>{dryRun.totalFiles} total files</li>
+                </ul>
+                {dryRun.topLevelFolders.length > 0 && (
+                  <p data-testid={`avd-dryrun-folders-${kind}`}>Folders: {dryRun.topLevelFolders.join(', ')}</p>
+                )}
+                {dryRun.sampleFiles.length > 0 && (
+                  <p data-testid={`avd-dryrun-samples-${kind}`}>Sample: {dryRun.sampleFiles.slice(0, 5).join(', ')}</p>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -265,7 +299,7 @@ export default function AddVaultDialog({ kind, open, onClose }: Props) {
         <Button
           variant="primary"
           onClick={() => void handleSubmit()}
-          disabled={busy || (mode === 'import' && !importSrcPath.trim())}
+          disabled={busy || (mode === 'import' && (!importSrcPath.trim() || !dryRun))}
           data-testid={`avd-submit-${kind}`}
         >
           {busy ? 'Adding…' : submitLabel}

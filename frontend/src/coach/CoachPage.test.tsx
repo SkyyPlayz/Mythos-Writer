@@ -380,6 +380,43 @@ describe('CoachPage (§5.2)', () => {
     expect(card.querySelectorAll('button')).toHaveLength(0);
   });
 
+  it('A6: legacy coach session main-format LESSON renders read-only with all fields, no COMPUTED', async () => {
+    installMockApi({
+      turns: [
+        {
+          role: 'agent',
+          text: encodeCoachCard({
+            kind: 'lesson',
+            title: 'This week’s focus — grounding the reader',
+            text: 'Every scene needs the reader to know three things fast.',
+            points: [
+              'Anchor place in the first two sentences',
+              'Put the danger in the room early',
+            ],
+            drill: 'Drill: underline the first moment a reader feels risk. 5 minutes.',
+          }),
+          at: AT,
+          // no cardKind — main-saved LESSON fixture
+        },
+      ],
+      sessionAgent: 'coach',
+    });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+    const card = screen.getByTestId('coach-lesson-card');
+    expect(card).toHaveAttribute('data-readonly-card', 'true');
+    expect(card.className).toContain('coach-lesson-card--readonly');
+    expect(card).toHaveTextContent('This week’s focus — grounding the reader');
+    expect(card).toHaveTextContent('Every scene needs the reader to know three things fast.');
+    expect(card).toHaveTextContent('Anchor place in the first two sentences');
+    expect(card).toHaveTextContent('Put the danger in the room early');
+    expect(card).toHaveTextContent('Drill: underline the first moment a reader feels risk. 5 minutes.');
+    expect(card).not.toHaveTextContent('COMPUTED · LOCAL · FREE');
+    expect(screen.queryByText(/mythos:coach-card/)).not.toBeInTheDocument();
+    expect(card.textContent ?? '').not.toMatch(/\{"kind"/);
+    expect(card.querySelectorAll('button')).toHaveLength(0);
+  });
+
   it('HARD 1(c): COMPUTED · LOCAL · FREE only with structural cardKind', async () => {
     installMockApi({
       turns: [

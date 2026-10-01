@@ -119,8 +119,9 @@ export default function TimelineTreeSidebar({
 
   return (
     <aside className="tlpicker tlpicker--tree" data-testid="timeline-picker" aria-label="Timelines">
-      <div className="tlpicker__tree-head" data-testid="tl-tree-head">
-        TIMELINES
+      {/* Probe #17/#19 order: Navigator → tree → New → Overview/Plotlines → Edit calendar */}
+      <div className="tlpicker__tree-head" data-testid="tl-navigator-head">
+        TIMELINE NAVIGATOR
       </div>
       <div className="tlpicker__tree" role="tree" aria-label="Timeline hierarchy" data-testid="tl-tree">
         {rows.map((row) => {
@@ -172,28 +173,27 @@ export default function TimelineTreeSidebar({
         })}
       </div>
 
-      <div className="tlpicker__tree-actions">
-        <button
-          type="button"
-          className="tlpicker__action"
-          onClick={onNewTimeline}
-          data-testid="timeline-new"
-        >
-          <Plus size={13} aria-hidden="true" />
-          <span>+ New timeline</span>
-        </button>
-        <button
-          type="button"
-          className="tlpicker__action"
-          onClick={onEditCalendar}
-          data-testid="timeline-edit-calendar"
-        >
-          <Settings2 size={13} aria-hidden="true" />
-          <span>Edit calendar{active ? '…' : '…'}</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        className="tlpicker__new-dashed"
+        onClick={onNewTimeline}
+        data-testid="timeline-new"
+      >
+        <Plus size={13} aria-hidden="true" />
+        <span>+ New</span>
+      </button>
 
       {focusSection}
+
+      <button
+        type="button"
+        className="tlpicker__action tlpicker__edit-calendar"
+        onClick={onEditCalendar}
+        data-testid="timeline-edit-calendar"
+      >
+        <Settings2 size={13} aria-hidden="true" />
+        <span>Edit calendar{active ? '…' : '…'}</span>
+      </button>
     </aside>
   );
 }

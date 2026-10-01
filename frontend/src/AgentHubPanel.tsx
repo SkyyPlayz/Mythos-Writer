@@ -358,46 +358,42 @@ function PartnerChatView({
         call={call}
         onCallChange={onCallChange}
         onEndCall={onEndCall}
-      />
-
-      {/* Probe #3 / proto: magenta PAST CHATS & CALLS header card + thread picker.
-          Replaces F3 "Earlier chats" link + in-chat Session pill. Legacy Coach/Beta
-          rows remain reachable via the partner picker. Role chips stay out. */}
-      <div className="ahp-past-chats" data-testid="ahp-past-chats">
-        <button
-          type="button"
-          className="ahp-past-chats__toggle"
-          aria-expanded={pastOpen}
-          onClick={() => setPastOpen((o) => !o)}
-          data-testid="ahp-past-chats-toggle"
-        >
-          <span>Past chats &amp; calls</span>
-          <span className="ahp-past-chats__count">
-            {partnerSessionStore.sessions.length} thread{partnerSessionStore.sessions.length === 1 ? '' : 's'}
-          </span>
-          <span aria-hidden="true">{pastOpen ? '▾' : '▸'}</span>
-        </button>
-        {/* Always mount the session pill (active title) — Path 1 main kept an
-            always-visible Writer-hand pill; Probe #3 moved that contract here.
-            Toggle still expands the history link; picker dropdown is its own. */}
-        <div className="ahp-past-chats__menu" data-testid="ahp-past-chats-menu">
-          <AgentSessionPicker
-            store={partnerSessionStore}
-            className="ahp-session-pill ahp-session-pill--dropdown"
-            busy={false}
-          />
-          {pastOpen && onOpenPartnerHistory && (
+        pastChats={(
+          /* Probe #3 — PAST CHATS & CALLS inside the partner header card (proto). */
+          <div className="ahp-past-chats" data-testid="ahp-past-chats">
             <button
               type="button"
-              className="ahp-past-chats__history-link"
-              data-testid="ahp-partner-history-link"
-              onClick={() => onOpenPartnerHistory()}
+              className="ahp-past-chats__toggle"
+              aria-expanded={pastOpen}
+              onClick={() => setPastOpen((o) => !o)}
+              data-testid="ahp-past-chats-toggle"
             >
-              Open full session history…
+              <span>Past chats &amp; calls</span>
+              <span className="ahp-past-chats__count">
+                {partnerSessionStore.sessions.length} thread{partnerSessionStore.sessions.length === 1 ? '' : 's'}
+              </span>
+              <span aria-hidden="true">{pastOpen ? '▾' : '▸'}</span>
             </button>
-          )}
-        </div>
-      </div>
+            <div className="ahp-past-chats__menu" data-testid="ahp-past-chats-menu">
+              <AgentSessionPicker
+                store={partnerSessionStore}
+                className="ahp-session-pill ahp-session-pill--dropdown"
+                busy={false}
+              />
+              {pastOpen && onOpenPartnerHistory && (
+                <button
+                  type="button"
+                  className="ahp-past-chats__history-link"
+                  data-testid="ahp-partner-history-link"
+                  onClick={() => onOpenPartnerHistory()}
+                >
+                  Open full session history…
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      />
 
       {/* Tips above the chat thread so Scan now / tip cards stay in-viewport
           (thread was flex:1 and pushed the strip below the sidebar fold). */}
@@ -445,6 +441,8 @@ function PartnerChatView({
           story={story}
           onActionBusy={setActionBusy}
           onOpenWriterTips={() => setShowWriterTips(true)}
+          voiceEnabled={voiceEnabled}
+          voicePrefs={voicePrefs}
         />
       </div>
     </div>
@@ -594,6 +592,8 @@ function UnifiedPartnerChat({
   story,
   onActionBusy,
   onOpenWriterTips,
+  voiceEnabled = false,
+  voicePrefs,
 }: {
   partnerName: string;
   onCall: boolean;
@@ -602,6 +602,8 @@ function UnifiedPartnerChat({
   story: Story | null;
   onActionBusy: (hand: PartnerHandId | null) => void;
   onOpenWriterTips: () => void;
+  voiceEnabled?: boolean;
+  voicePrefs?: { micDeviceId?: string; inputLanguage?: string };
 }) {
   const chat = useMiniAgentChat(PARTNER_SESSION_AGENT, invokeBrainstorm);
   const [queued, setQueued] = useState<readonly QueuedPartnerMessage[]>(getPartnerMsgQueue());
@@ -745,6 +747,8 @@ function UnifiedPartnerChat({
         placeholder={onCall ? `Speak or type to ${partnerName}…` : `Message ${partnerName}…`}
         testidPrefix="ahp-partner"
         hideSessionPicker
+        voiceEnabled={voiceEnabled}
+        voicePrefs={voicePrefs}
       />
       {queued.length > 0 && (
         <div className="ahp-queued" data-testid="ahp-queued-list" aria-label="Queued messages">

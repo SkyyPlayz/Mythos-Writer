@@ -45,7 +45,10 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     expect(screen.queryByTestId('ahp-agent-row-writing-assistant')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ahp-agent-row-brainstorm')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ahp-agent-row-beta-reader')).not.toBeInTheDocument();
-    expect(await screen.findByTestId('partner-card')).toBeInTheDocument();
+    const card = await screen.findByTestId('partner-card');
+    expect(card).toBeInTheDocument();
+    // Probe #3 — PAST CHATS & CALLS lives inside the partner header card.
+    expect(card.querySelector('[data-testid="ahp-past-chats"]')).toBeTruthy();
     expect(screen.getByTestId('ahp-past-chats')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-past-chats-toggle')).toHaveTextContent(/Past chats/i);
     // Active session pill stays mounted without expanding Past chats (TC-8537-02).

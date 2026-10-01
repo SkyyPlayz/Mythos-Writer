@@ -284,6 +284,35 @@
   padding-top: 4px;
 }
 
+/* Probe #17/#19 — dashed full-width + New under the tree */
+.tlpicker__new-dashed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  margin-top: 4px;
+  border-radius: 10px;
+  border: 1px dashed rgba(155, 95, 255, 0.55);
+  background: transparent;
+  color: #c8d3e7;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tlpicker__new-dashed:hover {
+  background: rgba(155, 95, 255, 0.1);
+  color: #f0f3fc;
+}
+
+.tlpicker__edit-calendar {
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 6px;
+}
+
 .tlpicker__chevron--open {
   transform: rotate(90deg);
 }

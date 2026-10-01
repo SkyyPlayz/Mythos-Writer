@@ -1448,9 +1448,6 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
               onEditCalendar={handleEditCalendar}
               focusSection={isStoryTimeline ? (
                 <div className="tlr-focus" data-testid="tlr-aside" aria-label="Timeline focus">
-                  <div className="tlr-aside-head tlr-aside-head--top" data-testid="tl-navigator-head">
-                    TIMELINE NAVIGATOR
-                  </div>
                   <button
                     type="button"
                     className={`tlr-book-card${bookFocus == null ? ' tlr-book-card--active' : ''}`}

@@ -15,6 +15,15 @@ const mockNotesVaultRegistryCreate = vi.fn();
 const mockStoryVaultRegistryCreate = vi.fn();
 const mockCreateVaultFromOptions = vi.fn();
 const mockChooseVaultFolder = vi.fn();
+const mockDryRunObsidianImport = vi.fn();
+
+const DRY_PREVIEW = {
+  markdownCount: 3,
+  attachmentCount: 1,
+  totalFiles: 4,
+  topLevelFolders: ['Characters', 'Lore'],
+  sampleFiles: ['Characters/Marcus.md', 'Prologue.md'],
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -31,6 +40,7 @@ beforeEach(() => {
     entry: { id: 's1', displayName: 'Story', dirName: 'Story', createdAt: '', pairedNotesVaultId: null },
   });
   mockChooseVaultFolder.mockResolvedValue({ path: null, cancelled: true });
+  mockDryRunObsidianImport.mockResolvedValue({ preview: DRY_PREVIEW });
   Object.defineProperty(window, 'api', {
     value: {
       vaultGetPaths: mockVaultGetPaths,
@@ -38,6 +48,7 @@ beforeEach(() => {
       storyVaultRegistryCreate: mockStoryVaultRegistryCreate,
       createVaultFromOptions: mockCreateVaultFromOptions,
       chooseVaultFolder: mockChooseVaultFolder,
+      dryRunObsidianImport: mockDryRunObsidianImport,
     },
     writable: true,
     configurable: true,
@@ -91,16 +102,35 @@ describe('AddVaultDialog (SKY-11154 submit-target fix)', () => {
     ));
   });
 
-  it('import mode forwards the chosen importSourcePath', async () => {
+  it('import mode dry-runs before write and forwards importSourcePath only after confirm', async () => {
     mockChooseVaultFolder.mockResolvedValue({ path: '/import/src', cancelled: false });
     await openDialog('notes');
     fireEvent.click(screen.getByTestId('avd-mode-notes-import'));
+    // Create disabled until dry-run report lands.
+    expect(screen.getByTestId('avd-submit-notes')).toBeDisabled();
     fireEvent.click(screen.getByTestId('avd-import-src-notes-browse'));
-    await waitFor(() => expect(mockChooseVaultFolder).toHaveBeenCalled());
+    await waitFor(() => expect(mockDryRunObsidianImport).toHaveBeenCalledWith('/import/src', 'notes'));
+    await waitFor(() => expect(screen.getByTestId('avd-dryrun-notes')).toBeInTheDocument());
+    expect(screen.getByTestId('avd-dryrun-md-notes')).toHaveTextContent('3 markdown');
+    expect(screen.getByTestId('avd-dryrun-folders-notes')).toHaveTextContent('Characters');
+    expect(mockNotesVaultRegistryCreate).not.toHaveBeenCalled();
+    expect(mockCreateVaultFromOptions).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId('avd-submit-notes'));
     await waitFor(() => expect(mockNotesVaultRegistryCreate).toHaveBeenCalledWith(
       expect.objectContaining({ mode: 'import', importSourcePath: '/import/src' }),
     ));
+  });
+
+  it('C4: cancel after dry-run writes nothing', async () => {
+    mockChooseVaultFolder.mockResolvedValue({ path: '/import/src', cancelled: false });
+    const { onClose } = await openDialog('notes');
+    fireEvent.click(screen.getByTestId('avd-mode-notes-import'));
+    fireEvent.click(screen.getByTestId('avd-import-src-notes-browse'));
+    await waitFor(() => expect(screen.getByTestId('avd-dryrun-notes')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('avd-cancel-notes'));
+    expect(onClose).toHaveBeenCalled();
+    expect(mockNotesVaultRegistryCreate).not.toHaveBeenCalled();
+    expect(mockCreateVaultFromOptions).not.toHaveBeenCalled();
   });
 
   it('a rejected create keeps the dialog open and shows the error', async () => {

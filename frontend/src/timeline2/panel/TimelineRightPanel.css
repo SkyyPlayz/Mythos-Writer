@@ -831,6 +831,35 @@
 .trp-chat-input-row {
   display: flex;
   gap: 6px;
+  align-items: center;
+}
+
+.trp-chat-mic {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  border: 1px solid rgba(155, 95, 255, 0.45);
+  background: rgba(155, 95, 255, 0.1);
+  color: #d7c4ff;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trp-chat-mic--listening,
+.trp-chat-mic--recording {
+  border-color: rgba(0, 240, 255, 0.55);
+  background: rgba(0, 240, 255, 0.14);
+  color: #9ff7ff;
+}
+
+.trp-chat-mic:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .trp-chat-input {

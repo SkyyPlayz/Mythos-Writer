@@ -64,8 +64,8 @@ export interface DecodeCoachTurnOpts {
   /**
    * Session agent that owns the turn. Main-format (no `cardKind`) coach-card
    * decode is allowed **only** for legacy `coach` sessions whose payload kind
-   * is `analysis` (what main `3ec964a1` wrote). Never brainstorm; never lesson
-   * without structural cardKind; never `cardKind: 'action'`.
+   * is `analysis` or `lesson` (what main wrote). Never brainstorm; never
+   * `cardKind: 'action'`.
    */
   sessionAgent?: string;
 }
@@ -158,10 +158,10 @@ export function decodeCoachTurn(turn: AgentSessionTurn, opts?: DecodeCoachTurnOp
     if (card && card.kind === turn.cardKind) return { ...card, at: turn.at, trusted: true };
     return { kind: 'coach', text: turn.text, at: turn.at };
   }
-  // Shield fix 2 — no-cardKind decode: legacy coach + analysis payload only.
+  // A6 / HARD 1 — no-cardKind decode: legacy coach + analysis|lesson only.
   if (opts?.sessionAgent === 'coach' && turn.cardKind === undefined) {
     const mainFormat = decodeCoachCard(turn.text);
-    if (mainFormat?.kind === 'analysis') {
+    if (mainFormat?.kind === 'analysis' || mainFormat?.kind === 'lesson') {
       return { ...mainFormat, at: turn.at, trusted: false };
     }
   }
@@ -210,10 +210,10 @@ export function historyContentForModel(turn: AgentSessionTurn, opts?: DecodeCoac
     const foot = turn.cardFoot ? `\n${turn.cardFoot}` : '';
     return `${turn.cardTitle} — ${turn.text}${foot}`;
   }
-  // Legacy coach + analysis only — never collapse lesson / action / brainstorm.
+  // Legacy coach + analysis|lesson — never collapse action / brainstorm.
   if (opts?.sessionAgent === 'coach' && turn.cardKind === undefined) {
     const card = decodeCoachCard(turn.text);
-    if (card?.kind === 'analysis') {
+    if (card?.kind === 'analysis' || card?.kind === 'lesson') {
       return collapseCoachMessage({ ...card, at: turn.at, trusted: false });
     }
   }
@@ -227,17 +227,19 @@ export function miniCardBodyText(turn: AgentSessionTurn, opts?: DecodeCoachTurnO
   if (turn.cardKind === 'analysis' || turn.cardKind === 'lesson') {
     return collapseCoachMessage(decodeCoachTurn(turn, opts));
   }
-  // Main-format: legacy coach + analysis payload only.
+  // Main-format: legacy coach + analysis|lesson.
   if (opts?.sessionAgent === 'coach' && turn.cardKind === undefined) {
     const mainFormat = decodeCoachCard(turn.text);
-    if (mainFormat?.kind === 'analysis') return displayCardBodyText(mainFormat);
+    if (mainFormat?.kind === 'analysis' || mainFormat?.kind === 'lesson') {
+      return displayCardBodyText(mainFormat);
+    }
   }
   return turn.text;
 }
 
 /**
  * Main-format coach-card body with no structural `cardKind`.
- * Read-only display — legacy `coach` + analysis payload only (Shield fix 2).
+ * Read-only display — legacy `coach` + analysis|lesson (A6 / HARD 1).
  */
 export function mainFormatCoachDisplayCard(
   turn: AgentSessionTurn,
@@ -247,6 +249,6 @@ export function mainFormatCoachDisplayCard(
   if (turn.role === 'user') return null;
   if (turn.cardKind !== undefined) return null;
   const card = decodeCoachCard(turn.text);
-  if (card?.kind !== 'analysis') return null;
+  if (card?.kind !== 'analysis' && card?.kind !== 'lesson') return null;
   return card;
 }
