@@ -13,6 +13,13 @@
 import JSZip from 'jszip';
 import fs from 'fs';
 import path from 'path';
+import type { AppSettings } from './ipc.js';
+import {
+  getKeyField,
+  KEY_FIELD_PATHS,
+  setKeyField,
+  type KeyFieldPath,
+} from './settings-masking.js';
 
 export const BACKUP_SCHEMA_VERSION = 1;
 
@@ -46,54 +53,17 @@ export function safeRestoreJoin(destBase: string, entryName: string): string {
 /**
  * Return a copy of the parsed app-settings object with all known plaintext
  * secret fields zeroed out so they are never written into backup archives.
- *
- * Fields redacted: apiKey, provider.apiKey, voice.openaiApiKey,
- * stt.cloudApiKey, tts.cloudApiKey, agents.*.provider.apiKey.
+ * KEYS-B scope 8: walks KEY_FIELD_PATHS (same table as migrate/persist/hydrate).
  */
 export function redactAppSettings(raw: Record<string, unknown>): Record<string, unknown> {
-  const redacted: Record<string, unknown> = { ...raw };
-
-  if (typeof redacted.apiKey === 'string') redacted.apiKey = '';
-
-  if (redacted.provider && typeof redacted.provider === 'object') {
-    const p = redacted.provider as Record<string, unknown>;
-    if (typeof p.apiKey === 'string') redacted.provider = { ...p, apiKey: '' };
-  }
-
-  if (redacted.voice && typeof redacted.voice === 'object') {
-    const v = redacted.voice as Record<string, unknown>;
-    if (typeof v.openaiApiKey === 'string') redacted.voice = { ...v, openaiApiKey: '' };
-  }
-
-  if (redacted.stt && typeof redacted.stt === 'object') {
-    const s = redacted.stt as Record<string, unknown>;
-    if (typeof s.cloudApiKey === 'string') redacted.stt = { ...s, cloudApiKey: '' };
-  }
-
-  if (redacted.tts && typeof redacted.tts === 'object') {
-    const t = redacted.tts as Record<string, unknown>;
-    if (typeof t.cloudApiKey === 'string') redacted.tts = { ...t, cloudApiKey: '' };
-  }
-
-  if (redacted.agents && typeof redacted.agents === 'object') {
-    const agents = redacted.agents as Record<string, unknown>;
-    const redactedAgents: Record<string, unknown> = { ...agents };
-    for (const agentKey of Object.keys(redactedAgents)) {
-      const agent = redactedAgents[agentKey];
-      if (agent && typeof agent === 'object') {
-        const a = agent as Record<string, unknown>;
-        if (a.provider && typeof a.provider === 'object') {
-          const p = a.provider as Record<string, unknown>;
-          if (typeof p.apiKey === 'string') {
-            redactedAgents[agentKey] = { ...a, provider: { ...p, apiKey: '' } };
-          }
-        }
-      }
+  let out = { ...raw } as unknown as AppSettings;
+  for (const path of KEY_FIELD_PATHS) {
+    const val = getKeyField(out, path as KeyFieldPath);
+    if (typeof val === 'string') {
+      out = setKeyField(out, path as KeyFieldPath, '');
     }
-    redacted.agents = redactedAgents;
   }
-
-  return redacted;
+  return out as unknown as Record<string, unknown>;
 }
 
 export interface BackupHeader {

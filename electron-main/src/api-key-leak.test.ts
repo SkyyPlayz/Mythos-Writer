@@ -744,8 +744,8 @@ function seedMaskOnPath(settings: AppSettings, path: KeyFieldPath, mask: string)
   return setKeyField(settings, path, mask);
 }
 
-/** Secret-store id for KEY_FIELD_PATHS entries that hydrate via SecretsStore. */
-const SECRET_ID_BY_PATH: Partial<Record<KeyFieldPath, string>> = {
+/** Secret-store id for every KEY_FIELD_PATHS entry (KEYS-B single table). */
+const SECRET_ID_BY_PATH: Record<KeyFieldPath, string> = {
   apiKey: 'anthropic.apiKey',
   'provider.apiKey': 'provider.apiKey',
   'voice.openaiApiKey': 'voice.openaiApiKey',
@@ -755,7 +755,9 @@ const SECRET_ID_BY_PATH: Partial<Record<KeyFieldPath, string>> = {
   'agents.brainstorm.provider.apiKey': 'provider.brainstorm.apiKey',
   'agents.archive.provider.apiKey': 'provider.archive.apiKey',
   'agents.betaReader.provider.apiKey': 'provider.betaReader.apiKey',
-  // alphaReader / storylineConsultant / lineEditor stay on disk (no secret id yet).
+  'agents.alphaReader.provider.apiKey': 'provider.alphaReader.apiKey',
+  'agents.storylineConsultant.provider.apiKey': 'provider.storylineConsultant.apiKey',
+  'agents.lineEditor.provider.apiKey': 'provider.lineEditor.apiKey',
 };
 
 /** Disk fixture with provider stubs so hydrate can overlay agent keys; migration already done. */
@@ -787,14 +789,10 @@ function seedMaskForLoader(
   path: KeyFieldPath,
   mask: string,
 ): void {
-  let disk = loaderDiskFixture();
+  const disk = loaderDiskFixture();
   const secretId = SECRET_ID_BY_PATH[path];
-  if (secretId) {
-    store.set(secretId, mask);
-    // Disk keeps empty secret-shaped fields (post-migration shape).
-  } else {
-    disk = setKeyField(disk, path, mask);
-  }
+  store.set(secretId, mask);
+  // Disk keeps empty secret-shaped fields (post-migration shape).
   fs.writeFileSync(settingsPath, JSON.stringify(disk, null, 2), 'utf-8');
 }
 
@@ -1058,24 +1056,28 @@ describe('P6 — heal-on-read iterates KEY_FIELD_PATHS', () => {
     }
   });
 
-  it('real key clears flag; deliberate clear drops flag; reload rebuilds set', () => {
-    const masked = seedMaskOnPath(settingsFixture({ apiKey: '' }), 'provider.apiKey', maskApiKey(K1));
-    const healed = healMaskedKeyFields(masked);
+  it('R4-L via real saver: real key clears flag; mask save does not; reload rebuilds set', () => {
+    // Shield r1: renamed away from stale "deliberate clear drops flag" heal-only pin.
+    const { store, settingsPath } = mkStore();
+    seedMaskForLoader(settingsPath, store, 'provider.apiKey', maskApiKey(K1));
+    const healed = loadAppSettingsFrom(settingsPath, () => store);
     expect(healed.keyReentryPaths).toContain('provider.apiKey');
-    // Real key save — next load won't flag.
-    const withReal = setKeyField(healed, 'provider.apiKey', K2);
-    const afterReal = healMaskedKeyFields(withReal);
+
+    // Real key through saver clears held flag.
+    saveAppSettingsTo(settingsPath, () => store, setKeyField(healed, 'provider.apiKey', K2));
+    const afterReal = loadAppSettingsFrom(settingsPath, () => store);
     expect(afterReal.keyReentryPaths ?? []).not.toContain('provider.apiKey');
-    // Deliberate clear.
-    const cleared = setKeyField(healed, 'provider.apiKey', '');
-    const afterClear = healMaskedKeyFields(cleared);
-    expect(afterClear.keyReentryPaths ?? []).not.toContain('provider.apiKey');
-    // Reload rebuilds when mask still on disk.
-    const again = healMaskedKeyFields(masked);
-    expect(again.keyReentryPaths).toContain('provider.apiKey');
+    expect(getKeyField(afterReal, 'provider.apiKey')).toBe(K2);
+
+    // Re-seed mask; deliberate '' clear through saver does NOT drop held flag (R4-L).
+    seedMaskForLoader(settingsPath, store, 'provider.apiKey', maskApiKey(K1));
+    const healed2 = loadAppSettingsFrom(settingsPath, () => store);
+    saveAppSettingsTo(settingsPath, () => store, setKeyField(healed2, 'provider.apiKey', ''));
+    const afterClear = loadAppSettingsFrom(settingsPath, () => store);
+    expect(afterClear.keyReentryPaths).toContain('provider.apiKey');
   });
 
-  it('S2: migration-path seed (plaintext mask → secrets) then heal via real loader', () => {
+  it('S2: plaintext mask is NOT migrated (B4); heal via real loader clears to empty + flag', () => {
     const { store, settingsPath } = mkStore();
     const plaintext = {
       ...loaderDiskFixture(),
@@ -1085,8 +1087,10 @@ describe('P6 — heal-on-read iterates KEY_FIELD_PATHS', () => {
     };
     fs.writeFileSync(settingsPath, JSON.stringify(plaintext, null, 2), 'utf-8');
     const migrated = migrateSecretsFromSettingsFile(settingsPath, store);
-    expect(migrated.migrated).toBe(true);
-    // Real loader: decrypt/hydrate then heal (never heal the encrypted blob).
+    // B4: masks stay in JSON for heal — never written to the store.
+    expect(migrated.migrated).toBe(false);
+    expect(store.listIds()).toEqual([]);
+    // Real loader: heal (never heal the encrypted blob — nothing stored).
     const healed = loadAppSettingsFrom(settingsPath, () => store);
     expect(healed.apiKey).toBe('');
     expect(healed.provider?.apiKey).toBe('');
@@ -1177,6 +1181,11 @@ describe('K17 source — main.ts delegates to loadAppSettingsFrom + saveAppSetti
     expect(mainSrc).toMatch(
       /function getProviderConfigForAgent\([\s\S]*?return getProviderConfigForAgentFrom\(loadAppSettings\(\)/,
     );
+    // KEYS-B / K12s: streaming handler provider config and voice readers use the loader.
+    expect(mainSrc).toMatch(
+      /registerStreamingHandlers\(\(\)\s*=>\s*buildGlobalProviderConfig\(loadAppSettings\(\)\)\)/,
+    );
+    expect(mainSrc).toMatch(/registerVoiceHandlers\([\s\S]*?loadAppSettings,/);
   });
 });
 

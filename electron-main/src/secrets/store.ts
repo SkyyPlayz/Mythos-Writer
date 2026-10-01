@@ -11,7 +11,7 @@
 // the real safeStorage at runtime; tests inject a stub.
 
 import fs from 'fs';
-import path from 'path';
+import { writeJsonAtomicSecure } from './atomicWrite.js';
 
 // Known secret identifiers. Adding a new key here makes the store aware of it
 // for `listKnownIds()` and the migration walker — values for unknown IDs are
@@ -22,6 +22,10 @@ export type SecretId =
   | 'provider.brainstorm.apiKey' // SKY-683 per-agent provider key for Brainstorm
   | 'provider.writingAssistant.apiKey' // SKY-683 per-agent provider key for Writing Assistant
   | 'provider.archive.apiKey' // SKY-740 per-agent provider key for Archive
+  | 'provider.betaReader.apiKey' // Beta 3 M22 / KEYS-B
+  | 'provider.alphaReader.apiKey' // KEYS-B production role
+  | 'provider.storylineConsultant.apiKey' // KEYS-B production role
+  | 'provider.lineEditor.apiKey' // KEYS-B production role
   | 'voice.openaiApiKey' // MYT-424 Whisper cloud fallback
   | 'stt.cloudApiKey' // SKY-816 STT cloud endpoint API key
   | 'tts.cloudApiKey'; // SKY-817 TTS cloud endpoint API key
@@ -32,6 +36,10 @@ export const KNOWN_SECRET_IDS: readonly SecretId[] = [
   'provider.brainstorm.apiKey',
   'provider.writingAssistant.apiKey',
   'provider.archive.apiKey',
+  'provider.betaReader.apiKey',
+  'provider.alphaReader.apiKey',
+  'provider.storylineConsultant.apiKey',
+  'provider.lineEditor.apiKey',
   'voice.openaiApiKey',
   'stt.cloudApiKey',
   'tts.cloudApiKey',
@@ -169,7 +177,7 @@ export class SecretsStore {
       values[id] = ciphertext.toString('base64');
     }
     const file: SecretsFile = { v: FILE_VERSION, values };
-    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-    fs.writeFileSync(this.filePath, JSON.stringify(file, null, 2), 'utf-8');
+    // KEYS-B B3: atomic temp + rename; never truncate secrets.json in place.
+    writeJsonAtomicSecure(this.filePath, file);
   }
 }

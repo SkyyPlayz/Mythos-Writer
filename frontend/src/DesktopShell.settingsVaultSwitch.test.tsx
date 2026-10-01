@@ -2855,22 +2855,19 @@ describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
     fireEvent.change(themeSel, { target: { value: 'ice' } });
     await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
 
-    const nameEl = screen.queryByText('Alpha') ?? screen.queryByText('Bravo');
-    if (nameEl) {
-      fireEvent.doubleClick(nameEl);
-      const renameInput = screen.queryByTestId(`mvs-rename-input-${VAULT_A}`)
-        ?? screen.queryByTestId(`mvs-rename-input-${VAULT_B}`);
-      if (renameInput) {
-        fireEvent.change(renameInput, { target: { value: 'Renamed Vault' } });
-        fireEvent.keyDown(renameInput, { key: 'Enter' });
-        await waitFor(() =>
-          expect(settingsSetMock.mock.calls.some((c) => {
-            const p = c[0] as { vaultDisplayNames?: Record<string, string> };
-            return p.vaultDisplayNames && Object.values(p.vaultDisplayNames).includes('Renamed Vault');
-          })).toBe(true),
-        );
-      }
-    }
+    // KEYS-B rider: no `if (el)` soft-skip — rename must run on the real panel.
+    const nameEl = screen.queryByText('Alpha') ?? screen.getByText('Bravo');
+    fireEvent.doubleClick(nameEl);
+    const renameInput = screen.queryByTestId(`mvs-rename-input-${VAULT_A}`)
+      ?? screen.getByTestId(`mvs-rename-input-${VAULT_B}`);
+    fireEvent.change(renameInput, { target: { value: 'Renamed Vault' } });
+    fireEvent.keyDown(renameInput, { key: 'Enter' });
+    await waitFor(() =>
+      expect(settingsSetMock.mock.calls.some((c) => {
+        const p = c[0] as { vaultDisplayNames?: Record<string, string> };
+        return p.vaultDisplayNames && Object.values(p.vaultDisplayNames).includes('Renamed Vault');
+      })).toBe(true),
+    );
 
     settingsSetMock.mockClear();
     const hide = await screen.findByRole('button', { name: /Hide right sidebar/i });
@@ -2882,11 +2879,9 @@ describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
   it('Close then relaunch: apiKey and provider.apiKey stay raw K2', async () => {
     await seedK2AndOpenSettings();
     // Paste K2 into Model & keys (dirty) then flush — already seeded on disk;
-    // ensure UI path also sends K2 when dirty.
-    const keyInput = screen.queryByLabelText('API key');
-    if (keyInput) {
-      fireEvent.change(keyInput, { target: { value: K2 } });
-    }
+    // ensure UI path also sends K2 when dirty. KEYS-B: no `if (el)` soft-skip.
+    const keyInput = screen.getByLabelText('API key');
+    fireEvent.change(keyInput, { target: { value: K2 } });
     await themeRenameAndShellWrite();
 
     await triggerSettingsClose('close');
@@ -2903,10 +2898,8 @@ describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
 
   it('unmount without Close then relaunch: keys stay raw K2', async () => {
     await seedK2AndOpenSettings();
-    const keyInput = screen.queryByLabelText('API key');
-    if (keyInput) {
-      fireEvent.change(keyInput, { target: { value: K2 } });
-    }
+    const keyInput = screen.getByLabelText('API key');
+    fireEvent.change(keyInput, { target: { value: K2 } });
     await themeRenameAndShellWrite();
     cleanup(); // unmount without Close
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

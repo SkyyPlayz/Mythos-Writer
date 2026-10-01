@@ -10,6 +10,22 @@ import { SecretsStore, type SafeStorageLike, type SecretId } from './store.js';
 
 export { SecretsStore, KNOWN_SECRET_IDS } from './store.js';
 export type { SafeStorageLike, SecretId, SecretsStoreOptions } from './store.js';
+export {
+  SECRET_ID_BY_KEY_PATH,
+  KEY_PATH_SECRET_ENTRIES,
+  assertKeyPathSecretTableComplete,
+} from './keyFieldMap.js';
+export {
+  deleteLeftoverAtomicTemps,
+  writeFileAtomicSecure,
+  writeJsonAtomicSecure,
+} from './atomicWrite.js';
+export {
+  migrateSecretsFromSettingsFile,
+  hydrateSecretsIntoSettings,
+  persistSecretsAndStripSettings,
+  blankAllKeyFields,
+} from './migration.js';
 
 let singleton: SecretsStore | null = null;
 

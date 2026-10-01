@@ -731,7 +731,7 @@ import {
 import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
 import { restartVaultRuntime } from './vaultRuntimeRestart.js';
 import { resolveVaultImportCollisions } from './vaultImportConflict.js';
-import { initSecretsStore, getSecretsStore } from './secrets/index.js';
+import { initSecretsStore, getSecretsStore, deleteLeftoverAtomicTemps } from './secrets/index.js';
 import { migrateSecretsFromSettingsFile } from './secrets/migration.js';
 import { indexDocument, buildFullIndex, searchVault, planFtsUpdate, indexSceneFromDisk, refreshEntityIndex } from './search.js';
 import { buildEpub } from './epub.js';
@@ -791,7 +791,8 @@ import {
   type ProductionRoleId,
 } from './productionRoles.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
-import { backupAppData, restoreAppData } from './backup.js';
+import { backupAppData } from './backup.js';
+import { restoreAppDataAndReloadSettings } from './appRestore.js';
 import { cleanUninstall, writeUninstallDeletePathList } from './uninstallHelper.js';
 import { planUninstallRecovery } from './uninstallRecoveryPlan.js';
 import {
@@ -7238,18 +7239,19 @@ const handlers: IpcHandlers = {
     const archivePath = res.filePaths[0];
     await shutdownJobService();
     closeDb();
-    try {
-      const result = await restoreAppData({
-        archivePath,
-        userDataPath: app.getPath('userData'),
-        storyVaultRoot: getVaultRoot(),
-        notesVaultRoot: getNotesVaultRoot(),
-        overwrite: payload?.confirmed ?? false,
-      });
-      return result;
-    } finally {
-      ensureVaultDir();
-    }
+    // KEYS-B PB9b: restore + finally settings reload share one entry point so
+    // the slice2 flag write cannot wipe the secret store (S-B11 JSON-only).
+    return restoreAppDataAndReloadSettings({
+      archivePath,
+      userDataPath: app.getPath('userData'),
+      storyVaultRoot: getVaultRoot(),
+      notesVaultRoot: getNotesVaultRoot(),
+      overwrite: payload?.confirmed ?? false,
+      getStore: getSecretsStore,
+      afterExtract: () => {
+        ensureVaultDir();
+      },
+    });
   },
   // SKY-2969: Uninstaller vault-cleanup choice
   [IPC_CHANNELS.APP_CLEAN_UNINSTALL]: async (): Promise<CleanUninstallResponse> => {
@@ -11744,13 +11746,22 @@ app.whenReady().then(async () => {
   // migration that lifts any plaintext API keys out of app-settings.json into
   // safeStorage. Must precede initTelemetry — that path can rewrite settings.
   initSecretsStore({ userDataDir: app.getPath('userData'), safeStorage });
+  // KEYS-B B3: drop leftover atomic temps before migration (never read as settings).
+  try {
+    const settingsPath = getAppSettingsPath();
+    const secretsPath = path.join(app.getPath('userData'), 'secrets.json');
+    deleteLeftoverAtomicTemps([settingsPath, secretsPath]);
+  } catch {
+    /* best-effort */
+  }
   try {
     migrateSecretsFromSettingsFile(getAppSettingsPath(), getSecretsStore());
-  } catch (e) {
+  } catch {
     // On hosts without a usable OS keychain, safeStorage.encryptString throws
     // and the migration would re-throw. Leave the file untouched so existing
     // env-var workflows keep working; settings UI will surface the error.
-    console.warn('[secrets] migration skipped: safeStorage unavailable —', (e as Error).message);
+    // B5: path/id only — never log e.message (could contain a key value).
+    console.warn('[secrets] migration skipped: safeStorage unavailable');
   }
   // Initialize telemetry from persisted settings (off by default)
   initTelemetry();

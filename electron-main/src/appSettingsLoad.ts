@@ -10,7 +10,12 @@
 import fs from 'fs';
 import type { AppSettings } from './ipc.js';
 import { providerConfigForAgent, type ProviderConfig } from './provider.js';
-import { hydrateSecretsIntoSettings, persistSecretsAndStripSettings } from './secrets/migration.js';
+import { writeJsonAtomicSecure } from './secrets/atomicWrite.js';
+import {
+  blankAllKeyFields,
+  hydrateSecretsIntoSettings,
+  persistSecretsAndStripSettings,
+} from './secrets/migration.js';
 import type { SecretsStore } from './secrets/store.js';
 import {
   getKeyField,
@@ -60,9 +65,9 @@ function withHeldKeyReentryPaths(settingsPath: string, settings: AppSettings): A
 
 /**
  * Clear held flags only for paths whose saved value is a real key
- * (non-empty and not isMaskedPreview). Blank / mask / absent leave the flag.
- * Also force mask-shaped values to '' so they never reach JSON/secrets (no
- * K19 retention — H2 heal-to-empty on the write path).
+ * (non-empty after trim, and not isMaskedPreview). Blank / whitespace-only /
+ * mask / absent leave the flag (Shield r2). Also force mask-shaped values to
+ * '' so they never reach JSON/secrets (H2 heal-to-empty on the write path).
  */
 function applyHeldFlagLifecycle(
   settingsPath: string,
@@ -77,7 +82,8 @@ function applyHeldFlagLifecycle(
       out = setKeyField(out, path as KeyFieldPath, '');
       continue;
     }
-    if (held.has(path) && typeof val === 'string' && val.length > 0) {
+    // Shield r2: whitespace-only is not a real key — do not clear the flag.
+    if (held.has(path) && typeof val === 'string' && val.trim().length > 0) {
       held.delete(path);
     }
   }
@@ -194,15 +200,18 @@ export function getOptionalAgentSettings(
  * main.ts's loadAppSettings delegates here. Tests call this with a temp path
  * + SecretsStore to pin H1/H2 on the production path.
  *
- * @param persistMigration — called when the one-shot slice2 autonomy-off migrate
- *   needs to persist (same role as saveAppSettings in main). Optional for tests
- *   that pre-seed `slice2AutonomyOffMigrated: true`.
+ * @param persistMigration — retained for call-site compatibility with main's
+ *   `loadAppSettingsFrom(..., saveAppSettings)`. KEYS-B D5 / S-B11: the slice2
+ *   autonomy-off flag write is JSON-only inside this function and does **not**
+ *   invoke this callback (calling the secret saver mid-load would wipe stored
+ *   keys when JSON fields are empty).
  */
 export function loadAppSettingsFrom(
   settingsPath: string,
   getStore: () => SecretsStore,
   persistMigration?: (settings: AppSettings) => void,
 ): AppSettings {
+  void persistMigration;
   let base: AppSettings;
   if (fs.existsSync(settingsPath)) {
     try {
@@ -266,9 +275,12 @@ export function loadAppSettingsFrom(
         }
         base.slice2AutonomyOffMigrated = true;
         try {
-          // Persist the one-shot migrate immediately so a subsequent load
-          // does not re-apply and so prior autoApply:true never comes back.
-          persistMigration?.(base);
+          // KEYS-B D5 / S-B11: JSON-only write — never route through the secret
+          // saver. Mid-load `base` often has empty key fields (post-migration
+          // shape); persistSecretsAndStripSettings would store.set('', …) and
+          // wipe already-migrated secrets. Pre-init plaintext keys must also
+          // survive until migrateSecretsFromSettingsFile runs.
+          writeJsonAtomicSecure(settingsPath, stripKeyReentryPaths(base));
         } catch {
           /* first-open migrate is best-effort; next Write will carry the flag */
         }
@@ -371,12 +383,19 @@ export function getProviderConfigForAgentFrom(
 }
 
 /**
- * Real settings saver body (S4 + R4-L). main.ts's saveAppSettings delegates here.
+ * Real settings saver body (S4 + R4-L + KEYS-B S-B11 / O1).
+ * main.ts's saveAppSettings delegates here.
+ *
  * Always strips incoming keyReentryPaths before JSON / secrets write (K18 —
  * written bytes never contain the flag or a mask). Main keeps held flags in
  * memory: a path clears only when this save carries a non-empty non-mask value
  * for that path. Boot re-sends, blank saves, mask-valued saves, and unrelated
  * full-object writes leave flags intact. H2 stands (disk may heal to '').
+ *
+ * Ivy / S-B11 boot-order rule:
+ *   - Before initSecretsStore: JSON-only write — never blank keys as "no keyring".
+ *   - After init, encryption unavailable: blank every KEY_FIELD_PATHS entry (O1).
+ *   - After init, encryption available: persistSecretsAndStripSettings.
  */
 export function saveAppSettingsTo(
   settingsPath: string,
@@ -389,20 +408,34 @@ export function saveAppSettingsTo(
   // R4-L: ignore any renderer-supplied keyReentryPaths; update held from values.
   // Mask-shaped values coerce to '' before persist (still no mask on disk).
   const lifecycleApplied = applyHeldFlagLifecycle(settingsPath, settings);
-  let outgoing = stripKeyReentryPaths(lifecycleApplied);
+  const outgoing = stripKeyReentryPaths(lifecycleApplied);
 
-  let toWrite: AppSettings = outgoing;
+  let store: SecretsStore | null = null;
   try {
-    toWrite = persistSecretsAndStripSettings(outgoing, getStore());
+    store = getStore();
   } catch {
-    // Store unavailable — still strip secret-shaped fields and keyReentryPaths.
-    toWrite = {
-      ...outgoing,
-      apiKey: '',
-      ...(outgoing.provider ? { provider: { ...outgoing.provider, apiKey: '' } } : {}),
-      ...(outgoing.voice ? { voice: { ...outgoing.voice, openaiApiKey: '' } } : {}),
-    };
+    // SecretsStore not initialized (pre-init boot path, e.g. slice2 flag write
+    // during the first loadAppSettings before initSecretsStore). S-B11: write
+    // JSON only — keep plaintext keys so migrateSecretsFromSettingsFile can
+    // move them after init. Never treat pre-init as O1 "no keyring".
+    writeJsonAtomicSecure(settingsPath, outgoing);
+    return;
   }
+
+  let toWrite: AppSettings;
+  if (!store.isAvailable()) {
+    // Post-init, encryption unavailable → O1 blank all present key fields.
+    toWrite = blankAllKeyFields(outgoing);
+  } else {
+    try {
+      toWrite = persistSecretsAndStripSettings(outgoing, store);
+    } catch {
+      // Encrypt/write failed after init — same O1 blank (keys do not survive).
+      toWrite = blankAllKeyFields(outgoing);
+    }
+  }
+  // Single strip after secret handling (PB saver-strip pin). Lifecycle already
+  // stripped once above; this catches any flag a secret helper might re-add.
   toWrite = stripKeyReentryPaths(toWrite);
-  fs.writeFileSync(settingsPath, JSON.stringify(toWrite, null, 2), 'utf-8');
+  writeJsonAtomicSecure(settingsPath, toWrite);
 }
