@@ -193,6 +193,10 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(PANEL_CSS).toMatch(
       /\.pc-header\.brainstorm-header\s+\.pc-header-title-group\s*\{[\s\S]*min-width:\s*3rem/,
     );
+    // Ivy ruling 4: start group floor — Back+title cannot collapse under actions.
+    expect(PANEL_CSS).toMatch(
+      /\.pc-header\.brainstorm-header\s+\.pc-header-start\s*\{[\s\S]*min-width:\s*min-content/,
+    );
     expect(PANEL_CSS).toMatch(/@container\s+pc-chrome\s*\(max-width:\s*700px\)/);
     expect(PANEL_CSS).toMatch(
       /@container\s+pc-chrome\s*\(max-width:\s*700px\)[\s\S]*\.pc-header\.brainstorm-header\s+\.pc-header-actions\s*\{[\s\S]*flex:\s*1\s+1\s+100%/,

@@ -138,15 +138,18 @@
   }
 }
 
-/* Ivy R6: standalone chat @≤900 — mode seg + board toggle → ⋯ so Back /
-   title / page switch never overlap (701/750/800/900). ≥901 keeps inline. */
+/* Ivy ruling 4 (amended): standalone @≤999 — mode seg, board toggle, and
+   board + Idea / search → ⋯ so Back / title / Session / ⋯ never overlap at
+   701–999 (chat + board, AI on or off). ≥1000 keeps controls inline. */
 .brainstorm-header-overflow-btn--standalone {
   display: none;
 }
 
-@container pc-chrome (max-width: 900px) {
+@container pc-chrome (max-width: 999px) {
   .brainstorm-header:not(.brainstorm-header--compact) .bsc-seg--standalone-inline,
-  .brainstorm-header:not(.brainstorm-header--compact) .bs-board-toggle-wrap--standalone-inline {
+  .brainstorm-header:not(.brainstorm-header--compact) .bs-board-toggle-wrap--standalone-inline,
+  .brainstorm-header:not(.brainstorm-header--compact) .bsc-add-idea-btn--standalone-inline,
+  .brainstorm-header:not(.brainstorm-header--compact) .bsc-search--standalone-inline {
     display: none;
   }
   .brainstorm-header:not(.brainstorm-header--compact) .brainstorm-header-overflow-btn--standalone {
@@ -1810,6 +1813,13 @@
 
 .bsc-search:focus-within {
   border-color: var(--b1, rgba(0, 240, 255, 0.5));
+}
+
+/* Board search inside standalone ⋯ (≤999) — full menu width. */
+.ln-menu .bsc-search--overflow {
+  width: auto;
+  margin: 6px 8px 4px;
+  min-width: 180px;
 }
 
 /* ── Agent activity feed (prototype right panel, lines 2468–2496) ── */

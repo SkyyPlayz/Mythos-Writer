@@ -438,8 +438,9 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [alertText, setAlertText] = useState('');
-  // Ivy: header ⋯ — compact Download @≤400; standalone chat mode segment +
-  // board toggle @≤900 (no Back/title/seg overlap @701–900).
+  // Ivy ruling 4: header ⋯ — compact Download @≤400; standalone mode seg +
+  // board toggle (+ board Idea/search) @≤999 (no Back/title/Session/⋯ overlap
+  // @701–999 chat+board). ≥1000 keeps controls inline.
   const [headerOverflowOpen, setHeaderOverflowOpen] = useState(false);
   const headerOverflowRef = useRef<HTMLButtonElement>(null);
   // Beta 3 M22: brainstorm streaming lights the workspace tab strip's agents chip.
@@ -2371,9 +2372,10 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                 </button>
               </div>
             )}
-            {/* Ivy R6: standalone ≤900 — mode seg + board toggle move into ⋯ so
-                Back / title / page switch never overlap @701–900. */}
-            {!compact && visibleModes.length > 1 && (
+            {/* Ivy ruling 4: standalone ≤999 — mode seg + board toggle (+ board
+                + Idea / search) move into ⋯ so Back / title / Session / ⋯ never
+                overlap @701–999. Show ⋯ whenever modes>1 OR board chrome exists. */}
+            {!compact && (visibleModes.length > 1 || (!unifiedBoard && effectiveMode === 'board')) && (
               <>
                 <button
                   ref={headerOverflowRef}
@@ -2394,22 +2396,50 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                     if (id === 'mode-chat') setMode('chat');
                     else if (id === 'mode-board') setMode('board');
                     else if (id === 'board-toggle') setChatBoardOpen((v) => !v);
+                    else if (id === 'add-idea') addLooseIdea();
                   }}
                   items={[
                     ...visibleModes.map((m) => ({
                       id: `mode-${m}`,
-                      label: mode === m ? `✓ ${MODE_LABELS[m]}` : MODE_LABELS[m],
+                      label: MODE_LABELS[m],
+                      checked: mode === m,
                       // Same testids as the inline seg so e2e can assert
-                      // reachability after opening ⋯ @≤900 (Ivy R6).
+                      // reachability after opening ⋯ @≤999 (ruling 4).
                       testId: `bsc-mode-${m}`,
                     })),
                     ...(effectiveMode === 'chat'
                       ? [{
                           id: 'board-toggle',
                           label: chatBoardOpen ? 'Hide Idea Board under chat' : 'Show Idea Board under chat',
+                          checked: chatBoardOpen,
+                        }]
+                      : []),
+                    ...(!unifiedBoard && effectiveMode === 'board'
+                      ? [{
+                          id: 'add-idea',
+                          label: 'Idea',
+                          separator: visibleModes.length > 0,
+                          testId: 'bsc-add-idea',
                         }]
                       : []),
                   ]}
+                  leading={
+                    !unifiedBoard && effectiveMode === 'board' ? (
+                      <div className="bsc-search bsc-search--overflow" role="search">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                          <circle cx="11" cy="11" r="6.5" />
+                          <path d="M20.5 20.5L16 16" />
+                        </svg>
+                        <input
+                          value={ideaQuery}
+                          onChange={(e) => setIdeaQuery(e.target.value)}
+                          placeholder="Search ideas…"
+                          aria-label="Search ideas"
+                          data-testid="bsc-search-input"
+                        />
+                      </div>
+                    ) : undefined
+                  }
                   anchorEl={headerOverflowRef.current}
                   aria-label="Brainstorm header actions"
                   data-testid="brainstorm-header-overflow-standalone-menu"
@@ -2434,12 +2464,15 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
               creates a real note instead of a card. `Search ideas…` filters
               only the legacy canvas — search over a vault-backed board is
               SKY-11191's, not something to fake here with a dead input.
+
+              Ivy ruling 4: at ≤999 these also live in ⋯ (CSS hides the inline
+              copies); ≥1000 keeps them inline beside Mute / New Session.
             */}
             {!compact && !unifiedBoard && effectiveMode === 'board' && (
               <>
                 <button
                   type="button"
-                  className="bsc-add-idea-btn"
+                  className="bsc-add-idea-btn bsc-add-idea-btn--standalone-inline"
                   onClick={addLooseIdea}
                   data-testid="bsc-add-idea"
                 >
@@ -2448,7 +2481,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                   </svg>
                   Idea
                 </button>
-                <div className="bsc-search">
+                <div className="bsc-search bsc-search--standalone-inline">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                     <circle cx="11" cy="11" r="6.5" />
                     <path d="M20.5 20.5L16 16" />

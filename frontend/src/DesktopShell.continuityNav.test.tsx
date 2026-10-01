@@ -1,8 +1,8 @@
 // Critic soft (CHANGES 5372647419) + r3 TC-CP-06: Continuity nav history —
 // Back after "View full note" restores the note (not empty Notes); Forward
-// returns to the scene you left. F2 restores scene clears in
-// handleOpenContinuityEntityNote and relies on the Story NoteViewer gate;
-// keep-scene + applyNavLocation notePath re-apply is F1's H1.
+// returns to the scene you left. F2 keep-scene in handleOpenContinuityEntityNote
+// (do NOT clear selectedScene — Story NoteViewer stays mounted). Forward
+// coverage is asserted below (Alt+→ after Back).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, act, cleanup } from '@testing-library/react';
 import App from './App';

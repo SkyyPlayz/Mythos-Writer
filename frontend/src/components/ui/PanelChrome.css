@@ -162,9 +162,11 @@
   max-width: 100%;
 }
 
+/* Ivy ruling 4: start group (Back + title) has a floor — cannot collapse
+   under actions. Title truncates with ellipsis; Back is never covered. */
 .pc-header.brainstorm-header .pc-header-start {
-  flex: 1 1 0%;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: min-content;
 }
 
 .pc-header.brainstorm-header .pc-header-actions {
@@ -172,7 +174,7 @@
   flex-shrink: 1;
   min-width: 0;
   /* ≥701 one-row: shrink/ellipsis rather than overlapping Back/title.
-     Mode seg moves to ⋯ at ≤900 (BrainstormPage.css). */
+     Mode seg (+ board chrome) moves to ⋯ at ≤999 (BrainstormPage.css). */
   overflow-x: auto;
 }
 

@@ -593,6 +593,104 @@ test('F2 W0.3 / Critic #6 / Probe H2 / Critic hard 1+3: bars clean across tabs',
       expect(r.clipped).toBe(false);
     }
 
+    // ── NH3: non-Brainstorm PanelHeader wrap @280 (WA / Continuity / AR) ──
+    // Critic: ≤320px `.pc-header` wrap must have a real-layout guard — removing
+    // PanelChrome.css @container (max-width: 320px) turns this red. Open Writing
+    // Coach so a WA `.pc-header` is laid out and measured (not Brainstorm).
+    {
+      const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
+      await expect(hubPanel).toBeVisible({ timeout: 8_000 });
+      const partnerTab = page.locator('[data-testid="ahp-tab-partner"]');
+      if (await partnerTab.isVisible({ timeout: 1_000 }).catch(() => false)) {
+        await partnerTab.click();
+      }
+      const waPanel = page.locator('.writing-assistant-panel');
+      if ((await waPanel.count()) === 0) {
+        const agentRow = page.locator('[data-testid="ahp-hand-writer"]');
+        await expect(agentRow).toBeVisible({ timeout: 4_000 });
+        await agentRow.click();
+      }
+      await expect(page.locator('.writing-assistant-panel .pc-header.wa-panel-header')).toBeVisible({
+        timeout: 8_000,
+      });
+      const wa280 = await page.evaluate(() => {
+        function overlaps(a: DOMRect, b: DOMRect): boolean {
+          return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+        }
+        function inside(child: DOMRect, bar: DOMRect): boolean {
+          return (
+            child.left >= bar.left - 1
+            && child.right <= bar.right + 1
+            && child.top >= bar.top - 1
+            && child.bottom <= bar.bottom + 1
+          );
+        }
+        const el = document.querySelector(
+          '.writing-assistant-panel .pc-header.wa-panel-header',
+        ) as HTMLElement | null;
+        if (!el) {
+          return { found: false, height: 0, titleWidth: 0, overlap: true, controlOutside: true, clipped: true, wrapped: false };
+        }
+        const host = (el.closest('.pc-header-host') as HTMLElement | null) ?? el;
+        const prevW = host.style.width;
+        const prevMin = host.style.minWidth;
+        const prevMax = host.style.maxWidth;
+        host.style.width = '280px';
+        host.style.minWidth = '280px';
+        host.style.maxWidth = '280px';
+        void host.offsetWidth;
+        const rect = el.getBoundingClientRect();
+        const title = el.querySelector('.pc-header-title') as HTMLElement | null;
+        const titleGroup = el.querySelector('.pc-header-title-group') as HTMLElement | null;
+        const tg = titleGroup?.getBoundingClientRect();
+        const titleWidth = title ? title.getBoundingClientRect().width : 0;
+        const clipped = Boolean(tg && (tg.bottom > rect.bottom + 1 || tg.top < rect.top - 1));
+        const kids = [...el.querySelectorAll<HTMLElement>(
+          'button, [role="tab"], [role="switch"], .pc-header-title, select, input',
+        )];
+        let overlap = false;
+        let controlOutside = false;
+        for (let i = 0; i < kids.length; i++) {
+          const ri = kids[i].getBoundingClientRect();
+          if (ri.width < 1 || ri.height < 1) continue;
+          if (!inside(ri, rect)) controlOutside = true;
+          for (let j = i + 1; j < kids.length; j++) {
+            if (kids[i].contains(kids[j]) || kids[j].contains(kids[i])) continue;
+            const rj = kids[j].getBoundingClientRect();
+            if (rj.width < 1 || rj.height < 1) continue;
+            if (overlaps(ri, rj)) { overlap = true; break; }
+          }
+          if (overlap) break;
+        }
+        const start = el.querySelector('.pc-header-start') as HTMLElement | null;
+        const actions = el.querySelector('.pc-header-actions') as HTMLElement | null;
+        const sr = start?.getBoundingClientRect();
+        const ar = actions?.getBoundingClientRect();
+        // Wrap guard: actions sit on a second row below start (≤320 @container).
+        const wrapped = Boolean(
+          sr && ar && ar.top >= sr.bottom - 2 && Math.round(rect.height) > 40,
+        );
+        host.style.width = prevW;
+        host.style.minWidth = prevMin;
+        host.style.maxWidth = prevMax;
+        return {
+          found: true,
+          height: Math.round(rect.height),
+          titleWidth: Math.round(titleWidth),
+          overlap,
+          controlOutside,
+          clipped,
+          wrapped,
+        };
+      });
+      expect(wa280.found, 'WA .pc-header must be laid out for NH3').toBe(true);
+      expect(wa280.titleWidth, 'WA title width @280').toBeGreaterThan(0);
+      expect(wa280.overlap, 'WA header overlaps @280 (NH3 wrap missing?)').toBe(false);
+      expect(wa280.controlOutside, 'WA control outside bar @280').toBe(false);
+      expect(wa280.clipped, 'WA title clipped @280').toBe(false);
+      expect(wa280.wrapped, 'WA header must wrap at 280 (≤320 @container)').toBe(true);
+    }
+
     // ── Notes tab @ 280 ──────────────────────────────────────────────────
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
     await expect(page.locator('.notes-tab-panel, .notes-tab-toolbar').first()).toBeVisible({ timeout: 8_000 });
@@ -621,7 +719,7 @@ test('F2 W0.3 / Critic #6 / Probe H2 / Critic hard 1+3: bars clean across tabs',
     await page.locator('[data-testid="nav-rail-brainstorm"]').click();
     await expect(page.locator('[aria-labelledby="app-tab-brainstorm"]')).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('.pc-header-host .pc-header.brainstorm-header').first()).toBeVisible({ timeout: 8_000 });
-    // Ivy R6: mode seg may be display:none @≤900 (⋯ instead) — wait on Mute /
+    // Ivy ruling 4: mode seg may be display:none @≤999 (⋯ instead) — wait on Mute /
     // New Session which stay visible, not the first actions button.
     await expect(page.locator(
       '.pc-header.brainstorm-header .brainstorm-mute-btn, .pc-header.brainstorm-header .brainstorm-new-session-btn',
@@ -717,10 +815,11 @@ test('F2 W0.3 / Critic #6 / Probe H2 / Critic hard 1+3: bars clean across tabs',
   }
 });
 
-// Ivy R6: standalone chat header @701/750/800/900 — no overlap among Back,
-// title, and Agent Chat|Idea Board (inline or ⋯); title visible; Back click
-// navigates. Board mode + 1000/1440 stay 77 one-row (covered by W0.3 test).
-test('Ivy R6: standalone chat header no overlap at 701/750/800/900 + Back click', async () => {
+// Ivy ruling 4 (amended): standalone AI-on chat AND board @701/760/880/920/
+// 950/1000 — one row, no overlap among Back, title, Session pill (chat), ⋯;
+// mode in ⋯ at ≤999 and inline at ≥1000; real hit-test click on Back at each
+// width. ≤700 two-row wrap is accepted elsewhere (W0.3 test) when clean.
+test('Ivy ruling 4: standalone chat+board no overlap at 701–1000 + Back hit-test', async () => {
   const app = await launchApp(userData);
   try {
     const page = await firstWindow(app);
@@ -734,18 +833,35 @@ test('Ivy R6: standalone chat header no overlap at 701/750/800/900 + Back click'
       '.pc-header.brainstorm-header:not(.brainstorm-header--compact) .brainstorm-mute-btn',
     ).first()).toBeVisible({ timeout: 5_000 });
 
-    type ChatReport = {
+    type ModeReport = {
       width: number;
+      mode: 'chat' | 'board';
       height: number;
       titleVisible: boolean;
       backVisible: boolean;
-      modeReachable: boolean;
+      sessionVisible: boolean | null;
+      overflowVisible: boolean;
       modePlacement: 'inline' | 'overflow';
       overlap: boolean;
+      backHitOk: boolean;
     };
 
-    async function measureChat(width: number): Promise<ChatReport> {
-      return page.evaluate((w) => {
+    async function measureMode(width: number, mode: 'chat' | 'board'): Promise<ModeReport> {
+      // Ensure the requested mode without relying on viewport (⋯ vs inline).
+      const inlineSeg = page.locator('[data-testid="bsc-mode-seg-inline"]');
+      const overflowBtn = page.locator('[data-testid="brainstorm-header-overflow-standalone"]');
+      if (await inlineSeg.isVisible().catch(() => false)) {
+        await page.locator(`[data-testid="bsc-mode-seg-inline"] [data-testid="bsc-mode-${mode}"]`).click();
+      } else if (await overflowBtn.isVisible().catch(() => false)) {
+        const menu = page.locator('[data-testid="brainstorm-header-overflow-standalone-menu"]');
+        if (!(await menu.isVisible().catch(() => false))) await overflowBtn.click();
+        await expect(menu).toBeVisible({ timeout: 3_000 });
+        await page.locator(`[data-testid="bsc-mode-${mode}"]:visible`).click();
+        // Menu closes after choice; wait a tick for layout.
+        await expect(menu).toBeHidden({ timeout: 3_000 }).catch(() => undefined);
+      }
+
+      return page.evaluate(({ w, m }) => {
         function overlaps(a: DOMRect, b: DOMRect): boolean {
           return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
         }
@@ -754,8 +870,9 @@ test('Ivy R6: standalone chat header no overlap at 701/750/800/900 + Back click'
         ) as HTMLElement | null;
         if (!el) {
           return {
-            width: w, height: 0, titleVisible: false, backVisible: false,
-            modeReachable: false, modePlacement: 'overflow' as const, overlap: true,
+            width: w, mode: m, height: 0, titleVisible: false, backVisible: false,
+            sessionVisible: null, overflowVisible: false,
+            modePlacement: 'overflow' as const, overlap: true, backHitOk: false,
           };
         }
         const host = (el.closest('.pc-header-host') as HTMLElement | null) ?? el;
@@ -769,79 +886,124 @@ test('Ivy R6: standalone chat header no overlap at 701/750/800/900 + Back click'
         const rect = el.getBoundingClientRect();
         const back = el.querySelector('.brainstorm-back-btn, [aria-label="Close brainstorm"]') as HTMLElement | null;
         const title = el.querySelector('.pc-header-title') as HTMLElement | null;
+        const session = el.querySelector('.bs-session-pill, .asp-root.bs-session-pill, .asp-pill') as HTMLElement | null;
         const seg = el.querySelector('[data-testid="bsc-mode-seg-inline"]') as HTMLElement | null;
         const overflow = el.querySelector('[data-testid="brainstorm-header-overflow-standalone"]') as HTMLElement | null;
         const br = back?.getBoundingClientRect();
         const tr = title?.getBoundingClientRect();
+        const sessR = session?.getBoundingClientRect();
         const sr = seg?.getBoundingClientRect();
         const or = overflow?.getBoundingClientRect();
         const backVisible = Boolean(br && br.width > 0 && br.height > 0);
         const titleVisible = Boolean(tr && tr.width > 0 && tr.height > 0);
+        const sessionVisible = m === 'chat'
+          ? Boolean(sessR && sessR.width > 0 && sessR.height > 0)
+          : null;
         const segVisible = Boolean(sr && sr.width > 0 && sr.height > 0);
         const overflowVisible = Boolean(or && or.width > 0 && or.height > 0);
-        const modeReachable = segVisible || overflowVisible;
         const modePlacement = segVisible ? 'inline' as const : 'overflow' as const;
+
+        // Overlap set: Back, title, Session pill (chat), ⋯ — skip nested pairs
+        // (Session lives inside .pc-header-title).
+        const parts: Array<{ el: HTMLElement; r: DOMRect }> = [];
+        if (backVisible && br && back) parts.push({ el: back, r: br });
+        if (titleVisible && tr && title) parts.push({ el: title, r: tr });
+        if (sessionVisible && sessR && session) parts.push({ el: session, r: sessR });
+        if (overflowVisible && or && overflow) parts.push({ el: overflow, r: or });
         let overlap = false;
-        if (backVisible && titleVisible && br && tr && overlaps(br, tr)) overlap = true;
-        if (backVisible && segVisible && br && sr && overlaps(br, sr)) overlap = true;
-        if (titleVisible && segVisible && tr && sr && overlaps(tr, sr)) overlap = true;
+        for (let i = 0; i < parts.length; i++) {
+          for (let j = i + 1; j < parts.length; j++) {
+            if (parts[i].el.contains(parts[j].el) || parts[j].el.contains(parts[i].el)) continue;
+            if (overlaps(parts[i].r, parts[j].r)) { overlap = true; break; }
+          }
+          if (overlap) break;
+        }
+
+        // Real hit-test: elementFromPoint at Back centre must be Back (or inside it).
+        let backHitOk = false;
+        if (backVisible && br && back) {
+          const cx = br.left + br.width / 2;
+          const cy = br.top + br.height / 2;
+          const hit = document.elementFromPoint(cx, cy);
+          backHitOk = Boolean(hit && (hit === back || back.contains(hit)));
+        }
+
         host.style.width = prevW;
         host.style.minWidth = prevMin;
         host.style.maxWidth = prevMax;
         return {
           width: w,
+          mode: m,
           height: Math.round(rect.height),
           titleVisible,
           backVisible,
-          modeReachable,
+          sessionVisible,
+          overflowVisible,
           modePlacement,
           overlap,
+          backHitOk,
         };
-      }, width);
+      }, { w: width, m: mode });
     }
 
-    const widths = [701, 750, 800, 900] as const;
-    const reports: ChatReport[] = [];
-    for (const w of widths) {
-      const m = await measureChat(w);
-      reports.push(m);
-      expect(m.backVisible, `Back visible @${w}`).toBe(true);
-      expect(m.titleVisible, `title visible @${w}`).toBe(true);
-      expect(m.modeReachable, `mode reachable inline or overflow @${w}`).toBe(true);
-      expect(m.overlap, `no Back/title/mode overlap @${w}`).toBe(false);
-      // ≤900 → overflow; keep one-row band
-      expect(m.modePlacement, `mode in overflow @${w}`).toBe('overflow');
-      expect(m.height, `one-row height @${w}`).toBeGreaterThanOrEqual(60);
-      expect(m.height, `one-row height @${w}`).toBeLessThanOrEqual(90);
-    }
-
-    // Real click on Back centre navigates away from Brainstorm.
-    await page.evaluate(() => {
-      const el = document.querySelector(
-        '.pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)',
-      ) as HTMLElement | null;
-      const host = (el?.closest('.pc-header-host') as HTMLElement | null) ?? el;
-      if (host) {
-        host.style.width = '750px';
-        host.style.minWidth = '750px';
-        host.style.maxWidth = '750px';
+    const widths = [701, 760, 880, 920, 950, 1000] as const;
+    const reports: ModeReport[] = [];
+    for (const mode of ['chat', 'board'] as const) {
+      for (const w of widths) {
+        const m = await measureMode(w, mode);
+        reports.push(m);
+        expect(m.backVisible, `Back visible @${w} ${mode}`).toBe(true);
+        expect(m.titleVisible, `title visible @${w} ${mode}`).toBe(true);
+        expect(m.overlap, `no Back/title/Session/⋯ overlap @${w} ${mode}`).toBe(false);
+        expect(m.backHitOk, `Back hit-test @${w} ${mode}`).toBe(true);
+        expect(m.height, `one-row height @${w} ${mode}`).toBeGreaterThanOrEqual(60);
+        expect(m.height, `one-row height @${w} ${mode}`).toBeLessThanOrEqual(90);
+        if (w <= 999) {
+          expect(m.modePlacement, `mode in overflow @${w} ${mode}`).toBe('overflow');
+          expect(m.overflowVisible, `⋯ visible @${w} ${mode}`).toBe(true);
+        } else {
+          expect(m.modePlacement, `mode inline @${w} ${mode}`).toBe('inline');
+        }
+        if (mode === 'chat') {
+          expect(m.sessionVisible, `Session pill visible @${w} chat`).toBe(true);
+        }
       }
-    });
-    const back = page.locator(
-      '.pc-header.brainstorm-header:not(.brainstorm-header--compact) .brainstorm-back-btn, .pc-header.brainstorm-header:not(.brainstorm-header--compact) [aria-label="Close brainstorm"]',
-    ).first();
-    await expect(back).toBeVisible();
-    const box = await back.boundingBox();
-    expect(box, 'Back hit target').toBeTruthy();
-    await page.mouse.click((box!.x + box!.width / 2), (box!.y + box!.height / 2));
-    await expect(page.locator('[aria-labelledby="app-tab-brainstorm"]')).not.toBeVisible({ timeout: 5_000 });
+    }
 
-    await test.info().attach('ivy-r6-standalone-chat-header.json', {
+    // Real mouse click on Back centre at each width (chat) navigates away, then
+    // re-enter Brainstorm for the next width.
+    for (const w of widths) {
+      await page.locator('[data-testid="nav-rail-brainstorm"]').click();
+      await expect(page.locator(
+        '.pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)',
+      ).first()).toBeVisible({ timeout: 8_000 });
+      await page.evaluate((width) => {
+        const el = document.querySelector(
+          '.pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)',
+        ) as HTMLElement | null;
+        const host = (el?.closest('.pc-header-host') as HTMLElement | null) ?? el;
+        if (host) {
+          host.style.width = `${width}px`;
+          host.style.minWidth = `${width}px`;
+          host.style.maxWidth = `${width}px`;
+        }
+      }, w);
+      const back = page.locator(
+        '.pc-header.brainstorm-header:not(.brainstorm-header--compact) .brainstorm-back-btn, .pc-header.brainstorm-header:not(.brainstorm-header--compact) [aria-label="Close brainstorm"]',
+      ).first();
+      await expect(back).toBeVisible();
+      const box = await back.boundingBox();
+      expect(box, `Back hit target @${w}`).toBeTruthy();
+      await page.mouse.click((box!.x + box!.width / 2), (box!.y + box!.height / 2));
+      await expect(page.locator('[aria-labelledby="app-tab-brainstorm"]')).not.toBeVisible({ timeout: 5_000 });
+    }
+
+    await test.info().attach('ivy-ruling4-standalone-header.json', {
       body: Buffer.from(JSON.stringify(reports, null, 2), 'utf8'),
       contentType: 'application/json',
     });
     // eslint-disable-next-line no-console
-    console.log('[Ivy R6 chat header]', JSON.stringify(reports));
+    console.log('[Ivy ruling 4 chat+board header]', JSON.stringify(reports));
   } finally {
     await app.close().catch(() => undefined);
   }

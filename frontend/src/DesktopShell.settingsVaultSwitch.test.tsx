@@ -323,9 +323,10 @@ async function expectCloseFailKeepsEditThenWrites(resume: 'close' | 'retry') {
   ).toBe(true);
 }
 
-/** Live shell uses WindowChrome's project menu; ProjectSwitcher.tsx still ships
- * (AppMenuBar + Ivy R6 flush-first contract). Mount it beside App so clicks hit
- * the REAL ProjectSwitcher while Settings flush/park come from DesktopShell.
+/** ProjectSwitcher.tsx is not mounted in the live shell today (WindowChrome's
+ * project menu owns that chrome). Mount ProjectSwitcher beside App in this
+ * harness so unit tests can still exercise its flush-then-park contract via
+ * DesktopShell's `__mythosRequestVaultSwitch` bridge.
  */
 function renderAppWithProjectSwitcher() {
   render(
@@ -347,11 +348,11 @@ function renderAppWithProjectSwitcher() {
   );
 }
 
-/** Real ProjectSwitcher.tsx list option (harness beside App). */
+/** ProjectSwitcher.tsx list option (harness beside App — not live WindowChrome). */
 async function clickProjectSwitcherEntry(vaultRoot: string) {
   const host = await screen.findByTestId('harness-project-switcher');
   const btn = host.querySelector('.project-switcher-btn') as HTMLElement;
-  expect(btn, 'ProjectSwitcher trigger').toBeTruthy();
+  expect(btn, 'harness ProjectSwitcher trigger').toBeTruthy();
   // Wait for mount-time projectList so the dropdown has rows.
   await waitFor(() => {
     expect(host.querySelector('.project-switcher-btn')).toBeTruthy();
@@ -727,6 +728,57 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     expect(screen.getByTestId(`nav-rail-vault-tile-${VAULT_A}`)).toHaveAttribute('aria-current', 'page');
   });
 
+  // Critic soft: drive a parked main-pushed (announce) switch through to
+  // completion via Retry. RED if completeVaultSwitch only updates UI (no
+  // projectSwitch re-commit). The park-only test above stops at the park.
+  it('HARD: parked announce switch completes via Retry (re-commits main)', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    mainRoot = VAULT_B;
+    await act(async () => {
+      onProjectSwitchedCb?.({ vaultRoot: VAULT_B });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(mainRoot).toBe(VAULT_A);
+    });
+    projectSwitchMock.mockClear();
+
+    // Retry flush now succeeds → completeVaultSwitch must re-commit target on main.
+    settingsSetMock.mockImplementation(async (next: Persisted) => {
+      persisted = { ...persisted, ...next };
+      return { saved: true };
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-retry'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(
+        projectSwitchMock.mock.calls.some((c) => c[0] === VAULT_B),
+        'Retry after announce-park must projectSwitch to the parked target',
+      ).toBe(true);
+    });
+    await waitFor(() => expect(mainRoot).toBe(VAULT_B));
+    expect(screen.getByTestId(`nav-rail-vault-tile-${VAULT_B}`)).toHaveAttribute('aria-current', 'page');
+  });
+
   // Ivy R6 — Close with parked switch: save now succeeds → complete switch.
   it('Close with parked switch completes when save now succeeds (fix key)', async () => {
     render(<App />);
@@ -1099,9 +1151,10 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     expect(projectSwitchMock.mock.calls.some((c) => c[0] === VAULT_B)).toBe(true);
   });
 
-  // ─── Ivy GO: REAL control surfaces (each RED when that file → 8ccbfa42) ───
+  // ─── Ivy GO: control surfaces (harness ProjectSwitcher; live StoryVaultPicker /
+  // VaultLinkingColumns). Each RED when that file → 8ccbfa42. ───
 
-  it('REAL ProjectSwitcher: refuse parks; Retry after key fixed switches', async () => {
+  it('ProjectSwitcher harness: refuse parks; Retry after key fixed switches', async () => {
     announceOnSwitch = false;
     renderAppWithProjectSwitcher();
     await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
@@ -1116,7 +1169,7 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
 
     await clickProjectSwitcherEntry(VAULT_B);
     await expectParkChrome();
-    expect(projectSwitchMock, 'ProjectSwitcher must not projectSwitch on refuse').not.toHaveBeenCalled();
+    expect(projectSwitchMock, 'harness ProjectSwitcher must not projectSwitch on refuse').not.toHaveBeenCalled();
     expect(mainRoot).toBe(VAULT_A);
 
     fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
@@ -1133,7 +1186,7 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     expect(mainRoot).toBe(VAULT_B);
   });
 
-  it('REAL ProjectSwitcher: Switch anyway completes switch', async () => {
+  it('ProjectSwitcher harness: Switch anyway completes switch', async () => {
     announceOnSwitch = false;
     renderAppWithProjectSwitcher();
     await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);

@@ -1,10 +1,11 @@
 /**
- * Standalone Brainstorm chrome helpers (Ivy R6).
+ * Standalone Brainstorm chrome helpers (Ivy ruling 4, amended).
  *
- * At @container pc-chrome ≤900, Agent Chat | Idea Board (and the chat-page
- * Board toggle) live in the ⋯ overflow menu. Inline controls stay in the DOM
- * with display:none — Playwright toBeVisible() fails unless tests open ⋯.
- * These helpers keep the same mode-control contract without undoing Ivy R6.
+ * At @container pc-chrome ≤999, Agent Chat | Idea Board (and the chat-page
+ * Board toggle, plus board + Idea / search) live in the ⋯ overflow menu.
+ * Inline controls stay in the DOM with display:none — Playwright
+ * toBeVisible() fails unless tests open ⋯. These helpers keep the same
+ * mode-control contract without undoing the overflow packing.
  */
 import { expect, type Page } from '@playwright/test';
 
@@ -20,7 +21,7 @@ export async function revealBrainstormModeControls(
   const overflow = page.locator('[data-testid="brainstorm-header-overflow-standalone"]');
   await expect(
     overflow,
-    'standalone ⋯ must expose mode controls when inline seg is hidden (≤900)',
+    'standalone ⋯ must expose mode controls when inline seg is hidden (≤999)',
   ).toBeVisible({ timeout: 8_000 });
 
   const menu = page.locator('[data-testid="brainstorm-header-overflow-standalone-menu"]');

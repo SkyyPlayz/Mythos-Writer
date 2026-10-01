@@ -7,6 +7,7 @@ import { setAiEnabled, __resetAiEnabledForTests } from './hooks/useAiEnabled';
 import { brainstormActivitySnapshot, resetBrainstormActivityForTests, IDLE_BRAINSTORM_ACTIVITY } from './agents/brainstormActivity';
 
 const BRAINSTORM_TSX = readFileSync(resolve(process.cwd(), 'src/BrainstormPage.tsx'), 'utf-8');
+const BRAINSTORM_CSS = readFileSync(resolve(process.cwd(), 'src/BrainstormPage.css'), 'utf-8');
 
 type TokenHandler = (data: { streamId: string; token: string }) => void;
 type EndHandler = (data: { streamId: string }) => void;
@@ -885,6 +886,16 @@ describe('Draft persistence', () => {
     expect(mockRevokeObjectURL).toHaveBeenCalled();
 
     mockClick.mockRestore();
+  });
+
+  // Ivy ruling 4: standalone ⋯ breakpoint is ≤999 (not the old ≤900 cut-off).
+  it('Ivy ruling 4: standalone overflow @container max-width is 999px', () => {
+    expect(BRAINSTORM_CSS).toMatch(
+      /@container\s+pc-chrome\s*\(max-width:\s*999px\)[\s\S]*brainstorm-header-overflow-btn--standalone/,
+    );
+    expect(BRAINSTORM_CSS).not.toMatch(
+      /@container\s+pc-chrome\s*\(max-width:\s*900px\)[\s\S]*brainstorm-header-overflow-btn--standalone/,
+    );
   });
 
   // Ivy: Download must never be gated on !compact (feature loss vs main).
