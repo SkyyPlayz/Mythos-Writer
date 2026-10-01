@@ -16,8 +16,9 @@
  * switch silently and never trap the user.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, screen, within, fireEvent, act, waitFor } from '@testing-library/react';
 import App from './App';
+import ProjectSwitcher from './ProjectSwitcher';
 
 const VAULT_A = '/vault-a';
 const VAULT_B = '/vault-b';
@@ -37,6 +38,17 @@ type Persisted = {
   telemetry?: { enabled?: boolean; sessionId?: string };
 };
 
+const STORY_VAULT_A = 'story-a';
+const STORY_VAULT_B = 'story-b';
+const STORY_VAULT_ENTRIES = [
+  { id: STORY_VAULT_A, displayName: 'Story A', dirName: 'Story A', createdAt: '', pairedNotesVaultId: null as string | null },
+  { id: STORY_VAULT_B, displayName: 'Story B', dirName: 'Story B', createdAt: '', pairedNotesVaultId: null as string | null },
+];
+const NOTES_VAULT_ENTRIES = [
+  { id: 'notes-a', displayName: 'Notes A', dirName: 'Notes A', createdAt: '', origin: 'created' as const },
+  { id: 'notes-b', displayName: 'Notes B', dirName: 'Notes B', createdAt: '', origin: 'created' as const },
+];
+
 let mainRoot = VAULT_A;
 let onProjectSwitchedCb: ((data: { vaultRoot: string }) => void) | null = null;
 let persisted: Persisted;
@@ -44,6 +56,8 @@ let holdLoad = false;
 let loadHolds: Array<() => void> = [];
 let settingsSetMock: ReturnType<typeof vi.fn>;
 let projectSwitchMock: ReturnType<typeof vi.fn>;
+let storyVaultSetActiveMock: ReturnType<typeof vi.fn>;
+let activeStoryId = STORY_VAULT_A;
 /** When false, projectSwitch does not emit project:switched (M4 gap close). */
 let announceOnSwitch = true;
 
@@ -86,11 +100,17 @@ function makeMockApi() {
     if (announceOnSwitch) onProjectSwitchedCb?.({ vaultRoot });
     return { switched: true };
   });
+  storyVaultSetActiveMock = vi.fn().mockImplementation(async (id: string) => {
+    activeStoryId = id;
+    return { entry: STORY_VAULT_ENTRIES.find((v) => v.id === id) ?? null };
+  });
   return {
     settingsGet: () => Promise.resolve({ ...persisted }),
     vaultGetPaths: () => Promise.resolve({
-      storyVaultPath: '/story',
-      notesVaultPath: '/notes',
+      storyVaultPath: '/mythos/Story A',
+      notesVaultPath: '/mythos/Notes A',
+      pathSeparator: '/',
+      mythosRoot: '/mythos',
     }),
     validatePath: () => Promise.resolve({ valid: true, exists: true, writable: true }),
     getVaultRoot: () => {
@@ -112,6 +132,29 @@ function makeMockApi() {
       onProjectSwitchedCb = cb;
       return () => { onProjectSwitchedCb = null; };
     },
+    // Ivy R6 real-control surfaces — StoryVaultPicker + VaultLinkingColumns.
+    storyVaultRegistryList: () => Promise.resolve({
+      vaults: STORY_VAULT_ENTRIES,
+      activeId: activeStoryId,
+    }),
+    storyVaultRegistrySetActive: storyVaultSetActiveMock,
+    onStoryVaultRegistryChanged: () => () => {},
+    notesVaultRegistryList: () => Promise.resolve({
+      vaults: NOTES_VAULT_ENTRIES,
+      activeId: 'notes-a',
+    }),
+    notesVaultRegistrySetActive: vi.fn().mockResolvedValue({ entry: NOTES_VAULT_ENTRIES[0] }),
+    notesVaultRegistrySetActivePreview: vi.fn().mockResolvedValue({
+      resolvedCount: 0, unresolvedStems: [], totalStems: 0,
+    }),
+    onNotesVaultRegistryChanged: () => () => {},
+    storyVaultRegistryPair: vi.fn().mockResolvedValue({ entry: STORY_VAULT_ENTRIES[0] }),
+    vaultSurfaceListHidden: () => Promise.resolve({ hiddenVaultRoots: [] }),
+    vaultSurfaceUnhide: vi.fn().mockResolvedValue({ ok: true }),
+    vaultAccessGetState: vi.fn().mockResolvedValue({
+      ok: true, mythosId: 'mid', vaultAccess: {}, crossLinks: [],
+    }),
+    vaultAccessSet: vi.fn().mockResolvedValue({ ok: true, vaultAccess: {}, crossLinks: [] }),
     entityList: vi.fn().mockResolvedValue({ entities: [] }),
     listNotesVault: () => Promise.resolve({ items: [] }),
     onVaultFileChanged: () => () => {},
@@ -124,6 +167,7 @@ function makeMockApi() {
 
 beforeEach(() => {
   mainRoot = VAULT_A;
+  activeStoryId = STORY_VAULT_A;
   onProjectSwitchedCb = null;
   persisted = basePersisted();
   holdLoad = false;
@@ -189,6 +233,88 @@ async function clickVaultTile(root: string) {
     await Promise.resolve();
     await Promise.resolve();
   });
+}
+
+/**
+ * Live shell uses WindowChrome's project menu; ProjectSwitcher.tsx still ships
+ * (AppMenuBar + Ivy R6 flush-first contract). Mount it beside App so clicks hit
+ * the REAL ProjectSwitcher while Settings flush/park come from DesktopShell.
+ */
+function renderAppWithProjectSwitcher() {
+  render(
+    <>
+      <App />
+      <div data-testid="harness-project-switcher">
+        <ProjectSwitcher
+          activeVaultRoot={VAULT_A}
+          onSwitched={(root) => {
+            const req = (window as Window & {
+              __mythosRequestVaultSwitch?: (r: string) => Promise<boolean>;
+            }).__mythosRequestVaultSwitch;
+            if (req) return req(root);
+            return Promise.resolve(false);
+          }}
+        />
+      </div>
+    </>,
+  );
+}
+
+/** Real ProjectSwitcher.tsx list option (harness beside App). */
+async function clickProjectSwitcherEntry(vaultRoot: string) {
+  const host = await screen.findByTestId('harness-project-switcher');
+  const btn = host.querySelector('.project-switcher-btn') as HTMLElement;
+  expect(btn, 'ProjectSwitcher trigger').toBeTruthy();
+  // Wait for mount-time projectList so the dropdown has rows.
+  await waitFor(() => {
+    expect(host.querySelector('.project-switcher-btn')).toBeTruthy();
+  });
+  await act(async () => {
+    fireEvent.click(btn);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  const listbox = await screen.findByRole('listbox', { name: /Mythos Vaults/i });
+  const option = await within(listbox).findByRole('option', {
+    name: (_, el) => (el.textContent ?? '').includes(vaultRoot) || (el.textContent ?? '').includes('Bravo') || (el.textContent ?? '').includes('Alpha'),
+  });
+  // Prefer the target vaultRoot path match when both Alpha/Bravo exist.
+  const options = within(listbox).getAllByRole('option');
+  const target = options.find((el) => (el.textContent ?? '').includes(vaultRoot)) ?? option;
+  await act(async () => {
+    fireEvent.click(target);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+/** LeftRail StoryVaultPicker — real menu item (fireEvent works under Settings overlay). */
+async function clickStoryVaultPickerSwitch(targetId: string) {
+  const picker = await screen.findByTestId('story-vault-picker-btn');
+  await act(async () => {
+    fireEvent.click(picker);
+    await Promise.resolve();
+  });
+  const item = await screen.findByTestId(`menu-item-switch:${targetId}`);
+  await act(async () => {
+    fireEvent.click(item);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function openVaultsCategory() {
+  fireEvent.click(await screen.findByTestId('settings-cat-vaults'));
+  await waitFor(() => expect(screen.getByTestId('settings-cat-vaults')).toHaveAttribute('aria-selected', 'true'));
+}
+
+async function expectParkChrome() {
+  await waitFor(() => {
+    expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument();
+  });
+  expect(screen.getByTestId('settings-flush-switch-anyway')).toBeInTheDocument();
 }
 
 describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)', () => {
@@ -720,29 +846,25 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     expect(mainRoot).toBe(VAULT_A);
   });
 
-  // Story-vault picker park → Escape with still-failing save cancels; stay original.
+  // REAL StoryVaultPicker (not globals-only) — refuse parks; Escape cancels.
+  // RED if StoryVaultPicker.tsx reverted to 8ccbfa42 (setActive before flush).
   it('story-vault picker refuse parks; Escape cancel keeps original vault', async () => {
     render(<App />);
     await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await screen.findByTestId('story-vault-picker-btn');
+
     await openModelKeysAndClickCrash();
     settingsSetMock.mockClear();
     projectSwitchMock.mockClear();
+    storyVaultSetActiveMock.mockClear();
     settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
 
-    await act(async () => {
-      const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
-        .__mythosSettingsFlush;
-      if (flush) await flush();
-      (window as Window & { __mythosParkVaultSwitch?: (id: string) => void })
-        .__mythosParkVaultSwitch?.('story-b');
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument();
-    });
-    expect(screen.getByTestId('settings-flush-switch-anyway')).toBeInTheDocument();
+    await clickStoryVaultPickerSwitch(STORY_VAULT_B);
+    await expectParkChrome();
+    expect(storyVaultSetActiveMock, 'picker must not setActive on refuse').not.toHaveBeenCalled();
+    expect(projectSwitchMock).not.toHaveBeenCalled();
     expect(mainRoot).toBe(VAULT_A);
+    expect(activeStoryId).toBe(STORY_VAULT_A);
 
     await act(async () => {
       fireEvent.keyDown(document, { key: 'Escape' });
@@ -751,6 +873,8 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
       await Promise.resolve();
     });
     expect(mainRoot).toBe(VAULT_A);
+    expect(activeStoryId).toBe(STORY_VAULT_A);
+    expect(storyVaultSetActiveMock).not.toHaveBeenCalled();
     expect(screen.queryByTestId('settings-flush-retry')).not.toBeInTheDocument();
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
   });
@@ -782,5 +906,192 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
 
     await waitFor(() => expect(mainRoot).toBe(VAULT_B));
     expect(projectSwitchMock.mock.calls.some((c) => c[0] === VAULT_B)).toBe(true);
+  });
+
+  // ─── Ivy GO: REAL control surfaces (each RED when that file → 8ccbfa42) ───
+
+  it('REAL ProjectSwitcher: refuse parks; Retry after key fixed switches', async () => {
+    announceOnSwitch = false;
+    renderAppWithProjectSwitcher();
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await screen.findByTestId('harness-project-switcher');
+
+    await openModelKeys();
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
+      target: { value: 'bad-key' },
+    });
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+
+    await clickProjectSwitcherEntry(VAULT_B);
+    await expectParkChrome();
+    expect(projectSwitchMock, 'ProjectSwitcher must not projectSwitch on refuse').not.toHaveBeenCalled();
+    expect(mainRoot).toBe(VAULT_A);
+
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
+      target: { value: '' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-retry'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(projectSwitchMock).toHaveBeenCalled());
+    expect(projectSwitchMock.mock.calls.some((c) => c[0] === VAULT_B)).toBe(true);
+    expect(mainRoot).toBe(VAULT_B);
+  });
+
+  it('REAL ProjectSwitcher: Switch anyway completes switch', async () => {
+    announceOnSwitch = false;
+    renderAppWithProjectSwitcher();
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await screen.findByTestId('harness-project-switcher');
+
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    await clickProjectSwitcherEntry(VAULT_B);
+    await expectParkChrome();
+    expect(projectSwitchMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-switch-anyway'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(projectSwitchMock.mock.calls.some((c) => c[0] === VAULT_B)).toBe(true));
+    expect(mainRoot).toBe(VAULT_B);
+  });
+
+  it('REAL StoryVaultPicker: refuse parks; Retry after key fixed setActive', async () => {
+    render(<App />);
+    await screen.findByTestId('story-vault-picker-btn');
+
+    await openModelKeys();
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
+      target: { value: 'bad-key' },
+    });
+    settingsSetMock.mockClear();
+    storyVaultSetActiveMock.mockClear();
+    projectSwitchMock.mockClear();
+
+    await clickStoryVaultPickerSwitch(STORY_VAULT_B);
+    await expectParkChrome();
+    expect(storyVaultSetActiveMock).not.toHaveBeenCalled();
+    expect(projectSwitchMock).not.toHaveBeenCalled();
+    expect(activeStoryId).toBe(STORY_VAULT_A);
+
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
+      target: { value: '' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-retry'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(storyVaultSetActiveMock).toHaveBeenCalledWith(STORY_VAULT_B));
+    expect(activeStoryId).toBe(STORY_VAULT_B);
+  });
+
+  it('REAL StoryVaultPicker: Switch anyway setActive target', async () => {
+    render(<App />);
+    await screen.findByTestId('story-vault-picker-btn');
+
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    storyVaultSetActiveMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    await clickStoryVaultPickerSwitch(STORY_VAULT_B);
+    await expectParkChrome();
+    expect(storyVaultSetActiveMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-switch-anyway'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(storyVaultSetActiveMock).toHaveBeenCalledWith(STORY_VAULT_B));
+    expect(activeStoryId).toBe(STORY_VAULT_B);
+  });
+
+  it('REAL VaultLinkingColumns story card: refuse parks; Retry after key fixed setActive', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    await openModelKeys();
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
+      target: { value: 'bad-key' },
+    });
+    settingsSetMock.mockClear();
+    storyVaultSetActiveMock.mockClear();
+    projectSwitchMock.mockClear();
+
+    await openVaultsCategory();
+    const card = await screen.findByTestId(`story-vault-card-${STORY_VAULT_B}`);
+    await act(async () => {
+      fireEvent.click(card);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await expectParkChrome();
+    expect(
+      storyVaultSetActiveMock,
+      'VaultLinkingColumns must not setActive on refuse',
+    ).not.toHaveBeenCalled();
+    expect(projectSwitchMock).not.toHaveBeenCalled();
+    expect(activeStoryId).toBe(STORY_VAULT_A);
+
+    // Key fixed — agents tab still holds the input (or re-open Model & keys).
+    fireEvent.click(await screen.findByTestId('settings-cat-agents'));
+    await waitFor(() => expect(screen.getByLabelText(/anthropic api key/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
+      target: { value: '' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-retry'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(storyVaultSetActiveMock).toHaveBeenCalledWith(STORY_VAULT_B));
+    expect(activeStoryId).toBe(STORY_VAULT_B);
+  });
+
+  it('REAL VaultLinkingColumns story card: Switch anyway setActive target', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    storyVaultSetActiveMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    await openVaultsCategory();
+    const card = await screen.findByTestId(`story-vault-card-${STORY_VAULT_B}`);
+    await act(async () => {
+      fireEvent.click(card);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await expectParkChrome();
+    expect(storyVaultSetActiveMock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-switch-anyway'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(storyVaultSetActiveMock).toHaveBeenCalledWith(STORY_VAULT_B));
+    expect(activeStoryId).toBe(STORY_VAULT_B);
   });
 });
