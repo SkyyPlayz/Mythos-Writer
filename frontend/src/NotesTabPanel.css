@@ -111,11 +111,10 @@
    (LeftRail.css/StoryNavigator.css use the identical pattern). */
 @supports (backdrop-filter: blur(1px)) {
   .notes-tab-sidebar-left {
-    /* Ivy (1) / Probe N2 H1: local --glass-panel-bg restate to prototype Notes
-       panel glass (Liquid Neon.dc.html left panel — --glass at glassA 20 →
-       rgba(13,16,28,0.2)). Opaque rgb(13,15,23) failed crop (search fill
-       composites to ~25,27,34). F2 tokens.css untouched. */
-    --glass-panel-bg: rgba(13, 16, 28, 0.2);
+    /* Inherit live --glass-panel-bg from tokens.css (slider-driven --glass-fill
+       + SKY-11787 text-backing). Local rgba(13,16,28,0.2) restate withdrawn —
+       Probe 5372915150: 0 px crop effect; pinned glassA, broke reduced-
+       transparency opacity and text-backing (Four-Q #3). */
     background: var(--glass-panel-bg);
     /* Prototype Notes panel frost (Liquid Neon.dc.html ~201):
        backdrop-filter:blur(var(--blur,18px)) saturate(150%) with defaults
