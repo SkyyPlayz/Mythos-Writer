@@ -32,6 +32,22 @@ describe('DesktopShell C7 onboardingStartMode (Probe VERIFY FAIL 5374426332)', (
     expect(window).toMatch(/settingsSet/);
     expect(window).toContain('markWelcomeOverlayDismissed');
   });
+
+  // F2#12 after F3 tips nest: default GRS must be >320 so WA .pc-header-host
+  // stays one-row 36px at e2e natural width (NH3 still forces 280 → wrap).
+  it('F2#12: default grsWidth is 340 (above ≤320 wrap threshold)', () => {
+    const src = shellSrc();
+    expect(src).toMatch(/const \[grsWidth,\s*setGrsWidth\]\s*=\s*useState\(340\)/);
+    expect(src).not.toMatch(/const \[grsWidth,\s*setGrsWidth\]\s*=\s*useState\(300\)/);
+  });
+
+  it('F2#12: ahp-writer-tips has no horizontal margin (keeps host above wrap cut)', () => {
+    const css = readFileSync(resolve(SRC, 'AgentHubPanel.css'), 'utf-8');
+    const m = css.match(/\.ahp-writer-tips\s*\{([^}]*)\}/);
+    expect(m).not.toBeNull();
+    expect(m![1]).not.toMatch(/margin:\s*0\s+8px/);
+    expect(m![1]).toMatch(/margin:\s*4px\s+0\s+0/);
+  });
 });
 
 describe('C7 race: disk keeps start mode when shell callback runs after hook', () => {

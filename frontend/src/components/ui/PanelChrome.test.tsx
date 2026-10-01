@@ -177,19 +177,6 @@ describe('PanelChrome — Liquid Neon a11y CSS', () => {
     expect(chrome?.[1] ?? '').not.toContain('container-type');
   });
 
-  // F2#12 CI keepalive after F3 tips nest: WA .pc-header must keep 36px at ≤320.
-  it('F2#12: wa-panel-header stays 36px nowrap under @container ≤320px', () => {
-    expect(PANEL_CSS).toMatch(
-      /@container\s+pc-chrome\s*\(max-width:\s*320px\)[\s\S]*\.pc-header\.wa-panel-header\s*\{[\s\S]*height:\s*var\(--panel-top-bar-height/,
-    );
-    expect(PANEL_CSS).toMatch(
-      /@container\s+pc-chrome\s*\(max-width:\s*320px\)[\s\S]*\.pc-header\.wa-panel-header\s*\{[\s\S]*flex-wrap:\s*nowrap/,
-    );
-    expect(PANEL_CSS).toMatch(
-      /@container\s+pc-chrome\s*\(max-width:\s*320px\)[\s\S]*\.pc-header\.wa-panel-header\s+\.pc-header-actions\s*\{[\s\S]*flex-wrap:\s*nowrap/,
-    );
-  });
-
   // Probe H2 / Ivy GO (b) / Critic hard 2+3: ALL Brainstorm headers (incl.
   // compact Notes Agent) exempt from 36px clamp; wrap below 701; ≥701 one row.
   it('Probe H2 / Critic hard 2+3: Brainstorm .pc-header (incl compact) exempt + wraps ≤700px', () => {
