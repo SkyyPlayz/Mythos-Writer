@@ -159,6 +159,26 @@ describe('useCreateMythosVaultFlow (Slice D five-path)', () => {
     ));
   });
 
+  it('C7: startMode settingsSet runs AFTER onCreated (Shield flush cannot clobber)', async () => {
+    const order: string[] = [];
+    const onCreated = vi.fn(async () => { order.push('onCreated'); });
+    const settingsSet = window.api.settingsSet as ReturnType<typeof vi.fn>;
+    settingsSet.mockImplementation(async () => {
+      order.push('settingsSet');
+      return { saved: true };
+    });
+    render(<TestHarness onCreated={onCreated} />);
+    fireEvent.click(screen.getByText('Open'));
+    await waitFor(() => expect(screen.getByText('/current/vaults')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+    await waitFor(() => expect(onCreated).toHaveBeenCalled());
+    await waitFor(() => expect(settingsSet).toHaveBeenCalledWith(
+      expect.objectContaining({ onboardingStartMode: 'template', onboardingComplete: true }),
+    ));
+    expect(order.indexOf('onCreated')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('settingsSet')).toBeGreaterThan(order.indexOf('onCreated'));
+  });
+
   it('C7: blank create persists onboardingStartMode=blank (RED if wrong mode mutant)', async () => {
     render(<TestHarness onCreated={vi.fn()} />);
     fireEvent.click(screen.getByText('Open'));

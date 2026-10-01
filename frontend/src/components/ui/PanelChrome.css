@@ -138,6 +138,31 @@
     justify-content: flex-start;
     min-width: 0;
   }
+
+  /* F2#12 + F3 tips nest: Writing Coach / Mythos tip-strip header must stay a
+     single 36px bar. F3 mounts WA inside .ahp-writer-tips (8px side margins),
+     which drops the container ≤320 and used to wrap title + Cadence/Mute onto
+     two rows (~74px) — notes-parity F2#12 red after main merge. */
+  .pc-header.wa-panel-header {
+    flex-wrap: nowrap;
+    align-items: center;
+    height: var(--panel-top-bar-height, 36px);
+    max-height: var(--panel-top-bar-height, 36px);
+    overflow: hidden;
+    row-gap: 0;
+  }
+  .pc-header.wa-panel-header .pc-header-start {
+    flex: 1 1 0%;
+    min-width: 0;
+    max-width: none;
+    overflow: hidden;
+  }
+  .pc-header.wa-panel-header .pc-header-actions {
+    flex: 0 1 auto;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    min-width: 0;
+  }
 }
 
 /* Critic hard 2/3 + Probe H2 / Ivy GO (b): ALL Brainstorm headers (standalone

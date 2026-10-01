@@ -204,12 +204,21 @@ export function useCreateMythosVaultFlow(
         return;
       }
       // C7 — persist start mode so relaunch / Getting Started match the path.
+      // AFTER onCreated/switchToVault: activate:false flush-first can rewrite
+      // settings from an open SettingsPanel mount snapshot and would clobber
+      // onboardingStartMode if we wrote it before the switch flush.
       const startMode =
         mode === 'template' ? 'template'
           : mode === 'blank' ? 'blank'
             : mode === 'import' || mode === 'restore' ? 'import'
               : mode === 'openin' ? 'open-existing'
                 : 'template';
+      setOpen(false);
+      reset();
+      await onCreatedRef.current({
+        vaultRoot: result.storyVaultPath ?? result.mythosRoot ?? '',
+        notesVaultRoot: result.notesVaultPath ?? '',
+      });
       try {
         const cur = await window.api?.settingsGet?.();
         if (cur) {
@@ -220,12 +229,6 @@ export function useCreateMythosVaultFlow(
           });
         }
       } catch { /* non-fatal */ }
-      setOpen(false);
-      reset();
-      await onCreatedRef.current({
-        vaultRoot: result.storyVaultPath ?? result.mythosRoot ?? '',
-        notesVaultRoot: result.notesVaultPath ?? '',
-      });
     } catch (err) {
       setError(`Create failed: ${(err as Error).message}`);
     } finally {

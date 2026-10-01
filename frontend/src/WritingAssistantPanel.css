@@ -53,11 +53,13 @@
 .wa-header-controls {
   display: flex;
   align-items: center;
-  /* W0.3: cadence select + mute wrap instead of colliding at 280px. */
-  flex-wrap: wrap;
+  /* F2#12: keep Cadence + Mute on one row inside the 36px .pc-header
+     (tips nest ≤320 must not wrap controls into a second bar). */
+  flex-wrap: nowrap;
   justify-content: flex-end;
   gap: 6px;
   flex-shrink: 0;
+  min-width: 0;
 }
 
 /* SKY-2979: Per-category auto-apply pills */
