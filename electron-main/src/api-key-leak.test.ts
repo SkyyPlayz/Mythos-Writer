@@ -805,6 +805,19 @@ describe('P1a — isMaskedPreview property + negatives', () => {
     expect(isMaskedPreview('sk-ant-...ABC')).toBe(true);
     expect(isMaskedPreview('sk-ant-...ABCD')).toBe(true);
   });
+
+  it('accepts maskApiKey outputs that embed line terminators (JS . does not)', () => {
+    const stored = settingsFixture({ apiKey: K2 });
+    const withNewline = maskApiKey('abc\n');
+    const withCrlf = maskApiKey('ab\r\n');
+    const withLineSep = maskApiKey('abc\u2028');
+    expect(isMaskedPreview(withNewline)).toBe(true);
+    expect(isMaskedPreview(withCrlf)).toBe(true);
+    expect(isMaskedPreview(withLineSep)).toBe(true);
+    expect(reconcileSettingsFromRenderer({ ...stored, apiKey: withNewline }, stored).apiKey).toBe(K2);
+    expect(reconcileSettingsFromRenderer({ ...stored, apiKey: withCrlf }, stored).apiKey).toBe(K2);
+    expect(reconcileSettingsFromRenderer({ ...stored, apiKey: withLineSep }, stored).apiKey).toBe(K2);
+  });
 });
 
 describe('P1b — stored-absent backstop', () => {

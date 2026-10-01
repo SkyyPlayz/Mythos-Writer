@@ -44,7 +44,7 @@ export const KEY_FIELD_PATHS = [
 export type KeyFieldPath = (typeof KEY_FIELD_PATHS)[number];
 
 const MASKED_PREVIEW_RE = new RegExp(
-  `^${MASK_PREFIX.replace(/\./g, '\\.')}.{1,4}$`,
+  `^${MASK_PREFIX.replace(/\./g, '\\.')}[\\s\\S]{1,4}$`,
 );
 
 /**
