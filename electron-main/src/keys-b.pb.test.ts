@@ -312,6 +312,44 @@ describe('PB4 — atomic writes and modes', () => {
     }
     void dir;
   });
+
+  it('saveAppSettingsTo and SecretsStore.persist use atomic rename (not in-place writeFileSync)', () => {
+    const { store, settingsPath, secretsPath } = mkStore();
+    const renameSpy = vi.spyOn(fs, 'renameSync');
+    const writeSpy = vi.spyOn(fs, 'writeFileSync');
+    try {
+      saveAppSettingsTo(settingsPath, () => store, {
+        ...fullPlaintextFixture(K),
+        slice2AutonomyOffMigrated: true,
+      });
+      // Atomic path: temp opened + rename; writeFileSync must not target the final path.
+      expect(renameSpy.mock.calls.some((c) => String(c[1]) === settingsPath)).toBe(true);
+      expect(writeSpy.mock.calls.every((c) => String(c[0]) !== settingsPath)).toBe(true);
+
+      renameSpy.mockClear();
+      writeSpy.mockClear();
+      store.set('anthropic.apiKey', `${K}x`);
+      expect(renameSpy.mock.calls.some((c) => String(c[1]) === secretsPath)).toBe(true);
+      expect(writeSpy.mock.calls.every((c) => String(c[0]) !== secretsPath)).toBe(true);
+    } finally {
+      renameSpy.mockRestore();
+      writeSpy.mockRestore();
+    }
+  });
+
+  it('source pin: save + store persist call writeJsonAtomicSecure', () => {
+    const loadSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'appSettingsLoad.ts'),
+      'utf-8',
+    );
+    const storeSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'secrets/store.ts'),
+      'utf-8',
+    );
+    expect(loadSrc).toMatch(/writeJsonAtomicSecure\(settingsPath/);
+    expect(storeSrc).toMatch(/writeJsonAtomicSecure\(this\.filePath/);
+    expect(storeSrc).not.toMatch(/writeFileSync\(this\.filePath/);
+  });
 });
 
 describe('PB5 — masks not stored', () => {
@@ -628,6 +666,15 @@ describe('PB9 / PB9b / PB9c — pre-hydrate / pre-init JSON-only (D5 + Ivy)', ()
     );
     expect(handler?.[0] ?? '').toContain('restoreAppDataAndReloadSettings');
     expect(handler?.[0] ?? '').not.toMatch(/await restoreAppData\(/);
+
+    // K-B16: restore reload must not re-save through the secret saver.
+    const restoreSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'appRestore.ts'),
+      'utf-8',
+    );
+    expect(restoreSrc).toMatch(/loadAppSettingsFrom\(settingsPath, opts\.getStore\)/);
+    // No live call — comments may mention saveAppSettingsTo as the K-B16 hazard.
+    expect(restoreSrc).not.toMatch(/saveAppSettingsTo\s*\(/);
   });
 
   it('PB9c: pre-init load (slice2 missing) + init + migrate + load keeps all 12', () => {

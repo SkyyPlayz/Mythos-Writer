@@ -8,7 +8,6 @@
  */
 
 import path from 'path';
-import type { AppSettings } from './ipc.js';
 import { loadAppSettingsFrom } from './appSettingsLoad.js';
 import { restoreAppData, type RestoreOptions, type RestoreResult } from './backup.js';
 import type { SecretsStore } from './secrets/store.js';
@@ -32,6 +31,9 @@ export interface RestoreAppDataAndReloadOptions extends RestoreOptions {
  * Production restore body used by `app:restoreAppData`.
  * Rule: never writes to the secret store. Slice2 / heal side-effects of the
  * post-restore load are JSON-only (S-B11).
+ *
+ * K-B16: after this reload, calling saveAppSettingsTo with the on-disk
+ * JSON (empty key fields from a redacted archive) must fail PB9b(a).
  */
 export async function restoreAppDataAndReloadSettings(
   opts: RestoreAppDataAndReloadOptions,
@@ -56,16 +58,10 @@ export async function restoreAppDataAndReloadSettings(
     const settingsPath =
       opts.settingsPath ?? path.join(opts.userDataPath, 'app-settings.json');
     // S-B11: loadAppSettingsFrom writes the slice2 flag JSON-only when needed.
-    // Do NOT pass saveAppSettings here — that would reintroduce the Probe wipe.
+    // Do NOT re-save through the secret saver here — empty key fields from a
+    // redacted archive would wipe the secret store (Probe wipe / K-B16).
     loadAppSettingsFrom(settingsPath, opts.getStore);
   }
 
   return result;
 }
-
-/** Source-pin helper: prove the IPC channel body calls this entry point. */
-export function restoreAppDataIpcEntryName(): string {
-  return 'restoreAppDataAndReloadSettings';
-}
-
-export type { AppSettings };
