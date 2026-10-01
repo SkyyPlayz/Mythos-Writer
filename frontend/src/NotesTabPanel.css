@@ -111,9 +111,22 @@
    (LeftRail.css/StoryNavigator.css use the identical pattern). */
 @supports (backdrop-filter: blur(1px)) {
   .notes-tab-sidebar-left {
+    /* Inherit live --glass-panel-bg from tokens.css (slider-driven --glass-fill
+       + SKY-11787 text-backing). Local rgba(13,16,28,0.2) restate withdrawn —
+       Probe 5372915150: 0 px crop effect; pinned glassA, broke reduced-
+       transparency opacity and text-backing (Four-Q #3). */
     background: var(--glass-panel-bg);
+    /* Prototype Notes panel frost (Liquid Neon.dc.html ~201):
+       backdrop-filter:blur(var(--blur,18px)) saturate(150%) with defaults
+       blur:1 → blur(1px) saturate(150%) ≡ saturate(1.5). Keep -webkit-. */
+    backdrop-filter: blur(1px) saturate(1.5);
+    -webkit-backdrop-filter: blur(1px) saturate(1.5);
   }
 }
+
+/* Ivy named-cause: do NOT soften .vb-notes-search box-shadow here.
+   Proto uses box-shadow:var(--glowH) (VaultBrowser.css). Prior color-mix
+   softener was compensation for sidebar-width / input-height mismatch. */
 
 .notes-sidebar-header {
   display: flex;

@@ -72,13 +72,17 @@ describe('tabbedShellReducer — sub-view independence', () => {
 });
 
 describe('tabbedShellReducer — sidebar state per tab', () => {
+  it('defaults notesSidebarWidth to proto leftW 268', () => {
+    expect(DEFAULT_TABBED_SHELL_STATE.notesSidebarWidth).toBe(268);
+  });
+
   it('SET_STORY_SIDEBAR_WIDTH updates story sidebar width only', () => {
     const next = tabbedShellReducer(DEFAULT_TABBED_SHELL_STATE, {
       type: 'SET_STORY_SIDEBAR_WIDTH',
       width: 320,
     });
     expect(next.storySidebarWidth).toBe(320);
-    expect(next.notesSidebarWidth).toBe(240);
+    expect(next.notesSidebarWidth).toBe(268);
   });
 
   it('SET_NOTES_SIDEBAR_WIDTH updates notes sidebar width only', () => {

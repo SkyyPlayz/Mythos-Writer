@@ -465,10 +465,8 @@
   gap: 7px;
 }
 
-.vb-notes-search:hover,
-.vb-notes-search:focus-within {
-  border-color: var(--b1, rgba(0, 240, 255, 0.5));
-}
+/* Ivy H3: rendered prototype wins — hover keeps resting --bh (no full --b1).
+   Focus-within also must not flip the border (caret-only focus). */
 
 .vb-notes-search-icon {
   flex-shrink: 0;
@@ -478,18 +476,21 @@
 .vb-notes-search-input {
   flex: 1;
   min-width: 0;
-  height: 100%;
+  /* Ivy named-cause: proto input is content-sized (~16px), not stretched;
+     vertically centered by .vb-notes-search align-items:center. */
   background: none;
   border: none;
   border-radius: 0;
   color: #dbe4f5;
+  /* Ivy H2: exact prototype stack on N2 only — do not bundle Inter webfont. */
+  font-family: Inter, system-ui, sans-serif;
   font-size: 11.5px;
-  padding: 0;
+  padding: 1px 2px;
   outline: none;
 }
 
 .vb-notes-search-input::placeholder {
-  color: var(--text-muted, rgba(255, 255, 255, 0.35));
+  color: rgb(117, 117, 117);
 }
 
 .vb-notes-search-input:focus {
