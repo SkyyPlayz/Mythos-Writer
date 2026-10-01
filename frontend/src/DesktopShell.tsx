@@ -5551,8 +5551,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             }}
             continuityCount={continuityCount}
             onOpenPartnerHistory={() => {
+              // Critic H6: navigate in place via initialCategory (no Settings remount).
               setSettingsInitialCategory('writingPartner');
-              setSettingsOpenToken((t) => t + 1);
               setSettingsOpen(true);
               // Latch + event — SessionHistoryViewer may mount after this tick.
               window.setTimeout(() => {
@@ -7793,8 +7793,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           }}
           continuityCount={continuityCount}
           onOpenPartnerHistory={() => {
+            // Critic H6: navigate in place via initialCategory (no Settings remount).
             setSettingsInitialCategory('writingPartner');
-            setSettingsOpenToken((t) => t + 1);
             setSettingsOpen(true);
             // Latch + event — SessionHistoryViewer may mount after this tick.
             window.setTimeout(() => {
