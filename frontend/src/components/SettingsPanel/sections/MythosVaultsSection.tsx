@@ -224,28 +224,37 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   }, [settings, activeRoot, setSettings, setSavedOk]);
 
   /** Prototype cardH (7111): click anywhere on a non-current card switches.
-   *  DesktopShell hears the switch push and applies the vault's theme + toast;
-   *  the panel's own copy of liquidNeonV2 is mirrored so a later Save can't
-   *  write the pre-switch theme back. */
+   *  Ivy R6: go through DesktopShell's flush-then-switch (`__mythosRequestVaultSwitch`)
+   *  — same Retry / Switch anyway park as nav-rail tiles. Never projectSwitch
+   *  first (main must not commit until save succeeds or Switch anyway).
+   *  activeRoot + theme mirror follow onProjectSwitched / successful switch. */
   const onCardClick = useCallback(async (v: VaultEntry) => {
     if (v.vaultRoot === activeRoot) return;
     try {
-      const res = await window.api?.projectSwitch?.(v.vaultRoot, v.notesVaultRoot);
-      if (res?.switched) {
-        setActiveRoot(v.vaultRoot);
-        const key = settings.vaultThemes?.[v.vaultRoot];
-        const preset = key ? LIQUID_NEON_PRESETS[key as LiquidNeonPresetKey] : undefined;
-        if (preset) {
-          setSettings((prev) => ({
-            ...prev,
-            liquidNeonV2: {
-              ...normalizeLiquidNeonV2(prev.liquidNeonV2),
-              setKey: preset.key,
-              slots: [...preset.c] as LiquidNeonV2Settings['slots'],
-              wp: 'match',
-            },
-          }));
-        }
+      const req = (window as Window & {
+        __mythosRequestVaultSwitch?: (vaultRoot: string) => Promise<boolean>;
+      }).__mythosRequestVaultSwitch;
+      let switched = false;
+      if (req) {
+        switched = await req(v.vaultRoot);
+      } else {
+        const res = await window.api?.projectSwitch?.(v.vaultRoot, v.notesVaultRoot);
+        switched = Boolean(res?.switched);
+        if (switched) setActiveRoot(v.vaultRoot);
+      }
+      if (!switched) return;
+      const key = settings.vaultThemes?.[v.vaultRoot];
+      const preset = key ? LIQUID_NEON_PRESETS[key as LiquidNeonPresetKey] : undefined;
+      if (preset) {
+        setSettings((prev) => ({
+          ...prev,
+          liquidNeonV2: {
+            ...normalizeLiquidNeonV2(prev.liquidNeonV2),
+            setKey: preset.key,
+            slots: [...preset.c] as LiquidNeonV2Settings['slots'],
+            wp: 'match',
+          },
+        }));
       }
     } catch { /* switch failed — card stays as-is */ }
   }, [activeRoot, settings.vaultThemes, setSettings]);

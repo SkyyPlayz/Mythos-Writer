@@ -438,8 +438,8 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [alertText, setAlertText] = useState('');
-  // Ivy: compact header overflow (⋯) hosts Download when the inline chip
-  // cannot fit (@container ≤400 / W0.3 @280) — never hide Download.
+  // Ivy: header ⋯ — compact Download @≤400; standalone chat mode segment +
+  // board toggle @≤900 (no Back/title/seg overlap @701–900).
   const [headerOverflowOpen, setHeaderOverflowOpen] = useState(false);
   const headerOverflowRef = useRef<HTMLButtonElement>(null);
   // Beta 3 M22: brainstorm streaming lights the workspace tab strip's agents chip.
@@ -2330,7 +2330,12 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                 chat fits, and when AI is off there is only the one manual
                 Board page left to show (R11 — no dead single-option toggle). */}
             {!compact && visibleModes.length > 1 && (
-              <div className="bsc-seg" role="group" aria-label="Brainstorm page">
+              <div
+                className="bsc-seg bsc-seg--standalone-inline"
+                role="group"
+                aria-label="Brainstorm page"
+                data-testid="bsc-mode-seg-inline"
+              >
                 {visibleModes.map((m) => (
                   <button
                     key={m}
@@ -2348,7 +2353,10 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
             {/* M20: chat-page Board toggle — stacks the canvas under the chat
                 with a drag-bar height (prototype bsBoardToggle). */}
             {!compact && effectiveMode === 'chat' && (
-              <div className="bs-board-toggle-wrap" title="Show the Idea Board below the chat">
+              <div
+                className="bs-board-toggle-wrap bs-board-toggle-wrap--standalone-inline"
+                title="Show the Idea Board below the chat"
+              >
                 <span>Idea Board</span>
                 <button
                   type="button"
@@ -2362,6 +2370,48 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
                   <span className="bs-board-toggle-knob" aria-hidden="true" />
                 </button>
               </div>
+            )}
+            {/* Ivy R6: standalone ≤900 — mode seg + board toggle move into ⋯ so
+                Back / title / page switch never overlap @701–900. */}
+            {!compact && visibleModes.length > 1 && (
+              <>
+                <button
+                  ref={headerOverflowRef}
+                  type="button"
+                  className="brainstorm-header-overflow-btn brainstorm-header-overflow-btn--standalone"
+                  aria-label="More header actions"
+                  aria-haspopup="menu"
+                  aria-expanded={headerOverflowOpen}
+                  data-testid="brainstorm-header-overflow-standalone"
+                  onClick={() => setHeaderOverflowOpen((v) => !v)}
+                >
+                  ⋯
+                </button>
+                <Menu
+                  open={headerOverflowOpen}
+                  onClose={() => setHeaderOverflowOpen(false)}
+                  onAction={(id) => {
+                    if (id === 'mode-chat') setMode('chat');
+                    else if (id === 'mode-board') setMode('board');
+                    else if (id === 'board-toggle') setChatBoardOpen((v) => !v);
+                  }}
+                  items={[
+                    ...visibleModes.map((m) => ({
+                      id: `mode-${m}`,
+                      label: mode === m ? `✓ ${MODE_LABELS[m]}` : MODE_LABELS[m],
+                    })),
+                    ...(effectiveMode === 'chat'
+                      ? [{
+                          id: 'board-toggle',
+                          label: chatBoardOpen ? 'Hide Idea Board under chat' : 'Show Idea Board under chat',
+                        }]
+                      : []),
+                  ]}
+                  anchorEl={headerOverflowRef.current}
+                  aria-label="Brainstorm header actions"
+                  data-testid="brainstorm-header-overflow-standalone-menu"
+                />
+              </>
             )}
             {/* M19: live extraction badge (prototype lines 1330–1335) — shown
                 while a reply is streaming and facts may be extracted. */}

@@ -128,12 +128,28 @@
 }
 
 /* Compact ≤400 (natural/340 sidebar + W0.3 @280): Download → ⋯ menu.
-   Wider compact hosts keep inline Download; standalone never uses ⋯. */
+   Wider compact hosts keep inline Download. */
 @container pc-chrome (max-width: 400px) {
   .brainstorm-header--compact .brainstorm-download-btn--compact-inline {
     display: none;
   }
-  .brainstorm-header--compact .brainstorm-header-overflow-btn {
+  .brainstorm-header--compact .brainstorm-header-overflow-btn:not(.brainstorm-header-overflow-btn--standalone) {
+    display: inline-flex;
+  }
+}
+
+/* Ivy R6: standalone chat @≤900 — mode seg + board toggle → ⋯ so Back /
+   title / page switch never overlap (701/750/800/900). ≥901 keeps inline. */
+.brainstorm-header-overflow-btn--standalone {
+  display: none;
+}
+
+@container pc-chrome (max-width: 900px) {
+  .brainstorm-header:not(.brainstorm-header--compact) .bsc-seg--standalone-inline,
+  .brainstorm-header:not(.brainstorm-header--compact) .bs-board-toggle-wrap--standalone-inline {
+    display: none;
+  }
+  .brainstorm-header:not(.brainstorm-header--compact) .brainstorm-header-overflow-btn--standalone {
     display: inline-flex;
   }
 }
@@ -142,6 +158,10 @@
   font-family: 'Lora', Georgia, serif;
   font-size: 21px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
   color: rgb(240, 243, 252); /* prototype #f0f3fc */
 }
 

@@ -229,6 +229,17 @@ export default function VaultLinkingColumns() {
 
   const onStoryCardClick = useCallback(async (entry: StoryVaultEntry) => {
     if (entry.id === activeStoryId) return;
+    // Ivy R6: same flush-then-park as StoryVaultPicker / nav-rail tiles.
+    const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
+      .__mythosSettingsFlush;
+    if (flush) {
+      const ok = await flush();
+      if (!ok) {
+        (window as Window & { __mythosParkVaultSwitch?: (id: string) => void })
+          .__mythosParkVaultSwitch?.(entry.id);
+        return;
+      }
+    }
     await window.api?.storyVaultRegistrySetActive?.(entry.id).catch(() => { /* non-fatal */ });
   }, [activeStoryId]);
 

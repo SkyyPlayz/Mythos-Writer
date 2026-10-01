@@ -415,7 +415,372 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     expect(src).toMatch(/handleFlushSwitchChoice/);
     // Must NOT apply on flush failure via finally.
     expect(src).not.toMatch(/void flush\(\)\.finally\(\(\) => \{ applyProjectSwitched/);
-    expect(src).toMatch(/flush\(\)\.then\(\(ok\) =>/);
+    expect(src).toMatch(/flush\(\)\.then\(async \(ok\) =>/);
     expect(src).toMatch(/const ok = await flushOpenSettings/);
+    // Ivy R6: announce park must roll main back; Close completes or cancels.
+    expect(src).toMatch(/suppressProjectAnnounceRef/);
+    expect(src).toMatch(/vaultPending/);
+  });
+
+  // HARD — announce path (no tile): onProjectSwitched with Settings open + edit.
+  // settingsSet must land BEFORE .shell-loading. RED if handleProjectSwitched
+  // skips flush / applies immediately.
+  it('HARD: onProjectSwitched flush persists edit before shell-loading (no tile)', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+
+    const w = window as Window & { __mythosSettingsFlush?: () => Promise<boolean> };
+    const realFlush = w.__mythosSettingsFlush;
+    expect(typeof realFlush).toBe('function');
+    let resolveFlush: ((ok: boolean) => void) | null = null;
+    let flushInvoked = false;
+    w.__mythosSettingsFlush = () => {
+      flushInvoked = true;
+      return new Promise<boolean>((resolve) => { resolveFlush = resolve; });
+    };
+
+    holdLoad = true;
+    // Simulate main already committed + broadcast (no tile click).
+    mainRoot = VAULT_B;
+    await act(async () => {
+      onProjectSwitchedCb?.({ vaultRoot: VAULT_B });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(flushInvoked, 'announce must await __mythosSettingsFlush').toBe(true);
+    expect(
+      document.querySelector('.shell-loading'),
+      'shell-loading must wait for announce flush (RED if broadcast flush off)',
+    ).toBeNull();
+    expect(crashPayloadSeen(), 'settingsSet must not land before announce flush resolves').toBe(false);
+
+    await act(async () => {
+      const ok = realFlush ? await realFlush() : true;
+      resolveFlush?.(ok);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(crashPayloadSeen(), 'announce flush must write telemetry=crash before loadVault').toBe(true);
+    });
+    await waitFor(() => {
+      expect(document.querySelector('.shell-loading')).not.toBeNull();
+    });
+
+    holdLoad = false;
+    await releaseLoadHolds();
+    await waitFor(() => expect(document.querySelector('.shell-loading')).toBeNull());
+    expect(mainRoot).toBe(VAULT_B);
+  });
+
+  // HARD — refused announce save: alert + no renderer switch; main rolled back.
+  // RED if broadcast applies even when save refused.
+  it('HARD: refused announce flush parks, alerts, and keeps main on original', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    // Main prematurely on B (the bug Ivy named) — announce arrives.
+    mainRoot = VAULT_B;
+    await act(async () => {
+      onProjectSwitchedCb?.({ vaultRoot: VAULT_B });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-flush-switch-error')).toHaveTextContent(
+        /couldn't save settings/i,
+      );
+    });
+    expect(document.querySelector('.shell-loading')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    // Roll back main to original — RED if announce applies despite refused save.
+    await waitFor(() => {
+      expect(mainRoot, 'main must roll back to original when announce flush refused').toBe(VAULT_A);
+    });
+    expect(screen.getByTestId(`nav-rail-vault-tile-${VAULT_A}`)).toHaveAttribute('aria-current', 'page');
+  });
+
+  // Ivy R6 — Close with parked switch: save now succeeds → complete switch.
+  it('Close with parked switch completes when save now succeeds (fix key)', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    await openModelKeys();
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
+      target: { value: 'bad-key' },
+    });
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+
+    // Second active = A; park switch to First = B.
+    await clickVaultTile(VAULT_B);
+    await waitFor(() => expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument());
+    expect(projectSwitchMock).not.toHaveBeenCalled();
+    expect(mainRoot).toBe(VAULT_A);
+
+    // Fix key, then Close — save succeeds → complete switch to B.
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
+      target: { value: '' },
+    });
+    // Clear apiKeyError by matching empty last-good (empty default).
+    const closeBtn = screen.getByRole('button', { name: /close settings/i });
+    await act(async () => {
+      fireEvent.click(closeBtn);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(projectSwitchMock).toHaveBeenCalled();
+    });
+    expect(projectSwitchMock.mock.calls.some((c) => c[0] === VAULT_B)).toBe(true);
+    await waitFor(() => expect(mainRoot).toBe(VAULT_B));
+  });
+
+  // Ivy R6 — Close with parked switch: save still fails → cancel; stay original.
+  it('Close with parked switch cancels when save still fails (main stays original)', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    await clickVaultTile(VAULT_B);
+    await waitFor(() => expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument());
+    expect(mainRoot).toBe(VAULT_A);
+
+    const closeBtn = screen.getByRole('button', { name: /close settings/i });
+    await act(async () => {
+      fireEvent.click(closeBtn);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Still failing — Settings stays open; switch cancelled; main original.
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    expect(mainRoot).toBe(VAULT_A);
+    expect(screen.queryByTestId('settings-flush-retry')).not.toBeInTheDocument();
+    // No successful switch to B.
+    const switchedToB = projectSwitchMock.mock.calls.some((c) => c[0] === VAULT_B);
+    expect(switchedToB, 'must not commit target when Close save still fails').toBe(false);
+  });
+
+  // no-announce Retry — must re-save (settingsSet) before projectSwitch.
+  // RED if Retry only switches without re-saving.
+  it('no-announce Retry re-saves before switching (RED if Retry skips flush)', async () => {
+    announceOnSwitch = false;
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+
+    let n = 0;
+    settingsSetMock.mockImplementation(async (next: Persisted) => {
+      n += 1;
+      if (n === 1) return { saved: false, error: 'transient' };
+      persisted = { ...persisted, ...next };
+      return { saved: true };
+    });
+
+    await clickVaultTile(VAULT_B);
+    await waitFor(() => expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument());
+    expect(projectSwitchMock).not.toHaveBeenCalled();
+    const setsBeforeRetry = settingsSetMock.mock.calls.length;
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-retry'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(projectSwitchMock).toHaveBeenCalled();
+    });
+    expect(
+      settingsSetMock.mock.calls.length,
+      'Retry must call settingsSet again (RED if Retry switches without re-saving)',
+    ).toBeGreaterThan(setsBeforeRetry);
+    expect(crashPayloadSeen()).toBe(true);
+    expect(projectSwitchMock.mock.calls[0][0]).toBe(VAULT_B);
+    expect(mainRoot).toBe(VAULT_B);
+  });
+
+  // Behaviour (not source-regex): gates loadVault on __mythosSettingsFlush
+  // while Settings is open — shell-loading stays null until flush resolves.
+  it('behaviour: loadVault waits on __mythosSettingsFlush while Settings open', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+
+    const w = window as Window & { __mythosSettingsFlush?: () => Promise<boolean> };
+    let resolveFlush: ((ok: boolean) => void) | null = null;
+    w.__mythosSettingsFlush = () => new Promise<boolean>((resolve) => { resolveFlush = resolve; });
+
+    holdLoad = true;
+    await clickVaultTile(VAULT_B);
+    expect(document.querySelector('.shell-loading'), 'must not loadVault before flush').toBeNull();
+    expect(resolveFlush, 'flush must be pending').not.toBeNull();
+
+    await act(async () => {
+      resolveFlush?.(true);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(document.querySelector('.shell-loading')).not.toBeNull();
+    });
+    holdLoad = false;
+    await releaseLoadHolds();
+  });
+
+  // RT1: Retry after second failure stays parked; later successful Retry switches.
+  it('RT1: Retry after second failure stays parked; later Retry switches', async () => {
+    announceOnSwitch = false;
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+
+    let n = 0;
+    settingsSetMock.mockImplementation(async (next: Persisted) => {
+      n += 1;
+      if (n <= 2) return { saved: false, error: 'transient' };
+      persisted = { ...persisted, ...next };
+      return { saved: true };
+    });
+
+    await clickVaultTile(VAULT_B);
+    await waitFor(() => expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument());
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-retry'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument());
+    expect(projectSwitchMock).not.toHaveBeenCalled();
+    expect(mainRoot).toBe(VAULT_A);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-retry'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(projectSwitchMock).toHaveBeenCalled());
+    expect(mainRoot).toBe(VAULT_B);
+  });
+
+  // Vault & Files card — same Retry / Switch anyway as tile (flush-first).
+  it('Vault & Files card switch parks with Retry/Switch anyway on refused flush', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    fireEvent.click(await screen.findByTestId('settings-cat-vaults'));
+    const card = await screen.findByTestId(`mvs-card-${VAULT_B}`);
+    await act(async () => {
+      fireEvent.click(card);
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-flush-switch-error')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument();
+    expect(screen.getByTestId('settings-flush-switch-anyway')).toBeInTheDocument();
+    expect(projectSwitchMock).not.toHaveBeenCalled();
+    expect(mainRoot).toBe(VAULT_A);
+  });
+
+  // Story-vault picker park → Escape with still-failing save cancels; stay original.
+  it('story-vault picker refuse parks; Escape cancel keeps original vault', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    await act(async () => {
+      const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
+        .__mythosSettingsFlush;
+      if (flush) await flush();
+      (window as Window & { __mythosParkVaultSwitch?: (id: string) => void })
+        .__mythosParkVaultSwitch?.('story-b');
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument();
+    });
+    expect(screen.getByTestId('settings-flush-switch-anyway')).toBeInTheDocument();
+    expect(mainRoot).toBe(VAULT_A);
+
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mainRoot).toBe(VAULT_A);
+    expect(screen.queryByTestId('settings-flush-retry')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+  });
+
+  // Probe-style: bad key → park → fix → Escape completes switch (save succeeds).
+  it('Escape with parked switch completes when key fixed (Probe close branch)', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeys();
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
+      target: { value: 'bad-key' },
+    });
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+
+    await clickVaultTile(VAULT_B);
+    await waitFor(() => expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument());
+    expect(mainRoot).toBe(VAULT_A);
+
+    fireEvent.change(screen.getByLabelText(/anthropic api key/i), {
+      target: { value: '' },
+    });
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(mainRoot).toBe(VAULT_B));
+    expect(projectSwitchMock.mock.calls.some((c) => c[0] === VAULT_B)).toBe(true);
   });
 });

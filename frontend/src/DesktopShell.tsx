@@ -761,12 +761,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // do NOT remount Settings (key bump discarded unsaved edits).
   const [settingsInitialCategory, setSettingsInitialCategory] = useState<SettingsCategoryId>('appearance');
   // Shield/Ivy: park vault switch when Settings flush fails — Retry / Switch anyway.
+  // storyVaultId set when StoryVaultPicker parks (registry setActive, not projectSwitch).
   const [pendingVaultSwitch, setPendingVaultSwitch] = useState<{
     vaultRoot: string;
     source: 'tile' | 'announce';
+    storyVaultId?: string;
   } | null>(null);
   const pendingVaultSwitchRef = useRef(pendingVaultSwitch);
   pendingVaultSwitchRef.current = pendingVaultSwitch;
+  // Ivy R6: while rolling main back after a premature announce, ignore the
+  // rollback's own project:switched broadcast so we do not re-enter park/apply.
+  const suppressProjectAnnounceRef = useRef(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   // SKY-11048: nav-rail vault tiles — every registered Mythos vault, always
   // fetched (even a lone vault renders a tile + the `+` tile). The raw list
@@ -1870,9 +1875,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     notifyMythosActiveVaultChanged(); // SKY-8882: re-probe migration status for the new vault
   }, [loadVault, loadVaults]);
 
-  // Probe H1 + Shield/Ivy: when Settings is open, flush before loadVault.
-  // flush false → park switch; keep Settings open; Retry / Switch anyway.
+  // Probe H1 + Shield/Ivy + Ivy R6: when Settings is open, flush before
+  // loadVault. flush false → park; if main already moved (announce), roll it
+  // back so UI and vault-settings.json stay on the ORIGINAL vault until Retry
+  // / Switch anyway / successful Close-save completes the switch.
   const handleProjectSwitched = useCallback((vaultRoot: string) => {
+    if (suppressProjectAnnounceRef.current) return;
     if (!settingsOpenRef.current) {
       applyProjectSwitched(vaultRoot);
       return;
@@ -1883,13 +1891,23 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       applyProjectSwitched(vaultRoot);
       return;
     }
-    void flush().then((ok) => {
+    const originalRoot = activeVaultRootRef.current;
+    void flush().then(async (ok) => {
       if (ok) {
         setPendingVaultSwitch(null);
         applyProjectSwitched(vaultRoot);
         return;
       }
+      // Park target; keep Settings open. Main may already be on vaultRoot —
+      // roll it back so New Story / getVaultRoot match the renderer.
       setPendingVaultSwitch({ vaultRoot, source: 'announce' });
+      if (originalRoot && originalRoot !== vaultRoot && window.api?.projectSwitch) {
+        suppressProjectAnnounceRef.current = true;
+        try {
+          await window.api.projectSwitch(originalRoot);
+        } catch { /* stay parked; renderer still on original */ }
+        suppressProjectAnnounceRef.current = false;
+      }
     });
   }, [applyProjectSwitched]);
 
@@ -1915,6 +1933,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // persists Model & keys edits to disk so the remount's settingsGet rehydrates
   // them; settingsHydratedRef still protects mid-open Appearance-only overlays.
   // Shield/Ivy: returns false when flush refused — caller must NOT switch.
+  // Ivy R6: ProjectSwitcher list clicks also use switchToVault (no premature
+  // projectSwitch) so main never commits ahead of a refused settings save.
   const flushOpenSettings = useCallback(async (): Promise<boolean> => {
     if (!settingsOpen) return true;
     const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
@@ -1925,12 +1945,23 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   const completeVaultSwitch = useCallback(async (
     vaultId: string,
-    source: 'tile' | 'announce',
+    _source: 'tile' | 'announce',
+    storyVaultId?: string,
   ): Promise<void> => {
-    if (source === 'announce') {
-      applyProjectSwitched(vaultId);
+    // Story-vault picker park: finish via registry setActive (broadcasts
+    // project:switched). Mythos vault / tile / announce: projectSwitch.
+    if (storyVaultId && window.api?.storyVaultRegistrySetActive) {
+      try {
+        await window.api.storyVaultRegistrySetActive(storyVaultId);
+        // Main already broadcast; apply renderer to whatever getVaultRoot says.
+        const root = await window.api.getVaultRoot?.();
+        const next = root?.vaultRoot ?? vaultId;
+        applyProjectSwitched(next);
+      } catch { /* stay on current vault */ }
       return;
     }
+    // Always projectSwitch — announce-park rolls main back to the original, so
+    // Retry / Switch anyway / Close-save must re-commit the target on main.
     const entry = navRailProjects.find((p) => p.vaultRoot === vaultId);
     await (window.api?.projectSwitch?.(vaultId, entry?.notesVaultRoot)
       .then((res) => { if (res?.switched) applyProjectSwitched(vaultId); })
@@ -1938,41 +1969,65 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       ?? Promise.resolve());
   }, [navRailProjects, applyProjectSwitched]);
 
-  const switchToVault = useCallback(async (vaultId: string): Promise<void> => {
-    if (vaultId === activeVaultRoot) return;
+  const switchToVault = useCallback(async (vaultId: string): Promise<boolean> => {
+    if (vaultId === activeVaultRoot) return true;
     const ok = await flushOpenSettings();
     if (!ok) {
       setPendingVaultSwitch({ vaultRoot: vaultId, source: 'tile' });
-      return;
+      return false;
     }
     setPendingVaultSwitch(null);
     // Already flushed — apply via projectSwitch (not handleProjectSwitched).
     await completeVaultSwitch(vaultId, 'tile');
+    return true;
   }, [activeVaultRoot, flushOpenSettings, completeVaultSwitch]);
+
+  // Ivy R6: Vault & Files cards use flush-then-switch; StoryVaultPicker parks
+  // here on refused flush so Retry / Switch anyway match the tile chrome.
+  useEffect(() => {
+    const w = window as Window & {
+      __mythosRequestVaultSwitch?: (vaultRoot: string) => Promise<boolean>;
+      __mythosParkVaultSwitch?: (vaultRootOrStoryId: string) => void;
+    };
+    w.__mythosRequestVaultSwitch = (vaultRoot: string) => switchToVault(vaultRoot);
+    w.__mythosParkVaultSwitch = (storyVaultId: string) => {
+      setPendingVaultSwitch({
+        vaultRoot: storyVaultId,
+        source: 'tile',
+        storyVaultId,
+      });
+    };
+    return () => {
+      if (w.__mythosRequestVaultSwitch) delete w.__mythosRequestVaultSwitch;
+      if (w.__mythosParkVaultSwitch) delete w.__mythosParkVaultSwitch;
+    };
+  }, [switchToVault]);
 
   const handleFlushSwitchChoice = useCallback(async (choice: 'retry' | 'switch-anyway') => {
     const pending = pendingVaultSwitchRef.current;
     if (!pending) return;
     if (choice === 'switch-anyway') {
       // Discard unsaved: close Settings without flush, then switch. Plain notice.
+      // (Ivy: do NOT toast discard on ordinary Close — only Switch anyway.)
       setPendingVaultSwitch(null);
       settingsOpenRef.current = false;
       setSettingsOpen(false);
       showLnToast('Switched vault — unsaved settings were discarded.');
-      await completeVaultSwitch(pending.vaultRoot, pending.source);
+      await completeVaultSwitch(pending.vaultRoot, pending.source, pending.storyVaultId);
       return;
     }
-    // Retry — re-run flush; switch only on success.
+    // Retry — re-run flush; switch only on success. Must call flush again
+    // (RED if Retry only projectSwitch / apply without re-saving).
     const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
       .__mythosSettingsFlush;
     const ok = flush ? await flush() : true;
     if (!ok) return;
     setPendingVaultSwitch(null);
-    await completeVaultSwitch(pending.vaultRoot, pending.source);
+    await completeVaultSwitch(pending.vaultRoot, pending.source, pending.storyVaultId);
   }, [completeVaultSwitch]);
 
   const handleVaultTileSelect = useCallback((vaultId: string) => {
-    switchToVault(vaultId);
+    void switchToVault(vaultId);
   }, [switchToVault]);
 
   // Both handlers below only touch `appSettings` (a per-vault override layered
@@ -2849,15 +2904,41 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [settingsOpen, runNavModuleChange]);
 
   const handleSettingsClose = useCallback(() => {
+    // Ivy R6: Close already re-ran save (SettingsPanel handleClose). If a
+    // vault switch was parked and the save now succeeded → complete it.
+    // Do NOT show Switch-anyway discard toast here (Ivy rejects that).
+    const vaultPending = pendingVaultSwitchRef.current;
     setSettingsOpen(false);
     setSettingsInitialCategory('appearance');
     const pending = pendingRailNavRef.current;
     pendingRailNavRef.current = null;
+    if (vaultPending) {
+      setPendingVaultSwitch(null);
+      void completeVaultSwitch(
+        vaultPending.vaultRoot,
+        vaultPending.source,
+        vaultPending.storyVaultId,
+      );
+    }
     if (pending) runNavModuleChange(pending);
-  }, [runNavModuleChange]);
+  }, [runNavModuleChange, completeVaultSwitch]);
 
   const handleSettingsCloseBlocked = useCallback(() => {
     pendingRailNavRef.current = null;
+    // Ivy R6: Close save still failing with a parked switch → cancel the
+    // switch (tile or announce); keep ORIGINAL vault; edits intact. Also
+    // clears parked tile so a later failure can't offer stale Retry.
+    const vaultPending = pendingVaultSwitchRef.current;
+    if (!vaultPending) return;
+    setPendingVaultSwitch(null);
+    const originalRoot = activeVaultRootRef.current;
+    if (!originalRoot || !window.api?.projectSwitch) return;
+    // Tile / story-picker park never moved main; announce park already rolled
+    // back. Re-assert original so UI and vault-settings.json cannot drift.
+    suppressProjectAnnounceRef.current = true;
+    void window.api.projectSwitch(originalRoot)
+      .catch(() => { /* keep renderer on original */ })
+      .finally(() => { suppressProjectAnnounceRef.current = false; });
   }, []);
 
   // ─── Writing mode keyboard shortcuts ───
@@ -6545,7 +6626,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           onOpenAccount={() => setAccountModalOpen(true)}
           activeVaultRoot={activeVaultRoot}
           activeStoryTitle={deriveSingleStoryTitle(stories)}
-          onProjectSwitched={handleProjectSwitched}
+          // Ivy R6: list clicks flush-then-switch (never projectSwitch first).
+          // Create / Open Other still land here after main has already moved —
+          // switchToVault re-flushes if Settings is open, then projectSwitch.
+          onProjectSwitched={(vaultRoot) => { void switchToVault(vaultRoot); }}
           onNewStory={() => { void createStory(); }}
           onOpenVault={() => { void openVaultViaPicker(); }}
           onCreateVault={() => { void createMythosVault(); }}

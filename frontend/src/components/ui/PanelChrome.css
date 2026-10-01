@@ -159,13 +159,20 @@
 .pc-header.brainstorm-header .pc-header-title-group {
   flex: 1 1 auto;
   min-width: 3rem;
+  max-width: 100%;
+}
+
+.pc-header.brainstorm-header .pc-header-start {
+  flex: 1 1 0%;
+  min-width: 0;
 }
 
 .pc-header.brainstorm-header .pc-header-actions {
   flex-wrap: nowrap;
-  flex-shrink: 0;
+  flex-shrink: 1;
   min-width: 0;
-  /* ≥701 one-row rule: secondary actions may clip/scroll rather than wrap. */
+  /* ≥701 one-row: shrink/ellipsis rather than overlapping Back/title.
+     Mode seg moves to ⋯ at ≤900 (BrainstormPage.css). */
   overflow-x: auto;
 }
 

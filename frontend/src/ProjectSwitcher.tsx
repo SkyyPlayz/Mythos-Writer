@@ -149,18 +149,14 @@ export default function ProjectSwitcher({ activeVaultRoot, activeStoryTitle, onS
   const handleSwitch = useCallback(async (entry: ProjectEntry) => {
     setOpen(false);
     if (entry.vaultRoot === activeVaultRoot) return;
+    // Ivy Probe R6: do NOT call projectSwitch here. Main must not commit a
+    // vault switch until DesktopShell flushes open Settings (or the user picks
+    // Switch anyway). Parent onSwitched is switchToVault — flush-then-switch.
+    // Create / Open Other still call onSwitched after main has already moved.
     try {
-      // SKY-320: pass the paired Notes Vault so main switches both halves
-      // atomically. Falls back to the legacy single-arg behavior on entries
-      // written before pairing.
-      const result = await window.api?.projectSwitch?.(entry.vaultRoot, entry.notesVaultRoot);
-      if (result?.switched) {
-        if (typeof result?.notesVaultRoot === 'string') {
-          setActiveNotesVaultRoot(result.notesVaultRoot);
-        }
-        onSwitched(entry.vaultRoot);
-      } else if (result?.error) {
-        alert(`Could not switch project: ${result.error}`);
+      await Promise.resolve(onSwitched(entry.vaultRoot));
+      if (typeof entry.notesVaultRoot === 'string') {
+        setActiveNotesVaultRoot(entry.notesVaultRoot);
       }
     } catch (err) {
       alert(`Switch failed: ${(err as Error).message}`);

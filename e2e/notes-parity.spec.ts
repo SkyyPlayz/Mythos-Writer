@@ -621,8 +621,11 @@ test('F2 W0.3 / Critic #6 / Probe H2 / Critic hard 1+3: bars clean across tabs',
     await page.locator('[data-testid="nav-rail-brainstorm"]').click();
     await expect(page.locator('[aria-labelledby="app-tab-brainstorm"]')).toBeVisible({ timeout: 8_000 });
     await expect(page.locator('.pc-header-host .pc-header.brainstorm-header').first()).toBeVisible({ timeout: 8_000 });
-    await expect(page.locator('.pc-header .pc-header-actions button, .pc-header [role="switch"]').first())
-      .toBeVisible({ timeout: 8_000 });
+    // Ivy R6: mode seg may be display:none @≤900 (⋯ instead) — wait on Mute /
+    // New Session which stay visible, not the first actions button.
+    await expect(page.locator(
+      '.pc-header.brainstorm-header .brainstorm-mute-btn, .pc-header.brainstorm-header .brainstorm-new-session-btn',
+    ).first()).toBeVisible({ timeout: 8_000 });
 
     for (const hostWidth of [280, 400, 500, 600, 700, 1000] as const) {
       const report = await measure(BRAINSTORM_SELS, hostWidth);
@@ -709,6 +712,136 @@ test('F2 W0.3 / Critic #6 / Probe H2 / Critic hard 1+3: bars clean across tabs',
       `brainstorm header @1440 tip=${h1440} main=${MAIN_BRAINSTORM_HEADER_H_1440}`,
     ).toBeLessThanOrEqual(2);
     assertClean(await measure(BRAINSTORM_SELS, 1440), BRAINSTORM_SELS, 1440, { requirePc: true });
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
+
+// Ivy R6: standalone chat header @701/750/800/900 — no overlap among Back,
+// title, and Agent Chat|Idea Board (inline or ⋯); title visible; Back click
+// navigates. Board mode + 1000/1440 stay 77 one-row (covered by W0.3 test).
+test('Ivy R6: standalone chat header no overlap at 701/750/800/900 + Back click', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+
+    await page.locator('[data-testid="nav-rail-brainstorm"]').click();
+    await expect(page.locator('.pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)').first())
+      .toBeVisible({ timeout: 8_000 });
+    // Chat is default when AI is on — Mute stays visible; mode seg may be in ⋯.
+    await expect(page.locator(
+      '.pc-header.brainstorm-header:not(.brainstorm-header--compact) .brainstorm-mute-btn',
+    ).first()).toBeVisible({ timeout: 5_000 });
+
+    type ChatReport = {
+      width: number;
+      height: number;
+      titleVisible: boolean;
+      backVisible: boolean;
+      modeReachable: boolean;
+      modePlacement: 'inline' | 'overflow';
+      overlap: boolean;
+    };
+
+    async function measureChat(width: number): Promise<ChatReport> {
+      return page.evaluate((w) => {
+        function overlaps(a: DOMRect, b: DOMRect): boolean {
+          return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+        }
+        const el = document.querySelector(
+          '.pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)',
+        ) as HTMLElement | null;
+        if (!el) {
+          return {
+            width: w, height: 0, titleVisible: false, backVisible: false,
+            modeReachable: false, modePlacement: 'overflow' as const, overlap: true,
+          };
+        }
+        const host = (el.closest('.pc-header-host') as HTMLElement | null) ?? el;
+        const prevW = host.style.width;
+        const prevMin = host.style.minWidth;
+        const prevMax = host.style.maxWidth;
+        host.style.width = `${w}px`;
+        host.style.minWidth = `${w}px`;
+        host.style.maxWidth = `${w}px`;
+        void host.offsetWidth;
+        const rect = el.getBoundingClientRect();
+        const back = el.querySelector('.brainstorm-back-btn, [aria-label="Close brainstorm"]') as HTMLElement | null;
+        const title = el.querySelector('.pc-header-title') as HTMLElement | null;
+        const seg = el.querySelector('[data-testid="bsc-mode-seg-inline"]') as HTMLElement | null;
+        const overflow = el.querySelector('[data-testid="brainstorm-header-overflow-standalone"]') as HTMLElement | null;
+        const br = back?.getBoundingClientRect();
+        const tr = title?.getBoundingClientRect();
+        const sr = seg?.getBoundingClientRect();
+        const or = overflow?.getBoundingClientRect();
+        const backVisible = Boolean(br && br.width > 0 && br.height > 0);
+        const titleVisible = Boolean(tr && tr.width > 0 && tr.height > 0);
+        const segVisible = Boolean(sr && sr.width > 0 && sr.height > 0);
+        const overflowVisible = Boolean(or && or.width > 0 && or.height > 0);
+        const modeReachable = segVisible || overflowVisible;
+        const modePlacement = segVisible ? 'inline' as const : 'overflow' as const;
+        let overlap = false;
+        if (backVisible && titleVisible && br && tr && overlaps(br, tr)) overlap = true;
+        if (backVisible && segVisible && br && sr && overlaps(br, sr)) overlap = true;
+        if (titleVisible && segVisible && tr && sr && overlaps(tr, sr)) overlap = true;
+        host.style.width = prevW;
+        host.style.minWidth = prevMin;
+        host.style.maxWidth = prevMax;
+        return {
+          width: w,
+          height: Math.round(rect.height),
+          titleVisible,
+          backVisible,
+          modeReachable,
+          modePlacement,
+          overlap,
+        };
+      }, width);
+    }
+
+    const widths = [701, 750, 800, 900] as const;
+    const reports: ChatReport[] = [];
+    for (const w of widths) {
+      const m = await measureChat(w);
+      reports.push(m);
+      expect(m.backVisible, `Back visible @${w}`).toBe(true);
+      expect(m.titleVisible, `title visible @${w}`).toBe(true);
+      expect(m.modeReachable, `mode reachable inline or overflow @${w}`).toBe(true);
+      expect(m.overlap, `no Back/title/mode overlap @${w}`).toBe(false);
+      // ≤900 → overflow; keep one-row band
+      expect(m.modePlacement, `mode in overflow @${w}`).toBe('overflow');
+      expect(m.height, `one-row height @${w}`).toBeGreaterThanOrEqual(60);
+      expect(m.height, `one-row height @${w}`).toBeLessThanOrEqual(90);
+    }
+
+    // Real click on Back centre navigates away from Brainstorm.
+    await page.evaluate(() => {
+      const el = document.querySelector(
+        '.pc-header-host .pc-header.brainstorm-header:not(.brainstorm-header--compact)',
+      ) as HTMLElement | null;
+      const host = (el?.closest('.pc-header-host') as HTMLElement | null) ?? el;
+      if (host) {
+        host.style.width = '750px';
+        host.style.minWidth = '750px';
+        host.style.maxWidth = '750px';
+      }
+    });
+    const back = page.locator(
+      '.pc-header.brainstorm-header:not(.brainstorm-header--compact) .brainstorm-back-btn, .pc-header.brainstorm-header:not(.brainstorm-header--compact) [aria-label="Close brainstorm"]',
+    ).first();
+    await expect(back).toBeVisible();
+    const box = await back.boundingBox();
+    expect(box, 'Back hit target').toBeTruthy();
+    await page.mouse.click((box!.x + box!.width / 2), (box!.y + box!.height / 2));
+    await expect(page.locator('[aria-labelledby="app-tab-brainstorm"]')).not.toBeVisible({ timeout: 5_000 });
+
+    await test.info().attach('ivy-r6-standalone-chat-header.json', {
+      body: Buffer.from(JSON.stringify(reports, null, 2), 'utf8'),
+      contentType: 'application/json',
+    });
+    // eslint-disable-next-line no-console
+    console.log('[Ivy R6 chat header]', JSON.stringify(reports));
   } finally {
     await app.close().catch(() => undefined);
   }
