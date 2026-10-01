@@ -909,6 +909,87 @@ describe('Draft persistence', () => {
     );
   });
 
+  /**
+   * Ivy GO held pin (product already on tip via f385b3de): AI-off Board-only
+   * standalone header still mounts ⋯ (≤999 CSS), and opening it exposes Idea +
+   * Search ideas. Mode aria-checked is asserted under AI-on (see note below).
+   * Leave sky10604 AI-off overflow e2e skip alone.
+   */
+  describe('Ivy ruling 4: AI-off Board-only standalone overflow', () => {
+    afterEach(() => {
+      __resetAiEnabledForTests();
+    });
+
+    function seedSearchIdeas() {
+      localStorage.setItem('brainstorm:draft', JSON.stringify({
+        v: 2,
+        savedAt: new Date().toISOString(),
+        prompt: '',
+        messages: [],
+        facts: [
+          { id: 'fact-a', type: 'character', name: 'Aria Voss', content: 'A young sorceress', savedStatus: 'saved', createdAt: 1000 },
+          { id: 'fact-b', type: 'character', name: 'Kael Thorne', content: 'A guarded smuggler', savedStatus: 'saved', createdAt: 1001 },
+          { id: 'fact-c', type: 'location', name: 'Dark Cave', content: 'An underground cavern', savedStatus: 'saved', createdAt: 1002 },
+        ],
+      }));
+    }
+
+    it('renders standalone ⋯; Idea creates a loose card; Search filters', () => {
+      setAiEnabled(false);
+      seedSearchIdeas();
+      render(<BrainstormPage onClose={() => {}} />);
+
+      // Board-only (AI off) — no chat seg; ⋯ still mounts for board chrome @≤999.
+      expect(screen.queryByTestId('bsc-mode-chat')).not.toBeInTheDocument();
+      const overflowBtn = screen.getByTestId('brainstorm-header-overflow-standalone');
+      expect(overflowBtn).toBeInTheDocument();
+
+      fireEvent.click(overflowBtn);
+      const menu = screen.getByTestId('brainstorm-header-overflow-standalone-menu');
+      expect(menu).toBeInTheDocument();
+
+      // Note: AI-off still lists bsc-mode-board in ⋯, but checked uses `mode`
+      // (default 'chat') not effectiveMode ('board'), so aria-checked stays
+      // false here — assert checked under AI-on in the sibling test below.
+      expect(within(menu).getByTestId('bsc-mode-board')).toBeInTheDocument();
+
+      // Idea in ⋯ → addLooseIdea observable: "New idea" card + toast.
+      fireEvent.click(within(menu).getByTestId('bsc-add-idea'));
+      const board = within(screen.getByTestId('bsc-board'));
+      expect(board.getByText('New idea')).toBeInTheDocument();
+      expect(board.getByText('Drag me anywhere — expand me with the Agent chat.')).toBeInTheDocument();
+      expect(screen.getByText('Idea captured — landed near Loose Ideas')).toBeInTheDocument();
+
+      // Re-open ⋯ — Search ideas input filters the canvas.
+      fireEvent.click(screen.getByTestId('brainstorm-header-overflow-standalone'));
+      const menuAgain = screen.getByTestId('brainstorm-header-overflow-standalone-menu');
+      const search = within(menuAgain).getByTestId('bsc-search-input');
+      expect(search).toHaveAttribute('aria-label', 'Search ideas');
+      fireEvent.change(search, { target: { value: 'aria' } });
+      expect(screen.getByTestId('bsc-card-fact-a')).toBeInTheDocument();
+      expect(screen.queryByTestId('bsc-card-fact-b')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('bsc-card-fact-c')).not.toBeInTheDocument();
+    });
+
+    it('AI-on: overflow mode items carry aria-checked for the active mode', () => {
+      // AI-off Board-only keeps mode state at 'chat' while effectiveMode is
+      // 'board', so checked cannot be asserted meaningfully there.
+      seedSearchIdeas();
+      render(<BrainstormPage onClose={() => {}} />);
+
+      fireEvent.click(screen.getByTestId('brainstorm-header-overflow-standalone'));
+      const menu = screen.getByTestId('brainstorm-header-overflow-standalone-menu');
+      expect(within(menu).getByTestId('bsc-mode-chat')).toHaveAttribute('aria-checked', 'true');
+      expect(within(menu).getByTestId('bsc-mode-board')).toHaveAttribute('aria-checked', 'false');
+
+      fireEvent.click(within(menu).getByTestId('bsc-mode-board'));
+      fireEvent.click(screen.getByTestId('brainstorm-header-overflow-standalone'));
+      const menuBoard = screen.getByTestId('brainstorm-header-overflow-standalone-menu');
+      expect(within(menuBoard).getByTestId('bsc-mode-board')).toHaveAttribute('aria-checked', 'true');
+      expect(within(menuBoard).getByTestId('bsc-mode-chat')).toHaveAttribute('aria-checked', 'false');
+    });
+  });
+
   // Ivy: Download must never be gated on !compact (feature loss vs main).
   it('Ivy: compact Download is never hidden behind !compact (source + overflow)', () => {
     // RED if `messages.length > 0 && !compact` is restored.
