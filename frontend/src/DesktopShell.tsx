@@ -3416,13 +3416,13 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const { createVault: createMythosVault, createVaultModal } = useCreateMythosVaultFlow(
     useCallback(({ vaultRoot }) => {
       handleProjectSwitched(vaultRoot);
-      // F3#9 — vault setup via WelcomeOverlay completes first-run onboarding.
-      setAppSettings((prev) => {
-        if (!prev || prev.onboardingComplete) return prev;
-        const next = { ...prev, onboardingComplete: true };
-        void window.api?.settingsSet?.(next);
-        return next;
-      });
+      // Probe C7 — hook already persisted onboardingComplete + onboardingStartMode.
+      // Never settingsSet here: stale renderer prev used to overwrite mode with null ~3ms later.
+      // Sync UI only from a fresh settingsGet.
+      void window.api?.settingsGet?.().then((fresh) => {
+        if (!fresh) return;
+        setAppSettings((prev) => ({ ...(prev ?? {}), ...fresh } as AppSettings));
+      }).catch(() => {});
     }, [handleProjectSwitched]),
   );
 

@@ -43,4 +43,20 @@ describe('computeFitCamera (F3#8 / Probe B)', () => {
     expect(sx).toBeLessThan(extentW - GRAPH_INSPECTOR_RESERVE_PX);
     expect(isNodeInViewport(node, cam.pan, cam.zoom, extentW, extentH)).toBe(true);
   });
+
+  it('inspector reserve biases pan left vs reserveRightPx:0 (RED if reserve=0)', () => {
+    expect(GRAPH_INSPECTOR_RESERVE_PX).toBeGreaterThan(200);
+    const extentW = 1000;
+    const extentH = 640;
+    // Node in the right half — reserve must pull content left of the inspector band.
+    const node = { x: 820, y: 320, radius: 14 };
+    const withReserve = computeFitCamera([node], extentW, extentH);
+    const noReserve = computeFitCamera([node], extentW, extentH, { reserveRightPx: 0 });
+    expect(withReserve.pan.x).toBeLessThan(noReserve.pan.x);
+    const sx =
+      extentW * (1 - withReserve.zoom) / 2
+      + withReserve.pan.x
+      + node.x * withReserve.zoom;
+    expect(sx + node.radius).toBeLessThan(extentW - GRAPH_INSPECTOR_RESERVE_PX);
+  });
 });

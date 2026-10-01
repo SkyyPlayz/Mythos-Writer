@@ -42,6 +42,38 @@ function seedCompletedOnboarding(userData: string, storyVault: string, notesVaul
   );
 }
 
+/** Snapshot destinations that createVaultFromOptions / import would touch. */
+function diskFingerprint(tempRoot: string, notesVault: string, userData: string): string {
+  const walk = (root: string): string[] => {
+    if (!fs.existsSync(root)) return [];
+    const out: string[] = [];
+    const stack = [root];
+    while (stack.length) {
+      const cur = stack.pop()!;
+      for (const ent of fs.readdirSync(cur, { withFileTypes: true })) {
+        const full = path.join(cur, ent.name);
+        const rel = path.relative(tempRoot, full);
+        if (ent.isDirectory()) {
+          out.push(`D:${rel}`);
+          stack.push(full);
+        } else {
+          const st = fs.statSync(full);
+          out.push(`F:${rel}:${st.size}:${st.mtimeMs}`);
+        }
+      }
+    }
+    return out.sort();
+  };
+  return JSON.stringify([
+    ...walk(notesVault),
+    ...walk(path.join(tempRoot, 'vaults')),
+    ...walk(path.join(userData, 'vaults')),
+    fs.existsSync(path.join(userData, 'vault-settings.json'))
+      ? fs.readFileSync(path.join(userData, 'vault-settings.json'), 'utf-8')
+      : '',
+  ]);
+}
+
 async function launchApp(userData: string): Promise<ElectronApplication> {
   const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
   return electron.launch({
@@ -91,13 +123,10 @@ test.describe('C6 NotesVaultPicker import dry-run', () => {
       await expect(page.locator('[data-testid="notes-vault-picker-menu"]')).toBeVisible({ timeout: 6_000 });
       await page.locator('[data-testid="notes-vault-picker-menu"] [data-testid="menu-item-import"]').click();
 
-      // Create vault modal in import mode (dry-run path).
       await expect(page.getByRole('dialog', { name: /Create a Mythos vault/i })).toBeVisible({ timeout: 20_000 });
       await expect(page.getByTestId('rail-vault-mode-import')).toHaveAttribute('aria-checked', 'true');
 
-      const importedBefore = fs.existsSync(path.join(tempRoot, 'Imported'))
-        ? fs.readdirSync(path.join(tempRoot, 'Imported'))
-        : [];
+      const before = diskFingerprint(tempRoot, notesVault, userData);
       const notesBrowse = page
         .locator('[data-testid="create-vault-import-path"]')
         .locator('..')
@@ -105,22 +134,17 @@ test.describe('C6 NotesVaultPicker import dry-run', () => {
       await notesBrowse.click();
       await expect(page.getByTestId('create-vault-dryrun-notes')).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId('create-vault-dryrun-notes-md')).toContainText(/markdown/i);
-      expect(
-        fs.existsSync(path.join(tempRoot, 'Imported'))
-          ? fs.readdirSync(path.join(tempRoot, 'Imported'))
-          : [],
-      ).toEqual(importedBefore);
+      // Nothing written under notes vault / vault destinations before confirm.
+      expect(diskFingerprint(tempRoot, notesVault, userData)).toBe(before);
+      // Fixture source untouched.
+      expect(fs.readFileSync(path.join(fixture, 'Prologue.md'), 'utf-8')).toBe('# Prologue\n');
 
       await page.getByTestId('create-vault-cancel').click();
       if (await page.getByTestId('gs-cancel-confirm').count()) {
         await page.getByTestId('create-vault-cancel-discard').click();
       }
       await expect(page.getByRole('dialog', { name: /Create a Mythos vault/i })).toHaveCount(0);
-      expect(
-        fs.existsSync(path.join(tempRoot, 'Imported'))
-          ? fs.readdirSync(path.join(tempRoot, 'Imported'))
-          : [],
-      ).toEqual(importedBefore);
+      expect(diskFingerprint(tempRoot, notesVault, userData)).toBe(before);
     } finally {
       await app.close().catch(() => {});
       fs.rmSync(tempRoot, { recursive: true, force: true });

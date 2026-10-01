@@ -107,6 +107,14 @@ test.describe('F3#9 WelcomeOverlay first-run (replaces OnboardingWizard ACs)', (
         const full = path.join(notesVault, dir);
         expect(fs.existsSync(full), `Notes Vault/${dir} should exist`).toBe(true);
       }
+      // C7 — disk (not mocked): template start mode survives shell onCreated.
+      await expect.poll(() => {
+        const p = path.join(userData, 'app-settings.json');
+        if (!fs.existsSync(p)) return null;
+        return (JSON.parse(fs.readFileSync(p, 'utf-8')) as {
+          onboardingStartMode?: string | null;
+        }).onboardingStartMode;
+      }, { timeout: 15_000 }).toBe('template');
     } finally {
       await app.close().catch(() => {});
       fs.rmSync(userData, { recursive: true, force: true });
@@ -134,8 +142,10 @@ test.describe('F3#9 WelcomeOverlay first-run (replaces OnboardingWizard ACs)', (
 
       const appSettings = JSON.parse(
         fs.readFileSync(path.join(userData, 'app-settings.json'), 'utf-8'),
-      ) as { onboardingComplete?: boolean };
+      ) as { onboardingComplete?: boolean; onboardingStartMode?: string | null };
       expect(appSettings.onboardingComplete).toBe(true);
+      // C7 — Blank must write 'blank' (RED if mutant writes 'template').
+      expect(appSettings.onboardingStartMode).toBe('blank');
     } finally {
       await app.close().catch(() => {});
       fs.rmSync(userData, { recursive: true, force: true });

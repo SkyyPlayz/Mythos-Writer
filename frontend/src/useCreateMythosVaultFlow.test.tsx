@@ -140,6 +140,35 @@ describe('useCreateMythosVaultFlow (Slice D five-path)', () => {
     ));
   });
 
+  it('C7: blank create persists onboardingStartMode=blank (RED if wrong mode mutant)', async () => {
+    render(<TestHarness onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Open'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('rail-vault-mode-blank'));
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+    await waitFor(() => expect(window.api.settingsSet).toHaveBeenCalledWith(
+      expect.objectContaining({ onboardingStartMode: 'blank', onboardingComplete: true }),
+    ));
+    // Must not write template (or any other mode) for the blank path.
+    expect(window.api.settingsSet).not.toHaveBeenCalledWith(
+      expect.objectContaining({ onboardingStartMode: 'template' }),
+    );
+  });
+
+  it('C7: import create persists onboardingStartMode=import', async () => {
+    render(<TestHarness onCreated={vi.fn()} />);
+    fireEvent.click(screen.getByText('Open'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('rail-vault-mode-import'));
+    const browseBtns = screen.getAllByRole('button', { name: /Browse/i });
+    fireEvent.click(browseBtns[1]);
+    await waitFor(() => expect(screen.getByTestId('create-vault-dryrun-notes')).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+    await waitFor(() => expect(window.api.settingsSet).toHaveBeenCalledWith(
+      expect.objectContaining({ onboardingStartMode: 'import', onboardingComplete: true }),
+    ));
+  });
+
   it('C7: Cancel mid-flow with dirty state shows confirm; discard writes nothing', async () => {
     render(<TestHarness onCreated={vi.fn()} />);
     fireEvent.click(screen.getByText('Open'));

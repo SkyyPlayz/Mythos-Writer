@@ -14,8 +14,7 @@ import {
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
-async function launchFreshProfile() {
-  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f3-welcome-'));
+async function launchWithUserData(userData: string) {
   const extraArgs = process.env.DISPLAY ? [] : ['--headless'];
   const app = await electron.launch({
     args: [MAIN_JS, `--user-data-dir=${userData}`, ...extraArgs],
@@ -29,6 +28,15 @@ async function launchFreshProfile() {
   const page = await app.firstWindow({ timeout: 60_000 });
   await page.waitForLoadState('domcontentloaded');
   return { app, page, userData };
+}
+
+async function launchFreshProfile() {
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-f3-welcome-'));
+  return launchWithUserData(userData);
+}
+
+async function launchFreshProfileReuse(userData: string) {
+  return launchWithUserData(userData);
 }
 
 test.describe('F3#9 WelcomeOverlay-only onboarding', () => {
@@ -52,8 +60,29 @@ test.describe('F3#9 WelcomeOverlay-only onboarding', () => {
       await expect(
         page.locator('.app-menu-bar, .desktop-shell, .shell-root').first(),
       ).toBeVisible({ timeout: 45_000 });
+      await expect.poll(() => {
+        const p = path.join(userData, 'app-settings.json');
+        if (!fs.existsSync(p)) return null;
+        const s = JSON.parse(fs.readFileSync(p, 'utf-8')) as {
+          onboardingComplete?: boolean;
+          onboardingStartMode?: string | null;
+        };
+        return s.onboardingComplete === true && s.onboardingStartMode === 'skip'
+          ? 'ok'
+          : null;
+      }, { timeout: 15_000 }).toBe('ok');
     } finally {
       await app.close();
+    }
+    // Real relaunch — Welcome must not bounce back.
+    const again = await launchFreshProfileReuse(userData);
+    try {
+      await expect(again.page.getByTestId('welcome-overlay')).toHaveCount(0);
+      await expect(
+        again.page.locator('.app-menu-bar, .desktop-shell, .shell-root').first(),
+      ).toBeVisible({ timeout: 45_000 });
+    } finally {
+      await again.app.close();
       fs.rmSync(userData, { recursive: true, force: true });
     }
   });
