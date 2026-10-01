@@ -622,6 +622,30 @@ describe('CoachPage (§5.2)', () => {
   });
 });
 
+describe('CoachPage legacy coach → turnsToCoachHistory → prompt', () => {
+  it('legacy coach main-format card is stripped from the WA prompt on send', async () => {
+    const mock = installMockApi({
+      sessionAgent: 'coach',
+      turns: [{
+        role: 'agent',
+        text: encodeCoachCard({ kind: 'analysis', title: 'Full Scene Analysis — Legacy', computed: [['Words', '10']], read: [], takeaway: 'Legacy takeaway text' }),
+        at: AT,
+      }],
+    });
+    render(<CoachPage scene={null} story={story} currentChapterId="ch-2" />);
+    await flush();
+    const input = screen.getByTestId('coach-input');
+    fireEvent.change(input, { target: { value: 'What next?' } });
+    await act(async () => { fireEvent.keyDown(input, { key: 'Enter' }); });
+    await flush();
+    expect(mock.api.agentWritingAssistant).toHaveBeenCalled();
+    const [prompt] = (mock.api.agentWritingAssistant as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    expect(prompt).toContain('Legacy takeaway text');
+    expect(prompt).not.toContain('mythos:coach-card');
+    expect(prompt).not.toMatch(/\{"kind":"analysis"/);
+  });
+});
+
 describe('CoachPage suggestions rail (§5.2 right rail)', () => {
   const railSuggestions = [
     {

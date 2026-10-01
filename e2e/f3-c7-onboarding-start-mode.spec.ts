@@ -108,8 +108,8 @@ test.describe('C7 onboardingStartMode on disk', () => {
 
     const app = await launchFresh(userData);
     try {
-      await patchOpenDialog(app, fixture);
       const page = await firstWindow(app);
+      await patchOpenDialog(app, fixture);
       await expect(page.getByTestId('welcome-overlay')).toBeVisible({ timeout: 60_000 });
       await page.getByTestId('welcome-path-import').click();
       await expect(page.getByTestId('rail-vault-mode-import')).toHaveAttribute('aria-checked', 'true');
