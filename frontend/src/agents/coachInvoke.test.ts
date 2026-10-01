@@ -76,6 +76,38 @@ describe('turnsToCoachHistory — Critic soft pin (Coach path)', () => {
     expect(history[1].content).not.toMatch(/\{"kind":"analysis"/);
   });
 
+  /**
+   * Critic r6 BLOCKER — CoachPage (`useCoachConversation` → `turnsToCoachHistory`)
+   * never passes sessionAgent. Legacy coach turns have no cardKind; history must
+   * still strip marker+JSON. RED if `historyContentForModel` re-gates on coach.
+   */
+  it('CoachPage path: strips no-cardKind legacy marker without sessionAgent (RED if sessionAgent gate restored)', () => {
+    const encoded = encodeCoachCard({
+      kind: 'analysis',
+      title: 'Full Scene Analysis — Undercity',
+      computed: [['Words', '10']],
+      read: [],
+      takeaway: 'Main-format must not reach the model raw.',
+    });
+    // Mirrors useCoachConversation.ts:53 — turnsToCoachHistory(turns) with no opts.
+    const history = turnsToCoachHistory([
+      { role: 'user', text: 'Analyze this scene', at: '2026-01-01T00:00:00.000Z' },
+      {
+        role: 'agent',
+        text: encoded,
+        at: '2026-01-01T00:00:01.000Z',
+        // no cardKind — main-saved legacy coach format
+      },
+    ]);
+    expect(history).toHaveLength(2);
+    expect(history[1].role).toBe('assistant');
+    expect(history[1].content).toContain('Main-format must not reach the model raw');
+    expect(history[1].content).toContain('Full Scene Analysis — Undercity');
+    expect(history[1].content).not.toContain('mythos:coach-card');
+    expect(history[1].content).not.toMatch(/\{"kind":"analysis"/);
+    expect(history[1].content).not.toBe(encoded);
+  });
+
   it('caps to MAX_HISTORY_TURNS (RED if cap removed or bypassed)', () => {
     const turns = Array.from({ length: MAX_HISTORY_TURNS + 5 }, (_, i) => ({
       role: (i % 2 === 0 ? 'user' : 'agent') as 'user' | 'agent',

@@ -1707,7 +1707,7 @@ interface Window {
     }) => Promise<{ ok: boolean; entry: unknown }>;
     // SKY-627: orchestrates vault creation + first-scene setup during onboarding
     onboardingComplete: (payload?: {
-      startMode: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+      startMode: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
       storyTitle?: string;
       authorName?: string;
       vaultParentPath?: string;

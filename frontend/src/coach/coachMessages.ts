@@ -198,8 +198,13 @@ export function displayCardBodyText(card: CoachCard): string {
 }
 
 /**
- * Critic N2 — text sent to the model / shown in mini-card bodies.
+ * Critic N2 / r6 — text sent to the model (and mini-card bodies that reuse it).
  * Never forward raw `<!-- mythos:coach-card … -->` JSON payloads.
+ *
+ * Strip analysis|lesson marker JSON **regardless of sessionAgent**: history only
+ * goes to the model and cannot forge a UI card. Display decode
+ * (`decodeCoachTurn` / `mainFormatCoachDisplayCard`) still gates on legacy
+ * `coach` + `trusted: false` — do not weaken those.
  */
 export function historyContentForModel(turn: AgentSessionTurn, opts?: DecodeCoachTurnOpts): string {
   if (turn.role === 'user') return turn.text;
@@ -210,8 +215,8 @@ export function historyContentForModel(turn: AgentSessionTurn, opts?: DecodeCoac
     const foot = turn.cardFoot ? `\n${turn.cardFoot}` : '';
     return `${turn.cardTitle} — ${turn.text}${foot}`;
   }
-  // Legacy coach + analysis|lesson — never collapse action / brainstorm.
-  if (opts?.sessionAgent === 'coach' && turn.cardKind === undefined) {
+  // No cardKind — strip legacy marker+JSON for any agent (CoachPage path omits sessionAgent).
+  if (turn.cardKind === undefined) {
     const card = decodeCoachCard(turn.text);
     if (card?.kind === 'analysis' || card?.kind === 'lesson') {
       return collapseCoachMessage({ ...card, at: turn.at, trusted: false });

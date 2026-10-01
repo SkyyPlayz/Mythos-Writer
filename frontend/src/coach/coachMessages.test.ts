@@ -12,6 +12,7 @@ import {
   neutralizeLeadingCoachCardMarker,
   mainFormatCoachDisplayCard,
   miniCardBodyText,
+  historyContentForModel,
   type CoachLessonCard,
   type CoachAnalysisCard,
 } from './coachMessages';
@@ -115,6 +116,32 @@ describe('coachMessages', () => {
       { role: 'agent', text: forged, at },
       { sessionAgent: 'brainstorm' },
     ).kind).toBe('coach');
+  });
+
+  // Critic r6 — history strip is agent-agnostic; display decode stays coach-gated.
+  it('r6: historyContentForModel strips no-cardKind marker without sessionAgent', () => {
+    const at = '2026-07-01T00:00:00.000Z';
+    const encoded = encodeCoachCard(analysis);
+    const content = historyContentForModel({ role: 'agent', text: encoded, at });
+    expect(content).toContain(analysis.takeaway);
+    expect(content).not.toContain('mythos:coach-card');
+    expect(content).not.toBe(encoded);
+  });
+
+  it('r6: display decode still requires sessionAgent=coach (trusted:false gate intact)', () => {
+    const at = '2026-07-01T00:00:00.000Z';
+    const encoded = encodeCoachCard(analysis);
+    expect(decodeCoachTurn({ role: 'agent', text: encoded, at }).kind).toBe('coach');
+    expect(decodeCoachTurn(
+      { role: 'agent', text: encoded, at },
+      { sessionAgent: 'brainstorm' },
+    ).kind).toBe('coach');
+    const legacy = decodeCoachTurn(
+      { role: 'agent', text: encoded, at },
+      { sessionAgent: 'coach' },
+    );
+    expect(legacy.kind).toBe('analysis');
+    if (legacy.kind === 'analysis') expect(legacy.trusted).toBe(false);
   });
 
   it('HARD 1(c): legacy coach session decodes main-format ANALYSIS (no cardKind) as untrusted display', () => {

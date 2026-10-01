@@ -3933,9 +3933,10 @@ const handlers: IpcHandlers = {
       return { ok: true, firstSceneId: firstScene?.id, firstScenePath: firstScene?.path };
     }
 
-    // SKY-2636: import-obsidian path — vault creation is handled by
+    // SKY-2636 / Critic r6: import path — vault creation is handled by
     // ONBOARDING_IMPORT_COMMIT; if somehow called here just mark complete.
-    if (startMode === 'import-obsidian') {
+    // Canonical value is `'import'` (same as renderer onboardingStartMode).
+    if (startMode === 'import') {
       persistSettings();
       return { ok: true };
     }
@@ -4469,7 +4470,7 @@ const handlers: IpcHandlers = {
       saveVaultSettings({ notesVaultRoot: resolvedSource, layoutMode: 'imported' });
       addToRecentProjects(getVaultRoot(), resolvedSource);
       const currentApp = loadAppSettings();
-      saveAppSettings({ ...currentApp, onboardingComplete: true, onboardingStartMode: 'import-obsidian' });
+      saveAppSettings({ ...currentApp, onboardingComplete: true, onboardingStartMode: 'import' });
 
       ensureVaultDir();
       const manifest = readManifest(getManifestPath());
