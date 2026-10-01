@@ -361,6 +361,15 @@ test('F2#12 real side/middle panel top bars are 36px (±1)', async () => {
             const h = el as HTMLElement;
             // Ivy GO (b): Brainstorm headers are exempt from the F2#12 36px clamp.
             if (h.classList.contains('brainstorm-header')) return false;
+            // Ivy ruling B / NH3: nested WA tip-strip header is allowed to wrap
+            // under ≤320 @container — not a top-level panel bar. Exclude only
+            // `.pc-header.wa-panel-header` inside `.ahp-writer-tips`.
+            if (
+              h.classList.contains('wa-panel-header')
+              && h.closest('.ahp-writer-tips')
+            ) {
+              return false;
+            }
             return h.clientHeight > 0;
           })
           .map((el) => Math.round(el.getBoundingClientRect().height));
@@ -396,6 +405,13 @@ test('F2#12 real side/middle panel top bars are 36px (±1)', async () => {
             const h = el as HTMLElement;
             // Ivy GO (b): compact Notes Agent Brainstorm is exempt — not a 36px bar.
             if (h.classList.contains('brainstorm-header')) return false;
+            // Ivy ruling B / NH3: nested WA tip-strip header may wrap @≤320.
+            if (
+              h.classList.contains('wa-panel-header')
+              && h.closest('.ahp-writer-tips')
+            ) {
+              return false;
+            }
             return h.clientHeight > 0;
           })
           .map((el) => Math.round(el.getBoundingClientRect().height));
@@ -410,6 +426,193 @@ test('F2#12 real side/middle panel top bars are 36px (±1)', async () => {
         expect(Math.abs(h - 36), `${sel} height ${h}`).toBeLessThanOrEqual(1);
       }
     }
+  } finally {
+    await app.close().catch(() => undefined);
+  }
+});
+
+// Ivy ruling B: nested WA tip-strip header at default GRS 300.
+// Wrap under ≤320 @container is allowed (unlike top-level F2#12 36px bars).
+// Cadence + Mute must stay fully visible (bbox inside header + viewport, not
+// clipped by an overflow ancestor), clickable, and non-overlapping.
+// Must go RED on the 4a28548d PanelChrome nowrap/overflow-hidden WA override.
+test('Ivy ruling B: nested WA tip header @GRS 300 — Cadence/Mute visible+clickable', async () => {
+  // Default GRS is 300; seed visibility so the hub (and tips nest) mounts.
+  fs.writeFileSync(
+    path.join(userData, 'app-settings.json'),
+    JSON.stringify({
+      onboardingComplete: true,
+      theme: 'dark',
+      rightSidebarVisible: true,
+      rightSidebarWidth: 300,
+    }, null, 2),
+  );
+
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
+
+    const grs = page.locator('[data-testid="global-right-sidebar"]');
+    await expect(grs).toBeVisible({ timeout: 15_000 });
+    const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
+    await expect(hubPanel).toBeVisible({ timeout: 8_000 });
+    const partnerTab = page.locator('[data-testid="ahp-tab-partner"]');
+    if (await partnerTab.isVisible({ timeout: 1_000 }).catch(() => false)) {
+      await partnerTab.click();
+    }
+    await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
+    const waHeader = page.locator(
+      '.ahp-writer-tips .writing-assistant-panel .pc-header.wa-panel-header',
+    );
+    await expect(waHeader).toBeVisible({ timeout: 8_000 });
+
+    const cadence = waHeader.locator('select.wa-cadence-select');
+    const mute = waHeader.locator('button.wa-mute-btn');
+    await expect(cadence).toBeVisible({ timeout: 5_000 });
+    await expect(mute).toBeVisible({ timeout: 5_000 });
+
+    // Geometry: GRS ≈300; controls fully inside header + viewport; no overflow clip.
+    const geometry = await page.evaluate(() => {
+      function overlaps(a: DOMRect, b: DOMRect): boolean {
+        return !(a.right <= b.left || a.left >= b.right || a.bottom <= b.top || a.top >= b.bottom);
+      }
+      function inside(child: DOMRect, parent: DOMRect, tol = 1): boolean {
+        return (
+          child.left >= parent.left - tol
+          && child.right <= parent.right + tol
+          && child.top >= parent.top - tol
+          && child.bottom <= parent.bottom + tol
+        );
+      }
+      /** True when any overflow/clip ancestor cuts into the element's full bbox. */
+      function clippedByOverflowAncestor(el: HTMLElement, elRect: DOMRect): boolean {
+        let p: HTMLElement | null = el.parentElement;
+        while (p) {
+          const cs = getComputedStyle(p);
+          const ox = cs.overflowX;
+          const oy = cs.overflowY;
+          const clips = (v: string) => v === 'hidden' || v === 'clip' || v === 'scroll' || v === 'auto';
+          if (clips(ox) || clips(oy)) {
+            const pr = p.getBoundingClientRect();
+            const top = Math.max(elRect.top, pr.top);
+            const bottom = Math.min(elRect.bottom, pr.bottom);
+            const left = Math.max(elRect.left, pr.left);
+            const right = Math.min(elRect.right, pr.right);
+            const visW = Math.max(0, right - left);
+            const visH = Math.max(0, bottom - top);
+            if (visW < elRect.width - 1 || visH < elRect.height - 1) return true;
+          }
+          if (p.classList.contains('ahp-writer-tips')) break;
+          p = p.parentElement;
+        }
+        return false;
+      }
+
+      const header = document.querySelector(
+        '.ahp-writer-tips .writing-assistant-panel .pc-header.wa-panel-header',
+      ) as HTMLElement | null;
+      const cad = header?.querySelector('select.wa-cadence-select') as HTMLElement | null;
+      const mut = header?.querySelector('button.wa-mute-btn') as HTMLElement | null;
+      const grsEl = document.querySelector('[data-testid="global-right-sidebar"]') as HTMLElement | null;
+      if (!header || !cad || !mut || !grsEl) {
+        return {
+          found: false,
+          grsWidth: 0,
+          headerHeight: 0,
+          cadenceW: 0,
+          muteW: 0,
+          cadenceInsideHeader: false,
+          muteInsideHeader: false,
+          cadenceInViewport: false,
+          muteInViewport: false,
+          cadenceClipped: true,
+          muteClipped: true,
+          childOverlap: true,
+        };
+      }
+      const hr = header.getBoundingClientRect();
+      const cr = cad.getBoundingClientRect();
+      const mr = mut.getBoundingClientRect();
+      const gr = grsEl.getBoundingClientRect();
+      const vp = new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+      const kids = [...header.querySelectorAll<HTMLElement>(
+        'button, [role="tab"], [role="switch"], .pc-header-title, select, input, .wa-cadence-label',
+      )];
+      let childOverlap = false;
+      for (let i = 0; i < kids.length; i++) {
+        const ri = kids[i].getBoundingClientRect();
+        if (ri.width < 1 || ri.height < 1) continue;
+        for (let j = i + 1; j < kids.length; j++) {
+          if (kids[i].contains(kids[j]) || kids[j].contains(kids[i])) continue;
+          const rj = kids[j].getBoundingClientRect();
+          if (rj.width < 1 || rj.height < 1) continue;
+          if (overlaps(ri, rj)) { childOverlap = true; break; }
+        }
+        if (childOverlap) break;
+      }
+      const start = header.querySelector('.pc-header-start') as HTMLElement | null;
+      const actions = header.querySelector('.pc-header-actions') as HTMLElement | null;
+      const sr = start?.getBoundingClientRect();
+      const ar = actions?.getBoundingClientRect();
+      // Host is ≤320 at GRS 300 + tips inset — shared @container must wrap.
+      // 4a28548d's nowrap/overflow-hidden WA override keeps one 36px row → red here.
+      const wrapped = Boolean(
+        sr && ar && ar.top >= sr.bottom - 2 && Math.round(hr.height) > 40,
+      );
+      return {
+        found: true,
+        grsWidth: Math.round(gr.width),
+        headerHeight: Math.round(hr.height),
+        cadenceW: Math.round(cr.width),
+        muteW: Math.round(mr.width),
+        wrapped,
+        cadenceInsideHeader: inside(cr, hr),
+        muteInsideHeader: inside(mr, hr),
+        cadenceInViewport: inside(cr, vp),
+        muteInViewport: inside(mr, vp),
+        cadenceClipped: clippedByOverflowAncestor(cad, cr),
+        muteClipped: clippedByOverflowAncestor(mut, mr),
+        childOverlap,
+      };
+    });
+
+    expect(geometry.found, 'nested WA tip header + Cadence/Mute must mount').toBe(true);
+    expect(Math.abs(geometry.grsWidth - 300), `GRS width ${geometry.grsWidth}`).toBeLessThanOrEqual(8);
+    // Wrap is allowed (not a F2#12 36px bar) AND expected at GRS 300 + tips inset
+    // (host ≤320). Pin goes red on 4a28548d nowrap/overflow-hidden override.
+    expect(
+      geometry.wrapped,
+      `nested WA tip header must wrap @GRS 300 (height=${geometry.headerHeight})`,
+    ).toBe(true);
+    expect(geometry.headerHeight, `wrapped header height ${geometry.headerHeight}`).toBeGreaterThan(40);
+    expect(geometry.cadenceW, `Cadence width ${geometry.cadenceW}`).toBeGreaterThanOrEqual(40);
+    expect(geometry.muteW, `Mute width ${geometry.muteW}`).toBeGreaterThanOrEqual(40);
+    expect(geometry.cadenceInsideHeader, 'Cadence bbox must be inside WA header').toBe(true);
+    expect(geometry.muteInsideHeader, 'Mute bbox must be inside WA header').toBe(true);
+    expect(geometry.cadenceInViewport, 'Cadence bbox must be inside viewport').toBe(true);
+    expect(geometry.muteInViewport, 'Mute bbox must be inside viewport').toBe(true);
+    expect(geometry.cadenceClipped, 'Cadence must not be clipped by overflow ancestor').toBe(false);
+    expect(geometry.muteClipped, 'Mute must not be clipped by overflow ancestor').toBe(false);
+    expect(geometry.childOverlap, 'nested WA header children must not overlap').toBe(false);
+
+    // Real click: Mute must be hittable (not covered) and toggle aria-pressed.
+    const before = await mute.getAttribute('aria-pressed');
+    await mute.click({ timeout: 5_000 });
+    await expect.poll(async () => mute.getAttribute('aria-pressed')).not.toBe(before);
+    // Cadence select: centre hit-test must land on the select (or a child of it).
+    const cadenceHit = await page.evaluate(() => {
+      const cad = document.querySelector(
+        '.ahp-writer-tips .writing-assistant-panel .pc-header.wa-panel-header select.wa-cadence-select',
+      ) as HTMLElement | null;
+      if (!cad) return false;
+      const r = cad.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return Boolean(hit && (hit === cad || cad.contains(hit)));
+    });
+    expect(cadenceHit, 'Cadence select centre must be clickable (not covered)').toBe(true);
+    await cadence.selectOption('300');
+    await expect(cadence).toHaveValue('300');
   } finally {
     await app.close().catch(() => undefined);
   }

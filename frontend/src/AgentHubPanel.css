@@ -722,9 +722,7 @@
 
 .ahp-writer-tips {
   flex: 0 1 auto;
-  /* F2#12: no horizontal inset — default GRS 340 must keep .pc-header-host
-     >320 so WA tip-strip stays a one-row 36px bar (NH3 still forces 280 wrap). */
-  margin: 4px 0 0;
+  margin: 0 8px;
   padding-top: 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   max-height: 48%;

@@ -890,7 +890,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // E2E tests that seed settings without rightSidebarVisible keep undefined → no sidebar renders,
   // preserving the same layout as before this PR (fixes timeline TC-TL-06 overlap regression).
   const [grsVisible, setGrsVisible] = useState<boolean | undefined>(undefined);
-  const [grsWidth, setGrsWidth] = useState(340);
+  const [grsWidth, setGrsWidth] = useState(300);
   const [grsPanels, setGrsPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
   const [continuityCount, setContinuityCount] = useState(0);
   // M12.B3 (SKY-10738): full flag list — feeds the Archive chat view's
