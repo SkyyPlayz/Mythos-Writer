@@ -431,11 +431,11 @@ test('F2#12 real side/middle panel top bars are 36px (±1)', async () => {
   }
 });
 
-// Ivy ruling B: nested WA tip-strip header at default GRS 300.
-// Wrap under ≤320 @container is allowed (unlike top-level F2#12 36px bars).
+// Ivy ruling B / NH3: nested WA tip-strip header at default GRS 300.
+// Wrap under ≤320 @container is allowed, not required (unlike F2#12 36px bars).
 // Cadence + Mute must stay fully visible (bbox inside header + viewport, not
-// clipped by an overflow ancestor), clickable, and non-overlapping.
-// Must go RED on the 4a28548d PanelChrome nowrap/overflow-hidden WA override.
+// clipped by an overflow ancestor), clickable, and non-overlapping. Text
+// overflow/ellipsis counts as clipped via scrollWidth > clientWidth.
 test('Ivy ruling B: nested WA tip header @GRS 300 — Cadence/Mute visible+clickable', async () => {
   // Default GRS is 300; seed visibility so the hub (and tips nest) mounts.
   fs.writeFileSync(
@@ -529,6 +529,7 @@ test('Ivy ruling B: nested WA tip header @GRS 300 — Cadence/Mute visible+click
           cadenceClipped: true,
           muteClipped: true,
           childOverlap: true,
+          textClipOffenders: ['missing-header'],
         };
       }
       const hr = header.getBoundingClientRect();
@@ -551,22 +552,44 @@ test('Ivy ruling B: nested WA tip header @GRS 300 — Cadence/Mute visible+click
         }
         if (childOverlap) break;
       }
-      const start = header.querySelector('.pc-header-start') as HTMLElement | null;
-      const actions = header.querySelector('.pc-header-actions') as HTMLElement | null;
-      const sr = start?.getBoundingClientRect();
-      const ar = actions?.getBoundingClientRect();
-      // Host is ≤320 at GRS 300 + tips inset — shared @container must wrap.
-      // 4a28548d's nowrap/overflow-hidden WA override keeps one 36px row → red here.
-      const wrapped = Boolean(
-        sr && ar && ar.top >= sr.bottom - 2 && Math.round(hr.height) > 40,
-      );
+
+      // Text-overflow/ellipsis: scrollWidth > clientWidth (+1) counts as clipped.
+      const textClipTargets: { label: string; el: HTMLElement | null }[] = [
+        { label: '.pc-header-start', el: header.querySelector('.pc-header-start') },
+        { label: '.pc-header-actions', el: header.querySelector('.pc-header-actions') },
+        { label: '.pc-header-title', el: header.querySelector('.pc-header-title') },
+        { label: '.wa-header-title', el: header.querySelector('.wa-header-title') },
+        { label: '.wa-header-context', el: header.querySelector('.wa-header-context') },
+        { label: '.wa-cadence-label', el: header.querySelector('.wa-cadence-label') },
+        { label: 'select.wa-cadence-select', el: cad },
+        { label: 'button.wa-mute-btn', el: mut },
+      ];
+      // Title text spans (incl. nested context) under the title group.
+      for (const span of header.querySelectorAll<HTMLElement>(
+        '.pc-header-title span, .pc-header-title-group span, .wa-header-title, .wa-header-context',
+      )) {
+        const cls = span.className ? `.${String(span.className).trim().split(/\s+/).join('.')}` : 'span';
+        textClipTargets.push({ label: `title-span${cls}`, el: span });
+      }
+      const textClipOffenders: string[] = [];
+      const seen = new Set<HTMLElement>();
+      for (const { label, el } of textClipTargets) {
+        if (!el || seen.has(el)) continue;
+        seen.add(el);
+        if (el.clientWidth < 1 && el.clientHeight < 1) continue;
+        if (el.scrollWidth > el.clientWidth + 1) {
+          textClipOffenders.push(
+            `${label} scrollWidth=${el.scrollWidth} clientWidth=${el.clientWidth}`,
+          );
+        }
+      }
+
       return {
         found: true,
         grsWidth: Math.round(gr.width),
         headerHeight: Math.round(hr.height),
         cadenceW: Math.round(cr.width),
         muteW: Math.round(mr.width),
-        wrapped,
         cadenceInsideHeader: inside(cr, hr),
         muteInsideHeader: inside(mr, hr),
         cadenceInViewport: inside(cr, vp),
@@ -574,18 +597,14 @@ test('Ivy ruling B: nested WA tip header @GRS 300 — Cadence/Mute visible+click
         cadenceClipped: clippedByOverflowAncestor(cad, cr),
         muteClipped: clippedByOverflowAncestor(mut, mr),
         childOverlap,
+        textClipOffenders,
       };
     });
 
     expect(geometry.found, 'nested WA tip header + Cadence/Mute must mount').toBe(true);
     expect(Math.abs(geometry.grsWidth - 300), `GRS width ${geometry.grsWidth}`).toBeLessThanOrEqual(8);
-    // Wrap is allowed (not a F2#12 36px bar) AND expected at GRS 300 + tips inset
-    // (host ≤320). Pin goes red on 4a28548d nowrap/overflow-hidden override.
-    expect(
-      geometry.wrapped,
-      `nested WA tip header must wrap @GRS 300 (height=${geometry.headerHeight})`,
-    ).toBe(true);
-    expect(geometry.headerHeight, `wrapped header height ${geometry.headerHeight}`).toBeGreaterThan(40);
+    // Wrap is allowed, not required (NH3 / Ivy ruling B) — log height only.
+    console.log(`Ivy ruling B nested WA tip headerHeight@GRS300=${geometry.headerHeight}`);
     expect(geometry.cadenceW, `Cadence width ${geometry.cadenceW}`).toBeGreaterThanOrEqual(40);
     expect(geometry.muteW, `Mute width ${geometry.muteW}`).toBeGreaterThanOrEqual(40);
     expect(geometry.cadenceInsideHeader, 'Cadence bbox must be inside WA header').toBe(true);
@@ -595,6 +614,10 @@ test('Ivy ruling B: nested WA tip header @GRS 300 — Cadence/Mute visible+click
     expect(geometry.cadenceClipped, 'Cadence must not be clipped by overflow ancestor').toBe(false);
     expect(geometry.muteClipped, 'Mute must not be clipped by overflow ancestor').toBe(false);
     expect(geometry.childOverlap, 'nested WA header children must not overlap').toBe(false);
+    expect(
+      geometry.textClipOffenders,
+      `header child text clipped (scrollWidth>clientWidth): ${geometry.textClipOffenders.join('; ')}`,
+    ).toEqual([]);
 
     // Real click: Mute must be hittable (not covered) and toggle aria-pressed.
     const before = await mute.getAttribute('aria-pressed');
