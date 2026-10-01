@@ -69,6 +69,12 @@ interface AgentSessionTurn {
   /** Present when the agent turn should render as a structured card. */
   cardTitle?: string;
   cardFoot?: string;
+  /**
+   * Structural card kind set only by trusted writers (Full Analysis / partner
+   * actions). Untrusted text that merely looks like an encoded card must NOT
+   * set this — renderers show cards only when cardKind is present.
+   */
+  cardKind?: 'analysis' | 'lesson' | 'action';
 }
 interface AgentSessionFile {
   id: string;
@@ -543,6 +549,11 @@ interface VaultAppearanceSettings {
 interface AppSettings {
   /** @deprecated Use provider.apiKey instead. Kept for backward compatibility. */
   apiKey: string;
+  /**
+   * Ephemeral from settings:get — main reports whether ANTHROPIC_API_KEY is set
+   * in the main process env. Boolean only; never the key. Not persisted.
+   */
+  anthropicEnvKeyPresent?: boolean;
   /**
    * M11a (SKY-9160): master AI switch — manual mode. Absent means enabled.
    * Master off beats every per-agent enable; master on defers to them.
@@ -1696,7 +1707,7 @@ interface Window {
     }) => Promise<{ ok: boolean; entry: unknown }>;
     // SKY-627: orchestrates vault creation + first-scene setup during onboarding
     onboardingComplete: (payload?: {
-      startMode: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing';
+      startMode: 'blank' | 'template' | 'skip' | 'start-fresh' | 'quick-start' | 'default-mythos-vault' | 'open-existing' | 'import';
       storyTitle?: string;
       authorName?: string;
       vaultParentPath?: string;
@@ -1874,6 +1885,12 @@ interface Window {
     onAiActivityUpdate: (cb: (entries: AiActivityEntry[]) => void) => () => void;
     onAiActivityTerminal: (cb: (event: AiActivityTerminalEvent) => void) => () => void;
     cancelAiActivity: (requestId: string) => void;
+
+    /**
+     * F3 Secure bar — subscribe-only to main→windows partner-thread:changed
+     * (no payload). Returns unsubscribe. Never exposes raw ipcRenderer.
+     */
+    onPartnerThreadChanged: (cb: () => void) => () => void;
 
     // Voice IO (MYT-205)
     voiceStart: (micDeviceId?: string) => Promise<unknown>;

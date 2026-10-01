@@ -15,11 +15,28 @@ const mockScene = {
 
 const mockWritingScan = vi.fn();
 
+function readySettings(): AppSettings {
+  return {
+    apiKey: 'sk-test',
+    provider: { kind: 'anthropic', model: 'claude-haiku' },
+    agents: {
+      writingAssistant: {
+        enabled: true,
+        model: 'claude-haiku',
+        provider: { kind: 'anthropic', model: 'claude-haiku' },
+      },
+      brainstorm: { enabled: true, model: 'x' },
+      archive: { enabled: true, model: 'x' },
+    },
+  } as AppSettings;
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
   vi.resetAllMocks();
   (window as unknown as { api: Partial<Window['api']> }).api = {
     writingScan: mockWritingScan,
+    settingsGet: vi.fn().mockResolvedValue(readySettings()),
   };
 });
 
@@ -169,6 +186,58 @@ describe('useWritingScheduler', () => {
     expect(result.current.result?.tips).toEqual([]);
   });
 
+  it('Probe H1: sanitized {error} envelope sets scanError and does not crash on tips', async () => {
+    const scanNow = vi.fn().mockResolvedValue({ error: 'No API key configured.' });
+    (window as unknown as { api: Partial<Window['api']> }).api = {
+      writingScan: mockWritingScan,
+      writingAssistantScanNow: scanNow,
+      settingsGet: vi.fn().mockResolvedValue({
+        apiKey: 'sk-test',
+        provider: { kind: 'anthropic', model: 'claude-haiku' },
+        agents: {
+          writingAssistant: { enabled: true, model: 'claude-haiku', provider: { kind: 'anthropic', model: 'claude-haiku' } },
+          brainstorm: { enabled: true, model: 'x' },
+          archive: { enabled: true, model: 'x' },
+        },
+      } as AppSettings),
+    };
+
+    const { result } = renderHook(() =>
+      useWritingScheduler({ scene: mockScene, enabled: true, scanIntervalSeconds: 60, isActive: true }),
+    );
+
+    await act(async () => { await result.current.runScan(true); });
+    expect(scanNow).toHaveBeenCalled();
+    expect(result.current.result).toBeNull();
+    expect(result.current.scanError).toMatch(/No API key|Scan failed|provider|Cannot run/i);
+  });
+
+  it('Probe H1: runScan refuses before IPC when writingAssistant provider is missing', async () => {
+    const scanNow = vi.fn().mockResolvedValue({ tips: ['should-not-run'], scannedAt: 't' });
+    (window as unknown as { api: Partial<Window['api']> }).api = {
+      writingScan: mockWritingScan,
+      writingAssistantScanNow: scanNow,
+      settingsGet: vi.fn().mockResolvedValue({
+        apiKey: '',
+        provider: undefined,
+        agents: {
+          writingAssistant: { enabled: true, model: '' },
+          brainstorm: { enabled: true, model: 'x', provider: { kind: 'anthropic', model: 'c' } },
+          archive: { enabled: true, model: 'x' },
+        },
+      } as unknown as AppSettings),
+    };
+
+    const { result } = renderHook(() =>
+      useWritingScheduler({ scene: mockScene, enabled: true, scanIntervalSeconds: 60, isActive: true }),
+    );
+
+    await act(async () => { await result.current.runScan(true); });
+    expect(scanNow).not.toHaveBeenCalled();
+    expect(mockWritingScan).not.toHaveBeenCalled();
+    expect(result.current.scanError).toMatch(/Cannot run this action|no provider/i);
+  });
+
   it('clears stale scan result when the active scene changes', async () => {
     const tips = ['Use active voice.'];
     const scannedAt = '2026-05-23T12:00:00.000Z';
@@ -195,6 +264,7 @@ describe('useWritingScheduler', () => {
       writingScan: mockWritingScan,
       writingAssistantScanNow: vi.fn().mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() }),
       onWritingScanResult: mockOnWritingScanResult,
+      settingsGet: vi.fn().mockResolvedValue(readySettings()),
     };
 
     mockWritingScan.mockResolvedValue({ tips: ['on-save tip'], scannedAt: new Date().toISOString() });
@@ -272,6 +342,7 @@ describe('useWritingScheduler', () => {
       writingScan: mockWritingScan,
       writingAssistantScanNow: vi.fn().mockResolvedValue({ tips: [], scannedAt: new Date().toISOString() }),
       onWritingScanResult: mockOnWritingScanResult,
+      settingsGet: vi.fn().mockResolvedValue(readySettings()),
     };
 
     const { rerender } = renderHook(

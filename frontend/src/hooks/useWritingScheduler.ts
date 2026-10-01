@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Scene } from '../types';
+import { refuseUnlessProviderReady } from '../agents/coachInvoke';
 
 export type WritingTipCategory = 'grammar' | 'pacing' | 'clarity' | 'style' | 'tone';
 
@@ -94,6 +95,8 @@ export function useWritingScheduler({
     scanningRef.current = true;
     setScanning(true);
     try {
+      // Probe H1 — refuse before IPC when WA provider cannot resolve (no black-screen crash).
+      await refuseUnlessProviderReady('writingAssistant');
       const response = useScanNowChannel
         ? await window.api.writingAssistantScanNow({
           sceneId: currentScene.id,
@@ -107,10 +110,18 @@ export function useWritingScheduler({
         latestScene.path !== scanScene.path ||
         latestScene.updatedAt !== scanScene.updatedAt
       ) return;
+      // Main sanitizes thrown errors to `{ error }` envelopes (wrapIpcHandler).
+      if (response && typeof response === 'object' && 'error' in response && (response as { error?: unknown }).error) {
+        setResult(null);
+        setScanError(String((response as { error: unknown }).error) || 'Scan failed. Please retry.');
+        return;
+      }
+      const ok = response as { tips?: ScheduledScanResult['tips']; scannedAt?: string };
       setScanError(null);
-      setResult({ tips: response.tips, scannedAt: response.scannedAt });
+      setResult({ tips: ok.tips ?? [], scannedAt: ok.scannedAt ?? new Date().toISOString() });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
+      setResult(null);
       setScanError(msg || 'Scan failed. Please retry.');
     } finally {
       const latestScene = sceneRef.current;

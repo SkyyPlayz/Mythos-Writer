@@ -68,6 +68,11 @@ function buildAppSettings(waEnabled = true): object {
   return {
     apiKey: 'sk-ant-e2e-writing-assistant',
     onboardingComplete: true,
+    provider: {
+      kind: 'anthropic',
+      model: 'claude-haiku-4-5-20251001',
+      apiKey: 'sk-ant-e2e-writing-assistant',
+    },
     agents: {
       writingAssistant: {
         enabled: waEnabled,
@@ -321,11 +326,13 @@ async function installIpcMocks(app: ElectronApplication, opts: MockOpts = {}): P
       ipcMain.handle('writing-assistant:set-active-scene', async () => ({ ok: true }));
 
       // ── Chat channel ──────────────────────────────────────────────────────
+      // F3#1 / N4-A: hub chat is MiniAgentChat → agentBrainstorm. WA composer deleted;
+      // tips strip remains (Scan now / Hear on tip cards).
       safeRemove('agent:writing-assistant');
+      safeRemove('agent:brainstorm');
       ipcMain.handle(
         'agent:writing-assistant',
         async (event) => {
-          // Emit chunks sequentially so the renderer sees the streaming cursor.
           for (const token of args.chatTokens) {
             await new Promise<void>((r) => setTimeout(r, args.chatDelayMs));
             if (!event.sender.isDestroyed()) {
@@ -335,6 +342,11 @@ async function installIpcMocks(app: ElectronApplication, opts: MockOpts = {}): P
           return { text: args.chatResponse };
         },
       );
+      ipcMain.handle('agent:brainstorm', async () => {
+        if (args.chatDelayMs > 0)
+          await new Promise<void>((r) => setTimeout(r, args.chatDelayMs * Math.max(1, args.chatTokens.length)));
+        return { text: args.chatResponse };
+      });
 
       // ── Voice / TTS channel ───────────────────────────────────────────────
       // Returns the speakId without emitting voice:speak:done so that
@@ -380,9 +392,9 @@ async function openScene(page: Page, sceneTitle: string): Promise<void> {
  * Navigate to Editor → select the Lighthouse Scene → open the Writing Assistant panel.
  */
 /**
- * SKY-6228: the right panel is now the agent hub — the Writing Assistant
- * chat (heartbeat/scan-now/prompt) is behind the "Writing Assistant" agent
- * row. Click into it if the hub's list view (not the chat view) is showing.
+ * F3 N4-A: partner hub mounts tips strip + MiniAgentChat by default.
+ * Do NOT click Writer Scan — the action chip sits under/near the tips panel
+ * and stays "not stable" under Playwright actionability checks.
  */
 async function openWritingAssistantAgentRow(page: Page): Promise<void> {
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
@@ -392,7 +404,10 @@ async function openWritingAssistantAgentRow(page: Page): Promise<void> {
   if (await partnerTab.isVisible({ timeout: 1_000 }).catch(() => false)) {
     await partnerTab.click();
   }
+  await expect(page.getByTestId('ahp-partner-view')).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
   // Writer chip toggles: a second click closes the panel. Ensure-open only.
+  // F3 N4-A: tips strip mounts by default — this path is a no-op when already open.
   const panel = page.locator('.writing-assistant-panel');
   if (await panel.count() > 0) return;
   // M12: Writing Assistant → Writing Coach rename (agent ids/IPC channels unchanged).
@@ -404,8 +419,12 @@ async function openWritingAssistantAgentRow(page: Page): Promise<void> {
 async function openWritingAssistantWithScene(page: Page): Promise<void> {
   await openScene(page, 'Lighthouse Scene');
   await openWritingAssistantAgentRow(page);
+  // Tips strip (always open) + shared partner MiniAgentChat.
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
+  await expect(page.getByTestId('ahp-partner-chat-input')).toBeVisible({ timeout: 8_000 });
 }
+
+
 
 async function openAssistantTab(page: Page): Promise<void> {
   await navigateToEditorView(page);
@@ -414,7 +433,8 @@ async function openAssistantTab(page: Page): Promise<void> {
 }
 
 function assistantPrompt(page: Page) {
-  return page.getByRole('textbox', { name: 'Writing coach prompt' });
+  // F3#1 — hub chat is the shared partner MiniAgentChat (not WA composer).
+  return page.getByTestId('ahp-partner-chat-input');
 }
 
 async function fillAssistantPrompt(page: Page, text: string) {
@@ -442,7 +462,7 @@ async function submitAssistantPrompt(page: Page, text: string) {
   // submit never happened — press Enter again; if it was consumed, just keep
   // waiting for the bubble (re-pressing on an empty input is a no-op, so this
   // never double-submits). SKY-10152.
-  const userBubble = page.locator('.wa-user-bubble', { hasText: text }).last();
+  const userBubble = page.locator('.trp-bubble--user', { hasText: text }).last();
   await expect(async () => {
     if (!(await userBubble.isVisible()) && (await input.inputValue()) === text) {
       await input.press('Enter');
@@ -500,7 +520,7 @@ test('TC-WA-07: spinner visible during scan', async () => {
   await installIpcMocks(app!, { scanDelayMs: 600 });
   await openWritingAssistantWithScene(page);
 
-  await page.locator('.wa-scan-now').click();
+  await page.getByTestId('wa-scan-now').click();
 
   // Spinner must appear while the scan is in-flight (check DOM presence, not visibility).
   await expect(page.locator('.wa-spinner')).toHaveCount(1, { timeout: 3_000 });
@@ -526,7 +546,7 @@ test('TC-WA-04: empty scene shows empty-state message', async () => {
   await openAssistantTab(page);
 
   // Scan Now — the scheduler guard returns early on empty prose.
-  await page.locator('.wa-scan-now').click();
+  await page.getByTestId('wa-scan-now').click();
 
   // Spinner should not appear (or disappear immediately) — empty prose short-circuits (check DOM count).
   await expect(page.locator('.wa-spinner')).toHaveCount(0, { timeout: 3_000 });
@@ -555,7 +575,7 @@ test('TC-WA-03: manual cadence — Scan Now is the only trigger', async () => {
   await expect(cadenceSelect).toHaveValue('manual');
 
   // Scan Now is still visible and enabled.
-  const scanBtn = page.locator('.wa-scan-now');
+  const scanBtn = page.getByTestId('wa-scan-now');
   await expect(scanBtn).toBeVisible();
   await expect(scanBtn).toBeEnabled();
 
@@ -605,7 +625,7 @@ test('TC-WA-05: Note and Ignore tip actions dismiss tips from UI', async () => {
   await openWritingAssistantWithScene(page);
 
   // Load tips.
-  await page.locator('.wa-scan-now').click();
+  await page.getByTestId('wa-scan-now').click();
   const tips = page.locator('.wa-heartbeat-tip');
   await expect(tips).toHaveCount(3, { timeout: 8_000 });
 
@@ -628,7 +648,7 @@ test('TC-WA-08: dismiss-all button appears with >= 2 tips and clears all', async
   await openWritingAssistantWithScene(page);
 
   // Load 3 fresh tips.
-  await page.locator('.wa-scan-now').click();
+  await page.getByTestId('wa-scan-now').click();
   await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 8_000 });
 
   // Dismiss-all must be visible.
@@ -655,36 +675,29 @@ test('TC-WA-09: Enter submits; empty prompt is no-op', async () => {
   await installIpcMocks(app!);
   await openWritingAssistantWithScene(page);
 
+  // F3#1 — partner MiniAgentChat is the hub composer.
   const input = assistantPrompt(page);
-  const askBtn = page.getByRole('button', { name: 'Ask' });
+  const sendBtn = page.getByTestId('ahp-partner-chat-send');
   await expect(input).toBeVisible({ timeout: 5_000 });
   await expect(input).toBeEnabled({ timeout: 5_000 });
 
-  // Empty prompt: Ask button must be disabled.
   await input.fill('');
-  await expect(askBtn).toBeDisabled();
+  await expect(sendBtn).toBeDisabled();
 
-  // Pressing Enter on an empty input should not add any messages.
-  // M12: the shared coach session seeds a greeting turn, so the feed may not
-  // be empty — assert the count does not grow instead of asserting zero.
-  const before = await page.locator('.wa-message').count();
+  const before = await page.locator('.trp-bubble').count();
   await input.press('Enter');
   await page.waitForTimeout(1_000);
-  await expect(page.locator('.wa-message')).toHaveCount(before);
+  await expect(page.locator('.trp-bubble')).toHaveCount(before);
 
-  // Typed prompt: Ask button enables and Enter submits.
   await input.fill('Help me improve this scene.');
-  await expect(askBtn).toBeEnabled();
+  await expect(sendBtn).toBeEnabled();
   await input.press('Enter');
 
-  // User message appears immediately.
-  const userBubble = page.locator('.wa-user-bubble', {
+  await expect(page.locator('.trp-bubble--user', {
     hasText: 'Help me improve this scene.',
-  });
-  await expect(userBubble).toBeVisible({ timeout: 3_000 });
+  })).toBeVisible({ timeout: 3_000 });
 
-  // Wait for the response to finish.
-  await expect(page.locator('.wa-assistant-bubble').last()).toContainText(
+  await expect(page.locator('.trp-bubble--agent').last()).toContainText(
     MOCK_CHAT_RESPONSE,
     { timeout: 10_000 },
   );
@@ -695,21 +708,16 @@ test('TC-WA-09: Enter submits; empty prompt is no-op', async () => {
 // AC-WA-10: "The streaming cursor (▌, .wa-cursor) is visible while the assistant
 // is generating a response and disappears when the stream ends."
 
+// F3 N4-A: shared partner MiniAgentChat — typing dots stand in for the old WA cursor.
 test('TC-WA-10: streaming cursor appears during response streaming', async () => {
-  // Use a slow mock so the cursor stays up long enough for an assertion.
   await installIpcMocks(app!, { chatDelayMs: 200 });
   await openWritingAssistantWithScene(page);
 
   await submitAssistantPrompt(page, 'Give me pacing advice.');
 
-  // Cursor must be visible during streaming.
-  await expect(page.locator('.wa-cursor')).toBeVisible({ timeout: 6_000 });
-
-  // Cursor must disappear when streaming ends.
-  await expect(page.locator('.wa-cursor')).not.toBeVisible({ timeout: 12_000 });
-
-  // Final response text is present.
-  await expect(page.locator('.wa-assistant-bubble').last()).toContainText(
+  await expect(page.getByTestId('ahp-partner-typing')).toBeVisible({ timeout: 6_000 });
+  await expect(page.getByTestId('ahp-partner-typing')).not.toBeVisible({ timeout: 12_000 });
+  await expect(page.locator('.trp-bubble--agent').last()).toContainText(
     MOCK_CHAT_RESPONSE,
     { timeout: 5_000 },
   );
@@ -717,40 +725,26 @@ test('TC-WA-10: streaming cursor appears during response streaming', async () =>
   await installIpcMocks(app!);
 });
 
-// ─── TC-WA-13: Cancel button replaces Ask during streaming ───────────────────
-//
-// AC-WA-13: "While the assistant is generating, a Cancel button replaces the
-// Ask button. After cancellation the Ask button returns."
+// ─── TC-WA-13: Cancel replaces Send during streaming ─────────────────────────
 
 test('TC-WA-13: Cancel button visible during streaming; Ask returns after cancel', async () => {
-  // Very slow mock keeps the streaming state long enough to assert.
   await installIpcMocks(app!, { chatDelayMs: 500 });
   await openWritingAssistantWithScene(page);
 
   await submitAssistantPrompt(page, 'Describe the mood of this scene.');
 
-  // During streaming: Cancel must be visible, Ask must be gone.
-  const cancelBtn = page.locator('.wa-btn-cancel-inline');
+  const cancelBtn = page.getByTestId('ahp-partner-chat-cancel');
   await expect(cancelBtn).toBeVisible({ timeout: 5_000 });
-  await expect(page.getByRole('button', { name: 'Ask' })).not.toBeVisible();
+  await expect(page.getByTestId('ahp-partner-chat-send')).not.toBeVisible();
 
-  // Click Cancel — Ask returns.
   await cancelBtn.click();
-  await expect(page.getByRole('button', { name: 'Ask' })).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByTestId('ahp-partner-chat-send')).toBeVisible({ timeout: 5_000 });
   await expect(cancelBtn).not.toBeVisible({ timeout: 3_000 });
 
   await installIpcMocks(app!);
 });
 
-// ─── TC-WA-11: Stall panel ────────────────────────────────────────────────────
-//
-// AC-WA-11: "After 20 s of no streaming tokens, a stall panel appears with
-// Retry and Cancel buttons."
-// Production's STALL_WARNING_MS is a real 20_000ms — too slow to wait out for
-// real in CI. WritingAssistantPanel.tsx reads an E2E-only override off
-// `window.__MYTHOS_E2E_TIMERS__` (set below, before the real constant is
-// otherwise scheduled) so this test reaches a real stall in milliseconds
-// without touching the production default seen by every other caller.
+// ─── TC-WA-11: Stall panel on shared partner chat ────────────────────────────
 
 test('TC-WA-11: stall panel appears after stall (E2E-fast timer override)', async () => {
   await page.evaluate(() => {
@@ -761,24 +755,18 @@ test('TC-WA-11: stall panel appears after stall (E2E-fast timer override)', asyn
   });
 
   await app!.evaluate(async ({ ipcMain }) => {
-    try { ipcMain.removeHandler('agent:writing-assistant'); } catch { /* skip */ }
-    // Never resolves — simulates a provider timeout.
-    ipcMain.handle('agent:writing-assistant', () => new Promise<never>(() => undefined));
+    try { ipcMain.removeHandler('agent:brainstorm'); } catch { /* skip */ }
+    ipcMain.handle('agent:brainstorm', () => new Promise<never>(() => undefined));
   });
 
   await openWritingAssistantWithScene(page);
-  await page.locator('.writing-assistant-input').fill('Stall test.');
-  await page.locator('.writing-assistant-input').press('Enter');
+  await fillAssistantPrompt(page, 'Stall test.');
+  await page.getByTestId('ahp-partner-chat-input').press('Enter');
 
-  await expect(page.locator('.wa-stall-panel')).toBeVisible({ timeout: 3_000 });
-  await expect(page.locator('.wa-btn-retry')).toBeVisible();
-  await expect(page.locator('.wa-btn-cancel')).toBeVisible();
+  await expect(page.getByTestId('ahp-partner-stall-panel')).toBeVisible({ timeout: 3_000 });
+  await expect(page.getByTestId('ahp-partner-stall-cancel')).toBeVisible();
 
-  // Reset the panel's loading state — the GRS panel no longer unmounts/remounts
-  // between tests (SKY-9022/M6 removed the collapsible header), so a hung
-  // request must be cancelled explicitly or it leaves the input disabled for
-  // every test that runs afterward.
-  await page.locator('.wa-btn-cancel').click();
+  await page.getByTestId('ahp-partner-stall-cancel').click();
 
   await page.evaluate(() => {
     delete (window as unknown as { __MYTHOS_E2E_TIMERS__?: Record<string, number> }).__MYTHOS_E2E_TIMERS__;
@@ -823,72 +811,51 @@ test('TC-WA-22: Mute toggle flips aria-pressed and label', async () => {
 // AC-WA-23: "Clicking Hear sets aria-pressed=true and changes the label to
 // 'Stop voice playback'. Clicking Stop resets the button to its idle state."
 
+// F3 N4-A: Hear lives on tip cards in the tips strip (composer deleted).
 test('TC-WA-23: Hear button plays and Stop cancels TTS', async () => {
   await installIpcMocks(app!);
   await openWritingAssistantWithScene(page);
 
-  // Send a prompt to get a suggestion card with a Hear button.
-  await submitAssistantPrompt(page, 'Rate this opening paragraph.');
+  await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
+  await page.getByTestId('wa-scan-now').click();
+  await expect(page.locator('.wa-heartbeat-tip').first()).toBeVisible({ timeout: 8_000 });
 
-  // Wait for the Hear button to appear on the completed response card.
   const hearBtn = page.locator('.wa-hear-btn').first();
-  await expect(hearBtn).toBeVisible({ timeout: 12_000 });
+  await expect(hearBtn).toBeVisible({ timeout: 8_000 });
   await expect(hearBtn).toHaveAttribute('aria-pressed', 'false');
   await expect(hearBtn).toHaveAttribute('aria-label', 'Hear suggestion aloud');
 
-  // Click Hear — TTS starts.
   await hearBtn.click();
   await expect(hearBtn).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
   await expect(hearBtn).toHaveAttribute('aria-label', 'Stop voice playback');
 
-  // Click Stop — TTS cancelled, button resets.
   await hearBtn.click();
   await expect(hearBtn).toHaveAttribute('aria-pressed', 'false', { timeout: 5_000 });
   await expect(hearBtn).toHaveAttribute('aria-label', 'Hear suggestion aloud');
 });
 
-// ─── TC-WA-24: Starting a second card cancels the first ──────────────────────
-//
-// AC-WA-24: "When a second Hear button is clicked while one card is already
-// playing, the first card's playback stops and the second starts."
+// ─── TC-WA-24: Starting a second tip Hear cancels the first ──────────────────
 
 test('TC-WA-24: starting second Hear cancels first card playback', async () => {
   await installIpcMocks(app!);
   await openWritingAssistantWithScene(page);
 
-  // Send two messages to produce two suggestion cards.
-  await submitAssistantPrompt(page, 'What is the mood of this scene?');
-  await expect(page.locator('.wa-assistant-bubble').last()).toContainText(
-    MOCK_CHAT_RESPONSE,
-    { timeout: 12_000 },
-  );
-
-  await submitAssistantPrompt(page, 'Suggest a title for this scene.');
-  await expect(page.locator('.wa-assistant-bubble').last()).toContainText(
-    MOCK_CHAT_RESPONSE,
-    { timeout: 12_000 },
-  );
+  await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
+  await page.getByTestId('wa-scan-now').click();
+  await expect(page.locator('.wa-heartbeat-tip')).toHaveCount(3, { timeout: 8_000 });
 
   const hearBtns = page.locator('.wa-hear-btn');
-  const count = await hearBtns.count();
-  if (count < 2) {
-    // Soft skip: the test requires at least two completed suggestion cards.
-    // The TTS behaviour is verified in WritingAssistantPanel.test.tsx (unit).
-    return;
-  }
+  await expect(hearBtns).toHaveCount(3, { timeout: 5_000 });
 
-  // Start the first card.
   const firstHear = hearBtns.nth(0);
   await firstHear.click();
   await expect(firstHear).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
 
-  // Start the second card — the first must stop.
   const secondHear = hearBtns.nth(1);
   await secondHear.click();
   await expect(firstHear).toHaveAttribute('aria-pressed', 'false', { timeout: 5_000 });
   await expect(secondHear).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
 
-  // Clean up: stop second card.
   await secondHear.click();
   await expect(secondHear).toHaveAttribute('aria-pressed', 'false', { timeout: 3_000 });
 });
@@ -1071,5 +1038,65 @@ test.describe('AC-WA-27: Writing Coach cadence persists to disk (real IPC)', () 
       fs.readFileSync(path.join(persistUserData, 'app-settings.json'), 'utf-8'),
     ) as { waScanInterval?: string };
     expect(stored.waScanInterval).toBe('on-save');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Probe H1 — Scan now with no provider must refuse (no black-screen crash)
+// ════════════════════════════════════════════════════════════════════════════
+
+test.describe('Probe H1: Scan now without provider', () => {
+  let bareUserData: string;
+  let bareVault: string;
+  let bareApp: ElectronApplication | undefined;
+  let barePage: Page;
+
+  test.beforeAll(async () => {
+    bareUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-noprovider-'));
+    bareVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-wa-noprovider-vault-'));
+    seedUserData(bareUserData, bareVault);
+    // Strip provider + legacy key so the renderer gate refuses.
+    const settingsPath = path.join(bareUserData, 'app-settings.json');
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>;
+    settings.apiKey = '';
+    delete settings.provider;
+    const agents = settings.agents as Record<string, Record<string, unknown>>;
+    if (agents?.writingAssistant) {
+      delete agents.writingAssistant.provider;
+      agents.writingAssistant.model = '';
+    }
+    fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
+
+    bareApp = await launchApp(bareUserData);
+    barePage = await firstWindow(bareApp);
+    await expect(barePage.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
+  });
+
+  test.afterAll(async () => {
+    const proc = bareApp?.process();
+    await Promise.race([
+      bareApp?.close().catch(() => undefined) ?? Promise.resolve(),
+      new Promise<void>((r) => setTimeout(r, 5_000)),
+    ]);
+    try {
+      if (proc && !proc.killed) proc.kill('SIGKILL');
+    } catch { /* already exited */ }
+    fs.rmSync(bareUserData, { recursive: true, force: true });
+    fs.rmSync(bareVault, { recursive: true, force: true });
+  });
+
+  test('Scan now with no provider shows refusal and keeps the app mounted', async () => {
+    await openWritingAssistantWithScene(barePage);
+    await expect(barePage.locator('[data-testid="agent-hub-panel"]')).toBeVisible();
+    await barePage.getByTestId('wa-scan-now').click();
+    // Refusal surfaces on the scan-error alert (and status bar); assert the alert once.
+    const refusal = barePage.locator('.wa-scan-error');
+    await expect(refusal).toBeVisible({ timeout: 8_000 });
+    await expect(refusal).toContainText(
+      /Cannot run this action|no provider|provider settings/i,
+    );
+    // App still mounted — no black-screen crash from tips.map(undefined).
+    await expect(barePage.locator('[data-testid="agent-hub-panel"]')).toBeVisible();
+    await expect(barePage.locator('.app-menu-bar')).toBeVisible();
   });
 });

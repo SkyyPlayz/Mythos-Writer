@@ -27,12 +27,28 @@ function maskAgentProvider<T extends { provider?: ProviderSettings }>(agent: T):
   return { ...agent, provider: { ...agent.provider, apiKey: maskApiKey(agent.provider.apiKey) } } as T;
 }
 
+/** True when main sees a non-empty ANTHROPIC_API_KEY — boolean only, never the value. */
+export function hasAnthropicEnvKeyPresent(): boolean {
+  try {
+    const key = process.env.ANTHROPIC_API_KEY;
+    return typeof key === 'string' && key.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 // Mask every API-key-shaped field on AppSettings before it crosses the IPC
 // boundary to the renderer. Currently: apiKey (Anthropic legacy field),
 // provider.apiKey (active provider), voice.openaiApiKey, stt.cloudApiKey, tts.cloudApiKey,
 // and all three per-agent provider.apiKey overrides (SKY-738).
+// Also stamps anthropicEnvKeyPresent (boolean only) so the renderer can mirror
+// main's env-key fallback without reading process.env (sandbox / contextIsolation).
 export function maskSettingsForRenderer(settings: AppSettings): AppSettings {
-  const masked: AppSettings = { ...settings, apiKey: maskApiKey(settings.apiKey) };
+  const masked: AppSettings = {
+    ...settings,
+    apiKey: maskApiKey(settings.apiKey),
+    anthropicEnvKeyPresent: hasAnthropicEnvKeyPresent(),
+  };
   if (settings.provider?.apiKey) {
     masked.provider = { ...settings.provider, apiKey: maskApiKey(settings.provider.apiKey) };
   }
@@ -95,7 +111,9 @@ export function reconcileSettingsFromRenderer(
   stored: AppSettings,
 ): AppSettings {
   const apiKey = incoming.apiKey === maskApiKey(stored.apiKey) ? stored.apiKey : incoming.apiKey;
-  const reconciled: AppSettings = { ...incoming, apiKey };
+  // Ephemeral IPC flag — never persist to disk.
+  const { anthropicEnvKeyPresent: _envFlag, ...incomingSansEnvFlag } = incoming;
+  const reconciled: AppSettings = { ...incomingSansEnvFlag, apiKey };
   // Reconcile provider.apiKey: if the renderer echoes back the masked preview, preserve the stored key.
   if (incoming.provider && stored.provider?.apiKey) {
     const incomingProviderKey = incoming.provider.apiKey;

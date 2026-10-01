@@ -177,3 +177,142 @@
   border: 1px solid currentColor;
   background: rgba(232, 183, 74, 0.12);
 }
+
+/* F3#6 — hierarchical tree sidebar (single left rail) */
+.tlpicker--tree {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  height: 100%;
+}
+
+.tlpicker__tree-head {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #8e9db8;
+  padding: 4px 6px 2px;
+}
+
+.tlpicker__tree {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tlpicker__tree-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+}
+
+.tlpicker__tree-row--active {
+  background: var(--gs2, rgba(155, 95, 255, 0.12));
+  border-color: var(--b2, rgba(155, 95, 255, 0.5));
+  box-shadow: 0 0 14px -6px var(--g2, rgba(155, 95, 255, 0.4));
+}
+
+.tlpicker__tree-twirl {
+  width: 18px;
+  height: 22px;
+  flex: none;
+  border: none;
+  background: transparent;
+  color: #8e9db8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
+.tlpicker__tree-twirl:disabled {
+  cursor: default;
+}
+
+.tlpicker__tree-twirl-spacer {
+  width: 12px;
+  height: 12px;
+}
+
+.tlpicker__tree-pick {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 5px 6px 5px 0;
+  text-align: left;
+}
+
+.tlpicker__tree-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #dbe4f5;
+}
+
+.tlpicker__tree-row--active .tlpicker__tree-name {
+  color: #f0f3fc;
+}
+
+.tlpicker__tree-kind {
+  font-size: 9px;
+  color: #7f8ea8;
+  flex: none;
+}
+
+.tlpicker__tree-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 4px;
+}
+
+/* Probe #17/#19 — dashed full-width + New under the tree */
+.tlpicker__new-dashed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  margin-top: 4px;
+  border-radius: 10px;
+  border: 1px dashed rgba(155, 95, 255, 0.55);
+  background: transparent;
+  color: #c8d3e7;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tlpicker__new-dashed:hover {
+  background: rgba(155, 95, 255, 0.1);
+  color: #f0f3fc;
+}
+
+.tlpicker__edit-calendar {
+  margin-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 6px;
+}
+
+.tlpicker__chevron--open {
+  transform: rotate(90deg);
+}

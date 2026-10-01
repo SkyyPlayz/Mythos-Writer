@@ -143,8 +143,10 @@ test('screenshot: onboarding wizard (step 1 — path picker)', async () => {
     const page = await firstWindow(app);
     await page.setViewportSize(DESKTOP_VP);
 
-    // Wait for onboarding screen to appear
-    const step1 = page.locator('[data-testid="screen-welcome"], .onboarding-wizard, .wizard-root, .onboarding-step');
+    // F3#9: WelcomeOverlay is the only first-run surface (OnboardingWizard deleted).
+    const step1 = page.locator(
+      '[data-testid="welcome-overlay"], [data-testid="screen-welcome"], .onboarding-wizard, .wizard-root, .onboarding-step',
+    );
     await expect(step1.first()).toBeVisible({ timeout: 15_000 });
     await page.waitForTimeout(800);
     await applyTheme(page);

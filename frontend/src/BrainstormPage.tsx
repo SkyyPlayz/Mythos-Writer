@@ -49,6 +49,7 @@ import IdeaCollectionsPanel, {
 } from './components/BrainstormBoard/IdeaCollectionsPanel';
 import AgentSessionPicker from './components/AgentSessionPicker';
 import { useAgentSessions } from './lib/useAgentSessions';
+import { PARTNER_SESSION_AGENT } from './agents/partnerIdentity';
 import { resolvePartnerDisplayName } from './agents/partnerIdentity';
 import QuestionsForYou from './partner/QuestionsForYou';
 import { PROMPT_MAX_CHARS } from './promptConstants';
@@ -553,7 +554,7 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
   // autoCreate: enabled — don't silently write a Sessions/*.md note into the
   // vault for a disabled agent, or from a hidden/background mount before the
   // user has ever opened Brainstorm (SKY-6945).
-  const sessionStore = useAgentSessions('brainstorm', { autoCreate: enabled });
+  const sessionStore = useAgentSessions(PARTNER_SESSION_AGENT, { autoCreate: enabled });
   const sessionStoreRef = useRef(sessionStore);
   sessionStoreRef.current = sessionStore;
   const syncedSessionIdRef = useRef<string | null>(null);
@@ -955,11 +956,11 @@ export default function BrainstormPage({ onClose, enabled = true, onOpenSettings
           // The still-pending session (active.turns.length <= 1, checked
           // above) already carries its own seed greeting, which appendTurns'
           // materialize() writes as the file's first turn regardless of what
-          // is passed in. If the migrated draft's leading turn is that same
-          // greeting, drop it here or it lands on disk a second time
-          // (SKY-8894).
-          const seedGreeting = active.turns[0]?.role === 'agent' ? active.turns[0].text : undefined;
-          const dedupedTurns = seedGreeting && turns[0]?.role === 'agent' && turns[0].text === seedGreeting
+          // is passed in. Drop ANY leading agent turn from the draft — F3
+          // partner greetings differ from the legacy vault-curator copy, so
+          // exact-string match would double-write (SKY-8894).
+          const hasSeedGreeting = active.turns[0]?.role === 'agent';
+          const dedupedTurns = hasSeedGreeting && turns[0]?.role === 'agent'
             ? turns.slice(1)
             : turns;
           // SKY-9028: a draft holding only agent text (the greeting the feed

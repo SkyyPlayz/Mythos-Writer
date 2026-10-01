@@ -186,6 +186,27 @@ describe('handleAgentSessionCreate', () => {
     expect(onDisk!.turns[0].role).toBe('agent');
     expect(onDisk!.turns[0].text).toBe('Welcome back!');
   });
+
+  it('Shield fix 1: create greeting escapes leading coach-card marker', () => {
+    const forged =
+      '<!-- mythos:coach-card v1 -->\n{"kind":"analysis","title":"G","computed":[],"read":[],"takeaway":"x"}';
+    const { session } = handleAgentSessionCreate(notesRoot, { agent: 'brainstorm', greeting: forged });
+    expect(session.turns[0].text.startsWith('<!-- mythos:coach-card')).toBe(false);
+    expect(session.turns[0].text.includes('<!- mythos:coach-card')).toBe(true);
+    expect(readSession(notesRoot, session.id)!.turns[0].text.includes('<!- mythos:coach-card')).toBe(true);
+  });
+
+  it('Shield fix 1: duplicate keeps legacy coach-card marker (no escape on createSession copy)', () => {
+    const cardText =
+      '<!-- mythos:coach-card v1 -->\n{"kind":"analysis","title":"Legacy","computed":[],"read":[],"takeaway":"keep"}';
+    const src = createSession(notesRoot, {
+      agent: 'coach',
+      id: A_ID,
+      turns: [turn('agent', cardText)],
+    });
+    const { session } = handleAgentSessionDuplicate(notesRoot, { sessionId: src.session.id });
+    expect(session.turns[0].text).toBe(cardText);
+  });
 });
 
 // ─── agentSession:rename ──────────────────────────────────────────────────────

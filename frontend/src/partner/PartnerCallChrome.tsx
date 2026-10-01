@@ -1,7 +1,7 @@
 // Slice B — in-panel call chrome. The partner card *becomes* the call control
 // (no second popup / no navigate-away). Spoken turns stay ordinary bubbles.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import type { PartnerHandId } from '../agents/partnerIdentity';
 import { partnerHandStatusLine } from '../agents/partnerIdentity';
 import './PartnerCallChrome.css';
@@ -22,6 +22,8 @@ interface Props {
   onEndCall: () => void;
   /** Optional avatar glyph (emoji / letter). */
   avatar?: string;
+  /** Probe #3 — PAST CHATS & CALLS picker inside the partner header card. */
+  pastChats?: ReactNode;
 }
 
 export default function PartnerCallChrome({
@@ -31,6 +33,7 @@ export default function PartnerCallChrome({
   onCallChange,
   onEndCall,
   avatar = '✦',
+  pastChats,
 }: Props) {
   const status = partnerHandStatusLine(handBusy, !!handBusy, call.onCall, call.muted);
   const [waveTick, setWaveTick] = useState(0);
@@ -67,22 +70,25 @@ export default function PartnerCallChrome({
         data-testid="partner-card"
         aria-label={`${partnerName} partner card`}
       >
-        <span className="partner-card__avatar" aria-hidden="true">{avatar}</span>
-        <div className="partner-card__meta">
-          <span className="partner-card__name">{partnerName}</span>
-          <span className="partner-card__status" data-testid="partner-card-status">
-            {status}
-          </span>
+        <div className="partner-card__row">
+          <span className="partner-card__avatar" aria-hidden="true">{avatar}</span>
+          <div className="partner-card__meta">
+            <span className="partner-card__name">{partnerName}</span>
+            <span className="partner-card__status" data-testid="partner-card-status">
+              {status}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="partner-card__call-btn"
+            data-testid="partner-start-call"
+            aria-label="Start call"
+            onClick={startCall}
+          >
+            <MicIcon />
+          </button>
         </div>
-        <button
-          type="button"
-          className="partner-card__call-btn"
-          data-testid="partner-start-call"
-          aria-label="Start call"
-          onClick={startCall}
-        >
-          <MicIcon />
-        </button>
+        {pastChats}
       </section>
     );
   }
@@ -94,59 +100,61 @@ export default function PartnerCallChrome({
       data-on-call="true"
       aria-label={`${partnerName} on a call`}
     >
-      <span className="partner-card__avatar" aria-hidden="true">{avatar}</span>
-      <div className="partner-card__meta">
-        <span className="partner-card__name">{partnerName}</span>
-        <span className="partner-card__status partner-card__status--call" data-testid="partner-card-status">
-          {!call.muted && (
-            <span className="partner-card__wave" aria-hidden="true" data-tick={waveTick}>
-              <i /><i /><i /><i /><i />
-            </span>
-          )}
-          {status}
-        </span>
-      </div>
-      <div className="partner-card__call-actions">
-        <button
-          type="button"
-          className={`partner-card__icon-btn${call.transcriptMode === 'panel' ? ' partner-card__icon-btn--active' : ''}`}
-          data-testid="partner-call-transcript"
-          aria-label={call.transcriptMode === 'panel' ? 'Transcript: separate panel' : 'Transcript: in chat'}
-          aria-pressed={call.transcriptMode === 'panel'}
-          onClick={toggleTranscript}
-          title="Toggle live transcript placement"
-        >
-          Tx
-        </button>
-        <button
-          type="button"
-          className={`partner-card__icon-btn${call.muted ? ' partner-card__icon-btn--mute-on' : ''}`}
-          data-testid="partner-call-mute"
-          aria-label={call.muted ? 'Unmute' : 'Mute'}
-          aria-pressed={call.muted}
-          onClick={toggleMute}
-        >
-          {call.muted ? <MicOffIcon /> : <MicIcon />}
-        </button>
-        <button
-          type="button"
-          className={`partner-card__icon-btn${call.settingsOpen ? ' partner-card__icon-btn--active' : ''}`}
-          data-testid="partner-call-settings"
-          aria-label="Call settings"
-          aria-expanded={call.settingsOpen}
-          onClick={toggleSettings}
-        >
-          ⚙
-        </button>
-        <button
-          type="button"
-          className="partner-card__end-btn"
-          data-testid="partner-end-call"
-          aria-label="End call"
-          onClick={onEndCall}
-        >
-          End
-        </button>
+      <div className="partner-card__row">
+        <span className="partner-card__avatar" aria-hidden="true">{avatar}</span>
+        <div className="partner-card__meta">
+          <span className="partner-card__name">{partnerName}</span>
+          <span className="partner-card__status partner-card__status--call" data-testid="partner-card-status">
+            {!call.muted && (
+              <span className="partner-card__wave" aria-hidden="true" data-tick={waveTick}>
+                <i /><i /><i /><i /><i />
+              </span>
+            )}
+            {status}
+          </span>
+        </div>
+        <div className="partner-card__call-actions">
+          <button
+            type="button"
+            className={`partner-card__icon-btn${call.transcriptMode === 'panel' ? ' partner-card__icon-btn--active' : ''}`}
+            data-testid="partner-call-transcript"
+            aria-label={call.transcriptMode === 'panel' ? 'Transcript: separate panel' : 'Transcript: in chat'}
+            aria-pressed={call.transcriptMode === 'panel'}
+            onClick={toggleTranscript}
+            title="Toggle live transcript placement"
+          >
+            Tx
+          </button>
+          <button
+            type="button"
+            className={`partner-card__icon-btn${call.muted ? ' partner-card__icon-btn--mute-on' : ''}`}
+            data-testid="partner-call-mute"
+            aria-label={call.muted ? 'Unmute' : 'Mute'}
+            aria-pressed={call.muted}
+            onClick={toggleMute}
+          >
+            {call.muted ? <MicOffIcon /> : <MicIcon />}
+          </button>
+          <button
+            type="button"
+            className={`partner-card__icon-btn${call.settingsOpen ? ' partner-card__icon-btn--active' : ''}`}
+            data-testid="partner-call-settings"
+            aria-label="Call settings"
+            aria-expanded={call.settingsOpen}
+            onClick={toggleSettings}
+          >
+            ⚙
+          </button>
+          <button
+            type="button"
+            className="partner-card__end-btn"
+            data-testid="partner-end-call"
+            aria-label="End call"
+            onClick={onEndCall}
+          >
+            End
+          </button>
+        </div>
       </div>
       {call.settingsOpen && (
         <div className="partner-card__settings-pop" data-testid="partner-call-settings-pop" role="dialog" aria-label="Call voice settings">
@@ -173,6 +181,7 @@ export default function PartnerCallChrome({
           </label>
         </div>
       )}
+      {pastChats}
     </section>
   );
 }

@@ -258,6 +258,8 @@ async function installChatMock(app: ElectronApplication): Promise<void> {
         }
         return { text: args.chatResponse };
       });
+      try { ipcMain.removeHandler('agent:brainstorm'); } catch { /* */ }
+      ipcMain.handle('agent:brainstorm', async () => ({ text: args.chatResponse }));
     },
     { chatTokens: MOCK_CHAT_TOKENS, chatResponse: MOCK_CHAT_RESPONSE },
   );
@@ -307,9 +309,10 @@ test('TC-SKY11221-01: Beta Reader row -> BetaReaderPage -> Run produces a real r
   await expect(hubPanel).toBeVisible({ timeout: 8_000 });
 
   // Slice B: Analyst hand opens Beta Reader (page kept).
-  const analystHand = page.locator('[data-testid="ahp-hand-analyst"]');
-  await expect(analystHand).toBeVisible({ timeout: 8_000 });
-  await analystHand.click();
+  // F3#1 — open Beta Reader Reports overlay via nav (action is in-thread).
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('mythos:nav', { detail: { view: 'beta' } }));
+  });
 
   const overlay = page.locator('.beta-reader-overlay');
   await expect(overlay).toBeVisible({ timeout: 8_000 });
@@ -343,7 +346,7 @@ test('TC-SKY11221-01: Beta Reader row -> BetaReaderPage -> Run produces a real r
 // ─── TC-SKY11221-02: "beta read this scene" is a normal Writing Coach turn ────
 
 test('TC-SKY11221-02: "beta read this scene" in Writing Coach chat runs a normal turn, no .br-panel intercept', async () => {
-  const waRow = page.locator('[data-testid="ahp-hand-writer"]');
+  const waRow = page.locator('[data-testid="ahp-action-writer-scan"]');
   if (await waRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
     await waRow.click();
   }
@@ -352,7 +355,8 @@ test('TC-SKY11221-02: "beta read this scene" in Writing Coach chat runs a normal
   // The deleted intercept UI must be absent before we even submit.
   await expect(page.locator('.br-panel')).toHaveCount(0);
 
-  const input = page.getByRole('textbox', { name: 'Writing coach prompt' });
+  // F3#1 — partner MiniAgentChat (shared brainstorm thread).
+  const input = page.getByTestId('ahp-partner-chat-input');
   await expect(input).toBeVisible({ timeout: 5_000 });
   await expect(input).toBeEnabled({ timeout: 5_000 });
   await expect(async () => {
@@ -361,15 +365,12 @@ test('TC-SKY11221-02: "beta read this scene" in Writing Coach chat runs a normal
   }).toPass({ timeout: 5_000 });
   await input.press('Enter');
 
-  // Still gone mid-flight and after the reply lands — proves the request
-  // went over the normal agent:writing-assistant IPC seam, not a revived
-  // betaRead:scan-shaped path.
   await expect(page.locator('.br-panel')).toHaveCount(0);
 
-  const userBubble = page.locator('.wa-user-bubble', { hasText: 'beta read this scene' });
+  const userBubble = page.locator('.trp-bubble--user', { hasText: 'beta read this scene' });
   await expect(userBubble).toBeVisible({ timeout: 3_000 });
 
-  const assistantReply = page.locator('.wa-assistant-bubble', { hasText: MOCK_CHAT_RESPONSE });
+  const assistantReply = page.locator('.trp-bubble--agent', { hasText: MOCK_CHAT_RESPONSE });
   await expect(assistantReply).toBeVisible({ timeout: 8_000 });
   await expect(page.locator('.br-panel')).toHaveCount(0);
 });

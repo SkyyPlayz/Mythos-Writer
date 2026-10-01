@@ -279,9 +279,10 @@ async function openScene(pg: Page, sceneTitle: string): Promise<void> {
 async function openReportsPanel(pg: Page): Promise<import('@playwright/test').Locator> {
   const hubPanel = pg.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 8_000 });
-  const betaRow = pg.locator('[data-testid="ahp-hand-analyst"]');
-  await expect(betaRow).toBeVisible({ timeout: 8_000 });
-  await betaRow.click();
+  // F3#1 — Beta Read action posts in-thread; open Reports overlay via nav.
+  await pg.evaluate(() => {
+    window.dispatchEvent(new CustomEvent('mythos:nav', { detail: { view: 'beta' } }));
+  });
   const overlay = pg.locator('.beta-reader-overlay');
   await expect(overlay).toBeVisible({ timeout: 8_000 });
   await expect(overlay.getByRole('tab', { name: 'Reports' })).toBeVisible();

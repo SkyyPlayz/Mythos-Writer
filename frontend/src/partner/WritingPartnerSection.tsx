@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import {
   PARTNER_HANDS,
+  DEFAULT_PARTNER_DISPLAY_NAME,
   resolvePartnerDisplayName,
   type PartnerHandId,
 } from '../agents/partnerIdentity';
@@ -27,6 +28,7 @@ import {
   type WritingPartnerSettings,
 } from './partnerSettings';
 import { runHeartbeatAutomationStub } from './partnerBusyStore';
+import SessionHistoryViewer from '../components/SettingsPanel/SessionHistoryViewer';
 import './WritingPartnerSection.css';
 
 const TRAIT_ORDER: PartnerTraitKey[] = ['tone', 'teach', 'register', 'ambient', 'verbosity'];
@@ -100,7 +102,7 @@ export default function WritingPartnerSection({
 
   // Slice D: bind Settings identity ↔ Agents Vault partner.md (file is source on disk).
   useEffect(() => {
-    const name = settings.agentNames?.brainstorm?.trim() || 'Mythos';
+    const name = settings.agentNames?.brainstorm?.trim() || DEFAULT_PARTNER_DISPLAY_NAME;
     const icon = partner.icon;
     void window.api?.agentsVaultSyncPartner?.({ name, icon });
   }, [settings.agentNames?.brainstorm, partner.icon]);
@@ -120,7 +122,7 @@ export default function WritingPartnerSection({
               className="settings-input"
               data-testid="wp-name"
               value={settings.agentNames?.brainstorm ?? ''}
-              placeholder="Mythos"
+              placeholder={DEFAULT_PARTNER_DISPLAY_NAME}
               maxLength={64}
               onChange={(e) => setAgentDisplayName('brainstorm', e.target.value)}
             />
@@ -481,6 +483,14 @@ export default function WritingPartnerSection({
             );
           })}
         </div>
+      </section>
+
+      {/* F3 — Earlier chats opens Settings › Writing partner session history
+          (AgentsSection is unmounted; partner spine sessions are brainstorm). */}
+      <section className="settings-section wp-card" aria-labelledby="section-partner-history" data-testid="wp-session-history">
+        <h3 className="settings-section-title" id="section-partner-history">Earlier chats</h3>
+        <p className="settings-hint">Read-only history of partner conversations saved in this vault.</p>
+        <SessionHistoryViewer agentName="brainstorm" />
       </section>
     </div>
   );

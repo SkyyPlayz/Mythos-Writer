@@ -159,6 +159,36 @@ describe('maskSettingsForRenderer — apiKey field (MYT-143)', () => {
 
     expect(masked.recentVaultParentPaths).toEqual(['/vaults/A', '/vaults/B']);
   });
+
+  it('stamps anthropicEnvKeyPresent as a boolean only (never the key value)', () => {
+    const prev = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = 'sk-ant-env-secret-must-not-cross-ipc';
+    try {
+      const masked = maskSettingsForRenderer(settingsFixture({ apiKey: '' }));
+      expect(masked.anthropicEnvKeyPresent).toBe(true);
+      expect(JSON.stringify(masked)).not.toContain('sk-ant-env-secret-must-not-cross-ipc');
+    } finally {
+      if (prev === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = prev;
+    }
+  });
+});
+
+// E3 / Shield residual 12 — pin save-time strip of anthropicEnvKeyPresent.
+describe('reconcileSettingsFromRenderer — strip anthropicEnvKeyPresent (Shield E3)', () => {
+  it('never persists anthropicEnvKeyPresent from an incoming renderer echo', () => {
+    const stored = settingsFixture({ apiKey: FAKE_API_KEY });
+    const incoming = {
+      ...stored,
+      apiKey: maskApiKey(stored.apiKey),
+      anthropicEnvKeyPresent: true,
+    } as AppSettings;
+    const reconciled = reconcileSettingsFromRenderer(incoming, stored);
+    expect(
+      Object.prototype.hasOwnProperty.call(reconciled, 'anthropicEnvKeyPresent'),
+    ).toBe(false);
+    expect((reconciled as { anthropicEnvKeyPresent?: boolean }).anthropicEnvKeyPresent).toBeUndefined();
+  });
 });
 
 describe('maskSettingsForRenderer — voice.openaiApiKey field (MYT-424)', () => {

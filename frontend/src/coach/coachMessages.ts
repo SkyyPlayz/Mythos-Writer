@@ -14,6 +14,9 @@
 
 export const COACH_CARD_MARKER = '<!-- mythos:coach-card v1 -->';
 
+/** Leading HTML-comment prefix used by coach-card markers (with or without `v1`). */
+const COACH_CARD_MARKER_PREFIX = '<!-- mythos:coach-card';
+
 export interface CoachLessonCard {
   kind: 'lesson';
   /** e.g. `Lesson — Show, don't tell (using YOUR scene)` */
@@ -46,15 +49,42 @@ export interface CoachAnalysisCard {
 
 export type CoachCard = CoachLessonCard | CoachAnalysisCard;
 
+/**
+ * `trusted` — structural `cardKind` from a trusted writer (Full Analysis).
+ * Only trusted analysis cards may show COMPUTED · LOCAL · FREE chrome.
+ * Legacy main-format decode (coach sessions, no cardKind) stays untrusted.
+ */
 export type CoachMessage =
   | { kind: 'user'; text: string; at: string }
   | { kind: 'coach'; text: string; at: string }
-  | (CoachLessonCard & { at: string })
-  | (CoachAnalysisCard & { at: string });
+  | (CoachLessonCard & { at: string; trusted: boolean })
+  | (CoachAnalysisCard & { at: string; trusted: boolean });
+
+export interface DecodeCoachTurnOpts {
+  /**
+   * Session agent that owns the turn. Main-format (no `cardKind`) coach-card
+   * decode is allowed **only** for legacy `coach` sessions whose payload kind
+   * is `analysis` or `lesson` (what main wrote). Never brainstorm; never
+   * `cardKind: 'action'`.
+   */
+  sessionAgent?: string;
+}
 
 /** Encode a structured card as session-turn text. */
 export function encodeCoachCard(card: CoachCard): string {
   return `${COACH_CARD_MARKER}\n${JSON.stringify(card)}`;
+}
+
+/**
+ * HARD 1(c)(i) — neutralize a leading coach-card marker in model/agent text
+ * before persist and before render so it cannot decode as a card.
+ * Breaks the HTML-comment open (`<!--` → `<!-`), matching Shield fence style.
+ */
+export function neutralizeLeadingCoachCardMarker(text: string): string {
+  const lead = text.match(/^\s*/)?.[0] ?? '';
+  const rest = text.slice(lead.length);
+  if (!rest.startsWith(COACH_CARD_MARKER_PREFIX)) return text;
+  return `${lead}${rest.replace('<!--', '<!-')}`;
 }
 
 function isStringArray(v: unknown): v is string[] {
@@ -68,7 +98,10 @@ function isPairArray(v: unknown): v is Array<[string, string]> {
   );
 }
 
-/** Parse card text back into a structured card; null when not a card / malformed. */
+/**
+ * Parse card payload JSON (guarded). Returns null on malformed / unexpected
+ * shapes — callers must render as plain text when null.
+ */
 export function decodeCoachCard(text: string): CoachCard | null {
   if (!text.startsWith(COACH_CARD_MARKER)) return null;
   const payload = text.slice(COACH_CARD_MARKER.length).trim();
@@ -102,17 +135,45 @@ export function decodeCoachCard(text: string): CoachCard | null {
   }
 }
 
-/** Decode one stored session turn into a renderable coach message. */
-export function decodeCoachTurn(turn: AgentSessionTurn): CoachMessage {
+/**
+ * Decode one stored session turn into a renderable coach message.
+ *
+ * - Structural `cardKind` (lesson/analysis) from a trusted writer → full card
+ *   with `trusted: true` (COMPUTED · LOCAL · FREE chrome allowed).
+ * - `cardKind: 'action'` (incl. Beta Read feedback with a marker) → plain coach.
+ * - Main-format turns (no `cardKind`): decode **only** when `sessionAgent` is
+ *   legacy `coach` AND payload kind is `analysis` → read-only, `trusted: false`.
+ * - User turns (incl. pasted/forged markers) stay user bubbles.
+ * - Forged model markers in brainstorm / partner sessions stay plain text.
+ */
+export function decodeCoachTurn(turn: AgentSessionTurn, opts?: DecodeCoachTurnOpts): CoachMessage {
   if (turn.role === 'user') return { kind: 'user', text: turn.text, at: turn.at };
-  const card = decodeCoachCard(turn.text);
-  if (card) return { ...card, at: turn.at };
+  // Shield fix 2 — action turns never decode marker+JSON as analysis/lesson cards.
+  if (turn.cardKind === 'action') {
+    return { kind: 'coach', text: turn.text, at: turn.at };
+  }
+  if (turn.cardKind === 'analysis' || turn.cardKind === 'lesson') {
+    const card = decodeCoachCard(turn.text);
+    // D9 — cardKind / payload kind mismatch → plain text (pinned by unit test).
+    if (card && card.kind === turn.cardKind) return { ...card, at: turn.at, trusted: true };
+    return { kind: 'coach', text: turn.text, at: turn.at };
+  }
+  // A6 / HARD 1 — no-cardKind decode: legacy coach + analysis|lesson only.
+  if (opts?.sessionAgent === 'coach' && turn.cardKind === undefined) {
+    const mainFormat = decodeCoachCard(turn.text);
+    if (mainFormat?.kind === 'analysis' || mainFormat?.kind === 'lesson') {
+      return { ...mainFormat, at: turn.at, trusted: false };
+    }
+  }
   return { kind: 'coach', text: turn.text, at: turn.at };
 }
 
 /** Decode a whole session into the feed's message list. */
-export function decodeCoachTurns(turns: readonly AgentSessionTurn[]): CoachMessage[] {
-  return turns.map(decodeCoachTurn);
+export function decodeCoachTurns(
+  turns: readonly AgentSessionTurn[],
+  opts?: DecodeCoachTurnOpts,
+): CoachMessage[] {
+  return turns.map((t) => decodeCoachTurn(t, opts));
 }
 
 /**
@@ -126,4 +187,73 @@ export function collapseCoachMessage(msg: CoachMessage): string {
     return tail ? `${msg.title} — ${tail}` : msg.title;
   }
   return msg.text;
+}
+
+/**
+ * Body text under a display-card title — never re-prints the title.
+ */
+export function displayCardBodyText(card: CoachCard): string {
+  if (card.kind === 'lesson') return card.text;
+  return card.takeaway || card.readNote || '';
+}
+
+/**
+ * Critic N2 / r6 — text sent to the model (and mini-card bodies that reuse it).
+ * Never forward raw `<!-- mythos:coach-card … -->` JSON payloads.
+ *
+ * Strip analysis|lesson marker JSON **regardless of sessionAgent**: history only
+ * goes to the model and cannot forge a UI card. Display decode
+ * (`decodeCoachTurn` / `mainFormatCoachDisplayCard`) still gates on legacy
+ * `coach` + `trusted: false` — do not weaken those.
+ */
+export function historyContentForModel(turn: AgentSessionTurn, opts?: DecodeCoachTurnOpts): string {
+  if (turn.role === 'user') return turn.text;
+  if (turn.cardKind === 'analysis' || turn.cardKind === 'lesson') {
+    return collapseCoachMessage(decodeCoachTurn(turn, opts));
+  }
+  if (turn.cardKind === 'action' && turn.cardTitle) {
+    const foot = turn.cardFoot ? `\n${turn.cardFoot}` : '';
+    return `${turn.cardTitle} — ${turn.text}${foot}`;
+  }
+  // No cardKind — strip legacy marker+JSON for any agent (CoachPage path omits sessionAgent).
+  if (turn.cardKind === undefined) {
+    const card = decodeCoachCard(turn.text);
+    if (card?.kind === 'analysis' || card?.kind === 'lesson') {
+      return collapseCoachMessage({ ...card, at: turn.at, trusted: false });
+    }
+  }
+  return turn.text;
+}
+
+/** Mini-chat card body: human summary, never raw encoded JSON. */
+export function miniCardBodyText(turn: AgentSessionTurn, opts?: DecodeCoachTurnOpts): string {
+  // Shield fix 2 — action turns always plain (Beta Read feedback with marker stays text).
+  if (turn.cardKind === 'action') return turn.text;
+  if (turn.cardKind === 'analysis' || turn.cardKind === 'lesson') {
+    return collapseCoachMessage(decodeCoachTurn(turn, opts));
+  }
+  // Main-format: legacy coach + analysis|lesson.
+  if (opts?.sessionAgent === 'coach' && turn.cardKind === undefined) {
+    const mainFormat = decodeCoachCard(turn.text);
+    if (mainFormat?.kind === 'analysis' || mainFormat?.kind === 'lesson') {
+      return displayCardBodyText(mainFormat);
+    }
+  }
+  return turn.text;
+}
+
+/**
+ * Main-format coach-card body with no structural `cardKind`.
+ * Read-only display — legacy `coach` + analysis|lesson (A6 / HARD 1).
+ */
+export function mainFormatCoachDisplayCard(
+  turn: AgentSessionTurn,
+  sessionAgent?: string,
+): CoachCard | null {
+  if (sessionAgent !== 'coach') return null;
+  if (turn.role === 'user') return null;
+  if (turn.cardKind !== undefined) return null;
+  const card = decodeCoachCard(turn.text);
+  if (card?.kind !== 'analysis' && card?.kind !== 'lesson') return null;
+  return card;
 }

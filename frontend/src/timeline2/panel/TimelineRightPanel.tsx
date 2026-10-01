@@ -18,6 +18,10 @@ import ExactTimeModal from '../ExactTimeModal';
 import CalendarEditorModal from '../CalendarEditorModal';
 import InspectorTab from './InspectorTab';
 import type { RecentAutoAdd } from './ArchiveTab';
+import { useMiniAgentChat } from './useMiniAgentChat';
+import MiniAgentChat from './MiniAgentChat';
+import { invokeBrainstorm } from './BrainstormTab';
+import { DEFAULT_PARTNER_DISPLAY_NAME, PARTNER_SESSION_AGENT } from '../../agents/partnerIdentity';
 import './TimelineRightPanel.css';
 
 export type TimelineRightTab = 'inspector' | 'partner';
@@ -71,7 +75,7 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
     tab,
     onTabChange,
     onCalendarChange,
-    partnerName = 'Mythos',
+    partnerName = DEFAULT_PARTNER_DISPLAY_NAME,
   } = props;
 
   const tabs: { value: TimelineRightTab; label: string }[] = [
@@ -150,39 +154,15 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
           />
         )}
         {tab === 'partner' && (
-          <div className="trp-partner-hand" data-testid="trp-partner-panel">
-            <p className="trp-partner-note">
-              {partnerName}&apos;s Archivist hand owns the needs-fleshing-out queue.
-              Open the partner panel from the shell to chat — Idea Board lives under Boards.
-            </p>
-            {props.flags.length > 0 && (
-              <div className="trp-partner-flags" data-testid="trp-partner-flags">
-                <div className="trp-section-label">FLAGS</div>
-                {props.flags.slice(0, 8).map((f) => (
-                  <button
-                    key={f.id}
-                    type="button"
-                    className="trp-flag-row"
-                    onClick={() => props.onJumpTo(f.affectedItemId || f.id)}
-                    data-testid={`trp-flag-${f.id}`}
-                  >
-                    {f.description || f.anchor || f.id}
-                  </button>
-                ))}
-              </div>
-            )}
-            {props.onRebuildTimeline && (
-              <button
-                type="button"
-                className="trp-rebuild"
-                onClick={props.onRebuildTimeline}
-                disabled={props.rebuilding || props.archiveBusy}
-                data-testid="trp-rebuild"
-              >
-                {props.rebuilding ? 'Rebuilding…' : 'Rebuild my timeline'}
-              </button>
-            )}
-          </div>
+          <PartnerTimelineChat
+            partnerName={partnerName}
+            flags={props.flags}
+            onJumpTo={props.onJumpTo}
+            onRebuildTimeline={props.onRebuildTimeline}
+            rebuilding={props.rebuilding}
+            archiveBusy={props.archiveBusy}
+            showControls={true}
+          />
         )}
       </div>
 
@@ -214,5 +194,78 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
         />
       )}
     </aside>
+  );
+}
+
+/** F3#7 — unified agent chat + timeline controls button (no Archivist tab). */
+function PartnerTimelineChat({
+  partnerName,
+  flags,
+  onJumpTo,
+  onRebuildTimeline,
+  rebuilding,
+  archiveBusy,
+}: {
+  partnerName: string;
+  flags: TimelineFlag[];
+  onJumpTo: (itemId: string) => void;
+  onRebuildTimeline?: () => void;
+  rebuilding?: boolean;
+  archiveBusy: boolean;
+  showControls?: boolean;
+}) {
+  const chat = useMiniAgentChat(PARTNER_SESSION_AGENT, invokeBrainstorm);
+  const [controlsOpen, setControlsOpen] = useState(false);
+
+  return (
+    <div className="trp-partner-hand" data-testid="trp-partner-panel">
+      <MiniAgentChat
+        chat={chat}
+        accent="brainstorm"
+        partnerName={partnerName}
+        placeholder={`Message ${partnerName}…`}
+        testidPrefix="trp-partner"
+      />
+      <button
+        type="button"
+        className="trp-rebuild"
+        data-testid="trp-timeline-controls"
+        aria-expanded={controlsOpen}
+        onClick={() => setControlsOpen((o) => !o)}
+      >
+        {controlsOpen ? 'Hide timeline controls' : 'Timeline controls'}
+      </button>
+      {controlsOpen && (
+        <div className="trp-partner-controls" data-testid="trp-partner-controls">
+          {flags.length > 0 && (
+            <div className="trp-partner-flags" data-testid="trp-partner-flags">
+              <div className="trp-section-label">FLAGS</div>
+              {flags.slice(0, 8).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className="trp-flag-row"
+                  onClick={() => onJumpTo(f.affectedItemId || f.id)}
+                  data-testid={`trp-flag-${f.id}`}
+                >
+                  {f.description || f.anchor || f.id}
+                </button>
+              ))}
+            </div>
+          )}
+          {onRebuildTimeline && (
+            <button
+              type="button"
+              className="trp-rebuild"
+              onClick={onRebuildTimeline}
+              disabled={rebuilding || archiveBusy}
+              data-testid="trp-rebuild"
+            >
+              {rebuilding ? 'Rebuilding…' : 'Rebuild my timeline'}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

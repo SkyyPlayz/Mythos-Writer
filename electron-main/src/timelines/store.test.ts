@@ -277,6 +277,46 @@ describe('readTimelinesStore — demo seed for genuinely new vaults', () => {
     expect(store.timelines).toHaveLength(3);
     expect(store.spans.filter((s) => s.opensTimelineId).length).toBeGreaterThan(0);
   });
+
+  it('F3#6 — Universal is the root; World + Story hang under it', () => {
+    const store = createSeedTimelinesStore('2026-01-01T00:00:00Z');
+    const universe = store.timelines.find((t) => t.kind === 'universe');
+    const world = store.timelines.find((t) => t.kind === 'world');
+    const story = store.timelines.find((t) => t.kind === 'story');
+    expect(universe).toBeTruthy();
+    expect(world).toBeTruthy();
+    expect(story).toBeTruthy();
+    const childIds = store.spans
+      .filter((s) => s.timelineId === universe!.id && s.opensTimelineId)
+      .map((s) => s.opensTimelineId);
+    expect(childIds).toEqual(expect.arrayContaining([world!.id, story!.id]));
+    // No inverted Story→World→Universe chain.
+    expect(store.spans.some((s) => s.timelineId === story!.id && s.opensTimelineId === world!.id)).toBe(false);
+    expect(store.spans.some((s) => s.timelineId === world!.id && s.opensTimelineId === universe!.id)).toBe(false);
+  });
+
+  it('F3#6 Ivy: seed matches main except the order-fix spans (no new demo content)', () => {
+    const store = createSeedTimelinesStore('2026-01-01T00:00:00Z');
+    // Non-span entities identical to main's seed (ids / counts / labels).
+    expect(store.timelines.map((t) => t.id).sort()).toEqual(['story', 'universe', 'world']);
+    expect(store.eras.map((e) => e.id).sort()).toEqual(['era:story-opening', 'era:world-founding']);
+    expect(store.rows.map((r) => r.id).sort()).toEqual(['row:story-main', 'row:world-history']);
+    expect(store.events.map((e) => e.id).sort()).toEqual([
+      'event:first-star',
+      'event:founding',
+      'event:inciting',
+    ]);
+    expect(store.spans).toHaveLength(2);
+    expect(store.spans.every((s) => s.source === 'seed')).toBe(true);
+    // Order-fix only — these ids replace main's inverted span ids.
+    expect(store.spans.map((s) => s.id).sort()).toEqual([
+      'span:universe-story-arc',
+      'span:universe-world-history',
+    ]);
+    // No TourModal / coach-mark / walkthrough markers in seed payloads.
+    const blob = JSON.stringify(store);
+    expect(blob).not.toMatch(/TourModal|coach-mark|walkthrough|demoEnabled/i);
+  });
 });
 
 // ─── Atomic write + backup + corrupt-file recovery ───────────────────────────

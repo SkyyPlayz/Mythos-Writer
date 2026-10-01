@@ -6,6 +6,21 @@ import type { UseAgentSessionsResult } from '../lib/useAgentSessions';
 import { showLnToast } from '../theme/lnToast';
 import './AgentSessionPicker.css';
 
+/** Ivy / Probe H3 — label legacy Coach / Beta threads in the partner picker. */
+export function legacySessionAgentLabel(agent: string | undefined): string | null {
+  switch (agent) {
+    case 'coach':
+    case 'writing-assistant':
+    case 'writingAssistant':
+      return 'Coach';
+    case 'beta-reader':
+    case 'betaReader':
+      return 'Beta';
+    default:
+      return null;
+  }
+}
+
 interface Props {
   store: UseAgentSessionsResult;
   /** Extra class applied to the pill root (e.g. for placement overrides). */
@@ -95,7 +110,11 @@ export default function AgentSessionPicker({ store, className = '', busy = false
     if (e.key === 'Escape') { setRenamingId(null); }
   }, [commitRename]);
 
-  const label = active?.title ?? 'Session 1';
+  const label = (() => {
+    const base = active?.title ?? 'Session 1';
+    const legacy = legacySessionAgentLabel(active?.agent);
+    return legacy ? `${legacy} · ${base}` : base;
+  })();
 
   return (
     <div className={`asp-root${className ? ` ${className}` : ''}`} ref={dropdownRef}>
@@ -123,12 +142,17 @@ export default function AgentSessionPicker({ store, className = '', busy = false
             {/* §10: scrolls independently past ~8 rows — no pagination/search,
                 sessions per agent are expected to stay in the tens. */}
             <div className="asp-row-list">
-            {orderedSessions.map((s) => (
+            {orderedSessions.map((s) => {
+              const legacy = legacySessionAgentLabel(s.agent);
+              const rowName = s.title ?? 'Chat';
+              return (
               <div
                 key={s.id}
                 className={`asp-row${s.id === activeSessionId ? ' asp-row--active' : ''}`}
                 role="option"
                 aria-selected={s.id === activeSessionId}
+                data-testid={legacy ? `asp-legacy-${s.agent}` : undefined}
+                data-session-agent={s.agent}
               >
                 {renamingId === s.id ? (
                   <input
@@ -154,7 +178,12 @@ export default function AgentSessionPicker({ store, className = '', busy = false
                     }}
                   >
                     <span className={`asp-status-dot${s.id === activeSessionId ? ' asp-status-dot--active' : ''}`} aria-hidden="true" />
-                    <span className="asp-row-name">{s.title ?? 'Chat'}</span>
+                    {legacy && (
+                      <span className="asp-legacy-badge" data-testid={`asp-badge-${legacy.toLowerCase()}`}>
+                        {legacy}
+                      </span>
+                    )}
+                    <span className="asp-row-name">{rowName}</span>
                     <span className="asp-row-count">{s.turnCount} msg{s.turnCount !== 1 ? 's' : ''}</span>
                   </button>
                 )}
@@ -163,26 +192,27 @@ export default function AgentSessionPicker({ store, className = '', busy = false
                     type="button"
                     className="asp-action-btn"
                     title="Rename"
-                    aria-label={`Rename session ${s.title ?? 'Chat'}`}
-                    onClick={(e) => { e.stopPropagation(); startRename(s.id, s.title ?? 'Chat'); }}
+                    aria-label={`Rename session ${rowName}`}
+                    onClick={(e) => { e.stopPropagation(); startRename(s.id, rowName); }}
                   >✏</button>
                   <button
                     type="button"
                     className="asp-action-btn"
                     title="Duplicate"
-                    aria-label={`Duplicate session ${s.title ?? 'Chat'}`}
+                    aria-label={`Duplicate session ${rowName}`}
                     onClick={(e) => { e.stopPropagation(); void handleDuplicate(s.id); setOpen(false); }}
                   >⎘</button>
                   <button
                     type="button"
                     className="asp-action-btn asp-action-btn--danger"
                     title="Delete"
-                    aria-label={`Delete session ${s.title ?? 'Chat'}`}
+                    aria-label={`Delete session ${rowName}`}
                     onClick={(e) => { e.stopPropagation(); void handleDelete(s.id); setOpen(false); }}
                   >✕</button>
                 </div>
               </div>
-            ))}
+              );
+            })}
             </div>
 
             <div className="asp-divider" role="separator" />

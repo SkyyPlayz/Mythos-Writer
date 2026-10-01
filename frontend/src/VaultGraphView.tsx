@@ -836,21 +836,73 @@ function CategoryChip({ chipKey, label, active, onToggle, onShowOnly, onShowAll 
   );
 }
 
-function isNodeInViewport(
-  node: PositionedNode,
+export function isNodeInViewport(
+  node: { x: number; y: number },
   pan: { x: number; y: number },
   zoom: number,
   viewW: number,
   viewH: number,
 ): boolean {
   const buffer = VIEWPORT_BUFFER;
-  const minX = -pan.x - viewW * buffer;
-  const maxX = -pan.x + viewW * (1 + buffer);
-  const minY = -pan.y - viewH * buffer;
-  const maxY = -pan.y + viewH * (1 + buffer);
-  const nx = node.x * zoom;
-  const ny = node.y * zoom;
-  return nx >= minX && nx <= maxX && ny >= minY && ny <= maxY;
+  // Must match the SVG transform:
+  // translate(viewW*(1-zoom)/2 + pan.x, viewH*(1-zoom)/2 + pan.y) scale(zoom)
+  const sx = viewW * (1 - zoom) / 2 + pan.x + node.x * zoom;
+  const sy = viewH * (1 - zoom) / 2 + pan.y + node.y * zoom;
+  return (
+    sx >= -viewW * buffer
+    && sx <= viewW * (1 + buffer)
+    && sy >= -viewH * buffer
+    && sy <= viewH * (1 + buffer)
+  );
+}
+
+/** Inspector column width reserved so Fit leaves the selected node uncovered. */
+export const GRAPH_INSPECTOR_RESERVE_PX = 248;
+
+/**
+ * F3#8 / Probe B — zoom/pan so node bounds fill the graph viewBox.
+ * Fit never exceeds 100% zoom; right side leaves room for the inspector.
+ */
+export function computeFitCamera(
+  nodes: Array<{ x: number; y: number; radius?: number }>,
+  extentW: number,
+  extentH: number,
+  opts?: { reserveRightPx?: number },
+): { zoom: number; pan: { x: number; y: number } } {
+  if (nodes.length === 0) return { zoom: 1, pan: { x: 0, y: 0 } };
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const n of nodes) {
+    const pad = (n.radius ?? 10) * STAR_DISC_SCALE;
+    minX = Math.min(minX, n.x - pad);
+    maxX = Math.max(maxX, n.x + pad);
+    minY = Math.min(minY, n.y - pad);
+    maxY = Math.max(maxY, n.y + pad);
+  }
+  const contentW = Math.max(1, maxX - minX);
+  const contentH = Math.max(1, maxY - minY);
+  const reserve = opts?.reserveRightPx ?? GRAPH_INSPECTOR_RESERVE_PX;
+  const usableW = Math.max(1, extentW - reserve);
+  const margin = 0.85;
+  // Fit never past 100% — Probe B / Ivy.
+  const zoom = clampValue(
+    ZOOM_MIN,
+    1,
+    Math.min((usableW * margin) / contentW, (extentH * margin) / contentH),
+  );
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  // Bias pan left so content sits in the non-inspector band.
+  const viewCenterX = usableW / 2;
+  return {
+    zoom,
+    pan: {
+      x: zoom * (viewCenterX - cx),
+      y: zoom * (extentH / 2 - cy),
+    },
+  };
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -1225,12 +1277,23 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     setKeyboardFocusedNodeId(null);
   }, []);
 
-  // M26: Fit acts on the viewport only (prototype gZoomReset, 7165) — the
-  // selection and its node card stay put. Escape/0 keep the full reset above.
+  // F3#8: Fit frames content in the viewport (keeps selection). Escape/0 keep full reset.
   const handleFit = useCallback(() => {
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-  }, []);
+    const cam = computeFitCamera(positionedNodes, graphExtent.width, graphExtent.height);
+    setZoom(cam.zoom);
+    setPan(cam.pan);
+  }, [positionedNodes, graphExtent.width, graphExtent.height]);
+
+  // Sane default: fit content once after the first settled layout for each dataset.
+  const fittedDataRef = useRef<unknown>(null);
+  useEffect(() => {
+    if (!filteredData || filteredData.nodes.length === 0) return;
+    if (fittedDataRef.current === filteredData) return;
+    fittedDataRef.current = filteredData;
+    const cam = computeFitCamera(positionedNodes, graphExtent.width, graphExtent.height);
+    setZoom(cam.zoom);
+    setPan(cam.pan);
+  }, [filteredData, positionedNodes, graphExtent.width, graphExtent.height]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {

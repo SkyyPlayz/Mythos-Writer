@@ -41,7 +41,7 @@ beforeEach(() => {
 });
 
 describe('App — onboarding gate (SKY-152)', () => {
-  it('shows wizard when onboardingComplete is false', async () => {
+  it('shows WelcomeOverlay when onboardingComplete is false', async () => {
     (window as any).api = makeMockApi({
       settingsGet: () => Promise.resolve({ onboardingComplete: false }),
       pickFolder: vi.fn().mockResolvedValue({ vaultRoot: null, cancelled: true, registrationToken: null }),
@@ -57,10 +57,10 @@ describe('App — onboarding gate (SKY-152)', () => {
       writeNotesVault: vi.fn(),
     });
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId('gs-overlay')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('welcome-overlay')).toBeInTheDocument());
   });
 
-  it('shows Getting Started cards on first launch', async () => {
+  it('shows WelcomeOverlay path cards on first launch', async () => {
     (window as any).api = makeMockApi({
       settingsGet: () => Promise.resolve({ onboardingComplete: false }),
       pickFolder: vi.fn().mockResolvedValue({ vaultRoot: null, cancelled: true, registrationToken: null }),
@@ -76,7 +76,9 @@ describe('App — onboarding gate (SKY-152)', () => {
       writeNotesVault: vi.fn(),
     });
     render(<App />);
-    await waitFor(() => expect(screen.getByTestId('screen-welcome')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('welcome-overlay')).toBeInTheDocument());
+    expect(screen.getByTestId('welcome-path-template')).toBeInTheDocument();
+    expect(screen.getByTestId('welcome-path-blank')).toBeInTheDocument();
   });
 
   it('bypasses wizard when onboardingComplete is true (existing vault)', async () => {

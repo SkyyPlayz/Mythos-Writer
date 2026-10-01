@@ -3,8 +3,8 @@
 .partner-card {
   position: relative;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 10px;
   margin: 0 8px;
   padding: 12px 12px;
@@ -15,6 +15,18 @@
     rgba(13, 16, 28, 0.35);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
+}
+
+.partner-card__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.partner-card .ahp-past-chats {
+  margin: 0;
+  width: 100%;
 }
 
 .partner-card--on-call {

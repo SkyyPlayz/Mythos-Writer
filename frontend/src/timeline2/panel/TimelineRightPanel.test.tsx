@@ -70,6 +70,17 @@ function makeProps(overrides: Partial<TimelineRightPanelProps> = {}): TimelineRi
 beforeEach(() => {
   vi.clearAllMocks();
   __resetAiEnabledForTests();
+  (window as unknown as { api: Record<string, unknown> }).api = {
+    agentSessions: {
+      list: vi.fn().mockResolvedValue({ sessions: [] }),
+      get: vi.fn().mockResolvedValue(null),
+      create: vi.fn().mockResolvedValue({ id: 's1', title: 'Chat', turns: [], createdAt: '', updatedAt: '' }),
+      appendTurns: vi.fn().mockResolvedValue({ ok: true }),
+      rename: vi.fn().mockResolvedValue({ ok: true }),
+      duplicate: vi.fn().mockResolvedValue({ id: 's2' }),
+      delete: vi.fn().mockResolvedValue({ ok: true }),
+    },
+  };
 });
 afterEach(() => cleanup());
 
@@ -251,8 +262,13 @@ describe('Slice E Soft-FAIL: no Archivist / Idea Board tabs on Timeline', () => 
     expect(screen.queryByTestId('trp-tab-brainstorm')).toBeNull();
   });
 
-  it('partner tab body notes Idea Board lives under Boards', () => {
-    render(<TimelineRightPanel {...makeProps({ tab: 'partner', partnerName: 'Mythos' })} />);
-    expect(screen.getByTestId('trp-partner-panel')).toHaveTextContent(/Idea Board lives under Boards/);
+  it('partner tab is unified agent chat + timeline controls (no Archivist tab)', async () => {
+    render(<TimelineRightPanel {...makeProps({ tab: 'partner', partnerName: 'Athena' })} />);
+    expect(await screen.findByTestId('trp-partner-panel')).toBeInTheDocument();
+    expect(await screen.findByTestId('trp-partner-chat')).toBeInTheDocument();
+    expect(screen.getByTestId('trp-timeline-controls')).toBeInTheDocument();
+    expect(screen.queryByTestId('trp-tab-archive')).toBeNull();
+    fireEvent.click(screen.getByTestId('trp-timeline-controls'));
+    expect(screen.getByTestId('trp-partner-controls')).toBeInTheDocument();
   });
 });
