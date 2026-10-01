@@ -1,11 +1,58 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { applyTheme, normalizeTheme, THEME_MODES, relativeLuminance, contrastRatio, enforceContrastFloor, applyLiquidNeonTokens, resetLiquidNeonTokens, LIQUID_NEON_DEFAULTS, PAGE_BACKGROUND_DEFAULTS, pageBackgroundContrastRatio, applyPageBackgroundTokens, resetPageBackgroundTokens, applyStoryPageTokens, resetStoryPageTokens, clampPageMargin, maxPageMargin, normalizeStoryPagePrefs, resolveFontName, resolveFontStep, resolveLineHeight, resolvePageMargin, resolvePageWidth, STORY_PAGE_DEFAULTS } from './theme';
+import { applyLiquidNeonV2Tokens, resetLiquidNeonV2Tokens } from './theme/liquidNeonEngine';
 
 const tokensCss = readFileSync(join(__dirname, 'tokens.css'), 'utf8');
 const notesTabCss = readFileSync(join(__dirname, 'NotesTabPanel.css'), 'utf8');
 const desktopShellCss = readFileSync(join(__dirname, 'DesktopShell.css'), 'utf8');
 const blockEditorCss = readFileSync(join(__dirname, 'BlockEditor.css'), 'utf8');
+
+/** @supports frost rule body for a Notes sidebar selector (comment-stripped). */
+function notesSidebarSupportsBody(selector: string): string {
+  const stripped = notesTabCss.replace(/\/\*[\s\S]*?\*\//g, '');
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // Require the selector as the first rule inside the @supports block so we
+  // do not land on the earlier base `.notes-tab-sidebar-*` rule (outside
+  // @supports) after a prior `@supports (backdrop-filter: blur(1px))` toolbar
+  // block — a loose `[\s\S]*?` match did that and hid a local restate.
+  const re = new RegExp(
+    `@supports\\s*\\(backdrop-filter:\\s*blur\\(1px\\)\\)\\s*\\{\\s*${escaped}\\s*\\{([^}]*)\\}`,
+  );
+  const m = re.exec(stripped);
+  expect(m, `no @supports frost rule for ${selector}`).not.toBeNull();
+  return m![1];
+}
+
+/** Local `--glass-panel-bg` override on a sidebar frost rule, if any. */
+function localGlassPanelBg(ruleBody: string): string | null {
+  const m = /--glass-panel-bg\s*:\s*([^;]+);/.exec(ruleBody);
+  return m ? m[1].replace(/\s+/g, ' ').trim() : null;
+}
+
+/** Alpha from `rgba(r,g,b,a)` / `rgb(r,g,b)` (rgb → 1). */
+function cssColorAlpha(value: string): number {
+  const rgba = /^rgba\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*,\s*([\d.]+)\s*\)$/i.exec(value);
+  if (rgba) return Number(rgba[1]);
+  if (/^rgb\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*\)$/i.test(value)) return 1;
+  throw new Error(`not a resolvable rgb/rgba color: ${value}`);
+}
+
+/** :root `--glass-panel-bg` recipe from tokens.css (comment-stripped). */
+function rootGlassPanelBgRecipe(): string {
+  const stripped = tokensCss.replace(/\/\*[\s\S]*?\*\//g, '');
+  const m = /--glass-panel-bg:\s*([^;]+);/.exec(stripped);
+  expect(m, 'tokens.css missing --glass-panel-bg').not.toBeNull();
+  return m![1].replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Effective `--glass-panel-bg` on a Notes sidebar: a local override wins over
+ * the inherited :root recipe (Probe 5372915150 / Four-Q #3 cascade).
+ */
+function effectiveGlassPanelBg(selector: string, inherited: string): string {
+  return localGlassPanelBg(notesSidebarSupportsBody(selector)) ?? inherited;
+}
 
 describe('token contrast floor (MYT-517 UX gate)', () => {
   // The sub-muted text colour failed the 4.5:1 floor on lighter surfaces, so
@@ -451,6 +498,85 @@ describe('NotesTabPanel.css page-background (SKY-2102)', () => {
   });
   it('notes-tab-center forces near-opaque surface under prefers-contrast: more', () => {
     expect(notesTabCss).toMatch(/prefers-contrast:\s*more/);
+  });
+  // Probe N2 / Ivy H1: exact crop bar needs prototype frost behind search.
+  // Anchor unprefixed `backdrop-filter` (after `{`/`;`/whitespace) so the
+  // match cannot land inside `-webkit-backdrop-filter` (HARD: drop-unprefixed-only → red).
+  it('notes-tab-sidebar-left has blur(1px) saturate(1.5) for N2 crop parity', () => {
+    expect(notesTabCss).toMatch(
+      /\.notes-tab-sidebar-left\s*\{[^}]*[{;\s]backdrop-filter:\s*blur\(\s*1px\s*\)\s+saturate\(\s*1\.5\s*\)/,
+    );
+    expect(notesTabCss).toMatch(
+      /\.notes-tab-sidebar-left\s*\{[^}]*-webkit-backdrop-filter:\s*blur\(\s*1px\s*\)\s+saturate\(\s*1\.5\s*\)/,
+    );
+  });
+  // Probe 5372915150 Four-Q #3: local --glass-panel-bg rgba(13,16,28,0.2)
+  // restate withdrawn (0 px crop). These go RED if the restate is re-added.
+  describe('notes left glass follows live tokens (no local --glass-panel-bg restate)', () => {
+    afterEach(() => {
+      resetLiquidNeonV2Tokens();
+    });
+
+    it('(a) glassA 60 → left and right share the same computed glass fill alpha', () => {
+      const el = document.createElement('div');
+      applyLiquidNeonV2Tokens({ glassA: 60, blur: 1 }, '/assets/cosmic-bg.webp', el);
+      const glassFill = el.style.getPropertyValue('--glass-fill').trim();
+      expect(glassFill).toBe('rgba(13,16,28,0.600)');
+
+      // Inherited recipe paints var(--glass-fill) as the border-box layer.
+      const inherited = rootGlassPanelBgRecipe().replace(
+        /var\(--glass-fill\)/g,
+        glassFill,
+      );
+      const leftBg = effectiveGlassPanelBg('.notes-tab-sidebar-left', inherited);
+      const rightBg = effectiveGlassPanelBg('.notes-tab-sidebar-right', inherited);
+
+      const fillAlpha = (bg: string): number => {
+        // Local rgba restate is the whole background (no layered recipe).
+        if (/^rgba?\(/i.test(bg)) return cssColorAlpha(bg);
+        const layer = /rgba?\(\s*13\s*,\s*16\s*,\s*28\s*,\s*([\d.]+)\s*\)/i.exec(bg);
+        expect(layer, `no glass fill layer in: ${bg}`).not.toBeNull();
+        return Number(layer![1]);
+      };
+
+      expect(fillAlpha(leftBg)).toBe(0.6);
+      expect(fillAlpha(rightBg)).toBe(0.6);
+      expect(fillAlpha(leftBg)).toBe(fillAlpha(rightBg));
+    });
+
+    it('(b) under reduced transparency the left panel fill is opaque', () => {
+      const el = document.createElement('div');
+      applyLiquidNeonV2Tokens({ glassA: 20, blur: 1 }, '/assets/cosmic-bg.webp', el);
+      const fallback = el.style.getPropertyValue('--glass-fill-fallback').trim();
+      expect(fallback).toBe('rgb(13,16,28)');
+
+      // tokens.css @media (prefers-reduced-transparency: reduce) restates
+      // --glass-panel-bg: var(--glass-fill-fallback) on :root — opaque.
+      // A local rgba(…,0.2) on the left sidebar wins and stays see-through.
+      const reducedInherited = fallback;
+      const leftBg = effectiveGlassPanelBg('.notes-tab-sidebar-left', reducedInherited);
+      expect(cssColorAlpha(leftBg)).toBe(1);
+    });
+
+    it('(c) SKY-11787 text-backing / contrast layer is present behind tree text', () => {
+      const inherited = rootGlassPanelBgRecipe();
+      expect(inherited).toMatch(
+        /^linear-gradient\(var\(--ln-text-backing\),\s*var\(--ln-text-backing\)\)\s*padding-box,/,
+      );
+      expect(inherited).toMatch(/var\(--glass-fill\)\s*border-box$/);
+
+      const leftBg = effectiveGlassPanelBg('.notes-tab-sidebar-left', inherited);
+      // Restating to a plain rgba drops the padding-box backing layer.
+      expect(leftBg).toMatch(/var\(--ln-text-backing\)/);
+      expect(leftBg).toMatch(/padding-box/);
+      expect(leftBg).toContain('var(--glass-fill)');
+    });
+  });
+  // Ivy named-cause: softener was compensation — must NOT override --glowH.
+  it('notes-tab-sidebar-left does not override vb-notes-search box-shadow (proto uses --glowH)', () => {
+    expect(notesTabCss).not.toMatch(
+      /\.notes-tab-sidebar-left\s+\.vb-notes-search\s*\{[^}]*box-shadow:/,
+    );
   });
 });
 
