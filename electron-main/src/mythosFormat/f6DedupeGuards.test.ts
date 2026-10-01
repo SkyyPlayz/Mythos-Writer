@@ -71,4 +71,108 @@ describe('F6 dedupe guards', () => {
     ).not.toThrow();
     expect(resolveCalls).toBe(1);
   });
+
+  it('R12 story tie-break: untracked duplicate ids pick code-point winner (not localeCompare)', () => {
+    // "Zebra" < "apple" by code point; localeCompare prefers "apple".
+    const r = createMythosVault(tmp, { name: 'R12Story', seedDemo: false });
+    if (!r.ok) throw new Error('vault');
+    const cachePath = resolveManifestPath(r.storyVaultPath);
+    fs.rmSync(path.dirname(cachePath), { recursive: true, force: true });
+
+    const mk = (folder: string) => {
+      const abs = path.join(r.storyVaultPath, folder);
+      fs.mkdirSync(path.join(abs, 'Part 1', 'Chapter 01'), { recursive: true });
+      fs.writeFileSync(
+        path.join(abs, 'book.md'),
+        [
+          '---',
+          'id: shared-untracked',
+          `title: ${folder}`,
+          'createdAt: 2026-01-01T00:00:00.000Z',
+          'updatedAt: 2026-01-01T00:00:00.000Z',
+          '---',
+          `# ${folder}`,
+          '',
+          '<!-- mythos:spine',
+          JSON.stringify([
+            { dir: 'Part 1', chapters: [{ dir: 'Chapter 01', id: `${folder}-ch`, title: 'C' }] },
+          ]),
+          '-->',
+          '',
+        ].join('\n'),
+      );
+      fs.writeFileSync(
+        path.join(abs, 'Part 1', 'Chapter 01', 'Scene 01.md'),
+        `---\nid: ${folder}-sc\ntitle: S\nstatus: draft\n---\nbody\n`,
+      );
+    };
+    mk('Zebra');
+    mk('apple');
+    // Leave both untracked so rule 2 falls through to code-point folder sort.
+    writeMythosFile(r.mythosRoot, { ...readMythosFile(r.mythosRoot), stories: [] });
+
+    const after = scanMythosStoryVault(r.mythosRoot);
+    const zebra = after.stories.find((s: any) => s.path === 'Zebra')!;
+    const apple = after.stories.find((s: any) => s.path === 'apple')!;
+    expect(zebra.id).toBe('shared-untracked');
+    expect(apple.id).not.toBe('shared-untracked');
+  });
+
+  it('R12 scene tie-break: within-story non-canonical duplicate picks code-point path (not localeCompare)', () => {
+    // storyRelPath ends with "Banana notes.md" vs "apple notes.md".
+    // Code point → Banana wins; localeCompare → apple wins.
+    const r = createMythosVault(tmp, { name: 'R12Scene', seedDemo: false });
+    if (!r.ok) throw new Error('vault');
+    const cachePath = resolveManifestPath(r.storyVaultPath);
+    fs.rmSync(path.dirname(cachePath), { recursive: true, force: true });
+
+    const story = 'R12 Scene Story';
+    const chDir = path.join(r.storyVaultPath, story, 'Part 1', 'Chapter 01');
+    fs.mkdirSync(chDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(r.storyVaultPath, story, 'book.md'),
+      [
+        '---',
+        'id: r12-scene-story',
+        'title: R12 Scene Story',
+        'createdAt: 2026-01-01T00:00:00.000Z',
+        'updatedAt: 2026-01-01T00:00:00.000Z',
+        '---',
+        '# R12 Scene Story',
+        '',
+        '<!-- mythos:spine',
+        JSON.stringify([
+          { dir: 'Part 1', chapters: [{ dir: 'Chapter 01', id: 'r12-ch', title: 'C' }] },
+        ]),
+        '-->',
+        '',
+      ].join('\n'),
+    );
+    const shared = 'r12-shared-scene';
+    for (const name of ['Banana notes.md', 'apple notes.md']) {
+      fs.writeFileSync(
+        path.join(chDir, name),
+        `---\nid: ${shared}\ntitle: ${name}\nstatus: draft\n---\nbody\n`,
+      );
+    }
+    writeMythosFile(r.mythosRoot, {
+      ...readMythosFile(r.mythosRoot),
+      stories: [
+        {
+          id: 'r12-scene-story',
+          title: story,
+          folder: story,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+
+    const after = scanMythosStoryVault(r.mythosRoot);
+    const scenes = after.stories.find((s: any) => s.path === story)!.chapters[0].scenes;
+    const banana = scenes.find((s: any) => s.path.endsWith('Banana notes.md'))!;
+    const apple = scenes.find((s: any) => s.path.endsWith('apple notes.md'))!;
+    expect(banana.id).toBe(shared);
+    expect(apple.id).not.toBe(shared);
+  });
 });

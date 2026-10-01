@@ -201,6 +201,96 @@ describe('F6 ID dedupe — story folder copy', () => {
     expect(tier2.chapterId).toBe(tier1.chapterId);
     expect(tier2.bookId).toBe(copy1.id);
   });
+
+  it('empty chapterFolders stays folder-scoped: spine id matching out-of-spine fallback is not stolen', () => {
+    // Critic r3 / Shield X2: Chapter 01 spine id equals Chapter 99's fallback id.
+    // Only the out-of-spine folder loses → chapterFolders=[], bookReplacements still
+    // has the loser remap. With `chapterFolders.length > 0` the map-by-id branch
+    // rewrites Chapter 01's spine slot; after scan 2 Chapter 99 owns the original id.
+    const result = createMythosVault(tmp, { name: 'EmptyFoldersScope', seedDemo: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const story = 'Winner Spine Slot';
+    const storyId = 'x2-story';
+    const fallbackCh99 = `${storyId}-Part-1-Chapter-99`;
+    const abs = path.join(result.storyVaultPath, story);
+    fs.mkdirSync(path.join(abs, 'Part 1', 'Chapter 01'), { recursive: true });
+    fs.mkdirSync(path.join(abs, 'Part 1', 'Chapter 99'), { recursive: true });
+    fs.writeFileSync(
+      path.join(abs, 'book.md'),
+      [
+        '---',
+        `id: ${storyId}`,
+        'title: Winner Spine Slot',
+        'createdAt: 2026-01-01T00:00:00.000Z',
+        'updatedAt: 2026-01-01T00:00:00.000Z',
+        '---',
+        '# Winner Spine Slot',
+        '',
+        '<!-- mythos:spine',
+        JSON.stringify([
+          {
+            dir: 'Part 1',
+            chapters: [{ dir: 'Chapter 01', id: fallbackCh99, title: 'In Spine' }],
+          },
+        ]),
+        '-->',
+        '',
+      ].join('\n'),
+    );
+    fs.writeFileSync(
+      path.join(abs, 'Part 1', 'Chapter 01', 'Scene 01.md'),
+      '---\nid: x2-sc-01\ntitle: S1\nstatus: draft\n---\nwinner prose\n',
+    );
+    fs.writeFileSync(
+      path.join(abs, 'Part 1', 'Chapter 99', 'Scene 01.md'),
+      '---\nid: x2-sc-99\ntitle: Extra\nstatus: draft\n---\nextra\n',
+    );
+    writeMythosFile(result.mythosRoot, {
+      ...readMythosFile(result.mythosRoot),
+      stories: [
+        {
+          id: storyId,
+          title: story,
+          folder: story,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+
+    // Two scans, no sync — winner must keep the original chapter id on disk + memory.
+    const first = scanMythosStoryVault(result.mythosRoot);
+    const second = scanMythosStoryVault(result.mythosRoot);
+
+    const s1 = first.stories.find((s) => s.path === story)!;
+    const s2 = second.stories.find((s) => s.path === story)!;
+    const ch01a = s1.chapters.find((c) => c.path.endsWith('Chapter 01'))!;
+    const ch99a = s1.chapters.find((c) => c.path.endsWith('Chapter 99'))!;
+    const ch01b = s2.chapters.find((c) => c.path.endsWith('Chapter 01'))!;
+    const ch99b = s2.chapters.find((c) => c.path.endsWith('Chapter 99'))!;
+
+    expect(ch01a.id).toBe(fallbackCh99);
+    expect(ch01b.id).toBe(fallbackCh99);
+    expect(ch99a.id).not.toBe(fallbackCh99);
+    expect(ch99b.id).not.toBe(fallbackCh99);
+    // Critic soft: out-of-spine loser may re-mint until sync; must never own the original id.
+
+    const bookDisk = parseBookFile(fs.readFileSync(path.join(abs, 'book.md'), 'utf-8'));
+    expect(bookDisk.spine[0].chapters[0].id).toBe(fallbackCh99);
+
+    // F5 notes/links stay on Chapter 01 (not the out-of-spine folder).
+    const sceneId = ch01a.scenes[0].id;
+    const tier1 = resolveNotesTierFromManifest(first, sceneId);
+    const tier2 = resolveNotesTierFromManifest(second, sceneId);
+    expect(tier1.ok).toBe(true);
+    expect(tier2.ok).toBe(true);
+    if (!tier1.ok || !tier2.ok) return;
+    expect(tier1.chapterId).toBe(fallbackCh99);
+    expect(tier2.chapterId).toBe(fallbackCh99);
+    expect(tier2.bookId).toBe(tier1.bookId);
+  });
 });
 
 describe('F6 ID dedupe — bad cache / winner rules', () => {
@@ -669,6 +759,34 @@ describe('F6 surgical write-back', () => {
     const parsedSpine = JSON.parse(spineJson.trim());
     expect(parsedSpine[0].chapters[0].id).toBe('ch-old');
     expect(parsedSpine[0].chapters[1].id).toBe('ch-loser');
+
+    // R12: duplicate-folder guard — same part/chapter dir twice refuses the write.
+    // Same id on both listings: without `idByFolder.has` the map path would rewrite.
+    const dupFolderBook = [
+      '---',
+      'id: story-old',
+      'title: S',
+      'createdAt: 2026-01-01T00:00:00.000Z',
+      'updatedAt: 2026-01-01T00:00:00.000Z',
+      '---',
+      '# S',
+      '',
+      '<!-- mythos:spine',
+      JSON.stringify([
+        {
+          dir: 'Part 1',
+          chapters: [
+            { dir: 'Chapter 01', id: 'ch-same', title: 'First' },
+            { dir: 'Chapter 01', id: 'ch-same', title: 'Dup folder' },
+          ],
+        },
+      ]),
+      '-->',
+      '',
+    ].join('\n');
+    expect(
+      surgicalReplaceBookIds(dupFolderBook, new Map([['ch-same', 'ch-new']]), {}),
+    ).toBeNull();
   });
 
   it('loser rewrite preserves fence when chapter title contains -->', () => {

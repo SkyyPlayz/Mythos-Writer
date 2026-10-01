@@ -204,9 +204,12 @@ export type ChapterFolderReplacement = {
  * lists the same id twice only rewrites the *losing* chapter entry — the
  * winner's spine slot is untouched (Probe/Ivy: no churn on repeat scans).
  *
- * When `chapterFolders` is omitted, Map-based chapter id replacements still
- * require exactly one matching spine folder per id (JSON-escaped / ambiguous
- * duplicates refuse the entire write — no partial frontmatter-only write).
+ * When `chapterFolders` is passed (including `[]`), only those folder slots are
+ * rewritten — an empty list means no chapter spine edits even if `replacements`
+ * still holds out-of-spine loser ids. When omitted, Map-based chapter id
+ * replacements still require exactly one matching spine folder per id
+ * (JSON-escaped / ambiguous duplicates refuse the entire write — no partial
+ * frontmatter-only write).
  */
 export function surgicalReplaceBookIds(
   raw: string,
@@ -293,7 +296,10 @@ export function surgicalReplaceBookIds(
 
   type Work = { partDir: string; chapterDir: string; oldId: string; newId: string };
   const work: Work[] = [];
-  if (chapterFolders.length > 0) {
+  // When the scan passes chapterFolders (even empty), stay folder-scoped so an
+  // out-of-spine loser's id in `replacements` cannot rewrite a winner spine slot
+  // via the map-by-id branch (Critic r3 / Shield X2).
+  if (opts.chapterFolders !== undefined) {
     for (const cf of chapterFolders) {
       const folderKey = `${cf.partDir}/${cf.chapterDir}`;
       const current = idByFolder.get(folderKey);
