@@ -146,10 +146,17 @@ export function serializeBookFile(book: BookFile): string {
   }
   body.push(
     SPINE_FENCE_OPEN,
-    // `-->` inside JSON strings would close the fence early; encode defensively.
-    JSON.stringify(book.spine).replace(/-->/g, '--\\u003e'),
+    stringifySpineJson(book.spine),
     SPINE_FENCE_CLOSE,
     '',
   );
   return serializeFrontmatter(fm, `${body.join('\n')}`);
+}
+
+/**
+ * Serialize spine JSON for the `<!-- mythos:spine … -->` fence.
+ * `-->` inside JSON strings would close the fence early; encode defensively.
+ */
+export function stringifySpineJson(spine: unknown): string {
+  return JSON.stringify(spine).replace(/-->/g, '--\\u003e');
 }
