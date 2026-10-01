@@ -1,11 +1,12 @@
 /**
- * Ivy R6 / Probe FAIL 5373977100 — parked vault switch on Settings close.
+ * Ivy R6 / Probe FAIL 5373977100 + 5374845509 — parked vault switch on Settings close.
  *
  * Probe repro: Second active → bad-key → First card → park → clear key → Close
  * → switch completes to First; New Story + vault-settings.json show First.
  *
- * Fail branch (save still refused on Close) is covered in
- * DesktopShell.settingsVaultSwitch.test.tsx unit tests.
+ * NH1 close-fail (read-only app-settings): park → Close fails → crash edit stays
+ * checked, no Retry chrome, main stays original. Unit suite covers Escape/card
+ * matrix + settingsGet re-hydrate mutant.
  */
 import path from 'path';
 import os from 'os';
@@ -192,6 +193,51 @@ test('Ivy R6: park on bad-key, fix key, Close completes switch to First (Probe r
       expect(fs.readdirSync(secondStories).length).toBe(0);
     }
   } finally {
+    await app.close().catch(() => undefined);
+  }
+});
+
+test('Ivy R6 NH1: close-fail keeps crash edit; no Retry; main stays Second', async () => {
+  const app = await launchApp(userData);
+  try {
+    const page = await firstWindow(app);
+    await page.locator('[data-testid="nav-rail-vaults"]').waitFor({ timeout: 30_000 });
+    await expect(page.locator(`[data-testid="nav-rail-vault-tile-${secondStory}"]`)).toBeVisible();
+    await expect(page.locator(`[data-testid="nav-rail-vault-tile-${firstStory}"]`)).toBeVisible();
+
+    await page.locator('.app-menu-gear-btn, [aria-label="Open settings"]').first().click();
+    await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toBeVisible({ timeout: 8_000 });
+    await page.locator('[data-testid="settings-cat-agents"]').click();
+    await expect(page.locator('[data-testid="model-keys-page"]')).toBeVisible({ timeout: 5_000 });
+
+    const crash = page.locator('[data-testid="mk-telemetry-crash"]');
+    await crash.scrollIntoViewIfNeeded();
+    await crash.click();
+    await expect(crash).toHaveAttribute('aria-checked', 'true');
+
+    // Refuse SETTINGS_SET on Close (Probe packaged repro: chmod 444).
+    const settingsFile = path.join(userData, 'app-settings.json');
+    fs.chmodSync(settingsFile, 0o444);
+
+    await page.locator(`[data-testid="nav-rail-vault-tile-${firstStory}"]`).click();
+    await expect(page.locator('[data-testid="settings-flush-retry"]')).toBeVisible({ timeout: 8_000 });
+    expect(readVaultSettings(userData).vaultRoot).toBe(secondStory);
+
+    await page.locator('[data-testid="settings-close"]').click();
+
+    // Close-fail: Settings stays open; park cancelled; edit intact; main original.
+    await expect(page.locator('[role="dialog"][aria-label="Settings"]')).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('[data-testid="settings-flush-retry"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="settings-flush-switch-anyway"]')).toHaveCount(0);
+    expect(readVaultSettings(userData).vaultRoot).toBe(secondStory);
+
+    await page.locator('[data-testid="settings-cat-agents"]').click();
+    await expect(page.locator('[data-testid="mk-telemetry-crash"]')).toHaveAttribute('aria-checked', 'true');
+
+    // Restore writable so a later Close can persist (unit covers the write assert).
+    fs.chmodSync(settingsFile, 0o644);
+  } finally {
+    try { fs.chmodSync(path.join(userData, 'app-settings.json'), 0o644); } catch { /* cleanup */ }
     await app.close().catch(() => undefined);
   }
 });

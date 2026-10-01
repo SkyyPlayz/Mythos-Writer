@@ -1881,6 +1881,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // / Switch anyway / successful Close-save completes the switch.
   const handleProjectSwitched = useCallback((vaultRoot: string) => {
     if (suppressProjectAnnounceRef.current) return;
+    // Probe NH1 / Ivy: ignore a broadcast for the vault we are already on —
+    // never park a "switch" to the current vault (failed-Close re-assert race).
+    if (vaultRoot === activeVaultRootRef.current) return;
     if (!settingsOpenRef.current) {
       applyProjectSwitched(vaultRoot);
       return;
@@ -1898,6 +1901,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         applyProjectSwitched(vaultRoot);
         return;
       }
+      // Never park a switch to the current vault (same-root announce after
+      // Close-blocked re-assert must not revive Retry / Switch anyway).
+      if (vaultRoot === activeVaultRootRef.current || vaultRoot === originalRoot) return;
       // Park target; keep Settings open. Main may already be on vaultRoot —
       // roll it back so New Story / getVaultRoot match the renderer.
       setPendingVaultSwitch({ vaultRoot, source: 'announce' });
@@ -2931,10 +2937,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     const vaultPending = pendingVaultSwitchRef.current;
     if (!vaultPending) return;
     setPendingVaultSwitch(null);
+    // Probe NH1: tile / picker park never moved main — skip re-assert.
+    // Re-switching the current vault broadcasts project:switched and can
+    // fake-re-park Retry / Switch anyway after cancel.
+    if (vaultPending.source === 'tile') return;
     const originalRoot = activeVaultRootRef.current;
     if (!originalRoot || !window.api?.projectSwitch) return;
-    // Tile / story-picker park never moved main; announce park already rolled
-    // back. Re-assert original so UI and vault-settings.json cannot drift.
+    // Announce park already rolled main back; re-assert so vault-settings.json
+    // cannot drift if rollback raced. Same-root broadcasts are ignored above.
     suppressProjectAnnounceRef.current = true;
     void window.api.projectSwitch(originalRoot)
       .catch(() => { /* keep renderer on original */ })

@@ -235,8 +235,95 @@ async function clickVaultTile(root: string) {
   });
 }
 
+async function clickVaultsCard(root: string) {
+  fireEvent.click(await screen.findByTestId('settings-cat-vaults'));
+  const card = await screen.findByTestId(`mvs-card-${root}`);
+  await act(async () => {
+    fireEvent.click(card);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
+async function goModelKeysTab() {
+  fireEvent.click(await screen.findByTestId('settings-cat-agents'));
+  await waitFor(() => expect(screen.getByTestId('model-keys-page')).toBeInTheDocument());
+}
+
+async function triggerSettingsClose(via: 'close' | 'escape') {
+  await act(async () => {
+    if (via === 'close') {
+      fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+    } else {
+      fireEvent.keyDown(document, { key: 'Escape' });
+    }
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
+
 /**
- * Live shell uses WindowChrome's project menu; ProjectSwitcher.tsx still ships
+ * Probe NH1 close-fail: edit must survive failed Close/Escape, then a later
+ * successful Close or Retry must write telemetryLevel=crash. RED under mutant
+ * that re-hydrates via settingsGet after onCloseBlocked in handleClose.catch.
+ */
+async function expectCloseFailKeepsEditThenWrites(resume: 'close' | 'retry') {
+  await waitFor(() => {
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+  });
+  expect(screen.queryByTestId('settings-flush-retry')).not.toBeInTheDocument();
+  expect(mainRoot).toBe(VAULT_A);
+
+  await goModelKeysTab();
+  // Settle any async settingsGet the close-fail mutant may have kicked off.
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 0));
+  });
+  expect(
+    await screen.findByTestId('mk-telemetry-crash'),
+    'close-fail must keep crash edit checked (RED if settingsGet re-hydrates)',
+  ).toHaveAttribute('aria-checked', 'true');
+
+  // Restore save success; Resume via Close or Retry.
+  settingsSetMock.mockImplementation(async (next: Persisted) => {
+    persisted = { ...persisted, ...next };
+    return { saved: true };
+  });
+  settingsSetMock.mockClear();
+
+  if (resume === 'retry') {
+    // Re-park so Retry chrome is available, then Retry.
+    settingsSetMock.mockResolvedValueOnce({ saved: false, error: 'disk full' });
+    await clickVaultTile(VAULT_B);
+    await expectParkChrome();
+    settingsSetMock.mockImplementation(async (next: Persisted) => {
+      persisted = { ...persisted, ...next };
+      return { saved: true };
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-retry'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(projectSwitchMock.mock.calls.some((c) => c[0] === VAULT_B)).toBe(true));
+  } else {
+    await triggerSettingsClose('close');
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Settings' })).not.toBeInTheDocument();
+    });
+  }
+  expect(
+    crashPayloadSeen(),
+    `later ${resume} must write writingPartner.telemetryLevel=crash`,
+  ).toBe(true);
+}
+
+/** Live shell uses WindowChrome's project menu; ProjectSwitcher.tsx still ships
  * (AppMenuBar + Ivy R6 flush-first contract). Mount it beside App so clicks hit
  * the REAL ProjectSwitcher while Settings flush/park come from DesktopShell.
  */
@@ -679,6 +766,7 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
   });
 
   // Ivy R6 — Close with parked switch: save still fails → cancel; stay original.
+  // Probe NH1: edit must survive (crash stays checked) and later write must keep it.
   it('Close with parked switch cancels when save still fails (main stays original)', async () => {
     render(<App />);
     await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
@@ -692,13 +780,7 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     await waitFor(() => expect(screen.getByTestId('settings-flush-retry')).toBeInTheDocument());
     expect(mainRoot).toBe(VAULT_A);
 
-    const closeBtn = screen.getByRole('button', { name: /close settings/i });
-    await act(async () => {
-      fireEvent.click(closeBtn);
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await triggerSettingsClose('close');
 
     // Still failing — Settings stays open; switch cancelled; main original.
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
@@ -707,6 +789,115 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     // No successful switch to B.
     const switchedToB = projectSwitchMock.mock.calls.some((c) => c[0] === VAULT_B);
     expect(switchedToB, 'must not commit target when Close save still fails').toBe(false);
+    await expectCloseFailKeepsEditThenWrites('close');
+  });
+
+  // Probe NH1 close-fail matrix: Close|Escape × tile|Vault&Files card.
+  // Each RED under settingsGet re-hydrate mutant after onCloseBlocked.
+  it('NH1 close-fail: tile + Close keeps edit; later Retry writes crash', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+    await clickVaultTile(VAULT_B);
+    await expectParkChrome();
+    await triggerSettingsClose('close');
+    await expectCloseFailKeepsEditThenWrites('retry');
+  });
+
+  it('NH1 close-fail: tile + Escape keeps edit; later Close writes crash', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+    await clickVaultTile(VAULT_B);
+    await expectParkChrome();
+    await triggerSettingsClose('escape');
+    await expectCloseFailKeepsEditThenWrites('close');
+  });
+
+  it('NH1 close-fail: Vault & Files card + Close keeps edit; later Retry writes crash', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+    await clickVaultsCard(VAULT_B);
+    await expectParkChrome();
+    await triggerSettingsClose('close');
+    await expectCloseFailKeepsEditThenWrites('retry');
+  });
+
+  it('NH1 close-fail: Vault & Files card + Escape keeps edit; later Close writes crash', async () => {
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+    await clickVaultsCard(VAULT_B);
+    await expectParkChrome();
+    await triggerSettingsClose('escape');
+    await expectCloseFailKeepsEditThenWrites('close');
+  });
+
+  // Probe NH1 HARD2: failed Close must not fake-re-park via same-vault broadcast.
+  // RED when guard (a) alone reverted (re-switch on tile park) OR guard (b) alone
+  // reverted (park on vaultRoot === active). Mock broadcasts like main.
+  it('NH1: failed Close with projectSwitch broadcast leaves no Retry; edit intact', async () => {
+    announceOnSwitch = true;
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    await clickVaultTile(VAULT_B);
+    await expectParkChrome();
+    expect(projectSwitchMock).not.toHaveBeenCalled();
+    const switchesBeforeClose = projectSwitchMock.mock.calls.length;
+
+    await triggerSettingsClose('close');
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('settings-flush-retry')).not.toBeInTheDocument();
+    });
+    expect(screen.queryByTestId('settings-flush-switch-anyway')).not.toBeInTheDocument();
+    expect(mainRoot).toBe(VAULT_A);
+    // Guard (a): tile park never moved main — must not re-assert projectSwitch.
+    expect(
+      projectSwitchMock.mock.calls.length,
+      'RED if handleSettingsCloseBlocked re-switches when main never moved',
+    ).toBe(switchesBeforeClose);
+
+    await goModelKeysTab();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(await screen.findByTestId('mk-telemetry-crash')).toHaveAttribute('aria-checked', 'true');
+
+    // Guard (b): a same-vault broadcast must not park Retry / Switch anyway.
+    await act(async () => {
+      onProjectSwitchedCb?.({ vaultRoot: VAULT_A });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(
+      screen.queryByTestId('settings-flush-retry'),
+      'RED if handleProjectSwitched parks a switch to the current vault',
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId('settings-flush-switch-anyway')).not.toBeInTheDocument();
+    expect(await screen.findByTestId('mk-telemetry-crash')).toHaveAttribute('aria-checked', 'true');
   });
 
   // no-announce Retry — must re-save (settingsSet) before projectSwitch.
