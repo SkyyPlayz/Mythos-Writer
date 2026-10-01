@@ -3,7 +3,7 @@
  * Three provider buckets + Claude connect stubs + models + privacy.
  * No four per-agent Settings cards as Writing partner primary.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PARTNER_HANDS } from '../agents/partnerIdentity';
 import {
   COMING_SOON_PROVIDERS,
@@ -34,6 +34,12 @@ interface ModelKeysSectionProps {
   showApiKey: boolean;
   setShowApiKey: (v: boolean) => void;
   setSavedOk: (ok: boolean) => void;
+  /**
+   * F5#3: open the existing whole-vault MoveVaultWizard. Only the Story Vault
+   * folder moves; Agent Vault (identity & memory) is a Mythos-root sibling and
+   * stays put. API keys live in userData secrets.json and never move.
+   */
+  onMoveVault?: () => void;
 }
 
 function patchPartner(
@@ -154,6 +160,7 @@ export default function ModelKeysSection({
   showApiKey,
   setShowApiKey,
   setSavedOk,
+  onMoveVault,
 }: ModelKeysSectionProps) {
   const partner = resolveWritingPartner(settings);
   const selected = partner.modelKeysProvider;
@@ -166,6 +173,60 @@ export default function ModelKeysSection({
   const needsUrl = selected === 'ollama' || selected === 'lmstudio' || selected === 'llamacpp' || selected === 'openrouter';
   const needsKey =
     selected === 'openrouter' || selected === 'paste-key' || (selected === 'claude' && cli === 'ready');
+
+  // F5 Critic Path A: Hands & files via existing agentsVault:* (+ one showItemInFolder)
+  const [keysLoc, setKeysLoc] = useState<{
+    path: string;
+    name: string;
+    files: number;
+    chips: string[];
+    scope: string;
+  } | null>(null);
+  const [keysBusy, setKeysBusy] = useState(false);
+  const [keysStatus, setKeysStatus] = useState<string | null>(null);
+  const [keysError, setKeysError] = useState<string | null>(null);
+  const [confirmClearKeys, setConfirmClearKeys] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      // resolveKeysDir (via stats) already ensures identity files — no separate
+      // agentsVaultEnsure on every focus (Critic soft).
+      window.api?.agentsVaultStats?.()
+        .then((res) => {
+          if (cancelled) return;
+          // Fail closed: no Mythos root → plain inline error (not silently disabled).
+          if (!res?.ok || !res.path) {
+            setKeysLoc(null);
+            setConfirmClearKeys(false);
+            setKeysError(res?.error || 'No Mythos vault open');
+            return;
+          }
+          setKeysError(null);
+          setKeysLoc({
+            path: res.path,
+            name: res.name ?? 'Agent Vault',
+            files: res.files ?? 0,
+            chips: res.chips ?? [],
+            scope: res.scope ?? 'This vault',
+          });
+        })
+        .catch((e: unknown) => {
+          if (cancelled) return;
+          setKeysLoc(null);
+          setConfirmClearKeys(false);
+          setKeysError(e instanceof Error ? e.message : 'No Mythos vault open');
+        });
+    };
+    refresh();
+    // Soft: refresh path after vault move / remount focus
+    const onFocus = () => { refresh(); };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -466,7 +527,7 @@ export default function ModelKeysSection({
         <h3 className="settings-section-title" id="section-hands-files">Hands &amp; files</h3>
         <p className="settings-hint">
           Your partner works through three built-in hands — Writer, Analyst, Archivist. The partner’s name and voice
-          live under <strong>Writing partner</strong>. Identity vault files wait for a later tip.
+          live under <strong>Writing partner</strong>. Identity and memory files live in the Agent Vault below.
         </p>
         <div className="mk-hands">
           {PARTNER_HANDS.map((h) => {
@@ -483,6 +544,165 @@ export default function ModelKeysSection({
               </div>
             );
           })}
+        </div>
+
+        <div className="mk-keys-files" data-testid="mk-keys-files">
+          <div className="mk-keys-files__title-row">
+            <span className="mk-keys-files__title">{keysLoc?.name ?? 'Agent Vault'}</span>
+            <span className="mk-keys-files__scope" data-testid="mk-keys-scope">
+              {keysLoc?.scope ?? 'This vault'}
+            </span>
+          </div>
+          <p className="settings-hint">
+            Partner identity and hand files live here. Clear memory also deletes Sessions/ and
+            Boards/brainstorm.board.json, and keeps partner.md · writer.md · analyst.md · archivist.md.
+          </p>
+          <div className="mk-keys-files__path-row">
+            <span
+              className="mk-keys-files__path"
+              title={keysLoc?.path}
+              data-testid="mk-keys-path"
+            >
+              {keysLoc?.path ?? '—'}
+            </span>
+            <button
+              type="button"
+              className="settings-btn settings-btn-secondary"
+              data-testid="mk-keys-reveal"
+              disabled={keysBusy || !keysLoc}
+              onClick={() => {
+                setKeysBusy(true);
+                setKeysError(null);
+                void window.api?.modelKeysShowItemInFolder?.()
+                  .then((res) => {
+                    if (res && !res.opened) setKeysError(res.error || 'Could not reveal folder');
+                  })
+                  .catch((e: unknown) => setKeysError(e instanceof Error ? e.message : 'Reveal failed'))
+                  .finally(() => setKeysBusy(false));
+              }}
+            >
+              Reveal
+            </button>
+            <button
+              type="button"
+              className="settings-btn settings-btn-secondary"
+              data-testid="mk-keys-open"
+              disabled={keysBusy || !keysLoc}
+              onClick={() => {
+                setKeysBusy(true);
+                setKeysError(null);
+                void window.api?.agentsVaultReveal?.()
+                  .then((res) => {
+                    if (res && !res.opened) setKeysError(res.error || 'Could not open folder');
+                  })
+                  .catch((e: unknown) => setKeysError(e instanceof Error ? e.message : 'Open failed'))
+                  .finally(() => setKeysBusy(false));
+              }}
+            >
+              Open
+            </button>
+          </div>
+          <div className="mk-keys-files__chips">
+            {(keysLoc?.chips ?? ['partner.md', 'Writer', 'Analyst', 'Archivist']).map((c) => (
+              <span key={c} className="mk-keys-files__chip">{c}</span>
+            ))}
+            {keysLoc ? (
+              <span className="mk-keys-files__chip" data-testid="mk-keys-file-count">
+                {keysLoc.files} files
+              </span>
+            ) : null}
+          </div>
+          <div className="mk-keys-files__actions">
+            {!confirmClearKeys ? (
+              <button
+                type="button"
+                className="mk-keys-files__danger"
+                data-testid="mk-keys-clear"
+                disabled={keysBusy || !keysLoc}
+                onClick={() => setConfirmClearKeys(true)}
+              >
+                Clear memory
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="mk-keys-files__danger mk-keys-files__danger--confirm"
+                  data-testid="mk-keys-clear-confirm"
+                  disabled={keysBusy || !keysLoc}
+                  onClick={() => {
+                    setKeysBusy(true);
+                    setKeysError(null);
+                    setKeysStatus(null);
+                    void window.api?.agentsVaultClearMemory?.()
+                      .then((res) => {
+                        if (!res?.ok) {
+                          setKeysError(res?.error || 'Clear failed');
+                          // Probe soft: leave Confirm after a refused clear.
+                          setConfirmClearKeys(false);
+                        } else {
+                          setKeysStatus(`Cleared agent memory (${res.removed?.length ?? 0} items). Partner files kept.`);
+                          setConfirmClearKeys(false);
+                          showToast('Agent memory cleared');
+                          void window.api?.agentsVaultStats?.().then((loc) => {
+                            if (loc?.ok && loc.path) {
+                              setKeysLoc({
+                                path: loc.path,
+                                name: loc.name ?? 'Agent Vault',
+                                files: loc.files ?? 0,
+                                chips: loc.chips ?? [],
+                                scope: loc.scope ?? 'This vault',
+                              });
+                            }
+                          });
+                        }
+                      })
+                      .catch((e: unknown) => {
+                        setKeysError(e instanceof Error ? e.message : 'Clear failed');
+                        setConfirmClearKeys(false);
+                      })
+                      .finally(() => setKeysBusy(false));
+                  }}
+                >
+                  Confirm clear
+                </button>
+                <button
+                  type="button"
+                  className="settings-btn settings-btn-secondary"
+                  data-testid="mk-keys-clear-cancel"
+                  disabled={keysBusy}
+                  onClick={() => setConfirmClearKeys(false)}
+                >
+                  Cancel
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              className="settings-btn settings-btn-secondary"
+              data-testid="mk-keys-move"
+              disabled={keysBusy || !onMoveVault}
+              title="Moves the Story Vault folder only — Agent Vault is a sibling and stays put"
+              onClick={() => {
+                setKeysError(null);
+                setKeysStatus(null);
+                onMoveVault?.();
+              }}
+            >
+              Move vault…
+            </button>
+          </div>
+          <p className="settings-hint" data-testid="mk-keys-move-hint">
+            Move relocates the Story Vault only. Agent Vault (identity &amp; memory) is a sibling
+            under the Mythos root and does not move with this action. API keys stay in app
+            secrets and are unrelated to the vault folder.
+          </p>
+          {keysStatus && (
+            <p className="settings-hint" data-testid="mk-keys-status">{keysStatus}</p>
+          )}
+          {keysError && (
+            <p className="settings-error-msg" role="alert" data-testid="mk-keys-error">{keysError}</p>
+          )}
         </div>
       </section>
 

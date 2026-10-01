@@ -406,6 +406,105 @@
   margin-left: auto;
 }
 
+/* F5: Models & Keys — Agent Vault / keys-dir file management */
+.mk-keys-files {
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mk-keys-files__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mk-keys-files__title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #eef2fb;
+}
+
+.mk-keys-files__scope {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  border-radius: 5px;
+  padding: 2px 7px;
+  color: var(--n2, #9b5fff);
+  border: var(--bw, 1px) solid var(--b2, rgba(155, 95, 255, 0.45));
+}
+
+.mk-keys-files__path-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.mk-keys-files__path {
+  flex: 1 1 140px;
+  min-width: 0;
+  font-size: 10.5px;
+  color: #8e9db8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.mk-keys-files__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.mk-keys-files__chip {
+  font-size: 9px;
+  font-weight: 600;
+  color: #aebad0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.mk-keys-files__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.mk-keys-files__danger {
+  padding: 4px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 107, 138, 0.4);
+  color: #ff6b8a;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  font-family: inherit;
+}
+
+.mk-keys-files__danger--confirm {
+  border-color: rgba(255, 107, 138, 0.5);
+  color: #ff9db4;
+  background: rgba(255, 107, 138, 0.1);
+}
+
+.mk-keys-files__danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .mk-modal {
   position: fixed;
   inset: 0;

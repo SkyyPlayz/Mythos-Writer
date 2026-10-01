@@ -492,7 +492,8 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 10px;
+  padding-bottom: 12px;
 }
 
 .notes-right-props-scroll .np-panel {
@@ -500,11 +501,84 @@
   flex: none;
 }
 
+.notes-right-props-scroll .bl-card {
+  margin-top: 10px;
+}
+
 .notes-right-props-empty {
   padding: 18px 14px;
   font-size: 11.5px;
   line-height: 1.5;
   color: rgb(118 134 162); /* prototype #7686a2 */
+}
+
+/* F4#13 / F5: Recent notes kept at bottom of Properties column */
+.notes-right-recent {
+  margin: 0 12px;
+  padding: 13px;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.035);
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.notes-right-recent__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgb(118 134 162);
+  margin-bottom: 8px;
+}
+
+.notes-right-recent__empty {
+  margin: 0;
+  font-size: 10.5px;
+  color: rgb(118 134 162);
+  line-height: 1.5;
+}
+
+.notes-right-recent__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.notes-right-recent__btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  border: 1px solid rgb(255 255 255 / 0.07);
+  background: rgb(255 255 255 / 0.02);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+}
+
+.notes-right-recent__btn:hover {
+  border-color: var(--b2, rgb(155 95 255 / 0.5));
+}
+
+.notes-right-recent__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgb(230 236 249);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.notes-right-recent__when {
+  flex: none;
+  font-size: 9.5px;
+  color: rgb(118 134 162);
 }
 
 /* SKY-11228: Agent and Flags are sibling tabs in the right sidebar, each

@@ -1,15 +1,39 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { createMythosVault } from './createVault.js';
 import {
   AGENTS_PARTNER_FILES,
+  AGENTS_VAULT_CLEAR_MEMORY_CHANNEL,
+  assertAgentVaultPathSafe,
   clearAgentMemory,
+  createAgentsVaultClearMemoryHandler,
   ensureAgentsPartnerFiles,
   parsePartnerIdentityFromFile,
+  resolveKeysDir,
   syncPartnerIdentityToFile,
 } from './agentsVaultPartner.js';
+import {
+  AGENT_VAULT_DIRNAME,
+  NOTES_VAULT_DIRNAME,
+  STORY_VAULT_DIRNAME,
+  mythosRootForStoryVault,
+} from './mythosJson.js';
+
+// Hoisted ipcMain.handle capture for setupIpcMain wrap tests (prod path).
+type Handler = (...args: unknown[]) => unknown;
+const handleMap = new Map<string, Handler>();
+
+vi.mock('electron', () => ({
+  ipcMain: {
+    handle: (channel: string, fn: Handler) => {
+      handleMap.set(channel, fn);
+    },
+    on: vi.fn(),
+    off: vi.fn(),
+  },
+}));
 
 describe('agentsVaultPartner (Slice D)', () => {
   let tmp: string;
@@ -56,5 +80,221 @@ describe('agentsVaultPartner (Slice D)', () => {
     const again = ensureAgentsPartnerFiles(created.mythosRoot);
     expect(again.created).toEqual([]);
     expect(fs.readFileSync(abs, 'utf-8')).toContain('name: Kept');
+  });
+
+  it('Shield R1: symlinked Agent Vault refuses before ensure writes outside', () => {
+    const mythosRoot = path.join(tmp, 'MythosVault');
+    fs.mkdirSync(mythosRoot, { recursive: true });
+    const outside = path.join(tmp, 'escape-target');
+    fs.mkdirSync(outside, { recursive: true });
+    const link = path.join(mythosRoot, AGENT_VAULT_DIRNAME);
+    try {
+      if (process.platform === 'win32') {
+        fs.symlinkSync(outside, link, 'junction');
+      } else {
+        fs.symlinkSync(outside, link);
+      }
+    } catch {
+      return; // environment cannot create reparse points
+    }
+
+    expect(() => ensureAgentsPartnerFiles(mythosRoot)).toThrow(/symlink|escaped/i);
+    const gated = resolveKeysDir(mythosRoot);
+    expect(gated.ok).toBe(false);
+    for (const f of AGENTS_PARTNER_FILES) {
+      expect(fs.existsSync(path.join(outside, f))).toBe(false);
+    }
+  });
+
+  it('Shield: sibling-prefix path fails closed (Agent Vault-evil)', () => {
+    const mythosRoot = path.join(tmp, 'MythosVault');
+    fs.mkdirSync(mythosRoot, { recursive: true });
+    const evil = path.join(tmp, 'MythosVault-evil', AGENT_VAULT_DIRNAME);
+    fs.mkdirSync(evil, { recursive: true });
+    // Crafted agentRoot that shares a string prefix with mythosRoot but is a sibling.
+    const siblingPrefix = path.join(tmp, 'MythosVault-evil', AGENT_VAULT_DIRNAME);
+    expect(() => assertAgentVaultPathSafe(mythosRoot, siblingPrefix)).toThrow(/escaped/i);
+    // keys-evil style: path that starts with keysDir string without separator
+    const keysDir = path.join(mythosRoot, AGENT_VAULT_DIRNAME);
+    fs.mkdirSync(keysDir, { recursive: true });
+    const keysEvil = path.join(tmp, `${AGENT_VAULT_DIRNAME}-evil`);
+    fs.mkdirSync(keysEvil, { recursive: true });
+    expect(() => assertAgentVaultPathSafe(mythosRoot, keysEvil)).toThrow(/escaped/i);
+  });
+
+  it('Shield: Agent Vault as a file fails closed', () => {
+    const mythosRoot = path.join(tmp, 'MythosVault');
+    fs.mkdirSync(mythosRoot, { recursive: true });
+    const filePath = path.join(mythosRoot, AGENT_VAULT_DIRNAME);
+    fs.writeFileSync(filePath, 'not-a-dir');
+    expect(() => ensureAgentsPartnerFiles(mythosRoot)).toThrow(/directory/i);
+    const gated = resolveKeysDir(mythosRoot);
+    expect(gated.ok).toBe(false);
+    if (!gated.ok) expect(gated.error).toMatch(/directory/i);
+  });
+
+  it('resolveKeysDir succeeds for a normal vault and clearMemory stays inside Agent Vault', () => {
+    const created = createMythosVault(tmp, { name: 'KeysOk', seedDemo: false, exactName: true });
+    if (!created.ok) throw new Error(created.error);
+    const gated = resolveKeysDir(created.mythosRoot);
+    expect(gated.ok).toBe(true);
+    if (!gated.ok) return;
+    expect(gated.keysDir).toBe(path.join(created.mythosRoot, AGENT_VAULT_DIRNAME));
+    const sessions = path.join(gated.keysDir, 'Sessions');
+    fs.mkdirSync(sessions, { recursive: true });
+    fs.writeFileSync(path.join(sessions, 'x.md'), 'x');
+    // Notes Vault sibling must not be touched by clear (grouped path)
+    const notesSibling = created.notesVaultPath;
+    fs.mkdirSync(notesSibling, { recursive: true });
+    fs.writeFileSync(path.join(notesSibling, 'Keep.md'), 'keep');
+    const cleared = clearAgentMemory(created.mythosRoot);
+    expect(cleared.ok).toBe(true);
+    expect(fs.existsSync(path.join(notesSibling, 'Keep.md'))).toBe(true);
+    expect(fs.existsSync(sessions)).toBe(false);
+  });
+
+  it('Shield HARD: in-root Agent Vault → Notes Vault symlink refuses resolve+clear', () => {
+    const created = createMythosVault(tmp, { name: 'SymIn', seedDemo: false, exactName: true });
+    if (!created.ok) throw new Error(created.error);
+    const notesVault = created.notesVaultPath;
+    fs.mkdirSync(notesVault, { recursive: true });
+    fs.writeFileSync(path.join(notesVault, 'Keep.md'), 'keep-me');
+    const notesSessions = path.join(notesVault, 'Sessions');
+    fs.mkdirSync(notesSessions, { recursive: true });
+    fs.writeFileSync(path.join(notesSessions, 'canary.md'), 'session-body');
+
+    const agentPath = path.join(created.mythosRoot, AGENT_VAULT_DIRNAME);
+    fs.rmSync(agentPath, { recursive: true, force: true });
+    try {
+      // Relative in-root link (Probe: Agent Vault → Notes Vault).
+      const relTarget = path.relative(created.mythosRoot, notesVault);
+      if (process.platform === 'win32') {
+        fs.symlinkSync(notesVault, agentPath, 'junction');
+      } else {
+        fs.symlinkSync(relTarget, agentPath);
+      }
+    } catch {
+      return; // environment cannot create reparse points
+    }
+
+    const gated = resolveKeysDir(created.mythosRoot);
+    expect(gated.ok).toBe(false);
+    if (!gated.ok) expect(gated.error).toMatch(/symlink/i);
+
+    const cleared = clearAgentMemory(created.mythosRoot);
+    expect(cleared.ok).toBe(false);
+    if (!cleared.ok) expect(cleared.error).toMatch(/symlink/i);
+
+    // Notes Vault must survive — red if refusal OR clear gate is removed.
+    expect(fs.readFileSync(path.join(notesVault, 'Keep.md'), 'utf-8')).toBe('keep-me');
+    expect(fs.existsSync(path.join(notesSessions, 'canary.md'))).toBe(true);
+  });
+
+  it('setupIpcMain wrap: top-frame fail-closed + nested-frame reject; Notes Vault survives (red if wrap/gate bypassed)', async () => {
+    // Pre-v2 twin-root: Story Vault + Notes Vault siblings, no mythos.json.
+    // Sessions/boards live under Notes Vault (getAgentVaultRoot fallback).
+    const legacyRoot = path.join(tmp, 'Legacy');
+    const storyVault = path.join(legacyRoot, STORY_VAULT_DIRNAME);
+    const notesVault = path.join(legacyRoot, NOTES_VAULT_DIRNAME);
+    fs.mkdirSync(storyVault, { recursive: true });
+    fs.mkdirSync(path.join(notesVault, 'Sessions'), { recursive: true });
+    fs.mkdirSync(path.join(notesVault, 'Boards'), { recursive: true });
+    fs.writeFileSync(
+      path.join(storyVault, 'manifest.json'),
+      JSON.stringify({ version: 1, stories: [] }),
+    );
+    fs.writeFileSync(path.join(notesVault, 'Keep.md'), 'keep-me');
+    fs.writeFileSync(path.join(notesVault, 'Sessions', 'CANARY-session.md'), 'session-body');
+    fs.writeFileSync(path.join(notesVault, 'Boards', 'brainstorm.board.json'), '{"cards":[]}');
+    fs.writeFileSync(path.join(notesVault, 'Boards', 'CANARY-board.txt'), 'board-canary');
+
+    expect(mythosRootForStoryVault(storyVault)).toBeNull();
+
+    // Prod path: real clear-memory entry through setupIpcMain → capture wrapped handler.
+    handleMap.clear();
+    const { setupIpcMain, IPC_CHANNELS, UNTRUSTED_FRAME_REJECTION } = await import('../ipc.js');
+    const inner = createAgentsVaultClearMemoryHandler(() => storyVault);
+    setupIpcMain({
+      [IPC_CHANNELS.AGENTS_VAULT_CLEAR_MEMORY]: inner,
+    } as unknown as Parameters<typeof setupIpcMain>[0]);
+
+    expect(IPC_CHANNELS.AGENTS_VAULT_CLEAR_MEMORY).toBe(AGENTS_VAULT_CLEAR_MEMORY_CHANNEL);
+    const wrapped = handleMap.get(IPC_CHANNELS.AGENTS_VAULT_CLEAR_MEMORY);
+    expect(wrapped).toBeTypeOf('function');
+
+    function makeTopFrame(): unknown {
+      const f: { top: unknown } = { top: null };
+      f.top = f;
+      return f;
+    }
+    function makeNestedFrame(): unknown {
+      const top: { top: unknown } = { top: null };
+      top.top = top;
+      return { top };
+    }
+    function assertNotesSurvived(): void {
+      expect(fs.readFileSync(path.join(notesVault, 'Keep.md'), 'utf-8')).toBe('keep-me');
+      expect(fs.existsSync(path.join(notesVault, 'Sessions', 'CANARY-session.md'))).toBe(true);
+      expect(fs.readFileSync(path.join(notesVault, 'Boards', 'brainstorm.board.json'), 'utf-8')).toBe(
+        '{"cards":[]}',
+      );
+      expect(fs.existsSync(path.join(notesVault, 'Boards', 'CANARY-board.txt'))).toBe(true);
+    }
+
+    // Half 1 — top-frame: reaches fail-closed gate; Notes Vault survives
+    // (red if mythosRoot / clearAgentMemory gate removed).
+    const topResult = await wrapped!({ senderFrame: makeTopFrame() });
+    expect(topResult).toEqual({ ok: false, error: 'No Mythos vault open' });
+    assertNotesSurvived();
+
+    // Hazard pin: Agent Vault → Notes Vault at the twin-root parent. If Clear
+    // ever receives this parent (or the clearAgentMemory gate is removed while
+    // following the symlink), Sessions/Boards would be wiped.
+    const agentPath = path.join(legacyRoot, AGENT_VAULT_DIRNAME);
+    let linked = false;
+    try {
+      if (process.platform === 'win32') {
+        fs.symlinkSync(notesVault, agentPath, 'junction');
+      } else {
+        fs.symlinkSync(path.relative(legacyRoot, notesVault), agentPath);
+      }
+      linked = true;
+    } catch {
+      // Skip gate-revert pin cleanly when the environment cannot create reparse points.
+    }
+
+    if (linked) {
+      const cleared = clearAgentMemory(legacyRoot);
+      expect(cleared.ok).toBe(false);
+      if (!cleared.ok) expect(cleared.error).toMatch(/symlink/i);
+      assertNotesSurvived();
+    }
+
+    // Half 2 — nested-frame: rejected before any file op; nothing removed
+    // (red if channel bypasses setupIpcMain wrapper).
+    const nestedResult = await wrapped!({ senderFrame: makeNestedFrame() });
+    expect(nestedResult).toBe(UNTRUSTED_FRAME_REJECTION);
+    assertNotesSurvived();
+  });
+});
+
+describe('Agent Vault layout vs Story Vault move (F5 Probe)', () => {
+  let tmpLayout: string;
+  beforeEach(() => {
+    tmpLayout = fs.mkdtempSync(path.join(os.tmpdir(), 'av-layout-'));
+  });
+  afterEach(() => {
+    fs.rmSync(tmpLayout, { recursive: true, force: true });
+  });
+
+  it('Agent Vault is not inside Story Vault (localFolderMove moves Story only)', () => {
+    const created = createMythosVault(tmpLayout, { name: 'Layout', seedDemo: false, exactName: true });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    const agent = path.join(created.mythosRoot, AGENT_VAULT_DIRNAME);
+    expect(fs.existsSync(agent)).toBe(true);
+    expect(created.storyVaultPath.startsWith(created.mythosRoot + path.sep)).toBe(true);
+    expect(agent.startsWith(created.storyVaultPath + path.sep)).toBe(false);
+    expect(path.dirname(agent)).toBe(created.mythosRoot);
   });
 });

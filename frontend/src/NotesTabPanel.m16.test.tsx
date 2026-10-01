@@ -249,6 +249,22 @@ describe('NotesTabPanel — M16 right-panel tabs', () => {
     expect(screen.getByTestId('notes-agent-chat')).not.toBeVisible();
   });
 
+  it('F4#13 / F5: Properties column order is Backlinks → properties → Recent', () => {
+    localStorage.setItem(
+      'vb-notes-recent',
+      JSON.stringify([{ path: 'Locations/The Sunken Gate.md', at: Date.now() }]),
+    );
+    render(<NotesTabPanel {...BASE_PROPS} />);
+    fireEvent.click(screen.getByTestId('notes-right-tab-props'));
+    const propsCol = screen.getByTestId('notes-right-props');
+    const backlinks = within(propsCol).getByTestId('backlinks-mock');
+    const properties = within(propsCol).getByTestId('note-properties-mock');
+    const recent = within(propsCol).getByTestId('notes-right-recent');
+    expect(backlinks.compareDocumentPosition(properties) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(properties.compareDocumentPosition(recent) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(recent).getByTestId('notes-right-recent-item-Locations/The Sunken Gate.md')).toBeInTheDocument();
+  });
+
   it('shows an empty state on the Properties tab when no note is open', () => {
     render(<NotesTabPanel {...BASE_PROPS} activeNotePath={null} />);
     fireEvent.click(screen.getByTestId('notes-right-tab-props'));
