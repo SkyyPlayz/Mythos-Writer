@@ -1643,6 +1643,276 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
     );
   });
 
+  // C7a behavioral: real shell onCreated + Settings open — hook's startMode
+  // settingsSet must wait until switchToVault (flush + project:switched) settles.
+  // RED if `await switchToVault` → `void switchToVault` (C7 write races ahead).
+  it('C7a behavioral: onboardingStartMode settingsSet waits for switchToVault settle', async () => {
+    persisted = { ...basePersisted(), onboardingStartMode: 'template' };
+    let releaseSwitch!: () => void;
+    const switchHeld = new Promise<void>((resolve) => {
+      releaseSwitch = resolve;
+    });
+    let switchStarted = false;
+    const c7SetOrder: string[] = [];
+
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    openSettings();
+    expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+
+    projectSwitchMock.mockImplementation(async (vaultRoot: string) => {
+      if (vaultRoot === '/vault-new') {
+        switchStarted = true;
+        await switchHeld;
+      }
+      mainRoot = vaultRoot;
+      if (announceOnSwitch) onProjectSwitchedCb?.({ vaultRoot });
+      return { switched: true };
+    });
+
+    const origSet = settingsSetMock.getMockImplementation() as
+      ((next: Persisted) => Promise<{ saved: boolean }>) | undefined;
+    expect(origSet).toBeTypeOf('function');
+    settingsSetMock.mockImplementation(async (next: Persisted) => {
+      if (next.onboardingStartMode === 'blank' && next.onboardingComplete === true) {
+        c7SetOrder.push('c7-set');
+      } else {
+        c7SetOrder.push('flush-set');
+      }
+      return origSet!(next);
+    });
+
+    createVaultFromOptionsMock.mockClear();
+    fireEvent.click(screen.getByTestId('nav-rail-vault-add'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('rail-vault-mode-blank'));
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+
+    await waitFor(() => expect(createVaultFromOptionsMock).toHaveBeenCalled());
+    await waitFor(() => expect(switchStarted).toBe(true));
+    // While switchToVault is held, C7 must not have written yet.
+    expect(
+      c7SetOrder.includes('c7-set'),
+      'C7a RED if void switchToVault — hook settingsSet runs before switch settles',
+    ).toBe(false);
+
+    await act(async () => {
+      releaseSwitch();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(c7SetOrder).toContain('c7-set'));
+    expect(c7SetOrder.indexOf('flush-set')).toBeGreaterThanOrEqual(0);
+    expect(c7SetOrder.indexOf('c7-set')).toBeGreaterThan(c7SetOrder.indexOf('flush-set'));
+    expect(persisted.onboardingStartMode).toBe('blank');
+    expect(mainRoot).toBe('/vault-new');
+  });
+
+  // C7b hook-side: hold the hook's onboardingStartMode settingsSet on the
+  // serial chain (post-get; holding settingsGet stalls Settings remount hydrate),
+  // let a panel flush land after release. Disk must keep chosen startMode AND
+  // the panel's other edits. RED if hook write leaves enqueueSettingsWrite.
+  it('C7b behavioral: held hook settingsSet on chain + panel flush — startMode + edits survive', async () => {
+    persisted = { ...basePersisted(), onboardingStartMode: 'template' };
+    announceOnSwitch = false;
+    let releaseC7Set!: () => void;
+    let c7SetHeld = false;
+    let armC7Hold = true;
+
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+    expect(await screen.findByTestId('mk-telemetry-crash')).toHaveAttribute('aria-checked', 'true');
+
+    // Hold the hook's settingsSet (blank + onboardingComplete) so a concurrent
+    // panel flush must wait on settingsWriteSerial — not on a bare settingsGet
+    // which would stall Settings remount hydrate.
+    const prevSet = settingsSetMock.getMockImplementation() as
+      ((next: Persisted) => Promise<{ saved: boolean }>) | undefined;
+    expect(prevSet).toBeTypeOf('function');
+    settingsSetMock.mockImplementation(async (next: Persisted) => {
+      if (
+        armC7Hold
+        && next.onboardingStartMode === 'blank'
+        && next.onboardingComplete === true
+        && !c7SetHeld
+      ) {
+        c7SetHeld = true;
+        await new Promise<void>((resolve) => {
+          releaseC7Set = resolve;
+        });
+      }
+      return prevSet!(next);
+    });
+
+    createVaultFromOptionsMock.mockClear();
+    fireEvent.click(screen.getByTestId('nav-rail-vault-add'));
+    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Create a Mythos vault' })).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('rail-vault-mode-blank'));
+    fireEvent.click(screen.getByTestId('create-vault-submit'));
+
+    await waitFor(() => expect(c7SetHeld).toBe(true));
+
+    // Remount after switch may have cleared the crash toggle — restore before flush.
+    if (!screen.queryByTestId('settings-cat-agents')) {
+      openSettings();
+      await waitFor(() => expect(screen.getByTestId('settings-cat-agents')).toBeInTheDocument());
+    }
+    fireEvent.click(screen.getByTestId('settings-cat-agents'));
+    await waitFor(() => expect(screen.getByTestId('model-keys-page')).toBeInTheDocument());
+    const crashBtn = await screen.findByTestId('mk-telemetry-crash');
+    if (crashBtn.getAttribute('aria-checked') !== 'true') {
+      fireEvent.click(crashBtn);
+    }
+    expect(crashBtn).toHaveAttribute('aria-checked', 'true');
+
+    const flush = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
+      .__mythosSettingsFlush;
+    expect(flush, 'Settings flush hook must be installed').toBeTruthy();
+    const setsBeforeFlush = settingsSetMock.mock.calls.length;
+    let flushDone: Promise<boolean> | undefined;
+    await act(async () => {
+      flushDone = flush!();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    // Hook still held on the chain → flush must not have written yet.
+    expect(
+      settingsSetMock.mock.calls.length,
+      'flush must wait on hook write still held on the chain',
+    ).toBe(setsBeforeFlush);
+
+    await act(async () => {
+      armC7Hold = false;
+      releaseC7Set();
+      await flushDone;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(persisted.onboardingStartMode).toBe('blank'));
+    expect(
+      persisted.onboardingStartMode,
+      'C7b RED if hook write left enqueueSettingsWrite — flush clobbers startMode',
+    ).toBe('blank');
+    expect(
+      persisted.writingPartner?.telemetryLevel,
+      'C7b RED if hook write left the chain — panel crash edit lost on full-replace',
+    ).toBe('crash');
+  });
+
+  // V7 behavioral: two overlapping enqueueVaultSwitchOp completions (the chain
+  // `.then(op, op)` guards). First held → second must not start; final active =
+  // second target. RED if enqueue degenerates to bare `op()`.
+  // Switch-anyway (no suppress) held + announce-rollback enqueue overlaps the chain.
+  it('V7 behavioral: held first enqueued switch — second waits; final active is second', async () => {
+    const VAULT_C = '/vault-c';
+    announceOnSwitch = false;
+    const api = window.api as { projectList: () => Promise<{ projects: unknown[] }> };
+    const prevList = await api.projectList();
+    (window.api as { projectList: typeof api.projectList }).projectList = () => Promise.resolve({
+      projects: [
+        ...prevList.projects as Array<{ vaultRoot: string; name: string; openedAt: string; notesVaultRoot: string }>,
+        { vaultRoot: VAULT_C, name: 'Charlie', openedAt: '', notesVaultRoot: '/notes-c' },
+      ],
+    });
+
+    let releaseFirst!: () => void;
+    const firstHeld = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const switchStarts: string[] = [];
+
+    render(<App />);
+    await screen.findByTestId(`nav-rail-vault-tile-${VAULT_A}`);
+    await openModelKeysAndClickCrash();
+    settingsSetMock.mockClear();
+    projectSwitchMock.mockClear();
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+
+    // Tile park B, then Switch anyway → enqueue completeVaultSwitch(B); hold it.
+    await clickVaultTile(VAULT_B);
+    await waitFor(() => expect(screen.getByTestId('settings-flush-switch-anyway')).toBeInTheDocument());
+
+    projectSwitchMock.mockImplementation(async (vaultRoot: string) => {
+      switchStarts.push(vaultRoot);
+      if (vaultRoot === VAULT_B && switchStarts.filter((v) => v === VAULT_B).length === 1) {
+        await firstHeld;
+      }
+      mainRoot = vaultRoot;
+      if (announceOnSwitch) onProjectSwitchedCb?.({ vaultRoot });
+      return { switched: true };
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-switch-anyway'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(switchStarts).toContain(VAULT_B));
+
+    // Re-open Settings + announce C while Switch-anyway(B) held — second
+    // enqueueVaultSwitchOp (announce rollback). suppress is NOT set on the
+    // Switch-anyway path, so the announce is not dropped.
+    openSettings();
+    expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> }).__mythosSettingsFlush,
+      ).toBeTypeOf('function');
+    });
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+    await act(async () => {
+      onProjectSwitchedCb?.({ vaultRoot: VAULT_C });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(
+      switchStarts.length,
+      'V7 RED if then(op,op)→op() — second enqueued op starts while first held',
+    ).toBe(1);
+    expect(switchStarts).toEqual([VAULT_B]);
+
+    await act(async () => {
+      releaseFirst();
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // Second op (announce rollback toward parking C) must run after first settles.
+    await waitFor(() => expect(switchStarts.length).toBeGreaterThan(1));
+
+    // applyProjectSwitched(B) may remount Settings and clear saveError — re-refuse
+    // so Retry / Switch anyway chrome returns while pending targets C.
+    settingsSetMock.mockResolvedValue({ saved: false, error: 'disk full' });
+    const flushAfter = (window as Window & { __mythosSettingsFlush?: () => Promise<boolean> })
+      .__mythosSettingsFlush;
+    if (flushAfter && !screen.queryByTestId('settings-flush-switch-anyway')) {
+      await act(async () => {
+        await flushAfter();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    }
+    await waitFor(() => expect(screen.getByTestId('settings-flush-switch-anyway')).toBeInTheDocument());
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('settings-flush-switch-anyway'));
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(mainRoot).toBe(VAULT_C));
+    const root = await window.api.getVaultRoot();
+    expect(root?.vaultRoot).toBe(VAULT_C);
+  });
+
   it('HARD: shell create activate:false + flush-first (G8 / G8f)', async () => {
     const src = readFileSync(resolve(__dirname, 'DesktopShell.tsx'), 'utf8');
     expect(src).toMatch(/useCreateMythosVaultFlow\([\s\S]*?\{ activate: false \}/);
@@ -1921,6 +2191,10 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
   });
 
   it('C7 create (c): rail+ Blank with Settings open — startMode blank after flush (C7a+C7b)', async () => {
+    // independent guards: per-guard pins 1/2 + Close/Retry/interleave; (c) red on joint revert.
+    // (a) and (b) each fully cover C7 alone via the behavioral pins above — a single
+    // revert of only (a) or only (b) can leave (c) green. Do not treat (c) as
+    // per-guard proof; Critic/Shield run their own reverts.
     persisted = { ...basePersisted(), onboardingStartMode: 'template' };
     const order: string[] = [];
     render(<App />);
@@ -1950,20 +2224,19 @@ describe('DesktopShell Settings flush on real vault-switch (Probe H1 / Shield)',
       expect.objectContaining({ activate: false, mode: 'blank' }),
     ));
     await waitFor(() => expect(order).toContain('c7-set'));
-    expect(
-      order.indexOf('flush-set'),
-      'C7a RED if onCreated voids switchToVault (C7 write before flush)',
-    ).toBeGreaterThanOrEqual(0);
+    // Joint integration only — not a per-guard pin (see C7a/C7b behavioral above).
+    expect(order.indexOf('flush-set')).toBeGreaterThanOrEqual(0);
     expect(order.indexOf('c7-set')).toBeGreaterThan(order.indexOf('flush-set'));
     expect(persisted.onboardingStartMode).toBe('blank');
 
-    // C7b: panel still hydrated on template; Close must keep disk blank.
+    // After create, panel may still be hydrated on template; Close must keep blank
+    // when both C7a ordering and C7b disk-preserve are intact (joint).
     settingsSetMock.mockClear();
     await triggerSettingsClose('close');
     await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
     expect(
       persisted.onboardingStartMode,
-      'C7b RED if Close after create drops blank',
+      'joint (c): blank must survive Close after create when both C7a+C7b hold',
     ).toBe('blank');
   });
 });
