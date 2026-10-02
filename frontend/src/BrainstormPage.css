@@ -101,6 +101,49 @@
   padding: 4px 8px;
 }
 
+/* beta-057: Notes right pane may shrink to 195px @900 — keep Send / New session
+   inside the pane (scoped to Notes mount only; standalone Brainstorm unchanged). */
+.notes-tab-sidebar-right .brainstorm-page,
+.notes-tab-sidebar-right .brainstorm-layout,
+.notes-tab-sidebar-right .brainstorm-body,
+.notes-tab-sidebar-right .brainstorm-chat-col,
+.notes-tab-sidebar-right .brainstorm-input-wrapper {
+  min-width: 0;
+}
+
+.notes-tab-sidebar-right .brainstorm-header--compact {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.notes-tab-sidebar-right .pc-header.brainstorm-header.brainstorm-header--compact .pc-header-actions {
+  /* Full-row wrap when pane is at the 195 floor — keeps New session inside. */
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.notes-tab-sidebar-right .brainstorm-header--compact .brainstorm-header-actions {
+  min-width: 0;
+  flex-shrink: 1;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.notes-tab-sidebar-right .brainstorm-header--compact .brainstorm-header-preset {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.notes-tab-sidebar-right .brainstorm-header--compact .brainstorm-new-session-btn {
+  flex-shrink: 0;
+}
+
 .brainstorm-header-overflow-btn {
   display: none;
   align-items: center;

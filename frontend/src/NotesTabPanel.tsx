@@ -835,7 +835,7 @@ export default function NotesTabPanel({
             <div className="notes-tab-divider notes-tab-divider--right" aria-hidden="true" />
             <div
               className="notes-tab-sidebar-right"
-              style={{ width: RIGHT_SIDEBAR_W }}
+              style={{ flexBasis: RIGHT_SIDEBAR_W }}
               data-testid="notes-brainstorm-panel"
             >
               {/* SKY-10929: slot-C breathing border, same slot/delay as the
