@@ -53,10 +53,14 @@ function agentCfg(extra: Record<string, unknown> = {}): Record<string, unknown> 
   };
 }
 
+/** Shield item 6: track mkdtemp dirs for afterEach rmSync. */
+const clip057TempDirs: string[] = [];
+
 function seedFixture(opts: { notesSidebarWidth?: number } = {}): Fixture {
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-clip057-ud-'));
   const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-clip057-vault-'));
   const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-clip057-notes-'));
+  clip057TempDirs.push(userData, vaultDir, notesVaultDir);
 
   const tabShell = {
     activeTab: 'notes',
@@ -475,6 +479,18 @@ async function assertMainLikeHeaderChromeAt1440(page: Page): Promise<void> {
 }
 
 test.describe('beta-057 Notes Brainstorm clip @900/940/1024/1440', () => {
+  test.afterEach(() => {
+    while (clip057TempDirs.length > 0) {
+      const dir = clip057TempDirs.pop();
+      if (!dir) continue;
+      try {
+        fs.rmSync(dir, { recursive: true, force: true });
+      } catch {
+        /* best-effort — leftover tmp dirs must not fail the suite */
+      }
+    }
+  });
+
   test('fresh profile: pane fit, hit-test, send mock, scroll, left/center floors', async () => {
     const fixture = seedFixture();
     let app: ElectronApplication | undefined;
