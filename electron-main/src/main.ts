@@ -9434,7 +9434,13 @@ function initTelemetry(): void {
   // Ensure there's always a sessionId stored, even when disabled (regenerated on each disable).
   if (!telemetry.sessionId) {
     const id = generateSessionId();
-    saveAppSettings({ ...settings, telemetry: { ...telemetry, sessionId: id } });
+    // KEYS-B H3: boot save can throw (e.g. secrets rename / decrypt-failed heal)
+    // before setupIpcMain / window — catch, warn with no values, keep configuring.
+    try {
+      saveAppSettings({ ...settings, telemetry: { ...telemetry, sessionId: id } });
+    } catch {
+      console.warn('[telemetry] boot sessionId persist failed; continuing');
+    }
     configureTelemetry({ enabled: telemetry.enabled, sessionId: id });
   } else {
     configureTelemetry({ enabled: telemetry.enabled, sessionId: telemetry.sessionId });

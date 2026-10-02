@@ -108,6 +108,7 @@ export class SecretsStore {
    * "clear this key" maps to a normal settings-save with a cleared input.
    * No-op when the decrypted cache already holds the same value (KEYS-B P4).
    * Decrypt-failed ids never count as unchanged — heal write still runs.
+   * KEYS-B H2: if persist throws, roll the in-memory cache back then rethrow.
    */
   set(id: SecretId | string, value: string | null): void {
     if (!value) {
@@ -123,21 +124,50 @@ export class SecretsStore {
     if (!this.decryptFailedIds.has(id) && cache.get(id) === value) {
       return;
     }
+    const priorHad = cache.has(id);
+    const priorValue = priorHad ? cache.get(id)! : null;
+    const priorFailed = this.decryptFailedIds.has(id);
     cache.set(id, value);
     this.decryptFailedIds.delete(id);
-    this.persist();
+    try {
+      this.persist();
+    } catch (err) {
+      if (priorHad) {
+        cache.set(id, priorValue!);
+      } else {
+        cache.delete(id);
+      }
+      if (priorFailed) {
+        this.decryptFailedIds.add(id);
+      } else {
+        this.decryptFailedIds.delete(id);
+      }
+      throw err;
+    }
   }
 
   /**
    * Removes a secret. No-op if the id is not stored and not a decrypt-failed
    * ciphertext entry. Clearing a decrypt-failed id still rewrites the file.
+   * KEYS-B H2: if persist throws, re-insert the prior cache entry then rethrow.
    */
   delete(id: SecretId | string): void {
     const cache = this.ensureCache();
+    const priorValue = cache.get(id);
     const hadCached = cache.delete(id);
     const hadFailed = this.decryptFailedIds.delete(id);
     if (hadCached || hadFailed) {
-      this.persist();
+      try {
+        this.persist();
+      } catch (err) {
+        if (hadCached && priorValue !== undefined) {
+          cache.set(id, priorValue);
+        }
+        if (hadFailed) {
+          this.decryptFailedIds.add(id);
+        }
+        throw err;
+      }
     }
   }
 

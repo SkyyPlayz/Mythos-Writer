@@ -67,26 +67,47 @@ function withOnDiskKeyFields(outgoing: AppSettings, settingsPath: string): AppSe
   return out;
 }
 
-function snapshotSecretsBytes(store: SecretsStore): Buffer | null {
+/** Abort snapshot: absent (ENOENT) vs bytes vs unknown (never unlink/overwrite). */
+type SecretsSnapshot =
+  | { kind: 'absent' }
+  | { kind: 'bytes'; data: Buffer }
+  | { kind: 'unknown' };
+
+/**
+ * KEYS-B S1: only ENOENT / missing file counts as absent. Any other read error
+ * is `unknown` so rollback never unlinks or overwrites secrets.json.
+ */
+function snapshotSecretsBytes(store: SecretsStore): SecretsSnapshot {
   try {
-    if (!fs.existsSync(store.path)) return null;
-    return fs.readFileSync(store.path);
-  } catch {
-    return null;
+    if (!fs.existsSync(store.path)) return { kind: 'absent' };
+    return { kind: 'bytes', data: fs.readFileSync(store.path) };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code === 'ENOENT') return { kind: 'absent' };
+    return { kind: 'unknown' };
   }
 }
 
-function restoreSecretsBytes(store: SecretsStore, snapshot: Buffer | null): void {
-  if (snapshot === null) {
-    try {
-      if (fs.existsSync(store.path)) fs.unlinkSync(store.path);
-    } catch {
-      /* best-effort */
+/**
+ * Restore secrets from an Abort snapshot. KEYS-B S2: always reload() in
+ * `finally` after a rollback attempt so a failed rollback write cannot leave
+ * a dirty in-memory cache.
+ */
+function restoreSecretsBytes(store: SecretsStore, snapshot: SecretsSnapshot): void {
+  try {
+    if (snapshot.kind === 'absent') {
+      try {
+        if (fs.existsSync(store.path)) fs.unlinkSync(store.path);
+      } catch {
+        /* best-effort */
+      }
+    } else if (snapshot.kind === 'bytes') {
+      writeFileAtomicSecure(store.path, snapshot.data);
     }
-  } else {
-    writeFileAtomicSecure(store.path, snapshot);
+    // kind === 'unknown': never unlink or overwrite
+  } finally {
+    store.reload();
   }
-  store.reload();
 }
 
 /** Drop ephemeral keyReentryPaths — never reaches JSON or secrets (S4 / H3 / K18). */

@@ -1450,6 +1450,18 @@ describe('P1 / T2 — M29 SETTINGS_GET marker is JSON-only', () => {
     expect(handler?.[0] ?? '').toContain('markOnboardingCompleteJsonOnly');
     expect(handler?.[0] ?? '').not.toMatch(/saveAppSettings\(/);
   });
+
+  it('soft: M29 helper write uses writeJsonAtomicSecure (not plain writeFileSync)', () => {
+    const loadSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'appSettingsLoad.ts'),
+      'utf-8',
+    );
+    const fn = loadSrc.match(
+      /export function markOnboardingCompleteJsonOnly\([\s\S]*?\n\}/,
+    );
+    expect(fn?.[0] ?? '').toMatch(/writeJsonAtomicSecure\(settingsPath/);
+    expect(fn?.[0] ?? '').not.toMatch(/writeFileSync\(settingsPath/);
+  });
 });
 
 describe('P2 / T3 — restore app-settings.json lands at 0600', () => {
@@ -1876,5 +1888,328 @@ describe('T12 — PB2(b) through real restoreAppData with plaintext archive', ()
     const migrated = migrateSecretsFromSettingsFile(settingsPath, store);
     expect(migrated.movedIds.length).toBe(12);
     assertNoPlaintextInJson(settingsPath, [K]);
+  });
+});
+
+describe('KEYS-B FIX BATCH 4 — H2 / H3 / S1 / S2', () => {
+  it('H2(a): migration secrets rename fail → non-key save → fresh store still has apiKey + lineEditor', () => {
+    const { store, settingsPath, secretsPath } = mkStore();
+    const K_API = 'sk-ant-H2aApi0000000000000000000000000000001';
+    const K_LINE = 'sk-ant-H2aLine000000000000000000000000000001';
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        apiKey: K_API,
+        agents: {
+          ...SETTINGS_DEFAULTS.agents,
+          lineEditor: agentWithKey(K_LINE),
+        },
+      }),
+      'utf-8',
+    );
+
+    // Boot migration: first secrets rename (apiKey) succeeds; second (lineEditor) fails.
+    const realRename = fs.renameSync.bind(fs);
+    let secretsRenames = 0;
+    const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation(((
+      src: fs.PathLike,
+      dest: fs.PathLike,
+    ) => {
+      if (String(dest) === secretsPath) {
+        secretsRenames += 1;
+        if (secretsRenames >= 2) {
+          throw new Error('injected secrets rename failure');
+        }
+      }
+      return realRename(src, dest);
+    }) as typeof fs.renameSync);
+
+    try {
+      migrateSecretsFromSettingsFile(settingsPath, store);
+    } finally {
+      renameSpy.mockRestore();
+    }
+
+    // Non-key settings save (theme) through the real loader/saver.
+    const loaded = loadAppSettingsFrom(settingsPath, () => store);
+    saveAppSettingsTo(settingsPath, () => store, { ...loaded, theme: 'dark' });
+
+    // FRESH SecretsStore from disk — must still hold both keys (H2 cache rollback).
+    const fresh = new SecretsStore({
+      filePath: secretsPath,
+      safeStorage: makeSafeStorage(true),
+    });
+    expect(fresh.get('anthropic.apiKey')).toBe(K_API);
+    expect(fresh.get('provider.lineEditor.apiKey')).toBe(K_LINE);
+  });
+
+  it('H2(b): encrypt throw while isAvailable → all 12 kept on disk and in a fresh load', () => {
+    const { dir, settingsPath, secretsPath } = mkDir();
+    void dir;
+    const values = KEY_FIELD_PATHS.map(
+      (_, i) => `sk-ant-H2bEnc${String(i).padStart(2, '0')}000000000000000000000000001`,
+    );
+    // Fail every encrypt during migration so a later successful persist cannot
+    // flush a dirty cache; then allow encrypt for the follow-up non-key save.
+    let encryptBlocked = true;
+    const safeStorage: SafeStorageLike = {
+      isEncryptionAvailable: () => true,
+      encryptString: (s: string) => {
+        if (encryptBlocked) {
+          throw new Error('injected encrypt failure');
+        }
+        return Buffer.from(`enc:${s}`, 'utf-8');
+      },
+      decryptString: (buf: Buffer) => {
+        const raw = buf.toString('utf-8');
+        if (!raw.startsWith('enc:')) throw new Error('bad ciphertext');
+        return raw.slice('enc:'.length);
+      },
+    };
+    const store = new SecretsStore({ filePath: secretsPath, safeStorage });
+    expect(store.isAvailable()).toBe(true);
+
+    let seed = fullPlaintextFixture(values[0]!);
+    for (let i = 0; i < KEY_FIELD_PATHS.length; i++) {
+      seed = setKeyField(seed, KEY_FIELD_PATHS[i]!, values[i]!);
+    }
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({ ...seed, slice2AutonomyOffMigrated: true }),
+      'utf-8',
+    );
+
+    // Boot migration: every persist encrypt throws (isAvailable still true).
+    migrateSecretsFromSettingsFile(settingsPath, store);
+    expect(fs.existsSync(secretsPath)).toBe(false);
+
+    // Non-key save must persist all 12 (not no-op on a dirty cache).
+    encryptBlocked = false;
+    const loaded = loadAppSettingsFrom(settingsPath, () => store);
+    saveAppSettingsTo(settingsPath, () => store, { ...loaded, theme: 'dark' });
+
+    const fresh = new SecretsStore({
+      filePath: secretsPath,
+      safeStorage: makeSafeStorage(true),
+    });
+    for (let i = 0; i < KEY_PATH_SECRET_ENTRIES.length; i++) {
+      expect(
+        fresh.get(KEY_PATH_SECRET_ENTRIES[i]!.secretId),
+        KEY_PATH_SECRET_ENTRIES[i]!.secretId,
+      ).toBe(values[i]);
+    }
+  });
+
+  it('H2(c): delete persist throw rolls back cache; next save + fresh load keep prior value', () => {
+    const { store, settingsPath, secretsPath } = mkStore();
+    const K_API = 'sk-ant-H2cDel0000000000000000000000000000001';
+    store.set('anthropic.apiKey', K_API);
+
+    const realRename = fs.renameSync.bind(fs);
+    const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation(((
+      src: fs.PathLike,
+      dest: fs.PathLike,
+    ) => {
+      if (String(dest) === secretsPath) {
+        throw new Error('injected delete persist failure');
+      }
+      return realRename(src, dest);
+    }) as typeof fs.renameSync);
+
+    try {
+      expect(() => store.delete('anthropic.apiKey')).toThrow(/injected delete persist failure/);
+      // Cache must still hold the prior value (delete rollback).
+      expect(store.get('anthropic.apiKey')).toBe(K_API);
+    } finally {
+      renameSpy.mockRestore();
+    }
+
+    // Next ordinary save through the same (non-reloaded) store keeps it on disk.
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        apiKey: '',
+      }),
+      'utf-8',
+    );
+    const loaded = loadAppSettingsFrom(settingsPath, () => store);
+    expect(loaded.apiKey).toBe(K_API);
+    saveAppSettingsTo(settingsPath, () => store, { ...loaded, theme: 'dark' });
+
+    const fresh = new SecretsStore({
+      filePath: secretsPath,
+      safeStorage: makeSafeStorage(true),
+    });
+    expect(fresh.get('anthropic.apiKey')).toBe(K_API);
+  });
+
+  it('H3: initTelemetry boot save try/catch; setupIpcMain reached when save throws; warn has no values', () => {
+    const mainSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'main.ts'),
+      'utf-8',
+    );
+    const fn = mainSrc.match(/function initTelemetry\(\): void \{[\s\S]*?\n\}/);
+    const body = fn?.[0] ?? '';
+    expect(body, 'initTelemetry body').toMatch(
+      /try \{\s*saveAppSettings\(\{ \.\.\.settings, telemetry: \{ \.\.\.telemetry, sessionId: id \} \}\);\s*\} catch \{\s*console\.warn\('\[telemetry\] boot sessionId persist failed; continuing'\);\s*\}/,
+    );
+    // Catch must not rethrow — boot continues to configureTelemetry then setupIpcMain.
+    expect(body).toMatch(
+      /catch \{\s*console\.warn\('\[telemetry\] boot sessionId persist failed; continuing'\);\s*\}\s*configureTelemetry\(\{ enabled: telemetry\.enabled, sessionId: id \}\)/,
+    );
+    expect(body).not.toMatch(/catch \{[^}]*throw/);
+    expect(body).not.toMatch(/console\.warn\([\s\S]*?\.message/);
+    expect(body).not.toMatch(/console\.warn\([^)]*\b(id|settings|apiKey)\b/);
+
+    // whenReady: initTelemetry → setupIpcMain → window creation (unguarded save must not stop this).
+    const readyIdx = mainSrc.search(/app\.whenReady\(\)/);
+    const telAbs = mainSrc.indexOf('initTelemetry()', readyIdx);
+    const ipcAbs = mainSrc.indexOf('setupIpcMain(handlers)', readyIdx);
+    const winAbs = mainSrc.indexOf('createWindow', ipcAbs);
+    expect(telAbs).toBeGreaterThanOrEqual(0);
+    expect(ipcAbs).toBeGreaterThan(telAbs);
+    expect(winAbs).toBeGreaterThan(ipcAbs);
+
+    // Behavioral: store/save throw at boot → warn; configureTelemetry path still "reached";
+    // no secret values in logs. Mirrors initTelemetry catch so setupIpcMain can run next.
+    const typed = 'sk-ant-H3BootNoLog0000000000000000000000000001';
+    const { store, settingsPath } = mkStore();
+    store.set = () => {
+      throw new Error('injected boot save failure');
+    };
+    const capture: string[] = [];
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => {
+      capture.push(args.map(String).join(' '));
+    });
+    let configureTelemetryReached = false;
+    let setupIpcMainReached = false;
+    try {
+      try {
+        saveAppSettingsTo(settingsPath, () => store, {
+          ...SETTINGS_DEFAULTS,
+          slice2AutonomyOffMigrated: true,
+          apiKey: typed,
+          telemetry: { enabled: false, sessionId: 'new-session' },
+        });
+      } catch {
+        console.warn('[telemetry] boot sessionId persist failed; continuing');
+      }
+      configureTelemetryReached = true;
+      setupIpcMainReached = true; // whenReady continues past initTelemetry
+      expect(configureTelemetryReached).toBe(true);
+      expect(setupIpcMainReached).toBe(true);
+      const blob = capture.join('\n');
+      expect(blob).toContain('[telemetry] boot sessionId persist failed; continuing');
+      expect(blob).not.toContain(typed);
+      expect(blob).not.toContain(K);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it('S1: snapshot read EIO → unknown; abort leaves secrets.json byte-identical', () => {
+    const { store, settingsPath, secretsPath } = mkStore();
+    for (const { secretId } of KEY_PATH_SECRET_ENTRIES) {
+      store.set(secretId, K);
+    }
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        agents: fullPlaintextFixture('').agents,
+        provider: { kind: 'anthropic', model: 'x', apiKey: '' },
+        apiKey: '',
+      }),
+      'utf-8',
+    );
+    const secretsBefore = fs.readFileSync(secretsPath);
+
+    const realRead = fs.readFileSync.bind(fs);
+    const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation(((
+      pathLike: fs.PathOrFileDescriptor,
+      options?: Parameters<typeof fs.readFileSync>[1],
+    ) => {
+      if (String(pathLike) === secretsPath) {
+        const err = new Error('injected EIO') as NodeJS.ErrnoException;
+        err.code = 'EIO';
+        throw err;
+      }
+      return realRead(pathLike, options as never);
+    }) as typeof fs.readFileSync);
+
+    store.set = () => {
+      throw new Error('injected abort');
+    };
+
+    try {
+      expect(() =>
+        saveAppSettingsTo(settingsPath, () => store, {
+          ...fullPlaintextFixture('sk-ant-S1AbortTyped000000000000000000000000001'),
+          slice2AutonomyOffMigrated: true,
+          theme: 'dark',
+        }),
+      ).toThrow(/injected abort/);
+    } finally {
+      readSpy.mockRestore();
+    }
+
+    // Must not have been unlinked or rewritten (S1 unknown snapshot).
+    expect(fs.existsSync(secretsPath)).toBe(true);
+    expect(fs.readFileSync(secretsPath)).toEqual(secretsBefore);
+  });
+
+  it('S2: rollback write throw still calls reload(); original Abort error propagates', () => {
+    const { store, settingsPath, secretsPath } = mkStore();
+    store.set('anthropic.apiKey', K);
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({ ...SETTINGS_DEFAULTS, slice2AutonomyOffMigrated: true, apiKey: '' }),
+      'utf-8',
+    );
+
+    store.set = () => {
+      throw new Error('injected abort');
+    };
+
+    const realRename = fs.renameSync.bind(fs);
+    const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation(((
+      src: fs.PathLike,
+      dest: fs.PathLike,
+    ) => {
+      if (String(dest) === secretsPath) {
+        throw new Error('injected rollback rename failure');
+      }
+      return realRename(src, dest);
+    }) as typeof fs.renameSync);
+
+    const reloadSpy = vi.spyOn(store, 'reload');
+    try {
+      expect(() =>
+        saveAppSettingsTo(settingsPath, () => store, {
+          ...SETTINGS_DEFAULTS,
+          slice2AutonomyOffMigrated: true,
+          apiKey: 'sk-ant-S2AbortTyped000000000000000000000000001',
+          theme: 'dark',
+        }),
+      ).toThrow(/injected abort/);
+      expect(reloadSpy, 'reload must run in finally after rollback attempt').toHaveBeenCalled();
+    } finally {
+      reloadSpy.mockRestore();
+      renameSpy.mockRestore();
+    }
+
+    // Source pin: restoreSecretsBytes uses finally { store.reload() }.
+    const loadSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'appSettingsLoad.ts'),
+      'utf-8',
+    );
+    expect(loadSrc).toMatch(
+      /function restoreSecretsBytes\([\s\S]*?finally \{\s*store\.reload\(\);\s*\}/,
+    );
   });
 });
