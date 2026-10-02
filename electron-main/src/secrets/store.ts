@@ -79,10 +79,17 @@ export class SecretsStore {
   private readonly filePath: string;
   private readonly safeStorage: SafeStorageLike;
   private cache: Map<string, string> | null = null;
+  /** Ids present as ciphertext on disk that failed decrypt on last read. */
+  private decryptFailedIds = new Set<string>();
 
   constructor(opts: SecretsStoreOptions) {
     this.filePath = opts.filePath;
     this.safeStorage = opts.safeStorage;
+  }
+
+  /** Absolute path of secrets.json (Abort snapshot / tests). */
+  get path(): string {
+    return this.filePath;
   }
 
   /** True iff safeStorage can encrypt on this host. */
@@ -99,6 +106,8 @@ export class SecretsStore {
   /**
    * Writes a secret. Passing an empty string or null removes the entry, so
    * "clear this key" maps to a normal settings-save with a cleared input.
+   * No-op when the decrypted cache already holds the same value (KEYS-B P4).
+   * Decrypt-failed ids never count as unchanged — heal write still runs.
    */
   set(id: SecretId | string, value: string | null): void {
     if (!value) {
@@ -111,14 +120,23 @@ export class SecretsStore {
       );
     }
     const cache = this.ensureCache();
+    if (!this.decryptFailedIds.has(id) && cache.get(id) === value) {
+      return;
+    }
     cache.set(id, value);
+    this.decryptFailedIds.delete(id);
     this.persist();
   }
 
-  /** Removes a secret. No-op if the id is not stored. */
+  /**
+   * Removes a secret. No-op if the id is not stored and not a decrypt-failed
+   * ciphertext entry. Clearing a decrypt-failed id still rewrites the file.
+   */
   delete(id: SecretId | string): void {
     const cache = this.ensureCache();
-    if (cache.delete(id)) {
+    const hadCached = cache.delete(id);
+    const hadFailed = this.decryptFailedIds.delete(id);
+    if (hadCached || hadFailed) {
       this.persist();
     }
   }
@@ -131,6 +149,7 @@ export class SecretsStore {
   /** Drops the in-memory cache so the next get() re-reads + re-decrypts from disk. */
   reload(): void {
     this.cache = null;
+    this.decryptFailedIds.clear();
   }
 
   // ─── internals ─────────────────────────────────────────────────────────────
@@ -143,6 +162,7 @@ export class SecretsStore {
 
   private readFromDisk(): Map<string, string> {
     const out = new Map<string, string>();
+    this.decryptFailedIds.clear();
     if (!fs.existsSync(this.filePath)) return out;
     let parsed: SecretsFile;
     try {
@@ -160,9 +180,9 @@ export class SecretsStore {
         out.set(id, plaintext);
       } catch {
         // Decryption can fail when the OS keychain rolls credentials (e.g.
-        // after a fresh OS install copying ~/.config wholesale). Drop the
-        // unreadable entry rather than throwing — the user will be prompted
-        // to re-enter the key.
+        // after a fresh OS install copying ~/.config wholesale). Track the id
+        // so set/delete still heal the ciphertext rather than no-op (P4).
+        this.decryptFailedIds.add(id);
       }
     }
     return out;

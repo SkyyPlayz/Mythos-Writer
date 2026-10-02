@@ -722,6 +722,7 @@ import {
   SETTINGS_DEFAULTS,
   loadAppSettingsFrom,
   saveAppSettingsTo,
+  markOnboardingCompleteJsonOnly,
   buildGlobalProviderConfig,
   getProviderConfigForAgentFrom,
   getOptionalAgentSettings,
@@ -3255,9 +3256,10 @@ const handlers: IpcHandlers = {
     // M29 marker guard: a configured MythosVault v2 (mythos.json beside the
     // Story Vault) means this install is already set up — never boot into the
     // wizard for it, even after app-settings.json was cleared or lost.
+    // KEYS-B P1 / E3: JSON-only raw write — never the secret saver (HARD-1).
     if (settings.onboardingComplete !== true && mythosRootForStoryVault(getVaultRoot()) !== null) {
+      markOnboardingCompleteJsonOnly(getAppSettingsPath());
       settings = { ...settings, onboardingComplete: true };
-      saveAppSettings(settings);
     }
     const masked = maskSettingsForRenderer(settings);
     const legacy = detectLegacyVaults({
@@ -3328,7 +3330,12 @@ const handlers: IpcHandlers = {
       waIdleDebounceSeconds: reconciled.agents.writingAssistant.idleDebounceSeconds ?? 30,
     };
     const updated = { ...reconciled, ...(telemetry !== undefined ? { telemetry } : {}), ...syncedWa };
-    saveAppSettings(updated);
+    // KEYS-B P3 Abort: persist throw → non-key JSON may still land; surface error.
+    try {
+      saveAppSettings(updated);
+    } catch (e) {
+      return { saved: false, error: sanitizeIpcError(IPC_CHANNELS.SETTINGS_SET, e).error };
+    }
     // Re-configure telemetry in-process immediately.
     if (updated.telemetry) {
       configureTelemetry({ enabled: updated.telemetry.enabled, sessionId: updated.telemetry.sessionId });

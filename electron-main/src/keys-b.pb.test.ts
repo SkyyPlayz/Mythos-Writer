@@ -12,9 +12,10 @@ import type { AppSettings } from './ipc.js';
 import {
   SETTINGS_DEFAULTS,
   loadAppSettingsFrom,
+  markOnboardingCompleteJsonOnly,
   saveAppSettingsTo,
 } from './appSettingsLoad.js';
-import { redactAppSettings } from './backup.js';
+import { redactAppSettings, restoreAppData } from './backup.js';
 import { backupAppData } from './backup.js';
 import { restoreAppDataAndReloadSettings } from './appRestore.js';
 import {
@@ -48,7 +49,11 @@ function makeSafeStorage(available = true): SafeStorageLike {
   return {
     isEncryptionAvailable: () => available,
     encryptString: (s: string) => Buffer.from(`enc:${s}`, 'utf-8'),
-    decryptString: (buf: Buffer) => buf.toString('utf-8').replace(/^enc:/, ''),
+    decryptString: (buf: Buffer) => {
+      const raw = buf.toString('utf-8');
+      if (!raw.startsWith('enc:')) throw new Error('bad ciphertext');
+      return raw.slice('enc:'.length);
+    },
   };
 }
 
@@ -192,7 +197,7 @@ describe('PB2 — round trip on real files', () => {
     expect(second.movedIds).toEqual([]);
   });
 
-  it('PB2(c): second boot and empty/mask-only boot write ZERO bytes to app-settings.json (K-B9)', () => {
+  it('PB2(c): second boot and empty/mask-only boot write ZERO bytes to app-settings.json via migrate (K-B9; E3 migrate path only)', () => {
     const { store, settingsPath } = mkStore();
     const seed = { ...fullPlaintextFixture(K), slice2AutonomyOffMigrated: true };
     fs.writeFileSync(settingsPath, JSON.stringify(seed), 'utf-8');
@@ -297,7 +302,50 @@ describe('PB3 — store first / read-back / JSON wins', () => {
     expect(fs.readFileSync(settingsPath, 'utf-8')).toContain(K);
   });
 
-  it('(d) store differs — JSON non-empty non-mask wins on hydrate (D1b)', () => {
+  it('(c) set throws on boot → next boot retries and migrates the leftover plaintext', () => {
+    const { store, settingsPath } = mkStore();
+    const seed = { ...fullPlaintextFixture(K), slice2AutonomyOffMigrated: true };
+    fs.writeFileSync(settingsPath, JSON.stringify(seed), 'utf-8');
+
+    const origSet = store.set.bind(store);
+    store.set = () => {
+      throw new Error('injected set failure');
+    };
+    migrateSecretsFromSettingsFile(settingsPath, store);
+    expect(fs.readFileSync(settingsPath, 'utf-8')).toContain(K);
+    expect(store.listIds()).toEqual([]);
+
+    // Next boot: set works again → migrate retries leftover plaintext.
+    store.set = origSet;
+    const second = migrateSecretsFromSettingsFile(settingsPath, store);
+    expect(second.movedIds.length).toBe(KEY_FIELD_PATHS.length);
+    assertNoPlaintextInJson(settingsPath, [K]);
+    const loaded = loadAppSettingsFrom(settingsPath, () => store);
+    for (const p of KEY_FIELD_PATHS) {
+      expect(getKeyField(loaded, p), p).toBe(K);
+    }
+  });
+
+  it('(d) boot → load → save → load keeps all 12 from store; JSON blank (real loader)', () => {
+    const { store, settingsPath } = mkStore();
+    const seed = { ...fullPlaintextFixture(K), slice2AutonomyOffMigrated: true };
+    fs.writeFileSync(settingsPath, JSON.stringify(seed), 'utf-8');
+    expect(migrateSecretsFromSettingsFile(settingsPath, store).movedIds.length).toBe(12);
+
+    const loaded = loadAppSettingsFrom(settingsPath, () => store);
+    for (const p of KEY_FIELD_PATHS) {
+      expect(getKeyField(loaded, p), `load1 ${p}`).toBe(K);
+    }
+    saveAppSettingsTo(settingsPath, () => store, { ...loaded, theme: 'dark' });
+    assertNoPlaintextInJson(settingsPath, [K]);
+    const again = loadAppSettingsFrom(settingsPath, () => store);
+    for (const p of KEY_FIELD_PATHS) {
+      expect(getKeyField(again, p), `load2 ${p}`).toBe(K);
+    }
+    expect(again.theme).toBe('dark');
+  });
+
+  it('(d-hydrate) store differs — JSON non-empty non-mask wins on hydrate (D1b)', () => {
     const { store } = mkStore();
     store.set('anthropic.apiKey', 'sk-ant-StoredOld000000000000000000000000000000');
     const json = setKeyField(SETTINGS_DEFAULTS, 'apiKey', K);
@@ -318,6 +366,27 @@ describe('PB3 — store first / read-back / JSON wins', () => {
     expect(result.migrated).toBe(false);
     expect(store.get('anthropic.apiKey')).toBe(K);
     expect(isMaskedPreview(JSON.parse(fs.readFileSync(settingsPath, 'utf-8')).apiKey)).toBe(true);
+  });
+
+  it('(f) set throws with stale store → real loader serves JSON plaintext', () => {
+    const { store, settingsPath } = mkStore();
+    const K_STALE = 'sk-ant-StaleInStore0000000000000000000000000000001';
+    store.set('anthropic.apiKey', K_STALE);
+    const seed = {
+      ...SETTINGS_DEFAULTS,
+      slice2AutonomyOffMigrated: true,
+      apiKey: K,
+    };
+    fs.writeFileSync(settingsPath, JSON.stringify(seed), 'utf-8');
+    store.set = () => {
+      throw new Error('injected set failure');
+    };
+    migrateSecretsFromSettingsFile(settingsPath, store);
+    // Stale store value still present; JSON plaintext left for loader (D1b).
+    expect(store.get('anthropic.apiKey')).toBe(K_STALE);
+    expect(fs.readFileSync(settingsPath, 'utf-8')).toContain(K);
+    const loaded = loadAppSettingsFrom(settingsPath, () => store);
+    expect(loaded.apiKey).toBe(K);
   });
 
   it('(f2) migrate overwrites stale store with JSON plaintext then blanks JSON (K-B12)', () => {
@@ -420,6 +489,123 @@ describe('PB4 — atomic writes and modes', () => {
     expect(fs.existsSync(realLeftover)).toBe(false);
   });
 
+  it('temp name shape ^<name>.<pid>-[0-9a-f]{12}.tmp$; two writes produce distinct names', () => {
+    const { settingsPath } = mkDir();
+    const openSpy = vi.spyOn(fs, 'openSync');
+    try {
+      writeFileAtomicSecure(settingsPath, '{"a":1}');
+      writeFileAtomicSecure(settingsPath, '{"a":2}');
+      const temps = openSpy.mock.calls
+        .map((c) => String(c[0]))
+        .filter((p) => p.startsWith(`${settingsPath}.`) && p.endsWith('.tmp'));
+      expect(temps.length).toBeGreaterThanOrEqual(2);
+      const re = new RegExp(
+        `^${settingsPath.replace(/[.*+?^${}()|[\]\\]/g, '\\.')}\\.${process.pid}-[0-9a-f]{12}\\.tmp$`,
+      );
+      for (const t of temps) {
+        expect(t).toMatch(re);
+      }
+      expect(new Set(temps).size).toBe(temps.length);
+    } finally {
+      openSpy.mockRestore();
+    }
+  });
+
+  it('fixed-name leftover at <target>.tmp does not block next save (K-B14)', () => {
+    const { store, settingsPath, secretsPath } = mkStore();
+    const fixedSettings = `${settingsPath}.tmp`;
+    const fixedSecrets = `${secretsPath}.tmp`;
+    fs.writeFileSync(fixedSettings, 'leftover', 'utf-8');
+    fs.writeFileSync(fixedSecrets, 'leftover', 'utf-8');
+    expect(() =>
+      saveAppSettingsTo(settingsPath, () => store, {
+        ...fullPlaintextFixture(K),
+        slice2AutonomyOffMigrated: true,
+      }),
+    ).not.toThrow();
+    expect(fs.existsSync(settingsPath)).toBe(true);
+    expect(fs.existsSync(secretsPath)).toBe(true);
+    // Fixed .tmp name is not our pid-random shape — must still be ignorable.
+    expect(fs.existsSync(fixedSettings)).toBe(true);
+  });
+
+  it('after renameSync/writeSync/fsyncSync failure: no *.tmp left; next save succeeds for both files', () => {
+    const { store, settingsPath, secretsPath } = mkStore();
+    fs.writeFileSync(settingsPath, JSON.stringify({ ...SETTINGS_DEFAULTS, slice2AutonomyOffMigrated: true }), 'utf-8');
+
+    const assertNoTmp = () => {
+      for (const base of [settingsPath, secretsPath]) {
+        const dir = path.dirname(base);
+        const name = path.basename(base);
+        for (const ent of fs.readdirSync(dir)) {
+          if (ent.startsWith(`${name}.`) && ent.endsWith('.tmp')) {
+            expect.fail(`leftover temp: ${ent}`);
+          }
+        }
+      }
+    };
+
+    const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation(() => {
+      throw new Error('injected rename failure');
+    });
+    try {
+      expect(() => writeFileAtomicSecure(settingsPath, '{"x":1}')).toThrow(/injected rename failure/);
+      expect(() => writeFileAtomicSecure(secretsPath, '{"v":1}')).toThrow(/injected rename failure/);
+      assertNoTmp();
+    } finally {
+      renameSpy.mockRestore();
+    }
+
+    const writeSpy = vi.spyOn(fs, 'writeSync').mockImplementation(() => {
+      throw new Error('injected write failure');
+    });
+    try {
+      expect(() => writeFileAtomicSecure(settingsPath, '{"x":2}')).toThrow(/injected write failure/);
+      assertNoTmp();
+    } finally {
+      writeSpy.mockRestore();
+    }
+
+    const fsyncSpy = vi.spyOn(fs, 'fsyncSync').mockImplementation(() => {
+      throw new Error('injected fsync failure');
+    });
+    try {
+      expect(() => writeFileAtomicSecure(settingsPath, '{"x":3}')).toThrow(/injected fsync failure/);
+      assertNoTmp();
+    } finally {
+      fsyncSpy.mockRestore();
+    }
+
+    // Next save succeeds for both files; secrets.json ends 0600.
+    saveAppSettingsTo(settingsPath, () => store, {
+      ...fullPlaintextFixture(K),
+      slice2AutonomyOffMigrated: true,
+    });
+    expect(fs.existsSync(settingsPath)).toBe(true);
+    expect(fs.existsSync(secretsPath)).toBe(true);
+    if (process.platform !== 'win32') {
+      expect(fs.statSync(secretsPath).mode & 0o777).toBe(0o600);
+    }
+    assertNoTmp();
+  });
+
+  it('fsyncSync is called on the temp fd before rename', () => {
+    const { settingsPath } = mkDir();
+    const fsyncSpy = vi.spyOn(fs, 'fsyncSync');
+    const renameSpy = vi.spyOn(fs, 'renameSync');
+    try {
+      writeFileAtomicSecure(settingsPath, '{"ok":true}');
+      expect(fsyncSpy).toHaveBeenCalled();
+      expect(renameSpy).toHaveBeenCalled();
+      const fsyncOrder = fsyncSpy.mock.invocationCallOrder[0]!;
+      const renameOrder = renameSpy.mock.invocationCallOrder[0]!;
+      expect(fsyncOrder).toBeLessThan(renameOrder);
+    } finally {
+      fsyncSpy.mockRestore();
+      renameSpy.mockRestore();
+    }
+  });
+
   it('saveAppSettingsTo and SecretsStore.persist use atomic rename (not in-place writeFileSync)', () => {
     const { store, settingsPath, secretsPath } = mkStore();
     const renameSpy = vi.spyOn(fs, 'renameSync');
@@ -444,7 +630,7 @@ describe('PB4 — atomic writes and modes', () => {
     }
   });
 
-  it('source pin: save + store persist call writeJsonAtomicSecure', () => {
+  it('source pin: save + store + migration + slice2 call writeJsonAtomicSecure', () => {
     const loadSrc = fs.readFileSync(
       path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'appSettingsLoad.ts'),
       'utf-8',
@@ -453,9 +639,16 @@ describe('PB4 — atomic writes and modes', () => {
       path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'secrets/store.ts'),
       'utf-8',
     );
+    const migSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'secrets/migration.ts'),
+      'utf-8',
+    );
     expect(loadSrc).toMatch(/writeJsonAtomicSecure\(settingsPath/);
+    expect(loadSrc).toMatch(/writeJsonAtomicSecure\(settingsPath,\s*stripKeyReentryPaths\(base\)\)/);
     expect(storeSrc).toMatch(/writeJsonAtomicSecure\(this\.filePath/);
     expect(storeSrc).not.toMatch(/writeFileSync\(this\.filePath/);
+    expect(migSrc).toMatch(/writeJsonAtomicSecure\(settingsPath/);
+    expect(migSrc).not.toMatch(/writeFileSync\(settingsPath/);
   });
 });
 
@@ -520,6 +713,11 @@ describe('PB6 — no values in logs', () => {
       const blob = capture.join('\n');
       for (const v of values) {
         expect(blob, `log must not contain ${v}`).not.toContain(v);
+        // K-B5b: no ≥8-char substring of any seeded value.
+        for (let i = 0; i + 8 <= v.length; i++) {
+          const sub = v.slice(i, i + 8);
+          expect(blob, `log must not contain substring ${sub}`).not.toContain(sub);
+        }
       }
     };
 
@@ -556,6 +754,50 @@ describe('PB6 — no values in logs', () => {
         };
         capture.length = 0;
         migrateSecretsFromSettingsFile(settingsPath, store);
+        assertNoValuesLogged();
+      }
+
+      // 4) Saver O1 (encryption unavailable) — blank-all; no value/substring logs.
+      {
+        const { store, settingsPath } = mkStore(false);
+        capture.length = 0;
+        saveAppSettingsTo(settingsPath, () => store, { ...seed, slice2AutonomyOffMigrated: true });
+        assertNoValuesLogged();
+      }
+
+      // 5) Pre-init saver — JSON-only; no value/substring logs.
+      {
+        const { settingsPath } = mkDir();
+        const preInitGet = (): SecretsStore => {
+          throw new Error('SecretsStore not initialized. Call initSecretsStore() during app-ready.');
+        };
+        capture.length = 0;
+        saveAppSettingsTo(settingsPath, preInitGet, { ...seed, slice2AutonomyOffMigrated: true });
+        assertNoValuesLogged();
+      }
+
+      // 6) Abort path — set throws mid-save; no value/substring logs.
+      {
+        const { store, settingsPath } = mkStore();
+        for (const { secretId } of KEY_PATH_SECRET_ENTRIES) {
+          store.set(secretId, values[0]!);
+        }
+        fs.writeFileSync(
+          settingsPath,
+          JSON.stringify({ ...SETTINGS_DEFAULTS, slice2AutonomyOffMigrated: true, apiKey: '' }),
+          'utf-8',
+        );
+        let n = 0;
+        const origSet = store.set.bind(store);
+        store.set = (id: string, value: string | null) => {
+          n += 1;
+          if (n >= 3) throw new Error('injected abort set failure');
+          return origSet(id, value);
+        };
+        capture.length = 0;
+        expect(() =>
+          saveAppSettingsTo(settingsPath, () => store, { ...seed, slice2AutonomyOffMigrated: true }),
+        ).toThrow(/injected abort set failure/);
         assertNoValuesLogged();
       }
     } finally {
@@ -664,15 +906,26 @@ describe('PB8 — backup redaction from KEY_FIELD_PATHS', () => {
 });
 
 describe('PB9 / PB9b / PB9c — pre-hydrate / pre-init JSON-only (D5 + Ivy)', () => {
-  it('PB9: post-init load with missing slice2 flag does not wipe stored keys', () => {
-    const { store, settingsPath } = mkStore();
-    // Keys already in store; JSON blank; slice2 flag missing.
-    for (const { secretId } of KEY_PATH_SECRET_ENTRIES) {
-      store.set(secretId, K);
+  it('PB9: post-init load with missing slice2 flag does not wipe stored keys (E2)', () => {
+    const { store, settingsPath, secretsPath } = mkStore();
+    // 12 distinct ids; one undecryptable ciphertext left on disk.
+    const values = KEY_FIELD_PATHS.map(
+      (_, i) => `sk-ant-PB9E2-${String(i).padStart(2, '0')}0000000000000000000000000001`,
+    );
+    for (let i = 0; i < KEY_PATH_SECRET_ENTRIES.length; i++) {
+      store.set(KEY_PATH_SECRET_ENTRIES[i]!.secretId, values[i]!);
     }
+    // Inject a decrypt-failed entry that must survive the JSON-only slice2 write.
+    const secretsObj = JSON.parse(fs.readFileSync(secretsPath, 'utf-8')) as {
+      v: 1;
+      values: Record<string, string>;
+    };
+    secretsObj.values['provider.alphaReader.apiKey'] = Buffer.from('not-valid-ciphertext').toString('base64');
+    fs.writeFileSync(secretsPath, JSON.stringify(secretsObj), 'utf-8');
+    store.reload();
+
     const disk = {
       ...SETTINGS_DEFAULTS,
-      // force slice2 migrate write mid-load
       agents: fullPlaintextFixture('').agents,
       provider: { kind: 'anthropic' as const, model: 'x', apiKey: '' },
       voice: { enabled: false, cloudFallback: false, openaiApiKey: '', ttsVoiceId: 'kokoro:nicole' },
@@ -680,19 +933,39 @@ describe('PB9 / PB9b / PB9c — pre-hydrate / pre-init JSON-only (D5 + Ivy)', ()
       tts: { enabled: true, provider: 'cloud' as const, cloudApiKey: '' },
       apiKey: '',
     };
-    // Explicitly omit slice2AutonomyOffMigrated
     delete (disk as { slice2AutonomyOffMigrated?: boolean }).slice2AutonomyOffMigrated;
     fs.writeFileSync(settingsPath, JSON.stringify(disk), 'utf-8');
+
+    const secretsBefore = fs.readFileSync(secretsPath);
+    const setSpy = vi.spyOn(store, 'set');
+    const deleteSpy = vi.spyOn(store, 'delete');
 
     const loaded = loadAppSettingsFrom(settingsPath, () => store, (s) =>
       // Mutant K-B19 would use the secret saver here; production must not.
       saveAppSettingsTo(settingsPath, () => store, s),
     );
-    for (const path of KEY_FIELD_PATHS) {
-      expect(getKeyField(loaded, path), path).toBe(K);
+
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(deleteSpy).not.toHaveBeenCalled();
+    expect(fs.readFileSync(secretsPath)).toEqual(secretsBefore);
+    setSpy.mockRestore();
+    deleteSpy.mockRestore();
+
+    expect(JSON.parse(fs.readFileSync(settingsPath, 'utf-8')).slice2AutonomyOffMigrated).toBe(true);
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as AppSettings;
+    for (const p of KEY_FIELD_PATHS) {
+      expect(getKeyField(written, p) ?? '', `json ${p}`).toBe('');
     }
-    for (const { secretId } of KEY_PATH_SECRET_ENTRIES) {
-      expect(store.get(secretId)).toBe(K);
+    assertNoPlaintextInJson(settingsPath, values);
+
+    // Loader still serves decryptable keys (alphaReader fails decrypt → empty).
+    for (let i = 0; i < KEY_FIELD_PATHS.length; i++) {
+      const p = KEY_FIELD_PATHS[i]!;
+      if (p === 'agents.alphaReader.provider.apiKey') {
+        expect(getKeyField(loaded, p) ?? '').toBe('');
+      } else {
+        expect(getKeyField(loaded, p), p).toBe(values[i]);
+      }
     }
   });
 
@@ -1037,8 +1310,8 @@ describe('Shield r2 — whitespace-only save does not clear keyReentryPaths', ()
   });
 });
 
-describe('Shield r1 — deliberate clear via real saver drops held flag (R4-L)', () => {
-  it('R4-L: deliberate clear through saveAppSettingsTo drops keyReentryPaths for that path', () => {
+describe('Shield r1 — R4-L via real saver: empty clear keeps flag; real key clears it', () => {
+  it('R4-L: empty clear through saveAppSettingsTo keeps keyReentryPaths; real key clears it', () => {
     const { store, settingsPath } = mkStore();
     const disk = {
       ...SETTINGS_DEFAULTS,
@@ -1051,14 +1324,11 @@ describe('Shield r1 — deliberate clear via real saver drops held flag (R4-L)',
     const loaded = loadAppSettingsFrom(settingsPath, () => store);
     expect(loaded.keyReentryPaths).toContain('provider.apiKey');
 
-    // Deliberate clear through the real saver (not healMaskedKeyFields alone).
+    // Empty clear through the real saver keeps the held flag (R4-L / #1660).
     saveAppSettingsTo(settingsPath, () => store, {
       ...loaded,
       provider: { ...loaded.provider!, apiKey: '' },
     });
-    // Held flag: empty clear does NOT drop (R4-L / #1660). Re-load still flags
-    // until a real key is saved — rename this pin away from the stale
-    // "deliberate clear drops flag" heal-only wording (Shield r1).
     const again = loadAppSettingsFrom(settingsPath, () => store);
     expect(again.keyReentryPaths).toContain('provider.apiKey');
 
@@ -1095,5 +1365,386 @@ describe('saver strip pins — keyReentryPaths stripped before disk write', () =
     };
     saveAppSettingsTo(settingsPath, () => store, withFlag);
     expect(fs.readFileSync(settingsPath, 'utf-8')).not.toContain('keyReentryPaths');
+  });
+
+  it('pre-init saver writes no keyReentryPaths and no mask (T5)', () => {
+    const { settingsPath } = mkDir();
+    const mask = maskApiKey(K);
+    const preInitGet = (): SecretsStore => {
+      throw new Error('SecretsStore not initialized. Call initSecretsStore() during app-ready.');
+    };
+    saveAppSettingsTo(settingsPath, preInitGet, {
+      ...fullPlaintextFixture(K),
+      slice2AutonomyOffMigrated: true,
+      apiKey: mask,
+      keyReentryPaths: ['apiKey', 'provider.apiKey'],
+    });
+    const disk = fs.readFileSync(settingsPath, 'utf-8');
+    expect(disk).not.toContain('keyReentryPaths');
+    expect(disk).not.toContain(mask);
+    // Source pin: first strip before pre-init write; raw settings must not be written.
+    const loadSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'appSettingsLoad.ts'),
+      'utf-8',
+    );
+    expect(loadSrc).toMatch(
+      /const outgoing = stripKeyReentryPaths\(lifecycleApplied\);[\s\S]*?writeJsonAtomicSecure\(settingsPath, outgoing\)/,
+    );
+    expect(loadSrc).not.toMatch(/writeJsonAtomicSecure\(settingsPath,\s*settings\)/);
+  });
+});
+
+describe('P1 / T2 — M29 SETTINGS_GET marker is JSON-only', () => {
+  it('markOnboardingCompleteJsonOnly: 12 ids + decrypt-fail → 0 set/delete; secrets byte-identical; flag on disk', () => {
+    const { store, settingsPath, secretsPath } = mkStore();
+    const values = KEY_FIELD_PATHS.map(
+      (_, i) => `sk-ant-M29-${String(i).padStart(2, '0')}0000000000000000000000000000001`,
+    );
+    for (let i = 0; i < KEY_PATH_SECRET_ENTRIES.length; i++) {
+      store.set(KEY_PATH_SECRET_ENTRIES[i]!.secretId, values[i]!);
+    }
+    const secretsObj = JSON.parse(fs.readFileSync(secretsPath, 'utf-8')) as {
+      v: 1;
+      values: Record<string, string>;
+    };
+    secretsObj.values['provider.lineEditor.apiKey'] = Buffer.from('bad-ct').toString('base64');
+    fs.writeFileSync(secretsPath, JSON.stringify(secretsObj), 'utf-8');
+    store.reload();
+
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        onboardingComplete: false,
+        agents: fullPlaintextFixture('').agents,
+        provider: { kind: 'anthropic', model: 'x', apiKey: '' },
+        apiKey: '',
+      }),
+      'utf-8',
+    );
+    // mythos.json presence is gated in SETTINGS_GET; pin exercises the JSON-only writer.
+    const secretsBefore = fs.readFileSync(secretsPath);
+    const setSpy = vi.spyOn(store, 'set');
+    const deleteSpy = vi.spyOn(store, 'delete');
+
+    markOnboardingCompleteJsonOnly(settingsPath);
+
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(deleteSpy).not.toHaveBeenCalled();
+    expect(fs.readFileSync(secretsPath)).toEqual(secretsBefore);
+    expect(JSON.parse(fs.readFileSync(settingsPath, 'utf-8')).onboardingComplete).toBe(true);
+    setSpy.mockRestore();
+    deleteSpy.mockRestore();
+  });
+
+  it('source pin: SETTINGS_GET uses markOnboardingCompleteJsonOnly, not saveAppSettings', () => {
+    const mainSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'main.ts'),
+      'utf-8',
+    );
+    const handler = mainSrc.match(
+      /\[IPC_CHANNELS\.SETTINGS_GET\]:[\s\S]*?(?=,\s*\n\s*\[IPC_CHANNELS\.SETTINGS_SET\])/,
+    );
+    expect(handler?.[0] ?? '').toContain('markOnboardingCompleteJsonOnly');
+    expect(handler?.[0] ?? '').not.toMatch(/saveAppSettings\(/);
+  });
+});
+
+describe('P2 / T3 — restore app-settings.json lands at 0600', () => {
+  it('restore with no prior app-settings.json → mode 600', async () => {
+    if (process.platform === 'win32') return;
+    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-p2-ud-'));
+    const storyVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-p2-sv-'));
+    const notesVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-p2-nv-'));
+    const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-p2-stg-'));
+    fs.writeFileSync(
+      path.join(staging, 'app-settings.json'),
+      JSON.stringify({ ...SETTINGS_DEFAULTS, slice2AutonomyOffMigrated: true }),
+      'utf-8',
+    );
+    const archivePath = path.join(userData, 'r.mwbackup');
+    await backupAppData({
+      userDataPath: staging,
+      storyVaultRoot: storyVault,
+      notesVaultRoot: notesVault,
+      appVersion: '0.5.7',
+      manifestSchemaVersion: 0,
+      outputPath: archivePath,
+    });
+    const dest = path.join(userData, 'app-settings.json');
+    expect(fs.existsSync(dest)).toBe(false);
+    const result = await restoreAppData({
+      archivePath,
+      userDataPath: userData,
+      storyVaultRoot: storyVault,
+      notesVaultRoot: notesVault,
+      overwrite: true,
+    });
+    expect(result.restored).toBe(true);
+    expect(fs.existsSync(dest)).toBe(true);
+    expect(fs.statSync(dest).mode & 0o777).toBe(0o600);
+  });
+});
+
+describe('P3 / T9 — Abort when persistSecretsAndStripSettings throws', () => {
+  it('(a) mid-save set throw → secrets.json byte-identical; store values unchanged', () => {
+    const { store, settingsPath, secretsPath } = mkStore();
+    for (const { secretId } of KEY_PATH_SECRET_ENTRIES) {
+      store.set(secretId, K);
+    }
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        agents: fullPlaintextFixture('').agents,
+        provider: { kind: 'anthropic', model: 'x', apiKey: '' },
+        apiKey: '',
+      }),
+      'utf-8',
+    );
+    const secretsBefore = fs.readFileSync(secretsPath);
+    const beforeIds = Object.fromEntries(
+      KEY_PATH_SECRET_ENTRIES.map(({ secretId }) => [secretId, store.get(secretId)]),
+    );
+    let n = 0;
+    const origSet = store.set.bind(store);
+    store.set = (id: string, value: string | null) => {
+      n += 1;
+      if (n >= 4) throw new Error('injected abort');
+      return origSet(id, value);
+    };
+    const typed = 'sk-ant-TypedAbortKey00000000000000000000000000001';
+    expect(() =>
+      saveAppSettingsTo(settingsPath, () => store, {
+        ...fullPlaintextFixture(typed),
+        slice2AutonomyOffMigrated: true,
+        theme: 'dark',
+      }),
+    ).toThrow(/injected abort/);
+    expect(fs.readFileSync(secretsPath)).toEqual(secretsBefore);
+    for (const { secretId } of KEY_PATH_SECRET_ENTRIES) {
+      expect(store.get(secretId), secretId).toBe(beforeIds[secretId]);
+    }
+  });
+
+  it('(b) typed outgoing key never lands in JSON after abort', () => {
+    const { store, settingsPath } = mkStore();
+    store.set('anthropic.apiKey', K);
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({ ...SETTINGS_DEFAULTS, slice2AutonomyOffMigrated: true, apiKey: '' }),
+      'utf-8',
+    );
+    store.set = () => {
+      throw new Error('injected abort');
+    };
+    const typed = 'sk-ant-MustNotReachJson0000000000000000000000001';
+    expect(() =>
+      saveAppSettingsTo(settingsPath, () => store, {
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        apiKey: typed,
+        theme: 'high-contrast',
+      }),
+    ).toThrow(/injected abort/);
+    expect(fs.readFileSync(settingsPath, 'utf-8')).not.toContain(typed);
+  });
+
+  it('(c) non-key settings still save on abort', () => {
+    const { store, settingsPath } = mkStore();
+    store.set('anthropic.apiKey', K);
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({ ...SETTINGS_DEFAULTS, slice2AutonomyOffMigrated: true, apiKey: '', theme: 'system' }),
+      'utf-8',
+    );
+    store.set = () => {
+      throw new Error('injected abort');
+    };
+    expect(() =>
+      saveAppSettingsTo(settingsPath, () => store, {
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        apiKey: 'sk-ant-AbortThemeOnly00000000000000000000000001',
+        theme: 'dark',
+      }),
+    ).toThrow(/injected abort/);
+    expect(JSON.parse(fs.readFileSync(settingsPath, 'utf-8')).theme).toBe('dark');
+  });
+
+  it('(d) JSON key fields come from on-disk values (empty), never outgoing', () => {
+    const { store, settingsPath } = mkStore();
+    store.set('anthropic.apiKey', K);
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({ ...SETTINGS_DEFAULTS, slice2AutonomyOffMigrated: true, apiKey: '' }),
+      'utf-8',
+    );
+    store.set = () => {
+      throw new Error('injected abort');
+    };
+    expect(() =>
+      saveAppSettingsTo(settingsPath, () => store, {
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        apiKey: 'sk-ant-AbortDiskKeys000000000000000000000000001',
+      }),
+    ).toThrow(/injected abort/);
+    expect(JSON.parse(fs.readFileSync(settingsPath, 'utf-8')).apiKey).toBe('');
+  });
+
+  it('(e) O1 blank-all still when !isAvailable(); Abort only when encryption available', () => {
+    const { store, settingsPath } = mkStore(false);
+    saveAppSettingsTo(settingsPath, () => store, {
+      ...fullPlaintextFixture(K),
+      slice2AutonomyOffMigrated: true,
+    });
+    const written = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as AppSettings;
+    for (const p of KEY_FIELD_PATHS) {
+      expect(getKeyField(written, p), p).toBe('');
+    }
+    // Source: Abort catch restores secrets; O1 path still uses blankAllKeyFields.
+    const loadSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'appSettingsLoad.ts'),
+      'utf-8',
+    );
+    expect(loadSrc).toMatch(/!store\.isAvailable\(\)[\s\S]*?blankAllKeyFields\(outgoing\)/);
+    expect(loadSrc).toMatch(/restoreSecretsBytes\(store, secretsBefore\)/);
+  });
+});
+
+describe('P4 / T10 — SecretsStore set/delete no-ops when unchanged', () => {
+  it('(a) set identical value → no secrets.json rename', () => {
+    const { store, secretsPath } = mkStore();
+    store.set('anthropic.apiKey', K);
+    const renameSpy = vi.spyOn(fs, 'renameSync');
+    try {
+      store.set('anthropic.apiKey', K);
+      expect(renameSpy.mock.calls.filter((c) => String(c[1]) === secretsPath)).toHaveLength(0);
+    } finally {
+      renameSpy.mockRestore();
+    }
+  });
+
+  it('(b) delete missing id → no-op (no rename)', () => {
+    const { store, secretsPath } = mkStore();
+    const renameSpy = vi.spyOn(fs, 'renameSync');
+    try {
+      store.delete('provider.apiKey');
+      expect(renameSpy.mock.calls.filter((c) => String(c[1]) === secretsPath)).toHaveLength(0);
+    } finally {
+      renameSpy.mockRestore();
+    }
+  });
+
+  it('(c) decrypt-failed entry never counts as unchanged — set still persists', () => {
+    const { secretsPath } = mkDir();
+    fs.writeFileSync(
+      secretsPath,
+      JSON.stringify({
+        v: 1,
+        values: { 'anthropic.apiKey': Buffer.from('bad').toString('base64') },
+      }),
+      'utf-8',
+    );
+    const store = new SecretsStore({ filePath: secretsPath, safeStorage: makeSafeStorage(true) });
+    expect(store.get('anthropic.apiKey')).toBeNull();
+    const renameSpy = vi.spyOn(fs, 'renameSync');
+    try {
+      store.set('anthropic.apiKey', K);
+      expect(renameSpy.mock.calls.some((c) => String(c[1]) === secretsPath)).toBe(true);
+      expect(store.get('anthropic.apiKey')).toBe(K);
+    } finally {
+      renameSpy.mockRestore();
+    }
+  });
+
+  it('(d) save with unchanged keys → one fsynced settings write; zero secrets renames', () => {
+    const { store, settingsPath, secretsPath } = mkStore();
+    for (const { secretId } of KEY_PATH_SECRET_ENTRIES) {
+      store.set(secretId, K);
+    }
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        agents: fullPlaintextFixture('').agents,
+        provider: { kind: 'anthropic', model: 'x', apiKey: '' },
+        voice: { enabled: false, cloudFallback: false, openaiApiKey: '', ttsVoiceId: 'kokoro:nicole' },
+        stt: { enabled: true, provider: 'cloud', cloudApiKey: '' },
+        tts: { enabled: true, provider: 'cloud', cloudApiKey: '' },
+        apiKey: '',
+      }),
+      'utf-8',
+    );
+    const loaded = loadAppSettingsFrom(settingsPath, () => store);
+    const renameSpy = vi.spyOn(fs, 'renameSync');
+    try {
+      saveAppSettingsTo(settingsPath, () => store, { ...loaded, theme: 'dark' });
+      const settingsRenames = renameSpy.mock.calls.filter((c) => String(c[1]) === settingsPath);
+      const secretsRenames = renameSpy.mock.calls.filter((c) => String(c[1]) === secretsPath);
+      expect(settingsRenames).toHaveLength(1);
+      expect(secretsRenames).toHaveLength(0);
+    } finally {
+      renameSpy.mockRestore();
+    }
+  });
+
+  it('(e) clearing existing key still deletes and persists', () => {
+    const { store, secretsPath } = mkStore();
+    store.set('anthropic.apiKey', K);
+    const renameSpy = vi.spyOn(fs, 'renameSync');
+    try {
+      store.set('anthropic.apiKey', '');
+      expect(renameSpy.mock.calls.some((c) => String(c[1]) === secretsPath)).toBe(true);
+      expect(store.get('anthropic.apiKey')).toBeNull();
+    } finally {
+      renameSpy.mockRestore();
+    }
+  });
+});
+
+describe('T12 — PB2(b) through real restoreAppData with plaintext archive', () => {
+  it('hand-built plaintext archive → restore → next migrate moves all 12', async () => {
+    const userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-t12-ud-'));
+    const storyVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-t12-sv-'));
+    const notesVault = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-t12-nv-'));
+    const settingsPath = path.join(userData, 'app-settings.json');
+    const secretsPath = path.join(userData, 'secrets.json');
+
+    const zip = new JSZip();
+    zip.file(
+      'header.json',
+      JSON.stringify({
+        schemaVersion: 1,
+        appVersion: '0.5.3',
+        manifestSchemaVersion: 0,
+        createdAt: new Date().toISOString(),
+      }),
+    );
+    zip.file(
+      'userData/app-settings.json',
+      JSON.stringify({ ...fullPlaintextFixture(K), slice2AutonomyOffMigrated: true }),
+    );
+    const archivePath = path.join(userData, 'plain.mwbackup');
+    fs.writeFileSync(archivePath, await zip.generateAsync({ type: 'nodebuffer' }));
+
+    const result = await restoreAppData({
+      archivePath,
+      userDataPath: userData,
+      storyVaultRoot: storyVault,
+      notesVaultRoot: notesVault,
+      overwrite: true,
+    });
+    expect(result.restored).toBe(true);
+    expect(fs.readFileSync(settingsPath, 'utf-8')).toContain(K);
+
+    const store = new SecretsStore({ filePath: secretsPath, safeStorage: makeSafeStorage(true) });
+    const migrated = migrateSecretsFromSettingsFile(settingsPath, store);
+    expect(migrated.movedIds.length).toBe(12);
+    assertNoPlaintextInJson(settingsPath, [K]);
   });
 });

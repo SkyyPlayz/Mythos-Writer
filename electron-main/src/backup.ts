@@ -14,6 +14,7 @@ import JSZip from 'jszip';
 import fs from 'fs';
 import path from 'path';
 import type { AppSettings } from './ipc.js';
+import { writeFileAtomicSecure } from './secrets/atomicWrite.js';
 import {
   getKeyField,
   KEY_FIELD_PATHS,
@@ -187,7 +188,17 @@ export async function restoreAppData(options: RestoreOptions): Promise<RestoreRe
     }
   };
 
-  await extractFile('userData/app-settings.json', path.join(options.userDataPath, 'app-settings.json'));
+  // KEYS-B P2: app-settings.json restore lands at 0600 even with no prior file.
+  {
+    const destPath = path.join(options.userDataPath, 'app-settings.json');
+    const file = zip.file('userData/app-settings.json');
+    if (file) {
+      const content = await file.async('nodebuffer');
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      writeFileAtomicSecure(destPath, content);
+      details.push('restored: userData/app-settings.json');
+    }
+  }
   await extractFile('userData/vault-settings.json', path.join(options.userDataPath, 'vault-settings.json'));
   await extractFile('storyVault/manifest.json', path.join(options.storyVaultRoot, 'manifest.json'));
   await extractDir('storyVault/.mythos/', path.join(options.storyVaultRoot, '.mythos'));

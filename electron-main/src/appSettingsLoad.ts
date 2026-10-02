@@ -10,7 +10,7 @@
 import fs from 'fs';
 import type { AppSettings } from './ipc.js';
 import { providerConfigForAgent, type ProviderConfig } from './provider.js';
-import { writeJsonAtomicSecure } from './secrets/atomicWrite.js';
+import { writeFileAtomicSecure, writeJsonAtomicSecure } from './secrets/atomicWrite.js';
 import {
   blankAllKeyFields,
   hydrateSecretsIntoSettings,
@@ -26,6 +26,68 @@ import {
   type KeyFieldPath,
 } from './settings-masking.js';
 import { migrateVoicePushToTalk, type LegacyVoiceSettings } from './voiceSettingsMigration.js';
+
+/**
+ * E3 / S-B11 / M29: set `onboardingComplete: true` via raw JSON read-modify-write.
+ * Never routes through the secret saver or SecretsStore (HARD-1).
+ */
+export function markOnboardingCompleteJsonOnly(settingsPath: string): void {
+  let parsed: Record<string, unknown> = {};
+  if (fs.existsSync(settingsPath)) {
+    try {
+      parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Record<string, unknown>;
+    } catch {
+      parsed = {};
+    }
+  }
+  if (parsed.onboardingComplete === true) return;
+  parsed.onboardingComplete = true;
+  writeJsonAtomicSecure(settingsPath, parsed);
+}
+
+/**
+ * Abort path: keep non-key fields from `outgoing`, but every KEY_FIELD_PATHS
+ * string comes from on-disk JSON (never typed outgoing plaintext).
+ */
+function withOnDiskKeyFields(outgoing: AppSettings, settingsPath: string): AppSettings {
+  let disk: AppSettings | null = null;
+  try {
+    if (fs.existsSync(settingsPath)) {
+      disk = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as AppSettings;
+    }
+  } catch {
+    disk = null;
+  }
+  let out = outgoing;
+  for (const path of KEY_FIELD_PATHS) {
+    if (typeof getKeyField(out, path) !== 'string') continue;
+    const diskVal = disk ? getKeyField(disk, path) : undefined;
+    out = setKeyField(out, path, typeof diskVal === 'string' ? diskVal : '');
+  }
+  return out;
+}
+
+function snapshotSecretsBytes(store: SecretsStore): Buffer | null {
+  try {
+    if (!fs.existsSync(store.path)) return null;
+    return fs.readFileSync(store.path);
+  } catch {
+    return null;
+  }
+}
+
+function restoreSecretsBytes(store: SecretsStore, snapshot: Buffer | null): void {
+  if (snapshot === null) {
+    try {
+      if (fs.existsSync(store.path)) fs.unlinkSync(store.path);
+    } catch {
+      /* best-effort */
+    }
+  } else {
+    writeFileAtomicSecure(store.path, snapshot);
+  }
+  store.reload();
+}
 
 /** Drop ephemeral keyReentryPaths — never reaches JSON or secrets (S4 / H3 / K18). */
 function stripKeyReentryPaths(settings: AppSettings): AppSettings {
@@ -427,11 +489,21 @@ export function saveAppSettingsTo(
     // Post-init, encryption unavailable → O1 blank all present key fields.
     toWrite = blankAllKeyFields(outgoing);
   } else {
+    // KEYS-B P3 Abort: snapshot secrets before persist so a mid-save throw
+    // rolls the file back byte-identical; typed keys never land in JSON.
+    const secretsBefore = snapshotSecretsBytes(store);
     try {
       toWrite = persistSecretsAndStripSettings(outgoing, store);
-    } catch {
-      // Encrypt/write failed after init — same O1 blank (keys do not survive).
-      toWrite = blankAllKeyFields(outgoing);
+    } catch (err) {
+      try {
+        restoreSecretsBytes(store, secretsBefore);
+      } catch {
+        /* rollback is best-effort; still refuse plaintext keys below */
+      }
+      // Non-key settings still save; JSON key fields from on-disk only.
+      toWrite = stripKeyReentryPaths(withOnDiskKeyFields(outgoing, settingsPath));
+      writeJsonAtomicSecure(settingsPath, toWrite);
+      throw err;
     }
   }
   // Single strip after secret handling (PB saver-strip pin). Lifecycle already
