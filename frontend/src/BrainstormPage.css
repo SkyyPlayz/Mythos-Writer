@@ -101,35 +101,11 @@
   padding: 4px 8px;
 }
 
-.notes-tab-sidebar-right .brainstorm-header--compact {
-  min-width: 0;
-  box-sizing: border-box;
-}
-
-/* Prefreeze F2: do NOT override PanelChrome `flex: 0 0 auto; overflow: visible`
-   at 340/1440 — that silently clipped mid-width actions. Only min-width:0 here. */
-.notes-tab-sidebar-right .pc-header.brainstorm-header.brainstorm-header--compact .pc-header-actions {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.notes-tab-sidebar-right .brainstorm-header--compact .brainstorm-header-actions {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.notes-tab-sidebar-right .brainstorm-header--compact .brainstorm-header-preset {
-  min-width: 0;
-  max-width: 100%;
-}
-
-.notes-tab-sidebar-right .brainstorm-header--compact .brainstorm-new-session-btn {
-  flex-shrink: 0;
-}
-
 /* At pc-chrome ≤228: wrap + allow clip so New session stays inside.
    --compact mounts: Notes right pane, DesktopShell panel renderer (brainstorm),
-   and workspace split pane (brainstorm). Above 228 nothing changes. */
+   and workspace split pane (brainstorm). Above 228 nothing changes.
+   Notes-scoped min-width/max-width/flex-shrink rules above this query (X1–X5)
+   were C1 survivors — dropped; clip + F2 e2e stay green without them. */
 @container pc-chrome (max-width: 228px) {
   .pc-header.brainstorm-header.brainstorm-header--compact .pc-header-actions {
     flex: 1 1 100%;
