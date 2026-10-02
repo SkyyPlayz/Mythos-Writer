@@ -101,6 +101,33 @@
   padding: 4px 8px;
 }
 
+/* At pc-chrome ≤273: wrap + allow clip so New session / preset stay inside.
+   Measured (packaged setContentSize): nowrap overflows through chrome 268
+   (@975); one-row fits from chrome 273 (@980). Wrap max = 273 (N1 / Critic
+   5396779130). @940 chrome ≈233 → wrap engages (228 would not).
+   --compact mounts: Notes right pane, DesktopShell panel renderer (brainstorm)
+   ~5687, and workspace split pane (brainstorm) ~8025. Above 273 nothing changes. */
+@container pc-chrome (max-width: 273px) {
+  .pc-header.brainstorm-header.brainstorm-header--compact .pc-header-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .brainstorm-header--compact .brainstorm-header-actions {
+    flex-shrink: 1;
+    flex-wrap: wrap;
+  }
+
+  .brainstorm-header--compact .brainstorm-header-preset {
+    flex-shrink: 1;
+    overflow: hidden;
+  }
+}
+
 .brainstorm-header-overflow-btn {
   display: none;
   align-items: center;
