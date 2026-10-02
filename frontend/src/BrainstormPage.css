@@ -116,24 +116,20 @@
   box-sizing: border-box;
 }
 
+/* Prefreeze F2: do NOT override PanelChrome `flex: 0 0 auto; overflow: visible`
+   at 340/1440 — that silently clipped mid-width actions. Only min-width:0 here. */
 .notes-tab-sidebar-right .pc-header.brainstorm-header.brainstorm-header--compact .pc-header-actions {
-  /* Wider compact hosts (340/500/700) keep the one-row Ivy pack (75px @500). */
-  flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
-  overflow: hidden;
 }
 
 .notes-tab-sidebar-right .brainstorm-header--compact .brainstorm-header-actions {
   min-width: 0;
-  flex-shrink: 1;
   max-width: 100%;
 }
 
 .notes-tab-sidebar-right .brainstorm-header--compact .brainstorm-header-preset {
   min-width: 0;
-  flex-shrink: 1;
-  overflow: hidden;
   max-width: 100%;
 }
 
@@ -141,7 +137,7 @@
   flex-shrink: 0;
 }
 
-/* Only at the 195 floor (container ≤228): wrap actions so New session stays inside.
+/* Only at the 195 floor (pc-chrome ≤228): wrap + allow clip so New session stays inside.
    Compact is Notes-only — standalone Brainstorm never uses --compact. */
 @container pc-chrome (max-width: 228px) {
   .pc-header.brainstorm-header.brainstorm-header--compact .pc-header-actions {
@@ -150,6 +146,16 @@
     justify-content: flex-start;
     min-width: 0;
     max-width: 100%;
+    overflow: hidden;
+  }
+
+  .brainstorm-header--compact .brainstorm-header-actions {
+    flex-shrink: 1;
+    flex-wrap: wrap;
+  }
+
+  .brainstorm-header--compact .brainstorm-header-preset {
+    flex-shrink: 1;
     overflow: hidden;
   }
 }

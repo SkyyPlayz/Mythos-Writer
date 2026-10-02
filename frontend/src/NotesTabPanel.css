@@ -387,6 +387,9 @@
   min-width: 195px;
   max-width: 500px;
   background: var(--glass-fill-fallback);
+  /* Prefreeze F1: narrow-pane tab/header packing scoped via this container. */
+  container-type: inline-size;
+  container-name: notes-right-pane;
 }
 
 /* SKY-10929: was a flat --bg-surface (opaque solid, never engine-tracked
@@ -410,10 +413,6 @@
   box-sizing: border-box;
   flex-shrink: 0;
   border-bottom: 1px solid var(--glass-border);
-  /* beta-057: shrink with pane — do not force horizontal overflow past 195 */
-  min-width: 0;
-  gap: 4px;
-  overflow: hidden;
 }
 
 /* R11 (SKY-9826): with AI off the tab strip is gone; keep the lone collapse
@@ -482,26 +481,44 @@
   align-items: center;
   gap: 2px;
   min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
 }
 
 .notes-right-tab {
   border: 0;
   background: none;
-  padding: 3px 6px;
+  padding: 3px 9px;
   border-radius: 8px;
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   color: var(--text-secondary);
   cursor: pointer;
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+/* Prefreeze F1: tab/header shrink only at the 195 pane floor — 1440 matches main. */
+@container notes-right-pane (max-width: 228px) {
+  .notes-right-sidebar-header {
+    min-width: 0;
+    gap: 4px;
+    overflow: hidden;
+  }
+
+  .notes-right-tabs {
+    flex: 1 1 auto;
+    overflow: hidden;
+  }
+
+  .notes-right-tab {
+    padding: 3px 6px;
+    font-size: 0.68rem;
+    letter-spacing: 0.02em;
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 }
 
 .notes-right-tab:hover {

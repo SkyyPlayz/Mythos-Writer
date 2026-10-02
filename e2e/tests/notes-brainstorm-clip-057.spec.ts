@@ -252,6 +252,59 @@ async function elementFromPointIsControl(
   expect(hit.ok, `${selector} elementFromPoint: ${JSON.stringify(hit)}`).toBe(true);
 }
 
+/** Prefreeze F2: every visible header/tab control inside pane + viewport + hit-test. */
+async function assertAllVisibleHeaderControlsHitTestable(page: Page): Promise<void> {
+  const report = await page.evaluate(() => {
+    const paneEl = document.querySelector('[data-testid="notes-brainstorm-panel"]');
+    if (!paneEl) return { ok: false, failures: ['missing pane'], checked: 0 };
+    const pr = paneEl.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const roots = [
+      paneEl.querySelector('.notes-right-sidebar-header'),
+      paneEl.querySelector('.pc-header.brainstorm-header--compact'),
+    ].filter(Boolean) as HTMLElement[];
+    const buttons: HTMLElement[] = [];
+    for (const root of roots) {
+      for (const el of root.querySelectorAll('button')) {
+        const r = el.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1) continue;
+        const style = getComputedStyle(el);
+        if (style.visibility === 'hidden' || style.display === 'none') continue;
+        // Skip display:none via offsetParent when not fixed
+        if (style.opacity === '0') continue;
+        buttons.push(el);
+      }
+    }
+    const failures: string[] = [];
+    for (const el of buttons) {
+      const r = el.getBoundingClientRect();
+      const label =
+        el.getAttribute('aria-label') ||
+        el.getAttribute('data-testid') ||
+        el.className.toString().slice(0, 48) ||
+        el.tagName;
+      const insidePane =
+        r.left >= pr.left - 1 &&
+        r.right <= pr.right + 1 &&
+        r.top >= pr.top - 1 &&
+        r.bottom <= pr.bottom + 1;
+      const insideVp =
+        r.left >= -1 && r.right <= vw + 1 && r.top >= -1 && r.bottom <= vh + 1;
+      const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      const hit = !!(top && (top === el || el.contains(top)));
+      if (!insidePane || !insideVp || !hit) {
+        failures.push(
+          `${label}: pane=${insidePane} vp=${insideVp} hit=${hit} top=${top ? String((top as HTMLElement).className || top.tagName).slice(0, 40) : null}`,
+        );
+      }
+    }
+    return { ok: failures.length === 0, failures, checked: buttons.length };
+  });
+  expect(report.checked, 'expected visible header/tab buttons').toBeGreaterThan(0);
+  expect(report.ok, `F2 header hit-tests: ${JSON.stringify(report.failures)}`).toBe(true);
+}
+
 async function assertNoHorizontalOverflow(page: Page): Promise<void> {
   const metrics = await page.evaluate(() => {
     const paneEl = document.querySelector('[data-testid="notes-brainstorm-panel"]');
@@ -268,6 +321,75 @@ async function assertNoHorizontalOverflow(page: Page): Promise<void> {
   );
   expect(metrics.docSW, `documentElement scrollWidth≤clientWidth ${JSON.stringify(metrics)}`).toBeLessThanOrEqual(
     metrics.docCW,
+  );
+}
+
+/** Prefreeze F1: at 1440, tab/header computed styles match main (unconditional shrink RED). */
+async function assertMainTabStylesAt1440(page: Page): Promise<void> {
+  const styles = await page.evaluate(() => {
+    const tab = document.querySelector('.notes-right-tab') as HTMLElement | null;
+    const header = document.querySelector('.notes-right-sidebar-header') as HTMLElement | null;
+    if (!tab || !header) return null;
+    const t = getComputedStyle(tab);
+    const h = getComputedStyle(header);
+    return {
+      fontSize: t.fontSize,
+      paddingTop: t.paddingTop,
+      paddingRight: t.paddingRight,
+      paddingBottom: t.paddingBottom,
+      paddingLeft: t.paddingLeft,
+      letterSpacing: t.letterSpacing,
+      gap: h.gap,
+    };
+  });
+  expect(styles, 'tab + header present').toBeTruthy();
+  // Main values: font-size 0.72rem, padding 3px 9px, letter-spacing 0.03em (of font-size), no gap.
+  // Unconditional tip shrink used 0.68rem / 6px / 0.02em / gap 4px — those must RED.
+  const rootPx = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).fontSize));
+  const fontPx = parseFloat(styles!.fontSize);
+  const letterPx = parseFloat(styles!.letterSpacing);
+  expect(fontPx, 'F1 font-size = main 0.72rem').toBeCloseTo(0.72 * rootPx, 2);
+  expect(fontPx, 'F1 not tip-shrink 0.68rem').not.toBeCloseTo(0.68 * rootPx, 2);
+  expect(styles!.paddingTop).toBe('3px');
+  expect(styles!.paddingBottom).toBe('3px');
+  expect(styles!.paddingLeft).toBe('9px');
+  expect(styles!.paddingRight).toBe('9px');
+  expect(letterPx, 'F1 letter-spacing = main 0.03em').toBeCloseTo(0.03 * fontPx, 3);
+  expect(
+    styles!.gap === 'normal' || styles!.gap === '0px',
+    `F1 header gap (main has none): ${styles!.gap}`,
+  ).toBe(true);
+}
+
+/**
+ * Prefreeze F2 @1440: pane is still 340 (preferred) — main's compact header is
+ * the 2-row ≤400 pack (~107px), with PanelChrome `flex: 0 0 auto; overflow: visible`.
+ * Pin that we did not reintroduce `flex: 0 1 auto; overflow: hidden` at this width.
+ */
+async function assertMainLikeHeaderChromeAt1440(page: Page): Promise<void> {
+  const row = await page.evaluate(() => {
+    const header = document.querySelector(
+      '[data-testid="notes-brainstorm-panel"] .pc-header.brainstorm-header--compact',
+    ) as HTMLElement | null;
+    const actions = header?.querySelector('.pc-header-actions') as HTMLElement | null;
+    if (!header || !actions) return { ok: false, reason: 'missing' };
+    const cs = getComputedStyle(actions);
+    const hr = header.getBoundingClientRect();
+    return {
+      height: hr.height,
+      flexGrow: cs.flexGrow,
+      flexShrink: cs.flexShrink,
+      flexBasis: cs.flexBasis,
+      overflow: cs.overflow,
+      overflowX: cs.overflowX,
+    };
+  });
+  // Main natural/340 compact height band (notes-parity MAIN_COMPACT_H.natural = 107).
+  expect(Math.abs(row.height - 107), `F2 header height @1440≈main 107: ${JSON.stringify(row)}`).toBeLessThanOrEqual(4);
+  expect(row.flexGrow, 'F2 actions flex-grow stays 0 (PanelChrome)').toBe('0');
+  expect(row.flexShrink, 'F2 actions flex-shrink stays 0 (not 0 1 auto)').toBe('0');
+  expect(row.overflow === 'visible' || row.overflowX === 'visible', `F2 overflow visible: ${JSON.stringify(row)}`).toBe(
+    true,
   );
 }
 
@@ -310,6 +432,8 @@ test.describe('beta-057 Notes Brainstorm clip @900/1024/1440', () => {
 
         if (w === 1440) {
           expect(Math.round(layout.right), '@1440 pane preferred width').toBe(RIGHT_PREFERRED);
+          await assertMainTabStylesAt1440(page);
+          await assertMainLikeHeaderChromeAt1440(page);
         }
         if (w === 900) {
           expect(Math.round(layout.right), '@900 pane at min').toBe(PANE_MIN_PX);
@@ -319,6 +443,7 @@ test.describe('beta-057 Notes Brainstorm clip @900/1024/1440', () => {
         await boxInsideViewportAndPane(page, '.brainstorm-send-btn');
         await boxInsideViewportAndPane(page, '.brainstorm-new-session-btn');
         await assertNoHorizontalOverflow(page);
+        await assertAllVisibleHeaderControlsHitTestable(page);
 
         if (w === 900 || w === 1024) {
           await elementFromPointIsControl(page, '.brainstorm-send-btn');
@@ -413,12 +538,23 @@ test.describe('beta-057 Notes Brainstorm clip @900/1024/1440', () => {
           leftW: left?.getBoundingClientRect().width ?? 0,
           paneOverflow: paneEl ? paneEl.scrollWidth - paneEl.clientWidth : -1,
           bodyOverflow: body ? body.scrollWidth - body.clientWidth : -1,
+          bodyCW: body?.clientWidth ?? 0,
         };
       });
       expect(Math.round(at900.leftW)).toBe(500);
-      // Floor: 500+300+~195 > body — overflow is a known 0.5.7 issue; must not
-      // exceed the pre-fix worst case (~145px body overflow at default 268).
+      // Prefreeze F3: overflow > 0, and ≤ main's layout overflow
+      // (500+4+300+4+340 − clientWidth). Tip ideal ≈ 500+4+300+4+195 − CW (±2).
       expect(at900.bodyOverflow).toBeGreaterThan(0);
+      const mainUpper = 500 + 4 + 300 + 4 + 340 - at900.bodyCW;
+      const tipIdeal = 500 + 4 + 300 + 4 + PANE_MIN_PX - at900.bodyCW;
+      expect(
+        at900.bodyOverflow,
+        `F3 bodyOverflow ≤ main math (${mainUpper}); got ${at900.bodyOverflow} (CW=${at900.bodyCW})`,
+      ).toBeLessThanOrEqual(mainUpper + 2);
+      expect(
+        Math.abs(at900.bodyOverflow - tipIdeal),
+        `F3 tip overflow ≈ ideal ${tipIdeal} ±2 (got ${at900.bodyOverflow})`,
+      ).toBeLessThanOrEqual(2);
 
       const disk = JSON.parse(
         fs.readFileSync(path.join(fixture.userData, 'app-settings.json'), 'utf-8'),
