@@ -192,6 +192,49 @@ describe('PB2 — round trip on real files', () => {
     expect(second.movedIds).toEqual([]);
   });
 
+  it('PB2(c): second boot and empty/mask-only boot write ZERO bytes to app-settings.json (K-B9)', () => {
+    const { store, settingsPath } = mkStore();
+    const seed = { ...fullPlaintextFixture(K), slice2AutonomyOffMigrated: true };
+    fs.writeFileSync(settingsPath, JSON.stringify(seed), 'utf-8');
+    expect(migrateSecretsFromSettingsFile(settingsPath, store).migrated).toBe(true);
+
+    // Atomic rewrite ends in fs.renameSync(tmp → settingsPath). Mutant K-B9
+    // that writes JSON even when nothing moved must fail this pin.
+    const renameSpy = vi.spyOn(fs, 'renameSync');
+    try {
+      const before = fs.statSync(settingsPath);
+      const second = migrateSecretsFromSettingsFile(settingsPath, store);
+      expect(second.migrated).toBe(false);
+      expect(renameSpy.mock.calls.filter((c) => String(c[1]) === settingsPath)).toHaveLength(0);
+      const after = fs.statSync(settingsPath);
+      expect(after.ino).toBe(before.ino);
+      expect(after.mtimeMs).toBe(before.mtimeMs);
+
+      // Boot with only empty / mask values — must not rewrite JSON either.
+      renameSpy.mockClear();
+      const mask = maskApiKey(K);
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({
+          ...SETTINGS_DEFAULTS,
+          slice2AutonomyOffMigrated: true,
+          apiKey: '',
+          provider: { kind: 'anthropic', model: 'x', apiKey: mask },
+        }),
+        'utf-8',
+      );
+      const beforeMask = fs.statSync(settingsPath);
+      const emptyBoot = migrateSecretsFromSettingsFile(settingsPath, store);
+      expect(emptyBoot.migrated).toBe(false);
+      expect(renameSpy.mock.calls.filter((c) => String(c[1]) === settingsPath)).toHaveLength(0);
+      const afterMask = fs.statSync(settingsPath);
+      expect(afterMask.ino).toBe(beforeMask.ino);
+      expect(afterMask.mtimeMs).toBe(beforeMask.mtimeMs);
+    } finally {
+      renameSpy.mockRestore();
+    }
+  });
+
   it('PB2(b): restore-shaped archive with plaintext → next boot migrates all', () => {
     const { store, settingsPath } = mkStore();
     // Simulate restore of an old archive that still has plaintext keys.
@@ -276,6 +319,50 @@ describe('PB3 — store first / read-back / JSON wins', () => {
     expect(store.get('anthropic.apiKey')).toBe(K);
     expect(isMaskedPreview(JSON.parse(fs.readFileSync(settingsPath, 'utf-8')).apiKey)).toBe(true);
   });
+
+  it('(f2) migrate overwrites stale store with JSON plaintext then blanks JSON (K-B12)', () => {
+    const K_OLD = 'sk-ant-StaleStoredOld00000000000000000000000000001';
+    const K_NEW = 'sk-ant-FreshJsonNew000000000000000000000000000001';
+
+    // provider.lineEditor.apiKey
+    {
+      const { store, settingsPath } = mkStore();
+      store.set('provider.lineEditor.apiKey', K_OLD);
+      const seed = {
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        agents: {
+          ...SETTINGS_DEFAULTS.agents,
+          lineEditor: agentWithKey(K_NEW),
+        },
+      };
+      fs.writeFileSync(settingsPath, JSON.stringify(seed), 'utf-8');
+      migrateSecretsFromSettingsFile(settingsPath, store);
+      expect(store.get('provider.lineEditor.apiKey')).toBe(K_NEW);
+      const disk = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as AppSettings;
+      expect(getKeyField(disk, 'agents.lineEditor.provider.apiKey')).toBe('');
+      expect(fs.readFileSync(settingsPath, 'utf-8')).not.toContain(K_NEW);
+      expect(fs.readFileSync(settingsPath, 'utf-8')).not.toContain(K_OLD);
+    }
+
+    // anthropic.apiKey (top-level apiKey)
+    {
+      const { store, settingsPath } = mkStore();
+      store.set('anthropic.apiKey', K_OLD);
+      const seed = {
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        apiKey: K_NEW,
+      };
+      fs.writeFileSync(settingsPath, JSON.stringify(seed), 'utf-8');
+      migrateSecretsFromSettingsFile(settingsPath, store);
+      expect(store.get('anthropic.apiKey')).toBe(K_NEW);
+      const disk = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as AppSettings;
+      expect(disk.apiKey).toBe('');
+      expect(fs.readFileSync(settingsPath, 'utf-8')).not.toContain(K_NEW);
+      expect(fs.readFileSync(settingsPath, 'utf-8')).not.toContain(K_OLD);
+    }
+  });
 });
 
 describe('PB4 — atomic writes and modes', () => {
@@ -312,6 +399,25 @@ describe('PB4 — atomic writes and modes', () => {
       expect(fs.statSync(settingsPath).mode & 0o777).toBe(0o600);
     }
     void dir;
+  });
+
+  it('temp cleanup only removes basename.*.tmp for listed targets (prefix pin)', () => {
+    const { dir, settingsPath, secretsPath } = mkDir();
+    const unrelated = path.join(dir, 'unrelated.tmp');
+    const vaultSettingsTmp = path.join(dir, 'vault-settings.json.123-abc.tmp');
+    const bareAppSettingsTmp = path.join(dir, 'app-settings.json.tmp');
+    const realLeftover = `${settingsPath}.${process.pid}-deadbeef.tmp`;
+    fs.writeFileSync(unrelated, 'keep', 'utf-8');
+    fs.writeFileSync(vaultSettingsTmp, 'keep', 'utf-8');
+    fs.writeFileSync(bareAppSettingsTmp, 'keep', 'utf-8');
+    fs.writeFileSync(realLeftover, 'drop', 'utf-8');
+
+    deleteLeftoverAtomicTemps([settingsPath, secretsPath]);
+
+    expect(fs.existsSync(unrelated)).toBe(true);
+    expect(fs.existsSync(vaultSettingsTmp)).toBe(true);
+    expect(fs.existsSync(bareAppSettingsTmp)).toBe(true);
+    expect(fs.existsSync(realLeftover)).toBe(false);
   });
 
   it('saveAppSettingsTo and SecretsStore.persist use atomic rename (not in-place writeFileSync)', () => {
@@ -382,6 +488,126 @@ describe('PB6 — no values in logs', () => {
     );
     expect(mainSrc).toMatch(/migration skipped: safeStorage unavailable'/);
     expect(mainSrc).not.toMatch(/migration skipped: safeStorage unavailable —',\s*\(e as Error\)\.message/);
+  });
+
+  it('behavioral: migrate never logs any of 12 plaintext values (K-B5)', () => {
+    // Twelve distinct values so a path/value warn cannot hide behind a shared constant.
+    const values = KEY_FIELD_PATHS.map(
+      (_, i) => `sk-ant-LogPin${String(i).padStart(2, '0')}0000000000000000000000000001`,
+    );
+    let seed = fullPlaintextFixture(values[0]!);
+    for (let i = 0; i < KEY_FIELD_PATHS.length; i++) {
+      seed = setKeyField(seed, KEY_FIELD_PATHS[i]!, values[i]!);
+    }
+
+    const capture: string[] = [];
+    const record = (...args: unknown[]) => {
+      capture.push(args.map((a) => {
+        try {
+          return typeof a === 'string' ? a : JSON.stringify(a);
+        } catch {
+          return String(a);
+        }
+      }).join(' '));
+    };
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(record);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(record);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(record);
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(record);
+    const debugSpy = vi.spyOn(console, 'debug').mockImplementation(record);
+
+    const assertNoValuesLogged = () => {
+      const blob = capture.join('\n');
+      for (const v of values) {
+        expect(blob, `log must not contain ${v}`).not.toContain(v);
+      }
+    };
+
+    try {
+      // 1) Working store — full migrate.
+      {
+        const { store, settingsPath } = mkStore();
+        fs.writeFileSync(settingsPath, JSON.stringify({ ...seed, slice2AutonomyOffMigrated: true }), 'utf-8');
+        capture.length = 0;
+        migrateSecretsFromSettingsFile(settingsPath, store);
+        assertNoValuesLogged();
+      }
+
+      // 2) store.set throws for every id — leave plaintext; still no value logs.
+      {
+        const { store, settingsPath } = mkStore();
+        fs.writeFileSync(settingsPath, JSON.stringify({ ...seed, slice2AutonomyOffMigrated: true }), 'utf-8');
+        store.set = () => {
+          throw new Error('injected set failure');
+        };
+        capture.length = 0;
+        migrateSecretsFromSettingsFile(settingsPath, store);
+        assertNoValuesLogged();
+      }
+
+      // 3) Read-back mismatch for every id — leave plaintext; still no value logs.
+      {
+        const { store, settingsPath } = mkStore();
+        fs.writeFileSync(settingsPath, JSON.stringify({ ...seed, slice2AutonomyOffMigrated: true }), 'utf-8');
+        const origGet = store.get.bind(store);
+        store.get = (id: string) => {
+          const v = origGet(id);
+          return v ? `mismatch-not-${v}` : v;
+        };
+        capture.length = 0;
+        migrateSecretsFromSettingsFile(settingsPath, store);
+        assertNoValuesLogged();
+      }
+    } finally {
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+      infoSpy.mockRestore();
+      debugSpy.mockRestore();
+    }
+  });
+});
+
+describe('PB boot order — main.ts whenReady secrets sequence (K-B3)', () => {
+  it('initSecretsStore → deleteLeftoverAtomicTemps → migrateSecretsFromSettingsFile → initTelemetry', () => {
+    const mainSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'main.ts'),
+      'utf-8',
+    );
+    const readyIdx = mainSrc.indexOf('app.whenReady().then');
+    expect(readyIdx).toBeGreaterThanOrEqual(0);
+    // Bound the boot block: from whenReady through the secrets-end mark.
+    const bootEnd = mainSrc.indexOf("performance.mark('app:secrets-end')", readyIdx);
+    expect(bootEnd).toBeGreaterThan(readyIdx);
+    const boot = mainSrc.slice(readyIdx, bootEnd);
+
+    const initStore = boot.search(/^\s*initSecretsStore\(/m);
+    const deleteTemps = boot.search(/^\s*deleteLeftoverAtomicTemps\(/m);
+    const migrate = boot.search(
+      /^\s*migrateSecretsFromSettingsFile\(\s*getAppSettingsPath\(\)\s*,\s*getSecretsStore\(\)\s*\)/m,
+    );
+    const telemetry = boot.search(/^\s*initTelemetry\(/m);
+
+    expect(initStore, 'initSecretsStore( must exist live in whenReady').toBeGreaterThanOrEqual(0);
+    expect(deleteTemps, 'deleteLeftoverAtomicTemps( must exist live').toBeGreaterThanOrEqual(0);
+    expect(migrate, 'migrateSecretsFromSettingsFile(getAppSettingsPath(), getSecretsStore()) must exist live').toBeGreaterThanOrEqual(0);
+    expect(telemetry, 'initTelemetry( must exist live').toBeGreaterThanOrEqual(0);
+
+    // Not commented out — line must not start with // after trim.
+    for (const [label, idx] of [
+      ['initSecretsStore', initStore],
+      ['deleteLeftoverAtomicTemps', deleteTemps],
+      ['migrateSecretsFromSettingsFile', migrate],
+      ['initTelemetry', telemetry],
+    ] as const) {
+      const lineStart = boot.lastIndexOf('\n', idx) + 1;
+      const line = boot.slice(lineStart, boot.indexOf('\n', idx));
+      expect(line.trimStart().startsWith('//'), `${label} must not be commented out`).toBe(false);
+    }
+
+    expect(initStore).toBeLessThan(deleteTemps);
+    expect(deleteTemps).toBeLessThan(migrate);
+    expect(migrate).toBeLessThan(telemetry);
   });
 });
 

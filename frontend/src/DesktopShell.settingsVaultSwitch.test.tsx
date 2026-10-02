@@ -2854,10 +2854,6 @@ describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
     await waitFor(() => expect(mainRoot).toBe(VAULT_B));
 
     await openVaultsCategory();
-    // DEBUG
-    const cards = screen.queryAllByTestId(/mvs-card-/);
-    // eslint-disable-next-line no-console
-    console.log('CARDS', cards.map(c => ({ id: c.getAttribute('data-testid'), text: c.textContent?.slice(0,120) })));
     const themeSel = screen.queryByTestId(`mvs-theme-${VAULT_A}`) ?? screen.getByTestId(`mvs-theme-${VAULT_B}`);
     fireEvent.change(themeSel, { target: { value: 'ice' } });
     await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
