@@ -448,9 +448,7 @@ export default function ModelKeysSection({
                 Please re-enter your key.
               </p>
             )}
-            {!hasKey && needsReentry && (
-              <p className="settings-hint" data-testid="mk-api-key-missing">Key missing — please re-enter.</p>
-            )}
+            {/* KEYS-B: one re-enter line only — do not also show mk-api-key-missing. */}
             <p className="settings-hint">Stored locally on this machine. Mythos never resells access.</p>
           </div>
         )}

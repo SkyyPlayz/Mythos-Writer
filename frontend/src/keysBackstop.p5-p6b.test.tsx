@@ -4,7 +4,7 @@
  * S6 — same paste + re-enter coverage for legacy apiKey, ProviderSection, and
  *       per-agent AgentProviderSection inputs (voice/STT/TTS have no key inputs).
  */
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import ModelKeysSection from './partner/ModelKeysSection';
 import ApiKeySection from './components/SettingsPanel/sections/ApiKeySection';
@@ -88,7 +88,7 @@ describe('P6b — keyReentryPaths shows re-enter line', () => {
     };
   });
 
-  it('provider.apiKey in keyReentryPaths → missing + Please re-enter your key', async () => {
+  it('provider.apiKey in keyReentryPaths → Please re-enter your key (one line only)', async () => {
     renderMk({
       settings: baseSettings({
         keyReentryPaths: ['provider.apiKey'],
@@ -97,8 +97,7 @@ describe('P6b — keyReentryPaths shows re-enter line', () => {
     });
     await screen.findByTestId('mk-keys-error');
     expect(screen.getByTestId('mk-api-key-reentry')).toHaveTextContent('Please re-enter your key.');
-    expect(screen.getByTestId('mk-api-key-missing')).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByTestId('mk-api-key-reentry')).toBeInTheDocument());
+    expect(screen.queryByTestId('mk-api-key-missing')).not.toBeInTheDocument();
   });
 });
 

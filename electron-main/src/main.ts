@@ -722,6 +722,7 @@ import {
   SETTINGS_DEFAULTS,
   loadAppSettingsFrom,
   saveAppSettingsTo,
+  markOnboardingCompleteJsonOnly,
   buildGlobalProviderConfig,
   getProviderConfigForAgentFrom,
   getOptionalAgentSettings,
@@ -731,7 +732,7 @@ import {
 import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
 import { restartVaultRuntime } from './vaultRuntimeRestart.js';
 import { resolveVaultImportCollisions } from './vaultImportConflict.js';
-import { initSecretsStore, getSecretsStore } from './secrets/index.js';
+import { initSecretsStore, getSecretsStore, deleteLeftoverAtomicTemps } from './secrets/index.js';
 import { migrateSecretsFromSettingsFile } from './secrets/migration.js';
 import { indexDocument, buildFullIndex, searchVault, planFtsUpdate, indexSceneFromDisk, refreshEntityIndex } from './search.js';
 import { buildEpub } from './epub.js';
@@ -791,7 +792,8 @@ import {
   type ProductionRoleId,
 } from './productionRoles.js';
 import { getWritingModeState, setWritingModeState } from './writingMode.js';
-import { backupAppData, restoreAppData } from './backup.js';
+import { backupAppData } from './backup.js';
+import { restoreAppDataAndReloadSettings } from './appRestore.js';
 import { cleanUninstall, writeUninstallDeletePathList } from './uninstallHelper.js';
 import { planUninstallRecovery } from './uninstallRecoveryPlan.js';
 import {
@@ -3254,9 +3256,10 @@ const handlers: IpcHandlers = {
     // M29 marker guard: a configured MythosVault v2 (mythos.json beside the
     // Story Vault) means this install is already set up — never boot into the
     // wizard for it, even after app-settings.json was cleared or lost.
+    // KEYS-B P1 / E3: JSON-only raw write — never the secret saver (HARD-1).
     if (settings.onboardingComplete !== true && mythosRootForStoryVault(getVaultRoot()) !== null) {
+      markOnboardingCompleteJsonOnly(getAppSettingsPath());
       settings = { ...settings, onboardingComplete: true };
-      saveAppSettings(settings);
     }
     const masked = maskSettingsForRenderer(settings);
     const legacy = detectLegacyVaults({
@@ -3327,7 +3330,12 @@ const handlers: IpcHandlers = {
       waIdleDebounceSeconds: reconciled.agents.writingAssistant.idleDebounceSeconds ?? 30,
     };
     const updated = { ...reconciled, ...(telemetry !== undefined ? { telemetry } : {}), ...syncedWa };
-    saveAppSettings(updated);
+    // KEYS-B P3 Abort: persist throw → non-key JSON may still land; surface error.
+    try {
+      saveAppSettings(updated);
+    } catch (e) {
+      return { saved: false, error: sanitizeIpcError(IPC_CHANNELS.SETTINGS_SET, e).error };
+    }
     // Re-configure telemetry in-process immediately.
     if (updated.telemetry) {
       configureTelemetry({ enabled: updated.telemetry.enabled, sessionId: updated.telemetry.sessionId });
@@ -7238,18 +7246,19 @@ const handlers: IpcHandlers = {
     const archivePath = res.filePaths[0];
     await shutdownJobService();
     closeDb();
-    try {
-      const result = await restoreAppData({
-        archivePath,
-        userDataPath: app.getPath('userData'),
-        storyVaultRoot: getVaultRoot(),
-        notesVaultRoot: getNotesVaultRoot(),
-        overwrite: payload?.confirmed ?? false,
-      });
-      return result;
-    } finally {
-      ensureVaultDir();
-    }
+    // KEYS-B PB9b: restore + finally settings reload share one entry point so
+    // the slice2 flag write cannot wipe the secret store (S-B11 JSON-only).
+    return restoreAppDataAndReloadSettings({
+      archivePath,
+      userDataPath: app.getPath('userData'),
+      storyVaultRoot: getVaultRoot(),
+      notesVaultRoot: getNotesVaultRoot(),
+      overwrite: payload?.confirmed ?? false,
+      getStore: getSecretsStore,
+      afterExtract: () => {
+        ensureVaultDir();
+      },
+    });
   },
   // SKY-2969: Uninstaller vault-cleanup choice
   [IPC_CHANNELS.APP_CLEAN_UNINSTALL]: async (): Promise<CleanUninstallResponse> => {
@@ -9425,7 +9434,13 @@ function initTelemetry(): void {
   // Ensure there's always a sessionId stored, even when disabled (regenerated on each disable).
   if (!telemetry.sessionId) {
     const id = generateSessionId();
-    saveAppSettings({ ...settings, telemetry: { ...telemetry, sessionId: id } });
+    // KEYS-B H3: boot save can throw (e.g. secrets rename / decrypt-failed heal)
+    // before setupIpcMain / window — catch, warn with no values, keep configuring.
+    try {
+      saveAppSettings({ ...settings, telemetry: { ...telemetry, sessionId: id } });
+    } catch {
+      console.warn('[telemetry] boot sessionId persist failed; continuing');
+    }
     configureTelemetry({ enabled: telemetry.enabled, sessionId: id });
   } else {
     configureTelemetry({ enabled: telemetry.enabled, sessionId: telemetry.sessionId });
@@ -11744,13 +11759,22 @@ app.whenReady().then(async () => {
   // migration that lifts any plaintext API keys out of app-settings.json into
   // safeStorage. Must precede initTelemetry — that path can rewrite settings.
   initSecretsStore({ userDataDir: app.getPath('userData'), safeStorage });
+  // KEYS-B B3: drop leftover atomic temps before migration (never read as settings).
+  try {
+    const settingsPath = getAppSettingsPath();
+    const secretsPath = path.join(app.getPath('userData'), 'secrets.json');
+    deleteLeftoverAtomicTemps([settingsPath, secretsPath]);
+  } catch {
+    /* best-effort */
+  }
   try {
     migrateSecretsFromSettingsFile(getAppSettingsPath(), getSecretsStore());
-  } catch (e) {
+  } catch {
     // On hosts without a usable OS keychain, safeStorage.encryptString throws
     // and the migration would re-throw. Leave the file untouched so existing
     // env-var workflows keep working; settings UI will surface the error.
-    console.warn('[secrets] migration skipped: safeStorage unavailable —', (e as Error).message);
+    // B5: path/id only — never log e.message (could contain a key value).
+    console.warn('[secrets] migration skipped: safeStorage unavailable');
   }
   // Initialize telemetry from persisted settings (off by default)
   initTelemetry();

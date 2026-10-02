@@ -2837,6 +2837,9 @@ describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
       ...basePersisted(),
       apiKey: K2,
       provider: { kind: 'anthropic', model: 'x', apiKey: K2 },
+      // Path-derived names are vault-a/vault-b; pin display names so rename
+      // double-clicks the real Alpha/Bravo labels on Mythos vaults cards.
+      vaultDisplayNames: { [VAULT_A]: 'Alpha', [VAULT_B]: 'Bravo' },
     } as unknown as Persisted;
     wireRealReconcile();
     render(<App />);
@@ -2845,7 +2848,7 @@ describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
     expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeInTheDocument();
   }
 
-  async function themeRenameAndShellWrite() {
+  async function themeRenameAndShellWrite(): Promise<boolean> {
     // Mid-open vault switch
     await clickVaultTile(VAULT_B);
     await waitFor(() => expect(mainRoot).toBe(VAULT_B));
@@ -2855,39 +2858,53 @@ describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
     fireEvent.change(themeSel, { target: { value: 'ice' } });
     await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
 
-    const nameEl = screen.queryByText('Alpha') ?? screen.queryByText('Bravo');
-    if (nameEl) {
-      fireEvent.doubleClick(nameEl);
-      const renameInput = screen.queryByTestId(`mvs-rename-input-${VAULT_A}`)
-        ?? screen.queryByTestId(`mvs-rename-input-${VAULT_B}`);
-      if (renameInput) {
-        fireEvent.change(renameInput, { target: { value: 'Renamed Vault' } });
-        fireEvent.keyDown(renameInput, { key: 'Enter' });
-        await waitFor(() =>
-          expect(settingsSetMock.mock.calls.some((c) => {
-            const p = c[0] as { vaultDisplayNames?: Record<string, string> };
-            return p.vaultDisplayNames && Object.values(p.vaultDisplayNames).includes('Renamed Vault');
-          })).toBe(true),
-        );
-      }
-    }
+    // KEYS-B rider: no `if (el)` soft-skip — rename must run on the real panel.
+    const nameEl = screen.queryByText('Alpha') ?? screen.getByText('Bravo');
+    fireEvent.doubleClick(nameEl);
+    const renameInput = screen.queryByTestId(`mvs-rename-input-${VAULT_A}`)
+      ?? screen.getByTestId(`mvs-rename-input-${VAULT_B}`);
+    fireEvent.change(renameInput, { target: { value: 'Renamed Vault' } });
+    fireEvent.keyDown(renameInput, { key: 'Enter' });
+    await waitFor(() =>
+      expect(settingsSetMock.mock.calls.some((c) => {
+        const p = c[0] as { vaultDisplayNames?: Record<string, string> };
+        return p.vaultDisplayNames && Object.values(p.vaultDisplayNames).includes('Renamed Vault');
+      })).toBe(true),
+    );
+
+    // Capture before clear: dirty Model & keys paste must have reached settingsSet as raw K2.
+    const pastedK2ReachedSet = settingsSetMock.mock.calls.some((c) => {
+      const p = c[0] as { provider?: { apiKey?: string }; apiKey?: string };
+      return p.provider?.apiKey === K2 || p.apiKey === K2;
+    });
 
     settingsSetMock.mockClear();
     const hide = await screen.findByRole('button', { name: /Hide right sidebar/i });
     fireEvent.click(hide);
     await waitFor(() => expect(settingsSetMock.mock.calls.length).toBeGreaterThan(0));
     assertRawK2('after theme/rename/shell');
+    return pastedK2ReachedSet;
+  }
+
+  async function pasteK2ViaModelKeysPanel() {
+    // KEYS-B: open Model & keys first so getByLabelText finds the real
+    // aria-label (no soft-skip). Default provider is Claude (no key field) —
+    // select Paste key so mk-api-key mounts, then paste through the real panel.
+    await goModelKeysTab();
+    fireEvent.click(await screen.findByTestId('mk-prov-paste-key'));
+    await waitFor(() => expect(screen.getByTestId('mk-api-key')).toBeInTheDocument());
+    const keyInput = screen.getByLabelText('API key');
+    fireEvent.change(keyInput, { target: { value: K2 } });
+    expect(keyInput).toHaveValue(K2);
   }
 
   it('Close then relaunch: apiKey and provider.apiKey stay raw K2', async () => {
     await seedK2AndOpenSettings();
     // Paste K2 into Model & keys (dirty) then flush — already seeded on disk;
     // ensure UI path also sends K2 when dirty.
-    const keyInput = screen.queryByLabelText('API key');
-    if (keyInput) {
-      fireEvent.change(keyInput, { target: { value: K2 } });
-    }
-    await themeRenameAndShellWrite();
+    await pasteK2ViaModelKeysPanel();
+    const pastedK2ReachedSet = await themeRenameAndShellWrite();
+    expect(pastedK2ReachedSet).toBe(true);
 
     await triggerSettingsClose('close');
     cleanup();
@@ -2903,11 +2920,9 @@ describe('P2 — keys backstop through App/DesktopShell/SettingsPanel', () => {
 
   it('unmount without Close then relaunch: keys stay raw K2', async () => {
     await seedK2AndOpenSettings();
-    const keyInput = screen.queryByLabelText('API key');
-    if (keyInput) {
-      fireEvent.change(keyInput, { target: { value: K2 } });
-    }
-    await themeRenameAndShellWrite();
+    await pasteK2ViaModelKeysPanel();
+    const pastedK2ReachedSet = await themeRenameAndShellWrite();
+    expect(pastedK2ReachedSet).toBe(true);
     cleanup(); // unmount without Close
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (window as any).api = makeMockApi();

@@ -78,19 +78,19 @@ export function getKeyField(settings: AppSettings, path: KeyFieldPath): string |
     case 'tts.cloudApiKey':
       return settings.tts?.cloudApiKey;
     case 'agents.writingAssistant.provider.apiKey':
-      return settings.agents.writingAssistant.provider?.apiKey;
+      return settings.agents?.writingAssistant?.provider?.apiKey;
     case 'agents.brainstorm.provider.apiKey':
-      return settings.agents.brainstorm.provider?.apiKey;
+      return settings.agents?.brainstorm?.provider?.apiKey;
     case 'agents.archive.provider.apiKey':
-      return settings.agents.archive.provider?.apiKey;
+      return settings.agents?.archive?.provider?.apiKey;
     case 'agents.betaReader.provider.apiKey':
-      return settings.agents.betaReader?.provider?.apiKey;
+      return settings.agents?.betaReader?.provider?.apiKey;
     case 'agents.alphaReader.provider.apiKey':
-      return settings.agents.alphaReader?.provider?.apiKey;
+      return settings.agents?.alphaReader?.provider?.apiKey;
     case 'agents.storylineConsultant.provider.apiKey':
-      return settings.agents.storylineConsultant?.provider?.apiKey;
+      return settings.agents?.storylineConsultant?.provider?.apiKey;
     case 'agents.lineEditor.provider.apiKey':
-      return settings.agents.lineEditor?.provider?.apiKey;
+      return settings.agents?.lineEditor?.provider?.apiKey;
     default: {
       const _exhaustive: never = path;
       return _exhaustive;

@@ -11,7 +11,7 @@
 // the real safeStorage at runtime; tests inject a stub.
 
 import fs from 'fs';
-import path from 'path';
+import { writeJsonAtomicSecure } from './atomicWrite.js';
 
 // Known secret identifiers. Adding a new key here makes the store aware of it
 // for `listKnownIds()` and the migration walker — values for unknown IDs are
@@ -22,6 +22,10 @@ export type SecretId =
   | 'provider.brainstorm.apiKey' // SKY-683 per-agent provider key for Brainstorm
   | 'provider.writingAssistant.apiKey' // SKY-683 per-agent provider key for Writing Assistant
   | 'provider.archive.apiKey' // SKY-740 per-agent provider key for Archive
+  | 'provider.betaReader.apiKey' // Beta 3 M22 / KEYS-B
+  | 'provider.alphaReader.apiKey' // KEYS-B production role
+  | 'provider.storylineConsultant.apiKey' // KEYS-B production role
+  | 'provider.lineEditor.apiKey' // KEYS-B production role
   | 'voice.openaiApiKey' // MYT-424 Whisper cloud fallback
   | 'stt.cloudApiKey' // SKY-816 STT cloud endpoint API key
   | 'tts.cloudApiKey'; // SKY-817 TTS cloud endpoint API key
@@ -32,6 +36,10 @@ export const KNOWN_SECRET_IDS: readonly SecretId[] = [
   'provider.brainstorm.apiKey',
   'provider.writingAssistant.apiKey',
   'provider.archive.apiKey',
+  'provider.betaReader.apiKey',
+  'provider.alphaReader.apiKey',
+  'provider.storylineConsultant.apiKey',
+  'provider.lineEditor.apiKey',
   'voice.openaiApiKey',
   'stt.cloudApiKey',
   'tts.cloudApiKey',
@@ -71,10 +79,17 @@ export class SecretsStore {
   private readonly filePath: string;
   private readonly safeStorage: SafeStorageLike;
   private cache: Map<string, string> | null = null;
+  /** Ids present as ciphertext on disk that failed decrypt on last read. */
+  private decryptFailedIds = new Set<string>();
 
   constructor(opts: SecretsStoreOptions) {
     this.filePath = opts.filePath;
     this.safeStorage = opts.safeStorage;
+  }
+
+  /** Absolute path of secrets.json (Abort snapshot / tests). */
+  get path(): string {
+    return this.filePath;
   }
 
   /** True iff safeStorage can encrypt on this host. */
@@ -91,6 +106,9 @@ export class SecretsStore {
   /**
    * Writes a secret. Passing an empty string or null removes the entry, so
    * "clear this key" maps to a normal settings-save with a cleared input.
+   * No-op when the decrypted cache already holds the same value (KEYS-B P4).
+   * Decrypt-failed ids never count as unchanged — heal write still runs.
+   * KEYS-B H2: if persist throws, roll the in-memory cache back then rethrow.
    */
   set(id: SecretId | string, value: string | null): void {
     if (!value) {
@@ -103,15 +121,53 @@ export class SecretsStore {
       );
     }
     const cache = this.ensureCache();
+    if (!this.decryptFailedIds.has(id) && cache.get(id) === value) {
+      return;
+    }
+    const priorHad = cache.has(id);
+    const priorValue = priorHad ? cache.get(id)! : null;
+    const priorFailed = this.decryptFailedIds.has(id);
     cache.set(id, value);
-    this.persist();
+    this.decryptFailedIds.delete(id);
+    try {
+      this.persist();
+    } catch (err) {
+      if (priorHad) {
+        cache.set(id, priorValue!);
+      } else {
+        cache.delete(id);
+      }
+      if (priorFailed) {
+        this.decryptFailedIds.add(id);
+      } else {
+        this.decryptFailedIds.delete(id);
+      }
+      throw err;
+    }
   }
 
-  /** Removes a secret. No-op if the id is not stored. */
+  /**
+   * Removes a secret. No-op if the id is not stored and not a decrypt-failed
+   * ciphertext entry. Clearing a decrypt-failed id still rewrites the file.
+   * KEYS-B H2: if persist throws, re-insert the prior cache entry then rethrow.
+   */
   delete(id: SecretId | string): void {
     const cache = this.ensureCache();
-    if (cache.delete(id)) {
-      this.persist();
+    const priorValue = cache.get(id);
+    const hadCached = cache.delete(id);
+    const hadFailed = this.decryptFailedIds.delete(id);
+    if (hadCached || hadFailed) {
+      try {
+        this.persist();
+      } catch (err) {
+        if (hadCached && priorValue !== undefined) {
+          cache.set(id, priorValue);
+        }
+        if (hadFailed) {
+          this.decryptFailedIds.add(id);
+        }
+        throw err;
+      }
     }
   }
 
@@ -123,6 +179,7 @@ export class SecretsStore {
   /** Drops the in-memory cache so the next get() re-reads + re-decrypts from disk. */
   reload(): void {
     this.cache = null;
+    this.decryptFailedIds.clear();
   }
 
   // ─── internals ─────────────────────────────────────────────────────────────
@@ -135,6 +192,7 @@ export class SecretsStore {
 
   private readFromDisk(): Map<string, string> {
     const out = new Map<string, string>();
+    this.decryptFailedIds.clear();
     if (!fs.existsSync(this.filePath)) return out;
     let parsed: SecretsFile;
     try {
@@ -152,9 +210,9 @@ export class SecretsStore {
         out.set(id, plaintext);
       } catch {
         // Decryption can fail when the OS keychain rolls credentials (e.g.
-        // after a fresh OS install copying ~/.config wholesale). Drop the
-        // unreadable entry rather than throwing — the user will be prompted
-        // to re-enter the key.
+        // after a fresh OS install copying ~/.config wholesale). Track the id
+        // so set/delete still heal the ciphertext rather than no-op (P4).
+        this.decryptFailedIds.add(id);
       }
     }
     return out;
@@ -169,7 +227,7 @@ export class SecretsStore {
       values[id] = ciphertext.toString('base64');
     }
     const file: SecretsFile = { v: FILE_VERSION, values };
-    fs.mkdirSync(path.dirname(this.filePath), { recursive: true });
-    fs.writeFileSync(this.filePath, JSON.stringify(file, null, 2), 'utf-8');
+    // KEYS-B B3: atomic temp + rename; never truncate secrets.json in place.
+    writeJsonAtomicSecure(this.filePath, file);
   }
 }
