@@ -377,14 +377,14 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  /* beta-057: prefer 340 (flex-basis from NotesTabPanel.tsx RIGHT_SIDEBAR_W)
-     but allow shrink so 268+300+pane fits body @900.
-     STEP 0 (dcbf09c0, setContentSize 900×900): body clientWidth 771
-     → pane max = 771 − 268 − 4 − 300 − 4 = 195. Min locks that floor. */
+  /* beta-057: prefer 340 (inline width from NotesTabPanel.tsx RIGHT_SIDEBAR_W,
+     same as main) but allow shrink so 268+300+pane fits body @900.
+     STEP 0 packaged (setContentSize 900×900): body clientWidth 769
+     → pane max = 769 − 268 − 4 − 300 − 4 = 193. Min 190 leaves 3px slack. */
   flex: 0 1 auto;
   height: 100%;
   overflow: hidden;
-  min-width: 195px;
+  min-width: 190px;
   max-width: 500px;
   background: var(--glass-fill-fallback);
   /* Prefreeze F1: narrow-pane tab/header packing scoped via this container. */

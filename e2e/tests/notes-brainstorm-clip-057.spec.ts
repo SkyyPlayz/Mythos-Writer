@@ -1,13 +1,14 @@
 /**
  * notes-brainstorm-clip-057.spec.ts — PLAN-BRAINSTORM-CLIP-057 r2
  *
- * Notes tab Brainstorm right pane must fit at 900/1024/1440 with real
+ * Notes tab Brainstorm right pane must fit at 900/940/1024/1440 with real
  * BrowserWindow setContentSize (not page viewport only). Freeze conditions:
- *   1. setContentSize 900/1024/1440×900
+ *   1. setContentSize 900/940/1024/1440×900
  *   2. elementFromPoint on Send AND New session centers → button/child
- *   3. type then click Send; stubbed stream:start mock (no real AI)
- *   4. scrollWidth ≤ clientWidth on right pane AND documentElement
+ *   3. type then mouse.click Send; body scrollLeft===0; stubbed stream:start
+ *   4. scrollWidth ≤ clientWidth on right pane, documentElement, and body @900/1024
  *   5. no saved right width; saved-500-left stays 500
+ *   6. @940: preset chip + header actions inside pane (pc-chrome wrap ≤273)
  */
 
 import path from 'path';
@@ -23,8 +24,10 @@ import {
 import { closeElectronApp, removeTempDirs } from '../helpers/electronTeardown';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
-/** STEP 0 math: bodyCW@900=771 → 771−268−4−300−4 = 195 */
-const PANE_MIN_PX = 195;
+/** STEP 0 packaged: bodyCW@900=769 → 769−268−4−300−4 = 193; min 190 (+3 slack). */
+const PANE_MIN_PX = 190;
+/** N1: measured pc-chrome wrap threshold — one-row fits from 273 (RED if CSS back to 228). */
+const PC_CHROME_WRAP_MAX_PX = 273;
 const LEFT_DEFAULT = 268;
 const RIGHT_PREFERRED = 340;
 
@@ -324,6 +327,84 @@ async function assertNoHorizontalOverflow(page: Page): Promise<void> {
   );
 }
 
+/** P4: notes-tab-body must not horizontally overflow at mid widths. */
+async function assertBodyNoHorizontalOverflow(page: Page): Promise<void> {
+  const m = await page.evaluate(() => {
+    const body = document.querySelector('.notes-tab-body');
+    return {
+      sw: body?.scrollWidth ?? -1,
+      cw: body?.clientWidth ?? -1,
+      scrollLeft: body?.scrollLeft ?? -1,
+    };
+  });
+  expect(m.sw, `P4 body scrollWidth≤clientWidth ${JSON.stringify(m)}`).toBeLessThanOrEqual(m.cw);
+}
+
+/**
+ * N1 @940: preset chip + every visible header/tab control inside pane; wrap
+ * query engaged (actions flex-wrap). RED if pc-chrome threshold stays 228.
+ */
+async function assertN1PresetAndActionsAt940(page: Page): Promise<void> {
+  const report = await page.evaluate(() => {
+    const paneEl = document.querySelector('[data-testid="notes-brainstorm-panel"]') as HTMLElement | null;
+    const host = paneEl?.querySelector('.pc-header-host') as HTMLElement | null;
+    const header = paneEl?.querySelector(
+      '.pc-header.brainstorm-header--compact',
+    ) as HTMLElement | null;
+    const actions = header?.querySelector('.pc-header-actions') as HTMLElement | null;
+    const preset = header?.querySelector('.brainstorm-header-preset') as HTMLElement | null;
+    if (!paneEl || !header || !actions) {
+      return { ok: false, reason: 'missing chrome', chromeW: 0, wrap: '', failures: [] as string[] };
+    }
+    const chromeW = host?.clientWidth ?? header.clientWidth;
+    const acs = getComputedStyle(actions);
+    const pr = paneEl.getBoundingClientRect();
+    const failures: string[] = [];
+    const check = (el: HTMLElement | null, label: string) => {
+      if (!el) {
+        failures.push(`missing ${label}`);
+        return;
+      }
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) {
+        failures.push(`${label} zero-size`);
+        return;
+      }
+      const inside =
+        r.left >= pr.left - 1 &&
+        r.right <= pr.right + 1 &&
+        r.top >= pr.top - 1 &&
+        r.bottom <= pr.bottom + 1;
+      if (!inside) failures.push(`${label} outside pane l=${r.left} r=${r.right} paneR=${pr.right}`);
+    };
+    check(preset, 'preset');
+    for (const el of header.querySelectorAll('button')) {
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) continue;
+      const st = getComputedStyle(el);
+      if (st.visibility === 'hidden' || st.display === 'none' || st.opacity === '0') continue;
+      const label =
+        el.getAttribute('aria-label') ||
+        el.getAttribute('data-testid') ||
+        el.className.toString().slice(0, 40);
+      check(el, label);
+    }
+    return {
+      ok: failures.length === 0,
+      reason: '',
+      chromeW,
+      wrap: acs.flexWrap,
+      flex: `${acs.flexGrow} ${acs.flexShrink} ${acs.flexBasis}`,
+      failures,
+    };
+  });
+  expect(report.ok, `N1 @940 controls in pane: ${JSON.stringify(report)}`).toBe(true);
+  // Wrap query must be active at Notes @940 chrome width — threshold 228 leaves flex-wrap nowrap.
+  expect(report.wrap, `N1 wrap engaged @940 chrome=${report.chromeW}`).toBe('wrap');
+  expect(report.chromeW, 'N1 chrome width under wrap max').toBeLessThanOrEqual(PC_CHROME_WRAP_MAX_PX);
+  expect(report.chromeW, 'N1 chrome wider than old 228 threshold').toBeGreaterThan(228);
+}
+
 /** Prefreeze F1: at 1440, tab/header computed styles match main (unconditional shrink RED). */
 async function assertMainTabStylesAt1440(page: Page): Promise<void> {
   const styles = await page.evaluate(() => {
@@ -393,7 +474,7 @@ async function assertMainLikeHeaderChromeAt1440(page: Page): Promise<void> {
   );
 }
 
-test.describe('beta-057 Notes Brainstorm clip @900/1024/1440', () => {
+test.describe('beta-057 Notes Brainstorm clip @900/940/1024/1440', () => {
   test('fresh profile: pane fit, hit-test, send mock, scroll, left/center floors', async () => {
     const fixture = seedFixture();
     let app: ElectronApplication | undefined;
@@ -408,6 +489,7 @@ test.describe('beta-057 Notes Brainstorm clip @900/1024/1440', () => {
 
       for (const [w, h] of [
         [900, 900],
+        [940, 900],
         [1024, 900],
         [1440, 900],
       ] as const) {
@@ -423,6 +505,7 @@ test.describe('beta-057 Notes Brainstorm clip @900/1024/1440', () => {
             center: center?.getBoundingClientRect().width ?? 0,
             right: right?.getBoundingClientRect().width ?? 0,
             minW,
+            bodyCW: document.querySelector('.notes-tab-body')?.clientWidth ?? 0,
           };
         });
 
@@ -436,7 +519,15 @@ test.describe('beta-057 Notes Brainstorm clip @900/1024/1440', () => {
           await assertMainLikeHeaderChromeAt1440(page);
         }
         if (w === 900) {
-          expect(Math.round(layout.right), '@900 pane at min').toBe(PANE_MIN_PX);
+          // Available = bodyCW − 268 − 4 − 300 − 4 (≈193 @769); min 190 is the floor, not the fill.
+          const available = Math.round(layout.bodyCW) - LEFT_DEFAULT - 4 - 300 - 4;
+          expect(Math.round(layout.right), `@900 pane ≈ available ${available}`).toBe(available);
+          expect(Math.round(layout.right), '@900 pane ≥ min').toBeGreaterThanOrEqual(PANE_MIN_PX);
+          expect(Math.round(layout.bodyCW), '@900 body CW packaged ≈769').toBeGreaterThanOrEqual(760);
+          expect(Math.round(layout.bodyCW), '@900 body CW packaged ≈769').toBeLessThanOrEqual(775);
+        }
+        if (w === 940) {
+          await assertN1PresetAndActionsAt940(page);
         }
 
         await boxInsideViewportAndPane(page, '.brainstorm-input');
@@ -448,17 +539,24 @@ test.describe('beta-057 Notes Brainstorm clip @900/1024/1440', () => {
         if (w === 900 || w === 1024) {
           await elementFromPointIsControl(page, '.brainstorm-send-btn');
           await elementFromPointIsControl(page, '.brainstorm-new-session-btn');
+          await assertBodyNoHorizontalOverflow(page);
         }
       }
 
-      // Freeze #3: type first, then Send via mock (no real AI).
+      // P3 / Freeze #3: type, mouse.click Send center, body scrollLeft===0.
       await setContentSize(app, 900, 900);
       const textarea = pane(page).locator('.brainstorm-input');
       const sendBtn = pane(page).locator('.brainstorm-send-btn');
       await expect(sendBtn).toBeDisabled();
       await textarea.fill('clip057 typed prompt');
       await expect(sendBtn).toBeEnabled();
-      await sendBtn.click();
+      const sendBox = (await sendBtn.boundingBox())!;
+      await page.mouse.click(sendBox.x + sendBox.width / 2, sendBox.y + sendBox.height / 2);
+      const scrollLeft = await page.evaluate(() => {
+        const body = document.querySelector('.notes-tab-body');
+        return body?.scrollLeft ?? -1;
+      });
+      expect(scrollLeft, 'P3 body scrollLeft===0 after Send mouse.click').toBe(0);
       await expect(pane(page).locator('.bs-assistant-bubble').last()).toContainText(
         'Clip057 mock reply',
         { timeout: 10_000 },
@@ -543,7 +641,7 @@ test.describe('beta-057 Notes Brainstorm clip @900/1024/1440', () => {
       });
       expect(Math.round(at900.leftW)).toBe(500);
       // Prefreeze F3: overflow > 0, and ≤ main's layout overflow
-      // (500+4+300+4+340 − clientWidth). Tip ideal ≈ 500+4+300+4+195 − CW (±2).
+      // (500+4+300+4+340 − clientWidth). Tip ideal ≈ 500+4+300+4+190 − CW (±2).
       expect(at900.bodyOverflow).toBeGreaterThan(0);
       const mainUpper = 500 + 4 + 300 + 4 + 340 - at900.bodyCW;
       const tipIdeal = 500 + 4 + 300 + 4 + PANE_MIN_PX - at900.bodyCW;

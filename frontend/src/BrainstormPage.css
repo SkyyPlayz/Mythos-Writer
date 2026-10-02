@@ -101,12 +101,13 @@
   padding: 4px 8px;
 }
 
-/* At pc-chrome ≤228: wrap + allow clip so New session stays inside.
-   --compact mounts: Notes right pane, DesktopShell panel renderer (brainstorm),
-   and workspace split pane (brainstorm). Above 228 nothing changes.
-   Notes-scoped min-width/max-width/flex-shrink rules above this query (X1–X5)
-   were C1 survivors — dropped; clip + F2 e2e stay green without them. */
-@container pc-chrome (max-width: 228px) {
+/* At pc-chrome ≤273: wrap + allow clip so New session / preset stay inside.
+   Measured (packaged setContentSize): nowrap overflows through chrome 268
+   (@975); one-row fits from chrome 273 (@980). Wrap max = 273 (N1 / Critic
+   5396779130). @940 chrome ≈233 → wrap engages (228 would not).
+   --compact mounts: Notes right pane, DesktopShell panel renderer (brainstorm)
+   ~5687, and workspace split pane (brainstorm) ~8025. Above 273 nothing changes. */
+@container pc-chrome (max-width: 273px) {
   .pc-header.brainstorm-header.brainstorm-header--compact .pc-header-actions {
     flex: 1 1 100%;
     flex-wrap: wrap;
