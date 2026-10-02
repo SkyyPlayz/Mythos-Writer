@@ -2213,3 +2213,180 @@ describe('KEYS-B FIX BATCH 4 — H2 / H3 / S1 / S2', () => {
     );
   });
 });
+
+describe('KEYS-B FIX BATCH 4 ADDENDUM — H2 swallow / failed-restore pins', () => {
+  it('H2-set-swallow: set persist throw must propagate; save abort (no silent blank success)', () => {
+    const typed = 'sk-ant-H2Swallow00000000000000000000000000001';
+    const { store, secretsPath } = mkStore();
+    const realRename = fs.renameSync.bind(fs);
+    const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation(((
+      src: fs.PathLike,
+      dest: fs.PathLike,
+    ) => {
+      if (String(dest) === secretsPath) {
+        throw new Error('injected set persist failure');
+      }
+      return realRename(src, dest);
+    }) as typeof fs.renameSync);
+
+    try {
+      // Direct set must THROW (swallow mutant replaces throw with void → RED).
+      expect(() => store.set('anthropic.apiKey', typed)).toThrow(/injected set persist failure/);
+      expect(store.get('anthropic.apiKey')).toBeNull();
+    } finally {
+      renameSpy.mockRestore();
+    }
+
+    // Via saver: typed key + persist throw must engage Abort (throw), not succeed
+    // with JSON key blanked while the store lacks the new value.
+    const { store: store2, settingsPath, secretsPath: secretsPath2 } = mkStore();
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        apiKey: '',
+      }),
+      'utf-8',
+    );
+    const renameSpy2 = vi.spyOn(fs, 'renameSync').mockImplementation(((
+      src: fs.PathLike,
+      dest: fs.PathLike,
+    ) => {
+      if (String(dest) === secretsPath2) {
+        throw new Error('injected set persist failure');
+      }
+      return realRename(src, dest);
+    }) as typeof fs.renameSync);
+
+    let saveSucceeded = false;
+    try {
+      expect(() => {
+        saveAppSettingsTo(settingsPath, () => store2, {
+          ...SETTINGS_DEFAULTS,
+          slice2AutonomyOffMigrated: true,
+          apiKey: typed,
+          theme: 'dark',
+        });
+        saveSucceeded = true;
+      }).toThrow(/injected set persist failure/);
+      expect(saveSucceeded, 'save must not report success after set persist throw').toBe(false);
+    } finally {
+      renameSpy2.mockRestore();
+    }
+
+    // Abort path: store still lacks the typed value; JSON key stays blank from on-disk.
+    // Swallow mutant would have set saveSucceeded=true with this same blanked shape — forbidden.
+    expect(store2.get('anthropic.apiKey')).toBeNull();
+    const disk = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as {
+      apiKey?: string;
+      theme?: string;
+    };
+    expect(disk.apiKey ?? '').toBe('');
+    expect(disk.theme).toBe('dark');
+    expect(
+      saveSucceeded && (disk.apiKey ?? '') === '' && store2.get('anthropic.apiKey') === null,
+      'must not succeed with blanked JSON while store lacks the typed key',
+    ).toBe(false);
+  });
+
+  it('H2-set-no-failed-restore: set+persist throw keeps decrypt-failed; next delete drops ciphertext', () => {
+    const failedId = 'anthropic.apiKey';
+    const heal = 'sk-ant-H2setHeal000000000000000000000000000001';
+    const failedCipherB64 = Buffer.from('not-valid-ciphertext-H2setFail').toString('base64');
+    const { secretsPath } = mkDir();
+    fs.writeFileSync(
+      secretsPath,
+      JSON.stringify({ v: 1, values: { [failedId]: failedCipherB64 } }),
+      'utf-8',
+    );
+    const store = new SecretsStore({ filePath: secretsPath, safeStorage: makeSafeStorage(true) });
+    expect(store.get(failedId)).toBeNull();
+
+    const realRename = fs.renameSync.bind(fs);
+    const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation(((
+      src: fs.PathLike,
+      dest: fs.PathLike,
+    ) => {
+      if (String(dest) === secretsPath) {
+        throw new Error('injected set persist failure');
+      }
+      return realRename(src, dest);
+    }) as typeof fs.renameSync);
+
+    try {
+      expect(() => store.set(failedId, heal)).toThrow(/injected set persist failure/);
+    } finally {
+      renameSpy.mockRestore();
+    }
+
+    expect(fs.readFileSync(secretsPath, 'utf-8')).toContain(failedCipherB64);
+    expect(store.get(failedId)).toBeNull();
+
+    // Still tracked as decrypt-failed → delete rewrites and drops ciphertext.
+    const renameSpy2 = vi.spyOn(fs, 'renameSync');
+    try {
+      store.delete(failedId);
+      expect(
+        renameSpy2.mock.calls.some((c) => String(c[1]) === secretsPath),
+        'retry delete must rewrite secrets.json',
+      ).toBe(true);
+    } finally {
+      renameSpy2.mockRestore();
+    }
+
+    const after = fs.readFileSync(secretsPath, 'utf-8');
+    expect(after).not.toContain(failedCipherB64);
+    const parsed = JSON.parse(after) as { values: Record<string, string> };
+    expect(parsed.values[failedId]).toBeUndefined();
+  });
+
+  it('H2-delete-no-failed-restore: delete+persist throw keeps decrypt-failed; retry delete drops ciphertext', () => {
+    const failedId = 'provider.apiKey';
+    const failedCipherB64 = Buffer.from('not-valid-ciphertext-H2delFail').toString('base64');
+    const { secretsPath } = mkDir();
+    fs.writeFileSync(
+      secretsPath,
+      JSON.stringify({ v: 1, values: { [failedId]: failedCipherB64 } }),
+      'utf-8',
+    );
+    const store = new SecretsStore({ filePath: secretsPath, safeStorage: makeSafeStorage(true) });
+    expect(store.get(failedId)).toBeNull();
+
+    const realRename = fs.renameSync.bind(fs);
+    const renameSpy = vi.spyOn(fs, 'renameSync').mockImplementation(((
+      src: fs.PathLike,
+      dest: fs.PathLike,
+    ) => {
+      if (String(dest) === secretsPath) {
+        throw new Error('injected delete persist failure');
+      }
+      return realRename(src, dest);
+    }) as typeof fs.renameSync);
+
+    try {
+      expect(() => store.delete(failedId)).toThrow(/injected delete persist failure/);
+    } finally {
+      renameSpy.mockRestore();
+    }
+
+    expect(fs.readFileSync(secretsPath, 'utf-8')).toContain(failedCipherB64);
+
+    // Still tracked as decrypt-failed → retry delete rewrites and drops ciphertext.
+    const renameSpy2 = vi.spyOn(fs, 'renameSync');
+    try {
+      store.delete(failedId);
+      expect(
+        renameSpy2.mock.calls.some((c) => String(c[1]) === secretsPath),
+        'retry delete must rewrite secrets.json',
+      ).toBe(true);
+    } finally {
+      renameSpy2.mockRestore();
+    }
+
+    const after = fs.readFileSync(secretsPath, 'utf-8');
+    expect(after).not.toContain(failedCipherB64);
+    const parsed = JSON.parse(after) as { values: Record<string, string> };
+    expect(parsed.values[failedId]).toBeUndefined();
+  });
+});
