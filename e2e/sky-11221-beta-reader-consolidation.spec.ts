@@ -367,10 +367,15 @@ test('TC-SKY11221-02: "beta read this scene" in Writing Coach chat runs a normal
 
   await expect(page.locator('.br-panel')).toHaveCount(0);
 
-  const userBubble = page.locator('.trp-bubble--user', { hasText: 'beta read this scene' });
-  await expect(userBubble).toBeVisible({ timeout: 3_000 });
-
-  const assistantReply = page.locator('.trp-bubble--agent', { hasText: MOCK_CHAT_RESPONSE });
+  // Scope to the partner feed. Wait for the agent reply first so MiniAgentChat's
+  // pending-prompt user bubble is cleared — same strict-mode race documented in
+  // agent-hub-session-picker (pending + persisted echo). Not a Notes CSS issue:
+  // this suite stays on Editor; Notes Brainstorm is not mounted.
+  const feed = page.getByTestId('ahp-partner-chat-feed');
+  const assistantReply = feed.locator('.trp-bubble--agent').filter({ hasText: MOCK_CHAT_RESPONSE });
   await expect(assistantReply).toBeVisible({ timeout: 8_000 });
+  const userBubble = feed.locator('.trp-bubble--user').filter({ hasText: 'beta read this scene' });
+  await expect(userBubble).toHaveCount(1);
+  await expect(userBubble).toBeVisible();
   await expect(page.locator('.br-panel')).toHaveCount(0);
 });
