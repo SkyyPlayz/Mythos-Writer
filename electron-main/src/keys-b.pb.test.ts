@@ -18,6 +18,7 @@ import {
 import { redactAppSettings, restoreAppData } from './backup.js';
 import { backupAppData } from './backup.js';
 import { restoreAppDataAndReloadSettings } from './appRestore.js';
+import { sanitizeIpcError } from './ipcErrors.js';
 import {
   deleteLeftoverAtomicTemps,
   writeFileAtomicSecure,
@@ -1613,6 +1614,55 @@ describe('P3 / T9 — Abort when persistSecretsAndStripSettings throws', () => {
     expect(loadSrc).toMatch(/!store\.isAvailable\(\)[\s\S]*?blankAllKeyFields\(outgoing\)/);
     expect(loadSrc).toMatch(/restoreSecretsBytes\(store, secretsBefore\)/);
   });
+
+  it('(e-ipc) SETTINGS_SET abort catch returns saved:false via sanitizeIpcError (ipc-no-catch)', () => {
+    // Source pin: removing the try/catch around saveAppSettings(updated) must go RED.
+    const mainSrc = fs.readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'main.ts'),
+      'utf-8',
+    );
+    const handler = mainSrc.match(
+      /\[IPC_CHANNELS\.SETTINGS_SET\]:[\s\S]*?(?=,\s*\n\s*\[IPC_CHANNELS\.)/,
+    );
+    expect(handler?.[0] ?? '', 'SETTINGS_SET handler').toMatch(
+      /try \{\s*saveAppSettings\(updated\);\s*\} catch \(e\) \{\s*return \{ saved: false, error: sanitizeIpcError\(IPC_CHANNELS\.SETTINGS_SET, e\)\.error \};\s*\}/,
+    );
+
+    // Behavioral: Abort throw → same return shape SETTINGS_SET catch builds.
+    // Production store failures do not embed key material; error must not echo
+    // the typed outgoing value either.
+    const { store, settingsPath } = mkStore();
+    store.set('anthropic.apiKey', K);
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({ ...SETTINGS_DEFAULTS, slice2AutonomyOffMigrated: true, apiKey: '' }),
+      'utf-8',
+    );
+    const typed = 'sk-ant-IpcAbortErrVal00000000000000000000000001';
+    store.set = () => {
+      throw new Error('injected persist failure');
+    };
+    let caught: unknown;
+    try {
+      saveAppSettingsTo(settingsPath, () => store, {
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        apiKey: typed,
+        theme: 'dark',
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    const result = {
+      saved: false as const,
+      error: sanitizeIpcError('settings:set', caught).error,
+    };
+    expect(result).toEqual({ saved: false, error: expect.any(String) });
+    expect(result.error.length).toBeGreaterThan(0);
+    expect(result.error).not.toContain(typed);
+    expect(result.error).not.toContain(K);
+  });
 });
 
 describe('P4 / T10 — SecretsStore set/delete no-ops when unchanged', () => {
@@ -1704,6 +1754,86 @@ describe('P4 / T10 — SecretsStore set/delete no-ops when unchanged', () => {
     } finally {
       renameSpy.mockRestore();
     }
+  });
+
+  it('(f) clear of decrypt-failed id still rewrites secrets.json and drops ciphertext (delete-ignore-failed / failed-not-tracked)', () => {
+    const GOOD = 'sk-ant-GoodKept000000000000000000000000000000001';
+    const failedId = 'provider.apiKey';
+    const goodId = 'anthropic.apiKey';
+    const failedCipherB64 = Buffer.from('not-valid-ciphertext-X').toString('base64');
+
+    const assertClearDropsFailedKeepsGood = (
+      label: string,
+      clear: (store: SecretsStore, settingsPath: string) => void,
+    ) => {
+      const { dir, settingsPath, secretsPath } = mkDir();
+      void dir;
+      // Seed good entry via real encrypt path, then inject undecryptable X beside it.
+      const seedStore = new SecretsStore({
+        filePath: secretsPath,
+        safeStorage: makeSafeStorage(true),
+      });
+      seedStore.set(goodId, GOOD);
+      const secretsObj = JSON.parse(fs.readFileSync(secretsPath, 'utf-8')) as {
+        v: 1;
+        values: Record<string, string>;
+      };
+      secretsObj.values[failedId] = failedCipherB64;
+      fs.writeFileSync(secretsPath, JSON.stringify(secretsObj), 'utf-8');
+
+      const store = new SecretsStore({
+        filePath: secretsPath,
+        safeStorage: makeSafeStorage(true),
+      });
+      expect(store.get(goodId)).toBe(GOOD);
+      expect(store.get(failedId)).toBeNull();
+      expect(fs.readFileSync(secretsPath, 'utf-8')).toContain(failedCipherB64);
+
+      fs.writeFileSync(
+        settingsPath,
+        JSON.stringify({
+          ...SETTINGS_DEFAULTS,
+          slice2AutonomyOffMigrated: true,
+          apiKey: '',
+          provider: { kind: 'anthropic', model: 'x', apiKey: '' },
+        }),
+        'utf-8',
+      );
+
+      const renameSpy = vi.spyOn(fs, 'renameSync');
+      try {
+        clear(store, settingsPath);
+        expect(
+          renameSpy.mock.calls.some((c) => String(c[1]) === secretsPath),
+          `${label}: secrets.json must be rewritten`,
+        ).toBe(true);
+      } finally {
+        renameSpy.mockRestore();
+      }
+
+      const after = fs.readFileSync(secretsPath, 'utf-8');
+      expect(after, `${label}: failed ciphertext must be gone`).not.toContain(failedCipherB64);
+      const parsed = JSON.parse(after) as { values: Record<string, string> };
+      expect(parsed.values[failedId], `${label}: failed id removed`).toBeUndefined();
+      store.reload();
+      expect(store.get(goodId), `${label}: good entry intact`).toBe(GOOD);
+      expect(store.get(failedId)).toBeNull();
+    };
+
+    // 1) Direct store.delete(X)
+    assertClearDropsFailedKeepsGood('store.delete', (store) => {
+      store.delete(failedId);
+    });
+
+    // 2) Real saver clearing that key field to ''
+    assertClearDropsFailedKeepsGood('saveAppSettingsTo clear', (store, settingsPath) => {
+      saveAppSettingsTo(settingsPath, () => store, {
+        ...SETTINGS_DEFAULTS,
+        slice2AutonomyOffMigrated: true,
+        apiKey: GOOD, // keep good path populated so persist doesn't delete it
+        provider: { kind: 'anthropic', model: 'x', apiKey: '' },
+      });
+    });
   });
 });
 
