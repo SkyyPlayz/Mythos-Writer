@@ -235,6 +235,9 @@ jobs:
       - name: Test (mythos-gate Critic/Shield/Probe tip-bound signals)
         run: node .github/scripts/mythos-gate-signals.test.js
 
+      - name: Test (ops-guards hygiene last-success selection)
+        run: bash scripts/mythos-ops/ops-guards.test.sh
+
       - name: Upload coverage report
         if: github.event_name != 'pull_request'
         continue-on-error: true
