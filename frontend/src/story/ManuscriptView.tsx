@@ -89,6 +89,7 @@ import CommentSelectionBar from './CommentSelectionBar';
 import CommentsGutter from './CommentsGutter';
 import CommentOpenCard from './CommentOpenCard';
 import ParagraphRow from './ParagraphRow';
+import StructuralBreadcrumb from '../StructuralBreadcrumb';
 import { buildEntityTerms, type AutoLinkerMode } from '../AutoLinkerExtension';
 import {
   applyAllAutoLinkHints,
@@ -703,6 +704,12 @@ export default function ManuscriptView({
   } = useStoryComments(story);
   /** Pending selection anchor (prototype cSel) — non-null shows the bar. */
   const [selAnchor, setSelAnchor] = useState<string | null>(null);
+  /**
+   * F4#16: selection alone must not open the compose popup. A valid drag /
+   * double-click selection arms this pending quote; the writer must click the
+   * explicit Comment affordance (`msv-comment-arm`) to open the bar.
+   */
+  const [pendingCommentSel, setPendingCommentSel] = useState<string | null>(null);
   const [commentInput, setCommentInput] = useState('');
   /** Expanded gutter card (prototype cOpen). */
   const [openCommentId, setOpenCommentId] = useState<string | null>(null);
@@ -948,6 +955,7 @@ export default function ManuscriptView({
     if (!selAnchor) return;
     if (reader.readSelection(selAnchor)) {
       setSelAnchor(null);
+      setPendingCommentSel(null);
       setCommentInput('');
       return;
     }
@@ -1314,6 +1322,7 @@ export default function ManuscriptView({
   }, []);
 
   // Prototype pageMouseUp (3616–3620): capture 4–219-char selections.
+  // F4#16: do NOT open the compose bar here — only stash a pending quote.
   const handlePageMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const down = pageMouseDownPos.current;
     pageMouseDownPos.current = null;
@@ -1322,13 +1331,25 @@ export default function ManuscriptView({
     const sel = typeof window.getSelection === 'function' ? window.getSelection() : null;
     const text = sel ? String(sel).trim() : '';
     if (isValidAnchor(text)) {
-      setSelAnchor(text);
+      setPendingCommentSel(text);
+      setSelAnchor(null);
+      setCommentInput('');
       setOpenCommentId(null);
+    } else {
+      setPendingCommentSel(null);
     }
   }, []);
 
+  const openCommentComposer = useCallback(() => {
+    if (!pendingCommentSel) return;
+    setSelAnchor(pendingCommentSel);
+    setPendingCommentSel(null);
+    setOpenCommentId(null);
+  }, [pendingCommentSel]);
+
   const clearSelectionBar = useCallback(() => {
     setSelAnchor(null);
+    setPendingCommentSel(null);
     setCommentInput('');
   }, []);
 
@@ -1729,8 +1750,9 @@ export default function ManuscriptView({
         onOpenSceneHistory={sceneHistory?.onOpen}
         onRenameTitle={inlineTitleRename ? scopeTitleRename : undefined}
       />
-      {/* M1 row 4 — zoom bar (prototype 949–970) */}
-      <div className="msv-zoombar">
+      {/* M1 row 4 — zoom bar (prototype 949–970). F2#5: chrome is outside the
+          editable sheet and marked non-editable so nav never leaks into body. */}
+      <div className="msv-zoombar" data-msv-chrome="true" contentEditable={false}>
         <div className="msv-zoom-seg" role="group" aria-label="Zoom level">
           {ZOOM_LEVELS.map(([level, label]) => (
             <button
@@ -1770,36 +1792,14 @@ export default function ManuscriptView({
             {CHEVRON_RIGHT(11)}
           </button>
         </div>
-        <nav className="msv-crumbs" aria-label="Breadcrumbs" data-testid="msv-crumbs">
-          {crumbs.map((c, i) => (
-            <span key={`${c.cursor.zoom}-${c.label}`} className="msv-crumb-item">
-              <button
-                type="button"
-                className={`msv-crumb${i === crumbs.length - 1 ? ' msv-crumb--current' : ''}`}
-                data-testid={`msv-crumb-${i}`}
-                onClick={() => onCursorChange(c.cursor)}
-              >
-                {c.label}
-              </button>
-              {i < crumbs.length - 1 && (
-                <svg
-                  width="9"
-                  height="9"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#586a88"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="msv-crumb-sep"
-                  aria-hidden="true"
-                >
-                  <path d="M9 6l6 6-6 6" />
-                </svg>
-              )}
-            </span>
-          ))}
-        </nav>
+        {/* F4#6 live home: mount F4 StructuralBreadcrumb (no fork) — path data
+            from manuscriptModel.breadcrumbs (incl. live part crumb). */}
+        <div className="msv-crumbs" data-testid="msv-crumbs" data-msv-chrome="true">
+          <StructuralBreadcrumb
+            crumbs={crumbs.map((c) => c.label)}
+            aria-label="Breadcrumbs"
+          />
+        </div>
         <div className="msv-flex-spacer" />
         {/* W0.4 (GAP P0#4): the zoombar's duplicate Read chip is gone — the
             single Read button lives right-aligned on the format toolbar below
@@ -1808,7 +1808,14 @@ export default function ManuscriptView({
       </div>
 
       {/* toolbar v2 (prototype 742–777) */}
-      <div className="msv-toolbar" role="toolbar" aria-label="Manuscript formatting" data-testid="msv-toolbar">
+      <div
+        className="msv-toolbar"
+        role="toolbar"
+        aria-label="Manuscript formatting"
+        data-testid="msv-toolbar"
+        data-msv-chrome="true"
+        contentEditable={false}
+      >
         <select
           className="msv-tb-select"
           data-testid="msv-style-select"
@@ -2150,6 +2157,19 @@ export default function ManuscriptView({
                 {CHEVRON_RIGHT(14)}
               </button>
             </>
+          )}
+          {/* F4#16: explicit Comment arm — selection alone never opens the bar. */}
+          {pendingCommentSel !== null && selAnchor === null && (
+            <div className="msv-selbar-wrap">
+              <button
+                type="button"
+                className="msv-comment-arm"
+                data-testid="msv-comment-arm"
+                onClick={openCommentComposer}
+              >
+                Comment
+              </button>
+            </div>
           )}
           {/* M11: selection comment bar (prototype 811–824) */}
           {selAnchor !== null && (
