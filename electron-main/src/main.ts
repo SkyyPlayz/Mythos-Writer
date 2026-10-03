@@ -729,6 +729,7 @@ import {
   isOptionalAgentKey,
   type OptionalAgentKey,
 } from './appSettingsLoad.js';
+import { assertWritingAssistantScanAllowed } from './writingAssistantScanGate.js';
 import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
 import { restartVaultRuntime } from './vaultRuntimeRestart.js';
 import { resolveVaultImportCollisions } from './vaultImportConflict.js';
@@ -4714,6 +4715,7 @@ const handlers: IpcHandlers = {
   },
 
   [IPC_CHANNELS.WRITING_ASSISTANT_SCAN_NOW]: async (payload) => {
+    assertWritingAssistantScanAllowed(loadAppSettings(), getDb);
     BrowserWindow.getAllWindows().forEach((win) => {
       if (!win.isDestroyed()) {
         win.webContents.send(IPC_CHANNELS.WRITING_ASSISTANT_SCAN_START, {

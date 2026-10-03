@@ -278,6 +278,65 @@ export function getOptionalAgentSettings(
     ?? SETTINGS_DEFAULTS.agents[key]) as NonNullable<AppSettings['agents'][OptionalAgentKey]>;
 }
 
+function isPlainSettingsObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function readSavedWritingAssistantBooleans(rawRecord: Record<string, unknown>): {
+  savedFlat?: boolean;
+  savedAgent?: boolean;
+} {
+  const savedFlat = typeof rawRecord.waEnabled === 'boolean' ? rawRecord.waEnabled : undefined;
+  const agentsRaw = rawRecord.agents;
+  let savedAgent: boolean | undefined;
+  if (isPlainSettingsObject(agentsRaw)) {
+    const waRaw = agentsRaw.writingAssistant;
+    if (isPlainSettingsObject(waRaw) && typeof waRaw.enabled === 'boolean') {
+      savedAgent = waRaw.enabled;
+    }
+  }
+  return { savedFlat, savedAgent };
+}
+
+/** F2: saved "off" wins; non-booleans count as unset. */
+export function resolveWritingAssistantEnabledPair(rawRecord: Record<string, unknown>): boolean {
+  const { savedFlat, savedAgent } = readSavedWritingAssistantBooleans(rawRecord);
+  if (savedFlat === false || savedAgent === false) return false;
+  if (savedAgent !== undefined) return savedAgent;
+  if (savedFlat !== undefined) return savedFlat;
+  return SETTINGS_DEFAULTS.waEnabled ?? true;
+}
+
+/**
+ * F3: shallow repair object for disagreeing on-disk wa pair, or null to skip.
+ * Never mutates `raw`.
+ */
+export function buildWaPairRepair(raw: unknown, value: boolean): Record<string, unknown> | null {
+  if (!isPlainSettingsObject(raw)) return null;
+  const agentsRaw = raw.agents;
+  if (agentsRaw !== undefined && !isPlainSettingsObject(agentsRaw)) return null;
+  const waRaw = isPlainSettingsObject(agentsRaw) ? agentsRaw.writingAssistant : undefined;
+  if (waRaw !== undefined && !isPlainSettingsObject(waRaw)) return null;
+
+  const out: Record<string, unknown> = { ...raw };
+  out.waEnabled = value;
+  const agentsOut: Record<string, unknown> = isPlainSettingsObject(agentsRaw)
+    ? { ...agentsRaw }
+    : {};
+  const waOut: Record<string, unknown> = isPlainSettingsObject(waRaw) ? { ...waRaw } : {};
+  waOut.enabled = value;
+  agentsOut.writingAssistant = waOut;
+  out.agents = agentsOut;
+  return out;
+}
+
+function rawWaPairNeedsRepair(rawRecord: Record<string, unknown>, resolved: boolean): boolean {
+  const { savedFlat, savedAgent } = readSavedWritingAssistantBooleans(rawRecord);
+  if (typeof savedFlat === 'boolean' && savedFlat !== resolved) return true;
+  if (typeof savedAgent === 'boolean' && savedAgent !== resolved) return true;
+  return false;
+}
+
 /**
  * Real settings loader body: read JSON, migrations, hydrate secrets, heal masks.
  * main.ts's loadAppSettings delegates here. Tests call this with a temp path
@@ -325,6 +384,21 @@ export function loadAppSettingsFrom(
       if (rawAgents.writingAssistant && !(rawAgents.writingAssistant as unknown as Record<string, unknown>).cadenceTrigger) {
         base.agents.writingAssistant.cadenceTrigger = 'idle_heartbeat';
         base.agents.writingAssistant.idleHeartbeatConstantInterval = true;
+      }
+      const rawRecord = raw as Record<string, unknown>;
+      const waPair = resolveWritingAssistantEnabledPair(rawRecord);
+      base.waEnabled = waPair;
+      base.agents.writingAssistant.enabled = waPair;
+      // SKY-2627: back-fill flat wa* fields for existing installs that predate this field set.
+      // waModel is intentionally NOT back-filled: null means "use global model" — the spec default.
+      if (!('waCadenceTrigger' in rawRecord)) {
+        base.waCadenceTrigger = base.agents.writingAssistant.cadenceTrigger ?? 'on_save';
+      }
+      if (!('waIdleHeartbeatConstantInterval' in rawRecord)) {
+        base.waIdleHeartbeatConstantInterval = base.agents.writingAssistant.idleHeartbeatConstantInterval ?? false;
+      }
+      if (!('waIdleDebounceSeconds' in rawRecord)) {
+        base.waIdleDebounceSeconds = base.agents.writingAssistant.idleDebounceSeconds ?? 30;
       }
       // Beta 4 M28 (B4-8) back-compat: SETTINGS_DEFAULTS now carries an
       // explicit all-false autoApplyCategories map (every toggle OFF by
@@ -382,13 +456,16 @@ export function loadAppSettingsFrom(
           (base.agents[agentKey] as { model: string }).model = '';
         }
       }
-      // SKY-2627: back-fill flat wa* fields for existing installs that predate this field set.
-      // waModel is intentionally NOT back-filled: null means "use global model" — the spec default.
-      const rawRecord = raw as Record<string, unknown>;
-      if (!('waEnabled' in rawRecord)) base.waEnabled = base.agents.writingAssistant.enabled;
-      if (!('waCadenceTrigger' in rawRecord)) base.waCadenceTrigger = base.agents.writingAssistant.cadenceTrigger ?? 'on_save';
-      if (!('waIdleHeartbeatConstantInterval' in rawRecord)) base.waIdleHeartbeatConstantInterval = base.agents.writingAssistant.idleHeartbeatConstantInterval ?? false;
-      if (!('waIdleDebounceSeconds' in rawRecord)) base.waIdleDebounceSeconds = base.agents.writingAssistant.idleDebounceSeconds ?? 30;
+      if (base.slice2AutonomyOffMigrated && rawWaPairNeedsRepair(rawRecord, waPair)) {
+        const repair = buildWaPairRepair(raw, waPair);
+        if (repair) {
+          try {
+            writeJsonAtomicSecure(settingsPath, repair);
+          } catch {
+            /* best-effort; retry next load */
+          }
+        }
+      }
       // SKY-7771: back-fill voice.voiceMode from the legacy pushToTalkMode
       // checkbox and drop the duplicate key (see voiceSettingsMigration.ts).
       base.voice = migrateVoicePushToTalk(base.voice as LegacyVoiceSettings | undefined);
