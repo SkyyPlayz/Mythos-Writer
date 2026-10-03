@@ -22,11 +22,11 @@ describe('E — Soft-FAIL CLEAR: Demo / TourModal / walkthrough / rail M / Quick
     expect(chrome).not.toMatch(/onToggleDemo/);
   });
 
-  it('package stays 0.5.6', () => {
+  it('package is 0.5.7', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(here, '../../package.json'), 'utf8')) as {
       version: string;
     };
-    expect(pkg.version).toBe('0.5.6');
+    expect(pkg.version).toBe('0.5.7');
   });
 });
 

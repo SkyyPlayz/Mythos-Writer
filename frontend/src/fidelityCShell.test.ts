@@ -59,11 +59,11 @@ describe('C — Soft-FAIL CLEAR: no Demo / TourModal / 45-step / coach-mark / fo
     expect(panel).not.toMatch(/<AgentsSection/);
   });
 
-  it('package stays 0.5.6', () => {
+  it('package is 0.5.7', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(here, '../../package.json'), 'utf8')) as {
       version: string;
     };
-    expect(pkg.version).toBe('0.5.6');
+    expect(pkg.version).toBe('0.5.7');
   });
 });
 
