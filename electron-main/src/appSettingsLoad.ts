@@ -456,7 +456,7 @@ export function loadAppSettingsFrom(
           (base.agents[agentKey] as { model: string }).model = '';
         }
       }
-      if (base.slice2AutonomyOffMigrated && rawWaPairNeedsRepair(rawRecord, waPair)) {
+      if (rawRecord.slice2AutonomyOffMigrated === true && rawWaPairNeedsRepair(rawRecord, waPair)) {
         const repair = buildWaPairRepair(raw, waPair);
         if (repair) {
           try {
