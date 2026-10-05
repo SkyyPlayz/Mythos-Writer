@@ -4,29 +4,49 @@
  * exactly one category and that no registered id appears more than once.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'fs';
-import { resolve } from 'path';
+import { readFileSync, readdirSync, existsSync, statSync } from 'fs';
+import { resolve, dirname } from 'path';
 import {
   SETTINGS_CATEGORIES,
   SECTION_TO_CATEGORY,
   ALL_REGISTERED_SECTION_IDS,
 } from './settingsCategories';
 
-// ── Extract rendered section ids from SettingsPanel.tsx + all section components ─
-// Sections were extracted to components/SettingsPanel/sections/ (SKY-3216/D2).
-// The test now scans all source files that contribute to the rendered output.
-const SECTION_DIR = resolve(__dirname, 'components/SettingsPanel/sections');
-const PARTNER_DIR = resolve(__dirname, 'partner');
-const SOURCE_FILES = [
-  resolve(__dirname, 'SettingsPanel.tsx'),
-  ...readdirSync(SECTION_DIR)
-    .filter((f) => f.endsWith('.tsx') || f.endsWith('.ts'))
-    .map((f) => resolve(SECTION_DIR, f)),
-  // Slice C — Writing partner / Model & keys live under frontend/src/partner/
-  ...readdirSync(PARTNER_DIR)
-    .filter((f) => f.endsWith('.tsx') || f.endsWith('.ts'))
-    .map((f) => resolve(PARTNER_DIR, f)),
-];
+const FRONTEND_SRC = resolve(__dirname);
+
+function resolveRelativeImport(fromFile: string, spec: string): string | null {
+  const base = resolve(dirname(fromFile), spec);
+  const candidates = [
+    base,
+    `${base}.tsx`,
+    `${base}.ts`,
+    `${base}/index.tsx`,
+    `${base}/index.ts`,
+  ];
+  for (const c of candidates) {
+    if (existsSync(c) && statSync(c).isFile()) return c;
+  }
+  return null;
+}
+
+/** Follow SettingsPanel's import graph — unmounted section files must not count as rendered. */
+function collectSettingsPanelSources(entry: string, seen = new Set<string>()): string[] {
+  if (seen.has(entry)) return [];
+  seen.add(entry);
+  const out = [entry];
+  const src = readFileSync(entry, 'utf-8');
+  for (const m of src.matchAll(/from ['"](\.\.?\/[^'"]+)['"]/g)) {
+    const resolved = resolveRelativeImport(entry, m[1]);
+    if (!resolved || !resolved.startsWith(FRONTEND_SRC)) continue;
+    out.push(...collectSettingsPanelSources(resolved, seen));
+  }
+  return out;
+}
+
+const SOURCE_FILES = collectSettingsPanelSources(resolve(__dirname, 'SettingsPanel.tsx'));
+
+/** Registered for nav/docs but not mounted in SettingsPanel (Slice C soft-fail). */
+const REGISTRY_ONLY_SECTION_IDS = new Set(['section-agents']);
 
 const RENDERED_IDS = new Set<string>();
 for (const filePath of SOURCE_FILES) {
@@ -96,11 +116,33 @@ describe('SETTINGS_CATEGORIES registry (SKY-3215)', () => {
   it('no registered id is absent from SettingsPanel.tsx', () => {
     const missing: string[] = [];
     for (const id of ALL_REGISTERED_SECTION_IDS) {
+      if (REGISTRY_ONLY_SECTION_IDS.has(id)) continue;
       if (!RENDERED_IDS.has(id)) {
         missing.push(id);
       }
     }
     expect(missing, `Stale section ids (in registry but not rendered): ${missing.join(', ')}`).toHaveLength(0);
+  });
+
+  it('coverage follows SettingsPanel import graph (not every file in sections/)', () => {
+    const sectionDir = resolve(__dirname, 'components/SettingsPanel/sections');
+    const allSectionFiles = readdirSync(sectionDir)
+      .filter((f) => f.endsWith('.tsx'))
+      .map((f) => resolve(sectionDir, f));
+    const unmountedWithRegisteredIds: string[] = [];
+    for (const filePath of allSectionFiles) {
+      if (SOURCE_FILES.includes(filePath)) continue;
+      const src = readFileSync(filePath, 'utf-8');
+      for (const m of src.matchAll(/id="(section-[^"]+)"/g)) {
+        if (ALL_REGISTERED_SECTION_IDS.has(m[1]) && !REGISTRY_ONLY_SECTION_IDS.has(m[1])) {
+          unmountedWithRegisteredIds.push(`${filePath} → ${m[1]}`);
+        }
+      }
+    }
+    expect(
+      unmountedWithRegisteredIds,
+      `Unmounted files must not define registered section-* ids (grep bait): ${unmountedWithRegisteredIds.join(', ')}`,
+    ).toHaveLength(0);
   });
 
   it('Vaults & Files sections use Sep Liquid Neon glass card chrome', () => {

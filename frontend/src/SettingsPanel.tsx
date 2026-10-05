@@ -35,6 +35,7 @@ import UpdatesSection from './components/SettingsPanel/sections/UpdatesSection';
 import AppearanceSection from './components/SettingsPanel/sections/AppearanceSection';
 import LiquidNeonAppearanceSection from './components/SettingsPanel/sections/LiquidNeonAppearanceSection';
 import MythosVaultsSection from './components/SettingsPanel/sections/MythosVaultsSection';
+import VaultTemplatesSection from './components/SettingsPanel/sections/VaultTemplatesSection';
 import VaultsFolderSection from './components/SettingsPanel/sections/VaultsFolderSection';
 import AgentsVaultSection from './components/SettingsPanel/sections/AgentsVaultSection';
 import PageAppearanceSection from './components/SettingsPanel/sections/PageAppearanceSection';
@@ -1107,9 +1108,7 @@ export default function SettingsPanel({
           {settingsCategory === 'vaults' && (
             <>
               {/* SKY-11154 (parent spec SKY-11141 §2): "Vaults folder" row —
-                  the parent folder holding every Mythos vault, with an
-                  Open-folder + Move… flow (distinct from the per-vault
-                  AccountSection move above). */}
+                  the parent folder holding every Mythos vault. */}
               <VaultsFolderSection />
 
               {/* PLAN-058 L1b: one box per Mythos vault (notes/story columns nested). */}
@@ -1117,9 +1116,10 @@ export default function SettingsPanel({
                 settings={settings}
                 setSettings={setSettings}
                 setSavedOk={setSavedOk}
-                onMoveVault={handleMoveVault}
                 activeVaultRoot={activeVaultRoot}
               />
+
+              <VaultTemplatesSection />
 
               <AgentsVaultSection />
 

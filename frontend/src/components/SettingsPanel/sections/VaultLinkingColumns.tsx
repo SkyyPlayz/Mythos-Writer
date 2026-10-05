@@ -81,12 +81,8 @@ function absPathFor(mythosRoot: string, pathSep: string, dirName: string): strin
   return `${mythosRoot.replace(/[\\/]+$/, '')}${pathSep}${dirName}`;
 }
 
-export interface VaultLinkingColumnsProps {
-  /** When true, omit the outer section heading (nested inside a Mythos vault box). */
-  embedded?: boolean;
-}
-
-export default function VaultLinkingColumns({ embedded = false }: VaultLinkingColumnsProps = {}) {
+/** Notes/Story columns — rendered only inside an active Mythos vault box (PLAN-058 L1b). */
+export default function VaultLinkingColumns() {
   const [notesVaults, setNotesVaults] = useState<NotesVaultEntry[] | null>(null);
   const [storyVaults, setStoryVaults] = useState<StoryVaultEntry[] | null>(null);
   const [activeNotesId, setActiveNotesId] = useState<string | null>(null);
@@ -317,19 +313,8 @@ export default function VaultLinkingColumns({ embedded = false }: VaultLinkingCo
   // NotesVaultPicker.tsx convention for the same signal.
   if (notesVaults === null) return null;
 
-  const section = (
+  return (
     <>
-      {!embedded && (
-        <>
-          <h3 className="settings-section-title" id="section-add-vault">Notes &amp; Story vaults</h3>
-          <p className="settings-hint">
-            Every Notes/Story vault inside the current Mythos vault. Click a dot on one side then the
-            other to pair a story vault to a notes vault — a story vault pairs to at most one notes
-            vault at a time.
-          </p>
-        </>
-      )}
-
       <div ref={columnsRef} className="vault-link-columns" style={{ display: 'flex', gap: 16, position: 'relative' }}>
         <svg
           className="vault-pair-lines"
@@ -648,13 +633,5 @@ export default function VaultLinkingColumns({ embedded = false }: VaultLinkingCo
         </Dialog>
       )}
     </>
-  );
-
-  if (embedded) return section;
-
-  return (
-    <section className="settings-section" aria-labelledby="section-add-vault" data-settings-cat="vaults">
-      {section}
-    </section>
   );
 }

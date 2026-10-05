@@ -7,40 +7,14 @@ interface UserTemplateSummary {
   isUserTemplate?: boolean;
 }
 
-interface VaultPathsSectionProps {
-  vaults: { storyVaultPath: string; notesVaultPath: string };
-  setVaults: React.Dispatch<React.SetStateAction<{ storyVaultPath: string; notesVaultPath: string }>>;
-  vaultsDirty: boolean;
-  setVaultsDirty: React.Dispatch<React.SetStateAction<boolean>>;
-  vaultsSavedOk: boolean;
-  setVaultsSavedOk: React.Dispatch<React.SetStateAction<boolean>>;
-  vaultsError: string | null;
-  onPickVaultFolder: (which: 'storyVaultPath' | 'notesVaultPath') => void;
-  onSaveVaults: () => void;
-}
-
-export default function VaultPathsSection({
-  vaults,
-  setVaults,
-  vaultsDirty,
-  setVaultsDirty,
-  vaultsSavedOk,
-  setVaultsSavedOk,
-  vaultsError,
-  onPickVaultFolder,
-  onSaveVaults,
-}: VaultPathsSectionProps) {
-  // SKY-1303: Save-as-Template state (self-contained)
+/** SKY-1303 + SKY-11352 — Save-as-Template and custom template management (Vault & Files). */
+export default function VaultTemplatesSection() {
   const [saveAsTplOpen, setSaveAsTplOpen] = useState(false);
   const [saveAsTplName, setSaveAsTplName] = useState('');
   const [saveAsTplBusy, setSaveAsTplBusy] = useState(false);
   const [saveAsTplResult, setSaveAsTplResult] = useState<{ ok: true; name: string } | { error: string } | null>(null);
   const saveAsTplInputRef = useRef<HTMLInputElement>(null);
 
-  // SKY-1399 (restored SKY-11352): manage previously-saved custom templates —
-  // rename / duplicate / delete. Bundled templates (isUserTemplate falsy)
-  // never render these actions: template:rename/delete/duplicate only look
-  // inside the user templates dir and throw "Template not found" for them.
   const [userTemplates, setUserTemplates] = useState<UserTemplateSummary[]>([]);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -162,84 +136,17 @@ export default function VaultPathsSection({
   }, []);
 
   return (
-    <section className="settings-section" aria-labelledby="section-vault-paths" data-settings-cat="vaults">
-      <h3 className="settings-section-title" id="section-vault-paths">Vault paths</h3>
-      <div className="settings-field">
-        <label className="settings-label" htmlFor="story-vault-path-input">Story Vault</label>
-        <div className="settings-input-row">
-          <input
-            id="story-vault-path-input"
-            className="settings-input"
-            type="text"
-            value={vaults.storyVaultPath}
-            onChange={(e) => {
-              setVaults((prev) => ({ ...prev, storyVaultPath: e.target.value }));
-              setVaultsDirty(true);
-              setVaultsSavedOk(false);
-            }}
-            placeholder="~/Mythos/Story Vault"
-            aria-describedby="story-vault-path-hint"
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <button
-            className="settings-reveal-btn"
-            type="button"
-            onClick={() => onPickVaultFolder('storyVaultPath')}
-            aria-label="Choose Story Vault folder"
-          >
-            Browse…
-          </button>
-        </div>
-        <p className="settings-hint" id="story-vault-path-hint">Chapters and scenes live here. Agents never edit Story Vault contents.</p>
-      </div>
-      <div className="settings-field">
-        <label className="settings-label" htmlFor="notes-vault-path-input">Notes Vault</label>
-        <div className="settings-input-row">
-          <input
-            id="notes-vault-path-input"
-            className="settings-input"
-            type="text"
-            value={vaults.notesVaultPath}
-            onChange={(e) => {
-              setVaults((prev) => ({ ...prev, notesVaultPath: e.target.value }));
-              setVaultsDirty(true);
-              setVaultsSavedOk(false);
-            }}
-            placeholder="~/Mythos/Notes Vault"
-            aria-describedby="notes-vault-path-hint"
-            autoComplete="off"
-            spellCheck={false}
-          />
-          <button
-            className="settings-reveal-btn"
-            type="button"
-            onClick={() => onPickVaultFolder('notesVaultPath')}
-            aria-label="Choose Notes Vault folder"
-          >
-            Browse…
-          </button>
-        </div>
-        {/* SKY-11454: no folder list here — a blank vault starts empty
-            (SKY-11141 §3a) and the template layout is owned by the template,
-            so enumerating folders in copy goes stale. */}
-        <p className="settings-hint" id="notes-vault-path-hint">Worldbuilding, characters, lore, and AI-curated notes. Starts empty unless you created it from a template.</p>
-      </div>
-      <div className="settings-input-row">
-        <button
-          className="settings-btn settings-btn-secondary"
-          type="button"
-          onClick={onSaveVaults}
-          disabled={!vaultsDirty || !vaults.storyVaultPath.trim() || !vaults.notesVaultPath.trim()}
-        >
-          Save vault paths
-        </button>
-        {vaultsSavedOk && <span className="settings-saved-msg" role="status">Saved. Restart to fully apply.</span>}
-        {vaultsError && <span className="settings-error-msg" role="alert">{vaultsError}</span>}
-      </div>
-      <p className="settings-hint">Changes take effect after restart — the Story Vault watcher and DB are bound at app boot.</p>
+    <section
+      className="settings-section"
+      aria-labelledby="section-vault-templates"
+      data-settings-cat="vaults"
+      data-testid="vault-templates-section"
+    >
+      <h3 className="settings-section-title" id="section-vault-templates">Templates</h3>
+      <p className="settings-hint">
+        Save your current vault folder layout as a reusable template, or manage templates you created earlier.
+      </p>
 
-      {/* SKY-1303: Save-as-Template (AC-3) */}
       <div className="settings-save-as-tpl">
         {!saveAsTplOpen && (
           <button
@@ -302,10 +209,6 @@ export default function VaultPathsSection({
         <p className="settings-hint">Snapshots the current Story Vault and Notes Vault folder structure as a reusable template.</p>
       </div>
 
-      {/* SKY-11352: restored custom-template management UI (rename / duplicate /
-          delete + confirm dialog + count badge) — deleted from the pre-rewrite
-          onboarding wizard by PR #1408; the IPC layer it drives was never
-          removed (template:rename/delete/duplicate, electron-main/src/templates.ts). */}
       {userTemplates.length > 0 && (
         <div className="settings-user-templates" data-testid="user-templates-section">
           <div className="settings-section-header-row">

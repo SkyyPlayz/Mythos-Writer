@@ -71,8 +71,6 @@ interface Props {
   settings: AppSettings;
   setSettings: React.Dispatch<React.SetStateAction<AppSettings>>;
   setSavedOk: (ok: boolean) => void;
-  /** PLAN-058 L1b (46:36) — per-vault Move opens the guided move wizard for the active vault. */
-  onMoveVault?: () => void;
   /** Critic H6: refresh active mythos box when shell switches vault without remounting Settings. */
   activeVaultRoot?: string;
 }
@@ -99,7 +97,6 @@ export default function MythosVaultsSection({
   settings,
   setSettings,
   setSavedOk,
-  onMoveVault,
   activeVaultRoot,
 }: Props) {
   const [vaults, setVaults] = useState<VaultEntry[]>([]);
@@ -541,14 +538,6 @@ export default function MythosVaultsSection({
     window.api?.vaultSurfaceRevealMythos?.(mythosRoot).catch(() => { /* non-fatal */ });
   }, []);
 
-  const onMoveMythos = useCallback(async (primary: VaultEntry) => {
-    if (primary.vaultRoot !== activeRoot) {
-      const switched = await onCardClick(primary);
-      if (!switched) return;
-    }
-    onMoveVault?.();
-  }, [activeRoot, onCardClick, onMoveVault]);
-
   return (
     <section className="settings-section" aria-labelledby="section-mythos-vaults" data-settings-cat="vaults">
       <div className="settings-section-header-row" style={{ justifyContent: 'space-between' }}>
@@ -912,17 +901,9 @@ export default function MythosVaultsSection({
               >
                 Open
               </button>
-              <button
-                type="button"
-                className="m24-btn"
-                data-testid={`mvs-mythos-move-${mythosRoot}`}
-                onClick={(e) => { e.stopPropagation(); void onMoveMythos(v); }}
-              >
-                Move…
-              </button>
             </div>
             {boxActive && (
-              <VaultLinkingColumns embedded />
+              <VaultLinkingColumns />
             )}
             </div>
           );
