@@ -11,6 +11,9 @@ name: Mythos ops health
 #            Hygiene is red on silence (>26h since last *success*) or when there is
 #            still no success and completed runs are older than the 26h grace.
 #            A latest hygiene failure with a success inside 26h is OK (noted).
+#            Last success comes from the primary run list (newest conclusion
+#            success). `gh run list --status success` reads a lagging search
+#            index and has false-failed this canary while hygiene was healthy.
 #   secrets-rotation — quarterly reminder issue (never prints secret values)
 
 on:
@@ -113,21 +116,28 @@ jobs:
           fi
 
           # Hygiene: fail on silence since last success, not on one recent failure.
+          # Primary list only — never `gh run list --status success` (search index lag).
           HY_FILE=$(workflow_file_state "mythos-pr-hygiene.yml")
           if [ "$HY_FILE" = "missing" ]; then
             apply_verdict "pr-hygiene" "fail" "workflow file missing"
-          elif ! HY_ROW=$(gh run list --repo "$REPO" --workflow "mythos-pr-hygiene.yml" --limit 10 \
-            --json conclusion,status,createdAt,updatedAt,url \
-            --jq '[.[] | select(.status=="completed")] | .[0] // empty'); then
-            apply_verdict "pr-hygiene" "fail" "could not list workflow runs"
-          elif [ -z "$HY_ROW" ] || [ "$HY_ROW" = "null" ]; then
+          else
+            HY_RC=0
+            HY_RUNS=$(list_workflow_runs_until_success "$REPO" "mythos-pr-hygiene.yml") || HY_RC=$?
+            if [ "$HY_RC" -eq 2 ]; then
+              apply_verdict "pr-hygiene" "fail" \
+                "could not scan far enough to find the newest success (primary run list truncated before history ended)"
+            elif [ "$HY_RC" -ne 0 ]; then
+              apply_verdict "pr-hygiene" "fail" "could not list workflow runs"
+            else
+              HY_PICK=$(printf '%s\n' "$HY_RUNS" | pick_hygiene_runs)
+              HY_ROW=$(jq -c '.latest // empty' <<<"$HY_PICK")
+              HY_OK=$(jq -c '.success // empty' <<<"$HY_PICK")
+            fi
+          fi
+          if [ "$HY_FILE" != "missing" ] && [ "${HY_RC:-0}" -eq 0 ] && { [ -z "${HY_ROW:-}" ] || [ "${HY_ROW:-}" = "null" ]; }; then
             apply_verdict "pr-hygiene" "$(verdict_hygiene "$HY_FILE" 0 "" 9999 0 9999 26)" \
               "WARN no completed runs yet (bootstrap) — not a failure"
-          elif ! HY_OK=$(gh run list --repo "$REPO" --workflow "mythos-pr-hygiene.yml" --status success --limit 1 \
-            --json conclusion,status,createdAt,updatedAt,url \
-            --jq '.[0] // empty'); then
-            apply_verdict "pr-hygiene" "fail" "could not list successful runs"
-          else
+          elif [ "$HY_FILE" != "missing" ] && [ "${HY_RC:-0}" -eq 0 ]; then
             H_CONC=$(jq -r '.conclusion // empty' <<<"$HY_ROW")
             H_UPD=$(jq -r '.updatedAt // .createdAt' <<<"$HY_ROW")
             H_URL=$(jq -r '.url // empty' <<<"$HY_ROW")

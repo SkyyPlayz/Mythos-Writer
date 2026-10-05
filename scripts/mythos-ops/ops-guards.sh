@@ -163,3 +163,98 @@ verdict_hygiene() {
   fi
   printf '%s\n' warn
 }
+
+# Newest completed run + newest success from a newest-first run array.
+# Stdin: JSON array of {conclusion,status,createdAt,updatedAt,url}.
+# Stdout: {"latest": <object|null>, "success": <object|null>}
+# "Newest" is list order (primary index, created_at desc), matching
+# the unfiltered runs API. Age is still computed by the caller from
+# updatedAt // createdAt.
+pick_hygiene_runs() {
+  jq -c '
+    if type != "array" then
+      error("expected run array")
+    else
+      {
+        latest: ([.[] | select(.status == "completed")] | .[0] // null),
+        success: ([.[] | select(.conclusion == "success")] | .[0] // null)
+      }
+    end
+  '
+}
+
+# Page the primary workflow-run list until it includes the newest success,
+# or history ends. Prints a JSON array (newest first).
+#
+# Do not query ?status=success / `gh run list --status success`. That
+# parameter is a search index (capped, and it lags the primary list).
+# On 2026-09-29 the ops canary's `--status success --limit 1` returned
+# run 36389147752 (31h old) while the unfiltered list in the same job
+# already saw a run from that minute, and newer successes existed.
+# A larger --limit on the same status filter still misses runs the
+# index has not ingested. Select conclusion=="success" client-side.
+#
+# Exit 0: array on stdout (success may be absent only when history ended).
+# Exit 1: API or payload failure.
+# Exit 2: hit max_pages on a full page with no success — caller must
+# fail closed, not treat that as "no success ever" (that would WARN
+# a real silence).
+# Args: repo workflow [max_pages]
+list_workflow_runs_until_success() {
+  local repo="${1:-}"
+  local workflow="${2:-}"
+  local max_pages="${3:-20}"
+  local page=1
+  local combined='[]'
+  local saw_success=0
+  local url=""
+  local payload=""
+  local runs=""
+  local count=0
+
+  case "$max_pages" in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  if [ -z "$repo" ] || [ -z "$workflow" ]; then
+    return 1
+  fi
+
+  while [ "$page" -le "$max_pages" ]; do
+    url="repos/${repo}/actions/workflows/${workflow}/runs?per_page=100&page=${page}&exclude_pull_requests=true"
+    if ! payload=$(gh api "$url" 2>/dev/null); then
+      return 1
+    fi
+    if ! runs=$(printf '%s' "$payload" | jq -c '
+      if (.workflow_runs | type) != "array" then
+        error("workflow_runs missing")
+      else
+        [.workflow_runs[] | {
+          conclusion: (.conclusion // ""),
+          status: (.status // ""),
+          createdAt: (.created_at // ""),
+          updatedAt: (.updated_at // .created_at // ""),
+          url: (.html_url // "")
+        }]
+      end
+    '); then
+      return 1
+    fi
+    count=$(printf '%s' "$runs" | jq 'length')
+    if ! combined=$(printf '%s\n%s\n' "$combined" "$runs" | jq -sc '.[0] + .[1]'); then
+      return 1
+    fi
+    if printf '%s' "$runs" | jq -e 'any(.[]; .conclusion == "success")' >/dev/null; then
+      saw_success=1
+      break
+    fi
+    if [ "$count" -lt 100 ]; then
+      break
+    fi
+    page=$((page + 1))
+  done
+
+  if [ "$saw_success" -eq 0 ] && [ "$page" -gt "$max_pages" ]; then
+    return 2
+  fi
+  printf '%s\n' "$combined"
+}
