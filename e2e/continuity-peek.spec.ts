@@ -227,8 +227,7 @@ async function selectFirstChars(page: Page, charCount: number): Promise<void> {
   }
 }
 
-async function selectWholeEditor(page: Page): Promise<void> {
-  const editor = page.locator('.ProseMirror');
+async function selectWholeEditor(page: Page, editor = page.locator('.ProseMirror')): Promise<void> {
   await editor.click();
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
   // Ctrl+A raises a native selectionchange event that TipTap's onSelectionUpdate
@@ -238,8 +237,7 @@ async function selectWholeEditor(page: Page): Promise<void> {
   await expect.poll(() => page.evaluate(() => window.getSelection()?.toString().trim() ?? '')).not.toBe('');
 }
 
-async function replaceSceneText(page: Page, text: string): Promise<void> {
-  const editor = page.locator('.ProseMirror');
+async function replaceSceneText(page: Page, text: string, editor = page.locator('.ProseMirror')): Promise<void> {
   await editor.click();
   // Ctrl+A immediately after editor.click() can occasionally be a no-op --
   // the native click/focus hasn't synced with ProseMirror's own selection
@@ -287,6 +285,57 @@ async function closeContinuityOverlayIfOpen(page: Page): Promise<void> {
     await page.keyboard.press('Escape');
     await expect(overlay).not.toBeVisible({ timeout: 4_000 });
   }
+}
+
+const MARCUS_NOTE_EXCERPT = 'Marcus is a principled cartographer';
+
+/** TC-CP-06b: after View full note, wait overlay teardown + Notes rail before Alt handoff. */
+async function waitForNotesMarcusAfterViewFullNote(page: Page): Promise<void> {
+  const overlay = page.locator('.continuity-focus-overlay[role="dialog"]');
+  const mainNav = page.getByRole('navigation', { name: 'Main navigation' });
+  const notesBtn = mainNav.getByRole('button', { name: 'Notes' });
+  await expect(overlay).not.toBeVisible({ timeout: 8_000 });
+  await expect(notesBtn).toHaveAttribute('aria-current', 'page', { timeout: 6_000 });
+  await expect(page.locator('.note-tiptap-content')).toContainText(MARCUS_NOTE_EXCERPT, { timeout: 8_000 });
+  await expect(page.getByTestId('notes-editor-placeholder')).toHaveCount(0);
+  await expect.poll(async () => {
+    const overlayVisible = await overlay.isVisible().catch(() => false);
+    const notesCurrent = await notesBtn.getAttribute('aria-current');
+    return !overlayVisible && notesCurrent === 'page';
+  }, { timeout: 4_000 }).toBe(true);
+}
+
+function storyTabProseMirror(page: Page) {
+  return page.locator('[data-testid="msv-page"] .ProseMirror');
+}
+
+/** TC-CP-06b: selection + card mount can lag after TC-CP-06 — reopen until Marcus card shows. */
+async function openContinuityMarcusCard(page: Page): Promise<void> {
+  const marcusCard = page.locator('.entity-card', { hasText: 'Marcus' }).first();
+  const storyEd = storyTabProseMirror(page);
+  await expect.poll(async () => {
+    if (await marcusCard.isVisible().catch(() => false)) return true;
+    await closeContinuityOverlayIfOpen(page);
+    await storyEd.click();
+    await selectWholeEditor(page, storyEd);
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.toString().trim() ?? '')).toBe('Marcus');
+    await openContinuityWithShortcut(page);
+    return await marcusCard.isVisible().catch(() => false);
+  }, { timeout: 12_000 }).toBe(true);
+}
+
+/** TC-CP-06b: card re-renders under load — drive navigation until Notes opens (setup-click flake). */
+async function clickViewFullNoteMarcus(page: Page): Promise<void> {
+  await expect(page.locator('.continuity-focus-overlay[role="dialog"]')).toBeVisible({ timeout: 6_000 });
+  await expect(page.locator('.entity-card', { hasText: 'Marcus' }).first()).toBeVisible({ timeout: 8_000 });
+  const notesBtn = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' });
+  await expect.poll(async () => {
+    if (await notesBtn.getAttribute('aria-current') === 'page') return true;
+    await page.evaluate(() => {
+      document.querySelector<HTMLButtonElement>('button.entity-card-view-note[aria-label="View full note: Marcus"]')?.click();
+    });
+    return false;
+  }, { timeout: 15_000 }).toBe(true);
 }
 
 let userData: string;
@@ -399,26 +448,54 @@ test('TC-CP-06: entity card shows required fields and View full note opens the n
 });
 
 test('TC-CP-06b: View full note → Back → Forward restores the note (Probe H1)', async () => {
+  // TC-CP-06 leaves Notes/history state; reset scene + shell before this serial step.
+  await closeContinuityOverlayIfOpen(page);
+  const shell = page.locator('.desktop-shell');
+  const shellClass = await shell.getAttribute('class');
+  if (!shellClass?.includes('writing-mode-normal')) {
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+N' : 'Control+Shift+N');
+    await expect(shell).toHaveClass(/writing-mode-normal/, { timeout: 4_000 });
+  }
+  const mainNavReset = page.getByRole('navigation', { name: 'Main navigation' });
+  await mainNavReset.getByRole('button', { name: 'Story' }).click();
+  await openSeededScene(page);
   await ensureFocusMode(page);
-  await replaceSceneText(page, 'Marcus');
-  await selectWholeEditor(page);
-  await openContinuityWithShortcut(page);
-  const card = page.locator('.entity-card', { hasText: 'Marcus' }).first();
-  await expect(card).toBeVisible({ timeout: 8_000 });
-  await card.getByRole('button', { name: 'View full note: Marcus' }).click();
-  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' })).toHaveAttribute('aria-current', 'page', { timeout: 6_000 });
-  await expect(page.locator('.note-tiptap-content')).toContainText('Marcus is a principled cartographer', { timeout: 8_000 });
-  await expect(page.getByTestId('notes-editor-placeholder')).toHaveCount(0);
+  const storyEd = storyTabProseMirror(page);
+  await replaceSceneText(page, 'Marcus', storyEd);
+  await selectWholeEditor(page, storyEd);
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString().trim() ?? '')).toBe('Marcus');
+  await openContinuityMarcusCard(page);
+  await clickViewFullNoteMarcus(page);
+  // Setup-click + overlay teardown: settle Notes before Alt (shell vs ManuscriptView handoff).
+  await waitForNotesMarcusAfterViewFullNote(page);
 
-  // Back → scene (Story tab). Forward must re-open the note, not empty Notes.
+  const mainNav = page.getByRole('navigation', { name: 'Main navigation' });
+  const storyBtn = mainNav.getByRole('button', { name: 'Story' });
+  const notesBtn = mainNav.getByRole('button', { name: 'Notes' });
+  const storyEditor = storyTabProseMirror(page);
+
   await page.keyboard.press('Alt+ArrowLeft');
-  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Story' })).toHaveAttribute('aria-current', 'page', { timeout: 6_000 });
-  await expect(page.locator('.ProseMirror').first()).toBeVisible({ timeout: 6_000 });
+  await expect(storyBtn).toHaveAttribute('aria-current', 'page', { timeout: 6_000 });
+  await expect(storyEditor).toBeVisible({ timeout: 6_000 });
+  await expect(storyEditor).toContainText('Marcus', { timeout: 6_000 });
+
+  await expect.poll(async () => {
+    const storyCurrent = await storyBtn.getAttribute('aria-current');
+    const editorVisible = await storyEditor.isVisible().catch(() => false);
+    return storyCurrent === 'page' && editorVisible;
+  }, { timeout: 4_000 }).toBe(true);
 
   await page.keyboard.press('Alt+ArrowRight');
-  await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Notes' })).toHaveAttribute('aria-current', 'page', { timeout: 6_000 });
-  await expect(page.locator('.note-tiptap-content')).toContainText('Marcus is a principled cartographer', { timeout: 8_000 });
+  await expect(notesBtn).toHaveAttribute('aria-current', 'page', { timeout: 6_000 });
+  await expect(page.locator('.note-tiptap-content')).toContainText(MARCUS_NOTE_EXCERPT, { timeout: 8_000 });
   await expect(page.getByTestId('notes-editor-placeholder')).toHaveCount(0);
+
+  // Serial suite: mirror TC-CP-06 teardown so TC-CP-07 can re-enter Focus on the scene editor.
+  await closeContinuityOverlayIfOpen(page);
+  const storyRail = page.getByRole('navigation', { name: 'Main navigation' }).getByRole('button', { name: 'Story' });
+  await storyRail.click();
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Shift+N' : 'Control+Shift+N');
+  await openSeededScene(page);
 });
 
 test('TC-CP-07: manual search returns partial-name matches and clicking a result loads its card', async () => {
