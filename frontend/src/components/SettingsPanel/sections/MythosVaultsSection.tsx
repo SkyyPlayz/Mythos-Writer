@@ -13,6 +13,7 @@
 // seeded every new vault with the Veynn demo story + notes and offered no
 // choice at all.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { CSSProperties } from 'react';
 import {
   applyLiquidNeonV2Tokens,
@@ -23,7 +24,7 @@ import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from '../../../theme/pr
 import { showLnToast } from '../../../theme/lnToast';
 import { deriveVaultDisplayName } from '../../../ProjectSwitcher';
 import VaultDestinationPicker from './VaultDestinationPicker';
-import type { VaultCreateMode } from './VaultCreateModePicker';
+import VaultCreateModePicker, { type VaultCreateMode } from './VaultCreateModePicker';
 import { useVaultIcons } from '../../../hooks/useVaultIcons';
 import { VaultIconAvatar } from '../../ui/VaultIconAvatar';
 import { VaultIconEditMenu } from '../../ui/VaultIconEditMenu';
@@ -82,7 +83,6 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   const [vaults, setVaults] = useState<VaultEntry[]>([]);
   const [activeRoot, setActiveRoot] = useState<string>('');
   const [createOpen, setCreateOpen] = useState(false);
-  const [createStep, setCreateStep] = useState<'choose' | 'details'>('choose');
   const [createName, setCreateName] = useState('');
   const [createDest, setCreateDest] = useState('');
   const [defaultFolder, setDefaultFolder] = useState('');
@@ -191,8 +191,8 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   }, []);
 
   useEffect(() => {
-    if (createOpen && createStep === 'details') createNameRef.current?.focus();
-  }, [createOpen, createStep]);
+    if (createOpen) createNameRef.current?.focus();
+  }, [createOpen]);
 
   // If the user switches to the just-created vault via its card instead of
   // the offer button, the offer is answered — drop it.
@@ -245,6 +245,9 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
    *  activeRoot + theme mirror follow onProjectSwitched / successful switch. */
   const onCardClick = useCallback(async (v: VaultEntry) => {
     if (v.vaultRoot === activeRoot) return;
+    // PLAN-058 L1a (57:21): card click switches vaults only — never opens the
+    // create-vault modal (that is "New vault…" only).
+    if (createOpen) return;
     try {
       const req = (window as Window & {
         __mythosRequestVaultSwitch?: (vaultRoot: string) => Promise<boolean>;
@@ -272,13 +275,12 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
         }));
       }
     } catch { /* switch failed — card stays as-is */ }
-  }, [activeRoot, settings.vaultThemes, setSettings]);
+  }, [activeRoot, settings.vaultThemes, setSettings, createOpen]);
 
   /** SKY-10385: open the create form, prefilled with the default vaults
    *  parent (same rule Skyy set for import destinations in SKY-10370 R3). */
   const onOpenCreate = useCallback(async () => {
     setCreateOpen(true);
-    setCreateStep('choose');
     setCreateError(null);
     setCreatedVault(null);
     setCreateMode('template');
@@ -308,6 +310,25 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     setCreateOpen(false);
     setCreateError(null);
   }, []);
+
+  // PLAN-058 L1a (49:46): portal + Escape guard — see create dialog render below.
+  useEffect(() => {
+    if (!createOpen) {
+      document.documentElement.removeAttribute('data-mythos-vault-create-open');
+      return;
+    }
+    document.documentElement.setAttribute('data-mythos-vault-create-open', 'true');
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopImmediatePropagation();
+      if (!createBusy) onCancelCreate();
+    };
+    document.addEventListener('keydown', onEscape, true);
+    return () => {
+      document.documentElement.removeAttribute('data-mythos-vault-create-open');
+      document.removeEventListener('keydown', onEscape, true);
+    };
+  }, [createOpen, createBusy, onCancelCreate]);
 
   const onBrowseDest = useCallback(async () => {
     try {
@@ -508,7 +529,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
         own theme so you always know where you are — switching vaults applies its theme.
       </p>
 
-      {createOpen && !createdVault && (
+      {createOpen && !createdVault && createPortal(
         <Dialog
           open
           onClose={onCancelCreate}
@@ -516,93 +537,63 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
           aria-label="Create a Mythos vault"
           className="create-vault-modal"
           testId="mvs-create-form"
+          overlayTestId="mvs-create-overlay"
         >
-          {createStep === 'choose' ? (
-            <>
-              <DialogHeader>
-                <h2>Create a Mythos vault</h2>
-              </DialogHeader>
-              <DialogBody>
-                <p className="settings-hint" style={{ marginBottom: 12 }}>
-                  How would you like to start?
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <button
-                    type="button"
-                    className="m24-btn"
-                    style={{ padding: '12px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 2 }}
-                    data-testid="mvs-choose-blank"
-                    onClick={() => { setCreateMode('blank'); setCreateStep('details'); }}
-                  >
-                    <span style={{ fontWeight: 600, fontSize: 12.5 }}>Create blank</span>
-                    <span style={{ fontSize: 10.5, color: '#8e9db8' }}>
-                      Start with an empty vault — add notes and stories as you go
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="m24-btn"
-                    style={{ padding: '12px 16px', textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 2 }}
-                    data-testid="mvs-choose-import"
-                    onClick={() => { setCreateMode('import'); setCreateStep('details'); }}
-                  >
-                    <span style={{ fontWeight: 600, fontSize: 12.5 }}>Import vault</span>
-                    <span style={{ fontSize: 10.5, color: '#8e9db8' }}>
-                      Bring in an Obsidian vault or Markdown folder — files and links preserved
-                    </span>
-                  </button>
-                </div>
-              </DialogBody>
-              <DialogFooter>
-                <button type="button" className="m24-btn" data-testid="mvs-create-cancel" onClick={onCancelCreate}>
-                  Cancel
-                </button>
-              </DialogFooter>
-            </>
-          ) : (
-            <>
-          <DialogHeader>
+          <DialogHeader onClose={onCancelCreate}>
             <h2>Create a Mythos vault</h2>
           </DialogHeader>
           <DialogBody>
-            <label className="settings-label" htmlFor="mvs-create-name">Name</label>
+            <VaultCreateModePicker
+              kind="mythos"
+              value={createMode}
+              onChange={setCreateMode}
+              disabled={createBusy}
+              testIdPrefix="mvs-vault-mode"
+            />
+            <label className="prompt-modal-label" htmlFor="mvs-create-name">Name</label>
             <input
               id="mvs-create-name"
               data-testid="mvs-create-name"
               ref={createNameRef}
-              className="settings-input"
+              className="prompt-modal-input"
               autoFocus
               value={createName}
               maxLength={120}
               placeholder="My First Vault"
-              disabled={createBusy}
+              disabled={createBusy || createMode === 'openin'}
               onChange={(e) => setCreateName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') void onCreateVault(); }}
             />
-            <div className="create-vault-where-header" style={{ marginTop: 4 }}>
-              <div className="settings-label" id="mvs-create-where-label">Where to create</div>
-              <button
-                type="button"
-                className="create-vault-default-folder"
-                title="Use the default vaults folder"
-                data-testid="mvs-create-default-folder"
-                onClick={() => { if (defaultFolder) setCreateDest(defaultFolder); }}
-                disabled={createBusy || !defaultFolder}
-              >
-                Default folder
-              </button>
-            </div>
-            <VaultDestinationPicker
-              variant="m24"
-              path={createDest}
-              placeholder="Choose where to create the new vault"
-              onBrowse={onBrowseDest}
-              disabled={createBusy}
-              testIdPrefix="mvs-create-dest"
-            />
-            <p className="settings-hint">
-              A new folder named after the vault is created inside this destination.
-            </p>
+            {createMode !== 'openin' && (
+              <>
+                <div className="create-vault-where-header" style={{ marginTop: 4 }}>
+                  <label className="prompt-modal-label" id="mvs-create-where-label" htmlFor="mvs-create-where-label">
+                    Where to create
+                  </label>
+                  <button
+                    type="button"
+                    className="create-vault-default-folder"
+                    title="Use the default vaults folder"
+                    data-testid="mvs-create-default-folder"
+                    onClick={() => { if (defaultFolder) setCreateDest(defaultFolder); }}
+                    disabled={createBusy || !defaultFolder}
+                  >
+                    Default folder
+                  </button>
+                </div>
+                <VaultDestinationPicker
+                  variant="m24"
+                  path={createDest}
+                  placeholder="Choose where to create the new vault"
+                  onBrowse={onBrowseDest}
+                  disabled={createBusy}
+                  testIdPrefix="mvs-create-dest"
+                />
+                <p className="settings-hint">
+                  A new folder named after the vault is created inside this destination.
+                </p>
+              </>
+            )}
             {(createMode === 'import' || createMode === 'restore') && (
               <div data-testid="mvs-create-import" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div className="settings-label">
@@ -659,26 +650,22 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
               <p className="settings-error-msg" role="alert" data-testid="mvs-create-error">{createError}</p>
             )}
           </DialogBody>
-          <DialogFooter>
-            <button type="button" className="m24-btn" data-testid="mvs-create-back" onClick={() => setCreateStep('choose')} disabled={createBusy}>
-              Back
-            </button>
-            <button type="button" className="m24-btn" data-testid="mvs-create-cancel" onClick={onCancelCreate} disabled={createBusy}>
+          <DialogFooter className="prompt-modal-actions">
+            <button type="button" className="prompt-modal-cancel" data-testid="mvs-create-cancel" onClick={onCancelCreate} disabled={createBusy}>
               Cancel
             </button>
             <button
               type="button"
-              className="m24-btn m24-btn--primary"
+              className="prompt-modal-ok"
               data-testid="mvs-create-confirm"
               onClick={() => { void onCreateVault(); }}
-              disabled={createBusy || importNeedsSource}
+              disabled={createBusy || importNeedsSource || openinNeedsSource}
             >
-              {createBusy ? 'Creating…' : 'Create vault'}
+              {createBusy ? 'Creating…' : createMode === 'openin' ? 'Open in Mythos' : 'Create vault'}
             </button>
           </DialogFooter>
-            </>
-          )}
-        </Dialog>
+        </Dialog>,
+        document.body,
       )}
 
       {createdVault && (
