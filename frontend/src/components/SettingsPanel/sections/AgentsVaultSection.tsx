@@ -85,6 +85,7 @@ export default function AgentsVaultSection() {
       data-testid="agents-vault-section"
       data-screen-label="Agents Vault"
     >
+      <h3 className="sr-only" id="section-agents-vault">Agent Vault</h3>
       <M24Card title="Agent Vault">
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px 8px', flexWrap: 'wrap', minWidth: 0 }}>
           <span

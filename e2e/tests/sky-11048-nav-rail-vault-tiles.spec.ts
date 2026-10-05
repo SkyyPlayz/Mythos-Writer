@@ -201,7 +201,8 @@ test('TC-SKY-11048-01: + tile creates a second vault, tiles switch, per-vault th
     await expect(secondTile).toHaveClass(/nav-rail__vault-tile--active/);
     await expect(firstTile).not.toHaveClass(/nav-rail__vault-tile--active/);
     await expect(pg.locator('#settings-category-tab-vaults')).toHaveClass(/settings-cat-nav__tab--active/, { timeout: 10_000 });
-    await expect(pg.locator('.settings-vault-path-display')).toHaveText(secondStory, { timeout: 10_000 });
+    const secondMythos = path.join(userData, 'vaults', 'Second');
+    await expect(pg.getByTestId('settings-active-mythos-path')).toHaveText(secondMythos, { timeout: 10_000 });
   } finally {
     await app.close().catch(() => {});
   }

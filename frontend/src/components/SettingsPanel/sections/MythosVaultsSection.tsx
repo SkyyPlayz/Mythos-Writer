@@ -73,6 +73,8 @@ interface Props {
   setSavedOk: (ok: boolean) => void;
   /** PLAN-058 L1b (46:36) — per-vault Move opens the guided move wizard for the active vault. */
   onMoveVault?: () => void;
+  /** Critic H6: refresh active mythos box when shell switches vault without remounting Settings. */
+  activeVaultRoot?: string;
 }
 
 const cardSt = (current: boolean): CSSProperties => ({
@@ -93,7 +95,13 @@ const mythosBoxSt: CSSProperties = {
   border: 'var(--bwh,1px) solid var(--bh,rgba(0,240,255,.18))',
 };
 
-export default function MythosVaultsSection({ settings, setSettings, setSavedOk, onMoveVault }: Props) {
+export default function MythosVaultsSection({
+  settings,
+  setSettings,
+  setSavedOk,
+  onMoveVault,
+  activeVaultRoot,
+}: Props) {
   const [vaults, setVaults] = useState<VaultEntry[]>([]);
   const [activeRoot, setActiveRoot] = useState<string>('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -175,6 +183,10 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk,
     loadIcons();
     refreshActiveRoot();
   }, [refreshVaults, refreshHidden, loadIcons, refreshActiveRoot]);
+
+  useEffect(() => {
+    if (activeVaultRoot) setActiveRoot(activeVaultRoot);
+  }, [activeVaultRoot]);
 
   // SKY-11815: a Vaults-folder Move rewrites every vault's absolute path in
   // vault-settings.json, but this component's `vaults` and `activeRoot` state
@@ -267,11 +279,11 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk,
    *  — same Retry / Switch anyway park as nav-rail tiles. Never projectSwitch
    *  first (main must not commit until save succeeds or Switch anyway).
    *  activeRoot + theme mirror follow onProjectSwitched / successful switch. */
-  const onCardClick = useCallback(async (v: VaultEntry) => {
-    if (v.vaultRoot === activeRoot) return;
+  const onCardClick = useCallback(async (v: VaultEntry): Promise<boolean> => {
+    if (v.vaultRoot === activeRoot) return true;
     // PLAN-058 L1a (57:21): card click switches vaults only — never opens the
     // create-vault modal (that is "New vault…" only).
-    if (createOpen) return;
+    if (createOpen) return false;
     try {
       const req = (window as Window & {
         __mythosRequestVaultSwitch?: (vaultRoot: string) => Promise<boolean>;
@@ -284,7 +296,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk,
         switched = Boolean(res?.switched);
         if (switched) setActiveRoot(v.vaultRoot);
       }
-      if (!switched) return;
+      if (!switched) return false;
       const key = settings.vaultThemes?.[v.vaultRoot];
       const preset = key ? LIQUID_NEON_PRESETS[key as LiquidNeonPresetKey] : undefined;
       if (preset) {
@@ -298,7 +310,9 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk,
           },
         }));
       }
+      return true;
     } catch { /* switch failed — card stays as-is */ }
+    return false;
   }, [activeRoot, settings.vaultThemes, setSettings, createOpen]);
 
   /** SKY-10385: open the create form, prefilled with the default vaults
@@ -529,7 +543,8 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk,
 
   const onMoveMythos = useCallback(async (primary: VaultEntry) => {
     if (primary.vaultRoot !== activeRoot) {
-      await onCardClick(primary);
+      const switched = await onCardClick(primary);
+      if (!switched) return;
     }
     onMoveVault?.();
   }, [activeRoot, onCardClick, onMoveVault]);
@@ -881,10 +896,10 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk,
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 2 }}>
               <span
-                className="m24-path"
-                data-testid={`mvs-mythos-path-${mythosRoot}`}
+                className="m24-path settings-vault-path-display"
+                data-testid={current ? 'settings-active-mythos-path' : `mvs-mythos-path-${mythosRoot}`}
                 title={mythosRoot}
-                style={{ flex: 1, minWidth: 0, fontSize: 10.5 }}
+                style={{ flex: 1, minWidth: 0, fontSize: 10.5, display: 'block' }}
               >
                 {mythosRoot}
               </span>

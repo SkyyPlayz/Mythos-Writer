@@ -24,11 +24,12 @@ describe('A1 floating rail (09 §3.2)', () => {
     expect(css).toMatch(/\.nav-rail__item--active[\s\S]*rgba\(0,\s*240,\s*255,\s*\.45\)/);
   });
 
-  it('vault tiles match design (no scroll, grad active, 22×18 +, settings h50)', () => {
+  it('vault tiles match design (no scroll, PLAN-058 61:16 active chrome, 22×18 +, settings h50)', () => {
     expect(css).toMatch(/\.nav-rail__vaults\s*\{[^}]*overflow:\s*visible/s);
     expect(css).not.toMatch(/\.nav-rail__vaults\s*\{[^}]*max-height:\s*294px/s);
-    expect(css).toMatch(/\.nav-rail__vault-tile--active\s*\{[^}]*var\(--grad/s);
-    expect(css).not.toMatch(/\.nav-rail__vault-tile--active\s*\{[^}]*neon-glow-strong/s);
+    expect(css).toMatch(/\.nav-rail__vault-tile--active\s*\{[^}]*border:\s*2px solid/s);
+    expect(css).toMatch(/\.nav-rail__vault-tile--active\s*\{[^}]*var\(--g2/s);
+    expect(css).not.toMatch(/\.nav-rail__vault-tile--active\s*\{[^}]*var\(--grad/s);
     expect(css).toMatch(/\.nav-rail__vault-add\s*\{[^}]*width:\s*22px/s);
     expect(css).toMatch(/\.nav-rail__vault-add\s*\{[^}]*height:\s*18px/s);
     expect(css).toMatch(/\.nav-rail__settings\s*\{[^}]*height:\s*50px/s);

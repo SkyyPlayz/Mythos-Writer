@@ -155,8 +155,8 @@ test('SKY-10668: merely opening Settings writes nothing to app-settings.json', a
 test('switching to Vault & Files shows vault sections and hides Agents sections', async () => {
   await page.click('[data-testid="settings-cat-vaults"]');
 
-  const vaultPathsSection = page.locator('[aria-labelledby="section-vault-paths"]');
-  await expect(vaultPathsSection).toBeVisible();
+  const mythosVaultsSection = page.locator('[aria-labelledby="section-mythos-vaults"]');
+  await expect(mythosVaultsSection).toBeVisible();
 
   // Agents-only sections are unmounted (not just hidden) once the category switches.
   const apiKeySection = page.locator('[aria-labelledby="section-api-key"]');

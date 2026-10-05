@@ -107,6 +107,9 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-vault-autolinker', // M6: Auto Note Linker — FIRST card per spec §12
       'section-vaults-folder', // SKY-11154: "Vaults folder" row — Open folder + Move…
       'section-mythos-vaults', // PLAN-058 L1b: Mythos vault boxes + nested notes/story
+      // Still defined in section components (embedded / unmounted) — registry only.
+      'section-vault-paths', // VaultPathsSection.tsx — not mounted in SettingsPanel (L1b)
+      'section-add-vault', // VaultLinkingColumns.tsx — embedded mode omits standalone section
       'section-agents-vault',
       'section-vault-health',
       'section-vault-danger-zone',
@@ -142,7 +145,10 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     id: 'account',
     label: 'Account & profile',
     description: 'You, your plan, and your devices.',
-    sectionIds: ['section-account-profile'],
+    sectionIds: [
+      'section-account-profile',
+      'section-account', // AccountSection.tsx — not mounted in SettingsPanel (L1b)
+    ],
   },
 ] as const;
 

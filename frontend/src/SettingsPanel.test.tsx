@@ -176,7 +176,8 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
     await flushAsyncEffects();
     expect(screen.getByRole('tab', { name: /vault & files/i })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('heading', { name: /^vault paths$/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^mythos vaults$/i })).toBeInTheDocument();
+    expect(screen.getByTestId('mvs-new-vault')).toBeInTheDocument();
     expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
   });
 
@@ -190,13 +191,35 @@ describe('SettingsPanel', () => {
     expect(screen.getByTestId('restore-app-data-btn')).toBeInTheDocument();
   });
 
-  describe('SKY-11352: custom-template management (restored)', () => {
+  describe('SKY-11352 / PLAN-058 L1b: template create on grouped Mythos vaults', () => {
+    const mockProjectList = vi.fn();
+    const mockGetVaultRoot = vi.fn();
+    const mockProjectStats = vi.fn();
+
     beforeEach(() => {
-      mockTemplateList.mockResolvedValue({
-        templates: [
-          { id: 'bundled:novel-3act', name: 'Novel (3-Act)', description: 'Bundled', isUserTemplate: false },
-          { id: 'user:my-novel-1234', name: 'My Novel', description: 'Custom: My Novel', isUserTemplate: true },
+      mockProjectList.mockResolvedValue({
+        projects: [
+          {
+            vaultRoot: '/home/test/Mythos/Story Vault',
+            mythosVaultRoot: '/home/test/Mythos',
+            notesVaultRoot: '/home/test/Mythos/Notes Vault',
+            name: 'Test',
+            openedAt: '',
+          },
         ],
+      });
+      mockGetVaultRoot.mockResolvedValue({ vaultRoot: '/home/test/Mythos/Story Vault' });
+      mockProjectStats.mockResolvedValue({ stats: [] });
+      Object.assign(window.api as object, {
+        projectList: mockProjectList,
+        getVaultRoot: mockGetVaultRoot,
+        projectStats: mockProjectStats,
+        vaultSurfaceListHidden: vi.fn().mockResolvedValue({ hiddenVaultRoots: [] }),
+        notesVaultRegistryList: vi.fn().mockResolvedValue({ vaults: [], activeId: null }),
+        storyVaultRegistryList: vi.fn().mockResolvedValue({ vaults: [], activeId: null }),
+        vaultAccessGetState: vi.fn().mockResolvedValue({ ok: true, mythosId: 'mid', vaultAccess: {}, crossLinks: [] }),
+        onNotesVaultRegistryChanged: () => () => {},
+        onStoryVaultRegistryChanged: () => () => {},
       });
     });
 
@@ -205,56 +228,24 @@ describe('SettingsPanel', () => {
       await waitForModelKeys();
       fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
       await flushAsyncEffects();
+      await waitFor(() => expect(screen.getByTestId('mvs-new-vault')).toBeInTheDocument());
     }
 
-    it('lists only user templates, with a count badge, and hides bundled ones', async () => {
+    it('New vault… opens create modal with template mode selected by default', async () => {
       await openVaultsTab();
-      expect(await screen.findByTestId('template-name-user:my-novel-1234')).toHaveTextContent('My Novel');
-      expect(screen.getByTestId('user-templates-count')).toHaveTextContent('1');
-      expect(screen.queryByText('Novel (3-Act)')).not.toBeInTheDocument();
-      expect(screen.queryByTestId('template-delete-btn-bundled:novel-3act')).not.toBeInTheDocument();
+      await clickAndFlush(screen.getByTestId('mvs-new-vault'));
+      expect(screen.getByTestId('mvs-vault-mode-template')).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByTestId('mvs-vault-mode-blank')).toBeInTheDocument();
+      expect(screen.getByTestId('mvs-vault-mode-import')).toBeInTheDocument();
     });
 
-    it('renames a user template and reloads the list', async () => {
+    it('template mode is available alongside blank and import', async () => {
       await openVaultsTab();
-      await screen.findByTestId('template-name-user:my-novel-1234');
-      mockTemplateList.mockResolvedValueOnce({
-        templates: [{ id: 'user:my-novel-1234', name: 'My Renamed Novel', description: '', isUserTemplate: true }],
-      });
-      await clickAndFlush(screen.getByTestId('template-rename-btn-user:my-novel-1234'));
-      const input = screen.getByTestId('template-rename-input-user:my-novel-1234');
-      await changeAndFlush(input, 'My Renamed Novel');
-      fireEvent.keyDown(input, { key: 'Enter' });
-      await flushAsyncEffects();
-      expect(mockTemplateRename).toHaveBeenCalledWith('user:my-novel-1234', 'My Renamed Novel');
-      expect(await screen.findByText('My Renamed Novel')).toBeInTheDocument();
-    });
-
-    it('duplicates a user template', async () => {
-      await openVaultsTab();
-      await screen.findByTestId('template-name-user:my-novel-1234');
-      await clickAndFlush(screen.getByTestId('template-duplicate-btn-user:my-novel-1234'));
-      expect(mockTemplateDuplicate).toHaveBeenCalledWith('user:my-novel-1234');
-    });
-
-    it('shows a confirm dialog before deleting, and cancel preserves the template', async () => {
-      await openVaultsTab();
-      await screen.findByTestId('template-name-user:my-novel-1234');
-      await clickAndFlush(screen.getByTestId('template-delete-btn-user:my-novel-1234'));
-      expect(screen.getByTestId('template-delete-confirm')).toBeInTheDocument();
-      await clickAndFlush(screen.getByTestId('template-delete-cancel'));
-      expect(mockTemplateDelete).not.toHaveBeenCalled();
-      expect(screen.getByTestId('template-name-user:my-novel-1234')).toBeInTheDocument();
-    });
-
-    it('deletes a user template on confirm', async () => {
-      await openVaultsTab();
-      await screen.findByTestId('template-name-user:my-novel-1234');
-      mockTemplateList.mockResolvedValueOnce({ templates: [] });
-      await clickAndFlush(screen.getByTestId('template-delete-btn-user:my-novel-1234'));
-      await clickAndFlush(screen.getByTestId('template-delete-confirm'));
-      expect(mockTemplateDelete).toHaveBeenCalledWith('user:my-novel-1234');
-      await waitFor(() => expect(screen.queryByTestId('user-templates-section')).not.toBeInTheDocument());
+      await clickAndFlush(screen.getByTestId('mvs-new-vault'));
+      fireEvent.click(screen.getByTestId('mvs-vault-mode-blank'));
+      expect(screen.getByTestId('mvs-vault-mode-blank')).toHaveAttribute('aria-checked', 'true');
+      fireEvent.click(screen.getByTestId('mvs-vault-mode-template'));
+      expect(screen.getByTestId('mvs-vault-mode-template')).toHaveAttribute('aria-checked', 'true');
     });
   });
 
@@ -1282,7 +1273,7 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
     await flushAsyncEffects();
     expect(screen.getByRole('tab', { name: /vault & files/i })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('heading', { name: /^vault paths$/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^mythos vaults$/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/stt binary path/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/stt model path/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/stt input language/i)).not.toBeInTheDocument();
@@ -2732,6 +2723,41 @@ describe('SKY-3218 nav-bar configuration', () => {
   // Critic H6 / TC-SKY-11048-01: no Settings remount on "Settings → this vault",
   // so vault paths must refresh when activeVaultRoot changes in place.
   it('H6: vault path display refreshes when activeVaultRoot changes without remount', async () => {
+    const mockProjectList = vi.fn();
+    const mockGetVaultRoot = vi.fn();
+    const mockProjectStats = vi.fn();
+    mockProjectList.mockResolvedValue({
+      projects: [
+        {
+          vaultRoot: '/vaults/First/Story Vault',
+          mythosVaultRoot: '/vaults/First',
+          notesVaultRoot: '/vaults/First/Notes Vault',
+          name: 'First',
+          openedAt: '',
+        },
+        {
+          vaultRoot: '/vaults/Second/Story Vault',
+          mythosVaultRoot: '/vaults/Second',
+          notesVaultRoot: '/vaults/Second/Notes Vault',
+          name: 'Second',
+          openedAt: '',
+        },
+      ],
+    });
+    mockGetVaultRoot.mockResolvedValue({ vaultRoot: '/vaults/First/Story Vault' });
+    mockProjectStats.mockResolvedValue({ stats: [] });
+    Object.assign(window.api as object, {
+      projectList: mockProjectList,
+      getVaultRoot: mockGetVaultRoot,
+      projectStats: mockProjectStats,
+      vaultSurfaceListHidden: vi.fn().mockResolvedValue({ hiddenVaultRoots: [] }),
+      notesVaultRegistryList: vi.fn().mockResolvedValue({ vaults: [], activeId: null }),
+      storyVaultRegistryList: vi.fn().mockResolvedValue({ vaults: [], activeId: null }),
+      vaultAccessGetState: vi.fn().mockResolvedValue({ ok: true, mythosId: 'mid', vaultAccess: {}, crossLinks: [] }),
+      onNotesVaultRegistryChanged: () => () => {},
+      onStoryVaultRegistryChanged: () => () => {},
+    });
+
     mockVaultGetPaths
       .mockResolvedValueOnce({
         storyVaultPath: '/vaults/First/Story Vault',
@@ -2750,12 +2776,11 @@ describe('SKY-3218 nav-bar configuration', () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByText('/vaults/First/Story Vault')).toBeInTheDocument();
+      expect(screen.getByTestId('settings-active-mythos-path')).toHaveTextContent('/vaults/First');
     });
     const callsAfterFirst = mockVaultGetPaths.mock.calls.length;
     expect(callsAfterFirst).toBeGreaterThanOrEqual(1);
 
-    // Further mount-effect churn must still resolve to First until root changes.
     mockVaultGetPaths.mockResolvedValue({
       storyVaultPath: '/vaults/Second/Story Vault',
       notesVaultPath: '/vaults/Second/Notes Vault',
@@ -2769,10 +2794,10 @@ describe('SKY-3218 nav-bar configuration', () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByText('/vaults/Second/Story Vault')).toBeInTheDocument();
+      expect(screen.getByTestId('settings-active-mythos-path')).toHaveTextContent('/vaults/Second');
     });
     expect(mockVaultGetPaths.mock.calls.length).toBeGreaterThan(callsAfterFirst);
-    expect(screen.queryByText('/vaults/First/Story Vault')).not.toBeInTheDocument();
+    expect(screen.getByTestId('settings-active-mythos-path')).not.toHaveTextContent('/vaults/First');
   });
 
   // Critic r3 #3 + Probe H1 + Critic hard 2: activeVaultRoot change must not

@@ -1118,6 +1118,7 @@ export default function SettingsPanel({
                 setSettings={setSettings}
                 setSavedOk={setSavedOk}
                 onMoveVault={handleMoveVault}
+                activeVaultRoot={activeVaultRoot}
               />
 
               <AgentsVaultSection />
