@@ -105,11 +105,9 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     description: 'Where your world lives on disk.',
     sectionIds: [
       'section-vault-autolinker', // M6: Auto Note Linker — FIRST card per spec §12
-      'section-account',
       'section-vaults-folder', // SKY-11154: "Vaults folder" row — Open folder + Move…
-      'section-mythos-vaults', // Beta 4 M1: per-vault default theme cards
-      'section-add-vault', // SKY-11154 (grew from SKY-11152): Notes/Story columns + dot-linking
-      'section-vault-paths',
+      'section-mythos-vaults', // PLAN-058 L1b: Mythos vault boxes + nested notes/story
+      'section-agents-vault',
       'section-vault-health',
       'section-vault-danger-zone',
       'section-scene-fields',

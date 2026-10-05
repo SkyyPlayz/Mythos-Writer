@@ -1192,6 +1192,11 @@
 /* SKY-11376 / Sep Liquid Neon Create-vault modal */
 .create-vault-modal {
   width: min(420px, 100%);
+  max-height: min(90vh, 720px);
+}
+.create-vault-modal .ln-dialog-body {
+  /* PLAN-058 L1b (01:19): scroll inside the modal, not the Settings panel behind it. */
+  max-height: min(60vh, 520px);
 }
 .create-vault-where-header {
   display: flex;

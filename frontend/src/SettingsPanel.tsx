@@ -19,8 +19,6 @@ import AdvancedAppearancePopover from './components/SettingsPanel/AdvancedAppear
 import AiMasterSection from './components/SettingsPanel/sections/AiMasterSection';
 import ProviderSection from './components/SettingsPanel/sections/ProviderSection';
 import ApiKeySection from './components/SettingsPanel/sections/ApiKeySection';
-import AccountSection from './components/SettingsPanel/sections/AccountSection';
-import VaultPathsSection from './components/SettingsPanel/sections/VaultPathsSection';
 import VaultHealthSection from './components/SettingsPanel/sections/VaultHealthSection';
 import AutoLinkerSection from './components/SettingsPanel/sections/AutoLinkerSection';
 import WritingPartnerSection from './partner/WritingPartnerSection';
@@ -38,7 +36,6 @@ import AppearanceSection from './components/SettingsPanel/sections/AppearanceSec
 import LiquidNeonAppearanceSection from './components/SettingsPanel/sections/LiquidNeonAppearanceSection';
 import MythosVaultsSection from './components/SettingsPanel/sections/MythosVaultsSection';
 import VaultsFolderSection from './components/SettingsPanel/sections/VaultsFolderSection';
-import VaultLinkingColumns from './components/SettingsPanel/sections/VaultLinkingColumns';
 import AgentsVaultSection from './components/SettingsPanel/sections/AgentsVaultSection';
 import PageAppearanceSection from './components/SettingsPanel/sections/PageAppearanceSection';
 import NavConfigSection from './components/SettingsPanel/sections/NavConfigSection';
@@ -139,16 +136,11 @@ export default function SettingsPanel({
   const [showApiKey, setShowApiKey] = useState(false);
   const [, setMicDevices] = useState<MicDevice[]>([]);
 
-  // SKY-9: Vault paths state. `vaults` mirrors the persisted Story Vault +
-  // Notes Vault roots; `vaultsDirty` flags an unsaved local edit so the Save
-  // Vault Paths button only fires when there's something to persist.
+  // SKY-9: mirrors persisted Story/Notes roots for Sync & Backup + move wizard.
   const [vaults, setVaults] = useState<{ storyVaultPath: string; notesVaultPath: string }>({
     storyVaultPath: '',
     notesVaultPath: '',
   });
-  const [vaultsDirty, setVaultsDirty] = useState(false);
-  const [vaultsSavedOk, setVaultsSavedOk] = useState(false);
-  const [vaultsError, setVaultsError] = useState<string | null>(null);
 
   // SKY-861/SKY-1112: Cloud-sync vault placement entry point.
   const [showMoveWizard, setShowMoveWizard] = useState(false);
@@ -427,13 +419,10 @@ export default function SettingsPanel({
   // SKY-9 / Critic H6: load vault paths on mount AND when activeVaultRoot
   // changes while Settings stays open (no remount). Skip when the user has
   // unsaved local path edits so we don't clobber them mid-edit.
-  const vaultsDirtyRef = useRef(vaultsDirty);
-  vaultsDirtyRef.current = vaultsDirty;
   useEffect(() => {
     let cancelled = false;
-    if (vaultsDirtyRef.current) return;
     window.api.vaultGetPaths().then((paths) => {
-      if (cancelled || vaultsDirtyRef.current) return;
+      if (cancelled) return;
       setVaults(paths);
     }).catch(() => {
       // non-fatal — leave inputs blank; user can still pick folders
@@ -708,43 +697,6 @@ export default function SettingsPanel({
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [handleClose, lgAdvancedOpen]);
-
-  // SKY-9: persist vault paths in a separate round-trip from settingsSet so
-  // a misconfigured path can't block API-key edits, and so the main side can
-  // re-seed both vault dirs in the same call (vault:setPaths handler does
-  // ensureVaultDir + ensureNotesVaultDir before returning).
-  const handleSaveVaults = useCallback(async () => {
-    setVaultsError(null);
-    setVaultsSavedOk(false);
-    try {
-      const result = await window.api.vaultSetPaths(
-        vaults.storyVaultPath.trim(),
-        vaults.notesVaultPath.trim(),
-      );
-      if (result.saved) {
-        setVaults({
-          storyVaultPath: result.storyVaultPath,
-          notesVaultPath: result.notesVaultPath,
-        });
-        setVaultsDirty(false);
-        setVaultsSavedOk(true);
-      }
-    } catch (e) {
-      setVaultsError(e instanceof Error ? e.message : 'Failed to save vault paths.');
-    }
-  }, [vaults.storyVaultPath, vaults.notesVaultPath]);
-
-  const handlePickVaultFolder = useCallback(
-    async (which: 'storyVaultPath' | 'notesVaultPath') => {
-      const title = which === 'storyVaultPath' ? 'Choose Story Vault folder' : 'Choose Notes Vault folder';
-      const res = await window.api.chooseVaultFolder(title, vaults[which] || undefined);
-      if (res.cancelled || !res.path) return;
-      setVaults((prev) => ({ ...prev, [which]: res.path as string }));
-      setVaultsDirty(true);
-      setVaultsSavedOk(false);
-    },
-    [vaults],
-  );
 
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) void handleClose();
@@ -1160,30 +1112,15 @@ export default function SettingsPanel({
                   AccountSection move above). */}
               <VaultsFolderSection />
 
-              <AccountSection vaults={vaults} onMoveVault={handleMoveVault} />
-
-              {/* Beta 4 M1: Mythos vaults cards — per-vault default theme (§3). */}
-              <MythosVaultsSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
-
-              {/* SKY-11154 (parent spec SKY-11141 §4): Notes/Story columns for
-                  the active Mythos vault, with dot-linking pairing — grew out
-                  of SKY-11152's "+ Add Notes Vault"/"+ Add Story Vault"
-                  dialogs (still reused here, kind='notes'/'story'). */}
-              <VaultLinkingColumns />
+              {/* PLAN-058 L1b: one box per Mythos vault (notes/story columns nested). */}
+              <MythosVaultsSection
+                settings={settings}
+                setSettings={setSettings}
+                setSavedOk={setSavedOk}
+                onMoveVault={handleMoveVault}
+              />
 
               <AgentsVaultSection />
-
-              <VaultPathsSection
-                vaults={vaults}
-                setVaults={setVaults}
-                vaultsDirty={vaultsDirty}
-                setVaultsDirty={setVaultsDirty}
-                vaultsSavedOk={vaultsSavedOk}
-                setVaultsSavedOk={setVaultsSavedOk}
-                vaultsError={vaultsError}
-                onPickVaultFolder={handlePickVaultFolder}
-                onSaveVaults={handleSaveVaults}
-              />
 
               <VaultHealthSection />
 

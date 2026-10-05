@@ -210,4 +210,9 @@ describe('VaultLinkingColumns — visual pair lines (owner punch)', () => {
   it('pairLinePath is a cubic from notes dot to story dot', () => {
     expect(pairLinePath({ x: 10, y: 20 }, { x: 90, y: 40 })).toBe('M 10 20 C 50 20, 50 40, 90 40');
   });
+
+  it('PLAN-058 L1b (51:50): pair dots anchor at column edges in layout measure', () => {
+    // Regression pin: measure uses dot right/left edges — not centers.
+    expect(pairLinePath({ x: 100, y: 20 }, { x: 200, y: 40 })).toMatch(/^M 100 20/);
+  });
 });

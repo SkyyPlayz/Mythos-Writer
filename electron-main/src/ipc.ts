@@ -332,6 +332,8 @@ export const IPC_CHANNELS = {
   // SKY-11154: "Vaults folder" reveal/move — the parent folder holding every
   // Mythos vault, distinct from VAULT_REVEAL_FOLDER (the active Story Vault).
   VAULT_SURFACE_REVEAL_VAULTS_PARENT: 'vault:surface:revealVaultsParent',
+  /** PLAN-058 L1b — reveal a known Mythos vault root in the OS file manager. */
+  VAULT_SURFACE_REVEAL_MYTHOS: 'vault:surface:revealMythos',
   VAULT_SURFACE_MOVE_VAULTS_PARENT: 'vault:surface:moveVaultsParent',
 
   // Archive confirmation dialog (MYT-376) — three-verb resolution for inconsistencies
@@ -1006,6 +1008,7 @@ export interface IpcHandlers {
   [IPC_CHANNELS.VAULT_SURFACE_UNHIDE]: (payload: VaultSurfaceUnhidePayload) => { ok: true };
   [IPC_CHANNELS.VAULT_SURFACE_LIST_HIDDEN]: (payload: never) => VaultSurfaceListHiddenResponse;
   [IPC_CHANNELS.VAULT_SURFACE_REVEAL_VAULTS_PARENT]: (payload: never) => Promise<VaultSurfaceRevealVaultsParentResponse>;
+  [IPC_CHANNELS.VAULT_SURFACE_REVEAL_MYTHOS]: (payload: VaultSurfaceRevealMythosPayload) => Promise<VaultSurfaceRevealVaultsParentResponse>;
   [IPC_CHANNELS.VAULT_SURFACE_MOVE_VAULTS_PARENT]: (payload: VaultSurfaceMoveVaultsParentPayload) => Promise<VaultSurfaceMoveVaultsParentResponse>;
   [IPC_CHANNELS.ARCHIVE_CONFIRM]: (payload: ArchiveConfirmPayload) => ArchiveConfirmResponse;
   [IPC_CHANNELS.ARCHIVE_IGNORE_LIST]: (payload: never) => ArchiveIgnoreListResponse;
@@ -3596,6 +3599,10 @@ export interface VaultSurfaceListHiddenResponse {
 
 export interface VaultSurfaceRevealVaultsParentResponse {
   opened: boolean;
+}
+
+export interface VaultSurfaceRevealMythosPayload {
+  mythosVaultRoot: string;
 }
 
 export interface VaultSurfaceMoveVaultsParentPayload {

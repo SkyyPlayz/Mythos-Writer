@@ -404,13 +404,15 @@
   outline-offset: 2px;
 }
 
-/* A1 / 09 §3.2 vaultTiles active — grad fill + g2 glow (no double ring) */
+/* PLAN-058 L1b (61:16): selected = darker inset border + stronger glow (no shrink). */
 .nav-rail__vault-tile--active {
   cursor: default;
-  color: #0b0d17;
-  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
-  border-color: transparent;
-  box-shadow: 0 0 14px -3px var(--g2, rgba(155, 95, 255, .4));
+  color: #e6ecf9;
+  background: rgba(8, 10, 18, .55);
+  border: 2px solid rgba(0, 0, 0, .55);
+  box-shadow:
+    0 0 18px var(--g2, rgba(155, 95, 255, .55)),
+    inset 0 0 0 1px var(--b1, rgba(0, 240, 255, .45));
 }
 
 /* A1 / 09 §3.2 new-vault +: 22×18, radius 6, dashed */
