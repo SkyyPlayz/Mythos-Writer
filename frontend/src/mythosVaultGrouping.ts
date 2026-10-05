@@ -18,6 +18,21 @@ export function mythosRootKey(v: MythosVaultGroupEntry): string {
   return v.mythosVaultRoot ?? v.vaultRoot;
 }
 
+const STORY_VAULT_DIR_SUFFIXES = ['/Story Vault', '\\Story Vault'] as const;
+
+/** PLAN-058 L1b (46:36): Settings path row shows the Mythos root, not the active Story Vault subpath. */
+export function mythosRootForDisplay(v: MythosVaultGroupEntry): string {
+  if (v.mythosVaultRoot !== null && v.mythosVaultRoot !== v.vaultRoot) {
+    return v.mythosVaultRoot;
+  }
+  for (const suffix of STORY_VAULT_DIR_SUFFIXES) {
+    if (v.vaultRoot.endsWith(suffix)) {
+      return v.vaultRoot.slice(0, -suffix.length);
+    }
+  }
+  return mythosRootKey(v);
+}
+
 export function groupVaultsByMythos(
   vaults: MythosVaultGroupEntry[],
   activeVaultRoot: string,

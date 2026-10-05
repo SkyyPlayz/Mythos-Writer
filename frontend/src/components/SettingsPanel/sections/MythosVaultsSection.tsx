@@ -32,7 +32,7 @@ import VaultOverflowMenu from './VaultOverflowMenu';
 import Dialog, { DialogBody, DialogFooter, DialogHeader } from '../../ui/Dialog';
 import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
 import { enqueueSettingsWrite } from '../../../settingsWriteSerial';
-import { groupVaultsByMythos, mythosRootKey } from '../../../mythosVaultGrouping';
+import { groupVaultsByMythos, mythosRootForDisplay, mythosRootKey } from '../../../mythosVaultGrouping';
 import VaultLinkingColumns from './VaultLinkingColumns';
 
 interface VaultEntry {
@@ -771,6 +771,7 @@ export default function MythosVaultsSection({
           const stats = statsByRoot[v.vaultRoot];
           const renaming = renameFor === v.vaultRoot;
           const mythosRoot = group.mythosRoot;
+          const displayMythosRoot = mythosRootForDisplay(v);
           const boxActive = mythosRoot === activeMythosRoot;
           return (
             <div
@@ -898,10 +899,10 @@ export default function MythosVaultsSection({
               <span
                 className="m24-path settings-vault-path-display"
                 data-testid={current ? 'settings-active-mythos-path' : `mvs-mythos-path-${mythosRoot}`}
-                title={mythosRoot}
+                title={displayMythosRoot}
                 style={{ flex: 1, minWidth: 0, fontSize: 10.5, display: 'block' }}
               >
-                {mythosRoot}
+                {displayMythosRoot}
               </span>
               <button
                 type="button"
