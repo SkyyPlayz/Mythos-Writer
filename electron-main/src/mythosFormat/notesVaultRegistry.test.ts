@@ -6,6 +6,7 @@ import path from 'node:path';
 import {
   ensureNotesVaultRegistry,
   ensureActiveNotesVaultPath,
+  getActiveNotesVaultEntry,
   createBlankNotesVault,
   createNotesVaultFromOptions,
   setActiveNotesVault,
@@ -102,6 +103,22 @@ describe('createBlankNotesVault', () => {
 });
 
 describe('createNotesVaultFromOptions', () => {
+  it('PLAN-058 L1a (74:27): template on a second notes vault does not merge skeleton into the active vault', () => {
+    const registry = ensureNotesVaultRegistry(tmpDir);
+    const active = getActiveNotesVaultEntry(registry);
+    expect(active).toBeDefined();
+    const activePath = notesVaultAbsPath(tmpDir, active!);
+    fs.writeFileSync(path.join(activePath, 'stay.md'), '# stay\n');
+    const { entry } = createNotesVaultFromOptions(tmpDir, 'Second shaped', 'template');
+    const secondPath = notesVaultAbsPath(tmpDir, entry);
+    expect(secondPath).not.toBe(activePath);
+    expect(fs.existsSync(path.join(activePath, 'stay.md'))).toBe(true);
+    expect(fs.existsSync(path.join(activePath, 'Characters'))).toBe(false);
+    for (const dir of TEMPLATE_NOTES_SKELETON) {
+      expect(fs.existsSync(path.join(secondPath, dir))).toBe(true);
+    }
+  });
+
   it('template mode creates the 6 skeleton folders, empty', () => {
     ensureNotesVaultRegistry(tmpDir);
     const { entry } = createNotesVaultFromOptions(tmpDir, 'Shaped', 'template');

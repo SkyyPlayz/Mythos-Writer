@@ -698,7 +698,12 @@ export default function SettingsPanel({
   // F2#15: Escape also auto-saves (replaces the early onClose-only listener).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !lgAdvancedOpen) handleClose();
+      if (e.key === 'Escape' && !lgAdvancedOpen) {
+        // PLAN-058 L1a: Mythos "New vault…" modal is portaled above Settings;
+        // let it consume Escape instead of closing the whole panel mid-typing.
+        if (document.documentElement.hasAttribute('data-mythos-vault-create-open')) return;
+        handleClose();
+      }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);

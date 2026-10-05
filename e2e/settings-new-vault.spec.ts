@@ -101,9 +101,9 @@ test('SKY-10401: create a second vault from Settings (blank = empty), then switc
     await newVaultBtn.click();
 
     // Chooser step: pick Create blank to proceed to Name/Where screen.
-    await expect(page.getByTestId('mvs-choose-blank')).toBeVisible();
-    await expect(page.getByTestId('mvs-choose-import')).toBeVisible();
-    await page.getByTestId('mvs-choose-blank').click();
+    await expect(page.getByTestId('mvs-vault-mode-template')).toBeVisible();
+    await expect(page.getByTestId('mvs-vault-mode-blank')).toBeVisible();
+    await page.getByTestId('mvs-vault-mode-blank').click();
 
     // Destination prefilled with defaultMythosVaultsParent() = <userData>/vaults.
     const defaultParent = path.join(userData, 'vaults');
@@ -194,7 +194,7 @@ test('SKY-11452 / SKY-11141 §3a: "Start blank" from Settings creates nothing us
     await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
     await openMythosVaultsSection(page);
     await page.getByTestId('mvs-new-vault').click();
-    await page.getByTestId('mvs-choose-blank').click();
+    await page.getByTestId('mvs-vault-mode-blank').click();
     await expect(page.getByTestId('mvs-create-dest-path')).toHaveText(path.join(userData, 'vaults'));
 
     await page.getByTestId('mvs-create-name').fill('QA Vault 2');
