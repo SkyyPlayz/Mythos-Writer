@@ -1585,6 +1585,7 @@ interface Window {
     // SKY-11154 — "Vaults folder" row: reveal/move the parent folder holding
     // every Mythos vault.
     vaultSurfaceRevealVaultsParent: () => Promise<{ opened: boolean }>;
+    vaultSurfaceRevealMythos: (mythosVaultRoot: string) => Promise<{ opened: boolean }>;
     vaultSurfaceMoveVaultsParent: (newParentPath: string) => Promise<{ moved: boolean; newPath?: string; error?: string }>;
     // SKY-11815: pushed after a successful Vaults-folder move so surfaces that
     // cached a pre-move vault path can refresh in place.

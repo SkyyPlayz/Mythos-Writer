@@ -81,6 +81,7 @@ function absPathFor(mythosRoot: string, pathSep: string, dirName: string): strin
   return `${mythosRoot.replace(/[\\/]+$/, '')}${pathSep}${dirName}`;
 }
 
+/** Notes/Story columns — rendered only inside an active Mythos vault box (PLAN-058 L1b). */
 export default function VaultLinkingColumns() {
   const [notesVaults, setNotesVaults] = useState<NotesVaultEntry[] | null>(null);
   const [storyVaults, setStoryVaults] = useState<StoryVaultEntry[] | null>(null);
@@ -280,12 +281,13 @@ export default function VaultLinkingColumns() {
         if (!notesEl || !storyEl) continue;
         const a = notesEl.getBoundingClientRect();
         const b = storyEl.getBoundingClientRect();
+        // PLAN-058 L1b (51:50): anchor at dot edges (notes right → story left).
         next.push({
           storyId: story.id,
           notesId: story.pairedNotesVaultId,
           d: pairLinePath(
-            { x: a.left + a.width / 2 - rootBox.left, y: a.top + a.height / 2 - rootBox.top },
-            { x: b.left + b.width / 2 - rootBox.left, y: b.top + b.height / 2 - rootBox.top },
+            { x: a.right - rootBox.left, y: a.top + a.height / 2 - rootBox.top },
+            { x: b.left - rootBox.left, y: b.top + b.height / 2 - rootBox.top },
           ),
         });
       }
@@ -312,14 +314,7 @@ export default function VaultLinkingColumns() {
   if (notesVaults === null) return null;
 
   return (
-    <section className="settings-section" aria-labelledby="section-add-vault" data-settings-cat="vaults">
-      <h3 className="settings-section-title" id="section-add-vault">Notes &amp; Story vaults</h3>
-      <p className="settings-hint">
-        Every Notes/Story vault inside the current Mythos vault. Click a dot on one side then the
-        other to pair a story vault to a notes vault — a story vault pairs to at most one notes
-        vault at a time.
-      </p>
-
+    <>
       <div ref={columnsRef} className="vault-link-columns" style={{ display: 'flex', gap: 16, position: 'relative' }}>
         <svg
           className="vault-pair-lines"
@@ -637,6 +632,6 @@ export default function VaultLinkingColumns() {
           </DialogFooter>
         </Dialog>
       )}
-    </section>
+    </>
   );
 }

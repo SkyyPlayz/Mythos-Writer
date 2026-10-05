@@ -27,6 +27,8 @@ export interface NavRailVault {
   id: string;
   name: string;
   active: boolean;
+  /** PLAN-058 L1b (60:59): per-vault theme accent for inactive tiles. */
+  accentColor?: string;
   /**
    * SKY-11068: the vault's author-set icon (image or glyph), stored
    * vault-local. Absent/null-kind → VaultIconAvatar renders initials.
@@ -572,6 +574,11 @@ export default function AppNavRail({
               key={vault.id}
               type="button"
               className={`nav-rail__vault-tile${vault.active ? ' nav-rail__vault-tile--active' : ''}`}
+              style={!vault.active && vault.accentColor ? {
+                borderColor: vault.accentColor,
+                color: vault.accentColor,
+                boxShadow: `0 0 10px -2px ${vault.accentColor}`,
+              } : undefined}
               onClick={() => handleVaultClick(vault)}
               onContextMenu={handleVaultContextMenu(vault.id)}
               aria-label={vault.active ? `Current vault: ${vault.name}` : `Switch to vault ${vault.name}`}

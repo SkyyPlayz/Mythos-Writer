@@ -33,6 +33,9 @@ const mockVaultSurfaceUnhide = vi.fn();
 const mockVaultSurfaceHide = vi.fn();
 const mockVaultSurfaceTrash = vi.fn();
 const mockVaultSurfaceBlastRadius = vi.fn();
+const mockVaultSurfaceRevealMythos = vi.fn();
+const mockNotesVaultRegistryList = vi.fn();
+const mockStoryVaultRegistryList = vi.fn();
 
 const baseSettings = { apiKey: '', agents: {}, theme: 'dark' } as unknown as AppSettings;
 
@@ -80,6 +83,9 @@ beforeEach(() => {
   // regression that disagreed with the card is caught by the cross-reference
   // assertion below, not masked by a mock that never has to agree with it.
   mockVaultSurfaceBlastRadius.mockResolvedValue({ vaultName: 'Alpha', innerCount: 3 });
+  mockVaultSurfaceRevealMythos.mockResolvedValue({ opened: true });
+  mockNotesVaultRegistryList.mockResolvedValue({ vaults: [], activeId: null });
+  mockStoryVaultRegistryList.mockResolvedValue({ vaults: [], activeId: null });
   Object.defineProperty(window, 'api', {
     value: {
       projectList: mockProjectList,
@@ -98,6 +104,12 @@ beforeEach(() => {
       vaultSurfaceHide: mockVaultSurfaceHide,
       vaultSurfaceTrash: mockVaultSurfaceTrash,
       vaultSurfaceBlastRadius: mockVaultSurfaceBlastRadius,
+      vaultSurfaceRevealMythos: mockVaultSurfaceRevealMythos,
+      notesVaultRegistryList: mockNotesVaultRegistryList,
+      storyVaultRegistryList: mockStoryVaultRegistryList,
+      vaultAccessGetState: vi.fn().mockResolvedValue({ ok: true, mythosId: 'mid', vaultAccess: {}, crossLinks: [] }),
+      onNotesVaultRegistryChanged: () => () => {},
+      onStoryVaultRegistryChanged: () => () => {},
     },
     writable: true,
     configurable: true,
@@ -299,7 +311,8 @@ describe('MythosVaultsSection — New vault flow (SKY-10401 / SKY-11452)', () =>
   it('New vault… opens the form with the destination prefilled from defaultVaultsParentPath', async () => {
     await openCreateForm();
     await waitFor(() => expect(screen.getByTestId('mvs-create-dest-path').textContent).toBe('/vaults'));
-    expect(mockVaultGetPaths).toHaveBeenCalledTimes(1);
+    // Mythos box embeds VaultLinkingColumns for the active vault (extra vaultGetPaths).
+    expect(mockVaultGetPaths.mock.calls.length).toBeGreaterThanOrEqual(1);
     // Name input is focused for immediate typing.
     expect(screen.getByTestId('mvs-create-name')).toHaveFocus();
   });
@@ -656,6 +669,36 @@ describe('MythosVaultsSection — inline rename (SKY-11154 §4, AC-VS-02)', () =
   });
 });
 
+describe('MythosVaultsSection — PLAN-058 L1b grouping + chrome', () => {
+  it('groups two story-vault rows under one Mythos box', async () => {
+    const SECOND_STORY = '/vaults/Alpha/Stories/Second World';
+    mockProjectList.mockResolvedValue({
+      projects: [
+        { vaultRoot: VAULT_A, mythosVaultRoot: '/vaults/Alpha', notesVaultRoot: '/vaults/Alpha/Notes Vault', name: 'Alpha', openedAt: '' },
+        { vaultRoot: SECOND_STORY, mythosVaultRoot: '/vaults/Alpha', notesVaultRoot: '/vaults/Alpha/Notes Vault', name: 'Alpha', openedAt: '' },
+        { vaultRoot: VAULT_B, mythosVaultRoot: '/vaults/Beta', notesVaultRoot: '/vaults/Beta/Notes Vault', name: 'Beta', openedAt: '' },
+      ],
+    });
+    await setup();
+    expect(screen.getByTestId('mvs-box-/vaults/Alpha')).toBeInTheDocument();
+    expect(screen.getByTestId('mvs-box-/vaults/Beta')).toBeInTheDocument();
+    expect(screen.queryByTestId(`mvs-card-${SECOND_STORY}`)).not.toBeInTheDocument();
+  });
+
+  it('Open on a Mythos box calls vaultSurfaceRevealMythos', async () => {
+    await setup();
+    fireEvent.click(screen.getByTestId('mvs-mythos-open-/vaults/Alpha'));
+    await waitFor(() => expect(mockVaultSurfaceRevealMythos).toHaveBeenCalledWith('/vaults/Alpha'));
+  });
+
+  it('⋯ menu Rename opens inline rename (FD-6)', async () => {
+    await setup();
+    fireEvent.click(screen.getByLabelText('More options for Alpha'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Rename' }));
+    expect(await screen.findByTestId(`mvs-rename-input-${VAULT_A}`)).toBeInTheDocument();
+  });
+});
+
 describe('MythosVaultsSection — the ⋯ overflow menu (SKY-11154 §4a, AC-VS-03/04)', () => {
   it('exposes a "More options" trigger with Hide/Delete/Remove menuitems, no bare Delete button', async () => {
     await setup();
@@ -801,7 +844,7 @@ describe('MythosVaultsSection — the ⋯ overflow menu (SKY-11154 §4a, AC-VS-0
 describe('MythosVaultsSection — Show hidden (SKY-11154 §4a, AC-VS-05)', () => {
   it('a "Show hidden" button is always visible, even with zero hidden vaults', async () => {
     await setup();
-    expect(screen.getByRole('button', { name: /show hidden/i })).toBeInTheDocument();
+    expect(screen.getByTestId('mvs-show-hidden-btn')).toBeInTheDocument();
   });
 
   it('hidden vaults are excluded from the main list and appear with Unhide once expanded', async () => {
@@ -812,7 +855,7 @@ describe('MythosVaultsSection — Show hidden (SKY-11154 §4a, AC-VS-05)', () =>
     await waitFor(() => expect(screen.getByTestId(`mvs-card-${VAULT_B}`)).toBeInTheDocument());
     expect(screen.queryByTestId(`mvs-card-${VAULT_A}`)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /show hidden/i }));
+    fireEvent.click(screen.getByTestId('mvs-show-hidden-btn'));
     expect(await screen.findByTestId(`mvs-unhide-${VAULT_A}`)).toBeInTheDocument();
     fireEvent.click(screen.getByTestId(`mvs-unhide-${VAULT_A}`));
     await waitFor(() => expect(mockVaultSurfaceUnhide).toHaveBeenCalledWith('/vaults/Alpha'));
@@ -833,10 +876,10 @@ describe('MythosVaultsSection — Show hidden (SKY-11154 §4a, AC-VS-05)', () =>
     await act(async () => {
       render(<MythosVaultsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
     });
-    await waitFor(() => expect(screen.getByRole('button', { name: /show hidden/i })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('mvs-show-hidden-btn')).toBeInTheDocument());
     expect(screen.queryByTestId(`mvs-card-${CUSTOM_ROOT}`)).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /show hidden/i }));
+    fireEvent.click(screen.getByTestId('mvs-show-hidden-btn'));
     fireEvent.click(await screen.findByTestId(`mvs-unhide-${CUSTOM_ROOT}`));
     await waitFor(() => expect(mockVaultSurfaceUnhide).toHaveBeenCalledWith('/vaults/Delta'));
   });

@@ -22,6 +22,7 @@ import {
   type LiquidNeonV2Settings,
 } from './theme/liquidNeonEngine';
 import { deriveVaultDisplayName, deriveSingleStoryTitle } from './ProjectSwitcher';
+import { LIQUID_NEON_PRESETS, type LiquidNeonPresetKey } from './theme/presets';
 import { notifyMythosActiveVaultChanged } from './migration/MythosMigrationCenter';
 import { stripManifestContentForIpc } from './manifestIpc';
 import {
@@ -1853,12 +1854,17 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
 
   // Derived display shape — recomputed whenever the raw list, the active
   // vault, or a per-vault display-name/icon override changes.
-  const navRailVaults: NavRailVault[] = navRailProjects.map((p) => ({
-    id: p.vaultRoot,
-    name: appSettings?.vaultDisplayNames?.[p.vaultRoot] ?? (deriveVaultDisplayName(p) || p.name),
-    icon: vaultIconsByRoot[p.vaultRoot],
-    active: p.vaultRoot === activeVaultRoot,
-  }));
+  const navRailVaults: NavRailVault[] = navRailProjects.map((p) => {
+    const themeKey = appSettings?.vaultThemes?.[p.vaultRoot];
+    const preset = themeKey ? LIQUID_NEON_PRESETS[themeKey as LiquidNeonPresetKey] : undefined;
+    return {
+      id: p.vaultRoot,
+      name: appSettings?.vaultDisplayNames?.[p.vaultRoot] ?? (deriveVaultDisplayName(p) || p.name),
+      icon: vaultIconsByRoot[p.vaultRoot],
+      active: p.vaultRoot === activeVaultRoot,
+      accentColor: preset?.c[1],
+    };
+  });
 
   const settingsOpenRef = useRef(settingsOpen);
   settingsOpenRef.current = settingsOpen;
@@ -1872,6 +1878,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     setSelectedChapter(null);
     setSelectedStory(null);
     setSelectedEntity(null);
+    // PLAN-058 L1b (60:04): switching Mythos vault lands Story Writer at Full Book.
+    setViewDepth('book');
     // SKY-11236: clear the open-note pointer too (see the onProjectSwitched
     // listener above) so the note-surfacing effect can't re-add the outgoing
     // vault's tab after loadVault clears the strip.

@@ -176,7 +176,8 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
     await flushAsyncEffects();
     expect(screen.getByRole('tab', { name: /vault & files/i })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('heading', { name: /^vault paths$/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^mythos vaults$/i })).toBeInTheDocument();
+    expect(screen.getByTestId('mvs-new-vault')).toBeInTheDocument();
     expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
   });
 
@@ -206,6 +207,12 @@ describe('SettingsPanel', () => {
       fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
       await flushAsyncEffects();
     }
+
+    it('PLAN-058 L1b presence pin: template section stays mounted in Vault & Files', async () => {
+      await openVaultsTab();
+      expect(screen.getByTestId('vault-templates-section')).toBeInTheDocument();
+      expect(screen.getByTestId('save-as-template-btn')).toBeInTheDocument();
+    });
 
     it('lists only user templates, with a count badge, and hides bundled ones', async () => {
       await openVaultsTab();
@@ -255,6 +262,64 @@ describe('SettingsPanel', () => {
       await clickAndFlush(screen.getByTestId('template-delete-confirm'));
       expect(mockTemplateDelete).toHaveBeenCalledWith('user:my-novel-1234');
       await waitFor(() => expect(screen.queryByTestId('user-templates-section')).not.toBeInTheDocument());
+    });
+  });
+
+  describe('PLAN-058 L1b: template create on grouped Mythos vaults', () => {
+    const mockProjectList = vi.fn();
+    const mockGetVaultRoot = vi.fn();
+    const mockProjectStats = vi.fn();
+
+    beforeEach(() => {
+      mockProjectList.mockResolvedValue({
+        projects: [
+          {
+            vaultRoot: '/home/test/Mythos/Story Vault',
+            mythosVaultRoot: '/home/test/Mythos',
+            notesVaultRoot: '/home/test/Mythos/Notes Vault',
+            name: 'Test',
+            openedAt: '',
+          },
+        ],
+      });
+      mockGetVaultRoot.mockResolvedValue({ vaultRoot: '/home/test/Mythos/Story Vault' });
+      mockProjectStats.mockResolvedValue({ stats: [] });
+      Object.assign(window.api as object, {
+        projectList: mockProjectList,
+        getVaultRoot: mockGetVaultRoot,
+        projectStats: mockProjectStats,
+        vaultSurfaceListHidden: vi.fn().mockResolvedValue({ hiddenVaultRoots: [] }),
+        notesVaultRegistryList: vi.fn().mockResolvedValue({ vaults: [], activeId: null }),
+        storyVaultRegistryList: vi.fn().mockResolvedValue({ vaults: [], activeId: null }),
+        vaultAccessGetState: vi.fn().mockResolvedValue({ ok: true, mythosId: 'mid', vaultAccess: {}, crossLinks: [] }),
+        onNotesVaultRegistryChanged: () => () => {},
+        onStoryVaultRegistryChanged: () => () => {},
+      });
+    });
+
+    async function openVaultsTab() {
+      await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+      await waitForModelKeys();
+      fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
+      await flushAsyncEffects();
+      await waitFor(() => expect(screen.getByTestId('mvs-new-vault')).toBeInTheDocument());
+    }
+
+    it('New vault… opens create modal with template mode selected by default', async () => {
+      await openVaultsTab();
+      await clickAndFlush(screen.getByTestId('mvs-new-vault'));
+      expect(screen.getByTestId('mvs-vault-mode-template')).toHaveAttribute('aria-checked', 'true');
+      expect(screen.getByTestId('mvs-vault-mode-blank')).toBeInTheDocument();
+      expect(screen.getByTestId('mvs-vault-mode-import')).toBeInTheDocument();
+    });
+
+    it('template mode is available alongside blank and import', async () => {
+      await openVaultsTab();
+      await clickAndFlush(screen.getByTestId('mvs-new-vault'));
+      fireEvent.click(screen.getByTestId('mvs-vault-mode-blank'));
+      expect(screen.getByTestId('mvs-vault-mode-blank')).toHaveAttribute('aria-checked', 'true');
+      fireEvent.click(screen.getByTestId('mvs-vault-mode-template'));
+      expect(screen.getByTestId('mvs-vault-mode-template')).toHaveAttribute('aria-checked', 'true');
     });
   });
 
@@ -1282,7 +1347,7 @@ describe('SettingsPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
     await flushAsyncEffects();
     expect(screen.getByRole('tab', { name: /vault & files/i })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('heading', { name: /^vault paths$/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^mythos vaults$/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/stt binary path/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/stt model path/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/stt input language/i)).not.toBeInTheDocument();
@@ -2732,6 +2797,41 @@ describe('SKY-3218 nav-bar configuration', () => {
   // Critic H6 / TC-SKY-11048-01: no Settings remount on "Settings → this vault",
   // so vault paths must refresh when activeVaultRoot changes in place.
   it('H6: vault path display refreshes when activeVaultRoot changes without remount', async () => {
+    const mockProjectList = vi.fn();
+    const mockGetVaultRoot = vi.fn();
+    const mockProjectStats = vi.fn();
+    mockProjectList.mockResolvedValue({
+      projects: [
+        {
+          vaultRoot: '/vaults/First/Story Vault',
+          mythosVaultRoot: '/vaults/First',
+          notesVaultRoot: '/vaults/First/Notes Vault',
+          name: 'First',
+          openedAt: '',
+        },
+        {
+          vaultRoot: '/vaults/Second/Story Vault',
+          mythosVaultRoot: '/vaults/Second',
+          notesVaultRoot: '/vaults/Second/Notes Vault',
+          name: 'Second',
+          openedAt: '',
+        },
+      ],
+    });
+    mockGetVaultRoot.mockResolvedValue({ vaultRoot: '/vaults/First/Story Vault' });
+    mockProjectStats.mockResolvedValue({ stats: [] });
+    Object.assign(window.api as object, {
+      projectList: mockProjectList,
+      getVaultRoot: mockGetVaultRoot,
+      projectStats: mockProjectStats,
+      vaultSurfaceListHidden: vi.fn().mockResolvedValue({ hiddenVaultRoots: [] }),
+      notesVaultRegistryList: vi.fn().mockResolvedValue({ vaults: [], activeId: null }),
+      storyVaultRegistryList: vi.fn().mockResolvedValue({ vaults: [], activeId: null }),
+      vaultAccessGetState: vi.fn().mockResolvedValue({ ok: true, mythosId: 'mid', vaultAccess: {}, crossLinks: [] }),
+      onNotesVaultRegistryChanged: () => () => {},
+      onStoryVaultRegistryChanged: () => () => {},
+    });
+
     mockVaultGetPaths
       .mockResolvedValueOnce({
         storyVaultPath: '/vaults/First/Story Vault',
@@ -2750,12 +2850,11 @@ describe('SKY-3218 nav-bar configuration', () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByText('/vaults/First/Story Vault')).toBeInTheDocument();
+      expect(screen.getByTestId('settings-active-mythos-path')).toHaveTextContent('/vaults/First');
     });
     const callsAfterFirst = mockVaultGetPaths.mock.calls.length;
     expect(callsAfterFirst).toBeGreaterThanOrEqual(1);
 
-    // Further mount-effect churn must still resolve to First until root changes.
     mockVaultGetPaths.mockResolvedValue({
       storyVaultPath: '/vaults/Second/Story Vault',
       notesVaultPath: '/vaults/Second/Notes Vault',
@@ -2769,10 +2868,10 @@ describe('SKY-3218 nav-bar configuration', () => {
       />,
     );
     await waitFor(() => {
-      expect(screen.getByText('/vaults/Second/Story Vault')).toBeInTheDocument();
+      expect(screen.getByTestId('settings-active-mythos-path')).toHaveTextContent('/vaults/Second');
     });
     expect(mockVaultGetPaths.mock.calls.length).toBeGreaterThan(callsAfterFirst);
-    expect(screen.queryByText('/vaults/First/Story Vault')).not.toBeInTheDocument();
+    expect(screen.getByTestId('settings-active-mythos-path')).not.toHaveTextContent('/vaults/First');
   });
 
   // Critic r3 #3 + Probe H1 + Critic hard 2: activeVaultRoot change must not

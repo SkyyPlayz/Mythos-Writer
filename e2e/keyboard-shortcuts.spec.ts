@@ -128,12 +128,10 @@ test.describe('Keyboard Shortcuts Dialog (SKY-83)', () => {
     await page.keyboard.press('ControlOrMeta+,');
     await expect(page.getByRole('dialog', { name: /settings/i })).toBeVisible({ timeout: 5_000 });
 
-    // Settings now opens on the Agents tab by default (SKY-6933 skip claimed the
-    // input id was renamed; it wasn't -- VaultPathsSection just isn't mounted
-    // until the Vault & Files tab is active).
+    // VaultPathsSection is unmounted (PLAN-058 L1b); use Auto Note Linker delay field.
     await page.locator('[data-testid="settings-cat-vaults"]').click();
 
-    const input = page.locator('#story-vault-path-input');
+    const input = page.locator('#al-delay');
     await expect(input).toBeVisible({ timeout: 5_000 });
     await input.focus();
     await input.press('Shift+Slash');

@@ -64,6 +64,8 @@ export interface VaultOverflowMenuProps {
   pairedStoryVaultName?: string;
   onHidden?: () => void;
   onDeleted?: () => void;
+  /** PLAN-058 L1b (58:28) — inline rename from the ⋯ menu (same as dbl-click). */
+  onRename?: () => void;
   /** Distinguishing suffix for data-testid — callers pass something unique per card. */
   testIdSuffix: string;
 }
@@ -77,6 +79,7 @@ export default function VaultOverflowMenu({
   pairedStoryVaultName,
   onHidden,
   onDeleted,
+  onRename,
   testIdSuffix,
 }: VaultOverflowMenuProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -90,6 +93,7 @@ export default function VaultOverflowMenu({
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const items: MenuItemDef[] = [
+    ...(onRename ? [{ id: 'rename', label: 'Rename' }] : []),
     { id: 'hide', label: 'Hide' },
     { id: 'delete', label: 'Move to Recycle Bin', destructive: true },
     { id: 'remove-only', label: 'Remove from Mythos…' },
@@ -97,7 +101,9 @@ export default function VaultOverflowMenu({
 
   const handleMenuAction = useCallback((id: string) => {
     setMenuOpen(false);
-    if (id === 'hide') {
+    if (id === 'rename') {
+      onRename?.();
+    } else if (id === 'hide') {
       setHideLinkedName(pairedStoryVaultName);
       setHideOpen(true);
     } else if (id === 'remove-only') {
@@ -117,7 +123,7 @@ export default function VaultOverflowMenu({
         setDeleteStep('inner-confirm');
       }
     }
-  }, [level, pairedStoryVaultName, vaultPath]);
+  }, [level, onRename, pairedStoryVaultName, vaultPath]);
 
   const confirmHide = useCallback(async () => {
     setHideBusy(true);

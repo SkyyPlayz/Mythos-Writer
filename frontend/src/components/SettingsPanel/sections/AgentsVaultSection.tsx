@@ -85,11 +85,9 @@ export default function AgentsVaultSection() {
       data-testid="agents-vault-section"
       data-screen-label="Agents Vault"
     >
+      <h3 className="sr-only" id="section-agents-vault">Agent Vault</h3>
       <M24Card title="Agent Vault">
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px 8px', flexWrap: 'wrap', minWidth: 0 }}>
-          <span style={{ fontSize: 12.5, fontWeight: 600, color: '#eef2fb', flex: '1 1 110px', minWidth: 0 }}>
-            Agent Vault
-          </span>
           <span
             style={{
               fontSize: 8.5, fontWeight: 700, letterSpacing: '0.09em', flex: '0 1 auto',

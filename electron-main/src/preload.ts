@@ -757,6 +757,8 @@ contextBridge.exposeInMainWorld('api', {
   // every Mythos vault.
   vaultSurfaceRevealVaultsParent: () =>
     ipcRenderer.invoke('vault:surface:revealVaultsParent', undefined),
+  vaultSurfaceRevealMythos: (mythosVaultRoot: string) =>
+    ipcRenderer.invoke('vault:surface:revealMythos', { mythosVaultRoot }),
   vaultSurfaceMoveVaultsParent: (newParentPath: string) =>
     ipcRenderer.invoke('vault:surface:moveVaultsParent', { newParentPath }),
   // SKY-11815: fired after a successful Vaults-folder move so any renderer

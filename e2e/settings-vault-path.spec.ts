@@ -27,12 +27,13 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
   });
 }
 
-test('Settings Account vault path uses runtime CSS truncation in Electron', async () => {
+test('Settings Vault & Files mythos path uses runtime CSS truncation in Electron', async () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-settings-vault-path-'));
   const userData = path.join(tempRoot, 'userData');
-  const storyVault = path.join(
+  // PLAN-058 L1b: path row shows the Mythos vault root (not Story Vault subpath).
+  const mythosRoot = path.join(
     tempRoot,
-    'Story Vault',
+    'Mythos',
     'with',
     'a',
     'very',
@@ -45,7 +46,8 @@ test('Settings Account vault path uses runtime CSS truncation in Electron', asyn
     'inside',
     'settings',
   );
-  const notesVault = path.join(tempRoot, 'Notes Vault');
+  const storyVault = path.join(mythosRoot, 'Story Vault');
+  const notesVault = path.join(mythosRoot, 'Notes Vault');
   seedCompletedOnboarding(userData, storyVault, notesVault);
 
   const app = await launchApp(userData);
@@ -56,11 +58,10 @@ test('Settings Account vault path uses runtime CSS truncation in Electron', asyn
 
     // SKY-3177: AppNavRail adds a second "Open settings" button; target the menu bar one.
     await page.locator('.app-menu-gear-btn').click();
-    // SKY-2973: vault path is in the Vaults tab; navigate there first
     // M28: the settings workspace rail labels this page 'Vault & Files' (§13).
     await page.getByRole('tab', { name: 'Vault & Files' }).click();
-    const pathDisplay = page.locator('.settings-vault-path-display');
-    await expect(pathDisplay).toHaveAttribute('title', storyVault);
+    const pathDisplay = page.getByTestId('settings-active-mythos-path');
+    await expect(pathDisplay).toHaveAttribute('title', mythosRoot);
 
     await expect(pathDisplay).toHaveCSS('overflow', 'hidden');
     await expect(pathDisplay).toHaveCSS('text-overflow', 'ellipsis');

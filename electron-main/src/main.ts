@@ -6394,6 +6394,25 @@ const handlers: IpcHandlers = {
     return { opened: err === '' };
   },
 
+  // PLAN-058 L1b (46:36) — Open folder for a Mythos vault root the user already
+  // knows about (recent projects + active vault). No arbitrary-path reveal.
+  [IPC_CHANNELS.VAULT_SURFACE_REVEAL_MYTHOS]: async (
+    payload: import('./ipc.js').VaultSurfaceRevealMythosPayload,
+  ) => {
+    const target = payload?.mythosVaultRoot?.trim();
+    if (!target) return { opened: false };
+    const allowed = new Set<string>();
+    for (const p of getRecentProjects()) {
+      const root = resolveMythosVaultRoot(p.vaultRoot);
+      if (root) allowed.add(root);
+    }
+    const activeRoot = resolveMythosVaultRoot(getVaultRoot());
+    if (activeRoot) allowed.add(activeRoot);
+    if (!allowed.has(target)) return { opened: false };
+    const err = await shell.openPath(target);
+    return { opened: err === '' };
+  },
+
   // SKY-11154 — move the Vaults-folder parent to a new location. Stops the
   // same watchers/db the 'mythos' level VAULT_SURFACE_TRASH handler stops
   // (this can be moving the folder containing the currently active vault),

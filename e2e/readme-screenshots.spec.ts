@@ -218,7 +218,9 @@ test('screenshot: settings vault badge (local / no sync)', async () => {
 
     // Scroll to the vault section if needed. SKY-11804 removed the cloud sync
     // badge this used to target; the vault path display is the surviving anchor.
-    const vaultPath = page.locator('[data-testid="sync-vault-path"], .settings-vault-path-display');
+    const vaultPath = page.locator(
+      '[data-testid="sync-vault-path"], [data-testid="settings-active-mythos-path"], .settings-vault-path-display',
+    );
     if (await vaultPath.first().isVisible({ timeout: 3_000 }).catch(() => false)) {
       await vaultPath.first().scrollIntoViewIfNeeded();
       await page.waitForTimeout(300);

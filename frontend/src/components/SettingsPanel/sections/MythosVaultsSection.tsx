@@ -32,6 +32,8 @@ import VaultOverflowMenu from './VaultOverflowMenu';
 import Dialog, { DialogBody, DialogFooter, DialogHeader } from '../../ui/Dialog';
 import cosmicBgUrl from '../../../assets/cosmic-bg.webp';
 import { enqueueSettingsWrite } from '../../../settingsWriteSerial';
+import { groupVaultsByMythos, mythosRootForDisplay, mythosRootKey } from '../../../mythosVaultGrouping';
+import VaultLinkingColumns from './VaultLinkingColumns';
 
 interface VaultEntry {
   vaultRoot: string;
@@ -69,6 +71,8 @@ interface Props {
   settings: AppSettings;
   setSettings: React.Dispatch<React.SetStateAction<AppSettings>>;
   setSavedOk: (ok: boolean) => void;
+  /** Critic H6: refresh active mythos box when shell switches vault without remounting Settings. */
+  activeVaultRoot?: string;
 }
 
 const cardSt = (current: boolean): CSSProperties => ({
@@ -79,7 +83,22 @@ const cardSt = (current: boolean): CSSProperties => ({
   cursor: current ? 'default' : 'pointer',
 });
 
-export default function MythosVaultsSection({ settings, setSettings, setSavedOk }: Props) {
+const mythosBoxSt: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+  padding: '12px 12px 14px',
+  borderRadius: 14,
+  background: 'rgba(255,255,255,.02)',
+  border: 'var(--bwh,1px) solid var(--bh,rgba(0,240,255,.18))',
+};
+
+export default function MythosVaultsSection({
+  settings,
+  setSettings,
+  setSavedOk,
+  activeVaultRoot,
+}: Props) {
   const [vaults, setVaults] = useState<VaultEntry[]>([]);
   const [activeRoot, setActiveRoot] = useState<string>('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -162,6 +181,10 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
     refreshActiveRoot();
   }, [refreshVaults, refreshHidden, loadIcons, refreshActiveRoot]);
 
+  useEffect(() => {
+    if (activeVaultRoot) setActiveRoot(activeVaultRoot);
+  }, [activeVaultRoot]);
+
   // SKY-11815: a Vaults-folder Move rewrites every vault's absolute path in
   // vault-settings.json, but this component's `vaults` and `activeRoot` state
   // were only ever fetched on mount — left alone, cards kept showing the
@@ -191,8 +214,18 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
   }, []);
 
   useEffect(() => {
-    if (createOpen) createNameRef.current?.focus();
+    if (createOpen) createNameRef.current?.focus({ preventScroll: true });
   }, [createOpen]);
+
+  const activeMythosRoot = useMemo(() => {
+    const active = vaults.find((v) => v.vaultRoot === activeRoot);
+    return active ? mythosRootKey(active) : null;
+  }, [vaults, activeRoot]);
+
+  const groupedVaults = useMemo(
+    () => groupVaultsByMythos(vaults, activeRoot),
+    [vaults, activeRoot],
+  );
 
   // If the user switches to the just-created vault via its card instead of
   // the offer button, the offer is answered — drop it.
@@ -243,11 +276,11 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
    *  — same Retry / Switch anyway park as nav-rail tiles. Never projectSwitch
    *  first (main must not commit until save succeeds or Switch anyway).
    *  activeRoot + theme mirror follow onProjectSwitched / successful switch. */
-  const onCardClick = useCallback(async (v: VaultEntry) => {
-    if (v.vaultRoot === activeRoot) return;
+  const onCardClick = useCallback(async (v: VaultEntry): Promise<boolean> => {
+    if (v.vaultRoot === activeRoot) return true;
     // PLAN-058 L1a (57:21): card click switches vaults only — never opens the
     // create-vault modal (that is "New vault…" only).
-    if (createOpen) return;
+    if (createOpen) return false;
     try {
       const req = (window as Window & {
         __mythosRequestVaultSwitch?: (vaultRoot: string) => Promise<boolean>;
@@ -260,7 +293,7 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
         switched = Boolean(res?.switched);
         if (switched) setActiveRoot(v.vaultRoot);
       }
-      if (!switched) return;
+      if (!switched) return false;
       const key = settings.vaultThemes?.[v.vaultRoot];
       const preset = key ? LIQUID_NEON_PRESETS[key as LiquidNeonPresetKey] : undefined;
       if (preset) {
@@ -274,7 +307,9 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
           },
         }));
       }
+      return true;
     } catch { /* switch failed — card stays as-is */ }
+    return false;
   }, [activeRoot, settings.vaultThemes, setSettings, createOpen]);
 
   /** SKY-10385: open the create form, prefilled with the default vaults
@@ -499,6 +534,10 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
       .catch(() => { /* non-fatal */ });
   }, [refreshHidden]);
 
+  const onRevealMythos = useCallback((mythosRoot: string) => {
+    window.api?.vaultSurfaceRevealMythos?.(mythosRoot).catch(() => { /* non-fatal */ });
+  }, []);
+
   return (
     <section className="settings-section" aria-labelledby="section-mythos-vaults" data-settings-cat="vaults">
       <div className="settings-section-header-row" style={{ justifyContent: 'space-between' }}>
@@ -712,16 +751,24 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
         <p className="settings-error-msg" role="alert" data-testid="mvs-create-error">{createError}</p>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {vaults.filter((v) => !isHidden(v)).map((v) => {
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {groupedVaults.filter((g) => !isHidden(g.primary)).map((group) => {
+          const v = group.primary;
           const current = v.vaultRoot === activeRoot;
           const themeKey = settings.vaultThemes?.[v.vaultRoot] ?? '';
           const displayName = displayNameFor(v);
           const stats = statsByRoot[v.vaultRoot];
           const renaming = renameFor === v.vaultRoot;
+          const mythosRoot = group.mythosRoot;
+          const displayMythosRoot = mythosRootForDisplay(v);
+          const boxActive = mythosRoot === activeMythosRoot;
           return (
             <div
-              key={v.vaultRoot}
+              key={mythosRoot}
+              data-testid={`mvs-box-${mythosRoot}`}
+              style={mythosBoxSt}
+            >
+            <div
               role="button"
               tabIndex={0}
               aria-label={current ? `Current vault: ${displayName}` : `Switch to vault ${displayName}`}
@@ -787,9 +834,6 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
                 ) : (
                   <div style={{ fontSize: 12, fontWeight: 600, color: '#e6ecf9' }}>{displayName}</div>
                 )}
-                <div style={{ fontSize: 10, color: '#8e9db8', marginTop: 2, fontFamily: 'ui-monospace,monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {v.vaultRoot}
-                </div>
                 {stats && (
                   <div style={{ fontSize: 10, color: '#7686a2', marginTop: 2 }}>
                     {pluralize(stats.notesVaultCount, 'notes vault')} · {pluralize(stats.storyVaultCount, 'story vault')}
@@ -833,11 +877,34 @@ export default function MythosVaultsSection({ settings, setSettings, setSavedOk 
                     vaultPath={v.mythosVaultRoot}
                     vaultName={displayName}
                     testIdSuffix={v.vaultRoot}
+                    onRename={() => startRename(v)}
                     onHidden={refreshHidden}
                     onDeleted={refreshVaults}
                   />
                 </div>
               )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 2 }}>
+              <span
+                className="m24-path settings-vault-path-display"
+                data-testid={current ? 'settings-active-mythos-path' : `mvs-mythos-path-${mythosRoot}`}
+                title={displayMythosRoot}
+                style={{ flex: 1, minWidth: 0, fontSize: 10.5, display: 'block' }}
+              >
+                {displayMythosRoot}
+              </span>
+              <button
+                type="button"
+                className="m24-btn"
+                data-testid={`mvs-mythos-open-${mythosRoot}`}
+                onClick={(e) => { e.stopPropagation(); onRevealMythos(mythosRoot); }}
+              >
+                Open
+              </button>
+            </div>
+            {boxActive && (
+              <VaultLinkingColumns />
+            )}
             </div>
           );
         })}
