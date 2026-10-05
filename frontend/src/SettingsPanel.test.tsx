@@ -265,6 +265,27 @@ describe('SettingsPanel', () => {
     });
   });
 
+  describe('PLAN-058 Lane A: Writing Coach switch on Writing partner', () => {
+    async function openWritingPartnerTab() {
+      await renderSettingsOnDefault(<SettingsPanel onClose={mockOnClose} />);
+      fireEvent.click(screen.getByRole('tab', { name: /writing partner/i }));
+      await flushAsyncEffects();
+      await waitFor(() => expect(screen.getByTestId('writing-coach-settings')).toBeInTheDocument());
+    }
+
+    it('persists agents.writingAssistant.enabled on save', async () => {
+      await openWritingPartnerTab();
+      const toggle = screen.getByRole('checkbox', { name: /enable writing coach/i }) as HTMLInputElement;
+      expect(toggle.checked).toBe(true);
+      fireEvent.click(toggle);
+      expect(toggle.checked).toBe(false);
+      fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+      await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
+      const saved = mockSettingsSet.mock.calls[0][0] as AppSettings;
+      expect(saved.agents.writingAssistant.enabled).toBe(false);
+    });
+  });
+
   describe('PLAN-058 L1b: template create on grouped Mythos vaults', () => {
     const mockProjectList = vi.fn();
     const mockGetVaultRoot = vi.fn();

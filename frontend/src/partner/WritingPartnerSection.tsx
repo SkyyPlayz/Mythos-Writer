@@ -29,6 +29,7 @@ import {
 } from './partnerSettings';
 import { runHeartbeatAutomationStub } from './partnerBusyStore';
 import SessionHistoryViewer from '../components/SettingsPanel/SessionHistoryViewer';
+import WritingCoachSettingsSection from '../components/SettingsPanel/sections/WritingCoachSettingsSection';
 import './WritingPartnerSection.css';
 
 const TRAIT_ORDER: PartnerTraitKey[] = ['tone', 'teach', 'register', 'ambient', 'verbosity'];
@@ -48,6 +49,7 @@ interface WritingPartnerSectionProps {
   settings: AppSettings;
   setSettings: React.Dispatch<React.SetStateAction<AppSettings>>;
   setAgentDisplayName: (agent: 'writingAssistant' | 'brainstorm' | 'archive' | 'betaReader', name: string) => void;
+  setSavedOk: (ok: boolean) => void;
 }
 
 function patchPartner(
@@ -64,6 +66,7 @@ export default function WritingPartnerSection({
   settings,
   setSettings,
   setAgentDisplayName,
+  setSavedOk,
 }: WritingPartnerSectionProps) {
   const partner = resolveWritingPartner(settings);
   const partnerName = resolvePartnerDisplayName(settings.agentNames);
@@ -166,6 +169,12 @@ export default function WritingPartnerSection({
           are folded in behind it.
         </p>
       </section>
+
+      <WritingCoachSettingsSection
+        settings={settings}
+        setSettings={setSettings}
+        setSavedOk={setSavedOk}
+      />
 
       <section className="settings-section wp-card" aria-labelledby="section-personality" data-testid="wp-personality">
         <h3 className="settings-section-title" id="section-personality">Personality defaults</h3>

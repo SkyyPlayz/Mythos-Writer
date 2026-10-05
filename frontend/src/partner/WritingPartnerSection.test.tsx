@@ -18,6 +18,23 @@ describe('WritingPartnerSection', () => {
     vi.clearAllMocks();
   });
 
+  it('PLAN-058 Lane A: Writing Coach switch sits above personality teaching chips', () => {
+    render(
+      <WritingPartnerSection
+        settings={baseSettings}
+        setSettings={vi.fn()}
+        setAgentDisplayName={vi.fn()}
+        setSavedOk={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('writing-coach-settings')).toBeInTheDocument();
+    expect(screen.getByTestId('writing-coach-mode-teacher')).toBeInTheDocument();
+    expect(screen.getByTestId('writing-coach-mode-assistant')).toBeInTheDocument();
+    const coach = screen.getByTestId('writing-coach-settings');
+    const personality = screen.getByTestId('wp-personality');
+    expect(coach.compareDocumentPosition(personality) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('renders personality two-column layout and named Teaching chips', () => {
     const setSettings = vi.fn();
     const setAgentDisplayName = vi.fn();
@@ -26,6 +43,7 @@ describe('WritingPartnerSection', () => {
         settings={baseSettings}
         setSettings={setSettings}
         setAgentDisplayName={setAgentDisplayName}
+        setSavedOk={vi.fn()}
       />,
     );
     expect(screen.getByTestId('wp-personality-copy')).toBeInTheDocument();
@@ -47,6 +65,7 @@ describe('WritingPartnerSection', () => {
         settings={baseSettings}
         setSettings={setSettings}
         setAgentDisplayName={setAgentDisplayName}
+        setSavedOk={vi.fn()}
       />,
     );
     fireEvent.change(screen.getByTestId('wp-name'), { target: { value: 'Athena' } });
@@ -59,6 +78,7 @@ describe('WritingPartnerSection', () => {
         settings={baseSettings}
         setSettings={vi.fn()}
         setAgentDisplayName={vi.fn()}
+        setSavedOk={vi.fn()}
       />,
     );
     expect(screen.getByTestId('wp-session-history')).toBeInTheDocument();

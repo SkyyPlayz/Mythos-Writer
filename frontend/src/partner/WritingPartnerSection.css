@@ -77,6 +77,18 @@
   border-color: transparent;
 }
 
+.wc-teaching-modes {
+  margin-top: 10px;
+}
+
+.wc-teaching-modes .wp-label {
+  margin-bottom: 6px;
+}
+
+.wc-coach-master {
+  margin-top: 4px;
+}
+
 .wp-lede {
   margin-top: 11px;
   line-height: 1.55;
