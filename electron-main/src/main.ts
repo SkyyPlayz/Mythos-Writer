@@ -730,6 +730,7 @@ import {
   type OptionalAgentKey,
 } from './appSettingsLoad.js';
 import { assertWritingAssistantScanAllowed } from './writingAssistantScanGate.js';
+import { assertAgentVaultCheckAllowed, ARCHIVE_BUDGET_AGENTS, VAULT_CHECK_BUDGET_LOG_AGENT } from './agentVaultCheckGate.js';
 import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
 import { restartVaultRuntime } from './vaultRuntimeRestart.js';
 import { resolveVaultImportCollisions } from './vaultImportConflict.js';
@@ -9824,7 +9825,7 @@ function registerArchiveChatHandler() {
     if (!agentSettings.enabled) {
       throw new Error('Archive agent is disabled in settings.');
     }
-    const budgetCheck = checkCallBudget('archive', agentSettings, getDb());
+    const budgetCheck = checkCallBudget(ARCHIVE_BUDGET_AGENTS, agentSettings, getDb());
     if (!budgetCheck.allowed) {
       const capLabel = budgetCheck.reason === 'daily_token_cap' ? 'daily token cap' : 'hourly token cap';
       if (mainWindow) {
@@ -10203,6 +10204,17 @@ function registerVaultAgentHandlers() {
   // agent:vault-check — streams continuity analysis and returns parsed inconsistencies
   ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, wrapIpcHandler(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+    assertAgentVaultCheckAllowed(loadAppSettings(), getDb, {
+      onBudgetCap: (reason) => {
+        if (mainWindow) {
+          mainWindow.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+            agent: 'archive',
+            agentLabel: 'Archive Agent',
+            reason,
+          });
+        }
+      },
+    });
     const vaultCheckProviderConfig = getProviderConfigForAgent('archive');
 
     ensureVaultDir();
@@ -10307,7 +10319,7 @@ Then write a short summary paragraph. If no issues are found, say so and output 
       try {
         insertGenerationLog({
           id: crypto.randomUUID(),
-          agent: 'vault-agent',
+          agent: VAULT_CHECK_BUDGET_LOG_AGENT,
           model: vaultCheckProviderConfig.model,
           endpoint: 'messages.stream',
           request_id: requestId,

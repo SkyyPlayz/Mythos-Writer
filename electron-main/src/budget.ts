@@ -117,18 +117,24 @@ function countSuggestionsInWindowWithDb(
   return row.cnt;
 }
 
+function budgetAgentList(agent: string | readonly string[]): readonly string[] {
+  return typeof agent === 'string' ? [agent] : agent;
+}
+
 function countTokensInWindowWithDb(
   db: DatabaseSync,
-  agent: string,
+  agent: string | readonly string[],
   windowMs: number,
 ): number {
+  const agents = budgetAgentList(agent);
   const windowStart = new Date(Date.now() - windowMs).toISOString();
+  const placeholders = agents.map(() => '?').join(', ');
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(COALESCE(tokens_in,0)+COALESCE(tokens_out,0)),0) as total
-         FROM generation_log WHERE agent = ? AND created_at >= ?`,
+         FROM generation_log WHERE agent IN (${placeholders}) AND created_at >= ?`,
     )
-    .get(agent, windowStart) as { total: number };
+    .get(...agents, windowStart) as { total: number };
   return row.total;
 }
 
@@ -146,7 +152,7 @@ const ONE_MINUTE_MS = 60 * 1000;
  * Checks rolling 1-hour, 24-hour token windows, and per-minute request count.
  */
 export function checkCallBudget(
-  agent: string,
+  agent: string | readonly string[],
   settings: Pick<AgentBudgetSettings, 'maxTokensPerHour' | 'maxTokensPerDay'> & { requestsPerMinute?: number },
   db: DatabaseSync,
 ): CallBudgetResult {
@@ -182,13 +188,17 @@ export function assertAgentEnabled(agentName: string, enabled: boolean): void {
 
 function countRequestsInWindowWithDb(
   db: DatabaseSync,
-  agent: string,
+  agent: string | readonly string[],
   windowMs: number,
 ): number {
+  const agents = budgetAgentList(agent);
   const windowStart = new Date(Date.now() - windowMs).toISOString();
+  const placeholders = agents.map(() => '?').join(', ');
   const row = db
-    .prepare(`SELECT COUNT(*) as cnt FROM generation_log WHERE agent = ? AND created_at >= ?`)
-    .get(agent, windowStart) as { cnt: number };
+    .prepare(
+      `SELECT COUNT(*) as cnt FROM generation_log WHERE agent IN (${placeholders}) AND created_at >= ?`,
+    )
+    .get(...agents, windowStart) as { cnt: number };
   return row.cnt;
 }
 
