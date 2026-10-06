@@ -13,8 +13,7 @@ const read = (rel: string) => fs.readFileSync(path.join(here, rel), 'utf8');
 describe('PLAN-058 Lane A — Writing Coach settings', () => {
   it('A-1: coach switch mounts on Writing partner above personality (teaching modes)', () => {
     const partner = read('partner/WritingPartnerSection.tsx');
-    expect(partner).toMatch(/WritingCoachSettingsSection/);
-    const coachIdx = partner.indexOf('WritingCoachSettingsSection');
+    const coachIdx = partner.indexOf('<WritingCoachSettingsSection');
     const personalityIdx = partner.indexOf('section-personality');
     expect(coachIdx).toBeGreaterThan(-1);
     expect(personalityIdx).toBeGreaterThan(coachIdx);
@@ -29,6 +28,10 @@ describe('PLAN-058 Lane A — Writing Coach settings', () => {
     expect(coach).toMatch(/Teacher/);
     expect(coach).toMatch(/Assistant/);
     expect(coach).not.toMatch(/writingAssistantScan|agentWritingAssistant|writingScan/);
+    expect(coach).toMatch(/waEnabled:\s*enabled/);
+    expect(coach).not.toMatch(/useState/);
+    expect(coach).not.toMatch(/aria-pressed/);
+    expect(coach).not.toMatch(/<button/);
   });
 
   it('A-3: disabled panel copy points at Writing partner settings', () => {

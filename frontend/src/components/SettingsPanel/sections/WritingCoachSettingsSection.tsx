@@ -1,9 +1,8 @@
 /**
  * PLAN-058 Lane A — Writing Coach switch + teaching-mode name chrome (A-1, A-2).
- * Toggle wires agents.writingAssistant.enabled (WA26 / scan-now gate).
- * Teacher / Assistant labels are chrome only — no scan/chat behavior (OWNER ASK later).
+ * Toggle wires agents.writingAssistant.enabled + waEnabled (Shield R-D / DesktopShell).
+ * Teacher / Assistant labels are static chrome only — no mode behavior (OWNER ASK later).
  */
-import { useState } from 'react';
 
 interface WritingCoachSettingsSectionProps {
   settings: AppSettings;
@@ -19,12 +18,11 @@ export default function WritingCoachSettingsSection({
   setSavedOk,
 }: WritingCoachSettingsSectionProps) {
   const coachOn = settings.agents.writingAssistant.enabled;
-  // Chrome-only — not persisted; behavior ships in a later OWNER ASK.
-  const [teachingModeChrome, setTeachingModeChrome] = useState<typeof TEACHING_MODE_LABELS[number]>('Teacher');
 
   const setCoachEnabled = (enabled: boolean) => {
     setSettings((prev) => ({
       ...prev,
+      waEnabled: enabled,
       agents: {
         ...prev.agents,
         writingAssistant: { ...prev.agents.writingAssistant, enabled },
@@ -64,20 +62,18 @@ export default function WritingCoachSettingsSection({
 
       <div className="wc-teaching-modes" data-testid="writing-coach-teaching-modes">
         <span className="wp-label">Teaching modes</span>
-        <div className="wp-chips" role="group" aria-label="Teaching modes">
+        <div className="wc-teaching-mode-names" aria-label="Teaching modes">
           {TEACHING_MODE_LABELS.map((label) => (
-            <button
+            <span
               key={label}
-              type="button"
-              className={`wp-chip${teachingModeChrome === label ? ' wp-chip--on' : ''}`}
+              className="wp-chip wc-teaching-mode-name"
               data-testid={`writing-coach-mode-${label.toLowerCase()}`}
-              aria-pressed={teachingModeChrome === label}
-              onClick={() => setTeachingModeChrome(label)}
             >
               {label}
-            </button>
+            </span>
           ))}
         </div>
+        <p className="settings-hint">Mode behavior coming soon.</p>
       </div>
     </section>
   );

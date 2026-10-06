@@ -266,23 +266,29 @@ describe('SettingsPanel', () => {
   });
 
   describe('PLAN-058 Lane A: Writing Coach switch on Writing partner', () => {
-    async function openWritingPartnerTab() {
-      await renderSettingsOnDefault(<SettingsPanel onClose={mockOnClose} />);
+    it('syncs waEnabled with agents.writingAssistant.enabled in onSaved payload (Shield R-D)', async () => {
+      mockSettingsGet.mockResolvedValueOnce({
+        ...defaultSettings,
+        waEnabled: true,
+      });
+      await renderSettingsOnDefault(
+        <SettingsPanel onClose={mockOnClose} onSaved={mockOnSaved} />,
+      );
       fireEvent.click(screen.getByRole('tab', { name: /writing partner/i }));
       await flushAsyncEffects();
       await waitFor(() => expect(screen.getByTestId('writing-coach-settings')).toBeInTheDocument());
-    }
 
-    it('persists agents.writingAssistant.enabled on save', async () => {
-      await openWritingPartnerTab();
       const toggle = screen.getByRole('checkbox', { name: /enable writing coach/i }) as HTMLInputElement;
       expect(toggle.checked).toBe(true);
       fireEvent.click(toggle);
       expect(toggle.checked).toBe(false);
+
       fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
-      await waitFor(() => expect(mockSettingsSet).toHaveBeenCalled());
-      const saved = mockSettingsSet.mock.calls[0][0] as AppSettings;
+      await waitFor(() => expect(mockOnSaved).toHaveBeenCalled());
+      const saved = mockOnSaved.mock.calls[0][0] as AppSettings;
       expect(saved.agents.writingAssistant.enabled).toBe(false);
+      expect(saved.waEnabled).toBe(false);
+      expect(saved.waEnabled).toBe(saved.agents.writingAssistant.enabled);
     });
   });
 

@@ -28,8 +28,11 @@ describe('WritingPartnerSection', () => {
       />,
     );
     expect(screen.getByTestId('writing-coach-settings')).toBeInTheDocument();
-    expect(screen.getByTestId('writing-coach-mode-teacher')).toBeInTheDocument();
-    expect(screen.getByTestId('writing-coach-mode-assistant')).toBeInTheDocument();
+    expect(screen.getByTestId('writing-coach-mode-teacher')).toHaveTextContent('Teacher');
+    expect(screen.getByTestId('writing-coach-mode-assistant')).toHaveTextContent('Assistant');
+    const modes = screen.getByTestId('writing-coach-teaching-modes');
+    expect(modes.querySelector('button')).toBeNull();
+    expect(modes.querySelector('[aria-pressed]')).toBeNull();
     const coach = screen.getByTestId('writing-coach-settings');
     const personality = screen.getByTestId('wp-personality');
     expect(coach.compareDocumentPosition(personality) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

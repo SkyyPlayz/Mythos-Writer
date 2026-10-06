@@ -89,6 +89,17 @@
   margin-top: 4px;
 }
 
+.wc-teaching-mode-names {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.wc-teaching-mode-name {
+  pointer-events: none;
+  opacity: 0.85;
+}
+
 .wp-lede {
   margin-top: 11px;
   line-height: 1.55;
