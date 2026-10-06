@@ -402,9 +402,11 @@
 }
 
 .notes-right-sidebar-header {
-  display: flex;
+  /* PLAN-058 NW-3: grid keeps the collapse chevron out of tab hit targets
+     (was flex + margin-left:auto; Properties overlapped › by ~20px @940). */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
   /* F2#12 / N7: side-panel top bar on shared 36px token */
   min-height: var(--panel-top-bar-height, 36px);
   height: var(--panel-top-bar-height, 36px);
@@ -418,7 +420,9 @@
 /* R11 (SKY-9826): with AI off the tab strip is gone; keep the lone collapse
    chevron pinned top-right like the prototype's manual-mode panel. */
 .notes-right-sidebar-header .notes-sidebar-collapse-btn {
-  margin-left: auto;
+  margin-left: 4px;
+  grid-column: 2;
+  justify-self: end;
 }
 
 .notes-right-sidebar-title {
@@ -481,6 +485,12 @@
   align-items: center;
   gap: 2px;
   min-width: 0;
+  grid-column: 1;
+  overflow: hidden;
+}
+
+.notes-right-tab-label--narrow {
+  display: none;
 }
 
 .notes-right-tab {
@@ -496,28 +506,54 @@
   cursor: pointer;
 }
 
-/* Prefreeze F1: tab/header shrink only at the 195 pane floor — 1440 matches main. */
-@container notes-right-pane (max-width: 228px) {
-  .notes-right-sidebar-header {
-    min-width: 0;
-    gap: 4px;
-    overflow: hidden;
+/* PLAN-058 NW-2: readable tab chrome @900 pane floor — short label, not @940. */
+@container notes-right-pane (max-width: 210px) {
+  .notes-right-tab-label--full {
+    display: none;
   }
 
-  .notes-right-tabs {
-    flex: 1 1 auto;
-    overflow: hidden;
+  .notes-right-tab-label--narrow {
+    display: inline;
   }
 
   .notes-right-tab {
     padding: 3px 6px;
     font-size: 0.68rem;
     letter-spacing: 0.02em;
+    flex: 0 1 auto;
     min-width: 0;
-    flex: 1 1 auto;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: visible;
+    text-overflow: clip;
     white-space: nowrap;
+  }
+}
+
+/* Prefreeze F1: tab/header shrink only at the 195 pane floor — 1440 matches main. */
+@container notes-right-pane (max-width: 228px) {
+  .notes-right-sidebar-header {
+    min-width: 0;
+    overflow: hidden;
+  }
+}
+
+/* PLAN-058 NW-1: stack composer + Send so the textarea is not ~70px @900. */
+@container notes-right-pane (max-width: 280px) {
+  .notes-tab-sidebar-right .brainstorm-input-area {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 8px 10px 10px;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .notes-tab-sidebar-right .brainstorm-input-wrapper {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .notes-tab-sidebar-right .brainstorm-send-btn,
+  .notes-tab-sidebar-right .brainstorm-cancel-btn {
+    align-self: flex-end;
   }
 }
 

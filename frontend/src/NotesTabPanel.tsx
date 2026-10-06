@@ -878,12 +878,16 @@ export default function NotesTabPanel({
                     <button
                       role="tab"
                       aria-selected={effectiveRightTab === 'props'}
+                      aria-label="Properties"
                       className={`notes-right-tab${effectiveRightTab === 'props' ? ' notes-right-tab--active' : ''}`}
                       data-testid="notes-right-tab-props"
                       onClick={() => setRightTab('props')}
                       type="button"
                     >
-                      Properties
+                      <span className="notes-right-tab-label notes-right-tab-label--full">Properties</span>
+                      <span className="notes-right-tab-label notes-right-tab-label--narrow" aria-hidden="true">
+                        Props
+                      </span>
                     </button>
                   </div>
                 )}
