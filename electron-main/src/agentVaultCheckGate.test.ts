@@ -433,7 +433,7 @@ describe('PLAN-058 Lane 2b source pin (Shield RF-3, Probe P1–P3)', () => {
     const body = stripJsComments(rawBody);
     expect(body).toMatch(/assertAgentVaultCheckAllowed\s*\(\s*loadAppSettings\s*\(\s*\)/);
     expect(body).toMatch(
-      /if\s*\(\s*!isFromTopFrame\(\s*event\s*\)\s*\)\s*return\s+UNTRUSTED_FRAME_REJECTION\s*;\s*assertAgentVaultCheckAllowed\(\s*loadAppSettings\(\s*\)\s*,/,
+      /^\s*if\s*\(\s*!isFromTopFrame\(\s*event\s*\)\s*\)\s*return\s+UNTRUSTED_FRAME_REJECTION\s*;\s*assertAgentVaultCheckAllowed\(\s*loadAppSettings\(\s*\)\s*,/,
     );
     expect(body).not.toMatch(/try\s*\{[\s\S]*assertAgentVaultCheckAllowed/);
     expect(body).not.toMatch(/void\s+0\s*&&\s*assertAgentVaultCheckAllowed/);
