@@ -4,7 +4,10 @@ import { checkCallBudget } from './budget.js';
 import { AI_DISABLED_MESSAGE } from './provider.js';
 
 export const ARCHIVE_AGENT_DISABLED_MESSAGE = 'Archive agent is disabled in settings.';
-const WRITING_COACH_DISABLED_MESSAGE = 'Writing Coach is disabled in settings.';
+export const WRITING_COACH_DISABLED_MESSAGE = 'Writing Coach is disabled in settings.';
+
+/** Must match `generation_log.agent` for vault-check streams in `main.ts`. */
+export const VAULT_CHECK_BUDGET_LOG_AGENT = 'vault-agent';
 
 function archiveBudgetCapMessage(
   reason: 'hourly_token_cap' | 'daily_token_cap' | 'requests_per_minute_cap',
@@ -19,7 +22,7 @@ function archiveBudgetCapMessage(
 }
 
 export type AgentVaultCheckGateOptions = {
-  onBudgetCap?: (reason: 'hourly_token_cap' | 'daily_token_cap' | 'requests_per_minute_cap') => void;
+  onBudgetCap?: (reason: 'hourly_token_cap' | 'daily_token_cap') => void;
 };
 
 /**
@@ -40,10 +43,16 @@ export function assertAgentVaultCheckAllowed(
   if (!settings.agents?.archive?.enabled) {
     throw new Error(ARCHIVE_AGENT_DISABLED_MESSAGE);
   }
-  const budgetCheck = checkCallBudget('archive', settings.agents.archive, getDb());
+  const budgetCheck = checkCallBudget(
+    VAULT_CHECK_BUDGET_LOG_AGENT,
+    settings.agents.archive,
+    getDb(),
+  );
   if (!budgetCheck.allowed) {
     const reason = budgetCheck.reason ?? 'hourly_token_cap';
-    options?.onBudgetCap?.(reason);
+    if (reason === 'hourly_token_cap' || reason === 'daily_token_cap') {
+      options?.onBudgetCap?.(reason);
+    }
     throw new Error(archiveBudgetCapMessage(reason));
   }
 }

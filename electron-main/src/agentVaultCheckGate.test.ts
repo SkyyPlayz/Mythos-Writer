@@ -6,15 +6,18 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { DatabaseSync } from 'node:sqlite';
 import type { AppSettings } from './ipc.js';
 import { SETTINGS_DEFAULTS } from './appSettingsLoad.js';
 import {
   assertAgentVaultCheckAllowed,
   ARCHIVE_AGENT_DISABLED_MESSAGE,
+  VAULT_CHECK_BUDGET_LOG_AGENT,
+  WRITING_COACH_DISABLED_MESSAGE,
 } from './agentVaultCheckGate.js';
 import { AI_DISABLED_MESSAGE } from './provider.js';
 import * as budget from './budget.js';
+import { DatabaseSync } from 'node:sqlite';
+import type { DatabaseSync as DatabaseSyncType } from 'node:sqlite';
 
 function enabledSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   return {
@@ -30,12 +33,12 @@ function enabledSettings(overrides: Partial<AppSettings> = {}): AppSettings {
 }
 
 describe('assertAgentVaultCheckAllowed — PLAN-058 Lane 2b', () => {
-  const fakeDb = {} as DatabaseSync;
-  let getDbTracked: () => DatabaseSync;
+  const fakeDb = {} as DatabaseSyncType;
+  let getDbTracked: () => DatabaseSyncType;
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    getDbTracked = vi.fn(() => fakeDb) as () => DatabaseSync;
+    getDbTracked = vi.fn(() => fakeDb) as () => DatabaseSyncType;
     vi.spyOn(budget, 'checkCallBudget').mockReturnValue({ allowed: true });
   });
 
@@ -73,6 +76,20 @@ describe('assertAgentVaultCheckAllowed — PLAN-058 Lane 2b', () => {
     expect(getDbTracked).not.toHaveBeenCalled();
   });
 
+  it('refuses when Writing Coach is disabled', () => {
+    const settings = enabledSettings({
+      agents: {
+        ...SETTINGS_DEFAULTS.agents,
+        writingAssistant: { ...SETTINGS_DEFAULTS.agents.writingAssistant, enabled: false },
+        archive: { ...SETTINGS_DEFAULTS.agents.archive, enabled: true },
+      },
+    });
+    expect(() => assertAgentVaultCheckAllowed(settings, getDbTracked)).toThrow(
+      WRITING_COACH_DISABLED_MESSAGE,
+    );
+    expect(getDbTracked).not.toHaveBeenCalled();
+  });
+
   it('allows happy path when switches are on and budget remains', () => {
     const settings = enabledSettings();
     expect(() => assertAgentVaultCheckAllowed(settings, getDbTracked)).not.toThrow();
@@ -90,6 +107,92 @@ describe('assertAgentVaultCheckAllowed — PLAN-058 Lane 2b', () => {
       assertAgentVaultCheckAllowed(settings, getDbTracked, { onBudgetCap }),
     ).toThrow(/daily token cap/);
     expect(onBudgetCap).toHaveBeenCalledWith('daily_token_cap');
+  });
+
+  it('does not invoke onBudgetCap for per-minute request cap (error only)', () => {
+    const settings = enabledSettings();
+    vi.spyOn(budget, 'checkCallBudget').mockReturnValue({
+      allowed: false,
+      reason: 'requests_per_minute_cap',
+    });
+    const onBudgetCap = vi.fn();
+    expect(() =>
+      assertAgentVaultCheckAllowed(settings, getDbTracked, { onBudgetCap }),
+    ).toThrow(/per-minute request cap/);
+    expect(onBudgetCap).not.toHaveBeenCalled();
+  });
+
+  it('budget check uses vault-agent generation_log key (red-on-revert)', () => {
+    const settings = enabledSettings();
+    const budgetSpy = vi.spyOn(budget, 'checkCallBudget');
+    assertAgentVaultCheckAllowed(settings, getDbTracked);
+    expect(budgetSpy).toHaveBeenCalledWith(
+      VAULT_CHECK_BUDGET_LOG_AGENT,
+      settings.agents.archive,
+      fakeDb,
+    );
+  });
+});
+
+function generationLogOnlyDb(): DatabaseSync {
+  const db = new DatabaseSync(':memory:');
+  db.exec(`
+    CREATE TABLE generation_log (
+      id TEXT PRIMARY KEY,
+      agent TEXT NOT NULL,
+      tokens_in INTEGER,
+      tokens_out INTEGER,
+      created_at TEXT NOT NULL
+    );
+  `);
+  return db;
+}
+
+describe('assertAgentVaultCheckAllowed — vault-agent generation_log (red-on-revert)', () => {
+  it('refuses when prior vault-check rows exhaust archive hourly token cap', () => {
+    const db = generationLogOnlyDb();
+    db.prepare(
+      `INSERT INTO generation_log (id, agent, tokens_in, tokens_out, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run('vault-prior-1', VAULT_CHECK_BUDGET_LOG_AGENT, 600, 500, new Date().toISOString());
+    vi.restoreAllMocks();
+    const settings = enabledSettings({
+      agents: {
+        ...SETTINGS_DEFAULTS.agents,
+        writingAssistant: { ...SETTINGS_DEFAULTS.agents.writingAssistant, enabled: true },
+        archive: {
+          ...SETTINGS_DEFAULTS.agents.archive,
+          enabled: true,
+          maxTokensPerHour: 1000,
+          maxTokensPerDay: 50_000,
+        },
+      },
+    });
+    expect(() => assertAgentVaultCheckAllowed(settings, () => db)).toThrow(
+      /Archive Agent paused: hourly token cap/,
+    );
+  });
+
+  it('would allow if budget key reverted to archive (red-on-revert)', () => {
+    const db = generationLogOnlyDb();
+    db.prepare(
+      `INSERT INTO generation_log (id, agent, tokens_in, tokens_out, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run('vault-prior-1', VAULT_CHECK_BUDGET_LOG_AGENT, 600, 500, new Date().toISOString());
+    vi.restoreAllMocks();
+    const settings = enabledSettings({
+      agents: {
+        ...SETTINGS_DEFAULTS.agents,
+        writingAssistant: { ...SETTINGS_DEFAULTS.agents.writingAssistant, enabled: true },
+        archive: {
+          ...SETTINGS_DEFAULTS.agents.archive,
+          enabled: true,
+          maxTokensPerHour: 1000,
+          maxTokensPerDay: 50_000,
+        },
+      },
+    });
+    expect(budget.checkCallBudget('archive', settings.agents.archive, db).allowed).toBe(true);
   });
 });
 
