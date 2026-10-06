@@ -91,15 +91,58 @@ jobs:
             esac
           }
 
+          # Transient GitHub API empties and truncated JSON (EOF) have
+          # false-failed this canary while the workflows were healthy.
+          # Retry the list calls only. Silence windows, WARN vs FAIL, and
+          # primary-list success selection are unchanged.
+          # 5 attempts, backoff 1s/2s/4s/8s. A real empty history is a JSON
+          # array (including []) and is not retried. Exit 2 from
+          # list_workflow_runs_until_success means the primary scan was
+          # truncated before history ended — pass it through, do not retry.
+          gh_list_with_retry() {
+            local label="$1"
+            shift
+            local attempt=1
+            local max_attempts=5
+            local delay=1
+            local out=""
+            local rc=0
+            local detail=""
+            while [ "$attempt" -le "$max_attempts" ]; do
+              out=$("$@") && rc=0 || rc=$?
+              if [ "$rc" -eq 2 ]; then
+                return 2
+              fi
+              if [ "$rc" -eq 0 ] && printf '%s' "$out" | jq -e 'type == "array"' >/dev/null 2>&1; then
+                printf '%s\n' "$out"
+                return 0
+              fi
+              if [ "$rc" -ne 0 ]; then
+                detail="rc=${rc}"
+              else
+                detail="rc=0 but body was empty or not a JSON array"
+              fi
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "${label} list failed after ${max_attempts} attempts (${detail})" >&2
+                return 1
+              fi
+              echo "::warning::${label} list attempt ${attempt}/${max_attempts} failed (${detail}); retrying in ${delay}s" >&2
+              sleep "$delay"
+              delay=$((delay * 2))
+              attempt=$((attempt + 1))
+            done
+            return 1
+          }
+
           # Audit weekly cron — allow ≤8 days (192h). No completed runs yet: WARN.
           AUDIT_FILE=$(workflow_file_state "mythos-token-audit.yml")
           if [ "$AUDIT_FILE" = "missing" ]; then
             apply_verdict "token-audit" "fail" "workflow file missing"
-          elif ! AUDIT_ROW=$(gh run list --repo "$REPO" --workflow "mythos-token-audit.yml" --limit 10 \
-            --json conclusion,status,createdAt,updatedAt,url \
-            --jq '[.[] | select(.status=="completed")] | .[0] // empty'); then
+          elif ! AUDIT_JSON=$(gh_list_with_retry "token-audit" \
+            gh run list --repo "$REPO" --workflow "mythos-token-audit.yml" --limit 10 \
+            --json conclusion,status,createdAt,updatedAt,url); then
             apply_verdict "token-audit" "fail" "could not list workflow runs"
-          elif [ -z "$AUDIT_ROW" ] || [ "$AUDIT_ROW" = "null" ]; then
+          elif AUDIT_ROW=$(printf '%s' "$AUDIT_JSON" | jq -c '[.[] | select(.status=="completed")] | .[0] // empty') && { [ -z "$AUDIT_ROW" ] || [ "$AUDIT_ROW" = "null" ]; }; then
             apply_verdict "token-audit" "$(verdict_token_audit "$AUDIT_FILE" 0 "" 9999 192)" \
               "WARN no completed runs yet (bootstrap until first Wed cron / first success) — not a failure"
           else
@@ -122,7 +165,8 @@ jobs:
             apply_verdict "pr-hygiene" "fail" "workflow file missing"
           else
             HY_RC=0
-            HY_RUNS=$(list_workflow_runs_until_success "$REPO" "mythos-pr-hygiene.yml") || HY_RC=$?
+            HY_RUNS=$(gh_list_with_retry "pr-hygiene" \
+              list_workflow_runs_until_success "$REPO" "mythos-pr-hygiene.yml") || HY_RC=$?
             if [ "$HY_RC" -eq 2 ]; then
               apply_verdict "pr-hygiene" "fail" \
                 "could not scan far enough to find the newest success (primary run list truncated before history ended)"
