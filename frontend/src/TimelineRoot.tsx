@@ -94,6 +94,7 @@ import {
   type TimelineShowFilter,
 } from './timeline2/axis/storyLanes';
 import { resolvePartnerDisplayName, DEFAULT_PARTNER_DISPLAY_NAME } from './agents/partnerIdentity';
+import { TIMELINE_FROM_NOTE_EVENT, type TimelineFromNoteDetail } from './timeline2/notesToTimeline';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
 import './TimelineRoot.css';
@@ -283,6 +284,8 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
   const [timelinesStore, setTimelinesStore] = useState<TimelinesStore | null>(null);
   const [storeLoading, setStoreLoading] = useState(true);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+  /** When set, calendar modal edits this timeline (right-click navigator); else active. */
+  const [calendarEditTimelineId, setCalendarEditTimelineId] = useState<string | null>(null);
   // Slice A2 — World Context nav trap: stash the story timeline we left so
   // Back can restore TIMELINE NAVIGATOR (aside only mounts for story kind).
   const storyReturnIdRef = useRef<string | null>(null);
@@ -374,6 +377,18 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
     setTlSelection(sel);
     if (sel) setRightTab('inspector');
   }, []);
+
+  // FD-2: Notes → timeline chip lands on the story timeline with Inspector open.
+  useEffect(() => {
+    const onFromNote = (e: Event) => {
+      const detail = (e as CustomEvent<TimelineFromNoteDetail>).detail;
+      if (!detail?.eventId) return;
+      if (detail.store) setTimelinesStore(detail.store);
+      handleSelectionChange({ type: 'event', id: detail.eventId });
+    };
+    window.addEventListener(TIMELINE_FROM_NOTE_EVENT, onFromNote);
+    return () => window.removeEventListener(TIMELINE_FROM_NOTE_EVENT, onFromNote);
+  }, [handleSelectionChange]);
 
   // Load M21 timelines store on mount (vault-scoped, independent of story).
   useEffect(() => {
@@ -505,7 +520,8 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
       .catch(() => {});
   }, [api, notify]);
 
-  const handleEditCalendar = useCallback(() => {
+  const handleEditCalendar = useCallback((timelineId?: string) => {
+    setCalendarEditTimelineId(timelineId ?? null);
     setShowCalendarModal(true);
   }, []);
 
@@ -513,13 +529,18 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
   const activeTimeline = timelinesStore?.timelines.find(
     (t) => t.id === timelinesStore.activeTimelineId,
   );
+  const calendarModalTimeline = timelinesStore?.timelines.find(
+    (t) => t.id === (calendarEditTimelineId ?? timelinesStore?.activeTimelineId),
+  ) ?? activeTimeline;
   const handleCalendarChange = useCallback(
     (calendar: { preset: string; monthsPerYear: number; daysPerMonth: number; hoursPerDay: number }, presetLabel?: string) => {
-      if (!activeTimeline || typeof api.timelinesUpsert !== 'function') return;
+      const editId = calendarEditTimelineId ?? timelinesStore?.activeTimelineId;
+      const target = timelinesStore?.timelines.find((t) => t.id === editId);
+      if (!target || typeof api.timelinesUpsert !== 'function') return;
       api.timelinesUpsert({
-        id: activeTimeline.id,
-        name: activeTimeline.name,
-        kind: activeTimeline.kind,
+        id: target.id,
+        name: target.name,
+        kind: target.kind,
         calendar,
       })
         .then((res) => {
@@ -528,7 +549,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
         })
         .catch(() => {});
     },
-    [api, activeTimeline, notify],
+    [api, calendarEditTimelineId, notify, timelinesStore],
   );
 
   const stdCalendar = useMemo(
@@ -1378,14 +1399,6 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
         </button>
 
         {/* Slice E — vertical board zoom 40–160% */}
-        {isLanesMode && (
-          <div className="tlr-vzoom" role="group" aria-label="Board zoom" data-testid="tl-vzoom">
-            <button type="button" className="tlr-vzoom-btn" onClick={() => bumpVZoom(-10)} aria-label="Zoom out" data-testid="tl-vzoom-out">−</button>
-            <button type="button" className="tlr-vzoom-pct" onClick={resetVZoom} title="Reset to 100%" data-testid="tl-vzoom-pct">{tlVZoom}%</button>
-            <button type="button" className="tlr-vzoom-btn" onClick={() => bumpVZoom(10)} aria-label="Zoom in" data-testid="tl-vzoom-in">+</button>
-          </div>
-        )}
-
         {/* Slice E — Drop sync line (armed-only place) */}
         {isLanesMode && (
           <button
@@ -1405,22 +1418,25 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
       </div>
 
       {/* M22: per-timeline calendar editor (prototype 3738–3772) */}
-      {showCalendarModal && activeTimeline && (
+      {showCalendarModal && calendarModalTimeline && (
         <CalendarEditorModal
-          timelineName={activeTimeline.name}
-          calendar={activeTimeline.calendar}
+          timelineName={calendarModalTimeline.name}
+          calendar={calendarModalTimeline.calendar}
           onChange={handleCalendarChange}
-          onClose={() => setShowCalendarModal(false)}
-          timeline={activeTimeline}
+          onClose={() => {
+            setShowCalendarModal(false);
+            setCalendarEditTimelineId(null);
+          }}
+          timeline={calendarModalTimeline}
           stdCalendar={stdCalendar}
           stdEra={timelinesStore?.timelines.find((t) => t.std)?.era}
           parentName={timelinesStore?.timelines.find((t) => t.std)?.name}
           inherited={
-            activeTimeline.calendar.preset === 'standard'
-            && activeTimeline.calendar.monthsPerYear === (stdCalendar?.monthsPerYear ?? 12)
-            && activeTimeline.calendar.daysPerMonth === (stdCalendar?.daysPerMonth ?? 30)
-            && activeTimeline.calendar.hoursPerDay === (stdCalendar?.hoursPerDay ?? 24)
-            && !activeTimeline.std
+            calendarModalTimeline.calendar.preset === 'standard'
+            && calendarModalTimeline.calendar.monthsPerYear === (stdCalendar?.monthsPerYear ?? 12)
+            && calendarModalTimeline.calendar.daysPerMonth === (stdCalendar?.daysPerMonth ?? 30)
+            && calendarModalTimeline.calendar.hoursPerDay === (stdCalendar?.hoursPerDay ?? 24)
+            && !calendarModalTimeline.std
           }
           showToast={notify}
           onMultiCalChange={handleMultiCalChange}
@@ -1445,7 +1461,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
               store={timelinesStore}
               onSelect={handleTimelineSelect}
               onNewTimeline={handleNewTimeline}
-              onEditCalendar={handleEditCalendar}
+              onEditCalendar={(id) => handleEditCalendar(id)}
               focusSection={isStoryTimeline ? (
                 <div className="tlr-focus" data-testid="tlr-aside" aria-label="Timeline focus">
                   <button
@@ -1604,6 +1620,8 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
                 flaggedItemIds={flaggedItemIds}
                 jumpTarget={jumpTarget}
                 vZoomPct={tlVZoom}
+                onVZoomBump={bumpVZoom}
+                onVZoomReset={resetVZoom}
                 syncWhen={syncWhen}
                 syncArmed={tlSyncArm}
                 onSyncPlace={handleSyncPlace}
@@ -1723,6 +1741,7 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
             tab={rightTab}
             onTabChange={setRightTab}
             partnerName={partnerName}
+            story={story}
             chapterLabels={axisChapters.map((ch) => ch.label)}
             whenForChapter={whenForChapter}
             onLocalMutate={mutateLocalItem}

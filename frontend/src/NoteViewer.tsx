@@ -17,6 +17,7 @@ import { NoteLinksBlock } from './NoteLinksBlockExtension';
 import RichTextEditor from './RichTextEditor';
 import type { FormatToolbarActions } from './FormatToolbar';
 import { showLnToast } from './theme/lnToast';
+import { dispatchTimelineFromNote, plotNoteOnTimeline } from './timeline2/notesToTimeline';
 import type { AnyExtension } from '@tiptap/core';
 import { useNoteReader } from './story/useNoteReader';
 import ReaderBar from './story/ReaderBar';
@@ -418,6 +419,7 @@ export default function NoteViewer({
   const [pendingMode, setPendingMode] = useState<NoteViewerMode | null>(null);
   const [gearOpen, setGearOpen] = useState(false);
   const [tagInput, setTagInput] = useState('');
+  const [timelineChipBusy, setTimelineChipBusy] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const contentRef = useRef(content);
@@ -715,6 +717,26 @@ export default function NoteViewer({
     adoptFrontmatterChange(setFrontmatterTags(contentRef.current, tags.filter((t) => t !== tag)));
   }, [tags, adoptFrontmatterChange]);
 
+  const handlePlotOnTimeline = useCallback(async () => {
+    if (timelineChipBusy) return;
+    setTimelineChipBusy(true);
+    try {
+      const out = await plotNoteOnTimeline(path, noteTitle);
+      if (!out.ok) {
+        showLnToast(out.message);
+        return;
+      }
+      dispatchTimelineFromNote({ eventId: out.eventId, store: out.store });
+      showLnToast(
+        out.created
+          ? 'Plotted on the story timeline — set the date in the Inspector.'
+          : 'Already on the timeline — opened the linked event.',
+      );
+    } finally {
+      setTimelineChipBusy(false);
+    }
+  }, [path, noteTitle, timelineChipBusy]);
+
   // ── Mode switching (gear menu) ──
 
   const handleModeClick = useCallback((next: NoteViewerMode) => {
@@ -976,6 +998,17 @@ export default function NoteViewer({
             onClick={() => footerTagInputRef.current?.focus()}
           >
             +
+          </button>
+          <button
+            type="button"
+            className="note-timeline-chip"
+            data-testid="notes-timeline-chip"
+            aria-label="Plot on timeline"
+            title="Plot this note on the story timeline"
+            disabled={timelineChipBusy}
+            onClick={() => { void handlePlotOnTimeline(); }}
+          >
+            {timelineChipBusy ? 'Timeline…' : 'Timeline'}
           </button>
         </div>
         {/* SKY-11186: the note's cover beside the title (spec §9) — the same

@@ -148,6 +148,9 @@ export interface AxisViewProps {
   jumpTarget?: { id: string; n: number } | null;
   /** Slice E — vertical board zoom percent (40–160). */
   vZoomPct?: number;
+  /** PLAN-058 L4 — lane zoom step (+/- 10) from the axis toolbar (not duplicated in header). */
+  onVZoomBump?: (delta: number) => void;
+  onVZoomReset?: () => void;
   /** Slice E — sync playhead when for the active timeline (null = none). */
   syncWhen?: number | null;
   /** Slice E — armed-only sync placement. */
@@ -184,6 +187,8 @@ export default function AxisView({
   flaggedItemIds,
   jumpTarget = null,
   vZoomPct = 100,
+  onVZoomBump,
+  onVZoomReset,
   syncWhen = null,
   syncArmed = false,
   onSyncPlace,
@@ -289,9 +294,15 @@ export default function AxisView({
     const el = scrollRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey) return;
-      e.preventDefault();
-      setZoomX((x) => applyWheelZoom(x, e.deltaY));
+      if (e.ctrlKey) {
+        e.preventDefault();
+        setZoomX((x) => applyWheelZoom(x, e.deltaY));
+        return;
+      }
+      if (e.shiftKey) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
+      }
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
@@ -779,7 +790,6 @@ export default function AxisView({
       {/* ── Toolbar: zoom seg (prototype tlZoomOpts) ── */}
       <div className="ax-toolbar" role="toolbar" aria-label="Axis controls">
         <span className="ax-toolbar-title">{active.name}</span>
-        <span className="ax-toolbar-spacer" />
         <div className="ax-zoom-seg" role="group" aria-label="Axis zoom" data-testid="ax-zoom-seg">
           {AXIS_ZOOM_SEGS.map((seg) => (
             <button
@@ -817,6 +827,38 @@ export default function AxisView({
             +
           </button>
         </div>
+        {onVZoomBump && onVZoomReset && (
+          <div className="ax-vzoom" role="group" aria-label="Lane height zoom" data-testid="tl-vzoom">
+            <button
+              type="button"
+              className="ax-vzoom-btn"
+              aria-label="Zoom lanes out"
+              data-testid="tl-vzoom-out"
+              onClick={() => onVZoomBump(-10)}
+            >
+              −
+            </button>
+            <button
+              type="button"
+              className="ax-vzoom-pct"
+              data-testid="tl-vzoom-pct"
+              title="Reset lane zoom to 100%"
+              onClick={onVZoomReset}
+            >
+              {vZoomPct}%
+            </button>
+            <button
+              type="button"
+              className="ax-vzoom-btn"
+              aria-label="Zoom lanes in"
+              data-testid="tl-vzoom-in"
+              onClick={() => onVZoomBump(10)}
+            >
+              +
+            </button>
+          </div>
+        )}
+        <span className="ax-toolbar-spacer" />
       </div>
 
       <div className="ax-body">
@@ -990,12 +1032,14 @@ export default function AxisView({
                       }}
                       title={
                         embedded
-                          ? `${span.name} — ${embedSub} · click to open`
+                          ? `${span.name} — ${embedSub} · click for inspector · double-click to open`
                           : 'Drag to move · drag edges to resize · click to edit'
                       }
-                      onClick={(e) =>
-                        embedded ? openEmbeddedTimeline(e, span) : handleSelect(e, 'span', span.id)
-                      }
+                      onClick={(e) => handleSelect(e, 'span', span.id)}
+                      onDoubleClick={(e) => {
+                        if (!embedded) return;
+                        openEmbeddedTimeline(e, span);
+                      }}
                       onMouseDown={(e) => beginSpanLikeDrag(e, 'move', 'span', span, 'spans')}
                       data-ax-id={span.id}
                       data-testid={`ax-span-${span.id}`}
