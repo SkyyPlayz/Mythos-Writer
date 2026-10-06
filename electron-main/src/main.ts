@@ -730,6 +730,7 @@ import {
   type OptionalAgentKey,
 } from './appSettingsLoad.js';
 import { assertWritingAssistantScanAllowed } from './writingAssistantScanGate.js';
+import { assertAgentVaultCheckAllowed } from './agentVaultCheckGate.js';
 import { buildSystemPaths, detectLegacyVaults, detectMythosVaultAt, readExistingVaultPaths, updateRecentVaultParentPaths } from './onboardingPaths.js';
 import { restartVaultRuntime } from './vaultRuntimeRestart.js';
 import { resolveVaultImportCollisions } from './vaultImportConflict.js';
@@ -10203,6 +10204,17 @@ function registerVaultAgentHandlers() {
   // agent:vault-check — streams continuity analysis and returns parsed inconsistencies
   ipcMain.handle(IPC_CHANNELS.AGENT_VAULT_CHECK, wrapIpcHandler(IPC_CHANNELS.AGENT_VAULT_CHECK, async (event, payload: VaultCheckPayload) => {
     if (!isFromTopFrame(event)) return UNTRUSTED_FRAME_REJECTION;
+    assertAgentVaultCheckAllowed(loadAppSettings(), getDb, {
+      onBudgetCap: (reason) => {
+        if (mainWindow) {
+          mainWindow.webContents.send(IPC_CHANNELS.AGENT_BUDGET_CAP, {
+            agent: 'archive',
+            agentLabel: 'Archive Agent',
+            reason,
+          });
+        }
+      },
+    });
     const vaultCheckProviderConfig = getProviderConfigForAgent('archive');
 
     ensureVaultDir();
