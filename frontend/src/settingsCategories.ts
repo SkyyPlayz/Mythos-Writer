@@ -56,6 +56,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     description: 'One partner face — personality, hands, heartbeat, and hard bans.',
     sectionIds: [
       'section-writing-partner',
+      'section-writing-coach', // PLAN-058 Lane A: coach switch + teaching-mode chrome
       'section-personality',
       'section-hands',
       'section-partner-limits',

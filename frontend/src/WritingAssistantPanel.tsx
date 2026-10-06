@@ -310,7 +310,9 @@ export default function WritingAssistantPanel({
   if (!enabled) {
     return (
       <div className="writing-assistant-panel writing-assistant-disabled">
-        <p className="writing-assistant-disabled-msg">Writing Coach is disabled. Enable it in Settings.</p>
+        <p className="writing-assistant-disabled-msg">
+          Writing Coach is disabled. Enable it in Settings → Writing partner.
+        </p>
       </div>
     );
   }

@@ -999,6 +999,7 @@ export default function SettingsPanel({
               settings={settings}
               setSettings={setSettings}
               setAgentDisplayName={setAgentDisplayName}
+              setSavedOk={setSavedOk}
             />
           )}
 
