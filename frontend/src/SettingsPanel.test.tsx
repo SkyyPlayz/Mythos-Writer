@@ -80,6 +80,22 @@ async function changeAndFlush(element: Element, value: string) {
   await flushAsyncEffects();
 }
 
+const PROVIDER_BUCKET_TESTID: Record<string, string> = {
+  anthropic: 'mk-prov-claude',
+  openai: 'mk-prov-paste-key',
+  custom: 'mk-prov-openrouter',
+  ollama: 'mk-prov-ollama',
+  lmstudio: 'mk-prov-lmstudio',
+  llamacpp: 'mk-prov-llamacpp',
+};
+
+async function selectProviderBucket(kind: string) {
+  const id = PROVIDER_BUCKET_TESTID[kind];
+  if (!id) throw new Error(`no bucket for ${kind}`);
+  await clickAndFlush(screen.getByTestId(id));
+}
+
+
 beforeEach(() => {
   vi.resetAllMocks();
   mockSettingsGet.mockResolvedValue(defaultSettings);
@@ -393,8 +409,16 @@ describe('SettingsPanel', () => {
     await waitFor(() => expect(writingPartnerTab).toHaveFocus());
     expect(writingPartnerTab).toHaveAttribute('aria-selected', 'true');
 
-    // ArrowUp: Writing partner → Appearance
+    const voiceTab = screen.getByRole('tab', { name: /^voice$/i }) as HTMLButtonElement;
+    const vaultsTab = screen.getByRole('tab', { name: /vault & files/i }) as HTMLButtonElement;
+
+    // ArrowUp: Writing partner → Voice → Vault & Files → Appearance (45:11 / 18:03)
     fireEvent.keyDown(writingPartnerTab, { key: 'ArrowUp' });
+    await waitFor(() => expect(voiceTab).toHaveFocus());
+    expect(voiceTab).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(voiceTab, { key: 'ArrowUp' });
+    await waitFor(() => expect(vaultsTab).toHaveFocus());
+    fireEvent.keyDown(vaultsTab, { key: 'ArrowUp' });
     await waitFor(() => expect(appearanceTab).toHaveFocus());
     expect(appearanceTab).toHaveAttribute('aria-selected', 'true');
     await waitFor(() => expect(screen.getByRole('heading', { name: /^appearance$/i })).toBeInTheDocument());
@@ -593,13 +617,14 @@ describe('SettingsPanel', () => {
     await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
   });
 
-  it('Ivy H3: Source toggle persists immediately; close does not revert it', async () => {
+  it('Ivy H3: Source default view persists immediately; close does not revert it', async () => {
     window.localStorage.removeItem('mythos:notes:showSourceView');
+    window.localStorage.removeItem('mythos:notes:defaultView');
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     fireEvent.click(screen.getByRole('tab', { name: /^editor$/i }));
-    await waitFor(() => screen.getByRole('switch', { name: 'Show Source Mode toggle' }));
-    fireEvent.click(screen.getByRole('switch', { name: 'Show Source Mode toggle' }));
-    expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'true');
+    const view = await screen.findByLabelText('Default note view');
+    fireEvent.change(view, { target: { value: 'source' } });
+    expect((screen.getByLabelText('Default note view') as HTMLSelectElement).value).toBe('source');
     expect(window.localStorage.getItem('mythos:notes:showSourceView')).toBe('1');
     // F2#15: no Cancel — dismiss via close (save-on-close); view prefs already live.
     fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
@@ -609,16 +634,16 @@ describe('SettingsPanel', () => {
 
   it('Ivy H3 / Critic H2: remount + exit-save does not flip gear Always-Rich OFF back ON', async () => {
     window.localStorage.removeItem('mythos:notes:defaultRich');
+    window.localStorage.removeItem('mythos:notes:defaultView');
     const first = await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     fireEvent.click(screen.getByRole('tab', { name: /^editor$/i }));
-    await waitFor(() => screen.getByRole('switch', { name: 'Always open notes in Rich view' }));
+    await waitFor(() => expect(screen.getByLabelText('Default note view')).toHaveValue('rich'));
     // Rail-nav / "this vault" remount: unmount first, then gear write, then reopen.
     first.unmount();
     writeDefaultRichPref(false);
     const second = await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     fireEvent.click(screen.getByRole('tab', { name: /^editor$/i }));
-    await waitFor(() => screen.getByRole('switch', { name: 'Always open notes in Rich view' }));
-    expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'false');
+    await waitFor(() => expect(screen.getByLabelText('Default note view')).not.toHaveValue('rich'));
     // F2#15: Model & keys flush on close must not rewrite view prefs.
     fireEvent.click(screen.getByRole('tab', { name: /model & keys/i }));
     await waitForModelKeys();
@@ -1169,13 +1194,16 @@ describe('SettingsPanel', () => {
 
   it('renders voice section with enable toggle', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitForModelKeys();
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     expect(screen.getByRole('heading', { name: /^voice$/i })).toBeInTheDocument();
     expect(screen.getByRole('checkbox', { name: /enable voice input/i })).toBeInTheDocument();
   });
 
   it('voice toggle is off by default', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
     const toggle = screen.getByRole('checkbox', { name: /enable voice input/i }) as HTMLInputElement;
     expect(toggle.checked).toBe(false);
@@ -1183,6 +1211,8 @@ describe('SettingsPanel', () => {
 
   it('voice toggle change is saved via IPC', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
@@ -1204,6 +1234,8 @@ describe('SettingsPanel', () => {
       isPackaged: true,
     };
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
     fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
     await waitFor(() =>
@@ -1213,6 +1245,8 @@ describe('SettingsPanel', () => {
 
   it('SKY-3189: does not show packaged-mode notice when not packaged', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByRole('checkbox', { name: /enable voice input/i }));
     fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
     expect(screen.queryByText(/web speech.*not.*packaged/i)).not.toBeInTheDocument();
@@ -1222,6 +1256,8 @@ describe('SettingsPanel', () => {
 
   it('renders input language selector with auto-detect default', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByLabelText(/stt input language/i));
 
     const select = screen.getByLabelText(/stt input language/i) as HTMLSelectElement;
@@ -1234,6 +1270,8 @@ describe('SettingsPanel', () => {
 
   it('input language change is saved via IPC', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByLabelText(/stt input language/i));
 
     fireEvent.change(screen.getByLabelText(/stt input language/i), { target: { value: 'fr-FR' } });
@@ -1250,6 +1288,8 @@ describe('SettingsPanel', () => {
       voice: { enabled: true, cloudFallback: false, inputLanguage: 'de-DE' },
     });
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByLabelText(/stt input language/i));
 
     const select = screen.getByLabelText(/stt input language/i) as HTMLSelectElement;
@@ -1258,12 +1298,16 @@ describe('SettingsPanel', () => {
 
   it('renders TTS voice identifier input', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByLabelText(/tts voice identifier/i));
     expect(screen.getByLabelText(/tts voice identifier/i)).toBeInTheDocument();
   });
 
   it('TTS voice change is saved via IPC', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByLabelText(/tts voice identifier/i));
 
     fireEvent.change(screen.getByLabelText(/tts voice identifier/i), { target: { value: 'alloy' } });
@@ -1276,6 +1320,8 @@ describe('SettingsPanel', () => {
 
   it('renders TTS volume slider defaulting to 100%', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByLabelText(/tts volume/i));
 
     const slider = screen.getByLabelText(/tts volume/i) as HTMLInputElement;
@@ -1284,6 +1330,8 @@ describe('SettingsPanel', () => {
 
   it('TTS volume change is saved via IPC', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByLabelText(/tts volume/i));
 
     fireEvent.change(screen.getByLabelText(/tts volume/i), { target: { value: '0.6' } });
@@ -1296,6 +1344,8 @@ describe('SettingsPanel', () => {
 
   it('renders TTS rate slider defaulting to 1.0×', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByLabelText(/tts speech rate/i));
 
     const slider = screen.getByLabelText(/tts speech rate/i) as HTMLInputElement;
@@ -1304,6 +1354,8 @@ describe('SettingsPanel', () => {
 
   it('TTS rate change is saved via IPC', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByLabelText(/tts speech rate/i));
 
     fireEvent.change(screen.getByLabelText(/tts speech rate/i), { target: { value: '1.5' } });
@@ -1316,6 +1368,8 @@ describe('SettingsPanel', () => {
 
   it('renders persistent mute toggle unchecked by default', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByRole('checkbox', { name: /start microphone muted/i }));
 
     const toggle = screen.getByRole('checkbox', { name: /start microphone muted/i }) as HTMLInputElement;
@@ -1328,6 +1382,8 @@ describe('SettingsPanel', () => {
       voice: { enabled: false, cloudFallback: false, persistentMute: true },
     });
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByRole('checkbox', { name: /start microphone muted/i }));
 
     const toggle = screen.getByRole('checkbox', { name: /start microphone muted/i }) as HTMLInputElement;
@@ -1336,6 +1392,8 @@ describe('SettingsPanel', () => {
 
   it('persistent mute toggle change is saved via IPC', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByRole('checkbox', { name: /start microphone muted/i }));
 
     fireEvent.click(screen.getByRole('checkbox', { name: /start microphone muted/i }));
@@ -1348,6 +1406,8 @@ describe('SettingsPanel', () => {
 
   it('voice settings round-trip — all new fields persist together', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     await waitFor(() => screen.getByLabelText(/stt input language/i), { timeout: 15000 });
 
     fireEvent.click(screen.getByRole('checkbox', { name: /enable voice input/i }));
@@ -1373,9 +1433,9 @@ describe('SettingsPanel', () => {
 
   it('SKY-7772: STT Binary / STT Model / TTS / mic-mute controls render under Model & keys (Voice section)', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitForModelKeys();
-    // Model & keys hosts VoiceSection.
-    expect(screen.getByRole('tab', { name: /model & keys/i })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
+    expect(screen.getByRole('tab', { name: /^voice$/i })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByLabelText(/stt binary path/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/stt model path/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/stt input language/i)).toBeInTheDocument();
@@ -1387,7 +1447,8 @@ describe('SettingsPanel', () => {
 
   it('SKY-7772: none of the STT/TTS/mic-mute controls render under Vault & Files', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitForModelKeys();
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
     fireEvent.click(screen.getByRole('tab', { name: /vault & files/i }));
     await flushAsyncEffects();
     expect(screen.getByRole('tab', { name: /vault & files/i })).toHaveAttribute('aria-selected', 'true');
@@ -1410,7 +1471,8 @@ describe('SettingsPanel', () => {
       ),
     );
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitForModelKeys();
+    fireEvent.click(screen.getByTestId('settings-cat-voice'));
+    await flushAsyncEffects();
 
     await clickAndFlush(screen.getByRole('button', { name: /browse for stt binary/i }));
     await clickAndFlush(screen.getByRole('button', { name: /browse for stt model/i }));
@@ -1431,65 +1493,44 @@ describe('SettingsPanel', () => {
 
   // ── MYT-779: AI providers section ──
 
-  it('renders AI Provider section with provider selector', async () => {
+  it('renders provider buckets and no old Provider Configuration heading', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitForModelKeys();
-    // Slice C: bucket heading + legacy ProviderSection heading both match.
-    expect(screen.getAllByRole('heading', { name: /provider configuration/i }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByRole('combobox', { name: /ai provider/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /provider buckets/i })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /provider configuration/i })).not.toBeInTheDocument();
+    expect(screen.getByTestId('mk-prov-claude')).toHaveClass('mk-prov--on');
   });
 
-  it('defaults provider selector to Anthropic', async () => {
+  it('defaults the live bucket to Claude (Anthropic)', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
-    const select = screen.getByRole('combobox', { name: /ai provider/i }) as HTMLSelectElement;
-    expect(select.value).toBe('anthropic');
+    await waitForModelKeys();
+    expect(screen.getByTestId('mk-prov-claude')).toHaveClass('mk-prov--on');
   });
 
-  it('shows all six provider options (B4-10: full BYO incl. llama.cpp)', async () => {
+  it('shows all six live provider buckets (B4-10: full BYO incl. llama.cpp)', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
-    const select = screen.getByRole('combobox', { name: /ai provider/i }) as HTMLSelectElement;
-    const values = Array.from(select.options).map((o) => o.value);
-    expect(values).toContain('anthropic');
-    expect(values).toContain('openai');
-    expect(values).toContain('ollama');
-    expect(values).toContain('lmstudio');
-    expect(values).toContain('llamacpp');
-    expect(values).toContain('custom');
+    await waitForModelKeys();
+    for (const id of ['mk-prov-claude', 'mk-prov-paste-key', 'mk-prov-ollama', 'mk-prov-lmstudio', 'mk-prov-llamacpp', 'mk-prov-openrouter']) {
+      expect(screen.getByTestId(id)).toBeInTheDocument();
+    }
   });
 
   // ── Beta 4 M28 (B4-6/B4-10): OAuth login buttons — connect-later state ──
 
-  it('B4-6: shows the "Log in with Claude" button for the Anthropic provider', async () => {
+  it('B4-6: old Provider Configuration OAuth buttons are not on Model & keys', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
-    expect(screen.getByTestId('oauth-login-anthropic')).toHaveTextContent('Log in with Claude');
-    // Connect-later: no explainer until clicked, and no credentials stored.
+    await waitForModelKeys();
+    expect(screen.queryByTestId('oauth-login-anthropic')).not.toBeInTheDocument();
     expect(screen.queryByTestId('oauth-explainer-anthropic')).not.toBeInTheDocument();
-  });
-
-  it('B4-6: clicking the OAuth button explains itself and stores nothing', async () => {
-    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByTestId('oauth-login-anthropic'));
-
-    fireEvent.click(screen.getByTestId('oauth-login-anthropic'));
-    expect(screen.getByTestId('oauth-explainer-anthropic')).toHaveTextContent(/account linking is coming soon/i);
-    // No settings write happened from the click itself.
     expect(mockSettingsSet).not.toHaveBeenCalled();
-    // Clicking again dismisses the explainer.
-    fireEvent.click(screen.getByTestId('oauth-login-anthropic'));
-    expect(screen.queryByTestId('oauth-explainer-anthropic')).not.toBeInTheDocument();
   });
 
-  it('B4-10: switching to OpenAI shows its own connect-later login button', async () => {
+  it('B4-10: bucket switches do not mount the old OAuth login buttons', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
-
-    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'openai');
-    expect(screen.getByTestId('oauth-login-openai')).toHaveTextContent('Log in with ChatGPT');
-    // Local runtimes have no OAuth story — no button.
-    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'llamacpp');
+    await waitForModelKeys();
+    await selectProviderBucket('openai');
+    expect(screen.queryByTestId('oauth-login-openai')).not.toBeInTheDocument();
+    await selectProviderBucket('llamacpp');
     expect(screen.queryByTestId('oauth-login-llamacpp')).not.toBeInTheDocument();
     expect(screen.queryByTestId('oauth-login-anthropic')).not.toBeInTheDocument();
   });
@@ -1516,7 +1557,7 @@ describe('SettingsPanel', () => {
     // SKY-10668: prototype rail order; Account & profile kept and placed last
     // by owner ruling (Skyy, 2026-08-19).
     expect(tabs.map((t) => t.textContent)).toEqual([
-      'Appearance', 'Writing partner', 'Model & keys', 'Editor', 'Vault & Files',
+      'Appearance', 'Vault & Files', 'Voice', 'Writing partner', 'Model & keys', 'Editor',
       'Sync & Backup', 'Shortcuts', 'About', 'Account & profile',
     ]);
     expect(screen.getByTestId('settings-page-header')).toHaveTextContent(
@@ -1609,25 +1650,25 @@ describe('SettingsPanel', () => {
 
   it('shows API key field for cloud providers', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+    await waitForModelKeys();
     expect(screen.getByRole('textbox', { name: /default model for this provider/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/provider api key/i)).toBeInTheDocument();
+    expect(screen.getByLabelText('API key')).toBeInTheDocument();
   });
 
   it('shows base URL field when switching to ollama', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+    await waitForModelKeys();
 
-    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'ollama');
+    await selectProviderBucket('ollama');
     expect(screen.getByLabelText(/provider base url/i)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByTestId('ollama-not-running-hint')).toBeInTheDocument());
   });
 
   it('provider kind is included in saved settings', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+    await waitForModelKeys();
 
-    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'openai');
+    await selectProviderBucket('openai');
     await clickAndFlush(screen.getByRole('button', { name: /close settings/i }));
     await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
 
@@ -1735,9 +1776,9 @@ describe('SettingsPanel', () => {
   it('AC-2: Refresh models button triggers a new listModels call', async () => {
     mockProviderListModels.mockResolvedValue({ ok: true, models: ['llama3'] });
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+    await waitForModelKeys();
 
-    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'ollama' } });
+    await selectProviderBucket('ollama');
 
     // Wait for auto-fetch to complete (button transitions from disabled to enabled)
     await waitFor(() => {
@@ -1752,9 +1793,9 @@ describe('SettingsPanel', () => {
   it('AC-4: falls back to free-text input when listing fails for custom provider', async () => {
     mockProviderListModels.mockResolvedValueOnce({ ok: false, error: 'ECONNREFUSED' });
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+    await waitForModelKeys();
 
-    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'custom' } });
+    await selectProviderBucket('custom');
 
     await waitFor(() => expect(mockProviderListModels).toHaveBeenCalledTimes(1));
     expect(screen.getByRole('textbox', { name: /default model for this provider/i })).toBeInTheDocument();
@@ -1764,9 +1805,9 @@ describe('SettingsPanel', () => {
   it('AC-4: falls back to free-text input when listing returns an empty array', async () => {
     mockProviderListModels.mockResolvedValueOnce({ ok: true, models: [] });
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+    await waitForModelKeys();
 
-    fireEvent.change(screen.getByRole('combobox', { name: /ai provider/i }), { target: { value: 'openai' } });
+    await selectProviderBucket('openai');
 
     await waitFor(() => expect(mockProviderListModels).toHaveBeenCalledTimes(1));
     // Empty list → falls back to free-text, no dropdown
@@ -1781,7 +1822,7 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitForModelKeys();
 
-    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'lmstudio');
+    await selectProviderBucket('lmstudio');
 
     expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
     // The legacy "API Key" section must not render at all for a keyless
@@ -1796,7 +1837,7 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitForModelKeys();
 
-    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'ollama');
+    await selectProviderBucket('ollama');
 
     expect(screen.queryByLabelText(/anthropic api key/i)).not.toBeInTheDocument();
     expect(document.getElementById('section-api-key')).not.toBeInTheDocument();
@@ -1807,7 +1848,7 @@ describe('SettingsPanel', () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitForModelKeys();
 
-    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'openai');
+    await selectProviderBucket('openai');
 
     expect(screen.getByLabelText(/^openai api key$/i)).toBeInTheDocument();
     expect(document.getElementById('section-api-key')).not.toBeNull();
@@ -1913,9 +1954,9 @@ describe('SettingsPanel', () => {
   it('AC-4: selecting LM Studio auto-fetches the running model list without a manual refresh click', async () => {
     mockProviderListModels.mockResolvedValueOnce({ ok: true, models: ['qwen/qwen3.6-35b-a3b', 'llama-3.2-3b'] });
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
-    await waitFor(() => screen.getByRole('combobox', { name: /ai provider/i }));
+    await waitForModelKeys();
 
-    await changeAndFlush(screen.getByRole('combobox', { name: /ai provider/i }), 'lmstudio');
+    await selectProviderBucket('lmstudio');
 
     await waitFor(() => expect(mockProviderListModels).toHaveBeenCalledTimes(1));
     expect(mockProviderListModels).toHaveBeenCalledWith(
@@ -2455,8 +2496,8 @@ describe('Settings dialog keyboard navigation (SKY-1969)', () => {
       dialog.querySelectorAll<HTMLElement>('button, input, select, textarea, [tabindex]:not([tabindex="-1"])')
     ).filter((el) => !(el as HTMLInputElement).disabled);
 
-    const providerSelect = screen.getByRole('combobox', { name: /ai provider/i });
-    const apiKeyInput = screen.getByLabelText(/provider api key/i);
+    const providerSelect = screen.getByTestId('mk-prov-claude');
+    const apiKeyInput = screen.getByLabelText('API key');
 
     expect(focusable.indexOf(providerSelect)).toBeGreaterThan(-1);
     expect(focusable.indexOf(apiKeyInput)).toBeGreaterThan(-1);
@@ -2741,7 +2782,8 @@ describe('SKY-3218 nav-bar configuration', () => {
     await waitFor(() => screen.getByRole('switch', { name: 'All AI features' }));
     expect(screen.getByRole('switch', { name: 'All AI features' })).toBeChecked();
     expect(screen.getByTestId('model-keys-page')).toBeInTheDocument();
-    expect(screen.getByText('Provider Configuration')).toBeInTheDocument();
+    expect(screen.queryByText('Provider Configuration')).not.toBeInTheDocument();
+    expect(screen.getByText('PROVIDER BUCKETS')).toBeInTheDocument();
     expect(screen.queryByText('Manual mode is on')).not.toBeInTheDocument();
   });
 

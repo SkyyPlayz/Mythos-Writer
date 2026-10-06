@@ -846,6 +846,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // ungrouped (manuscriptModel's implicit single part).
   // Slice B SCOPE #9: cold open / story switch lands Editor at Full Book zoom.
   const [viewDepth, setViewDepth] = useState<ZoomLevel>('book');
+  // PLAN-058 L2 (21:49): apply the Editor "Default manuscript zoom" only when
+  // that field is set. Other editorPrefs patches must not reset the depth.
+  const defaultZoom = appSettings?.editorPrefs?.defaultZoom;
+  useEffect(() => {
+    if (defaultZoom === 'book' || defaultZoom === 'part' || defaultZoom === 'chapter' || defaultZoom === 'scene') {
+      setViewDepth(defaultZoom);
+    }
+  }, [defaultZoom]);
   // M3 (SKY-9021): one-shot caret hand-off into ManuscriptView — create-story
   // (and the post-onboarding first open) land the caret in the new scene's
   // empty first paragraph. seq increments per request; the view claims it
@@ -6692,9 +6700,28 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           a full-viewport conic-gradient + hue-rotate paint storm (PERFORMANCE
           §3). Panel border overlays keep the neon look. */}
       <UpdateBanner />
-      {/* S2-1 Full Book chrome: nav rail stretches to the window top; title bar
-          + document tabs live in the main column so tabs sit at the top of
-          content chrome (not inset under a full-width title row). */}
+      {/* PLAN-058 L2 (06:55): the title bar is full window width. The nav
+          rail starts in the row below and must not cover the top bar.
+          Document tabs stay in the main column under that bar. */}
+      {showTitleBar && (
+        <WindowChrome
+          menus={titleBarMenus}
+          onOpenPalette={(seed) => { setGlobalSearchSeed(seed ?? ''); setGlobalSearchOpen(true); }}
+          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenAccount={() => setAccountModalOpen(true)}
+          activeVaultRoot={activeVaultRoot}
+          activeStoryTitle={deriveSingleStoryTitle(stories)}
+          // Ivy R6: list clicks flush-then-switch (never projectSwitch first).
+          // Create / Open Other still land here after main has already moved —
+          // switchToVault re-flushes if Settings is open, then projectSwitch.
+          onProjectSwitched={(vaultRoot) => { void switchToVault(vaultRoot); }}
+          onNewStory={() => { void createStory(); }}
+          onOpenVault={() => { void openVaultViaPicker(); }}
+          onCreateVault={() => { void createMythosVault(); }}
+          onOpenWelcome={() => setWelcomeOpen(true)}
+          notificationCenter={<NotificationCenter />}
+        />
+      )}
       <div className="desktop-shell__body">
         {showTitleBar && (
           <AppNavRail
@@ -6724,25 +6751,6 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           />
         )}
         <div className="desktop-shell__main-col">
-      {showTitleBar && (
-        <WindowChrome
-          menus={titleBarMenus}
-          onOpenPalette={(seed) => { setGlobalSearchSeed(seed ?? ''); setGlobalSearchOpen(true); }}
-          onOpenSettings={() => setSettingsOpen(true)}
-          onOpenAccount={() => setAccountModalOpen(true)}
-          activeVaultRoot={activeVaultRoot}
-          activeStoryTitle={deriveSingleStoryTitle(stories)}
-          // Ivy R6: list clicks flush-then-switch (never projectSwitch first).
-          // Create / Open Other still land here after main has already moved —
-          // switchToVault re-flushes if Settings is open, then projectSwitch.
-          onProjectSwitched={(vaultRoot) => { void switchToVault(vaultRoot); }}
-          onNewStory={() => { void createStory(); }}
-          onOpenVault={() => { void openVaultViaPicker(); }}
-          onCreateVault={() => { void createMythosVault(); }}
-          onOpenWelcome={() => setWelcomeOpen(true)}
-          notificationCenter={<NotificationCenter />}
-        />
-      )}
         {/* A2 — Story document tabs move into writing chrome (.shell-center-column).
             Scene Crafter board strips (SKY-11069) and any static pseudo-tabs stay
             under the title bar. Notes strip stays in NotesTabPanel (SKY-10929). */}

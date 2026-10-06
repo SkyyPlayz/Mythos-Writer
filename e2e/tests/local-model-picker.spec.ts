@@ -187,7 +187,7 @@ async function openSettings(page: Page): Promise<void> {
   await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible({ timeout: 10_000 });
   // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
   await page.locator('[data-testid="settings-cat-agents"]').click();
-  await expect(page.getByRole('heading', { name: 'Provider Configuration' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'PROVIDER BUCKETS' })).toBeVisible();
 }
 
 function agentCard(page: Page, name: 'Writing Coach' | 'Brainstorm Agent' | 'Beta Reader'): Locator {

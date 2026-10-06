@@ -47,10 +47,10 @@ describe('AiMasterSection (M11a / S2-4)', () => {
     expect(screen.queryByText('Manual mode is on')).not.toBeInTheDocument();
   });
 
-  it('exposes the LIVE transcript placement select (S2-6)', () => {
+  it('does not render the Agent transcript card (PLAN-058 L2 12:23)', () => {
     setup();
-    expect(screen.getByTestId('agent-transcript-placement-select')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Agent transcript' })).toBeInTheDocument();
+    expect(screen.queryByTestId('agent-transcript-placement-select')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Agent transcript' })).not.toBeInTheDocument();
   });
 
   it('treats an absent ai field (pre-M11 settings) as enabled', () => {

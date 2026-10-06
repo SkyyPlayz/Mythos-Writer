@@ -108,15 +108,16 @@ describe('EditorSettingsSection', () => {
     expect(updater(baseSettings).editorPrefs?.spellcheck).toBe(false);
   });
 
-  it('Ivy H3: Note view toggles write localStorage immediately (no Settings draft)', () => {
+  it('Ivy H3: Default note view dropdown writes localStorage immediately (no Settings draft)', () => {
     window.localStorage.removeItem('mythos:notes:showMarkdownView');
+    window.localStorage.removeItem('mythos:notes:defaultView');
     render(<EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
-    expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'true');
-    fireEvent.click(screen.getByRole('switch', { name: 'Show Markdown view toggle' }));
+    const view = screen.getByLabelText('Default note view') as HTMLSelectElement;
+    expect(view.value).toBe('rich');
+    fireEvent.change(view, { target: { value: 'markdown' } });
     expect(window.localStorage.getItem('mythos:notes:showMarkdownView')).toBe('1');
-    expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'true');
+    expect(window.localStorage.getItem('mythos:notes:defaultView')).toBe('markdown');
+    expect((screen.getByLabelText('Default note view') as HTMLSelectElement).value).toBe('markdown');
   });
 
   it('H1: spellcheck toggle leaves sticky note view modes intact', () => {
@@ -133,13 +134,13 @@ describe('EditorSettingsSection', () => {
     );
   });
 
-  it('F4: Always-Rich Settings toggle does not wipe sticky modes', () => {
+  it('F4: Default note view dropdown does not wipe sticky modes', () => {
     window.localStorage.setItem(
       'mythos:notes:modeByPath',
       JSON.stringify({ 'Notes/Keep.md': 'source' }),
     );
     render(<EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />);
-    fireEvent.click(screen.getByRole('switch', { name: 'Always open notes in Rich view' }));
+    fireEvent.change(screen.getByLabelText('Default note view'), { target: { value: 'source' } });
     expect(window.localStorage.getItem('mythos:notes:defaultRich')).toBe('0');
     expect(window.localStorage.getItem('mythos:notes:modeByPath')).toBe(
       JSON.stringify({ 'Notes/Keep.md': 'source' }),
@@ -148,10 +149,11 @@ describe('EditorSettingsSection', () => {
 
   it('Ivy H3 / Critic H2: remount after gear Always-Rich OFF never flips it back ON', () => {
     window.localStorage.removeItem('mythos:notes:defaultRich');
+    window.localStorage.removeItem('mythos:notes:defaultView');
     const first = render(
       <EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />,
     );
-    expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'true');
+    expect((screen.getByLabelText('Default note view') as HTMLSelectElement).value).toBe('rich');
     // Simulate note-gear write while Settings is open, then rail-nav / "this vault" remount.
     // Unmount first so the subscribe callback cannot fire into an unmounted tree (act warning).
     first.unmount();
@@ -159,7 +161,7 @@ describe('EditorSettingsSection', () => {
     const second = render(
       <EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />,
     );
-    expect(screen.getByRole('switch', { name: 'Always open notes in Rich view' })).toHaveAttribute('aria-checked', 'false');
+    expect((screen.getByLabelText('Default note view') as HTMLSelectElement).value).not.toBe('rich');
     expect(window.localStorage.getItem('mythos:notes:defaultRich')).toBe('0');
     second.unmount();
   });
@@ -170,14 +172,14 @@ describe('EditorSettingsSection', () => {
     const first = render(
       <EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />,
     );
-    expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'true');
+    expect(window.localStorage.getItem('mythos:notes:showMarkdownView')).toBe('1');
+    expect(window.localStorage.getItem('mythos:notes:showSourceView')).toBe('1');
     first.unmount();
     const second = render(
       <EditorSettingsSection settings={baseSettings} setSettings={vi.fn()} setSavedOk={vi.fn()} />,
     );
-    expect(screen.getByRole('switch', { name: 'Show Markdown view toggle' })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByRole('switch', { name: 'Show Source Mode toggle' })).toHaveAttribute('aria-checked', 'true');
+    expect(window.localStorage.getItem('mythos:notes:showMarkdownView')).toBe('1');
+    expect(window.localStorage.getItem('mythos:notes:showSourceView')).toBe('1');
     expect(window.localStorage.getItem('mythos:notes:showMarkdownView')).toBe('1');
     second.unmount();
   });

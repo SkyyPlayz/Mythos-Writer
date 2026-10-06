@@ -35,7 +35,7 @@ export default function VoiceSection({ settings, setSettings, providerKind, setS
   const voiceProviders = activeProviderSupportsVoice && activeProvider ? [activeProvider] : [];
 
   return (
-    <section className="settings-section" aria-labelledby="section-voice" data-settings-cat="agents">
+    <section className="settings-section" aria-labelledby="section-voice" data-settings-cat="voice">
       <h3 className="settings-section-title" id="section-voice">Voice</h3>
       <div className="settings-field">
         <div className="settings-agent-header">

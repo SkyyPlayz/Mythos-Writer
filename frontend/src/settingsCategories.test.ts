@@ -66,13 +66,14 @@ describe('SETTINGS_CATEGORIES registry (SKY-3215)', () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it('Slice C: rail order Writing partner + Model & keys, account last', () => {
+  it('PLAN-058 L2: Vault & Files is 2nd, Voice is 3rd, account last', () => {
     expect(SETTINGS_CATEGORIES.map((c) => c.id)).toEqual([
       'appearance',
+      'vaults',
+      'voice',
       'writingPartner',
       'agents',
       'editor',
-      'vaults',
       'sync',
       'shortcuts',
       'about',
@@ -80,6 +81,8 @@ describe('SETTINGS_CATEGORIES registry (SKY-3215)', () => {
       // (Skyy, 2026-08-19, SKY-10668 change 3).
       'account',
     ]);
+    const labels = SETTINGS_CATEGORIES.map((c) => c.label);
+    expect(labels.indexOf('Writing partner')).toBeLessThan(labels.indexOf('Model & keys'));
   });
 
   it('Slice C: AI Agents label becomes Model & keys; Writing partner present', () => {
@@ -147,6 +150,7 @@ describe('SETTINGS_CATEGORIES registry (SKY-3215)', () => {
 
   it('Vaults & Files sections use Sep Liquid Neon glass card chrome', () => {
     const css = readFileSync(resolve(__dirname, 'SettingsPanel.css'), 'utf-8');
+    expect(css).toContain('.settings-section:not(.m24-root)');
     expect(css).toContain('.settings-section[data-settings-cat="vaults"]');
     expect(css).toContain('var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, 0.2))');
     expect(css).toContain('var(--glowH, none)');
