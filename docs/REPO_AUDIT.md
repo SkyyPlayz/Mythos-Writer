@@ -34,7 +34,7 @@ Method notes that affect later cleanup:
 - **Squash-merge + WSL handoff capture commits** make `git merge-base --is-ancestor <branch> origin/main` almost useless. Of 283 heads, **282 are not ancestors of `main`**. Most are still leftover work: either a 1-commit screenshot branch (~1477 commits behind) or a `chore(handoff): uncommitted work from WSL worktree …` commit sitting on a stale base.
 - Unique tip SHAs: **268** across 283 heads (10 tips are shared by more than one branch).
 - Open PRs at audit time: **0**.
-- Product GitHub issues: API `open_issues_count` = 1 (Paperclip was the real tracker; it did not migrate — see `HANDOFF.md` §5).
+- Product GitHub issues: API `open_issues_count` = 1 (Paperclip was the real tracker; it did not migrate — see `docs/archive/HANDOFF.md` §5).
 
 ---
 
@@ -45,7 +45,7 @@ Method notes that affect later cleanup:
 3. **Do not delete `wsl-handoff/*` or the draft release.** Those are the only copies of rescued WSL worktrees / agent-clone bundles. Quarry first, archive second, delete never in P0/P1.
 4. **Agent docs are lying about CI.** `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, and the PR template still require `CI / build-macos` + `CI / build-linux` on every PR. Current `ci.yml` has **no `build-macos` job**, and `build-linux` / `build-windows` are **skipped on `pull_request`**. `CI-PREFLIGHT.md` is the accurate local gate. Fix the docs in a dedicated follow-up so agents stop optimizing for a ghost check.
 5. **Paperclip-era automation is still wired.** `close-ping.yml` calls `scripts/notify-board.sh` with hardcoded Paperclip company/project IDs. `scripts/paperclip/*` and `tests/paperclip/` survived the host retirement. Disable or delete in P1 after confirming nothing else pages that board.
-6. **Branch count is not work.** HANDOFF already warned this: 534 branches in one agent clone pointed at one stale commit. The 283 remote heads are mostly squash leftovers, screenshot-check evidence branches, July PR scratch aliases, and WSL rescue tips. Delete by closed-PR head name + screenshot prefix, not by "ahead of main."
+6. **Branch count is not work.** `docs/archive/HANDOFF.md` already warned this: 534 branches in one agent clone pointed at one stale commit. The 283 remote heads are mostly squash leftovers, screenshot-check evidence branches, July PR scratch aliases, and WSL rescue tips. Delete by closed-PR head name + screenshot prefix, not by "ahead of main."
 
 Suggested first cleanup PRs (after this audit lands):
 
@@ -181,7 +181,7 @@ Everything in §2 obsolete, §3 archive, §4 dead, and §5 leftover branches. Th
 | `docs/releases/LIQUID-NEON-PROTOTYPE-MAP.md` | Line index into the `.dc.html`. Useful while fidelity work continues. |
 | `PERFORMANCE.md` (repo root) | Measured packaged-build numbers. BETA-REFINE's DoD points here. Distinct from `plans/design-handoff/v2/PERFORMANCE.md` (qualitative fix order). |
 | `plans/PERF_BUDGET.md` | Perf regression policy. |
-| `HANDOFF.md` | 2026-09-15 WSL → grokbot migration. Current. Do not "archive" until the quarry work in §5 is done. |
+| `docs/archive/HANDOFF.md` | 2026-09-15 WSL → grokbot migration. Moved off the root into `docs/archive/`; quarry notes remain in §5. |
 | `CI-PREFLIGHT.md` | Accurate `npm run preflight` + "build-macos is on-demand only". |
 | `docs/user-guide.md`, `docs/user-guide/entities.md`, `docs/keyboard-shortcuts.md` | User-facing. |
 | `docs/security/electron-baseline.md`, `ipc-channel-review.md`, `untrusted-input-inventory.md`, `fuzz-triage-runbook.md`, `telemetry-audit.md` | Security program. |
@@ -217,7 +217,7 @@ Move to `docs/archive/` or `plans/archive/` and leave a one-line stub so old lin
 
 | Path | Why obsolete |
 |---|---|
-| `FABLE-PICKUP.md` | 2026-07-14 Paperclip→Fable handoff. Lists #935/#933/#931/#914 as open. All long merged. **Misleading if an agent reads the root.** |
+| `docs/archive/FABLE-PICKUP.md` | 2026-07-14 Paperclip→Fable handoff. Lists #935/#933/#931/#914 as open. All long merged. Moved off the root so an agent does not treat it as current. |
 | `docs/releases/BETA4-PICKUP-2026-07-15.md` | Same era. "Ivy merges; ignore close-ping." |
 | `docs/releases/BETA-LIQUID-NEON.md` | Beta 3 plan. Points at `design-handoff/prototype/` which is `MOVED.md`. Superseded by BETA-REFINE. |
 | `plans/BETA-2-ROADMAP.md` | 2026-07-02 Beta 2 parts A–I. |
@@ -238,11 +238,11 @@ Move to `docs/archive/` or `plans/archive/` and leave a one-line stub so old lin
 
 Keep at repo root (agents and humans look here first):
 
-- `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `LICENSE` (if/when added), `CLAUDE.md`, `AGENTS.md`, `HANDOFF.md`, `PERFORMANCE.md`, `CI-PREFLIGHT.md`
+- `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `LICENSE` (if/when added), `CLAUDE.md`, `AGENTS.md`, `PERFORMANCE.md`, `CI-PREFLIGHT.md`
 
 Move off the root in P2:
 
-- `FABLE-PICKUP.md`
+- `docs/archive/FABLE-PICKUP.md` (moved off the root)
 - `SKY-456-SPEC.md`, `SKY-2968-component-spec.md`, `SKY-2970-onboarding-v0-3-ux-spec.md`
 - `ENGINEERING_LESSONS.md` → `docs/ENGINEERING_LESSONS.md` (update links)
 
@@ -269,7 +269,7 @@ Tracked image-ish files on main: **534 png + 45 webp + 8 jpg + 5 svg**. Almost a
 | `electron-main/resources/samples/**` | text | Packaged templates |
 | `sample-project/**` | 9 KB | Packaged extraResource |
 
-**Shipped-pixel defect (do not silently delete):** `HANDOFF.md` / SKY-11756 — `frontend/src/assets/wallpapers/pack/winter-2.webp` cannot ship (generator caption baked into pixels). That is a **replace** ticket, not an archive ticket.
+**Shipped-pixel defect (do not silently delete):** `docs/archive/HANDOFF.md` / SKY-11756 — `frontend/src/assets/wallpapers/pack/winter-2.webp` cannot ship (generator caption baked into pixels). That is a **replace** ticket, not an archive ticket.
 
 ### 3.2 Archive / remove from `main` (P1) — not needed to build or run CI
 
@@ -404,7 +404,7 @@ Remote heads: **283**. Open PRs: **0**.
 
 | Ref | Why |
 |---|---|
-| `wsl-handoff/main-worktree-snapshot` | 641 staged-but-uncommitted files from the WSL primary checkout. HANDOFF §2a: "treat as a quarry, not a candidate." |
+| `wsl-handoff/main-worktree-snapshot` | 641 staged-but-uncommitted files from the WSL primary checkout. `docs/archive/HANDOFF.md` §2a: "treat as a quarry, not a candidate." |
 | `wsl-handoff/stash-0` … `stash-9` | Converted stash stack. Messages include superseded / "not part of PR." Read before acting. |
 | `wsl-handoff/sky11213-create-scene-local` | Diverged local vs remote; pushed without clobbering. |
 | `wsl-handoff/sky11791-column-ref-local` | Same. |
@@ -507,7 +507,7 @@ comm -12 \
 
 - Enable **automatically delete head branches** on GitHub so the next 200 PRs don't repeat this.
 - Ban `screenshots/*` as a long-lived remote prefix; attach images on the PR.
-- One shared clone + worktrees (HANDOFF §4). Do not recreate per-agent full clones.
+- One shared clone + worktrees (`docs/archive/HANDOFF.md` §4). Do not recreate per-agent full clones.
 - Never force-push `main`. Never delete `wsl-handoff/*` from a cleanup script.
 
 ---
@@ -524,7 +524,7 @@ Goal: stop agents and humans from acting on lies. No deletes.
 | Follow-up docs PR: tell the truth about CI | `CLAUDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `.github/pull_request_template.md` — replace "three required checks: ci + build-linux + build-macos" with live jobs (`ci`, `notes-windows`; packaging on `main` / `release.yml` only) |
 | Point the docs index here | `docs/README.md` |
 | Redact PAT mention + rotate if the full token ever existed | `docs/ci-gate-audit-2026-06.md` (and `git log -S 'github_pat_' --all`) |
-| Wallpaper defect ticket (already in HANDOFF) | `frontend/src/assets/wallpapers/pack/winter-2.webp` — replace, don't delete the slot |
+| Wallpaper defect ticket (already in `docs/archive/HANDOFF.md`) | `frontend/src/assets/wallpapers/pack/winter-2.webp` — replace, don't delete the slot |
 | Confirm draft release untouched | `wsl-handoff-2026-09-15` |
 
 ### P1 — High value, reversible, no history rewrite
@@ -608,7 +608,7 @@ A dedicated hygiene PR is the wrong vehicle — this is a `git push origin --del
 
 | Action | Paths / notes |
 |---|---|
-| Archive obsolete docs | Root `SKY-456-SPEC.md`, `SKY-2968-component-spec.md`, `SKY-2970-onboarding-v0-3-ux-spec.md`, `FABLE-PICKUP.md`; `docs/releases/BETA-LIQUID-NEON.md`, `BETA4-PICKUP-2026-07-15.md`; `plans/BETA-2-ROADMAP.md`, `plans/PROJECT_PLAN.md`; `design-handoff/` root stub; ProjectGoalOverView 01–12 (leave 00/13/14/15) |
+| Archive obsolete docs | Root `SKY-456-SPEC.md`, `SKY-2968-component-spec.md`, `SKY-2970-onboarding-v0-3-ux-spec.md`, `docs/archive/FABLE-PICKUP.md`; `docs/releases/BETA-LIQUID-NEON.md`, `BETA4-PICKUP-2026-07-15.md`; `plans/BETA-2-ROADMAP.md`, `plans/PROJECT_PLAN.md`; `design-handoff/` root stub; ProjectGoalOverView 01–12 (leave 00/13/14/15) |
 | Relocate lessons | `ENGINEERING_LESSONS.md` → `docs/ENGINEERING_LESSONS.md` |
 | Capture-spec fold | `e2e/capture-*.spec.ts` → `e2e/capture/` or delete once media is archived |
 | VR decision | Commit baselines **or** remove shard-3 `test:e2e:visual-regression` |
@@ -646,7 +646,7 @@ Out of scope for cleanup but blocking "more app work" quality:
 
 ### 7.2 Living specs
 
-Deleting `plans/design-handoff/v2/**`, `docs/releases/BETA-REFINE.md`, `PERFORMANCE.md`, `HANDOFF.md`, or ProjectGoalOverView 14/15/00/13 will immediately mis-brief every agent (CLAUDE.md mandates those reads).
+Deleting `plans/design-handoff/v2/**`, `docs/releases/BETA-REFINE.md`, `PERFORMANCE.md`, `docs/archive/HANDOFF.md`, or ProjectGoalOverView 14/15/00/13 drops docs other files still cite. `CLAUDE.md` points at the decisions log and `plans/design-handoff/v2/`.
 
 **Risk: high for agents, not for the compiled app.**
 
@@ -670,7 +670,7 @@ Removing the spec without a decision: shard 3 loses a "test" that currently only
 
 ### 7.6 Paperclip scripts / `close-ping.yml`
 
-If anything still listens on that Paperclip company UUID, disabling close-ping re-opens the SKY-3005 token-waste loop the workflow was built to stop. HANDOFF §5 says the host automation fleet "does not carry over."
+If anything still listens on that Paperclip company UUID, disabling close-ping re-opens the SKY-3005 token-waste loop the workflow was built to stop. `docs/archive/HANDOFF.md` §5 says the host automation fleet "does not carry over."
 
 **Risk: low if Paperclip is gone; confirm with Skyy before P1b.**
 
@@ -727,7 +727,7 @@ Tracked bytes / file counts by top-level path:
 | 3,549,654 | 277 | `e2e/` | Keep shard specs; P2 capture-* |
 | 1,576,121 | 5 | `build/` | Keep |
 | 1,137,888 | 15 | `plugin/` | Keep or extract (P2) |
-| 729,704 | 25 | (repo root files) | Keep README/CI/HANDOFF; P2 move SKY-* / FABLE |
+| 729,704 | 25 | (repo root files) | Keep README/CI; `docs/archive/HANDOFF.md`; P2 move SKY-* / FABLE |
 | 453,785 | 18 | `e2e-visual-artifacts/` | P1 `git rm --cached` |
 | 203,070 | 24 | `scripts/` | Keep live; P1 paperclip/one-offs |
 | 134,439 | 18 | `.github/` | Keep ci/release; P1 close-ping/watchdog |
