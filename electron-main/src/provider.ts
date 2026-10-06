@@ -406,8 +406,6 @@ export interface Provider {
   readonly config: ProviderConfig;
   /** Capabilities declared by this adapter. */
   readonly capabilities: ReadonlyArray<ProviderCapability>;
-  /** Stream text tokens from the LLM. */
-  stream(req: StreamRequest): AsyncIterable<string>;
   /** Returns true if this adapter declares support for the given capability. */
   supportsCapability(cap: ProviderCapability): boolean;
   /** Transcribe audio to text. Present only when capabilities includes 'stt'. */
@@ -880,9 +878,6 @@ function makeAnthropicProvider(config: ProviderConfig): Provider {
   return {
     config,
     capabilities: PROVIDER_CAPABILITIES.anthropic,
-    stream(req: StreamRequest): AsyncIterable<string> {
-      return runAnthropicStream(config, req);
-    },
     supportsCapability(_cap: ProviderCapability): boolean {
       return false;
     },
@@ -894,9 +889,6 @@ function makeOpenAICompatibleProvider(config: ProviderConfig): Provider {
   return {
     config,
     capabilities: caps,
-    stream(req: StreamRequest): AsyncIterable<string> {
-      return runOpenAICompatibleStream(config, req);
-    },
     supportsCapability(cap: ProviderCapability): boolean {
       return caps.includes(cap);
     },

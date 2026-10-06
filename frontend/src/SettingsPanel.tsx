@@ -490,13 +490,24 @@ export default function SettingsPanel({
 
   const buildSettingsPayload = useCallback((): AppSettings => {
     const providerDef = PROVIDER_OPTIONS.find((p) => p.value === providerKind)!;
-    const provider: AppSettings['provider'] = {
-      kind: providerKind,
-      model: providerModel,
-      ...(providerDef.needsKey ? { apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? '') } : {}),
-      ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
-      ...(settings.provider?.kind === providerKind && settings.provider.capabilities ? { capabilities: settings.provider.capabilities } : {}),
-    };
+    // Legacy-key-only profiles have no persisted `provider` block. The panel
+    // defaults to Anthropic, but closing without edits must not materialize an
+    // empty provider stub (PLAN-058 B-2 / KEYS-B).
+    const shouldPersistGlobalProvider =
+      Boolean(settings.provider)
+      || providerApiKeyDirty
+      || providerKind !== 'anthropic'
+      || providerModel.trim().length > 0
+      || providerBaseUrl.trim().length > 0;
+    const provider: AppSettings['provider'] | undefined = shouldPersistGlobalProvider
+      ? {
+        kind: providerKind,
+        model: providerModel,
+        ...(providerDef.needsKey ? { apiKey: providerApiKeyDirty ? providerApiKey : (settings.provider?.apiKey ?? '') } : {}),
+        ...(providerDef.needsUrl && providerBaseUrl ? { baseUrl: providerBaseUrl } : {}),
+        ...(settings.provider?.kind === providerKind && settings.provider.capabilities ? { capabilities: settings.provider.capabilities } : {}),
+      }
+      : undefined;
     // SKY-11237: build the updated per-vault appearance entry for the active
     // vault and merge it into the existing vaultAppearance map.
     const vaultAppearanceUpdate: AppSettings['vaultAppearance'] = activeVaultRoot
@@ -514,7 +525,7 @@ export default function SettingsPanel({
     return {
       ...settings,
       apiKey: apiKeyDirty ? apiKeyInput : settings.apiKey,
-      provider,
+      ...(provider !== undefined ? { provider } : {}),
       liquidNeon: lg,
       pageBackground: pageBg,
       navConfig,

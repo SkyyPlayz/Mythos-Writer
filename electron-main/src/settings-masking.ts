@@ -347,6 +347,27 @@ function reconcileAgentProvider<T extends { provider?: ProviderSettings }>(
  * is treated as "unchanged" — keep a real stored key, else force ''.
  * Covers stored-absent branches (optional agents, provider/voice/stt/tts).
  */
+/**
+ * Settings close materializes a default Anthropic provider stub even when the
+ * on-disk profile never had `provider`. Drop it so KEYS-B does not route a
+ * blank provider.apiKey through the secret saver (PLAN-058 B-2).
+ */
+function stripMaterializedEmptyProviderStub(
+  reconciled: AppSettings,
+  stored: AppSettings,
+): AppSettings {
+  if (stored.provider || !reconciled.provider) return reconciled;
+  const inc = reconciled.provider;
+  const isEmptyAnthropicStub =
+    inc.kind === 'anthropic'
+    && (inc.model ?? '') === ''
+    && (inc.apiKey ?? '') === '';
+  if (!isEmptyAnthropicStub) return reconciled;
+  const { provider: _drop, ...rest } = reconciled;
+  void _drop;
+  return rest as AppSettings;
+}
+
 function applyMaskedPreviewBackstop(
   reconciled: AppSettings,
   stored: AppSettings,
@@ -453,6 +474,7 @@ export function reconcileSettingsFromRenderer(
         }
       : {}),
   };
+  reconciled = stripMaterializedEmptyProviderStub(reconciled, stored);
   // Final backstop: walk every KEY_FIELD_PATHS entry on the reconciled result
   // (including stored-absent optional agents + provider/voice/stt/tts).
   reconciled = applyMaskedPreviewBackstop(reconciled, stored);

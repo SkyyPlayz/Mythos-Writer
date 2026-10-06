@@ -449,6 +449,23 @@ describe('SettingsPanel', () => {
     await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
   });
 
+  it('PLAN-058 B-2: legacy-key-only profile close does not materialize empty provider', async () => {
+    mockSettingsGet.mockResolvedValueOnce({
+      ...defaultSettings,
+      apiKey: 'sk-ant-...9876',
+      provider: undefined,
+    });
+    await renderSettings(<SettingsPanel onClose={mockOnClose} />);
+    await waitFor(() => screen.getByRole('button', { name: /close settings/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /close settings/i }));
+    await waitFor(() => expect(mockSettingsSet).toHaveBeenCalledTimes(1));
+
+    const saved: AppSettings = mockSettingsSet.mock.calls[0][0];
+    expect(saved.provider).toBeUndefined();
+    expect(saved.apiKey).toBe('sk-ant-...9876');
+  });
+
   it('shows inline validation error for bad API key', async () => {
     await renderSettings(<SettingsPanel onClose={mockOnClose} />);
     await waitForModelKeys();
