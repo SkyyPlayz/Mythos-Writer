@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
+  dispatchTimelineFromNote,
   findTimelineEventForNote,
   plotNoteOnTimeline,
   storyTimelineId,
+  takePendingTimelineFromNote,
+  TIMELINE_FROM_NOTE_EVENT,
   titleFromNotePath,
 } from './notesToTimeline';
 import type { TimelinesStore } from '../timelinesTypes';
+import type { TimelineFromNoteDetail } from './notesToTimeline';
 
 const STANDARD = { preset: 'standard', monthsPerYear: 12, daysPerMonth: 30, hoursPerDay: 24 } as const;
 
@@ -79,6 +83,33 @@ describe('notesToTimeline (FD-2)', () => {
     expect(item.linkedNotePath).toBe('World/Gate.md');
     expect(item.name).toBe('The Sunken Gate');
     expect(item.written).toBe(false);
+  });
+
+  it('dispatch before listener leaves pending for cold TimelineRoot mount', () => {
+    const store = makeStore();
+    store.events.push({
+      id: 'ev-cold',
+      timelineId: 'tl-story',
+      name: 'Beat',
+      when: 10,
+      linkedNotePath: 'Plot/beat.md',
+    });
+    dispatchTimelineFromNote({ eventId: 'ev-cold', store });
+    expect(takePendingTimelineFromNote()).toMatchObject({ eventId: 'ev-cold' });
+  });
+
+  it('warm listener consumes pending on dispatch', () => {
+    const store = makeStore();
+    const heard: TimelineFromNoteDetail[] = [];
+    const handler = (e: Event) => {
+      takePendingTimelineFromNote();
+      heard.push((e as CustomEvent<TimelineFromNoteDetail>).detail);
+    };
+    window.addEventListener(TIMELINE_FROM_NOTE_EVENT, handler);
+    dispatchTimelineFromNote({ eventId: 'ev-warm', store });
+    window.removeEventListener(TIMELINE_FROM_NOTE_EVENT, handler);
+    expect(heard[0]?.eventId).toBe('ev-warm');
+    expect(takePendingTimelineFromNote()).toBeNull();
   });
 
   it('plotNoteOnTimeline reuses an existing linked event', async () => {

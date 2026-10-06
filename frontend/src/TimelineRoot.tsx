@@ -22,7 +22,7 @@
 // the left-panel book-focus cards + plotline visibility toggles (399–417),
 // the cross-view selectedIds and the Today jump. viewMode + groupBy persist
 // to localStorage; legacy modes ('aeon', 'track', M22's 'axis') migrate.
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import type { Story } from './types';
 import type {
   TimelinesStore,
@@ -94,7 +94,11 @@ import {
   type TimelineShowFilter,
 } from './timeline2/axis/storyLanes';
 import { resolvePartnerDisplayName, DEFAULT_PARTNER_DISPLAY_NAME } from './agents/partnerIdentity';
-import { TIMELINE_FROM_NOTE_EVENT, type TimelineFromNoteDetail } from './timeline2/notesToTimeline';
+import {
+  TIMELINE_FROM_NOTE_EVENT,
+  takePendingTimelineFromNote,
+  type TimelineFromNoteDetail,
+} from './timeline2/notesToTimeline';
 import { useToast } from './hooks/useToast';
 import { Toast } from './components/Toast/Toast';
 import './TimelineRoot.css';
@@ -379,16 +383,26 @@ function TimelineSurface({ story, onOpenScene }: Omit<Props, 'wikiLinks'>) {
   }, []);
 
   // FD-2: Notes → timeline chip lands on the story timeline with Inspector open.
+  const applyTimelineFromNoteDetail = useCallback((detail: TimelineFromNoteDetail | null | undefined) => {
+    if (!detail?.eventId) return;
+    if (detail.store) setTimelinesStore(detail.store);
+    handleSelectionChange({ type: 'event', id: detail.eventId });
+  }, [handleSelectionChange]);
+
   useEffect(() => {
     const onFromNote = (e: Event) => {
+      takePendingTimelineFromNote();
       const detail = (e as CustomEvent<TimelineFromNoteDetail>).detail;
-      if (!detail?.eventId) return;
-      if (detail.store) setTimelinesStore(detail.store);
-      handleSelectionChange({ type: 'event', id: detail.eventId });
+      applyTimelineFromNoteDetail(detail);
     };
     window.addEventListener(TIMELINE_FROM_NOTE_EVENT, onFromNote);
     return () => window.removeEventListener(TIMELINE_FROM_NOTE_EVENT, onFromNote);
-  }, [handleSelectionChange]);
+  }, [applyTimelineFromNoteDetail]);
+
+  useLayoutEffect(() => {
+    const pending = takePendingTimelineFromNote();
+    if (pending) applyTimelineFromNoteDetail(pending);
+  }, [applyTimelineFromNoteDetail]);
 
   // Load M21 timelines store on mount (vault-scoped, independent of story).
   useEffect(() => {

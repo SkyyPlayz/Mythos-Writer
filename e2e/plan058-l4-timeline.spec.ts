@@ -91,7 +91,7 @@ test.describe('PLAN-058 L4 — Timeline', () => {
     await expect(page.getByTestId('trp-partner-action-update-timeline')).toBeVisible();
   });
 
-  test('FD-2 — notes Timeline chip plots and opens Inspector', async () => {
+  test('FD-2 warm — notes Timeline chip plots and opens Inspector', async () => {
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
     await expect(page.getByTestId('vb-notes-vault')).toBeVisible({ timeout: 10_000 });
     await page.locator('[data-testid="vb-row-Plot/beat.md"]').click();
@@ -103,6 +103,32 @@ test.describe('PLAN-058 L4 — Timeline', () => {
     await expect(page.getByTestId('trp-event-linked-note-row')).toContainText('Plot/beat.md');
     if (process.env.CAPTURE_PR_SCREENSHOT) {
       await page.screenshot({ path: '/opt/cursor/artifacts/plan058-l4-timeline-fd2.png' });
+    }
+  });
+});
+
+test.describe('PLAN-058 L4 — Timeline FD-2 cold path', () => {
+  test('FD-2 cold — Notes first (never Timeline), chip opens Inspector linked note', async () => {
+    const t = makeTemp();
+    const app = await launchApp(t.userData);
+    try {
+      const page = await app.firstWindow();
+      await page.waitForLoadState('domcontentloaded');
+      await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
+      await expect(page.getByTestId('vb-notes-vault')).toBeVisible({ timeout: 10_000 });
+      await expect(page.locator('[data-testid="timeline-root"]')).toHaveCount(0);
+      await page.locator('[data-testid="vb-row-Plot/beat.md"]').click();
+      const chip = page.locator('[data-testid="notes-tab-center"] [data-testid="notes-timeline-chip"]');
+      await expect(chip).toBeVisible({ timeout: 12_000 });
+      await chip.click();
+      await expect(page.getByTestId('timeline-root')).toBeVisible({ timeout: 12_000 });
+      await expect(page.getByTestId('trp-tab-inspector')).toHaveAttribute('aria-selected', 'true');
+      await expect(page.getByTestId('trp-event-linked-note-row')).toContainText('Plot/beat.md');
+    } finally {
+      await app.close();
+      fs.rmSync(t.tempRoot, { recursive: true, force: true });
     }
   });
 });

@@ -12,6 +12,19 @@ export type TimelineFromNoteDetail = {
   store: TimelinesStore;
 };
 
+/** FD-2 cold path: survives until TimelineRoot mounts (CustomEvent is not queued). */
+let pendingTimelineFromNote: TimelineFromNoteDetail | null = null;
+
+export function stashTimelineFromNote(detail: TimelineFromNoteDetail): void {
+  pendingTimelineFromNote = detail;
+}
+
+export function takePendingTimelineFromNote(): TimelineFromNoteDetail | null {
+  const pending = pendingTimelineFromNote;
+  pendingTimelineFromNote = null;
+  return pending;
+}
+
 function newEventId(): string {
   const uuid =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
@@ -100,5 +113,6 @@ export async function plotNoteOnTimeline(
 }
 
 export function dispatchTimelineFromNote(detail: TimelineFromNoteDetail): void {
+  stashTimelineFromNote(detail);
   window.dispatchEvent(new CustomEvent<TimelineFromNoteDetail>(TIMELINE_FROM_NOTE_EVENT, { detail }));
 }

@@ -100,6 +100,11 @@ import BoardsTabPanel from './pages/Boards/BoardsTabPanel';
 import ManuscriptStructureView from './ManuscriptStructureView';
 import BookPreview from './story/BookPreview';
 import TimelineRoot from './TimelineRoot';
+import {
+  stashTimelineFromNote,
+  TIMELINE_FROM_NOTE_EVENT,
+  type TimelineFromNoteDetail,
+} from './timeline2/notesToTimeline';
 import type { TimelineWikiLinkApi } from './timeline2/TimelineWikiText';
 import { useTextPrompt } from './useTextPrompt';
 import { useCreateMythosVaultFlow } from './useCreateMythosVaultFlow';
@@ -6489,13 +6494,16 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     return () => window.removeEventListener('mythos:import-notes-vault', handler);
   }, [createMythosVault]);
 
-  // PLAN-058 L4 (FD-2): Notes → timeline chip navigates to the Timeline view.
+  // PLAN-058 L4 (FD-2): Notes → timeline chip navigates to Timeline; stash detail
+  // for cold mount (TimelineRoot may be unmounted when the event fires).
   useEffect(() => {
-    const handler = () => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<TimelineFromNoteDetail>).detail;
+      if (detail?.eventId) stashTimelineFromNote(detail);
       runNavModuleChange('timeline');
     };
-    window.addEventListener('mythos:timeline-from-note', handler);
-    return () => window.removeEventListener('mythos:timeline-from-note', handler);
+    window.addEventListener(TIMELINE_FROM_NOTE_EVENT, handler);
+    return () => window.removeEventListener(TIMELINE_FROM_NOTE_EVENT, handler);
   }, [runNavModuleChange]);
 
   // Beta 3 M5: command palette entries (prototype cmdIndex 3900-3913) — the
