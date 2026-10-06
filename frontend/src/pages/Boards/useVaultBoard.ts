@@ -64,6 +64,8 @@ export interface VaultBoard {
   setFurniture: React.Dispatch<React.SetStateAction<BoardFurnitureItemData[]>>;
   /** SKY-11188: every touched child's own item key, by path — `line` endpoints. */
   itemKeysByPath: Record<string, string>;
+  /** Store B accent colours, keyed by board-relative item path. */
+  itemColorsByPath: Record<string, string>;
   /**
    * SKY-11190: icon+colour map, keyed by FULL vault-relative path — the same
    * `.mythos/icons.json` store the vault tree reads (SKY-9310), so an icon set
@@ -92,6 +94,7 @@ export interface VaultBoard {
   renamingPath: string | null;
   onItemMove: (itemPath: string, x: number, y: number) => void;
   onItemResize: (itemPath: string, w: number, h: number) => void;
+  onItemColor: (itemPath: string, color: string | null) => Promise<void>;
   onCreateItem: (kind: 'note' | 'folder', x: number, y: number) => void;
   onRequestRename: (itemPath: string) => void;
   onRenameCommit: (itemPath: string, newName: string) => void;
@@ -111,6 +114,7 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
   // SKY-11188: board-only furniture + every touched child's own item key.
   const [furniture, setFurniture] = useState<BoardFurnitureItemData[]>([]);
   const [itemKeysByPath, setItemKeysByPath] = useState<Record<string, string>>({});
+  const [itemColorsByPath, setItemColorsByPath] = useState<Record<string, string>>({});
   // SKY-11190: icon+colour map, keyed by FULL vault-relative path.
   const [iconMap, setIconMap] = useState<Record<string, VaultIconEntry>>({});
   const [loading, setLoading] = useState(false);
@@ -215,17 +219,21 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
       // furniture's from/to may name one (§4). Built independently of
       // layoutMap: a colour-only touch mints an id without a layout entry.
       const keysByPath: Record<string, string> = {};
+      const colorsByPath: Record<string, string> = {};
       for (const child of meta.children) {
         if (!child.id) continue;
         const key = `${child.kind === 'folder' ? 'v' : 'n'}:${child.id}`;
         keysByPath[child.path] = key;
         const storedLayout = meta.layout[key];
         if (storedLayout) layoutMap[child.path] = storedLayout;
+        const storedColor = meta.colors[key];
+        if (storedColor) colorsByPath[child.path] = storedColor;
       }
 
       setItems(resolvedItems);
       setSavedLayout(layoutMap);
       setItemKeysByPath(keysByPath);
+      setItemColorsByPath(colorsByPath);
       setFurniture((meta.furniture ?? []) as BoardFurnitureItemData[]);
       setSavedView(meta.view ?? { zoom: 100, panX: 0, panY: 0 });
     } catch (err) {
@@ -298,6 +306,20 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
     }
   }, [folderPath]);
 
+  const onItemColor = useCallback(async (itemPath: string, color: string | null) => {
+    try {
+      await window.api.notesBoardPatchColors(folderPath, itemPath, color);
+      setItemColorsByPath((prev) => {
+        const next = { ...prev };
+        if (color) next[itemPath] = color;
+        else delete next[itemPath];
+        return next;
+      });
+    } catch (err) {
+      console.warn('[Boards] failed to persist item colour', err);
+    }
+  }, [folderPath]);
+
   // ── SKY-11187 §5: vault-mutating canvas operations ──────────────────────
   //
   // REAL filesystem mutations, not metadata edits (§1: the Notes tab and this
@@ -363,6 +385,7 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
     furniture,
     setFurniture,
     itemKeysByPath,
+    itemColorsByPath,
     iconMap,
     setIconMap,
     savedView,
@@ -376,6 +399,7 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
     renamingPath,
     onItemMove,
     onItemResize,
+    onItemColor,
     onCreateItem,
     onRequestRename,
     onRenameCommit,

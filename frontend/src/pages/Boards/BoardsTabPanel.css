@@ -306,10 +306,82 @@
 }
 /* The canvas fills whatever the crumb bar leaves; the empty-board hint is
    layered over it (see BoardsTabPanel.tsx) instead of replacing it. */
+/* PLAN-058 L3 / FD-7: furniture toolbar spans the canvas workspace width. */
+.boards-tab-panel__canvas-workspace {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.boards-tab-panel__canvas-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+  padding: 0 10px 8px 6px;
+}
+
+.boards-tab-panel__tool-rail {
+  width: 56px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0 8px;
+  overflow-y: auto;
+}
+
+.boards-tab-panel__tool-rail-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-height: 46px;
+  border-radius: 11px;
+  border: var(--bw, 1px) solid var(--b1, rgb(0 240 255 / 0.28));
+  background: rgb(255 255 255 / 0.07);
+  color: var(--text-secondary, #cdd8ea);
+  cursor: pointer;
+  padding: 4px 2px;
+}
+
+.boards-tab-panel__tool-rail-btn:hover {
+  color: #fff;
+  background: rgb(255 255 255 / 0.13);
+  border-color: var(--b1, rgb(0 240 255 / 0.6));
+}
+
+.boards-tab-panel__tool-rail-btn--active {
+  color: #0b0d17;
+  background: var(--grad, linear-gradient(120deg, #00f0ff, #9b5fff, #ff4dff));
+  border-color: transparent;
+  box-shadow: 0 0 15px -4px var(--g1, rgb(0 240 255 / 0.5));
+}
+
+.boards-tab-panel__tool-rail-label {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.boards-tab-panel__line-hint {
+  font-size: 9px;
+  line-height: 1.35;
+  color: var(--text-tertiary, #8e9db8);
+  margin: 2px 0 0;
+  padding: 0 2px;
+  text-align: center;
+}
+
 .boards-tab-panel__canvas-wrap {
   position: relative;
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }

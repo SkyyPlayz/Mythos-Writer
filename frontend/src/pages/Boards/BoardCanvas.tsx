@@ -82,7 +82,7 @@ export interface ItemLayout {
  * creates a real file/folder there and hands the tool back to `select`, so
  * the canvas is never left in a state where a stray click writes to the vault.
  */
-export type BoardTool = 'select' | 'note' | 'board';
+export type BoardTool = 'pan' | 'select' | 'note' | 'board' | 'line';
 
 export interface BoardCanvasProps {
   /** Direct children of this board */
@@ -103,6 +103,8 @@ export interface BoardCanvasProps {
   onItemMove?: (itemPath: string, x: number, y: number) => void;
   /** Called when an item is resized */
   onItemResize?: (itemPath: string, w: number, h: number) => void;
+  /** PLAN-058 L3 (72:28): persist accent colour for a vault card. */
+  onItemColor?: (itemPath: string, color: string | null) => void;
   /** Called when view state changes (zoom/pan) */
   onViewChange?: (zoom: number, panX: number, panY: number) => void;
   /** Double-click a board tile to enter it */
@@ -145,22 +147,24 @@ export interface BoardCanvasProps {
   furniture?: BoardFurnitureItemData[];
   /** Every TOUCHED card/tile's own item key (`v:<id>`/`n:<id>`), by its `path` — a `line`'s endpoint may name one of these. Untouched (never-arranged) items have no id yet and cannot be a line endpoint. */
   itemKeysByPath?: Record<string, string>;
+  /** PLAN-058 L3: per-card accent colours from Store B, board-relative paths. */
+  itemColorsByPath?: Record<string, string>;
   onFurnitureMove?: (id: string, x: number, y: number) => void;
   onFurnitureResize?: (id: string, w: number, h: number) => void;
   onFurnitureDelete?: (id: string) => void;
   onFurnitureCheckToggle?: (id: string, index: number) => void;
+  /** PLAN-058 L3 (78:02): add a blank row to a to-do furniture card. */
+  onFurnitureAddTask?: (id: string) => void;
+  /** PLAN-058 L3 (73:32): resolve linked-note refs to titles/excerpts on this board. */
+  linkedNotesByStem?: Record<string, { name: string; excerpt?: string }>;
   /** Spec §4: clicking a swatch colour applies it. Scoped here to the swatch's OWN `color` field, not a cross-item "current selection" apply — see BoardsTabPanel. */
   onFurnitureColor?: (id: string, hex: string) => void;
   /** A column item's `ref` — a vault-relative note path kept live by the rename cascade (§4/§2). */
   onOpenNoteRef?: (ref: string) => void;
   /**
-   * SKY-11188: "Connect" tool — while active, clicking a furniture item
-   * picks it as a `line` endpoint instead of starting a drag (mirrors the
-   * prototype's `bdTool === 'line'` behaviour, scoped to furniture-only
-   * endpoints for this ticket).
+   * PLAN-058 L3 (72:26): Line tool — click picks an endpoint key (`n:`/`v:`/`x:`).
    */
-  lineToolActive?: boolean;
-  onFurniturePick?: (id: string) => void;
+  onLineEndpointPick?: (endpointKey: string) => void;
 
   // ── SKY-11191: wiki-link overlay + minimap (§10) ──
   /**
@@ -222,6 +226,7 @@ export default function BoardCanvas({
   minZoom: minZoomProp,
   onItemMove,
   onItemResize,
+  onItemColor,
   onViewChange,
   onEnterBoard,
   onOpenNote,
@@ -238,10 +243,12 @@ export default function BoardCanvas({
   onFurnitureResize,
   onFurnitureDelete,
   onFurnitureCheckToggle,
+  onFurnitureAddTask,
   onFurnitureColor,
   onOpenNoteRef,
-  lineToolActive = false,
-  onFurniturePick,
+  linkedNotesByStem = {},
+  itemColorsByPath = {},
+  onLineEndpointPick,
   wikiLinks,
   wikiLinkOverlay = false,
   linkAnchors,
@@ -453,6 +460,10 @@ export default function BoardCanvas({
     return { x: Math.max(0, x), y: Math.max(0, y) };
   }, [scale, gridSnap]);
 
+  const startPanDrag = useCallback((clientX: number, clientY: number) => {
+    panDragRef.current = { startX: clientX, startY: clientY, startPanX: pan.x, startPanY: pan.y };
+  }, [pan]);
+
   const handleMouseDownCanvas = useCallback((e: MouseEvent<HTMLDivElement>) => {
     if (e.button === 0) {
       // Item mousedown stops propagation, so a left press that reaches the
@@ -462,9 +473,14 @@ export default function BoardCanvas({
       setSelectedPath(null);
       setSelectedFurnitureId(null);
       setMultiSelected(new Set());
-      // SKY-11187 §5: a placement tool turns that same empty-canvas press
-      // into a real vault create at the click point.
-      if (activeTool !== 'select') {
+      // PLAN-058 L3 (81:01): pan tool or Alt+drag pans on empty canvas.
+      if (activeTool === 'pan' || e.altKey) {
+        e.preventDefault();
+        startPanDrag(e.clientX, e.clientY);
+        return;
+      }
+      // SKY-11187 §5: placement tools create on empty canvas click.
+      if (activeTool === 'note' || activeTool === 'board') {
         const point = worldPointFrom(e.clientX, e.clientY);
         if (point) onCreateItem?.(activeTool === 'board' ? 'folder' : 'note', point.x, point.y);
       }
@@ -472,8 +488,8 @@ export default function BoardCanvas({
     }
     if (e.button !== 1) return; // middle button pans
     e.preventDefault();
-    panDragRef.current = { startX: e.clientX, startY: e.clientY, startPanX: pan.x, startPanY: pan.y };
-  }, [pan, activeTool, onCreateItem, worldPointFrom]);
+    startPanDrag(e.clientX, e.clientY);
+  }, [activeTool, onCreateItem, worldPointFrom, startPanDrag]);
 
   useEffect(() => {
     const onMouseMove = (e: globalThis.MouseEvent) => {
@@ -520,19 +536,12 @@ export default function BoardCanvas({
 
   // ── Item drag ───────────────────────────────────────────────────────────
   const itemDragRef = useRef<{
-    path: string;
+    paths: string[];
     startMouseX: number;
     startMouseY: number;
-    startItemX: number;
-    startItemY: number;
-    /**
-     * Latest dragged-to position. Mirrored on the ref rather than read back
-     * out of `localPositions` at mouseup: that state is captured in this
-     * effect's closure, so a drag whose move and release land in the SAME
-     * React batch (a flick, or any synthetic input) would persist the
-     * pre-drag position — or nothing at all.
-     */
-    latest: { x: number; y: number } | null;
+    startPositions: Record<string, { x: number; y: number }>;
+    /** Latest dragged-to positions keyed by path — same closure-staleness guard as single drag. */
+    latest: Record<string, { x: number; y: number }> | null;
   } | null>(null);
 
   const [draggingPath, setDraggingPath] = useState<string | null>(null);
@@ -541,16 +550,22 @@ export default function BoardCanvas({
   const handleItemMouseDown = useCallback((e: MouseEvent<HTMLDivElement>, path: string, rect: ItemRect) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('.board-canvas__resize-handle')) return;
+    e.stopPropagation();
+    if (activeTool === 'line') {
+      const key = itemKeysByPath[path];
+      if (key) onLineEndpointPick?.(key);
+      return;
+    }
+    if (activeTool === 'pan' || e.altKey) {
+      startPanDrag(e.clientX, e.clientY);
+      return;
+    }
     // SKY-11187: with a placement tool armed, a press on a card is still a
     // press on the canvas — let it bubble so the tool places there instead of
     // starting a drag the user did not ask for.
     if (activeTool !== 'select') return;
-    e.stopPropagation();
     // SKY-11189 §7: ctrl/cmd/shift+click toggles membership in the
-    // multi-selection instead of starting a drag — a modifier click is a
-    // selection gesture, not a move (and the existing single-select drag
-    // below is keyed off exactly one path, so a multi-selected drag isn't
-    // something this canvas supports).
+    // multi-selection instead of starting a drag.
     if (e.shiftKey || e.ctrlKey || e.metaKey) {
       setMultiSelected((prev) => {
         const base = prev.size > 0 ? prev : new Set(selectedPath ? [selectedPath] : []);
@@ -561,19 +576,34 @@ export default function BoardCanvas({
       setSelectedPath(path);
       return;
     }
-    setMultiSelected(new Set());
+    const group =
+      multiSelected.size > 0 && multiSelected.has(path)
+        ? [...multiSelected]
+        : [path];
+    setMultiSelected(group.length > 1 ? new Set(group) : new Set());
     setSelectedPath(path);
     setSelectedFurnitureId(null);
+    const startPositions: Record<string, { x: number; y: number }> = {};
+    for (const p of group) {
+      if (p === path) {
+        startPositions[p] = { x: rect.x, y: rect.y };
+        continue;
+      }
+      const layout = savedLayout[p];
+      if (layout?.x != null && layout?.y != null) {
+        startPositions[p] = { x: layout.x, y: layout.y };
+      }
+    }
+    const pathsToDrag = group.filter((p) => startPositions[p]);
     itemDragRef.current = {
-      path,
+      paths: pathsToDrag.length > 0 ? pathsToDrag : [path],
       startMouseX: e.clientX,
       startMouseY: e.clientY,
-      startItemX: rect.x,
-      startItemY: rect.y,
+      startPositions,
       latest: null,
     };
     setDraggingPath(path);
-  }, [activeTool, selectedPath]);
+  }, [activeTool, selectedPath, multiSelected, itemKeysByPath, onLineEndpointPick, startPanDrag, savedLayout]);
 
   useEffect(() => {
     const onMouseMove = (e: globalThis.MouseEvent) => {
@@ -581,19 +611,29 @@ export default function BoardCanvas({
       if (!drag) return;
       const dx = (e.clientX - drag.startMouseX) / scale;
       const dy = (e.clientY - drag.startMouseY) / scale;
-      let nx = drag.startItemX + dx;
-      let ny = drag.startItemY + dy;
-      if (gridSnap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
-      drag.latest = { x: nx, y: ny };
-      // `drag.path`, not itemDragRef.current.path: React runs this updater at
-      // render time, not at dispatch time, so a mouseup landing in the same
-      // batch as the move would have already nulled the ref out from under it.
-      setLocalPositions((prev) => ({ ...prev, [drag.path]: { x: nx, y: ny } }));
+      const latest: Record<string, { x: number; y: number }> = {};
+      const batch: Record<string, { x: number; y: number }> = {};
+      for (const p of drag.paths) {
+        const start = drag.startPositions[p];
+        if (!start) continue;
+        let nx = start.x + dx;
+        let ny = start.y + dy;
+        if (gridSnap) { nx = snapToGrid(nx); ny = snapToGrid(ny); }
+        latest[p] = { x: nx, y: ny };
+        batch[p] = { x: nx, y: ny };
+      }
+      drag.latest = latest;
+      setLocalPositions((prev) => ({ ...prev, ...batch }));
     };
     const onMouseUp = () => {
       const drag = itemDragRef.current;
       if (!drag) return;
-      if (drag.latest) onItemMove?.(drag.path, drag.latest.x, drag.latest.y);
+      if (drag.latest) {
+        for (const p of drag.paths) {
+          const pos = drag.latest[p];
+          if (pos) onItemMove?.(p, pos.x, pos.y);
+        }
+      }
       itemDragRef.current = null;
       setDraggingPath(null);
     };
@@ -669,6 +709,7 @@ export default function BoardCanvas({
   }, [renamingPath]);
 
   const [contextMenu, setContextMenu] = useState<{ path: string; x: number; y: number } | null>(null);
+  const [furnitureContextMenu, setFurnitureContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
 
   const handleItemContextMenu = useCallback((e: MouseEvent<HTMLDivElement>, path: string) => {
     e.preventDefault();
@@ -727,6 +768,37 @@ export default function BoardCanvas({
     };
   }, [contextMenu]);
 
+  useEffect(() => {
+    if (!furnitureContextMenu) return;
+    const close = () => setFurnitureContextMenu(null);
+    const onKey = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('mousedown', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [furnitureContextMenu]);
+
+  const handleSwatchColorPick = useCallback((furnitureId: string, hex: string) => {
+    const cardTargets = [...effectiveSelection];
+    if (cardTargets.length === 0 && !selectedFurnitureId) {
+      onFurnitureColor?.(furnitureId, hex);
+      return;
+    }
+    for (const p of cardTargets) void onItemColor?.(p, hex);
+    if (selectedFurnitureId) onFurnitureColor?.(selectedFurnitureId, hex);
+  }, [effectiveSelection, selectedFurnitureId, onFurnitureColor, onItemColor]);
+
+  const handleFurnitureContextMenu = useCallback((e: MouseEvent<HTMLDivElement>, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSelectedFurnitureId(id);
+    setSelectedPath(null);
+    setMultiSelected(new Set());
+    setFurnitureContextMenu({ id, x: e.clientX, y: e.clientY });
+  }, []);
+
   // ── SKY-11188: furniture drag/resize — same pattern as items above, keyed
   // by furniture id instead of path (a furniture item has no vault path). ──
   //
@@ -758,15 +830,15 @@ export default function BoardCanvas({
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('.board-canvas__resize-handle')) return;
     e.stopPropagation();
-    if (lineToolActive) {
-      onFurniturePick?.(id);
+    if (activeTool === 'line') {
+      onLineEndpointPick?.(`x:${id}`);
       return;
     }
     setSelectedFurnitureId(id);
     setSelectedPath(null);
     furnitureDragRef.current = { id, startMouseX: e.clientX, startMouseY: e.clientY, startX: rect.x, startY: rect.y, latest: null };
     setDraggingFurnitureId(id);
-  }, [lineToolActive, onFurniturePick]);
+  }, [activeTool, onLineEndpointPick]);
 
   useEffect(() => {
     const onMouseMove = (e: globalThis.MouseEvent) => {
@@ -1046,6 +1118,7 @@ export default function BoardCanvas({
         onRenameCommit={onRenameCommit}
         onRenameCancel={onRenameCancel}
         icon={iconMap?.[fullPath(path)]}
+        accentColor={itemColorsByPath[path]}
       />,
     );
   }
@@ -1088,7 +1161,9 @@ export default function BoardCanvas({
         onDelete={(id) => onFurnitureDelete?.(id)}
         onOpenRef={onOpenNoteRef}
         onCheckToggle={onFurnitureCheckToggle}
-        onSwatchPick={(hex) => onFurnitureColor?.(f.id, hex)}
+        onSwatchPick={(hex) => handleSwatchColorPick(f.id, hex)}
+        onContextMenu={handleFurnitureContextMenu}
+        linkedNotesByStem={linkedNotesByStem}
       />,
     );
   }
@@ -1251,6 +1326,48 @@ export default function BoardCanvas({
         Delete routes through the deferred-delete model (onTrashItems), never
         an ad-hoc fs call here.
       */}
+      {furnitureContextMenu && (
+        <div
+          className="board-canvas__menu"
+          role="menu"
+          aria-label="Board furniture actions"
+          style={{ left: furnitureContextMenu.x, top: furnitureContextMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          {(() => {
+            const piece = furniture.find((f) => f.id === furnitureContextMenu.id);
+            if (piece?.k === 'check' && onFurnitureAddTask) {
+              return (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="board-canvas__menu-item"
+                  onClick={() => {
+                    const id = furnitureContextMenu.id;
+                    setFurnitureContextMenu(null);
+                    onFurnitureAddTask(id);
+                  }}
+                >
+                  Add task
+                </button>
+              );
+            }
+            return null;
+          })()}
+          <button
+            type="button"
+            role="menuitem"
+            className="board-canvas__menu-item board-canvas__menu-item--danger"
+            onClick={() => {
+              onFurnitureDelete?.(furnitureContextMenu.id);
+              setFurnitureContextMenu(null);
+            }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
+
       {contextMenu && (
         <div
           className="board-canvas__menu"

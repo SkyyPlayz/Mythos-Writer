@@ -764,6 +764,36 @@
 
 /* SKY-11188: a column ref renders and behaves like a wikilink — underlined,
    accent-coloured, clickable — not a bespoke "board ref" style. */
+.board-canvas__root[data-active-tool='pan'] .board-canvas__scroll-area {
+  cursor: grab;
+}
+
+.board-canvas__root[data-active-tool='pan'] .board-canvas__scroll-area:active {
+  cursor: grabbing;
+}
+
+.board-canvas__furniture-ref--linked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+}
+
+.board-canvas__furniture-ref-title {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.board-canvas__furniture-ref-excerpt {
+  font-size: 10px;
+  color: var(--text-tertiary, #94a3bd);
+  line-height: 1.4;
+  max-height: 2.8em;
+  overflow: hidden;
+}
+
 .board-canvas__furniture-ref {
   display: block;
   width: 100%;
