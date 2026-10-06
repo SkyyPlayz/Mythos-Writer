@@ -1,138 +1,43 @@
-# Mythos-Writer — Agent Working Rules
+# Mythos Writer — agent rules
 
-This repository is built by autonomous agents. Behave like a software engineer
-who is responsible for delivering merge-ready branches, not a code drafter who
-waits for humans to discover breakage.
+## Source of truth
+- The task's dispatch (plan slice + design delta) sets scope. Don't add surfaces it doesn't name.
+- Owner decisions: `plans/ProjectGoalOverView/00-decisions-log.md`. Design: `plans/design-handoff/v2/`; the prototype wins any disagreement with `FULL-SPEC.md`.
 
-## Read the plans first (required for all agents)
+## Done = required checks green on the PR head
+Required: `ci`, `notes-windows`, `screenshot-check`. A branch with any red required check is not done.
+- `ci` aggregates lint, typecheck, unit, `build-electron` and four Playwright e2e shards (path-filtered; docs-only diffs may skip e2e).
+- `notes-windows` runs native Windows notes/vault suites that Linux CI can't see.
+- `screenshot-check`: PRs that touch renderer UI need a screenshot in the PR body or a comment, or the `screenshot-exempt` label.
+- `build-linux` / `build-windows` run on `main` pushes, `workflow_dispatch`, and `release.yml` (not on pull requests). There is no `build-macos` job.
+- A red required check that is unrelated to your diff still blocks. Report it; don't work around it.
 
-Before asking the Board (`@Board`) any question, **read the project plans and
-goals in [`plans/ProjectGoalOverView/`](plans/ProjectGoalOverView/)**.
+## Never merge
+Builders never merge or enable auto-merge. The Mythos gate (tip-bound Critic + Shield + Probe and required checks) decides.
 
-The Board has already documented the product vision, feature goals, design
-system, and decisions. Most questions are already answered there.
-
-Mandatory reading before starting any task:
-- [`plans/ProjectGoalOverView/14-beta4-refine-overview.md`](plans/ProjectGoalOverView/14-beta4-refine-overview.md) — CURRENT product overview (Beta 4 "Refine")
-- [`plans/design-handoff/v2/FULL-SPEC.md`](plans/design-handoff/v2/FULL-SPEC.md) — the build spec; the prototype beside it wins every disagreement
-- [`docs/releases/BETA-REFINE.md`](docs/releases/BETA-REFINE.md) — the active build plan (waves, milestones, acceptance)
-- [`plans/ProjectGoalOverView/15-beta4-comparison-and-carryovers.md`](plans/ProjectGoalOverView/15-beta4-comparison-and-carryovers.md) — binding carry-overs from the older docs
-- [`plans/ProjectGoalOverView/00-decisions-log.md`](plans/ProjectGoalOverView/00-decisions-log.md) — decisions already made (see the Beta 4 block)
-- [`plans/ProjectGoalOverView/13-team-goals.md`](plans/ProjectGoalOverView/13-team-goals.md) — working policy (unchanged)
-
-Only escalate to the Board after you have checked those files and the answer is
-genuinely not there. When you do ask, state which plan files you already read.
-
-## CI is part of the spec
-
-Every branch must pass the live pull-request gates before it is considered done:
-
-1. `CI / ci (pull_request)` — aggregator over lint, typecheck, unit,
-   `build-electron`, and the four E2E shards (path-filtered; docs-only diffs
-   may skip E2E)
-2. `CI / notes-windows (pull_request)` — native Windows notes/vault/Kokoro-path
-   suites
-
-A branch with any failing required check is **not done**. Passing these checks
-is part of the implementation, not a follow-up step.
-
-See [`CI-PREFLIGHT.md`](CI-PREFLIGHT.md) for the accurate local gate.
-Packaging jobs (`build-linux` / `build-windows`) run on pushes to `main` and via
-[`release.yml`](.github/workflows/release.yml); they are **skipped on
-`pull_request`**. There is **no** `build-macos` PR job — mac packaging is
-on-demand / release-only.
-
-## Never merge a PR with failing required checks
-
-This rule is non-negotiable, regardless of whether GitHub branch protection
-currently enforces it:
-
-- Before clicking `gh pr merge` or the Merge button, confirm `gh pr checks <num>`
-  shows `ci` and `notes-windows` as `pass` (plus any advisory checks you rely on).
-- If a required check is red, fix the cause on the PR branch and push again.
-  Do not merge "to fix on main" — that is what produced the SKY-143 and SKY-157
-  incidents (PRs merged with red required gates, leaving main red until
-  subsequent fix-forward commits).
-- A red required check that is unrelated to the PR's diff (e.g. inherited from
-  a previously merged broken commit on main) is still a hard block on merging.
-  Open a separate fix issue, get main green first, then rebase the PR.
-- If you believe a required check is genuinely broken (infra, runner, flake)
-  and not testing real product code, escalate and get explicit human approval
-  before merging — do not unilaterally override.
-
-Pre-merge command:
-
+## Validate locally (repo root, npm workspaces: frontend, electron-main, shared)
 ```bash
-gh pr checks <num>   # ci + notes-windows must show `pass`
+npm ci
+npm run lint -w frontend
+npm run typecheck
+npm run test
+rm -rf out/ && npm run build:electron   # e2e launches out/main/main.js, so rebuild first
+xvfb-run --auto-servernum npx playwright test e2e/<spec>.spec.ts --reporter=list --workers=1   # drop xvfb-run if a display exists
+npm run preflight                       # full CI-parity gate; `-- --fast` skips e2e (CI-PREFLIGHT.md)
 ```
 
-## What each check enforces
+## Tests
+- If a change alters behavior, add or update tests in the same PR. Each new test must fail before the fix.
+- Never weaken a test to get green: no deleted assertions, `.skip`/`.only`, widened timeouts or looser locators.
+- Reachability: a user must reach the feature from a fresh profile by clicking. Tests must not pre-seed the thing under test.
+- Wire a new e2e spec into an existing `test:e2e:*` script in `package.json` that `ci.yml` already runs. Don't edit `.github/`.
 
-- **`ci`** (ubuntu): frontend lint, frontend + electron-main type-checks,
-  electron-main + frontend unit tests, `electron-vite` build, and headless
-  Playwright E2E (four shards; path-filtered).
-- **`notes-windows`** (windows-latest): native Windows notes/vault suites that
-  POSIX CI cannot see.
-- **`build-linux` / `build-windows`**: packaging on `main` pushes / release
-  workflow only — not PR merge gates.
-- **`build-macos`**: not a live PR job; `dist:mac` remains available locally /
-  via release config when Apple signing is provisioned.
+## No-touch without owner approval (carve-outs)
+`.github/**`, migrations (`electron-main/src/db.ts`, vault migrations), auth, secrets / `.env*`, release config (`release.yml`, `electron-builder.*`). Make dependency or lockfile changes, and version bumps, only when the task asks for them.
 
-## Validate locally before declaring completion
+## Cross-platform
+- Match import casing exactly (Linux CI is case-sensitive).
+- Build filesystem paths with `path` helpers; never hardcode separators.
 
-Run the same commands CI runs. From the repo root:
-
-```bash
-npm ci                          # deterministic install (matches CI)
-npm run lint -w frontend        # frontend lint
-npm run typecheck               # frontend + electron-main type-checks
-npm run test                    # electron-main + frontend unit tests
-npm run build:electron          # electron-vite production build
-npm run preflight               # preferred full local gate (see CI-PREFLIGHT.md)
-```
-
-Packaging steps (`dist:mac` / `dist:linux`) are platform-specific and are not
-PR required checks; if you cannot run them locally, reason explicitly about why
-your change is safe for that platform.
-
-## Standard of completion
-
-- A code issue may only move to `done` when its PR is **merged to main** (closed-unmerged PRs and absent commits do not count).
-- Take responsibility for the full impact of your change.
-- Do not rely on "humans will fix CI later."
-- Do not treat broken builds, lint failures, type errors, or test regressions as
-  acceptable intermediate outcomes — unless you were explicitly asked for a
-  draft-only change.
-- If a change alters behavior, update or add tests in the same task.
-- Output should be **merge-oriented**, not merely code-generating.
-
-## Cross-platform discipline
-
-CI runs on Linux (hosted) and Windows (`notes-windows`). Avoid breakage that
-only shows up on one OS:
-
-- Use correct import casing — imports are case-sensitive on Linux even when they
-  resolve on a case-insensitive filesystem.
-- Use `path` helpers for filesystem paths; don't hardcode separators.
-- Avoid platform-specific shell behavior and environment assumptions.
-- Don't introduce new type debt, flaky tests, hidden side effects, or
-  unvalidated dependencies.
-
-## Decision rules
-
-- If a change risks CI, choose the safer implementation.
-- If a dependency or config update is unnecessary, avoid it.
-- If uncertainty remains, call it out explicitly and reduce scope rather than
-  shipping fragile code.
-- Optimize for **passing branches**, not maximum code volume.
-
-## Required final report for each task
-
-When you finish, state:
-
-- what you changed,
-- why it should pass `ci`,
-- why it should pass `notes-windows` (or why that job is N/A for the diff),
-- why packaging on `main` / `release.yml` remains safe if touched,
-- what tests were added / updated / relied on,
-- and any remaining risk areas.
+## Final report
+What changed; tests added or relied on; why `ci` and `notes-windows` should pass (or why N/A); remaining risks.
