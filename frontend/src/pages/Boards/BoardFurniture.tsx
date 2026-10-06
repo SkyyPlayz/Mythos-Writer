@@ -52,6 +52,8 @@ export interface BoardFurnitureProps {
   onOpenRef?: (ref: string) => void;
   onCheckToggle?: (id: string, index: number) => void;
   onSwatchPick?: (hex: string) => void;
+  onContextMenu?: (e: MouseEvent<HTMLDivElement>, id: string) => void;
+  linkedNotesByStem?: Record<string, { name: string; excerpt?: string }>;
 }
 
 /** Prototype's default 4-colour palette when a swatch has no `colors` of its own (mockup `bdPal`). */
@@ -83,6 +85,8 @@ function BoardFurnitureImpl({
   onOpenRef,
   onCheckToggle,
   onSwatchPick,
+  onContextMenu,
+  linkedNotesByStem = {},
 }: BoardFurnitureProps) {
   const label = item.title || KIND_LABEL[item.k];
 
@@ -104,6 +108,7 @@ function BoardFurnitureImpl({
       className={className}
       style={{ left: x, top: y, width: w, height: h, borderColor: item.color }}
       onMouseDown={(e) => onItemMouseDown(e, item.id, { x, y, w, h })}
+      onContextMenu={onContextMenu ? (e) => onContextMenu(e, item.id) : undefined}
       role="group"
       aria-label={`${label}. ${KIND_LABEL[item.k]}.`}
       data-testid={`board-furniture-${item.id}`}
@@ -128,23 +133,31 @@ function BoardFurnitureImpl({
 
       {item.k === 'column' && (
         <ul className="board-canvas__furniture-list" role="list">
-          {(item.items ?? []).map((it, i) => (
-            <li key={i}>
+          {(item.items ?? []).map((it, i) => {
+            const stem = it.ref?.replace(/\.md$/i, '').split('/').pop() ?? '';
+            const linked = stem ? linkedNotesByStem[stem] : undefined;
+            return (
+            <li key={i} className={linked ? 'board-canvas__furniture-list-item--linked' : undefined}>
               {it.ref ? (
                 <button
                   type="button"
-                  className="board-canvas__furniture-ref"
+                  className="board-canvas__furniture-ref board-canvas__furniture-ref--linked"
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => { e.stopPropagation(); onOpenRef?.(it.ref!); }}
-                  title={it.ref}
+                  onDoubleClick={(e) => { e.stopPropagation(); onOpenRef?.(it.ref!); }}
+                  title={linked?.excerpt ?? it.ref}
                 >
-                  {it.t}
+                  <span className="board-canvas__furniture-ref-title">{linked?.name ?? it.t}</span>
+                  {linked?.excerpt && (
+                    <span className="board-canvas__furniture-ref-excerpt">{linked.excerpt}</span>
+                  )}
                 </button>
               ) : (
                 <span className="board-canvas__furniture-card">{it.t}</span>
               )}
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
 
