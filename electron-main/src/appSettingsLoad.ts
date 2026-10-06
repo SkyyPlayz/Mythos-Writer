@@ -348,6 +348,13 @@ function rawWaPairNeedsRepair(rawRecord: Record<string, unknown>, resolved: bool
  *   invoke this callback (calling the secret saver mid-load would wipe stored
  *   keys when JSON fields are empty).
  */
+/** True when the settings file existed but the JSON read block used parse-fallback defaults. */
+let settingsLoadUsedParseFallback = false;
+
+export function settingsLoadUsedParseFallbackOnLastRead(): boolean {
+  return settingsLoadUsedParseFallback;
+}
+
 export function loadAppSettingsFrom(
   settingsPath: string,
   getStore: () => SecretsStore,
@@ -356,6 +363,7 @@ export function loadAppSettingsFrom(
   void persistMigration;
   let base: AppSettings;
   if (fs.existsSync(settingsPath)) {
+    settingsLoadUsedParseFallback = false;
     try {
       const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf-8')) as Partial<AppSettings> & { liquidGlass?: AppSettings['liquidNeon'] };
       type AgentsRaw = Partial<AppSettings['agents']>;
@@ -470,9 +478,11 @@ export function loadAppSettingsFrom(
       // checkbox and drop the duplicate key (see voiceSettingsMigration.ts).
       base.voice = migrateVoicePushToTalk(base.voice as LegacyVoiceSettings | undefined);
     } catch {
+      settingsLoadUsedParseFallback = true;
       base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
     }
   } else {
+    settingsLoadUsedParseFallback = false;
     base = { ...SETTINGS_DEFAULTS, agents: { ...SETTINGS_DEFAULTS.agents } };
   }
   // MYT-777: overlay decrypted credentials from the SecretsStore so the rest
