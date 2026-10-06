@@ -12,6 +12,10 @@ export const NOTES_DEFAULT_RICH_KEY = 'mythos:notes:defaultRich';
 export const NOTES_MODE_BY_PATH_KEY = 'mythos:notes:modeByPath';
 export const NOTES_SHOW_MARKDOWN_KEY = 'mythos:notes:showMarkdownView';
 export const NOTES_SHOW_SOURCE_KEY = 'mythos:notes:showSourceView';
+/** PLAN-058 L2 (21:49): Default note view dropdown. Does not replace sticky modes. */
+export const NOTES_DEFAULT_VIEW_KEY = 'mythos:notes:defaultView';
+
+export type DefaultNoteView = 'rich' | 'markdown' | 'source';
 
 /** Dispatched on `window` after any same-tab note-view pref write. */
 export const NOTES_VIEW_PREFS_CHANGED_EVENT = 'mythos:notes:viewPrefsChanged';
@@ -42,6 +46,7 @@ export function subscribeNoteViewPrefs(listener: () => void): () => void {
       || e.key === NOTES_SHOW_MARKDOWN_KEY
       || e.key === NOTES_SHOW_SOURCE_KEY
       || e.key === NOTES_MODE_BY_PATH_KEY
+      || e.key === NOTES_DEFAULT_VIEW_KEY
       || e.key === null
     ) {
       listener();
@@ -107,6 +112,32 @@ export function writeShowSourceViewPref(on: boolean): void {
   } catch {
     /* ignore */
   }
+  notifyNoteViewPrefsChanged();
+}
+
+export function readDefaultNoteView(): DefaultNoteView {
+  try {
+    const stored = window.localStorage.getItem(NOTES_DEFAULT_VIEW_KEY);
+    if (stored === 'rich' || stored === 'markdown' || stored === 'source') return stored;
+  } catch {
+    /* fall through */
+  }
+  return readDefaultRichPref() ? 'rich' : 'source';
+}
+
+/**
+ * Writes the dropdown choice and the gear flags it implies.
+ * Never touches mythos:notes:modeByPath (sticky per-note modes).
+ */
+export function writeDefaultNoteView(view: DefaultNoteView): void {
+  try {
+    window.localStorage.setItem(NOTES_DEFAULT_VIEW_KEY, view);
+  } catch {
+    /* ignore */
+  }
+  writeDefaultRichPref(view === 'rich');
+  if (view === 'markdown') writeShowMarkdownViewPref(true);
+  if (view === 'source') writeShowSourceViewPref(true);
   notifyNoteViewPrefsChanged();
 }
 

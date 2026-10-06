@@ -3,7 +3,7 @@
  * Three provider buckets + Claude connect stubs + models + privacy.
  * No four per-agent Settings cards as Writing partner primary.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PARTNER_HANDS } from '../agents/partnerIdentity';
 import {
   COMING_SOON_PROVIDERS,
@@ -20,6 +20,14 @@ import {
   looksLikeMaskedApiKeyPreview,
   MASKED_API_KEY_PREVIEW_MESSAGE,
 } from '../lib/maskedApiKeyPreview';
+import {
+  DEFAULT_BASE_URLS,
+  LISTABLE_PROVIDERS,
+  PROVIDER_OPTIONS,
+  type ModelListStatus,
+  type ProviderKind,
+  type TestConnectionStatus,
+} from '../components/SettingsPanel/settingsPanelTypes';
 import './ModelKeysSection.css';
 
 interface ModelKeysSectionProps {
@@ -44,6 +52,24 @@ interface ModelKeysSectionProps {
    * stays put. API keys live in userData secrets.json and never move.
    */
   onMoveVault?: () => void;
+  /**
+   * PLAN-058 L2 (12:44): live provider kind. Bucket clicks call
+   * onSelectProviderKind so kind / base URL / model list stay on this page
+   * after the old Provider Configuration section is unmounted.
+   * Omitted by isolated mounts — buckets then only patch modelKeysProvider.
+   */
+  providerKind?: ProviderKind;
+  onSelectProviderKind?: (kind: ProviderKind) => void;
+  providerModel?: string;
+  setProviderModel?: (model: string) => void;
+  savedProviderApiKey?: string;
+  modelList?: string[];
+  modelListStatus?: ModelListStatus;
+  modelListError?: string | null;
+  useCustomInput?: boolean;
+  setUseCustomInput?: (v: boolean) => void;
+  onFetchModels?: (kind: ProviderKind, baseUrl: string) => void;
+  setTestConnectionStatus?: (status: TestConnectionStatus) => void;
 }
 
 function patchPartner(
@@ -112,6 +138,53 @@ function cliStatusLine(cli: ClaudeCliState): string {
   }
 }
 
+function bucketIdForKind(kind: ProviderKind): ModelKeysProviderId {
+  switch (kind) {
+    case 'anthropic':
+      return 'claude';
+    case 'openai':
+      return 'paste-key';
+    case 'custom':
+      return 'openrouter';
+    case 'ollama':
+      return 'ollama';
+    case 'lmstudio':
+      return 'lmstudio';
+    case 'llamacpp':
+      return 'llamacpp';
+    default: {
+      const _exhaustive: never = kind;
+      return _exhaustive;
+    }
+  }
+}
+
+function kindForBucket(id: ModelKeysProviderId): ProviderKind | null {
+  switch (id) {
+    case 'claude':
+      return 'anthropic';
+    case 'paste-key':
+      return 'openai';
+    case 'openrouter':
+      return 'custom';
+    case 'ollama':
+      return 'ollama';
+    case 'lmstudio':
+      return 'lmstudio';
+    case 'llamacpp':
+      return 'llamacpp';
+    case 'openai-codex':
+    case 'gemini':
+    case 'copilot':
+    case 'cursor':
+      return null;
+    default: {
+      const _exhaustive: never = id;
+      return _exhaustive;
+    }
+  }
+}
+
 function providerStatus(
   id: ModelKeysProviderId,
   selected: ModelKeysProviderId,
@@ -165,10 +238,26 @@ export default function ModelKeysSection({
   setShowApiKey,
   setSavedOk,
   onMoveVault,
+  providerKind,
+  onSelectProviderKind,
+  providerModel = '',
+  setProviderModel,
+  savedProviderApiKey = '',
+  modelList = [],
+  modelListStatus = 'idle',
+  modelListError = null,
+  useCustomInput = false,
+  setUseCustomInput,
+  onFetchModels,
+  setTestConnectionStatus,
 }: ModelKeysSectionProps) {
   const partner = resolveWritingPartner(settings);
   const selected = partner.modelKeysProvider;
   const cli = partner.claudeCli;
+  const liveBucket: ModelKeysProviderId = providerKind ? bucketIdForKind(providerKind) : selected;
+  const providerDef = providerKind
+    ? PROVIDER_OPTIONS.find((p) => p.value === providerKind)
+    : undefined;
   const [installOpen, setInstallOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -176,9 +265,14 @@ export default function ModelKeysSection({
   const modelOpts = modelsForProvider(selected);
   const needsReentry = (settings.keyReentryPaths ?? []).includes('provider.apiKey');
   const hasKey = !needsReentry && !!(providerApiKey.trim() || settings.provider?.apiKey);
-  const needsUrl = selected === 'ollama' || selected === 'lmstudio' || selected === 'llamacpp' || selected === 'openrouter';
-  const needsKey =
-    selected === 'openrouter' || selected === 'paste-key' || (selected === 'claude' && cli === 'ready');
+  const needsUrl = providerDef?.needsUrl
+    || selected === 'ollama' || selected === 'lmstudio' || selected === 'llamacpp' || selected === 'openrouter';
+  const needsKey = providerDef?.needsKey
+    || selected === 'openrouter' || selected === 'paste-key' || (selected === 'claude' && cli === 'ready');
+  const baseUrlFetchTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (baseUrlFetchTimer.current) window.clearTimeout(baseUrlFetchTimer.current);
+  }, []);
 
   // F5 Critic Path A: Hands & files via existing agentsVault:* (+ one showItemInFolder)
   const [keysLoc, setKeysLoc] = useState<{
@@ -246,6 +340,11 @@ export default function ModelKeysSection({
     }
     patchPartner(setSettings, { modelKeysProvider: id });
     setSavedOk(false);
+    const kind = kindForBucket(id);
+    if (kind && onSelectProviderKind) {
+      onSelectProviderKind(kind);
+      return;
+    }
     showToast('Provider selected — model list updated');
   };
 
@@ -267,8 +366,6 @@ export default function ModelKeysSection({
         data-settings-cat="agents"
         data-testid="mk-provider-buckets"
       >
-        {/* Distinct id from legacy ProviderSection (section-providers) so E2E
-            getByRole('heading', { name: 'Provider Configuration' }) stays unique. */}
         <h3 className="settings-section-title" id="section-provider-buckets">PROVIDER BUCKETS</h3>
         <p className="mk-honest" data-testid="mk-byo-copy">
           Bring your own AI. A Mythos subscription is <strong>not</strong> a Claude — or any other — AI
@@ -282,7 +379,7 @@ export default function ModelKeysSection({
             <div className="mk-bucket__items">
               {bk.items.map((item) => {
                 const soon = COMING_SOON_PROVIDERS.has(item.id);
-                const on = item.id === selected && !soon;
+                const on = item.id === liveBucket && !soon;
                 const status = providerStatus(item.id, selected, cli, hasKey);
                 const good = status === 'Connected' || status === 'Key saved' || status === 'Local';
                 return (
@@ -386,22 +483,94 @@ export default function ModelKeysSection({
             <div className="wp-label">ENDPOINT</div>
             <input
               className="settings-input"
+              type="url"
               value={providerBaseUrl}
               placeholder={
-                selected === 'ollama'
-                  ? 'http://localhost:11434'
-                  : selected === 'lmstudio'
-                    ? 'http://localhost:1234/v1'
-                    : selected === 'openrouter'
-                      ? 'https://openrouter.ai/api/v1'
-                      : 'http://localhost:8080'
+                providerKind
+                  ? (DEFAULT_BASE_URLS[providerKind] || 'http://localhost:11434')
+                  : selected === 'ollama'
+                    ? 'http://localhost:11434'
+                    : selected === 'lmstudio'
+                      ? 'http://localhost:1234/v1'
+                      : selected === 'openrouter'
+                        ? 'https://openrouter.ai/api/v1'
+                        : 'http://localhost:8080'
               }
               onChange={(e) => {
-                setProviderBaseUrl(e.target.value);
+                const nextUrl = e.target.value;
+                setProviderBaseUrl(nextUrl);
+                setTestConnectionStatus?.('idle');
                 setSavedOk(false);
+                if (providerKind && onFetchModels && LISTABLE_PROVIDERS.has(providerKind)) {
+                  if (baseUrlFetchTimer.current) window.clearTimeout(baseUrlFetchTimer.current);
+                  baseUrlFetchTimer.current = window.setTimeout(() => {
+                    onFetchModels(providerKind, nextUrl);
+                  }, 400);
+                }
               }}
-              aria-label="Provider endpoint"
+              aria-label="Provider base URL"
             />
+          </div>
+        )}
+
+        {providerKind && setProviderModel && (
+          <div className="mk-field" data-testid="mk-default-model">
+            <div className="wp-label">DEFAULT MODEL</div>
+            {LISTABLE_PROVIDERS.has(providerKind) && modelListStatus === 'ok' && modelList.length > 0 && !useCustomInput ? (
+              <select
+                className="settings-input settings-select"
+                value={modelList.includes(providerModel) ? providerModel : ''}
+                aria-label="Default model for this provider"
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === '__custom__') {
+                    setUseCustomInput?.(true);
+                    setProviderModel('');
+                  } else {
+                    setProviderModel(val);
+                  }
+                  setSavedOk(false);
+                }}
+              >
+                {!modelList.includes(providerModel) && providerModel && (
+                  <option value={providerModel}>{providerModel}</option>
+                )}
+                {modelList.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+                <option value="__custom__">Custom…</option>
+              </select>
+            ) : (
+              <input
+                className="settings-input"
+                type="text"
+                value={providerModel}
+                placeholder={providerKind === 'anthropic' ? 'claude-sonnet-4-6' : 'model name'}
+                spellCheck={false}
+                aria-label="Default model for this provider"
+                onChange={(e) => { setProviderModel(e.target.value); setSavedOk(false); }}
+              />
+            )}
+            {modelListStatus === 'loading' && (
+              <p className="settings-hint" data-testid="model-list-loading">Loading models…</p>
+            )}
+            {modelListStatus === 'error' && modelListError && (
+              <p className="settings-hint settings-hint-warn" data-testid={providerKind === 'ollama' ? 'ollama-not-running-hint' : 'model-list-error'}>
+                {modelListError}
+              </p>
+            )}
+            {LISTABLE_PROVIDERS.has(providerKind) && (
+              <button
+                type="button"
+                className="settings-btn settings-btn-secondary"
+                disabled={modelListStatus === 'loading'}
+                aria-label="Refresh model list"
+                data-testid="refresh-models-btn"
+                onClick={() => onFetchModels?.(providerKind, providerBaseUrl)}
+              >
+                {modelListStatus === 'loading' ? 'Loading…' : 'Refresh models'}
+              </button>
+            )}
           </div>
         )}
 
@@ -413,7 +582,7 @@ export default function ModelKeysSection({
                 className={`settings-input${pasteMaskError ? ' settings-input-error' : ''}`}
                 type={showApiKey ? 'text' : 'password'}
                 value={providerApiKey}
-                placeholder={selected === 'openrouter' ? 'sk-or-v1-…' : 'sk-…'}
+                placeholder={savedProviderApiKey && !needsReentry ? 'Key configured — enter a new key to replace' : selected === 'openrouter' ? 'sk-or-v1-…' : 'sk-…'}
                 onChange={(e) => {
                   const next = e.target.value;
                   if (looksLikeMaskedApiKeyPreview(next)) {
@@ -458,6 +627,7 @@ export default function ModelKeysSection({
             type="button"
             className="settings-btn settings-btn-secondary"
             data-testid="mk-test-connection"
+            aria-label="Test provider connection"
             onClick={onTestConnection}
             disabled={testStatus === 'testing'}
           >
@@ -465,11 +635,16 @@ export default function ModelKeysSection({
           </button>
           <span className="mk-stored" data-testid="mk-storage-status">
             <span className="wp-sandbox__dot" aria-hidden="true" />
-            {selected === 'ollama' || selected === 'lmstudio' || selected === 'llamacpp'
+            {liveBucket === 'ollama' || liveBucket === 'lmstudio' || liveBucket === 'llamacpp'
               ? 'Runs locally — nothing sent out'
               : 'Key stored locally'}
           </span>
-          {testMsg ? <span className="settings-hint">{testMsg}</span> : null}
+          {testStatus === 'ok' && (
+            <span className="settings-test-ok" role="status">{testMsg}</span>
+          )}
+          {testStatus === 'error' && (
+            <span className="settings-test-error" role="alert">{testMsg}</span>
+          )}
         </div>
       </section>
 

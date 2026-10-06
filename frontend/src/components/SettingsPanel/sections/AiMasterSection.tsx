@@ -87,32 +87,6 @@ export default function AiMasterSection({ settings, setSettings }: AiMasterSecti
         )}
       </div>
 
-      {/* S2-6: LIVE transcript In-chat vs Separate strip */}
-      <div className="settings-agent-card" data-testid="agent-transcript-placement" style={{ marginTop: 12 }}>
-        <div className="ai-master-row">
-          <div className="ai-master-copy">
-            <h3 className="settings-section-title" id="section-transcript-placement">
-              Agent transcript
-            </h3>
-            <p className="ai-master-desc">
-              Choose whether LIVE transcript dumps into the chat stream or stays in a separate LIVE strip.
-            </p>
-          </div>
-          <select
-            className="settings-input settings-select"
-            aria-labelledby="section-transcript-placement"
-            value={settings.agentTranscriptPlacement === 'in-chat' ? 'in-chat' : 'separate'}
-            onChange={(e) => {
-              const agentTranscriptPlacement = e.target.value === 'in-chat' ? 'in-chat' : 'separate';
-              setSettings((p) => ({ ...p, agentTranscriptPlacement }));
-            }}
-            data-testid="agent-transcript-placement-select"
-          >
-            <option value="separate">Separate LIVE strip</option>
-            <option value="in-chat">Dump into chat</option>
-          </select>
-        </div>
-      </div>
       <Toast message={toast?.message ?? null} level={toast?.level} onDismiss={clearToast} />
     </section>
   );

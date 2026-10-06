@@ -243,18 +243,14 @@ export default function WritingPartnerSection({
           </aside>
         </div>
 
-        <div className="wp-toggles">
+        <ul className="wp-memory-list" data-testid="wp-memory-list">
           {([
             ['memory', 'Cross-session memory', 'Remembers your world and your habits between sessions.'],
             ['craft', 'Craft stance', 'Coach craft; never ghostwrite the book.'],
             ['initiative', 'Unprompted thread-watching', 'Flags continuity and gaps without hijacking the chat.'],
           ] as const).map(([key, title, desc]) => (
-            <div key={key} className="wp-toggle-row">
-              <div className="wp-toggle-copy">
-                <div className="wp-toggle-title">{title}</div>
-                <div className="settings-hint">{desc}</div>
-              </div>
-              <label className="settings-toggle">
+            <li key={key}>
+              <label className="wp-memory-list__label">
                 <input
                   type="checkbox"
                   aria-label={title}
@@ -262,11 +258,12 @@ export default function WritingPartnerSection({
                   checked={partner[key]}
                   onChange={(e) => patchPartner(setSettings, { [key]: e.target.checked })}
                 />
-                <span className="settings-toggle-track" />
+                <span>{title}</span>
               </label>
-            </div>
+              <p className="settings-hint">{desc}</p>
+            </li>
           ))}
-        </div>
+        </ul>
 
         <div className="wp-hard-bans" data-testid="wp-hard-bans" role="note">
           <strong>Hard bans — not overridable by personality or voice settings.</strong>{' '}
@@ -336,24 +333,21 @@ export default function WritingPartnerSection({
               <span className="settings-toggle-track" />
             </label>
           </div>
-          <div className="wp-toggle-row">
-            <div className="wp-toggle-copy">
-              <div className="wp-toggle-title">
-                Use Claude memory <span className="wp-adv-tag">ADVANCED</span>
-              </div>
-              <div className="settings-hint">Also use Claude’s own memory — off keeps memory in Mythos only.</div>
-            </div>
-            <label className="settings-toggle">
-              <input
-                type="checkbox"
-                aria-label="Use Claude memory"
-                data-testid="wp-claude-memory"
-                checked={partner.claudeMemory}
-                onChange={(e) => patchPartner(setSettings, { claudeMemory: e.target.checked })}
-              />
-              <span className="settings-toggle-track" />
-            </label>
-          </div>
+          <ul className="wp-memory-list" data-testid="wp-claude-memory-list">
+            <li>
+              <label className="wp-memory-list__label">
+                <input
+                  type="checkbox"
+                  aria-label="Use Claude memory"
+                  data-testid="wp-claude-memory"
+                  checked={partner.claudeMemory}
+                  onChange={(e) => patchPartner(setSettings, { claudeMemory: e.target.checked })}
+                />
+                <span>Use Claude memory <span className="wp-adv-tag">ADVANCED</span></span>
+              </label>
+              <p className="settings-hint">Also use Claude’s own memory — off keeps memory in Mythos only.</p>
+            </li>
+          </ul>
         </div>
       </section>
 

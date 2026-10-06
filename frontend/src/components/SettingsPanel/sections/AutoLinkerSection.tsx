@@ -174,7 +174,8 @@ export default function AutoLinkerSection({ settings, setSettings, setSavedOk }:
       <div className="settings-field" style={{ marginTop: '1rem' }}>
         <button
           type="button"
-          className="settings-btn"
+          className="settings-btn settings-btn-danger"
+          data-testid="format-vault-now"
           onClick={handleFormatVaultNow}
           disabled={isFormatting}
         >

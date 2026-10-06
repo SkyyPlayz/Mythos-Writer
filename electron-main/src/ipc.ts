@@ -3097,6 +3097,8 @@ export interface AppSettings {
     dimFocus?: boolean;
     /** Voice dictation (offline model). */
     dictation?: boolean;
+    /** Manuscript open depth. Absent = leave the shell depth alone. */
+    defaultZoom?: 'book' | 'part' | 'chapter' | 'scene';
   };
   /** Telemetry opt-in (MYT-344). Off by default. sessionId regenerated on disable. */
   telemetry?: {

@@ -167,9 +167,8 @@ test('TC-PROV-01: Ollama provider seeded in app-settings shows base URL and text
   // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
   await page.locator('[data-testid="settings-cat-agents"]').click();
 
-  // Provider selector should show 'ollama'
-  const providerSelect = page.getByLabel('AI provider');
-  await expect(providerSelect).toHaveValue('ollama');
+  // Ollama bucket is the live provider (seeded kind), not the old select.
+  await expect(page.locator('[data-testid="mk-prov-ollama"]')).toHaveClass(/mk-prov--on/);
 
   // Base URL field should be pre-filled
   const baseUrlInput = page.getByLabel('Provider base URL');
@@ -272,14 +271,13 @@ test('TC-PROV-05: switching global provider fills Base URL with that provider\'s
   // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
   await page.locator('[data-testid="settings-cat-agents"]').click();
 
-  const providerSelect = page.getByLabel('AI provider');
   const baseUrlInput = page.getByLabel('Provider base URL');
   await expect(baseUrlInput).toHaveValue('http://127.0.0.1:11434/v1');
 
-  await providerSelect.selectOption('llamacpp');
+  await page.locator('[data-testid="mk-prov-llamacpp"]').click();
   await expect(baseUrlInput).toHaveValue('http://127.0.0.1:8080/v1');
 
-  await providerSelect.selectOption('lmstudio');
+  await page.locator('[data-testid="mk-prov-lmstudio"]').click();
   await expect(baseUrlInput).toHaveValue('http://127.0.0.1:1234/v1');
 
   // Close settings
@@ -302,8 +300,7 @@ test('TC-PROV-06: Save persists global provider config to app-settings.json on d
   // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
   await page.locator('[data-testid="settings-cat-agents"]').click();
 
-  const providerSelect = page.getByLabel('AI provider');
-  await providerSelect.selectOption('lmstudio');
+  await page.locator('[data-testid="mk-prov-lmstudio"]').click();
 
   const baseUrlInput = page.getByLabel('Provider base URL');
   await baseUrlInput.fill('http://127.0.0.1:9999/v1');
@@ -341,25 +338,23 @@ test('TC-PROV-07: legacy API Key section only renders for providers that need on
   // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
   await page.locator('[data-testid="settings-cat-agents"]').click();
 
-  const providerSelect = page.getByLabel('AI provider');
-
   // Ollama is keyless — the legacy top-level API Key field must not render
   // at all, not just be hidden/disabled.
-  await providerSelect.selectOption('ollama');
+  await page.locator('[data-testid="mk-prov-ollama"]').click();
   await expect(page.locator('#api-key-input')).toHaveCount(0);
 
   // Switch to OpenAI (needsKey) — field reappears with provider-specific copy.
-  await providerSelect.selectOption('openai');
+  await page.locator('[data-testid="mk-prov-paste-key"]').click();
   await expect(page.locator('#api-key-input')).toBeVisible();
   await expect(page.locator('label[for="api-key-input"]')).toHaveText('OpenAI API Key');
   await expect(page.locator('#api-key-input')).toHaveAttribute('placeholder', 'Paste API key…');
 
   // Switch to Ollama (keyless) again — hides.
-  await providerSelect.selectOption('ollama');
+  await page.locator('[data-testid="mk-prov-ollama"]').click();
   await expect(page.locator('#api-key-input')).toHaveCount(0);
 
   // Switch to Anthropic (needsKey) — field reappears with the original copy.
-  await providerSelect.selectOption('anthropic');
+  await page.locator('[data-testid="mk-prov-claude"]').click();
   await expect(page.locator('#api-key-input')).toBeVisible();
   await expect(page.locator('label[for="api-key-input"]')).toHaveText('Anthropic API Key');
 
@@ -373,8 +368,7 @@ test.skip('TC-PROV-08: no-override agent Model field inherits & live-tracks the 
   // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
   await page.locator('[data-testid="settings-cat-agents"]').click();
 
-  const providerSelect = page.getByLabel('AI provider');
-  await providerSelect.selectOption('ollama');
+  await page.locator('[data-testid="mk-prov-ollama"]').click();
 
   const providerModelInput = page.getByLabel('Default model for this provider');
   const waModel = page.getByLabel('Writing Coach model');
@@ -420,8 +414,7 @@ test('TC-PROV-09: editing Base URL for a listable provider re-fetches models aft
   // SKY-10668: the panel now opens on Appearance — go to the AI Agents page.
   await page.locator('[data-testid="settings-cat-agents"]').click();
 
-  const providerSelect = page.getByLabel('AI provider');
-  await providerSelect.selectOption('lmstudio');
+  await page.locator('[data-testid="mk-prov-lmstudio"]').click();
 
   await app!.evaluate(async ({ ipcMain }) => {
     (globalThis as Record<string, unknown>).__e2eListModelsCalls = [];

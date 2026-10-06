@@ -29,8 +29,15 @@
      position:absolute under the title bar so the nav rail + WindowChrome stay
      visible). */
   position: relative;
-  /* WindowChrome .wc-drag-region 44px + .wc-hairline 1px */
-  --shell-titlebar-height: 45px;
+  /* PLAN-058 L2 (06:55): WindowChrome is a full-width sibling above this
+     column, so the settings overlay fills the column with no second offset. */
+  --shell-titlebar-height: 0px;
+}
+
+.desktop-shell > .wc-bar {
+  flex-shrink: 0;
+  width: 100%;
+  z-index: 5;
 }
 
 /* SKY-3098 fix: WorkspaceTabBar uses height:100% (correct for flex-row context) but

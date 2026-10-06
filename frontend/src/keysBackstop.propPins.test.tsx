@@ -23,9 +23,11 @@ function firstSelfClosingTag(src: string, tag: string): string {
 }
 
 describe('KEYS-B — keyReentryPaths prop pins through real panel', () => {
-  it('SettingsPanel → ProviderSection receives settings.keyReentryPaths', () => {
-    const tag = firstSelfClosingTag(read('SettingsPanel.tsx'), 'ProviderSection');
-    expect(tag).toMatch(/keyReentryPaths=\{settings\.keyReentryPaths\}/);
+  it('SettingsPanel → ModelKeysSection receives settings.keyReentryPaths', () => {
+    const tag = firstSelfClosingTag(read('SettingsPanel.tsx'), 'ModelKeysSection');
+    expect(tag).toMatch(/settings=\{settings\}/);
+    const src = read('partner/ModelKeysSection.tsx');
+    expect(src).toMatch(/\(settings\.keyReentryPaths \?\? \[\]\)\.includes\('provider\.apiKey'\)/);
   });
 
   it('SettingsPanel → ApiKeySection receives settings.keyReentryPaths', () => {

@@ -531,8 +531,13 @@ interface EditorPrefs {
   smartQuotes?: boolean;
   /** Focus mode dims window chrome. */
   dimFocus?: boolean;
-  /** Voice dictation (offline model). */
+  /** Voice dictation (offline model). Stays off; Settings shows a static line. */
   dictation?: boolean;
+  /**
+   * PLAN-058 L2 (21:49): manuscript open depth. Absent means the shell keeps
+   * its current depth — do not default this on every editorPrefs patch.
+   */
+  defaultZoom?: 'book' | 'part' | 'chapter' | 'scene';
 }
 
 /** Beta 3 M24 — Settings → Vault & Files import flows. */

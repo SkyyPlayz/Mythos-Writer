@@ -5,6 +5,9 @@
    role/aria-modal contract, focus trap, and Esc-to-close are unchanged. */
 .settings-overlay {
   position: absolute;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   /* F2#13 / Probe: leave WindowChrome (44px + 1px hairline) visible — do not
      cover the top window bar / window controls. */
   top: var(--shell-titlebar-height, 45px);
@@ -32,8 +35,11 @@
   border-radius: 0;
   width: 100%;
   max-width: 100%;
+  min-width: 0;
   height: 100%;
   max-height: 100%;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   box-shadow: inset 0 1px 0 var(--glass-highlight);
@@ -95,6 +101,8 @@
   display: flex;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* Page header (prototype settingsMeta title + subtitle) */
@@ -104,7 +112,7 @@
 }
 
 .settings-page-header__title {
-  font-size: 1.05rem;
+  font-size: 22px;
   font-weight: 700;
   color: var(--text-header);
 }
@@ -257,6 +265,8 @@
 
 .settings-body {
   flex: 1;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 12px 20px;
   display: flex;
@@ -267,6 +277,16 @@
      every scroll frame); `contain: paint` isolates its paint/scroll work
      from the rest of the panel instead. */
   contain: paint;
+}
+
+/* PLAN-058 L2 (03:36 / 09:46): one centered column for every settings page. */
+.settings-content-column {
+  width: min(880px, 100%);
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
 }
 
 .settings-loading {
@@ -282,10 +302,21 @@
   gap: 10px;
 }
 
+/* PLAN-058 L2 (18:22): glass card on every settings section. m24-root is the
+   editor shell; its inner .m24-card carries the same glass so cards don't
+   double-border. */
+.settings-section:not(.m24-root) {
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.03);
+  border: var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, 0.2));
+  box-shadow: var(--glowH, none);
+  padding: var(--ln-card-pad-y, 15px) var(--ln-card-pad-x, 17px);
+}
+
 /* Sep Liquid Neon Vaults & Files (prototype 2598–2735): each category card
    is a glass panel. Concentric nest: outer --radius-md, inset wells use
    --radius-nested-md (outer − gap). */
-.settings-body:has(> [data-settings-cat="vaults"]) {
+.settings-body:has([data-settings-cat="vaults"]) {
   gap: 12px;
 }
 
@@ -476,7 +507,9 @@
 }
 
 .settings-input {
-  background: var(--bg-inset);
+  /* PLAN-058 L2 (10:20 / 10:25): glass fill, not the black --bg-inset well.
+     background-color (not the shorthand) so .settings-select keeps its chevron. */
+  background-color: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-default);
   border-radius: 5px;
   color: var(--text-header);
@@ -712,8 +745,9 @@ select.settings-select option {
 /* Agent cards */
 
 .settings-agent-card {
-  background: var(--bg-inset);
-  border: 1px solid var(--border-default);
+  background: rgba(255, 255, 255, 0.03);
+  border: var(--bwh, 1px) solid var(--bh, rgba(0, 240, 255, 0.2));
+  box-shadow: var(--glowH, none);
   border-radius: 7px;
   padding: 12px 14px;
   display: flex;

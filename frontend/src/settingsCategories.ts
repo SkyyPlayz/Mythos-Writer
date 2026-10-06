@@ -8,11 +8,12 @@
  * imports SETTINGS_CATEGORIES to drive its category nav instead of maintaining
  * a second, hand-written list (SKY-5694).
  *
- * SKY-10668 + Slice C: rail order top-to-bottom:
- * Appearance · Writing partner · Model & keys · Editor · Vault & Files ·
- * Sync & Backup · Shortcuts · About · Account & profile (last by owner ruling).
- * Slice C renames the old AI Agents page to Model & keys and inserts
- * Writing partner first under AI.
+ * PLAN-058 L2 (45:11 / 18:03): rail order top-to-bottom:
+ * Appearance · Vault & Files · Voice · Writing partner · Model & keys ·
+ * Editor · Sync & Backup · Shortcuts · About · Account & profile
+ * (account last by owner ruling, SKY-10668).
+ * Writing partner stays before Model & keys. Voice is its own page, above
+ * Writing partner, so offline voice is reachable with AI master off.
  */
 
 export type SettingsCategoryId =
@@ -24,7 +25,8 @@ export type SettingsCategoryId =
   | 'about'
   | 'writingPartner'
   | 'agents'
-  | 'appearance';
+  | 'appearance'
+  | 'voice';
 
 export interface SettingsCategory {
   id: SettingsCategoryId;
@@ -51,6 +53,30 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     ],
   },
   {
+    id: 'vaults',
+    label: 'Vault & Files',
+    description: 'Where your world lives on disk.',
+    sectionIds: [
+      'section-vault-autolinker', // M6: Auto Note Linker — FIRST card per spec §12
+      'section-vaults-folder', // SKY-11154: "Vaults folder" row — Open folder + Move…
+      'section-mythos-vaults', // PLAN-058 L1b: Mythos vault boxes + nested notes/story
+      'section-vault-templates', // SKY-1303 / SKY-11352: Save-as-Template + Your templates
+      'section-agents-vault',
+      'section-vault-health',
+      'section-vault-danger-zone',
+      'section-scene-fields',
+      'section-snapshots',
+      'section-versions',
+      'section-backup',
+    ],
+  },
+  {
+    id: 'voice',
+    label: 'Voice',
+    description: 'Microphone, dictation, and speech — available with AI off.',
+    sectionIds: ['section-voice'],
+  },
+  {
     id: 'writingPartner',
     label: 'Writing partner',
     description: 'One partner face — personality, hands, heartbeat, and hard bans.',
@@ -74,9 +100,11 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
     description: 'Bring your own AI — providers, models, tools limits, and privacy.',
     sectionIds: [
       'section-ai-master',
-      'section-transcript-placement',
       'section-provider-buckets',
-      'section-providers',
+      // PLAN-058 L2 (12:23 / 12:44): Agent transcript card and the old
+      // Provider Configuration section are unmounted. ProviderSection.tsx
+      // still defines section-providers for the wizard; live kind / base URL /
+      // model / test live on Model & keys buckets.
       // Soft-FAIL: AgentsSection.tsx still defines section-agents (unmounted);
       // production roles ship via ProductionRolesSection.
       'section-api-key',
@@ -87,7 +115,6 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-hands-files',
       'section-autolinker',
       'section-journal',
-      'section-voice',
     ],
   },
   {
@@ -98,24 +125,6 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-editor',
       'section-editor-manuscript',
       'section-notes-board', // SKY-11186: Boards zoom-out limit — a visible performance setting
-    ],
-  },
-  {
-    id: 'vaults',
-    label: 'Vault & Files',
-    description: 'Where your world lives on disk.',
-    sectionIds: [
-      'section-vault-autolinker', // M6: Auto Note Linker — FIRST card per spec §12
-      'section-vaults-folder', // SKY-11154: "Vaults folder" row — Open folder + Move…
-      'section-mythos-vaults', // PLAN-058 L1b: Mythos vault boxes + nested notes/story
-      'section-vault-templates', // SKY-1303 / SKY-11352: Save-as-Template + Your templates
-      'section-agents-vault',
-      'section-vault-health',
-      'section-vault-danger-zone',
-      'section-scene-fields',
-      'section-snapshots',
-      'section-versions',
-      'section-backup',
     ],
   },
   {
