@@ -1,6 +1,6 @@
 ## Summary
 
-<!-- What does this PR do? Reference the Paperclip issue if applicable (e.g. Refs: SKY-123). -->
+<!-- What does this PR do? Reference the issue if applicable (e.g. Refs: SKY-123). -->
 
 ## Definition of Done
 
@@ -26,7 +26,7 @@ _Every change must satisfy all items before merge. Reviewer confirms these hold.
 - [ ] `npm run typecheck` passes locally
 - [ ] `npm run test` passes locally
 - [ ] `npm run build:electron` succeeds locally
-- [ ] Live required CI checks pass: `ci`, `notes-windows` (packaging is main/release-only)
+- [ ] Live required CI checks pass: `ci`, `notes-windows`, `screenshot-check` (packaging is main/release-only)
 - [ ] No secrets, credentials, or customer data in the diff
 
 ## Test plan
