@@ -114,7 +114,7 @@
     "test:e2e:archive-agent-mvp": "playwright test e2e/archive-agent-mvp.spec.ts --reporter=list,html",
     "test:e2e:bg-scrim-slider": "playwright test e2e/bg-scrim-slider.spec.ts --reporter=list,html",
     "test:e2e:cross-tab-links": "playwright test e2e/cross-tab-links.spec.ts --reporter=list,html",
-    "test:e2e:notes-tab": "playwright test e2e/notes-tab.spec.ts --reporter=list,html",
+    "test:e2e:notes-tab": "playwright test e2e/notes-tab.spec.ts e2e/plan058-narrow-width.spec.ts e2e/tests/notes-brainstorm-clip-057.spec.ts --reporter=list,html",
     "test:e2e:per-vault-tabs": "playwright test e2e/tests/sky-11236-per-vault-tab-isolation.spec.ts --reporter=list,html",
     "test:e2e:readme-screenshots": "playwright test e2e/readme-screenshots.spec.ts --reporter=list,html",
     "test:e2e:shell-relayout-regression": "playwright test e2e/shell-relayout-regression.spec.ts --reporter=list,html",
