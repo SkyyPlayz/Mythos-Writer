@@ -1631,6 +1631,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           if (!s.layoutMigrationDone) {
             const migrationPatch = migrateV1Layout(s);
             settingsToUse = { ...s, ...migrationPatch };
+            cachedSettings = settingsToUse;
+            setAppSettings(settingsToUse);
             // Persist migration synchronously (fire-and-forget).
             window.api.settingsSet(settingsToUse).catch(() => {});
           }
