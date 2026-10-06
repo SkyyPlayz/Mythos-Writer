@@ -84,7 +84,7 @@
     "test:e2e:vault-graph-v0": "playwright test e2e/vault-graph-v0.spec.ts --reporter=list,html",
     "test:e2e:entity-mention": "playwright test e2e/tests/entity-mention.spec.ts --reporter=list,html",
     "test:e2e:entity-creation": "playwright test e2e/entity-creation-edge-cases.spec.ts --reporter=list,html",
-    "test:e2e:timeline": "playwright test e2e/timeline.spec.ts --reporter=list,html",
+    "test:e2e:timeline": "playwright test e2e/timeline.spec.ts e2e/plan058-l4-timeline.spec.ts --reporter=list,html",
     "test:e2e:entries": "playwright test e2e/entries.spec.ts --reporter=list,html",
     "test:e2e:post-onboarding": "playwright test e2e/post-onboarding.spec.ts --reporter=list,html",
     "test:e2e:continuity-panel": "playwright test e2e/continuity-panel.spec.ts --reporter=list,html",

@@ -23,6 +23,7 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import TimelineRoot from './TimelineRoot';
 import type { Story } from './types';
 import type { TimelinesStore } from './timelinesTypes';
+import { dispatchTimelineFromNote } from './timeline2/notesToTimeline';
 
 // ─── Child-view mocks ───
 // The surfaces are mocked so tests exercise TimelineRoot's state ownership
@@ -740,6 +741,40 @@ describe('TimelineRoot — M25 right panel', () => {
 
     fireEvent.keyDown(handle, { key: 'Home' });
     expect(panel.style.width).toBe('250px');
+  });
+
+  it('FD-2 cold path: pending from-note applies on mount when dispatched while unmounted', async () => {
+    const store = makeM21Store();
+    store.events.push({
+      id: 'ev-note',
+      timelineId: 'tl-story',
+      name: 'Harbor Beat',
+      when: 55,
+      linkedNotePath: 'Plot/beat.md',
+    });
+    setupApi(store);
+    dispatchTimelineFromNote({ eventId: 'ev-note', store });
+    await renderRoot();
+    expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-selection', 'event:ev-note');
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('FD-2 warm path: from-note event selects event while TimelineRoot is mounted', async () => {
+    const store = makeM21Store();
+    store.events.push({
+      id: 'ev-note',
+      timelineId: 'tl-story',
+      name: 'Harbor Beat',
+      when: 55,
+      linkedNotePath: 'Plot/beat.md',
+    });
+    setupApi(store);
+    await renderRoot();
+    await act(async () => {
+      dispatchTimelineFromNote({ eventId: 'ev-note', store });
+    });
+    expect(screen.getByTestId('mock-axis')).toHaveAttribute('data-selection', 'event:ev-note');
+    expect(screen.getByTestId('trp-tab-inspector')).toHaveAttribute('aria-selected', 'true');
   });
 
   it('any canvas selection surfaces Inspector, even from partner tab (AC1/§14.5 / Slice E)', async () => {

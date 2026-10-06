@@ -271,4 +271,9 @@ describe('Slice E Soft-FAIL: no Archivist / Idea Board tabs on Timeline', () => 
     fireEvent.click(screen.getByTestId('trp-timeline-controls'));
     expect(screen.getByTestId('trp-partner-controls')).toBeInTheDocument();
   });
+
+  it('FD-3 — partner tab shows Update Timeline action chip', () => {
+    render(<TimelineRightPanel {...makeProps({ tab: 'partner' })} />);
+    expect(screen.getByTestId('trp-partner-action-update-timeline')).toBeInTheDocument();
+  });
 });

@@ -100,6 +100,11 @@ import BoardsTabPanel from './pages/Boards/BoardsTabPanel';
 import ManuscriptStructureView from './ManuscriptStructureView';
 import BookPreview from './story/BookPreview';
 import TimelineRoot from './TimelineRoot';
+import {
+  stashTimelineFromNote,
+  TIMELINE_FROM_NOTE_EVENT,
+  type TimelineFromNoteDetail,
+} from './timeline2/notesToTimeline';
 import type { TimelineWikiLinkApi } from './timeline2/TimelineWikiText';
 import { useTextPrompt } from './useTextPrompt';
 import { useCreateMythosVaultFlow } from './useCreateMythosVaultFlow';
@@ -764,6 +769,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [continuityPeekOverlayOpen, setContinuityPeekOverlayOpen] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<StorySubView>('editor');
+  /** PLAN-058 L4 (66:14): Ctrl+T on full Timeline view — no second StoryTimeline tree. */
+  const [timelineSidebarHintOpen, setTimelineSidebarHintOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // SKY-11048: which Settings category to open to — a vault tile's
   // "Settings → this vault" context-menu action jumps straight to Vault & Files.
@@ -2649,6 +2656,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-2094: also persists story sub-view to tab shell state.
   const handleSetView = useCallback((v: StorySubView) => {
     setView(v);
+    if (v !== 'timeline') setTimelineSidebarHintOpen(false);
     setActiveDockedTabId(null);
     const next = { ...tabShellRef.current, storySubView: v };
     dispatchTabShell({ type: 'SET_STORY_SUBVIEW', subView: v });
@@ -3096,6 +3104,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (mod && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
         if (tabShellRef.current.activeTab === 'story') {
           e.preventDefault();
+          if (tabShellRef.current.storySubView === 'timeline') {
+            setTimelineSidebarHintOpen((open) => !open);
+            return;
+          }
           // SKY-2464: Toggle 'timeline' left sidebar panel.
           // Previously called handleSetView('timeline') to open TimelineSpreadsheet sub-view.
           const cur = leftSidebarLayoutRef.current;
@@ -5577,6 +5589,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       case 'progress':
         return <ProgressDashboard stories={stories} />;
       case 'timeline':
+        // PLAN-058 L4 (66:14): StoryTimeline in the left sidebar + TimelineRoot
+        // in the main workspace double-renders the timeline surface.
+        if (view === 'timeline') {
+          return (
+            <div className="shell-sidebar-timeline-hint" data-testid="sidebar-timeline-hint">
+              <p>Timeline is open in the main workspace — use the navigator there.</p>
+            </div>
+          );
+        }
         return <StoryTimeline story={selectedStory} />;
       case 'writing-assistant':
         return (
@@ -6473,6 +6494,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     return () => window.removeEventListener('mythos:import-notes-vault', handler);
   }, [createMythosVault]);
 
+  // PLAN-058 L4 (FD-2): Notes → timeline chip navigates to Timeline; stash detail
+  // for cold mount (TimelineRoot may be unmounted when the event fires).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<TimelineFromNoteDetail>).detail;
+      if (detail?.eventId) stashTimelineFromNote(detail);
+      runNavModuleChange('timeline');
+    };
+    window.addEventListener(TIMELINE_FROM_NOTE_EVENT, handler);
+    return () => window.removeEventListener(TIMELINE_FROM_NOTE_EVENT, handler);
+  }, [runNavModuleChange]);
+
   // Beta 3 M5: command palette entries (prototype cmdIndex 3900-3913) — the
   // Ctrl-K panel lists these above the vault search hits.
   const paletteCommands = useMemo(() => [
@@ -6986,6 +7019,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {activeDockedTabId === null && view === 'timeline' && (
         <div className="shell-timeline">
+          {timelineSidebarHintOpen && (
+            <div className="shell-sidebar-timeline-hint shell-timeline-dup-hint" data-testid="sidebar-timeline-hint">
+              <p>Timeline is open in the main workspace — use the navigator there.</p>
+            </div>
+          )}
           {/* SKY-3185 — F5: TimelineRoot owns the mode switcher (Spreadsheet |
               AEON | AEON Track), grouping, and cross-view selection state. */}
           <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} wikiLinks={timelineWikiLinks} />

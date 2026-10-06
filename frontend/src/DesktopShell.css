@@ -388,6 +388,23 @@
   flex-direction: column;
 }
 
+.shell-sidebar-timeline-hint {
+  padding: 12px 14px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #8e9db8;
+}
+
+.shell-sidebar-timeline-hint p {
+  margin: 0;
+}
+
+.shell-timeline-dup-hint {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-panel);
+}
+
 /* SKY-3183: AEON view mode toggle bar */
 .shell-timeline-mode-bar {
   display: flex;
