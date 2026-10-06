@@ -536,6 +536,76 @@ describe('SKY-11189 §7: multi-select + Delete/Backspace trashes the selection',
   });
 });
 
+describe('PLAN-058 L3 Critic H1: placement on a card', () => {
+  it('with Note tool armed, mousedown on a card creates via onCreateItem', () => {
+    const onCreateItem = vi.fn();
+    render(
+      <BoardCanvas
+        items={notes(1)}
+        savedLayout={{}}
+        savedView={view}
+        activeTool="note"
+        onCreateItem={onCreateItem}
+      />,
+    );
+    const card = screen.getByLabelText(/^Note card: Note 0\b/);
+    fireEvent.mouseDown(card, { button: 0, clientX: 400, clientY: 300 });
+    expect(onCreateItem).toHaveBeenCalledWith('note', expect.any(Number), expect.any(Number));
+  });
+});
+
+describe('PLAN-058 L3 Critic H2/M8: multi-drag live layout', () => {
+  it('persists moves for every multi-selected auto-layout card, not only the primary path', () => {
+    const onItemMove = vi.fn();
+    render(
+      <BoardCanvas
+        items={notes(2)}
+        savedLayout={{ 'n0000.md': { x: 400, y: 400, w: 200, h: 120 } }}
+        savedView={view}
+        onItemMove={onItemMove}
+      />,
+    );
+    const first = screen.getByLabelText(/^Note card: Note 0\b/);
+    const second = screen.getByLabelText(/^Note card: Note 1\b/);
+    act(() => { fireEvent.mouseDown(first, { button: 0, clientX: 500, clientY: 500 }); });
+    act(() => { fireEvent.mouseDown(second, { button: 0, ctrlKey: true, clientX: 700, clientY: 500 }); });
+    act(() => { fireEvent.mouseDown(second, { button: 0, clientX: 700, clientY: 500 }); });
+    act(() => { fireEvent.mouseMove(window, { clientX: 820, clientY: 560 }); });
+    act(() => { fireEvent.mouseUp(window); });
+    const movedPaths = onItemMove.mock.calls.map((c) => c[0]);
+    expect(movedPaths).toContain('n0000.md');
+    expect(movedPaths).toContain('n0001.md');
+    expect(onItemMove).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('PLAN-058 L3 Critic H3/M9: Line on fresh cards', () => {
+  it('mints a key then reports the endpoint when the card has no itemKeysByPath entry', async () => {
+    const onLineEndpointPick = vi.fn();
+    const onMintItemKey = vi.fn(async () => 'n:fresh');
+    render(
+      <BoardCanvas
+        items={notes(1)}
+        savedLayout={{}}
+        savedView={view}
+        activeTool="line"
+        itemKeysByPath={{}}
+        onLineEndpointPick={onLineEndpointPick}
+        onMintItemKey={onMintItemKey}
+      />,
+    );
+    const card = screen.getByLabelText(/^Note card: Note 0\b/);
+    await act(async () => {
+      fireEvent.mouseDown(card, { button: 0, clientX: 400, clientY: 400 });
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => {
+      expect(onMintItemKey).toHaveBeenCalledWith('n0000.md', expect.any(Number), expect.any(Number));
+      expect(onLineEndpointPick).toHaveBeenCalledWith('n:fresh');
+    });
+  });
+});
+
 describe('SKY-11189 §7: context menu Delete entry', () => {
   it('right-clicking an unselected card selects it and shows a single-item Delete', () => {
     const onTrashItems = vi.fn();

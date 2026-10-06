@@ -113,12 +113,17 @@ async function enterBoard(page: Page, folder: string): Promise<void> {
  * once the created item's inline rename field is focused — which is only true
  * after the create round-tripped through main and the board reloaded.
  */
+/** Fixed viewport presses (1440×900) — no open-canvas retry heuristics. */
+const HOME_NOTE_AT = { x: 1050, y: 580 };
+const HOME_BOARD_AT = { x: 800, y: 720 };
+const FRESH_NOTE_AT = { x: 720, y: 520 };
+
 async function placeWithTool(
   page: Page,
   tool: 'Note' | 'Board',
   at: { x: number; y: number },
 ): Promise<void> {
-  await page.locator(`.boards-tab-panel__tool[data-tool="${tool.toLowerCase()}"]`).click();
+  await page.locator(`.boards-tab-panel__tool-rail-btn[data-tool="${tool.toLowerCase()}"]`).click();
   await expect(page.locator('.board-canvas__root')).toHaveAttribute(
     'data-active-tool',
     tool.toLowerCase(),
@@ -210,6 +215,26 @@ test('SKY-11187 AC1: the Note tool creates a real note at the click point, and t
   }
 });
 
+test('SKY-11187 / Critic H1: Note tool on an existing card still creates a note', async () => {
+  test.setTimeout(150_000);
+  const { tempRoot, userData, notesDir } = makeTemp('note-on-card');
+  mkNote(notesDir, 'Characters/Alice.md', '# Alice\n');
+
+  const app = await launchApp(userData);
+  try {
+    const page = await bootToBoards(app);
+    await enterBoard(page, 'Characters');
+    await page.locator('.boards-tab-panel__tool-rail-btn[data-tool="note"]').click();
+    // Fixed press on the existing Alice card (not open-canvas placement).
+    await page.locator('.board-canvas__item', { hasText: 'Alice' }).first().click({ position: { x: 80, y: 48 } });
+    await expect(page.locator('.board-canvas__item-rename')).toBeFocused({ timeout: 8_000 });
+    expect(fs.existsSync(path.join(notesDir, 'Characters', 'New note.md'))).toBe(true);
+  } finally {
+    await app.close().catch(() => undefined);
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 // ── AC2 — Home (the vault root) is not special (spec §15 test 13) ────────────
 
 test('SKY-11187 AC2: creating a note at Home succeeds and behaves like any other board', async () => {
@@ -221,7 +246,7 @@ test('SKY-11187 AC2: creating a note at Home succeeds and behaves like any other
     const page = await bootToBoards(app);
     await expect(page.locator('.boards-tab-panel__breadcrumb-current')).toHaveText('Home');
 
-    await placeWithTool(page, 'Note', { x: 700, y: 500 });
+    await placeWithTool(page, 'Note', HOME_NOTE_AT);
     expect(fs.existsSync(path.join(notesDir, 'New note.md'))).toBe(true);
 
     await commitRename(page, 'First Light');
@@ -238,13 +263,13 @@ test('SKY-11187 AC2: creating a note at Home succeeds and behaves like any other
     // An EMPTY board still offers a canvas to click on — the create path used
     // to be unreachable there, because the empty state replaced the canvas
     // instead of layering over it.
-    await placeWithTool(page, 'Board', { x: 1000, y: 620 });
+    await placeWithTool(page, 'Board', HOME_BOARD_AT);
     await commitRename(page, 'Fresh');
     await expect(folderTile(page, 'Fresh')).toBeVisible({ timeout: 8_000 });
     await enterBoard(page, 'Fresh');
     await expect(page.locator('.board-canvas__item')).toHaveCount(0);
 
-    await placeWithTool(page, 'Note', { x: 700, y: 500 });
+    await placeWithTool(page, 'Note', FRESH_NOTE_AT);
     await commitRename(page, 'Seedling');
     expect(fs.existsSync(path.join(notesDir, 'Fresh', 'Seedling.md'))).toBe(true);
 

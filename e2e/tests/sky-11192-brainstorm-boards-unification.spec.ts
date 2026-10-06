@@ -232,7 +232,7 @@ test('SKY-11192 AC1: a note created in the Notes Board tab appears on Brainstorm
 
     // Create the note from the NOTES BOARD TAB, using its canvas tools.
     await openBoardsTabFolder(page, 'Characters');
-    await page.locator('.boards-tab-panel__tool[data-tool="note"]').click();
+    await page.locator('.boards-tab-panel__tool-rail-btn[data-tool="note"]').click();
     await page.mouse.click(900, 560);
     const rename = page.locator('.board-canvas__item-rename');
     await expect(rename).toBeFocused({ timeout: 8_000 });

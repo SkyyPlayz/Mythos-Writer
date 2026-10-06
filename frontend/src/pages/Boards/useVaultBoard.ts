@@ -64,6 +64,8 @@ export interface VaultBoard {
   setFurniture: React.Dispatch<React.SetStateAction<BoardFurnitureItemData[]>>;
   /** SKY-11188: every touched child's own item key, by path — `line` endpoints. */
   itemKeysByPath: Record<string, string>;
+  /** Store B accent colours, keyed by board-relative item path. */
+  itemColorsByPath: Record<string, string>;
   /**
    * SKY-11190: icon+colour map, keyed by FULL vault-relative path — the same
    * `.mythos/icons.json` store the vault tree reads (SKY-9310), so an icon set
@@ -92,6 +94,9 @@ export interface VaultBoard {
   renamingPath: string | null;
   onItemMove: (itemPath: string, x: number, y: number) => void;
   onItemResize: (itemPath: string, w: number, h: number) => void;
+  onItemColor: (itemPath: string, color: string | null) => Promise<void>;
+  /** Mint a Store B id for a never-arranged card so Line endpoints work this session. */
+  mintItemKeyAt: (itemPath: string, x: number, y: number) => Promise<string | undefined>;
   onCreateItem: (kind: 'note' | 'folder', x: number, y: number) => void;
   onRequestRename: (itemPath: string) => void;
   onRenameCommit: (itemPath: string, newName: string) => void;
@@ -111,6 +116,7 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
   // SKY-11188: board-only furniture + every touched child's own item key.
   const [furniture, setFurniture] = useState<BoardFurnitureItemData[]>([]);
   const [itemKeysByPath, setItemKeysByPath] = useState<Record<string, string>>({});
+  const [itemColorsByPath, setItemColorsByPath] = useState<Record<string, string>>({});
   // SKY-11190: icon+colour map, keyed by FULL vault-relative path.
   const [iconMap, setIconMap] = useState<Record<string, VaultIconEntry>>({});
   const [loading, setLoading] = useState(false);
@@ -215,17 +221,21 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
       // furniture's from/to may name one (§4). Built independently of
       // layoutMap: a colour-only touch mints an id without a layout entry.
       const keysByPath: Record<string, string> = {};
+      const colorsByPath: Record<string, string> = {};
       for (const child of meta.children) {
         if (!child.id) continue;
         const key = `${child.kind === 'folder' ? 'v' : 'n'}:${child.id}`;
         keysByPath[child.path] = key;
         const storedLayout = meta.layout[key];
         if (storedLayout) layoutMap[child.path] = storedLayout;
+        const storedColor = meta.colors[key];
+        if (storedColor) colorsByPath[child.path] = storedColor;
       }
 
       setItems(resolvedItems);
       setSavedLayout(layoutMap);
       setItemKeysByPath(keysByPath);
+      setItemColorsByPath(colorsByPath);
       setFurniture((meta.furniture ?? []) as BoardFurnitureItemData[]);
       setSavedView(meta.view ?? { zoom: 100, panX: 0, panY: 0 });
     } catch (err) {
@@ -278,7 +288,8 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
 
   const onItemMove = useCallback(async (itemPath: string, x: number, y: number) => {
     try {
-      await window.api.notesBoardPatchLayout(folderPath, itemPath, { x, y });
+      const { key } = await window.api.notesBoardPatchLayout(folderPath, itemPath, { x, y });
+      setItemKeysByPath((prev) => ({ ...prev, [itemPath]: key }));
       setSavedLayout((prev) => ({ ...prev, [itemPath]: { ...(prev[itemPath] ?? {}), x, y } }));
     } catch (err) {
       // Non-fatal — the position stays in local state for this session. Logged
@@ -290,11 +301,39 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
 
   const onItemResize = useCallback(async (itemPath: string, w: number, h: number) => {
     try {
-      await window.api.notesBoardPatchLayout(folderPath, itemPath, { w, h });
+      const { key } = await window.api.notesBoardPatchLayout(folderPath, itemPath, { w, h });
+      setItemKeysByPath((prev) => ({ ...prev, [itemPath]: key }));
       setSavedLayout((prev) => ({ ...prev, [itemPath]: { ...(prev[itemPath] ?? {}), w, h } }));
     } catch (err) {
       // Non-fatal — see onItemMove.
       console.warn('[Boards] failed to persist item size', err);
+    }
+  }, [folderPath]);
+
+  const onItemColor = useCallback(async (itemPath: string, color: string | null) => {
+    try {
+      const { key } = await window.api.notesBoardPatchColors(folderPath, itemPath, color);
+      setItemKeysByPath((prev) => ({ ...prev, [itemPath]: key }));
+      setItemColorsByPath((prev) => {
+        const next = { ...prev };
+        if (color) next[itemPath] = color;
+        else delete next[itemPath];
+        return next;
+      });
+    } catch (err) {
+      console.warn('[Boards] failed to persist item colour', err);
+    }
+  }, [folderPath]);
+
+  const mintItemKeyAt = useCallback(async (itemPath: string, x: number, y: number) => {
+    try {
+      const { key } = await window.api.notesBoardPatchLayout(folderPath, itemPath, { x, y });
+      setItemKeysByPath((prev) => ({ ...prev, [itemPath]: key }));
+      setSavedLayout((prev) => ({ ...prev, [itemPath]: { ...(prev[itemPath] ?? {}), x, y } }));
+      return key;
+    } catch (err) {
+      console.warn('[Boards] failed to mint item key for line endpoint', err);
+      return undefined;
     }
   }, [folderPath]);
 
@@ -363,6 +402,7 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
     furniture,
     setFurniture,
     itemKeysByPath,
+    itemColorsByPath,
     iconMap,
     setIconMap,
     savedView,
@@ -376,6 +416,8 @@ export function useVaultBoard(folderPath: string, notesVaultValid: boolean): Vau
     renamingPath,
     onItemMove,
     onItemResize,
+    onItemColor,
+    mintItemKeyAt,
     onCreateItem,
     onRequestRename,
     onRenameCommit,

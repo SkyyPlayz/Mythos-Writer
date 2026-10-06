@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from 'react';
 import BoardCanvas from './BoardCanvas';
-import type { BoardItem, BoardTool, BoardFurnitureItemData } from './BoardCanvas';
+import type { BoardItem, BoardFurnitureItemData } from './BoardCanvas';
 import type { FurnitureKind } from './boardLod';
 import RecentlyDeletedPanel from './RecentlyDeletedPanel';
 import { useVaultBoard, vaultPathOf } from './useVaultBoard';
@@ -32,6 +32,7 @@ import { pushUndo, undo as undoLastAction } from '../../lib/notesUndoStack';
 import { NodeIcon } from '../../NodeIcon';
 import { setFrontmatterField } from '../../noteFrontmatter';
 import { invalidateNoteThumbs } from '../../lib/noteThumbnails';
+import { BOARD_CANVAS_TOOLS } from './boardTools';
 import './BoardsTabPanel.css';
 
 /**
@@ -39,9 +40,9 @@ import './BoardsTabPanel.css';
  * prototype's own `bdAdd` seeds exactly (owner-reports/…Liquid Neon.dc.html)
  * so a freshly-created column/checklist/table isn't empty chrome.
  */
-const FURNITURE_SEEDS: Record<FurnitureKind, Record<string, unknown>> = {
+export const FURNITURE_SEEDS: Record<FurnitureKind, Record<string, unknown>> = {
   column: { title: 'New column', items: [{ t: 'First card' }] },
-  check: { title: 'To-do', items: [{ t: 'First task', done: false }, { t: 'Second task', done: false }] },
+  check: { title: 'To-do', items: [] },
   table: { title: 'Table', rows: [['Column', 'Column'], ['', ''], ['', '']] },
   image: { title: 'Image', w: 260, h: 150 },
   sketch: { title: 'Sketch', w: 260, h: 150 },
@@ -117,18 +118,6 @@ function breadcrumbForFolder(folderPath: string): BreadcrumbEntry[] {
 
 /** SKY-11191: `aria-activedescendant` target for the nth search hit. */
 const searchOptionId = (index: number): string => `boards-search-hit-${index}`;
-
-/**
- * SKY-11187 §5: the canvas tool palette. Text labels rather than glyphs —
- * there is no owner mockup for this row yet, and a labelled control is the
- * one version that is unambiguous to both a screen reader and a first-time
- * user. Swap in the mockup's icons when the Boards chrome spec lands.
- */
-const TOOLS: ReadonlyArray<{ id: BoardTool; label: string; title: string }> = [
-  { id: 'select', label: 'Select', title: 'Select and move items' },
-  { id: 'note', label: 'Note', title: 'Note tool — click the canvas to create a note' },
-  { id: 'board', label: 'Board', title: 'Board tool — click the canvas to create a board' },
-];
 
 /** F1#5: folder node in the Boards left-nav tree. */
 export interface BoardsNavFolderNode {
@@ -460,6 +449,17 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     };
   }, [wikiLinkOverlay, notesVaultValid]);
 
+  const linkedNotesByStem = useMemo(() => {
+    const map: Record<string, { name: string; excerpt?: string }> = {};
+    for (const item of items) {
+      if (item.kind !== 'note') continue;
+      const stem = item.name;
+      map[stem] = { name: item.name, excerpt: item.excerpt };
+      map[item.path.replace(/\.md$/i, '')] = map[stem];
+    }
+    return map;
+  }, [items]);
+
   const wikiLinks = useMemo(
     () =>
       wikiLinkOverlay
@@ -724,35 +724,33 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     onOpenNote?.(resolved);
   }, [onOpenNote, notePaths]);
 
-  // ── SKY-11188: "Connect" tool — line furniture (§4) between two furniture
-  // items, picked by two clicks (mirrors the prototype's bdTool==='line'). ──
-  const [lineToolActive, setLineToolActive] = useState(false);
-  const [lineFromId, setLineFromId] = useState<string | null>(null);
+  // PLAN-058 L3 (72:26): Line tool — two endpoint keys (`n:`/`v:`/`x:`).
+  const [lineFromKey, setLineFromKey] = useState<string | null>(null);
 
-  const handleFurniturePick = useCallback(async (id: string) => {
-    if (!lineFromId) {
-      setLineFromId(id);
+  // Critic S3: a half-picked connector must not finish on another board.
+  useEffect(() => {
+    setLineFromKey(null);
+  }, [currentFolder]);
+
+  const handleLineEndpointPick = useCallback(async (endpointKey: string) => {
+    if (!lineFromKey) {
+      setLineFromKey(endpointKey);
       return;
     }
-    if (lineFromId === id) {
-      setLineFromId(null);
+    if (lineFromKey === endpointKey) {
+      setLineFromKey(null);
       return;
     }
-    const from = lineFromId;
-    setLineFromId(null);
-    setLineToolActive(false);
+    const from = lineFromKey;
+    setLineFromKey(null);
+    board.setActiveTool('select');
     try {
       const { item } = await window.api.notesBoardFurnitureCreate(currentFolder, {
         k: 'line',
-        // `line` has no rendered box (BoardFurnitureLines draws it as an SVG
-        // overlay from its endpoints' own boxes), but sanitizeFurniture
-        // (notesBoard.ts) rejects any record missing x/y — without inert
-        // coordinates here the connector survives the initial write but is
-        // dropped on the very next reload.
         x: 0,
         y: 0,
-        from: `x:${from}`,
-        to: `x:${id}`,
+        from,
+        to: endpointKey,
         label: '',
         color: null,
       });
@@ -760,7 +758,19 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
     } catch (err) {
       console.warn('[Boards] failed to create connector', err);
     }
-  }, [currentFolder, lineFromId, setFurniture]);
+  }, [currentFolder, lineFromKey, setFurniture, board]);
+
+  const handleFurnitureAddTask = useCallback(async (furnitureId: string) => {
+    const current = furniture.find((f) => f.id === furnitureId);
+    if (!current || current.k !== 'check') return;
+    const nextItems = [...(current.items ?? []), { t: 'New task', done: false }];
+    try {
+      const { item } = await window.api.notesBoardFurnitureUpdate(currentFolder, furnitureId, { items: nextItems });
+      if (item) setFurniture((prev) => prev.map((f) => (f.id === furnitureId ? (item as unknown as BoardFurnitureItemData) : f)));
+    } catch (err) {
+      console.warn('[Boards] failed to add checklist item', err);
+    }
+  }, [currentFolder, furniture, setFurniture]);
 
   // SKY-11190: itemPath is relative to the current board (BoardCanvas's
   // contract — see handleEnterBoard below); resolve to the full
@@ -1002,32 +1012,6 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
         ))}
 
         {/*
-          SKY-11187 §5: the placement tools. A radio group, because exactly
-          one tool is armed at a time and arrow keys are the expected way to
-          move between them; `aria-checked` carries the state that the neon
-          pressed styling shows.
-        */}
-        <div className="boards-tab-panel__tools" role="radiogroup" aria-label="Board tools">
-          {TOOLS.map((tool) => (
-            <button
-              key={tool.id}
-              type="button"
-              role="radio"
-              aria-checked={board.activeTool === tool.id}
-              className={
-                'boards-tab-panel__tool' +
-                (board.activeTool === tool.id ? ' boards-tab-panel__tool--active' : '')
-              }
-              data-tool={tool.id}
-              title={tool.title}
-              onClick={() => board.setActiveTool(tool.id)}
-            >
-              {tool.label}
-            </button>
-          ))}
-        </div>
-
-        {/*
           SKY-11191 §10: the two derived-view toggles. Plain toggle buttons
           rather than a second radio group — the overlay and the minimap are
           independent, and either can be on without the other.
@@ -1102,34 +1086,6 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
           creation belongs on the TOP toolbar with the rest of the board chrome,
           not a second strip under the canvas. Zoom stays a floating canvas pill
           (SKY-11566 BD-4). */}
-      {!board.loading && !board.error && (
-        <div className="boards-tab-panel__furniture-toolbar" role="group" aria-label="Add furniture">
-          {FURNITURE_TOOLBAR_KINDS.map(({ kind, label }) => (
-            <button
-              key={kind}
-              type="button"
-              className="boards-tab-panel__furniture-btn"
-              onClick={() => void handleFurnitureCreate(kind)}
-            >
-              + {label}
-            </button>
-          ))}
-          <button
-            type="button"
-            className={
-              'boards-tab-panel__furniture-btn' +
-              (lineToolActive ? ' boards-tab-panel__furniture-btn--active' : '')
-            }
-            aria-pressed={lineToolActive}
-            onClick={() => {
-              setLineToolActive((on) => !on);
-              setLineFromId(null);
-            }}
-          >
-            {lineToolActive ? (lineFromId ? 'Click the item to connect to…' : 'Click an item to connect…') : '+ Connector'}
-          </button>
-        </div>
-      )}
 
       {/* SKY-11189 §8: dropped out of <nav> itself for the same reason the
           search results are (comment above) — the crumb bar's overflow-x:auto
@@ -1188,6 +1144,51 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
       ) : board.error ? (
         <div className="boards-tab-panel__error" role="alert">{board.error}</div>
       ) : (
+        <div className="boards-tab-panel__canvas-workspace">
+      {!board.loading && !board.error && (
+        <div className="boards-tab-panel__furniture-toolbar" role="group" aria-label="Add furniture">
+          {FURNITURE_TOOLBAR_KINDS.map(({ kind, label }) => (
+            <button
+              key={kind}
+              type="button"
+              className="boards-tab-panel__furniture-btn"
+              onClick={() => void handleFurnitureCreate(kind)}
+            >
+              + {label}
+            </button>
+          ))}
+        </div>
+      )}
+        <div className="boards-tab-panel__canvas-row">
+        <div className="boards-tab-panel__tool-rail" role="radiogroup" aria-label="Board tools">
+          {BOARD_CANVAS_TOOLS.map((tool) => (
+            <button
+              key={tool.id}
+              type="button"
+              role="radio"
+              aria-checked={board.activeTool === tool.id}
+              aria-label={tool.label}
+              title={tool.title}
+              className={
+                'boards-tab-panel__tool-rail-btn' +
+                (board.activeTool === tool.id ? ' boards-tab-panel__tool-rail-btn--active' : '')
+              }
+              data-tool={tool.id}
+              onClick={() => {
+                board.setActiveTool(tool.id);
+                if (tool.id !== 'line') setLineFromKey(null);
+              }}
+            >
+              {tool.icon}
+              <span className="boards-tab-panel__tool-rail-label">{tool.label}</span>
+            </button>
+          ))}
+          {board.activeTool === 'line' && (
+            <p className="boards-tab-panel__line-hint" role="status">
+              {lineFromKey ? 'Click the second item…' : 'Click an item to connect…'}
+            </p>
+          )}
+        </div>
         <div className="boards-tab-panel__canvas-wrap">
           {/*
             SKY-11187: an EMPTY board still renders the canvas. It used to
@@ -1222,6 +1223,8 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             minZoom={minZoom}
             onItemMove={board.onItemMove}
             onItemResize={board.onItemResize}
+            onItemColor={board.onItemColor}
+            itemColorsByPath={board.itemColorsByPath}
             onViewChange={handleViewChange}
             onEnterBoard={handleEnterBoard}
             onOpenNote={onOpenNote}
@@ -1240,8 +1243,10 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             onFurnitureCheckToggle={handleFurnitureCheckToggle}
             onFurnitureColor={handleFurnitureColor}
             onOpenNoteRef={handleOpenNoteRef}
-            lineToolActive={lineToolActive}
-            onFurniturePick={(id) => void handleFurniturePick(id)}
+            onLineEndpointPick={(key) => void handleLineEndpointPick(key)}
+            onMintItemKey={board.mintItemKeyAt}
+            onFurnitureAddTask={(id) => void handleFurnitureAddTask(id)}
+            linkedNotesByStem={linkedNotesByStem}
             wikiLinks={wikiLinks}
             wikiLinkOverlay={wikiLinkOverlay}
             linkAnchors={linkAnchors}
@@ -1253,6 +1258,8 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             onSetThumbnail={handleSetThumbnail}
             onClearThumbnail={handleClearThumbnail}
           />
+        </div>
+        </div>
         </div>
       )}
 
