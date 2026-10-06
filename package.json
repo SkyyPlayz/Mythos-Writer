@@ -137,7 +137,7 @@
     "test:e2e:keyboard-shortcuts": "playwright test e2e/keyboard-shortcuts.spec.ts --reporter=list,html",
     "test:e2e:panel-system-wave2f": "playwright test e2e/panel-system-wave2f.spec.ts --reporter=list,html",
     "test:e2e:proposal-card-hover": "playwright test e2e/proposal-card-hover.spec.ts --reporter=list,html",
-    "test:e2e:provider-settings": "playwright test e2e/provider-settings.spec.ts --reporter=list,html",
+    "test:e2e:provider-settings": "playwright test e2e/provider-settings.spec.ts e2e/plan058-lane-b-settings-hygiene.spec.ts --reporter=list,html",
     "test:e2e:settings-category-subnav": "playwright test e2e/settings-category-subnav.spec.ts --reporter=list,html",
     "test:e2e:v1-vault-migration": "playwright test e2e/v1-vault-migration.spec.ts --reporter=list,html",
     "test:e2e:voice-io": "playwright test e2e/voice-io.spec.ts --reporter=list,html",
