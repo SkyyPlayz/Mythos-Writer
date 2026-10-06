@@ -113,18 +113,53 @@ async function enterBoard(page: Page, folder: string): Promise<void> {
  * once the created item's inline rename field is focused — which is only true
  * after the create round-tripped through main and the board reloaded.
  */
+/** Click open canvas (not a folder card) — Home has many tiles; fixed coords miss. */
+async function clickOpenCanvas(
+  page: Page,
+  at?: { x: number; y: number },
+  frac = { fx: 0.75, fy: 0.62 },
+): Promise<void> {
+  if (at) {
+    await page.mouse.click(at.x, at.y);
+    return;
+  }
+  const box = await page.locator('.board-canvas__root').boundingBox();
+  expect(box).toBeTruthy();
+  await page.mouse.click(box!.x + box!.width * frac.fx, box!.y + box!.height * frac.fy);
+}
+
 async function placeWithTool(
   page: Page,
   tool: 'Note' | 'Board',
-  at: { x: number; y: number },
+  at?: { x: number; y: number },
 ): Promise<void> {
-  await page.locator(`.boards-tab-panel__tool[data-tool="${tool.toLowerCase()}"]`).click();
+  await page.locator(`.boards-tab-panel__tool-rail-btn[data-tool="${tool.toLowerCase()}"]`).click();
   await expect(page.locator('.board-canvas__root')).toHaveAttribute(
     'data-active-tool',
     tool.toLowerCase(),
   );
-  await page.mouse.click(at.x, at.y);
-  await expect(page.locator('.board-canvas__item-rename')).toBeFocused({ timeout: 8_000 });
+  const candidates = at
+    ? [at]
+    : tool === 'Board'
+      ? [{ fx: 0.55, fy: 0.84 }, { fx: 0.88, fy: 0.18 }, { fx: 0.42, fy: 0.78 }]
+      : [{ fx: 0.75, fy: 0.62 }, { fx: 0.88, fy: 0.22 }, { fx: 0.5, fy: 0.85 }];
+
+  let focused = false;
+  for (const point of candidates) {
+    if ('x' in point) {
+      await page.mouse.click(point.x, point.y);
+    } else {
+      await clickOpenCanvas(page, undefined, point);
+    }
+    try {
+      await expect(page.locator('.board-canvas__item-rename')).toBeFocused({ timeout: 2_500 });
+      focused = true;
+      break;
+    } catch {
+      // Home boards are crowded — try the next open-canvas point.
+    }
+  }
+  expect(focused).toBe(true);
 }
 
 /** Type a name into the open inline rename field and commit it. */
@@ -221,7 +256,7 @@ test('SKY-11187 AC2: creating a note at Home succeeds and behaves like any other
     const page = await bootToBoards(app);
     await expect(page.locator('.boards-tab-panel__breadcrumb-current')).toHaveText('Home');
 
-    await placeWithTool(page, 'Note', { x: 700, y: 500 });
+    await placeWithTool(page, 'Note');
     expect(fs.existsSync(path.join(notesDir, 'New note.md'))).toBe(true);
 
     await commitRename(page, 'First Light');
@@ -238,13 +273,13 @@ test('SKY-11187 AC2: creating a note at Home succeeds and behaves like any other
     // An EMPTY board still offers a canvas to click on — the create path used
     // to be unreachable there, because the empty state replaced the canvas
     // instead of layering over it.
-    await placeWithTool(page, 'Board', { x: 1000, y: 620 });
+    await placeWithTool(page, 'Board');
     await commitRename(page, 'Fresh');
     await expect(folderTile(page, 'Fresh')).toBeVisible({ timeout: 8_000 });
     await enterBoard(page, 'Fresh');
     await expect(page.locator('.board-canvas__item')).toHaveCount(0);
 
-    await placeWithTool(page, 'Note', { x: 700, y: 500 });
+    await placeWithTool(page, 'Note');
     await commitRename(page, 'Seedling');
     expect(fs.existsSync(path.join(notesDir, 'Fresh', 'Seedling.md'))).toBe(true);
 

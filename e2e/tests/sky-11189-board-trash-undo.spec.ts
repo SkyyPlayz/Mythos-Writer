@@ -124,7 +124,7 @@ test('SKY-11189 §15 test 8: Ctrl+Z restores before the undo window elapses; let
   const app = await launchApp(userData);
   try {
     const page = await bootToBoards(app);
-    await page.locator('.boards-tab-panel__tool[data-tool="note"]').click();
+    await page.locator('.boards-tab-panel__tool-rail-btn[data-tool="note"]').click();
     await page.mouse.click(700, 500);
     await expect(page.locator('.board-canvas__item-rename')).toBeFocused({ timeout: 8_000 });
     await page.locator('.board-canvas__item-rename').fill('Keepsake');
