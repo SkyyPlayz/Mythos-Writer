@@ -203,7 +203,7 @@ test.describe('PLAN-058 Lane B — settings-write hygiene', () => {
 
     await openSettingsDialog(page);
     await page.screenshot({
-      path: path.resolve(__dirname, '../artifacts/plan058-b2-settings-close.png'),
+      path: '/opt/cursor/artifacts/screenshots/plan058-b2-settings-close.png',
     });
     await closeSettingsDialog(page);
     await page.waitForTimeout(800);
