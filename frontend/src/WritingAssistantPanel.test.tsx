@@ -203,6 +203,7 @@ describe('WritingAssistantPanel — heartbeat scheduler', () => {
     render(<WritingAssistantPanel scene={mockScene} enabled={false} scanIntervalSeconds={10} isActive={true} />);
 
     expect(screen.getByText(/writing coach is disabled/i)).toBeInTheDocument();
+    expect(screen.getByText(/settings → writing partner/i)).toBeInTheDocument();
 
     await act(() => { vi.advanceTimersByTime(30_000); });
     expect(mockWritingScan).not.toHaveBeenCalled();

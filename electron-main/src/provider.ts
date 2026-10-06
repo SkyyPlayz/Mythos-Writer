@@ -931,7 +931,7 @@ export function createProvider(config: ProviderConfig): Provider {
 
 /** Surfaced to the renderer when a call is rejected in manual mode. */
 export const AI_DISABLED_MESSAGE =
-  'AI features are off — every tool is manual. Turn them back on in Settings → AI Agents.';
+  'AI features are off — every tool is manual. Turn them back on in Settings → Model & keys.';
 
 export class AiDisabledError extends Error {
   constructor() {
