@@ -471,6 +471,17 @@ function EventEditor(props: InspectorTabProps & { event: TimelineEvent }) {
             aria-label="Event summary"
             data-testid="trp-event-summary"
           />
+          <FieldLabel title="Vault note path this event is anchored to">LINKED NOTE</FieldLabel>
+          <DraftTextInput
+            className="trp-input"
+            value={event.linkedNotePath ?? ''}
+            placeholder="e.g. Characters/Elara.md"
+            onCommit={(linkedNotePath) =>
+              save({ ...event, linkedNotePath: linkedNotePath.trim() || undefined })
+            }
+            aria-label="Linked note path"
+            data-testid="trp-event-linked-note"
+          />
           <FieldLabel title="Comma-separated tags, shown as chips">IMPACT</FieldLabel>
           <DraftTextInput
             className="trp-input"
@@ -526,6 +537,12 @@ function EventEditor(props: InspectorTabProps & { event: TimelineEvent }) {
             )}
             {event.pov && (
               <div className="trp-static-row"><span>POV</span><span>{event.pov}</span></div>
+            )}
+            {event.linkedNotePath && (
+              <div className="trp-static-row" data-testid="trp-event-linked-note-row">
+                <span>Linked note</span>
+                <span>{event.linkedNotePath}</span>
+              </div>
             )}
           </div>
           {event.summary && (

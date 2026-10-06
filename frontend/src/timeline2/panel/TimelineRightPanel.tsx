@@ -2,6 +2,7 @@
 // Slice E / 03 v2.4.1: tabs are **Inspector · <partner name>** only.
 // Separate Archivist tab is gone; Idea Board lives under Boards (not Timeline).
 import { useState } from 'react';
+import type { Story } from '../../types';
 import type {
   TimelineDefinition,
   TimelineEra,
@@ -9,6 +10,8 @@ import type {
   TimelineSpan,
   TimelinesStore,
 } from '../../timelinesTypes';
+import { PARTNER_ACTIONS, type PartnerActionId } from '../../agents/partnerIdentity';
+import { runPartnerAction } from '../../AgentHubPanel';
 import type { TimelineFlag } from '../../archive/timelineFlags';
 import { resolveInspectorTarget, type TimelineSelection, type TimelineSelectableType } from './selection';
 import { roundWhen, safeCalendar } from '../axis/calendarCodec';
@@ -39,6 +42,8 @@ export interface TimelineRightPanelProps {
   onTabChange: (tab: TimelineRightTab) => void;
   /** Slice E — Writing partner display name for the partner tab label. */
   partnerName?: string;
+  /** F3 / PLAN-058 L4 (FD-3) — partner action chips (Update Timeline, etc.). */
+  story?: Story | null;
   /** Ordered chapter labels (scene-card CHAPTER select). */
   chapterLabels: string[];
   /** Re-plot a card onto a chapter's date (0-based index). */
@@ -156,6 +161,7 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
         {tab === 'partner' && (
           <PartnerTimelineChat
             partnerName={partnerName}
+            story={props.story ?? null}
             flags={props.flags}
             onJumpTo={props.onJumpTo}
             onRebuildTimeline={props.onRebuildTimeline}
@@ -200,6 +206,7 @@ export default function TimelineRightPanel(props: TimelineRightPanelProps) {
 /** F3#7 — unified agent chat + timeline controls button (no Archivist tab). */
 function PartnerTimelineChat({
   partnerName,
+  story,
   flags,
   onJumpTo,
   onRebuildTimeline,
@@ -207,6 +214,7 @@ function PartnerTimelineChat({
   archiveBusy,
 }: {
   partnerName: string;
+  story: Story | null;
   flags: TimelineFlag[];
   onJumpTo: (itemId: string) => void;
   onRebuildTimeline?: () => void;
@@ -216,9 +224,46 @@ function PartnerTimelineChat({
 }) {
   const chat = useMiniAgentChat(PARTNER_SESSION_AGENT, invokeBrainstorm);
   const [controlsOpen, setControlsOpen] = useState(false);
+  const [runningAction, setRunningAction] = useState<PartnerActionId | null>(null);
+
+  const runAction = async (action: PartnerActionId) => {
+    if (runningAction) return;
+    const meta = PARTNER_ACTIONS.find((a) => a.id === action);
+    if (!meta) return;
+    setRunningAction(action);
+    try {
+      const result = await runPartnerAction(action, { scene: null, story });
+      await chat.postActionResult(meta.label, result.text, {
+        cardTitle: result.cardTitle,
+        cardFoot: result.cardFoot,
+        cardKind: result.cardTitle ? 'action' : undefined,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await chat.postActionResult(meta.label, msg || 'Action failed.');
+    } finally {
+      setRunningAction(null);
+    }
+  };
 
   return (
     <div className="trp-partner-hand" data-testid="trp-partner-panel">
+      <div className="trp-partner-actions" role="group" aria-label="Partner actions">
+        {PARTNER_ACTIONS.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            className={`trp-partner-action${runningAction === a.id ? ' trp-partner-action--busy' : ''}`}
+            style={{ '--hand-color': a.color } as React.CSSProperties}
+            data-testid={`trp-partner-action-${a.id}`}
+            title={a.description}
+            disabled={runningAction !== null}
+            onClick={() => { void runAction(a.id); }}
+          >
+            {runningAction === a.id ? `${a.label}…` : a.label}
+          </button>
+        ))}
+      </div>
       <MiniAgentChat
         chat={chat}
         accent="brainstorm"

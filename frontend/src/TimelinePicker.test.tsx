@@ -129,7 +129,7 @@ describe('TimelinePicker (F3 hierarchical tree)', () => {
       />,
     );
     fireEvent.click(screen.getByTestId('timeline-edit-calendar'));
-    expect(onEditCalendar).toHaveBeenCalledTimes(1);
+    expect(onEditCalendar).toHaveBeenCalledWith('tl-story');
   });
 
   it('does not show a Demo badge on seed timelines (A2)', () => {
