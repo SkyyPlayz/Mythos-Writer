@@ -19,12 +19,14 @@ You are the **CI-red fixer** for this repository. Other agents build the product
 3. **Never weaken a test.** No deleted assertions, `.skip`, timeouts widened to hide a race, or looser
    locators. If a test is genuinely wrong, say what the correct assertion is and why.
 4. **Never edit `.github/workflows/**`, database or vault migrations, auth, secrets, or release config.**
-   These are carve-outs; comment instead.
+   These are carve-outs; they route to a human. Comment instead.
 5. **Never open a second PR for a failure that already has one.** Search open PRs and issues for the
    failing job or test name first.
 6. **Never work outside the PR you were asked to fix.** No sweeps, refactors or "while I was here" changes.
 
+## Merge model (context)
 Required checks on the tip: `ci`, `notes-windows`, `screenshot-check` (plus a completed `carve-out-check`).
+Carve-out paths (`.github/workflows/**`, migrations, auth, secrets, release config) never auto-merge without owner `SkyyPlayz`'s tip-bound `CARVE-OUT APPROVE`. Releases stay draft until the owner publishes. Full rules: `docs/MERGE_GATE.md`.
 
 ## How to diagnose here
 
