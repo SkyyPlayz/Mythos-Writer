@@ -544,7 +544,7 @@ test('TC-V-09: Settings Voice section renders all required fields in Electron', 
   // SKY-10668: the panel now opens on Appearance — go to the AI Agents page,
   // which hosts the Voice section.
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
-  await page.locator('[data-testid="settings-cat-agents"]').click();
+  await page.locator('[data-testid="settings-cat-voice"]').click();
 
   // Wait for the Voice section
   await expect(page.locator('#section-voice, [id="section-voice"]')).toBeAttached({
@@ -588,7 +588,7 @@ test('TC-V-09b: Brainstorm voice toggle controls Brainstorm mic visibility', asy
   // Slice C: Partner voice toggle lives on Model & keys › Voice (Soft-FAIL
   // removed the four classic agent cards that previously hosted it).
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
-  await page.locator('[data-testid="settings-cat-agents"]').click();
+  await page.locator('[data-testid="settings-cat-voice"]').click();
   const brainstormVoiceToggle = page.locator('#brainstorm-voice-enabled');
   await expect(brainstormVoiceToggle).toBeChecked({ timeout: 6_000 });
   await page.locator('label[for="brainstorm-voice-enabled"] .settings-toggle-track').click();
@@ -604,7 +604,7 @@ test('TC-V-09b: Brainstorm voice toggle controls Brainstorm mic visibility', asy
     await page.locator('[title*="Settings"], [title*="settings"]').first().click();
   });
   await expect(page.locator('.settings-title')).toBeVisible({ timeout: 5_000 });
-  await page.locator('[data-testid="settings-cat-agents"]').click();
+  await page.locator('[data-testid="settings-cat-voice"]').click();
   await page.locator('label[for="brainstorm-voice-enabled"] .settings-toggle-track').click();
   await expect(brainstormVoiceToggle).toBeChecked();
   await page.getByRole('button', { name: /close settings/i }).click();

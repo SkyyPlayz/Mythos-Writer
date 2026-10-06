@@ -199,7 +199,8 @@ export default function VaultAutoLinkerSection({
       <div className="settings-field settings-field-actions">
         <button
           type="button"
-          className="settings-btn settings-btn--secondary"
+          className="settings-btn settings-btn--secondary settings-btn-danger"
+          data-testid="format-vault-now"
           onClick={async () => {
             setFormatStatus('Formatting…');
             try {

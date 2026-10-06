@@ -17,7 +17,6 @@ import MoveVaultWizard from './MoveVaultWizard';
 import SecurityWarningDialog from './components/SettingsPanel/SecurityWarningDialog';
 import AdvancedAppearancePopover from './components/SettingsPanel/AdvancedAppearancePopover';
 import AiMasterSection from './components/SettingsPanel/sections/AiMasterSection';
-import ProviderSection from './components/SettingsPanel/sections/ProviderSection';
 import ApiKeySection from './components/SettingsPanel/sections/ApiKeySection';
 import VaultHealthSection from './components/SettingsPanel/sections/VaultHealthSection';
 import AutoLinkerSection from './components/SettingsPanel/sections/AutoLinkerSection';
@@ -63,7 +62,6 @@ import {
   DEFAULT_BASE_URLS,
   modelListErrorCopy,
   validateApiKey,
-  providerSupportsVoice,
   LG_DEFAULTS,
   NAV_RAIL_DEFAULTS,
   mergeNavConfigItems,
@@ -223,6 +221,24 @@ export default function SettingsPanel({
     }
   }, []);
 
+  // PLAN-058 L2 (12:44): bucket clicks own the old Provider Configuration
+  // onChange (kind, cleared model, default base URL, model-list fetch).
+  // Not called on open — an untouched panel must not dirty provider.kind.
+  const handleSelectProviderKind = useCallback((next: ProviderKind) => {
+    setProviderKind(next);
+    setProviderApiKeyDirty(false);
+    setTestConnectionStatus('idle');
+    setSavedOk(false);
+    setModelList([]);
+    setModelListStatus('idle');
+    setModelListError(null);
+    setUseCustomInput(false);
+    setProviderModel('');
+    const nextBaseUrl = DEFAULT_BASE_URLS[next] || '';
+    setProviderBaseUrl(nextBaseUrl);
+    void fetchModels(next, nextBaseUrl);
+  }, [fetchModels]);
+
   // Telemetry state (MYT-344 / MYT-779)
   const [telemetryEnabled, setTelemetryEnabled] = useState(false);
 
@@ -234,6 +250,11 @@ export default function SettingsPanel({
   // prototype (SKY-10668 owner request) — safe with the live-persist debounce
   // because appearanceLiveReady consumes the load commit (see below).
   const [settingsCategory, setSettingsCategory] = useState<SettingsCat>(initialCategory ?? 'appearance');
+  const settingsBodyRef = useRef<HTMLDivElement>(null);
+  // PLAN-058 L2 (10:00 / 21:02): each category opens at the top of its page.
+  useEffect(() => {
+    if (settingsBodyRef.current) settingsBodyRef.current.scrollTop = 0;
+  }, [settingsCategory]);
 
   // Critic H6: navigate category in place when parent updates initialCategory
   // (e.g. "Settings → this vault") — do not remount via key (loses unsaved edits).
@@ -931,9 +952,6 @@ export default function SettingsPanel({
     );
   }
 
-  const activeProvider = settings.provider?.kind === providerKind ? settings.provider : undefined;
-  const activeProviderSupportsVoice = providerSupportsVoice(activeProvider);
-
   return (
     <>
     <div className="settings-overlay" onClick={handleBackdropClick} aria-modal="true" role="dialog" aria-label="Settings" aria-labelledby="settings-dialog-title">
@@ -989,7 +1007,8 @@ export default function SettingsPanel({
           ))}
         </nav>
 
-        <div className="settings-body" role="tabpanel" id="settings-category-panel" aria-labelledby={`settings-category-tab-${settingsCategory}`}>
+        <div className="settings-body" ref={settingsBodyRef} role="tabpanel" id="settings-category-panel" aria-labelledby={`settings-category-tab-${settingsCategory}`}>
+          <div className="settings-content-column">
           {/* Page header — prototype settingsMeta title + one-liner (6458).
               Deliberately not a heading element: several section cards carry
               an identically-named h3, and duplicate headings would be noise. */}
@@ -1039,37 +1058,18 @@ export default function SettingsPanel({
                 setShowApiKey={setShowApiKey}
                 setSavedOk={setSavedOk}
                 onMoveVault={handleMoveVault}
-              />
-
-              {/* Legacy provider fields — still drive save/test wiring; bucket UI above is primary. */}
-              <ProviderSection
                 providerKind={providerKind}
-                setProviderKind={setProviderKind}
-                providerApiKey={providerApiKey}
-                setProviderApiKey={setProviderApiKey}
-                providerApiKeyDirty={providerApiKeyDirty}
-                setProviderApiKeyDirty={setProviderApiKeyDirty}
-                providerBaseUrl={providerBaseUrl}
-                setProviderBaseUrl={setProviderBaseUrl}
+                onSelectProviderKind={handleSelectProviderKind}
                 providerModel={providerModel}
                 setProviderModel={setProviderModel}
                 savedProviderApiKey={settings.provider?.apiKey ?? ''}
-                testStatus={testConnectionStatus}
-                testMsg={testConnectionMsg}
-                onTest={handleTestConnection}
                 modelList={modelList}
                 modelListStatus={modelListStatus}
                 modelListError={modelListError}
                 useCustomInput={useCustomInput}
                 setUseCustomInput={setUseCustomInput}
                 onFetchModels={fetchModels}
-                setSavedOk={setSavedOk}
-                activeProviderSupportsVoice={activeProviderSupportsVoice}
                 setTestConnectionStatus={setTestConnectionStatus}
-                setModelList={setModelList}
-                setModelListStatus={setModelListStatus}
-                setModelListError={setModelListError}
-                keyReentryPaths={settings.keyReentryPaths}
               />
 
               {PROVIDER_OPTIONS.find((p) => p.value === providerKind)?.needsKey && (
@@ -1103,18 +1103,20 @@ export default function SettingsPanel({
               <AutoLinkerSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
 
               <JournalSection settings={settings} setSettings={setSettings} setSavedOk={setSavedOk} />
-
-              <VoiceSection
-                settings={settings}
-                setSettings={setSettings}
-                providerKind={providerKind}
-                setSavedOk={setSavedOk}
-                onPickSttBinary={handlePickSttBinary}
-                onPickSttModel={handlePickSttModel}
-              />
               </>
               )}
             </>
+          )}
+
+          {settingsCategory === 'voice' && (
+            <VoiceSection
+              settings={settings}
+              setSettings={setSettings}
+              providerKind={providerKind}
+              setSavedOk={setSavedOk}
+              onPickSttBinary={handlePickSttBinary}
+              onPickSttModel={handlePickSttModel}
+            />
           )}
 
           {settingsCategory === 'vaults' && (
@@ -1221,6 +1223,7 @@ export default function SettingsPanel({
             <TelemetrySection telemetryEnabled={telemetryEnabled} setTelemetryEnabled={setTelemetryEnabled} setSavedOk={setSavedOk} />
           )}
 
+          </div>
         </div>
 
         {/* M28 (§13): right panel — live theme preview + reset. The preview

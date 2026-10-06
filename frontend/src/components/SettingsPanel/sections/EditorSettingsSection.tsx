@@ -6,13 +6,10 @@
 import { useEffect, useState } from 'react';
 import { M24Card, M24Slider, M24Toggle } from './M24Controls';
 import {
-  readDefaultRichPref,
-  readShowMarkdownViewPref,
-  readShowSourceViewPref,
+  readDefaultNoteView,
   subscribeNoteViewPrefs,
-  writeDefaultRichPref,
-  writeShowMarkdownViewPref,
-  writeShowSourceViewPref,
+  writeDefaultNoteView,
+  type DefaultNoteView,
 } from '../../../noteViewPrefs';
 import './M24Sections.css';
 
@@ -22,8 +19,12 @@ interface Props {
   setSavedOk: (ok: boolean) => void;
 }
 
-/** Behavior/autosave defaults — view prefs are localStorage SoT, not EditorPrefs. */
-export const EDITOR_PREFS_DEFAULTS: Required<EditorPrefs> = {
+/**
+ * Behavior/autosave defaults — view prefs are localStorage SoT, not EditorPrefs.
+ * defaultZoom is intentionally absent: spreading these defaults must not reset
+ * the manuscript depth on an unrelated editorPrefs patch.
+ */
+export const EDITOR_PREFS_DEFAULTS: Omit<Required<EditorPrefs>, 'defaultZoom'> = {
   autosaveSeconds: 30, // prototype sx.autosave (HTML 3295)
   spellcheck: true,
   smartQuotes: true,
@@ -32,52 +33,32 @@ export const EDITOR_PREFS_DEFAULTS: Required<EditorPrefs> = {
 };
 
 const BEHAVIOR_TOGGLE_ROWS: {
-  key: keyof Pick<Required<EditorPrefs>, 'spellcheck' | 'smartQuotes' | 'dimFocus' | 'dictation'>;
+  key: keyof Pick<typeof EDITOR_PREFS_DEFAULTS, 'spellcheck' | 'smartQuotes' | 'dimFocus'>;
   label: string;
 }[] = [
   { key: 'spellcheck', label: 'Spellcheck while typing' },
   { key: 'smartQuotes', label: 'Smart quotes & dashes' },
   { key: 'dimFocus', label: 'Focus mode dims window chrome' },
-  { key: 'dictation', label: 'Voice dictation (offline model)' },
 ];
 
-type ViewKey = 'alwaysOpenRich' | 'showMarkdownView' | 'showSourceView';
-
-const VIEW_TOGGLE_ROWS: {
-  key: ViewKey;
-  label: string;
-  hint?: string;
-}[] = [
-  {
-    key: 'alwaysOpenRich',
-    label: 'Always open notes in Rich view',
-    hint: 'When on, notes open in Rich (sticky per-note modes stay stored for when this is off).',
-  },
-  {
-    key: 'showMarkdownView',
-    label: 'Show Markdown view toggle',
-    hint: 'Off by default — only Rich appears in the note gear until enabled.',
-  },
-  {
-    key: 'showSourceView',
-    label: 'Show Source Mode toggle',
-    hint: 'Off by default — only Rich appears in the note gear until enabled.',
-  },
+const NOTE_VIEW_OPTIONS: ReadonlyArray<{ value: DefaultNoteView; label: string }> = [
+  { value: 'rich', label: 'Rich' },
+  { value: 'markdown', label: 'Markdown' },
+  { value: 'source', label: 'Source' },
 ];
 
-function readViewPrefs() {
-  return {
-    alwaysOpenRich: readDefaultRichPref(),
-    showMarkdownView: readShowMarkdownViewPref(),
-    showSourceView: readShowSourceViewPref(),
-  };
-}
+const ZOOM_OPTIONS: ReadonlyArray<{ value: NonNullable<EditorPrefs['defaultZoom']>; label: string }> = [
+  { value: 'book', label: 'Full book' },
+  { value: 'part', label: 'Part' },
+  { value: 'chapter', label: 'Chapter' },
+  { value: 'scene', label: 'Scene' },
+];
 
 export default function EditorSettingsSection({ settings, setSettings, setSavedOk }: Props) {
-  const prefs: Required<EditorPrefs> = { ...EDITOR_PREFS_DEFAULTS, ...settings.editorPrefs };
-  const [viewPrefs, setViewPrefs] = useState(readViewPrefs);
+  const prefs = { ...EDITOR_PREFS_DEFAULTS, ...settings.editorPrefs };
+  const [defaultNoteView, setDefaultNoteView] = useState(readDefaultNoteView);
 
-  useEffect(() => subscribeNoteViewPrefs(() => setViewPrefs(readViewPrefs())), []);
+  useEffect(() => subscribeNoteViewPrefs(() => setDefaultNoteView(readDefaultNoteView())), []);
 
   /** Behavior / autosave — never touches view-pref localStorage. */
   const patchBehavior = (p: Partial<EditorPrefs>) => {
@@ -88,24 +69,14 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
     setSavedOk(false);
   };
 
-  /** Immediate localStorage write (Ivy H3 / F2#15) — not gated on Settings Save. */
-  const setViewPref = (key: ViewKey, value: boolean) => {
-    switch (key) {
-      case 'alwaysOpenRich':
-        writeDefaultRichPref(value);
-        break;
-      case 'showMarkdownView':
-        writeShowMarkdownViewPref(value);
-        break;
-      case 'showSourceView':
-        writeShowSourceViewPref(value);
-        break;
-      default: {
-        const _exhaustive: never = key;
-        void _exhaustive;
-      }
-    }
-    setViewPrefs(readViewPrefs());
+  /** Immediate localStorage write — not gated on Settings Save. Sticky modes stay. */
+  const onDefaultNoteView = (value: DefaultNoteView) => {
+    writeDefaultNoteView(value);
+    setDefaultNoteView(readDefaultNoteView());
+  };
+
+  const onDefaultZoom = (value: NonNullable<EditorPrefs['defaultZoom']>) => {
+    patchBehavior({ defaultZoom: value });
   };
 
   return (
@@ -139,29 +110,52 @@ export default function EditorSettingsSection({ settings, setSettings, setSavedO
             />
           </div>
         ))}
+        <p className="settings-hint" data-testid="editor-dictation-offline">
+          Voice dictation uses the offline model and stays off until you start it in the editor.
+        </p>
       </M24Card>
 
-      <M24Card title="Note view">
+      <M24Card title="Default views">
         <div style={{ fontSize: 10.5, color: '#7686a2', marginBottom: 12 }}>
-          Rich is the default. Enable Markdown or Source here to show them in the note gear menu.
-          Changes apply immediately (same as the note gear).
+          Rich is the default note view. Choosing Markdown or Source also shows that mode in the note gear.
+          Sticky per-note modes stay stored. Changes apply immediately.
         </div>
-        {VIEW_TOGGLE_ROWS.map(({ key, label, hint }) => (
-          <div key={key} style={{ padding: '5px 0' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ flex: 1, fontSize: 11.5, color: '#aebad0' }}>{label}</span>
-              <M24Toggle
-                on={viewPrefs[key]}
-                label={label}
-                testId={`editor-toggle-${key}`}
-                onClick={() => setViewPref(key, !viewPrefs[key])}
-              />
-            </div>
-            {hint ? (
-              <div style={{ fontSize: 10, color: '#7686a2', marginTop: 4, paddingRight: 48 }}>{hint}</div>
-            ) : null}
-          </div>
-        ))}
+        <label className="settings-field" htmlFor="editor-default-note-view">
+          <span className="settings-label">Default note view</span>
+          <select
+            id="editor-default-note-view"
+            className="settings-input settings-select"
+            aria-label="Default note view"
+            data-testid="editor-default-note-view"
+            value={defaultNoteView}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (next === 'rich' || next === 'markdown' || next === 'source') onDefaultNoteView(next);
+            }}
+          >
+            {NOTE_VIEW_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="settings-field" htmlFor="editor-default-zoom">
+          <span className="settings-label">Default manuscript zoom</span>
+          <select
+            id="editor-default-zoom"
+            className="settings-input settings-select"
+            aria-label="Default manuscript zoom"
+            data-testid="editor-default-manuscript-zoom"
+            value={prefs.defaultZoom ?? 'book'}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (next === 'book' || next === 'part' || next === 'chapter' || next === 'scene') onDefaultZoom(next);
+            }}
+          >
+            {ZOOM_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </label>
       </M24Card>
     </section>
   );

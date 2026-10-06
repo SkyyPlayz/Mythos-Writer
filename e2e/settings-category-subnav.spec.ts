@@ -120,10 +120,11 @@ test('SKY-10668: renders the Settings sub-nav in Slice C order, account last', a
   const tabs = page.locator('.settings-cat-nav [role="tab"]');
   await expect(tabs).toHaveText([
     'Appearance',
+    'Vault & Files',
+    'Voice',
     'Writing partner',
     'Model & keys',
     'Editor',
-    'Vault & Files',
     'Sync & Backup',
     'Shortcuts',
     'About',
