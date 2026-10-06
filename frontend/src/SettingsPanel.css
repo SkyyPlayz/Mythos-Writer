@@ -8,8 +8,10 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  /* F2#13 / Probe: leave WindowChrome (44px + 1px hairline) visible — do not
-     cover the top window bar / window controls. */
+  /* F2#13: WindowChrome is a full-width sibling above the main column, so
+     this offset is 0 there and the sheet does not add a second 45px gap.
+     The fallback still clears an in-column title bar. The e2e pin is the
+     viewport: the overlay top sits at or below the chrome bottom. */
   top: var(--shell-titlebar-height, 45px);
   right: 0;
   bottom: 0;

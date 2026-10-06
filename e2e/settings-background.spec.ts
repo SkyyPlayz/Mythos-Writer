@@ -281,13 +281,25 @@ test.describe('F2 Probe fold (#13 · #15) — e2e-shard-1', () => {
     const dialog = f2Page.locator('[role="dialog"][aria-label="Settings"]');
     await expect(dialog).toBeVisible({ timeout: 5_000 });
     const overlay = f2Page.locator('.settings-overlay');
+    const chrome = f2Page.locator('.wc-bar');
     await expect(overlay).toBeVisible();
-    const top = await overlay.evaluate((el) => {
-      const cs = getComputedStyle(el);
-      return { top: cs.top, rectTop: el.getBoundingClientRect().top };
+    await expect(chrome).toBeVisible();
+    const boxes = await f2Page.evaluate(() => {
+      const overlayEl = document.querySelector('.settings-overlay');
+      const chromeEl = document.querySelector('.wc-bar');
+      if (!overlayEl || !chromeEl) return null;
+      const overlayRect = overlayEl.getBoundingClientRect();
+      const chromeRect = chromeEl.getBoundingClientRect();
+      return {
+        overlayTop: overlayRect.top,
+        chromeBottom: chromeRect.bottom,
+        chromeHeight: chromeRect.height,
+      };
     });
-    expect(parseFloat(top.top)).toBeGreaterThanOrEqual(44);
-    expect(top.rectTop).toBeGreaterThanOrEqual(44);
+    expect(boxes).not.toBeNull();
+    expect(boxes!.chromeHeight).toBeGreaterThanOrEqual(44);
+    expect(boxes!.overlayTop).toBeGreaterThanOrEqual(44);
+    expect(boxes!.overlayTop).toBeGreaterThanOrEqual(boxes!.chromeBottom - 1);
     await expect(f2Page.locator('.wc-drag-region, .app-menu-bar').first()).toBeVisible();
   });
 
