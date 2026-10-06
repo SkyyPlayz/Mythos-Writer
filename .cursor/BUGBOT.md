@@ -6,3 +6,4 @@ Mythos Writer is an Electron, local-first fiction writing app. Weigh local-vault
 - Do not loosen security, auth, secrets handling, or release/packaging guards.
 - Keep diffs minimal: no drive-by refactors, renames or formatting churn outside the task.
 - Autofix goes on a new branch or sibling PR. Never commit to a PR tip after TIP FREEZE: a tip push resets the Critic/Shield/Probe gate.
+- Bugbot never merges, approves for merge, or enables auto-merge; merge decisions belong to the Mythos tip-SHA gate.

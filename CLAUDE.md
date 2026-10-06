@@ -8,8 +8,8 @@
 Required: `ci`, `notes-windows`, `screenshot-check`. A branch with any red required check is not done.
 - `ci` aggregates lint, typecheck, unit, `build-electron` and four Playwright e2e shards (path-filtered; docs-only diffs may skip e2e).
 - `notes-windows` runs native Windows notes/vault suites that Linux CI can't see.
-- `screenshot-check`: PRs that touch renderer UI need a screenshot in the PR body.
-- `build-linux` / `build-windows` run only on `main` pushes and `release.yml`. There is no `build-macos` job.
+- `screenshot-check`: PRs that touch renderer UI need a screenshot in the PR body or a comment, or the `screenshot-exempt` label.
+- `build-linux` / `build-windows` run on `main` pushes, `workflow_dispatch`, and `release.yml` (not on pull requests). There is no `build-macos` job.
 - A red required check that is unrelated to your diff still blocks. Report it; don't work around it.
 
 ## Never merge

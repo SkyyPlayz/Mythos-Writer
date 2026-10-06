@@ -217,7 +217,7 @@ Move to `docs/archive/` or `plans/archive/` and leave a one-line stub so old lin
 
 | Path | Why obsolete |
 |---|---|
-| `docs/archive/FABLE-PICKUP.md` | 2026-07-14 Paperclip→Fable handoff. Lists #935/#933/#931/#914 as open. All long merged. Moved off the root so an agent does not treat it as current. |
+| `FABLE-PICKUP.md` | 2026-07-14 Paperclip→Fable handoff. Lists #935/#933/#931/#914 as open. All long merged. **Misleading if an agent reads the root.** (done in #1679) |
 | `docs/releases/BETA4-PICKUP-2026-07-15.md` | Same era. "Ivy merges; ignore close-ping." |
 | `docs/releases/BETA-LIQUID-NEON.md` | Beta 3 plan. Points at `design-handoff/prototype/` which is `MOVED.md`. Superseded by BETA-REFINE. |
 | `plans/BETA-2-ROADMAP.md` | 2026-07-02 Beta 2 parts A–I. |
@@ -242,7 +242,7 @@ Keep at repo root (agents and humans look here first):
 
 Move off the root in P2:
 
-- `docs/archive/FABLE-PICKUP.md` (moved off the root)
+- `FABLE-PICKUP.md` (done in #1679)
 - `SKY-456-SPEC.md`, `SKY-2968-component-spec.md`, `SKY-2970-onboarding-v0-3-ux-spec.md`
 - `ENGINEERING_LESSONS.md` → `docs/ENGINEERING_LESSONS.md` (update links)
 
@@ -608,7 +608,7 @@ A dedicated hygiene PR is the wrong vehicle — this is a `git push origin --del
 
 | Action | Paths / notes |
 |---|---|
-| Archive obsolete docs | Root `SKY-456-SPEC.md`, `SKY-2968-component-spec.md`, `SKY-2970-onboarding-v0-3-ux-spec.md`, `docs/archive/FABLE-PICKUP.md`; `docs/releases/BETA-LIQUID-NEON.md`, `BETA4-PICKUP-2026-07-15.md`; `plans/BETA-2-ROADMAP.md`, `plans/PROJECT_PLAN.md`; `design-handoff/` root stub; ProjectGoalOverView 01–12 (leave 00/13/14/15) |
+| Archive obsolete docs | Root `SKY-456-SPEC.md`, `SKY-2968-component-spec.md`, `SKY-2970-onboarding-v0-3-ux-spec.md`, `FABLE-PICKUP.md` (done in #1679); `docs/releases/BETA-LIQUID-NEON.md`, `BETA4-PICKUP-2026-07-15.md`; `plans/BETA-2-ROADMAP.md`, `plans/PROJECT_PLAN.md`; `design-handoff/` root stub; ProjectGoalOverView 01–12 (leave 00/13/14/15) |
 | Relocate lessons | `ENGINEERING_LESSONS.md` → `docs/ENGINEERING_LESSONS.md` |
 | Capture-spec fold | `e2e/capture-*.spec.ts` → `e2e/capture/` or delete once media is archived |
 | VR decision | Commit baselines **or** remove shard-3 `test:e2e:visual-regression` |
@@ -727,7 +727,7 @@ Tracked bytes / file counts by top-level path:
 | 3,549,654 | 277 | `e2e/` | Keep shard specs; P2 capture-* |
 | 1,576,121 | 5 | `build/` | Keep |
 | 1,137,888 | 15 | `plugin/` | Keep or extract (P2) |
-| 729,704 | 25 | (repo root files) | Keep README/CI; `docs/archive/HANDOFF.md`; P2 move SKY-* / FABLE |
+| 729,704 | 25 | (repo root files) | Keep README/CI/HANDOFF; P2 move SKY-* / FABLE (done in #1679) |
 | 453,785 | 18 | `e2e-visual-artifacts/` | P1 `git rm --cached` |
 | 203,070 | 24 | `scripts/` | Keep live; P1 paperclip/one-offs |
 | 134,439 | 18 | `.github/` | Keep ci/release; P1 close-ping/watchdog |
