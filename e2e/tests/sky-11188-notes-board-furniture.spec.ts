@@ -173,7 +173,7 @@ test('SKY-11188 §4 acceptance criterion: deleting an item cascade-deletes every
 
     // Connect the two via the "Connector" tool — a real two-click interaction,
     // not a seeded line record.
-    await page.locator('.boards-tab-panel__furniture-btn', { hasText: 'Connector' }).click();
+    await page.locator('.boards-tab-panel__tool-rail-btn[data-tool="line"]').click();
     await furnitureOfKind(page, 'column').click();
     await furnitureOfKind(page, 'table').click();
 
@@ -214,7 +214,7 @@ test('SKY-11188 Copilot finding: a connector survives a reload instead of vanish
     await addFurniture(page, 'Table');
     await expect(furnitureItems(page)).toHaveCount(2);
 
-    await page.locator('.boards-tab-panel__furniture-btn', { hasText: 'Connector' }).click();
+    await page.locator('.boards-tab-panel__tool-rail-btn[data-tool="line"]').click();
     await furnitureOfKind(page, 'column').click();
     await furnitureOfKind(page, 'table').click();
     await expect(page.locator('.board-canvas__lines line')).toHaveCount(1);
@@ -353,7 +353,8 @@ test('SKY-11794: a column ref still opens the note after a same-session rename r
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();
     await expect(page.locator('.board-canvas__root')).toBeVisible({ timeout: 8_000 });
 
-    const refLink = page.locator('.board-canvas__furniture-ref', { hasText: 'Mira Veynn' });
+    // Rename cascade retargets the column ref; L3 linked-note preview shows the resolved title.
+    const refLink = page.locator('.board-canvas__furniture-ref', { hasText: 'Mira Thorne' });
     await expect(refLink).toBeVisible();
     await refLink.click();
 

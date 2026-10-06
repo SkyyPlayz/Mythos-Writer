@@ -19,7 +19,7 @@
  * accent blocks reads as the board's shape.
  */
 import { memo, useEffect, useRef, useState } from 'react';
-import type { MouseEvent, KeyboardEvent } from 'react';
+import type { CSSProperties, MouseEvent, KeyboardEvent } from 'react';
 import { NodeIcon } from '../../NodeIcon';
 import type { VaultIconEntry } from '../../iconUtils';
 import { NoteThumbnail } from '../../components/NoteThumbnail';
@@ -149,6 +149,8 @@ export interface BoardCardProps {
   onRenameCommit?: (path: string, newName: string) => void;
   onRenameCancel?: () => void;
   icon?: VaultIconEntry;
+  /** PLAN-058 L3: Store B accent override for rim/glow (--board-item-n). */
+  accentColor?: string;
 }
 
 function BoardCardImpl({
@@ -171,6 +173,7 @@ function BoardCardImpl({
   onRenameCommit,
   onRenameCancel,
   icon,
+  accentColor,
 }: BoardCardProps) {
   const isFolder = item.kind === 'folder';
   const hasThumb = itemHasThumb(item);
@@ -205,7 +208,13 @@ function BoardCardImpl({
   return (
     <div
       className={className}
-      style={{ left: x, top: y, width: w, height: h }}
+      style={{
+        left: x,
+        top: y,
+        width: w,
+        height: h,
+        ...(accentColor ? { '--board-item-n': accentColor } as CSSProperties : {}),
+      }}
       onMouseDown={(e) => onItemMouseDown(e, item.path, { x, y, w, h })}
       onContextMenu={onContextMenu ? (e) => onContextMenu(e, item.path) : undefined}
       onDoubleClick={
