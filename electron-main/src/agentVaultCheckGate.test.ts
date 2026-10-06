@@ -201,6 +201,44 @@ describe('assertAgentVaultCheckAllowed — PLAN-058 Lane 2b', () => {
     );
     expect(getDbTracked).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { field: 'maxTokensPerDay' as const, value: 'x' },
+    { field: 'maxTokensPerDay' as const, value: Infinity },
+    { field: 'requestsPerMinute' as const, value: 'x' },
+    { field: 'requestsPerMinute' as const, value: null },
+    { field: 'requestsPerMinute' as const, value: Infinity },
+  ])(
+    'refuses when archive $field is non-finite ($value) without calling getDb (Shield RF-2b)',
+    ({ field, value }) => {
+      const settings = enabledSettings({
+        agents: {
+          ...SETTINGS_DEFAULTS.agents,
+          archive: {
+            ...SETTINGS_DEFAULTS.agents.archive,
+            enabled: true,
+            [field]: value as unknown as number,
+          },
+        },
+      });
+      expect(() => assertAgentVaultCheckAllowed(settings, getDbTracked)).toThrow(
+        ARCHIVE_BUDGET_SETTINGS_INVALID_MESSAGE,
+      );
+      expect(getDbTracked).not.toHaveBeenCalled();
+    },
+  );
+
+  it('allows when Writing Coach is off and Archive is on (N1)', () => {
+    const settings = enabledSettings({
+      agents: {
+        ...SETTINGS_DEFAULTS.agents,
+        writingAssistant: { ...SETTINGS_DEFAULTS.agents.writingAssistant, enabled: false },
+        archive: { ...SETTINGS_DEFAULTS.agents.archive, enabled: true },
+      },
+    });
+    expect(() => assertAgentVaultCheckAllowed(settings, getDbTracked)).not.toThrow();
+    expect(getDbTracked).toHaveBeenCalledOnce();
+  });
 });
 
 describe('assertAgentVaultCheckAllowed — settings parse fallback (Shield RF-1)', () => {
@@ -241,12 +279,25 @@ describe('assertAgentVaultCheckAllowed — settings parse fallback (Shield RF-1)
   });
 
   it('loadAppSettingsFrom missing file keeps fallback false and guard allows', () => {
-    const { settingsPath, store, dir } = mkSettingsStore();
+    const { store, dir } = mkSettingsStore();
     const missingPath = path.join(dir, 'no-settings-yet.json');
     const settings = loadAppSettingsFrom(missingPath, () => store);
     expect(appSettingsLoad.settingsLoadUsedParseFallbackOnLastRead()).toBe(false);
     const db = generationLogOnlyDb();
     expect(() => assertAgentVaultCheckAllowed(settings, () => db)).not.toThrow();
+  });
+
+  it('malformed settings then valid read allows vault check (N2)', () => {
+    const { settingsPath, store } = mkSettingsStore();
+    fs.writeFileSync(settingsPath, '{ not json');
+    const getDb = vi.fn(() => ({}) as DatabaseSync);
+    expect(() => assertAgentVaultCheckAllowed(loadAppSettingsFrom(settingsPath, () => store), getDb)).toThrow(
+      SETTINGS_UNREADABLE_MESSAGE,
+    );
+    fs.writeFileSync(settingsPath, JSON.stringify(enabledSettings()));
+    const db = generationLogOnlyDb();
+    expect(() => assertAgentVaultCheckAllowed(loadAppSettingsFrom(settingsPath, () => store), () => db)).not.toThrow();
+    expect(getDb).not.toHaveBeenCalled();
   });
 });
 
@@ -381,6 +432,9 @@ describe('PLAN-058 Lane 2b source pin (Shield RF-3, Probe P1–P3)', () => {
     const rawBody = handler?.[1] ?? '';
     const body = stripJsComments(rawBody);
     expect(body).toMatch(/assertAgentVaultCheckAllowed\s*\(\s*loadAppSettings\s*\(\s*\)/);
+    expect(body).toMatch(
+      /if\s*\(\s*!isFromTopFrame\(\s*event\s*\)\s*\)\s*return\s+UNTRUSTED_FRAME_REJECTION\s*;\s*assertAgentVaultCheckAllowed\(\s*loadAppSettings\(\s*\)\s*,/,
+    );
     expect(body).not.toMatch(/try\s*\{[\s\S]*assertAgentVaultCheckAllowed/);
     expect(body).not.toMatch(/void\s+0\s*&&\s*assertAgentVaultCheckAllowed/);
     const frameIdx = body.indexOf('isFromTopFrame');
