@@ -39,4 +39,5 @@ describe('PLAN-058 L3 boards pins', () => {
     expect(css).toContain('boards-tab-panel__tool-rail');
     expect(css).toContain('boards-tab-panel__canvas-workspace');
   });
+
 });

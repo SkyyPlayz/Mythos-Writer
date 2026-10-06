@@ -165,6 +165,11 @@ export interface BoardCanvasProps {
    * PLAN-058 L3 (72:26): Line tool — click picks an endpoint key (`n:`/`v:`/`x:`).
    */
   onLineEndpointPick?: (endpointKey: string) => void;
+  /**
+   * Mint a Store B item key for a never-arranged card (patchLayout at its live
+   * position) so the Line tool can connect fresh cards this session.
+   */
+  onMintItemKey?: (itemPath: string, x: number, y: number) => Promise<string | undefined>;
 
   // ── SKY-11191: wiki-link overlay + minimap (§10) ──
   /**
@@ -249,6 +254,7 @@ export default function BoardCanvas({
   linkedNotesByStem = {},
   itemColorsByPath = {},
   onLineEndpointPick,
+  onMintItemKey,
   wikiLinks,
   wikiLinkOverlay = false,
   linkAnchors,
@@ -547,23 +553,46 @@ export default function BoardCanvas({
   const [draggingPath, setDraggingPath] = useState<string | null>(null);
   const [localPositions, setLocalPositions] = useState<Record<string, { x: number; y: number }>>({});
 
+  const livePositionForPath = useCallback(
+    (p: string, primary?: ItemRect) => {
+      const local = localPositions[p];
+      if (local) return local;
+      const resolved = resolvedItems.find((r) => r.item.path === p);
+      if (resolved) return { x: resolved.layout.x, y: resolved.layout.y };
+      if (primary) return { x: primary.x, y: primary.y };
+      return null;
+    },
+    [localPositions, resolvedItems],
+  );
+
   const handleItemMouseDown = useCallback((e: MouseEvent<HTMLDivElement>, path: string, rect: ItemRect) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest('.board-canvas__resize-handle')) return;
+    // SKY-11187 / Critic H1: placement on a card uses the same world point as empty canvas.
+    if (activeTool === 'note' || activeTool === 'board') {
+      e.stopPropagation();
+      const point = worldPointFrom(e.clientX, e.clientY);
+      if (point) onCreateItem?.(activeTool === 'board' ? 'folder' : 'note', point.x, point.y);
+      return;
+    }
     e.stopPropagation();
     if (activeTool === 'line') {
       const key = itemKeysByPath[path];
-      if (key) onLineEndpointPick?.(key);
+      if (key) {
+        onLineEndpointPick?.(key);
+        return;
+      }
+      if (onMintItemKey) {
+        void onMintItemKey(path, rect.x, rect.y).then((minted) => {
+          if (minted) onLineEndpointPick?.(minted);
+        });
+      }
       return;
     }
     if (activeTool === 'pan' || e.altKey) {
       startPanDrag(e.clientX, e.clientY);
       return;
     }
-    // SKY-11187: with a placement tool armed, a press on a card is still a
-    // press on the canvas — let it bubble so the tool places there instead of
-    // starting a drag the user did not ask for.
-    if (activeTool !== 'select') return;
     // SKY-11189 §7: ctrl/cmd/shift+click toggles membership in the
     // multi-selection instead of starting a drag.
     if (e.shiftKey || e.ctrlKey || e.metaKey) {
@@ -585,14 +614,8 @@ export default function BoardCanvas({
     setSelectedFurnitureId(null);
     const startPositions: Record<string, { x: number; y: number }> = {};
     for (const p of group) {
-      if (p === path) {
-        startPositions[p] = { x: rect.x, y: rect.y };
-        continue;
-      }
-      const layout = savedLayout[p];
-      if (layout?.x != null && layout?.y != null) {
-        startPositions[p] = { x: layout.x, y: layout.y };
-      }
+      const pos = livePositionForPath(p, p === path ? rect : undefined);
+      if (pos) startPositions[p] = pos;
     }
     const pathsToDrag = group.filter((p) => startPositions[p]);
     itemDragRef.current = {
@@ -603,7 +626,18 @@ export default function BoardCanvas({
       latest: null,
     };
     setDraggingPath(path);
-  }, [activeTool, selectedPath, multiSelected, itemKeysByPath, onLineEndpointPick, startPanDrag, savedLayout]);
+  }, [
+    activeTool,
+    selectedPath,
+    multiSelected,
+    itemKeysByPath,
+    onLineEndpointPick,
+    onMintItemKey,
+    startPanDrag,
+    livePositionForPath,
+    worldPointFrom,
+    onCreateItem,
+  ]);
 
   useEffect(() => {
     const onMouseMove = (e: globalThis.MouseEvent) => {

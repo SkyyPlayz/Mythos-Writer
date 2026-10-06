@@ -727,6 +727,11 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
   // PLAN-058 L3 (72:26): Line tool — two endpoint keys (`n:`/`v:`/`x:`).
   const [lineFromKey, setLineFromKey] = useState<string | null>(null);
 
+  // Critic S3: a half-picked connector must not finish on another board.
+  useEffect(() => {
+    setLineFromKey(null);
+  }, [currentFolder]);
+
   const handleLineEndpointPick = useCallback(async (endpointKey: string) => {
     if (!lineFromKey) {
       setLineFromKey(endpointKey);
@@ -1239,6 +1244,7 @@ export default function BoardsTabPanel({ notesVaultRoot, notesVaultValid, minZoo
             onFurnitureColor={handleFurnitureColor}
             onOpenNoteRef={handleOpenNoteRef}
             onLineEndpointPick={(key) => void handleLineEndpointPick(key)}
+            onMintItemKey={board.mintItemKeyAt}
             onFurnitureAddTask={(id) => void handleFurnitureAddTask(id)}
             linkedNotesByStem={linkedNotesByStem}
             wikiLinks={wikiLinks}
