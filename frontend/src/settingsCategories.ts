@@ -88,6 +88,7 @@ export const SETTINGS_CATEGORIES: readonly SettingsCategory[] = [
       'section-partner-limits',
       'section-tools',
       'section-heartbeat',
+      'section-quick-command-prompts', // PLAN-058 L7 (60:50)
       // F3 — Earlier chats / SessionHistoryViewer on Writing partner
       // (AgentsSection unmounted; partner spine sessions are brainstorm).
       'section-partner-history',
