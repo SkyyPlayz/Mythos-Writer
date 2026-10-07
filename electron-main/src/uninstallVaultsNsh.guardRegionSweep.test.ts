@@ -10,23 +10,23 @@ import {
 } from './sidecarTraversalScan.test-helpers.js';
 
 /**
- * Probe re-baseline sweep: primary mutants on these lines do not change VM table outcomes
- * (pin mode still red). One-line justification each.
+ * Re-baseline sweep: primary mutant does not change VM tables (pin mode still red).
  */
 export const SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES: Readonly<
   Record<number, string>
-> = {
-  52: 'StrCmp $1 "" Nop; read-trim VM still yields empty for blank-line fixtures via final $1 check.',
-  53: 'StrCpy $7 0 Nop; scan loop still starts at index 0 when $7 unset in the VM.',
-  65: 'Inner backslash second-dot StrCmp Nop; reject table paths hit :63/:68 without this disambiguation.',
-  70: 'Goto mythos_trav_inc Nop; fall-through still reaches increment for table paths.',
-  72: 'Forward `/` entry StrCmp Nop; C:/ reject rows hit deeper `/.` and `/..` checks.',
-  81: 'Forward inner second-dot StrCmp Nop; redundant with :75/:78/:85 on table paths.',
-  90: 'uninstall_vault_trav_ok: label rename; rebaselined VM rebinds the label at the same PC.',
-  103: 'StrCmp $4 $5 Nop; APPDATA rows unchanged (prefix mismatch still falls through to :104).',
+> = {};
+
+/**
+ * NSIS guard is stricter than the behavioural VM tables on these lines (honest blind spot).
+ */
+export const SIDECAR_GUARD_SWEEP_STRONGER_THAN_VM_TABLES: Readonly<Record<number, string>> = {
+  52: 'StrCmp $1 "" Nop: blank sidecar lines still trim to empty in the read-trim VM exit path.',
+  72: 'Goto mythos_trav_inc Nop after mixed `\\..`+`/` reject; table rows already vault_read at :71.',
+  105:
+    'StrCmp $4 $5 Nop: APPDATA prefix gate; tail row + extended VM still match Nop fall-through on table paths.',
 };
 
-describe('sidecar guard region sweep :43-:104 (buildIntegrity excluded)', () => {
+describe('sidecar guard region sweep :43-:106 (buildIntegrity excluded)', () => {
   const nsh = loadUninstallVaultsNsh();
 
   describe('mode (1) normal — exact region pin', () => {
@@ -48,7 +48,22 @@ describe('sidecar guard region sweep :43-:104 (buildIntegrity excluded)', () => 
       fileLine <= SIDECAR_GUARD_REGION_FILE_LINE_LAST;
       fileLine += 1
     ) {
+      const stronger = SIDECAR_GUARD_SWEEP_STRONGER_THAN_VM_TABLES[fileLine];
       const equiv = SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[fileLine];
+      if (fileLine === 90) {
+        it(`line :${fileLine} primary sweep mutant fails VM (label rename; non-behavioural, pin-only)`, () => {
+          const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
+          expect(() => assertSidecarGuardVmBehaviourTables(mutant)).toThrow();
+        });
+        continue;
+      }
+      if (stronger) {
+        it(`line :${fileLine} NSIS stricter than VM tables (documented): ${stronger}`, () => {
+          const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
+          expect(() => assertSidecarGuardVmBehaviourTables(mutant)).not.toThrow();
+        });
+        continue;
+      }
       if (equiv) {
         it(`line :${fileLine} behaviour-equivalent mutant (documented): ${equiv}`, () => {
           const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);

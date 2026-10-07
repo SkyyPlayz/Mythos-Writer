@@ -22,11 +22,13 @@ export const CANONICAL_TRAVERSAL_SCAN_BLOCK: readonly string[] = [
   '              StrCpy $4 $1 1 $8',
   '              StrCmp $4 "" uninstall_vault_read',
   String.raw`              StrCmp $4 "\" uninstall_vault_read`,
+  '              StrCmp $4 "/" uninstall_vault_read',
   '              StrCmp $4 "." 0 mythos_trav_inc',
   '                IntOp $8 $8 + 1',
   '                StrCpy $4 $1 1 $8',
   '                StrCmp $4 "" uninstall_vault_read',
   String.raw`                StrCmp $4 "\" uninstall_vault_read`,
+  '                StrCmp $4 "/" uninstall_vault_read',
   '                Goto mythos_trav_inc',
   '          mythos_trav_fwd:',
   '          StrCmp $4 "/" 0 mythos_trav_inc',
@@ -54,13 +56,13 @@ export const CANONICAL_TRAVERSAL_SCAN_BLOCK_SHA256 = createHash('sha256')
   .update(CANONICAL_TRAVERSAL_SCAN_BLOCK.join('\n'))
   .digest('hex');
 
-/** Marker-anchored sidecar guard region (file :43–:104): read/trim + traversal + deny + M5. */
+/** Marker-anchored sidecar guard region (file :43–:106): read/trim + traversal + deny + M5 prefix. */
 export const SIDECAR_GUARD_REGION_START_LINE = '        ClearErrors';
 export const SIDECAR_GUARD_REGION_START_FOLLOW_LINE = '        FileRead $0 $1';
 export const SIDECAR_GUARD_REGION_END_LINE = '          StrCmp $1 $5 uninstall_vault_read';
 
 export const SIDECAR_GUARD_REGION_FILE_LINE_FIRST = 43;
-export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 104;
+export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 106;
 
 export function nshExecutableLines(source: string): string {
   return source.replace(/;[^\n]*/g, '');
@@ -162,8 +164,22 @@ function readTravRegister(regs: { $7: number; $8: number }, name: string): numbe
   throw new Error(`unsupported traversal register $${name}`);
 }
 
+export type TravScanRegs = { $7: number; $8: number };
+
 /** Execute mythos_trav_scan … uninstall_vault_trav_ok block for sidecar path $1. */
-export function executeTraversalScanBlock(blockLines: readonly string[], path: string): TravScanOutcome {
+export function executeTraversalScanBlock(
+  blockLines: readonly string[],
+  path: string,
+  initialRegs: TravScanRegs = { $7: 0, $8: 0 },
+): TravScanOutcome {
+  return executeTraversalScanBlockStateful(blockLines, path, initialRegs).outcome;
+}
+
+export function executeTraversalScanBlockStateful(
+  blockLines: readonly string[],
+  path: string,
+  initialRegs: TravScanRegs,
+): { outcome: TravScanOutcome; regs: TravScanRegs } {
   const labels = new Map<string, number>();
   for (let i = 0; i < blockLines.length; i++) {
     const labelMatch = blockLines[i]!.match(/^\s*(\w+):\s*$/);
@@ -178,7 +194,7 @@ export function executeTraversalScanBlock(blockLines: readonly string[], path: s
   }
 
   let $1 = path;
-  const regs = { $7: 0, $8: 0 };
+  const regs = { $7: initialRegs.$7, $8: initialRegs.$8 };
   let $4 = '';
   let pc = 0;
   const maxSteps = path.length * 400 + 2000;
@@ -236,7 +252,7 @@ export function executeTraversalScanBlock(blockLines: readonly string[], path: s
     if (line === 'Goto mythos_trav_inc') {
       const jump = resolveTraversalJump('mythos_trav_inc', labels);
       if (typeof jump === 'string') {
-        return jump;
+        return { outcome: jump, regs };
       }
       pc = jump.pc;
       continue;
@@ -252,7 +268,7 @@ export function executeTraversalScanBlock(blockLines: readonly string[], path: s
       } else {
         const jump = resolveTraversalJump(target, labels);
         if (typeof jump === 'string') {
-          return jump;
+          return { outcome: jump, regs };
         }
         pc = jump.pc;
       }
@@ -266,7 +282,7 @@ export function executeTraversalScanBlock(blockLines: readonly string[], path: s
       if ($4 === lit) {
         const jump = resolveTraversalJump(target, labels);
         if (typeof jump === 'string') {
-          return jump;
+          return { outcome: jump, regs };
         }
         pc = jump.pc;
       } else {
@@ -344,27 +360,53 @@ export function assertTraversalScanBlockExact(nsh: string): void {
 }
 
 function readTrimBlockFromGuardRegion(region: readonly string[]): readonly string[] {
-  return region.slice(0, CANONICAL_READ_TRIM_BLOCK.length);
+  const prep = region.findIndex((l) => l === TRAVERSAL_SCAN_BLOCK_PREP_LINE);
+  if (prep < 0) {
+    throw new Error('StrCpy $7 0 missing from sidecar guard region');
+  }
+  return region.slice(0, prep);
 }
 
 function travBlockFromGuardRegion(region: readonly string[]): readonly string[] {
-  const o = CANONICAL_READ_TRIM_BLOCK.length;
-  return region.slice(o, o + CANONICAL_TRAVERSAL_SCAN_BLOCK.length);
+  const prep = region.findIndex((l) => l === TRAVERSAL_SCAN_BLOCK_PREP_LINE);
+  const end = region.findIndex((l) => l.trim() === TRAVERSAL_SCAN_BLOCK_END_MARKER);
+  if (prep < 0 || end < prep) {
+    throw new Error('traversal scan block markers missing from sidecar guard region');
+  }
+  return region.slice(prep, end + 1);
 }
 
 function denyBlockFromGuardRegion(region: readonly string[]): readonly string[] {
-  const o = CANONICAL_READ_TRIM_BLOCK.length;
-  return region.slice(
-    o + CANONICAL_TRAVERSAL_SCAN_BLOCK.length,
-    o + CANONICAL_TRAVERSAL_SCAN_BLOCK.length + CANONICAL_DENY_PREFIX_BLOCK.length,
-  );
+  const travEnd = region.findIndex((l) => l.trim() === TRAVERSAL_SCAN_BLOCK_END_MARKER);
+  const appdataStart = region.findIndex((l) => l.includes(String.raw`StrCpy $5 "$APPDATA`));
+  if (travEnd < 0 || appdataStart <= travEnd) {
+    throw new Error('deny-prefix block boundaries missing from sidecar guard region');
+  }
+  return region.slice(travEnd + 1, appdataStart);
 }
 
 function appDataM5BlockFromGuardRegion(region: readonly string[]): readonly string[] {
-  const o = CANONICAL_READ_TRIM_BLOCK.length;
-  return region.slice(
-    o + CANONICAL_TRAVERSAL_SCAN_BLOCK.length + CANONICAL_DENY_PREFIX_BLOCK.length,
+  const appdataStart = region.findIndex((l) => l.includes(String.raw`StrCpy $5 "$APPDATA`));
+  if (appdataStart < 0) {
+    throw new Error('APPDATA M5 guard start missing from sidecar guard region');
+  }
+  return region.slice(appdataStart);
+}
+
+function extractAppDataM5GuardLinesFromNsh(nsh: string): string[] {
+  const fileLines = nshFileLines(nsh);
+  const start = fileLines.findIndex((l) => l.includes(String.raw`StrCpy $5 "$APPDATA`));
+  const end = fileLines.findIndex(
+    (l, i) => i > start && l.trim() === 'StrCmp $6 "" uninstall_vault_read',
   );
+  if (start < 0 || end < start) {
+    throw new Error('extended APPDATA M5 guard block missing in uninstall nsh');
+  }
+  return fileLines.slice(start, end + 1);
+}
+
+function extractSidecarGuardRegionForVm(nsh: string): string[] {
+  return extractSidecarGuardRegionLinesRebaselined(nsh);
 }
 
 export function locateSidecarGuardRegion(nsh: string): { start: number; end: number; lines: string[] } {
@@ -375,19 +417,27 @@ export function locateSidecarGuardRegion(nsh: string): { start: number; end: num
   );
   const end = fileLines.findIndex((l, i) => i >= start && l === SIDECAR_GUARD_REGION_END_LINE);
   if (start < 0 || end < start) {
-    throw new Error('sidecar guard region (:43–:104) markers missing in uninstall nsh');
+    throw new Error('sidecar guard region (:43–:106) markers missing in uninstall nsh');
   }
   const lines = fileLines.slice(start, end + 1);
-  if (lines.length !== CANONICAL_SIDECAR_GUARD_REGION.length) {
-    throw new Error(
-      `sidecar guard region line count: expected ${CANONICAL_SIDECAR_GUARD_REGION.length}, got ${lines.length}`,
-    );
-  }
   return { start, end, lines };
 }
 
-export function extractSidecarGuardRegionLines(nsh: string): string[] {
-  return locateSidecarGuardRegion(nsh).lines;
+export function extractSidecarGuardRegionLines(nsh: string, options?: { strictLength?: boolean }): string[] {
+  const located = locateSidecarGuardRegion(nsh);
+  if (options?.strictLength !== false) {
+    if (located.lines.length !== CANONICAL_SIDECAR_GUARD_REGION.length) {
+      throw new Error(
+        `sidecar guard region line count: expected ${CANONICAL_SIDECAR_GUARD_REGION.length}, got ${located.lines.length}`,
+      );
+    }
+  }
+  return located.lines;
+}
+
+/** Re-baseline VM tables: marker slice only (no canonical line-count gate). */
+export function extractSidecarGuardRegionLinesRebaselined(nsh: string): string[] {
+  return extractSidecarGuardRegionLines(nsh, { strictLength: false });
 }
 
 export function spliceSidecarGuardRegion(nsh: string, blockLines: string[]): string {
@@ -423,7 +473,7 @@ export function replaceSidecarGuardFileLine(nsh: string, fileLineOneBased: numbe
 }
 
 export function assertSidecarGuardRegionExact(nsh: string): void {
-  const actual = extractSidecarGuardRegionLines(nsh);
+  const actual = extractSidecarGuardRegionLines(nsh, { strictLength: true });
   const expected = CANONICAL_SIDECAR_GUARD_REGION;
   for (let i = 0; i < expected.length; i++) {
     if (actual[i] !== expected[i]) {
@@ -439,7 +489,7 @@ export function assertSidecarGuardRegionExact(nsh: string): void {
 }
 
 function runTraversalVmFromNsh(path: string, nsh: string): TravScanOutcome {
-  const region = extractSidecarGuardRegionLines(nsh);
+  const region = extractSidecarGuardRegionForVm(nsh);
   return executeTraversalScanBlock(travBlockFromGuardRegion(region), path);
 }
 
@@ -448,7 +498,7 @@ function runDenyPrefixVmFromNsh(
   nsh: string,
   env: SidecarNsisVarEnv,
 ): DenyPrefixOutcome {
-  const region = extractSidecarGuardRegionLines(nsh);
+  const region = extractSidecarGuardRegionForVm(nsh);
   return executeDenyPrefixBlock(denyBlockFromGuardRegion(region), path, env);
 }
 
@@ -620,6 +670,7 @@ export function executeAppDataM5GuardBlock(
   let $3 = 0;
   let $4 = '';
   let $5 = '';
+  let $6 = '';
   let pc = 0;
   while (pc < blockLines.length) {
     const line = blockLines[pc]!.trim();
@@ -655,6 +706,47 @@ export function executeAppDataM5GuardBlock(
       if ($1 === $5) {
         return 'vault_read';
       }
+      pc += 1;
+      continue;
+    }
+    const strCpyTailIdx = line.match(/^StrCpy \$4 \$1 1 \$(\d+)$/);
+    if (strCpyTailIdx) {
+      const len = strCpyTailIdx[1] === '3' ? $3 : 0;
+      $4 = $1.length > len ? $1[len]! : '';
+      pc += 1;
+      continue;
+    }
+    const strCmpBackslash = line.match(/^StrCmp \$4 ("(?:\\.|[^"])*") 0 (\w+)$/);
+    if (strCmpBackslash) {
+      const lit = parseStrCmpQuotedLiteral(strCmpBackslash[1]!);
+      if ($4 === lit) {
+        pc += 1;
+        continue;
+      }
+      return 'allowlist_continue';
+    }
+    const strCpyRemainder = line.match(/^StrCpy \$6 \$1 "" \$(\d+)$/);
+    if (strCpyRemainder) {
+      const from = strCpyRemainder[1] === '3' ? $3 : 0;
+      $6 = $1.slice(from);
+      pc += 1;
+      continue;
+    }
+    const strCpyChopLead = line.match(/^StrCpy \$6 \$6 "" 1$/);
+    if (strCpyChopLead) {
+      $6 = $6.length > 0 ? $6.slice(1) : '';
+      pc += 1;
+      continue;
+    }
+    const strCmpTailEmpty = line.match(/^StrCmp \$6 "" uninstall_vault_read$/);
+    if (strCmpTailEmpty) {
+      if ($6 === '') {
+        return 'vault_read';
+      }
+      pc += 1;
+      continue;
+    }
+    if (line === 'Goto uninstall_vault_do_delete') {
       return 'allowlist_continue';
     }
     if (line === 'Nop') {
@@ -671,8 +763,7 @@ function runAppDataM5VmFromNsh(
   nsh: string,
   env: SidecarNsisVarEnv,
 ): AppDataM5GuardOutcome {
-  const region = extractSidecarGuardRegionLines(nsh);
-  return executeAppDataM5GuardBlock(appDataM5BlockFromGuardRegion(region), path, env);
+  return executeAppDataM5GuardBlock(extractAppDataM5GuardLinesFromNsh(nsh), path, env);
 }
 
 export function locateDenyPrefixBlock(nsh: string): { start: number; end: number; lines: string[] } {
@@ -734,6 +825,10 @@ export const APPDATA_M5_REJECT_PATHS: readonly string[] = [
   'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer',
 ];
 
+/** Prefix match with backslash at $5 length and non-empty tail (:105 gate; red when StrCmp $4 $5 is Nop). */
+export const APPDATA_M5_PREFIX_BACKSLASH_TAIL_PATH =
+  'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x';
+
 export const APPDATA_M5_ALLOW_PATHS: readonly string[] = [
   'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
 ];
@@ -758,7 +853,7 @@ export const DENY_PREFIX_ALLOW_PATHS: readonly string[] = ['C:\\Users\\vault'];
 const DENY_PREFIX_GATE_LINE_COUNT = 3;
 
 function denyPrefixGateBlock(nsh: string, gateIndex: 0 | 1 | 2): readonly string[] {
-  const deny = denyBlockFromGuardRegion(extractSidecarGuardRegionLines(nsh));
+  const deny = denyBlockFromGuardRegion(extractSidecarGuardRegionForVm(nsh));
   const start = gateIndex * DENY_PREFIX_GATE_LINE_COUNT;
   return deny.slice(start, start + DENY_PREFIX_GATE_LINE_COUNT);
 }
@@ -827,7 +922,7 @@ export function assertAppDataM5RejectAllowTables(
       throw new Error(`expected vault_read for APPDATA M5 path ${JSON.stringify(path)}, got ${outcome}`);
     }
   }
-  for (const path of APPDATA_M5_ALLOW_PATHS) {
+  for (const path of [APPDATA_M5_PREFIX_BACKSLASH_TAIL_PATH, ...APPDATA_M5_ALLOW_PATHS]) {
     if (runTraversalVmFromNsh(path, nsh) !== 'trav_ok') {
       throw new Error(`APPDATA M5 allow path must pass traversal: ${JSON.stringify(path)}`);
     }
@@ -956,12 +1051,62 @@ export const SIDECAR_READ_TRIM_GUARD_ROWS: readonly {
   { raw: 'C:/v1.2/x\r\n', expected: 'allowlist_continue' },
 ];
 
+/** Simulate sidecar read loop with persistent $7/$8 across non-empty lines (NSIS :53 carry-over). */
+export function runSidecarMultilineGuardOutcome(
+  nsh: string,
+  rawLines: readonly string[],
+  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+): SidecarGuardPathOutcome {
+  const region = extractSidecarGuardRegionForVm(nsh);
+  const readBlock = readTrimBlockFromGuardRegion(region);
+  const travBlock = travBlockFromGuardRegion(region);
+  let travRegs: TravScanRegs = { $7: 0, $8: 0 };
+  let lastOutcome: SidecarGuardPathOutcome = 'allowlist_continue';
+  for (const raw of rawLines) {
+    const trimmed = executeSidecarReadTrimBlock(readBlock, raw);
+    if (trimmed === 'empty') {
+      continue;
+    }
+    const path = trimmed;
+    const { outcome: travOutcome, regs } = executeTraversalScanBlockStateful(travBlock, path, travRegs);
+    travRegs = regs;
+    if (travOutcome === 'vault_read') {
+      return 'vault_read';
+    }
+    if (travOutcome !== 'trav_ok') {
+      throw new Error(`unexpected traversal outcome ${travOutcome}`);
+    }
+    if (runDenyPrefixVmFromNsh(path, nsh, env) === 'vault_read') {
+      return 'vault_read';
+    }
+    if (runAppDataM5VmFromNsh(path, nsh, env) === 'vault_read') {
+      return 'vault_read';
+    }
+    lastOutcome = 'allowlist_continue';
+  }
+  return lastOutcome;
+}
+
+export function assertSidecarMultilineTravGuardTables(
+  nsh: string,
+  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+): void {
+  for (const row of SIDECAR_MULTILINE_TRAV_GUARD_ROWS) {
+    const outcome = runSidecarMultilineGuardOutcome(nsh, row.rawLines, env);
+    if (outcome !== row.expected) {
+      throw new Error(
+        `multiline sidecar guard expected ${row.expected} for ${JSON.stringify(row.rawLines)}, got ${outcome}`,
+      );
+    }
+  }
+}
+
 /** VM-driven FileRead + trim then full guard on trimmed path (S13 / :43–:52). */
 export function assertSidecarReadTrimGuardTables(
   nsh: string,
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
 ): void {
-  const readBlock = readTrimBlockFromGuardRegion(extractSidecarGuardRegionLines(nsh));
+  const readBlock = readTrimBlockFromGuardRegion(extractSidecarGuardRegionForVm(nsh));
   for (const row of SIDECAR_READ_TRIM_GUARD_ROWS) {
     const trimmed = executeSidecarReadTrimBlock(readBlock, row.raw);
     if (row.expected === 'empty') {
@@ -1024,6 +1169,7 @@ export function assertSidecarGuardVmBehaviourTables(
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
 ): void {
   assertSidecarReadTrimGuardTables(nsh, env);
+  assertSidecarMultilineTravGuardTables(nsh, env);
   assertTraversalRejectAllowTables(nsh);
   assertDenyPrefixVmBehaviourTables(nsh, env);
   assertAppDataM5RejectAllowTables(nsh, env);
@@ -1069,8 +1215,21 @@ export const TRAVERSAL_ALLOW_S12_PATHS: readonly string[] = [
   'C:/v1.2/x',
 ];
 
+/** Mixed separator traversal (Ivy product bug :64/:69 — backslash branch must reject `/` after `\.` / `\..`). */
+export const TRAVERSAL_REJECT_MIXED_SEPARATOR_PATHS: readonly string[] = [
+  'C:\\Users\\me\\Documents\\../Windows',
+  'Documents\\./x',
+  'Documents/..\\Windows',
+  'Documents/.\\x',
+  String.raw`\../x`,
+  String.raw`\./x`,
+  '/..\\x',
+  '/.\\x',
+];
+
 export const TRAVERSAL_REJECT_PATHS: readonly string[] = [
   ...TRAVERSAL_REJECT_S12_PATHS,
+  ...TRAVERSAL_REJECT_MIXED_SEPARATOR_PATHS,
   'C:\\vault\\.\\note',
   'C:\\vault\\..\\note',
   'C:/vault/./note',
@@ -1099,7 +1258,13 @@ export const TRAVERSAL_REJECT_PATHS: readonly string[] = [
 ];
 
 /** Dotted dir names that are not traversal (Probe S9 soft allows). */
-export const TRAVERSAL_ALLOW_DOTTED_NAME_PATHS: readonly string[] = ['C:\\a\\.git', 'C:/a/..b'];
+export const TRAVERSAL_ALLOW_DOTTED_NAME_PATHS: readonly string[] = [
+  'C:\\a\\.git',
+  'C:/a/..b',
+  'C:\\vault\\.a',
+  'C:\\segment\\name.',
+  '/.a',
+];
 
 export const TRAVERSAL_ALLOW_PATHS: readonly string[] = [
   'C:\\Users\\me\\Mythos Writer\\vaults\\x',
@@ -1108,8 +1273,22 @@ export const TRAVERSAL_ALLOW_PATHS: readonly string[] = [
   ...TRAVERSAL_ALLOW_S12_PATHS,
 ];
 
+/** Long benign line then traversal — $7 must reset at StrCpy $7 0 (:53) between sidecar lines. */
+export const SIDECAR_MULTILINE_TRAV_GUARD_ROWS: readonly {
+  rawLines: readonly string[];
+  expected: SidecarGuardPathOutcome;
+}[] = [
+  {
+    rawLines: [
+      'C:\\Users\\me\\aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\n',
+      'C:\\Users\\me\\Documents\\..\\Windows\\r\\n',
+    ],
+    expected: 'vault_read',
+  },
+];
+
 /** Critic H6 — file lines for StrCpy $4 $1 $3 deny gates. */
-export const DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES: readonly [92, 95, 98] = [92, 95, 98];
+export const DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES: readonly [94, 97, 100] = [94, 97, 100];
 
 export type DenyPrefixStrcpyAcceptanceVariant =
   | 'nop'
@@ -1185,10 +1364,10 @@ function denyStrcpyReplacementLine(
   }
 }
 
-/** Critic H6 acceptance mutant on :92 / :95 / :98 StrCpy $4 $1 $3 (re-baseline deny VM must go red). */
+/** Critic H6 acceptance mutant on :94 / :97 / :100 StrCpy $4 $1 $3 (re-baseline deny VM must go red). */
 export function mutantDenyPrefixStrcpyAcceptance(
   nsh: string,
-  fileLine: 92 | 95 | 98,
+  fileLine: 94 | 97 | 100,
   variant: DenyPrefixStrcpyAcceptanceVariant,
 ): string {
   const regionIndex = fileLine - SIDECAR_GUARD_REGION_FILE_LINE_FIRST;
@@ -1409,7 +1588,8 @@ export function mutantMB3_deleteBackslashDotDotRejectPair(nsh: string): string {
   const block =
     '                StrCmp $4 "" uninstall_vault_read\n' +
     String.raw`                StrCmp $4 "\" uninstall_vault_read` +
-    '\n                Goto mythos_trav_inc';
+    '\n                StrCmp $4 "/" uninstall_vault_read\n' +
+    '                Goto mythos_trav_inc';
   if (!nsh.includes(block)) {
     throw new Error('M-B3 block missing from nsh');
   }

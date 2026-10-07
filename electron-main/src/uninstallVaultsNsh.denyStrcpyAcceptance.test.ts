@@ -8,7 +8,7 @@ import {
   mutantDenyPrefixStrcpyAcceptance,
 } from './sidecarTraversalScan.test-helpers.js';
 
-describe('Critic H6 — deny StrCpy acceptance (:92/:95/:98, re-baseline deny VM only)', () => {
+describe('Critic H6 — deny StrCpy acceptance (:94/:97/:100, re-baseline deny VM only)', () => {
   const nsh = loadUninstallVaultsNsh();
 
   for (const fileLine of DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES) {

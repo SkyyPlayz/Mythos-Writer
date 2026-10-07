@@ -62,11 +62,13 @@
               StrCpy $4 $1 1 $8
               StrCmp $4 "" uninstall_vault_read
               StrCmp $4 "\" uninstall_vault_read
+              StrCmp $4 "/" uninstall_vault_read
               StrCmp $4 "." 0 mythos_trav_inc
                 IntOp $8 $8 + 1
                 StrCpy $4 $1 1 $8
                 StrCmp $4 "" uninstall_vault_read
                 StrCmp $4 "\" uninstall_vault_read
+                StrCmp $4 "/" uninstall_vault_read
                 Goto mythos_trav_inc
           mythos_trav_fwd:
           StrCmp $4 "/" 0 mythos_trav_inc

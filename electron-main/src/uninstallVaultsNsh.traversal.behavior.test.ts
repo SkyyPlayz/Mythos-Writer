@@ -52,14 +52,14 @@ import {
 export { loadUninstallVaultsNsh, resolveUninstallVaultsNshPath };
 
 describe('sidecar traversal + WINDIR deny behaviour (reads build/uninstall-vaults.nsh from disk)', () => {
-  it('pins sidecar guard region :43-:104 (read/trim + traversal + deny + M5)', () => {
+  it('pins sidecar guard region :43-:106 (read/trim + traversal + deny + M5)', () => {
     const nsh = loadUninstallVaultsNsh();
     assertTraversalBranchBehaviourPins(nsh);
     assertSidecarGuardRegionExact(nsh);
     assertTraversalScanBlockExact(nsh);
   });
 
-  it('VM reject/allow tables from pinned :43-:104 region (read/trim + traversal + deny + APPDATA M5)', () => {
+  it('VM reject/allow tables from pinned :43-:106 region (read/trim + traversal + deny + APPDATA M5)', () => {
     assertSidecarGuardRejectAllowTables(loadUninstallVaultsNsh());
   });
 
