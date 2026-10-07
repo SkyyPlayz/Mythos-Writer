@@ -25,10 +25,37 @@
 }
 
 /* The cover owns the rim; the placeholder states must not draw a second one. */
-.note-cover > .note-thumb[data-thumb-state] {
+.note-cover > .note-thumb[data-thumb-state],
+.note-cover__change > .note-thumb[data-thumb-state] {
   position: absolute;
   inset: 0;
   border: none;
+}
+
+.note-cover__change {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: inherit;
+}
+
+.note-cover__change:hover .note-cover__thumb::after,
+.note-cover__change:focus-visible .note-cover__thumb::after {
+  content: 'Click to change';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: rgb(8 10 18 / 0.55);
+  pointer-events: none;
 }
 
 .note-cover__badge {

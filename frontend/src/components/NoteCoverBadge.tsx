@@ -32,6 +32,8 @@ export interface NoteCoverBadgeProps {
   title: string;
   /** × pressed — the caller writes `thumb: false` and invalidates the memo. */
   onRemove: () => void;
+  /** PLAN-058 L6 (27:08): pick a new cover image (writes frontmatter `thumb:`). */
+  onChangeCover?: () => void;
 }
 
 /** Badge text per mode — spec §9 wording, verbatim. */
@@ -45,14 +47,27 @@ function coverModeOf(info: NoteThumbInfo | undefined): NoteCoverMode | null {
   return info.mode === 'explicit' || info.mode === 'auto' ? info.mode : null;
 }
 
-export function NoteCoverBadge({ notePath, title, onRemove }: NoteCoverBadgeProps) {
+export function NoteCoverBadge({ notePath, title, onRemove, onChangeCover }: NoteCoverBadgeProps) {
   const info = useNoteThumbInfo(notePath);
   const mode = coverModeOf(info);
   if (mode === null || info === undefined) return null;
 
   return (
     <div className="note-cover" data-testid="note-cover" data-thumb-mode={mode}>
-      <NoteThumbnail info={info} alt={title} caption className="note-cover__thumb" />
+      {onChangeCover ? (
+        <button
+          type="button"
+          className="note-cover__change"
+          data-testid="note-cover-change"
+          title="Click to change"
+          aria-label="Click to change thumbnail"
+          onClick={onChangeCover}
+        >
+          <NoteThumbnail info={info} alt={title} caption className="note-cover__thumb" />
+        </button>
+      ) : (
+        <NoteThumbnail info={info} alt={title} caption className="note-cover__thumb" />
+      )}
       <span className="note-cover__badge" data-testid="note-cover-badge">
         {NOTE_COVER_BADGE_LABEL[mode]}
       </span>

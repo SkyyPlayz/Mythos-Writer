@@ -11,7 +11,11 @@ import { countWords, countChars } from './wordStats';
 import { detectLossyFeatures, type LossyFeature } from './notesFidelityGuard';
 import { normalize, wikiLinkTargetStem, type WikiLinkCandidate } from './crossTabLinkResolver';
 import { replaceDisplayBody, stripHiddenBlocks } from './lib/frontmatter';
-import { parseNoteFrontmatter, setFrontmatterField, setFrontmatterTags } from './noteFrontmatter';
+import { parseNoteFrontmatter, setFrontmatterField } from './noteFrontmatter';
+import { setNoteTagsWithBodySync } from './lib/noteTagSync';
+import { parseMarkdownImageLine } from './lib/noteInlineImages';
+import { hydrateNoteInlineImages } from './lib/hydrateNoteInlineImages';
+import { NoteInlineImage } from './components/NoteInlineImage';
 import { NoteCallout } from './NoteCalloutExtension';
 import { NoteLinksBlock } from './NoteLinksBlockExtension';
 import RichTextEditor from './RichTextEditor';
@@ -202,6 +206,7 @@ function renderInline(
 
 function renderMarkdownPreview(
   content: string,
+  notePath: string,
   onWikiLinkClick?: (target: string) => void,
   resolvedTitles?: ReadonlySet<string>,
   sceneTitles?: ReadonlySet<string>,
@@ -248,8 +253,18 @@ function renderMarkdownPreview(
     } else if (line.trim() === '') {
       i++;
     } else {
-      nodes.push(<p key={i}>{inline(line)}</p>);
-      i++;
+      const image = parseMarkdownImageLine(line);
+      if (image) {
+        nodes.push(
+          <p key={i}>
+            <NoteInlineImage notePath={notePath} src={image.src} alt={image.alt} />
+          </p>,
+        );
+        i++;
+      } else {
+        nodes.push(<p key={i}>{inline(line)}</p>);
+        i++;
+      }
     }
   }
 
@@ -265,6 +280,7 @@ function renderMarkdownPreview(
 const NOTE_RICH_EXTENSIONS: AnyExtension[] = [NoteCallout, NoteLinksBlock];
 
 interface RichEditorProps {
+  notePath: string;
   content: string;
   onChange: (text: string) => void;
   onWikiLinkClick?: (target: string) => void;
@@ -278,12 +294,29 @@ interface RichEditorProps {
 // Thin wrapper over the shared core (SKY-3204): Notes rich mode gets the same
 // base extensions (including Underline) and entity @-mention picker as Story.
 // F2 N4: omit onEntityClick — RichTextEditor falls back to navigateEntityMention.
-function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles, wikiLinkCandidates, fileName, toolbarActions }: RichEditorProps) {
+function NoteRichEditor({
+  notePath,
+  content,
+  onChange,
+  onWikiLinkClick,
+  resolvedWikiLinkTitles,
+  sceneWikiLinkTitles,
+  wikiLinkCandidates,
+  fileName,
+  toolbarActions,
+}: RichEditorProps) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const root = wrapRef.current;
+    if (!root) return;
+    void hydrateNoteInlineImages(root, notePath);
+  }, [notePath, content]);
   return (
     <div className="note-rich-editor">
       <RichTextEditor
         content={content}
         suppressInitialChange
+        vaultInlineImages
         extraExtensions={NOTE_RICH_EXTENSIONS}
         onChangeMarkdown={onChange}
         onWikiLinkClick={onWikiLinkClick}
@@ -294,6 +327,7 @@ function NoteRichEditor({ content, onChange, onWikiLinkClick, resolvedWikiLinkTi
         wrapClassName="note-rich-editor-wrap"
         contentClassName="note-tiptap-content"
         wrapAriaLabel={`Rich edit note: ${fileName}`}
+        wrapRef={wrapRef}
       />
     </div>
   );
@@ -419,6 +453,7 @@ export default function NoteViewer({
   const [pendingMode, setPendingMode] = useState<NoteViewerMode | null>(null);
   const [gearOpen, setGearOpen] = useState(false);
   const [tagInput, setTagInput] = useState('');
+  const [allTags, setAllTags] = useState<string[]>([]);
   const [timelineChipBusy, setTimelineChipBusy] = useState(false);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -428,6 +463,11 @@ export default function NoteViewer({
   // M8d: header "+" tag affordance focuses the footer's real Add-tag input
   // (prototype's "+" chip carries no handler of its own — see 1516/1605).
   const footerTagInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    window.api.tagsList?.().then((r: { tags: Array<{ name: string }> }) => {
+      setAllTags(r.tags.map((t) => t.name));
+    }).catch(() => {});
+  }, []);
 
   // W0.5 (PERFORMANCE §4): the word count reaches the app shell
   // (setOpenedNoteWordCount → BottomBar) — never per keystroke. Counting and
@@ -706,16 +746,33 @@ export default function NoteViewer({
     }
   }, [noteTitle]);
 
+  const commitTags = useCallback((nextTags: string[]) => {
+    adoptFrontmatterChange(setNoteTagsWithBodySync(contentRef.current, nextTags));
+  }, [adoptFrontmatterChange]);
+
   const commitAddTag = useCallback(() => {
-    const tag = tagInput.trim().replace(/^#/, '');
+    const clean = tagInput.trim().replace(/^#/, '');
     setTagInput('');
-    if (!tag || tags.includes(tag)) return;
-    adoptFrontmatterChange(setFrontmatterTags(contentRef.current, [...tags, tag]));
-  }, [tagInput, tags, adoptFrontmatterChange]);
+    if (!clean || tags.some((t) => t.toLowerCase() === clean.toLowerCase())) return;
+    commitTags([...tags, clean]);
+  }, [tagInput, tags, commitTags]);
 
   const removeTag = useCallback((tag: string) => {
-    adoptFrontmatterChange(setFrontmatterTags(contentRef.current, tags.filter((t) => t !== tag)));
-  }, [tags, adoptFrontmatterChange]);
+    commitTags(tags.filter((t) => t !== tag));
+  }, [tags, commitTags]);
+
+  const changeCover = useCallback(() => {
+    void (async () => {
+      const picked = await window.api.pickBgImage?.();
+      if (!picked?.filePath || picked.cancelled) return;
+      const imported = await window.api.notesThumbImport?.(picked.filePath);
+      if (!imported?.ok) return;
+      const ok = await adoptFrontmatterChange(
+        setFrontmatterField(contentRef.current, 'thumb', imported.relPath),
+      );
+      if (ok) invalidateNoteThumbs([thumbNotePath]);
+    })();
+  }, [adoptFrontmatterChange, thumbNotePath]);
 
   const handlePlotOnTimeline = useCallback(async () => {
     if (timelineChipBusy) return;
@@ -1014,7 +1071,12 @@ export default function NoteViewer({
         {/* SKY-11186: the note's cover beside the title (spec §9) — the same
             derivative the Notes Board card shows. Renders nothing when the
             note has no cover; the header's second grid column collapses. */}
-        <NoteCoverBadge notePath={thumbNotePath} title={noteTitle} onRemove={removeThumbnail} />
+        <NoteCoverBadge
+          notePath={thumbNotePath}
+          title={noteTitle}
+          onRemove={removeThumbnail}
+          onChangeCover={changeCover}
+        />
       </div>
 
       {mode === 'source' && (
@@ -1051,6 +1113,7 @@ export default function NoteViewer({
 
       {mode === 'rich' && (
         <NoteRichEditor
+          notePath={path}
           key={`${path}:${externalRev}`}
           // W0.2 (FULL-SPEC §6): frontmatter + kanban-settings never render in
           // Rich view — the hidden chunks are re-attached in handleRichChange.
@@ -1071,7 +1134,7 @@ export default function NoteViewer({
 
       {mode === 'preview' && (
         <div className="note-viewer-preview" data-testid="note-viewer-preview">
-          {renderMarkdownPreview(content, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles)}
+          {renderMarkdownPreview(content, path, onWikiLinkClick, resolvedWikiLinkTitles, sceneWikiLinkTitles)}
         </div>
       )}
 
@@ -1087,10 +1150,16 @@ export default function NoteViewer({
           placeholder="Add tag…"
           aria-label="Add tag"
           data-testid="note-add-tag-input"
+          list="note-tag-suggestions"
           value={tagInput}
           onChange={(e) => setTagInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') commitAddTag(); }}
         />
+        <datalist id="note-tag-suggestions">
+          {allTags.filter((t) => !tags.includes(t)).map((t) => (
+            <option key={t} value={t} />
+          ))}
+        </datalist>
       </div>
     </div>
   );

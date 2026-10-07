@@ -11,7 +11,7 @@ describe('WorkspaceSplitPane (GH#643 split panes v1)', () => {
       </WorkspaceSplitPane>,
     );
     expect(screen.getByTestId('workspace-split-pane')).toBeInTheDocument();
-    expect(screen.getByText('Graph')).toBeInTheDocument();
+    expect(screen.queryByText('Graph')).toBeNull();
     expect(screen.getByTestId('pane-child')).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Split pane: Graph' })).toBeInTheDocument();
   });

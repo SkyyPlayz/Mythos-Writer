@@ -25,6 +25,21 @@
   font-size: 18px;
 }
 
+/* PLAN-058 L6 (81:59): character notes show the shared note thumbnail or placeholder. */
+.entity-detail-portrait {
+  width: 44px;
+  height: 44px;
+  border-radius: 8px;
+  overflow: hidden;
+  flex: none;
+  border: 1px solid var(--border-default);
+}
+
+.entity-detail-portrait__thumb {
+  width: 100%;
+  height: 100%;
+}
+
 .entity-detail-type {
   font-size: 12px;
   font-weight: 600;

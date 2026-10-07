@@ -7,9 +7,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   parseNoteFrontmatter,
   setFrontmatterField,
-  setFrontmatterTags,
   type NoteFrontmatterField,
 } from './noteFrontmatter';
+import { setNoteTagsWithBodySync } from './lib/noteTagSync';
 import './NoteProperties.css';
 
 interface Props {
@@ -129,13 +129,13 @@ export default function NoteProperties({ path }: Props) {
     }
     const base = await freshContent();
     if (base === null) return;
-    const ok = await write(setFrontmatterTags(base, [...tags, tag]));
+    const ok = await write(setNoteTagsWithBodySync(base, [...tags, tag]));
     if (ok) setTagInput('');
   }, [tagInput, tags, freshContent, write]);
 
   const removeTag = useCallback(async (tag: string) => {
     const base = await freshContent();
-    if (base !== null) await write(setFrontmatterTags(base, tags.filter((t) => t !== tag)));
+    if (base !== null) await write(setNoteTagsWithBodySync(base, tags.filter((t) => t !== tag)));
   }, [tags, freshContent, write]);
 
   if (!loaded) {
