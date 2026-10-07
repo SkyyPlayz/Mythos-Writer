@@ -16,12 +16,12 @@
     "fuzz": "npm run fuzz:frontmatter && npm run fuzz:docxInline"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.128.0",
+    "@anthropic-ai/sdk": "^0.131.0",
     "chokidar": "^5.0.0",
-    "docx": "^9.7.2",
+    "docx": "^9.8.1",
     "electron-updater": "^6.8.9",
     "jszip": "^3.10.2",
-    "mammoth": "^1.12.3",
+    "mammoth": "^1.13.0",
     "onnxruntime-web": "^1.30.0",
     "phonemizer": "^1.2.1"
   },
