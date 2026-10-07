@@ -23,7 +23,7 @@ import {
   assertSidecarDeleteAfterFileOpenAndClose,
   assertTraversalRejectedBeforeSidecarDelete,
   assertTraversalThenAllowlistThenSidecarDelete,
-} from './uninstallNshOrder.js';
+} from './uninstallVaultsNsh.test.harness.js';
 
 const NSH = readFileSync(resolve(process.cwd(), '../build/uninstall-vaults.nsh'), 'utf-8');
 
@@ -198,24 +198,20 @@ describe('build/uninstall-vaults.nsh token contract', () => {
       );
     });
 
-    it('M24: Remove-all gate always true (macro in KEEP branch) fails (2)', () => {
+    it('M24: SectionIsSelected gate forced always-true fails gate pin (2)', () => {
       const body = customUnInstall();
-      const elseAt = body.indexOf('${Else}');
-      const mutantBody =
-        body.slice(0, elseAt) +
-        body.slice(elseAt).replace(
-          '!insertmacro mythos_delete_app_caches',
-          '!insertmacro mythos_delete_app_caches\n      !insertmacro mythos_delete_remove_all_user_data',
-        );
+      const gate = '${If} ${SectionIsSelected} ${SEC_DELETE_MYTHOS_VAULTS}';
+      const mutantBody = body.replace(gate, '${If} 1');
       const mutantNsh = NSH.replace(body, mutantBody);
+      expect(mutantBody).not.toContain(gate);
       expectPinFailsOnCustomUnInstall(
         mutantNsh,
         assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse,
-        /KEEP|Remove-all|mythos_delete_remove_all_user_data/,
+        /SectionIsSelected|SEC_DELETE_MYTHOS_VAULTS/,
       );
     });
 
-    it('Probe H-A (a): allowlist deny -> allow (Goto do_delete) fails (4)', () => {
+    it('M-D: allowlist deny -> allow (Goto do_delete) fails (4)', () => {
       const mutant = NSH.replace(
         /mythos_al_deny:\s*\r?\n\s*Goto uninstall_vault_read/,
         'mythos_al_deny:\n        Goto uninstall_vault_do_delete',
@@ -224,24 +220,7 @@ describe('build/uninstall-vaults.nsh token contract', () => {
       expectPinFails(mutant, assertAllowlistDenySkipsSidecarLine, /do_delete|uninstall_vault_read/);
     });
 
-    it('M13: KEEP ${Else} branch with extra Remove-all macro fails cache-only pin', () => {
-      const body = customUnInstall();
-      const elseAt = body.indexOf('${Else}');
-      const mutantBody =
-        body.slice(0, elseAt) +
-        body.slice(elseAt).replace(
-          '!insertmacro mythos_delete_app_caches',
-          '!insertmacro mythos_delete_app_caches\n      !insertmacro mythos_delete_remove_all_user_data',
-        );
-      const mutantNsh = NSH.replace(body, mutantBody);
-      expectPinFailsOnCustomUnInstall(
-        mutantNsh,
-        assertKeepElseEndIfInsertsOnlyAppCachesMacro,
-        /M13|mythos_delete_app_caches/,
-      );
-    });
-
-    it('Probe H-A (b): KEEP branch also inserts Remove-all macro fails (R-5)', () => {
+    it('M-E / M13: KEEP ${Else} branch also inserts Remove-all macro fails (R-5)', () => {
       const body = customUnInstall();
       const elseAt = body.indexOf('${Else}');
       const mutantBody =
@@ -253,13 +232,13 @@ describe('build/uninstall-vaults.nsh token contract', () => {
       const mutantNsh = NSH.replace(body, mutantBody);
       expectPinFailsOnCustomUnInstall(
         mutantNsh,
-        assertKeepBranchInsertsCacheMacroOnly,
-        /R-5|mythos_delete_remove_all_user_data/,
+        assertKeepElseEndIfInsertsOnlyAppCachesMacro,
+        /M13|mythos_delete_app_caches/,
       );
       expectPinFailsOnCustomUnInstall(
         mutantNsh,
-        assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse,
-        /KEEP|mythos_delete_remove_all_user_data/,
+        assertKeepBranchInsertsCacheMacroOnly,
+        /R-5|mythos_delete_remove_all_user_data/,
       );
     });
   });

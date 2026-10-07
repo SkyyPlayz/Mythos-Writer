@@ -1,4 +1,7 @@
-/** Pure ordering checks for build/uninstall-vaults.nsh (unit-tested, including mutants). */
+/**
+ * Vitest-only NSIS contract helpers for build/uninstall-vaults.nsh.
+ * Imported only by uninstallVaultsNsh.test.ts — not used by electron-main runtime.
+ */
 
 /** Exact shipped checkbox line (MW-delete-vault UX lock). */
 export const MYTHOS_DELETE_VAULTS_SECTION_O_LINE =
