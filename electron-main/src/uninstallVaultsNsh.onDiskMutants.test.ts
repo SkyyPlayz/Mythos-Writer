@@ -1,6 +1,7 @@
 import { execSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
 import {
@@ -14,16 +15,27 @@ import {
   mutantProgramFilesDenyDrop,
   mutantProgramFiles64DenyDrop,
 } from './sidecarTraversalScan.harness.js';
-import { UNINSTALL_VAULTS_NSH_PATH } from './uninstallVaultsNsh.traversal.behavior.test.js';
+import {
+  defaultUninstallVaultsNshPath,
+  MYTHOS_UNINSTALL_VAULTS_NSH_PATH_ENV,
+} from './uninstallVaultsNsh.path.js';
+import { nshMacroBody } from './uninstallVaultsNsh.test.harness.js';
 
 const REPO_ROOT = resolve(process.cwd(), '..');
+const CANONICAL_NSH_PATH = defaultUninstallVaultsNshPath();
 
-function runTraversalBehaviorSuite(): { status: number; stdout: string } {
+function runNestedVitest(args: string, mutantPath: string): { status: number; stdout: string } {
+  const env = {
+    ...process.env,
+    [MYTHOS_UNINSTALL_VAULTS_NSH_PATH_ENV]: mutantPath,
+  };
   try {
-    const stdout = execSync(
-      'npm run test -w electron-main -- src/uninstallVaultsNsh.traversal.behavior.test.ts --reporter=verbose',
-      { cwd: REPO_ROOT, encoding: 'utf-8', stdio: 'pipe' },
-    );
+    const stdout = execSync(`npm run test -w electron-main -- ${args}`, {
+      cwd: REPO_ROOT,
+      encoding: 'utf-8',
+      stdio: 'pipe',
+      env,
+    });
     return { status: 0, stdout };
   } catch (error: unknown) {
     const err = error as { status?: number; stdout?: string; stderr?: string };
@@ -34,101 +46,95 @@ function runTraversalBehaviorSuite(): { status: number; stdout: string } {
   }
 }
 
-function runMainNshContractSuite(): { status: number; stdout: string } {
-  try {
-    const stdout = execSync(
-      'npm run test -w electron-main -- src/uninstallVaultsNsh.test.ts --reporter=verbose',
-      { cwd: REPO_ROOT, encoding: 'utf-8', stdio: 'pipe' },
-    );
-    return { status: 0, stdout };
-  } catch (error: unknown) {
-    const err = error as { status?: number; stdout?: string; stderr?: string };
-    return {
-      status: err.status ?? 1,
-      stdout: `${err.stdout ?? ''}\n${err.stderr ?? ''}`,
-    };
-  }
+function runTraversalBehaviorSuite(mutantPath: string): { status: number; stdout: string } {
+  return runNestedVitest(
+    'src/uninstallVaultsNsh.traversal.behavior.test.ts --reporter=verbose',
+    mutantPath,
+  );
 }
 
-function withOnDiskMutant(
+function runMainNshContractSuite(mutantPath: string): { status: number; stdout: string } {
+  return runNestedVitest('src/uninstallVaultsNsh.test.ts --reporter=verbose', mutantPath);
+}
+
+function withTempOnDiskMutant(
   label: string,
   apply: (source: string) => string,
-  runSuite: () => { status: number; stdout: string },
+  runSuite: (mutantPath: string) => { status: number; stdout: string },
   expectFailName: RegExp,
 ): void {
   it(label, () => {
-    const original = readFileSync(UNINSTALL_VAULTS_NSH_PATH, 'utf-8');
-    writeFileSync(UNINSTALL_VAULTS_NSH_PATH, apply(original));
-    try {
-      const result = runSuite();
-      expect(result.status, `expected red suite for ${label}:\n${result.stdout.slice(-2000)}`).not.toBe(0);
-      expect(result.stdout).toMatch(expectFailName);
-    } finally {
-      writeFileSync(UNINSTALL_VAULTS_NSH_PATH, original);
-    }
+    const original = readFileSync(CANONICAL_NSH_PATH, 'utf-8');
+    const dir = mkdtempSync(join(tmpdir(), 'mythos-uninstall-nsh-mutant-'));
+    const mutantPath = join(dir, 'uninstall-vaults.nsh');
+    writeFileSync(mutantPath, apply(original), 'utf-8');
+
+    const result = runSuite(mutantPath);
+    expect(result.status, `expected red suite for ${label}:\n${result.stdout.slice(-2000)}`).not.toBe(0);
+    expect(result.stdout).toMatch(expectFailName);
   });
 }
 
-describe('on-disk nsh mutants (write build/uninstall-vaults.nsh, run vitest, restore)', () => {
+describe('on-disk nsh mutants (temp copy + MYTHOS_UNINSTALL_VAULTS_NSH_PATH, never build/)', () => {
   const trav = runTraversalBehaviorSuite;
   const main = runMainNshContractSuite;
 
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-B1 on-disk: neutralize .\\ reject reds traversal behaviour suite',
     mutantMB1_neutralizeBackslashDotBackslashReject,
     trav,
     /M-B1|branch pins|traversal branch/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-B2 on-disk: neutralize ..\\ reject reds traversal behaviour suite',
     mutantMB2_neutralizeBackslashDotDotBackslashReject,
     trav,
     /M-B2|branch pins/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-B3 on-disk: delete .. reject pair reds traversal behaviour suite',
     mutantMB3_deleteBackslashDotDotRejectPair,
     trav,
     /M-B3|branch pins/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-B4 on-disk: all backslash rejects reds traversal behaviour suite',
     mutantMB4_neutralizeAllBackslashTravRejects,
     trav,
     /M-B4|branch pins/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-B5 on-disk: dot check reds traversal behaviour suite',
     mutantMB5_neutralizeBackslashDotCheck,
     trav,
     /M-B5|branch pins/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-B6 on-disk: forward rejects reds traversal behaviour suite',
     mutantMB6_neutralizeForwardSlashTravRejects,
     trav,
     /M-B6|branch pins/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-B-WINDIR on-disk: drop WINDIR deny reds traversal behaviour suite',
     mutantWindirDenyDrop,
     trav,
     /WINDIR|allowlist deny/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-B-PROGRAMFILES on-disk: drop PROGRAMFILES deny reds traversal behaviour suite',
     mutantProgramFilesDenyDrop,
     trav,
     /PROGRAMFILES/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-B-PROGRAMFILES64 on-disk: drop PROGRAMFILES64 deny reds traversal behaviour suite',
     mutantProgramFiles64DenyDrop,
     trav,
     /PROGRAMFILES64/,
   );
 
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-A on-disk: remove Section /o reds main contract suite',
     (nsh) =>
       nsh.replace(
@@ -138,13 +144,13 @@ describe('on-disk nsh mutants (write build/uninstall-vaults.nsh, run vitest, res
     main,
     /M-A|Section \/o/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-C on-disk: MessageBox reds main contract suite',
     (nsh) => nsh.replace('!macro customUnInstall', '!macro customUnInstall\n  MessageBox MB_OK "mutant"'),
     main,
     /M-C|MessageBox/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M19 on-disk: exact Section /o line reds main contract suite',
     (nsh) =>
       nsh.replace(
@@ -154,13 +160,27 @@ describe('on-disk nsh mutants (write build/uninstall-vaults.nsh, run vitest, res
     main,
     /M19|Section \/o/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
+    'M22 on-disk: sidecar Delete before FileOpen reds main contract suite',
+    (nsh) => {
+      const body = nshMacroBody(nsh, 'customUnInstall');
+      const fileOpenNeedle = 'FileOpen $0 "$APPDATA\\Mythos Writer\\uninstall-delete-paths.txt"';
+      const mutantBody = body.replace(
+        fileOpenNeedle,
+        `Delete "$APPDATA\\Mythos Writer\\uninstall-delete-paths.txt"\n    ${fileOpenNeedle}`,
+      );
+      return nsh.replace(body, mutantBody);
+    },
+    main,
+    /before FileOpen|sidecar Delete/,
+  );
+  withTempOnDiskMutant(
     'M23 on-disk: drop vaults fallback reds main contract suite',
     (nsh) => nsh.replace('RMDir /r "$APPDATA\\Mythos Writer\\vaults"', ''),
     main,
     /M23|vaults/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M24 on-disk: gate always-true reds main contract suite',
     (nsh) => {
       const gate = '${If} ${SectionIsSelected} ${SEC_DELETE_MYTHOS_VAULTS}';
@@ -169,7 +189,7 @@ describe('on-disk nsh mutants (write build/uninstall-vaults.nsh, run vitest, res
     main,
     /M24|SectionIsSelected/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-D on-disk: allowlist deny->allow reds main contract suite',
     (nsh) =>
       nsh.replace(
@@ -179,7 +199,7 @@ describe('on-disk nsh mutants (write build/uninstall-vaults.nsh, run vitest, res
     main,
     /M-D|allowlist deny/,
   );
-  withOnDiskMutant(
+  withTempOnDiskMutant(
     'M-E/M13 on-disk: KEEP Remove-all macro reds main contract suite',
     (nsh) => {
       const gate = '${If} ${SectionIsSelected} ${SEC_DELETE_MYTHOS_VAULTS}';

@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
+
+import { loadUninstallVaultsNsh } from './uninstallVaultsNsh.path.js';
 
 import {
   APP_CACHE_DIRS,
@@ -42,7 +42,7 @@ import {
   mutantProgramFiles64DenyDrop,
 } from './sidecarTraversalScan.harness.js';
 
-const NSH = readFileSync(resolve(process.cwd(), '../build/uninstall-vaults.nsh'), 'utf-8');
+const NSH = loadUninstallVaultsNsh();
 
 function expectPinFails(mutant: string, pin: (src: string) => void, message: RegExp): void {
   expect(() => pin(mutant)).toThrow(message);

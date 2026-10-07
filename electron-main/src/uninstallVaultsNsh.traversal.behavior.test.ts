@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
+
+import { loadUninstallVaultsNsh, resolveUninstallVaultsNshPath } from './uninstallVaultsNsh.path.js';
 
 import {
   assertTraversalBranchBehaviourPins,
@@ -18,11 +18,7 @@ import {
   mutantProgramFiles64DenyDrop,
 } from './sidecarTraversalScan.harness.js';
 
-export const UNINSTALL_VAULTS_NSH_PATH = resolve(process.cwd(), '../build/uninstall-vaults.nsh');
-
-export function loadUninstallVaultsNsh(): string {
-  return readFileSync(UNINSTALL_VAULTS_NSH_PATH, 'utf-8');
-}
+export { loadUninstallVaultsNsh, resolveUninstallVaultsNshPath };
 
 const REJECTED_TRAV_PATHS = [
   'C:\\vault\\.\\note',
