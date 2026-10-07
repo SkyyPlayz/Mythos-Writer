@@ -1159,7 +1159,7 @@ export function executeSidecarReadTrimFromLineContent(
         pc += 1;
         continue;
       }
-      pc += 1 + Number(strCmpRel[2]);
+      pc += Number(strCmpRel[2]);
       continue;
     }
     if (line === 'StrCmp $1 "" uninstall_vault_read') {
@@ -1214,6 +1214,43 @@ export const SIDECAR_DELETE_READ_LOOP_ROWS: readonly {
   },
 ];
 
+type ReadLoopPostFileReadAction =
+  | { kind: 'if_errors'; target: string }
+  | { kind: 'goto_always'; target: string }
+  | { kind: 'nop' };
+
+function parseReadLoopPostFileReadAction(readBlock: readonly string[]): ReadLoopPostFileReadAction {
+  const fileReadIdx = readBlock.findIndex((l) => l.trim() === 'FileRead $0 $1');
+  if (fileReadIdx < 0) {
+    throw new Error('FileRead $0 $1 missing from read-trim block');
+  }
+  const next = readBlock[fileReadIdx + 1]?.trim() ?? '';
+  const ifErrors = next.match(/^IfErrors (\w+)$/);
+  if (ifErrors) {
+    return { kind: 'if_errors', target: ifErrors[1]! };
+  }
+  const gotoAlways = next.match(/^Goto (\w+)$/);
+  if (gotoAlways) {
+    return { kind: 'goto_always', target: gotoAlways[1]! };
+  }
+  if (next === 'Nop') {
+    return { kind: 'nop' };
+  }
+  throw new Error(`unsupported post-FileRead instruction: ${next}`);
+}
+
+function resolveReadLoopLabelJump(
+  target: string,
+): 'close' | 'read_again' | 'unknown' {
+  if (target === 'uninstall_vault_close') {
+    return 'close';
+  }
+  if (target === 'uninstall_vault_read') {
+    return 'read_again';
+  }
+  return 'unknown';
+}
+
 export function simulateSidecarDeleteReadLoop(
   nsh: string,
   rawLines: readonly string[],
@@ -1221,9 +1258,7 @@ export function simulateSidecarDeleteReadLoop(
 ): { deleted: string[]; closed: boolean; steps: number } {
   const region = extractSidecarGuardRegionForVm(nsh);
   const readBlock = readTrimBlockFromGuardRegion(region);
-  const ifErrorsLine = readBlock.map((l) => l.trim()).find((l) => l.startsWith('IfErrors '));
-  const ifErrorsTarget = ifErrorsLine?.slice('IfErrors '.length).trim() ?? null;
-  const ifErrorsIsNop = ifErrorsLine?.trim() === 'Nop';
+  const postRead = parseReadLoopPostFileReadAction(readBlock);
 
   let lineIndex = 0;
   const deleted: string[] = [];
@@ -1233,31 +1268,64 @@ export function simulateSidecarDeleteReadLoop(
   while (steps < SIDECAR_READ_LOOP_STEP_LIMIT) {
     steps += 1;
     const eof = lineIndex >= rawLines.length;
-    if (eof) {
-      if (!ifErrorsIsNop && ifErrorsTarget === 'uninstall_vault_close') {
-        closed = true;
-        break;
-      }
-      if (ifErrorsIsNop || !ifErrorsTarget) {
-        // :45 survivor — spin until step limit (assert tables expect canonical to close instead).
-      } else {
-        closed = true;
-        break;
-      }
-    }
 
-    const rawLine = eof ? '' : rawLines[lineIndex]!;
     if (!eof) {
+      const rawLine = rawLines[lineIndex]!;
       lineIndex += 1;
-    }
-
-    const trimmed = executeSidecarReadTrimFromLineContent(readBlock, rawLine);
-    if (trimmed === 'empty') {
+      if (postRead.kind === 'goto_always') {
+        const jump = resolveReadLoopLabelJump(postRead.target);
+        if (jump === 'close') {
+          closed = true;
+          break;
+        }
+        if (jump === 'read_again') {
+          continue;
+        }
+        throw new Error(`unsupported Goto after FileRead: ${postRead.target}`);
+      }
+      const trimmed = executeSidecarReadTrimFromLineContent(readBlock, rawLine);
+      if (trimmed === 'empty') {
+        continue;
+      }
+      const disposition = runSidecarPathAllowlistDeleteDisposition(trimmed, nsh, env);
+      if (disposition === 'delete') {
+        deleted.push(trimmed);
+      }
       continue;
     }
-    const disposition = runSidecarPathAllowlistDeleteDisposition(trimmed, nsh, env);
-    if (disposition === 'delete') {
-      deleted.push(trimmed);
+
+    if (postRead.kind === 'if_errors') {
+      const jump = resolveReadLoopLabelJump(postRead.target);
+      if (jump === 'close') {
+        closed = true;
+        break;
+      }
+      if (jump === 'read_again') {
+        continue;
+      }
+      throw new Error(`unsupported IfErrors target: ${postRead.target}`);
+    }
+    if (postRead.kind === 'nop') {
+      const trimmed = executeSidecarReadTrimFromLineContent(readBlock, '');
+      if (trimmed === 'empty') {
+        continue;
+      }
+      const disposition = runSidecarPathAllowlistDeleteDisposition(trimmed, nsh, env);
+      if (disposition === 'delete') {
+        deleted.push(trimmed);
+      }
+      continue;
+    }
+    if (postRead.kind === 'goto_always') {
+      const jump = resolveReadLoopLabelJump(postRead.target);
+      if (jump === 'close') {
+        closed = true;
+        break;
+      }
+      if (jump === 'read_again') {
+        continue;
+      }
+      throw new Error(`unsupported Goto after FileRead: ${postRead.target}`);
     }
   }
 

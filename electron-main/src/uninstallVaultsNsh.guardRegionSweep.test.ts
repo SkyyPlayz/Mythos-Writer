@@ -14,17 +14,17 @@ import {
  */
 export const SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES: Readonly<
   Record<number, string>
-> = {};
+> = {
+  52: 'StrCmp $1 "" Nop; empty trimmed line matches no allowed root (same skip as empty read).',
+  72: 'Goto mythos_trav_inc Nop; falls through to :74 mythos_trav_fwd and still reaches increment.',
+  106:
+    'StrCmp $1 $5 Nop; exact Mythos APPDATA root fails :108 backslash check and falls through to deny.',
+};
 
 /**
  * NSIS guard is stricter than the behavioural VM tables on these lines (honest blind spot).
  */
-export const SIDECAR_GUARD_SWEEP_STRONGER_THAN_VM_TABLES: Readonly<Record<number, string>> = {
-  52: 'StrCmp $1 "" Nop: read-trim VM still returns empty via post-loop $1 check; delete-set loop unchanged.',
-  72: 'Goto mythos_trav_inc Nop after `\\..`+`/` reject; traversal reject table already vault_read at :71.',
-  106:
-    'StrCmp $1 $5 Nop: Mythos APPDATA root self-skip; table paths use non-root Mythos subtree or other allowlists.',
-};
+export const SIDECAR_GUARD_SWEEP_STRONGER_THAN_VM_TABLES: Readonly<Record<number, string>> = {};
 
 describe('sidecar guard region sweep :43-:106 (buildIntegrity excluded)', () => {
   const nsh = loadUninstallVaultsNsh();
