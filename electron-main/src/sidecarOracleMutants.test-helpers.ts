@@ -11,6 +11,7 @@ import {
   SIDECAR_GUARD_REGION_FILE_LINE_FIRST,
   SIDECAR_GUARD_REGION_FILE_LINE_LAST,
   SIDECAR_READ_LOOP_STEP_LIMIT,
+  TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS,
   type SidecarNsisVarEnv,
 } from './sidecarTraversalScan.test-helpers.js';
 
@@ -77,6 +78,61 @@ const BROAD_PREFIXES = ['', 'v\\', 'v/', 'ab\\', 'a b\\', 'a.b\\', 'My Vault\\',
 
 export type SidecarGuardCorpusCase = Readonly<{ env: SidecarNsisVarEnv; reads: readonly string[] }>;
 
+/**
+ * Systematic segment-tail shapes from `.`, space, TAB and letters, so the stricter-than-canonical
+ * literal swaps on the `.`/`..`-then-separator rejects are covered as a class, not just by the
+ * 15 explicit allow rows. Decorations sit in prefix, middle and suffix positions around dot cores.
+ */
+function segmentTailShapes(): string[] {
+  const deco = ['', ' ', TAB, '.', 'a'];
+  const cores = ['', '.', '..', '...', '....'];
+  const out = new Set<string>();
+  for (const lead of deco) {
+    for (const core of cores) {
+      for (const trail of deco) {
+        const seg = `${lead}${core}${trail}`;
+        if (seg !== '') {
+          out.add(seg);
+        }
+      }
+    }
+  }
+  const twoCharTails = [' a', `${TAB}a`, '.a', 'a ', `a${TAB}`, '. ', ' .', `${TAB} `, 'a.'];
+  for (const core of ['.', '..', '...']) {
+    for (const t of twoCharTails) {
+      out.add(`${core}${t}`);
+    }
+  }
+  return [...out];
+}
+
+/** Paths that exercise every segment-tail shape in prefix/middle/suffix × both separators × doubled/trailing. */
+function segmentTailCases(d: string): string[][] {
+  const seps = ['\\', '/'];
+  const cases: string[][] = [];
+  for (const seg of segmentTailShapes()) {
+    for (const s1 of seps) {
+      for (const s2 of seps) {
+        cases.push([`${d}\\v${s1}${seg}${s2}x\r\n`]);
+        cases.push([`${d}\\v${s1}${seg}${s2}${s2}y\r\n`]);
+      }
+      cases.push([`${d}\\v${s1}${seg}\r\n`]);
+      cases.push([`${d}\\${seg}${s1}x\r\n`]);
+    }
+  }
+  for (const s1 of seps) {
+    for (const s2 of seps) {
+      cases.push([`${d}\\v${s1}${s2}x\r\n`]);
+      cases.push([`${d}\\v${s1}${s2}\r\n`]);
+    }
+    cases.push([`${d}\\v${s1}\r\n`]);
+  }
+  for (const path of TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS) {
+    cases.push([`${path}\r\n`]);
+  }
+  return cases;
+}
+
 function oracleCorpusCases(): string[][] {
   const d = ORACLE_ENV_BASE.DOCUMENTS;
   const a = ORACLE_ENV_BASE.APPDATA;
@@ -140,6 +196,7 @@ function oracleCorpusCases(): string[][] {
   for (const seg of BROAD_SEGMENTS) {
     cases.push([`\\${seg}\\x\r\n`], [`/${seg}/x\r\n`], [`${d}\\${seg}/x\r\n`], [`${d}/${seg}\\x\r\n`]);
   }
+  cases.push(...segmentTailCases(d));
   return cases;
 }
 

@@ -1181,6 +1181,7 @@ export function assertSidecarAllowlistDeleteTables(
     { path: 'C:\\Users\\me\\Documents\\a.b.c', expected: 'delete' },
     { path: 'C:\\Users\\me\\Documents\\v 1.2\\x', expected: 'delete' },
     { path: 'C:\\Users\\me\\Documents\\v1.2\\notes', expected: 'delete' },
+    ...TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS.map((path) => ({ path, expected: 'delete' as const })),
   ];
   for (const { path, expected } of rows) {
     const disposition = runSidecarPathAllowlistDeleteDisposition(path, nsh, env);
@@ -2018,12 +2019,38 @@ export const TRAVERSAL_ALLOW_S16_DELETE_PATHS: readonly string[] = [
   'C:\\Users\\me\\Documents\\v1.2\\notes',
 ];
 
+/**
+ * Forge fuzz follow-up: valid names whose segment starts `.`/`..`/`...` but is NOT a traversal
+ * segment, and doubled/trailing separators. Canonical deletes all of these. The literal swaps on
+ * the `.`/`..`-then-separator rejects (`""`/`"\"`/`"/"` → `"."`/`" "`/`"$\t"`, lines :68/:71-:73,
+ * :77-:79, :94, :97-:99, :103-:105) wrongly refuse them, so they are the allow rows that catch
+ * those stricter mutants. The systematic shapes in sidecarGuardOracleCorpus() generalise the class.
+ */
+export const TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS: readonly string[] = [
+  'C:\\Users\\me\\Documents\\v\\. a',
+  `C:\\Users\\me\\Documents\\v\\.${'\t'}a`,
+  'C:\\Users\\me\\Documents\\v\\.. a',
+  `C:\\Users\\me\\Documents\\v\\..${'\t'}a`,
+  'C:\\Users\\me\\Documents\\v\\...a',
+  'C:\\Users\\me\\Documents\\v/. a',
+  `C:\\Users\\me\\Documents\\v/.${'\t'}a`,
+  'C:\\Users\\me\\Documents\\v/.. a',
+  `C:\\Users\\me\\Documents\\v/..${'\t'}a`,
+  'C:\\Users\\me\\Documents\\v/...a',
+  'C:\\Users\\me\\Documents\\v\\',
+  'C:\\Users\\me\\Documents\\v/',
+  'C:\\Users\\me\\Documents\\v\\\\',
+  'C:\\Users\\me\\Documents\\v\\/',
+  'C:\\Users\\me\\Documents\\v/\\',
+];
+
 export const TRAVERSAL_ALLOW_PATHS: readonly string[] = [
   'C:\\Users\\me\\Mythos Writer\\vaults\\x',
   'D:/data/vault',
   ...TRAVERSAL_ALLOW_DOTTED_NAME_PATHS,
   ...TRAVERSAL_ALLOW_S12_PATHS,
   ...TRAVERSAL_ALLOW_S16_DELETE_PATHS,
+  ...TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS,
 ];
 
 /** Critic S14 — label-swap mutants (pin sweep :74/:99/:93; VM witness for :93 fwd loop). */

@@ -20,7 +20,10 @@ import {
 /**
  * Behaviour-equivalent mode-2 primaries (the `Nop` fallback on each of these lines). A sibling check
  * already rejects every path the line rejects, so the mutant deletes exactly what canonical deletes;
- * Forge's oracle agrees (`N:nop` is behaviour-non-changing on its full corpus).
+ * Forge's oracle agrees (`N:nop` is behaviour-non-changing on its full corpus). Every other surviving
+ * mutant class on a listed line is equivalent too, enforced per line by the oracle-class sweep; the
+ * stricter literal swaps on :71–:73 / :77–:79 / :97–:99 / :103–:105 are killed by
+ * TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS.
  *
  * The list must be exact: a listed line that the VM tables catch fails mode 2, an unlisted line they
  * miss fails mode 2, and the strength block re-checks identity on Forge's full oracle corpus.
