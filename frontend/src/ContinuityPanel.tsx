@@ -547,7 +547,8 @@ export default function ContinuityPanel({
           disabled={panelState === 'scanning'}
         />
         {storyScenes.length > 0 && (
-          <span data-testid="cp-scan-scene-picker">
+          <div className="cp-scan-scene-picker-row" data-testid="cp-scan-scene-picker">
+            <span className="cp-scan-scope-label" id="cp-scan-scene-label">Scene</span>
             <DropdownSelect
               value={scanSceneId ?? ''}
               options={storyScenes.map((s) => ({ value: s.id, label: s.label }))}
@@ -556,7 +557,7 @@ export default function ContinuityPanel({
               id="cp-scan-scene"
               disabled={panelState === 'scanning'}
             />
-          </span>
+          </div>
         )}
         {panelState !== 'not_scanned' && (
           <button
