@@ -8,6 +8,9 @@ const DEFAULT_PROPS = {
   onSubViewChange: vi.fn(),
   vaultName: 'My Story',
   aiEnabled: true,
+  writingMode: 'normal' as const,
+  onWritingModeChange: vi.fn(),
+  onOpenFocusPrefs: vi.fn(),
 };
 
 describe('StorySubViewBar', () => {
@@ -44,9 +47,12 @@ describe('StorySubViewBar', () => {
     expect(onSubViewChange).toHaveBeenCalledWith('book');
   });
 
-  it('does not render N/F/E writing mode buttons', () => {
+  it('renders N/F/E writing mode buttons in the sub-view bar', () => {
     render(<StorySubViewBar {...DEFAULT_PROPS} />);
-    expect(screen.queryByTestId('nfe-mode-group')).not.toBeInTheDocument();
+    expect(screen.getByTestId('nfe-mode-group')).toBeInTheDocument();
+    expect(screen.getByTestId('writing-mode-normal')).toBeInTheDocument();
+    expect(screen.getByTestId('writing-mode-focus')).toBeInTheDocument();
+    expect(screen.getByTestId('writing-mode-edit')).toBeInTheDocument();
   });
 
   it('treats legacy coach sub-view as Editor selected', () => {

@@ -35,6 +35,8 @@ interface Props {
   onCreateChapterInPart?: (storyId: string, partId: string) => void;
   sidebarCollapsed: boolean;
   onToggleCollapsed: () => void;
+  /** PLAN-058 L5 (39:23): scene note summaries keyed by scene id. */
+  sceneNoteSummaries?: Record<string, string[]>;
 }
 
 /** Kept for DesktopShell import backward-compat; only sidebarCollapsed is used. */
@@ -63,9 +65,11 @@ export default function LeftRail({
   onDeleteScene,
   onRenamePart,
   onCreateChapterInPart,
-  sidebarCollapsed,
+  sidebarCollapsed: _sidebarCollapsed,
   onToggleCollapsed,
+  sceneNoteSummaries,
 }: Props) {
+  void _sidebarCollapsed;
   const [navCollapsed, setNavCollapsed] = useState(false);
 
   // Aggregate stats across all stories
@@ -96,21 +100,6 @@ export default function LeftRail({
 
   const progressPct = Math.min(100, Math.round(totalWords / WORD_GOAL * 100));
   const onTrackPct = progressPct;
-
-  if (sidebarCollapsed) {
-    return (
-      <div className="left-rail left-rail--collapsed" data-testid="left-rail-collapsed">
-        <button
-          className="lr-expand-btn"
-          onClick={onToggleCollapsed}
-          aria-label="Expand left sidebar"
-          title="Expand sidebar"
-        >
-          »
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="left-rail" data-testid="left-rail">
@@ -202,6 +191,7 @@ export default function LeftRail({
               onDeleteScene={onDeleteScene}
               onRenamePart={onRenamePart}
               onCreateChapterInPart={onCreateChapterInPart}
+              sceneNoteSummaries={sceneNoteSummaries}
               hideHeader
             />
           </div>

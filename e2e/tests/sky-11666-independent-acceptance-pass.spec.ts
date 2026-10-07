@@ -64,6 +64,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { noteTestId } from '../helpers/notesPanel';
+import { confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const SIDECAR = '.mythos-board.json';
@@ -449,6 +450,7 @@ test('SKY-11666 GAP-5: the same thumbnail derivative renders in the Notes editor
     // clicks: File → New story, then the Scene Crafter nav button.
     await page.locator('.wc-menu', { hasText: 'File' }).click();
     await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
+    await confirmNewStoryModalIfOpen(page);
     await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
     await page.locator('.nav-story-title').first().click();
     await page.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();

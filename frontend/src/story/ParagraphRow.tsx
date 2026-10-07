@@ -34,9 +34,11 @@ import { segmentsFor, type StoryComment } from '../comments';
 import {
   findAutoLinkHints,
   splitRunByHints,
+  splitTextByWikiLinks,
   type EntityMatch,
   type EntityTerm,
 } from './autoLinkText';
+import { isWikiLinkTargetResolved } from '../crossTabLinkResolver';
 
 const GRIP_ICON = (
   <svg width="9" height="14" viewBox="0 0 12 20" fill="currentColor" aria-hidden="true">
@@ -62,6 +64,9 @@ export interface ParagraphRowProps {
   comments: readonly StoryComment[];
   /** Reference-stable auto-link terms (memoized by the parent). */
   autoLinkTerms: EntityTerm[];
+  /** FD-1: resolvable wiki-link titles for live [[link]] styling in manuscript. */
+  resolvedWikiLinkTitles?: ReadonlySet<string>;
+  onWikiLinkClick?: (target: string) => void;
   /** M13 reader — true only for the paragraph currently being read aloud. */
   reading: boolean;
   /**
@@ -189,6 +194,8 @@ export function paragraphRowPropsEqual(
     prev.placeholder !== next.placeholder ||
     prev.paraStyle !== next.paraStyle ||
     prev.autoLinkTerms !== next.autoLinkTerms ||
+    prev.resolvedWikiLinkTitles !== next.resolvedWikiLinkTitles ||
+    prev.onWikiLinkClick !== next.onWikiLinkClick ||
     prev.onCommit !== next.onCommit ||
     prev.onSplit !== next.onSplit ||
     prev.onMergeUp !== next.onMergeUp ||
@@ -229,6 +236,8 @@ export function ParagraphRowBase({
   onParaDrop,
   onOpenComment,
   onApplyAutoLink,
+  resolvedWikiLinkTitles,
+  onWikiLinkClick,
 }: ParagraphRowProps) {
   // M11: underline comment anchors (prototype segsFor 3601–3615). The
   // joined segment text always equals `content`, so contentEditable
@@ -249,27 +258,85 @@ export function ParagraphRowBase({
   // even when the row itself re-renders (reading/dropline/style flips).
   const renderedChildren = useMemo<ReactNode>(() => {
     const renderPlainRun = (text: string, start: number, keyBase: string) => {
-      const runs = hints.length > 0 ? splitRunByHints(text, start, hints) : null;
-      if (!runs) return <span key={keyBase}>{text}</span>;
-      return runs.map((r, j) =>
-        r.hint ? (
-          <span
-            // eslint-disable-next-line react/no-array-index-key -- runs are recomputed wholesale; offsets are positional
-            key={`${keyBase}-h${j}`}
-            className="msv-wl-hint"
-            data-testid={`msv-wl-hint-${blockId}-${r.hint.from}`}
-            title={`Link to [[${r.hint.canonicalName}]]`}
-            onClick={() => {
-              if (r.hint) onApplyAutoLink(sceneId, blockId, content, r.hint);
+      const wikiRuns = splitTextByWikiLinks(text);
+      const hasWiki = wikiRuns.some((r) => r.target);
+      if (!hasWiki) {
+        const runs = hints.length > 0 ? splitRunByHints(text, start, hints) : null;
+        // Plain string (legacy path) so contentEditable re-sync after blur matches
+        // paragraphs with no wiki tokens or auto-link hints.
+        if (!runs) return text;
+        return runs.map((r, j) =>
+          r.hint ? (
+            <span
+              // eslint-disable-next-line react/no-array-index-key -- runs are recomputed wholesale; offsets are positional
+              key={`${keyBase}-h${j}`}
+              className="msv-wl-hint"
+              data-testid={`msv-wl-hint-${blockId}-${r.hint.from}`}
+              title={`Link to [[${r.hint.canonicalName}]]`}
+              onClick={() => {
+                if (r.hint) onApplyAutoLink(sceneId, blockId, content, r.hint);
+              }}
+            >
+              {r.text}
+            </span>
+          ) : (
+            // eslint-disable-next-line react/no-array-index-key -- positional plain runs
+            <span key={`${keyBase}-t${j}`}>{r.text}</span>
+          )
+        );
+      }
+      return wikiRuns.map((wr, j) => {
+        if (!wr.target) {
+          const subStart = start;
+          const runs = hints.length > 0 ? splitRunByHints(wr.text, subStart, hints) : null;
+          if (!runs) {
+            return (
+              // eslint-disable-next-line react/no-array-index-key -- positional plain runs
+              <span key={`${keyBase}-p${j}`}>{wr.text}</span>
+            );
+          }
+          return runs.map((r, k) =>
+            r.hint ? (
+              <span
+                // eslint-disable-next-line react/no-array-index-key -- positional plain runs
+                key={`${keyBase}-p${j}-h${k}`}
+                className="msv-wl-hint"
+                data-testid={`msv-wl-hint-${blockId}-${r.hint.from}`}
+                title={`Link to [[${r.hint.canonicalName}]]`}
+                onClick={() => {
+                  if (r.hint) onApplyAutoLink(sceneId, blockId, content, r.hint);
+                }}
+              >
+                {r.text}
+              </span>
+            ) : (
+              // eslint-disable-next-line react/no-array-index-key -- positional plain runs
+              <span key={`${keyBase}-p${j}-t${k}`}>{r.text}</span>
+            )
+          );
+        }
+        const resolved = resolvedWikiLinkTitles
+          ? isWikiLinkTargetResolved(wr.target!, resolvedWikiLinkTitles)
+          : false;
+        return (
+          <button
+            type="button"
+            // eslint-disable-next-line react/no-array-index-key -- positional wiki runs
+            key={`${keyBase}-w${j}`}
+            className={`msv-wl-link${resolved ? '' : ' msv-wl-link--unresolved'}`}
+            data-testid={`msv-wl-link-${blockId}-${j}`}
+            data-wiki-link={wr.target}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onWikiLinkClick?.(wr.target!);
             }}
           >
-            {r.text}
-          </span>
-        ) : (
-          // eslint-disable-next-line react/no-array-index-key -- positional plain runs
-          <span key={`${keyBase}-t${j}`}>{r.text}</span>
-        )
-      );
+            {/* NoteViewer parity: full [[…]] token in DOM so blur textContent is lossless. */}
+            {wr.text}
+          </button>
+        );
+      });
     };
 
     if (segs) {
@@ -293,9 +360,8 @@ export function ParagraphRowBase({
         );
       });
     }
-    if (hints.length > 0) return renderPlainRun(content, 0, 'p');
-    return content;
-  }, [segs, hints, content, sceneId, blockId, onOpenComment, onApplyAutoLink]);
+    return renderPlainRun(content, 0, 'p');
+  }, [segs, hints, content, sceneId, blockId, onOpenComment, onApplyAutoLink, resolvedWikiLinkTitles, onWikiLinkClick]);
 
   const textClass = `msv-para-text${reading ? ' msv-para-text--reading' : ''}${
     dropCap && !segs ? ' msv-para-text--dropcap' : ''

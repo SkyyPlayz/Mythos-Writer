@@ -16,6 +16,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 import { noteTestId, noteViewer } from './helpers/notesPanel';
 import { clickStoryNav } from './helpers/navGuard';
 
@@ -59,7 +60,7 @@ async function openScene(page: Page): Promise<void> {
   if (await storiesTab.isVisible()) await storiesTab.click();
   // M3 instant-create: no prompt — one transaction scaffolds the story,
   // "Chapter 1", and an "Untitled Scene", and opens the scene automatically.
-  await page.locator('.lr-nav-add').first().click();
+  await createStoryFromNavAdd(page);
   await page.locator('.nav-scene-row').first().click();
 
   await expect(page.locator('.tiptap-editor-wrap .ProseMirror')).toBeVisible({ timeout: 10_000 });

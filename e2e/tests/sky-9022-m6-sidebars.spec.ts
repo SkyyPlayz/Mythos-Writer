@@ -6,7 +6,6 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
 const STORY_ID = 'm6-e2e-story-0001';
