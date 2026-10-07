@@ -229,7 +229,7 @@ test('capture SKY-11221 beta reader consolidation screenshots', async () => {
 
   // ── 2. Writing Assistant chat: "beta read this scene" is now just a
   //    normal assistant turn — no second engine, no `.br-panel` intercept. ──
-  const waRow = page.locator('[data-testid="ahp-action-writer-scan"]');
+  const waRow = page.locator('[data-testid="ahp-action-beta-read"]');
   if (await waRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
     await waRow.click();
   }

@@ -190,6 +190,8 @@ export interface ManuscriptViewProps {
   onDictate?: () => void;
   dictating?: boolean;
   onAssist?: () => void;
+  /** PLAN-058 L7 (62:53) — open continuity scan UI from the editor toolbar. */
+  onContinuityScan?: () => void;
   /**
    * M11: true while the shell is in Focus writing mode — comments hide unless
    * the "Show in focus" override is on (prototype commentsVisible 3600).
@@ -463,6 +465,7 @@ export default function ManuscriptView({
   onDictate,
   dictating = false,
   onAssist,
+  onContinuityScan,
   focusMode = false,
   onToggleFocus,
   onAddChapter,
@@ -2072,6 +2075,17 @@ export default function ManuscriptView({
               <path d="M6 11a6 6 0 0 0 12 0M12 17v3.5" />
             </svg>
             Dictate
+          </button>
+        )}
+        {onContinuityScan && (
+          <button
+            type="button"
+            className="msv-tb-action msv-tb-continuity"
+            data-testid="msv-continuity-scan-btn"
+            title="Continuity scan"
+            onClick={onContinuityScan}
+          >
+            Continuity
           </button>
         )}
         {onAssist && (

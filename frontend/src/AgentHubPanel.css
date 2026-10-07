@@ -638,6 +638,44 @@
   overflow: hidden;
 }
 
+/* PLAN-058 L7 (09:01) — compact partner panel: tips collapsed by default, tighter chrome. */
+.ahp-partner--compact {
+  gap: 6px;
+  padding: 4px 0 8px;
+}
+
+.ahp-partner--compact .ahp-past-chats {
+  margin: 0 6px;
+}
+
+.ahp-partner--compact .ahp-actions {
+  margin: 0 6px 6px;
+  gap: 4px;
+}
+
+.ahp-partner--compact .ahp-action-chip {
+  font-size: 10px;
+  padding: 3px 8px;
+}
+
+.ahp-open-tips-btn {
+  align-self: flex-start;
+  margin: 0 8px 4px;
+  padding: 4px 10px;
+  border: 1px solid rgba(142, 157, 184, 0.35);
+  border-radius: 6px;
+  background: transparent;
+  color: #8e9db8;
+  font-size: 11px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.ahp-open-tips-btn:hover {
+  color: #c5d0e0;
+  border-color: rgba(142, 157, 184, 0.55);
+}
+
 .ahp-earlier-chats {
   margin: 0 8px;
 }

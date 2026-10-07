@@ -34,6 +34,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { clickStoryNav } from './helpers/navGuard';
+import { openPartnerWriterTips } from './helpers/partnerHub';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -399,14 +400,12 @@ test('F3 gate: Writer Scan opens tips strip; partner typing indicator resolves',
   page = await firstWindow(app);
   await openPartnerChat(page);
 
-  // Gate: tips strip is always mounted; Writer Scan re-opens after Close.
-  // Force-click: tips strip re-renders keep the action chip "not stable".
-  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
+  // Gate: compact partner hub — coach tips open on demand; Close then re-open.
+  await openPartnerWriterTips(page);
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 6_000 });
   await page.getByTestId('ahp-close-writer').click();
   await expect(page.getByTestId('ahp-writer-tips')).toHaveCount(0);
-  await page.getByTestId('ahp-action-writer-scan').click();
-  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 6_000 });
+  await openPartnerWriterTips(page);
 
   // Gate: loading → typing dots on shared chat (was wa-typing in unsharded suite).
   await page.evaluate(async () => {

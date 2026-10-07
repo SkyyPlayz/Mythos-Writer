@@ -27,6 +27,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { clickStoryNav } from './helpers/navGuard';
+import { openPartnerWriterTips } from './helpers/partnerHub';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -405,15 +406,9 @@ async function openWritingAssistantAgentRow(page: Page): Promise<void> {
     await partnerTab.click();
   }
   await expect(page.getByTestId('ahp-partner-view')).toBeVisible({ timeout: 8_000 });
-  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
-  // Writer chip toggles: a second click closes the panel. Ensure-open only.
-  // F3 N4-A: tips strip mounts by default — this path is a no-op when already open.
   const panel = page.locator('.writing-assistant-panel');
   if (await panel.count() > 0) return;
-  // M12: Writing Assistant → Writing Coach rename (agent ids/IPC channels unchanged).
-  const agentRow = page.locator('[data-testid="ahp-hand-writer"]');
-  await expect(agentRow).toBeVisible({ timeout: 4_000 });
-  await agentRow.click();
+  await openPartnerWriterTips(page);
 }
 
 async function openWritingAssistantWithScene(page: Page): Promise<void> {

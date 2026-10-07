@@ -5710,6 +5710,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         return (
           <ContinuityPanel
             scene={activeSceneForSidebar}
+            story={selectedStory}
             enabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
             // GAP-6: name the flag that's actually off — agent-disabled wins
             // (it's the state the AGENTS card's 'Disabled' status matches).
@@ -6381,6 +6382,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     persistLeftSidebarLayout({ ...cur, panels, sidebarCollapsed: false });
   }, [persistLeftSidebarLayout]);
 
+  const handleToolbarContinuityScan = useCallback(() => {
+    handleGrsVisibilityChange(true);
+    window.dispatchEvent(new CustomEvent('mythos:open-continuity-scan'));
+  }, [handleGrsVisibilityChange]);
+
   // R11 / M11a: the Coach button is AI-bearing chrome — MSV drops it entirely
   // when the master AI toggle is off (undefined handler = no mount).
   const aiEnabled = useAiEnabled();
@@ -6454,7 +6460,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     onDictate: handleToolbarDictate,
     dictating: voiceActive,
     onAssist: aiEnabled ? handleToolbarAssist : undefined,
-  }), [handleToolbarDictate, voiceActive, handleToolbarAssist, aiEnabled]);
+    onContinuityScan: aiEnabled ? handleToolbarContinuityScan : undefined,
+  }), [handleToolbarDictate, voiceActive, handleToolbarAssist, handleToolbarContinuityScan, aiEnabled]);
 
   // M8d: Notes editor toolbar (prototype 1532-1538) reuses the same Dictate
   // handler as the manuscript — no Assist button in the Notes surface. Read
@@ -7438,6 +7445,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onDictate={manuscriptToolbarActions.onDictate}
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
+                  onContinuityScan={manuscriptToolbarActions.onContinuityScan}
                   focusMode={writingMode === 'focus'}
                   onToggleFocus={() => setWritingMode(writingMode === 'focus' ? 'normal' : 'focus')}
                   onAddChapter={() => { if (selectedStory) void createChapter(selectedStory.id); }}
@@ -7935,6 +7943,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           continuityPanel={
             <ContinuityPanel
               scene={activeSceneForSidebar}
+              story={selectedStory}
               enabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
               // GAP-6: name the flag that's actually off — agent-disabled wins
               // (it's the state the AGENTS card's 'Disabled' status matches).

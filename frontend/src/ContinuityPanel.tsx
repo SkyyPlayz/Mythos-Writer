@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ScrollText, CircleCheck } from 'lucide-react';
 import { useAgentActivity } from './agents/agentActivity';
 import { useAiEnabled } from './hooks/useAiEnabled';
-import type { Scene } from './types';
+import type { Scene, Story } from './types';
 import { InconsistencyCard } from './InconsistencyCard';
 import type { InconsistencyItem, ResolutionAction } from './InconsistencyCard';
 import { PanelHeader } from './components/ui/PanelChrome';
@@ -126,8 +126,25 @@ function formatScanAgo(scannedAt: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+function scenesFromStory(story: Story | null | undefined): Array<{ id: string; label: string; scene: Scene }> {
+  if (!story) return [];
+  const out: Array<{ id: string; label: string; scene: Scene }> = [];
+  for (const chapter of story.chapters ?? []) {
+    for (const sc of chapter.scenes ?? []) {
+      out.push({
+        id: sc.id,
+        label: `${chapter.title} · ${sc.title}`,
+        scene: sc,
+      });
+    }
+  }
+  return out;
+}
+
 export interface ContinuityPanelProps {
   scene: Scene | null;
+  /** PLAN-058 L7 (62:30) — pick which scene a continuity scan targets. */
+  story?: Story | null;
   enabled?: boolean;
   /**
    * SKY-9022/M6 (GAP-6): WHICH flag turned continuity off — `enabled` is a
@@ -157,6 +174,7 @@ export interface ContinuityPanelProps {
 
 export default function ContinuityPanel({
   scene,
+  story = null,
   enabled = true,
   disabledReason = 'agent',
   archiveStoryEditConsentGiven = false,
@@ -183,6 +201,17 @@ export default function ContinuityPanel({
   // M12.3: scan scope picked at the trigger; default = scene (or the legacy
   // Settings-level scope when one is set).
   const [scanScope, setScanScope] = useState<ScanScopeLevel>(() => initialScope(archiveScanScope));
+  const storyScenes = useMemo(() => scenesFromStory(story), [story]);
+  const [scanSceneId, setScanSceneId] = useState<string | null>(scene?.id ?? null);
+  useEffect(() => {
+    setScanSceneId(scene?.id ?? null);
+  }, [scene?.id]);
+  const scanScene = useMemo(() => {
+    if (scanSceneId && storyScenes.length > 0) {
+      return storyScenes.find((s) => s.id === scanSceneId)?.scene ?? scene;
+    }
+    return scene;
+  }, [scanSceneId, storyScenes, scene]);
   // M12.3: live progress of the scoped background extraction pass.
   const [bgScan, setBgScan] = useState<BgScanProgress | null>(null);
   // M12.3: open contradictions across the whole manuscript — global query,
@@ -382,31 +411,31 @@ export default function ContinuityPanel({
   }, [onConsentGranted]);
 
   const handleScanNow = useCallback(() => {
-    if (!scene) return;
-    const prose = scene.blocks.map((b) => b.content).join('\n\n');
+    if (!scanScene) return;
+    const prose = scanScene.blocks.map((b) => b.content).join('\n\n');
     // The LLM continuity scan honors the picked scope via its legacy vocabulary…
-    void window.api.archiveScanContinuity(scene.id, prose, LEGACY_SCAN_SCOPE[scanScope], checkType);
+    void window.api.archiveScanContinuity(scanScene.id, prose, LEGACY_SCAN_SCOPE[scanScope], checkType);
     // …and the M12.1 extraction queue gets the real scoped scene set —
     // identifiers only; main resolves them to paths from the manifest.
     // Enqueue failures come back as { error } resolved values, not throws —
     // surface them, or the panel would look busy while the pass never ran.
     void window.api.jobs
-      ?.enqueue('manuscript-scan', { scope: { level: scanScope, sceneId: scene.id } })
+      ?.enqueue('manuscript-scan', { scope: { level: scanScope, sceneId: scanScene.id } })
       .then((res) => {
         if (res?.error) setActionError(`Background scan didn’t start — ${res.error}`);
       })
       .catch(() => {});
-  }, [scene, scanScope, checkType]);
+  }, [scanScene, scanScope, checkType]);
 
   // M12.B3: switching "Continuity pass ▾" re-scans immediately with the
   // newly selected check — the control "selects which check runs" (SKY-10738
   // acceptance criteria), not just a display filter over stale results.
   const handleCheckTypeChange = useCallback((next: ContinuityCheckType) => {
     setCheckType(next);
-    if (!scene) return;
-    const prose = scene.blocks.map((b) => b.content).join('\n\n');
-    void window.api.archiveScanContinuity(scene.id, prose, LEGACY_SCAN_SCOPE[scanScope], next);
-  }, [scene, scanScope]);
+    if (!scanScene) return;
+    const prose = scanScene.blocks.map((b) => b.content).join('\n\n');
+    void window.api.archiveScanContinuity(scanScene.id, prose, LEGACY_SCAN_SCOPE[scanScope], next);
+  }, [scanScene, scanScope]);
 
   const toggleGroup = useCallback((group: GroupKey) => {
     setCollapsedGroups((prev) => {
@@ -517,12 +546,25 @@ export default function ContinuityPanel({
           id="cp-scan-scope"
           disabled={panelState === 'scanning'}
         />
+        {storyScenes.length > 0 && (
+          <span data-testid="cp-scan-scene-picker">
+            <DropdownSelect
+              value={scanSceneId ?? ''}
+              options={storyScenes.map((s) => ({ value: s.id, label: s.label }))}
+              onChange={(v) => setScanSceneId(v)}
+              aria-label="Scene to scan"
+              id="cp-scan-scene"
+              disabled={panelState === 'scanning'}
+            />
+          </span>
+        )}
         {panelState !== 'not_scanned' && (
           <button
             type="button"
             className="cp-scan-now-btn cp-scan-now-btn--compact"
             onClick={handleScanNow}
-            disabled={!scene || panelState === 'scanning'}
+            disabled={!scanScene || panelState === 'scanning'}
+            data-testid="cp-scan-now-compact"
             aria-label="Scan for continuity issues"
           >
             Scan
@@ -560,8 +602,9 @@ export default function ContinuityPanel({
             type="button"
             className="cp-scan-now-btn"
             onClick={handleScanNow}
-            disabled={!scene}
+            disabled={!scanScene}
             aria-label="Scan now for continuity issues"
+            data-testid="cp-scan-now-editor"
           >
             Scan now
           </button>
