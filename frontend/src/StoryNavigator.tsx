@@ -553,9 +553,11 @@ export default function StoryNavigator({
                           draggable={!!onReorderScenes}
                           onDragStart={(e) => {
                             setDraggedSceneId(scene.id);
-                            e.dataTransfer.effectAllowed = 'move';
-                            if (e.currentTarget instanceof HTMLElement) {
-                              e.dataTransfer.setDragImage(e.currentTarget, 24, 14);
+                            if (e.dataTransfer) {
+                              e.dataTransfer.effectAllowed = 'move';
+                              if (e.currentTarget instanceof HTMLElement) {
+                                e.dataTransfer.setDragImage(e.currentTarget, 24, 14);
+                              }
                             }
                           }}
                           onDragEnd={() => { setDraggedSceneId(null); setDragOverSceneId(null); }}
@@ -661,9 +663,11 @@ export default function StoryNavigator({
                                     draggable={!!onReorderScenes}
                                     onDragStart={(e) => {
                                       setDraggedSceneId(scene.id);
-                                      e.dataTransfer.effectAllowed = 'move';
-                                      if (e.currentTarget instanceof HTMLElement) {
-                                        e.dataTransfer.setDragImage(e.currentTarget, 24, 14);
+                                      if (e.dataTransfer) {
+                                        e.dataTransfer.effectAllowed = 'move';
+                                        if (e.currentTarget instanceof HTMLElement) {
+                                          e.dataTransfer.setDragImage(e.currentTarget, 24, 14);
+                                        }
                                       }
                                     }}
                                     onDragEnd={() => { setDraggedSceneId(null); setDragOverSceneId(null); }}

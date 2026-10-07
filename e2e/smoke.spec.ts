@@ -19,6 +19,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 
 // ─── Test-suite-wide helpers ──────────────────────────────────────────────────
 
@@ -156,7 +157,7 @@ test('TC-02: create story → chapter → scene and type text', async () => {
   if (await storiesTab.isVisible()) await storiesTab.click();
 
   // Create a new story (header "+" button)
-  await page.locator('.lr-nav-add').first().click();
+  await createStoryFromNavAdd(page);
 
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
