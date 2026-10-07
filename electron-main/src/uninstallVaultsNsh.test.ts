@@ -14,7 +14,10 @@ import {
   assertDefaultVaultsFallbackRmdir,
   assertDeleteVaultsSectionOffByDefault,
   assertKeepBranchInsertsCacheMacroOnly,
+  assertKeepElseEndIfInsertsOnlyAppCachesMacro,
   assertNoExecutableMessageBox,
+  assertUninstallerCheckboxSectionTokens,
+  MYTHOS_DELETE_VAULTS_SECTION_O_LINE,
   assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse,
   assertSidecarAllowlistBeforeDelete,
   assertSidecarDeleteAfterFileOpenAndClose,
@@ -57,10 +60,14 @@ function expectPinFailsOnCustomUnInstall(
 describe('build/uninstall-vaults.nsh token contract', () => {
   const customUnInstall = () => nshMacroBody(NSH, 'customUnInstall');
 
+  it('(0) ships pre-Uninstall checkbox tokens (customUnInstallSection + BUILD_UNINSTALLER + exact Section /o)', () => {
+    assertUninstallerCheckboxSectionTokens(NSH);
+    expect(NSH).toContain(MYTHOS_DELETE_VAULTS_SECTION_O_LINE);
+    expect(NSH).toContain('SectionIsSelected');
+  });
+
   it('(1) delete-vaults section is Section /o — off by default (MW-delete-vault)', () => {
     assertDeleteVaultsSectionOffByDefault(NSH);
-    expect(NSH).toContain('!ifdef BUILD_UNINSTALLER');
-    expect(NSH).toContain('SectionIsSelected');
   });
 
   it('(2) SectionIsSelected gate — Remove-all deletes only between If and Else (Critic H4)', () => {
@@ -81,6 +88,10 @@ describe('build/uninstall-vaults.nsh token contract', () => {
   it('(5) KEEP branch cache-only — no Remove-all user macro (R-5 / Probe H-A)', () => {
     assertKeepBranchInsertsCacheMacroOnly(customUnInstall());
     assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse(customUnInstall());
+  });
+
+  it('(6) KEEP ${Else}..${EndIf} inserts only mythos_delete_app_caches (M13)', () => {
+    assertKeepElseEndIfInsertsOnlyAppCachesMacro(customUnInstall());
   });
 
   it('(b) default KEEP — no executable MessageBox in uninstall nsh', () => {
@@ -211,6 +222,23 @@ describe('build/uninstall-vaults.nsh token contract', () => {
       );
       expect(mutant).not.toBe(NSH);
       expectPinFails(mutant, assertAllowlistDenySkipsSidecarLine, /do_delete|uninstall_vault_read/);
+    });
+
+    it('M13: KEEP ${Else} branch with extra Remove-all macro fails cache-only pin', () => {
+      const body = customUnInstall();
+      const elseAt = body.indexOf('${Else}');
+      const mutantBody =
+        body.slice(0, elseAt) +
+        body.slice(elseAt).replace(
+          '!insertmacro mythos_delete_app_caches',
+          '!insertmacro mythos_delete_app_caches\n      !insertmacro mythos_delete_remove_all_user_data',
+        );
+      const mutantNsh = NSH.replace(body, mutantBody);
+      expectPinFailsOnCustomUnInstall(
+        mutantNsh,
+        assertKeepElseEndIfInsertsOnlyAppCachesMacro,
+        /M13|mythos_delete_app_caches/,
+      );
     });
 
     it('Probe H-A (b): KEEP branch also inserts Remove-all macro fails (R-5)', () => {

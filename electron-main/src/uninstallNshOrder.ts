@@ -1,13 +1,36 @@
 /** Pure ordering checks for build/uninstall-vaults.nsh (unit-tested, including mutants). */
 
+/** Exact shipped checkbox line (MW-delete-vault UX lock). */
+export const MYTHOS_DELETE_VAULTS_SECTION_O_LINE =
+  'Section /o "un.Also delete my Mythos vaults / writing data" SEC_DELETE_MYTHOS_VAULTS';
+
 export function nshExecutableLines(source: string): string {
   return source.replace(/;[^\n]*/g, '');
 }
 
-export function assertDeleteVaultsSectionOffByDefault(nsh: string): void {
+export function assertUninstallerCheckboxSectionTokens(nsh: string): void {
   if (!nsh.includes('!macro customUnInstallSection')) {
     throw new Error('customUnInstallSection macro required for pre-uninstall checkbox page');
   }
+  if (!nsh.includes('!ifdef BUILD_UNINSTALLER')) {
+    throw new Error('delete-vaults checkbox must be guarded by !ifdef BUILD_UNINSTALLER');
+  }
+  if (!nsh.includes(MYTHOS_DELETE_VAULTS_SECTION_O_LINE)) {
+    throw new Error(`delete-vaults section must use exact line: ${MYTHOS_DELETE_VAULTS_SECTION_O_LINE}`);
+  }
+  const ifdefAt = nsh.indexOf('!ifdef BUILD_UNINSTALLER');
+  const endifAt = nsh.indexOf('!endif', ifdefAt);
+  if (ifdefAt < 0 || endifAt <= ifdefAt) {
+    throw new Error('BUILD_UNINSTALLER guard must close with !endif');
+  }
+  const guarded = nsh.slice(ifdefAt, endifAt);
+  if (!guarded.includes(MYTHOS_DELETE_VAULTS_SECTION_O_LINE)) {
+    throw new Error('Section /o line must appear inside !ifdef BUILD_UNINSTALLER');
+  }
+}
+
+export function assertDeleteVaultsSectionOffByDefault(nsh: string): void {
+  assertUninstallerCheckboxSectionTokens(nsh);
   if (!/Section\s+\/o\s+"un\.Also delete my Mythos vaults \/ writing data"/.test(nsh)) {
     throw new Error('delete-vaults section must be Section /o (unchecked by default)');
   }
@@ -136,8 +159,35 @@ export function assertAllowlistDenySkipsSidecarLine(nsh: string): void {
   }
 }
 
+/**
+ * M13 / R-5: KEEP `${Else}`…`${EndIf}` must contain only `!insertmacro mythos_delete_app_caches`
+ * (no other insertmacros, Delete, RMDir, or FileOpen).
+ */
+export function assertKeepElseEndIfInsertsOnlyAppCachesMacro(customUnInstallMacroBody: string): void {
+  const elseAt = customUnInstallMacroBody.indexOf('${Else}');
+  const endIfAt = customUnInstallMacroBody.indexOf('${EndIf}', elseAt);
+  if (elseAt < 0 || endIfAt <= elseAt) {
+    throw new Error('customUnInstall must pair ${Else} with ${EndIf} for KEEP branch');
+  }
+  const keepRegion = customUnInstallMacroBody.slice(elseAt, endIfAt);
+  const insertMacros = keepRegion.match(/!insertmacro\s+\S+/g) ?? [];
+  if (
+    insertMacros.length !== 1 ||
+    insertMacros[0] !== '!insertmacro mythos_delete_app_caches'
+  ) {
+    throw new Error(
+      'KEEP ${Else}..${EndIf} must insert only mythos_delete_app_caches (M13 / R-5)',
+    );
+  }
+  const executable = nshExecutableLines(keepRegion);
+  if (/\b(RMDir|Delete|FileOpen|FileRead)\b/.test(executable)) {
+    throw new Error('KEEP ${Else}..${EndIf} must not run Delete/RMDir/FileOpen/FileRead');
+  }
+}
+
 /** R-5 / Probe H-A: KEEP (${Else}) runs cache macro only — never Remove-all user macro. */
 export function assertKeepBranchInsertsCacheMacroOnly(customUnInstallMacroBody: string): void {
+  assertKeepElseEndIfInsertsOnlyAppCachesMacro(customUnInstallMacroBody);
   const elseAt = customUnInstallMacroBody.indexOf('${Else}');
   const endIfAt = customUnInstallMacroBody.indexOf('${EndIf}', elseAt);
   if (elseAt < 0 || endIfAt <= elseAt) {
