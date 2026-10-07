@@ -14,7 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import {
-  resolveAppPrivateDeletePaths,
+  resolveRemoveAllDeletePaths,
   USER_VAULTS_SUBDIR,
   UNINSTALL_DELETE_PATHS_FILENAME,
 } from './appUserDataManifest.js';
@@ -361,7 +361,7 @@ function removeEntry(p: string): { ok: boolean; error?: string } {
  */
 export function tryRemoveUserDataDirectory(
   userDataPath: string,
-): { ok: boolean; skipped?: boolean; error?: string } {
+): { ok: boolean; skipped?: boolean; leftoverCount?: number; error?: string } {
   const trimmed = userDataPath.trim().replace(/[/\\]+$/, '');
   if (!trimmed || trimmed === path.sep) {
     return { ok: false, error: 'Refusing to remove empty userData path' };
@@ -370,13 +370,14 @@ export function tryRemoveUserDataDirectory(
     return { ok: true, skipped: true };
   }
   try {
+    if (fs.existsSync(trimmed) && fs.lstatSync(trimmed).isSymbolicLink()) {
+      return { ok: false, error: 'Refusing to remove symlink userData root' };
+    }
     if (!fs.existsSync(userDataPath)) return { ok: true };
     const remaining = fs.readdirSync(userDataPath);
     if (remaining.length > 0) {
-      return {
-        ok: false,
-        error: `userData not empty after delete (${remaining.length} entries remain)`,
-      };
+      // Chromium may leave Local Storage/, Preferences/, etc. — not a user-facing failure.
+      return { ok: true, skipped: true, leftoverCount: remaining.length };
     }
     fs.rmdirSync(userDataPath);
     if (fs.existsSync(userDataPath)) {
@@ -392,7 +393,7 @@ export function tryRemoveUserDataDirectory(
 export function cleanUninstall(options: UninstallCleanOptions): UninstallCleanResult {
   const { userDataPath } = options;
   const { toDelete, customPathsWarning } = resolveDeletePaths(options);
-  const appPrivate = resolveAppPrivateDeletePaths(userDataPath);
+  const appPrivate = resolveRemoveAllDeletePaths(userDataPath);
   const targets = [...new Set([...toDelete, ...appPrivate])];
   const deleted: string[] = [];
   const errors: string[] = [];
@@ -413,6 +414,7 @@ export function cleanUninstall(options: UninstallCleanOptions): UninstallCleanRe
     } else if (!userDataRm.ok && userDataRm.error) {
       errors.push(`${userDataPath}: ${userDataRm.error}`);
     }
+    // skipped with leftoverCount: informational only (Chromium profile dirs).
   }
 
   return { deleted, errors, customPathsWarning };
