@@ -1319,6 +1319,7 @@ export const SIDECAR_READ_TRIM_EXACT_STRING_ROWS: readonly { raw: string; trimme
   { raw: 'C:\\vault\\a\r\n', trimmed: 'C:\\vault\\a' },
   { raw: 'C:\\vault\\b\n', trimmed: 'C:\\vault\\b' },
   { raw: 'C:\\Users\\me\\vault1', trimmed: 'C:\\Users\\me\\vault1' },
+  { raw: 'C:\\vault\\c\r', trimmed: 'C:\\vault\\c' },
 ];
 
 export const SIDECAR_READ_LOOP_STEP_LIMIT = 5000;
@@ -1339,6 +1340,15 @@ export const SIDECAR_DELETE_READ_LOOP_ROWS: readonly {
       DESKTOP_VAULT_DELETE_PATH,
       'C:\\Users\\me\\Documents\\vault1',
     ],
+    expectClosed: true,
+  },
+  {
+    rawLines: [
+      `${DOCUMENTS_VAULT_DELETE_PATH}\r`,
+      'C:\\Users\\me\\Documents\\..\\..\\Windows\r',
+      `${DOWNLOADS_VAULT_DELETE_PATH}\r`,
+    ],
+    expectedDeleted: [DOCUMENTS_VAULT_DELETE_PATH, DOWNLOADS_VAULT_DELETE_PATH],
     expectClosed: true,
   },
 ];
@@ -1485,8 +1495,10 @@ export const SIDECAR_READ_TRIM_GUARD_ROWS: readonly {
 }[] = [
   { raw: '\r\n', expected: 'empty' },
   { raw: '\n', expected: 'empty' },
+  { raw: '\r', expected: 'empty' },
   { raw: 'C:\\Users\\me\\Documents\\vault\\..\r\n', expected: 'vault_read' },
   { raw: 'C:\\Users\\me\\Documents\\vault\\..\n', expected: 'vault_read' },
+  { raw: 'C:\\Users\\me\\Documents\\vault\\..\r', expected: 'vault_read' },
   { raw: 'C:\\vault\\.\r\n', expected: 'vault_read' },
   { raw: 'C:\\vault\\..\r\n', expected: 'vault_read' },
   { raw: 'C:/vault/../note\r\n', expected: 'vault_read' },
@@ -1567,20 +1579,21 @@ export function assertSidecarDeleteReadLoopTables(
   nsh: string,
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
 ): void {
-  const h7 = SIDECAR_MULTILINE_H7_DELETE_ROW;
-  const h7Result = simulateSidecarDeleteReadLoop(nsh, h7.rawLines, env);
-  if (h7Result.closed !== h7.expectClosed) {
-    throw new Error(`H-7 read-loop closed=${h7Result.closed} expected ${h7.expectClosed}`);
-  }
-  if (h7Result.steps >= SIDECAR_READ_LOOP_STEP_LIMIT) {
-    throw new Error('H-7 read-loop exceeded step limit');
-  }
-  const h7Deleted = [...h7Result.deleted].sort();
-  const h7Expected = [...h7.expectedDeleted].sort();
-  if (h7Deleted.length !== h7Expected.length || h7Deleted.some((p, i) => p !== h7Expected[i])) {
-    throw new Error(
-      `H-7 read-loop delete set: expected ${JSON.stringify(h7Expected)}, got ${JSON.stringify(h7Deleted)}`,
-    );
+  for (const h7 of SIDECAR_MULTILINE_H7_DELETE_ROWS) {
+    const h7Result = simulateSidecarDeleteReadLoop(nsh, h7.rawLines, env);
+    if (h7Result.closed !== h7.expectClosed) {
+      throw new Error(`H-7 read-loop closed=${h7Result.closed} expected ${h7.expectClosed}`);
+    }
+    if (h7Result.steps >= SIDECAR_READ_LOOP_STEP_LIMIT) {
+      throw new Error('H-7 read-loop exceeded step limit');
+    }
+    const h7Deleted = [...h7Result.deleted].sort();
+    const h7Expected = [...h7.expectedDeleted].sort();
+    if (h7Deleted.length !== h7Expected.length || h7Deleted.some((p, i) => p !== h7Expected[i])) {
+      throw new Error(
+        `H-7 read-loop delete set: expected ${JSON.stringify(h7Expected)}, got ${JSON.stringify(h7Deleted)}`,
+      );
+    }
   }
 
   for (const row of SIDECAR_DELETE_READ_LOOP_ROWS) {
@@ -1670,8 +1683,9 @@ export function assertDenyPrefixVmBehaviourTables(
 
 export type SidecarGuardVmBehaviourOptions = {
   /**
-   * Probe mode-2 sweep: parity against `canonicalNsh` on traversal/deny/allowlist tables;
-   * skips read-trim, delete-loop, multiline, and S14 label-swap probes.
+   * Mode-2 sweep: parity against `canonicalNsh` on every traversal/deny/allowlist row, plus the
+   * read-trim exact + guard, delete-loop (H-7 rows included) and multiline tables. Skips only the
+   * S14 / hard label-swap probes, which mutate the nsh again by file line.
    */
   sweepRebaseline?: boolean;
   canonicalNsh?: string;
@@ -1682,10 +1696,11 @@ export function assertSidecarGuardVmSweepParity(
   canonicalNsh: string,
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
 ): void {
-  for (const path of TRAVERSAL_REJECT_PATHS) {
-    if (TRAVERSAL_REJECT_S16_CANONICAL_ONLY_PATHS.includes(path)) {
-      continue;
-    }
+  for (const path of [
+    ...TRAVERSAL_REJECT_PATHS,
+    ...TRAVERSAL_REJECT_S16_CANONICAL_ONLY_PATHS,
+    TRAVERSAL_HARD_H6_PATH,
+  ]) {
     const canonical = runTraversalVmFromNsh(path, canonicalNsh);
     const mutant = runTraversalVmFromNsh(path, mutantNsh);
     if (mutant !== canonical) {
@@ -1757,16 +1772,17 @@ export function assertSidecarH7DeleteLoopSweepParity(
   canonicalNsh: string,
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
 ): void {
-  const h7 = SIDECAR_MULTILINE_H7_DELETE_ROW;
-  const canonicalDel = simulateSidecarDeleteReadLoop(canonicalNsh, h7.rawLines, env);
-  const mutantDel = simulateSidecarDeleteReadLoop(mutantNsh, h7.rawLines, env);
   const sortPaths = (paths: readonly string[]) => [...paths].sort();
-  if (
-    sortPaths(canonicalDel.deleted).join('\0') !== sortPaths(mutantDel.deleted).join('\0')
-  ) {
-    throw new Error(
-      `sweep parity H-7 delete-loop: canonical ${JSON.stringify(sortPaths(canonicalDel.deleted))}, mutant ${JSON.stringify(sortPaths(mutantDel.deleted))}`,
-    );
+  for (const h7 of SIDECAR_MULTILINE_H7_DELETE_ROWS) {
+    const canonicalDel = simulateSidecarDeleteReadLoop(canonicalNsh, h7.rawLines, env);
+    const mutantDel = simulateSidecarDeleteReadLoop(mutantNsh, h7.rawLines, env);
+    if (
+      sortPaths(canonicalDel.deleted).join('\0') !== sortPaths(mutantDel.deleted).join('\0')
+    ) {
+      throw new Error(
+        `sweep parity H-7 delete-loop: canonical ${JSON.stringify(sortPaths(canonicalDel.deleted))}, mutant ${JSON.stringify(sortPaths(mutantDel.deleted))}`,
+      );
+    }
   }
 }
 
@@ -1779,6 +1795,11 @@ export function assertSidecarGuardVmBehaviourTables(
   if (options?.sweepRebaseline) {
     const canonical = options.canonicalNsh ?? nsh;
     assertSidecarGuardVmSweepParity(nsh, canonical, env);
+    assertSidecarAllowlistDeleteTables(nsh, env);
+    assertSidecarReadTrimGuardTables(nsh, env, { includeExactTrimPin: true });
+    assertSidecarDeleteReadLoopTables(nsh, env);
+    assertSidecarH7DeleteLoopSweepParity(nsh, canonical, env);
+    assertSidecarMultilineTravGuardTables(nsh, env);
     return;
   }
   assertSidecarReadTrimGuardTables(nsh, env, { includeExactTrimPin: false });
@@ -1871,6 +1892,41 @@ export const TRAVERSAL_REJECT_S16_WIN32_SEGMENT_PATHS: readonly string[] = [
   'C:\\segment\\name.',
 ];
 
+/**
+ * Forge fix item 3 — segment tail (space/TAB/dot) in a middle position, before `/` (:83–:88)
+ * and before `\` (:58–:63). Final-segment tails are in TRAVERSAL_REJECT_S16_WIN32_SEGMENT_PATHS.
+ */
+export const TRAVERSAL_REJECT_MIDDLE_SEGMENT_TAIL_PATHS: readonly string[] = [
+  'C:\\Users\\me\\Documents\\.. /Windows',
+  'C:\\Users\\me\\Documents\\.. ./Windows',
+  'C:\\Users\\me\\Documents\\a./x',
+  'C:\\Users\\me\\Documents\\a /x',
+  `C:\\Users\\me\\Documents\\a${'\t'}/x`,
+  'C:\\Users\\me\\Documents\\a.\\x',
+  'C:\\Users\\me\\Documents\\a \\x',
+  `C:\\Users\\me\\Documents\\a${'\t'}\\x`,
+  'C:\\Users\\me\\Documents\\.. \\Windows',
+  'C:\\Users\\me\\Documents\\.. .\\Windows',
+  `C:\\Users\\me\\Documents\\..${'\t'}/Windows`,
+  `C:\\Users\\me\\Documents\\..${'\t'}\\Windows`,
+];
+
+/**
+ * Forge fix item 4 — leading space/TAB on a segment, after `\` (:64–:67) and after `/`
+ * (:89–:93). Ivy ruling: reject (fail closed). The `..` tails turn an early exit from the
+ * scan at the leading-space check into a delete outside Documents.
+ */
+export const TRAVERSAL_REJECT_LEADING_WS_SEGMENT_PATHS: readonly string[] = [
+  'C:\\Users\\me\\Documents\\ x\\..\\..\\Windows',
+  `C:\\Users\\me\\Documents\\${'\t'}x\\..\\..\\Windows`,
+  'C:\\Users\\me\\Documents\\v/ x/../../Windows',
+  `C:\\Users\\me\\Documents\\v/${'\t'}x/../../Windows`,
+  'C:\\Users\\me\\Documents\\ a\\x',
+  `C:\\Users\\me\\Documents\\${'\t'}a\\x`,
+  'C:\\Users\\me\\Documents\\v/ a/x',
+  `C:\\Users\\me\\Documents\\v/${'\t'}a/x`,
+];
+
 /** Probe hard H-4 / H-5 — dotted segment before later `..` traversal (trav_ok label-swap bypass). */
 export const TRAVERSAL_HARD_H4_H5_REJECT_PATHS: readonly string[] = [
   'C:\\Users\\me\\Documents\\.git\\..\\..\\..\\Windows',
@@ -1880,7 +1936,10 @@ export const TRAVERSAL_HARD_H4_H5_REJECT_PATHS: readonly string[] = [
 /** Probe hard H-6 — `//` in path segment (fwd label-swap must not loop; step cap must fire). */
 export const TRAVERSAL_HARD_H6_PATH = 'C:\\Users\\me\\Documents\\a//b';
 
-/** Reject rows pinned on canonical only (sweep inc/register blind spots on rebaseline tables). */
+/**
+ * Formerly canonical-only reject rows. Forge fix item 2: also in mode-2 sweep parity, so the
+ * :60 register swap and :107 increment mutants are no longer hidden on these paths.
+ */
 export const TRAVERSAL_REJECT_S16_CANONICAL_ONLY_PATHS: readonly string[] = [
   `C:\\Users\\me\\Documents\\vault\\..${'\t'}\\x`,
   'C:\\Users\\me\\Documents\\.. \\x',
@@ -1900,6 +1959,8 @@ export const TRAVERSAL_HARD_H7_STRCPY7_RESET_FILE_LINE = 53;
 export const TRAVERSAL_REJECT_PATHS: readonly string[] = [
   ...TRAVERSAL_REJECT_S12_PATHS,
   ...TRAVERSAL_REJECT_S16_WIN32_SEGMENT_PATHS,
+  ...TRAVERSAL_REJECT_MIDDLE_SEGMENT_TAIL_PATHS,
+  ...TRAVERSAL_REJECT_LEADING_WS_SEGMENT_PATHS,
   ...TRAVERSAL_HARD_H4_H5_REJECT_PATHS,
   ...TRAVERSAL_REJECT_MIXED_SEPARATOR_PATHS,
   'C:\\vault\\.\\note',
@@ -1997,6 +2058,29 @@ export const SIDECAR_MULTILINE_H7_DELETE_ROW: {
   expectedDeleted: [`C:\\Users\\me\\Documents\\My Vault\\carry-${'b'.repeat(80)}`],
   expectClosed: true,
 };
+
+/** Forge fix item 6 — NSIS keeps reading past a blocked line 2, so a valid line 3 still deletes. */
+export const SIDECAR_MULTILINE_H7_LINE3_DELETE_ROW: {
+  rawLines: readonly string[];
+  expectedDeleted: readonly string[];
+  expectClosed: boolean;
+} = {
+  rawLines: [
+    `C:\\Users\\me\\Documents\\My Vault\\carry-${'b'.repeat(80)}${SIDECAR_CRLF}`,
+    `C:\\Users\\me\\Documents\\..\\..\\..\\Windows${SIDECAR_CRLF}`,
+    `C:\\Users\\me\\Documents\\My Vault\\after-block${SIDECAR_CRLF}`,
+  ],
+  expectedDeleted: [
+    `C:\\Users\\me\\Documents\\My Vault\\carry-${'b'.repeat(80)}`,
+    'C:\\Users\\me\\Documents\\My Vault\\after-block',
+  ],
+  expectClosed: true,
+};
+
+const SIDECAR_MULTILINE_H7_DELETE_ROWS = [
+  SIDECAR_MULTILINE_H7_DELETE_ROW,
+  SIDECAR_MULTILINE_H7_LINE3_DELETE_ROW,
+] as const;
 
 /** Critic H6 — file lines for StrCpy $4 $1 $3 deny gates. */
 export const DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES: readonly [115, 118, 121] = [115, 118, 121];
