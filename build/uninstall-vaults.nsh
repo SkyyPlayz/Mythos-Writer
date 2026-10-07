@@ -55,8 +55,16 @@
           StrCpy $4 $1 1 $7
           StrCmp $4 "" uninstall_vault_trav_ok
           StrCmp $4 "\" 0 mythos_trav_fwd
+            StrCmp $7 "0" +5
+            IntOp $8 $7 - 1
+            StrCpy $4 $1 1 $8
+            StrCmp $4 "." uninstall_vault_read
+            StrCmp $4 " " uninstall_vault_read
+            StrCmp $4 "$\t" uninstall_vault_read
             IntOp $8 $7 + 1
             StrCpy $4 $1 1 $8
+            StrCmp $4 " " uninstall_vault_read
+            StrCmp $4 "$\t" uninstall_vault_read
             StrCmp $4 "." 0 mythos_trav_inc
               IntOp $8 $8 + 1
               StrCpy $4 $1 1 $8
@@ -72,8 +80,16 @@
                 Goto mythos_trav_inc
           mythos_trav_fwd:
           StrCmp $4 "/" 0 mythos_trav_inc
+            StrCmp $7 "0" +5
+            IntOp $8 $7 - 1
+            StrCpy $4 $1 1 $8
+            StrCmp $4 "." uninstall_vault_read
+            StrCmp $4 " " uninstall_vault_read
+            StrCmp $4 "$\t" uninstall_vault_read
             IntOp $8 $7 + 1
             StrCpy $4 $1 1 $8
+            StrCmp $4 " " uninstall_vault_read
+            StrCmp $4 "$\t" uninstall_vault_read
             StrCmp $4 "." 0 mythos_trav_inc
               IntOp $8 $8 + 1
               StrCpy $4 $1 1 $8
@@ -90,6 +106,10 @@
           IntOp $7 $7 + 1
           Goto mythos_trav_scan
         uninstall_vault_trav_ok:
+        StrCpy $2 $1 1 -1
+        StrCmp $2 "." uninstall_vault_read
+        StrCmp $2 " " uninstall_vault_read
+        StrCmp $2 "$\t" uninstall_vault_read
         StrLen $3 "$WINDIR"
         StrCpy $4 $1 $3
         StrCmp $4 "$WINDIR" uninstall_vault_read 0
