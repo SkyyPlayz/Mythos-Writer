@@ -13,7 +13,6 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 import { toggleStoryEditorSplit } from './helpers/storyEditorSplit';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
@@ -76,7 +75,6 @@ test.describe('PLAN-058 L5 — Story editor', () => {
     try {
       const page = await bootStoryEditor(app);
       await page.locator('[data-testid="nav-empty-cta"]').click({ timeout: 15_000 });
-  await confirmNewStoryModalIfOpen(page);
       await expect(page.locator('[data-testid="new-story-modal"]')).toBeVisible();
       await expect(page.locator('[data-testid="new-story-modal-title-input"]')).toBeVisible();
     } finally {
@@ -94,7 +92,7 @@ test.describe('PLAN-058 L5 — Story editor', () => {
     try {
       const page = await bootStoryEditor(app);
       await page.locator('[data-testid="nav-empty-cta"]').click({ timeout: 15_000 });
-  await confirmNewStoryModalIfOpen(page);
+      await expect(page.locator('[data-testid="new-story-modal"]')).toBeVisible();
       await page.locator('[data-testid="new-story-modal-title-input"]').fill('Split Test');
       await page.locator('[data-testid="new-story-modal-submit"]').click();
       await expect(page.locator('[data-testid="msv-root"]')).toBeVisible({ timeout: 15_000 });
