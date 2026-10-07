@@ -497,7 +497,17 @@
   max-width: 14px;
   width: 14px !important;
   overflow: visible;
+  z-index: 1;
+}
+
+.shell-left--edge:hover,
+.shell-left--edge:focus-within {
   z-index: 12;
+}
+
+/* Collapsed edge is 14px wide; clipped rail content must not steal center-column clicks. */
+.shell-left--edge:not(:hover):not(:focus-within) .shell-left__peek {
+  pointer-events: none;
 }
 
 .shell-left--edge .shell-left__peek {
