@@ -34,6 +34,21 @@ describe('PLAN-058 L7 pins', () => {
     expect(msv).toContain('onContinuityScan');
   });
 
+  it('62:53 pending hub tab when GRS was collapsed (H2)', () => {
+    const shell = readFileSync(resolve(__dirname, 'DesktopShell.tsx'), 'utf8');
+    expect(shell).toContain('pendingAgentHubTab');
+    expect(shell).toContain("setPendingAgentHubTab('notes-analysis')");
+    const hub = readFileSync(resolve(__dirname, 'AgentHubPanel.tsx'), 'utf8');
+    expect(hub).toContain('pendingHubTab');
+    expect(hub).toContain('onPendingHubTabConsumed');
+  });
+
+  it('H1 continuity quick command gates on archive settings', () => {
+    const pq = readFileSync(resolve(__dirname, 'partner/partnerQuickCommands.ts'), 'utf8');
+    expect(pq).toContain('archiveContinuityEnabledFromSettings');
+    expect(pq).toContain("Background scan didn't start");
+  });
+
   it('63:13 prebuilt composer quick actions wired in hub', () => {
     const hub = readFileSync(resolve(__dirname, 'AgentHubPanel.tsx'), 'utf8');
     expect(hub).toContain('ComposerQuickActions');

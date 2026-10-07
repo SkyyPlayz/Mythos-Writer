@@ -170,7 +170,7 @@ import EntityBrowser from './EntityBrowser';
 import SuggestionReview from './SuggestionReview';
 import VaultBrowser from './components/VaultBrowser';
 import ProgressDashboard from './ProgressDashboard';
-import AgentHubPanel from './AgentHubPanel';
+import AgentHubPanel, { type AgentHubTab } from './AgentHubPanel';
 import CoachPage from './coach/CoachPage';
 import ContinuityPanel from './ContinuityPanel';
 import type { InconsistencyItem } from './ContinuityPanel';
@@ -920,6 +920,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // E2E tests that seed settings without rightSidebarVisible keep undefined → no sidebar renders,
   // preserving the same layout as before this PR (fixes timeline TC-TL-06 overlap regression).
   const [grsVisible, setGrsVisible] = useState<boolean | undefined>(undefined);
+  const [pendingAgentHubTab, setPendingAgentHubTab] = useState<AgentHubTab | null>(null);
   const [grsWidth, setGrsWidth] = useState(300);
   const [grsPanels, setGrsPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
   const [continuityCount, setContinuityCount] = useState(0);
@@ -6383,6 +6384,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   }, [persistLeftSidebarLayout]);
 
   const handleToolbarContinuityScan = useCallback(() => {
+    setPendingAgentHubTab('notes-analysis');
     handleGrsVisibilityChange(true);
     window.dispatchEvent(new CustomEvent('mythos:open-continuity-scan'));
   }, [handleGrsVisibilityChange]);
@@ -7891,6 +7893,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         <AgentHubPanel
           scene={activeSceneForSidebar}
           story={selectedStory}
+          pendingHubTab={pendingAgentHubTab}
+          onPendingHubTabConsumed={() => setPendingAgentHubTab(null)}
           onOpenScenesFull={(board) => {
             if (board) { handleOpenBoard(board); return; }
             handleNavSectionChange('story');

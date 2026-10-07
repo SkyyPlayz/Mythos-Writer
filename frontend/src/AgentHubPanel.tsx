@@ -66,7 +66,8 @@ import './AgentHubPanel.css';
 /** Legacy agent row ids — kept for resolveAgentStatus + hand routing tests. */
 export type AgentId = 'writing-assistant' | 'brainstorm' | 'archive' | 'beta-reader';
 
-type HubTab = 'partner' | 'suggestions' | 'scenes' | 'notes-analysis';
+export type AgentHubTab = 'partner' | 'suggestions' | 'scenes' | 'notes-analysis';
+type HubTab = AgentHubTab;
 
 type AgentStatusDot = 'idle' | 'watching' | 'attention' | 'disabled';
 
@@ -158,6 +159,9 @@ interface Props {
   referencesPanel?: import('react').ReactNode;
   /** Opens Settings › Agents (partner session history — read-only). */
   onOpenPartnerHistory?: () => void;
+  /** Applied once on mount when GRS was collapsed (toolbar continuity scan). */
+  pendingHubTab?: AgentHubTab | null;
+  onPendingHubTabConsumed?: () => void;
 }
 
 export default function AgentHubPanel({
@@ -191,6 +195,8 @@ export default function AgentHubPanel({
   continuityItems = [],
   referencesPanel,
   onOpenPartnerHistory,
+  pendingHubTab = null,
+  onPendingHubTabConsumed,
 }: Props) {
   const aiEnabled = useAiEnabled();
   const partnerName = resolvePartnerDisplayName(agentNames);
@@ -207,6 +213,12 @@ export default function AgentHubPanel({
     window.addEventListener('mythos:open-continuity-scan', openContinuity);
     return () => window.removeEventListener('mythos:open-continuity-scan', openContinuity);
   }, [setActiveTab]);
+
+  useEffect(() => {
+    if (!pendingHubTab) return;
+    setActiveTab(pendingHubTab);
+    onPendingHubTabConsumed?.();
+  }, [pendingHubTab, setActiveTab, onPendingHubTabConsumed]);
 
   const [call, setCall] = useState<PartnerCallState>({
     onCall: false,

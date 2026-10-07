@@ -10,6 +10,19 @@ import { buildBetaReadSourceText, type BetaScopeOption } from '../beta/textAssem
 import type { PartnerHandId } from '../agents/partnerIdentity';
 import { storyTimelineId } from '../timeline2/notesToTimeline';
 
+/** Same gate as ContinuityPanel / DesktopShell archive panels. */
+type ContinuitySettingsSnap = {
+  archiveContinuityEnabled?: boolean;
+  agents?: { archive?: { enabled?: boolean } };
+} | null | undefined;
+
+export function archiveContinuityEnabledFromSettings(
+  settings: ContinuitySettingsSnap,
+): boolean {
+  return (settings?.agents?.archive?.enabled ?? true)
+    && (settings?.archiveContinuityEnabled ?? true);
+}
+
 export type PartnerQuickCommandId =
   | 'beta-read'
   | 'continuity'
@@ -166,8 +179,25 @@ export async function runPartnerQuickCommand(
       if (typeof api?.archiveScanContinuity !== 'function') {
         return { kind: 'card', text: 'Continuity scan is unavailable in this build.', cardTitle: 'Continuity' };
       }
+      const settings = await api.settingsGet?.().catch(() => null);
+      if (!archiveContinuityEnabledFromSettings(settings)) {
+        const text = settings?.agents?.archive?.enabled === false
+          ? 'Archive Agent is disabled. Enable it in Settings.'
+          : 'Continuity checking is turned off. Enable it in Settings.';
+        return { kind: 'card', text, cardTitle: 'Continuity', cardFoot: ctx.scene.title };
+      }
       await api.archiveScanContinuity(ctx.scene.id, prose, 'active_scene', 'story_vault');
-      void api.jobs?.enqueue('manuscript-scan', { scope: { level: 'scene', sceneId: ctx.scene.id } });
+      const jobRes = await api.jobs
+        ?.enqueue('manuscript-scan', { scope: { level: 'scene', sceneId: ctx.scene.id } })
+        .catch(() => ({ error: 'Could not start background scan.' }));
+      if (jobRes && typeof jobRes === 'object' && 'error' in jobRes && jobRes.error) {
+        return {
+          kind: 'card',
+          text: `Background scan didn't start — ${String(jobRes.error)}`,
+          cardTitle: 'Continuity',
+          cardFoot: ctx.scene.title,
+        };
+      }
       return {
         kind: 'card',
         text: 'Continuity scan started — new flags will appear in the Continuity panel and Suggestions.',

@@ -53,7 +53,7 @@ async function launch(userData: string): Promise<ElectronApplication> {
   });
 }
 
-async function bootStoryWithScene(page: Page): Promise<void> {
+async function bootStoryWithScene(page: Page, opts?: { expectGrs?: boolean }): Promise<void> {
   await page.waitForLoadState('domcontentloaded');
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 20_000 });
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -62,7 +62,9 @@ async function bootStoryWithScene(page: Page): Promise<void> {
   await createStoryFromNavAdd(page);
   await page.locator('.nav-scene-row').first().click();
   await expect(page.locator('.block-editor')).toBeVisible({ timeout: 12_000 });
-  await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 8_000 });
+  if (opts?.expectGrs !== false) {
+    await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 8_000 });
+  }
 }
 
 test.describe('PLAN-058 L7 — Partner / AI', () => {
@@ -88,6 +90,46 @@ test.describe('PLAN-058 L7 — Partner / AI', () => {
         fs.mkdirSync(shotDir, { recursive: true });
         await page.screenshot({ path: path.join(shotDir, 'plan058-l7-partner-hub.png') });
       }
+    } finally {
+      await app.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('62:53 — toolbar Continuity with GRS collapsed opens Notes & Analysis (H2)', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'plan058-l7-grs-collapsed-'));
+    const userData = path.join(root, 'ud');
+    const vaultDir = path.join(root, 'story');
+    const notesDir = path.join(root, 'notes');
+    for (const d of [userData, vaultDir, notesDir]) fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(notesDir, '.notes-vault'), '');
+    fs.writeFileSync(
+      path.join(userData, 'app-settings.json'),
+      JSON.stringify({
+        onboardingComplete: true,
+        theme: 'dark',
+        rightSidebarVisible: false,
+        provider: { kind: 'anthropic', model: 'claude-haiku-4-5-20251001', apiKey: 'sk-ant-plan058-l7-e2e' },
+        agents: {
+          writingAssistant: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+          brainstorm: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+          archive: { enabled: true, model: 'claude-sonnet-4-6' },
+        },
+      }, null, 2),
+    );
+    fs.writeFileSync(
+      path.join(userData, 'vault-settings.json'),
+      JSON.stringify({ vaultRoot: vaultDir, notesVaultRoot: notesDir }, null, 2),
+    );
+    const app = await launch(userData);
+    try {
+      const page = await app.firstWindow();
+      await bootStoryWithScene(page, { expectGrs: false });
+      await expect(page.locator('[data-testid="global-right-sidebar"]')).toHaveCount(0);
+      await page.getByTestId('msv-continuity-scan-btn').click();
+      await expect(page.locator('[data-testid="global-right-sidebar"]')).toBeVisible({ timeout: 8_000 });
+      await expect(page.getByTestId('ahp-notes-analysis')).toBeVisible({ timeout: 8_000 });
+      await expect(page.getByTestId('cp-scan-scene-picker')).toBeVisible({ timeout: 6_000 });
     } finally {
       await app.close();
       fs.rmSync(root, { recursive: true, force: true });
