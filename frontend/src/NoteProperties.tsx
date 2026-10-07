@@ -7,9 +7,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   parseNoteFrontmatter,
   setFrontmatterField,
-  setFrontmatterTags,
   type NoteFrontmatterField,
 } from './noteFrontmatter';
+import { stripHiddenBlocks } from './lib/frontmatter';
+import { mergedNoteTags, setNoteTagsWithBodySync } from './lib/noteTagSync';
 import './NoteProperties.css';
 
 interface Props {
@@ -41,7 +42,7 @@ export default function NoteProperties({ path }: Props) {
     contentRef.current = r.content;
     const fm = parseNoteFrontmatter(r.content);
     setFields(fm.fields);
-    setTags(fm.tags);
+    setTags(mergedNoteTags(fm.tags, stripHiddenBlocks(r.content)));
     setRowEdits({});
     setError(null);
     setLoaded(true);
@@ -71,7 +72,7 @@ export default function NoteProperties({ path }: Props) {
     contentRef.current = nextContent;
     const fm = parseNoteFrontmatter(nextContent);
     setFields(fm.fields);
-    setTags(fm.tags);
+    setTags(mergedNoteTags(fm.tags, stripHiddenBlocks(nextContent)));
     setError(null);
     // M16: tell any open editor on this note to adopt the new content so a
     // later editor autosave doesn't clobber the frontmatter change.
@@ -129,13 +130,13 @@ export default function NoteProperties({ path }: Props) {
     }
     const base = await freshContent();
     if (base === null) return;
-    const ok = await write(setFrontmatterTags(base, [...tags, tag]));
+    const ok = await write(setNoteTagsWithBodySync(base, [...tags, tag]));
     if (ok) setTagInput('');
   }, [tagInput, tags, freshContent, write]);
 
   const removeTag = useCallback(async (tag: string) => {
     const base = await freshContent();
-    if (base !== null) await write(setFrontmatterTags(base, tags.filter((t) => t !== tag)));
+    if (base !== null) await write(setNoteTagsWithBodySync(base, tags.filter((t) => t !== tag)));
   }, [tags, freshContent, write]);
 
   if (!loaded) {

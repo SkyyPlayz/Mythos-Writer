@@ -1,0 +1,26 @@
+.note-inline-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-sm, 6px);
+  vertical-align: middle;
+}
+
+.note-inline-image--missing,
+.note-inline-image--loading {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  min-height: 72px;
+  border-radius: var(--radius-sm, 6px);
+  background: linear-gradient(150deg, var(--n1, #1a2030), var(--n2, #121820));
+  border: 1px solid var(--border-default);
+}
+
+.note-inline-image__glyph {
+  width: 28px;
+  height: 28px;
+  stroke: var(--text-muted);
+  fill: none;
+  stroke-width: 1.4;
+}

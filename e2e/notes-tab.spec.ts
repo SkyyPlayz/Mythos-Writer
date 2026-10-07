@@ -58,7 +58,7 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
   // SKY-9019 M5: nav rail and sub-tabs became orthogonal — Vault Graph and
   // Entity Browser are no longer Notes sub-views (they moved to their own
   // rail/tab destinations), so Notes only has the Editor sub-view left.
-  test('Notes tab shows only the Editor sub-view', async () => {
+  test('Notes tab has no Graph/Entities sub-header toggles (PLAN-058 L6)', async () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
@@ -67,7 +67,8 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
       await expect(page.locator('#app-tabpanel-notes')).toBeVisible({ timeout: 5_000 });
 
-      await expect(page.locator('[data-testid="notes-subview-editor"]')).toBeVisible();
+      await expect(page.locator('.notes-tab-toolbar')).toBeVisible();
+      await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveCount(0);
       await expect(page.locator('[data-testid="notes-subview-graph"]')).toHaveCount(0);
       await expect(page.locator('[data-testid="notes-subview-entities"]')).toHaveCount(0);
     } finally {
@@ -75,15 +76,14 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
     }
   });
 
-  test('Notes tab defaults to Editor sub-view', async () => {
+  test('Notes tab opens the editor surface by default', async () => {
     const app = await launchApp(userData);
     try {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
 
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
-      await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
-      await expect(page.locator('[data-testid="notes-editor-placeholder"]')).toBeVisible();
+      await expect(page.locator('[data-testid="notes-editor-placeholder"]')).toBeVisible({ timeout: 5_000 });
     } finally {
       await app.close().catch(() => undefined);
     }
@@ -116,13 +116,13 @@ test.describe('Notes tab — sub-view toggles and state persistence', () => {
       const page = await firstWindow(app);
       await expect(page.locator('nav[aria-label="Main navigation"]')).toBeVisible({ timeout: 12_000 });
 
-      // Notes tab → Story → back: still on the (only) Editor sub-view.
+      // Notes tab → Story → back: editor surface still available.
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
-      await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 5_000 });
+      await expect(page.locator('[data-testid="notes-editor-placeholder"]')).toBeVisible({ timeout: 5_000 });
       await clickStoryNav(page);
       await expect(page.locator('#app-tabpanel-story')).toBeVisible({ timeout: 3_000 });
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]').click();
-      await expect(page.locator('[data-testid="notes-subview-editor"]')).toHaveAttribute('aria-selected', 'true', { timeout: 3_000 });
+      await expect(page.locator('[data-testid="notes-editor-placeholder"]')).toBeVisible({ timeout: 3_000 });
 
       // Vault Graph → Story → back: Vault Graph rail item relights and its
       // panel remounts, independent of the Notes tab's own state.

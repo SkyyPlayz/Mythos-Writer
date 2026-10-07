@@ -8,7 +8,7 @@ import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
-  type PointerEvent,
+  type PointerEvent as ReactPointerEvent,
   type WheelEvent,
 } from 'react';
 import { stripHiddenBlocks } from './lib/frontmatter';
@@ -312,8 +312,11 @@ export function deriveNodeBlurb(content: string): string | null {
     if (line.startsWith('```') || line.startsWith('~~~')) { inFence = !inFence; continue; }
     if (inFence || !line) continue;
     if (/^(#{1,6}\s|>|[-*+]\s|\d+[.)]\s|\||!\[|<|%%)/.test(line)) continue;
+    // PLAN-058 L6 (24:01): inline category hashtags (#character, #location/pov)
+    // are signals, not prose — never surface them as the graph preview blurb.
+    if (/^#[\p{L}\p{N}_/-]+$/iu.test(line)) continue;
     const text = line
-      .replace(/\[\[([^\]|#\n]+)(?:#[^\]|\n]*)?(?:\|([^\]\n]+))?\]\]/g, (_m, target: string, alias?: string) => (alias ?? target).trim())
+      .replace(/\[\[([^\]|#\n]+)(?:#[^\]]*)?(?:\|([^\]\n]+))?\]\]/g, (_m, target: string, alias?: string) => (alias ?? target).trim())
       .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/[*_`~]/g, '')
       .trim();
@@ -1394,13 +1397,13 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     }
   }
 
-  function handlePointerDown(event: PointerEvent<SVGSVGElement>) {
+  function handlePointerDown(event: ReactPointerEvent<SVGSVGElement>) {
     if (event.button !== 0) return;
     setPanStart({ clientX: event.clientX, clientY: event.clientY, x: pan.x, y: pan.y });
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
-  function handlePointerMove(event: PointerEvent<SVGSVGElement>) {
+  function handlePointerMove(event: ReactPointerEvent<SVGSVGElement>) {
     if (!panStart) return;
     // Prototype gPanDown (3750–3755): pan follows the pointer 1:1.
     setPan({
@@ -1442,6 +1445,9 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     if (event.button !== 0) return;
     event.preventDefault();
     event.stopPropagation();
+    // PLAN-058 L6 (63:24): cancel any in-flight canvas pan so the released
+    // node does not keep following the pointer via the pan handler.
+    setPanStart(null);
     setSelectedNodeId(nodeId);
     const startX = event.clientX;
     const startY = event.clientY;
@@ -1449,7 +1455,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     let moved = false;
     const move = (ev: MouseEvent) => {
       if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD_PX) return;
-      moved = true;
+      if (!moved) moved = true;
       const p = simRef.current.get(nodeId);
       if (!p) return;
       const rect = svg?.getBoundingClientRect();
@@ -1471,7 +1477,6 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
       if (moved) {
-        // Swallow the click that follows a drag so it doesn't open the note.
         dragMovedRef.current = true;
         window.setTimeout(() => { dragMovedRef.current = false; }, 0);
         wakeSim();
