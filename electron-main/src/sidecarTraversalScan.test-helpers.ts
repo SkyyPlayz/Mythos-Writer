@@ -1166,6 +1166,10 @@ export function assertSidecarAllowlistDeleteTables(
     { path: DESKTOP_VAULT_DELETE_PATH, expected: 'delete' },
     { path: DOWNLOADS_VAULT_DELETE_PATH, expected: 'delete' },
     { path: 'C:\\Users\\me\\Documents\\My Vault\\x', expected: 'delete' },
+    { path: 'C:\\Users\\me\\Documents\\My Vault\\notes', expected: 'delete' },
+    { path: 'C:\\Users\\me\\Documents\\a.b.c', expected: 'delete' },
+    { path: 'C:\\Users\\me\\Documents\\v 1.2\\x', expected: 'delete' },
+    { path: 'C:\\Users\\me\\Documents\\v1.2\\notes', expected: 'delete' },
   ];
   for (const { path, expected } of rows) {
     const disposition = runSidecarPathAllowlistDeleteDisposition(path, nsh, env);
@@ -1861,6 +1865,9 @@ export const TRAVERSAL_REJECT_S16_WIN32_SEGMENT_PATHS: readonly string[] = [
   'C:/Users/me/Documents/... ',
   'C:\\Users\\me\\Documents\\vault.',
   'C:\\Users\\me\\Documents\\vault ',
+  'C:\\Users\\me\\Documents\\. .',
+  'C:\\Users\\me\\Documents\\v ',
+  'C:\\Users\\me\\Documents\\v.',
   'C:\\segment\\name.',
 ];
 
@@ -1877,6 +1884,7 @@ export const TRAVERSAL_HARD_H6_PATH = 'C:\\Users\\me\\Documents\\a//b';
 export const TRAVERSAL_REJECT_S16_CANONICAL_ONLY_PATHS: readonly string[] = [
   `C:\\Users\\me\\Documents\\vault\\..${'\t'}\\x`,
   'C:\\Users\\me\\Documents\\.. \\x',
+  'C:\\Users\\me\\Documents\\.. .\\x',
   TRAVERSAL_HARD_H6_PATH,
   'Documents\\./x',
 ];
@@ -1932,6 +1940,10 @@ export const TRAVERSAL_ALLOW_DOTTED_NAME_PATHS: readonly string[] = [
 export const TRAVERSAL_ALLOW_S16_DELETE_PATHS: readonly string[] = [
   'C:\\Users\\me\\Documents\\My Vault',
   'C:\\Users\\me\\Documents\\My Vault\\x',
+  'C:\\Users\\me\\Documents\\My Vault\\notes',
+  'C:\\Users\\me\\Documents\\a.b.c',
+  'C:\\Users\\me\\Documents\\v 1.2\\x',
+  'C:\\Users\\me\\Documents\\v1.2\\notes',
 ];
 
 export const TRAVERSAL_ALLOW_PATHS: readonly string[] = [
