@@ -833,9 +833,7 @@ test('F2 W0.3 / Critic #6 / Probe H2 / Critic hard 1+3: bars clean across tabs',
       }
       const waPanel = page.locator('.writing-assistant-panel');
       if ((await waPanel.count()) === 0) {
-        const agentRow = page.locator('[data-testid="ahp-hand-writer"]');
-        await expect(agentRow).toBeVisible({ timeout: 4_000 });
-        await agentRow.click();
+        await openPartnerWriterTips(page);
       }
       await expect(page.locator('.writing-assistant-panel .pc-header.wa-panel-header')).toBeVisible({
         timeout: 8_000,
