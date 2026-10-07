@@ -1249,11 +1249,23 @@ function parseNsisDollarEscape(quoted: string): string {
   return parseStrCmpQuotedLiteral(quoted.startsWith('"') ? quoted : `"${quoted}"`);
 }
 
+export type SidecarReadTrimResult = {
+  trimmed: 'empty' | string;
+  /**
+   * True when a `StrCmp $2 … 0 +N` relative jump lands strictly past the end of this block. The
+   * block ends at the `StrCmp $1 "" …` empty check (:52), and the next instruction is `StrCpy $7 0`
+   * (:53): landing exactly on it still runs the reset, but landing beyond it skips the per-line $7
+   * reset in the real monolithic script, so $7 carries over and a later line's scan starts past its
+   * own traversal. A mutated (e.g. Nop) :52 still falls through to :53, so it is not a skip.
+   */
+  resetSkipped: boolean;
+};
+
 /** Trim + empty check after a simulated FileRead into $1 (Critic S13 / :46–:52). */
-export function executeSidecarReadTrimFromLineContent(
+export function runSidecarReadTrimWithReset(
   blockLines: readonly string[],
   lineContent: string,
-): 'empty' | string {
+): SidecarReadTrimResult {
   let $1 = lineContent;
   let $2 = '';
   let started = false;
@@ -1305,7 +1317,7 @@ export function executeSidecarReadTrimFromLineContent(
     }
     if (line === 'StrCmp $1 "" uninstall_vault_read') {
       if ($1 === '') {
-        return 'empty';
+        return { trimmed: 'empty', resetSkipped: false };
       }
       pc += 1;
       continue;
@@ -1316,7 +1328,15 @@ export function executeSidecarReadTrimFromLineContent(
     }
     throw new Error(`unsupported read-trim VM instruction: ${line}`);
   }
-  return $1 === '' ? 'empty' : $1;
+  return { trimmed: $1 === '' ? 'empty' : $1, resetSkipped: pc > blockLines.length };
+}
+
+/** Trim + empty check after a simulated FileRead into $1 (Critic S13 / :46–:52). */
+export function executeSidecarReadTrimFromLineContent(
+  blockLines: readonly string[],
+  lineContent: string,
+): 'empty' | string {
+  return runSidecarReadTrimWithReset(blockLines, lineContent).trimmed;
 }
 
 /** Execute FileRead + newline trim chain for one simulated sidecar line (Critic S13). */
@@ -1436,7 +1456,7 @@ export function simulateSidecarDeleteReadLoop(
         }
         throw new Error(`unsupported Goto after FileRead: ${postRead.target}`);
       }
-      const trimmed = executeSidecarReadTrimFromLineContent(readBlock, rawLine);
+      const { trimmed, resetSkipped } = runSidecarReadTrimWithReset(readBlock, rawLine);
       if (trimmed === 'empty') {
         continue;
       }
@@ -1445,7 +1465,7 @@ export function simulateSidecarDeleteReadLoop(
         nsh,
         env,
         travRegs,
-        travBlock,
+        resetSkipped ? travBlock.slice(1) : travBlock,
       );
       travRegs = nextRegs;
       if (disposition === 'delete') {
@@ -2115,9 +2135,29 @@ export const SIDECAR_MULTILINE_H7_LINE3_DELETE_ROW: {
   expectClosed: true,
 };
 
+/**
+ * A long CRLF line then an LF-only traversal line. On the LF line the `\r` trim is not taken, so a
+ * `StrCmp $2 "$\r" 0 +2` offset widened to `+4`/`+6` (file :50) skips the :53 $7 reset; line 1 has
+ * left $7 past line 2's end, so line 2's `..` is never scanned and it would be deleted. Canonical
+ * rejects line 2 and deletes only line 1.
+ */
+export const SIDECAR_MULTILINE_LF_RESET_ROW: {
+  rawLines: readonly string[];
+  expectedDeleted: readonly string[];
+  expectClosed: boolean;
+} = {
+  rawLines: [
+    `C:\\Users\\me\\Documents\\${'a'.repeat(40)}${SIDECAR_CRLF}`,
+    'C:\\Users\\me\\Documents\\..\\..\\..\\Windows\n',
+  ],
+  expectedDeleted: [`C:\\Users\\me\\Documents\\${'a'.repeat(40)}`],
+  expectClosed: true,
+};
+
 const SIDECAR_MULTILINE_H7_DELETE_ROWS = [
   SIDECAR_MULTILINE_H7_DELETE_ROW,
   SIDECAR_MULTILINE_H7_LINE3_DELETE_ROW,
+  SIDECAR_MULTILINE_LF_RESET_ROW,
 ] as const;
 
 /** Critic H6 — file lines for StrCpy $4 $1 $3 deny gates. */

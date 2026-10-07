@@ -133,6 +133,39 @@ function segmentTailCases(d: string): string[][] {
   return cases;
 }
 
+/**
+ * Multi-line sidecars where a long line is followed by a traversal line under every terminator, so a
+ * skipped per-line $7 reset or empty check (the read-trim `+N` overshoot) shows as an extra delete.
+ */
+function multilineCarryCases(d: string): string[][] {
+  const firsts = [`${d}\\${'a'.repeat(40)}`, `${d}\\${'b'.repeat(50)}`, `${d}\\v`];
+  const travs = [
+    `${d}\\..\\..\\..\\Windows`,
+    `${d}/../../../Windows`,
+    `${d}\\a\\..\\..\\Windows`,
+    `${d}\\v\\.. \\x`,
+    `${d}\\v/.. /x`,
+    `${d}\\.\\x`,
+    `${d}\\..`,
+  ];
+  const terms = ['\r\n', '\n', '\r', ''];
+  const cases: string[][] = [];
+  for (const first of firsts) {
+    for (const firstTerm of ['\r\n', '\n']) {
+      for (const trav of travs) {
+        for (const term of terms) {
+          cases.push([`${first}${firstTerm}`, `${trav}${term}`]);
+        }
+      }
+    }
+  }
+  for (const trav of travs.slice(0, 3)) {
+    cases.push([`${firsts[0]}\r\n`, `${trav}\n`, `${d}\\w\r\n`]);
+    cases.push([`${firsts[0]}\n`, `${trav}\n`, `${d}\\w\n`]);
+  }
+  return cases;
+}
+
 function oracleCorpusCases(): string[][] {
   const d = ORACLE_ENV_BASE.DOCUMENTS;
   const a = ORACLE_ENV_BASE.APPDATA;
@@ -197,6 +230,7 @@ function oracleCorpusCases(): string[][] {
     cases.push([`\\${seg}\\x\r\n`], [`/${seg}/x\r\n`], [`${d}\\${seg}/x\r\n`], [`${d}/${seg}\\x\r\n`]);
   }
   cases.push(...segmentTailCases(d));
+  cases.push(...multilineCarryCases(d));
   return cases;
 }
 

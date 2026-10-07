@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 
 import { loadUninstallVaultsNsh } from './uninstallVaultsNsh.path.js';
 import {
+  CANONICAL_READ_TRIM_BLOCK,
+  runSidecarReadTrimWithReset,
   SIDECAR_GUARD_REGION_FILE_LINE_FIRST,
   SIDECAR_GUARD_REGION_FILE_LINE_LAST,
 } from './sidecarTraversalScan.test-helpers.js';
@@ -58,4 +60,34 @@ describe('oracle-class mutant sweep :43-:127 (Forge gen.py classes, pin-free VM 
       expect(caught).toBeGreaterThan(0);
     });
   }
+
+  // The behaviour oracle above is the same TS VM as the catch, so a VM that stops modelling the
+  // read-trim overshoot would weaken both sides at once and stay green. These pin the model itself.
+  describe('read-trim overshoot model (multi-line $7 carry, Forge nsis.py ground truth)', () => {
+    const CR_TRIM_INDEX = CANONICAL_READ_TRIM_BLOCK.findIndex((l) => l.trim() === 'StrCmp $2 "$\\r" 0 +2');
+    const EMPTY_CHECK_INDEX = CANONICAL_READ_TRIM_BLOCK.findIndex(
+      (l) => l.trim() === 'StrCmp $1 "" uninstall_vault_read',
+    );
+    const withLine = (index: number, line: string): string[] =>
+      CANONICAL_READ_TRIM_BLOCK.map((l, i) => (i === index ? line : l));
+
+    it('only a jump landing past the :53 reset skips it (canonical, +2→+4 on LF / CRLF, :52 Nop)', () => {
+      const overshoot = withLine(CR_TRIM_INDEX, '        StrCmp $2 "$\\r" 0 +4');
+      expect(runSidecarReadTrimWithReset(CANONICAL_READ_TRIM_BLOCK, 'C:\\x\n').resetSkipped).toBe(false);
+      expect(runSidecarReadTrimWithReset(overshoot, 'C:\\x\n').resetSkipped).toBe(true);
+      expect(runSidecarReadTrimWithReset(overshoot, 'C:\\x\r\n').resetSkipped).toBe(false);
+      expect(
+        runSidecarReadTrimWithReset(withLine(EMPTY_CHECK_INDEX, '        Nop'), 'C:\\x\n').resetSkipped,
+      ).toBe(false);
+    });
+
+    it('the :50 +2→+4 / +2→+6 overshoot mutants are caught (they delete `..\\..\\..\\Windows` after a long line)', () => {
+      const keys = ['50:tgt4:+2->+4', '50:tgt4:+2->+6'];
+      const mutants = (byLine.get(50) ?? []).filter((m) => keys.includes(m.key));
+      expect(mutants.map((m) => m.key).sort()).toEqual([...keys].sort());
+      for (const mutant of mutants) {
+        expect(sidecarGuardModeTwoCaught(mutant.nsh, nsh), mutant.key).toBe(true);
+      }
+    });
+  });
 });
