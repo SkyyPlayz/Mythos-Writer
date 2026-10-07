@@ -20,10 +20,10 @@ export const SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES: Readonly<
  * NSIS guard is stricter than the behavioural VM tables on these lines (honest blind spot).
  */
 export const SIDECAR_GUARD_SWEEP_STRONGER_THAN_VM_TABLES: Readonly<Record<number, string>> = {
-  52: 'StrCmp $1 "" Nop: blank sidecar lines still trim to empty in the read-trim VM exit path.',
-  72: 'Goto mythos_trav_inc Nop after mixed `\\..`+`/` reject; table rows already vault_read at :71.',
-  105:
-    'StrCmp $4 $5 Nop: APPDATA prefix gate; tail row + extended VM still match Nop fall-through on table paths.',
+  52: 'StrCmp $1 "" Nop: read-trim VM still returns empty via post-loop $1 check; delete-set loop unchanged.',
+  72: 'Goto mythos_trav_inc Nop after `\\..`+`/` reject; traversal reject table already vault_read at :71.',
+  106:
+    'StrCmp $1 $5 Nop: Mythos APPDATA root self-skip; table paths use non-root Mythos subtree or other allowlists.',
 };
 
 describe('sidecar guard region sweep :43-:106 (buildIntegrity excluded)', () => {

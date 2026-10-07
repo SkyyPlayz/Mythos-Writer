@@ -393,16 +393,23 @@ function appDataM5BlockFromGuardRegion(region: readonly string[]): readonly stri
   return region.slice(appdataStart);
 }
 
-function extractAppDataM5GuardLinesFromNsh(nsh: string): string[] {
+/** APPDATA … Downloads allowlist gates through `mythos_al_deny` (file :102–:148). */
+export function extractSidecarAllowlistDeleteLinesFromNsh(nsh: string): string[] {
   const fileLines = nshFileLines(nsh);
   const start = fileLines.findIndex((l) => l.includes(String.raw`StrCpy $5 "$APPDATA`));
-  const end = fileLines.findIndex(
-    (l, i) => i > start && l.trim() === 'StrCmp $6 "" uninstall_vault_read',
-  );
-  if (start < 0 || end < start) {
-    throw new Error('extended APPDATA M5 guard block missing in uninstall nsh');
+  const denyLabel = fileLines.findIndex((l) => l.trim() === 'mythos_al_deny:');
+  if (start < 0 || denyLabel < start) {
+    throw new Error('allowlist delete block start missing in uninstall nsh');
   }
-  return fileLines.slice(start, end + 1);
+  const gotoReadIdx = denyLabel + 1;
+  if (fileLines[gotoReadIdx]?.trim() !== 'Goto uninstall_vault_read') {
+    throw new Error('mythos_al_deny Goto uninstall_vault_read missing');
+  }
+  return fileLines.slice(start, gotoReadIdx + 1);
+}
+
+function extractAppDataM5GuardLinesFromNsh(nsh: string): string[] {
+  return extractSidecarAllowlistDeleteLinesFromNsh(nsh);
 }
 
 function extractSidecarGuardRegionForVm(nsh: string): string[] {
@@ -567,6 +574,9 @@ export type SidecarNsisVarEnv = Readonly<{
   PROGRAMFILES: string;
   PROGRAMFILES64: string;
   APPDATA: string;
+  DOCUMENTS: string;
+  DESKTOP: string;
+  PROFILE: string;
 }>;
 
 export const DEFAULT_SIDECAR_NSIS_VAR_ENV: SidecarNsisVarEnv = {
@@ -574,6 +584,9 @@ export const DEFAULT_SIDECAR_NSIS_VAR_ENV: SidecarNsisVarEnv = {
   PROGRAMFILES: 'C:\\Program Files',
   PROGRAMFILES64: 'C:\\Program Files (x86)',
   APPDATA: 'C:\\Users\\me\\AppData\\Roaming',
+  DOCUMENTS: 'C:\\Users\\me\\Documents',
+  DESKTOP: 'C:\\Users\\me\\Desktop',
+  PROFILE: 'C:\\Users\\me',
 };
 
 function unescapeNsisCString(inner: string): string {
@@ -658,22 +671,62 @@ export function executeDenyPrefixBlock(
   return 'allowlist_continue';
 }
 
+export type SidecarAllowlistDeleteOutcome = 'delete' | 'skip_delete';
+
 export type AppDataM5GuardOutcome = 'vault_read' | 'allowlist_continue';
 
-/** Execute APPDATA Mythos Writer prefix + root self-match (:100–:104). */
-export function executeAppDataM5GuardBlock(
+function allowlistDeleteToLegacyAppData(outcome: SidecarAllowlistDeleteOutcome): AppDataM5GuardOutcome {
+  return outcome === 'delete' ? 'allowlist_continue' : 'vault_read';
+}
+
+function resolveAllowlistDeleteJump(
+  target: string,
+  labels: ReadonlyMap<string, number>,
+): SidecarAllowlistDeleteOutcome | { pc: number } {
+  if (target === 'uninstall_vault_read') {
+    return 'skip_delete';
+  }
+  if (target === 'uninstall_vault_do_delete') {
+    return 'delete';
+  }
+  const at = labels.get(target);
+  if (at === undefined) {
+    throw new Error(`unknown allowlist/delete jump target: ${target}`);
+  }
+  return { pc: at };
+}
+
+/** Execute APPDATA/Documents/Desktop/Downloads allowlist gates (:102–:148) through delete vs read decision. */
+export function executeSidecarAllowlistDeleteBlock(
   blockLines: readonly string[],
   path: string,
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
-): AppDataM5GuardOutcome {
+): SidecarAllowlistDeleteOutcome {
+  const labels = new Map<string, number>();
+  for (let i = 0; i < blockLines.length; i++) {
+    const labelMatch = blockLines[i]!.trim().match(/^(\w+):$/);
+    if (labelMatch) {
+      labels.set(labelMatch[1]!, i);
+    }
+  }
+
   const $1 = path;
   let $3 = 0;
   let $4 = '';
   let $5 = '';
   let $6 = '';
   let pc = 0;
-  while (pc < blockLines.length) {
-    const line = blockLines[pc]!.trim();
+  const maxSteps = blockLines.length * 40 + 200;
+  for (let step = 0; step < maxSteps; step++) {
+    if (pc < 0 || pc >= blockLines.length) {
+      return 'skip_delete';
+    }
+    const raw = blockLines[pc]!;
+    const line = raw.trim();
+    if (/^\w+:\s*$/.test(line)) {
+      pc += 1;
+      continue;
+    }
     const strCpy5 = line.match(/^StrCpy \$5 ("(?:\\.|[^"])*")$/);
     if (strCpy5) {
       $5 = expandNsisQuotedLiteral(strCpy5[1]!, env);
@@ -683,6 +736,12 @@ export function executeAppDataM5GuardBlock(
     const strLenReg = line.match(/^StrLen \$3 \$5$/);
     if (strLenReg) {
       $3 = $5.length;
+      pc += 1;
+      continue;
+    }
+    const strLenLit = line.match(/^StrLen \$3 ("(?:\\.|[^"])*")$/);
+    if (strLenLit) {
+      $3 = expandNsisQuotedLiteral(strLenLit[1]!, env).length;
       pc += 1;
       continue;
     }
@@ -699,12 +758,26 @@ export function executeAppDataM5GuardBlock(
         pc += 1;
         continue;
       }
-      return 'allowlist_continue';
+      const jump = resolveAllowlistDeleteJump(strCmpRegPair[1]!, labels);
+      if (typeof jump === 'string') {
+        return jump;
+      }
+      pc = jump.pc;
+      continue;
     }
     const strCmpRoot = line.match(/^StrCmp \$1 \$5 uninstall_vault_read$/);
     if (strCmpRoot) {
       if ($1 === $5) {
-        return 'vault_read';
+        return 'skip_delete';
+      }
+      pc += 1;
+      continue;
+    }
+    const strCmpRootLit = line.match(/^StrCmp \$1 ("(?:\\.|[^"])*") uninstall_vault_read$/);
+    if (strCmpRootLit) {
+      const lit = expandNsisQuotedLiteral(strCmpRootLit[1]!, env);
+      if ($1 === lit) {
+        return 'skip_delete';
       }
       pc += 1;
       continue;
@@ -716,14 +789,19 @@ export function executeAppDataM5GuardBlock(
       pc += 1;
       continue;
     }
-    const strCmpBackslash = line.match(/^StrCmp \$4 ("(?:\\.|[^"])*") 0 (\w+)$/);
-    if (strCmpBackslash) {
-      const lit = parseStrCmpQuotedLiteral(strCmpBackslash[1]!);
+    const strCmpFourLitJump = line.match(/^StrCmp \$4 ("(?:\\.|[^"])*") 0 (\w+)$/);
+    if (strCmpFourLitJump) {
+      const lit = expandNsisQuotedLiteral(strCmpFourLitJump[1]!, env);
       if ($4 === lit) {
         pc += 1;
         continue;
       }
-      return 'allowlist_continue';
+      const jump = resolveAllowlistDeleteJump(strCmpFourLitJump[2]!, labels);
+      if (typeof jump === 'string') {
+        return jump;
+      }
+      pc = jump.pc;
+      continue;
     }
     const strCpyRemainder = line.match(/^StrCpy \$6 \$1 "" \$(\d+)$/);
     if (strCpyRemainder) {
@@ -741,21 +819,44 @@ export function executeAppDataM5GuardBlock(
     const strCmpTailEmpty = line.match(/^StrCmp \$6 "" uninstall_vault_read$/);
     if (strCmpTailEmpty) {
       if ($6 === '') {
-        return 'vault_read';
+        return 'skip_delete';
       }
       pc += 1;
       continue;
     }
-    if (line === 'Goto uninstall_vault_do_delete') {
-      return 'allowlist_continue';
+    const gotoLine = line.match(/^Goto (\w+)$/);
+    if (gotoLine) {
+      const jump = resolveAllowlistDeleteJump(gotoLine[1]!, labels);
+      if (typeof jump === 'string') {
+        return jump;
+      }
+      pc = jump.pc;
+      continue;
     }
     if (line === 'Nop') {
       pc += 1;
       continue;
     }
-    throw new Error(`unsupported APPDATA M5 guard VM instruction: ${line}`);
+    throw new Error(`unsupported allowlist/delete VM instruction: ${line}`);
   }
-  return 'allowlist_continue';
+  throw new Error('allowlist/delete VM exceeded step limit');
+}
+
+/** @deprecated Use executeSidecarAllowlistDeleteBlock; maps delete→allowlist_continue, skip→vault_read. */
+export function executeAppDataM5GuardBlock(
+  blockLines: readonly string[],
+  path: string,
+  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+): AppDataM5GuardOutcome {
+  return allowlistDeleteToLegacyAppData(executeSidecarAllowlistDeleteBlock(blockLines, path, env));
+}
+
+function runSidecarAllowlistDeleteVmFromNsh(
+  path: string,
+  nsh: string,
+  env: SidecarNsisVarEnv,
+): SidecarAllowlistDeleteOutcome {
+  return executeSidecarAllowlistDeleteBlock(extractSidecarAllowlistDeleteLinesFromNsh(nsh), path, env);
 }
 
 function runAppDataM5VmFromNsh(
@@ -763,7 +864,7 @@ function runAppDataM5VmFromNsh(
   nsh: string,
   env: SidecarNsisVarEnv,
 ): AppDataM5GuardOutcome {
-  return executeAppDataM5GuardBlock(extractAppDataM5GuardLinesFromNsh(nsh), path, env);
+  return allowlistDeleteToLegacyAppData(runSidecarAllowlistDeleteVmFromNsh(path, nsh, env));
 }
 
 export function locateDenyPrefixBlock(nsh: string): { start: number; end: number; lines: string[] } {
@@ -825,9 +926,17 @@ export const APPDATA_M5_REJECT_PATHS: readonly string[] = [
   'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer',
 ];
 
-/** Prefix match with backslash at $5 length and non-empty tail (:105 gate; red when StrCmp $4 $5 is Nop). */
+/** Prefix match with backslash at $5 length and non-empty tail (Mythos APPDATA subtree delete). */
 export const APPDATA_M5_PREFIX_BACKSLASH_TAIL_PATH =
   'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x';
+
+/** Same offset backslash as Mythos APPDATA root, but prefix mismatch (:105 gate; must not delete). */
+export const APPDATA_OFFSET_BACKSLASH_NON_MYTHOS_PATH =
+  'C:\\Users\\me\\AppData\\Roaming\\SomeOtherApp1\\stuff';
+
+export const DOCUMENTS_VAULT_DELETE_PATH = 'C:\\Users\\me\\Documents\\MyVault\\x';
+export const DESKTOP_VAULT_DELETE_PATH = 'C:\\Users\\me\\Desktop\\MyVault\\x';
+export const DOWNLOADS_VAULT_DELETE_PATH = 'C:\\Users\\me\\Downloads\\MyVault\\x';
 
 export const APPDATA_M5_ALLOW_PATHS: readonly string[] = [
   'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
@@ -906,36 +1015,63 @@ export function assertDenyPrefixRejectAllowTables(
   }
 }
 
+function runSidecarPathAllowlistDeleteDisposition(
+  path: string,
+  nsh: string,
+  env: SidecarNsisVarEnv,
+): SidecarAllowlistDeleteOutcome | 'blocked_at_guard' {
+  const trav = runTraversalVmFromNsh(path, nsh);
+  if (trav === 'vault_read') {
+    return 'blocked_at_guard';
+  }
+  if (trav !== 'trav_ok') {
+    throw new Error(`path must reach trav_ok before allowlist: ${JSON.stringify(path)}`);
+  }
+  if (runDenyPrefixVmFromNsh(path, nsh, env) === 'vault_read') {
+    return 'blocked_at_guard';
+  }
+  return runSidecarAllowlistDeleteVmFromNsh(path, nsh, env);
+}
+
+export function assertSidecarAllowlistDeleteTables(
+  nsh: string,
+  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+): void {
+  const rows: ReadonlyArray<{ path: string; expected: SidecarAllowlistDeleteOutcome }> = [
+    { path: APPDATA_M5_REJECT_PATHS[0]!, expected: 'skip_delete' },
+    { path: APPDATA_OFFSET_BACKSLASH_NON_MYTHOS_PATH, expected: 'skip_delete' },
+    { path: APPDATA_M5_PREFIX_BACKSLASH_TAIL_PATH, expected: 'delete' },
+    { path: DOCUMENTS_VAULT_DELETE_PATH, expected: 'delete' },
+    { path: DESKTOP_VAULT_DELETE_PATH, expected: 'delete' },
+    { path: DOWNLOADS_VAULT_DELETE_PATH, expected: 'delete' },
+  ];
+  for (const { path, expected } of rows) {
+    const disposition = runSidecarPathAllowlistDeleteDisposition(path, nsh, env);
+    if (disposition === 'blocked_at_guard') {
+      throw new Error(`allowlist/delete path blocked at guard: ${JSON.stringify(path)}`);
+    }
+    if (disposition !== expected) {
+      throw new Error(
+        `allowlist/delete expected ${expected} for ${JSON.stringify(path)}, got ${disposition}`,
+      );
+    }
+  }
+  for (const path of APPDATA_M5_ALLOW_PATHS) {
+    const disposition = runSidecarPathAllowlistDeleteDisposition(path, nsh, env);
+    if (disposition === 'blocked_at_guard') {
+      throw new Error(`APPDATA allow path blocked at guard: ${JSON.stringify(path)}`);
+    }
+    if (disposition !== 'delete') {
+      throw new Error(`expected delete for APPDATA allow path ${JSON.stringify(path)}, got ${disposition}`);
+    }
+  }
+}
+
 export function assertAppDataM5RejectAllowTables(
   nsh: string,
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
 ): void {
-  for (const path of APPDATA_M5_REJECT_PATHS) {
-    if (runTraversalVmFromNsh(path, nsh) !== 'trav_ok') {
-      throw new Error(`APPDATA M5 reject path must pass traversal: ${JSON.stringify(path)}`);
-    }
-    if (runDenyPrefixVmFromNsh(path, nsh, env) !== 'allowlist_continue') {
-      throw new Error(`APPDATA M5 reject path must pass deny-prefix: ${JSON.stringify(path)}`);
-    }
-    const outcome = runAppDataM5VmFromNsh(path, nsh, env);
-    if (outcome !== 'vault_read') {
-      throw new Error(`expected vault_read for APPDATA M5 path ${JSON.stringify(path)}, got ${outcome}`);
-    }
-  }
-  for (const path of [APPDATA_M5_PREFIX_BACKSLASH_TAIL_PATH, ...APPDATA_M5_ALLOW_PATHS]) {
-    if (runTraversalVmFromNsh(path, nsh) !== 'trav_ok') {
-      throw new Error(`APPDATA M5 allow path must pass traversal: ${JSON.stringify(path)}`);
-    }
-    if (runDenyPrefixVmFromNsh(path, nsh, env) !== 'allowlist_continue') {
-      throw new Error(`APPDATA M5 allow path must pass deny-prefix: ${JSON.stringify(path)}`);
-    }
-    const outcome = runAppDataM5VmFromNsh(path, nsh, env);
-    if (outcome !== 'allowlist_continue') {
-      throw new Error(
-        `expected allowlist_continue for APPDATA M5 path ${JSON.stringify(path)}, got ${outcome}`,
-      );
-    }
-  }
+  assertSidecarAllowlistDeleteTables(nsh, env);
 }
 
 export type SidecarGuardPathOutcome = 'vault_read' | 'allowlist_continue';
@@ -955,7 +1091,8 @@ function runSidecarGuardOutcomeOnPath(
   if (runDenyPrefixVmFromNsh(path, nsh, env) === 'vault_read') {
     return 'vault_read';
   }
-  if (runAppDataM5VmFromNsh(path, nsh, env) === 'vault_read') {
+  const disposition = runSidecarPathAllowlistDeleteDisposition(path, nsh, env);
+  if (disposition === 'blocked_at_guard') {
     return 'vault_read';
   }
   return 'allowlist_continue';
@@ -971,13 +1108,14 @@ function parseNsisDollarEscape(quoted: string): string {
   return parseStrCmpQuotedLiteral(quoted.startsWith('"') ? quoted : `"${quoted}"`);
 }
 
-/** Execute FileRead + newline trim chain for one simulated sidecar line (Critic S13). */
-export function executeSidecarReadTrimBlock(
+/** Trim + empty check after a simulated FileRead into $1 (Critic S13 / :46–:52). */
+export function executeSidecarReadTrimFromLineContent(
   blockLines: readonly string[],
-  simulatedFileReadLine: string,
+  lineContent: string,
 ): 'empty' | string {
-  let $1 = '';
+  let $1 = lineContent;
   let $2 = '';
+  let started = false;
   let pc = 0;
   while (pc < blockLines.length) {
     const line = blockLines[pc]!.trim();
@@ -986,7 +1124,15 @@ export function executeSidecarReadTrimBlock(
       continue;
     }
     if (line === 'FileRead $0 $1') {
-      $1 = simulatedFileReadLine;
+      started = true;
+      pc += 1;
+      continue;
+    }
+    if (!started) {
+      if (line.startsWith('IfErrors')) {
+        pc += 1;
+        continue;
+      }
       pc += 1;
       continue;
     }
@@ -1030,6 +1176,92 @@ export function executeSidecarReadTrimBlock(
     throw new Error(`unsupported read-trim VM instruction: ${line}`);
   }
   return $1 === '' ? 'empty' : $1;
+}
+
+/** Execute FileRead + newline trim chain for one simulated sidecar line (Critic S13). */
+export function executeSidecarReadTrimBlock(
+  blockLines: readonly string[],
+  simulatedFileReadLine: string,
+): 'empty' | string {
+  return executeSidecarReadTrimFromLineContent(blockLines, simulatedFileReadLine);
+}
+
+export const SIDECAR_READ_TRIM_EXACT_STRING_ROWS: readonly { raw: string; trimmed: string }[] = [
+  { raw: 'C:\\vault\\a\r\n', trimmed: 'C:\\vault\\a' },
+  { raw: 'C:\\vault\\b\n', trimmed: 'C:\\vault\\b' },
+  { raw: 'C:\\Users\\me\\vault1', trimmed: 'C:\\Users\\me\\vault1' },
+];
+
+export const SIDECAR_READ_LOOP_STEP_LIMIT = 5000;
+
+export const SIDECAR_DELETE_READ_LOOP_ROWS: readonly {
+  rawLines: readonly string[];
+  expectedDeleted: readonly string[];
+  expectClosed: boolean;
+}[] = [
+  {
+    rawLines: [
+      `${DOCUMENTS_VAULT_DELETE_PATH}\r\n`,
+      `${DESKTOP_VAULT_DELETE_PATH}\n`,
+      'C:\\Users\\me\\Documents\\vault1',
+    ],
+    expectedDeleted: [
+      DOCUMENTS_VAULT_DELETE_PATH,
+      DESKTOP_VAULT_DELETE_PATH,
+      'C:\\Users\\me\\Documents\\vault1',
+    ],
+    expectClosed: true,
+  },
+];
+
+export function simulateSidecarDeleteReadLoop(
+  nsh: string,
+  rawLines: readonly string[],
+  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+): { deleted: string[]; closed: boolean; steps: number } {
+  const region = extractSidecarGuardRegionForVm(nsh);
+  const readBlock = readTrimBlockFromGuardRegion(region);
+  const ifErrorsLine = readBlock.map((l) => l.trim()).find((l) => l.startsWith('IfErrors '));
+  const ifErrorsTarget = ifErrorsLine?.slice('IfErrors '.length).trim() ?? null;
+  const ifErrorsIsNop = ifErrorsLine?.trim() === 'Nop';
+
+  let lineIndex = 0;
+  const deleted: string[] = [];
+  let steps = 0;
+  let closed = false;
+
+  while (steps < SIDECAR_READ_LOOP_STEP_LIMIT) {
+    steps += 1;
+    const eof = lineIndex >= rawLines.length;
+    if (eof) {
+      if (!ifErrorsIsNop && ifErrorsTarget === 'uninstall_vault_close') {
+        closed = true;
+        break;
+      }
+      if (ifErrorsIsNop || !ifErrorsTarget) {
+        // :45 survivor — spin until step limit (assert tables expect canonical to close instead).
+      } else {
+        closed = true;
+        break;
+      }
+    }
+
+    const rawLine = eof ? '' : rawLines[lineIndex]!;
+    if (!eof) {
+      lineIndex += 1;
+    }
+
+    const trimmed = executeSidecarReadTrimFromLineContent(readBlock, rawLine);
+    if (trimmed === 'empty') {
+      continue;
+    }
+    const disposition = runSidecarPathAllowlistDeleteDisposition(trimmed, nsh, env);
+    if (disposition === 'delete') {
+      deleted.push(trimmed);
+    }
+  }
+
+  return { deleted, closed, steps };
 }
 
 export type SidecarReadTrimGuardExpectation = 'empty' | SidecarGuardPathOutcome;
@@ -1079,7 +1311,8 @@ export function runSidecarMultilineGuardOutcome(
     if (runDenyPrefixVmFromNsh(path, nsh, env) === 'vault_read') {
       return 'vault_read';
     }
-    if (runAppDataM5VmFromNsh(path, nsh, env) === 'vault_read') {
+    const disposition = runSidecarPathAllowlistDeleteDisposition(path, nsh, env);
+    if (disposition === 'blocked_at_guard') {
       return 'vault_read';
     }
     lastOutcome = 'allowlist_continue';
@@ -1102,10 +1335,50 @@ export function assertSidecarMultilineTravGuardTables(
 }
 
 /** VM-driven FileRead + trim then full guard on trimmed path (S13 / :43–:52). */
+export function assertSidecarReadTrimExactStringTables(nsh: string): void {
+  const readBlock = readTrimBlockFromGuardRegion(extractSidecarGuardRegionForVm(nsh));
+  for (const row of SIDECAR_READ_TRIM_EXACT_STRING_ROWS) {
+    const trimmed = executeSidecarReadTrimBlock(readBlock, row.raw);
+    if (trimmed === 'empty') {
+      throw new Error(`read-trim exact expected path for raw ${JSON.stringify(row.raw)}, got empty`);
+    }
+    if (trimmed !== row.trimmed) {
+      throw new Error(
+        `read-trim exact mismatch for raw ${JSON.stringify(row.raw)}: expected ${JSON.stringify(row.trimmed)}, got ${JSON.stringify(trimmed)}`,
+      );
+    }
+  }
+}
+
+export function assertSidecarDeleteReadLoopTables(
+  nsh: string,
+  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+): void {
+  for (const row of SIDECAR_DELETE_READ_LOOP_ROWS) {
+    const result = simulateSidecarDeleteReadLoop(nsh, row.rawLines, env);
+    if (result.closed !== row.expectClosed) {
+      throw new Error(
+        `read-loop closed=${result.closed} expected ${row.expectClosed} for ${JSON.stringify(row.rawLines)}`,
+      );
+    }
+    if (result.steps >= SIDECAR_READ_LOOP_STEP_LIMIT) {
+      throw new Error(`read-loop exceeded step limit for ${JSON.stringify(row.rawLines)}`);
+    }
+    const got = [...result.deleted].sort();
+    const expected = [...row.expectedDeleted].sort();
+    if (got.length !== expected.length || got.some((p, i) => p !== expected[i])) {
+      throw new Error(
+        `read-loop delete set mismatch: expected ${JSON.stringify(expected)}, got ${JSON.stringify(got)}`,
+      );
+    }
+  }
+}
+
 export function assertSidecarReadTrimGuardTables(
   nsh: string,
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
 ): void {
+  assertSidecarReadTrimExactStringTables(nsh);
   const readBlock = readTrimBlockFromGuardRegion(extractSidecarGuardRegionForVm(nsh));
   for (const row of SIDECAR_READ_TRIM_GUARD_ROWS) {
     const trimmed = executeSidecarReadTrimBlock(readBlock, row.raw);
@@ -1169,10 +1442,11 @@ export function assertSidecarGuardVmBehaviourTables(
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
 ): void {
   assertSidecarReadTrimGuardTables(nsh, env);
+  assertSidecarDeleteReadLoopTables(nsh, env);
   assertSidecarMultilineTravGuardTables(nsh, env);
   assertTraversalRejectAllowTables(nsh);
   assertDenyPrefixVmBehaviourTables(nsh, env);
-  assertAppDataM5RejectAllowTables(nsh, env);
+  assertSidecarAllowlistDeleteTables(nsh, env);
 }
 
 /** All sidecar guard VM tables (traversal, deny-prefix, APPDATA M5) from the pinned :53–:104 region. */
