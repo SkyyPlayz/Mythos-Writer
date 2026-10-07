@@ -38,6 +38,7 @@ import {
   type EntityMatch,
   type EntityTerm,
 } from './autoLinkText';
+import { isWikiLinkTargetResolved } from '../crossTabLinkResolver';
 
 const GRIP_ICON = (
   <svg width="9" height="14" viewBox="0 0 12 20" fill="currentColor" aria-hidden="true">
@@ -261,7 +262,9 @@ export function ParagraphRowBase({
       const hasWiki = wikiRuns.some((r) => r.target);
       if (!hasWiki) {
         const runs = hints.length > 0 ? splitRunByHints(text, start, hints) : null;
-        if (!runs) return <span key={keyBase}>{text}</span>;
+        // Plain string (legacy path) so contentEditable re-sync after blur matches
+        // paragraphs with no wiki tokens or auto-link hints.
+        if (!runs) return text;
         return runs.map((r, j) =>
           r.hint ? (
             <span
@@ -312,8 +315,9 @@ export function ParagraphRowBase({
             )
           );
         }
-        const display = wr.alias ?? wr.target;
-        const resolved = resolvedWikiLinkTitles?.has(wr.target) ?? false;
+        const resolved = resolvedWikiLinkTitles
+          ? isWikiLinkTargetResolved(wr.target!, resolvedWikiLinkTitles)
+          : false;
         return (
           <button
             type="button"
@@ -328,7 +332,8 @@ export function ParagraphRowBase({
               onWikiLinkClick?.(wr.target!);
             }}
           >
-            {display}
+            {/* NoteViewer parity: full [[…]] token in DOM so blur textContent is lossless. */}
+            {wr.text}
           </button>
         );
       });
@@ -355,8 +360,7 @@ export function ParagraphRowBase({
         );
       });
     }
-    if (hints.length > 0) return renderPlainRun(content, 0, 'p');
-    return content;
+    return renderPlainRun(content, 0, 'p');
   }, [segs, hints, content, sceneId, blockId, onOpenComment, onApplyAutoLink, resolvedWikiLinkTitles, onWikiLinkClick]);
 
   const textClass = `msv-para-text${reading ? ' msv-para-text--reading' : ''}${
