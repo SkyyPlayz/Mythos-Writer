@@ -12,7 +12,7 @@ import { detectLossyFeatures, type LossyFeature } from './notesFidelityGuard';
 import { normalize, wikiLinkTargetStem, type WikiLinkCandidate } from './crossTabLinkResolver';
 import { replaceDisplayBody, stripHiddenBlocks } from './lib/frontmatter';
 import { parseNoteFrontmatter, setFrontmatterField } from './noteFrontmatter';
-import { setNoteTagsWithBodySync } from './lib/noteTagSync';
+import { mergedNoteTags, setNoteTagsWithBodySync } from './lib/noteTagSync';
 import { parseMarkdownImageLine } from './lib/noteInlineImages';
 import { hydrateNoteInlineImages } from './lib/hydrateNoteInlineImages';
 import { NoteInlineImage } from './components/NoteInlineImage';
@@ -659,7 +659,11 @@ export default function NoteViewer({
   const noteMeta = useMemo(() => parseNoteFrontmatter(content), [content]);
   const titleField = noteMeta.fields.find((f) => f.key.toLowerCase() === 'title')?.value?.trim();
   const noteTitle = titleField || fileStem;
-  const tags = noteMeta.tags;
+  const displayBody = useMemo(() => stripHiddenBlocks(content), [content]);
+  const tags = useMemo(
+    () => mergedNoteTags(noteMeta.tags, displayBody),
+    [noteMeta.tags, displayBody],
+  );
 
   // M8d: breadcrumb (prototype 1472-1480 `noteCrumbs`) — vault-relative folder
   // path with the note title as the final, bold crumb.
@@ -671,7 +675,6 @@ export default function NoteViewer({
   // M8d: footer word/character counts (prototype `noteWords`/`noteChars`) —
   // computed off the display body, same as the fidelity guard (frontmatter
   // and any kanban-settings trailer never count toward either).
-  const displayBody = useMemo(() => stripHiddenBlocks(content), [content]);
   const bodyWordCount = useMemo(() => countWords(displayBody), [displayBody]);
   const bodyCharCount = useMemo(() => countChars(displayBody), [displayBody]);
 

@@ -1455,11 +1455,7 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     let moved = false;
     const move = (ev: MouseEvent) => {
       if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD_PX) return;
-      if (!moved) {
-        moved = true;
-        dragMovedRef.current = true;
-        window.setTimeout(() => { dragMovedRef.current = false; }, 50);
-      }
+      if (!moved) moved = true;
       const p = simRef.current.get(nodeId);
       if (!p) return;
       const rect = svg?.getBoundingClientRect();
@@ -1480,7 +1476,11 @@ export default function VaultGraphView({ onOpenNote, onOpenScene, initialVaultSc
     const up = () => {
       window.removeEventListener('mousemove', move);
       window.removeEventListener('mouseup', up);
-      if (moved) wakeSim();
+      if (moved) {
+        dragMovedRef.current = true;
+        window.setTimeout(() => { dragMovedRef.current = false; }, 0);
+        wakeSim();
+      }
     };
     window.addEventListener('mousemove', move);
     window.addEventListener('mouseup', up);

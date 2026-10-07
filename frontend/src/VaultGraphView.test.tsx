@@ -814,6 +814,31 @@ describe('VaultGraphView M21 vault graph v2', () => {
     expect(onOpenNote).toHaveBeenCalledWith('Characters/Ava.md');
   });
 
+  it('H2: slow drag (>50ms before mouseup) still swallows trailing dblclick', async () => {
+    const onOpenNote = vi.fn();
+    render(<VaultGraphView onOpenNote={onOpenNote} />);
+
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
+
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        fireEvent.mouseDown(avaNode, { button: 0, clientX: 100, clientY: 100 });
+        fireEvent.mouseMove(window, { clientX: 700, clientY: 400 });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120);
+      });
+      await act(async () => {
+        fireEvent.mouseUp(window);
+        fireEvent.doubleClick(avaNode);
+      });
+      expect(onOpenNote).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('selecting a node opens the inspector with title, category, blurb, and clickable connections', async () => {
     const onOpenNote = vi.fn();
     render(<VaultGraphView onOpenNote={onOpenNote} />);

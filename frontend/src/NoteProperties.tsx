@@ -9,7 +9,8 @@ import {
   setFrontmatterField,
   type NoteFrontmatterField,
 } from './noteFrontmatter';
-import { setNoteTagsWithBodySync } from './lib/noteTagSync';
+import { stripHiddenBlocks } from './lib/frontmatter';
+import { mergedNoteTags, setNoteTagsWithBodySync } from './lib/noteTagSync';
 import './NoteProperties.css';
 
 interface Props {
@@ -41,7 +42,7 @@ export default function NoteProperties({ path }: Props) {
     contentRef.current = r.content;
     const fm = parseNoteFrontmatter(r.content);
     setFields(fm.fields);
-    setTags(fm.tags);
+    setTags(mergedNoteTags(fm.tags, stripHiddenBlocks(r.content)));
     setRowEdits({});
     setError(null);
     setLoaded(true);
@@ -71,7 +72,7 @@ export default function NoteProperties({ path }: Props) {
     contentRef.current = nextContent;
     const fm = parseNoteFrontmatter(nextContent);
     setFields(fm.fields);
-    setTags(fm.tags);
+    setTags(mergedNoteTags(fm.tags, stripHiddenBlocks(nextContent)));
     setError(null);
     // M16: tell any open editor on this note to adopt the new content so a
     // later editor autosave doesn't clobber the frontmatter change.

@@ -23,4 +23,11 @@ describe('PLAN-058 L6 pins', () => {
     expect(src).not.toContain('workspace-split-pane__header');
     expect(src).toContain('workspace-split-pane__close-floating');
   });
+
+  it('M4: node drag does not clear dragMovedRef mid-drag via setTimeout(50)', () => {
+    const src = readFileSync(resolve(__dirname, 'VaultGraphView.tsx'), 'utf-8');
+    const begin = src.match(/function beginNodeDrag[\s\S]*?^  \}/m)?.[0] ?? '';
+    expect(begin).not.toMatch(/setTimeout\(\(\) => \{ dragMovedRef\.current = false; \}, 50\)/);
+    expect(begin).toContain('dragMovedRef.current = true');
+  });
 });

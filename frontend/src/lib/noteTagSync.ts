@@ -2,21 +2,31 @@
  * PLAN-058 L6 (33:03 / 33:21 / 34:15 / 34:20): keep frontmatter `tags:` and
  * inline body `#tag` lines in sync (Obsidian-style category hashtags).
  */
+import { replaceDisplayBody, stripHiddenBlocks } from './frontmatter';
 import { setFrontmatterTags } from '../noteFrontmatter';
-import { stripHiddenBlocks } from './frontmatter';
 
 const HASHTAG_ONLY_LINE = /^#[\p{L}\p{N}_/-]+$/iu;
-/** Extract unique hashtag names from prose (no leading # in results). */
-export function extractBodyHashtags(body: string): string[] {
+const FENCE_OPENER = /^(`{3,}|~{3,})/;
+
+function scanHashtagOnlyLines(displayBody: string): string[] {
   const tags = new Set<string>();
-  const prose = stripHiddenBlocks(body);
-  for (const rawLine of prose.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (HASHTAG_ONLY_LINE.test(line)) {
-      tags.add(line.slice(1).toLowerCase());
+  let inFence = false;
+  for (const rawLine of displayBody.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    if (FENCE_OPENER.test(trimmed)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (!inFence && HASHTAG_ONLY_LINE.test(trimmed)) {
+      tags.add(trimmed.slice(1).toLowerCase());
     }
   }
   return [...tags];
+}
+
+/** Extract unique hashtag names from prose (no leading # in results). */
+export function extractBodyHashtags(body: string): string[] {
+  return scanHashtagOnlyLines(stripHiddenBlocks(body));
 }
 
 function normalizeTagList(tags: string[]): string[] {
@@ -31,16 +41,22 @@ function normalizeTagList(tags: string[]): string[] {
 }
 
 /**
- * Rewrite standalone `#tag` lines so they match the frontmatter tag list.
- * Other prose lines are preserved verbatim.
+ * Rewrite standalone `#tag` lines in the **display** body so they match the
+ * frontmatter tag list. Fenced code blocks are left untouched (H1).
  */
-export function syncBodyHashtagLines(body: string, tags: string[]): string {
-  const lines = body.split(/\r?\n/);
+export function syncBodyHashtagLines(displayBody: string, tags: string[]): string {
+  const lines = displayBody.split(/\r?\n/);
   const kept: string[] = [];
+  let inFence = false;
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (HASHTAG_ONLY_LINE.test(trimmed)) continue;
+    if (FENCE_OPENER.test(trimmed)) {
+      inFence = !inFence;
+      kept.push(line);
+      continue;
+    }
+    if (!inFence && HASHTAG_ONLY_LINE.test(trimmed)) continue;
     kept.push(line);
   }
 
@@ -57,8 +73,8 @@ export function syncBodyHashtagLines(body: string, tags: string[]): string {
 }
 
 /** Union of frontmatter tags and body hashtag lines (deduped, stable order). */
-export function mergedNoteTags(frontmatterTags: string[], body: string): string[] {
-  const bodyTags = extractBodyHashtags(body);
+export function mergedNoteTags(frontmatterTags: string[], displayBody: string): string[] {
+  const bodyTags = scanHashtagOnlyLines(displayBody);
   const merged = [...frontmatterTags];
   for (const t of bodyTags) {
     if (!merged.some((x) => x.toLowerCase() === t.toLowerCase())) merged.push(t);
@@ -66,12 +82,10 @@ export function mergedNoteTags(frontmatterTags: string[], body: string): string[
   return normalizeTagList(merged);
 }
 
-/** Set frontmatter tags and mirror them as body `#tag` lines. */
+/** Set frontmatter tags and mirror them as body `#tag` lines (Kanban trailer last). */
 export function setNoteTagsWithBodySync(content: string, tags: string[]): string {
   const clean = normalizeTagList(tags);
   const withFm = setFrontmatterTags(content, clean);
-  const fmMatch = withFm.match(/^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/);
-  const body = fmMatch ? withFm.slice(fmMatch[0].length) : withFm;
-  const syncedBody = syncBodyHashtagLines(body, clean);
-  return fmMatch ? `${fmMatch[0]}${syncedBody}` : syncedBody;
+  const syncedDisplay = syncBodyHashtagLines(stripHiddenBlocks(withFm), clean);
+  return replaceDisplayBody(withFm, syncedDisplay);
 }
