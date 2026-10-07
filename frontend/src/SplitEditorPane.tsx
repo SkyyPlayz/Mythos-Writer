@@ -211,6 +211,10 @@ export interface SplitEditorPaneProps {
   /** + picker: opens/focuses the Entity Browser tab in this pane. Omitted →
    * the + button stays a single-click "new scene" action (back-compat). */
   onOpenEntityBrowser?: () => void;
+  /** PLAN-058 L5 (84:13): bump to remount BlockEditor when the other pane edits the same scene. */
+  editorRemountKey?: number;
+  /** PLAN-058 L5 (84:00): per-pane autosave draft label in the pane header. */
+  draftVersionLabel?: string | null;
 }
 
 export default function SplitEditorPane({
@@ -250,6 +254,8 @@ export default function SplitEditorPane({
   onSelectEntity,
   selectedEntityId = null,
   onOpenEntityBrowser,
+  editorRemountKey = 0,
+  draftVersionLabel = null,
 }: SplitEditorPaneProps) {
   const hasAnyScenes = useMemo(
     () => stories.some(st => st.chapters.some(ch => ch.scenes.length > 0)),
@@ -390,6 +396,23 @@ export default function SplitEditorPane({
             onSelect={onSelectScene}
           />
         )}
+        {draftVersionLabel && (
+          <span className="spe-draft-chip" data-testid={`split-pane-${paneNumber}-draft-chip`} title="Autosave draft for this pane">
+            {draftVersionLabel}
+          </span>
+        )}
+        {onClosePane && (
+          <button
+            type="button"
+            className="spe-pane-close-btn"
+            aria-label={`Close ${paneLabel}`}
+            title="Close pane"
+            onClick={(e) => { e.stopPropagation(); onClosePane(); }}
+            data-testid={`split-pane-${paneNumber}-close-btn`}
+          >
+            ×
+          </button>
+        )}
       </div>
 
       <div className="spe-content" onClick={onFocus}>
@@ -400,7 +423,7 @@ export default function SplitEditorPane({
           />
         ) : scene && !sceneLoading ? (
           <BlockEditor
-            key={scene.id}
+            key={`${scene.id}-${editorRemountKey}`}
             scene={scene}
             onBlocksChange={onBlocksChange}
             onDraftStateChange={() => {}}

@@ -214,6 +214,9 @@ export interface ManuscriptViewProps {
    */
   autoLinkEntities?: EntityEntry[];
   autoLinkMode?: AutoLinkerMode;
+  /** FD-1: live [[wiki-links]] in single / Full Book manuscript views. */
+  resolvedWikiLinkTitles?: ReadonlySet<string>;
+  onWikiLinkClick?: (target: string) => void;
   /**
    * M13: TTS engine config (AppSettings.tts) for the reader — Piper/cloud
    * when configured, OS speechSynthesis otherwise (same stack as Beta 2).
@@ -469,6 +472,8 @@ export default function ManuscriptView({
   onEditChapterNote,
   autoLinkEntities,
   autoLinkMode = 'off',
+  resolvedWikiLinkTitles,
+  onWikiLinkClick,
   ttsSettings,
   voicePrefs,
   drafts,
@@ -1685,6 +1690,8 @@ export default function ManuscriptView({
             onParaDrop={handleParaDrop}
             onOpenComment={handleOpenComment}
             onApplyAutoLink={handleApplyAutoLink}
+            resolvedWikiLinkTitles={resolvedWikiLinkTitles}
+            onWikiLinkClick={onWikiLinkClick}
           />
         );
     }

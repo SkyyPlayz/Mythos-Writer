@@ -44,6 +44,8 @@ interface Props {
   onRenamePart?: (partId: string) => void;
   /** F1#8: add a chapter under a specific part. */
   onCreateChapterInPart?: (storyId: string, partId: string) => void;
+  /** PLAN-058 L5 (39:23): pinned scene note text lines for navigator rows. */
+  sceneNoteSummaries?: Record<string, string[]>;
 }
 
 export default function StoryNavigator({
@@ -67,6 +69,7 @@ export default function StoryNavigator({
   onDeleteScene,
   onRenamePart,
   onCreateChapterInPart,
+  sceneNoteSummaries,
 }: Props) {
   const [expandedStories, setExpandedStories] = useState<Set<string>>(new Set(stories.map((s) => s.id)));
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(
@@ -76,6 +79,7 @@ export default function StoryNavigator({
     new Set(stories.flatMap((s) => s.parts?.map((p) => p.id) ?? []))
   );
   const [draggedSceneId, setDraggedSceneId] = useState<string | null>(null);
+  const [dragOverSceneId, setDragOverSceneId] = useState<string | null>(null);
   const [noteDropActive, setNoteDropActive] = useState(false);
 
   // M9b (SKY-9823): the whole navigator is one drop target for scene-note
@@ -415,6 +419,29 @@ export default function StoryNavigator({
     });
   };
 
+  const sceneRowClass = (sceneId: string, selected: boolean) =>
+    [
+      'nav-scene-row',
+      selected ? 'active' : '',
+      draggedSceneId === sceneId ? 'nav-scene-row--dragging' : '',
+      dragOverSceneId === sceneId && draggedSceneId !== sceneId ? 'nav-scene-row--drag-over' : '',
+    ].filter(Boolean).join(' ');
+
+  const renderSceneNotes = (sceneId: string) => {
+    const lines = sceneNoteSummaries?.[sceneId];
+    if (!lines?.length) return null;
+    return lines.map((line, idx) => (
+      <div
+        key={`${sceneId}-note-${idx}`}
+        className="nav-scene-note-row"
+        data-testid={`nav-scene-note-${sceneId}-${idx}`}
+        title={line}
+      >
+        <span className="nav-scene-note-text">{line.split('\n')[0]}</span>
+      </div>
+    ));
+  };
+
   return (
     <nav
       className={`story-navigator${noteDropActive ? ' story-navigator--note-drop' : ''}`}
@@ -515,44 +542,56 @@ export default function StoryNavigator({
                     return sortedScenes.map((scene, sceneIdx) => {
                       const sceneWC = sceneWordCounts.get(scene.id) ?? 0;
                       return (
-                      <div
-                        key={scene.id}
-                        ref={(el) => { if (selectedSceneId === scene.id) activeSceneRowRef.current = el; }}
-                        className={`nav-scene-row${selectedSceneId === scene.id ? ' active' : ''}`}
-                        role="button"
-                        tabIndex={0}
-                        aria-current={selectedSceneId === scene.id ? 'true' : undefined}
-                        aria-label={`${scene.title}${onReorderScenes ? ' — use Up/Down arrow keys to reorder' : ''}`}
-                        draggable
-                        onDragStart={() => setDraggedSceneId(scene.id)}
-                        onDragEnd={() => setDraggedSceneId(null)}
-                        onDragOver={(e) => e.preventDefault()}
-                        onContextMenu={(e) => openSceneMenu(e, scene, chapter, story, sortedScenes, true)}
-                        onKeyDown={(e) => handleSceneKeyDown(e, scene, chapter, story, sortedScenes)}
-                        onDrop={() => {
-                          if (!draggedSceneId || draggedSceneId === scene.id) return;
-                          const orderedSceneIds = [...chapter.scenes]
-                            .sort((a, b) => a.order - b.order)
-                            .map((s) => s.id);
-                          const sourceIndex = orderedSceneIds.indexOf(draggedSceneId);
-                          const targetIndex = orderedSceneIds.indexOf(scene.id);
-                          if (sourceIndex === -1 || targetIndex === -1) return;
+                      <div key={scene.id} className="nav-scene-block">
+                        <div
+                          ref={(el) => { if (selectedSceneId === scene.id) activeSceneRowRef.current = el; }}
+                          className={sceneRowClass(scene.id, selectedSceneId === scene.id)}
+                          role="button"
+                          tabIndex={0}
+                          aria-current={selectedSceneId === scene.id ? 'true' : undefined}
+                          aria-label={`${scene.title}${onReorderScenes ? ' — use Up/Down arrow keys to reorder' : ''}`}
+                          draggable={!!onReorderScenes}
+                          onDragStart={(e) => {
+                            setDraggedSceneId(scene.id);
+                            e.dataTransfer.effectAllowed = 'move';
+                            if (e.currentTarget instanceof HTMLElement) {
+                              e.dataTransfer.setDragImage(e.currentTarget, 24, 14);
+                            }
+                          }}
+                          onDragEnd={() => { setDraggedSceneId(null); setDragOverSceneId(null); }}
+                          onDragOver={(e) => { e.preventDefault(); setDragOverSceneId(scene.id); }}
+                          onDragLeave={(e) => {
+                            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                            setDragOverSceneId((id) => (id === scene.id ? null : id));
+                          }}
+                          onContextMenu={(e) => openSceneMenu(e, scene, chapter, story, sortedScenes, true)}
+                          onKeyDown={(e) => handleSceneKeyDown(e, scene, chapter, story, sortedScenes)}
+                          onDrop={() => {
+                            setDragOverSceneId(null);
+                            if (!draggedSceneId || draggedSceneId === scene.id) return;
+                            const orderedSceneIds = [...chapter.scenes]
+                              .sort((a, b) => a.order - b.order)
+                              .map((s) => s.id);
+                            const sourceIndex = orderedSceneIds.indexOf(draggedSceneId);
+                            const targetIndex = orderedSceneIds.indexOf(scene.id);
+                            if (sourceIndex === -1 || targetIndex === -1) return;
 
-                          orderedSceneIds.splice(sourceIndex, 1);
-                          orderedSceneIds.splice(targetIndex, 0, draggedSceneId);
-                          onReorderScenes?.(story.id, chapter.id, orderedSceneIds);
-                          setDraggedSceneId(null);
-                        }}
-                        onClick={() => onSelectScene(scene, chapter, story)}
-                      >
-                        <span className="nav-scene-icon">◆</span>
-                        <span className="nav-scene-title">{`Scene ${sceneIdx + 1} · ${scene.title}`}</span>
-                        {sceneWC > 0 && (
-                          <span className="nav-wordcount" aria-label={`${sceneWC.toLocaleString()} words`}>
-                            {sceneWC.toLocaleString()}
-                          </span>
-                        )}
-                        {renderStatusDot(scene)}
+                            orderedSceneIds.splice(sourceIndex, 1);
+                            orderedSceneIds.splice(targetIndex, 0, draggedSceneId);
+                            onReorderScenes?.(story.id, chapter.id, orderedSceneIds);
+                            setDraggedSceneId(null);
+                          }}
+                          onClick={() => onSelectScene(scene, chapter, story)}
+                        >
+                          <span className="nav-scene-title">{`Scene ${sceneIdx + 1} · ${scene.title}`}</span>
+                          {sceneWC > 0 && (
+                            <span className="nav-wordcount" aria-label={`${sceneWC.toLocaleString()} words`}>
+                              {sceneWC.toLocaleString()}
+                            </span>
+                          )}
+                          {renderStatusDot(scene)}
+                        </div>
+                        {renderSceneNotes(scene.id)}
                       </div>
                     )});
                   })()}
@@ -611,43 +650,55 @@ export default function StoryNavigator({
                             return sortedScenes.map((scene, sceneIdx) => {
                               const sceneWC = sceneWordCounts.get(scene.id) ?? 0;
                               return (
-                                <div
-                                  key={scene.id}
-                                  ref={(el) => { if (selectedSceneId === scene.id) activeSceneRowRef.current = el; }}
-                                  className={`nav-scene-row${selectedSceneId === scene.id ? ' active' : ''}`}
-                                  role="button"
-                                  tabIndex={0}
-                                  aria-current={selectedSceneId === scene.id ? 'true' : undefined}
-                                  aria-label={`${scene.title}${onReorderScenes ? ' — use Up/Down arrow keys to reorder' : ''}`}
-                                  draggable
-                                  onDragStart={() => setDraggedSceneId(scene.id)}
-                                  onDragEnd={() => setDraggedSceneId(null)}
-                                  onDragOver={(e) => e.preventDefault()}
-                                  onContextMenu={(e) => openSceneMenu(e, scene, chapter, story, sortedScenes, false)}
-                                  onKeyDown={(e) => handleSceneKeyDown(e, scene, chapter, story, sortedScenes)}
-                                  onDrop={() => {
-                                    if (!draggedSceneId || draggedSceneId === scene.id) return;
-                                    const orderedSceneIds = [...chapter.scenes]
-                                      .sort((a, b) => a.order - b.order)
-                                      .map((s) => s.id);
-                                    const sourceIndex = orderedSceneIds.indexOf(draggedSceneId);
-                                    const targetIndex = orderedSceneIds.indexOf(scene.id);
-                                    if (sourceIndex === -1 || targetIndex === -1) return;
-                                    orderedSceneIds.splice(sourceIndex, 1);
-                                    orderedSceneIds.splice(targetIndex, 0, draggedSceneId);
-                                    onReorderScenes?.(story.id, chapter.id, orderedSceneIds);
-                                    setDraggedSceneId(null);
-                                  }}
-                                  onClick={() => onSelectScene(scene, chapter, story)}
-                                >
-                                  <span className="nav-scene-icon">◆</span>
-                                  <span className="nav-scene-title">{`Scene ${sceneIdx + 1} · ${scene.title}`}</span>
-                                  {sceneWC > 0 && (
-                                    <span className="nav-wordcount" aria-label={`${sceneWC.toLocaleString()} words`}>
-                                      {sceneWC.toLocaleString()}
-                                    </span>
-                                  )}
-                                  {renderStatusDot(scene)}
+                                <div key={scene.id} className="nav-scene-block">
+                                  <div
+                                    ref={(el) => { if (selectedSceneId === scene.id) activeSceneRowRef.current = el; }}
+                                    className={sceneRowClass(scene.id, selectedSceneId === scene.id)}
+                                    role="button"
+                                    tabIndex={0}
+                                    aria-current={selectedSceneId === scene.id ? 'true' : undefined}
+                                    aria-label={`${scene.title}${onReorderScenes ? ' — use Up/Down arrow keys to reorder' : ''}`}
+                                    draggable={!!onReorderScenes}
+                                    onDragStart={(e) => {
+                                      setDraggedSceneId(scene.id);
+                                      e.dataTransfer.effectAllowed = 'move';
+                                      if (e.currentTarget instanceof HTMLElement) {
+                                        e.dataTransfer.setDragImage(e.currentTarget, 24, 14);
+                                      }
+                                    }}
+                                    onDragEnd={() => { setDraggedSceneId(null); setDragOverSceneId(null); }}
+                                    onDragOver={(e) => { e.preventDefault(); setDragOverSceneId(scene.id); }}
+                                    onDragLeave={(e) => {
+                                      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                                      setDragOverSceneId((id) => (id === scene.id ? null : id));
+                                    }}
+                                    onContextMenu={(e) => openSceneMenu(e, scene, chapter, story, sortedScenes, false)}
+                                    onKeyDown={(e) => handleSceneKeyDown(e, scene, chapter, story, sortedScenes)}
+                                    onDrop={() => {
+                                      setDragOverSceneId(null);
+                                      if (!draggedSceneId || draggedSceneId === scene.id) return;
+                                      const orderedSceneIds = [...chapter.scenes]
+                                        .sort((a, b) => a.order - b.order)
+                                        .map((s) => s.id);
+                                      const sourceIndex = orderedSceneIds.indexOf(draggedSceneId);
+                                      const targetIndex = orderedSceneIds.indexOf(scene.id);
+                                      if (sourceIndex === -1 || targetIndex === -1) return;
+                                      orderedSceneIds.splice(sourceIndex, 1);
+                                      orderedSceneIds.splice(targetIndex, 0, draggedSceneId);
+                                      onReorderScenes?.(story.id, chapter.id, orderedSceneIds);
+                                      setDraggedSceneId(null);
+                                    }}
+                                    onClick={() => onSelectScene(scene, chapter, story)}
+                                  >
+                                    <span className="nav-scene-title">{`Scene ${sceneIdx + 1} · ${scene.title}`}</span>
+                                    {sceneWC > 0 && (
+                                      <span className="nav-wordcount" aria-label={`${sceneWC.toLocaleString()} words`}>
+                                        {sceneWC.toLocaleString()}
+                                      </span>
+                                    )}
+                                    {renderStatusDot(scene)}
+                                  </div>
+                                  {renderSceneNotes(scene.id)}
                                 </div>
                               );
                             });

@@ -1,0 +1,114 @@
+.new-story-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.new-story-modal {
+  width: min(440px, 100%);
+  padding: 20px 22px 18px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.new-story-modal__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-header);
+}
+
+.new-story-modal__hint {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.new-story-modal__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.new-story-modal__label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.new-story-modal__input {
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-inset);
+  color: var(--text-body);
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
+.new-story-modal__plans {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.new-story-modal__plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.new-story-modal__plan-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: var(--text-body);
+  cursor: pointer;
+}
+
+.new-story-modal__muted {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.new-story-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.new-story-modal__btn {
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.84rem;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+
+.new-story-modal__btn--ghost {
+  background: transparent;
+  border-color: var(--border-subtle);
+  color: var(--text-body);
+}
+
+.new-story-modal__btn--primary {
+  background: var(--accent);
+  color: var(--bg-canvas);
+  font-weight: 600;
+}

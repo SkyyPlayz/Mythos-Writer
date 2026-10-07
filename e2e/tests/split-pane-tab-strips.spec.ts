@@ -24,6 +24,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { toggleStoryEditorSplit } from '../helpers/storyEditorSplit';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const STORY_ID = 'sp-story-0001';
@@ -175,7 +176,7 @@ test.describe('SKY-8907 per-pane tab strips', () => {
     app = await launchApp(userData);
     page = await firstWindow(app);
     await page.waitForSelector('.shell-loading', { state: 'detached', timeout: 30_000 });
-    await page.locator('[data-testid="split-toggle-btn"]').click();
+    await toggleStoryEditorSplit(page);
     await expect(page.locator('[data-testid="split-divider"]')).toBeVisible({ timeout: 8_000 });
   });
 
@@ -276,7 +277,7 @@ test.describe('SKY-10998 split-pane chromeless — no duplicate toolbar/header',
     app = await launchApp(userData);
     page = await firstWindow(app);
     await page.waitForSelector('.shell-loading', { state: 'detached', timeout: 30_000 });
-    await page.locator('[data-testid="split-toggle-btn"]').click();
+    await toggleStoryEditorSplit(page);
     await expect(page.locator('[data-testid="split-divider"]')).toBeVisible({ timeout: 8_000 });
     await selectSceneInPane(page, 1, SCENE_ALPHA_ID);
   });
