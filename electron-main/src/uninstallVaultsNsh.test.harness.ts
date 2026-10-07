@@ -96,7 +96,7 @@ export function assertTraversalRejectedBeforeSidecarDelete(nsh: string): void {
     throw new Error('traversal scan must StrCmp path segments against literal "."');
   }
   const travRegion = executable.slice(travAt, travOkAt);
-  if (!travRegion.includes('StrCmp $4 "\" uninstall_vault_read')) {
+  if (!travRegion.includes(String.raw`StrCmp $4 "\" uninstall_vault_read`)) {
     throw new Error('traversal scan must reject .. via backslash-dot segment (uninstall_vault_read)');
   }
   if (!travRegion.includes('StrCmp $4 "." 0 mythos_trav_inc')) {

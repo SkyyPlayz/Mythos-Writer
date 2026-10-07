@@ -28,6 +28,19 @@ import {
   DELETE_VAULT_SETTINGS_JSON,
   nshMacroBody,
 } from './uninstallVaultsNsh.test.harness.js';
+import {
+  assertTraversalBranchBehaviourPins,
+  assertWindirProgramFilesDenyBehaviourPins,
+  mutantMB1_neutralizeBackslashDotBackslashReject,
+  mutantMB2_neutralizeBackslashDotDotBackslashReject,
+  mutantMB3_deleteBackslashDotDotRejectPair,
+  mutantMB4_neutralizeAllBackslashTravRejects,
+  mutantMB5_neutralizeBackslashDotCheck,
+  mutantMB6_neutralizeForwardSlashTravRejects,
+  mutantWindirDenyDrop,
+  mutantProgramFilesDenyDrop,
+  mutantProgramFiles64DenyDrop,
+} from './sidecarTraversalScan.harness.js';
 
 const NSH = readFileSync(resolve(process.cwd(), '../build/uninstall-vaults.nsh'), 'utf-8');
 
@@ -228,6 +241,8 @@ describe('build/uninstall-vaults.nsh token contract', () => {
     expect(sidecarRmAt).toBeGreaterThan(doDeleteAt);
     expect(executable).toMatch(/StrCmp \$4 "\."/);
     assertTraversalRejectedBeforeSidecarDelete(NSH);
+    assertTraversalBranchBehaviourPins(NSH);
+    assertWindirProgramFilesDenyBehaviourPins(NSH);
   });
 
   it('wraps uninstall deletes in ${IfNot} ${isUpdated} (upgrade must delete nothing)', () => {
@@ -283,9 +298,40 @@ describe('build/uninstall-vaults.nsh token contract', () => {
       expectPinFails(mutant, assertDeleteVaultsSectionOffByDefault, /Section \/o/);
     });
 
-    it('M-B: disabling .. reject at traversal backslash branch fails (4)', () => {
-      const mutant = NSH.split('StrCmp $4 "\" uninstall_vault_read').join('StrCmp $4 "\" mythos_trav_inc');
-      expectPinFails(mutant, assertTraversalRejectedBeforeSidecarDelete, /reject \.\.|uninstall_vault_read/);
+    it('M-B1: neutralize .\\ backslash reject fails branch pins', () => {
+      expectPinFails(mutantMB1_neutralizeBackslashDotBackslashReject(NSH), assertTraversalBranchBehaviourPins, /branch/);
+    });
+
+    it('M-B2: neutralize ..\\ backslash reject fails branch pins', () => {
+      expectPinFails(mutantMB2_neutralizeBackslashDotDotBackslashReject(NSH), assertTraversalBranchBehaviourPins, /branch/);
+    });
+
+    it('M-B3: delete .. reject pair fails branch pins', () => {
+      expectPinFails(mutantMB3_deleteBackslashDotDotRejectPair(NSH), assertTraversalBranchBehaviourPins, /branch/);
+    });
+
+    it('M-B4: all backslash traversal rejects fails branch pins', () => {
+      expectPinFails(mutantMB4_neutralizeAllBackslashTravRejects(NSH), assertTraversalBranchBehaviourPins, /branch/);
+    });
+
+    it('M-B5: backslash dot check fails branch pins', () => {
+      expectPinFails(mutantMB5_neutralizeBackslashDotCheck(NSH), assertTraversalBranchBehaviourPins, /branch/);
+    });
+
+    it('M-B6: forward-slash traversal rejects fails branch pins', () => {
+      expectPinFails(mutantMB6_neutralizeForwardSlashTravRejects(NSH), assertTraversalBranchBehaviourPins, /branch/);
+    });
+
+    it('M-B-WINDIR: drop $WINDIR deny fails allowlist pins', () => {
+      expectPinFails(mutantWindirDenyDrop(NSH), assertWindirProgramFilesDenyBehaviourPins, /WINDIR/);
+    });
+
+    it('M-B-PROGRAMFILES: drop $PROGRAMFILES deny fails allowlist pins', () => {
+      expectPinFails(mutantProgramFilesDenyDrop(NSH), assertWindirProgramFilesDenyBehaviourPins, /PROGRAMFILES/);
+    });
+
+    it('M-B-PROGRAMFILES64: drop $PROGRAMFILES64 deny fails allowlist pins', () => {
+      expectPinFails(mutantProgramFiles64DenyDrop(NSH), assertWindirProgramFilesDenyBehaviourPins, /PROGRAMFILES64/);
     });
 
     it('M-C: adding MessageBox or MB_DEFBUTTON1 fails', () => {
