@@ -511,9 +511,20 @@ function extractAppDataM5GuardLinesFromNsh(nsh: string): string[] {
   return extractSidecarAllowlistDeleteLinesFromNsh(nsh);
 }
 
-function extractSidecarGuardRegionForVm(nsh: string): string[] {
-  return extractSidecarGuardRegionLinesRebaselined(nsh);
+/** Last-nsh memo for the read-only line slices the VMs re-extract on every path of a corpus. */
+function memoizeByNsh<T>(compute: (nsh: string) => T): (nsh: string) => T {
+  let last: { nsh: string; value: T } | undefined;
+  return (nsh) => {
+    if (last === undefined || last.nsh !== nsh) {
+      last = { nsh, value: compute(nsh) };
+    }
+    return last.value;
+  };
 }
+
+const extractSidecarGuardRegionForVm = memoizeByNsh(extractSidecarGuardRegionLinesRebaselined);
+
+const extractSidecarAllowlistDeleteLinesForVm = memoizeByNsh(extractSidecarAllowlistDeleteLinesFromNsh);
 
 export function locateSidecarGuardRegion(nsh: string): { start: number; end: number; lines: string[] } {
   const fileLines = nshFileLines(nsh);
@@ -955,7 +966,7 @@ function runSidecarAllowlistDeleteVmFromNsh(
   nsh: string,
   env: SidecarNsisVarEnv,
 ): SidecarAllowlistDeleteOutcome {
-  return executeSidecarAllowlistDeleteBlock(extractSidecarAllowlistDeleteLinesFromNsh(nsh), path, env);
+  return executeSidecarAllowlistDeleteBlock(extractSidecarAllowlistDeleteLinesForVm(nsh), path, env);
 }
 
 function runAppDataM5VmFromNsh(
