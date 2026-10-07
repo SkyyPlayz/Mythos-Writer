@@ -25,6 +25,7 @@ import {
   mutantN2_intOpLine58Plus2,
   mutantN3_intOpLine73Plus2,
   mutantE59_strcpyUse7,
+  mutantF11_strcpy4Windir,
 } from './sidecarTraversalScan.test-helpers.js';
 import { mutantM5_dropAppDataRootSelfMatch } from './uninstallVaultsNsh.test-helpers.js';
 import {
@@ -305,6 +306,12 @@ describe('on-disk nsh mutants (temp copy + MYTHOS_UNINSTALL_VAULTS_NSH_PATH, nev
     mutantM5_dropAppDataRootSelfMatch,
     main,
     /M5|StrCmp \$1 \$5/,
+  );
+  withTempOnDiskMutant(
+    'F11 on-disk: WINDIR StrCpy $1 1 reds L8 suite (no integrity)',
+    mutantF11_strcpy4Windir,
+    runNoIntegrityL8Suite,
+    /F11|deny-prefix|WINDIR/,
   );
 
   withTempOnDiskMutant(

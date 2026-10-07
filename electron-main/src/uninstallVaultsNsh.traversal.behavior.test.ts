@@ -4,9 +4,10 @@ import { loadUninstallVaultsNsh, resolveUninstallVaultsNshPath } from './uninsta
 
 import {
   assertTraversalBranchBehaviourPins,
-  assertWindirProgramFilesDenyBehaviourPins,
-  mythosPrefixDenyOutcome,
-  mythosTravScanOutcome,
+  assertSidecarGuardRegionExact,
+  assertSidecarGuardRejectAllowTables,
+  assertTraversalRejectAllowTables,
+  assertDenyPrefixRejectAllowTables,
   mutantMB1_neutralizeBackslashDotBackslashReject,
   mutantMB2_neutralizeBackslashDotDotBackslashReject,
   mutantMB3_deleteBackslashDotDotRejectPair,
@@ -29,7 +30,9 @@ import {
   mutantN1_forwardSlashCheckPipe,
   mutantN2_intOpLine58Plus2,
   mutantN3_intOpLine73Plus2,
-  assertTraversalRejectAllowTables,
+  mutantF11_strcpy4Windir,
+  mutantF11_strcpy4ProgramFiles,
+  mutantF11_strcpy4ProgramFiles64,
   mutantE58_intOpFirstPlus1,
   mutantE59_strcpyUse7,
   mutantE61_intOp8Plus1,
@@ -49,36 +52,24 @@ import {
 export { loadUninstallVaultsNsh, resolveUninstallVaultsNshPath };
 
 describe('sidecar traversal + WINDIR deny behaviour (reads build/uninstall-vaults.nsh from disk)', () => {
-  it('pins each traversal branch reject in nsh context', () => {
-    assertTraversalBranchBehaviourPins(loadUninstallVaultsNsh());
-    assertTraversalScanBlockExact(loadUninstallVaultsNsh());
+  it('pins sidecar guard region :43-:104 (read/trim + traversal + deny + M5)', () => {
+    const nsh = loadUninstallVaultsNsh();
+    assertTraversalBranchBehaviourPins(nsh);
+    assertSidecarGuardRegionExact(nsh);
+    assertTraversalScanBlockExact(nsh);
   });
 
-  it('simulator reject/allow tables (driven from .nsh mythos_trav_scan block)', () => {
-    assertTraversalRejectAllowTables(loadUninstallVaultsNsh());
-  });
-
-  it('pins WINDIR / PROGRAMFILES / PROGRAMFILES64 StrCmp uninstall_vault_read denies', () => {
-    assertWindirProgramFilesDenyBehaviourPins(loadUninstallVaultsNsh());
-    const prefixes = ['C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)'];
-    for (const path of [
-      'C:\\Windows\\System32',
-      'C:\\Program Files\\Foo',
-      'C:\\Program Files (x86)\\Bar',
-    ]) {
-      expect(mythosPrefixDenyOutcome(path, prefixes)).toBe('vault_read');
-    }
-    expect(mythosPrefixDenyOutcome('C:\\Users\\vault', prefixes)).toBe('allowlist_continue');
+  it('VM reject/allow tables from pinned :43-:104 region (read/trim + traversal + deny + APPDATA M5)', () => {
+    assertSidecarGuardRejectAllowTables(loadUninstallVaultsNsh());
   });
 
   describe('in-memory traversal / allowlist mutants (must fail branch pins)', () => {
     const expectBranchPinFails = (mutant: string): void => {
       expect(() => assertTraversalBranchBehaviourPins(mutant)).toThrow();
     };
-    const expectWindirPinFails = (mutant: string): void => {
-      expect(() => assertWindirProgramFilesDenyBehaviourPins(mutant)).toThrow();
+    const expectRegionPinFails = (mutant: string): void => {
+      expect(() => assertSidecarGuardRegionExact(mutant)).toThrow();
     };
-
     it('M-B1: neutralize .\\ backslash reject fails branch pins', () => {
       expectBranchPinFails(mutantMB1_neutralizeBackslashDotBackslashReject(loadUninstallVaultsNsh()));
     });
@@ -103,16 +94,16 @@ describe('sidecar traversal + WINDIR deny behaviour (reads build/uninstall-vault
       expectBranchPinFails(mutantMB6_neutralizeForwardSlashTravRejects(loadUninstallVaultsNsh()));
     });
 
-    it('M-B-WINDIR: drop $WINDIR deny fails allowlist pins', () => {
-      expectWindirPinFails(mutantWindirDenyDrop(loadUninstallVaultsNsh()));
+    it('M-B-WINDIR: drop $WINDIR deny fails region pin', () => {
+      expectRegionPinFails(mutantWindirDenyDrop(loadUninstallVaultsNsh()));
     });
 
-    it('M-B-PROGRAMFILES: drop $PROGRAMFILES deny fails allowlist pins', () => {
-      expectWindirPinFails(mutantProgramFilesDenyDrop(loadUninstallVaultsNsh()));
+    it('M-B-PROGRAMFILES: drop $PROGRAMFILES deny fails region pin', () => {
+      expectRegionPinFails(mutantProgramFilesDenyDrop(loadUninstallVaultsNsh()));
     });
 
-    it('M-B-PROGRAMFILES64: drop $PROGRAMFILES64 deny fails allowlist pins', () => {
-      expectWindirPinFails(mutantProgramFiles64DenyDrop(loadUninstallVaultsNsh()));
+    it('M-B-PROGRAMFILES64: drop $PROGRAMFILES64 deny fails region pin', () => {
+      expectRegionPinFails(mutantProgramFiles64DenyDrop(loadUninstallVaultsNsh()));
     });
 
     it('X-F1: ./ reject at line 79 fails file line pins', () => {
@@ -151,10 +142,10 @@ describe('sidecar traversal + WINDIR deny behaviour (reads build/uninstall-vault
       expectBranchPinFails(mutantMB6a_neutralizeLine84(loadUninstallVaultsNsh()));
     });
 
-    it('N1: line 72 `/` check -> `|` fails block pins and simulator', () => {
+    it('N1: line 72 `/` check -> `|` fails block pins and traversal table', () => {
       const mutant = mutantN1_forwardSlashCheckPipe(loadUninstallVaultsNsh());
       expectBranchPinFails(mutant);
-      expect(mythosTravScanOutcome('C:/vault/../note', mutant)).toBe('trav_ok');
+      expect(() => assertTraversalRejectAllowTables(mutant)).toThrow();
     });
 
     it('N2: line 58 IntOp +2 fails block pins', () => {
@@ -169,10 +160,10 @@ describe('sidecar traversal + WINDIR deny behaviour (reads build/uninstall-vault
       expectBranchPinFails(mutantE58_intOpFirstPlus1(loadUninstallVaultsNsh()));
     });
 
-    it('E-59: StrCpy $8->$7 fails block pins and C:\\a\\..\\..\\Windows table', () => {
+    it('E-59: StrCpy $8->$7 fails block pins and traversal table', () => {
       const mutant = mutantE59_strcpyUse7(loadUninstallVaultsNsh());
       expectBranchPinFails(mutant);
-      expect(mythosTravScanOutcome('C:\\a\\..\\..\\Windows', mutant)).toBe('trav_ok');
+      expect(() => assertTraversalRejectAllowTables(mutant)).toThrow();
     });
 
     it('E-61: inner IntOp $8 $8 + 1 fails block pins', () => {
@@ -213,10 +204,10 @@ describe('sidecar traversal + WINDIR deny behaviour (reads build/uninstall-vault
       expectBranchPinFails(mutantU4_strcpy4Uses8(loadUninstallVaultsNsh()));
     });
 
-    it('U5: :72 forward `/` pipe fails block pins and C:/vault/../note table', () => {
+    it('U5: :72 forward `/` pipe fails block pins and traversal table', () => {
       const mutant = mutantU5_forwardSlashPipe(loadUninstallVaultsNsh());
       expectBranchPinFails(mutant);
-      expect(mythosTravScanOutcome('C:/vault/../note', mutant)).toBe('trav_ok');
+      expect(() => assertTraversalRejectAllowTables(mutant)).toThrow();
     });
 
     it('U6: :53 StrCpy $7 past end fails block pins', () => {
@@ -225,6 +216,20 @@ describe('sidecar traversal + WINDIR deny behaviour (reads build/uninstall-vault
 
     it('U7: :88 IntOp $7 +3 fails block pins', () => {
       expectBranchPinFails(mutantU7_intOp7Plus3(loadUninstallVaultsNsh()));
+    });
+
+    it('F11: :92 StrCpy $1 1 breaks region pin and deny-prefix table', () => {
+      const mutant = mutantF11_strcpy4Windir(loadUninstallVaultsNsh());
+      expectRegionPinFails(mutant);
+      expect(() => assertDenyPrefixRejectAllowTables(mutant)).toThrow();
+    });
+
+    it('F11: :95 StrCpy $1 1 breaks region pin', () => {
+      expectRegionPinFails(mutantF11_strcpy4ProgramFiles(loadUninstallVaultsNsh()));
+    });
+
+    it('F11: :98 StrCpy $1 1 breaks region pin', () => {
+      expectRegionPinFails(mutantF11_strcpy4ProgramFiles64(loadUninstallVaultsNsh()));
     });
   });
 });
