@@ -7,6 +7,28 @@
 export const MYTHOS_DELETE_VAULTS_SECTION_O_LINE =
   'Section /o "un.Also delete my Mythos vaults / writing data" SEC_DELETE_MYTHOS_VAULTS';
 
+export const DELETE_APP_SETTINGS_JSON =
+  'Delete "$APPDATA\\Mythos Writer\\app-settings.json"';
+export const DELETE_VAULT_SETTINGS_JSON =
+  'Delete "$APPDATA\\Mythos Writer\\vault-settings.json"';
+
+export function nshMacroBody(source: string, macroName: string): string {
+  const needle = `!macro ${macroName}`;
+  let pos = 0;
+  while (pos < source.length) {
+    const start = source.indexOf(needle, pos);
+    if (start < 0) return '';
+    const after = start + needle.length;
+    const next = source[after];
+    if (next === ' ' || next === '\n' || next === '\r' || after === source.length) {
+      const end = source.indexOf('!macroend', start);
+      return end < 0 ? source.slice(start) : source.slice(start, end + '!macroend'.length);
+    }
+    pos = start + 1;
+  }
+  return '';
+}
+
 export function nshExecutableLines(source: string): string {
   return source.replace(/;[^\n]*/g, '');
 }
@@ -114,8 +136,48 @@ export function assertDefaultVaultsFallbackRmdir(customUnInstallMacroBody: strin
   }
 }
 
+export function assertSettingsJsonDeletesOnRemoveAllNotKeep(
+  nsh: string,
+  customUnInstallMacroBody: string,
+): void {
+  const ifMarker = '${If} ${SectionIsSelected} ${SEC_DELETE_MYTHOS_VAULTS}';
+  const elseMarker = '${Else}';
+  const ifAt = customUnInstallMacroBody.indexOf(ifMarker);
+  const elseAt = customUnInstallMacroBody.indexOf(elseMarker, ifAt);
+  if (ifAt < 0 || elseAt <= ifAt) {
+    throw new Error('SectionIsSelected gate required for *-settings.json delete pins');
+  }
+  const removeAllRegion = customUnInstallMacroBody.slice(ifAt, elseAt);
+  if (!removeAllRegion.includes('!insertmacro mythos_delete_remove_all_user_data')) {
+    throw new Error(
+      'Remove-all gate must insert mythos_delete_remove_all_user_data (carries settings Deletes)',
+    );
+  }
+  const removeAllMacro = nshMacroBody(nsh, 'mythos_delete_remove_all_user_data');
+  if (!removeAllMacro.includes(DELETE_APP_SETTINGS_JSON)) {
+    throw new Error('Remove-all macro must Delete app-settings.json');
+  }
+  if (!removeAllMacro.includes(DELETE_VAULT_SETTINGS_JSON)) {
+    throw new Error('Remove-all macro must Delete vault-settings.json');
+  }
+  const keepRegion = customUnInstallMacroBody.slice(elseAt);
+  const keepExec = nshExecutableLines(keepRegion);
+  if (keepExec.includes(DELETE_APP_SETTINGS_JSON)) {
+    throw new Error('KEEP branch must not Delete app-settings.json (Ivy)');
+  }
+  if (keepExec.includes(DELETE_VAULT_SETTINGS_JSON)) {
+    throw new Error('KEEP branch must not Delete vault-settings.json (Ivy)');
+  }
+  const cacheMacro = nshMacroBody(nsh, 'mythos_delete_app_caches');
+  const cacheExec = nshExecutableLines(cacheMacro);
+  if (cacheExec.includes('app-settings.json') || cacheExec.includes('vault-settings.json')) {
+    throw new Error('KEEP cache macro must not reference *-settings.json');
+  }
+}
+
 export function assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse(
   customUnInstallMacroBody: string,
+  nsh?: string,
 ): void {
   const ifMarker = '${If} ${SectionIsSelected} ${SEC_DELETE_MYTHOS_VAULTS}';
   const elseMarker = '${Else}';
@@ -142,6 +204,9 @@ export function assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse(
   }
   if (removeAllRegion.includes('!insertmacro mythos_delete_app_caches')) {
     throw new Error('mythos_delete_app_caches must not appear inside Remove-all gate');
+  }
+  if (nsh) {
+    assertSettingsJsonDeletesOnRemoveAllNotKeep(nsh, customUnInstallMacroBody);
   }
 }
 

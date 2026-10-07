@@ -21,28 +21,15 @@ import {
   assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse,
   assertSidecarAllowlistBeforeDelete,
   assertSidecarDeleteAfterFileOpenAndClose,
+  assertSettingsJsonDeletesOnRemoveAllNotKeep,
   assertTraversalRejectedBeforeSidecarDelete,
   assertTraversalThenAllowlistThenSidecarDelete,
+  DELETE_APP_SETTINGS_JSON,
+  DELETE_VAULT_SETTINGS_JSON,
+  nshMacroBody,
 } from './uninstallVaultsNsh.test.harness.js';
 
 const NSH = readFileSync(resolve(process.cwd(), '../build/uninstall-vaults.nsh'), 'utf-8');
-
-function nshMacroBody(source: string, macroName: string): string {
-  const needle = `!macro ${macroName}`;
-  let pos = 0;
-  while (pos < source.length) {
-    const start = source.indexOf(needle, pos);
-    if (start < 0) return '';
-    const after = start + needle.length;
-    const next = source[after];
-    if (next === ' ' || next === '\n' || next === '\r' || after === source.length) {
-      const end = source.indexOf('!macroend', start);
-      return end < 0 ? source.slice(start) : source.slice(start, end + '!macroend'.length);
-    }
-    pos = start + 1;
-  }
-  return '';
-}
 
 function expectPinFails(mutant: string, pin: (src: string) => void, message: RegExp): void {
   expect(() => pin(mutant)).toThrow(message);
@@ -86,7 +73,21 @@ describe('build/uninstall-vaults.nsh token contract', () => {
     );
     expect(body.indexOf('RMDir /r "$APPDATA\\Mythos Writer\\vaults"')).toBeGreaterThan(body.indexOf(gate));
     expect(body.indexOf('RMDir /r "$APPDATA\\Mythos Writer"')).toBeGreaterThan(body.indexOf(gate));
-    assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse(body);
+    assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse(body, NSH);
+  });
+
+  it('Remove-all gate deletes *-settings.json; KEEP branch does not (Ivy)', () => {
+    const body = customUnInstall();
+    const gate = '${If} ${SectionIsSelected} ${SEC_DELETE_MYTHOS_VAULTS}';
+    const elseAt = body.indexOf('${Else}');
+    const removeAllRegion = body.slice(body.indexOf(gate), elseAt);
+    expect(removeAllRegion).toContain('!insertmacro mythos_delete_remove_all_user_data');
+    expect(NSH).toContain(DELETE_VAULT_SETTINGS_JSON);
+    expect(NSH).toContain(DELETE_APP_SETTINGS_JSON);
+    const keepRegion = body.slice(elseAt);
+    expect(keepRegion).not.toContain(DELETE_VAULT_SETTINGS_JSON);
+    expect(keepRegion).not.toContain(DELETE_APP_SETTINGS_JSON);
+    assertSettingsJsonDeletesOnRemoveAllNotKeep(NSH, body);
   });
 
   it('(3) default vaults/ fallback RMDir inside Remove-all gate', () => {
@@ -108,7 +109,7 @@ describe('build/uninstall-vaults.nsh token contract', () => {
 
   it('(5) KEEP branch cache-only — no Remove-all user macro (R-5 / Probe H-A)', () => {
     assertKeepBranchInsertsCacheMacroOnly(customUnInstall());
-    assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse(customUnInstall());
+    assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse(customUnInstall(), NSH);
   });
 
   it('(6) KEEP ${Else}..${EndIf} inserts only mythos_delete_app_caches (M13)', () => {
@@ -154,8 +155,9 @@ describe('build/uninstall-vaults.nsh token contract', () => {
 
   it('always falls back to default AppData vaults + both settings files', () => {
     expect(NSH).toContain('RMDir /r "$APPDATA\\Mythos Writer\\vaults"');
-    expect(NSH).toContain('Delete "$APPDATA\\Mythos Writer\\vault-settings.json"');
-    expect(NSH).toContain('Delete "$APPDATA\\Mythos Writer\\app-settings.json"');
+    expect(NSH).toContain(DELETE_VAULT_SETTINGS_JSON);
+    expect(NSH).toContain(DELETE_APP_SETTINGS_JSON);
+    assertSettingsJsonDeletesOnRemoveAllNotKeep(NSH, customUnInstall());
   });
 
   it('delete path only runs when checkbox section is selected', () => {
