@@ -30,6 +30,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -259,7 +260,7 @@ test('TC-V-02: create story + chapter, both appear in Stories navigator', async 
   }
 
   // ── Create story (instant — no prompt) ────────────────────────────────────
-  await page.locator('.lr-nav-add').first().click();
+  await createStoryFromNavAdd(page);
   await waitForWriterCaret(page);
   await renameStoryTitle(page, STORY_TITLE);
 

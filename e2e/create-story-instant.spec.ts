@@ -6,7 +6,9 @@
  * (title: "") + "Chapter 1" + one untitled scene, opens the Story Writer at
  * Full Book depth, and places the caret in the empty scene's first paragraph
  * (placeholder "Start writing…"). No dialog, modal, toast, or wizard may
- * interpose between the click and the caret.
+ * interpose between the click and the caret. PLAN-058 L5 adds a NewStoryModal
+ * on every entry point; after confirming it, the same instant scaffold + caret
+ * behavior applies.
  *
  * Coverage:
  *   AC1        Navigator "+" → keyboard.type('hello') with zero interposed
@@ -35,6 +37,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 import { closeElectronApp, removeTempDirs } from './helpers/electronTeardown';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -261,6 +264,7 @@ async function expectFullBookDepth(pg: Page): Promise<void> {
  * verify the scaffold + prose on disk and Full Book depth in the UI.
  */
 async function verifyInstantCreate(pg: Page, vaultDir: string, word: string): Promise<void> {
+  await confirmNewStoryModalIfOpen(pg);
   await waitForWriterCaret(pg);
   await expectNoInterposedSurfaces(pg);
   await pg.keyboard.type(word);
@@ -303,10 +307,9 @@ test.describe('M3: create story → instantly writable (navigator +)', () => {
     await expect(addBtn).toBeVisible({ timeout: 10_000 });
     await expectNoInterposedSurfaces(page);
 
-    await addBtn.click();
+    await createStoryFromNavAdd(page);
 
-    // Click → caret with NO other interaction: the only thing between the
-    // click and keyboard.type below is a passive wait for the caret to land.
+    // Modal confirm → caret; keyboard.type below is only a passive wait after that.
     await waitForWriterCaret(page);
     await expectNoInterposedSurfaces(page);
 
@@ -330,7 +333,7 @@ test.describe('M3: create story → instantly writable (navigator +)', () => {
     // Create a second story from the same entry point and inspect the
     // freshly-created state (AC1 above already blurred its story's caret).
     await ensureStoriesPanel(page);
-    await page.locator('.lr-nav-add').click();
+    await createStoryFromNavAdd(page);
     await waitForWriterCaret(page);
 
     // Full Book depth every time.

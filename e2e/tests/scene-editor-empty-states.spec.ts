@@ -24,6 +24,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { toggleStoryEditorSplit } from '../helpers/storyEditorSplit';
 
 // SKY-8211: [data-testid=scene-editor-empty][data-variant] now only renders
 // inside SplitEditorPane (frontend/src/SplitEditorPane.tsx) — the default
@@ -31,8 +32,8 @@ import {
 // no-scenes-yet cases into one generic "Select a scene from the left panel…"
 // message with no distinguishing testid, so it can't cover AC-ES-01/02's
 // per-variant copy assertions. Drive each test into split-pane mode via the
-// `[data-testid="split-toggle-btn"]` toggle instead, which is what actually
-// renders SceneEditorEmptyState.
+// Ctrl+Shift+2 split chord instead (PLAN-058 L5 removed the toolbar toggle),
+// which is what actually renders SceneEditorEmptyState.
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -203,7 +204,7 @@ test.describe('AC-ES-01 select-scene empty state', () => {
     // Wait for the shell to finish loading (spinner disappears)
     await page.waitForSelector('.shell-loading', { state: 'detached', timeout: 30_000 });
     // SKY-8211: SceneEditorEmptyState only renders inside SplitEditorPane.
-    await page.locator('[data-testid="split-toggle-btn"]').click();
+    await toggleStoryEditorSplit(page);
   });
 
   test.afterAll(async () => {
@@ -249,7 +250,7 @@ test.describe('AC-ES-02 no-scenes-yet empty state', () => {
     page = await firstWindow(app);
     await page.waitForSelector('.shell-loading', { state: 'detached', timeout: 30_000 });
     // SKY-8211: SceneEditorEmptyState only renders inside SplitEditorPane.
-    await page.locator('[data-testid="split-toggle-btn"]').click();
+    await toggleStoryEditorSplit(page);
   });
 
   test.afterAll(async () => {

@@ -27,6 +27,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const OUT_DIR = path.resolve(__dirname, '../pr-screenshots/sky-11450-overlay-tier');
@@ -131,6 +132,7 @@ async function openManuscript(pg: Page): Promise<void> {
   const cta = pg.locator('[data-testid="nav-empty-cta"]');
   if (await cta.isVisible().catch(() => false)) {
     await cta.click();
+    await confirmNewStoryModalIfOpen(pg);
   }
   await expect(pg.locator('.nav-scene-row').first()).toBeVisible({ timeout: 20_000 });
   await pg.locator('.nav-scene-row').first().click();

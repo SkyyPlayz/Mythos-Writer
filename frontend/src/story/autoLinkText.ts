@@ -101,3 +101,32 @@ export function splitRunByHints(
   if (pos < runEnd) runs.push({ text: runText.slice(pos - runStart) });
   return runs;
 }
+
+/** Parsed [[target]] or [[target|alias]] token (FD-1 live links in manuscript). */
+export interface WikiLinkTokenRun {
+  text: string;
+  target?: string;
+  alias?: string | null;
+}
+
+export function parseWikiLinkInner(inner: string): { target: string; alias: string | null } {
+  const pipe = inner.indexOf('|');
+  if (pipe === -1) return { target: inner.trim(), alias: null };
+  return { target: inner.slice(0, pipe).trim(), alias: inner.slice(pipe + 1).trim() || null };
+}
+
+/** Split plain paragraph text into plain runs and live wiki-link runs. */
+export function splitTextByWikiLinks(text: string): WikiLinkTokenRun[] {
+  const re = /\[\[([^[\]]+)\]\]/g;
+  const runs: WikiLinkTokenRun[] = [];
+  let last = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    if (match.index > last) runs.push({ text: text.slice(last, match.index) });
+    const { target, alias } = parseWikiLinkInner(match[1]);
+    runs.push({ text: match[0], target, alias });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) runs.push({ text: text.slice(last) });
+  return runs.length > 0 ? runs : [{ text }];
+}
