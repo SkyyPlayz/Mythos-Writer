@@ -346,11 +346,8 @@ test('TC-SKY11221-01: Beta Reader row -> BetaReaderPage -> Run produces a real r
 // ─── TC-SKY11221-02: "beta read this scene" is a normal Writing Coach turn ────
 
 test('TC-SKY11221-02: "beta read this scene" in Writing Coach chat runs a normal turn, no .br-panel intercept', async () => {
-  const waRow = page.locator('[data-testid="ahp-action-writer-scan"]');
-  if (await waRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await waRow.click();
-  }
-  await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
+  await openScene(page, SCENE_TITLE);
+  await expect(page.getByTestId('ahp-partner-chat-input')).toBeVisible({ timeout: 8_000 });
 
   // The deleted intercept UI must be absent before we even submit.
   await expect(page.locator('.br-panel')).toHaveCount(0);

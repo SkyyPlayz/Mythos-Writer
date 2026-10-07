@@ -12,6 +12,7 @@ import type {
   PartnerVerbosity,
 } from './partnerPersonality';
 import type { PartnerHandId } from '../agents/partnerIdentity';
+import type { PartnerQuickCommandId } from './partnerQuickCommands';
 
 export type PartnerIconId =
   | 'sparkle'
@@ -71,6 +72,8 @@ export interface WritingPartnerSettings {
   claudeCliMode: ClaudeCliMode;
   /** Help improve Mythos — Don't send is default. */
   telemetryLevel: TelemetryLevel;
+  /** PLAN-058 L7 (60:50) — advanced overrides for partner quick-command chat prompts. */
+  quickCommandPrompts?: Partial<Record<PartnerQuickCommandId, string>>;
 }
 
 export const DEFAULT_WRITING_PARTNER: WritingPartnerSettings = {

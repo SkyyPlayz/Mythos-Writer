@@ -40,7 +40,7 @@ export function setPartnerGreetingName(name: string | null | undefined): void {
  */
 export function buildPartnerGreeting(displayName?: string): string {
   const name = (displayName?.trim() || cachedPartnerDisplayName || DEFAULT_PARTNER_DISPLAY_NAME).trim();
-  return `Hi! I'm ${name} — your writing partner. Ask about craft, timeline, or notes — or run Update Timeline, Beta Read, or Writer Scan from the actions above.`;
+  return `Hi! I'm ${name} — your writing partner. Ask about craft, timeline, or notes — or use Beta read, Continuity, Notes→timeline, and Timeline→notes above.`;
 }
 
 /** Hands still used for busy/status routing behind the single partner face. */

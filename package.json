@@ -97,7 +97,7 @@
     "test:e2e:ai-off-network-silence": "playwright test e2e/tests/sky10604-network-silence.spec.ts --reporter=list,html",
     "test:e2e:ai-off-walkthrough": "playwright test e2e/tests/sky10604-ai-walkthrough.spec.ts --reporter=list,html",
     "test:e2e:ai-off-persistence": "playwright test e2e/tests/sky10604-ai-off-persistence.spec.ts --reporter=list,html",
-    "test:e2e:writing-assistant": "playwright test e2e/writing-assistant.spec.ts --reporter=list,html",
+    "test:e2e:writing-assistant": "playwright test e2e/writing-assistant.spec.ts e2e/plan058-l7-partner.spec.ts --reporter=list,html",
     "test:e2e:beta-reader-consolidation": "playwright test e2e/sky-11221-beta-reader-consolidation.spec.ts --reporter=list,html",
     "test:e2e:production-roles": "playwright test e2e/sky-11412-production-roles-e2e.spec.ts --reporter=list,html",
     "test:e2e:beta-report-reasoning-parser": "playwright test e2e/sky-11816-beta-report-reasoning-parser.spec.ts --reporter=list,html",

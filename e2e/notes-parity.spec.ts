@@ -8,6 +8,7 @@ import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { notesPanel, noteTestId, noteViewer } from './helpers/notesPanel';
 import { enableNoteViewModes } from './helpers/noteViewPrefs';
+import { openPartnerWriterTips } from './helpers/partnerHub';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -461,7 +462,7 @@ test('Ivy ruling B: nested WA tip header @GRS 300 — Cadence/Mute visible+click
     if (await partnerTab.isVisible({ timeout: 1_000 }).catch(() => false)) {
       await partnerTab.click();
     }
-    await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
+    await openPartnerWriterTips(page);
     const waHeader = page.locator(
       '.ahp-writer-tips .writing-assistant-panel .pc-header.wa-panel-header',
     );
@@ -832,9 +833,7 @@ test('F2 W0.3 / Critic #6 / Probe H2 / Critic hard 1+3: bars clean across tabs',
       }
       const waPanel = page.locator('.writing-assistant-panel');
       if ((await waPanel.count()) === 0) {
-        const agentRow = page.locator('[data-testid="ahp-hand-writer"]');
-        await expect(agentRow).toBeVisible({ timeout: 4_000 });
-        await agentRow.click();
+        await openPartnerWriterTips(page);
       }
       await expect(page.locator('.writing-assistant-panel .pc-header.wa-panel-header')).toBeVisible({
         timeout: 8_000,

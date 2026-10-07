@@ -69,6 +69,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { clickStoryNav } from './helpers/navGuard';
+import { openPartnerWriterTips } from './helpers/partnerHub';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -282,10 +283,7 @@ async function openAssistantPanel(page: Page): Promise<void> {
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();
 
-  const agentRow = page.locator('[data-testid="ahp-action-writer-scan"]');
-  if (await agentRow.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await agentRow.click();
-  }
+  await openPartnerWriterTips(page);
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
 

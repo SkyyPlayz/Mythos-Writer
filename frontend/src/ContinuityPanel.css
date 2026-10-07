@@ -293,9 +293,24 @@
 /* ── M12.3 (SKY-10770): scan-scope toolbar + global contradictions ── */
 .cp-scan-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2, 8px);
   padding: var(--space-2, 8px) var(--space-3, 12px) 0;
+}
+
+/* 62:30 — scene picker on its own row so scope combobox stays clickable in ~300px GRS. */
+.cp-scan-scene-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+.cp-scan-scene-picker-row .ln-select {
+  flex: 1;
+  min-width: 0;
 }
 
 .cp-scan-scope-label {
