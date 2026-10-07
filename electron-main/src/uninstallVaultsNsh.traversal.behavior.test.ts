@@ -25,38 +25,37 @@ import {
   mutantXB7_gotoIncLine65,
   mutantMB5a_neutralizeLine78,
   mutantMB6a_neutralizeLine84,
-  assertTraversalFileLinePins,
-} from './sidecarTraversalScan.harness.js';
+  assertTraversalScanBlockExact,
+  mutantN1_forwardSlashCheckPipe,
+  mutantN2_intOpLine58Plus2,
+  mutantN3_intOpLine73Plus2,
+  assertTraversalRejectAllowTables,
+  mutantE58_intOpFirstPlus1,
+  mutantE59_strcpyUse7,
+  mutantE61_intOp8Plus1,
+  mutantE62_strcpySecondUse7,
+  mutantE67_intOp8Plus1Second,
+  mutantE74_strcpyFwdBranch,
+  mutantE77_intOpFwdInner,
+  mutantE83_strcpyFwdInner,
+  mutantU1_intOp58Plus2,
+  mutantU3_disableEmptyEndCheck,
+  mutantU4_strcpy4Uses8,
+  mutantU5_forwardSlashPipe,
+  mutantU6_strcpy7PastEnd,
+  mutantU7_intOp7Plus3,
+} from './sidecarTraversalScan.test-helpers.js';
 
 export { loadUninstallVaultsNsh, resolveUninstallVaultsNshPath };
-
-const REJECTED_TRAV_PATHS = [
-  'C:\\vault\\.\\note',
-  'C:\\vault\\..\\note',
-  'C:/vault/./note',
-  'C:/vault/../note',
-  'C:/vault/.',
-  'C:/vault/..',
-  String.raw`C:/vault/.\note`,
-  String.raw`C:/vault/..\note`,
-  '...\\Documents\\..\\..\\Windows',
-];
-
-const ALLOWED_TRAV_PATHS = ['C:\\Users\\me\\Mythos Writer\\vaults\\x', 'D:/data/vault'];
 
 describe('sidecar traversal + WINDIR deny behaviour (reads build/uninstall-vaults.nsh from disk)', () => {
   it('pins each traversal branch reject in nsh context', () => {
     assertTraversalBranchBehaviourPins(loadUninstallVaultsNsh());
-    assertTraversalFileLinePins(loadUninstallVaultsNsh());
+    assertTraversalScanBlockExact(loadUninstallVaultsNsh());
   });
 
-  it('simulator rejects traversal sidecar lines', () => {
-    for (const path of REJECTED_TRAV_PATHS) {
-      expect(mythosTravScanOutcome(path)).toBe('vault_read');
-    }
-    for (const path of ALLOWED_TRAV_PATHS) {
-      expect(mythosTravScanOutcome(path)).toBe('trav_ok');
-    }
+  it('simulator reject/allow tables (driven from .nsh mythos_trav_scan block)', () => {
+    assertTraversalRejectAllowTables(loadUninstallVaultsNsh());
   });
 
   it('pins WINDIR / PROGRAMFILES / PROGRAMFILES64 StrCmp uninstall_vault_read denies', () => {
@@ -150,6 +149,82 @@ describe('sidecar traversal + WINDIR deny behaviour (reads build/uninstall-vault
 
     it('MB6a: forward /.. end-of-path empty reject at line 84 fails pins', () => {
       expectBranchPinFails(mutantMB6a_neutralizeLine84(loadUninstallVaultsNsh()));
+    });
+
+    it('N1: line 72 `/` check -> `|` fails block pins and simulator', () => {
+      const mutant = mutantN1_forwardSlashCheckPipe(loadUninstallVaultsNsh());
+      expectBranchPinFails(mutant);
+      expect(mythosTravScanOutcome('C:/vault/../note', mutant)).toBe('trav_ok');
+    });
+
+    it('N2: line 58 IntOp +2 fails block pins', () => {
+      expectBranchPinFails(mutantN2_intOpLine58Plus2(loadUninstallVaultsNsh()));
+    });
+
+    it('N3: line 73 IntOp +2 fails block pins', () => {
+      expectBranchPinFails(mutantN3_intOpLine73Plus2(loadUninstallVaultsNsh()));
+    });
+
+    it('E-58: first IntOp $8 $7 + 1 fails block pins', () => {
+      expectBranchPinFails(mutantE58_intOpFirstPlus1(loadUninstallVaultsNsh()));
+    });
+
+    it('E-59: StrCpy $8->$7 fails block pins and C:\\a\\..\\..\\Windows table', () => {
+      const mutant = mutantE59_strcpyUse7(loadUninstallVaultsNsh());
+      expectBranchPinFails(mutant);
+      expect(mythosTravScanOutcome('C:\\a\\..\\..\\Windows', mutant)).toBe('trav_ok');
+    });
+
+    it('E-61: inner IntOp $8 $8 + 1 fails block pins', () => {
+      expectBranchPinFails(mutantE61_intOp8Plus1(loadUninstallVaultsNsh()));
+    });
+
+    it('E-62: inner StrCpy index fails block pins', () => {
+      expectBranchPinFails(mutantE62_strcpySecondUse7(loadUninstallVaultsNsh()));
+    });
+
+    it('E-67: nested IntOp $8 $8 + 1 fails block pins', () => {
+      expectBranchPinFails(mutantE67_intOp8Plus1Second(loadUninstallVaultsNsh()));
+    });
+
+    it('E-74: forward-branch StrCpy index fails block pins', () => {
+      expectBranchPinFails(mutantE74_strcpyFwdBranch(loadUninstallVaultsNsh()));
+    });
+
+    it('E-77: forward inner IntOp fails block pins', () => {
+      expectBranchPinFails(mutantE77_intOpFwdInner(loadUninstallVaultsNsh()));
+    });
+
+    it('E-83: forward nested StrCpy fails block pins', () => {
+      expectBranchPinFails(mutantE83_strcpyFwdInner(loadUninstallVaultsNsh()));
+    });
+
+    it('U1: :58 IntOp +2 fails block pins', () => {
+      expectBranchPinFails(mutantU1_intOp58Plus2(loadUninstallVaultsNsh()));
+    });
+
+    it('U3: :56 scan end check disabled fails block pins and reject table', () => {
+      const mutant = mutantU3_disableEmptyEndCheck(loadUninstallVaultsNsh());
+      expectBranchPinFails(mutant);
+      expect(() => assertTraversalRejectAllowTables(mutant)).toThrow();
+    });
+
+    it('U4: :55 StrCpy $8 fails block pins', () => {
+      expectBranchPinFails(mutantU4_strcpy4Uses8(loadUninstallVaultsNsh()));
+    });
+
+    it('U5: :72 forward `/` pipe fails block pins and C:/vault/../note table', () => {
+      const mutant = mutantU5_forwardSlashPipe(loadUninstallVaultsNsh());
+      expectBranchPinFails(mutant);
+      expect(mythosTravScanOutcome('C:/vault/../note', mutant)).toBe('trav_ok');
+    });
+
+    it('U6: :53 StrCpy $7 past end fails block pins', () => {
+      expectBranchPinFails(mutantU6_strcpy7PastEnd(loadUninstallVaultsNsh()));
+    });
+
+    it('U7: :88 IntOp $7 +3 fails block pins', () => {
+      expectBranchPinFails(mutantU7_intOp7Plus3(loadUninstallVaultsNsh()));
     });
   });
 });

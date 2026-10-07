@@ -27,27 +27,9 @@ import {
   DELETE_APP_SETTINGS_JSON,
   DELETE_VAULT_SETTINGS_JSON,
   nshMacroBody,
-} from './uninstallVaultsNsh.test.harness.js';
-import {
-  assertTraversalBranchBehaviourPins,
-  assertWindirProgramFilesDenyBehaviourPins,
-  mutantMB1_neutralizeBackslashDotBackslashReject,
-  mutantMB2_neutralizeBackslashDotDotBackslashReject,
-  mutantMB3_deleteBackslashDotDotRejectPair,
-  mutantMB4_neutralizeAllBackslashTravRejects,
-  mutantMB5_neutralizeBackslashDotCheck,
-  mutantMB6_neutralizeForwardSlashTravRejects,
-  mutantWindirDenyDrop,
-  mutantProgramFilesDenyDrop,
-  mutantProgramFiles64DenyDrop,
-  mutantXF2_gotoIncLine80,
-  mutantXF4_gotoIncLine86,
-  mutantXF5_gotoIncLine75,
-  mutantXF6_gotoIncLine81,
-  mutantXB7_gotoIncLine65,
-  mutantMB5a_neutralizeLine78,
-  mutantMB6a_neutralizeLine84,
-} from './sidecarTraversalScan.harness.js';
+  assertAppDataMythosWriterRootSelfMatchGuard,
+  mutantM5_dropAppDataRootSelfMatch,
+} from './uninstallVaultsNsh.test-helpers.js';
 
 const NSH = loadUninstallVaultsNsh();
 
@@ -248,8 +230,7 @@ describe('build/uninstall-vaults.nsh token contract', () => {
     expect(sidecarRmAt).toBeGreaterThan(doDeleteAt);
     expect(executable).toMatch(/StrCmp \$4 "\."/);
     assertTraversalRejectedBeforeSidecarDelete(NSH);
-    assertTraversalBranchBehaviourPins(NSH);
-    assertWindirProgramFilesDenyBehaviourPins(NSH);
+    assertAppDataMythosWriterRootSelfMatchGuard(NSH);
   });
 
   it('wraps uninstall deletes in ${IfNot} ${isUpdated} (upgrade must delete nothing)', () => {
@@ -305,92 +286,12 @@ describe('build/uninstall-vaults.nsh token contract', () => {
       expectPinFails(mutant, assertDeleteVaultsSectionOffByDefault, /Section \/o/);
     });
 
-    it('M-B1: neutralize .\\ backslash reject fails branch pins', () => {
+    it('M5: drop APPDATA Mythos Writer root self-match guard fails (S8/S5)', () => {
       expectPinFails(
-        mutantMB1_neutralizeBackslashDotBackslashReject(NSH),
-        assertTraversalBranchBehaviourPins,
-        /traversal pin|line 64/,
+        mutantM5_dropAppDataRootSelfMatch(NSH),
+        assertAppDataMythosWriterRootSelfMatchGuard,
+        /M5|StrCmp \$1 \$5/,
       );
-    });
-
-    it('M-B2: neutralize ..\\ backslash reject fails branch pins', () => {
-      expectPinFails(
-        mutantMB2_neutralizeBackslashDotDotBackslashReject(NSH),
-        assertTraversalBranchBehaviourPins,
-        /traversal pin|line 69/,
-      );
-    });
-
-    it('M-B3: delete .. reject pair fails branch pins', () => {
-      expectPinFails(
-        mutantMB3_deleteBackslashDotDotRejectPair(NSH),
-        assertTraversalBranchBehaviourPins,
-        /traversal pin|line 6[89]/,
-      );
-    });
-
-    it('M-B4: all backslash traversal rejects fails branch pins', () => {
-      expectPinFails(
-        mutantMB4_neutralizeAllBackslashTravRejects(NSH),
-        assertTraversalBranchBehaviourPins,
-        /traversal pin|line 6[3-9]/,
-      );
-    });
-
-    it('M-B5: backslash dot check fails branch pins', () => {
-      expectPinFails(
-        mutantMB5_neutralizeBackslashDotCheck(NSH),
-        assertTraversalBranchBehaviourPins,
-        /traversal pin|line 60|M-B6/,
-      );
-    });
-
-    it('M-B6: forward-slash traversal rejects fails branch pins', () => {
-      expectPinFails(
-        mutantMB6_neutralizeForwardSlashTravRejects(NSH),
-        assertTraversalBranchBehaviourPins,
-        /traversal pin|line 7[9]|line 8[56]/,
-      );
-    });
-
-    it('X-F2: /.\\ reject at line 80 fails traversal line pins', () => {
-      expectPinFails(mutantXF2_gotoIncLine80(NSH), assertTraversalBranchBehaviourPins, /X-F2|line 80/);
-    });
-
-    it('X-F4: /..\\ reject at line 86 fails traversal line pins', () => {
-      expectPinFails(mutantXF4_gotoIncLine86(NSH), assertTraversalBranchBehaviourPins, /X-F4|line 86/);
-    });
-
-    it('X-F5: forward dot check at line 75 fails traversal line pins', () => {
-      expectPinFails(mutantXF5_gotoIncLine75(NSH), assertTraversalBranchBehaviourPins, /X-F5|line 75/);
-    });
-
-    it('X-F6: forward second dot at line 81 fails traversal line pins', () => {
-      expectPinFails(mutantXF6_gotoIncLine81(NSH), assertTraversalBranchBehaviourPins, /X-F6|line 81/);
-    });
-
-    it('X-B7: backslash second dot at line 65 fails traversal line pins', () => {
-      expectPinFails(mutantXB7_gotoIncLine65(NSH), assertTraversalBranchBehaviourPins, /X-B7|line 65/);
-    });
-
-    it('MB5a: line 78 /. end reject neutralized fails traversal line pins', () => {
-      expectPinFails(mutantMB5a_neutralizeLine78(NSH), assertTraversalBranchBehaviourPins, /MB5a|line 78/);
-    });
-
-    it('MB6a: line 84 /.. end reject neutralized fails traversal line pins', () => {
-      expectPinFails(mutantMB6a_neutralizeLine84(NSH), assertTraversalBranchBehaviourPins, /MB6a|line 84/);
-    });
-
-    it('M-B-WINDIR: drop $WINDIR deny fails allowlist pins', () => {
-      expectPinFails(mutantWindirDenyDrop(NSH), assertWindirProgramFilesDenyBehaviourPins, /WINDIR/);
-    });
-
-    it('M-B-PROGRAMFILES: drop $PROGRAMFILES deny fails allowlist pins', () => {
-      expectPinFails(mutantProgramFilesDenyDrop(NSH), assertWindirProgramFilesDenyBehaviourPins, /PROGRAMFILES/);
-    });
-
-    it('M-B-PROGRAMFILES64: drop $PROGRAMFILES64 deny fails allowlist pins', () => {
-      expectPinFails(mutantProgramFiles64DenyDrop(NSH), assertWindirProgramFilesDenyBehaviourPins, /PROGRAMFILES64/);
     });
 
     it('M-C: adding MessageBox or MB_DEFBUTTON1 fails', () => {

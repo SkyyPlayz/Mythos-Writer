@@ -21,12 +21,17 @@ import {
   mutantXB7_gotoIncLine65,
   mutantMB5a_neutralizeLine78,
   mutantMB6a_neutralizeLine84,
-} from './sidecarTraversalScan.harness.js';
+  mutantN1_forwardSlashCheckPipe,
+  mutantN2_intOpLine58Plus2,
+  mutantN3_intOpLine73Plus2,
+  mutantE59_strcpyUse7,
+} from './sidecarTraversalScan.test-helpers.js';
+import { mutantM5_dropAppDataRootSelfMatch } from './uninstallVaultsNsh.test-helpers.js';
 import {
   defaultUninstallVaultsNshPath,
   MYTHOS_UNINSTALL_VAULTS_NSH_PATH_ENV,
 } from './uninstallVaultsNsh.path.js';
-import { nshMacroBody } from './uninstallVaultsNsh.test.harness.js';
+import { nshMacroBody } from './uninstallVaultsNsh.test-helpers.js';
 
 const REPO_ROOT = resolve(process.cwd(), '..');
 const CANONICAL_NSH_PATH = defaultUninstallVaultsNshPath();
@@ -270,6 +275,36 @@ describe('on-disk nsh mutants (temp copy + MYTHOS_UNINSTALL_VAULTS_NSH_PATH, nev
     mutantMB6a_neutralizeLine84,
     runNoIntegrityL8Suite,
     /MB6a|line 84/,
+  );
+  withTempOnDiskMutant(
+    'N1 on-disk: line 72 pipe check reds L8 suite (no integrity)',
+    mutantN1_forwardSlashCheckPipe,
+    runNoIntegrityL8Suite,
+    /N1|line 72|traversal scan block|simulator/,
+  );
+  withTempOnDiskMutant(
+    'N2 on-disk: line 58 IntOp +2 reds L8 suite (no integrity)',
+    mutantN2_intOpLine58Plus2,
+    runNoIntegrityL8Suite,
+    /N2|line 58|traversal scan block/,
+  );
+  withTempOnDiskMutant(
+    'N3 on-disk: line 73 IntOp +2 reds L8 suite (no integrity)',
+    mutantN3_intOpLine73Plus2,
+    runNoIntegrityL8Suite,
+    /N3|line 73|traversal scan block/,
+  );
+  withTempOnDiskMutant(
+    'E-59 on-disk: StrCpy $7 reds L8 suite (no integrity)',
+    mutantE59_strcpyUse7,
+    runNoIntegrityL8Suite,
+    /E-59|traversal scan block|C:\\\\a\\\\/,
+  );
+  withTempOnDiskMutant(
+    'M5 on-disk: APPDATA root self-match drop reds main contract suite',
+    mutantM5_dropAppDataRootSelfMatch,
+    main,
+    /M5|StrCmp \$1 \$5/,
   );
 
   withTempOnDiskMutant(

@@ -211,6 +211,62 @@ export function assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse(
 }
 
 /** Probe H-A: paths failing the allowlist must skip delete at mythos_al_deny (not do_delete). */
+/** Critic S8 / Probe S5 — exact APPDATA Mythos Writer root self-match deny (M5). */
+export const APPDATA_MYTHOS_WRITER_ROOT_SELF_MATCH_LINE =
+  '          StrCmp $1 $5 uninstall_vault_read';
+
+export function assertAppDataMythosWriterRootSelfMatchGuard(nsh: string): void {
+  const executable = nshExecutableLines(nsh);
+  const anchor = 'StrCpy $5 "$APPDATA\\Mythos Writer"';
+  const anchorAt = executable.indexOf(anchor);
+  const notAppdataAt = executable.indexOf('mythos_al_not_appdata:', anchorAt);
+  if (anchorAt < 0 || notAppdataAt <= anchorAt) {
+    throw new Error('APPDATA Mythos Writer allowlist anchor missing');
+  }
+  const region = executable.slice(anchorAt, notAppdataAt);
+  const prefixMatch = 'StrCmp $4 $5 0 mythos_al_not_appdata';
+  if (!region.includes(prefixMatch)) {
+    throw new Error('APPDATA prefix match must branch to mythos_al_not_appdata');
+  }
+  if (!region.includes('StrCmp $1 $5 uninstall_vault_read')) {
+    throw new Error(
+      'APPDATA Mythos Writer root must StrCmp $1 $5 uninstall_vault_read (M5 / S8 / S5)',
+    );
+  }
+  const lines = nsh.split(/\r?\n/);
+  const anchorLine = lines.findIndex((l) => l.includes(anchor));
+  if (anchorLine < 0) {
+    throw new Error('APPDATA anchor line missing in nsh file');
+  }
+  const selfMatchAt = lines.findIndex(
+    (l, i) => i > anchorLine && i < anchorLine + 8 && l === APPDATA_MYTHOS_WRITER_ROOT_SELF_MATCH_LINE,
+  );
+  if (selfMatchAt < 0) {
+    throw new Error(
+      `APPDATA root self-match line must be exact: ${JSON.stringify(APPDATA_MYTHOS_WRITER_ROOT_SELF_MATCH_LINE)}`,
+    );
+  }
+}
+
+export function mutantM5_dropAppDataRootSelfMatch(nsh: string): string {
+  const needle =
+    '        StrCpy $5 "$APPDATA\\Mythos Writer"\n' +
+    '        StrLen $3 $5\n' +
+    '        StrCpy $4 $1 $3\n' +
+    '        StrCmp $4 $5 0 mythos_al_not_appdata\n' +
+    '          StrCmp $1 $5 uninstall_vault_read';
+  const replacement =
+    '        StrCpy $5 "$APPDATA\\Mythos Writer"\n' +
+    '        StrLen $3 $5\n' +
+    '        StrCpy $4 $1 $3\n' +
+    '        StrCmp $4 $5 0 mythos_al_not_appdata';
+  const at = nsh.indexOf(needle);
+  if (at < 0) {
+    throw new Error('M5 APPDATA guard block missing from nsh');
+  }
+  return nsh.slice(0, at) + replacement + nsh.slice(at + needle.length);
+}
+
 export function assertAllowlistDenySkipsSidecarLine(nsh: string): void {
   const executable = nshExecutableLines(nsh);
   const denyLabelAt = executable.indexOf('mythos_al_deny:');

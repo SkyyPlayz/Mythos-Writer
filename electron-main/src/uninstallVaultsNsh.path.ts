@@ -3,11 +3,16 @@ import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-/** Written by vitest globalSetup; read by uninstallVaultsNsh.buildIntegrity.test.ts */
-export const UNINSTALL_VAULTS_NSH_BUILD_HASH_SNAPSHOT_FILE = join(
-  tmpdir(),
-  'mythos-uninstall-vaults-nsh-sha256-at-start',
-);
+/** Vitest globalSetup writes the suite-start hash here (unique mkdtemp dir per run). */
+export const MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV = 'MYTHOS_UNINSTALL_VAULTS_NSH_BUILD_HASH_SNAPSHOT';
+
+export function resolveUninstallVaultsNshBuildHashSnapshotFile(): string {
+  const fromEnv = process.env[MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV]?.trim();
+  if (fromEnv) {
+    return resolve(fromEnv);
+  }
+  return join(tmpdir(), 'mythos-uninstall-vaults-nsh-sha256-at-start');
+}
 
 /** Vitest / nested-suite override: read NSH from a temp copy instead of build/. */
 export const MYTHOS_UNINSTALL_VAULTS_NSH_PATH_ENV = 'MYTHOS_UNINSTALL_VAULTS_NSH_PATH';

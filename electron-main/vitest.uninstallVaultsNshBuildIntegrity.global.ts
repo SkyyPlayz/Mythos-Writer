@@ -1,9 +1,11 @@
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   defaultUninstallVaultsNshPath,
+  MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV,
   sha256UninstallVaultsNshBuildFile,
-  UNINSTALL_VAULTS_NSH_BUILD_HASH_SNAPSHOT_FILE,
 } from './src/uninstallVaultsNsh.path.js';
 
 export default function setup(): () => void {
@@ -12,8 +14,11 @@ export default function setup(): () => void {
     return () => {};
   }
 
+  const snapshotDir = mkdtempSync(join(tmpdir(), 'mythos-uninstall-nsh-integrity-'));
+  const snapshotFile = join(snapshotDir, 'sha256-at-start');
   const before = sha256UninstallVaultsNshBuildFile(buildPath);
-  writeFileSync(UNINSTALL_VAULTS_NSH_BUILD_HASH_SNAPSHOT_FILE, before, 'utf-8');
+  writeFileSync(snapshotFile, before, 'utf-8');
+  process.env[MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV] = snapshotFile;
 
   return () => {
     const after = sha256UninstallVaultsNshBuildFile(buildPath);
@@ -24,5 +29,7 @@ export default function setup(): () => void {
           'On-disk mutant tests must use MYTHOS_UNINSTALL_VAULTS_NSH_PATH with a temp copy only.',
       );
     }
+    rmSync(snapshotDir, { recursive: true, force: true });
+    delete process.env[MYTHOS_UNINSTALL_VAULTS_NSH_SNAPSHOT_ENV];
   };
-}
+};
