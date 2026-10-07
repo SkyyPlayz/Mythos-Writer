@@ -459,6 +459,33 @@ describe('breadcrumbs', () => {
       'The Last City of Veynn',
     ]);
   });
+
+  it('includes the live part crumb for multi-part stories (F4#6)', () => {
+    const ch1 = story.chapters[0];
+    const ch2 = story.chapters[1];
+    const multi: Story = {
+      ...story,
+      parts: [
+        { id: 'p1', title: 'Ash and Oath', order: 0, note: [], chapters: [ch1], createdAt: NOW, updatedAt: NOW },
+        { id: 'p2', title: 'Embers Rising', order: 1, note: [], chapters: [ch2], createdAt: NOW, updatedAt: NOW },
+      ],
+    };
+    expect(breadcrumbs(multi, { zoom: 'part', part: 1, chapter: 0, scene: 0 }).map((c) => c.label)).toEqual([
+      'The Last City of Veynn',
+      'Embers Rising',
+    ]);
+    expect(breadcrumbs(multi, { zoom: 'chapter', part: 1, chapter: 1, scene: 0 }).map((c) => c.label)).toEqual([
+      'The Last City of Veynn',
+      'Embers Rising',
+      'Ch. 2: Fractures',
+    ]);
+    expect(breadcrumbs(multi, { zoom: 'scene', part: 0, chapter: 0, scene: 1 }).map((c) => c.label)).toEqual([
+      'The Last City of Veynn',
+      'Ash and Oath',
+      'Ch. 1: The Quiet Before',
+      'A City in Shadows',
+    ]);
+  });
 });
 
 // ─── moveParagraph (Beta 3 M10 — prototype paraDrop 3708–3719) ───────────────
