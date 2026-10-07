@@ -88,6 +88,7 @@
             StrCmp $4 "$\t" uninstall_vault_read
             IntOp $8 $7 + 1
             StrCpy $4 $1 1 $8
+            StrCmp $4 "/" uninstall_vault_read
             StrCmp $4 " " uninstall_vault_read
             StrCmp $4 "$\t" uninstall_vault_read
             StrCmp $4 "." 0 mythos_trav_inc

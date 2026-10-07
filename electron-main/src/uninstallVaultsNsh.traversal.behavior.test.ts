@@ -27,6 +27,7 @@ import {
   mutantMB5a_neutralizeLine78,
   mutantMB6a_neutralizeLine84,
   assertTraversalScanBlockExact,
+  LOOSEN_GUARD_NET_ASSERTION_DELTA,
   mutantN1_forwardSlashCheckPipe,
   mutantN2_intOpLine58Plus2,
   mutantN3_intOpLine73Plus2,
@@ -52,15 +53,19 @@ import {
 export { loadUninstallVaultsNsh, resolveUninstallVaultsNshPath };
 
 describe('sidecar traversal + WINDIR deny behaviour (reads build/uninstall-vaults.nsh from disk)', () => {
-  it('pins sidecar guard region :43-:126 (read/trim + traversal + deny + M5)', () => {
+  it('pins sidecar guard region :43-:127 (read/trim + traversal + deny + M5)', () => {
     const nsh = loadUninstallVaultsNsh();
     assertTraversalBranchBehaviourPins(nsh);
     assertSidecarGuardRegionExact(nsh);
     assertTraversalScanBlockExact(nsh);
   });
 
-  it('VM reject/allow tables from pinned :43-:126 region (read/trim + traversal + deny + APPDATA M5)', () => {
+  it('VM reject/allow tables from pinned :43-:127 region (read/trim + traversal + deny + APPDATA M5)', () => {
     assertSidecarGuardRejectAllowTables(loadUninstallVaultsNsh());
+  });
+
+  it('loosen-guard net assertion delta (Probe audit)', () => {
+    expect(LOOSEN_GUARD_NET_ASSERTION_DELTA['uninstallVaultsNsh.traversal.behavior.test.ts']).toBe(-1);
   });
 
   describe('in-memory traversal / allowlist mutants (must fail branch pins)', () => {
