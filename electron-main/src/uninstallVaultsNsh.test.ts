@@ -40,6 +40,13 @@ import {
   mutantWindirDenyDrop,
   mutantProgramFilesDenyDrop,
   mutantProgramFiles64DenyDrop,
+  mutantXF2_gotoIncLine80,
+  mutantXF4_gotoIncLine86,
+  mutantXF5_gotoIncLine75,
+  mutantXF6_gotoIncLine81,
+  mutantXB7_gotoIncLine65,
+  mutantMB5a_neutralizeLine78,
+  mutantMB6a_neutralizeLine84,
 } from './sidecarTraversalScan.harness.js';
 
 const NSH = loadUninstallVaultsNsh();
@@ -299,27 +306,79 @@ describe('build/uninstall-vaults.nsh token contract', () => {
     });
 
     it('M-B1: neutralize .\\ backslash reject fails branch pins', () => {
-      expectPinFails(mutantMB1_neutralizeBackslashDotBackslashReject(NSH), assertTraversalBranchBehaviourPins, /branch/);
+      expectPinFails(
+        mutantMB1_neutralizeBackslashDotBackslashReject(NSH),
+        assertTraversalBranchBehaviourPins,
+        /traversal pin|line 64/,
+      );
     });
 
     it('M-B2: neutralize ..\\ backslash reject fails branch pins', () => {
-      expectPinFails(mutantMB2_neutralizeBackslashDotDotBackslashReject(NSH), assertTraversalBranchBehaviourPins, /branch/);
+      expectPinFails(
+        mutantMB2_neutralizeBackslashDotDotBackslashReject(NSH),
+        assertTraversalBranchBehaviourPins,
+        /traversal pin|line 69/,
+      );
     });
 
     it('M-B3: delete .. reject pair fails branch pins', () => {
-      expectPinFails(mutantMB3_deleteBackslashDotDotRejectPair(NSH), assertTraversalBranchBehaviourPins, /branch/);
+      expectPinFails(
+        mutantMB3_deleteBackslashDotDotRejectPair(NSH),
+        assertTraversalBranchBehaviourPins,
+        /traversal pin|line 6[89]/,
+      );
     });
 
     it('M-B4: all backslash traversal rejects fails branch pins', () => {
-      expectPinFails(mutantMB4_neutralizeAllBackslashTravRejects(NSH), assertTraversalBranchBehaviourPins, /branch/);
+      expectPinFails(
+        mutantMB4_neutralizeAllBackslashTravRejects(NSH),
+        assertTraversalBranchBehaviourPins,
+        /traversal pin|line 6[3-9]/,
+      );
     });
 
     it('M-B5: backslash dot check fails branch pins', () => {
-      expectPinFails(mutantMB5_neutralizeBackslashDotCheck(NSH), assertTraversalBranchBehaviourPins, /branch/);
+      expectPinFails(
+        mutantMB5_neutralizeBackslashDotCheck(NSH),
+        assertTraversalBranchBehaviourPins,
+        /traversal pin|line 60|M-B6/,
+      );
     });
 
     it('M-B6: forward-slash traversal rejects fails branch pins', () => {
-      expectPinFails(mutantMB6_neutralizeForwardSlashTravRejects(NSH), assertTraversalBranchBehaviourPins, /branch/);
+      expectPinFails(
+        mutantMB6_neutralizeForwardSlashTravRejects(NSH),
+        assertTraversalBranchBehaviourPins,
+        /traversal pin|line 7[9]|line 8[56]/,
+      );
+    });
+
+    it('X-F2: /.\\ reject at line 80 fails traversal line pins', () => {
+      expectPinFails(mutantXF2_gotoIncLine80(NSH), assertTraversalBranchBehaviourPins, /X-F2|line 80/);
+    });
+
+    it('X-F4: /..\\ reject at line 86 fails traversal line pins', () => {
+      expectPinFails(mutantXF4_gotoIncLine86(NSH), assertTraversalBranchBehaviourPins, /X-F4|line 86/);
+    });
+
+    it('X-F5: forward dot check at line 75 fails traversal line pins', () => {
+      expectPinFails(mutantXF5_gotoIncLine75(NSH), assertTraversalBranchBehaviourPins, /X-F5|line 75/);
+    });
+
+    it('X-F6: forward second dot at line 81 fails traversal line pins', () => {
+      expectPinFails(mutantXF6_gotoIncLine81(NSH), assertTraversalBranchBehaviourPins, /X-F6|line 81/);
+    });
+
+    it('X-B7: backslash second dot at line 65 fails traversal line pins', () => {
+      expectPinFails(mutantXB7_gotoIncLine65(NSH), assertTraversalBranchBehaviourPins, /X-B7|line 65/);
+    });
+
+    it('MB5a: line 78 /. end reject neutralized fails traversal line pins', () => {
+      expectPinFails(mutantMB5a_neutralizeLine78(NSH), assertTraversalBranchBehaviourPins, /MB5a|line 78/);
+    });
+
+    it('MB6a: line 84 /.. end reject neutralized fails traversal line pins', () => {
+      expectPinFails(mutantMB6a_neutralizeLine84(NSH), assertTraversalBranchBehaviourPins, /MB6a|line 84/);
     });
 
     it('M-B-WINDIR: drop $WINDIR deny fails allowlist pins', () => {

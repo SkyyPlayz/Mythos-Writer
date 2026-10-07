@@ -1,8 +1,8 @@
 import { execSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { describe, it, expect } from 'vitest';
+import { afterAll, describe, it, expect } from 'vitest';
 
 import {
   mutantMB1_neutralizeBackslashDotBackslashReject,
@@ -14,6 +14,13 @@ import {
   mutantWindirDenyDrop,
   mutantProgramFilesDenyDrop,
   mutantProgramFiles64DenyDrop,
+  mutantXF2_gotoIncLine80,
+  mutantXF4_gotoIncLine86,
+  mutantXF5_gotoIncLine75,
+  mutantXF6_gotoIncLine81,
+  mutantXB7_gotoIncLine65,
+  mutantMB5a_neutralizeLine78,
+  mutantMB6a_neutralizeLine84,
 } from './sidecarTraversalScan.harness.js';
 import {
   defaultUninstallVaultsNshPath,
@@ -23,6 +30,16 @@ import { nshMacroBody } from './uninstallVaultsNsh.test.harness.js';
 
 const REPO_ROOT = resolve(process.cwd(), '..');
 const CANONICAL_NSH_PATH = defaultUninstallVaultsNshPath();
+const tempMutantDirs: string[] = [];
+
+afterAll(() => {
+  for (const dir of tempMutantDirs) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+const ON_DISK_MUTANT_SUITES =
+  'src/uninstallVaultsNsh.traversal.behavior.test.ts src/uninstallVaultsNsh.test.ts src/uninstallHelper.test.ts src/appUserDataManifest.test.ts';
 
 function runNestedVitest(args: string, mutantPath: string): { status: number; stdout: string } {
   const env = {
@@ -57,6 +74,10 @@ function runMainNshContractSuite(mutantPath: string): { status: number; stdout: 
   return runNestedVitest('src/uninstallVaultsNsh.test.ts --reporter=verbose', mutantPath);
 }
 
+function runNoIntegrityL8Suite(mutantPath: string): { status: number; stdout: string } {
+  return runNestedVitest(`${ON_DISK_MUTANT_SUITES} --reporter=verbose`, mutantPath);
+}
+
 function withTempOnDiskMutant(
   label: string,
   apply: (source: string) => string,
@@ -66,12 +87,21 @@ function withTempOnDiskMutant(
   it(label, () => {
     const original = readFileSync(CANONICAL_NSH_PATH, 'utf-8');
     const dir = mkdtempSync(join(tmpdir(), 'mythos-uninstall-nsh-mutant-'));
+    tempMutantDirs.push(dir);
     const mutantPath = join(dir, 'uninstall-vaults.nsh');
     writeFileSync(mutantPath, apply(original), 'utf-8');
 
-    const result = runSuite(mutantPath);
-    expect(result.status, `expected red suite for ${label}:\n${result.stdout.slice(-2000)}`).not.toBe(0);
-    expect(result.stdout).toMatch(expectFailName);
+    try {
+      const result = runSuite(mutantPath);
+      expect(result.status, `expected red suite for ${label}:\n${result.stdout.slice(-2000)}`).not.toBe(0);
+      expect(result.stdout).toMatch(expectFailName);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      const idx = tempMutantDirs.indexOf(dir);
+      if (idx >= 0) {
+        tempMutantDirs.splice(idx, 1);
+      }
+    }
   });
 }
 
@@ -199,6 +229,49 @@ describe('on-disk nsh mutants (temp copy + MYTHOS_UNINSTALL_VAULTS_NSH_PATH, nev
     main,
     /M-D|allowlist deny/,
   );
+  withTempOnDiskMutant(
+    'X-F2 on-disk: line 80 reds L8 suite (no integrity)',
+    mutantXF2_gotoIncLine80,
+    runNoIntegrityL8Suite,
+    /X-F2|line 80/,
+  );
+  withTempOnDiskMutant(
+    'X-F4 on-disk: line 86 reds L8 suite (no integrity)',
+    mutantXF4_gotoIncLine86,
+    runNoIntegrityL8Suite,
+    /X-F4|line 86/,
+  );
+  withTempOnDiskMutant(
+    'X-F5 on-disk: line 75 reds L8 suite (no integrity)',
+    mutantXF5_gotoIncLine75,
+    runNoIntegrityL8Suite,
+    /X-F5|line 75/,
+  );
+  withTempOnDiskMutant(
+    'X-F6 on-disk: line 81 reds L8 suite (no integrity)',
+    mutantXF6_gotoIncLine81,
+    runNoIntegrityL8Suite,
+    /X-F6|line 81/,
+  );
+  withTempOnDiskMutant(
+    'X-B7 on-disk: line 65 reds L8 suite (no integrity)',
+    mutantXB7_gotoIncLine65,
+    runNoIntegrityL8Suite,
+    /X-B7|line 65/,
+  );
+  withTempOnDiskMutant(
+    'MB5a on-disk: line 78 reds L8 suite (no integrity)',
+    mutantMB5a_neutralizeLine78,
+    runNoIntegrityL8Suite,
+    /MB5a|line 78/,
+  );
+  withTempOnDiskMutant(
+    'MB6a on-disk: line 84 reds L8 suite (no integrity)',
+    mutantMB6a_neutralizeLine84,
+    runNoIntegrityL8Suite,
+    /MB6a|line 84/,
+  );
+
   withTempOnDiskMutant(
     'M-E/M13 on-disk: KEEP Remove-all macro reds main contract suite',
     (nsh) => {

@@ -180,6 +180,69 @@ export function extractForwardTraversalBranch(executable: string): string {
   return executable.slice(start, end);
 }
 
+/** Exact 1-based file lines in build/uninstall-vaults.nsh (mythos_trav_scan :60–:86). */
+export const TRAVERSAL_NSH_LINE_PINS: ReadonlyArray<{
+  line: number;
+  id: string;
+  text: string;
+}> = [
+  { line: 60, id: 'M-B6', text: '            StrCmp $4 "." 0 mythos_trav_inc' },
+  { line: 63, id: 'M-B3-empty', text: '              StrCmp $4 "" uninstall_vault_read' },
+  { line: 64, id: 'M-B1', text: String.raw`              StrCmp $4 "\" uninstall_vault_read` },
+  { line: 65, id: 'X-B7', text: '              StrCmp $4 "." 0 mythos_trav_inc' },
+  { line: 68, id: 'M-B2-empty', text: '                StrCmp $4 "" uninstall_vault_read' },
+  { line: 69, id: 'M-B2', text: String.raw`                StrCmp $4 "\" uninstall_vault_read` },
+  { line: 75, id: 'X-F5', text: '            StrCmp $4 "." 0 mythos_trav_inc' },
+  { line: 78, id: 'MB5a', text: '              StrCmp $4 "" uninstall_vault_read' },
+  { line: 79, id: 'X-F1', text: '              StrCmp $4 "/" uninstall_vault_read' },
+  { line: 80, id: 'X-F2', text: String.raw`              StrCmp $4 "\" uninstall_vault_read` },
+  { line: 81, id: 'X-F6', text: '              StrCmp $4 "." 0 mythos_trav_inc' },
+  { line: 84, id: 'MB6a', text: '                StrCmp $4 "" uninstall_vault_read' },
+  { line: 85, id: 'X-F3', text: '                StrCmp $4 "/" uninstall_vault_read' },
+  { line: 86, id: 'X-F4', text: String.raw`                StrCmp $4 "\" uninstall_vault_read` },
+];
+
+export function nshFileLines(nsh: string): string[] {
+  return nsh.split(/\r?\n/);
+}
+
+export function assertTraversalFileLinePins(nsh: string): void {
+  const lines = nshFileLines(nsh);
+  for (const { line, id, text } of TRAVERSAL_NSH_LINE_PINS) {
+    const actual = lines[line - 1];
+    if (actual !== text) {
+      throw new Error(
+        `traversal pin ${id} line ${line}: expected ${JSON.stringify(text)}, got ${JSON.stringify(actual)}`,
+      );
+    }
+  }
+}
+
+export function replaceNshLine(nsh: string, lineOneBased: number, newLine: string): string {
+  const lines = nshFileLines(nsh);
+  if (lineOneBased < 1 || lineOneBased > lines.length) {
+    throw new Error(`line ${lineOneBased} out of range (${lines.length} lines)`);
+  }
+  const out = [...lines];
+  out[lineOneBased - 1] = newLine;
+  return out.join('\n');
+}
+
+/** Shield gotoinc(n): whole line becomes Goto mythos_trav_inc */
+export function mutantGotoTravIncAtLine(nsh: string, lineOneBased: number): string {
+  return replaceNshLine(nsh, lineOneBased, 'Goto mythos_trav_inc');
+}
+
+/** Probe nopl: StrCmp target uninstall_vault_read -> mythos_trav_inc on one line */
+export function mutantNeutralizeVaultReadAtLine(nsh: string, lineOneBased: number): string {
+  const lines = nshFileLines(nsh);
+  const line = lines[lineOneBased - 1];
+  if (!line.includes('uninstall_vault_read')) {
+    throw new Error(`line ${lineOneBased} has no uninstall_vault_read: ${line}`);
+  }
+  return replaceNshLine(nsh, lineOneBased, line.replace('uninstall_vault_read', 'mythos_trav_inc'));
+}
+
 export function assertTraversalBranchBehaviourPins(nsh: string): void {
   const executable = nshExecutableLines(nsh);
   const travStart = executable.indexOf('mythos_trav_scan');
@@ -187,47 +250,12 @@ export function assertTraversalBranchBehaviourPins(nsh: string): void {
   if (travStart < 0 || travOk <= travStart) {
     throw new Error('mythos_trav_scan region missing');
   }
-  const backBranch = extractBackslashTraversalBranch(executable);
-  const fwdBranch = extractForwardTraversalBranch(executable);
-
-  const dotCheckAt = backBranch.indexOf(NSH_BACKSLASH_DOT_CHECK);
-  if (dotCheckAt < 0) {
-    throw new Error('backslash branch missing StrCmp $4 "." after separator');
+  assertTraversalFileLinePins(nsh);
+  if (executable.indexOf(TRAV_BACKSLASH_ENTRY) < 0) {
+    throw new Error('backslash traversal entry missing');
   }
-  const backslashRejects = [...backBranch.matchAll(/StrCmp \$4 "\\" uninstall_vault_read/g)];
-  if (backslashRejects.length < 2) {
-    throw new Error('backslash branch must reject .\\ and ..\\ via StrCmp $4 "\\" uninstall_vault_read');
-  }
-  const firstRejectAt = backBranch.indexOf(NSH_BACKSLASH_DOT_BACKSLASH_REJECT);
-  const secondRejectAt = backBranch.indexOf(NSH_BACKSLASH_DOT_BACKSLASH_REJECT, firstRejectAt + 1);
-  if (firstRejectAt <= dotCheckAt || secondRejectAt <= firstRejectAt) {
-    throw new Error('backslash .\\ / ..\\ rejects must follow the dot check inside the branch');
-  }
-  const emptyRejectAt = backBranch.indexOf(NSH_BACKSLASH_DOT_DOT_EMPTY_REJECT, dotCheckAt);
-  if (emptyRejectAt < 0 || emptyRejectAt > firstRejectAt) {
-    throw new Error('backslash branch must StrCmp empty to uninstall_vault_read before .\\ reject');
-  }
-
-  const fwdSlashEntry = backBranch.includes(TRAV_BACKSLASH_ENTRY);
-  if (!fwdSlashEntry) {
-    throw new Error('backslash entry missing');
-  }
-  if (fwdBranch.indexOf('StrCmp $4 "/" 0 mythos_trav_inc') < 0) {
-    throw new Error('forward branch missing StrCmp $4 "/" 0 mythos_trav_inc');
-  }
-  const fwdDotCheckAt = fwdBranch.indexOf('StrCmp $4 "." 0 mythos_trav_inc');
-  if (fwdDotCheckAt < 0) {
-    throw new Error('forward branch missing dot segment check after /');
-  }
-  if (!fwdBranch.includes(NSH_FWD_DOT_SLASH_REJECT)) {
-    throw new Error('forward branch missing ./ reject (StrCmp $4 "/" uninstall_vault_read)');
-  }
-  if (!fwdBranch.includes(NSH_FWD_DOT_BACKSLASH_REJECT)) {
-    throw new Error('forward branch missing .\\ reject after / branch');
-  }
-  const fwdSlashRejects = fwdBranch.match(/StrCmp \$4 "\/" uninstall_vault_read/g) ?? [];
-  if (fwdSlashRejects.length < 2) {
-    throw new Error('forward branch must reject ./ and ../ via StrCmp $4 "/" uninstall_vault_read');
+  if (executable.indexOf(TRAV_FWD_LABEL) < 0) {
+    throw new Error('forward traversal label mythos_trav_fwd: missing');
   }
 }
 
@@ -344,4 +372,40 @@ export function mutantProgramFilesDenyDrop(nsh: string): string {
 
 export function mutantProgramFiles64DenyDrop(nsh: string): string {
   return applyNshReplaceOnce(nsh, PROGRAMFILES64_DENY_STRCMP, 'Nop');
+}
+
+export function mutantXF1_gotoIncLine79(nsh: string): string {
+  return mutantGotoTravIncAtLine(nsh, 79);
+}
+
+export function mutantXF2_gotoIncLine80(nsh: string): string {
+  return mutantGotoTravIncAtLine(nsh, 80);
+}
+
+export function mutantXF3_gotoIncLine85(nsh: string): string {
+  return mutantGotoTravIncAtLine(nsh, 85);
+}
+
+export function mutantXF4_gotoIncLine86(nsh: string): string {
+  return mutantGotoTravIncAtLine(nsh, 86);
+}
+
+export function mutantXF5_gotoIncLine75(nsh: string): string {
+  return mutantGotoTravIncAtLine(nsh, 75);
+}
+
+export function mutantXF6_gotoIncLine81(nsh: string): string {
+  return mutantGotoTravIncAtLine(nsh, 81);
+}
+
+export function mutantXB7_gotoIncLine65(nsh: string): string {
+  return mutantGotoTravIncAtLine(nsh, 65);
+}
+
+export function mutantMB5a_neutralizeLine78(nsh: string): string {
+  return mutantNeutralizeVaultReadAtLine(nsh, 78);
+}
+
+export function mutantMB6a_neutralizeLine84(nsh: string): string {
+  return mutantNeutralizeVaultReadAtLine(nsh, 84);
 }
