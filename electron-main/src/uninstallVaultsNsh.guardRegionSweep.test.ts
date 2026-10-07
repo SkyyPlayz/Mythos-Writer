@@ -8,10 +8,14 @@ import {
   mutantMB1_neutralizeBackslashDotBackslashReject,
   mutantN1_forwardSlashCheckPipe,
   mutantSidecarGuardRegionSweepLine,
-  simulateSidecarDeleteReadLoop,
   SIDECAR_GUARD_REGION_FILE_LINE_FIRST,
   SIDECAR_GUARD_REGION_FILE_LINE_LAST,
 } from './sidecarTraversalScan.test-helpers.js';
+import {
+  sidecarGuardCaseOutcome,
+  sidecarGuardModeTwoCaught,
+  sidecarGuardOracleCorpus,
+} from './sidecarOracleMutants.test-helpers.js';
 
 /**
  * Behaviour-equivalent mode-2 primaries (the `Nop` fallback on each of these lines). A sibling check
@@ -19,7 +23,7 @@ import {
  * Forge's oracle agrees (`N:nop` is behaviour-non-changing on its full corpus).
  *
  * The list must be exact: a listed line that the VM tables catch fails mode 2, an unlisted line they
- * miss fails mode 2, and the strength block re-checks delete-set identity on the broad corpus.
+ * miss fails mode 2, and the strength block re-checks identity on Forge's full oracle corpus.
  */
 export const SIDECAR_GUARD_SWEEP_IVY_LOCKED_EQUIVALENTS: Readonly<Record<number, string>> = {
   52: 'StrCmp $1 "" uninstall_vault_read → Nop. Empty trimmed line: skipped either way; an empty path matches no allowlist root (mythos_al_deny).',
@@ -54,66 +58,7 @@ export const SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES: Readonly<Recor
   ...SIDECAR_GUARD_SWEEP_EXTENDED_EQUIVALENTS,
 };
 
-/** Broad path corpus mirroring the oracle (segment shape × position × separator), for equivalence proof. */
-function guardRegionBroadCorpus(): string[] {
-  const d = DEFAULT_SIDECAR_NSIS_VAR_ENV.DOCUMENTS;
-  const a = DEFAULT_SIDECAR_NSIS_VAR_ENV.APPDATA;
-  const segs = [
-    '..', '.', ' ..', '.. ', '.. .', '. .', `..${'\t'}`, `.${'\t'}`, '. ', '...', '....',
-    'a.', 'a ', `a${'\t'}`, '.a', '..a', 'a..', 'v', ' a', `${'\t'}a`, 'a b', '.git', '..b',
-  ];
-  const prefixes = ['', 'v\\', 'v/', 'ab\\', 'a b\\', 'a.b\\', 'My Vault\\', 'w/'];
-  const out = new Set<string>();
-  for (const pre of prefixes) {
-    for (const seg of segs) {
-      for (const sep of ['\\', '/']) {
-        out.add(`${d}\\${pre}${seg}${sep}Windows`);
-        out.add(`${d}\\${pre}${seg}`);
-        out.add(`${d}\\${pre}${seg}${sep}..${sep}Windows`);
-        out.add(`${d}\\${pre}${seg}${sep}x`);
-      }
-    }
-  }
-  for (const seg of segs) {
-    out.add(`\\${seg}\\x`);
-    out.add(`/${seg}/x`);
-    out.add(`${d}\\${seg}/x`);
-    out.add(`${d}/${seg}\\x`);
-  }
-  // allowlist / deny / APPDATA witnesses so lost-delete (allow→skip) regressions also show
-  out.add(`${d}\\My Vault\\x`);
-  out.add(`${d}\\a.b.c`);
-  out.add(`${d}\\v 1.2\\x`);
-  out.add(`${a}\\Mythos Writer\\vaults\\x`);
-  out.add(`${a}\\Mythos Writer`);
-  out.add('C:\\Windows\\System32');
-  out.add('C:\\Program Files\\x');
-  return [...out];
-}
-
-const GUARD_REGION_BROAD_CORPUS = guardRegionBroadCorpus();
-
-function deleteSetForPath(nsh: string, path: string): string {
-  try {
-    return [...simulateSidecarDeleteReadLoop(nsh, [`${path}\r\n`], DEFAULT_SIDECAR_NSIS_VAR_ENV).deleted]
-      .sort()
-      .join('\u0000');
-  } catch (err) {
-    return `THROW:${err instanceof Error ? err.message : String(err)}`;
-  }
-}
-
-function sweepPrimaryCaught(mutant: string, canonical: string): boolean {
-  try {
-    assertSidecarGuardVmBehaviourTables(mutant, DEFAULT_SIDECAR_NSIS_VAR_ENV, {
-      sweepRebaseline: true,
-      canonicalNsh: canonical,
-    });
-    return false;
-  } catch {
-    return true;
-  }
-}
+const ORACLE_CORPUS = sidecarGuardOracleCorpus();
 
 describe('sidecar guard region sweep :43-:127 (buildIntegrity excluded)', () => {
   const nsh = loadUninstallVaultsNsh();
@@ -142,13 +87,13 @@ describe('sidecar guard region sweep :43-:127 (buildIntegrity excluded)', () => 
         it(`line :${fileLine} behaviour-equivalent primary is NOT caught (documented): ${equivReason}`, () => {
           const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
           // Bidirectional: fails if a listed equivalent is actually caught by the VM tables.
-          expect(sweepPrimaryCaught(mutant, nsh)).toBe(false);
+          expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
         });
         continue;
       }
       it(`line :${fileLine} primary sweep mutant is caught by VM behaviour tables`, () => {
         const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
-        expect(sweepPrimaryCaught(mutant, nsh)).toBe(true);
+        expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
       });
     }
   });
@@ -164,11 +109,11 @@ describe('sidecar guard region sweep :43-:127 (buildIntegrity excluded)', () => 
     });
 
     it('positive control — N1 forward `/` branch bypass is caught (detector is not always-passing)', () => {
-      expect(sweepPrimaryCaught(mutantN1_forwardSlashCheckPipe(nsh), nsh)).toBe(true);
+      expect(sidecarGuardModeTwoCaught(mutantN1_forwardSlashCheckPipe(nsh), nsh)).toBe(true);
     });
 
     it('equivalence control — MB1 retargets the Ivy-locked :72 reject to inc; :61 masks it, so it stays uncaught', () => {
-      expect(sweepPrimaryCaught(mutantMB1_neutralizeBackslashDotBackslashReject(nsh), nsh)).toBe(false);
+      expect(sidecarGuardModeTwoCaught(mutantMB1_neutralizeBackslashDotBackslashReject(nsh), nsh)).toBe(false);
     });
 
     it('sweep discriminates — both caught and equivalent lines exist and partition the region', () => {
@@ -197,22 +142,19 @@ describe('sidecar guard region sweep :43-:127 (buildIntegrity excluded)', () => 
     });
   });
 
-  describe('mode (2) equivalence strength — identical delete-set on the broad oracle corpus', () => {
-    const canonicalByPath = new Map<string, string>();
-    for (const path of GUARD_REGION_BROAD_CORPUS) {
-      canonicalByPath.set(path, deleteSetForPath(nsh, path));
-    }
+  describe('mode (2) equivalence strength — identical outcome on the full oracle corpus', () => {
+    const canonicalOutcomes = ORACLE_CORPUS.map((c) => sidecarGuardCaseOutcome(nsh, c));
 
     for (const fileLineStr of Object.keys(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES)) {
       const fileLine = Number(fileLineStr);
       const locked = SIDECAR_GUARD_SWEEP_IVY_LOCKED_EQUIVALENTS[fileLine] ? 'Ivy-locked' : 'extended';
-      it(`line :${fileLine} (${locked}) primary matches canonical delete-set on every corpus path`, () => {
+      it(`line :${fileLine} (${locked}) primary matches canonical on every oracle corpus case`, () => {
         const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
-        for (const path of GUARD_REGION_BROAD_CORPUS) {
-          expect(deleteSetForPath(mutant, path), `delete-set diverged at ${JSON.stringify(path)}`).toBe(
-            canonicalByPath.get(path),
+        ORACLE_CORPUS.forEach((c, i) => {
+          expect(sidecarGuardCaseOutcome(mutant, c), `outcome diverged at ${JSON.stringify(c.reads)}`).toBe(
+            canonicalOutcomes[i],
           );
-        }
+        });
       });
     }
   });
