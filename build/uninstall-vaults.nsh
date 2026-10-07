@@ -38,7 +38,24 @@
 !macro customUnInstallSection
 !macroend
 
+; App-private machine state under $APPDATA\Mythos Writer (never user vault trees).
+; Kept in sync with electron-main/src/appUserDataManifest.ts — uninstallVaultsNsh.test.ts pins both.
+!macro mythos_delete_app_private
+  Delete "$APPDATA\Mythos Writer\app-settings.json"
+  Delete "$APPDATA\Mythos Writer\vault-settings.json"
+  Delete "$APPDATA\Mythos Writer\brainstorm-settings.json"
+  Delete "$APPDATA\Mythos Writer\window-state.json"
+  Delete "$APPDATA\Mythos Writer\secrets.json"
+  Delete "$APPDATA\Mythos Writer\uninstall-delete-paths.txt"
+  RMDir /r "$APPDATA\Mythos Writer\vault-index-cache"
+  RMDir /r "$APPDATA\Mythos Writer\note-thumb-cache"
+  RMDir /r "$APPDATA\Mythos Writer\templates"
+  RMDir /r "$APPDATA\Mythos Writer\agent-personas"
+!macroend
+
 !macro customUnInstall
+  !insertmacro mythos_delete_app_private
+
   ${If} ${SectionIsSelected} ${SEC_DELETE_MYTHOS_VAULTS}
     ClearErrors
     FileOpen $0 "$APPDATA\Mythos Writer\uninstall-delete-paths.txt" r
@@ -174,6 +191,8 @@
       Delete "$APPDATA\Mythos Writer\vault-settings.json"
       Delete "$APPDATA\Mythos Writer\app-settings.json"
       Delete "$APPDATA\Mythos Writer\uninstall-delete-paths.txt"
+      ; PLAN-058 L8 / 00:46 — Remove all must not leave a Roaming Mythos folder.
+      RMDir /r "$APPDATA\Mythos Writer"
   ${EndIf}
   ; Unchecked / not selected — leave vault data in place (default KEEP).
 !macroend

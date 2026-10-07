@@ -5,6 +5,7 @@ import os from 'node:os';
 import {
   resolveDeletePaths,
   cleanUninstall,
+  tryRemoveUserDataDirectory,
   defaultVaultsParent,
   loadRegisteredVaultRoots,
   resolveUninstallDeletePaths,
@@ -211,23 +212,53 @@ describe('cleanUninstall', () => {
     }
   });
 
-  it('does not delete userData dir itself — only targeted subdirs and files', () => {
+  it('skips userData root removal when path is not the Mythos Writer product folder', () => {
     const vaultsParent = path.join(tmp, 'vaults');
     const story = path.join(vaultsParent, 'Mythos Vault', 'Story Vault');
     const notes = path.join(vaultsParent, 'Mythos Vault', 'Notes Vault');
     fs.mkdirSync(story, { recursive: true });
     fs.mkdirSync(notes, { recursive: true });
-    // Extra file in userData that should NOT be removed
     fs.writeFileSync(path.join(tmp, 'state.db'), 'db-data');
 
-    cleanUninstall({
+    const result = cleanUninstall({
       storyVaultRoot: story,
       notesVaultRoot: notes,
       userDataPath: tmp,
     });
 
+    expect(result.errors).toHaveLength(0);
     expect(fs.existsSync(tmp)).toBe(true);
     expect(fs.existsSync(path.join(tmp, 'state.db'))).toBe(true);
+  });
+
+  it('PLAN-058 L8: removes Roaming Mythos Writer folder when Delete Everything clears disk', () => {
+    const userData = path.join(tmp, 'Mythos Writer');
+    const vaultsParent = path.join(userData, 'vaults');
+    const story = path.join(vaultsParent, 'Mythos Vault', 'Story Vault');
+    const notes = path.join(vaultsParent, 'Mythos Vault', 'Notes Vault');
+    fs.mkdirSync(story, { recursive: true });
+    fs.mkdirSync(notes, { recursive: true });
+    fs.writeFileSync(path.join(userData, 'app-settings.json'), '{}');
+    fs.writeFileSync(path.join(userData, 'secrets.json'), '{}');
+    fs.mkdirSync(path.join(userData, 'note-thumb-cache'), { recursive: true });
+
+    const result = cleanUninstall({
+      storyVaultRoot: story,
+      notesVaultRoot: notes,
+      userDataPath: userData,
+    });
+
+    expect(result.errors).toHaveLength(0);
+    expect(fs.existsSync(userData)).toBe(false);
+  });
+
+  it('tryRemoveUserDataDirectory fails when stray files remain under Mythos Writer', () => {
+    const userData = path.join(tmp, 'Mythos Writer');
+    fs.mkdirSync(userData, { recursive: true });
+    fs.writeFileSync(path.join(userData, 'leftover.tmp'), 'x');
+    const rm = tryRemoveUserDataDirectory(userData);
+    expect(rm.ok).toBe(false);
+    expect(rm.error).toMatch(/not empty/i);
   });
 });
 

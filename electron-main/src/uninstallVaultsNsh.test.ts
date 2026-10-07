@@ -2,6 +2,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
+import {
+  APP_USER_DATA_DIRS,
+  APP_USER_DATA_FILES,
+} from './appUserDataManifest.js';
+
 /**
  * MW-delete-vault — locked NSIS token contract (PLAN draft 3 / owner UX lock).
  * Soft "mentions sidecar" greps are not enough.
@@ -66,6 +71,32 @@ describe('build/uninstall-vaults.nsh token contract (MW-delete-vault UX lock)', 
     expect(denyAt).toBeGreaterThan(-1);
     expect(doDeleteAt).toBeGreaterThan(denyAt);
     expect(sidecarRmAt).toBeGreaterThan(doDeleteAt);
+  });
+
+  it('always deletes app-private paths (manifest sync) before vault opt-in', () => {
+    expect(NSH).toContain('!macro mythos_delete_app_private');
+    expect(NSH).toMatch(/!insertmacro mythos_delete_app_private/);
+    const insertAt = NSH.indexOf('!insertmacro mythos_delete_app_private');
+    const vaultIfAt = NSH.indexOf('${If} ${SectionIsSelected} ${SEC_DELETE_MYTHOS_VAULTS}');
+    expect(insertAt).toBeGreaterThan(-1);
+    expect(vaultIfAt).toBeGreaterThan(insertAt);
+    for (const name of APP_USER_DATA_FILES) {
+      expect(NSH).toContain(`Mythos Writer\\${name}`);
+    }
+    for (const name of APP_USER_DATA_DIRS) {
+      expect(NSH).toContain(`Mythos Writer\\${name}`);
+    }
+  });
+
+  it('PLAN-058 L8 / 00:46 — Remove all RMDirs entire Roaming Mythos Writer folder', () => {
+    const executable = NSH.replace(/;[^\n]*/g, '');
+    expect(executable).toContain('RMDir /r "$APPDATA\\Mythos Writer"');
+    const vaultIfAt = executable.indexOf('${If} ${SectionIsSelected} ${SEC_DELETE_MYTHOS_VAULTS}');
+    const fullRmAt = executable.indexOf('RMDir /r "$APPDATA\\Mythos Writer"');
+    const endIfAt = executable.indexOf('${EndIf}', vaultIfAt);
+    expect(vaultIfAt).toBeGreaterThan(-1);
+    expect(fullRmAt).toBeGreaterThan(vaultIfAt);
+    expect(fullRmAt).toBeLessThan(endIfAt);
   });
 
   it('rejects .. / . path segments before RMDir (Shield tip-3 traversal)', () => {
