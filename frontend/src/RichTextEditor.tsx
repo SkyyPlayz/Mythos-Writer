@@ -121,6 +121,8 @@ export interface RichTextEditorProps {
   onWrapMouseLeave?: (e: React.MouseEvent) => void;
   /** Overlays rendered inside the wrapper (tooltips, bubbles, empty-state hints). */
   children?: ReactNode;
+  /** PLAN-058 L6: Notes inline images — vault-relative src hydration. */
+  vaultInlineImages?: boolean;
 }
 
 export default function RichTextEditor({
@@ -151,6 +153,7 @@ export default function RichTextEditor({
   onWrapMouseOver,
   onWrapMouseLeave,
   children,
+  vaultInlineImages = false,
 }: RichTextEditorProps) {
   const [entities, setEntities] = useState<EntityEntry[]>([]);
   const [mentionState, setMentionState] = useState<MentionPickerState>(INACTIVE_MENTION);
@@ -264,6 +267,7 @@ export default function RichTextEditor({
     content,
     editable,
     autofocus,
+    vaultInlineImages,
     extraExtensions: [...(extraExtensions ?? []), EntityMention, EntityMentionPickerExtension, WikiLinkPickerExtension],
     // H5 / R1–R3: explorer drop lives in ProseMirror handleDrop (not React onDrop).
     // N4: handleClickOn so chip clicks work while the editor is focused.
