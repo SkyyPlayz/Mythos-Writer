@@ -760,7 +760,7 @@ export function replaceSidecarGuardRegionLine(
   return spliceSidecarGuardRegion(nsh, next);
 }
 
-/** Mutate one file line in :43–:104 (1-based file line number). */
+/** Mutate one file line in :43–:213 (1-based file line number). */
 export function replaceSidecarGuardFileLine(nsh: string, fileLineOneBased: number, newLine: string): string {
   if (
     fileLineOneBased < SIDECAR_GUARD_REGION_FILE_LINE_FIRST ||

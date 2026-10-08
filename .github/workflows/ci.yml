@@ -1430,6 +1430,12 @@ jobs:
       - name: Unit — notes vault name sanitizer + Kokoro wasm path suites (SKY-9027, SKY-11887)
         run: npm run test -w electron-main -- vaultNameSanitizer vault.test kokoro
 
+      # PLAN-058 L8: gfpnModel vs real kernel32 GetFullPathNameW on every
+      # canonical-gate row. Linux CI cannot see this API; a mismatch is a
+      # hard fail (the model is not patched from this job).
+      - name: Unit — GetFullPathNameW model vs kernel32 (PLAN-058 L8)
+        run: npm run test -w electron-main -- uninstallVaultsNsh.gfpnWin32
+
       - name: Build (electron-vite)
         env:
           NODE_OPTIONS: "--max-old-space-size=4096"
