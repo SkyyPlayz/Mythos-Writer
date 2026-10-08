@@ -10,6 +10,8 @@ import {
   simulateSidecarDeleteReadLoop,
   SIDECAR_GUARD_REGION_FILE_LINE_FIRST,
   SIDECAR_GUARD_REGION_FILE_LINE_LAST,
+  TRAVERSAL_ALLOW_DOT_LETTER_DELETE_PATHS,
+  TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS,
   type SidecarNsisVarEnv,
 } from './sidecarTraversalScan.test-helpers.js';
 
@@ -77,7 +79,112 @@ const BROAD_SEGMENTS = [
   '..', '.', ' ..', '.. ', '.. .', '. .', `..${TAB}`, `.${TAB}`, '. ', '...', '....', 'a.', 'a ',
   `a${TAB}`, '.a', '..a', 'a..', 'v', ' a', `${TAB}a`, 'a b', '.git', '..b',
 ];
+const BROAD_PREFIXES = ['', 'v\\', 'v/', 'ab\\', 'a b\\', 'a.b\\', 'My Vault\\', 'w/'];
+
 export type SidecarGuardCorpusCase = Readonly<{ env: SidecarNsisVarEnv; reads: readonly string[] }>;
+
+/**
+ * Systematic segment-tail shapes from `.`, space, TAB and letters, so the stricter-than-canonical
+ * literal swaps on the `.`/`..`-then-separator rejects are covered as a class, not just by the
+ * explicit allow rows. Decorations sit in prefix, middle and suffix positions around dot cores.
+ * `x` is a gen.py literal, so it is one of the letters: an `"x"` swap refuses `.x` / `..x` names.
+ */
+function segmentTailShapes(): string[] {
+  const letters = ['a', 'x'];
+  const deco = ['', ' ', TAB, '.', ...letters];
+  const cores = ['', '.', '..', '...', '....'];
+  const out = new Set<string>();
+  for (const lead of deco) {
+    for (const core of cores) {
+      for (const trail of deco) {
+        const seg = `${lead}${core}${trail}`;
+        if (seg !== '') {
+          out.add(seg);
+        }
+      }
+    }
+  }
+  const twoCharTails = ['. ', ' .', `${TAB} `];
+  for (const l of letters) {
+    twoCharTails.push(` ${l}`, `${TAB}${l}`, `.${l}`, `${l} `, `${l}${TAB}`, `${l}.`);
+  }
+  for (const core of ['.', '..', '...']) {
+    for (const t of twoCharTails) {
+      out.add(`${core}${t}`);
+    }
+  }
+  return [...out];
+}
+
+/**
+ * Paths that exercise every segment-tail shape in prefix/middle/suffix × both separators × doubled/
+ * trailing. Suffix and trailing-separator paths also run LF-only and unterminated: without a `\r`
+ * the trim leaves $2 = the path's last char while the scan runs, which a `$4`→`$2` swap reads.
+ */
+function segmentTailCases(d: string): string[][] {
+  const seps = ['\\', '/'];
+  const terms = ['\r\n', '\n', ''];
+  const cases: string[][] = [];
+  for (const seg of segmentTailShapes()) {
+    for (const s1 of seps) {
+      for (const s2 of seps) {
+        cases.push([`${d}\\v${s1}${seg}${s2}x\r\n`]);
+        cases.push([`${d}\\v${s1}${seg}${s2}${s2}y\r\n`]);
+        for (const term of terms) {
+          cases.push([`${d}\\v${s1}${seg}${s2}${term}`]);
+        }
+      }
+      for (const term of terms) {
+        cases.push([`${d}\\v${s1}${seg}${term}`]);
+      }
+      cases.push([`${d}\\${seg}${s1}x\r\n`]);
+    }
+  }
+  for (const s1 of seps) {
+    for (const s2 of seps) {
+      cases.push([`${d}\\v${s1}${s2}x\r\n`]);
+      cases.push([`${d}\\v${s1}${s2}\r\n`]);
+    }
+    cases.push([`${d}\\v${s1}\r\n`]);
+  }
+  for (const path of [...TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS, ...TRAVERSAL_ALLOW_DOT_LETTER_DELETE_PATHS]) {
+    cases.push([`${path}\r\n`]);
+  }
+  return cases;
+}
+
+/**
+ * Multi-line sidecars where a long line is followed by a traversal line under every terminator, so a
+ * skipped per-line $7 reset or empty check (the read-trim `+N` overshoot) shows as an extra delete.
+ */
+function multilineCarryCases(d: string): string[][] {
+  const firsts = [`${d}\\${'a'.repeat(40)}`, `${d}\\${'b'.repeat(50)}`, `${d}\\v`];
+  const travs = [
+    `${d}\\..\\..\\..\\Windows`,
+    `${d}/../../../Windows`,
+    `${d}\\a\\..\\..\\Windows`,
+    `${d}\\v\\.. \\x`,
+    `${d}\\v/.. /x`,
+    `${d}\\.\\x`,
+    `${d}\\..`,
+  ];
+  const terms = ['\r\n', '\n', '\r', ''];
+  const cases: string[][] = [];
+  for (const first of firsts) {
+    for (const firstTerm of ['\r\n', '\n']) {
+      for (const trav of travs) {
+        for (const term of terms) {
+          cases.push([`${first}${firstTerm}`, `${trav}${term}`]);
+        }
+      }
+    }
+  }
+  for (const trav of travs.slice(0, 3)) {
+    cases.push([`${firsts[0]}\r\n`, `${trav}\n`, `${d}\\w\r\n`]);
+    cases.push([`${firsts[0]}\n`, `${trav}\n`, `${d}\\w\n`]);
+  }
+  return cases;
+}
 
 function oracleCorpusCases(): string[][] {
   const d = ORACLE_ENV_BASE.DOCUMENTS;
@@ -130,23 +237,30 @@ function oracleCorpusCases(): string[][] {
       }
     }
   }
+  for (const pre of BROAD_PREFIXES) {
+    for (const seg of BROAD_SEGMENTS) {
+      for (const sep of ['\\', '/']) {
+        cases.push([`${d}\\${pre}${seg}${sep}Windows\r\n`]);
+        cases.push([`${d}\\${pre}${seg}${sep}x\r\n`]);
+        cases.push([`${d}\\${pre}${seg}${sep}..${sep}Windows\r\n`]);
+      }
+    }
+  }
   for (const seg of BROAD_SEGMENTS) {
     cases.push([`\\${seg}\\x\r\n`], [`/${seg}/x\r\n`], [`${d}\\${seg}/x\r\n`], [`${d}/${seg}\\x\r\n`]);
   }
-  // Representatives of the segment-tail / multiline-carry grids (full grids are in the FCFB tables).
-  cases.push([`${d}\\v\\.a\\x\r\n`], [`${d}\\v/..a/\r\n`], [`${d}\\v\\.a\\\n`]);
-  cases.push([`${d}\\${'a'.repeat(40)}\r\n`, `${d}\\..\\..\\..\\Windows\r\n`]);
-  cases.push([`${d}\\${'a'.repeat(40)}\n`, `${d}\\.\\x\n`, `${d}\\w\r\n`]);
+  cases.push(...segmentTailCases(d));
+  cases.push(...multilineCarryCases(d));
   return cases;
 }
 
 /**
- * Discriminating sweep corpus: danger.py-style segment prefixes, corpus tails, a nested-root
- * sample, and representatives of the segment-tail / multiline-carry grids. The full cartesian
- * grids live in the FCFB / allowlist tables (mode-2), so this stays small enough for the unit job.
+ * Forge's full oracle corpus (corpus.py CASES with both ENVS, as score.py runs it, plus danger.py
+ * PATHS) and the broad separator shapes. Under the nested env `Documents` is rebased as score.py does.
  */
 export function sidecarGuardOracleCorpus(): SidecarGuardCorpusCase[] {
   const base = oracleCorpusCases();
+  const d = ORACLE_ENV_BASE.DOCUMENTS;
   const seen = new Set<string>();
   const out: SidecarGuardCorpusCase[] = [];
   const add = (env: SidecarNsisVarEnv, reads: readonly string[]): void => {
@@ -160,16 +274,12 @@ export function sidecarGuardOracleCorpus(): SidecarGuardCorpusCase[] {
     add(ORACLE_ENV_BASE, reads);
   }
   const n = ORACLE_ENV_NESTED;
-  const nestedSample = [
-    [`${n.DOCUMENTS}\\v\r\n`],
-    [`${n.APPDATA}\\Mythos Writer\\v\r\n`],
-    [`${n.DESKTOP}\\v\r\n`],
-    [`${n.PROFILE}\\Downloads\\v\r\n`],
-    [`${n.DOCUMENTS}\\ok\r\n`, `${n.DOCUMENTS}\\z\r\n`],
-  ];
-  for (const reads of nestedSample) {
-    add(n, reads);
+  for (const reads of base) {
+    add(n, reads.map((r) => r.split(d).join(n.DOCUMENTS)));
   }
+  add(n, [`${n.APPDATA}\\Mythos Writer\\v\r\n`]);
+  add(n, [`${n.DESKTOP}\\v\r\n`]);
+  add(n, [`${n.PROFILE}\\Downloads\\v\r\n`]);
   return out;
 }
 
@@ -178,7 +288,7 @@ export function sidecarGuardCaseOutcome(nsh: string, c: SidecarGuardCorpusCase):
   try {
     const run = simulateSidecarDeleteReadLoop(nsh, c.reads, c.env);
     const hang = run.hung;
-    return `${run.closed ? 'closed' : 'open'}${hang ? ':hang' : ''}|${JSON.stringify(run.deleted)}`;
+    return `${run.closed ? 'closed' : 'open'}${hang ? ':hang' : ''}|${JSON.stringify(run.acts)}`;
   } catch (err) {
     return `THROW:${err instanceof Error ? err.message : String(err)}`;
   }

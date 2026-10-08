@@ -3,7 +3,7 @@
  * expectedDeleted is canonical under both GFPN models K and W.
  */
 
-export type FcfbOracleEnvName = 'E1' | 'E5' | 'E6';
+export type FcfbOracleEnvName = 'E1' | 'E2' | 'E5' | 'E6';
 
 export type FcfbOracleRow = {
   readonly id: string;

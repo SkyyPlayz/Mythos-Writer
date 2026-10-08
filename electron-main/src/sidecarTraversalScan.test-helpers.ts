@@ -2109,6 +2109,7 @@ export function simulateSidecarDeleteReadLoop(
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
 ): {
   deleted: string[];
+  acts: ReadonlyArray<{ op: 'RMDir' | 'Delete'; path: string }>;
   closed: boolean;
   steps: number;
   fileClosed: boolean;
@@ -2121,6 +2122,7 @@ export function simulateSidecarDeleteReadLoop(
   }
   return {
     deleted: run.deleted,
+    acts: run.acts,
     closed: run.fileClosed,
     steps: run.steps,
     fileClosed: run.fileClosed,
@@ -2439,9 +2441,7 @@ export function assertSidecarGuardVmBehaviourTables(
   options?: SidecarGuardVmBehaviourOptions,
 ): void {
   assertSidecarFcfbOracleRows(nsh);
-  if (!options?.sweepRebaseline) {
-    assertSidecarLinearStepCapSelfCheck(nsh, SIDECAR_NSIS_ENV_E1);
-  }
+  assertSidecarLinearStepCapSelfCheck(nsh, SIDECAR_NSIS_ENV_E1);
   if (options?.sweepRebaseline) {
     const canonical = options.canonicalNsh ?? nsh;
     assertSidecarGuardVmSweepParity(nsh, canonical, env);

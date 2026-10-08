@@ -30,6 +30,24 @@ describe('oracle-class mutant sweep :43-:213 (Forge gen.py classes, pin-free VM 
     byLine.set(mutant.fileLine, [...(byLine.get(mutant.fileLine) ?? []), mutant]);
   }
 
+  /**
+   * :47 / :56 / :117 were 20–33s against the 30s default (same class as the 9802a5c3 unit timeout).
+   * Split those lines to one mutant per test and raise only their timeout. Other lines are sliced
+   * so each test stays well under the limit (~50% headroom). Checks are unchanged.
+   */
+  const HEAVY_SWEEP_LINES = new Set([47, 56, 117]);
+  const HEAVY_SWEEP_TEST_TIMEOUT_MS = 60_000;
+  const HEAVY_SWEEP_CHUNK = 1;
+  const DEFAULT_SWEEP_CHUNK = 2;
+
+  const chunkMutants = (mutants: OracleClassMutant[], size: number): OracleClassMutant[][] => {
+    const chunks: OracleClassMutant[][] = [];
+    for (let i = 0; i < mutants.length; i += size) {
+      chunks.push(mutants.slice(i, i + size));
+    }
+    return chunks;
+  };
+
   it('negative control — canonical is not caught, so a caught verdict carries information', () => {
     expect(sidecarGuardModeTwoCaught(nsh, nsh)).toBe(false);
   });
@@ -39,27 +57,44 @@ describe('oracle-class mutant sweep :43-:213 (Forge gen.py classes, pin-free VM 
     fileLine <= SIDECAR_GUARD_REGION_FILE_LINE_LAST;
     fileLine += 1
   ) {
-    it(`line :${fileLine} — no non-equivalent survivor among its oracle-class mutants`, () => {
-      const mutants = byLine.get(fileLine) ?? [];
-      expect(mutants.length).toBeGreaterThan(0);
-      let caught = 0;
-      const nonEquivalentSurvivors: string[] = [];
-      for (const mutant of mutants) {
-        if (sidecarGuardModeTwoCaught(mutant.nsh, nsh)) {
-          caught += 1;
-          continue;
-        }
-        const diverged = corpus.findIndex(
-          (c, i) => sidecarGuardCaseOutcome(mutant.nsh, c) !== canonicalOutcomes[i],
-        );
-        if (diverged >= 0) {
-          nonEquivalentSurvivors.push(`${mutant.key} @ ${JSON.stringify(corpus[diverged]!.reads)}`);
-        }
-      }
-      expect(nonEquivalentSurvivors).toEqual([]);
-      // Every guard line has at least one behaviour-changing mutant, so an always-false detector fails here.
-      expect(caught).toBeGreaterThan(0);
+    const mutants = byLine.get(fileLine) ?? [];
+    const heavy = HEAVY_SWEEP_LINES.has(fileLine);
+    const chunks = chunkMutants(mutants, heavy ? HEAVY_SWEEP_CHUNK : DEFAULT_SWEEP_CHUNK);
+    const timeout = heavy ? HEAVY_SWEEP_TEST_TIMEOUT_MS : undefined;
+    chunks.forEach((chunk, idx) => {
+      const label =
+        chunks.length === 1
+          ? `line :${fileLine} — no non-equivalent survivor among its oracle-class mutants`
+          : `line :${fileLine} [${idx + 1}/${chunks.length}] — no non-equivalent survivor among this mutant slice`;
+      it(
+        label,
+        () => {
+          expect(mutants.length).toBeGreaterThan(0);
+          const nonEquivalentSurvivors: string[] = [];
+          for (const mutant of chunk) {
+            if (sidecarGuardModeTwoCaught(mutant.nsh, nsh)) {
+              continue;
+            }
+            const diverged = corpus.findIndex(
+              (c, i) => sidecarGuardCaseOutcome(mutant.nsh, c) !== canonicalOutcomes[i],
+            );
+            if (diverged >= 0) {
+              nonEquivalentSurvivors.push(`${mutant.key} @ ${JSON.stringify(corpus[diverged]!.reads)}`);
+            }
+          }
+          expect(nonEquivalentSurvivors).toEqual([]);
+        },
+        timeout,
+      );
     });
+    it(
+      `line :${fileLine} — at least one oracle-class mutant is caught`,
+      () => {
+        expect(mutants.length).toBeGreaterThan(0);
+        expect(mutants.some((mutant) => sidecarGuardModeTwoCaught(mutant.nsh, nsh))).toBe(true);
+      },
+      timeout,
+    );
   }
 
   // The behaviour oracle above is the same TS VM as the catch, so a VM that stops modelling the

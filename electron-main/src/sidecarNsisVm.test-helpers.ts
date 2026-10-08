@@ -5,6 +5,7 @@
  */
 
 import { SIDECAR_FCFB_ORACLE_ROWS } from './sidecarFcfbOracleRows.test-helpers.js';
+import { SIDECAR_FCFB_SUPP_ROWS } from './sidecarFcfbSuppRows.test-helpers.js';
 import { gfpnModel, type SidecarNsisVarEnv } from './sidecarTraversalScan.test-helpers.js';
 
 export const SIDECAR_NSIS_MAX_STRLEN = 1024;
@@ -38,10 +39,22 @@ export const SIDECAR_NSIS_ENV_E6: SidecarNsisVarEnv = {
   DOCUMENTS: 'D:\\Apps32\\Docs',
 };
 
-export function sidecarNsisEnvByName(name: 'E1' | 'E5' | 'E6'): SidecarNsisVarEnv {
+export const SIDECAR_NSIS_ENV_E2: SidecarNsisVarEnv = {
+  WINDIR: 'C:\\Windows',
+  PROGRAMFILES: 'C:\\Program Files (x86)',
+  PROGRAMFILES64: 'C:\\Program Files',
+  APPDATA: 'C:\\Windows\\System32\\config\\systemprofile\\AppData\\Roaming',
+  DOCUMENTS: 'C:\\Program Files (x86)\\Docs',
+  DESKTOP: 'C:\\Program Files\\Desk',
+  PROFILE: 'C:\\Windows\\prof',
+};
+
+export function sidecarNsisEnvByName(name: 'E1' | 'E2' | 'E5' | 'E6'): SidecarNsisVarEnv {
   switch (name) {
     case 'E1':
       return SIDECAR_NSIS_ENV_E1;
+    case 'E2':
+      return SIDECAR_NSIS_ENV_E2;
     case 'E5':
       return SIDECAR_NSIS_ENV_E5;
     case 'E6':
@@ -158,14 +171,28 @@ export type SidecarNsisRunOptions = {
   fault?: SidecarNsisFault;
 };
 
+export type SidecarDeleteAct = Readonly<{ op: 'RMDir' | 'Delete'; path: string }>;
+
 export type SidecarNsisRunResult = {
   deleted: string[];
+  acts: SidecarDeleteAct[];
   fileClosed: boolean;
   sidecarDeleted: boolean;
   hung: boolean;
   steps: number;
   lineSteps: number;
 };
+
+/** Canonical IfFileExists heuristic: last path component containing `.` is a file Delete. */
+export function sidecarDeleteOpForPath(path: string): 'RMDir' | 'Delete' {
+  const last =
+    path
+      .split('\\*.*')[0]!
+      .replace(/\//g, '\\')
+      .split('\\')
+      .pop() ?? '';
+  return last.includes('.') ? 'Delete' : 'RMDir';
+}
 
 function parseFault(fault: SidecarNsisFault): { spec: string; only: number | null } | null {
   if (fault === null || fault === '') {
@@ -227,6 +254,7 @@ export function runSidecarNsisProgram(
   const mem = new Map<number, Uint8Array>();
   let nextAddr = 0x10000;
   const deleted: string[] = [];
+  const acts: SidecarDeleteAct[] = [];
   let fileClosed = false;
   let sidecarDeleted = false;
   let pos = 0;
@@ -283,6 +311,7 @@ export function runSidecarNsisProgram(
 
   const hung = (): SidecarNsisRunResult => ({
     deleted,
+    acts,
     fileClosed,
     sidecarDeleted,
     hung: true,
@@ -422,6 +451,8 @@ export function runSidecarNsisProgram(
       if (path === sidecar || path.endsWith(SIDECAR_SIDECAR_DELETE_PATH_SUFFIX)) {
         sidecarDeleted = true;
       } else {
+        const act: SidecarDeleteAct = { op, path };
+        acts.push(act);
         deleted.push(path);
       }
       pc += 1;
@@ -523,7 +554,10 @@ export function runSidecarNsisProgram(
           return sysErr('pbrk addr');
         }
         const cs = new Set<number>();
-        for (let i = 0; i + 2 <= buf.length; i += 2) {
+        for (let i = 0; ; i += 2) {
+          if (i + 2 > buf.length) {
+            return sysErr('pbrk overread');
+          }
           const w = buf[i]! | (buf[i + 1]! << 8);
           if (w === 0) {
             break;
@@ -602,6 +636,7 @@ export function runSidecarNsisProgram(
 
   return {
     deleted,
+    acts,
     fileClosed,
     sidecarDeleted,
     hung: false,
@@ -638,9 +673,24 @@ function samePathList(got: readonly string[], expected: readonly string[]): bool
   return a.every((p, i) => p === b[i]);
 }
 
-/** All 90 fcfb rows: expected canonical deletes, FileClose, sidecar Delete, no hang. */
+function actKey(act: SidecarDeleteAct): string {
+  return `${act.op}\0${act.path}`;
+}
+
+function sameDeleteActs(got: readonly SidecarDeleteAct[], expected: readonly SidecarDeleteAct[]): boolean {
+  if (got.length !== expected.length) {
+    return false;
+  }
+  const a = [...got].map(actKey).sort();
+  const b = [...expected].map(actKey).sort();
+  return a.every((k, i) => k === b[i]);
+}
+
+const SIDECAR_FCFB_ALL_ROWS = [...SIDECAR_FCFB_ORACLE_ROWS, ...SIDECAR_FCFB_SUPP_ROWS];
+
+/** All 90 fcfb rows plus 77 supplemental rows: canonical deletes (path + RMDir/Delete), FileClose, sidecar Delete, no hang. */
 export function assertSidecarFcfbOracleRows(nsh: string): void {
-  for (const row of SIDECAR_FCFB_ORACLE_ROWS) {
+  for (const row of SIDECAR_FCFB_ALL_ROWS) {
     const env = sidecarNsisEnvByName(row.env);
     const run = runSidecarNsisProgram(nsh, row.lines, { env, fault: row.fault });
     if (run.hung) {
@@ -655,6 +705,15 @@ export function assertSidecarFcfbOracleRows(nsh: string): void {
     if (!samePathList(run.deleted, row.expectedDeleted)) {
       throw new Error(
         `fcfb ${row.id}: expected deletes ${JSON.stringify(row.expectedDeleted)}, got ${JSON.stringify(run.deleted)}`,
+      );
+    }
+    const expectedActs = row.expectedDeleted.map((path) => ({
+      op: sidecarDeleteOpForPath(path),
+      path,
+    }));
+    if (!sameDeleteActs(run.acts, expectedActs)) {
+      throw new Error(
+        `fcfb ${row.id}: expected acts ${JSON.stringify(expectedActs)}, got ${JSON.stringify(run.acts)}`,
       );
     }
   }

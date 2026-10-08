@@ -161,6 +161,8 @@ describe('sidecar guard region sweep :43-:213 (buildIntegrity excluded)', () => 
 
   describe('mode (2) equivalence strength — identical outcome on the full oracle corpus', () => {
     const canonicalOutcomes = ORACLE_CORPUS.map((c) => sidecarGuardCaseOutcome(nsh, c));
+    /** Slice the restored full corpus so each test stays under the 30s default with ~50% headroom. */
+    const CORPUS_SLICE = 2000;
 
     for (const fileLineStr of Object.keys(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES)) {
       const fileLine = Number(fileLineStr);
@@ -169,14 +171,21 @@ describe('sidecar guard region sweep :43-:213 (buildIntegrity excluded)', () => 
         : SIDECAR_GUARD_SWEEP_EXTENDED_EQUIVALENTS[fileLine]
           ? 'extended'
           : 'RF-4/5/6';
-      it(`line :${fileLine} (${locked}) primary matches canonical on every oracle corpus case`, () => {
-        const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
-        ORACLE_CORPUS.forEach((c, i) => {
-          expect(sidecarGuardCaseOutcome(mutant, c), `outcome diverged at ${JSON.stringify(c.reads)}`).toBe(
-            canonicalOutcomes[i],
-          );
+      for (let start = 0; start < ORACLE_CORPUS.length; start += CORPUS_SLICE) {
+        const slice = ORACLE_CORPUS.slice(start, start + CORPUS_SLICE);
+        const end = start + slice.length;
+        const suffix =
+          ORACLE_CORPUS.length <= CORPUS_SLICE ? '' : ` corpus [${start}..${end})`;
+        it(`line :${fileLine} (${locked}) primary matches canonical on every oracle corpus case${suffix}`, () => {
+          const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
+          slice.forEach((c, j) => {
+            const i = start + j;
+            expect(sidecarGuardCaseOutcome(mutant, c), `outcome diverged at ${JSON.stringify(c.reads)}`).toBe(
+              canonicalOutcomes[i],
+            );
+          });
         });
-      });
+      }
     }
   });
 });
