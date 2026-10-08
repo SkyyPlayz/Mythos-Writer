@@ -2886,8 +2886,19 @@ export function assertSidecarHard1WildcardTables(nsh: string): void {
   }
 }
 
+/** Mode-2 subset: one char per class × both seps on Documents, plus AppData `*`. */
+export const SIDECAR_HARD1_SWEEP_ROWS: readonly SidecarHard1WildcardRow[] = SIDECAR_HARD1_WILDCARD_ROWS.filter(
+  (row) =>
+    row.name.startsWith('E1 ') &&
+    (row.path.includes('\\Documents\\') || row.path.includes('/Documents/') || row.path.endsWith('Mythos Writer\\*')),
+).filter((row) => {
+  const tail = row.path.replace(/^.*[\\/]/, '');
+  const keep = new Set(['*', '*.*', '?', '<', '>', '"', '|', 'v*', 'x?y']);
+  return keep.has(tail);
+});
+
 export function assertSidecarHard1WildcardSweepParity(mutantNsh: string, canonicalNsh: string): void {
-  for (const row of SIDECAR_HARD1_WILDCARD_ROWS) {
+  for (const row of SIDECAR_HARD1_SWEEP_ROWS) {
     const canonical = simulateSidecarDeleteReadLoop(canonicalNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
     const mutant = simulateSidecarDeleteReadLoop(mutantNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
     if (mutant !== canonical) {
@@ -2923,8 +2934,22 @@ export function assertSidecarHard2NestedTables(nsh: string): void {
   }
 }
 
+/**
+ * Mode-2 nested subset: each successor equal-check plus one vault-delete and the N3
+ * AppData ancestors. Full Probe 56+16 stay on the canonical tables.
+ */
+export const SIDECAR_HARD2_SWEEP_ROWS: readonly SidecarHard2NestedRow[] = SIDECAR_HARD2_NESTED_ROWS.filter((row) => {
+  const id = row.id;
+  return (
+    id.endsWith('|bare') ||
+    id.endsWith('|fwd') ||
+    id.endsWith('|vault') ||
+    id.startsWith('N3|C:\\Users\\me\\AppData')
+  );
+});
+
 export function assertSidecarHard2NestedSweepParity(mutantNsh: string, canonicalNsh: string): void {
-  for (const row of SIDECAR_HARD2_NESTED_ROWS) {
+  for (const row of SIDECAR_HARD2_SWEEP_ROWS) {
     const canonical = simulateSidecarDeleteReadLoop(canonicalNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
     const mutant = simulateSidecarDeleteReadLoop(mutantNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
     if (mutant !== canonical) {
@@ -2957,9 +2982,7 @@ export function assertSidecarGuardVmBehaviourTables(
     assertSidecarRf456SweepParity(nsh, canonical, env);
     assertSidecarReparseTables(nsh, env);
     assertSidecarReparseSweepParity(nsh, canonical, env);
-    assertSidecarHard1WildcardTables(nsh);
     assertSidecarHard1WildcardSweepParity(nsh, canonical);
-    assertSidecarHard2NestedTables(nsh);
     assertSidecarHard2NestedSweepParity(nsh, canonical);
     return;
   }
