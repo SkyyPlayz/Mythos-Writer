@@ -7,7 +7,7 @@
 ;
 ; KEEP (checkbox off): mythos_delete_app_caches only (see appUserDataManifest.ts).
 ; Remove all: FileRead sidecar → FileClose → delete sidecar → user data → vaults → RMDir userData.
-
+; S-5: a vault folder name that begins with a space or TAB is skipped on purpose (fail-safe: the user keeps that data).
 !ifdef BUILD_UNINSTALLER
   Section /o "un.Also delete my Mythos vaults / writing data" SEC_DELETE_MYTHOS_VAULTS
   SectionEnd
@@ -43,17 +43,43 @@
         ClearErrors
         FileRead $0 $1
         IfErrors uninstall_vault_close
-        StrCpy $2 $1 1 -1
-        StrCmp $2 "$\n" 0 +2
+        mythos_trim_loop:
+          StrCmp $1 "" uninstall_vault_read
+          StrCpy $2 $1 1 -1
+          StrCmp $2 "$\n" mythos_trim_chop
+          StrCmp $2 "$\r" mythos_trim_chop
+          Goto mythos_trim_done
+          mythos_trim_chop:
           StrCpy $1 $1 -1
-        StrCpy $2 $1 1 -1
-        StrCmp $2 "$\r" 0 +2
-          StrCpy $1 $1 -1
+          Goto mythos_trim_loop
+        mythos_trim_done:
         StrCmp $1 "" uninstall_vault_read
+        System::Alloc 64
+        Pop $6
+        System::Call "*$6(&i2 1,&i2 2,&i2 3,&i2 4,&i2 5,&i2 6,&i2 7,&i2 8,&i2 9,&i2 10,&i2 11,&i2 12,&i2 13,&i2 14,&i2 15,&i2 16,&i2 17,&i2 18,&i2 19,&i2 20,&i2 21,&i2 22,&i2 23,&i2 24,&i2 25,&i2 26,&i2 27,&i2 28,&i2 29,&i2 30,&i2 31,&i2 0)"
+        System::Call "shlwapi::StrPBrkW(w r1, p r6) p .r4"
+        System::Free $6
+        StrCmp $4 0 mythos_ctrl_ok
+          Goto uninstall_vault_read
+        mythos_ctrl_ok:
         StrCpy $7 0
         mythos_trav_scan:
           StrCpy $4 $1 1 $7
           StrCmp $4 "" uninstall_vault_trav_ok
+          StrCmp $4 ":" 0 mythos_trav_notcolon
+          StrCmp $7 "1" mythos_trav_notcolon
+          Goto uninstall_vault_read
+          mythos_trav_notcolon:
+          StrCmp $4 "\" mythos_trav_sepcheck
+          StrCmp $4 "/" mythos_trav_sepcheck
+          Goto mythos_trav_classify
+          mythos_trav_sepcheck:
+          IntOp $8 $7 + 1
+          StrCpy $4 $1 1 $8
+          StrCmp $4 "\" uninstall_vault_read
+          StrCmp $4 "/" uninstall_vault_read
+          StrCpy $4 $1 1 $7
+          mythos_trav_classify:
           StrCmp $4 "\" 0 mythos_trav_fwd
             StrCmp $7 "0" +5
             IntOp $8 $7 - 1
@@ -130,29 +156,31 @@
           StrCpy $6 $1 "" $3
           StrCpy $6 $6 "" 1
           StrCmp $6 "" uninstall_vault_read
-          Goto uninstall_vault_do_delete
+          Goto mythos_canon_gate
         mythos_al_not_appdata:
-        StrLen $3 "$DOCUMENTS"
+        StrCpy $5 "$DOCUMENTS"
+        StrLen $3 $5
         StrCpy $4 $1 $3
-        StrCmp $4 "$DOCUMENTS" 0 mythos_al_not_documents
-          StrCmp $1 "$DOCUMENTS" uninstall_vault_read
+        StrCmp $4 $5 0 mythos_al_not_documents
+          StrCmp $1 $5 uninstall_vault_read
           StrCpy $4 $1 1 $3
           StrCmp $4 "\" 0 mythos_al_not_documents
           StrCpy $6 $1 "" $3
           StrCpy $6 $6 "" 1
           StrCmp $6 "" uninstall_vault_read
-          Goto uninstall_vault_do_delete
+          Goto mythos_canon_gate
         mythos_al_not_documents:
-        StrLen $3 "$DESKTOP"
+        StrCpy $5 "$DESKTOP"
+        StrLen $3 $5
         StrCpy $4 $1 $3
-        StrCmp $4 "$DESKTOP" 0 mythos_al_not_desktop
-          StrCmp $1 "$DESKTOP" uninstall_vault_read
+        StrCmp $4 $5 0 mythos_al_not_desktop
+          StrCmp $1 $5 uninstall_vault_read
           StrCpy $4 $1 1 $3
           StrCmp $4 "\" 0 mythos_al_not_desktop
           StrCpy $6 $1 "" $3
           StrCpy $6 $6 "" 1
           StrCmp $6 "" uninstall_vault_read
-          Goto uninstall_vault_do_delete
+          Goto mythos_canon_gate
         mythos_al_not_desktop:
         StrCpy $5 "$PROFILE\Downloads"
         StrLen $3 $5
@@ -164,9 +192,25 @@
           StrCpy $6 $1 "" $3
           StrCpy $6 $6 "" 1
           StrCmp $6 "" uninstall_vault_read
-          Goto uninstall_vault_do_delete
+          Goto mythos_canon_gate
         mythos_al_deny:
         Goto uninstall_vault_read
+        mythos_canon_gate:
+          System::Call "kernel32::GetFullPathNameW(w r1, i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4"
+          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+          System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"
+          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+          StrLen $8 $9
+          StrCpy $6 $3 $8
+          StrCmp $6 $9 0 uninstall_vault_read
+          StrCpy $6 $3 1 $8
+          StrCmp $6 "\" 0 uninstall_vault_read
+          StrCpy $6 $3 "" $8
+          StrCpy $6 $6 "" 1
+          StrCmp $6 "" uninstall_vault_read
+          Goto uninstall_vault_do_delete
         uninstall_vault_do_delete:
         IfFileExists "$1\*.*" 0 uninstall_vault_file
           RMDir /r "$1"
