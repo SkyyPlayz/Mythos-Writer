@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { loadUninstallVaultsNsh } from './uninstallVaultsNsh.path.js';
+import { mutantSidecarGuardRegionSweepLine } from './sidecarTraversalScan.test-helpers.js';
 import {
   generateOracleClassMutants,
   sidecarGuardCaseOutcome,
@@ -89,6 +90,40 @@ export function registerOracleClassLineSweep(lineFirst: number, lineLast: number
           },
           timeout,
         );
+      }
+    },
+  );
+}
+
+/**
+ * Equivalence-strength corpus check for documented mode-2 primaries. Split across files so
+ * vitest workers share the restored 12,617-case scans. Each line still sees every case.
+ */
+export function registerGuardRegionEquivSweep(lines: readonly number[]): void {
+  describe(
+    `mode (2) equivalence strength :${lines[0]}-:${lines[lines.length - 1]} — identical outcome on the full oracle corpus`,
+    () => {
+      const nsh = loadUninstallVaultsNsh();
+      const corpus = sidecarGuardOracleCorpus();
+      const canonicalOutcomes = corpus.map((c) => sidecarGuardCaseOutcome(nsh, c));
+      /** Slice the restored full corpus so each test stays under the 30s default with ~50% headroom. */
+      const CORPUS_SLICE = 2000;
+
+      for (const fileLine of lines) {
+        for (let start = 0; start < corpus.length; start += CORPUS_SLICE) {
+          const slice = corpus.slice(start, start + CORPUS_SLICE);
+          const end = start + slice.length;
+          const suffix = corpus.length <= CORPUS_SLICE ? '' : ` corpus [${start}..${end})`;
+          it(`line :${fileLine} primary matches canonical on every oracle corpus case${suffix}`, () => {
+            const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
+            slice.forEach((c, j) => {
+              const i = start + j;
+              expect(sidecarGuardCaseOutcome(mutant, c), `outcome diverged at ${JSON.stringify(c.reads)}`).toBe(
+                canonicalOutcomes[i],
+              );
+            });
+          });
+        }
       }
     },
   );
