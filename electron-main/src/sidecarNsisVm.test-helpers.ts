@@ -99,14 +99,15 @@ function compileSidecarNsisProgram(lines: readonly string[]): Prog {
   return { ins, lab };
 }
 
-let progCache: { nsh: string; prog: Prog } | undefined;
+const progCache = new Map<string, Prog>();
 
 function programForNsh(nsh: string): Prog {
-  if (progCache !== undefined && progCache.nsh === nsh) {
-    return progCache.prog;
+  const hit = progCache.get(nsh);
+  if (hit !== undefined) {
+    return hit;
   }
   const prog = compileSidecarNsisProgram(extractSidecarNsisProgramLines(nsh));
-  progCache = { nsh, prog };
+  progCache.set(nsh, prog);
   return prog;
 }
 
@@ -146,17 +147,50 @@ function nsisMyAtoi(text: string): number {
   return v >= 0x80000000 ? v - 0x100000000 : v;
 }
 
+const litCache = new WeakMap<SidecarNsisVarEnv, Map<string, string>>();
+const envKeysCache = new WeakMap<SidecarNsisVarEnv, (keyof SidecarNsisVarEnv)[]>();
+const nsisLowerCache = new Map<string, string>();
+
+function envKeys(env: SidecarNsisVarEnv): (keyof SidecarNsisVarEnv)[] {
+  const hit = envKeysCache.get(env);
+  if (hit !== undefined) {
+    return hit;
+  }
+  const keys = (Object.keys(env) as (keyof SidecarNsisVarEnv)[]).sort((a, b) => b.length - a.length);
+  envKeysCache.set(env, keys);
+  return keys;
+}
+
+function nsisLower(s: string): string {
+  const hit = nsisLowerCache.get(s);
+  if (hit !== undefined) {
+    return hit;
+  }
+  const low = s.toLowerCase();
+  nsisLowerCache.set(s, low);
+  return low;
+}
+
 function lit(tok: string, env: SidecarNsisVarEnv): string {
+  let perEnv = litCache.get(env);
+  if (perEnv === undefined) {
+    perEnv = new Map();
+    litCache.set(env, perEnv);
+  }
+  const hit = perEnv.get(tok);
+  if (hit !== undefined) {
+    return hit;
+  }
   let s = tok.startsWith('"') && tok.endsWith('"') && tok.length >= 2 ? tok.slice(1, -1) : tok;
   s = s
     .replace(/\$\\n/g, '\n')
     .replace(/\$\\r/g, '\r')
     .replace(/\$\\t/g, '\t')
     .replace(/\$\{NSIS_MAX_STRLEN\}/g, String(SIDECAR_NSIS_MAX_STRLEN));
-  const keys = (Object.keys(env) as (keyof SidecarNsisVarEnv)[]).sort((a, b) => b.length - a.length);
-  for (const k of keys) {
+  for (const k of envKeys(env)) {
     s = s.split(`$${k}`).join(env[k]);
   }
+  perEnv.set(tok, s);
   return s;
 }
 
@@ -417,7 +451,7 @@ export function runSidecarNsisProgram(
     if (op === 'StrCmp' || op === 'StrCmpS') {
       const x = val(args[0]!);
       const y = val(args[1]!);
-      const eq = op === 'StrCmpS' ? x === y : x.toLowerCase() === y.toLowerCase();
+      const eq = op === 'StrCmpS' ? x === y : nsisLower(x) === nsisLower(y);
       const t = eq ? args[2]! : (args[3] ?? '0');
       pc = jmp(pc, t);
       continue;
