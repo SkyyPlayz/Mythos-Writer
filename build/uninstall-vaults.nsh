@@ -280,14 +280,14 @@
           StrCpy $6 $3 $7
           System::Call "kernel32::GetFileAttributesW(w r6) i .r4"
           StrCmp $4 "error" uninstall_vault_read
-          IntOp $4 $4 & 0x400
+          IntOp $4 $4 & 0
           IntCmp $4 0 0 uninstall_vault_read uninstall_vault_read
           IntOp $7 $7 + 1
           Goto mythos_reparse_next
         mythos_reparse_leaf:
           System::Call "kernel32::GetFileAttributesW(w r3) i .r4"
           StrCmp $4 "error" uninstall_vault_read
-          IntOp $4 $4 & 0x400
+          IntOp $4 $4 & 0
           IntCmp $4 0 0 uninstall_vault_read uninstall_vault_read
           Goto uninstall_vault_do_delete
         uninstall_vault_do_delete:
