@@ -8,34 +8,75 @@ export const TRAVERSAL_SCAN_BLOCK_END_MARKER = 'uninstall_vault_trav_ok:';
 export const TRAVERSAL_SCAN_BLOCK_PREP_LINE = '        StrCpy $7 0';
 export const TRAVERSAL_SCAN_BLOCK_SCAN_LABEL = 'mythos_trav_scan:';
 
-/** Exact sidecar traversal chain (StrCpy $7 0 … post-trav_ok segment tail guard). */
-export const CANONICAL_TRAVERSAL_SCAN_BLOCK: readonly string[] = [
-  TRAVERSAL_SCAN_BLOCK_PREP_LINE,
+/**
+ * Exact sidecar guard region, file :43 (`ClearErrors`) .. the unique `Goto uninstall_vault_do_delete`
+ * end marker: RF-6 read-trim loop + control-char reject, traversal scan with the RF-4 colon and RF-5
+ * empty-segment checks, deny prefixes, the APPDATA/Documents/Desktop/Downloads root guards and the
+ * GetFullPathNameW canonical gate. Generated from build/uninstall-vaults.nsh; the pin is exact.
+ */
+export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
+  '        ClearErrors',
+  '        FileRead $0 $1',
+  '        IfErrors uninstall_vault_close',
+  '        mythos_trim_loop:',
+  '          StrCmp $1 "" uninstall_vault_read',
+  '          StrCpy $2 $1 1 -1',
+  '          StrCmp $2 "$\\n" mythos_trim_chop',
+  '          StrCmp $2 "$\\r" mythos_trim_chop',
+  '          Goto mythos_trim_done',
+  '          mythos_trim_chop:',
+  '          StrCpy $1 $1 -1',
+  '          Goto mythos_trim_loop',
+  '        mythos_trim_done:',
+  '        StrCmp $1 "" uninstall_vault_read',
+  '        System::Alloc 64',
+  '        Pop $6',
+  '        System::Call "*$6(&i2 1,&i2 2,&i2 3,&i2 4,&i2 5,&i2 6,&i2 7,&i2 8,&i2 9,&i2 10,&i2 11,&i2 12,&i2 13,&i2 14,&i2 15,&i2 16,&i2 17,&i2 18,&i2 19,&i2 20,&i2 21,&i2 22,&i2 23,&i2 24,&i2 25,&i2 26,&i2 27,&i2 28,&i2 29,&i2 30,&i2 31,&i2 0)"',
+  '        System::Call "shlwapi::StrPBrkW(w r1, p r6) p .r4"',
+  '        System::Free $6',
+  '        StrCmp $4 0 mythos_ctrl_ok',
+  '          Goto uninstall_vault_read',
+  '        mythos_ctrl_ok:',
+  '        StrCpy $7 0',
   '        mythos_trav_scan:',
   '          StrCpy $4 $1 1 $7',
   '          StrCmp $4 "" uninstall_vault_trav_ok',
-  String.raw`          StrCmp $4 "\" 0 mythos_trav_fwd`,
+  '          StrCmp $4 ":" 0 mythos_trav_notcolon',
+  '          StrCmp $7 "1" mythos_trav_notcolon',
+  '          Goto uninstall_vault_read',
+  '          mythos_trav_notcolon:',
+  '          StrCmp $4 "\\" mythos_trav_sepcheck',
+  '          StrCmp $4 "/" mythos_trav_sepcheck',
+  '          Goto mythos_trav_classify',
+  '          mythos_trav_sepcheck:',
+  '          IntOp $8 $7 + 1',
+  '          StrCpy $4 $1 1 $8',
+  '          StrCmp $4 "\\" uninstall_vault_read',
+  '          StrCmp $4 "/" uninstall_vault_read',
+  '          StrCpy $4 $1 1 $7',
+  '          mythos_trav_classify:',
+  '          StrCmp $4 "\\" 0 mythos_trav_fwd',
   '            StrCmp $7 "0" +5',
   '            IntOp $8 $7 - 1',
   '            StrCpy $4 $1 1 $8',
   '            StrCmp $4 "." uninstall_vault_read',
   '            StrCmp $4 " " uninstall_vault_read',
-  String.raw`            StrCmp $4 "$\t" uninstall_vault_read`,
+  '            StrCmp $4 "$\\t" uninstall_vault_read',
   '            IntOp $8 $7 + 1',
   '            StrCpy $4 $1 1 $8',
   '            StrCmp $4 " " uninstall_vault_read',
-  String.raw`            StrCmp $4 "$\t" uninstall_vault_read`,
+  '            StrCmp $4 "$\\t" uninstall_vault_read',
   '            StrCmp $4 "." 0 mythos_trav_inc',
   '              IntOp $8 $8 + 1',
   '              StrCpy $4 $1 1 $8',
   '              StrCmp $4 "" uninstall_vault_read',
-  String.raw`              StrCmp $4 "\" uninstall_vault_read`,
+  '              StrCmp $4 "\\" uninstall_vault_read',
   '              StrCmp $4 "/" uninstall_vault_read',
   '              StrCmp $4 "." 0 mythos_trav_inc',
   '                IntOp $8 $8 + 1',
   '                StrCpy $4 $1 1 $8',
   '                StrCmp $4 "" uninstall_vault_read',
-  String.raw`                StrCmp $4 "\" uninstall_vault_read`,
+  '                StrCmp $4 "\\" uninstall_vault_read',
   '                StrCmp $4 "/" uninstall_vault_read',
   '                Goto mythos_trav_inc',
   '          mythos_trav_fwd:',
@@ -45,24 +86,24 @@ export const CANONICAL_TRAVERSAL_SCAN_BLOCK: readonly string[] = [
   '            StrCpy $4 $1 1 $8',
   '            StrCmp $4 "." uninstall_vault_read',
   '            StrCmp $4 " " uninstall_vault_read',
-  String.raw`            StrCmp $4 "$\t" uninstall_vault_read`,
+  '            StrCmp $4 "$\\t" uninstall_vault_read',
   '            IntOp $8 $7 + 1',
   '            StrCpy $4 $1 1 $8',
   '            StrCmp $4 "/" uninstall_vault_read',
   '            StrCmp $4 " " uninstall_vault_read',
-  String.raw`            StrCmp $4 "$\t" uninstall_vault_read`,
+  '            StrCmp $4 "$\\t" uninstall_vault_read',
   '            StrCmp $4 "." 0 mythos_trav_inc',
   '              IntOp $8 $8 + 1',
   '              StrCpy $4 $1 1 $8',
   '              StrCmp $4 "" uninstall_vault_read',
   '              StrCmp $4 "/" uninstall_vault_read',
-  String.raw`              StrCmp $4 "\" uninstall_vault_read`,
+  '              StrCmp $4 "\\" uninstall_vault_read',
   '              StrCmp $4 "." 0 mythos_trav_inc',
   '                IntOp $8 $8 + 1',
   '                StrCpy $4 $1 1 $8',
   '                StrCmp $4 "" uninstall_vault_read',
   '                StrCmp $4 "/" uninstall_vault_read',
-  String.raw`                StrCmp $4 "\" uninstall_vault_read`,
+  '                StrCmp $4 "\\" uninstall_vault_read',
   '          mythos_trav_inc:',
   '          IntOp $7 $7 + 1',
   '          Goto mythos_trav_scan',
@@ -70,20 +111,111 @@ export const CANONICAL_TRAVERSAL_SCAN_BLOCK: readonly string[] = [
   '        StrCpy $2 $1 1 -1',
   '        StrCmp $2 "." uninstall_vault_read',
   '        StrCmp $2 " " uninstall_vault_read',
-  String.raw`        StrCmp $2 "$\t" uninstall_vault_read`,
+  '        StrCmp $2 "$\\t" uninstall_vault_read',
+  '        StrLen $3 "$WINDIR"',
+  '        StrCpy $4 $1 $3',
+  '        StrCmp $4 "$WINDIR" uninstall_vault_read 0',
+  '        StrLen $3 "$PROGRAMFILES"',
+  '        StrCpy $4 $1 $3',
+  '        StrCmp $4 "$PROGRAMFILES" uninstall_vault_read 0',
+  '        StrLen $3 "$PROGRAMFILES64"',
+  '        StrCpy $4 $1 $3',
+  '        StrCmp $4 "$PROGRAMFILES64" uninstall_vault_read 0',
+  '        StrCpy $5 "$APPDATA\\Mythos Writer"',
+  '        StrLen $3 $5',
+  '        StrCpy $4 $1 $3',
+  '        StrCmp $4 $5 0 mythos_al_not_appdata',
+  '          StrCmp $1 $5 uninstall_vault_read',
+  '          StrCpy $4 $1 1 $3',
+  '          StrCmp $4 "\\" 0 mythos_al_not_appdata',
+  '          StrCpy $6 $1 "" $3',
+  '          StrCpy $6 $6 "" 1',
+  '          StrCmp $6 "" uninstall_vault_read',
+  '          Goto mythos_canon_gate',
+  '        mythos_al_not_appdata:',
+  '        StrCpy $5 "$DOCUMENTS"',
+  '        StrLen $3 $5',
+  '        StrCpy $4 $1 $3',
+  '        StrCmp $4 $5 0 mythos_al_not_documents',
+  '          StrCmp $1 $5 uninstall_vault_read',
+  '          StrCpy $4 $1 1 $3',
+  '          StrCmp $4 "\\" 0 mythos_al_not_documents',
+  '          StrCpy $6 $1 "" $3',
+  '          StrCpy $6 $6 "" 1',
+  '          StrCmp $6 "" uninstall_vault_read',
+  '          Goto mythos_canon_gate',
+  '        mythos_al_not_documents:',
+  '        StrCpy $5 "$DESKTOP"',
+  '        StrLen $3 $5',
+  '        StrCpy $4 $1 $3',
+  '        StrCmp $4 $5 0 mythos_al_not_desktop',
+  '          StrCmp $1 $5 uninstall_vault_read',
+  '          StrCpy $4 $1 1 $3',
+  '          StrCmp $4 "\\" 0 mythos_al_not_desktop',
+  '          StrCpy $6 $1 "" $3',
+  '          StrCpy $6 $6 "" 1',
+  '          StrCmp $6 "" uninstall_vault_read',
+  '          Goto mythos_canon_gate',
+  '        mythos_al_not_desktop:',
+  '        StrCpy $5 "$PROFILE\\Downloads"',
+  '        StrLen $3 $5',
+  '        StrCpy $4 $1 $3',
+  '        StrCmp $4 $5 0 mythos_al_deny',
+  '          StrCmp $1 $5 uninstall_vault_read',
+  '          StrCpy $4 $1 1 $3',
+  '          StrCmp $4 "\\" 0 mythos_al_deny',
+  '          StrCpy $6 $1 "" $3',
+  '          StrCpy $6 $6 "" 1',
+  '          StrCmp $6 "" uninstall_vault_read',
+  '          Goto mythos_canon_gate',
+  '        mythos_al_deny:',
+  '        Goto uninstall_vault_read',
+  '        mythos_canon_gate:',
+  '          System::Call "kernel32::GetFullPathNameW(w r1, i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4"',
+  '          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
+  '          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
+  '          System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"',
+  '          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
+  '          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
+  '          StrLen $8 $9',
+  '          StrCpy $6 $3 $8',
+  '          StrCmp $6 $9 0 uninstall_vault_read',
+  '          StrCpy $6 $3 1 $8',
+  '          StrCmp $6 "\\" 0 uninstall_vault_read',
+  '          StrCpy $6 $3 "" $8',
+  '          StrCpy $6 $6 "" 1',
+  '          StrCmp $6 "" uninstall_vault_read',
+  '          Goto uninstall_vault_do_delete',
 ];
+
+function sliceCanonicalRegion(fromTrimmed: string, toTrimmedExclusive: string): readonly string[] {
+  const from = CANONICAL_SIDECAR_GUARD_REGION.findIndex((l) => l.trim() === fromTrimmed);
+  const to = CANONICAL_SIDECAR_GUARD_REGION.findIndex((l, i) => i > from && l.trim() === toTrimmedExclusive);
+  if (from < 0 || to <= from) {
+    throw new Error(`canonical region slice ${fromTrimmed}..${toTrimmedExclusive} missing`);
+  }
+  return CANONICAL_SIDECAR_GUARD_REGION.slice(from, to);
+}
+
+/** Exact sidecar traversal chain (StrCpy $7 0 … post-trav_ok segment tail guard). */
+export const CANONICAL_TRAVERSAL_SCAN_BLOCK: readonly string[] = sliceCanonicalRegion(
+  'StrCpy $7 0',
+  'StrLen $3 "$WINDIR"',
+);
 
 export const CANONICAL_TRAVERSAL_SCAN_BLOCK_SHA256 = createHash('sha256')
   .update(CANONICAL_TRAVERSAL_SCAN_BLOCK.join('\n'))
   .digest('hex');
 
-/** Marker-anchored sidecar guard region (file :43–:127): read/trim + traversal + deny + M5 prefix. */
+/** Marker-anchored sidecar guard region (file :43–:213). Each marker must occur exactly once. */
 export const SIDECAR_GUARD_REGION_START_LINE = '        ClearErrors';
 export const SIDECAR_GUARD_REGION_START_FOLLOW_LINE = '        FileRead $0 $1';
-export const SIDECAR_GUARD_REGION_END_LINE = '          StrCmp $1 $5 uninstall_vault_read';
+export const SIDECAR_GUARD_REGION_START_MARKER = SIDECAR_GUARD_REGION_START_FOLLOW_LINE;
+export const SIDECAR_GUARD_REGION_END_LINE = '          Goto uninstall_vault_do_delete';
+export const SIDECAR_GUARD_REGION_END_MARKER = SIDECAR_GUARD_REGION_END_LINE;
 
 export const SIDECAR_GUARD_REGION_FILE_LINE_FIRST = 43;
-export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 127;
+export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 213;
 
 export function nshExecutableLines(source: string): string {
   return source.replace(/;[^\n]*/g, '');
@@ -313,6 +445,21 @@ export function executeTraversalScanBlockStateful(
       }
       continue;
     }
+    const strCmpSevenLabel = line.match(/^StrCmp \$7 ("(?:\\.|[^"])*") (\w+)$/);
+    if (strCmpSevenLabel) {
+      const lit = parseStrCmpQuotedLiteral(strCmpSevenLabel[1]!);
+      const target = strCmpSevenLabel[2]!;
+      if (String(regs.$7) === lit) {
+        const jump = resolveTraversalJump(target, labels);
+        if (typeof jump === 'string') {
+          return { outcome: jump, regs };
+        }
+        pc = jump.pc;
+      } else {
+        pc += 1;
+      }
+      continue;
+    }
     const strCmpTwoLit = line.match(/^StrCmp \$2 ("(?:\\.|[^"])*") (\w+)$/);
     if (strCmpTwoLit) {
       const lit = parseNsisDollarEscape(strCmpTwoLit[1]!);
@@ -362,6 +509,15 @@ export function executeTraversalScanBlockStateful(
     }
     if (line === 'Goto mythos_trav_inc') {
       const jump = resolveTraversalJump('mythos_trav_inc', labels);
+      if (typeof jump === 'string') {
+        return { outcome: jump, regs };
+      }
+      pc = jump.pc;
+      continue;
+    }
+    const gotoLabel = line.match(/^Goto (\w+)$/);
+    if (gotoLabel) {
+      const jump = resolveTraversalJump(gotoLabel[1]!, labels);
       if (typeof jump === 'string') {
         return { outcome: jump, regs };
       }
@@ -556,15 +712,29 @@ const extractSidecarGuardRegionForVm = memoizeByNsh(extractSidecarGuardRegionLin
 
 const extractSidecarAllowlistDeleteLinesForVm = memoizeByNsh(extractSidecarAllowlistDeleteLinesFromNsh);
 
+function indicesOfExactLine(fileLines: readonly string[], line: string): number[] {
+  const at: number[] = [];
+  fileLines.forEach((l, i) => {
+    if (l === line) {
+      at.push(i);
+    }
+  });
+  return at;
+}
+
 export function locateSidecarGuardRegion(nsh: string): { start: number; end: number; lines: string[] } {
   const fileLines = nshFileLines(nsh);
-  const start = fileLines.findIndex(
-    (l, i) =>
-      l === SIDECAR_GUARD_REGION_START_LINE && fileLines[i + 1] === SIDECAR_GUARD_REGION_START_FOLLOW_LINE,
-  );
-  const end = fileLines.findIndex((l, i) => i >= start && l === SIDECAR_GUARD_REGION_END_LINE);
-  if (start < 0 || end < start) {
-    throw new Error('sidecar guard region (:43–:127) markers missing in uninstall nsh');
+  const startMarkers = indicesOfExactLine(fileLines, SIDECAR_GUARD_REGION_START_MARKER);
+  const endMarkers = indicesOfExactLine(fileLines, SIDECAR_GUARD_REGION_END_MARKER);
+  if (startMarkers.length !== 1 || endMarkers.length !== 1) {
+    throw new Error(
+      `sidecar guard region markers must each occur exactly once (start ${startMarkers.length}, end ${endMarkers.length})`,
+    );
+  }
+  const start = startMarkers[0]! - 1;
+  const end = endMarkers[0]!;
+  if (start < 0 || fileLines[start] !== SIDECAR_GUARD_REGION_START_LINE || end <= start) {
+    throw new Error('sidecar guard region (:43–:213) markers missing in uninstall nsh');
   }
   const lines = fileLines.slice(start, end + 1);
   return { start, end, lines };
@@ -671,39 +841,24 @@ export const CANONICAL_DENY_PREFIX_BLOCK_SHA256 = createHash('sha256')
   .update(CANONICAL_DENY_PREFIX_BLOCK.join('\n'))
   .digest('hex');
 
-/** APPDATA Mythos Writer prefix + root self-match (file :100–:104, M5). */
+/** APPDATA Mythos Writer prefix + root self-match (first allowlist root, M5). */
 export const CANONICAL_APPDATA_M5_GUARD_BLOCK: readonly string[] = [
   String.raw`        StrCpy $5 "$APPDATA\Mythos Writer"`,
   '        StrLen $3 $5',
   '        StrCpy $4 $1 $3',
   '        StrCmp $4 $5 0 mythos_al_not_appdata',
-  SIDECAR_GUARD_REGION_END_LINE,
+  '          StrCmp $1 $5 uninstall_vault_read',
 ];
 
-/** FileRead + newline trim loop body (file :43–:52, Critic S13). */
-export const CANONICAL_READ_TRIM_BLOCK: readonly string[] = [
-  '        ClearErrors',
-  '        FileRead $0 $1',
-  '        IfErrors uninstall_vault_close',
-  '        StrCpy $2 $1 1 -1',
-  '        StrCmp $2 "$\\n" 0 +2',
-  '          StrCpy $1 $1 -1',
-  '        StrCpy $2 $1 1 -1',
-  '        StrCmp $2 "$\\r" 0 +2',
-  '          StrCpy $1 $1 -1',
-  '        StrCmp $1 "" uninstall_vault_read',
-];
+/** FileRead + RF-6 CR/LF trim loop + empty check + control-char reject (file :43–:64). */
+export const CANONICAL_READ_TRIM_BLOCK: readonly string[] = CANONICAL_SIDECAR_GUARD_REGION.slice(
+  0,
+  CANONICAL_SIDECAR_GUARD_REGION.findIndex((l) => l === TRAVERSAL_SCAN_BLOCK_PREP_LINE),
+);
 
 export const CANONICAL_READ_TRIM_BLOCK_SHA256 = createHash('sha256')
   .update(CANONICAL_READ_TRIM_BLOCK.join('\n'))
   .digest('hex');
-
-export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
-  ...CANONICAL_READ_TRIM_BLOCK,
-  ...CANONICAL_TRAVERSAL_SCAN_BLOCK,
-  ...CANONICAL_DENY_PREFIX_BLOCK,
-  ...CANONICAL_APPDATA_M5_GUARD_BLOCK,
-];
 
 export const CANONICAL_SIDECAR_GUARD_REGION_SHA256 = createHash('sha256')
   .update(CANONICAL_SIDECAR_GUARD_REGION.join('\n'))
