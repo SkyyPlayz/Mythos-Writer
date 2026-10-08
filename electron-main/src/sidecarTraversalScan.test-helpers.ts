@@ -144,7 +144,7 @@ function nshCharAt(path: string, index: number): string {
   return path[index]!;
 }
 
-function parseStrCmpQuotedLiteral(raw: string): string {
+function parseStrCmpQuotedLiteralUncached(raw: string): string {
   if (raw.length === 0) {
     return '';
   }
@@ -168,6 +168,18 @@ function parseStrCmpQuotedLiteral(raw: string): string {
       }
     })
     .replace(/\\(.)/g, '$1');
+}
+
+const quotedLiteralCache = new Map<string, string>();
+
+/** Memoized: the scan VM re-parses the same few StrCmp literals on every step of a corpus sweep. */
+function parseStrCmpQuotedLiteral(raw: string): string {
+  let lit = quotedLiteralCache.get(raw);
+  if (lit === undefined) {
+    lit = parseStrCmpQuotedLiteralUncached(raw);
+    quotedLiteralCache.set(raw, lit);
+  }
+  return lit;
 }
 
 function resolveTraversalJump(
@@ -215,12 +227,20 @@ export function executeTraversalScanBlock(
   return executeTraversalScanBlockStateful(blockLines, path, initialRegs).outcome;
 }
 
-export function executeTraversalScanBlockStateful(
-  blockLines: readonly string[],
-  path: string,
-  initialRegs: TravScanRegs,
-  options?: { maxSteps?: number; $2?: string },
-): { outcome: TravScanOutcome; regs: TravScanRegs } {
+/** Per-array memo for tables derived from a read-only (memoized) VM block. */
+function memoizeByArray<T>(compute: (lines: readonly string[]) => T): (lines: readonly string[]) => T {
+  const cache = new WeakMap<readonly string[], T>();
+  return (lines) => {
+    if (cache.has(lines)) {
+      return cache.get(lines) as T;
+    }
+    const value = compute(lines);
+    cache.set(lines, value);
+    return value;
+  };
+}
+
+const traversalBlockLabels = memoizeByArray((blockLines): ReadonlyMap<string, number> => {
   const labels = new Map<string, number>();
   for (let i = 0; i < blockLines.length; i++) {
     const labelMatch = blockLines[i]!.match(/^\s*(\w+):\s*$/);
@@ -228,6 +248,16 @@ export function executeTraversalScanBlockStateful(
       labels.set(labelMatch[1]!, i);
     }
   }
+  return labels;
+});
+
+export function executeTraversalScanBlockStateful(
+  blockLines: readonly string[],
+  path: string,
+  initialRegs: TravScanRegs,
+  options?: { maxSteps?: number; $2?: string },
+): { outcome: TravScanOutcome; regs: TravScanRegs } {
+  const labels = traversalBlockLabels(blockLines);
 
   const scanPc = labels.get('mythos_trav_scan');
   if (scanPc === undefined) {
@@ -250,7 +280,7 @@ export function executeTraversalScanBlockStateful(
     }
     const raw = blockLines[pc]!;
     const line = raw.trim();
-    if (/^\w+:\s*$/.test(line)) {
+    if (line.endsWith(':') && /^\w+:\s*$/.test(line)) {
       pc += 1;
       continue;
     }
@@ -458,31 +488,31 @@ export function assertTraversalScanBlockExact(nsh: string): void {
   assertSidecarGuardRegionExact(nsh);
 }
 
-function readTrimBlockFromGuardRegion(region: readonly string[]): readonly string[] {
+const readTrimBlockFromGuardRegion = memoizeByArray((region): readonly string[] => {
   const scanIdx = region.findIndex((l) => l.trim() === 'mythos_trav_scan:');
   if (scanIdx < 0) {
     throw new Error('mythos_trav_scan missing from sidecar guard region');
   }
   return region.slice(0, scanIdx - 1);
-}
+});
 
-function travBlockFromGuardRegion(region: readonly string[]): readonly string[] {
+const travBlockFromGuardRegion = memoizeByArray((region): readonly string[] => {
   const scanIdx = region.findIndex((l) => l.trim() === 'mythos_trav_scan:');
   const windir = region.findIndex((l) => l === DENY_PREFIX_BLOCK_START_LINE);
   if (scanIdx < 1 || windir <= scanIdx) {
     throw new Error('traversal scan block markers missing from sidecar guard region');
   }
   return region.slice(scanIdx - 1, windir);
-}
+});
 
-function denyBlockFromGuardRegion(region: readonly string[]): readonly string[] {
+const denyBlockFromGuardRegion = memoizeByArray((region): readonly string[] => {
   const windir = region.findIndex((l) => l === DENY_PREFIX_BLOCK_START_LINE);
   const appdataStart = region.findIndex((l) => l.includes(String.raw`StrCpy $5 "$APPDATA`));
   if (windir < 0 || appdataStart <= windir) {
     throw new Error('deny-prefix block boundaries missing from sidecar guard region');
   }
   return region.slice(windir, appdataStart);
-}
+});
 
 function appDataM5BlockFromGuardRegion(region: readonly string[]): readonly string[] {
   const appdataStart = region.findIndex((l) => l.includes(String.raw`StrCpy $5 "$APPDATA`));
