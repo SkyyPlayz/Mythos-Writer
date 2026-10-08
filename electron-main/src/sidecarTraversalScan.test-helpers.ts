@@ -4,6 +4,14 @@
 
 import { createHash } from 'node:crypto';
 
+import {
+  assertSidecarFcfbOracleRows,
+  assertSidecarLinearStepCapSelfCheck,
+  runSidecarNsisProgram,
+  SIDECAR_LINE_STEP_LIMIT_ERROR,
+  SIDECAR_NSIS_ENV_E1,
+} from './sidecarNsisVm.test-helpers.js';
+
 export const TRAVERSAL_SCAN_BLOCK_END_MARKER = 'uninstall_vault_trav_ok:';
 export const TRAVERSAL_SCAN_BLOCK_PREP_LINE = '        StrCpy $7 0';
 export const TRAVERSAL_SCAN_BLOCK_SCAN_LABEL = 'mythos_trav_scan:';
@@ -324,7 +332,12 @@ function resolveTraversalJump(
     }
     return { pc: at };
   }
-  if (target === 'uninstall_vault_read') {
+  if (
+    target === 'uninstall_vault_read' ||
+    target === 'uninstall_vault_close' ||
+    target === 'uninstall_vault_fallback' ||
+    target === 'mythos_trim_chop'
+  ) {
     return 'vault_read';
   }
   const at = labels.get(target);
@@ -396,6 +409,13 @@ const decodeTraversalScanBlock = memoizeByArray((blockLines): readonly TravScanO
     return undefined;
   };
   const jumpTo = (target: string): TravScanOp => {
+    if (target === '0' || /^[+-]\d+$/.test(target)) {
+      const off = target === '0' ? 1 : Number(target);
+      return (s) => {
+        s.pc += off;
+        return undefined;
+      };
+    }
     let resolved: TravScanOutcome | { pc: number } | Error;
     try {
       resolved = resolveTraversalJump(target, labels);
@@ -507,7 +527,7 @@ const decodeTraversalScanBlock = memoizeByArray((blockLines): readonly TravScanO
         return undefined;
       };
     }
-    const gotoLabel = line.match(/^Goto (\w+)$/);
+    const gotoLabel = line.match(/^Goto (\S+)$/);
     if (gotoLabel) {
       return jumpTo(gotoLabel[1]!);
     }
@@ -961,7 +981,12 @@ function resolveAllowlistDeleteJump(
   target: string,
   labels: ReadonlyMap<string, number>,
 ): SidecarAllowlistDeleteOutcome | { pc: number } {
-  if (target === 'uninstall_vault_read') {
+  if (
+    target === 'uninstall_vault_read' ||
+    target === 'uninstall_vault_close' ||
+    target === 'uninstall_vault_fallback' ||
+    target === 'mythos_trim_chop'
+  ) {
     return 'skip_delete';
   }
   if (target === 'uninstall_vault_do_delete' || target === 'mythos_canon_gate') {
@@ -1109,7 +1134,7 @@ export function executeSidecarAllowlistDeleteBlockDetailed(
       pc += 1;
       continue;
     }
-    const gotoLine = line.match(/^Goto (\w+)$/);
+    const gotoLine = line.match(/^Goto (\S+)$/);
     if (gotoLine) {
       const jump = resolveAllowlistDeleteJump(gotoLine[1]!, labels);
       if (typeof jump === 'string') {
@@ -1169,15 +1194,13 @@ function runSidecarAllowlistDeleteVmFromNsh(
 export const SIDECAR_CANON_GATE_MAX_STRLEN = 1024;
 
 /**
- * Lexical model of Win32 GetFullPathNameW for an absolute drive path, following the documented
- * normalization: fold `/`→`\`; if the path does not end in a separator, trim trailing spaces and
- * dots off the end; collapse runs of separators; drop `.` and resolve `..` (never above the drive);
- * strip one trailing period from an intermediate segment (an all-period segment such as `...` is a
- * valid name and is kept); keep a trailing separator. Does NOT strip ADS (colon) or resolve
- * junctions. Real kernel32 on notes-windows is ground truth: the model is proven row-for-row there
- * and, where they disagree, the model is fixed to match Windows.
+ * Documented Win32 GetFullPathNameW order (model W): fold `/`→`\`; resolve `.` / `..` first;
+ * trim trailing dots/spaces from the final component only when it is not exactly `.` or `..`;
+ * a final `.` / `..` with no trailing separator collapses like an inner one (`C:\a\b\..` → `C:\a`).
+ * Intermediate segments drop one trailing period unless they are all periods. Keep a trailing
+ * separator. Does NOT strip ADS or resolve junctions. Real kernel32 on notes-windows is ground truth.
  */
-export function gfpnModel(s: string): string {
+function gfpnModelK(s: string): string {
   let folded = s.replace(/\//g, '\\');
   if (!folded.endsWith('\\')) {
     folded = folded.replace(/[ .]+$/, '');
@@ -1203,6 +1226,35 @@ export function gfpnModel(s: string): string {
   const body = out.length > 0 ? `${drive}\\${out.join('\\')}` : `${drive}\\`;
   return endsWithSep && out.length > 0 ? `${body}\\` : body;
 }
+
+export function gfpnModel(s: string): string {
+  const folded = s.replace(/\//g, '\\');
+  if (!folded.endsWith('\\')) {
+    const slash = folded.lastIndexOf('\\');
+    const last = slash < 0 ? folded : folded.slice(slash + 1);
+    if (last === '.' || last === '..') {
+      const withSep = gfpnModelK(`${folded}\\`);
+      if (withSep !== '' && !withSep.endsWith(':\\')) {
+        return withSep.endsWith('\\') ? withSep.slice(0, -1) : withSep;
+      }
+      return withSep;
+    }
+  }
+  return gfpnModelK(s);
+}
+
+/** GFPN-REF extras: final `.`/`..` without a trailing separator, plus trailing-dot/space names. */
+export const GFPN_WIN32_W_MODEL_ROWS: readonly string[] = [
+  'C:\\a\\b\\..',
+  'C:\\a\\b\\.',
+  'C:\\a\\b/..',
+  'C:\\Users\\me\\Documents\\v\\..',
+  'C:\\Users\\me\\Documents\\v\\.',
+  'C:\\Users\\me\\Documents.',
+  'C:\\Users\\me\\Documents ',
+  'C:\\a\\b\\.. ',
+  'C:\\a\\b\\...',
+];
 
 /** Canonical gate block, `mythos_canon_gate:` … `Goto uninstall_vault_do_delete` (file :198–:213). */
 const canonGateBlockFromGuardRegion = memoizeByArray((region): readonly string[] => {
@@ -1280,7 +1332,12 @@ export function executeCanonGateBlock(
   type Jump = SidecarAllowlistDeleteOutcome | number;
   const pastEnd = (k: number): SidecarAllowlistDeleteOutcome => CANON_GATE_CONTINUATION[k] ?? 'skip_delete';
   const jump = (target: string): Jump => {
-    if (target === 'uninstall_vault_read' || target === 'uninstall_vault_close') {
+    if (
+      target === 'uninstall_vault_read' ||
+      target === 'uninstall_vault_close' ||
+      target === 'uninstall_vault_fallback' ||
+      target === 'mythos_trim_chop'
+    ) {
       return 'skip_delete';
     }
     if (target === 'uninstall_vault_do_delete') {
@@ -1323,6 +1380,9 @@ export function executeCanonGateBlock(
       const ret = `$${gfpn[4]!}`;
       const fault = options.fault?.call === src ? options.fault.ret : undefined;
       const resolved = gfpnModel(reg[src] ?? '');
+      if (resolved !== '') {
+        reg[`$${gfpn[3]!}`] = resolved;
+      }
       if (fault === 'zero' || resolved === '') {
         reg[ret] = '0';
       } else if (fault === 'truncate') {
@@ -1330,7 +1390,6 @@ export function executeCanonGateBlock(
       } else if (resolved.length >= size) {
         reg[ret] = String(resolved.length + 1);
       } else {
-        reg[`$${gfpn[3]!}`] = resolved;
         reg[ret] = String(resolved.length);
       }
     } else if (op === 'IntCmp' && tk.length >= 4 && tk.length <= 6) {
@@ -1852,7 +1911,11 @@ export function runSidecarReadTrimWithReset(
     return to < instrLines.length ? instrLines[to]! : leave({ instr: to - instrLines.length });
   };
   const jump = (target: string): Jump => {
-    if (target === 'uninstall_vault_read' || target === 'uninstall_vault_close') {
+    if (
+      target === 'uninstall_vault_read' ||
+      target === 'uninstall_vault_close' ||
+      target === 'uninstall_vault_fallback'
+    ) {
       return 'skip';
     }
     if (target === '0') {
@@ -2023,140 +2086,30 @@ export const SIDECAR_DELETE_READ_LOOP_ROWS: readonly {
   },
 ];
 
-type ReadLoopPostFileReadAction =
-  | { kind: 'if_errors'; target: string }
-  | { kind: 'goto_always'; target: string }
-  | { kind: 'nop' };
-
-function parseReadLoopPostFileReadAction(readBlock: readonly string[]): ReadLoopPostFileReadAction {
-  const fileReadIdx = readBlock.findIndex((l) => l.trim() === 'FileRead $0 $1');
-  if (fileReadIdx < 0) {
-    throw new Error('FileRead $0 $1 missing from read-trim block');
-  }
-  const next = readBlock[fileReadIdx + 1]?.trim() ?? '';
-  const ifErrors = next.match(/^IfErrors (\w+)$/);
-  if (ifErrors) {
-    return { kind: 'if_errors', target: ifErrors[1]! };
-  }
-  const gotoAlways = next.match(/^Goto (\w+)$/);
-  if (gotoAlways) {
-    return { kind: 'goto_always', target: gotoAlways[1]! };
-  }
-  if (next === 'Nop') {
-    return { kind: 'nop' };
-  }
-  throw new Error(`unsupported post-FileRead instruction: ${next}`);
-}
-
-function resolveReadLoopLabelJump(
-  target: string,
-): 'close' | 'read_again' | 'unknown' {
-  if (target === 'uninstall_vault_close') {
-    return 'close';
-  }
-  if (target === 'uninstall_vault_read') {
-    return 'read_again';
-  }
-  return 'unknown';
-}
-
 export function simulateSidecarDeleteReadLoop(
   nsh: string,
   rawLines: readonly string[],
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
-): { deleted: string[]; closed: boolean; steps: number } {
-  const region = extractSidecarGuardRegionForVm(nsh);
-  const readBlock = readTrimBlockFromGuardRegion(region);
-  const travBlock = travBlockFromGuardRegion(region);
-  const postRead = parseReadLoopPostFileReadAction(readBlock);
-
-  let lineIndex = 0;
-  const deleted: string[] = [];
-  let steps = 0;
-  let closed = false;
-  let travRegs: TravScanRegs = { $7: 0, $8: 0 };
-
-  while (steps < SIDECAR_READ_LOOP_STEP_LIMIT) {
-    steps += 1;
-    const eof = lineIndex >= rawLines.length;
-
-    if (!eof) {
-      const rawLine = rawLines[lineIndex]!;
-      lineIndex += 1;
-      if (postRead.kind === 'goto_always') {
-        const jump = resolveReadLoopLabelJump(postRead.target);
-        if (jump === 'close') {
-          closed = true;
-          break;
-        }
-        if (jump === 'read_again') {
-          continue;
-        }
-        throw new Error(`unsupported Goto after FileRead: ${postRead.target}`);
-      }
-      const { trimmed, exit, $2, $4 } = runSidecarReadTrimWithReset(readBlock, rawLine);
-      if (trimmed === 'empty') {
-        continue;
-      }
-      const { disposition, travRegs: nextRegs } = runSidecarReadLineDeleteDisposition(
-        trimmed,
-        nsh,
-        env,
-        travRegs,
-        travBlock,
-        $2,
-        { startPc: sidecarTravEntryPc(travBlock, exit), $4 },
-      );
-      travRegs = nextRegs;
-      if (disposition === 'delete') {
-        deleted.push(trimmed);
-      }
-      continue;
-    }
-
-    if (postRead.kind === 'if_errors') {
-      const jump = resolveReadLoopLabelJump(postRead.target);
-      if (jump === 'close') {
-        closed = true;
-        break;
-      }
-      if (jump === 'read_again') {
-        continue;
-      }
-      throw new Error(`unsupported IfErrors target: ${postRead.target}`);
-    }
-    if (postRead.kind === 'nop') {
-      const trimmed = executeSidecarReadTrimFromLineContent(readBlock, '');
-      if (trimmed === 'empty') {
-        continue;
-      }
-      const { disposition, travRegs: nextRegs } = runSidecarReadLineDeleteDisposition(
-        trimmed,
-        nsh,
-        env,
-        travRegs,
-        travBlock,
-      );
-      travRegs = nextRegs;
-      if (disposition === 'delete') {
-        deleted.push(trimmed);
-      }
-      continue;
-    }
-    if (postRead.kind === 'goto_always') {
-      const jump = resolveReadLoopLabelJump(postRead.target);
-      if (jump === 'close') {
-        closed = true;
-        break;
-      }
-      if (jump === 'read_again') {
-        continue;
-      }
-      throw new Error(`unsupported Goto after FileRead: ${postRead.target}`);
-    }
+): {
+  deleted: string[];
+  closed: boolean;
+  steps: number;
+  fileClosed: boolean;
+  sidecarDeleted: boolean;
+  hung: boolean;
+} {
+  const run = runSidecarNsisProgram(nsh, rawLines, { env });
+  if (run.hung) {
+    throw new Error(SIDECAR_LINE_STEP_LIMIT_ERROR);
   }
-
-  return { deleted, closed, steps };
+  return {
+    deleted: run.deleted,
+    closed: run.fileClosed,
+    steps: run.steps,
+    fileClosed: run.fileClosed,
+    sidecarDeleted: run.sidecarDeleted,
+    hung: run.hung,
+  };
 }
 
 export type SidecarReadTrimGuardExpectation = 'empty' | SidecarGuardPathOutcome;
@@ -2468,6 +2421,10 @@ export function assertSidecarGuardVmBehaviourTables(
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
   options?: SidecarGuardVmBehaviourOptions,
 ): void {
+  assertSidecarFcfbOracleRows(nsh);
+  if (!options?.sweepRebaseline) {
+    assertSidecarLinearStepCapSelfCheck(nsh, SIDECAR_NSIS_ENV_E1);
+  }
   if (options?.sweepRebaseline) {
     const canonical = options.canonicalNsh ?? nsh;
     assertSidecarGuardVmSweepParity(nsh, canonical, env);

@@ -12,6 +12,7 @@ import {
   CANON_GATE_ROOT_SKIP_ROWS,
   CANON_GATE_SIBLING_SKIP_ROWS,
   CANON_MUST_DELETE_PATHS,
+  GFPN_WIN32_W_MODEL_ROWS,
   gfpnModel,
 } from './sidecarTraversalScan.test-helpers.js';
 
@@ -41,6 +42,9 @@ export function canonicalGateGfpnReferenceRows(): GfpnRefRow[] {
   }
   for (const path of CANON_MUST_DELETE_PATHS) {
     rows.push({ table: 'must-delete-e2e', field: 'path', input: path });
+  }
+  for (const input of GFPN_WIN32_W_MODEL_ROWS) {
+    rows.push({ table: 'w-model', field: 'path', input });
   }
   return rows;
 }
@@ -77,6 +81,18 @@ function compact(s: string): string {
   return JSON.stringify(s);
 }
 
+const GFPN_W_MODEL_EXPECTED: readonly { input: string; win32: string }[] = [
+  { input: 'C:\\a\\b\\..', win32: 'C:\\a' },
+  { input: 'C:\\a\\b\\.', win32: 'C:\\a\\b' },
+  { input: 'C:\\a\\b/..', win32: 'C:\\a' },
+  { input: 'C:\\Users\\me\\Documents\\v\\..', win32: 'C:\\Users\\me\\Documents' },
+  { input: 'C:\\Users\\me\\Documents\\v\\.', win32: 'C:\\Users\\me\\Documents\\v' },
+  { input: 'C:\\Users\\me\\Documents.', win32: 'C:\\Users\\me\\Documents' },
+  { input: 'C:\\Users\\me\\Documents ', win32: 'C:\\Users\\me\\Documents' },
+  { input: 'C:\\a\\b\\.. ', win32: 'C:\\a\\b\\' },
+  { input: 'C:\\a\\b\\...', win32: 'C:\\a\\b\\' },
+];
+
 describe('canonical-gate GFPN reference inputs (any platform)', () => {
   it('lists every gate row path and root plus the must-delete e2e paths', () => {
     const rows = canonicalGateGfpnReferenceRows();
@@ -87,6 +103,14 @@ describe('canonical-gate GFPN reference inputs (any platform)', () => {
     expect(rows.some((r) => r.table === 'sibling-skip')).toBe(true);
     expect(rows.some((r) => r.table === 'noncanonical-root')).toBe(true);
     expect(rows.some((r) => r.table === 'fault-skip')).toBe(true);
+    expect(rows.some((r) => r.table === 'w-model')).toBe(true);
+    expect(rows.filter((r) => r.table === 'w-model').map((r) => r.input)).toEqual([...GFPN_WIN32_W_MODEL_ROWS]);
+  });
+
+  it('resolves a final . / .. with no trailing separator (Win32 / W model)', () => {
+    for (const row of GFPN_W_MODEL_EXPECTED) {
+      expect(gfpnModel(row.input), row.input).toBe(row.win32);
+    }
   });
 });
 

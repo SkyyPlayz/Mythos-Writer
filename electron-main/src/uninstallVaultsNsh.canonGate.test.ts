@@ -43,11 +43,15 @@ describe('allowlist root guards — a Nop on any of the 8 is caught pin-free (mo
   for (const g of ROOT_GUARDS) {
     it(`:${g.boundary} ${g.root} boundary \`StrCmp $4 "\\" 0 ${g.next}\``, () => {
       expect(fileLines[g.boundary - 1]!.trim()).toBe(`StrCmp $4 "\\" 0 ${g.next}`);
-      expect(behaviourFailure(withLines({ [g.boundary]: 'Nop' }))).toMatch(/allowlist root guard/);
+      expect(behaviourFailure(withLines({ [g.boundary]: 'Nop' }))).toMatch(
+        /allowlist root guard|fcfb /,
+      );
     });
     it(`:${g.emptyChild} ${g.root} empty child \`StrCmp $6 "" uninstall_vault_read\``, () => {
       expect(fileLines[g.emptyChild - 1]!.trim()).toBe('StrCmp $6 "" uninstall_vault_read');
-      expect(behaviourFailure(withLines({ [g.emptyChild]: 'Nop' }))).toMatch(/allowlist root guard/);
+      expect(behaviourFailure(withLines({ [g.emptyChild]: 'Nop' }))).toMatch(
+        /allowlist root guard|fcfb /,
+      );
     });
   }
 });
