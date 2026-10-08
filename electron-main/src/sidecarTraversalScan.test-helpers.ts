@@ -7,9 +7,15 @@ import { createHash } from 'node:crypto';
 import {
   assertSidecarFcfbOracleRows,
   assertSidecarLinearStepCapSelfCheck,
+  assertSidecarUnifiedVmStepLimitIsFatal,
+  FILE_ATTRIBUTE_DIRECTORY,
+  FILE_ATTRIBUTE_HIDDEN,
+  FILE_ATTRIBUTE_READONLY,
+  FILE_ATTRIBUTE_SYSTEM,
   runSidecarNsisProgram,
   SIDECAR_LINE_STEP_LIMIT_ERROR,
   SIDECAR_NSIS_ENV_E1,
+  type SidecarNsisRunOptions,
 } from './sidecarNsisVm.test-helpers.js';
 
 export const TRAVERSAL_SCAN_BLOCK_END_MARKER = 'uninstall_vault_trav_ok:';
@@ -17,13 +23,13 @@ export const TRAVERSAL_SCAN_BLOCK_PREP_LINE = '        StrCpy $7 0';
 export const TRAVERSAL_SCAN_BLOCK_SCAN_LABEL = 'mythos_trav_scan:';
 
 /**
- * Exact sidecar guard region, file :43 (`ClearErrors`) .. the unique `Goto uninstall_vault_do_delete`
- * end marker: RF-6 read-trim loop + control-char reject, traversal scan with the RF-4 colon and RF-5
- * empty-segment checks, deny prefixes, the APPDATA/Documents/Desktop/Downloads root guards and the
- * GetFullPathNameW canonical gate. Generated from build/uninstall-vaults.nsh; the pin is exact.
+ * Exact sidecar guard region, file :43 (`uninstall_vault_read: ClearErrors`) .. the unique
+ * `Delete "$1"` end marker: RF-6 read-trim + control-char / wildcard reject, traversal, deny
+ * prefixes, root guards, GetFullPathNameW gate, HARD-2 nested-root guard, RF-7b top-down
+ * reparse walk, and do_delete. Generated from build/uninstall-vaults.nsh; the pin is exact.
  */
 export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
-  '        ClearErrors',
+  '        uninstall_vault_read: ClearErrors',
   '        FileRead $0 $1',
   '        IfErrors uninstall_vault_close',
   '        mythos_trim_loop:',
@@ -37,9 +43,9 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   '          Goto mythos_trim_loop',
   '        mythos_trim_done:',
   '        StrCmp $1 "" uninstall_vault_read',
-  '        System::Alloc 64',
+  '        System::Alloc 80',
   '        Pop $6',
-  '        System::Call "*$6(&i2 1,&i2 2,&i2 3,&i2 4,&i2 5,&i2 6,&i2 7,&i2 8,&i2 9,&i2 10,&i2 11,&i2 12,&i2 13,&i2 14,&i2 15,&i2 16,&i2 17,&i2 18,&i2 19,&i2 20,&i2 21,&i2 22,&i2 23,&i2 24,&i2 25,&i2 26,&i2 27,&i2 28,&i2 29,&i2 30,&i2 31,&i2 0)"',
+  '        System::Call "*$6(&i2 1,&i2 2,&i2 3,&i2 4,&i2 5,&i2 6,&i2 7,&i2 8,&i2 9,&i2 10,&i2 11,&i2 12,&i2 13,&i2 14,&i2 15,&i2 16,&i2 17,&i2 18,&i2 19,&i2 20,&i2 21,&i2 22,&i2 23,&i2 24,&i2 25,&i2 26,&i2 27,&i2 28,&i2 29,&i2 30,&i2 31,&i2 42,&i2 63,&i2 60,&i2 62,&i2 34,&i2 124,&i2 0)"',
   '        System::Call "shlwapi::StrPBrkW(w r1, p r6) p .r4"',
   '        System::Free $6',
   '        StrCmp $4 0 mythos_ctrl_ok',
@@ -193,7 +199,93 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   '          StrCpy $6 $3 "" $8',
   '          StrCpy $6 $6 "" 1',
   '          StrCmp $6 "" uninstall_vault_read',
+  '          Goto mythos_nested_root_guard',
+  '        mythos_nested_root_guard:',
+  '          StrCpy $7 $9',
+  '          mythos_nr_strip:',
+  '            StrCpy $6 $3 1 -1',
+  '            StrCmp $6 "\\" 0 mythos_nr_appdata',
+  '            StrLen $8 $3',
+  '            IntCmp $8 3 mythos_nr_appdata mythos_nr_appdata 0',
+  '            StrCpy $3 $3 -1',
+  '            Goto mythos_nr_strip',
+  '          mythos_nr_appdata:',
+  '            StrCpy $5 "$APPDATA\\Mythos Writer"',
+  '            System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"',
+  '            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
+  '            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
+  '            StrCmp $3 $9 uninstall_vault_read',
+  '            StrLen $8 $3',
+  '            StrCpy $6 $9 $8',
+  '            StrCmp $6 $3 0 mythos_nr_documents',
+  '            StrCpy $6 $9 1 $8',
+  '            StrCmp $6 "\\" uninstall_vault_read',
+  '          mythos_nr_documents:',
+  '            StrCpy $5 "$DOCUMENTS"',
+  '            System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"',
+  '            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
+  '            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
+  '            StrCmp $3 $9 uninstall_vault_read',
+  '            StrLen $8 $3',
+  '            StrCpy $6 $9 $8',
+  '            StrCmp $6 $3 0 mythos_nr_desktop',
+  '            StrCpy $6 $9 1 $8',
+  '            StrCmp $6 "\\" uninstall_vault_read',
+  '          mythos_nr_desktop:',
+  '            StrCpy $5 "$DESKTOP"',
+  '            System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"',
+  '            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
+  '            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
+  '            StrCmp $3 $9 uninstall_vault_read',
+  '            StrLen $8 $3',
+  '            StrCpy $6 $9 $8',
+  '            StrCmp $6 $3 0 mythos_nr_downloads',
+  '            StrCpy $6 $9 1 $8',
+  '            StrCmp $6 "\\" uninstall_vault_read',
+  '          mythos_nr_downloads:',
+  '            StrCpy $5 "$PROFILE\\Downloads"',
+  '            System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"',
+  '            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
+  '            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
+  '            StrCmp $3 $9 uninstall_vault_read',
+  '            StrLen $8 $3',
+  '            StrCpy $6 $9 $8',
+  '            StrCmp $6 $3 0 mythos_nr_ok',
+  '            StrCpy $6 $9 1 $8',
+  '            StrCmp $6 "\\" uninstall_vault_read',
+  '          mythos_nr_ok:',
+  '            StrCpy $9 $7',
+  '            Goto mythos_reparse_walk',
+  '        mythos_reparse_walk:',
+  '          StrLen $8 $9',
+  '          IntOp $7 $8 + 1',
+  '        mythos_reparse_next:',
+  '          StrCpy $6 $3 1 $7',
+  '          StrCmp $6 "" mythos_reparse_leaf',
+  '          StrCmp $6 "\\" mythos_reparse_hit',
+  '          IntOp $7 $7 + 1',
+  '          Goto mythos_reparse_next',
+  '        mythos_reparse_hit:',
+  '          StrCpy $6 $3 $7',
+  '          System::Call "kernel32::GetFileAttributesW(w r6) i .r4"',
+  '          StrCmp $4 "error" uninstall_vault_read',
+  '          IntOp $4 $4 & 0x400',
+  '          IntCmp $4 0 0 uninstall_vault_read uninstall_vault_read',
+  '          IntOp $7 $7 + 1',
+  '          Goto mythos_reparse_next',
+  '        mythos_reparse_leaf:',
+  '          System::Call "kernel32::GetFileAttributesW(w r3) i .r4"',
+  '          StrCmp $4 "error" uninstall_vault_read',
+  '          IntOp $4 $4 & 0x400',
+  '          IntCmp $4 0 0 uninstall_vault_read uninstall_vault_read',
   '          Goto uninstall_vault_do_delete',
+  '        uninstall_vault_do_delete:',
+  '        IfFileExists "$1\\*.*" 0 uninstall_vault_file',
+  '          RMDir /r "$1"',
+  '          Goto uninstall_vault_read',
+  '        uninstall_vault_file:',
+  '          Delete "$1"',
+  '          Goto uninstall_vault_read',
 ];
 
 function sliceCanonicalRegion(fromTrimmed: string, toTrimmedExclusive: string): readonly string[] {
@@ -215,15 +307,16 @@ export const CANONICAL_TRAVERSAL_SCAN_BLOCK_SHA256 = createHash('sha256')
   .update(CANONICAL_TRAVERSAL_SCAN_BLOCK.join('\n'))
   .digest('hex');
 
-/** Marker-anchored sidecar guard region (file :43–:213). Each marker must occur exactly once. */
-export const SIDECAR_GUARD_REGION_START_LINE = '        ClearErrors';
+/** Marker-anchored sidecar guard region (file :43–:299). Each marker must occur exactly once. */
+export const SIDECAR_GUARD_REGION_START_LINE = '        uninstall_vault_read: ClearErrors';
 export const SIDECAR_GUARD_REGION_START_FOLLOW_LINE = '        FileRead $0 $1';
 export const SIDECAR_GUARD_REGION_START_MARKER = SIDECAR_GUARD_REGION_START_FOLLOW_LINE;
-export const SIDECAR_GUARD_REGION_END_LINE = '          Goto uninstall_vault_do_delete';
+export const SIDECAR_GUARD_REGION_END_LINE = '          Delete "$1"';
 export const SIDECAR_GUARD_REGION_END_MARKER = SIDECAR_GUARD_REGION_END_LINE;
+export const SIDECAR_GUARD_REGION_END_FOLLOW_LINE = '          Goto uninstall_vault_read';
 
 export const SIDECAR_GUARD_REGION_FILE_LINE_FIRST = 43;
-export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 213;
+export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 299;
 
 export function nshExecutableLines(source: string): string {
   return source.replace(/;[^\n]*/g, '');
@@ -735,10 +828,16 @@ export function locateSidecarGuardRegion(nsh: string): { start: number; end: num
     );
   }
   const start = startMarkers[0]! - 1;
-  const end = endMarkers[0]!;
-  if (start < 0 || fileLines[start] !== SIDECAR_GUARD_REGION_START_LINE || end <= start) {
-    throw new Error('sidecar guard region (:43–:213) markers missing in uninstall nsh');
+  const deleteAt = endMarkers[0]!;
+  if (
+    start < 0 ||
+    fileLines[start] !== SIDECAR_GUARD_REGION_START_LINE ||
+    deleteAt <= start ||
+    fileLines[deleteAt + 1] !== SIDECAR_GUARD_REGION_END_FOLLOW_LINE
+  ) {
+    throw new Error('sidecar guard region (:43–:299) markers missing in uninstall nsh');
   }
+  const end = deleteAt + 1;
   const lines = fileLines.slice(start, end + 1);
   return { start, end, lines };
 }
@@ -780,7 +879,7 @@ export function replaceSidecarGuardRegionLine(
   return spliceSidecarGuardRegion(nsh, next);
 }
 
-/** Mutate one file line in :43–:213 (1-based file line number). */
+/** Mutate one file line in :43–:299 (1-based file line number). */
 export function replaceSidecarGuardFileLine(nsh: string, fileLineOneBased: number, newLine: string): string {
   if (
     fileLineOneBased < SIDECAR_GUARD_REGION_FILE_LINE_FIRST ||
@@ -989,7 +1088,11 @@ function resolveAllowlistDeleteJump(
   ) {
     return 'skip_delete';
   }
-  if (target === 'uninstall_vault_do_delete' || target === 'mythos_canon_gate') {
+  if (
+    target === 'uninstall_vault_do_delete' ||
+    target === 'mythos_canon_gate' ||
+    target === 'mythos_reparse_walk'
+  ) {
     return 'delete';
   }
   const at = labels.get(target);
@@ -1256,10 +1359,10 @@ export const GFPN_WIN32_W_MODEL_ROWS: readonly string[] = [
   'C:\\a\\b\\...',
 ];
 
-/** Canonical gate block, `mythos_canon_gate:` … `Goto uninstall_vault_do_delete` (file :198–:213). */
+/** Canonical gate block, `mythos_canon_gate:` … `Goto mythos_nested_root_guard` (file :198–:213). */
 const canonGateBlockFromGuardRegion = memoizeByArray((region): readonly string[] => {
   const start = region.findIndex((l) => l.trim() === 'mythos_canon_gate:');
-  const end = region.findIndex((l, i) => i > start && l.trim() === 'Goto uninstall_vault_do_delete');
+  const end = region.findIndex((l, i) => i > start && l.trim() === 'Goto mythos_nested_root_guard');
   if (start < 0 || end <= start) {
     throw new Error('canonical gate block markers missing from sidecar guard region');
   }
@@ -1340,7 +1443,11 @@ export function executeCanonGateBlock(
     ) {
       return 'skip_delete';
     }
-    if (target === 'uninstall_vault_do_delete') {
+    if (
+      target === 'uninstall_vault_do_delete' ||
+      target === 'mythos_reparse_walk' ||
+      target === 'mythos_nested_root_guard'
+    ) {
       return 'delete';
     }
     const rel = target === '0' ? 1 : /^[+-]\d+$/.test(target) ? Number(target) : undefined;
@@ -1854,20 +1961,29 @@ function runSidecarSystemPluginOp(
  */
 const decodeNsisBlock = memoizeByArray((blockLines) => {
   const labels = new Map<string, number>();
-  // NSIS relative jumps (`+N`) count instructions; label lines are not instructions.
+  // NSIS relative jumps (`+N`) count instructions; label-only lines are not instructions.
+  // `label: instruction` (NSIS one-line form) is both a label and an instruction.
   const instrLines: number[] = [];
   const instrOrdinal = new Map<number, number>();
   const lines = blockLines.map((raw) => raw.trim());
-  blockLines.forEach((raw, i) => {
-    const m = raw.trim().match(/^(\w+):$/);
-    if (m) {
-      labels.set(m[1]!, i);
+  const tokens: string[][] = [];
+  lines.forEach((line, i) => {
+    const labeled = line.match(/^(\w+):\s*(.*)$/);
+    if (labeled && !labeled[2].startsWith(':')) {
+      labels.set(labeled[1]!, i);
+      if (labeled[2] === '') {
+        tokens.push(line.match(/"[^"]*"|\S+/g) ?? []);
+        return;
+      }
+      tokens.push(labeled[2].match(/"[^"]*"|\S+/g) ?? []);
+      instrOrdinal.set(i, instrLines.length);
+      instrLines.push(i);
       return;
     }
+    tokens.push(line.match(/"[^"]*"|\S+/g) ?? []);
     instrOrdinal.set(i, instrLines.length);
     instrLines.push(i);
   });
-  const tokens = lines.map((line) => line.match(/"[^"]*"|\S+/g) ?? []);
   return { labels, instrLines, instrOrdinal, lines, tokens };
 });
 
@@ -2051,6 +2167,25 @@ export const SIDECAR_DELETE_READ_LOOP_ROWS: readonly {
   },
   {
     rawLines: [
+      'C:\\Users\\me\\Documents\\note.txt\r\n',
+      'C:\\Users\\me\\Documents\\vault\r\n',
+    ],
+    expectedDeleted: ['C:\\Users\\me\\Documents\\note.txt', 'C:\\Users\\me\\Documents\\vault'],
+    expectClosed: true,
+  },
+  {
+    rawLines: [
+      'C:\\Users\\me\\Documents\\MyVault\\child\r\n',
+      'C:\\Users\\me\\Documents\\MyVault\r\n',
+    ],
+    expectedDeleted: [
+      'C:\\Users\\me\\Documents\\MyVault\\child',
+      'C:\\Users\\me\\Documents\\MyVault',
+    ],
+    expectClosed: true,
+  },
+  {
+    rawLines: [
       `${DOCUMENTS_VAULT_DELETE_PATH}\r`,
       'C:\\Users\\me\\Documents\\..\\..\\Windows\r',
       `${DOWNLOADS_VAULT_DELETE_PATH}\r`,
@@ -2107,6 +2242,7 @@ export function simulateSidecarDeleteReadLoop(
   nsh: string,
   rawLines: readonly string[],
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+  options: Omit<SidecarNsisRunOptions, 'env'> = {},
 ): {
   deleted: string[];
   acts: ReadonlyArray<{ op: 'RMDir' | 'Delete'; path: string }>;
@@ -2116,7 +2252,7 @@ export function simulateSidecarDeleteReadLoop(
   sidecarDeleted: boolean;
   hung: boolean;
 } {
-  const run = runSidecarNsisProgram(nsh, rawLines, { env });
+  const run = runSidecarNsisProgram(nsh, rawLines, { ...options, env });
   if (run.hung) {
     throw new Error(SIDECAR_LINE_STEP_LIMIT_ERROR);
   }
@@ -2434,6 +2570,371 @@ export function assertSidecarH7DeleteLoopSweepParity(
   }
 }
 
+export const RF7_PLAIN_VAULT = 'C:\\Users\\me\\Documents\\rf7-plain';
+export const RF7_NESTED_PLAIN_VAULT = 'C:\\Users\\me\\Documents\\rf7-nest\\vault';
+export const RF7_JUNCTION_VAULT = 'C:\\Users\\me\\Documents\\rf7-junction';
+export const RF7_SYMLINK_VAULT = 'C:\\Users\\me\\Documents\\rf7-symlink';
+export const RF7_PARENT_JUNCTION = 'C:\\Users\\me\\Documents\\rf7-parent';
+export const RF7_PARENT_JUNCTION_VAULT = 'C:\\Users\\me\\Documents\\rf7-parent\\vault';
+export const RF7_MID_REPARSE = 'C:\\Users\\me\\Documents\\rf7-a\\link';
+export const RF7_MID_REPARSE_VAULT = 'C:\\Users\\me\\Documents\\rf7-a\\link\\vault';
+export const RF7_READONLY_VAULT = 'C:\\Users\\me\\Documents\\rf7-readonly';
+export const RF7_HIDDEN_VAULT = 'C:\\Users\\me\\Documents\\rf7-hidden';
+export const RF7_SYSTEM_VAULT = 'C:\\Users\\me\\Documents\\rf7-system';
+export const RF7_MISSING_VAULT = 'C:\\Users\\me\\Documents\\rf7-missing';
+export const RF7_ERROR_VAULT = 'C:\\Users\\me\\Documents\\rf7-error';
+export const RF7_ERROR_PARENT = 'C:\\Users\\me\\Documents\\rf7-errp';
+export const RF7_ERROR_PARENT_VAULT = 'C:\\Users\\me\\Documents\\rf7-errp\\vault';
+export const RF7_INVALID_VAULT = 'C:\\Users\\me\\Documents\\rf7-invalid';
+export const RF7_APPDATA_FIXED_VAULTS = 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults';
+
+export type SidecarRf7ReparseRow = Readonly<{
+  name: string;
+  path: string;
+  expect: 'delete' | 'skip';
+  options: Omit<SidecarNsisRunOptions, 'env'>;
+}>;
+
+/**
+ * RF-7b modelled attribute table. INVALID_FILE_ATTRIBUTES (0xFFFFFFFF) skips because
+ * `0xFFFFFFFF & 0x400 !== 0` — there is no separate −1 compare. Readonly / hidden /
+ * system without 0x400 must still delete. Walk is top-down from the allow-root child.
+ */
+export const SIDECAR_RF7_REPARSE_ROWS: readonly SidecarRf7ReparseRow[] = [
+  { name: 'plain vault deletes', path: RF7_PLAIN_VAULT, expect: 'delete', options: {} },
+  {
+    name: 'nested plain vault deletes (ancestor mask must not skip DIRECTORY)',
+    path: RF7_NESTED_PLAIN_VAULT,
+    expect: 'delete',
+    options: {},
+  },
+  {
+    name: 'junction vault skips',
+    path: RF7_JUNCTION_VAULT,
+    expect: 'skip',
+    options: { reparsePaths: [RF7_JUNCTION_VAULT] },
+  },
+  {
+    name: 'symlink vault skips',
+    path: RF7_SYMLINK_VAULT,
+    expect: 'skip',
+    options: { reparsePaths: [RF7_SYMLINK_VAULT] },
+  },
+  {
+    name: 'parent junction + plain vault skips',
+    path: RF7_PARENT_JUNCTION_VAULT,
+    expect: 'skip',
+    options: { reparsePaths: [RF7_PARENT_JUNCTION] },
+  },
+  {
+    name: 'middle junction + plain vault skips',
+    path: RF7_MID_REPARSE_VAULT,
+    expect: 'skip',
+    options: { reparsePaths: [RF7_MID_REPARSE] },
+  },
+  {
+    name: 'attribute error skips',
+    path: RF7_ERROR_VAULT,
+    expect: 'skip',
+    options: { attrErrorPaths: [RF7_ERROR_VAULT] },
+  },
+  {
+    name: 'ancestor attribute error skips',
+    path: RF7_ERROR_PARENT_VAULT,
+    expect: 'skip',
+    options: { attrErrorPaths: [RF7_ERROR_PARENT] },
+  },
+  {
+    name: 'INVALID_FILE_ATTRIBUTES skips via 0x400 bit',
+    path: RF7_INVALID_VAULT,
+    expect: 'skip',
+    options: { invalidAttrPaths: [RF7_INVALID_VAULT] },
+  },
+  {
+    name: 'missing path (INVALID between scan and delete) skips',
+    path: RF7_MISSING_VAULT,
+    expect: 'skip',
+    options: { fs: {} },
+  },
+  {
+    name: 'readonly vault deletes',
+    path: RF7_READONLY_VAULT,
+    expect: 'delete',
+    options: { fileAttributes: { [RF7_READONLY_VAULT]: FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_READONLY } },
+  },
+  {
+    name: 'hidden vault deletes',
+    path: RF7_HIDDEN_VAULT,
+    expect: 'delete',
+    options: { fileAttributes: { [RF7_HIDDEN_VAULT]: FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_HIDDEN } },
+  },
+  {
+    name: 'system vault deletes',
+    path: RF7_SYSTEM_VAULT,
+    expect: 'delete',
+    options: { fileAttributes: { [RF7_SYSTEM_VAULT]: FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_SYSTEM } },
+  },
+  {
+    name: 'reparse AppData vaults/ fixed target skips',
+    path: RF7_APPDATA_FIXED_VAULTS,
+    expect: 'skip',
+    options: { reparsePaths: [RF7_APPDATA_FIXED_VAULTS] },
+  },
+];
+
+export function sidecarRf7Deleted(nsh: string, row: SidecarRf7ReparseRow, env: SidecarNsisVarEnv): string[] {
+  const run = simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], env, row.options);
+  return run.deleted;
+}
+
+export function assertSidecarReparseTables(
+  nsh: string,
+  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+): void {
+  for (const row of SIDECAR_RF7_REPARSE_ROWS) {
+    let deleted: string[];
+    try {
+      deleted = sidecarRf7Deleted(nsh, row, env);
+    } catch (err) {
+      throw new Error(
+        `RF-7 ${row.name}: expected ${row.expect} with no error, threw ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (row.expect === 'skip') {
+      if (deleted.length !== 0) {
+        throw new Error(`RF-7 ${row.name}: expected skip, deleted ${JSON.stringify(deleted)}`);
+      }
+    } else if (deleted.length !== 1 || deleted[0] !== row.path) {
+      throw new Error(`RF-7 ${row.name}: expected delete ${JSON.stringify(row.path)}, deleted ${JSON.stringify(deleted)}`);
+    }
+  }
+}
+
+export function assertSidecarReparseSweepParity(
+  mutantNsh: string,
+  canonicalNsh: string,
+  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+): void {
+  for (const row of SIDECAR_RF7_REPARSE_ROWS) {
+    let canonical: string;
+    let mutant: string;
+    try {
+      canonical = sidecarRf7Deleted(canonicalNsh, row, env).join('\0');
+    } catch (err) {
+      throw new Error(
+        `RF-7 sweep parity ${row.name}: canonical threw ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    try {
+      mutant = sidecarRf7Deleted(mutantNsh, row, env).join('\0');
+    } catch (err) {
+      throw new Error(
+        `RF-7 sweep parity ${row.name}: mutant threw ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (mutant !== canonical) {
+      throw new Error(
+        `RF-7 sweep parity ${row.name}: canonical ${JSON.stringify(canonical)}, mutant ${JSON.stringify(mutant)}`,
+      );
+    }
+  }
+}
+
+const HARD1_WILDCARD_TAILS: readonly string[] = ['*', '*.*', '?', '<', '>', '"', '|', 'v*', 'x?y'];
+const HARD1_SEPS: readonly string[] = ['\\', '/'];
+
+/** Local E1 copy — do not read sidecarNsisVm envs at module init (circular import). */
+const HARD12_ENV_E1: SidecarNsisVarEnv = {
+  WINDIR: 'C:\\Windows',
+  PROGRAMFILES: 'C:\\Program Files',
+  PROGRAMFILES64: 'C:\\Program Files (x86)',
+  APPDATA: 'C:\\Users\\me\\AppData\\Roaming',
+  DOCUMENTS: 'C:\\Users\\me\\Documents',
+  DESKTOP: 'C:\\Users\\me\\Desktop',
+  PROFILE: 'C:\\Users\\me',
+};
+const HARD1_ENV_E5: SidecarNsisVarEnv = {
+  ...HARD12_ENV_E1,
+  PROFILE: `C:\\Users\\${'p'.repeat(300)}`,
+  APPDATA: `C:\\Users\\${'p'.repeat(300)}\\AppData\\Roaming`,
+  DOCUMENTS: `C:\\Users\\${'p'.repeat(300)}\\Documents`,
+  DESKTOP: `C:\\Users\\${'p'.repeat(300)}\\Desktop`,
+};
+const HARD1_ENV_E6: SidecarNsisVarEnv = {
+  ...HARD12_ENV_E1,
+  PROGRAMFILES: 'D:\\Apps32',
+  PROGRAMFILES64: 'C:\\Program Files',
+  DOCUMENTS: 'D:\\Apps32\\Docs',
+};
+
+function hard1AllowRoots(env: SidecarNsisVarEnv): readonly string[] {
+  return [`${env.APPDATA}\\Mythos Writer`, env.DOCUMENTS, env.DESKTOP, `${env.PROFILE}\\Downloads`];
+}
+
+export type SidecarHard1WildcardRow = Readonly<{
+  name: string;
+  env: SidecarNsisVarEnv;
+  path: string;
+}>;
+
+/** HARD-1: `* ? < > " |` plus `*.*` / `v*` / `x?y` under every root, both separators. ≥77 rows. */
+export const SIDECAR_HARD1_WILDCARD_ROWS: readonly SidecarHard1WildcardRow[] = (() => {
+  const rows: SidecarHard1WildcardRow[] = [];
+  const pushEnv = (envName: string, env: SidecarNsisVarEnv, tails: readonly string[], seps: readonly string[]): void => {
+    for (const root of hard1AllowRoots(env)) {
+      for (const tail of tails) {
+        for (const sep of seps) {
+          const path = `${root}${sep}${tail}`;
+          rows.push({ name: `${envName} ${path}`, env, path });
+        }
+      }
+    }
+  };
+  pushEnv('E1', HARD12_ENV_E1, HARD1_WILDCARD_TAILS, HARD1_SEPS);
+  pushEnv('E5', HARD1_ENV_E5, ['*', '*.*'], ['\\']);
+  pushEnv('E6', HARD1_ENV_E6, ['*', '*.*'], ['\\']);
+  return rows;
+})();
+
+export type SidecarHard2NestedRow = Readonly<{
+  id: string;
+  env: SidecarNsisVarEnv;
+  path: string;
+  expect: 'skip' | 'delete';
+}>;
+
+export const SIDECAR_HARD2_NESTED_ENVS: Readonly<Record<string, SidecarNsisVarEnv>> = {
+  N1: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Documents\\Desktop' },
+  N2: {
+    ...HARD12_ENV_E1,
+    DOCUMENTS: 'C:\\Users\\me\\OneDrive\\Documents',
+    DESKTOP: 'C:\\Users\\me\\OneDrive\\Documents\\Desktop',
+  },
+  N3: { ...HARD12_ENV_E1, DOCUMENTS: 'C:\\Users\\me' },
+  N4: { ...HARD12_ENV_E1, DOCUMENTS: 'D:\\Docs', DESKTOP: 'D:\\Docs\\Desktop' },
+  N5: { ...HARD12_ENV_E1, DOCUMENTS: 'C:\\Users\\me\\Desktop\\Documents' },
+  N6: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Downloads\\Desktop' },
+};
+
+const HARD2_CHILD_ROOTS: readonly { envId: keyof typeof SIDECAR_HARD2_NESTED_ENVS; root: string }[] = [
+  { envId: 'N1', root: 'C:\\Users\\me\\Documents\\Desktop' },
+  { envId: 'N2', root: 'C:\\Users\\me\\OneDrive\\Documents\\Desktop' },
+  { envId: 'N3', root: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer' },
+  { envId: 'N3', root: 'C:\\Users\\me\\Desktop' },
+  { envId: 'N3', root: 'C:\\Users\\me\\Downloads' },
+  { envId: 'N4', root: 'D:\\Docs\\Desktop' },
+  { envId: 'N5', root: 'C:\\Users\\me\\Desktop\\Documents' },
+  { envId: 'N6', root: 'C:\\Users\\me\\Downloads\\Desktop' },
+];
+
+const HARD2_SKIP_SUFFIXES: readonly { tag: string; suffix: string }[] = [
+  { tag: 'bare', suffix: '' },
+  { tag: 'bs', suffix: '\\' },
+  { tag: 'dbl', suffix: '\\\\' },
+  { tag: 'dot', suffix: '\\.\\' },
+  { tag: 'space', suffix: '\\ ' },
+  { tag: 'fwd', suffix: '/' },
+  { tag: 'fwdfwd', suffix: '//' },
+];
+
+/** Probe's 56 nested-root skip + 16 vault-delete rows, plus N3 AppData ancestor skips. */
+export const SIDECAR_HARD2_NESTED_ROWS: readonly SidecarHard2NestedRow[] = [
+  ...HARD2_CHILD_ROOTS.flatMap(({ envId, root }) => {
+    const env = SIDECAR_HARD2_NESTED_ENVS[envId]!;
+    const skips: SidecarHard2NestedRow[] = HARD2_SKIP_SUFFIXES.map(({ tag, suffix }) => ({
+      id: `${envId}|${root}|${tag}`,
+      env,
+      path: `${root}${suffix}`,
+      expect: 'skip' as const,
+    }));
+    const deletes: SidecarHard2NestedRow[] = [
+      { id: `${envId}|${root}|vault`, env, path: `${root}\\v`, expect: 'delete' },
+      { id: `${envId}|${root}|vault2`, env, path: `${root}\\My Vault\\notes`, expect: 'delete' },
+    ];
+    return [...skips, ...deletes];
+  }),
+  {
+    id: 'N3|C:\\Users\\me\\AppData|bare',
+    env: SIDECAR_HARD2_NESTED_ENVS.N3!,
+    path: 'C:\\Users\\me\\AppData',
+    expect: 'skip',
+  },
+  {
+    id: 'N3|C:\\Users\\me\\AppData\\Roaming|bare',
+    env: SIDECAR_HARD2_NESTED_ENVS.N3!,
+    path: 'C:\\Users\\me\\AppData\\Roaming',
+    expect: 'skip',
+  },
+];
+
+export function assertSidecarHard1WildcardTables(nsh: string): void {
+  if (SIDECAR_HARD1_WILDCARD_ROWS.length < 77) {
+    throw new Error(`HARD-1 must ship ≥77 wildcard rows, got ${SIDECAR_HARD1_WILDCARD_ROWS.length}`);
+  }
+  for (const row of SIDECAR_HARD1_WILDCARD_ROWS) {
+    let deleted: string[];
+    try {
+      deleted = simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env).deleted;
+    } catch (err) {
+      throw new Error(
+        `HARD-1 ${row.name}: expected skip with no error, threw ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (deleted.length !== 0) {
+      throw new Error(`HARD-1 ${row.name}: expected skip, deleted ${JSON.stringify(deleted)}`);
+    }
+  }
+}
+
+export function assertSidecarHard1WildcardSweepParity(mutantNsh: string, canonicalNsh: string): void {
+  for (const row of SIDECAR_HARD1_WILDCARD_ROWS) {
+    const canonical = simulateSidecarDeleteReadLoop(canonicalNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
+    const mutant = simulateSidecarDeleteReadLoop(mutantNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
+    if (mutant !== canonical) {
+      throw new Error(
+        `HARD-1 sweep parity ${row.name}: canonical ${JSON.stringify(canonical)}, mutant ${JSON.stringify(mutant)}`,
+      );
+    }
+  }
+}
+
+export function assertSidecarHard2NestedTables(nsh: string): void {
+  const skipCount = SIDECAR_HARD2_NESTED_ROWS.filter((r) => r.expect === 'skip').length;
+  const deleteCount = SIDECAR_HARD2_NESTED_ROWS.filter((r) => r.expect === 'delete').length;
+  if (skipCount < 56 || deleteCount < 16) {
+    throw new Error(`HARD-2 must include Probe's 56 skip + 16 delete rows, got skip=${skipCount} delete=${deleteCount}`);
+  }
+  for (const row of SIDECAR_HARD2_NESTED_ROWS) {
+    let deleted: string[];
+    try {
+      deleted = simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env).deleted;
+    } catch (err) {
+      throw new Error(
+        `HARD-2 ${row.id}: expected ${row.expect} with no error, threw ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (row.expect === 'skip') {
+      if (deleted.length !== 0) {
+        throw new Error(`HARD-2 ${row.id}: expected skip, deleted ${JSON.stringify(deleted)}`);
+      }
+    } else if (deleted.length !== 1 || deleted[0] !== row.path) {
+      throw new Error(`HARD-2 ${row.id}: expected delete ${JSON.stringify(row.path)}, deleted ${JSON.stringify(deleted)}`);
+    }
+  }
+}
+
+export function assertSidecarHard2NestedSweepParity(mutantNsh: string, canonicalNsh: string): void {
+  for (const row of SIDECAR_HARD2_NESTED_ROWS) {
+    const canonical = simulateSidecarDeleteReadLoop(canonicalNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
+    const mutant = simulateSidecarDeleteReadLoop(mutantNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
+    if (mutant !== canonical) {
+      throw new Error(
+        `HARD-2 sweep parity ${row.id}: canonical ${JSON.stringify(canonical)}, mutant ${JSON.stringify(mutant)}`,
+      );
+    }
+  }
+}
+
 /** VM behaviour tables only (no exact region pin) — Probe re-baseline sweep mode. */
 export function assertSidecarGuardVmBehaviourTables(
   nsh: string,
@@ -2442,6 +2943,9 @@ export function assertSidecarGuardVmBehaviourTables(
 ): void {
   assertSidecarFcfbOracleRows(nsh);
   assertSidecarLinearStepCapSelfCheck(nsh, SIDECAR_NSIS_ENV_E1);
+  if (!options?.sweepRebaseline) {
+    assertSidecarUnifiedVmStepLimitIsFatal();
+  }
   if (options?.sweepRebaseline) {
     const canonical = options.canonicalNsh ?? nsh;
     assertSidecarGuardVmSweepParity(nsh, canonical, env);
@@ -2451,12 +2955,21 @@ export function assertSidecarGuardVmBehaviourTables(
     assertSidecarH7DeleteLoopSweepParity(nsh, canonical, env);
     assertSidecarMultilineTravGuardTables(nsh, env);
     assertSidecarRf456SweepParity(nsh, canonical, env);
+    assertSidecarReparseTables(nsh, env);
+    assertSidecarReparseSweepParity(nsh, canonical, env);
+    assertSidecarHard1WildcardTables(nsh);
+    assertSidecarHard1WildcardSweepParity(nsh, canonical);
+    assertSidecarHard2NestedTables(nsh);
+    assertSidecarHard2NestedSweepParity(nsh, canonical);
     return;
   }
   assertSidecarReadTrimGuardTables(nsh, env, { includeExactTrimPin: false });
   assertSidecarDeleteReadLoopTables(nsh, env);
   assertSidecarMultilineTravGuardTables(nsh, env);
   assertSidecarRf456Tables(nsh, env);
+  assertSidecarReparseTables(nsh, env);
+  assertSidecarHard1WildcardTables(nsh);
+  assertSidecarHard2NestedTables(nsh);
   assertTraversalS14LabelSwapRejectTables(nsh);
   assertTraversalVmStepLimitIsFatal();
   assertTraversalRejectAllowTables(nsh);
@@ -2807,6 +3320,9 @@ export const ALLOWLIST_ROOT_GUARD_SKIP_PATHS: readonly string[] = [
   `${RF_PROFILE}\\Desktoq\\v`,
   `${RF_PROFILE}\\Downloadz\\v`,
   `${RF_PROFILE}\\Pictures\\${'a'.repeat(RF_APPDATA.length - RF_PROFILE.length - '\\Pictures\\'.length)}\\x`,
+  `${RF_DOCUMENTS}/MyVault`,
+  `${RF_DESKTOP}/MyVault`,
+  `${RF_DOWNLOADS}/MyVault`,
 ];
 
 /**
@@ -3556,7 +4072,7 @@ export function assertWindirProgramFilesDenyBehaviourPins(nsh: string): void {
   assertSidecarGuardRegionExact(nsh);
 }
 
-/** Primary sweep mutant for one guard-region file line (:43–:213). */
+/** Primary sweep mutant for one guard-region file line (:43–:299). */
 export function mutantSidecarGuardRegionSweepLine(nsh: string, fileLineOneBased: number): string {
   const { lines } = locateSidecarGuardRegion(nsh);
   const regionIndex = fileLineOneBased - SIDECAR_GUARD_REGION_FILE_LINE_FIRST;

@@ -64,13 +64,52 @@ export const SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS: Readonly<Record<number, stri
   189: 'StrCmp $1 $5 uninstall_vault_read → Nop (Downloads root self-match). Sibling: :190–:191 — the exact root has no `\\` at $5 length, so it falls to mythos_al_deny.',
 };
 
+/** RF-7 walk / HARD-2 lines whose primary mutant does not change the delete set. */
+export const SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS: Readonly<Record<number, string>> = {
+  215: 'StrCpy $7 $9 → Nop. Restore then uses leftover $7 (trav end index); walk starts a few chars in and still hits every `\\`.',
+  219: 'StrLen $8 $3 (strip) → Nop. $8 is only read when the last char is `\\`; the gate leftover is long enough for those rows.',
+  220: 'IntCmp $8 3 (keep C:\\) → Nop. Fixture trailing-`\\` paths are longer than 3, so one strip still lands on the root.',
+  222: 'Goto mythos_nr_strip → Nop. GFPN leaves at most one trailing `\\`; one strip is enough.',
+  226: 'AppData GFPN 0-return → Nop. The model never returns 0 on these roots.',
+  227: 'AppData GFPN trunc → Nop. The model never truncates these roots.',
+  237: 'Documents GFPN 0-return → Nop. The model never returns 0 on these roots.',
+  238: 'Documents GFPN trunc → Nop. The model never truncates these roots.',
+  240: 'Documents ancestor StrLen → Nop. $8 already holds StrLen $3 from the AppData ancestor check.',
+  241: 'Documents ancestor prefix copy → Nop. No fixture path is a proper ancestor of $DOCUMENTS after the equal check.',
+  242: 'Documents ancestor prefix cmp → Nop. Same: the equal check already covers the Documents root.',
+  243: 'Documents ancestor sep copy → Nop. Dead with :241/:242.',
+  244: 'Documents ancestor sep cmp → Nop. Dead with :241/:242.',
+  248: 'Desktop GFPN 0-return → Nop. The model never returns 0 on these roots.',
+  249: 'Desktop GFPN trunc → Nop. The model never truncates these roots.',
+  251: 'Desktop ancestor StrLen → Nop. $8 already holds StrLen $3.',
+  252: 'Desktop ancestor prefix copy → Nop. No fixture path is a proper ancestor of $DESKTOP after the equal check.',
+  253: 'Desktop ancestor prefix cmp → Nop. Same: the equal check already covers the Desktop root.',
+  254: 'Desktop ancestor sep copy → Nop. Dead with :252/:253.',
+  255: 'Desktop ancestor sep cmp → Nop. Dead with :252/:253.',
+  259: 'Downloads GFPN 0-return → Nop. The model never returns 0 on these roots.',
+  260: 'Downloads GFPN trunc → Nop. The model never truncates these roots.',
+  262: 'Downloads ancestor StrLen → Nop. $8 already holds StrLen $3.',
+  263: 'Downloads ancestor prefix copy → Nop. No fixture path is a proper ancestor of Downloads after the equal check.',
+  264: 'Downloads ancestor prefix cmp → Nop. Same: the equal check already covers the Downloads root.',
+  265: 'Downloads ancestor sep copy → Nop. Dead with :263/:264.',
+  266: 'Downloads ancestor sep cmp → Nop. Dead with :263/:264.',
+  268: 'StrCpy $9 $7 → Nop. $9 stays the Downloads GFPN; walk start is a few chars in and still hits every `\\`.',
+  269: 'Goto mythos_reparse_walk → Nop. The next line is the walk label.',
+  272: 'IntOp $7 $8 + 1 → +2. The walk still hits every `\\` after the root; only the first letter of the first child is skipped.',
+  277: 'IntOp $7 $7 + 1 → +2 (scan increment). A skipped letter inside a component still finds the same next `\\`.',
+  278: 'Goto mythos_reparse_next → Nop. Falls into the hit path and GetFileAttributesW every prefix; extra checks still see 0x10 and continue.',
+  285: 'IntOp $7 $7 + 1 → +2 (after a hit). The next `\\` is still found; every ancestor prefix is still checked.',
+  292: 'Goto uninstall_vault_do_delete → Nop. The next line is the do_delete label, so control falls through to the same IfFileExists.',
+};
+
 export const SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES: Readonly<Record<number, string>> = {
   ...SIDECAR_GUARD_SWEEP_IVY_LOCKED_EQUIVALENTS,
   ...SIDECAR_GUARD_SWEEP_EXTENDED_EQUIVALENTS,
   ...SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS,
+  ...SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS,
 };
 
-describe('sidecar guard region sweep :43-:213 (buildIntegrity excluded)', () => {
+describe('sidecar guard region sweep :43-:299 (buildIntegrity excluded)', () => {
   const nsh = loadUninstallVaultsNsh();
 
   describe('mode (1) normal — exact region pin', () => {
@@ -148,12 +187,17 @@ describe('sidecar guard region sweep :43-:213 (buildIntegrity excluded)', () => 
       expect(equivCount).toBe(
         Object.keys(SIDECAR_GUARD_SWEEP_IVY_LOCKED_EQUIVALENTS).length +
           Object.keys(SIDECAR_GUARD_SWEEP_EXTENDED_EQUIVALENTS).length +
-          Object.keys(SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS).length,
+          Object.keys(SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS).length +
+          Object.keys(SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS).length,
       );
     });
 
     it('equivalence-strength shards cover every documented equivalent line', () => {
-      const sharded = [47, 56, 61, 84, 97, 98, 99, 103, 104, 105, 106, 109, 117, 123, 124, 125, 129, 130, 131, 153, 165, 177, 189];
+      const sharded = [
+        47, 56, 61, 84, 97, 98, 99, 103, 104, 105, 106, 109, 117, 123, 124, 125, 129, 130, 131, 153, 165, 177, 189,
+        215, 219, 220, 222, 226, 227, 237, 238, 240, 241, 242, 243, 244, 248, 249, 251, 252, 253, 254, 255, 259, 260,
+        262, 263, 264, 265, 266, 268, 269, 272, 277, 278, 285, 292,
+      ];
       expect(sharded).toEqual(
         Object.keys(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES)
           .map(Number)

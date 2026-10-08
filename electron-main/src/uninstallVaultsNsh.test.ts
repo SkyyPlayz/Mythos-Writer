@@ -28,7 +28,13 @@ import {
   DELETE_VAULT_SETTINGS_JSON,
   nshMacroBody,
   assertAppDataMythosWriterRootSelfMatchGuard,
+  assertMythosRmdirUnlessReparseHelper,
+  assertShellVarContextCurrentThenRestorePrevious,
+  assertSidecarReparseWalkBeforeDelete,
+  assertWildcardAndControlCharReject,
   mutantM5_dropAppDataRootSelfMatch,
+  MYTHOS_RMDIR_UNLESS_REPARSE_APPDATA,
+  MYTHOS_RMDIR_UNLESS_REPARSE_VAULTS,
 } from './uninstallVaultsNsh.test-helpers.js';
 
 const NSH = loadUninstallVaultsNsh();
@@ -73,8 +79,8 @@ describe('build/uninstall-vaults.nsh token contract', () => {
     expect(body.indexOf('!insertmacro mythos_delete_remove_all_user_data')).toBeGreaterThan(
       body.indexOf(gate),
     );
-    expect(body.indexOf('RMDir /r "$APPDATA\\Mythos Writer\\vaults"')).toBeGreaterThan(body.indexOf(gate));
-    expect(body.indexOf('RMDir /r "$APPDATA\\Mythos Writer"')).toBeGreaterThan(body.indexOf(gate));
+    expect(body.indexOf(MYTHOS_RMDIR_UNLESS_REPARSE_VAULTS)).toBeGreaterThan(body.indexOf(gate));
+    expect(body.indexOf(MYTHOS_RMDIR_UNLESS_REPARSE_APPDATA)).toBeGreaterThan(body.indexOf(gate));
     assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse(body, NSH);
   });
 
@@ -94,7 +100,7 @@ describe('build/uninstall-vaults.nsh token contract', () => {
 
   it('(3) default vaults/ fallback RMDir inside Remove-all gate', () => {
     const body = customUnInstall();
-    expect(body).toContain('RMDir /r "$APPDATA\\Mythos Writer\\vaults"');
+    expect(body).toContain(MYTHOS_RMDIR_UNLESS_REPARSE_VAULTS);
     assertDefaultVaultsFallbackRmdir(body);
   });
 
@@ -156,7 +162,7 @@ describe('build/uninstall-vaults.nsh token contract', () => {
   });
 
   it('always falls back to default AppData vaults + both settings files', () => {
-    expect(NSH).toContain('RMDir /r "$APPDATA\\Mythos Writer\\vaults"');
+    expect(NSH).toContain(MYTHOS_RMDIR_UNLESS_REPARSE_VAULTS);
     expect(NSH).toContain(DELETE_VAULT_SETTINGS_JSON);
     expect(NSH).toContain(DELETE_APP_SETTINGS_JSON);
     assertSettingsJsonDeletesOnRemoveAllNotKeep(NSH, customUnInstall());
@@ -207,9 +213,9 @@ describe('build/uninstall-vaults.nsh token contract', () => {
 
   it('PLAN-058 L8 / 00:46 — Remove all RMDirs entire Roaming Mythos Writer folder', () => {
     const executable = NSH.replace(/;[^\n]*/g, '');
-    expect(executable).toContain('RMDir /r "$APPDATA\\Mythos Writer"');
+    expect(executable).toContain(MYTHOS_RMDIR_UNLESS_REPARSE_APPDATA);
     const vaultIfAt = executable.indexOf('${If} ${SectionIsSelected} ${SEC_DELETE_MYTHOS_VAULTS}');
-    const fullRmAt = executable.indexOf('RMDir /r "$APPDATA\\Mythos Writer"');
+    const fullRmAt = executable.indexOf(MYTHOS_RMDIR_UNLESS_REPARSE_APPDATA);
     const endIfAt = executable.indexOf('${EndIf}', vaultIfAt);
     expect(vaultIfAt).toBeGreaterThan(-1);
     expect(fullRmAt).toBeGreaterThan(vaultIfAt);
@@ -267,6 +273,20 @@ describe('build/uninstall-vaults.nsh token contract', () => {
     assertSidecarDeleteAfterFileOpenAndClose(customUnInstall());
   });
 
+  it('RF-7a: SetShellVarContext current then restore previous (installMode) on every exit', () => {
+    assertShellVarContextCurrentThenRestorePrevious(NSH);
+    const body = customUnInstall();
+    expect(body.indexOf('SetShellVarContext current')).toBeLessThan(body.indexOf('${IfNot} ${isUpdated}'));
+    expect(body).toContain('${If} $installMode == "all"');
+    expect(body).toContain('SetShellVarContext all');
+  });
+
+  it('RF-7b / HARD-1 / HARD-2: walk, wildcard charset, nested-root guard', () => {
+    assertSidecarReparseWalkBeforeDelete(NSH);
+    assertMythosRmdirUnlessReparseHelper(NSH);
+    assertWildcardAndControlCharReject(NSH);
+  });
+
   it('mutant: sidecar Delete before FileOpen fails the ordering pin', () => {
     const body = customUnInstall();
     const fileOpenNeedle = 'FileOpen $0 "$APPDATA\\Mythos Writer\\uninstall-delete-paths.txt"';
@@ -313,7 +333,7 @@ describe('build/uninstall-vaults.nsh token contract', () => {
     });
 
     it('M23: dropping vaults/ fallback RMDir fails', () => {
-      const mutant = NSH.replace('RMDir /r "$APPDATA\\Mythos Writer\\vaults"', '');
+      const mutant = NSH.replace(MYTHOS_RMDIR_UNLESS_REPARSE_VAULTS, '');
       expectPinFailsOnCustomUnInstall(mutant, assertDefaultVaultsFallbackRmdir, /vaults\/ fallback/);
       expectPinFailsOnCustomUnInstall(
         mutant,
@@ -344,6 +364,30 @@ describe('build/uninstall-vaults.nsh token contract', () => {
       );
       expect(mutant).not.toBe(NSH);
       expectPinFails(mutant, assertAllowlistDenySkipsSidecarLine, /do_delete|uninstall_vault_read/);
+    });
+
+    it('RF-7a drop-restore: removing the installMode restore fails the context pin', () => {
+      const mutant = NSH.replace(
+        /\$\{If\} \$installMode == "all"\s*\r?\n\s*SetShellVarContext all\s*\r?\n\s*\$\{EndIf\}/,
+        '',
+      );
+      expect(mutant).not.toBe(NSH);
+      expectPinFails(mutant, assertShellVarContextCurrentThenRestorePrevious, /RF-7a|installMode|SetShellVarContext all/);
+    });
+
+    it('RF-7a always-all: restoring all without installMode fails the context pin', () => {
+      const mutant = NSH.replace(
+        '${If} $installMode == "all"\n    SetShellVarContext all\n  ${EndIf}',
+        'SetShellVarContext all',
+      );
+      expect(mutant).not.toBe(NSH);
+      expectPinFails(mutant, assertShellVarContextCurrentThenRestorePrevious, /RF-7a|installMode|Else/);
+    });
+
+    it('RF-7b drop-walk: Goto do_delete without the reparse walk fails the walk pin', () => {
+      const mutant = NSH.replace('Goto mythos_reparse_walk', 'Goto uninstall_vault_do_delete');
+      expect(mutant).not.toBe(NSH);
+      expectPinFails(mutant, assertSidecarReparseWalkBeforeDelete, /RF-7b|walk/);
     });
 
     it('M-E / M13: KEEP ${Else} branch also inserts Remove-all macro fails', () => {

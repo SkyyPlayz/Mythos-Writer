@@ -1,10 +1,16 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import {
+  FILE_ATTRIBUTE_READONLY,
+  FILE_ATTRIBUTE_REPARSE_POINT,
+  runSidecarNsisProgram,
+  SIDECAR_NSIS_ENV_E1,
+} from './sidecarNsisVm.test-helpers.js';
 import {
   CANON_GATE_FAULT_SKIP_ROWS,
   CANON_GATE_MUST_DELETE_ROWS,
@@ -15,6 +21,7 @@ import {
   GFPN_WIN32_W_MODEL_ROWS,
   gfpnModel,
 } from './sidecarTraversalScan.test-helpers.js';
+import { loadUninstallVaultsNsh } from './uninstallVaultsNsh.path.js';
 
 type GfpnRefRow = { table: string; field: 'path' | 'root'; input: string };
 
@@ -146,6 +153,112 @@ describe.skipIf(process.platform !== 'win32')(
       lines.push(`GFPN-REF match=${rows.length - mismatches.length} mismatch=${mismatches.length}`);
       process.stdout.write(`${lines.join('\n')}\n`);
       expect(mismatches, mismatches.join('\n')).toEqual([]);
+    });
+  },
+);
+
+const FILE_ATTRIBUTE_REPARSE_POINT_WIN = FILE_ATTRIBUTE_REPARSE_POINT;
+
+function kernel32GetFileAttributesW(path: string): number {
+  const escaped = path.replace(/'/g, "''");
+  const script = [
+    'Add-Type -Namespace K32 -Name Native -MemberDefinition @"',
+    '[DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]',
+    'public static extern int GetFileAttributesW(string lpFileName);',
+    '"@',
+    `[Console]::Out.Write([K32.Native]::GetFileAttributesW('${escaped}'))`,
+  ].join('\n');
+  const raw = execFileSync(
+    powershellExe(),
+    ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+    { encoding: 'utf8', windowsHide: true },
+  ).trim();
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n)) {
+    throw new Error(`GetFileAttributesW returned ${JSON.stringify(raw)} for ${path}`);
+  }
+  return n;
+}
+
+function cmdMklink(kind: '/J' | '/D', link: string, target: string): void {
+  execFileSync('cmd.exe', ['/c', 'mklink', kind, link, target], {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
+}
+
+describe.skipIf(process.platform !== 'win32')(
+  'RF-7b notes-windows reparse probe (mklink /J, /D, parent junction, readonly)',
+  () => {
+    it('junction and symlink vaults skip; parent junction skips; readonly vault still deletes', () => {
+      const nsh = loadUninstallVaultsNsh();
+      const root = mkdtempSync(join(tmpdir(), 'mythos-rf7-reparse-'));
+      const documents = join(root, 'Documents');
+      const sentinel = join(root, 'sentinel');
+      mkdirSync(documents, { recursive: true });
+      mkdirSync(sentinel, { recursive: true });
+      const marker = join(sentinel, 'marker.txt');
+      writeFileSync(marker, 'keep', 'utf8');
+      const env = {
+        ...SIDECAR_NSIS_ENV_E1,
+        DOCUMENTS: documents,
+        PROFILE: root,
+      };
+
+      const junctionVault = join(documents, 'j-vault');
+      cmdMklink('/J', junctionVault, sentinel);
+      const junctionAttr = kernel32GetFileAttributesW(junctionVault);
+      expect(junctionAttr & FILE_ATTRIBUTE_REPARSE_POINT_WIN, 'mklink /J must set 0x400').not.toBe(0);
+
+      const symlinkVault = join(documents, 'd-vault');
+      cmdMklink('/D', symlinkVault, sentinel);
+      const symlinkAttr = kernel32GetFileAttributesW(symlinkVault);
+      expect(symlinkAttr & FILE_ATTRIBUTE_REPARSE_POINT_WIN, 'mklink /D must set 0x400').not.toBe(0);
+
+      const parentJ = join(documents, 'parent-j');
+      cmdMklink('/J', parentJ, sentinel);
+      const nestedVault = join(parentJ, 'vault');
+      mkdirSync(nestedVault, { recursive: true });
+      const parentAttr = kernel32GetFileAttributesW(parentJ);
+      const nestedAttr = kernel32GetFileAttributesW(nestedVault);
+      expect(parentAttr & FILE_ATTRIBUTE_REPARSE_POINT_WIN).not.toBe(0);
+      expect(nestedAttr & FILE_ATTRIBUTE_REPARSE_POINT_WIN).toBe(0);
+
+      const readonlyVault = join(documents, 'ro-vault');
+      mkdirSync(readonlyVault, { recursive: true });
+      execFileSync('cmd.exe', ['/c', 'attrib', '+R', readonlyVault], { encoding: 'utf8', windowsHide: true });
+      const roAttr = kernel32GetFileAttributesW(readonlyVault);
+      expect(roAttr & FILE_ATTRIBUTE_READONLY, 'attrib +R must set 0x1').not.toBe(0);
+      expect(roAttr & FILE_ATTRIBUTE_REPARSE_POINT_WIN).toBe(0);
+
+      const missingVault = join(documents, 'missing-vault');
+      mkdirSync(missingVault, { recursive: true });
+      rmSync(missingVault, { recursive: true, force: true });
+      const missingAttr = kernel32GetFileAttributesW(missingVault);
+      expect(missingAttr, 'removed vault must be INVALID_FILE_ATTRIBUTES').toBe(-1);
+
+      const reparsePaths = [junctionVault, symlinkVault, parentJ];
+      const fileAttributes = {
+        [nestedVault]: nestedAttr,
+        [readonlyVault]: roAttr,
+      };
+
+      const run = (sidecarPath: string) =>
+        runSidecarNsisProgram(nsh, [`${sidecarPath}\r\n`], {
+          env,
+          reparsePaths,
+          fileAttributes,
+          invalidAttrPaths: [missingVault],
+        });
+
+      expect(run(junctionVault).deleted, 'junction vault must skip').toEqual([]);
+      expect(run(symlinkVault).deleted, 'symlink vault must skip').toEqual([]);
+      expect(run(nestedVault).deleted, 'parent junction + plain vault must skip').toEqual([]);
+      expect(run(readonlyVault).deleted, 'readonly vault must still delete').toEqual([readonlyVault]);
+      expect(run(missingVault).deleted, 'missing vault must skip with no error').toEqual([]);
+      expect(existsSync(marker), 'sentinel marker must survive').toBe(true);
+
+      rmSync(root, { recursive: true, force: true });
     });
   },
 );

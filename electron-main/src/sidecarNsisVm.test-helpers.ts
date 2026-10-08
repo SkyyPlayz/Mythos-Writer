@@ -89,6 +89,16 @@ function compileSidecarNsisProgram(lines: readonly string[]): Prog {
     if (t === '' || t.startsWith(';')) {
       continue;
     }
+    const labeled = t.match(/^(\w+):\s*(.*)$/);
+    if (labeled !== null && !labeled[2].startsWith(':')) {
+      lab.set(labeled[1]!, ins.length);
+      if (labeled[2] === '') {
+        continue;
+      }
+      const tk = toks(labeled[2]);
+      ins.push({ op: tk[0]!, args: tk.slice(1) });
+      continue;
+    }
     if (LABEL_RE.test(t)) {
       lab.set(t.slice(0, -1), ins.length);
       continue;
@@ -200,9 +210,32 @@ function sidecarPath(env: SidecarNsisVarEnv): string {
 
 export type SidecarNsisFault = string | null;
 
+export const FILE_ATTRIBUTE_READONLY = 0x1;
+export const FILE_ATTRIBUTE_HIDDEN = 0x2;
+export const FILE_ATTRIBUTE_SYSTEM = 0x4;
+export const FILE_ATTRIBUTE_DIRECTORY = 0x10;
+export const FILE_ATTRIBUTE_REPARSE_POINT = 0x400;
+export const INVALID_FILE_ATTRIBUTES = -1;
+
+/** Per-row filesystem: path → Win32 attributes. Missing keys are INVALID_FILE_ATTRIBUTES. */
+export type SidecarFsFixture = Readonly<Record<string, number>>;
+
 export type SidecarNsisRunOptions = {
   env?: SidecarNsisVarEnv;
   fault?: SidecarNsisFault;
+  /** Paths whose GetFileAttributesW result includes FILE_ATTRIBUTE_REPARSE_POINT. */
+  reparsePaths?: readonly string[];
+  /** Paths that return INVALID_FILE_ATTRIBUTES (0xFFFFFFFF / −1). */
+  invalidAttrPaths?: readonly string[];
+  /** Paths whose GetFileAttributesW System::Call returns the plugin `error` string. */
+  attrErrorPaths?: readonly string[];
+  /** Exact GetFileAttributesW return (used for readonly / hidden / system rows). */
+  fileAttributes?: Readonly<Record<string, number>>;
+  /**
+   * RF-7b per-row FS fixture. When set, a path absent from the map (and from the
+   * other attribute overrides) returns INVALID_FILE_ATTRIBUTES.
+   */
+  fs?: SidecarFsFixture;
 };
 
 export type SidecarDeleteAct = Readonly<{ op: 'RMDir' | 'Delete'; path: string }>;
@@ -217,8 +250,39 @@ export type SidecarNsisRunResult = {
   lineSteps: number;
 };
 
-/** Canonical IfFileExists heuristic: last path component containing `.` is a file Delete. */
+/** FindFirstFile wildcards / DOS wildcards / illegal `|` — reject in a non-final component. */
+const FIND_FIRST_WILDCARD = /[*?<>"|]/;
+
+export function sidecarPathHasFindFirstWildcard(path: string): boolean {
+  return FIND_FIRST_WILDCARD.test(path.replace(/\//g, '\\'));
+}
+
+/**
+ * Honest IfFileExists "$1\\*.*": FindFirstFile rejects a wildcard in a non-final
+ * component, so `Documents\\*` → `Documents\\*\\*.*` is false and falls to Delete.
+ * A last component containing `.` (and no wildcard) is a file, also false.
+ */
+export function sidecarIfFileExistsStarStar(pattern: string): boolean {
+  const norm = pattern.replace(/\//g, '\\');
+  const parts = norm.split('\\');
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    if (FIND_FIRST_WILDCARD.test(parts[i]!)) {
+      return false;
+    }
+  }
+  const base = norm.endsWith('\\*.*') ? norm.slice(0, -4) : norm;
+  const last = base.replace(/\//g, '\\').split('\\').pop() ?? '';
+  if (FIND_FIRST_WILDCARD.test(last)) {
+    return false;
+  }
+  return !last.includes('.');
+}
+
+/** Delete when the path is a file or a FindFirstFile wildcard; RMDir only for a plain directory. */
 export function sidecarDeleteOpForPath(path: string): 'RMDir' | 'Delete' {
+  if (sidecarPathHasFindFirstWildcard(path)) {
+    return 'Delete';
+  }
   const last =
     path
       .split('\\*.*')[0]!
@@ -226,6 +290,20 @@ export function sidecarDeleteOpForPath(path: string): 'RMDir' | 'Delete' {
       .split('\\')
       .pop() ?? '';
   return last.includes('.') ? 'Delete' : 'RMDir';
+}
+
+/** S-1: a self-Goto program must report hung. Changing `return hung()` to `break` goes red. */
+export function assertSidecarUnifiedVmStepLimitIsFatal(): void {
+  const nsh = [
+    'FileOpen $0 "$APPDATA\\Mythos Writer\\uninstall-delete-paths.txt" r',
+    'mythos_hang_loop:',
+    '  Goto mythos_hang_loop',
+    'uninstall_vault_fallback:',
+  ].join('\n');
+  const run = runSidecarNsisProgram(nsh, ['x\r\n'], { env: SIDECAR_NSIS_ENV_E1 });
+  if (!run.hung) {
+    throw new Error('unified VM step cap did not fire for a self-referential loop (fail-open)');
+  }
 }
 
 function parseFault(fault: SidecarNsisFault): { spec: string; only: number | null } | null {
@@ -282,6 +360,11 @@ export function runSidecarNsisProgram(
   const stream = sidecarLines.join('');
   const P = programForNsh(nsh);
   const faultInfo = parseFault(options.fault ?? null);
+  const reparse = new Set(options.reparsePaths ?? []);
+  const invalidAttr = new Set(options.invalidAttrPaths ?? []);
+  const attrError = new Set(options.attrErrorPaths ?? []);
+  const fileAttrs = new Map(Object.entries(options.fileAttributes ?? {}));
+  const fs = options.fs;
   const R: Record<string, string> = {};
   let err = false;
   const st: string[] = [];
@@ -440,6 +523,12 @@ export function runSidecarNsisProgram(
         r = x * y;
       } else if (o === '/' || o === '%') {
         r = y === 0 ? 0 : o === '/' ? Math.trunc(x / y) : x - Math.trunc(x / y) * y;
+      } else if (o === '&') {
+        r = x & y;
+      } else if (o === '|') {
+        r = x | y;
+      } else if (o === '^') {
+        r = x ^ y;
       } else {
         throw new Error(`sidecar nsis IntOp ${o}`);
       }
@@ -472,12 +561,8 @@ export function runSidecarNsisProgram(
       continue;
     }
     if (op === 'IfFileExists') {
-      const last = val(args[0]!)
-        .split('\\*.*')[0]!
-        .replace(/\//g, '\\')
-        .split('\\')
-        .pop() ?? '';
-      pc = jmp(pc, last.includes('.') ? (args[2] ?? '0') : (args[1] ?? '0'));
+      const exists = sidecarIfFileExistsStarStar(val(args[0]!));
+      pc = jmp(pc, exists ? (args[1] ?? '0') : (args[2] ?? '0'));
       continue;
     }
     if (op === 'RMDir' || op === 'Delete') {
@@ -655,6 +740,41 @@ export function runSidecarNsisProgram(
         }
         if (outr !== null && c !== null) {
           R[outr] = c;
+        }
+        const rr = regname(rt[1]!);
+        if (rr !== null && rt[1]!.startsWith('.')) {
+          R[rr] = rv;
+        }
+        pc += 1;
+        continue;
+      }
+      if (
+        fn === 'GetFileAttributesW' &&
+        dll.toLowerCase() === 'kernel32' &&
+        argList.length === 1 &&
+        rt.length === 2 &&
+        rt[0] === 'i'
+      ) {
+        const ty = argList[0]!.split(/\s+/, 2);
+        if (ty.length !== 2 || ty[0] !== 'w') {
+          sysErr('gfa sig');
+        }
+        const inp = argval(ty[1]!);
+        let rv: string;
+        if (attrError.has(inp)) {
+          rv = 'error';
+        } else if (invalidAttr.has(inp)) {
+          rv = String(INVALID_FILE_ATTRIBUTES);
+        } else if (fileAttrs.has(inp)) {
+          rv = String(fileAttrs.get(inp)!);
+        } else if (reparse.has(inp)) {
+          rv = String(FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT);
+        } else if (fs !== undefined) {
+          rv = Object.prototype.hasOwnProperty.call(fs, inp)
+            ? String(fs[inp]!)
+            : String(INVALID_FILE_ATTRIBUTES);
+        } else {
+          rv = String(FILE_ATTRIBUTE_DIRECTORY);
         }
         const rr = regname(rt[1]!);
         if (rr !== null && rt[1]!.startsWith('.')) {

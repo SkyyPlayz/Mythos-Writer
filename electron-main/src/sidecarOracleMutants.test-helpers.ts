@@ -280,6 +280,27 @@ export function sidecarGuardOracleCorpus(): SidecarGuardCorpusCase[] {
   add(n, [`${n.APPDATA}\\Mythos Writer\\v\r\n`]);
   add(n, [`${n.DESKTOP}\\v\r\n`]);
   add(n, [`${n.PROFILE}\\Downloads\\v\r\n`]);
+  const n1 = { ...ORACLE_ENV_BASE, DESKTOP: 'C:\\Users\\me\\Documents\\Desktop' };
+  const n3 = { ...ORACLE_ENV_BASE, DOCUMENTS: 'C:\\Users\\me' };
+  const n5 = { ...ORACLE_ENV_BASE, DOCUMENTS: 'C:\\Users\\me\\Desktop\\Documents' };
+  const n6 = { ...ORACLE_ENV_BASE, DESKTOP: 'C:\\Users\\me\\Downloads\\Desktop' };
+  add(n1, ['C:\\Users\\me\\Documents\\Desktop\r\n']);
+  add(n1, ['C:\\Users\\me\\Documents\\Desktop\\\r\n']);
+  add(n1, ['C:\\Users\\me\\Documents\\Desktop/\r\n']);
+  add(n1, ['C:\\Users\\me\\Documents\\Desktop\\v\r\n']);
+  add(n3, ['C:\\Users\\me\\Desktop\r\n']);
+  add(n3, ['C:\\Users\\me\\Downloads\r\n']);
+  add(n3, ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\r\n']);
+  add(n3, ['C:\\Users\\me\\AppData\r\n']);
+  add(n3, ['C:\\Users\\me\\Desktop\\v\r\n']);
+  add(n5, ['C:\\Users\\me\\Desktop\\Documents\r\n']);
+  add(n5, ['C:\\Users\\me\\Desktop\\Documents\\v\r\n']);
+  add(n6, ['C:\\Users\\me\\Downloads\\Desktop\r\n']);
+  add(n6, ['C:\\Users\\me\\Downloads\\Desktop\\v\r\n']);
+  add(ORACLE_ENV_BASE, ['C:\\Users\\me\\Documents\\*\r\n']);
+  add(ORACLE_ENV_BASE, ['C:\\Users\\me\\Documents\\*.*\r\n']);
+  add(ORACLE_ENV_BASE, ['C:\\Users\\me\\Desktop\\?\r\n']);
+  add(ORACLE_ENV_BASE, ['C:\\Users\\me\\Documents\\v*\r\n']);
   return out;
 }
 
@@ -303,6 +324,18 @@ const ORACLE_JUMP_LABELS = [
   'uninstall_vault_close',
   'mythos_al_not_appdata',
   'uninstall_vault_do_delete',
+  'mythos_reparse_walk',
+  'mythos_reparse_next',
+  'mythos_reparse_hit',
+  'mythos_reparse_leaf',
+  'mythos_nested_root_guard',
+  'mythos_nr_strip',
+  'mythos_nr_appdata',
+  'mythos_nr_documents',
+  'mythos_nr_desktop',
+  'mythos_nr_downloads',
+  'mythos_nr_ok',
+  'uninstall_vault_file',
 ] as const;
 
 const ORACLE_JUMP_OFFSETS = ['0', '+2', '+4', '+6'] as const;
@@ -336,6 +369,10 @@ const ORACLE_TOKEN_SWAPS: readonly (readonly [string, string])[] = [
   ['"$WINDIR"', '"C:\\Win"'],
   ['"$PROGRAMFILES"', '"C:\\Prog"'],
   ['"$PROGRAMFILES64"', '"C:\\ProgX"'],
+  ['0x400', '0x407'],
+  ['0x400', '0x1'],
+  ['0x400', '0x11'],
+  ['0x400', '0xFFFFFFFF'],
 ];
 
 export type OracleClassMutant = { key: string; fileLine: number; nsh: string };
@@ -345,7 +382,7 @@ function replaceFirst(source: string, needle: string, replacement: string): stri
   return at < 0 ? source : source.slice(0, at) + replacement + source.slice(at + needle.length);
 }
 
-/** gen.py: every mutant class over file lines :43–:213 plus the H6 deny StrCpy variants. */
+/** gen.py: every mutant class over file lines :43–:299 plus the H6 deny StrCpy variants. */
 export function generateOracleClassMutants(nsh: string): OracleClassMutant[] {
   const src = nsh.split('\n');
   const muts = new Map<string, OracleClassMutant>();
@@ -365,10 +402,13 @@ export function generateOracleClassMutants(nsh: string): OracleClassMutant[] {
     const s = src[n - 1]!;
     const t = s.trim();
     const indent = s.match(/^\s*/)?.[0] ?? '';
-    const tk = t.split(/\s+/);
+    const labeled = t.match(/^(\w+):\s*(.*)$/);
+    const instr =
+      labeled && labeled[2] !== '' && !labeled[2].startsWith(':') ? labeled[2] : t;
+    const tk = instr.split(/\s+/);
     put(`${n}:nop`, n, rep(n, `${indent}Nop`));
     put(`${n}:del`, n, [...src.slice(0, n - 1), ...src.slice(n)]);
-    if (t.endsWith(':')) {
+    if (/^\w+:$/.test(t)) {
       put(`${n}:label_rename`, n, rep(n, indent + t.replace(':', 'X:')));
       continue;
     }

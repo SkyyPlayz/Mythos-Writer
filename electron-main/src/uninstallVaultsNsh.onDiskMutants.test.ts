@@ -212,7 +212,11 @@ describe('on-disk nsh mutants (temp copy + MYTHOS_UNINSTALL_VAULTS_NSH_PATH, nev
   );
   withTempOnDiskMutant(
     'M23 on-disk: drop vaults fallback reds main contract suite',
-    (nsh) => nsh.replace('RMDir /r "$APPDATA\\Mythos Writer\\vaults"', ''),
+    (nsh) =>
+      nsh.replace(
+        '!insertmacro mythos_rmdir_unless_reparse "$APPDATA" "$APPDATA\\Mythos Writer\\vaults" vaults',
+        '',
+      ),
     main,
     /M23|vaults/,
   );

@@ -16,7 +16,7 @@ import {
  * `uninstallVaultsNsh.oracleClassSweep.*.test.ts` shards so vitest file workers
  * parallelize the restored-corpus scans.
  */
-describe('oracle-class mutant sweep :43-:213 (Forge gen.py classes, pin-free VM tables)', () => {
+describe('oracle-class mutant sweep :43-:299 (Forge gen.py classes, pin-free VM tables)', () => {
   const nsh = loadUninstallVaultsNsh();
   const byLine = new Map<number, ReturnType<typeof generateOracleClassMutants>>();
   for (const mutant of generateOracleClassMutants(nsh)) {

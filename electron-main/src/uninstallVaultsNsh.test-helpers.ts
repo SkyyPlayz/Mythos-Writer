@@ -129,9 +129,13 @@ export function assertTraversalThenAllowlistThenSidecarDelete(nsh: string): void
   }
 }
 
+export const MYTHOS_RMDIR_UNLESS_REPARSE_VAULTS =
+  '!insertmacro mythos_rmdir_unless_reparse "$APPDATA" "$APPDATA\\Mythos Writer\\vaults" vaults';
+export const MYTHOS_RMDIR_UNLESS_REPARSE_APPDATA =
+  '!insertmacro mythos_rmdir_unless_reparse "$APPDATA" "$APPDATA\\Mythos Writer" appdata';
+
 export function assertDefaultVaultsFallbackRmdir(customUnInstallMacroBody: string): void {
-  const needle = 'RMDir /r "$APPDATA\\Mythos Writer\\vaults"';
-  if (!customUnInstallMacroBody.includes(needle)) {
+  if (!customUnInstallMacroBody.includes(MYTHOS_RMDIR_UNLESS_REPARSE_VAULTS)) {
     throw new Error('Remove all must RMDir default AppData vaults/ fallback');
   }
 }
@@ -191,8 +195,8 @@ export function assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse(
   const requiredInRemoveAll = [
     'FileOpen $0 "$APPDATA\\Mythos Writer\\uninstall-delete-paths.txt"',
     '!insertmacro mythos_delete_remove_all_user_data',
-    'RMDir /r "$APPDATA\\Mythos Writer\\vaults"',
-    'RMDir /r "$APPDATA\\Mythos Writer"',
+    MYTHOS_RMDIR_UNLESS_REPARSE_VAULTS,
+    MYTHOS_RMDIR_UNLESS_REPARSE_APPDATA,
   ];
   for (const token of requiredInRemoveAll) {
     if (!removeAllRegion.includes(token)) {
@@ -351,6 +355,160 @@ export function assertSidecarAllowlistBeforeDelete(nsh: string): void {
   const sidecarRmAt = executable.indexOf('RMDir /r "$1"');
   if (denyAt < 0 || doDeleteAt < denyAt || sidecarRmAt < doDeleteAt) {
     throw new Error('mythos_al_deny must precede uninstall_vault_do_delete before RMDir "$1"');
+  }
+}
+
+const SHELL_VAR_CONTEXT_CURRENT = 'SetShellVarContext current';
+const SHELL_VAR_CONTEXT_ALL = 'SetShellVarContext all';
+const INSTALL_MODE_ALL_IF = '${If} $installMode == "all"';
+
+/** RF-7a: the whole include runs as `current` before any $APPDATA/$DOCUMENTS/$DESKTOP read. */
+export function assertShellVarContextCurrentThenRestorePrevious(nsh: string): void {
+  const body = nshMacroBody(nsh, 'customUnInstall');
+  const isUpdated = '${IfNot} ${isUpdated}';
+  const isUpdatedAt = body.indexOf(isUpdated);
+  if (isUpdatedAt < 0) {
+    throw new Error('RF-7a: ${IfNot} ${isUpdated} missing');
+  }
+  const afterMacro = body.replace(/^!macro customUnInstall\s*/, '');
+  if (!afterMacro.replace(/^\s+/, '').startsWith(SHELL_VAR_CONTEXT_CURRENT)) {
+    throw new Error(
+      'RF-7a: SetShellVarContext current must be the first instruction of customUnInstall (before any shell var is read)',
+    );
+  }
+  if (body.indexOf(SHELL_VAR_CONTEXT_CURRENT) > isUpdatedAt) {
+    throw new Error('RF-7a: SetShellVarContext current must precede ${IfNot} ${isUpdated}');
+  }
+  const currentCount = body.split(SHELL_VAR_CONTEXT_CURRENT).length - 1;
+  const allCount = body.split(SHELL_VAR_CONTEXT_ALL).length - 1;
+  if (currentCount !== 1) {
+    throw new Error(`RF-7a: expected exactly one SetShellVarContext current, got ${currentCount}`);
+  }
+  if (allCount !== 1) {
+    throw new Error(`RF-7a: expected exactly one SetShellVarContext all, got ${allCount}`);
+  }
+  const sectionIf = '${If} ${SectionIsSelected} ${SEC_DELETE_MYTHOS_VAULTS}';
+  const sectionIfAt = body.indexOf(sectionIf);
+  const elseAt = body.indexOf('${Else}', sectionIfAt);
+  const sectionEndIfAt = body.indexOf('${EndIf}', elseAt);
+  const restoreIfAt = body.indexOf(INSTALL_MODE_ALL_IF);
+  if (sectionIfAt < 0 || elseAt < 0 || sectionEndIfAt < 0) {
+    throw new Error('RF-7a: SectionIsSelected If/Else/EndIf missing');
+  }
+  if (restoreIfAt < 0 || restoreIfAt < sectionEndIfAt) {
+    throw new Error('RF-7a: installMode restore must follow the SectionIsSelected ${EndIf}');
+  }
+  const isUpdatedEndIfAt = body.indexOf('${EndIf}', sectionEndIfAt + 1);
+  if (isUpdatedEndIfAt < 0 || restoreIfAt < isUpdatedEndIfAt) {
+    throw new Error(
+      'RF-7a: installMode restore must follow ${IfNot} ${isUpdated} ${EndIf} (every exit, including --updated)',
+    );
+  }
+  const restoreEndIfAt = body.indexOf('${EndIf}', restoreIfAt);
+  const restoreRegion = body.slice(restoreIfAt, restoreEndIfAt);
+  if (!restoreRegion.includes(SHELL_VAR_CONTEXT_ALL)) {
+    throw new Error('RF-7a: installMode == "all" must SetShellVarContext all');
+  }
+  if (restoreRegion.includes('${Else}')) {
+    throw new Error('RF-7a: installMode restore must have no ${Else} (stay current when not all)');
+  }
+  const deleteBlock = body.slice(body.indexOf(SHELL_VAR_CONTEXT_CURRENT), restoreIfAt);
+  if (/\b(Abort|Quit)\b/.test(nshExecutableLines(deleteBlock))) {
+    throw new Error('RF-7a: no Abort/Quit before context restore (every exit path must restore)');
+  }
+}
+
+export const MYTHOS_RMDIR_UNLESS_REPARSE_INSERTS: readonly string[] = [
+  '!insertmacro mythos_rmdir_unless_reparse "$APPDATA" "$APPDATA\\Mythos Writer\\vault-index-cache" idx',
+  '!insertmacro mythos_rmdir_unless_reparse "$APPDATA" "$APPDATA\\Mythos Writer\\note-thumb-cache" thumb',
+  '!insertmacro mythos_rmdir_unless_reparse "$APPDATA" "$APPDATA\\Mythos Writer\\templates" tmpl',
+  '!insertmacro mythos_rmdir_unless_reparse "$APPDATA" "$APPDATA\\Mythos Writer\\agent-personas" pers',
+  MYTHOS_RMDIR_UNLESS_REPARSE_VAULTS,
+  MYTHOS_RMDIR_UNLESS_REPARSE_APPDATA,
+];
+
+/** RF-7b: every former fixed RMDir /r goes through the top-down reparse helper. */
+export function assertMythosRmdirUnlessReparseHelper(nsh: string): void {
+  const helper = nshMacroBody(nsh, 'mythos_rmdir_unless_reparse');
+  if (!helper.includes('GetFileAttributesW')) {
+    throw new Error('RF-7b: mythos_rmdir_unless_reparse must call GetFileAttributesW');
+  }
+  if (!helper.includes('0x400')) {
+    throw new Error('RF-7b: mythos_rmdir_unless_reparse must mask FILE_ATTRIBUTE_REPARSE_POINT (0x400)');
+  }
+  if (!helper.includes('RMDir /r "${_path}"')) {
+    throw new Error('RF-7b: helper must RMDir /r "${_path}" only after the walk');
+  }
+  const customAt = nsh.indexOf('!macro customUnInstall\n');
+  const helperAt = nsh.indexOf('!macro mythos_rmdir_unless_reparse');
+  if (customAt < 0 || helperAt < 0 || helperAt < customAt) {
+    throw new Error('RF-7b: helper must be defined after customUnInstall so :43–:213 stay put');
+  }
+  for (const token of MYTHOS_RMDIR_UNLESS_REPARSE_INSERTS) {
+    if (!nsh.includes(token)) {
+      throw new Error(`RF-7b: missing reparse-guarded RMDir insert: ${token}`);
+    }
+  }
+  const bareFixed = [
+    'RMDir /r "$APPDATA\\Mythos Writer\\vault-index-cache"',
+    'RMDir /r "$APPDATA\\Mythos Writer\\note-thumb-cache"',
+    'RMDir /r "$APPDATA\\Mythos Writer\\templates"',
+    'RMDir /r "$APPDATA\\Mythos Writer\\agent-personas"',
+    'RMDir /r "$APPDATA\\Mythos Writer\\vaults"',
+    'RMDir /r "$APPDATA\\Mythos Writer"',
+  ];
+  for (const token of bareFixed) {
+    if (nsh.includes(token)) {
+      throw new Error(`RF-7b: bare RMDir /r must go through the helper: ${token}`);
+    }
+  }
+}
+
+export function assertSidecarReparseWalkBeforeDelete(nsh: string): void {
+  const executable = nshExecutableLines(nsh);
+  const walkAt = executable.indexOf('mythos_reparse_walk:');
+  const leafAt = executable.indexOf('mythos_reparse_leaf:');
+  const doDeleteAt = executable.indexOf('uninstall_vault_do_delete:');
+  const rmdirAt = executable.indexOf('RMDir /r "$1"');
+  const deleteAt = executable.indexOf('Delete "$1"');
+  if (walkAt < 0 || leafAt < 0 || doDeleteAt < 0 || rmdirAt < 0 || deleteAt < 0) {
+    throw new Error('RF-7b: reparse walk / do_delete / RMDir / Delete markers missing');
+  }
+  if (!executable.includes('Goto mythos_nested_root_guard')) {
+    throw new Error('RF-7b: gate must Goto mythos_nested_root_guard before the walk');
+  }
+  if (!executable.includes('Goto mythos_reparse_walk')) {
+    throw new Error('RF-7b: nested-root guard must Goto mythos_reparse_walk (not skip the walk)');
+  }
+  if (!(walkAt < leafAt && leafAt < doDeleteAt && doDeleteAt < rmdirAt && rmdirAt < deleteAt)) {
+    throw new Error('RF-7b: walk must run top-down before RMDir /r "$1" and Delete "$1"');
+  }
+  if (!executable.includes('IntOp $4 $4 & 0x400')) {
+    throw new Error('RF-7b: walk must mask GetFileAttributesW with 0x400 (not a wider mask)');
+  }
+  if (!executable.includes('GetFileAttributesW(w r6)') || !executable.includes('GetFileAttributesW(w r3)')) {
+    throw new Error('RF-7b: walk must GetFileAttributesW each ancestor (r6) and the leaf (r3)');
+  }
+  if (
+    !executable.includes('mythos_nr_appdata:') ||
+    !executable.includes('mythos_nr_documents:') ||
+    !executable.includes('mythos_nr_desktop:') ||
+    !executable.includes('mythos_nr_downloads:')
+  ) {
+    throw new Error('HARD-2: nested-root guard must GFPN every allowed root');
+  }
+}
+
+/** HARD-1: StrPBrkW set includes controls 1–31 plus `*?<>"|` (42, 63, 60, 62, 34, 124). */
+export function assertWildcardAndControlCharReject(nsh: string): void {
+  const executable = nshExecutableLines(nsh);
+  for (const code of ['42', '63', '60', '62', '34', '124']) {
+    if (!executable.includes(`&i2 ${code}`)) {
+      throw new Error(`HARD-1: StrPBrkW set must include char ${code}`);
+    }
+  }
+  if (!executable.includes('System::Alloc 80')) {
+    throw new Error('HARD-1: charset alloc must fit controls plus *?<>"|');
   }
 }
 

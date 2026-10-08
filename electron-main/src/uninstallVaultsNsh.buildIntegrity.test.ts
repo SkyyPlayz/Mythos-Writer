@@ -9,7 +9,7 @@ import {
 
 /** Pin updates only when `build/uninstall-vaults.nsh` changes on this branch. */
 const EXPECTED_BUILD_UNINSTALL_VAULTS_NSH_SHA256 =
-  'a7e76a22c75ca5f101bc88eb3c61a5704f6c2f34ac519cf8ad95f57ea26dc807';
+  '95dc6726be12e61e64968709a721c2cd6933b7bb37fdf175d90df6cc5076538d';
 
 function assertCanonicalBuildHashMatchesSuiteStartSnapshot(): void {
   const snapshotFile = resolveUninstallVaultsNshBuildHashSnapshotFile();
