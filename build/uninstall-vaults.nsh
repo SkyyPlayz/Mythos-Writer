@@ -266,7 +266,7 @@
             StrCmp $6 "\" uninstall_vault_read
           mythos_nr_ok:
             StrCpy $9 $7
-            Goto uninstall_vault_do_delete
+            Goto mythos_reparse_walk
         mythos_reparse_walk:
           StrLen $8 $9
           IntOp $7 $8 + 1
