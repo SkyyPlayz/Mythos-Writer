@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { sidecarGuardModeTwoFailure } from './sidecarOracleMutants.test-helpers.js';
 import {
+  assertSidecarRf7ShieldSurvivorSweepParity,
   assertSidecarRf7ShieldSurvivorTables,
   SIDECAR_RF7_DESK_PREFIX_DESKTOP_VAULT,
   SIDECAR_RF7_ONE_ACT_FILE_PATH,
@@ -60,11 +60,9 @@ describe('Shield 5462286933 four sweep survivors', () => {
   for (const spec of RF7_SHIELD_SURVIVOR_MUTANTS) {
     it(`${spec.name} dies pin-free on a behavioural row`, () => {
       const mutant = withFileLine(spec.line, spec.text);
-      const failure = sidecarGuardModeTwoFailure(mutant, nsh);
-      expect(failure, spec.name).toBeDefined();
-      expect(failure, spec.name).toMatch(/RF-7 Shield survivor parity/);
-      expect(failure, spec.name).toMatch(new RegExp(spec.rowNeedle));
-      expect(failure, spec.name).not.toMatch(/unsupported|markers missing/);
+      expect(() => assertSidecarRf7ShieldSurvivorSweepParity(mutant, nsh)).toThrow(
+        new RegExp(`RF-7 Shield survivor parity.*${spec.rowNeedle}`),
+      );
     });
   }
 });
