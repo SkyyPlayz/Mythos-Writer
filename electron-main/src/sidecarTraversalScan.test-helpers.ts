@@ -2084,6 +2084,23 @@ export const SIDECAR_DELETE_READ_LOOP_ROWS: readonly {
     ],
     expectClosed: true,
   },
+  // Empty / control-char line then a valid delete: :47/:56 retarget to close drops the
+  // second line, and :47/:56 → do_delete inserts an empty-path delete.
+  {
+    rawLines: ['\r\n', `${DOCUMENTS_VAULT_DELETE_PATH}\r\n`],
+    expectedDeleted: [DOCUMENTS_VAULT_DELETE_PATH],
+    expectClosed: true,
+  },
+  {
+    rawLines: ['\n', `${DOCUMENTS_VAULT_DELETE_PATH}\r\n`],
+    expectedDeleted: [DOCUMENTS_VAULT_DELETE_PATH],
+    expectClosed: true,
+  },
+  {
+    rawLines: [`C:\\Users\\me\\Documents\\a\u0001b\r\n`, `${DOCUMENTS_VAULT_DELETE_PATH}\r\n`],
+    expectedDeleted: [DOCUMENTS_VAULT_DELETE_PATH],
+    expectClosed: true,
+  },
 ];
 
 export function simulateSidecarDeleteReadLoop(
