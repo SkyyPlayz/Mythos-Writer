@@ -1437,52 +1437,109 @@ function parseNsisDollarEscape(quoted: string): string {
 }
 
 export type SidecarReadTrimResult = {
+  /** `'empty'` = the line is skipped (empty after the trim, or rejected for a control char < 0x20). */
   trimmed: 'empty' | string;
   /**
-   * True when a `StrCmp $2 … 0 +N` relative jump lands strictly past the end of this block. The
-   * block ends at the `StrCmp $1 "" …` empty check (:52), and the next instruction is `StrCpy $7 0`
-   * (:53): landing exactly on it still runs the reset, but landing beyond it skips the per-line $7
-   * reset in the real monolithic script, so $7 carries over and a later line's scan starts past its
-   * own traversal. A mutated (e.g. Nop) :52 still falls through to :53, so it is not a skip.
+   * True when a relative jump lands strictly past the end of this block. The block ends just before
+   * `StrCpy $7 0`: landing exactly on it still runs the per-line $7 reset, but landing beyond it would
+   * skip the reset in the real monolithic script, so $7 carries over into the next line's scan.
    */
   resetSkipped: boolean;
-  /**
-   * $2 as the trim leaves it: the last char after the `$\n` trim, i.e. `\r` on a CRLF line but the
-   * path's own last char on an LF-only or unterminated line. The scan runs with it still live.
-   */
+  /** $2 as the trim leaves it (the last char examined); still live when the scan starts. */
   $2: string;
 };
 
-/** Trim + empty check after a simulated FileRead into $1 (Critic S13 / :46–:52). */
+export const SIDECAR_READ_TRIM_STEP_LIMIT_ERROR = 'SIDECAR_READ_TRIM_STEP_LIMIT_EXCEEDED';
+
+/** True when `path` has any character below 0x20 (what shlwapi::StrPBrkW over 0x01..0x1F finds). */
+function hasControlChar(path: string): boolean {
+  for (let i = 0; i < path.length; i += 1) {
+    if (path.charCodeAt(i) < 0x20) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * FileRead + RF-6 CR/LF loop-strip + empty check + control-char reject (file :43–:64), interpreted
+ * line by line so a mutated block is modelled (not refused). `shlwapi::StrPBrkW` over the 0x01..0x1F
+ * set is modelled as "contains any char below 0x20"; the System buffer build / free are no-ops.
+ */
 export function runSidecarReadTrimWithReset(
   blockLines: readonly string[],
   lineContent: string,
 ): SidecarReadTrimResult {
+  const labels = new Map<string, number>();
+  blockLines.forEach((raw, i) => {
+    const m = raw.trim().match(/^(\w+):$/);
+    if (m) {
+      labels.set(m[1]!, i);
+    }
+  });
   let $1 = lineContent;
   let $2 = '';
-  let started = false;
+  let $4 = '';
   let pc = 0;
-  while (pc < blockLines.length) {
+  const done = (): SidecarReadTrimResult => ({
+    trimmed: $1 === '' ? 'empty' : $1,
+    resetSkipped: pc > blockLines.length,
+    $2,
+  });
+  type Jump = 'skip' | number;
+  const jump = (target: string): Jump => {
+    if (target === 'uninstall_vault_read' || target === 'uninstall_vault_close') {
+      return 'skip';
+    }
+    if (target === '0') {
+      return pc + 1;
+    }
+    const rel = target.match(/^([+-])(\d+)$/);
+    if (rel) {
+      return pc + (rel[1] === '-' ? -1 : 1) * Number(rel[2]);
+    }
+    const at = labels.get(target);
+    if (at === undefined) {
+      throw new Error(`unknown read-trim jump target: ${target}`);
+    }
+    return at;
+  };
+  const maxSteps = (lineContent.length + 8) * 40 + 400;
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (pc < 0) {
+      throw new Error(`read-trim VM pc out of range: ${pc}`);
+    }
+    if (pc >= blockLines.length) {
+      return done();
+    }
     const line = blockLines[pc]!.trim();
-    if (line === 'ClearErrors') {
+    if (
+      /^\w+:$/.test(line) ||
+      line === 'ClearErrors' ||
+      line === 'Nop' ||
+      line.startsWith('IfErrors') ||
+      line === 'FileRead $0 $1' ||
+      line.startsWith('System::Alloc') ||
+      line.startsWith('System::Free') ||
+      line.startsWith('Pop ')
+    ) {
       pc += 1;
       continue;
     }
-    if (line === 'FileRead $0 $1') {
-      started = true;
-      pc += 1;
-      continue;
-    }
-    if (!started) {
-      if (line.startsWith('IfErrors')) {
-        pc += 1;
-        continue;
+    if (line.startsWith('System::Call')) {
+      if (line.includes('StrPBrkW')) {
+        $4 = hasControlChar($1) ? '1' : '0';
       }
       pc += 1;
       continue;
     }
-    if (line.startsWith('IfErrors')) {
-      pc += 1;
+    const gotoM = line.match(/^Goto (\w+)$/);
+    if (gotoM) {
+      const j = jump(gotoM[1]!);
+      if (j === 'skip') {
+        return { trimmed: 'empty', resetSkipped: false, $2 };
+      }
+      pc = j;
       continue;
     }
     const strCpyLast = line.match(/^StrCpy \$2 \$1 1 -1$/);
@@ -1497,33 +1554,58 @@ export function runSidecarReadTrimWithReset(
       pc += 1;
       continue;
     }
-    const strCmpRel = line.match(/^StrCmp \$2 ("(?:\\.|[^"])*") 0 \+(\d+)$/);
-    if (strCmpRel) {
-      const lit = parseNsisDollarEscape(strCmpRel[1]!);
-      if ($2 === lit) {
-        pc += 1;
-        continue;
-      }
-      pc += Number(strCmpRel[2]);
-      continue;
-    }
-    if (line === 'StrCmp $1 "" uninstall_vault_read') {
+    const strCmpEmpty = line.match(/^StrCmp \$1 "" (\w+)$/);
+    if (strCmpEmpty) {
       if ($1 === '') {
-        return { trimmed: 'empty', resetSkipped: false, $2 };
+        const j = jump(strCmpEmpty[1]!);
+        if (j === 'skip') {
+          return { trimmed: 'empty', resetSkipped: false, $2 };
+        }
+        pc = j;
+      } else {
+        pc += 1;
       }
-      pc += 1;
       continue;
     }
-    if (line === 'Nop') {
-      pc += 1;
+    const strCmpTwo = line.match(/^StrCmp \$2 ("(?:\\.|[^"])*") (\w+)$/);
+    if (strCmpTwo) {
+      const lit = parseNsisDollarEscape(strCmpTwo[1]!);
+      if ($2 === lit) {
+        const j = jump(strCmpTwo[2]!);
+        if (j === 'skip') {
+          return { trimmed: 'empty', resetSkipped: false, $2 };
+        }
+        pc = j;
+      } else {
+        pc += 1;
+      }
+      continue;
+    }
+    const strCmpTwoRel = line.match(/^StrCmp \$2 ("(?:\\.|[^"])*") 0 \+(\d+)$/);
+    if (strCmpTwoRel) {
+      const lit = parseNsisDollarEscape(strCmpTwoRel[1]!);
+      pc += $2 === lit ? 1 : Number(strCmpTwoRel[2]);
+      continue;
+    }
+    const strCmpFour = line.match(/^StrCmp \$4 (?:0|"0") (\w+)$/);
+    if (strCmpFour) {
+      if ($4 === '0') {
+        const j = jump(strCmpFour[1]!);
+        if (j === 'skip') {
+          return { trimmed: 'empty', resetSkipped: false, $2 };
+        }
+        pc = j;
+      } else {
+        pc += 1;
+      }
       continue;
     }
     throw new Error(`unsupported read-trim VM instruction: ${line}`);
   }
-  return { trimmed: $1 === '' ? 'empty' : $1, resetSkipped: pc > blockLines.length, $2 };
+  throw new Error(SIDECAR_READ_TRIM_STEP_LIMIT_ERROR);
 }
 
-/** Trim + empty check after a simulated FileRead into $1 (Critic S13 / :46–:52). */
+/** FileRead + RF-6 trim loop + control-char reject for one simulated sidecar line. */
 export function executeSidecarReadTrimFromLineContent(
   blockLines: readonly string[],
   lineContent: string,
@@ -1531,7 +1613,7 @@ export function executeSidecarReadTrimFromLineContent(
   return runSidecarReadTrimWithReset(blockLines, lineContent).trimmed;
 }
 
-/** Execute FileRead + newline trim chain for one simulated sidecar line (Critic S13). */
+/** Execute FileRead + trim chain for one simulated sidecar line. */
 export function executeSidecarReadTrimBlock(
   blockLines: readonly string[],
   simulatedFileReadLine: string,
