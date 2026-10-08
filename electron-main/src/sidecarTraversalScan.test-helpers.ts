@@ -981,7 +981,7 @@ function resolveAllowlistDeleteJump(
   if (target === 'uninstall_vault_read') {
     return 'skip_delete';
   }
-  if (target === 'uninstall_vault_do_delete') {
+  if (target === 'uninstall_vault_do_delete' || target === 'mythos_canon_gate') {
     return 'delete';
   }
   const at = labels.get(target);
@@ -991,12 +991,12 @@ function resolveAllowlistDeleteJump(
   return { pc: at };
 }
 
-/** Execute APPDATA/Documents/Desktop/Downloads allowlist gates (:102–:148) through delete vs read decision. */
-export function executeSidecarAllowlistDeleteBlock(
+/** Allowlist root guards (APPDATA/Documents/Desktop/Downloads) with the registers they leave for the gate. */
+export function executeSidecarAllowlistDeleteBlockDetailed(
   blockLines: readonly string[],
   path: string,
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
-): SidecarAllowlistDeleteOutcome {
+): SidecarAllowlistDeleteDetailed {
   const labels = new Map<string, number>();
   for (let i = 0; i < blockLines.length; i++) {
     const labelMatch = blockLines[i]!.trim().match(/^(\w+):$/);
@@ -1011,10 +1011,17 @@ export function executeSidecarAllowlistDeleteBlock(
   let $5 = '';
   let $6 = '';
   let pc = 0;
+  const fin = (outcome: SidecarAllowlistDeleteOutcome): SidecarAllowlistDeleteDetailed => ({
+    outcome,
+    $3,
+    $4,
+    $5,
+    $6,
+  });
   const maxSteps = blockLines.length * 40 + 200;
   for (let step = 0; step < maxSteps; step++) {
     if (pc < 0 || pc >= blockLines.length) {
-      return 'skip_delete';
+      return fin('skip_delete');
     }
     const raw = blockLines[pc]!;
     const line = raw.trim();
@@ -1049,21 +1056,21 @@ export function executeSidecarAllowlistDeleteBlock(
     }
     const strCmpRegPair = line.match(/^StrCmp \$4 \$5 0 (\w+)$/);
     if (strCmpRegPair) {
-      if ($4 === $5) {
+      if (nsisStrEq($4, $5)) {
         pc += 1;
         continue;
       }
       const jump = resolveAllowlistDeleteJump(strCmpRegPair[1]!, labels);
       if (typeof jump === 'string') {
-        return jump;
+        return fin(jump);
       }
       pc = jump.pc;
       continue;
     }
     const strCmpRoot = line.match(/^StrCmp \$1 \$5 uninstall_vault_read$/);
     if (strCmpRoot) {
-      if ($1 === $5) {
-        return 'skip_delete';
+      if (nsisStrEq($1, $5)) {
+        return fin('skip_delete');
       }
       pc += 1;
       continue;
@@ -1071,8 +1078,8 @@ export function executeSidecarAllowlistDeleteBlock(
     const strCmpRootLit = line.match(/^StrCmp \$1 ("(?:\\.|[^"])*") uninstall_vault_read$/);
     if (strCmpRootLit) {
       const lit = expandNsisQuotedLiteral(strCmpRootLit[1]!, env);
-      if ($1 === lit) {
-        return 'skip_delete';
+      if (nsisStrEq($1, lit)) {
+        return fin('skip_delete');
       }
       pc += 1;
       continue;
@@ -1087,13 +1094,13 @@ export function executeSidecarAllowlistDeleteBlock(
     const strCmpFourLitJump = line.match(/^StrCmp \$4 ("(?:\\.|[^"])*") 0 (\w+)$/);
     if (strCmpFourLitJump) {
       const lit = expandNsisQuotedLiteral(strCmpFourLitJump[1]!, env);
-      if ($4 === lit) {
+      if (nsisStrEq($4, lit)) {
         pc += 1;
         continue;
       }
       const jump = resolveAllowlistDeleteJump(strCmpFourLitJump[2]!, labels);
       if (typeof jump === 'string') {
-        return jump;
+        return fin(jump);
       }
       pc = jump.pc;
       continue;
@@ -1114,7 +1121,7 @@ export function executeSidecarAllowlistDeleteBlock(
     const strCmpTailEmpty = line.match(/^StrCmp \$6 "" uninstall_vault_read$/);
     if (strCmpTailEmpty) {
       if ($6 === '') {
-        return 'skip_delete';
+        return fin('skip_delete');
       }
       pc += 1;
       continue;
@@ -1123,7 +1130,7 @@ export function executeSidecarAllowlistDeleteBlock(
     if (gotoLine) {
       const jump = resolveAllowlistDeleteJump(gotoLine[1]!, labels);
       if (typeof jump === 'string') {
-        return jump;
+        return fin(jump);
       }
       pc = jump.pc;
       continue;
@@ -1135,6 +1142,28 @@ export function executeSidecarAllowlistDeleteBlock(
     throw new Error(`unsupported allowlist/delete VM instruction: ${line}`);
   }
   throw new Error('allowlist/delete VM exceeded step limit');
+}
+
+/** NSIS StrCmp: case-insensitive equality. */
+function nsisStrEq(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+export type SidecarAllowlistDeleteDetailed = {
+  outcome: SidecarAllowlistDeleteOutcome;
+  $3: number;
+  $4: string;
+  $5: string;
+  $6: string;
+};
+
+/** Execute APPDATA/Documents/Desktop/Downloads allowlist gates through the allowlist-passed vs read decision. */
+export function executeSidecarAllowlistDeleteBlock(
+  blockLines: readonly string[],
+  path: string,
+  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+): SidecarAllowlistDeleteOutcome {
+  return executeSidecarAllowlistDeleteBlockDetailed(blockLines, path, env).outcome;
 }
 
 /** @deprecated Use executeSidecarAllowlistDeleteBlock; maps delete→allowlist_continue, skip→vault_read. */
@@ -1152,6 +1181,211 @@ function runSidecarAllowlistDeleteVmFromNsh(
   env: SidecarNsisVarEnv,
 ): SidecarAllowlistDeleteOutcome {
   return executeSidecarAllowlistDeleteBlock(extractSidecarAllowlistDeleteLinesForVm(nsh), path, env);
+}
+
+export const SIDECAR_CANON_GATE_MAX_STRLEN = 1024;
+
+/**
+ * Lexical model of Win32 GetFullPathNameW for an absolute drive path, following the documented
+ * normalization: fold `/`→`\`; if the path does not end in a separator, trim trailing spaces and
+ * dots off the end; collapse runs of separators; drop `.` and resolve `..` (never above the drive);
+ * strip one trailing period from an intermediate segment (an all-period segment such as `...` is a
+ * valid name and is kept); keep a trailing separator. Does NOT strip ADS (colon) or resolve
+ * junctions. Real kernel32 on notes-windows is ground truth: the model is proven row-for-row there
+ * and, where they disagree, the model is fixed to match Windows.
+ */
+export function gfpnModel(s: string): string {
+  let folded = s.replace(/\//g, '\\');
+  if (!folded.endsWith('\\')) {
+    folded = folded.replace(/[ .]+$/, '');
+  }
+  const endsWithSep = folded.endsWith('\\');
+  const parts = folded.split('\\');
+  const drive = parts[0] ?? '';
+  const out: string[] = [];
+  for (let i = 1; i < parts.length; i += 1) {
+    let seg = parts[i]!;
+    if (seg === '' || seg === '.') {
+      continue;
+    }
+    if (seg === '..') {
+      out.pop();
+      continue;
+    }
+    if (seg.endsWith('.') && !/^\.+$/.test(seg)) {
+      seg = seg.slice(0, -1);
+    }
+    out.push(seg);
+  }
+  const body = out.length > 0 ? `${drive}\\${out.join('\\')}` : `${drive}\\`;
+  return endsWithSep && out.length > 0 ? `${body}\\` : body;
+}
+
+/** Canonical gate block, `mythos_canon_gate:` … `Goto uninstall_vault_do_delete` (file :198–:213). */
+const canonGateBlockFromGuardRegion = memoizeByArray((region): readonly string[] => {
+  const start = region.findIndex((l) => l.trim() === 'mythos_canon_gate:');
+  const end = region.findIndex((l, i) => i > start && l.trim() === 'Goto uninstall_vault_do_delete');
+  if (start < 0 || end <= start) {
+    throw new Error('canonical gate block markers missing from sidecar guard region');
+  }
+  return region.slice(start, end + 1);
+});
+
+/**
+ * GetFullPathNameW containment gate (file :198–:213), interpreted so System-return mutants are
+ * modelled. `GetFullPathNameW(path/root)` → gfpnModel; fail closed on a 0 or truncated (≥ buffer)
+ * return. Then require the resolved path to start with the resolved root plus a `\`, and be strictly
+ * deeper. `StrCmp` is case-insensitive; a `StrCmpS` mutant folds case off.
+ */
+export function executeCanonGateBlock(
+  blockLines: readonly string[],
+  path: string,
+  root: string,
+): SidecarAllowlistDeleteOutcome {
+  const labels = new Map<string, number>();
+  blockLines.forEach((raw, i) => {
+    const m = raw.trim().match(/^(\w+):$/);
+    if (m) {
+      labels.set(m[1]!, i);
+    }
+  });
+  const reg: Record<string, string> = { $1: path, $5: root, $3: '', $9: '', $6: '', $4: '0', $8: '0' };
+  const num = (v: string): number => {
+    const m = v.match(/^-?\d+/);
+    return m ? Number(m[0]) : 0;
+  };
+  const sizeArg = (tok: string): number =>
+    tok === '${NSIS_MAX_STRLEN}' ? SIDECAR_CANON_GATE_MAX_STRLEN : num(tok);
+  let pc = 0;
+  type Jump = 'delete' | 'skip_delete' | number;
+  const jump = (target: string): Jump => {
+    if (target === 'uninstall_vault_read') {
+      return 'skip_delete';
+    }
+    if (target === 'uninstall_vault_do_delete') {
+      return 'delete';
+    }
+    if (target === '0') {
+      return pc + 1;
+    }
+    const at = labels.get(target);
+    if (at === undefined) {
+      throw new Error(`unknown canon-gate jump target: ${target}`);
+    }
+    return at;
+  };
+  const maxSteps = blockLines.length * 8 + 80;
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (pc < 0 || pc >= blockLines.length) {
+      return 'skip_delete';
+    }
+    const line = blockLines[pc]!.trim();
+    if (/^\w+:$/.test(line) || line === 'Nop') {
+      pc += 1;
+      continue;
+    }
+    const gfpn = line.match(/^System::Call "kernel32::GetFullPathNameW\(w r(\d), i (\S+), w \.r(\d), p 0\) i \.r4"$/);
+    if (gfpn) {
+      const resolved = gfpnModel(reg[`$${gfpn[1]}`] ?? '');
+      const size = sizeArg(gfpn[2]!);
+      if (resolved === '') {
+        reg.$4 = '0';
+      } else if (resolved.length >= size) {
+        reg.$4 = String(resolved.length + 1);
+      } else {
+        reg[`$${gfpn[3]}`] = resolved;
+        reg.$4 = String(resolved.length);
+      }
+      pc += 1;
+      continue;
+    }
+    if (line.startsWith('System::Call')) {
+      pc += 1;
+      continue;
+    }
+    const intCmp = line.match(/^IntCmp (\$\d|\S+) (\S+) (\w+) (\w+) (\w+)$/);
+    if (intCmp) {
+      const a = num(reg[intCmp[1]!] ?? intCmp[1]!);
+      const b = num(reg[intCmp[2]!] ?? String(sizeArg(intCmp[2]!)));
+      const target = a === b ? intCmp[3]! : a < b ? intCmp[4]! : intCmp[5]!;
+      const j = jump(target);
+      if (typeof j !== 'number') {
+        return j;
+      }
+      pc = j;
+      continue;
+    }
+    const strLen = line.match(/^StrLen \$8 (\$\d)$/);
+    if (strLen) {
+      reg.$8 = String((reg[strLen[1]!] ?? '').length);
+      pc += 1;
+      continue;
+    }
+    const strCpyVar = line.match(/^StrCpy (\$\d) (\$\d) (\$\d)$/);
+    if (strCpyVar) {
+      reg[strCpyVar[1]!] = (reg[strCpyVar[2]!] ?? '').slice(0, num(reg[strCpyVar[3]!] ?? '0'));
+      pc += 1;
+      continue;
+    }
+    const strCpyChar = line.match(/^StrCpy (\$\d) (\$\d) 1 (\$\d)$/);
+    if (strCpyChar) {
+      const src = reg[strCpyChar[2]!] ?? '';
+      const at = num(reg[strCpyChar[3]!] ?? '0');
+      reg[strCpyChar[1]!] = at >= 0 && at < src.length ? src[at]! : '';
+      pc += 1;
+      continue;
+    }
+    const strCpyFromOff = line.match(/^StrCpy (\$\d) (\$\d) "" (\$\d|\d+)$/);
+    if (strCpyFromOff) {
+      const off = num(reg[strCpyFromOff[3]!] ?? strCpyFromOff[3]!);
+      reg[strCpyFromOff[1]!] = (reg[strCpyFromOff[2]!] ?? '').slice(off);
+      pc += 1;
+      continue;
+    }
+    const strCmp = line.match(/^(StrCmp|StrCmpS) (\$\d) (\$\d|"(?:\\.|[^"])*") (\w+)(?: (\w+))?$/);
+    if (strCmp) {
+      const lhs = reg[strCmp[2]!] ?? '';
+      const rhsRaw = strCmp[3]!;
+      const rhs = rhsRaw.startsWith('$') ? (reg[rhsRaw] ?? '') : parseStrCmpQuotedLiteral(rhsRaw);
+      const eq = strCmp[1] === 'StrCmpS' ? lhs === rhs : lhs.toLowerCase() === rhs.toLowerCase();
+      const target = eq ? strCmp[4]! : strCmp[5] ?? '0';
+      const j = jump(target);
+      if (typeof j !== 'number') {
+        return j;
+      }
+      pc = j;
+      continue;
+    }
+    const gotoM = line.match(/^Goto (\w+)$/);
+    if (gotoM) {
+      const j = jump(gotoM[1]!);
+      if (typeof j !== 'number') {
+        return j;
+      }
+      pc = j;
+      continue;
+    }
+    throw new Error(`unsupported canon-gate VM instruction: ${line}`);
+  }
+  return 'skip_delete';
+}
+
+/** Allowlist root guards + the GetFullPathNameW canonical gate → final delete vs skip. */
+function runSidecarCanonGateDisposition(
+  path: string,
+  nsh: string,
+  env: SidecarNsisVarEnv,
+): SidecarAllowlistDeleteOutcome {
+  const detailed = executeSidecarAllowlistDeleteBlockDetailed(
+    extractSidecarAllowlistDeleteLinesForVm(nsh),
+    path,
+    env,
+  );
+  if (detailed.outcome === 'skip_delete') {
+    return 'skip_delete';
+  }
+  const region = extractSidecarGuardRegionForVm(nsh);
+  return executeCanonGateBlock(canonGateBlockFromGuardRegion(region), path, detailed.$5);
 }
 
 function runAppDataM5VmFromNsh(
@@ -1346,7 +1580,7 @@ function runSidecarReadLineDeleteDisposition(
     return { disposition: 'blocked_at_guard', travRegs: regs };
   }
   return {
-    disposition: runSidecarAllowlistDeleteVmFromNsh(path, nsh, env),
+    disposition: runSidecarCanonGateDisposition(path, nsh, env),
     travRegs: regs,
   };
 }
@@ -1869,7 +2103,7 @@ export function runSidecarMultilineGuardOutcome(
     if (runDenyPrefixVmFromNsh(path, nsh, env) === 'vault_read') {
       continue;
     }
-    const disposition = runSidecarAllowlistDeleteVmFromNsh(path, nsh, env);
+    const disposition = runSidecarCanonGateDisposition(path, nsh, env);
     if (disposition === 'skip_delete') {
       continue;
     }
