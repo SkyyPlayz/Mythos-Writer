@@ -2367,11 +2367,13 @@ export function assertSidecarGuardVmBehaviourTables(
     assertSidecarDeleteReadLoopTables(nsh, env);
     assertSidecarH7DeleteLoopSweepParity(nsh, canonical, env);
     assertSidecarMultilineTravGuardTables(nsh, env);
+    assertSidecarRf456SweepParity(nsh, canonical, env);
     return;
   }
   assertSidecarReadTrimGuardTables(nsh, env, { includeExactTrimPin: false });
   assertSidecarDeleteReadLoopTables(nsh, env);
   assertSidecarMultilineTravGuardTables(nsh, env);
+  assertSidecarRf456Tables(nsh, env);
   assertTraversalS14LabelSwapRejectTables(nsh);
   assertTraversalVmStepLimitIsFatal();
   assertTraversalRejectAllowTables(nsh);
@@ -2517,14 +2519,93 @@ export const TRAVERSAL_REJECT_S16_CANONICAL_ONLY_PATHS: readonly string[] = [
 export const TRAVERSAL_HARD_H6_FWD_LOOP_PATH = '//';
 
 /** Post-S16 pin: inner `StrCmp $4 "." 0 mythos_trav_inc` per branch (Probe H-4/H-5 :66/:83 at d5c5339f). */
-export const TRAVERSAL_HARD_H4_TRAV_OK_SWAP_FILE_LINE = 74;
-export const TRAVERSAL_HARD_H5_TRAV_OK_SWAP_FILE_LINE = 100;
-export const TRAVERSAL_HARD_H6_FWD_SWAP_FILE_LINE = 77;
+export const TRAVERSAL_HARD_H4_TRAV_OK_SWAP_FILE_LINE = 100;
+export const TRAVERSAL_HARD_H5_TRAV_OK_SWAP_FILE_LINE = 126;
+export const TRAVERSAL_HARD_H6_FWD_SWAP_FILE_LINE = 80;
 
-export const TRAVERSAL_HARD_H7_STRCPY7_RESET_FILE_LINE = 53;
+export const TRAVERSAL_HARD_H7_STRCPY7_RESET_FILE_LINE = 65;
+
+const RF_DOCUMENTS = 'C:\\Users\\me\\Documents';
+const RF_DESKTOP = 'C:\\Users\\me\\Desktop';
+const RF_DOWNLOADS = 'C:\\Users\\me\\Downloads';
+const RF_APPDATA = 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer';
+const RF_PROFILE = 'C:\\Users\\me';
+const RF_SEPS: readonly string[] = ['\\', '/'];
+const RF_TAB = '\t';
+
+/** RF-4 (H8): a colon anywhere but the drive colon at index 1, both branches, every allow root. */
+export const TRAVERSAL_REJECT_RF4_COLON_PATHS: readonly string[] = [
+  RF_DOCUMENTS,
+  RF_DESKTOP,
+  RF_APPDATA,
+  RF_DOWNLOADS,
+].flatMap((root) =>
+  RF_SEPS.flatMap((sep) =>
+    [
+      '..::$INDEX_ALLOCATION',
+      '..:x',
+      'v:x',
+      'v::$DATA',
+      `v:x${sep}y`,
+      '.::$INDEX_ALLOCATION',
+      '...::$DATA',
+      `v${sep}..::$INDEX_ALLOCATION${sep}x`,
+      `v${sep}..:x`,
+      'x::$DATA',
+      'foo:bar',
+      `v${sep}a:b${sep}c`,
+      'C:\\Windows',
+    ].map((tail) => `${root}${sep}${tail}`),
+  ),
+);
+
+/** RF-4: UNC / device prefixes, rejected by the scan itself (never by the allowlist alone). */
+export const TRAVERSAL_REJECT_RF4_PREFIX_PATHS: readonly string[] = [
+  '\\\\?\\C:\\Users\\me\\Documents\\v',
+  '\\\\.\\C:\\Users\\me\\Documents\\v',
+  '\\\\server\\share\\v',
+  '\\\\?\\UNC\\server\\share\\v',
+];
+
+/** RF-5 (H9): an empty segment (doubled separator, any mix) under every root, incl. the profile root. */
+export const TRAVERSAL_REJECT_RF5_EMPTY_SEGMENT_PATHS: readonly string[] = [
+  RF_DOCUMENTS,
+  RF_DESKTOP,
+  RF_DOWNLOADS,
+  RF_APPDATA,
+  RF_PROFILE,
+].flatMap((root) => ['\\\\', '\\\\\\', '\\/', '/\\', '//', '\\\\v'].map((tail) => `${root}${tail}`));
+
+/** RF-5: last round's allow rows `v\\`, `v\/`, `v/\` flip to must-reject (doubled separator). */
+export const TRAVERSAL_REJECT_RF5_FLIPPED_PATHS: readonly string[] = [
+  'C:\\Users\\me\\Documents\\v\\\\',
+  'C:\\Users\\me\\Documents\\v\\/',
+  'C:\\Users\\me\\Documents\\v/\\',
+];
+
+/** Critic root rows the scan rejects: Documents / Desktop / Downloads × both separators, plus `root\/`. */
+export const TRAVERSAL_REJECT_ROOT_SCAN_PATHS: readonly string[] = [RF_DOCUMENTS, RF_DESKTOP, RF_DOWNLOADS].flatMap(
+  (root) => [
+    ...RF_SEPS.flatMap((sep) =>
+      [sep + sep, sep.repeat(4), `${sep}.${sep}`, `${sep}x${sep}..${sep}`, `${sep} `].map((tail) => root + tail),
+    ),
+    `${root}\\/`,
+  ],
+);
+
+/** S-5: a vault name that begins with a space or TAB is skipped on purpose (both branches). */
+export const TRAVERSAL_REJECT_S5_LEADING_WS_PATHS: readonly string[] = RF_SEPS.flatMap((sep) =>
+  [' ', RF_TAB].map((ws) => `${RF_DOCUMENTS}${sep}${ws}notes`),
+);
 
 export const TRAVERSAL_REJECT_PATHS: readonly string[] = [
   ...TRAVERSAL_REJECT_S12_PATHS,
+  ...TRAVERSAL_REJECT_RF4_COLON_PATHS,
+  ...TRAVERSAL_REJECT_RF4_PREFIX_PATHS,
+  ...TRAVERSAL_REJECT_RF5_EMPTY_SEGMENT_PATHS,
+  ...TRAVERSAL_REJECT_RF5_FLIPPED_PATHS,
+  ...TRAVERSAL_REJECT_ROOT_SCAN_PATHS,
+  ...TRAVERSAL_REJECT_S5_LEADING_WS_PATHS,
   ...TRAVERSAL_REJECT_S16_WIN32_SEGMENT_PATHS,
   ...TRAVERSAL_REJECT_MIDDLE_SEGMENT_TAIL_PATHS,
   ...TRAVERSAL_REJECT_LEADING_WS_SEGMENT_PATHS,
@@ -2576,7 +2657,8 @@ export const TRAVERSAL_ALLOW_S16_DELETE_PATHS: readonly string[] = [
 
 /**
  * Forge fuzz follow-up: valid names whose segment starts `.`/`..`/`...` but is NOT a traversal
- * segment, and doubled/trailing separators. Canonical deletes all of these. The literal swaps on
+ * segment, and a single trailing separator. Canonical deletes all of these (doubled separators
+ * are must-reject since RF-5: see TRAVERSAL_REJECT_RF5_FLIPPED_PATHS). The literal swaps on
  * the `.`/`..`-then-separator rejects (`""`/`"\"`/`"/"` → `"."`/`" "`/`"$\t"`, lines :68/:71-:73,
  * :77-:79, :94, :97-:99, :103-:105) wrongly refuse them, so they are the allow rows that catch
  * those stricter mutants. The systematic shapes in sidecarGuardOracleCorpus() generalise the class.
@@ -2594,9 +2676,6 @@ export const TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS: readonly string[] = [
   'C:\\Users\\me\\Documents\\v/...a',
   'C:\\Users\\me\\Documents\\v\\',
   'C:\\Users\\me\\Documents\\v/',
-  'C:\\Users\\me\\Documents\\v\\\\',
-  'C:\\Users\\me\\Documents\\v\\/',
-  'C:\\Users\\me\\Documents\\v/\\',
 ];
 
 /**
@@ -2621,11 +2700,192 @@ export const TRAVERSAL_ALLOW_PATHS: readonly string[] = [
   ...TRAVERSAL_ALLOW_DOT_LETTER_DELETE_PATHS,
 ];
 
+/**
+ * Root / empty-child / sibling-boundary rows asserted on the allowlist ALONE. The canonical gate
+ * backstops these in the full pipeline, so each root guard (boundary + empty-child, per root) is
+ * pinned here without it: a Nop on any of them turns one of these rows into a delete.
+ */
+export const ALLOWLIST_ROOT_GUARD_SKIP_PATHS: readonly string[] = [
+  RF_APPDATA,
+  RF_DOCUMENTS,
+  RF_DESKTOP,
+  RF_DOWNLOADS,
+  `${RF_APPDATA}\\`,
+  `${RF_DOCUMENTS}\\`,
+  `${RF_DESKTOP}\\`,
+  `${RF_DOWNLOADS}\\`,
+  `${RF_APPDATA}Old\\v`,
+  `${RF_DOCUMENTS}Old\\v`,
+  `${RF_DESKTOP}Old\\v`,
+  `${RF_DOWNLOADS}Old\\v`,
+];
+
+/** Must still delete after the canonical step (Documents / Desktop / Downloads, plus the AppData root). */
+export const CANON_MUST_DELETE_PATHS: readonly string[] = [
+  ...[RF_DOCUMENTS, RF_DESKTOP, RF_DOWNLOADS].flatMap((root) =>
+    ['My Vault', 'v1.2\\notes', 'a.b.c', 'v 1.2\\x'].map((tail) => `${root}\\${tail}`),
+  ),
+  `${RF_APPDATA}\\v`,
+];
+
+/** Critic: root-equivalent rows the GetFullPathNameW gate ALONE must skip (each root, both separators). */
+export const CANON_GATE_ROOT_SKIP_ROWS: readonly { path: string; root: string }[] = [
+  RF_DOCUMENTS,
+  RF_DESKTOP,
+  RF_DOWNLOADS,
+].flatMap((root) => [
+  ...RF_SEPS.flatMap((sep) =>
+    [sep + sep, sep.repeat(4), `${sep}.${sep}`, `${sep}x${sep}..${sep}`, `${sep} `].map((tail) => ({
+      path: root + tail,
+      root,
+    })),
+  ),
+  { path: `${root}\\/`, root },
+  { path: root, root },
+]);
+
+/** Must-delete rows for the gate alone, plus a case-folded path (StrCmp is case-insensitive). */
+export const CANON_GATE_MUST_DELETE_ROWS: readonly { path: string; root: string }[] = [
+  ...[RF_DOCUMENTS, RF_DESKTOP, RF_DOWNLOADS].flatMap((root) =>
+    ['My Vault', 'v1.2\\notes', 'a.b.c', 'v 1.2\\x'].map((tail) => ({ path: `${root}\\${tail}`, root })),
+  ),
+  { path: 'c:\\users\\me\\documents\\v', root: RF_DOCUMENTS },
+];
+
+const RF6_LFCR = '\n\r';
+
+/**
+ * RF-6: an LF-then-CR line end must not bring back Critic's 21 rows (7 tails × 3 roots) or the six
+ * RF-3 rows, and embedded control chars below 0x20 are rejected. Each entry is one sidecar line.
+ */
+export const SIDECAR_RF6_MUST_SKIP_LINES: readonly string[] = [
+  ...[RF_DOCUMENTS, RF_DESKTOP, RF_DOWNLOADS].flatMap((root) =>
+    ['.. ', `..${RF_TAB}`, '...', '. ', 'v.', 'v ', '. .'].map((tail) => `${root}\\${tail}${RF6_LFCR}`),
+  ),
+  ...['\\.. ', `\\..${RF_TAB}`, '\\...', '\\. ', '\\.. \\x', '/... '].map((tail) => `${RF_DOCUMENTS}${tail}${RF6_LFCR}`),
+  `${RF_DOCUMENTS}\\.. \r\n\n`,
+  `${RF_DOCUMENTS}\\.. \x01\r\n`,
+  `${RF_DOCUMENTS}\\.. \x1f\r\n`,
+  `${RF_DOCUMENTS}\\v\x01w\r\n`,
+  `${RF_DOCUMENTS}\\v\x1fw\r\n`,
+];
+
+/** RF-6: a clean name with an LF-then-CR line end still deletes. */
+export const SIDECAR_RF6_MUST_DELETE_LINE = { raw: `${RF_DOCUMENTS}\\ok\n\r`, deleted: `${RF_DOCUMENTS}\\ok` } as const;
+
+/** Every scan-rejected RF-4 / RF-5 / root / S-5 row (one CRLF sidecar line each). */
+const RF456_SCAN_REJECT_PATHS: readonly string[] = [
+  ...TRAVERSAL_REJECT_RF4_COLON_PATHS,
+  ...TRAVERSAL_REJECT_RF4_PREFIX_PATHS,
+  ...TRAVERSAL_REJECT_RF5_EMPTY_SEGMENT_PATHS,
+  ...TRAVERSAL_REJECT_RF5_FLIPPED_PATHS,
+  ...TRAVERSAL_REJECT_ROOT_SCAN_PATHS,
+  ...TRAVERSAL_REJECT_S5_LEADING_WS_PATHS,
+];
+
+function deletedFor(nsh: string, raw: string, env: SidecarNsisVarEnv): readonly string[] {
+  return simulateSidecarDeleteReadLoop(nsh, [raw], env).deleted;
+}
+
+/**
+ * RF-4 / RF-5 / RF-6 + canonical gate tables: the allowlist root guards alone, the gate alone, and
+ * the full pipeline end to end (nothing deleted for any reject row; exactly the path for a must-delete).
+ */
+export function assertSidecarRf456Tables(
+  nsh: string,
+  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+): void {
+  for (const path of ALLOWLIST_ROOT_GUARD_SKIP_PATHS) {
+    const outcome = runSidecarAllowlistDeleteVmFromNsh(path, nsh, env);
+    if (outcome !== 'skip_delete') {
+      throw new Error(`allowlist root guard must skip ${JSON.stringify(path)}, got ${outcome}`);
+    }
+  }
+  for (const path of CANON_MUST_DELETE_PATHS) {
+    const outcome = runSidecarAllowlistDeleteVmFromNsh(path, nsh, env);
+    if (outcome !== 'delete') {
+      throw new Error(`allowlist must pass ${JSON.stringify(path)}, got ${outcome}`);
+    }
+  }
+  const gate = canonGateBlockFromGuardRegion(extractSidecarGuardRegionForVm(nsh));
+  for (const { path, root } of CANON_GATE_ROOT_SKIP_ROWS) {
+    const outcome = executeCanonGateBlock(gate, path, root);
+    if (outcome !== 'skip_delete') {
+      throw new Error(`canonical gate must skip ${JSON.stringify(path)}, got ${outcome}`);
+    }
+  }
+  for (const { path, root } of CANON_GATE_MUST_DELETE_ROWS) {
+    const outcome = executeCanonGateBlock(gate, path, root);
+    if (outcome !== 'delete') {
+      throw new Error(`canonical gate must delete ${JSON.stringify(path)}, got ${outcome}`);
+    }
+  }
+  const mustSkip = [
+    ...RF456_SCAN_REJECT_PATHS.map((path) => `${path}\r\n`),
+    ...ALLOWLIST_ROOT_GUARD_SKIP_PATHS.map((path) => `${path}\r\n`),
+    ...SIDECAR_RF6_MUST_SKIP_LINES,
+  ];
+  for (const raw of mustSkip) {
+    const deleted = deletedFor(nsh, raw, env);
+    if (deleted.length !== 0) {
+      throw new Error(`must not delete for ${JSON.stringify(raw)}, deleted ${JSON.stringify(deleted)}`);
+    }
+  }
+  for (const path of CANON_MUST_DELETE_PATHS) {
+    const deleted = deletedFor(nsh, `${path}\r\n`, env);
+    if (deleted.length !== 1 || deleted[0] !== path) {
+      throw new Error(`must delete exactly ${JSON.stringify(path)}, deleted ${JSON.stringify(deleted)}`);
+    }
+  }
+  const lfcr = deletedFor(nsh, SIDECAR_RF6_MUST_DELETE_LINE.raw, env);
+  if (lfcr.length !== 1 || lfcr[0] !== SIDECAR_RF6_MUST_DELETE_LINE.deleted) {
+    throw new Error(`LF-CR clean line must delete ${SIDECAR_RF6_MUST_DELETE_LINE.deleted}, got ${JSON.stringify(lfcr)}`);
+  }
+}
+
+/** Mode-2 parity on the same rows, layer by layer: a mutant must match canonical everywhere. */
+export function assertSidecarRf456SweepParity(
+  mutantNsh: string,
+  canonicalNsh: string,
+  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+): void {
+  for (const path of [...ALLOWLIST_ROOT_GUARD_SKIP_PATHS, ...CANON_MUST_DELETE_PATHS]) {
+    const canonical = runSidecarAllowlistDeleteVmFromNsh(path, canonicalNsh, env);
+    const mutant = runSidecarAllowlistDeleteVmFromNsh(path, mutantNsh, env);
+    if (mutant !== canonical) {
+      throw new Error(`sweep parity allowlist root guard ${JSON.stringify(path)}: canonical ${canonical}, mutant ${mutant}`);
+    }
+  }
+  const canonicalGate = canonGateBlockFromGuardRegion(extractSidecarGuardRegionForVm(canonicalNsh));
+  const mutantGate = canonGateBlockFromGuardRegion(extractSidecarGuardRegionForVm(mutantNsh));
+  for (const { path, root } of [...CANON_GATE_ROOT_SKIP_ROWS, ...CANON_GATE_MUST_DELETE_ROWS]) {
+    const canonical = executeCanonGateBlock(canonicalGate, path, root);
+    const mutant = executeCanonGateBlock(mutantGate, path, root);
+    if (mutant !== canonical) {
+      throw new Error(`sweep parity canonical gate ${JSON.stringify(path)}: canonical ${canonical}, mutant ${mutant}`);
+    }
+  }
+  const rows = [
+    ...RF456_SCAN_REJECT_PATHS.map((path) => `${path}\r\n`),
+    ...ALLOWLIST_ROOT_GUARD_SKIP_PATHS.map((path) => `${path}\r\n`),
+    ...CANON_MUST_DELETE_PATHS.map((path) => `${path}\r\n`),
+    ...SIDECAR_RF6_MUST_SKIP_LINES,
+    SIDECAR_RF6_MUST_DELETE_LINE.raw,
+  ];
+  for (const raw of rows) {
+    const canonical = deletedFor(canonicalNsh, raw, env).join('\u0000');
+    const mutant = deletedFor(mutantNsh, raw, env).join('\u0000');
+    if (mutant !== canonical) {
+      throw new Error(`sweep parity end to end ${JSON.stringify(raw)}: canonical ${JSON.stringify(canonical)}, mutant ${JSON.stringify(mutant)}`);
+    }
+  }
+}
+
 /** Critic S14 — label-swap mutants (pin sweep :74/:99/:93; VM witness for :93 fwd loop). */
 export const TRAVERSAL_S14_FWD_LOOP_PATH = '//';
 
 /** Witness: canonical completes; fwd label-swap on forward `.` check must not terminate on `//`. */
-export const TRAVERSAL_S14_FWD_SWAP_FILE_LINE = 94;
+export const TRAVERSAL_S14_FWD_SWAP_FILE_LINE = 120;
 
 export const TRAVERSAL_S14_LABEL_SWAP_MUTANTS: readonly {
   fileLine: number;
@@ -2634,7 +2894,7 @@ export const TRAVERSAL_S14_LABEL_SWAP_MUTANTS: readonly {
 }[] = [];
 
 /** Documented pin-only / behaviour-equivalent S14 swaps (see guardRegionSweep equivalents :74/:99). */
-export const TRAVERSAL_S14_TRAV_OK_SWAP_FILE_LINES: readonly number[] = [74, 100];
+export const TRAVERSAL_S14_TRAV_OK_SWAP_FILE_LINES: readonly number[] = [100, 126];
 
 const SIDECAR_CRLF = '\r\n';
 
@@ -2702,14 +2962,43 @@ export const SIDECAR_MULTILINE_LF_RESET_ROW: {
   expectClosed: true,
 };
 
+/**
+ * Line 2 is rejected only by the scan: GetFullPathNameW keeps a stream name (`v:x`) and collapses a
+ * doubled separator, so both resolve inside Documents and pass the canonical gate. Only the :65 `$7`
+ * reset makes the scan see line 2 after a longer line 1.
+ */
+export const SIDECAR_MULTILINE_H7_SCAN_ONLY_DELETE_ROWS: readonly {
+  rawLines: readonly string[];
+  expectedDeleted: readonly string[];
+  expectClosed: boolean;
+}[] = [
+  {
+    rawLines: [
+      `C:\\Users\\me\\Documents\\My Vault\\carry-${'b'.repeat(80)}${SIDECAR_CRLF}`,
+      `C:\\Users\\me\\Documents\\v:x${SIDECAR_CRLF}`,
+    ],
+    expectedDeleted: [`C:\\Users\\me\\Documents\\My Vault\\carry-${'b'.repeat(80)}`],
+    expectClosed: true,
+  },
+  {
+    rawLines: [
+      `C:\\Users\\me\\Documents\\My Vault\\carry-${'b'.repeat(80)}${SIDECAR_CRLF}`,
+      `C:\\Users\\me\\Documents\\v\\\\x${SIDECAR_CRLF}`,
+    ],
+    expectedDeleted: [`C:\\Users\\me\\Documents\\My Vault\\carry-${'b'.repeat(80)}`],
+    expectClosed: true,
+  },
+];
+
 const SIDECAR_MULTILINE_H7_DELETE_ROWS = [
   SIDECAR_MULTILINE_H7_DELETE_ROW,
   SIDECAR_MULTILINE_H7_LINE3_DELETE_ROW,
   SIDECAR_MULTILINE_LF_RESET_ROW,
+  ...SIDECAR_MULTILINE_H7_SCAN_ONLY_DELETE_ROWS,
 ] as const;
 
 /** Critic H6 — file lines for StrCpy $4 $1 $3 deny gates. */
-export const DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES: readonly [115, 118, 121] = [115, 118, 121];
+export const DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES: readonly [141, 144, 147] = [141, 144, 147];
 
 export type DenyPrefixStrcpyAcceptanceVariant =
   | 'nop'
@@ -2788,7 +3077,7 @@ function denyStrcpyReplacementLine(
 /** Critic H6 acceptance mutant on :114 / :117 / :120 StrCpy $4 $1 $3 (re-baseline deny VM must go red). */
 export function mutantDenyPrefixStrcpyAcceptance(
   nsh: string,
-  fileLine: 115 | 118 | 121,
+  fileLine: 141 | 144 | 147,
   variant: DenyPrefixStrcpyAcceptanceVariant,
 ): string {
   const regionIndex = fileLine - SIDECAR_GUARD_REGION_FILE_LINE_FIRST;
@@ -2808,7 +3097,7 @@ export function mutantDenyPrefixStrcpyAcceptance(
 export function mutantHardLabelSwapJumpTarget(
   nsh: string,
   fileLine: number,
-  jumpTarget: 'uninstall_vault_trav_ok' | 'mythos_trav_fwd',
+  jumpTarget: 'uninstall_vault_trav_ok' | 'mythos_trav_fwd' | 'mythos_trav_sepcheck',
 ): string {
   const { lines } = locateSidecarGuardRegion(nsh);
   const regionIndex = fileLine - SIDECAR_GUARD_REGION_FILE_LINE_FIRST;
@@ -2837,6 +3126,13 @@ export function mutantHardLabelSwapJumpTarget(
       nsh,
       regionIndex,
       `${indent}StrCmp $4 " " ${jumpTarget}`,
+    );
+  }
+  if (/^StrCmp \$4 "\/" uninstall_vault_read$/.test(trimmed)) {
+    return replaceSidecarGuardRegionLine(
+      nsh,
+      regionIndex,
+      `${indent}StrCmp $4 "/" ${jumpTarget}`,
     );
   }
   throw new Error(`file :${fileLine} is not a hard label-swap line: ${trimmed}`);
@@ -2869,7 +3165,7 @@ export function assertTraversalVmStepLimitIsFatal(): void {
   const loopBlock = ['        mythos_trav_scan:', '          Goto mythos_trav_scan'];
   try {
     executeTraversalScanBlockStateful(loopBlock, 'x', { $7: 0, $8: 0 }, { maxSteps: 32 });
-    throw new Error('expected TRAVERSAL_VM_STEP_LIMIT_EXCEEDED for synthetic loop block');
+    throw new Error('step cap did not fire for the synthetic self-referential loop block (fail-open)');
   } catch (err) {
     if (!isTraversalVmStepLimitError(err)) {
       throw err;
@@ -2916,7 +3212,7 @@ export function assertTraversalHardLabelSwapRejectTables(nsh: string): void {
   const h6LoopMutant = mutantHardLabelSwapJumpTarget(
     nsh,
     TRAVERSAL_HARD_H6_FWD_SWAP_FILE_LINE,
-    'mythos_trav_fwd',
+    'mythos_trav_sepcheck',
   );
   const travBlock = travBlockFromGuardRegion(extractSidecarGuardRegionForVm(h6LoopMutant));
   try {
@@ -2927,7 +3223,7 @@ export function assertTraversalHardLabelSwapRejectTables(nsh: string): void {
       { maxSteps: 8000 },
     );
     throw new Error(
-      `H-6 fwd swap must hit ${TRAVERSAL_VM_STEP_LIMIT_ERROR} on ${JSON.stringify(TRAVERSAL_HARD_H6_FWD_LOOP_PATH)}`,
+      `H-6 fwd swap did not loop (step cap failed open) on ${JSON.stringify(TRAVERSAL_HARD_H6_FWD_LOOP_PATH)}`,
     );
   } catch (err) {
     if (!isTraversalVmStepLimitError(err)) {
@@ -2938,9 +3234,9 @@ export function assertTraversalHardLabelSwapRejectTables(nsh: string): void {
   const h7Mutant = replaceSidecarGuardFileLine(nsh, TRAVERSAL_HARD_H7_STRCPY7_RESET_FILE_LINE, '        Nop');
   try {
     assertSidecarDeleteReadLoopTables(h7Mutant);
-    throw new Error('H-7 :53 StrCpy $7 0 removal must fail delete read-loop tables');
+    throw new Error('H-7 :65 StrCpy $7 0 removal must fail delete read-loop tables');
   } catch (err) {
-    if (err instanceof Error && err.message.includes('H-7 :53')) {
+    if (err instanceof Error && err.message.includes('H-7 :65')) {
       throw err;
     }
     if (err instanceof Error && err.message.includes('H-7 read-loop delete set')) {

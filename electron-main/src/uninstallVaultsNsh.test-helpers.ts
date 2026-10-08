@@ -273,8 +273,12 @@ export function assertAllowlistDenySkipsSidecarLine(nsh: string): void {
   if (denyLabelAt < 0) {
     throw new Error('mythos_al_deny label missing from sidecar allowlist');
   }
-  const doDeleteAt = executable.indexOf('uninstall_vault_do_delete:');
-  const denyRegion = executable.slice(denyLabelAt, doDeleteAt > denyLabelAt ? doDeleteAt : denyLabelAt + 200);
+  // The canonical gate (with its own `Goto uninstall_vault_do_delete`) sits between this label and
+  // uninstall_vault_do_delete:, so the deny block ends at the next label.
+  const canonGateAt = executable.indexOf('mythos_canon_gate:', denyLabelAt);
+  const doDeleteAt = executable.indexOf('uninstall_vault_do_delete:', denyLabelAt);
+  const denyEnd = canonGateAt > denyLabelAt ? canonGateAt : doDeleteAt > denyLabelAt ? doDeleteAt : denyLabelAt + 200;
+  const denyRegion = executable.slice(denyLabelAt, denyEnd);
   if (!denyRegion.includes('Goto uninstall_vault_read')) {
     throw new Error('mythos_al_deny must Goto uninstall_vault_read (deny non-allowlisted paths)');
   }
