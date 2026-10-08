@@ -11,6 +11,7 @@ import {
   SIDECAR_GUARD_REGION_FILE_LINE_FIRST,
   SIDECAR_GUARD_REGION_FILE_LINE_LAST,
   SIDECAR_READ_LOOP_STEP_LIMIT,
+  TRAVERSAL_ALLOW_DOT_LETTER_DELETE_PATHS,
   TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS,
   type SidecarNsisVarEnv,
 } from './sidecarTraversalScan.test-helpers.js';
@@ -81,10 +82,12 @@ export type SidecarGuardCorpusCase = Readonly<{ env: SidecarNsisVarEnv; reads: r
 /**
  * Systematic segment-tail shapes from `.`, space, TAB and letters, so the stricter-than-canonical
  * literal swaps on the `.`/`..`-then-separator rejects are covered as a class, not just by the
- * 15 explicit allow rows. Decorations sit in prefix, middle and suffix positions around dot cores.
+ * explicit allow rows. Decorations sit in prefix, middle and suffix positions around dot cores.
+ * `x` is a gen.py literal, so it is one of the letters: an `"x"` swap refuses `.x` / `..x` names.
  */
 function segmentTailShapes(): string[] {
-  const deco = ['', ' ', TAB, '.', 'a'];
+  const letters = ['a', 'x'];
+  const deco = ['', ' ', TAB, '.', ...letters];
   const cores = ['', '.', '..', '...', '....'];
   const out = new Set<string>();
   for (const lead of deco) {
@@ -97,7 +100,10 @@ function segmentTailShapes(): string[] {
       }
     }
   }
-  const twoCharTails = [' a', `${TAB}a`, '.a', 'a ', `a${TAB}`, '. ', ' .', `${TAB} `, 'a.'];
+  const twoCharTails = ['. ', ' .', `${TAB} `];
+  for (const l of letters) {
+    twoCharTails.push(` ${l}`, `${TAB}${l}`, `.${l}`, `${l} `, `${l}${TAB}`, `${l}.`);
+  }
   for (const core of ['.', '..', '...']) {
     for (const t of twoCharTails) {
       out.add(`${core}${t}`);
@@ -106,17 +112,27 @@ function segmentTailShapes(): string[] {
   return [...out];
 }
 
-/** Paths that exercise every segment-tail shape in prefix/middle/suffix × both separators × doubled/trailing. */
+/**
+ * Paths that exercise every segment-tail shape in prefix/middle/suffix × both separators × doubled/
+ * trailing. Suffix and trailing-separator paths also run LF-only and unterminated: without a `\r`
+ * the trim leaves $2 = the path's last char while the scan runs, which a `$4`→`$2` swap reads.
+ */
 function segmentTailCases(d: string): string[][] {
   const seps = ['\\', '/'];
+  const terms = ['\r\n', '\n', ''];
   const cases: string[][] = [];
   for (const seg of segmentTailShapes()) {
     for (const s1 of seps) {
       for (const s2 of seps) {
         cases.push([`${d}\\v${s1}${seg}${s2}x\r\n`]);
         cases.push([`${d}\\v${s1}${seg}${s2}${s2}y\r\n`]);
+        for (const term of terms) {
+          cases.push([`${d}\\v${s1}${seg}${s2}${term}`]);
+        }
       }
-      cases.push([`${d}\\v${s1}${seg}\r\n`]);
+      for (const term of terms) {
+        cases.push([`${d}\\v${s1}${seg}${term}`]);
+      }
       cases.push([`${d}\\${seg}${s1}x\r\n`]);
     }
   }
@@ -127,7 +143,7 @@ function segmentTailCases(d: string): string[][] {
     }
     cases.push([`${d}\\v${s1}\r\n`]);
   }
-  for (const path of TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS) {
+  for (const path of [...TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS, ...TRAVERSAL_ALLOW_DOT_LETTER_DELETE_PATHS]) {
     cases.push([`${path}\r\n`]);
   }
   return cases;

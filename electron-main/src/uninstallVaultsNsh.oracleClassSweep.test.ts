@@ -62,7 +62,8 @@ describe('oracle-class mutant sweep :43-:127 (Forge gen.py classes, pin-free VM 
   }
 
   // The behaviour oracle above is the same TS VM as the catch, so a VM that stops modelling the
-  // read-trim overshoot would weaken both sides at once and stay green. These pin the model itself.
+  // read-trim overshoot or the live $2 would weaken both sides at once and stay green. These pin
+  // the model itself.
   describe('read-trim overshoot model (multi-line $7 carry, Forge nsis.py ground truth)', () => {
     const CR_TRIM_INDEX = CANONICAL_READ_TRIM_BLOCK.findIndex((l) => l.trim() === 'StrCmp $2 "$\\r" 0 +2');
     const EMPTY_CHECK_INDEX = CANONICAL_READ_TRIM_BLOCK.findIndex(
@@ -84,6 +85,24 @@ describe('oracle-class mutant sweep :43-:127 (Forge gen.py classes, pin-free VM 
     it('the :50 +2→+4 / +2→+6 overshoot mutants are caught (they delete `..\\..\\..\\Windows` after a long line)', () => {
       const keys = ['50:tgt4:+2->+4', '50:tgt4:+2->+6'];
       const mutants = (byLine.get(50) ?? []).filter((m) => keys.includes(m.key));
+      expect(mutants.map((m) => m.key).sort()).toEqual([...keys].sort());
+      for (const mutant of mutants) {
+        expect(sidecarGuardModeTwoCaught(mutant.nsh, nsh), mutant.key).toBe(true);
+      }
+    });
+  });
+
+  describe('read-trim $2 model (live during the scan, Forge nsis.py ground truth)', () => {
+    it('the trim leaves $2 = `\\r` on CRLF / CR lines and the path’s last char on LF-only / unterminated lines', () => {
+      expect(runSidecarReadTrimWithReset(CANONICAL_READ_TRIM_BLOCK, 'C:\\v\\\r\n').$2).toBe('\r');
+      expect(runSidecarReadTrimWithReset(CANONICAL_READ_TRIM_BLOCK, 'C:\\v\\\r').$2).toBe('\r');
+      expect(runSidecarReadTrimWithReset(CANONICAL_READ_TRIM_BLOCK, 'C:\\v\\\n').$2).toBe('\\');
+      expect(runSidecarReadTrimWithReset(CANONICAL_READ_TRIM_BLOCK, 'C:\\v/').$2).toBe('/');
+    });
+
+    it('the $4→$2 swaps on :72/:73/:78/:79/:98/:99/:104/:105 are caught (they refuse `v\\.a\\` on an LF-only line)', () => {
+      const keys = ['72', '73', '78', '79', '98', '99', '104', '105'].map((n) => `${n}:$4->$2`);
+      const mutants = [...byLine.values()].flat().filter((m) => keys.includes(m.key));
       expect(mutants.map((m) => m.key).sort()).toEqual([...keys].sort());
       for (const mutant of mutants) {
         expect(sidecarGuardModeTwoCaught(mutant.nsh, nsh), mutant.key).toBe(true);

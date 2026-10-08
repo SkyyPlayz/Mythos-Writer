@@ -219,7 +219,7 @@ export function executeTraversalScanBlockStateful(
   blockLines: readonly string[],
   path: string,
   initialRegs: TravScanRegs,
-  options?: { maxSteps?: number },
+  options?: { maxSteps?: number; $2?: string },
 ): { outcome: TravScanOutcome; regs: TravScanRegs } {
   const labels = new Map<string, number>();
   for (let i = 0; i < blockLines.length; i++) {
@@ -236,7 +236,7 @@ export function executeTraversalScanBlockStateful(
 
   let $1 = path;
   const regs = { $7: initialRegs.$7, $8: initialRegs.$8 };
-  let $2 = '';
+  let $2 = options?.$2 ?? '';
   let $4 = '';
   let pc = 0;
   const maxSteps = options?.maxSteps ?? path.length * 400 + 2000;
@@ -1148,8 +1148,9 @@ function runSidecarReadLineDeleteDisposition(
   env: SidecarNsisVarEnv,
   travRegs: TravScanRegs,
   travBlock: readonly string[],
+  $2 = '',
 ): { disposition: SidecarAllowlistDeleteOutcome | 'blocked_at_guard'; travRegs: TravScanRegs } {
-  const { outcome: travOutcome, regs } = executeTraversalScanBlockStateful(travBlock, path, travRegs);
+  const { outcome: travOutcome, regs } = executeTraversalScanBlockStateful(travBlock, path, travRegs, { $2 });
   if (travOutcome === 'vault_read') {
     return { disposition: 'blocked_at_guard', travRegs: regs };
   }
@@ -1182,6 +1183,7 @@ export function assertSidecarAllowlistDeleteTables(
     { path: 'C:\\Users\\me\\Documents\\v 1.2\\x', expected: 'delete' },
     { path: 'C:\\Users\\me\\Documents\\v1.2\\notes', expected: 'delete' },
     ...TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS.map((path) => ({ path, expected: 'delete' as const })),
+    ...TRAVERSAL_ALLOW_DOT_LETTER_DELETE_PATHS.map((path) => ({ path, expected: 'delete' as const })),
   ];
   for (const { path, expected } of rows) {
     const disposition = runSidecarPathAllowlistDeleteDisposition(path, nsh, env);
@@ -1259,6 +1261,11 @@ export type SidecarReadTrimResult = {
    * own traversal. A mutated (e.g. Nop) :52 still falls through to :53, so it is not a skip.
    */
   resetSkipped: boolean;
+  /**
+   * $2 as the trim leaves it: the last char after the `$\n` trim, i.e. `\r` on a CRLF line but the
+   * path's own last char on an LF-only or unterminated line. The scan runs with it still live.
+   */
+  $2: string;
 };
 
 /** Trim + empty check after a simulated FileRead into $1 (Critic S13 / :46–:52). */
@@ -1317,7 +1324,7 @@ export function runSidecarReadTrimWithReset(
     }
     if (line === 'StrCmp $1 "" uninstall_vault_read') {
       if ($1 === '') {
-        return { trimmed: 'empty', resetSkipped: false };
+        return { trimmed: 'empty', resetSkipped: false, $2 };
       }
       pc += 1;
       continue;
@@ -1328,7 +1335,7 @@ export function runSidecarReadTrimWithReset(
     }
     throw new Error(`unsupported read-trim VM instruction: ${line}`);
   }
-  return { trimmed: $1 === '' ? 'empty' : $1, resetSkipped: pc > blockLines.length };
+  return { trimmed: $1 === '' ? 'empty' : $1, resetSkipped: pc > blockLines.length, $2 };
 }
 
 /** Trim + empty check after a simulated FileRead into $1 (Critic S13 / :46–:52). */
@@ -1381,6 +1388,32 @@ export const SIDECAR_DELETE_READ_LOOP_ROWS: readonly {
       `${DOWNLOADS_VAULT_DELETE_PATH}\r`,
     ],
     expectedDeleted: [DOCUMENTS_VAULT_DELETE_PATH, DOWNLOADS_VAULT_DELETE_PATH],
+    expectClosed: true,
+  },
+  // LF-only / unterminated lines ending in a separator after a `.a` / `..a` segment. With no `\r`
+  // the trim leaves $2 = the path's last char while the scan runs, so a scan check retargeted from
+  // $4 to $2 (:72/:73, :78/:79, :98/:99, :104/:105) hits that separator and refuses a valid name.
+  {
+    rawLines: [
+      'C:\\Users\\me\\Documents\\v\\.a\\\n',
+      'C:\\Users\\me\\Documents\\v\\.a/\n',
+      'C:\\Users\\me\\Documents\\v\\..a\\\n',
+      'C:\\Users\\me\\Documents\\v\\..a/\n',
+      'C:\\Users\\me\\Documents\\v/.a/\n',
+      'C:\\Users\\me\\Documents\\v/.a\\\n',
+      'C:\\Users\\me\\Documents\\v/..a/\n',
+      'C:\\Users\\me\\Documents\\v/..a\\',
+    ],
+    expectedDeleted: [
+      'C:\\Users\\me\\Documents\\v\\.a\\',
+      'C:\\Users\\me\\Documents\\v\\.a/',
+      'C:\\Users\\me\\Documents\\v\\..a\\',
+      'C:\\Users\\me\\Documents\\v\\..a/',
+      'C:\\Users\\me\\Documents\\v/.a/',
+      'C:\\Users\\me\\Documents\\v/.a\\',
+      'C:\\Users\\me\\Documents\\v/..a/',
+      'C:\\Users\\me\\Documents\\v/..a\\',
+    ],
     expectClosed: true,
   },
 ];
@@ -1456,7 +1489,7 @@ export function simulateSidecarDeleteReadLoop(
         }
         throw new Error(`unsupported Goto after FileRead: ${postRead.target}`);
       }
-      const { trimmed, resetSkipped } = runSidecarReadTrimWithReset(readBlock, rawLine);
+      const { trimmed, resetSkipped, $2 } = runSidecarReadTrimWithReset(readBlock, rawLine);
       if (trimmed === 'empty') {
         continue;
       }
@@ -1466,6 +1499,7 @@ export function simulateSidecarDeleteReadLoop(
         env,
         travRegs,
         resetSkipped ? travBlock.slice(1) : travBlock,
+        $2,
       );
       travRegs = nextRegs;
       if (disposition === 'delete') {
@@ -2064,6 +2098,18 @@ export const TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS: readonly string[] = [
   'C:\\Users\\me\\Documents\\v/\\',
 ];
 
+/**
+ * `.x` / `..x` names after either separator: valid names that canonical deletes. The `"x"` literal
+ * swaps on the `.`/`..`-then-separator rejects (:71-:74, :77-:79, :97-:100, :103-:105) refuse
+ * exactly these, so they are the allow rows that catch them.
+ */
+export const TRAVERSAL_ALLOW_DOT_LETTER_DELETE_PATHS: readonly string[] = [
+  'C:\\Users\\me\\Documents\\v\\.x',
+  'C:\\Users\\me\\Documents\\v\\..x',
+  'C:\\Users\\me\\Documents\\v/.x',
+  'C:\\Users\\me\\Documents\\v/..x',
+];
+
 export const TRAVERSAL_ALLOW_PATHS: readonly string[] = [
   'C:\\Users\\me\\Mythos Writer\\vaults\\x',
   'D:/data/vault',
@@ -2071,6 +2117,7 @@ export const TRAVERSAL_ALLOW_PATHS: readonly string[] = [
   ...TRAVERSAL_ALLOW_S12_PATHS,
   ...TRAVERSAL_ALLOW_S16_DELETE_PATHS,
   ...TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS,
+  ...TRAVERSAL_ALLOW_DOT_LETTER_DELETE_PATHS,
 ];
 
 /** Critic S14 — label-swap mutants (pin sweep :74/:99/:93; VM witness for :93 fwd loop). */
