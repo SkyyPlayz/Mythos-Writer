@@ -176,15 +176,18 @@ describe('sidecar guard region sweep :43-:213 (buildIntegrity excluded)', () => 
         const end = start + slice.length;
         const suffix =
           ORACLE_CORPUS.length <= CORPUS_SLICE ? '' : ` corpus [${start}..${end})`;
-        it(`line :${fileLine} (${locked}) primary matches canonical on every oracle corpus case${suffix}`, () => {
-          const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
-          slice.forEach((c, j) => {
-            const i = start + j;
-            expect(sidecarGuardCaseOutcome(mutant, c), `outcome diverged at ${JSON.stringify(c.reads)}`).toBe(
-              canonicalOutcomes[i],
-            );
-          });
-        });
+        it.concurrent(
+          `line :${fileLine} (${locked}) primary matches canonical on every oracle corpus case${suffix}`,
+          () => {
+            const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
+            slice.forEach((c, j) => {
+              const i = start + j;
+              expect(sidecarGuardCaseOutcome(mutant, c), `outcome diverged at ${JSON.stringify(c.reads)}`).toBe(
+                canonicalOutcomes[i],
+              );
+            });
+          },
+        );
       }
     }
   });

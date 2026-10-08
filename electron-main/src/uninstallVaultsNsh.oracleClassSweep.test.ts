@@ -66,7 +66,7 @@ describe('oracle-class mutant sweep :43-:213 (Forge gen.py classes, pin-free VM 
         chunks.length === 1
           ? `line :${fileLine} — no non-equivalent survivor among its oracle-class mutants`
           : `line :${fileLine} [${idx + 1}/${chunks.length}] — no non-equivalent survivor among this mutant slice`;
-      it(
+      it.concurrent(
         label,
         () => {
           expect(mutants.length).toBeGreaterThan(0);
@@ -87,7 +87,7 @@ describe('oracle-class mutant sweep :43-:213 (Forge gen.py classes, pin-free VM 
         timeout,
       );
     });
-    it(
+    it.concurrent(
       `line :${fileLine} — at least one oracle-class mutant is caught`,
       () => {
         expect(mutants.length).toBeGreaterThan(0);
