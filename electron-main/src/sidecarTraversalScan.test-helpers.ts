@@ -2153,6 +2153,11 @@ export const SIDECAR_DELETE_READ_LOOP_ROWS: readonly {
   expectClosed: boolean;
 }[] = [
   {
+    rawLines: ['C:\\Users\\me\\Documents\\note.txt\r\n'],
+    expectedDeleted: ['C:\\Users\\me\\Documents\\note.txt'],
+    expectClosed: true,
+  },
+  {
     rawLines: [
       `${DOCUMENTS_VAULT_DELETE_PATH}\r\n`,
       `${DESKTOP_VAULT_DELETE_PATH}\n`,
@@ -2710,6 +2715,80 @@ export function assertSidecarReparseTables(
   }
 }
 
+/**
+ * Shield 5462286933 four pin-free survivors at a3719f95 :167 / :220.
+ * Documents=`C:\Users\me\Desk` is a text prefix of Desktop without a following `\`,
+ * so :167's else is taken and then Desktop must still delete. The file row pins
+ * one delete act per sidecar line so :220/:299 `Goto mythos_trim_chop` cannot
+ * re-delete shorter prefixes.
+ */
+export const SIDECAR_RF7_DESK_PREFIX_ENV: SidecarNsisVarEnv = {
+  ...DEFAULT_SIDECAR_NSIS_VAR_ENV,
+  DOCUMENTS: 'C:\\Users\\me\\Desk',
+};
+
+export const SIDECAR_RF7_DESK_PREFIX_DESKTOP_VAULT = 'C:\\Users\\me\\Desktop\\MyVault\\x';
+
+export const SIDECAR_RF7_ONE_ACT_FILE_PATH = 'C:\\Users\\me\\Documents\\note.txt';
+
+export type SidecarRf7ShieldSurvivorRow = Readonly<{
+  name: string;
+  rawLines: readonly string[];
+  env: SidecarNsisVarEnv;
+  expectedDeleted: readonly string[];
+}>;
+
+export const SIDECAR_RF7_SHIELD_SURVIVOR_ROWS: readonly SidecarRf7ShieldSurvivorRow[] = [
+  {
+    name: ':167 Desktop deletes when Documents is a Desk prefix',
+    rawLines: [`${SIDECAR_RF7_DESK_PREFIX_DESKTOP_VAULT}\r\n`],
+    env: SIDECAR_RF7_DESK_PREFIX_ENV,
+    expectedDeleted: [SIDECAR_RF7_DESK_PREFIX_DESKTOP_VAULT],
+  },
+  {
+    name: ':220/:299 one act per sidecar file line',
+    rawLines: [`${SIDECAR_RF7_ONE_ACT_FILE_PATH}\r\n`],
+    env: DEFAULT_SIDECAR_NSIS_VAR_ENV,
+    expectedDeleted: [SIDECAR_RF7_ONE_ACT_FILE_PATH],
+  },
+];
+
+function sidecarDeletedSetOrThrow(
+  nsh: string,
+  rawLines: readonly string[],
+  env: SidecarNsisVarEnv,
+): string {
+  try {
+    return [...simulateSidecarDeleteReadLoop(nsh, rawLines, env).deleted].sort().join('\0');
+  } catch (err) {
+    return `THROW:${err instanceof Error ? err.message : String(err)}`;
+  }
+}
+
+export function assertSidecarRf7ShieldSurvivorTables(nsh: string): void {
+  for (const row of SIDECAR_RF7_SHIELD_SURVIVOR_ROWS) {
+    const got = sidecarDeletedSetOrThrow(nsh, row.rawLines, row.env);
+    const expected = [...row.expectedDeleted].sort().join('\0');
+    if (got !== expected) {
+      throw new Error(
+        `RF-7 Shield survivor row ${row.name}: expected ${JSON.stringify(row.expectedDeleted)}, got ${JSON.stringify(got.split('\0'))}`,
+      );
+    }
+  }
+}
+
+export function assertSidecarRf7ShieldSurvivorSweepParity(mutantNsh: string, canonicalNsh: string): void {
+  for (const row of SIDECAR_RF7_SHIELD_SURVIVOR_ROWS) {
+    const canonical = sidecarDeletedSetOrThrow(canonicalNsh, row.rawLines, row.env);
+    const mutant = sidecarDeletedSetOrThrow(mutantNsh, row.rawLines, row.env);
+    if (mutant !== canonical) {
+      throw new Error(
+        `RF-7 Shield survivor parity ${row.name}: canonical ${JSON.stringify(canonical.split('\0'))}, mutant ${JSON.stringify(mutant.split('\0'))}`,
+      );
+    }
+  }
+}
+
 export function assertSidecarReparseSweepParity(
   mutantNsh: string,
   canonicalNsh: string,
@@ -2973,6 +3052,7 @@ export function assertSidecarGuardVmBehaviourTables(
   }
   if (options?.sweepRebaseline) {
     const canonical = options.canonicalNsh ?? nsh;
+    assertSidecarRf7ShieldSurvivorSweepParity(nsh, canonical);
     assertSidecarGuardVmSweepParity(nsh, canonical, env);
     assertSidecarAllowlistDeleteTables(nsh, env);
     assertSidecarReadTrimGuardTables(nsh, env, { includeExactTrimPin: true });
@@ -2987,6 +3067,7 @@ export function assertSidecarGuardVmBehaviourTables(
     return;
   }
   assertSidecarReadTrimGuardTables(nsh, env, { includeExactTrimPin: false });
+  assertSidecarRf7ShieldSurvivorTables(nsh);
   assertSidecarDeleteReadLoopTables(nsh, env);
   assertSidecarMultilineTravGuardTables(nsh, env);
   assertSidecarRf456Tables(nsh, env);
