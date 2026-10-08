@@ -11,17 +11,13 @@ import {
 } from './sidecarOracleMutants.test-helpers.js';
 
 /**
- * :47 / :56 / :117 were 20–33s against the 30s default (same class as the 9802a5c3 unit timeout).
- * One mutant per test and a raised timeout on those lines only. Other lines are sliced so each
- * test stays well under the limit (~50% headroom). Checks are unchanged.
- *
- * The line range is split across test files so vitest file workers actually parallelize the
- * CPU-bound corpus scans (`it.concurrent` does not help synchronous work).
+ * Restored-corpus EQ scans were 20–33s against the 30s default (same class as the 9802a5c3
+ * unit timeout; :99 / :165 / :177 / :189 later hit 25–28s). One mutant per test and a raised
+ * timeout on every slice — never drop a case. File shards give the 20-minute unit job
+ * wall-clock room; `it.concurrent` does not help synchronous work.
  */
-export const ORACLE_CLASS_HEAVY_SWEEP_LINES = new Set([47, 56, 117]);
-export const ORACLE_CLASS_HEAVY_SWEEP_TEST_TIMEOUT_MS = 60_000;
-const HEAVY_SWEEP_CHUNK = 1;
-const DEFAULT_SWEEP_CHUNK = 2;
+export const ORACLE_CLASS_SWEEP_TEST_TIMEOUT_MS = 60_000;
+const SWEEP_CHUNK = 1;
 
 const chunkMutants = (mutants: OracleClassMutant[], size: number): OracleClassMutant[][] => {
   const chunks: OracleClassMutant[][] = [];
@@ -53,9 +49,8 @@ export function registerOracleClassLineSweep(lineFirst: number, lineLast: number
 
       for (let fileLine = lineFirst; fileLine <= lineLast; fileLine += 1) {
         const mutants = byLine.get(fileLine) ?? [];
-        const heavy = ORACLE_CLASS_HEAVY_SWEEP_LINES.has(fileLine);
-        const chunks = chunkMutants(mutants, heavy ? HEAVY_SWEEP_CHUNK : DEFAULT_SWEEP_CHUNK);
-        const timeout = heavy ? ORACLE_CLASS_HEAVY_SWEEP_TEST_TIMEOUT_MS : undefined;
+        const chunks = chunkMutants(mutants, SWEEP_CHUNK);
+        const timeout = ORACLE_CLASS_SWEEP_TEST_TIMEOUT_MS;
         chunks.forEach((chunk, idx) => {
           const label =
             chunks.length === 1
@@ -114,15 +109,19 @@ export function registerGuardRegionEquivSweep(lines: readonly number[]): void {
           const slice = corpus.slice(start, start + CORPUS_SLICE);
           const end = start + slice.length;
           const suffix = corpus.length <= CORPUS_SLICE ? '' : ` corpus [${start}..${end})`;
-          it(`line :${fileLine} primary matches canonical on every oracle corpus case${suffix}`, () => {
-            const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
-            slice.forEach((c, j) => {
-              const i = start + j;
-              expect(sidecarGuardCaseOutcome(mutant, c), `outcome diverged at ${JSON.stringify(c.reads)}`).toBe(
-                canonicalOutcomes[i],
-              );
-            });
-          });
+          it(
+            `line :${fileLine} primary matches canonical on every oracle corpus case${suffix}`,
+            () => {
+              const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
+              slice.forEach((c, j) => {
+                const i = start + j;
+                expect(sidecarGuardCaseOutcome(mutant, c), `outcome diverged at ${JSON.stringify(c.reads)}`).toBe(
+                  canonicalOutcomes[i],
+                );
+              });
+            },
+            ORACLE_CLASS_SWEEP_TEST_TIMEOUT_MS,
+          );
         }
       }
     },
