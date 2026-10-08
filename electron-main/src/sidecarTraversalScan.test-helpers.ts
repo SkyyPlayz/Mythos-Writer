@@ -269,11 +269,10 @@ function replaceInForwardBranch(
 
 export type TravScanOutcome = 'trav_ok' | 'vault_read';
 
+/** `StrCpy $4 $1 1 index`: a negative index counts from the end, clamped to the first char. */
 function nshCharAt(path: string, index: number): string {
-  if (index < 0 || index >= path.length) {
-    return '';
-  }
-  return path[index]!;
+  const at = index < 0 ? Math.max(0, path.length + index) : index;
+  return at < path.length ? path[at]! : '';
 }
 
 function parseStrCmpQuotedLiteralUncached(raw: string): string {
@@ -328,9 +327,6 @@ function resolveTraversalJump(
   if (target === 'uninstall_vault_read') {
     return 'vault_read';
   }
-  if (target === 'mythos_trav_scan') {
-    return { pc: 0 };
-  }
   const at = labels.get(target);
   if (at === undefined) {
     throw new Error(`unknown traversal jump label: ${target}`);
@@ -383,198 +379,185 @@ const traversalBlockLabels = memoizeByArray((blockLines): ReadonlyMap<string, nu
   return labels;
 });
 
-export function executeTraversalScanBlockStateful(
-  blockLines: readonly string[],
-  path: string,
-  initialRegs: TravScanRegs,
-  options?: { maxSteps?: number; $2?: string },
-): { outcome: TravScanOutcome; regs: TravScanRegs } {
+type TravScanState = { $1: string; $2: string; $4: string; regs: TravScanRegs; pc: number };
+
+/** One decoded scan-block line: returns an outcome to stop, or `undefined` after moving `s.pc`. */
+type TravScanOp = (s: TravScanState) => TravScanOutcome | undefined;
+
+/**
+ * Decodes each scan-block line once per block (the corpus sweep runs the same block on thousands of
+ * paths). A jump is resolved at decode time but an unknown label still throws only when taken.
+ */
+const decodeTraversalScanBlock = memoizeByArray((blockLines): readonly TravScanOp[] => {
   const labels = traversalBlockLabels(blockLines);
-
   const scanPc = labels.get('mythos_trav_scan');
-  if (scanPc === undefined) {
-    throw new Error('mythos_trav_scan label missing from traversal block');
-  }
-
-  let $1 = path;
-  const regs = { $7: initialRegs.$7, $8: initialRegs.$8 };
-  let $2 = options?.$2 ?? '';
-  let $4 = '';
-  let pc = 0;
-  const maxSteps = options?.maxSteps ?? path.length * 400 + 2000;
-
-  for (let step = 0; step < maxSteps; step++) {
-    if (pc >= blockLines.length) {
-      return { outcome: 'trav_ok', regs };
+  const next: TravScanOp = (s) => {
+    s.pc += 1;
+    return undefined;
+  };
+  const jumpTo = (target: string): TravScanOp => {
+    let resolved: TravScanOutcome | { pc: number } | Error;
+    try {
+      resolved = resolveTraversalJump(target, labels);
+    } catch (err) {
+      resolved = err instanceof Error ? err : new Error(String(err));
     }
-    if (pc < 0) {
-      throw new Error(`traversal VM pc out of range: ${pc}`);
-    }
-    const raw = blockLines[pc]!;
+    return (s) => {
+      if (resolved instanceof Error) {
+        throw resolved;
+      }
+      if (typeof resolved === 'string') {
+        return resolved;
+      }
+      s.pc = resolved.pc;
+      return undefined;
+    };
+  };
+  const branch = (taken: (s: TravScanState) => boolean, onTrue: TravScanOp, onFalse: TravScanOp): TravScanOp =>
+    (s) => (taken(s) ? onTrue(s) : onFalse(s));
+  const by = (n: number): TravScanOp => (s) => {
+    s.pc += n;
+    return undefined;
+  };
+
+  return blockLines.map((raw, pc): TravScanOp => {
     const line = raw.trim();
     if (line.endsWith(':') && /^\w+:\s*$/.test(line)) {
-      pc += 1;
-      continue;
+      return next;
     }
-
     const strCpy7 = line.match(/^StrCpy \$7 (\d+)$/);
     if (strCpy7) {
-      regs.$7 = Number(strCpy7[1]);
-      pc += 1;
-      continue;
+      const n = Number(strCpy7[1]);
+      return (s) => {
+        s.regs.$7 = n;
+        s.pc += 1;
+        return undefined;
+      };
     }
     const strCpyFromPath = line.match(/^StrCpy \$4 \$1 1 \$(\d+)$/);
     if (strCpyFromPath) {
-      const idx = readTravRegister(regs, strCpyFromPath[1]!);
-      $4 = nshCharAt($1, idx);
-      pc += 1;
-      continue;
+      const reg = strCpyFromPath[1]!;
+      return (s) => {
+        s.$4 = nshCharAt(s.$1, readTravRegister(s.regs, reg));
+        s.pc += 1;
+        return undefined;
+      };
     }
-    const strCpy2Last = line.match(/^StrCpy \$2 \$1 1 -1$/);
-    if (strCpy2Last) {
-      $2 = $1.length > 0 ? $1[$1.length - 1]! : '';
-      pc += 1;
-      continue;
+    if (/^StrCpy \$2 \$1 1 -1$/.test(line)) {
+      return (s) => {
+        s.$2 = s.$1.length > 0 ? s.$1[s.$1.length - 1]! : '';
+        s.pc += 1;
+        return undefined;
+      };
     }
     const strCmpSevenZero = line.match(/^StrCmp \$7 "0" \+(\d+)$/);
     if (strCmpSevenZero) {
-      if (regs.$7 === 0) {
-        pc += Number(strCmpSevenZero[1]);
-      } else {
-        pc += 1;
-      }
-      continue;
+      return branch((s) => s.regs.$7 === 0, by(Number(strCmpSevenZero[1])), next);
     }
     const strCmpSevenLabel = line.match(/^StrCmp \$7 ("(?:\\.|[^"])*") (\w+)$/);
     if (strCmpSevenLabel) {
       const lit = parseStrCmpQuotedLiteral(strCmpSevenLabel[1]!);
-      const target = strCmpSevenLabel[2]!;
-      if (String(regs.$7) === lit) {
-        const jump = resolveTraversalJump(target, labels);
-        if (typeof jump === 'string') {
-          return { outcome: jump, regs };
-        }
-        pc = jump.pc;
-      } else {
-        pc += 1;
-      }
-      continue;
+      return branch((s) => nsisStrEq(String(s.regs.$7), lit), jumpTo(strCmpSevenLabel[2]!), next);
     }
     const strCmpTwoLit = line.match(/^StrCmp \$2 ("(?:\\.|[^"])*") (\w+)$/);
     if (strCmpTwoLit) {
       const lit = parseNsisDollarEscape(strCmpTwoLit[1]!);
-      const target = strCmpTwoLit[2]!;
-      if ($2 === lit) {
-        const jump = resolveTraversalJump(target, labels);
-        if (typeof jump === 'string') {
-          return { outcome: jump, regs };
-        }
-        pc = jump.pc;
-      } else {
-        pc += 1;
-      }
-      continue;
+      return branch((s) => nsisStrEq(s.$2, lit), jumpTo(strCmpTwoLit[2]!), next);
     }
     const intOp7 = line.match(/^IntOp \$8 \$7 \+ (\d+)$/);
     if (intOp7) {
-      regs.$8 = regs.$7 + Number(intOp7[1]);
-      pc += 1;
-      continue;
+      const n = Number(intOp7[1]);
+      return (s) => {
+        s.regs.$8 = s.regs.$7 + n;
+        s.pc += 1;
+        return undefined;
+      };
     }
-    const intOp8Minus7 = line.match(/^IntOp \$8 \$7 - 1$/);
-    if (intOp8Minus7) {
-      regs.$8 = regs.$7 - 1;
-      pc += 1;
-      continue;
+    if (/^IntOp \$8 \$7 - 1$/.test(line)) {
+      return (s) => {
+        s.regs.$8 = s.regs.$7 - 1;
+        s.pc += 1;
+        return undefined;
+      };
     }
     const intOp8 = line.match(/^IntOp \$8 \$8 \+ (\d+)$/);
     if (intOp8) {
-      regs.$8 = regs.$8 + Number(intOp8[1]);
-      pc += 1;
-      continue;
+      const n = Number(intOp8[1]);
+      return (s) => {
+        s.regs.$8 += n;
+        s.pc += 1;
+        return undefined;
+      };
     }
     const intOp7inc = line.match(/^IntOp \$7 \$7 \+ (\d+)$/);
     if (intOp7inc) {
-      regs.$7 += Number(intOp7inc[1]);
-      pc += 1;
-      continue;
+      const n = Number(intOp7inc[1]);
+      return (s) => {
+        s.regs.$7 += n;
+        s.pc += 1;
+        return undefined;
+      };
     }
     if (line === 'Nop') {
-      pc += 1;
-      continue;
+      return next;
     }
-    if (line === 'Goto mythos_trav_scan') {
-      pc = scanPc + 1;
-      continue;
-    }
-    if (line === 'Goto mythos_trav_inc') {
-      const jump = resolveTraversalJump('mythos_trav_inc', labels);
-      if (typeof jump === 'string') {
-        return { outcome: jump, regs };
-      }
-      pc = jump.pc;
-      continue;
+    if (line === 'Goto mythos_trav_scan' && scanPc !== undefined) {
+      return (s) => {
+        s.pc = scanPc + 1;
+        return undefined;
+      };
     }
     const gotoLabel = line.match(/^Goto (\w+)$/);
     if (gotoLabel) {
-      const jump = resolveTraversalJump(gotoLabel[1]!, labels);
-      if (typeof jump === 'string') {
-        return { outcome: jump, regs };
-      }
-      pc = jump.pc;
-      continue;
+      return jumpTo(gotoLabel[1]!);
     }
-
     const strCmpFour = line.match(/^StrCmp \$4 ("(?:\\.|[^"])*") (\d+) (\w+)$/);
     if (strCmpFour) {
       const lit = parseStrCmpQuotedLiteral(strCmpFour[1]!);
-      const skip = Number(strCmpFour[2]);
-      const target = strCmpFour[3]!;
-      if ($4 === lit) {
-        pc += 1 + skip;
-      } else {
-        const jump = resolveTraversalJump(target, labels);
-        if (typeof jump === 'string') {
-          return { outcome: jump, regs };
-        }
-        pc = jump.pc;
-      }
-      continue;
+      return branch((s) => nsisStrEq(s.$4, lit), by(1 + Number(strCmpFour[2])), jumpTo(strCmpFour[3]!));
     }
-
-    const strCmpFourZeroLabel = line.match(/^StrCmp \$4 ("(?:\\.|[^"])*") 0 (\w+)$/);
-    if (strCmpFourZeroLabel) {
-      const lit = parseStrCmpQuotedLiteral(strCmpFourZeroLabel[1]!);
-      const target = strCmpFourZeroLabel[2]!;
-      if ($4 === lit) {
-        pc += 1;
-      } else {
-        const jump = resolveTraversalJump(target, labels);
-        if (typeof jump === 'string') {
-          return { outcome: jump, regs };
-        }
-        pc = jump.pc;
-      }
-      continue;
-    }
-
     const strCmpThree = line.match(/^StrCmp \$4 ("(?:\\.|[^"])*") (\w+)$/);
     if (strCmpThree) {
       const lit = parseStrCmpQuotedLiteral(strCmpThree[1]!);
-      const target = strCmpThree[2]!;
-      if ($4 === lit) {
-        const jump = resolveTraversalJump(target, labels);
-        if (typeof jump === 'string') {
-          return { outcome: jump, regs };
-        }
-        pc = jump.pc;
-      } else {
-        pc += 1;
-      }
-      continue;
+      return branch((s) => nsisStrEq(s.$4, lit), jumpTo(strCmpThree[2]!), next);
     }
+    return () => {
+      throw new Error(`unsupported traversal VM instruction at block pc ${pc}: ${line}`);
+    };
+  });
+});
 
-    throw new Error(`unsupported traversal VM instruction at block pc ${pc}: ${line}`);
+export function executeTraversalScanBlockStateful(
+  blockLines: readonly string[],
+  path: string,
+  initialRegs: TravScanRegs,
+  options?: { maxSteps?: number; $2?: string; $4?: string; startPc?: number },
+): { outcome: TravScanOutcome; regs: TravScanRegs } {
+  if (!traversalBlockLabels(blockLines).has('mythos_trav_scan')) {
+    throw new Error('mythos_trav_scan label missing from traversal block');
+  }
+  const ops = decodeTraversalScanBlock(blockLines);
+  const regs = { $7: initialRegs.$7, $8: initialRegs.$8 };
+  const s: TravScanState = {
+    $1: path,
+    $2: options?.$2 ?? '',
+    $4: options?.$4 ?? '',
+    regs,
+    pc: options?.startPc ?? 0,
+  };
+  const maxSteps = options?.maxSteps ?? path.length * 400 + 2000;
+
+  for (let step = 0; step < maxSteps; step++) {
+    if (s.pc >= ops.length) {
+      return { outcome: 'trav_ok', regs };
+    }
+    if (s.pc < 0) {
+      throw new Error(`traversal VM pc out of range: ${s.pc}`);
+    }
+    const outcome = ops[s.pc]!(s);
+    if (outcome !== undefined) {
+      return { outcome, regs };
+    }
   }
   throw new Error('TRAVERSAL_VM_STEP_LIMIT_EXCEEDED');
 }
@@ -1232,41 +1215,84 @@ const canonGateBlockFromGuardRegion = memoizeByArray((region): readonly string[]
 });
 
 /**
+ * A GetFullPathNameW failure injected into the gate (the model never fails on its own): `zero` is a
+ * 0 return, `truncate` a return of buffer + 1. `call` names the source register (`$1` path, `$5` root).
+ */
+export type CanonGateFault = { call: '$1' | '$5'; ret: 'zero' | 'truncate' };
+
+export type CanonGateOptions = {
+  fault?: CanonGateFault;
+  /**
+   * Output registers as the failed call leaves them. Win32 leaves the buffer unspecified on failure,
+   * so a fault row seeds an in-root path here: only the fail-closed `IntCmp` guards keep it unread.
+   */
+  $3?: string;
+  $9?: string;
+  /** As the allowlist leaves them: the `\` after the root and the child after it. */
+  $4?: string;
+  $6?: string;
+};
+
+/** What the script runs after the gate block (file :215–:222): delete, delete, read, delete, read, close. */
+const CANON_GATE_CONTINUATION: readonly SidecarAllowlistDeleteOutcome[] = [
+  'delete',
+  'delete',
+  'skip_delete',
+  'delete',
+  'skip_delete',
+];
+
+export const SIDECAR_CANON_GATE_STEP_LIMIT_ERROR = 'SIDECAR_CANON_GATE_STEP_LIMIT_EXCEEDED';
+
+/**
  * GetFullPathNameW containment gate (file :198–:213), interpreted so System-return mutants are
  * modelled. `GetFullPathNameW(path/root)` → gfpnModel; fail closed on a 0 or truncated (≥ buffer)
  * return. Then require the resolved path to start with the resolved root plus a `\`, and be strictly
- * deeper. `StrCmp` is case-insensitive; a `StrCmpS` mutant folds case off.
+ * deeper. `StrCmp` is case-insensitive; a `StrCmpS` mutant folds case off. The registers start as
+ * the allowlist leaves them ($3 = root length, $4 = the `\` after the root, $6 = the child).
  */
 export function executeCanonGateBlock(
   blockLines: readonly string[],
   path: string,
   root: string,
+  options: CanonGateOptions = {},
 ): SidecarAllowlistDeleteOutcome {
-  const labels = new Map<string, number>();
-  blockLines.forEach((raw, i) => {
-    const m = raw.trim().match(/^(\w+):$/);
-    if (m) {
-      labels.set(m[1]!, i);
-    }
-  });
-  const reg: Record<string, string> = { $1: path, $5: root, $3: '', $9: '', $6: '', $4: '0', $8: '0' };
-  const num = (v: string): number => {
-    const m = v.match(/^-?\d+/);
-    return m ? Number(m[0]) : 0;
+  const { labels, instrLines, instrOrdinal, lines, tokens } = decodeNsisBlock(blockLines);
+  const reg: Record<string, string> = {
+    $1: path,
+    $5: root,
+    $3: options.$3 ?? String(root.length),
+    $4: options.$4 ?? '\\',
+    $6: options.$6 ?? path.slice(root.length + 1),
+    $8: '0',
+    $9: options.$9 ?? '',
   };
-  const sizeArg = (tok: string): number =>
-    tok === '${NSIS_MAX_STRLEN}' ? SIDECAR_CANON_GATE_MAX_STRLEN : num(tok);
+  const value = (tok: string): string => {
+    if (/^\$\d$/.test(tok)) {
+      return reg[tok] ?? '';
+    }
+    if (tok === '${NSIS_MAX_STRLEN}') {
+      return String(SIDECAR_CANON_GATE_MAX_STRLEN);
+    }
+    return tok.startsWith('"') ? parseStrCmpQuotedLiteral(tok) : tok;
+  };
   let pc = 0;
-  type Jump = 'delete' | 'skip_delete' | number;
+  type Jump = SidecarAllowlistDeleteOutcome | number;
+  const pastEnd = (k: number): SidecarAllowlistDeleteOutcome => CANON_GATE_CONTINUATION[k] ?? 'skip_delete';
   const jump = (target: string): Jump => {
-    if (target === 'uninstall_vault_read') {
+    if (target === 'uninstall_vault_read' || target === 'uninstall_vault_close') {
       return 'skip_delete';
     }
     if (target === 'uninstall_vault_do_delete') {
       return 'delete';
     }
-    if (target === '0') {
-      return pc + 1;
+    const rel = target === '0' ? 1 : /^[+-]\d+$/.test(target) ? Number(target) : undefined;
+    if (rel !== undefined) {
+      const to = instrOrdinal.get(pc)! + rel;
+      if (to < 0) {
+        throw new Error(`canon-gate relative jump before the block: ${lines[pc]}`);
+      }
+      return to < instrLines.length ? instrLines[to]! : pastEnd(to - instrLines.length);
     }
     const at = labels.get(target);
     if (at === undefined) {
@@ -1276,98 +1302,65 @@ export function executeCanonGateBlock(
   };
   const maxSteps = blockLines.length * 8 + 80;
   for (let step = 0; step < maxSteps; step += 1) {
-    if (pc < 0 || pc >= blockLines.length) {
-      return 'skip_delete';
+    if (pc >= blockLines.length) {
+      return pastEnd(0);
     }
-    const line = blockLines[pc]!.trim();
-    if (/^\w+:$/.test(line) || line === 'Nop') {
-      pc += 1;
-      continue;
-    }
-    const gfpn = line.match(/^System::Call "kernel32::GetFullPathNameW\(w r(\d), i (\S+), w \.r(\d), p 0\) i \.r4"$/);
-    if (gfpn) {
-      const resolved = gfpnModel(reg[`$${gfpn[1]}`] ?? '');
-      const size = sizeArg(gfpn[2]!);
-      if (resolved === '') {
-        reg.$4 = '0';
+    const line = lines[pc]!;
+    const tk = tokens[pc]!;
+    const op = tk[0];
+    let j: Jump | undefined;
+    if (/^\w+:$/.test(line) || op === 'Nop') {
+      j = undefined;
+    } else if (op === 'System::Call') {
+      const gfpn = line.match(
+        /^System::Call "kernel32::GetFullPathNameW\(w r(\d), i (\S+), w \.r(\d), p 0\) i \.r(\d)"$/,
+      );
+      if (!gfpn) {
+        throw new Error(`unsupported canon-gate System::Call: ${line}`);
+      }
+      const src = `$${gfpn[1]!}`;
+      const size = nsisLeadingInt(value(gfpn[2]!));
+      const ret = `$${gfpn[4]!}`;
+      const fault = options.fault?.call === src ? options.fault.ret : undefined;
+      const resolved = gfpnModel(reg[src] ?? '');
+      if (fault === 'zero' || resolved === '') {
+        reg[ret] = '0';
+      } else if (fault === 'truncate') {
+        reg[ret] = String(size + 1);
       } else if (resolved.length >= size) {
-        reg.$4 = String(resolved.length + 1);
+        reg[ret] = String(resolved.length + 1);
       } else {
-        reg[`$${gfpn[3]}`] = resolved;
-        reg.$4 = String(resolved.length);
+        reg[`$${gfpn[3]!}`] = resolved;
+        reg[ret] = String(resolved.length);
       }
-      pc += 1;
-      continue;
+    } else if (op === 'IntCmp' && tk.length >= 4 && tk.length <= 6) {
+      const a = nsisLeadingInt(value(tk[1]!));
+      const b = nsisLeadingInt(value(tk[2]!));
+      const target = a === b ? tk[3]! : a < b ? (tk[4] ?? '0') : (tk[5] ?? '0');
+      j = jump(target);
+    } else if (op === 'StrLen' && tk.length === 3 && /^\$\d$/.test(tk[1]!)) {
+      reg[tk[1]!] = String(value(tk[2]!).length);
+    } else if (op === 'StrCpy' && tk.length >= 3 && tk.length <= 5 && /^\$\d$/.test(tk[1]!)) {
+      reg[tk[1]!] = nsisStrCpy(value(tk[2]!), tk[3] === undefined ? '' : value(tk[3]), tk[4] === undefined ? '' : value(tk[4]));
+    } else if ((op === 'StrCmp' || op === 'StrCmpS') && (tk.length === 4 || tk.length === 5)) {
+      const lhs = value(tk[1]!);
+      const rhs = value(tk[2]!);
+      const eq = op === 'StrCmpS' ? lhs === rhs : nsisStrEq(lhs, rhs);
+      j = jump(eq ? tk[3]! : (tk[4] ?? '0'));
+    } else if (op === 'Goto' && tk.length === 2) {
+      j = jump(tk[1]!);
+    } else {
+      throw new Error(`unsupported canon-gate VM instruction: ${line}`);
     }
-    if (line.startsWith('System::Call')) {
+    if (j === undefined) {
       pc += 1;
-      continue;
-    }
-    const intCmp = line.match(/^IntCmp (\$\d|\S+) (\S+) (\w+) (\w+) (\w+)$/);
-    if (intCmp) {
-      const a = num(reg[intCmp[1]!] ?? intCmp[1]!);
-      const b = num(reg[intCmp[2]!] ?? String(sizeArg(intCmp[2]!)));
-      const target = a === b ? intCmp[3]! : a < b ? intCmp[4]! : intCmp[5]!;
-      const j = jump(target);
-      if (typeof j !== 'number') {
-        return j;
-      }
+    } else if (typeof j === 'number') {
       pc = j;
-      continue;
+    } else {
+      return j;
     }
-    const strLen = line.match(/^StrLen \$8 (\$\d)$/);
-    if (strLen) {
-      reg.$8 = String((reg[strLen[1]!] ?? '').length);
-      pc += 1;
-      continue;
-    }
-    const strCpyVar = line.match(/^StrCpy (\$\d) (\$\d) (\$\d)$/);
-    if (strCpyVar) {
-      reg[strCpyVar[1]!] = (reg[strCpyVar[2]!] ?? '').slice(0, num(reg[strCpyVar[3]!] ?? '0'));
-      pc += 1;
-      continue;
-    }
-    const strCpyChar = line.match(/^StrCpy (\$\d) (\$\d) 1 (\$\d)$/);
-    if (strCpyChar) {
-      const src = reg[strCpyChar[2]!] ?? '';
-      const at = num(reg[strCpyChar[3]!] ?? '0');
-      reg[strCpyChar[1]!] = at >= 0 && at < src.length ? src[at]! : '';
-      pc += 1;
-      continue;
-    }
-    const strCpyFromOff = line.match(/^StrCpy (\$\d) (\$\d) "" (\$\d|\d+)$/);
-    if (strCpyFromOff) {
-      const off = num(reg[strCpyFromOff[3]!] ?? strCpyFromOff[3]!);
-      reg[strCpyFromOff[1]!] = (reg[strCpyFromOff[2]!] ?? '').slice(off);
-      pc += 1;
-      continue;
-    }
-    const strCmp = line.match(/^(StrCmp|StrCmpS) (\$\d) (\$\d|"(?:\\.|[^"])*") (\w+)(?: (\w+))?$/);
-    if (strCmp) {
-      const lhs = reg[strCmp[2]!] ?? '';
-      const rhsRaw = strCmp[3]!;
-      const rhs = rhsRaw.startsWith('$') ? (reg[rhsRaw] ?? '') : parseStrCmpQuotedLiteral(rhsRaw);
-      const eq = strCmp[1] === 'StrCmpS' ? lhs === rhs : lhs.toLowerCase() === rhs.toLowerCase();
-      const target = eq ? strCmp[4]! : strCmp[5] ?? '0';
-      const j = jump(target);
-      if (typeof j !== 'number') {
-        return j;
-      }
-      pc = j;
-      continue;
-    }
-    const gotoM = line.match(/^Goto (\w+)$/);
-    if (gotoM) {
-      const j = jump(gotoM[1]!);
-      if (typeof j !== 'number') {
-        return j;
-      }
-      pc = j;
-      continue;
-    }
-    throw new Error(`unsupported canon-gate VM instruction: ${line}`);
   }
-  return 'skip_delete';
+  throw new Error(SIDECAR_CANON_GATE_STEP_LIMIT_ERROR);
 }
 
 /** Allowlist root guards + the GetFullPathNameW canonical gate → final delete vs skip. */
@@ -1385,7 +1378,11 @@ function runSidecarCanonGateDisposition(
     return 'skip_delete';
   }
   const region = extractSidecarGuardRegionForVm(nsh);
-  return executeCanonGateBlock(canonGateBlockFromGuardRegion(region), path, detailed.$5);
+  return executeCanonGateBlock(canonGateBlockFromGuardRegion(region), path, detailed.$5, {
+    $3: String(detailed.$3),
+    $4: detailed.$4,
+    $6: detailed.$6,
+  });
 }
 
 function runAppDataM5VmFromNsh(
@@ -1561,6 +1558,28 @@ function runSidecarPathAllowlistDeleteDisposition(
   return disposition;
 }
 
+/** Scan-block line where execution continues after the read-trim block leaves through `exit`. */
+function sidecarTravEntryPc(travBlock: readonly string[], exit: SidecarReadTrimExit): number {
+  if ('label' in exit) {
+    const at = traversalBlockLabels(travBlock).get(exit.label);
+    if (at === undefined) {
+      throw new Error(`read-trim exit to a label outside the scan block: ${exit.label}`);
+    }
+    return at;
+  }
+  let seen = 0;
+  for (let i = 0; i < travBlock.length; i += 1) {
+    if (/^\w+:$/.test(travBlock[i]!.trim())) {
+      continue;
+    }
+    if (seen === exit.instr) {
+      return i;
+    }
+    seen += 1;
+  }
+  throw new Error(`read-trim exit ${exit.instr} instructions past the block lands outside the scan block`);
+}
+
 function runSidecarReadLineDeleteDisposition(
   path: string,
   nsh: string,
@@ -1568,8 +1587,13 @@ function runSidecarReadLineDeleteDisposition(
   travRegs: TravScanRegs,
   travBlock: readonly string[],
   $2 = '',
+  entry: { startPc: number; $4: string } = { startPc: 0, $4: '' },
 ): { disposition: SidecarAllowlistDeleteOutcome | 'blocked_at_guard'; travRegs: TravScanRegs } {
-  const { outcome: travOutcome, regs } = executeTraversalScanBlockStateful(travBlock, path, travRegs, { $2 });
+  const { outcome: travOutcome, regs } = executeTraversalScanBlockStateful(travBlock, path, travRegs, {
+    $2,
+    $4: entry.$4,
+    startPc: entry.startPc,
+  });
   if (travOutcome === 'vault_read') {
     return { disposition: 'blocked_at_guard', travRegs: regs };
   }
@@ -1670,29 +1694,98 @@ function parseNsisDollarEscape(quoted: string): string {
   return parseStrCmpQuotedLiteral(quoted.startsWith('"') ? quoted : `"${quoted}"`);
 }
 
+/**
+ * Where execution leaves the read-trim block for the scan block that follows it: `instr` counts NSIS
+ * instructions past the block's end (0 = the `StrCpy $7 0` reset), `label` names a scan-block label.
+ */
+export type SidecarReadTrimExit = { instr: number } | { label: string };
+
 export type SidecarReadTrimResult = {
   /** `'empty'` = the line is skipped (empty after the trim, or rejected for a control char < 0x20). */
   trimmed: 'empty' | string;
   /**
-   * True when a relative jump lands strictly past the end of this block. The block ends just before
-   * `StrCpy $7 0`: landing exactly on it still runs the per-line $7 reset, but landing beyond it would
-   * skip the reset in the real monolithic script, so $7 carries over into the next line's scan.
+   * True when execution leaves the block anywhere but the `StrCpy $7 0` reset right after it. Landing
+   * on the reset still runs it; landing beyond it skips it in the real monolithic script, so $7
+   * carries over into the next line's scan.
    */
   resetSkipped: boolean;
+  exit: SidecarReadTrimExit;
   /** $2 as the trim leaves it (the last char examined); still live when the scan starts. */
   $2: string;
+  /** $4 as the control-char check leaves it (`StrPBrkW` result); still live when the scan starts. */
+  $4: string;
 };
 
 export const SIDECAR_READ_TRIM_STEP_LIMIT_ERROR = 'SIDECAR_READ_TRIM_STEP_LIMIT_EXCEEDED';
 
-/** True when `path` has any character below 0x20 (what shlwapi::StrPBrkW over 0x01..0x1F finds). */
-function hasControlChar(path: string): boolean {
-  for (let i = 0; i < path.length; i += 1) {
-    if (path.charCodeAt(i) < 0x20) {
-      return true;
-    }
+export const SIDECAR_SYSTEM_PLUGIN_FAULT_ERROR = 'SIDECAR_SYSTEM_PLUGIN_FAULT';
+
+type SidecarSystemPluginState = {
+  stack: string[];
+  /** `System::Alloc` buffers by handle: zero-filled WCHARs (GlobalAlloc GPTR) until a struct fill. */
+  heap: Map<string, { bytes: number; wchars: number[]; freed: boolean }>;
+};
+
+/**
+ * The System-plugin calls of the control-char check (file :57–:61): `Alloc` pushes a zeroed buffer,
+ * `Pop` takes it (an empty stack leaves the register as it was), the struct fill writes the 0x01..0x1F
+ * set, `StrPBrkW` returns non-zero when the path has a char from that set, `Free` releases it. Writing
+ * through a register that is not a live buffer, or past its end, is a crash, modelled as a throw.
+ */
+function runSidecarSystemPluginOp(
+  line: string,
+  tk: readonly string[],
+  regs: Record<string, string>,
+  system: SidecarSystemPluginState,
+): void {
+  const fault = (why: string): never => {
+    throw new Error(`${SIDECAR_SYSTEM_PLUGIN_FAULT_ERROR}: ${why}: ${line}`);
+  };
+  const live = (reg: string) => {
+    const buf = system.heap.get(regs[reg] ?? '');
+    return buf === undefined || buf.freed ? fault(`${reg} is not a live buffer`) : buf;
+  };
+  if (tk[0] === 'System::Alloc' && tk.length === 2) {
+    const handle = `@buffer${system.heap.size}`;
+    system.heap.set(handle, { bytes: nsisLeadingInt(tk[1]!), wchars: [], freed: false });
+    system.stack.push(handle);
+    return;
   }
-  return false;
+  if (tk[0] === 'Pop' && tk.length === 2 && /^\$\d$/.test(tk[1]!)) {
+    const top = system.stack.pop();
+    if (top !== undefined) {
+      regs[tk[1]!] = top;
+    }
+    return;
+  }
+  if (tk[0] === 'System::Free' && tk.length === 2 && /^\$\d$/.test(tk[1]!)) {
+    live(tk[1]!).freed = true;
+    return;
+  }
+  const fill = line.match(/^System::Call "\*\$(\d)\(((?:&i2 \d+,)*&i2 \d+)\)"$/);
+  if (fill) {
+    const buf = live(`$${fill[1]!}`);
+    const wchars = fill[2]!.split(',').map((item) => Number(item.slice('&i2 '.length)));
+    if (wchars.length * 2 > buf.bytes) {
+      fault('struct fill overruns the buffer');
+    }
+    buf.wchars = wchars;
+    return;
+  }
+  const pbrk = line.match(/^System::Call "shlwapi::StrPBrkW\(w r(\d), p r(\d)\) p \.r(\d)"$/);
+  if (pbrk) {
+    const buf = live(`$${pbrk[2]!}`);
+    const end = buf.wchars.indexOf(0);
+    const set = new Set(end < 0 ? buf.wchars : buf.wchars.slice(0, end));
+    const text = regs[`$${pbrk[1]!}`] ?? '';
+    let found = false;
+    for (let i = 0; i < text.length && !found; i += 1) {
+      found = set.has(text.charCodeAt(i));
+    }
+    regs[`$${pbrk[3]!}`] = found ? '1' : '0';
+    return;
+  }
+  throw new Error(`unsupported read-trim VM instruction: ${line}`);
 }
 
 /**
@@ -1700,43 +1793,77 @@ function hasControlChar(path: string): boolean {
  * line by line so a mutated block is modelled (not refused). `shlwapi::StrPBrkW` over the 0x01..0x1F
  * set is modelled as "contains any char below 0x20"; the System buffer build / free are no-ops.
  */
-export function runSidecarReadTrimWithReset(
-  blockLines: readonly string[],
-  lineContent: string,
-): SidecarReadTrimResult {
+const decodeNsisBlock = memoizeByArray((blockLines) => {
   const labels = new Map<string, number>();
+  // NSIS relative jumps (`+N`) count instructions; label lines are not instructions.
+  const instrLines: number[] = [];
+  const instrOrdinal = new Map<number, number>();
+  const lines = blockLines.map((raw) => raw.trim());
   blockLines.forEach((raw, i) => {
     const m = raw.trim().match(/^(\w+):$/);
     if (m) {
       labels.set(m[1]!, i);
+      return;
     }
+    instrOrdinal.set(i, instrLines.length);
+    instrLines.push(i);
   });
-  let $1 = lineContent;
-  let $2 = '';
-  let $4 = '';
+  const tokens = lines.map((line) => line.match(/"[^"]*"|\S+/g) ?? []);
+  return { labels, instrLines, instrOrdinal, lines, tokens };
+});
+
+export function runSidecarReadTrimWithReset(
+  blockLines: readonly string[],
+  lineContent: string,
+): SidecarReadTrimResult {
+  const { labels, instrLines, instrOrdinal, lines, tokens } = decodeNsisBlock(blockLines);
+  const regs: Record<string, string> = { $1: lineContent };
+  const system: SidecarSystemPluginState = { stack: [], heap: new Map() };
   let pc = 0;
-  const done = (): SidecarReadTrimResult => ({
-    trimmed: $1 === '' ? 'empty' : $1,
-    resetSkipped: pc > blockLines.length,
-    $2,
+  let exit: SidecarReadTrimExit = { instr: 0 };
+  const skipped = (): SidecarReadTrimResult => ({
+    trimmed: 'empty',
+    resetSkipped: false,
+    exit: { instr: 0 },
+    $2: regs.$2 ?? '',
+    $4: regs.$4 ?? '',
   });
-  type Jump = 'skip' | number;
+  const done = (): SidecarReadTrimResult => ({
+    trimmed: (regs.$1 ?? '') === '' ? 'empty' : regs.$1!,
+    resetSkipped: !('instr' in exit && exit.instr === 0),
+    exit,
+    $2: regs.$2 ?? '',
+    $4: regs.$4 ?? '',
+  });
+  type Jump = 'skip' | 'exit' | number;
+  const leave = (to: SidecarReadTrimExit): Jump => {
+    exit = to;
+    return 'exit';
+  };
+  const relative = (offset: number): Jump => {
+    const from = instrOrdinal.get(pc);
+    if (from === undefined) {
+      throw new Error(`read-trim VM relative jump from a non-instruction line: ${blockLines[pc]}`);
+    }
+    const to = from + offset;
+    if (to < 0) {
+      throw new Error(`read-trim VM relative jump before the block: ${blockLines[pc]}`);
+    }
+    return to < instrLines.length ? instrLines[to]! : leave({ instr: to - instrLines.length });
+  };
   const jump = (target: string): Jump => {
     if (target === 'uninstall_vault_read' || target === 'uninstall_vault_close') {
       return 'skip';
     }
     if (target === '0') {
-      return pc + 1;
+      return relative(1);
     }
     const rel = target.match(/^([+-])(\d+)$/);
     if (rel) {
-      return pc + (rel[1] === '-' ? -1 : 1) * Number(rel[2]);
+      return relative((rel[1] === '-' ? -1 : 1) * Number(rel[2]));
     }
     const at = labels.get(target);
-    if (at === undefined) {
-      throw new Error(`unknown read-trim jump target: ${target}`);
-    }
-    return at;
+    return at === undefined ? leave({ label: target }) : at;
   };
   const maxSteps = (lineContent.length + 8) * 40 + 400;
   for (let step = 0; step < maxSteps; step += 1) {
@@ -1746,97 +1873,74 @@ export function runSidecarReadTrimWithReset(
     if (pc >= blockLines.length) {
       return done();
     }
-    const line = blockLines[pc]!.trim();
+    const line = lines[pc]!;
+    const tk = tokens[pc]!;
+    const op = tk[0];
     if (
       /^\w+:$/.test(line) ||
-      line === 'ClearErrors' ||
-      line === 'Nop' ||
-      line.startsWith('IfErrors') ||
-      line === 'FileRead $0 $1' ||
-      line.startsWith('System::Alloc') ||
-      line.startsWith('System::Free') ||
-      line.startsWith('Pop ')
+      op === 'ClearErrors' ||
+      op === 'Nop' ||
+      // The error flag is only raised by FileRead at EOF, which never reaches this block.
+      op === 'IfErrors' ||
+      line === 'FileRead $0 $1'
     ) {
       pc += 1;
       continue;
     }
-    if (line.startsWith('System::Call')) {
-      if (line.includes('StrPBrkW')) {
-        $4 = hasControlChar($1) ? '1' : '0';
-      }
+    if (op === 'System::Alloc' || op === 'Pop' || op === 'System::Free' || op === 'System::Call') {
+      runSidecarSystemPluginOp(line, tk, regs, system);
       pc += 1;
       continue;
     }
-    const gotoM = line.match(/^Goto (\w+)$/);
-    if (gotoM) {
-      const j = jump(gotoM[1]!);
-      if (j === 'skip') {
-        return { trimmed: 'empty', resetSkipped: false, $2 };
+    const value = (token: string | undefined): string =>
+      token === undefined ? '' : /^\$\d$/.test(token) ? (regs[token] ?? '') : parseNsisDollarEscape(token);
+    let j: Jump | undefined;
+    if (op === 'Goto' && tk.length === 2) {
+      j = jump(tk[1]!);
+    } else if (op === 'StrCmp' && (tk.length === 4 || tk.length === 5)) {
+      if (nsisStrEq(value(tk[1]), value(tk[2]))) {
+        j = jump(tk[3]!);
+      } else if (tk.length === 5) {
+        j = jump(tk[4]!);
       }
-      pc = j;
-      continue;
+    } else if (op === 'StrCpy' && tk.length >= 3 && tk.length <= 5 && /^\$\d$/.test(tk[1]!)) {
+      regs[tk[1]!] = nsisStrCpy(value(tk[2]), tk[3] === undefined ? '' : value(tk[3]), value(tk[4]));
+    } else {
+      throw new Error(`unsupported read-trim VM instruction: ${line}`);
     }
-    const strCpyLast = line.match(/^StrCpy \$2 \$1 1 -1$/);
-    if (strCpyLast) {
-      $2 = $1.length > 0 ? $1[$1.length - 1]! : '';
+    if (j === undefined) {
       pc += 1;
       continue;
     }
-    const strCpyChop = line.match(/^StrCpy \$1 \$1 -1$/);
-    if (strCpyChop) {
-      $1 = $1.length > 0 ? $1.slice(0, -1) : '';
-      pc += 1;
-      continue;
+    if (j === 'skip') {
+      return skipped();
     }
-    const strCmpEmpty = line.match(/^StrCmp \$1 "" (\w+)$/);
-    if (strCmpEmpty) {
-      if ($1 === '') {
-        const j = jump(strCmpEmpty[1]!);
-        if (j === 'skip') {
-          return { trimmed: 'empty', resetSkipped: false, $2 };
-        }
-        pc = j;
-      } else {
-        pc += 1;
-      }
-      continue;
+    if (j === 'exit') {
+      return done();
     }
-    const strCmpTwo = line.match(/^StrCmp \$2 ("(?:\\.|[^"])*") (\w+)$/);
-    if (strCmpTwo) {
-      const lit = parseNsisDollarEscape(strCmpTwo[1]!);
-      if ($2 === lit) {
-        const j = jump(strCmpTwo[2]!);
-        if (j === 'skip') {
-          return { trimmed: 'empty', resetSkipped: false, $2 };
-        }
-        pc = j;
-      } else {
-        pc += 1;
-      }
-      continue;
-    }
-    const strCmpTwoRel = line.match(/^StrCmp \$2 ("(?:\\.|[^"])*") 0 \+(\d+)$/);
-    if (strCmpTwoRel) {
-      const lit = parseNsisDollarEscape(strCmpTwoRel[1]!);
-      pc += $2 === lit ? 1 : Number(strCmpTwoRel[2]);
-      continue;
-    }
-    const strCmpFour = line.match(/^StrCmp \$4 (?:0|"0") (\w+)$/);
-    if (strCmpFour) {
-      if ($4 === '0') {
-        const j = jump(strCmpFour[1]!);
-        if (j === 'skip') {
-          return { trimmed: 'empty', resetSkipped: false, $2 };
-        }
-        pc = j;
-      } else {
-        pc += 1;
-      }
-      continue;
-    }
-    throw new Error(`unsupported read-trim VM instruction: ${line}`);
+    pc = j;
   }
   throw new Error(SIDECAR_READ_TRIM_STEP_LIMIT_ERROR);
+}
+
+/** Leading integer of an NSIS numeric argument (`""` and non-numbers are 0). */
+function nsisLeadingInt(text: string): number {
+  const m = text.match(/^-?\d+/);
+  return m ? Number(m[0]) : 0;
+}
+
+/** NSIS `StrCpy dst src [maxlen] [offset]`: a negative offset counts from the end, a negative maxlen cuts from the end. */
+function nsisStrCpy(src: string, maxLen: string, offset: string): string {
+  let start = nsisLeadingInt(offset);
+  if (start < 0) {
+    start = Math.max(0, src.length + start);
+  }
+  const rest = start <= src.length ? src.slice(start) : '';
+  if (maxLen === '') {
+    return rest;
+  }
+  const n = nsisLeadingInt(maxLen);
+  return n >= 0 ? rest.slice(0, n) : rest.slice(0, Math.max(0, rest.length + n));
 }
 
 /** FileRead + RF-6 trim loop + control-char reject for one simulated sidecar line. */
@@ -1990,7 +2094,7 @@ export function simulateSidecarDeleteReadLoop(
         }
         throw new Error(`unsupported Goto after FileRead: ${postRead.target}`);
       }
-      const { trimmed, resetSkipped, $2 } = runSidecarReadTrimWithReset(readBlock, rawLine);
+      const { trimmed, exit, $2, $4 } = runSidecarReadTrimWithReset(readBlock, rawLine);
       if (trimmed === 'empty') {
         continue;
       }
@@ -1999,8 +2103,9 @@ export function simulateSidecarDeleteReadLoop(
         nsh,
         env,
         travRegs,
-        resetSkipped ? travBlock.slice(1) : travBlock,
+        travBlock,
         $2,
+        { startPc: sidecarTravEntryPc(travBlock, exit), $4 },
       );
       travRegs = nextRegs;
       if (disposition === 'delete') {
@@ -2087,12 +2192,16 @@ export function runSidecarMultilineGuardOutcome(
   let travRegs: TravScanRegs = { $7: 0, $8: 0 };
   let lastOutcome: SidecarGuardPathOutcome = 'allowlist_continue';
   for (const raw of rawLines) {
-    const trimmed = executeSidecarReadTrimBlock(readBlock, raw);
+    const { trimmed, exit, $2, $4 } = runSidecarReadTrimWithReset(readBlock, raw);
     if (trimmed === 'empty') {
       continue;
     }
     const path = trimmed;
-    const { outcome: travOutcome, regs } = executeTraversalScanBlockStateful(travBlock, path, travRegs);
+    const { outcome: travOutcome, regs } = executeTraversalScanBlockStateful(travBlock, path, travRegs, {
+      $2,
+      $4,
+      startPc: sidecarTravEntryPc(travBlock, exit),
+    });
     travRegs = regs;
     if (travOutcome === 'vault_read') {
       continue;
@@ -2703,7 +2812,8 @@ export const TRAVERSAL_ALLOW_PATHS: readonly string[] = [
 /**
  * Root / empty-child / sibling-boundary rows asserted on the allowlist ALONE. The canonical gate
  * backstops these in the full pipeline, so each root guard (boundary + empty-child, per root) is
- * pinned here without it: a Nop on any of them turns one of these rows into a delete.
+ * pinned here without it: a Nop on any of them turns one of these rows into a delete. Same-length
+ * siblings, and a non-root path with a `\` where the AppData root ends, pin the per-root prefix checks.
  */
 export const ALLOWLIST_ROOT_GUARD_SKIP_PATHS: readonly string[] = [
   RF_APPDATA,
@@ -2718,14 +2828,26 @@ export const ALLOWLIST_ROOT_GUARD_SKIP_PATHS: readonly string[] = [
   `${RF_DOCUMENTS}Old\\v`,
   `${RF_DESKTOP}Old\\v`,
   `${RF_DOWNLOADS}Old\\v`,
+  `${RF_PROFILE}\\AppData\\Roaming\\Mythos Writez\\v`,
+  `${RF_PROFILE}\\Documentz\\v`,
+  `${RF_PROFILE}\\Desktoq\\v`,
+  `${RF_PROFILE}\\Downloadz\\v`,
+  `${RF_PROFILE}\\Pictures\\${'a'.repeat(RF_APPDATA.length - RF_PROFILE.length - '\\Pictures\\'.length)}\\x`,
 ];
 
-/** Must still delete after the canonical step (Documents / Desktop / Downloads, plus the AppData root). */
+/**
+ * Must still delete after the canonical step (Documents / Desktop / Downloads, plus the AppData root).
+ * The last three have a `\` where the AppData root ends, so a Nop on the AppData prefix check would
+ * hand them to the gate with the AppData root and lose them.
+ */
 export const CANON_MUST_DELETE_PATHS: readonly string[] = [
   ...[RF_DOCUMENTS, RF_DESKTOP, RF_DOWNLOADS].flatMap((root) =>
     ['My Vault', 'v1.2\\notes', 'a.b.c', 'v 1.2\\x'].map((tail) => `${root}\\${tail}`),
   ),
   `${RF_APPDATA}\\v`,
+  ...[RF_DOCUMENTS, RF_DESKTOP, RF_DOWNLOADS].map(
+    (root) => `${root}\\${'a'.repeat(RF_APPDATA.length - root.length - 1)}\\x`,
+  ),
 ];
 
 /** Critic: root-equivalent rows the GetFullPathNameW gate ALONE must skip (each root, both separators). */
@@ -2751,6 +2873,47 @@ export const CANON_GATE_MUST_DELETE_ROWS: readonly { path: string; root: string 
   ),
   { path: 'c:\\users\\me\\documents\\v', root: RF_DOCUMENTS },
 ];
+
+const RF_ALL_ROOTS: readonly string[] = [RF_DOCUMENTS, RF_DESKTOP, RF_DOWNLOADS, RF_APPDATA];
+
+function rfParent(root: string): string {
+  return root.slice(0, root.lastIndexOf('\\'));
+}
+
+/**
+ * Siblings reached through `..`, for the gate alone (the scan rejects `..` first in the pipeline): a
+ * same-length sibling needs the prefix compare, a longer one (`rootOld`) the `\` boundary after it.
+ */
+export const CANON_GATE_SIBLING_SKIP_ROWS: readonly { path: string; root: string }[] = RF_ALL_ROOTS.flatMap(
+  (root) => {
+    const name = root.slice(root.lastIndexOf('\\') + 1);
+    const sameLength = `${name.slice(0, -1)}${name.endsWith('z') ? 'y' : 'z'}`;
+    return RF_SEPS.flatMap((sep) =>
+      [sameLength, `${name}Old`].map((sibling) => ({ path: `${root}${sep}..${sep}${sibling}${sep}v`, root })),
+    );
+  },
+);
+
+/** Roots spelled non-canonically: their children match only through the root's own GetFullPathNameW. */
+export const CANON_GATE_NONCANONICAL_ROOT_DELETE_ROWS: readonly { path: string; root: string }[] = [
+  { path: `${RF_PROFILE}\\.\\Documents\\v`, root: `${RF_PROFILE}\\.\\Documents` },
+  { path: 'C:/Users/me/Desktop/v', root: 'C:/Users/me/Desktop' },
+  { path: `${RF_PROFILE}\\x\\..\\Downloads\\v`, root: `${RF_PROFILE}\\x\\..\\Downloads` },
+];
+
+type CanonGateFaultRow = { path: string; root: string } & CanonGateOptions;
+
+/**
+ * GetFullPathNameW failing (0 or truncated return) on the path call and on the root call, per root.
+ * Each path escapes its root through `..`, and the seeded output register holds a value that passes
+ * the containment checks, so a gate that reads past a failed call deletes.
+ */
+export const CANON_GATE_FAULT_SKIP_ROWS: readonly CanonGateFaultRow[] = RF_ALL_ROOTS.flatMap((root) =>
+  (['zero', 'truncate'] as const).flatMap((ret): CanonGateFaultRow[] => [
+    { path: `${root}\\..\\x`, root, fault: { call: '$1', ret }, $3: `${root}\\x` },
+    { path: `${root}\\..\\x`, root, fault: { call: '$5', ret }, $9: rfParent(root) },
+  ]),
+);
 
 const RF6_LFCR = '\n\r';
 
@@ -2814,10 +2977,16 @@ export function assertSidecarRf456Tables(
       throw new Error(`canonical gate must skip ${JSON.stringify(path)}, got ${outcome}`);
     }
   }
-  for (const { path, root } of CANON_GATE_MUST_DELETE_ROWS) {
+  for (const { path, root } of [...CANON_GATE_MUST_DELETE_ROWS, ...CANON_GATE_NONCANONICAL_ROOT_DELETE_ROWS]) {
     const outcome = executeCanonGateBlock(gate, path, root);
     if (outcome !== 'delete') {
       throw new Error(`canonical gate must delete ${JSON.stringify(path)}, got ${outcome}`);
+    }
+  }
+  for (const { path, root, ...options } of [...CANON_GATE_SIBLING_SKIP_ROWS, ...CANON_GATE_FAULT_SKIP_ROWS]) {
+    const outcome = executeCanonGateBlock(gate, path, root, options);
+    if (outcome !== 'skip_delete') {
+      throw new Error(`canonical gate must skip ${JSON.stringify({ path, root, ...options })}, got ${outcome}`);
     }
   }
   const mustSkip = [
@@ -2858,11 +3027,20 @@ export function assertSidecarRf456SweepParity(
   }
   const canonicalGate = canonGateBlockFromGuardRegion(extractSidecarGuardRegionForVm(canonicalNsh));
   const mutantGate = canonGateBlockFromGuardRegion(extractSidecarGuardRegionForVm(mutantNsh));
-  for (const { path, root } of [...CANON_GATE_ROOT_SKIP_ROWS, ...CANON_GATE_MUST_DELETE_ROWS]) {
-    const canonical = executeCanonGateBlock(canonicalGate, path, root);
-    const mutant = executeCanonGateBlock(mutantGate, path, root);
+  const gateRows: readonly CanonGateFaultRow[] = [
+    ...CANON_GATE_ROOT_SKIP_ROWS,
+    ...CANON_GATE_MUST_DELETE_ROWS,
+    ...CANON_GATE_SIBLING_SKIP_ROWS,
+    ...CANON_GATE_NONCANONICAL_ROOT_DELETE_ROWS,
+    ...CANON_GATE_FAULT_SKIP_ROWS,
+  ];
+  for (const { path, root, ...options } of gateRows) {
+    const canonical = executeCanonGateBlock(canonicalGate, path, root, options);
+    const mutant = executeCanonGateBlock(mutantGate, path, root, options);
     if (mutant !== canonical) {
-      throw new Error(`sweep parity canonical gate ${JSON.stringify(path)}: canonical ${canonical}, mutant ${mutant}`);
+      throw new Error(
+        `sweep parity canonical gate ${JSON.stringify({ path, root, ...options })}: canonical ${canonical}, mutant ${mutant}`,
+      );
     }
   }
   const rows = [
@@ -3404,7 +3582,7 @@ export function assertWindirProgramFilesDenyBehaviourPins(nsh: string): void {
   assertSidecarGuardRegionExact(nsh);
 }
 
-/** Primary sweep mutant for one guard-region file line (:43–:104). */
+/** Primary sweep mutant for one guard-region file line (:43–:213). */
 export function mutantSidecarGuardRegionSweepLine(nsh: string, fileLineOneBased: number): string {
   const { lines } = locateSidecarGuardRegion(nsh);
   const regionIndex = fileLineOneBased - SIDECAR_GUARD_REGION_FILE_LINE_FIRST;

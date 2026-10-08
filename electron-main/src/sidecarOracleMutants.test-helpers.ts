@@ -18,14 +18,19 @@ import {
 
 /** Mode-2 detector: true when the pin-free VM tables (re-baselined on `canonical`) reject `mutant`. */
 export function sidecarGuardModeTwoCaught(mutant: string, canonical: string): boolean {
+  return sidecarGuardModeTwoFailure(mutant, canonical) !== undefined;
+}
+
+/** The pin-free VM tables' failure message for `mutant`, or `undefined` when they pass. */
+export function sidecarGuardModeTwoFailure(mutant: string, canonical: string): string | undefined {
   try {
     assertSidecarGuardVmBehaviourTables(mutant, DEFAULT_SIDECAR_NSIS_VAR_ENV, {
       sweepRebaseline: true,
       canonicalNsh: canonical,
     });
-    return false;
-  } catch {
-    return true;
+    return undefined;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
   }
 }
 
