@@ -26,33 +26,33 @@ export const RF7_SHIELD_SURVIVOR_MUTANTS: readonly {
   text: string;
   rowNeedle: string;
 }[] = [
-  { name: ':224 else +6', line: 224, text: 'StrCmp $4 "\\" 0 +6', rowNeedle: 'Desk prefix' },
+  { name: ':250 else +6', line: 250, text: 'StrCmp $4 "\\" 0 +6', rowNeedle: 'Desk prefix' },
   {
-    name: ':224 else mythos_al_not_desktop',
-    line: 224,
+    name: ':250 else mythos_al_not_desktop',
+    line: 250,
     text: 'StrCmp $4 "\\" 0 mythos_al_not_desktop',
     rowNeedle: 'Desk prefix',
   },
   {
-    name: ':224 else mythos_al_deny',
-    line: 224,
+    name: ':250 else mythos_al_deny',
+    line: 250,
     text: 'StrCmp $4 "\\" 0 mythos_al_deny',
     rowNeedle: 'Desk prefix',
   },
   {
-    name: ':418 Goto mythos_trim_chop (a3719f95 :241)',
-    line: 418,
+    name: ':487 Goto mythos_trim_chop (a3719f95 :241)',
+    line: 487,
     text: 'Goto mythos_trim_chop',
-    rowNeedle: 'one act per sidecar file line',
+    rowNeedle: 'Desk prefix',
   },
 ];
 
 describe('Shield 5462286933 four sweep survivors', () => {
   it('canonical still deletes the Desk-prefix Desktop vault and the one-act file', () => {
     const documentsSep = fileLines.findIndex((l) => l.trim() === 'StrCmp $4 "\\" 0 mythos_al_not_documents');
-    expect(documentsSep + 1).toBe(224);
+    expect(documentsSep + 1).toBe(250);
     expect(fileLines[documentsSep]!.trim()).toBe('StrCmp $4 "\\" 0 mythos_al_not_documents');
-    expect(fileLines[417]!.trim()).toBe('Goto uninstall_vault_read');
+    expect(fileLines[486]!.trim()).toBe('Goto uninstall_vault_do_delete');
     expect(SIDECAR_RF7_SHIELD_SURVIVOR_ROWS).toHaveLength(2);
     expect(SIDECAR_RF7_DESK_PREFIX_DESKTOP_VAULT).toBe('C:\\Users\\me\\Desktop\\MyVault\\x');
     expect(SIDECAR_RF7_ONE_ACT_FILE_PATH).toBe('C:\\Users\\me\\Documents\\note.txt');

@@ -43,10 +43,10 @@ export const RF7_PIN_CHECKED_MUTANTS: readonly string[] = [
   'Nop nested AppData equal :321',
   'Nop nested Documents equal :338',
   'Nop nested Desktop equal :355',
-  ':225 else +6 (Shield survivor)',
-  ':225 else mythos_al_not_desktop (Shield survivor)',
-  ':225 else mythos_al_deny (Shield survivor)',
-  ':418 Goto mythos_trim_chop (a3719f95 :241 Shield survivor)',
+  ':250 else +6 (Shield survivor)',
+  ':250 else mythos_al_not_desktop (Shield survivor)',
+  ':250 else mythos_al_deny (Shield survivor)',
+  ':487 Goto mythos_trim_chop (a3719f95 :241 Shield survivor)',
 ];
 
 function withFileLine(line: number, text: string): string {

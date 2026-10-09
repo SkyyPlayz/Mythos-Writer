@@ -2304,8 +2304,8 @@ export const DENY_PREFIX_REJECT_PATHS: readonly string[] = [
 
 export const DENY_PREFIX_ALLOW_PATHS: readonly string[] = ['C:\\Users\\vault'];
 
-const DENY_PREFIX_LINE_EXPAND_COUNT = 9;
-const DENY_PREFIX_GATE_LINE_COUNT = 13;
+const DENY_PREFIX_LINE_EXPAND_COUNT = 11;
+  const DENY_PREFIX_GATE_LINE_COUNT = 15;
 
 function denyPrefixGateBlock(nsh: string, gateIndex: 0 | 1 | 2): readonly string[] {
   const deny = denyBlockFromGuardRegion(extractSidecarGuardRegionForVm(nsh));

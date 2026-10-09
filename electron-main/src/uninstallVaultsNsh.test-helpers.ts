@@ -242,8 +242,12 @@ export function assertAppDataMythosWriterRootSelfMatchGuard(nsh: string): void {
   if (anchorLine < 0) {
     throw new Error('APPDATA anchor line missing in nsh file');
   }
+  const notAppdataLine = lines.findIndex((l, i) => i > anchorLine && l.trim() === 'mythos_al_not_appdata:');
+  if (notAppdataLine < 0) {
+    throw new Error('mythos_al_not_appdata missing after APPDATA allowlist anchor');
+  }
   const selfMatchAt = lines.findIndex(
-    (l, i) => i > anchorLine && i < anchorLine + 16 && l === APPDATA_MYTHOS_WRITER_ROOT_SELF_MATCH_LINE,
+    (l, i) => i > anchorLine && i < notAppdataLine && l === APPDATA_MYTHOS_WRITER_ROOT_SELF_MATCH_LINE,
   );
   if (selfMatchAt < 0) {
     throw new Error(
