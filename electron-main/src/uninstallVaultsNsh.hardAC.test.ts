@@ -490,7 +490,9 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
   });
 
   it('leaf-check $3→$1 at :483 is red on / and LEAFJ~1 leaf-junction rows', () => {
-    expect(fileLines[464]!.trim()).toBe('mythos_reparse_walk: StrCpy $1 $9');
+    expect(fileLines[349]!.trim()).toBe('StrCpy $7 $9');
+    expect(fileLines[461]!.trim()).toBe('mythos_nr_ok: StrCpy $1 $9');
+    expect(fileLines[464]!.trim()).toBe('mythos_reparse_walk:');
     expect(fileLines[482]!.trim()).toBe('System::Call "kernel32::GetFileAttributesW(w r3) i .r4"');
     const slash = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.includes('leaf junction via /'));
     const short = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.includes('LEAFJ~1'));

@@ -26,6 +26,7 @@ export const HELPER_SWEEP_EQUIVALENT_FILE_LINES: Readonly<Record<number, string>
   579: 'prefix StrCmp → Nop. Every helper site is under $APPDATA.',
   581: 'separator StrCmp → Nop. Every helper site has \\ after $APPDATA.',
   588: 'Goto walk → Nop. Falls into the hit path; extra prefix checks still see DIRECTORY and continue.',
+  596: 'Goto walk after hit → Nop. Falls into leaf; helper sites have no further `\\` after the first post-root hit.',
   604: 'Pop $9 → Nop. End of program.',
   605: 'Pop $8 → Nop.',
   606: 'Pop $7 → Nop.',

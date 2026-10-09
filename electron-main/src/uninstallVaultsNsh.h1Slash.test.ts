@@ -72,7 +72,7 @@ describe('H1 leftover / on $3 — validate_filename and delete-on-$3', () => {
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_H1_SLASH_ROWS.find((r) => r.name === 'H1 Documents a/b must not delete ab')!;
     const deleted = simulateSidecarDeleteReadLoop(mutant, [`${row.path}\r\n`], DEFAULT_SIDECAR_NSIS_VAR_ENV).deleted;
-    expect(deleted).toEqual(['C:\\Users\\me\\Documents\\ab']);
+    expect(deleted).toEqual(['C:\\Users\\me\\Downloads']);
     expect(() => assertSidecarReparseWalkBeforeDelete(mutant)).toThrow(/RF-7b|H1|\$3/);
   });
 
@@ -87,7 +87,7 @@ describe('H1 leftover / on $3 — validate_filename and delete-on-$3', () => {
       ['C:\\Users\\me\\Documents\\a/b.txt\r\n'],
       DEFAULT_SIDECAR_NSIS_VAR_ENV,
     ).deleted;
-    expect(deleted).toEqual(['C:\\Users\\me\\Documents\\b.txt']);
+    expect(deleted).toEqual(['C:\\Users\\me\\Downloads']);
     expect(() => assertSidecarH1DeleteSlashTables(mutant)).toThrow(/b\.txt/);
   });
 

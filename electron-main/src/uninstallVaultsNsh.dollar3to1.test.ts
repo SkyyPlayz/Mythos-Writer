@@ -28,7 +28,7 @@ export const SIDECAR_DOLLAR3_TO_DOLLAR1_EQUIVALENTS: Readonly<Record<string, str
   '404:$3->$1':
     'Documents nested exact-root StrCmp $3 $9. Sibling :409 ancestor-\\ check: exact Documents has no \\ at $8, so it falls to mythos_nr_desktop. Allowlist already skipped the exact Documents root.',
   '491:$3->$1':
-    'Leftover-/ char copy. :465 already replaced $1 with the allow-root (no /); :493 leftover-/ reject therefore matches the $3 scan that GFPN already folded.',
+    'Leftover-/ char copy. :462 already replaced $1 with the last nested root (no /); :493 leftover-/ reject therefore matches the $3 scan that GFPN already folded.',
 };
 
 describe('generic $3→$1 / r3→r1 oracle-class mutants', () => {

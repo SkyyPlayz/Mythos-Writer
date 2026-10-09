@@ -75,7 +75,7 @@ export const SIDECAR_GUARD_SWEEP_RF7_STRENGTH_EQUIVALENTS: Readonly<Record<numbe
   355: 'IntCmp $8 3 (keep C:\\) → Nop. Fixture trailing-`\\` paths are longer than 3.',
   357: 'Goto mythos_nr_strip → Nop. GFPN leaves at most one trailing `\\`.',
   463: 'StrCpy $9 $7 → Nop. $9 stays the last GFPN; walk start is a few chars in and still hits every `\\`.',
-  464: 'Goto mythos_reparse_walk → Nop. The next line is the walk label (StrCpy $1 $9 then StrLen).',
+  464: 'Goto mythos_reparse_walk → Nop. The next line is the walk label (then StrLen).',
   467: 'IntOp $7 $8 + 1 → Nop. Walk from 0 still GetFileAttributesW every prefix and the leaf.',
   473: 'Goto mythos_reparse_next → Nop. Falls into hit and still GetFileAttributesW the current prefix.',
   480: 'IntOp $7 $7 + 1 → +2 (after a hit). The next `\\` is still found.',
