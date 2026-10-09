@@ -8,6 +8,8 @@ import { SIDECAR_FCFB_ORACLE_ROWS } from './sidecarFcfbOracleRows.test-helpers.j
 import { SIDECAR_FCFB_SUPP_ROWS } from './sidecarFcfbSuppRows.test-helpers.js';
 import { gfpnModel, glpnModel, type SidecarNsisVarEnv } from './sidecarTraversalScan.test-helpers.js';
 
+export type { SidecarNsisVarEnv };
+
 export const SIDECAR_NSIS_MAX_STRLEN = 1024;
 export const SIDECAR_LINE_STEP_LIMIT_ERROR = 'SIDECAR_LINE_STEP_LIMIT_EXCEEDED';
 export const SIDECAR_SIDECAR_DELETE_PATH_SUFFIX = 'Mythos Writer\\uninstall-delete-paths.txt';
