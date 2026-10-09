@@ -3205,6 +3205,13 @@ export const SIDECAR_H1_DELETE_SLASH_ROWS: readonly SidecarH1SlashRow[] = h1Allo
       mustNotDelete: [mixedCut],
     },
     {
+      name: `H1 Delete ${name} a/b\\f.txt must not delete a/b\\f.txt`,
+      path: `${root}\\a/b\\f.txt`,
+      env: DEFAULT_SIDECAR_NSIS_VAR_ENV,
+      expectDeleted: [mixed],
+      mustNotDelete: [`${root}\\a/b\\f.txt`],
+    },
+    {
       name: `H1 Delete ${name} x/f.txt must not delete f.txt`,
       path: `${root}\\x/f.txt`,
       env: DEFAULT_SIDECAR_NSIS_VAR_ENV,

@@ -38,13 +38,14 @@ describe('H1 leftover / on $3 — validate_filename and delete-on-$3', () => {
   it('nsisMyDeletePath splits on backslash only (Documents\\a/b.txt → Documents\\b.txt)', () => {
     expect(nsisMyDeletePath('C:\\Users\\me\\Documents\\a/b.txt')).toBe('C:\\Users\\me\\Documents\\b.txt');
     expect(nsisMyDeletePath('C:\\Users\\me\\Documents\\a\\b/f.txt')).toBe('C:\\Users\\me\\Documents\\a\\f.txt');
+    expect(nsisMyDeletePath('C:\\Users\\me\\Documents\\a/b\\f.txt')).toBe('C:\\Users\\me\\Documents\\a/b\\f.txt');
     expect(nsisMyDeletePath('C:\\Users\\me\\Documents\\x/f.txt')).toBe('C:\\Users\\me\\Documents\\f.txt');
     expect(nsisMyDeletePath('C:\\Users\\me\\Documents\\note.txt')).toBe('C:\\Users\\me\\Documents\\note.txt');
   });
 
   it(`ships ${SIDECAR_H1_SLASH_ROWS.length} a/b and D/esktop must-skip rows under all 4 roots`, () => {
     expect(SIDECAR_H1_SLASH_ROWS).toHaveLength(12);
-    expect(SIDECAR_H1_DELETE_SLASH_ROWS).toHaveLength(12);
+    expect(SIDECAR_H1_DELETE_SLASH_ROWS).toHaveLength(16);
     expect(() => assertSidecarH1SlashTables(nsh)).not.toThrow();
     expect(() => assertSidecarH1DeleteSlashTables(nsh)).not.toThrow();
     expect(() => assertSidecarReparseWalkBeforeDelete(nsh)).not.toThrow();
