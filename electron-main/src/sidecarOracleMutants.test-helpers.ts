@@ -547,6 +547,22 @@ const GLP_ERROR_SWAP_TARGETS = [
   'mythos_glp_fb_9a',
 ] as const;
 
+/**
+ * Forge's 64 StrCmp/Goto offset-swaps on the four GLP error tails
+ * (`:205/:206/:209/:210`, Documents, Desktop, `:368/:369/:372/:373` × `{0,+2,+4,+6}`).
+ */
+export const GLP_ERROR_ORACLE_SWAP_FILE_LINES: readonly number[] = [
+  205, 206, 209, 210, 235, 236, 239, 240, 265, 266, 269, 270, 368, 369, 372, 373,
+];
+
+const GLP_ERROR_ORACLE_SWAP_OFFSET = /->(0|\+[246])$/;
+
+export function generateGlpErrorOracleJumpSwapMutants(nsh: string): OracleClassMutant[] {
+  return generateGlpErrorJumpSwapMutants(nsh).filter(
+    (m) => GLP_ERROR_ORACLE_SWAP_FILE_LINES.includes(m.fileLine) && GLP_ERROR_ORACLE_SWAP_OFFSET.test(m.key),
+  );
+}
+
 /** IntCmp/StrCmp/Goto jump-swaps on the four GLP error tails only (not the whole-region corpus). */
 export function generateGlpErrorJumpSwapMutants(nsh: string): OracleClassMutant[] {
   const src = nsh.split('\n');
@@ -597,5 +613,17 @@ export function nshWithoutLaterNestedSkips(nsh: string): string {
     const indent = next[fileLine - 1]!.match(/^\s*/)?.[0] ?? '';
     next[fileLine - 1] = `${indent}Nop`;
   }
+  return next.join('\n');
+}
+
+/**
+ * Skip the whole later nested guard (`:363` onward) so an “equivalent” reason
+ * must still hold with those guards removed. Keeps the `mythos_nested_root_guard`
+ * label so allowlist matches still land here, then jump to `mythos_nr_ok`.
+ */
+export function nshBypassLaterNestedGuard(nsh: string): string {
+  const next = nsh.split('\n');
+  const indent = next[349]!.match(/^\s*/)?.[0] ?? '';
+  next[349] = `${indent}Goto mythos_nr_ok`;
   return next.join('\n');
 }

@@ -5535,6 +5535,23 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     killsFileLine: 270,
   },
   {
+    name: 'HARD-F :260 errno 5 Desktop vault skips (nested-pass child; :363 cannot save)',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Desktop\\v', 'C:\\Users\\me\\Desktop'],
+    options: { glpnErrnoFileLines: { 260: 5 } },
+  },
+  {
+    name: 'HARD-F :260 errno 3 existing Desktop vault skips (S-19; nested-pass child)',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Desktop\\v', 'C:\\Users\\me\\Desktop'],
+    options: { glpnErrnoFileLines: { 260: 3 } },
+    killsFileLine: 270,
+  },
+  {
     name: 'HARD-F :363 errno 5 Mythos vault skips (no next-root; later nested cannot save)',
     path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
     env: HARD12_ENV_E1,

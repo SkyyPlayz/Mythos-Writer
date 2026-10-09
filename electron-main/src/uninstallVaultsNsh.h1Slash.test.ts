@@ -64,7 +64,7 @@ describe('H1 leftover / on $3 — validate_filename and delete-on-$3', () => {
     });
   }
 
-  it('$3→$1 revert on IfFileExists/RMDir/Delete is red (validate_filename a/b → ab)', () => {
+  it('$3→$1 revert on IfFileExists/RMDir/Delete is red (H5 $1 is the Documents walk root)', () => {
     const mutant = nsh.replace(H1_REVERT_BLOCK, H1_REVERT_ON_RAW);
     expect(mutant).not.toBe(nsh);
     expect(mutant).toContain('RMDir /r "$1"');
@@ -72,11 +72,11 @@ describe('H1 leftover / on $3 — validate_filename and delete-on-$3', () => {
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_H1_SLASH_ROWS.find((r) => r.name === 'H1 Documents a/b must not delete ab')!;
     const deleted = simulateSidecarDeleteReadLoop(mutant, [`${row.path}\r\n`], DEFAULT_SIDECAR_NSIS_VAR_ENV).deleted;
-    expect(deleted).toEqual(['C:\\Users\\me\\Downloads']);
+    expect(deleted).toEqual(['C:\\Users\\me\\Documents']);
     expect(() => assertSidecarReparseWalkBeforeDelete(mutant)).toThrow(/RF-7b|H1|\$3/);
   });
 
-  it('Delete-only $1 revert is red (Documents\\a/b.txt → Documents\\b.txt)', () => {
+  it('Delete-only $1 revert is red (H5 $1 is the Documents walk root)', () => {
     const mutant = nsh.replace('          Delete "$3"', '          Delete "$1"');
     expect(mutant).not.toBe(nsh);
     expect(mutant).toContain('Delete "$1"');
@@ -87,7 +87,7 @@ describe('H1 leftover / on $3 — validate_filename and delete-on-$3', () => {
       ['C:\\Users\\me\\Documents\\a/b.txt\r\n'],
       DEFAULT_SIDECAR_NSIS_VAR_ENV,
     ).deleted;
-    expect(deleted).toEqual(['C:\\Users\\me\\Downloads']);
+    expect(deleted).toEqual(['C:\\Users\\me\\Documents']);
     expect(() => assertSidecarH1DeleteSlashTables(mutant)).toThrow(/b\.txt/);
   });
 

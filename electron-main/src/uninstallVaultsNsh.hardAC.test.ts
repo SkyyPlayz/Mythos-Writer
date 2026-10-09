@@ -10,7 +10,9 @@ import {
 import {
   generateGlpErrorJumpOffsetMutants,
   generateGlpErrorJumpSwapMutants,
+  generateGlpErrorOracleJumpSwapMutants,
   generateOracleClassMutants,
+  nshBypassLaterNestedGuard,
   nshWithoutLaterNestedSkips,
   sidecarGuardModeTwoCaught,
   sidecarGuardModeTwoFailure,
@@ -739,8 +741,9 @@ const HARD_F_SAFETY_SKIP = ['HARD-F :237', 'S-19 '] as const;
 
 /**
  * Isolated skip rows where the error branch under test is the only protection:
- * allowlist deny never reaches :363, and a nested-guard input would pass (the line
- * is a child of the root, not an ancestor). Masked-by-:363 does not count as killed.
+ * canon never reaches nested; a mutant that H3s the leftover GFPN hits a
+ * nested-pass child (line is a child of the root, not an ancestor), so later
+ * :363 cannot save it. Masked-by-:363 does not count as killed.
  */
 const HARD_F_UNMASKED_SKIP = [
   'HARD-F :200 errno 5',
@@ -750,6 +753,8 @@ const HARD_F_UNMASKED_SKIP = [
   'HARD-F :230 errno 2',
   'HARD-F :230 errno 3',
   'HARD-F :260 not-found errno 2',
+  'HARD-F :260 errno 5',
+  'HARD-F :260 errno 3',
   'HARD-F :363 errno 5',
   'HARD-F :363 errno 2',
   'HARD-F :363 errno 3',
@@ -758,54 +763,90 @@ const HARD_F_UNMASKED_SKIP = [
 const HARD_F_ISOLATED_SKIP = [...HARD_F_UNMASKED_SKIP, ...HARD_F_SAFETY_SKIP] as const;
 
 /**
- * Written reasons for mutants that stay equal on the unmasked rows *after* later
- * nested ancestor skips are Nop'd. Masked-by-:363 is not listed.
+ * Written reasons for mutants that stay equal on the unmasked rows *after* the
+ * later nested guard is removed (`nshBypassLaterNestedGuard`). Masked-by-:363
+ * is not listed. No catch-all `:tgt` / `:jmp` — each survivor must match a
+ * specific operand reason that still holds with nested gone.
  */
 const HARD_F_JUMP_EQUIV_REASONS: Readonly<Record<string, string>> = {
   ':+5->+6':
-    'Extra fail-close past the errno block. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'Extra fail-close past the errno block. Isolated rows still deny; later nested bypassed: still deny.',
   ':+5->+7':
-    'Extra fail-close past the errno block. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'Extra fail-close past the errno block. Isolated rows still deny; later nested bypassed: still deny.',
   ':+5->0':
-    'GLP-fail +5→0 falls into MAX/empty and still fail-closes. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'GLP-fail +5→0 falls into MAX/empty and still fail-closes. Isolated rows still deny; later nested bypassed: still deny.',
   ':+5->+1':
-    'GLP-fail +5→+1 still fail-closes (MAX/uninstall). Isolated rows still deny; later nested Nop\'d: still deny.',
+    'GLP-fail +5→+1 still fail-closes (MAX/uninstall). Isolated rows still deny; later nested bypassed: still deny.',
   ':+5->+2':
-    'GLP-fail +5→+2 still fail-closes (MAX/uninstall). Isolated rows still deny; later nested Nop\'d: still deny.',
+    'GLP-fail +5→+2 still fail-closes (MAX/uninstall). Isolated rows still deny; later nested bypassed: still deny.',
   ':+3->0':
-    'Errno-2 +3→0 falls into errno-3 / other-error deny. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'Errno-2 +3→0 falls into errno-3 / other-error deny. Isolated rows still deny; later nested bypassed: still deny.',
   ':+3->+1':
-    'Errno-2 extra fail-close. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'Errno-2 extra fail-close. Isolated rows still deny; later nested bypassed: still deny.',
   ':+3->+2':
-    'Errno-2 extra fail-close. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'Errno-2 extra fail-close. Isolated rows still deny; later nested bypassed: still deny.',
   ':+2->0':
-    'Errno-3 +2→0 falls into other-error deny. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'Errno-3 +2→0 falls into other-error deny. Isolated rows still deny; later nested bypassed: still deny.',
   ':+2->-1':
-    'Errno-3 extra fail-close. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'Errno-3 extra fail-close. Isolated rows still deny; later nested bypassed: still deny.',
   ':+2->+1':
-    'Errno-3 extra fail-close. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'Errno-3 extra fail-close. Isolated rows still deny; later nested bypassed: still deny.',
   ':+2->+3':
-    'Errno-3 +2→+3 still fail-closes this isolated root. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'Errno-3 +2→+3 still fail-closes this isolated root. Isolated rows still deny; later nested bypassed: still deny.',
   ':+2->+4':
-    'Errno-3 +2→+4 still fail-closes this isolated root. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'Errno-3 +2→+4 still fail-closes this isolated root. Isolated rows still deny; later nested bypassed: still deny.',
   ':+3->+4':
-    'Errno-2 +3→+4 still fail-closes this isolated root. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'Errno-2 +3→+4 still fail-closes this isolated root when the leftover GFPN does not match. Later nested bypassed: still deny.',
   ':+3->+5':
-    'Empty $2 +3→+5 now defaults to uninstall_vault_read. Isolated rows still deny; later nested Nop\'d: still deny.',
+    'Errno-2 +3→+5 is empty-$2 / fail-closed default. Isolated rows still deny; later nested bypassed: still deny.',
   ':jmp4:0->':
-    'Unused IntCmp less-branch 0±N on a taken equal. Isolated rows still deny; later nested Nop\'d: still unused.',
+    'Unused IntCmp less-branch 0±N on a taken equal. Isolated rows still deny; later nested bypassed: still unused.',
   ':jmp5:0->':
-    'Unused IntCmp greater-branch 0±N on a taken equal. Isolated rows still deny; later nested Nop\'d: still unused.',
-  '->uninstall_vault_read':
-    'Jump-swap extra fail-close. Isolated rows still deny; later nested Nop\'d: still deny.',
-  '->mythos_al_not_':
-    'Jump-swap skips this allowlist root (same as other-error). Isolated rows still deny; later nested Nop\'d: still deny.',
-  '->mythos_nr_':
-    'Jump-swap skips this nested root. Isolated allowlist deny never reaches it; later nested Nop\'d: still deny.',
-  ':tgt':
-    'Jump-swap lands on an unused fail/success operand or a fail-closed label. Isolated rows still deny with later nested Nop\'d (same delete set).',
-  ':jmp':
-    'Relative jump ±1/±2 on an unused or extra-fail-close operand. Isolated rows still deny with later nested Nop\'d (same delete set).',
+    'Unused IntCmp greater-branch 0±N on a taken equal. Isolated rows still deny; later nested bypassed: still unused.',
+  '205:tgt3:':
+    'StrCmp empty-$5 equal-target. Isolated errno takes IntCmp $4 0 +5 and never reaches :205. Later nested bypassed: still deny.',
+  '235:tgt3:':
+    'StrCmp empty-$5 equal-target. Isolated errno never reaches :235. Later nested bypassed: still deny.',
+  '265:tgt3:':
+    'StrCmp empty-$5 equal-target. Isolated errno never reaches :265. Later nested bypassed: still deny.',
+  '368:tgt3:':
+    'StrCmp empty-$9 equal-target. Isolated :363 errno jumps to :370 and never reaches :368. Later nested bypassed: still deny on allowlist-isolated rows.',
+  '206:tgt1:':
+    'Goto H3→offset is the success path. Isolated errno never reaches :206. Later nested bypassed: still deny.',
+  '236:tgt1:':
+    'Goto H3→offset is the success path. Isolated errno never reaches :236. Later nested bypassed: still deny.',
+  '266:tgt1:':
+    'Goto H3→offset is the success path. Isolated errno never reaches :266. Later nested bypassed: still deny.',
+  '369:tgt1:':
+    'Goto H3→offset is the success path. Isolated :363 errno never reaches :369. Later nested bypassed: still deny on allowlist-isolated rows.',
+  '209:tgt1:mythos_al_not_appdata->0':
+    'Other-error →0 falls into fb_5a; existing GFA → not_appdata. Later nested bypassed: still deny.',
+  '209:tgt1:mythos_al_not_appdata->+6':
+    'Other-error +6 lands past the H3 tag; empty $2 fail-closes. Later nested bypassed: still deny.',
+  '239:tgt1:mythos_al_not_documents->0':
+    'Other-error →0 falls into fb_5d; existing GFA → not_documents. Later nested bypassed: still deny.',
+  '239:tgt1:mythos_al_not_documents->+6':
+    'Other-error +6 lands past the H3 tag; empty $2 fail-closes. Later nested bypassed: still deny.',
+  '269:tgt1:mythos_al_not_desktop->0':
+    'Other-error →0 falls into fb_5k; existing GFA → not_desktop. Later nested bypassed: still deny.',
+  '269:tgt1:mythos_al_not_desktop->+6':
+    'Other-error +6 lands past the H3 tag; empty $2 fail-closes. Later nested bypassed: still deny.',
+  '210:tgt1:mythos_glp_fb_5a->+2':
+    'fb +2 is Goto tail with empty $2; :540 fail-closed. Later nested bypassed: still deny.',
+  '210:tgt1:mythos_glp_fb_5a->+4':
+    'fb +4 smashes the prefix check with $8=errno; no match. Later nested bypassed: still deny.',
+  '240:tgt1:mythos_glp_fb_5d->+2':
+    'fb +2 is Goto tail with empty $2; :540 fail-closed. Later nested bypassed: still deny.',
+  '240:tgt1:mythos_glp_fb_5d->+4':
+    'fb +4 smashes the prefix check with $8=errno; no match. Later nested bypassed: still deny.',
+  '270:tgt1:mythos_glp_fb_5k->+2':
+    'fb +2 is Goto tail with empty $2; :540 fail-closed. Later nested bypassed: still deny.',
+  '270:tgt1:mythos_glp_fb_5k->+4':
+    'fb +4 smashes the prefix check with $8=errno; no match. Later nested bypassed: still deny.',
+  '372:tgt1:uninstall_vault_read->0':
+    'Nested other-error →0 falls into fb_9a. Existing nested root GFA → uninstall (same skip). Later nested bypassed: allowlist already matched, both delete. Same delete set.',
+  '373:tgt1:mythos_glp_fb_9a->+2':
+    'Nested fb +2 smashes the 9a tail without H3. Isolated :363 still skips. Later nested bypassed: both delete (allowlist already matched). Same delete set.',
 };
 
 function hardFEquivReason(key: string): string | undefined {
@@ -846,7 +887,7 @@ function hardFExtraDelete(
 describe('HARD-F isolated GLP error branches + jump-offset corpus', () => {
   it('HARD-F isolated skip rows deny without relying on later nested, and kill +5→+3/+4', () => {
     const isolated = SIDECAR_HARD_A_ROWS.filter((r) => HARD_F_ISOLATED_SKIP.some((p) => r.name.startsWith(p)));
-    expect(isolated.length).toBeGreaterThanOrEqual(16);
+    expect(isolated.length).toBeGreaterThanOrEqual(18);
     for (const row of isolated) {
       expect(sidecarHardADeleted(nsh, row), row.name).toEqual(row.expect === 'delete' ? [row.path] : []);
       for (const ban of row.mustNotDelete ?? []) {
@@ -859,6 +900,14 @@ describe('HARD-F isolated GLP error branches + jump-offset corpus', () => {
     expect(sidecarHardADeleted(nsh, docsE5)).toEqual([]);
     expect(sidecarHardADeleted(plus4.nsh, docsE5)).toEqual(['C:\\Users\\me\\Documents\\MyVault']);
     expect(sidecarGuardModeTwoCaught(plus4.nsh, nsh)).toBe(true);
+    const deskE5 = isolated.find((r) => r.name.startsWith('HARD-F :260 errno 5'))!;
+    const deskPlus2 = generateGlpErrorOracleJumpSwapMutants(nsh).find(
+      (m) => m.key === '269:tgt1:mythos_al_not_desktop->+2',
+    )!;
+    expect(deskPlus2, ':269 +2').toBeDefined();
+    expect(sidecarHardADeleted(nsh, deskE5)).toEqual([]);
+    expect(sidecarHardADeleted(deskPlus2.nsh, deskE5)).toEqual(['C:\\Users\\me\\Desktop\\v']);
+    expect(sidecarGuardModeTwoCaught(deskPlus2.nsh, nsh)).toBe(true);
   });
 
   it('HARD-F :237 +3→+5 OneDrive missing Documents never RMDirs OneDrive', () => {
@@ -917,22 +966,27 @@ describe('HARD-F isolated GLP error branches + jump-offset corpus', () => {
     expect(dangerous.length).toBeGreaterThan(0);
   }, 189_000);
 
-  it('jump-offset survivors have a written reason and stay equal with later nested skips removed', () => {
+  it('jump-offset / Forge-64 survivors have a written reason and stay equal with later nested removed', () => {
     const isolated = SIDECAR_HARD_A_ROWS.filter(
       (r) => r.expect === 'skip' && HARD_F_UNMASKED_SKIP.some((p) => r.name.startsWith(p)),
     );
+    const allowlistIsolated = isolated.filter((r) => !r.name.startsWith('HARD-F :363'));
     const stripped = nshWithoutLaterNestedSkips(nsh);
+    const bypassed = nshBypassLaterNestedGuard(nsh);
     const survivors: string[] = [];
     const missingReason: string[] = [];
-    for (const mutant of [...generateGlpErrorJumpOffsetMutants(nsh), ...generateGlpErrorJumpSwapMutants(nsh)]) {
+    const corpus = [...generateGlpErrorJumpOffsetMutants(nsh), ...generateGlpErrorOracleJumpSwapMutants(nsh)];
+    expect(generateGlpErrorOracleJumpSwapMutants(nsh).length).toBe(64);
+    for (const mutant of corpus) {
       const strippedMutant = nshWithoutLaterNestedSkips(mutant.nsh);
       if (isolated.some((row) => hardFExtraDelete(strippedMutant, stripped, row))) {
         continue;
       }
       survivors.push(mutant.key);
-      for (const row of isolated) {
-        expect(hardFDeleted(strippedMutant, row), `${mutant.key} ${row.name} later-guards-removed`).toEqual(
-          hardFDeleted(stripped, row),
+      const bypassedMutant = nshBypassLaterNestedGuard(mutant.nsh);
+      for (const row of allowlistIsolated) {
+        expect(hardFDeleted(bypassedMutant, row), `${mutant.key} ${row.name} later-guards-removed`).toEqual(
+          hardFDeleted(bypassed, row),
         );
       }
       if (hardFEquivReason(mutant.key) === undefined) {
