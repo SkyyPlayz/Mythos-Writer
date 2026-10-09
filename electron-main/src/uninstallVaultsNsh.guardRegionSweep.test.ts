@@ -93,22 +93,21 @@ export const SIDECAR_GUARD_SWEEP_RF7_STRENGTH_EQUIVALENTS: Readonly<Record<numbe
 /**
  * Remaining mode-2-only equivalents (primary Nop is identity on the VM tables).
  * Forge RESULT_36d2 unlisted 33 GFPN/GLP 0/trunc lines that a fault row kills.
- * :259 is equivalent: $9 is GFPN of an already-long allowlist root, so canon-root
- * GetLongPathNameW is identity; a failed call does not write, and Nop leaves $9 long.
+ * RESULT_8329 unlisted :259: a GLP fault on that Call skips a legit vault;
+ * Nop of the Call skips the fault and the vault deletes.
  */
 export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<number, string>> = {
   204: 'Documents prefix StrCmp → Nop. No oracle path becomes a false Documents child.',
   222: 'Desktop prefix StrCmp → Nop. No oracle path becomes a false Desktop child.',
-  259: 'canon-root GLP Call → Nop. $9 is GFPN of the already-GLP\'d allowlist root, so GetLongPathNameW is identity. A failed GLP does not write; leftover $9 stays the long GFPN path.',
   288: 'AppData nested exact-root StrCmp → Nop. Allowlist already skipped the exact AppData root.',
   302: 'Documents nested exact-root StrCmp → Nop. Allowlist already skipped the exact Documents root.',
 };
 
-/** Forge RESULT_97be (29) + RESULT_36d2 (33). Mode 2 must catch each primary Nop. */
+/** Forge RESULT_97be (29) + RESULT_36d2 (33) + RESULT_8329 (:259). Mode 2 must catch each primary Nop. */
 export const SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS: readonly number[] = [
   143, 144, 145, 147, 150, 151, 152, 158, 159, 160, 161, 162, 168, 169, 170, 171, 172, 178, 179,
   181, 182, 196, 197, 199, 200, 214, 215, 216, 217, 218, 232, 233, 234, 235, 236, 251, 252, 254,
-  255, 260, 261, 283, 284, 285, 286, 287, 297, 298, 299, 300, 301, 311, 312, 313, 314, 315, 325,
+  255, 259, 260, 261, 283, 284, 285, 286, 287, 297, 298, 299, 300, 301, 311, 312, 313, 314, 315, 325,
   326, 327, 328, 329, 333,
 ];
 
@@ -239,7 +238,7 @@ describe('sidecar guard region sweep :43-:376 (buildIntegrity excluded)', () => 
       expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[256]).toBeUndefined();
       expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[257]).toBeUndefined();
       expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[258]).toBeUndefined();
-      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[259]).toMatch(/identity|already/);
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[259]).toBeUndefined();
     });
 
     it('oracle-class at-least-one-caught skip set is the 6 ancestor-separator lines from 8b2f', () => {

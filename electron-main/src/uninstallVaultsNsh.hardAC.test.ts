@@ -123,9 +123,15 @@ describe('HARD-A short names + deny/allowlist GLP', () => {
     expect(got.length, 'Nop :258 must delete because the truncated GFPN wrote $9').toBeGreaterThan(0);
   });
 
-  it(':259 canon-root GLP Nop is equivalent — $9 is already long', () => {
-    expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[259]).toMatch(/identity|already/);
-    expect(sidecarGuardModeTwoCaught(mutantSidecarGuardRegionSweepLine(nsh, 259), nsh)).toBe(false);
+  it('canon-root GLP fault at :259 skips a legit vault; Nop :259 deletes it', () => {
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 259);
+    expect(row, 'GLP-fault row for :259').toBeDefined();
+    expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
+    const got = sidecarHardADeleted(mutantSidecarGuardRegionSweepLine(nsh, 259), row!);
+    expect(got, 'Nop :259 must delete the legit vault the GLP fault skipped').toEqual([
+      'C:\\Users\\me\\Documents\\MyVault',
+    ]);
+    expect(sidecarGuardModeTwoCaught(mutantSidecarGuardRegionSweepLine(nsh, 259), nsh)).toBe(true);
   });
 
   for (const fileLine of SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS) {

@@ -4203,6 +4203,14 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     killsFileLine: 255,
   },
   {
+    name: 'canon-root GLP at :259 fault skips a Documents vault (kills :259)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnFailFileLines: [259] },
+    killsFileLine: 259,
+  },
+  {
     name: 'canon-root GLP 2nd-call fault skips (kills :260)',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,

@@ -83,6 +83,7 @@ const GATE_LINES: Readonly<Record<number, string>> = {
 const GATE_MUTANTS: readonly { name: string; edits: Readonly<Record<number, string | readonly string[]>> }[] = [
   { name: 'path buffer too small (i 16)', edits: { 250: PATH_CALL.replace('${NSIS_MAX_STRLEN}', '16') } },
   { name: 'first GFPN buffer too small (i 16)', edits: { 140: PATH_CALL.replace('${NSIS_MAX_STRLEN}', '16') } },
+  { name: 'root buffer too small (i 16)', edits: { 256: ROOT_CALL.replace('${NSIS_MAX_STRLEN}', '16') } },
   { name: 'truncation bound below the buffer (16)', edits: { 142: TRUNC_CHECK.replace('${NSIS_MAX_STRLEN}', '16') } },
   { name: 'path 0 return falls through', edits: { 141: 'IntCmp $4 0 0 uninstall_vault_read 0' } },
   {
@@ -94,6 +95,8 @@ const GATE_MUTANTS: readonly { name: string; edits: Readonly<Record<number, stri
     name: 'path truncated return goes to delete',
     edits: { 142: 'IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_do_delete 0 uninstall_vault_do_delete' },
   },
+  { name: 'root 0 return falls through', edits: { 257: 'IntCmp $4 0 0 uninstall_vault_read 0' } },
+  { name: 'root truncated return falls through', edits: { 258: 'IntCmp $4 ${NSIS_MAX_STRLEN} 0 0 0' } },
   { name: 'WINDIR 0 return falls through', edits: { 148: 'IntCmp $4 0 0 uninstall_vault_read 0' } },
   { name: 'WINDIR truncated return falls through', edits: { 149: 'IntCmp $4 ${NSIS_MAX_STRLEN} 0 0 0' } },
   {
@@ -117,10 +120,23 @@ const GATE_MUTANTS: readonly { name: string; edits: Readonly<Record<number, stri
   { name: 'case folding dropped (StrCmpS)', edits: { 264: 'StrCmpS $6 $9 0 uninstall_vault_read' } },
 ];
 
+const EIGHT_B2F_ROOT_GATE_NAMES = [
+  'root buffer too small (i 16)',
+  'root 0 return falls through',
+  'root truncated return falls through',
+] as const;
+
 describe('GetFullPathNameW gate — System::Call and containment mutants are caught pin-free (mode 2)', () => {
   it('the gate lines these mutants edit are where the table says', () => {
     for (const [line, text] of Object.entries(GATE_LINES)) {
       expect(fileLines[Number(line) - 1]!.trim(), `:${line}`).toBe(text);
+    }
+  });
+
+  it('8b2f named root-gate mutants are present', () => {
+    const names = GATE_MUTANTS.map((m) => m.name);
+    for (const name of EIGHT_B2F_ROOT_GATE_NAMES) {
+      expect(names, name).toContain(name);
     }
   });
 
