@@ -259,8 +259,11 @@ export function mutantM5_dropAppDataRootSelfMatch(nsh: string): string {
     '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0\n' +
     '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read\n' +
     '        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"\n' +
-    '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0\n' +
+    '        IntCmp $4 0 +2 0 0\n' +
     '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read\n' +
+    '        StrCpy $2 "5a"\n' +
+    '        Goto mythos_comp_tail_scan\n' +
+    '        mythos_comp_tail_ret5a:\n' +
     '        StrLen $8 $5\n' +
     '        StrCpy $4 $3 $8\n' +
     '        StrCmp $4 $5 0 mythos_al_not_appdata\n' +
@@ -271,8 +274,11 @@ export function mutantM5_dropAppDataRootSelfMatch(nsh: string): string {
     '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0\n' +
     '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read\n' +
     '        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"\n' +
-    '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0\n' +
+    '        IntCmp $4 0 +2 0 0\n' +
     '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read\n' +
+    '        StrCpy $2 "5a"\n' +
+    '        Goto mythos_comp_tail_scan\n' +
+    '        mythos_comp_tail_ret5a:\n' +
     '        StrLen $8 $5\n' +
     '        StrCpy $4 $3 $8\n' +
     '        StrCmp $4 $5 0 mythos_al_not_appdata';
