@@ -23,10 +23,8 @@ export const SIDECAR_DOLLAR3_TO_DOLLAR1_EQUIVALENTS: Readonly<Record<string, str
     'Canon empty-$3 StrCmp. :322 0-check already fail-closes a failed canon GLP; :325 only runs on success, when leftover $1 is the non-empty raw line.',
   '354:$3->$1':
     'Nested-strip StrLen $8 $3. :352 last-char \\ check still reads $3; $8 is only consumed when that char is \\, and :355 keeps C:\\.',
-  '378:$3->$1':
-    'AppData nested exact-root StrCmp $3 $9. Sibling :383 ancestor-\\ check: exact AppData has no \\ at $8, so it falls to mythos_nr_documents. Allowlist already skipped the exact AppData root.',
   '491:$3->$1':
-    'Leftover-/ char copy. :462 already replaced $1 with the last nested root (no /); :493 leftover-/ reject therefore matches the $3 scan that GFPN already folded.',
+    'Leftover-/ char copy. GFPN already folded / to \\ on $3; leftover $6 from the walk leaf is "" so the $3/$1 char copy still sees no /.',
 };
 
 describe('generic $3→$1 / r3→r1 oracle-class mutants', () => {

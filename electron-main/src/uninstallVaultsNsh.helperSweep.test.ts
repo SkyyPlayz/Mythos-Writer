@@ -36,6 +36,16 @@ export const HELPER_SWEEP_EQUIVALENT_FILE_LINES: Readonly<Record<number, string>
 };
 
 describe('H2 helper region sweep :562-:610 (pin + helper mode-2)', () => {
+  it('mutation sweep fully covers .nsh :562-:610', () => {
+    expect(HELPER_REGION_FILE_LINE_FIRST).toBe(562);
+    expect(HELPER_REGION_FILE_LINE_LAST).toBe(610);
+    for (let fileLine = 562; fileLine <= 610; fileLine += 1) {
+      const mutant = nshWithFileLine(nsh, fileLine, 'Nop');
+      expect(mutant, `:${fileLine} Nop`).not.toBe(nsh);
+      expect(() => assertMythosRmdirHelperRegionExact(mutant), `:${fileLine} pin`).toThrow();
+    }
+  });
+
   it('canonical helper region pin holds', () => {
     expect(() => assertMythosRmdirHelperRegionExact(nsh)).not.toThrow();
   });

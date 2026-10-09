@@ -347,7 +347,7 @@
           StrCmp $6 "" uninstall_vault_read
           Goto mythos_nested_root_guard
         mythos_nested_root_guard:
-          StrCpy $7 $9
+          StrCpy $1 $9
           mythos_nr_strip:
             StrCpy $6 $3 1 -1
             StrCmp $6 "\" 0 mythos_nr_appdata
@@ -459,8 +459,8 @@
             StrCmp $6 $3 0 mythos_nr_ok
             StrCpy $6 $9 1 $8
             StrCmp $6 "\" uninstall_vault_read
-          mythos_nr_ok: StrCpy $1 $9
-            StrCpy $9 $7
+          mythos_nr_ok:
+            StrCpy $9 $1
             Goto mythos_reparse_walk
         mythos_reparse_walk:
           StrLen $8 $9

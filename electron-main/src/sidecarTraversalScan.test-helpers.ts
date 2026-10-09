@@ -337,7 +337,7 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "          StrCmp $6 \"\" uninstall_vault_read",
   "          Goto mythos_nested_root_guard",
   "        mythos_nested_root_guard:",
-  "          StrCpy $7 $9",
+  "          StrCpy $1 $9",
   "          mythos_nr_strip:",
   "            StrCpy $6 $3 1 -1",
   "            StrCmp $6 \"\\\" 0 mythos_nr_appdata",
@@ -449,8 +449,8 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "            StrCmp $6 $3 0 mythos_nr_ok",
   "            StrCpy $6 $9 1 $8",
   "            StrCmp $6 \"\\\" uninstall_vault_read",
-  "          mythos_nr_ok: StrCpy $1 $9",
-  "            StrCpy $9 $7",
+  "          mythos_nr_ok:",
+  "            StrCpy $9 $1",
   "            Goto mythos_reparse_walk",
   "        mythos_reparse_walk:",
   "          StrLen $8 $9",
@@ -2913,10 +2913,13 @@ type SidecarDeleteLoopSim = {
 type CachedDeleteLoopSim = { kind: 'ok'; value: SidecarDeleteLoopSim } | { kind: 'throw'; message: string };
 
 /**
- * Mode-2 resimulates the same canonical nsh on every mutant. Cache by nsh sha + row so each
- * worker builds the baseline once. Same rows and comparisons — harness speedup, not a weaken.
+ * Mode-2 resimulates the same canonical nsh on every mutant. Cache only registered
+ * canonical nsh outcomes (never mutants), keyed by sha + JSON row. Bounded LRU;
+ * returned `deleted`/`acts` are copies. Same rows and comparisons — not a weaken.
  */
+const SIDECAR_DELETE_LOOP_SIM_CACHE_MAX = 8192;
 const SIDECAR_DELETE_LOOP_SIM_CACHE = new Map<string, CachedDeleteLoopSim>();
+const CANONICAL_SWEEP_NSH_HASHES = new Set<string>();
 
 let deleteLoopHashA: { nsh: string; hash: string } | undefined;
 let deleteLoopHashB: { nsh: string; hash: string } | undefined;
@@ -2934,13 +2937,44 @@ function sidecarDeleteLoopNshHash(nsh: string): string {
   return hash;
 }
 
+/** Mark `nsh` as the canonical sidecar program so mode-2 may memoize its row outcomes. */
+export function registerCanonicalSweepNsh(nsh: string): void {
+  CANONICAL_SWEEP_NSH_HASHES.add(sidecarDeleteLoopNshHash(nsh));
+}
+
+function isCanonicalSweepNsh(nsh: string): boolean {
+  return CANONICAL_SWEEP_NSH_HASHES.has(sidecarDeleteLoopNshHash(nsh));
+}
+
+function copyDeleteLoopSim(value: SidecarDeleteLoopSim): SidecarDeleteLoopSim {
+  return {
+    deleted: [...value.deleted],
+    acts: value.acts.map((act) => ({ op: act.op, path: act.path })),
+    closed: value.closed,
+    steps: value.steps,
+    fileClosed: value.fileClosed,
+    sidecarDeleted: value.sidecarDeleted,
+    hung: value.hung,
+  };
+}
+
 function sidecarDeleteLoopSimCacheKey(
   nsh: string,
   rawLines: readonly string[],
   env: SidecarNsisVarEnv,
   options: Omit<SidecarNsisRunOptions, 'env'>,
 ): string {
-  return `${sidecarDeleteLoopNshHash(nsh)}\n${rawLines.join('\n')}\n${JSON.stringify(env)}\n${JSON.stringify(options)}`;
+  return `${sidecarDeleteLoopNshHash(nsh)}\n${JSON.stringify(rawLines)}\n${JSON.stringify(env)}\n${JSON.stringify(options)}`;
+}
+
+function rememberDeleteLoopSim(key: string, entry: CachedDeleteLoopSim): void {
+  if (SIDECAR_DELETE_LOOP_SIM_CACHE.size >= SIDECAR_DELETE_LOOP_SIM_CACHE_MAX) {
+    const oldest = SIDECAR_DELETE_LOOP_SIM_CACHE.keys().next().value;
+    if (oldest !== undefined) {
+      SIDECAR_DELETE_LOOP_SIM_CACHE.delete(oldest);
+    }
+  }
+  SIDECAR_DELETE_LOOP_SIM_CACHE.set(key, entry);
 }
 
 export function simulateSidecarDeleteReadLoop(
@@ -2949,18 +2983,23 @@ export function simulateSidecarDeleteReadLoop(
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
   options: Omit<SidecarNsisRunOptions, 'env'> = {},
 ): SidecarDeleteLoopSim {
-  const key = sidecarDeleteLoopSimCacheKey(nsh, rawLines, env, options);
-  const hit = SIDECAR_DELETE_LOOP_SIM_CACHE.get(key);
-  if (hit !== undefined) {
-    if (hit.kind === 'throw') {
-      throw new Error(hit.message);
+  const cacheable = isCanonicalSweepNsh(nsh);
+  const key = cacheable ? sidecarDeleteLoopSimCacheKey(nsh, rawLines, env, options) : '';
+  if (cacheable) {
+    const hit = SIDECAR_DELETE_LOOP_SIM_CACHE.get(key);
+    if (hit !== undefined) {
+      if (hit.kind === 'throw') {
+        throw new Error(hit.message);
+      }
+      return copyDeleteLoopSim(hit.value);
     }
-    return hit.value;
   }
   try {
     const run = runSidecarNsisProgram(nsh, rawLines, { ...options, env });
     if (run.hung) {
-      SIDECAR_DELETE_LOOP_SIM_CACHE.set(key, { kind: 'throw', message: SIDECAR_LINE_STEP_LIMIT_ERROR });
+      if (cacheable) {
+        rememberDeleteLoopSim(key, { kind: 'throw', message: SIDECAR_LINE_STEP_LIMIT_ERROR });
+      }
       throw new Error(SIDECAR_LINE_STEP_LIMIT_ERROR);
     }
     const value: SidecarDeleteLoopSim = {
@@ -2972,11 +3011,13 @@ export function simulateSidecarDeleteReadLoop(
       sidecarDeleted: run.sidecarDeleted,
       hung: run.hung,
     };
-    SIDECAR_DELETE_LOOP_SIM_CACHE.set(key, { kind: 'ok', value });
-    return value;
+    if (cacheable) {
+      rememberDeleteLoopSim(key, { kind: 'ok', value: copyDeleteLoopSim(value) });
+    }
+    return cacheable ? copyDeleteLoopSim(value) : value;
   } catch (err) {
-    if (!SIDECAR_DELETE_LOOP_SIM_CACHE.has(key)) {
-      SIDECAR_DELETE_LOOP_SIM_CACHE.set(key, {
+    if (cacheable && !SIDECAR_DELETE_LOOP_SIM_CACHE.has(key)) {
+      rememberDeleteLoopSim(key, {
         kind: 'throw',
         message: err instanceof Error ? err.message : String(err),
       });
@@ -3208,12 +3249,21 @@ export type SidecarGuardVmBehaviourOptions = {
 const SIDECAR_SWEEP_VM_OUTCOME_CACHE = new Map<string, string>();
 
 function cachedSweepVmOutcome(nsh: string, rowKey: string, compute: () => string): string {
+  if (!isCanonicalSweepNsh(nsh)) {
+    return compute();
+  }
   const key = `${sidecarDeleteLoopNshHash(nsh)}\n${rowKey}`;
   const hit = SIDECAR_SWEEP_VM_OUTCOME_CACHE.get(key);
   if (hit !== undefined) {
     return hit;
   }
   const value = compute();
+  if (SIDECAR_SWEEP_VM_OUTCOME_CACHE.size >= SIDECAR_DELETE_LOOP_SIM_CACHE_MAX) {
+    const oldest = SIDECAR_SWEEP_VM_OUTCOME_CACHE.keys().next().value;
+    if (oldest !== undefined) {
+      SIDECAR_SWEEP_VM_OUTCOME_CACHE.delete(oldest);
+    }
+  }
   SIDECAR_SWEEP_VM_OUTCOME_CACHE.set(key, value);
   return value;
 }
@@ -4262,6 +4312,13 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     killsFileLines: [433, 459],
   },
   {
+    name: 'H5 Downloads proper-prefix Documents child still deletes (next char is not \\)',
+    path: 'C:\\Users\\me\\Download',
+    env: { ...HARD12_ENV_E1, DOCUMENTS: 'C:\\Users\\me' },
+    expect: 'delete',
+    killsFileLines: [460, 461],
+  },
+  {
     name: 'short PROGRAMFILES root must still deny Program Files\\Mythos\\bin',
     path: 'C:\\Program Files\\Mythos\\bin',
     env: { ...HARD12_ENV_E1, PROGRAMFILES: 'C:\\PROGRA~1' },
@@ -5132,6 +5189,280 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     options: { glpnErrnoFileLines: { 441: 5 } },
     killsFileLines: [443, 450],
   },
+  {
+    name: 'H5 Documents root junction still deletes a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { reparsePaths: ['C:\\Users\\me\\Documents'] },
+    killsFileLine: 350,
+  },
+  {
+    name: 'H5 Desktop root junction still deletes a Desktop vault',
+    path: 'C:\\Users\\me\\Desktop\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { reparsePaths: ['C:\\Users\\me\\Desktop'] },
+    killsFileLine: 350,
+  },
+  {
+    name: 'H5 profile junction still deletes a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { reparsePaths: ['C:\\Users\\me'] },
+    killsFileLine: 350,
+  },
+  {
+    name: 'H5 C:\\Users junction still deletes a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { reparsePaths: ['C:\\Users'] },
+    killsFileLine: 350,
+  },
+  {
+    name: 'H5 C:\\Users GFA error still deletes a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { attrErrorPaths: ['C:\\Users'] },
+    killsFileLine: 350,
+  },
+  {
+    name: 'H6 :393 short DOCUMENTS nested under Desktop; parent My Desktop skips',
+    path: 'C:\\Users\\me\\Desktop\\My Desktop',
+    env: {
+      ...HARD12_ENV_E1,
+      DOCUMENTS: 'C:\\Users\\me\\Desktop\\MYDESK~1\\Docs',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Desktop\\My Desktop', 'C:\\Users\\me\\Desktop\\My Desktop\\Docs'],
+    killsFileLine: 393,
+  },
+  {
+    name: 'H6 :445 short PROFILE Downloads; parent My Desktop skips',
+    path: 'C:\\Users\\me\\Documents\\My Desktop',
+    env: {
+      ...HARD12_ENV_E1,
+      PROFILE: 'C:\\Users\\me\\Documents\\MYDESK~1',
+    },
+    expect: 'skip',
+    mustNotDelete: [
+      'C:\\Users\\me\\Documents\\My Desktop',
+      'C:\\Users\\me\\Documents\\My Desktop\\Downloads',
+    ],
+    killsFileLine: 445,
+  },
+  {
+    name: 'H6 :372 short APPDATA errno 5 skips Documents\\My Desktop (no next-root)',
+    path: 'C:\\Users\\me\\Documents\\My Desktop',
+    env: {
+      ...HARD12_ENV_E1,
+      APPDATA: 'C:\\Users\\me\\Documents\\MYDESK~1\\Roaming',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\My Desktop'],
+    options: { glpnErrnoFileLines: { 363: 5 } },
+    killsFileLine: 372,
+  },
+  {
+    name: 'H5 :463 leftover Downloads longer than parent junction still skips',
+    path: 'C:\\Users\\me\\Documents\\rf7-parent\\vault',
+    env: {
+      ...HARD12_ENV_E1,
+      PROFILE: 'C:\\Users\\me\\Documents\\rf7-parent-and-more',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\rf7-parent\\vault'],
+    options: { reparsePaths: ['C:\\Users\\me\\Documents\\rf7-parent'] },
+    killsFileLine: 463,
+  },
+  {
+    name: 'H5 shorter Desktop after longer Downloads: plain vault deletes',
+    path: 'C:\\Users\\me\\Desktop\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { reparsePaths: ['C:\\Users'] },
+    killsFileLine: 350,
+  },
+  {
+    name: 'H5 shorter Desktop after longer Downloads: first-child junction skips',
+    path: 'C:\\Users\\me\\Desktop\\desk-junc\\vault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Desktop\\desk-junc\\vault'],
+    options: { reparsePaths: ['C:\\Users\\me\\Desktop\\desk-junc'] },
+    killsFileLine: 463,
+  },
+  {
+    name: 'H5 shorter Documents after longer Downloads: plain vault deletes',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: {
+      ...HARD12_ENV_E1,
+      PROFILE: 'C:\\Users\\me\\Documents\\dl-leftover-longer-than-doc-junc',
+    },
+    expect: 'delete',
+    options: { reparsePaths: ['C:\\Users'] },
+    killsFileLine: 350,
+  },
+  {
+    name: 'H5 shorter Documents after longer Downloads: first-child junction skips',
+    path: 'C:\\Users\\me\\Documents\\doc-junc\\vault',
+    env: {
+      ...HARD12_ENV_E1,
+      PROFILE: 'C:\\Users\\me\\Documents\\dl-leftover-longer-than-doc-junc',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\doc-junc\\vault'],
+    options: { reparsePaths: ['C:\\Users\\me\\Documents\\doc-junc'] },
+    killsFileLine: 463,
+  },
+  {
+    name: 'H5 shorter Mythos Writer after longer Downloads: plain vault deletes',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    env: {
+      ...HARD12_ENV_E1,
+      PROFILE: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\dl-leftover-longer-than-mw-junc',
+    },
+    expect: 'delete',
+    options: { reparsePaths: ['C:\\Users'] },
+    killsFileLine: 350,
+  },
+  {
+    name: 'H5 shorter Mythos Writer after longer Downloads: first-child junction skips',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\mw-junc\\vault',
+    env: {
+      ...HARD12_ENV_E1,
+      PROFILE: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\dl-leftover-longer-than-mw-junc',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\mw-junc\\vault'],
+    options: { reparsePaths: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\mw-junc'] },
+    killsFileLine: 463,
+  },
+  {
+    name: 'H6 ME~1 Desktop exact-root nested under Documents skips',
+    path: 'C:\\Users\\me\\Documents\\me',
+    env: {
+      ...HARD12_ENV_E1,
+      DESKTOP: 'C:\\Users\\me\\Documents\\ME~1',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\me'],
+    killsFileLine: 419,
+  },
+  {
+    name: 'H6 ME~1 Desktop ancestor nested under Documents skips',
+    path: 'C:\\Users\\me\\Documents\\me',
+    env: {
+      ...HARD12_ENV_E1,
+      DESKTOP: 'C:\\Users\\me\\Documents\\ME~1\\Sub',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\me'],
+    killsFileLine: 419,
+  },
+  {
+    name: 'H6 ME~1 Desktop exact-root nested under Downloads skips',
+    path: 'C:\\Users\\me\\Downloads\\me',
+    env: {
+      ...HARD12_ENV_E1,
+      DESKTOP: 'C:\\Users\\me\\Downloads\\ME~1',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\me'],
+    killsFileLine: 419,
+  },
+  {
+    name: 'H6 ME~1 Desktop ancestor nested under Downloads skips',
+    path: 'C:\\Users\\me\\Downloads\\me',
+    env: {
+      ...HARD12_ENV_E1,
+      DESKTOP: 'C:\\Users\\me\\Downloads\\ME~1\\Sub',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\me'],
+    killsFileLine: 419,
+  },
+  {
+    name: 'H6 ME~1 PROFILE Downloads exact-root nested under Documents skips',
+    path: 'C:\\Users\\me\\Documents\\me\\Downloads',
+    env: {
+      ...HARD12_ENV_E1,
+      PROFILE: 'C:\\Users\\me\\Documents\\ME~1',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\me', 'C:\\Users\\me\\Documents\\me\\Downloads'],
+    killsFileLine: 445,
+  },
+  {
+    name: 'H6 ME~1 PROFILE Downloads ancestor nested under Documents skips',
+    path: 'C:\\Users\\me\\Documents\\me',
+    env: {
+      ...HARD12_ENV_E1,
+      PROFILE: 'C:\\Users\\me\\Documents\\ME~1',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\me'],
+    killsFileLine: 445,
+  },
+  {
+    name: 'H6 ME~1 PROFILE Downloads exact-root nested under Downloads skips',
+    path: 'C:\\Users\\me\\Downloads\\me\\Downloads',
+    env: {
+      ...HARD12_ENV_E1,
+      PROFILE: 'C:\\Users\\me\\Downloads\\ME~1',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\me', 'C:\\Users\\me\\Downloads\\me\\Downloads'],
+    killsFileLine: 445,
+  },
+  {
+    name: 'H6 ME~1 PROFILE Downloads ancestor nested under Downloads skips',
+    path: 'C:\\Users\\me\\Downloads\\me',
+    env: {
+      ...HARD12_ENV_E1,
+      PROFILE: 'C:\\Users\\me\\Downloads\\ME~1',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\me'],
+    killsFileLine: 445,
+  },
+  {
+    name: 'H6 ME~1 APPDATA exact-root nested under Documents skips',
+    path: 'C:\\Users\\me\\Documents\\me\\Roaming\\Mythos Writer',
+    env: {
+      ...HARD12_ENV_E1,
+      APPDATA: 'C:\\Users\\me\\Documents\\ME~1\\Roaming',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\me\\Roaming\\Mythos Writer'],
+    killsFileLine: 367,
+  },
+  {
+    name: 'H6 ME~1 APPDATA ancestor nested under Documents skips',
+    path: 'C:\\Users\\me\\Documents\\me',
+    env: {
+      ...HARD12_ENV_E1,
+      APPDATA: 'C:\\Users\\me\\Documents\\ME~1\\Roaming',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\me'],
+    killsFileLine: 367,
+  },
+  {
+    name: 'H6 short-env Mythos Writer GLP errno 5 skips the Mythos vault',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    env: {
+      ...HARD12_ENV_E1,
+      APPDATA: 'C:\\Users\\ME~1\\AppData\\Roaming',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x'],
+    options: { glpnErrnoFileLines: { 363: 5 } },
+    killsFileLine: 372,
+  },
 ];
 
 
@@ -5403,6 +5734,7 @@ export function assertSidecarGuardVmBehaviourTables(
   }
   if (options?.sweepRebaseline) {
     const canonical = options.canonicalNsh ?? nsh;
+    registerCanonicalSweepNsh(canonical);
     assertSidecarGuardVmSweepParity(nsh, canonical, env);
     assertSidecarAllowlistDeleteTables(nsh, env);
     assertSidecarReadTrimGuardTables(nsh, env, { includeExactTrimPin: true });

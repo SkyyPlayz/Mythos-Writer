@@ -310,6 +310,17 @@ describe('HARD-2 nested Downloads (112 survivors)', () => {
     expect(() => assertSidecarHard2NestedTables(nsh)).not.toThrow();
   });
 
+  it('Downloads proper-prefix Documents child still deletes; :460/:461 goto_inc skip it', () => {
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('H5 Downloads proper-prefix'))!;
+    expect(sidecarHardADeleted(nsh, row)).toEqual(['C:\\Users\\me\\Download']);
+    const goto460 = generateOracleClassMutants(nsh).find((m) => m.key === '460:goto_inc')!;
+    const goto461 = generateOracleClassMutants(nsh).find((m) => m.key === '461:goto_inc')!;
+    expect(sidecarHardADeleted(goto460.nsh, row)).toEqual([]);
+    expect(sidecarHardADeleted(goto461.nsh, row)).toEqual([]);
+    expect(sidecarGuardModeTwoCaught(goto460.nsh, nsh)).toBe(true);
+    expect(sidecarGuardModeTwoCaught(goto461.nsh, nsh)).toBe(true);
+  });
+
   it('Downloads ancestor sep Nop (:377) deletes Documents\\prof', () => {
     expect(fileLines[434]!.trim()).toBe('StrCmp $6 "\\" uninstall_vault_read');
     const mutant = withFileLine(435, 'Nop');
@@ -328,7 +339,12 @@ describe('HARD-2 nested Downloads (112 survivors)', () => {
       }
       // Jump-retargets on already-fail-closed compares, IntCmp 0→+N extras, and
       // $9→$5 / $9→$6 leftover copies stay equivalent — they are not the 112.
+      // goto_inc on a line that is already `Goto …` is the same retarget as :tgt
+      // (`Goto uninstall_vault_read` → `Goto mythos_trav_inc`).
       if (mutant.key.includes(':tgt')) {
+        return false;
+      }
+      if (mutant.key.endsWith(':goto_inc') && fileLines[fileLine - 1]!.trim().startsWith('Goto ')) {
         return false;
       }
       if (
@@ -429,6 +445,17 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
     expect(sidecarRf7Deleted(prefixMutant, short!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([expandedParentVault]);
   });
 
+  it('mutation sweep fully covers .nsh :317-:487', () => {
+    const covered = new Set(generateOracleClassMutants(nsh).map((m) => m.fileLine));
+    const missing: number[] = [];
+    for (let fileLine = 317; fileLine <= 487; fileLine += 1) {
+      if (!covered.has(fileLine)) {
+        missing.push(fileLine);
+      }
+    }
+    expect(missing, 'oracle-class mutants missing in :317-:487').toEqual([]);
+  });
+
   it('oracle-class corpus emits $3→$1 (not only $3→$2) on the walk and leaf-check lines', () => {
     const keys = new Set(generateOracleClassMutants(nsh).map((m) => m.key));
     expect(keys.has('469:$3->$1')).toBe(true);
@@ -490,8 +517,9 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
   });
 
   it('leaf-check $3→$1 at :483 is red on / and LEAFJ~1 leaf-junction rows', () => {
-    expect(fileLines[349]!.trim()).toBe('StrCpy $7 $9');
-    expect(fileLines[461]!.trim()).toBe('mythos_nr_ok: StrCpy $1 $9');
+    expect(fileLines[349]!.trim()).toBe('StrCpy $1 $9');
+    expect(fileLines[461]!.trim()).toBe('mythos_nr_ok:');
+    expect(fileLines[462]!.trim()).toBe('StrCpy $9 $1');
     expect(fileLines[464]!.trim()).toBe('mythos_reparse_walk:');
     expect(fileLines[482]!.trim()).toBe('System::Call "kernel32::GetFileAttributesW(w r3) i .r4"');
     const slash = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.includes('leaf junction via /'));
@@ -513,20 +541,16 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
-  it('leaf GFA r3→r1 is red without mythos_nr_ok StrCpy $1 $9', () => {
+  it('leaf GFA r3→r1 is red because $1 holds the walk root, not a :462 smash', () => {
     const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.includes('without nr_ok $1 smash'));
     expect(row, 'leaf GFA without nr_ok smash row').toBeDefined();
     expect(sidecarRf7Deleted(nsh, row!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
-    const noSmash = withFileLine(462, 'mythos_nr_ok: Nop');
-    expect(sidecarRf7Deleted(noSmash, row!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
-    const mutant = withFileLine(462, 'mythos_nr_ok: Nop').replace(
-      'System::Call "kernel32::GetFileAttributesW(w r3) i .r4"',
-      'System::Call "kernel32::GetFileAttributesW(w r1) i .r4"',
-    );
-    expect(mutant).not.toBe(noSmash);
-    expect(sidecarRf7Deleted(mutant, row!, DEFAULT_SIDECAR_NSIS_VAR_ENV), 'red run: r3→r1 without $1 smash').toEqual([
+    expect(fileLines[461]!.trim()).toBe('mythos_nr_ok:');
+    const mutant = withFileLine(483, 'System::Call "kernel32::GetFileAttributesW(w r1) i .r4"');
+    expect(sidecarRf7Deleted(mutant, row!, DEFAULT_SIDECAR_NSIS_VAR_ENV), 'red run: r3→r1 GFAs the saved root').toEqual([
       'C:\\Users\\me\\Documents\\leaf-junc',
     ]);
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
   it('G3 :404 $3→$1 deletes Documents sitting inside Mythos Writer\\Docs', () => {
@@ -566,6 +590,128 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
     expect(sidecarHardADeleted(nsh, row)).toEqual([]);
     for (const ban of row.mustNotDelete ?? []) {
       expect(sidecarHardADeleted(nsh, row)).not.toContain(ban);
+    }
+  });
+
+  it('H5 :350 Nop is red — parent-junction vault deletes when the walk root is not saved', () => {
+    expect(fileLines[349]!.trim()).toBe('StrCpy $1 $9');
+    const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.startsWith('parent junction + plain vault'));
+    expect(row, 'RF-7 parent junction').toBeDefined();
+    expect(sidecarRf7Deleted(nsh, row!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
+    const mutant = withFileLine(350, 'Nop');
+    expect(sidecarRf7Deleted(mutant, row!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([
+      'C:\\Users\\me\\Documents\\rf7-parent\\vault',
+    ]);
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
+  });
+
+  it('H5 must-delete: junction at/above Documents, Desktop, profile, C:\\Users, or C:\\Users GFA still deletes', () => {
+    const cases: readonly { name: string; deleted: string }[] = [
+      { name: 'H5 Documents root junction still deletes a Documents vault', deleted: 'C:\\Users\\me\\Documents\\MyVault' },
+      { name: 'H5 Desktop root junction still deletes a Desktop vault', deleted: 'C:\\Users\\me\\Desktop\\MyVault' },
+      { name: 'H5 profile junction still deletes a Documents vault', deleted: 'C:\\Users\\me\\Documents\\MyVault' },
+      { name: 'H5 C:\\Users junction still deletes a Documents vault', deleted: 'C:\\Users\\me\\Documents\\MyVault' },
+      { name: 'H5 C:\\Users GFA error still deletes a Documents vault', deleted: 'C:\\Users\\me\\Documents\\MyVault' },
+    ];
+    for (const { name, deleted } of cases) {
+      const row = SIDECAR_HARD_A_ROWS.find((r) => r.name === name);
+      expect(row, name).toBeDefined();
+      expect(sidecarHardADeleted(nsh, row!), name).toEqual([deleted]);
+    }
+    expect(sidecarGuardModeTwoCaught(withFileLine(350, 'Nop'), nsh)).toBe(true);
+    const leftover = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('H5 :463 leftover Downloads'))!;
+    expect(sidecarHardADeleted(nsh, leftover)).toEqual([]);
+    expect(sidecarHardADeleted(withFileLine(463, 'Nop'), leftover)).toEqual([
+      'C:\\Users\\me\\Documents\\rf7-parent\\vault',
+    ]);
+    expect(sidecarGuardModeTwoCaught(withFileLine(463, 'Nop'), nsh)).toBe(true);
+  });
+
+  it('H5 shorter-after-longer: plain vault deletes, first-child junction skips, clobbered $7 fails (a)', () => {
+    expect(fileLines[349]!.trim()).toBe('StrCpy $1 $9');
+    expect(fileLines[462]!.trim()).toBe('StrCpy $9 $1');
+    const revert = (() => {
+      const next = [...fileLines];
+      const saveIndent = next[349]!.match(/^\s*/)?.[0] ?? '';
+      const restoreIndent = next[462]!.match(/^\s*/)?.[0] ?? '';
+      next[349] = `${saveIndent}StrCpy $7 $9`;
+      next[462] = `${restoreIndent}StrCpy $9 $7`;
+      return next.join('\n');
+    })();
+    const pairs: readonly { plain: string; child: string; deleted: string; skipped: string }[] = [
+      {
+        plain: 'H5 shorter Desktop after longer Downloads: plain vault deletes',
+        child: 'H5 shorter Desktop after longer Downloads: first-child junction skips',
+        deleted: 'C:\\Users\\me\\Desktop\\MyVault',
+        skipped: 'C:\\Users\\me\\Desktop\\desk-junc\\vault',
+      },
+      {
+        plain: 'H5 shorter Documents after longer Downloads: plain vault deletes',
+        child: 'H5 shorter Documents after longer Downloads: first-child junction skips',
+        deleted: 'C:\\Users\\me\\Documents\\MyVault',
+        skipped: 'C:\\Users\\me\\Documents\\doc-junc\\vault',
+      },
+      {
+        plain: 'H5 shorter Mythos Writer after longer Downloads: plain vault deletes',
+        child: 'H5 shorter Mythos Writer after longer Downloads: first-child junction skips',
+        deleted: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+        skipped: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\mw-junc\\vault',
+      },
+    ];
+    for (const { plain, child, deleted, skipped } of pairs) {
+      const a = SIDECAR_HARD_A_ROWS.find((r) => r.name === plain)!;
+      const b = SIDECAR_HARD_A_ROWS.find((r) => r.name === child)!;
+      expect(sidecarHardADeleted(nsh, a), plain).toEqual([deleted]);
+      expect(sidecarHardADeleted(nsh, b), child).toEqual([]);
+      expect(sidecarHardADeleted(nsh, b), child).not.toContain(skipped);
+      expect(sidecarHardADeleted(revert, a), `clobbered $7 must fail ${plain}`).toEqual([]);
+    }
+    expect(sidecarGuardModeTwoCaught(revert, nsh)).toBe(true);
+  });
+
+  it('H6 :393 / :445 / :372 Nop each delete a nested root or its parent', () => {
+    const docs = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('H6 :393'))!;
+    const dl = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('H6 :445'))!;
+    const ad = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('H6 :372'))!;
+    expect(sidecarHardADeleted(nsh, docs)).toEqual([]);
+    expect(sidecarHardADeleted(nsh, dl)).toEqual([]);
+    expect(sidecarHardADeleted(nsh, ad)).toEqual([]);
+    expect(sidecarHardADeleted(withFileLine(393, 'Nop'), docs)).toEqual(['C:\\Users\\me\\Desktop\\My Desktop']);
+    expect(sidecarHardADeleted(withFileLine(445, 'Nop'), dl)).toEqual(['C:\\Users\\me\\Documents\\My Desktop']);
+    expect(sidecarHardADeleted(withFileLine(372, 'Nop'), ad)).toEqual(['C:\\Users\\me\\Documents\\My Desktop']);
+    expect(sidecarGuardModeTwoCaught(withFileLine(393, 'Nop'), nsh)).toBe(true);
+    expect(sidecarGuardModeTwoCaught(withFileLine(445, 'Nop'), nsh)).toBe(true);
+    expect(sidecarGuardModeTwoCaught(withFileLine(372, 'Nop'), nsh)).toBe(true);
+  });
+
+  it('H6 ME~1 env nested under Documents and Downloads (exact-root and ancestor) skips', () => {
+    const names = SIDECAR_HARD_A_ROWS.filter((r) => r.name.startsWith('H6 ME~1')).map((r) => r.name);
+    expect(names.some((n) => n.includes('under Documents') && n.includes('exact-root'))).toBe(true);
+    expect(names.some((n) => n.includes('under Documents') && n.includes('ancestor'))).toBe(true);
+    expect(names.some((n) => n.includes('under Downloads') && n.includes('exact-root'))).toBe(true);
+    expect(names.some((n) => n.includes('under Downloads') && n.includes('ancestor'))).toBe(true);
+    for (const row of SIDECAR_HARD_A_ROWS.filter((r) => r.name.startsWith('H6 ME~1'))) {
+      expect(sidecarHardADeleted(nsh, row), row.name).toEqual([]);
+    }
+    const mw = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('H6 short-env Mythos Writer GLP errno 5'))!;
+    expect(sidecarHardADeleted(nsh, mw)).toEqual([]);
+    expect(sidecarHardADeleted(withFileLine(372, 'Nop'), mw)).toEqual([
+      'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    ]);
+  });
+
+  it('H6 all-of: every StrCpy $9 $2 and Goto uninstall_vault_read in :358-:461 Nop is red', () => {
+    const lines: number[] = [];
+    for (let fileLine = 358; fileLine <= 461; fileLine += 1) {
+      const text = fileLines[fileLine - 1]!.trim();
+      if (text === 'StrCpy $9 $2' || text === 'Goto uninstall_vault_read') {
+        lines.push(fileLine);
+      }
+    }
+    expect(lines.length).toBeGreaterThanOrEqual(8);
+    expect(lines).toEqual([367, 372, 393, 398, 419, 424, 445, 450]);
+    for (const fileLine of lines) {
+      expect(sidecarGuardModeTwoCaught(withFileLine(fileLine, 'Nop'), nsh), `:${fileLine} Nop`).toBe(true);
     }
   });
 

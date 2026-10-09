@@ -7,6 +7,7 @@ import {
   assertSidecarGuardVmBehaviourTables,
   DEFAULT_SIDECAR_NSIS_VAR_ENV,
   DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES,
+  registerCanonicalSweepNsh,
   simulateSidecarDeleteReadLoop,
   SIDECAR_GUARD_REGION_FILE_LINE_FIRST,
   SIDECAR_GUARD_REGION_FILE_LINE_LAST,
@@ -22,6 +23,7 @@ export function sidecarGuardModeTwoCaught(mutant: string, canonical: string): bo
 
 /** The pin-free VM tables' failure message for `mutant`, or `undefined` when they pass. */
 export function sidecarGuardModeTwoFailure(mutant: string, canonical: string): string | undefined {
+  registerCanonicalSweepNsh(canonical);
   try {
     assertSidecarGuardVmBehaviourTables(mutant, DEFAULT_SIDECAR_NSIS_VAR_ENV, {
       sweepRebaseline: true,
