@@ -12,7 +12,7 @@ import {
   SIDECAR_GUARD_REGION_FILE_LINE_LAST,
 } from './sidecarTraversalScan.test-helpers.js';
 import { sidecarGuardModeTwoCaught } from './sidecarOracleMutants.test-helpers.js';
-import { ORACLE_CLASS_ALL_EQUIVALENT_LINES } from './sidecarOracleClassSweep.test-helpers.js';
+import { ORACLE_CLASS_ALL_EQUIVALENT_LINES, SIDECAR_GUARD_STRENGTH_SHARDS } from './sidecarOracleClassSweep.test-helpers.js';
 
 /**
  * Behaviour-equivalent mode-2 primaries (the `Nop` fallback on each of these lines). A sibling check
@@ -289,10 +289,7 @@ describe('sidecar guard region sweep :43-:540 (buildIntegrity excluded)', () => 
     });
 
     it('equivalence-strength shards cover every strength-checked equivalent line', () => {
-      const sharded = [
-        47, 56, 61, 84, 97, 98, 99, 103, 104, 105, 106, 109, 117, 123, 124, 125, 129, 130, 131, 218, 308, 350, 354,
-        355, 357, 463, 464, 467, 473, 480, 487, 489, 491, 493, 494, 495,
-      ];
+      const sharded = SIDECAR_GUARD_STRENGTH_SHARDS.flat().sort((a, b) => a - b);
       expect(sharded).toEqual(
         Object.keys(SIDECAR_GUARD_SWEEP_STRENGTH_EQUIVALENT_FILE_LINES)
           .map(Number)

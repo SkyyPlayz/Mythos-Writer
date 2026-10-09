@@ -20,6 +20,18 @@ export const ORACLE_CLASS_SWEEP_TEST_TIMEOUT_MS = 60_000;
 const SWEEP_CHUNK = 1;
 
 /**
+ * Strength-equivalent primaries, partitioned for the oracle-sweeps file workers.
+ * Union must equal SIDECAR_GUARD_SWEEP_STRENGTH_EQUIVALENT_FILE_LINES.
+ */
+export const SIDECAR_GUARD_STRENGTH_SHARDS: readonly (readonly number[])[] = [
+  [47, 56, 61, 84, 97, 98, 99],
+  [103, 104, 105, 106, 109, 117, 123, 124],
+  [125, 129, 130, 131, 218, 308],
+  [350, 354, 355, 357],
+  [463, 464, 467, 473, 480, 487, 489, 491, 493, 494, 495],
+];
+
+/**
  * HARD-2 ancestor-separator lines after each equal-check (8b2fa528: 267/268, 278/279,
  * 295/296 → :382/:383 Documents, :408/:409 Desktop, :434/:435 Downloads). No allowlisted
  * parent of Documents/Desktop/Downloads can reach them without the earlier exact-root

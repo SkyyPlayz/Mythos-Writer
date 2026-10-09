@@ -1,3 +1,3 @@
-import { registerGuardRegionEquivSweep } from './sidecarOracleClassSweep.test-helpers.js';
+import { registerGuardRegionEquivSweep, SIDECAR_GUARD_STRENGTH_SHARDS } from './sidecarOracleClassSweep.test-helpers.js';
 
-registerGuardRegionEquivSweep([125, 129, 130, 131, 201, 264]);
+registerGuardRegionEquivSweep(SIDECAR_GUARD_STRENGTH_SHARDS[2]!);
