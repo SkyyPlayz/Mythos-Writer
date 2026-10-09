@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import { ORACLE_CLASS_ALL_EQUIVALENT_LINES } from './sidecarOracleClassSweep.test-helpers.js';
-import { glpnWin32Exists, probeSystemPluginGlpFailure, SIDECAR_NSIS_ENV_E1 } from './sidecarNsisVm.test-helpers.js';
 import {
+  glpnWin32Exists,
+  probeSystemPluginGlpFailure,
+  SIDECAR_LINE_STEP_LIMIT_ERROR,
+  SIDECAR_NSIS_ENV_E1,
+} from './sidecarNsisVm.test-helpers.js';
+import {
+  generateGlpErrorJumpOffsetMutants,
+  generateGlpErrorJumpSwapMutants,
   generateOracleClassMutants,
+  nshWithoutLaterNestedSkips,
   sidecarGuardModeTwoCaught,
   sidecarGuardModeTwoFailure,
 } from './sidecarOracleMutants.test-helpers.js';
@@ -724,4 +732,214 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
     const nopGoto = withFileLine(398, 'Nop');
     expect(sidecarHardADeleted(nopGoto, row)).toEqual(['C:\\Users\\me\\Documents\\MyVault']);
   });
+});
+
+/** Safety rows (mustNotDelete). Nested *can* still fire — not used as unmasking kills. */
+const HARD_F_SAFETY_SKIP = ['HARD-F :237', 'S-19 '] as const;
+
+/**
+ * Isolated skip rows where the error branch under test is the only protection:
+ * allowlist deny never reaches :363, and a nested-guard input would pass (the line
+ * is a child of the root, not an ancestor). Masked-by-:363 does not count as killed.
+ */
+const HARD_F_UNMASKED_SKIP = [
+  'HARD-F :200 errno 5',
+  'HARD-F :200 errno 2',
+  'HARD-F :200 errno 3',
+  'HARD-F :230 errno 5',
+  'HARD-F :230 errno 2',
+  'HARD-F :230 errno 3',
+  'HARD-F :260 not-found errno 2',
+  'HARD-F :363 errno 5',
+  'HARD-F :363 errno 2',
+  'HARD-F :363 errno 3',
+] as const;
+
+const HARD_F_ISOLATED_SKIP = [...HARD_F_UNMASKED_SKIP, ...HARD_F_SAFETY_SKIP] as const;
+
+/**
+ * Written reasons for mutants that stay equal on the unmasked rows *after* later
+ * nested ancestor skips are Nop'd. Masked-by-:363 is not listed.
+ */
+const HARD_F_JUMP_EQUIV_REASONS: Readonly<Record<string, string>> = {
+  ':+5->+6':
+    'Extra fail-close past the errno block. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+5->+7':
+    'Extra fail-close past the errno block. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+5->0':
+    'GLP-fail +5→0 falls into MAX/empty and still fail-closes. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+5->+1':
+    'GLP-fail +5→+1 still fail-closes (MAX/uninstall). Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+5->+2':
+    'GLP-fail +5→+2 still fail-closes (MAX/uninstall). Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+3->0':
+    'Errno-2 +3→0 falls into errno-3 / other-error deny. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+3->+1':
+    'Errno-2 extra fail-close. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+3->+2':
+    'Errno-2 extra fail-close. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+2->0':
+    'Errno-3 +2→0 falls into other-error deny. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+2->-1':
+    'Errno-3 extra fail-close. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+2->+1':
+    'Errno-3 extra fail-close. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+2->+3':
+    'Errno-3 +2→+3 still fail-closes this isolated root. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+2->+4':
+    'Errno-3 +2→+4 still fail-closes this isolated root. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+3->+4':
+    'Errno-2 +3→+4 still fail-closes this isolated root. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':+3->+5':
+    'Empty $2 +3→+5 now defaults to uninstall_vault_read. Isolated rows still deny; later nested Nop\'d: still deny.',
+  ':jmp4:0->':
+    'Unused IntCmp less-branch 0±N on a taken equal. Isolated rows still deny; later nested Nop\'d: still unused.',
+  ':jmp5:0->':
+    'Unused IntCmp greater-branch 0±N on a taken equal. Isolated rows still deny; later nested Nop\'d: still unused.',
+  '->uninstall_vault_read':
+    'Jump-swap extra fail-close. Isolated rows still deny; later nested Nop\'d: still deny.',
+  '->mythos_al_not_':
+    'Jump-swap skips this allowlist root (same as other-error). Isolated rows still deny; later nested Nop\'d: still deny.',
+  '->mythos_nr_':
+    'Jump-swap skips this nested root. Isolated allowlist deny never reaches it; later nested Nop\'d: still deny.',
+  ':tgt':
+    'Jump-swap lands on an unused fail/success operand or a fail-closed label. Isolated rows still deny with later nested Nop\'d (same delete set).',
+  ':jmp':
+    'Relative jump ±1/±2 on an unused or extra-fail-close operand. Isolated rows still deny with later nested Nop\'d (same delete set).',
+};
+
+function hardFEquivReason(key: string): string | undefined {
+  const hits = Object.entries(HARD_F_JUMP_EQUIV_REASONS).filter(([needle]) => key.includes(needle));
+  hits.sort((a, b) => b[0].length - a[0].length);
+  return hits[0]?.[1];
+}
+
+function hardFDeleted(program: string, row: (typeof SIDECAR_HARD_A_ROWS)[number]): string[] {
+  try {
+    return sidecarHardADeleted(program, row);
+  } catch (err) {
+    if (err instanceof Error && err.message.includes(SIDECAR_LINE_STEP_LIMIT_ERROR)) {
+      return [];
+    }
+    throw err;
+  }
+}
+
+function hardFExtraDelete(
+  program: string,
+  canonProgram: string,
+  row: (typeof SIDECAR_HARD_A_ROWS)[number],
+): boolean {
+  const canon = hardFDeleted(canonProgram, row);
+  const got = hardFDeleted(program, row);
+  if (got.length > 0 && canon.length === 0) {
+    return true;
+  }
+  for (const ban of row.mustNotDelete ?? []) {
+    if (got.includes(ban)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+describe('HARD-F isolated GLP error branches + jump-offset corpus', () => {
+  it('HARD-F isolated skip rows deny without relying on later nested, and kill +5→+3/+4', () => {
+    const isolated = SIDECAR_HARD_A_ROWS.filter((r) => HARD_F_ISOLATED_SKIP.some((p) => r.name.startsWith(p)));
+    expect(isolated.length).toBeGreaterThanOrEqual(16);
+    for (const row of isolated) {
+      expect(sidecarHardADeleted(nsh, row), row.name).toEqual(row.expect === 'delete' ? [row.path] : []);
+      for (const ban of row.mustNotDelete ?? []) {
+        expect(sidecarHardADeleted(nsh, row), row.name).not.toContain(ban);
+      }
+    }
+    const docsE5 = isolated.find((r) => r.name.startsWith('HARD-F :230 errno 5'))!;
+    const plus4 = generateGlpErrorJumpOffsetMutants(nsh).find((m) => m.key === '232:jmp3:+5->+4')!;
+    expect(plus4, ':232 +5→+4').toBeDefined();
+    expect(sidecarHardADeleted(nsh, docsE5)).toEqual([]);
+    expect(sidecarHardADeleted(plus4.nsh, docsE5)).toEqual(['C:\\Users\\me\\Documents\\MyVault']);
+    expect(sidecarGuardModeTwoCaught(plus4.nsh, nsh)).toBe(true);
+  });
+
+  it('HARD-F :237 +3→+5 OneDrive missing Documents never RMDirs OneDrive', () => {
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('HARD-F :237'))!;
+    expect(sidecarHardADeleted(nsh, row)).toEqual([]);
+    expect(sidecarHardADeleted(nsh, row)).not.toContain('C:\\Users\\me\\OneDrive');
+    const plus5 = generateGlpErrorJumpOffsetMutants(nsh).find((m) => m.key === '237:jmp3:+3->+5')!;
+    expect(plus5, ':237 +3→+5').toBeDefined();
+    const deleted = sidecarHardADeleted(plus5.nsh, row);
+    expect(deleted).not.toContain('C:\\Users\\me\\OneDrive');
+    expect(sidecarGuardModeTwoCaught(plus5.nsh, nsh) || deleted.length === 0).toBe(true);
+  });
+
+  it('HARD-F H3 no-tag default fail-closed skips a Downloads vault when $2 is unknown', () => {
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('HARD-F H3 no-tag'))!;
+    expect(sidecarHardADeleted(nsh, row)).toEqual(['C:\\Users\\me\\Downloads\\v']);
+    const noTag = withFileLine(453, 'StrCpy $2 "zz"');
+    expect(sidecarHardADeleted(noTag, row)).toEqual([]);
+    const oldDefault = withFileLine(541, 'Goto mythos_comp_tail_ret9l');
+    const oldNoTag = (() => {
+      const next = oldDefault.split('\n');
+      next[452] = '            StrCpy $2 "zz"';
+      return next.join('\n');
+    })();
+    expect(sidecarHardADeleted(oldNoTag, row)).toEqual(['C:\\Users\\me\\Downloads\\v']);
+    expect(sidecarGuardModeTwoCaught(noTag, nsh)).toBe(true);
+  });
+
+  it('every dangerous GLP-error jump-offset / jump-swap mutant is mode-2 red on an isolated row', () => {
+    const isolated = SIDECAR_HARD_A_ROWS.filter(
+      (r) => r.expect === 'skip' && HARD_F_UNMASKED_SKIP.some((p) => r.name.startsWith(p)),
+    );
+    const mutants = [...generateGlpErrorJumpOffsetMutants(nsh), ...generateGlpErrorJumpSwapMutants(nsh)];
+    expect(mutants.length).toBeGreaterThanOrEqual(64);
+    const stripped = nshWithoutLaterNestedSkips(nsh);
+    const dangerous: string[] = [];
+    const uncaught: string[] = [];
+    const masked: string[] = [];
+    for (const mutant of mutants) {
+      const strippedMutant = nshWithoutLaterNestedSkips(mutant.nsh);
+      const dangerUnmasked = isolated.some((row) => hardFExtraDelete(strippedMutant, stripped, row));
+      const dangerIntact = isolated.some((row) => hardFExtraDelete(mutant.nsh, nsh, row));
+      if (dangerUnmasked && !dangerIntact) {
+        masked.push(mutant.key);
+      }
+      if (!dangerUnmasked) {
+        continue;
+      }
+      dangerous.push(mutant.key);
+      if (!sidecarGuardModeTwoCaught(mutant.nsh, nsh)) {
+        uncaught.push(mutant.key);
+      }
+    }
+    expect(masked, `masked (later nested still the only skip): ${masked.join(', ')}`).toEqual([]);
+    expect(uncaught, `dangerous uncaught: ${uncaught.join(', ')}`).toEqual([]);
+    expect(dangerous.length).toBeGreaterThan(0);
+  }, 189_000);
+
+  it('jump-offset survivors have a written reason and stay equal with later nested skips removed', () => {
+    const isolated = SIDECAR_HARD_A_ROWS.filter(
+      (r) => r.expect === 'skip' && HARD_F_UNMASKED_SKIP.some((p) => r.name.startsWith(p)),
+    );
+    const stripped = nshWithoutLaterNestedSkips(nsh);
+    const survivors: string[] = [];
+    const missingReason: string[] = [];
+    for (const mutant of [...generateGlpErrorJumpOffsetMutants(nsh), ...generateGlpErrorJumpSwapMutants(nsh)]) {
+      const strippedMutant = nshWithoutLaterNestedSkips(mutant.nsh);
+      if (isolated.some((row) => hardFExtraDelete(strippedMutant, stripped, row))) {
+        continue;
+      }
+      survivors.push(mutant.key);
+      for (const row of isolated) {
+        expect(hardFDeleted(strippedMutant, row), `${mutant.key} ${row.name} later-guards-removed`).toEqual(
+          hardFDeleted(stripped, row),
+        );
+      }
+      if (hardFEquivReason(mutant.key) === undefined) {
+        missingReason.push(mutant.key);
+      }
+    }
+    expect(missingReason, `no written equiv reason: ${missingReason.join(', ')}`).toEqual([]);
+    expect(survivors.length).toBeGreaterThan(0);
+  }, 189_000);
 });

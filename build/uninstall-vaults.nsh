@@ -207,7 +207,7 @@
         IntCmp $8 2 +3 0 0
         IntCmp $8 3 +2 0 0
         Goto mythos_al_not_appdata
-        StrCmp $5 "" mythos_al_not_appdata
+        Goto mythos_glp_fb_5a
         mythos_glp_h3_5a:
         StrCpy $2 "5a"
         Goto mythos_comp_tail_scan
@@ -237,7 +237,7 @@
         IntCmp $8 2 +3 0 0
         IntCmp $8 3 +2 0 0
         Goto mythos_al_not_documents
-        StrCmp $5 "" mythos_al_not_documents
+        Goto mythos_glp_fb_5d
         mythos_glp_h3_5d:
         StrCpy $2 "5d"
         Goto mythos_comp_tail_scan
@@ -267,7 +267,7 @@
         IntCmp $8 2 +3 0 0
         IntCmp $8 3 +2 0 0
         Goto mythos_al_not_desktop
-        StrCmp $5 "" mythos_al_not_desktop
+        Goto mythos_glp_fb_5k
         mythos_glp_h3_5k:
         StrCpy $2 "5k"
         Goto mythos_comp_tail_scan
@@ -370,7 +370,7 @@
             IntCmp $8 2 +3 0 0
             IntCmp $8 3 +2 0 0
             Goto uninstall_vault_read
-            StrCmp $9 "" mythos_nr_documents
+            Goto mythos_glp_fb_9a
             mythos_glp_h3_9a:
             StrCpy $2 "9a"
             Goto mythos_comp_tail_scan
@@ -537,7 +537,28 @@
           StrCmp $2 "9a" mythos_comp_tail_ret9a
           StrCmp $2 "9d" mythos_comp_tail_ret9d
           StrCmp $2 "9k" mythos_comp_tail_ret9k
-          Goto mythos_comp_tail_ret9l
+          StrCmp $2 "9l" mythos_comp_tail_ret9l
+          Goto uninstall_vault_read
+        mythos_glp_fb_5a:
+        StrCmp $5 "" mythos_al_not_appdata
+        System::Call "kernel32::GetFileAttributesW(w r5) i .r4"
+        IntCmp $4 0 mythos_glp_h3_5a mythos_glp_h3_5a 0
+        Goto mythos_al_not_appdata
+        mythos_glp_fb_5d:
+        StrCmp $5 "" mythos_al_not_documents
+        System::Call "kernel32::GetFileAttributesW(w r5) i .r4"
+        IntCmp $4 0 mythos_glp_h3_5d mythos_glp_h3_5d 0
+        Goto mythos_al_not_documents
+        mythos_glp_fb_5k:
+        StrCmp $5 "" mythos_al_not_desktop
+        System::Call "kernel32::GetFileAttributesW(w r5) i .r4"
+        IntCmp $4 0 mythos_glp_h3_5k mythos_glp_h3_5k 0
+        Goto mythos_al_not_desktop
+        mythos_glp_fb_9a:
+        StrCmp $9 "" mythos_nr_documents
+        System::Call "kernel32::GetFileAttributesW(w r9) i .r4"
+        IntCmp $4 0 mythos_glp_h3_9a mythos_glp_h3_9a 0
+        Goto uninstall_vault_read
       uninstall_vault_close:
         FileClose $0
         Delete "$APPDATA\Mythos Writer\uninstall-delete-paths.txt"
@@ -557,7 +578,7 @@
 ; RF-7b: RMDir /r follows junctions (NSIS ≤3.13). Initialise $7 (leftover is the
 ; last sidecar-line length). Walk every prefix down to _path; skip on
 ; FILE_ATTRIBUTE_REPARSE_POINT (0x400) or a failed GetFileAttributesW.
-; Defined after customUnInstall so the :43–:213 guard-region line numbers stay put;
+; Defined after customUnInstall so the :43–:541 guard-region line numbers stay put;
 ; !insertmacro expands when customUnInstall is inserted, after this definition.
 !macro mythos_rmdir_unless_reparse _root _path _uid
   Push $3

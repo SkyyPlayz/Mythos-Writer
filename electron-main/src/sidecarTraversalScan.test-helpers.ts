@@ -24,7 +24,7 @@ export const TRAVERSAL_SCAN_BLOCK_SCAN_LABEL = 'mythos_trav_scan:';
 
 /**
  * Exact sidecar guard region, file :43 (`uninstall_vault_read: ClearErrors`) .. the unique
- * `Goto mythos_comp_tail_ret9l` end marker: RF-6 read-trim + control-char / wildcard reject,
+ * `Goto uninstall_vault_read` end marker: RF-6 read-trim + control-char / wildcard reject,
  * traversal, deny prefixes, root guards, GetFullPathNameW gate, HARD-2 nested-root guard,
  * RF-7b top-down reparse walk, leftover-`/` scan on `$3`, do_delete, and the H3 component-tail
  * scan. Generated from build/uninstall-vaults.nsh; the pin is exact.
@@ -197,7 +197,7 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        IntCmp $8 2 +3 0 0",
   "        IntCmp $8 3 +2 0 0",
   "        Goto mythos_al_not_appdata",
-  "        StrCmp $5 \"\" mythos_al_not_appdata",
+  "        Goto mythos_glp_fb_5a",
   "        mythos_glp_h3_5a:",
   "        StrCpy $2 \"5a\"",
   "        Goto mythos_comp_tail_scan",
@@ -227,7 +227,7 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        IntCmp $8 2 +3 0 0",
   "        IntCmp $8 3 +2 0 0",
   "        Goto mythos_al_not_documents",
-  "        StrCmp $5 \"\" mythos_al_not_documents",
+  "        Goto mythos_glp_fb_5d",
   "        mythos_glp_h3_5d:",
   "        StrCpy $2 \"5d\"",
   "        Goto mythos_comp_tail_scan",
@@ -257,7 +257,7 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        IntCmp $8 2 +3 0 0",
   "        IntCmp $8 3 +2 0 0",
   "        Goto mythos_al_not_desktop",
-  "        StrCmp $5 \"\" mythos_al_not_desktop",
+  "        Goto mythos_glp_fb_5k",
   "        mythos_glp_h3_5k:",
   "        StrCpy $2 \"5k\"",
   "        Goto mythos_comp_tail_scan",
@@ -360,8 +360,8 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "            IntCmp $8 2 +3 0 0",
   "            IntCmp $8 3 +2 0 0",
   "            Goto uninstall_vault_read",
-            "            StrCmp $9 \"\" mythos_nr_documents",
-            "            mythos_glp_h3_9a:",
+  "            Goto mythos_glp_fb_9a",
+  "            mythos_glp_h3_9a:",
   "            StrCpy $2 \"9a\"",
   "            Goto mythos_comp_tail_scan",
   "            mythos_comp_tail_ret9a:",
@@ -386,8 +386,8 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "            IntCmp $8 2 +3 0 0",
   "            IntCmp $8 3 +2 0 0",
   "            Goto uninstall_vault_read",
-            "            StrCmp $9 \"\" mythos_nr_desktop",
-            "            mythos_glp_h3_9d:",
+  "            StrCmp $9 \"\" mythos_nr_desktop",
+  "            mythos_glp_h3_9d:",
   "            StrCpy $2 \"9d\"",
   "            Goto mythos_comp_tail_scan",
   "            mythos_comp_tail_ret9d:",
@@ -412,8 +412,8 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "            IntCmp $8 2 +3 0 0",
   "            IntCmp $8 3 +2 0 0",
   "            Goto uninstall_vault_read",
-            "            StrCmp $9 \"\" mythos_nr_downloads",
-            "            mythos_glp_h3_9k:",
+  "            StrCmp $9 \"\" mythos_nr_downloads",
+  "            mythos_glp_h3_9k:",
   "            StrCpy $2 \"9k\"",
   "            Goto mythos_comp_tail_scan",
   "            mythos_comp_tail_ret9k:",
@@ -438,8 +438,8 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "            IntCmp $8 2 +3 0 0",
   "            IntCmp $8 3 +2 0 0",
   "            Goto uninstall_vault_read",
-            "            StrCmp $9 \"\" mythos_nr_ok",
-            "            mythos_glp_h3_9l:",
+  "            StrCmp $9 \"\" mythos_nr_ok",
+  "            mythos_glp_h3_9l:",
   "            StrCpy $2 \"9l\"",
   "            Goto mythos_comp_tail_scan",
   "            mythos_comp_tail_ret9l:",
@@ -527,7 +527,8 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "          StrCmp $2 \"9a\" mythos_comp_tail_ret9a",
   "          StrCmp $2 \"9d\" mythos_comp_tail_ret9d",
   "          StrCmp $2 \"9k\" mythos_comp_tail_ret9k",
-  "          Goto mythos_comp_tail_ret9l",
+  "          StrCmp $2 \"9l\" mythos_comp_tail_ret9l",
+  "          Goto uninstall_vault_read",
 ];
 
 /** APPDATA Mythos Writer prefix + root self-match (first allowlist root, M5). */
@@ -546,7 +547,7 @@ export const CANONICAL_APPDATA_M5_GUARD_BLOCK: readonly string[] = [
   "        IntCmp $8 2 +3 0 0",
   "        IntCmp $8 3 +2 0 0",
   "        Goto mythos_al_not_appdata",
-  "        StrCmp $5 \"\" mythos_al_not_appdata",
+  "        Goto mythos_glp_fb_5a",
   "        mythos_glp_h3_5a:",
   "        StrCpy $2 \"5a\"",
   "        Goto mythos_comp_tail_scan",
@@ -555,7 +556,7 @@ export const CANONICAL_APPDATA_M5_GUARD_BLOCK: readonly string[] = [
   "        StrCpy $4 $3 $8",
   "        StrCmp $4 $5 0 mythos_al_not_appdata",
   "          StrCmp $3 $5 uninstall_vault_read",
-];;
+];
 
 /** FileRead + RF-6 CR/LF trim loop + empty check + control-char reject (file :43–:64). */
 export const CANONICAL_READ_TRIM_BLOCK: readonly string[] = CANONICAL_SIDECAR_GUARD_REGION.slice(
@@ -590,16 +591,16 @@ export const CANONICAL_TRAVERSAL_SCAN_BLOCK_SHA256 = createHash('sha256')
   .update(CANONICAL_TRAVERSAL_SCAN_BLOCK.join('\n'))
   .digest('hex');
 
-/** Marker-anchored sidecar guard region (file :43–:540). Each marker must occur exactly once. */
+/** Marker-anchored sidecar guard region (file :43–:541). Each marker must occur exactly once. */
 export const SIDECAR_GUARD_REGION_START_LINE = '        uninstall_vault_read: ClearErrors';
 export const SIDECAR_GUARD_REGION_START_FOLLOW_LINE = '        FileRead $0 $1';
 export const SIDECAR_GUARD_REGION_START_MARKER = SIDECAR_GUARD_REGION_START_FOLLOW_LINE;
-export const SIDECAR_GUARD_REGION_END_LINE = '          StrCmp $2 "9k" mythos_comp_tail_ret9k';
+export const SIDECAR_GUARD_REGION_END_LINE = '          StrCmp $2 "9l" mythos_comp_tail_ret9l';
 export const SIDECAR_GUARD_REGION_END_MARKER = SIDECAR_GUARD_REGION_END_LINE;
-export const SIDECAR_GUARD_REGION_END_FOLLOW_LINE = '          Goto mythos_comp_tail_ret9l';
+export const SIDECAR_GUARD_REGION_END_FOLLOW_LINE = '          Goto uninstall_vault_read';
 
 export const SIDECAR_GUARD_REGION_FILE_LINE_FIRST = 43;
-export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 540;
+export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 541;
 
 export function nshExecutableLines(source: string): string {
   return source.replace(/;[^\n]*/g, '');
@@ -1125,7 +1126,7 @@ export function locateSidecarGuardRegion(nsh: string): { start: number; end: num
     deleteAt <= start ||
     fileLines[deleteAt + 1] !== SIDECAR_GUARD_REGION_END_FOLLOW_LINE
   ) {
-    throw new Error('sidecar guard region (:43–:540) markers missing in uninstall nsh');
+    throw new Error('sidecar guard region (:43–:541) markers missing in uninstall nsh');
   }
   const end = deleteAt + 1;
   const lines = fileLines.slice(start, end + 1);
@@ -1169,7 +1170,7 @@ export function replaceSidecarGuardRegionLine(
   return spliceSidecarGuardRegion(nsh, next);
 }
 
-/** Mutate one file line in :43–:540 (1-based file line number). */
+/** Mutate one file line in :43–:541 (1-based file line number). */
 export function replaceSidecarGuardFileLine(nsh: string, fileLineOneBased: number, newLine: string): string {
   if (
     fileLineOneBased < SIDECAR_GUARD_REGION_FILE_LINE_FIRST ||
@@ -5263,7 +5264,13 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     },
     expect: 'skip',
     mustNotDelete: ['C:\\Users\\me\\Documents\\My Desktop'],
-    options: { glpnErrnoFileLines: { 363: 5 } },
+    options: {
+      glpnErrnoFileLines: { 363: 5 },
+      // 8.3 Mythos Writer is not a real directory. Helper GFA must be INVALID so
+      // :372 Nop falls into the 2/3 helper and H3s (unexpanded GFPN misses) instead
+      // of treating the leftover 8.3 root as existing and deny-equivalencing :372.
+      invalidAttrPaths: ['C:\\Users\\me\\Documents\\MYDESK~1\\Roaming\\Mythos Writer'],
+    },
     killsFileLine: 372,
   },
   {
@@ -5460,8 +5467,164 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     },
     expect: 'skip',
     mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x'],
+    options: {
+      glpnErrnoFileLines: { 363: 5 },
+      invalidAttrPaths: ['C:\\Users\\ME~1\\AppData\\Roaming\\Mythos Writer'],
+    },
+    killsFileLine: 372,
+  },
+  {
+    name: 'HARD-F :200 errno 5 Mythos vault skips (deny; :363 cannot fire)',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x'],
+    options: { glpnErrnoFileLines: { 200: 5 } },
+  },
+  {
+    name: 'HARD-F :200 errno 2 existing Mythos vault skips (S-19; :363 cannot fire)',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x'],
+    options: { glpnErrnoFileLines: { 200: 2 } },
+    killsFileLine: 210,
+  },
+  {
+    name: 'HARD-F :200 errno 3 existing Mythos vault skips (S-19; :363 cannot fire)',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x'],
+    options: { glpnErrnoFileLines: { 200: 3 } },
+    killsFileLine: 210,
+  },
+  {
+    name: 'HARD-F :230 errno 5 Documents vault skips (deny; nested Documents cannot fire)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault'],
+    options: { glpnErrnoFileLines: { 230: 5 } },
+  },
+  {
+    name: 'HARD-F :230 errno 2 existing Documents vault skips (S-19; nested Documents cannot fire)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault'],
+    options: { glpnErrnoFileLines: { 230: 2 } },
+    killsFileLine: 240,
+  },
+  {
+    name: 'HARD-F :230 errno 3 existing Documents vault skips (S-19; nested Documents cannot fire)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault'],
+    options: { glpnErrnoFileLines: { 230: 3 } },
+    killsFileLine: 240,
+  },
+  {
+    name: 'HARD-F :260 not-found errno 2 existing Desktop vault skips (S-19; nested Desktop cannot fire)',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Desktop\\v', 'C:\\Users\\me\\Desktop'],
+    options: { glpnErrnoFileLines: { 260: 2 } },
+    killsFileLine: 270,
+  },
+  {
+    name: 'HARD-F :363 errno 5 Mythos vault skips (no next-root; later nested cannot save)',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x'],
     options: { glpnErrnoFileLines: { 363: 5 } },
     killsFileLine: 372,
+  },
+  {
+    name: 'HARD-F :363 errno 2 existing Mythos vault skips (S-19; later nested cannot save)',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x'],
+    options: { glpnErrnoFileLines: { 363: 2 } },
+    killsFileLine: 373,
+  },
+  {
+    name: 'HARD-F :363 errno 3 existing Mythos vault skips (S-19; later nested cannot save)',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x'],
+    options: { glpnErrnoFileLines: { 363: 3 } },
+    killsFileLine: 373,
+  },
+  {
+    name: 'HARD-F :237 +3→+5 OneDrive missing Documents never RMDirs OneDrive',
+    path: 'C:\\Users\\me\\OneDrive',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me', DOCUMENTS: 'C:\\Users\\me\\OneDrive\\Documents' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\OneDrive', 'C:\\Users\\me\\Documents'],
+    options: {
+      missingPaths: ['C:\\Users\\me\\OneDrive\\Documents'],
+      glpnErrnoFileLines: { 230: 2 },
+    },
+  },
+  {
+    name: 'HARD-F H3 no-tag default fail-closed never leftover-Downloads deletes',
+    path: 'C:\\Users\\me\\Downloads\\v',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+  },
+  {
+    name: 'S-19 DESKTO~1 errno 2 existing 8.3 Desktop never deletes dangerously',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\DESKTO~1' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Desktop\\v', 'C:\\Users\\me\\Desktop'],
+    options: { glpnErrnoFileLines: { 260: 2 } },
+  },
+  {
+    name: 'S-19 DESKTO~1 errno 3 existing 8.3 Desktop never deletes dangerously',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\DESKTO~1' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Desktop\\v', 'C:\\Users\\me\\Desktop'],
+    options: { glpnErrnoFileLines: { 260: 3 } },
+  },
+  {
+    name: 'S-19 deskto~1 errno 2 existing 8.3 Desktop never deletes dangerously',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\deskto~1' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Desktop\\v', 'C:\\Users\\me\\Desktop'],
+    options: { glpnErrnoFileLines: { 260: 2 } },
+  },
+  {
+    name: 'S-19 deskto~1 errno 3 existing 8.3 Desktop never deletes dangerously',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\deskto~1' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Desktop\\v', 'C:\\Users\\me\\Desktop'],
+    options: { glpnErrnoFileLines: { 260: 3 } },
+  },
+  {
+    name: 'S-19 MYDESK~1 errno 2 existing 8.3 Desktop never deletes dangerously',
+    path: 'C:\\Users\\me\\My Desktop\\v',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\MYDESK~1' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\My Desktop\\v', 'C:\\Users\\me\\My Desktop'],
+    options: { glpnErrnoFileLines: { 260: 2 } },
+  },
+  {
+    name: 'S-19 MYDESK~1 errno 3 existing 8.3 Desktop never deletes dangerously',
+    path: 'C:\\Users\\me\\My Desktop\\v',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\MYDESK~1' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\My Desktop\\v', 'C:\\Users\\me\\My Desktop'],
+    options: { glpnErrnoFileLines: { 260: 3 } },
   },
 ];
 

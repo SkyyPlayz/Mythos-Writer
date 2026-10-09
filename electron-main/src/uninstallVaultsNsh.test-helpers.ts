@@ -272,7 +272,7 @@ export function mutantM5_dropAppDataRootSelfMatch(nsh: string): string {
     '        IntCmp $8 2 +3 0 0\n' +
     '        IntCmp $8 3 +2 0 0\n' +
     '        Goto mythos_al_not_appdata\n' +
-    '        StrCmp $5 "" mythos_al_not_appdata\n' +
+    '        Goto mythos_glp_fb_5a\n' +
     '        mythos_glp_h3_5a:\n' +
     '        StrCpy $2 "5a"\n' +
     '        Goto mythos_comp_tail_scan\n' +
@@ -296,7 +296,7 @@ export function mutantM5_dropAppDataRootSelfMatch(nsh: string): string {
     '        IntCmp $8 2 +3 0 0\n' +
     '        IntCmp $8 3 +2 0 0\n' +
     '        Goto mythos_al_not_appdata\n' +
-    '        StrCmp $5 "" mythos_al_not_appdata\n' +
+    '        Goto mythos_glp_fb_5a\n' +
     '        mythos_glp_h3_5a:\n' +
     '        StrCpy $2 "5a"\n' +
     '        Goto mythos_comp_tail_scan\n' +

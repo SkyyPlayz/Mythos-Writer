@@ -109,7 +109,7 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   378: 'AppData nested exact-root StrCmp → Nop. Allowlist already skipped the exact AppData root.',
   402: 'H3 9d Goto Nop is identity: 5d already scanned Documents.',
   454: 'H3 9l Goto Nop is identity: 5l already scanned Downloads. 9k Goto stays unlisted (only scan of a dirty Desktop).',
-  453: 'H3 9l StrCpy $2 Nop is identity: leftover discriminator still returns through ret9l.',
+  // :453 unlisted — :540 fail-closed: leftover $2 no longer returns through ret9l.
   144: 'Line GLP 0-check Nop is identity: fail empties scratch; the empty $3 check still fail-closes.',
   145: 'Line GLP MAX-check Nop is identity: fixtures never truncate the line GLP.',
   147: 'Line GLP empty-$3 Nop is identity: a successful GLP never writes empty.',
@@ -127,17 +127,19 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   207: 'APPDATA errno-2 Nop is identity: APPDATA GLP does not miss with 2 on these fixtures.',
   208: 'APPDATA errno-3 Nop is identity: APPDATA GLP does not miss with 3 on these fixtures.',
   209: 'APPDATA other-error Goto Nop is identity: APPDATA GLP succeeds so the fail block is unused.',
-  210: 'APPDATA empty-$5 (fallback) Nop is identity: fallback GFPN is never empty.',
+  // :210 unlisted — S-19 existence helper Nop falls into H3 with GFPN on a spurious errno-2 vault.
   233: 'Documents GLP MAX-check Nop is identity: fixtures never truncate Documents.',
   235: 'Documents empty-$5 (success) Nop is identity: Documents GLP is never empty.',
   238: 'Documents errno-3 Nop is identity: Documents GLP does not miss with 3 on these fixtures.',
   239: 'Documents other-error Goto Nop is identity: Documents GLP succeeds so the fail block is unused.',
-  240: 'Documents empty-$5 (fallback) Nop is identity: fallback GFPN is never empty.',
+  // :232 / :237 unlisted — Documents allow GLP 1st-call fault still deletes; Nop 0-check / errno-2 skips that vault.
+  // :240 unlisted — S-19 existence helper Nop falls into H3 with GFPN on a spurious errno-2 vault.
   263: 'Desktop GLP MAX-check Nop is identity: fixtures never truncate Desktop.',
   265: 'Desktop empty-$5 (success) Nop is identity: Desktop GLP is never empty on success.',
   268: 'Desktop errno-3 Nop is identity: Desktop GLP does not miss with 3 on these fixtures.',
   269: 'Desktop other-error Goto Nop is identity: access-denied rows skip before this Nop changes the set.',
-  270: 'Desktop empty-$5 (fallback) Nop is identity: fallback GFPN is never empty.',
+  // :262 / :267 unlisted — Desktop allow GLP 1st-call fault still deletes; Nop 0-check / errno-2 skips that vault.
+  // :270 unlisted — S-19 existence helper Nop falls into H3 with GFPN on a spurious errno-2 vault.
   293: 'Downloads GLP MAX-check Nop is identity: fixtures never truncate Downloads.',
   295: 'Downloads empty-$5 (success) Nop is identity: Downloads GLP is never empty on success.',
   // :298 unlisted — PATH_NOT_FOUND file-line errno-3 is a real kill of this Nop.
@@ -152,7 +154,7 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   336: 'Canon $9 empty Nop is identity: a successful GLP never writes empty.',
   368: 'Nested AppData empty $9 Nop is identity: AppData nested GLP is never empty.',
   371: 'Nested AppData errno-3 Nop is identity: AppData nested GLP does not miss with 3.',
-  373: 'Nested AppData fallback empty Nop is identity: fallback GFPN is never empty.',
+  // :373 unlisted — S-19 existence helper Nop falls into H3 with GFPN on a spurious errno-2 vault.
   394: 'Nested Documents empty $9 Nop is identity.',
   397: 'Nested Documents errno-3 Nop is identity: Documents nested GLP does not miss with 3 on these fixtures.',
   399: 'Nested Documents fallback empty Nop is identity.',
@@ -168,8 +170,8 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
 
 /** Forge RESULT_97be (29) + RESULT_36d2 (33) + RESULT_8329 (:286). Mode 2 must catch each primary Nop. */
 export const SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS: readonly number[] = [
-  143, 152, 153, 155, 157, 168, 169, 170, 172, 183, 184, 185, 187, 198, 199, 203, 228, 229, 258, 259, 260, 288, 289,
-  290, 319, 320, 330, 331, 332, 361, 362, 363, 364, 366, 370, 387, 388, 390, 391, 392, 396, 398, 413, 414, 415, 416,
+  143, 152, 153, 155, 157, 168, 169, 170, 172, 183, 184, 185, 187, 198, 199, 203, 210, 228, 229, 240, 258, 259, 260, 270, 288, 289,
+  290, 319, 320, 330, 331, 332, 361, 362, 363, 364, 366, 370, 373, 387, 388, 390, 391, 392, 396, 398, 413, 414, 415, 416,
   417, 418, 422, 424, 439, 440, 442, 443, 444, 448, 449, 450,
 ];
 
@@ -198,7 +200,7 @@ export const SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES: Readonly<Recor
   ...SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS,
 };
 
-describe('sidecar guard region sweep :43-:540 (buildIntegrity excluded)', () => {
+describe('sidecar guard region sweep :43-:541 (buildIntegrity excluded)', () => {
   const nsh = loadUninstallVaultsNsh();
 
   describe('mode (1) normal — exact region pin', () => {

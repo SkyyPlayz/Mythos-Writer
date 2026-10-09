@@ -185,6 +185,56 @@ export function win32NormalizeFinalSegment(path: string): string {
  * Win32 GetFileAttributesW lookup keys: exact, `/`→`\`, drive-relative `C:` → CWD
  * (or `C:\` when no CWD is seeded), then GetLongPathName 8.3 expansion.
  */
+/** Missing-folder / NoSuch keys. Spurious `glpnErrno` must not count — the path exists. */
+function gfaKeysAreMissing(keys: readonly string[], options: SidecarNsisRunOptions): boolean {
+  const missing = options.missingPaths ?? [];
+  for (const key of keys) {
+    if (key === '' || /NoSuch/i.test(key)) {
+      return true;
+    }
+    const folded = foldWinPath(key);
+    for (const raw of missing) {
+      const miss = foldWinPath(raw);
+      if (miss !== '' && (folded === miss || folded.startsWith(`${miss}\\`))) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Exact GLP plugin-fail injections (`glpnFailPaths` / `glpnFailNth`) on an
+ * allowlist/nested *root* (Documents, Desktop, Downloads, AppData\Mythos Writer).
+ * Helper GFA of that root is INVALID so GFPN fallback still H3s (historical
+ * "fault still deletes"). The sidecar line / vault leaf is not a root — walk
+ * GFA must still see a directory so a line-GLP +3 fallback can delete.
+ * Spurious `glpnErrno` / `glpnErrnoFileLines` stay existing (S-19).
+ */
+function gfaKeysAreGlpPluginFail(keys: readonly string[], options: SidecarNsisRunOptions): boolean {
+  const injected = [...(options.glpnFailPaths ?? []), ...Object.keys(options.glpnFailNth ?? {})];
+  if (injected.length === 0) {
+    return false;
+  }
+  const env = options.env;
+  if (env === undefined) {
+    return false;
+  }
+  const rootSet = new Set(
+    [env.DOCUMENTS, env.DESKTOP, `${env.APPDATA}\\Mythos Writer`, `${env.PROFILE}\\Downloads`].map((p) =>
+      foldWinPath(p),
+    ),
+  );
+  const injectedFolded = injected.map((p) => foldWinPath(p));
+  for (const key of keys) {
+    const folded = foldWinPath(key);
+    if (folded !== '' && rootSet.has(folded) && injectedFolded.includes(folded)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function gfaLookupKeys(raw: string, options: SidecarNsisRunOptions = {}): string[] {
   const keys: string[] = [];
   const add = (k: string): void => {
@@ -1154,6 +1204,12 @@ export function runNsisProgramLines(
             rv = String(fs[inp]!);
             break;
           }
+        }
+        if (rv === undefined && gfaKeysAreMissing(keys, options)) {
+          rv = String(INVALID_FILE_ATTRIBUTES);
+        }
+        if (rv === undefined && gfaKeysAreGlpPluginFail(keys, options)) {
+          rv = String(INVALID_FILE_ATTRIBUTES);
         }
         if (rv === undefined) {
           rv =

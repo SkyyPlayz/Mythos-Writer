@@ -381,6 +381,45 @@ const ORACLE_TOKEN_SWAPS: readonly (readonly [string, string])[] = [
 
 export type OracleClassMutant = { key: string; fileLine: number; nsh: string };
 
+/** GLP error tails after the :200 / :230 / :260 / :363 Calls (IntCmp $4 0 +5 through the fallback Goto). */
+export const GLP_ERROR_BRANCH_FILE_LINES: readonly number[] = [
+  202, 203, 204, 205, 206, 207, 208, 209, 210, 232, 233, 234, 235, 236, 237, 238, 239, 240, 262, 263, 264, 265, 266,
+  267, 268, 269, 270, 365, 366, 367, 368, 369, 370, 371, 372, 373,
+];
+
+const REL_JUMP = /^(0|[+-]\d+)$/;
+
+function formatRelJump(n: number): string {
+  if (n === 0) {
+    return '0';
+  }
+  return n > 0 ? `+${n}` : `${n}`;
+}
+
+function jumpOperandIndexes(op: string): number[] {
+  switch (op) {
+    case 'IntCmp':
+    case 'IntCmpU':
+      return [2, 3, 4];
+    case 'StrCmp':
+    case 'StrCmpS':
+    case 'IfFileExists':
+      return [2, 3];
+    case 'Goto':
+    case 'IfErrors':
+      return [0];
+    default:
+      return [];
+  }
+}
+
+function parseRelJump(tok: string | undefined): number | undefined {
+  if (tok === undefined || !REL_JUMP.test(tok)) {
+    return undefined;
+  }
+  return Number(tok);
+}
+
 function replaceFirst(source: string, needle: string, replacement: string): string {
   const at = source.indexOf(needle);
   return at < 0 ? source : source.slice(0, at) + replacement + source.slice(at + needle.length);
@@ -429,6 +468,24 @@ export function generateOracleClassMutants(nsh: string): OracleClassMutant[] {
         }
       }
     }
+    if (GLP_ERROR_BRANCH_FILE_LINES.includes(n)) {
+      for (const j of jumpOperandIndexes(tk[0]!)) {
+        const cur = tk[j + 1];
+        const base = parseRelJump(cur);
+        if (base === undefined) {
+          continue;
+        }
+        for (const delta of [-2, -1, 1, 2]) {
+          const nextOff = formatRelJump(base + delta);
+          if (nextOff === cur) {
+            continue;
+          }
+          const nt = [...tk];
+          nt[j + 1] = nextOff;
+          put(`${n}:jmp${j + 1}:${cur}->${nextOff}`, n, rep(n, indent + nt.join(' ')));
+        }
+      }
+    }
     for (const a of ORACLE_LITERALS) {
       if (s.includes(a)) {
         for (const b of ORACLE_LITERALS) {
@@ -459,4 +516,86 @@ export function generateOracleClassMutants(nsh: string): OracleClassMutant[] {
     }
   }
   return [...muts.values()];
+}
+
+export function generateGlpErrorJumpOffsetMutants(nsh: string): OracleClassMutant[] {
+  return generateOracleClassMutants(nsh).filter((m) => m.key.includes(':jmp'));
+}
+
+/**
+ * Jump-swap targets on the four GLP error tails. Walk/trav labels are omitted —
+ * those hangs are not a later-nested mask, and they explode the corpus.
+ */
+const GLP_ERROR_SWAP_TARGETS = [
+  ...ORACLE_JUMP_OFFSETS,
+  'uninstall_vault_read',
+  'mythos_al_not_appdata',
+  'mythos_al_not_documents',
+  'mythos_al_not_desktop',
+  'mythos_nr_appdata',
+  'mythos_nr_documents',
+  'mythos_nr_desktop',
+  'mythos_nr_downloads',
+  'mythos_nr_ok',
+  'mythos_glp_h3_5a',
+  'mythos_glp_h3_5d',
+  'mythos_glp_h3_5k',
+  'mythos_glp_h3_9a',
+  'mythos_glp_fb_5a',
+  'mythos_glp_fb_5d',
+  'mythos_glp_fb_5k',
+  'mythos_glp_fb_9a',
+] as const;
+
+/** IntCmp/StrCmp/Goto jump-swaps on the four GLP error tails only (not the whole-region corpus). */
+export function generateGlpErrorJumpSwapMutants(nsh: string): OracleClassMutant[] {
+  const src = nsh.split('\n');
+  const muts: OracleClassMutant[] = [];
+  const seen = new Set<string>();
+  for (const n of GLP_ERROR_BRANCH_FILE_LINES) {
+    const s = src[n - 1]!;
+    const t = s.trim();
+    const indent = s.match(/^\s*/)?.[0] ?? '';
+    const labeled = t.match(/^(\w+):\s*(.*)$/);
+    const instr =
+      labeled && labeled[2] !== '' && !labeled[2].startsWith(':') ? labeled[2] : t;
+    const tk = instr.split(/\s+/);
+    if (tk[0] !== 'IntCmp' && tk[0] !== 'IntCmpU' && tk[0] !== 'StrCmp' && tk[0] !== 'Goto') {
+      continue;
+    }
+    const sibling = jumpOperandIndexes(tk[0]!).map((j) => tk[j + 1]).filter((x): x is string => x !== undefined);
+    const labs = [...new Set([...GLP_ERROR_SWAP_TARGETS, ...sibling])];
+    for (const j of jumpOperandIndexes(tk[0]!)) {
+      const cur = tk[j + 1];
+      if (cur === undefined) {
+        continue;
+      }
+      for (const lab of labs) {
+        if (cur === lab) {
+          continue;
+        }
+        const nt = [...tk];
+        nt[j + 1] = lab;
+        const key = `${n}:tgt${j + 1}:${cur}->${lab}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        const next = [...src];
+        next[n - 1] = indent + nt.join(' ');
+        muts.push({ key, fileLine: n, nsh: next.join('\n') });
+      }
+    }
+  }
+  return muts;
+}
+
+/** Nop the later nested ancestor/exact skips so a masked skip cannot count as a kill. */
+export function nshWithoutLaterNestedSkips(nsh: string): string {
+  const next = nsh.split('\n');
+  for (const fileLine of [378, 383, 404, 409, 430, 435, 456, 461]) {
+    const indent = next[fileLine - 1]!.match(/^\s*/)?.[0] ?? '';
+    next[fileLine - 1] = `${indent}Nop`;
+  }
+  return next.join('\n');
 }
