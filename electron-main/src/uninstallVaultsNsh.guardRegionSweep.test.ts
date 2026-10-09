@@ -24,8 +24,8 @@ import { sidecarGuardModeTwoCaught } from './sidecarOracleMutants.test-helpers.j
  *
  * The list must be exact: a listed line that the VM tables catch fails mode 2, an unlisted line they
  * miss fails mode 2. Strength shards re-check identity on Forge's full oracle corpus for the
- * Ivy/extended/RF-4/5/6/walk subset; GFPN/GLP no-ops stay mode-2-only. Each reason names the line
- * it had before RF-4/5/6 moved the region (`old :N`).
+ * Ivy/extended/RF-4/5/6/walk subset. GFPN/GLP lines Forge proved non-equivalent are not listed.
+ * Each reason names the line it had before RF-4/5/6 moved the region (`old :N`).
  */
 export const SIDECAR_GUARD_SWEEP_IVY_LOCKED_EQUIVALENTS: Readonly<Record<number, string>> = {
   56: 'StrCmp $1 "" uninstall_vault_read → Nop (old :52). The RF-6 loop head :47 already skipped an empty line; an empty path matches no allowlist root anyway (mythos_al_deny).',
@@ -65,9 +65,8 @@ export const SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS: Readonly<Record<number, stri
 
 /**
  * RF-7 walk / leftover-`/` primaries that the 12,617-case strength shards still scan.
- * GFPN/GLP no-ops stay in {@link SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS}: the model
- * never returns 0 or truncates on the corpus, and ~50 extra lines × 7 slices blew the
- * 20-minute unit job.
+ * Remaining GFPN/GLP no-ops that Forge's 3,326-row Nop compare still treats as equivalent
+ * stay in {@link SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS}.
  */
 export const SIDECAR_GUARD_SWEEP_RF7_STRENGTH_EQUIVALENTS: Readonly<Record<number, string>> = {
   272: 'StrCpy $7 $9 → Nop. Restore then uses leftover $7; walk still hits every `\\`.',
@@ -88,27 +87,16 @@ export const SIDECAR_GUARD_SWEEP_RF7_STRENGTH_EQUIVALENTS: Readonly<Record<numbe
 };
 
 /**
- * GFPN/GLP / nested exact-root / ancestor-copy Nops. Mode 2 still requires them uncaught
- * (already-canonical roots, model-never-fails, allowlist already skipped). Not strength-sharded.
+ * GFPN/GLP / nested exact-root / ancestor-copy Nops that Forge's 3,326-row Nop compare still
+ * treats as equivalent (already-canonical roots, allowlist already skipped). The 29 lines
+ * Forge proved non-equivalent — and the :256–:258 canon-root GFPN mutants — are not listed.
+ * :216 / :234 are GLP Calls (not GFPN). :305 is a prefix compare (not a sep-char copy).
  */
 export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<number, string>> = {
-  143: 'line GLP Call → Nop. The canon-gate GLP expands 8.3 again.',
   144: 'line GLP 0-return → Nop. The model never returns 0 on these paths.',
   145: 'line GLP trunc → Nop. The model never truncates these paths.',
-  147: 'WINDIR GFPN Call → Nop. $5 is already the expanded $WINDIR.',
-  150: 'WINDIR GLP Call → Nop. $WINDIR is already long form.',
-  151: 'WINDIR GLP 0-return → Nop.',
-  152: 'WINDIR GLP trunc → Nop.',
-  158: 'PROGRAMFILES GFPN 0-return → Nop.',
   159: 'PROGRAMFILES GFPN trunc → Nop.',
-  160: 'PROGRAMFILES GLP Call → Nop. $PROGRAMFILES is already long form.',
-  161: 'PROGRAMFILES GLP 0-return → Nop.',
-  162: 'PROGRAMFILES GLP trunc → Nop.',
-  168: 'PROGRAMFILES64 GFPN 0-return → Nop.',
   169: 'PROGRAMFILES64 GFPN trunc → Nop.',
-  170: 'PROGRAMFILES64 GLP Call → Nop. $PROGRAMFILES64 is already long form.',
-  171: 'PROGRAMFILES64 GLP 0-return → Nop.',
-  172: 'PROGRAMFILES64 GLP trunc → Nop.',
   178: 'APPDATA allow GFPN 0-return → Nop.',
   179: 'APPDATA allow GFPN trunc → Nop.',
   181: 'APPDATA allow GLP 0-return → Nop.',
@@ -120,53 +108,39 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   204: 'Documents prefix StrCmp → Nop. No oracle path becomes a false Documents child.',
   214: 'Desktop allow GFPN 0-return → Nop.',
   215: 'Desktop allow GFPN trunc → Nop.',
-  216: 'Desktop allow GFPN Call → Nop. $DESKTOP is already canonical.',
   217: 'Desktop allow GLP 0-return → Nop.',
   218: 'Desktop allow GLP trunc → Nop.',
   222: 'Desktop prefix StrCmp → Nop. No oracle path becomes a false Desktop child.',
   232: 'Downloads allow GFPN 0-return → Nop.',
   233: 'Downloads allow GFPN trunc → Nop.',
-  234: 'Downloads allow GFPN Call → Nop. $PROFILE\\Downloads already matches GFPN.',
   235: 'Downloads allow GLP 0-return → Nop.',
   236: 'Downloads allow GLP trunc → Nop.',
   251: 'canon path GFPN 0-return → Nop.',
   252: 'canon path GFPN trunc → Nop.',
   254: 'canon path GLP 0-return → Nop.',
   255: 'canon path GLP trunc → Nop.',
-  257: 'canon root GFPN 0-return → Nop.',
-  258: 'canon root GFPN trunc → Nop.',
-  259: 'canon root GLP Call → Nop. The allowlist already long-expanded $5.',
   260: 'canon root GLP 0-return → Nop.',
   261: 'canon root GLP trunc → Nop.',
   283: 'AppData nested GFPN 0-return → Nop.',
   284: 'AppData nested GFPN trunc → Nop.',
-  285: 'AppData nested GLP Call → Nop. $APPDATA\\Mythos Writer is already long form.',
   286: 'AppData nested GLP 0-return → Nop.',
   287: 'AppData nested GLP trunc → Nop.',
   288: 'AppData nested exact-root StrCmp → Nop. Allowlist already skipped the exact AppData root.',
-  297: 'Documents nested GFPN 0-return → Nop.',
   298: 'Documents nested GFPN trunc → Nop.',
-  299: 'Documents nested GLP Call → Nop. $DOCUMENTS is already long form.',
-  300: 'Documents nested GLP 0-return → Nop.',
-  301: 'Documents nested GLP trunc → Nop.',
   302: 'Documents nested exact-root StrCmp → Nop. Allowlist already skipped the exact Documents root.',
   303: 'Documents ancestor StrLen → Nop. $8 already holds StrLen $3.',
-  305: 'Documents ancestor sep-char copy → Nop. $6 is not `\\` on the HARD-C fixtures.',
-  311: 'Desktop nested GFPN 0-return → Nop.',
+  305: 'Documents ancestor prefix compare → Nop. $6 is not the path prefix on the HARD-C fixtures.',
   312: 'Desktop nested GFPN trunc → Nop.',
-  313: 'Desktop nested GLP Call → Nop. $DESKTOP is already long form.',
-  314: 'Desktop nested GLP 0-return → Nop.',
-  315: 'Desktop nested GLP trunc → Nop.',
   317: 'Desktop ancestor StrLen → Nop.',
-  319: 'Desktop ancestor sep-char copy → Nop. $6 is not `\\` on the HARD-C fixtures.',
-  325: 'Downloads nested GFPN 0-return → Nop.',
   326: 'Downloads nested GFPN trunc → Nop.',
-  327: 'Downloads nested GLP Call → Nop. $PROFILE\\Downloads is already long form.',
-  328: 'Downloads nested GLP 0-return → Nop.',
-  329: 'Downloads nested GLP trunc → Nop.',
   331: 'Downloads ancestor StrLen → Nop.',
-  333: 'Downloads ancestor sep-char copy → Nop. $6 is not `\\` on the HARD-C fixtures.',
 };
+
+/** Forge RESULT_97be: these 29 Nops are not equivalent. Mode 2 must catch each primary. */
+export const SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS: readonly number[] = [
+  143, 147, 150, 151, 152, 158, 160, 161, 162, 168, 170, 171, 172, 216, 234, 285, 297, 299, 300,
+  301, 311, 313, 314, 315, 325, 327, 328, 329, 333,
+];
 
 /** RF-7 walk / HARD-2 / HARD-A fail-closed lines whose primary Nop does not change the delete set. */
 export const SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS: Readonly<Record<number, string>> = {
@@ -175,12 +149,15 @@ export const SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS: Readonly<Record<number, string
 };
 
 /**
- * 12k-corpus strength shards. Only Ivy's locked 5 — the longer H1/HARD-A program made
- * the old 36-line scan blow the 20-minute unit job (electron-main 15.5m on 1f5a4c03).
- * Extended / RF-4/5/6 / RF-7 walk primaries stay mode-2 equivalents.
+ * 12k-corpus strength shards: Ivy's locked 5, the other 12 proven primaries, RF-4/5/6,
+ * and the RF-7 walk / leftover-`/` primaries (23 named strength lines plus the rest of
+ * the walk shard). Heavy files run in the `oracle-sweeps` job, not inside `unit`.
  */
 export const SIDECAR_GUARD_SWEEP_STRENGTH_EQUIVALENT_FILE_LINES: Readonly<Record<number, string>> = {
   ...SIDECAR_GUARD_SWEEP_IVY_LOCKED_EQUIVALENTS,
+  ...SIDECAR_GUARD_SWEEP_EXTENDED_EQUIVALENTS,
+  ...SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS,
+  ...SIDECAR_GUARD_SWEEP_RF7_STRENGTH_EQUIVALENTS,
 };
 
 export const SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES: Readonly<Record<number, string>> = {
@@ -274,12 +251,24 @@ describe('sidecar guard region sweep :43-:376 (buildIntegrity excluded)', () => 
     });
 
     it('equivalence-strength shards cover every strength-checked equivalent line', () => {
-      const sharded = [56, 97, 98, 109, 186];
+      const sharded = [
+        47, 56, 61, 84, 97, 98, 99, 103, 104, 105, 106, 109, 117, 123, 124, 125, 129, 130, 131, 186, 240, 272, 276,
+        277, 279, 337, 338, 341, 347, 354, 361, 363, 365, 367, 368, 369,
+      ];
       expect(sharded).toEqual(
         Object.keys(SIDECAR_GUARD_SWEEP_STRENGTH_EQUIVALENT_FILE_LINES)
           .map(Number)
           .sort((a, b) => a - b),
       );
+    });
+
+    it('Forge\'s 29 false GFPN/GLP equivalents are not listed as behaviour-equivalent', () => {
+      for (const fileLine of SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS) {
+        expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[fileLine], `:${fileLine}`).toBeUndefined();
+      }
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[256]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[257]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[258]).toBeUndefined();
     });
   });
 });

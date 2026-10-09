@@ -224,7 +224,7 @@ jobs:
           fi
 
       - name: Test (electron-main)
-        run: npm run test -w electron-main -- ${{ steps.coverage-flag.outputs.flag }}
+        run: npm run test -w electron-main -- ${{ steps.coverage-flag.outputs.flag }} --exclude src/uninstallVaultsNsh.oracleClassSweep.*.test.ts --exclude src/uninstallVaultsNsh.guardRegionSweep.equiv*.test.ts
 
       - name: Test (frontend)
         run: npm run test -w frontend -- ${{ steps.coverage-flag.outputs.flag }}
@@ -248,6 +248,45 @@ jobs:
             electron-main/coverage/
             frontend/coverage/
           retention-days: 3
+
+  # PLAN-058 L8 Ivy carve-out: 12k oracle-class survivor walks and equivalence-strength
+  # shards run here in parallel with `unit`, under their own timeout. Nothing else in
+  # this file changes. Branch protection must add `oracle-sweeps` as a required check.
+  oracle-sweeps:
+    needs: [setup]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Deinit stale git submodule registrations
+        run: git submodule deinit --all -f 2>/dev/null || true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Cache node_modules
+        id: nm-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            node_modules
+            frontend/node_modules
+            electron-main/node_modules
+            shared/node_modules
+            ~/.cache/electron
+          key: nm-${{ runner.os }}-node22-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        if: steps.nm-cache.outputs.cache-hit != 'true'
+        run: source scripts/ci-retry.sh && retry npm ci
+
+      - name: Oracle-class and equivalence-strength sweeps
+        run: npm run test:oracle-sweeps -w electron-main
 
   build-electron:
     # SKY-2425: fuzz steps removed from this job — they were causing OOM-induced

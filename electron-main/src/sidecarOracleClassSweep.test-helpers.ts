@@ -12,21 +12,30 @@ import {
 } from './sidecarOracleMutants.test-helpers.js';
 
 /**
- * Strength-shard slices were 20–33s against the 30s default (same class as the 9802a5c3
- * unit timeout). One mutant per test and a raised timeout on every slice — never drop a
- * case. File shards give the 20-minute unit job wall-clock room.
+ * Restored-corpus EQ scans were 20–33s against the 30s default (same class as the 9802a5c3
+ * unit timeout; :99 / :165 / :177 / :189 later hit 25–28s). One mutant per test and a raised
+ * timeout on every slice — never drop a case. File shards give the oracle-sweeps job
+ * wall-clock room; `it.concurrent` does not help synchronous work.
  */
 export const ORACLE_CLASS_SWEEP_TEST_TIMEOUT_MS = 60_000;
+const SWEEP_CHUNK = 1;
 
 /**
  * Documented mode-2 equivalents. The primary Nop is checked by mode 2 (and, for the
- * strength-sharded subset, by the 12k corpus shards). Oracle-class does not walk the
- * 12k corpus: each uncaught mutant × 12,617 cases on the longer H1/HARD-A program
- * cancelled the unit job at 20 minutes (run 37878884585).
+ * strength-sharded subset, by the 12k corpus shards). Oracle-class still walks the
+ * 12k corpus for every uncaught mutant: a non-equivalent survivor fails the slice.
  */
 const ORACLE_CLASS_ALL_EQUIVALENT_LINES: ReadonlySet<number> = new Set(
   Object.keys(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES).map((n) => Number(n)),
 );
+
+const chunkMutants = (mutants: OracleClassMutant[], size: number): OracleClassMutant[][] => {
+  const chunks: OracleClassMutant[][] = [];
+  for (let i = 0; i < mutants.length; i += size) {
+    chunks.push(mutants.slice(i, i + size));
+  }
+  return chunks;
+};
 
 /** Register the per-line oracle-class sweep for `[lineFirst, lineLast]` inclusive. */
 export function registerOracleClassLineSweep(lineFirst: number, lineLast: number): void {
@@ -34,6 +43,8 @@ export function registerOracleClassLineSweep(lineFirst: number, lineLast: number
     `oracle-class mutant sweep :${lineFirst}-:${lineLast} (Forge gen.py classes, pin-free VM tables)`,
     () => {
       const nsh = loadUninstallVaultsNsh();
+      const corpus = sidecarGuardOracleCorpus();
+      const canonicalOutcomes = corpus.map((c) => sidecarGuardCaseOutcome(nsh, c));
       const byLine = new Map<number, OracleClassMutant[]>();
       for (const mutant of generateOracleClassMutants(nsh)) {
         if (mutant.fileLine < lineFirst || mutant.fileLine > lineLast) {
@@ -47,18 +58,45 @@ export function registerOracleClassLineSweep(lineFirst: number, lineLast: number
       });
 
       for (let fileLine = lineFirst; fileLine <= lineLast; fileLine += 1) {
-        if (ORACLE_CLASS_ALL_EQUIVALENT_LINES.has(fileLine)) {
-          continue;
-        }
         const mutants = byLine.get(fileLine) ?? [];
-        it(
-          `line :${fileLine} — at least one oracle-class mutant is caught`,
-          () => {
-            expect(mutants.length).toBeGreaterThan(0);
-            expect(mutants.some((mutant) => sidecarGuardModeTwoCaught(mutant.nsh, nsh))).toBe(true);
-          },
-          ORACLE_CLASS_SWEEP_TEST_TIMEOUT_MS,
-        );
+        const chunks = chunkMutants(mutants, SWEEP_CHUNK);
+        const timeout = ORACLE_CLASS_SWEEP_TEST_TIMEOUT_MS;
+        chunks.forEach((chunk, idx) => {
+          const label =
+            chunks.length === 1
+              ? `line :${fileLine} — no non-equivalent survivor among its oracle-class mutants`
+              : `line :${fileLine} [${idx + 1}/${chunks.length}] — no non-equivalent survivor among this mutant slice`;
+          it(
+            label,
+            () => {
+              expect(mutants.length).toBeGreaterThan(0);
+              const nonEquivalentSurvivors: string[] = [];
+              for (const mutant of chunk) {
+                if (sidecarGuardModeTwoCaught(mutant.nsh, nsh)) {
+                  continue;
+                }
+                const diverged = corpus.findIndex(
+                  (c, i) => sidecarGuardCaseOutcome(mutant.nsh, c) !== canonicalOutcomes[i],
+                );
+                if (diverged >= 0) {
+                  nonEquivalentSurvivors.push(`${mutant.key} @ ${JSON.stringify(corpus[diverged]!.reads)}`);
+                }
+              }
+              expect(nonEquivalentSurvivors).toEqual([]);
+            },
+            timeout,
+          );
+        });
+        if (!ORACLE_CLASS_ALL_EQUIVALENT_LINES.has(fileLine)) {
+          it(
+            `line :${fileLine} — at least one oracle-class mutant is caught`,
+            () => {
+              expect(mutants.length).toBeGreaterThan(0);
+              expect(mutants.some((mutant) => sidecarGuardModeTwoCaught(mutant.nsh, nsh))).toBe(true);
+            },
+            timeout,
+          );
+        }
       }
     },
   );

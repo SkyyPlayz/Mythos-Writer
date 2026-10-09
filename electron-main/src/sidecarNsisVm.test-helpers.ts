@@ -281,6 +281,18 @@ export type SidecarNsisRunOptions = {
   glpnFailPaths?: readonly string[];
   /** GetLongPathNameW returns the buffer size (too-small) for these exact input strings. */
   glpnTruncPaths?: readonly string[];
+  /** GetFullPathNameW returns 0 (fail closed) for these exact input strings. */
+  gfpnFailPaths?: readonly string[];
+  /** GetFullPathNameW returns the buffer size (too-small) for these exact input strings. */
+  gfpnTruncPaths?: readonly string[];
+  /** Fail the 1-based Nth GetFullPathNameW of this exact input (allowlist vs canon vs nested). */
+  gfpnFailNth?: Readonly<Record<string, number>>;
+  /** Truncate the 1-based Nth GetFullPathNameW of this exact input. */
+  gfpnTruncNth?: Readonly<Record<string, number>>;
+  /** Fail the 1-based Nth GetLongPathNameW of this exact input. */
+  glpnFailNth?: Readonly<Record<string, number>>;
+  /** Truncate the 1-based Nth GetLongPathNameW of this exact input. */
+  glpnTruncNth?: Readonly<Record<string, number>>;
 };
 
 export type SidecarDeleteAct = Readonly<{ op: 'RMDir' | 'Delete'; path: string }>;
@@ -420,6 +432,19 @@ export function runNsisProgramLines(
   const fs = options.fs;
   const glpnFail = new Set(options.glpnFailPaths ?? []);
   const glpnTrunc = new Set(options.glpnTruncPaths ?? []);
+  const gfpnFail = new Set(options.gfpnFailPaths ?? []);
+  const gfpnTrunc = new Set(options.gfpnTruncPaths ?? []);
+  const gfpnFailNth = options.gfpnFailNth ?? {};
+  const gfpnTruncNth = options.gfpnTruncNth ?? {};
+  const glpnFailNth = options.glpnFailNth ?? {};
+  const glpnTruncNth = options.glpnTruncNth ?? {};
+  const gfpnOcc = new Map<string, number>();
+  const glpnOcc = new Map<string, number>();
+  const bumpOcc = (map: Map<string, number>, key: string): number => {
+    const next = (map.get(key) ?? 0) + 1;
+    map.set(key, next);
+    return next;
+  };
   const R: Record<string, string> = {};
   let err = false;
   const st: string[] = [];
@@ -769,6 +794,7 @@ export function runNsisProgramLines(
         const bufn = nsisMyAtoi(argval(ty[1]![1]!));
         const outr = ty[2]![1]!.startsWith('.') ? regname(ty[2]![1]!) : null;
         const c = inp === '' ? null : gfpnModel(inp);
+        const occ = bumpOcc(gfpnOcc, inp);
         let f: string | null = null;
         if (
           faultInfo !== null &&
@@ -781,9 +807,9 @@ export function runNsisProgramLines(
         let rv: string;
         if (c === null) {
           rv = '0';
-        } else if (f === 'zero') {
+        } else if (gfpnFail.has(inp) || gfpnFailNth[inp] === occ || f === 'zero') {
           rv = '0';
-        } else if (f === 'trunc') {
+        } else if (gfpnTrunc.has(inp) || gfpnTruncNth[inp] === occ || f === 'trunc') {
           rv = String(bufn);
         } else if (f === 'truncP') {
           rv = String(bufn + 1);
@@ -805,7 +831,7 @@ export function runNsisProgramLines(
         continue;
       }
       if (
-        fn === 'GetLongPathNameW' &&
+        fn.startsWith('GetLongPathName') &&
         dll.toLowerCase() === 'kernel32' &&
         argList.length === 3 &&
         rt.length === 2 &&
@@ -818,11 +844,13 @@ export function runNsisProgramLines(
         const inp = argval(ty[0]![1]!);
         const bufn = nsisMyAtoi(argval(ty[2]![1]!));
         const outr = ty[1]![1]!.startsWith('.') ? regname(ty[1]![1]!) : null;
-        const c = inp === '' ? null : glpnModel(inp);
+        const expand = fn === 'GetLongPathNameW';
+        const c = inp === '' ? null : expand ? glpnModel(inp) : inp;
+        const occ = bumpOcc(glpnOcc, inp);
         let rv: string;
-        if (c === null || glpnFail.has(inp)) {
+        if (c === null || glpnFail.has(inp) || glpnFailNth[inp] === occ) {
           rv = '0';
-        } else if (glpnTrunc.has(inp)) {
+        } else if (glpnTrunc.has(inp) || glpnTruncNth[inp] === occ) {
           rv = String(bufn);
         } else if (c.length + 1 > bufn) {
           rv = String(c.length + 1);

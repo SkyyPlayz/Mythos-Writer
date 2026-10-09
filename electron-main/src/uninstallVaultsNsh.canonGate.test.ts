@@ -71,6 +71,8 @@ const GATE_LINES: Readonly<Record<number, string>> = {
   149: TRUNC_CHECK,
   250: PATH_CALL,
   256: ROOT_CALL,
+  257: ZERO_CHECK,
+  258: TRUNC_CHECK,
   262: 'StrLen $8 $9',
   264: 'StrCmp $6 $9 0 uninstall_vault_read',
   266: 'StrCmp $6 "\\" 0 uninstall_vault_read',
@@ -99,6 +101,9 @@ const GATE_MUTANTS: readonly { name: string; edits: Readonly<Record<number, stri
     edits: { 262: 'StrLen $8 $5', 264: 'StrCmp $6 $5 0 uninstall_vault_read' },
   },
   { name: 'root GetFullPathNameW replaced by a copy of $5', edits: { 256: 'StrCpy $9 $5' } },
+  { name: 'canon root GFPN Call Nop', edits: { 256: 'Nop' } },
+  { name: 'canon root GFPN 0-return Nop', edits: { 257: 'Nop' } },
+  { name: 'canon root GFPN trunc Nop', edits: { 258: 'Nop' } },
   {
     name: 'path canonicalisation removed (compare the raw $1)',
     edits: { 250: 'StrCpy $3 $1', 251: 'Nop', 252: 'Nop' },

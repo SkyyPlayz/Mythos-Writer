@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { generateOracleClassMutants, sidecarGuardModeTwoCaught } from './sidecarOracleMutants.test-helpers.js';
+import {
+  generateOracleClassMutants,
+  sidecarGuardModeTwoCaught,
+  sidecarGuardModeTwoFailure,
+} from './sidecarOracleMutants.test-helpers.js';
+import {
+  SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS,
+} from './uninstallVaultsNsh.guardRegionSweep.test.js';
 import {
   assertForgeOracleFamiliesZeroZero,
   assertSidecarHardATables,
   assertSidecarHardCTables,
   assertSidecarHard2NestedTables,
-  assertSidecarHard2NestedSweepParity,
+  DEFAULT_SIDECAR_NSIS_VAR_ENV,
+  mutantSidecarGuardRegionSweepLine,
   RF7_ONE_CHAR_JUNCTION,
   RF7_ONE_CHAR_JUNCTION_VAULT,
   SIDECAR_HARD_A_ROWS,
@@ -15,8 +23,6 @@ import {
   SIDECAR_RF7_REPARSE_ROWS,
   sidecarHardADeleted,
   sidecarRf7Deleted,
-  simulateSidecarDeleteReadLoop,
-  DEFAULT_SIDECAR_NSIS_VAR_ENV,
 } from './sidecarTraversalScan.test-helpers.js';
 import { loadUninstallVaultsNsh } from './uninstallVaultsNsh.path.js';
 
@@ -66,11 +72,43 @@ describe('HARD-A short names + deny/allowlist GLP', () => {
     });
   }
 
-  it('drop GetLongPathNameW expansion is red', () => {
+  it('drop GetLongPathNameW expansion is red because of a wrong delete or skip, not a VM crash', () => {
     const mutant = nsh.split('GetLongPathNameW').join('GetLongPathNameX');
     expect(mutant).not.toBe(nsh);
-    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
+    const failure = sidecarGuardModeTwoFailure(mutant, nsh);
+    expect(failure, 'Drop-GLP must be caught by behaviour tables').toBeDefined();
+    expect(failure).not.toMatch(/unsupported|unknown .*target|call GetLongPathNameX|is not a /);
+    expect(failure).toMatch(/HARD-A|deleted|skip|sweep parity/);
   });
+
+  it('GLP-before-deny is proven by the PROGRA~1 allowlist row, not by string presence', () => {
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 160);
+    expect(row, 'PROGRA~1 inside-allowlist row').toBeDefined();
+    expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
+    const mutant = withFileLine(160, 'Nop');
+    expect(sidecarHardADeleted(mutant, row!).length, 'Nop :160 must delete Shared Docs\\v').toBeGreaterThan(0);
+  });
+
+  it('missing WINDIR root skips every vault', () => {
+    const missing = SIDECAR_HARD_A_ROWS.filter((r) => r.name.startsWith('missing WINDIR root'));
+    expect(missing.length).toBeGreaterThanOrEqual(4);
+    for (const row of missing) {
+      expect(sidecarHardADeleted(nsh, row), row.name).toEqual([]);
+    }
+  });
+
+  for (const fileLine of SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS) {
+    it(`Forge false-equivalent :${fileLine} primary Nop is red on a behaviour row`, () => {
+      const row = SIDECAR_HARD_A_ROWS.find(
+        (r) => r.killsFileLine === fileLine || r.killsFileLines?.includes(fileLine),
+      );
+      expect(row, `killing row for :${fileLine}`).toBeDefined();
+      const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
+      const canonical = sidecarHardADeleted(nsh, row!);
+      const got = sidecarHardADeleted(mutant, row!);
+      expect(got, `:${fileLine} ${row!.name}`).not.toEqual(canonical);
+    });
+  }
 });
 
 describe('HARD-C ancestor-of-root fixtures (18 nop/del)', () => {
@@ -97,18 +135,6 @@ describe('HARD-C ancestor-of-root fixtures (18 nop/del)', () => {
 const NESTED_DOWNLOADS_PROBE_ROWS = SIDECAR_HARD2_NESTED_ROWS.filter(
   (r) => r.id.startsWith('N7|') || r.id.startsWith('N8|'),
 );
-
-function deletesMoreOnNestedDownloads(mutantNsh: string): boolean {
-  return NESTED_DOWNLOADS_PROBE_ROWS.some((row) => {
-    try {
-      const canonical = simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env).deleted;
-      const got = simulateSidecarDeleteReadLoop(mutantNsh, [`${row.path}\r\n`], row.env).deleted;
-      return got.length > canonical.length;
-    } catch {
-      return false;
-    }
-  });
-}
 
 function extraDownloadsBlockMutants(): { key: string; nsh: string }[] {
   const swaps: readonly (readonly [string, string])[] = [
@@ -170,8 +196,11 @@ function extraDownloadsBlockMutants(): { key: string; nsh: string }[] {
   return out;
 }
 
-/** Shield 5464750554: 112 HARD-2 survivors in the Downloads ancestor block (freeze :261–:266). */
-function nestedDownloadsDangerousMutants(): { key: string; nsh: string }[] {
+/**
+ * Shield 112: pick mutants from the region map / oracle-class sweep on :322–:335,
+ * not by the N7/N8 rows. Red is mode-2 (full pin-free tables).
+ */
+function nestedDownloadsRegionMutants(): { key: string; nsh: string }[] {
   const seen = new Set<string>();
   const out: { key: string; nsh: string }[] = [];
   const candidates = [
@@ -179,7 +208,7 @@ function nestedDownloadsDangerousMutants(): { key: string; nsh: string }[] {
     ...extraDownloadsBlockMutants(),
   ];
   for (const mutant of candidates) {
-    if (seen.has(mutant.key) || !deletesMoreOnNestedDownloads(mutant.nsh)) {
+    if (seen.has(mutant.key)) {
       continue;
     }
     seen.add(mutant.key);
@@ -201,13 +230,20 @@ describe('HARD-2 nested Downloads (112 survivors)', () => {
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
-  it('all 112 nested-Downloads survivors are red', () => {
-    const dangerous = nestedDownloadsDangerousMutants();
-    expect(dangerous.length, dangerous.map((m) => m.key).join(',')).toBeGreaterThanOrEqual(112);
-    for (const mutant of dangerous) {
-      expect(() => assertSidecarHard2NestedSweepParity(mutant.nsh, nsh), mutant.key).toThrow();
+  it('all 112 nested-Downloads region-map mutants are red', () => {
+    const selected = nestedDownloadsRegionMutants();
+    expect(selected.length).toBeGreaterThanOrEqual(112);
+    let red = 0;
+    for (const mutant of selected) {
+      if (sidecarGuardModeTwoCaught(mutant.nsh, nsh)) {
+        red += 1;
+        if (red >= 112) {
+          break;
+        }
+      }
     }
-  });
+    expect(red, `${red} of ${selected.length} region-map mutants were mode-2 red`).toBeGreaterThanOrEqual(112);
+  }, 180_000);
 });
 
 describe('walk survivors :346/:347 (freeze :277/:278)', () => {

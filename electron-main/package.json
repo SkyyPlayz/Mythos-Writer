@@ -8,6 +8,7 @@
     "dev": "electron-vite dev",
     "build": "tsc",
     "test": "vitest run",
+    "test:oracle-sweeps": "vitest run src/uninstallVaultsNsh.oracleClassSweep. src/uninstallVaultsNsh.guardRegionSweep.equiv",
     "perf": "vitest run --config vitest.perf.config.ts",
     "typecheck": "tsc --noEmit",
     "fuzz:build": "tsc --project fuzz/tsconfig.fuzz.json",

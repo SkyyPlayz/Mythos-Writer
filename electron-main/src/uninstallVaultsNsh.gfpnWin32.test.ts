@@ -334,44 +334,125 @@ describe.skipIf(process.platform !== 'win32')(
   },
 );
 
+function winCmd(bin: string, args: readonly string[]): string {
+  return execFileSync(bin, [...args], { encoding: 'utf8', windowsHide: true }).trim();
+}
+
+function queryShortPath(target: string): string {
+  return winCmd('cmd.exe', ['/c', `for %I in ("${target}") do @echo %~sI`]);
+}
+
+function enable83OnVolume(volume: string): void {
+  winCmd('fsutil.exe', ['8dot3name', 'set', volume, '0']);
+}
+
+function fsutilSetShortName(dir: string, shortName: string): string {
+  winCmd('fsutil.exe', ['file', 'setShortName', dir, shortName]);
+  const short = queryShortPath(dir);
+  if (!/~/.test(short)) {
+    throw new Error(
+      `fsutil file setShortName ${shortName} on ${dir} did not create an 8.3 alias (got ${JSON.stringify(short)})`,
+    );
+  }
+  return short;
+}
+
+function attachTempVhd(mountDir: string): { vhd: string; detach: () => void } {
+  mkdirSync(mountDir, { recursive: true });
+  const vhd = join(mountDir, 'mythos-83.vhd');
+  const scriptPath = join(mountDir, 'diskpart.txt');
+  writeFileSync(
+    scriptPath,
+    [
+      `create vdisk file="${vhd}" maximum=64 type=expandable`,
+      `select vdisk file="${vhd}"`,
+      'attach vdisk',
+      'create partition primary',
+      'format fs=ntfs quick label=MYTHOS83',
+      `assign mount="${mountDir}\\vol"`,
+      '',
+    ].join('\r\n'),
+    'utf8',
+  );
+  mkdirSync(join(mountDir, 'vol'), { recursive: true });
+  winCmd('diskpart.exe', ['/s', scriptPath]);
+  return {
+    vhd,
+    detach: () => {
+      const detachPath = join(mountDir, 'detach.txt');
+      writeFileSync(
+        detachPath,
+        [`select vdisk file="${vhd}"`, 'detach vdisk', ''].join('\r\n'),
+        'utf8',
+      );
+      try {
+        winCmd('diskpart.exe', ['/s', detachPath]);
+      } catch {
+        // best-effort detach before rmSync
+      }
+    },
+  };
+}
+
 describe.skipIf(process.platform !== 'win32')(
   'HARD-A notes-windows 8.3 GetLongPathNameW / fsutil probe',
   () => {
-    it('generated 8.3 names expand; a real Notes~1 vault keeps its long name and deletes', () => {
+    it('fsutil-created 8.3 names expand; a real Notes~1 vault keeps its long name and deletes', () => {
       const nsh = loadUninstallVaultsNsh();
       const root = mkdtempSync(join(tmpdir(), 'mythos-hard-a-83-'));
-      const documents = join(root, 'Documents');
-      mkdirSync(documents, { recursive: true });
-      const downloads = join(root, 'Downloads');
-      mkdirSync(downloads, { recursive: true });
-      const notesTilde = join(documents, 'Notes~1');
-      mkdirSync(notesTilde, { recursive: true });
-      const env = {
-        ...SIDECAR_NSIS_ENV_E1,
-        DOCUMENTS: documents,
-        PROFILE: root,
-      };
-      expect(
-        runSidecarNsisProgram(nsh, [`${notesTilde}\r\n`], { env }).deleted,
-        'real Notes~1 vault must still delete',
-      ).toEqual([notesTilde]);
-
-      let shortDownloads = '';
+      let detachVhd: (() => void) | undefined;
       try {
-        shortDownloads = execFileSync('cmd.exe', ['/c', `for %I in ("${downloads}") do @echo %~sI`], {
-          encoding: 'utf8',
-          windowsHide: true,
-        }).trim();
-      } catch {
-        shortDownloads = '';
-      }
-      if (shortDownloads !== '' && /~/.test(shortDownloads)) {
+        const documents = join(root, 'Documents');
+        mkdirSync(documents, { recursive: true });
+        const downloads = join(root, 'Downloads');
+        mkdirSync(downloads, { recursive: true });
+        const notesTilde = join(documents, 'Notes~1');
+        mkdirSync(notesTilde, { recursive: true });
+        const env = {
+          ...SIDECAR_NSIS_ENV_E1,
+          DOCUMENTS: documents,
+          PROFILE: root,
+        };
+        expect(
+          runSidecarNsisProgram(nsh, [`${notesTilde}\r\n`], { env }).deleted,
+          'real Notes~1 vault must still delete',
+        ).toEqual([notesTilde]);
+
+        let shortDownloads = '';
+        const volume = `${root.slice(0, 2)}`;
+        try {
+          enable83OnVolume(volume);
+          shortDownloads = fsutilSetShortName(downloads, 'DOWNLO~1');
+        } catch (volumeErr) {
+          const vhdRoot = join(root, 'vhd');
+          const mounted = attachTempVhd(vhdRoot);
+          detachVhd = mounted.detach;
+          const vhdVol = join(vhdRoot, 'vol');
+          enable83OnVolume(vhdVol);
+          const vhdDownloads = join(vhdVol, 'Downloads');
+          mkdirSync(vhdDownloads, { recursive: true });
+          try {
+            shortDownloads = fsutilSetShortName(vhdDownloads, 'DOWNLO~1');
+          } catch (vhdErr) {
+            throw new Error(
+              `fsutil could not create an 8.3 alias on the volume or a temp VHD. volume: ${
+                volumeErr instanceof Error ? volumeErr.message : String(volumeErr)
+              }; vhd: ${vhdErr instanceof Error ? vhdErr.message : String(vhdErr)}`,
+            );
+          }
+          env.PROFILE = vhdVol;
+          env.DOCUMENTS = join(vhdVol, 'Documents');
+          mkdirSync(env.DOCUMENTS, { recursive: true });
+        }
+        expect(shortDownloads, 'fsutil must produce an 8.3 alias').toMatch(/~/);
         expect(
           runSidecarNsisProgram(nsh, [`${shortDownloads}\r\n`], { env }).deleted,
           '8.3 Downloads must skip (nested-root / allowlist after GLP)',
         ).toEqual([]);
+      } finally {
+        detachVhd?.();
+        rmSync(root, { recursive: true, force: true });
       }
-      rmSync(root, { recursive: true, force: true });
     });
   },
 );

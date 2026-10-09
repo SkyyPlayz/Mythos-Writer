@@ -1161,14 +1161,16 @@ function applyGfpnOrGlpnCall(
     return true;
   }
   const glpn = line.match(
-    /^System::Call "kernel32::GetLongPathNameW\(w r(\d), w \.r(\d), i (\S+)\) i \.r(\d)"$/,
+    /^System::Call "kernel32::GetLongPathName(\w+)\(w r(\d), w \.r(\d), i (\S+)\) i \.r(\d)"$/,
   );
   if (glpn) {
-    const src = `$${glpn[1]!}`;
-    const dst = `$${glpn[2]!}`;
-    const size = nsisLeadingInt(value(glpn[3]!));
-    const ret = `$${glpn[4]!}`;
-    const resolved = glpnModel(reg[src] ?? '');
+    const expand = glpn[1] === 'W';
+    const src = `$${glpn[2]!}`;
+    const dst = `$${glpn[3]!}`;
+    const size = nsisLeadingInt(value(glpn[4]!));
+    const ret = `$${glpn[5]!}`;
+    const raw = reg[src] ?? '';
+    const resolved = raw === '' ? '' : expand ? glpnModel(raw) : raw;
     if (resolved !== '') {
       reg[dst] = resolved;
     }
@@ -1674,6 +1676,8 @@ const GLP_8_3_ALIASES: Readonly<Record<string, string>> = {
   'progra~1': 'Program Files',
   'progra~2': 'Program Files (x86)',
   'appdat~1': 'AppData',
+  'windo~1': 'Windows',
+  'me~1': 'me',
 };
 
 export function glpnModel(s: string): string {
@@ -1823,7 +1827,7 @@ export function executeCanonGateBlock(
         /^System::Call "kernel32::GetFullPathNameW\(w r(\d), i (\S+), w \.r(\d), p 0\) i \.r(\d)"$/,
       );
       const glpn = line.match(
-        /^System::Call "kernel32::GetLongPathNameW\(w r(\d), w \.r(\d), i (\S+)\) i \.r(\d)"$/,
+        /^System::Call "kernel32::GetLongPathName(\w+)\(w r(\d), w \.r(\d), i (\S+)\) i \.r(\d)"$/,
       );
       if (gfpn) {
         const src = `$${gfpn[1]!}`;
@@ -1844,12 +1848,14 @@ export function executeCanonGateBlock(
           reg[ret] = String(resolved.length);
         }
       } else if (glpn) {
-        const src = `$${glpn[1]!}`;
-        const size = nsisLeadingInt(value(glpn[3]!));
-        const ret = `$${glpn[4]!}`;
-        const resolved = glpnModel(reg[src] ?? '');
+        const expand = glpn[1] === 'W';
+        const src = `$${glpn[2]!}`;
+        const size = nsisLeadingInt(value(glpn[4]!));
+        const ret = `$${glpn[5]!}`;
+        const raw = reg[src] ?? '';
+        const resolved = raw === '' ? '' : expand ? glpnModel(raw) : raw;
         if (resolved !== '') {
-          reg[`$${glpn[2]!}`] = resolved;
+          reg[`$${glpn[3]!}`] = resolved;
         }
         if (resolved === '') {
           reg[ret] = '0';
@@ -2006,10 +2012,13 @@ export const DENY_PREFIX_REJECT_PATHS: readonly string[] = [
   'C:\\Windows',
   'C:\\Windows\\System32',
   DENY_PREFIX_WINDIR_GATE_REJECT_PATH,
+  'C:\\WINDO~1\\System32',
   'C:\\Program Files\\Foo',
   DENY_PREFIX_PROGRAMFILES_GATE_REJECT_PATH,
+  'C:\\PROGRA~2\\Mythos\\bin',
   'C:\\Program Files (x86)\\Bar',
   DENY_PREFIX_PROGRAMFILES64_GATE_REJECT_PATH,
+  'C:\\PROGRA~1\\Mythos\\bin',
 ];
 
 export const DENY_PREFIX_ALLOW_PATHS: readonly string[] = ['C:\\Users\\vault'];
@@ -2828,6 +2837,17 @@ export function assertDenyPrefixVmBehaviourTables(
       );
     }
   }
+  const swappedPfEnv: SidecarNsisVarEnv = {
+    ...env,
+    PROGRAMFILES: 'C:\\Program Files',
+    PROGRAMFILES64: 'C:\\Program Files (x86)',
+  };
+  const shortPfPath = 'C:\\PROGRA~1\\Mythos\\bin';
+  if (runDenyPrefixVmFromNsh(shortPfPath, nsh, swappedPfEnv) !== 'vault_read') {
+    throw new Error(
+      `expected vault_read for deny-prefix short PROGRAMFILES path ${JSON.stringify(shortPfPath)}`,
+    );
+  }
 }
 
 export type SidecarGuardVmBehaviourOptions = {
@@ -3637,6 +3657,10 @@ export type SidecarHardARow = Readonly<{
   env: SidecarNsisVarEnv;
   expect: 'skip' | 'delete';
   mustNotDelete?: readonly string[];
+  options?: Omit<SidecarNsisRunOptions, 'env'>;
+  /** Primary sweep line this row is meant to kill when Nop'd (Forge 29 / canon-root). */
+  killsFileLine?: number;
+  killsFileLines?: readonly number[];
 }>;
 
 const HARD_A_DOCS_AS_PROFILE: SidecarNsisVarEnv = { ...HARD12_ENV_E1, DOCUMENTS: 'C:\\Users\\me' };
@@ -3719,10 +3743,277 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'delete',
   },
+  {
+    name: 'PROGRA~1 PROGRAMFILES inside the allowlist must still deny Shared Docs\\v',
+    path: 'C:\\Program Files\\Shared Docs\\v',
+    env: {
+      ...HARD12_ENV_E1,
+      PROGRAMFILES: 'C:\\PROGRA~1',
+      DOCUMENTS: 'C:\\Program Files\\Shared Docs',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Program Files\\Shared Docs\\v'],
+    killsFileLine: 160,
+  },
+  {
+    name: 'APPDATA under an 8.3 parent must not delete AppData\\Roaming',
+    path: 'C:\\Users\\me\\AppData\\Roaming',
+    env: {
+      ...HARD12_ENV_E1,
+      APPDATA: 'C:\\Users\\me\\APPDAT~1\\Roaming',
+      DOCUMENTS: 'C:\\Users\\me\\AppData',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming'],
+    killsFileLine: 285,
+  },
+  {
+    name: 'Desktop under an 8.3 parent must not delete Documents\\Desktop',
+    path: 'C:\\Users\\me\\Documents\\Desktop',
+    env: {
+      ...HARD12_ENV_E1,
+      DESKTOP: 'C:\\Users\\me\\DOCUME~1\\Desktop',
+    },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\Desktop'],
+    killsFileLine: 313,
+  },
+  {
+    name: 'short DOCUME~1 vault path under a long Documents root still deletes',
+    path: 'C:\\Users\\me\\DOCUME~1\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    killsFileLine: 143,
+  },
+  {
+    name: 'short DESKTO~1 root still deletes a long Desktop vault',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\DESKTO~1' },
+    expect: 'delete',
+    killsFileLine: 216,
+  },
+  {
+    name: 'short ME~1 profile root still deletes a long Downloads vault',
+    path: 'C:\\Users\\me\\Downloads\\v',
+    env: { ...HARD12_ENV_E1, PROFILE: 'C:\\Users\\ME~1' },
+    expect: 'delete',
+    killsFileLine: 234,
+  },
+  {
+    name: 'Downloads prefix compare must not skip a same-length non-prefix Documents child',
+    path: 'C:\\Users\\no',
+    env: { ...HARD12_ENV_E1, DOCUMENTS: 'C:\\Users' },
+    expect: 'delete',
+    killsFileLines: [319, 333],
+  },
+  {
+    name: 'short PROGRAMFILES root must still deny Program Files\\Mythos\\bin',
+    path: 'C:\\Program Files\\Mythos\\bin',
+    env: { ...HARD12_ENV_E1, PROGRAMFILES: 'C:\\PROGRA~1' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Program Files\\Mythos\\bin'],
+  },
+  {
+    name: 'short WINDIR root must still deny Windows\\System32',
+    path: 'C:\\Windows\\System32\\drivers',
+    env: { ...HARD12_ENV_E1, WINDIR: 'C:\\WINDO~1' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Windows\\System32\\drivers'],
+  },
+  {
+    name: 'short vault path under a long Desktop root still deletes',
+    path: 'C:\\Users\\me\\Desktop\\VAULT~1',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+  },
+  {
+    name: 'missing WINDIR root skips a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: { ...HARD12_ENV_E1, WINDIR: '' },
+    expect: 'skip',
+  },
+  {
+    name: 'missing WINDIR root skips a Desktop vault',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: { ...HARD12_ENV_E1, WINDIR: '' },
+    expect: 'skip',
+  },
+  {
+    name: 'missing WINDIR root skips a Downloads vault',
+    path: 'C:\\Users\\me\\Downloads\\v',
+    env: { ...HARD12_ENV_E1, WINDIR: '' },
+    expect: 'skip',
+  },
+  {
+    name: 'missing WINDIR root skips an AppData Mythos vault',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    env: { ...HARD12_ENV_E1, WINDIR: '' },
+    expect: 'skip',
+  },
+  {
+    name: 'WINDIR GFPN fault skips a Documents vault (kills :147 Call Nop)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { gfpnFailPaths: ['C:\\Windows'] },
+    killsFileLine: 147,
+  },
+  {
+    name: 'WINDIR GLP fault skips a Documents vault (kills :150/:151)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnFailPaths: ['C:\\Windows'] },
+    killsFileLines: [150, 151],
+  },
+  {
+    name: 'WINDIR GLP trunc skips a Documents vault (kills :152)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnTruncPaths: ['C:\\Windows'] },
+    killsFileLine: 152,
+  },
+  {
+    name: 'PROGRAMFILES GFPN fault skips a Documents vault (kills :158)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { gfpnFailPaths: ['C:\\Program Files'] },
+    killsFileLine: 158,
+  },
+  {
+    name: 'PROGRAMFILES GLP fault skips a Documents vault (kills :161)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnFailPaths: ['C:\\Program Files'] },
+    killsFileLine: 161,
+  },
+  {
+    name: 'PROGRAMFILES GLP trunc skips a Documents vault (kills :162)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnTruncPaths: ['C:\\Program Files'] },
+    killsFileLine: 162,
+  },
+  {
+    name: 'PROGRAMFILES64 GFPN fault skips a Documents vault (kills :168)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { gfpnFailPaths: ['C:\\Program Files (x86)'] },
+    killsFileLine: 168,
+  },
+  {
+    name: 'PROGRAMFILES64 GLP fault skips a Documents vault (kills :170/:171)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnFailPaths: ['C:\\Program Files (x86)'] },
+    killsFileLines: [170, 171],
+  },
+  {
+    name: 'PROGRAMFILES64 GLP trunc skips a Documents vault (kills :172)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnTruncPaths: ['C:\\Program Files (x86)'] },
+    killsFileLine: 172,
+  },
+  {
+    name: 'Documents nested GFPN 3rd-call fault skips (kills :297)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { gfpnFailNth: { 'C:\\Users\\me\\Documents': 3 } },
+    killsFileLine: 297,
+  },
+  {
+    name: 'Documents nested GLP 3rd-call fault skips (kills :299/:300)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnFailNth: { 'C:\\Users\\me\\Documents': 3 } },
+    killsFileLines: [299, 300],
+  },
+  {
+    name: 'Documents nested GLP 3rd-call trunc skips (kills :301)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnTruncNth: { 'C:\\Users\\me\\Documents': 3 } },
+    killsFileLine: 301,
+  },
+  {
+    name: 'Desktop nested GFPN 3rd-call fault skips (kills :311)',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { gfpnFailNth: { 'C:\\Users\\me\\Desktop': 3 } },
+    killsFileLine: 311,
+  },
+  {
+    name: 'Desktop nested GLP 3rd-call fault skips (kills :314)',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnFailNth: { 'C:\\Users\\me\\Desktop': 3 } },
+    killsFileLine: 314,
+  },
+  {
+    name: 'Desktop nested GLP 3rd-call trunc skips (kills :315)',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnTruncNth: { 'C:\\Users\\me\\Desktop': 3 } },
+    killsFileLine: 315,
+  },
+  {
+    name: 'Downloads nested GFPN 3rd-call fault skips (kills :325)',
+    path: 'C:\\Users\\me\\Downloads\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { gfpnFailNth: { 'C:\\Users\\me\\Downloads': 3 } },
+    killsFileLine: 325,
+  },
+  {
+    name: 'Downloads nested GLP 3rd-call fault skips (kills :327/:328)',
+    path: 'C:\\Users\\me\\Downloads\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnFailNth: { 'C:\\Users\\me\\Downloads': 3 } },
+    killsFileLines: [327, 328],
+  },
+  {
+    name: 'Downloads nested GLP 3rd-call trunc skips (kills :329)',
+    path: 'C:\\Users\\me\\Downloads\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnTruncNth: { 'C:\\Users\\me\\Downloads': 3 } },
+    killsFileLine: 329,
+  },
+  {
+    name: 'canon-root GFPN 2nd-call fault skips a Documents vault (kills :257)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { gfpnFailNth: { 'C:\\Users\\me\\Documents': 2 } },
+    killsFileLine: 257,
+  },
+  {
+    name: 'canon-root GFPN 2nd-call trunc skips a Documents vault (kills :258)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { gfpnTruncNth: { 'C:\\Users\\me\\Documents': 2 } },
+    killsFileLine: 258,
+  },
 ];
 
 export function sidecarHardADeleted(nsh: string, row: SidecarHardARow): string[] {
-  return simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env).deleted;
+  return simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env, row.options ?? {}).deleted;
 }
 
 export function assertSidecarHardATables(nsh: string): void {
@@ -4656,6 +4947,7 @@ export type DenyPrefixStrcpyAcceptanceVariant =
   | 'reg_1_to_0'
   | 'reg_1_to_2'
   | 'reg_3_to_2'
+  | 'reg_3_to_4'
   | 'len_1'
   | 'len_2'
   | 'len_0'
@@ -4671,6 +4963,7 @@ export const DENY_PREFIX_STRCPY_ACCEPTANCE_VARIANTS: readonly DenyPrefixStrcpyAc
   'reg_1_to_0',
   'reg_1_to_2',
   'reg_3_to_2',
+  'reg_3_to_4',
   'len_1',
   'len_2',
   'len_0',
@@ -4700,6 +4993,8 @@ function denyStrcpyReplacementLine(
       return `${indent}StrCpy $4 $2 $3`;
     case 'reg_3_to_2':
       return `${indent}StrCpy $4 $1 $2`;
+    case 'reg_3_to_4':
+      return `${indent}StrCpy $4 $1 $4`;
     case 'len_1':
       return `${indent}StrCpy $4 $1 1`;
     case 'len_2':
