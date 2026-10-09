@@ -43,6 +43,12 @@ export const ORACLE_CLASS_ALL_EQUIVALENT_LINES: ReadonlySet<number> = new Set([
   382, 383, 408, 409, 434, 435,
 ]);
 
+/**
+ * :542 barrier Goto is unreachable after :541. Every oracle-class mutant on that
+ * line stays equivalent (dead code). Do not fold this into the 8b2f ancestor set.
+ */
+export const SIDECAR_FALLBACK_ORACLE_UNREACHABLE_LINES: ReadonlySet<number> = new Set([542]);
+
 const chunkMutants = (mutants: OracleClassMutant[], size: number): OracleClassMutant[][] => {
   const chunks: OracleClassMutant[][] = [];
   for (let i = 0; i < mutants.length; i += size) {
@@ -101,7 +107,10 @@ export function registerOracleClassLineSweep(lineFirst: number, lineLast: number
             timeout,
           );
         });
-        if (!ORACLE_CLASS_ALL_EQUIVALENT_LINES.has(fileLine)) {
+        if (
+          !ORACLE_CLASS_ALL_EQUIVALENT_LINES.has(fileLine) &&
+          !SIDECAR_FALLBACK_ORACLE_UNREACHABLE_LINES.has(fileLine)
+        ) {
           it(
             `line :${fileLine} — at least one oracle-class mutant is caught`,
             () => {

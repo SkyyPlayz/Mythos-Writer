@@ -9,8 +9,8 @@ import {
   DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES,
   registerCanonicalSweepNsh,
   simulateSidecarDeleteReadLoop,
+  SIDECAR_FALLBACK_REGION_FILE_LINE_LAST,
   SIDECAR_GUARD_REGION_FILE_LINE_FIRST,
-  SIDECAR_GUARD_REGION_FILE_LINE_LAST,
   TRAVERSAL_ALLOW_DOT_LETTER_DELETE_PATHS,
   TRAVERSAL_ALLOW_SEGMENT_TAIL_DELETE_PATHS,
   type SidecarNsisVarEnv,
@@ -441,7 +441,7 @@ export function generateOracleClassMutants(nsh: string): OracleClassMutant[] {
     return next;
   };
 
-  for (let n = SIDECAR_GUARD_REGION_FILE_LINE_FIRST; n <= SIDECAR_GUARD_REGION_FILE_LINE_LAST; n += 1) {
+  for (let n = SIDECAR_GUARD_REGION_FILE_LINE_FIRST; n <= SIDECAR_FALLBACK_REGION_FILE_LINE_LAST; n += 1) {
     const s = src[n - 1]!;
     const t = s.trim();
     const indent = s.match(/^\s*/)?.[0] ?? '';

@@ -15,6 +15,7 @@ import {
   runSidecarNsisProgram,
   SIDECAR_LINE_STEP_LIMIT_ERROR,
   SIDECAR_NSIS_ENV_E1,
+  SIDECAR_NSIS_MAX_STRLEN,
   type SidecarNsisRunOptions,
 } from './sidecarNsisVm.test-helpers.js';
 
@@ -601,6 +602,10 @@ export const SIDECAR_GUARD_REGION_END_FOLLOW_LINE = '          Goto uninstall_va
 
 export const SIDECAR_GUARD_REGION_FILE_LINE_FIRST = 43;
 export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 541;
+
+/** S-19 existence helpers sit after the :541/:542 barrier (outside the pin). */
+export const SIDECAR_FALLBACK_REGION_FILE_LINE_FIRST = 542;
+export const SIDECAR_FALLBACK_REGION_FILE_LINE_LAST = 582;
 
 export function nshExecutableLines(source: string): string {
   return source.replace(/;[^\n]*/g, '');
@@ -5939,6 +5944,68 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     options: { gfpnFailFileLines: [360] },
     killsFileLine: 361,
   },
+  {
+    name: 'line GLP oversize (required size > NSIS_MAX_STRLEN) keeps folder; never deletes truncated prefix (kills :145 Nop / tgt3->0)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault'],
+    options: { glpnOversizeFileLines: [143] },
+    killsFileLine: 145,
+  },
+  {
+    name: 'canon $3 GLP oversize (required size > NSIS_MAX_STRLEN) keeps folder; never deletes truncated prefix (kills :323 Nop / tgt3->0)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault'],
+    options: { glpnOversizeFileLines: [321] },
+    killsFileLine: 323,
+  },
+  {
+    name: 'S-19 :200 errno 2 existing AppData leftover; Documents vault still deletes (kills :547 fb_5a Goto Nop)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { glpnErrnoFileLines: { 200: 2 } },
+    killsFileLine: 547,
+  },
+  {
+    name: 'S-19 :230 errno 2 existing Documents leftover; Desktop vault still deletes (kills :552 fb_5d Goto Nop)',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { glpnErrnoFileLines: { 230: 2 } },
+    killsFileLine: 552,
+  },
+  {
+    name: 'S-19 :260 errno 2 existing Desktop leftover; Downloads vault still deletes (kills :557 fb_5k Goto Nop)',
+    path: 'C:\\Users\\me\\Downloads\\v',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { glpnErrnoFileLines: { 260: 2 } },
+    killsFileLine: 557,
+  },
+  {
+    name: 'S-19 :290 errno 2 existing Downloads leftover; Documents vault still deletes (kills :567 fb_5l Goto Nop)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { glpnErrnoFileLines: { 290: 2 } },
+    killsFileLine: 567,
+  },
+  {
+    name: 'S-19 :200 errno 2 INVALID GFA leftover; AppData descendant still deletes via H3 (kills :546 fb_5a IntCmp Nop)',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\Docs\\v',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: {
+      glpnErrnoFileLines: { 200: 2 },
+      invalidAttrPaths: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer'],
+    },
+    killsFileLine: 546,
+    killsFileLines: [201, 202, 207, 546],
+  },
 ];
 
 
@@ -7371,6 +7438,79 @@ export const PROGRAMFILES64_DENY_STRCMP = '        StrCmp $4 $5 uninstall_vault_
 export function assertWindirProgramFilesDenyBehaviourPins(nsh: string): void {
   assertSidecarGuardRegionExact(nsh);
 }
+
+export function nshReplaceFileLine(nsh: string, fileLineOneBased: number, text: string): string {
+  const next = nsh.split('\n');
+  const indent = next[fileLineOneBased - 1]!.match(/^\s*/)?.[0] ?? '';
+  next[fileLineOneBased - 1] = `${indent}${text}`;
+  return next.join('\n');
+}
+
+/** Primary sweep mutant for one S-19 fallback helper line (:542–:582). */
+export function mutantSidecarFallbackSweepLine(nsh: string, fileLineOneBased: number): string {
+  if (
+    fileLineOneBased < SIDECAR_FALLBACK_REGION_FILE_LINE_FIRST ||
+    fileLineOneBased > SIDECAR_FALLBACK_REGION_FILE_LINE_LAST
+  ) {
+    throw new Error(`file line ${fileLineOneBased} outside fallback region`);
+  }
+  const line = nsh.split('\n')[fileLineOneBased - 1];
+  if (line === undefined) {
+    throw new Error(`fallback file line ${fileLineOneBased} missing`);
+  }
+  const trimmed = line.trim();
+  if (/^\w+:\s*$/.test(trimmed)) {
+    return nshReplaceFileLine(nsh, fileLineOneBased, trimmed.replace(':', 'X:'));
+  }
+  return nshReplaceFileLine(nsh, fileLineOneBased, 'Nop');
+}
+
+/**
+ * `IntCmp $4 ${NSIS_MAX_STRLEN} dest 0 dest` → greater-branch fall-through (`tgt3->0`).
+ * Live only when `$4 > NSIS_MAX_STRLEN`; equal-trunc fixtures never take this branch.
+ */
+export function mutantSidecarIntCmpMaxTgt3To0(nsh: string, fileLineOneBased: number): string {
+  const line = nsh.split('\n')[fileLineOneBased - 1];
+  if (line === undefined) {
+    throw new Error(`file line ${fileLineOneBased} missing`);
+  }
+  const trimmed = line.trim();
+  const m = trimmed.match(/^IntCmp \$4 \$\{NSIS_MAX_STRLEN\} (\S+) 0 \1$/);
+  if (m === null) {
+    throw new Error(`:${fileLineOneBased} is not a MAX IntCmp with equal/greater → same dest: ${trimmed}`);
+  }
+  return nshReplaceFileLine(nsh, fileLineOneBased, `IntCmp $4 \${NSIS_MAX_STRLEN} ${m[1]} 0 0`);
+}
+
+export type SidecarTgt3MaxlenSpec = Readonly<{
+  intCmpLine: number;
+  callLine: number;
+  name: string;
+  path: string;
+  options: Omit<SidecarNsisRunOptions, 'env'>;
+}>;
+
+/**
+ * 12 GLP MAX IntCmp sites. Each row uses a required-size &gt; NSIS_MAX_STRLEN
+ * (`glpnOversize*`) so `tgt3->0` is live. Canonical keeps the folder and never
+ * Deletes the truncated prefix.
+ */
+export const SIDECAR_TGT3_MAXLEN_SPECS: readonly SidecarTgt3MaxlenSpec[] = [
+  { intCmpLine: 145, callLine: 143, name: 'line GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [143] } },
+  { intCmpLine: 157, callLine: 155, name: 'WINDIR GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [155] } },
+  { intCmpLine: 172, callLine: 170, name: 'PROGRAMFILES GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [170] } },
+  { intCmpLine: 187, callLine: 185, name: 'PROGRAMFILES64 GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [185] } },
+  { intCmpLine: 203, callLine: 200, name: 'APPDATA allow GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [200] } },
+  { intCmpLine: 233, callLine: 230, name: 'Documents allow GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [230] } },
+  { intCmpLine: 263, callLine: 260, name: 'Desktop allow GLP', path: 'C:\\Users\\me\\Desktop\\v', options: { glpnOversizeFileLines: [260] } },
+  { intCmpLine: 293, callLine: 290, name: 'Downloads allow GLP', path: 'C:\\Users\\me\\Downloads\\v', options: { glpnOversizeFileLines: [290] } },
+  { intCmpLine: 323, callLine: 321, name: 'canon $3 GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [321] } },
+  { intCmpLine: 334, callLine: 332, name: 'canon $9 GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [332] } },
+  { intCmpLine: 366, callLine: 363, name: 'nested AppData GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [363] } },
+  { intCmpLine: 392, callLine: 389, name: 'nested Documents GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [389] } },
+];
+
+export const SIDECAR_NSIS_LONG_DOCUMENTS_ROOT = `C:\\Users\\me\\${'D'.repeat(SIDECAR_NSIS_MAX_STRLEN)}`;
 
 /** Primary sweep mutant for one guard-region file line (:43–:376). */
 export function mutantSidecarGuardRegionSweepLine(nsh: string, fileLineOneBased: number): string {

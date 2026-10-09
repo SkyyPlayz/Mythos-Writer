@@ -6,6 +6,7 @@ import {
   DEFAULT_HELPER_NSIS_VAR_ENV,
   HELPER_CRITIC_MUTANTS,
   HELPER_GFPN_FAIL_LINES,
+  HELPER_GFPN_KEEP_ROWS,
   HELPER_H1_SLASH_SITE,
   HELPER_H1_SLASH_SITES,
   HELPER_HARD_B_MUTANTS,
@@ -211,6 +212,18 @@ describe('HARD-B helper mutants + H1 helper slash + GFPN-fail', () => {
   it(`lists ${HELPER_GFPN_FAIL_MUTANTS.length} GFPN-fail mutants`, () => {
     expect(HELPER_GFPN_FAIL_MUTANTS).toHaveLength(13);
   });
+
+  it('ships 9 helper GFPN-failure fail-closed keep rows', () => {
+    expect(HELPER_GFPN_KEEP_ROWS).toHaveLength(9);
+  });
+
+  for (const row of HELPER_GFPN_KEEP_ROWS) {
+    it(row.name, () => {
+      const run = runMythosRmdirHelper(nsh, row.site, { env: DEFAULT_HELPER_NSIS_VAR_ENV, fault: row.fault });
+      expect(run.hung, row.name).toBe(false);
+      expect(run.deleted, row.name).toEqual([]);
+    });
+  }
 
   for (const insert of MYTHOS_RMDIR_UNLESS_REPARSE_INSERTS) {
     it(`composite bare RMDir for ${insert} is red`, () => {

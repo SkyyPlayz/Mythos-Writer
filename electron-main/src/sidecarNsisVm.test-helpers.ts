@@ -12,6 +12,11 @@ import { gfpnModel, glpnModel, type SidecarNsisVarEnv } from './sidecarTraversal
 export type { SidecarNsisVarEnv };
 
 export const SIDECAR_NSIS_MAX_STRLEN = 1024;
+
+/** Prefix a too-small NSIS buffer would hold (`bufn-1` chars, no terminating NUL). */
+export function nsisTruncatedPrefix(path: string, bufn: number = SIDECAR_NSIS_MAX_STRLEN): string {
+  return path.length >= bufn ? path.slice(0, bufn - 1) : path;
+}
 export const SIDECAR_LINE_STEP_LIMIT_ERROR = 'SIDECAR_LINE_STEP_LIMIT_EXCEEDED';
 export const SIDECAR_SIDECAR_DELETE_PATH_SUFFIX = 'Mythos Writer\\uninstall-delete-paths.txt';
 
@@ -429,6 +434,24 @@ export type SidecarNsisRunOptions = {
   /** Truncate GetLongPathNameW only when the Call is on one of these 1-based file lines. */
   glpnTruncFileLines?: readonly number[];
   /**
+   * GetFullPathNameW returns buffer+1 (required size &gt; NSIS_MAX_STRLEN) and writes
+   * only the first `bufn-1` chars. Models a path longer than the NSIS buffer.
+   */
+  gfpnOversizePaths?: readonly string[];
+  /** Oversize the 1-based Nth GetFullPathNameW of this exact input. */
+  gfpnOversizeNth?: Readonly<Record<string, number>>;
+  /** Oversize GetFullPathNameW only when the Call is on one of these 1-based file lines. */
+  gfpnOversizeFileLines?: readonly number[];
+  /**
+   * GetLongPathNameW returns buffer+1 and writes the truncated prefix. Continuing
+   * past the MAX IntCmp would Delete that prefix — canonical must keep the folder.
+   */
+  glpnOversizePaths?: readonly string[];
+  /** Oversize the 1-based Nth GetLongPathNameW of this exact input. */
+  glpnOversizeNth?: Readonly<Record<string, number>>;
+  /** Oversize GetLongPathNameW only when the Call is on one of these 1-based file lines. */
+  glpnOversizeFileLines?: readonly number[];
+  /**
    * Win32 last-error for a failed GetLongPathNameW of this exact input.
    * Default for any other GLP failure is ERROR_FILE_NOT_FOUND (2).
    * ERROR_ACCESS_DENIED is 5 — must not fall back to GFPN.
@@ -720,6 +743,12 @@ export function runNsisProgramLines(
   const gfpnTruncFileLines = new Set(options.gfpnTruncFileLines ?? []);
   const glpnFailFileLines = new Set(options.glpnFailFileLines ?? []);
   const glpnTruncFileLines = new Set(options.glpnTruncFileLines ?? []);
+  const gfpnOversize = new Set(options.gfpnOversizePaths ?? []);
+  const gfpnOversizeNth = options.gfpnOversizeNth ?? {};
+  const gfpnOversizeFileLines = new Set(options.gfpnOversizeFileLines ?? []);
+  const glpnOversize = new Set(options.glpnOversizePaths ?? []);
+  const glpnOversizeNth = options.glpnOversizeNth ?? {};
+  const glpnOversizeFileLines = new Set(options.glpnOversizeFileLines ?? []);
   const glpnErrno = options.glpnErrno ?? {};
   const glpnErrnoFileLines = options.glpnErrnoFileLines ?? {};
   const gfpnOcc = new Map<string, number>();
@@ -1100,12 +1129,23 @@ export function runNsisProgramLines(
           f = faultInfo.spec.slice(2);
         }
         let rv: string;
+        let wroteOut = false;
         if (c === null) {
           rv = '0';
         } else if (gfpnFail.has(inp) || gfpnFailNth[inp] === occ || gfpnFailFileLines.has(fileLine) || f === 'zero') {
           rv = '0';
         } else if (gfpnTrunc.has(inp) || gfpnTruncNth[inp] === occ || gfpnTruncFileLines.has(fileLine) || f === 'trunc') {
           rv = String(bufn);
+        } else if (
+          gfpnOversize.has(inp) ||
+          gfpnOversizeNth[inp] === occ ||
+          gfpnOversizeFileLines.has(fileLine)
+        ) {
+          rv = String(bufn + 1);
+          if (outr !== null) {
+            R[outr] = c.length >= bufn ? c.slice(0, bufn - 1) : c;
+          }
+          wroteOut = true;
         } else if (f === 'truncP') {
           rv = String(bufn + 1);
         } else if (f === 'err') {
@@ -1117,7 +1157,8 @@ export function runNsisProgramLines(
         }
         // Failed / truncated GFPN still writes the expanded path. Nop of the
         // following 0/trunc check is a real kill only because of this write.
-        if (outr !== null && c !== null) {
+        // Oversize writes the truncated prefix only (already stored above).
+        if (outr !== null && c !== null && !wroteOut) {
           R[outr] = c;
         }
         const rr = regname(rt[1]!);
@@ -1167,6 +1208,15 @@ export function runNsisProgramLines(
           }
         } else if (glpnTrunc.has(inp) || glpnTruncNth[inp] === occ || glpnTruncFileLines.has(fileLine)) {
           rv = String(bufn);
+        } else if (
+          glpnOversize.has(inp) ||
+          glpnOversizeNth[inp] === occ ||
+          glpnOversizeFileLines.has(fileLine)
+        ) {
+          rv = String(bufn + 1);
+          if (outr !== null) {
+            R[outr] = c.length >= bufn ? c.slice(0, bufn - 1) : c;
+          }
         } else if (c.length + 1 > bufn) {
           rv = String(c.length + 1);
         } else {

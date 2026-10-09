@@ -10,11 +10,14 @@ import {
   FILE_ATTRIBUTE_HIDDEN,
   FILE_ATTRIBUTE_READONLY,
   FILE_ATTRIBUTE_SYSTEM,
+  MYTHOS_RMDIR_HELPER_KEEP_SITES,
+  MYTHOS_RMDIR_HELPER_REMOVE_ALL_SITES,
   MYTHOS_RMDIR_HELPER_SITES,
   nsisValidateFilename,
   runMythosRmdirHelper,
   SIDECAR_NSIS_ENV_E1,
   type MythosRmdirHelperSite,
+  type SidecarNsisFault,
   type SidecarNsisRunOptions,
   type SidecarNsisVarEnv,
 } from './sidecarNsisVm.test-helpers.js';
@@ -304,6 +307,26 @@ export const HELPER_H1_SLASH_SITES: readonly MythosRmdirHelperSite[] = [
 
 export const HELPER_GFPN_FAULT_SPECS = ['g1zero', 'g1trunc', 'g2zero', 'g2trunc'] as const;
 
+/**
+ * 9 helper GFPN-failure guards: path/root × zero / equal-trunc / greater-than-MAX,
+ * plus two extra sites. Each fault must fail closed (keep the folder).
+ */
+export const HELPER_GFPN_KEEP_ROWS: readonly {
+  name: string;
+  site: MythosRmdirHelperSite;
+  fault: SidecarNsisFault;
+}[] = [
+  { name: ':613 path GFPN zero keeps folder', site: MYTHOS_RMDIR_HELPER_KEEP_SITES[0]!, fault: 'g1zero' },
+  { name: ':615 path GFPN equal-trunc keeps folder', site: MYTHOS_RMDIR_HELPER_KEEP_SITES[0]!, fault: 'g1trunc' },
+  { name: ':615 path GFPN oversize (>NSIS_MAX_STRLEN) keeps folder', site: MYTHOS_RMDIR_HELPER_KEEP_SITES[0]!, fault: 'g1truncP' },
+  { name: ':616 root GFPN zero keeps folder', site: MYTHOS_RMDIR_HELPER_KEEP_SITES[0]!, fault: 'g2zero' },
+  { name: ':618 root GFPN equal-trunc keeps folder', site: MYTHOS_RMDIR_HELPER_KEEP_SITES[0]!, fault: 'g2trunc' },
+  { name: ':618 root GFPN oversize (>NSIS_MAX_STRLEN) keeps folder', site: MYTHOS_RMDIR_HELPER_KEEP_SITES[0]!, fault: 'g2truncP' },
+  { name: ':613 path GFPN zero on note-thumb-cache keeps folder', site: MYTHOS_RMDIR_HELPER_KEEP_SITES[1]!, fault: 'g1zero' },
+  { name: ':615 path GFPN trunc on remove-all vaults keeps folder', site: MYTHOS_RMDIR_HELPER_REMOVE_ALL_SITES[2]!, fault: 'g1trunc' },
+  { name: ':616 root GFPN zero on remove-all Mythos Writer keeps folder', site: MYTHOS_RMDIR_HELPER_REMOVE_ALL_SITES[3]!, fault: 'g2zero' },
+];
+
 export function assertMythosRmdirHelperTables(
   nsh: string,
   env: SidecarNsisVarEnv = DEFAULT_HELPER_NSIS_VAR_ENV,
@@ -333,6 +356,15 @@ export function assertMythosRmdirHelperTables(
     }
     if (run.deleted.length !== 0) {
       throw new Error(`HARD-B helper GFPN ${spec}: expected skip, deleted ${JSON.stringify(run.deleted)}`);
+    }
+  }
+  for (const row of HELPER_GFPN_KEEP_ROWS) {
+    const run = runMythosRmdirHelper(nsh, row.site, { env, fault: row.fault });
+    if (run.hung) {
+      throw new Error(`HARD-B helper GFPN keep ${row.name}: hung`);
+    }
+    if (run.deleted.length !== 0) {
+      throw new Error(`HARD-B helper GFPN keep ${row.name}: expected skip, deleted ${JSON.stringify(run.deleted)}`);
     }
   }
   for (const row of HELPER_RF7_ROWS) {

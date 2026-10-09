@@ -8,11 +8,18 @@ import {
   mutantMB1_neutralizeBackslashDotBackslashReject,
   mutantN1_forwardSlashCheckPipe,
   mutantSidecarGuardRegionSweepLine,
+  mutantSidecarFallbackSweepLine,
+  SIDECAR_FALLBACK_REGION_FILE_LINE_FIRST,
+  SIDECAR_FALLBACK_REGION_FILE_LINE_LAST,
   SIDECAR_GUARD_REGION_FILE_LINE_FIRST,
   SIDECAR_GUARD_REGION_FILE_LINE_LAST,
 } from './sidecarTraversalScan.test-helpers.js';
 import { sidecarGuardModeTwoCaught } from './sidecarOracleMutants.test-helpers.js';
-import { ORACLE_CLASS_ALL_EQUIVALENT_LINES, SIDECAR_GUARD_STRENGTH_SHARDS } from './sidecarOracleClassSweep.test-helpers.js';
+import {
+  ORACLE_CLASS_ALL_EQUIVALENT_LINES,
+  SIDECAR_FALLBACK_ORACLE_UNREACHABLE_LINES,
+  SIDECAR_GUARD_STRENGTH_SHARDS,
+} from './sidecarOracleClassSweep.test-helpers.js';
 
 /**
  * Behaviour-equivalent mode-2 primaries (the `Nop` fallback on each of these lines). A sibling check
@@ -108,7 +115,6 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   // :541 unlisted — Nop replaces END_FOLLOW; locator / fallthrough into fb_5a is mode-2 red. Barrier :542 still blocks the unknown-tag two-mutation.
   // :453 unlisted — :540 fail-closed: leftover $2 no longer returns through ret9l.
   144: 'Line GLP 0-check Nop is identity: fail empties scratch; the empty $3 check still fail-closes.',
-  145: 'Line GLP MAX-check Nop is identity: fixtures never truncate the line GLP.',
   147: 'Line GLP empty-$3 Nop is identity: a successful GLP never writes empty.',
   156: 'WINDIR GLP 0-check Nop is identity: fail empties scratch; the empty $5 check still fail-closes.',
   158: 'WINDIR StrCpy $5 $2 Nop is identity: GFPN of WINDIR is already the long form.',
@@ -118,12 +124,11 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   186: 'PROGRAMFILES64 GLP 0-check Nop is identity: fail empties scratch; the empty $5 check still fail-closes.',
   188: 'PROGRAMFILES64 StrCpy $5 $2 Nop is identity: GFPN is already the long form.',
   189: 'PROGRAMFILES64 empty-$5 Nop is identity: a successful deny GLP never writes empty.',
-  201: 'APPDATA Pop $8 Nop is identity: success never reads $8.',
-  202: 'APPDATA GLP +5 Nop is identity: APPDATA GLP succeeds on every fixture.',
   205: 'APPDATA empty-$5 (success) Nop is identity: GFPN/GLP of APPDATA is never empty.',
-  207: 'APPDATA errno-2 Nop is identity: APPDATA GLP does not miss with 2 on these fixtures.',
   208: 'APPDATA errno-3 Nop is identity: APPDATA GLP does not miss with 3 on these fixtures.',
   209: 'APPDATA other-error Goto Nop is identity: APPDATA GLP succeeds so the fail block is unused.',
+  // :201 / :202 / :207 unlisted — S-19 AppData leftover errno-2 rows (Documents vault still
+  // deletes; INVALID-GFA descendant still deletes) read $8 / take the +5 fail block / take errno-2.
   // :210 unlisted — S-19 existence helper Nop falls into H3 with GFPN on a spurious errno-2 vault.
   233: 'Documents GLP MAX-check Nop is identity: fixtures never truncate Documents.',
   235: 'Documents empty-$5 (success) Nop is identity: Documents GLP is never empty.',
@@ -143,7 +148,6 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   299: 'Downloads other-error Goto Nop is identity when Downloads GLP succeeds.',
   // :300 unlisted — S-19 Downloads existence helper Nop falls into H3 with GFPN.
   322: 'Canon $3 GLP 0-check Nop is identity: fail empties scratch; the empty $3 check still fail-closes.',
-  323: 'Canon $3 GLP MAX-check Nop is identity: fixtures never truncate.',
   325: 'Canon $3 empty Nop is identity: a successful GLP never writes empty.',
   333: 'Canon $9 GLP 0-check Nop is identity: fail empties scratch; the empty $9 check still fail-closes.',
   334: 'Canon $9 GLP MAX-check Nop is identity: fixtures never truncate.',
@@ -165,9 +169,29 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   513: 'IntCmp $7 0 Nop is identity: fixtures never have `\\` at index 0.',
 };
 
+/**
+ * 12 equivalents that hold by Win32 / NSIS System-plugin contract, not by fixture length.
+ * GLP failure copies an empty dest (so a later empty-check still fail-closes); a successful
+ * GLP never writes empty (so the empty-check Nop is unused on the success path).
+ */
+export const SIDECAR_GUARD_SWEEP_API_CONTRACT_EQUIVALENTS: Readonly<Record<number, string>> = {
+  144: 'API: GetLongPathNameW failure empties $2; Nop of the 0-check still hits the empty-$3 fail-close.',
+  147: 'API: successful GetLongPathNameW never writes empty; Nop of empty-$3 is unused on the success path.',
+  156: 'API: WINDIR GLP failure empties scratch; empty-$5 still fail-closes.',
+  159: 'API: successful WINDIR GLP never writes empty.',
+  171: 'API: PROGRAMFILES GLP failure empties scratch; empty-$5 still fail-closes.',
+  174: 'API: successful PROGRAMFILES GLP never writes empty.',
+  186: 'API: PROGRAMFILES64 GLP failure empties scratch; empty-$5 still fail-closes.',
+  189: 'API: successful PROGRAMFILES64 GLP never writes empty.',
+  322: 'API: canon $3 GLP failure empties scratch; empty-$3 still fail-closes.',
+  325: 'API: successful canon $3 GLP never writes empty.',
+  333: 'API: canon $9 GLP failure empties scratch; empty-$9 still fail-closes.',
+  336: 'API: successful canon $9 GLP never writes empty.',
+};
+
 /** Forge RESULT_97be (29) + RESULT_36d2 (33) + RESULT_8329 (:286). Mode 2 must catch each primary Nop. */
 export const SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS: readonly number[] = [
-  143, 152, 153, 155, 157, 168, 169, 170, 172, 183, 184, 185, 187, 198, 199, 203, 210, 228, 229, 240, 258, 259, 260, 270, 288, 289,
+  143, 152, 153, 155, 157, 168, 169, 170, 172, 183, 184, 185, 187, 198, 199, 201, 202, 203, 207, 210, 228, 229, 240, 258, 259, 260, 270, 288, 289,
   290, 298, 319, 320, 330, 331, 332, 361, 362, 363, 364, 366, 370, 373, 387, 388, 390, 391, 392, 396, 398, 413, 414, 415, 416,
   417, 418, 422, 424, 439, 440, 442, 443, 444, 448, 449, 450,
   300, 376, 378, 399, 402, 425, 451, 454,
@@ -196,6 +220,26 @@ export const SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES: Readonly<Recor
   ...SIDECAR_GUARD_SWEEP_EXTENDED_EQUIVALENTS,
   ...SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS,
   ...SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS,
+};
+
+/**
+ * S-19 fallback helpers :542–:582. Primary Nop / label_rename. Listed lines are
+ * identity on the VM tables; unlisted lines are killed by a named HARD-A / S-19 row.
+ */
+export const SIDECAR_FALLBACK_SWEEP_EQUIVALENTS: Readonly<Record<number, string>> = {
+  542: 'Barrier Goto Nop is unreachable: :541 already Goto uninstall_vault_read. Two-mutation (smash $2 + Nop :541) is still blocked by this line remaining.',
+  544: 'API: allow-list GFPN writes $5 even on failure, and GFPN-zero already fail-closed, so fb_5a is reached only with non-empty $5. StrCmp-empty Nop is unused.',
+  549: 'API: Documents leftover GFPN writes $5 even on failure; GFPN-zero already fail-closed. fb_5d StrCmp-empty Nop is unused.',
+  554: 'API: Desktop leftover GFPN writes $5 even on failure; GFPN-zero already fail-closed. fb_5k StrCmp-empty Nop is unused.',
+  559: 'API: nested AppData GFPN writes $9 even on failure; GFPN-zero already fail-closed. fb_9a StrCmp-empty Nop is unused.',
+  564: 'API: Downloads leftover GFPN writes $5 even on failure; GFPN-zero already fail-closed. fb_5l StrCmp-empty Nop is unused.',
+  569: 'API: nested Documents GFPN writes $9 even on failure; GFPN-zero already fail-closed. fb_9d StrCmp-empty Nop is unused.',
+  574: 'API: nested Desktop GFPN writes $9 even on failure; GFPN-zero already fail-closed. fb_9k StrCmp-empty Nop is unused.',
+  579: 'API: nested Downloads GFPN writes $9 even on failure; GFPN-zero already fail-closed. fb_9l StrCmp-empty Nop is unused.',
+  562: 'fb_9a valid-leftover Goto uninstall_vault_read Nop is identity: fall-through enters fb_5l with $5 still the existing AppData leftover, which Goto al_deny — same keep.',
+  572: 'fb_9d valid-leftover Goto uninstall_vault_read Nop is identity: fall-through enters fb_9k with $9 still the existing Documents leftover, which Goto uninstall_vault_read — same keep.',
+  577: 'fb_9k valid-leftover Goto uninstall_vault_read Nop is identity: fall-through enters fb_9l with $9 still the existing Desktop leftover, which Goto uninstall_vault_read — same keep.',
+  582: 'fb_9l valid-leftover Goto uninstall_vault_read Nop is identity: fall-through is uninstall_vault_close. The sidecar delete set is unchanged — the vault was already fail-closed, and FileClose does not RMDir it.',
 };
 
 describe('sidecar guard region sweep :43-:541 (buildIntegrity excluded)', () => {
@@ -304,6 +348,75 @@ describe('sidecar guard region sweep :43-:541 (buildIntegrity excluded)', () => 
       expect([...ORACLE_CLASS_ALL_EQUIVALENT_LINES].sort((a, b) => a - b)).toEqual([
         382, 383, 408, 409, 434, 435,
       ]);
+    });
+
+    it('fallback :542 is the only unreachable oracle-class line (barrier after :541)', () => {
+      expect([...SIDECAR_FALLBACK_ORACLE_UNREACHABLE_LINES]).toEqual([542]);
+    });
+
+    it('API-contract equivalents are exactly these 12 and stay listed', () => {
+      const keys = Object.keys(SIDECAR_GUARD_SWEEP_API_CONTRACT_EQUIVALENTS)
+        .map(Number)
+        .sort((a, b) => a - b);
+      expect(keys).toEqual([144, 147, 156, 159, 171, 174, 186, 189, 322, 325, 333, 336]);
+      for (const fileLine of keys) {
+        expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[fileLine], `:${fileLine}`).toBeDefined();
+      }
+    });
+
+    it('fixture-claim MAX Nops :145 and :323 are now killed (oversize rows)', () => {
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[145]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[323]).toBeUndefined();
+    });
+  });
+
+  describe('mode (1)+(2) S-19 fallback helpers :542-:582', () => {
+    for (
+      let fileLine = SIDECAR_FALLBACK_REGION_FILE_LINE_FIRST;
+      fileLine <= SIDECAR_FALLBACK_REGION_FILE_LINE_LAST;
+      fileLine += 1
+    ) {
+      it(`line :${fileLine} fallback primary differs from canonical`, () => {
+        const mutant = mutantSidecarFallbackSweepLine(nsh, fileLine);
+        expect(mutant).not.toBe(nsh);
+      });
+      const equivReason = SIDECAR_FALLBACK_SWEEP_EQUIVALENTS[fileLine];
+      if (equivReason) {
+        it(`line :${fileLine} behaviour-equivalent primary is NOT caught (documented): ${equivReason}`, () => {
+          const mutant = mutantSidecarFallbackSweepLine(nsh, fileLine);
+          expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
+        });
+      } else {
+        it(`line :${fileLine} fallback primary sweep mutant is caught by VM behaviour tables`, () => {
+          const mutant = mutantSidecarFallbackSweepLine(nsh, fileLine);
+          expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
+        });
+      }
+    }
+
+    it('fallback sweep discriminates — caught and equivalent partition :542-:582', () => {
+      let caughtCount = 0;
+      let equivCount = 0;
+      for (
+        let fileLine = SIDECAR_FALLBACK_REGION_FILE_LINE_FIRST;
+        fileLine <= SIDECAR_FALLBACK_REGION_FILE_LINE_LAST;
+        fileLine += 1
+      ) {
+        if (SIDECAR_FALLBACK_SWEEP_EQUIVALENTS[fileLine]) {
+          equivCount += 1;
+        } else {
+          caughtCount += 1;
+        }
+      }
+      expect(equivCount + caughtCount).toBe(
+        SIDECAR_FALLBACK_REGION_FILE_LINE_LAST - SIDECAR_FALLBACK_REGION_FILE_LINE_FIRST + 1,
+      );
+      expect(caughtCount).toBeGreaterThan(0);
+      expect(
+        Object.keys(SIDECAR_FALLBACK_SWEEP_EQUIVALENTS)
+          .map(Number)
+          .sort((a, b) => a - b),
+      ).toEqual([542, 544, 549, 554, 559, 562, 564, 569, 572, 574, 577, 579, 582]);
     });
   });
 });
