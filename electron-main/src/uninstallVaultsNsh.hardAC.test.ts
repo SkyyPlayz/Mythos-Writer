@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
+import { ORACLE_CLASS_ALL_EQUIVALENT_LINES } from './sidecarOracleClassSweep.test-helpers.js';
 import {
   generateOracleClassMutants,
   sidecarGuardModeTwoCaught,
   sidecarGuardModeTwoFailure,
 } from './sidecarOracleMutants.test-helpers.js';
 import {
+  SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES,
   SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS,
 } from './uninstallVaultsNsh.guardRegionSweep.test.js';
 import {
@@ -89,12 +91,41 @@ describe('HARD-A short names + deny/allowlist GLP', () => {
     expect(sidecarHardADeleted(mutant, row!).length, 'Nop :160 must delete Shared Docs\\v').toBeGreaterThan(0);
   });
 
-  it('missing WINDIR root skips every vault', () => {
-    const missing = SIDECAR_HARD_A_ROWS.filter((r) => r.name.startsWith('missing WINDIR root'));
-    expect(missing.length).toBeGreaterThanOrEqual(4);
-    for (const row of missing) {
-      expect(sidecarHardADeleted(nsh, row), row.name).toEqual([]);
+  it('missing-root rows pin every allow/deny root, not only WINDIR', () => {
+    for (const root of ['WINDIR', 'PROGRAMFILES', 'PROGRAMFILES64', 'APPDATA', 'DOCUMENTS', 'DESKTOP', 'PROFILE']) {
+      const rows = SIDECAR_HARD_A_ROWS.filter((r) => r.name.startsWith(`missing ${root} root`));
+      expect(rows.length, root).toBeGreaterThanOrEqual(4);
     }
+  });
+
+  it('$1 revert on :164 (StrCpy $4 $1 $8) deletes Program Files\\Shared Docs\\v', () => {
+    expect(fileLines[163]!.trim()).toBe('StrCpy $4 $3 $8');
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith(':164 $1 revert'));
+    expect(row).toBeDefined();
+    expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
+    const mutant = withFileLine(164, 'StrCpy $4 $1 $8');
+    expect(sidecarHardADeleted(mutant, row!)).toEqual(['C:\\Program Files\\Shared Docs\\v']);
+  });
+
+  it('failed canon-root GFPN writes $9, so Nop :257 is a real kill', () => {
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 257);
+    expect(row, 'fail-write row for :257').toBeDefined();
+    expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
+    const got = sidecarHardADeleted(mutantSidecarGuardRegionSweepLine(nsh, 257), row!);
+    expect(got.length, 'Nop :257 must delete because the failed GFPN wrote $9').toBeGreaterThan(0);
+  });
+
+  it('truncated canon-root GFPN writes $9, so Nop :258 is a real kill', () => {
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 258);
+    expect(row, 'trunc-write row for :258').toBeDefined();
+    expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
+    const got = sidecarHardADeleted(mutantSidecarGuardRegionSweepLine(nsh, 258), row!);
+    expect(got.length, 'Nop :258 must delete because the truncated GFPN wrote $9').toBeGreaterThan(0);
+  });
+
+  it(':259 canon-root GLP Nop is equivalent — $9 is already long', () => {
+    expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[259]).toMatch(/identity|already/);
+    expect(sidecarGuardModeTwoCaught(mutantSidecarGuardRegionSweepLine(nsh, 259), nsh)).toBe(false);
   });
 
   for (const fileLine of SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS) {
@@ -230,19 +261,35 @@ describe('HARD-2 nested Downloads (112 survivors)', () => {
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
-  it('all 112 nested-Downloads region-map mutants are red', () => {
-    const selected = nestedDownloadsRegionMutants();
-    expect(selected.length).toBeGreaterThanOrEqual(112);
-    let red = 0;
-    for (const mutant of selected) {
-      if (sidecarGuardModeTwoCaught(mutant.nsh, nsh)) {
-        red += 1;
-        if (red >= 112) {
-          break;
-        }
+  it('all nested-Downloads region-map mutants are red (all-of, ≥112)', () => {
+    const skipLines = new Set<number>([
+      ...Object.keys(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES).map(Number),
+      ...ORACLE_CLASS_ALL_EQUIVALENT_LINES,
+    ]);
+    const selected = nestedDownloadsRegionMutants().filter((mutant) => {
+      const fileLine = Number(mutant.key.split(':', 1)[0]);
+      if (!Number.isFinite(fileLine) || skipLines.has(fileLine)) {
+        return false;
       }
-    }
-    expect(red, `${red} of ${selected.length} region-map mutants were mode-2 red`).toBeGreaterThanOrEqual(112);
+      // Jump-retargets on already-fail-closed compares, IntCmp 0→+N extras, and
+      // $9→$5 leftover copies stay equivalent — they are not the 112.
+      if (mutant.key.includes(':tgt')) {
+        return false;
+      }
+      if (
+        mutant.key.includes(':extra: 0 ->') ||
+        mutant.key.includes(':extra:$9->$5') ||
+        mutant.key.includes(':extra:mythos_nr_ok->')
+      ) {
+        return false;
+      }
+      return true;
+    });
+    expect(selected.length).toBeGreaterThanOrEqual(112);
+    const survivors = selected.filter((mutant) => !sidecarGuardModeTwoCaught(mutant.nsh, nsh));
+    expect(survivors.map((s) => s.key), `${survivors.length} of ${selected.length} region-map mutants survived`).toEqual(
+      [],
+    );
   }, 180_000);
 });
 

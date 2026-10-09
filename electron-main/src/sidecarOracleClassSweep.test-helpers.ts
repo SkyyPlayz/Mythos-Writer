@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 
 import { loadUninstallVaultsNsh } from './uninstallVaultsNsh.path.js';
 import { mutantSidecarGuardRegionSweepLine } from './sidecarTraversalScan.test-helpers.js';
-import { SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES } from './uninstallVaultsNsh.guardRegionSweep.test.js';
 import {
   generateOracleClassMutants,
   sidecarGuardCaseOutcome,
@@ -21,13 +20,16 @@ export const ORACLE_CLASS_SWEEP_TEST_TIMEOUT_MS = 60_000;
 const SWEEP_CHUNK = 1;
 
 /**
- * Documented mode-2 equivalents. The primary Nop is checked by mode 2 (and, for the
- * strength-sharded subset, by the 12k corpus shards). Oracle-class still walks the
- * 12k corpus for every uncaught mutant: a non-equivalent survivor fails the slice.
+ * HARD-2 ancestor-separator lines after each equal-check (8b2fa528: 243/244, 254/255,
+ * 265/266 → :306/:307 Documents, :320/:321 Desktop, :334/:335 Downloads). No allowlisted
+ * parent of Documents/Desktop/Downloads can reach them without the earlier exact-root
+ * guard, so every oracle-class mutant on these six lines stays equivalent. Every other
+ * line — including documented primary-Nop equivalents — must have at least one caught
+ * oracle-class mutant. Do not derive this set from the behaviour-equivalent list.
  */
-const ORACLE_CLASS_ALL_EQUIVALENT_LINES: ReadonlySet<number> = new Set(
-  Object.keys(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES).map((n) => Number(n)),
-);
+export const ORACLE_CLASS_ALL_EQUIVALENT_LINES: ReadonlySet<number> = new Set([
+  306, 307, 320, 321, 334, 335,
+]);
 
 const chunkMutants = (mutants: OracleClassMutant[], size: number): OracleClassMutant[][] => {
   const chunks: OracleClassMutant[][] = [];

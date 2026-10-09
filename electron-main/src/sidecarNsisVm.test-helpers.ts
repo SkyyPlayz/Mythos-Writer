@@ -72,7 +72,7 @@ export function sidecarLinearStepCap(len: number): number {
   return 20 * len + 2000;
 }
 
-type Instr = { op: string; args: readonly string[] };
+type Instr = { op: string; args: readonly string[]; fileLine: number };
 
 type Prog = { ins: Instr[]; lab: Map<string, number> };
 
@@ -83,11 +83,12 @@ function toks(line: string): string[] {
   return line.match(/"[^"]*"|\S+/g) ?? [];
 }
 
-function compileSidecarNsisProgram(lines: readonly string[]): Prog {
+function compileSidecarNsisProgram(lines: readonly string[], fileLine0: number): Prog {
   const ins: Instr[] = [];
   const lab = new Map<string, number>();
-  for (const raw of lines) {
-    const t = raw.trim();
+  for (let i = 0; i < lines.length; i += 1) {
+    const fileLine = fileLine0 + i;
+    const t = lines[i]!.trim();
     if (t === '' || t.startsWith(';')) {
       continue;
     }
@@ -98,7 +99,7 @@ function compileSidecarNsisProgram(lines: readonly string[]): Prog {
         continue;
       }
       const tk = toks(labeled[2]);
-      ins.push({ op: tk[0]!, args: tk.slice(1) });
+      ins.push({ op: tk[0]!, args: tk.slice(1), fileLine });
       continue;
     }
     if (LABEL_RE.test(t)) {
@@ -106,20 +107,20 @@ function compileSidecarNsisProgram(lines: readonly string[]): Prog {
       continue;
     }
     const tk = toks(t);
-    ins.push({ op: tk[0]!, args: tk.slice(1) });
+    ins.push({ op: tk[0]!, args: tk.slice(1), fileLine });
   }
   return { ins, lab };
 }
 
 const progCache = new Map<string, Prog>();
 
-function programForLines(lines: readonly string[]): Prog {
-  const key = lines.join('\n');
+function programForLines(lines: readonly string[], fileLine0: number): Prog {
+  const key = `${fileLine0}\n${lines.join('\n')}`;
   const hit = progCache.get(key);
   if (hit !== undefined) {
     return hit;
   }
-  const prog = compileSidecarNsisProgram(lines);
+  const prog = compileSidecarNsisProgram(lines, fileLine0);
   progCache.set(key, prog);
   return prog;
 }
@@ -163,14 +164,18 @@ export function nsisValidateFilename(path: string): string {
 }
 
 /** FileOpen $0 … uninstall_vault_fallback: (oracle `code()`). */
-export function extractSidecarNsisProgramLines(nsh: string): string[] {
+function extractSidecarNsisProgramSpan(nsh: string): { lines: string[]; fileLine0: number } {
   const fileLines = nsh.split(/\r?\n/);
   const start = fileLines.findIndex((l) => l.trim().startsWith('FileOpen $0 "$APPDATA'));
   const end = fileLines.findIndex((l) => l.trim() === 'uninstall_vault_fallback:');
   if (start < 0 || end < start) {
     throw new Error('sidecar NSIS program (FileOpen … uninstall_vault_fallback:) markers missing');
   }
-  return fileLines.slice(start, end + 1);
+  return { lines: fileLines.slice(start, end + 1), fileLine0: start + 1 };
+}
+
+export function extractSidecarNsisProgramLines(nsh: string): string[] {
+  return extractSidecarNsisProgramSpan(nsh).lines;
 }
 
 function nsisMyAtoi(text: string): number {
@@ -293,6 +298,14 @@ export type SidecarNsisRunOptions = {
   glpnFailNth?: Readonly<Record<string, number>>;
   /** Truncate the 1-based Nth GetLongPathNameW of this exact input. */
   glpnTruncNth?: Readonly<Record<string, number>>;
+  /** Fail GetFullPathNameW only when the Call is on one of these 1-based file lines. */
+  gfpnFailFileLines?: readonly number[];
+  /** Truncate GetFullPathNameW only when the Call is on one of these 1-based file lines. */
+  gfpnTruncFileLines?: readonly number[];
+  /** Fail GetLongPathNameW only when the Call is on one of these 1-based file lines. */
+  glpnFailFileLines?: readonly number[];
+  /** Truncate GetLongPathNameW only when the Call is on one of these 1-based file lines. */
+  glpnTruncFileLines?: readonly number[];
 };
 
 export type SidecarDeleteAct = Readonly<{ op: 'RMDir' | 'Delete'; path: string }>;
@@ -410,20 +423,22 @@ export function runSidecarNsisProgram(
   sidecarLines: readonly string[],
   options: SidecarNsisRunOptions = {},
 ): SidecarNsisRunResult {
-  return runNsisProgramLines(extractSidecarNsisProgramLines(nsh), sidecarLines, options);
+  const span = extractSidecarNsisProgramSpan(nsh);
+  return runNsisProgramLines(span.lines, sidecarLines, options, span.fileLine0);
 }
 
 export function runNsisProgramLines(
   lines: readonly string[],
   sidecarLines: readonly string[],
   options: SidecarNsisRunOptions = {},
+  fileLine0 = 1,
 ): SidecarNsisRunResult {
   const env = options.env;
   if (env === undefined) {
     throw new Error('runSidecarNsisProgram requires env');
   }
   const stream = sidecarLines.join('');
-  const P = programForLines(lines);
+  const P = programForLines(lines, fileLine0);
   const faultInfo = parseFault(options.fault ?? null);
   const reparse = new Set(options.reparsePaths ?? []);
   const invalidAttr = new Set(options.invalidAttrPaths ?? []);
@@ -438,6 +453,10 @@ export function runNsisProgramLines(
   const gfpnTruncNth = options.gfpnTruncNth ?? {};
   const glpnFailNth = options.glpnFailNth ?? {};
   const glpnTruncNth = options.glpnTruncNth ?? {};
+  const gfpnFailFileLines = new Set(options.gfpnFailFileLines ?? []);
+  const gfpnTruncFileLines = new Set(options.gfpnTruncFileLines ?? []);
+  const glpnFailFileLines = new Set(options.glpnFailFileLines ?? []);
+  const glpnTruncFileLines = new Set(options.glpnTruncFileLines ?? []);
   const gfpnOcc = new Map<string, number>();
   const glpnOcc = new Map<string, number>();
   const bumpOcc = (map: Map<string, number>, key: string): number => {
@@ -522,7 +541,7 @@ export function runNsisProgramLines(
     if (steps > streamCap || lineSteps > lineCap) {
       return hung();
     }
-    const { op, args } = P.ins[pc]!;
+    const { op, args, fileLine } = P.ins[pc]!;
     if (op.startsWith('!')) {
       break;
     }
@@ -807,9 +826,9 @@ export function runNsisProgramLines(
         let rv: string;
         if (c === null) {
           rv = '0';
-        } else if (gfpnFail.has(inp) || gfpnFailNth[inp] === occ || f === 'zero') {
+        } else if (gfpnFail.has(inp) || gfpnFailNth[inp] === occ || gfpnFailFileLines.has(fileLine) || f === 'zero') {
           rv = '0';
-        } else if (gfpnTrunc.has(inp) || gfpnTruncNth[inp] === occ || f === 'trunc') {
+        } else if (gfpnTrunc.has(inp) || gfpnTruncNth[inp] === occ || gfpnTruncFileLines.has(fileLine) || f === 'trunc') {
           rv = String(bufn);
         } else if (f === 'truncP') {
           rv = String(bufn + 1);
@@ -820,6 +839,8 @@ export function runNsisProgramLines(
         } else {
           rv = String(c.length);
         }
+        // Failed / truncated GFPN still writes the expanded path. Nop of the
+        // following 0/trunc check is a real kill only because of this write.
         if (outr !== null && c !== null) {
           R[outr] = c;
         }
@@ -848,9 +869,9 @@ export function runNsisProgramLines(
         const c = inp === '' ? null : expand ? glpnModel(inp) : inp;
         const occ = bumpOcc(glpnOcc, inp);
         let rv: string;
-        if (c === null || glpnFail.has(inp) || glpnFailNth[inp] === occ) {
+        if (c === null || glpnFail.has(inp) || glpnFailNth[inp] === occ || glpnFailFileLines.has(fileLine)) {
           rv = '0';
-        } else if (glpnTrunc.has(inp) || glpnTruncNth[inp] === occ) {
+        } else if (glpnTrunc.has(inp) || glpnTruncNth[inp] === occ || glpnTruncFileLines.has(fileLine)) {
           rv = String(bufn);
         } else if (c.length + 1 > bufn) {
           rv = String(c.length + 1);
