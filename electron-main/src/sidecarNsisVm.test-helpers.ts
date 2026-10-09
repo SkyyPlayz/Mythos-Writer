@@ -181,6 +181,37 @@ export function win32NormalizeFinalSegment(path: string): string {
   return `${head}${leaf}`;
 }
 
+/**
+ * Win32 GetFileAttributesW lookup keys: exact, `/`→`\`, drive-relative `C:` → CWD
+ * (or `C:\` when no CWD is seeded), then GetLongPathName 8.3 expansion.
+ */
+export function gfaLookupKeys(raw: string, options: SidecarNsisRunOptions = {}): string[] {
+  const keys: string[] = [];
+  const add = (k: string): void => {
+    const n = win32NormalizeFinalSegment(k);
+    if (!keys.includes(n)) {
+      keys.push(n);
+    }
+  };
+  add(raw);
+  const folded = raw.replace(/\//g, '\\');
+  if (folded !== raw) {
+    add(folded);
+  }
+  let resolved = folded;
+  if (/^[A-Za-z]:$/.test(resolved)) {
+    resolved = options.cwd !== undefined && options.cwd !== '' ? options.cwd : `${resolved}\\`;
+  }
+  if (resolved !== folded) {
+    add(resolved);
+  }
+  const longName = glpnModel(resolved);
+  if (longName !== resolved) {
+    add(longName);
+  }
+  return keys;
+}
+
 /** FileOpen $0 … uninstall_vault_fallback: (oracle `code()`). */
 function extractSidecarNsisProgramSpan(nsh: string): { lines: string[]; fileLine0: number } {
   const fileLines = nsh.split(/\r?\n/);
@@ -348,6 +379,12 @@ export type SidecarNsisRunOptions = {
    * sidecar-line length — Nop of the helper `$7` init then starts the walk too far.
    */
   initialRegs?: Readonly<Partial<Record<string, string>>>;
+  /**
+   * Current directory used when GetFileAttributesW sees a drive-relative `C:`
+   * (the drive's CWD, not `C:\`). A junction or unreadable CWD false-rejects
+   * a walk that starts at index 0.
+   */
+  cwd?: string;
 };
 
 /** ERROR_FILE_NOT_FOUND — the only GLP miss that may keep the GFPN root. */
@@ -1076,22 +1113,35 @@ export function runNsisProgramLines(
         if (ty.length !== 2 || ty[0] !== 'w') {
           sysErr('gfa sig');
         }
-        const inp = win32NormalizeFinalSegment(argval(ty[1]!));
-        let rv: string;
-        if (attrError.has(inp)) {
-          rv = 'error';
-        } else if (invalidAttr.has(inp)) {
-          rv = String(INVALID_FILE_ATTRIBUTES);
-        } else if (fileAttrs.has(inp)) {
-          rv = String(fileAttrs.get(inp)!);
-        } else if (reparse.has(inp)) {
-          rv = String(FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT);
-        } else if (fs !== undefined) {
-          rv = Object.prototype.hasOwnProperty.call(fs, inp)
-            ? String(fs[inp]!)
-            : String(INVALID_FILE_ATTRIBUTES);
-        } else {
-          rv = String(FILE_ATTRIBUTE_DIRECTORY);
+        const keys = gfaLookupKeys(argval(ty[1]!), options);
+        let rv: string | undefined;
+        for (const inp of keys) {
+          if (attrError.has(inp)) {
+            rv = 'error';
+            break;
+          }
+          if (invalidAttr.has(inp)) {
+            rv = String(INVALID_FILE_ATTRIBUTES);
+            break;
+          }
+          if (fileAttrs.has(inp)) {
+            rv = String(fileAttrs.get(inp)!);
+            break;
+          }
+          if (reparse.has(inp)) {
+            rv = String(FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT);
+            break;
+          }
+          if (fs !== undefined && Object.prototype.hasOwnProperty.call(fs, inp)) {
+            rv = String(fs[inp]!);
+            break;
+          }
+        }
+        if (rv === undefined) {
+          rv =
+            fs !== undefined || keys.length === 0 || keys[0] === ''
+              ? String(INVALID_FILE_ATTRIBUTES)
+              : String(FILE_ATTRIBUTE_DIRECTORY);
         }
         const rr = regname(rt[1]!);
         if (rr !== null && rt[1]!.startsWith('.')) {

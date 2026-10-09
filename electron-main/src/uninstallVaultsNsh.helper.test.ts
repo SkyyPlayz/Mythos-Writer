@@ -109,7 +109,7 @@ describe('H2 Critic helper mutants are red on helper mode-2', () => {
   });
 
   it('HARD-D :582 $7 init Nop and $7→$1/$5/$6/$9 are red on leftover + Mythos Writer junction', () => {
-    expect(fileLines[581]!.trim()).toBe('StrCpy $7 0');
+    expect(fileLines[581]!.trim()).toBe('IntOp $7 $8 + 1');
     expect(HARD_D_LEFTOVER_7).toBe(String(HARD_D_LONG_SIDECAR_LINE.length));
     const row = HELPER_RF7_ROWS.find((r) => r.name.startsWith('HARD-D keep vault-index-cache long sidecar leftover + Mythos Writer junction'))!;
     expect(row, 'HARD-D leftover junction row').toBeDefined();
@@ -118,10 +118,23 @@ describe('H2 Critic helper mutants are red on helper mode-2', () => {
     expect(helperGuardModeTwoCaught(nop, nsh)).toBe(true);
     expect(helperRf7Deleted(nop, row).length, 'Nop :582 must delete through the junction').toBeGreaterThan(0);
     for (const dest of ['$1', '$5', '$6', '$9'] as const) {
-      const mutant = nshWithFileLine(nsh, 582, `StrCpy ${dest} 0`);
+      const mutant = nshWithFileLine(nsh, 582, `IntOp ${dest} $8 + 1`);
       expect(helperGuardModeTwoCaught(mutant, nsh), `${dest} swap`).toBe(true);
       expect(helperRf7Deleted(mutant, row).length, `${dest} swap must delete`).toBeGreaterThan(0);
     }
+  });
+
+  it('junction or unreadable temp CWD still deletes; :582 Nop false-rejects', () => {
+    const junc = HELPER_RF7_ROWS.find((r) => r.name.includes('junction temp CWD still deletes'))!;
+    const unread = HELPER_RF7_ROWS.find((r) => r.name.includes('unreadable temp CWD still deletes'))!;
+    expect(junc, 'junction CWD false-reject row').toBeDefined();
+    expect(unread, 'unreadable CWD false-reject row').toBeDefined();
+    expect(helperRf7Deleted(nsh, junc)).toEqual([junc.leaf]);
+    expect(helperRf7Deleted(nsh, unread)).toEqual([unread.leaf]);
+    const nop = nshWithFileLine(nsh, 582, 'Nop');
+    expect(helperRf7Deleted(nop, junc)).toEqual([]);
+    expect(helperRf7Deleted(nop, unread)).toEqual([]);
+    expect(helperGuardModeTwoCaught(nop, nsh)).toBe(true);
   });
 
   it('HARD-D leftover + unreadable Mythos Writer skips; :582 Nop deletes', () => {

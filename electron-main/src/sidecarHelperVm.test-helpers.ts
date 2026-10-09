@@ -45,7 +45,7 @@ export const CANONICAL_HELPER_REGION: readonly string[] = [
   '  StrCmp $6 $9 0 mythos_rpr_done_${_uid}',
   '  StrCpy $6 $3 1 $8',
   '  StrCmp $6 "\\" 0 mythos_rpr_done_${_uid}',
-  '  StrCpy $7 0',
+  '  IntOp $7 $8 + 1',
   '  mythos_rpr_walk_${_uid}:',
   '    StrCpy $6 $3 1 $7',
   '    StrCmp $6 "" mythos_rpr_leaf_${_uid}',
@@ -189,6 +189,22 @@ function buildHelperRf7Rows(env: SidecarNsisVarEnv): HelperRf7Row[] {
         options: { attrErrorPaths: [parent], initialRegs: { $7: HARD_D_LEFTOVER_7 } },
         leaf,
       });
+      if (site.mode === 'keep' && site.name === 'vault-index-cache') {
+        rows.push({
+          name: 'HARD-D keep vault-index-cache junction temp CWD still deletes (walk must not GFA C:)',
+          site,
+          expect: 'delete',
+          options: { cwd: 'C:\\cwd-junc', reparsePaths: ['C:\\cwd-junc'] },
+          leaf,
+        });
+        rows.push({
+          name: 'HARD-D keep vault-index-cache unreadable temp CWD still deletes (walk must not GFA C:)',
+          site,
+          expect: 'delete',
+          options: { cwd: 'C:\\cwd-unreadable', attrErrorPaths: ['C:\\cwd-unreadable'] },
+          leaf,
+        });
+      }
     }
     rows.push({
       name: `${site.mode} ${site.name} GFA error skips`,

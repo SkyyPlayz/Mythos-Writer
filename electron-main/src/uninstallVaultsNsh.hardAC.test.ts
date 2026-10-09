@@ -436,8 +436,8 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
     expect(keys.has('483:r3->r1')).toBe(true);
   });
 
-  it('HARD-E short ME~1 OneDrive nested-guard rows skip', () => {
-    expect(SIDECAR_HARD_E_ROWS).toHaveLength(2);
+  it('HARD-E short ME~1 / APPDAT~1 nested-guard rows skip', () => {
+    expect(SIDECAR_HARD_E_ROWS).toHaveLength(3);
     for (const row of SIDECAR_HARD_E_ROWS) {
       expect(
         simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env).deleted,
@@ -462,6 +462,23 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
     ]);
   });
 
+  it(':379 StrLen / :381 StrCmp $3→$1 are red on APPDAT~1 AppData-ancestor', () => {
+    expect(fileLines[378]!.trim()).toBe('StrLen $8 $3');
+    expect(fileLines[380]!.trim()).toBe('StrCmp $6 $3 0 mythos_nr_documents');
+    const row = SIDECAR_HARD_E_ROWS.find((r) => r.id.includes('APPDAT~1-AppData-ancestor'))!;
+    expect(row, 'HARD-E AppData ancestor').toBeDefined();
+    const lenMutant = withFileLine(379, 'StrLen $8 $1');
+    const cmpMutant = withFileLine(381, 'StrCmp $6 $1 0 mythos_nr_documents');
+    expect(sidecarGuardModeTwoCaught(lenMutant, nsh)).toBe(true);
+    expect(sidecarGuardModeTwoCaught(cmpMutant, nsh)).toBe(true);
+    expect(simulateSidecarDeleteReadLoop(lenMutant, [`${row.path}\r\n`], row.env).deleted).toEqual([
+      'C:\\Users\\me\\AppData',
+    ]);
+    expect(simulateSidecarDeleteReadLoop(cmpMutant, [`${row.path}\r\n`], row.env).deleted).toEqual([
+      'C:\\Users\\me\\AppData',
+    ]);
+  });
+
   it(':433 StrCmp $6 $3→$1 is red on the Desktop/Documents swap row', () => {
     expect(fileLines[432]!.trim()).toBe('StrCmp $6 $3 0 mythos_nr_downloads');
     const row = SIDECAR_HARD_E_ROWS.find((r) => r.id.includes('Desktop-ancestor-swap'))!;
@@ -473,6 +490,7 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
   });
 
   it('leaf-check $3→$1 at :483 is red on / and LEAFJ~1 leaf-junction rows', () => {
+    expect(fileLines[464]!.trim()).toBe('mythos_reparse_walk: StrCpy $1 $9');
     expect(fileLines[482]!.trim()).toBe('System::Call "kernel32::GetFileAttributesW(w r3) i .r4"');
     const slash = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.includes('leaf junction via /'));
     const short = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.includes('LEAFJ~1'));
@@ -482,12 +500,35 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
     expect(sidecarRf7Deleted(nsh, short!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
 
     const mutant = withFileLine(483, 'System::Call "kernel32::GetFileAttributesW(w r1) i .r4"');
+    const slashDeleted = sidecarRf7Deleted(mutant, slash!, DEFAULT_SIDECAR_NSIS_VAR_ENV);
+    const shortDeleted = sidecarRf7Deleted(mutant, short!, DEFAULT_SIDECAR_NSIS_VAR_ENV);
+    expect(slashDeleted, 'red run: r3→r1 deletes the / leaf junction').toEqual([
+      'C:\\Users\\me\\Documents\\leaf-junc',
+    ]);
+    expect(shortDeleted, 'red run: r3→r1 deletes the LEAFJ~1 leaf junction').toEqual([
+      'C:\\Users\\me\\Documents\\leaf-junc',
+    ]);
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
-    expect(sidecarRf7Deleted(mutant, slash!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([
-      'C:\\Users\\me\\Documents\\leaf-junc',
-    ]);
-    expect(sidecarRf7Deleted(mutant, short!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([
-      'C:\\Users\\me\\Documents\\leaf-junc',
-    ]);
+  });
+
+  it('nested Documents GLP access-denied skips OneDrive ancestor and never RMDirs it', () => {
+    const row = SIDECAR_HARD_A_ROWS.find(
+      (r) => r.name === 'nested Documents GLP access-denied skips OneDrive ancestor (no next-root)',
+    )!;
+    expect(row, 'access-denied nested Documents ancestor row').toBeDefined();
+    expect(sidecarHardADeleted(nsh, row)).toEqual([]);
+    for (const ban of row.mustNotDelete ?? []) {
+      expect(sidecarHardADeleted(nsh, row)).not.toContain(ban);
+    }
+  });
+
+  it('nested Documents GLP access-denied other-error Goto Nop deletes the Documents vault', () => {
+    const row = SIDECAR_HARD_A_ROWS.find(
+      (r) => r.name === 'nested Documents GLP access-denied skips a Documents vault (no next-root)',
+    )!;
+    expect(row, 'access-denied nested Documents vault row').toBeDefined();
+    expect(sidecarHardADeleted(nsh, row)).toEqual([]);
+    const nopGoto = withFileLine(398, 'Nop');
+    expect(sidecarHardADeleted(nopGoto, row)).toEqual(['C:\\Users\\me\\Documents\\MyVault']);
   });
 });
