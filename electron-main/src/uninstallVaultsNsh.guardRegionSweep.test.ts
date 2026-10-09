@@ -33,7 +33,7 @@ export const SIDECAR_GUARD_SWEEP_IVY_LOCKED_EQUIVALENTS: Readonly<Record<number,
   97: 'StrCmp $4 "" uninstall_vault_read → Nop (old :71, backslash `\\.`+EOF). Sibling: :137 trav_ok tail rejects a path ending in `.`.',
   98: 'StrCmp $4 "\\" uninstall_vault_read → Nop (old :72, `\\.\\`). Sibling: :87 rejects the next `\\` whose preceding char is `.`.',
   109: 'StrCmp $7 "0" +5 → Nop (old :83, forward pos-0 skip). A `/` at pos 0 then reads $8=-1 (the last char); every path that read can reject already fails the :137–:139 tail check.',
-  201: 'StrCmp $3 $5 uninstall_vault_read → Nop (old :159, APPDATA root self-match). Sibling: the exact root has no `\\` at $8 length, so it falls to not_appdata and is denied.',
+  218: 'StrCmp $3 $5 uninstall_vault_read → Nop (old :159, APPDATA root self-match). Sibling: the exact root has no `\\` at $8 length, so it falls to not_appdata and is denied.',
 };
 
 /**
@@ -61,7 +61,7 @@ export const SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS: Readonly<Record<number, stri
   47: 'StrCmp $1 "" uninstall_vault_read → Nop (RF-6 loop head). An empty line reads $2 = "", which is neither LF nor CR, so the loop exits and the :56 check skips it.',
   61: 'System::Free $6 → Nop. The 64-byte set buffer leaks once per line; nothing reads it after StrPBrkW, so the delete set is unchanged.',
   117: 'StrCmp $4 "/" uninstall_vault_read → Nop (forward `//`). Sibling: the :79–:80 sepcheck already rejects any separator followed by `/`.',
-  264: 'StrCmp $3 $5 uninstall_vault_read → Nop (Downloads root self-match). Sibling: the exact root has no `\\` at $8 length, so it falls to mythos_al_deny.',
+  308: 'StrCmp $3 $5 uninstall_vault_read → Nop (Downloads root self-match). Sibling: the exact root has no `\\` at $8 length, so it falls to mythos_al_deny.',
 };
 
 /**
@@ -70,22 +70,22 @@ export const SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS: Readonly<Record<number, stri
  * StrLen lines are unlisted (HARD-C / HARD-2 catch a Nop).
  */
 export const SIDECAR_GUARD_SWEEP_RF7_STRENGTH_EQUIVALENTS: Readonly<Record<number, string>> = {
-  302: 'StrCpy $7 $9 → Nop. Restore then uses leftover $7; walk still hits every `\\`.',
-  306: 'StrLen $8 $3 (strip) → Nop. $8 is only read when the last char is `\\`.',
-  307: 'IntCmp $8 3 (keep C:\\) → Nop. Fixture trailing-`\\` paths are longer than 3.',
-  309: 'Goto mythos_nr_strip → Nop. GFPN leaves at most one trailing `\\`.',
-  341: 'Documents ancestor prefix compare → Nop. $6 is not the path prefix on the HARD-C fixtures.',
-  379: 'StrCpy $9 $7 → Nop. $9 stays the last GFPN; walk start is a few chars in and still hits every `\\`.',
-  380: 'Goto mythos_reparse_walk → Nop. The next line is the walk label.',
-  383: 'IntOp $7 $8 + 1 → Nop. Walk from 0 still GetFileAttributesW every prefix and the leaf.',
-  389: 'Goto mythos_reparse_next → Nop. Falls into hit and still GetFileAttributesW the current prefix.',
-  396: 'IntOp $7 $7 + 1 → +2 (after a hit). The next `\\` is still found.',
-  403: 'Goto uninstall_vault_do_delete → Nop. Falls through to the leftover-/ scan and IfFileExists.',
-  405: 'StrCpy $7 0 (leftover-/ scan) → Nop. Walk left $7 at end-of-$3.',
-  407: 'StrCpy $6 $3 1 $7 → Nop. Leftover $6 from the walk leaf is "".',
-  409: 'StrCmp $6 "/" uninstall_vault_read → Nop. GFPN has already folded / to \\.',
-  410: 'IntOp $7 $7 + 1 → +2 (leftover-/ scan). GFPN left no / to reject.',
-  411: 'Goto mythos_canon_slash → Nop. Falls into slash_ok; GFPN left no / to reject.',
+  350: 'StrCpy $7 $9 → Nop. Restore then uses leftover $7; walk still hits every `\\`.',
+  354: 'StrLen $8 $3 (strip) → Nop. $8 is only read when the last char is `\\`.',
+  355: 'IntCmp $8 3 (keep C:\\) → Nop. Fixture trailing-`\\` paths are longer than 3.',
+  357: 'Goto mythos_nr_strip → Nop. GFPN leaves at most one trailing `\\`.',
+  406: 'Documents ancestor prefix compare → Nop. $6 is not the path prefix on the HARD-C fixtures.',
+  463: 'StrCpy $9 $7 → Nop. $9 stays the last GFPN; walk start is a few chars in and still hits every `\\`.',
+  464: 'Goto mythos_reparse_walk → Nop. The next line is the walk label.',
+  467: 'IntOp $7 $8 + 1 → Nop. Walk from 0 still GetFileAttributesW every prefix and the leaf.',
+  473: 'Goto mythos_reparse_next → Nop. Falls into hit and still GetFileAttributesW the current prefix.',
+  480: 'IntOp $7 $7 + 1 → +2 (after a hit). The next `\\` is still found.',
+  487: 'Goto uninstall_vault_do_delete → Nop. Falls through to the leftover-/ scan and IfFileExists.',
+  489: 'StrCpy $7 0 (leftover-/ scan) → Nop. Walk left $7 at end-of-$3.',
+  491: 'StrCpy $6 $3 1 $7 → Nop. Leftover $6 from the walk leaf is "".',
+  493: 'StrCmp $6 "/" uninstall_vault_read → Nop. GFPN has already folded / to \\.',
+  494: 'IntOp $7 $7 + 1 → +2 (leftover-/ scan). GFPN left no / to reject.',
+  495: 'Goto mythos_canon_slash → Nop. Falls into slash_ok; GFPN left no / to reject.',
 };
 
 /**
@@ -95,39 +95,31 @@ export const SIDECAR_GUARD_SWEEP_RF7_STRENGTH_EQUIVALENTS: Readonly<Record<numbe
  * Nop of the Call skips the fault and the vault deletes.
  */
 export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<number, string>> = {
-  193: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
-  214: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
-  235: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
-  256: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
-  316: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
-  333: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
-  350: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
-  367: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
-  147: 'H3 ct1 Goto Nop is identity: ct2 still scans $3 (allowlist leftover suffix also carries the tail).',
-  157: 'H3 5w Goto Nop is identity: a later 9* scan still reads the deny/allow root.',
-  170: 'H3 5p Goto Nop is identity: a later 9* scan still reads the deny/allow root.',
-  183: 'H3 5x Goto Nop is identity: a later 9* scan still reads the deny/allow root.',
-  196: 'H3 5a Goto Nop is identity: nested 9a still scans AppData.',
-  217: 'H3 5d Goto Nop is identity: nested 9d still scans Documents.',
-  222: 'StrCmp $3 $5 uninstall_vault_read → Nop (Documents exact root). Sibling: no `\\` at $8, so it falls to not_documents.',
-  238: 'H3 5k Goto Nop is identity: Documents vaults never reach 5k; nested 9k still scans Desktop.',
-  243: 'StrCmp $3 $5 uninstall_vault_read → Nop (Desktop exact root). Sibling: no `\\` at $8, so it falls to not_desktop.',
-  259: 'H3 5l Goto Nop is identity: nested 9l still scans Downloads.',
-  281: 'H3 ct2 Goto Nop is identity: ct1 already scanned $3 (or leftover suffix still carries the tail).',
-  290: 'H3 9c Goto Nop is identity: the matching 5* hook already scanned that root.',
-  319: 'H3 9a Goto Nop is identity: 5a already scanned AppData.',
-  336: 'H3 9d Goto Nop is identity: 5d already scanned Documents.',
-  370: 'H3 9l Goto Nop is identity: 5l already scanned Downloads. 9k Goto stays unlisted (only scan of a dirty Desktop).',
-  420: 'Scan default StrCpy $6 $3 Nop is identity: allowlist leftover $6 is the suffix that still carries the dangerous tail.',
-  422: 'StrCpy $6 $5 Nop is identity: nested 9* hooks still scan $9.',
-  429: 'IntCmp $7 0 Nop is identity: fixtures never have `\\` at index 0.',
-  321: 'AppData nested exact-root StrCmp → Nop. Allowlist already skipped the exact AppData root.',
-  338: 'Documents nested exact-root StrCmp → Nop. Allowlist already skipped the exact Documents root.',
+  149: 'H3 ct1 Goto Nop is identity: ct2 still scans $3 (allowlist leftover suffix also carries the tail).',
+  161: 'H3 5w Goto Nop is identity: a later 9* scan still reads the deny/allow root.',
+  176: 'H3 5p Goto Nop is identity: a later 9* scan still reads the deny/allow root.',
+  191: 'H3 5x Goto Nop is identity: a later 9* scan still reads the deny/allow root.',
+  213: 'H3 5a Goto Nop is identity: nested 9a still scans AppData.',
+  243: 'H3 5d Goto Nop is identity: nested 9d still scans Documents.',
+  248: 'StrCmp $3 $5 uninstall_vault_read → Nop (Documents exact root). Sibling: no `\\` at $8, so it falls to not_documents.',
+  273: 'H3 5k Goto Nop is identity: Documents vaults never reach 5k; nested 9k still scans Desktop.',
+  278: 'StrCmp $3 $5 uninstall_vault_read → Nop (Desktop exact root). Sibling: no `\\` at $8, so it falls to not_desktop.',
+  303: 'H3 5l Goto Nop is identity: nested 9l still scans Downloads.',
+  327: 'H3 ct2 Goto Nop is identity: ct1 already scanned $3 (or leftover suffix still carries the tail).',
+  338: 'H3 9c Goto Nop is identity: the matching 5* hook already scanned that root.',
+  376: 'H3 9a Goto Nop is identity: 5a already scanned AppData.',
+  378: 'AppData nested exact-root StrCmp → Nop. Allowlist already skipped the exact AppData root.',
+  402: 'H3 9d Goto Nop is identity: 5d already scanned Documents.',
+  404: 'Documents nested exact-root StrCmp → Nop. Allowlist already skipped the exact Documents root.',
+  454: 'H3 9l Goto Nop is identity: 5l already scanned Downloads. 9k Goto stays unlisted (only scan of a dirty Desktop).',
+  504: 'Scan default StrCpy $6 $3 Nop is identity: allowlist leftover $6 is the suffix that still carries the dangerous tail.',
+  506: 'StrCpy $6 $5 Nop is identity: nested 9* hooks still scan $9.',
+  513: 'IntCmp $7 0 Nop is identity: fixtures never have `\\` at index 0.',
 };
 
 /** Forge RESULT_97be (29) + RESULT_36d2 (33) + RESULT_8329 (:286). Mode 2 must catch each primary Nop. */
 export const SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS: readonly number[] = [
-  143, 144, 145, 150, 151, 153, 154, 155, 164, 165, 166, 167, 168, 177, 178, 179, 180, 181, 190, 191, 194, 211, 212, 215, 232, 233, 234, 236, 253, 254, 255, 257, 275, 276, 278, 279, 286, 287, 288, 313, 314, 315, 317, 330, 331, 334, 347, 348, 349, 351, 364, 365, 368, 375
+  140, 141, 142, 143, 144, 145, 152, 153, 154, 155, 156, 157, 167, 168, 169, 170, 171, 172, 182, 183, 184, 185, 186, 187, 197, 198, 199, 200, 203, 227, 228, 229, 230, 233, 257, 258, 259, 260, 263, 287, 288, 289, 290, 293, 318, 319, 320, 321, 322, 323, 329, 330, 331, 332, 333, 334, 360, 361, 362, 363, 366, 386, 387, 388, 389, 392, 412, 413, 414, 415, 418, 438, 439, 440, 441, 444,
 ];
 
 /** RF-7 walk / HARD-2 / HARD-A fail-closed lines whose primary Nop does not change the delete set. */
@@ -155,7 +147,7 @@ export const SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES: Readonly<Recor
   ...SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS,
 };
 
-describe('sidecar guard region sweep :43-:456 (buildIntegrity excluded)', () => {
+describe('sidecar guard region sweep :43-:540 (buildIntegrity excluded)', () => {
   const nsh = loadUninstallVaultsNsh();
 
   describe('mode (1) normal — exact region pin', () => {
@@ -240,8 +232,8 @@ describe('sidecar guard region sweep :43-:456 (buildIntegrity excluded)', () => 
 
     it('equivalence-strength shards cover every strength-checked equivalent line', () => {
       const sharded = [
-        47, 56, 61, 84, 97, 98, 99, 103, 104, 105, 106, 109, 117, 123, 124, 125, 129, 130, 131, 201, 264, 302, 306,
-        307, 309, 341, 379, 380, 383, 389, 396, 403, 405, 407, 409, 410, 411,
+        47, 56, 61, 84, 97, 98, 99, 103, 104, 105, 106, 109, 117, 123, 124, 125, 129, 130, 131, 218, 308, 350, 354,
+        355, 357, 406, 463, 464, 467, 473, 480, 487, 489, 491, 493, 494, 495,
       ];
       expect(sharded).toEqual(
         Object.keys(SIDECAR_GUARD_SWEEP_STRENGTH_EQUIVALENT_FILE_LINES)
@@ -254,15 +246,15 @@ describe('sidecar guard region sweep :43-:456 (buildIntegrity excluded)', () => 
       for (const fileLine of SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS) {
         expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[fileLine], `:${fileLine}`).toBeUndefined();
       }
-      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[283]).toBeUndefined();
-      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[284]).toBeUndefined();
-      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[285]).toBeUndefined();
-      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[286]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[329]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[330]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[331]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[332]).toBeUndefined();
     });
 
     it('oracle-class at-least-one-caught skip set is the 6 ancestor-separator lines from 8b2f', () => {
       expect([...ORACLE_CLASS_ALL_EQUIVALENT_LINES].sort((a, b) => a - b)).toEqual([
-        342, 343, 359, 360, 376, 377,
+        382, 383, 408, 409, 434, 435,
       ]);
     });
   });

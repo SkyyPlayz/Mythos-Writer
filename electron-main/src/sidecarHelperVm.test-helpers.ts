@@ -19,8 +19,8 @@ import {
   type SidecarNsisVarEnv,
 } from './sidecarNsisVm.test-helpers.js';
 
-export const HELPER_REGION_FILE_LINE_FIRST = 478;
-export const HELPER_REGION_FILE_LINE_LAST = 526;
+export const HELPER_REGION_FILE_LINE_FIRST = 562;
+export const HELPER_REGION_FILE_LINE_LAST = 610;
 export const HELPER_REGION_START_LINE = '!macro mythos_rmdir_unless_reparse _root _path _uid';
 export const HELPER_REGION_END_LINE = '!macroend';
 
@@ -359,35 +359,35 @@ export function helperGuardModeTwoCaught(mutant: string, canonical: string): boo
   return helperGuardModeTwoFailure(mutant, canonical) !== undefined;
 }
 
-/** Critic 8 real helper mutants (instruction text; lines are post-HARD-A :478–:526). */
+/** Critic 8 real helper mutants (instruction text; lines are post-H4 :562–:610). */
 export const HELPER_CRITIC_MUTANTS: readonly { name: string; line: number; text: string }[] = [
-  { name: 'hit mask & 0', line: 509, text: 'IntOp $4 $4 & 0' },
-  { name: 'leaf mask & 0', line: 516, text: 'IntOp $4 $4 & 0' },
-  { name: 'leaf mask & 0x4000', line: 516, text: 'IntOp $4 $4 & 0x4000' },
-  { name: 'hit skip-on-any-nonzero (Nop IntCmp)', line: 510, text: 'Nop' },
-  { name: 'leaf skip-on-any-nonzero (Nop IntCmp)', line: 517, text: 'Nop' },
-  { name: 'Goto leaf at walk start', line: 498, text: 'Goto mythos_rpr_leaf_${_uid}' },
-  { name: 'hit GFA error Nop', line: 508, text: 'Nop' },
-  { name: 'leaf GFA error Nop', line: 515, text: 'Nop' },
+  { name: 'hit mask & 0', line: 593, text: 'IntOp $4 $4 & 0' },
+  { name: 'leaf mask & 0', line: 600, text: 'IntOp $4 $4 & 0' },
+  { name: 'leaf mask & 0x4000', line: 600, text: 'IntOp $4 $4 & 0x4000' },
+  { name: 'hit skip-on-any-nonzero (Nop IntCmp)', line: 594, text: 'Nop' },
+  { name: 'leaf skip-on-any-nonzero (Nop IntCmp)', line: 601, text: 'Nop' },
+  { name: 'Goto leaf at walk start', line: 582, text: 'Goto mythos_rpr_leaf_${_uid}' },
+  { name: 'hit GFA error Nop', line: 592, text: 'Nop' },
+  { name: 'leaf GFA error Nop', line: 599, text: 'Nop' },
 ];
 
 /** Probe HARD-B 11 helper mutants that must stay red. */
 export const HELPER_HARD_B_MUTANTS: readonly { name: string; line: number; text: string }[] = [
-  { name: 'drop ancestor (Nop hit backslash)', line: 502, text: 'Nop' },
-  { name: 'drop leaf (Nop leaf GFA)', line: 514, text: 'Nop' },
-  { name: 'hit mask & 0', line: 509, text: 'IntOp $4 $4 & 0' },
-  { name: 'leaf mask & 0', line: 516, text: 'IntOp $4 $4 & 0' },
-  { name: 'leaf mask & 0x407', line: 516, text: 'IntOp $4 $4 & 0x407' },
-  { name: 'invert hit IntCmp', line: 510, text: 'IntCmp $4 0 mythos_rpr_done_${_uid} 0 0' },
-  { name: 'invert leaf IntCmp', line: 517, text: 'IntCmp $4 0 mythos_rpr_done_${_uid} 0 0' },
-  { name: 'hit error fall-through Nop', line: 508, text: 'Nop' },
-  { name: 'leaf error fall-through Nop', line: 515, text: 'Nop' },
-  { name: 'leaf-only (Nop hit-backslash)', line: 502, text: 'Nop' },
-  { name: 'drop walk (Goto done at walk start)', line: 498, text: 'Goto mythos_rpr_done_${_uid}' },
+  { name: 'drop ancestor (Nop hit backslash)', line: 586, text: 'Nop' },
+  { name: 'drop leaf (Nop leaf GFA)', line: 598, text: 'Nop' },
+  { name: 'hit mask & 0', line: 593, text: 'IntOp $4 $4 & 0' },
+  { name: 'leaf mask & 0', line: 600, text: 'IntOp $4 $4 & 0' },
+  { name: 'leaf mask & 0x407', line: 600, text: 'IntOp $4 $4 & 0x407' },
+  { name: 'invert hit IntCmp', line: 594, text: 'IntCmp $4 0 mythos_rpr_done_${_uid} 0 0' },
+  { name: 'invert leaf IntCmp', line: 601, text: 'IntCmp $4 0 mythos_rpr_done_${_uid} 0 0' },
+  { name: 'hit error fall-through Nop', line: 592, text: 'Nop' },
+  { name: 'leaf error fall-through Nop', line: 599, text: 'Nop' },
+  { name: 'leaf-only (Nop hit-backslash)', line: 586, text: 'Nop' },
+  { name: 'drop walk (Goto done at walk start)', line: 582, text: 'Goto mythos_rpr_done_${_uid}' },
 ];
 
-/** Forge HARD-B: GFPN-failure branches :488–:492 (freeze :373–:377). */
-export const HELPER_GFPN_FAIL_LINES = [487, 488, 489, 490, 491, 492] as const;
+/** Forge HARD-B: GFPN-failure branches. */
+export const HELPER_GFPN_FAIL_LINES = [571, 572, 573, 574, 575, 576] as const;
 
 export function nshWithFileLine(nsh: string, line: number, text: string): string {
   const next = nsh.split('\n');

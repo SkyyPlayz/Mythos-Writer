@@ -258,9 +258,18 @@ export function mutantM5_dropAppDataRootSelfMatch(nsh: string): string {
     '        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"\n' +
     '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0\n' +
     '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read\n' +
-    '        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"\n' +
-    '        IntCmp $4 0 +2 0 0\n' +
+    '        System::Call "kernel32::GetLongPathNameW(w r5, w .r2, i ${NSIS_MAX_STRLEN}) i .r4 ?e"\n' +
+    '        Pop $8\n' +
+    '        IntCmp $4 0 +5 0 0\n' +
     '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read\n' +
+    '        StrCpy $5 $2\n' +
+    '        StrCmp $5 "" mythos_al_not_appdata\n' +
+    '        Goto mythos_glp_h3_5a\n' +
+    '        IntCmp $8 2 +3 0 0\n' +
+    '        IntCmp $8 3 +2 0 0\n' +
+    '        Goto mythos_al_not_appdata\n' +
+    '        StrCmp $5 "" mythos_al_not_appdata\n' +
+    '        mythos_glp_h3_5a:\n' +
     '        StrCpy $2 "5a"\n' +
     '        Goto mythos_comp_tail_scan\n' +
     '        mythos_comp_tail_ret5a:\n' +
@@ -273,9 +282,18 @@ export function mutantM5_dropAppDataRootSelfMatch(nsh: string): string {
     '        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"\n' +
     '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0\n' +
     '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read\n' +
-    '        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"\n' +
-    '        IntCmp $4 0 +2 0 0\n' +
+    '        System::Call "kernel32::GetLongPathNameW(w r5, w .r2, i ${NSIS_MAX_STRLEN}) i .r4 ?e"\n' +
+    '        Pop $8\n' +
+    '        IntCmp $4 0 +5 0 0\n' +
     '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read\n' +
+    '        StrCpy $5 $2\n' +
+    '        StrCmp $5 "" mythos_al_not_appdata\n' +
+    '        Goto mythos_glp_h3_5a\n' +
+    '        IntCmp $8 2 +3 0 0\n' +
+    '        IntCmp $8 3 +2 0 0\n' +
+    '        Goto mythos_al_not_appdata\n' +
+    '        StrCmp $5 "" mythos_al_not_appdata\n' +
+    '        mythos_glp_h3_5a:\n' +
     '        StrCpy $2 "5a"\n' +
     '        Goto mythos_comp_tail_scan\n' +
     '        mythos_comp_tail_ret5a:\n' +

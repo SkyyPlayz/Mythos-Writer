@@ -21,14 +21,14 @@ const SWEEP_CHUNK = 1;
 
 /**
  * HARD-2 ancestor-separator lines after each equal-check (8b2fa528: 267/268, 278/279,
- * 295/296 → :342/:343 Documents, :359/:360 Desktop, :376/:377 Downloads). No allowlisted
+ * 295/296 → :382/:383 Documents, :408/:409 Desktop, :434/:435 Downloads). No allowlisted
  * parent of Documents/Desktop/Downloads can reach them without the earlier exact-root
  * guard, so every oracle-class mutant on these six lines stays equivalent. Every other
  * line — including documented primary-Nop equivalents — must have at least one caught
  * oracle-class mutant. Do not derive this set from the behaviour-equivalent list.
  */
 export const ORACLE_CLASS_ALL_EQUIVALENT_LINES: ReadonlySet<number> = new Set([
-  342, 343, 359, 360, 376, 377,
+  382, 383, 408, 409, 434, 435,
 ]);
 
 const chunkMutants = (mutants: OracleClassMutant[], size: number): OracleClassMutant[][] => {

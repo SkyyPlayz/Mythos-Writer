@@ -324,7 +324,20 @@ export type SidecarNsisRunOptions = {
   glpnFailFileLines?: readonly number[];
   /** Truncate GetLongPathNameW only when the Call is on one of these 1-based file lines. */
   glpnTruncFileLines?: readonly number[];
+  /**
+   * Win32 last-error for a failed GetLongPathNameW of this exact input.
+   * Default for any other GLP failure is ERROR_FILE_NOT_FOUND (2).
+   * ERROR_ACCESS_DENIED is 5 — must not fall back to GFPN.
+   */
+  glpnErrno?: Readonly<Record<string, number>>;
 };
+
+/** ERROR_FILE_NOT_FOUND — the only GLP miss that may keep the GFPN root. */
+export const WIN32_ERROR_FILE_NOT_FOUND = 2;
+/** ERROR_PATH_NOT_FOUND — the other GLP miss that may keep the GFPN root. */
+export const WIN32_ERROR_PATH_NOT_FOUND = 3;
+/** ERROR_ACCESS_DENIED — fail-closed for that root; never a GFPN fallback. */
+export const WIN32_ERROR_ACCESS_DENIED = 5;
 
 export type SidecarDeleteAct = Readonly<{ op: 'RMDir' | 'Delete'; path: string }>;
 
@@ -336,6 +349,8 @@ export type SidecarNsisRunResult = {
   hung: boolean;
   steps: number;
   lineSteps: number;
+  /** $2/$4/$5 after halt — used by the System-plugin GLP failure-output probe. */
+  regs: Readonly<{ $2: string; $4: string; $5: string }>;
 };
 
 /** FindFirstFile wildcards / DOS wildcards / illegal `|` — reject in a non-final component. */
@@ -475,6 +490,7 @@ export function runNsisProgramLines(
   const gfpnTruncFileLines = new Set(options.gfpnTruncFileLines ?? []);
   const glpnFailFileLines = new Set(options.glpnFailFileLines ?? []);
   const glpnTruncFileLines = new Set(options.glpnTruncFileLines ?? []);
+  const glpnErrno = options.glpnErrno ?? {};
   const gfpnOcc = new Map<string, number>();
   const glpnOcc = new Map<string, number>();
   const bumpOcc = (map: Map<string, number>, key: string): number => {
@@ -551,6 +567,7 @@ export function runNsisProgramLines(
     hung: true,
     steps,
     lineSteps,
+    regs: { $2: R.$2 ?? '', $4: R.$4 ?? '', $5: R.$5 ?? '' },
   });
 
   while (pc >= 0 && pc < P.ins.length) {
@@ -873,7 +890,7 @@ export function runNsisProgramLines(
         fn.startsWith('GetLongPathName') &&
         dll.toLowerCase() === 'kernel32' &&
         argList.length === 3 &&
-        rt.length === 2 &&
+        (rt.length === 2 || (rt.length === 3 && rt[2] === '?e')) &&
         rt[0] === 'i'
       ) {
         const ty = argList.map((x) => x.split(/\s+/, 2));
@@ -886,9 +903,22 @@ export function runNsisProgramLines(
         const expand = fn === 'GetLongPathNameW';
         const c = inp === '' ? null : expand ? glpnModel(inp) : inp;
         const occ = bumpOcc(glpnOcc, inp);
+        const wantE = rt.includes('?e');
         let rv: string;
-        if (c === null || glpnFail.has(inp) || glpnFailNth[inp] === occ || glpnFailFileLines.has(fileLine)) {
+        let lastError = 0;
+        if (
+          c === null ||
+          glpnFail.has(inp) ||
+          glpnErrno[inp] !== undefined ||
+          glpnFailNth[inp] === occ ||
+          glpnFailFileLines.has(fileLine)
+        ) {
           rv = '0';
+          lastError = glpnErrno[inp] ?? WIN32_ERROR_FILE_NOT_FOUND;
+          // NSIS System plugin copies the (empty) output buffer on failure.
+          if (outr !== null) {
+            R[outr] = '';
+          }
         } else if (glpnTrunc.has(inp) || glpnTruncNth[inp] === occ || glpnTruncFileLines.has(fileLine)) {
           rv = String(bufn);
         } else if (c.length + 1 > bufn) {
@@ -902,6 +932,9 @@ export function runNsisProgramLines(
         const rr = regname(rt[1]!);
         if (rr !== null && rt[1]!.startsWith('.')) {
           R[rr] = rv;
+        }
+        if (wantE) {
+          st.push(String(lastError));
         }
         pc += 1;
         continue;
@@ -954,6 +987,34 @@ export function runNsisProgramLines(
     hung: false,
     steps,
     lineSteps,
+    regs: { $2: R.$2 ?? '', $4: R.$4 ?? '', $5: R.$5 ?? '' },
+  };
+}
+
+/**
+ * Probe: NSIS System::Call `w .rN` on GetLongPathNameW failure copies the empty
+ * output buffer. In-place (`w r5, w .r5`) clobbers the GFPN root; scratch does not.
+ */
+export function probeSystemPluginGlpFailure(outSameAsIn: boolean): {
+  source: string;
+  dest: string;
+  ret: string;
+} {
+  const destTok = outSameAsIn ? 'r5' : 'r2';
+  const nsh = [
+    'FileOpen $0 "$APPDATA\\Mythos Writer\\uninstall-delete-paths.txt" r',
+    'StrCpy $5 "C:\\Users\\me\\Desktop"',
+    `System::Call "kernel32::GetLongPathNameW(w r5, w .${destTok}, i 1024) i .r4"`,
+    'uninstall_vault_fallback:',
+  ].join('\n');
+  const run = runSidecarNsisProgram(nsh, [], {
+    env: SIDECAR_NSIS_ENV_E1,
+    glpnFailPaths: ['C:\\Users\\me\\Desktop'],
+  });
+  return {
+    source: run.regs.$5,
+    dest: outSameAsIn ? run.regs.$5 : run.regs.$2,
+    ret: run.regs.$4,
   };
 }
 

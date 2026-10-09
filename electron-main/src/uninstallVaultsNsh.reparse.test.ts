@@ -81,9 +81,9 @@ describe('RF-7b reparse walk — modelled attribute table', () => {
     });
   }
 
-  it('leaf-only mutant (Nop :387) deletes the parent-junction + plain vault row', () => {
-    expect(fileLines[386]!.trim()).toBe('StrCmp $6 "\\" mythos_reparse_hit');
-    const mutant = withFileLine(387, 'Nop');
+  it('leaf-only mutant (Nop :471) deletes the parent-junction + plain vault row', () => {
+    expect(fileLines[470]!.trim()).toBe('StrCmp $6 "\\" mythos_reparse_hit');
+    const mutant = withFileLine(471, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.path === RF7_PARENT_JUNCTION_VAULT)!;
     expect(sidecarRf7Deleted(nsh, row, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
@@ -91,22 +91,22 @@ describe('RF-7b reparse walk — modelled attribute table', () => {
   });
 
   it('bottom-up / stop-early mutant (Goto leaf at walk start) is red', () => {
-    const mutant = withFileLine(383, 'Goto mythos_reparse_leaf');
+    const mutant = withFileLine(467, 'Goto mythos_reparse_leaf');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.path === RF7_PARENT_JUNCTION_VAULT)!;
     expect(sidecarRf7Deleted(mutant, row, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([RF7_PARENT_JUNCTION_VAULT]);
   });
 
   it('skip-on-any-nonzero (Nop the leaf 0x400 mask) is red', () => {
-    expect(fileLines[400]!.trim()).toBe('IntOp $4 $4 & 0x400');
-    const mutant = withFileLine(401, 'Nop');
+    expect(fileLines[484]!.trim()).toBe('IntOp $4 $4 & 0x400');
+    const mutant = withFileLine(485, 'Nop');
     expect(sidecarGuardModeTwoFailure(mutant, nsh)).toBeDefined();
     expect(sidecarRf7Deleted(mutant, SIDECAR_RF7_REPARSE_ROWS[0]!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
   });
 
   it('ancestor-mask Nop skips a nested plain vault that must delete', () => {
-    expect(fileLines[393]!.trim()).toBe('IntOp $4 $4 & 0x400');
-    const mutant = withFileLine(394, 'Nop');
+    expect(fileLines[478]!.trim()).toBe('IntOp $4 $4 & 0x400');
+    const mutant = withFileLine(479, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.path === RF7_NESTED_PLAIN_VAULT)!;
     expect(sidecarRf7Deleted(nsh, row, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([RF7_NESTED_PLAIN_VAULT]);
@@ -148,21 +148,21 @@ describe('HARD-2 nested roots', () => {
     expect(() => assertSidecarHard2NestedTables(nsh)).not.toThrow();
   });
 
-  it('Nop AppData equal (:321) is equivalent — allowlist already skipped the exact AppData root', () => {
-    expect(fileLines[320]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
-    const mutant = withFileLine(321, 'Nop');
+  it('Nop AppData equal (:378) is equivalent — allowlist already skipped the exact AppData root', () => {
+    expect(fileLines[377]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const mutant = withFileLine(378, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
   });
 
-  it('Nop Documents equal (:338) is equivalent — allowlist already skipped the exact Documents root', () => {
-    expect(fileLines[337]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
-    const mutant = withFileLine(338, 'Nop');
+  it('Nop Documents equal (:404) is equivalent — allowlist already skipped the exact Documents root', () => {
+    expect(fileLines[403]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const mutant = withFileLine(404, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
   });
 
-  it('Nop Desktop equal (:355) RMDirs a nested Desktop root (successor of :189)', () => {
-    expect(fileLines[354]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
-    const mutant = withFileLine(355, 'Nop');
+  it('Nop Desktop equal (:430) RMDirs a nested Desktop root (successor of :189)', () => {
+    expect(fileLines[429]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const mutant = withFileLine(430, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 });

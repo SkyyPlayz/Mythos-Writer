@@ -97,41 +97,41 @@ describe('H2 Critic helper mutants are red on helper mode-2', () => {
     });
   }
 
-  it('skip-on-any-nonzero (Nop leaf 0x400 mask :516) skips a plain KEEP cache', () => {
-    expect(fileLines[515]!.trim()).toBe('IntOp $4 $4 & 0x400');
-    const mutant = nshWithFileLine(nsh, 516, 'Nop');
+  it('skip-on-any-nonzero (Nop leaf 0x400 mask :600) skips a plain KEEP cache', () => {
+    expect(fileLines[599]!.trim()).toBe('IntOp $4 $4 & 0x400');
+    const mutant = nshWithFileLine(nsh, 600, 'Nop');
     const row = HELPER_RF7_ROWS.find((r) => r.name === 'keep vault-index-cache plain deletes')!;
     expect(helperRf7Deleted(nsh, row)).toEqual([row.leaf]);
     expect(helperRf7Deleted(mutant, row)).toEqual([]);
     expect(helperGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
-  it(':495 prefix Nop is equivalent on the helper sites (not one of the 8)', () => {
-    expect(fileLines[494]!.trim()).toBe('StrCmp $6 $9 0 mythos_rpr_done_${_uid}');
-    const mutant = nshWithFileLine(nsh, 495, 'Nop');
+  it(':579 prefix Nop is equivalent on the helper sites (not one of the 8)', () => {
+    expect(fileLines[578]!.trim()).toBe('StrCmp $6 $9 0 mythos_rpr_done_${_uid}');
+    const mutant = nshWithFileLine(nsh, 579, 'Nop');
     expect(helperGuardModeTwoCaught(mutant, nsh)).toBe(false);
   });
 });
 
 const HELPER_GFPN_FAIL_MUTANTS: readonly { name: string; line: number; text: string }[] = [
-  { name: ':487 Nop path GFPN', line: 487, text: 'Nop' },
-  { name: ':488 Nop path GFPN 0', line: 488, text: 'Nop' },
-  { name: ':488 path 0 always-continue', line: 488, text: 'IntCmp $4 0 0 0 0' },
-  { name: ':488 path 0 invert', line: 488, text: 'IntCmp $4 0 0 mythos_rpr_done_${_uid} mythos_rpr_done_${_uid}' },
-  { name: ':489 Nop path GFPN trunc', line: 489, text: 'Nop' },
-  { name: ':489 path trunc invert', line: 489, text: 'IntCmp $4 ${NSIS_MAX_STRLEN} 0 mythos_rpr_done_${_uid} 0' },
-  { name: ':489 path trunc always-continue', line: 489, text: 'IntCmp $4 ${NSIS_MAX_STRLEN} 0 0 0' },
-  { name: ':490 Nop root GFPN', line: 490, text: 'Nop' },
-  { name: ':491 Nop root GFPN 0', line: 491, text: 'Nop' },
-  { name: ':491 root 0 invert', line: 491, text: 'IntCmp $4 0 0 mythos_rpr_done_${_uid} mythos_rpr_done_${_uid}' },
-  { name: ':491 root 0 always-continue', line: 491, text: 'IntCmp $4 0 0 0 0' },
-  { name: ':492 Nop root GFPN trunc', line: 492, text: 'Nop' },
-  { name: ':492 root trunc invert', line: 492, text: 'IntCmp $4 ${NSIS_MAX_STRLEN} 0 mythos_rpr_done_${_uid} 0' },
+  { name: ':571 Nop path GFPN', line: 571, text: 'Nop' },
+  { name: ':572 Nop path GFPN 0', line: 572, text: 'Nop' },
+  { name: ':572 path 0 always-continue', line: 572, text: 'IntCmp $4 0 0 0 0' },
+  { name: ':572 path 0 invert', line: 572, text: 'IntCmp $4 0 0 mythos_rpr_done_${_uid} mythos_rpr_done_${_uid}' },
+  { name: ':573 Nop path GFPN trunc', line: 573, text: 'Nop' },
+  { name: ':573 path trunc invert', line: 573, text: 'IntCmp $4 ${NSIS_MAX_STRLEN} 0 mythos_rpr_done_${_uid} 0' },
+  { name: ':573 path trunc always-continue', line: 573, text: 'IntCmp $4 ${NSIS_MAX_STRLEN} 0 0 0' },
+  { name: ':574 Nop root GFPN', line: 574, text: 'Nop' },
+  { name: ':575 Nop root GFPN 0', line: 575, text: 'Nop' },
+  { name: ':575 root 0 invert', line: 575, text: 'IntCmp $4 0 0 mythos_rpr_done_${_uid} mythos_rpr_done_${_uid}' },
+  { name: ':575 root 0 always-continue', line: 575, text: 'IntCmp $4 0 0 0 0' },
+  { name: ':576 Nop root GFPN trunc', line: 576, text: 'Nop' },
+  { name: ':576 root trunc invert', line: 576, text: 'IntCmp $4 ${NSIS_MAX_STRLEN} 0 mythos_rpr_done_${_uid} 0' },
 ];
 
 describe('HARD-B helper mutants + H1 helper slash + GFPN-fail', () => {
   it('helper tables include slash and GFPN-fault rows', () => {
-    expect(HELPER_GFPN_FAIL_LINES).toEqual([487, 488, 489, 490, 491, 492]);
+    expect(HELPER_GFPN_FAIL_LINES).toEqual([571, 572, 573, 574, 575, 576]);
     expect(HELPER_H1_SLASH_SITES).toHaveLength(3);
     expect(() => assertMythosRmdirHelperTables(nsh)).not.toThrow();
     const slash = runMythosRmdirHelper(nsh, HELPER_H1_SLASH_SITE, { env: DEFAULT_HELPER_NSIS_VAR_ENV });
@@ -140,7 +140,7 @@ describe('HARD-B helper mutants + H1 helper slash + GFPN-fail', () => {
   });
 
   it('helper ${_path} revert is red on a/b (validate_filename → ab)', () => {
-    const mutant = nshWithFileLine(nsh, 518, 'RMDir /r "${_path}"');
+    const mutant = nshWithFileLine(nsh, 602, 'RMDir /r "${_path}"');
     expect(mutant).not.toBe(nsh);
     const expanded = expandMythosRmdirUnlessReparse(mutant, HELPER_H1_SLASH_SITE);
     const rmdir = expanded.find((l) => l.includes('RMDir'));
