@@ -12,7 +12,7 @@ import {
 
 /**
  * Restored-corpus EQ scans were 20–33s against the 30s default (same class as the 9802a5c3
- * unit timeout; :99 / :165 / :177 / :189 later hit 25–28s). One mutant per test and a raised
+ * unit timeout; :99 / :174 / :189 / :204 later hit 25–28s). One mutant per test and a raised
  * timeout on every slice — never drop a case. File shards give the oracle-sweeps job
  * wall-clock room; `it.concurrent` does not help synchronous work.
  */
@@ -20,15 +20,15 @@ export const ORACLE_CLASS_SWEEP_TEST_TIMEOUT_MS = 60_000;
 const SWEEP_CHUNK = 1;
 
 /**
- * HARD-2 ancestor-separator lines after each equal-check (8b2fa528: 243/244, 254/255,
- * 265/266 → :306/:307 Documents, :320/:321 Desktop, :334/:335 Downloads). No allowlisted
+ * HARD-2 ancestor-separator lines after each equal-check (8b2fa528: 267/268, 278/279,
+ * 295/296 → :342/:343 Documents, :359/:360 Desktop, :376/:377 Downloads). No allowlisted
  * parent of Documents/Desktop/Downloads can reach them without the earlier exact-root
  * guard, so every oracle-class mutant on these six lines stays equivalent. Every other
  * line — including documented primary-Nop equivalents — must have at least one caught
  * oracle-class mutant. Do not derive this set from the behaviour-equivalent list.
  */
 export const ORACLE_CLASS_ALL_EQUIVALENT_LINES: ReadonlySet<number> = new Set([
-  306, 307, 320, 321, 334, 335,
+  342, 343, 359, 360, 376, 377,
 ]);
 
 const chunkMutants = (mutants: OracleClassMutant[], size: number): OracleClassMutant[][] => {

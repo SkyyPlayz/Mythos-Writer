@@ -22,7 +22,9 @@ import {
   SIDECAR_HARD_A_ROWS,
   SIDECAR_HARD_C_ROWS,
   SIDECAR_HARD2_NESTED_ROWS,
+  SIDECAR_H3_H4_COMBINED_ROWS,
   SIDECAR_RF7_REPARSE_ROWS,
+  assertSidecarH3H4CombinedTables,
   sidecarHardADeleted,
   sidecarRf7Deleted,
 } from './sidecarTraversalScan.test-helpers.js';
@@ -39,16 +41,16 @@ function withFileLine(line: number, text: string): string {
 }
 
 const WALK_SIX_MUTANTS: readonly { name: string; line: number; text: string }[] = [
-  { name: ':346 IntOp +2', line: 346, text: 'IntOp $7 $7 + 2' },
-  { name: ':346 dup +1', line: 346, text: 'DUP' },
-  { name: ':347 Goto +2', line: 347, text: 'Goto +2' },
-  { name: ':347 Goto +3', line: 347, text: 'Goto +3' },
-  { name: ':347 Goto +4', line: 347, text: 'Goto +4' },
-  { name: ':347 Goto +6', line: 347, text: 'Goto +6' },
+  { name: ':388 IntOp +2', line: 388, text: 'IntOp $7 $7 + 2' },
+  { name: ':388 dup +1', line: 388, text: 'DUP' },
+  { name: ':389 Goto +2', line: 389, text: 'Goto +2' },
+  { name: ':389 Goto +3', line: 389, text: 'Goto +3' },
+  { name: ':389 Goto +4', line: 389, text: 'Goto +4' },
+  { name: ':389 Goto +6', line: 389, text: 'Goto +6' },
 ];
 
 const HARD_C_EIGHTEEN: readonly { name: string; line: number; text: string }[] = [
-  304, 306, 307, 318, 320, 321, 332, 334, 335,
+  340, 342, 343, 357, 359, 360, 374, 376, 377,
 ].flatMap((line) => [
   { name: `:${line} Nop`, line, text: 'Nop' },
   { name: `:${line} del`, line, text: '' },
@@ -84,11 +86,11 @@ describe('HARD-A short names + deny/allowlist GLP', () => {
   });
 
   it('GLP-before-deny is proven by the PROGRA~1 allowlist row, not by string presence', () => {
-    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 160);
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 166);
     expect(row, 'PROGRA~1 inside-allowlist row').toBeDefined();
     expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
-    const mutant = withFileLine(160, 'Nop');
-    expect(sidecarHardADeleted(mutant, row!).length, 'Nop :160 must delete Shared Docs\\v').toBeGreaterThan(0);
+    const mutant = withFileLine(166, 'Nop');
+    expect(sidecarHardADeleted(mutant, row!).length, 'Nop :166 must delete Shared Docs\\v').toBeGreaterThan(0);
   });
 
   it('missing-root rows pin every allow/deny root, not only WINDIR', () => {
@@ -98,40 +100,40 @@ describe('HARD-A short names + deny/allowlist GLP', () => {
     }
   });
 
-  it('$1 revert on :164 (StrCpy $4 $1 $8) deletes Program Files\\Shared Docs\\v', () => {
-    expect(fileLines[163]!.trim()).toBe('StrCpy $4 $3 $8');
-    const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith(':164 $1 revert'));
+  it('$1 revert on :173 (StrCpy $4 $1 $8) deletes Program Files\\Shared Docs\\v', () => {
+    expect(fileLines[172]!.trim()).toBe('StrCpy $4 $3 $8');
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.includes('$1 revert'));
     expect(row).toBeDefined();
     expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
-    const mutant = withFileLine(164, 'StrCpy $4 $1 $8');
+    const mutant = withFileLine(173, 'StrCpy $4 $1 $8');
     expect(sidecarHardADeleted(mutant, row!)).toEqual(['C:\\Program Files\\Shared Docs\\v']);
   });
 
-  it('failed canon-root GFPN writes $9, so Nop :257 is a real kill', () => {
-    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 257);
-    expect(row, 'fail-write row for :257').toBeDefined();
+  it('failed canon-root GFPN writes $9, so Nop :284 is a real kill', () => {
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 284);
+    expect(row, 'fail-write row for :284').toBeDefined();
     expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
-    const got = sidecarHardADeleted(mutantSidecarGuardRegionSweepLine(nsh, 257), row!);
-    expect(got.length, 'Nop :257 must delete because the failed GFPN wrote $9').toBeGreaterThan(0);
+    const got = sidecarHardADeleted(mutantSidecarGuardRegionSweepLine(nsh, 284), row!);
+    expect(got.length, 'Nop :284 must delete because the failed GFPN wrote $9').toBeGreaterThan(0);
   });
 
-  it('truncated canon-root GFPN writes $9, so Nop :258 is a real kill', () => {
-    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 258);
-    expect(row, 'trunc-write row for :258').toBeDefined();
+  it('truncated canon-root GFPN writes $9, so Nop :285 is a real kill', () => {
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 285);
+    expect(row, 'trunc-write row for :285').toBeDefined();
     expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
-    const got = sidecarHardADeleted(mutantSidecarGuardRegionSweepLine(nsh, 258), row!);
-    expect(got.length, 'Nop :258 must delete because the truncated GFPN wrote $9').toBeGreaterThan(0);
+    const got = sidecarHardADeleted(mutantSidecarGuardRegionSweepLine(nsh, 285), row!);
+    expect(got.length, 'Nop :285 must delete because the truncated GFPN wrote $9').toBeGreaterThan(0);
   });
 
-  it('canon-root GLP fault at :259 skips a legit vault; Nop :259 deletes it', () => {
-    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 259);
-    expect(row, 'GLP-fault row for :259').toBeDefined();
+  it('canon-root GLP fault at :286 skips a legit vault; Nop :286 deletes it', () => {
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 286);
+    expect(row, 'GLP-fault row for :286').toBeDefined();
     expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
-    const got = sidecarHardADeleted(mutantSidecarGuardRegionSweepLine(nsh, 259), row!);
-    expect(got, 'Nop :259 must delete the legit vault the GLP fault skipped').toEqual([
+    const got = sidecarHardADeleted(mutantSidecarGuardRegionSweepLine(nsh, 286), row!);
+    expect(got, 'Nop :286 must delete the legit vault the GLP fault skipped').toEqual([
       'C:\\Users\\me\\Documents\\MyVault',
     ]);
-    expect(sidecarGuardModeTwoCaught(mutantSidecarGuardRegionSweepLine(nsh, 259), nsh)).toBe(true);
+    expect(sidecarGuardModeTwoCaught(mutantSidecarGuardRegionSweepLine(nsh, 286), nsh)).toBe(true);
   });
 
   for (const fileLine of SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS) {
@@ -213,7 +215,7 @@ function extraDownloadsBlockMutants(): { key: string; nsh: string }[] {
     'Goto mythos_canon_gate',
   ] as const;
   const out: { key: string; nsh: string }[] = [];
-  for (let line = 322; line <= 335; line += 1) {
+  for (let line = 361; line <= 377; line += 1) {
     const src = fileLines[line - 1]!;
     const indent = src.match(/^\s*/)?.[0] ?? '';
     for (const [a, b] of swaps) {
@@ -234,14 +236,14 @@ function extraDownloadsBlockMutants(): { key: string; nsh: string }[] {
 }
 
 /**
- * Shield 112: pick mutants from the region map / oracle-class sweep on :322–:335,
+ * Shield 112: pick mutants from the region map / oracle-class sweep on :361–:377,
  * not by the N7/N8 rows. Red is mode-2 (full pin-free tables).
  */
 function nestedDownloadsRegionMutants(): { key: string; nsh: string }[] {
   const seen = new Set<string>();
   const out: { key: string; nsh: string }[] = [];
   const candidates = [
-    ...generateOracleClassMutants(nsh).filter((m) => m.fileLine >= 322 && m.fileLine <= 335),
+    ...generateOracleClassMutants(nsh).filter((m) => m.fileLine >= 361 && m.fileLine <= 377),
     ...extraDownloadsBlockMutants(),
   ];
   for (const mutant of candidates) {
@@ -261,9 +263,9 @@ describe('HARD-2 nested Downloads (112 survivors)', () => {
     expect(() => assertSidecarHard2NestedTables(nsh)).not.toThrow();
   });
 
-  it('Downloads ancestor sep Nop (:335) deletes Documents\\prof', () => {
-    expect(fileLines[334]!.trim()).toBe('StrCmp $6 "\\" uninstall_vault_read');
-    const mutant = withFileLine(335, 'Nop');
+  it('Downloads ancestor sep Nop (:377) deletes Documents\\prof', () => {
+    expect(fileLines[376]!.trim()).toBe('StrCmp $6 "\\" uninstall_vault_read');
+    const mutant = withFileLine(377, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
@@ -296,10 +298,10 @@ describe('HARD-2 nested Downloads (112 survivors)', () => {
     expect(survivors.map((s) => s.key), `${survivors.length} of ${selected.length} region-map mutants survived`).toEqual(
       [],
     );
-  }, 180_000);
+  }, 189_000);
 });
 
-describe('walk survivors :346/:347 (freeze :277/:278)', () => {
+describe('walk survivors :388/:389 (freeze :307/:308)', () => {
   it('1-char component junction row is in the RF-7 table', () => {
     expect(SIDECAR_RF7_REPARSE_ROWS.some((r) => r.path === RF7_ONE_CHAR_JUNCTION_VAULT)).toBe(true);
     expect(
@@ -327,4 +329,54 @@ describe('walk survivors :346/:347 (freeze :277/:278)', () => {
       expect(deleted, spec.name).not.toContain(RF7_ONE_CHAR_JUNCTION);
     });
   }
+});
+
+describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
+  it('combined missing-root + EVIL~1 trailing-space run deletes only the legit vault', () => {
+    expect(SIDECAR_H3_H4_COMBINED_ROWS).toHaveLength(1);
+    expect(() => assertSidecarH3H4CombinedTables(nsh)).not.toThrow();
+  });
+
+  it('H3 revert (scan Goto ret) is mode-2 red and deletes the EVIL~1 Desktop decoy', () => {
+    expect(fileLines[418]!.trim()).toBe('mythos_comp_tail_scan: StrCpy $4 $2 1');
+    const next = [...fileLines];
+    next[418] = '        mythos_comp_tail_scan: Goto mythos_comp_tail_ret';
+    const mutant = next.join('\n');
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('H3a EVIL~1'));
+    expect(row, 'H3a EVIL~1 row').toBeDefined();
+    expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
+    expect(sidecarHardADeleted(mutant, row!)).toEqual(['C:\\Users\\me\\Documents\\evil']);
+  });
+
+  it('line GLP +2 fallback is mode-2 red and deletes the 1st-call GLP-fault vault', () => {
+    expect(fileLines[143]!.trim()).toBe('IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0');
+    const mutant = withFileLine(144, 'IntCmp $4 0 +2 0 0');
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('path GLP 1st-call fault'));
+    expect(row, 'path GLP 1st-call fault row').toBeDefined();
+    expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
+    expect(sidecarHardADeleted(mutant, row!)).toEqual(['C:\\Users\\me\\Documents\\MyVault']);
+  });
+
+  it('walk $3→$1 at :385/:391 is red on / and RF7PAR~1 parent-junction rows', () => {
+    expect(fileLines[384]!.trim()).toBe('StrCpy $6 $3 1 $7');
+    expect(fileLines[390]!.trim()).toBe('StrCpy $6 $3 $7');
+    const slash = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.includes('parent junction via /'));
+    const short = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.includes('RF7PAR~1'));
+    expect(slash, 'parent junction via /').toBeDefined();
+    expect(short, 'parent junction via RF7PAR~1').toBeDefined();
+    expect(sidecarRf7Deleted(nsh, slash!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
+    expect(sidecarRf7Deleted(nsh, short!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
+
+    const charMutant = withFileLine(385, 'StrCpy $6 $1 1 $7');
+    const prefixMutant = withFileLine(391, 'StrCpy $6 $1 $7');
+    expect(sidecarGuardModeTwoCaught(charMutant, nsh)).toBe(true);
+    expect(sidecarGuardModeTwoCaught(prefixMutant, nsh)).toBe(true);
+
+    const expandedParentVault = 'C:\\Users\\me\\Documents\\rf7-parent\\vault';
+    expect(sidecarRf7Deleted(charMutant, slash!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([expandedParentVault]);
+    expect(sidecarRf7Deleted(charMutant, short!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([expandedParentVault]);
+    expect(sidecarRf7Deleted(prefixMutant, short!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([expandedParentVault]);
+  });
 });

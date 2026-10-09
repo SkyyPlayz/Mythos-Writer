@@ -143,6 +143,9 @@
         System::Call "kernel32::GetLongPathNameW(w r3, w .r3, i ${NSIS_MAX_STRLEN}) i .r4"
         IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
         IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrCpy $2 "ct1"
+        Goto mythos_comp_tail_scan
+        mythos_comp_tail_ret1:
         StrCpy $5 "$WINDIR"
         System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"
         IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
@@ -150,6 +153,9 @@
         System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
         IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
         IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrCpy $2 "5w"
+        Goto mythos_comp_tail_scan
+        mythos_comp_tail_ret5w:
         StrLen $8 $5
         StrCpy $4 $3 $8
         StrCmp $4 $5 uninstall_vault_read 0
@@ -160,6 +166,9 @@
         System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
         IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
         IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrCpy $2 "5p"
+        Goto mythos_comp_tail_scan
+        mythos_comp_tail_ret5p:
         StrLen $8 $5
         StrCpy $4 $3 $8
         StrCmp $4 $5 uninstall_vault_read 0
@@ -170,6 +179,9 @@
         System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
         IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
         IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrCpy $2 "5x"
+        Goto mythos_comp_tail_scan
+        mythos_comp_tail_ret5x:
         StrLen $8 $5
         StrCpy $4 $3 $8
         StrCmp $4 $5 uninstall_vault_read 0
@@ -178,8 +190,11 @@
         IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
         IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
         System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
-        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 0 +2 0 0
         IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrCpy $2 "5a"
+        Goto mythos_comp_tail_scan
+        mythos_comp_tail_ret5a:
         StrLen $8 $5
         StrCpy $4 $3 $8
         StrCmp $4 $5 0 mythos_al_not_appdata
@@ -196,8 +211,11 @@
         IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
         IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
         System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
-        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 0 +2 0 0
         IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrCpy $2 "5d"
+        Goto mythos_comp_tail_scan
+        mythos_comp_tail_ret5d:
         StrLen $8 $5
         StrCpy $4 $3 $8
         StrCmp $4 $5 0 mythos_al_not_documents
@@ -214,8 +232,11 @@
         IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
         IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
         System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
-        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 0 +2 0 0
         IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrCpy $2 "5k"
+        Goto mythos_comp_tail_scan
+        mythos_comp_tail_ret5k:
         StrLen $8 $5
         StrCpy $4 $3 $8
         StrCmp $4 $5 0 mythos_al_not_desktop
@@ -232,8 +253,11 @@
         IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
         IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
         System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
-        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 0 +2 0 0
         IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrCpy $2 "5l"
+        Goto mythos_comp_tail_scan
+        mythos_comp_tail_ret5l:
         StrLen $8 $5
         StrCpy $4 $3 $8
         StrCmp $4 $5 0 mythos_al_deny
@@ -253,12 +277,18 @@
           System::Call "kernel32::GetLongPathNameW(w r3, w .r3, i ${NSIS_MAX_STRLEN}) i .r4"
           IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
           IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+          StrCpy $2 "ct2"
+          Goto mythos_comp_tail_scan
+          mythos_comp_tail_ret2:
           System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"
           IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
           IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
           System::Call "kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4"
           IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
           IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+          StrCpy $2 "9c"
+          Goto mythos_comp_tail_scan
+          mythos_comp_tail_ret9c:
           StrLen $8 $9
           StrCpy $6 $3 $8
           StrCmp $6 $9 0 uninstall_vault_read
@@ -283,8 +313,11 @@
             IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
             System::Call "kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4"
-            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+            IntCmp $4 0 +2 0 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+            StrCpy $2 "9a"
+            Goto mythos_comp_tail_scan
+            mythos_comp_tail_ret9a:
             StrCmp $3 $9 uninstall_vault_read
             StrLen $8 $3
             StrCpy $6 $9 $8
@@ -297,8 +330,11 @@
             IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
             System::Call "kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4"
-            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+            IntCmp $4 0 +2 0 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+            StrCpy $2 "9d"
+            Goto mythos_comp_tail_scan
+            mythos_comp_tail_ret9d:
             StrCmp $3 $9 uninstall_vault_read
             StrLen $8 $3
             StrCpy $6 $9 $8
@@ -311,8 +347,11 @@
             IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
             System::Call "kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4"
-            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+            IntCmp $4 0 +2 0 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+            StrCpy $2 "9k"
+            Goto mythos_comp_tail_scan
+            mythos_comp_tail_ret9k:
             StrCmp $3 $9 uninstall_vault_read
             StrLen $8 $3
             StrCpy $6 $9 $8
@@ -325,8 +364,11 @@
             IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
             System::Call "kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4"
-            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+            IntCmp $4 0 +2 0 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+            StrCpy $2 "9l"
+            Goto mythos_comp_tail_scan
+            mythos_comp_tail_ret9l:
             StrCmp $3 $9 uninstall_vault_read
             StrLen $8 $3
             StrCpy $6 $9 $8
@@ -374,6 +416,44 @@
         uninstall_vault_file:
           Delete "$3"
           Goto uninstall_vault_read
+        mythos_comp_tail_scan: StrCpy $4 $2 1
+          StrCpy $6 $3
+          StrCmp $4 "5" 0 +2
+          StrCpy $6 $5
+          StrCmp $4 "9" 0 +2
+          StrCpy $6 $9
+          StrCpy $7 0
+        mythos_comp_tail_loop: StrCpy $4 $6 1 $7
+          StrCmp $4 "" mythos_comp_tail_end
+          StrCmp $4 "\" 0 mythos_comp_tail_inc
+          IntCmp $7 0 mythos_comp_tail_inc
+          IntOp $8 $7 - 1
+          StrCpy $4 $6 1 $8
+          StrCmp $4 " " uninstall_vault_read
+          StrCmp $4 "." uninstall_vault_read
+          StrCmp $4 "$\t" uninstall_vault_read
+        mythos_comp_tail_inc: IntOp $7 $7 + 1
+          Goto mythos_comp_tail_loop
+        mythos_comp_tail_end: IntCmp $7 0 mythos_comp_tail_ret
+          IntOp $8 $7 - 1
+          StrCpy $4 $6 1 $8
+          StrCmp $4 " " uninstall_vault_read
+          StrCmp $4 "." uninstall_vault_read
+          StrCmp $4 "$\t" uninstall_vault_read
+        mythos_comp_tail_ret: StrCmp $2 "ct1" mythos_comp_tail_ret1
+          StrCmp $2 "ct2" mythos_comp_tail_ret2
+          StrCmp $2 "5w" mythos_comp_tail_ret5w
+          StrCmp $2 "5p" mythos_comp_tail_ret5p
+          StrCmp $2 "5x" mythos_comp_tail_ret5x
+          StrCmp $2 "5a" mythos_comp_tail_ret5a
+          StrCmp $2 "5d" mythos_comp_tail_ret5d
+          StrCmp $2 "5k" mythos_comp_tail_ret5k
+          StrCmp $2 "5l" mythos_comp_tail_ret5l
+          StrCmp $2 "9c" mythos_comp_tail_ret9c
+          StrCmp $2 "9a" mythos_comp_tail_ret9a
+          StrCmp $2 "9d" mythos_comp_tail_ret9d
+          StrCmp $2 "9k" mythos_comp_tail_ret9k
+          Goto mythos_comp_tail_ret9l
       uninstall_vault_close:
         FileClose $0
         Delete "$APPDATA\Mythos Writer\uninstall-delete-paths.txt"

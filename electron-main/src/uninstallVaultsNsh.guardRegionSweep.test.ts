@@ -33,7 +33,7 @@ export const SIDECAR_GUARD_SWEEP_IVY_LOCKED_EQUIVALENTS: Readonly<Record<number,
   97: 'StrCmp $4 "" uninstall_vault_read → Nop (old :71, backslash `\\.`+EOF). Sibling: :137 trav_ok tail rejects a path ending in `.`.',
   98: 'StrCmp $4 "\\" uninstall_vault_read → Nop (old :72, `\\.\\`). Sibling: :87 rejects the next `\\` whose preceding char is `.`.',
   109: 'StrCmp $7 "0" +5 → Nop (old :83, forward pos-0 skip). A `/` at pos 0 then reads $8=-1 (the last char); every path that read can reject already fails the :137–:139 tail check.',
-  186: 'StrCmp $3 $5 uninstall_vault_read → Nop (old :153, APPDATA root self-match). Sibling: the exact root has no `\\` at $8 length, so it falls to not_appdata and is denied.',
+  201: 'StrCmp $3 $5 uninstall_vault_read → Nop (old :159, APPDATA root self-match). Sibling: the exact root has no `\\` at $8 length, so it falls to not_appdata and is denied.',
 };
 
 /**
@@ -61,7 +61,7 @@ export const SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS: Readonly<Record<number, stri
   47: 'StrCmp $1 "" uninstall_vault_read → Nop (RF-6 loop head). An empty line reads $2 = "", which is neither LF nor CR, so the loop exits and the :56 check skips it.',
   61: 'System::Free $6 → Nop. The 64-byte set buffer leaks once per line; nothing reads it after StrPBrkW, so the delete set is unchanged.',
   117: 'StrCmp $4 "/" uninstall_vault_read → Nop (forward `//`). Sibling: the :79–:80 sepcheck already rejects any separator followed by `/`.',
-  240: 'StrCmp $3 $5 uninstall_vault_read → Nop (Downloads root self-match). Sibling: the exact root has no `\\` at $8 length, so it falls to mythos_al_deny.',
+  264: 'StrCmp $3 $5 uninstall_vault_read → Nop (Downloads root self-match). Sibling: the exact root has no `\\` at $8 length, so it falls to mythos_al_deny.',
 };
 
 /**
@@ -69,46 +69,53 @@ export const SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS: Readonly<Record<number, stri
  * lines that the 12,617-case strength shards still scan.
  */
 export const SIDECAR_GUARD_SWEEP_RF7_STRENGTH_EQUIVALENTS: Readonly<Record<number, string>> = {
-  272: 'StrCpy $7 $9 → Nop. Restore then uses leftover $7; walk still hits every `\\`.',
-  276: 'StrLen $8 $3 (strip) → Nop. $8 is only read when the last char is `\\`.',
-  277: 'IntCmp $8 3 (keep C:\\) → Nop. Fixture trailing-`\\` paths are longer than 3.',
-  279: 'Goto mythos_nr_strip → Nop. GFPN leaves at most one trailing `\\`.',
-  303: 'Documents ancestor StrLen → Nop. $8 already holds StrLen $3.',
-  305: 'Documents ancestor prefix compare → Nop. $6 is not the path prefix on the HARD-C fixtures.',
-  317: 'Desktop ancestor StrLen → Nop. $8 already holds StrLen $3.',
-  331: 'Downloads ancestor StrLen → Nop. $8 already holds StrLen $3.',
-  337: 'StrCpy $9 $7 → Nop. $9 stays the last GFPN; walk start is a few chars in and still hits every `\\`.',
-  338: 'Goto mythos_reparse_walk → Nop. The next line is the walk label.',
-  341: 'IntOp $7 $8 + 1 → Nop. Walk from 0 still GetFileAttributesW every prefix and the leaf.',
-  347: 'Goto mythos_reparse_next → Nop. Falls into hit and still GetFileAttributesW the current prefix.',
-  354: 'IntOp $7 $7 + 1 → +2 (after a hit). The next `\\` is still found.',
-  361: 'Goto uninstall_vault_do_delete → Nop. Falls through to the leftover-/ scan and IfFileExists.',
-  363: 'StrCpy $7 0 (leftover-/ scan) → Nop. Walk left $7 at end-of-$3.',
-  365: 'StrCpy $6 $3 1 $7 → Nop. Leftover $6 from the walk leaf is "".',
-  367: 'StrCmp $6 "/" uninstall_vault_read → Nop. GFPN has already folded / to \\.',
-  368: 'IntOp $7 $7 + 1 → +2 (leftover-/ scan). GFPN left no / to reject.',
-  369: 'Goto mythos_canon_slash → Nop. Falls into slash_ok; GFPN left no / to reject.',
+  302: 'StrCpy $7 $9 → Nop. Restore then uses leftover $7; walk still hits every `\\`.',
+  306: 'StrLen $8 $3 (strip) → Nop. $8 is only read when the last char is `\\`.',
+  307: 'IntCmp $8 3 (keep C:\\) → Nop. Fixture trailing-`\\` paths are longer than 3.',
+  309: 'Goto mythos_nr_strip → Nop. GFPN leaves at most one trailing `\\`.',
+  339: 'Documents ancestor StrLen → Nop. $8 already holds StrLen $3.',
+  341: 'Documents ancestor prefix compare → Nop. $6 is not the path prefix on the HARD-C fixtures.',
+  356: 'Desktop ancestor StrLen → Nop. $8 already holds StrLen $3.',
+  373: 'Downloads ancestor StrLen → Nop. $8 already holds StrLen $3.',
+  379: 'StrCpy $9 $7 → Nop. $9 stays the last GFPN; walk start is a few chars in and still hits every `\\`.',
+  380: 'Goto mythos_reparse_walk → Nop. The next line is the walk label.',
+  383: 'IntOp $7 $8 + 1 → Nop. Walk from 0 still GetFileAttributesW every prefix and the leaf.',
+  389: 'Goto mythos_reparse_next → Nop. Falls into hit and still GetFileAttributesW the current prefix.',
+  396: 'IntOp $7 $7 + 1 → +2 (after a hit). The next `\\` is still found.',
+  403: 'Goto uninstall_vault_do_delete → Nop. Falls through to the leftover-/ scan and IfFileExists.',
+  405: 'StrCpy $7 0 (leftover-/ scan) → Nop. Walk left $7 at end-of-$3.',
+  407: 'StrCpy $6 $3 1 $7 → Nop. Leftover $6 from the walk leaf is "".',
+  409: 'StrCmp $6 "/" uninstall_vault_read → Nop. GFPN has already folded / to \\.',
+  410: 'IntOp $7 $7 + 1 → +2 (leftover-/ scan). GFPN left no / to reject.',
+  411: 'Goto mythos_canon_slash → Nop. Falls into slash_ok; GFPN left no / to reject.',
 };
 
 /**
  * Remaining mode-2-only equivalents (primary Nop is identity on the VM tables).
  * Forge RESULT_36d2 unlisted 33 GFPN/GLP 0/trunc lines that a fault row kills.
- * RESULT_8329 unlisted :259: a GLP fault on that Call skips a legit vault;
+ * RESULT_8329 unlisted :286: a GLP fault on that Call skips a legit vault;
  * Nop of the Call skips the fault and the vault deletes.
  */
 export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<number, string>> = {
-  204: 'Documents prefix StrCmp → Nop. No oracle path becomes a false Documents child.',
-  222: 'Desktop prefix StrCmp → Nop. No oracle path becomes a false Desktop child.',
-  288: 'AppData nested exact-root StrCmp → Nop. Allowlist already skipped the exact AppData root.',
-  302: 'Documents nested exact-root StrCmp → Nop. Allowlist already skipped the exact Documents root.',
+  193: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
+  214: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
+  235: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
+  256: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
+  316: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
+  333: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
+  350: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
+  367: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
+  332: 'Nested Documents GLP Call Nop is identity: H4 +2 already keeps the GFPN string.',
+  366: 'Nested Downloads GLP Call Nop is identity: H4 +2 already keeps the GFPN string.',
+  221: 'Documents prefix StrCmp → Nop. No oracle path becomes a false Documents child.',
+  240: 'Desktop prefix StrCmp → Nop. No oracle path becomes a false Desktop child.',
+  321: 'AppData nested exact-root StrCmp → Nop. Allowlist already skipped the exact AppData root.',
+  338: 'Documents nested exact-root StrCmp → Nop. Allowlist already skipped the exact Documents root.',
 };
 
-/** Forge RESULT_97be (29) + RESULT_36d2 (33) + RESULT_8329 (:259). Mode 2 must catch each primary Nop. */
+/** Forge RESULT_97be (29) + RESULT_36d2 (33) + RESULT_8329 (:286). Mode 2 must catch each primary Nop. */
 export const SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS: readonly number[] = [
-  143, 144, 145, 147, 150, 151, 152, 158, 159, 160, 161, 162, 168, 169, 170, 171, 172, 178, 179,
-  181, 182, 196, 197, 199, 200, 214, 215, 216, 217, 218, 232, 233, 234, 235, 236, 251, 252, 254,
-  255, 259, 260, 261, 283, 284, 285, 286, 287, 297, 298, 299, 300, 301, 311, 312, 313, 314, 315, 325,
-  326, 327, 328, 329, 333,
+  143, 144, 145, 150, 151, 153, 154, 155, 164, 165, 166, 167, 168, 177, 178, 179, 180, 181, 190, 191, 194, 211, 212, 215, 232, 233, 234, 236, 253, 254, 255, 257, 275, 276, 278, 279, 286, 287, 288, 313, 314, 315, 317, 330, 331, 334, 347, 348, 349, 351, 364, 365, 368, 375
 ];
 
 /** RF-7 walk / HARD-2 / HARD-A fail-closed lines whose primary Nop does not change the delete set. */
@@ -119,7 +126,7 @@ export const SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS: Readonly<Record<number, string
 
 /**
  * 12k-corpus strength shards: Ivy's locked 5, the other 12 proven primaries, RF-4/5/6,
- * the RF-7 walk / leftover-`/` primaries, and the restored :303/:305/:317/:331 ancestor
+ * the RF-7 walk / leftover-`/` primaries, and the restored :339/:341/:356/:373 ancestor
  * lines. Heavy files run in the `oracle-sweeps` job, not inside `unit`.
  */
 export const SIDECAR_GUARD_SWEEP_STRENGTH_EQUIVALENT_FILE_LINES: Readonly<Record<number, string>> = {
@@ -136,7 +143,7 @@ export const SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES: Readonly<Recor
   ...SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS,
 };
 
-describe('sidecar guard region sweep :43-:376 (buildIntegrity excluded)', () => {
+describe('sidecar guard region sweep :43-:456 (buildIntegrity excluded)', () => {
   const nsh = loadUninstallVaultsNsh();
 
   describe('mode (1) normal — exact region pin', () => {
@@ -221,8 +228,8 @@ describe('sidecar guard region sweep :43-:376 (buildIntegrity excluded)', () => 
 
     it('equivalence-strength shards cover every strength-checked equivalent line', () => {
       const sharded = [
-        47, 56, 61, 84, 97, 98, 99, 103, 104, 105, 106, 109, 117, 123, 124, 125, 129, 130, 131, 186, 240, 272, 276,
-        277, 279, 303, 305, 317, 331, 337, 338, 341, 347, 354, 361, 363, 365, 367, 368, 369,
+        47, 56, 61, 84, 97, 98, 99, 103, 104, 105, 106, 109, 117, 123, 124, 125, 129, 130, 131, 201, 264, 302, 306,
+        307, 309, 339, 341, 356, 373, 379, 380, 383, 389, 396, 403, 405, 407, 409, 410, 411,
       ];
       expect(sharded).toEqual(
         Object.keys(SIDECAR_GUARD_SWEEP_STRENGTH_EQUIVALENT_FILE_LINES)
@@ -235,15 +242,15 @@ describe('sidecar guard region sweep :43-:376 (buildIntegrity excluded)', () => 
       for (const fileLine of SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS) {
         expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[fileLine], `:${fileLine}`).toBeUndefined();
       }
-      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[256]).toBeUndefined();
-      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[257]).toBeUndefined();
-      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[258]).toBeUndefined();
-      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[259]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[283]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[284]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[285]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[286]).toBeUndefined();
     });
 
     it('oracle-class at-least-one-caught skip set is the 6 ancestor-separator lines from 8b2f', () => {
       expect([...ORACLE_CLASS_ALL_EQUIVALENT_LINES].sort((a, b) => a - b)).toEqual([
-        306, 307, 320, 321, 334, 335,
+        342, 343, 359, 360, 376, 377,
       ]);
     });
   });

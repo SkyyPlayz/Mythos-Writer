@@ -24,9 +24,10 @@ export const TRAVERSAL_SCAN_BLOCK_SCAN_LABEL = 'mythos_trav_scan:';
 
 /**
  * Exact sidecar guard region, file :43 (`uninstall_vault_read: ClearErrors`) .. the unique
- * `Delete "$3"` end marker: RF-6 read-trim + control-char / wildcard reject, traversal, deny
- * prefixes, root guards, GetFullPathNameW gate, HARD-2 nested-root guard, RF-7b top-down
- * reparse walk, leftover-`/` scan on `$3`, and do_delete. Generated from build/uninstall-vaults.nsh; the pin is exact.
+ * `Goto mythos_comp_tail_ret9l` end marker: RF-6 read-trim + control-char / wildcard reject,
+ * traversal, deny prefixes, root guards, GetFullPathNameW gate, HARD-2 nested-root guard,
+ * RF-7b top-down reparse walk, leftover-`/` scan on `$3`, do_delete, and the H3 component-tail
+ * scan. Generated from build/uninstall-vaults.nsh; the pin is exact.
  */
 export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        uninstall_vault_read: ClearErrors",
@@ -132,6 +133,9 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        System::Call \"kernel32::GetLongPathNameW(w r3, w .r3, i ${NSIS_MAX_STRLEN}) i .r4\"",
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $2 \"ct1\"",
+  "        Goto mythos_comp_tail_scan",
+  "        mythos_comp_tail_ret1:",
   "        StrCpy $5 \"$WINDIR\"",
   "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
@@ -139,6 +143,9 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $2 \"5w\"",
+  "        Goto mythos_comp_tail_scan",
+  "        mythos_comp_tail_ret5w:",
   "        StrLen $8 $5",
   "        StrCpy $4 $3 $8",
   "        StrCmp $4 $5 uninstall_vault_read 0",
@@ -149,6 +156,9 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $2 \"5p\"",
+  "        Goto mythos_comp_tail_scan",
+  "        mythos_comp_tail_ret5p:",
   "        StrLen $8 $5",
   "        StrCpy $4 $3 $8",
   "        StrCmp $4 $5 uninstall_vault_read 0",
@@ -159,6 +169,9 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $2 \"5x\"",
+  "        Goto mythos_comp_tail_scan",
+  "        mythos_comp_tail_ret5x:",
   "        StrLen $8 $5",
   "        StrCpy $4 $3 $8",
   "        StrCmp $4 $5 uninstall_vault_read 0",
@@ -167,8 +180,11 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
-  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 0 +2 0 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $2 \"5a\"",
+  "        Goto mythos_comp_tail_scan",
+  "        mythos_comp_tail_ret5a:",
   "        StrLen $8 $5",
   "        StrCpy $4 $3 $8",
   "        StrCmp $4 $5 0 mythos_al_not_appdata",
@@ -185,8 +201,11 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
-  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 0 +2 0 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $2 \"5d\"",
+  "        Goto mythos_comp_tail_scan",
+  "        mythos_comp_tail_ret5d:",
   "        StrLen $8 $5",
   "        StrCpy $4 $3 $8",
   "        StrCmp $4 $5 0 mythos_al_not_documents",
@@ -203,8 +222,11 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
-  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 0 +2 0 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $2 \"5k\"",
+  "        Goto mythos_comp_tail_scan",
+  "        mythos_comp_tail_ret5k:",
   "        StrLen $8 $5",
   "        StrCpy $4 $3 $8",
   "        StrCmp $4 $5 0 mythos_al_not_desktop",
@@ -221,8 +243,11 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
-  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 0 +2 0 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $2 \"5l\"",
+  "        Goto mythos_comp_tail_scan",
+  "        mythos_comp_tail_ret5l:",
   "        StrLen $8 $5",
   "        StrCpy $4 $3 $8",
   "        StrCmp $4 $5 0 mythos_al_deny",
@@ -242,12 +267,18 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "          System::Call \"kernel32::GetLongPathNameW(w r3, w .r3, i ${NSIS_MAX_STRLEN}) i .r4\"",
   "          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "          StrCpy $2 \"ct2\"",
+  "          Goto mythos_comp_tail_scan",
+  "          mythos_comp_tail_ret2:",
   "          System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4\"",
   "          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "          System::Call \"kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4\"",
   "          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "          StrCpy $2 \"9c\"",
+  "          Goto mythos_comp_tail_scan",
+  "          mythos_comp_tail_ret9c:",
   "          StrLen $8 $9",
   "          StrCpy $6 $3 $8",
   "          StrCmp $6 $9 0 uninstall_vault_read",
@@ -272,8 +303,11 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "            System::Call \"kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4\"",
-  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 0 +2 0 0",
   "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "            StrCpy $2 \"9a\"",
+  "            Goto mythos_comp_tail_scan",
+  "            mythos_comp_tail_ret9a:",
   "            StrCmp $3 $9 uninstall_vault_read",
   "            StrLen $8 $3",
   "            StrCpy $6 $9 $8",
@@ -286,8 +320,11 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "            System::Call \"kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4\"",
-  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 0 +2 0 0",
   "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "            StrCpy $2 \"9d\"",
+  "            Goto mythos_comp_tail_scan",
+  "            mythos_comp_tail_ret9d:",
   "            StrCmp $3 $9 uninstall_vault_read",
   "            StrLen $8 $3",
   "            StrCpy $6 $9 $8",
@@ -300,8 +337,11 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "            System::Call \"kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4\"",
-  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 0 +2 0 0",
   "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "            StrCpy $2 \"9k\"",
+  "            Goto mythos_comp_tail_scan",
+  "            mythos_comp_tail_ret9k:",
   "            StrCmp $3 $9 uninstall_vault_read",
   "            StrLen $8 $3",
   "            StrCpy $6 $9 $8",
@@ -314,8 +354,11 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "            System::Call \"kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4\"",
-  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 0 +2 0 0",
   "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "            StrCpy $2 \"9l\"",
+  "            Goto mythos_comp_tail_scan",
+  "            mythos_comp_tail_ret9l:",
   "            StrCmp $3 $9 uninstall_vault_read",
   "            StrLen $8 $3",
   "            StrCpy $6 $9 $8",
@@ -363,7 +406,77 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        uninstall_vault_file:",
   "          Delete \"$3\"",
   "          Goto uninstall_vault_read",
+  "        mythos_comp_tail_scan: StrCpy $4 $2 1",
+  "          StrCpy $6 $3",
+  "          StrCmp $4 \"5\" 0 +2",
+  "          StrCpy $6 $5",
+  "          StrCmp $4 \"9\" 0 +2",
+  "          StrCpy $6 $9",
+  "          StrCpy $7 0",
+  "        mythos_comp_tail_loop: StrCpy $4 $6 1 $7",
+  "          StrCmp $4 \"\" mythos_comp_tail_end",
+  "          StrCmp $4 \"\\\" 0 mythos_comp_tail_inc",
+  "          IntCmp $7 0 mythos_comp_tail_inc",
+  "          IntOp $8 $7 - 1",
+  "          StrCpy $4 $6 1 $8",
+  "          StrCmp $4 \" \" uninstall_vault_read",
+  "          StrCmp $4 \".\" uninstall_vault_read",
+  "          StrCmp $4 \"$\\t\" uninstall_vault_read",
+  "        mythos_comp_tail_inc: IntOp $7 $7 + 1",
+  "          Goto mythos_comp_tail_loop",
+  "        mythos_comp_tail_end: IntCmp $7 0 mythos_comp_tail_ret",
+  "          IntOp $8 $7 - 1",
+  "          StrCpy $4 $6 1 $8",
+  "          StrCmp $4 \" \" uninstall_vault_read",
+  "          StrCmp $4 \".\" uninstall_vault_read",
+  "          StrCmp $4 \"$\\t\" uninstall_vault_read",
+  "        mythos_comp_tail_ret: StrCmp $2 \"ct1\" mythos_comp_tail_ret1",
+  "          StrCmp $2 \"ct2\" mythos_comp_tail_ret2",
+  "          StrCmp $2 \"5w\" mythos_comp_tail_ret5w",
+  "          StrCmp $2 \"5p\" mythos_comp_tail_ret5p",
+  "          StrCmp $2 \"5x\" mythos_comp_tail_ret5x",
+  "          StrCmp $2 \"5a\" mythos_comp_tail_ret5a",
+  "          StrCmp $2 \"5d\" mythos_comp_tail_ret5d",
+  "          StrCmp $2 \"5k\" mythos_comp_tail_ret5k",
+  "          StrCmp $2 \"5l\" mythos_comp_tail_ret5l",
+  "          StrCmp $2 \"9c\" mythos_comp_tail_ret9c",
+  "          StrCmp $2 \"9a\" mythos_comp_tail_ret9a",
+  "          StrCmp $2 \"9d\" mythos_comp_tail_ret9d",
+  "          StrCmp $2 \"9k\" mythos_comp_tail_ret9k",
+  "          Goto mythos_comp_tail_ret9l",
 ];
+
+/** APPDATA Mythos Writer prefix + root self-match (first allowlist root, M5). */
+export const CANONICAL_APPDATA_M5_GUARD_BLOCK: readonly string[] = [
+  "        StrCpy $5 \"$APPDATA\\Mythos Writer\"",
+  "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
+  '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
+  '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
+  "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  '        IntCmp $4 0 +2 0 0',
+  '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
+  "        StrCpy $2 \"5a\"",
+  '        Goto mythos_comp_tail_scan',
+  '        mythos_comp_tail_ret5a:',
+  '        StrLen $8 $5',
+  '        StrCpy $4 $3 $8',
+  '        StrCmp $4 $5 0 mythos_al_not_appdata',
+  '          StrCmp $3 $5 uninstall_vault_read',
+];
+
+/** FileRead + RF-6 CR/LF trim loop + empty check + control-char reject (file :43–:64). */
+export const CANONICAL_READ_TRIM_BLOCK: readonly string[] = CANONICAL_SIDECAR_GUARD_REGION.slice(
+  0,
+  CANONICAL_SIDECAR_GUARD_REGION.findIndex((l) => l === TRAVERSAL_SCAN_BLOCK_PREP_LINE),
+);
+
+export const CANONICAL_READ_TRIM_BLOCK_SHA256 = createHash('sha256')
+  .update(CANONICAL_READ_TRIM_BLOCK.join('\n'))
+  .digest('hex');
+
+export const CANONICAL_SIDECAR_GUARD_REGION_SHA256 = createHash('sha256')
+  .update(CANONICAL_SIDECAR_GUARD_REGION.join('\n'))
+  .digest('hex');
 
 function sliceCanonicalRegion(fromTrimmed: string, toTrimmedExclusive: string): readonly string[] {
   const from = CANONICAL_SIDECAR_GUARD_REGION.findIndex((l) => l.trim() === fromTrimmed);
@@ -384,16 +497,16 @@ export const CANONICAL_TRAVERSAL_SCAN_BLOCK_SHA256 = createHash('sha256')
   .update(CANONICAL_TRAVERSAL_SCAN_BLOCK.join('\n'))
   .digest('hex');
 
-/** Marker-anchored sidecar guard region (file :43–:376). Each marker must occur exactly once. */
+/** Marker-anchored sidecar guard region (file :43–:456). Each marker must occur exactly once. */
 export const SIDECAR_GUARD_REGION_START_LINE = '        uninstall_vault_read: ClearErrors';
 export const SIDECAR_GUARD_REGION_START_FOLLOW_LINE = '        FileRead $0 $1';
 export const SIDECAR_GUARD_REGION_START_MARKER = SIDECAR_GUARD_REGION_START_FOLLOW_LINE;
-export const SIDECAR_GUARD_REGION_END_LINE = '          Delete "$3"';
+export const SIDECAR_GUARD_REGION_END_LINE = '          StrCmp $2 "9k" mythos_comp_tail_ret9k';
 export const SIDECAR_GUARD_REGION_END_MARKER = SIDECAR_GUARD_REGION_END_LINE;
-export const SIDECAR_GUARD_REGION_END_FOLLOW_LINE = '          Goto uninstall_vault_read';
+export const SIDECAR_GUARD_REGION_END_FOLLOW_LINE = '          Goto mythos_comp_tail_ret9l';
 
 export const SIDECAR_GUARD_REGION_FILE_LINE_FIRST = 43;
-export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 376;
+export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 456;
 
 export function nshExecutableLines(source: string): string {
   return source.replace(/;[^\n]*/g, '');
@@ -912,7 +1025,7 @@ export function locateSidecarGuardRegion(nsh: string): { start: number; end: num
     deleteAt <= start ||
     fileLines[deleteAt + 1] !== SIDECAR_GUARD_REGION_END_FOLLOW_LINE
   ) {
-    throw new Error('sidecar guard region (:43–:376) markers missing in uninstall nsh');
+    throw new Error('sidecar guard region (:43–:456) markers missing in uninstall nsh');
   }
   const end = deleteAt + 1;
   const lines = fileLines.slice(start, end + 1);
@@ -956,7 +1069,7 @@ export function replaceSidecarGuardRegionLine(
   return spliceSidecarGuardRegion(nsh, next);
 }
 
-/** Mutate one file line in :43–:376 (1-based file line number). */
+/** Mutate one file line in :43–:456 (1-based file line number). */
 export function replaceSidecarGuardFileLine(nsh: string, fileLineOneBased: number, newLine: string): string {
   if (
     fileLineOneBased < SIDECAR_GUARD_REGION_FILE_LINE_FIRST ||
@@ -1003,7 +1116,8 @@ export const DENY_PREFIX_BLOCK_START_LINE =
   '        System::Call "kernel32::GetFullPathNameW(w r1, i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4"';
 export const DENY_PREFIX_BLOCK_END_LINE = '        StrCpy $5 "$APPDATA\\Mythos Writer"';
 
-/** Exact $WINDIR / $PROGRAMFILES / $PROGRAMFILES64 deny chain (file :91–:99). */
+
+/** Exact $WINDIR / $PROGRAMFILES / $PROGRAMFILES64 deny chain (path GFPN/GLP + three deny roots). */
 export const CANONICAL_DENY_PREFIX_BLOCK: readonly string[] = [
   "        System::Call \"kernel32::GetFullPathNameW(w r1, i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4\"",
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
@@ -1011,6 +1125,9 @@ export const CANONICAL_DENY_PREFIX_BLOCK: readonly string[] = [
   "        System::Call \"kernel32::GetLongPathNameW(w r3, w .r3, i ${NSIS_MAX_STRLEN}) i .r4\"",
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $2 \"ct1\"",
+  "        Goto mythos_comp_tail_scan",
+  "        mythos_comp_tail_ret1:",
   "        StrCpy $5 \"$WINDIR\"",
   "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
@@ -1018,6 +1135,9 @@ export const CANONICAL_DENY_PREFIX_BLOCK: readonly string[] = [
   "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $2 \"5w\"",
+  "        Goto mythos_comp_tail_scan",
+  "        mythos_comp_tail_ret5w:",
   "        StrLen $8 $5",
   "        StrCpy $4 $3 $8",
   "        StrCmp $4 $5 uninstall_vault_read 0",
@@ -1028,6 +1148,9 @@ export const CANONICAL_DENY_PREFIX_BLOCK: readonly string[] = [
   "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $2 \"5p\"",
+  "        Goto mythos_comp_tail_scan",
+  "        mythos_comp_tail_ret5p:",
   "        StrLen $8 $5",
   "        StrCpy $4 $3 $8",
   "        StrCmp $4 $5 uninstall_vault_read 0",
@@ -1038,42 +1161,17 @@ export const CANONICAL_DENY_PREFIX_BLOCK: readonly string[] = [
   "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
   "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
   "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $2 \"5x\"",
+  "        Goto mythos_comp_tail_scan",
+  "        mythos_comp_tail_ret5x:",
   "        StrLen $8 $5",
   "        StrCpy $4 $3 $8",
   "        StrCmp $4 $5 uninstall_vault_read 0",
 ];
 
+
 export const CANONICAL_DENY_PREFIX_BLOCK_SHA256 = createHash('sha256')
   .update(CANONICAL_DENY_PREFIX_BLOCK.join('\n'))
-  .digest('hex');
-
-/** APPDATA Mythos Writer prefix + root self-match (first allowlist root, M5). */
-export const CANONICAL_APPDATA_M5_GUARD_BLOCK: readonly string[] = [
-  String.raw`        StrCpy $5 "$APPDATA\Mythos Writer"`,
-  '        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"',
-  '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
-  '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
-  '        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"',
-  '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
-  '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
-  '        StrLen $8 $5',
-  '        StrCpy $4 $3 $8',
-  '        StrCmp $4 $5 0 mythos_al_not_appdata',
-  '          StrCmp $3 $5 uninstall_vault_read',
-];
-
-/** FileRead + RF-6 CR/LF trim loop + empty check + control-char reject (file :43–:64). */
-export const CANONICAL_READ_TRIM_BLOCK: readonly string[] = CANONICAL_SIDECAR_GUARD_REGION.slice(
-  0,
-  CANONICAL_SIDECAR_GUARD_REGION.findIndex((l) => l === TRAVERSAL_SCAN_BLOCK_PREP_LINE),
-);
-
-export const CANONICAL_READ_TRIM_BLOCK_SHA256 = createHash('sha256')
-  .update(CANONICAL_READ_TRIM_BLOCK.join('\n'))
-  .digest('hex');
-
-export const CANONICAL_SIDECAR_GUARD_REGION_SHA256 = createHash('sha256')
-  .update(CANONICAL_SIDECAR_GUARD_REGION.join('\n'))
   .digest('hex');
 
 export type SidecarNsisVarEnv = Readonly<{
@@ -1269,6 +1367,10 @@ export function executeDenyPrefixBlock(
       }
       throw new Error(`unsupported deny-prefix IntCmp target: ${line}`);
     }
+    if (line.startsWith('StrCpy $2 ') || line === 'Goto mythos_comp_tail_scan' || /^mythos_comp_tail_ret\w+:$/.test(line)) {
+      pc += 1;
+      continue;
+    }
     const strCmpDeny = line.match(/^StrCmp \$4 \$5 uninstall_vault_read (\d+)$/);
     if (strCmpDeny) {
       if (nsisStrEq(reg.$4 ?? '', reg.$5 ?? '')) {
@@ -1400,11 +1502,19 @@ export function executeSidecarAllowlistDeleteBlockDetailed(
         pc += 1;
         continue;
       }
+      if (/^[+-]\d+$/.test(target)) {
+        pc += Number(target);
+        continue;
+      }
       const jump = resolveAllowlistDeleteJump(target, labels);
       if (typeof jump === 'string') {
         return fin(jump);
       }
       pc = jump.pc;
+      continue;
+    }
+    if (line.startsWith('StrCpy $2 ') || line === 'Goto mythos_comp_tail_scan') {
+      pc += 1;
       continue;
     }
     if (line === 'StrLen $8 $5') {
@@ -1678,6 +1788,16 @@ const GLP_8_3_ALIASES: Readonly<Record<string, string>> = {
   'appdat~1': 'AppData',
   'windo~1': 'Windows',
   'me~1': 'me',
+  'evil~1': 'evil ',
+  'evild~1': 'evil.',
+  'evilt~1': 'evil\t',
+  'deskto~2': 'Desktop ',
+  'deskto~3': 'Desktop.',
+  'deskto~4': 'Desktop\t',
+  'vault~2': 'vault ',
+  'vault~3': 'vault.',
+  'aspc~1': 'a ',
+  'rf7par~1': 'rf7-parent',
 };
 
 export function glpnModel(s: string): string {
@@ -1796,6 +1916,9 @@ export function executeCanonGateBlock(
       target === 'mythos_nested_root_guard'
     ) {
       return 'delete';
+    }
+    if (target === 'mythos_comp_tail_scan') {
+      return pc + 1;
     }
     const rel = target === '0' ? 1 : /^[+-]\d+$/.test(target) ? Number(target) : undefined;
     if (rel !== undefined) {
@@ -2023,8 +2146,8 @@ export const DENY_PREFIX_REJECT_PATHS: readonly string[] = [
 
 export const DENY_PREFIX_ALLOW_PATHS: readonly string[] = ['C:\\Users\\vault'];
 
-const DENY_PREFIX_LINE_EXPAND_COUNT = 6;
-const DENY_PREFIX_GATE_LINE_COUNT = 10;
+const DENY_PREFIX_LINE_EXPAND_COUNT = 9;
+const DENY_PREFIX_GATE_LINE_COUNT = 13;
 
 function denyPrefixGateBlock(nsh: string, gateIndex: 0 | 1 | 2): readonly string[] {
   const deny = denyBlockFromGuardRegion(extractSidecarGuardRegionForVm(nsh));
@@ -2519,7 +2642,7 @@ export const SIDECAR_READ_TRIM_EXACT_STRING_ROWS: readonly { raw: string; trimme
   { raw: 'C:\\vault\\c\r', trimmed: 'C:\\vault\\c' },
 ];
 
-export const SIDECAR_READ_LOOP_STEP_LIMIT = 10000;
+export const SIDECAR_READ_LOOP_STEP_LIMIT = 100_000;
 
 export const SIDECAR_DELETE_READ_LOOP_ROWS: readonly {
   rawLines: readonly string[];
@@ -3072,6 +3195,18 @@ export const SIDECAR_RF7_REPARSE_ROWS: readonly SidecarRf7ReparseRow[] = [
     path: RF7_ONE_CHAR_JUNCTION_VAULT,
     expect: 'skip',
     options: { reparsePaths: [RF7_ONE_CHAR_JUNCTION] },
+  },
+  {
+    name: 'parent junction via / skips (walk $1 mutant)',
+    path: 'C:\\Users\\me\\Documents\\rf7-parent/vault',
+    expect: 'skip',
+    options: { reparsePaths: [RF7_PARENT_JUNCTION] },
+  },
+  {
+    name: 'parent junction via RF7PAR~1 skips (walk $1 mutant)',
+    path: 'C:\\Users\\me\\Documents\\RF7PAR~1\\vault',
+    expect: 'skip',
+    options: { reparsePaths: [RF7_PARENT_JUNCTION] },
   },
 ];
 
@@ -3730,6 +3865,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD_A_SHORT_DOCS,
     expect: 'delete',
+    killsFileLine: 150,
   },
   {
     name: 'short-form APPDAT~1 root still deletes a Mythos vault',
@@ -3753,7 +3889,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     },
     expect: 'skip',
     mustNotDelete: ['C:\\Program Files\\Shared Docs\\v'],
-    killsFileLine: 160,
+    killsFileLine: 166,
   },
   {
     name: 'APPDATA under an 8.3 parent must not delete AppData\\Roaming',
@@ -3765,7 +3901,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     },
     expect: 'skip',
     mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming'],
-    killsFileLine: 285,
+    killsFileLine: 315,
   },
   {
     name: 'Desktop under an 8.3 parent must not delete Documents\\Desktop',
@@ -3776,7 +3912,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     },
     expect: 'skip',
     mustNotDelete: ['C:\\Users\\me\\Documents\\Desktop'],
-    killsFileLine: 313,
+    killsFileLine: 349,
   },
   {
     name: 'short DOCUME~1 vault path under a long Documents root still deletes',
@@ -3790,21 +3926,21 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     path: 'C:\\Users\\me\\Desktop\\v',
     env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\DESKTO~1' },
     expect: 'delete',
-    killsFileLine: 216,
+    killsFileLine: 234,
   },
   {
     name: 'short ME~1 profile root still deletes a long Downloads vault',
     path: 'C:\\Users\\me\\Downloads\\v',
     env: { ...HARD12_ENV_E1, PROFILE: 'C:\\Users\\ME~1' },
     expect: 'delete',
-    killsFileLine: 234,
+    killsFileLine: 255,
   },
   {
     name: 'Downloads prefix compare must not skip a same-length non-prefix Documents child',
     path: 'C:\\Users\\no',
     env: { ...HARD12_ENV_E1, DOCUMENTS: 'C:\\Users' },
     expect: 'delete',
-    killsFileLines: [319, 333],
+    killsFileLines: [358, 375],
   },
   {
     name: 'short PROGRAMFILES root must still deny Program Files\\Mythos\\bin',
@@ -3851,12 +3987,12 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     expect: 'skip',
   },
   {
-    name: 'WINDIR GFPN fault skips a Documents vault (kills :147 Call Nop)',
+    name: 'WINDIR GFPN fault skips a Documents vault (kills :151 0-check Nop)',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailPaths: ['C:\\Windows'] },
-    killsFileLine: 147,
+    killsFileLine: 151,
   },
   {
     name: 'WINDIR GLP fault skips a Documents vault (kills :150/:151)',
@@ -3864,7 +4000,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnFailPaths: ['C:\\Windows'] },
-    killsFileLines: [150, 151],
+    killsFileLines: [153, 154],
   },
   {
     name: 'WINDIR GLP trunc skips a Documents vault (kills :152)',
@@ -3872,7 +4008,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnTruncPaths: ['C:\\Windows'] },
-    killsFileLine: 152,
+    killsFileLine: 155,
   },
   {
     name: 'PROGRAMFILES GFPN fault skips a Documents vault (kills :158)',
@@ -3880,7 +4016,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailPaths: ['C:\\Program Files'] },
-    killsFileLine: 158,
+    killsFileLine: 164,
   },
   {
     name: 'PROGRAMFILES GLP fault skips a Documents vault (kills :161)',
@@ -3888,7 +4024,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnFailPaths: ['C:\\Program Files'] },
-    killsFileLine: 161,
+    killsFileLine: 167,
   },
   {
     name: 'PROGRAMFILES GLP trunc skips a Documents vault (kills :162)',
@@ -3896,7 +4032,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnTruncPaths: ['C:\\Program Files'] },
-    killsFileLine: 162,
+    killsFileLine: 168,
   },
   {
     name: 'PROGRAMFILES64 GFPN fault skips a Documents vault (kills :168)',
@@ -3904,7 +4040,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailPaths: ['C:\\Program Files (x86)'] },
-    killsFileLine: 168,
+    killsFileLine: 177,
   },
   {
     name: 'PROGRAMFILES64 GLP fault skips a Documents vault (kills :170/:171)',
@@ -3912,7 +4048,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnFailPaths: ['C:\\Program Files (x86)'] },
-    killsFileLines: [170, 171],
+    killsFileLines: [179, 180],
   },
   {
     name: 'PROGRAMFILES64 GLP trunc skips a Documents vault (kills :172)',
@@ -3920,7 +4056,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnTruncPaths: ['C:\\Program Files (x86)'] },
-    killsFileLine: 172,
+    killsFileLine: 181,
   },
   {
     name: 'Documents nested GFPN 3rd-call fault skips (kills :297)',
@@ -3928,23 +4064,22 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailNth: { 'C:\\Users\\me\\Documents': 3 } },
-    killsFileLine: 297,
+    killsFileLine: 330,
   },
   {
-    name: 'Documents nested GLP at :299 fault skips (kills :299/:300, not :259)',
+    name: 'Documents nested GLP fault still deletes a Documents vault',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
-    expect: 'skip',
-    options: { glpnFailFileLines: [299] },
-    killsFileLines: [299, 300],
+    expect: 'delete',
+    options: { glpnFailFileLines: [332] },
   },
   {
     name: 'Documents nested GLP at :299 trunc skips (kills :301, not :259)',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
     expect: 'skip',
-    options: { glpnTruncFileLines: [299] },
-    killsFileLine: 301,
+    options: { glpnTruncFileLines: [332] },
+    killsFileLine: 334,
   },
   {
     name: 'Desktop nested GFPN 3rd-call fault skips (kills :311)',
@@ -3952,23 +4087,22 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailNth: { 'C:\\Users\\me\\Desktop': 3 } },
-    killsFileLine: 311,
+    killsFileLine: 347,
   },
   {
-    name: 'Desktop nested GLP at :313 fault skips (kills :314, not :259)',
+    name: 'Desktop nested GLP fault still deletes a Desktop vault',
     path: 'C:\\Users\\me\\Desktop\\v',
     env: HARD12_ENV_E1,
-    expect: 'skip',
-    options: { glpnFailFileLines: [313] },
-    killsFileLine: 314,
+    expect: 'delete',
+    options: { glpnFailFileLines: [349] },
   },
   {
     name: 'Desktop nested GLP at :313 trunc skips (kills :315, not :259)',
     path: 'C:\\Users\\me\\Desktop\\v',
     env: HARD12_ENV_E1,
     expect: 'skip',
-    options: { glpnTruncFileLines: [313] },
-    killsFileLine: 315,
+    options: { glpnTruncFileLines: [349] },
+    killsFileLine: 351,
   },
   {
     name: 'Downloads nested GFPN 3rd-call fault skips (kills :325)',
@@ -3976,23 +4110,22 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailNth: { 'C:\\Users\\me\\Downloads': 3 } },
-    killsFileLine: 325,
+    killsFileLine: 364,
   },
   {
-    name: 'Downloads nested GLP at :327 fault skips (kills :327/:328, not :259)',
+    name: 'Downloads nested GLP fault still deletes a Downloads vault',
     path: 'C:\\Users\\me\\Downloads\\v',
     env: HARD12_ENV_E1,
-    expect: 'skip',
-    options: { glpnFailFileLines: [327] },
-    killsFileLines: [327, 328],
+    expect: 'delete',
+    options: { glpnFailFileLines: [366] },
   },
   {
     name: 'Downloads nested GLP at :327 trunc skips (kills :329, not :259)',
     path: 'C:\\Users\\me\\Downloads\\v',
     env: HARD12_ENV_E1,
     expect: 'skip',
-    options: { glpnTruncFileLines: [327] },
-    killsFileLine: 329,
+    options: { glpnTruncFileLines: [366] },
+    killsFileLine: 368,
   },
   {
     name: 'canon-root GFPN 2nd-call fault skips a Documents vault (kills :257)',
@@ -4000,7 +4133,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailNth: { 'C:\\Users\\me\\Documents': 2 } },
-    killsFileLine: 257,
+    killsFileLine: 284,
   },
   {
     name: 'canon-root GFPN 2nd-call trunc skips a Documents vault (kills :258)',
@@ -4008,7 +4141,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnTruncNth: { 'C:\\Users\\me\\Documents': 2 } },
-    killsFileLine: 258,
+    killsFileLine: 285,
   },
   {
     name: 'path GLP 1st-call fault skips (kills :144)',
@@ -4032,7 +4165,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnTruncPaths: ['C:\\Program Files'] },
-    killsFileLine: 159,
+    killsFileLine: 165,
   },
   {
     name: 'PROGRAMFILES64 GFPN trunc skips a Documents vault (kills :169)',
@@ -4040,7 +4173,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnTruncPaths: ['C:\\Program Files (x86)'] },
-    killsFileLine: 169,
+    killsFileLine: 178,
   },
   {
     name: 'APPDATA allow GFPN 1st-call fault skips (kills :178)',
@@ -4048,7 +4181,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailNth: { 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer': 1 } },
-    killsFileLine: 178,
+    killsFileLine: 190,
   },
   {
     name: 'APPDATA allow GFPN 1st-call trunc skips (kills :179)',
@@ -4056,15 +4189,14 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnTruncNth: { 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer': 1 } },
-    killsFileLine: 179,
+    killsFileLine: 191,
   },
   {
-    name: 'APPDATA allow GLP 1st-call fault skips (kills :181)',
+    name: 'APPDATA allow GLP 1st-call fault still deletes a Documents vault',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
-    expect: 'skip',
+    expect: 'delete',
     options: { glpnFailNth: { 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer': 1 } },
-    killsFileLine: 181,
   },
   {
     name: 'APPDATA allow GLP 1st-call trunc skips (kills :182)',
@@ -4072,7 +4204,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnTruncNth: { 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer': 1 } },
-    killsFileLine: 182,
+    killsFileLine: 194,
   },
   {
     name: 'Documents allow GFPN 1st-call fault skips (kills :196)',
@@ -4080,7 +4212,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailNth: { 'C:\\Users\\me\\Documents': 1 } },
-    killsFileLine: 196,
+    killsFileLine: 211,
   },
   {
     name: 'Documents allow GFPN 1st-call trunc skips (kills :197)',
@@ -4088,15 +4220,14 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnTruncNth: { 'C:\\Users\\me\\Documents': 1 } },
-    killsFileLine: 197,
+    killsFileLine: 212,
   },
   {
-    name: 'Documents allow GLP 1st-call fault skips (kills :199)',
+    name: 'Documents allow GLP 1st-call fault still deletes a Documents vault',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
-    expect: 'skip',
+    expect: 'delete',
     options: { glpnFailNth: { 'C:\\Users\\me\\Documents': 1 } },
-    killsFileLine: 199,
   },
   {
     name: 'Documents allow GLP 1st-call trunc skips (kills :200)',
@@ -4104,7 +4235,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnTruncNth: { 'C:\\Users\\me\\Documents': 1 } },
-    killsFileLine: 200,
+    killsFileLine: 215,
   },
   {
     name: 'Desktop allow GFPN 1st-call fault skips (kills :214)',
@@ -4112,7 +4243,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailNth: { 'C:\\Users\\me\\Desktop': 1 } },
-    killsFileLine: 214,
+    killsFileLine: 232,
   },
   {
     name: 'Desktop allow GFPN 1st-call trunc skips (kills :215)',
@@ -4120,15 +4251,14 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnTruncNth: { 'C:\\Users\\me\\Desktop': 1 } },
-    killsFileLine: 215,
+    killsFileLine: 233,
   },
   {
-    name: 'Desktop allow GLP 1st-call fault skips (kills :217)',
+    name: 'Desktop allow GLP 1st-call fault still deletes a Desktop vault',
     path: 'C:\\Users\\me\\Desktop\\v',
     env: HARD12_ENV_E1,
-    expect: 'skip',
+    expect: 'delete',
     options: { glpnFailNth: { 'C:\\Users\\me\\Desktop': 1 } },
-    killsFileLine: 217,
   },
   {
     name: 'Desktop allow GLP 1st-call trunc skips (kills :218)',
@@ -4136,7 +4266,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnTruncNth: { 'C:\\Users\\me\\Desktop': 1 } },
-    killsFileLine: 218,
+    killsFileLine: 236,
   },
   {
     name: 'Downloads allow GFPN 1st-call fault skips (kills :232)',
@@ -4144,7 +4274,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailNth: { 'C:\\Users\\me\\Downloads': 1 } },
-    killsFileLine: 232,
+    killsFileLine: 253,
   },
   {
     name: 'Downloads allow GFPN 1st-call trunc skips (kills :233)',
@@ -4152,15 +4282,14 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnTruncNth: { 'C:\\Users\\me\\Downloads': 1 } },
-    killsFileLine: 233,
+    killsFileLine: 254,
   },
   {
-    name: 'Downloads allow GLP 1st-call fault skips (kills :235)',
+    name: 'Downloads allow GLP 1st-call fault still deletes a Downloads vault',
     path: 'C:\\Users\\me\\Downloads\\v',
     env: HARD12_ENV_E1,
-    expect: 'skip',
+    expect: 'delete',
     options: { glpnFailNth: { 'C:\\Users\\me\\Downloads': 1 } },
-    killsFileLine: 235,
   },
   {
     name: 'Downloads allow GLP 1st-call trunc skips (kills :236)',
@@ -4168,7 +4297,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnTruncNth: { 'C:\\Users\\me\\Downloads': 1 } },
-    killsFileLine: 236,
+    killsFileLine: 257,
   },
   {
     name: 'canon path GFPN 2nd-call fault skips (kills :251)',
@@ -4176,7 +4305,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailNth: { 'C:\\Users\\me\\Documents\\MyVault': 2 } },
-    killsFileLine: 251,
+    killsFileLine: 275,
   },
   {
     name: 'canon path GFPN 2nd-call trunc skips (kills :252)',
@@ -4184,7 +4313,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnTruncNth: { 'C:\\Users\\me\\Documents\\MyVault': 2 } },
-    killsFileLine: 252,
+    killsFileLine: 276,
   },
   {
     name: 'canon path GLP 2nd-call fault skips (kills :254)',
@@ -4192,7 +4321,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnFailNth: { 'C:\\Users\\me\\Documents\\MyVault': 2 } },
-    killsFileLine: 254,
+    killsFileLine: 278,
   },
   {
     name: 'canon path GLP 2nd-call trunc skips (kills :255)',
@@ -4200,15 +4329,15 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnTruncNth: { 'C:\\Users\\me\\Documents\\MyVault': 2 } },
-    killsFileLine: 255,
+    killsFileLine: 279,
   },
   {
     name: 'canon-root GLP at :259 fault skips a Documents vault (kills :259)',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
     expect: 'skip',
-    options: { glpnFailFileLines: [259] },
-    killsFileLine: 259,
+    options: { glpnFailFileLines: [286] },
+    killsFileLine: 286,
   },
   {
     name: 'canon-root GLP 2nd-call fault skips (kills :260)',
@@ -4216,7 +4345,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnFailNth: { 'C:\\Users\\me\\Documents': 2 } },
-    killsFileLine: 260,
+    killsFileLine: 287,
   },
   {
     name: 'canon-root GLP 2nd-call trunc skips (kills :261)',
@@ -4224,7 +4353,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnTruncNth: { 'C:\\Users\\me\\Documents': 2 } },
-    killsFileLine: 261,
+    killsFileLine: 288,
   },
   {
     name: 'AppData nested GFPN 2nd-call fault skips (kills :283)',
@@ -4232,7 +4361,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnFailNth: { 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer': 2 } },
-    killsFileLine: 283,
+    killsFileLine: 313,
   },
   {
     name: 'AppData nested GFPN 2nd-call trunc skips (kills :284)',
@@ -4240,15 +4369,14 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnTruncNth: { 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer': 2 } },
-    killsFileLine: 284,
+    killsFileLine: 314,
   },
   {
-    name: 'AppData nested GLP 2nd-call fault skips (kills :286)',
+    name: 'AppData nested GLP 2nd-call fault still deletes a Documents vault',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
-    expect: 'skip',
+    expect: 'delete',
     options: { glpnFailNth: { 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer': 2 } },
-    killsFileLine: 286,
   },
   {
     name: 'AppData nested GLP 2nd-call trunc skips (kills :287)',
@@ -4256,7 +4384,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnTruncNth: { 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer': 2 } },
-    killsFileLine: 287,
+    killsFileLine: 317,
   },
   {
     name: 'Documents nested GFPN 3rd-call trunc skips (kills :298)',
@@ -4264,7 +4392,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnTruncNth: { 'C:\\Users\\me\\Documents': 3 } },
-    killsFileLine: 298,
+    killsFileLine: 331,
   },
   {
     name: 'Desktop nested GFPN 3rd-call trunc skips (kills :312)',
@@ -4272,7 +4400,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnTruncNth: { 'C:\\Users\\me\\Desktop': 3 } },
-    killsFileLine: 312,
+    killsFileLine: 348,
   },
   {
     name: 'Downloads nested GFPN 3rd-call trunc skips (kills :326)',
@@ -4280,7 +4408,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { gfpnTruncNth: { 'C:\\Users\\me\\Downloads': 3 } },
-    killsFileLine: 326,
+    killsFileLine: 365,
   },
   {
     name: ':164 $1 revert would delete Program Files\\Shared Docs\\v (canonical skips)',
@@ -4433,7 +4561,193 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: { ...HARD12_ENV_E1, PROFILE: '' },
     expect: 'delete',
   },
+  {
+    name: 'H3a EVIL~1 trailing-space nested Desktop must skip',
+    path: 'C:\\Users\\me\\Documents\\EVIL~1',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Documents\\evil' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\evil', 'C:\\Users\\me\\Documents\\evil '],
+  },
+  {
+    name: 'H3a EVILD~1 trailing-dot nested Desktop must skip',
+    path: 'C:\\Users\\me\\Documents\\EVILD~1',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Documents\\evil' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\evil', 'C:\\Users\\me\\Documents\\evil.'],
+  },
+  {
+    name: 'H3a EVILT~1 trailing-TAB nested Desktop must skip',
+    path: 'C:\\Users\\me\\Documents\\EVILT~1',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Documents\\evil' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\evil'],
+  },
+  {
+    name: 'H3a DESKTO~2 trailing-space decoy must skip',
+    path: 'C:\\Users\\me\\Downloads\\DESKTO~2',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Downloads\\Desktop' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\Desktop', 'C:\\Users\\me\\Downloads\\Desktop '],
+  },
+  {
+    name: 'H3a DESKTO~3 trailing-dot decoy must skip',
+    path: 'C:\\Users\\me\\Downloads\\DESKTO~3',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Downloads\\Desktop' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\Desktop'],
+  },
+  {
+    name: 'H3a DESKTO~4 trailing-TAB decoy must skip',
+    path: 'C:\\Users\\me\\Downloads\\DESKTO~4',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Downloads\\Desktop' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\Desktop'],
+  },
+  {
+    name: 'H3b EVIL~1 junction decoy walk must skip',
+    path: 'C:\\Users\\me\\Documents\\EVIL~1\\x',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\evil', 'C:\\Users\\me\\Documents\\evil \\x'],
+    options: { reparsePaths: ['C:\\Users\\me\\Documents\\evil '] },
+  },
+  {
+    name: 'H3b EVILD~1 junction decoy walk must skip',
+    path: 'C:\\Users\\me\\Documents\\EVILD~1\\x',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { reparsePaths: ['C:\\Users\\me\\Documents\\evil.'] },
+  },
+  {
+    name: 'H3 root DESKTO~2 (Desktop ) fail-closed skips a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\DESKTO~2' },
+    expect: 'skip',
+  },
+  {
+    name: 'H3 root DESKTO~3 (Desktop.) fail-closed skips a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\DESKTO~3' },
+    expect: 'skip',
+  },
+  {
+    name: 'H3 root DESKTO~4 (Desktop TAB) fail-closed skips a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\DESKTO~4' },
+    expect: 'skip',
+  },
+  {
+    name: 'H3 line vault~2 trailing-space component must skip',
+    path: 'C:\\Users\\me\\Documents\\VAULT~2',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\vault'],
+  },
+  {
+    name: 'missing-folder Downloads root still deletes a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { glpnFailPaths: ['C:\\Users\\me\\Downloads'] },
+  },
+  {
+    name: 'missing-folder Desktop root still deletes a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { glpnFailPaths: ['C:\\Users\\me\\Desktop'] },
+  },
+  {
+    name: 'missing-folder Documents root still deletes a Desktop vault',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { glpnFailPaths: ['C:\\Users\\me\\Documents'] },
+  },
+  {
+    name: 'missing-folder AppData root still deletes a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { glpnFailPaths: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer'] },
+  },
+  {
+    name: 'missing-folder Downloads root still skips nested Desktop',
+    path: 'C:\\Users\\me\\Downloads\\Desktop',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Downloads\\Desktop' },
+    expect: 'skip',
+    options: { glpnFailPaths: ['C:\\Users\\me\\Downloads'] },
+  },
+  {
+    name: 'missing-folder vault path skips (line GLP fail-closed)',
+    path: 'C:\\Users\\me\\Documents\\NoSuchVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    options: { glpnFailPaths: ['C:\\Users\\me\\Documents\\NoSuchVault'] },
+  },
+  {
+    name: 'H4 fallback Desktop GFPN intermediate trailing-space still H3-skips a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\evil \\Desktop' },
+    expect: 'skip',
+    options: { glpnFailPaths: ['C:\\Users\\me\\evil \\Desktop'] },
+  },
 ];
+
+
+export const SIDECAR_H3_H4_COMBINED_ROWS: readonly {
+  name: string;
+  rawLines: readonly string[];
+  env: SidecarNsisVarEnv;
+  options?: Omit<SidecarNsisRunOptions, 'env'>;
+  expectDeleted: readonly string[];
+  mustNotDelete: readonly string[];
+}[] = [
+  {
+    name: 'H4 missing Downloads + H3 EVIL~1 trailing-space: skip decoy, delete legit Documents vault',
+    rawLines: [
+      'C:\\Users\\me\\Documents\\EVIL~1\r\n',
+      'C:\\Users\\me\\Documents\\MyVault\r\n',
+    ],
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Documents\\evil' },
+    options: { glpnFailPaths: ['C:\\Users\\me\\Downloads'] },
+    expectDeleted: ['C:\\Users\\me\\Documents\\MyVault'],
+    mustNotDelete: ['C:\\Users\\me\\Documents\\evil', 'C:\\Users\\me\\Documents\\evil '],
+  },
+];
+
+export function assertSidecarH3H4CombinedTables(nsh: string): void {
+  for (const row of SIDECAR_H3_H4_COMBINED_ROWS) {
+    let deleted: string[];
+    try {
+      deleted = simulateSidecarDeleteReadLoop(nsh, row.rawLines, row.env, row.options ?? {}).deleted;
+    } catch (err) {
+      throw new Error(
+        `H3/H4 combined ${row.name}: threw ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (deleted.join('\0') !== [...row.expectDeleted].join('\0')) {
+      throw new Error(
+        `H3/H4 combined ${row.name}: expected ${JSON.stringify(row.expectDeleted)}, got ${JSON.stringify(deleted)}`,
+      );
+    }
+    for (const ban of row.mustNotDelete) {
+      if (deleted.includes(ban)) {
+        throw new Error(`H3/H4 combined ${row.name}: must not delete ${JSON.stringify(ban)}, got ${JSON.stringify(deleted)}`);
+      }
+    }
+  }
+}
+
+export function assertSidecarH3H4CombinedSweepParity(mutantNsh: string, canonicalNsh: string): void {
+  for (const row of SIDECAR_H3_H4_COMBINED_ROWS) {
+    const canonical = simulateSidecarDeleteReadLoop(canonicalNsh, row.rawLines, row.env, row.options ?? {}).deleted.join('\0');
+    const mutant = simulateSidecarDeleteReadLoop(mutantNsh, row.rawLines, row.env, row.options ?? {}).deleted.join('\0');
+    if (mutant !== canonical) {
+      throw new Error(`H3/H4 combined sweep parity ${row.name}: canonical ${JSON.stringify(canonical)}, mutant ${JSON.stringify(mutant)}`);
+    }
+  }
+}
 
 export function sidecarHardADeleted(nsh: string, row: SidecarHardARow): string[] {
   return simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env, row.options ?? {}).deleted;
@@ -4627,6 +4941,7 @@ export function assertSidecarGuardVmBehaviourTables(
     assertSidecarHard1WildcardSweepParity(nsh, canonical);
     assertSidecarHard2NestedSweepParity(nsh, canonical);
     assertSidecarHardASweepParity(nsh, canonical);
+    assertSidecarH3H4CombinedSweepParity(nsh, canonical);
     assertSidecarHardCSweepParity(nsh, canonical);
     return;
   }
@@ -4641,6 +4956,7 @@ export function assertSidecarGuardVmBehaviourTables(
   assertSidecarHard1WildcardTables(nsh);
   assertSidecarHard2NestedTables(nsh);
   assertSidecarHardATables(nsh);
+  assertSidecarH3H4CombinedTables(nsh);
   assertSidecarHardCTables(nsh);
   assertTraversalS14LabelSwapRejectTables(nsh);
   assertTraversalVmStepLimitIsFatal();
@@ -5359,7 +5675,7 @@ const SIDECAR_MULTILINE_H7_DELETE_ROWS = [
 ] as const;
 
 /** Critic H6 — file lines for StrCpy $4 $3 $8 deny gates. */
-export const DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES: readonly [154, 164, 174] = [154, 164, 174];
+export const DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES: readonly [160, 173, 186] = [160, 173, 186];
 
 export type DenyPrefixStrcpyAcceptanceVariant =
   | 'nop'
@@ -5438,7 +5754,7 @@ function denyStrcpyReplacementLine(
 /** Critic H6 acceptance mutant on :114 / :117 / :120 StrCpy $4 $1 $3 (re-baseline deny VM must go red). */
 export function mutantDenyPrefixStrcpyAcceptance(
   nsh: string,
-  fileLine: 154 | 164 | 174,
+  fileLine: 160 | 173 | 186,
   variant: DenyPrefixStrcpyAcceptanceVariant,
 ): string {
   const regionIndex = fileLine - SIDECAR_GUARD_REGION_FILE_LINE_FIRST;

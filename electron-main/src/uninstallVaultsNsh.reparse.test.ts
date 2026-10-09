@@ -35,18 +35,18 @@ export const RF7_PIN_CHECKED_MUTANTS: readonly string[] = [
   'drop-restore (remove installMode If)',
   'always-all (SetShellVarContext all without installMode)',
   'drop-walk (Goto do_delete, keep context)',
-  'leaf-only (Nop hit-backslash :345)',
-  'bottom-up (Goto leaf at walk start :341)',
+  'leaf-only (Nop hit-backslash :387)',
+  'bottom-up (Goto leaf at walk start :383)',
   'wider mask (0x400 → 0x407)',
-  'skip-on-any-nonzero (Nop leaf 0x400 mask :359)',
+  'skip-on-any-nonzero (Nop leaf 0x400 mask :401)',
   'drop wildcard charset (Alloc 80 / &i2 42)',
-  'Nop nested AppData equal :288',
-  'Nop nested Documents equal :302',
-  'Nop nested Desktop equal :316',
-  ':207 else +6 (Shield survivor)',
-  ':207 else mythos_al_not_desktop (Shield survivor)',
-  ':207 else mythos_al_deny (Shield survivor)',
-  ':376 Goto mythos_trim_chop (a3719f95 :220 Shield survivor)',
+  'Nop nested AppData equal :321',
+  'Nop nested Documents equal :338',
+  'Nop nested Desktop equal :355',
+  ':225 else +6 (Shield survivor)',
+  ':225 else mythos_al_not_desktop (Shield survivor)',
+  ':225 else mythos_al_deny (Shield survivor)',
+  ':418 Goto mythos_trim_chop (a3719f95 :241 Shield survivor)',
 ];
 
 function withFileLine(line: number, text: string): string {
@@ -81,9 +81,9 @@ describe('RF-7b reparse walk — modelled attribute table', () => {
     });
   }
 
-  it('leaf-only mutant (Nop :345) deletes the parent-junction + plain vault row', () => {
-    expect(fileLines[344]!.trim()).toBe('StrCmp $6 "\\" mythos_reparse_hit');
-    const mutant = withFileLine(345, 'Nop');
+  it('leaf-only mutant (Nop :387) deletes the parent-junction + plain vault row', () => {
+    expect(fileLines[386]!.trim()).toBe('StrCmp $6 "\\" mythos_reparse_hit');
+    const mutant = withFileLine(387, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.path === RF7_PARENT_JUNCTION_VAULT)!;
     expect(sidecarRf7Deleted(nsh, row, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
@@ -91,22 +91,22 @@ describe('RF-7b reparse walk — modelled attribute table', () => {
   });
 
   it('bottom-up / stop-early mutant (Goto leaf at walk start) is red', () => {
-    const mutant = withFileLine(341, 'Goto mythos_reparse_leaf');
+    const mutant = withFileLine(383, 'Goto mythos_reparse_leaf');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.path === RF7_PARENT_JUNCTION_VAULT)!;
     expect(sidecarRf7Deleted(mutant, row, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([RF7_PARENT_JUNCTION_VAULT]);
   });
 
   it('skip-on-any-nonzero (Nop the leaf 0x400 mask) is red', () => {
-    expect(fileLines[358]!.trim()).toBe('IntOp $4 $4 & 0x400');
-    const mutant = withFileLine(359, 'Nop');
+    expect(fileLines[400]!.trim()).toBe('IntOp $4 $4 & 0x400');
+    const mutant = withFileLine(401, 'Nop');
     expect(sidecarGuardModeTwoFailure(mutant, nsh)).toBeDefined();
     expect(sidecarRf7Deleted(mutant, SIDECAR_RF7_REPARSE_ROWS[0]!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
   });
 
   it('ancestor-mask Nop skips a nested plain vault that must delete', () => {
-    expect(fileLines[351]!.trim()).toBe('IntOp $4 $4 & 0x400');
-    const mutant = withFileLine(352, 'Nop');
+    expect(fileLines[393]!.trim()).toBe('IntOp $4 $4 & 0x400');
+    const mutant = withFileLine(394, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.path === RF7_NESTED_PLAIN_VAULT)!;
     expect(sidecarRf7Deleted(nsh, row, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([RF7_NESTED_PLAIN_VAULT]);
@@ -148,21 +148,21 @@ describe('HARD-2 nested roots', () => {
     expect(() => assertSidecarHard2NestedTables(nsh)).not.toThrow();
   });
 
-  it('Nop AppData equal (:288) is equivalent — allowlist already skipped the exact AppData root', () => {
-    expect(fileLines[287]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
-    const mutant = withFileLine(288, 'Nop');
+  it('Nop AppData equal (:321) is equivalent — allowlist already skipped the exact AppData root', () => {
+    expect(fileLines[320]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const mutant = withFileLine(321, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
   });
 
-  it('Nop Documents equal (:302) is equivalent — allowlist already skipped the exact Documents root', () => {
-    expect(fileLines[301]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
-    const mutant = withFileLine(302, 'Nop');
+  it('Nop Documents equal (:338) is equivalent — allowlist already skipped the exact Documents root', () => {
+    expect(fileLines[337]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const mutant = withFileLine(338, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
   });
 
-  it('Nop Desktop equal (:316) RMDirs a nested Desktop root (successor of :177)', () => {
-    expect(fileLines[315]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
-    const mutant = withFileLine(316, 'Nop');
+  it('Nop Desktop equal (:355) RMDirs a nested Desktop root (successor of :189)', () => {
+    expect(fileLines[354]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const mutant = withFileLine(355, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 });

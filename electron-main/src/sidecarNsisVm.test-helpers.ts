@@ -1,7 +1,8 @@
 /**
  * Unified NSIS interpreter for the sidecar FileOpen…fallback program (oracle nsis.py).
  * Carries $1–$9 plus heap/stack across lines; models close/fallback/trim_chop/+N;
- * GFPN per-line faults; FileClose + sidecar Delete; linear step cap 20*len+2000.
+ * GFPN per-line faults; FileClose + sidecar Delete; linear step cap 80*len+8000
+ * (H3 scans $3 and every root; two full-path walks plus ~13 short root walks).
  */
 
 import { SIDECAR_FCFB_ORACLE_ROWS } from './sidecarFcfbOracleRows.test-helpers.js';
@@ -69,7 +70,7 @@ export function sidecarNsisEnvByName(name: 'E1' | 'E2' | 'E5' | 'E6'): SidecarNs
 }
 
 export function sidecarLinearStepCap(len: number): number {
-  return 20 * len + 2000;
+  return 80 * len + 8000;
 }
 
 type Instr = { op: string; args: readonly string[]; fileLine: number };
@@ -160,7 +161,24 @@ export function nsisValidateFilename(path: string): string {
       rest += ch;
     }
   }
-  return path.slice(0, start) + rest;
+  let out = path.slice(0, start) + rest;
+  while (out.length > start && (out.endsWith(' ') || out.endsWith('.'))) {
+    out = out.slice(0, -1);
+  }
+  return out;
+}
+
+/** Win32 GFA without `\\?\` strips trailing spaces/dots from the final segment only. */
+export function win32NormalizeFinalSegment(path: string): string {
+  const last = path.lastIndexOf('\\');
+  const head = last >= 0 ? path.slice(0, last + 1) : '';
+  let leaf = last >= 0 ? path.slice(last + 1) : path;
+  if (leaf !== '.' && leaf !== '..') {
+    while (leaf.endsWith(' ') || leaf.endsWith('.')) {
+      leaf = leaf.slice(0, -1);
+    }
+  }
+  return `${head}${leaf}`;
 }
 
 /** FileOpen $0 … uninstall_vault_fallback: (oracle `code()`). */
@@ -899,7 +917,7 @@ export function runNsisProgramLines(
         if (ty.length !== 2 || ty[0] !== 'w') {
           sysErr('gfa sig');
         }
-        const inp = argval(ty[1]!);
+        const inp = win32NormalizeFinalSegment(argval(ty[1]!));
         let rv: string;
         if (attrError.has(inp)) {
           rv = 'error';
