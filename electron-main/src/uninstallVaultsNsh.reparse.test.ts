@@ -148,16 +148,16 @@ describe('HARD-2 nested roots', () => {
     expect(() => assertSidecarHard2NestedTables(nsh)).not.toThrow();
   });
 
-  it('Nop AppData equal (:288) RMDirs the nested AppData root (successor of :153)', () => {
+  it('Nop AppData equal (:288) is equivalent — allowlist already skipped the exact AppData root', () => {
     expect(fileLines[287]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
     const mutant = withFileLine(288, 'Nop');
-    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
   });
 
-  it('Nop Documents equal (:302) RMDirs a nested Documents root (successor of :165)', () => {
+  it('Nop Documents equal (:302) is equivalent — allowlist already skipped the exact Documents root', () => {
     expect(fileLines[301]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
     const mutant = withFileLine(302, 'Nop');
-    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
   });
 
   it('Nop Desktop equal (:316) RMDirs a nested Desktop root (successor of :177)', () => {

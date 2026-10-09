@@ -4649,7 +4649,6 @@ export type DenyPrefixStrcpyAcceptanceVariant =
   | 'reg_1_to_0'
   | 'reg_1_to_2'
   | 'reg_3_to_2'
-  | 'reg_3_to_4'
   | 'len_1'
   | 'len_2'
   | 'len_0'
@@ -4665,7 +4664,6 @@ export const DENY_PREFIX_STRCPY_ACCEPTANCE_VARIANTS: readonly DenyPrefixStrcpyAc
   'reg_1_to_0',
   'reg_1_to_2',
   'reg_3_to_2',
-  'reg_3_to_4',
   'len_1',
   'len_2',
   'len_0',
@@ -4695,8 +4693,6 @@ function denyStrcpyReplacementLine(
       return `${indent}StrCpy $4 $2 $3`;
     case 'reg_3_to_2':
       return `${indent}StrCpy $4 $1 $2`;
-    case 'reg_3_to_4':
-      return `${indent}StrCpy $4 $1 $4`;
     case 'len_1':
       return `${indent}StrCpy $4 $1 1`;
     case 'len_2':
