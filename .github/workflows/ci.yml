@@ -250,8 +250,8 @@ jobs:
           retention-days: 3
 
   # PLAN-058 L8 Ivy carve-out: 12k oracle-class survivor walks and equivalence-strength
-  # shards run here in parallel with `unit`, under their own timeout. Nothing else in
-  # this file changes. Branch protection must add `oracle-sweeps` as a required check.
+  # shards run here in parallel with `unit`, under their own timeout. The required `ci`
+  # aggregator gates this job (skipped also fails).
   oracle-sweeps:
     needs: [setup]
     runs-on: ubuntu-latest
@@ -1084,7 +1084,7 @@ jobs:
     # Explicit outcome check ensures any failure or skip in upstream jobs → failure here.
     # SKY-8090: e2e shards may be legitimately skipped if the diff cannot affect them
     # (e.g., docs-only changes). Accept 'skipped' as valid for e2e shards only.
-    needs: [lint, typecheck, unit, paths-filter, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
+    needs: [lint, typecheck, unit, oracle-sweeps, paths-filter, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
     runs-on: ubuntu-latest
     if: always()
     timeout-minutes: 5
@@ -1093,8 +1093,8 @@ jobs:
       - name: All checks passed
         run: |
           # Stage 1 checks must always succeed
-          stage1="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }}"
-          echo "Stage 1 (lint/typecheck/unit) results: $stage1"
+          stage1="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }} ${{ needs.oracle-sweeps.result }}"
+          echo "Stage 1 (lint/typecheck/unit/oracle-sweeps) results: $stage1"
           for r in $stage1; do
             if [ "$r" != "success" ]; then
               echo "ERROR: Required Stage 1 job outcome '$r' — expected 'success'. CI aggregator: FAILED."
