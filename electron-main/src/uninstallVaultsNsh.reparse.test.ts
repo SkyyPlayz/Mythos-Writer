@@ -16,7 +16,9 @@ import {
   RF7_PARENT_JUNCTION_VAULT,
   SIDECAR_HARD1_WILDCARD_ROWS,
   SIDECAR_HARD2_NESTED_ROWS,
+  SIDECAR_HARD_A_ROWS,
   SIDECAR_RF7_REPARSE_ROWS,
+  sidecarHardADeleted,
   sidecarRf7Deleted,
 } from './sidecarTraversalScan.test-helpers.js';
 import { loadUninstallVaultsNsh } from './uninstallVaultsNsh.path.js';
@@ -148,10 +150,16 @@ describe('HARD-2 nested roots', () => {
     expect(() => assertSidecarHard2NestedTables(nsh)).not.toThrow();
   });
 
-  it('Nop AppData equal (:378) is equivalent — allowlist already skipped the exact AppData root', () => {
+  it('Nop AppData equal (:378) deletes the nested root', () => {
     expect(fileLines[377]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('Nop AppData equal deletes the nested'))!;
+    expect(row, 'Nop AppData equal nested-root row').toBeDefined();
     const mutant = withFileLine(378, 'Nop');
-    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
+    expect(sidecarHardADeleted(nsh, row)).toEqual([]);
+    expect(sidecarHardADeleted(mutant, row)).toEqual([
+      'C:\\Users\\me\\Documents\\mw-nest\\Roaming\\Mythos Writer',
+    ]);
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
   it('Nop Documents equal (:404) is red on Documents-inside-Mythos-Writer\\Docs', () => {

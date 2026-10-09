@@ -19,8 +19,8 @@ import {
   type SidecarNsisVarEnv,
 } from './sidecarNsisVm.test-helpers.js';
 
-export const HELPER_REGION_FILE_LINE_FIRST = 583;
-export const HELPER_REGION_FILE_LINE_LAST = 631;
+export const HELPER_REGION_FILE_LINE_FIRST = 604;
+export const HELPER_REGION_FILE_LINE_LAST = 652;
 export const HELPER_REGION_START_LINE = '!macro mythos_rmdir_unless_reparse _root _path _uid';
 export const HELPER_REGION_END_LINE = '!macroend';
 
@@ -393,35 +393,35 @@ export function helperGuardModeTwoCaught(mutant: string, canonical: string): boo
   return helperGuardModeTwoFailure(mutant, canonical) !== undefined;
 }
 
-/** Critic 8 real helper mutants (instruction text; lines are post-H4 :583–:631). */
+/** Critic 8 real helper mutants (instruction text; lines are post-H4 :604–:652). */
 export const HELPER_CRITIC_MUTANTS: readonly { name: string; line: number; text: string }[] = [
-  { name: 'hit mask & 0', line: 614, text: 'IntOp $4 $4 & 0' },
-  { name: 'leaf mask & 0', line: 621, text: 'IntOp $4 $4 & 0' },
-  { name: 'leaf mask & 0x4000', line: 621, text: 'IntOp $4 $4 & 0x4000' },
-  { name: 'hit skip-on-any-nonzero (Nop IntCmp)', line: 615, text: 'Nop' },
-  { name: 'leaf skip-on-any-nonzero (Nop IntCmp)', line: 622, text: 'Nop' },
-  { name: 'Goto leaf at walk start', line: 603, text: 'Goto mythos_rpr_leaf_${_uid}' },
-  { name: 'hit GFA error Nop', line: 613, text: 'Nop' },
-  { name: 'leaf GFA error Nop', line: 620, text: 'Nop' },
+  { name: 'hit mask & 0', line: 635, text: 'IntOp $4 $4 & 0' },
+  { name: 'leaf mask & 0', line: 642, text: 'IntOp $4 $4 & 0' },
+  { name: 'leaf mask & 0x4000', line: 642, text: 'IntOp $4 $4 & 0x4000' },
+  { name: 'hit skip-on-any-nonzero (Nop IntCmp)', line: 636, text: 'Nop' },
+  { name: 'leaf skip-on-any-nonzero (Nop IntCmp)', line: 643, text: 'Nop' },
+  { name: 'Goto leaf at walk start', line: 624, text: 'Goto mythos_rpr_leaf_${_uid}' },
+  { name: 'hit GFA error Nop', line: 634, text: 'Nop' },
+  { name: 'leaf GFA error Nop', line: 641, text: 'Nop' },
 ];
 
 /** Probe HARD-B 11 helper mutants that must stay red. */
 export const HELPER_HARD_B_MUTANTS: readonly { name: string; line: number; text: string }[] = [
-  { name: 'drop ancestor (Nop hit backslash)', line: 607, text: 'Nop' },
-  { name: 'drop leaf (Nop leaf GFA)', line: 619, text: 'Nop' },
-  { name: 'hit mask & 0', line: 614, text: 'IntOp $4 $4 & 0' },
-  { name: 'leaf mask & 0', line: 621, text: 'IntOp $4 $4 & 0' },
-  { name: 'leaf mask & 0x407', line: 621, text: 'IntOp $4 $4 & 0x407' },
-  { name: 'invert hit IntCmp', line: 615, text: 'IntCmp $4 0 mythos_rpr_done_${_uid} 0 0' },
-  { name: 'invert leaf IntCmp', line: 622, text: 'IntCmp $4 0 mythos_rpr_done_${_uid} 0 0' },
-  { name: 'hit error fall-through Nop', line: 613, text: 'Nop' },
-  { name: 'leaf error fall-through Nop', line: 620, text: 'Nop' },
-  { name: 'leaf-only (Nop hit-backslash)', line: 607, text: 'Nop' },
-  { name: 'drop walk (Goto done at walk start)', line: 603, text: 'Goto mythos_rpr_done_${_uid}' },
+  { name: 'drop ancestor (Nop hit backslash)', line: 628, text: 'Nop' },
+  { name: 'drop leaf (Nop leaf GFA)', line: 640, text: 'Nop' },
+  { name: 'hit mask & 0', line: 635, text: 'IntOp $4 $4 & 0' },
+  { name: 'leaf mask & 0', line: 642, text: 'IntOp $4 $4 & 0' },
+  { name: 'leaf mask & 0x407', line: 642, text: 'IntOp $4 $4 & 0x407' },
+  { name: 'invert hit IntCmp', line: 636, text: 'IntCmp $4 0 mythos_rpr_done_${_uid} 0 0' },
+  { name: 'invert leaf IntCmp', line: 643, text: 'IntCmp $4 0 mythos_rpr_done_${_uid} 0 0' },
+  { name: 'hit error fall-through Nop', line: 634, text: 'Nop' },
+  { name: 'leaf error fall-through Nop', line: 641, text: 'Nop' },
+  { name: 'leaf-only (Nop hit-backslash)', line: 628, text: 'Nop' },
+  { name: 'drop walk (Goto done at walk start)', line: 624, text: 'Goto mythos_rpr_done_${_uid}' },
 ];
 
 /** Forge HARD-B: GFPN-failure branches. */
-export const HELPER_GFPN_FAIL_LINES = [592, 593, 594, 595, 596, 597] as const;
+export const HELPER_GFPN_FAIL_LINES = [613, 614, 615, 616, 617, 618] as const;
 
 export function nshWithFileLine(nsh: string, line: number, text: string): string {
   const next = nsh.split('\n');

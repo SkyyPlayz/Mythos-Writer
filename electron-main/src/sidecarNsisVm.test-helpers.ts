@@ -204,16 +204,18 @@ function gfaKeysAreMissing(keys: readonly string[], options: SidecarNsisRunOptio
 }
 
 /**
- * Exact GLP plugin-fail injections (`glpnFailPaths` / `glpnFailNth`) on an
- * allowlist/nested *root* (Documents, Desktop, Downloads, AppData\Mythos Writer).
- * Helper GFA of that root is INVALID so GFPN fallback still H3s (historical
- * "fault still deletes"). The sidecar line / vault leaf is not a root — walk
- * GFA must still see a directory so a line-GLP +3 fallback can delete.
- * Spurious `glpnErrno` / `glpnErrnoFileLines` stay existing (S-19).
+ * Exact GLP plugin-fail injections (`glpnFailPaths` / `glpnFailNth` /
+ * `glpnFailFileLines`) on an allowlist/nested *root* (Documents, Desktop,
+ * Downloads, AppData\Mythos Writer). Helper GFA of that root is INVALID so
+ * GFPN fallback still H3s (historical "fault still deletes"). The sidecar
+ * line / vault leaf is not a root — walk GFA must still see a directory so a
+ * line-GLP +3 fallback can delete. Spurious `glpnErrno` / `glpnErrnoFileLines`
+ * stay existing (S-19).
  */
 function gfaKeysAreGlpPluginFail(keys: readonly string[], options: SidecarNsisRunOptions): boolean {
   const injected = [...(options.glpnFailPaths ?? []), ...Object.keys(options.glpnFailNth ?? {})];
-  if (injected.length === 0) {
+  const fileLineFail = (options.glpnFailFileLines ?? []).length > 0;
+  if (injected.length === 0 && !fileLineFail) {
     return false;
   }
   const env = options.env;
@@ -228,7 +230,10 @@ function gfaKeysAreGlpPluginFail(keys: readonly string[], options: SidecarNsisRu
   const injectedFolded = injected.map((p) => foldWinPath(p));
   for (const key of keys) {
     const folded = foldWinPath(key);
-    if (folded !== '' && rootSet.has(folded) && injectedFolded.includes(folded)) {
+    if (folded === '' || !rootSet.has(folded)) {
+      continue;
+    }
+    if (fileLineFail || injectedFolded.includes(folded)) {
       return true;
     }
   }
@@ -442,6 +447,11 @@ export type SidecarNsisRunOptions = {
   missingPaths?: readonly string[];
   /** Extra paths that exist for GetLongPathNameW, in addition to the default tree. */
   glpnExistingPaths?: readonly string[];
+  /**
+   * FindFirstFile / IfFileExists "$3\\*.*" returns false for these directory
+   * paths (injected FindFirst failure). The sidecar then takes the Delete branch.
+   */
+  ifFileExistsFailPaths?: readonly string[];
   /**
    * Registers present before the program runs. Helper leftover `$7` is the last
    * sidecar-line length — Nop of the helper `$7` init then starts the walk too far.
@@ -921,7 +931,12 @@ export function runNsisProgramLines(
       continue;
     }
     if (op === 'IfFileExists') {
-      const exists = sidecarIfFileExistsStarStar(val(args[0]!));
+      const raw = val(args[0]!);
+      const base = raw.replace(/\//g, '\\').endsWith('\\*.*') ? raw.replace(/\//g, '\\').slice(0, -4) : raw;
+      const findFirstFail = (options.ifFileExistsFailPaths ?? []).some(
+        (p) => foldWinPath(p) === foldWinPath(base),
+      );
+      const exists = !findFirstFail && sidecarIfFileExistsStarStar(raw);
       pc = jmp(pc, exists ? (args[1] ?? '0') : (args[2] ?? '0'));
       continue;
     }

@@ -287,7 +287,7 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "        IntCmp $8 2 +3 0 0",
   "        IntCmp $8 3 +2 0 0",
   "        Goto mythos_al_deny",
-  "        StrCmp $5 \"\" mythos_al_deny",
+  "        Goto mythos_glp_fb_5l",
   "        mythos_glp_h3_5l:",
   "        StrCpy $2 \"5l\"",
   "        Goto mythos_comp_tail_scan",
@@ -386,7 +386,7 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "            IntCmp $8 2 +3 0 0",
   "            IntCmp $8 3 +2 0 0",
   "            Goto uninstall_vault_read",
-  "            StrCmp $9 \"\" mythos_nr_desktop",
+  "            Goto mythos_glp_fb_9d",
   "            mythos_glp_h3_9d:",
   "            StrCpy $2 \"9d\"",
   "            Goto mythos_comp_tail_scan",
@@ -412,7 +412,7 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "            IntCmp $8 2 +3 0 0",
   "            IntCmp $8 3 +2 0 0",
   "            Goto uninstall_vault_read",
-  "            StrCmp $9 \"\" mythos_nr_downloads",
+  "            Goto mythos_glp_fb_9k",
   "            mythos_glp_h3_9k:",
   "            StrCpy $2 \"9k\"",
   "            Goto mythos_comp_tail_scan",
@@ -438,7 +438,7 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "            IntCmp $8 2 +3 0 0",
   "            IntCmp $8 3 +2 0 0",
   "            Goto uninstall_vault_read",
-  "            StrCmp $9 \"\" mythos_nr_ok",
+  "            Goto mythos_glp_fb_9l",
   "            mythos_glp_h3_9l:",
   "            StrCpy $2 \"9l\"",
   "            Goto mythos_comp_tail_scan",
@@ -4137,6 +4137,48 @@ const HARD_A_SHORT_APPDATA: SidecarNsisVarEnv = {
 };
 
 /** Probe HARD-A 8.3 repros, short-form roots, real `Notes~1`, and PROGRA~1 deny. */
+const S19_ONEDRIVE_LINE = 'C:\\Users\\me\\OneDrive';
+const S19_ONEDRIVE_KEEP = [
+  'C:\\Users\\me\\OneDrive',
+  'C:\\Users\\me\\OneDrive\\Documents',
+  'C:\\Users\\me\\OneDrive\\Desktop',
+  'C:\\Users\\me\\OneDrive\\Downloads',
+] as const;
+
+/** 6 blocks × 3 8.3 spellings × errno 2/3 = 36. Each must keep the OneDrive ancestor. */
+function s19OnedriveRow(
+  name: string,
+  env: SidecarNsisVarEnv,
+  line: number,
+  errno: number,
+): SidecarHardARow {
+  return {
+    name,
+    path: S19_ONEDRIVE_LINE,
+    env,
+    expect: 'skip',
+    mustNotDelete: S19_ONEDRIVE_KEEP,
+    options: { glpnErrnoFileLines: { [line]: errno } },
+  };
+}
+
+export const S19_ONEDRIVE_WRONG_TARGET_ROWS: readonly SidecarHardARow[] = (
+  [
+    { id: 'ME~1', documents: 'C:\\Users\\ME~1\\OneDrive\\Documents', desktop: 'C:\\Users\\ME~1\\OneDrive\\Desktop', profile: 'C:\\Users\\ME~1\\OneDrive' },
+    { id: 'DOCUME~1', documents: 'C:\\Users\\me\\OneDrive\\DOCUME~1', desktop: 'C:\\Users\\me\\OneDrive\\DESKTO~1', profile: 'C:\\Users\\me\\OneDrive' },
+    { id: 'docume~1', documents: 'C:\\Users\\me\\OneDrive\\docume~1', desktop: 'C:\\Users\\me\\OneDrive\\deskto~1', profile: 'C:\\Users\\me\\OneDrive' },
+  ] as const
+).flatMap((sp) =>
+  ([2, 3] as const).flatMap((errno) => [
+    s19OnedriveRow(`S-19 :230 ${sp.id} errno ${errno} OneDrive ancestor keep`, { ...HARD12_ENV_E1, DOCUMENTS: sp.documents }, 230, errno),
+    s19OnedriveRow(`S-19 :260 ${sp.id} errno ${errno} OneDrive ancestor keep`, { ...HARD12_ENV_E1, DESKTOP: sp.desktop }, 260, errno),
+    s19OnedriveRow(`S-19 :290 ${sp.id} errno ${errno} OneDrive ancestor keep`, { ...HARD12_ENV_E1, PROFILE: sp.profile }, 290, errno),
+    s19OnedriveRow(`S-19 :389 nested Documents ${sp.id} errno ${errno} OneDrive ancestor keep`, { ...HARD12_ENV_E1, DOCUMENTS: sp.documents, DESKTOP: 'C:\\Users\\me' }, 389, errno),
+    s19OnedriveRow(`S-19 :415 nested Desktop ${sp.id} errno ${errno} OneDrive ancestor keep`, { ...HARD12_ENV_E1, DOCUMENTS: 'C:\\Users\\me', DESKTOP: sp.desktop }, 415, errno),
+    s19OnedriveRow(`S-19 :441 nested Downloads ${sp.id} errno ${errno} OneDrive ancestor keep`, { ...HARD12_ENV_E1, DOCUMENTS: 'C:\\Users\\me', PROFILE: sp.profile }, 441, errno),
+  ]),
+);
+
 export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
   {
     name: 'DOWNLO~1 under profile must not delete Downloads',
@@ -5115,12 +5157,26 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     mustNotDelete: ['C:\\Users\\me', 'C:\\Users\\me\\Documents', 'C:\\Users\\me\\Desktop\\v'],
   },
   {
-    name: 'Downloads GLP PATH_NOT_FOUND (3) still falls back; Downloads vault deletes',
+    name: 'Downloads GLP PATH_NOT_FOUND (3) existing Downloads skips (S-19 no fallback)',
+    path: 'C:\\Users\\me\\Downloads\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\v', 'C:\\Users\\me\\Downloads'],
+    options: { glpnErrnoFileLines: { 290: 3, 441: 3 } },
+  },
+  {
+    name: 'Downloads GLP PATH_NOT_FOUND (3) helper GFA fail still falls back; deletes',
     path: 'C:\\Users\\me\\Downloads\\v',
     env: HARD12_ENV_E1,
     expect: 'delete',
-    options: { glpnErrnoFileLines: { 290: 3, 441: 3 } },
-    killsFileLines: [449],
+    options: {
+      // GLP errno 3 on an existing string; helper GFA of the leftover root
+      // is INVALID so 2/3 fallback H3s. Walk starts after $1 and still sees
+      // the vault leaf (invalidAttr is the root only, not descendants).
+      glpnErrnoFileLines: { 290: 3, 441: 3 },
+      invalidAttrPaths: ['C:\\Users\\me\\Downloads'],
+    },
+    killsFileLines: [298, 449],
   },
   {
     name: 'Downloads GLP access-denied skips the Downloads vault (no GFPN fallback)',
@@ -5169,7 +5225,12 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault'],
-    options: { glpnErrnoFileLines: { 389: 5 } },
+    options: {
+      glpnErrnoFileLines: { 389: 5 },
+      // Leftover GFPN Documents is the walk root ($1), so walk never GFAs it.
+      // Helper GFA INVALID → H3 leftover; Nop :398 then deletes the vault.
+      invalidAttrPaths: ['C:\\Users\\me\\Documents'],
+    },
     killsFileLines: [391, 398],
   },
   {
@@ -5178,7 +5239,10 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     mustNotDelete: ['C:\\Users\\me\\Desktop\\v'],
-    options: { glpnErrnoFileLines: { 415: 5 } },
+    options: {
+      glpnErrnoFileLines: { 415: 5 },
+      invalidAttrPaths: ['C:\\Users\\me\\Desktop'],
+    },
     killsFileLines: [417, 424],
   },
   {
@@ -5187,7 +5251,10 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     mustNotDelete: ['C:\\Users\\me\\Downloads\\v'],
-    options: { glpnErrnoFileLines: { 441: 5 } },
+    options: {
+      glpnErrnoFileLines: { 441: 5 },
+      invalidAttrPaths: ['C:\\Users\\me\\Downloads'],
+    },
     killsFileLines: [443, 450],
   },
   {
@@ -5642,6 +5709,235 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     expect: 'skip',
     mustNotDelete: ['C:\\Users\\me\\My Desktop\\v', 'C:\\Users\\me\\My Desktop'],
     options: { glpnErrnoFileLines: { 260: 3 } },
+  },
+  ...S19_ONEDRIVE_WRONG_TARGET_ROWS,
+  {
+    name: 'S-19 :290 errno 2 existing Downloads vault skips (helper is the only protection)',
+    path: 'C:\\Users\\me\\Downloads\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\v', 'C:\\Users\\me\\Downloads'],
+    options: { glpnErrnoFileLines: { 290: 2 } },
+    killsFileLine: 300,
+  },
+  {
+    name: 'S-19 :290 errno 3 existing Downloads vault skips (helper is the only protection)',
+    path: 'C:\\Users\\me\\Downloads\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\v', 'C:\\Users\\me\\Downloads'],
+    options: { glpnErrnoFileLines: { 290: 3 } },
+    killsFileLine: 300,
+  },
+  {
+    name: 'S-19 :389 errno 2 existing nested Documents vault skips (helper is the only protection)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault', 'C:\\Users\\me\\Documents'],
+    options: { glpnErrnoFileLines: { 389: 2 } },
+    killsFileLine: 399,
+  },
+  {
+    name: 'S-19 :389 errno 3 existing nested Documents vault skips (helper is the only protection)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault', 'C:\\Users\\me\\Documents'],
+    options: { glpnErrnoFileLines: { 389: 3 } },
+    killsFileLine: 399,
+  },
+  {
+    name: 'S-19 :415 errno 2 existing nested Desktop vault skips (helper is the only protection)',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Desktop\\v', 'C:\\Users\\me\\Desktop'],
+    options: { glpnErrnoFileLines: { 415: 2 } },
+    killsFileLine: 425,
+  },
+  {
+    name: 'S-19 :415 errno 3 existing nested Desktop vault skips (helper is the only protection)',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Desktop\\v', 'C:\\Users\\me\\Desktop'],
+    options: { glpnErrnoFileLines: { 415: 3 } },
+    killsFileLine: 425,
+  },
+  {
+    name: 'S-19 :441 errno 2 existing nested Downloads vault skips (helper is the only protection)',
+    path: 'C:\\Users\\me\\Downloads\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\v', 'C:\\Users\\me\\Downloads'],
+    options: { glpnErrnoFileLines: { 441: 2 } },
+    killsFileLine: 451,
+  },
+  {
+    name: 'S-19 :441 errno 3 existing nested Downloads vault skips (helper is the only protection)',
+    path: 'C:\\Users\\me\\Downloads\\v',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\v', 'C:\\Users\\me\\Downloads'],
+    options: { glpnErrnoFileLines: { 441: 3 } },
+    killsFileLine: 451,
+  },
+  {
+    name: 'HARD-F :363 8.3 MYTHOS~1 nested errno 2 existing Mythos vault skips',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\MYTHOS~1\\vaults\\x',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: [
+      'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+      'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer',
+    ],
+    options: { glpnErrnoFileLines: { 363: 2 } },
+    killsFileLine: 373,
+  },
+  {
+    name: 'HARD-F :363 8.3 MYTHOS~1 nested errno 3 existing Mythos vault skips',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\MYTHOS~1\\vaults\\x',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: [
+      'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+      'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer',
+    ],
+    options: { glpnErrnoFileLines: { 363: 3 } },
+    killsFileLine: 373,
+  },
+  {
+    name: 'HARD-F :363 8.3 APPDAT~1 nested errno 2 existing Mythos vault skips',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    env: { ...HARD12_ENV_E1, APPDATA: 'C:\\Users\\me\\APPDAT~1\\Roaming' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x'],
+    options: { glpnErrnoFileLines: { 363: 2 } },
+    killsFileLine: 373,
+  },
+  {
+    name: 'HARD-F :363 8.3 APPDAT~1 nested errno 3 existing Mythos vault skips',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    env: { ...HARD12_ENV_E1, APPDATA: 'C:\\Users\\me\\APPDAT~1\\Roaming' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x'],
+    options: { glpnErrnoFileLines: { 363: 3 } },
+    killsFileLine: 373,
+  },
+  {
+    name: 'HARD-F :363 8.3 MYTHOS~1 nested errno 5 Mythos vault skips',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\MYTHOS~1\\vaults\\x',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x'],
+    options: { glpnErrnoFileLines: { 363: 5 } },
+    killsFileLine: 372,
+  },
+  {
+    name: 'Nop AppData equal deletes the nested Mythos Writer root',
+    path: 'C:\\Users\\me\\Documents\\mw-nest\\Roaming\\Mythos Writer',
+    env: {
+      ...HARD12_ENV_E1,
+      APPDATA: 'C:\\Users\\me\\Documents\\mw-nest\\Roaming',
+    },
+    expect: 'skip',
+    mustNotDelete: [
+      'C:\\Users\\me\\Documents\\mw-nest\\Roaming\\Mythos Writer',
+      'C:\\Users\\me\\Documents\\mw-nest',
+    ],
+    options: { glpnErrnoFileLines: { 200: 5 } },
+    killsFileLine: 378,
+  },
+  {
+    name: 'H6 :372 readable 8.3 DOCUME~1 vault; missing Mythos Writer; errno 5 Nop deletes',
+    path: 'C:\\Users\\me\\DOCUME~1\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault', 'C:\\Users\\me\\Documents'],
+    options: {
+      glpnErrnoFileLines: { 363: 5 },
+      missingPaths: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer'],
+    },
+    killsFileLine: 372,
+  },
+  {
+    name: 'HARD-F :327 ct2 trailing-space after canon (EVIL~1 Documents; Desktop is not the decoy)',
+    path: 'C:\\Users\\me\\Documents\\EVIL~1',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\evil', 'C:\\Users\\me\\Documents\\evil '],
+    killsFileLine: 327,
+  },
+  {
+    name: 'HARD-F :338 9c trailing-space on matched Documents root (EVIL~1 Documents env)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: { ...HARD12_ENV_E1, DOCUMENTS: 'C:\\Users\\me\\Documents\\EVIL~1' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault', 'C:\\Users\\me\\Documents\\evil '],
+    killsFileLine: 338,
+  },
+  {
+    name: 'HARD-F :376 9a trailing-space nested AppData (allowlist AppData errno 5 so 5a did not scan)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: { ...HARD12_ENV_E1, APPDATA: 'C:\\Users\\me\\Documents\\EVIL~1\\Roaming' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault', 'C:\\Users\\me\\Documents\\evil '],
+    options: { glpnErrnoFileLines: { 200: 5 } },
+    killsFileLine: 376,
+  },
+  {
+    name: 'HARD-F :402 9d trailing-space nested Documents (allowlist Documents errno 5 so 5d did not scan)',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: { ...HARD12_ENV_E1, DOCUMENTS: 'C:\\Users\\me\\Documents\\EVIL~1' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Desktop\\v', 'C:\\Users\\me\\Documents\\evil '],
+    options: { glpnErrnoFileLines: { 230: 5 } },
+    killsFileLine: 402,
+  },
+  {
+    name: 'HARD-F :454 9l trailing-space nested Downloads (allowlist Downloads errno 5 so 5l did not scan)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: { ...HARD12_ENV_E1, PROFILE: 'C:\\Users\\me\\Documents\\EVIL~1' },
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault', 'C:\\Users\\me\\Documents\\evil '],
+    options: { glpnErrnoFileLines: { 290: 5 } },
+    killsFileLine: 454,
+  },
+  {
+    name: 'FindFirst IfFileExists fail on Documents vault still deletes (Delete branch)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: { ifFileExistsFailPaths: ['C:\\Users\\me\\Documents\\MyVault'] },
+    killsFileLine: 497,
+  },
+  {
+    name: 'GFA error on Documents vault skips (kills :476 Nop)',
+    path: RF7_ERROR_VAULT,
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: [RF7_ERROR_VAULT],
+    options: { attrErrorPaths: [RF7_ERROR_VAULT] },
+    killsFileLine: 476,
+  },
+  {
+    name: 'GFA error on Documents vault leaf skips (kills :483 Nop)',
+    path: RF7_ERROR_VAULT,
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: [RF7_ERROR_VAULT],
+    options: { attrErrorPaths: [RF7_ERROR_VAULT] },
+    killsFileLines: [476, 483],
+  },
+  {
+    name: 'GFPN fault at :360 nested AppData skips a Documents vault (kills :361)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault'],
+    options: { gfpnFailFileLines: [360] },
+    killsFileLine: 361,
   },
 ];
 

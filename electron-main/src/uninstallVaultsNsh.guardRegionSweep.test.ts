@@ -103,12 +103,9 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   273: 'H3 5k Goto Nop is identity: Documents vaults never reach 5k; nested 9k still scans Desktop.',
   278: 'StrCmp $3 $5 uninstall_vault_read → Nop (Desktop exact root). Sibling: no `\\` at $8, so it falls to not_desktop.',
   303: 'H3 5l Goto Nop is identity: nested 9l still scans Downloads.',
-  327: 'H3 ct2 Goto Nop is identity: ct1 already scanned $3 (or leftover suffix still carries the tail).',
-  338: 'H3 9c Goto Nop is identity: the matching 5* hook already scanned that root.',
-  376: 'H3 9a Goto Nop is identity: 5a already scanned AppData.',
-  378: 'AppData nested exact-root StrCmp → Nop. Allowlist already skipped the exact AppData root.',
-  402: 'H3 9d Goto Nop is identity: 5d already scanned Documents.',
-  454: 'H3 9l Goto Nop is identity: 5l already scanned Downloads. 9k Goto stays unlisted (only scan of a dirty Desktop).',
+  327: 'H3 ct2 Goto Nop is identity: ct1 already scanned the expanded line (EVIL~1 → evil[space]); later 9* scans do not re-admit it.',
+  338: 'H3 9c Goto Nop is identity: allowlist 5* already scanned the same expanded matched root unless that allowlist GLP was errno-5 (those rows kill :376/:402/:454).',
+  // :541 unlisted — Nop replaces END_FOLLOW; locator / fallthrough into fb_5a is mode-2 red. Barrier :542 still blocks the unknown-tag two-mutation.
   // :453 unlisted — :540 fail-closed: leftover $2 no longer returns through ret9l.
   144: 'Line GLP 0-check Nop is identity: fail empties scratch; the empty $3 check still fail-closes.',
   145: 'Line GLP MAX-check Nop is identity: fixtures never truncate the line GLP.',
@@ -142,9 +139,9 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   // :270 unlisted — S-19 existence helper Nop falls into H3 with GFPN on a spurious errno-2 vault.
   293: 'Downloads GLP MAX-check Nop is identity: fixtures never truncate Downloads.',
   295: 'Downloads empty-$5 (success) Nop is identity: Downloads GLP is never empty on success.',
-  // :298 unlisted — PATH_NOT_FOUND file-line errno-3 is a real kill of this Nop.
+  // :298 unlisted — errno-3 + helper GFA fail still-deletes; Nop errno-3 deny-skips.
   299: 'Downloads other-error Goto Nop is identity when Downloads GLP succeeds.',
-  300: 'Downloads empty-$5 (fallback) Nop is identity: fallback GFPN is never empty.',
+  // :300 unlisted — S-19 Downloads existence helper Nop falls into H3 with GFPN.
   322: 'Canon $3 GLP 0-check Nop is identity: fail empties scratch; the empty $3 check still fail-closes.',
   323: 'Canon $3 GLP MAX-check Nop is identity: fixtures never truncate.',
   325: 'Canon $3 empty Nop is identity: a successful GLP never writes empty.',
@@ -157,12 +154,12 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   // :373 unlisted — S-19 existence helper Nop falls into H3 with GFPN on a spurious errno-2 vault.
   394: 'Nested Documents empty $9 Nop is identity.',
   397: 'Nested Documents errno-3 Nop is identity: Documents nested GLP does not miss with 3 on these fixtures.',
-  399: 'Nested Documents fallback empty Nop is identity.',
+  // :399 unlisted — S-19 nested Documents existence helper Nop falls into H3 with GFPN.
   420: 'Nested Desktop empty $9 Nop is identity.',
   423: 'Nested Desktop errno-3 Nop is identity: Desktop nested GLP does not miss with 3 on these fixtures.',
-  425: 'Nested Desktop fallback empty Nop is identity.',
+  // :425 unlisted — S-19 nested Desktop existence helper Nop falls into H3 with GFPN.
   446: 'Nested Downloads empty $9 Nop is identity.',
-  451: 'Nested Downloads fallback empty Nop is identity.',
+  // :451 unlisted — S-19 nested Downloads existence helper Nop falls into H3 with GFPN.
   504: 'Scan default StrCpy $6 $3 Nop is identity: allowlist leftover $6 is the suffix that still carries the dangerous tail.',
   506: 'StrCpy $6 $5 Nop is identity: nested 9* hooks still scan $9.',
   513: 'IntCmp $7 0 Nop is identity: fixtures never have `\\` at index 0.',
@@ -171,8 +168,9 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
 /** Forge RESULT_97be (29) + RESULT_36d2 (33) + RESULT_8329 (:286). Mode 2 must catch each primary Nop. */
 export const SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS: readonly number[] = [
   143, 152, 153, 155, 157, 168, 169, 170, 172, 183, 184, 185, 187, 198, 199, 203, 210, 228, 229, 240, 258, 259, 260, 270, 288, 289,
-  290, 319, 320, 330, 331, 332, 361, 362, 363, 364, 366, 370, 373, 387, 388, 390, 391, 392, 396, 398, 413, 414, 415, 416,
+  290, 298, 319, 320, 330, 331, 332, 361, 362, 363, 364, 366, 370, 373, 387, 388, 390, 391, 392, 396, 398, 413, 414, 415, 416,
   417, 418, 422, 424, 439, 440, 442, 443, 444, 448, 449, 450,
+  300, 376, 378, 399, 402, 425, 451, 454,
 ];
 
 /** RF-7 walk / HARD-2 / HARD-A fail-closed lines whose primary Nop does not change the delete set. */

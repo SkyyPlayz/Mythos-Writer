@@ -29,6 +29,7 @@ import {
   mutantSidecarGuardRegionSweepLine,
   RF7_ONE_CHAR_JUNCTION,
   RF7_ONE_CHAR_JUNCTION_VAULT,
+  S19_ONEDRIVE_WRONG_TARGET_ROWS,
   SIDECAR_HARD_A_ROWS,
   SIDECAR_HARD_C_ROWS,
   SIDECAR_HARD_E_ROWS,
@@ -918,6 +919,62 @@ describe('HARD-F isolated GLP error branches + jump-offset corpus', () => {
     const deleted = sidecarHardADeleted(plus5.nsh, row);
     expect(deleted).not.toContain('C:\\Users\\me\\OneDrive');
     expect(sidecarGuardModeTwoCaught(plus5.nsh, nsh) || deleted.length === 0).toBe(true);
+  });
+
+  it('S-19 36 OneDrive-ancestor wrong-target deletes are 0', () => {
+    expect(S19_ONEDRIVE_WRONG_TARGET_ROWS).toHaveLength(36);
+    let extra = 0;
+    for (const row of S19_ONEDRIVE_WRONG_TARGET_ROWS) {
+      const deleted = sidecarHardADeleted(nsh, row);
+      expect(deleted, row.name).toEqual([]);
+      for (const ban of row.mustNotDelete ?? []) {
+        expect(deleted, row.name).not.toContain(ban);
+      }
+      extra += deleted.filter((p) => (row.mustNotDelete ?? []).includes(p)).length;
+    }
+    expect(extra).toBe(0);
+  });
+
+  it('HARD-F :363 8.3-spelled nested rows are named and skip', () => {
+    const names = SIDECAR_HARD_A_ROWS.filter((r) => r.name.includes(':363 8.3')).map((r) => r.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'HARD-F :363 8.3 MYTHOS~1 nested errno 2 existing Mythos vault skips',
+        'HARD-F :363 8.3 MYTHOS~1 nested errno 3 existing Mythos vault skips',
+        'HARD-F :363 8.3 APPDAT~1 nested errno 2 existing Mythos vault skips',
+        'HARD-F :363 8.3 APPDAT~1 nested errno 3 existing Mythos vault skips',
+        'HARD-F :363 8.3 MYTHOS~1 nested errno 5 Mythos vault skips',
+      ]),
+    );
+    expect(names.length).toBeGreaterThanOrEqual(5);
+    for (const row of SIDECAR_HARD_A_ROWS.filter((r) => r.name.includes(':363 8.3'))) {
+      expect(sidecarHardADeleted(nsh, row), row.name).toEqual([]);
+    }
+  });
+
+  it('H6 :372 readable 8.3 DOCUME~1 vault skips; Nop :372 deletes', () => {
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('H6 :372 readable 8.3'))!;
+    expect(row, 'readable 8.3 :372 row').toBeDefined();
+    expect(sidecarHardADeleted(nsh, row)).toEqual([]);
+    const mutant = withFileLine(372, 'Nop');
+    expect(sidecarHardADeleted(mutant, row)).toEqual(['C:\\Users\\me\\Documents\\MyVault']);
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
+  });
+
+  it(':541 Nop + unknown tag cannot fall through into the Mythos Writer existence block and delete', () => {
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('HARD-F H3 no-tag'))!;
+    expect(sidecarHardADeleted(nsh, row)).toEqual(['C:\\Users\\me\\Downloads\\v']);
+    expect(fileLines[540]!.trim()).toBe('Goto uninstall_vault_read');
+    expect(fileLines[541]!.trim()).toBe('Goto uninstall_vault_read');
+    const noTag = withFileLine(453, 'StrCpy $2 "zz"');
+    const twoMutLines = noTag.split('\n');
+    twoMutLines[540] = '          Nop';
+    const twoMut = twoMutLines.join('\n');
+    expect(sidecarHardADeleted(noTag, row)).toEqual([]);
+    expect(sidecarHardADeleted(twoMut, row)).toEqual([]);
+    expect(sidecarHardADeleted(twoMut, row)).not.toContain(
+      'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer',
+    );
   });
 
   it('HARD-F H3 no-tag default fail-closed skips a Downloads vault when $2 is unknown', () => {

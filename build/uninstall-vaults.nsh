@@ -297,7 +297,7 @@
         IntCmp $8 2 +3 0 0
         IntCmp $8 3 +2 0 0
         Goto mythos_al_deny
-        StrCmp $5 "" mythos_al_deny
+        Goto mythos_glp_fb_5l
         mythos_glp_h3_5l:
         StrCpy $2 "5l"
         Goto mythos_comp_tail_scan
@@ -396,7 +396,7 @@
             IntCmp $8 2 +3 0 0
             IntCmp $8 3 +2 0 0
             Goto uninstall_vault_read
-            StrCmp $9 "" mythos_nr_desktop
+            Goto mythos_glp_fb_9d
             mythos_glp_h3_9d:
             StrCpy $2 "9d"
             Goto mythos_comp_tail_scan
@@ -422,7 +422,7 @@
             IntCmp $8 2 +3 0 0
             IntCmp $8 3 +2 0 0
             Goto uninstall_vault_read
-            StrCmp $9 "" mythos_nr_downloads
+            Goto mythos_glp_fb_9k
             mythos_glp_h3_9k:
             StrCpy $2 "9k"
             Goto mythos_comp_tail_scan
@@ -448,7 +448,7 @@
             IntCmp $8 2 +3 0 0
             IntCmp $8 3 +2 0 0
             Goto uninstall_vault_read
-            StrCmp $9 "" mythos_nr_ok
+            Goto mythos_glp_fb_9l
             mythos_glp_h3_9l:
             StrCpy $2 "9l"
             Goto mythos_comp_tail_scan
@@ -539,6 +539,7 @@
           StrCmp $2 "9k" mythos_comp_tail_ret9k
           StrCmp $2 "9l" mythos_comp_tail_ret9l
           Goto uninstall_vault_read
+          Goto uninstall_vault_read
         mythos_glp_fb_5a:
         StrCmp $5 "" mythos_al_not_appdata
         System::Call "kernel32::GetFileAttributesW(w r5) i .r4"
@@ -558,6 +559,26 @@
         StrCmp $9 "" mythos_nr_documents
         System::Call "kernel32::GetFileAttributesW(w r9) i .r4"
         IntCmp $4 0 mythos_glp_h3_9a mythos_glp_h3_9a 0
+        Goto uninstall_vault_read
+        mythos_glp_fb_5l:
+        StrCmp $5 "" mythos_al_deny
+        System::Call "kernel32::GetFileAttributesW(w r5) i .r4"
+        IntCmp $4 0 mythos_glp_h3_5l mythos_glp_h3_5l 0
+        Goto mythos_al_deny
+        mythos_glp_fb_9d:
+        StrCmp $9 "" mythos_nr_desktop
+        System::Call "kernel32::GetFileAttributesW(w r9) i .r4"
+        IntCmp $4 0 mythos_glp_h3_9d mythos_glp_h3_9d 0
+        Goto uninstall_vault_read
+        mythos_glp_fb_9k:
+        StrCmp $9 "" mythos_nr_downloads
+        System::Call "kernel32::GetFileAttributesW(w r9) i .r4"
+        IntCmp $4 0 mythos_glp_h3_9k mythos_glp_h3_9k 0
+        Goto uninstall_vault_read
+        mythos_glp_fb_9l:
+        StrCmp $9 "" mythos_nr_ok
+        System::Call "kernel32::GetFileAttributesW(w r9) i .r4"
+        IntCmp $4 0 mythos_glp_h3_9l mythos_glp_h3_9l 0
         Goto uninstall_vault_read
       uninstall_vault_close:
         FileClose $0

@@ -544,7 +544,11 @@ const GLP_ERROR_SWAP_TARGETS = [
   'mythos_glp_fb_5a',
   'mythos_glp_fb_5d',
   'mythos_glp_fb_5k',
+  'mythos_glp_fb_5l',
   'mythos_glp_fb_9a',
+  'mythos_glp_fb_9d',
+  'mythos_glp_fb_9k',
+  'mythos_glp_fb_9l',
 ] as const;
 
 /**
