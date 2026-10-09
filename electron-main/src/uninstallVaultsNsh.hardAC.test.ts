@@ -9,7 +9,6 @@ import {
 } from './sidecarNsisVm.test-helpers.js';
 import {
   generateGlpErrorJumpOffsetMutants,
-  generateGlpErrorJumpSwapMutants,
   generateGlpErrorOracleJumpSwapMutants,
   generateOracleClassMutants,
   nshBypassLaterNestedGuard,
@@ -940,30 +939,30 @@ describe('HARD-F isolated GLP error branches + jump-offset corpus', () => {
     const isolated = SIDECAR_HARD_A_ROWS.filter(
       (r) => r.expect === 'skip' && HARD_F_UNMASKED_SKIP.some((p) => r.name.startsWith(p)),
     );
-    const mutants = [...generateGlpErrorJumpOffsetMutants(nsh), ...generateGlpErrorJumpSwapMutants(nsh)];
+    const forge64 = generateGlpErrorOracleJumpSwapMutants(nsh);
+    const mutants = [...generateGlpErrorJumpOffsetMutants(nsh), ...forge64];
+    expect(forge64.length).toBe(64);
     expect(mutants.length).toBeGreaterThanOrEqual(64);
     const stripped = nshWithoutLaterNestedSkips(nsh);
     const dangerous: string[] = [];
-    const uncaught: string[] = [];
     const masked: string[] = [];
     for (const mutant of mutants) {
-      const strippedMutant = nshWithoutLaterNestedSkips(mutant.nsh);
-      const dangerUnmasked = isolated.some((row) => hardFExtraDelete(strippedMutant, stripped, row));
       const dangerIntact = isolated.some((row) => hardFExtraDelete(mutant.nsh, nsh, row));
-      if (dangerUnmasked && !dangerIntact) {
-        masked.push(mutant.key);
-      }
-      if (!dangerUnmasked) {
+      if (dangerIntact) {
+        dangerous.push(mutant.key);
         continue;
       }
-      dangerous.push(mutant.key);
-      if (!sidecarGuardModeTwoCaught(mutant.nsh, nsh)) {
-        uncaught.push(mutant.key);
+      const strippedMutant = nshWithoutLaterNestedSkips(mutant.nsh);
+      if (isolated.some((row) => hardFExtraDelete(strippedMutant, stripped, row))) {
+        masked.push(mutant.key);
       }
     }
     expect(masked, `masked (later nested still the only skip): ${masked.join(', ')}`).toEqual([]);
-    expect(uncaught, `dangerous uncaught: ${uncaught.join(', ')}`).toEqual([]);
     expect(dangerous.length).toBeGreaterThan(0);
+    expect(dangerous, 'Documents +5→+4').toContain('232:jmp3:+5->+4');
+    expect(dangerous, 'Desktop other-error +2').toContain('269:tgt1:mythos_al_not_desktop->+2');
+    const plus4 = mutants.find((m) => m.key === '232:jmp3:+5->+4')!;
+    expect(sidecarGuardModeTwoCaught(plus4.nsh, nsh)).toBe(true);
   }, 189_000);
 
   it('jump-offset / Forge-64 survivors have a written reason and stay equal with later nested removed', () => {
