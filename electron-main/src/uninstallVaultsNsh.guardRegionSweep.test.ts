@@ -23,8 +23,9 @@ import { sidecarGuardModeTwoCaught } from './sidecarOracleMutants.test-helpers.j
  * (`"x"`) and the trailing-separator rows (`$4`→`$2`).
  *
  * The list must be exact: a listed line that the VM tables catch fails mode 2, an unlisted line they
- * miss fails mode 2, and the strength block re-checks identity on Forge's full oracle corpus.
- * Each reason names the line it had before RF-4/5/6 moved the region (`old :N`).
+ * miss fails mode 2. Strength shards re-check identity on Forge's full oracle corpus for the
+ * Ivy/extended/RF-4/5/6/walk subset; GFPN/GLP no-ops stay mode-2-only. Each reason names the line
+ * it had before RF-4/5/6 moved the region (`old :N`).
  */
 export const SIDECAR_GUARD_SWEEP_IVY_LOCKED_EQUIVALENTS: Readonly<Record<number, string>> = {
   56: 'StrCmp $1 "" uninstall_vault_read → Nop (old :52). The RF-6 loop head :47 already skipped an empty line; an empty path matches no allowlist root anyway (mythos_al_deny).',
