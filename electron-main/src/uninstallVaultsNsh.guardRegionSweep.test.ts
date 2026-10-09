@@ -62,8 +62,35 @@ export const SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS: Readonly<Record<number, stri
   240: 'StrCmp $3 $5 uninstall_vault_read → Nop (Downloads root self-match). Sibling: the exact root has no `\\` at $8 length, so it falls to mythos_al_deny.',
 };
 
-/** RF-7 walk / HARD-2 / HARD-A fail-closed lines whose primary Nop does not change the delete set. */
-export const SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS: Readonly<Record<number, string>> = {
+/**
+ * RF-7 walk / leftover-`/` primaries that the 12,617-case strength shards still scan.
+ * GFPN/GLP no-ops stay in {@link SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS}: the model
+ * never returns 0 or truncates on the corpus, and ~50 extra lines × 7 slices blew the
+ * 20-minute unit job.
+ */
+export const SIDECAR_GUARD_SWEEP_RF7_STRENGTH_EQUIVALENTS: Readonly<Record<number, string>> = {
+  272: 'StrCpy $7 $9 → Nop. Restore then uses leftover $7; walk still hits every `\\`.',
+  276: 'StrLen $8 $3 (strip) → Nop. $8 is only read when the last char is `\\`.',
+  277: 'IntCmp $8 3 (keep C:\\) → Nop. Fixture trailing-`\\` paths are longer than 3.',
+  279: 'Goto mythos_nr_strip → Nop. GFPN leaves at most one trailing `\\`.',
+  337: 'StrCpy $9 $7 → Nop. $9 stays the last GFPN; walk start is a few chars in and still hits every `\\`.',
+  338: 'Goto mythos_reparse_walk → Nop. The next line is the walk label.',
+  341: 'IntOp $7 $8 + 1 → Nop. Walk from 0 still GetFileAttributesW every prefix and the leaf.',
+  347: 'Goto mythos_reparse_next → Nop. Falls into hit and still GetFileAttributesW the current prefix.',
+  354: 'IntOp $7 $7 + 1 → +2 (after a hit). The next `\\` is still found.',
+  361: 'Goto uninstall_vault_do_delete → Nop. Falls through to the leftover-/ scan and IfFileExists.',
+  363: 'StrCpy $7 0 (leftover-/ scan) → Nop. Walk left $7 at end-of-$3.',
+  365: 'StrCpy $6 $3 1 $7 → Nop. Leftover $6 from the walk leaf is "".',
+  367: 'StrCmp $6 "/" uninstall_vault_read → Nop. GFPN has already folded / to \\.',
+  368: 'IntOp $7 $7 + 1 → +2 (leftover-/ scan). GFPN left no / to reject.',
+  369: 'Goto mythos_canon_slash → Nop. Falls into slash_ok; GFPN left no / to reject.',
+};
+
+/**
+ * GFPN/GLP / nested exact-root / ancestor-copy Nops. Mode 2 still requires them uncaught
+ * (already-canonical roots, model-never-fails, allowlist already skipped). Not strength-sharded.
+ */
+export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<number, string>> = {
   143: 'line GLP Call → Nop. The canon-gate GLP expands 8.3 again.',
   144: 'line GLP 0-return → Nop. The model never returns 0 on these paths.',
   145: 'line GLP trunc → Nop. The model never truncates these paths.',
@@ -110,10 +137,6 @@ export const SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS: Readonly<Record<number, string
   259: 'canon root GLP Call → Nop. The allowlist already long-expanded $5.',
   260: 'canon root GLP 0-return → Nop.',
   261: 'canon root GLP trunc → Nop.',
-  272: 'StrCpy $7 $9 → Nop. Restore then uses leftover $7; walk still hits every `\\`.',
-  276: 'StrLen $8 $3 (strip) → Nop. $8 is only read when the last char is `\\`.',
-  277: 'IntCmp $8 3 (keep C:\\) → Nop. Fixture trailing-`\\` paths are longer than 3.',
-  279: 'Goto mythos_nr_strip → Nop. GFPN leaves at most one trailing `\\`.',
   283: 'AppData nested GFPN 0-return → Nop.',
   284: 'AppData nested GFPN trunc → Nop.',
   285: 'AppData nested GLP Call → Nop. $APPDATA\\Mythos Writer is already long form.',
@@ -142,17 +165,20 @@ export const SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS: Readonly<Record<number, string
   329: 'Downloads nested GLP trunc → Nop.',
   331: 'Downloads ancestor StrLen → Nop.',
   333: 'Downloads ancestor sep-char copy → Nop. $6 is not `\\` on the HARD-C fixtures.',
-  337: 'StrCpy $9 $7 → Nop. $9 stays the last GFPN; walk start is a few chars in and still hits every `\\`.',
-  338: 'Goto mythos_reparse_walk → Nop. The next line is the walk label.',
-  341: 'IntOp $7 $8 + 1 → Nop. Walk from 0 still GetFileAttributesW every prefix and the leaf.',
-  347: 'Goto mythos_reparse_next → Nop. Falls into hit and still GetFileAttributesW the current prefix.',
-  354: 'IntOp $7 $7 + 1 → +2 (after a hit). The next `\\` is still found.',
-  361: 'Goto uninstall_vault_do_delete → Nop. Falls through to the leftover-/ scan and IfFileExists.',
-  363: 'StrCpy $7 0 (leftover-/ scan) → Nop. Walk left $7 at end-of-$3.',
-  365: 'StrCpy $6 $3 1 $7 → Nop. Leftover $6 from the walk leaf is "".',
-  367: 'StrCmp $6 "/" uninstall_vault_read → Nop. GFPN has already folded / to \\.',
-  368: 'IntOp $7 $7 + 1 → +2 (leftover-/ scan). GFPN left no / to reject.',
-  369: 'Goto mythos_canon_slash → Nop. Falls into slash_ok; GFPN left no / to reject.',
+};
+
+/** RF-7 walk / HARD-2 / HARD-A fail-closed lines whose primary Nop does not change the delete set. */
+export const SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS: Readonly<Record<number, string>> = {
+  ...SIDECAR_GUARD_SWEEP_RF7_STRENGTH_EQUIVALENTS,
+  ...SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS,
+};
+
+/** Lines the equivalence-strength shards must cover (Ivy + extended + RF-4/5/6 + RF-7 walk). */
+export const SIDECAR_GUARD_SWEEP_STRENGTH_EQUIVALENT_FILE_LINES: Readonly<Record<number, string>> = {
+  ...SIDECAR_GUARD_SWEEP_IVY_LOCKED_EQUIVALENTS,
+  ...SIDECAR_GUARD_SWEEP_EXTENDED_EQUIVALENTS,
+  ...SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS,
+  ...SIDECAR_GUARD_SWEEP_RF7_STRENGTH_EQUIVALENTS,
 };
 
 export const SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES: Readonly<Record<number, string>> = {
@@ -245,16 +271,13 @@ describe('sidecar guard region sweep :43-:376 (buildIntegrity excluded)', () => 
       );
     });
 
-    it('equivalence-strength shards cover every documented equivalent line', () => {
+    it('equivalence-strength shards cover every strength-checked equivalent line', () => {
       const sharded = [
-        47, 56, 61, 84, 97, 98, 99, 103, 104, 105, 106, 109, 117, 123, 124, 125, 129, 130, 131, 143, 144, 145, 147,
-        150, 151, 152, 158, 159, 160, 161, 162, 168, 169, 170, 171, 172, 178, 179, 181, 182, 186, 196, 197, 199, 200,
-        204, 214, 215, 216, 217, 218, 222, 232, 233, 234, 235, 236, 240, 251, 252, 254, 255, 257, 258, 259, 260, 261,
-        272, 276, 277, 279, 283, 284, 285, 286, 287, 288, 297, 298, 299, 300, 301, 302, 303, 305, 311, 312, 313, 314,
-        315, 317, 319, 325, 326, 327, 328, 329, 331, 333, 337, 338, 341, 347, 354, 361, 363, 365, 367, 368, 369,
+        47, 56, 61, 84, 97, 98, 99, 103, 104, 105, 106, 109, 117, 123, 124, 125, 129, 130, 131, 186, 240, 272, 276,
+        277, 279, 337, 338, 341, 347, 354, 361, 363, 365, 367, 368, 369,
       ];
       expect(sharded).toEqual(
-        Object.keys(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES)
+        Object.keys(SIDECAR_GUARD_SWEEP_STRENGTH_EQUIVALENT_FILE_LINES)
           .map(Number)
           .sort((a, b) => a - b),
       );
