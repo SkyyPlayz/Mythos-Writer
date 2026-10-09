@@ -6010,7 +6010,7 @@ function denyStrcpyReplacementLine(
 /** Critic H6 acceptance mutant on :114 / :117 / :120 StrCpy $4 $1 $3 (re-baseline deny VM must go red). */
 export function mutantDenyPrefixStrcpyAcceptance(
   nsh: string,
-  fileLine: 160 | 173 | 186,
+  fileLine: (typeof DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES)[number],
   variant: DenyPrefixStrcpyAcceptanceVariant,
 ): string {
   const regionIndex = fileLine - SIDECAR_GUARD_REGION_FILE_LINE_FIRST;

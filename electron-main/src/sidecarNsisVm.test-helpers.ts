@@ -614,7 +614,12 @@ export function runNsisProgramLines(
     map.set(key, next);
     return next;
   };
-  const R: Record<string, string> = { ...(options.initialRegs ?? {}) };
+  const R: Record<string, string> = {};
+  for (const [reg, value] of Object.entries(options.initialRegs ?? {})) {
+    if (value !== undefined) {
+      R[reg] = value;
+    }
+  }
   let err = false;
   const st: string[] = [];
   const mem = new Map<number, Uint8Array>();
