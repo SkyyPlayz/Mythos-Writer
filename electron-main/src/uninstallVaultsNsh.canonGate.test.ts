@@ -29,10 +29,10 @@ function behaviourFailure(mutant: string): string {
 }
 
 const ROOT_GUARDS = [
-  { root: 'APPDATA', boundary: 155, emptyChild: 158, next: 'mythos_al_not_appdata' },
-  { root: 'DOCUMENTS', boundary: 167, emptyChild: 170, next: 'mythos_al_not_documents' },
-  { root: 'DESKTOP', boundary: 179, emptyChild: 182, next: 'mythos_al_not_desktop' },
-  { root: 'Downloads', boundary: 191, emptyChild: 194, next: 'mythos_al_deny' },
+  { root: 'APPDATA', boundary: 188, emptyChild: 191, next: 'mythos_al_not_appdata' },
+  { root: 'DOCUMENTS', boundary: 206, emptyChild: 209, next: 'mythos_al_not_documents' },
+  { root: 'DESKTOP', boundary: 224, emptyChild: 227, next: 'mythos_al_not_desktop' },
+  { root: 'Downloads', boundary: 242, emptyChild: 245, next: 'mythos_al_deny' },
 ] as const;
 
 describe('allowlist root guards — a Nop on any of the 8 is caught pin-free (mode 2)', () => {
@@ -58,55 +58,58 @@ describe('allowlist root guards — a Nop on any of the 8 is caught pin-free (mo
 
 const PATH_CALL = 'System::Call "kernel32::GetFullPathNameW(w r1, i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4"';
 const ROOT_CALL = 'System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"';
+const DENY_ROOT_CALL = 'System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"';
 const ZERO_CHECK = 'IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0';
 const TRUNC_CHECK = 'IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read';
 
 const GATE_LINES: Readonly<Record<number, string>> = {
-  199: PATH_CALL,
-  200: ZERO_CHECK,
-  201: TRUNC_CHECK,
-  202: ROOT_CALL,
-  203: ZERO_CHECK,
-  204: TRUNC_CHECK,
-  205: 'StrLen $8 $9',
-  207: 'StrCmp $6 $9 0 uninstall_vault_read',
-  209: 'StrCmp $6 "\\" 0 uninstall_vault_read',
-  212: 'StrCmp $6 "" uninstall_vault_read',
+  140: PATH_CALL,
+  141: ZERO_CHECK,
+  142: TRUNC_CHECK,
+  147: DENY_ROOT_CALL,
+  148: ZERO_CHECK,
+  149: TRUNC_CHECK,
+  250: PATH_CALL,
+  256: ROOT_CALL,
+  262: 'StrLen $8 $9',
+  264: 'StrCmp $6 $9 0 uninstall_vault_read',
+  266: 'StrCmp $6 "\\" 0 uninstall_vault_read',
+  269: 'StrCmp $6 "" uninstall_vault_read',
 };
 
-/** Ivy's System::Call / containment mutants of the GetFullPathNameW gate (file :198–:213). */
+/** Ivy's System::Call / containment mutants of the GetFullPathNameW gate. */
 const GATE_MUTANTS: readonly { name: string; edits: Readonly<Record<number, string | readonly string[]>> }[] = [
-  { name: 'path buffer too small (i 16)', edits: { 199: PATH_CALL.replace('${NSIS_MAX_STRLEN}', '16') } },
-  { name: 'root buffer too small (i 16)', edits: { 202: ROOT_CALL.replace('${NSIS_MAX_STRLEN}', '16') } },
-  { name: 'truncation bound below the buffer (16)', edits: { 201: TRUNC_CHECK.replace('${NSIS_MAX_STRLEN}', '16') } },
-  { name: 'path 0 return falls through', edits: { 200: 'IntCmp $4 0 0 uninstall_vault_read 0' } },
+  { name: 'path buffer too small (i 16)', edits: { 250: PATH_CALL.replace('${NSIS_MAX_STRLEN}', '16') } },
+  { name: 'first GFPN buffer too small (i 16)', edits: { 140: PATH_CALL.replace('${NSIS_MAX_STRLEN}', '16') } },
+  { name: 'truncation bound below the buffer (16)', edits: { 142: TRUNC_CHECK.replace('${NSIS_MAX_STRLEN}', '16') } },
+  { name: 'path 0 return falls through', edits: { 141: 'IntCmp $4 0 0 uninstall_vault_read 0' } },
   {
     name: 'path error goes to delete',
-    edits: { 200: 'IntCmp $4 0 uninstall_vault_do_delete uninstall_vault_do_delete 0' },
+    edits: { 141: 'IntCmp $4 0 uninstall_vault_do_delete uninstall_vault_do_delete 0' },
   },
-  { name: 'path truncated return falls through', edits: { 201: 'IntCmp $4 ${NSIS_MAX_STRLEN} 0 0 0' } },
+  { name: 'path truncated return falls through', edits: { 142: 'IntCmp $4 ${NSIS_MAX_STRLEN} 0 0 0' } },
   {
     name: 'path truncated return goes to delete',
-    edits: { 201: 'IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_do_delete 0 uninstall_vault_do_delete' },
+    edits: { 142: 'IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_do_delete 0 uninstall_vault_do_delete' },
   },
-  { name: 'root 0 return falls through', edits: { 203: 'IntCmp $4 0 0 uninstall_vault_read 0' } },
-  { name: 'root truncated return falls through', edits: { 204: 'IntCmp $4 ${NSIS_MAX_STRLEN} 0 0 0' } },
+  { name: 'WINDIR 0 return falls through', edits: { 148: 'IntCmp $4 0 0 uninstall_vault_read 0' } },
+  { name: 'WINDIR truncated return falls through', edits: { 149: 'IntCmp $4 ${NSIS_MAX_STRLEN} 0 0 0' } },
   {
     name: 'root canonicalisation removed (compare against the raw $5)',
-    edits: { 205: 'StrLen $8 $5', 207: 'StrCmp $6 $5 0 uninstall_vault_read' },
+    edits: { 262: 'StrLen $8 $5', 264: 'StrCmp $6 $5 0 uninstall_vault_read' },
   },
-  { name: 'root GetFullPathNameW replaced by a copy of $5', edits: { 202: 'StrCpy $9 $5' } },
+  { name: 'root GetFullPathNameW replaced by a copy of $5', edits: { 256: 'StrCpy $9 $5' } },
   {
     name: 'path canonicalisation removed (compare the raw $1)',
-    edits: { 199: 'StrCpy $3 $1', 200: 'Nop', 201: 'Nop' },
+    edits: { 250: 'StrCpy $3 $1', 251: 'Nop', 252: 'Nop' },
   },
   {
     name: 'prefix compare cut by one char',
-    edits: { 207: ['StrCpy $6 $6 -1', 'StrCpy $9 $9 -1', 'StrCmp $6 $9 0 uninstall_vault_read'] },
+    edits: { 264: ['StrCpy $6 $6 -1', 'StrCpy $9 $9 -1', 'StrCmp $6 $9 0 uninstall_vault_read'] },
   },
-  { name: 'strictly deeper relaxed to >= (an empty child passes)', edits: { 212: 'Nop' } },
-  { name: 'trailing `\\` after the root dropped', edits: { 209: 'Nop' } },
-  { name: 'case folding dropped (StrCmpS)', edits: { 207: 'StrCmpS $6 $9 0 uninstall_vault_read' } },
+  { name: 'strictly deeper relaxed to >= (an empty child passes)', edits: { 269: 'Nop' } },
+  { name: 'trailing `\\` after the root dropped', edits: { 266: 'Nop' } },
+  { name: 'case folding dropped (StrCmpS)', edits: { 264: 'StrCmpS $6 $9 0 uninstall_vault_read' } },
 ];
 
 describe('GetFullPathNameW gate — System::Call and containment mutants are caught pin-free (mode 2)', () => {

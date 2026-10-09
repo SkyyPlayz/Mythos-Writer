@@ -8,6 +8,9 @@ import { describe, expect, it } from 'vitest';
 import {
   FILE_ATTRIBUTE_READONLY,
   FILE_ATTRIBUTE_REPARSE_POINT,
+  MYTHOS_RMDIR_HELPER_KEEP_SITES,
+  MYTHOS_RMDIR_HELPER_REMOVE_ALL_SITES,
+  runMythosRmdirHelper,
   runSidecarNsisProgram,
   SIDECAR_NSIS_ENV_E1,
 } from './sidecarNsisVm.test-helpers.js';
@@ -258,6 +261,116 @@ describe.skipIf(process.platform !== 'win32')(
       expect(run(missingVault).deleted, 'missing vault must skip with no error').toEqual([]);
       expect(existsSync(marker), 'sentinel marker must survive').toBe(true);
 
+      rmSync(root, { recursive: true, force: true });
+    });
+  },
+);
+
+describe.skipIf(process.platform !== 'win32')(
+  'H2 notes-windows helper reparse probe (mklink /J on fixed Mythos Writer targets)',
+  () => {
+    it('junction cache skips; readonly cache still deletes; missing cache skips', () => {
+      const nsh = loadUninstallVaultsNsh();
+      const root = mkdtempSync(join(tmpdir(), 'mythos-h2-helper-'));
+      const appdata = join(root, 'AppData', 'Roaming');
+      const mythos = join(appdata, 'Mythos Writer');
+      const sentinel = join(root, 'sentinel');
+      mkdirSync(mythos, { recursive: true });
+      mkdirSync(sentinel, { recursive: true });
+      const marker = join(sentinel, 'marker.txt');
+      writeFileSync(marker, 'keep', 'utf8');
+      const env = {
+        ...SIDECAR_NSIS_ENV_E1,
+        APPDATA: appdata,
+        PROFILE: root,
+      };
+
+      const junctionCache = join(mythos, 'vault-index-cache');
+      cmdMklink('/J', junctionCache, sentinel);
+      const junctionAttr = kernel32GetFileAttributesW(junctionCache);
+      expect(junctionAttr & FILE_ATTRIBUTE_REPARSE_POINT_WIN, 'mklink /J must set 0x400').not.toBe(0);
+
+      const readonlyCache = join(mythos, 'note-thumb-cache');
+      mkdirSync(readonlyCache, { recursive: true });
+      execFileSync('cmd.exe', ['/c', 'attrib', '+R', readonlyCache], { encoding: 'utf8', windowsHide: true });
+      const roAttr = kernel32GetFileAttributesW(readonlyCache);
+      expect(roAttr & FILE_ATTRIBUTE_READONLY, 'attrib +R must set 0x1').not.toBe(0);
+      expect(roAttr & FILE_ATTRIBUTE_REPARSE_POINT_WIN).toBe(0);
+
+      const missingCache = join(mythos, 'templates');
+      const missingAttr = kernel32GetFileAttributesW(missingCache);
+      expect(missingAttr, 'missing templates must be INVALID_FILE_ATTRIBUTES').toBe(-1);
+
+      const idxSite = MYTHOS_RMDIR_HELPER_KEEP_SITES.find((s) => s.uid === 'idx')!;
+      const thumbSite = MYTHOS_RMDIR_HELPER_KEEP_SITES.find((s) => s.uid === 'thumb')!;
+      const tmplSite = MYTHOS_RMDIR_HELPER_REMOVE_ALL_SITES.find((s) => s.uid === 'tmpl')!;
+
+      expect(
+        runMythosRmdirHelper(nsh, idxSite, {
+          env,
+          reparsePaths: [junctionCache],
+          fileAttributes: { [junctionCache]: junctionAttr },
+        }).deleted,
+        'junction vault-index-cache must skip',
+      ).toEqual([]);
+      expect(
+        runMythosRmdirHelper(nsh, thumbSite, {
+          env,
+          fileAttributes: { [readonlyCache]: roAttr },
+        }).deleted,
+        'readonly note-thumb-cache must still delete',
+      ).toEqual([readonlyCache]);
+      expect(
+        runMythosRmdirHelper(nsh, tmplSite, {
+          env,
+          invalidAttrPaths: [missingCache],
+        }).deleted,
+        'missing templates must skip',
+      ).toEqual([]);
+      expect(existsSync(marker), 'sentinel marker must survive').toBe(true);
+
+      rmSync(root, { recursive: true, force: true });
+    });
+  },
+);
+
+describe.skipIf(process.platform !== 'win32')(
+  'HARD-A notes-windows 8.3 GetLongPathNameW / fsutil probe',
+  () => {
+    it('generated 8.3 names expand; a real Notes~1 vault keeps its long name and deletes', () => {
+      const nsh = loadUninstallVaultsNsh();
+      const root = mkdtempSync(join(tmpdir(), 'mythos-hard-a-83-'));
+      const documents = join(root, 'Documents');
+      mkdirSync(documents, { recursive: true });
+      const downloads = join(root, 'Downloads');
+      mkdirSync(downloads, { recursive: true });
+      const notesTilde = join(documents, 'Notes~1');
+      mkdirSync(notesTilde, { recursive: true });
+      const env = {
+        ...SIDECAR_NSIS_ENV_E1,
+        DOCUMENTS: documents,
+        PROFILE: root,
+      };
+      expect(
+        runSidecarNsisProgram(nsh, [`${notesTilde}\r\n`], { env }).deleted,
+        'real Notes~1 vault must still delete',
+      ).toEqual([notesTilde]);
+
+      let shortDownloads = '';
+      try {
+        shortDownloads = execFileSync('cmd.exe', ['/c', `for %I in ("${downloads}") do @echo %~sI`], {
+          encoding: 'utf8',
+          windowsHide: true,
+        }).trim();
+      } catch {
+        shortDownloads = '';
+      }
+      if (shortDownloads !== '' && /~/.test(shortDownloads)) {
+        expect(
+          runSidecarNsisProgram(nsh, [`${shortDownloads}\r\n`], { env }).deleted,
+          '8.3 Downloads must skip (nested-root / allowlist after GLP)',
+        ).toEqual([]);
+      }
       rmSync(root, { recursive: true, force: true });
     });
   },

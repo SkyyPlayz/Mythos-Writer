@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { loadUninstallVaultsNsh } from './uninstallVaultsNsh.path.js';
 import { mutantSidecarGuardRegionSweepLine } from './sidecarTraversalScan.test-helpers.js';
+import { SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES } from './uninstallVaultsNsh.guardRegionSweep.test.js';
 import {
   generateOracleClassMutants,
   sidecarGuardCaseOutcome,
@@ -24,7 +25,9 @@ const SWEEP_CHUNK = 1;
  * Documents/Desktop/Downloads can reach them (the parent is the earlier exact-root
  * guard), so every oracle-class mutant stays equivalent.
  */
-const ORACLE_CLASS_ALL_EQUIVALENT_LINES: ReadonlySet<number> = new Set([243, 244, 254, 255, 265, 266]);
+const ORACLE_CLASS_ALL_EQUIVALENT_LINES: ReadonlySet<number> = new Set(
+  Object.keys(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES).map((n) => Number(n)),
+);
 
 const chunkMutants = (mutants: OracleClassMutant[], size: number): OracleClassMutant[][] => {
   const chunks: OracleClassMutant[][] = [];

@@ -79,7 +79,7 @@ export function assertTraversalRejectedBeforeSidecarDelete(nsh: string): void {
   const travAt = executable.indexOf('mythos_trav_scan');
   const travOkAt = executable.indexOf('uninstall_vault_trav_ok:');
   const doDeleteAt = executable.indexOf('uninstall_vault_do_delete:');
-  const sidecarRmAt = executable.indexOf('RMDir /r "$1"');
+  const sidecarRmAt = executable.indexOf('RMDir /r "$3"');
   if (travAt < 0 || travOkAt < 0 || doDeleteAt < 0 || sidecarRmAt < 0) {
     throw new Error('traversal scan / sidecar delete labels missing from uninstall nsh');
   }
@@ -90,7 +90,7 @@ export function assertTraversalRejectedBeforeSidecarDelete(nsh: string): void {
     throw new Error('traversal scan must complete before uninstall_vault_do_delete');
   }
   if (sidecarRmAt <= doDeleteAt) {
-    throw new Error('allowlist gate must precede RMDir /r "$1" for sidecar paths');
+    throw new Error('allowlist gate must precede RMDir /r "$3" for sidecar paths');
   }
   if (!/StrCmp \$4 "\."/.test(executable)) {
     throw new Error('traversal scan must StrCmp path segments against literal "."');
@@ -104,14 +104,14 @@ export function assertTraversalRejectedBeforeSidecarDelete(nsh: string): void {
   }
 }
 
-/** Critic H4: traversal scan completes, then allowlist, then per-line delete / RMDir "$1". */
+/** Critic H4: traversal scan completes, then allowlist, then per-line delete / RMDir "$3". */
 export function assertTraversalThenAllowlistThenSidecarDelete(nsh: string): void {
   const executable = nshExecutableLines(nsh);
   const travOkAt = executable.indexOf('uninstall_vault_trav_ok:');
-  const allowlistAt = executable.indexOf('StrLen $3 "$WINDIR"');
+  const allowlistAt = executable.indexOf('StrCpy $5 "$WINDIR"');
   const denyAt = executable.indexOf('mythos_al_deny');
   const doDeleteAt = executable.indexOf('uninstall_vault_do_delete:');
-  const sidecarRmAt = executable.indexOf('RMDir /r "$1"');
+  const sidecarRmAt = executable.indexOf('RMDir /r "$3"');
   if (travOkAt < 0 || allowlistAt < 0 || denyAt < 0 || doDeleteAt < 0 || sidecarRmAt < 0) {
     throw new Error('traversal / allowlist / sidecar-delete chain incomplete in uninstall nsh');
   }
@@ -125,7 +125,7 @@ export function assertTraversalThenAllowlistThenSidecarDelete(nsh: string): void
     throw new Error('uninstall_vault_do_delete must follow mythos_al_deny');
   }
   if (sidecarRmAt <= doDeleteAt) {
-    throw new Error('RMDir /r "$1" must follow uninstall_vault_do_delete');
+    throw new Error('RMDir /r "$3" must follow uninstall_vault_do_delete');
   }
 }
 
@@ -217,7 +217,7 @@ export function assertRemoveAllDeletesStrictlyBetweenSectionIfAndElse(
 /** Probe H-A: paths failing the allowlist must skip delete at mythos_al_deny (not do_delete). */
 /** Critic S8 / Probe S5 — exact APPDATA Mythos Writer root self-match deny (M5). */
 export const APPDATA_MYTHOS_WRITER_ROOT_SELF_MATCH_LINE =
-  '          StrCmp $1 $5 uninstall_vault_read';
+  '          StrCmp $3 $5 uninstall_vault_read';
 
 export function assertAppDataMythosWriterRootSelfMatchGuard(nsh: string): void {
   const executable = nshExecutableLines(nsh);
@@ -232,9 +232,9 @@ export function assertAppDataMythosWriterRootSelfMatchGuard(nsh: string): void {
   if (!region.includes(prefixMatch)) {
     throw new Error('APPDATA prefix match must branch to mythos_al_not_appdata');
   }
-  if (!region.includes('StrCmp $1 $5 uninstall_vault_read')) {
+  if (!region.includes('StrCmp $3 $5 uninstall_vault_read')) {
     throw new Error(
-      'APPDATA Mythos Writer root must StrCmp $1 $5 uninstall_vault_read (M5 / S8 / S5)',
+      'APPDATA Mythos Writer root must StrCmp $3 $5 uninstall_vault_read (M5 / S8 / S5)',
     );
   }
   const lines = nsh.split(/\r?\n/);
@@ -243,7 +243,7 @@ export function assertAppDataMythosWriterRootSelfMatchGuard(nsh: string): void {
     throw new Error('APPDATA anchor line missing in nsh file');
   }
   const selfMatchAt = lines.findIndex(
-    (l, i) => i > anchorLine && i < anchorLine + 8 && l === APPDATA_MYTHOS_WRITER_ROOT_SELF_MATCH_LINE,
+    (l, i) => i > anchorLine && i < anchorLine + 16 && l === APPDATA_MYTHOS_WRITER_ROOT_SELF_MATCH_LINE,
   );
   if (selfMatchAt < 0) {
     throw new Error(
@@ -255,14 +255,26 @@ export function assertAppDataMythosWriterRootSelfMatchGuard(nsh: string): void {
 export function mutantM5_dropAppDataRootSelfMatch(nsh: string): string {
   const needle =
     '        StrCpy $5 "$APPDATA\\Mythos Writer"\n' +
-    '        StrLen $3 $5\n' +
-    '        StrCpy $4 $1 $3\n' +
+    '        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"\n' +
+    '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0\n' +
+    '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read\n' +
+    '        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"\n' +
+    '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0\n' +
+    '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read\n' +
+    '        StrLen $8 $5\n' +
+    '        StrCpy $4 $3 $8\n' +
     '        StrCmp $4 $5 0 mythos_al_not_appdata\n' +
-    '          StrCmp $1 $5 uninstall_vault_read';
+    '          StrCmp $3 $5 uninstall_vault_read';
   const replacement =
     '        StrCpy $5 "$APPDATA\\Mythos Writer"\n' +
-    '        StrLen $3 $5\n' +
-    '        StrCpy $4 $1 $3\n' +
+    '        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"\n' +
+    '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0\n' +
+    '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read\n' +
+    '        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"\n' +
+    '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0\n' +
+    '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read\n' +
+    '        StrLen $8 $5\n' +
+    '        StrCpy $4 $3 $8\n' +
     '        StrCmp $4 $5 0 mythos_al_not_appdata';
   const at = nsh.indexOf(needle);
   if (at < 0) {
@@ -352,9 +364,9 @@ export function assertSidecarAllowlistBeforeDelete(nsh: string): void {
   }
   const denyAt = executable.indexOf('mythos_al_deny');
   const doDeleteAt = executable.indexOf('uninstall_vault_do_delete:');
-  const sidecarRmAt = executable.indexOf('RMDir /r "$1"');
+  const sidecarRmAt = executable.indexOf('RMDir /r "$3"');
   if (denyAt < 0 || doDeleteAt < denyAt || sidecarRmAt < doDeleteAt) {
-    throw new Error('mythos_al_deny must precede uninstall_vault_do_delete before RMDir "$1"');
+    throw new Error('mythos_al_deny must precede uninstall_vault_do_delete before RMDir "$3"');
   }
 }
 
@@ -436,8 +448,11 @@ export function assertMythosRmdirUnlessReparseHelper(nsh: string): void {
   if (!helper.includes('0x400')) {
     throw new Error('RF-7b: mythos_rmdir_unless_reparse must mask FILE_ATTRIBUTE_REPARSE_POINT (0x400)');
   }
-  if (!helper.includes('RMDir /r "${_path}"')) {
-    throw new Error('RF-7b: helper must RMDir /r "${_path}" only after the walk');
+  if (!helper.includes('RMDir /r "$3"')) {
+    throw new Error('RF-7b: helper must RMDir /r "$3" only after the walk');
+  }
+  if (helper.includes('RMDir /r "${_path}"')) {
+    throw new Error('H2: helper must RMDir the checked $3, not ${_path}');
   }
   const customAt = nsh.indexOf('!macro customUnInstall\n');
   const helperAt = nsh.indexOf('!macro mythos_rmdir_unless_reparse');
@@ -469,10 +484,11 @@ export function assertSidecarReparseWalkBeforeDelete(nsh: string): void {
   const walkAt = executable.indexOf('mythos_reparse_walk:');
   const leafAt = executable.indexOf('mythos_reparse_leaf:');
   const doDeleteAt = executable.indexOf('uninstall_vault_do_delete:');
-  const rmdirAt = executable.indexOf('RMDir /r "$1"');
-  const deleteAt = executable.indexOf('Delete "$1"');
-  if (walkAt < 0 || leafAt < 0 || doDeleteAt < 0 || rmdirAt < 0 || deleteAt < 0) {
-    throw new Error('RF-7b: reparse walk / do_delete / RMDir / Delete markers missing');
+  const slashAt = executable.indexOf('mythos_canon_slash:');
+  const rmdirAt = executable.indexOf('RMDir /r "$3"');
+  const deleteAt = executable.indexOf('Delete "$3"');
+  if (walkAt < 0 || leafAt < 0 || doDeleteAt < 0 || slashAt < 0 || rmdirAt < 0 || deleteAt < 0) {
+    throw new Error('RF-7b: reparse walk / leftover-/ scan / do_delete / RMDir / Delete markers missing');
   }
   if (!executable.includes('Goto mythos_nested_root_guard')) {
     throw new Error('RF-7b: gate must Goto mythos_nested_root_guard before the walk');
@@ -480,8 +496,25 @@ export function assertSidecarReparseWalkBeforeDelete(nsh: string): void {
   if (!executable.includes('Goto mythos_reparse_walk')) {
     throw new Error('RF-7b: nested-root guard must Goto mythos_reparse_walk (not skip the walk)');
   }
-  if (!(walkAt < leafAt && leafAt < doDeleteAt && doDeleteAt < rmdirAt && rmdirAt < deleteAt)) {
-    throw new Error('RF-7b: walk must run top-down before RMDir /r "$1" and Delete "$1"');
+  if (
+    !(
+      walkAt < leafAt &&
+      leafAt < doDeleteAt &&
+      doDeleteAt < slashAt &&
+      slashAt < rmdirAt &&
+      rmdirAt < deleteAt
+    )
+  ) {
+    throw new Error('RF-7b: walk must run top-down before leftover-/ on $3, RMDir /r "$3" and Delete "$3"');
+  }
+  if (!executable.includes('GetLongPathNameW')) {
+    throw new Error('HARD-A: sidecar must GetLongPathNameW the line and every root before deny/allowlist');
+  }
+  if (!executable.includes('IfFileExists "$3\\*.*"')) {
+    throw new Error('H1: IfFileExists must act on the checked $3, not $1');
+  }
+  if (!executable.includes('StrCmp $6 "/" uninstall_vault_read')) {
+    throw new Error('H1: leftover / on $3 after canonicalisation must skip');
   }
   if (!executable.includes('IntOp $4 $4 & 0x400')) {
     throw new Error('RF-7b: walk must mask GetFileAttributesW with 0x400 (not a wider mask)');

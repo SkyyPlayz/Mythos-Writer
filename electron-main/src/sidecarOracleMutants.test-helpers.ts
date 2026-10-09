@@ -382,7 +382,7 @@ function replaceFirst(source: string, needle: string, replacement: string): stri
   return at < 0 ? source : source.slice(0, at) + replacement + source.slice(at + needle.length);
 }
 
-/** gen.py: every mutant class over file lines :43–:299 plus the H6 deny StrCpy variants. */
+/** gen.py: every mutant class over file lines :43–:307 plus the H6 deny StrCpy variants. */
 export function generateOracleClassMutants(nsh: string): OracleClassMutant[] {
   const src = nsh.split('\n');
   const muts = new Map<string, OracleClassMutant>();
@@ -447,7 +447,7 @@ export function generateOracleClassMutants(nsh: string): OracleClassMutant[] {
     const variants: readonly (readonly [string, string])[] = [
       ['$4->$3', replaceFirst(s, 'StrCpy $4', 'StrCpy $3')],
       ['$1->$0', s.split('$1').join('$0')],
-      ['len->1', replaceFirst(s, '$1 $3', '$1 1')],
+      ['len->1', replaceFirst(s, '$3 $8', '$3 1')],
       ['StrCpy $4 $5', `${indent}StrCpy $4 $5`],
     ];
     for (const [k, line] of variants) {

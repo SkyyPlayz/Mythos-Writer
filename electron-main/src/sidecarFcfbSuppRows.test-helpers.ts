@@ -76,7 +76,7 @@ export const SIDECAR_FCFB_SUPP_ROWS: readonly FcfbOracleRow[] = [
     ],
     fault: null,
     env: "E1",
-    expectedDeleted: [],
+    expectedDeleted: ["C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\v"],
   },
   {
     id: "K:165:tgt4:0->+5",
@@ -86,7 +86,7 @@ export const SIDECAR_FCFB_SUPP_ROWS: readonly FcfbOracleRow[] = [
     ],
     fault: null,
     env: "E1",
-    expectedDeleted: [],
+    expectedDeleted: ["C:\\Users\\me\\Documents\\v"],
   },
   {
     id: "GFW2trunc",

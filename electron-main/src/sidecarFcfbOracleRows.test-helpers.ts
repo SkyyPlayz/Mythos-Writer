@@ -29,7 +29,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\me\\Documents\\v\\..a\\\r\n"],
     fault: null,
     env: "E1",
-    expectedDeleted: ["C:\\Users\\me\\Documents\\v\\..a\\"],
+    expectedDeleted: ["C:\\Users\\me\\Documents\\v\\..a"],
   },
   {
     id: "C10",
@@ -53,7 +53,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\me\\Documents\\v/.x\r\n"],
     fault: null,
     env: "E1",
-    expectedDeleted: ["C:\\Users\\me\\Documents\\v/.x"],
+    expectedDeleted: ["C:\\Users\\me\\Documents\\v\\.x"],
   },
   {
     id: "B15",
@@ -69,7 +69,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\me\\Documents\\v/..x\r\n"],
     fault: null,
     env: "E1",
-    expectedDeleted: ["C:\\Users\\me\\Documents\\v/..x"],
+    expectedDeleted: ["C:\\Users\\me\\Documents\\v\\..x"],
   },
   {
     id: "C3",
@@ -101,7 +101,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\me\\Documents\\v/...a\r\n"],
     fault: null,
     env: "E1",
-    expectedDeleted: ["C:\\Users\\me\\Documents\\v/...a"],
+    expectedDeleted: ["C:\\Users\\me\\Documents\\v\\...a"],
   },
   {
     id: "C14",
@@ -109,7 +109,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\me\\Documents\\v/. a\r\n"],
     fault: null,
     env: "E1",
-    expectedDeleted: ["C:\\Users\\me\\Documents\\v/. a"],
+    expectedDeleted: ["C:\\Users\\me\\Documents\\v\\. a"],
   },
   {
     id: "C15",
@@ -117,7 +117,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\me\\Documents\\v/.. a\r\n"],
     fault: null,
     env: "E1",
-    expectedDeleted: ["C:\\Users\\me\\Documents\\v/.. a"],
+    expectedDeleted: ["C:\\Users\\me\\Documents\\v\\.. a"],
   },
   {
     id: "C27",
@@ -293,7 +293,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\me\\Desktop/v\r\n", "C:\\Users\\me\\Documents\\ok\r\n"],
     fault: null,
     env: "E1",
-    expectedDeleted: ["C:\\Users\\me\\Documents\\ok"],
+    expectedDeleted: ["C:\\Users\\me\\Desktop\\v", "C:\\Users\\me\\Documents\\ok"],
   },
   {
     id: "S11",
@@ -301,7 +301,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\me\\Downloads/v\r\n", "C:\\Users\\me\\Documents\\ok\r\n"],
     fault: null,
     env: "E1",
-    expectedDeleted: ["C:\\Users\\me\\Documents\\ok"],
+    expectedDeleted: ["C:\\Users\\me\\Downloads\\v", "C:\\Users\\me\\Documents\\ok"],
   },
   {
     id: "S15",
@@ -333,7 +333,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\me\\Documents\\v/..a/\r\n"],
     fault: null,
     env: "E1",
-    expectedDeleted: ["C:\\Users\\me\\Documents\\v/..a/"],
+    expectedDeleted: ["C:\\Users\\me\\Documents\\v\\..a"],
   },
   {
     id: "C21",
@@ -341,7 +341,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\me\\Documents\\v/..a\\\r\n"],
     fault: null,
     env: "E1",
-    expectedDeleted: ["C:\\Users\\me\\Documents\\v/..a\\"],
+    expectedDeleted: ["C:\\Users\\me\\Documents\\v\\..a"],
   },
   {
     id: "F1trunc",
@@ -405,7 +405,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\me\\Documents\\v\\..a/\r\n"],
     fault: null,
     env: "E1",
-    expectedDeleted: ["C:\\Users\\me\\Documents\\v\\..a/"],
+    expectedDeleted: ["C:\\Users\\me\\Documents\\v\\..a"],
   },
   {
     id: "W:112:tgt3:uninstall_vault_read->mythos_canon_gate",
@@ -581,7 +581,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\me\\Documents\\vx/\r\n"],
     fault: null,
     env: "E1",
-    expectedDeleted: ["C:\\Users\\me\\Documents\\vx/"],
+    expectedDeleted: ["C:\\Users\\me\\Documents\\vx"],
   },
   {
     id: "C23",
@@ -645,7 +645,7 @@ export const SIDECAR_FCFB_ORACLE_ROWS: readonly FcfbOracleRow[] = [
     lines: ["C:\\Users\\pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp\\Desktop/v\r\n"],
     fault: null,
     env: "E5",
-    expectedDeleted: [],
+    expectedDeleted: ["C:\\Users\\pppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppppp\\Desktop\\v"],
   },
   {
     id: "H8",

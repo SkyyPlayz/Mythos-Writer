@@ -24,268 +24,345 @@ export const TRAVERSAL_SCAN_BLOCK_SCAN_LABEL = 'mythos_trav_scan:';
 
 /**
  * Exact sidecar guard region, file :43 (`uninstall_vault_read: ClearErrors`) .. the unique
- * `Delete "$1"` end marker: RF-6 read-trim + control-char / wildcard reject, traversal, deny
+ * `Delete "$3"` end marker: RF-6 read-trim + control-char / wildcard reject, traversal, deny
  * prefixes, root guards, GetFullPathNameW gate, HARD-2 nested-root guard, RF-7b top-down
- * reparse walk, and do_delete. Generated from build/uninstall-vaults.nsh; the pin is exact.
+ * reparse walk, leftover-`/` scan on `$3`, and do_delete. Generated from build/uninstall-vaults.nsh; the pin is exact.
  */
 export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
-  '        uninstall_vault_read: ClearErrors',
-  '        FileRead $0 $1',
-  '        IfErrors uninstall_vault_close',
-  '        mythos_trim_loop:',
-  '          StrCmp $1 "" uninstall_vault_read',
-  '          StrCpy $2 $1 1 -1',
-  '          StrCmp $2 "$\\n" mythos_trim_chop',
-  '          StrCmp $2 "$\\r" mythos_trim_chop',
-  '          Goto mythos_trim_done',
-  '          mythos_trim_chop:',
-  '          StrCpy $1 $1 -1',
-  '          Goto mythos_trim_loop',
-  '        mythos_trim_done:',
-  '        StrCmp $1 "" uninstall_vault_read',
-  '        System::Alloc 80',
-  '        Pop $6',
-  '        System::Call "*$6(&i2 1,&i2 2,&i2 3,&i2 4,&i2 5,&i2 6,&i2 7,&i2 8,&i2 9,&i2 10,&i2 11,&i2 12,&i2 13,&i2 14,&i2 15,&i2 16,&i2 17,&i2 18,&i2 19,&i2 20,&i2 21,&i2 22,&i2 23,&i2 24,&i2 25,&i2 26,&i2 27,&i2 28,&i2 29,&i2 30,&i2 31,&i2 42,&i2 63,&i2 60,&i2 62,&i2 34,&i2 124,&i2 0)"',
-  '        System::Call "shlwapi::StrPBrkW(w r1, p r6) p .r4"',
-  '        System::Free $6',
-  '        StrCmp $4 0 mythos_ctrl_ok',
-  '          Goto uninstall_vault_read',
-  '        mythos_ctrl_ok:',
-  '        StrCpy $7 0',
-  '        mythos_trav_scan:',
-  '          StrCpy $4 $1 1 $7',
-  '          StrCmp $4 "" uninstall_vault_trav_ok',
-  '          StrCmp $4 ":" 0 mythos_trav_notcolon',
-  '          StrCmp $7 "1" mythos_trav_notcolon',
-  '          Goto uninstall_vault_read',
-  '          mythos_trav_notcolon:',
-  '          StrCmp $4 "\\" mythos_trav_sepcheck',
-  '          StrCmp $4 "/" mythos_trav_sepcheck',
-  '          Goto mythos_trav_classify',
-  '          mythos_trav_sepcheck:',
-  '          IntOp $8 $7 + 1',
-  '          StrCpy $4 $1 1 $8',
-  '          StrCmp $4 "\\" uninstall_vault_read',
-  '          StrCmp $4 "/" uninstall_vault_read',
-  '          StrCpy $4 $1 1 $7',
-  '          mythos_trav_classify:',
-  '          StrCmp $4 "\\" 0 mythos_trav_fwd',
-  '            StrCmp $7 "0" +5',
-  '            IntOp $8 $7 - 1',
-  '            StrCpy $4 $1 1 $8',
-  '            StrCmp $4 "." uninstall_vault_read',
-  '            StrCmp $4 " " uninstall_vault_read',
-  '            StrCmp $4 "$\\t" uninstall_vault_read',
-  '            IntOp $8 $7 + 1',
-  '            StrCpy $4 $1 1 $8',
-  '            StrCmp $4 " " uninstall_vault_read',
-  '            StrCmp $4 "$\\t" uninstall_vault_read',
-  '            StrCmp $4 "." 0 mythos_trav_inc',
-  '              IntOp $8 $8 + 1',
-  '              StrCpy $4 $1 1 $8',
-  '              StrCmp $4 "" uninstall_vault_read',
-  '              StrCmp $4 "\\" uninstall_vault_read',
-  '              StrCmp $4 "/" uninstall_vault_read',
-  '              StrCmp $4 "." 0 mythos_trav_inc',
-  '                IntOp $8 $8 + 1',
-  '                StrCpy $4 $1 1 $8',
-  '                StrCmp $4 "" uninstall_vault_read',
-  '                StrCmp $4 "\\" uninstall_vault_read',
-  '                StrCmp $4 "/" uninstall_vault_read',
-  '                Goto mythos_trav_inc',
-  '          mythos_trav_fwd:',
-  '          StrCmp $4 "/" 0 mythos_trav_inc',
-  '            StrCmp $7 "0" +5',
-  '            IntOp $8 $7 - 1',
-  '            StrCpy $4 $1 1 $8',
-  '            StrCmp $4 "." uninstall_vault_read',
-  '            StrCmp $4 " " uninstall_vault_read',
-  '            StrCmp $4 "$\\t" uninstall_vault_read',
-  '            IntOp $8 $7 + 1',
-  '            StrCpy $4 $1 1 $8',
-  '            StrCmp $4 "/" uninstall_vault_read',
-  '            StrCmp $4 " " uninstall_vault_read',
-  '            StrCmp $4 "$\\t" uninstall_vault_read',
-  '            StrCmp $4 "." 0 mythos_trav_inc',
-  '              IntOp $8 $8 + 1',
-  '              StrCpy $4 $1 1 $8',
-  '              StrCmp $4 "" uninstall_vault_read',
-  '              StrCmp $4 "/" uninstall_vault_read',
-  '              StrCmp $4 "\\" uninstall_vault_read',
-  '              StrCmp $4 "." 0 mythos_trav_inc',
-  '                IntOp $8 $8 + 1',
-  '                StrCpy $4 $1 1 $8',
-  '                StrCmp $4 "" uninstall_vault_read',
-  '                StrCmp $4 "/" uninstall_vault_read',
-  '                StrCmp $4 "\\" uninstall_vault_read',
-  '          mythos_trav_inc:',
-  '          IntOp $7 $7 + 1',
-  '          Goto mythos_trav_scan',
-  '        uninstall_vault_trav_ok:',
-  '        StrCpy $2 $1 1 -1',
-  '        StrCmp $2 "." uninstall_vault_read',
-  '        StrCmp $2 " " uninstall_vault_read',
-  '        StrCmp $2 "$\\t" uninstall_vault_read',
-  '        StrLen $3 "$WINDIR"',
-  '        StrCpy $4 $1 $3',
-  '        StrCmp $4 "$WINDIR" uninstall_vault_read 0',
-  '        StrLen $3 "$PROGRAMFILES"',
-  '        StrCpy $4 $1 $3',
-  '        StrCmp $4 "$PROGRAMFILES" uninstall_vault_read 0',
-  '        StrLen $3 "$PROGRAMFILES64"',
-  '        StrCpy $4 $1 $3',
-  '        StrCmp $4 "$PROGRAMFILES64" uninstall_vault_read 0',
-  '        StrCpy $5 "$APPDATA\\Mythos Writer"',
-  '        StrLen $3 $5',
-  '        StrCpy $4 $1 $3',
-  '        StrCmp $4 $5 0 mythos_al_not_appdata',
-  '          StrCmp $1 $5 uninstall_vault_read',
-  '          StrCpy $4 $1 1 $3',
-  '          StrCmp $4 "\\" 0 mythos_al_not_appdata',
-  '          StrCpy $6 $1 "" $3',
-  '          StrCpy $6 $6 "" 1',
-  '          StrCmp $6 "" uninstall_vault_read',
-  '          Goto mythos_canon_gate',
-  '        mythos_al_not_appdata:',
-  '        StrCpy $5 "$DOCUMENTS"',
-  '        StrLen $3 $5',
-  '        StrCpy $4 $1 $3',
-  '        StrCmp $4 $5 0 mythos_al_not_documents',
-  '          StrCmp $1 $5 uninstall_vault_read',
-  '          StrCpy $4 $1 1 $3',
-  '          StrCmp $4 "\\" 0 mythos_al_not_documents',
-  '          StrCpy $6 $1 "" $3',
-  '          StrCpy $6 $6 "" 1',
-  '          StrCmp $6 "" uninstall_vault_read',
-  '          Goto mythos_canon_gate',
-  '        mythos_al_not_documents:',
-  '        StrCpy $5 "$DESKTOP"',
-  '        StrLen $3 $5',
-  '        StrCpy $4 $1 $3',
-  '        StrCmp $4 $5 0 mythos_al_not_desktop',
-  '          StrCmp $1 $5 uninstall_vault_read',
-  '          StrCpy $4 $1 1 $3',
-  '          StrCmp $4 "\\" 0 mythos_al_not_desktop',
-  '          StrCpy $6 $1 "" $3',
-  '          StrCpy $6 $6 "" 1',
-  '          StrCmp $6 "" uninstall_vault_read',
-  '          Goto mythos_canon_gate',
-  '        mythos_al_not_desktop:',
-  '        StrCpy $5 "$PROFILE\\Downloads"',
-  '        StrLen $3 $5',
-  '        StrCpy $4 $1 $3',
-  '        StrCmp $4 $5 0 mythos_al_deny',
-  '          StrCmp $1 $5 uninstall_vault_read',
-  '          StrCpy $4 $1 1 $3',
-  '          StrCmp $4 "\\" 0 mythos_al_deny',
-  '          StrCpy $6 $1 "" $3',
-  '          StrCpy $6 $6 "" 1',
-  '          StrCmp $6 "" uninstall_vault_read',
-  '          Goto mythos_canon_gate',
-  '        mythos_al_deny:',
-  '        Goto uninstall_vault_read',
-  '        mythos_canon_gate:',
-  '          System::Call "kernel32::GetFullPathNameW(w r1, i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4"',
-  '          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
-  '          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
-  '          System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"',
-  '          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
-  '          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
-  '          StrLen $8 $9',
-  '          StrCpy $6 $3 $8',
-  '          StrCmp $6 $9 0 uninstall_vault_read',
-  '          StrCpy $6 $3 1 $8',
-  '          StrCmp $6 "\\" 0 uninstall_vault_read',
-  '          StrCpy $6 $3 "" $8',
-  '          StrCpy $6 $6 "" 1',
-  '          StrCmp $6 "" uninstall_vault_read',
-  '          Goto mythos_nested_root_guard',
-  '        mythos_nested_root_guard:',
-  '          StrCpy $7 $9',
-  '          mythos_nr_strip:',
-  '            StrCpy $6 $3 1 -1',
-  '            StrCmp $6 "\\" 0 mythos_nr_appdata',
-  '            StrLen $8 $3',
-  '            IntCmp $8 3 mythos_nr_appdata mythos_nr_appdata 0',
-  '            StrCpy $3 $3 -1',
-  '            Goto mythos_nr_strip',
-  '          mythos_nr_appdata:',
-  '            StrCpy $5 "$APPDATA\\Mythos Writer"',
-  '            System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"',
-  '            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
-  '            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
-  '            StrCmp $3 $9 uninstall_vault_read',
-  '            StrLen $8 $3',
-  '            StrCpy $6 $9 $8',
-  '            StrCmp $6 $3 0 mythos_nr_documents',
-  '            StrCpy $6 $9 1 $8',
-  '            StrCmp $6 "\\" uninstall_vault_read',
-  '          mythos_nr_documents:',
-  '            StrCpy $5 "$DOCUMENTS"',
-  '            System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"',
-  '            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
-  '            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
-  '            StrCmp $3 $9 uninstall_vault_read',
-  '            StrLen $8 $3',
-  '            StrCpy $6 $9 $8',
-  '            StrCmp $6 $3 0 mythos_nr_desktop',
-  '            StrCpy $6 $9 1 $8',
-  '            StrCmp $6 "\\" uninstall_vault_read',
-  '          mythos_nr_desktop:',
-  '            StrCpy $5 "$DESKTOP"',
-  '            System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"',
-  '            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
-  '            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
-  '            StrCmp $3 $9 uninstall_vault_read',
-  '            StrLen $8 $3',
-  '            StrCpy $6 $9 $8',
-  '            StrCmp $6 $3 0 mythos_nr_downloads',
-  '            StrCpy $6 $9 1 $8',
-  '            StrCmp $6 "\\" uninstall_vault_read',
-  '          mythos_nr_downloads:',
-  '            StrCpy $5 "$PROFILE\\Downloads"',
-  '            System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"',
-  '            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
-  '            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
-  '            StrCmp $3 $9 uninstall_vault_read',
-  '            StrLen $8 $3',
-  '            StrCpy $6 $9 $8',
-  '            StrCmp $6 $3 0 mythos_nr_ok',
-  '            StrCpy $6 $9 1 $8',
-  '            StrCmp $6 "\\" uninstall_vault_read',
-  '          mythos_nr_ok:',
-  '            StrCpy $9 $7',
-  '            Goto mythos_reparse_walk',
-  '        mythos_reparse_walk:',
-  '          StrLen $8 $9',
-  '          IntOp $7 $8 + 1',
-  '        mythos_reparse_next:',
-  '          StrCpy $6 $3 1 $7',
-  '          StrCmp $6 "" mythos_reparse_leaf',
-  '          StrCmp $6 "\\" mythos_reparse_hit',
-  '          IntOp $7 $7 + 1',
-  '          Goto mythos_reparse_next',
-  '        mythos_reparse_hit:',
-  '          StrCpy $6 $3 $7',
-  '          System::Call "kernel32::GetFileAttributesW(w r6) i .r4"',
-  '          StrCmp $4 "error" uninstall_vault_read',
-  '          IntOp $4 $4 & 0x400',
-  '          IntCmp $4 0 0 uninstall_vault_read uninstall_vault_read',
-  '          IntOp $7 $7 + 1',
-  '          Goto mythos_reparse_next',
-  '        mythos_reparse_leaf:',
-  '          System::Call "kernel32::GetFileAttributesW(w r3) i .r4"',
-  '          StrCmp $4 "error" uninstall_vault_read',
-  '          IntOp $4 $4 & 0x400',
-  '          IntCmp $4 0 0 uninstall_vault_read uninstall_vault_read',
-  '          Goto uninstall_vault_do_delete',
-  '        uninstall_vault_do_delete:',
-  '        IfFileExists "$1\\*.*" 0 uninstall_vault_file',
-  '          RMDir /r "$1"',
-  '          Goto uninstall_vault_read',
-  '        uninstall_vault_file:',
-  '          Delete "$1"',
-  '          Goto uninstall_vault_read',
+  "        uninstall_vault_read: ClearErrors",
+  "        FileRead $0 $1",
+  "        IfErrors uninstall_vault_close",
+  "        mythos_trim_loop:",
+  "          StrCmp $1 \"\" uninstall_vault_read",
+  "          StrCpy $2 $1 1 -1",
+  "          StrCmp $2 \"$\\n\" mythos_trim_chop",
+  "          StrCmp $2 \"$\\r\" mythos_trim_chop",
+  "          Goto mythos_trim_done",
+  "          mythos_trim_chop:",
+  "          StrCpy $1 $1 -1",
+  "          Goto mythos_trim_loop",
+  "        mythos_trim_done:",
+  "        StrCmp $1 \"\" uninstall_vault_read",
+  "        System::Alloc 80",
+  "        Pop $6",
+  "        System::Call \"*$6(&i2 1,&i2 2,&i2 3,&i2 4,&i2 5,&i2 6,&i2 7,&i2 8,&i2 9,&i2 10,&i2 11,&i2 12,&i2 13,&i2 14,&i2 15,&i2 16,&i2 17,&i2 18,&i2 19,&i2 20,&i2 21,&i2 22,&i2 23,&i2 24,&i2 25,&i2 26,&i2 27,&i2 28,&i2 29,&i2 30,&i2 31,&i2 42,&i2 63,&i2 60,&i2 62,&i2 34,&i2 124,&i2 0)\"",
+  "        System::Call \"shlwapi::StrPBrkW(w r1, p r6) p .r4\"",
+  "        System::Free $6",
+  "        StrCmp $4 0 mythos_ctrl_ok",
+  "          Goto uninstall_vault_read",
+  "        mythos_ctrl_ok:",
+  "        StrCpy $7 0",
+  "        mythos_trav_scan:",
+  "          StrCpy $4 $1 1 $7",
+  "          StrCmp $4 \"\" uninstall_vault_trav_ok",
+  "          StrCmp $4 \":\" 0 mythos_trav_notcolon",
+  "          StrCmp $7 \"1\" mythos_trav_notcolon",
+  "          Goto uninstall_vault_read",
+  "          mythos_trav_notcolon:",
+  "          StrCmp $4 \"\\\" mythos_trav_sepcheck",
+  "          StrCmp $4 \"/\" mythos_trav_sepcheck",
+  "          Goto mythos_trav_classify",
+  "          mythos_trav_sepcheck:",
+  "          IntOp $8 $7 + 1",
+  "          StrCpy $4 $1 1 $8",
+  "          StrCmp $4 \"\\\" uninstall_vault_read",
+  "          StrCmp $4 \"/\" uninstall_vault_read",
+  "          StrCpy $4 $1 1 $7",
+  "          mythos_trav_classify:",
+  "          StrCmp $4 \"\\\" 0 mythos_trav_fwd",
+  "            StrCmp $7 \"0\" +5",
+  "            IntOp $8 $7 - 1",
+  "            StrCpy $4 $1 1 $8",
+  "            StrCmp $4 \".\" uninstall_vault_read",
+  "            StrCmp $4 \" \" uninstall_vault_read",
+  "            StrCmp $4 \"$\\t\" uninstall_vault_read",
+  "            IntOp $8 $7 + 1",
+  "            StrCpy $4 $1 1 $8",
+  "            StrCmp $4 \" \" uninstall_vault_read",
+  "            StrCmp $4 \"$\\t\" uninstall_vault_read",
+  "            StrCmp $4 \".\" 0 mythos_trav_inc",
+  "              IntOp $8 $8 + 1",
+  "              StrCpy $4 $1 1 $8",
+  "              StrCmp $4 \"\" uninstall_vault_read",
+  "              StrCmp $4 \"\\\" uninstall_vault_read",
+  "              StrCmp $4 \"/\" uninstall_vault_read",
+  "              StrCmp $4 \".\" 0 mythos_trav_inc",
+  "                IntOp $8 $8 + 1",
+  "                StrCpy $4 $1 1 $8",
+  "                StrCmp $4 \"\" uninstall_vault_read",
+  "                StrCmp $4 \"\\\" uninstall_vault_read",
+  "                StrCmp $4 \"/\" uninstall_vault_read",
+  "                Goto mythos_trav_inc",
+  "          mythos_trav_fwd:",
+  "          StrCmp $4 \"/\" 0 mythos_trav_inc",
+  "            StrCmp $7 \"0\" +5",
+  "            IntOp $8 $7 - 1",
+  "            StrCpy $4 $1 1 $8",
+  "            StrCmp $4 \".\" uninstall_vault_read",
+  "            StrCmp $4 \" \" uninstall_vault_read",
+  "            StrCmp $4 \"$\\t\" uninstall_vault_read",
+  "            IntOp $8 $7 + 1",
+  "            StrCpy $4 $1 1 $8",
+  "            StrCmp $4 \"/\" uninstall_vault_read",
+  "            StrCmp $4 \" \" uninstall_vault_read",
+  "            StrCmp $4 \"$\\t\" uninstall_vault_read",
+  "            StrCmp $4 \".\" 0 mythos_trav_inc",
+  "              IntOp $8 $8 + 1",
+  "              StrCpy $4 $1 1 $8",
+  "              StrCmp $4 \"\" uninstall_vault_read",
+  "              StrCmp $4 \"/\" uninstall_vault_read",
+  "              StrCmp $4 \"\\\" uninstall_vault_read",
+  "              StrCmp $4 \".\" 0 mythos_trav_inc",
+  "                IntOp $8 $8 + 1",
+  "                StrCpy $4 $1 1 $8",
+  "                StrCmp $4 \"\" uninstall_vault_read",
+  "                StrCmp $4 \"/\" uninstall_vault_read",
+  "                StrCmp $4 \"\\\" uninstall_vault_read",
+  "          mythos_trav_inc:",
+  "          IntOp $7 $7 + 1",
+  "          Goto mythos_trav_scan",
+  "        uninstall_vault_trav_ok:",
+  "        StrCpy $2 $1 1 -1",
+  "        StrCmp $2 \".\" uninstall_vault_read",
+  "        StrCmp $2 \" \" uninstall_vault_read",
+  "        StrCmp $2 \"$\\t\" uninstall_vault_read",
+  "        System::Call \"kernel32::GetFullPathNameW(w r1, i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        System::Call \"kernel32::GetLongPathNameW(w r3, w .r3, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $5 \"$WINDIR\"",
+  "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrLen $8 $5",
+  "        StrCpy $4 $3 $8",
+  "        StrCmp $4 $5 uninstall_vault_read 0",
+  "        StrCpy $5 \"$PROGRAMFILES\"",
+  "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrLen $8 $5",
+  "        StrCpy $4 $3 $8",
+  "        StrCmp $4 $5 uninstall_vault_read 0",
+  "        StrCpy $5 \"$PROGRAMFILES64\"",
+  "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrLen $8 $5",
+  "        StrCpy $4 $3 $8",
+  "        StrCmp $4 $5 uninstall_vault_read 0",
+  "        StrCpy $5 \"$APPDATA\\Mythos Writer\"",
+  "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrLen $8 $5",
+  "        StrCpy $4 $3 $8",
+  "        StrCmp $4 $5 0 mythos_al_not_appdata",
+  "          StrCmp $3 $5 uninstall_vault_read",
+  "          StrCpy $4 $3 1 $8",
+  "          StrCmp $4 \"\\\" 0 mythos_al_not_appdata",
+  "          StrCpy $6 $3 \"\" $8",
+  "          StrCpy $6 $6 \"\" 1",
+  "          StrCmp $6 \"\" uninstall_vault_read",
+  "          Goto mythos_canon_gate",
+  "        mythos_al_not_appdata:",
+  "        StrCpy $5 \"$DOCUMENTS\"",
+  "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrLen $8 $5",
+  "        StrCpy $4 $3 $8",
+  "        StrCmp $4 $5 0 mythos_al_not_documents",
+  "          StrCmp $3 $5 uninstall_vault_read",
+  "          StrCpy $4 $3 1 $8",
+  "          StrCmp $4 \"\\\" 0 mythos_al_not_documents",
+  "          StrCpy $6 $3 \"\" $8",
+  "          StrCpy $6 $6 \"\" 1",
+  "          StrCmp $6 \"\" uninstall_vault_read",
+  "          Goto mythos_canon_gate",
+  "        mythos_al_not_documents:",
+  "        StrCpy $5 \"$DESKTOP\"",
+  "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrLen $8 $5",
+  "        StrCpy $4 $3 $8",
+  "        StrCmp $4 $5 0 mythos_al_not_desktop",
+  "          StrCmp $3 $5 uninstall_vault_read",
+  "          StrCpy $4 $3 1 $8",
+  "          StrCmp $4 \"\\\" 0 mythos_al_not_desktop",
+  "          StrCpy $6 $3 \"\" $8",
+  "          StrCpy $6 $6 \"\" 1",
+  "          StrCmp $6 \"\" uninstall_vault_read",
+  "          Goto mythos_canon_gate",
+  "        mythos_al_not_desktop:",
+  "        StrCpy $5 \"$PROFILE\\Downloads\"",
+  "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrLen $8 $5",
+  "        StrCpy $4 $3 $8",
+  "        StrCmp $4 $5 0 mythos_al_deny",
+  "          StrCmp $3 $5 uninstall_vault_read",
+  "          StrCpy $4 $3 1 $8",
+  "          StrCmp $4 \"\\\" 0 mythos_al_deny",
+  "          StrCpy $6 $3 \"\" $8",
+  "          StrCpy $6 $6 \"\" 1",
+  "          StrCmp $6 \"\" uninstall_vault_read",
+  "          Goto mythos_canon_gate",
+  "        mythos_al_deny:",
+  "        Goto uninstall_vault_read",
+  "        mythos_canon_gate:",
+  "          System::Call \"kernel32::GetFullPathNameW(w r1, i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4\"",
+  "          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "          System::Call \"kernel32::GetLongPathNameW(w r3, w .r3, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "          System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4\"",
+  "          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "          System::Call \"kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "          StrLen $8 $9",
+  "          StrCpy $6 $3 $8",
+  "          StrCmp $6 $9 0 uninstall_vault_read",
+  "          StrCpy $6 $3 1 $8",
+  "          StrCmp $6 \"\\\" 0 uninstall_vault_read",
+  "          StrCpy $6 $3 \"\" $8",
+  "          StrCpy $6 $6 \"\" 1",
+  "          StrCmp $6 \"\" uninstall_vault_read",
+  "          Goto mythos_nested_root_guard",
+  "        mythos_nested_root_guard:",
+  "          StrCpy $7 $9",
+  "          mythos_nr_strip:",
+  "            StrCpy $6 $3 1 -1",
+  "            StrCmp $6 \"\\\" 0 mythos_nr_appdata",
+  "            StrLen $8 $3",
+  "            IntCmp $8 3 mythos_nr_appdata mythos_nr_appdata 0",
+  "            StrCpy $3 $3 -1",
+  "            Goto mythos_nr_strip",
+  "          mythos_nr_appdata:",
+  "            StrCpy $5 \"$APPDATA\\Mythos Writer\"",
+  "            System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4\"",
+  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "            System::Call \"kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "            StrCmp $3 $9 uninstall_vault_read",
+  "            StrLen $8 $3",
+  "            StrCpy $6 $9 $8",
+  "            StrCmp $6 $3 0 mythos_nr_documents",
+  "            StrCpy $6 $9 1 $8",
+  "            StrCmp $6 \"\\\" uninstall_vault_read",
+  "          mythos_nr_documents:",
+  "            StrCpy $5 \"$DOCUMENTS\"",
+  "            System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4\"",
+  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "            System::Call \"kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "            StrCmp $3 $9 uninstall_vault_read",
+  "            StrLen $8 $3",
+  "            StrCpy $6 $9 $8",
+  "            StrCmp $6 $3 0 mythos_nr_desktop",
+  "            StrCpy $6 $9 1 $8",
+  "            StrCmp $6 \"\\\" uninstall_vault_read",
+  "          mythos_nr_desktop:",
+  "            StrCpy $5 \"$DESKTOP\"",
+  "            System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4\"",
+  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "            System::Call \"kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "            StrCmp $3 $9 uninstall_vault_read",
+  "            StrLen $8 $3",
+  "            StrCpy $6 $9 $8",
+  "            StrCmp $6 $3 0 mythos_nr_downloads",
+  "            StrCpy $6 $9 1 $8",
+  "            StrCmp $6 \"\\\" uninstall_vault_read",
+  "          mythos_nr_downloads:",
+  "            StrCpy $5 \"$PROFILE\\Downloads\"",
+  "            System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4\"",
+  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "            System::Call \"kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "            StrCmp $3 $9 uninstall_vault_read",
+  "            StrLen $8 $3",
+  "            StrCpy $6 $9 $8",
+  "            StrCmp $6 $3 0 mythos_nr_ok",
+  "            StrCpy $6 $9 1 $8",
+  "            StrCmp $6 \"\\\" uninstall_vault_read",
+  "          mythos_nr_ok:",
+  "            StrCpy $9 $7",
+  "            Goto mythos_reparse_walk",
+  "        mythos_reparse_walk:",
+  "          StrLen $8 $9",
+  "          IntOp $7 $8 + 1",
+  "        mythos_reparse_next:",
+  "          StrCpy $6 $3 1 $7",
+  "          StrCmp $6 \"\" mythos_reparse_leaf",
+  "          StrCmp $6 \"\\\" mythos_reparse_hit",
+  "          IntOp $7 $7 + 1",
+  "          Goto mythos_reparse_next",
+  "        mythos_reparse_hit:",
+  "          StrCpy $6 $3 $7",
+  "          System::Call \"kernel32::GetFileAttributesW(w r6) i .r4\"",
+  "          StrCmp $4 \"error\" uninstall_vault_read",
+  "          IntOp $4 $4 & 0x400",
+  "          IntCmp $4 0 0 uninstall_vault_read uninstall_vault_read",
+  "          IntOp $7 $7 + 1",
+  "          Goto mythos_reparse_next",
+  "        mythos_reparse_leaf:",
+  "          System::Call \"kernel32::GetFileAttributesW(w r3) i .r4\"",
+  "          StrCmp $4 \"error\" uninstall_vault_read",
+  "          IntOp $4 $4 & 0x400",
+  "          IntCmp $4 0 0 uninstall_vault_read uninstall_vault_read",
+  "          Goto uninstall_vault_do_delete",
+  "        uninstall_vault_do_delete:",
+  "          StrCpy $7 0",
+  "        mythos_canon_slash:",
+  "          StrCpy $6 $3 1 $7",
+  "          StrCmp $6 \"\" mythos_canon_slash_ok",
+  "          StrCmp $6 \"/\" uninstall_vault_read",
+  "          IntOp $7 $7 + 1",
+  "          Goto mythos_canon_slash",
+  "        mythos_canon_slash_ok:",
+  "        IfFileExists \"$3\\*.*\" 0 uninstall_vault_file",
+  "          RMDir /r \"$3\"",
+  "          Goto uninstall_vault_read",
+  "        uninstall_vault_file:",
+  "          Delete \"$3\"",
+  "          Goto uninstall_vault_read",
 ];
 
 function sliceCanonicalRegion(fromTrimmed: string, toTrimmedExclusive: string): readonly string[] {
@@ -300,23 +377,23 @@ function sliceCanonicalRegion(fromTrimmed: string, toTrimmedExclusive: string): 
 /** Exact sidecar traversal chain (StrCpy $7 0 … post-trav_ok segment tail guard). */
 export const CANONICAL_TRAVERSAL_SCAN_BLOCK: readonly string[] = sliceCanonicalRegion(
   'StrCpy $7 0',
-  'StrLen $3 "$WINDIR"',
+  'StrCpy $2 $1 1 -1',
 );
 
 export const CANONICAL_TRAVERSAL_SCAN_BLOCK_SHA256 = createHash('sha256')
   .update(CANONICAL_TRAVERSAL_SCAN_BLOCK.join('\n'))
   .digest('hex');
 
-/** Marker-anchored sidecar guard region (file :43–:299). Each marker must occur exactly once. */
+/** Marker-anchored sidecar guard region (file :43–:376). Each marker must occur exactly once. */
 export const SIDECAR_GUARD_REGION_START_LINE = '        uninstall_vault_read: ClearErrors';
 export const SIDECAR_GUARD_REGION_START_FOLLOW_LINE = '        FileRead $0 $1';
 export const SIDECAR_GUARD_REGION_START_MARKER = SIDECAR_GUARD_REGION_START_FOLLOW_LINE;
-export const SIDECAR_GUARD_REGION_END_LINE = '          Delete "$1"';
+export const SIDECAR_GUARD_REGION_END_LINE = '          Delete "$3"';
 export const SIDECAR_GUARD_REGION_END_MARKER = SIDECAR_GUARD_REGION_END_LINE;
 export const SIDECAR_GUARD_REGION_END_FOLLOW_LINE = '          Goto uninstall_vault_read';
 
 export const SIDECAR_GUARD_REGION_FILE_LINE_FIRST = 43;
-export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 299;
+export const SIDECAR_GUARD_REGION_FILE_LINE_LAST = 376;
 
 export function nshExecutableLines(source: string): string {
   return source.replace(/;[^\n]*/g, '');
@@ -835,7 +912,7 @@ export function locateSidecarGuardRegion(nsh: string): { start: number; end: num
     deleteAt <= start ||
     fileLines[deleteAt + 1] !== SIDECAR_GUARD_REGION_END_FOLLOW_LINE
   ) {
-    throw new Error('sidecar guard region (:43–:299) markers missing in uninstall nsh');
+    throw new Error('sidecar guard region (:43–:376) markers missing in uninstall nsh');
   }
   const end = deleteAt + 1;
   const lines = fileLines.slice(start, end + 1);
@@ -879,7 +956,7 @@ export function replaceSidecarGuardRegionLine(
   return spliceSidecarGuardRegion(nsh, next);
 }
 
-/** Mutate one file line in :43–:299 (1-based file line number). */
+/** Mutate one file line in :43–:376 (1-based file line number). */
 export function replaceSidecarGuardFileLine(nsh: string, fileLineOneBased: number, newLine: string): string {
   if (
     fileLineOneBased < SIDECAR_GUARD_REGION_FILE_LINE_FIRST ||
@@ -922,21 +999,48 @@ function runDenyPrefixVmFromNsh(
 }
 
 export const DENY_PREFIX_BLOCK_ANCHOR_AFTER = TRAVERSAL_SCAN_BLOCK_END_MARKER;
-export const DENY_PREFIX_BLOCK_START_LINE = '        StrLen $3 "$WINDIR"';
-export const DENY_PREFIX_BLOCK_END_LINE =
-  '        StrCmp $4 "$PROGRAMFILES64" uninstall_vault_read 0';
+export const DENY_PREFIX_BLOCK_START_LINE =
+  '        System::Call "kernel32::GetFullPathNameW(w r1, i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4"';
+export const DENY_PREFIX_BLOCK_END_LINE = '        StrCpy $5 "$APPDATA\\Mythos Writer"';
 
 /** Exact $WINDIR / $PROGRAMFILES / $PROGRAMFILES64 deny chain (file :91–:99). */
 export const CANONICAL_DENY_PREFIX_BLOCK: readonly string[] = [
-  DENY_PREFIX_BLOCK_START_LINE,
-  '        StrCpy $4 $1 $3',
-  '        StrCmp $4 "$WINDIR" uninstall_vault_read 0',
-  '        StrLen $3 "$PROGRAMFILES"',
-  '        StrCpy $4 $1 $3',
-  '        StrCmp $4 "$PROGRAMFILES" uninstall_vault_read 0',
-  '        StrLen $3 "$PROGRAMFILES64"',
-  '        StrCpy $4 $1 $3',
-  DENY_PREFIX_BLOCK_END_LINE,
+  "        System::Call \"kernel32::GetFullPathNameW(w r1, i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        System::Call \"kernel32::GetLongPathNameW(w r3, w .r3, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrCpy $5 \"$WINDIR\"",
+  "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrLen $8 $5",
+  "        StrCpy $4 $3 $8",
+  "        StrCmp $4 $5 uninstall_vault_read 0",
+  "        StrCpy $5 \"$PROGRAMFILES\"",
+  "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrLen $8 $5",
+  "        StrCpy $4 $3 $8",
+  "        StrCmp $4 $5 uninstall_vault_read 0",
+  "        StrCpy $5 \"$PROGRAMFILES64\"",
+  "        System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        System::Call \"kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4\"",
+  "        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
+  "        StrLen $8 $5",
+  "        StrCpy $4 $3 $8",
+  "        StrCmp $4 $5 uninstall_vault_read 0",
 ];
 
 export const CANONICAL_DENY_PREFIX_BLOCK_SHA256 = createHash('sha256')
@@ -946,10 +1050,16 @@ export const CANONICAL_DENY_PREFIX_BLOCK_SHA256 = createHash('sha256')
 /** APPDATA Mythos Writer prefix + root self-match (first allowlist root, M5). */
 export const CANONICAL_APPDATA_M5_GUARD_BLOCK: readonly string[] = [
   String.raw`        StrCpy $5 "$APPDATA\Mythos Writer"`,
-  '        StrLen $3 $5',
-  '        StrCpy $4 $1 $3',
+  '        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"',
+  '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
+  '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
+  '        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"',
+  '        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0',
+  '        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read',
+  '        StrLen $8 $5',
+  '        StrCpy $4 $3 $8',
   '        StrCmp $4 $5 0 mythos_al_not_appdata',
-  '          StrCmp $1 $5 uninstall_vault_read',
+  '          StrCmp $3 $5 uninstall_vault_read',
 ];
 
 /** FileRead + RF-6 CR/LF trim loop + empty check + control-char reject (file :43–:64). */
@@ -1024,48 +1134,161 @@ function expandNsisQuotedLiteral(quoted: string, env: SidecarNsisVarEnv): string
 
 export type DenyPrefixOutcome = 'vault_read' | 'allowlist_continue';
 
-/** Execute StrLen/StrCpy/StrCmp deny lines for $WINDIR, $PROGRAMFILES, $PROGRAMFILES64. */
+function applyGfpnOrGlpnCall(
+  line: string,
+  reg: Record<string, string>,
+  value: (tok: string) => string,
+): boolean {
+  const gfpn = line.match(
+    /^System::Call "kernel32::GetFullPathNameW\(w r(\d), i (\S+), w \.r(\d), p 0\) i \.r(\d)"$/,
+  );
+  if (gfpn) {
+    const src = `$${gfpn[1]!}`;
+    const size = nsisLeadingInt(value(gfpn[2]!));
+    const dst = `$${gfpn[3]!}`;
+    const ret = `$${gfpn[4]!}`;
+    const resolved = gfpnModel(reg[src] ?? '');
+    if (resolved !== '') {
+      reg[dst] = resolved;
+    }
+    if (resolved === '') {
+      reg[ret] = '0';
+    } else if (resolved.length >= size) {
+      reg[ret] = String(resolved.length + 1);
+    } else {
+      reg[ret] = String(resolved.length);
+    }
+    return true;
+  }
+  const glpn = line.match(
+    /^System::Call "kernel32::GetLongPathNameW\(w r(\d), w \.r(\d), i (\S+)\) i \.r(\d)"$/,
+  );
+  if (glpn) {
+    const src = `$${glpn[1]!}`;
+    const dst = `$${glpn[2]!}`;
+    const size = nsisLeadingInt(value(glpn[3]!));
+    const ret = `$${glpn[4]!}`;
+    const resolved = glpnModel(reg[src] ?? '');
+    if (resolved !== '') {
+      reg[dst] = resolved;
+    }
+    if (resolved === '') {
+      reg[ret] = '0';
+    } else if (resolved.length >= size) {
+      reg[ret] = String(resolved.length + 1);
+    } else {
+      reg[ret] = String(resolved.length);
+    }
+    return true;
+  }
+  return false;
+}
+
+/** Execute GFPN+GLP + prefix deny for $WINDIR, $PROGRAMFILES, $PROGRAMFILES64. */
 export function executeDenyPrefixBlock(
   blockLines: readonly string[],
   path: string,
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
 ): DenyPrefixOutcome {
-  const $1 = path;
-  let $3 = 0;
-  let $4 = '';
-  for (let pc = 0; pc < blockLines.length; pc++) {
+  const reg: Record<string, string> = {
+    $1: path,
+    $3: '',
+    $4: '',
+    $5: '',
+    $8: '0',
+  };
+  const value = (tok: string): string => {
+    if (/^\$\d$/.test(tok)) {
+      return reg[tok] ?? '';
+    }
+    if (tok === '${NSIS_MAX_STRLEN}') {
+      return String(SIDECAR_CANON_GATE_MAX_STRLEN);
+    }
+    return tok.startsWith('"') ? expandNsisQuotedLiteral(tok, env) : tok;
+  };
+  const maxSteps = blockLines.length * 8 + 80;
+  let pc = 0;
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (pc >= blockLines.length) {
+      return 'allowlist_continue';
+    }
     const line = blockLines[pc]!.trim();
-    const strLen = line.match(/^StrLen \$3 ("(?:\\.|[^"])*")$/);
-    if (strLen) {
-      $3 = expandNsisQuotedLiteral(strLen[1]!, env).length;
+    if (/^\w+:$/.test(line) || line === 'Nop') {
+      pc += 1;
       continue;
     }
-    const strCpyFromLenReg = line.match(/^StrCpy \$4 \$1 \$(\d+)$/);
-    if (strCpyFromLenReg) {
-      const len = strCpyFromLenReg[1] === '3' ? $3 : 0;
-      $4 = $1.slice(0, len);
+    if (applyGfpnOrGlpnCall(line, reg, value)) {
+      pc += 1;
       continue;
     }
-    const strCpyFromLitLen = line.match(/^StrCpy \$4 \$1 (\d+)$/);
-    if (strCpyFromLitLen) {
-      $4 = $1.slice(0, Number(strCpyFromLitLen[1]));
+    if (line.startsWith('StrCpy $5 ')) {
+      const lit = line.match(/^StrCpy \$5 ("(?:\\.|[^"])*")$/);
+      if (!lit) {
+        throw new Error(`unsupported deny-prefix StrCpy $5: ${line}`);
+      }
+      reg.$5 = expandNsisQuotedLiteral(lit[1]!, env);
+      pc += 1;
       continue;
     }
-    const strCmpDeny = line.match(/^StrCmp \$4 ("(?:\\.|[^"])*") uninstall_vault_read (\d+)$/);
-    if (strCmpDeny) {
-      const lit = expandNsisQuotedLiteral(strCmpDeny[1]!, env);
-      if ($4 === lit) {
+    if (line === 'StrLen $8 $5') {
+      reg.$8 = String(reg.$5.length);
+      pc += 1;
+      continue;
+    }
+    if (line === 'StrCpy $4 $3 $8') {
+      reg.$4 = (reg.$3 ?? '').slice(0, Number(reg.$8) || 0);
+      pc += 1;
+      continue;
+    }
+    const strLenOld = line.match(/^StrLen \$3 ("(?:\\.|[^"])*")$/);
+    if (strLenOld) {
+      reg.$3 = String(expandNsisQuotedLiteral(strLenOld[1]!, env).length);
+      pc += 1;
+      continue;
+    }
+    const strCpyOld = line.match(/^StrCpy \$4 \$1 \$(\d+)$/);
+    if (strCpyOld) {
+      const len = Number(reg[`$${strCpyOld[1]!}`] ?? '0');
+      reg.$4 = path.slice(0, len);
+      pc += 1;
+      continue;
+    }
+    const intCmp = line.match(/^IntCmp \$4 (\S+) (\S+)(?: (\S+))?(?: (\S+))?$/);
+    if (intCmp) {
+      const a = nsisLeadingInt(value('$4'));
+      const b = nsisLeadingInt(value(intCmp[1]!));
+      const target = a === b ? intCmp[2]! : a < b ? (intCmp[3] ?? '0') : (intCmp[4] ?? '0');
+      if (target === 'uninstall_vault_read') {
         return 'vault_read';
       }
-      pc += Number(strCmpDeny[2]);
+      if (target === '0') {
+        pc += 1;
+        continue;
+      }
+      throw new Error(`unsupported deny-prefix IntCmp target: ${line}`);
+    }
+    const strCmpDeny = line.match(/^StrCmp \$4 \$5 uninstall_vault_read (\d+)$/);
+    if (strCmpDeny) {
+      if (nsisStrEq(reg.$4 ?? '', reg.$5 ?? '')) {
+        return 'vault_read';
+      }
+      const off = Number(strCmpDeny[1]);
+      pc += off === 0 ? 1 : off;
       continue;
     }
-    if (line === 'Nop') {
+    const strCmpLit = line.match(/^StrCmp \$4 ("(?:\\.|[^"])*") uninstall_vault_read (\d+)$/);
+    if (strCmpLit) {
+      const lit = expandNsisQuotedLiteral(strCmpLit[1]!, env);
+      if (nsisStrEq(reg.$4 ?? '', lit)) {
+        return 'vault_read';
+      }
+      const off = Number(strCmpLit[2]);
+      pc += off === 0 ? 1 : off;
       continue;
     }
     throw new Error(`unsupported deny-prefix VM instruction: ${line}`);
   }
-  return 'allowlist_continue';
+  throw new Error('deny-prefix VM exceeded step limit');
 }
 
 export type SidecarAllowlistDeleteOutcome = 'delete' | 'skip_delete';
@@ -1117,10 +1340,28 @@ export function executeSidecarAllowlistDeleteBlockDetailed(
   }
 
   const $1 = path;
+  const reg: Record<string, string> = {
+    $1: path,
+    $3: glpnModel(gfpnModel(path)),
+    $4: '',
+    $5: '',
+    $6: '',
+    $8: '0',
+    $9: '',
+  };
   let $3 = 0;
   let $4 = '';
   let $5 = '';
   let $6 = '';
+  const allowValue = (tok: string): string => {
+    if (/^\$\d$/.test(tok)) {
+      return reg[tok] ?? '';
+    }
+    if (tok === '${NSIS_MAX_STRLEN}') {
+      return String(SIDECAR_CANON_GATE_MAX_STRLEN);
+    }
+    return tok.startsWith('"') ? expandNsisQuotedLiteral(tok, env) : tok;
+  };
   let pc = 0;
   const fin = (outcome: SidecarAllowlistDeleteOutcome): SidecarAllowlistDeleteDetailed => ({
     outcome,
@@ -1140,9 +1381,83 @@ export function executeSidecarAllowlistDeleteBlockDetailed(
       pc += 1;
       continue;
     }
+    if (applyGfpnOrGlpnCall(line, reg, allowValue)) {
+      $3 = nsisLeadingInt(reg.$3 ?? '0');
+      $4 = reg.$4 ?? '';
+      $5 = reg.$5 ?? '';
+      $6 = reg.$6 ?? '';
+      pc += 1;
+      continue;
+    }
+    const intCmp = line.match(/^IntCmp \$4 (\S+) (\S+)(?: (\S+))?(?: (\S+))?$/);
+    if (intCmp) {
+      const a = nsisLeadingInt(allowValue('$4'));
+      const b = nsisLeadingInt(allowValue(intCmp[1]!));
+      const target = a === b ? intCmp[2]! : a < b ? (intCmp[3] ?? '0') : (intCmp[4] ?? '0');
+      if (target === '0') {
+        pc += 1;
+        continue;
+      }
+      const jump = resolveAllowlistDeleteJump(target, labels);
+      if (typeof jump === 'string') {
+        return fin(jump);
+      }
+      pc = jump.pc;
+      continue;
+    }
+    if (line === 'StrLen $8 $5') {
+      reg.$8 = String((reg.$5 ?? '').length);
+      $3 = (reg.$5 ?? '').length;
+      pc += 1;
+      continue;
+    }
+    if (line === 'StrCpy $4 $3 $8') {
+      const len = nsisLeadingInt(reg.$8 ?? '0');
+      $4 = (reg.$3 ?? '').slice(0, len);
+      reg.$4 = $4;
+      pc += 1;
+      continue;
+    }
+    if (line === 'StrCpy $4 $3 1 $8') {
+      const from = nsisLeadingInt(reg.$8 ?? '0');
+      $4 = (reg.$3 ?? '').length > from ? (reg.$3 ?? '')[from]! : '';
+      reg.$4 = $4;
+      pc += 1;
+      continue;
+    }
+    const strCpyRem3 = line.match(/^StrCpy \$6 \$3 "" \$(\d+)$/);
+    if (strCpyRem3) {
+      const from = strCpyRem3[1] === '8' ? nsisLeadingInt(reg.$8 ?? '0') : $3;
+      $6 = (reg.$3 ?? '').slice(from);
+      reg.$6 = $6;
+      pc += 1;
+      continue;
+    }
+    const strCmpPathRoot = line.match(/^StrCmp \$3 \$5 uninstall_vault_read$/);
+    if (strCmpPathRoot) {
+      if (nsisStrEq(reg.$3 ?? '', reg.$5 ?? '')) {
+        return fin('skip_delete');
+      }
+      pc += 1;
+      continue;
+    }
+    const strCmpPrefixReg = line.match(/^StrCmp \$4 \$5 0 (\w+)$/);
+    if (strCmpPrefixReg) {
+      if (nsisStrEq($4, $5) || nsisStrEq(reg.$4 ?? '', reg.$5 ?? '')) {
+        pc += 1;
+        continue;
+      }
+      const jump = resolveAllowlistDeleteJump(strCmpPrefixReg[1]!, labels);
+      if (typeof jump === 'string') {
+        return fin(jump);
+      }
+      pc = jump.pc;
+      continue;
+    }
     const strCpy5 = line.match(/^StrCpy \$5 ("(?:\\.|[^"])*")$/);
     if (strCpy5) {
       $5 = expandNsisQuotedLiteral(strCpy5[1]!, env);
+      reg.$5 = $5;
       pc += 1;
       continue;
     }
@@ -1346,6 +1661,34 @@ export function gfpnModel(s: string): string {
   return gfpnModelK(s);
 }
 
+/**
+ * GetLongPathNameW model: expand known 8.3 aliases. A real vault named `Notes~1` is
+ * not an alias and stays as-is. Does not require the path to exist (GFPN-like).
+ */
+const GLP_8_3_ALIASES: Readonly<Record<string, string>> = {
+  'downlo~1': 'Downloads',
+  'docume~1': 'Documents',
+  'deskto~1': 'Desktop',
+  'mythos~1': 'Mythos Writer',
+  'mydesk~1': 'My Desktop',
+  'progra~1': 'Program Files',
+  'progra~2': 'Program Files (x86)',
+  'appdat~1': 'AppData',
+};
+
+export function glpnModel(s: string): string {
+  const folded = s.replace(/\//g, '\\');
+  return folded
+    .split('\\')
+    .map((seg, i) => {
+      if (i === 0) {
+        return seg;
+      }
+      return GLP_8_3_ALIASES[seg.toLowerCase()] ?? seg;
+    })
+    .join('\\');
+}
+
 /** GFPN-REF extras: final `.`/`..` without a trailing separator, plus trailing-dot/space names. */
 export const GFPN_WIN32_W_MODEL_ROWS: readonly string[] = [
   'C:\\a\\b\\..',
@@ -1479,25 +1822,44 @@ export function executeCanonGateBlock(
       const gfpn = line.match(
         /^System::Call "kernel32::GetFullPathNameW\(w r(\d), i (\S+), w \.r(\d), p 0\) i \.r(\d)"$/,
       );
-      if (!gfpn) {
-        throw new Error(`unsupported canon-gate System::Call: ${line}`);
-      }
-      const src = `$${gfpn[1]!}`;
-      const size = nsisLeadingInt(value(gfpn[2]!));
-      const ret = `$${gfpn[4]!}`;
-      const fault = options.fault?.call === src ? options.fault.ret : undefined;
-      const resolved = gfpnModel(reg[src] ?? '');
-      if (resolved !== '') {
-        reg[`$${gfpn[3]!}`] = resolved;
-      }
-      if (fault === 'zero' || resolved === '') {
-        reg[ret] = '0';
-      } else if (fault === 'truncate') {
-        reg[ret] = String(size + 1);
-      } else if (resolved.length >= size) {
-        reg[ret] = String(resolved.length + 1);
+      const glpn = line.match(
+        /^System::Call "kernel32::GetLongPathNameW\(w r(\d), w \.r(\d), i (\S+)\) i \.r(\d)"$/,
+      );
+      if (gfpn) {
+        const src = `$${gfpn[1]!}`;
+        const size = nsisLeadingInt(value(gfpn[2]!));
+        const ret = `$${gfpn[4]!}`;
+        const fault = options.fault?.call === src ? options.fault.ret : undefined;
+        const resolved = gfpnModel(reg[src] ?? '');
+        if (resolved !== '') {
+          reg[`$${gfpn[3]!}`] = resolved;
+        }
+        if (fault === 'zero' || resolved === '') {
+          reg[ret] = '0';
+        } else if (fault === 'truncate') {
+          reg[ret] = String(size + 1);
+        } else if (resolved.length >= size) {
+          reg[ret] = String(resolved.length + 1);
+        } else {
+          reg[ret] = String(resolved.length);
+        }
+      } else if (glpn) {
+        const src = `$${glpn[1]!}`;
+        const size = nsisLeadingInt(value(glpn[3]!));
+        const ret = `$${glpn[4]!}`;
+        const resolved = glpnModel(reg[src] ?? '');
+        if (resolved !== '') {
+          reg[`$${glpn[2]!}`] = resolved;
+        }
+        if (resolved === '') {
+          reg[ret] = '0';
+        } else if (resolved.length >= size) {
+          reg[ret] = String(resolved.length + 1);
+        } else {
+          reg[ret] = String(resolved.length);
+        }
       } else {
-        reg[ret] = String(resolved.length);
+        throw new Error(`unsupported canon-gate System::Call: ${line}`);
       }
     } else if (op === 'IntCmp' && tk.length >= 4 && tk.length <= 6) {
       const a = nsisLeadingInt(value(tk[1]!));
@@ -1566,10 +1928,11 @@ export function locateDenyPrefixBlock(nsh: string): { start: number; end: number
     throw new Error(`${DENY_PREFIX_BLOCK_ANCHOR_AFTER} missing before deny-prefix block`);
   }
   const start = fileLines.findIndex((l, i) => i > travOkIdx && l === DENY_PREFIX_BLOCK_START_LINE);
-  const end = fileLines.findIndex((l, i) => i >= start && l === DENY_PREFIX_BLOCK_END_LINE);
-  if (start < 0 || end < start) {
+  const appdata = fileLines.findIndex((l, i) => i > start && l === DENY_PREFIX_BLOCK_END_LINE);
+  if (start < 0 || appdata <= start) {
     throw new Error('deny-prefix block ($WINDIR..$PROGRAMFILES64) missing in uninstall nsh');
   }
+  const end = appdata - 1;
   const lines = fileLines.slice(start, end + 1);
   if (lines.length !== CANONICAL_DENY_PREFIX_BLOCK.length) {
     throw new Error(
@@ -1651,12 +2014,14 @@ export const DENY_PREFIX_REJECT_PATHS: readonly string[] = [
 
 export const DENY_PREFIX_ALLOW_PATHS: readonly string[] = ['C:\\Users\\vault'];
 
-const DENY_PREFIX_GATE_LINE_COUNT = 3;
+const DENY_PREFIX_LINE_EXPAND_COUNT = 6;
+const DENY_PREFIX_GATE_LINE_COUNT = 10;
 
 function denyPrefixGateBlock(nsh: string, gateIndex: 0 | 1 | 2): readonly string[] {
   const deny = denyBlockFromGuardRegion(extractSidecarGuardRegionForVm(nsh));
-  const start = gateIndex * DENY_PREFIX_GATE_LINE_COUNT;
-  return deny.slice(start, start + DENY_PREFIX_GATE_LINE_COUNT);
+  const expand = deny.slice(0, DENY_PREFIX_LINE_EXPAND_COUNT);
+  const start = DENY_PREFIX_LINE_EXPAND_COUNT + gateIndex * DENY_PREFIX_GATE_LINE_COUNT;
+  return [...expand, ...deny.slice(start, start + DENY_PREFIX_GATE_LINE_COUNT)];
 }
 
 function runDenyPrefixGateVmFromNsh(
@@ -2145,7 +2510,7 @@ export const SIDECAR_READ_TRIM_EXACT_STRING_ROWS: readonly { raw: string; trimme
   { raw: 'C:\\vault\\c\r', trimmed: 'C:\\vault\\c' },
 ];
 
-export const SIDECAR_READ_LOOP_STEP_LIMIT = 5000;
+export const SIDECAR_READ_LOOP_STEP_LIMIT = 10000;
 
 export const SIDECAR_DELETE_READ_LOOP_ROWS: readonly {
   rawLines: readonly string[];
@@ -2208,14 +2573,14 @@ export const SIDECAR_DELETE_READ_LOOP_ROWS: readonly {
       'C:\\Users\\me\\Documents\\v/..a\\',
     ],
     expectedDeleted: [
-      'C:\\Users\\me\\Documents\\v\\.a\\',
-      'C:\\Users\\me\\Documents\\v\\.a/',
-      'C:\\Users\\me\\Documents\\v\\..a\\',
-      'C:\\Users\\me\\Documents\\v\\..a/',
-      'C:\\Users\\me\\Documents\\v/.a/',
-      'C:\\Users\\me\\Documents\\v/.a\\',
-      'C:\\Users\\me\\Documents\\v/..a/',
-      'C:\\Users\\me\\Documents\\v/..a\\',
+      'C:\\Users\\me\\Documents\\v\\.a',
+      'C:\\Users\\me\\Documents\\v\\.a',
+      'C:\\Users\\me\\Documents\\v\\..a',
+      'C:\\Users\\me\\Documents\\v\\..a',
+      'C:\\Users\\me\\Documents\\v\\.a',
+      'C:\\Users\\me\\Documents\\v\\.a',
+      'C:\\Users\\me\\Documents\\v\\..a',
+      'C:\\Users\\me\\Documents\\v\\..a',
     ],
     expectClosed: true,
   },
@@ -2587,6 +2952,8 @@ export const RF7_ERROR_PARENT = 'C:\\Users\\me\\Documents\\rf7-errp';
 export const RF7_ERROR_PARENT_VAULT = 'C:\\Users\\me\\Documents\\rf7-errp\\vault';
 export const RF7_INVALID_VAULT = 'C:\\Users\\me\\Documents\\rf7-invalid';
 export const RF7_APPDATA_FIXED_VAULTS = 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults';
+export const RF7_ONE_CHAR_JUNCTION = 'C:\\Users\\me\\Documents\\a';
+export const RF7_ONE_CHAR_JUNCTION_VAULT = 'C:\\Users\\me\\Documents\\a\\b\\v';
 
 export type SidecarRf7ReparseRow = Readonly<{
   name: string;
@@ -2680,6 +3047,12 @@ export const SIDECAR_RF7_REPARSE_ROWS: readonly SidecarRf7ReparseRow[] = [
     expect: 'skip',
     options: { reparsePaths: [RF7_APPDATA_FIXED_VAULTS] },
   },
+  {
+    name: '1-char component junction a\\b\\v skips (walk +2 / Goto +N)',
+    path: RF7_ONE_CHAR_JUNCTION_VAULT,
+    expect: 'skip',
+    options: { reparsePaths: [RF7_ONE_CHAR_JUNCTION] },
+  },
 ];
 
 export function sidecarRf7Deleted(nsh: string, row: SidecarRf7ReparseRow, env: SidecarNsisVarEnv): string[] {
@@ -2710,11 +3083,167 @@ export function assertSidecarReparseTables(
   }
 }
 
+export type SidecarH1SlashRow = Readonly<{
+  name: string;
+  path: string;
+  env: SidecarNsisVarEnv;
+  expectDeleted: readonly string[];
+  mustNotDelete: readonly string[];
+  options?: Omit<SidecarNsisRunOptions, 'env'>;
+}>;
+
+function h1AllowRoots(env: SidecarNsisVarEnv): readonly { name: string; root: string }[] {
+  return [
+    { name: 'Documents', root: env.DOCUMENTS },
+    { name: 'Desktop', root: env.DESKTOP },
+    { name: 'Downloads', root: `${env.PROFILE}\\Downloads` },
+    { name: 'AppData', root: `${env.APPDATA}\\Mythos Writer` },
+  ];
+}
+
+/**
+ * H1: `/` in a sidecar line. RMDir runs validate_filename (`a/b` → `ab`); Delete/IfFileExists
+ * are raw-path and myDelete splits on `\` only (`a/b.txt` → `b.txt`). Acts must use `$3`.
+ */
+export const SIDECAR_H1_SLASH_ROWS: readonly SidecarH1SlashRow[] = h1AllowRoots(DEFAULT_SIDECAR_NSIS_VAR_ENV).flatMap(
+  ({ name, root }) => [
+    {
+      name: `H1 ${name} a/b must not delete ab`,
+      path: `${root}\\a/b`,
+      env: DEFAULT_SIDECAR_NSIS_VAR_ENV,
+      expectDeleted: [`${root}\\a\\b`],
+      mustNotDelete: [`${root}\\ab`],
+    },
+    {
+      name: `H1 ${name} a/b with ab junction must not delete ab`,
+      path: `${root}\\a/b`,
+      env: DEFAULT_SIDECAR_NSIS_VAR_ENV,
+      expectDeleted: [`${root}\\a\\b`],
+      mustNotDelete: [`${root}\\ab`],
+      options: { reparsePaths: [`${root}\\ab`] },
+    },
+    {
+      name: `H1 ${name} D/esktop must not delete Desktop`,
+      path: `${root}\\D/esktop`,
+      env: DEFAULT_SIDECAR_NSIS_VAR_ENV,
+      expectDeleted: [`${root}\\D\\esktop`],
+      mustNotDelete: [`${root}\\Desktop`],
+    },
+  ],
+);
+
+export function assertSidecarH1SlashTables(nsh: string): void {
+  for (const row of SIDECAR_H1_SLASH_ROWS) {
+    let deleted: string[];
+    try {
+      deleted = simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env, row.options ?? {}).deleted;
+    } catch (err) {
+      throw new Error(
+        `H1 ${row.name}: expected delete ${JSON.stringify(row.expectDeleted)}, threw ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    if (deleted.join('\0') !== [...row.expectDeleted].join('\0')) {
+      throw new Error(
+        `H1 ${row.name}: expected deleted ${JSON.stringify(row.expectDeleted)}, got ${JSON.stringify(deleted)}`,
+      );
+    }
+    for (const ban of row.mustNotDelete) {
+      if (deleted.includes(ban)) {
+        throw new Error(`H1 ${row.name}: must not delete ${JSON.stringify(ban)}, got ${JSON.stringify(deleted)}`);
+      }
+    }
+  }
+}
+
+export function assertSidecarH1SlashSweepParity(mutantNsh: string, canonicalNsh: string): void {
+  for (const row of SIDECAR_H1_SLASH_ROWS) {
+    const options = row.options ?? {};
+    const canonical = simulateSidecarDeleteReadLoop(canonicalNsh, [`${row.path}\r\n`], row.env, options).deleted.join(
+      '\0',
+    );
+    const mutant = simulateSidecarDeleteReadLoop(mutantNsh, [`${row.path}\r\n`], row.env, options).deleted.join('\0');
+    if (mutant !== canonical) {
+      throw new Error(
+        `H1 sweep parity ${row.name}: canonical ${JSON.stringify(canonical)}, mutant ${JSON.stringify(mutant)}`,
+      );
+    }
+  }
+  for (const row of SIDECAR_H1_DELETE_SLASH_ROWS) {
+    const canonical = simulateSidecarDeleteReadLoop(canonicalNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
+    const mutant = simulateSidecarDeleteReadLoop(mutantNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
+    if (mutant !== canonical) {
+      throw new Error(
+        `H1 Delete-slash sweep parity ${row.name}: canonical ${JSON.stringify(canonical)}, mutant ${JSON.stringify(mutant)}`,
+      );
+    }
+  }
+}
+
+/** Forge H1: Delete on raw `$1` cuts at the last `\`, so `root\a/b.txt` deletes `root\b.txt`. */
+export const SIDECAR_H1_DELETE_SLASH_ROWS: readonly SidecarH1SlashRow[] = h1AllowRoots(
+  DEFAULT_SIDECAR_NSIS_VAR_ENV,
+).flatMap(({ name, root }) => {
+  const gfpnAb = `${root}\\a\\b.txt`;
+  const rawCut = `${root}\\b.txt`;
+  const mixed = `${root}\\a\\b\\f.txt`;
+  const mixedCut = `${root}\\a\\f.txt`;
+  return [
+    {
+      name: `H1 Delete ${name} a/b.txt must not delete b.txt`,
+      path: `${root}\\a/b.txt`,
+      env: DEFAULT_SIDECAR_NSIS_VAR_ENV,
+      expectDeleted: [gfpnAb],
+      mustNotDelete: [rawCut],
+    },
+    {
+      name: `H1 Delete ${name} a\\b/f.txt must not delete a\\f.txt`,
+      path: `${root}\\a\\b/f.txt`,
+      env: DEFAULT_SIDECAR_NSIS_VAR_ENV,
+      expectDeleted: [mixed],
+      mustNotDelete: [mixedCut],
+    },
+    {
+      name: `H1 Delete ${name} x/f.txt must not delete f.txt`,
+      path: `${root}\\x/f.txt`,
+      env: DEFAULT_SIDECAR_NSIS_VAR_ENV,
+      expectDeleted: [`${root}\\x\\f.txt`],
+      mustNotDelete: [`${root}\\f.txt`],
+    },
+  ];
+});
+
+export function assertSidecarH1DeleteSlashTables(nsh: string): void {
+  for (const row of SIDECAR_H1_DELETE_SLASH_ROWS) {
+    let deleted: string[];
+    try {
+      deleted = simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env).deleted;
+    } catch (err) {
+      throw new Error(
+        `H1 Delete-slash ${row.name}: expected ${JSON.stringify(row.expectDeleted)}, threw ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    if (deleted.join('\0') !== [...row.expectDeleted].join('\0')) {
+      throw new Error(
+        `H1 Delete-slash ${row.name}: expected deleted ${JSON.stringify(row.expectDeleted)}, got ${JSON.stringify(deleted)}`,
+      );
+    }
+    for (const ban of row.mustNotDelete) {
+      if (deleted.includes(ban)) {
+        throw new Error(`H1 Delete-slash ${row.name}: must not delete ${JSON.stringify(ban)}, got ${JSON.stringify(deleted)}`);
+      }
+    }
+  }
+}
+
 /**
  * Shield 5462286933 four pin-free survivors at a3719f95 :167 / :220.
  * Documents=`C:\Users\me\Desk` is a text prefix of Desktop without a following `\`,
  * so :167's else is taken and then Desktop must still delete. The file row pins
- * one delete act per sidecar line so :220/:299 `Goto mythos_trim_chop` cannot
+ * one delete act per sidecar line so :220/:307 `Goto mythos_trim_chop` cannot
  * re-delete shorter prefixes.
  */
 export const SIDECAR_RF7_DESK_PREFIX_ENV: SidecarNsisVarEnv = {
@@ -2741,7 +3270,7 @@ export const SIDECAR_RF7_SHIELD_SURVIVOR_ROWS: readonly SidecarRf7ShieldSurvivor
     expectedDeleted: [SIDECAR_RF7_DESK_PREFIX_DESKTOP_VAULT],
   },
   {
-    name: ':220/:299 one act per sidecar file line',
+    name: ':220/:307 one act per sidecar file line',
     rawLines: [`${SIDECAR_RF7_ONE_ACT_FILE_PATH}\r\n`],
     env: DEFAULT_SIDECAR_NSIS_VAR_ENV,
     expectedDeleted: [SIDECAR_RF7_ONE_ACT_FILE_PATH],
@@ -2888,6 +3417,20 @@ export const SIDECAR_HARD2_NESTED_ENVS: Readonly<Record<string, SidecarNsisVarEn
   N4: { ...HARD12_ENV_E1, DOCUMENTS: 'D:\\Docs', DESKTOP: 'D:\\Docs\\Desktop' },
   N5: { ...HARD12_ENV_E1, DOCUMENTS: 'C:\\Users\\me\\Desktop\\Documents' },
   N6: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Downloads\\Desktop' },
+  /** Downloads nested under Documents via PROFILE=Documents\prof. */
+  N7: {
+    ...HARD12_ENV_E1,
+    PROFILE: 'C:\\Users\\me\\Documents\\prof',
+    DOCUMENTS: 'C:\\Users\\me\\Documents',
+    DESKTOP: 'C:\\Users\\me\\Desktop',
+  },
+  /** Downloads nested under the profile; Desktop is outside so it cannot catch first. */
+  N8: {
+    ...HARD12_ENV_E1,
+    DOCUMENTS: 'C:\\Users',
+    DESKTOP: 'C:\\Desktop',
+    PROFILE: 'C:\\Users\\me',
+  },
 };
 
 const HARD2_CHILD_ROOTS: readonly { envId: keyof typeof SIDECAR_HARD2_NESTED_ENVS; root: string }[] = [
@@ -2939,6 +3482,50 @@ export const SIDECAR_HARD2_NESTED_ROWS: readonly SidecarHard2NestedRow[] = [
     path: 'C:\\Users\\me\\AppData\\Roaming',
     expect: 'skip',
   },
+  ...(['bare', 'bs', 'fwd', 'short'] as const).flatMap((tag) => {
+    const env = SIDECAR_HARD2_NESTED_ENVS.N7!;
+    const ancestor = 'C:\\Users\\me\\Documents\\prof';
+    const downloads = `${ancestor}\\Downloads`;
+    const ancestorPath =
+      tag === 'bare'
+        ? ancestor
+        : tag === 'bs'
+          ? `${ancestor}\\`
+          : tag === 'fwd'
+            ? `${ancestor}/`
+            : 'C:\\Users\\me\\DOCUME~1\\prof';
+    const downloadsPath =
+      tag === 'bare'
+        ? downloads
+        : tag === 'bs'
+          ? `${downloads}\\`
+          : tag === 'fwd'
+            ? `${downloads}/`
+            : 'C:\\Users\\me\\DOCUME~1\\prof\\DOWNLO~1';
+    return [
+      { id: `N7|Downloads-ancestor|${tag}`, env, path: ancestorPath, expect: 'skip' as const },
+      { id: `N7|Downloads-nested|${tag}`, env, path: downloadsPath, expect: 'skip' as const },
+    ];
+  }),
+  ...(['bare', 'bs', 'fwd', 'short'] as const).flatMap((tag) => {
+    const env = SIDECAR_HARD2_NESTED_ENVS.N8!;
+    const ancestor = 'C:\\Users\\me';
+    const downloads = `${ancestor}\\Downloads`;
+    const ancestorPath =
+      tag === 'bare' ? ancestor : tag === 'bs' ? `${ancestor}\\` : tag === 'fwd' ? `${ancestor}/` : 'C:\\USERS\\ME';
+    const downloadsPath =
+      tag === 'bare'
+        ? downloads
+        : tag === 'bs'
+          ? `${downloads}\\`
+          : tag === 'fwd'
+            ? `${downloads}/`
+            : 'C:\\Users\\me\\DOWNLO~1';
+    return [
+      { id: `N8|Downloads-ancestor|${tag}`, env, path: ancestorPath, expect: 'skip' as const },
+      { id: `N8|Downloads-nested|${tag}`, env, path: downloadsPath, expect: 'skip' as const },
+    ];
+  }),
 ];
 
 export function assertSidecarHard1WildcardTables(nsh: string): void {
@@ -3018,7 +3605,10 @@ export const SIDECAR_HARD2_SWEEP_ROWS: readonly SidecarHard2NestedRow[] = SIDECA
     id.endsWith('|bare') ||
     id.endsWith('|fwd') ||
     id.endsWith('|vault') ||
-    id.startsWith('N3|C:\\Users\\me\\AppData')
+    id.endsWith('|short') ||
+    id.startsWith('N3|C:\\Users\\me\\AppData') ||
+    id.startsWith('N7|') ||
+    id.startsWith('N8|')
   );
 });
 
@@ -3029,6 +3619,260 @@ export function assertSidecarHard2NestedSweepParity(mutantNsh: string, canonical
     if (mutant !== canonical) {
       throw new Error(
         `HARD-2 sweep parity ${row.id}: canonical ${JSON.stringify(canonical)}, mutant ${JSON.stringify(mutant)}`,
+      );
+    }
+  }
+}
+
+export type SidecarHardARow = Readonly<{
+  name: string;
+  path: string;
+  env: SidecarNsisVarEnv;
+  expect: 'skip' | 'delete';
+  mustNotDelete?: readonly string[];
+}>;
+
+const HARD_A_DOCS_AS_PROFILE: SidecarNsisVarEnv = { ...HARD12_ENV_E1, DOCUMENTS: 'C:\\Users\\me' };
+const HARD_A_DESK_UNDER_DOCS: SidecarNsisVarEnv = {
+  ...HARD12_ENV_E1,
+  DESKTOP: 'C:\\Users\\me\\Documents\\My Desktop',
+};
+const HARD_A_DESK_UNDER_DL: SidecarNsisVarEnv = {
+  ...HARD12_ENV_E1,
+  DESKTOP: 'C:\\Users\\me\\Downloads\\Desktop',
+};
+const HARD_A_SHORT_DOCS: SidecarNsisVarEnv = {
+  ...HARD12_ENV_E1,
+  DOCUMENTS: 'C:\\Users\\me\\DOCUME~1',
+};
+const HARD_A_SHORT_APPDATA: SidecarNsisVarEnv = {
+  ...HARD12_ENV_E1,
+  APPDATA: 'C:\\Users\\me\\APPDAT~1\\Roaming',
+};
+
+/** Probe HARD-A 8.3 repros, short-form roots, real `Notes~1`, and PROGRA~1 deny. */
+export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
+  {
+    name: 'DOWNLO~1 under profile must not delete Downloads',
+    path: 'C:\\Users\\me\\DOWNLO~1',
+    env: HARD_A_DOCS_AS_PROFILE,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads'],
+  },
+  {
+    name: 'downlo~1 lowercase must not delete Downloads',
+    path: 'C:\\Users\\me\\downlo~1',
+    env: HARD_A_DOCS_AS_PROFILE,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads'],
+  },
+  {
+    name: 'MYTHOS~1 must not delete Mythos Writer',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\MYTHOS~1',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer'],
+  },
+  {
+    name: 'Documents\\MYDESK~1 must not delete My Desktop',
+    path: 'C:\\Users\\me\\Documents\\MYDESK~1',
+    env: HARD_A_DESK_UNDER_DOCS,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\My Desktop'],
+  },
+  {
+    name: 'Downloads\\DESKTO~1 must not delete Desktop',
+    path: 'C:\\Users\\me\\Downloads\\DESKTO~1',
+    env: HARD_A_DESK_UNDER_DL,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Downloads\\Desktop'],
+  },
+  {
+    name: 'PROGRA~1 must not pass the deny list',
+    path: 'C:\\PROGRA~1\\Mythos\\bin',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Program Files\\Mythos\\bin'],
+  },
+  {
+    name: 'short-form DOCUME~1 root still deletes a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD_A_SHORT_DOCS,
+    expect: 'delete',
+  },
+  {
+    name: 'short-form APPDAT~1 root still deletes a Mythos vault',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
+    env: HARD_A_SHORT_APPDATA,
+    expect: 'delete',
+  },
+  {
+    name: 'real vault Notes~1 still deletes',
+    path: 'C:\\Users\\me\\Documents\\Notes~1',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+  },
+];
+
+export function sidecarHardADeleted(nsh: string, row: SidecarHardARow): string[] {
+  return simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env).deleted;
+}
+
+export function assertSidecarHardATables(nsh: string): void {
+  for (const row of SIDECAR_HARD_A_ROWS) {
+    let deleted: string[];
+    try {
+      deleted = sidecarHardADeleted(nsh, row);
+    } catch (err) {
+      throw new Error(
+        `HARD-A ${row.name}: expected ${row.expect}, threw ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (row.expect === 'skip') {
+      if (deleted.length !== 0) {
+        throw new Error(`HARD-A ${row.name}: expected skip, deleted ${JSON.stringify(deleted)}`);
+      }
+    } else if (deleted.length !== 1 || (deleted[0] !== row.path && deleted[0] !== glpnModel(gfpnModel(row.path)))) {
+      throw new Error(`HARD-A ${row.name}: expected delete ${JSON.stringify(row.path)}, deleted ${JSON.stringify(deleted)}`);
+    }
+    for (const ban of row.mustNotDelete ?? []) {
+      if (deleted.includes(ban)) {
+        throw new Error(`HARD-A ${row.name}: must not delete ${JSON.stringify(ban)}, got ${JSON.stringify(deleted)}`);
+      }
+    }
+  }
+}
+
+export function assertSidecarHardASweepParity(mutantNsh: string, canonicalNsh: string): void {
+  for (const row of SIDECAR_HARD_A_ROWS) {
+    const canonical = sidecarHardADeleted(canonicalNsh, row).join('\0');
+    const mutant = sidecarHardADeleted(mutantNsh, row).join('\0');
+    if (mutant !== canonical) {
+      throw new Error(
+        `HARD-A sweep parity ${row.name}: canonical ${JSON.stringify(canonical)}, mutant ${JSON.stringify(mutant)}`,
+      );
+    }
+  }
+}
+
+/** HARD-C: ancestor-of-root fixtures that kill Documents/Desktop/Downloads sep nop/del. */
+export const SIDECAR_HARD_C_ROWS: readonly SidecarHard2NestedRow[] = [
+  {
+    id: 'HARD-C|OneDrive-Documents-ancestor',
+    env: {
+      ...HARD12_ENV_E1,
+      DESKTOP: 'C:\\Users\\me',
+      DOCUMENTS: 'C:\\Users\\me\\OneDrive\\Documents',
+    },
+    path: 'C:\\Users\\me\\OneDrive',
+    expect: 'skip',
+  },
+  {
+    id: 'HARD-C|OneDrive-Desktop-ancestor',
+    env: {
+      ...HARD12_ENV_E1,
+      DOCUMENTS: 'C:\\Users\\me',
+      DESKTOP: 'C:\\Users\\me\\OneDrive\\Desktop',
+    },
+    path: 'C:\\Users\\me\\OneDrive',
+    expect: 'skip',
+  },
+  {
+    id: 'HARD-C|Users-me-Downloads-ancestor',
+    env: {
+      ...HARD12_ENV_E1,
+      DOCUMENTS: 'C:\\Users',
+      DESKTOP: 'C:\\Desktop',
+      PROFILE: 'C:\\Users\\me',
+    },
+    path: 'C:\\Users\\me',
+    expect: 'skip',
+  },
+];
+
+export function assertSidecarHardCTables(nsh: string): void {
+  for (const row of SIDECAR_HARD_C_ROWS) {
+    let deleted: string[];
+    try {
+      deleted = simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env).deleted;
+    } catch (err) {
+      throw new Error(
+        `HARD-C ${row.id}: expected ${row.expect}, threw ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    if (row.expect === 'skip') {
+      if (deleted.length !== 0) {
+        throw new Error(`HARD-C ${row.id}: expected skip, deleted ${JSON.stringify(deleted)}`);
+      }
+    } else if (deleted.length !== 1 || deleted[0] !== row.path) {
+      throw new Error(`HARD-C ${row.id}: expected delete ${JSON.stringify(row.path)}, deleted ${JSON.stringify(deleted)}`);
+    }
+  }
+}
+
+export function assertSidecarHardCSweepParity(mutantNsh: string, canonicalNsh: string): void {
+  for (const row of SIDECAR_HARD_C_ROWS) {
+    const canonical = simulateSidecarDeleteReadLoop(canonicalNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
+    const mutant = simulateSidecarDeleteReadLoop(mutantNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
+    if (mutant !== canonical) {
+      throw new Error(
+        `HARD-C sweep parity ${row.id}: canonical ${JSON.stringify(canonical)}, mutant ${JSON.stringify(mutant)}`,
+      );
+    }
+  }
+}
+
+export type ForgeOracleFamilyScore = Readonly<{ family: string; dangerous: number; falseReject: number }>;
+
+function scoreForgeRows(
+  family: string,
+  nsh: string,
+  rows: readonly { path: string; env: SidecarNsisVarEnv; expect: 'skip' | 'delete'; options?: Omit<SidecarNsisRunOptions, 'env'> }[],
+): ForgeOracleFamilyScore {
+  let dangerous = 0;
+  let falseReject = 0;
+  for (const row of rows) {
+    const deleted = simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env, row.options ?? {}).deleted;
+    if (row.expect === 'skip') {
+      if (deleted.length > 0) {
+        dangerous += 1;
+      }
+    } else if (deleted.length === 0) {
+      falseReject += 1;
+    }
+  }
+  return { family, dangerous, falseReject };
+}
+
+export function scoreForgeOracleFamilies(nsh: string): readonly ForgeOracleFamilyScore[] {
+  return [
+    scoreForgeRows('slash', nsh, [
+      ...SIDECAR_H1_SLASH_ROWS.map((r) => ({ path: r.path, env: r.env, expect: 'delete' as const, options: r.options })),
+      ...SIDECAR_H1_DELETE_SLASH_ROWS.map((r) => ({
+        path: r.path,
+        env: r.env,
+        expect: 'delete' as const,
+      })),
+    ]),
+    scoreForgeRows(
+      'helper',
+      nsh,
+      [],
+    ),
+    scoreForgeRows('false-reject', nsh, SIDECAR_HARD_A_ROWS.filter((r) => r.expect === 'delete')),
+    scoreForgeRows('shortname', nsh, SIDECAR_HARD_A_ROWS),
+    scoreForgeRows('layout', nsh, [...SIDECAR_HARD_C_ROWS, ...SIDECAR_HARD2_NESTED_ROWS.filter((r) => r.id.startsWith('N7|') || r.id.startsWith('N8|'))]),
+  ];
+}
+
+export function assertForgeOracleFamiliesZeroZero(nsh: string): void {
+  for (const score of scoreForgeOracleFamilies(nsh)) {
+    if (score.family === 'helper') {
+      continue;
+    }
+    if (score.dangerous !== 0 || score.falseReject !== 0) {
+      throw new Error(
+        `Forge ${score.family}: dangerous=${score.dangerous} falseReject=${score.falseReject} (want 0/0)`,
       );
     }
   }
@@ -3056,8 +3900,13 @@ export function assertSidecarGuardVmBehaviourTables(
     assertSidecarRf456SweepParity(nsh, canonical, env);
     assertSidecarReparseTables(nsh, env);
     assertSidecarReparseSweepParity(nsh, canonical, env);
+    assertSidecarH1SlashTables(nsh);
+    assertSidecarH1SlashSweepParity(nsh, canonical);
+    assertSidecarH1DeleteSlashTables(nsh);
     assertSidecarHard1WildcardSweepParity(nsh, canonical);
     assertSidecarHard2NestedSweepParity(nsh, canonical);
+    assertSidecarHardASweepParity(nsh, canonical);
+    assertSidecarHardCSweepParity(nsh, canonical);
     return;
   }
   assertSidecarReadTrimGuardTables(nsh, env, { includeExactTrimPin: false });
@@ -3066,8 +3915,12 @@ export function assertSidecarGuardVmBehaviourTables(
   assertSidecarMultilineTravGuardTables(nsh, env);
   assertSidecarRf456Tables(nsh, env);
   assertSidecarReparseTables(nsh, env);
+  assertSidecarH1SlashTables(nsh);
+  assertSidecarH1DeleteSlashTables(nsh);
   assertSidecarHard1WildcardTables(nsh);
   assertSidecarHard2NestedTables(nsh);
+  assertSidecarHardATables(nsh);
+  assertSidecarHardCTables(nsh);
   assertTraversalS14LabelSwapRejectTables(nsh);
   assertTraversalVmStepLimitIsFatal();
   assertTraversalRejectAllowTables(nsh);
@@ -3418,9 +4271,6 @@ export const ALLOWLIST_ROOT_GUARD_SKIP_PATHS: readonly string[] = [
   `${RF_PROFILE}\\Desktoq\\v`,
   `${RF_PROFILE}\\Downloadz\\v`,
   `${RF_PROFILE}\\Pictures\\${'a'.repeat(RF_APPDATA.length - RF_PROFILE.length - '\\Pictures\\'.length)}\\x`,
-  `${RF_DOCUMENTS}/MyVault`,
-  `${RF_DESKTOP}/MyVault`,
-  `${RF_DOWNLOADS}/MyVault`,
 ];
 
 /**
@@ -3437,6 +4287,13 @@ export const CANON_MUST_DELETE_PATHS: readonly string[] = [
     (root) => `${root}\\${'a'.repeat(RF_APPDATA.length - root.length - 1)}\\x`,
   ),
 ];
+
+/** GFPN folds `/` so these are allowlist children, not leftover-`/` skips. */
+export const ALLOWLIST_GFPN_SLASH_DELETE_PATHS: readonly { raw: string; deleted: string }[] = [
+  RF_DOCUMENTS,
+  RF_DESKTOP,
+  RF_DOWNLOADS,
+].map((root) => ({ raw: `${root}/MyVault`, deleted: `${root}\\MyVault` }));
 
 /** Critic: root-equivalent rows the GetFullPathNameW gate ALONE must skip (each root, both separators). */
 export const CANON_GATE_ROOT_SKIP_ROWS: readonly { path: string; root: string }[] = [
@@ -3558,6 +4415,12 @@ export function assertSidecarRf456Tables(
       throw new Error(`allowlist must pass ${JSON.stringify(path)}, got ${outcome}`);
     }
   }
+  for (const { raw } of ALLOWLIST_GFPN_SLASH_DELETE_PATHS) {
+    const outcome = runSidecarAllowlistDeleteVmFromNsh(raw, nsh, env);
+    if (outcome !== 'delete') {
+      throw new Error(`allowlist must pass GFPN-folded ${JSON.stringify(raw)}, got ${outcome}`);
+    }
+  }
   const gate = canonGateBlockFromGuardRegion(extractSidecarGuardRegionForVm(nsh));
   for (const { path, root } of CANON_GATE_ROOT_SKIP_ROWS) {
     const outcome = executeCanonGateBlock(gate, path, root);
@@ -3594,6 +4457,12 @@ export function assertSidecarRf456Tables(
       throw new Error(`must delete exactly ${JSON.stringify(path)}, deleted ${JSON.stringify(deleted)}`);
     }
   }
+  for (const { raw, deleted: want } of ALLOWLIST_GFPN_SLASH_DELETE_PATHS) {
+    const deleted = deletedFor(nsh, `${raw}\r\n`, env);
+    if (deleted.length !== 1 || deleted[0] !== want) {
+      throw new Error(`must delete GFPN-folded ${JSON.stringify(want)}, deleted ${JSON.stringify(deleted)}`);
+    }
+  }
   const lfcr = deletedFor(nsh, SIDECAR_RF6_MUST_DELETE_LINE.raw, env);
   if (lfcr.length !== 1 || lfcr[0] !== SIDECAR_RF6_MUST_DELETE_LINE.deleted) {
     throw new Error(`LF-CR clean line must delete ${SIDECAR_RF6_MUST_DELETE_LINE.deleted}, got ${JSON.stringify(lfcr)}`);
@@ -3606,7 +4475,11 @@ export function assertSidecarRf456SweepParity(
   canonicalNsh: string,
   env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
 ): void {
-  for (const path of [...ALLOWLIST_ROOT_GUARD_SKIP_PATHS, ...CANON_MUST_DELETE_PATHS]) {
+  for (const path of [
+    ...ALLOWLIST_ROOT_GUARD_SKIP_PATHS,
+    ...CANON_MUST_DELETE_PATHS,
+    ...ALLOWLIST_GFPN_SLASH_DELETE_PATHS.map((r) => r.raw),
+  ]) {
     const canonical = runSidecarAllowlistDeleteVmFromNsh(path, canonicalNsh, env);
     const mutant = runSidecarAllowlistDeleteVmFromNsh(path, mutantNsh, env);
     if (mutant !== canonical) {
@@ -3635,6 +4508,7 @@ export function assertSidecarRf456SweepParity(
     ...RF456_SCAN_REJECT_PATHS.map((path) => `${path}\r\n`),
     ...ALLOWLIST_ROOT_GUARD_SKIP_PATHS.map((path) => `${path}\r\n`),
     ...CANON_MUST_DELETE_PATHS.map((path) => `${path}\r\n`),
+    ...ALLOWLIST_GFPN_SLASH_DELETE_PATHS.map((r) => `${r.raw}\r\n`),
     ...SIDECAR_RF6_MUST_SKIP_LINES,
     SIDECAR_RF6_MUST_DELETE_LINE.raw,
   ];
@@ -3763,8 +4637,8 @@ const SIDECAR_MULTILINE_H7_DELETE_ROWS = [
   ...SIDECAR_MULTILINE_H7_SCAN_ONLY_DELETE_ROWS,
 ] as const;
 
-/** Critic H6 — file lines for StrCpy $4 $1 $3 deny gates. */
-export const DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES: readonly [141, 144, 147] = [141, 144, 147];
+/** Critic H6 — file lines for StrCpy $4 $3 $8 deny gates. */
+export const DENY_PREFIX_STRCPY_ACCEPTANCE_FILE_LINES: readonly [154, 164, 174] = [154, 164, 174];
 
 export type DenyPrefixStrcpyAcceptanceVariant =
   | 'nop'
@@ -3843,14 +4717,14 @@ function denyStrcpyReplacementLine(
 /** Critic H6 acceptance mutant on :114 / :117 / :120 StrCpy $4 $1 $3 (re-baseline deny VM must go red). */
 export function mutantDenyPrefixStrcpyAcceptance(
   nsh: string,
-  fileLine: 141 | 144 | 147,
+  fileLine: 154 | 164 | 174,
   variant: DenyPrefixStrcpyAcceptanceVariant,
 ): string {
   const regionIndex = fileLine - SIDECAR_GUARD_REGION_FILE_LINE_FIRST;
   const { lines } = locateSidecarGuardRegion(nsh);
   const baseLine = lines[regionIndex];
-  if (baseLine === undefined || !/StrCpy \$4 \$1/.test(baseLine)) {
-    throw new Error(`file :${fileLine} is not a deny StrCpy $4 $1 line`);
+  if (baseLine === undefined || !/StrCpy \$4 \$3/.test(baseLine)) {
+    throw new Error(`file :${fileLine} is not a deny StrCpy $4 $3 line`);
   }
   const replacement = denyStrcpyReplacementLine(baseLine, variant);
   if (replacement === null) {
@@ -4162,15 +5036,15 @@ export function assertTraversalBranchBehaviourPins(nsh: string): void {
   }
 }
 
-export const WINDIR_DENY_STRCMP = '        StrCmp $4 "$WINDIR" uninstall_vault_read 0';
-export const PROGRAMFILES_DENY_STRCMP = '        StrCmp $4 "$PROGRAMFILES" uninstall_vault_read 0';
-export const PROGRAMFILES64_DENY_STRCMP = '        StrCmp $4 "$PROGRAMFILES64" uninstall_vault_read 0';
+export const WINDIR_DENY_STRCMP = '        StrCmp $4 $5 uninstall_vault_read 0';
+export const PROGRAMFILES_DENY_STRCMP = '        StrCmp $4 $5 uninstall_vault_read 0';
+export const PROGRAMFILES64_DENY_STRCMP = '        StrCmp $4 $5 uninstall_vault_read 0';
 
 export function assertWindirProgramFilesDenyBehaviourPins(nsh: string): void {
   assertSidecarGuardRegionExact(nsh);
 }
 
-/** Primary sweep mutant for one guard-region file line (:43–:299). */
+/** Primary sweep mutant for one guard-region file line (:43–:376). */
 export function mutantSidecarGuardRegionSweepLine(nsh: string, fileLineOneBased: number): string {
   const { lines } = locateSidecarGuardRegion(nsh);
   const regionIndex = fileLineOneBased - SIDECAR_GUARD_REGION_FILE_LINE_FIRST;
@@ -4314,28 +5188,28 @@ export function mutantMB6_neutralizeForwardSlashTravRejects(nsh: string): string
 }
 
 export function mutantWindirDenyDrop(nsh: string): string {
-  return replaceDenyPrefixBlockLineByExact(nsh, WINDIR_DENY_STRCMP, '        Nop');
+  return replaceDenyPrefixBlockLineByExact(nsh, WINDIR_DENY_STRCMP, '        Nop', 0);
 }
 
 export function mutantProgramFilesDenyDrop(nsh: string): string {
-  return replaceDenyPrefixBlockLineByExact(nsh, PROGRAMFILES_DENY_STRCMP, '        Nop');
+  return replaceDenyPrefixBlockLineByExact(nsh, PROGRAMFILES_DENY_STRCMP, '        Nop', 1);
 }
 
 export function mutantProgramFiles64DenyDrop(nsh: string): string {
-  return replaceDenyPrefixBlockLineByExact(nsh, PROGRAMFILES64_DENY_STRCMP, '        Nop');
+  return replaceDenyPrefixBlockLineByExact(nsh, PROGRAMFILES64_DENY_STRCMP, '        Nop', 2);
 }
 
-/** Shield F11 :92 — StrCpy $4 $1 $3 -> StrCpy $4 $1 1 (WINDIR deny broken). */
+/** Shield F11 — StrCpy $4 $3 $8 -> StrCpy $4 $3 1 (WINDIR deny broken). */
 export function mutantF11_strcpy4Windir(nsh: string): string {
-  return replaceDenyPrefixBlockLineByExact(nsh, '        StrCpy $4 $1 $3', '        StrCpy $4 $1 1', 0);
+  return replaceDenyPrefixBlockLineByExact(nsh, '        StrCpy $4 $3 $8', '        StrCpy $4 $3 1', 0);
 }
 
 export function mutantF11_strcpy4ProgramFiles(nsh: string): string {
-  return replaceDenyPrefixBlockLineByExact(nsh, '        StrCpy $4 $1 $3', '        StrCpy $4 $1 1', 1);
+  return replaceDenyPrefixBlockLineByExact(nsh, '        StrCpy $4 $3 $8', '        StrCpy $4 $3 1', 1);
 }
 
 export function mutantF11_strcpy4ProgramFiles64(nsh: string): string {
-  return replaceDenyPrefixBlockLineByExact(nsh, '        StrCpy $4 $1 $3', '        StrCpy $4 $1 1', 2);
+  return replaceDenyPrefixBlockLineByExact(nsh, '        StrCpy $4 $3 $8', '        StrCpy $4 $3 1', 2);
 }
 
 export function mutantXF1_gotoIncLine79(nsh: string): string {

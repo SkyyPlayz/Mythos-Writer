@@ -104,11 +104,11 @@ describe('build/uninstall-vaults.nsh token contract', () => {
     assertDefaultVaultsFallbackRmdir(body);
   });
 
-  it('(4) allowlist-then-traversal chain before sidecar RMDir "$1" (Critic H4)', () => {
+  it('(4) allowlist-then-traversal chain before sidecar RMDir "$3" (Critic H4)', () => {
     const executable = NSH.replace(/;[^\n]*/g, '');
-    expect(executable.indexOf('uninstall_vault_trav_ok:')).toBeLessThan(executable.indexOf('StrLen $3 "$WINDIR"'));
+    expect(executable.indexOf('uninstall_vault_trav_ok:')).toBeLessThan(executable.indexOf('StrCpy $5 "$WINDIR"'));
     expect(executable.indexOf('mythos_al_deny')).toBeLessThan(executable.indexOf('uninstall_vault_do_delete:'));
-    expect(executable.indexOf('uninstall_vault_do_delete:')).toBeLessThan(executable.indexOf('RMDir /r "$1"'));
+    expect(executable.indexOf('uninstall_vault_do_delete:')).toBeLessThan(executable.indexOf('RMDir /r "$3"'));
     assertTraversalThenAllowlistThenSidecarDelete(NSH);
     assertTraversalRejectedBeforeSidecarDelete(NSH);
     assertSidecarAllowlistBeforeDelete(NSH);
@@ -186,7 +186,7 @@ describe('build/uninstall-vaults.nsh token contract', () => {
     expect(executable).toContain('uninstall_vault_do_delete');
     const denyAt = executable.indexOf('mythos_al_deny');
     const doDeleteAt = executable.indexOf('uninstall_vault_do_delete:');
-    const sidecarRmAt = executable.indexOf('RMDir /r "$1"');
+    const sidecarRmAt = executable.indexOf('RMDir /r "$3"');
     expect(denyAt).toBeGreaterThan(-1);
     expect(doDeleteAt).toBeGreaterThan(denyAt);
     expect(sidecarRmAt).toBeGreaterThan(doDeleteAt);
@@ -229,7 +229,7 @@ describe('build/uninstall-vaults.nsh token contract', () => {
     const travAt = executable.indexOf('mythos_trav_scan');
     const travOkAt = executable.indexOf('uninstall_vault_trav_ok');
     const doDeleteAt = executable.indexOf('uninstall_vault_do_delete:');
-    const sidecarRmAt = executable.indexOf('RMDir /r "$1"');
+    const sidecarRmAt = executable.indexOf('RMDir /r "$3"');
     expect(travAt).toBeGreaterThan(-1);
     expect(travOkAt).toBeGreaterThan(travAt);
     expect(doDeleteAt).toBeGreaterThan(travOkAt);

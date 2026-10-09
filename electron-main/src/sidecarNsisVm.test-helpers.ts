@@ -6,7 +6,7 @@
 
 import { SIDECAR_FCFB_ORACLE_ROWS } from './sidecarFcfbOracleRows.test-helpers.js';
 import { SIDECAR_FCFB_SUPP_ROWS } from './sidecarFcfbSuppRows.test-helpers.js';
-import { gfpnModel, type SidecarNsisVarEnv } from './sidecarTraversalScan.test-helpers.js';
+import { gfpnModel, glpnModel, type SidecarNsisVarEnv } from './sidecarTraversalScan.test-helpers.js';
 
 export const SIDECAR_NSIS_MAX_STRLEN = 1024;
 export const SIDECAR_LINE_STEP_LIMIT_ERROR = 'SIDECAR_LINE_STEP_LIMIT_EXCEEDED';
@@ -111,14 +111,53 @@ function compileSidecarNsisProgram(lines: readonly string[]): Prog {
 
 const progCache = new Map<string, Prog>();
 
-function programForNsh(nsh: string): Prog {
-  const hit = progCache.get(nsh);
+function programForLines(lines: readonly string[]): Prog {
+  const key = lines.join('\n');
+  const hit = progCache.get(key);
   if (hit !== undefined) {
     return hit;
   }
-  const prog = compileSidecarNsisProgram(extractSidecarNsisProgramLines(nsh));
-  progCache.set(nsh, prog);
+  const prog = compileSidecarNsisProgram(lines);
+  progCache.set(key, prog);
   return prog;
+}
+
+/** NSIS `validate_filename`: keep `X:` then strip `*?|<>/":` from the rest (util.c). */
+const NSIS_VALIDATE_FILENAME_STRIP = new Set(['*', '?', '|', '<', '>', '/', '"', ':']);
+
+/**
+ * NSIS 3.04 `myDelete` without `DEL_DIR` (`util.c` `trimslashtoend`): parent is
+ * the last `\`; the leaf is the last `\`/`/` component of the remainder. So
+ * `Documents\a/b.txt` deletes `Documents\b.txt`. RMDir (`DEL_DIR`) does not use this.
+ */
+export function nsisMyDeletePath(path: string): string {
+  const lastBs = path.lastIndexOf('\\');
+  if (lastBs < 0) {
+    const slash = path.lastIndexOf('/');
+    return slash < 0 ? path : path.slice(slash + 1);
+  }
+  const parent = path.slice(0, lastBs);
+  const remainder = path.slice(lastBs + 1);
+  const cut = Math.max(remainder.lastIndexOf('\\'), remainder.lastIndexOf('/'));
+  const leaf = cut < 0 ? remainder : remainder.slice(cut + 1);
+  return parent === '' ? `\\${leaf}` : `${parent}\\${leaf}`;
+}
+
+export function nsisValidateFilename(path: string): string {
+  let start = 0;
+  const c0 = path.charCodeAt(0);
+  const isLetter = (c0 >= 65 && c0 <= 90) || (c0 >= 97 && c0 <= 122);
+  if (path.length >= 2 && isLetter && path[1] === ':') {
+    start = 2;
+  }
+  let rest = '';
+  for (let i = start; i < path.length; i += 1) {
+    const ch = path[i]!;
+    if (!NSIS_VALIDATE_FILENAME_STRIP.has(ch)) {
+      rest += ch;
+    }
+  }
+  return path.slice(0, start) + rest;
 }
 
 /** FileOpen $0 … uninstall_vault_fallback: (oracle `code()`). */
@@ -236,6 +275,10 @@ export type SidecarNsisRunOptions = {
    * other attribute overrides) returns INVALID_FILE_ATTRIBUTES.
    */
   fs?: SidecarFsFixture;
+  /** GetLongPathNameW returns 0 (fail closed) for these exact input strings. */
+  glpnFailPaths?: readonly string[];
+  /** GetLongPathNameW returns the buffer size (too-small) for these exact input strings. */
+  glpnTruncPaths?: readonly string[];
 };
 
 export type SidecarDeleteAct = Readonly<{ op: 'RMDir' | 'Delete'; path: string }>;
@@ -353,18 +396,28 @@ export function runSidecarNsisProgram(
   sidecarLines: readonly string[],
   options: SidecarNsisRunOptions = {},
 ): SidecarNsisRunResult {
+  return runNsisProgramLines(extractSidecarNsisProgramLines(nsh), sidecarLines, options);
+}
+
+export function runNsisProgramLines(
+  lines: readonly string[],
+  sidecarLines: readonly string[],
+  options: SidecarNsisRunOptions = {},
+): SidecarNsisRunResult {
   const env = options.env;
   if (env === undefined) {
     throw new Error('runSidecarNsisProgram requires env');
   }
   const stream = sidecarLines.join('');
-  const P = programForNsh(nsh);
+  const P = programForLines(lines);
   const faultInfo = parseFault(options.fault ?? null);
   const reparse = new Set(options.reparsePaths ?? []);
   const invalidAttr = new Set(options.invalidAttrPaths ?? []);
   const attrError = new Set(options.attrErrorPaths ?? []);
   const fileAttrs = new Map(Object.entries(options.fileAttributes ?? {}));
   const fs = options.fs;
+  const glpnFail = new Set(options.glpnFailPaths ?? []);
+  const glpnTrunc = new Set(options.glpnTruncPaths ?? []);
   const R: Record<string, string> = {};
   let err = false;
   const st: string[] = [];
@@ -566,7 +619,8 @@ export function runSidecarNsisProgram(
       continue;
     }
     if (op === 'RMDir' || op === 'Delete') {
-      const path = val(args[args.length - 1]!);
+      const raw = val(args[args.length - 1]!);
+      const path = op === 'RMDir' ? nsisValidateFilename(raw) : nsisMyDeletePath(raw);
       if (path === sidecar || path.endsWith(SIDECAR_SIDECAR_DELETE_PATH_SUFFIX)) {
         sidecarDeleted = true;
       } else {
@@ -749,6 +803,41 @@ export function runSidecarNsisProgram(
         continue;
       }
       if (
+        fn === 'GetLongPathNameW' &&
+        dll.toLowerCase() === 'kernel32' &&
+        argList.length === 3 &&
+        rt.length === 2 &&
+        rt[0] === 'i'
+      ) {
+        const ty = argList.map((x) => x.split(/\s+/, 2));
+        if (ty.some((x) => x.length !== 2) || ty[0]![0] !== 'w' || ty[1]![0] !== 'w' || ty[2]![0] !== 'i') {
+          sysErr('glpn sig');
+        }
+        const inp = argval(ty[0]![1]!);
+        const bufn = nsisMyAtoi(argval(ty[2]![1]!));
+        const outr = ty[1]![1]!.startsWith('.') ? regname(ty[1]![1]!) : null;
+        const c = inp === '' ? null : glpnModel(inp);
+        let rv: string;
+        if (c === null || glpnFail.has(inp)) {
+          rv = '0';
+        } else if (glpnTrunc.has(inp)) {
+          rv = String(bufn);
+        } else if (c.length + 1 > bufn) {
+          rv = String(c.length + 1);
+        } else {
+          rv = String(c.length);
+          if (outr !== null) {
+            R[outr] = c;
+          }
+        }
+        const rr = regname(rt[1]!);
+        if (rr !== null && rt[1]!.startsWith('.')) {
+          R[rr] = rv;
+        }
+        pc += 1;
+        continue;
+      }
+      if (
         fn === 'GetFileAttributesW' &&
         dll.toLowerCase() === 'kernel32' &&
         argList.length === 1 &&
@@ -871,4 +960,114 @@ export function assertSidecarFcfbOracleRows(nsh: string): void {
       );
     }
   }
+}
+
+export type MythosRmdirHelperSite = Readonly<{
+  root: string;
+  path: string;
+  uid: string;
+  mode: 'keep' | 'remove-all';
+  name: string;
+}>;
+
+export const MYTHOS_RMDIR_HELPER_KEEP_SITES: readonly MythosRmdirHelperSite[] = [
+  {
+    root: '$APPDATA',
+    path: '$APPDATA\\Mythos Writer\\vault-index-cache',
+    uid: 'idx',
+    mode: 'keep',
+    name: 'vault-index-cache',
+  },
+  {
+    root: '$APPDATA',
+    path: '$APPDATA\\Mythos Writer\\note-thumb-cache',
+    uid: 'thumb',
+    mode: 'keep',
+    name: 'note-thumb-cache',
+  },
+];
+
+export const MYTHOS_RMDIR_HELPER_REMOVE_ALL_SITES: readonly MythosRmdirHelperSite[] = [
+  {
+    root: '$APPDATA',
+    path: '$APPDATA\\Mythos Writer\\templates',
+    uid: 'tmpl',
+    mode: 'remove-all',
+    name: 'templates',
+  },
+  {
+    root: '$APPDATA',
+    path: '$APPDATA\\Mythos Writer\\agent-personas',
+    uid: 'pers',
+    mode: 'remove-all',
+    name: 'agent-personas',
+  },
+  {
+    root: '$APPDATA',
+    path: '$APPDATA\\Mythos Writer\\vaults',
+    uid: 'vaults',
+    mode: 'remove-all',
+    name: 'vaults',
+  },
+  {
+    root: '$APPDATA',
+    path: '$APPDATA\\Mythos Writer',
+    uid: 'appdata',
+    mode: 'remove-all',
+    name: 'Mythos Writer',
+  },
+];
+
+export const MYTHOS_RMDIR_HELPER_SITES: readonly MythosRmdirHelperSite[] = [
+  ...MYTHOS_RMDIR_HELPER_KEEP_SITES,
+  ...MYTHOS_RMDIR_HELPER_REMOVE_ALL_SITES,
+];
+
+export function extractMythosRmdirUnlessReparseMacroLines(nsh: string): string[] {
+  const startNeedle = '!macro mythos_rmdir_unless_reparse';
+  const start = nsh.indexOf(startNeedle);
+  if (start < 0) {
+    throw new Error('mythos_rmdir_unless_reparse missing');
+  }
+  const end = nsh.indexOf('!macroend', start);
+  if (end < 0) {
+    throw new Error('mythos_rmdir_unless_reparse !macroend missing');
+  }
+  return nsh.slice(start, end).split(/\r?\n/).slice(1);
+}
+
+export function expandMythosRmdirUnlessReparse(nsh: string, site: MythosRmdirHelperSite): string[] {
+  return extractMythosRmdirUnlessReparseMacroLines(nsh).map((line) =>
+    line.split('${_root}').join(site.root).split('${_path}').join(site.path).split('${_uid}').join(site.uid),
+  );
+}
+
+export function runMythosRmdirHelper(
+  nsh: string,
+  site: MythosRmdirHelperSite,
+  options: SidecarNsisRunOptions = {},
+): SidecarNsisRunResult {
+  return runNsisProgramLines(expandMythosRmdirUnlessReparse(nsh, site), [], options);
+}
+
+export function runMythosRmdirHelpers(
+  nsh: string,
+  mode: 'keep' | 'remove-all',
+  options: SidecarNsisRunOptions = {},
+): SidecarNsisRunResult {
+  let sites: readonly MythosRmdirHelperSite[];
+  switch (mode) {
+    case 'keep':
+      sites = MYTHOS_RMDIR_HELPER_KEEP_SITES;
+      break;
+    case 'remove-all':
+      sites = MYTHOS_RMDIR_HELPER_REMOVE_ALL_SITES;
+      break;
+    default: {
+      const _never: never = mode;
+      throw new Error(`unknown helper mode ${_never as string}`);
+    }
+  }
+  const lines = sites.flatMap((site) => expandMythosRmdirUnlessReparse(nsh, site));
+  return runNsisProgramLines(lines, [], options);
 }

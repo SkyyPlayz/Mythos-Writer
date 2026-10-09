@@ -35,18 +35,18 @@ export const RF7_PIN_CHECKED_MUTANTS: readonly string[] = [
   'drop-restore (remove installMode If)',
   'always-all (SetShellVarContext all without installMode)',
   'drop-walk (Goto do_delete, keep context)',
-  'leaf-only (Nop hit-backslash :276)',
-  'bottom-up (Goto leaf at walk start :272)',
+  'leaf-only (Nop hit-backslash :345)',
+  'bottom-up (Goto leaf at walk start :341)',
   'wider mask (0x400 → 0x407)',
-  'skip-on-any-nonzero (Nop leaf 0x400 mask :290)',
+  'skip-on-any-nonzero (Nop leaf 0x400 mask :359)',
   'drop wildcard charset (Alloc 80 / &i2 42)',
-  'Nop nested AppData equal :228',
-  'Nop nested Documents equal :239',
-  'Nop nested Desktop equal :250',
-  ':167 else +6 (Shield survivor)',
-  ':167 else mythos_al_not_desktop (Shield survivor)',
-  ':167 else mythos_al_deny (Shield survivor)',
-  ':299 Goto mythos_trim_chop (a3719f95 :220 Shield survivor)',
+  'Nop nested AppData equal :288',
+  'Nop nested Documents equal :302',
+  'Nop nested Desktop equal :316',
+  ':207 else +6 (Shield survivor)',
+  ':207 else mythos_al_not_desktop (Shield survivor)',
+  ':207 else mythos_al_deny (Shield survivor)',
+  ':376 Goto mythos_trim_chop (a3719f95 :220 Shield survivor)',
 ];
 
 function withFileLine(line: number, text: string): string {
@@ -61,6 +61,15 @@ describe('RF-7b reparse walk — modelled attribute table', () => {
     expect(() => assertSidecarReparseTables(nsh, DEFAULT_SIDECAR_NSIS_VAR_ENV)).not.toThrow();
   });
 
+  it('walk (a)(b) rows already pin readonly/hidden/system delete and INVALID/missing skip', () => {
+    const names = SIDECAR_RF7_REPARSE_ROWS.map((r) => r.name);
+    expect(names).toContain('readonly vault deletes');
+    expect(names).toContain('hidden vault deletes');
+    expect(names).toContain('system vault deletes');
+    expect(names).toContain('INVALID_FILE_ATTRIBUTES skips via 0x400 bit');
+    expect(names).toContain('missing path (INVALID between scan and delete) skips');
+  });
+
   for (const row of SIDECAR_RF7_REPARSE_ROWS) {
     it(`${row.name}`, () => {
       const deleted = sidecarRf7Deleted(nsh, row, DEFAULT_SIDECAR_NSIS_VAR_ENV);
@@ -72,9 +81,9 @@ describe('RF-7b reparse walk — modelled attribute table', () => {
     });
   }
 
-  it('leaf-only mutant (Nop :276) deletes the parent-junction + plain vault row', () => {
-    expect(fileLines[275]!.trim()).toBe('StrCmp $6 "\\" mythos_reparse_hit');
-    const mutant = withFileLine(276, 'Nop');
+  it('leaf-only mutant (Nop :345) deletes the parent-junction + plain vault row', () => {
+    expect(fileLines[344]!.trim()).toBe('StrCmp $6 "\\" mythos_reparse_hit');
+    const mutant = withFileLine(345, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.path === RF7_PARENT_JUNCTION_VAULT)!;
     expect(sidecarRf7Deleted(nsh, row, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
@@ -82,22 +91,22 @@ describe('RF-7b reparse walk — modelled attribute table', () => {
   });
 
   it('bottom-up / stop-early mutant (Goto leaf at walk start) is red', () => {
-    const mutant = withFileLine(272, 'Goto mythos_reparse_leaf');
+    const mutant = withFileLine(341, 'Goto mythos_reparse_leaf');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.path === RF7_PARENT_JUNCTION_VAULT)!;
     expect(sidecarRf7Deleted(mutant, row, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([RF7_PARENT_JUNCTION_VAULT]);
   });
 
   it('skip-on-any-nonzero (Nop the leaf 0x400 mask) is red', () => {
-    expect(fileLines[289]!.trim()).toBe('IntOp $4 $4 & 0x400');
-    const mutant = withFileLine(290, 'Nop');
+    expect(fileLines[358]!.trim()).toBe('IntOp $4 $4 & 0x400');
+    const mutant = withFileLine(359, 'Nop');
     expect(sidecarGuardModeTwoFailure(mutant, nsh)).toBeDefined();
     expect(sidecarRf7Deleted(mutant, SIDECAR_RF7_REPARSE_ROWS[0]!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
   });
 
   it('ancestor-mask Nop skips a nested plain vault that must delete', () => {
-    expect(fileLines[282]!.trim()).toBe('IntOp $4 $4 & 0x400');
-    const mutant = withFileLine(283, 'Nop');
+    expect(fileLines[351]!.trim()).toBe('IntOp $4 $4 & 0x400');
+    const mutant = withFileLine(352, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.path === RF7_NESTED_PLAIN_VAULT)!;
     expect(sidecarRf7Deleted(nsh, row, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([RF7_NESTED_PLAIN_VAULT]);
@@ -139,21 +148,21 @@ describe('HARD-2 nested roots', () => {
     expect(() => assertSidecarHard2NestedTables(nsh)).not.toThrow();
   });
 
-  it('Nop AppData equal (:228) RMDirs the nested AppData root (successor of :153)', () => {
-    expect(fileLines[227]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
-    const mutant = withFileLine(228, 'Nop');
+  it('Nop AppData equal (:288) RMDirs the nested AppData root (successor of :153)', () => {
+    expect(fileLines[287]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const mutant = withFileLine(288, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
-  it('Nop Documents equal (:239) RMDirs a nested Documents root (successor of :165)', () => {
-    expect(fileLines[238]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
-    const mutant = withFileLine(239, 'Nop');
+  it('Nop Documents equal (:302) RMDirs a nested Documents root (successor of :165)', () => {
+    expect(fileLines[301]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const mutant = withFileLine(302, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
-  it('Nop Desktop equal (:250) RMDirs a nested Desktop root (successor of :177)', () => {
-    expect(fileLines[249]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
-    const mutant = withFileLine(250, 'Nop');
+  it('Nop Desktop equal (:316) RMDirs a nested Desktop root (successor of :177)', () => {
+    expect(fileLines[315]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const mutant = withFileLine(316, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 });

@@ -137,59 +137,110 @@
         StrCmp $2 "." uninstall_vault_read
         StrCmp $2 " " uninstall_vault_read
         StrCmp $2 "$\t" uninstall_vault_read
-        StrLen $3 "$WINDIR"
-        StrCpy $4 $1 $3
-        StrCmp $4 "$WINDIR" uninstall_vault_read 0
-        StrLen $3 "$PROGRAMFILES"
-        StrCpy $4 $1 $3
-        StrCmp $4 "$PROGRAMFILES" uninstall_vault_read 0
-        StrLen $3 "$PROGRAMFILES64"
-        StrCpy $4 $1 $3
-        StrCmp $4 "$PROGRAMFILES64" uninstall_vault_read 0
+        System::Call "kernel32::GetFullPathNameW(w r1, i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        System::Call "kernel32::GetLongPathNameW(w r3, w .r3, i ${NSIS_MAX_STRLEN}) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrCpy $5 "$WINDIR"
+        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrLen $8 $5
+        StrCpy $4 $3 $8
+        StrCmp $4 $5 uninstall_vault_read 0
+        StrCpy $5 "$PROGRAMFILES"
+        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrLen $8 $5
+        StrCpy $4 $3 $8
+        StrCmp $4 $5 uninstall_vault_read 0
+        StrCpy $5 "$PROGRAMFILES64"
+        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrLen $8 $5
+        StrCpy $4 $3 $8
+        StrCmp $4 $5 uninstall_vault_read 0
         StrCpy $5 "$APPDATA\Mythos Writer"
-        StrLen $3 $5
-        StrCpy $4 $1 $3
+        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrLen $8 $5
+        StrCpy $4 $3 $8
         StrCmp $4 $5 0 mythos_al_not_appdata
-          StrCmp $1 $5 uninstall_vault_read
-          StrCpy $4 $1 1 $3
+          StrCmp $3 $5 uninstall_vault_read
+          StrCpy $4 $3 1 $8
           StrCmp $4 "\" 0 mythos_al_not_appdata
-          StrCpy $6 $1 "" $3
+          StrCpy $6 $3 "" $8
           StrCpy $6 $6 "" 1
           StrCmp $6 "" uninstall_vault_read
           Goto mythos_canon_gate
         mythos_al_not_appdata:
         StrCpy $5 "$DOCUMENTS"
-        StrLen $3 $5
-        StrCpy $4 $1 $3
+        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrLen $8 $5
+        StrCpy $4 $3 $8
         StrCmp $4 $5 0 mythos_al_not_documents
-          StrCmp $1 $5 uninstall_vault_read
-          StrCpy $4 $1 1 $3
+          StrCmp $3 $5 uninstall_vault_read
+          StrCpy $4 $3 1 $8
           StrCmp $4 "\" 0 mythos_al_not_documents
-          StrCpy $6 $1 "" $3
+          StrCpy $6 $3 "" $8
           StrCpy $6 $6 "" 1
           StrCmp $6 "" uninstall_vault_read
           Goto mythos_canon_gate
         mythos_al_not_documents:
         StrCpy $5 "$DESKTOP"
-        StrLen $3 $5
-        StrCpy $4 $1 $3
+        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrLen $8 $5
+        StrCpy $4 $3 $8
         StrCmp $4 $5 0 mythos_al_not_desktop
-          StrCmp $1 $5 uninstall_vault_read
-          StrCpy $4 $1 1 $3
+          StrCmp $3 $5 uninstall_vault_read
+          StrCpy $4 $3 1 $8
           StrCmp $4 "\" 0 mythos_al_not_desktop
-          StrCpy $6 $1 "" $3
+          StrCpy $6 $3 "" $8
           StrCpy $6 $6 "" 1
           StrCmp $6 "" uninstall_vault_read
           Goto mythos_canon_gate
         mythos_al_not_desktop:
         StrCpy $5 "$PROFILE\Downloads"
-        StrLen $3 $5
-        StrCpy $4 $1 $3
+        System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r5, p 0) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        System::Call "kernel32::GetLongPathNameW(w r5, w .r5, i ${NSIS_MAX_STRLEN}) i .r4"
+        IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+        IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+        StrLen $8 $5
+        StrCpy $4 $3 $8
         StrCmp $4 $5 0 mythos_al_deny
-          StrCmp $1 $5 uninstall_vault_read
-          StrCpy $4 $1 1 $3
+          StrCmp $3 $5 uninstall_vault_read
+          StrCpy $4 $3 1 $8
           StrCmp $4 "\" 0 mythos_al_deny
-          StrCpy $6 $1 "" $3
+          StrCpy $6 $3 "" $8
           StrCpy $6 $6 "" 1
           StrCmp $6 "" uninstall_vault_read
           Goto mythos_canon_gate
@@ -199,7 +250,13 @@
           System::Call "kernel32::GetFullPathNameW(w r1, i ${NSIS_MAX_STRLEN}, w .r3, p 0) i .r4"
           IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
           IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+          System::Call "kernel32::GetLongPathNameW(w r3, w .r3, i ${NSIS_MAX_STRLEN}) i .r4"
+          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
           System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"
+          IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+          IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+          System::Call "kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4"
           IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
           IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
           StrLen $8 $9
@@ -225,6 +282,9 @@
             System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"
             IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+            System::Call "kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4"
+            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
             StrCmp $3 $9 uninstall_vault_read
             StrLen $8 $3
             StrCpy $6 $9 $8
@@ -234,6 +294,9 @@
           mythos_nr_documents:
             StrCpy $5 "$DOCUMENTS"
             System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"
+            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+            System::Call "kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4"
             IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
             StrCmp $3 $9 uninstall_vault_read
@@ -247,6 +310,9 @@
             System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"
             IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+            System::Call "kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4"
+            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
             StrCmp $3 $9 uninstall_vault_read
             StrLen $8 $3
             StrCpy $6 $9 $8
@@ -256,6 +322,9 @@
           mythos_nr_downloads:
             StrCpy $5 "$PROFILE\Downloads"
             System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"
+            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
+            System::Call "kernel32::GetLongPathNameW(w r9, w .r9, i ${NSIS_MAX_STRLEN}) i .r4"
             IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
             StrCmp $3 $9 uninstall_vault_read
@@ -291,11 +360,19 @@
           IntCmp $4 0 0 uninstall_vault_read uninstall_vault_read
           Goto uninstall_vault_do_delete
         uninstall_vault_do_delete:
-        IfFileExists "$1\*.*" 0 uninstall_vault_file
-          RMDir /r "$1"
+          StrCpy $7 0
+        mythos_canon_slash:
+          StrCpy $6 $3 1 $7
+          StrCmp $6 "" mythos_canon_slash_ok
+          StrCmp $6 "/" uninstall_vault_read
+          IntOp $7 $7 + 1
+          Goto mythos_canon_slash
+        mythos_canon_slash_ok:
+        IfFileExists "$3\*.*" 0 uninstall_vault_file
+          RMDir /r "$3"
           Goto uninstall_vault_read
         uninstall_vault_file:
-          Delete "$1"
+          Delete "$3"
           Goto uninstall_vault_read
       uninstall_vault_close:
         FileClose $0
@@ -358,7 +435,7 @@
     StrCmp $4 "error" mythos_rpr_done_${_uid}
     IntOp $4 $4 & 0x400
     IntCmp $4 0 0 mythos_rpr_done_${_uid} mythos_rpr_done_${_uid}
-    RMDir /r "${_path}"
+    RMDir /r "$3"
   mythos_rpr_done_${_uid}:
   Pop $9
   Pop $8
