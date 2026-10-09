@@ -4619,6 +4619,14 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     options: { reparsePaths: ['C:\\Users\\me\\Documents\\evil.'] },
   },
   {
+    name: 'H3b EVILT~1 junction decoy walk must skip',
+    path: 'C:\\Users\\me\\Documents\\EVILT~1\\x',
+    env: HARD12_ENV_E1,
+    expect: 'skip',
+    mustNotDelete: ['C:\\Users\\me\\Documents\\evil', 'C:\\Users\\me\\Documents\\evil\t\\x'],
+    options: { reparsePaths: ['C:\\Users\\me\\Documents\\evil\t'] },
+  },
+  {
     name: 'H3 root DESKTO~2 (Desktop ) fail-closed skips a Documents vault',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\DESKTO~2' },
@@ -4691,6 +4699,13 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\evil \\Desktop' },
     expect: 'skip',
     options: { glpnFailPaths: ['C:\\Users\\me\\evil \\Desktop'] },
+  },
+  {
+    name: 'H4 fallback Desktop GFPN intermediate trailing-TAB still H3-skips a Documents vault',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\evil\t\\Desktop' },
+    expect: 'skip',
+    options: { glpnFailPaths: ['C:\\Users\\me\\evil\t\\Desktop'] },
   },
 ];
 

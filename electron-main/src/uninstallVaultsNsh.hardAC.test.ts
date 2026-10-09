@@ -280,13 +280,14 @@ describe('HARD-2 nested Downloads (112 survivors)', () => {
         return false;
       }
       // Jump-retargets on already-fail-closed compares, IntCmp 0→+N extras, and
-      // $9→$5 leftover copies stay equivalent — they are not the 112.
+      // $9→$5 / $9→$6 leftover copies stay equivalent — they are not the 112.
       if (mutant.key.includes(':tgt')) {
         return false;
       }
       if (
         mutant.key.includes(':extra: 0 ->') ||
         mutant.key.includes(':extra:$9->$5') ||
+        mutant.key.includes(':extra:$9->$6') ||
         mutant.key.includes(':extra:mythos_nr_ok->')
       ) {
         return false;

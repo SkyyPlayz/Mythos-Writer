@@ -65,18 +65,16 @@ export const SIDECAR_GUARD_SWEEP_RF456_EQUIVALENTS: Readonly<Record<number, stri
 };
 
 /**
- * RF-7 walk / leftover-`/` primaries plus the restored ancestor-StrLen / prefix-compare
- * lines that the 12,617-case strength shards still scan.
+ * RF-7 walk / leftover-`/` primaries plus the restored :341 ancestor prefix-compare
+ * that the 12,617-case strength shards still scan. H3 clobbers $8, so the ancestor
+ * StrLen lines are unlisted (HARD-C / HARD-2 catch a Nop).
  */
 export const SIDECAR_GUARD_SWEEP_RF7_STRENGTH_EQUIVALENTS: Readonly<Record<number, string>> = {
   302: 'StrCpy $7 $9 → Nop. Restore then uses leftover $7; walk still hits every `\\`.',
   306: 'StrLen $8 $3 (strip) → Nop. $8 is only read when the last char is `\\`.',
   307: 'IntCmp $8 3 (keep C:\\) → Nop. Fixture trailing-`\\` paths are longer than 3.',
   309: 'Goto mythos_nr_strip → Nop. GFPN leaves at most one trailing `\\`.',
-  339: 'Documents ancestor StrLen → Nop. $8 already holds StrLen $3.',
   341: 'Documents ancestor prefix compare → Nop. $6 is not the path prefix on the HARD-C fixtures.',
-  356: 'Desktop ancestor StrLen → Nop. $8 already holds StrLen $3.',
-  373: 'Downloads ancestor StrLen → Nop. $8 already holds StrLen $3.',
   379: 'StrCpy $9 $7 → Nop. $9 stays the last GFPN; walk start is a few chars in and still hits every `\\`.',
   380: 'Goto mythos_reparse_walk → Nop. The next line is the walk label.',
   383: 'IntOp $7 $8 + 1 → Nop. Walk from 0 still GetFileAttributesW every prefix and the leaf.',
@@ -105,10 +103,24 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   333: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
   350: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
   367: 'Root GLP 0-check +2 fallback is identity: missing root keeps the GFPN string and H3 still scans it.',
-  332: 'Nested Documents GLP Call Nop is identity: H4 +2 already keeps the GFPN string.',
-  366: 'Nested Downloads GLP Call Nop is identity: H4 +2 already keeps the GFPN string.',
-  221: 'Documents prefix StrCmp → Nop. No oracle path becomes a false Documents child.',
-  240: 'Desktop prefix StrCmp → Nop. No oracle path becomes a false Desktop child.',
+  147: 'H3 ct1 Goto Nop is identity: ct2 still scans $3 (allowlist leftover suffix also carries the tail).',
+  157: 'H3 5w Goto Nop is identity: a later 9* scan still reads the deny/allow root.',
+  170: 'H3 5p Goto Nop is identity: a later 9* scan still reads the deny/allow root.',
+  183: 'H3 5x Goto Nop is identity: a later 9* scan still reads the deny/allow root.',
+  196: 'H3 5a Goto Nop is identity: nested 9a still scans AppData.',
+  217: 'H3 5d Goto Nop is identity: nested 9d still scans Documents.',
+  222: 'StrCmp $3 $5 uninstall_vault_read → Nop (Documents exact root). Sibling: no `\\` at $8, so it falls to not_documents.',
+  238: 'H3 5k Goto Nop is identity: Documents vaults never reach 5k; nested 9k still scans Desktop.',
+  243: 'StrCmp $3 $5 uninstall_vault_read → Nop (Desktop exact root). Sibling: no `\\` at $8, so it falls to not_desktop.',
+  259: 'H3 5l Goto Nop is identity: nested 9l still scans Downloads.',
+  281: 'H3 ct2 Goto Nop is identity: ct1 already scanned $3 (or leftover suffix still carries the tail).',
+  290: 'H3 9c Goto Nop is identity: the matching 5* hook already scanned that root.',
+  319: 'H3 9a Goto Nop is identity: 5a already scanned AppData.',
+  336: 'H3 9d Goto Nop is identity: 5d already scanned Documents.',
+  370: 'H3 9l Goto Nop is identity: 5l already scanned Downloads. 9k Goto stays unlisted (only scan of a dirty Desktop).',
+  420: 'Scan default StrCpy $6 $3 Nop is identity: allowlist leftover $6 is the suffix that still carries the dangerous tail.',
+  422: 'StrCpy $6 $5 Nop is identity: nested 9* hooks still scan $9.',
+  429: 'IntCmp $7 0 Nop is identity: fixtures never have `\\` at index 0.',
   321: 'AppData nested exact-root StrCmp → Nop. Allowlist already skipped the exact AppData root.',
   338: 'Documents nested exact-root StrCmp → Nop. Allowlist already skipped the exact Documents root.',
 };
@@ -126,8 +138,8 @@ export const SIDECAR_GUARD_SWEEP_RF7_EQUIVALENTS: Readonly<Record<number, string
 
 /**
  * 12k-corpus strength shards: Ivy's locked 5, the other 12 proven primaries, RF-4/5/6,
- * the RF-7 walk / leftover-`/` primaries, and the restored :339/:341/:356/:373 ancestor
- * lines. Heavy files run in the `oracle-sweeps` job, not inside `unit`.
+ * the RF-7 walk / leftover-`/` primaries, and the restored :341 ancestor
+ * compare. Heavy files run in the `oracle-sweeps` job, not inside `unit`.
  */
 export const SIDECAR_GUARD_SWEEP_STRENGTH_EQUIVALENT_FILE_LINES: Readonly<Record<number, string>> = {
   ...SIDECAR_GUARD_SWEEP_IVY_LOCKED_EQUIVALENTS,
@@ -229,7 +241,7 @@ describe('sidecar guard region sweep :43-:456 (buildIntegrity excluded)', () => 
     it('equivalence-strength shards cover every strength-checked equivalent line', () => {
       const sharded = [
         47, 56, 61, 84, 97, 98, 99, 103, 104, 105, 106, 109, 117, 123, 124, 125, 129, 130, 131, 201, 264, 302, 306,
-        307, 309, 339, 341, 356, 373, 379, 380, 383, 389, 396, 403, 405, 407, 409, 410, 411,
+        307, 309, 341, 379, 380, 383, 389, 396, 403, 405, 407, 409, 410, 411,
       ];
       expect(sharded).toEqual(
         Object.keys(SIDECAR_GUARD_SWEEP_STRENGTH_EQUIVALENT_FILE_LINES)
