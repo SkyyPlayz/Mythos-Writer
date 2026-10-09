@@ -330,6 +330,24 @@ export type SidecarNsisRunOptions = {
    * ERROR_ACCESS_DENIED is 5 — must not fall back to GFPN.
    */
   glpnErrno?: Readonly<Record<string, number>>;
+  /**
+   * Win32 last-error for a failed GetLongPathNameW on this 1-based file line.
+   * The path may still exist — use this when only one Call should see the fault
+   * (path-wide errno also fails the fail-closed canon-root GLP).
+   */
+  glpnErrnoFileLines?: Readonly<Record<number, number>>;
+  /**
+   * Paths (and their descendants) that do not exist. GetLongPathNameW fails
+   * the way real Windows does (ERROR_FILE_NOT_FOUND / ERROR_PATH_NOT_FOUND).
+   */
+  missingPaths?: readonly string[];
+  /** Extra paths that exist for GetLongPathNameW, in addition to the default tree. */
+  glpnExistingPaths?: readonly string[];
+  /**
+   * Registers present before the program runs. Helper leftover `$7` is the last
+   * sidecar-line length — Nop of the helper `$7` init then starts the walk too far.
+   */
+  initialRegs?: Readonly<Partial<Record<string, string>>>;
 };
 
 /** ERROR_FILE_NOT_FOUND — the only GLP miss that may keep the GFPN root. */
@@ -338,6 +356,103 @@ export const WIN32_ERROR_FILE_NOT_FOUND = 2;
 export const WIN32_ERROR_PATH_NOT_FOUND = 3;
 /** ERROR_ACCESS_DENIED — fail-closed for that root; never a GFPN fallback. */
 export const WIN32_ERROR_ACCESS_DENIED = 5;
+
+function foldWinPath(p: string): string {
+  return p.replace(/\//g, '\\').replace(/\\+$/, '');
+}
+
+function pathHasDirtyComponent(p: string): boolean {
+  return foldWinPath(p)
+    .split('\\')
+    .some((seg, i) => i > 0 && /[ \t.]$/.test(seg));
+}
+
+function addPathAndAncestors(into: Set<string>, raw: string): void {
+  let cur = foldWinPath(raw);
+  while (cur) {
+    into.add(cur);
+    const slash = cur.lastIndexOf('\\');
+    if (slash < 2) {
+      break;
+    }
+    cur = cur.slice(0, slash);
+  }
+}
+
+/**
+ * Win32 GetLongPathNameW requires the path to exist. Empty, injected faults,
+ * `missingPaths` (and descendants), `NoSuch*`, and dirty space/dot/TAB
+ * components fail unless the path is an env-root expansion or an option-map key.
+ */
+export function glpnWin32Exists(inp: string, env: SidecarNsisVarEnv, options: SidecarNsisRunOptions): boolean {
+  if (inp === '') {
+    return false;
+  }
+  if ((options.glpnFailPaths ?? []).includes(inp) || options.glpnErrno?.[inp] !== undefined) {
+    return false;
+  }
+  const missing = options.missingPaths ?? [];
+  const folded = foldWinPath(inp);
+  for (const m of missing) {
+    const miss = foldWinPath(m);
+    if (miss !== '' && (folded === miss || folded.startsWith(`${miss}\\`))) {
+      return false;
+    }
+  }
+  if (/NoSuch/i.test(inp) || /NoSuch/i.test(glpnModel(inp))) {
+    return false;
+  }
+
+  const seeded = new Set<string>();
+  const seed = (raw: string): void => {
+    addPathAndAncestors(seeded, raw);
+  };
+  for (const v of [
+    env.WINDIR,
+    env.PROGRAMFILES,
+    env.PROGRAMFILES64,
+    env.APPDATA,
+    env.DOCUMENTS,
+    env.DESKTOP,
+    env.PROFILE,
+    `${env.PROFILE}\\Downloads`,
+    `${env.APPDATA}\\Mythos Writer`,
+    ...(options.reparsePaths ?? []),
+    ...(options.invalidAttrPaths ?? []),
+    ...(options.attrErrorPaths ?? []),
+    ...Object.keys(options.fileAttributes ?? {}),
+    ...Object.keys(options.fs ?? {}),
+    ...(options.glpnExistingPaths ?? []),
+  ]) {
+    if (v) {
+      seed(v);
+      seed(gfpnModel(v));
+    }
+  }
+
+  if (seeded.has(folded) || seeded.has(foldWinPath(glpnModel(inp)))) {
+    return true;
+  }
+  // Dirty space/dot/TAB on the INPUT do not exist unless an env/option seed named
+  // them. A clean short-name input (EVIL~1) still exists — Win32 GLP returns the
+  // dirty long form, and H3 rejects that. Failing on the expansion made line GLP
+  // fail-close before H3 and hid the EVIL~1 revert.
+  if (pathHasDirtyComponent(inp)) {
+    return false;
+  }
+  return true;
+}
+
+function glpnMissingErrno(inp: string, options: SidecarNsisRunOptions): number {
+  const folded = foldWinPath(inp);
+  for (const m of options.missingPaths ?? []) {
+    const miss = foldWinPath(m);
+    if (miss !== '' && folded.startsWith(`${miss}\\`)) {
+      return WIN32_ERROR_PATH_NOT_FOUND;
+    }
+  }
+  return WIN32_ERROR_FILE_NOT_FOUND;
+}
 
 export type SidecarDeleteAct = Readonly<{ op: 'RMDir' | 'Delete'; path: string }>;
 
@@ -491,6 +606,7 @@ export function runNsisProgramLines(
   const glpnFailFileLines = new Set(options.glpnFailFileLines ?? []);
   const glpnTruncFileLines = new Set(options.glpnTruncFileLines ?? []);
   const glpnErrno = options.glpnErrno ?? {};
+  const glpnErrnoFileLines = options.glpnErrnoFileLines ?? {};
   const gfpnOcc = new Map<string, number>();
   const glpnOcc = new Map<string, number>();
   const bumpOcc = (map: Map<string, number>, key: string): number => {
@@ -498,7 +614,7 @@ export function runNsisProgramLines(
     map.set(key, next);
     return next;
   };
-  const R: Record<string, string> = {};
+  const R: Record<string, string> = { ...(options.initialRegs ?? {}) };
   let err = false;
   const st: string[] = [];
   const mem = new Map<number, Uint8Array>();
@@ -901,7 +1017,8 @@ export function runNsisProgramLines(
         const bufn = nsisMyAtoi(argval(ty[2]![1]!));
         const outr = ty[1]![1]!.startsWith('.') ? regname(ty[1]![1]!) : null;
         const expand = fn === 'GetLongPathNameW';
-        const c = inp === '' ? null : expand ? glpnModel(inp) : inp;
+        const exists = !expand || glpnWin32Exists(inp, env, options);
+        const c = inp === '' || !exists ? null : expand ? glpnModel(inp) : inp;
         const occ = bumpOcc(glpnOcc, inp);
         const wantE = rt.includes('?e');
         let rv: string;
@@ -910,11 +1027,15 @@ export function runNsisProgramLines(
           c === null ||
           glpnFail.has(inp) ||
           glpnErrno[inp] !== undefined ||
+          glpnErrnoFileLines[fileLine] !== undefined ||
           glpnFailNth[inp] === occ ||
           glpnFailFileLines.has(fileLine)
         ) {
           rv = '0';
-          lastError = glpnErrno[inp] ?? WIN32_ERROR_FILE_NOT_FOUND;
+          lastError =
+            glpnErrno[inp] ??
+            glpnErrnoFileLines[fileLine] ??
+            (exists ? WIN32_ERROR_FILE_NOT_FOUND : glpnMissingErrno(inp, options));
           // NSIS System plugin copies the (empty) output buffer on failure.
           if (outr !== null) {
             R[outr] = '';

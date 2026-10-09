@@ -9,6 +9,8 @@ import {
   HELPER_H1_SLASH_SITE,
   HELPER_H1_SLASH_SITES,
   HELPER_HARD_B_MUTANTS,
+  HARD_D_LEFTOVER_7,
+  HARD_D_LONG_SIDECAR_LINE,
   HELPER_RF7_ATTR_A_ROWS,
   HELPER_RF7_ATTR_B_ROWS,
   HELPER_RF7_ROWS,
@@ -104,6 +106,30 @@ describe('H2 Critic helper mutants are red on helper mode-2', () => {
     expect(helperRf7Deleted(nsh, row)).toEqual([row.leaf]);
     expect(helperRf7Deleted(mutant, row)).toEqual([]);
     expect(helperGuardModeTwoCaught(mutant, nsh)).toBe(true);
+  });
+
+  it('HARD-D :582 $7 init Nop and $7→$1/$5/$6/$9 are red on leftover + Mythos Writer junction', () => {
+    expect(fileLines[581]!.trim()).toBe('StrCpy $7 0');
+    expect(HARD_D_LEFTOVER_7).toBe(String(HARD_D_LONG_SIDECAR_LINE.length));
+    const row = HELPER_RF7_ROWS.find((r) => r.name.startsWith('HARD-D keep vault-index-cache long sidecar leftover + Mythos Writer junction'))!;
+    expect(row, 'HARD-D leftover junction row').toBeDefined();
+    expect(helperRf7Deleted(nsh, row)).toEqual([]);
+    const nop = nshWithFileLine(nsh, 582, 'Nop');
+    expect(helperGuardModeTwoCaught(nop, nsh)).toBe(true);
+    expect(helperRf7Deleted(nop, row).length, 'Nop :582 must delete through the junction').toBeGreaterThan(0);
+    for (const dest of ['$1', '$5', '$6', '$9'] as const) {
+      const mutant = nshWithFileLine(nsh, 582, `StrCpy ${dest} 0`);
+      expect(helperGuardModeTwoCaught(mutant, nsh), `${dest} swap`).toBe(true);
+      expect(helperRf7Deleted(mutant, row).length, `${dest} swap must delete`).toBeGreaterThan(0);
+    }
+  });
+
+  it('HARD-D leftover + unreadable Mythos Writer skips; :582 Nop deletes', () => {
+    const row = HELPER_RF7_ROWS.find((r) => r.name.startsWith('HARD-D keep vault-index-cache long sidecar leftover + Mythos Writer unreadable'))!;
+    expect(row, 'HARD-D leftover unreadable row').toBeDefined();
+    expect(helperRf7Deleted(nsh, row)).toEqual([]);
+    const nop = nshWithFileLine(nsh, 582, 'Nop');
+    expect(helperRf7Deleted(nop, row).length).toBeGreaterThan(0);
   });
 
   it(':579 prefix Nop is equivalent on the helper sites (not one of the 8)', () => {

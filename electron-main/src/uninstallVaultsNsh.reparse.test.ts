@@ -105,8 +105,8 @@ describe('RF-7b reparse walk — modelled attribute table', () => {
   });
 
   it('ancestor-mask Nop skips a nested plain vault that must delete', () => {
-    expect(fileLines[478]!.trim()).toBe('IntOp $4 $4 & 0x400');
-    const mutant = withFileLine(479, 'Nop');
+    expect(fileLines[477]!.trim()).toBe('IntOp $4 $4 & 0x400');
+    const mutant = withFileLine(478, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.path === RF7_NESTED_PLAIN_VAULT)!;
     expect(sidecarRf7Deleted(nsh, row, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([RF7_NESTED_PLAIN_VAULT]);

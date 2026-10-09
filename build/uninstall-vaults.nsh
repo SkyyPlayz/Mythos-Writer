@@ -358,7 +358,7 @@
           mythos_nr_appdata:
             StrCpy $5 "$APPDATA\Mythos Writer"
             System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"
-            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+            IntCmp $4 0 mythos_nr_documents uninstall_vault_read 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
             System::Call "kernel32::GetLongPathNameW(w r9, w .r2, i ${NSIS_MAX_STRLEN}) i .r4 ?e"
             Pop $8
@@ -384,7 +384,7 @@
           mythos_nr_documents:
             StrCpy $5 "$DOCUMENTS"
             System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"
-            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+            IntCmp $4 0 mythos_nr_desktop uninstall_vault_read 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
             System::Call "kernel32::GetLongPathNameW(w r9, w .r2, i ${NSIS_MAX_STRLEN}) i .r4 ?e"
             Pop $8
@@ -410,7 +410,7 @@
           mythos_nr_desktop:
             StrCpy $5 "$DESKTOP"
             System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"
-            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+            IntCmp $4 0 mythos_nr_downloads uninstall_vault_read 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
             System::Call "kernel32::GetLongPathNameW(w r9, w .r2, i ${NSIS_MAX_STRLEN}) i .r4 ?e"
             Pop $8
@@ -436,7 +436,7 @@
           mythos_nr_downloads:
             StrCpy $5 "$PROFILE\Downloads"
             System::Call "kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4"
-            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0
+            IntCmp $4 0 mythos_nr_ok uninstall_vault_read 0
             IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read
             System::Call "kernel32::GetLongPathNameW(w r9, w .r2, i ${NSIS_MAX_STRLEN}) i .r4 ?e"
             Pop $8
@@ -554,9 +554,9 @@
   ${EndIf}
 !macroend
 
-; RF-7b: RMDir /r follows junctions (NSIS ≤3.13). Walk every component from _root's
-; child down to _path; skip on FILE_ATTRIBUTE_REPARSE_POINT (0x400) or a failed
-; GetFileAttributesW (INVALID_FILE_ATTRIBUTES has the bit; "error" is skipped).
+; RF-7b: RMDir /r follows junctions (NSIS ≤3.13). Initialise $7 (leftover is the
+; last sidecar-line length). Walk every prefix down to _path; skip on
+; FILE_ATTRIBUTE_REPARSE_POINT (0x400) or a failed GetFileAttributesW.
 ; Defined after customUnInstall so the :43–:213 guard-region line numbers stay put;
 ; !insertmacro expands when customUnInstall is inserted, after this definition.
 !macro mythos_rmdir_unless_reparse _root _path _uid
@@ -579,7 +579,7 @@
   StrCmp $6 $9 0 mythos_rpr_done_${_uid}
   StrCpy $6 $3 1 $8
   StrCmp $6 "\" 0 mythos_rpr_done_${_uid}
-  IntOp $7 $8 + 1
+  StrCpy $7 0
   mythos_rpr_walk_${_uid}:
     StrCpy $6 $3 1 $7
     StrCmp $6 "" mythos_rpr_leaf_${_uid}

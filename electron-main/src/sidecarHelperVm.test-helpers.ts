@@ -45,7 +45,7 @@ export const CANONICAL_HELPER_REGION: readonly string[] = [
   '  StrCmp $6 $9 0 mythos_rpr_done_${_uid}',
   '  StrCpy $6 $3 1 $8',
   '  StrCmp $6 "\\" 0 mythos_rpr_done_${_uid}',
-  '  IntOp $7 $8 + 1',
+  '  StrCpy $7 0',
   '  mythos_rpr_walk_${_uid}:',
   '    StrCpy $6 $3 1 $7',
   '    StrCmp $6 "" mythos_rpr_leaf_${_uid}',
@@ -120,6 +120,10 @@ export function assertMythosRmdirHelperRegionExact(nsh: string): void {
 
 export const DEFAULT_HELPER_NSIS_VAR_ENV: SidecarNsisVarEnv = SIDECAR_NSIS_ENV_E1;
 
+/** Last sidecar line long enough that leftover `$7` is past every helper site. */
+export const HARD_D_LONG_SIDECAR_LINE = `C:\\Users\\me\\Documents\\${'L'.repeat(400)}`;
+export const HARD_D_LEFTOVER_7 = String(HARD_D_LONG_SIDECAR_LINE.length);
+
 export function helperResolvedPath(site: MythosRmdirHelperSite, env: SidecarNsisVarEnv = DEFAULT_HELPER_NSIS_VAR_ENV): string {
   return site.path.split('$APPDATA').join(env.APPDATA);
 }
@@ -169,6 +173,20 @@ function buildHelperRf7Rows(env: SidecarNsisVarEnv): HelperRf7Row[] {
         site,
         expect: 'skip',
         options: { attrErrorPaths: [parent] },
+        leaf,
+      });
+      rows.push({
+        name: `HARD-D ${site.mode} ${site.name} long sidecar leftover + Mythos Writer junction skips`,
+        site,
+        expect: 'skip',
+        options: { reparsePaths: [parent], initialRegs: { $7: HARD_D_LEFTOVER_7 } },
+        leaf,
+      });
+      rows.push({
+        name: `HARD-D ${site.mode} ${site.name} long sidecar leftover + Mythos Writer unreadable skips`,
+        site,
+        expect: 'skip',
+        options: { attrErrorPaths: [parent], initialRegs: { $7: HARD_D_LEFTOVER_7 } },
         leaf,
       });
     }

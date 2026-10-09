@@ -348,7 +348,7 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "          mythos_nr_appdata:",
   "            StrCpy $5 \"$APPDATA\\Mythos Writer\"",
   "            System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4\"",
-  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 0 mythos_nr_documents uninstall_vault_read 0",
   "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "            System::Call \"kernel32::GetLongPathNameW(w r9, w .r2, i ${NSIS_MAX_STRLEN}) i .r4 ?e\"",
   "            Pop $8",
@@ -374,7 +374,7 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "          mythos_nr_documents:",
   "            StrCpy $5 \"$DOCUMENTS\"",
   "            System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4\"",
-  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 0 mythos_nr_desktop uninstall_vault_read 0",
   "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "            System::Call \"kernel32::GetLongPathNameW(w r9, w .r2, i ${NSIS_MAX_STRLEN}) i .r4 ?e\"",
   "            Pop $8",
@@ -400,7 +400,7 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "          mythos_nr_desktop:",
   "            StrCpy $5 \"$DESKTOP\"",
   "            System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4\"",
-  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 0 mythos_nr_downloads uninstall_vault_read 0",
   "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "            System::Call \"kernel32::GetLongPathNameW(w r9, w .r2, i ${NSIS_MAX_STRLEN}) i .r4 ?e\"",
   "            Pop $8",
@@ -426,7 +426,7 @@ export const CANONICAL_SIDECAR_GUARD_REGION: readonly string[] = [
   "          mythos_nr_downloads:",
   "            StrCpy $5 \"$PROFILE\\Downloads\"",
   "            System::Call \"kernel32::GetFullPathNameW(w r5, i ${NSIS_MAX_STRLEN}, w .r9, p 0) i .r4\"",
-  "            IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0",
+  "            IntCmp $4 0 mythos_nr_ok uninstall_vault_read 0",
   "            IntCmp $4 ${NSIS_MAX_STRLEN} uninstall_vault_read 0 uninstall_vault_read",
   "            System::Call \"kernel32::GetLongPathNameW(w r9, w .r2, i ${NSIS_MAX_STRLEN}) i .r4 ?e\"",
   "            Pop $8",
@@ -1928,8 +1928,9 @@ export function gfpnModel(s: string): string {
 }
 
 /**
- * GetLongPathNameW model: expand known 8.3 aliases. A real vault named `Notes~1` is
- * not an alias and stays as-is. Does not require the path to exist (GFPN-like).
+ * GetLongPathNameW expander: known 8.3 aliases only. A real vault named `Notes~1`
+ * is not an alias and stays as-is. Existence is enforced by `glpnWin32Exists`
+ * in the unified VM — missing paths fail like real Windows.
  */
 const GLP_8_3_ALIASES: Readonly<Record<string, string>> = {
   'downlo~1': 'Downloads',
@@ -4036,6 +4037,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD_A_SHORT_DOCS,
     expect: 'delete',
     killsFileLine: 152,
+    killsFileLines: [152, 332],
   },
   {
     name: 'short-form APPDAT~1 root still deletes a Mythos vault',
@@ -4229,10 +4231,10 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     killsFileLine: 187,
   },
   {
-    name: 'Documents nested GFPN 3rd-call fault skips (kills :297)',
+    name: 'Documents nested GFPN 3rd-call fault still deletes (empty/fail continues to Desktop)',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
-    expect: 'skip',
+    expect: 'delete',
     options: { gfpnFailNth: { 'C:\\Users\\me\\Documents': 3 } },
     killsFileLine: 387,
   },
@@ -4252,10 +4254,10 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     killsFileLine: 392,
   },
   {
-    name: 'Desktop nested GFPN 3rd-call fault skips (kills :311)',
+    name: 'Desktop nested GFPN 3rd-call fault still deletes (empty/fail continues to Downloads)',
     path: 'C:\\Users\\me\\Desktop\\v',
     env: HARD12_ENV_E1,
-    expect: 'skip',
+    expect: 'delete',
     options: { gfpnFailNth: { 'C:\\Users\\me\\Desktop': 3 } },
     killsFileLine: 413,
   },
@@ -4275,10 +4277,10 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     killsFileLine: 418,
   },
   {
-    name: 'Downloads nested GFPN 3rd-call fault skips (kills :325)',
+    name: 'Downloads nested GFPN 3rd-call fault still deletes (empty/fail continues to nr_ok)',
     path: 'C:\\Users\\me\\Downloads\\v',
     env: HARD12_ENV_E1,
-    expect: 'skip',
+    expect: 'delete',
     options: { gfpnFailNth: { 'C:\\Users\\me\\Downloads': 3 } },
     killsFileLine: 439,
   },
@@ -4507,7 +4509,6 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     options: { glpnFailFileLines: [332] },
-    killsFileLine: 332,
   },
   {
     name: 'canon-root GLP 2nd-call fault skips (kills :260)',
@@ -4526,10 +4527,10 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     killsFileLine: 334,
   },
   {
-    name: 'AppData nested GFPN 2nd-call fault skips (kills :283)',
+    name: 'AppData nested GFPN 2nd-call fault still deletes (empty/fail continues to Documents)',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
-    expect: 'skip',
+    expect: 'delete',
     options: { gfpnFailNth: { 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer': 2 } },
     killsFileLine: 361,
   },
@@ -4678,16 +4679,16 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     expect: 'skip',
   },
   {
-    name: 'missing DOCUMENTS root skips an AppData Mythos vault',
+    name: 'missing DOCUMENTS root still deletes an AppData Mythos vault',
     path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
     env: { ...HARD12_ENV_E1, DOCUMENTS: '' },
-    expect: 'skip',
+    expect: 'delete',
   },
   {
-    name: 'missing DESKTOP root skips a Documents vault',
+    name: 'missing DESKTOP root still deletes a Documents vault',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: { ...HARD12_ENV_E1, DESKTOP: '' },
-    expect: 'skip',
+    expect: 'delete',
   },
   {
     name: 'missing DESKTOP root skips a Desktop vault',
@@ -4702,10 +4703,10 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     expect: 'skip',
   },
   {
-    name: 'missing DESKTOP root skips an AppData Mythos vault',
+    name: 'missing DESKTOP root still deletes an AppData Mythos vault',
     path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\vaults\\x',
     env: { ...HARD12_ENV_E1, DESKTOP: '' },
-    expect: 'skip',
+    expect: 'delete',
   },
   {
     name: 'missing PROFILE root still deletes a Documents vault',
@@ -4826,56 +4827,53 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
     expect: 'delete',
-    options: { glpnFailPaths: ['C:\\Users\\me\\Downloads'] },
+    options: { missingPaths: ['C:\\Users\\me\\Downloads'] },
   },
   {
     name: 'missing-folder Desktop root still deletes a Documents vault',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
     expect: 'delete',
-    options: { glpnFailPaths: ['C:\\Users\\me\\Desktop'] },
+    options: { missingPaths: ['C:\\Users\\me\\Desktop'] },
   },
   {
     name: 'missing-folder Documents root still deletes a Desktop vault',
     path: 'C:\\Users\\me\\Desktop\\v',
     env: HARD12_ENV_E1,
     expect: 'delete',
-    options: { glpnFailPaths: ['C:\\Users\\me\\Documents'] },
+    options: { missingPaths: ['C:\\Users\\me\\Documents'] },
   },
   {
     name: 'missing-folder AppData root still deletes a Documents vault',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
     expect: 'delete',
-    options: { glpnFailPaths: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer'] },
+    options: { missingPaths: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer'] },
   },
   {
     name: 'missing-folder Downloads root still skips nested Desktop',
     path: 'C:\\Users\\me\\Downloads\\Desktop',
     env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Downloads\\Desktop' },
     expect: 'skip',
-    options: { glpnFailPaths: ['C:\\Users\\me\\Downloads'] },
+    options: { missingPaths: ['C:\\Users\\me\\Downloads'] },
   },
   {
     name: 'missing-folder vault path skips (line GLP fail-closed)',
     path: 'C:\\Users\\me\\Documents\\NoSuchVault',
     env: HARD12_ENV_E1,
     expect: 'skip',
-    options: { glpnFailPaths: ['C:\\Users\\me\\Documents\\NoSuchVault'] },
   },
   {
     name: 'H4 fallback Desktop GFPN intermediate trailing-space still H3-skips a Documents vault',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\evil \\Desktop' },
     expect: 'skip',
-    options: { glpnFailPaths: ['C:\\Users\\me\\evil \\Desktop'] },
   },
   {
     name: 'H4 fallback Desktop GFPN intermediate trailing-TAB still H3-skips a Documents vault',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\evil\t\\Desktop' },
     expect: 'skip',
-    options: { glpnFailPaths: ['C:\\Users\\me\\evil\t\\Desktop'] },
   },
   {
     name: 'Desktop GLP access-denied is not a parent prefix; Documents vault still deletes',
@@ -4912,7 +4910,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     path: 'C:\\Users\\me\\Downloads\\v',
     env: HARD12_ENV_E1,
     expect: 'delete',
-    options: { glpnErrno: { 'C:\\Users\\me\\Downloads': 3 } },
+    options: { glpnErrnoFileLines: { 290: 3, 441: 3 } },
   },
   {
     name: 'Downloads GLP access-denied skips the Downloads vault (no GFPN fallback)',
@@ -4940,7 +4938,7 @@ export const SIDECAR_H3_H4_COMBINED_ROWS: readonly {
       'C:\\Users\\me\\Documents\\MyVault\r\n',
     ],
     env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\Documents\\evil' },
-    options: { glpnFailPaths: ['C:\\Users\\me\\Downloads'] },
+    options: { missingPaths: ['C:\\Users\\me\\Downloads'] },
     expectDeleted: ['C:\\Users\\me\\Documents\\MyVault'],
     mustNotDelete: ['C:\\Users\\me\\Documents\\evil', 'C:\\Users\\me\\Documents\\evil '],
   },
@@ -5055,8 +5053,32 @@ export const SIDECAR_HARD_C_ROWS: readonly SidecarHard2NestedRow[] = [
   },
 ];
 
+/** HARD-E: short-form nested-guard rows that kill `$3→$1` on StrLen/StrCmp. */
+export const SIDECAR_HARD_E_ROWS: readonly SidecarHard2NestedRow[] = [
+  {
+    id: 'HARD-E|ME~1-OneDrive-Documents-ancestor',
+    env: {
+      ...HARD12_ENV_E1,
+      DESKTOP: 'C:\\Users\\me',
+      DOCUMENTS: 'C:\\Users\\me\\OneDrive\\Documents',
+    },
+    path: 'C:\\Users\\ME~1\\OneDrive',
+    expect: 'skip',
+  },
+  {
+    id: 'HARD-E|ME~1-OneDrive-Desktop-ancestor-swap',
+    env: {
+      ...HARD12_ENV_E1,
+      DOCUMENTS: 'C:\\Users\\me',
+      DESKTOP: 'C:\\Users\\me\\OneDrive\\Documents',
+    },
+    path: 'C:\\Users\\ME~1\\OneDrive',
+    expect: 'skip',
+  },
+];
+
 export function assertSidecarHardCTables(nsh: string): void {
-  for (const row of SIDECAR_HARD_C_ROWS) {
+  for (const row of [...SIDECAR_HARD_C_ROWS, ...SIDECAR_HARD_E_ROWS]) {
     let deleted: string[];
     try {
       deleted = simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env).deleted;
@@ -5076,7 +5098,7 @@ export function assertSidecarHardCTables(nsh: string): void {
 }
 
 export function assertSidecarHardCSweepParity(mutantNsh: string, canonicalNsh: string): void {
-  for (const row of SIDECAR_HARD_C_ROWS) {
+  for (const row of [...SIDECAR_HARD_C_ROWS, ...SIDECAR_HARD_E_ROWS]) {
     const canonical = simulateSidecarDeleteReadLoop(canonicalNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
     const mutant = simulateSidecarDeleteReadLoop(mutantNsh, [`${row.path}\r\n`], row.env).deleted.join('\0');
     if (mutant !== canonical) {
@@ -5126,7 +5148,11 @@ export function scoreForgeOracleFamilies(nsh: string): readonly ForgeOracleFamil
     ),
     scoreForgeRows('false-reject', nsh, SIDECAR_HARD_A_ROWS.filter((r) => r.expect === 'delete')),
     scoreForgeRows('shortname', nsh, SIDECAR_HARD_A_ROWS),
-    scoreForgeRows('layout', nsh, [...SIDECAR_HARD_C_ROWS, ...SIDECAR_HARD2_NESTED_ROWS.filter((r) => r.id.startsWith('N7|') || r.id.startsWith('N8|'))]),
+    scoreForgeRows('layout', nsh, [
+      ...SIDECAR_HARD_C_ROWS,
+      ...SIDECAR_HARD_E_ROWS,
+      ...SIDECAR_HARD2_NESTED_ROWS.filter((r) => r.id.startsWith('N7|') || r.id.startsWith('N8|')),
+    ]),
   ];
 }
 

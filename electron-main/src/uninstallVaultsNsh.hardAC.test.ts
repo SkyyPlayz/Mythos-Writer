@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ORACLE_CLASS_ALL_EQUIVALENT_LINES } from './sidecarOracleClassSweep.test-helpers.js';
-import { probeSystemPluginGlpFailure } from './sidecarNsisVm.test-helpers.js';
+import { glpnWin32Exists, probeSystemPluginGlpFailure, SIDECAR_NSIS_ENV_E1 } from './sidecarNsisVm.test-helpers.js';
 import {
   generateOracleClassMutants,
   sidecarGuardModeTwoCaught,
@@ -22,12 +22,14 @@ import {
   RF7_ONE_CHAR_JUNCTION_VAULT,
   SIDECAR_HARD_A_ROWS,
   SIDECAR_HARD_C_ROWS,
+  SIDECAR_HARD_E_ROWS,
   SIDECAR_HARD2_NESTED_ROWS,
   SIDECAR_H3_H4_COMBINED_ROWS,
   SIDECAR_RF7_REPARSE_ROWS,
   assertSidecarH3H4CombinedTables,
   sidecarHardADeleted,
   sidecarRf7Deleted,
+  simulateSidecarDeleteReadLoop,
 } from './sidecarTraversalScan.test-helpers.js';
 import { loadUninstallVaultsNsh } from './uninstallVaultsNsh.path.js';
 
@@ -63,6 +65,31 @@ describe('System plugin GLP failure-output probe', () => {
     expect(scratch.ret).toBe('0');
     expect(scratch.dest).toBe('');
     expect(scratch.source).toBe('C:\\Users\\me\\Desktop');
+  });
+
+  it('GLP fails on a missing path the way Win32 does; H4 missing-folder rows still pass', () => {
+    expect(glpnWin32Exists('C:\\Users\\me\\Documents\\NoSuchVault', SIDECAR_NSIS_ENV_E1, {})).toBe(false);
+    expect(glpnWin32Exists('C:\\Users\\me\\Documents\\MyVault', SIDECAR_NSIS_ENV_E1, {})).toBe(true);
+    expect(
+      glpnWin32Exists('C:\\Users\\me\\Downloads', SIDECAR_NSIS_ENV_E1, {
+        missingPaths: ['C:\\Users\\me\\Downloads'],
+      }),
+    ).toBe(false);
+    expect(
+      glpnWin32Exists('C:\\Users\\me\\Documents\\MyVault', SIDECAR_NSIS_ENV_E1, {
+        missingPaths: ['C:\\Users\\me\\Downloads'],
+      }),
+    ).toBe(true);
+    const missingFolder = SIDECAR_HARD_A_ROWS.filter((r) => r.name.startsWith('missing-folder'));
+    expect(missingFolder.length).toBeGreaterThanOrEqual(6);
+    for (const row of missingFolder) {
+      const deleted = sidecarHardADeleted(nsh, row);
+      if (row.expect === 'skip') {
+        expect(deleted, row.name).toEqual([]);
+      } else {
+        expect(deleted, row.name).toHaveLength(1);
+      }
+    }
   });
 
   it('in-place failure clobbers the input (empty root must never be a prefix)', () => {
@@ -142,14 +169,15 @@ describe('HARD-A short names + deny/allowlist GLP', () => {
     expect(got.length, 'Nop :331 must delete because the truncated GFPN wrote $9').toBeGreaterThan(0);
   });
 
-  it('canon-root GLP fault at :332 skips a legit vault; Nop :332 deletes it', () => {
-    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLine === 332);
-    expect(row, 'GLP-fault row for :332').toBeDefined();
-    expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
+  it('canon-root GLP Nop :332 is red — leftover scratch clobbers $9 (false reject)', () => {
+    const fault = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('canon-root GLP at :259 fault'));
+    expect(fault, 'GLP-fault row for :332').toBeDefined();
+    expect(sidecarHardADeleted(nsh, fault!)).toEqual([]);
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.killsFileLines?.includes(332));
+    expect(row, 'delete row that kills :332').toBeDefined();
+    expect(sidecarHardADeleted(nsh, row!).length).toBeGreaterThan(0);
     const got = sidecarHardADeleted(mutantSidecarGuardRegionSweepLine(nsh, 332), row!);
-    expect(got, 'Nop :332 must delete the legit vault the GLP fault skipped').toEqual([
-      'C:\\Users\\me\\Documents\\MyVault',
-    ]);
+    expect(got, 'Nop :332 must false-reject the legit vault (scratch leftover clobbers $9)').toEqual([]);
     expect(sidecarGuardModeTwoCaught(mutantSidecarGuardRegionSweepLine(nsh, 332), nsh)).toBe(true);
   });
 
@@ -210,6 +238,7 @@ function extraDownloadsBlockMutants(): { key: string; nsh: string }[] {
     ['$3', '$6'],
     ['$3', '$5'],
     ['$3', '$8'],
+    ['$3', '$1'],
     ['$PROFILE', '$DOCUMENTS'],
     ['$PROFILE', '$DESKTOP'],
     ['$PROFILE', '$APPDATA'],
@@ -232,7 +261,7 @@ function extraDownloadsBlockMutants(): { key: string; nsh: string }[] {
     'Goto mythos_canon_gate',
   ] as const;
   const out: { key: string; nsh: string }[] = [];
-  for (let line = 361; line <= 377; line += 1) {
+  for (let line = 437; line <= 461; line += 1) {
     const src = fileLines[line - 1]!;
     const indent = src.match(/^\s*/)?.[0] ?? '';
     for (const [a, b] of swaps) {
@@ -253,14 +282,15 @@ function extraDownloadsBlockMutants(): { key: string; nsh: string }[] {
 }
 
 /**
- * Shield 112: pick mutants from the region map / oracle-class sweep on :361–:377,
- * not by the N7/N8 rows. Red is mode-2 (full pin-free tables).
+ * Shield 112: pick mutants from the region map / oracle-class sweep on the
+ * nested Downloads block (:437–:461), not by the N7/N8 rows. Red is mode-2
+ * (full pin-free tables).
  */
 function nestedDownloadsRegionMutants(): { key: string; nsh: string }[] {
   const seen = new Set<string>();
   const out: { key: string; nsh: string }[] = [];
   const candidates = [
-    ...generateOracleClassMutants(nsh).filter((m) => m.fileLine >= 361 && m.fileLine <= 377),
+    ...generateOracleClassMutants(nsh).filter((m) => m.fileLine >= 437 && m.fileLine <= 461),
     ...extraDownloadsBlockMutants(),
   ];
   for (const mutant of candidates) {
@@ -305,7 +335,8 @@ describe('HARD-2 nested Downloads (112 survivors)', () => {
         mutant.key.includes(':extra: 0 ->') ||
         mutant.key.includes(':extra:$9->$5') ||
         mutant.key.includes(':extra:$9->$6') ||
-        mutant.key.includes(':extra:mythos_nr_ok->')
+        mutant.key.includes(':extra:mythos_nr_ok->') ||
+        mutant.key.includes(':extra:Goto mythos_canon_gate')
       ) {
         return false;
       }
@@ -367,9 +398,9 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
     expect(sidecarHardADeleted(mutant, row!)).toEqual(['C:\\Users\\me\\Documents\\evil']);
   });
 
-  it('line GLP +2 fallback is mode-2 red and deletes the 1st-call GLP-fault vault', () => {
+  it('line GLP +3 fallback is mode-2 red and deletes the 1st-call GLP-fault vault', () => {
     expect(fileLines[143]!.trim()).toBe('IntCmp $4 0 uninstall_vault_read uninstall_vault_read 0');
-    const mutant = withFileLine(144, 'IntCmp $4 0 +2 0 0');
+    const mutant = withFileLine(144, 'IntCmp $4 0 +3 0 0');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
     const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('path GLP 1st-call fault'));
     expect(row, 'path GLP 1st-call fault row').toBeDefined();
@@ -403,6 +434,42 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
     expect(keys.has('469:$3->$1')).toBe(true);
     expect(keys.has('475:$3->$1')).toBe(true);
     expect(keys.has('483:r3->r1')).toBe(true);
+  });
+
+  it('HARD-E short ME~1 OneDrive nested-guard rows skip', () => {
+    expect(SIDECAR_HARD_E_ROWS).toHaveLength(2);
+    for (const row of SIDECAR_HARD_E_ROWS) {
+      expect(
+        simulateSidecarDeleteReadLoop(nsh, [`${row.path}\r\n`], row.env).deleted,
+        row.id,
+      ).toEqual([]);
+    }
+  });
+
+  it(':405 StrLen $8 $3→$1 and :407 StrCmp $6 $3→$1 are red on ME~1 Documents-ancestor', () => {
+    expect(fileLines[404]!.trim()).toBe('StrLen $8 $3');
+    expect(fileLines[406]!.trim()).toBe('StrCmp $6 $3 0 mythos_nr_desktop');
+    const row = SIDECAR_HARD_E_ROWS.find((r) => r.id.includes('Documents-ancestor'))!;
+    const lenMutant = withFileLine(405, 'StrLen $8 $1');
+    const cmpMutant = withFileLine(407, 'StrCmp $6 $1 0 mythos_nr_desktop');
+    expect(sidecarGuardModeTwoCaught(lenMutant, nsh)).toBe(true);
+    expect(sidecarGuardModeTwoCaught(cmpMutant, nsh)).toBe(true);
+    expect(simulateSidecarDeleteReadLoop(lenMutant, [`${row.path}\r\n`], row.env).deleted).toEqual([
+      'C:\\Users\\me\\OneDrive',
+    ]);
+    expect(simulateSidecarDeleteReadLoop(cmpMutant, [`${row.path}\r\n`], row.env).deleted).toEqual([
+      'C:\\Users\\me\\OneDrive',
+    ]);
+  });
+
+  it(':433 StrCmp $6 $3→$1 is red on the Desktop/Documents swap row', () => {
+    expect(fileLines[432]!.trim()).toBe('StrCmp $6 $3 0 mythos_nr_downloads');
+    const row = SIDECAR_HARD_E_ROWS.find((r) => r.id.includes('Desktop-ancestor-swap'))!;
+    const mutant = withFileLine(433, 'StrCmp $6 $1 0 mythos_nr_downloads');
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
+    expect(simulateSidecarDeleteReadLoop(mutant, [`${row.path}\r\n`], row.env).deleted).toEqual([
+      'C:\\Users\\me\\OneDrive',
+    ]);
   });
 
   it('leaf-check $3→$1 at :483 is red on / and LEAFJ~1 leaf-junction rows', () => {
