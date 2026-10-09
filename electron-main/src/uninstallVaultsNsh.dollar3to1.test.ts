@@ -6,7 +6,7 @@ import { loadUninstallVaultsNsh } from './uninstallVaultsNsh.path.js';
 /**
  * Generic `$3→$1` / `r3→r1` oracle-class mutants that still survive pin-free mode-2.
  * Each reason names the later check that covers the swapped register. Walk/leaf/HARD-E/H1
- * swaps are not listed — those are killed (and the leaf GFA has a red run in hardAC).
+ * swaps and G3 `:404` are not listed — those are killed (leaf GFA has a no-smash red run in hardAC).
  */
 export const SIDECAR_DOLLAR3_TO_DOLLAR1_EQUIVALENTS: Readonly<Record<string, string>> = {
   '143:r3->r1':
@@ -25,8 +25,6 @@ export const SIDECAR_DOLLAR3_TO_DOLLAR1_EQUIVALENTS: Readonly<Record<string, str
     'Nested-strip StrLen $8 $3. :352 last-char \\ check still reads $3; $8 is only consumed when that char is \\, and :355 keeps C:\\.',
   '378:$3->$1':
     'AppData nested exact-root StrCmp $3 $9. Sibling :383 ancestor-\\ check: exact AppData has no \\ at $8, so it falls to mythos_nr_documents. Allowlist already skipped the exact AppData root.',
-  '404:$3->$1':
-    'Documents nested exact-root StrCmp $3 $9. Sibling :409 ancestor-\\ check: exact Documents has no \\ at $8, so it falls to mythos_nr_desktop. Allowlist already skipped the exact Documents root.',
   '491:$3->$1':
     'Leftover-/ char copy. :462 already replaced $1 with the last nested root (no /); :493 leftover-/ reject therefore matches the $3 scan that GFPN already folded.',
 };

@@ -3379,6 +3379,15 @@ export const SIDECAR_RF7_REPARSE_ROWS: readonly SidecarRf7ReparseRow[] = [
     expect: 'skip',
     options: { reparsePaths: [RF7_LEAF_JUNC] },
   },
+  {
+    name: 'leaf junction raw LEAFJ~1 is a plain directory (leaf GFA without nr_ok $1 smash)',
+    path: 'C:\\Users\\me\\Documents\\LEAFJ~1',
+    expect: 'skip',
+    options: {
+      reparsePaths: [RF7_LEAF_JUNC],
+      fileAttributes: { 'C:\\Users\\me\\Documents\\LEAFJ~1': FILE_ATTRIBUTE_DIRECTORY },
+    },
+  },
 ];
 
 export function sidecarRf7Deleted(nsh: string, row: SidecarRf7ReparseRow, env: SidecarNsisVarEnv): string[] {
@@ -4009,6 +4018,55 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     mustNotDelete: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer'],
+  },
+  {
+    name: 'G3 Documents inside Mythos Writer\\Docs; MYTHOS~1\\Docs skips (no next-root)',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\MYTHOS~1\\Docs',
+    env: {
+      ...HARD12_ENV_E1,
+      DOCUMENTS: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\Docs',
+    },
+    expect: 'skip',
+    mustNotDelete: [
+      'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer',
+      'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\Docs',
+    ],
+    killsFileLine: 404,
+  },
+  {
+    name: 'Mythos Writer vault via / still deletes',
+    path: 'C:/Users/me/AppData/Roaming/Mythos Writer/vaults/x',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    killsFileLines: [216, 219],
+  },
+  {
+    name: 'Mythos Writer vault via MYTHOS~1\\v still deletes',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\MYTHOS~1\\v',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    killsFileLines: [216, 219, 221],
+  },
+  {
+    name: 'Downloads vault via / still deletes',
+    path: 'C:/Users/me/Downloads/v',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    killsFileLines: [306, 309],
+  },
+  {
+    name: 'Downloads vault via DOWNLO~1\\v still deletes',
+    path: 'C:\\Users\\me\\DOWNLO~1\\v',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    killsFileLines: [306, 309, 311],
+  },
+  {
+    name: 'short-Desktop MYDESK~1\\v still deletes',
+    path: 'C:\\Users\\me\\MYDESK~1\\v',
+    env: { ...HARD12_ENV_E1, DESKTOP: 'C:\\Users\\me\\My Desktop' },
+    expect: 'delete',
+    killsFileLine: 281,
   },
   {
     name: 'Documents\\MYDESK~1 must not delete My Desktop',

@@ -495,7 +495,7 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
     expect(fileLines[464]!.trim()).toBe('mythos_reparse_walk:');
     expect(fileLines[482]!.trim()).toBe('System::Call "kernel32::GetFileAttributesW(w r3) i .r4"');
     const slash = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.includes('leaf junction via /'));
-    const short = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.includes('LEAFJ~1'));
+    const short = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.includes('LEAFJ~1 skips'));
     expect(slash, 'leaf junction via /').toBeDefined();
     expect(short, 'leaf junction via LEAFJ~1').toBeDefined();
     expect(sidecarRf7Deleted(nsh, slash!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
@@ -511,6 +511,51 @@ describe('H3 Secure Hard + H4 line-GLP fail-closed', () => {
       'C:\\Users\\me\\Documents\\leaf-junc',
     ]);
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
+  });
+
+  it('leaf GFA r3→r1 is red without mythos_nr_ok StrCpy $1 $9', () => {
+    const row = SIDECAR_RF7_REPARSE_ROWS.find((r) => r.name.includes('without nr_ok $1 smash'));
+    expect(row, 'leaf GFA without nr_ok smash row').toBeDefined();
+    expect(sidecarRf7Deleted(nsh, row!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
+    const noSmash = withFileLine(462, 'mythos_nr_ok: Nop');
+    expect(sidecarRf7Deleted(noSmash, row!, DEFAULT_SIDECAR_NSIS_VAR_ENV)).toEqual([]);
+    const mutant = withFileLine(462, 'mythos_nr_ok: Nop').replace(
+      'System::Call "kernel32::GetFileAttributesW(w r3) i .r4"',
+      'System::Call "kernel32::GetFileAttributesW(w r1) i .r4"',
+    );
+    expect(mutant).not.toBe(noSmash);
+    expect(sidecarRf7Deleted(mutant, row!, DEFAULT_SIDECAR_NSIS_VAR_ENV), 'red run: r3→r1 without $1 smash').toEqual([
+      'C:\\Users\\me\\Documents\\leaf-junc',
+    ]);
+  });
+
+  it('G3 :404 $3→$1 deletes Documents sitting inside Mythos Writer\\Docs', () => {
+    expect(fileLines[403]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('G3 Documents inside Mythos Writer'));
+    expect(row, 'G3 Documents-inside-Mythos-Writer row').toBeDefined();
+    expect(sidecarHardADeleted(nsh, row!)).toEqual([]);
+    const mutant = withFileLine(404, 'StrCmp $1 $9 uninstall_vault_read');
+    expect(sidecarHardADeleted(mutant, row!)).toEqual(['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\Docs']);
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
+  });
+
+  it('/ and 8.3 Mythos Writer, Downloads, and short-Desktop vaults still delete; $3→$1 false-rejects', () => {
+    const cases: readonly { name: string; line: number; text: string }[] = [
+      { name: 'Mythos Writer vault via / still deletes', line: 216, text: 'StrCpy $4 $1 $8' },
+      { name: 'Mythos Writer vault via / still deletes', line: 219, text: 'StrCpy $4 $1 1 $8' },
+      { name: 'Mythos Writer vault via MYTHOS~1\\v still deletes', line: 221, text: 'StrCpy $6 $1 "" $8' },
+      { name: 'Downloads vault via / still deletes', line: 306, text: 'StrCpy $4 $1 $8' },
+      { name: 'Downloads vault via / still deletes', line: 309, text: 'StrCpy $4 $1 1 $8' },
+      { name: 'Downloads vault via DOWNLO~1\\v still deletes', line: 311, text: 'StrCpy $6 $1 "" $8' },
+      { name: 'short-Desktop MYDESK~1\\v still deletes', line: 281, text: 'StrCpy $6 $1 "" $8' },
+    ];
+    for (const { name, line, text } of cases) {
+      const row = SIDECAR_HARD_A_ROWS.find((r) => r.name === name);
+      expect(row, name).toBeDefined();
+      expect(sidecarHardADeleted(nsh, row!).length, `${name} canon`).toBe(1);
+      const mutant = withFileLine(line, text);
+      expect(sidecarHardADeleted(mutant, row!), `${name} :${line} $3→$1`).toEqual([]);
+    }
   });
 
   it('nested Documents GLP access-denied skips OneDrive ancestor and never RMDirs it', () => {

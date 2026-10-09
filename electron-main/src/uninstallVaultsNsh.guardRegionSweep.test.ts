@@ -109,7 +109,6 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   376: 'H3 9a Goto Nop is identity: 5a already scanned AppData.',
   378: 'AppData nested exact-root StrCmp → Nop. Allowlist already skipped the exact AppData root.',
   402: 'H3 9d Goto Nop is identity: 5d already scanned Documents.',
-  404: 'Documents nested exact-root StrCmp → Nop. Allowlist already skipped the exact Documents root.',
   454: 'H3 9l Goto Nop is identity: 5l already scanned Downloads. 9k Goto stays unlisted (only scan of a dirty Desktop).',
   453: 'H3 9l StrCpy $2 Nop is identity: leftover discriminator still returns through ret9l.',
   144: 'Line GLP 0-check Nop is identity: fail empties scratch; the empty $3 check still fail-closes.',
