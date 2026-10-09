@@ -212,8 +212,26 @@ export function gfaLookupKeys(raw: string, options: SidecarNsisRunOptions = {}):
   return keys;
 }
 
+/** Two-slot memo so canonical + current-mutant extracts do not re-split the nsh. */
+function pairMemoByNsh<T>(compute: (nsh: string) => T): (nsh: string) => T {
+  let a: { nsh: string; value: T } | undefined;
+  let b: { nsh: string; value: T } | undefined;
+  return (nsh) => {
+    if (a?.nsh === nsh) {
+      return a.value;
+    }
+    if (b?.nsh === nsh) {
+      return b.value;
+    }
+    const value = compute(nsh);
+    b = a;
+    a = { nsh, value };
+    return value;
+  };
+}
+
 /** FileOpen $0 … uninstall_vault_fallback: (oracle `code()`). */
-function extractSidecarNsisProgramSpan(nsh: string): { lines: string[]; fileLine0: number } {
+const extractSidecarNsisProgramSpan = pairMemoByNsh((nsh: string): { lines: string[]; fileLine0: number } => {
   const fileLines = nsh.split(/\r?\n/);
   const start = fileLines.findIndex((l) => l.trim().startsWith('FileOpen $0 "$APPDATA'));
   const end = fileLines.findIndex((l) => l.trim() === 'uninstall_vault_fallback:');
@@ -221,7 +239,7 @@ function extractSidecarNsisProgramSpan(nsh: string): { lines: string[]; fileLine
     throw new Error('sidecar NSIS program (FileOpen … uninstall_vault_fallback:) markers missing');
   }
   return { lines: fileLines.slice(start, end + 1), fileLine0: start + 1 };
-}
+});
 
 export function extractSidecarNsisProgramLines(nsh: string): string[] {
   return extractSidecarNsisProgramSpan(nsh).lines;

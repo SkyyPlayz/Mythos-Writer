@@ -1076,14 +1076,21 @@ function extractAppDataM5GuardLinesFromNsh(nsh: string): string[] {
   return extractSidecarAllowlistDeleteLinesFromNsh(nsh);
 }
 
-/** Last-nsh memo for the read-only line slices the VMs re-extract on every path of a corpus. */
+/** Two-slot nsh memo so canonical + current-mutant extracts survive mode-2 alternation. */
 function memoizeByNsh<T>(compute: (nsh: string) => T): (nsh: string) => T {
-  let last: { nsh: string; value: T } | undefined;
+  let a: { nsh: string; value: T } | undefined;
+  let b: { nsh: string; value: T } | undefined;
   return (nsh) => {
-    if (last === undefined || last.nsh !== nsh) {
-      last = { nsh, value: compute(nsh) };
+    if (a?.nsh === nsh) {
+      return a.value;
     }
-    return last.value;
+    if (b?.nsh === nsh) {
+      return b.value;
+    }
+    const value = compute(nsh);
+    b = a;
+    a = { nsh, value };
+    return value;
   };
 }
 
@@ -2893,12 +2900,7 @@ export const SIDECAR_DELETE_READ_LOOP_ROWS: readonly {
   },
 ];
 
-export function simulateSidecarDeleteReadLoop(
-  nsh: string,
-  rawLines: readonly string[],
-  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
-  options: Omit<SidecarNsisRunOptions, 'env'> = {},
-): {
+type SidecarDeleteLoopSim = {
   deleted: string[];
   acts: ReadonlyArray<{ op: 'RMDir' | 'Delete'; path: string }>;
   closed: boolean;
@@ -2906,20 +2908,81 @@ export function simulateSidecarDeleteReadLoop(
   fileClosed: boolean;
   sidecarDeleted: boolean;
   hung: boolean;
-} {
-  const run = runSidecarNsisProgram(nsh, rawLines, { ...options, env });
-  if (run.hung) {
-    throw new Error(SIDECAR_LINE_STEP_LIMIT_ERROR);
+};
+
+type CachedDeleteLoopSim = { kind: 'ok'; value: SidecarDeleteLoopSim } | { kind: 'throw'; message: string };
+
+/**
+ * Mode-2 resimulates the same canonical nsh on every mutant. Cache by nsh sha + row so each
+ * worker builds the baseline once. Same rows and comparisons — harness speedup, not a weaken.
+ */
+const SIDECAR_DELETE_LOOP_SIM_CACHE = new Map<string, CachedDeleteLoopSim>();
+
+let deleteLoopHashA: { nsh: string; hash: string } | undefined;
+let deleteLoopHashB: { nsh: string; hash: string } | undefined;
+
+function sidecarDeleteLoopNshHash(nsh: string): string {
+  if (deleteLoopHashA?.nsh === nsh) {
+    return deleteLoopHashA.hash;
   }
-  return {
-    deleted: run.deleted,
-    acts: run.acts,
-    closed: run.fileClosed,
-    steps: run.steps,
-    fileClosed: run.fileClosed,
-    sidecarDeleted: run.sidecarDeleted,
-    hung: run.hung,
-  };
+  if (deleteLoopHashB?.nsh === nsh) {
+    return deleteLoopHashB.hash;
+  }
+  const hash = createHash('sha256').update(nsh).digest('hex');
+  deleteLoopHashB = deleteLoopHashA;
+  deleteLoopHashA = { nsh, hash };
+  return hash;
+}
+
+function sidecarDeleteLoopSimCacheKey(
+  nsh: string,
+  rawLines: readonly string[],
+  env: SidecarNsisVarEnv,
+  options: Omit<SidecarNsisRunOptions, 'env'>,
+): string {
+  return `${sidecarDeleteLoopNshHash(nsh)}\n${rawLines.join('\n')}\n${JSON.stringify(env)}\n${JSON.stringify(options)}`;
+}
+
+export function simulateSidecarDeleteReadLoop(
+  nsh: string,
+  rawLines: readonly string[],
+  env: SidecarNsisVarEnv = DEFAULT_SIDECAR_NSIS_VAR_ENV,
+  options: Omit<SidecarNsisRunOptions, 'env'> = {},
+): SidecarDeleteLoopSim {
+  const key = sidecarDeleteLoopSimCacheKey(nsh, rawLines, env, options);
+  const hit = SIDECAR_DELETE_LOOP_SIM_CACHE.get(key);
+  if (hit !== undefined) {
+    if (hit.kind === 'throw') {
+      throw new Error(hit.message);
+    }
+    return hit.value;
+  }
+  try {
+    const run = runSidecarNsisProgram(nsh, rawLines, { ...options, env });
+    if (run.hung) {
+      SIDECAR_DELETE_LOOP_SIM_CACHE.set(key, { kind: 'throw', message: SIDECAR_LINE_STEP_LIMIT_ERROR });
+      throw new Error(SIDECAR_LINE_STEP_LIMIT_ERROR);
+    }
+    const value: SidecarDeleteLoopSim = {
+      deleted: run.deleted,
+      acts: run.acts,
+      closed: run.fileClosed,
+      steps: run.steps,
+      fileClosed: run.fileClosed,
+      sidecarDeleted: run.sidecarDeleted,
+      hung: run.hung,
+    };
+    SIDECAR_DELETE_LOOP_SIM_CACHE.set(key, { kind: 'ok', value });
+    return value;
+  } catch (err) {
+    if (!SIDECAR_DELETE_LOOP_SIM_CACHE.has(key)) {
+      SIDECAR_DELETE_LOOP_SIM_CACHE.set(key, {
+        kind: 'throw',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+    throw err instanceof Error ? err : new Error(String(err));
+  }
 }
 
 export type SidecarReadTrimGuardExpectation = 'empty' | SidecarGuardPathOutcome;
@@ -3141,6 +3204,20 @@ export type SidecarGuardVmBehaviourOptions = {
   canonicalNsh?: string;
 };
 
+/** String VM outcomes keyed by nsh sha + row — canonical side of mode-2 is computed once per worker. */
+const SIDECAR_SWEEP_VM_OUTCOME_CACHE = new Map<string, string>();
+
+function cachedSweepVmOutcome(nsh: string, rowKey: string, compute: () => string): string {
+  const key = `${sidecarDeleteLoopNshHash(nsh)}\n${rowKey}`;
+  const hit = SIDECAR_SWEEP_VM_OUTCOME_CACHE.get(key);
+  if (hit !== undefined) {
+    return hit;
+  }
+  const value = compute();
+  SIDECAR_SWEEP_VM_OUTCOME_CACHE.set(key, value);
+  return value;
+}
+
 export function assertSidecarGuardVmSweepParity(
   mutantNsh: string,
   canonicalNsh: string,
@@ -3151,7 +3228,9 @@ export function assertSidecarGuardVmSweepParity(
     ...TRAVERSAL_REJECT_S16_CANONICAL_ONLY_PATHS,
     TRAVERSAL_HARD_H6_PATH,
   ]) {
-    const canonical = runTraversalVmFromNsh(path, canonicalNsh);
+    const canonical = cachedSweepVmOutcome(canonicalNsh, `trav-reject:${path}`, () =>
+      runTraversalVmFromNsh(path, canonicalNsh),
+    );
     const mutant = runTraversalVmFromNsh(path, mutantNsh);
     if (mutant !== canonical) {
       throw new Error(
@@ -3160,7 +3239,9 @@ export function assertSidecarGuardVmSweepParity(
     }
   }
   for (const path of TRAVERSAL_ALLOW_PATHS) {
-    const canonical = runTraversalVmFromNsh(path, canonicalNsh);
+    const canonical = cachedSweepVmOutcome(canonicalNsh, `trav-allow:${path}`, () =>
+      runTraversalVmFromNsh(path, canonicalNsh),
+    );
     const mutant = runTraversalVmFromNsh(path, mutantNsh);
     if (mutant !== canonical) {
       throw new Error(
@@ -3174,7 +3255,9 @@ export function assertSidecarGuardVmSweepParity(
     { gate: 2, path: DENY_PREFIX_PROGRAMFILES64_GATE_REJECT_PATH },
   ];
   for (const { gate, path } of denyGateRows) {
-    const canonical = runDenyPrefixGateVmFromNsh(path, canonicalNsh, gate, env);
+    const canonical = cachedSweepVmOutcome(canonicalNsh, `deny-gate:${gate}:${path}:${JSON.stringify(env)}`, () =>
+      runDenyPrefixGateVmFromNsh(path, canonicalNsh, gate, env),
+    );
     const mutant = runDenyPrefixGateVmFromNsh(path, mutantNsh, gate, env);
     if (mutant !== canonical) {
       throw new Error(
@@ -3183,7 +3266,9 @@ export function assertSidecarGuardVmSweepParity(
     }
   }
   for (const path of DENY_PREFIX_REJECT_PATHS) {
-    const canonical = runDenyPrefixVmFromNsh(path, canonicalNsh, env);
+    const canonical = cachedSweepVmOutcome(canonicalNsh, `deny-reject:${path}:${JSON.stringify(env)}`, () =>
+      runDenyPrefixVmFromNsh(path, canonicalNsh, env),
+    );
     const mutant = runDenyPrefixVmFromNsh(path, mutantNsh, env);
     if (mutant !== canonical) {
       throw new Error(
@@ -3192,7 +3277,9 @@ export function assertSidecarGuardVmSweepParity(
     }
   }
   for (const path of DENY_PREFIX_ALLOW_PATHS) {
-    const canonical = runDenyPrefixVmFromNsh(path, canonicalNsh, env);
+    const canonical = cachedSweepVmOutcome(canonicalNsh, `deny-allow:${path}:${JSON.stringify(env)}`, () =>
+      runDenyPrefixVmFromNsh(path, canonicalNsh, env),
+    );
     const mutant = runDenyPrefixVmFromNsh(path, mutantNsh, env);
     if (mutant !== canonical) {
       throw new Error(
@@ -3207,7 +3294,9 @@ export function assertSidecarGuardVmSweepParity(
     ...APPDATA_M5_ALLOW_PATHS.map((path) => ({ path })),
   ];
   for (const { path } of allowlistRows) {
-    const canonical = runSidecarPathAllowlistDeleteDisposition(path, canonicalNsh, env);
+    const canonical = cachedSweepVmOutcome(canonicalNsh, `allowlist:${path}:${JSON.stringify(env)}`, () =>
+      runSidecarPathAllowlistDeleteDisposition(path, canonicalNsh, env),
+    );
     const mutant = runSidecarPathAllowlistDeleteDisposition(path, mutantNsh, env);
     if (mutant !== canonical) {
       throw new Error(
@@ -5905,7 +5994,9 @@ export function assertSidecarRf456SweepParity(
     ...CANON_MUST_DELETE_PATHS,
     ...ALLOWLIST_GFPN_SLASH_DELETE_PATHS.map((r) => r.raw),
   ]) {
-    const canonical = runSidecarAllowlistDeleteVmFromNsh(path, canonicalNsh, env);
+    const canonical = cachedSweepVmOutcome(canonicalNsh, `rf456-allow:${path}:${JSON.stringify(env)}`, () =>
+      runSidecarAllowlistDeleteVmFromNsh(path, canonicalNsh, env),
+    );
     const mutant = runSidecarAllowlistDeleteVmFromNsh(path, mutantNsh, env);
     if (mutant !== canonical) {
       throw new Error(`sweep parity allowlist root guard ${JSON.stringify(path)}: canonical ${canonical}, mutant ${mutant}`);
@@ -5921,7 +6012,11 @@ export function assertSidecarRf456SweepParity(
     ...CANON_GATE_FAULT_SKIP_ROWS,
   ];
   for (const { path, root, ...options } of gateRows) {
-    const canonical = executeCanonGateBlock(canonicalGate, path, root, options);
+    const canonical = cachedSweepVmOutcome(
+      canonicalNsh,
+      `rf456-gate:${JSON.stringify({ path, root, ...options })}`,
+      () => executeCanonGateBlock(canonicalGate, path, root, options),
+    );
     const mutant = executeCanonGateBlock(mutantGate, path, root, options);
     if (mutant !== canonical) {
       throw new Error(
