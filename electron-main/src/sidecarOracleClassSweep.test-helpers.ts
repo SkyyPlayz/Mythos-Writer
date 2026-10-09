@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { loadUninstallVaultsNsh } from './uninstallVaultsNsh.path.js';
 import { mutantSidecarGuardRegionSweepLine } from './sidecarTraversalScan.test-helpers.js';
-import { SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES } from './uninstallVaultsNsh.guardRegionSweep.test.js';
+import {
+  SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES,
+  SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS,
+} from './uninstallVaultsNsh.guardRegionSweep.test.js';
 import {
   generateOracleClassMutants,
   sidecarGuardCaseOutcome,
@@ -27,6 +30,11 @@ const SWEEP_CHUNK = 1;
  */
 const ORACLE_CLASS_ALL_EQUIVALENT_LINES: ReadonlySet<number> = new Set(
   Object.keys(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES).map((n) => Number(n)),
+);
+
+/** GFPN/GLP no-ops: mode-2 documents the primary; skip the 12k corpus walk (same cut as strength shards). */
+const ORACLE_CLASS_MODE2_ONLY_LINES: ReadonlySet<number> = new Set(
+  Object.keys(SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS).map((n) => Number(n)),
 );
 
 const chunkMutants = (mutants: OracleClassMutant[], size: number): OracleClassMutant[][] => {
@@ -58,6 +66,9 @@ export function registerOracleClassLineSweep(lineFirst: number, lineLast: number
       });
 
       for (let fileLine = lineFirst; fileLine <= lineLast; fileLine += 1) {
+        if (ORACLE_CLASS_MODE2_ONLY_LINES.has(fileLine)) {
+          continue;
+        }
         const mutants = byLine.get(fileLine) ?? [];
         const chunks = chunkMutants(mutants, SWEEP_CHUNK);
         const timeout = ORACLE_CLASS_SWEEP_TEST_TIMEOUT_MS;
