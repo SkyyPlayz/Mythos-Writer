@@ -452,6 +452,17 @@ export type SidecarNsisRunOptions = {
   /** Oversize GetLongPathNameW only when the Call is on one of these 1-based file lines. */
   glpnOversizeFileLines?: readonly number[];
   /**
+   * Replace the GetFullPathNameW model input at these 1-based Call lines with a
+   * real path. Required size is `c.length+1` — not a faked `bufn+1` on a short
+   * leftover register.
+   */
+  gfpnResolvedPathFileLines?: Readonly<Record<number, string>>;
+  /**
+   * Replace the GetLongPathNameW model input at these 1-based Call lines with a
+   * real path. Required size is `c.length+1`.
+   */
+  glpnResolvedPathFileLines?: Readonly<Record<number, string>>;
+  /**
    * Win32 last-error for a failed GetLongPathNameW of this exact input.
    * Default for any other GLP failure is ERROR_FILE_NOT_FOUND (2).
    * ERROR_ACCESS_DENIED is 5 — must not fall back to GFPN.
@@ -749,6 +760,8 @@ export function runNsisProgramLines(
   const glpnOversize = new Set(options.glpnOversizePaths ?? []);
   const glpnOversizeNth = options.glpnOversizeNth ?? {};
   const glpnOversizeFileLines = new Set(options.glpnOversizeFileLines ?? []);
+  const gfpnResolvedPathFileLines = options.gfpnResolvedPathFileLines ?? {};
+  const glpnResolvedPathFileLines = options.glpnResolvedPathFileLines ?? {};
   const glpnErrno = options.glpnErrno ?? {};
   const glpnErrnoFileLines = options.glpnErrnoFileLines ?? {};
   const gfpnOcc = new Map<string, number>();
@@ -1117,7 +1130,9 @@ export function runNsisProgramLines(
         const inp = argval(ty[0]![1]!);
         const bufn = nsisMyAtoi(argval(ty[1]![1]!));
         const outr = ty[2]![1]!.startsWith('.') ? regname(ty[2]![1]!) : null;
-        const c = inp === '' ? null : gfpnModel(inp);
+        const resolvedGfpn = gfpnResolvedPathFileLines[fileLine];
+        const c =
+          resolvedGfpn !== undefined ? gfpnModel(resolvedGfpn) : inp === '' ? null : gfpnModel(inp);
         const occ = bumpOcc(gfpnOcc, inp);
         let f: string | null = null;
         if (
@@ -1152,6 +1167,19 @@ export function runNsisProgramLines(
           rv = 'error';
         } else if (c.length + 1 > bufn) {
           rv = String(c.length + 1);
+          // Required size > buffer: dest is unspecified. When this Call's
+          // resolved path was substituted (long-path constant), write the
+          // short leftover input so a later sibling GLP can still run. Else
+          // leave the register (nested long-env GFPN) so leftover is the
+          // prior short root. Fake `gfpnOversize*` still writes the truncated
+          // prefix (above).
+          if (outr !== null && resolvedGfpn !== undefined && inp !== '') {
+            const shortC = gfpnModel(inp);
+            if (shortC.length + 1 <= bufn) {
+              R[outr] = shortC;
+            }
+          }
+          wroteOut = true;
         } else {
           rv = String(c.length);
         }
@@ -1183,8 +1211,10 @@ export function runNsisProgramLines(
         const bufn = nsisMyAtoi(argval(ty[2]![1]!));
         const outr = ty[1]![1]!.startsWith('.') ? regname(ty[1]![1]!) : null;
         const expand = fn === 'GetLongPathNameW';
-        const exists = !expand || glpnWin32Exists(inp, env, options);
-        const c = inp === '' || !exists ? null : expand ? glpnModel(inp) : inp;
+        const resolvedGlpn = glpnResolvedPathFileLines[fileLine];
+        const modelInp = resolvedGlpn ?? inp;
+        const exists = !expand || glpnWin32Exists(modelInp, env, options);
+        const c = modelInp === '' || !exists ? null : expand ? glpnModel(modelInp) : modelInp;
         const occ = bumpOcc(glpnOcc, inp);
         const wantE = rt.includes('?e');
         let rv: string;
@@ -1219,6 +1249,16 @@ export function runNsisProgramLines(
           }
         } else if (c.length + 1 > bufn) {
           rv = String(c.length + 1);
+          if (outr !== null && resolvedGlpn !== undefined && inp !== '' && exists) {
+            const shortC = expand ? glpnModel(inp) : inp;
+            if (shortC.length + 1 <= bufn) {
+              R[outr] = shortC;
+            } else {
+              R[outr] = c.length >= bufn ? c.slice(0, bufn - 1) : c;
+            }
+          } else if (outr !== null) {
+            R[outr] = c.length >= bufn ? c.slice(0, bufn - 1) : c;
+          }
         } else {
           rv = String(c.length);
           if (outr !== null) {

@@ -15,7 +15,6 @@ import {
   runSidecarNsisProgram,
   SIDECAR_LINE_STEP_LIMIT_ERROR,
   SIDECAR_NSIS_ENV_E1,
-  SIDECAR_NSIS_MAX_STRLEN,
   type SidecarNsisRunOptions,
 } from './sidecarNsisVm.test-helpers.js';
 
@@ -1967,6 +1966,10 @@ const GLP_8_3_ALIASES: Readonly<Record<string, string>> = {
   'aspc~1': 'a ',
   'rf7par~1': 'rf7-parent',
   'leafj~1': 'leaf-junc',
+  // GetLongPathNameW of LONGDO~1 is the long-path constant leaf (required size > NSIS_MAX_STRLEN).
+  // Literal 1024: this object is evaluated at module init; the vm↔traversal
+  // import cycle can leave SIDECAR_NSIS_MAX_STRLEN undefined if vm loads first.
+  'longdo~1': 'D'.repeat(1024),
 };
 
 export function glpnModel(s: string): string {
@@ -5950,7 +5953,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault'],
-    options: { glpnOversizeFileLines: [143] },
+    options: { glpnResolvedPathFileLines: { 143: `${HARD12_ENV_E1.DOCUMENTS}\\${'D'.repeat(1024)}` } },
     killsFileLine: 145,
   },
   {
@@ -5959,7 +5962,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     env: HARD12_ENV_E1,
     expect: 'skip',
     mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault'],
-    options: { glpnOversizeFileLines: [321] },
+    options: { glpnResolvedPathFileLines: { 321: `${HARD12_ENV_E1.DOCUMENTS}\\${'D'.repeat(1024)}` } },
     killsFileLine: 323,
   },
   {
@@ -6005,6 +6008,66 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     },
     killsFileLine: 546,
     killsFileLines: [201, 202, 207, 546],
+  },
+  {
+    name: 'APPDATA GLP PATH_NOT_FOUND (3) helper GFA fail still falls back; deletes (kills :208)',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\Docs\\v',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: {
+      glpnErrnoFileLines: { 200: 3 },
+      invalidAttrPaths: ['C:\\Users\\me\\AppData\\Roaming\\Mythos Writer'],
+    },
+    killsFileLine: 208,
+    killsFileLines: [208],
+  },
+  {
+    name: 'Documents GLP PATH_NOT_FOUND (3) helper GFA fail still falls back; deletes (kills :238)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: {
+      glpnErrnoFileLines: { 230: 3, 389: 3 },
+      invalidAttrPaths: ['C:\\Users\\me\\Documents'],
+    },
+    killsFileLine: 238,
+    killsFileLines: [238],
+  },
+  {
+    name: 'Desktop GLP PATH_NOT_FOUND (3) helper GFA fail still falls back; deletes (kills :268)',
+    path: 'C:\\Users\\me\\Desktop\\v',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: {
+      glpnErrnoFileLines: { 260: 3, 415: 3 },
+      invalidAttrPaths: ['C:\\Users\\me\\Desktop'],
+    },
+    killsFileLine: 268,
+    killsFileLines: [268],
+  },
+  {
+    name: 'Nested Documents GLP PATH_NOT_FOUND (3) helper GFA fail still falls back; deletes (kills :397)',
+    path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\Docs\\v',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: {
+      glpnErrnoFileLines: { 389: 3 },
+      invalidAttrPaths: ['C:\\Users\\me\\Documents'],
+    },
+    killsFileLine: 397,
+    killsFileLines: [397],
+  },
+  {
+    name: 'Nested Desktop GLP PATH_NOT_FOUND (3) helper GFA fail still falls back; deletes (kills :423)',
+    path: 'C:\\Users\\me\\Documents\\MyVault',
+    env: HARD12_ENV_E1,
+    expect: 'delete',
+    options: {
+      glpnErrnoFileLines: { 415: 3 },
+      invalidAttrPaths: ['C:\\Users\\me\\Desktop'],
+    },
+    killsFileLine: 423,
+    killsFileLines: [423],
   },
 ];
 
@@ -6068,7 +6131,7 @@ export function sidecarHardADeleted(nsh: string, row: SidecarHardARow): string[]
 }
 
 export function assertSidecarHardATables(nsh: string): void {
-  for (const row of SIDECAR_HARD_A_ROWS) {
+  for (const row of sidecarHardAAllRows()) {
     let deleted: string[];
     try {
       deleted = sidecarHardADeleted(nsh, row);
@@ -6093,7 +6156,7 @@ export function assertSidecarHardATables(nsh: string): void {
 }
 
 export function assertSidecarHardASweepParity(mutantNsh: string, canonicalNsh: string): void {
-  for (const row of SIDECAR_HARD_A_ROWS) {
+  for (const row of sidecarHardAAllRows()) {
     const canonical = sidecarHardADeleted(canonicalNsh, row).join('\0');
     const mutant = sidecarHardADeleted(mutantNsh, row).join('\0');
     if (mutant !== canonical) {
@@ -6241,8 +6304,8 @@ export function scoreForgeOracleFamilies(nsh: string): readonly ForgeOracleFamil
       nsh,
       [],
     ),
-    scoreForgeRows('false-reject', nsh, SIDECAR_HARD_A_ROWS.filter((r) => r.expect === 'delete')),
-    scoreForgeRows('shortname', nsh, SIDECAR_HARD_A_ROWS),
+    scoreForgeRows('false-reject', nsh, sidecarHardAAllRows().filter((r) => r.expect === 'delete')),
+    scoreForgeRows('shortname', nsh, sidecarHardAAllRows()),
     scoreForgeRows('layout', nsh, [
       ...SIDECAR_HARD_C_ROWS,
       ...SIDECAR_HARD_E_ROWS,
@@ -7465,10 +7528,44 @@ export function mutantSidecarFallbackSweepLine(nsh: string, fileLineOneBased: nu
   return nshReplaceFileLine(nsh, fileLineOneBased, 'Nop');
 }
 
-/**
- * `IntCmp $4 ${NSIS_MAX_STRLEN} dest 0 dest` → greater-branch fall-through (`tgt3->0`).
- * Live only when `$4 > NSIS_MAX_STRLEN`; equal-trunc fixtures never take this branch.
- */
+/** `IntCmp $4 ${NSIS_MAX_STRLEN} dest 0 dest` → equal-branch fall-through (`tgt1->0`). */
+export function mutantSidecarIntCmpMaxTgt1To0(nsh: string, fileLineOneBased: number): string {
+  const line = nsh.split('\n')[fileLineOneBased - 1];
+  if (line === undefined) {
+    throw new Error(`file line ${fileLineOneBased} missing`);
+  }
+  const trimmed = line.trim();
+  const m = trimmed.match(/^IntCmp \$4 \$\{NSIS_MAX_STRLEN\} (\S+) 0 \1$/);
+  if (m === null) {
+    throw new Error(`:${fileLineOneBased} is not a MAX IntCmp with equal/greater → same dest: ${trimmed}`);
+  }
+  return nshReplaceFileLine(nsh, fileLineOneBased, `IntCmp $4 \${NSIS_MAX_STRLEN} 0 0 ${m[1]}`);
+}
+
+/** `IntCmp $4 0 h3 h3 0` → equal-branch fall-through (`tgt1->0`). */
+export function mutantSidecarFallbackIntCmpTgt1To0(nsh: string, fileLineOneBased: number): string {
+  const line = nsh.split('\n')[fileLineOneBased - 1];
+  if (line === undefined) {
+    throw new Error(`file line ${fileLineOneBased} missing`);
+  }
+  const trimmed = line.trim();
+  const m = trimmed.match(/^IntCmp \$4 0 (\S+) \1 0$/);
+  if (m === null) {
+    throw new Error(`:${fileLineOneBased} is not fallback IntCmp $4 0 h3 h3 0: ${trimmed}`);
+  }
+  return nshReplaceFileLine(nsh, fileLineOneBased, `IntCmp $4 0 0 ${m[1]} 0`);
+}
+
+/** :567 `Goto mythos_al_deny` → `Goto uninstall_vault_read` (al_deny is that Goto). */
+export function mutantSidecar567GotoRead(nsh: string): string {
+  const line = nsh.split('\n')[566];
+  if (line === undefined || !line.includes('Goto mythos_al_deny')) {
+    throw new Error(`:567 is not Goto mythos_al_deny: ${line?.trim() ?? 'missing'}`);
+  }
+  return nshReplaceFileLine(nsh, 567, 'Goto uninstall_vault_read');
+}
+
+/** `IntCmp $4 ${NSIS_MAX_STRLEN} dest 0 dest` → greater-branch fall-through (`tgt3->0`). */
 export function mutantSidecarIntCmpMaxTgt3To0(nsh: string, fileLineOneBased: number): string {
   const line = nsh.split('\n')[fileLineOneBased - 1];
   if (line === undefined) {
@@ -7487,30 +7584,252 @@ export type SidecarTgt3MaxlenSpec = Readonly<{
   callLine: number;
   name: string;
   path: string;
+  env: SidecarNsisVarEnv;
   options: Omit<SidecarNsisRunOptions, 'env'>;
+  callApi: 'GetFullPathNameW' | 'GetLongPathNameW';
 }>;
+
+export const SIDECAR_NSIS_LONG_DOCUMENTS_ROOT = `C:\\Users\\me\\${'D'.repeat(1024)}`;
+/** 8.3 alias of the long-path constant leaf (`LONGDO~1` → 1024 `D`s). */
+export const SIDECAR_NSIS_LONG_8_3 = 'C:\\Users\\me\\LONGDO~1';
+/** Long path under Documents so a truncated dest still allow-matches. */
+export const SIDECAR_NSIS_LONG_UNDER_DOCUMENTS = `C:\\Users\\me\\Documents\\${'D'.repeat(1024)}`;
+const APPDATA_DESCENDANT_VAULT = 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\Docs\\v';
+const DOCUMENTS_VAULT = 'C:\\Users\\me\\Documents\\MyVault';
+const DESKTOP_VAULT = 'C:\\Users\\me\\Desktop\\v';
+const DOWNLOADS_VAULT = 'C:\\Users\\me\\Downloads\\v';
+
+function noOversizeHooks(options: Omit<SidecarNsisRunOptions, 'env'>): Omit<SidecarNsisRunOptions, 'env'> {
+  if (
+    options.gfpnOversizePaths !== undefined ||
+    options.gfpnOversizeNth !== undefined ||
+    options.gfpnOversizeFileLines !== undefined ||
+    options.glpnOversizePaths !== undefined ||
+    options.glpnOversizeNth !== undefined ||
+    options.glpnOversizeFileLines !== undefined
+  ) {
+    throw new Error('oversize specs must use a real long path, not *Oversize* fakes');
+  }
+  return options;
+}
+
+/**
+ * Ivy's 8 MAX IntCmp sites. Each row keeps the folder; `tgt3->0` deletes.
+ * Resolved / env paths are longer than `NSIS_MAX_STRLEN` (the long-path constant
+ * or its 8.3 alias). No `*Oversize*` fakes on short leftover registers.
+ */
+export const SIDECAR_TGT3_EIGHT_SPECS: readonly SidecarTgt3MaxlenSpec[] = [
+  {
+    intCmpLine: 320,
+    callLine: 318,
+    name: 'canon $1 GFPN',
+    path: DOCUMENTS_VAULT,
+    env: HARD12_ENV_E1,
+    callApi: 'GetFullPathNameW',
+    options: noOversizeHooks({ gfpnResolvedPathFileLines: { 318: SIDECAR_NSIS_LONG_DOCUMENTS_ROOT } }),
+  },
+  {
+    intCmpLine: 331,
+    callLine: 329,
+    name: 'canon $5 GFPN',
+    path: DOCUMENTS_VAULT,
+    env: HARD12_ENV_E1,
+    callApi: 'GetFullPathNameW',
+    options: noOversizeHooks({ gfpnResolvedPathFileLines: { 329: SIDECAR_NSIS_LONG_DOCUMENTS_ROOT } }),
+  },
+  {
+    intCmpLine: 362,
+    callLine: 360,
+    name: 'nested AppData GFPN',
+    path: DOCUMENTS_VAULT,
+    env: HARD12_ENV_E1,
+    callApi: 'GetFullPathNameW',
+    options: noOversizeHooks({ gfpnResolvedPathFileLines: { 360: SIDECAR_NSIS_LONG_DOCUMENTS_ROOT } }),
+  },
+  {
+    intCmpLine: 388,
+    callLine: 386,
+    name: 'nested Documents GFPN',
+    path: APPDATA_DESCENDANT_VAULT,
+    env: { ...HARD12_ENV_E1, DOCUMENTS: SIDECAR_NSIS_LONG_DOCUMENTS_ROOT },
+    callApi: 'GetFullPathNameW',
+    options: noOversizeHooks({}),
+  },
+  {
+    intCmpLine: 414,
+    callLine: 412,
+    name: 'nested Desktop GFPN',
+    path: DOCUMENTS_VAULT,
+    env: { ...HARD12_ENV_E1, DESKTOP: SIDECAR_NSIS_LONG_DOCUMENTS_ROOT },
+    callApi: 'GetFullPathNameW',
+    options: noOversizeHooks({}),
+  },
+  {
+    intCmpLine: 418,
+    callLine: 415,
+    name: 'nested Desktop GLP',
+    path: DOCUMENTS_VAULT,
+    env: { ...HARD12_ENV_E1, DESKTOP: SIDECAR_NSIS_LONG_8_3 },
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({}),
+  },
+  {
+    intCmpLine: 440,
+    callLine: 438,
+    name: 'nested Downloads GFPN',
+    path: DOCUMENTS_VAULT,
+    env: { ...HARD12_ENV_E1, PROFILE: SIDECAR_NSIS_LONG_DOCUMENTS_ROOT },
+    callApi: 'GetFullPathNameW',
+    options: noOversizeHooks({}),
+  },
+  {
+    intCmpLine: 444,
+    callLine: 441,
+    name: 'nested Downloads GLP',
+    path: DOCUMENTS_VAULT,
+    env: { ...HARD12_ENV_E1, PROFILE: SIDECAR_NSIS_LONG_8_3 },
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({}),
+  },
+];
 
 /**
  * 12 GLP MAX IntCmp sites. Each row uses a required-size &gt; NSIS_MAX_STRLEN
- * (`glpnOversize*`) so `tgt3->0` is live. Canonical keeps the folder and never
- * Deletes the truncated prefix.
+ * (real long path or 8.3→long-path-constant) so `tgt3->0` is live. Canonical
+ * keeps the folder and never Deletes the truncated prefix.
  */
 export const SIDECAR_TGT3_MAXLEN_SPECS: readonly SidecarTgt3MaxlenSpec[] = [
-  { intCmpLine: 145, callLine: 143, name: 'line GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [143] } },
-  { intCmpLine: 157, callLine: 155, name: 'WINDIR GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [155] } },
-  { intCmpLine: 172, callLine: 170, name: 'PROGRAMFILES GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [170] } },
-  { intCmpLine: 187, callLine: 185, name: 'PROGRAMFILES64 GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [185] } },
-  { intCmpLine: 203, callLine: 200, name: 'APPDATA allow GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [200] } },
-  { intCmpLine: 233, callLine: 230, name: 'Documents allow GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [230] } },
-  { intCmpLine: 263, callLine: 260, name: 'Desktop allow GLP', path: 'C:\\Users\\me\\Desktop\\v', options: { glpnOversizeFileLines: [260] } },
-  { intCmpLine: 293, callLine: 290, name: 'Downloads allow GLP', path: 'C:\\Users\\me\\Downloads\\v', options: { glpnOversizeFileLines: [290] } },
-  { intCmpLine: 323, callLine: 321, name: 'canon $3 GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [321] } },
-  { intCmpLine: 334, callLine: 332, name: 'canon $9 GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [332] } },
-  { intCmpLine: 366, callLine: 363, name: 'nested AppData GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [363] } },
-  { intCmpLine: 392, callLine: 389, name: 'nested Documents GLP', path: 'C:\\Users\\me\\Documents\\MyVault', options: { glpnOversizeFileLines: [389] } },
+  {
+    intCmpLine: 145,
+    callLine: 143,
+    name: 'line GLP',
+    path: DOCUMENTS_VAULT,
+    env: HARD12_ENV_E1,
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({ glpnResolvedPathFileLines: { 143: SIDECAR_NSIS_LONG_UNDER_DOCUMENTS } }),
+  },
+  {
+    intCmpLine: 157,
+    callLine: 155,
+    name: 'WINDIR GLP',
+    path: DOCUMENTS_VAULT,
+    env: { ...HARD12_ENV_E1, WINDIR: SIDECAR_NSIS_LONG_8_3 },
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({}),
+  },
+  {
+    intCmpLine: 172,
+    callLine: 170,
+    name: 'PROGRAMFILES GLP',
+    path: DOCUMENTS_VAULT,
+    env: { ...HARD12_ENV_E1, PROGRAMFILES: SIDECAR_NSIS_LONG_8_3 },
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({}),
+  },
+  {
+    intCmpLine: 187,
+    callLine: 185,
+    name: 'PROGRAMFILES64 GLP',
+    path: DOCUMENTS_VAULT,
+    env: { ...HARD12_ENV_E1, PROGRAMFILES64: SIDECAR_NSIS_LONG_8_3 },
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({}),
+  },
+  {
+    intCmpLine: 203,
+    callLine: 200,
+    name: 'APPDATA allow GLP',
+    path: DOCUMENTS_VAULT,
+    env: HARD12_ENV_E1,
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({ glpnResolvedPathFileLines: { 200: SIDECAR_NSIS_LONG_UNDER_DOCUMENTS } }),
+  },
+  {
+    intCmpLine: 233,
+    callLine: 230,
+    name: 'Documents allow GLP',
+    path: DESKTOP_VAULT,
+    env: HARD12_ENV_E1,
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({ glpnResolvedPathFileLines: { 230: SIDECAR_NSIS_LONG_DOCUMENTS_ROOT } }),
+  },
+  {
+    intCmpLine: 263,
+    callLine: 260,
+    name: 'Desktop allow GLP',
+    path: DOWNLOADS_VAULT,
+    env: HARD12_ENV_E1,
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({ glpnResolvedPathFileLines: { 260: SIDECAR_NSIS_LONG_DOCUMENTS_ROOT } }),
+  },
+  {
+    intCmpLine: 293,
+    callLine: 290,
+    name: 'Downloads allow GLP',
+    path: DOWNLOADS_VAULT,
+    env: HARD12_ENV_E1,
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({ glpnResolvedPathFileLines: { 290: `C:\\Users\\me\\Downloads\\${'D'.repeat(1024)}` } }),
+  },
+  {
+    intCmpLine: 323,
+    callLine: 321,
+    name: 'canon $3 GLP',
+    path: DOCUMENTS_VAULT,
+    env: HARD12_ENV_E1,
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({ glpnResolvedPathFileLines: { 321: SIDECAR_NSIS_LONG_UNDER_DOCUMENTS } }),
+  },
+  {
+    intCmpLine: 334,
+    callLine: 332,
+    name: 'canon $9 GLP',
+    path: DOCUMENTS_VAULT,
+    env: HARD12_ENV_E1,
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({ glpnResolvedPathFileLines: { 332: SIDECAR_NSIS_LONG_UNDER_DOCUMENTS } }),
+  },
+  {
+    intCmpLine: 366,
+    callLine: 363,
+    name: 'nested AppData GLP',
+    path: DOCUMENTS_VAULT,
+    env: HARD12_ENV_E1,
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({ glpnResolvedPathFileLines: { 363: SIDECAR_NSIS_LONG_DOCUMENTS_ROOT } }),
+  },
+  {
+    intCmpLine: 392,
+    callLine: 389,
+    name: 'nested Documents GLP',
+    path: APPDATA_DESCENDANT_VAULT,
+    env: { ...HARD12_ENV_E1, DOCUMENTS: SIDECAR_NSIS_LONG_8_3 },
+    callApi: 'GetLongPathNameW',
+    options: noOversizeHooks({}),
+  },
 ];
 
-export const SIDECAR_NSIS_LONG_DOCUMENTS_ROOT = `C:\\Users\\me\\${'D'.repeat(SIDECAR_NSIS_MAX_STRLEN)}`;
+export function sidecarTgt3SpecToHardARow(spec: SidecarTgt3MaxlenSpec): SidecarHardARow {
+  return {
+    name: `${spec.name} oversize (required size > NSIS_MAX_STRLEN) keeps folder (kills :${spec.intCmpLine} Nop / tgt3->0)`,
+    path: spec.path,
+    env: spec.env,
+    expect: 'skip',
+    // Vault leftover is short; do not call nsisTruncatedPrefix here — its
+    // default `SIDECAR_NSIS_MAX_STRLEN` is in TDZ when vm loads this module.
+    mustNotDelete: [spec.path],
+    options: spec.options,
+    killsFileLine: spec.intCmpLine,
+  };
+}
+
+export function sidecarTgt3HardARows(): readonly SidecarHardARow[] {
+  return [...SIDECAR_TGT3_EIGHT_SPECS, ...SIDECAR_TGT3_MAXLEN_SPECS].map(sidecarTgt3SpecToHardARow);
+}
+
+export function sidecarHardAAllRows(): readonly SidecarHardARow[] {
+  return [...SIDECAR_HARD_A_ROWS, ...sidecarTgt3HardARows()];
+}
 
 /** Primary sweep mutant for one guard-region file line (:43–:376). */
 export function mutantSidecarGuardRegionSweepLine(nsh: string, fileLineOneBased: number): string {
