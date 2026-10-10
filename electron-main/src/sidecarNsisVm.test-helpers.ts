@@ -118,16 +118,30 @@ function compileSidecarNsisProgram(lines: readonly string[], fileLine0: number):
   return { ins, lab };
 }
 
+const PROG_CACHE_MAX = 8;
 const progCache = new Map<string, Prog>();
+const progByLines = new WeakMap<readonly string[], { fileLine0: number; prog: Prog }>();
 
 function programForLines(lines: readonly string[], fileLine0: number): Prog {
+  const weak = progByLines.get(lines);
+  if (weak !== undefined && weak.fileLine0 === fileLine0) {
+    return weak.prog;
+  }
   const key = `${fileLine0}\n${lines.join('\n')}`;
   const hit = progCache.get(key);
   if (hit !== undefined) {
+    progByLines.set(lines, { fileLine0, prog: hit });
     return hit;
   }
   const prog = compileSidecarNsisProgram(lines, fileLine0);
+  if (progCache.size >= PROG_CACHE_MAX) {
+    const oldest = progCache.keys().next().value;
+    if (oldest !== undefined) {
+      progCache.delete(oldest);
+    }
+  }
   progCache.set(key, prog);
+  progByLines.set(lines, { fileLine0, prog });
   return prog;
 }
 
@@ -715,6 +729,25 @@ function fileReadEwfgets(stream: string, pos: number): { s: string; pos: number;
   return { s, pos: p, err: out.length === 0 };
 }
 
+const EMPTY_STR_SET: ReadonlySet<string> = new Set();
+const EMPTY_NUM_SET: ReadonlySet<number> = new Set();
+const EMPTY_STR_NUM: Readonly<Record<string, number>> = {};
+const EMPTY_NUM_NUM: Readonly<Record<number, number>> = {};
+const EMPTY_NUM_STR: Readonly<Record<number, string>> = {};
+const EMPTY_FILE_ATTRS = new Map<string, number>();
+
+function optionStrSet(values: readonly string[] | undefined): ReadonlySet<string> {
+  return values === undefined || values.length === 0 ? EMPTY_STR_SET : new Set(values);
+}
+
+function optionNumSet(values: readonly number[] | undefined): ReadonlySet<number> {
+  return values === undefined || values.length === 0 ? EMPTY_NUM_SET : new Set(values);
+}
+
+function optionStrMap(values: Readonly<Record<string, number>> | undefined): Map<string, number> {
+  return values === undefined ? EMPTY_FILE_ATTRS : new Map(Object.entries(values));
+}
+
 export function runSidecarNsisProgram(
   nsh: string,
   sidecarLines: readonly string[],
@@ -737,33 +770,33 @@ export function runNsisProgramLines(
   const stream = sidecarLines.join('');
   const P = programForLines(lines, fileLine0);
   const faultInfo = parseFault(options.fault ?? null);
-  const reparse = new Set(options.reparsePaths ?? []);
-  const invalidAttr = new Set(options.invalidAttrPaths ?? []);
-  const attrError = new Set(options.attrErrorPaths ?? []);
-  const fileAttrs = new Map(Object.entries(options.fileAttributes ?? {}));
+  const reparse = optionStrSet(options.reparsePaths);
+  const invalidAttr = optionStrSet(options.invalidAttrPaths);
+  const attrError = optionStrSet(options.attrErrorPaths);
+  const fileAttrs = optionStrMap(options.fileAttributes);
   const fs = options.fs;
-  const glpnFail = new Set(options.glpnFailPaths ?? []);
-  const glpnTrunc = new Set(options.glpnTruncPaths ?? []);
-  const gfpnFail = new Set(options.gfpnFailPaths ?? []);
-  const gfpnTrunc = new Set(options.gfpnTruncPaths ?? []);
-  const gfpnFailNth = options.gfpnFailNth ?? {};
-  const gfpnTruncNth = options.gfpnTruncNth ?? {};
-  const glpnFailNth = options.glpnFailNth ?? {};
-  const glpnTruncNth = options.glpnTruncNth ?? {};
-  const gfpnFailFileLines = new Set(options.gfpnFailFileLines ?? []);
-  const gfpnTruncFileLines = new Set(options.gfpnTruncFileLines ?? []);
-  const glpnFailFileLines = new Set(options.glpnFailFileLines ?? []);
-  const glpnTruncFileLines = new Set(options.glpnTruncFileLines ?? []);
-  const gfpnOversize = new Set(options.gfpnOversizePaths ?? []);
-  const gfpnOversizeNth = options.gfpnOversizeNth ?? {};
-  const gfpnOversizeFileLines = new Set(options.gfpnOversizeFileLines ?? []);
-  const glpnOversize = new Set(options.glpnOversizePaths ?? []);
-  const glpnOversizeNth = options.glpnOversizeNth ?? {};
-  const glpnOversizeFileLines = new Set(options.glpnOversizeFileLines ?? []);
-  const gfpnResolvedPathFileLines = options.gfpnResolvedPathFileLines ?? {};
-  const glpnResolvedPathFileLines = options.glpnResolvedPathFileLines ?? {};
-  const glpnErrno = options.glpnErrno ?? {};
-  const glpnErrnoFileLines = options.glpnErrnoFileLines ?? {};
+  const glpnFail = optionStrSet(options.glpnFailPaths);
+  const glpnTrunc = optionStrSet(options.glpnTruncPaths);
+  const gfpnFail = optionStrSet(options.gfpnFailPaths);
+  const gfpnTrunc = optionStrSet(options.gfpnTruncPaths);
+  const gfpnFailNth = options.gfpnFailNth ?? EMPTY_STR_NUM;
+  const gfpnTruncNth = options.gfpnTruncNth ?? EMPTY_STR_NUM;
+  const glpnFailNth = options.glpnFailNth ?? EMPTY_STR_NUM;
+  const glpnTruncNth = options.glpnTruncNth ?? EMPTY_STR_NUM;
+  const gfpnFailFileLines = optionNumSet(options.gfpnFailFileLines);
+  const gfpnTruncFileLines = optionNumSet(options.gfpnTruncFileLines);
+  const glpnFailFileLines = optionNumSet(options.glpnFailFileLines);
+  const glpnTruncFileLines = optionNumSet(options.glpnTruncFileLines);
+  const gfpnOversize = optionStrSet(options.gfpnOversizePaths);
+  const gfpnOversizeNth = options.gfpnOversizeNth ?? EMPTY_STR_NUM;
+  const gfpnOversizeFileLines = optionNumSet(options.gfpnOversizeFileLines);
+  const glpnOversize = optionStrSet(options.glpnOversizePaths);
+  const glpnOversizeNth = options.glpnOversizeNth ?? EMPTY_STR_NUM;
+  const glpnOversizeFileLines = optionNumSet(options.glpnOversizeFileLines);
+  const gfpnResolvedPathFileLines = options.gfpnResolvedPathFileLines ?? EMPTY_NUM_STR;
+  const glpnResolvedPathFileLines = options.glpnResolvedPathFileLines ?? EMPTY_NUM_STR;
+  const glpnErrno = options.glpnErrno ?? EMPTY_STR_NUM;
+  const glpnErrnoFileLines = options.glpnErrnoFileLines ?? EMPTY_NUM_NUM;
   const gfpnOcc = new Map<string, number>();
   const glpnOcc = new Map<string, number>();
   const bumpOcc = (map: Map<string, number>, key: string): number => {
