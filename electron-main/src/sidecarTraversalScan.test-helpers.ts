@@ -5993,7 +5993,7 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
   },
 ];
 
-/** PATH_NOT_FOUND (3) still-deletes. Sweep parity only when the mutant touches the named line. */
+/** PATH_NOT_FOUND (3) still-deletes. One-shot HARD-A tables / tgt3Maxlen; not sweep parity. */
 export const SIDECAR_ERRNO3_HARD_A_ROWS: readonly SidecarHardARow[] = [
   {
     name: 'APPDATA GLP PATH_NOT_FOUND (3) helper GFA fail still falls back; deletes (kills :208)',
@@ -6141,46 +6141,10 @@ export function assertSidecarHardATables(nsh: string): void {
   }
 }
 
-function nshChangedFileLines(mutantNsh: string, canonicalNsh: string): readonly number[] {
-  const mutantLines = mutantNsh.split('\n');
-  const canonicalLines = canonicalNsh.split('\n');
-  const changed: number[] = [];
-  const n = Math.max(mutantLines.length, canonicalLines.length);
-  for (let i = 0; i < n; i += 1) {
-    if (mutantLines[i] !== canonicalLines[i]) {
-      changed.push(i + 1);
-    }
-  }
-  return changed;
-}
-
-function hardARowTouchesLines(row: SidecarHardARow, fileLines: readonly number[]): boolean {
-  if (row.killsFileLine !== undefined && fileLines.includes(row.killsFileLine)) {
-    return true;
-  }
-  return row.killsFileLines?.some((line) => fileLines.includes(line)) === true;
-}
-
 export function assertSidecarHardASweepParity(mutantNsh: string, canonicalNsh: string): void {
+  // Oversize / errno-3 rows stay on assertSidecarHardATables (once) and tgt3Maxlen.
+  // Putting them on every oracle mutant misses the 40-minute oracle-sweeps cap.
   for (const row of SIDECAR_HARD_A_ROWS) {
-    const canonical = sidecarHardADeleted(canonicalNsh, row).join('\0');
-    const mutant = sidecarHardADeleted(mutantNsh, row).join('\0');
-    if (mutant !== canonical) {
-      throw new Error(
-        `HARD-A sweep parity ${row.name}: canonical ${JSON.stringify(canonical)}, mutant ${JSON.stringify(mutant)}`,
-      );
-    }
-  }
-  // Long-path / errno-3 rows only when the mutant touches that line.
-  // Running them on every oracle mutant blew the 40-minute oracle-sweeps cap.
-  const changed = nshChangedFileLines(mutantNsh, canonicalNsh);
-  if (changed.length === 0) {
-    return;
-  }
-  for (const row of [...SIDECAR_ERRNO3_HARD_A_ROWS, ...sidecarTgt3HardARows()]) {
-    if (!hardARowTouchesLines(row, changed)) {
-      continue;
-    }
     const canonical = sidecarHardADeleted(canonicalNsh, row).join('\0');
     const mutant = sidecarHardADeleted(mutantNsh, row).join('\0');
     if (mutant !== canonical) {

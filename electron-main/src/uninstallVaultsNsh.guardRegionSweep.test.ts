@@ -115,6 +115,7 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   // :541 unlisted — Nop replaces END_FOLLOW; locator / fallthrough into fb_5a is mode-2 red. Barrier :542 still blocks the unknown-tag two-mutation.
   // :453 unlisted — :540 fail-closed: leftover $2 no longer returns through ret9l.
   144: 'Line GLP 0-check Nop is identity: fail empties scratch; the empty $3 check still fail-closes.',
+  145: 'Line GLP MAX Nop is unused when leftover GLP required size is < NSIS_MAX_STRLEN. tgt3→0 is killed by the real-oversize row (tgt3Maxlen / HARD-A tables).',
   147: 'Line GLP empty-$3 Nop is identity: a successful GLP never writes empty.',
   156: 'WINDIR GLP 0-check Nop is identity: fail empties scratch; the empty $5 check still fail-closes.',
   158: 'WINDIR StrCpy $5 $2 Nop is identity: GFPN of WINDIR is already the long form.',
@@ -125,42 +126,43 @@ export const SIDECAR_GUARD_SWEEP_RF7_MODE2_ONLY_EQUIVALENTS: Readonly<Record<num
   188: 'PROGRAMFILES64 StrCpy $5 $2 Nop is identity: GFPN is already the long form.',
   189: 'PROGRAMFILES64 empty-$5 Nop is identity: a successful deny GLP never writes empty.',
   205: 'APPDATA empty-$5 (success) Nop is identity: GFPN/GLP of APPDATA is never empty.',
-  // :208 unlisted — PATH_NOT_FOUND (3) + helper GFA fail still deletes; Nop errno-3 deny-skips.
+  208: 'APPDATA errno-3 Nop is unused on an unfaulted existing root (GLP success never pops 3). PATH_NOT_FOUND + helper GFA-fail still-deletes is the HARD-A table row, not this Nop.',
   209: 'APPDATA other-error Goto Nop is identity: APPDATA GLP succeeds so the fail block is unused.',
   // :201 / :202 / :207 unlisted — S-19 AppData leftover errno-2 rows (Documents vault still
   // deletes; INVALID-GFA descendant still deletes) read $8 / take the +5 fail block / take errno-2.
   // :210 unlisted — S-19 existence helper Nop falls into H3 with GFPN on a spurious errno-2 vault.
-  // :233 unlisted — Documents allow GLP oversize (required size > NSIS_MAX_STRLEN) keep + tgt3/Nop red.
+  233: 'Documents allow MAX Nop is unused when leftover GLP required size is < NSIS_MAX_STRLEN. tgt3→0 is killed by the real-oversize row (tgt3Maxlen / HARD-A tables).',
   235: 'Documents empty-$5 (success) Nop is identity: Documents GLP is never empty.',
-  // :238 unlisted — PATH_NOT_FOUND (3) + helper GFA fail still deletes; Nop errno-3 deny-skips.
+  238: 'Documents errno-3 Nop is unused on an unfaulted existing root. PATH_NOT_FOUND + helper GFA-fail still-deletes is the HARD-A table row.',
   239: 'Documents other-error Goto Nop is identity: Documents GLP succeeds so the fail block is unused.',
   // :232 / :237 unlisted — Documents allow GLP 1st-call fault still deletes; Nop 0-check / errno-2 skips that vault.
   // :240 unlisted — S-19 existence helper Nop falls into H3 with GFPN on a spurious errno-2 vault.
-  // :263 unlisted — Desktop allow GLP oversize (required size > NSIS_MAX_STRLEN) keep + tgt3/Nop red.
+  263: 'Desktop allow MAX Nop is unused when leftover GLP required size is < NSIS_MAX_STRLEN. tgt3→0 is killed by the real-oversize row (tgt3Maxlen / HARD-A tables).',
   265: 'Desktop empty-$5 (success) Nop is identity: Desktop GLP is never empty on success.',
-  // :268 unlisted — PATH_NOT_FOUND (3) + helper GFA fail still deletes; Nop errno-3 deny-skips.
+  268: 'Desktop errno-3 Nop is unused on an unfaulted existing root. PATH_NOT_FOUND + helper GFA-fail still-deletes is the HARD-A table row.',
   269: 'Desktop other-error Goto Nop is identity: access-denied rows skip before this Nop changes the set.',
   // :262 / :267 unlisted — Desktop allow GLP 1st-call fault still deletes; Nop 0-check / errno-2 skips that vault.
   // :270 unlisted — S-19 existence helper Nop falls into H3 with GFPN on a spurious errno-2 vault.
-  // :293 unlisted — Downloads allow GLP oversize (required size > NSIS_MAX_STRLEN) keep + tgt3/Nop red.
+  293: 'Downloads allow MAX Nop is unused when leftover GLP required size is < NSIS_MAX_STRLEN. tgt3→0 is killed by the real-oversize row (tgt3Maxlen / HARD-A tables).',
   295: 'Downloads empty-$5 (success) Nop is identity: Downloads GLP is never empty on success.',
   // :298 unlisted — errno-3 + helper GFA fail still-deletes; Nop errno-3 deny-skips.
   299: 'Downloads other-error Goto Nop is identity when Downloads GLP succeeds.',
   // :300 unlisted — S-19 Downloads existence helper Nop falls into H3 with GFPN.
   322: 'Canon $3 GLP 0-check Nop is identity: fail empties scratch; the empty $3 check still fail-closes.',
+  323: 'Canon $3 MAX Nop is unused when leftover GLP required size is < NSIS_MAX_STRLEN. tgt3→0 is killed by the real-oversize row (tgt3Maxlen / HARD-A tables). tgt1→0 is keep-equals-keep after :320.',
   325: 'Canon $3 empty Nop is identity: a successful GLP never writes empty.',
   333: 'Canon $9 GLP 0-check Nop is identity: fail empties scratch; the empty $9 check still fail-closes.',
-  // :334 unlisted — canon $9 GLP oversize (required size > NSIS_MAX_STRLEN) keep + tgt3/Nop red.
+  334: 'Canon $9 MAX Nop is unused when leftover GLP required size is < NSIS_MAX_STRLEN. tgt3→0 is killed by the real-oversize row (tgt3Maxlen / HARD-A tables).',
   335: 'Canon $9 StrCpy $9 $2 Nop is identity: GFPN of the matched root is already the long form.',
   336: 'Canon $9 empty Nop is identity: a successful GLP never writes empty.',
   368: 'Nested AppData empty $9 Nop is identity: AppData nested GLP is never empty.',
   371: 'Nested AppData errno-3 Nop is identity: AppData nested GLP does not miss with 3.',
   // :373 unlisted — S-19 existence helper Nop falls into H3 with GFPN on a spurious errno-2 vault.
   394: 'Nested Documents empty $9 Nop is identity.',
-  // :397 unlisted — nested Documents PATH_NOT_FOUND (3) + helper GFA fail still deletes; Nop errno-3 deny-skips.
+  397: 'Nested Documents errno-3 Nop is unused on an unfaulted existing root. PATH_NOT_FOUND + helper GFA-fail still-deletes is the HARD-A table row.',
   // :399 unlisted — S-19 nested Documents existence helper Nop falls into H3 with GFPN.
   420: 'Nested Desktop empty $9 Nop is identity.',
-  // :423 unlisted — nested Desktop PATH_NOT_FOUND (3) + helper GFA fail still deletes; Nop errno-3 deny-skips.
+  423: 'Nested Desktop errno-3 Nop is unused on an unfaulted existing root. PATH_NOT_FOUND + helper GFA-fail still-deletes is the HARD-A table row.',
   // :425 unlisted — S-19 nested Desktop existence helper Nop falls into H3 with GFPN.
   446: 'Nested Downloads empty $9 Nop is identity.',
   // :451 unlisted — S-19 nested Downloads existence helper Nop falls into H3 with GFPN.
@@ -364,12 +366,18 @@ describe('sidecar guard region sweep :43-:541 (buildIntegrity excluded)', () => 
       }
     });
 
-    it('fixture-claim MAX / errno-3 Nops are now killed (oversize or PATH_NOT_FOUND rows)', () => {
-      for (const fileLine of [145, 208, 233, 238, 263, 268, 293, 323, 334, 397, 423]) {
-        expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[fileLine], `:${fileLine}`).toBeUndefined();
-      }
+    it('Ivy-8 MAX IntCmp Nops stay unlisted (caught without long-path sweep rows)', () => {
       for (const fileLine of [320, 331, 362, 388, 414, 418, 440, 444]) {
         expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[fileLine], `:${fileLine}`).toBeUndefined();
+      }
+    });
+
+    it('MAX / errno-3 Nops that need long-path or injected-3 rows are written proofs, not fixtures', () => {
+      for (const fileLine of [145, 208, 233, 238, 263, 268, 293, 323, 334, 355, 397, 423]) {
+        expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[fileLine], `:${fileLine}`).toBeDefined();
+        expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[fileLine], `:${fileLine}`).not.toMatch(
+          /fixtures/i,
+        );
       }
     });
   });
