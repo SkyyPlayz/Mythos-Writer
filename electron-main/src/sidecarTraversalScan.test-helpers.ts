@@ -1923,20 +1923,32 @@ function gfpnModelK(s: string): string {
   return endsWithSep && out.length > 0 ? `${body}\\` : body;
 }
 
+const gfpnModelCache = new Map<string, string>();
+
 export function gfpnModel(s: string): string {
+  const hit = gfpnModelCache.get(s);
+  if (hit !== undefined) {
+    return hit;
+  }
   const folded = s.replace(/\//g, '\\');
+  let result: string;
   if (!folded.endsWith('\\')) {
     const slash = folded.lastIndexOf('\\');
     const last = slash < 0 ? folded : folded.slice(slash + 1);
     if (last === '.' || last === '..') {
       const withSep = gfpnModelK(`${folded}\\`);
       if (withSep !== '' && !withSep.endsWith(':\\')) {
-        return withSep.endsWith('\\') ? withSep.slice(0, -1) : withSep;
+        result = withSep.endsWith('\\') ? withSep.slice(0, -1) : withSep;
+      } else {
+        result = withSep;
       }
-      return withSep;
+      gfpnModelCache.set(s, result);
+      return result;
     }
   }
-  return gfpnModelK(s);
+  result = gfpnModelK(s);
+  gfpnModelCache.set(s, result);
+  return result;
 }
 
 /**
@@ -1972,9 +1984,15 @@ const GLP_8_3_ALIASES: Readonly<Record<string, string>> = {
   'longdo~1': 'D'.repeat(1024),
 };
 
+const glpnModelCache = new Map<string, string>();
+
 export function glpnModel(s: string): string {
+  const hit = glpnModelCache.get(s);
+  if (hit !== undefined) {
+    return hit;
+  }
   const folded = s.replace(/\//g, '\\');
-  return folded
+  const result = folded
     .split('\\')
     .map((seg, i) => {
       if (i === 0) {
@@ -1983,6 +2001,8 @@ export function glpnModel(s: string): string {
       return GLP_8_3_ALIASES[seg.toLowerCase()] ?? seg;
     })
     .join('\\');
+  glpnModelCache.set(s, result);
+  return result;
 }
 
 /** GFPN-REF extras: final `.`/`..` without a trailing separator, plus trailing-dot/space names. */

@@ -505,8 +505,16 @@ export const WIN32_ERROR_PATH_NOT_FOUND = 3;
 /** ERROR_ACCESS_DENIED — fail-closed for that root; never a GFPN fallback. */
 export const WIN32_ERROR_ACCESS_DENIED = 5;
 
+const foldWinPathCache = new Map<string, string>();
+
 function foldWinPath(p: string): string {
-  return p.replace(/\//g, '\\').replace(/\\+$/, '');
+  const hit = foldWinPathCache.get(p);
+  if (hit !== undefined) {
+    return hit;
+  }
+  const folded = p.replace(/\//g, '\\').replace(/\\+$/, '');
+  foldWinPathCache.set(p, folded);
+  return folded;
 }
 
 function pathHasDirtyComponent(p: string): boolean {
@@ -531,6 +539,24 @@ const glpnSeedByEnv = new WeakMap<SidecarNsisVarEnv, Set<string>>();
 const glpnSeedByEnvAndExtras = new WeakMap<SidecarNsisVarEnv, Map<string, Set<string>>>();
 
 function optionSeedSources(options: SidecarNsisRunOptions): readonly string[] | null {
+  const reparse = options.reparsePaths;
+  const invalidAttr = options.invalidAttrPaths;
+  const attrError = options.attrErrorPaths;
+  const fileAttributes = options.fileAttributes;
+  const fs = options.fs;
+  const existing = options.glpnExistingPaths;
+  const hasMaps =
+    (fileAttributes !== undefined && Object.keys(fileAttributes).length > 0) ||
+    (fs !== undefined && Object.keys(fs).length > 0);
+  if (
+    (reparse === undefined || reparse.length === 0) &&
+    (invalidAttr === undefined || invalidAttr.length === 0) &&
+    (attrError === undefined || attrError.length === 0) &&
+    !hasMaps &&
+    (existing === undefined || existing.length === 0)
+  ) {
+    return null;
+  }
   const extras: string[] = [];
   const push = (xs: readonly string[] | undefined): void => {
     if (xs !== undefined) {
@@ -539,16 +565,16 @@ function optionSeedSources(options: SidecarNsisRunOptions): readonly string[] | 
       }
     }
   };
-  push(options.reparsePaths);
-  push(options.invalidAttrPaths);
-  push(options.attrErrorPaths);
-  if (options.fileAttributes !== undefined) {
-    extras.push(...Object.keys(options.fileAttributes));
+  push(reparse);
+  push(invalidAttr);
+  push(attrError);
+  if (fileAttributes !== undefined) {
+    extras.push(...Object.keys(fileAttributes));
   }
-  if (options.fs !== undefined) {
-    extras.push(...Object.keys(options.fs));
+  if (fs !== undefined) {
+    extras.push(...Object.keys(fs));
   }
-  push(options.glpnExistingPaths);
+  push(existing);
   return extras.length === 0 ? null : extras;
 }
 
