@@ -5948,24 +5948,6 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     killsFileLine: 361,
   },
   {
-    name: 'line GLP oversize (required size > NSIS_MAX_STRLEN) keeps folder; never deletes truncated prefix (kills :145 Nop / tgt3->0)',
-    path: 'C:\\Users\\me\\Documents\\MyVault',
-    env: HARD12_ENV_E1,
-    expect: 'skip',
-    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault'],
-    options: { glpnResolvedPathFileLines: { 143: `${HARD12_ENV_E1.DOCUMENTS}\\${'D'.repeat(1024)}` } },
-    killsFileLine: 145,
-  },
-  {
-    name: 'canon $3 GLP oversize (required size > NSIS_MAX_STRLEN) keeps folder; never deletes truncated prefix (kills :323 Nop / tgt3->0)',
-    path: 'C:\\Users\\me\\Documents\\MyVault',
-    env: HARD12_ENV_E1,
-    expect: 'skip',
-    mustNotDelete: ['C:\\Users\\me\\Documents\\MyVault'],
-    options: { glpnResolvedPathFileLines: { 321: `${HARD12_ENV_E1.DOCUMENTS}\\${'D'.repeat(1024)}` } },
-    killsFileLine: 323,
-  },
-  {
     name: 'S-19 :200 errno 2 existing AppData leftover; Documents vault still deletes (kills :547 fb_5a Goto Nop)',
     path: 'C:\\Users\\me\\Documents\\MyVault',
     env: HARD12_ENV_E1,
@@ -6155,8 +6137,46 @@ export function assertSidecarHardATables(nsh: string): void {
   }
 }
 
+function nshChangedFileLines(mutantNsh: string, canonicalNsh: string): readonly number[] {
+  const mutantLines = mutantNsh.split('\n');
+  const canonicalLines = canonicalNsh.split('\n');
+  const changed: number[] = [];
+  const n = Math.max(mutantLines.length, canonicalLines.length);
+  for (let i = 0; i < n; i += 1) {
+    if (mutantLines[i] !== canonicalLines[i]) {
+      changed.push(i + 1);
+    }
+  }
+  return changed;
+}
+
+function hardARowTouchesLines(row: SidecarHardARow, fileLines: readonly number[]): boolean {
+  if (row.killsFileLine !== undefined && fileLines.includes(row.killsFileLine)) {
+    return true;
+  }
+  return row.killsFileLines?.some((line) => fileLines.includes(line)) === true;
+}
+
 export function assertSidecarHardASweepParity(mutantNsh: string, canonicalNsh: string): void {
-  for (const row of sidecarHardAAllRows()) {
+  for (const row of SIDECAR_HARD_A_ROWS) {
+    const canonical = sidecarHardADeleted(canonicalNsh, row).join('\0');
+    const mutant = sidecarHardADeleted(mutantNsh, row).join('\0');
+    if (mutant !== canonical) {
+      throw new Error(
+        `HARD-A sweep parity ${row.name}: canonical ${JSON.stringify(canonical)}, mutant ${JSON.stringify(mutant)}`,
+      );
+    }
+  }
+  // Long-path oversize rows only when the mutant touches that MAX IntCmp.
+  // Running all 20 on every oracle mutant is a 1024-char sim × thousands.
+  const changed = nshChangedFileLines(mutantNsh, canonicalNsh);
+  if (changed.length === 0) {
+    return;
+  }
+  for (const row of sidecarTgt3HardARows()) {
+    if (!hardARowTouchesLines(row, changed)) {
+      continue;
+    }
     const canonical = sidecarHardADeleted(canonicalNsh, row).join('\0');
     const mutant = sidecarHardADeleted(mutantNsh, row).join('\0');
     if (mutant !== canonical) {
