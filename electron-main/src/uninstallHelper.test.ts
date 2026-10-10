@@ -5,6 +5,7 @@ import os from 'node:os';
 import {
   resolveDeletePaths,
   cleanUninstall,
+  tryRemoveUserDataDirectory,
   defaultVaultsParent,
   loadRegisteredVaultRoots,
   resolveUninstallDeletePaths,
@@ -211,23 +212,112 @@ describe('cleanUninstall', () => {
     }
   });
 
-  it('does not delete userData dir itself — only targeted subdirs and files', () => {
+  it('skips userData root removal when path is not the Mythos Writer product folder', () => {
     const vaultsParent = path.join(tmp, 'vaults');
     const story = path.join(vaultsParent, 'Mythos Vault', 'Story Vault');
     const notes = path.join(vaultsParent, 'Mythos Vault', 'Notes Vault');
     fs.mkdirSync(story, { recursive: true });
     fs.mkdirSync(notes, { recursive: true });
-    // Extra file in userData that should NOT be removed
     fs.writeFileSync(path.join(tmp, 'state.db'), 'db-data');
 
-    cleanUninstall({
+    const result = cleanUninstall({
       storyVaultRoot: story,
       notesVaultRoot: notes,
       userDataPath: tmp,
     });
 
+    expect(result.errors).toHaveLength(0);
     expect(fs.existsSync(tmp)).toBe(true);
     expect(fs.existsSync(path.join(tmp, 'state.db'))).toBe(true);
+  });
+
+  it('PLAN-058 L8: removes Roaming Mythos Writer folder when Delete Everything clears disk', () => {
+    const userData = path.join(tmp, 'Mythos Writer');
+    const vaultsParent = path.join(userData, 'vaults');
+    const story = path.join(vaultsParent, 'Mythos Vault', 'Story Vault');
+    const notes = path.join(vaultsParent, 'Mythos Vault', 'Notes Vault');
+    fs.mkdirSync(story, { recursive: true });
+    fs.mkdirSync(notes, { recursive: true });
+    fs.writeFileSync(path.join(userData, 'app-settings.json'), '{}');
+    fs.writeFileSync(path.join(userData, 'secrets.json'), '{}');
+    fs.mkdirSync(path.join(userData, 'note-thumb-cache'), { recursive: true });
+
+    const result = cleanUninstall({
+      storyVaultRoot: story,
+      notesVaultRoot: notes,
+      userDataPath: userData,
+    });
+
+    expect(result.errors).toHaveLength(0);
+    expect(fs.existsSync(userData)).toBe(false);
+  });
+
+  it('tryRemoveUserDataDirectory skips rmdir when entries remain (Chromium leftovers)', () => {
+    const userData = path.join(tmp, 'Mythos Writer');
+    fs.mkdirSync(userData, { recursive: true });
+    fs.writeFileSync(path.join(userData, 'leftover.tmp'), 'x');
+    const rm = tryRemoveUserDataDirectory(userData);
+    expect(rm.ok).toBe(true);
+    expect(rm.skipped).toBe(true);
+    expect(rm.leftoverCount).toBe(1);
+    expect(fs.existsSync(userData)).toBe(true);
+  });
+
+  it('tryRemoveUserDataDirectory refuses a symlink Mythos Writer root', () => {
+    const realDir = path.join(tmp, 'real-user-data');
+    const link = path.join(tmp, 'Mythos Writer');
+    fs.mkdirSync(realDir, { recursive: true });
+    fs.symlinkSync(realDir, link, 'dir');
+    const rm = tryRemoveUserDataDirectory(link);
+    expect(rm.ok).toBe(false);
+    expect(rm.error).toMatch(/symlink/i);
+  });
+
+  it('Delete Everything does not error when Chromium dirs remain under Mythos Writer', () => {
+    const userData = path.join(tmp, 'Mythos Writer');
+    const vaultsParent = path.join(userData, 'vaults');
+    const story = path.join(vaultsParent, 'Mythos Vault', 'Story Vault');
+    const notes = path.join(vaultsParent, 'Mythos Vault', 'Notes Vault');
+    fs.mkdirSync(story, { recursive: true });
+    fs.mkdirSync(notes, { recursive: true });
+    fs.mkdirSync(path.join(userData, 'Local Storage'), { recursive: true });
+    fs.writeFileSync(path.join(userData, 'Preferences'), '{}');
+
+    const result = cleanUninstall({
+      storyVaultRoot: story,
+      notesVaultRoot: notes,
+      userDataPath: userData,
+    });
+
+    expect(result.errors).toHaveLength(0);
+    expect(fs.existsSync(vaultsParent)).toBe(false);
+    expect(fs.existsSync(userData)).toBe(true);
+    expect(fs.existsSync(path.join(userData, 'Local Storage'))).toBe(true);
+  });
+
+  it('Delete Everything removes templates/ and agent-personas/', () => {
+    const userData = path.join(tmp, 'Mythos Writer');
+    const vaultsParent = path.join(userData, 'vaults');
+    const story = path.join(vaultsParent, 'Mythos Vault', 'Story Vault');
+    const notes = path.join(vaultsParent, 'Mythos Vault', 'Notes Vault');
+    const templates = path.join(userData, 'templates');
+    const personas = path.join(userData, 'agent-personas');
+    fs.mkdirSync(story, { recursive: true });
+    fs.mkdirSync(notes, { recursive: true });
+    fs.mkdirSync(templates, { recursive: true });
+    fs.writeFileSync(path.join(templates, 'mine.json'), '{}');
+    fs.mkdirSync(path.join(personas, 'writingAssistant'), { recursive: true });
+    fs.writeFileSync(path.join(personas, 'writingAssistant', 'SOUL.md'), '# soul');
+
+    const result = cleanUninstall({
+      storyVaultRoot: story,
+      notesVaultRoot: notes,
+      userDataPath: userData,
+    });
+
+    expect(result.errors).toHaveLength(0);
+    expect(fs.existsSync(templates)).toBe(false);
+    expect(fs.existsSync(personas)).toBe(false);
   });
 });
 

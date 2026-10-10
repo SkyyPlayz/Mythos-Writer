@@ -13,6 +13,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import {
+  resolveRemoveAllDeletePaths,
+  USER_VAULTS_SUBDIR,
+  UNINSTALL_DELETE_PATHS_FILENAME,
+} from './appUserDataManifest.js';
+
 export interface UninstallCleanOptions {
   storyVaultRoot: string;
   notesVaultRoot: string;
@@ -26,11 +32,10 @@ export interface UninstallCleanResult {
   customPathsWarning: string[];
 }
 
-const VAULTS_SUBDIR = 'vaults';
+const VAULTS_SUBDIR = USER_VAULTS_SUBDIR;
 const SETTINGS_FILES = ['vault-settings.json', 'app-settings.json'];
 
-/** Sidecar the Windows NSIS uninstaller FileReads when the opt-in checkbox is selected (MW-delete-vault). */
-export const UNINSTALL_DELETE_PATHS_FILENAME = 'uninstall-delete-paths.txt';
+export { UNINSTALL_DELETE_PATHS_FILENAME } from './appUserDataManifest.js';
 
 export function uninstallDeletePathsFile(userDataPath: string): string {
   return path.join(userDataPath, UNINSTALL_DELETE_PATHS_FILENAME);
@@ -349,19 +354,67 @@ function removeEntry(p: string): { ok: boolean; error?: string } {
   }
 }
 
+/**
+ * Remove the userData directory when every targeted delete succeeded and no
+ * child entry remains (Remove all / Delete Everything must not leave a Roaming
+ * Mythos Writer folder behind).
+ */
+export function tryRemoveUserDataDirectory(
+  userDataPath: string,
+): { ok: boolean; skipped?: boolean; leftoverCount?: number; error?: string } {
+  const trimmed = userDataPath.trim().replace(/[/\\]+$/, '');
+  if (!trimmed || trimmed === path.sep) {
+    return { ok: false, error: 'Refusing to remove empty userData path' };
+  }
+  if (path.basename(trimmed).toLowerCase() !== 'mythos writer') {
+    return { ok: true, skipped: true };
+  }
+  try {
+    if (fs.existsSync(trimmed) && fs.lstatSync(trimmed).isSymbolicLink()) {
+      return { ok: false, error: 'Refusing to remove symlink userData root' };
+    }
+    if (!fs.existsSync(userDataPath)) return { ok: true };
+    const remaining = fs.readdirSync(userDataPath);
+    if (remaining.length > 0) {
+      // Chromium may leave Local Storage/, Preferences/, etc. — not a user-facing failure.
+      return { ok: true, skipped: true, leftoverCount: remaining.length };
+    }
+    fs.rmdirSync(userDataPath);
+    if (fs.existsSync(userDataPath)) {
+      return { ok: false, error: 'userData directory still exists after rmdir' };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err) };
+  }
+}
+
 /** Delete the resolved paths and return a result summary. */
 export function cleanUninstall(options: UninstallCleanOptions): UninstallCleanResult {
+  const { userDataPath } = options;
   const { toDelete, customPathsWarning } = resolveDeletePaths(options);
+  const appPrivate = resolveRemoveAllDeletePaths(userDataPath);
+  const targets = [...new Set([...toDelete, ...appPrivate])];
   const deleted: string[] = [];
   const errors: string[] = [];
 
-  for (const p of toDelete) {
+  for (const p of targets) {
     const result = removeEntry(p);
     if (result.ok) {
       deleted.push(p);
     } else {
       errors.push(`${p}: ${result.error}`);
     }
+  }
+
+  if (errors.length === 0) {
+    const userDataRm = tryRemoveUserDataDirectory(userDataPath);
+    if (userDataRm.ok && !userDataRm.skipped) {
+      deleted.push(userDataPath);
+    } else if (!userDataRm.ok && userDataRm.error) {
+      errors.push(`${userDataPath}: ${userDataRm.error}`);
+    }
+    // skipped with leftoverCount: informational only (Chromium profile dirs).
   }
 
   return { deleted, errors, customPathsWarning };
