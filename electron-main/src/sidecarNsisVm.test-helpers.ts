@@ -118,8 +118,6 @@ function compileSidecarNsisProgram(lines: readonly string[], fileLine0: number):
   return { ins, lab };
 }
 
-const PROG_CACHE_MAX = 8;
-const progCache = new Map<string, Prog>();
 const progByLines = new WeakMap<readonly string[], { fileLine0: number; prog: Prog }>();
 
 function programForLines(lines: readonly string[], fileLine0: number): Prog {
@@ -127,20 +125,7 @@ function programForLines(lines: readonly string[], fileLine0: number): Prog {
   if (weak !== undefined && weak.fileLine0 === fileLine0) {
     return weak.prog;
   }
-  const key = `${fileLine0}\n${lines.join('\n')}`;
-  const hit = progCache.get(key);
-  if (hit !== undefined) {
-    progByLines.set(lines, { fileLine0, prog: hit });
-    return hit;
-  }
   const prog = compileSidecarNsisProgram(lines, fileLine0);
-  if (progCache.size >= PROG_CACHE_MAX) {
-    const oldest = progCache.keys().next().value;
-    if (oldest !== undefined) {
-      progCache.delete(oldest);
-    }
-  }
-  progCache.set(key, prog);
   progByLines.set(lines, { fileLine0, prog });
   return prog;
 }
@@ -542,6 +527,82 @@ function addPathAndAncestors(into: Set<string>, raw: string): void {
   }
 }
 
+const glpnSeedByEnv = new WeakMap<SidecarNsisVarEnv, Set<string>>();
+const glpnSeedByEnvAndExtras = new WeakMap<SidecarNsisVarEnv, Map<string, Set<string>>>();
+
+function optionSeedSources(options: SidecarNsisRunOptions): readonly string[] | null {
+  const extras: string[] = [];
+  const push = (xs: readonly string[] | undefined): void => {
+    if (xs !== undefined) {
+      for (const x of xs) {
+        extras.push(x);
+      }
+    }
+  };
+  push(options.reparsePaths);
+  push(options.invalidAttrPaths);
+  push(options.attrErrorPaths);
+  if (options.fileAttributes !== undefined) {
+    extras.push(...Object.keys(options.fileAttributes));
+  }
+  if (options.fs !== undefined) {
+    extras.push(...Object.keys(options.fs));
+  }
+  push(options.glpnExistingPaths);
+  return extras.length === 0 ? null : extras;
+}
+
+function buildGlpnExistenceSeeds(env: SidecarNsisVarEnv, extras: readonly string[] | null): Set<string> {
+  const seeded = new Set<string>();
+  const seed = (raw: string): void => {
+    addPathAndAncestors(seeded, raw);
+  };
+  for (const v of [
+    env.WINDIR,
+    env.PROGRAMFILES,
+    env.PROGRAMFILES64,
+    env.APPDATA,
+    env.DOCUMENTS,
+    env.DESKTOP,
+    env.PROFILE,
+    `${env.PROFILE}\\Downloads`,
+    `${env.APPDATA}\\Mythos Writer`,
+    ...(extras ?? []),
+  ]) {
+    if (v) {
+      seed(v);
+      seed(gfpnModel(v));
+    }
+  }
+  return seeded;
+}
+
+function glpnExistenceSeeds(env: SidecarNsisVarEnv, options: SidecarNsisRunOptions): Set<string> {
+  const extras = optionSeedSources(options);
+  if (extras === null) {
+    const hit = glpnSeedByEnv.get(env);
+    if (hit !== undefined) {
+      return hit;
+    }
+    const seeded = buildGlpnExistenceSeeds(env, null);
+    glpnSeedByEnv.set(env, seeded);
+    return seeded;
+  }
+  let per = glpnSeedByEnvAndExtras.get(env);
+  if (per === undefined) {
+    per = new Map();
+    glpnSeedByEnvAndExtras.set(env, per);
+  }
+  const key = extras.join('\0');
+  const hit = per.get(key);
+  if (hit !== undefined) {
+    return hit;
+  }
+  const seeded = buildGlpnExistenceSeeds(env, extras);
+  per.set(key, seeded);
+  return seeded;
+}
+
 /**
  * Win32 GetLongPathNameW requires the path to exist. Empty, injected faults,
  * `missingPaths` (and descendants), `NoSuch*`, and dirty space/dot/TAB
@@ -566,32 +627,7 @@ export function glpnWin32Exists(inp: string, env: SidecarNsisVarEnv, options: Si
     return false;
   }
 
-  const seeded = new Set<string>();
-  const seed = (raw: string): void => {
-    addPathAndAncestors(seeded, raw);
-  };
-  for (const v of [
-    env.WINDIR,
-    env.PROGRAMFILES,
-    env.PROGRAMFILES64,
-    env.APPDATA,
-    env.DOCUMENTS,
-    env.DESKTOP,
-    env.PROFILE,
-    `${env.PROFILE}\\Downloads`,
-    `${env.APPDATA}\\Mythos Writer`,
-    ...(options.reparsePaths ?? []),
-    ...(options.invalidAttrPaths ?? []),
-    ...(options.attrErrorPaths ?? []),
-    ...Object.keys(options.fileAttributes ?? {}),
-    ...Object.keys(options.fs ?? {}),
-    ...(options.glpnExistingPaths ?? []),
-  ]) {
-    if (v) {
-      seed(v);
-      seed(gfpnModel(v));
-    }
-  }
+  const seeded = glpnExistenceSeeds(env, options);
 
   if (seeded.has(folded) || seeded.has(foldWinPath(glpnModel(inp)))) {
     return true;
