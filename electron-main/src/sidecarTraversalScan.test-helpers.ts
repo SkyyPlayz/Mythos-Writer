@@ -5991,6 +5991,10 @@ export const SIDECAR_HARD_A_ROWS: readonly SidecarHardARow[] = [
     killsFileLine: 546,
     killsFileLines: [201, 202, 207, 546],
   },
+];
+
+/** PATH_NOT_FOUND (3) still-deletes. Sweep parity only when the mutant touches the named line. */
+export const SIDECAR_ERRNO3_HARD_A_ROWS: readonly SidecarHardARow[] = [
   {
     name: 'APPDATA GLP PATH_NOT_FOUND (3) helper GFA fail still falls back; deletes (kills :208)',
     path: 'C:\\Users\\me\\AppData\\Roaming\\Mythos Writer\\Docs\\v',
@@ -6167,13 +6171,13 @@ export function assertSidecarHardASweepParity(mutantNsh: string, canonicalNsh: s
       );
     }
   }
-  // Long-path oversize rows only when the mutant touches that MAX IntCmp.
-  // Running all 20 on every oracle mutant is a 1024-char sim × thousands.
+  // Long-path / errno-3 rows only when the mutant touches that line.
+  // Running them on every oracle mutant blew the 40-minute oracle-sweeps cap.
   const changed = nshChangedFileLines(mutantNsh, canonicalNsh);
   if (changed.length === 0) {
     return;
   }
-  for (const row of sidecarTgt3HardARows()) {
+  for (const row of [...SIDECAR_ERRNO3_HARD_A_ROWS, ...sidecarTgt3HardARows()]) {
     if (!hardARowTouchesLines(row, changed)) {
       continue;
     }
@@ -7848,7 +7852,7 @@ export function sidecarTgt3HardARows(): readonly SidecarHardARow[] {
 }
 
 export function sidecarHardAAllRows(): readonly SidecarHardARow[] {
-  return [...SIDECAR_HARD_A_ROWS, ...sidecarTgt3HardARows()];
+  return [...SIDECAR_HARD_A_ROWS, ...SIDECAR_ERRNO3_HARD_A_ROWS, ...sidecarTgt3HardARows()];
 }
 
 /** Primary sweep mutant for one guard-region file line (:43–:376). */
