@@ -334,37 +334,6 @@ function collectStory(storyVaultRoot: string, ref: MythosStoryRef, tracked: bool
   };
 }
 
-function scanStory(storyVaultRoot: string, ref: MythosStoryRef): StoryEntry | null {
-  // Thin wrapper kept for any direct callers — full vault scans go through
-  // scanMythosStoryVault which runs vault-wide dedupe before write-back.
-  const prov = collectStory(storyVaultRoot, ref, true, 0);
-  if (!prov) return null;
-  const storyId = prov.claimedId;
-  const chapters: ChapterEntry[] = [];
-  let order = 0;
-  for (const ch of prov.chapters) {
-    const scenes = scanChapterScenes(storyVaultRoot, ch.chapterRel, ch.claimedId, storyId);
-    chapters.push({
-      id: ch.claimedId,
-      title: ch.title,
-      path: ch.chapterRel,
-      order: order++,
-      scenes,
-      createdAt: prov.createdAt,
-      updatedAt: prov.updatedAt,
-    });
-  }
-  return {
-    id: storyId,
-    title: prov.title,
-    ...(prov.synopsis ? { synopsis: prov.synopsis } : {}),
-    path: prov.folder,
-    chapters,
-    createdAt: prov.createdAt,
-    updatedAt: prov.updatedAt,
-  };
-}
-
 /** Story folders on disk that mythos.json doesn't list yet (user copied one in). */
 function untrackedStoryFolders(storyVaultRoot: string, tracked: Set<string>): MythosStoryRef[] {
   let entries: fs.Dirent[];
