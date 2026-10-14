@@ -13,6 +13,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   resolveTimelineMode,
+  resolveVisibleTimelineMode,
+  isTimelineModeVisible,
+  HIDDEN_TIMELINE_MODES,
+  VISIBLE_TIMELINE_MODES,
+  VALID_TIMELINE_MODES,
   hexA,
   buildSubwayLines,
   subwayEventX,
@@ -77,6 +82,50 @@ describe('resolveTimelineMode', () => {
     expect(resolveTimelineMode('kanban-nonsense')).toBeNull();
     expect(resolveTimelineMode(null)).toBeNull();
     expect(resolveTimelineMode('')).toBeNull();
+  });
+});
+
+describe('resolveVisibleTimelineMode', () => {
+  it('pins the hide flag to the five timeline surfaces and leaves Structure and Progress visible', () => {
+    expect([...HIDDEN_TIMELINE_MODES].sort()).toEqual(
+      ['plot', 'relations', 'spreadsheet', 'subway', 'tension'],
+    );
+    expect(VISIBLE_TIMELINE_MODES).toEqual(
+      VALID_TIMELINE_MODES.filter((mode) => !HIDDEN_TIMELINE_MODES.has(mode)),
+    );
+    expect(VISIBLE_TIMELINE_MODES).toEqual(['progress', 'structure']);
+    expect(isTimelineModeVisible('structure')).toBe(true);
+    expect(isTimelineModeVisible('progress')).toBe(true);
+    for (const mode of HIDDEN_TIMELINE_MODES) {
+      expect(isTimelineModeVisible(mode)).toBe(false);
+    }
+  });
+
+  it('passes Structure and Progress through', () => {
+    expect(resolveVisibleTimelineMode('structure')).toBe('structure');
+    expect(resolveVisibleTimelineMode('progress')).toBe('progress');
+  });
+
+  it('falls back to structure for every hidden mode', () => {
+    for (const mode of ['plot', 'spreadsheet', 'tension', 'relations', 'subway'] as const) {
+      expect(resolveVisibleTimelineMode(mode)).toBe('structure');
+    }
+  });
+
+  it('falls back to structure for legacy track, which resolves to the hidden subway view', () => {
+    expect(resolveTimelineMode('track')).toBe('subway');
+    expect(resolveVisibleTimelineMode('track')).toBe('structure');
+  });
+
+  it('keeps the visible legacy migrations', () => {
+    expect(resolveVisibleTimelineMode('aeon')).toBe('progress');
+    expect(resolveVisibleTimelineMode('axis')).toBe('progress');
+  });
+
+  it('falls back to structure for unknown or absent values', () => {
+    expect(resolveVisibleTimelineMode('kanban-nonsense')).toBe('structure');
+    expect(resolveVisibleTimelineMode(null)).toBe('structure');
+    expect(resolveVisibleTimelineMode('')).toBe('structure');
   });
 });
 

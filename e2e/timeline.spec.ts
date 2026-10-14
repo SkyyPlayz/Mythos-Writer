@@ -45,6 +45,13 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { HIDDEN_TIMELINE_MODES, type TimelineMode } from '../frontend/src/timelineAeon';
+
+/** Skip while these modes sit in HIDDEN_TIMELINE_MODES. Emptying the set re-runs the test. */
+function skipHidden(modes: readonly TimelineMode[]): void {
+  const hidden = modes.filter((mode) => HIDDEN_TIMELINE_MODES.has(mode));
+  test.skip(hidden.length > 0, `HIDDEN_BY_TIMELINE_HIDE_FLAG: ${hidden.join(',')}`);
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -314,7 +321,7 @@ async function openSpreadsheet(pg: Page, sceneTitle: string): Promise<void> {
 async function openTimeline(
   pg: Page,
   sceneTitle: string,
-  mode: 'spreadsheet' | 'progress' = 'spreadsheet',
+  mode: 'spreadsheet' | 'progress' | 'structure' = 'spreadsheet',
 ): Promise<void> {
   await expect(pg.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
@@ -335,8 +342,11 @@ async function openTimeline(
   if (mode === 'spreadsheet') {
     await pg.locator('[data-testid="view-mode-spreadsheet"]').click();
     await expect(pg.locator('[data-testid="timeline-spreadsheet-root"]')).toBeVisible({ timeout: 8_000 });
-  } else {
+  } else if (mode === 'progress') {
     await pg.locator('[data-testid="view-mode-progress"]').click();
+    await expect(pg.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 8_000 });
+  } else {
+    await pg.locator('[data-testid="view-mode-structure"]').click();
     await expect(pg.locator('[data-testid="timeline-axis-view"]')).toBeVisible({ timeout: 8_000 });
   }
 }
@@ -358,8 +368,15 @@ test.beforeAll(async () => {
   seedTimelinesStore(vaultDir, 'tl-story', STORY_TITLE, [EV_1, EV_2, EV_3]);
   app = await launchApp(userData);
   page = await firstWindow(app);
-  await openSpreadsheet(page, ANCHOR_SCENE.title);
-  await expect(page.locator('[data-testid="timeline-spreadsheet-root"]')).toBeVisible({ timeout: 8_000 });
+  // Spreadsheet tests below are skipped while that mode is hidden. The
+  // shared window still has to open: the Archive-tab regression at the
+  // bottom of this file reads `page`. Land on Structure in that case.
+  if (HIDDEN_TIMELINE_MODES.has('spreadsheet')) {
+    await openTimeline(page, ANCHOR_SCENE.title, 'structure');
+  } else {
+    await openSpreadsheet(page, ANCHOR_SCENE.title);
+    await expect(page.locator('[data-testid="timeline-spreadsheet-root"]')).toBeVisible({ timeout: 8_000 });
+  }
 });
 
 test.afterAll(async () => {
@@ -372,6 +389,7 @@ test.afterAll(async () => {
 // ─── TC-TL-01: Event appears as a row with all six columns ─────────────────
 
 test('TC-TL-01: a seeded event appears as a row with all six columns populated', async () => {
+  skipHidden(['spreadsheet']);
   const row = page.locator(`[data-testid="row-${EV_1.id}"]`);
   await expect(row).toBeVisible({ timeout: 6_000 });
   await expect(page.locator(`[data-testid="cell-${EV_1.id}-event"]`)).toContainText(EV_1.name);
@@ -384,6 +402,7 @@ test('TC-TL-01: a seeded event appears as a row with all six columns populated',
 // ─── TC-TL-02: all seeded events render, nothing dropped by default ────────
 
 test('TC-TL-02: all seeded events render as rows by default', async () => {
+  skipHidden(['spreadsheet']);
   await expect(page.locator(`[data-testid="row-${EV_1.id}"]`)).toBeVisible();
   await expect(page.locator(`[data-testid="row-${EV_2.id}"]`)).toBeVisible();
   await expect(page.locator(`[data-testid="row-${EV_3.id}"]`)).toBeVisible();
@@ -393,6 +412,7 @@ test('TC-TL-02: all seeded events render as rows by default', async () => {
 // ─── TC-TL-03: click row → selected state ───────────────────────────────────
 
 test('TC-TL-03: clicking a row enters the selected state', async () => {
+  skipHidden(['spreadsheet']);
   const row = page.locator(`[data-testid="row-${EV_1.id}"]`);
   await row.click();
 
@@ -409,6 +429,7 @@ test('TC-TL-03: clicking a row enters the selected state', async () => {
 // ─── TC-TL-04: Narrative ⇄ Chronological toggle + FLASHBACK badge ───────────
 
 test('TC-TL-04: Chronological sort re-orders rows and badges the out-of-order event as FLASHBACK', async () => {
+  skipHidden(['spreadsheet']);
   // Narrative order (by chapter) is the default: EV_1, EV_2, EV_3. No badges.
   const narrativeOrder = await page.locator('.tls-row').evaluateAll(rows =>
     rows.map(r => r.getAttribute('data-testid') ?? ''),
@@ -440,6 +461,7 @@ test('TC-TL-04: Chronological sort re-orders rows and badges the out-of-order ev
 // ─── TC-TL-05: Group-By POV ──────────────────────────────────────────────────
 
 test('TC-TL-05: Group-By POV groups rows under a collapsible header with a count', async () => {
+  skipHidden(['spreadsheet']);
   await page.locator('[data-testid="tls-group-pov"]').click();
 
   const groupRows = page.locator('.tls-group-row');
@@ -466,6 +488,7 @@ test('TC-TL-05: Group-By POV groups rows under a collapsible header with a count
 // ─── TC-TL-06: Group-By Location ─────────────────────────────────────────────
 
 test('TC-TL-06: Group-By Location groups rows under a collapsible header with a count', async () => {
+  skipHidden(['spreadsheet']);
   await page.locator('[data-testid="tls-group-location"]').click();
 
   const groupRows = page.locator('.tls-group-row');
@@ -482,6 +505,7 @@ test('TC-TL-06: Group-By Location groups rows under a collapsible header with a 
 // ─── TC-TL-07: Group-By Chapter ──────────────────────────────────────────────
 
 test('TC-TL-07: Group-By Chapter groups rows under a collapsible header with a count', async () => {
+  skipHidden(['spreadsheet']);
   await page.locator('[data-testid="tls-group-chapter"]').click();
 
   const groupRows = page.locator('.tls-group-row');
@@ -512,6 +536,7 @@ test.describe('TC-TL-08 — empty state', () => {
   let emptyPage: Page;
 
   test.beforeAll(async () => {
+    if (HIDDEN_TIMELINE_MODES.has('spreadsheet')) return;
     emptyUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-timeline-empty-user-'));
     emptyVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-timeline-empty-vault-'));
     emptyNotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-timeline-empty-notes-'));
@@ -524,6 +549,7 @@ test.describe('TC-TL-08 — empty state', () => {
   });
 
   test.afterAll(async () => {
+    if (HIDDEN_TIMELINE_MODES.has('spreadsheet')) return;
     await emptyApp?.close().catch(() => {});
     fs.rmSync(emptyUserData, { recursive: true, force: true });
     fs.rmSync(emptyVaultDir, { recursive: true, force: true });
@@ -531,6 +557,7 @@ test.describe('TC-TL-08 — empty state', () => {
   });
 
   test('TC-TL-08: a story with no timeline events shows the "No events yet" empty state', async () => {
+    skipHidden(['spreadsheet']);
     await expect(emptyPage.locator('[data-testid="timeline-spreadsheet-empty"]')).toBeVisible({ timeout: 8_000 });
     await expect(emptyPage.locator('[data-testid="timeline-spreadsheet-empty"]')).toContainText('No events yet');
     await expect(emptyPage.locator('[data-testid="timeline-spreadsheet-root"]')).toHaveCount(0);
@@ -573,6 +600,7 @@ test.describe('SKY-797 — perf gate', () => {
   let perfPage: Page;
 
   test.beforeAll(async () => {
+    if (HIDDEN_TIMELINE_MODES.has('spreadsheet')) return;
     perfUserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-timeline-perf-user-'));
     perfVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-timeline-perf-vault-'));
     perfNotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-timeline-perf-notes-'));
@@ -602,6 +630,7 @@ test.describe('SKY-797 — perf gate', () => {
   });
 
   test.afterAll(async () => {
+    if (HIDDEN_TIMELINE_MODES.has('spreadsheet')) return;
     await perfApp?.close().catch(() => {});
     fs.rmSync(perfUserData, { recursive: true, force: true });
     fs.rmSync(perfVaultDir, { recursive: true, force: true });
@@ -609,6 +638,7 @@ test.describe('SKY-797 — perf gate', () => {
   });
 
   test('500 events — median frame interval under budget during a hover + scroll sweep', async () => {
+    skipHidden(['spreadsheet']);
     // Sanity: at least the first batch of rows is rendered.
     await expect(perfPage.locator('.tls-row').first()).toBeVisible({ timeout: 10_000 });
 
@@ -768,6 +798,7 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
   });
 
   test('TC-TL-M23-01: seven-mode segment with Progress default + the full toolbar', async () => {
+    skipHidden(['plot', 'spreadsheet', 'tension', 'relations', 'subway']);
     const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
     await expect(modeBar).toBeVisible({ timeout: 6_000 });
     for (const label of ['Progress', 'Structure', 'Plotlines', 'Spreadsheet', 'Tension', 'Relationships', 'Subway']) {
@@ -779,6 +810,30 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
     await expect(m23Page.locator('[data-testid="tl-add-plotline"]')).toBeVisible();
     await expect(m23Page.locator('[data-testid="tl-view-filter"]')).toBeVisible();
     await expect(m23Page.locator('[data-testid="groupby-select"]')).toBeVisible();
+    await expect(m23Page.locator('[data-testid="tl-show-filter"]')).toBeVisible();
+    await expect(m23Page.locator('[data-testid="tl-today-btn"]')).toBeVisible();
+  });
+
+  test('TC-TL-M23-01b: Structure and Progress are the only mode tabs', async () => {
+    test.skip(
+      !HIDDEN_TIMELINE_MODES.has('plot'),
+      'HIDDEN_BY_TIMELINE_HIDE_FLAG: plot (inverse — the seven-mode assertion owns this when the flag is empty)',
+    );
+    const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
+    await expect(modeBar).toBeVisible({ timeout: 6_000 });
+    await expect(modeBar.getByRole('button', { name: 'Structure', exact: true })).toBeVisible();
+    await expect(modeBar.getByRole('button', { name: 'Progress', exact: true })).toBeVisible();
+    for (const label of ['Plotlines', 'Spreadsheet', 'Tension', 'Relationships', 'Subway']) {
+      await expect(modeBar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
+    }
+    await expect(m23Page.locator('[data-testid="tl-view-filter"]')).toBeVisible();
+    const viewOptions = await m23Page.locator('[data-testid="tl-view-filter"] option').allTextContents();
+    expect(viewOptions).toContain('Story Structure');
+    expect(viewOptions).not.toContain('World Chronology');
+    expect(viewOptions).not.toContain('Per Character');
+    await expect(m23Page.locator('[data-testid="groupby-select"]')).toHaveCount(0);
+    await expect(m23Page.locator('[data-testid="tl-templates-btn"]')).toBeVisible();
+    await expect(m23Page.locator('[data-testid="tl-add-plotline"]')).toBeVisible();
     await expect(m23Page.locator('[data-testid="tl-show-filter"]')).toBeVisible();
     await expect(m23Page.locator('[data-testid="tl-today-btn"]')).toBeVisible();
   });
@@ -857,6 +912,7 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
   // disabled there now, and in Spreadsheet it must produce real group rows.
   // (Numbered -08: -07 is taken by SKY-10502's View-select test on PR #1252.)
   test('TC-TL-M23-08: Group By is disabled in the lanes modes and live in the Spreadsheet', async () => {
+    skipHidden(['spreadsheet']);
     const groupSelect = m23Page.locator('[data-testid="groupby-select"]');
     const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
 
@@ -885,6 +941,7 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
   });
 
   test('TC-TL-M23-06: Today explains itself while nothing is written; modes route their surfaces', async () => {
+    skipHidden(['plot', 'tension', 'relations', 'subway', 'spreadsheet']);
     await m23Page.locator('[data-testid="tl-today-btn"]').click();
     // Filtered by text (see TC-TL-M23-04): concurrent app-toasts must not
     // make this locator ambiguous under Playwright's strict mode.
@@ -917,6 +974,7 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
   // is already covered live at TC-TL-M23-05; this covers the View select,
   // which TC-TL-M23-06 only exercised indirectly via the mode-bar buttons.
   test('TC-TL-M23-07: the View select actually re-groups by switching timeline modes', async () => {
+    skipHidden(['spreadsheet', 'subway']);
     const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
     await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toBeVisible();
 
@@ -988,6 +1046,13 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
     const summary = m23Page.locator('.trp-summary');
     await expect(summary).toHaveText('A summons at dawn.');
     await assertRatios(summary, { lineHeightRatio: 1.55, letterSpacingRatio: 0.01 });
+  });
+
+  test('TC-TL-M23-06b: Today explains itself while nothing is written', async () => {
+    await m23Page.locator('[data-testid="tl-today-btn"]').click();
+    await expect(m23Page.locator('[data-testid="app-toast"]')
+      .filter({ hasText: 'Nothing written yet' }))
+      .toBeVisible();
   });
 });
 

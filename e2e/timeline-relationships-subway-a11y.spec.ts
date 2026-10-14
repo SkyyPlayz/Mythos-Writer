@@ -26,6 +26,13 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { HIDDEN_TIMELINE_MODES, type TimelineMode } from '../frontend/src/timelineAeon';
+
+/** Skip while these modes sit in HIDDEN_TIMELINE_MODES. Emptying the set re-runs the test. */
+function skipHidden(modes: readonly TimelineMode[]): void {
+  const hidden = modes.filter((mode) => HIDDEN_TIMELINE_MODES.has(mode));
+  test.skip(hidden.length > 0, `HIDDEN_BY_TIMELINE_HIDE_FLAG: ${hidden.join(',')}`);
+}
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -262,6 +269,7 @@ let app: ElectronApplication | undefined;
 let page: Page;
 
 test.beforeAll(async () => {
+  if (HIDDEN_TIMELINE_MODES.has('relations') || HIDDEN_TIMELINE_MODES.has('subway')) return;
   userData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-rel-sub-a11y-user-'));
   vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-rel-sub-a11y-vault-'));
   notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-rel-sub-a11y-notes-'));
@@ -280,6 +288,7 @@ test.beforeAll(async () => {
 test.describe.configure({ mode: 'serial' });
 
 test.afterAll(async () => {
+  if (HIDDEN_TIMELINE_MODES.has('relations') || HIDDEN_TIMELINE_MODES.has('subway')) return;
   await app?.close().catch(() => {});
   fs.rmSync(userData, { recursive: true, force: true });
   fs.rmSync(vaultDir, { recursive: true, force: true });
@@ -289,6 +298,7 @@ test.afterAll(async () => {
 // ─── TC-A11Y-01: Relationships native table ───────────────────────────────────
 
 test('TC-A11Y-01: Relationships renders a native table with caption and presence aria-labels', async () => {
+  skipHidden(['relations']);
   await openTimelineMode(page, SCENE_1.title, 'relations');
 
   const table = page.locator('[data-testid="timeline-character-presence-table"]');
@@ -306,6 +316,7 @@ test('TC-A11Y-01: Relationships renders a native table with caption and presence
 // ─── TC-A11Y-02: Subway "View as table" toggle ────────────────────────────────
 
 test('TC-A11Y-02: Subway "View as table" swaps to the shared table and moves focus into it', async () => {
+  skipHidden(['subway']);
   // Reuse the timeline view already opened by TC-A11Y-01 — just switch the
   // mode-seg to Subway rather than re-navigating from the story nav (which
   // can land on a different scene-selection state once already inside the
