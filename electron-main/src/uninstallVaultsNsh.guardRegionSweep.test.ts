@@ -343,6 +343,16 @@ describe('sidecar guard region sweep :43-:541 (buildIntegrity excluded)', () => 
       expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[329]).toBeUndefined();
       expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[330]).toBeUndefined();
       expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[331]).toBeUndefined();
+    });
+
+    it('Forge\'s 74 false GFPN/GLP equivalents plus :332 GLP are not listed as behaviour-equivalent', () => {
+      expect(SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS).toHaveLength(74);
+      for (const fileLine of SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS) {
+        expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[fileLine], `:${fileLine}`).toBeUndefined();
+      }
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[329]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[330]).toBeUndefined();
+      expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[331]).toBeUndefined();
       expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[332]).toBeUndefined();
     });
 

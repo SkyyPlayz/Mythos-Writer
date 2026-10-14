@@ -147,6 +147,14 @@ describe('HARD-A short names + deny/allowlist GLP', () => {
     expect(sidecarHardADeleted(mutant, row!).length, 'Nop :170 must delete Shared Docs\\v').toBeGreaterThan(0);
   });
 
+  it('missing WINDIR root skips every vault', () => {
+    const missing = SIDECAR_HARD_A_ROWS.filter((r) => r.name.startsWith('missing WINDIR root'));
+    expect(missing.length).toBeGreaterThanOrEqual(4);
+    for (const row of missing) {
+      expect(sidecarHardADeleted(nsh, row), row.name).toEqual([]);
+    }
+  });
+
   it('missing-root rows pin every allow/deny root, not only WINDIR', () => {
     for (const root of ['WINDIR', 'PROGRAMFILES', 'PROGRAMFILES64', 'APPDATA', 'DOCUMENTS', 'DESKTOP', 'PROFILE']) {
       const rows = SIDECAR_HARD_A_ROWS.filter((r) => r.name.startsWith(`missing ${root} root`));
@@ -338,6 +346,21 @@ describe('HARD-2 nested Downloads (112 survivors)', () => {
   });
 
   it('all 112 nested-Downloads region-map mutants are red', () => {
+    const selected = nestedDownloadsRegionMutants();
+    expect(selected.length).toBeGreaterThanOrEqual(112);
+    let red = 0;
+    for (const mutant of selected) {
+      if (sidecarGuardModeTwoCaught(mutant.nsh, nsh)) {
+        red += 1;
+        if (red >= 112) {
+          break;
+        }
+      }
+    }
+    expect(red, `${red} of ${selected.length} region-map mutants were mode-2 red`).toBeGreaterThanOrEqual(112);
+  }, 180_000);
+
+  it('all nested-Downloads region-map mutants are red (all-of, ≥112)', () => {
     const skipLines = new Set<number>([
       ...Object.keys(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES).map(Number),
       ...ORACLE_CLASS_ALL_EQUIVALENT_LINES,

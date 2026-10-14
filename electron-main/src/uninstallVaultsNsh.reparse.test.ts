@@ -150,6 +150,12 @@ describe('HARD-2 nested roots', () => {
     expect(() => assertSidecarHard2NestedTables(nsh)).not.toThrow();
   });
 
+  it('Nop AppData equal (:288) is equivalent — allowlist already skipped the exact AppData root', () => {
+    expect(fileLines[287]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const mutant = withFileLine(288, 'Nop');
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
+  });
+
   it('Nop AppData equal (:378) deletes the nested root', () => {
     expect(fileLines[377]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
     const row = SIDECAR_HARD_A_ROWS.find((r) => r.name.startsWith('Nop AppData equal deletes the nested'))!;
@@ -160,6 +166,12 @@ describe('HARD-2 nested roots', () => {
       'C:\\Users\\me\\Documents\\mw-nest\\Roaming\\Mythos Writer',
     ]);
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
+  });
+
+  it('Nop Documents equal (:404) is equivalent — allowlist already skipped the exact Documents root', () => {
+    expect(fileLines[403]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const mutant = withFileLine(404, 'Nop');
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
   });
 
   it('Nop Documents equal (:248) is equivalent — allowlist already skipped the exact Documents root', () => {
