@@ -337,7 +337,7 @@ describe('HARD-2 nested Downloads (112 survivors)', () => {
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
-  it('all nested-Downloads region-map mutants are red (all-of, ≥112)', () => {
+  it('all 112 nested-Downloads region-map mutants are red', () => {
     const skipLines = new Set<number>([
       ...Object.keys(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES).map(Number),
       ...ORACLE_CLASS_ALL_EQUIVALENT_LINES,

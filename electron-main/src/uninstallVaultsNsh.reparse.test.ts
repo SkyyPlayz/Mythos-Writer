@@ -162,6 +162,12 @@ describe('HARD-2 nested roots', () => {
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
+  it('Nop Documents equal (:248) is equivalent — allowlist already skipped the exact Documents root', () => {
+    expect(fileLines[247]!.trim()).toBe('StrCmp $3 $5 uninstall_vault_read');
+    const mutant = withFileLine(248, 'Nop');
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
+  });
+
   it('Nop Documents equal (:404) is red on Documents-inside-Mythos-Writer\\Docs', () => {
     expect(fileLines[403]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
     const mutant = withFileLine(404, 'Nop');

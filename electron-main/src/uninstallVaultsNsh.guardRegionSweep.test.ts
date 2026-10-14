@@ -336,7 +336,7 @@ describe('sidecar guard region sweep :43-:541 (buildIntegrity excluded)', () => 
       );
     });
 
-    it('Forge\'s false GFPN/GLP equivalents are not listed as behaviour-equivalent', () => {
+    it('Forge\'s 29 false GFPN/GLP equivalents are not listed as behaviour-equivalent', () => {
       for (const fileLine of SIDECAR_GUARD_SWEEP_FALSE_GFPN_GLP_EQUIVALENTS) {
         expect(SIDECAR_GUARD_SWEEP_BEHAVIOUR_EQUIVALENT_FILE_LINES[fileLine], `:${fileLine}`).toBeUndefined();
       }
