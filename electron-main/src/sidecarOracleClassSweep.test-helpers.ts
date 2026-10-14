@@ -153,11 +153,15 @@ export function registerOracleClassLineSweep(lineFirst: number, lineLast: number
  * Equivalence-strength corpus check for documented mode-2 primaries. Split across files so
  * vitest workers share the restored 12,617-case scans. Each line still sees every case.
  */
-export function registerGuardRegionEquivSweep(lines: readonly number[]): void {
+export function registerGuardRegionEquivSweep(
+  lines: readonly number[],
+  lineTextPins?: Readonly<Record<number, string>>,
+): void {
   describe(
     `mode (2) equivalence strength :${lines[0]}-:${lines[lines.length - 1]} — identical outcome on the full oracle corpus`,
     () => {
       const { nsh, corpus, canonicalOutcomes } = getSharedOracleSweepState();
+      const fileLines = nsh.split('\n');
       /** Slice the restored full corpus so each test stays under the 30s default with ~50% headroom. */
       const CORPUS_SLICE = 2000;
 
@@ -170,6 +174,9 @@ export function registerGuardRegionEquivSweep(lines: readonly number[]): void {
           it(
             `line :${fileLine} primary matches canonical on every oracle corpus case${suffix}`,
             () => {
+              if (lineTextPins !== undefined) {
+                expect(fileLines[fileLine - 1]).toBe(lineTextPins[fileLine]);
+              }
               slice.forEach((c, j) => {
                 const i = start + j;
                 expect(sidecarGuardCaseOutcome(mutant, c), `outcome diverged at ${JSON.stringify(c.reads)}`).toBe(
