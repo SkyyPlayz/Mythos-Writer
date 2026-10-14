@@ -57,16 +57,40 @@ const chunkMutants = (mutants: OracleClassMutant[], size: number): OracleClassMu
   return chunks;
 };
 
+/**
+ * One nsh / corpus / canonical-outcome / mutant table per worker. `--isolate=false`
+ * keeps this across files so later shards skip the 12,634-case canonical replay
+ * and `generateOracleClassMutants`. Assertions still walk every case and mutant.
+ */
+type SharedOracleSweepState = {
+  nsh: string;
+  corpus: ReturnType<typeof sidecarGuardOracleCorpus>;
+  canonicalOutcomes: readonly string[];
+  mutants: readonly OracleClassMutant[];
+};
+
+let sharedOracleSweepState: SharedOracleSweepState | undefined;
+
+function getSharedOracleSweepState(): SharedOracleSweepState {
+  if (sharedOracleSweepState) {
+    return sharedOracleSweepState;
+  }
+  const nsh = loadUninstallVaultsNsh();
+  const corpus = sidecarGuardOracleCorpus();
+  const canonicalOutcomes = corpus.map((c) => sidecarGuardCaseOutcome(nsh, c));
+  const mutants = generateOracleClassMutants(nsh);
+  sharedOracleSweepState = { nsh, corpus, canonicalOutcomes, mutants };
+  return sharedOracleSweepState;
+}
+
 /** Register the per-line oracle-class sweep for `[lineFirst, lineLast]` inclusive. */
 export function registerOracleClassLineSweep(lineFirst: number, lineLast: number): void {
   describe(
     `oracle-class mutant sweep :${lineFirst}-:${lineLast} (Forge gen.py classes, pin-free VM tables)`,
     () => {
-      const nsh = loadUninstallVaultsNsh();
-      const corpus = sidecarGuardOracleCorpus();
-      const canonicalOutcomes = corpus.map((c) => sidecarGuardCaseOutcome(nsh, c));
+      const { nsh, corpus, canonicalOutcomes, mutants: allMutants } = getSharedOracleSweepState();
       const byLine = new Map<number, OracleClassMutant[]>();
-      for (const mutant of generateOracleClassMutants(nsh)) {
+      for (const mutant of allMutants) {
         if (mutant.fileLine < lineFirst || mutant.fileLine > lineLast) {
           continue;
         }
@@ -133,13 +157,12 @@ export function registerGuardRegionEquivSweep(lines: readonly number[]): void {
   describe(
     `mode (2) equivalence strength :${lines[0]}-:${lines[lines.length - 1]} — identical outcome on the full oracle corpus`,
     () => {
-      const nsh = loadUninstallVaultsNsh();
-      const corpus = sidecarGuardOracleCorpus();
-      const canonicalOutcomes = corpus.map((c) => sidecarGuardCaseOutcome(nsh, c));
+      const { nsh, corpus, canonicalOutcomes } = getSharedOracleSweepState();
       /** Slice the restored full corpus so each test stays under the 30s default with ~50% headroom. */
       const CORPUS_SLICE = 2000;
 
       for (const fileLine of lines) {
+        const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
         for (let start = 0; start < corpus.length; start += CORPUS_SLICE) {
           const slice = corpus.slice(start, start + CORPUS_SLICE);
           const end = start + slice.length;
@@ -147,7 +170,6 @@ export function registerGuardRegionEquivSweep(lines: readonly number[]): void {
           it(
             `line :${fileLine} primary matches canonical on every oracle corpus case${suffix}`,
             () => {
-              const mutant = mutantSidecarGuardRegionSweepLine(nsh, fileLine);
               slice.forEach((c, j) => {
                 const i = start + j;
                 expect(sidecarGuardCaseOutcome(mutant, c), `outcome diverged at ${JSON.stringify(c.reads)}`).toBe(
