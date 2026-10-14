@@ -203,6 +203,14 @@ npm run test
 | `frontend` `vitest run` | Test Files 350 passed (350). Tests 5668 passed, 57 skipped (5725). |
 | Combined | 10313 passed, 67 skipped, 0 failed (10380). |
 
-### After
+### After (this branch, same commands, Node v22.23.3)
 
-Filled in after the re-run on this branch. See the proof comment for the tip SHA.
+| Suite | Result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm run lint -w frontend` | exit 0 (`eslint src --max-warnings 0` and `scripts/check-dead-wiring.mjs`; no new never-passed callback props) |
+| `electron-main` `vitest run` | Test Files 204 passed (204). Tests 4645 passed, 10 skipped (4655). |
+| `frontend` `vitest run` | Test Files 350 passed (350). Tests 5668 passed, 57 skipped (5725). |
+| Combined | 10313 passed, 67 skipped, 0 failed (10380). Same counts as before. |
+
+`notes-windows` is a Windows runner job and was not executed here. This diff does not touch notes vault code, vault migrations, uninstall NSIS, or `.github/`.
