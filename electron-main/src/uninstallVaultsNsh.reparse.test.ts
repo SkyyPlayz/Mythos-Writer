@@ -42,7 +42,7 @@ export const RF7_PIN_CHECKED_MUTANTS: readonly string[] = [
   'wider mask (0x400 → 0x407)',
   'skip-on-any-nonzero (Nop leaf 0x400 mask :401)',
   'drop wildcard charset (Alloc 80 / &i2 42)',
-  'Nop nested AppData equal :321',
+  'Nop nested AppData equal :378',
   'Nop nested Documents equal :338',
   'Nop nested Desktop equal :355',
   ':250 else +6 (Shield survivor)',
@@ -150,10 +150,16 @@ describe('HARD-2 nested roots', () => {
     expect(() => assertSidecarHard2NestedTables(nsh)).not.toThrow();
   });
 
-  it('Nop AppData equal (:288) is equivalent — allowlist already skipped the exact AppData root', () => {
-    expect(fileLines[287]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
-    const mutant = withFileLine(288, 'Nop');
+  it('Nop AppData equal (:218) is equivalent — allowlist already skipped the exact AppData root', () => {
+    expect(fileLines[217]!.trim()).toBe('StrCmp $3 $5 uninstall_vault_read');
+    const mutant = withFileLine(218, 'Nop');
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
+  });
+
+  it('Nop AppData equal (:378) is red', () => {
+    expect(fileLines[377]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
+    const mutant = withFileLine(378, 'Nop');
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
   it('Nop AppData equal (:378) deletes the nested root', () => {
@@ -168,10 +174,10 @@ describe('HARD-2 nested roots', () => {
     expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
-  it('Nop Documents equal (:404) is equivalent — allowlist already skipped the exact Documents root', () => {
+  it('Nop Documents equal (:404) is red', () => {
     expect(fileLines[403]!.trim()).toBe('StrCmp $3 $9 uninstall_vault_read');
     const mutant = withFileLine(404, 'Nop');
-    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(false);
+    expect(sidecarGuardModeTwoCaught(mutant, nsh)).toBe(true);
   });
 
   it('Nop Documents equal (:248) is equivalent — allowlist already skipped the exact Documents root', () => {
