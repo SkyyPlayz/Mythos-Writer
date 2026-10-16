@@ -8,7 +8,7 @@
 /* railSt — A1: floating glass card (09 §3.2). Not flush to the window edge. */
 .nav-rail {
   position: relative;
-  width: 58px;
+  width: 76px;
   flex: none;
   align-self: stretch;
   display: flex;
@@ -36,7 +36,7 @@
 }
 
 .nav-rail--collapsed {
-  width: 44px;
+  width: 54px;
   gap: 4px;
 }
 
@@ -124,7 +124,7 @@
 }
 
 .nav-rail__item {
-  width: 50px;
+  width: 60px;
   min-height: 44px;
   max-height: 58px;
   height: auto;
@@ -146,7 +146,7 @@
 }
 
 .nav-rail--collapsed .nav-rail__item {
-  width: 36px;
+  width: 40px;
   min-height: 32px;
   max-height: 40px;
   border-radius: 11px;
@@ -470,7 +470,7 @@
 
 /* A1 / 09 §3.2 Settings — height 50 (slim 38), flex:none */
 .nav-rail__settings {
-  width: 50px;
+  width: 60px;
   height: 50px;
   border-radius: 14px;
   display: flex;
@@ -490,7 +490,7 @@
 }
 
 .nav-rail--collapsed .nav-rail__settings {
-  width: 36px;
+  width: 40px;
   height: 38px;
   border-radius: 11px;
   gap: 0;
@@ -684,48 +684,6 @@
   font-size: 9.5px;
   color: #7686a2;
   padding: 7px 8px 2px;
-}
-
-/* FD-9 #10 / 09 §3.2: at viewport ≤900 the rail uses the compact column
-   (44px, labels off) even when the height formula has not slimmed it. */
-@media (max-width: 900px) {
-  .nav-rail {
-    width: 44px;
-    gap: 4px;
-  }
-
-  .nav-rail__item {
-    width: 36px;
-    min-height: 32px;
-    max-height: 40px;
-    border-radius: 11px;
-    gap: 0;
-  }
-
-  .nav-rail__item-label,
-  .nav-rail__settings-label {
-    display: none;
-  }
-
-  .nav-rail__settings {
-    width: 36px;
-    height: 38px;
-    border-radius: 11px;
-    gap: 0;
-  }
-
-  .nav-rail__vault-tile {
-    width: 26px;
-    height: 26px;
-  }
-
-  .nav-rail__tools {
-    gap: 2px;
-  }
-}
-
-.nav-rail--collapsed .nav-rail__tools {
-  gap: 2px;
 }
 
 /* ── Reduced motion ────────────────────────────────────────────────────── */

@@ -403,9 +403,10 @@
 .sc-field textarea {
   /* SKY-8435: a fixed 44px box hard-clipped a GOAL/CONFLICT paragraph to
      ~2 lines. Dyslexia-spec §2.3: the container grows, never clips or
-     compresses spacing — min-height fits ~3.5 lines at the spacing bundle
-     below, resize:vertical lets the writer grow it further. */
-  min-height: 72px;
+     compresses spacing — painted min-height stays 72px (~3.5 lines).
+     FD-8 zooms .sc-col-setup by .9, which scales the border box, so the
+     layout min-height is 72 / .9 and the painted floor stays 72px. */
+  min-height: calc(72px / .9);
   resize: vertical;
   padding: 7px 10px;
   line-height: var(--dyslexia-line-height);
