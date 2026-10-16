@@ -188,7 +188,7 @@
   border: 1px solid rgba(255, 255, 255, .1);
   border-radius: 7px;
   padding: 2px 8px;
-  color: #9fb0c8;
+  color: rgb(159, 176, 200); /* prototype #9fb0c8 */
 }
 
 .bottom-voice {
