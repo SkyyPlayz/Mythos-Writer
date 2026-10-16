@@ -315,12 +315,23 @@
  * on screen there (measured title box 258px). A 1024px window is a 562px
  * content box. With a short count the goal (91.6) and badge (82) leave 16px
  * inside that box, so they stay up through 545px and are still on screen at
- * 1024. A 22,223-word count at that same 1024px window pushes Listening 13.9px
- * into the padding; the overflow clip is still 0. Hiding the goal would miss
- * the 1024px window, and the word count does not shrink.
+ * 1024. A 22,223-word count is 30px wider, and the full word "Listening" then
+ * ends 13.9px inside the padding. Hiding the goal would miss the 1024px
+ * window, and the word count does not shrink. The bar takes
+ * bottom-bar--wide-count when that count has 4 or more digits (1,000 and up,
+ * the comma group). From 546px through 720px the class switches Listening to
+ * the mic, so the goal stays at 562px. 546px is where the goal returns.
+ * 720px is past the ~576px line where this font fits the full word beside the
+ * goal, so a wider face keeps the mic until the word actually clears.
+ * Measured after that switch, content 562: nav 106.5, "22,223 words" 71.7,
+ * badge 82, goal 91.6, "Saved just now" 90.9, mic 12. The mic ends 37.3px
+ * inside the content box. DejaVu Sans, the wider face checked against Inter,
+ * adds about 17px to that text and still clears.
  * Below a 900px window the content box is under 438px (832px window → 370).
  * Listening drops to the 12px mic there, and in split view at any width.
- * Split view at 900px then occupies 426.6 of 438. The mic is inside.
+ * Split view at 900px occupies 426.6 of 438 with the mic on this font. A wider
+ * face put that icon in the padding, so split view also shortens the save
+ * label to a check plus "Saved".
  * A 22,223-word scene at 832px occupies 323.2 of 370 with the mic and the full
  * "Saved just now" label. That full label plus the mic stops fitting at 323px,
  * so it shortens to a check plus "Saved" from there down. The word count and
@@ -365,6 +376,52 @@
 
 .bottom-bar:has([data-testid="split-word-counts"]) .bottom-voice-icon {
   display: block;
+}
+
+/* The mic alone left 11px at 900px split on this font, and the CI font put
+   the icon in the padding. Shorten the save label there so the fixed set
+   stays inside the content box on a wider face. */
+.bottom-bar:has([data-testid="split-word-counts"]) .bottom-saved-dot,
+.bottom-bar:has([data-testid="split-word-counts"]) .bottom-saved-full {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.bottom-bar:has([data-testid="split-word-counts"]) .bottom-saved-check,
+.bottom-bar:has([data-testid="split-word-counts"]) .bottom-saved-short {
+  display: block;
+}
+
+.bottom-bar:has([data-testid="split-word-counts"]) .bottom-status-fallback--saved {
+  display: block;
+}
+
+/* Goal is on screen above 545px. A 4-digit count plus the full word does not
+   fit beside it. The mic stays through 720px so a wider face still clears. */
+@container status-bar (min-width: 546px) and (max-width: 720px) {
+  .bottom-bar--wide-count .bottom-voice-label,
+  .bottom-bar--wide-count .bottom-voice-dot {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .bottom-bar--wide-count .bottom-voice-icon {
+    display: block;
+  }
 }
 
 @container status-bar (max-width: 437px) {

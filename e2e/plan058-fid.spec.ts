@@ -210,7 +210,9 @@ async function fixedItemStyle(page: Page, selector: string): Promise<{
   }, selector);
 }
 
-/** Text range vs overflow clip. Width and height both have to survive. */
+/** Visible text and icons vs the status bar's content box, padding excluded.
+ *  Sr-only children stay out of the range so a mic or a shortened save label
+ *  is judged by what is actually painted. */
 async function textFullyVisible(page: Page, selector: string): Promise<{
   text: string | null;
   full: boolean;
@@ -222,9 +224,50 @@ async function textFullyVisible(page: Page, selector: string): Promise<{
   return page.evaluate((sel) => {
     const el = document.querySelector(sel);
     if (!el) return null;
+    const visuallyHidden = (node: Element) => {
+      const cs = getComputedStyle(node);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return true;
+      if (cs.position !== 'absolute' && cs.position !== 'fixed') return false;
+      if (/^rect\(\s*0/.test(cs.clip)) return true;
+      return cs.overflow === 'hidden' && parseFloat(cs.width) <= 1 && parseFloat(cs.height) <= 1;
+    };
+    const hidden = (node: Node) => {
+      let p: Node | null = node.parentNode;
+      while (p instanceof Element) {
+        if (visuallyHidden(p)) return true;
+        if (p === el) break;
+        p = p.parentNode;
+      }
+      return false;
+    };
+    let left = Infinity;
+    let right = -Infinity;
+    let top = Infinity;
+    let bottom = -Infinity;
+    const tops = new Set<number>();
+    const push = (r: DOMRect, countLine: boolean) => {
+      if (r.width <= 0 || r.height <= 0) return;
+      left = Math.min(left, r.left);
+      right = Math.max(right, r.right);
+      top = Math.min(top, r.top);
+      bottom = Math.max(bottom, r.bottom);
+      if (countLine) tops.add(Math.round(r.top));
+    };
     const range = document.createRange();
-    range.selectNodeContents(el);
-    const rect = range.getBoundingClientRect();
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let textNode = walker.nextNode();
+    while (textNode) {
+      if (textNode.textContent?.trim() && !hidden(textNode)) {
+        range.selectNodeContents(textNode);
+        for (const r of range.getClientRects()) push(r, true);
+      }
+      textNode = walker.nextNode();
+    }
+    el.querySelectorAll('svg, img').forEach((node) => {
+      if (!hidden(node)) push(node.getBoundingClientRect(), false);
+    });
+    const width = Number.isFinite(left) ? right - left : 0;
+    const height = Number.isFinite(top) ? bottom - top : 0;
     const clips = (v: string) => v === 'hidden' || v === 'clip' || v === 'scroll' || v === 'auto';
     let clipLeft = -1e9;
     let clipRight = 1e9;
@@ -235,23 +278,29 @@ async function textFullyVisible(page: Page, selector: string): Promise<{
       const cs = getComputedStyle(p);
       if (clips(cs.overflowX) || clips(cs.overflowY) || clips(cs.overflow)) {
         const r = p.getBoundingClientRect();
-        clipLeft = Math.max(clipLeft, r.left);
-        clipRight = Math.min(clipRight, r.right);
-        clipTop = Math.max(clipTop, r.top);
-        clipBottom = Math.min(clipBottom, r.bottom);
+        const padL = p.classList.contains('bottom-bar') ? parseFloat(cs.paddingLeft) || 0 : 0;
+        const padR = p.classList.contains('bottom-bar') ? parseFloat(cs.paddingRight) || 0 : 0;
+        const padT = p.classList.contains('bottom-bar') ? parseFloat(cs.paddingTop) || 0 : 0;
+        const padB = p.classList.contains('bottom-bar') ? parseFloat(cs.paddingBottom) || 0 : 0;
+        clipLeft = Math.max(clipLeft, r.left + padL);
+        clipRight = Math.min(clipRight, r.right - padR);
+        clipTop = Math.max(clipTop, r.top + padT);
+        clipBottom = Math.min(clipBottom, r.bottom - padB);
       }
       p = p.parentElement;
     }
-    const visibleW = Math.max(0, Math.min(rect.right, clipRight) - Math.max(rect.left, clipLeft));
-    const visibleH = Math.max(0, Math.min(rect.bottom, clipBottom) - Math.max(rect.top, clipTop));
-    const tops = new Set<number>();
-    for (const r of range.getClientRects()) tops.add(Math.round(r.top));
+    const visibleW = width > 0
+      ? Math.max(0, Math.min(right, clipRight) - Math.max(left, clipLeft))
+      : 0;
+    const visibleH = height > 0
+      ? Math.max(0, Math.min(bottom, clipBottom) - Math.max(top, clipTop))
+      : 0;
     return {
       text: el.textContent,
-      full: rect.width > 0 && rect.height > 0
-        && visibleW >= rect.width - 0.5
-        && visibleH >= rect.height - 0.5,
-      width: rect.width,
+      full: width > 0 && height > 0
+        && visibleW >= width - 0.5
+        && visibleH >= height - 0.5,
+      width,
       visible: visibleW,
       lines: tops.size,
       whiteSpace: getComputedStyle(el).whiteSpace,
@@ -801,10 +850,7 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(icon, 'Listening icon missing in split view @900').not.toBeNull();
       expect(icon!.iconDisplay, 'Listening stays a word in split view @900').toBe('block');
       expect(icon!.iconWidth, 'Listening icon has no box in split view @900').toBeGreaterThanOrEqual(11);
-      // The mic has to stay inside the bar's overflow clip. Locally it also
-      // sits 11px inside the content box. The CI runner's text is wider and
-      // the same 12px icon enters the padding while remaining unclipped.
-      expect(icon!.insideBorder, `Listening icon is clipped in split view @900 ${JSON.stringify(icon)}`).toBe(true);
+      expect(icon!.insideContent, `Listening icon leaves the content box in split view @900 ${JSON.stringify(icon)}`).toBe(true);
       expect(icon!.labelPosition, 'Listening word is still visible in split view @900').toBe('absolute');
       expect(icon!.labelText, 'Listening sr-only label missing in split view @900').toBe('Listening');
       const saved = await textFullyVisible(page, '[data-testid="bottom-saved"]');
@@ -819,9 +865,7 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(next?.full, 'next clipped in split view @900').toBe(true);
       const fit = await fixedSetFit(page);
       expect(fit, 'split fixed set measured @900').not.toBeNull();
-      // Padding is 18px. A full "Listening" word overflows that clip (477 of 438).
-      // The mic may sit in the padding when the runner's font is wider.
-      expect(fit!.occupied, `split fixed set overflows @900 (${fit!.occupied} of ${fit!.content})`).toBeLessThanOrEqual(fit!.content + 18);
+      expect(fit!.occupied, `split fixed set leaves the content box @900 (${fit!.occupied} of ${fit!.content})`).toBeLessThanOrEqual(fit!.content + 0.5);
       const shot = path.join(SHOT_DIR, 'plan058-fid-b-900-split.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
@@ -1285,6 +1329,90 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(fit, 'long scene fixed set measured @832').not.toBeNull();
       expect(fit!.occupied, `long scene overflows @832 (${fit!.occupied} of ${fit!.content})`).toBeLessThanOrEqual(fit!.content + 0.5);
       const shot = path.join(SHOT_DIR, 'plan058-fid-b-832-long.png');
+      await page.screenshot({ path: shot });
+      expect(fs.existsSync(shot)).toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
+    }
+  });
+
+  test('FD-9 #15 long scene keeps the goal and the fixed set inside the content box at 1024px', async () => {
+    test.setTimeout(90_000);
+    await openEditor(page);
+    await renameSceneLong(page);
+    await ensureLongScene(page);
+    await saveScene(page);
+    await setContentSize(app!, 1024, 900);
+    await mountVoiceStandIn(page);
+    try {
+      await expect(page.getByTestId('bottom-saved')).toContainText('Saved just now');
+      const leadText = (await page.getByTestId('bottom-stats-lead').textContent()) ?? '';
+      expect(leadText, '1024 long word count').toMatch(/^\d{2},\d{3} words$/);
+      const icon = await listeningIcon(page);
+      expect(icon, 'Listening icon missing on long scene @1024').not.toBeNull();
+      expect(icon!.iconDisplay, 'Listening stays a word on long scene @1024').toBe('block');
+      expect(icon!.insideContent, `Listening icon leaves the content box on long scene @1024 ${JSON.stringify(icon)}`).toBe(true);
+      expect(icon!.labelPosition, 'Listening word is still visible on long scene @1024').toBe('absolute');
+      expect(icon!.labelText).toBe('Listening');
+      const placed = await page.evaluate(() => {
+        const bar = document.querySelector('.bottom-bar');
+        if (!(bar instanceof HTMLElement)) return null;
+        const cs = getComputedStyle(bar);
+        const padL = parseFloat(cs.paddingLeft) || 0;
+        const padR = parseFloat(cs.paddingRight) || 0;
+        const rect = bar.getBoundingClientRect();
+        const left = rect.left + padL;
+        const right = rect.right - padR;
+        const sels = [
+          '.bottom-nav',
+          'button[title="Previous scene"]',
+          'button[title="Next scene"]',
+          '[data-testid="bottom-stats-lead"]',
+          '[data-testid="bottom-saved"]',
+          '[data-testid="fid-voice-standin"]',
+          '[data-testid="bottom-daily-goal"]',
+          '.bottom-draft',
+        ];
+        return {
+          content: bar.clientWidth - padL - padR,
+          wide: bar.classList.contains('bottom-bar--wide-count'),
+          items: sels.map((sel) => {
+            const el = document.querySelector(sel);
+            if (!el) return { sel, missing: true, display: null, pastLeft: 0, pastRight: 0, width: 0 };
+            const box = el.getBoundingClientRect();
+            return {
+              sel,
+              missing: false,
+              display: getComputedStyle(el).display,
+              pastLeft: Math.round((left - box.left) * 10) / 10,
+              pastRight: Math.round((box.right - right) * 10) / 10,
+              width: Math.round(box.width * 10) / 10,
+            };
+          }),
+        };
+      });
+      expect(placed, '1024 long placement missing').not.toBeNull();
+      expect(placed!.wide, '4-digit count did not mark the bar').toBe(true);
+      expect(placed!.content, `1024 content box ${placed!.content}`).toBeGreaterThan(545);
+      test.info().annotations.push({ type: 'widths', description: JSON.stringify(placed) });
+      for (const item of placed!.items) {
+        expect(item.missing, `${item.sel} missing on long scene @1024`).toBe(false);
+        expect(item.display, `${item.sel} hidden on long scene @1024`).not.toBe('none');
+        expect(item.pastLeft, `${item.sel} enters the left padding @1024 (${item.pastLeft})`).toBeLessThanOrEqual(0.5);
+        expect(item.pastRight, `${item.sel} enters the right padding @1024 (${item.pastRight})`).toBeLessThanOrEqual(0.5);
+      }
+      for (const sel of [
+        'button[title="Previous scene"]',
+        'button[title="Next scene"]',
+        '[data-testid="bottom-stats-lead"]',
+        '[data-testid="bottom-saved"]',
+        '[data-testid="fid-voice-standin"]',
+        '[data-testid="bottom-daily-goal"]',
+      ]) {
+        const box = await textFullyVisible(page, sel);
+        expect(box?.full, `${sel} leaves the content box on long scene @1024 (visible ${box?.visible} of ${box?.width})`).toBe(true);
+      }
+      const shot = path.join(SHOT_DIR, 'plan058-fid-b-1024-long.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
