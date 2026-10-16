@@ -251,13 +251,19 @@ jobs:
 
   # PLAN-058 L8 Ivy carve-out: 12k oracle-class survivor walks, equivalence-strength
   # shards, and the HARD-2 nested-Downloads region-map walks run here in parallel
-  # with `unit`, under their own timeout. The required `ci` aggregator gates this
-  # job (skipped also fails). Unit excludes this nested-Downloads file and the
-  # oracle-class / equivalence shards.
+  # with `unit`. Two vitest shards, each with its own 40-minute cap and its own
+  # temp dir. The required `ci` aggregator needs both shards and fails unless
+  # each one succeeded (a failed, skipped, or missing shard fails `ci`).
+  # Unit excludes this nested-Downloads file and the oracle-class / equivalence shards.
   oracle-sweeps:
+    name: oracle-sweeps (${{ matrix.shard }}/2)
     needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
 
     steps:
       - uses: actions/checkout@v7
@@ -288,7 +294,15 @@ jobs:
         run: source scripts/ci-retry.sh && retry npm ci
 
       - name: Oracle-class and equivalence-strength sweeps
-        run: npm run test:oracle-sweeps -w electron-main
+        env:
+          # Per-shard temp only. os.tmpdir() and any nsh copies follow TMPDIR,
+          # so this leg never shares temp files with the other shard.
+          TMPDIR: ${{ runner.temp }}/oracle-sweeps-shard-${{ matrix.shard }}
+          TEMP: ${{ runner.temp }}/oracle-sweeps-shard-${{ matrix.shard }}
+          TMP: ${{ runner.temp }}/oracle-sweeps-shard-${{ matrix.shard }}
+        run: |
+          mkdir -p "$TMPDIR"
+          npm run test:oracle-sweeps -w electron-main -- --shard=${{ matrix.shard }}/2
 
   build-electron:
     # SKY-2425: fuzz steps removed from this job — they were causing OOM-induced
@@ -1086,6 +1100,12 @@ jobs:
     # Explicit outcome check ensures any failure or skip in upstream jobs → failure here.
     # SKY-8090: e2e shards may be legitimately skipped if the diff cannot affect them
     # (e.g., docs-only changes). Accept 'skipped' as valid for e2e shards only.
+    # oracle-sweeps is a two-leg matrix. `needs` waits for both legs. The aggregate
+    # result is not enough to notice a leg that never ran, so the step also requires
+    # a successful conclusion for oracle-sweeps (1/2) and oracle-sweeps (2/2).
+    permissions:
+      actions: read
+      contents: read
     needs: [lint, typecheck, unit, oracle-sweeps, paths-filter, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
     runs-on: ubuntu-latest
     if: always()
@@ -1093,14 +1113,62 @@ jobs:
 
     steps:
       - name: All checks passed
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          # Stage 1 checks must always succeed
+          # Stage 1 checks must always succeed. needs.oracle-sweeps.result covers
+          # both matrix legs: failure or cancellation of either leg is not success.
           stage1="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }} ${{ needs.oracle-sweeps.result }}"
           echo "Stage 1 (lint/typecheck/unit/oracle-sweeps) results: $stage1"
           for r in $stage1; do
             if [ "$r" != "success" ]; then
               echo "ERROR: Required Stage 1 job outcome '$r' — expected 'success'. CI aggregator: FAILED."
               exit 1
+            fi
+          done
+
+          # Require each shard job. A missing leg (never scheduled) or a skipped
+          # leg can leave the aggregate above as success; that still fails CI.
+          # Retry while a conclusion is not published yet. A failure, skip, or
+          # cancel fails immediately.
+          oracle_ok=0
+          for attempt in 1 2 3 4 5 6; do
+            jobs_json=$(curl -fsS \
+              -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/jobs?per_page=100")
+            total_count=$(printf '%s' "$jobs_json" | jq -r '.total_count')
+            if [ "$total_count" -gt 100 ]; then
+              echo "ERROR: workflow run has ${total_count} jobs; cannot see every oracle shard. CI aggregator: FAILED."
+              exit 1
+            fi
+            echo "oracle-sweeps jobs (attempt ${attempt}):"
+            printf '%s' "$jobs_json" | jq -r '.jobs[] | select(.name | startswith("oracle-sweeps")) | "  \(.name) \(.conclusion // "pending")"'
+            oracle_ok=1
+            pending=0
+            for shard in "oracle-sweeps (1/2)" "oracle-sweeps (2/2)"; do
+              count=$(printf '%s' "$jobs_json" | jq -r --arg n "$shard" '[.jobs[] | select(.name == $n)] | length')
+              conclusion=$(printf '%s' "$jobs_json" | jq -r --arg n "$shard" '[.jobs[] | select(.name == $n) | .conclusion] | if length == 1 then .[0] // "pending" else "missing" end')
+              echo "Required shard '$shard': count=${count} conclusion=${conclusion}"
+              if [ "$conclusion" = "failure" ] || [ "$conclusion" = "cancelled" ] || [ "$conclusion" = "skipped" ]; then
+                echo "ERROR: oracle-sweeps shard '$shard' is ${conclusion}. A failed, skipped, or missing shard fails CI."
+                exit 1
+              fi
+              if [ "$count" -ne 1 ] || [ "$conclusion" != "success" ]; then
+                oracle_ok=0
+                pending=1
+              fi
+            done
+            if [ "$oracle_ok" -eq 1 ]; then
+              break
+            fi
+            if [ "$attempt" -eq 6 ]; then
+              echo "ERROR: one oracle-sweeps shard is missing or still unpublished. A failed, skipped, or missing shard fails CI."
+              exit 1
+            fi
+            if [ "$pending" -eq 1 ]; then
+              sleep 5
             fi
           done
 
@@ -1127,7 +1195,7 @@ jobs:
             fi
           fi
 
-          echo "All checks passed — lint, typecheck, unit, and applicable E2E shards are green."
+          echo "All checks passed — lint, typecheck, unit, both oracle-sweeps shards, and applicable E2E shards are green."
 
   build-linux:
     # SKY-8081: moved PR guard from step-level to job-level so PRs don't allocate
