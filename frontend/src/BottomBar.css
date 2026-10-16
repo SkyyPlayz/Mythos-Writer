@@ -42,8 +42,6 @@
   color: var(--text-body);
   padding: 2px 8px;
   font-size: 0.78rem;
-  flex: 0 0 auto;
-  white-space: nowrap;
   cursor: pointer;
   transition: color var(--dur-hover-in, 150ms) var(--ease-out, ease),
               border-color var(--dur-hover-in, 150ms) var(--ease-out, ease),
@@ -225,6 +223,23 @@
   background: var(--n1, #00f0ff);
   box-shadow: 0 0 8px var(--g1, rgba(0, 240, 255, .4));
   animation: bottom-saved-pulse 2.6s ease-in-out infinite;
+  flex: 0 0 auto;
+}
+
+.bottom-saved-check {
+  display: none;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.bottom-saved-short {
+  display: none;
 }
 
 @keyframes bottom-saved-pulse {
@@ -253,6 +268,19 @@
   border-radius: 50%;
   background: var(--state-danger);
   animation: voice-pulse 1.2s ease-in-out infinite;
+  flex: 0 0 auto;
+}
+
+.bottom-voice-icon {
+  display: none;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .bottom-voice-label {
@@ -281,8 +309,23 @@
  * by 40.2px. Split out, the word count is 71.7px and the character count is
  * 100.8px. Hiding the character count leaves the fixed set at 374.3px, 63.7px
  * inside the box. It leaves before the stats tail: the long count is 57px wider
- * than the short one, so it hides from 1192 + 57 = 1249 downward. Then the tail,
- * then the title, then goal and badge.
+ * than the short one, so it hides from 1192 + 57 = 1249 downward. Then the tail.
+ * These thresholds are content-box widths, not window widths. A 1280px window
+ * is an 818px content box, so the title stays up through 760px and is still
+ * on screen there (measured title box 258px). A 1024px window is a 562px
+ * content box. With a short count the goal (91.6) and badge (82) leave 16px
+ * inside that box, so they stay up through 545px and are still on screen at
+ * 1024. A 22,223-word count at that same 1024px window pushes Listening 13.9px
+ * into the padding; the overflow clip is still 0. Hiding the goal would miss
+ * the 1024px window, and the word count does not shrink.
+ * Below a 900px window the content box is under 438px (832px window → 370).
+ * Listening drops to the 12px mic there, and in split view at any width.
+ * Split view at 900px then occupies 426.6 of 438. The mic is inside.
+ * A 22,223-word scene at 832px occupies 323.2 of 370 with the mic and the full
+ * "Saved just now" label. That full label plus the mic stops fitting at 323px,
+ * so it shortens to a check plus "Saved" from there down. The word count and
+ * prev/next do not shrink, so a narrower box than nav + that count + "Saved"
+ * + the mic (282.5px at 22,223 words) still overflows.
  */
 @container status-bar (max-width: 1249px) {
   .bottom-stats-chars { display: none; }
@@ -294,14 +337,75 @@
   .bottom-status-fallback--tail { display: block; }
 }
 
-@container status-bar (max-width: 832px) {
+@container status-bar (max-width: 760px) {
   .bottom-breadcrumb { display: none; }
   .bottom-status-fallback--title { display: block; }
 }
 
-@container status-bar (max-width: 622px) {
+@container status-bar (max-width: 545px) {
   .bottom-daily-goal,
   .bottom-draft { display: none; }
   .bottom-status-fallback--goal,
   .bottom-status-fallback--draft { display: block; }
+}
+
+/* Split view, and any bar narrower than a 900px window: keep the mic, hide the word. */
+.bottom-bar:has([data-testid="split-word-counts"]) .bottom-voice-label,
+.bottom-bar:has([data-testid="split-word-counts"]) .bottom-voice-dot {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.bottom-bar:has([data-testid="split-word-counts"]) .bottom-voice-icon {
+  display: block;
+}
+
+@container status-bar (max-width: 437px) {
+  .bottom-voice-label,
+  .bottom-voice-dot {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .bottom-voice-icon {
+    display: block;
+  }
+}
+
+@container status-bar (max-width: 324px) {
+  .bottom-saved-dot,
+  .bottom-saved-full {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .bottom-saved-check,
+  .bottom-saved-short {
+    display: block;
+  }
+
+  .bottom-status-fallback--saved {
+    display: block;
+  }
 }

@@ -13,8 +13,10 @@
  * "Saved just now" label, "Listening", and prev/next fully visible.
  * Those four never shrink. Donors leave with display:none from container
  * queries: character count, then the stats tail, then the title, then the
- * goal and the draft badge, so the flex gap leaves with them. Hidden status
- * is a plain sr-only copy.
+ * goal and the draft badge, so the flex gap leaves with them. Below a 900px
+ * window, and in split view, "Listening" keeps its mic and the word is
+ * sr-only. Narrower still, "Saved just now" becomes a check and "Saved".
+ * Hidden status is a plain sr-only copy.
  */
 import path from 'path';
 import os from 'os';
@@ -82,10 +84,20 @@ async function mountVoiceStandIn(page: Page): Promise<void> {
     const dot = document.createElement('span');
     dot.className = 'bottom-voice-dot';
     dot.setAttribute('aria-hidden', 'true');
+    const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    icon.setAttribute('class', 'bottom-voice-icon');
+    icon.setAttribute('viewBox', '0 0 24 24');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.setAttribute('focusable', 'false');
+    const micHead = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    micHead.setAttribute('d', 'M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z');
+    const micStem = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    micStem.setAttribute('d', 'M5 11a7 7 0 0 0 14 0M12 18v3');
+    icon.append(micHead, micStem);
     const label = document.createElement('span');
     label.className = 'bottom-voice-label';
     label.textContent = 'Listening';
-    voice.append(dot, label);
+    voice.append(dot, icon, label);
     bar.append(voice);
     return voice.getAttribute('style') === null;
   });
@@ -99,6 +111,90 @@ async function removeVoiceStandIn(page: Page): Promise<void> {
   await page.evaluate(() => {
     document.querySelector('[data-testid="fid-voice-standin"]')?.remove();
   });
+}
+
+/** Mic stays painted inside the content box; the word "Listening" is sr-only. */
+async function listeningIcon(page: Page): Promise<{
+  iconDisplay: string;
+  iconWidth: number;
+  iconHeight: number;
+  insideContent: boolean;
+  insideBorder: boolean;
+  labelPosition: string;
+  labelText: string | null;
+} | null> {
+  return page.evaluate(() => {
+    const bar = document.querySelector('.bottom-bar');
+    const icon = document.querySelector('.bottom-voice-icon');
+    const label = document.querySelector('.bottom-voice-label');
+    if (!(bar instanceof HTMLElement) || !icon || !label) return null;
+    const barCs = getComputedStyle(bar);
+    const padL = parseFloat(barCs.paddingLeft) || 0;
+    const padR = parseFloat(barCs.paddingRight) || 0;
+    const barRect = bar.getBoundingClientRect();
+    const box = icon.getBoundingClientRect();
+    const labelCs = getComputedStyle(label);
+    return {
+      iconDisplay: getComputedStyle(icon).display,
+      iconWidth: box.width,
+      iconHeight: box.height,
+      insideContent: box.width >= 11
+        && box.left >= barRect.left + padL - 0.5
+        && box.right <= barRect.right - padR + 0.5,
+      insideBorder: box.width >= 11
+        && box.left >= barRect.left - 0.5
+        && box.right <= barRect.right + 0.5,
+      labelPosition: labelCs.position,
+      labelText: label.textContent,
+    };
+  });
+}
+
+async function fixedSetFit(page: Page): Promise<{ content: number; occupied: number } | null> {
+  return page.evaluate(() => {
+    const bar = document.querySelector('.bottom-bar');
+    if (!(bar instanceof HTMLElement)) return null;
+    const cs = getComputedStyle(bar);
+    const gap = parseFloat(cs.columnGap || cs.gap) || 0;
+    const content = bar.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const sels = [
+      '.bottom-nav',
+      '[data-testid="bottom-stats-lead"]',
+      '[data-testid="split-word-counts"]',
+      '[data-testid="bottom-saved"]',
+      '[data-testid="fid-voice-standin"]',
+    ];
+    const widths = sels.map((sel) => {
+      const el = document.querySelector(sel);
+      if (!el || getComputedStyle(el).display === 'none') return 0;
+      return el.getBoundingClientRect().width;
+    });
+    const chars = document.querySelector('[data-testid="bottom-stats-chars"]');
+    const charsWidth = chars && getComputedStyle(chars).display !== 'none'
+      ? chars.getBoundingClientRect().width
+      : 0;
+    const visible = widths.filter((w) => w > 0).length;
+    const occupied = widths.reduce((sum, w) => sum + w, 0) + charsWidth + gap * Math.max(0, visible - 1);
+    return { content, occupied };
+  });
+}
+
+/** Insert the five-digit scene once. A second insert becomes six digits. */
+async function ensureLongScene(page: Page): Promise<void> {
+  const words = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="bottom-stats-lead"]');
+    const match = el?.textContent?.match(/([\d,]+) words/);
+    return match ? Number(match[1].replace(/,/g, '')) : 0;
+  });
+  if (words >= 10_000) return;
+  const editor = page.locator('.ProseMirror');
+  await editor.click();
+  await page.keyboard.insertText('me '.repeat(22_222));
+  await expect.poll(async () => {
+    const lead = await page.getByTestId('bottom-stats-lead').textContent();
+    const chars = await page.getByTestId('bottom-stats-chars').textContent();
+    return `${lead ?? ''}|${(chars ?? '').replace(/\s+/g, ' ').trim()}`;
+  }, { timeout: 15_000 }).toMatch(/^\d{2},\d{3} words\|· \d{2},\d{3} characters$/);
 }
 
 /** Fixed status items stay flex-shrink 0 and are not overflow-clipped. */
@@ -578,6 +674,11 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(voice, `voice stand-in missing after save @900 ${JSON.stringify(table)}`).not.toBeNull();
       expect(voice!.text, 'voice stand-in copy after save @900').toContain('Listening');
       expect(voice!.full, `voice stand-in clipped after save @900 (visible ${voice!.visible} of ${voice!.width}) ${JSON.stringify(table)}`).toBe(true);
+      const voiceFixed = await fixedItemStyle(page, '[data-testid="fid-voice-standin"]');
+      expect(voiceFixed?.flexShrink, 'Listening shrinks after save @900').toBe('0');
+      const fit = await fixedSetFit(page);
+      expect(fit, 'fixed set measured @900').not.toBeNull();
+      expect(fit!.occupied, `fixed set overflows @900 (${fit!.occupied} of ${fit!.content})`).toBeLessThanOrEqual(fit!.content + 0.5);
       test.info().annotations.push({ type: 'widths', description: JSON.stringify(table) });
     } finally {
       await removeVoiceStandIn(page);
@@ -651,8 +752,13 @@ test.describe('PLAN-058 Fid-a', () => {
         expect(order.next?.textOverflow, `next ellipsizes @${w}`).not.toBe('ellipsis');
         expect(order.goal, `goal missing @${w}`).not.toBeNull();
         expect(order.draft, `badge missing @${w}`).not.toBeNull();
-        expect(order.goal!.display, `goal gives way @${w} container ${order.container}`).toBe('none');
-        expect(order.draft!.display, `badge gives way @${w} container ${order.container}`).toBe('none');
+        if (w === 1024) {
+          expect(order.goal!.display, `goal stays at 1024 container ${order.container}`).not.toBe('none');
+          expect(order.draft!.display, `badge stays at 1024 container ${order.container}`).not.toBe('none');
+        } else {
+          expect(order.goal!.display, `goal gives way @${w} container ${order.container}`).toBe('none');
+          expect(order.draft!.display, `badge gives way @${w} container ${order.container}`).toBe('none');
+        }
         expect(order.chars?.display, `character count leaves before the tail @${w}`).toBe('none');
         expect(order.tail?.display, `tail leaves before the goal @${w}`).toBe('none');
         expect(order.title?.display, `title leaves before the goal @${w}`).toBe('none');
@@ -681,32 +787,226 @@ test.describe('PLAN-058 Fid-a', () => {
     }
   });
 
+  test('FD-9 #15 split view keeps the Listening icon inside at 900px', async () => {
+    await openEditor(page);
+    await page.locator('.ProseMirror').click();
+    await saveScene(page);
+    await page.keyboard.press('Control+Shift+2');
+    const split = page.getByTestId('split-word-counts');
+    await expect(split).toBeVisible({ timeout: 8_000 });
+    await setContentSize(app!, 900, 900);
+    await mountVoiceStandIn(page);
+    try {
+      const icon = await listeningIcon(page);
+      expect(icon, 'Listening icon missing in split view @900').not.toBeNull();
+      expect(icon!.iconDisplay, 'Listening stays a word in split view @900').toBe('block');
+      expect(icon!.iconWidth, 'Listening icon has no box in split view @900').toBeGreaterThanOrEqual(11);
+      expect(icon!.insideContent, `Listening icon leaves the content box in split view @900 ${JSON.stringify(icon)}`).toBe(true);
+      expect(icon!.insideBorder, `Listening icon is clipped in split view @900 ${JSON.stringify(icon)}`).toBe(true);
+      expect(icon!.labelPosition, 'Listening word is still visible in split view @900').toBe('absolute');
+      expect(icon!.labelText, 'Listening sr-only label missing in split view @900').toBe('Listening');
+      const saved = await textFullyVisible(page, '[data-testid="bottom-saved"]');
+      expect(saved?.text, 'save status copy in split view @900').toContain('Saved just now');
+      expect(saved?.full, `save status clipped in split view @900 (visible ${saved?.visible} of ${saved?.width})`).toBe(true);
+      const counts = await textFullyVisible(page, '[data-testid="split-word-counts"]');
+      expect(counts?.lines, 'split counts wrapped @900').toBe(1);
+      expect(counts?.full, `split counts clipped @900 (visible ${counts?.visible} of ${counts?.width})`).toBe(true);
+      const prev = await textFullyVisible(page, 'button[title="Previous scene"]');
+      const next = await textFullyVisible(page, 'button[title="Next scene"]');
+      expect(prev?.full, 'prev clipped in split view @900').toBe(true);
+      expect(next?.full, 'next clipped in split view @900').toBe(true);
+      const fit = await fixedSetFit(page);
+      expect(fit, 'split fixed set measured @900').not.toBeNull();
+      expect(fit!.occupied, `split fixed set overflows @900 (${fit!.occupied} of ${fit!.content})`).toBeLessThanOrEqual(fit!.content + 0.5);
+      const shot = path.join(SHOT_DIR, 'plan058-fid-b-900-split.png');
+      await page.screenshot({ path: shot });
+      expect(fs.existsSync(shot)).toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
+      await page.keyboard.press('Control+Shift+2');
+      await expect(split).toHaveCount(0, { timeout: 8_000 });
+    }
+  });
+
+  test('FD-9 #15 short scene stays inside at 832px', async () => {
+    await openEditor(page);
+    await page.locator('.ProseMirror').click();
+    await saveScene(page);
+    await setContentSize(app!, 832, 900);
+    await mountVoiceStandIn(page);
+    try {
+      await expect.poll(async () => page.getByTestId('bottom-stats-lead').textContent(), {
+        timeout: 3_000,
+      }).toMatch(/^\d+ words$/);
+      const icon = await listeningIcon(page);
+      expect(icon, 'Listening icon missing on short scene @832').not.toBeNull();
+      expect(icon!.iconDisplay, 'Listening stays a word on short scene @832').toBe('block');
+      expect(icon!.insideContent, `Listening icon leaves the content box on short scene @832 ${JSON.stringify(icon)}`).toBe(true);
+      expect(icon!.insideBorder, `Listening icon is clipped on short scene @832 ${JSON.stringify(icon)}`).toBe(true);
+      expect(icon!.labelPosition, 'Listening word is still visible on short scene @832').toBe('absolute');
+      expect(icon!.labelText).toBe('Listening');
+      const savedParts = await page.evaluate(() => {
+        const full = document.querySelector('.bottom-saved-full');
+        const shortLabel = document.querySelector('.bottom-saved-short');
+        if (!full || !shortLabel) return null;
+        return {
+          fullPosition: getComputedStyle(full).position,
+          fullText: full.textContent,
+          shortDisplay: getComputedStyle(shortLabel).display,
+        };
+      });
+      expect(savedParts?.fullText, 'full save label missing @832').toContain('Saved just now');
+      expect(savedParts?.fullPosition, 'save label already shortened on short scene @832').toBe('static');
+      expect(savedParts?.shortDisplay, 'short save label showing on short scene @832').toBe('none');
+      const lead = await textFullyVisible(page, '[data-testid="bottom-stats-lead"]');
+      const saved = await textFullyVisible(page, '[data-testid="bottom-saved"]');
+      const prev = await textFullyVisible(page, 'button[title="Previous scene"]');
+      const next = await textFullyVisible(page, 'button[title="Next scene"]');
+      expect(lead?.text, 'short scene grew a thousands separator @832').toMatch(/^\d+ words$/);
+      expect(lead?.full, `word count clipped on short scene @832`).toBe(true);
+      expect(saved?.full, `save status clipped on short scene @832`).toBe(true);
+      expect(prev?.full, 'prev clipped on short scene @832').toBe(true);
+      expect(next?.full, 'next clipped on short scene @832').toBe(true);
+      const fit = await fixedSetFit(page);
+      expect(fit, 'short scene fixed set measured @832').not.toBeNull();
+      expect(fit!.occupied, `short scene overflows @832 (${fit!.occupied} of ${fit!.content})`).toBeLessThanOrEqual(fit!.content + 0.5);
+      const shot = path.join(SHOT_DIR, 'plan058-fid-b-832-short.png');
+      await page.screenshot({ path: shot });
+      expect(fs.existsSync(shot)).toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
+    }
+  });
+
+  test('FD-9 #15 title stays visible at 1280px and the goal and badge stay at 1024px', async () => {
+    await openEditor(page);
+    await renameSceneLong(page);
+    await page.locator('.ProseMirror').click();
+    await saveScene(page);
+    await mountVoiceStandIn(page);
+    try {
+      await setContentSize(app!, 1280, 900);
+      const at1280 = await page.evaluate(() => {
+        const bar = document.querySelector('.bottom-bar');
+        const title = document.querySelector('.bottom-breadcrumb');
+        const content = bar instanceof HTMLElement
+          ? bar.clientWidth - parseFloat(getComputedStyle(bar).paddingLeft) - parseFloat(getComputedStyle(bar).paddingRight)
+          : null;
+        return {
+          content,
+          display: title ? getComputedStyle(title).display : null,
+          width: title ? title.getBoundingClientRect().width : 0,
+          text: title?.textContent ?? '',
+        };
+      });
+      expect(at1280.display, `title hidden at 1280 (content ${at1280.content})`).not.toBe('none');
+      expect(at1280.width, `title has no box at 1280 (content ${at1280.content})`).toBeGreaterThan(40);
+      expect(at1280.text.length, 'title copy missing at 1280').toBeGreaterThan(0);
+      for (const sel of [
+        'button[title="Previous scene"]',
+        'button[title="Next scene"]',
+        '[data-testid="bottom-stats-lead"]',
+        '[data-testid="bottom-saved"]',
+        '[data-testid="fid-voice-standin"]',
+      ]) {
+        const box = await textFullyVisible(page, sel);
+        expect(box?.full, `${sel} clipped at 1280 (visible ${box?.visible} of ${box?.width})`).toBe(true);
+      }
+      const shot1280 = path.join(SHOT_DIR, 'plan058-fid-b-1280-title.png');
+      await page.screenshot({ path: shot1280 });
+      expect(fs.existsSync(shot1280)).toBe(true);
+
+      await setContentSize(app!, 1024, 900);
+      const at1024 = await page.evaluate(() => {
+        const read = (sel: string) => {
+          const el = document.querySelector(sel);
+          if (!el) return null;
+          const box = el.getBoundingClientRect();
+          return { display: getComputedStyle(el).display, right: box.right, width: box.width };
+        };
+        const bar = document.querySelector('.bottom-bar');
+        const barRect = bar?.getBoundingClientRect();
+        const padR = bar instanceof HTMLElement ? parseFloat(getComputedStyle(bar).paddingRight) || 0 : 0;
+        const contentRight = barRect ? barRect.right - padR : null;
+        const voice = read('[data-testid="fid-voice-standin"]');
+        return {
+          content: bar instanceof HTMLElement
+            ? bar.clientWidth - parseFloat(getComputedStyle(bar).paddingLeft) - padR
+            : null,
+          goal: read('[data-testid="bottom-daily-goal"]'),
+          draft: read('.bottom-draft'),
+          title: read('.bottom-breadcrumb'),
+          voicePast: voice && contentRight !== null ? voice.right - contentRight : null,
+        };
+      });
+      expect(at1024.goal?.display, `goal hidden at 1024 (content ${at1024.content})`).not.toBe('none');
+      expect(at1024.draft?.display, `badge hidden at 1024 (content ${at1024.content})`).not.toBe('none');
+      expect(at1024.title?.display, `title still showing at 1024 (content ${at1024.content})`).toBe('none');
+      expect(at1024.voicePast ?? 1, `Listening leaves the content box at 1024 (${at1024.voicePast})`).toBeLessThanOrEqual(0.5);
+      for (const sel of [
+        'button[title="Previous scene"]',
+        'button[title="Next scene"]',
+        '[data-testid="bottom-stats-lead"]',
+        '[data-testid="bottom-saved"]',
+        '[data-testid="fid-voice-standin"]',
+        '[data-testid="bottom-daily-goal"]',
+        '.bottom-draft',
+      ]) {
+        const box = await textFullyVisible(page, sel);
+        expect(box?.full, `${sel} clipped at 1024 (visible ${box?.visible} of ${box?.width})`).toBe(true);
+      }
+      const shot1024 = path.join(SHOT_DIR, 'plan058-fid-b-1024-goal.png');
+      await page.screenshot({ path: shot1024 });
+      expect(fs.existsSync(shot1024)).toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
+    }
+  });
+
   test('FD-9 #15 typing triggers no layout work in BottomBar', async () => {
     await openEditor(page);
     const editor = page.locator('.ProseMirror');
     await editor.click();
-    const beforeWords = await page.getByTestId('bottom-stats-lead').textContent();
     await page.evaluate(() => {
       const w = window as Window & {
-        __fidLayout?: { rect: number; mo: number; ro: number };
+        __fidLayout?: { rect: number; offset: number; client: number; mo: number; ro: number };
         __fidLayoutRestore?: () => void;
       };
       w.__fidLayoutRestore?.();
-      const bar = document.querySelector('.bottom-bar');
-      const state = { rect: 0, mo: 0, ro: 0 };
+      const state = { rect: 0, offset: 0, client: 0, mo: 0, ro: 0 };
       w.__fidLayout = state;
-      const inBar = (node: Node | null) => !!bar && !!node && (node === bar || bar.contains(node));
+      const inBar = (node: Node | null) => {
+        const bar = document.querySelector('.bottom-bar');
+        return !!bar && !!node && (node === bar || bar.contains(node));
+      };
       const proto = Element.prototype;
       const origRect = proto.getBoundingClientRect;
-      const origClient = proto.getClientRects;
+      const origRects = proto.getClientRects;
       proto.getBoundingClientRect = function (this: Element) {
         if (inBar(this)) state.rect += 1;
         return origRect.call(this);
       };
       proto.getClientRects = function (this: Element) {
         if (inBar(this)) state.rect += 1;
-        return origClient.call(this);
+        return origRects.call(this);
       };
+      const offsetDesc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+      const clientDesc = Object.getOwnPropertyDescriptor(Element.prototype, 'clientWidth');
+      if (!offsetDesc?.get || !clientDesc?.get) throw new Error('width descriptors missing');
+      Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+        configurable: true,
+        get() {
+          if (inBar(this)) state.offset += 1;
+          return offsetDesc.get!.call(this);
+        },
+      });
+      Object.defineProperty(Element.prototype, 'clientWidth', {
+        configurable: true,
+        get() {
+          if (inBar(this)) state.client += 1;
+          return clientDesc.get!.call(this);
+        },
+      });
       const OrigMO = window.MutationObserver;
       const OrigRO = window.ResizeObserver;
       window.MutationObserver = class extends OrigMO {
@@ -723,16 +1023,45 @@ test.describe('PLAN-058 Fid-a', () => {
       };
       w.__fidLayoutRestore = () => {
         proto.getBoundingClientRect = origRect;
-        proto.getClientRects = origClient;
+        proto.getClientRects = origRects;
+        Object.defineProperty(HTMLElement.prototype, 'offsetWidth', offsetDesc);
+        Object.defineProperty(Element.prototype, 'clientWidth', clientDesc);
         window.MutationObserver = OrigMO;
         window.ResizeObserver = OrigRO;
         w.__fidLayoutRestore = undefined;
       };
+    });
+    const zeroLayout = () => page.evaluate(() => {
+      const state = (window as Window & {
+        __fidLayout?: { rect: number; offset: number; client: number; mo: number; ro: number };
+      }).__fidLayout;
+      if (!state) return;
       state.rect = 0;
+      state.offset = 0;
+      state.client = 0;
       state.mo = 0;
       state.ro = 0;
     });
     try {
+      await page.keyboard.press('Control+Shift+F');
+      await expect(page.locator('.bottom-bar')).toHaveCount(0, { timeout: 8_000 });
+      await zeroLayout();
+      await page.keyboard.press('Control+Shift+N');
+      await expect(page.locator('.bottom-bar')).toBeVisible({ timeout: 8_000 });
+      const mounted = await page.evaluate(() => {
+        const hook = window as Window & {
+          __fidLayout?: { rect: number; offset: number; client: number; mo: number; ro: number };
+        };
+        return hook.__fidLayout ?? null;
+      });
+      expect(mounted, 'layout spy missing after remount').not.toBeNull();
+      expect(mounted!.mo, `mount observed mutations in the status bar (${JSON.stringify(mounted)})`).toBe(0);
+      expect(mounted!.ro, `mount observed resizes in the status bar (${JSON.stringify(mounted)})`).toBe(0);
+      await zeroLayout();
+      const beforeWords = await page.evaluate(() => (
+        document.querySelector('[data-testid="bottom-stats-lead"]')?.textContent ?? ''
+      ));
+      await editor.click();
       await editor.type(' zz');
       const wordsOf = (text: string | null) => {
         const match = text?.match(/(\d[\d,]*) words/);
@@ -744,14 +1073,19 @@ test.describe('PLAN-058 Fid-a', () => {
         return match ? Number(match[1].replace(/,/g, '')) : 0;
       }), { timeout: 3_000 }).toBeGreaterThan(wordsOf(beforeWords));
       const counts = await page.evaluate(() => {
-        const w = window as Window & { __fidLayout?: { rect: number; mo: number; ro: number } };
-        return w.__fidLayout ?? null;
+        const hook = window as Window & {
+          __fidLayout?: { rect: number; offset: number; client: number; mo: number; ro: number };
+        };
+        return hook.__fidLayout ?? null;
       });
       expect(counts, 'layout spy missing').not.toBeNull();
       expect(counts!.rect, `typing read layout in the status bar (${JSON.stringify(counts)})`).toBe(0);
+      expect(counts!.offset, `typing read offsetWidth in the status bar (${JSON.stringify(counts)})`).toBe(0);
+      expect(counts!.client, `typing read clientWidth in the status bar (${JSON.stringify(counts)})`).toBe(0);
       expect(counts!.mo, `typing observed mutations in the status bar (${JSON.stringify(counts)})`).toBe(0);
       expect(counts!.ro, `typing observed resizes in the status bar (${JSON.stringify(counts)})`).toBe(0);
     } finally {
+      await page.keyboard.press('Control+Shift+N');
       await page.evaluate(() => {
         const w = window as Window & { __fidLayoutRestore?: () => void };
         w.__fidLayoutRestore?.();
@@ -763,16 +1097,7 @@ test.describe('PLAN-058 Fid-a', () => {
     test.setTimeout(90_000);
     await openEditor(page);
     await renameSceneLong(page);
-    const editor = page.locator('.ProseMirror');
-    await editor.click();
-    // 22,222 × "me " → 22,222 words and 66,666 characters. Both counts are
-    // five digits plus a comma, and the digits are wide (no narrow "1").
-    await page.keyboard.insertText('me '.repeat(22_222));
-    await expect.poll(async () => {
-      const words = await page.getByTestId('bottom-stats-lead').textContent();
-      const chars = await page.getByTestId('bottom-stats-chars').textContent();
-      return `${words ?? ''}|${(chars ?? '').replace(/\s+/g, ' ').trim()}`;
-    }, { timeout: 15_000 }).toMatch(/^\d{2},\d{3} words\|· \d{2},\d{3} characters$/);
+    await ensureLongScene(page);
     await saveScene(page);
     await setContentSize(app!, 900, 900);
     await mountVoiceStandIn(page);
@@ -910,4 +1235,57 @@ test.describe('PLAN-058 Fid-a', () => {
       await removeVoiceStandIn(page);
     }
   });
+
+  test('FD-9 #15 long scene stays inside at 832px', async () => {
+    test.setTimeout(90_000);
+    await openEditor(page);
+    await renameSceneLong(page);
+    await ensureLongScene(page);
+    await saveScene(page);
+    await setContentSize(app!, 832, 900);
+    await mountVoiceStandIn(page);
+    try {
+      await expect(page.getByTestId('bottom-saved')).toContainText('Saved just now');
+      const leadText = (await page.getByTestId('bottom-stats-lead').textContent()) ?? '';
+      expect(leadText, '832 long word count').toMatch(/^\d{2},\d{3} words$/);
+      const icon = await listeningIcon(page);
+      expect(icon, 'Listening icon missing on long scene @832').not.toBeNull();
+      expect(icon!.iconDisplay, 'Listening stays a word on long scene @832').toBe('block');
+      expect(icon!.insideContent, `Listening icon leaves the content box on long scene @832 ${JSON.stringify(icon)}`).toBe(true);
+      expect(icon!.insideBorder, `Listening icon is clipped on long scene @832 ${JSON.stringify(icon)}`).toBe(true);
+      expect(icon!.labelPosition, 'Listening word is still visible on long scene @832').toBe('absolute');
+      expect(icon!.labelText).toBe('Listening');
+      const savedParts = await page.evaluate(() => {
+        const full = document.querySelector('.bottom-saved-full');
+        const shortLabel = document.querySelector('.bottom-saved-short');
+        if (!full || !shortLabel) return null;
+        return {
+          fullPosition: getComputedStyle(full).position,
+          fullText: full.textContent,
+          shortDisplay: getComputedStyle(shortLabel).display,
+        };
+      });
+      expect(savedParts?.fullText, 'full save label missing on long scene @832').toContain('Saved just now');
+      expect(savedParts?.fullPosition, 'save label already shortened on long scene @832').toBe('static');
+      expect(savedParts?.shortDisplay, 'short save label showing on long scene @832').toBe('none');
+      const lead = await textFullyVisible(page, '[data-testid="bottom-stats-lead"]');
+      const saved = await textFullyVisible(page, '[data-testid="bottom-saved"]');
+      const prev = await textFullyVisible(page, 'button[title="Previous scene"]');
+      const next = await textFullyVisible(page, 'button[title="Next scene"]');
+      expect(lead?.full, `word count clipped on long scene @832 (visible ${lead?.visible} of ${lead?.width})`).toBe(true);
+      expect(saved?.full, `save status clipped on long scene @832 (visible ${saved?.visible} of ${saved?.width})`).toBe(true);
+      expect(saved?.text, 'save status copy on long scene @832').toContain('Saved just now');
+      expect(prev?.full, 'prev clipped on long scene @832').toBe(true);
+      expect(next?.full, 'next clipped on long scene @832').toBe(true);
+      const fit = await fixedSetFit(page);
+      expect(fit, 'long scene fixed set measured @832').not.toBeNull();
+      expect(fit!.occupied, `long scene overflows @832 (${fit!.occupied} of ${fit!.content})`).toBeLessThanOrEqual(fit!.content + 0.5);
+      const shot = path.join(SHOT_DIR, 'plan058-fid-b-832-long.png');
+      await page.screenshot({ path: shot });
+      expect(fs.existsSync(shot)).toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
+    }
+  });
+
 });

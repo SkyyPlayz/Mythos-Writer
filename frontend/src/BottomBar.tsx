@@ -240,6 +240,15 @@ export default function BottomBar({
       {lastSavedAt !== null && (
         <span className="bottom-saved" data-testid="bottom-saved" role="status" aria-live="polite">
           <span className="bottom-saved-dot" aria-hidden="true" />
+          <svg className="bottom-saved-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M5 12.5l4.5 4.5L19 7" />
+          </svg>
+          <span className="bottom-saved-full">{formatSavedAgo(lastSavedAt, nowTick)}</span>
+          <span className="bottom-saved-short">Saved</span>
+        </span>
+      )}
+      {lastSavedAt !== null && (
+        <span className="bottom-status-fallback bottom-status-fallback--saved">
           {formatSavedAgo(lastSavedAt, nowTick)}
         </span>
       )}
@@ -247,6 +256,10 @@ export default function BottomBar({
       {isVoiceActive && (
         <div className="bottom-voice" aria-label="Voice input active" role="status">
           <span className="bottom-voice-dot" aria-hidden="true" />
+          <svg className="bottom-voice-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3z" />
+            <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+          </svg>
           <span className="bottom-voice-label">Listening</span>
         </div>
       )}
