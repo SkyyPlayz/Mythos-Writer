@@ -224,7 +224,7 @@ jobs:
           fi
 
       - name: Test (electron-main)
-        run: npm run test -w electron-main -- ${{ steps.coverage-flag.outputs.flag }} --exclude src/uninstallVaultsNsh.oracleClassSweep.*.test.ts --exclude src/uninstallVaultsNsh.guardRegionSweep.equiv*.test.ts
+        run: npm run test -w electron-main -- ${{ steps.coverage-flag.outputs.flag }} --exclude src/uninstallVaultsNsh.oracleClassSweep.*.test.ts --exclude src/uninstallVaultsNsh.guardRegionSweep.equiv*.test.ts --exclude src/uninstallVaultsNsh.hardAC.nestedDownloads.test.ts
 
       - name: Test (frontend)
         run: npm run test -w frontend -- ${{ steps.coverage-flag.outputs.flag }}
@@ -249,9 +249,11 @@ jobs:
             frontend/coverage/
           retention-days: 3
 
-  # PLAN-058 L8 Ivy carve-out: 12k oracle-class survivor walks and equivalence-strength
-  # shards run here in parallel with `unit`, under their own timeout. The required `ci`
-  # aggregator gates this job (skipped also fails).
+  # PLAN-058 L8 Ivy carve-out: 12k oracle-class survivor walks, equivalence-strength
+  # shards, and the HARD-2 nested-Downloads region-map walks run here in parallel
+  # with `unit`, under their own timeout. The required `ci` aggregator gates this
+  # job (skipped also fails). Unit excludes this nested-Downloads file and the
+  # oracle-class / equivalence shards.
   oracle-sweeps:
     needs: [setup]
     runs-on: ubuntu-latest
