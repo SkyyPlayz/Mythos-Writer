@@ -100,6 +100,19 @@ async function removeVoiceStandIn(page: Page): Promise<void> {
   });
 }
 
+/** Fixed status items stay flex-shrink 0 and are not overflow-clipped. */
+async function fixedItemStyle(page: Page, selector: string): Promise<{
+  flexShrink: string;
+  overflowX: string;
+} | null> {
+  return page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    const cs = getComputedStyle(el);
+    return { flexShrink: cs.flexShrink, overflowX: cs.overflowX };
+  }, selector);
+}
+
 /** Text range vs overflow clip. Width and height both have to survive. */
 async function textFullyVisible(page: Page, selector: string): Promise<{
   text: string | null;
@@ -461,11 +474,19 @@ test.describe('PLAN-058 Fid-a', () => {
         expect(plain, `save status measured @${w}`).not.toBeNull();
         expect(plain!.text, `save status copy @${w}`).toContain('Saved just now');
         expect(plain!.full, `save status truncated @${w} (visible ${plain!.visible} of ${plain!.width})`).toBe(true);
+        expect(plain!.whiteSpace, `save status wraps @${w}`).toBe('nowrap');
+        const savedFixed = await fixedItemStyle(page, '[data-testid="bottom-saved"]');
+        expect(savedFixed?.flexShrink, `save status shrinks @${w}`).toBe('0');
+        expect(savedFixed?.overflowX, `save status clips @${w}`).not.toBe('hidden');
         await mountVoiceStandIn(page);
         const withVoice = await textFullyVisible(page, '[data-testid="bottom-saved"]');
         expect(withVoice, `save status measured with voice @${w}`).not.toBeNull();
         expect(withVoice!.text, `save status copy with voice @${w}`).toContain('Saved just now');
         expect(withVoice!.full, `save status truncated with voice @${w} (visible ${withVoice!.visible} of ${withVoice!.width})`).toBe(true);
+        expect(withVoice!.whiteSpace, `save status wraps with voice @${w}`).toBe('nowrap');
+        const savedFixedVoice = await fixedItemStyle(page, '[data-testid="bottom-saved"]');
+        expect(savedFixedVoice?.flexShrink, `save status shrinks with voice @${w}`).toBe('0');
+        expect(savedFixedVoice?.overflowX, `save status clips with voice @${w}`).not.toBe('hidden');
       }
     } finally {
       await removeVoiceStandIn(page);
@@ -487,7 +508,11 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(lead, 'word count measured with voice after save @900').not.toBeNull();
       expect(lead!.text, 'word count copy with voice after save @900').toMatch(/^\d[\d,]* words · \d[\d,]* characters$/);
       expect(lead!.lines, 'word count wrapped after save @900').toBe(1);
+      expect(lead!.whiteSpace, 'word count wraps after save @900').toBe('nowrap');
       expect(lead!.full, `word count truncated with voice after save @900 (visible ${lead!.visible} of ${lead!.width})`).toBe(true);
+      const leadFixed = await fixedItemStyle(page, '[data-testid="bottom-stats-lead"]');
+      expect(leadFixed?.flexShrink, 'word count shrinks after save @900').toBe('0');
+      expect(leadFixed?.overflowX, 'word count clips after save @900').not.toBe('hidden');
     } finally {
       await removeVoiceStandIn(page);
     }
