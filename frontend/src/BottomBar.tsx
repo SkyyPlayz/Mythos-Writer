@@ -19,12 +19,6 @@ interface Props {
   pageWidthPx?: number | null;
 }
 
-/** 4+ digits ("1,000" and up). That comma group is what pushes Listening into the padding once the goal is on screen. */
-export function wideWordCount(count: number): boolean {
-  const whole = Math.floor(Math.abs(count));
-  return String(whole).length >= 4;
-}
-
 /** "Saved just now" → "Saved 2m ago" → "Saved 1h ago" (prototype 3630). */
 export function formatSavedAgo(savedAt: number, now: number): string {
   const s = Math.max(0, Math.round((now - savedAt) / 1000));
@@ -134,7 +128,7 @@ export default function BottomBar({
   const tailText = tailParts.join(' · ');
 
   return (
-    <div className={wideWordCount(wordCount) ? 'bottom-bar bottom-bar--wide-count' : 'bottom-bar'}>
+    <div className="bottom-bar">
       <div className="bottom-nav">
         <button
           className="bottom-nav-btn"

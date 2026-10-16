@@ -2,7 +2,7 @@
 // Beta 4 M2: + page-width hint, "Saved Xm ago" pulse, single-status-bar regression
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, waitFor } from '@testing-library/react';
-import BottomBar, { formatSavedAgo, wideWordCount } from './BottomBar';
+import BottomBar, { formatSavedAgo } from './BottomBar';
 import type { Scene, Chapter, Story } from './types';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -307,21 +307,14 @@ describe('Beta 4 M2 — Saved indicator', () => {
     expect(formatSavedAgo(t0, t0 + 3 * 3_600_000)).toBe('Saved 3h ago');
   });
 
-  it('wideWordCount starts at 4 digits, where the thousands separator appears', () => {
-    expect(wideWordCount(0)).toBe(false);
-    expect(wideWordCount(999)).toBe(false);
-    expect(wideWordCount(1000)).toBe(true);
-    expect(wideWordCount(22223)).toBe(true);
-  });
-
-  it('marks a 4-digit scene count on the bar', async () => {
+  it('formats a 4-digit scene count without a width class on the bar', async () => {
     const scene = makeScene({
       blocks: [
         { id: 'b1', type: 'prose', order: 0, content: 'me '.repeat(1000), updatedAt: '' },
       ],
     });
     const { container } = await renderBar({ selectedScene: scene });
-    expect(container.querySelector('.bottom-bar')?.classList.contains('bottom-bar--wide-count')).toBe(true);
+    expect(container.querySelector('.bottom-bar')?.className).toBe('bottom-bar');
     expect(screen.getByTestId('bottom-stats-lead').textContent).toBe('1,000 words');
   });
 });

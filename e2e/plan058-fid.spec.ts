@@ -14,14 +14,16 @@
  * Those four never shrink. Donors leave with display:none from container
  * queries: character count, then the stats tail, then the title, then the
  * goal and the draft badge, so the flex gap leaves with them. Below a 900px
- * window "Listening" keeps its mic and the word is sr-only. In split view
- * that mic covers only the measured full-word overflow (content box through
- * 520px), so a 1280px window keeps the word and the full "Saved just now"
- * label. The short save label is used below that 900px window in split view,
- * below content 360px otherwise, and from 545px through 720px for every
- * count. From 545px through 561px every count, including 999 words, takes
- * the mic. A 1024px window stays above that and keeps the word.
- * The short label is aria-hidden. Hidden status is a plain sr-only copy.
+ * window "Listening" keeps its mic and the word is sr-only. From content
+ * 545px through 720px, wherever the goal is on screen, every count takes
+ * the mic and the save label shortens. Split view keeps the full labels
+ * above a 900px window. The character count is not in the split bar, and
+ * the goal and badge leave through content 748px so a 100,000-word split
+ * at 1024px still fits. The split mic covers content through 546px. Saved
+ * shortens in split view through content 452px, the 900px window, because
+ * the mic alone still overflows on DejaVu Sans. The short label is
+ * aria-hidden. Hidden status is a plain sr-only copy. Fully inside rows
+ * keep 12px of spare on that face.
  */
 import path from 'path';
 import os from 'os';
@@ -236,7 +238,6 @@ async function contentPlacement(page: Page, sels = [
   '.bottom-draft',
 ]): Promise<{
   content: number;
-  wide: boolean;
   font: string;
   items: Array<{
     sel: string;
@@ -258,7 +259,6 @@ async function contentPlacement(page: Page, sels = [
     const right = rect.right - padR;
     return {
       content: bar.clientWidth - padL - padR,
-      wide: bar.classList.contains('bottom-bar--wide-count'),
       font: cs.fontFamily,
       items: selectors.map((sel) => {
         const el = document.querySelector(sel);
@@ -288,6 +288,16 @@ function expectInsideContent(
     expect(item.pastLeft, `${item.sel} enters the left padding ${label} (${item.pastLeft})`).toBeLessThanOrEqual(0.5);
     expect(item.pastRight, `${item.sel} enters the right padding ${label} (${item.pastRight})`).toBeLessThanOrEqual(0.5);
   }
+}
+
+/** Right edge of Listening stays 12px inside the content box. */
+function expectSpare(
+  placed: Awaited<ReturnType<typeof contentPlacement>>,
+  label: string,
+): void {
+  const voice = placed?.items.find((item) => item.sel === '[data-testid="fid-voice-standin"]');
+  expect(voice, `voice missing ${label}`).toBeTruthy();
+  expect(voice!.pastRight, `${label} spare ${-voice!.pastRight}px`).toBeLessThanOrEqual(-12);
 }
 
 async function openAddedScene(page: Page, title: string): Promise<void> {
@@ -1003,8 +1013,8 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(saved?.full, `save status clipped in split view @900 (visible ${saved?.visible} of ${saved?.width})`).toBe(true);
       const savedParts = await savedLabel(page);
       expect(savedParts?.fullText, 'full save label missing in split view @900').toContain('Saved just now');
-      expect(savedParts?.fullPosition, 'save label shortened in split view @900').toBe('static');
-      expect(savedParts?.shortDisplay, 'short save label showing in split view @900').toBe('none');
+      expect(savedParts?.fullPosition, 'save label stayed full in split view @900').toBe('absolute');
+      expect(savedParts?.shortDisplay, 'save label stayed full in split view @900').toBe('block');
       const counts = await textFullyVisible(page, '[data-testid="split-word-counts"]');
       expect(counts?.lines, 'split counts wrapped @900').toBe(1);
       expect(counts?.full, `split counts clipped @900 (visible ${counts?.visible} of ${counts?.width})`).toBe(true);
@@ -1016,6 +1026,7 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(fit, 'split fixed set measured @900').not.toBeNull();
       expect(fit!.occupied, `split fixed set leaves the content box @900 (${fit!.occupied} of ${fit!.content})`).toBeLessThanOrEqual(fit!.content + 0.5);
       const placed900 = await contentPlacement(page);
+      expectSpare(placed900, 'split view @900');
       test.info().annotations.push({ type: 'split-900', description: JSON.stringify({ fit, placed900 }) });
       const shot = path.join(SHOT_DIR, 'plan058-fid-b-900-split.png');
       await page.screenshot({ path: shot });
@@ -1068,6 +1079,7 @@ test.describe('PLAN-058 Fid-a', () => {
       ]);
       test.info().annotations.push({ type: 'split-1280', description: JSON.stringify(placed) });
       expectInsideContent(placed, 'split view @1280');
+      expectSpare(placed, 'split view @1280');
       const shot = path.join(SHOT_DIR, 'plan058-fid-b-1280-split.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
@@ -1577,7 +1589,6 @@ test.describe('PLAN-058 Fid-a', () => {
         ];
         return {
           content: bar.clientWidth - padL - padR,
-          wide: bar.classList.contains('bottom-bar--wide-count'),
           items: sels.map((sel) => {
             const el = document.querySelector(sel);
             if (!el) return { sel, missing: true, display: null, pastLeft: 0, pastRight: 0, width: 0 };
@@ -1594,7 +1605,6 @@ test.describe('PLAN-058 Fid-a', () => {
         };
       });
       expect(placed, '1024 long placement missing').not.toBeNull();
-      expect(placed!.wide, '4-digit count did not mark the bar').toBe(true);
       expect(placed!.content, `1024 content box ${placed!.content}`).toBeGreaterThan(545);
       test.info().annotations.push({ type: 'widths', description: JSON.stringify(placed) });
       for (const item of placed!.items) {
@@ -1667,9 +1677,9 @@ test.describe('PLAN-058 Fid-a', () => {
         expect(icon!.labelPosition, `Listening word still visible on a 6-digit scene @${target}`).toBe('absolute');
         const placed = await contentPlacement(page);
         test.info().annotations.push({ type: 'six-digit', description: JSON.stringify({ target, placed }) });
-        expect(placed!.wide, `6-digit count did not mark the bar @${target}`).toBe(true);
         expect(placed!.items.find((item) => item.sel === '[data-testid="bottom-daily-goal"]')?.display, `goal hidden on a 6-digit scene @${target}`).not.toBe('none');
         expectInsideContent(placed, `6-digit scene @${target}`);
+        expectSpare(placed, `6-digit scene @${target}`);
         for (const sel of [
           'button[title="Previous scene"]',
           'button[title="Next scene"]',
@@ -1691,8 +1701,8 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(icon!.insideContent, `Listening icon leaves the content box on a 6-digit scene @1024 ${JSON.stringify(icon)}`).toBe(true);
       const placed = await contentPlacement(page);
       test.info().annotations.push({ type: 'six-digit-1024', description: JSON.stringify(placed) });
-      expect(placed!.wide, '6-digit count did not mark the bar @1024').toBe(true);
       expectInsideContent(placed, '6-digit scene @1024');
+      expectSpare(placed, '6-digit scene @1024');
       const shot = path.join(SHOT_DIR, 'plan058-fid-b-1024-six.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
@@ -1701,7 +1711,7 @@ test.describe('PLAN-058 Fid-a', () => {
     }
   });
 
-  test('FD-9 #15 a 999-word scene keeps the word Listening inside at 1024px', async () => {
+  test('FD-9 #15 a 999-word scene keeps the Listening mic inside at 1024px', async () => {
     test.setTimeout(90_000);
     await openAddedScene(page, 'Boundary');
     const editor = page.locator('.ProseMirror');
@@ -1716,8 +1726,9 @@ test.describe('PLAN-058 Fid-a', () => {
     try {
       const icon = await listeningIcon(page);
       expect(icon, 'Listening missing on 999-word scene @1024').not.toBeNull();
-      expect(icon!.iconDisplay, 'Listening turned into the mic on a 999-word scene @1024').toBe('none');
-      expect(icon!.labelPosition, 'Listening word is hidden on a 999-word scene @1024').toBe('static');
+      expect(icon!.iconDisplay, 'Listening stays a word on a 999-word scene @1024').toBe('block');
+      expect(icon!.insideContent, `Listening icon leaves the content box on a 999-word scene @1024 ${JSON.stringify(icon)}`).toBe(true);
+      expect(icon!.labelPosition, 'Listening word still visible on a 999-word scene @1024').toBe('absolute');
       expect(icon!.labelText).toBe('Listening');
       const voice = await textFullyVisible(page, '[data-testid="fid-voice-standin"]');
       expect(voice?.text, 'Listening copy missing on 999-word scene @1024').toContain('Listening');
@@ -1727,10 +1738,11 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(savedParts?.fullPosition, 'full save label still painted on a 999-word scene @1024').toBe('absolute');
       const placed = await contentPlacement(page);
       test.info().annotations.push({ type: 'words-999', description: JSON.stringify(placed) });
-      expect(placed!.wide, '999 words marked the bar wide').toBe(false);
       expect(placed!.content, `1024 content box ${placed!.content}`).toBeGreaterThan(545);
       expect(placed!.content, `1024 content box ${placed!.content}`).toBeLessThanOrEqual(720);
+      expect(placed!.items.find((item) => item.sel === '[data-testid="bottom-daily-goal"]')?.display, 'goal hidden on a 999-word scene @1024').not.toBe('none');
       expectInsideContent(placed, '999-word scene @1024');
+      expectSpare(placed, '999-word scene @1024');
       for (const sel of [
         'button[title="Previous scene"]',
         'button[title="Next scene"]',
@@ -1774,12 +1786,26 @@ test.describe('PLAN-058 Fid-a', () => {
         expect(icon!.labelText).toBe('Listening');
         const placed = await contentPlacement(page);
         test.info().annotations.push({ type: 'words-999-band', description: JSON.stringify({ target, placed }) });
-        expect(placed!.wide, `999 words marked the bar wide @${target}`).toBe(false);
         expect(placed!.items.find((item) => item.sel === '[data-testid="bottom-daily-goal"]')?.display, `goal hidden on 999 words @${target}`).not.toBe('none');
         expectInsideContent(placed, `999 words @${target}`);
+        expectSpare(placed, `999 words @${target}`);
         const voice = await textFullyVisible(page, '[data-testid="fid-voice-standin"]');
         expect(voice?.full, `Listening icon clipped on 999 words @${target}`).toBe(true);
       }
+      await setContentSize(app!, 1008, 900);
+      const at1008 = await barContentWidth(page);
+      expect(at1008, `1008 content box ${at1008}`).toBeGreaterThan(545);
+      expect(at1008, `1008 content box ${at1008}`).toBeLessThanOrEqual(562);
+      const icon1008 = await listeningIcon(page);
+      expect(icon1008, 'Listening icon missing on 999 words @1008').not.toBeNull();
+      expect(icon1008!.iconDisplay, 'Listening stays a word on 999 words @1008').toBe('block');
+      expect(icon1008!.insideContent, `Listening icon leaves the content box on 999 words @1008 ${JSON.stringify(icon1008)}`).toBe(true);
+      expect(icon1008!.labelPosition, 'Listening word still visible on 999 words @1008').toBe('absolute');
+      const placed1008 = await contentPlacement(page);
+      test.info().annotations.push({ type: 'words-999-1008', description: JSON.stringify(placed1008) });
+      expect(placed1008!.items.find((item) => item.sel === '[data-testid="bottom-daily-goal"]')?.display, 'goal hidden on 999 words @1008').not.toBe('none');
+      expectInsideContent(placed1008, '999 words @1008');
+      expectSpare(placed1008, '999 words @1008');
       const shot = path.join(SHOT_DIR, 'plan058-fid-b-546-999.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
@@ -1817,13 +1843,78 @@ test.describe('PLAN-058 Fid-a', () => {
         '[data-testid="fid-voice-standin"]',
       ]);
       test.info().annotations.push({ type: 'hundred-790', description: JSON.stringify({ content, placed }) });
-      expect(placed!.wide, '100k did not mark the bar').toBe(true);
       expectInsideContent(placed, '100k @790');
+      expectSpare(placed, '100k @790');
       const shot = path.join(SHOT_DIR, 'plan058-fid-b-790-100k.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {
       await removeVoiceStandIn(page);
+    }
+  });
+
+
+  test('FD-9 #15 a 100,000-word split keeps the full labels inside at 1024px', async () => {
+    test.setTimeout(180_000);
+    await openAddedScene(page, 'Split hundred');
+    await ensureSixDigitScene(page);
+    await saveScene(page);
+    await page.keyboard.press('Control+Shift+2');
+    const split = page.getByTestId('split-word-counts');
+    await expect(split).toBeVisible({ timeout: 8_000 });
+    await setContentSize(app!, 1024, 900);
+    await mountVoiceStandIn(page);
+    try {
+      const paneText = ((await split.textContent()) ?? '').replace(/\s+/g, ' ').trim();
+      expect(paneText, '1024 split word count').toMatch(/Pane 1: \d{3},\d{3} words/);
+      expect(await page.getByTestId('bottom-stats-chars').count(), 'character count still in the split bar').toBe(0);
+      const content = await barContentWidth(page);
+      expect(content, `1024 split content ${content}`).toBeGreaterThan(545);
+      expect(content, `1024 split content ${content}`).toBeLessThanOrEqual(760);
+      const icon = await listeningIcon(page);
+      expect(icon, 'Listening missing on 100k split @1024').not.toBeNull();
+      expect(icon!.iconDisplay, 'Listening turned into the mic on 100k split @1024').toBe('none');
+      expect(icon!.labelPosition, 'Listening word is hidden on 100k split @1024').toBe('static');
+      expect(icon!.labelText).toBe('Listening');
+      const donors = await page.evaluate(() => {
+        const read = (sel: string) => {
+          const el = document.querySelector(sel);
+          return el ? getComputedStyle(el).display : null;
+        };
+        return {
+          goal: read('[data-testid="bottom-daily-goal"]'),
+          badge: read('.bottom-draft'),
+        };
+      });
+      expect(donors.goal, 'goal stayed on for 100k split @1024').toBe('none');
+      expect(donors.badge, 'badge stayed on for 100k split @1024').toBe('none');
+      const voice = await textFullyVisible(page, '[data-testid="fid-voice-standin"]');
+      expect(voice?.text, 'Listening copy missing on 100k split @1024').toContain('Listening');
+      expect(voice?.full, `Listening clipped on 100k split @1024 (visible ${voice?.visible} of ${voice?.width})`).toBe(true);
+      const savedParts = await savedLabel(page);
+      expect(savedParts?.fullText, 'full save label missing on 100k split @1024').toContain('Saved just now');
+      expect(savedParts?.fullPosition, 'save label shortened on 100k split @1024').toBe('static');
+      expect(savedParts?.shortDisplay, 'short save label showing on 100k split @1024').toBe('none');
+      const saved = await textFullyVisible(page, '[data-testid="bottom-saved"]');
+      expect(saved?.full, `save status clipped on 100k split @1024 (visible ${saved?.visible} of ${saved?.width})`).toBe(true);
+      const placed = await contentPlacement(page, [
+        '.bottom-nav',
+        'button[title="Previous scene"]',
+        'button[title="Next scene"]',
+        '[data-testid="split-word-counts"]',
+        '[data-testid="bottom-saved"]',
+        '[data-testid="fid-voice-standin"]',
+      ]);
+      test.info().annotations.push({ type: 'split-100k-1024', description: JSON.stringify({ content, placed, donors }) });
+      expectInsideContent(placed, '100k split @1024');
+      expectSpare(placed, '100k split @1024');
+      const shot = path.join(SHOT_DIR, 'plan058-fid-b-1024-split-100k.png');
+      await page.screenshot({ path: shot });
+      expect(fs.existsSync(shot)).toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
+      await page.keyboard.press('Control+Shift+2');
+      await expect(split).toHaveCount(0, { timeout: 8_000 });
     }
   });
 
