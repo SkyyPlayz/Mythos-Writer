@@ -1,5 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { flushSync } from 'react-dom';
+import { useState, useEffect } from 'react';
 import type { Scene, Chapter, Story } from './types';
 import './BottomBar.css';
 
@@ -18,66 +17,6 @@ interface Props {
   /** Beta 4 M2 (§4): current manuscript page width — renders the prototype's
    *  "Page W px — drag page edge to resize" hint when a scene is open. */
   pageWidthPx?: number | null;
-}
-
-type CollapsedDonors = { tail: boolean; title: boolean; goal: boolean; draft: boolean };
-
-const DONORS_SHOWN: CollapsedDonors = { tail: false, title: false, goal: false, draft: false };
-
-const DONOR_ORDER = ['tail', 'title', 'goal', 'draft'] as const;
-
-const DONOR_SELECTOR: Record<(typeof DONOR_ORDER)[number], string> = {
-  tail: '.bottom-stats-tail',
-  title: '.bottom-breadcrumb',
-  goal: '[data-testid="bottom-daily-goal"]',
-  draft: '.bottom-draft',
-};
-
-function donorsEqual(a: CollapsedDonors, b: CollapsedDonors): boolean {
-  return a.tail === b.tail && a.title === b.title && a.goal === b.goal && a.draft === b.draft;
-}
-
-/** True when prev/next is squeezed or a protected readout is outside the bar. */
-function statusBarCramped(bar: HTMLElement): boolean {
-  if (bar.scrollWidth > bar.clientWidth + 1) return true;
-  const nav = bar.querySelector('.bottom-nav');
-  if (nav && nav.scrollWidth > nav.clientWidth + 1) return true;
-  const host = bar.getBoundingClientRect();
-  const fixed = [
-    '[data-testid="bottom-stats-lead"]',
-    '[data-testid="split-word-counts"]',
-    '[data-testid="bottom-saved"]',
-    '.bottom-voice',
-  ];
-  for (const sel of fixed) {
-    const el = bar.querySelector(sel);
-    if (!el) continue;
-    const rect = el.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) continue;
-    if (rect.left < host.left - 0.5 || rect.right > host.right + 0.5) return true;
-    if (rect.top < host.top - 0.5 || rect.bottom > host.bottom + 0.5) return true;
-  }
-  return false;
-}
-
-/**
- * Hide donors in order until the bar is not cramped. display:none drops the
- * flex gap with the item; width 0 would keep the gap.
- */
-function collapseDonors(bar: HTMLElement): CollapsedDonors {
-  const next: CollapsedDonors = { ...DONORS_SHOWN };
-  for (const key of DONOR_ORDER) {
-    bar.querySelector(DONOR_SELECTOR[key])?.classList.remove('bottom-donor-collapsed');
-  }
-  if (!statusBarCramped(bar)) return next;
-  for (const key of DONOR_ORDER) {
-    const el = bar.querySelector(DONOR_SELECTOR[key]);
-    if (!el) continue;
-    el.classList.add('bottom-donor-collapsed');
-    next[key] = true;
-    if (!statusBarCramped(bar)) break;
-  }
-  return next;
 }
 
 /** "Saved just now" → "Saved 2m ago" → "Saved 1h ago" (prototype 3630). */
@@ -178,62 +117,18 @@ export default function BottomBar({
       : `Today: ${goalStats.todayWords.toLocaleString()} words`
     : undefined;
 
-  const barRef = useRef<HTMLDivElement>(null);
-  const [collapsed, setCollapsed] = useState<CollapsedDonors>(DONORS_SHOWN);
-  const tailText = ` · ${readTime}${
-    currentIndex >= 0 ? ` · Scene ${currentIndex + 1} / ${allScenes.length}` : ''
-  }${pageWidthPx !== null ? ` · Page ${pageWidthPx.toLocaleString()} px — drag page edge to resize` : ''}`;
   const sceneTitleText = selectedScene
     ? [selectedStory?.title, selectedChapter?.title, selectedScene.title].filter(Boolean).join(' › ')
     : '';
-
-  useLayoutEffect(() => {
-    const bar = barRef.current;
-    if (!bar) return;
-    let measuring = false;
-    const publish = (sync: boolean) => {
-      if (measuring) return;
-      measuring = true;
-      try {
-        const next = collapseDonors(bar);
-        const apply = () => setCollapsed((prev) => (donorsEqual(prev, next) ? prev : next));
-        if (sync) flushSync(apply);
-        else apply();
-      } finally {
-        measuring = false;
-      }
-    };
-    publish(false);
-    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => publish(false));
-    ro?.observe(bar);
-    const mo = new MutationObserver(() => publish(true));
-    mo.observe(bar, { childList: true, subtree: true, characterData: true });
-    return () => {
-      ro?.disconnect();
-      mo.disconnect();
-    };
-  }, [
-    wordCount,
-    charCount,
+  const tailParts = [
     readTime,
-    lastSavedAt,
-    isVoiceActive,
-    showGoalChip,
-    pageWidthPx,
-    splitWordCounts,
-    selectedScene?.id,
-    selectedScene?.title,
-    selectedScene?.draftState,
-    selectedChapter?.title,
-    selectedStory?.title,
-    activeNotePath,
-    activeNoteWordCount,
-    currentIndex,
-    allScenes.length,
-  ]);
+    currentIndex >= 0 ? `Scene ${currentIndex + 1} / ${allScenes.length}` : '',
+    pageWidthPx !== null ? `Page ${pageWidthPx.toLocaleString()} px — drag page edge to resize` : '',
+  ].filter(Boolean);
+  const tailText = tailParts.join(' · ');
 
   return (
-    <div className="bottom-bar" ref={barRef}>
+    <div className="bottom-bar">
       <div className="bottom-nav">
         <button
           className="bottom-nav-btn"
@@ -262,33 +157,29 @@ export default function BottomBar({
           </span>
         ) : isNoteActive ? (
           <>
-            <span className={collapsed.title ? 'bottom-breadcrumb bottom-donor-collapsed' : 'bottom-breadcrumb'}>
+            <span className="bottom-breadcrumb">
               <span className="bottom-scene-name">{noteFileName}</span>
             </span>
-            {collapsed.title && (
-              <span className="sr-only" role="status" aria-live="polite">{noteFileName}</span>
-            )}
+            <span className="bottom-status-fallback bottom-status-fallback--title">{noteFileName}</span>
             <span className="bottom-stats">
               {(activeNoteWordCount ?? 0).toLocaleString()} words
             </span>
           </>
         ) : selectedScene ? (
           <>
-            <span className={collapsed.title ? 'bottom-breadcrumb bottom-donor-collapsed' : 'bottom-breadcrumb'}>
+            <span className="bottom-breadcrumb">
               {selectedStory?.title}
               <span className="bottom-sep" aria-hidden="true">›</span>
               {selectedChapter?.title}
               <span className="bottom-sep" aria-hidden="true">›</span>
               <span className="bottom-scene-name">{selectedScene.title}</span>
             </span>
-            {collapsed.title && (
-              <span className="sr-only" role="status" aria-live="polite">{sceneTitleText}</span>
-            )}
+            <span className="bottom-status-fallback bottom-status-fallback--title">{sceneTitleText}</span>
             <span className="bottom-stats" data-testid="bottom-live-stats">
               <span className="bottom-stats-lead" data-testid="bottom-stats-lead">
                 {wordCount.toLocaleString()} words · {charCount.toLocaleString()} characters
               </span>
-              <span className={collapsed.tail ? 'bottom-stats-tail bottom-donor-collapsed' : 'bottom-stats-tail'}>
+              <span className="bottom-stats-tail">
                 {' · '}{readTime}
                 {currentIndex >= 0 && (
                   <> · Scene {currentIndex + 1} / {allScenes.length}</>
@@ -300,10 +191,8 @@ export default function BottomBar({
                   </span>
                 )}
               </span>
-              {collapsed.tail && (
-                <span className="sr-only" role="status" aria-live="polite">{tailText}</span>
-              )}
             </span>
+            <span className="bottom-status-fallback bottom-status-fallback--tail">{tailText}</span>
           </>
         ) : (
           <span className="bottom-hint">
@@ -315,20 +204,20 @@ export default function BottomBar({
       </div>
 
       {selectedScene?.draftState && (
-        <div className={collapsed.draft ? 'bottom-draft bottom-donor-collapsed' : 'bottom-draft'}>
+        <div className="bottom-draft">
           <span className={`bottom-draft-badge draft-${selectedScene.draftState}`}>
             {selectedScene.draftState}
           </span>
         </div>
       )}
-      {collapsed.draft && selectedScene?.draftState && (
-        <span className="sr-only" role="status" aria-live="polite">{selectedScene.draftState}</span>
+      {selectedScene?.draftState && (
+        <span className="bottom-status-fallback bottom-status-fallback--draft">{selectedScene.draftState}</span>
       )}
 
       {showGoalChip && (
         <span
-          className={`bottom-daily-goal${goalMet ? ' bottom-daily-goal--met' : ''}${collapsed.goal ? ' bottom-donor-collapsed' : ''}`}
-          tabIndex={collapsed.goal ? undefined : 0}
+          className={`bottom-daily-goal${goalMet ? ' bottom-daily-goal--met' : ''}`}
+          tabIndex={0}
           aria-label={goalAriaLabel}
           data-testid="bottom-daily-goal"
         >
@@ -337,8 +226,8 @@ export default function BottomBar({
             : `${goalStats!.todayWords.toLocaleString()} today`}
         </span>
       )}
-      {collapsed.goal && goalAriaLabel && (
-        <span className="sr-only" role="status" aria-live="polite">{goalAriaLabel}</span>
+      {showGoalChip && goalAriaLabel && (
+        <span className="bottom-status-fallback bottom-status-fallback--goal">{goalAriaLabel}</span>
       )}
 
       {/* Beta 4 M2 (§4): "Saved Xm ago" + pulsing dot (prototype 3630) */}

@@ -9,10 +9,11 @@
  * in DesktopShell pagePrefs, which this allowlist cannot edit.
  * FD-9 #15 is no ship, chip deferred: BottomBar cannot see the real save
  * pipeline (scene:saved is manual-snapshot only; autosave and its errors
- * stay in DesktopShell). The guards below keep the word count and the
- * "Saved just now" label fully visible, including at 900px with a voice
- * stand-in that uses the real .bottom-voice rules. Donors that do not fit
- * are display:none, so the flex gap leaves with them. Prev/next is unchanged.
+ * stay in DesktopShell). The guards below keep the word count, the
+ * "Saved just now" label, "Listening", and prev/next fully visible.
+ * Those four never shrink. Donors leave with display:none from container
+ * queries, tail then title then the goal and the draft badge, so the flex
+ * gap leaves with them. Hidden status is a plain sr-only copy.
  */
 import path from 'path';
 import os from 'os';
@@ -119,7 +120,7 @@ async function textFullyVisible(page: Page, selector: string): Promise<{
     let clipRight = 1e9;
     let clipTop = -1e9;
     let clipBottom = 1e9;
-    let p: HTMLElement | null = el.parentElement;
+    let p: HTMLElement | null = el instanceof HTMLElement ? el : el.parentElement;
     while (p) {
       const cs = getComputedStyle(p);
       if (clips(cs.overflowX) || clips(cs.overflowY) || clips(cs.overflow)) {
@@ -366,24 +367,29 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(box!.voiceInsideBar, `voice indicator outside the bar @${w}`).toBe(true);
       expect(box!.voiceOverflowsWindow, `voice indicator overflows the window @${w}`).toBe(false);
       if (w === 900) {
-        const ellipsis = await page.evaluate(() => {
+        const donors = await page.evaluate(() => {
           const read = (sel: string) => {
             const el = document.querySelector(sel);
-            return el ? getComputedStyle(el).textOverflow : null;
+            return el ? getComputedStyle(el).display : null;
           };
           return {
             crumb: read('.bottom-breadcrumb'),
             tail: read('.bottom-stats-tail'),
             goal: read('[data-testid="bottom-daily-goal"]'),
-            draft: read('.bottom-draft-badge'),
+            draft: read('.bottom-draft'),
+            leadOverflow: (() => {
+              const el = document.querySelector('[data-testid="bottom-stats-lead"]');
+              return el ? getComputedStyle(el).textOverflow : null;
+            })(),
           };
         });
-        expect(ellipsis.crumb, 'title ellipsis @900').toBe('ellipsis');
-        expect(ellipsis.tail, 'stats tail ellipsis @900').toBe('ellipsis');
-        expect(ellipsis.goal, 'daily-goal ellipsis @900').toBe('ellipsis');
-        if (ellipsis.draft !== null) {
-          expect(ellipsis.draft, 'draft badge ellipsis @900').toBe('ellipsis');
+        expect(donors.crumb, 'title hides @900').toBe('none');
+        expect(donors.tail, 'stats tail hides @900').toBe('none');
+        expect(donors.goal, 'daily-goal hides @900').toBe('none');
+        if (donors.draft !== null) {
+          expect(donors.draft, 'draft badge hides @900').toBe('none');
         }
+        expect(donors.leadOverflow, 'word count must not ellipsize @900').not.toBe('ellipsis');
       }
       const shot = path.join(SHOT_DIR, `plan058-fid-b-${w}.png`);
       await page.screenshot({ path: shot });
@@ -460,8 +466,6 @@ test.describe('PLAN-058 Fid-a', () => {
         expect(withVoice, `save status measured with voice @${w}`).not.toBeNull();
         expect(withVoice!.text, `save status copy with voice @${w}`).toContain('Saved just now');
         expect(withVoice!.full, `save status truncated with voice @${w} (visible ${withVoice!.visible} of ${withVoice!.width})`).toBe(true);
-        const voice = await textFullyVisible(page, '[data-testid="fid-voice-standin"]');
-        expect(voice?.full, `voice stand-in clipped beside save status @${w}`).toBe(true);
       }
     } finally {
       await removeVoiceStandIn(page);
@@ -564,5 +568,161 @@ test.describe('PLAN-058 Fid-a', () => {
     expect(box!.full, `split word counts clipped @900 (visible ${box!.visible} of ${box!.width})`).toBe(true);
     await page.keyboard.press('Control+Shift+2');
     await expect(split).toHaveCount(0, { timeout: 8_000 });
+  });
+
+  test('FD-9 #15 prev/next stays whole and the goal and badge give way first at 1024 and 960', async () => {
+    await openEditor(page);
+    await renameSceneLong(page);
+    const editor = page.locator('.ProseMirror');
+    await editor.click();
+    await saveScene(page);
+    await mountVoiceStandIn(page);
+    try {
+      for (const w of [1024, 960] as const) {
+        await setContentSize(app!, w, 900);
+        const prev = await textFullyVisible(page, 'button[title="Previous scene"]');
+        const next = await textFullyVisible(page, 'button[title="Next scene"]');
+        expect(prev, `prev measured @${w}`).not.toBeNull();
+        expect(next, `next measured @${w}`).not.toBeNull();
+        expect(prev!.text, `prev copy @${w}`).toContain('Prev');
+        expect(next!.text, `next copy @${w}`).toContain('Next');
+        expect(prev!.full, `prev clipped @${w} (visible ${prev!.visible} of ${prev!.width})`).toBe(true);
+        expect(next!.full, `next clipped @${w} (visible ${next!.visible} of ${next!.width})`).toBe(true);
+        const order = await page.evaluate(() => {
+          const read = (sel: string) => {
+            const el = document.querySelector(sel);
+            if (!el) return null;
+            const cs = getComputedStyle(el);
+            const box = el.getBoundingClientRect();
+            return {
+              display: cs.display,
+              flexShrink: cs.flexShrink,
+              textOverflow: cs.textOverflow,
+              width: Math.round(box.width * 10) / 10,
+            };
+          };
+          const bar = document.querySelector('.bottom-bar');
+          const container = bar ? Math.round(bar.clientWidth * 10) / 10 : null;
+          return {
+            container,
+            nav: read('.bottom-nav'),
+            prev: read('button[title="Previous scene"]'),
+            next: read('button[title="Next scene"]'),
+            goal: read('[data-testid="bottom-daily-goal"]'),
+            draft: read('.bottom-draft'),
+            title: read('.bottom-breadcrumb'),
+            tail: read('.bottom-stats-tail'),
+          };
+        });
+        expect(order.nav?.flexShrink, `prev/next shrinks @${w}`).toBe('0');
+        expect(order.prev?.textOverflow, `prev ellipsizes @${w}`).not.toBe('ellipsis');
+        expect(order.next?.textOverflow, `next ellipsizes @${w}`).not.toBe('ellipsis');
+        expect(order.goal, `goal missing @${w}`).not.toBeNull();
+        expect(order.draft, `badge missing @${w}`).not.toBeNull();
+        expect(order.goal!.display, `goal gives way @${w} container ${order.container}`).toBe('none');
+        expect(order.draft!.display, `badge gives way @${w} container ${order.container}`).toBe('none');
+        expect(order.tail?.display, `tail leaves before the goal @${w}`).toBe('none');
+        expect(order.title?.display, `title leaves before the goal @${w}`).toBe('none');
+        expect(order.nav!.width, `prev/next has no box @${w}`).toBeGreaterThan(40);
+        test.info().annotations.push({ type: 'space-order', description: JSON.stringify({ w, ...order }) });
+      }
+      const fallbacks = await page.evaluate(() => (
+        [...document.querySelectorAll('.bottom-status-fallback')].map((el) => ({
+          role: el.getAttribute('role'),
+          live: el.getAttribute('aria-live'),
+          hidden: el.getAttribute('aria-hidden'),
+        }))
+      ));
+      expect(fallbacks.length, 'hidden status copy missing').toBeGreaterThan(0);
+      for (const fb of fallbacks) {
+        expect(fb.role, 'hidden status copy is a live region').toBeNull();
+        expect(fb.live, 'hidden status copy is a live region').toBeNull();
+        expect(fb.hidden, 'hidden status copy is aria-hidden').toBeNull();
+      }
+      const sepsHidden = await page.evaluate(() => (
+        [...document.querySelectorAll('.bottom-sep')].every((el) => el.getAttribute('aria-hidden') === 'true')
+      ));
+      expect(sepsHidden, 'decorative separators are exposed').toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
+    }
+  });
+
+  test('FD-9 #15 typing triggers no layout work in BottomBar', async () => {
+    await openEditor(page);
+    const editor = page.locator('.ProseMirror');
+    await editor.click();
+    const beforeWords = await page.getByTestId('bottom-stats-lead').textContent();
+    await page.evaluate(() => {
+      const w = window as Window & {
+        __fidLayout?: { rect: number; mo: number; ro: number };
+        __fidLayoutRestore?: () => void;
+      };
+      w.__fidLayoutRestore?.();
+      const bar = document.querySelector('.bottom-bar');
+      const state = { rect: 0, mo: 0, ro: 0 };
+      w.__fidLayout = state;
+      const inBar = (node: Node | null) => !!bar && !!node && (node === bar || bar.contains(node));
+      const proto = Element.prototype;
+      const origRect = proto.getBoundingClientRect;
+      const origClient = proto.getClientRects;
+      proto.getBoundingClientRect = function (this: Element) {
+        if (inBar(this)) state.rect += 1;
+        return origRect.call(this);
+      };
+      proto.getClientRects = function (this: Element) {
+        if (inBar(this)) state.rect += 1;
+        return origClient.call(this);
+      };
+      const OrigMO = window.MutationObserver;
+      const OrigRO = window.ResizeObserver;
+      window.MutationObserver = class extends OrigMO {
+        observe(target: Node, options?: MutationObserverInit): void {
+          if (inBar(target)) state.mo += 1;
+          super.observe(target, options);
+        }
+      };
+      window.ResizeObserver = class extends OrigRO {
+        observe(target: Element, options?: ResizeObserverOptions): void {
+          if (inBar(target)) state.ro += 1;
+          super.observe(target, options);
+        }
+      };
+      w.__fidLayoutRestore = () => {
+        proto.getBoundingClientRect = origRect;
+        proto.getClientRects = origClient;
+        window.MutationObserver = OrigMO;
+        window.ResizeObserver = OrigRO;
+        w.__fidLayoutRestore = undefined;
+      };
+      state.rect = 0;
+      state.mo = 0;
+      state.ro = 0;
+    });
+    try {
+      await editor.type(' zz');
+      const wordsOf = (text: string | null) => {
+        const match = text?.match(/(\d[\d,]*) words/);
+        return match ? Number(match[1].replace(/,/g, '')) : 0;
+      };
+      await expect.poll(async () => page.evaluate(() => {
+        const el = document.querySelector('[data-testid="bottom-stats-lead"]');
+        const match = el?.textContent?.match(/(\d[\d,]*) words/);
+        return match ? Number(match[1].replace(/,/g, '')) : 0;
+      }), { timeout: 3_000 }).toBeGreaterThan(wordsOf(beforeWords));
+      const counts = await page.evaluate(() => {
+        const w = window as Window & { __fidLayout?: { rect: number; mo: number; ro: number } };
+        return w.__fidLayout ?? null;
+      });
+      expect(counts, 'layout spy missing').not.toBeNull();
+      expect(counts!.rect, `typing read layout in the status bar (${JSON.stringify(counts)})`).toBe(0);
+      expect(counts!.mo, `typing observed mutations in the status bar (${JSON.stringify(counts)})`).toBe(0);
+      expect(counts!.ro, `typing observed resizes in the status bar (${JSON.stringify(counts)})`).toBe(0);
+    } finally {
+      await page.evaluate(() => {
+        const w = window as Window & { __fidLayoutRestore?: () => void };
+        w.__fidLayoutRestore?.();
+      });
+    }
   });
 });

@@ -20,17 +20,16 @@
   user-select: none;
   position: relative;
   z-index: 10;
+  /* Container queries hide donors. The width is the content box. */
+  container-type: inline-size;
+  container-name: status-bar;
 }
 
 .bottom-nav {
   display: flex;
   gap: 4px;
-  /* Yields after the title, draft badge, and goal chip. The word count,
-     save label, and voice indicator do not shrink, and at 900px the
-     prev/next pair is wider than the space those three leave. */
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
+  /* Prev/next never shrinks and never ellipsizes. Donors leave first. */
+  flex: 0 0 auto;
 }
 
 /* GH #619: the "‹ Prev / Next ›" page-nav buttons used bare dark hex (near-zero
@@ -43,9 +42,7 @@
   color: var(--text-body);
   padding: 2px 8px;
   font-size: 0.78rem;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
   white-space: nowrap;
   cursor: pointer;
   transition: color var(--dur-hover-in, 150ms) var(--ease-out, ease),
@@ -84,8 +81,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-muted);
-  /* Full text until the bar hides it. Width 0 would keep this item's flex gap. */
-  flex: 0 0 auto;
+  /* Takes leftover space until the container query removes it. */
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -111,11 +108,8 @@
 .bottom-stats[data-testid="bottom-live-stats"] {
   display: flex;
   align-items: center;
-  flex: 1 1 auto;
-  /* Floor is the lead once the tail is display:none. min-content then
-     excludes that tail, and the count stays whole. */
+  flex: 0 0 auto;
   min-width: min-content;
-  overflow: hidden;
   white-space: nowrap;
 }
 
@@ -126,20 +120,23 @@
 
 .bottom-stats-tail {
   flex: 0 0 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* A collapsed donor leaves the flex line, so its gap leaves with it. */
-.bottom-donor-collapsed {
+/* Visually hidden copy of a donor. display:none until that donor is hidden,
+   so a wide bar does not announce the same status twice. No live region.
+   position:absolute keeps the copy out of the flex line when it is shown. */
+.bottom-status-fallback {
   display: none;
-}
-
-.bottom-bar .sr-only {
-  margin: 0;
-  left: 0;
-  top: 0;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .bottom-hint {
@@ -148,15 +145,10 @@
 
 .bottom-draft {
   flex: 0 0 auto;
-  min-width: 0;
-  overflow: hidden;
 }
 
 .bottom-draft-badge {
   display: block;
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   padding: 1px 8px;
   border-radius: 999px;
@@ -184,9 +176,6 @@
 
 .bottom-daily-goal {
   flex: 0 0 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   padding: 1px 8px;
   border-radius: 999px;
@@ -246,7 +235,8 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
   color: var(--state-danger);
   font-size: 0.72rem;
   font-weight: 500;
@@ -271,4 +261,30 @@
 
 @media (prefers-reduced-motion: reduce) {
   .bottom-voice-dot { animation: none; }
+}
+
+/*
+ * Donor hide order. Measured after Ctrl+S with Listening on (content box, px):
+ *   window 900 → 438, 960 → 498, 1024 → 562, 1280 → 818, 1440 → 978.
+ *   prev/next 106.5, word count 118.5, Saved just now 90.9, Listening 63.2,
+ *   gap 14. Fixed set is 421.1 and fits in the 438px box at 900.
+ *   draft badge 82, daily goal 91.6, short title 196.3, stats tail 360.4.
+ * Goal and badge need 622.7 with the fixed set, the title as well needs 833,
+ * the tail as well needs 1193. Tail leaves first, then the title, then both.
+ */
+@container status-bar (max-width: 1192px) {
+  .bottom-stats-tail { display: none; }
+  .bottom-status-fallback--tail { display: block; }
+}
+
+@container status-bar (max-width: 832px) {
+  .bottom-breadcrumb { display: none; }
+  .bottom-status-fallback--title { display: block; }
+}
+
+@container status-bar (max-width: 622px) {
+  .bottom-daily-goal,
+  .bottom-draft { display: none; }
+  .bottom-status-fallback--goal,
+  .bottom-status-fallback--draft { display: block; }
 }
