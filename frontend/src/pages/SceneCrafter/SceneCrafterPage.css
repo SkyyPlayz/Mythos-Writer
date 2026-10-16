@@ -59,6 +59,8 @@
   justify-content: space-between;
   gap: 16px;
   padding: 0 0 0 2px;
+  /* FD-8: header stays 100% while the setup column is zoomed. */
+  zoom: 1;
 }
 
 .scene-crafter-header > div {
@@ -330,6 +332,8 @@
 .sc-col-setup {
   width: 270px;
   flex: none;
+  /* FD-8: setup column at 90%. Header and the board picker stay at 100%. */
+  zoom: .9;
 }
 
 .sc-col-draft {
@@ -666,6 +670,8 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
+  /* FD-8: parent .sc-col-setup is zoom .9; this picker stays visually 100%. */
+  zoom: calc(1 / .9);
 }
 
 .scene-crafter-page button.sc-board-row {
