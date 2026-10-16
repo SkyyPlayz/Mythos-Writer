@@ -161,7 +161,7 @@ jobs:
             if (pr.merged) return skip(`PR #${prNumber} already merged`);
             if (pr.draft) return skip(`PR #${prNumber} is draft`);
             if (!pr.base || pr.base.ref !== 'main') return skip(`base is ${pr.base && pr.base.ref}, not main`);
-            if (pr.user && pr.user.login === 'dependabot[bot]') return skip('Dependabot PR — use dependabot-auto-merge.yml');
+            if (pr.user && pr.user.login === 'dependabot[bot]') return skip('Dependabot PR — human merge (docs/MERGE_GATE.md)');
 
             const headSha = pr.head.sha;
             log(`Evaluating PR #${prNumber} tip ${headSha}`);
