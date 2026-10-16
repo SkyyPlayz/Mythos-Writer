@@ -9,9 +9,9 @@
  * in DesktopShell pagePrefs, which this allowlist cannot edit.
  * FD-9 #15 is no ship, chip deferred: BottomBar cannot see the real save
  * pipeline (scene:saved is manual-snapshot only; autosave and its errors
- * stay in DesktopShell). Layout pins below keep the word count readable,
- * including at 900px with a voice-indicator stand-in that uses the real
- * .bottom-voice rules. This environment cannot start voice input.
+ * stay in DesktopShell). The guards below keep the word count and the
+ * "Saved just now" label fully visible, including at 900px with a voice
+ * stand-in that uses the real .bottom-voice rules.
  */
 import path from 'path';
 import os from 'os';
@@ -64,6 +64,111 @@ async function setContentSize(app: ElectronApplication, w: number, h: number): P
     win.setContentSize(size.w, size.h);
   }, { w, h });
   await new Promise((r) => setTimeout(r, 250));
+}
+
+async function mountVoiceStandIn(page: Page): Promise<void> {
+  const mounted = await page.evaluate(() => {
+    const bar = document.querySelector('.bottom-bar');
+    if (!bar) return false;
+    document.querySelector('[data-testid="fid-voice-standin"]')?.remove();
+    const voice = document.createElement('div');
+    voice.className = 'bottom-voice';
+    voice.dataset.testid = 'fid-voice-standin';
+    voice.setAttribute('aria-label', 'Voice input active');
+    voice.setAttribute('role', 'status');
+    const dot = document.createElement('span');
+    dot.className = 'bottom-voice-dot';
+    dot.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.className = 'bottom-voice-label';
+    label.textContent = 'Listening';
+    voice.append(dot, label);
+    bar.append(voice);
+    return voice.getAttribute('style') === null;
+  });
+  expect(mounted, 'voice stand-in mounted').toBe(true);
+}
+
+async function removeVoiceStandIn(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    document.querySelector('[data-testid="fid-voice-standin"]')?.remove();
+  });
+}
+
+/** Text range vs overflow clip. Width and height both have to survive. */
+async function textFullyVisible(page: Page, selector: string): Promise<{
+  text: string | null;
+  full: boolean;
+  width: number;
+  visible: number;
+  lines: number;
+  whiteSpace: string | null;
+} | null> {
+  return page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    if (!el) return null;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const rect = range.getBoundingClientRect();
+    const clips = (v: string) => v === 'hidden' || v === 'clip' || v === 'scroll' || v === 'auto';
+    let clipLeft = -1e9;
+    let clipRight = 1e9;
+    let clipTop = -1e9;
+    let clipBottom = 1e9;
+    let p: HTMLElement | null = el.parentElement;
+    while (p) {
+      const cs = getComputedStyle(p);
+      if (clips(cs.overflowX) || clips(cs.overflowY) || clips(cs.overflow)) {
+        const r = p.getBoundingClientRect();
+        clipLeft = Math.max(clipLeft, r.left);
+        clipRight = Math.min(clipRight, r.right);
+        clipTop = Math.max(clipTop, r.top);
+        clipBottom = Math.min(clipBottom, r.bottom);
+      }
+      p = p.parentElement;
+    }
+    const visibleW = Math.max(0, Math.min(rect.right, clipRight) - Math.max(rect.left, clipLeft));
+    const visibleH = Math.max(0, Math.min(rect.bottom, clipBottom) - Math.max(rect.top, clipTop));
+    const tops = new Set<number>();
+    for (const r of range.getClientRects()) tops.add(Math.round(r.top));
+    return {
+      text: el.textContent,
+      full: rect.width > 0 && rect.height > 0
+        && visibleW >= rect.width - 0.5
+        && visibleH >= rect.height - 0.5,
+      width: rect.width,
+      visible: visibleW,
+      lines: tops.size,
+      whiteSpace: getComputedStyle(el).whiteSpace,
+    };
+  }, selector);
+}
+
+async function openEditor(page: Page): Promise<void> {
+  await clickStoryNav(page);
+  const sceneRow = page.locator('.nav-scene-row').first();
+  await sceneRow.click();
+  await expect(page.locator('.ProseMirror')).toBeVisible({ timeout: 8_000 });
+}
+
+async function renameSceneLong(page: Page): Promise<void> {
+  const longTitle = 'Midnight market of the drowned lanterns and the cartographer who would not leave';
+  const shown = page.locator('.bottom-scene-name');
+  if (await shown.count() > 0 && (await shown.first().textContent()) === longTitle) return;
+  const sceneRow = page.locator('.nav-scene-row').first();
+  await sceneRow.click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Rename scene…' }).click();
+  const prompt = page.locator('.prompt-modal-input');
+  await expect(prompt).toBeVisible({ timeout: 8_000 });
+  await prompt.fill(longTitle);
+  await page.locator('.prompt-modal-ok').click();
+  await expect(page.locator('.bottom-scene-name')).toHaveText(longTitle, { timeout: 8_000 });
+}
+
+async function saveScene(page: Page): Promise<void> {
+  await page.locator('.ProseMirror').click();
+  await page.keyboard.press('Control+s');
+  await expect(page.getByTestId('bottom-saved')).toContainText('Saved just now', { timeout: 8_000 });
 }
 
 test.describe('PLAN-058 Fid-a', () => {
@@ -256,6 +361,26 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(box!.overlapsGoal, `word count under the daily-goal chip @${w}`).toBe(false);
       expect(box!.voiceInsideBar, `voice indicator outside the bar @${w}`).toBe(true);
       expect(box!.voiceOverflowsWindow, `voice indicator overflows the window @${w}`).toBe(false);
+      if (w === 900) {
+        const ellipsis = await page.evaluate(() => {
+          const read = (sel: string) => {
+            const el = document.querySelector(sel);
+            return el ? getComputedStyle(el).textOverflow : null;
+          };
+          return {
+            crumb: read('.bottom-breadcrumb'),
+            tail: read('.bottom-stats-tail'),
+            goal: read('[data-testid="bottom-daily-goal"]'),
+            draft: read('.bottom-draft-badge'),
+          };
+        });
+        expect(ellipsis.crumb, 'title ellipsis @900').toBe('ellipsis');
+        expect(ellipsis.tail, 'stats tail ellipsis @900').toBe('ellipsis');
+        expect(ellipsis.goal, 'daily-goal ellipsis @900').toBe('ellipsis');
+        if (ellipsis.draft !== null) {
+          expect(ellipsis.draft, 'draft badge ellipsis @900').toBe('ellipsis');
+        }
+      }
       const shot = path.join(SHOT_DIR, `plan058-fid-b-${w}.png`);
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
@@ -328,5 +453,71 @@ test.describe('PLAN-058 Fid-a', () => {
     await editor.click();
     await editor.type('alpha beta');
     await expect(page.getByTestId('bottom-live-stats')).toContainText('2 words', { timeout: 3_000 });
+  });
+
+  test('FD-9 #15 save status is fully visible at 900px with voice after a real save', async () => {
+    await openEditor(page);
+    await renameSceneLong(page);
+    const editor = page.locator('.ProseMirror');
+    await editor.click();
+    await editor.type('save me');
+    await saveScene(page);
+    try {
+      for (const w of [900, 1024] as const) {
+        await setContentSize(app!, w, 900);
+        await removeVoiceStandIn(page);
+        const plain = await textFullyVisible(page, '[data-testid="bottom-saved"]');
+        expect(plain, `save status measured @${w}`).not.toBeNull();
+        expect(plain!.text, `save status copy @${w}`).toContain('Saved just now');
+        expect(plain!.full, `save status truncated @${w} (visible ${plain!.visible} of ${plain!.width})`).toBe(true);
+        await mountVoiceStandIn(page);
+        const withVoice = await textFullyVisible(page, '[data-testid="bottom-saved"]');
+        expect(withVoice, `save status measured with voice @${w}`).not.toBeNull();
+        expect(withVoice!.text, `save status copy with voice @${w}`).toContain('Saved just now');
+        expect(withVoice!.full, `save status truncated with voice @${w} (visible ${withVoice!.visible} of ${withVoice!.width})`).toBe(true);
+        const voice = await textFullyVisible(page, '[data-testid="fid-voice-standin"]');
+        expect(voice?.full, `voice stand-in clipped beside save status @${w}`).toBe(true);
+      }
+    } finally {
+      await removeVoiceStandIn(page);
+    }
+  });
+
+  test('FD-9 #15 word count is fully visible at 900px with voice after a real save', async () => {
+    await openEditor(page);
+    await renameSceneLong(page);
+    const editor = page.locator('.ProseMirror');
+    await editor.click();
+    await editor.type('alpha beta gamma');
+    await saveScene(page);
+    await setContentSize(app!, 900, 900);
+    await mountVoiceStandIn(page);
+    try {
+      await expect(page.getByTestId('bottom-saved')).toContainText('Saved just now');
+      const lead = await textFullyVisible(page, '[data-testid="bottom-stats-lead"]');
+      expect(lead, 'word count measured with voice after save @900').not.toBeNull();
+      expect(lead!.text, 'word count copy with voice after save @900').toMatch(/^\d[\d,]* words · \d[\d,]* characters$/);
+      expect(lead!.lines, 'word count wrapped after save @900').toBe(1);
+      expect(lead!.full, `word count truncated with voice after save @900 (visible ${lead!.visible} of ${lead!.width})`).toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
+    }
+  });
+
+  test('FD-9 #15 split-view word counts stay on one line at 900px', async () => {
+    await openEditor(page);
+    await page.locator('.ProseMirror').click();
+    await page.keyboard.press('Control+Shift+2');
+    const split = page.getByTestId('split-word-counts');
+    await expect(split).toBeVisible({ timeout: 8_000 });
+    await setContentSize(app!, 900, 900);
+    const box = await textFullyVisible(page, '[data-testid="split-word-counts"]');
+    expect(box, 'split word counts measured @900').not.toBeNull();
+    expect(box!.text, 'split word count copy @900').toMatch(/Pane 1: \d[\d,]* words · Pane 2: \d[\d,]* words/);
+    expect(box!.whiteSpace, 'split word counts must stay nowrap @900').toBe('nowrap');
+    expect(box!.lines, 'split word counts wrapped @900').toBe(1);
+    expect(box!.full, `split word counts clipped @900 (visible ${box!.visible} of ${box!.width})`).toBe(true);
+    await page.keyboard.press('Control+Shift+2');
+    await expect(split).toHaveCount(0, { timeout: 8_000 });
   });
 });

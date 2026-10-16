@@ -25,7 +25,12 @@
 .bottom-nav {
   display: flex;
   gap: 4px;
-  flex-shrink: 0;
+  /* Yields after the title, draft badge, and goal chip. The word count,
+     save label, and voice indicator do not shrink, and at 900px the
+     prev/next pair is wider than the space those three leave. */
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 
 /* GH #619: the "‹ Prev / Next ›" page-nav buttons used bare dark hex (near-zero
@@ -38,6 +43,10 @@
   color: var(--text-body);
   padding: 2px 8px;
   font-size: 0.78rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
   transition: color var(--dur-hover-in, 150ms) var(--ease-out, ease),
               border-color var(--dur-hover-in, 150ms) var(--ease-out, ease),
@@ -64,12 +73,10 @@
 }
 
 .bottom-meta {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  overflow: hidden;
-  min-width: 0;
+  /* Children join the bar's flex line. A box here was shrinking below the
+     word count and clipping it once the save label and voice indicator
+     were both present. */
+  display: contents;
 }
 
 .bottom-breadcrumb {
@@ -94,15 +101,23 @@
 }
 
 .bottom-stats {
+  /* Split-view counts and note stats are one line. The live scene count
+     overrides this below; these two must not inherit that flex box. */
+  white-space: nowrap;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.bottom-stats[data-testid="bottom-live-stats"] {
   display: flex;
   align-items: center;
   flex: 1 1 auto;
   /* Floor is the lead. The tail's basis is 0, so this min-content does not
      include the read-time / page hint, and the count stays whole when the
-     voice indicator is also in the bar. */
+     save label and voice indicator are also in the bar. */
   min-width: min-content;
   overflow: hidden;
-  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .bottom-stats-lead {
@@ -196,9 +211,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
+  flex: 0 0 auto;
   white-space: nowrap;
   color: var(--text-muted);
 }
