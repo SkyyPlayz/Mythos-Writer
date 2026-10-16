@@ -296,6 +296,8 @@ describe('Beta 4 M2 — Saved indicator', () => {
     const saved = screen.getByTestId('bottom-saved');
     expect(saved.textContent).toContain('Saved just now');
     expect(saved.querySelector('.bottom-saved-dot')).not.toBeNull();
+    expect(saved.querySelector('.bottom-saved-short')?.getAttribute('aria-hidden')).toBe('true');
+    expect(document.querySelector('.bottom-status-fallback--saved')).toBeNull();
   });
 
   it('formatSavedAgo ramps just now → minutes → hours', () => {

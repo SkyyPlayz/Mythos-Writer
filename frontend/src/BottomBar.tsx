@@ -250,12 +250,7 @@ export default function BottomBar({
             <path d="M5 12.5l4.5 4.5L19 7" />
           </svg>
           <span className="bottom-saved-full">{formatSavedAgo(lastSavedAt, nowTick)}</span>
-          <span className="bottom-saved-short">Saved</span>
-        </span>
-      )}
-      {lastSavedAt !== null && (
-        <span className="bottom-status-fallback bottom-status-fallback--saved">
-          {formatSavedAgo(lastSavedAt, nowTick)}
+          <span className="bottom-saved-short" aria-hidden="true">Saved</span>
         </span>
       )}
 
