@@ -127,6 +127,10 @@ test.describe('PLAN-058 Fid-a', () => {
   });
 
   test('FD-9 #15 Synced chip has border, radius, and padding', async () => {
+    // The status bar mounts only in the editor (shell-panels), not on Scene Crafter.
+    await clickStoryNav(page);
+    await page.locator('.nav-scene-row').first().click();
+    await expect(page.locator('.ProseMirror')).toBeVisible({ timeout: 8_000 });
     for (const w of WIDTHS) {
       await setContentSize(app!, w, 900);
       const chip = page.getByTestId('bottom-synced');
