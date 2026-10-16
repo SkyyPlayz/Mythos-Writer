@@ -1,10 +1,12 @@
 /**
- * PLAN-058 Fid-a — FD-8 Scene Crafter setup zoom.
+ * PLAN-058 Fid — FD-8 Scene Crafter setup zoom and FD-9 #15 status bar.
  *
  * Fresh profile. Story is created by clicking (reachability). Widths
  * 900 / 936 / 962 / 1024 in one run, with a screenshot at each.
  * FD-9 #10 rail width is not asserted: 44px at 900 breaks notes
  * content-width pins outside this tip's allowlist.
+ * FD-9 #15 page-hint margin is not asserted: the margin number is only
+ * in DesktopShell pagePrefs, which this allowlist cannot edit.
  */
 import path from 'path';
 import os from 'os';
@@ -122,5 +124,46 @@ test.describe('PLAN-058 Fid-a', () => {
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     }
+  });
+
+  test('FD-9 #15 Synced chip has border, radius, and padding', async () => {
+    for (const w of WIDTHS) {
+      await setContentSize(app!, w, 900);
+      const chip = page.getByTestId('bottom-synced');
+      await expect(chip).toBeVisible();
+      await expect(chip).toHaveText('Synced');
+      const chrome = await chip.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return {
+          borderTopWidth: cs.borderTopWidth,
+          borderTopStyle: cs.borderTopStyle,
+          radius: cs.borderTopLeftRadius,
+          padTop: cs.paddingTop,
+          padRight: cs.paddingRight,
+          padBottom: cs.paddingBottom,
+          padLeft: cs.paddingLeft,
+        };
+      });
+      expect(chrome.borderTopWidth, `Synced border @${w}`).toBe('1px');
+      expect(chrome.borderTopStyle, `Synced border style @${w}`).toBe('solid');
+      expect(chrome.radius, `Synced radius @${w}`).toBe('7px');
+      expect(chrome.padTop, `Synced pad top @${w}`).toBe('2px');
+      expect(chrome.padRight, `Synced pad right @${w}`).toBe('8px');
+      expect(chrome.padBottom, `Synced pad bottom @${w}`).toBe('2px');
+      expect(chrome.padLeft, `Synced pad left @${w}`).toBe('8px');
+      const shot = path.join(SHOT_DIR, `plan058-fid-b-${w}.png`);
+      await page.screenshot({ path: shot });
+      expect(fs.existsSync(shot)).toBe(true);
+    }
+  });
+
+  test('FD-9 #15 word count still updates', async () => {
+    await clickStoryNav(page);
+    await page.locator('.nav-scene-row').first().click();
+    const editor = page.locator('.ProseMirror');
+    await expect(editor).toBeVisible({ timeout: 8_000 });
+    await editor.click();
+    await editor.type('alpha beta');
+    await expect(page.getByTestId('bottom-live-stats')).toContainText('2 words', { timeout: 3_000 });
   });
 });

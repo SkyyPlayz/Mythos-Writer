@@ -214,6 +214,9 @@ export default function BottomBar({
         </span>
       )}
 
+      {/* Prototype status bar (dc.html 4722): Synced chip. Static chrome. */}
+      <span className="bottom-synced" data-testid="bottom-synced">Synced</span>
+
       {isVoiceActive && (
         <div className="bottom-voice" aria-label="Voice input active" role="status">
           <span className="bottom-voice-dot" aria-hidden="true" />

@@ -179,6 +179,18 @@
   .bottom-saved-dot { animation: none; }
 }
 
+/* Prototype status bar (dc.html 4722–4725): Synced chip border, radius, padding. */
+.bottom-synced {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, .1);
+  border-radius: 7px;
+  padding: 2px 8px;
+  color: #9fb0c8;
+}
+
 .bottom-voice {
   display: flex;
   align-items: center;

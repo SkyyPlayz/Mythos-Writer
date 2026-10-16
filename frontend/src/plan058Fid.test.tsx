@@ -18,3 +18,14 @@ describe('PLAN-058 Fid-a', () => {
     expect(sc).toMatch(/\.sc-board-list\s*\{[^}]*zoom:\s*calc\(1\s*\/\s*\.9\)/);
   });
 });
+
+describe('PLAN-058 Fid-b', () => {
+  it('FD-9 #15 Synced chip has border, radius, and padding', () => {
+    const bar = css('BottomBar.css');
+    expect(bar).toMatch(/\.bottom-synced\s*\{[^}]*border:\s*1px solid rgba\(255,\s*255,\s*255,\s*\.1\)/);
+    expect(bar).toMatch(/\.bottom-synced\s*\{[^}]*border-radius:\s*7px/);
+    expect(bar).toMatch(/\.bottom-synced\s*\{[^}]*padding:\s*2px 8px/);
+    const tsx = readFileSync(resolve(process.cwd(), 'src', 'BottomBar.tsx'), 'utf-8');
+    expect(tsx).toMatch(/className="bottom-synced"[^>]*>\s*Synced\s*</);
+  });
+});
