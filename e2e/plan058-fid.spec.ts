@@ -18,8 +18,9 @@
  * that mic covers only the measured full-word overflow (content box through
  * 520px), so a 1280px window keeps the word and the full "Saved just now"
  * label. The short save label is used below that 900px window in split view,
- * below content 324px otherwise, and from 546px through 720px for every
- * count so a 6-digit scene and a 999-word scene stay inside the content box.
+ * below content 360px otherwise, and from 545px through 720px for every
+ * count. From 545px through 561px every count, including 999 words, takes
+ * the mic. A 1024px window stays above that and keeps the word.
  * The short label is aria-hidden. Hidden status is a plain sr-only copy.
  */
 import path from 'path';
@@ -1742,6 +1743,83 @@ test.describe('PLAN-058 Fid-a', () => {
         expect(box?.full, `${sel} leaves the content box on a 999-word scene @1024 (visible ${box?.visible} of ${box?.width})`).toBe(true);
       }
       const shot = path.join(SHOT_DIR, 'plan058-fid-b-1024-999.png');
+      await page.screenshot({ path: shot });
+      expect(fs.existsSync(shot)).toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
+    }
+  });
+
+  test('FD-9 #15 a 999-word scene keeps the Listening mic inside from content 546 through 561', async () => {
+    test.setTimeout(90_000);
+    await openAddedScene(page, 'Short count');
+    const editor = page.locator('.ProseMirror');
+    await editor.click();
+    await page.keyboard.insertText('me '.repeat(999));
+    await expect.poll(async () => page.getByTestId('bottom-stats-lead').textContent(), {
+      timeout: 15_000,
+    }).toBe('999 words');
+    await saveScene(page);
+    await mountVoiceStandIn(page);
+    try {
+      for (const target of [548, 560] as const) {
+        const content = await setBarContent(app!, page, target);
+        expect(content, `content box ${content} left 546–562`).toBeGreaterThan(545);
+        expect(content, `content box ${content} left 546–562`).toBeLessThanOrEqual(562);
+        const icon = await listeningIcon(page);
+        expect(icon, `Listening icon missing on 999 words @${target}`).not.toBeNull();
+        expect(icon!.iconDisplay, `Listening stays a word on 999 words @${target}`).toBe('block');
+        expect(icon!.insideContent, `Listening icon leaves the content box on 999 words @${target} ${JSON.stringify(icon)}`).toBe(true);
+        expect(icon!.labelPosition, `Listening word still visible on 999 words @${target}`).toBe('absolute');
+        expect(icon!.labelText).toBe('Listening');
+        const placed = await contentPlacement(page);
+        test.info().annotations.push({ type: 'words-999-band', description: JSON.stringify({ target, placed }) });
+        expect(placed!.wide, `999 words marked the bar wide @${target}`).toBe(false);
+        expect(placed!.items.find((item) => item.sel === '[data-testid="bottom-daily-goal"]')?.display, `goal hidden on 999 words @${target}`).not.toBe('none');
+        expectInsideContent(placed, `999 words @${target}`);
+        const voice = await textFullyVisible(page, '[data-testid="fid-voice-standin"]');
+        expect(voice?.full, `Listening icon clipped on 999 words @${target}`).toBe(true);
+      }
+      const shot = path.join(SHOT_DIR, 'plan058-fid-b-546-999.png');
+      await page.screenshot({ path: shot });
+      expect(fs.existsSync(shot)).toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
+    }
+  });
+
+  test('FD-9 #15 a 100,000-word scene keeps the mic inside at a 790px window', async () => {
+    test.setTimeout(180_000);
+    await openAddedScene(page, 'Narrow hundred');
+    await ensureSixDigitScene(page);
+    await saveScene(page);
+    await setContentSize(app!, 790, 900);
+    await mountVoiceStandIn(page);
+    try {
+      const leadText = (await page.getByTestId('bottom-stats-lead').textContent()) ?? '';
+      expect(leadText, '790 word count').toMatch(/^\d{3},\d{3} words$/);
+      const content = await barContentWidth(page);
+      expect(content, `790 content box ${content}`).toBeGreaterThan(300);
+      expect(content, `790 content box ${content}`).toBeLessThanOrEqual(360);
+      const icon = await listeningIcon(page);
+      expect(icon, 'Listening icon missing on 100k @790').not.toBeNull();
+      expect(icon!.iconDisplay, 'Listening stays a word on 100k @790').toBe('block');
+      expect(icon!.insideContent, `Listening icon leaves the content box on 100k @790 ${JSON.stringify(icon)}`).toBe(true);
+      const savedParts = await savedLabel(page);
+      expect(savedParts?.shortDisplay, 'save label stayed full on 100k @790').toBe('block');
+      expect(savedParts?.fullPosition, 'full save label still painted on 100k @790').toBe('absolute');
+      const placed = await contentPlacement(page, [
+        '.bottom-nav',
+        'button[title="Previous scene"]',
+        'button[title="Next scene"]',
+        '[data-testid="bottom-stats-lead"]',
+        '[data-testid="bottom-saved"]',
+        '[data-testid="fid-voice-standin"]',
+      ]);
+      test.info().annotations.push({ type: 'hundred-790', description: JSON.stringify({ content, placed }) });
+      expect(placed!.wide, '100k did not mark the bar').toBe(true);
+      expectInsideContent(placed, '100k @790');
+      const shot = path.join(SHOT_DIR, 'plan058-fid-b-790-100k.png');
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
     } finally {

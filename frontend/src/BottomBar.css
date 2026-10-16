@@ -319,10 +319,15 @@
  * ends 13.9px inside the padding. Hiding the goal would miss the 1024px
  * window, and the word count does not shrink. The bar takes
  * bottom-bar--wide-count when that count has 4 or more digits (1,000 and up,
- * the comma group). From 546px through 720px the class switches Listening to
- * the mic, so the goal stays at 562px. 546px is where the goal returns.
- * 720px is past the ~576px line where this font fits the full word beside the
- * goal, so a wider face keeps the mic until the word actually clears.
+ * the comma group). The goal returns above 545px. From there through 720px
+ * a 4-digit count switches Listening to the mic, and every count shortens
+ * the save label, so the goal stays at a 1024px window. Through 561px the
+ * mic also covers 3-digit counts: at content 546 the full word runs 17.7px
+ * into the padding on Inter and 33.9px on DejaVu while the save label is
+ * still full. A 1024px window is content 564 here (562 where the chrome
+ * delta is 462), so the word stays, with 28px of DejaVu spare. 720px is
+ * past the line where a wide count fits the full word beside the goal, so
+ * a wider face keeps the mic until the word actually clears.
  * Measured after that switch, content 562: nav 106.5, "22,223 words" 71.7,
  * badge 82, goal 91.6, "Saved just now" 90.9, mic 12. The mic ends 37.3px
  * inside the content box. DejaVu Sans, the wider face checked against Inter,
@@ -337,10 +342,15 @@
  * so the mic ends 9px inside the padding and still inside the border. That
  * width is posted rather than shortening Saved there.
  * A 22,223-word scene at 832px occupies 323.2 of 370 with the mic and the full
- * "Saved just now" label. That full label plus the mic stops fitting at 323px,
- * so it shortens to a check plus "Saved" from there down. The word count and
- * prev/next do not shrink, so a narrower box than nav + that count + "Saved"
- * + the mic (282.5px at 22,223 words) still overflows.
+ * "Saved just now" label. A 100,500-word count at a 790px window (content 330)
+ * overflows that same pair by 1.8px on Inter and 15.5px on DejaVu. The spare
+ * stays under 8px on DejaVu until content 354, so the label shortens through
+ * 360px. An 832px window is content 372 and keeps the full label (DejaVu spare
+ * 26px). The word count and prev/next do not shrink.
+ * A 100,500-word split at content 564 still overflows with the mic and the
+ * short label already on: the mic ends 62px past the content edge on Inter
+ * and 85px on DejaVu (pane string 210 / 224). The goal and badge are on
+ * screen. Saved is not shortened at 900px or above to hide that.
  */
 @container status-bar (max-width: 1249px) {
   .bottom-stats-chars { display: none; }
@@ -408,11 +418,30 @@
   }
 }
 
-/* Goal is on screen above 545px. A 4-digit count takes the mic through 720px.
-   The save label shortens for every count in that band: a 999-word scene
-   keeps the full word "Listening", and a 6-digit count keeps the mic, and
-   neither enters the padding on the wider face. */
-@container status-bar (min-width: 546px) and (max-width: 720px) {
+/* Goal is on screen above 545px. Through 561px every count takes the mic,
+   including 999 words. A 1024px window is past 561px and keeps the word.
+   A 4-digit count keeps the mic through 720px. The save label shortens for
+   every count from 545px through 720px. */
+@container status-bar (min-width: 545px) and (max-width: 561px) {
+  .bottom-voice-label,
+  .bottom-voice-dot {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .bottom-voice-icon {
+    display: block;
+  }
+}
+
+@container status-bar (min-width: 545px) and (max-width: 720px) {
   .bottom-bar--wide-count .bottom-voice-label,
   .bottom-bar--wide-count .bottom-voice-dot {
     position: absolute;
@@ -468,7 +497,7 @@
   }
 }
 
-@container status-bar (max-width: 324px) {
+@container status-bar (max-width: 360px) {
   .bottom-saved-dot,
   .bottom-saved-full {
     position: absolute;
