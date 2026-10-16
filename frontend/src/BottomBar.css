@@ -4,6 +4,11 @@
   /* A1 / 09 §3.5: status bar + backdrop blur */
   gap: 14px;
   padding: 0 18px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
   height: 30px;
   background: rgba(8, 10, 18, .4);
   backdrop-filter: blur(var(--blur, 18px));
@@ -59,7 +64,7 @@
 }
 
 .bottom-meta {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -72,6 +77,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-muted);
+  /* Basis 0 so a long title takes leftover space and ellipsizes before the word count yields. */
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .bottom-sep {
@@ -86,9 +94,26 @@
 }
 
 .bottom-stats {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  /* min-content is the lead: the tail's min-width is 0, so the count cannot be clipped. */
+  min-width: min-content;
+  overflow: hidden;
   white-space: nowrap;
-  flex-shrink: 0;
   color: var(--text-muted);
+}
+
+.bottom-stats-lead {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.bottom-stats-tail {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bottom-hint {
@@ -96,10 +121,17 @@
 }
 
 .bottom-draft {
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .bottom-draft-badge {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 0.72rem;
@@ -125,7 +157,7 @@
 }
 
 .bottom-daily-goal {
-  flex-shrink: 0;
+  flex: 0 0 auto;
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 0.72rem;
@@ -157,7 +189,10 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-shrink: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
   color: var(--text-muted);
 }
 
@@ -177,18 +212,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .bottom-saved-dot { animation: none; }
-}
-
-/* Prototype status bar (dc.html 4722–4725): Synced chip border, radius, padding. */
-.bottom-synced {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-  border: 1px solid rgba(255, 255, 255, .1);
-  border-radius: 7px;
-  padding: 2px 8px;
-  color: rgb(159, 176, 200); /* prototype #9fb0c8 */
 }
 
 .bottom-voice {

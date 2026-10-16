@@ -7,6 +7,9 @@
  * content-width pins outside this tip's allowlist.
  * FD-9 #15 page-hint margin is not asserted: the margin number is only
  * in DesktopShell pagePrefs, which this allowlist cannot edit.
+ * The status chip is dropped: BottomBar cannot see the real save pipeline
+ * (scene:saved is manual-snapshot only; autosave and its errors stay in
+ * DesktopShell). Layout pins below keep the word count readable.
  */
 import path from 'path';
 import os from 'os';
@@ -126,35 +129,85 @@ test.describe('PLAN-058 Fid-a', () => {
     }
   });
 
-  test('FD-9 #15 Synced chip has border, radius, and padding', async () => {
+  test('FD-9 #15 word count stays readable and clear of the daily-goal chip', async () => {
     // The status bar mounts only in the editor (shell-panels), not on Scene Crafter.
     await clickStoryNav(page);
-    await page.locator('.nav-scene-row').first().click();
+    const sceneRow = page.locator('.nav-scene-row').first();
+    await sceneRow.click();
     await expect(page.locator('.ProseMirror')).toBeVisible({ timeout: 8_000 });
-    for (const w of WIDTHS) {
+    // A long scene title is what crowds the bar. The word-count lead must stay
+    // fully visible anyway; the title is the piece that ellipsizes.
+    await sceneRow.click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Rename scene…' }).click();
+    const prompt = page.locator('.prompt-modal-input');
+    await expect(prompt).toBeVisible({ timeout: 8_000 });
+    const longTitle = 'Midnight market of the drowned lanterns and the cartographer who would not leave';
+    await prompt.fill(longTitle);
+    await page.locator('.prompt-modal-ok').click();
+    await expect(page.locator('.bottom-scene-name')).toHaveText(longTitle, { timeout: 8_000 });
+
+    const measure = () => page.evaluate(() => {
+      const lead = document.querySelector('[data-testid="bottom-stats-lead"]');
+      const bar = document.querySelector('.bottom-bar');
+      const goal = document.querySelector('[data-testid="bottom-daily-goal"]');
+      const voice = document.querySelector('.bottom-voice');
+      if (!lead || !bar) return null;
+      const range = document.createRange();
+      range.selectNodeContents(lead);
+      const leadRect = range.getBoundingClientRect();
+      const barRect = bar.getBoundingClientRect();
+      const goalRect = goal?.getBoundingClientRect() ?? null;
+      const voiceRect = voice?.getBoundingClientRect() ?? null;
+      let clipLeft = -1e9;
+      let clipRight = 1e9;
+      let clipTop = -1e9;
+      let clipBottom = 1e9;
+      let p: HTMLElement | null = lead.parentElement;
+      while (p) {
+        const cs = getComputedStyle(p);
+        const clips = (v: string) => v === 'hidden' || v === 'clip' || v === 'scroll' || v === 'auto';
+        if (clips(cs.overflowX) || clips(cs.overflowY) || clips(cs.overflow)) {
+          const r = p.getBoundingClientRect();
+          clipLeft = Math.max(clipLeft, r.left);
+          clipRight = Math.min(clipRight, r.right);
+          clipTop = Math.max(clipTop, r.top);
+          clipBottom = Math.min(clipBottom, r.bottom);
+        }
+        p = p.parentElement;
+      }
+      const visibleLeft = Math.max(leadRect.left, clipLeft);
+      const visibleRight = Math.min(leadRect.right, clipRight);
+      const overlaps = (a: DOMRect, b: DOMRect) =>
+        a.right > b.left + 0.5 && a.left < b.right - 0.5
+        && a.bottom > b.top + 0.5 && a.top < b.bottom - 0.5;
+      const inside = (rect: DOMRect, host: DOMRect) =>
+        rect.width > 0
+        && rect.left >= host.left - 0.5
+        && rect.right <= host.right + 0.5
+        && rect.top >= host.top - 0.5
+        && rect.bottom <= host.bottom + 0.5;
+      return {
+        text: lead.textContent,
+        leadWidth: leadRect.width,
+        visibleWidth: Math.max(0, visibleRight - visibleLeft),
+        fullyVisible: leadRect.width > 0 && (visibleRight - visibleLeft) >= leadRect.width - 0.5,
+        overlapsGoal: goalRect ? overlaps(leadRect, goalRect) : false,
+        goalPresent: goalRect !== null,
+        voicePresent: voiceRect !== null,
+        voiceInsideBar: voiceRect ? inside(voiceRect, barRect) : true,
+        voiceOverflowsWindow: voiceRect ? voiceRect.right > window.innerWidth + 0.5 : false,
+      };
+    });
+
+    for (const w of [900, 1280] as const) {
       await setContentSize(app!, w, 900);
-      const chip = page.getByTestId('bottom-synced');
-      await expect(chip).toBeVisible();
-      await expect(chip).toHaveText('Synced');
-      const chrome = await chip.evaluate((el) => {
-        const cs = getComputedStyle(el);
-        return {
-          borderTopWidth: cs.borderTopWidth,
-          borderTopStyle: cs.borderTopStyle,
-          radius: cs.borderTopLeftRadius,
-          padTop: cs.paddingTop,
-          padRight: cs.paddingRight,
-          padBottom: cs.paddingBottom,
-          padLeft: cs.paddingLeft,
-        };
-      });
-      expect(chrome.borderTopWidth, `Synced border @${w}`).toBe('1px');
-      expect(chrome.borderTopStyle, `Synced border style @${w}`).toBe('solid');
-      expect(chrome.radius, `Synced radius @${w}`).toBe('7px');
-      expect(chrome.padTop, `Synced pad top @${w}`).toBe('2px');
-      expect(chrome.padRight, `Synced pad right @${w}`).toBe('8px');
-      expect(chrome.padBottom, `Synced pad bottom @${w}`).toBe('2px');
-      expect(chrome.padLeft, `Synced pad left @${w}`).toBe('8px');
+      const box = await measure();
+      expect(box, `status bar measured @${w}`).not.toBeNull();
+      expect(box!.text, `word count copy @${w}`).toMatch(/^\d[\d,]* words · \d[\d,]* characters$/);
+      expect(box!.fullyVisible, `word count truncated @${w} (visible ${box!.visibleWidth} of ${box!.leadWidth})`).toBe(true);
+      expect(box!.overlapsGoal, `word count under the daily-goal chip @${w}`).toBe(false);
+      expect(box!.voiceInsideBar, `voice indicator outside the bar @${w}`).toBe(true);
+      expect(box!.voiceOverflowsWindow, `voice indicator overflows the window @${w}`).toBe(false);
       const shot = path.join(SHOT_DIR, `plan058-fid-b-${w}.png`);
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);

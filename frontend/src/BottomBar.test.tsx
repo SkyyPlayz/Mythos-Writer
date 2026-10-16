@@ -308,17 +308,6 @@ describe('Beta 4 M2 — Saved indicator', () => {
 
 // ─── Beta 4 M2 regression — exactly ONE status bar in the DOM (§4 / GAP #10) ─
 
-describe('PLAN-058 Fid-b — Synced chip', () => {
-  it('renders Synced as its own chip', async () => {
-    await renderBar({});
-    const chip = screen.getByTestId('bottom-synced');
-    expect(chip.textContent).toBe('Synced');
-    expect(chip.classList.contains('bottom-synced')).toBe(true);
-    expect(chip.classList.contains('bottom-daily-goal')).toBe(false);
-    expect(chip.classList.contains('bottom-saved')).toBe(false);
-  });
-});
-
 describe('Beta 4 M2 — single status bar regression', () => {
   it('renders exactly one .bottom-bar and owns the words/characters stats', async () => {
     const { container } = await renderBar({ pageWidthPx: 1000 });

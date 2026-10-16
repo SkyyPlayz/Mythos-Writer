@@ -164,16 +164,21 @@ export default function BottomBar({
               <span className="bottom-scene-name">{selectedScene.title}</span>
             </span>
             <span className="bottom-stats" data-testid="bottom-live-stats">
-              {wordCount.toLocaleString()} words · {charCount.toLocaleString()} characters · {readTime}
-              {currentIndex >= 0 && (
-                <> · Scene {currentIndex + 1} / {allScenes.length}</>
-              )}
-              {/* Beta 4 M2 (§4): page-width hint (prototype 3625) */}
-              {pageWidthPx !== null && (
-                <span className="bottom-page-hint" data-testid="bottom-page-hint">
-                  {' '}· Page {pageWidthPx.toLocaleString()} px — drag page edge to resize
-                </span>
-              )}
+              <span className="bottom-stats-lead" data-testid="bottom-stats-lead">
+                {wordCount.toLocaleString()} words · {charCount.toLocaleString()} characters
+              </span>
+              <span className="bottom-stats-tail">
+                {' · '}{readTime}
+                {currentIndex >= 0 && (
+                  <> · Scene {currentIndex + 1} / {allScenes.length}</>
+                )}
+                {/* Beta 4 M2 (§4): page-width hint (prototype 3625) */}
+                {pageWidthPx !== null && (
+                  <span className="bottom-page-hint" data-testid="bottom-page-hint">
+                    {' '}· Page {pageWidthPx.toLocaleString()} px — drag page edge to resize
+                  </span>
+                )}
+              </span>
             </span>
           </>
         ) : (
@@ -213,9 +218,6 @@ export default function BottomBar({
           {formatSavedAgo(lastSavedAt, nowTick)}
         </span>
       )}
-
-      {/* Prototype status bar (dc.html 4722): Synced chip. Static chrome. */}
-      <span className="bottom-synced" data-testid="bottom-synced">Synced</span>
 
       {isVoiceActive && (
         <div className="bottom-voice" aria-label="Voice input active" role="status">
