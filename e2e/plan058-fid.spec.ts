@@ -7,9 +7,11 @@
  * content-width pins outside this tip's allowlist.
  * FD-9 #15 page-hint margin is not asserted: the margin number is only
  * in DesktopShell pagePrefs, which this allowlist cannot edit.
- * The status chip is dropped: BottomBar cannot see the real save pipeline
- * (scene:saved is manual-snapshot only; autosave and its errors stay in
- * DesktopShell). Layout pins below keep the word count readable.
+ * FD-9 #15 is no ship, chip deferred: BottomBar cannot see the real save
+ * pipeline (scene:saved is manual-snapshot only; autosave and its errors
+ * stay in DesktopShell). Layout pins below keep the word count readable,
+ * including at 900px with a voice-indicator stand-in that uses the real
+ * .bottom-voice rules. This environment cannot start voice input.
  */
 import path from 'path';
 import os from 'os';
@@ -151,32 +153,46 @@ test.describe('PLAN-058 Fid-a', () => {
       const bar = document.querySelector('.bottom-bar');
       const goal = document.querySelector('[data-testid="bottom-daily-goal"]');
       const voice = document.querySelector('.bottom-voice');
-      if (!lead || !bar) return null;
+      if (!lead || !bar || !(bar instanceof HTMLElement)) return null;
       const range = document.createRange();
       range.selectNodeContents(lead);
       const leadRect = range.getBoundingClientRect();
       const barRect = bar.getBoundingClientRect();
       const goalRect = goal?.getBoundingClientRect() ?? null;
       const voiceRect = voice?.getBoundingClientRect() ?? null;
-      let clipLeft = -1e9;
-      let clipRight = 1e9;
-      let clipTop = -1e9;
-      let clipBottom = 1e9;
-      let p: HTMLElement | null = lead.parentElement;
-      while (p) {
-        const cs = getComputedStyle(p);
-        const clips = (v: string) => v === 'hidden' || v === 'clip' || v === 'scroll' || v === 'auto';
-        if (clips(cs.overflowX) || clips(cs.overflowY) || clips(cs.overflow)) {
-          const r = p.getBoundingClientRect();
-          clipLeft = Math.max(clipLeft, r.left);
-          clipRight = Math.min(clipRight, r.right);
-          clipTop = Math.max(clipTop, r.top);
-          clipBottom = Math.min(clipBottom, r.bottom);
+      const clips = (v: string) => v === 'hidden' || v === 'clip' || v === 'scroll' || v === 'auto';
+      const clipOf = (start: Element) => {
+        let clipLeft = -1e9;
+        let clipRight = 1e9;
+        let clipTop = -1e9;
+        let clipBottom = 1e9;
+        let p: HTMLElement | null = start.parentElement;
+        while (p) {
+          const cs = getComputedStyle(p);
+          if (clips(cs.overflowX) || clips(cs.overflowY) || clips(cs.overflow)) {
+            const r = p.getBoundingClientRect();
+            clipLeft = Math.max(clipLeft, r.left);
+            clipRight = Math.min(clipRight, r.right);
+            clipTop = Math.max(clipTop, r.top);
+            clipBottom = Math.min(clipBottom, r.bottom);
+          }
+          p = p.parentElement;
         }
-        p = p.parentElement;
-      }
-      const visibleLeft = Math.max(leadRect.left, clipLeft);
-      const visibleRight = Math.min(leadRect.right, clipRight);
+        return { clipLeft, clipRight, clipTop, clipBottom };
+      };
+      const leadClip = clipOf(lead);
+      const visibleLeft = Math.max(leadRect.left, leadClip.clipLeft);
+      const visibleRight = Math.min(leadRect.right, leadClip.clipRight);
+      const fullyInsideClip = (rect: DOMRect, start: Element) => {
+        const c = clipOf(start);
+        const left = Math.max(rect.left, c.clipLeft);
+        const right = Math.min(rect.right, c.clipRight);
+        const top = Math.max(rect.top, c.clipTop);
+        const bottom = Math.min(rect.bottom, c.clipBottom);
+        return rect.width > 0 && rect.height > 0
+          && (right - left) >= rect.width - 0.5
+          && (bottom - top) >= rect.height - 0.5;
+      };
       const overlaps = (a: DOMRect, b: DOMRect) =>
         a.right > b.left + 0.5 && a.left < b.right - 0.5
         && a.bottom > b.top + 0.5 && a.top < b.bottom - 0.5;
@@ -186,6 +202,21 @@ test.describe('PLAN-058 Fid-a', () => {
         && rect.right <= host.right + 0.5
         && rect.top >= host.top - 0.5
         && rect.bottom <= host.bottom + 0.5;
+      const dot = voice?.querySelector('.bottom-voice-dot') ?? null;
+      const label = voice?.querySelector('.bottom-voice-label') ?? null;
+      const voiceCs = voice ? getComputedStyle(voice) : null;
+      const dotCs = dot ? getComputedStyle(dot) : null;
+      let colorMatchesDanger = false;
+      if (voiceCs && dotCs) {
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--state-danger)';
+        probe.style.position = 'absolute';
+        probe.style.left = '-9999px';
+        document.body.append(probe);
+        const danger = getComputedStyle(probe).color;
+        probe.remove();
+        colorMatchesDanger = danger !== '' && voiceCs.color === danger && dotCs.backgroundColor === danger;
+      }
       return {
         text: lead.textContent,
         leadWidth: leadRect.width,
@@ -193,9 +224,26 @@ test.describe('PLAN-058 Fid-a', () => {
         fullyVisible: leadRect.width > 0 && (visibleRight - visibleLeft) >= leadRect.width - 0.5,
         overlapsGoal: goalRect ? overlaps(leadRect, goalRect) : false,
         goalPresent: goalRect !== null,
+        voiceCount: document.querySelectorAll('.bottom-voice').length,
         voicePresent: voiceRect !== null,
+        voiceTestId: voice?.getAttribute('data-testid') ?? null,
         voiceInsideBar: voiceRect ? inside(voiceRect, barRect) : true,
         voiceOverflowsWindow: voiceRect ? voiceRect.right > window.innerWidth + 0.5 : false,
+        voiceFullyVisible: voice && voiceRect ? fullyInsideClip(voiceRect, voice) : false,
+        barOverflowsWindow: barRect.right > window.innerWidth + 0.5 || barRect.left < -0.5,
+        barScrolls: bar.scrollWidth > bar.clientWidth + 1,
+        voiceClass: voice?.className ?? null,
+        voiceInline: voice?.getAttribute('style') ?? null,
+        dotInline: dot?.getAttribute('style') ?? null,
+        labelInline: label?.getAttribute('style') ?? null,
+        voiceDisplay: voiceCs?.display ?? null,
+        voiceFlexShrink: voiceCs?.flexShrink ?? null,
+        voiceGap: voiceCs?.gap ?? null,
+        voiceFontWeight: voiceCs?.fontWeight ?? null,
+        dotWidth: dotCs?.width ?? null,
+        dotHeight: dotCs?.height ?? null,
+        labelText: label?.textContent ?? null,
+        colorMatchesDanger,
       };
     });
 
@@ -211,6 +259,64 @@ test.describe('PLAN-058 Fid-a', () => {
       const shot = path.join(SHOT_DIR, `plan058-fid-b-${w}.png`);
       await page.screenshot({ path: shot });
       expect(fs.existsSync(shot)).toBe(true);
+    }
+
+    // Voice mounts only after voiceStart succeeds. Stand in the same nodes
+    // the component renders, with no inline sizes, so the real .bottom-voice
+    // rules are what keep the bar inside 900px.
+    await setContentSize(app!, 900, 900);
+    const mounted = await page.evaluate(() => {
+      const bar = document.querySelector('.bottom-bar');
+      if (!bar) return false;
+      document.querySelector('[data-testid="fid-voice-standin"]')?.remove();
+      const voice = document.createElement('div');
+      voice.className = 'bottom-voice';
+      voice.dataset.testid = 'fid-voice-standin';
+      voice.setAttribute('aria-label', 'Voice input active');
+      voice.setAttribute('role', 'status');
+      const dot = document.createElement('span');
+      dot.className = 'bottom-voice-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      const label = document.createElement('span');
+      label.className = 'bottom-voice-label';
+      label.textContent = 'Listening';
+      voice.append(dot, label);
+      bar.append(voice);
+      return voice.getAttribute('style') === null;
+    });
+    expect(mounted, 'voice stand-in mounted').toBe(true);
+    try {
+      const box = await measure();
+      expect(box, 'status bar measured with voice stand-in @900').not.toBeNull();
+      expect(box!.voiceCount, 'voice stand-in missing @900').toBe(1);
+      expect(box!.voicePresent, 'voice stand-in missing @900').toBe(true);
+      expect(box!.voiceTestId).toBe('fid-voice-standin');
+      expect(box!.voiceClass).toBe('bottom-voice');
+      expect(box!.voiceInline, 'stand-in must use stylesheet rules').toBeNull();
+      expect(box!.dotInline, 'stand-in dot must use stylesheet rules').toBeNull();
+      expect(box!.labelInline, 'stand-in label must use stylesheet rules').toBeNull();
+      expect(box!.voiceDisplay).toBe('flex');
+      expect(box!.voiceFlexShrink).toBe('0');
+      expect(box!.voiceGap).toBe('5px');
+      expect(box!.voiceFontWeight).toBe('500');
+      expect(box!.dotWidth).toBe('6px');
+      expect(box!.dotHeight).toBe('6px');
+      expect(box!.labelText).toBe('Listening');
+      expect(box!.colorMatchesDanger, 'voice stand-in missed .bottom-voice color').toBe(true);
+      expect(box!.text, 'word count copy with voice @900').toMatch(/^\d[\d,]* words · \d[\d,]* characters$/);
+      expect(box!.fullyVisible, `word count truncated with voice @900 (visible ${box!.visibleWidth} of ${box!.leadWidth})`).toBe(true);
+      expect(box!.voiceFullyVisible, 'voice stand-in clipped @900').toBe(true);
+      expect(box!.voiceInsideBar, 'voice stand-in outside the bar @900').toBe(true);
+      expect(box!.voiceOverflowsWindow, 'voice stand-in overflows the window @900').toBe(false);
+      expect(box!.barOverflowsWindow, 'status bar overflows the window @900').toBe(false);
+      expect(box!.barScrolls, 'status bar content overflows @900').toBe(false);
+      const shot = path.join(SHOT_DIR, 'plan058-fid-b-900-voice.png');
+      await page.screenshot({ path: shot });
+      expect(fs.existsSync(shot)).toBe(true);
+    } finally {
+      await page.evaluate(() => {
+        document.querySelector('[data-testid="fid-voice-standin"]')?.remove();
+      });
     }
   });
 

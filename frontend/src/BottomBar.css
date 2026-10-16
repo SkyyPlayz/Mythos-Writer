@@ -97,10 +97,11 @@
   display: flex;
   align-items: center;
   flex: 1 1 auto;
-  /* min-content is the lead: the tail's min-width is 0, so the count cannot be clipped. */
+  /* Floor is the lead. The tail's basis is 0, so this min-content does not
+     include the read-time / page hint, and the count stays whole when the
+     voice indicator is also in the bar. */
   min-width: min-content;
   overflow: hidden;
-  white-space: nowrap;
   color: var(--text-muted);
 }
 
@@ -110,6 +111,8 @@
 }
 
 .bottom-stats-tail {
+  flex: 1 1 0;
+  width: 0;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -157,7 +160,11 @@
 }
 
 .bottom-daily-goal {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   padding: 1px 8px;
   border-radius: 999px;
   font-size: 0.72rem;
