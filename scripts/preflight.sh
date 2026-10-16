@@ -48,9 +48,20 @@ npm run typecheck -w electron-main || abort "typecheck (electron-main)"
 pass "Type-check (electron-main)"
 
 # ── 4. Unit tests ────────────────────────────────────────────────────────────
+# Same split as ci.yml `unit` + `oracle-sweeps`. The nested-Downloads
+# region-map file is excluded from the coverage run (it exceeds the 189s
+# per-test budget under v8) and runs uninstrumented via test:oracle-sweeps.
 step "Unit tests (electron-main)"
-npm run test -w electron-main -- --coverage || abort "unit tests (electron-main)"
+npm run test -w electron-main -- --coverage \
+  --exclude 'src/uninstallVaultsNsh.oracleClassSweep.*.test.ts' \
+  --exclude 'src/uninstallVaultsNsh.guardRegionSweep.equiv*.test.ts' \
+  --exclude 'src/uninstallVaultsNsh.hardAC.nestedDownloads.test.ts' \
+  || abort "unit tests (electron-main)"
 pass "Unit tests (electron-main)"
+
+step "Oracle sweeps (electron-main, no coverage)"
+npm run test:oracle-sweeps -w electron-main || abort "oracle-sweeps (electron-main)"
+pass "Oracle sweeps (electron-main)"
 
 step "Unit tests (frontend)"
 npm run test -w frontend -- --coverage || abort "unit tests (frontend)"

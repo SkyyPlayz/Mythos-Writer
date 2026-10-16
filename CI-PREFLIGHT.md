@@ -32,7 +32,7 @@ Runs the exact sequence the `ci` aggregator job requires:
 1. `npm ci` — deterministic install
 2. `npm run lint -w frontend` — ESLint
 3. `npm run typecheck -w frontend` + `npm run typecheck -w electron-main` — TypeScript
-4. `npm run test -w electron-main -- --coverage` + `npm run test -w frontend -- --coverage` — Vitest unit
+4. `npm run test -w electron-main -- --coverage` with the `ci.yml` unit excludes (oracle-class shards, equivalence shards, and `uninstallVaultsNsh.hardAC.nestedDownloads.test.ts`) plus `npm run test:oracle-sweeps -w electron-main` (no coverage), then `npm run test -w frontend -- --coverage` — Vitest unit
 5. `npm run build:electron` — electron-vite production build
 6. All E2E suites across shards 1–4 (under `xvfb-run --auto-servernum` on headless Linux, directly elsewhere — see Prerequisite)
 
