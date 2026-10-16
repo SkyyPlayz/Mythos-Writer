@@ -177,7 +177,10 @@ export default function BottomBar({
             <span className="bottom-status-fallback bottom-status-fallback--title">{sceneTitleText}</span>
             <span className="bottom-stats" data-testid="bottom-live-stats">
               <span className="bottom-stats-lead" data-testid="bottom-stats-lead">
-                {wordCount.toLocaleString()} words · {charCount.toLocaleString()} characters
+                {wordCount.toLocaleString()} words
+              </span>
+              <span className="bottom-stats-chars" data-testid="bottom-stats-chars">
+                {' · '}{charCount.toLocaleString()} characters
               </span>
               <span className="bottom-stats-tail">
                 {' · '}{readTime}
@@ -191,6 +194,9 @@ export default function BottomBar({
                   </span>
                 )}
               </span>
+            </span>
+            <span className="bottom-status-fallback bottom-status-fallback--chars">
+              {charCount.toLocaleString()} characters
             </span>
             <span className="bottom-status-fallback bottom-status-fallback--tail">{tailText}</span>
           </>

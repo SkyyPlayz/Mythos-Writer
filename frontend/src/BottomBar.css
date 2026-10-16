@@ -118,6 +118,11 @@
   white-space: nowrap;
 }
 
+.bottom-stats-chars {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
 .bottom-stats-tail {
   flex: 0 0 auto;
   white-space: nowrap;
@@ -266,12 +271,24 @@
 /*
  * Donor hide order. Measured after Ctrl+S with Listening on (content box, px):
  *   window 900 → 438, 960 → 498, 1024 → 562, 1280 → 818, 1440 → 978.
- *   prev/next 106.5, word count 118.5, Saved just now 90.9, Listening 63.2,
- *   gap 14. Fixed set is 421.1 and fits in the 438px box at 900.
+ *   prev/next 106.5, short word count 118.5, Saved just now 90.9, Listening 63.2,
+ *   gap 14. That short fixed set is 421.1 and fits in the 438px box at 900.
  *   draft badge 82, daily goal 91.6, short title 196.3, stats tail 360.4.
- * Goal and badge need 622.7 with the fixed set, the title as well needs 833,
- * the tail as well needs 1193. Tail leaves first, then the title, then both.
+ * Goal and badge need 622.7 with the short fixed set, the title as well needs 833,
+ * the tail as well needs 1193.
+ * A 22,222-word scene makes the combined count 175.6px ("22,222 words · 66,667
+ * characters"). The fixed set then occupies 478.2px and overflows the 438px box
+ * by 40.2px. Split out, the word count is 71.7px and the character count is
+ * 100.8px. Hiding the character count leaves the fixed set at 374.3px, 63.7px
+ * inside the box. It leaves before the stats tail: the long count is 57px wider
+ * than the short one, so it hides from 1192 + 57 = 1249 downward. Then the tail,
+ * then the title, then goal and badge.
  */
+@container status-bar (max-width: 1249px) {
+  .bottom-stats-chars { display: none; }
+  .bottom-status-fallback--chars { display: block; }
+}
+
 @container status-bar (max-width: 1192px) {
   .bottom-stats-tail { display: none; }
   .bottom-status-fallback--tail { display: block; }

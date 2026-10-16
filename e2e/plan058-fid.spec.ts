@@ -12,8 +12,9 @@
  * stay in DesktopShell). The guards below keep the word count, the
  * "Saved just now" label, "Listening", and prev/next fully visible.
  * Those four never shrink. Donors leave with display:none from container
- * queries, tail then title then the goal and the draft badge, so the flex
- * gap leaves with them. Hidden status is a plain sr-only copy.
+ * queries: character count, then the stats tail, then the title, then the
+ * goal and the draft badge, so the flex gap leaves with them. Hidden status
+ * is a plain sr-only copy.
  */
 import path from 'path';
 import os from 'os';
@@ -374,7 +375,7 @@ test.describe('PLAN-058 Fid-a', () => {
       await setContentSize(app!, w, 900);
       const box = await measure();
       expect(box, `status bar measured @${w}`).not.toBeNull();
-      expect(box!.text, `word count copy @${w}`).toMatch(/^\d[\d,]* words · \d[\d,]* characters$/);
+      expect(box!.text, `word count copy @${w}`).toMatch(/^\d[\d,]* words$/);
       expect(box!.fullyVisible, `word count truncated @${w} (visible ${box!.visibleWidth} of ${box!.leadWidth})`).toBe(true);
       expect(box!.overlapsGoal, `word count under the daily-goal chip @${w}`).toBe(false);
       expect(box!.voiceInsideBar, `voice indicator outside the bar @${w}`).toBe(true);
@@ -398,6 +399,11 @@ test.describe('PLAN-058 Fid-a', () => {
         });
         expect(donors.crumb, 'title hides @900').toBe('none');
         expect(donors.tail, 'stats tail hides @900').toBe('none');
+        const charsDisplay = await page.evaluate(() => {
+          const el = document.querySelector('[data-testid="bottom-stats-chars"]');
+          return el ? getComputedStyle(el).display : null;
+        });
+        expect(charsDisplay, 'character count hides before the tail @900').toBe('none');
         expect(donors.goal, 'daily-goal hides @900').toBe('none');
         if (donors.draft !== null) {
           expect(donors.draft, 'draft badge hides @900').toBe('none');
@@ -432,7 +438,7 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(box!.dotHeight).toBe('6px');
       expect(box!.labelText).toBe('Listening');
       expect(box!.colorMatchesDanger, 'voice stand-in missed .bottom-voice color').toBe(true);
-      expect(box!.text, 'word count copy with voice @900').toMatch(/^\d[\d,]* words · \d[\d,]* characters$/);
+      expect(box!.text, 'word count copy with voice @900').toMatch(/^\d[\d,]* words$/);
       expect(box!.fullyVisible, `word count truncated with voice @900 (visible ${box!.visibleWidth} of ${box!.leadWidth})`).toBe(true);
       expect(box!.voiceFullyVisible, 'voice stand-in clipped @900').toBe(true);
       expect(box!.voiceInsideBar, 'voice stand-in outside the bar @900').toBe(true);
@@ -506,7 +512,7 @@ test.describe('PLAN-058 Fid-a', () => {
       await expect(page.getByTestId('bottom-saved')).toContainText('Saved just now');
       const lead = await textFullyVisible(page, '[data-testid="bottom-stats-lead"]');
       expect(lead, 'word count measured with voice after save @900').not.toBeNull();
-      expect(lead!.text, 'word count copy with voice after save @900').toMatch(/^\d[\d,]* words · \d[\d,]* characters$/);
+      expect(lead!.text, 'word count copy with voice after save @900').toMatch(/^\d[\d,]* words$/);
       expect(lead!.lines, 'word count wrapped after save @900').toBe(1);
       expect(lead!.whiteSpace, 'word count wraps after save @900').toBe('nowrap');
       expect(lead!.full, `word count truncated with voice after save @900 (visible ${lead!.visible} of ${lead!.width})`).toBe(true);
@@ -566,7 +572,7 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(saved!.text, 'save status copy after save @900').toContain('Saved just now');
       expect(saved!.full, `save status clipped after save @900 (visible ${saved!.visible} of ${saved!.width}) ${JSON.stringify(table)}`).toBe(true);
       expect(lead, `word count missing after save @900 ${JSON.stringify(table)}`).not.toBeNull();
-      expect(lead!.text, 'word count copy after save @900').toMatch(/^\d[\d,]* words · \d[\d,]* characters$/);
+      expect(lead!.text, 'word count copy after save @900').toMatch(/^\d[\d,]* words$/);
       expect(lead!.lines, 'word count wrapped after save @900').toBe(1);
       expect(lead!.full, `word count clipped after save @900 (visible ${lead!.visible} of ${lead!.width}) ${JSON.stringify(table)}`).toBe(true);
       expect(voice, `voice stand-in missing after save @900 ${JSON.stringify(table)}`).not.toBeNull();
@@ -637,6 +643,7 @@ test.describe('PLAN-058 Fid-a', () => {
             draft: read('.bottom-draft'),
             title: read('.bottom-breadcrumb'),
             tail: read('.bottom-stats-tail'),
+            chars: read('[data-testid="bottom-stats-chars"]'),
           };
         });
         expect(order.nav?.flexShrink, `prev/next shrinks @${w}`).toBe('0');
@@ -646,6 +653,7 @@ test.describe('PLAN-058 Fid-a', () => {
         expect(order.draft, `badge missing @${w}`).not.toBeNull();
         expect(order.goal!.display, `goal gives way @${w} container ${order.container}`).toBe('none');
         expect(order.draft!.display, `badge gives way @${w} container ${order.container}`).toBe('none');
+        expect(order.chars?.display, `character count leaves before the tail @${w}`).toBe('none');
         expect(order.tail?.display, `tail leaves before the goal @${w}`).toBe('none');
         expect(order.title?.display, `title leaves before the goal @${w}`).toBe('none');
         expect(order.nav!.width, `prev/next has no box @${w}`).toBeGreaterThan(40);
@@ -748,6 +756,158 @@ test.describe('PLAN-058 Fid-a', () => {
         const w = window as Window & { __fidLayoutRestore?: () => void };
         w.__fidLayoutRestore?.();
       });
+    }
+  });
+
+  test('FD-9 #15 long scene counts stay fully inside at 900px with voice after a real save', async () => {
+    test.setTimeout(90_000);
+    await openEditor(page);
+    await renameSceneLong(page);
+    const editor = page.locator('.ProseMirror');
+    await editor.click();
+    // 22,222 × "me " → 22,222 words and 66,666 characters. Both counts are
+    // five digits plus a comma, and the digits are wide (no narrow "1").
+    await page.keyboard.insertText('me '.repeat(22_222));
+    await expect.poll(async () => {
+      const words = await page.getByTestId('bottom-stats-lead').textContent();
+      const chars = await page.getByTestId('bottom-stats-chars').textContent();
+      return `${words ?? ''}|${(chars ?? '').replace(/\s+/g, ' ').trim()}`;
+    }, { timeout: 15_000 }).toMatch(/^\d{2},\d{3} words\|· \d{2},\d{3} characters$/);
+    await saveScene(page);
+    await setContentSize(app!, 900, 900);
+    await mountVoiceStandIn(page);
+    try {
+      await expect(page.getByTestId('bottom-saved')).toContainText('Saved just now');
+      const leadText = (await page.getByTestId('bottom-stats-lead').textContent()) ?? '';
+      const charsText = ((await page.getByTestId('bottom-stats-chars').textContent()) ?? '').replace(/\s+/g, ' ').trim();
+      const wordMatch = leadText.match(/([\d,]+) words/);
+      const charMatch = charsText.match(/([\d,]+) characters/);
+      const words = wordMatch ? Number(wordMatch[1].replace(/,/g, '')) : 0;
+      const chars = charMatch ? Number(charMatch[1].replace(/,/g, '')) : 0;
+      expect(words, `word count must be at least 10,000 (${leadText})`).toBeGreaterThanOrEqual(10_000);
+      expect(chars, `character count must be at least 10,000 (${charsText})`).toBeGreaterThanOrEqual(10_000);
+      expect(leadText, 'word count is five digits with a comma').toMatch(/^\d{2},\d{3} words$/);
+      expect(charsText, 'character count is five digits with a comma').toMatch(/^· \d{2},\d{3} characters$/);
+
+      const table = await page.evaluate(() => {
+        const bar = document.querySelector('.bottom-bar');
+        if (!bar || !(bar instanceof HTMLElement)) return null;
+        const barCs = getComputedStyle(bar);
+        const gap = parseFloat(barCs.columnGap || barCs.gap) || 0;
+        const padL = parseFloat(barCs.paddingLeft) || 0;
+        const padR = parseFloat(barCs.paddingRight) || 0;
+        const row = (sel: string) => {
+          const el = document.querySelector(sel);
+          if (!el) return null;
+          const box = el.getBoundingClientRect();
+          const cs = getComputedStyle(el);
+          return {
+            width: Math.round(box.width * 10) / 10,
+            display: cs.display,
+            flexShrink: cs.flexShrink,
+            copy: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+          };
+        };
+        const charsEl = document.querySelector('[data-testid="bottom-stats-chars"]');
+        let charsIntrinsic = 0;
+        if (charsEl instanceof HTMLElement) {
+          const prev = charsEl.style.display;
+          charsEl.style.display = 'block';
+          charsIntrinsic = Math.round(charsEl.getBoundingClientRect().width * 10) / 10;
+          charsEl.style.display = prev;
+        }
+        const border = Math.round(bar.getBoundingClientRect().width * 10) / 10;
+        const content = Math.round((bar.clientWidth - padL - padR) * 10) / 10;
+        return {
+          bar: border,
+          content,
+          padding: `${padL} + ${padR}`,
+          gap,
+          charsIntrinsic,
+          prev: row('button[title="Previous scene"]'),
+          next: row('button[title="Next scene"]'),
+          nav: row('.bottom-nav'),
+          lead: row('[data-testid="bottom-stats-lead"]'),
+          chars: row('[data-testid="bottom-stats-chars"]'),
+          saved: row('[data-testid="bottom-saved"]'),
+          voice: row('[data-testid="fid-voice-standin"]'),
+          title: row('.bottom-breadcrumb'),
+          tail: row('.bottom-stats-tail'),
+          draft: row('.bottom-draft'),
+          goal: row('[data-testid="bottom-daily-goal"]'),
+        };
+      });
+      expect(table, 'long-scene width table').not.toBeNull();
+      const fixed = [table!.nav, table!.lead, table!.saved, table!.voice];
+      const fixedSum = fixed.reduce((sum, item) => sum + (item?.width ?? 0), 0);
+      const gapCount = fixed.filter((item) => item && item.display !== 'none').length - 1;
+      // The character count sits inside the stats run, so it adds width and no bar gap.
+      const charsWidth = table!.chars && table!.chars.display !== 'none' ? table!.chars.width : 0;
+      const occupied = Math.round((fixedSum + charsWidth + gapCount * table!.gap) * 10) / 10;
+      const overflow = Math.round((occupied - table!.content) * 10) / 10;
+      const report = { ...table, fixedSum: Math.round(fixedSum * 10) / 10, gapCount, occupied, overflow };
+      fs.writeFileSync('/tmp/fid-long-widths.json', JSON.stringify(report, null, 2));
+      test.info().annotations.push({ type: 'long-scene-widths', description: JSON.stringify(report) });
+
+      const prev = await textFullyVisible(page, 'button[title="Previous scene"]');
+      const next = await textFullyVisible(page, 'button[title="Next scene"]');
+      const lead = await textFullyVisible(page, '[data-testid="bottom-stats-lead"]');
+      const saved = await textFullyVisible(page, '[data-testid="bottom-saved"]');
+      const voice = await textFullyVisible(page, '[data-testid="fid-voice-standin"]');
+      expect(prev?.full, `prev clipped on long scene @900 ${JSON.stringify(report)}`).toBe(true);
+      expect(next?.full, `next clipped on long scene @900 ${JSON.stringify(report)}`).toBe(true);
+      expect(lead?.full, `word count clipped on long scene @900 (visible ${lead?.visible} of ${lead?.width}) ${JSON.stringify(report)}`).toBe(true);
+      expect(saved?.full, `save status clipped on long scene @900 (visible ${saved?.visible} of ${saved?.width}) ${JSON.stringify(report)}`).toBe(true);
+      expect(voice?.full, `Listening clipped on long scene @900 (visible ${voice?.visible} of ${voice?.width}) ${JSON.stringify(report)}`).toBe(true);
+      expect(lead?.text, 'long-scene word count copy').toMatch(/^\d{2},\d{3} words$/);
+      expect(saved?.text, 'long-scene save copy').toContain('Saved just now');
+      expect(voice?.text, 'long-scene voice copy').toContain('Listening');
+      expect(overflow, `fixed set overflows the content box by ${overflow}px`).toBeLessThanOrEqual(0);
+      expect(table!.chars?.display, 'character count stays on the long-scene line').toBe('none');
+      const charsFallback = await page.evaluate(() => {
+        const el = document.querySelector('.bottom-status-fallback--chars');
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        return {
+          text: (el.textContent || '').replace(/\s+/g, ' ').trim(),
+          display: cs.display,
+          role: el.getAttribute('role'),
+          live: el.getAttribute('aria-live'),
+        };
+      });
+      expect(charsFallback, 'character-count fallback missing').not.toBeNull();
+      expect(charsFallback!.text, 'character-count fallback copy').toMatch(/^\d{2},\d{3} characters$/);
+      expect(charsFallback!.display, 'character-count fallback hidden while the count is hidden').not.toBe('none');
+      expect(charsFallback!.role, 'character-count fallback is a live region').toBeNull();
+      expect(charsFallback!.live, 'character-count fallback is a live region').toBeNull();
+      const shot = path.join(SHOT_DIR, 'plan058-fid-b-900-long.png');
+      await page.screenshot({ path: shot });
+      expect(fs.existsSync(shot)).toBe(true);
+
+      // Content box between the tail breakpoint (1192) and the character-count
+      // breakpoint (1249): the tail is still on the line, the count is not.
+      await setContentSize(app!, 1680, 900);
+      const order = await page.evaluate(() => {
+        const bar = document.querySelector('.bottom-bar');
+        const read = (sel: string) => {
+          const el = document.querySelector(sel);
+          return el ? getComputedStyle(el).display : null;
+        };
+        const content = bar instanceof HTMLElement
+          ? bar.clientWidth - parseFloat(getComputedStyle(bar).paddingLeft) - parseFloat(getComputedStyle(bar).paddingRight)
+          : null;
+        return {
+          content,
+          chars: read('[data-testid="bottom-stats-chars"]'),
+          tail: read('.bottom-stats-tail'),
+        };
+      });
+      expect(order.content, `order probe content box ${order.content}`).toBeGreaterThan(1192);
+      expect(order.content, `order probe content box ${order.content}`).toBeLessThanOrEqual(1249);
+      expect(order.chars, `character count still showing at content ${order.content}`).toBe('none');
+      expect(order.tail, `stats tail already gone at content ${order.content}`).not.toBe('none');
+    } finally {
+      await removeVoiceStandIn(page);
     }
   });
 });
