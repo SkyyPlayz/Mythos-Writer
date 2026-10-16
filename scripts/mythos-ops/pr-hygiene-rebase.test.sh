@@ -100,7 +100,10 @@ cat > "$FIXTURES" <<'JSON'
   {"number":103,"isDraft":false,"mergeStateStatus":"BEHIND","labels":[]},
   {"number":104,"isDraft":true,"mergeStateStatus":"BEHIND","labels":[]},
   {"number":105,"isDraft":true,"mergeStateStatus":"BEHIND","labels":[{"name":"tip-freeze"},{"name":"docs"}]},
-  {"number":106,"isDraft":true,"mergeStateStatus":"CLEAN","labels":[]}
+  {"number":106,"isDraft":true,"mergeStateStatus":"CLEAN","labels":[]},
+  {"number":108,"isDraft":null,"mergeStateStatus":"BEHIND","labels":[]},
+  {"number":109,"mergeStateStatus":"BEHIND","labels":[]},
+  {"number":110,"isDraft":"","mergeStateStatus":"BEHIND","labels":[]}
 ]
 JSON
 
@@ -245,6 +248,26 @@ if kept_has 106; then
   bad clean-not-candidate "CLEAN PR 106 was rebased"
 else
   ok clean-not-candidate
+fi
+
+# Fail closed: only the exact string "true" is a draft. These three stay
+# red if the gate treats anything other than false as a draft.
+if has_line "skip #108 non-draft" "$LAST_STDOUT" && ! kept_has 108; then
+  ok isDraft-null
+else
+  bad isDraft-null "stdout=$(tr '\n' '|' < "$LAST_STDOUT") kept=$(printf '%s' "$LAST_KEPT" | tr '\n' ',')"
+fi
+
+if has_line "skip #109 non-draft" "$LAST_STDOUT" && ! kept_has 109; then
+  ok isDraft-missing
+else
+  bad isDraft-missing "stdout=$(tr '\n' '|' < "$LAST_STDOUT") kept=$(printf '%s' "$LAST_KEPT" | tr '\n' ',')"
+fi
+
+if has_line "skip #110 non-draft" "$LAST_STDOUT" && ! kept_has 110; then
+  ok isDraft-empty
+else
+  bad isDraft-empty "stdout=$(tr '\n' '|' < "$LAST_STDOUT") kept=$(printf '%s' "$LAST_KEPT" | tr '\n' ',')"
 fi
 
 if grep -F -q 'call pr list' "$LAST_CALLS" && grep -F -q 'call pr view' "$LAST_CALLS" && has_line "skip #103 non-draft" "$LAST_STDOUT"; then

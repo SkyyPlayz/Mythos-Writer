@@ -9,7 +9,6 @@
 # Labels:
 #   tip-freeze — auto-rebase SKIPS these PRs (never churn tip SHA mid-gate)
 #   do-not-merge — auto-rebase SKIPS these PRs
-#   non-drafts — auto-rebase SKIPS these PRs (drafts only)
 #
 # Autofix shadow / coordination: docs/MYTHOS_AUTOFIX.md
 #   MYTHOS_AUTOFIX_MODE, MYTHOS_AUTOFIX_SHADOW_UNTIL
@@ -95,7 +94,7 @@ jobs:
             META=$(gh pr view "$n" --repo "${{ github.repository }}" --json isDraft,labels --jq '{draft:.isDraft,labels:([.labels[].name]|join(","))}')
             DRAFT=$(jq -r '.draft' <<<"$META")
             LABELS=$(jq -r '.labels' <<<"$META")
-            if [ "$DRAFT" = "false" ]; then
+            if [ "$DRAFT" != "true" ]; then
               echo "skip #$n non-draft"
               continue
             fi

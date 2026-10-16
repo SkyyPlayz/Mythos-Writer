@@ -17,10 +17,8 @@ Fail-closed: if any condition is missing or ambiguous, the workflow **does not m
 
 Copilot / CI-fixer agents **never** merge (see `.github/copilot-instructions.md`).
 
-While the bot PAT returns 403, Critic/Shield/Probe verdicts posted in the Mythos room with the tip sha count as official gate evidence. The only trusted approver is still SkyyPlayz (by `user.login`).
-Merge path: Ivy MERGE GO, then Sentinel merges as the bot pinned with `--match-head-commit`; on a 403, Ivy merges with the owner token pinned to the same sha; Skyy never merges.
-`tip-freeze` goes on at the tip-freeze wake, before any verdict.
-No tip-freeze until CI has run on the current head sha (a `GITHUB_TOKEN` rebase starts no CI, so the builder pushes an empty commit first).
+While the bot PAT returns 403, Critic/Shield/Probe verdicts posted in the Mythos room with the tip sha count as official gate evidence. The only trusted approver is still SkyyPlayz (by `user.login`). Merge path: Ivy MERGE GO, then Sentinel merges as the bot pinned with `--match-head-commit`; on a 403, Ivy merges with the owner token pinned to the same sha; Skyy never merges.
+`tip-freeze` goes on at the tip-freeze wake, before any verdict. No tip-freeze until CI has run on the current head sha (a `GITHUB_TOKEN` rebase starts no CI, so the builder pushes an empty commit first).
 
 ## Required conditions (ALL)
 
