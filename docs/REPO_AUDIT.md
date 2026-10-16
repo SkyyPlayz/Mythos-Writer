@@ -335,7 +335,7 @@ Do not commit a surprise 10–20 MB baseline dump without that decision.
 | `.github/workflows/screenshot-check.yml` | PR | **LIVE** advisory/fail on UI PRs without an image. |
 | `.github/workflows/carve-out-check.yml` | PR | **LIVE** advisory (`.github/**`, migrations, secrets). |
 | `.github/workflows/zero-diff-check.yml` | PR | **LIVE** advisory (empty PRs). |
-| `.github/workflows/dependabot-auto-merge.yml` | `pull_request_target` | **LIVE** for Dependabot patch/minor. Review whether `pull_request_target` + write perms is still the desired posture now that the repo is **public**. |
+| `.github/workflows/dependabot-auto-merge.yml` | `pull_request_target` | **Removed 2026-10-16** (LIVE at this 2026-09-16 audit for Dependabot patch/minor). PR #1696 armed native auto-merge onto `main` with no reviews; owner Option A deleted the workflow. Dependabot PRs need a human merge. |
 | `.github/dependabot.yml` | weekly | **LIVE.** |
 | `.github/workflows/issue-finder.yml` | weekly Monday 06:00 + manual | **QUESTIONABLE.** Built to dedupe `auto-found` fuzz issues for the Paperclip/GitHubManager loop. Harmless if it no-ops; disable if it opens junk issues. |
 | `.github/workflows/vr-baselines.yml` | `workflow_dispatch` + push to `claude/ci-github-runners` | **STALE trigger.** The bootstrap push trigger should die. Keep dispatch only if VR is revived. |
@@ -616,7 +616,7 @@ A dedicated hygiene PR is the wrong vehicle — this is a `git push origin --del
 | Sample dedup | `sample-project/` vs `electron-main/resources/samples/` — both are packaged (`extraResources`). Confirm they are not duplicates before merging. |
 | History rewrite / LFS | Only with owner backup + coordinated clone reset. Removes the 118 MB of `pr-screenshots` from `.git`, which a tip-only `git rm` will **not** do. |
 | GitHub settings | Auto-delete head branches; decide whether product releases stay draft; do not touch the handoff draft |
-| Dependabot `pull_request_target` review | Public repo + write token is a classic confused-deputy shape. Keep if still trusted; otherwise drop auto-merge. |
+| Dependabot `pull_request_target` review | Public repo + write token is a classic confused-deputy shape. **Done 2026-10-16:** the auto-merge workflow was removed (owner Option A). |
 
 Out of scope for cleanup but blocking "more app work" quality:
 
@@ -707,7 +707,7 @@ Removes media from clones forever, and **rewrites every SHA**. Breaks every open
 
 - Truncated PAT in `docs/ci-gate-audit-2026-06.md` — assume compromised; rotate. Confirm history with `git log -S 'github_pat_'` only; do not re-quote the token.
 - Hardcoded Paperclip UUIDs in `close-ping.yml` — not GitHub credentials, but they document a retired control plane.
-- `dependabot-auto-merge.yml` on a **public** repo uses `pull_request_target` + `contents: write`. Worth a dedicated security pass, not a drive-by delete.
+- `dependabot-auto-merge.yml` on a **public** repo used `pull_request_target` + `contents: write`. **Removed 2026-10-16** after the PR #1696 incident (owner Option A), not as a drive-by.
 
 No live `sk-ant-api0` / cloud keys were found in tracked source (test fixtures use obvious fakes).
 
