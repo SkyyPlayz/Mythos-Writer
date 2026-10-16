@@ -224,7 +224,7 @@ jobs:
           fi
 
       - name: Test (electron-main)
-        run: npm run test -w electron-main -- ${{ steps.coverage-flag.outputs.flag }} --exclude src/uninstallVaultsNsh.oracleClassSweep.*.test.ts --exclude src/uninstallVaultsNsh.guardRegionSweep.equiv*.test.ts
+        run: npm run test -w electron-main -- ${{ steps.coverage-flag.outputs.flag }} --exclude src/uninstallVaultsNsh.oracleClassSweep.*.test.ts --exclude src/uninstallVaultsNsh.guardRegionSweep.equiv*.test.ts --exclude src/uninstallVaultsNsh.hardAC.nestedDownloads.test.ts
 
       - name: Test (frontend)
         run: npm run test -w frontend -- ${{ steps.coverage-flag.outputs.flag }}
@@ -241,7 +241,7 @@ jobs:
       - name: Upload coverage report
         if: github.event_name != 'pull_request'
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-report
           path: |
@@ -249,13 +249,21 @@ jobs:
             frontend/coverage/
           retention-days: 3
 
-  # PLAN-058 L8 Ivy carve-out: 12k oracle-class survivor walks and equivalence-strength
-  # shards run here in parallel with `unit`, under their own timeout. The required `ci`
-  # aggregator gates this job (skipped also fails).
+  # PLAN-058 L8 Ivy carve-out: 12k oracle-class survivor walks, equivalence-strength
+  # shards, and the HARD-2 nested-Downloads region-map walks run here in parallel
+  # with `unit`. Two vitest shards, each with its own 40-minute cap and its own
+  # temp dir. The required `ci` aggregator needs both shards and fails unless
+  # each one succeeded (a failed, skipped, or missing shard fails `ci`).
+  # Unit excludes this nested-Downloads file and the oracle-class / equivalence shards.
   oracle-sweeps:
+    name: oracle-sweeps (${{ matrix.shard }}/2)
     needs: [setup]
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
 
     steps:
       - uses: actions/checkout@v7
@@ -286,7 +294,15 @@ jobs:
         run: source scripts/ci-retry.sh && retry npm ci
 
       - name: Oracle-class and equivalence-strength sweeps
-        run: npm run test:oracle-sweeps -w electron-main
+        env:
+          # Per-shard temp only. os.tmpdir() and any nsh copies follow TMPDIR,
+          # so this leg never shares temp files with the other shard.
+          TMPDIR: ${{ runner.temp }}/oracle-sweeps-shard-${{ matrix.shard }}
+          TEMP: ${{ runner.temp }}/oracle-sweeps-shard-${{ matrix.shard }}
+          TMP: ${{ runner.temp }}/oracle-sweeps-shard-${{ matrix.shard }}
+        run: |
+          mkdir -p "$TMPDIR"
+          npm run test:oracle-sweeps -w electron-main -- --shard=${{ matrix.shard }}/2
 
   build-electron:
     # SKY-2425: fuzz steps removed from this job — they were causing OOM-induced
@@ -442,7 +458,7 @@ jobs:
 
       - name: Upload visual-capture artifacts
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: visual-capture-artifacts
           path: e2e-visual-artifacts/visual-capture/
@@ -501,7 +517,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-report-shard-1
           # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
@@ -696,7 +712,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-report-shard-2
           # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
@@ -794,7 +810,7 @@ jobs:
       - name: Upload visual-regression diffs on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: visual-regression-diffs
           path: e2e-visual-artifacts/visual-regression/
@@ -873,7 +889,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-report-shard-3
           # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
@@ -1063,7 +1079,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: e2e-report-shard-4
           # SKY-11514: the e2e npm scripts pass --reporter=list,html, which
@@ -1084,6 +1100,8 @@ jobs:
     # Explicit outcome check ensures any failure or skip in upstream jobs → failure here.
     # SKY-8090: e2e shards may be legitimately skipped if the diff cannot affect them
     # (e.g., docs-only changes). Accept 'skipped' as valid for e2e shards only.
+    # oracle-sweeps is a matrix in `needs`. needs.oracle-sweeps.result == success
+    # only when every leg succeeded. skipped, cancelled, and failed are not success.
     needs: [lint, typecheck, unit, oracle-sweeps, paths-filter, e2e-shard-1, e2e-shard-2, e2e-shard-3, e2e-shard-4]
     runs-on: ubuntu-latest
     if: always()
@@ -1092,9 +1110,14 @@ jobs:
     steps:
       - name: All checks passed
         run: |
-          # Stage 1 checks must always succeed
+          # Stage 1 checks must always succeed. For the oracle-sweeps matrix,
+          # needs.oracle-sweeps.result == success only when every leg succeeded.
           stage1="${{ needs.lint.result }} ${{ needs.typecheck.result }} ${{ needs.unit.result }} ${{ needs.oracle-sweeps.result }}"
           echo "Stage 1 (lint/typecheck/unit/oracle-sweeps) results: $stage1"
+          if [ "${{ needs.oracle-sweeps.result }}" != "success" ]; then
+            echo "ERROR: needs.oracle-sweeps.result is '${{ needs.oracle-sweeps.result }}' — expected 'success'. Skipped, cancelled, or failed legs are not success. CI aggregator: FAILED."
+            exit 1
+          fi
           for r in $stage1; do
             if [ "$r" != "success" ]; then
               echo "ERROR: Required Stage 1 job outcome '$r' — expected 'success'. CI aggregator: FAILED."
@@ -1280,7 +1303,7 @@ jobs:
       - name: Upload Linux packages
         if: github.event_name != 'pull_request'
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-packages
           path: |
@@ -1399,7 +1422,7 @@ jobs:
       - name: Upload Windows packages
         if: github.event_name != 'pull_request'
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-packages
           path: |
@@ -1555,7 +1578,7 @@ jobs:
       - name: Upload E2E report on failure
         if: failure()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: notes-windows-e2e-report
           # The e2e npm scripts pass --reporter=list, which replaces the html
