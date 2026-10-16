@@ -16,7 +16,9 @@
  * goal and the draft badge, so the flex gap leaves with them. Below a 900px
  * window "Listening" keeps its mic and the word is sr-only. From content
  * 545px through 720px, wherever the goal is on screen, every count takes
- * the mic and the save label shortens. Split view keeps the full labels
+ * the mic. Saved shortens there only through content 557px, where a
+ * 100,000-word count with the mic and the full label is under 12px on
+ * DejaVu Sans. Above that the full "Saved just now" stays. Split view keeps the full labels
  * above a 900px window. The character count is not in the split bar, and
  * the goal and badge leave through content 748px so a 100,000-word split
  * at 1024px still fits. The split mic covers content through 546px. Saved
@@ -1734,8 +1736,9 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(voice?.text, 'Listening copy missing on 999-word scene @1024').toContain('Listening');
       expect(voice?.full, `Listening clipped on a 999-word scene @1024 (visible ${voice?.visible} of ${voice?.width})`).toBe(true);
       const savedParts = await savedLabel(page);
-      expect(savedParts?.shortDisplay, 'save label stayed full on a 999-word scene @1024').toBe('block');
-      expect(savedParts?.fullPosition, 'full save label still painted on a 999-word scene @1024').toBe('absolute');
+      expect(savedParts?.fullText, 'full save label missing on a 999-word scene @1024').toContain('Saved just now');
+      expect(savedParts?.fullPosition, 'save label shortened on a 999-word scene @1024').toBe('static');
+      expect(savedParts?.shortDisplay, 'short save label showing on a 999-word scene @1024').toBe('none');
       const placed = await contentPlacement(page);
       test.info().annotations.push({ type: 'words-999', description: JSON.stringify(placed) });
       expect(placed!.content, `1024 content box ${placed!.content}`).toBeGreaterThan(545);
@@ -1915,6 +1918,46 @@ test.describe('PLAN-058 Fid-a', () => {
       await removeVoiceStandIn(page);
       await page.keyboard.press('Control+Shift+2');
       await expect(split).toHaveCount(0, { timeout: 8_000 });
+    }
+  });
+
+
+  test('FD-9 #15 a 100,000-word scene keeps Saved just now in the 545–720 band', async () => {
+    test.setTimeout(180_000);
+    await openAddedScene(page, 'Full saved hundred');
+    await ensureSixDigitScene(page);
+    await saveScene(page);
+    await mountVoiceStandIn(page);
+    try {
+      const leadText = (await page.getByTestId('bottom-stats-lead').textContent()) ?? '';
+      expect(leadText, 'full-saved word count').toMatch(/^\d{3},\d{3} words$/);
+      for (const label of ['640', '1024'] as const) {
+        if (label === '640') await setBarContent(app!, page, 640);
+        else await setContentSize(app!, 1024, 900);
+        const content = await barContentWidth(page);
+        expect(content, `${label} content box ${content}`).toBeGreaterThan(557);
+        expect(content, `${label} content box ${content}`).toBeLessThanOrEqual(720);
+        const icon = await listeningIcon(page);
+        expect(icon, `Listening icon missing on 100k full saved @${label}`).not.toBeNull();
+        expect(icon!.iconDisplay, `Listening stays a word on 100k full saved @${label}`).toBe('block');
+        expect(icon!.insideContent, `Listening icon leaves the content box on 100k full saved @${label}`).toBe(true);
+        const savedParts = await savedLabel(page);
+        expect(savedParts?.fullText, `full save label missing on 100k @${label}`).toContain('Saved just now');
+        expect(savedParts?.fullPosition, `save label shortened on 100k @${label}`).toBe('static');
+        expect(savedParts?.shortDisplay, `short save label showing on 100k @${label}`).toBe('none');
+        const placed = await contentPlacement(page);
+        test.info().annotations.push({ type: 'full-saved-band', description: JSON.stringify({ label, content, placed }) });
+        expect(placed!.items.find((item) => item.sel === '[data-testid="bottom-daily-goal"]')?.display, `goal hidden on 100k full saved @${label}`).not.toBe('none');
+        expectInsideContent(placed, `100k full saved @${label}`);
+        expectSpare(placed, `100k full saved @${label}`);
+        const saved = await textFullyVisible(page, '[data-testid="bottom-saved"]');
+        expect(saved?.full, `Saved just now clipped on 100k @${label}`).toBe(true);
+      }
+      const shot = path.join(SHOT_DIR, 'plan058-fid-b-1024-full-saved.png');
+      await page.screenshot({ path: shot });
+      expect(fs.existsSync(shot)).toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
     }
   });
 

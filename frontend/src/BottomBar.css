@@ -319,9 +319,12 @@
  * ends 13.9px inside the padding. Hiding the goal would miss the 1024px
  * window, and the word count does not shrink. The goal returns above 545px.
  * From there through 720px every count, including 999 words, switches
- * Listening to the mic and shortens the save label. That is the normal view.
- * A 1008px window is content 549 and a 1024px window is content 564, so both
- * take the mic while the goal stays.
+ * Listening to the mic. Saved stays the full "Saved just now" wherever that
+ * mic leaves 12px on DejaVu Sans. A 100,000-word count with the mic and the
+ * full label has 1.0px of spare at content 546 and 7.1px at 552, so the label
+ * shortens through 557px. At content 561 the full label has 16.2px. A 1024px
+ * window is content 564 (19.3px on that count, 43.7px at 999 words). A 1008px
+ * window is content 549 and still shortens. The goal stays on through this band.
  * Split view keeps the full labels above a 900px window when they fit.
  * The character count is not in the split bar. The goal and badge then leave
  * through content 748px: a 100,500-word split at content 564 with those two
@@ -437,7 +440,12 @@
   .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-voice-icon {
     display: block;
   }
+}
 
+/* Mic plus the full save label is under 12px on DejaVu Sans for a 100,000-word
+   count through content 557px (1.0px at 546, 7.1px at 552). Above that the
+   full "Saved just now" stays. */
+@container status-bar (min-width: 545px) and (max-width: 557px) {
   .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-saved-dot,
   .bottom-bar:not(:has([data-testid="split-word-counts"])) .bottom-saved-full {
     position: absolute;
