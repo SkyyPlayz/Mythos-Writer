@@ -84,8 +84,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--text-muted);
-  /* Basis 0 so a long title takes leftover space and ellipsizes before the word count yields. */
-  flex: 1 1 0;
+  /* Full text until the bar hides it. Width 0 would keep this item's flex gap. */
+  flex: 0 0 auto;
   min-width: 0;
 }
 
@@ -112,9 +112,8 @@
   display: flex;
   align-items: center;
   flex: 1 1 auto;
-  /* Floor is the lead. The tail's basis is 0, so this min-content does not
-     include the read-time / page hint, and the count stays whole when the
-     save label and voice indicator are also in the bar. */
+  /* Floor is the lead once the tail is display:none. min-content then
+     excludes that tail, and the count stays whole. */
   min-width: min-content;
   overflow: hidden;
   white-space: nowrap;
@@ -126,12 +125,21 @@
 }
 
 .bottom-stats-tail {
-  flex: 1 1 0;
-  width: 0;
-  min-width: 0;
+  flex: 0 0 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A collapsed donor leaves the flex line, so its gap leaves with it. */
+.bottom-donor-collapsed {
+  display: none;
+}
+
+.bottom-bar .sr-only {
+  margin: 0;
+  left: 0;
+  top: 0;
 }
 
 .bottom-hint {
@@ -139,7 +147,7 @@
 }
 
 .bottom-draft {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   overflow: hidden;
 }
@@ -175,7 +183,7 @@
 }
 
 .bottom-daily-goal {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

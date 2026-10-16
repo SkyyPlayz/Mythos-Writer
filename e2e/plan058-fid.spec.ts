@@ -11,7 +11,8 @@
  * pipeline (scene:saved is manual-snapshot only; autosave and its errors
  * stay in DesktopShell). The guards below keep the word count and the
  * "Saved just now" label fully visible, including at 900px with a voice
- * stand-in that uses the real .bottom-voice rules.
+ * stand-in that uses the real .bottom-voice rules. Donors that do not fit
+ * are display:none, so the flex gap leaves with them. Prev/next is unchanged.
  */
 import path from 'path';
 import os from 'os';
@@ -87,6 +88,9 @@ async function mountVoiceStandIn(page: Page): Promise<void> {
     return voice.getAttribute('style') === null;
   });
   expect(mounted, 'voice stand-in mounted').toBe(true);
+  await page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve(undefined)));
+  }));
 }
 
 async function removeVoiceStandIn(page: Page): Promise<void> {
@@ -390,26 +394,7 @@ test.describe('PLAN-058 Fid-a', () => {
     // the component renders, with no inline sizes, so the real .bottom-voice
     // rules are what keep the bar inside 900px.
     await setContentSize(app!, 900, 900);
-    const mounted = await page.evaluate(() => {
-      const bar = document.querySelector('.bottom-bar');
-      if (!bar) return false;
-      document.querySelector('[data-testid="fid-voice-standin"]')?.remove();
-      const voice = document.createElement('div');
-      voice.className = 'bottom-voice';
-      voice.dataset.testid = 'fid-voice-standin';
-      voice.setAttribute('aria-label', 'Voice input active');
-      voice.setAttribute('role', 'status');
-      const dot = document.createElement('span');
-      dot.className = 'bottom-voice-dot';
-      dot.setAttribute('aria-hidden', 'true');
-      const label = document.createElement('span');
-      label.className = 'bottom-voice-label';
-      label.textContent = 'Listening';
-      voice.append(dot, label);
-      bar.append(voice);
-      return voice.getAttribute('style') === null;
-    });
-    expect(mounted, 'voice stand-in mounted').toBe(true);
+    await mountVoiceStandIn(page);
     try {
       const box = await measure();
       expect(box, 'status bar measured with voice stand-in @900').not.toBeNull();
@@ -499,6 +484,66 @@ test.describe('PLAN-058 Fid-a', () => {
       expect(lead!.text, 'word count copy with voice after save @900').toMatch(/^\d[\d,]* words · \d[\d,]* characters$/);
       expect(lead!.lines, 'word count wrapped after save @900').toBe(1);
       expect(lead!.full, `word count truncated with voice after save @900 (visible ${lead!.visible} of ${lead!.width})`).toBe(true);
+    } finally {
+      await removeVoiceStandIn(page);
+    }
+  });
+
+  test('FD-9 #15 Listening, word count, and save status are fully inside the bar at 900px after a real save', async () => {
+    await openEditor(page);
+    await renameSceneLong(page);
+    const editor = page.locator('.ProseMirror');
+    await editor.click();
+    await editor.type('kept whole');
+    await saveScene(page);
+    await setContentSize(app!, 900, 900);
+    await mountVoiceStandIn(page);
+    try {
+      await expect(page.getByTestId('bottom-saved')).toContainText('Saved just now');
+      await expect.poll(async () => {
+        const text = await page.getByTestId('bottom-stats-lead').textContent();
+        const match = text?.match(/(\d[\d,]*) words/);
+        return match ? Number(match[1].replace(/,/g, '')) : 0;
+      }, { timeout: 3_000 }).toBeGreaterThan(0);
+      const saved = await textFullyVisible(page, '[data-testid="bottom-saved"]');
+      const lead = await textFullyVisible(page, '[data-testid="bottom-stats-lead"]');
+      const voice = await textFullyVisible(page, '[data-testid="fid-voice-standin"]');
+      const table = await page.evaluate(() => {
+        const bar = document.querySelector('.bottom-bar');
+        const row = (sel: string) => {
+          const el = document.querySelector(sel);
+          if (!el) return null;
+          const box = el.getBoundingClientRect();
+          const cs = getComputedStyle(el);
+          return {
+            box: Math.round(box.width * 10) / 10,
+            display: cs.display,
+            copy: (el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 80),
+          };
+        };
+        return {
+          bar: bar ? Math.round(bar.getBoundingClientRect().width * 10) / 10 : null,
+          nav: row('.bottom-nav'),
+          title: row('.bottom-breadcrumb'),
+          lead: row('[data-testid="bottom-stats-lead"]'),
+          tail: row('.bottom-stats-tail'),
+          draft: row('.bottom-draft'),
+          goal: row('[data-testid="bottom-daily-goal"]'),
+          saved: row('[data-testid="bottom-saved"]'),
+          voice: row('[data-testid="fid-voice-standin"]'),
+        };
+      });
+      expect(saved, `save status missing after save @900 ${JSON.stringify(table)}`).not.toBeNull();
+      expect(saved!.text, 'save status copy after save @900').toContain('Saved just now');
+      expect(saved!.full, `save status clipped after save @900 (visible ${saved!.visible} of ${saved!.width}) ${JSON.stringify(table)}`).toBe(true);
+      expect(lead, `word count missing after save @900 ${JSON.stringify(table)}`).not.toBeNull();
+      expect(lead!.text, 'word count copy after save @900').toMatch(/^\d[\d,]* words · \d[\d,]* characters$/);
+      expect(lead!.lines, 'word count wrapped after save @900').toBe(1);
+      expect(lead!.full, `word count clipped after save @900 (visible ${lead!.visible} of ${lead!.width}) ${JSON.stringify(table)}`).toBe(true);
+      expect(voice, `voice stand-in missing after save @900 ${JSON.stringify(table)}`).not.toBeNull();
+      expect(voice!.text, 'voice stand-in copy after save @900').toContain('Listening');
+      expect(voice!.full, `voice stand-in clipped after save @900 (visible ${voice!.visible} of ${voice!.width}) ${JSON.stringify(table)}`).toBe(true);
+      test.info().annotations.push({ type: 'widths', description: JSON.stringify(table) });
     } finally {
       await removeVoiceStandIn(page);
     }
