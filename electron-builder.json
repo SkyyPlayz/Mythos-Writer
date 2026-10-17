@@ -84,17 +84,7 @@
     ],
     "icon": "build/icon.ico",
     "artifactName": "${productName}-${version}.${ext}",
-    "signAndEditExecutable": true,
-    "azureSignOptions": {
-      "publisherName": "SKY HIGH INFINITE TECHWORK LLC",
-      "endpoint": "https://wus2.codesigning.azure.net/",
-      "codeSigningAccountName": "mythos-signing",
-      "certificateProfileName": "mythos-public",
-      "timestampRfc3161": "http://timestamp.acs.microsoft.com",
-      "timestampDigest": "SHA256",
-      "fileDigest": "SHA256",
-      "ExcludeEnvironmentCredential": "-Debug"
-    }
+    "signAndEditExecutable": true
   },
   "nsis": {
     "oneClick": false,

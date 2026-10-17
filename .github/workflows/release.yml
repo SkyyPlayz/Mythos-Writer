@@ -91,7 +91,11 @@ jobs:
   #
   # PLAN-SIGN: the installer, app exe and (embedded) uninstaller are signed with
   # Azure Artifact Signing (electron-builder `win.azureSignOptions`) using GitHub
-  # OIDC — no client secret anywhere. Step order is load-bearing (plan §Design):
+  # OIDC — no client secret anywhere. The signing options live ONLY in
+  # electron-builder.release.json5 (loaded by this job via --config); the shared
+  # electron-builder.json that ci.yml and the local npm scripts use has none, so
+  # every other packaging path stays unsigned with no Azure login.
+  # Step order is load-bearing (plan §Design):
   #   checkout github.sha → gate → module pin → npm ci (no cache) → electron-vite
   #   build → azure/login → electron-builder → S-1 module check → verify → hash →
   #   az logout (always) → upload.
@@ -192,9 +196,10 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      # `--config electron-builder.release.json5` is the only place signing is switched on.
       - name: Build Windows artifacts — stable channel (NSIS + ZIP)
         if: needs.determine-release.outputs.is-beta == 'false'
-        run: npx electron-builder --win --publish never
+        run: npx electron-builder --win --publish never --config electron-builder.release.json5
         env:
           # electron-builder requires AZURE_CLIENT_SECRET even for OIDC (electron-builder #9623, #8803).
           # Literal, obviously fake, NOT a secret. FOLLOWUP: drop when upstream fixes #9623.
@@ -206,7 +211,7 @@ jobs:
         if: needs.determine-release.outputs.is-beta == 'true'
         # releaseType=prerelease: bakes correct value into app-update.yml so the updater
         # searches GitHub pre-releases (where beta cuts land) via the beta.yml feed.
-        run: npx electron-builder --win --publish never --config.publish.channel=beta --config.publish.releaseType=prerelease
+        run: npx electron-builder --win --publish never --config electron-builder.release.json5 --config.publish.channel=beta --config.publish.releaseType=prerelease
         env:
           # electron-builder requires AZURE_CLIENT_SECRET even for OIDC (electron-builder #9623, #8803).
           # Literal, obviously fake, NOT a secret. FOLLOWUP: drop when upstream fixes #9623.

@@ -1,0 +1,20 @@
+// Release-only electron-builder config (PLAN-SIGN). Loaded ONLY by the gated
+// build-windows job in .github/workflows/release.yml via
+// `--config electron-builder.release.json5`. Everything else (ci.yml, the local
+// `npm run build|build:installer|dist` scripts) uses electron-builder.json and
+// packages unsigned, with no Azure login and no signing attempt.
+{
+  extends: './electron-builder.json',
+  win: {
+    azureSignOptions: {
+      publisherName: 'SKY HIGH INFINITE TECHWORK LLC',
+      endpoint: 'https://wus2.codesigning.azure.net/',
+      codeSigningAccountName: 'mythos-signing',
+      certificateProfileName: 'mythos-public',
+      timestampRfc3161: 'http://timestamp.acs.microsoft.com',
+      timestampDigest: 'SHA256',
+      fileDigest: 'SHA256',
+      ExcludeEnvironmentCredential: '-Debug',
+    },
+  },
+}
