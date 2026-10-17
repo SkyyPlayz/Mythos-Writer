@@ -335,7 +335,7 @@ function tipWindowInstruction(currentAvg, priorAvg) {
     return [
       "**Soft OK tip window:** CURRENT and PRIOR `gate_avg_proxy` both **> 1.5**.",
       "Set repo var `MYTHOS_TIP_FIX_WINDOW_MINUTES=10` (idempotent if already 10).",
-      "Requires vars:write (`MYTHOS_BOT_TOKEN` / admin). If unsettable from Actions, Ivy sets it in UI.",
+      "Requires vars:write (admin). If unsettable from Actions, Ivy sets it in UI.",
       "Forge/agents MUST read this var for the tip-freeze emergency single-fix window.",
     ].join(" ");
   }

@@ -7,10 +7,10 @@ them. Actions does not.
 `mythos-gate-auto-merge`) was removed. It still had live triggers
 (`workflow_run` when CI completed successfully, `issue_comment`,
 `pull_request_review`, and `pull_request` labeled / unlabeled /
-ready_for_review / synchronize) and read the repo secret `MYTHOS_BOT_TOKEN`,
-falling back to `GITHUB_TOKEN`. A working token would have revived auto-merge
-with no GitHub review. Skyy approved the removal. The secret is left in the
-repo; deleting it is a separate owner-only step.
+ready_for_review / synchronize) and read the repo bot PAT, falling back to
+`GITHUB_TOKEN`. A working PAT would have revived auto-merge with no GitHub
+review. Skyy approved the removal. The repo secret is left in place; deleting
+it is a separate owner-only step.
 
 Fail-closed: if any condition below is missing or ambiguous, do not merge.
 
@@ -19,7 +19,7 @@ Fail-closed: if any condition below is missing or ambiguous, do not merge.
 | Path | Merger |
 | --- | --- |
 | Routine product/docs PRs | Human. The Mythos gate auto-merge workflow was removed. |
-| VR baseline refresh PRs (`vr-baselines.yml`) | Human. That workflow still opens a PR to **`main` only** and does not merge it. It no longer lands through the removed auto-merge workflow. |
+| VR baseline refresh (`vr-baselines.yml`) | No PR. The step that opened one required the dead bot PAT and was removed. The workflow still regenerates baselines and uploads the `vr-baselines` artifact. |
 | Dependabot (any update) | Human merge. `.github/workflows/dependabot-auto-merge.yml` was removed after PR #1696 (`abceeae7`) armed native auto-merge and landed on `main` with no reviews and no CI on `main` (owner Option A, 2026-10-16). |
 | Carve-out paths | Human **only** after owner tip-bound `CARVE-OUT APPROVE` |
 | Releases | [`release.yml`](../.github/workflows/release.yml) — draft only unless owner publishes |
@@ -55,10 +55,9 @@ triggers that merge.
 
 ## Tokens
 
-Removal note: the deleted workflow read repo secret `MYTHOS_BOT_TOKEN`
-(SkyHigh-Mythos-Bot PAT with Contents + Pull requests write) and, when that
-secret was empty, `GITHUB_TOKEN`. That read is gone. This change does not
-delete the secret.
+Removal note: the deleted workflow read the repo bot PAT (SkyHigh-Mythos-Bot,
+Contents + Pull requests write) and, when that secret was empty, `GITHUB_TOKEN`.
+That read is gone. This change does not delete the secret.
 
 ## Idempotency
 
