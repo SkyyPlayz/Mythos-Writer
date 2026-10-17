@@ -72,7 +72,8 @@ export interface TimelineTreeSidebarProps {
   store: TimelinesStore;
   onSelect: (timelineId: string) => void;
   onNewTimeline: () => void;
-  onEditCalendar: () => void;
+  /** Opens the calendar editor for the given timeline (right-click row) or active timeline (footer). */
+  onEditCalendar: (timelineId: string) => void;
   /** Optional story-focus section (books / plotlines) — same sidebar, not a second one. */
   focusSection?: React.ReactNode;
 }
@@ -162,7 +163,11 @@ export default function TimelineTreeSidebar({
                 type="button"
                 className="tlpicker__tree-pick"
                 onClick={() => onSelect(t.id)}
-                title={isRoot ? 'Standard for everything inside it' : `Open ${t.name}`}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  onEditCalendar(t.id);
+                }}
+                title={isRoot ? 'Standard for everything inside it' : `Open ${t.name} · right-click to edit calendar`}
               >
                 <span className="tlpicker__item-icon" aria-hidden="true">{KIND_ICONS[t.kind]}</span>
                 <span className="tlpicker__tree-name">{t.name}</span>
@@ -188,7 +193,7 @@ export default function TimelineTreeSidebar({
       <button
         type="button"
         className="tlpicker__action tlpicker__edit-calendar"
-        onClick={onEditCalendar}
+        onClick={() => active && onEditCalendar(active.id)}
         data-testid="timeline-edit-calendar"
       >
         <Settings2 size={13} aria-hidden="true" />

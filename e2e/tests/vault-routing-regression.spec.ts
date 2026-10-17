@@ -32,6 +32,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -294,7 +295,7 @@ test.describe('populated vaults: routing regression', () => {
 
     // M3 instant-create: no prompt — story appears immediately as
     // "Untitled Story" (single story in this vault, so match positionally).
-    await page.locator('.lr-nav-add').first().click();
+    await createStoryFromNavAdd(page);
 
     const storyRow = page.locator('.nav-story-row').first();
     await expect(storyRow).toBeVisible({ timeout: 8_000 });

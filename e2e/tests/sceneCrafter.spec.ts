@@ -48,6 +48,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 import { noteTestId } from '../helpers/notesPanel';
 import { clickStoryNav } from '../helpers/navGuard';
 import { installDraftStreamMock, generateMockDraft } from '../helpers/draftStreamMock';
@@ -134,6 +135,7 @@ async function createStory(pg: Page): Promise<number> {
   const before = await pg.locator('.nav-story-row').count();
   await pg.locator('.wc-menu', { hasText: 'File' }).click();
   await pg.locator('.wc-menu-item', { hasText: 'New story' }).click();
+  await confirmNewStoryModalIfOpen(pg);
   await expect(pg.locator('.nav-story-row').nth(before)).toBeVisible({ timeout: 8_000 });
   return before; // index of the newly created row
 }

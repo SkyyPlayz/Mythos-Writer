@@ -7,6 +7,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 import { clickStoryNav } from './helpers/navGuard';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
@@ -51,7 +52,7 @@ async function openScene(page: Page): Promise<void> {
 
   const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
   if (await storiesTab.isVisible()) await storiesTab.click();
-  await page.locator('.lr-nav-add').first().click();
+  await createStoryFromNavAdd(page);
   await page.locator('.nav-scene-row').first().click();
 
   await expect(page.locator('.tiptap-editor-wrap .ProseMirror')).toBeVisible({ timeout: 10_000 });

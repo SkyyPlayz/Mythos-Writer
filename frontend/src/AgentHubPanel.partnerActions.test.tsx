@@ -85,7 +85,7 @@ describe('AgentHubPanel — F3#1 / H1 in-thread partner actions', () => {
     __resetAiEnabledForTests();
   });
 
-  it('Update Timeline posts a card into the partner thread', async () => {
+  it('Notes→timeline posts a card into the partner thread', async () => {
     const timelineRebuild = vi.fn().mockResolvedValue({
       ok: true,
       report: { eventsAdded: 2, eventsUpdated: 1, eventsRemoved: 0, scenesRead: 3, missingSceneIds: [] },
@@ -95,12 +95,12 @@ describe('AgentHubPanel — F3#1 / H1 in-thread partner actions', () => {
       timelineRebuild,
     };
     render(<AgentHubPanel scene={null} story={makeStory()} />);
-    fireEvent.click(await screen.findByTestId('ahp-action-update-timeline'));
+    fireEvent.click(await screen.findByTestId('ahp-action-notes-to-timeline'));
     await waitFor(() => expect(timelineRebuild).toHaveBeenCalled());
     await waitFor(() => {
       const store = getAgentSessionStore(PARTNER_SESSION_AGENT);
       const turns = store.getSnapshot().activeSession?.turns ?? [];
-      expect(turns.some((t) => t.cardTitle === 'Update Timeline' || t.text.includes('Added 2'))).toBe(true);
+      expect(turns.some((t) => t.cardTitle === 'Notes→timeline' || t.text.includes('Added 2'))).toBe(true);
     });
   });
 
@@ -130,22 +130,20 @@ describe('AgentHubPanel — F3#1 / H1 in-thread partner actions', () => {
     });
   });
 
-  it('Writer Scan posts tip text into the partner thread (chat stays mounted)', async () => {
-    const writingAssistantScanNow = vi.fn().mockResolvedValue({
-      tips: [{ text: 'Tighten the opening beat.' }],
-    });
+  it('Continuity quick command posts into the partner thread (chat stays mounted)', async () => {
+    const archiveScanContinuity = vi.fn().mockResolvedValue({ ok: true });
     (window as unknown as { api: Record<string, unknown> }).api = {
       ...(window as unknown as { api: Record<string, unknown> }).api,
-      writingAssistantScanNow,
+      archiveScanContinuity,
+      jobs: { enqueue: vi.fn().mockResolvedValue({ ok: true }) },
     };
     render(<AgentHubPanel scene={makeScene()} story={makeStory()} />);
     expect(screen.getByTestId('ahp-partner-thread')).toBeInTheDocument();
-    fireEvent.click(await screen.findByTestId('ahp-action-writer-scan'));
-    await waitFor(() => expect(writingAssistantScanNow).toHaveBeenCalled());
-    // Partner chat remains — tips strip is additive, not a coach-thread swap.
+    fireEvent.click(await screen.findByTestId('ahp-action-continuity'));
+    await waitFor(() => expect(archiveScanContinuity).toHaveBeenCalled());
     expect(screen.getByTestId('ahp-partner-thread')).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByText(/Tighten the opening beat/)).toBeInTheDocument();
+      expect(screen.getByText(/Continuity scan started/)).toBeInTheDocument();
     });
   });
 });

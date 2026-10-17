@@ -8,6 +8,7 @@ import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { clickStoryNav } from './helpers/navGuard';
+import { confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const OUT_DIR = path.resolve(__dirname, '../pr-screenshots/sky-10511-scene-crafter');
@@ -53,6 +54,7 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
 async function createAndSelectStory(page: Page): Promise<void> {
   await page.locator('.wc-menu', { hasText: 'File' }).click();
   await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
+  await confirmNewStoryModalIfOpen(page);
   const row = page.locator('.nav-story-row').first();
   await expect(row).toBeVisible({ timeout: 8_000 });
   await page.locator('.nav-story-title').first().click();

@@ -149,7 +149,7 @@ test('SKY-10620: AI off — Story Assist button is gone from the manuscript tool
   }
 });
 
-test('SKY-10620: AI on (control) — Story Assist button renders and opens Brainstorm', async () => {
+test('PLAN-058 L5: Story Assist toolbar control removed even when AI is on', async () => {
   const fixture = createFixture(true);
   let app: ElectronApplication | undefined;
   try {
@@ -159,14 +159,7 @@ test('SKY-10620: AI on (control) — Story Assist button renders and opens Brain
 
     await openScene(page);
 
-    const btn = page.locator('[data-testid="story-assist-btn"]');
-    await expect(btn).toBeVisible();
-    await btn.click();
-
-    // Lands on Brainstorm with the scene-seeded prompt pre-filled.
-    const input = page.locator('.brainstorm-input');
-    await expect(input).toBeVisible({ timeout: 10_000 });
-    await expect(input).toHaveValue(new RegExp(`Story Assist: help me develop the scene "${SCENE_TITLE}"`));
+    await expect(page.locator('[data-testid="story-assist-btn"]')).toHaveCount(0);
   } finally {
     await closeApp(app);
     cleanupFixture(fixture);

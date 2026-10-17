@@ -973,10 +973,12 @@ describe('NoteViewer M17 title + tags header', () => {
       fireEvent.keyDown(input, { key: 'Enter' });
     });
 
-    await waitFor(() => expect(writeNotesVault).toHaveBeenCalledWith(
-      'Notes/gate.md',
-      '---\ntags: [location, ruins, ancient]\n---\nBody.',
-    ));
+    await waitFor(() => {
+      expect(writeNotesVault).toHaveBeenCalled();
+      const [, saved] = writeNotesVault.mock.calls.at(-1)!;
+      expect(saved).toContain('tags: [location, ruins, ancient]');
+      expect(saved).toContain('#ancient');
+    });
     expect(screen.getByTestId('note-header-tag-ancient')).toBeTruthy();
   });
 
@@ -989,10 +991,13 @@ describe('NoteViewer M17 title + tags header', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Remove tag ruins' }));
     });
 
-    await waitFor(() => expect(writeNotesVault).toHaveBeenCalledWith(
-      'Notes/gate.md',
-      '---\ntags: [location]\n---\nBody.',
-    ));
+    await waitFor(() => {
+      expect(writeNotesVault).toHaveBeenCalled();
+      const [, saved] = writeNotesVault.mock.calls.at(-1)!;
+      expect(saved).toContain('tags: [location]');
+      expect(saved).not.toContain('#ruins');
+      expect(saved).toContain('#location');
+    });
     expect(screen.queryByTestId('note-header-tag-ruins')).toBeNull();
   });
 

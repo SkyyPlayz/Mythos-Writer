@@ -115,6 +115,8 @@ export interface TimelineEvent {
   location?: string;
   /** Impact tags, comma-separated; rendered as chips in the static view. */
   impact?: string;
+  /** PLAN-058 L4 (FD-5): vault-relative notes path linked to this event. */
+  linkedNotePath?: string;
 }
 
 export interface TimelineDefinition {

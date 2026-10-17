@@ -18,6 +18,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const NOW = '2026-10-01T00:00:00.000Z';
@@ -181,6 +182,7 @@ test('Ivy R6: park on bad-key, fix key, Close completes switch to First (Probe r
     } else {
       await page.getByRole('button', { name: /^New Story$/i }).first().click();
     }
+    await confirmNewStoryModalIfOpen(page);
 
     await expect.poll(() => {
       const storiesDir = path.join(firstStory, 'stories');

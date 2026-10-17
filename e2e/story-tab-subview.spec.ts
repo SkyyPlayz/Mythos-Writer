@@ -23,6 +23,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { clickStoryNav } from './helpers/navGuard';
+import { confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -218,6 +219,7 @@ async function ensureStoryManuscript(p: Page): Promise<void> {
   if (await p.getByTestId('msv-toolbar').isVisible({ timeout: 1_500 }).catch(() => false)) return;
   await p.locator('.wc-menu', { hasText: 'File' }).click();
   await p.locator('.wc-menu-item', { hasText: 'New story' }).click();
+  await confirmNewStoryModalIfOpen(p);
   await expect(p.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
   await p.locator('.nav-story-title').first().click();
   await p.keyboard.press('Escape').catch(() => {});
@@ -273,6 +275,7 @@ test('F1#9: + Chapter via in-app modal keeps order across reload', async () => {
       await expect(p.locator('.app-menu-bar')).toBeVisible({ timeout: 15_000 });
       await p.locator('.wc-menu', { hasText: 'File' }).click();
       await p.locator('.wc-menu-item', { hasText: 'New story' }).click();
+      await confirmNewStoryModalIfOpen(p);
       await expect(p.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
       await p.locator('.nav-story-title').first().click();
       await p.keyboard.press('Escape').catch(() => {});

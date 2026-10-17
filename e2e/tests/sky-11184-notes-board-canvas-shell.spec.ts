@@ -37,6 +37,7 @@
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
+import { confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 import {
   test,
   expect,
@@ -513,6 +514,7 @@ test('F1#5: boards nav width drag persists across SAME userData relaunch', async
       await page.setViewportSize({ width: 1440, height: 900 });
       await page.locator('.wc-menu', { hasText: 'File' }).click();
       await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
+      await confirmNewStoryModalIfOpen(page);
       await page.locator('.nav-story-title').first().click().catch(() => {});
       await page.locator('nav[aria-label="Main navigation"] button[aria-label="Boards"]').click();
       const resize = page.getByTestId('boards-nav-resize');

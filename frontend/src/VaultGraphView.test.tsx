@@ -803,15 +803,40 @@ describe('VaultGraphView M21 vault graph v2', () => {
       fireEvent.mouseDown(avaNode, { button: 0, clientX: 100, clientY: 100 });
       fireEvent.mouseMove(window, { clientX: 700, clientY: 400 });
       fireEvent.mouseUp(window);
-      fireEvent.click(avaNode); // browser fires a click right after mouseup
-      fireEvent.doubleClick(avaNode); // a trailing dblclick is swallowed too
+      fireEvent.click(avaNode);
+      fireEvent.doubleClick(avaNode);
     });
     expect(onOpenNote).not.toHaveBeenCalled();
 
     // After the trailing-click window closes, a double-click opens the note
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 60)); });
     await act(async () => { fireEvent.doubleClick(avaNode); });
     expect(onOpenNote).toHaveBeenCalledWith('Characters/Ava.md');
+  });
+
+  it('H2: slow drag (>50ms before mouseup) still swallows trailing dblclick', async () => {
+    const onOpenNote = vi.fn();
+    render(<VaultGraphView onOpenNote={onOpenNote} />);
+
+    const avaNode = await screen.findByRole('button', { name: /select note Ava/i });
+
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        fireEvent.mouseDown(avaNode, { button: 0, clientX: 100, clientY: 100 });
+        fireEvent.mouseMove(window, { clientX: 700, clientY: 400 });
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120);
+      });
+      await act(async () => {
+        fireEvent.mouseUp(window);
+        fireEvent.doubleClick(avaNode);
+      });
+      expect(onOpenNote).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('selecting a node opens the inspector with title, category, blurb, and clickable connections', async () => {
@@ -1157,6 +1182,11 @@ describe('deriveNodeBlurb (M26)', () => {
   it('returns null for empty or prose-free content', () => {
     expect(deriveNodeBlurb('')).toBeNull();
     expect(deriveNodeBlurb('# Heading only\n\n- list\n')).toBeNull();
+  });
+
+  it('PLAN-058 L6 (24:01): inline #character hashtag is not the graph blurb', () => {
+    const content = '#character\n\nAva walks the undercity.';
+    expect(deriveNodeBlurb(content)).toBe('Ava walks the undercity.');
   });
 
   it('kanban notes: the trailing %% kanban:settings %% block never leaks into the blurb', () => {

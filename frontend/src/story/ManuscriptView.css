@@ -923,6 +923,32 @@
   border-bottom-style: solid;
 }
 
+/* FD-1: live [[wiki-links]] in manuscript (slot B — center/wiki-links). */
+.msv-wl-link {
+  display: inline;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--n2, #9b5fff);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: rgba(155, 95, 255, 0.45);
+  text-underline-offset: 2px;
+}
+
+.msv-wl-link:hover,
+.msv-wl-link:focus-visible {
+  color: #c4a8ff;
+  text-decoration-color: rgba(196, 168, 255, 0.8);
+}
+
+.msv-wl-link--unresolved {
+  color: var(--text-muted);
+  text-decoration-style: dashed;
+}
+
 /* ── SKY-11357: manuscript title — Book view's centered title treatment,
       minus its page-header padding and the ::after rainbow rule (those are
       Book-view-only dressing; the manuscript sheet already has its own top

@@ -487,6 +487,9 @@
   font-family: var(--font-sans);
   font-size: 12px;
   flex-shrink: 0;
+  /* PLAN-058 L6 (82:47): never inherit title-bar drag — avoids a draggable ghost strip. */
+  -webkit-app-region: no-drag;
+  user-select: none;
 }
 
 .vgv-truncation-banner span {

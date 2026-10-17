@@ -30,6 +30,7 @@ import {
 import { runHeartbeatAutomationStub } from './partnerBusyStore';
 import SessionHistoryViewer from '../components/SettingsPanel/SessionHistoryViewer';
 import WritingCoachSettingsSection from '../components/SettingsPanel/sections/WritingCoachSettingsSection';
+import { DEFAULT_QUICK_COMMAND_PROMPTS } from './partnerQuickCommands';
 import './WritingPartnerSection.css';
 
 const TRAIT_ORDER: PartnerTraitKey[] = ['tone', 'teach', 'register', 'ambient', 'verbosity'];
@@ -486,6 +487,36 @@ export default function WritingPartnerSection({
             );
           })}
         </div>
+      </section>
+
+      <section
+        className="settings-section wp-card"
+        aria-labelledby="section-quick-command-prompts"
+        data-testid="wp-quick-command-advanced"
+      >
+        <h3 className="settings-section-title" id="section-quick-command-prompts">
+          Quick commands (advanced)
+        </h3>
+        <p className="settings-hint">
+          Override the default Timeline→notes prompt sent from the partner panel. Other quick commands use built-in actions.
+        </p>
+        <label className="wp-label" htmlFor="wp-prompt-timeline-to-notes">Timeline→notes prompt</label>
+        <textarea
+          id="wp-prompt-timeline-to-notes"
+          className="settings-input wp-prompt-advanced"
+          data-testid="wp-prompt-timeline-to-notes"
+          rows={4}
+          value={partner.quickCommandPrompts?.['timeline-to-notes'] ?? DEFAULT_QUICK_COMMAND_PROMPTS['timeline-to-notes']}
+          onChange={(e) => {
+            patchPartner(setSettings, {
+              quickCommandPrompts: {
+                ...partner.quickCommandPrompts,
+                'timeline-to-notes': e.target.value,
+              },
+            });
+            setSavedOk(false);
+          }}
+        />
       </section>
 
       {/* F3 — Earlier chats opens Settings › Writing partner session history

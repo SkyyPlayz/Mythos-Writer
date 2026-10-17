@@ -421,11 +421,11 @@ describe('Accessibility — LeftRail three-zone (WCAG 4.1.2)', () => {
     expect(container.querySelector('[data-no-drop="true"]')).toBeNull();
   });
 
-  it('collapsed sidebar renders icon-only rail', async () => {
+  it('sidebarCollapsed prop does not strip LeftRail content (edge collapse is shell-owned)', async () => {
     const { container } = render(<LeftRail {...DEFAULT_LEFT_RAIL_PROPS} sidebarCollapsed />);
     await act(async () => {});
-    expect(container.querySelector('.left-rail--collapsed')).not.toBeNull();
-    expect(container.querySelector('.lr-panel-zone')).toBeNull();
+    expect(container.querySelector('.left-rail--collapsed')).toBeNull();
+    expect(container.querySelector('[data-testid="lr-nav-zone"]')).not.toBeNull();
   });
 });
 

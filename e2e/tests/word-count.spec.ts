@@ -19,6 +19,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 const CHAPTER_TITLE = 'Opening Act';
@@ -105,7 +106,7 @@ test.beforeAll(async () => {
   // distinctly-named siblings created via the still-prompt-based chapter/scene flow.
   // M6/GAP-3: StoryNavigator's own header is hidden (hideHeader) — LeftRail's
   // .lr-nav-add is now the only "New story" entry point.
-  await page.locator('.lr-nav-add').click();
+  await createStoryFromNavAdd(page);
 
   // B9 keep-alive leaves ManuscriptStructureView mounted (display:none +
   // aria-hidden) while editor is active; CSS `[aria-label=…]`.first() locks

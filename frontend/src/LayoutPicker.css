@@ -38,7 +38,8 @@
 .layout-picker-dropdown {
   position: absolute;
   top: calc(100% + 4px);
-  right: 0;
+  left: 0;
+  right: auto;
   min-width: 200px;
   background: var(--bg-elevated);
   border: 1px solid var(--color-border, rgba(255,255,255,0.12));

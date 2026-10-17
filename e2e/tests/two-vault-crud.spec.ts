@@ -23,6 +23,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -204,10 +205,8 @@ test.skip('TC-VB-03: switching to Notes scope hides Story Vault panel', async ()
 test('TC-VB-04: create story via StoryNavigator, story row appears', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
-  // M3 instant-create: no prompt — story appears immediately as "Untitled
-  // Story" (single story in this fixture vault, so match positionally
-  // rather than by a title no create flow ever sets).
-  await page.locator('.lr-nav-add').first().click();
+  // PLAN-058 L5: new story opens modal, then creates "Untitled Story" by default.
+  await createStoryFromNavAdd(page);
 
   await expect(
     page.locator('.nav-story-row').first(),

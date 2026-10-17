@@ -16,24 +16,22 @@ export default function WorkspaceSplitPane({ kind, onClose, children }: Workspac
   const meta = TAB_KIND_META[kind];
   return (
     <section
-      className="workspace-split-pane"
+      className="workspace-split-pane workspace-split-pane--flush"
       aria-label={`Split pane: ${meta.title}`}
       data-testid="workspace-split-pane"
     >
-      <header className="workspace-split-pane__header">
-        <span className="workspace-split-pane__icon" aria-hidden="true">{meta.icon}</span>
-        <span className="workspace-split-pane__title">{meta.title}</span>
-        <button
-          type="button"
-          className="workspace-split-pane__close"
-          data-testid="workspace-split-pane-close"
-          aria-label="Close split pane"
-          title="Close split pane"
-          onClick={onClose}
-        >
-          ×
-        </button>
-      </header>
+      {/* PLAN-058 L6 (83:18): remove duplicate Editor/Notes/Brainstorm sub-header;
+          the floated module owns its own chrome (Brainstorm back, etc.). */}
+      <button
+        type="button"
+        className="workspace-split-pane__close-floating"
+        data-testid="workspace-split-pane-close"
+        aria-label="Close split pane"
+        title="Close split pane"
+        onClick={onClose}
+      >
+        ×
+      </button>
       <div className="workspace-split-pane__body">{children}</div>
     </section>
   );

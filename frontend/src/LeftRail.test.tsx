@@ -85,11 +85,11 @@ describe('LeftRail M6 — three-zone layout', () => {
     expect(onCycleSceneStatus).toHaveBeenCalledWith('sc1');
   });
 
-  it('shows expand button and hides content when sidebarCollapsed', () => {
+  it('keeps full navigator content when sidebarCollapsed (shell edge peek owns collapse)', () => {
     render(<LeftRail {...baseProps} sidebarCollapsed />);
-    expect(screen.getByTestId('left-rail-collapsed')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /expand left sidebar/i })).toBeInTheDocument();
-    expect(screen.queryByTestId('lr-story-card')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('left-rail-collapsed')).not.toBeInTheDocument();
+    expect(screen.getByTestId('lr-story-card')).toBeInTheDocument();
+    expect(screen.getByText('STORY NAVIGATOR')).toBeInTheDocument();
   });
 
   it('calls onToggleCollapsed when collapse button is clicked', () => {
@@ -99,10 +99,10 @@ describe('LeftRail M6 — three-zone layout', () => {
     expect(onToggle).toHaveBeenCalledOnce();
   });
 
-  it('calls onToggleCollapsed when expand button is clicked from collapsed state', () => {
+  it('still exposes collapse control on the story card when sidebarCollapsed', () => {
     const onToggle = vi.fn();
     render(<LeftRail {...baseProps} sidebarCollapsed onToggleCollapsed={onToggle} />);
-    fireEvent.click(screen.getByRole('button', { name: /expand left sidebar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /collapse left sidebar/i }));
     expect(onToggle).toHaveBeenCalledOnce();
   });
 

@@ -18,6 +18,7 @@
  */
 import type { ElectronApplication, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { openPartnerWriterTips } from '../../helpers/partnerHub';
 
 /**
  * Small, deterministic word bank for generating lorem-ipsum-style stream
@@ -101,11 +102,7 @@ export async function installMockChatStream(
 export async function openWritingCoachChat(page: Page): Promise<void> {
   const hubPanel = page.locator('[data-testid="agent-hub-panel"]');
   await expect(hubPanel).toBeVisible({ timeout: 4_000 });
-  // Slice B: Writer hand opens WritingAssistantPanel (Coach mode).
-  const writerHand = page.locator('[data-testid="ahp-action-writer-scan"]');
-  if (await writerHand.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await writerHand.click();
-  }
+  await openPartnerWriterTips(page);
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 }
 

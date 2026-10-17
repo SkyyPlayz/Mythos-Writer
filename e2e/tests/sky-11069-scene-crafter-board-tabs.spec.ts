@@ -27,6 +27,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { clickStoryNav } from '../helpers/navGuard';
+import { confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
@@ -63,6 +64,7 @@ async function waitForBoot(app: ElectronApplication): Promise<Page> {
 async function createAndSelectStory(page: Page): Promise<void> {
   await page.locator('.wc-menu', { hasText: 'File' }).click();
   await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
+  await confirmNewStoryModalIfOpen(page);
   const row = page.locator('.nav-story-row').first();
   await expect(row).toBeVisible({ timeout: 8_000 });
   await page.locator('.nav-story-title').first().click();
@@ -193,6 +195,7 @@ test('F1#2: New board with NO story selected opens tab aria-selected=true', asyn
     // Create a story so stories[0] exists, but do NOT select it (F1#2 fix path).
     await page.locator('.wc-menu', { hasText: 'File' }).click();
     await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
+    await confirmNewStoryModalIfOpen(page);
     await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
     // Click vault header / empty area to clear selection if any.
     await page.keyboard.press('Escape').catch(() => {});

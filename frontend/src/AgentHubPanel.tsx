@@ -11,12 +11,18 @@ import ScenesPanel from './ScenesPanel';
 import { useAiEnabled } from './hooks/useAiEnabled';
 import type { NamedAgentId } from './agents/agentIdentity';
 import {
-  PARTNER_ACTIONS,
   PARTNER_SESSION_AGENT,
   resolvePartnerDisplayName,
   type PartnerActionId,
   type PartnerHandId,
 } from './agents/partnerIdentity';
+import {
+  PARTNER_QUICK_COMMANDS,
+  runPartnerQuickCommand,
+  type PartnerQuickCommandId,
+} from './partner/partnerQuickCommands';
+import ComposerQuickActions from './components/ComposerQuickActions';
+import { generateQuickActionChips } from './archive/composerQuickActions';
 import { useAgentRunningEntry } from './agents/aiActivity';
 import { useBrainstormActivity } from './agents/brainstormActivity';
 import type { BrainstormActivitySnapshot } from './agents/brainstormActivity';
@@ -60,7 +66,8 @@ import './AgentHubPanel.css';
 /** Legacy agent row ids — kept for resolveAgentStatus + hand routing tests. */
 export type AgentId = 'writing-assistant' | 'brainstorm' | 'archive' | 'beta-reader';
 
-type HubTab = 'partner' | 'suggestions' | 'scenes' | 'notes-analysis';
+export type AgentHubTab = 'partner' | 'suggestions' | 'scenes' | 'notes-analysis';
+type HubTab = AgentHubTab;
 
 type AgentStatusDot = 'idle' | 'watching' | 'attention' | 'disabled';
 
@@ -152,6 +159,9 @@ interface Props {
   referencesPanel?: import('react').ReactNode;
   /** Opens Settings › Agents (partner session history — read-only). */
   onOpenPartnerHistory?: () => void;
+  /** Applied once on mount when GRS was collapsed (toolbar continuity scan). */
+  pendingHubTab?: AgentHubTab | null;
+  onPendingHubTabConsumed?: () => void;
 }
 
 export default function AgentHubPanel({
@@ -182,9 +192,11 @@ export default function AgentHubPanel({
   agentEnablement: _agentEnablement,
   continuityCount: _continuityCount = 0,
   continuityPanel,
-  continuityItems: _continuityItems = [],
+  continuityItems = [],
   referencesPanel,
   onOpenPartnerHistory,
+  pendingHubTab = null,
+  onPendingHubTabConsumed,
 }: Props) {
   const aiEnabled = useAiEnabled();
   const partnerName = resolvePartnerDisplayName(agentNames);
@@ -195,6 +207,18 @@ export default function AgentHubPanel({
   useEffect(() => {
     if (!aiEnabled) setActiveTabState((cur) => (cur === 'partner' || cur === 'suggestions' ? 'scenes' : cur));
   }, [aiEnabled]);
+
+  useEffect(() => {
+    const openContinuity = () => setActiveTab('notes-analysis');
+    window.addEventListener('mythos:open-continuity-scan', openContinuity);
+    return () => window.removeEventListener('mythos:open-continuity-scan', openContinuity);
+  }, [setActiveTab]);
+
+  useEffect(() => {
+    if (!pendingHubTab) return;
+    setActiveTab(pendingHubTab);
+    onPendingHubTabConsumed?.();
+  }, [pendingHubTab, setActiveTab, onPendingHubTabConsumed]);
 
   const [call, setCall] = useState<PartnerCallState>({
     onCall: false,
@@ -261,6 +285,7 @@ export default function AgentHubPanel({
             autoApplyCategories={autoApplyCategories}
             onAutoApplyCategoriesChange={onAutoApplyCategoriesChange}
             onOpenPartnerHistory={onOpenPartnerHistory}
+            continuityItems={continuityItems}
           />
         )}
         {activeTab === 'suggestions' && aiEnabled && (
@@ -312,6 +337,7 @@ interface PartnerChatViewProps {
   autoApplyCategories?: Partial<Record<SuggestionCategory, boolean>>;
   onAutoApplyCategoriesChange?: (categories: Partial<Record<SuggestionCategory, boolean>>) => void;
   onOpenPartnerHistory?: () => void;
+  continuityItems: InconsistencyItem[];
 }
 
 function PartnerChatView({
@@ -337,6 +363,7 @@ function PartnerChatView({
   autoApplyCategories,
   onAutoApplyCategoriesChange,
   onOpenPartnerHistory,
+  continuityItems,
 }: PartnerChatViewProps) {
   const brainstormActivity = useBrainstormActivity();
   const writerBusy = useAgentRunningEntry('writingAssistant');
@@ -348,10 +375,10 @@ function PartnerChatView({
     ?? (writerBusy ? 'writer' : brainstormActivity.active ? null : null);
   const [pastOpen, setPastOpen] = useState(false);
   // Tip cards always mounted (N4-A tips-only WA); chat stays on the partner thread.
-  const [showWriterTips, setShowWriterTips] = useState(true);
+  const [showWriterTips, setShowWriterTips] = useState(false);
 
   return (
-    <div className="ahp-partner" data-testid="ahp-partner-view">
+    <div className="ahp-partner ahp-partner--compact" data-testid="ahp-partner-view">
       <PartnerCallChrome
         partnerName={partnerName}
         handBusy={handBusy}
@@ -394,6 +421,17 @@ function PartnerChatView({
           </div>
         )}
       />
+
+      {!showWriterTips && (
+        <button
+          type="button"
+          className="ahp-open-tips-btn"
+          data-testid="ahp-open-writer-tips"
+          onClick={() => setShowWriterTips(true)}
+        >
+          Open coach tips
+        </button>
+      )}
 
       {/* Tips above the chat thread so Scan now / tip cards stay in-viewport
           (thread was flex:1 and pushed the strip below the sidebar fold). */}
@@ -440,9 +478,9 @@ function PartnerChatView({
           scene={scene}
           story={story}
           onActionBusy={setActionBusy}
-          onOpenWriterTips={() => setShowWriterTips(true)}
           voiceEnabled={voiceEnabled}
           voicePrefs={voicePrefs}
+          continuityItems={continuityItems}
         />
       </div>
     </div>
@@ -591,9 +629,9 @@ function UnifiedPartnerChat({
   scene,
   story,
   onActionBusy,
-  onOpenWriterTips,
   voiceEnabled = false,
   voicePrefs,
+  continuityItems = [],
 }: {
   partnerName: string;
   onCall: boolean;
@@ -601,14 +639,14 @@ function UnifiedPartnerChat({
   scene: Scene | null;
   story: Story | null;
   onActionBusy: (hand: PartnerHandId | null) => void;
-  onOpenWriterTips: () => void;
   voiceEnabled?: boolean;
   voicePrefs?: { micDeviceId?: string; inputLanguage?: string };
+  continuityItems?: InconsistencyItem[];
 }) {
   const chat = useMiniAgentChat(PARTNER_SESSION_AGENT, invokeBrainstorm);
   const [queued, setQueued] = useState<readonly QueuedPartnerMessage[]>(getPartnerMsgQueue());
   const [settingsSnap, setSettingsSnap] = useState<AppSettings | null>(null);
-  const [runningAction, setRunningAction] = useState<PartnerActionId | null>(null);
+  const [runningAction, setRunningAction] = useState<PartnerQuickCommandId | null>(null);
 
   useEffect(() => subscribePartnerBusy(() => setQueued([...getPartnerMsgQueue()])), []);
 
@@ -651,35 +689,57 @@ function UnifiedPartnerChat({
     busy: (chat.busy && !handBusy && !getPartnerHandBusy()) || runningAction !== null,
   }), [chat, sendQueuedAware, handBusy, runningAction]);
 
-  const runAction = useCallback(async (action: PartnerActionId) => {
+  const promptOverrides = partnerPrefs.quickCommandPrompts;
+  const prebuiltChips = useMemo(
+    () => generateQuickActionChips(continuityItems),
+    [continuityItems],
+  );
+
+  const runQuickCommand = useCallback(async (action: PartnerQuickCommandId) => {
     if (runningAction) return;
-    const meta = PARTNER_ACTIONS.find((a) => a.id === action);
+    const meta = PARTNER_QUICK_COMMANDS.find((a) => a.id === action);
     if (!meta) return;
     setRunningAction(action);
     onActionBusy(meta.hand);
     try {
-      const result = await runPartnerAction(action, { scene, story });
-      await chat.postActionResult(meta.label, result.text, {
-        cardTitle: result.cardTitle,
-        cardFoot: result.cardFoot,
-        cardKind: result.cardTitle ? 'action' : undefined,
+      const result = await runPartnerQuickCommand(action, {
+        scene,
+        story,
+        promptOverrides,
       });
+      if (result.kind === 'chat') {
+        await chat.send(result.text);
+      } else {
+        await chat.postActionResult(meta.label, result.text, {
+          cardTitle: result.cardTitle,
+          cardFoot: result.cardFoot,
+          cardKind: result.cardTitle ? 'action' : undefined,
+        });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await chat.postActionResult(meta.label, msg || 'Action failed.');
     } finally {
-      // Always surface tips strip for Writer Scan (Scan now / Heartbeat), even on refuse/error.
-      if (action === 'writer-scan') onOpenWriterTips();
       setRunningAction(null);
       onActionBusy(null);
     }
-  }, [runningAction, onActionBusy, scene, story, chat, onOpenWriterTips]);
+  }, [runningAction, onActionBusy, scene, story, chat, promptOverrides]);
+
+  const handlePrebuiltChip = useCallback((chip: ReturnType<typeof generateQuickActionChips>[number]) => {
+    if (chip.kind === 'scan') {
+      void runQuickCommand('continuity');
+      return;
+    }
+    if (chip.prompt) {
+      void sendQueuedAware(chip.prompt);
+    }
+  }, [runQuickCommand, sendQueuedAware]);
 
   return (
     // Outer shell owns actions/composer chrome; MiniAgentChat owns `ahp-partner-chat`.
     <div className="ahp-brainstorm-chat ahp-partner-composer" data-testid="ahp-partner-composer">
-      <div className="ahp-actions" role="group" aria-label="Partner actions">
-        {PARTNER_ACTIONS.map((a) => (
+      <div className="ahp-actions" role="group" aria-label="Partner quick commands">
+        {PARTNER_QUICK_COMMANDS.map((a) => (
           <button
             key={a.id}
             type="button"
@@ -688,12 +748,19 @@ function UnifiedPartnerChat({
             data-testid={`ahp-action-${a.id}`}
             title={a.description}
             disabled={runningAction !== null}
-            onClick={() => { void runAction(a.id); }}
+            onClick={() => { void runQuickCommand(a.id); }}
           >
             {runningAction === a.id ? `${a.label}…` : a.label}
           </button>
         ))}
       </div>
+      {prebuiltChips.length > 1 && (
+        <ComposerQuickActions
+          chips={prebuiltChips}
+          disabled={queuedChat.busy}
+          onSelect={handlePrebuiltChip}
+        />
+      )}
       {showClaudeLogin && (
         <div className="ahp-claude-login" data-testid="ahp-claude-login-card">
           <div className="ahp-claude-login__title">Log in to Claude to finish setup</div>

@@ -23,6 +23,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { clickStoryNav } from '../helpers/navGuard';
+import { openPartnerWriterTips } from '../helpers/partnerHub';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -260,7 +261,7 @@ test.beforeAll(async () => {
   // Writer Scan click required — action chips can sit under the tips panel).
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 4_000 });
   await expect(page.locator('[data-testid="ahp-partner-view"]')).toBeVisible({ timeout: 4_000 });
-  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
+  await openPartnerWriterTips(page);
   await expect(page.locator('[aria-label="Heartbeat panel"]')).toBeVisible({ timeout: 8_000 });
 });
 

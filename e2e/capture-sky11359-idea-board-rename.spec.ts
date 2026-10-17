@@ -8,6 +8,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const OUT_DIR = path.resolve(__dirname, '../docs/screenshots/sky-11359-idea-board-rename');
@@ -65,6 +66,7 @@ test('capture SKY-11359 Idea Board rename — page-segment toggle + chat-page to
 
     await page.locator('.wc-menu', { hasText: 'File' }).click();
     await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
+    await confirmNewStoryModalIfOpen(page);
     await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
     await page.locator('.nav-story-title').first().click();
 

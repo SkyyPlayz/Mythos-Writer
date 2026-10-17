@@ -261,6 +261,12 @@
 
 /* ── Center view ──────────────────────────────────────────────────────────────── */
 
+/* PLAN-058 L6 (83:08): doc tabs flush with the center card top edge. */
+.notes-tab-center > .wtb-root {
+  border-top-left-radius: 17px;
+  border-top-right-radius: 17px;
+}
+
 /* SKY-2102: page-background tokens applied to the Notes center pane.
    Full-width (Obsidian-feel) with a softer ambient glow vs the Story tab's vivid frame. */
 .notes-tab-center {

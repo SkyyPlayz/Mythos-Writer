@@ -288,6 +288,8 @@ export function workspaceStripModeFor(
   if (activeTab === 'brainstorm' || activeTab === 'vault-graph') return { kind: 'hidden' };
   if (activeTab === 'story') {
     if (storySubView === 'timeline') return { kind: 'hidden' };
+    // PLAN-058 L5 (37:41): Structure sub-view keeps a single "Structure" strip label.
+    if (storySubView === 'structure') return { kind: 'static', label: 'Structure' };
     // SKY-11069 owner ruling: Scene Crafter is a docs strip — pinned Setup
     // tab + one tab per open canvas board.
     if (storySubView === 'kanban') return { kind: 'docs', strip: 'board' };

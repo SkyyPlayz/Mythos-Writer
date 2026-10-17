@@ -6,7 +6,6 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
 const STORY_ID = 'm6-e2e-story-0001';
@@ -180,9 +179,10 @@ test.describe('SKY-9022/M6 — right sidebar partner shell (Slice B)', () => {
     const hub = page.locator('[data-testid="agent-hub-panel"]');
     await expect(hub.locator('[data-testid="ahp-partner-view"]')).toBeVisible({ timeout: 8_000 });
     await expect(hub.locator('[data-testid="partner-card"]')).toBeVisible();
-    await expect(hub.locator('[data-testid="ahp-action-update-timeline"]')).toBeVisible();
     await expect(hub.locator('[data-testid="ahp-action-beta-read"]')).toBeVisible();
-    await expect(hub.locator('[data-testid="ahp-action-writer-scan"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="ahp-action-continuity"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="ahp-action-notes-to-timeline"]')).toBeVisible();
+    await expect(hub.locator('[data-testid="ahp-action-timeline-to-notes"]')).toBeVisible();
     await expect(hub.locator('[data-testid="ahp-hand-writer"]')).toHaveCount(0);
     await expect(hub.locator('[data-testid="ahp-hand-analyst"]')).toHaveCount(0);
     await expect(hub.locator('[data-testid="ahp-hand-archivist"]')).toHaveCount(0);

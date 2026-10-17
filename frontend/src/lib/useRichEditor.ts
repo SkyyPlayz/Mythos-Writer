@@ -9,6 +9,7 @@ import { WikiLink } from '../WikiLinkExtension';
 import { WikiLinkResolutionExtension } from '../WikiLinkResolutionExtension';
 import { AlignedParagraph, AlignedHeading } from './alignedBlocks';
 import { InlineImageExtension } from './InlineImageExtension';
+import { createNoteVaultImageExtension } from './NoteVaultImageExtension';
 
 /**
  * Shared Tiptap editor hook for all rich-text surfaces (Story/Notes).
@@ -41,6 +42,8 @@ export interface UseRichEditorOptions {
   onBlur?: ({ editor }: { editor: Editor }) => void;
   /** TipTap/ProseMirror editorProps (F2#4 drop handling lives here). */
   editorProps?: EditorOptions['editorProps'];
+  /** PLAN-058 L6: Notes vault inline images use data-vault-src hydration. */
+  vaultInlineImages?: boolean;
 }
 
 /**
@@ -71,7 +74,9 @@ export function useRichEditor({
   onFocus,
   onBlur,
   editorProps,
+  vaultInlineImages = false,
 }: UseRichEditorOptions): Editor | null {
+  const imageExtension = vaultInlineImages ? createNoteVaultImageExtension() : InlineImageExtension;
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ paragraph: false, heading: false }),
@@ -80,7 +85,7 @@ export function useRichEditor({
       TextAlign.configure({ types: ['paragraph', 'heading'] }),
       WikiLink,
       WikiLinkResolutionExtension,
-      InlineImageExtension,
+      imageExtension,
       Markdown,
       ...extraExtensions,
     ],

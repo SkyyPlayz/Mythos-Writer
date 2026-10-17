@@ -60,8 +60,8 @@ describe('E — Timeline calendars Soft-FAIL locks', () => {
   it('vertical zoom clamps 40–160', () => {
     expect(clampVZoom(10)).toBe(40);
     expect(clampVZoom(200)).toBe(160);
-    const root = read('TimelineRoot.tsx');
-    expect(root).toMatch(/tl-vzoom/);
+    const axis = read('timeline2/AxisView.tsx');
+    expect(axis).toMatch(/tl-vzoom/);
   });
 
   it('Timeline right tabs are Inspector · partner — no Archivist / Idea Board', () => {

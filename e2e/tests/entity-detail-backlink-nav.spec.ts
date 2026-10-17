@@ -30,6 +30,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -201,7 +202,7 @@ test('SKY-10926: clicking a Connections backlink navigates EntityDetail to the t
   const storiesTab = page.locator('.rail-tab', { hasText: 'Stories' });
   if (await storiesTab.isVisible()) await storiesTab.click();
 
-  await page.locator('.lr-nav-add').first().click();
+  await createStoryFromNavAdd(page);
   const sceneRow = page.locator('.nav-scene-row').first();
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
   await sceneRow.click();

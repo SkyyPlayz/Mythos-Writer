@@ -31,6 +31,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -167,7 +168,7 @@ test.beforeAll(async () => {
 
   // Create story. M3 instant-create: no prompt — row appears immediately.
   // The same transaction scaffolds "Chapter 1" and an "Untitled Scene".
-  await page.locator('.lr-nav-add').first().click();
+  await createStoryFromNavAdd(page);
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
 

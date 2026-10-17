@@ -15,6 +15,8 @@ import {
   applyAutoLinkHint,
   findAutoLinkHints,
   splitRunByHints,
+  splitTextByWikiLinks,
+  parseWikiLinkInner,
   wikiLinkFor,
   wikiLinkSpans,
 } from './autoLinkText';
@@ -146,5 +148,19 @@ describe('splitRunByHints', () => {
 
   it('returns null when no hint lands in the run', () => {
     expect(splitRunByHints('plain text', 0, [])).toBeNull();
+  });
+});
+
+describe('splitTextByWikiLinks (FD-1)', () => {
+  it('parses alias pipes via parseWikiLinkInner', () => {
+    expect(parseWikiLinkInner('Harbor|the dock')).toEqual({ target: 'Harbor', alias: 'the dock' });
+  });
+
+  it('splits plain text around wiki tokens', () => {
+    const runs = splitTextByWikiLinks('Before [[Harbor]] after');
+    expect(runs).toHaveLength(3);
+    expect(runs[0]).toEqual({ text: 'Before ' });
+    expect(runs[1]).toMatchObject({ text: '[[Harbor]]', target: 'Harbor', alias: null });
+    expect(runs[2]).toEqual({ text: ' after' });
   });
 });

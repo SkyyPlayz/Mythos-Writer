@@ -11,6 +11,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { toggleStoryEditorSplit } from './helpers/storyEditorSplit';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const OUT_DIR = path.resolve(__dirname, '../docs/screenshots/split-pane-tab-strips-sky8907');
@@ -70,7 +71,7 @@ test('capture split-pane tab strips screenshot', async () => {
   await page.waitForLoadState('domcontentloaded');
   await page.waitForSelector('.shell-loading', { state: 'detached', timeout: 30_000 });
 
-  await page.locator('[data-testid="split-toggle-btn"]').click();
+  await toggleStoryEditorSplit(page);
   await expect(page.locator('[data-testid="split-divider"]')).toBeVisible({ timeout: 8_000 });
 
   const selectSceneInPane = async (paneNumber: 1 | 2, sceneId: string) => {

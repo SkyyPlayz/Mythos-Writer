@@ -28,6 +28,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { clickStoryNav } from './helpers/navGuard';
+import { openPartnerWriterTips } from './helpers/partnerHub';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
@@ -256,7 +257,7 @@ test('M12 §14.6: Coach page and right-panel Coach chat share ONE conversation',
   // Slice B / N4-A: partner tips strip always mounts WA — open Partner tab only.
   await expect(page.locator('[data-testid="agent-hub-panel"]')).toBeVisible({ timeout: 6_000 });
   await page.locator('[data-testid="ahp-tab-partner"]').click();
-  await expect(page.getByTestId('ahp-writer-tips')).toBeVisible({ timeout: 8_000 });
+  await openPartnerWriterTips(page);
   await expect(page.locator('.writing-assistant-panel')).toBeAttached({ timeout: 8_000 });
 
   // F3#1 — same partner thread: exchange from Coach page is in hub MiniAgentChat.

@@ -15,6 +15,7 @@
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
+import { confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 import {
   test,
   expect,
@@ -264,6 +265,7 @@ test('TC-NT-04: a Default Character note at the vault root reaches Scene Crafter
   const storyCount = await pg.locator('.nav-story-row').count();
   await pg.locator('.wc-menu', { hasText: 'File' }).click();
   await pg.locator('.wc-menu-item', { hasText: 'New story' }).click();
+  await confirmNewStoryModalIfOpen(pg);
   await pg.locator('.nav-story-row').nth(storyCount).waitFor({ state: 'visible', timeout: 8_000 });
   await pg.locator('.nav-story-title').nth(storyCount).click();
   await pg.locator('nav[aria-label="Main navigation"] button[aria-label="Scene Crafter"]').click();

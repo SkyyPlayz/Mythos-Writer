@@ -26,6 +26,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const OUT_DIR = path.resolve(__dirname, '../pr-screenshots/sky11455');
@@ -99,6 +100,7 @@ test('capture SKY-11455 template note reaches Scene Crafter CHARACTERS', async (
   const storyCount = await page.locator('.nav-story-row').count();
   await page.locator('.wc-menu', { hasText: 'File' }).click();
   await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
+  await confirmNewStoryModalIfOpen(page);
   await page.locator('.nav-story-row').nth(storyCount).waitFor({ state: 'visible', timeout: 8_000 });
   await page.locator('.nav-story-title').nth(storyCount).click();
   await page.waitForTimeout(400);

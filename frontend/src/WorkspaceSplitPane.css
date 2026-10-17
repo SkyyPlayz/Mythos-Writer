@@ -9,6 +9,29 @@
   min-height: 0;
   border-left: 1px solid var(--border-subtle);
   background: var(--bg-panel);
+  position: relative;
+}
+
+.workspace-split-pane--flush .workspace-split-pane__body {
+  flex: 1;
+  min-height: 0;
+}
+
+.workspace-split-pane__close-floating {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 4;
+  background: rgb(8 10 18 / 0.55);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  cursor: pointer;
 }
 
 .workspace-split-pane__header {

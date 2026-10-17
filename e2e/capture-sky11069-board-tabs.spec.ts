@@ -8,6 +8,7 @@ import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { clickStoryNav } from './helpers/navGuard';
+import { confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const OUT_DIR = path.resolve(__dirname, '../docs/screenshots/sky-11069-board-tabs');
@@ -49,6 +50,7 @@ test('capture SKY-11069 gallery + two-board tab strip screenshots', async () => 
 
     await page.locator('.wc-menu', { hasText: 'File' }).click();
     await page.locator('.wc-menu-item', { hasText: 'New story' }).click();
+    await confirmNewStoryModalIfOpen(page);
     await expect(page.locator('.nav-story-row').first()).toBeVisible({ timeout: 8_000 });
     await page.locator('.nav-story-title').first().click();
     await clickStoryNav(page);

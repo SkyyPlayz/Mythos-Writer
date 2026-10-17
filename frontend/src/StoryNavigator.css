@@ -23,7 +23,17 @@
    where .story-navigator IS the panel surface. */
 .left-rail .story-navigator {
   width: auto;
+  flex: 1;
+  min-height: 0;
   border-right: none;
+}
+
+/* PLAN-058 L5 (03:30): one scroll container — the lr-nav-tree, not nav-tree too. */
+.left-rail .story-navigator .nav-tree {
+  flex: 1;
+  min-height: 0;
+  overflow: visible;
+  padding: 0;
 }
 
 .left-rail .story-navigator:not(.story-navigator--note-drop) {
@@ -272,6 +282,37 @@
 
 .nav-scene-row.active .nav-scene-title {
   color: var(--text-header);
+}
+
+.nav-scene-row--dragging {
+  opacity: 0.45;
+}
+
+.nav-scene-row--drag-over {
+  outline: 1px dashed var(--accent, #00f0ff);
+  outline-offset: -1px;
+}
+
+.nav-scene-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-scene-note-row {
+  margin: 0 8px 2px 2.25rem;
+  padding: 0.15rem 0.45rem 0.15rem 0.65rem;
+  border-left: 2px solid var(--border-subtle);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-scene-note-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .nav-wordcount {

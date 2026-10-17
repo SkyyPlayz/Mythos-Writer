@@ -43,6 +43,7 @@ import {
 } from '@playwright/test';
 import { noteTestId } from '../helpers/notesPanel';
 import { enableNoteViewModes } from '../helpers/noteViewPrefs';
+import { confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -124,6 +125,7 @@ async function createStory(pg: Page): Promise<number> {
   const before = await pg.locator('.nav-story-row').count();
   await pg.locator('.wc-menu', { hasText: 'File' }).click();
   await pg.locator('.wc-menu-item', { hasText: 'New story' }).click();
+  await confirmNewStoryModalIfOpen(pg);
   await expect(pg.locator('.nav-story-row').nth(before)).toBeVisible({ timeout: 8_000 });
   return before;
 }

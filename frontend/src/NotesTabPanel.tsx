@@ -119,11 +119,6 @@ function NotesRecentNotesCard({
   );
 }
 
-// SKY-9019 M5: Graph→vault-graph rail, Entities→tab. Notes only has Editor mode.
-const NOTES_SUBVIEWS: { id: NotesSubView; label: string }[] = [
-  { id: 'editor', label: 'Editor' },
-];
-
 export interface NotesTabPanelProps {
   notesSubView: NotesSubView;
   onNotesSubViewChange: (v: NotesSubView) => void;
@@ -230,7 +225,7 @@ export interface NotesTabPanelProps {
 
 export default function NotesTabPanel({
   notesSubView,
-  onNotesSubViewChange,
+  onNotesSubViewChange: _onNotesSubViewChange,
   notesSidebarWidth,
   notesSidebarCollapsed,
   onNotesSidebarWidthChange,
@@ -504,26 +499,9 @@ export default function NotesTabPanel({
       className="notes-tab-panel"
       data-testid="notes-tab-panel"
     >
-      {/* Sub-view toggle toolbar */}
-      <div className="notes-tab-toolbar" role="toolbar" aria-label="Notes views">
-        <div
-          className="notes-subview-toggle"
-          role="tablist"
-          aria-label="Notes sub-view"
-        >
-          {NOTES_SUBVIEWS.map(({ id, label }) => (
-            <button
-              key={id}
-              role="tab"
-              aria-selected={notesSubView === id}
-              className={`notes-subview-btn${notesSubView === id ? ' notes-subview-btn--active' : ''}`}
-              onClick={() => onNotesSubViewChange(id)}
-              data-testid={`notes-subview-${id}`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+      {/* PLAN-058 L6 (83:08 / 83:18): drop Editor/Graph/Entities sub-header;
+          vault picker + split/brainstorm actions only so doc tabs sit flush. */}
+      <div className="notes-tab-toolbar" role="toolbar" aria-label="Notes actions">
         {/* SKY-11058: notes vault switcher (FULL-SPEC §119). "Import a
             vault…" replays the onboarding wizard on its Import screen via
             DesktopShell's window-event listener (same no-callback-prop

@@ -296,7 +296,7 @@ describe('AxisView — direct manipulation', () => {
 });
 
 describe('AxisView — embedding (§14.4 step 6)', () => {
-  it('embedded spans render dashed with mini preview strips and open on click', async () => {
+  it('embedded spans render dashed with mini preview strips; click selects, dblclick opens', async () => {
     const store = makeStore({
       spans: [
         { id: 'span-e', timelineId: 'tl-story', name: 'World context', startWhen: 0, endWhen: 864, opensTimelineId: 'tl-world' },
@@ -305,11 +305,22 @@ describe('AxisView — embedding (§14.4 step 6)', () => {
     });
     const api = setupApi(store);
     const onStoreChange = vi.fn();
-    render(<AxisView store={store} onStoreChange={onStoreChange} />);
+    const onSelectionChange = vi.fn();
+    render(
+      <AxisView
+        store={store}
+        onStoreChange={onStoreChange}
+        onSelectionChange={onSelectionChange}
+      />,
+    );
     const span = screen.getByTestId('ax-span-span-e');
     expect(span.getAttribute('data-embedded')).toBe('true');
     expect(screen.getByTestId('ax-mini-strip-span-w')).toBeInTheDocument();
     fireEvent.click(span);
+    await flush();
+    expect(onSelectionChange).toHaveBeenCalledWith({ type: 'span', id: 'span-e' });
+    expect(api.timelinesSetActive).not.toHaveBeenCalled();
+    fireEvent.doubleClick(span);
     await flush();
     expect(api.timelinesSetActive).toHaveBeenCalledWith('tl-world');
     expect(screen.getByTestId('app-toast')).toHaveTextContent('Opened “World context”');

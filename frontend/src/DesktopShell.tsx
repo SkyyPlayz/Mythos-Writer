@@ -28,6 +28,7 @@ import { stripManifestContentForIpc } from './manifestIpc';
 import {
   parseSceneNotes,
   serializeSceneNotes,
+  buildNoteStoreKey,
   promotedSceneNoteName,
   buildPromotedSceneNoteContent,
   type SceneNoteDragPayload,
@@ -100,6 +101,11 @@ import BoardsTabPanel from './pages/Boards/BoardsTabPanel';
 import ManuscriptStructureView from './ManuscriptStructureView';
 import BookPreview from './story/BookPreview';
 import TimelineRoot from './TimelineRoot';
+import {
+  stashTimelineFromNote,
+  TIMELINE_FROM_NOTE_EVENT,
+  type TimelineFromNoteDetail,
+} from './timeline2/notesToTimeline';
 import type { TimelineWikiLinkApi } from './timeline2/TimelineWikiText';
 import { useTextPrompt } from './useTextPrompt';
 import { useCreateMythosVaultFlow } from './useCreateMythosVaultFlow';
@@ -155,6 +161,7 @@ import {
   type TabbedShellState,
 } from './tabbedShellState';
 import LayoutPicker from './LayoutPicker';
+import NewStoryModal, { type NewStoryModalResult } from './components/NewStoryModal';
 import LayoutManagerDialog from './LayoutManagerDialog';
 import { getAllLayouts, mergeWithBuiltins, migrateV1Layout, snapshotCurrentLayout } from './WorkspaceLayoutManager';
 // SKY-1695: Panel content components for the unified sidebar renderer
@@ -163,7 +170,7 @@ import EntityBrowser from './EntityBrowser';
 import SuggestionReview from './SuggestionReview';
 import VaultBrowser from './components/VaultBrowser';
 import ProgressDashboard from './ProgressDashboard';
-import AgentHubPanel from './AgentHubPanel';
+import AgentHubPanel, { type AgentHubTab } from './AgentHubPanel';
 import CoachPage from './coach/CoachPage';
 import ContinuityPanel from './ContinuityPanel';
 import type { InconsistencyItem } from './ContinuityPanel';
@@ -210,6 +217,8 @@ const PANEL_MIN_WIDTH = 160;
 const DIVIDER_WIDTH = 4;
 /** Approximate width of the GlobalRightSidebar collapsed-edge strip. */
 const GRS_COLLAPSED_STRIP_WIDTH = 36;
+/** PLAN-058 L5: left rail collapsed to a sideways edge strip (px). */
+const LEFT_SIDEBAR_EDGE_WIDTH = 14;
 
 /**
  * Compute display widths for left and right panels so the center column
@@ -764,6 +773,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const [continuityPeekOverlayOpen, setContinuityPeekOverlayOpen] = useState(false);
   const [layout, setLayout] = useState<LayoutPrefs>(DEFAULT_LAYOUT);
   const [view, setView] = useState<StorySubView>('editor');
+  /** PLAN-058 L4 (66:14): Ctrl+T on full Timeline view — no second StoryTimeline tree. */
+  const [timelineSidebarHintOpen, setTimelineSidebarHintOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // SKY-11048: which Settings category to open to — a vault tile's
   // "Settings → this vault" context-menu action jumps straight to Vault & Files.
@@ -909,6 +920,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // E2E tests that seed settings without rightSidebarVisible keep undefined → no sidebar renders,
   // preserving the same layout as before this PR (fixes timeline TC-TL-06 overlap regression).
   const [grsVisible, setGrsVisible] = useState<boolean | undefined>(undefined);
+  const [pendingAgentHubTab, setPendingAgentHubTab] = useState<AgentHubTab | null>(null);
   const [grsWidth, setGrsWidth] = useState(300);
   const [grsPanels, setGrsPanels] = useState<PanelConfig[]>(DEFAULT_PANELS);
   const [continuityCount, setContinuityCount] = useState(0);
@@ -977,6 +989,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // persisted — split state was never restored across restarts either).
   const [pane2Tabs, setPane2Tabs] = useState<WorkspaceTab[]>([]);
   const [activePane2TabId, setActivePane2TabId] = useState<string | null>(null);
+  const [pane1EditorSyncKey, setPane1EditorSyncKey] = useState(0);
+  const [pane2EditorSyncKey, setPane2EditorSyncKey] = useState(0);
+  const [newStoryModalOpen, setNewStoryModalOpen] = useState(false);
+  const [sceneNotesBySceneId, setSceneNotesBySceneId] = useState<Record<string, string[]>>({});
   // SKY-8907: which pane a tab drag started in, so the destination pane's
   // strip knows whether to accept the drop (tabDragPayload alone doesn't say).
   const [tabDragSourcePane, setTabDragSourcePane] = useState<1 | 2 | null>(null);
@@ -1150,6 +1166,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // Beta 4 M10 — numbered drafts (M5 file store) for the open scene, shared
   // by the popover, the compare split, and the full diff.
   const sceneDrafts = useSceneDrafts(selectedScene?.id ?? null);
+  const pane2SceneDrafts = useSceneDrafts(splitWindowEnabled ? (pane2Scene?.id ?? null) : null);
   const refreshSceneDrafts = sceneDrafts.refresh;
 
   const handleManualSnapshot = useCallback(async () => {
@@ -2649,6 +2666,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // SKY-2094: also persists story sub-view to tab shell state.
   const handleSetView = useCallback((v: StorySubView) => {
     setView(v);
+    if (v !== 'timeline') setTimelineSidebarHintOpen(false);
     setActiveDockedTabId(null);
     const next = { ...tabShellRef.current, storySubView: v };
     dispatchTabShell({ type: 'SET_STORY_SUBVIEW', subView: v });
@@ -2843,6 +2861,45 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // a failure can never lose the note (SKY-5154: artifact before index).
   const [sceneNotesRefresh, setSceneNotesRefresh] = useState(0);
   const handleSceneNotesChanged = useCallback(() => setSceneNotesRefresh((n) => n + 1), []);
+  useEffect(() => {
+    if (!selectedStory) {
+      setSceneNotesBySceneId({});
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const map: Record<string, string[]> = {};
+      const allScenes = selectedStory.chapters.flatMap((ch) => ch.scenes);
+      for (const sc of allScenes) {
+        try {
+          const res = await window.api.notesGet?.(sc.id);
+          if (res?.content) {
+            const notes = parseSceneNotes(res.content);
+            if (notes.length > 0) map[sc.id] = notes;
+          }
+        } catch {
+          /* unreadable scene notes — skip */
+        }
+      }
+      if (!cancelled) setSceneNotesBySceneId(map);
+    })();
+    return () => { cancelled = true; };
+  }, [selectedStory, sceneNotesRefresh]);
+
+  useEffect(() => {
+    if (!splitWindowEnabled || !pane2Scene || !selectedScene) return;
+    if (pane2Scene.id !== selectedScene.id) return;
+    if (focusedPane === 2) return;
+    setPane2EditorSyncKey((k) => k + 1);
+  }, [selectedScene, pane2Scene, splitWindowEnabled, focusedPane]);
+
+  useEffect(() => {
+    if (!splitWindowEnabled || !pane2Scene || !selectedScene) return;
+    if (pane2Scene.id !== selectedScene.id) return;
+    if (focusedPane === 1) return;
+    setPane1EditorSyncKey((k) => k + 1);
+  }, [pane2Scene, selectedScene, splitWindowEnabled, focusedPane]);
+
   const handlePromoteSceneNote = useCallback(async (payload: SceneNoteDragPayload) => {
     let sceneTitle = '';
     let storyTitle = '';
@@ -3096,6 +3153,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       if (mod && !e.shiftKey && !e.altKey && (e.key === 't' || e.key === 'T')) {
         if (tabShellRef.current.activeTab === 'story') {
           e.preventDefault();
+          if (tabShellRef.current.storySubView === 'timeline') {
+            setTimelineSidebarHintOpen((open) => !open);
+            return;
+          }
           // SKY-2464: Toggle 'timeline' left sidebar panel.
           // Previously called handleSetView('timeline') to open TimelineSpreadsheet sub-view.
           const cur = leftSidebarLayoutRef.current;
@@ -4052,7 +4113,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   // ("Start writing…" ghost). Every entry point — navigator +, File menu,
   // command palette, empty-state CTA, nav rail — runs this same action; no
   // prompt, wizard, toast, or panel between the click and the caret.
-  const createStory = useCallback(async () => {
+  const openNewStoryModal = useCallback(() => {
+    setNewStoryModalOpen(true);
+  }, []);
+
+  const finishCreateStory = useCallback(async ({ title, linkedPlanNoteIds }: NewStoryModalResult) => {
+    setNewStoryModalOpen(false);
     const stamp = now();
     const storyId = generateId();
     const chapterId = generateId();
@@ -4075,14 +4141,20 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       chapters: [chapter], createdAt: stamp, updatedAt: stamp,
     };
     const story: Story = {
-      id: storyId, title: 'Untitled Story', path: `stories/${storyId}`,
+      id: storyId, title: title.trim() || 'Untitled Story', path: `stories/${storyId}`,
       parts: [part], chapters: [chapter], createdAt: stamp, updatedAt: stamp,
     };
-    // Scene file before manifest (SKY-5154: never a manifest entry without a
-    // backing file). The awaited write also guarantees the E2E disk contract.
     try {
       await window.api?.writeVault?.(scene.path, blocksToMarkdown(scene));
     } catch { /* the debounced manifest write proceeds; scene:save re-creates the file */ }
+    if (linkedPlanNoteIds.length > 0) {
+      const linkLines = linkedPlanNoteIds.map((id) => `[[${id}]]`).join('\n');
+      try {
+        await window.api.notesSet?.(buildNoteStoreKey('book', storyId), linkLines);
+      } catch {
+        /* book-level plan links are best-effort */
+      }
+    }
     updateManifest([...stories, story]);
     handleSelectScene(scene, chapter, story);
     handleNavSectionChange('story');
@@ -4090,6 +4162,10 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     caretSeqRef.current += 1;
     setManuscriptCaretRequest({ blockId, seq: caretSeqRef.current });
   }, [stories, updateManifest, handleSelectScene, handleNavSectionChange, setViewDepth]);
+
+  const createStory = useCallback(async () => {
+    openNewStoryModal();
+  }, [openNewStoryModal]);
 
   const handleReorderScenes = useCallback((storyId: string, chapterId: string, orderedIds: string[]) => {
     const updatedStories = stories.map((s) =>
@@ -5577,6 +5653,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       case 'progress':
         return <ProgressDashboard stories={stories} />;
       case 'timeline':
+        // PLAN-058 L4 (66:14): StoryTimeline in the left sidebar + TimelineRoot
+        // in the main workspace double-renders the timeline surface.
+        if (view === 'timeline') {
+          return (
+            <div className="shell-sidebar-timeline-hint" data-testid="sidebar-timeline-hint">
+              <p>Timeline is open in the main workspace — use the navigator there.</p>
+            </div>
+          );
+        }
         return <StoryTimeline story={selectedStory} />;
       case 'writing-assistant':
         return (
@@ -5626,6 +5711,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         return (
           <ContinuityPanel
             scene={activeSceneForSidebar}
+            story={selectedStory}
             enabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
             // GAP-6: name the flag that's actually off — agent-disabled wins
             // (it's the state the AGENTS card's 'Disabled' status matches).
@@ -6297,6 +6383,12 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     persistLeftSidebarLayout({ ...cur, panels, sidebarCollapsed: false });
   }, [persistLeftSidebarLayout]);
 
+  const handleToolbarContinuityScan = useCallback(() => {
+    setPendingAgentHubTab('notes-analysis');
+    handleGrsVisibilityChange(true);
+    window.dispatchEvent(new CustomEvent('mythos:open-continuity-scan'));
+  }, [handleGrsVisibilityChange]);
+
   // R11 / M11a: the Coach button is AI-bearing chrome — MSV drops it entirely
   // when the master AI toggle is off (undefined handler = no mount).
   const aiEnabled = useAiEnabled();
@@ -6370,7 +6462,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     onDictate: handleToolbarDictate,
     dictating: voiceActive,
     onAssist: aiEnabled ? handleToolbarAssist : undefined,
-  }), [handleToolbarDictate, voiceActive, handleToolbarAssist, aiEnabled]);
+    onContinuityScan: aiEnabled ? handleToolbarContinuityScan : undefined,
+  }), [handleToolbarDictate, voiceActive, handleToolbarAssist, handleToolbarContinuityScan, aiEnabled]);
 
   // M8d: Notes editor toolbar (prototype 1532-1538) reuses the same Dictate
   // handler as the manuscript — no Assist button in the Notes surface. Read
@@ -6426,9 +6519,15 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
   const handleRailStorySelect = useCallback((id: string) => {
     const st = stories.find((x) => x.id === id);
     if (!st) return;
-    setSelectedStory(st);
     handleNavSectionChange('story');
-  }, [stories, handleNavSectionChange]);
+    setSelectedStory(st);
+    const chapter = [...st.chapters].sort((a, b) => a.order - b.order)[0];
+    const scene = chapter ? [...chapter.scenes].sort((a, b) => a.order - b.order)[0] : undefined;
+    if (chapter && scene) {
+      handleSelectScene(scene, chapter, st);
+      setViewDepth('book');
+    }
+  }, [stories, handleNavSectionChange, handleSelectScene, setViewDepth]);
 
   // Which rail module is lit: derived from the actual displayed surface so
   // the slot-glow pill follows crafter/timeline/graph sub-views too.
@@ -6472,6 +6571,18 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
     window.addEventListener('mythos:import-notes-vault', handler);
     return () => window.removeEventListener('mythos:import-notes-vault', handler);
   }, [createMythosVault]);
+
+  // PLAN-058 L4 (FD-2): Notes → timeline chip navigates to Timeline; stash detail
+  // for cold mount (TimelineRoot may be unmounted when the event fires).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<TimelineFromNoteDetail>).detail;
+      if (detail?.eventId) stashTimelineFromNote(detail);
+      runNavModuleChange('timeline');
+    };
+    window.addEventListener(TIMELINE_FROM_NOTE_EVENT, handler);
+    return () => window.removeEventListener(TIMELINE_FROM_NOTE_EVENT, handler);
+  }, [runNavModuleChange]);
 
   // Beta 3 M5: command palette entries (prototype cmdIndex 3900-3913) — the
   // Ctrl-K panel lists these above the vault search hits.
@@ -6656,6 +6767,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       Math.max(PANEL_MIN_WIDTH, panelsAvailableWidth - CENTER_MIN_WIDTH - DIVIDER_WIDTH * 2 - (showLeftSidebar ? layout.leftWidth : 0)),
     ),
   };
+  const leftSidebarEdgeCollapsed = showLeftSidebar && leftSidebarLayout.sidebarCollapsed;
+  const renderedLeftWidth = leftSidebarEdgeCollapsed ? LEFT_SIDEBAR_EDGE_WIDTH : clampedLeftWidth;
   const showTitleBar = !distractionFree && (writingMode !== 'focus' || focusPrefs.showTitleBar);
   // "Show tabs" (FocusModeSection) used to gate only the DepthSlider; SKY-9421
   // repoints it at the toolbar row that DepthSlider lived in, so the Focus
@@ -6891,6 +7004,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         />
       )}
       {exportScope && <ExportDialog scope={exportScope} stories={stories} currentChapterId={selectedChapter?.id ?? null} onClose={() => setExportScope(null)} />}
+      <NewStoryModal
+        open={newStoryModalOpen}
+        onClose={() => setNewStoryModalOpen(false)}
+        onSubmit={(result) => { void finishCreateStory(result); }}
+      />
       {templatePickerOpen && (
         <TemplatePicker
           onApplied={() => { setTemplatePickerOpen(false); }}
@@ -6927,6 +7045,9 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         onSubViewChange={handleSetView}
         vaultName={labelFromPath(vaultBinding.storyPath || activeVaultRoot)}
         aiEnabled={aiEnabled}
+        writingMode={writingMode}
+        onWritingModeChange={setWritingMode}
+        onOpenFocusPrefs={() => setFocusModePrefsOpen(true)}
       />}
       {/* SKY-1698: active docked tab shows its panels in the main area */}
       {activeDockedTabId !== null && (() => {
@@ -6986,6 +7107,11 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       )}
       {activeDockedTabId === null && view === 'timeline' && (
         <div className="shell-timeline">
+          {timelineSidebarHintOpen && (
+            <div className="shell-sidebar-timeline-hint shell-timeline-dup-hint" data-testid="sidebar-timeline-hint">
+              <p>Timeline is open in the main workspace — use the navigator there.</p>
+            </div>
+          )}
           {/* SKY-3185 — F5: TimelineRoot owns the mode switcher (Spreadsheet |
               AEON | AEON Track), grouping, and cross-view selection state. */}
           <TimelineRoot story={selectedStory} onOpenScene={handleOpenSceneById} wikiLinks={timelineWikiLinks} />
@@ -7031,7 +7157,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
       <div className="shell-panels__row">
       {/* Left rail */}
       {showLeftSidebar && (
-        <div className="shell-left" style={{ width: clampedLeftWidth }}>
+        <div
+          className={`shell-left${leftSidebarEdgeCollapsed ? ' shell-left--edge' : ''}`}
+          style={{
+            width: renderedLeftWidth,
+            ...(leftSidebarEdgeCollapsed ? { ['--shell-left-peek-width' as string]: `${clampedLeftWidth}px` } : {}),
+          }}
+        >
+          <div className="shell-left__peek">
           {/* Beta 3 M3: slot-A breathing border (prototype brL, delay 0) */}
           <BorderOverlay settings={appSettings?.liquidNeonV2} slot={1} delay={0} />
           <LeftRail
@@ -7060,12 +7193,14 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
             onCreateChapterInPart={createChapterInPart}
             sidebarCollapsed={leftSidebarLayout.sidebarCollapsed}
             onToggleCollapsed={() => persistLeftSidebarLayout({ ...leftSidebarLayout, sidebarCollapsed: !leftSidebarLayout.sidebarCollapsed })}
+            sceneNoteSummaries={sceneNotesBySceneId}
           />
+          </div>
         </div>
       )}
 
       {/* Left resize handle */}
-      {showLeftSidebar && (
+      {showLeftSidebar && !leftSidebarEdgeCollapsed && (
         <div
           role="separator"
           aria-label="Resize left panel"
@@ -7123,69 +7258,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
               DepthSlider, so the preference keeps doing something. */}
           {showTabBar && (
           <div className="shell-editor-toolbar">
-            {/* SKY-3626: N/F/E writing-mode controls — Story editor only (center, above page) */}
-            <div className="nfe-mode-group" aria-label="Writing mode" data-testid="nfe-mode-group">
-              <button
-                className={`nfe-mode-btn${writingMode === 'normal' ? ' active' : ''}`}
-                onClick={() => setWritingMode('normal')}
-                aria-pressed={writingMode === 'normal'}
-                title="Normal mode — full editor + sidebars (Ctrl+Shift+N)"
-                data-testid="writing-mode-normal"
-              >N</button>
-              <button
-                className={`nfe-mode-btn${writingMode === 'focus' ? ' active' : ''}`}
-                onClick={() => setWritingMode('focus')}
-                aria-pressed={writingMode === 'focus'}
-                title="Focus mode — distraction-free"
-                data-testid="writing-mode-focus"
-              >F</button>
-              {writingMode === 'focus' && (
-                <button
-                  className="nfe-mode-prefs"
-                  onClick={() => setFocusModePrefsOpen(true)}
-                  title="Configure Focus mode panels"
-                  aria-label="Focus mode preferences"
-                >⚙</button>
-              )}
-              <button
-                className={`nfe-mode-btn${writingMode === 'edit' ? ' active' : ''}`}
-                onClick={() => setWritingMode('edit')}
-                aria-pressed={writingMode === 'edit'}
-                title="Edit mode — review with Writing Coach + comments (Ctrl+Shift+E)"
-                data-testid="writing-mode-edit"
-              >E</button>
-            </div>
-            {/* SKY-3201: Story Assist — open Brainstorm tab seeded with active scene context */}
-            {selectedScene && agentFlags.brainstorm && aiEnabled && (
-              <button
-                className="story-assist-btn"
-                type="button"
-                aria-label="Open Brainstorm with current scene context (Story Assist)"
-                data-testid="story-assist-btn"
-                title="Story Assist — open Brainstorm with this scene's context (Ctrl+3)"
-                onClick={() => {
-                  const excerpt = selectedScene.blocks.map((b) => b.content).join(' ').slice(0, 300);
-                  const seed = excerpt.trim()
-                    ? `Story Assist: help me develop the scene "${selectedScene.title}". Here's what I have so far:\n\n${excerpt}…`
-                    : `Story Assist: help me develop the scene "${selectedScene.title}".`;
-                  setBrainstormSeedPrompt(seed);
-                  handleTabChange('brainstorm');
-                }}
-              >
-                ✦ Story Assist
-              </button>
-            )}
-            <button
-              className="split-toggle-btn"
-              onClick={handleToggleSplitWindow}
-              aria-pressed={splitWindowEnabled}
-              aria-label={splitWindowEnabled ? 'Close split view' : 'Split editor (2 panes)'}
-              title="Split window (Ctrl+Shift+2)"
-              data-testid="split-toggle-btn"
-            >
-              ⬜⬜
-            </button>
-            {/* SKY-1700: Layout picker (AC-W-02, AC-W-09) */}
+            {/* PLAN-058 L5 (37:22 / 84:29): NFE, Story Assist, and split toggle removed — modes in StorySubViewBar; split via Ctrl+Shift+2 or tab drag. */}
             <LayoutPicker
               layouts={mergeWithBuiltins(workspaceLayouts)}
               activeLayoutId={activeLayoutId}
@@ -7245,6 +7318,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onCreateNewDoc={handleNewProvisionalScene}
                   onCloseEmptyPane={() => collapseSplitPane(1)}
                   onClosePane={() => collapseSplitPane(1)}
+                  editorRemountKey={pane1EditorSyncKey}
+                  draftVersionLabel={selectedScene ? sceneDrafts.currentLabel : null}
                   activeTabIsEntityBrowser={activeStoryTabIsEntityBrowser}
                   onSelectEntity={handleSelectEntityInTab}
                   selectedEntityId={selectedEntity?.id ?? null}
@@ -7290,6 +7365,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onCreateNewDoc={handlePane2NewScene}
                   onCloseEmptyPane={() => collapseSplitPane(2)}
                   onClosePane={() => collapseSplitPane(2)}
+                  editorRemountKey={pane2EditorSyncKey}
+                  draftVersionLabel={pane2Scene ? pane2SceneDrafts.currentLabel : null}
                   activeTabIsEntityBrowser={activePane2TabIsEntityBrowser}
                   onSelectEntity={handleSelectEntityInTab}
                   selectedEntityId={selectedEntity?.id ?? null}
@@ -7370,6 +7447,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onDictate={manuscriptToolbarActions.onDictate}
                   dictating={manuscriptToolbarActions.dictating}
                   onAssist={manuscriptToolbarActions.onAssist}
+                  onContinuityScan={manuscriptToolbarActions.onContinuityScan}
                   focusMode={writingMode === 'focus'}
                   onToggleFocus={() => setWritingMode(writingMode === 'focus' ? 'normal' : 'focus')}
                   onAddChapter={() => { if (selectedStory) void createChapter(selectedStory.id); }}
@@ -7383,6 +7461,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
                   onEditChapterNote={handleEditChapterNote}
                   autoLinkEntities={allEntities}
                   autoLinkMode={appSettings?.autoLinker?.mode ?? 'suggest'}
+                  resolvedWikiLinkTitles={wikiLinkTitleIndex}
+                  onWikiLinkClick={handleWikiLinkClick}
                   ttsSettings={appSettings?.tts}
                   voicePrefs={appSettings?.voice}
                   drafts={viewDepth === 'scene' && selectedScene ? {
@@ -7813,6 +7893,8 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
         <AgentHubPanel
           scene={activeSceneForSidebar}
           story={selectedStory}
+          pendingHubTab={pendingAgentHubTab}
+          onPendingHubTabConsumed={() => setPendingAgentHubTab(null)}
           onOpenScenesFull={(board) => {
             if (board) { handleOpenBoard(board); return; }
             handleNavSectionChange('story');
@@ -7865,6 +7947,7 @@ export default function DesktopShell({ initialSettings }: { initialSettings?: Ap
           continuityPanel={
             <ContinuityPanel
               scene={activeSceneForSidebar}
+              story={selectedStory}
               enabled={(appSettings?.agents?.archive?.enabled ?? true) && (appSettings?.archiveContinuityEnabled ?? true)}
               // GAP-6: name the flag that's actually off — agent-disabled wins
               // (it's the state the AGENTS card's 'Disabled' status matches).

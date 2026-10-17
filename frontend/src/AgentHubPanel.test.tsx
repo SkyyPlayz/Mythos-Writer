@@ -54,12 +54,11 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     // Active session pill stays mounted without expanding Past chats (TC-8537-02).
     expect(screen.getByTestId('ahp-past-chats-menu')).toBeInTheDocument();
     expect(screen.getByTestId('ahp-past-chats').querySelector('.asp-pill-label')).toBeTruthy();
-    expect(screen.getByTestId('ahp-writer-tips')).toBeInTheDocument();
-    // N4-A: tips strip keeps WA expanded (no AC-WA-20 icon latch).
-    expect(screen.getByLabelText('Heartbeat panel')).toBeInTheDocument();
-    expect(screen.getByTestId('ahp-action-update-timeline')).toBeInTheDocument();
+    expect(screen.queryByTestId('ahp-writer-tips')).not.toBeInTheDocument();
     expect(screen.getByTestId('ahp-action-beta-read')).toBeInTheDocument();
-    expect(screen.getByTestId('ahp-action-writer-scan')).toBeInTheDocument();
+    expect(screen.getByTestId('ahp-action-continuity')).toBeInTheDocument();
+    expect(screen.getByTestId('ahp-action-notes-to-timeline')).toBeInTheDocument();
+    expect(screen.getByTestId('ahp-action-timeline-to-notes')).toBeInTheDocument();
     expect(screen.queryByTestId('ahp-hand-writer')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ahp-hand-analyst')).not.toBeInTheDocument();
     expect(screen.queryByTestId('ahp-hand-archivist')).not.toBeInTheDocument();
@@ -84,7 +83,7 @@ describe('AgentHubPanel — Slice B partner shell', () => {
       },
     };
     render(<AgentHubPanel scene={null} />);
-    fireEvent.click(await screen.findByTestId('ahp-action-update-timeline'));
+    fireEvent.click(await screen.findByTestId('ahp-action-notes-to-timeline'));
     await waitFor(() => expect(timelineRebuild).toHaveBeenCalled());
   });
 
@@ -145,7 +144,7 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     });
   });
 
-  it('Update Timeline action runs via the unified partner (no persona hand chips)', async () => {
+  it('Notes→timeline quick command runs via the unified partner (no persona hand chips)', async () => {
     const timelineRebuild = vi.fn().mockResolvedValue({
       ok: true,
       report: { eventsAdded: 1, eventsUpdated: 0, eventsRemoved: 0, scenesRead: 1, missingSceneIds: [] },
@@ -156,7 +155,7 @@ describe('AgentHubPanel — Slice B partner shell', () => {
     };
     render(<AgentHubPanel scene={null} />);
     expect(screen.queryByTestId('ahp-hand-analyst')).not.toBeInTheDocument();
-    fireEvent.click(await screen.findByTestId('ahp-action-update-timeline'));
+    fireEvent.click(await screen.findByTestId('ahp-action-notes-to-timeline'));
     await waitFor(() => expect(timelineRebuild).toHaveBeenCalled());
   });
 });

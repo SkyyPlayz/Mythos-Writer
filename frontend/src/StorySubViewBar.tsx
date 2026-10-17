@@ -1,6 +1,8 @@
 // SKY-2095 (Phase 2 #2): Story-tab top bar — sub-view toggles + vault badge.
-// SKY-3626: Writing mode (N/F/E) removed from here; lives in the center editor toolbar now.
+// PLAN-058 L5 (37:22): N/F/E live here; center editor toolbar no longer hosts them.
 import './StorySubViewBar.css';
+
+export type WritingMode = 'normal' | 'focus' | 'edit';
 
 // Slice B: Story strip = Editor · Book · Structure only.
 // Coach = Writer hand mode on the partner; Beta Reader reached from partner.
@@ -12,6 +14,9 @@ interface StorySubViewBarProps {
   vaultName: string;
   /** Kept for call-site compat; Coach tab is removed regardless (Slice B). */
   aiEnabled: boolean;
+  writingMode: WritingMode;
+  onWritingModeChange: (mode: WritingMode) => void;
+  onOpenFocusPrefs: () => void;
 }
 
 const SUB_VIEWS: { id: StorySubView; label: string }[] = [
@@ -25,6 +30,9 @@ export default function StorySubViewBar({
   onSubViewChange,
   vaultName,
   aiEnabled: _aiEnabled,
+  writingMode,
+  onWritingModeChange,
+  onOpenFocusPrefs,
 }: StorySubViewBarProps) {
   void _aiEnabled;
   // Legacy 'coach' sub-view → treat Editor as selected in the strip.
@@ -62,6 +70,52 @@ export default function StorySubViewBar({
             {sv.label}
           </button>
         ))}
+      </div>
+
+      <div className="story-subview-bar__spacer" aria-hidden="true" style={{ flex: 1 }} />
+
+      <div className="story-subview-bar__modes" aria-label="Writing mode" data-testid="nfe-mode-group">
+        <button
+          type="button"
+          className={`story-subview-bar__mode-btn${writingMode === 'normal' ? ' active' : ''}`}
+          onClick={() => onWritingModeChange('normal')}
+          aria-pressed={writingMode === 'normal'}
+          title="Normal mode — full editor + sidebars (Ctrl+Shift+N)"
+          data-testid="writing-mode-normal"
+        >
+          N
+        </button>
+        <button
+          type="button"
+          className={`story-subview-bar__mode-btn${writingMode === 'focus' ? ' active' : ''}`}
+          onClick={() => onWritingModeChange('focus')}
+          aria-pressed={writingMode === 'focus'}
+          title="Focus mode — distraction-free"
+          data-testid="writing-mode-focus"
+        >
+          F
+        </button>
+        {writingMode === 'focus' && (
+          <button
+            type="button"
+            className="story-subview-bar__mode-prefs"
+            onClick={onOpenFocusPrefs}
+            title="Configure Focus mode panels"
+            aria-label="Focus mode preferences"
+          >
+            ⚙
+          </button>
+        )}
+        <button
+          type="button"
+          className={`story-subview-bar__mode-btn${writingMode === 'edit' ? ' active' : ''}`}
+          onClick={() => onWritingModeChange('edit')}
+          aria-pressed={writingMode === 'edit'}
+          title="Edit mode — review with Writing Coach + comments (Ctrl+Shift+E)"
+          data-testid="writing-mode-edit"
+        >
+          E
+        </button>
       </div>
     </div>
   );

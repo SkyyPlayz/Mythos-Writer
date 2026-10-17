@@ -22,6 +22,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -150,7 +151,7 @@ test('WL-00: boot app, create an entity, and create a story/chapter/scene', asyn
   // transaction scaffolds "Chapter 1" and an "Untitled Scene" and opens the
   // editor with the caret in that scene — no separate chapter/scene creation
   // step is needed here.
-  await page.locator('.lr-nav-add').first().click();
+  await createStoryFromNavAdd(page);
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
 

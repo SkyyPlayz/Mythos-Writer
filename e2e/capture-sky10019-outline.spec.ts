@@ -11,6 +11,7 @@ import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from './helpers/newStoryModal';
 
 const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 const OUT_DIR = path.resolve(__dirname, '../pr-screenshots/sky-10019-outline-planning-tab');
@@ -45,7 +46,7 @@ test('capture outline planning tab screenshot', async () => {
   await expect(page.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
 
   // Create a story + chapter + scene so the outline tab has a story to attach to.
-  await page.locator('.lr-nav-add').first().click();
+  await createStoryFromNavAdd(page);
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
   await storyRow.locator('.nav-inline-add').click();

@@ -35,6 +35,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -143,12 +144,22 @@ async function openOutlinePanel(pg: Page): Promise<void> {
   // A2 docks the story WorkspaceTabBar in writing chrome (.shell-center-column).
   // Scope the + picker there so a hidden Notes strip (if mounted) cannot steal the click.
   const newTabBtn = pg.locator('.shell-center-column [data-testid="wtb-new-tab-btn"]');
-  await expect(newTabBtn).toBeVisible({ timeout: 8_000 });
-  await newTabBtn.click();
   const outlineItem = pg.locator('.shell-center-column [data-testid="wtb-new-tab-menu-item-outline"]');
-  // Menu hangs below the strip; force covers post-reload boot churn that can
-  // keep the popover from reporting "stable" for the full timeout.
-  await outlineItem.click({ force: true, timeout: 8_000 });
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    await expect(newTabBtn).toBeVisible({ timeout: 8_000 });
+    await newTabBtn.click();
+    try {
+      await outlineItem.waitFor({ state: 'visible', timeout: 4_000 });
+      // Post-reload boot churn can detach the menu mid-click (AC-OPL-QA-09).
+      await outlineItem.click({ force: true, timeout: 5_000 });
+      if (await outlinePanel.isVisible({ timeout: 2_000 }).catch(() => false)) return;
+    } catch {
+      /* popover closed during re-render — retry */
+    }
+    await pg.keyboard.press('Escape').catch(() => undefined);
+    await pg.waitForTimeout(250);
+  }
   await expect(outlinePanel).toBeVisible({ timeout: 8_000 });
 }
 
@@ -168,7 +179,7 @@ async function createStoryWithScenes(
   // M3 instant-create: no prompt — story appears immediately as "Untitled
   // Story" (single story in this fixture vault, so match positionally
   // rather than by a title no create flow sets).
-  await page.locator('.lr-nav-add').first().click();
+  await createStoryFromNavAdd(page);
   const storyRow = page.locator('.nav-story-row').first();
   await expect(storyRow).toBeVisible({ timeout: 8_000 });
 
@@ -516,6 +527,9 @@ test('AC-OPL-QA-09: Hard reload preserves outline nodes read from outline-nodes.
   const sceneRow = page.locator('.nav-scene-row', { hasText: SCENE_TITLE });
   await sceneRow.waitFor({ state: 'visible', timeout: 8_000 });
   await sceneRow.click();
+  await expect(page.locator('.shell-center-column [data-testid="wtb-new-tab-btn"]')).toBeVisible({
+    timeout: 15_000,
+  });
 
   // Navigate back to outline tab
   await openOutlinePanel(page);

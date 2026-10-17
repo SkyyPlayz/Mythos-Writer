@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { EntityEntry, EntityType } from './types';
 import TagInput from './TagInput';
 import { splitFrontmatter } from './lib/frontmatter';
+import { useNoteThumbInfo } from './lib/noteThumbnails';
+import { NoteThumbnail } from './components/NoteThumbnail';
 import './EntityDetail.css';
 
 const TYPE_LABELS: Record<EntityType, string> = {
@@ -348,12 +350,25 @@ export default function EntityDetail({ entity, onClose, onUpdated, onDeleted, on
 
   const currentRelations = entity.relations ?? [];
   const totalRelations = currentRelations.length + proposedRelations.length;
+  const entityNotePath = entity.path.replace(/\\/g, '/');
+  const thumbInfo = useNoteThumbInfo(entity.type === 'character' ? entityNotePath : '');
+  const showCharacterPortrait = entity.type === 'character';
 
   return (
     <div className="entity-detail">
       <div className="entity-detail-header">
         <div className="entity-detail-header-left">
-          <span className="entity-detail-icon">{TYPE_ICONS[entity.type]}</span>
+          {showCharacterPortrait ? (
+            <div className="entity-detail-portrait" data-testid="entity-character-portrait">
+              <NoteThumbnail
+                info={thumbInfo}
+                alt={entity.name}
+                className="entity-detail-portrait__thumb"
+              />
+            </div>
+          ) : (
+            <span className="entity-detail-icon">{TYPE_ICONS[entity.type]}</span>
+          )}
           <span className="entity-detail-type">{TYPE_LABELS[entity.type]}</span>
         </div>
         <div className="entity-detail-header-right">

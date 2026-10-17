@@ -34,6 +34,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { createStoryFromNavAdd, confirmNewStoryModalIfOpen } from '../helpers/newStoryModal';
 
 const MAIN_JS = path.resolve(__dirname, '../../out/main/main.js');
 
@@ -202,9 +203,10 @@ test('TC-300-01: clicking nav-empty-cta in empty StoryNavigator creates a story 
   const cta = page.locator('[data-testid="nav-empty-cta"]');
   await expect(cta).toBeVisible({ timeout: 6_000 });
   await cta.click();
+  await confirmNewStoryModalIfOpen(page);
 
-  // M3 (SKY-9021): the CTA now runs the instant-create transaction directly —
-  // no prompt modal interposes. Wait for the caret, then inline-rename the
+  // PLAN-058 L5: NewStoryModal may interpose; after submit the scaffold is instant.
+  // Wait for the caret, then inline-rename the
   // auto-created story so the navigator assertion below has a known title.
   await waitForWriterCaret(page);
   await renameStoryTitle(page, 'CTA First Story');
@@ -233,8 +235,9 @@ test('TC-300-02: clicking shell-empty-new-story in welcome screen creates a stor
   const welcomeCta = page.locator('[data-testid="shell-empty-new-story"]');
   await expect(welcomeCta).toBeVisible({ timeout: 6_000 });
   await welcomeCta.click();
+  await confirmNewStoryModalIfOpen(page);
 
-  // M3 (SKY-9021): instant-create — no prompt modal. Wait for the caret, then
+  // PLAN-058 L5: modal then instant scaffold. Wait for the caret, then
   // inline-rename the auto-created story.
   await waitForWriterCaret(page);
   await renameStoryTitle(page, 'Welcome CTA Story');
@@ -260,6 +263,7 @@ test('TC-300-03: first-run CTA → instant scaffold auto-opens editor → typed 
   // screen CTA is covered separately by TC-300-02; sharing all three controls
   // in a single chain would not add coverage beyond the standalone test.
   await page.locator('[data-testid="nav-empty-cta"]').click();
+  await confirmNewStoryModalIfOpen(page);
 
   // M3 (SKY-9021): the CTA instantly scaffolds story + Chapter 1 + Untitled
   // Scene in one transaction and auto-opens the editor with the caret placed
