@@ -14,6 +14,12 @@ name: Mythos ops health
 #            Last success comes from the primary run list (newest conclusion
 #            success). `gh run list --status success` reads a lagging search
 #            index and has false-failed this canary while hygiene was healthy.
+#            Those list calls go through gh_list_with_retry (ops-guards.sh):
+#            empty, truncated, and non-zero bodies retry (5 tries, backoff
+#            1/2/4/8). A real empty history ([]) does not. Exit 2 is
+#            pass-through — one attempt, then fail closed, not a retry
+#            and not a WARN — for every wrapped command, including
+#            token-audit `gh run list`.
 #   secrets-rotation — quarterly reminder issue (never prints secret values)
 
 on:
@@ -91,15 +97,17 @@ jobs:
             esac
           }
 
+          # List retries live in ops-guards.sh (sourced above). Exit 2
+          # passes through: the helper returns 2 on the first attempt.
           # Audit weekly cron — allow ≤8 days (192h). No completed runs yet: WARN.
           AUDIT_FILE=$(workflow_file_state "mythos-token-audit.yml")
           if [ "$AUDIT_FILE" = "missing" ]; then
             apply_verdict "token-audit" "fail" "workflow file missing"
-          elif ! AUDIT_ROW=$(gh run list --repo "$REPO" --workflow "mythos-token-audit.yml" --limit 10 \
-            --json conclusion,status,createdAt,updatedAt,url \
-            --jq '[.[] | select(.status=="completed")] | .[0] // empty'); then
+          elif ! AUDIT_JSON=$(gh_list_with_retry "token-audit" \
+            gh run list --repo "$REPO" --workflow "mythos-token-audit.yml" --limit 10 \
+            --json conclusion,status,createdAt,updatedAt,url); then
             apply_verdict "token-audit" "fail" "could not list workflow runs"
-          elif [ -z "$AUDIT_ROW" ] || [ "$AUDIT_ROW" = "null" ]; then
+          elif AUDIT_ROW=$(printf '%s' "$AUDIT_JSON" | jq -c '[.[] | select(.status=="completed")] | .[0] // empty') && { [ -z "$AUDIT_ROW" ] || [ "$AUDIT_ROW" = "null" ]; }; then
             apply_verdict "token-audit" "$(verdict_token_audit "$AUDIT_FILE" 0 "" 9999 192)" \
               "WARN no completed runs yet (bootstrap until first Wed cron / first success) — not a failure"
           else
@@ -122,7 +130,8 @@ jobs:
             apply_verdict "pr-hygiene" "fail" "workflow file missing"
           else
             HY_RC=0
-            HY_RUNS=$(list_workflow_runs_until_success "$REPO" "mythos-pr-hygiene.yml") || HY_RC=$?
+            HY_RUNS=$(gh_list_with_retry "pr-hygiene" \
+              list_workflow_runs_until_success "$REPO" "mythos-pr-hygiene.yml") || HY_RC=$?
             if [ "$HY_RC" -eq 2 ]; then
               apply_verdict "pr-hygiene" "fail" \
                 "could not scan far enough to find the newest success (primary run list truncated before history ended)"
