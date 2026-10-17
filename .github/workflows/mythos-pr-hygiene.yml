@@ -1,5 +1,6 @@
 # SPEC / land on carve-out PR #1619 (Skyy voice 2026-09-25)
-# Merged: auto-rebase + draft-CI comment-only (one workflow, two jobs).
+# Draft gate + draft-CI comment-only. No update-branch call: the step's `if`
+# read steps.gate.outputs.prs, and kept PR numbers were never written there.
 # Creed: cut waste, don't weaken quality.
 #
 # Repo vars (optional):
@@ -7,7 +8,8 @@
 #   MYTHOS_WAKE_CIRCUIT_BREAKER — ISO timestamp until which Grok Bot PR-watch must stay SILENT on draft pr-pushed / CI-fail fan-out (48h spike cap)
 #
 # Labels:
-#   tip-freeze — auto-rebase SKIPS these PRs (never churn tip SHA mid-gate)
+#   tip-freeze — gate SKIPS these PRs (never churn tip SHA mid-gate)
+#   do-not-merge — gate SKIPS these PRs
 #
 # Autofix shadow / coordination: docs/MYTHOS_AUTOFIX.md
 #   MYTHOS_AUTOFIX_MODE, MYTHOS_AUTOFIX_SHADOW_UNTIL
@@ -37,7 +39,7 @@ on:
         default: "both"
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
   issues: write
   actions: read
@@ -67,7 +69,7 @@ jobs:
           set -euo pipefail
           # shellcheck disable=SC1091
           source "${GITHUB_WORKSPACE}/scripts/mythos-ops/ops-guards.sh"
-          # Collect candidate PR numbers (drafts INCLUDED)
+          # Collect candidate PR numbers; the loop keeps drafts only.
           CANDS=""
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             CANDS="${{ github.event.pull_request.number }}"
@@ -80,7 +82,7 @@ jobs:
             fi
             CANDS=$(printf '%s' "$CANDS" | tr '\n' ' ')
           else
-            # schedule / dispatch: open PRs behind base (include drafts)
+            # schedule / dispatch: open PRs behind base (loop keeps drafts only)
             CANDS=$(gh pr list --repo "${{ github.repository }}" --state open --limit 40 \
               --json number,isDraft,labels,mergeStateStatus \
               --jq '.[] | select(.mergeStateStatus=="BEHIND" or .mergeStateStatus=="DIRTY") | .number' | tr '\n' ' ' || true)
@@ -90,31 +92,21 @@ jobs:
             case "$n" in
               ''|*[!0-9]*) echo "skip non-numeric token: $n"; continue ;;
             esac
-            LABELS=$(gh pr view "$n" --repo "${{ github.repository }}" --json labels --jq '[.labels[].name] | join(",")')
+            META=$(gh pr view "$n" --repo "${{ github.repository }}" --json isDraft,labels --jq '{draft:.isDraft,labels:([.labels[].name]|join(","))}')
+            DRAFT=$(jq -r '.draft' <<<"$META")
+            LABELS=$(jq -r '.labels' <<<"$META")
+            if [ "$DRAFT" != "true" ]; then
+              echo "skip #$n non-draft"
+              continue
+            fi
             case ",$LABELS," in
               *,tip-freeze,*) echo "skip #$n tip-freeze"; continue ;;
+              *,do-not-merge,*) echo "skip #$n do-not-merge"; continue ;;
             esac
             KEEP="$KEEP $n"
           done
-          echo "prs<<EOF" >> "$GITHUB_OUTPUT"
+          # Log kept draft numbers. Nothing reads a step output.
           echo "$KEEP" | xargs -n1 2>/dev/null || true
-          echo "EOF" >> "$GITHUB_OUTPUT"
-
-      - name: Update branch (include drafts)
-        if: steps.gate.outputs.prs != ''
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          for n in ${{ steps.gate.outputs.prs }}; do
-            case "$n" in
-              ''|*[!0-9]*) echo "skip non-numeric token: $n"; continue ;;
-            esac
-            echo "update-branch PR #$n (drafts allowed)"
-            gh api -X PUT "repos/${{ github.repository }}/pulls/$n/update-branch" \
-              -f expected_head_sha="$(gh pr view "$n" --repo "${{ github.repository }}" --json headRefOid --jq .headRefOid)" \
-              || echo "update-branch soft-fail #$n (conflict or race)"
-          done
 
   draft-ci-comment:
     name: draft-ci-comment
