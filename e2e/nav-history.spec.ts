@@ -113,7 +113,8 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       // A -> B: follow the wikilink into the Story tab's Opening Scene.
       await noteViewer(page).locator('[data-wiki-link="Scene: Chapter One/Opening Scene"]').click();
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
-      await expect(page.locator('.msv-crumb--current', { hasText: 'Opening Scene' })).toBeVisible();
+      // Match depth-slider: assert via host text (current crumb may ellipsize).
+      await expect(page.getByTestId('msv-crumbs')).toContainText('Opening Scene');
 
       // B -> C: follow a second wikilink back into Notes (Elara's profile).
       // SKY-10929: rich mode renders styled link text only — no [[ ]] brackets.
@@ -124,7 +125,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       // Back once: C -> B (Story tab, Opening Scene).
       await page.keyboard.press('Alt+ArrowLeft');
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
-      await expect(page.locator('.msv-crumb--current', { hasText: 'Opening Scene' })).toBeVisible();
+      await expect(page.getByTestId('msv-crumbs')).toContainText('Opening Scene');
 
       // Back again: B -> A (Notes tab, Cross Links note).
       await page.keyboard.press('Alt+ArrowLeft');
@@ -134,7 +135,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
       // Forward twice: A -> B -> C.
       await page.keyboard.press('Alt+ArrowRight');
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
-      await expect(page.locator('.msv-crumb--current', { hasText: 'Opening Scene' })).toBeVisible();
+      await expect(page.getByTestId('msv-crumbs')).toContainText('Opening Scene');
 
       await page.keyboard.press('Alt+ArrowRight');
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Notes Editor"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
@@ -172,7 +173,7 @@ test.describe('App-wide navigation history (Back/Forward)', () => {
         window.dispatchEvent(new MouseEvent('mousedown', { button: 4, bubbles: true, cancelable: true }));
       });
       await expect(page.locator('nav[aria-label="Main navigation"] button[aria-label="Story Writer"]')).toHaveAttribute('aria-current', 'page', { timeout: 5_000 });
-      await expect(page.locator('.msv-crumb--current', { hasText: 'Opening Scene' })).toBeVisible();
+      await expect(page.getByTestId('msv-crumbs')).toContainText('Opening Scene');
     } finally {
       await app.close().catch(() => undefined);
     }

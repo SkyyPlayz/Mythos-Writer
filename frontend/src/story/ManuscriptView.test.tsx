@@ -375,14 +375,52 @@ describe('zoom navigation', () => {
     expect(props.onCursorChange).toHaveBeenLastCalledWith(cur('scene', 0, 0));
   });
 
-  it('breadcrumbs show the trail and jump zoom levels on click', () => {
-    const { props } = renderView({ cursor: cur('scene', 1, 0) });
+  it('breadcrumbs show the structural trail via F4 StructuralBreadcrumb', () => {
+    renderView({ cursor: cur('scene', 1, 0) });
     const crumbs = within(screen.getByTestId('msv-crumbs'));
+    expect(crumbs.getByTestId('struct-breadcrumb')).toBeInTheDocument();
     expect(crumbs.getByText('The Last City of Veynn')).toBeInTheDocument();
     expect(crumbs.getByText('Ch. 2: Fractures')).toBeInTheDocument();
     expect(crumbs.getByText("The Smuggler's Bargain")).toBeInTheDocument();
-    fireEvent.click(crumbs.getByText('The Last City of Veynn'));
-    expect(props.onCursorChange).toHaveBeenCalledWith(cur('book', 1, 0));
+    expect(crumbs.getByTestId('struct-breadcrumb-root')).toHaveClass(
+      'struct-breadcrumb__item--root'
+    );
+  });
+
+  it('live breadcrumbs include the current part for multi-part stories (F4#6)', () => {
+    renderView({
+      story: mkMultiPartStory(),
+      cursor: { zoom: 'scene', part: 1, chapter: 1, scene: 0 },
+    });
+    const crumbs = within(screen.getByTestId('msv-crumbs'));
+    expect(crumbs.getByText('The Last City of Veynn')).toBeInTheDocument();
+    expect(crumbs.getByText('Part Two')).toBeInTheDocument();
+    expect(crumbs.getByText('Ch. 2: Fractures')).toBeInTheDocument();
+    expect(crumbs.getByText("The Smuggler's Bargain")).toBeInTheDocument();
+    expect(crumbs.getByTestId('struct-breadcrumb-root')).toBeInTheDocument();
+    expect(crumbs.getByTestId('struct-breadcrumb-item-3')).toHaveClass(
+      'struct-breadcrumb__item--current'
+    );
+  });
+
+  it('editable document regions contain no nav/chrome nodes (F2#5)', () => {
+    renderView({ cursor: cur('scene', 0, 0) });
+    const editables = screen.getByTestId('msv-sheet').querySelectorAll('[contenteditable="true"]');
+    expect(editables.length).toBeGreaterThan(0);
+    for (const el of editables) {
+      expect(el.querySelector('[data-msv-chrome]')).toBeNull();
+      expect(
+        el.querySelector(
+          '.msv-crumbs, .msv-zoombar, .msv-toolbar, .struct-breadcrumb, nav[aria-label="Breadcrumbs"]'
+        )
+      ).toBeNull();
+      expect(el.closest('[data-msv-chrome]')).toBeNull();
+    }
+    // Chrome itself is marked and sits outside the sheet.
+    expect(document.querySelector('.msv-zoombar[data-msv-chrome="true"]')).toBeTruthy();
+    expect(document.querySelector('.msv-toolbar[data-msv-chrome="true"]')).toBeTruthy();
+    expect(screen.getByTestId('msv-sheet').contains(screen.getByTestId('msv-crumbs'))).toBe(false);
+    expect(screen.getByTestId('msv-sheet').contains(screen.getByTestId('msv-toolbar'))).toBe(false);
   });
 
   it('←/→ keys hop siblings except at book zoom or while typing', () => {

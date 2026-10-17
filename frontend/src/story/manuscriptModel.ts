@@ -717,16 +717,25 @@ export function renameChapter(
 // ─── breadcrumbs (prototype crumbData 4101–4105) ─────────────────────────────
 
 /**
- * Trail for the current zoom. Prototype: book title → part → "Ch. N: title" →
- * scene title, each crumb jumping to its zoom while keeping indices. The part
- * crumb is omitted until Parts exist (it would duplicate the book title);
- * when they land it slots in between book and chapter.
+ * Trail for the current zoom. Prototype crumbData (9451–9454):
+ * book title → part (when zoom ≠ book and parts are real) → "Ch. N: title" →
+ * scene title. Each crumb jumps to its zoom while keeping indices.
+ * Simple single-part stories omit the part crumb (it would duplicate the book).
  */
 export function breadcrumbs(story: Story, cursor: ManuscriptCursor): BreadcrumbEntry[] {
   const at = (zoom: ZoomLevel): ManuscriptCursor => ({ ...cursor, zoom });
   const trail: BreadcrumbEntry[] = [{ label: story.title, cursor: at('book') }];
+  if (!isSimpleSinglePart(story) && cursor.zoom !== 'book') {
+    const part = orderedParts(story)[cursor.part];
+    if (part) {
+      const label = part.title.trim() || partLabel(cursor.part);
+      trail.push({ label, cursor: at('part') });
+    }
+  }
   if (cursor.zoom === 'chapter' || cursor.zoom === 'scene') {
-    const chapters = orderedChapters(story);
+    const chapters = isSimpleSinglePart(story)
+      ? orderedChapters(story)
+      : orderedParts(story).flatMap((p) => [...p.chapters].sort((a, b) => a.order - b.order));
     const chapter = chapters[cursor.chapter];
     if (!chapter) return trail;
     trail.push({ label: `Ch. ${cursor.chapter + 1}: ${chapter.title}`, cursor: at('chapter') });

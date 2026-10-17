@@ -74,11 +74,19 @@ function mockSelection(text: string) {
     .mockReturnValue({ toString: () => text } as unknown as Selection);
 }
 
-/** Select `text`, comment on it, and return the created comment. */
-function addComment(text: string, body: string) {
+/** F4#16: selection alone does not open the bar — arm then open. */
+function openCommentComposer(text: string) {
   const spy = mockSelection(text);
   fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
   spy.mockRestore();
+  expect(screen.queryByTestId('msv-selbar')).toBeNull();
+  fireEvent.click(screen.getByTestId('msv-comment-arm'));
+  expect(screen.getByTestId('msv-selbar')).toBeInTheDocument();
+}
+
+/** Select `text`, comment on it, and return the created comment. */
+function addComment(text: string, body: string) {
+  openCommentComposer(text);
   fireEvent.change(screen.getByTestId('msv-selbar-input'), { target: { value: body } });
   fireEvent.click(screen.getByTestId('msv-selbar-save'));
   return commentsStore.list('story-1').at(-1);
@@ -100,15 +108,22 @@ afterEach(() => {
 });
 
 describe('selection comment bar', () => {
-  it('appears on a valid text selection and hides on cancel', () => {
+  it('does not open the composer on drag/double-click alone (F4#16)', () => {
     renderView();
-    expect(screen.queryByTestId('msv-selbar')).toBeNull();
     mockSelection('lantern cast a trembling');
     fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
-    expect(screen.getByTestId('msv-selbar')).toBeInTheDocument();
+    expect(screen.queryByTestId('msv-selbar')).toBeNull();
+    expect(screen.getByTestId('msv-comment-arm')).toBeInTheDocument();
+  });
+
+  it('opens the composer only after the explicit Comment action', () => {
+    renderView();
+    expect(screen.queryByTestId('msv-selbar')).toBeNull();
+    openCommentComposer('lantern cast a trembling');
     expect(screen.getByTestId('msv-selbar')).toHaveTextContent('lantern cast a trembling');
     fireEvent.click(screen.getByTestId('msv-selbar-cancel'));
     expect(screen.queryByTestId('msv-selbar')).toBeNull();
+    expect(screen.queryByTestId('msv-comment-arm')).toBeNull();
   });
 
   it('ignores selections outside the 4–219 char prototype gate', () => {
@@ -116,9 +131,11 @@ describe('selection comment bar', () => {
     mockSelection('ab');
     fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
     expect(screen.queryByTestId('msv-selbar')).toBeNull();
+    expect(screen.queryByTestId('msv-comment-arm')).toBeNull();
     mockSelection('x'.repeat(220));
     fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
     expect(screen.queryByTestId('msv-selbar')).toBeNull();
+    expect(screen.queryByTestId('msv-comment-arm')).toBeNull();
   });
 
   it('creates an anchored comment on the owning scene and toasts', () => {
@@ -139,8 +156,7 @@ describe('selection comment bar', () => {
 
   it('saves on Enter in the input', () => {
     renderView();
-    mockSelection('counted the bells');
-    fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
+    openCommentComposer('counted the bells');
     const input = screen.getByTestId('msv-selbar-input');
     fireEvent.change(input, { target: { value: 'nice opener' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -149,8 +165,7 @@ describe('selection comment bar', () => {
 
   it('does nothing without a comment body', () => {
     renderView();
-    mockSelection('counted the bells');
-    fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
+    openCommentComposer('counted the bells');
     fireEvent.click(screen.getByTestId('msv-selbar-save'));
     expect(commentsStore.list('story-1')).toHaveLength(0);
     expect(screen.getByTestId('msv-selbar')).toBeInTheDocument(); // bar stays
@@ -158,8 +173,7 @@ describe('selection comment bar', () => {
 
   it('rejects selections that span paragraphs (no owning scene) with a toast', () => {
     renderView();
-    mockSelection('text that exists nowhere in the story');
-    fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
+    openCommentComposer('text that exists nowhere in the story');
     fireEvent.change(screen.getByTestId('msv-selbar-input'), { target: { value: 'body' } });
     fireEvent.click(screen.getByTestId('msv-selbar-save'));
     expect(commentsStore.list('story-1')).toHaveLength(0);
@@ -172,8 +186,7 @@ describe('selection comment bar', () => {
   it('renders the Read action enabled — wired to the M13 reader', () => {
     // (Reader behavior itself is covered in ManuscriptViewReader.test.tsx.)
     renderView();
-    mockSelection('counted the bells');
-    fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
+    openCommentComposer('counted the bells');
     const read = screen.getByTestId('msv-selbar-read');
     expect(read).toBeEnabled();
     expect(read).toHaveAttribute('title', 'Read this selection aloud');
@@ -224,8 +237,7 @@ describe('gutter dock + anchored underlines', () => {
   it('opening a comment from its anchor dismisses a pending selection composer', () => {
     renderView();
     const created = addComment('another story', 'strong closer');
-    mockSelection('counted the bells');
-    fireEvent.mouseUp(screen.getByTestId('msv-page'), { detail: 2 });
+    openCommentComposer('counted the bells');
     expect(screen.getByTestId('msv-selbar')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId(`msv-anchor-${created!.id}`));
     expect(screen.queryByTestId('msv-selbar')).toBeNull();

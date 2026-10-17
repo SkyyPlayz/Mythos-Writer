@@ -346,3 +346,60 @@ test('F1#9: + Chapter via in-app modal keeps order across reload', async () => {
     fs.rmSync(ownVault, { recursive: true, force: true });
   }
 });
+
+// ─── F1b gate (moved from e2e/f1b-verify → e2e-shard-1 / test:e2e:story-tab-subview) ───
+// F4#6 live crumbs + F2#5 chrome containment. Multi-part part crumb stays
+// PARTIAL (unit-only); this e2e proves StructuralBreadcrumb is mounted live.
+
+test('F4#6: StructuralBreadcrumb live in msv-crumbs', async () => {
+  test.skip(!fs.existsSync(MAIN_JS), 'needs build');
+  await ensureStoryManuscript(page);
+  const crumbs = page.getByTestId('msv-crumbs');
+  await expect(crumbs).toBeVisible({ timeout: 10_000 });
+  await expect(crumbs.getByTestId('struct-breadcrumb')).toBeVisible();
+  await expect(crumbs.getByTestId('struct-breadcrumb-root')).toBeVisible();
+  // Chapter depth shows a chapter crumb; part crumb for multi-part is unit-only.
+  await expect(crumbs).toContainText(/Ch\.\s*\d+|Chapter/);
+});
+
+test('F2#5: sheet editables contain no nav/chrome nodes', async () => {
+  test.skip(!fs.existsSync(MAIN_JS), 'needs build');
+  await ensureStoryManuscript(page);
+  const sheet = page.getByTestId('msv-sheet');
+  if (!(await sheet.isVisible({ timeout: 1_500 }).catch(() => false))) {
+    const zoom = page.getByTestId('msv-zoom-chapter');
+    if (await zoom.isVisible({ timeout: 1_500 }).catch(() => false)) {
+      await zoom.click();
+    }
+  }
+  await expect(sheet).toBeVisible({ timeout: 10_000 });
+  const leak = await page.evaluate(() => {
+    const sheetEl = document.querySelector('[data-testid="msv-sheet"]');
+    if (!sheetEl) return { ok: false, reason: 'no sheet' };
+    const editables = sheetEl.querySelectorAll('[contenteditable="true"], .ProseMirror');
+    const offenders: string[] = [];
+    editables.forEach((el) => {
+      if (
+        el.querySelector(
+          '[data-msv-chrome], .msv-crumbs, .msv-zoombar, .msv-toolbar, .struct-breadcrumb',
+        )
+      ) {
+        offenders.push(el.getAttribute('data-testid') || el.className || el.tagName);
+      }
+      if (el.closest('[data-msv-chrome]')) offenders.push('editable-inside-chrome');
+    });
+    const crumbs = document.querySelector('[data-testid="msv-crumbs"]');
+    const chromeOutside =
+      !!document.querySelector('.msv-zoombar[data-msv-chrome="true"]') &&
+      !!document.querySelector('.msv-toolbar[data-msv-chrome="true"]') &&
+      !!crumbs &&
+      !sheetEl.contains(crumbs);
+    return {
+      ok: offenders.length === 0 && chromeOutside && editables.length > 0,
+      offenders,
+      chromeOutside,
+      editableCount: editables.length,
+    };
+  });
+  expect(leak.ok, JSON.stringify(leak)).toBe(true);
+});
