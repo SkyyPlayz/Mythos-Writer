@@ -65,17 +65,18 @@ else
   bad view-isDraft-labels "gh pr view does not fetch isDraft,labels"
 fi
 
-if [ "$update_name" = "Update branch (drafts only)" ]; then
+# The update-branch step is gone. These two rows used to require its name
+# and PUT body; they now fail if that step comes back.
+if [ -z "$update_name" ] || [ "$update_name" = "null" ]; then
   ok step-name
 else
-  bad step-name "expected 'Update branch (drafts only)' actual $(printf '%q' "$update_name")"
+  bad step-name "update-branch step must stay deleted, found $(printf '%q' "$update_name")"
 fi
 
-if printf '%s' "$update_run" | grep -F -q 'gh api -X PUT "repos/${{ github.repository }}/pulls/$n/update-branch"' \
-  && printf '%s' "$update_run" | grep -F -q 'expected_head_sha'; then
+if [ -z "$update_run" ] || [ "$update_run" = "null" ]; then
   ok put-unchanged
 else
-  bad put-unchanged "update-branch PUT drifted"
+  bad put-unchanged "update-branch PUT must stay deleted"
 fi
 
 SUBST="$(printf '%s\n' "$gate_raw" | sed \
@@ -174,6 +175,9 @@ run_gate() {
   local event="$1" prnum="$2" tag="$3"
   local out="${TMP}/out-${tag}" calls="${TMP}/calls-${tag}" stdout="${TMP}/stdout-${tag}" stderr="${TMP}/stderr-${tag}"
   : > "$calls"
+  # The gate no longer writes GITHUB_OUTPUT (that prs output fed only the
+  # removed update-branch step). Create the file so the reader below can open it.
+  : > "$out"
   set +e
   EVENT_NAME="$event" PR_NUMBER="$prnum" RUN_ID="" \
     GITHUB_REPOSITORY="SkyyPlayz/Mythos-Writer" \

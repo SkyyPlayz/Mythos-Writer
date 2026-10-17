@@ -1,5 +1,6 @@
 # SPEC / land on carve-out PR #1619 (Skyy voice 2026-09-25)
-# Merged: auto-rebase + draft-CI comment-only (one workflow, two jobs).
+# Draft gate + draft-CI comment-only. No update-branch call: the step's `if`
+# read steps.gate.outputs.prs, and kept PR numbers were never written there.
 # Creed: cut waste, don't weaken quality.
 #
 # Repo vars (optional):
@@ -7,8 +8,8 @@
 #   MYTHOS_WAKE_CIRCUIT_BREAKER — ISO timestamp until which Grok Bot PR-watch must stay SILENT on draft pr-pushed / CI-fail fan-out (48h spike cap)
 #
 # Labels:
-#   tip-freeze — auto-rebase SKIPS these PRs (never churn tip SHA mid-gate)
-#   do-not-merge — auto-rebase SKIPS these PRs
+#   tip-freeze — gate SKIPS these PRs (never churn tip SHA mid-gate)
+#   do-not-merge — gate SKIPS these PRs
 #
 # Autofix shadow / coordination: docs/MYTHOS_AUTOFIX.md
 #   MYTHOS_AUTOFIX_MODE, MYTHOS_AUTOFIX_SHADOW_UNTIL
@@ -38,7 +39,7 @@ on:
         default: "both"
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
   issues: write
   actions: read
@@ -104,25 +105,8 @@ jobs:
             esac
             KEEP="$KEEP $n"
           done
-          echo "prs<<EOF" >> "$GITHUB_OUTPUT"
+          # Log kept draft numbers. Nothing reads a step output.
           echo "$KEEP" | xargs -n1 2>/dev/null || true
-          echo "EOF" >> "$GITHUB_OUTPUT"
-
-      - name: Update branch (drafts only)
-        if: steps.gate.outputs.prs != ''
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          for n in ${{ steps.gate.outputs.prs }}; do
-            case "$n" in
-              ''|*[!0-9]*) echo "skip non-numeric token: $n"; continue ;;
-            esac
-            echo "update-branch PR #$n (drafts allowed)"
-            gh api -X PUT "repos/${{ github.repository }}/pulls/$n/update-branch" \
-              -f expected_head_sha="$(gh pr view "$n" --repo "${{ github.repository }}" --json headRefOid --jq .headRefOid)" \
-              || echo "update-branch soft-fail #$n (conflict or race)"
-          done
 
   draft-ci-comment:
     name: draft-ci-comment
