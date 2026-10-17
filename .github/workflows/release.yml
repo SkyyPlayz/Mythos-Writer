@@ -572,7 +572,6 @@ jobs:
       - name: Generate release notes
         id: changelog
         run: |
-          TAG="${{ needs.determine-release.outputs.version }}"
           PREV_TAG=$(git tag -l --sort=-version:refname --merged HEAD "v*" | grep -v "$TAG" | head -1 || echo "")
 
           if [ -z "$PREV_TAG" ]; then
@@ -593,16 +592,26 @@ jobs:
             CHANGELOG="${TRUNCATED}"$'\n'"…and $REMAINING more commits"
           fi
 
-          echo "notes<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Commit subjects are untrusted. A fixed GITHUB_OUTPUT closer is
+          # guessable; a random one cannot be terminated by the body.
+          DELIM="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+          if [ "${#DELIM}" -ne 32 ]; then
+            echo "changelog delimiter generation failed" >&2
+            exit 1
+          fi
+          printf 'notes<<%s\n' "$DELIM" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$CHANGELOG" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$DELIM" >> "$GITHUB_OUTPUT"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.determine-release.outputs.version }}
 
       - name: Update release with notes (keep as draft)
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.determine-release.outputs.version }}
+          NOTES: ${{ steps.changelog.outputs.notes }}
         run: |
-          gh release edit "$TAG" --notes "${{ steps.changelog.outputs.notes }}" --draft
+          printf '%s' "$NOTES" > "$RUNNER_TEMP/notes.md"
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --draft
