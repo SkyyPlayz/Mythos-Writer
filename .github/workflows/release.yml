@@ -116,16 +116,22 @@ jobs:
           fetch-depth: 0
 
       # Gate (runs before any Azure step):
-      #  1. workflow_dispatch must be run ON the tag ref itself with the exact `v*` tag.
-      #  2. The commit must already be on origin/main — nothing off-main gets signed.
+      #  1. The triggering ref must be a tag (a branch named like a tag is not a release tag).
+      #  2. workflow_dispatch must be run ON the tag ref itself with the exact `v*` tag.
+      #  3. The commit must already be on origin/main — nothing off-main gets signed.
       # Inputs are passed through env, never interpolated into the script.
       - name: Gate — dispatch ref equality and on-main check
         env:
           EVENT: ${{ github.event_name }}
           IN_TAG: ${{ inputs.tag }}
           REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
           set -euo pipefail
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "::error::release builds must run on a tag ref; got ref_type '$REF_TYPE' for '$REF_NAME'."
+            exit 1
+          fi
           if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_TAG" != "$REF_NAME" ]; then
             echo "::error::workflow_dispatch must run on the tag ref itself: inputs.tag '$IN_TAG' != github.ref_name '$REF_NAME'."
             exit 1
