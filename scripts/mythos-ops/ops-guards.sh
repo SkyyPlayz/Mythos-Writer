@@ -258,3 +258,65 @@ list_workflow_runs_until_success() {
   fi
   printf '%s\n' "$combined"
 }
+
+# Retry a workflow-run list that came back empty, truncated, or non-zero.
+# Accept only exit 0 plus a JSON array. `[]` is a real empty history and
+# is not retried. 5 attempts, backoff 1s, 2s, 4s, 8s between them, then return 1
+# so the canary FAILs ("could not list") instead of treating the empty
+# body as bootstrap WARN.
+#
+# Exit 2 is pass-through on every wrapped command, including token-audit
+# `gh run list` and list_workflow_runs_until_success. One attempt, return
+# 2, no retry. Callers fail closed on 2 (truncated primary scan, or a
+# gh status of 2). They must not score that as WARN.
+#
+# Args: label command...
+# Stdout: the JSON array on success. Empty on exit 1 and exit 2.
+gh_list_with_retry() {
+  local label="$1"
+  shift
+  local attempt=1
+  local max_attempts=5
+  local delay=1
+  local out=""
+  local rc=0
+  local detail=""
+  while [ "$attempt" -le "$max_attempts" ]; do
+    out=$("$@") && rc=0 || rc=$?
+    if [ "$rc" -eq 2 ]; then
+      return 2
+    fi
+    if [ "$rc" -eq 0 ] && printf '%s' "$out" | jq -e 'type == "array"' >/dev/null 2>&1; then
+      printf '%s\n' "$out"
+      return 0
+    fi
+    if [ "$rc" -ne 0 ]; then
+      detail="rc=${rc}"
+    else
+      detail="rc=0 but body was empty or not a JSON array"
+    fi
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      echo "${label} list failed after ${max_attempts} attempts (${detail})" >&2
+      return 1
+    fi
+    echo "::warning::${label} list attempt ${attempt}/${max_attempts} failed (${detail}); retrying in ${delay}s" >&2
+    sleep "$delay"
+    delay=$((delay * 2))
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+# Newest completed run in a token-audit `gh run list` JSON array.
+# Stdout: that run object, or empty when nothing has completed
+# (canary bootstrap WARN). A newer queued or in-progress run must not
+# hide a completed failure. The emptiness check is AND: a present
+# completed row is printed; it is not forced down the WARN path.
+token_audit_completed_row() {
+  local json="${1-}"
+  local row=""
+  if row=$(printf '%s' "$json" | jq -c '[.[] | select(.status=="completed")] | .[0] // empty') && { [ -z "$row" ] || [ "$row" = "null" ]; }; then
+    return 0
+  fi
+  printf '%s\n' "$row"
+}
