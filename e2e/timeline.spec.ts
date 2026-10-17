@@ -45,45 +45,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { TIMELINE_HIDDEN_MODES_OVERRIDE_KEY } from '../frontend/src/timelineAeon';
-
-/** Write the test override that forces every timeline mode on. The product
- *  set stays hidden when this key is absent. */
-async function writeHiddenModesOverride(pg: Page, reveal: boolean): Promise<void> {
-  await pg.evaluate(({ key, reveal: show }) => {
-    if (show) localStorage.setItem(key, '[]');
-    else localStorage.removeItem(key);
-  }, { key: TIMELINE_HIDDEN_MODES_OVERRIDE_KEY, reveal });
-}
-
-/** TimelineRoot reads the override during render. Toggle the two modes that
- *  stay visible either way so an already-mounted chrome picks the new set up,
- *  then return to whichever of those two was pressed. */
-async function rerenderTimelineChrome(pg: Page): Promise<void> {
-  const root = pg.locator('[data-testid="timeline-root"]');
-  if ((await root.count()) === 0) return;
-  const modeBar = pg.getByRole('group', { name: 'Timeline view mode' });
-  const structure = modeBar.getByRole('button', { name: 'Structure', exact: true });
-  const progress = modeBar.getByRole('button', { name: 'Progress', exact: true });
-  const onStructure = (await structure.getAttribute('aria-pressed')) === 'true';
-  if (onStructure) {
-    await progress.click();
-    await structure.click();
-  } else {
-    await structure.click();
-    await progress.click();
-  }
-}
-
-async function forceHiddenTimelineViewsOn(pg: Page): Promise<void> {
-  await writeHiddenModesOverride(pg, true);
-  await rerenderTimelineChrome(pg);
-}
-
-async function useProductTimelineModes(pg: Page): Promise<void> {
-  await writeHiddenModesOverride(pg, false);
-  await rerenderTimelineChrome(pg);
-}
+import { revealedTimelineMainJs } from './timelineHiddenModesPatch';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -282,12 +244,12 @@ function seedTimelinesStore(vaultDir: string, timelineId: string, timelineName: 
   fs.writeFileSync(path.join(vaultDir, 'timelines.json'), JSON.stringify(store, null, 2));
 }
 
-async function launchApp(userData: string): Promise<ElectronApplication> {
+async function launchApp(userData: string, mainJs: string = MAIN_JS): Promise<ElectronApplication> {
   const extraArgs = (process.platform !== 'darwin' && !process.env.DISPLAY)
     ? ['--headless']
     : [];
   const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', '--force-prefers-reduced-motion', ...extraArgs],
+    args: [mainJs, `--user-data-dir=${userData}`, '--no-sandbox', '--force-prefers-reduced-motion', ...extraArgs],
     timeout: 60_000,
   });
   const proc = app.process();
@@ -328,7 +290,6 @@ async function activateStorySection(pg: Page): Promise<void> {
  *  so this suite explicitly switches to Spreadsheet after the view mounts. */
 async function openSpreadsheet(pg: Page, sceneTitle: string): Promise<void> {
   await expect(pg.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
-  await writeHiddenModesOverride(pg, true);
 
   const storiesTab = pg.locator('.rail-tab', { hasText: 'Stories' });
   if (await storiesTab.isVisible()) await storiesTab.click();
@@ -399,7 +360,7 @@ test.beforeAll(async () => {
   seedUserData(userData, vaultDir, notesVaultDir);
   seedVault(vaultDir, STORY_ID, STORY_TITLE, CHAPTER_ID, CHAPTER_TITLE, [ANCHOR_SCENE]);
   seedTimelinesStore(vaultDir, 'tl-story', STORY_TITLE, [EV_1, EV_2, EV_3]);
-  app = await launchApp(userData);
+  app = await launchApp(userData, revealedTimelineMainJs());
   page = await firstWindow(app);
   await openSpreadsheet(page, ANCHOR_SCENE.title);
   await expect(page.locator('[data-testid="timeline-spreadsheet-root"]')).toBeVisible({ timeout: 8_000 });
@@ -561,7 +522,7 @@ test.describe('TC-TL-08 — empty state', () => {
     seedUserData(emptyUserData, emptyVaultDir, emptyNotesVaultDir);
     seedVault(emptyVaultDir, EMPTY_STORY_ID, 'Empty Story', EMPTY_CHAPTER_ID, 'Empty Chapter', [EMPTY_SCENE]);
     seedTimelinesStore(emptyVaultDir, 'tl-story', 'Empty Story', []);
-    emptyApp = await launchApp(emptyUserData);
+    emptyApp = await launchApp(emptyUserData, revealedTimelineMainJs());
     emptyPage = await firstWindow(emptyApp);
     await openSpreadsheet(emptyPage, EMPTY_SCENE.title);
   });
@@ -634,7 +595,7 @@ test.describe('SKY-797 — perf gate', () => {
     }));
     seedTimelinesStore(perfVaultDir, 'tl-story', 'Perf Story', events);
 
-    perfApp = await launchApp(perfUserData);
+    perfApp = await launchApp(perfUserData, revealedTimelineMainJs());
     perfPage = await firstWindow(perfApp);
     // Freeze Liquid Neon ambience (frame ring / breathing borders / wallpaper
     // drift) so the gate measures timeline cost, not shell repaints, under
@@ -784,34 +745,61 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
   let m23NotesVaultDir: string;
   let m23App: ElectronApplication | undefined;
   let m23Page: Page;
+  // Product chrome only. The rest of this describe shares one patched launch
+  // so TC-TL-M23-04's plotline is on the vault TC-TL-M23-06 opens.
+  let m23ProductUserData: string;
+  let m23ProductVaultDir: string;
+  let m23ProductNotesVaultDir: string;
+  let m23ProductApp: ElectronApplication | undefined;
+  let m23ProductPage: Page;
 
-  test.beforeAll(async () => {
-    m23UserData = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m23-user-'));
-    m23VaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m23-vault-'));
-    m23NotesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mythos-m23-notes-'));
-    seedUserData(m23UserData, m23VaultDir, m23NotesVaultDir);
+  async function bootM23(prefix: string, mainJs?: string): Promise<{ userData: string; vaultDir: string; notesVaultDir: string; app: ElectronApplication; page: Page }> {
+    const userData = fs.mkdtempSync(path.join(os.tmpdir(), prefix + '-user-'));
+    const vaultDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix + '-vault-'));
+    const notesVaultDir = fs.mkdtempSync(path.join(os.tmpdir(), prefix + '-notes-'));
+    seedUserData(userData, vaultDir, notesVaultDir);
     seedVault(
-      m23VaultDir,
+      vaultDir,
       M23_STORY_ID, M23_STORY_TITLE,
       M23_CHAPTER_ID, M23_CHAPTER_TITLE,
       [B1, B2, B3],
       [],
     );
-    seedTimelinesStore(m23VaultDir);
-    m23App = await launchApp(m23UserData);
-    m23Page = await firstWindow(m23App);
-    await openTimeline(m23Page, B1.title, 'progress');
+    seedTimelinesStore(vaultDir);
+    const app = await launchApp(userData, mainJs);
+    const page = await firstWindow(app);
+    await openTimeline(page, B1.title, 'progress');
+    return { userData, vaultDir, notesVaultDir, app, page };
+  }
+
+  test.beforeAll(async () => {
+    const revealed = await bootM23('mythos-m23-revealed', revealedTimelineMainJs());
+    m23UserData = revealed.userData;
+    m23VaultDir = revealed.vaultDir;
+    m23NotesVaultDir = revealed.notesVaultDir;
+    m23App = revealed.app;
+    m23Page = revealed.page;
+
+    const product = await bootM23('mythos-m23');
+    m23ProductUserData = product.userData;
+    m23ProductVaultDir = product.vaultDir;
+    m23ProductNotesVaultDir = product.notesVaultDir;
+    m23ProductApp = product.app;
+    m23ProductPage = product.page;
   });
 
   test.afterAll(async () => {
     await m23App?.close().catch(() => {});
+    await m23ProductApp?.close().catch(() => {});
     fs.rmSync(m23UserData, { recursive: true, force: true });
     fs.rmSync(m23VaultDir, { recursive: true, force: true });
     fs.rmSync(m23NotesVaultDir, { recursive: true, force: true });
+    fs.rmSync(m23ProductUserData, { recursive: true, force: true });
+    fs.rmSync(m23ProductVaultDir, { recursive: true, force: true });
+    fs.rmSync(m23ProductNotesVaultDir, { recursive: true, force: true });
   });
 
   test('TC-TL-M23-01: seven-mode segment with Progress default + the full toolbar', async () => {
-    await forceHiddenTimelineViewsOn(m23Page);
     const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
     await expect(modeBar).toBeVisible({ timeout: 6_000 });
     for (const label of ['Progress', 'Structure', 'Plotlines', 'Spreadsheet', 'Tension', 'Relationships', 'Subway']) {
@@ -828,24 +816,23 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
   });
 
   test('TC-TL-M23-01b: Structure and Progress are the only mode tabs', async () => {
-    await useProductTimelineModes(m23Page);
-    const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
+    const modeBar = m23ProductPage.getByRole('group', { name: 'Timeline view mode' });
     await expect(modeBar).toBeVisible({ timeout: 6_000 });
     await expect(modeBar.getByRole('button', { name: 'Structure', exact: true })).toBeVisible();
     await expect(modeBar.getByRole('button', { name: 'Progress', exact: true })).toBeVisible();
     for (const label of ['Plotlines', 'Spreadsheet', 'Tension', 'Relationships', 'Subway']) {
       await expect(modeBar.getByRole('button', { name: label, exact: true })).toHaveCount(0);
     }
-    await expect(m23Page.locator('[data-testid="tl-view-filter"]')).toBeVisible();
-    const viewOptions = await m23Page.locator('[data-testid="tl-view-filter"] option').allTextContents();
+    await expect(m23ProductPage.locator('[data-testid="tl-view-filter"]')).toBeVisible();
+    const viewOptions = await m23ProductPage.locator('[data-testid="tl-view-filter"] option').allTextContents();
     expect(viewOptions).toContain('Story Structure');
     expect(viewOptions).not.toContain('World Chronology');
     expect(viewOptions).not.toContain('Per Character');
-    await expect(m23Page.locator('[data-testid="groupby-select"]')).toHaveCount(0);
-    await expect(m23Page.locator('[data-testid="tl-templates-btn"]')).toBeVisible();
-    await expect(m23Page.locator('[data-testid="tl-add-plotline"]')).toBeVisible();
-    await expect(m23Page.locator('[data-testid="tl-show-filter"]')).toBeVisible();
-    await expect(m23Page.locator('[data-testid="tl-today-btn"]')).toBeVisible();
+    await expect(m23ProductPage.locator('[data-testid="groupby-select"]')).toHaveCount(0);
+    await expect(m23ProductPage.locator('[data-testid="tl-templates-btn"]')).toBeVisible();
+    await expect(m23ProductPage.locator('[data-testid="tl-add-plotline"]')).toBeVisible();
+    await expect(m23ProductPage.locator('[data-testid="tl-show-filter"]')).toBeVisible();
+    await expect(m23ProductPage.locator('[data-testid="tl-today-btn"]')).toBeVisible();
   });
 
   test('TC-TL-M23-02: every story row plots from timelines.json', async () => {
@@ -922,7 +909,6 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
   // disabled there now, and in Spreadsheet it must produce real group rows.
   // (Numbered -08: -07 is taken by SKY-10502's View-select test on PR #1252.)
   test('TC-TL-M23-08: Group By is disabled in the lanes modes and live in the Spreadsheet', async () => {
-    await forceHiddenTimelineViewsOn(m23Page);
     const groupSelect = m23Page.locator('[data-testid="groupby-select"]');
     const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
 
@@ -951,7 +937,6 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
   });
 
   test('TC-TL-M23-06: Today explains itself while nothing is written; modes route their surfaces', async () => {
-    await forceHiddenTimelineViewsOn(m23Page);
     await m23Page.locator('[data-testid="tl-today-btn"]').click();
     // Filtered by text (see TC-TL-M23-04): concurrent app-toasts must not
     // make this locator ambiguous under Playwright's strict mode.
@@ -984,7 +969,6 @@ test.describe('Beta 4 M23 — timeline lane rows (TC-TL-M23-*)', () => {
   // is already covered live at TC-TL-M23-05; this covers the View select,
   // which TC-TL-M23-06 only exercised indirectly via the mode-bar buttons.
   test('TC-TL-M23-07: the View select actually re-groups by switching timeline modes', async () => {
-    await forceHiddenTimelineViewsOn(m23Page);
     const modeBar = m23Page.getByRole('group', { name: 'Timeline view mode' });
     await expect(m23Page.locator('[data-testid="timeline-axis-view"]')).toBeVisible();
 

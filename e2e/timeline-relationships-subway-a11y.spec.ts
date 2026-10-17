@@ -26,9 +26,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { TIMELINE_HIDDEN_MODES_OVERRIDE_KEY } from '../frontend/src/timelineAeon';
-
-const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
+import { revealedTimelineMainJs } from './timelineHiddenModesPatch';
 
 const STORY_ID = 'story-rel-sub-a11y';
 const CHAPTER_ID = 'chapter-rel-sub-a11y';
@@ -200,7 +198,7 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
     ? ['--headless']
     : [];
   const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', '--force-prefers-reduced-motion', ...extraArgs],
+    args: [revealedTimelineMainJs(), `--user-data-dir=${userData}`, '--no-sandbox', '--force-prefers-reduced-motion', ...extraArgs],
     timeout: 60_000,
   });
   const proc = app.process();
@@ -246,9 +244,6 @@ async function openTimelineMode(
   await sceneRow.click();
 
   await activateStorySection(pg);
-  await pg.evaluate((key) => {
-    localStorage.setItem(key, '[]');
-  }, TIMELINE_HIDDEN_MODES_OVERRIDE_KEY);
   const timelineBtn = pg.locator('nav[aria-label="Main navigation"] button[aria-label="Timeline"]');
   await expect(timelineBtn).toBeVisible({ timeout: 6_000 });
   await timelineBtn.click();

@@ -24,12 +24,27 @@ import TimelineRoot from './TimelineRoot';
 import type { Story } from './types';
 import type { TimelinesStore } from './timelinesTypes';
 import { dispatchTimelineFromNote } from './timeline2/notesToTimeline';
-import { TIMELINE_HIDDEN_MODES_OVERRIDE_KEY } from './timelineAeon';
+import type { TimelineMode } from './timelineAeon';
 
-/** Force the hidden timeline views on for this test. The product set stays
- *  hidden; an empty override is the only thing this test writes. */
+/** Test-only flag. The shipped module keeps the hidden modes hidden; this
+ *  mock is the only way these tests reveal them. */
+const revealState = vi.hoisted(() => ({ on: false }));
+
+vi.mock('./timelineAeon', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./timelineAeon')>();
+  return {
+    ...actual,
+    isTimelineModeVisible: (mode: TimelineMode) =>
+      revealState.on ? true : actual.isTimelineModeVisible(mode),
+    resolveVisibleTimelineMode: (stored: string | null): TimelineMode => {
+      if (!revealState.on) return actual.resolveVisibleTimelineMode(stored);
+      return actual.resolveTimelineMode(stored) ?? 'structure';
+    },
+  };
+});
+
 function forceHiddenTimelineViewsOn(): void {
-  localStorage.setItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY, '[]');
+  revealState.on = true;
 }
 
 // ─── Child-view mocks ───
@@ -188,7 +203,10 @@ beforeEach(() => {
   localStorage.clear();
   setupApi();
 });
-afterEach(() => cleanup());
+afterEach(() => {
+  revealState.on = false;
+  cleanup();
+});
 
 // ─── View switcher ───
 

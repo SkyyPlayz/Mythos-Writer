@@ -41,34 +41,9 @@ export const HIDDEN_TIMELINE_MODES: ReadonlySet<TimelineMode> = new Set([
   'plot', 'spreadsheet', 'tension', 'relations', 'subway',
 ]);
 
-/**
- * Test-only storage override. Absent → `HIDDEN_TIMELINE_MODES` (the product
- * default, views hidden). A JSON array of `TimelineMode` replaces that set
- * for visibility checks; `[]` forces every mode on so the hidden-view tests
- * still execute their surfaces. The app never writes this key.
- */
-export const TIMELINE_HIDDEN_MODES_OVERRIDE_KEY = 'timeline:hiddenModesOverride';
-
-function hiddenModesInEffect(): ReadonlySet<TimelineMode> {
-  try {
-    if (typeof localStorage === 'undefined') return HIDDEN_TIMELINE_MODES;
-    const raw = localStorage.getItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY);
-    if (raw == null) return HIDDEN_TIMELINE_MODES;
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return HIDDEN_TIMELINE_MODES;
-    const modes = parsed.filter(
-      (mode): mode is TimelineMode =>
-        typeof mode === 'string' && (VALID_TIMELINE_MODES as readonly string[]).includes(mode),
-    );
-    return new Set(modes);
-  } catch {
-    return HIDDEN_TIMELINE_MODES;
-  }
-}
-
 /** True when `mode` is offered in the timeline chrome. */
 export function isTimelineModeVisible(mode: TimelineMode): boolean {
-  return !hiddenModesInEffect().has(mode);
+  return !HIDDEN_TIMELINE_MODES.has(mode);
 }
 
 /** Modes the timeline chrome currently offers, in `VALID_TIMELINE_MODES` order. */

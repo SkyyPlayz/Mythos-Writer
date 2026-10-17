@@ -16,7 +16,6 @@ import {
   resolveVisibleTimelineMode,
   isTimelineModeVisible,
   HIDDEN_TIMELINE_MODES,
-  TIMELINE_HIDDEN_MODES_OVERRIDE_KEY,
   VISIBLE_TIMELINE_MODES,
   VALID_TIMELINE_MODES,
   hexA,
@@ -129,33 +128,17 @@ describe('resolveVisibleTimelineMode', () => {
     expect(resolveVisibleTimelineMode('')).toBe('structure');
   });
 
-  it('an empty storage override forces every mode on without changing the product set', () => {
-    localStorage.setItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY, '[]');
+  it('ignores a storage key that tries to unhide the hidden modes', () => {
+    localStorage.setItem('timeline:hiddenModesOverride', '[]');
     try {
+      expect(isTimelineModeVisible('plot')).toBe(false);
+      expect(resolveVisibleTimelineMode('spreadsheet')).toBe('structure');
+      expect(resolveVisibleTimelineMode('track')).toBe('structure');
       expect([...HIDDEN_TIMELINE_MODES].sort()).toEqual(
         ['plot', 'relations', 'spreadsheet', 'subway', 'tension'],
       );
-      for (const mode of VALID_TIMELINE_MODES) {
-        expect(isTimelineModeVisible(mode)).toBe(true);
-      }
-      expect(resolveVisibleTimelineMode('spreadsheet')).toBe('spreadsheet');
-      expect(resolveVisibleTimelineMode('track')).toBe('subway');
     } finally {
-      localStorage.removeItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY);
-    }
-    expect(isTimelineModeVisible('plot')).toBe(false);
-    expect(resolveVisibleTimelineMode('spreadsheet')).toBe('structure');
-    expect(resolveVisibleTimelineMode('track')).toBe('structure');
-  });
-
-  it('a non-array storage override is ignored', () => {
-    try {
-      localStorage.setItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY, '"plot"');
-      expect(isTimelineModeVisible('plot')).toBe(false);
-      localStorage.setItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY, '{');
-      expect(isTimelineModeVisible('spreadsheet')).toBe(false);
-    } finally {
-      localStorage.removeItem(TIMELINE_HIDDEN_MODES_OVERRIDE_KEY);
+      localStorage.removeItem('timeline:hiddenModesOverride');
     }
   });
 });

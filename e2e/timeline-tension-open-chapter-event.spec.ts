@@ -26,11 +26,9 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { TIMELINE_HIDDEN_MODES_OVERRIDE_KEY } from '../frontend/src/timelineAeon';
+import { revealedTimelineMainJs } from './timelineHiddenModesPatch';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const MAIN_JS = path.resolve(__dirname, '../out/main/main.js');
 
 const STORY_ID = 'story-tension-open-chapter-e2e';
 const STORY_TITLE = 'The Tension Ledger';
@@ -198,7 +196,7 @@ async function launchApp(userData: string): Promise<ElectronApplication> {
     ? ['--headless']
     : [];
   const app = await electron.launch({
-    args: [MAIN_JS, `--user-data-dir=${userData}`, '--no-sandbox', '--force-prefers-reduced-motion', ...extraArgs],
+    args: [revealedTimelineMainJs(), `--user-data-dir=${userData}`, '--no-sandbox', '--force-prefers-reduced-motion', ...extraArgs],
     timeout: 60_000,
   });
   const proc = app.process();
@@ -236,9 +234,6 @@ async function activateStorySection(pg: Page): Promise<void> {
  *  mode (§8.5 M24 seven-mode segment). */
 async function openTensionView(pg: Page): Promise<void> {
   await expect(pg.locator('.app-menu-bar')).toBeVisible({ timeout: 12_000 });
-  await pg.evaluate((key) => {
-    localStorage.setItem(key, '[]');
-  }, TIMELINE_HIDDEN_MODES_OVERRIDE_KEY);
 
   const sceneRow = pg.locator('.nav-scene-row', { hasText: ANCHOR_SCENE.title }).first();
   await expect(sceneRow).toBeVisible({ timeout: 8_000 });
