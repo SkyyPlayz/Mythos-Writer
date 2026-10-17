@@ -565,9 +565,10 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Generate release notes
         id: changelog
@@ -607,7 +608,6 @@ jobs:
           TAG: ${{ needs.determine-release.outputs.version }}
 
       - name: Update release with notes (keep as draft)
-        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ needs.determine-release.outputs.version }}
