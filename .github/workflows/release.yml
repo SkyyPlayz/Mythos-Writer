@@ -100,6 +100,9 @@ jobs:
   build-windows:
     needs: [determine-release, create-release]
     runs-on: windows-latest
+    # Bounds the live-Azure-session window: without a credential, Invoke-TrustedSigning falls
+    # through to an interactive browser login and hangs (seen in the PLAN-SIGN A3 proof run).
+    timeout-minutes: 45
     environment: release-signing
     permissions:
       contents: write
