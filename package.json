@@ -186,6 +186,7 @@
     "vite": "^6.4.2",
     "nanoid": "^3.3.18",
     "@tiptap/core": "3.31.4",
-    "@tiptap/pm": "3.31.4"
+    "@tiptap/pm": "3.31.4",
+    "http-cache-semantics": "4.3.0"
   }
 }
