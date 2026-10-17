@@ -32,9 +32,12 @@ tag:
 ```bash
 gh workflow run release.yml \
   -R SkyyPlayz/Mythos-Writer \
+  --ref v0.5.1 \
   -f tag=v0.5.1 \
   -f is-beta=false
 ```
+
+`--ref <tag>` is required: `build-windows` refuses to sign unless the run is on the tag ref itself (`github.ref_type == tag`), the dispatched `tag` input equals that ref, and the commit is on `main`.
 
 Both `v0.5.3` and `0.5.3` are accepted — the workflow normalizes the tag to the `v`-prefix form automatically.
 
