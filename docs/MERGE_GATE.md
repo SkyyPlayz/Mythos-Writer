@@ -11,7 +11,7 @@ Fail-closed: if any condition is missing or ambiguous, the workflow **does not m
 | --- | --- |
 | Routine product/docs PRs | Mythos gate auto-merge workflow |
 | VR baseline refresh PRs (`vr-baselines.yml`) | Same Mythos gate — workflow opens a PR to **`main` only** with `MYTHOS_BOT_TOKEN` (so required checks run); **no** `--auto --squash` |
-| Dependabot patch/minor | [`dependabot-auto-merge.yml`](../.github/workflows/dependabot-auto-merge.yml) (unchanged) |
+| Dependabot (any update) | Human merge. The Mythos gate still skips `dependabot[bot]`. `.github/workflows/dependabot-auto-merge.yml` was removed after PR #1696 (`abceeae7`) armed native auto-merge and landed on `main` with no reviews and no CI on `main` (owner Option A, 2026-10-16). |
 | Carve-out paths | Same workflow **only** after owner tip-bound `CARVE-OUT APPROVE` |
 | Releases | [`release.yml`](../.github/workflows/release.yml) — draft only unless owner publishes |
 
@@ -62,5 +62,4 @@ Fallback: `GITHUB_TOKEN` (repo has `allow_auto_merge=true`). Because that token 
   auto-applied by Actions).
 - Tip-freeze / CI-fix batching soft cap — see [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md)
   and [FORGE_E2E_KEEPALIVE.md](./FORGE_E2E_KEEPALIVE.md) (comment-only draft CI sticky).
-- Dependabot auto-merge behavior
 - `release.yml` publish / draft policy
