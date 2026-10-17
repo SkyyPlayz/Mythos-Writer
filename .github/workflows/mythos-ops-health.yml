@@ -107,23 +107,20 @@ jobs:
             gh run list --repo "$REPO" --workflow "mythos-token-audit.yml" --limit 10 \
             --json conclusion,status,createdAt,updatedAt,url); then
             apply_verdict "token-audit" "fail" "could not list workflow runs"
+          elif AUDIT_ROW=$(printf '%s' "$AUDIT_JSON" | jq -c '[.[] | select(.status=="completed")] | .[0] // empty') && { [ -z "$AUDIT_ROW" ] || [ "$AUDIT_ROW" = "null" ]; }; then
+            apply_verdict "token-audit" "$(verdict_token_audit "$AUDIT_FILE" 0 "" 9999 192)" \
+              "WARN no completed runs yet (bootstrap until first Wed cron / first success) — not a failure"
           else
-            AUDIT_ROW=$(token_audit_completed_row "$AUDIT_JSON")
-            if [ -z "$AUDIT_ROW" ] || [ "$AUDIT_ROW" = "null" ]; then
-              apply_verdict "token-audit" "$(verdict_token_audit "$AUDIT_FILE" 0 "" 9999 192)" \
-                "WARN no completed runs yet (bootstrap until first Wed cron / first success) — not a failure"
-            else
-              A_CONC=$(jq -r '.conclusion // empty' <<<"$AUDIT_ROW")
-              A_UPD=$(jq -r '.updatedAt // .createdAt' <<<"$AUDIT_ROW")
-              A_URL=$(jq -r '.url // empty' <<<"$AUDIT_ROW")
-              A_AGE=$(age_hours "$A_UPD" "$NOW")
-              A_VERDICT=$(verdict_token_audit "$AUDIT_FILE" 1 "$A_CONC" "$A_AGE" 192)
-              A_DETAIL="conclusion=\`${A_CONC}\` age=${A_AGE}h url=${A_URL}"
-              if [ "$A_VERDICT" = "fail" ] && [ "$A_AGE" -gt 192 ]; then
-                A_DETAIL="${A_DETAIL} → SILENT past window (>192h)"
-              fi
-              apply_verdict "token-audit" "$A_VERDICT" "$A_DETAIL"
+            A_CONC=$(jq -r '.conclusion // empty' <<<"$AUDIT_ROW")
+            A_UPD=$(jq -r '.updatedAt // .createdAt' <<<"$AUDIT_ROW")
+            A_URL=$(jq -r '.url // empty' <<<"$AUDIT_ROW")
+            A_AGE=$(age_hours "$A_UPD" "$NOW")
+            A_VERDICT=$(verdict_token_audit "$AUDIT_FILE" 1 "$A_CONC" "$A_AGE" 192)
+            A_DETAIL="conclusion=\`${A_CONC}\` age=${A_AGE}h url=${A_URL}"
+            if [ "$A_VERDICT" = "fail" ] && [ "$A_AGE" -gt 192 ]; then
+              A_DETAIL="${A_DETAIL} → SILENT past window (>192h)"
             fi
+            apply_verdict "token-audit" "$A_VERDICT" "$A_DETAIL"
           fi
 
           # Hygiene: fail on silence since last success, not on one recent failure.

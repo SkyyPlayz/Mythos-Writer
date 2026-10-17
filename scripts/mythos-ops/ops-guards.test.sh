@@ -303,7 +303,7 @@ pick=$(printf '%s' "$out" | pick_hygiene_runs)
 assert_eq bootstrap-no-success null "$(printf '%s' "$pick" | jq -r '.success')"
 assert_eq bootstrap-latest-failure failure "$(printf '%s' "$pick" | jq -r '.latest.conclusion')"
 
-# gh_list_with_retry + token_audit_completed_row.
+# gh_list_with_retry. The completed-row gate stays in the canary step.
 # Fake gh and fake sleep. These rows are the behavior the canary sources.
 # They are what kill a retry/backoff/WARN-gate mutant; do not loosen them.
 sleep() {
@@ -321,6 +321,27 @@ retry_calls() {
 
 retry_sleeps() {
   paste -sd ' ' /tmp/ops-guards-retry-sleeps.txt
+}
+
+# The canary's completed-row gate stays in mythos-ops-health.yml.
+# Run that line, so a dropped filter or an AND flipped to OR fails here.
+canary_completed_row() {
+  local AUDIT_JSON="$1"
+  local AUDIT_ROW=""
+  local line=""
+  line=$(grep -F 'select(.status=="completed")' "$health_yml" | grep -F 'AUDIT_ROW=' | head -1 || true)
+  if [ -z "$line" ]; then
+    echo "FAIL canary-completed-row-line-missing" >&2
+    return 1
+  fi
+  line="${line#"${line%%[![:space:]]*}"}"
+  line=${line#elif }
+  line=${line%; then}
+  if eval "$line"; then
+    printf ''
+    return 0
+  fi
+  printf '%s' "$AUDIT_ROW"
 }
 
 # M01/M03/M13: the 5th try is the one that may succeed. Fewer tries FAIL.
@@ -482,7 +503,7 @@ fi
 if [ "$exhaust_rc" -ne 0 ]; then
   exhaust_verdict=fail
 else
-  exhaust_row=$(token_audit_completed_row "$exhaust_out")
+  exhaust_row=$(canary_completed_row "$exhaust_out")
   if [ -z "$exhaust_row" ] || [ "$exhaust_row" = "null" ]; then
     exhaust_verdict=warn
   else
@@ -510,7 +531,7 @@ assert_eq retry-exit2-stdout '' "$(printf '%s' "$exit2_out" | tr -d '[:space:]')
 if [ "$exit2_rc" -eq 2 ]; then
   exit2_verdict=fail
 elif [ "$exit2_rc" -eq 0 ]; then
-  exit2_row=$(token_audit_completed_row "$exit2_out")
+  exit2_row=$(canary_completed_row "$exit2_out")
   if [ -z "$exit2_row" ]; then
     exit2_verdict=warn
   else
@@ -564,7 +585,7 @@ if ! grep -q 'mythos-token-audit.yml' /tmp/ops-guards-retry-calls.txt; then
 else
   echo "ok retry-gh-run-list-workflow"
 fi
-audit_row=$(token_audit_completed_row "$audit_json")
+audit_row=$(canary_completed_row "$audit_json")
 if [ -z "$audit_row" ] || [ "$audit_row" = "null" ]; then
   echo "FAIL token-audit-failure-not-warn: completed failure became empty/WARN" >&2
   fail=1
@@ -575,9 +596,9 @@ else
   assert_eq token-audit-failure-verdict fail "$(verdict_token_audit present 1 "$conc" 1 192)"
 fi
 
-queued_only=$(token_audit_completed_row '[{"status":"queued","conclusion":""},{"status":"in_progress","conclusion":""}]')
+queued_only=$(canary_completed_row '[{"status":"queued","conclusion":""},{"status":"in_progress","conclusion":""}]')
 assert_eq token-audit-queued-only-warn '' "$(printf '%s' "$queued_only" | tr -d '[:space:]')"
-empty_hist=$(token_audit_completed_row '[]')
+empty_hist=$(canary_completed_row '[]')
 assert_eq token-audit-empty-history-warn '' "$(printf '%s' "$empty_hist" | tr -d '[:space:]')"
 
 if grep -F 'gh_list_with_retry()' "$health_yml" >/dev/null; then
@@ -598,18 +619,92 @@ if ! grep -F 'elif ! AUDIT_JSON=$(gh_list_with_retry "token-audit"' "$health_yml
 else
   echo "ok health-yml-list-failure-is-fail"
 fi
-if ! grep -F 'token_audit_completed_row' "$health_yml" >/dev/null; then
-  echo "FAIL health-yml-uses-completed-row" >&2
+if ! grep -F 'select(.status=="completed")' "$health_yml" | grep -F 'AUDIT_ROW=' | grep -F '&& { [ -z "$AUDIT_ROW" ]' >/dev/null; then
+  echo "FAIL health-yml-completed-row-gate" >&2
   fail=1
 else
-  echo "ok health-yml-uses-completed-row"
+  echo "ok health-yml-completed-row-gate"
 fi
+if grep -F 'token_audit_completed_row' "${ROOT}/ops-guards.sh" >/dev/null; then
+  echo "FAIL ops-guards-no-extra-helper" >&2
+  fail=1
+else
+  echo "ok ops-guards-no-extra-helper"
+fi
+funcs=$(grep -E '^[a-zA-Z_][a-zA-Z0-9_]*\(\) \{' "${ROOT}/ops-guards.sh" | sed 's/() {$//' | tr '\n' ' ' | sed 's/ $//')
+expected_funcs='pr_numbers_from_json resolve_run_prs age_hours workflow_file_state _hours_or_closed verdict_token_audit verdict_hygiene pick_hygiene_runs list_workflow_runs_until_success gh_list_with_retry'
+assert_eq ops-guards-functions-only-retry-added "$expected_funcs" "$funcs"
 if ! grep -F 'gh_list_with_retry "pr-hygiene"' "$health_yml" >/dev/null; then
   echo "FAIL health-yml-retries-hygiene" >&2
   fail=1
 else
   echo "ok health-yml-retries-hygiene"
 fi
+
+# Happy path must not add a gh call. Count fake-gh invocations for the
+# direct list (before the wrap) and through gh_list_with_retry (after).
+HAPPY_AUDIT='[{"status":"completed","conclusion":"success","updatedAt":"2026-10-16T00:00:00Z","createdAt":"2026-10-16T00:00:00Z","url":"https://example.test/ok"}]'
+: > /tmp/ops-guards-gh-before-audit.txt
+gh() {
+  printf '%s\n' "$*" >> /tmp/ops-guards-gh-before-audit.txt
+  printf '%s' "$HAPPY_AUDIT"
+}
+before_audit_out=$(gh run list --repo SkyyPlayz/Mythos-Writer --workflow mythos-token-audit.yml --limit 10 --json conclusion,status,createdAt,updatedAt,url)
+before_audit_n=$(wc -l < /tmp/ops-guards-gh-before-audit.txt | tr -d ' ')
+retry_reset
+: > /tmp/ops-guards-gh-after-audit.txt
+gh() {
+  printf '%s\n' "$*" >> /tmp/ops-guards-gh-after-audit.txt
+  printf '%s' "$HAPPY_AUDIT"
+}
+set +e
+after_audit_out=$(gh_list_with_retry "token-audit" gh run list --repo SkyyPlayz/Mythos-Writer --workflow mythos-token-audit.yml --limit 10 --json conclusion,status,createdAt,updatedAt,url)
+after_audit_rc=$?
+set -e
+after_audit_n=$(wc -l < /tmp/ops-guards-gh-after-audit.txt | tr -d ' ')
+assert_eq happy-audit-gh-calls "$before_audit_n" "$after_audit_n"
+assert_eq happy-audit-rc 0 "$after_audit_rc"
+assert_eq happy-audit-body "$(printf '%s' "$before_audit_out" | tr -d '[:space:]')" "$(printf '%s' "$after_audit_out" | tr -d '[:space:]')"
+assert_eq happy-audit-no-sleep '' "$(retry_sleeps)"
+echo "ok happy-path-token-audit-gh-calls before=${before_audit_n} after=${after_audit_n}"
+
+happy_hygiene_page() {
+  printf '%s' '{"workflow_runs":[
+    {"conclusion":"skipped","status":"completed","created_at":"2026-09-29T14:40:31Z","updated_at":"2026-09-29T14:40:42Z","html_url":"https://github.com/SkyyPlayz/Mythos-Writer/actions/runs/36584431883"},
+    {"conclusion":"success","status":"completed","created_at":"2026-09-29T14:30:39Z","updated_at":"2026-09-29T14:30:54Z","html_url":"https://github.com/SkyyPlayz/Mythos-Writer/actions/runs/36583205363"}
+  ]}'
+}
+: > /tmp/ops-guards-gh-before-hy.txt
+gh() {
+  printf '%s\n' "$*" >> /tmp/ops-guards-gh-before-hy.txt
+  case "$*" in
+    *'status='*|*'--status'*) return 1 ;;
+    *'&page=1&'*) happy_hygiene_page ;;
+    *) echo "unexpected page: $*" >&2; return 1 ;;
+  esac
+}
+before_hy_out=$(list_workflow_runs_until_success SkyyPlayz/Mythos-Writer mythos-pr-hygiene.yml)
+before_hy_n=$(wc -l < /tmp/ops-guards-gh-before-hy.txt | tr -d ' ')
+retry_reset
+: > /tmp/ops-guards-gh-after-hy.txt
+gh() {
+  printf '%s\n' "$*" >> /tmp/ops-guards-gh-after-hy.txt
+  case "$*" in
+    *'status='*|*'--status'*) return 1 ;;
+    *'&page=1&'*) happy_hygiene_page ;;
+    *) echo "unexpected page: $*" >&2; return 1 ;;
+  esac
+}
+set +e
+after_hy_out=$(gh_list_with_retry "pr-hygiene" list_workflow_runs_until_success SkyyPlayz/Mythos-Writer mythos-pr-hygiene.yml)
+after_hy_rc=$?
+set -e
+after_hy_n=$(wc -l < /tmp/ops-guards-gh-after-hy.txt | tr -d ' ')
+assert_eq happy-hygiene-gh-calls "$before_hy_n" "$after_hy_n"
+assert_eq happy-hygiene-rc 0 "$after_hy_rc"
+assert_eq happy-hygiene-body "$(printf '%s' "$before_hy_out" | jq -c .)" "$(printf '%s' "$after_hy_out" | jq -c .)"
+assert_eq happy-hygiene-no-sleep '' "$(retry_sleeps)"
+echo "ok happy-path-pr-hygiene-gh-calls before=${before_hy_n} after=${after_hy_n}"
 
 if [ "$fail" -ne 0 ]; then
   echo "ops-guards tests failed" >&2

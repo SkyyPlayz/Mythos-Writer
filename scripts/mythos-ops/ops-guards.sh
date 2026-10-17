@@ -306,17 +306,3 @@ gh_list_with_retry() {
   done
   return 1
 }
-
-# Newest completed run in a token-audit `gh run list` JSON array.
-# Stdout: that run object, or empty when nothing has completed
-# (canary bootstrap WARN). A newer queued or in-progress run must not
-# hide a completed failure. The emptiness check is AND: a present
-# completed row is printed; it is not forced down the WARN path.
-token_audit_completed_row() {
-  local json="${1-}"
-  local row=""
-  if row=$(printf '%s' "$json" | jq -c '[.[] | select(.status=="completed")] | .[0] // empty') && { [ -z "$row" ] || [ "$row" = "null" ]; }; then
-    return 0
-  fi
-  printf '%s\n' "$row"
-}
