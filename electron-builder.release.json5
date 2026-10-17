@@ -14,7 +14,20 @@
       timestampRfc3161: 'http://timestamp.acs.microsoft.com',
       timestampDigest: 'SHA256',
       fileDigest: 'SHA256',
-      ExcludeEnvironmentCredential: '-Debug',
+      // Credential allow-list: only AzureCliCredential (the azure/login OIDC session)
+      // may be tried. Every other DefaultAzureCredential member is excluded so a
+      // missing/expired session fails fast instead of falling through to an
+      // interactive browser login (seen in the A3 proof run).
+      //
+      // Why one long key: app-builder-lib 26.17.0 emits every extra key here as
+      // `-<key> '<value>'` (windowsSignAzureManager.js signFile). The Exclude*
+      // parameters of Invoke-TrustedSigning 0.5.8 are [switch]es, so they can't
+      // take a quoted value; written this way the emitted text is a plain
+      // PowerShell parameter list, `-ExcludeEnvironmentCredential ... -CorrelationId
+      // 'mythos-writer-release'`, with nothing left over to bind positionally.
+      // release.yml checks the emission format before login so a change in
+      // app-builder-lib fails the job instead of silently dropping the exclusions.
+      'ExcludeEnvironmentCredential -ExcludeWorkloadIdentityCredential -ExcludeManagedIdentityCredential -ExcludeSharedTokenCacheCredential -ExcludeVisualStudioCredential -ExcludeVisualStudioCodeCredential -ExcludeAzurePowerShellCredential -ExcludeAzureDeveloperCliCredential -ExcludeInteractiveBrowserCredential -CorrelationId': 'mythos-writer-release',
     },
   },
 }

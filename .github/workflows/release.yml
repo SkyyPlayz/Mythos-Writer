@@ -97,15 +97,17 @@ jobs:
   # every other packaging path stays unsigned with no Azure login.
   # Step order is load-bearing (plan §Design):
   #   checkout github.sha → gate → module pin → npm ci (no cache) → electron-vite
-  #   build → azure/login → electron-builder → S-1 module check → verify → hash →
-  #   az logout (always) → upload.
+  #   build → signing-config check → azure/login → electron-builder → S-1 module
+  #   check → verify → hash → az logout (always) → upload.
   # `environment: release-signing` carries the env-scoped federated credential and
   # the required reviewer; `id-token: write` lives on this job only.
   build-windows:
     needs: [determine-release, create-release]
     runs-on: windows-latest
-    # Bounds the live-Azure-session window: without a credential, Invoke-TrustedSigning falls
-    # through to an interactive browser login and hangs (seen in the PLAN-SIGN A3 proof run).
+    # Backstop bound on the live-Azure-session window. The signing config excludes every
+    # credential except AzureCliCredential (so a missing session fails fast instead of
+    # falling through to an interactive browser login, as the first PLAN-SIGN A3 run did);
+    # this bound stays in case that premise ever stops holding.
     timeout-minutes: 45
     environment: release-signing
     permissions:
@@ -188,6 +190,55 @@ jobs:
       - name: Build app bundles (electron-vite)
         run: npx electron-vite build
 
+      # Fail closed, before any Azure session exists, on the two premises the signing
+      # config relies on:
+      #  1. The shared electron-builder.json has no azureSignOptions; only the release
+      #     config (electron-builder.release.json5) does, and it carries the credential
+      #     allow-list key (every DefaultAzureCredential member except AzureCliCredential
+      #     excluded) plus the account/profile/publisher the verify step expects.
+      #  2. app-builder-lib still emits each azureSignOptions key verbatim as
+      #     `-<key> '<value>'` (windowsSignAzureManager.js signFile) — that is what turns the
+      #     allow-list key into a plain Invoke-TrustedSigning parameter list. If a dependency
+      #     bump changes that, stop here rather than sign with the exclusions silently dropped.
+      - name: Check signing config is release-only and app-builder-lib emits it verbatim
+        env:
+          RELEASE_CONFIG: electron-builder.release.json5
+          EXCLUDE_KEY: ExcludeEnvironmentCredential -ExcludeWorkloadIdentityCredential -ExcludeManagedIdentityCredential -ExcludeSharedTokenCacheCredential -ExcludeVisualStudioCredential -ExcludeVisualStudioCodeCredential -ExcludeAzurePowerShellCredential -ExcludeAzureDeveloperCliCredential -ExcludeInteractiveBrowserCredential -CorrelationId
+          EXPECTED_CN: SKY HIGH INFINITE TECHWORK LLC
+        run: |
+          set -euo pipefail
+          node - <<'EOF'
+          const fs = require('fs');
+          const { getConfig, validateConfiguration } = require('app-builder-lib/out/util/config/config');
+          const fail = (msg) => { console.log(`::error::${msg}`); process.exit(1); };
+          (async () => {
+            const base = await getConfig(process.cwd(), null, null);
+            if (base.win && base.win.azureSignOptions !== undefined) fail('shared electron-builder.json must not carry win.azureSignOptions');
+            console.log('OK  electron-builder.json (default config) has no win.azureSignOptions');
+
+            const rel = await getConfig(process.cwd(), process.env.RELEASE_CONFIG, null);
+            await validateConfiguration(rel, { isEnabled: false });
+            const o = rel.win && rel.win.azureSignOptions;
+            if (!o) fail(`${process.env.RELEASE_CONFIG} did not resolve to win.azureSignOptions`);
+            for (const [k, v] of Object.entries({ publisherName: process.env.EXPECTED_CN, codeSigningAccountName: 'mythos-signing', certificateProfileName: 'mythos-public', endpoint: 'https://wus2.codesigning.azure.net/' })) {
+              if (o[k] !== v) fail(`${process.env.RELEASE_CONFIG}: azureSignOptions.${k} is ${JSON.stringify(o[k])}, expected ${JSON.stringify(v)}`);
+            }
+            if (typeof o[process.env.EXCLUDE_KEY] !== 'string' || o[process.env.EXCLUDE_KEY].length === 0) fail(`${process.env.RELEASE_CONFIG}: credential allow-list key is missing`);
+            if (JSON.stringify(rel.win.target) !== JSON.stringify(base.win.target)) fail('release config changed win.target');
+            console.log(`OK  ${process.env.RELEASE_CONFIG} resolves to win.azureSignOptions with the allow-list key; schema valid; win.target unchanged`);
+
+            const src = fs.readFileSync(require.resolve('app-builder-lib/out/codeSign/windowsSignAzureManager.js'), 'utf8');
+            const needles = [
+              "const escapedValue = String(value).replace(/'/g, \"''\");",
+              "return [...res, `-${field}`, `'${escapedValue}'`];",
+              'await vm.exec(ps, ["-NoProfile", "-NonInteractive", "-Command", `Invoke-TrustedSigning ${paramsString}`]);',
+            ];
+            for (const n of needles) if (!src.includes(n)) fail(`app-builder-lib ${require('app-builder-lib/package.json').version}: windowsSignAzureManager.js no longer contains: ${n}`);
+            console.log(`OK  app-builder-lib ${require('app-builder-lib/package.json').version} emits azureSignOptions keys verbatim as -<key> '<value>'`);
+            console.log(`    Invoke-TrustedSigning will start with: -${process.env.EXCLUDE_KEY} '${o[process.env.EXCLUDE_KEY]}' -Endpoint '${o.endpoint}' ...`);
+          })().catch((e) => fail(e.stack || String(e)));
+          EOF
+
       # OIDC login scoped by the `release-signing` environment. No `creds`, no secret.
       - name: Azure login (OIDC)
         uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
@@ -202,7 +253,9 @@ jobs:
         run: npx electron-builder --win --publish never --config electron-builder.release.json5
         env:
           # electron-builder requires AZURE_CLIENT_SECRET even for OIDC (electron-builder #9623, #8803).
-          # Literal, obviously fake, NOT a secret. FOLLOWUP: drop when upstream fixes #9623.
+          # Literal, obviously fake, NOT a secret. The credential chain never reads it:
+          # EnvironmentCredential is excluded in electron-builder.release.json5.
+          # FOLLOWUP: drop when upstream fixes #9623.
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: not-a-secret-oidc-placeholder
@@ -214,7 +267,9 @@ jobs:
         run: npx electron-builder --win --publish never --config electron-builder.release.json5 --config.publish.channel=beta --config.publish.releaseType=prerelease
         env:
           # electron-builder requires AZURE_CLIENT_SECRET even for OIDC (electron-builder #9623, #8803).
-          # Literal, obviously fake, NOT a secret. FOLLOWUP: drop when upstream fixes #9623.
+          # Literal, obviously fake, NOT a secret. The credential chain never reads it:
+          # EnvironmentCredential is excluded in electron-builder.release.json5.
+          # FOLLOWUP: drop when upstream fixes #9623.
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: not-a-secret-oidc-placeholder
