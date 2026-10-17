@@ -24,25 +24,58 @@ jobs:
       is-beta: ${{ steps.check.outputs.is-beta }}
       version: ${{ steps.check.outputs.version }}
     steps:
+      # Dispatch inputs reach the shell only through `env:` (never interpolated into
+      # the script) and are validated before any use. The tag must match the strict
+      # release form exactly — no normalisation, no other characters — and is-beta
+      # must be exactly true/false AND agree with the tag, so neither the version nor
+      # the channel the signed build-windows job uses can be steered by a dispatcher.
       - name: Determine release type
         id: check
+        env:
+          EVENT: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_IS_BETA: ${{ inputs.is-beta }}
         run: |
-          if [ -n "${{ inputs.tag }}" ]; then
-            TAG="${{ inputs.tag }}"
+          set -euo pipefail
+          TAG_RE='^v[0-9]+\.[0-9]+\.[0-9]+(-beta(\.[0-9]+)?)?$'
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            TAG="$INPUT_TAG"
+            SOURCE="inputs.tag"
           else
-            TAG="${{ github.ref }}"
-            TAG="${TAG#refs/tags/}"
+            if [ -n "$INPUT_TAG" ] || [ -n "$INPUT_IS_BETA" ]; then
+              echo "::error::unexpected dispatch inputs on a '$EVENT' event; refusing."
+              exit 1
+            fi
+            if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+              echo "::error::release runs must be triggered by a tag; got ref_type '$GITHUB_REF_TYPE' for '$GITHUB_REF'."
+              exit 1
+            fi
+            TAG="${GITHUB_REF#refs/tags/}"
+            SOURCE="github.ref"
           fi
-          # Normalize: strip optional leading v/V, then always prepend lowercase v
-          # so dispatch with "0.5.3", "v0.5.3", or "V0.5.3" all become "v0.5.3".
-          TAG="${TAG#[vV]}"
-          TAG="v${TAG}"
-          if [[ "$TAG" =~ ^v.*-beta ]] || [ "${{ inputs.is-beta }}" = "true" ]; then
-            echo "is-beta=true" >> $GITHUB_OUTPUT
-          else
-            echo "is-beta=false" >> $GITHUB_OUTPUT
+          # %q prints the rejected value escaped on one line so a payload cannot smuggle
+          # a second workflow command through this error output.
+          if ! [[ "$TAG" =~ $TAG_RE ]]; then
+            printf '::error::%s %q is not a valid release tag; expected vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-beta[.N] exactly (lowercase v, digits only, nothing else).\n' "$SOURCE" "$TAG"
+            exit 1
           fi
-          echo "version=$TAG" >> $GITHUB_OUTPUT
+          if [[ "$TAG" == *-beta* ]]; then TAG_IS_BETA=true; else TAG_IS_BETA=false; fi
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            case "$INPUT_IS_BETA" in
+              true|false) ;;
+              *)
+                printf '::error::inputs.is-beta must be exactly true or false; got %q.\n' "$INPUT_IS_BETA"
+                exit 1
+                ;;
+            esac
+            if [ "$INPUT_IS_BETA" != "$TAG_IS_BETA" ]; then
+              echo "::error::inputs.is-beta=$INPUT_IS_BETA does not match tag $TAG: a -beta tag must be dispatched with is-beta=true and a stable tag with is-beta=false."
+              exit 1
+            fi
+          fi
+          echo "is-beta=$TAG_IS_BETA" >> "$GITHUB_OUTPUT"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+          echo "release: version=$TAG is-beta=$TAG_IS_BETA (from $SOURCE on $EVENT)"
 
   # Guard: the release tag must match the version already committed to
   # package.json. This workflow never pushes a version bump itself (SKY-10762 —
@@ -88,54 +121,301 @@ jobs:
 
   # Windows build — native on hosted windows-latest (electron-builder bundles its
   # own NSIS on Windows; no wine cross-compile needed since the repo went public).
+  #
+  # PLAN-SIGN: the installer, app exe and (embedded) uninstaller are signed with
+  # Azure Artifact Signing (electron-builder `win.azureSignOptions`) using GitHub
+  # OIDC — no client secret anywhere. The signing options live ONLY in
+  # electron-builder.release.json5 (loaded by this job via --config); the shared
+  # electron-builder.json that ci.yml and the local npm scripts use has none, so
+  # every other packaging path stays unsigned with no Azure login.
+  # Step order is load-bearing (plan §Design):
+  #   checkout github.sha → gate → module pin → npm ci (no cache) → electron-vite
+  #   build → signing-config check → azure/login → electron-builder → S-1 module
+  #   check → verify → hash → az logout (always) → upload.
+  # `environment: release-signing` carries the env-scoped federated credential and
+  # the required reviewer; `id-token: write` lives on this job only.
   build-windows:
     needs: [determine-release, create-release]
     runs-on: windows-latest
+    # Backstop bound on the live-Azure-session window. The signing config excludes every
+    # credential except AzureCliCredential (so a missing session fails fast instead of
+    # falling through to an interactive browser login, as the first PLAN-SIGN A3 run did);
+    # this bound stays in case that premise ever stops holding.
+    timeout-minutes: 45
+    environment: release-signing
     permissions:
       contents: write
+      id-token: write
     defaults:
       run:
         shell: bash
 
     steps:
+      # Build exactly the commit the workflow was triggered for (signed ref = gated ref).
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
+      # Gate (runs before any Azure step):
+      #  1. The triggering ref must be a tag (a branch named like a tag is not a release tag).
+      #  2. workflow_dispatch must be run ON the tag ref itself with the exact `v*` tag.
+      #  3. The commit must already be on origin/main — nothing off-main gets signed.
+      # Inputs are passed through env, never interpolated into the script.
+      - name: Gate — dispatch ref equality and on-main check
+        env:
+          EVENT: ${{ github.event_name }}
+          IN_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          if [ "$REF_TYPE" != "tag" ]; then
+            echo "::error::release builds must run on a tag ref; got ref_type '$REF_TYPE' for '$REF_NAME'."
+            exit 1
+          fi
+          if [ "$EVENT" = "workflow_dispatch" ] && [ "$IN_TAG" != "$REF_NAME" ]; then
+            echo "::error::workflow_dispatch must run on the tag ref itself: inputs.tag '$IN_TAG' != github.ref_name '$REF_NAME'."
+            exit 1
+          fi
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_SHA is not an ancestor of origin/main; refusing to sign an off-main commit."
+            exit 1
+          fi
+          echo "Gate OK: event=$EVENT ref=$REF_NAME sha=$GITHUB_SHA is on origin/main."
+
+      # Pin the PowerShell signing module electron-builder shells out to. pwsh here
+      # on purpose: electron-builder prefers pwsh.exe when present, so the pin must
+      # land in the same CurrentUser module path it will autoload from.
+      # PIN_VERSION is a literal here and in the S-1 check below — never an input,
+      # var or secret — so a release run can only ever pin 0.5.8. (Proof fixtures
+      # copy the script text and set their own env; release runs cannot.)
+      - name: Pin TrustedSigning PowerShell module to 0.5.8
+        shell: pwsh
+        env:
+          PIN_VERSION: '0.5.8'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module TrustedSigning -RequiredVersion $env:PIN_VERSION -Scope CurrentUser -Force
+          $versions = @(Get-Module -ListAvailable TrustedSigning | ForEach-Object { $_.Version.ToString() })
+          Write-Host "TrustedSigning versions available after pin: [$($versions -join ', ')]"
+          if ($versions -notcontains $env:PIN_VERSION) {
+            throw "TrustedSigning $env:PIN_VERSION is not installed (found: [$($versions -join ', ')])."
+          }
+
+      # Shield S-2: with PSGallery gone, electron-builder's own
+      # `Install-Module TrustedSigning -MinimumVersion 0.5.0 -Force` cannot pull a newer module.
+      - name: Unregister PSGallery (Shield S-2)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Unregister-PSRepository PSGallery
+          Write-Host "Registered PSRepositories after unregister: [$((Get-PSRepository | ForEach-Object Name) -join ', ')]"
+
+      # No npm cache on this job: nothing restored from a shared cache runs while the
+      # Azure session is live (Shield 2).
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: '22'
-          cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Decode Windows signing certificate
-        shell: bash
-        run: |
-          if [ -z "${WINDOWS_CERTIFICATE_BASE64:-}" ]; then
-            echo "No Windows signing certificate configured; building unsigned installer."
-            exit 0
-          fi
-          echo "$WINDOWS_CERTIFICATE_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.pfx"
-          echo "WIN_CSC_LINK=$RUNNER_TEMP/certificate.pfx" >> "$GITHUB_ENV"
-        env:
-          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+      - name: Build app bundles (electron-vite)
+        run: npx electron-vite build
 
+      # Fail closed, before any Azure session exists, on the two premises the signing
+      # config relies on:
+      #  1. The shared electron-builder.json has no azureSignOptions; only the release
+      #     config (electron-builder.release.json5) does, and it carries the credential
+      #     allow-list key (every DefaultAzureCredential member except AzureCliCredential
+      #     excluded) plus the account/profile/publisher the verify step expects.
+      #  2. app-builder-lib still emits each azureSignOptions key verbatim as
+      #     `-<key> '<value>'` (windowsSignAzureManager.js signFile) — that is what turns the
+      #     allow-list key into a plain Invoke-TrustedSigning parameter list. If a dependency
+      #     bump changes that, stop here rather than sign with the exclusions silently dropped.
+      - name: Check signing config is release-only and app-builder-lib emits it verbatim
+        env:
+          RELEASE_CONFIG: electron-builder.release.json5
+          EXCLUDE_KEY: ExcludeEnvironmentCredential -ExcludeWorkloadIdentityCredential -ExcludeManagedIdentityCredential -ExcludeSharedTokenCacheCredential -ExcludeVisualStudioCredential -ExcludeVisualStudioCodeCredential -ExcludeAzurePowerShellCredential -ExcludeAzureDeveloperCliCredential -ExcludeInteractiveBrowserCredential -CorrelationId
+          EXPECTED_CN: SKY HIGH INFINITE TECHWORK LLC
+        run: |
+          set -euo pipefail
+          node - <<'EOF'
+          const fs = require('fs');
+          const { getConfig, validateConfiguration } = require('app-builder-lib/out/util/config/config');
+          const fail = (msg) => { console.log(`::error::${msg}`); process.exit(1); };
+          (async () => {
+            const base = await getConfig(process.cwd(), null, null);
+            if (base.win && base.win.azureSignOptions !== undefined) fail('shared electron-builder.json must not carry win.azureSignOptions');
+            console.log('OK  electron-builder.json (default config) has no win.azureSignOptions');
+
+            const rel = await getConfig(process.cwd(), process.env.RELEASE_CONFIG, null);
+            await validateConfiguration(rel, { isEnabled: false });
+            const o = rel.win && rel.win.azureSignOptions;
+            if (!o) fail(`${process.env.RELEASE_CONFIG} did not resolve to win.azureSignOptions`);
+            for (const [k, v] of Object.entries({ publisherName: process.env.EXPECTED_CN, codeSigningAccountName: 'mythos-signing', certificateProfileName: 'mythos-public', endpoint: 'https://wus2.codesigning.azure.net/' })) {
+              if (o[k] !== v) fail(`${process.env.RELEASE_CONFIG}: azureSignOptions.${k} is ${JSON.stringify(o[k])}, expected ${JSON.stringify(v)}`);
+            }
+            if (typeof o[process.env.EXCLUDE_KEY] !== 'string' || o[process.env.EXCLUDE_KEY].length === 0) fail(`${process.env.RELEASE_CONFIG}: credential allow-list key is missing`);
+            if (JSON.stringify(rel.win.target) !== JSON.stringify(base.win.target)) fail('release config changed win.target');
+            console.log(`OK  ${process.env.RELEASE_CONFIG} resolves to win.azureSignOptions with the allow-list key; schema valid; win.target unchanged`);
+
+            const src = fs.readFileSync(require.resolve('app-builder-lib/out/codeSign/windowsSignAzureManager.js'), 'utf8');
+            const needles = [
+              "const escapedValue = String(value).replace(/'/g, \"''\");",
+              "return [...res, `-${field}`, `'${escapedValue}'`];",
+              'await vm.exec(ps, ["-NoProfile", "-NonInteractive", "-Command", `Invoke-TrustedSigning ${paramsString}`]);',
+            ];
+            for (const n of needles) if (!src.includes(n)) fail(`app-builder-lib ${require('app-builder-lib/package.json').version}: windowsSignAzureManager.js no longer contains: ${n}`);
+            console.log(`OK  app-builder-lib ${require('app-builder-lib/package.json').version} emits azureSignOptions keys verbatim as -<key> '<value>'`);
+            console.log(`    Invoke-TrustedSigning will start with: -${process.env.EXCLUDE_KEY} '${o[process.env.EXCLUDE_KEY]}' -Endpoint '${o.endpoint}' ...`);
+          })().catch((e) => fail(e.stack || String(e)));
+          EOF
+
+      # OIDC login scoped by the `release-signing` environment. No `creds`, no secret.
+      - name: Azure login (OIDC)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # `--config electron-builder.release.json5` is the only place signing is switched on.
       - name: Build Windows artifacts — stable channel (NSIS + ZIP)
         if: needs.determine-release.outputs.is-beta == 'false'
-        run: npx electron-vite build && npx electron-builder --win --publish never
+        run: npx electron-builder --win --publish never --config electron-builder.release.json5
         env:
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          # electron-builder requires AZURE_CLIENT_SECRET even for OIDC (electron-builder #9623, #8803).
+          # Literal, obviously fake, NOT a secret. The credential chain never reads it:
+          # EnvironmentCredential is excluded in electron-builder.release.json5.
+          # FOLLOWUP: drop when upstream fixes #9623.
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: not-a-secret-oidc-placeholder
 
       - name: Build Windows artifacts — beta channel (NSIS + ZIP)
         if: needs.determine-release.outputs.is-beta == 'true'
         # releaseType=prerelease: bakes correct value into app-update.yml so the updater
         # searches GitHub pre-releases (where beta cuts land) via the beta.yml feed.
-        run: npx electron-vite build && npx electron-builder --win --publish never --config.publish.channel=beta --config.publish.releaseType=prerelease
+        run: npx electron-builder --win --publish never --config electron-builder.release.json5 --config.publish.channel=beta --config.publish.releaseType=prerelease
         env:
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          # electron-builder requires AZURE_CLIENT_SECRET even for OIDC (electron-builder #9623, #8803).
+          # Literal, obviously fake, NOT a secret. The credential chain never reads it:
+          # EnvironmentCredential is excluded in electron-builder.release.json5.
+          # FOLLOWUP: drop when upstream fixes #9623.
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: not-a-secret-oidc-placeholder
+
+      # Shield S-1: exactly one TrustedSigning module version may exist after the build,
+      # and it must be the pinned 0.5.8 — otherwise a different module ran during signing.
+      - name: Check TrustedSigning module is exactly 0.5.8 (Shield S-1)
+        shell: pwsh
+        env:
+          PIN_VERSION: '0.5.8'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $versions = @(Get-Module -ListAvailable TrustedSigning | ForEach-Object { $_.Version.ToString() })
+          Write-Host "TrustedSigning versions available after build: [$($versions -join ', ')]"
+          if ($versions.Count -ne 1 -or $versions[0] -ne $env:PIN_VERSION) {
+            throw "Expected exactly one TrustedSigning module version, $env:PIN_VERSION; found [$($versions -join ', ')]. A different module may have run while the Azure session was live — STOP and re-plan (PLAN-SIGN)."
+          }
+
+      # Fail closed: every installer exe plus the unpacked app exe must carry a Valid
+      # Authenticode signature from exactly the expected publisher CN with an RFC3161
+      # timestamp. The NSIS uninstaller is embedded in the installer (checked by the
+      # post-merge Probe install row).
+      - name: Verify Authenticode signatures
+        shell: pwsh
+        env:
+          DIST_DIR: dist-electron
+          EXPECTED_CN: SKY HIGH INFINITE TECHWORK LLC
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem -Path (Join-Path $env:DIST_DIR '*.exe') -File -ErrorAction SilentlyContinue | ForEach-Object FullName)
+          $appExe = Join-Path $env:DIST_DIR 'win-unpacked' 'Mythos Writer.exe'
+          if ($installers.Count -eq 0) { throw "No installer .exe found in '$env:DIST_DIR'." }
+          if (-not (Test-Path -LiteralPath $appExe -PathType Leaf)) { throw "Missing app executable '$appExe'." }
+          $failures = 0
+          foreach ($file in ($installers + $appExe)) {
+            $sig = Get-AuthenticodeSignature -LiteralPath $file
+            $cn = if ($null -ne $sig.SignerCertificate) { $sig.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false) } else { '<none>' }
+            $ts = if ($null -ne $sig.TimeStamperCertificate) { $sig.TimeStamperCertificate.Subject } else { '<none>' }
+            Write-Host "$file"
+            Write-Host "  Status:      $($sig.Status)"
+            Write-Host "  Signer CN:   $cn"
+            Write-Host "  Timestamper: $ts"
+            if ($sig.Status -ne 'Valid') { Write-Host "::error::$file - signature status is '$($sig.Status)', expected 'Valid'."; $failures++ }
+            if ($cn -ne $env:EXPECTED_CN) { Write-Host "::error::$file - signer CN '$cn' is not exactly '$env:EXPECTED_CN'."; $failures++ }
+            if ($null -eq $sig.TimeStamperCertificate) { Write-Host "::error::$file - no RFC3161 timestamp countersignature."; $failures++ }
+          }
+          if ($failures -gt 0) { throw "$failures signature check(s) failed." }
+          Write-Host "OK: $($installers.Count + 1) executable(s) signed by '$env:EXPECTED_CN' with timestamps."
+
+      # The updater feed must describe the exact bytes we upload: every `files[].url`
+      # ending in .exe, and the top-level `path`, must sha512-match a local file.
+      # electron-builder writes the GitHub asset name into the yml (`Mythos-Writer-<v>.exe`)
+      # while the file on disk is `Mythos Writer-<v>.exe`. Mapping is exactly that one
+      # rename of the `Mythos-Writer-` prefix — no glob, no partial match — and the
+      # entry must resolve to exactly one file: zero is a missing artifact, more than
+      # one (e.g. both spellings on disk) would collide on upload.
+      - name: Check installer sha512 against the updater yml
+        shell: pwsh
+        env:
+          DIST_DIR: dist-electron
+          CHANNEL_YML: ${{ needs.determine-release.outputs.is-beta == 'true' && 'beta.yml' || 'latest.yml' }}
+          YML_PREFIX: 'Mythos-Writer-'
+          DISK_PREFIX: 'Mythos Writer-'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ymlPath = Join-Path $env:DIST_DIR $env:CHANNEL_YML
+          if (-not (Test-Path -LiteralPath $ymlPath -PathType Leaf)) { throw "Missing updater feed '$ymlPath'." }
+          Write-Host "---- $ymlPath ----"
+          Get-Content -LiteralPath $ymlPath | ForEach-Object { Write-Host $_ }
+          Write-Host "-------------------"
+          $entries = @()
+          $current = $null
+          $topPath = $null
+          $topSha = $null
+          foreach ($line in Get-Content -LiteralPath $ymlPath) {
+            if ($line -match '^\s+-\s+url:\s*(.+?)\s*$') { $current = @{ url = $Matches[1].Trim("'", '"'); sha512 = $null }; $entries += $current; continue }
+            if ($null -ne $current -and $line -match '^\s+sha512:\s*(.+?)\s*$') { $current.sha512 = $Matches[1].Trim("'", '"'); continue }
+            if ($line -match '^path:\s*(.+?)\s*$') { $topPath = $Matches[1].Trim("'", '"'); continue }
+            if ($line -match '^sha512:\s*(.+?)\s*$') { $topSha = $Matches[1].Trim("'", '"'); continue }
+          }
+          $checks = @($entries | Where-Object { $_.url -like '*.exe' } | ForEach-Object { @{ name = $_.url; sha512 = $_.sha512 } })
+          if ($null -eq $topPath -or $null -eq $topSha) { throw "Updater feed has no top-level path/sha512." }
+          $checks += @{ name = $topPath; sha512 = $topSha }
+          if (@($checks | Where-Object { $_.name -like '*.exe' }).Count -eq 0) { throw "Updater feed lists no .exe entries." }
+          $localFiles = @(Get-ChildItem -LiteralPath $env:DIST_DIR -File)
+          $sha = [System.Security.Cryptography.SHA512]::Create()
+          $failures = 0
+          foreach ($c in $checks) {
+            $name = [System.Uri]::UnescapeDataString($c.name)
+            if (-not $name.StartsWith($env:YML_PREFIX, [System.StringComparison]::Ordinal)) { Write-Host "::error::'$name' in $env:CHANNEL_YML does not start with '$env:YML_PREFIX'; refusing to guess a local file."; $failures++; continue }
+            $diskName = $env:DISK_PREFIX + $name.Substring($env:YML_PREFIX.Length)
+            $found = @($localFiles | Where-Object { $_.Name -ceq $diskName -or $_.Name -ceq $name })
+            if ($found.Count -eq 0) { Write-Host "::error::'$name' is listed in $env:CHANNEL_YML but neither '$diskName' nor '$name' exists in '$env:DIST_DIR'."; $failures++; continue }
+            if ($found.Count -gt 1) { Write-Host "::error::'$name' in $env:CHANNEL_YML maps to $($found.Count) files in '$env:DIST_DIR' ($(($found | ForEach-Object Name) -join ', ')); expected exactly one."; $failures++; continue }
+            if ([string]::IsNullOrWhiteSpace($c.sha512)) { Write-Host "::error::'$name' has no sha512 in $env:CHANNEL_YML."; $failures++; continue }
+            Write-Host "     $name -> $($found[0].Name)"
+            $stream = [System.IO.File]::OpenRead($found[0].FullName)
+            try { $actual = [Convert]::ToBase64String($sha.ComputeHash($stream)) } finally { $stream.Dispose() }
+            if ($actual -eq $c.sha512) { Write-Host "OK   $name sha512 matches." }
+            else { Write-Host "::error::sha512 mismatch for '$name': yml=$($c.sha512) actual=$actual"; $failures++ }
+          }
+          if ($failures -gt 0) { throw "$failures updater-feed hash check(s) failed." }
+          Write-Host "OK: $($checks.Count) sha512 entr(y/ies) in $env:CHANNEL_YML match the built files."
+
+      # Keep the Azure session as short as possible; runs even when an earlier step failed.
+      - name: Azure logout
+        if: always()
+        run: |
+          az logout || echo "az logout: no active account"
+          az account clear
 
       - name: Upload Windows artifacts to release
         env:
