@@ -227,7 +227,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ROTATION_DAYS: ${{ vars.MYTHOS_SECRET_ROTATION_DAYS }}
-          SET_AT: ${{ vars.MYTHOS_BOT_TOKEN_SET_AT }}
+          SET_AT: ${{ vars.MYTHOS_PAT_SET_AT }}
         run: |
           set -euo pipefail
           REPO="${{ github.repository }}"
@@ -238,18 +238,18 @@ jobs:
 
           if [ -z "${SET_AT:-}" ]; then
             DUE=1
-            REASON="\`MYTHOS_BOT_TOKEN_SET_AT\` repo var is unset — treat as due (humans set ISO date when rotating)."
+            REASON="\`MYTHOS_PAT_SET_AT\` repo var is unset — treat as due (humans set ISO date when rotating)."
           else
             SET_S=$(date -u -d "$SET_AT" +%s 2>/dev/null || echo 0)
             NOW=$(date -u +%s)
             if [ "$SET_S" -eq 0 ]; then
               DUE=1
-              REASON="\`MYTHOS_BOT_TOKEN_SET_AT\` unparseable — treat as due."
+              REASON="\`MYTHOS_PAT_SET_AT\` unparseable — treat as due."
             else
               AGE_D=$(( (NOW - SET_S) / 86400 ))
               if [ "$AGE_D" -gt "$DAYS" ]; then
                 DUE=1
-                REASON="PAT age proxy **${AGE_D}d** > window **${DAYS}d** (from \`MYTHOS_BOT_TOKEN_SET_AT\` date only — no secret values)."
+                REASON="PAT age proxy **${AGE_D}d** > window **${DAYS}d** (from \`MYTHOS_PAT_SET_AT\` date only — no secret values)."
               else
                 echo "Rotation not due (age=${AGE_D}d ≤ ${DAYS}d) — OK"
                 exit 0
@@ -264,10 +264,9 @@ jobs:
             "$REASON" \
             '' \
             '### Checklist (rotate outside this workflow — never paste secrets here)' \
-            '- [ ] Rotate `MYTHOS_BOT_TOKEN` (repo secret) and update `vars.MYTHOS_BOT_TOKEN_SET_AT` to today ISO' \
+            '- [ ] Rotate the Mythos bot PAT (repo secret) and update `vars.MYTHOS_PAT_SET_AT` to today ISO' \
             '- [ ] Review any audit / ops PATs' \
             '- [ ] Cursor / Grok bot secrets outside GitHub (if any)' \
-            '- [ ] Confirm `mythos-gate-auto-merge` still merges with new token' \
             '' \
             'See `docs/MYTHOS_OPS_RUNBOOK.md`. Creed: cut waste, do not weaken quality.' \
             '' \

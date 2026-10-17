@@ -9,7 +9,7 @@
  *   node scripts/mythos-autofix/shadow-mode.mjs ensure-window
  *   node scripts/mythos-autofix/shadow-mode.mjs flip-if-due
  *
- * Env: GITHUB_REPOSITORY, GH_TOKEN / MYTHOS_BOT_TOKEN,
+ * Env: GITHUB_REPOSITORY, GH_TOKEN,
  *      MYTHOS_AUTOFIX_MODE, MYTHOS_AUTOFIX_SHADOW_UNTIL, MYTHOS_WAKE_CIRCUIT_BREAKER
  */
 
@@ -21,7 +21,6 @@ const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function gh(args, { soft = false } = {}) {
   const env = { ...process.env };
-  if (process.env.MYTHOS_BOT_TOKEN) env.GH_TOKEN = process.env.MYTHOS_BOT_TOKEN;
   const r = spawnSync("gh", args, {
     encoding: "utf8",
     maxBuffer: 4 * 1024 * 1024,
