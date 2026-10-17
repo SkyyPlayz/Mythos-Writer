@@ -33,9 +33,9 @@ Health canary (weekday mornings + after audit/hygiene completes). Sticky marker:
 | Tip-freeze docs | [FORGE_TIP_FREEZE.md](./FORGE_TIP_FREEZE.md), [FORGE_E2E_KEEPALIVE.md](./FORGE_E2E_KEEPALIVE.md) | Inventory → one batch; soft cap window var |
 | Standing agents | Forge / Critic / Shield / Probe / Sentinel / `bc-fb92daf9` | [STANDING_AGENT_CONTEXT_COMPRESSION.md](./STANDING_AGENT_CONTEXT_COMPRESSION.md) |
 | Branch protection | [BRANCH_PROTECTION_MAIN.md](./BRANCH_PROTECTION_MAIN.md) + `scripts/branch-protection/apply-main-ruleset.mjs` | Manual admin apply after merge |
-| Merge gate | [MERGE_GATE.md](./MERGE_GATE.md) | Tip-SHA Critic+Shield+Probe — not collapsed |
+| Merge gate | [MERGE_GATE.md](./MERGE_GATE.md) | Tip-SHA Critic+Shield+Probe — not collapsed. Auto-merge workflow `mythos-gate-auto-merge.yml` (check `mythos-gate-auto-merge`) was removed; a human applies the bar. |
 | Ops health | `mythos-ops-health.yml` jobs `canary` + `secrets-rotation` | Red on audit silence/failure and hygiene silence since last success. Token-audit bootstrap WARN until the first completed run. Hygiene latest-failure is OK when a success is inside 26h. Quarterly PAT reminder |
-| Secrets rotation | `vars.MYTHOS_BOT_TOKEN_SET_AT`, `vars.MYTHOS_SECRET_ROTATION_DAYS` (default 90) | Reminder only — never prints secrets |
+| Secrets rotation | `vars.MYTHOS_BOT_TOKEN_SET_AT`, `vars.MYTHOS_SECRET_ROTATION_DAYS` (default 90) | Reminder only — never prints secrets. Do not confirm `mythos-gate-auto-merge` still merges; that workflow was removed. Deleting the repo secret is owner-only and is not part of the workflow removal. |
 
 ## Rollback one-liners
 
